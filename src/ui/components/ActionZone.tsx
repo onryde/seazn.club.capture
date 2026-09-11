@@ -3,16 +3,23 @@ import { Animated, Easing, type LayoutChangeEvent, Pressable, StyleSheet, View }
 import { Text } from '@/ui/components/Text';
 import { colour, space, status } from '@/ui/theme/tokens';
 
-const HOLD_MS = 1200;
+/**
+ * The hold a caller gets if it does not ask for one. Short — it suits a
+ * secondary confirmation, not the two actions that decide whether a match is
+ * broadcast. Those pass 5000 explicitly (AGENTS.md §6).
+ */
+const DEFAULT_HOLD_MS = 1200;
 
 /**
  * The primary action, anchored to the screen edge rather than drawn as a button
  * (AGENTS.md §6). An enormous target against the bezel works with cold or wet
  * hands and cannot be mis-hit.
  *
- * `mode` encodes the asymmetry that matters: **Go Live is a tap, Stop is
- * hold-to-confirm.** An accidental start costs a Machine; an accidental stop
- * costs the match. Guard the expensive mistake, not both.
+ * `mode` says whether the action commits on a tap or on a hold, and `holdMs`
+ * says how long the hold is — per caller, because the two that matter are not
+ * the same weight as the rest. Go live and Stop are both 5s holds: at a ground
+ * the likely mistake is a mis-tap, in either direction, from a pocket or a
+ * tripod pan bar. Five seconds under a moving fill is unmistakable.
  *
  * The hold progress translates a full-width fill from off-screen left to zero,
  * measured by `onLayout`. It animates `translateX` rather than `width` so it
@@ -24,6 +31,7 @@ export function ActionZone({
   label,
   mode,
   accent,
+  holdMs = DEFAULT_HOLD_MS,
   disabled = false,
   reason,
   onAction,
@@ -31,6 +39,8 @@ export function ActionZone({
   label: string;
   mode: 'tap' | 'hold';
   accent: string;
+  /** How long `mode="hold"` must be held. Drives the timer and the fill together. */
+  holdMs?: number;
   disabled?: boolean;
   /** Why the action is unavailable, shown AT the control rather than four lines away. */
   reason?: string;
@@ -54,9 +64,11 @@ export function ActionZone({
 
   const beginHold = useCallback(() => {
     if (disabled) return;
+    // One duration for both, so the fill reaching the far edge is the truth
+    // about when the action fires rather than an approximation of it.
     Animated.timing(slide, {
       toValue: 1,
-      duration: HOLD_MS,
+      duration: holdMs,
       easing: Easing.linear,
       useNativeDriver: true,
     }).start();
@@ -64,8 +76,8 @@ export function ActionZone({
       timer.current = null;
       slide.setValue(0);
       onAction();
-    }, HOLD_MS);
-  }, [disabled, onAction, slide]);
+    }, holdMs);
+  }, [disabled, holdMs, onAction, slide]);
 
   // A hold in progress when this unmounts would otherwise fire its action
   // afterwards — stopping a broadcast nobody asked to stop.
@@ -92,7 +104,13 @@ export function ActionZone({
       onLayout={onLayout}
       disabled={disabled}
       accessibilityRole="button"
-      accessibilityLabel={mode === 'hold' ? `${label}. Press and hold.` : label}
+      // Says the duration, because a screen-reader user cannot see the fill and
+      // a hold that appears to do nothing for five seconds reads as a dead control.
+      accessibilityLabel={
+        mode === 'hold'
+          ? `${label}. Press and hold for ${Math.round(holdMs / 1000)} seconds.`
+          : label
+      }
       accessibilityState={{ disabled }}
       style={styles.zone}
     >

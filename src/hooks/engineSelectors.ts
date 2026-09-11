@@ -31,6 +31,20 @@ export function selectTally(snapshot: EngineSnapshot): TallyState {
 }
 
 /**
+ * On air in the only sense the operator cares about: something is going out, or
+ * the app is fighting to keep it going out. One definition, because three
+ * screens now ask the question — the viewfinder to choose its action, Settings
+ * and Diagnostics to show that the broadcast is still running behind them.
+ *
+ * Broader than `selectIsPublishing`, which excludes connecting and
+ * reconnecting. Those are exactly the moments when stopping costs the match.
+ */
+export function selectIsOnAir(snapshot: EngineSnapshot): boolean {
+  const tally = selectTally(snapshot);
+  return tally === 'live' || tally === 'trouble';
+}
+
+/**
  * Declared at module scope so their identity is stable across renders.
  * An inline `(s) => s.telemetry.bitrateKbps` is a new function every render,
  * which defeats the memoisation this hook exists for.
@@ -109,7 +123,8 @@ export function selectStatusLine(snapshot: EngineSnapshot): string {
       return 'Scan a fixture code to begin.';
     case 'armed':
       return telemetry.audioLevel >= AUDIO_FLOOR
-        ? 'Ready. Tap to go live.'
+        ? // Says what the control now asks for: a hold, not a tap (§6).
+          'Ready. Hold to go live.'
         : 'No sound. Check the mic before going live.';
     case 'connecting':
       return 'Opening the link.';

@@ -10,8 +10,14 @@ import { colour, space } from '@/ui/theme/tokens';
  * the output player spends radio, battery and billed delivery. A glance costs
  * nothing; three hours of either would matter (N16).
  *
- * Stays available while live, unlike Settings and Diagnostics. Checking the
- * broadcast is exactly what an operator needs mid-match; reconfiguring is not.
+ * Deliberately NOT one of §6's 5s holds. Go live and Stop are holds because the
+ * hold is the confirmation; here the hold IS the feature — the preview appears
+ * the instant the finger lands and goes when it lifts, and what the hold buys is
+ * that it can never be left running unattended on billed delivery. A delay here
+ * would only make a glance useless.
+ *
+ * Set in the display face like the action below it, so the column reads as a
+ * pair of controls. Size, not face, carries which one is primary.
  */
 export function PeekButton({
   label,
@@ -36,7 +42,11 @@ export function PeekButton({
       accessibilityState={{ disabled, expanded: active }}
       style={[styles.row, active ? styles.active : null]}
     >
-      <Text variant="control" style={disabled ? styles.disabled : styles.label} numberOfLines={2}>
+      <Text
+        variant="actionSecondary"
+        style={disabled ? styles.disabled : styles.label}
+        numberOfLines={2}
+      >
         {label}
       </Text>
     </Pressable>
@@ -49,10 +59,12 @@ const styles = StyleSheet.create({
   // undifferentiated list.
   // Fixed height, not minimum: the label wraps to two lines in some states and
   // a row that changes height moves the stop control under the operator's thumb.
+  // 56, not 52 — two lines of the display face at 19px need 38 of it, and the
+  // lock notice moving to the stage edge freed the column the four pixels.
   row: {
     paddingHorizontal: space.md,
     paddingVertical: space.sm,
-    height: 52,
+    height: 56,
     justifyContent: 'center',
   },
   active: {

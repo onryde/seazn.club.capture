@@ -1,8 +1,10 @@
+import type { ReactNode } from 'react';
 import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import {
   type TallyState,
   selectAudioLevel,
   selectHoldWindowSeconds,
+  selectIsOnAir,
   selectOverlayUrl,
   selectPlaybackUrl,
   selectScoreUpdates,
@@ -33,6 +35,15 @@ import { colour, plate, plateInk, space, status } from '@/ui/theme/tokens';
 const AUDIO_FLOOR = 0.05;
 
 /**
+ * Both directions are guarded, and guarded identically (AGENTS.md §6). At a
+ * ground the likely mistake is a mis-tap — a pocket, a tripod pan bar, a
+ * volunteer steadying the phone — not a deliberate wrong decision, and it is as
+ * costly starting as stopping. Five seconds under a moving fill cannot be done
+ * by accident in either direction, and costs the operator five seconds a match.
+ */
+const COMMIT_HOLD_MS = 5000;
+
+/**
  * Arm and Live are one screen, not two.
  *
  * The scope lock names five screens, but arming and going live differ only in
@@ -57,15 +68,11 @@ export function ViewfinderScreen({
   const scoreUpdates = useEngineSelector(selectScoreUpdates);
   const peek = usePeek();
   const { settings } = useSettings();
+  const onAir = useEngineSelector(selectIsOnAir);
   const survivesBackground = useEngineSelector(selectSurvivesBackground);
   const holdWindowSeconds = useEngineSelector(selectHoldWindowSeconds);
   const lifecycle = useAppLifecycle();
   const stale = useSnapshotFreshness();
-
-  const onAir = tally === 'live' || tally === 'trouble';
-  // Configuration is unavailable while live. Nobody should be changing the
-  // encode profile at 3-1 in the 40th over.
-  const canConfigure = !onAir;
 
   // Before air the only thing worth looking at is the overlay, for framing.
   // On air the output is strictly more informative: it carries the overlay
@@ -106,12 +113,32 @@ export function ViewfinderScreen({
         ) : null}
 
         {shed !== null ? (
-          <View style={styles.edgeNote} pointerEvents="none">
+          <StageEdge edge="top" tone="caution">
             <Text variant="metricUnit" style={styles.edgeNoteText}>
               {shedNote(shed)}
             </Text>
-          </View>
+          </StageEdge>
         ) : null}
+
+        {/*
+          Advice, not state: the lock rule reads along the bottom edge of the
+          stage rather than inside the column, which has no height to give it
+          and where its two lines were the reason the column scrolled.
+
+          Yields while a peek is showing. Both previews put their own caption on
+          this exact edge, and two sentences stacked on one edge is how both stop
+          being read. The peek lasts seconds; the advice is there before and after.
+        */}
+        {survivesBackground || peek.showing ? null : (
+          <StageEdge edge="bottom" tone="plain">
+            <LockNotice
+              onAir={onAir}
+              holdWindowSeconds={holdWindowSeconds}
+              absences={lifecycle.absences}
+              lastAwayMs={lifecycle.lastAwayMs}
+            />
+          </StageEdge>
+        )}
       </View>
 
       {/*
@@ -156,11 +183,11 @@ export function ViewfinderScreen({
         </View>
 
         {/*
-          ZONE 3a · SECONDARY — the only zone that gives way. A 20:9 phone in
-          landscape is 360dp tall, less than this column needs before air, so
-          peek, links and the lock notice scroll here while state, health and
-          the primary action never move. On a tall screen the content sits at
-          the bottom, beside the action, exactly as before.
+          ZONE 3a · SECONDARY — the only zone that gives way, and the safety net
+          rather than the plan. With the lock notice moved to the stage edge only
+          peek and the two links live here, which fits a 360dp landscape phone;
+          it stays a ScrollView because the day it does not fit, scrolling beats
+          a clipped Diagnostics link.
         */}
         <ScrollView
           style={styles.zoneSecondary}
@@ -175,25 +202,20 @@ export function ViewfinderScreen({
             onRelease={peek.release}
           />
 
-          {canConfigure ? (
-            <View style={styles.links}>
-              <Pressable onPress={onOpenSettings} accessibilityRole="button" style={styles.link}>
-                <Text variant="control">Settings</Text>
-              </Pressable>
-              <Pressable onPress={onOpenDiagnostics} accessibilityRole="button" style={styles.link}>
-                <Text variant="control">Diagnostics</Text>
-              </Pressable>
-            </View>
-          ) : null}
-
-          {survivesBackground ? null : (
-            <LockNotice
-              onAir={onAir}
-              holdWindowSeconds={holdWindowSeconds}
-              absences={lifecycle.absences}
-              lastAwayMs={lifecycle.lastAwayMs}
-            />
-          )}
+          {/*
+            Both links, in every state. Mid-match is exactly when someone needs
+            Diagnostics, and withholding the whole screen to protect one future
+            setting made the app least useful when it mattered most. Those
+            screens carry a LIVE plate so the broadcast is never out of sight.
+          */}
+          <View style={styles.links}>
+            <Pressable onPress={onOpenSettings} accessibilityRole="button" style={styles.link}>
+              <Text variant="control">Settings</Text>
+            </Pressable>
+            <Pressable onPress={onOpenDiagnostics} accessibilityRole="button" style={styles.link}>
+              <Text variant="control">Diagnostics</Text>
+            </Pressable>
+          </View>
         </ScrollView>
 
         {/* ZONE 3b · ACTION — pinned to the bottom edge, never scrolled away. */}
@@ -203,6 +225,7 @@ export function ViewfinderScreen({
           <ActionZone
             label="Hold to stop"
             mode="hold"
+            holdMs={COMMIT_HOLD_MS}
             accent={colour.ink}
             onAction={() => engine.send({ kind: 'stop' })}
           />
@@ -218,8 +241,9 @@ export function ViewfinderScreen({
           />
         ) : (
           <ActionZone
-            label="Go live"
-            mode="tap"
+            label="Hold to go live"
+            mode="hold"
+            holdMs={COMMIT_HOLD_MS}
             accent={status.healthy}
             disabled={stateKind !== 'armed' || audio < AUDIO_FLOOR}
             reason={goLiveReason(audio)}
@@ -227,6 +251,38 @@ export function ViewfinderScreen({
           />
         )}
       </TallyColumn>
+    </View>
+  );
+}
+
+/**
+ * Text over the stage, pinned to an edge and never the middle third (§6).
+ *
+ * Two edges, two jobs: the top carries device conditions in caution, the bottom
+ * carries rules of engagement in plain ink. Solid ground behind the text rather
+ * than a scrim — a translucent plate over grass is unreadable outdoors — and a
+ * hairline on the stage side so the strip reads as a frame edge, not a caption
+ * floating in the picture. Never takes a touch: the stage below it is the shot.
+ */
+function StageEdge({
+  edge,
+  tone,
+  children,
+}: {
+  edge: 'top' | 'bottom';
+  tone: 'caution' | 'plain';
+  children: ReactNode;
+}) {
+  return (
+    <View
+      style={[
+        styles.edgeNote,
+        edge === 'top' ? styles.edgeTop : styles.edgeBottom,
+        tone === 'caution' ? styles.edgeCaution : styles.edgePlain,
+      ]}
+      pointerEvents="none"
+    >
+      {children}
     </View>
   );
 }
@@ -268,11 +324,18 @@ function goLiveReason(audio: number): string | undefined {
   return audio < AUDIO_FLOOR ? 'No sound yet' : undefined;
 }
 
-/** Says why, not merely that. "Unavailable" reads as a fault the operator caused. */
+/**
+ * Says why, not merely that. "Unavailable" reads as a fault the operator caused.
+ *
+ * "Hold to preview" deliberately echoes "Hold to stop" beneath it: the two are
+ * the column's controls and both are held. What differs is what the hold means —
+ * here the hold is the preview itself, not a confirmation, so it answers
+ * instantly (see PeekButton).
+ */
 function peekLabel(onAir: boolean, overlayOff: boolean, hot: boolean): string {
   if (overlayOff) return 'Score preview off';
   if (hot) return 'Paused, phone is hot';
-  return onAir ? 'Hold to see output' : 'Hold to see score';
+  return onAir ? 'Hold to preview' : 'Hold to preview score';
 }
 
 /**
@@ -333,17 +396,29 @@ const styles = StyleSheet.create({
   stage: {
     flex: 1,
   },
-  // Top edge only. Never the middle third — that is the shot being framed.
+  // Edges only. Never the middle third — that is the shot being framed.
   edgeNote: {
     position: 'absolute',
-    top: 0,
     left: 0,
     right: 0,
     backgroundColor: colour.ground,
-    borderBottomWidth: 1,
-    borderBottomColor: status.degraded,
     paddingHorizontal: space.md,
     paddingVertical: space.xs,
+  },
+  edgeTop: {
+    top: 0,
+    borderBottomWidth: 1,
+  },
+  edgeBottom: {
+    bottom: 0,
+    borderTopWidth: 1,
+  },
+  // Only one side has a width, so a single border colour is unambiguous.
+  edgeCaution: {
+    borderColor: status.degraded,
+  },
+  edgePlain: {
+    borderColor: colour.rule,
   },
   edgeNoteText: {
     color: status.degraded,
