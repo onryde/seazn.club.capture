@@ -1,0 +1,24 @@
+# Settings only — this is a single-package repo, not a workspace. pnpm reads
+# its settings from this file, matching the main repo's convention.
+#
+# Default (isolated) linker, deliberately. Expo supports isolated installs from
+# SDK 54, and it was checked here rather than assumed: typecheck, lint, tests,
+# a web and an Android Metro export, and `expo-modules-autolinking` resolving
+# every native module (expo-*, react-native-webview, async-storage) through the
+# .pnpm store for both platforms. A blanket `node-linker=hoisted` would restore
+# npm's accidental resolutions and hide the phantom dependencies the strict
+# linker exists to surface. If a native library ever needs hoisting, name that
+# one package in `publicHoistPattern` with the evidence, as the main repo does.
+
+# Install scripts pnpm skips, each checked and not needed:
+#   dtrace-provider — optional DTrace probes for bunyan, via eas-cli. Unused.
+#   protobufjs      — postinstall only prints a version-compatibility notice.
+#   unrs-resolver   — napi-postinstall fallback for a missing platform binding.
+#                     The binding installs as an optional dependency; proven by
+#                     eslint-import-resolver-typescript resolving `@/ui` in the
+#                     boundaries rule.
+# Listed so a new install script shows up as a decision, not a silent skip.
+ignoredBuiltDependencies:
+  - dtrace-provider
+  - protobufjs
+  - unrs-resolver

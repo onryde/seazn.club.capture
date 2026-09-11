@@ -265,6 +265,9 @@ thermal member. Only transport trouble degrades a session.
 - EAS Build from day one. A signed build on a real handset is a prerequisite
   for the P5 spike that gates the architecture, not a step-nine nicety.
 - ESLint + Prettier, one toolchain, so `eslint-plugin-boundaries` comes free.
+- pnpm, pinned by `packageManager` to the main repo's version, and EAS builds
+  with `corepack: true` so that pin is the only one. Default isolated linker —
+  see `pnpm-workspace.yaml` for what was verified and the rule for hoisting.
 - TypeScript `strict`.
 - Expo Updates: check on launch only, and **never apply while a session is
   armed or live**. A phone updating at 2pm on a Saturday is a self-inflicted
