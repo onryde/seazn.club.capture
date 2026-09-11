@@ -9,7 +9,7 @@ const path = (relative: string) => fileURLToPath(new URL(relative, import.meta.u
  */
 export default defineConfig({
   test: {
-    include: ['src/**/*.test.ts', 'modules/**/*.test.ts'],
+    include: ['src/**/*.test.ts', 'modules/**/*.test.ts', 'scripts/**/*.test.ts'],
     environment: 'node',
   },
   resolve: {

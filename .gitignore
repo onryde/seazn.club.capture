@@ -42,3 +42,6 @@ yarn-error.*
 
 # Agent worktrees
 .claude/worktrees/
+
+# P5 spike: Cloudflare responses and session payloads carry credentials
+.p5/
