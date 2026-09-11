@@ -38,21 +38,23 @@ export function ScanScreen() {
   const engine = useEngine();
   const parsed = FIXTURE;
 
+  // One centred stack: there is no camera preview to keep clear here, so the
+  // action sits directly under the instruction it completes.
   return (
     <View style={styles.screen}>
-      <View style={styles.body}>
-        <Text variant="title">Scan the fixture code</Text>
-        <Text variant="body" style={styles.copy}>
-          Open the fixture page on a laptop and point this phone at the code. It carries everything
-          needed to go live — there is nothing to sign in to.
+      <Text variant="title" style={styles.centred}>
+        Scan the fixture code
+      </Text>
+      <Text variant="body" style={[styles.copy, styles.centred]}>
+        Open the fixture page on a laptop and point this phone at the code. It carries everything
+        needed to go live — there is nothing to sign in to.
+      </Text>
+      {/* Developer note. Gated so it cannot reach a club. */}
+      {__DEV__ ? (
+        <Text variant="metricUnit" style={styles.centred}>
+          Scanner pending the QR contract and a camera-ownership decision.
         </Text>
-        {/* Developer note. Gated so it cannot reach a club. */}
-        {__DEV__ ? (
-          <Text variant="metricUnit">
-            Scanner pending the QR contract and a camera-ownership decision.
-          </Text>
-        ) : null}
-      </View>
+      ) : null}
 
       <View style={styles.action}>
         <ActionZone
@@ -73,20 +75,22 @@ const styles = StyleSheet.create({
   screen: {
     flex: 1,
     backgroundColor: colour.ground,
-    flexDirection: 'row',
-  },
-  body: {
-    flex: 1,
-    padding: space.xl,
+    alignItems: 'center',
     justifyContent: 'center',
+    paddingHorizontal: space.xl,
+    paddingVertical: space.md,
     gap: space.md,
+  },
+  centred: {
+    textAlign: 'center',
   },
   copy: {
     maxWidth: 420,
   },
+  // Sized to its label, not a fixed width: ActionZone left-aligns its label,
+  // so a wider box would put the words off the centre line of the stack.
   action: {
-    width: 200,
-    borderLeftWidth: 1,
-    borderLeftColor: colour.rule,
+    alignSelf: 'center',
+    maxWidth: '100%',
   },
 });
