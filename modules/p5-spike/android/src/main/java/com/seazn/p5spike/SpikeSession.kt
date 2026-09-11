@@ -17,7 +17,6 @@ import io.github.thibaultbee.streampack.core.streamers.single.SingleStreamer
 import io.github.thibaultbee.streampack.core.streamers.single.VideoConfig
 import io.github.thibaultbee.streampack.core.streamers.single.cameraSingleStreamer
 import io.github.thibaultbee.streampack.ext.srt.configuration.mediadescriptor.SrtMediaDescriptor
-import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -135,9 +134,10 @@ object SpikeSession {
       for (intent in intents) {
         try {
           applyIntent(intent)
-        } catch (cancelled: CancellationException) {
-          throw cancelled
         } catch (failure: Throwable) {
+          // A real cancel rethrows here. A stray CancellationException from a
+          // non-suspend call (the foreground service) is just a failed intent.
+          currentCoroutineContext().ensureActive()
           event("error", "message" to "intent failed: $failure") // Keep consuming: one bad intent must not end the actor.
         }
       }
@@ -149,20 +149,17 @@ object SpikeSession {
     publishJob?.cancelAndJoin()
     publishJob = null
     streamerFlow.value?.let { runCatching { it.stopStream() }; runCatching { it.close() } }
+    // Cleared for every branch: a throwing service start below must not leave stale state.
+    wanted = null
+    transport = null
     val file = session
     val streamer = streamerFlow.value
     when {
       intent == null -> {
-        wanted = null
-        transport = null
         SpikeForegroundService.stop(appContext)
         event("stopped")
       }
-      file == null || streamer == null -> {
-        wanted = null
-        transport = null
-        event("error", "message" to "start before arm")
-      }
+      file == null || streamer == null -> event("error", "message" to "start before arm")
       else -> {
         SpikeForegroundService.start(appContext) // Milliseconds after a JS press, so still foreground.
         wanted = intent // After the service: if it throws, nothing claims to be wanted.
@@ -232,12 +229,13 @@ object SpikeSession {
    * C1 counts an SRT failure only on a validated network: a blackout says
    * nothing about SRT. A UDP-blocked network still validates, so it still falls back.
    */
-  private fun networkValidated(): Boolean {
-    val connectivity = appContext.getSystemService(ConnectivityManager::class.java) ?: return false
-    val network = connectivity.activeNetwork ?: return false
-    val capabilities = connectivity.getNetworkCapabilities(network) ?: return false
-    return capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
-  }
+  private fun networkValidated(): Boolean = runCatching {
+    // Some Android 11 builds throw SecurityException from getNetworkCapabilities.
+    val connectivity = appContext.getSystemService(ConnectivityManager::class.java) ?: return@runCatching false
+    val network = connectivity.activeNetwork ?: return@runCatching false
+    val capabilities = connectivity.getNetworkCapabilities(network) ?: return@runCatching false
+    capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
+  }.getOrDefault(false)
 
   private fun describe(failure: Throwable): String = failure.message ?: failure.javaClass.simpleName
 
