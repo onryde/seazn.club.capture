@@ -1,4 +1,4 @@
-import { Pressable, StyleSheet, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import {
   type TallyState,
   selectAudioLevel,
@@ -155,7 +155,18 @@ export function ViewfinderScreen({
           </StatusLine>
         </View>
 
-        <View style={styles.zoneAction}>
+        {/*
+          ZONE 3a · SECONDARY — the only zone that gives way. A 20:9 phone in
+          landscape is 360dp tall, less than this column needs before air, so
+          peek, links and the lock notice scroll here while state, health and
+          the primary action never move. On a tall screen the content sits at
+          the bottom, beside the action, exactly as before.
+        */}
+        <ScrollView
+          style={styles.zoneSecondary}
+          contentContainerStyle={styles.zoneSecondaryContent}
+          persistentScrollbar
+        >
           <PeekButton
             label={peekLabel(onAir, overlayOff, shed !== null)}
             active={peek.showing}
@@ -183,37 +194,38 @@ export function ViewfinderScreen({
               lastAwayMs={lifecycle.lastAwayMs}
             />
           )}
+        </ScrollView>
 
-          {onAir ? (
-            /* Ink, not red. Red is the tally — a state, never an action — and a
-               red destructive button would make the colour mean two things. */
-            <ActionZone
-              label="Hold to stop"
-              mode="hold"
-              accent={colour.ink}
-              onAction={() => engine.send({ kind: 'stop' })}
-            />
-          ) : stateKind === 'ended' ? (
-            // Without this the operator is stranded: a finished session can
-            // neither go live again nor get back to the scan screen.
-            /* Named for what it does: reset returns to the scan screen. */
-            <ActionZone
-              label="Scan another"
-              mode="tap"
-              accent={status.healthy}
-              onAction={() => engine.send({ kind: 'reset' })}
-            />
-          ) : (
-            <ActionZone
-              label="Go live"
-              mode="tap"
-              accent={status.healthy}
-              disabled={stateKind !== 'armed' || audio < AUDIO_FLOOR}
-              reason={goLiveReason(audio)}
-              onAction={() => engine.send({ kind: 'start' })}
-            />
-          )}
-        </View>
+        {/* ZONE 3b · ACTION — pinned to the bottom edge, never scrolled away. */}
+        {onAir ? (
+          /* Ink, not red. Red is the tally — a state, never an action — and a
+             red destructive button would make the colour mean two things. */
+          <ActionZone
+            label="Hold to stop"
+            mode="hold"
+            accent={colour.ink}
+            onAction={() => engine.send({ kind: 'stop' })}
+          />
+        ) : stateKind === 'ended' ? (
+          // Without this the operator is stranded: a finished session can
+          // neither go live again nor get back to the scan screen.
+          /* Named for what it does: reset returns to the scan screen. */
+          <ActionZone
+            label="Scan another"
+            mode="tap"
+            accent={status.healthy}
+            onAction={() => engine.send({ kind: 'reset' })}
+          />
+        ) : (
+          <ActionZone
+            label="Go live"
+            mode="tap"
+            accent={status.healthy}
+            disabled={stateKind !== 'armed' || audio < AUDIO_FLOOR}
+            reason={goLiveReason(audio)}
+            onAction={() => engine.send({ kind: 'start' })}
+          />
+        )}
       </TallyColumn>
     </View>
   );
@@ -363,10 +375,15 @@ const styles = StyleSheet.create({
     paddingHorizontal: space.md,
     gap: space.md,
   },
-  // ZONE 3 · ACTION, anchored to the bottom edge so the primary control sits
-  // against the bezel where a cold hand can find it.
-  zoneAction: {
-    marginTop: 'auto',
+  // ZONE 3a takes whatever height is left, so the action below it always sits
+  // against the bottom bezel where a cold hand can find it. `flex-end` keeps
+  // short content beside the action rather than floating under the meter.
+  zoneSecondary: {
+    flex: 1,
+  },
+  zoneSecondaryContent: {
+    flexGrow: 1,
+    justifyContent: 'flex-end',
   },
   // Stacked, not side by side: two labels overflowed the 150px column and
   // clipped "Diagnostics".
