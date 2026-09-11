@@ -12,7 +12,7 @@
     "ios": "expo start --ios",
     "web": "expo start --web",
     "typecheck": "tsc --noEmit",
-    "lint": "eslint src modules App.tsx",
+    "lint": "eslint src modules scripts App.tsx",
     "format": "prettier --write \"**/*.{ts,tsx,json,md}\"",
     "test": "vitest run",
     "test:watch": "vitest",
