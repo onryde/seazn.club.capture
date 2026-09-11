@@ -138,7 +138,8 @@ object SpikeSession {
           // A real cancel rethrows here. A stray CancellationException from a
           // non-suspend call (the foreground service) is just a failed intent.
           currentCoroutineContext().ensureActive()
-          event("error", "message" to "intent failed: $failure") // Keep consuming: one bad intent must not end the actor.
+          // Keep consuming: one bad intent, or a failing log, must not end the actor.
+          runCatching { event("error", "message" to "intent failed: $failure") }
         }
       }
     }
@@ -161,7 +162,13 @@ object SpikeSession {
       }
       file == null || streamer == null -> event("error", "message" to "start before arm")
       else -> {
-        SpikeForegroundService.start(appContext) // Milliseconds after a JS press, so still foreground.
+        try {
+          SpikeForegroundService.start(appContext) // Milliseconds after a JS press, so still foreground.
+        } catch (failure: Throwable) {
+          // A start-while-live service from the last intent must not outlive this one, wake lock and all.
+          runCatching { SpikeForegroundService.stop(appContext) }
+          throw failure
+        }
         wanted = intent // After the service: if it throws, nothing claims to be wanted.
         publishJob = scope.launch { publishLoop(file, streamer, intent) }
       }

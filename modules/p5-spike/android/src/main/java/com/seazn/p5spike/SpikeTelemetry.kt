@@ -8,6 +8,9 @@ import android.net.NetworkCapabilities
 import android.os.BatteryManager
 import android.os.Build
 import android.os.PowerManager
+import android.os.SystemClock
+import io.github.thibaultbee.streampack.core.elements.metrics.WithEndpointMetrics
+import io.github.thibaultbee.streampack.core.streamers.single.SingleStreamer
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
@@ -17,10 +20,11 @@ import kotlinx.coroutines.launch
 object SpikeTelemetry {
   fun start(context: Context, scope: CoroutineScope, onSample: (Map<String, Any?>) -> Unit) {
     scope.launch {
+      val throughput = Throughput()
       var lastFailure: String? = null
       while (isActive) {
         try {
-          onSample(sample(context))
+          onSample(sample(context, throughput))
           lastFailure = null
         } catch (failure: Throwable) {
           // A failed sample is a missing row, never a dead heartbeat. Logged once per distinct failure.
@@ -33,27 +37,36 @@ object SpikeTelemetry {
     }
   }
 
-  private fun sample(context: Context): Map<String, Any?> {
+  private fun sample(context: Context, throughput: Throughput): Map<String, Any?> {
     val power = context.getSystemService(PowerManager::class.java)
     val battery = context.registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
     val streamer = SpikeSession.streamerFlow.value
+    val streaming = streamer?.isStreamingFlow?.value ?: false
     return mapOf(
       "atMs" to System.currentTimeMillis(),
       "thermalStatus" to (if (Build.VERSION.SDK_INT >= 29) power.currentThermalStatus else -1),
       // NaN when polled faster than the platform allows; logged as-is, never smoothed.
       "thermalHeadroom" to (if (Build.VERSION.SDK_INT >= 30) power.getThermalHeadroom(10).toDouble() else -1.0),
       "batteryPercent" to percent(battery),
-      "batteryTempC" to (battery?.getIntExtra(BatteryManager.EXTRA_TEMPERATURE, 0) ?: 0) / 10.0,
+      // null, not 0.0: a missing reading must not read as a cold battery.
+      "batteryTempC" to battery?.takeIf { it.hasExtra(BatteryManager.EXTRA_TEMPERATURE) }
+        ?.getIntExtra(BatteryManager.EXTRA_TEMPERATURE, 0)?.div(10.0),
       "charging" to ((battery?.getIntExtra(BatteryManager.EXTRA_PLUGGED, 0) ?: 0) != 0),
+      // Int.MIN_VALUE means unsupported (API 28+). Older platforms report 0 and cannot be told apart.
       "currentMicroAmps" to context.getSystemService(BatteryManager::class.java)
-        .getIntProperty(BatteryManager.BATTERY_PROPERTY_CURRENT_NOW),
+        .getIntProperty(BatteryManager.BATTERY_PROPERTY_CURRENT_NOW).takeUnless { it == Int.MIN_VALUE },
       "network" to network(context),
       "screenOn" to power.isInteractive,
-      "streaming" to (streamer?.isStreamingFlow?.value ?: false),
+      "streaming" to streaming,
       "transport" to SpikeSession.transport,
-      "videoBitrate" to (streamer?.videoEncoder?.bitrate ?: 0),
+      "videoBitrate" to throughput.bitsPerSecond(if (streaming) bytesWritten(streamer) else null),
     )
   }
+
+  /** Cumulative bytes the endpoint has sent, or null when it exposes no metrics. */
+  private fun bytesWritten(streamer: SingleStreamer?): Long? = runCatching {
+    (streamer?.endpoint as? WithEndpointMetrics<*>)?.metrics?.bytesWritten
+  }.getOrNull()
 
   private fun percent(battery: Intent?): Int {
     val level = battery?.getIntExtra(BatteryManager.EXTRA_LEVEL, -1) ?: -1
@@ -71,4 +84,26 @@ object SpikeTelemetry {
       else -> "other"
     }
   }.getOrDefault("unknown")
+
+  /**
+   * Bits per second from a cumulative byte counter, scaled by the real
+   * interval between readings (ticks drift; 1 000 ms is never assumed).
+   * Touched only by the sampler coroutine.
+   */
+  private class Throughput {
+    private var lastBytes: Long? = null
+    private var lastAtMs = 0L
+
+    /** 0 on the first reading, when unavailable, or when the counter went backwards (a reconnect resets it). */
+    fun bitsPerSecond(bytes: Long?): Long {
+      val atMs = SystemClock.elapsedRealtime()
+      val previous = lastBytes
+      val elapsedMs = atMs - lastAtMs
+      lastBytes = bytes
+      lastAtMs = atMs
+      if (bytes == null || previous == null || elapsedMs <= 0) return 0
+      val delta = bytes - previous
+      return if (delta < 0) 0 else delta * 8_000 / elapsedMs
+    }
+  }
 }

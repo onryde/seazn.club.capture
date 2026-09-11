@@ -29,6 +29,13 @@ class SpikeLog(context: Context) {
   }
 
   companion object {
+    /**
+     * One column per key; an empty cell is a missing reading, never a zero.
+     * `videoBitrate` is *measured* throughput in bits per second: the delta of the
+     * endpoint's cumulative bytes written over the real tick interval. It counts
+     * everything the endpoint sends (audio, container overhead, and for SRT
+     * retransmissions), and is 0 when not streaming. It is not the encoder target.
+     */
     val SAMPLE_KEYS = listOf(
       "thermalStatus", "thermalHeadroom", "batteryPercent", "batteryTempC", "charging",
       "currentMicroAmps", "network", "screenOn", "streaming", "transport", "videoBitrate",

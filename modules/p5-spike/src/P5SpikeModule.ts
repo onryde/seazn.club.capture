@@ -5,13 +5,16 @@ export type SpikeSample = {
   readonly thermalStatus: number;
   readonly thermalHeadroom: number;
   readonly batteryPercent: number;
-  readonly batteryTempC: number;
+  /** null when the platform gave no reading. */
+  readonly batteryTempC: number | null;
   readonly charging: boolean;
-  readonly currentMicroAmps: number;
+  /** null when unsupported (API 28+ reports it; older platforms report 0). */
+  readonly currentMicroAmps: number | null;
   readonly network: string;
   readonly screenOn: boolean;
   readonly streaming: boolean;
   readonly transport: string | null;
+  /** Measured endpoint throughput in bits per second (not the encoder target); 0 when not streaming. */
   readonly videoBitrate: number;
 };
 

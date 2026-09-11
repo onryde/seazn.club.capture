@@ -87,17 +87,17 @@ function Hud() {
     <View style={styles.hud}>
       <Text variant="metricUnit">{live}</Text>
       <Text variant="metricUnit">{`${Math.round(sample.videoBitrate / 1000)} kbps`}</Text>
-      <Text variant="metricUnit">{`thermal ${sample.thermalStatus} · ${headroom(sample.thermalHeadroom)}`}</Text>
-      <Text variant="metricUnit">{`${sample.batteryPercent}% · ${sample.batteryTempC.toFixed(1)}°C${sample.charging ? ' · charging' : ''}`}</Text>
+      <Text variant="metricUnit">{`thermal ${sample.thermalStatus} · ${decimal(sample.thermalHeadroom, 2)}`}</Text>
+      <Text variant="metricUnit">{`${sample.batteryPercent}% · ${decimal(sample.batteryTempC, 1)}°C${sample.charging ? ' · charging' : ''}`}</Text>
       <Text variant="metricUnit">{`${sample.network}${sample.screenOn ? '' : ' · screen off'}`}</Text>
       <Text variant="metricUnit">{`last: ${event?.kind ?? '—'}`}</Text>
     </View>
   );
 }
 
-/** NaN from the platform can cross the bridge as null; never let the HUD throw on it. */
-function headroom(value: number | null): string {
-  return typeof value === 'number' && Number.isFinite(value) ? value.toFixed(2) : '—';
+/** NaN can cross the bridge as null, and a missing reading is null; never let the HUD throw on either. */
+function decimal(value: number | null, digits: number): string {
+  return typeof value === 'number' && Number.isFinite(value) ? value.toFixed(digits) : '—';
 }
 
 let markCount = 0;

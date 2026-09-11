@@ -11,6 +11,7 @@ import android.os.PowerManager
 import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
 import androidx.core.content.ContextCompat
+import java.io.File
 
 /**
  * AGENTS.md §9: camera + microphone foreground service, started from the
@@ -39,14 +40,18 @@ class SpikeForegroundService : Service() {
       notification,
       ServiceInfo.FOREGROUND_SERVICE_TYPE_CAMERA or ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE,
     )
-    if (wakeLock == null) {
+    if (wakeLock == null && !wakeLockDisabled()) {
       wakeLock = getSystemService(PowerManager::class.java)
         .newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "p5spike:publish")
         .apply { acquire() }
     }
-    SpikeSession.event("service-started")
+    SpikeSession.event("service-started", "wakeLock" to (wakeLock != null))
     return START_NOT_STICKY
   }
+
+  /** The no-wake-lock cycle, switched from the laptop: `adb push` / `adb shell rm` the file. */
+  private fun wakeLockDisabled(): Boolean =
+    runCatching { File(getExternalFilesDir(null), NO_WAKE_LOCK_FILE).exists() }.getOrDefault(false)
 
   override fun onDestroy() {
     wakeLock?.release()
@@ -58,6 +63,7 @@ class SpikeForegroundService : Service() {
   companion object {
     private const val CHANNEL = "p5-spike"
     private const val NOTIFICATION_ID = 7105
+    private const val NO_WAKE_LOCK_FILE = "p5-no-wakelock"
 
     fun start(context: Context) {
       ContextCompat.startForegroundService(context, Intent(context, SpikeForegroundService::class.java))
