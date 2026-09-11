@@ -1,9 +1,9 @@
 import { StyleSheet, View } from 'react-native';
 import { parseSessionCredentials } from '@/domain/credentials/parseSessionCredentials';
 import { useEngine } from '@/hooks/useCaptureEngine';
-import { ActionZone } from '@/ui/components/ActionZone';
+import { Button } from '@/ui/components/Button';
 import { Text } from '@/ui/components/Text';
-import { colour, space, status } from '@/ui/theme/tokens';
+import { colour, space } from '@/ui/theme/tokens';
 
 /**
  * The QR code IS the credential (AGENTS.md §1). There is no login: an operator
@@ -56,13 +56,13 @@ export function ScanScreen() {
         </Text>
       ) : null}
 
+      {/* Scan in floodlight. Until the scanner exists (see the note above),
+          it arms from the fixture payload so every later screen is reachable. */}
       <View style={styles.action}>
-        <ActionZone
-          label="Use fixture credentials"
-          mode="tap"
-          accent={status.healthy}
+        <Button
+          label="Scan"
           disabled={!parsed.ok}
-          onAction={() => {
+          onPress={() => {
             if (parsed.ok) engine.send({ kind: 'arm', credentials: parsed.value });
           }}
         />
@@ -87,10 +87,8 @@ const styles = StyleSheet.create({
   copy: {
     maxWidth: 420,
   },
-  // Sized to its label, not a fixed width: ActionZone left-aligns its label,
-  // so a wider box would put the words off the centre line of the stack.
+  // Breathing room between the instruction and the plate.
   action: {
-    alignSelf: 'center',
-    maxWidth: '100%',
+    marginTop: space.sm,
   },
 });
