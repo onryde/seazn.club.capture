@@ -1,0 +1,17 @@
+{
+  "extends": "expo/tsconfig.base",
+  "compilerOptions": {
+    "strict": true,
+    "paths": {
+      "@/domain/*": ["./src/domain/*"],
+      "@/ui/*": ["./src/ui/*"],
+      "@/hooks/*": ["./src/hooks/*"],
+      "@/services/*": ["./src/services/*"],
+      "@/navigation/*": ["./src/navigation/*"],
+      "@/engine/*": ["./modules/capture-engine/src/*"],
+      "@/contracts/*": ["./contracts/*"]
+    }
+  },
+  "include": ["**/*.ts", "**/*.tsx", "**/*.mts"],
+  "exclude": ["node_modules", ".expo", "dist"]
+}

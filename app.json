@@ -1,0 +1,37 @@
+{
+  "expo": {
+    "name": "Seazn Capture",
+    "slug": "capture",
+    "version": "1.0.0",
+    "orientation": "landscape",
+    "userInterfaceStyle": "dark",
+    "icon": "./assets/icon.png",
+    "ios": {
+      "bundleIdentifier": "com.seazn.capture",
+      "supportsTablet": false
+    },
+    "android": {
+      "package": "com.seazn.capture",
+      "adaptiveIcon": {
+        "backgroundColor": "#150b36",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "predictiveBackGestureEnabled": false
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "extra": {
+      "eas": {
+        "projectId": "bf8cd971-405e-417d-a322-9ff45c50f4bc"
+      }
+    },
+    "owner": "ashokhein",
+    "plugins": [
+      "expo-font",
+      "expo-video"
+    ]
+  }
+}
