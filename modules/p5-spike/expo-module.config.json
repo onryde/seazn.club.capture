@@ -1,0 +1,6 @@
+{
+  "platforms": ["android"],
+  "android": {
+    "modules": ["com.seazn.p5spike.P5SpikeModule"]
+  }
+}

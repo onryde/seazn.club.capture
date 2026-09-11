@@ -1,0 +1,29 @@
+plugins {
+  id 'com.android.library'
+  id 'expo-module-gradle-plugin'
+}
+
+group = 'com.seazn.p5spike'
+version = '0.1.0'
+
+android {
+  namespace "com.seazn.p5spike"
+  defaultConfig {
+    versionCode 1
+    versionName "0.1.0"
+  }
+  lintOptions {
+    abortOnError false
+  }
+}
+
+// StreamPack is Apache-2.0; it pulls libsrt (MPL-2.0) as a binary dependency.
+// Never fork libsrt — N12.
+dependencies {
+  implementation 'io.github.thibaultbee.streampack:streampack-core:3.2.0'
+  implementation 'io.github.thibaultbee.streampack:streampack-ui:3.2.0'
+  implementation 'io.github.thibaultbee.streampack:streampack-srt:3.2.0'
+  implementation 'io.github.thibaultbee.streampack:streampack-rtmp:3.2.0'
+  implementation 'androidx.core:core-ktx:1.16.0'
+  implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2'
+}

@@ -14,6 +14,10 @@ import { SettingsProvider } from '@/hooks/useSettings';
 import { Router } from '@/navigation/Router';
 import { ErrorBoundary } from '@/ui/components/ErrorBoundary';
 import { colour, status } from '@/ui/theme/tokens';
+import { SpikeScreen } from './modules/p5-spike/src/SpikeScreen';
+
+// P5 spike only: EXPO_PUBLIC_ vars are inlined by Metro at bundle time.
+const SPIKE = process.env.EXPO_PUBLIC_SEAZN_SOAK === '1';
 
 /**
  * Composition root.
@@ -62,7 +66,7 @@ export default function App() {
         <EngineProvider engine={engine}>
           <View style={styles.root}>
             <StatusBar hidden />
-            <Router />
+            {SPIKE ? <SpikeScreen /> : <Router />}
           </View>
         </EngineProvider>
       </SettingsProvider>
