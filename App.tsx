@@ -2,6 +2,7 @@ import { useMemo } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import { useFonts } from 'expo-font';
 import { StyleSheet, Text as RNText, View } from 'react-native';
+import { type Edge, SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { BarlowCondensed_600SemiBold } from '@expo-google-fonts/barlow-condensed/600SemiBold';
 import { BarlowCondensed_700Bold } from '@expo-google-fonts/barlow-condensed/700Bold';
 import { Geist_400Regular } from '@expo-google-fonts/geist/400Regular';
@@ -58,17 +59,27 @@ export default function App() {
 
   return (
     <ErrorBoundary>
-      <SettingsProvider>
-        <EngineProvider engine={engine}>
-          <View style={styles.root}>
-            <StatusBar hidden />
-            <Router />
-          </View>
-        </EngineProvider>
-      </SettingsProvider>
+      <SafeAreaProvider>
+        <SettingsProvider>
+          <EngineProvider engine={engine}>
+            <SafeAreaView style={styles.root} edges={ALL_EDGES}>
+              <StatusBar hidden />
+              <Router />
+            </SafeAreaView>
+          </EngineProvider>
+        </SettingsProvider>
+      </SafeAreaProvider>
     </ErrorBoundary>
   );
 }
+
+/**
+ * Every edge, once, at the root. Android 15+ draws apps edge to edge and
+ * targetSdk 36 removes the opt-out, so in landscape the navigation bar sits on
+ * top of the control column and the camera cutout on top of the other side.
+ * Found on a OnePlus 10 Pro: the column's text ran 28dp under the nav bar.
+ */
+const ALL_EDGES: readonly Edge[] = ['top', 'right', 'bottom', 'left'];
 
 function Boot({ message, tone }: { message: string; tone: string }) {
   return (
