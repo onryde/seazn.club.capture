@@ -24,7 +24,8 @@ async function watch(masterUrl: string, intervalMs: number): Promise<void> {
     const uri = variantUris(master.text, masterUrl)[0] ?? null;
     const line = [new Date().toISOString(), master.status, uri ?? '', '', ''];
     if (uri !== null) {
-      const next = parseVariant((await get(uri)).text);
+      const variant = await get(uri).catch(() => ({ status: 0, text: '' }));
+      const next = parseVariant(variant.text);
       // A new variant after a resume is a new sequence space; never compare across it.
       const judgement = judge(uri === previousUri ? previous : null, next, lastAdvanceMs, Date.now());
       lastAdvanceMs = judgement.lastAdvanceMs;
