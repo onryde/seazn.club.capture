@@ -19,9 +19,13 @@
       }
     },
     "soak": {
-      "extends": "development",
+      "extends": "base",
+      "distribution": "internal",
+      "android": {
+        "buildType": "apk"
+      },
       "env": {
-        "SEAZN_SOAK": "1"
+        "EXPO_PUBLIC_SEAZN_SOAK": "1"
       }
     },
     "preview": {

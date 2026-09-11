@@ -5,12 +5,14 @@
  *   node --env-file=.env.local scripts/p5/cf.ts create <run>
  *   node --env-file=.env.local scripts/p5/cf.ts cleanup <uid>
  *
- * .env.local: CF_ACCOUNT_ID, CF_API_TOKEN, CF_STREAM_CUSTOMER_SUBDOMAIN,
- * P5_OVERLAY_URL, and optionally P5_SRT_URL_OVERRIDE (run C).
+ * .env.local: CF_ACCOUNT_ID, CF_API_TOKEN, P5_OVERLAY_URL, and optionally
+ * P5_SRT_URL_OVERRIDE (run C) and CF_STREAM_CUSTOMER_SUBDOMAIN — the subdomain
+ * is read from the create response, so it is an override, not a prerequisite.
  */
 import { mkdirSync, writeFileSync } from 'node:fs';
 import {
   buildLiveInputRequest,
+  customerSubdomain,
   echoMismatches,
   hlsManifestUrl,
   readCreatedInput,
@@ -57,20 +59,42 @@ async function create(run: string): Promise<void> {
     await call('DELETE', `/stream/live_inputs/${input.uid}`);
     throw new Error(`Cloudflare changed settings; input deleted:\n  ${mismatches.join('\n  ')}`);
   }
-  const playbackUrl = hlsManifestUrl(env('CF_STREAM_CUSTOMER_SUBDOMAIN'), input.uid);
-  const payload = toSessionPayload(input, {
-    overlayUrl: env('P5_OVERLAY_URL'),
-    playbackUrl,
-    srtUrlOverride: process.env.P5_SRT_URL_OVERRIDE,
-  });
+  // Both reads can fail on a response or an environment we only see now, and both
+  // fail after the input exists. P5_OVERLAY_URL in particular is the one variable
+  // still missing, so this is the likely path, not the theoretical one.
+  const payload = await orphanGuard(input.uid, () =>
+    toSessionPayload(input, {
+      overlayUrl: env('P5_OVERLAY_URL'),
+      playbackUrl: hlsManifestUrl(
+        customerSubdomain(result, process.env.CF_STREAM_CUSTOMER_SUBDOMAIN),
+        input.uid,
+      ),
+      srtUrlOverride: process.env.P5_SRT_URL_OVERRIDE,
+    }),
+  );
   mkdirSync('.p5', { recursive: true });
   writeFileSync(`.p5/${run}.input.json`, JSON.stringify(result, null, 2));
   writeFileSync(`.p5/${run}.session.json`, JSON.stringify(payload));
   console.log(`uid       ${input.uid}`);
-  console.log(`playback  ${playbackUrl}`);
+  console.log(`playback  ${payload.playbackUrl}`);
   console.log(
     `push      adb -s 12be753e push .p5/${run}.session.json /sdcard/Android/data/com.seazn.capture/files/p5-session.json`,
   );
+}
+
+/**
+ * An input we created but cannot use is an orphan on the account, and the caller
+ * never sees its uid to clean it up by hand. Delete it, then fail with the real
+ * reason — the same bargain the echo check above makes. (`readCreatedInput` is
+ * the one hole left: the uid it would need is the thing it failed to read.)
+ */
+async function orphanGuard<T>(uid: string, read: () => T): Promise<T> {
+  try {
+    return read();
+  } catch (failure) {
+    await call('DELETE', `/stream/live_inputs/${uid}`);
+    throw failure;
+  }
 }
 
 async function cleanup(uid: string): Promise<void> {

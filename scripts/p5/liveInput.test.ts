@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { parseSessionCredentials } from '@/domain/credentials/parseSessionCredentials';
 import {
   buildLiveInputRequest,
+  customerSubdomain,
   echoMismatches,
   hlsManifestUrl,
   readCreatedInput,
@@ -12,6 +13,10 @@ const CREATED = {
   uid: 'abc123',
   srt: { url: 'srt://live.cloudflare.com:778', streamId: 'sid-1', passphrase: 'pass-1' },
   rtmps: { url: 'rtmps://live.cloudflare.com:443/live/', streamKey: 'key-1' },
+  srtPlayback: { url: 'srt://live.cloudflare.com:778', streamId: 'sid-p', passphrase: 'pass-p' },
+  rtmpsPlayback: { url: 'rtmps://live.cloudflare.com:443/live/', streamKey: 'key-p' },
+  webRTC: { url: 'https://customer-x.cloudflarestream.com/pub-secret/webRTC/publish' },
+  webRTCPlayback: { url: 'https://customer-x.cloudflarestream.com/abc123/webRTC/play' },
   recording: { mode: 'automatic', timeoutSeconds: 180 },
   deleteRecordingAfterDays: 30,
 };
@@ -70,6 +75,41 @@ describe('hlsManifestUrl', () => {
     expect(hlsManifestUrl('customer-x.cloudflarestream.com', 'abc123')).toBe(
       'https://customer-x.cloudflarestream.com/abc123/manifest/video.m3u8',
     );
+  });
+});
+
+describe('customerSubdomain', () => {
+  it('reads the host of the WebRTC playback URL', () => {
+    expect(customerSubdomain(CREATED)).toBe('customer-x.cloudflarestream.com');
+  });
+
+  it('falls back to the WebRTC publish URL, which is on the same subdomain', () => {
+    const { webRTCPlayback: _dropped, ...echoed } = CREATED;
+    expect(customerSubdomain(echoed)).toBe('customer-x.cloudflarestream.com');
+  });
+
+  it('lets the env override win, for an account whose response ever lacks one', () => {
+    expect(customerSubdomain(CREATED, 'customer-override.cloudflarestream.com')).toBe(
+      'customer-override.cloudflarestream.com',
+    );
+  });
+
+  it('names what it looked at when the response carries no https playback URL', () => {
+    expect(() => customerSubdomain({ uid: 'abc123' })).toThrow(/webRTCPlayback, webRTC/);
+  });
+
+  /** The trap this function exists to avoid: live.cloudflare.com is not the account subdomain. */
+  it('never reads a host out of an srt:// or rtmps:// playback URL', () => {
+    const rtmpsOnly = {
+      uid: 'abc123',
+      rtmpsPlayback: CREATED.rtmpsPlayback,
+      srtPlayback: CREATED.srtPlayback,
+    };
+    expect(() => customerSubdomain(rtmpsOnly)).toThrow('no https playback URL');
+  });
+
+  it('is empty-string-safe: an unset env var is not an override', () => {
+    expect(customerSubdomain(CREATED, '')).toBe('customer-x.cloudflarestream.com');
   });
 });
 

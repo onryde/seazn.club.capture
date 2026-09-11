@@ -76,6 +76,45 @@ export function hlsManifestUrl(customerSubdomain: string, uid: string): string {
   return `https://${customerSubdomain}/${uid}/manifest/video.m3u8`;
 }
 
+/**
+ * Playback URL fields that can name the account's Stream subdomain, in order.
+ * `rtmpsPlayback` and `srtPlayback` are deliberately absent: those URLs name
+ * Cloudflare's live edge (`live.cloudflare.com:443`), not
+ * `customer-<code>.cloudflarestream.com`, so reading their host would build a
+ * manifest URL that silently 404s. The scheme guard below enforces the same
+ * thing independently, for any field Cloudflare adds later.
+ */
+const SUBDOMAIN_SOURCES = ['webRTCPlayback', 'webRTC'] as const;
+
+/**
+ * The account's Stream subdomain, read from a create response.
+ *
+ * Not configuration: an account with no live inputs cannot be asked for this
+ * value, and the API has no endpoint that returns it, so the only place it is
+ * knowable is the response to the input we just created. The override stays for
+ * an account whose response ever lacks a WebRTC URL.
+ */
+export function customerSubdomain(result: unknown, override?: string): string {
+  if (override !== undefined && override !== '') return override;
+  const input = asRecord(result);
+  for (const field of SUBDOMAIN_SOURCES) {
+    const host = httpHost(asRecord(input[field]).url);
+    if (host !== null) return host;
+  }
+  throw new Error(
+    'Cloudflare response has no https playback URL to read the customer subdomain from ' +
+      `(looked at ${SUBDOMAIN_SOURCES.join(', ')}) — set CF_STREAM_CUSTOMER_SUBDOMAIN`,
+  );
+}
+
+/** The host of an http(s) URL. null for anything else, `srt://` and `rtmps://` included. */
+function httpHost(url: unknown): string | null {
+  if (typeof url !== 'string') return null;
+  const parsed = URL.parse(url);
+  if (parsed === null) return null;
+  return parsed.protocol === 'https:' || parsed.protocol === 'http:' ? parsed.host : null;
+}
+
 /** The flat v1 shape `parseSessionCredentials` reads today (not the §7.6 contract). */
 export function toSessionPayload(input: CreatedInput, options: SessionOptions) {
   return {

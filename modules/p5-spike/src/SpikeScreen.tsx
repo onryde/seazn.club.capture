@@ -132,17 +132,23 @@ function OutputPlayer({ url, browserUa }: { url: string; browserUa: boolean }) {
   });
   useEffect(() => {
     const tag = browserUa ? 'browser' : 'default';
+    // A baseline, so a run with no peek mark is unambiguous: either the peek was
+    // never opened, or `statusChange` never fired. Without this they look alike.
+    P5Spike.mark(`peek-${tag}-at-subscribe-${player.status}`);
     const subscription = player.addListener('statusChange', ({ status, error }) => {
       P5Spike.mark(`peek-${tag}-${status}${error ? `-${error.message}` : ''}`);
     });
     return () => subscription.remove();
   }, [player, browserUa]);
+  // Two surface-backed views stacked have no guaranteed z-order, and the camera
+  // preview is the one underneath: on a SurfaceView the peek can render behind it.
   return (
     <VideoView
       player={player}
       style={StyleSheet.absoluteFill}
       contentFit="contain"
       nativeControls={false}
+      surfaceType="textureView"
     />
   );
 }
@@ -202,8 +208,13 @@ type ControlsProps = {
 
 /**
  * Seven actions do not fit a 150dp column on a 360dp-tall landscape screen, so
- * they scroll; Stop is pinned below the scroll, never scrolled away and never
- * next to Mark.
+ * they scroll; Stop is pinned below the scroll and is never scrolled away.
+ *
+ * Order is protocol order, not importance order. Only about three rows are above
+ * the fold, and the output check (U1-S6) is the first thing the device session
+ * does, so the three Peek actions lead. Mark is last on purpose: it is the row
+ * nearest the pinned Stop, and a mis-aimed Mark is the cheapest mistake on the
+ * screen — Stop itself needs a one-second hold, so proximity cannot end a run.
  */
 function Controls({ onPeekDefault, onPeekBrowser, onPeekOff }: ControlsProps) {
   return (
@@ -213,12 +224,12 @@ function Controls({ onPeekDefault, onPeekBrowser, onPeekOff }: ControlsProps) {
         contentContainerStyle={styles.actionsContent}
         persistentScrollbar
       >
-        <Action label="Start SRT" onPress={startSrt} />
-        <Action label="Start RTMPS" onPress={startRtmps} />
-        <Action label="Mark" onPress={mark} />
         <Action label="Peek default UA" onPress={onPeekDefault} />
         <Action label="Peek browser UA" onPress={onPeekBrowser} />
         <Action label="Peek off" onPress={onPeekOff} />
+        <Action label="Start SRT" onPress={startSrt} />
+        <Action label="Start RTMPS" onPress={startRtmps} />
+        <Action label="Mark" onPress={mark} />
       </ScrollView>
       <HoldAction label="Hold to stop" onHold={stop} />
     </View>
