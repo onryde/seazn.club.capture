@@ -47,10 +47,15 @@ export function LockNotice({
   );
 }
 
-/** Before air the rule gets stated in full: it is read once, on purpose. */
+/**
+ * One line before air, not the full rule. It shares the strip with the two
+ * links and is read at arm's length: "locking pauses the picture" is the whole
+ * point, and the seconds say what it costs. The long version told an operator
+ * nothing extra and pushed the sentence onto a second line.
+ */
 function armedDetail(window: string | null): string {
-  const rule = 'Locking the phone or leaving the app pauses the picture.';
-  return window === null ? rule : `${rule} You have ${window} to get back.`;
+  const rule = 'Locking pauses it.';
+  return window === null ? rule : `${rule} ${window} to get back.`;
 }
 
 /** On air, once it has happened the operator's own tally is more use than the rule. */

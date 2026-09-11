@@ -38,10 +38,10 @@ const AUDIO_FLOOR = 0.05;
  * Both directions are guarded, and guarded identically (AGENTS.md §6). At a
  * ground the likely mistake is a mis-tap — a pocket, a tripod pan bar, a
  * volunteer steadying the phone — not a deliberate wrong decision, and it is as
- * costly starting as stopping. Five seconds under a moving fill cannot be done
- * by accident in either direction, and costs the operator five seconds a match.
+ * costly starting as stopping. Three seconds under a moving fill cannot be done
+ * by accident in either direction, and costs the operator three seconds a match.
  */
-const COMMIT_HOLD_MS = 5000;
+const COMMIT_HOLD_MS = 3000;
 
 /**
  * Arm and Live are one screen, not two.
@@ -129,14 +129,33 @@ export function ViewfinderScreen({
           this exact edge, and two sentences stacked on one edge is how both stop
           being read. The peek lasts seconds; the advice is there before and after.
         */}
-        {survivesBackground || peek.showing ? null : (
+        {peek.showing ? null : (
           <StageEdge edge="bottom" tone="plain">
-            <LockNotice
-              onAir={onAir}
-              holdWindowSeconds={holdWindowSeconds}
-              absences={lifecycle.absences}
-              lastAwayMs={lifecycle.lastAwayMs}
-            />
+            {/*
+              The two screens live here, not in the column: they are read and
+              tapped at arm's length, once, and the column's height belongs to
+              the holds. Mid-match is exactly when someone needs Diagnostics,
+              so both are reachable in every state; each screen carries a LIVE
+              plate so the broadcast is never out of sight.
+            */}
+            <View style={styles.links}>
+              <Pressable onPress={onOpenSettings} accessibilityRole="button" style={styles.link}>
+                <Text variant="control">Settings</Text>
+              </Pressable>
+              <Pressable onPress={onOpenDiagnostics} accessibilityRole="button" style={styles.link}>
+                <Text variant="control">Diagnostics</Text>
+              </Pressable>
+            </View>
+            {survivesBackground ? null : (
+              <View style={styles.edgeAdvice}>
+                <LockNotice
+                  onAir={onAir}
+                  holdWindowSeconds={holdWindowSeconds}
+                  absences={lifecycle.absences}
+                  lastAwayMs={lifecycle.lastAwayMs}
+                />
+              </View>
+            )}
           </StageEdge>
         )}
       </View>
@@ -183,17 +202,12 @@ export function ViewfinderScreen({
         </View>
 
         {/*
-          ZONE 3a · SECONDARY — the only zone that gives way, and the safety net
-          rather than the plan. With the lock notice moved to the stage edge only
-          peek and the two links live here, which fits a 360dp landscape phone;
-          it stays a ScrollView because the day it does not fit, scrolling beats
-          a clipped Diagnostics link.
+          ZONE 3a · The two holds, both always whole. Nothing in this column
+          scrolls any more: a control an operator has to find by scrolling, on a
+          tripod, is a control they do not have. Everything that is read rather
+          than pressed moved to the stage's bottom edge, which is wide and empty.
         */}
-        <ScrollView
-          style={styles.zoneSecondary}
-          contentContainerStyle={styles.zoneSecondaryContent}
-          persistentScrollbar
-        >
+        <View style={styles.zonePeek}>
           <PeekButton
             label={peekLabel(onAir, overlayOff, shed !== null)}
             active={peek.showing}
@@ -201,22 +215,7 @@ export function ViewfinderScreen({
             onPress={peek.press}
             onRelease={peek.release}
           />
-
-          {/*
-            Both links, in every state. Mid-match is exactly when someone needs
-            Diagnostics, and withholding the whole screen to protect one future
-            setting made the app least useful when it mattered most. Those
-            screens carry a LIVE plate so the broadcast is never out of sight.
-          */}
-          <View style={styles.links}>
-            <Pressable onPress={onOpenSettings} accessibilityRole="button" style={styles.link}>
-              <Text variant="control">Settings</Text>
-            </Pressable>
-            <Pressable onPress={onOpenDiagnostics} accessibilityRole="button" style={styles.link}>
-              <Text variant="control">Diagnostics</Text>
-            </Pressable>
-          </View>
-        </ScrollView>
+        </View>
 
         {/* ZONE 3b · ACTION — pinned to the bottom edge, never scrolled away. */}
         {onAir ? (
@@ -280,7 +279,10 @@ function StageEdge({
         edge === 'top' ? styles.edgeTop : styles.edgeBottom,
         tone === 'caution' ? styles.edgeCaution : styles.edgePlain,
       ]}
-      pointerEvents="none"
+      // `box-none`, not `none`: the strip itself must never swallow a touch
+      // meant for the shot behind it, but the links inside it have to be
+      // tappable.
+      pointerEvents="box-none"
     >
       {children}
     </View>
@@ -409,9 +411,17 @@ const styles = StyleSheet.create({
     top: 0,
     borderBottomWidth: 1,
   },
+  // The bottom edge carries two things at once — the way back and the advice —
+  // so it is a row: controls first, where a thumb expects them, prose after.
   edgeBottom: {
     bottom: 0,
     borderTopWidth: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: space.lg,
+  },
+  edgeAdvice: {
+    flex: 1,
   },
   // Only one side has a width, so a single border colour is unambiguous.
   edgeCaution: {
@@ -450,21 +460,17 @@ const styles = StyleSheet.create({
     paddingHorizontal: space.md,
     gap: space.md,
   },
-  // ZONE 3a takes whatever height is left, so the action below it always sits
-  // against the bottom bezel where a cold hand can find it. `flex-end` keeps
-  // short content beside the action rather than floating under the meter.
-  zoneSecondary: {
-    flex: 1,
+  // ZONE 3a takes whatever height is left, so the two holds sit against the
+  // bottom bezel where a cold hand finds them, with the slack above rather
+  // than between them.
+  zonePeek: {
+    marginTop: 'auto',
   },
-  zoneSecondaryContent: {
-    flexGrow: 1,
-    justifyContent: 'flex-end',
-  },
-  // Stacked, not side by side: two labels overflowed the 150px column and
-  // clipped "Diagnostics".
+  // Side by side on the stage edge, where width is what there is plenty of —
+  // the reason they were stacked was a 150dp column they no longer live in.
   links: {
-    paddingHorizontal: space.md,
-    paddingBottom: space.xs,
+    flexDirection: 'row',
+    gap: space.lg,
   },
   // 44pt, because these are the only way back and they get pressed with cold
   // wet hands. They were 16pt tall and 4pt apart.

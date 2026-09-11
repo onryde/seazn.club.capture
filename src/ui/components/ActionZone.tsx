@@ -17,9 +17,9 @@ const DEFAULT_HOLD_MS = 1200;
  *
  * `mode` says whether the action commits on a tap or on a hold, and `holdMs`
  * says how long the hold is — per caller, because the two that matter are not
- * the same weight as the rest. Go live and Stop are both 5s holds: at a ground
+ * the same weight as the rest. Go live and Stop are both 3s holds: at a ground
  * the likely mistake is a mis-tap, in either direction, from a pocket or a
- * tripod pan bar. Five seconds under a moving fill is unmistakable.
+ * tripod pan bar. Three seconds under a moving fill is unmistakable.
  *
  * The hold progress translates a full-width fill from off-screen left to zero,
  * measured by `onLayout`. It animates `translateX` rather than `width` so it
@@ -105,7 +105,7 @@ export function ActionZone({
       disabled={disabled}
       accessibilityRole="button"
       // Says the duration, because a screen-reader user cannot see the fill and
-      // a hold that appears to do nothing for five seconds reads as a dead control.
+      // a hold that appears to do nothing for seconds reads as a dead control.
       accessibilityLabel={
         mode === 'hold'
           ? `${label}. Press and hold for ${Math.round(holdMs / 1000)} seconds.`

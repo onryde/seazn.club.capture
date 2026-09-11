@@ -192,9 +192,9 @@ Three calls worth restating:
   assumption that the cheap one was a deliberate decision. At a ground it is
   not: it is a mis-tap from a pocket, a tripod pan bar or a hand steadying the
   phone, and starting a broadcast by accident is not cheap either — it is a
-  Machine minute and a stream the club did not mean to publish. A five-second
+  Machine minute and a stream the club did not mean to publish. A three-second
   hold under a progress fill cannot be produced by accident in either direction,
-  and it costs the operator five seconds once a match. Both controls use the
+  and it costs the operator three seconds once a match. Both controls use the
   same duration so the gesture is never relearned mid-match. The preview control
   is held too but is *not* a confirmation — it answers instantly and the hold
   exists only to stop a billed preview running unattended.

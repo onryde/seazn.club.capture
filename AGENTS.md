@@ -183,9 +183,9 @@ Three rules travel with these tokens:
   hold-to-confirm". The reason the asymmetry was wrong: at a ground the likely
   mistake is not a deliberate wrong decision but a *mis-tap* — a pocket, a
   tripod pan bar, a volunteer steadying the phone — and that is as costly
-  starting as stopping. A tap cannot be distinguished from an accident; five
+  starting as stopping. A tap cannot be distinguished from an accident; three
   seconds under a moving fill cannot be mistaken for one, in either direction,
-  and costs the operator five seconds once a match. One hold length for both, so
+  and costs the operator three seconds once a match. One hold length for both, so
   the gesture never has to be relearned mid-match.
 - **Press-and-hold is not always a confirmation.** The preview control is held
   too, and reads as a pair with the action below it, but it answers on the
