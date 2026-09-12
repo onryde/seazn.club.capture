@@ -3,7 +3,7 @@
  *
  * One CSV line per poll: iso,masterStatus,variant,head,verdict
  */
-import { type VariantState, head, judge, parseVariant, variantUris } from './playlist.ts';
+import { type WatchState, head, initialWatch, parseVariant, step, variantUris } from './playlist.ts';
 
 /** U1-S6: a non-browser User-Agent gets `403 error code: 1010` on a healthy manifest. */
 const BROWSER_UA =
@@ -15,9 +15,10 @@ async function get(url: string): Promise<{ status: number; text: string }> {
 }
 
 async function watch(masterUrl: string, intervalMs: number): Promise<void> {
-  let previous: VariantState | null = null;
-  let previousUri: string | null = null;
-  let lastAdvanceMs = Date.now();
+  // The stall clock starts at 0, not at launch: `step` plants it on the first
+  // variant it sees, so a stream that takes its time going live is not called
+  // stalled for it.
+  let state: WatchState = initialWatch;
   console.log('iso,masterStatus,variant,head,verdict');
   for (;;) {
     const master = await get(masterUrl).catch(() => ({ status: 0, text: '' }));
@@ -26,13 +27,10 @@ async function watch(masterUrl: string, intervalMs: number): Promise<void> {
     if (uri !== null) {
       const variant = await get(uri).catch(() => ({ status: 0, text: '' }));
       const next = parseVariant(variant.text);
-      // A new variant after a resume is a new sequence space; never compare across it.
-      const judgement = judge(uri === previousUri ? previous : null, next, lastAdvanceMs, Date.now());
-      lastAdvanceMs = judgement.lastAdvanceMs;
+      const polled = step(state, uri, next, Date.now());
+      state = polled.state;
       line[3] = head(next);
-      line[4] = judgement.verdict;
-      previous = next;
-      previousUri = uri;
+      line[4] = polled.verdict;
     }
     console.log(line.join(','));
     await new Promise((resolve) => setTimeout(resolve, intervalMs));

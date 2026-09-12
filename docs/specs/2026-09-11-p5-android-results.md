@@ -135,11 +135,22 @@ the wet-ground case the product exists to survive.
 
 Three consequences, each worth more than the run that produced them:
 
-1. **Our own watcher lies about it.** `hls-watch` reported `advancing` on every
-   poll, while the playlist head actually failed to move on 67 of ~76 polls. The
-   verdict treats "the master resolved and returned 200" as progress. It must
-   require the head to move, or a stalled run reads green — the same class of
-   false green the spike exists to avoid.
+1. **Our own watcher lied about it — now fixed.** `hls-watch` reported
+   `advancing` on every poll, while the playlist head actually failed to move on
+   67 of ~76 polls. The cause was not leniency about status codes but the
+   watcher's own reconnect handling: heads are not comparable across a variant
+   change, so on every new variant it passed `previous = null`, and `judge` read
+   a null baseline as progress. With a reconnect every 6–22 s, almost every poll
+   was a new variant, so the run could never be anything but green.
+
+   Fixed by making progression the only evidence of health: `advancing` requires
+   the head to have moved within one variant, a variant change is `waiting`
+   rather than progress, and the stall clock now crosses variant changes
+   untouched — only real movement resets it. The poll step is a pure function
+   (`step`) so the 18-reconnect storm is driven through it in a test; reverting
+   the carry turns that test red. Verdicts are now `advancing` / `holding` /
+   `waiting` / `stalled` / `ended`, so a CSV distinguishes "no evidence yet"
+   from "moving", which the old two-way split could not express.
 2. **C1's fallback never fires for this.** The SRT→RTMPS rule counts *connect*
    failures; these are mid-session drops that reconnect successfully. A link this
    bad would ride SRT all afternoon rather than falling back, and the phone would

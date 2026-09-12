@@ -15,7 +15,7 @@ export type VariantState = {
   readonly targetDuration: number;
 };
 
-export type Verdict = 'advancing' | 'stalled' | 'ended';
+export type Verdict = 'advancing' | 'holding' | 'stalled' | 'waiting' | 'ended';
 export type Judgement = { readonly verdict: Verdict; readonly lastAdvanceMs: number };
 
 export function variantUris(master: string, masterUrl: string): readonly string[] {
@@ -42,6 +42,19 @@ export function head(state: VariantState): number {
   return state.mediaSequence + state.segments;
 }
 
+/**
+ * Only movement counts as health. Verified on a weak link (F-P5-2): a phone
+ * whose SRT session collapsed and rebuilt 18 times in five minutes produced a
+ * playlist whose head sat still for 67 of ~76 polls, and the previous version
+ * of this function called every one of them `advancing` — because each
+ * reconnect starts a NEW variant, the caller passed `previous = null`, and a
+ * null previous was treated as progress. A run that is mostly stalled then
+ * reads green, which is the failure this spike exists to catch.
+ *
+ * So: `advancing` requires the head to have moved within one variant, and the
+ * clock that decides `stalled` is never reset by a variant change — only by
+ * real progression. A first sighting is `waiting`, not health.
+ */
 export function judge(
   previous: VariantState | null,
   next: VariantState,
@@ -49,9 +62,42 @@ export function judge(
   nowMs: number,
 ): Judgement {
   if (next.endList) return { verdict: 'ended', lastAdvanceMs };
-  if (previous === null || head(next) > head(previous)) {
+  if (previous !== null && head(next) > head(previous)) {
     return { verdict: 'advancing', lastAdvanceMs: nowMs };
   }
+  // No baseline yet: say so rather than assume the best.
+  if (lastAdvanceMs === 0) return { verdict: 'waiting', lastAdvanceMs: nowMs };
   const stallAfterMs = Math.max(3 * next.targetDuration, 6) * 1000;
-  return { verdict: nowMs - lastAdvanceMs > stallAfterMs ? 'stalled' : 'advancing', lastAdvanceMs };
+  if (nowMs - lastAdvanceMs > stallAfterMs) return { verdict: 'stalled', lastAdvanceMs };
+  return { verdict: previous === null ? 'waiting' : 'holding', lastAdvanceMs };
+}
+
+/** What the watcher carries between polls. */
+export type WatchState = {
+  readonly uri: string | null;
+  readonly variant: VariantState | null;
+  readonly lastAdvanceMs: number;
+};
+
+export const initialWatch: WatchState = { uri: null, variant: null, lastAdvanceMs: 0 };
+
+/**
+ * One poll, as a pure step, so the reconnect storm of F-P5-2 can be driven
+ * through it in a test. Heads are comparable only within a single variant, so a
+ * variant change drops the baseline — but `lastAdvanceMs` crosses it untouched.
+ * That carry is the whole fix: it is what makes a stream that rebuilds every
+ * few seconds without ever gaining a segment read as stalled.
+ */
+export function step(
+  state: WatchState,
+  uri: string,
+  next: VariantState,
+  nowMs: number,
+): { readonly state: WatchState; readonly verdict: Verdict } {
+  const comparable = uri === state.uri ? state.variant : null;
+  const judgement = judge(comparable, next, state.lastAdvanceMs, nowMs);
+  return {
+    state: { uri, variant: next, lastAdvanceMs: judgement.lastAdvanceMs },
+    verdict: judgement.verdict,
+  };
 }
