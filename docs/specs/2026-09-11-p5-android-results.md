@@ -103,6 +103,51 @@ Cloudflare note: a recording stays `live-inprogress` for some minutes after the
 stream ends and **refuses deletion** (`409`, code 10046) until it finalises, so
 cleanup must poll rather than delete once.
 
+## Second handset — Redmi Note 7 Pro, 2026-09-12
+
+**Redmi Note 7 Pro** (`violet`, serial `9735b6fb`), Android 10 / API 29,
+Snapdragon 675, 1080×2340 at density 440. The mid-range class a volunteer
+actually brings to a ground, against the OnePlus 10 Pro's flagship silicon.
+
+Two platform facts to read the columns by: `thermalStatus` works (API 29), but
+`thermalHeadroom` **does not exist before API 30** and logs −1.0. And MIUI
+refuses `adb install` (`INSTALL_FAILED_USER_RESTRICTED`) until *Install via USB*
+is enabled in developer options.
+
+All three rehearsal fixes verified here:
+
+| Fix | Evidence on this handset |
+|---|---|
+| R1 marks | `adb push` of a one-line `p5-mark` produced `mark,label=redmi-verify-r1`; file consumed. No UI, no unlocked screen |
+| R2 SRT connect | Connected first attempt, `connectMs=1344`, zero "Bad parameters" rejections — consistent with F-P5-1 being resolution, not parameters |
+| R3 drop causes | Every drop now names one: `reason=endpoint-closed message=ClosedException: Connection was broken endpointOpen=false` |
+
+### F-P5-2 — on a weak link the SRT session collapses every 6–22 s, and the watcher calls it healthy
+
+Publishing for ~5 minutes on wifi at **rssi −74/−75 dBm** (5 GHz, f=5320, link
+65 Mbps), the session dropped and rebuilt **18 times**, every 6–22 s, always
+`endpoint-closed · Connection was broken`. Reconnects were fast (337–1344 ms),
+so the app behaved correctly — but the run published in only **64% of samples**
+(266/415), at a mean **1482 kbps** against a 3000 kbps target, with **103 of 266
+publishing samples below 1 Mbps**. The OnePlus did not do this on the same
+network, so this is uplink quality rather than the encoder — which is precisely
+the wet-ground case the product exists to survive.
+
+Three consequences, each worth more than the run that produced them:
+
+1. **Our own watcher lies about it.** `hls-watch` reported `advancing` on every
+   poll, while the playlist head actually failed to move on 67 of ~76 polls. The
+   verdict treats "the master resolved and returned 200" as progress. It must
+   require the head to move, or a stalled run reads green — the same class of
+   false green the spike exists to avoid.
+2. **C1's fallback never fires for this.** The SRT→RTMPS rule counts *connect*
+   failures; these are mid-session drops that reconnect successfully. A link this
+   bad would ride SRT all afternoon rather than falling back, and the phone would
+   never try the transport that might survive it.
+3. **A soak on this link would measure the wifi, not the handset.** Run A needs
+   either a strong link or cellular, and the link quality must be recorded
+   alongside the thermal numbers or the run is uninterpretable.
+
 ## Runs
 
 ### Run A — SRT, cellular, 3 h
