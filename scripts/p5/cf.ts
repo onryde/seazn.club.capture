@@ -3,6 +3,7 @@
  *
  *   node --env-file=.env.local scripts/p5/cf.ts verify
  *   node --env-file=.env.local scripts/p5/cf.ts create <run>
+ *   node --env-file=.env.local scripts/p5/cf.ts storage
  *   node --env-file=.env.local scripts/p5/cf.ts cleanup <uid>
  *
  * .env.local: CF_ACCOUNT_ID, CF_API_TOKEN, P5_OVERLAY_URL, and optionally
@@ -48,6 +49,20 @@ async function call(method: string, path: string, body?: unknown): Promise<unkno
 /** Account-scoped on purpose: /user/tokens/verify reports account tokens as invalid. */
 async function verify(): Promise<void> {
   console.log(JSON.stringify(await call('GET', '/tokens/verify')));
+}
+
+/**
+ * Cloudflare storage is prepaid CAPACITY, not a monthly allowance, and
+ * exhausting it blocks STARTING a new live stream rather than only an upload.
+ * A mid-run recording is a new video, so capacity has to be read BEFORE the
+ * moment a run depends on one appearing — otherwise "no second recording" and
+ * "the platform does not split past the hold window" look identical.
+ *
+ * Deletions show up in under 10 s but additions land minutes late, and the
+ * figure is not monotonic: treat a reading as a baseline, never a live gauge.
+ */
+async function storage(): Promise<void> {
+  console.log(JSON.stringify(await call('GET', '/stream/storage-usage')));
 }
 
 async function create(run: string): Promise<void> {
@@ -113,9 +128,10 @@ async function cleanup(uid: string): Promise<void> {
 const [command, argument] = process.argv.slice(2);
 const run = async (): Promise<void> => {
   if (command === 'verify') return verify();
+  if (command === 'storage') return storage();
   if (command === 'create' && argument !== undefined) return create(argument);
   if (command === 'cleanup' && argument !== undefined) return cleanup(argument);
-  throw new Error('usage: cf.ts verify | create <run> | cleanup <uid>');
+  throw new Error('usage: cf.ts verify | storage | create <run> | cleanup <uid>');
 };
 run().catch((error: unknown) => {
   console.error(error instanceof Error ? error.message : error);

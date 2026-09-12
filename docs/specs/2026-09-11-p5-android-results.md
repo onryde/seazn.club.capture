@@ -183,6 +183,21 @@ Two protocol notes for the screen-locked step (minute 35):
   empty file at `/sdcard/Android/data/com.seazn.capture/files/p5-no-wakelock` before arming (`adb
   push` it, `adb shell rm` it to undo); the `service-started` event carries `wakeLock` true or false
   either way, so the CSV always says which cycle was measured.
+- **The unplug is simulated, and the CSV says so.** adb runs over the USB cable and Run A uses
+  cellular with wifi off, so a physical unplug would kill the driver mid-run. The driver calls
+  `dumpsys battery unplug` at minute 35 and `dumpsys battery reset` at minute 45, giving the framework
+  the discharging state Doze actually reads while USB keeps the phone powered. Verified before the
+  run: `AC powered: false, USB powered: false` immediately after the call, so it is not an OEM no-op.
+  The window is therefore evidence about criterion 6 and **none at all** about drain — the handset
+  really is still charging — and the mark is labelled `mark-2-unplug-simulated` so the CSV cannot be
+  read otherwise. Criterion 9 is read over the charging rows, which excludes this window by
+  construction.
+
+**Cellular cost is a product fact, not a test cost.** 3000 kbps video plus 128 kbps AAC is about
+1.41 GB/h, so a 3 h match is roughly **4.2 GB** on the organiser's own data allowance, every match.
+That constrains who can realistically use the phone path at all, and is an argument for a lower
+default bitrate on cellular than on wifi. The compositor side of the programme never sees this cost,
+so if it is not recorded here nothing records it.
 
 Results:
 
