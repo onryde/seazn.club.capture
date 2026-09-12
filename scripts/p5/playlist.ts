@@ -61,6 +61,13 @@ export function judge(
   lastAdvanceMs: number,
   nowMs: number,
 ): Judgement {
+  // `ended` does not fire at the timeout this programme configures. Measured
+  // 2026-09-12: at `recording.timeoutSeconds=180` no EXT-X-ENDLIST is ever
+  // served — the master simply returns 204 at about +183 s — and that holds for
+  // a clean cut and an abrupt kill alike, while 10 and 60 both emit one at
+  // roughly timeout + 3 s. The branch stays because it is the correct reading of
+  // a playlist that does carry ENDLIST, but nothing may treat its absence as
+  // evidence a stream is still running.
   if (next.endList) return { verdict: 'ended', lastAdvanceMs };
   if (previous !== null && head(next) > head(previous)) {
     return { verdict: 'advancing', lastAdvanceMs: nowMs };
