@@ -17,7 +17,7 @@ Every run starts with a 5-minute baseline, recorded below.
 
 | # | Criterion | Why |
 |---|---|---|
-| 1 | 3 h completes, publishing in ≥ 99% of samples outside deliberate outages | P5 |
+| 1 | 3 h completes, publishing in ≥ 99% of samples outside deliberate outages, **and the playlist head advancing across the same window** | P5 |
 | 2 | Thermal status never reaches 4 (critical) | P3; the ladder's thresholds come from the curve |
 | 3 | While streaming, the 60 s rolling mean of `videoBitrate` stays ≥ 3000 kbps; report min, median and p5 per run | §8: the encode is last |
 | 4 | Drop inside 180 s resumes into ONE recording | C2, U1-S7 |
@@ -169,10 +169,39 @@ successfully at **11:02:51–57Z**.
 
 So the 1 Hz sampler stopped writing about 35 s before a read that worked, and
 `SpikeLog` flushes on every write, so the gap is not buffering. Whatever ended
-the run acted on **the app** while leaving the OS fully responsive. That rules
-out the cable — still connected, since adb worked 46 s after delivery ended — and
-rules out the radio, since the OS answered over it. The mechanism (killed,
-frozen, or the coroutine scope cancelled) needs the on-device CSV and is open.
+the run acted on **the app** while leaving the OS fully responsive.
+
+The pulled CSV settles the mechanism as far as the device can. The file is 2488
+lines and **stops dead** at 11:02:20.7Z — no rows after, no resume — with its
+final three samples all reading `streaming=true`, `transport=srt`, 4.10 / 4.29 /
+4.43 Mbps. And the event rows contain **no `dropped`, no `connect-failed`, no
+`error`, no `service-stopped`**; the last event of any kind is the screen-off
+`rotation value=0` at 10:58:51.6Z, 3.5 minutes earlier. So SRT did not drop
+(`awaitDrop` would have emitted `dropped`), the service was not stopped, and
+nothing threw. The process ceased to exist mid-publish, having observed nothing.
+
+**The cable is exonerated for 27 minutes, not 46 seconds.** The driver pushed
+`mark-5` at 11:29:07Z; that push succeeded and the file sat unconsumed in the
+dead app's directory until relaunch at 11:56:03Z, when `watchMarkFile` picked it
+up as the first row of the next CSV. Each push overwrites the last, which is why
+only `mark-5` survived and not `mark-3` or `mark-4`. So adb was working at least
+27 minutes after the app died, and the radio was answering over it throughout.
+
+**The confound is ours, and it gates the conclusion.** The kill fell inside a
+window where `dumpsys battery unplug` had told the framework the device was
+discharging — `charging=false` in those very rows — and ColorOS power management
+keys off battery state, so the simulation is a candidate *cause* and not merely
+the condition. A real unplug at a ground produces the same framework state, so
+the field case may hold either way, but the clean test is a screen-off window
+with the framework seeing charging throughout. Until that runs, the class
+statement above stands and "Android power management kills a publishing
+foreground service after 3.5 minutes of screen-off" does **not**.
+
+The kill record itself is gone: `logcat -b events` reaches back only to
+12:47:56Z, about 1 h 45 m after the death. What that buffer does show is this
+handset's OEM killer working hard — `am_kill … o-kill(4010)` taking
+`com.oplus.camera`, Spotify, Instagram and others — which is circumstantial
+support for the hypothesis and no more.
 
 The generalisable part is not criterion 6 failing. It is this: **device
 reachability is not publisher liveness.** A health check that pinged the handset,
@@ -251,15 +280,15 @@ empty cell cannot be mistaken for a pass.
 
 | Criterion | Result | Evidence |
 |---|---|---|
-| 1 | **Partial.** 596 of 596 publishing samples (100%) over the first ~14 min, from the only CSV pulled before adb was lost. The full-run figure needs the device CSV | `run-a-partial.csv` via `telemetry-report.ts` |
-| 2 | **Pass so far.** Peak status 2, never reached 3, through 11:02Z. Battery 32.7 → 39.4 °C, headroom 0.53 → 0.77 | sample rows to `atMs` 1789210940300 |
-| 3 | **Pass so far.** 60 s rolling means, min **4027.0** / median **4181.2** / p5 **4094.7** kbps, all above the 3000 floor. Reads high because it counts audio, container and SRT overhead, as the note above says | `telemetry-report.ts` on the partial CSV |
+| 1 | **100%, and that is the problem.** 1985 of 1985 samples publishing across the whole 33 min window. But Cloudflare stopped receiving at 11:02:09.8Z while the app went on reporting `streaming=true` until 11:02:20.7Z, so about 11 of those samples are false. **Criterion 1 therefore scored a perfect pass on a run that died** — it counts the app's own flag, and the flag was lying. Numerically the error is 0.55%; in principle the criterion cannot detect this failure mode at all, and needs cross-checking against playlist advancement to mean anything | `run-a-full.csv` via `telemetry-report.ts` |
+| 2 | **Pass.** Peak status 2, never reached 3, across the full window. Battery 32.7 → 39.4 °C, headroom 0.53 → 0.77 | 2476 samples in `run-a-full.csv` |
+| 3 | **Pass.** 60 s rolling means over the full window: min **3949.2** / median **4181.0** / p5 **4158.1** kbps, all above the 3000 floor. Reads high because it counts audio, container and SRT overhead, as the note above says | `telemetry-report.ts` on `run-a-full.csv` |
 | 4 | **Not reached.** The minute-65 outage never happened — the driver issued it after adb was gone | — |
 | 5 | **Not reached** as designed — no minute-125 outage, so the split is untested. But the unplanned death produced a partial answer worth keeping: **no `EXT-X-ENDLIST` was ever served.** The playlist sat frozen at head 997 for ~3.5 min, the last 200 at 11:05:50.9Z still serving segments, then the master went 204 at 11:05:55.0Z — a 4.16 s gap, so an ENDLIST would have had to appear and vanish inside it. That extends the ENDLIST curve measured elsewhere on this account (cut +12.2 s at `timeoutSeconds=10`, +63.1 s at 60): at 180 it appears to 204 instead. **Caveat:** this was an abrupt app death, not a clean cut, so it may not be the same scenario. The hold also ran ~213 s from the last packaged segment, over the configured 180 | `p5-run-a.hls2.csv` lines 673–759 |
 | 6 | **Failed, and the cable is largely exonerated.** Delivery stopped 3 min 22 s into the 10-minute screen-off window. Three independent clocks separate the two candidate causes without needing the handset: ingest stopped at **11:02:09.8Z** (10:28:51.599Z plus the recording's own 1998.23 s); the device wrote its **last telemetry row at 11:02:20.7Z**, still claiming `streaming=true` at 4.4 Mbps; and **adb was still alive at 11:02:51–57Z**, when a background check successfully ran `adb shell` against that CSV. So the cable was still connected when delivery ended, and the 1 Hz sampler had stopped writing ~35 s before a read that still worked — with `SpikeLog` flushing on every write, that is not buffering. The app stopped while the device was reachable, which points at the process being killed or frozen during screen-off rather than at the unplug. Still missing for the mechanism: whether a `dropped` event was written, which needs the on-device CSV | `cf.ts videos`, `p5-run-a.hls2.csv`, the 11:02:5x watcher output |
 | 7 | **Not reached.** No minute-95 rotation | — |
 | 8 | **Not reached** | — |
-| 9 | **Not reached**, but the supply is a finding in itself: `Max charging current: 900000` µA at 5 V, i.e. **4.5 W** from the MacBook's port, against a 720p30 encode plus an LTE radio. Battery fell 68% → 57% by minute 39, between 14.7 and 28%/hour depending on the window. A power bank or powered hub is a prerequisite, not a convenience | `dumpsys battery` |
+| 9 | **Not reached**; the floor over charging rows was 57% when the run died. The supply is a finding in itself: `Max charging current: 900000` µA at 5 V, i.e. **4.5 W** from the MacBook's port, against a 720p30 encode plus an LTE radio. Battery fell 68% → 57% by minute 39, between 14.7 and 28%/hour depending on the window. It is not marginal: after the relaunch, **idle and not publishing**, the handset still lost 61% → 54% in 53 min on the same supply. A power bank or powered hub is a prerequisite, not a convenience | `dumpsys battery`, `run-a-full.csv` |
 
 Two mid-run interventions, both recorded so the curves stay readable:
 
