@@ -72,14 +72,34 @@ export function judge(
   return { verdict: previous === null ? 'waiting' : 'holding', lastAdvanceMs };
 }
 
+/**
+ * Identity of a variant, ignoring the query string. Cloudflare's LL-HLS variant
+ * URL carries per-request tokens — `lps` and `rcu` — that change on EVERY poll,
+ * so comparing whole URLs makes each poll look like a brand new variant. With
+ * the reconnect rule below, that reports a perfectly healthy stream as stalled.
+ *
+ * Caught live one minute into Run A: the head moved 1 -> 5 while the verdict
+ * stayed `waiting`, because consecutive polls differed only in `lps`. The first
+ * version of this fix traded a false green for a false red.
+ */
+export function variantKey(uri: string): string {
+  try {
+    const url = new URL(uri);
+    return `${url.origin}${url.pathname}`;
+  } catch {
+    return uri;
+  }
+}
+
 /** What the watcher carries between polls. */
 export type WatchState = {
-  readonly uri: string | null;
+  /** A `variantKey`, never the raw URL — see above. */
+  readonly key: string | null;
   readonly variant: VariantState | null;
   readonly lastAdvanceMs: number;
 };
 
-export const initialWatch: WatchState = { uri: null, variant: null, lastAdvanceMs: 0 };
+export const initialWatch: WatchState = { key: null, variant: null, lastAdvanceMs: 0 };
 
 /**
  * One poll, as a pure step, so the reconnect storm of F-P5-2 can be driven
@@ -94,10 +114,11 @@ export function step(
   next: VariantState,
   nowMs: number,
 ): { readonly state: WatchState; readonly verdict: Verdict } {
-  const comparable = uri === state.uri ? state.variant : null;
+  const key = variantKey(uri);
+  const comparable = key === state.key ? state.variant : null;
   const judgement = judge(comparable, next, state.lastAdvanceMs, nowMs);
   return {
-    state: { uri, variant: next, lastAdvanceMs: judgement.lastAdvanceMs },
+    state: { key, variant: next, lastAdvanceMs: judgement.lastAdvanceMs },
     verdict: judgement.verdict,
   };
 }

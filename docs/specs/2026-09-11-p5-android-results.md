@@ -249,6 +249,17 @@ columns empty. **An empty cell is a missing reading, never a zero** — except `
 is `NaN` when the platform is polled faster than it allows. Secrets are redacted and commas are
 replaced with semicolons before anything reaches `detail`.
 
+**A `network` of `none` is not proof of a lost uplink.** Both the sampler's `network` column and
+`connect-failed`'s `validated` read `ConnectivityManager.activeNetwork`, and both report
+`none`/`false` whenever it — or its capabilities — momentarily returns null. Seen in Run A's own
+baseline at 10:22:51Z: roughly three minutes of `none` rows, coinciding with a `dumpsys battery
+unplug`/`reset` call, while `dumpsys connectivity` showed the LTE network `VALIDATED` and `ping` ran
+at 0% loss and 42 ms. It recovered unprompted. So read `none` as "the framework did not answer", and
+cross-check any suspected outage against the `dropped` and `connect-failed` rows, which come from the
+transport itself rather than from a capabilities lookup. This matters most for criterion 1, which
+counts publishing samples: a `none` row with `streaming=true` is still a publishing sample, and
+treating the column as an outage log would fail a healthy run.
+
 Two event rows carry more than their name since the rehearsal:
 
 - `connect-failed` — `transport`, `counted` (did it count toward C1's fallback), `validated` (was

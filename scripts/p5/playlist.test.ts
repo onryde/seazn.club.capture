@@ -97,4 +97,17 @@ describe('step — the watcher loop', () => {
     const first = step(initialWatch, 'https://c.example/a.m3u8', at(10, 3), 1000);
     expect(step(first.state, 'https://c.example/a.m3u8', at(11, 3), 3000).verdict).toBe('advancing');
   });
+
+  /**
+   * Cloudflare rotates `lps` and `rcu` on every request, so keying on the whole
+   * URL makes every poll a new variant and a healthy stream reads stalled. This
+   * was caught one minute into Run A by watching a head move while the verdict
+   * said `waiting` — not by a test. Hence this test.
+   */
+  it('treats a rotated query string as the same variant', () => {
+    const a = 'https://c.example/v.m3u8?llhlsHBs=0.9&lps=aaa&rcu=1';
+    const b = 'https://c.example/v.m3u8?llhlsHBs=0.9&lps=bbb&rcu=2';
+    const first = step(initialWatch, a, at(10, 3), 1000);
+    expect(step(first.state, b, at(11, 3), 3000).verdict).toBe('advancing');
+  });
 });
