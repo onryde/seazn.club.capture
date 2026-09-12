@@ -73,14 +73,21 @@ export function judge(
 }
 
 /**
- * Identity of a variant, ignoring the query string. Cloudflare's LL-HLS variant
- * URL carries per-request tokens — `lps` and `rcu` — that change on EVERY poll,
+ * Identity of a variant, ignoring the query string. Cloudflare's live variant URL
+ * carries per-request tokens — `lps` and `rcu` — that change on EVERY poll,
  * so comparing whole URLs makes each poll look like a brand new variant. With
  * the reconnect rule below, that reports a perfectly healthy stream as stalled.
  *
  * Caught live one minute into Run A: the head moved 1 -> 5 while the verdict
  * stayed `waiting`, because consecutive polls differed only in `lps`. The first
  * version of this fix traded a false green for a false red.
+ *
+ * The URL also carries `llhlsHBs`, but do not read that as Low-Latency HLS: this
+ * account serves STANDARD HLS — measured 2026-09-12, `#EXT-X-TARGETDURATION:2`
+ * with plain 2 s segments and no `EXT-X-PART`, `EXT-X-PRELOAD-HINT` or
+ * `EXT-X-SERVER-CONTROL`. Cloudflare's LL-HLS is an opt-in beta and is off here,
+ * so the machinery is wired and simply not emitting partials. It matters to
+ * `judge`: a 2 s target duration puts the stall threshold at 6 s, not 12.
  */
 export function variantKey(uri: string): string {
   try {

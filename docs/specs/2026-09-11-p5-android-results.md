@@ -159,6 +159,32 @@ Three consequences, each worth more than the run that produced them:
    either a strong link or cellular, and the link quality must be recorded
    alongside the thermal numbers or the run is uninterpretable.
 
+### F-P5-3 — the app can die while the device stays perfectly reachable
+
+Run A stopped delivering at **11:02:09.8Z**. Three clocks, none of which needs the
+handset, say what happened: Cloudflare's recording ran **1998.23 s** from
+10:28:51.599Z; the device's last telemetry row is **11:02:20.7Z**, still claiming
+`streaming=true` at 4.4 Mbps; and `adb shell` was still reading that same file
+successfully at **11:02:51–57Z**.
+
+So the 1 Hz sampler stopped writing about 35 s before a read that worked, and
+`SpikeLog` flushes on every write, so the gap is not buffering. Whatever ended
+the run acted on **the app** while leaving the OS fully responsive. That rules
+out the cable — still connected, since adb worked 46 s after delivery ended — and
+rules out the radio, since the OS answered over it. The mechanism (killed,
+frozen, or the coroutine scope cancelled) needs the on-device CSV and is open.
+
+The generalisable part is not criterion 6 failing. It is this: **device
+reachability is not publisher liveness.** A health check that pinged the handset,
+or read any OS-level signal, would have reported green through the entire window
+in which publishing had already stopped — the same shape this document keeps
+finding on the manifest side, now on the device side. Liveness has to come from
+something that advances only when frames are actually delivered: the playlist
+head, or a publisher heartbeat emitted from the same code path that writes to the
+socket. A 1 Hz sampler that reports `streaming` from a cached flag is not that,
+and this run is the proof: it reported `streaming=true` for the last 11 seconds
+of its life while nothing was arriving.
+
 ## Runs
 
 ### Run A — SRT, cellular, 3 h
@@ -212,7 +238,7 @@ empty cell cannot be mistaken for a pass.
 | 3 | **Pass so far.** 60 s rolling means, min **4027.0** / median **4181.2** / p5 **4094.7** kbps, all above the 3000 floor. Reads high because it counts audio, container and SRT overhead, as the note above says | `telemetry-report.ts` on the partial CSV |
 | 4 | **Not reached.** The minute-65 outage never happened — the driver issued it after adb was gone | — |
 | 5 | **Not reached.** No minute-125 outage, so the split question is untested | — |
-| 6 | **Indeterminate, and the reason matters.** Delivery stopped 3 min 22 s into the 10-minute screen-off window: one recording, 1998.23 s, `ready`, created 10:28:51Z, against screen-off at 10:58:47Z. The watcher independently froze at head 997 and read `stalled` from 11:02:51Z. **Two causes fit equally well** — Android power management killing the session, or the USB cable coming out for a power-supply swap in the same window, which independently explains the adb loss. Not written up as a lifecycle finding until the device CSV separates them: a `dropped` event with samples continuing afterwards means the former, samples stopping dead means the latter | `cf.ts videos`, `p5-run-a.hls2.csv` |
+| 6 | **Failed, and the cable is largely exonerated.** Delivery stopped 3 min 22 s into the 10-minute screen-off window. Three independent clocks separate the two candidate causes without needing the handset: ingest stopped at **11:02:09.8Z** (10:28:51.599Z plus the recording's own 1998.23 s); the device wrote its **last telemetry row at 11:02:20.7Z**, still claiming `streaming=true` at 4.4 Mbps; and **adb was still alive at 11:02:51–57Z**, when a background check successfully ran `adb shell` against that CSV. So the cable was still connected when delivery ended, and the 1 Hz sampler had stopped writing ~35 s before a read that still worked — with `SpikeLog` flushing on every write, that is not buffering. The app stopped while the device was reachable, which points at the process being killed or frozen during screen-off rather than at the unplug. Still missing for the mechanism: whether a `dropped` event was written, which needs the on-device CSV | `cf.ts videos`, `p5-run-a.hls2.csv`, the 11:02:5x watcher output |
 | 7 | **Not reached.** No minute-95 rotation | — |
 | 8 | **Not reached** | — |
 | 9 | **Not reached**, but the supply is a finding in itself: `Max charging current: 900000` µA at 5 V, i.e. **4.5 W** from the MacBook's port, against a 720p30 encode plus an LTE radio. Battery fell 68% → 57% by minute 39, between 14.7 and 28%/hour depending on the window. A power bank or powered hub is a prerequisite, not a convenience | `dumpsys battery` |
