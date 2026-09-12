@@ -232,6 +232,43 @@ And the watcher took 17.2 s to call the stall where a `targetDuration` of 2
 implies 6 s; that remains unexplained, because the watcher did not record the
 target duration it actually saw. It does now.
 
+### H-P5-1 (hypothesis, with its test) — on SRT the hold may start late, so dropout tolerance is not the configured number
+
+Run A's hold ran **225.2 s** from ingest end against **183 s** measured over RTMPS
+at the same `timeoutSeconds=180`, with only 4.16 s of detection uncertainty. The
+proposed mechanism is close semantics rather than the hold itself:
+
+- **RTMPS is TCP.** Even a `SIGKILL`ed publisher has its socket closed by the
+  kernel, so Cloudflare learns the publisher is gone at once. That is why a clean
+  cut and an abrupt kill landed 0.7 s apart over RTMPS — the close was identical
+  in both, because the OS did it, not the process.
+- **SRT is UDP.** A killed process closes nothing, so Cloudflare must expire its
+  own SRT session before the hold can begin.
+
+If that holds, **the hold is timed from when the platform notices the publisher is
+gone, not from the last media it received**, and dropout tolerance on SRT is the
+SRT session timeout *plus* `timeoutSeconds`. Anyone sizing tolerance from the
+configured number is short by the difference — short in the direction that loses a
+broadcast. It cuts the other way too: a stream that is already dead keeps serving
+200s for longer, so the false-green window on SRT is wider than the 181.5 s
+measured over RTMPS.
+
+This is reasoning, not measurement, which is why it is labelled a hypothesis. Two
+cells settle it and one does not — a single SRT clean stop confounds transport
+with close semantics:
+
+| Cell | Compared against | Isolates |
+|---|---|---|
+| SRT + clean stop | RTMPS clean cut (183 s) | transport |
+| SRT + kill | SRT clean stop | close semantics within SRT |
+
+If SRT-clean lands near 183 s, transport is innocent and close semantics own the
+gap. If SRT-clean also lands near 213–225 s, the transport carries the extra ~30 s
+however the publisher ends — the version that matters most for a phone, because a
+real handset drop is never a clean close. Both cells are ours to run: SRT ingest
+never started a broadcast on the bench account at all, so that arm was never
+available there.
+
 ## Runs
 
 ### Run A — SRT, cellular, 3 h
@@ -280,11 +317,11 @@ empty cell cannot be mistaken for a pass.
 
 | Criterion | Result | Evidence |
 |---|---|---|
-| 1 | **100%, and that is the problem.** 1985 of 1985 samples publishing across the whole 33 min window. But Cloudflare stopped receiving at 11:02:09.8Z while the app went on reporting `streaming=true` until 11:02:20.7Z, so about 11 of those samples are false. **Criterion 1 therefore scored a perfect pass on a run that died** — it counts the app's own flag, and the flag was lying. Numerically the error is 0.55%; in principle the criterion cannot detect this failure mode at all, and needs cross-checking against playlist advancement to mean anything | `run-a-full.csv` via `telemetry-report.ts` |
+| 1 | **100%, and that is the problem.** 1985 of 1985 samples publishing across the whole 33 min window. But Cloudflare stopped receiving at 11:02:09.8Z while the app went on reporting `streaming=true` until 11:02:20.7Z, so about 11 of those samples are false. **Criterion 1 therefore scored a perfect pass on a run that died** — it counts the app's own flag, and the flag was lying. **The certificate was issued by the thing being certified.** Numerically the error is 0.55%; in principle the criterion cannot detect this failure mode at all, and needs cross-checking against playlist advancement to mean anything | `run-a-full.csv` via `telemetry-report.ts` |
 | 2 | **Pass.** Peak status 2, never reached 3, across the full window. Battery 32.7 → 39.4 °C, headroom 0.53 → 0.77 | 2476 samples in `run-a-full.csv` |
 | 3 | **Pass.** 60 s rolling means over the full window: min **3949.2** / median **4181.0** / p5 **4158.1** kbps, all above the 3000 floor. Reads high because it counts audio, container and SRT overhead, as the note above says | `telemetry-report.ts` on `run-a-full.csv` |
 | 4 | **Not reached.** The minute-65 outage never happened — the driver issued it after adb was gone | — |
-| 5 | **Not reached** as designed — no minute-125 outage, so the split is untested. But the unplanned death answered something more useful: **no `EXT-X-ENDLIST` is ever served at `timeoutSeconds=180`.** My playlist sat frozen at head 997 for ~3.5 min, last 200 at 11:05:50.9Z still serving segments, then master 204 at 11:05:55.0Z — a 4.16 s gap, too small for an ENDLIST to appear and vanish inside. A controlled pair run elsewhere on this account settles that it is the *value* and not the manner of ending: a clean cut (SIGINT, trailer written) and an abrupt death (SIGKILL) both reached 204 with no ENDLIST, at +183.5 s and +182.8 s — 0.7 s apart — while 10 and 60 both emit one at ≈ timeout + 3 s. **Consequence for the whole programme: nothing may treat `EXT-X-ENDLIST` as the end-of-stream signal, because at the value we would configure it never arrives.** One difference stays open: my hold ran **225.2 s** from ingest end (212.3 s from the last head advance) against their 183 s, and my detection uncertainty is only 4.16 s, so it is not measurement lag. The untested variable is transport — SRT killed with SIGKILL, so the socket was never closed, against their RTMPS | `p5-run-a.hls2.csv` lines 673–759 |
+| 5 | **Not reached** as designed — no minute-125 outage, so the split is untested. But the unplanned death answered something more useful: **no `EXT-X-ENDLIST` is ever served at `timeoutSeconds=180`.** My playlist sat frozen at head 997 for ~3.5 min, last 200 at 11:05:50.9Z still serving segments, then master 204 at 11:05:55.0Z — a 4.16 s gap, too small for an ENDLIST to appear and vanish inside. A controlled pair run elsewhere on this account settles that it is the *value* and not the manner of ending: a clean cut (SIGINT, trailer written) and an abrupt death (SIGKILL) both reached 204 with no ENDLIST, at +183.5 s and +182.8 s — 0.7 s apart — while 10 and 60 both emit one at ≈ timeout + 3 s. **Consequence for the whole programme: nothing may treat `EXT-X-ENDLIST` as the end-of-stream signal, because at the value we would configure it never arrives.** One difference stays open: my hold ran **225.2 s** from ingest end (212.3 s from the last head advance) against their 183 s, and my detection uncertainty is only 4.16 s, so it is not measurement lag. See **H-P5-1** for the proposed mechanism and the two cells that would settle it | `p5-run-a.hls2.csv` lines 673–759 |
 | 6 | **Failed, and the cable is largely exonerated.** Delivery stopped 3 min 22 s into the 10-minute screen-off window. Three independent clocks separate the two candidate causes without needing the handset: ingest stopped at **11:02:09.8Z** (10:28:51.599Z plus the recording's own 1998.23 s); the device wrote its **last telemetry row at 11:02:20.7Z**, still claiming `streaming=true` at 4.4 Mbps; and **adb was still alive at 11:02:51–57Z**, when a background check successfully ran `adb shell` against that CSV. So the cable was still connected when delivery ended, and the 1 Hz sampler had stopped writing ~35 s before a read that still worked — with `SpikeLog` flushing on every write, that is not buffering. The app stopped while the device was reachable, which points at the process being killed or frozen during screen-off rather than at the unplug. Still missing for the mechanism: whether a `dropped` event was written, which needs the on-device CSV | `cf.ts videos`, `p5-run-a.hls2.csv`, the 11:02:5x watcher output |
 | 7 | **Not reached.** No minute-95 rotation | — |
 | 8 | **Not reached** | — |
