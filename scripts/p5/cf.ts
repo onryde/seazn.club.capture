@@ -4,6 +4,7 @@
  *   node --env-file=.env.local scripts/p5/cf.ts verify
  *   node --env-file=.env.local scripts/p5/cf.ts create <run>
  *   node --env-file=.env.local scripts/p5/cf.ts storage
+ *   node --env-file=.env.local scripts/p5/cf.ts videos <uid>
  *   node --env-file=.env.local scripts/p5/cf.ts cleanup <uid>
  *
  * .env.local: CF_ACCOUNT_ID, CF_API_TOKEN, P5_OVERLAY_URL, and optionally
@@ -63,6 +64,26 @@ async function verify(): Promise<void> {
  */
 async function storage(): Promise<void> {
   console.log(JSON.stringify(await call('GET', '/stream/storage-usage')));
+}
+
+/**
+ * What Cloudflare kept for one input. READ ONLY — deleting is `cleanup`'s job
+ * and nothing else's. Criteria 4 and 5 are counts of these videos (one recording
+ * for a drop inside the hold window, two for a drop past it), so reading them
+ * has to be possible without touching them.
+ */
+async function videos(uid: string): Promise<void> {
+  const list = (await call('GET', `/stream/live_inputs/${uid}/videos`)) as readonly {
+    uid: string;
+    duration?: number;
+    created?: string;
+    status?: { state?: string };
+  }[];
+  for (const video of list) {
+    const state = video.status?.state ?? 'unknown';
+    console.log(`${video.uid} ${state} ${video.duration ?? '?'}s created=${video.created ?? '?'}`);
+  }
+  console.log(`count ${list.length}`);
 }
 
 async function create(run: string): Promise<void> {
@@ -129,9 +150,10 @@ const [command, argument] = process.argv.slice(2);
 const run = async (): Promise<void> => {
   if (command === 'verify') return verify();
   if (command === 'storage') return storage();
+  if (command === 'videos' && argument !== undefined) return videos(argument);
   if (command === 'create' && argument !== undefined) return create(argument);
   if (command === 'cleanup' && argument !== undefined) return cleanup(argument);
-  throw new Error('usage: cf.ts verify | storage | create <run> | cleanup <uid>');
+  throw new Error('usage: cf.ts verify | storage | videos <uid> | create <run> | cleanup <uid>');
 };
 run().catch((error: unknown) => {
   console.error(error instanceof Error ? error.message : error);
