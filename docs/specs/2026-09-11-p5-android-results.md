@@ -42,6 +42,46 @@ analyst reading it as the encoder target would mark a healthy run as failed.
 this spike. The rolling window and the percentile are both there because a single bad second is
 noise: a 1 Hz counter dropping one sample after a reconnect is expected, a minute of sag is a shed.
 
+## Rehearsal — 5 minutes, 2026-09-12 (protocol shake-out, not a measurement)
+
+Run before Run A to prove the protocol rather than the handset: publish over
+SRT with the staging overlay on, flip 180°, drop the network for 20 s, then 60 s
+with the screen off. Wifi, charging, indoors, a dark static scene.
+
+| Question | Result |
+|---|---|
+| Does the whole path work? | Yes. Camera → encoder → SRT → Cloudflare, playlist advancing (head 54 → 728, HTTP 200 throughout) |
+| Does the overlay composite? | Yes. The Tier A route renders over the live camera, top-left, as OBS gets it |
+| Does the screen-off case publish? | Yes. 58/58 screen-off samples still streaming; Cloudflare kept advancing through the lock |
+| Telemetry | 2156 samples at 1 Hz, publishing in 92% (the rest is arm/stop/outage) |
+| Throughput | mean 4110 kbps, max 14553 kbps — total endpoint throughput, see criterion 3 |
+| Thermals | battery 27.7 → 38.7 °C, peak thermal status 2 (moderate), headroom ≥ 0.45 |
+
+**Three defects the rehearsal exposed. Fix before Run A.**
+
+1. **Marks never reached the CSV.** The rehearsal drove `Mark` by tapping the UI;
+   it sits in the scrolling actions list, and once the phone locked the taps hit
+   the lock screen instead. The run timeline therefore lives only in the
+   laptop's log, and correlating a thermal number with "the moment the screen
+   went off" is manual. A run that cannot be correlated is a run that has to be
+   done twice. Fix: inject marks without the UI — watch the session-file
+   directory for a `p5-mark` file, or take an adb broadcast — so the protocol
+   script marks the CSV directly.
+2. **SRT's first connection is rejected nine times.** `Operation not supported:
+   Bad parameters`, retried every 2 s for ~18 s, then connects normally
+   (`connectMs=598`). The failures are correctly `counted=false`, so C1's
+   fallback rule is not tripped by them, but an 18-second lag between "go live"
+   and "on air" is not acceptable at a ground, and the cause is ours: suspect
+   the `SrtMediaDescriptor` parameter set on first open (passphrase, latency,
+   streamId) rather than the network.
+3. **An unexplained mid-run drop.** `dropped reason=pipeline-stopped` with no
+   operator action, recovered automatically in 442 ms. Harmless here; unexplained
+   is not acceptable over three hours.
+
+Cloudflare note: a recording stays `live-inprogress` for some minutes after the
+stream ends and **refuses deletion** (`409`, code 10046) until it finalises, so
+cleanup must poll rather than delete once.
+
 ## Runs
 
 ### Run A — SRT, cellular, 3 h
