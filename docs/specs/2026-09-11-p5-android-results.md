@@ -185,6 +185,24 @@ socket. A 1 Hz sampler that reports `streaming` from a cached flag is not that,
 and this run is the proof: it reported `streaming=true` for the last 11 seconds
 of its life while nothing was arriving.
 
+The delivery stop, to the second, from the watcher CSV and the recording:
+
+| Time | What |
+|---|---|
+| 11:02:09.8Z | Ingest content ends — 10:28:51.599Z plus the recording's 1998.23 s |
+| 11:02:20.7Z | Device writes its last telemetry row, `streaming=true`, 4.4 Mbps |
+| 11:02:22.7Z | Playlist head last advances, to 997 — **13 s after ingest ended** |
+| 11:02:39.9Z | Watcher calls `stalled`, 17.2 s after the last movement |
+| 11:05:50.9Z | Last 200: playlist still served, still frozen at head 997 |
+| 11:05:55.0Z | Master returns 204; the variant is gone |
+
+Two method notes from that. The head kept advancing for 13 s after ingest ended,
+which is Cloudflare's packaging tail — so the playlist is a *lagging* clock for
+when a phone stopped sending, and the recording's duration is the exact one.
+And the watcher took 17.2 s to call the stall where a `targetDuration` of 2
+implies 6 s; that remains unexplained, because the watcher did not record the
+target duration it actually saw. It does now.
+
 ## Runs
 
 ### Run A — SRT, cellular, 3 h
@@ -237,7 +255,7 @@ empty cell cannot be mistaken for a pass.
 | 2 | **Pass so far.** Peak status 2, never reached 3, through 11:02Z. Battery 32.7 → 39.4 °C, headroom 0.53 → 0.77 | sample rows to `atMs` 1789210940300 |
 | 3 | **Pass so far.** 60 s rolling means, min **4027.0** / median **4181.2** / p5 **4094.7** kbps, all above the 3000 floor. Reads high because it counts audio, container and SRT overhead, as the note above says | `telemetry-report.ts` on the partial CSV |
 | 4 | **Not reached.** The minute-65 outage never happened — the driver issued it after adb was gone | — |
-| 5 | **Not reached.** No minute-125 outage, so the split question is untested | — |
+| 5 | **Not reached** as designed — no minute-125 outage, so the split is untested. But the unplanned death produced a partial answer worth keeping: **no `EXT-X-ENDLIST` was ever served.** The playlist sat frozen at head 997 for ~3.5 min, the last 200 at 11:05:50.9Z still serving segments, then the master went 204 at 11:05:55.0Z — a 4.16 s gap, so an ENDLIST would have had to appear and vanish inside it. That extends the ENDLIST curve measured elsewhere on this account (cut +12.2 s at `timeoutSeconds=10`, +63.1 s at 60): at 180 it appears to 204 instead. **Caveat:** this was an abrupt app death, not a clean cut, so it may not be the same scenario. The hold also ran ~213 s from the last packaged segment, over the configured 180 | `p5-run-a.hls2.csv` lines 673–759 |
 | 6 | **Failed, and the cable is largely exonerated.** Delivery stopped 3 min 22 s into the 10-minute screen-off window. Three independent clocks separate the two candidate causes without needing the handset: ingest stopped at **11:02:09.8Z** (10:28:51.599Z plus the recording's own 1998.23 s); the device wrote its **last telemetry row at 11:02:20.7Z**, still claiming `streaming=true` at 4.4 Mbps; and **adb was still alive at 11:02:51–57Z**, when a background check successfully ran `adb shell` against that CSV. So the cable was still connected when delivery ended, and the 1 Hz sampler had stopped writing ~35 s before a read that still worked — with `SpikeLog` flushing on every write, that is not buffering. The app stopped while the device was reachable, which points at the process being killed or frozen during screen-off rather than at the unplug. Still missing for the mechanism: whether a `dropped` event was written, which needs the on-device CSV | `cf.ts videos`, `p5-run-a.hls2.csv`, the 11:02:5x watcher output |
 | 7 | **Not reached.** No minute-95 rotation | — |
 | 8 | **Not reached** | — |
