@@ -57,26 +57,47 @@ with the screen off. Wifi, charging, indoors, a dark static scene.
 | Throughput | mean 4110 kbps, max 14553 kbps — total endpoint throughput, see criterion 3 |
 | Thermals | battery 27.7 → 38.7 °C, peak thermal status 2 (moderate), headroom ≥ 0.45 |
 
-**Three defects the rehearsal exposed. Fix before Run A.**
+**Three defects the rehearsal exposed. All three fixed 2026-09-12, before Run A.**
 
 1. **Marks never reached the CSV.** The rehearsal drove `Mark` by tapping the UI;
    it sits in the scrolling actions list, and once the phone locked the taps hit
    the lock screen instead. The run timeline therefore lives only in the
    laptop's log, and correlating a thermal number with "the moment the screen
    went off" is manual. A run that cannot be correlated is a run that has to be
-   done twice. Fix: inject marks without the UI — watch the session-file
-   directory for a `p5-mark` file, or take an adb broadcast — so the protocol
-   script marks the CSV directly.
+   done twice.
+   **Fixed:** `SpikeSession` polls the app's external files dir once a second for
+   a file named `p5-mark`, writes its first line — trimmed, capped at 64
+   characters — as a `mark` row, and deletes the file. `adb push` of a one-line
+   file is now the whole protocol: no UI, no unlocked screen, nothing to mis-tap.
+   The `mark` intent and the Mark button stay for hand-driven runs.
 2. **SRT's first connection is rejected nine times.** `Operation not supported:
    Bad parameters`, retried every 2 s for ~18 s, then connects normally
    (`connectMs=598`). The failures are correctly `counted=false`, so C1's
    fallback rule is not tripped by them, but an 18-second lag between "go live"
-   and "on air" is not acceptable at a ground, and the cause is ours: suspect
-   the `SrtMediaDescriptor` parameter set on first open (passphrase, latency,
-   streamId) rather than the network.
+   and "on air" is not acceptable at a ground.
+   **Diagnosed: the cause is not ours, and the error text is a lie.** See F-P5-1
+   below. The parse path and the descriptor are correct; what the message
+   actually reports is a name that would not resolve. **Fixed** as far as this
+   layer can: the SRT attempt now resolves the host first, so the CSV names
+   `UnknownHostException` instead of inventing a parameter fault, and
+   `connect-failed` carries `validated` plus the descriptor's shape (host, port,
+   `streamIdLen`, `passphraseLen`, `latencyMs`) so one more run settles it
+   outright. Secrets stay on the device — lengths, never values.
 3. **An unexplained mid-run drop.** `dropped reason=pipeline-stopped` with no
    operator action, recovered automatically in 442 ms. Harmless here; unexplained
    is not acceptable over three hours.
+   **Fixed: the cause was being thrown away by our own code.** StreamPack offers
+   two signals and they race. `isStreamingFlow` is the *pipeline's* — the camera
+   and microphone inputs — and it goes false for a dead SRT socket exactly as it
+   does for a dead camera, because the sink's `isOpenFlow` stops the output and
+   the output stops the inputs. The endpoint's own `throwableFlow` is a constant
+   null in `CompositeEndpoint`, so a dead socket only becomes a `ClosedException`
+   on the next frame write — a frame later, losing the race every time.
+   `awaitDrop` now takes the first signal, waits up to 250 ms for a throwable to
+   catch up, and reports `reason=endpoint-closed | inputs-stopped | requested`
+   alongside `endpointOpen`, `audioStreaming`, `videoStreaming` and the
+   throwable's class and message. `pipeline-stopped` is gone as a label: it named
+   our ignorance, not a cause.
 
 Cloudflare note: a recording stays `live-inprogress` for some minutes after the
 stream ends and **refuses deletion** (`409`, code 10046) until it finalises, so
@@ -157,6 +178,23 @@ columns empty. **An empty cell is a missing reading, never a zero** — except `
 is `NaN` when the platform is polled faster than it allows. Secrets are redacted and commas are
 replaced with semicolons before anything reaches `detail`.
 
+Two event rows carry more than their name since the rehearsal:
+
+- `connect-failed` — `transport`, `counted` (did it count toward C1's fallback), `validated` (was
+  the active network `NET_CAPABILITY_VALIDATED` at the time), `message` (the exception **class** and
+  message, not just the message), and for SRT the descriptor's shape: `host`, `port`, `streamIdLen`,
+  `passphraseLen`, `latencyMs`. Lengths only — the streamId and passphrase never leave the device.
+  `validated=false` on a run of failures means the network, not the descriptor (F-P5-1).
+- `dropped` — `transport`, `reason` ∈ `endpoint-closed` (the SRT/RTMP sink closed under us),
+  `inputs-stopped` (the camera or microphone stopped while the endpoint was still open — a device
+  interruption, not a transport fault) or `requested` (our own stop, which normally cancels the wait
+  before it can report); plus `message` (`none` when no throwable arrived within 250 ms),
+  `endpointOpen`, `audioStreaming` and `videoStreaming`. The old `reason=pipeline-stopped` no longer
+  appears.
+
+`mark` rows come from either the pushed `p5-mark` file or the Mark button; they are indistinguishable
+on purpose, so the protocol can use whichever the moment allows.
+
 ## Before the runs
 
 In this order. Steps 1 and 4 touch the handset; the rest is laptop-side.
@@ -198,6 +236,8 @@ node --env-file=.env.local scripts/p5/cf.ts verify
 node --env-file=.env.local scripts/p5/cf.ts create <run>
 adb -s 12be753e push .p5/<run>.session.json /sdcard/Android/data/com.seazn.capture/files/p5-session.json
 node scripts/p5/hls-watch.ts <playbackUrl> | tee .p5/<run>.hls.csv
+# mark the CSV from the laptop — works with the screen off and the phone locked:
+printf 'mark-1' > /tmp/p5-mark && adb -s <serial> push /tmp/p5-mark /sdcard/Android/data/com.seazn.capture/files/p5-mark
 # P4 + T1 sample, mid-run:
 ffmpeg -user_agent "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36" -i <playbackUrl> -t 20 -c copy .p5/<run>-sample.ts
 ffprobe -v error -show_streams -show_entries stream_side_data .p5/<run>-sample.ts
@@ -217,6 +257,40 @@ manifest answers `403 error code: 1010` to anything else, and a 403 misread as a
 criterion 1 on the watcher's own request.
 
 ## Findings raised
+
+**F-P5-1 — libsrt's "Bad parameters" is how srtdroid reports a host that did not resolve.**
+Traced through the vendor source rather than inferred, because the message names our parameters and
+the fix is not in them:
+
+1. libsrt's `strerror_defs.cpp` builds the string `Operation not supported: Bad parameters` from
+   `MJ_NOTSUP` + `MN_INVAL` — its generic invalid-parameter error, and the exact CSV text.
+2. srtdroid's `glue.cpp` `nativeConnect` converts the Java `InetSocketAddress` with
+   `InetSocketAddress::getNative(...)` and **never null-checks the result** before
+   `srt_connect(u, reinterpret_cast<const sockaddr *>(ss), size)`.
+3. srtdroid's `connect(hostname, port)` is `connect(InetSocketAddress(address, port))`, and
+   `InetSocketAddress(String, int)` does **not** throw when DNS fails — it yields an *unresolved*
+   address whose `getAddress()` is null.
+
+So a name that will not resolve reaches libsrt as a null sockaddr and comes back as a parameter
+fault. Our own evidence agrees: every one of the nine rejections carried `counted=false`, which is
+`NET_CAPABILITY_VALIDATED` being false — the handset had no validated network for exactly the
+failing window, then SRT connected first try.
+
+Ruled out against the same sources, so they are not re-litigated: an empty-string passphrase
+(`SessionFile` maps `optString("passphrase").ifEmpty { null }`, and `cf.ts` requires the field
+non-empty at create, so `""` cannot reach libsrt); a latency in the wrong unit or at the wrong layer
+(`latencyMs` → `SrtUrl.latencyInMs` → `SockOpt.LATENCY`, milliseconds throughout, and our 2000 is
+`SRT_LATENCY_MS` from `liveInput.ts`); a streamId needing percent-decoding (it is read from a JSON
+field, never a URI query, and `SrtUrl` applies it verbatim as `SockOpt.STREAMID`); a passphrase
+outside libsrt's 10–79 characters (ours is 65); and the first `open` racing the camera or encoder
+start (`startStream(descriptor)` is `open()` then `startStream()`, and `open()` — which is the
+connect — never touches the camera, so a camera race cannot produce a connect error).
+`SrtUrl.init` validates only host and port, and `preApplyTo` applies latency, passphrase and
+streamId as plain unvalidated sockopts, so there is no vendor-side rejection of our values to find.
+
+The honest conclusion is that the 18 seconds was the network coming up, and the defect in *our* code
+was reporting it as something else. The diagnostics added for item 2 confirm or refute this in one
+run: a repeat with `validated=true` and a well-formed shape would move the finding to the vendor.
 
 ## Follow-ups
 

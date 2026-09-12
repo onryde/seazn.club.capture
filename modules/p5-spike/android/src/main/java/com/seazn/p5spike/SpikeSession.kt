@@ -37,6 +37,9 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.withTimeoutOrNull
+import java.io.File
+import java.net.InetAddress
 
 /**
  * The native session, as a process singleton. Native owns it (AGENTS.md §2):
@@ -71,6 +74,7 @@ object SpikeSession {
     appContext = context
     log = SpikeLog(context)
     runIntents()
+    watchMarkFile(context)
     SpikeTelemetry.start(context, scope) { sample ->
       log.sample(sample)
       emit("onSample", sample)
@@ -189,13 +193,25 @@ object SpikeSession {
       try {
         connect(streamer, file, current)
         srtFailures = 0
-        event("dropped", "transport" to current, "reason" to awaitDrop(streamer, stale))
+        event("dropped", "transport" to current, *awaitDrop(streamer, stale))
       } catch (failure: Throwable) {
         // A real cancel (the next intent) rethrows here. A timeout or a stray
         // library cancellation falls through and counts as a failed connect.
         currentCoroutineContext().ensureActive()
-        val counted = current == "srt" && networkValidated()
-        event("connect-failed", "transport" to current, "counted" to counted, "message" to describe(failure))
+        // R2: `validated` is the load-bearing column. Nine rejections in a row with
+        // validated=false is a network that has not come up yet, not a bad descriptor —
+        // so record it beside the shape rather than leaving it implied by `counted`.
+        val validated = networkValidated()
+        val counted = current == "srt" && validated
+        val shape = if (current == "srt") srtShape(file.srt) else emptyArray()
+        event(
+          "connect-failed",
+          "transport" to current,
+          "counted" to counted,
+          "validated" to validated,
+          "message" to describe(failure),
+          *shape,
+        )
         if (counted && ++srtFailures >= FALLBACK_AFTER_FAILURES) {
           current = "rtmps"
           event("fell-back")
@@ -213,7 +229,12 @@ object SpikeSession {
     event("connecting", "transport" to via)
     val startedAt = SystemClock.elapsedRealtime()
     withTimeout(CONNECT_TIMEOUT_MS) {
-      if (via == "srt") streamer.startStream(srtDescriptor(file.srt)) else streamer.startStream(file.rtmpsUrl)
+      if (via == "srt") {
+        resolve(file.srt.host)
+        streamer.startStream(srtDescriptor(file.srt))
+      } else {
+        streamer.startStream(file.rtmpsUrl)
+      }
     }
     event("publishing", "transport" to via, "connectMs" to SystemClock.elapsedRealtime() - startedAt)
   }
@@ -226,11 +247,72 @@ object SpikeSession {
     latency = srt.latencyMs,
   )
 
-  /** Suspends while publishing; returns why it stopped. */
-  private suspend fun awaitDrop(streamer: SingleStreamer, stale: Throwable?): String = merge(
-    streamer.isStreamingFlow.filter { !it }.map { "pipeline-stopped" },
-    streamer.throwableFlow.filterNotNull().filter { it !== stale }.map { describe(it) },
-  ).first()
+  /**
+   * R2: srtdroid reaches libsrt through `InetSocketAddress(hostname, port)`, which does
+   * *not* throw when DNS fails — it yields an unresolved address. `glue.cpp`'s
+   * nativeConnect never null-checks the conversion, so libsrt is handed a null sockaddr
+   * and answers "Operation not supported: Bad parameters" (MJ_NOTSUP + MN_INVAL). That is
+   * a name resolution failure wearing a bad-descriptor error's clothes, and it is what the
+   * rehearsal's nine rejections almost certainly were: every one of them carried
+   * validated=false. Resolving first makes the CSV say UnknownHostException instead, and
+   * costs nothing on a working network.
+   */
+  private suspend fun resolve(host: String) {
+    withContext(Dispatchers.IO) { InetAddress.getByName(host) }
+  }
+
+  /**
+   * The descriptor's shape, never its secrets — enough to tell a bad parameter from a bad
+   * network in one run. libsrt wants a passphrase of 10..79 characters, so the length is
+   * the diagnostic; the passphrase and the streamId themselves never leave the device.
+   */
+  private fun srtShape(srt: SrtTarget): Array<Pair<String, Any?>> = arrayOf(
+    "host" to srt.host,
+    "port" to srt.port,
+    "streamIdLen" to srt.streamId.length,
+    "passphraseLen" to (srt.passphrase?.length ?: 0),
+    "latencyMs" to srt.latencyMs,
+  )
+
+  /** Long enough for a ClosedException from the next frame write; too short to delay a reconnect. */
+  private const val DROP_CAUSE_GRACE_MS = 250L
+
+  /**
+   * Suspends while publishing; returns why it stopped, and which authority stopped it.
+   *
+   * R3: two StreamPack signals race here, and reporting whichever arrived first threw the
+   * cause away. `isStreamingFlow` is the *pipeline's*, so it means the camera and
+   * microphone inputs stopped — which is also what a dead SRT socket looks like, because
+   * the sink's `isOpenFlow` stops the output and the output stops the inputs. Meanwhile
+   * `CompositeEndpoint.throwableFlow` is a constant null, so a dead socket only becomes a
+   * ClosedException on the next frame write, a frame later — and it lost the race every
+   * time. So take the first signal, then give a throwable a moment to catch up, and report
+   * the endpoint and input states that tell the three causes apart.
+   */
+  private suspend fun awaitDrop(streamer: SingleStreamer, stale: Throwable?): Array<Pair<String, Any?>> {
+    val fresh = streamer.throwableFlow.filterNotNull().filter { it !== stale }
+    val first: Throwable? = merge(
+      streamer.isStreamingFlow.filter { !it }.map<Boolean, Throwable?> { null },
+      fresh.map<Throwable, Throwable?> { it },
+    ).first()
+    val failure = first ?: withTimeoutOrNull(DROP_CAUSE_GRACE_MS) { fresh.first() }
+    val open = streamer.isOpenFlow.value
+    return arrayOf(
+      // `requested` is rare by construction: a stop intent cancels this wait before it can
+      // report. It exists so that if it ever does fire, the CSV never calls our own stop a
+      // failure — which is the distinction the run notes could not make before.
+      "reason" to when {
+        wanted == null -> "requested"
+        !open -> "endpoint-closed"
+        else -> "inputs-stopped"
+      },
+      "message" to (failure?.let { describe(it) } ?: "none"),
+      "endpointOpen" to open,
+      // Which input went away: a camera or microphone interruption is not a transport fault.
+      "audioStreaming" to runCatching { streamer.audioInput.isStreamingFlow.value }.getOrNull(),
+      "videoStreaming" to runCatching { streamer.videoInput.isStreamingFlow.value }.getOrNull(),
+    )
+  }
 
   /**
    * C1 counts an SRT failure only on a validated network: a blackout says
@@ -244,9 +326,47 @@ object SpikeSession {
     capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
   }.getOrDefault(false)
 
-  private fun describe(failure: Throwable): String = failure.message ?: failure.javaClass.simpleName
+  /** Class *and* message: "Bad parameters" from two different libraries are two different bugs. */
+  private fun describe(failure: Throwable): String =
+    "${failure.javaClass.simpleName}: ${failure.message ?: "(no message)"}"
 
   fun mark(label: String) = event("mark", "label" to label)
+
+  private const val MARK_FILE = "p5-mark"
+  private const val MARK_POLL_MS = 1_000L
+  private const val MARK_LABEL_MAX = 64
+  /** Larger than this is not a label: read nothing rather than fold a log file into the CSV. */
+  private const val MARK_FILE_MAX_BYTES = 4_096L
+
+  /**
+   * R1: the rehearsal drove Mark by tapping, and once the phone locked those taps went to
+   * the lock screen, so the CSV had no marks at all and no thermal reading could be tied to
+   * "the moment the screen went off". A file the protocol pushes needs neither the UI nor an
+   * unlocked screen: `adb push` a one-line file, get a row. Everything here is best-effort —
+   * a mark must never be able to kill the sampler or the intent actor.
+   */
+  private fun watchMarkFile(context: Context) {
+    scope.launch {
+      val file = File(context.getExternalFilesDir(null), MARK_FILE)
+      while (isActive) {
+        runCatching { takeMark(file)?.let { event("mark", "label" to it) } }
+        delay(MARK_POLL_MS)
+      }
+    }
+  }
+
+  /**
+   * Reads the label and removes the file, so one push is one mark. Removed even when it is
+   * unusable: a file that cannot be read but survives would mark every second for hours.
+   */
+  private fun takeMark(file: File): String? {
+    if (!file.exists()) return null
+    val text =
+      if (file.length() in 1..MARK_FILE_MAX_BYTES) runCatching { file.readText() }.getOrNull() else null
+    // Truncated is as good as deleted: a zero-length file is ignored on the next tick.
+    if (!file.delete()) runCatching { file.writeText("") }
+    return text?.lineSequence()?.firstOrNull()?.trim()?.take(MARK_LABEL_MAX)?.ifBlank { null }
+  }
 
   fun logPath(): String = log.file.absolutePath
 

@@ -33,7 +33,9 @@ data class SessionFile(
       return SessionFile(
         srt = SrtTarget(
           host = requireNotNull(srtUri.host) { "srt.url has no host" },
-          port = srtUri.port,
+          // Uri.port is -1 when the url omits it, and SrtUrl would then reject it with a
+          // vaguer message from two libraries away. Fail here, where the payload is.
+          port = srtUri.port.also { require(it > 0) { "srt.url has no port" } },
           streamId = srt.getString("streamId"),
           passphrase = srt.optString("passphrase").ifEmpty { null },
           latencyMs = srt.getInt("latencyMs"),
