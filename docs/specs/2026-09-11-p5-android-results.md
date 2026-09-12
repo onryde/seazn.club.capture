@@ -1,6 +1,6 @@
 # P5 Device Spike — Android Results
 
-**Status:** protocol ready, runs pending
+**Status:** Run A aborted at about protocol minute 97 — see Run A below. Runs B and C pending
 **Handset:** OnePlus 10 Pro (NE2211), Snapdragon 8 Gen 1 (SM8450), Android 16, build NE2211_16.0.3.530(EX01), adb serial `12be753e`
 **Engine:** StreamPack 3.2.0 (Apache-2.0) with libsrt (MPL-2.0, unmodified)
 **Encode:** 1280×720, 30 fps, 3000 kbps, GOP 2 s, AAC 128 kbps 48 kHz
@@ -199,19 +199,37 @@ That constrains who can realistically use the phone path at all, and is an argum
 default bitrate on cellular than on wifi. The compositor side of the programme never sees this cost,
 so if it is not recorded here nothing records it.
 
-Results:
+Results — **ABORTED at about minute 97, 2026-09-12.** Ingest ran 10:28:51Z to
+about 11:02:09Z (33 min 18 s of the intended 180) and then stopped. adb was lost
+in the same window. Nothing below is a three-hour result, and the criteria the
+protocol never reached are marked *not reached* rather than left blank, so an
+empty cell cannot be mistaken for a pass.
 
 | Criterion | Result | Evidence |
 |---|---|---|
-| 1 | | `.p5/device/*.csv` |
-| 2 | | peak status, minute first reached 3 |
-| 3 | | 60 s rolling mean of `videoBitrate`: min / median / p5 |
-| 4 | | recordings count after mark-5 |
-| 5 | | ENDLIST time, reconnect seconds |
-| 6 | | watcher lines mark-2..3 |
-| 7 | | screenshot · ffprobe |
-| 8 | | ffmpeg volumedetect |
-| 9 | | |
+| 1 | **Partial.** 596 of 596 publishing samples (100%) over the first ~14 min, from the only CSV pulled before adb was lost. The full-run figure needs the device CSV | `run-a-partial.csv` via `telemetry-report.ts` |
+| 2 | **Pass so far.** Peak status 2, never reached 3, through 11:02Z. Battery 32.7 → 39.4 °C, headroom 0.53 → 0.77 | sample rows to `atMs` 1789210940300 |
+| 3 | **Pass so far.** 60 s rolling means, min **4027.0** / median **4181.2** / p5 **4094.7** kbps, all above the 3000 floor. Reads high because it counts audio, container and SRT overhead, as the note above says | `telemetry-report.ts` on the partial CSV |
+| 4 | **Not reached.** The minute-65 outage never happened — the driver issued it after adb was gone | — |
+| 5 | **Not reached.** No minute-125 outage, so the split question is untested | — |
+| 6 | **Indeterminate, and the reason matters.** Delivery stopped 3 min 22 s into the 10-minute screen-off window: one recording, 1998.23 s, `ready`, created 10:28:51Z, against screen-off at 10:58:47Z. The watcher independently froze at head 997 and read `stalled` from 11:02:51Z. **Two causes fit equally well** — Android power management killing the session, or the USB cable coming out for a power-supply swap in the same window, which independently explains the adb loss. Not written up as a lifecycle finding until the device CSV separates them: a `dropped` event with samples continuing afterwards means the former, samples stopping dead means the latter | `cf.ts videos`, `p5-run-a.hls2.csv` |
+| 7 | **Not reached.** No minute-95 rotation | — |
+| 8 | **Not reached** | — |
+| 9 | **Not reached**, but the supply is a finding in itself: `Max charging current: 900000` µA at 5 V, i.e. **4.5 W** from the MacBook's port, against a 720p30 encode plus an LTE radio. Battery fell 68% → 57% by minute 39, between 14.7 and 28%/hour depending on the window. A power bank or powered hub is a prerequisite, not a convenience | `dumpsys battery` |
+
+Two mid-run interventions, both recorded so the curves stay readable:
+
+- **Brightness lowered** at ~10:39Z (3622 and adaptive → 80 and manual), marked
+  `brightness-lowered-for-battery`. It did **not** slow the drain measurably.
+- **The unplug at minute 35 was simulated** with `dumpsys battery unplug`, marked
+  `mark-2-unplug-simulated`. See the protocol note above.
+
+And one measurement trap, paid for here: the handset's last sample claimed
+`streaming=true` at 4.4 Mbps about **11 seconds after Cloudflare had stopped
+receiving**, because `videoBitrate` is the delta of the SRT endpoint's
+cumulative `bytesWritten` and retransmissions into a broken link still count.
+**Measured egress is not delivery.** Criterion 3 says what the endpoint sent;
+only the playlist head says what arrived. Read them together or not at all.
 
 Thermal curve (minute → status, headroom, battery °C):
 
