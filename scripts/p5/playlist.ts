@@ -89,12 +89,18 @@ export function judge(
  * stayed `waiting`, because consecutive polls differed only in `lps`. The first
  * version of this fix traded a false green for a false red.
  *
- * The URL also carries `llhlsHBs`, but do not read that as Low-Latency HLS: this
- * account serves STANDARD HLS — measured 2026-09-12, `#EXT-X-TARGETDURATION:2`
- * with plain 2 s segments and no `EXT-X-PART`, `EXT-X-PRELOAD-HINT` or
- * `EXT-X-SERVER-CONTROL`. Cloudflare's LL-HLS is an opt-in beta and is off here,
- * so the machinery is wired and simply not emitting partials. It matters to
- * `judge`: a 2 s target duration puts the stall threshold at 6 s, not 12.
+ * The URL also carries `llhlsHBs`, but that is not Low-Latency HLS. What this
+ * watcher pulls is STANDARD HLS: `#EXT-X-TARGETDURATION:2`, plain 2 s segments,
+ * no `EXT-X-PART`. Low latency does exist on this account, but only with all three
+ * of: `preferLowLatency: true` on the input (a GET omits the key until it is set),
+ * the player requesting `manifest/video.m3u8?protocol=llhls` (the plain URL stays
+ * standard even when the field is on), and a broadcast with no B-frames. Measured
+ * 2026-09-13, RTMPS only — SRT into a low-latency input is unmeasured.
+ *
+ * It matters to `judge` because the stall threshold derives from the target
+ * duration: 2 on the standard playlist gives 6 s, while the low-latency playlist
+ * reported 3, which gives 9 s. A watcher pointed at the llhls URL changes its own
+ * sensitivity without any code changing.
  */
 export function variantKey(uri: string): string {
   try {
