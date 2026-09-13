@@ -197,11 +197,17 @@ with the framework seeing charging throughout. Until that runs, the class
 statement above stands and "Android power management kills a publishing
 foreground service after 3.5 minutes of screen-off" does **not**.
 
-The kill record itself is gone: `logcat -b events` reaches back only to
-12:47:56Z, about 1 h 45 m after the death. What that buffer does show is this
-handset's OEM killer working hard — `am_kill … o-kill(4010)` taking
-`com.oplus.camera`, Spotify, Instagram and others — which is circumstantial
-support for the hypothesis and no more.
+**On-device CSV closed the remaining gap (pulled 2026-09-12 evening as
+`p5-1789208313554.csv` → `.p5/run-a-full.csv`).** Across 2488 rows there is
+**no `dropped`, no `error`, no `fell-back`, no `service-stopped`** — only
+`armed` / `connecting` / `publishing` / `service-started` / three marks /
+four rotations, then samples. The file ends on a `streaming=true` SRT sample
+at 11:02:20.300Z. So the process was killed (or frozen past flush) without the
+transport layer observing a close. The kill record in `logcat -b events` is
+still gone — that buffer only reaches back to 12:47:56Z, about 1 h 45 m after
+the death — and what it does show is this handset's OEM killer working hard
+(`am_kill … o-kill(4010)` taking `com.oplus.camera`, Spotify, Instagram and
+others), which remains circumstantial support and no more.
 
 The generalisable part is not criterion 6 failing. It is this: **device
 reachability is not publisher liveness.** A health check that pinged the handset,
@@ -269,6 +275,25 @@ real handset drop is never a clean close. Both cells are ours to run: SRT ingest
 never started a broadcast on the bench account at all, so that arm was never
 available there.
 
+**Status 2026-09-12 evening — cells not scored.** The afternoon handset session
+(`p5-1789214162964.csv`, CF video `79c59856…`, 400.65 s) is **not** those two
+cells. Timeline:
+
+| Time (Z) | What |
+|---|---|
+| 15:20:27.982 | SRT `publishing` (`connectMs=796`) |
+| 15:20:40.249 | RTMPS `publishing` (`connectMs=533`) — **11.7 s of SRT, then RTMPS** |
+| 15:20:44–15:21:35 | Peek marks; both browser and default UAs get **404** |
+| 15:21:30–15:21:35 | mark-1…mark-8 fired in a 5 s burst (not protocol spacing) |
+| 15:27:08.885 | Ingest ends (created + 400.65 s) |
+| 15:27:16.692 | Last device sample, still `streaming=true` / `rtmps` / screen off |
+
+No `dropped`, no `fell-back` event — the transport flip is a second
+`connecting`/`publishing` pair, not C1's fallback signal. One recording, almost
+entirely RTMPS after the first 12 s. No `hls-watch` CSV for this window landed
+in `.p5/`, so hold-to-204 cannot be reconstructed. **H-P5-1 remains open;**
+re-run the two SRT cells with the watcher teed.
+
 ## Runs
 
 ### Run A — SRT, cellular, 3 h
@@ -322,10 +347,28 @@ empty cell cannot be mistaken for a pass.
 | 3 | **Pass.** 60 s rolling means over the full window: min **3949.2** / median **4181.0** / p5 **4158.1** kbps, all above the 3000 floor. Reads high because it counts audio, container and SRT overhead, as the note above says | `telemetry-report.ts` on `run-a-full.csv` |
 | 4 | **Not reached.** The minute-65 outage never happened — the driver issued it after adb was gone | — |
 | 5 | **Not reached** as designed — no minute-125 outage, so the split is untested. But the unplanned death answered something more useful: **no `EXT-X-ENDLIST` is ever served at `timeoutSeconds=180`.** My playlist sat frozen at head 997 for ~3.5 min, last 200 at 11:05:50.9Z still serving segments, then master 204 at 11:05:55.0Z — a 4.16 s gap, too small for an ENDLIST to appear and vanish inside. A controlled pair run elsewhere on this account settles that it is the *value* and not the manner of ending: a clean cut (SIGINT, trailer written) and an abrupt death (SIGKILL) both reached 204 with no ENDLIST, at +183.5 s and +182.8 s — 0.7 s apart — while 10 and 60 both emit one at ≈ timeout + 3 s. **Consequence for the whole programme: nothing may treat `EXT-X-ENDLIST` as the end-of-stream signal, because at the value we would configure it never arrives.** One difference stays open: my hold ran **225.2 s** from ingest end (212.3 s from the last head advance) against their 183 s, and my detection uncertainty is only 4.16 s, so it is not measurement lag. See **H-P5-1** for the proposed mechanism and the two cells that would settle it | `p5-run-a.hls2.csv` lines 673–759 |
-| 6 | **Failed, and the cable is largely exonerated.** Delivery stopped 3 min 22 s into the 10-minute screen-off window. Three independent clocks separate the two candidate causes without needing the handset: ingest stopped at **11:02:09.8Z** (10:28:51.599Z plus the recording's own 1998.23 s); the device wrote its **last telemetry row at 11:02:20.7Z**, still claiming `streaming=true` at 4.4 Mbps; and **adb was still alive at 11:02:51–57Z**, when a background check successfully ran `adb shell` against that CSV. So the cable was still connected when delivery ended, and the 1 Hz sampler had stopped writing ~35 s before a read that still worked — with `SpikeLog` flushing on every write, that is not buffering. The app stopped while the device was reachable, which points at the process being killed or frozen during screen-off rather than at the unplug. Still missing for the mechanism: whether a `dropped` event was written, which needs the on-device CSV | `cf.ts videos`, `p5-run-a.hls2.csv`, the 11:02:5x watcher output |
-| 7 | **Not reached.** No minute-95 rotation | — |
-| 8 | **Not reached** | — |
-| 9 | **Not reached**; the floor over charging rows was 57% when the run died. The supply is a finding in itself: `Max charging current: 900000` µA at 5 V, i.e. **4.5 W** from the MacBook's port, against a 720p30 encode plus an LTE radio. Battery fell 68% → 57% by minute 39, between 14.7 and 28%/hour depending on the window. It is not marginal: after the relaunch, **idle and not publishing**, the handset still lost 61% → 54% in 53 min on the same supply. A power bank or powered hub is a prerequisite, not a convenience | `dumpsys battery`, `run-a-full.csv` |
+| 6 | **Failed, and the cable is largely exonerated.** Delivery stopped 3 min 22 s into the 10-minute screen-off window. Three independent clocks separate the two candidate causes without needing the handset: ingest stopped at **11:02:09.8Z** (10:28:51.599Z plus the recording's own 1998.23 s); the device wrote its **last telemetry row at 11:02:20.7Z**, still claiming `streaming=true` at 4.4 Mbps; and **adb was still alive at 11:02:51–57Z**, when a background check successfully ran `adb shell` against that CSV. So the cable was still connected when delivery ended, and the 1 Hz sampler had stopped writing ~35 s before a read that still worked — with `SpikeLog` flushing on every write, that is not buffering. The app stopped while the device was reachable, which points at the process being killed or frozen during screen-off rather than at the unplug. **Mechanism from on-device CSV:** zero `dropped` / `error` / `service-stopped` rows — the process ceased without the transport observing a close (see F-P5-3) | `cf.ts videos`, `p5-run-a.hls2.csv`, `.p5/run-a-full.csv`, the 11:02:5x watcher output |
+| 7 | **Not reached for the flip; partial on encoded orientation.** Minute-95 never happened, so the three P4 assertions (preview / encoded / rotation metadata across a 180° flip) cannot be scored. What the 33 min recording *does* show: encoded picture is **1280×720** landscape throughout (early / mid / late HLS samples), with **no rotation side_data** — pixels carry the orientation, not a display matrix. **Upright is confirmed by eye**, which geometry could not do: frames at t=300 s and t=1900 s both show floor signage whose lettering reads correctly, and a 180° rotation would invert it — a flipped picture is also 1280×720 landscape with no rotation matrix, so the columns above are consistent with an upside-down broadcast. Preview and flip still need a live handset | HLS samples from `94f526ff…` via ffprobe; download enabled at `…/downloads/default.mp4` |
+| 8 | **Fail** on every 20 s sample pulled from the recording. mean_volume **−42.3 / −47.9 / −60.2 dB** (early ~2 min / mid ~16 min / late ~30 min), all below the −40 dB floor. max_volume −19.2 / −20.1 / −38.9 dB. The mid reading matches the MP4 download byte-for-byte on volume, so this is not an HLS packaging artefact. Quiet room + phone mic, not a dead encoder — but the criterion is a level floor, and the floor was missed. **Not a screen-off mute either.** The late −60.2 dB reading sits on the screen-off boundary (t≈1797 s), which could have meant Android handing a backgrounded app a silenced mic, so a per-10 s RMS timeline of the whole audio rendition was taken: the level had already fallen to −57…−61 dB about **45 s before** screen-off; **0 of 200 windows are digital silence** (floor −66 dB, a quiet room's noise floor rather than zeros); and **−41 / −40 dB of real sound was captured at t=1955–1965 s with the screen off**. The `microphone` foreground service kept capturing through screen-off until the process died | `.p5/run-a-sample-{early,mid,late}.ts` + volumedetect; MP4 download mid agrees; `.p5/run-a-audio-rms10s.txt` |
+| 9 | **Not reached**; the floor over charging rows was 57% when the run died. The supply is a finding in itself: `Max charging current: 900000` µA at 5 V, i.e. **4.5 W** from the MacBook's port, against a 720p30 encode plus an LTE radio. Battery fell 68% → 57% by minute 39, between 14.7 and 28%/hour depending on the window. It is not marginal: after the relaunch, **idle and not publishing**, the handset still lost 61% → 54% in 53 min on the same supply. A power bank or powered hub is a prerequisite, not a convenience. **Retry 2026-09-12 afternoon:** handset is on the **Anker USB-C hub** (adb `12be753e` alive), still reporting the same **900 mA / 4.5 W** ceiling, and `batterystats` shows discharge steps into the mid-30%s while USB-powered — so this hub path is bus-powered (or under-powered) and does **not** yet clear the gate. Prefer a *wall-powered* hub so the existing adb driver survives; a power bank only if marks / screen / airplane / stop are redesigned without adb | `dumpsys battery`, `run-a-full.csv`; hub recheck via `adb` + `ioreg` |
+
+**Two things the frames settle that no column could.**
+
+The encoded stream carries **no overlay**. Frames 26 minutes apart are clean
+camera, while the device's own UI had the Tier A scorebug on screen throughout
+(`Live · H2 · seazn · ENG4 · CRO2` in the uiautomator dump). That is the
+architecture working as intended and not a defect: the phone is a camera with a
+network stack, and the scorebug is composited downstream by the browser source —
+which is precisely why §7 says the operator sees the score slightly *ahead* of
+what viewers see. It is recorded because the opposite is a natural assumption:
+anyone concluding from the on-screen preview that the phone burns the overlay
+into the broadcast would be wrong, and would then mis-size both the encode and
+the compositor's job.
+
+And the t=1900 s frame sits **inside the screen-off window**, showing correct,
+upright, properly framed picture. So criterion 6's failure was delivery stopping,
+not the camera path degrading first — the encoder was still doing its job when
+the process died.
 
 Two mid-run interventions, both recorded so the curves stay readable:
 
