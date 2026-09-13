@@ -370,6 +370,15 @@ upright, properly framed picture. So criterion 6's failure was delivery stopping
 not the camera path degrading first — the encoder was still doing its job when
 the process died.
 
+The final 72 seconds confirm it at frame level: **2160 frames at 30.02 fps, the
+largest interval 34 ms (one frame), none over 50 ms, the last frame at
+t=1998.49 s** — the recording's own end. Delivery ran at an unbroken cadence and
+then stopped. One caveat travels with that: Cloudflare re-encodes at a constant
+30 fps, and a constant-rate transcoder can paper over an ingest gap by repeating
+frames, which on a static scene would be invisible. So the cadence is consistent
+with an abrupt kill rather than proof of one; the case rests on it together with
+the audio timeline and the handset's own 4.1–4.4 Mbps to its last sample.
+
 Two mid-run interventions, both recorded so the curves stay readable:
 
 - **Brightness lowered** at ~10:39Z (3622 and adaptive → 80 and manual), marked
