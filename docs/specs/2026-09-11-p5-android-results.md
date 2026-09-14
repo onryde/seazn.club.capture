@@ -387,6 +387,25 @@ Three consequences:
    the video pipeline (a reconnect did it here), never leave it silent.
 3. **It needs a repro**: reconnect cells under the soak's conditions, with the frame counters on.
 
+**Candidate mechanism (read from StreamPack 3.2.0's source and matched to Soak A's events; not
+reproduced).** In `EncodingPipelineOutput`:
+
+- `setTargetRotation` while streaming only stores `pendingTargetRotation`.
+- Every `stopStream` runs `resetVideoEncoder()`. That emits a null input surface, then applies the pending
+  rotation or, when there is none, calls `videoEncoder.reset()`.
+- A pending rotation *equal to the current one* changes nothing, so the encoder is neither rebuilt nor
+  reset, and its input surface is never offered again.
+
+Soak A was armed at rotation 1 and logged `rotation value=0` then `value=1` while streaming
+(16:59:19–26Z), leaving a pending rotation of 1. The first stop after that was the 19:16:41Z drop, and it
+gave zero video. The next stop (19:27:28Z) had no pending rotation, so `reset()` ran and 30 fps returned.
+The same day's reconnect cells had no rotation while streaming, which would explain why this is
+conditional.
+
+The repro: publish, rotate the handset while live so a same-value rotation is left pending, force a
+reconnect, and expect flat video frames with audio flowing. AGENTS.md §6 locks the app to landscape, so
+the product engine must never call `setTargetRotation` while streaming, or must prove it safe (P4).
+
 Without the delivery columns added for this run (`890da01`), this soak would have read as F-P5-4 again:
 connected, streaming, and nothing to say why.
 
@@ -839,6 +858,26 @@ Two event rows carry more than their name since the rehearsal:
 
 `mark` rows come from either the pushed `p5-mark` file or the Mark button; they are indistinguishable
 on purpose, so the protocol can use whichever the moment allows.
+
+### What the delivery safeguards added (`7f714e7`, `41261b3`, `b6dd050`)
+
+- **Column 25 `videoTargetBitrate`:** the regulator's current video target in bps. It is blank before the
+  first tick of each attempt and whenever no regulator runs. The target is not a rate cap: StreamPack sets
+  no bitrate mode, and Soak A's egress overshot its 3000k target.
+- **New events:**
+  - `regulator` (`transport`, `floorBps`, `ceilingBps`, `startBps`)
+  - `video-stalled` (`msSinceAdvance`, `videoFrames`, `audioAdvancing`, `transport`)
+  - `video-recovery` (`attempt`, `simulated`)
+  - `video-recovered` (`msStalled`)
+  - `video-recovery-failed`
+  - `video-stall-simulation` (`present`)
+- **New fields and drop reason:** `dropped` gains `reason=video-stalled`, and `service-started` gains
+  `simulateVideoStall`.
+- **`videoState` rides the 1 Hz snapshot, not the CSV:** `ok`, `stalled`, `recovering`, `failed` or `idle`.
+  The HUD says `LIVE <transport>` only for `ok`. Otherwise it shows `NO VIDEO — recovering`,
+  `NO VIDEO — stopped recovering`, `waiting for video` or `not publishing`.
+- **Test hook:** an empty file `p5-simulate-video-stall` in the app's files dir makes the endpoint discard
+  video frames until a recovery deletes it.
 
 ## Before the runs
 
