@@ -280,6 +280,15 @@ derived from the playlist loosens precisely when the stream starts going wrong;
 it has to come from the segment length we configure, not from what the platform
 declares.
 
+**Fixed 2026-09-14.** The threshold is now three of the segments we configure
+(`stallThresholdMs(2)` = 6 s), passed into `judge`, and written on every CSV row
+as `stallAfterMs`. The margin is measured: on the two healthy SRT cells the head
+never went more than 4.63 s between advances. Replayed through the new rule, those
+two cells call no stall before their cuts and call each stall 3.3 s and 4.4 s
+sooner after them; this retry's watcher file gains 20 stalled polls. Tests drive a
+target duration that grows to 8 and require a 10 s frozen head to be a stall;
+putting the old derivation back turns them red.
+
 **It also breaks a clock this document relies on.** "Last media received =
 recording created + duration" puts the end of this recording at 10:33:37Z, and the
 retry was first written up as having stopped then. It had not. The recording's
