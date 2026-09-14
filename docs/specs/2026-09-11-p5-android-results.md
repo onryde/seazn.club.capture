@@ -238,6 +238,64 @@ And the watcher took 17.2 s to call the stall where a `targetDuration` of 2
 implies 6 s; that remains unexplained, because the watcher did not record the
 target duration it actually saw. It does now.
 
+### F-P5-4 — the broadcast fell to a few frames a second for half an hour, and no signal we collect noticed
+
+Found in the recording of the invalid H-P5-1 cell 1 retry (2026-09-13, input
+`faa37499…`, video `3eaa12e0…`, 2342.22 s), which ran unattended for about 50
+minutes after its driver failed: screen on, overlay on, cellular with wifi off, on
+the supply that fails under load.
+
+What the recording holds, by ffprobe packet cadence on its renditions:
+
+| Media time | Video, 720p rendition | Audio rendition | Segments |
+|---|---|---|---|
+| 100–1200 s | **30.02 fps**, largest gap 34 ms, in every 10 s window sampled (100, 700, 900, 1100, 1200 s) | **46.88 packets/s** at 300 s, the full AAC rate | ~2 s |
+| ~1227 s to the end | **3.2–9.1 fps** in every window sampled (1240, 1300, 1500, 1800, 2000, 2300 s) | **6.36 packets/s** at 2140 s, about one AAC frame in seven | 126 segments of 4.5–15.1 s |
+
+What every other witness said over the same wall-clock window:
+
+- **The app:** `streaming=true` in every 1 Hz sample to its last at 10:44:25Z,
+  measured egress 3–4 Mbps median per minute, no `dropped` event after 09:58:16Z.
+- **Cloudflare's live input status:** SRT `connected` from 09:58:16.792Z, unbroken,
+  until `disconnected` with reason `client_disconnect` at 10:44:56.762Z.
+- **Thermal:** status 3 (severe) from 10:01Z and **4 (critical) from 10:23Z**,
+  battery 47.8 °C. That is criterion 2's failure line, reached about 29 minutes
+  into a publish; Run A stayed at 2 over its 33 minutes, with brightness lowered
+  and the screen off for part of them.
+
+So the connection was up, the app was sending, the platform was recording — and
+what it recorded is a slideshow with one-seventh of its sound. Criteria 1 and 3
+would both have passed this window. A playlist-head check was not running after
+10:05:54Z, but segments kept arriving, only longer and emptier, so head movement
+would most likely have passed too. **Delivery has to be measured in frames and
+audio packets, not in connection state, egress or playlist movement.**
+
+**It also breaks a clock this document relies on.** "Last media received =
+recording created + duration" puts the end of this recording at 10:33:37Z, and the
+retry was first written up as having stopped then. It had not. The recording's
+final seconds show the handset being picked up and moved, which the device logged
+at 10:43:46Z (charging false) and 10:43:51Z (rotation), and Cloudflare saw the
+client leave at 10:44:56Z. Roughly 650 s of wall clock is absent from the media
+timeline, audio and video alike. The arithmetic holds only for a recording whose
+segments are regular: Run A's 998 segments were 996 at ~2 s, so its figures stand,
+but every recording has to pass that check before created + duration is used.
+
+**Mechanism: open.** Onset at media ≈1227 s is about 10:15Z, inside thermal severe
+but eight minutes before critical, so the thermal transitions do not line up with
+it. Two candidates the data cannot separate: media lost in transport (SRT dropping
+packets that arrive later than its 2000 ms latency, and Cloudflare discarding what
+it cannot decode), or capture and encode starving on a hot handset while the
+endpoint kept writing — egress counts retransmissions, so 3–4 Mbps does not
+exclude either. The telemetry cannot tell them apart because it records neither
+the encoder's output frames nor SRT's own counters. **Retry requirement: add
+encoded video frames, encoded audio frames, and SRT sent / retransmitted /
+dropped packets and RTT to the 1 Hz sample.**
+
+Evidence: `.p5/p5-h1-cell1-retry.device.csv`; `cf.ts videos
+faa37499c97f16d4ed392f95b4f80f60`; the live input's `status` from the Stream API;
+ffprobe packet cadence on the recording's 720p and audio renditions; frames
+extracted at 60, 1200, 2280, 2320, 2335 and 2341 s.
+
 ### H-P5-1 (hypothesis, with its test) — on SRT the hold may start late, so dropout tolerance is not the configured number
 
 Run A's hold ran **225.2 s** from ingest end against **183 s** measured over RTMPS
@@ -350,7 +408,7 @@ empty cell cannot be mistaken for a pass.
 | 6 | **Failed, and the cable is largely exonerated.** Delivery stopped 3 min 22 s into the 10-minute screen-off window. Three independent clocks separate the two candidate causes without needing the handset: ingest stopped at **11:02:09.8Z** (10:28:51.599Z plus the recording's own 1998.23 s); the device wrote its **last telemetry row at 11:02:20.7Z**, still claiming `streaming=true` at 4.4 Mbps; and **adb was still alive at 11:02:51–57Z**, when a background check successfully ran `adb shell` against that CSV. So the cable was still connected when delivery ended, and the 1 Hz sampler had stopped writing ~35 s before a read that still worked — with `SpikeLog` flushing on every write, that is not buffering. The app stopped while the device was reachable, which points at the process being killed or frozen during screen-off rather than at the unplug. **Mechanism from on-device CSV:** zero `dropped` / `error` / `service-stopped` rows — the process ceased without the transport observing a close (see F-P5-3) | `cf.ts videos`, `p5-run-a.hls2.csv`, `.p5/run-a-full.csv`, the 11:02:5x watcher output |
 | 7 | **Not reached for the flip; partial on encoded orientation.** Minute-95 never happened, so the three P4 assertions (preview / encoded / rotation metadata across a 180° flip) cannot be scored. What the 33 min recording *does* show: encoded picture is **1280×720** landscape throughout (early / mid / late HLS samples), with **no rotation side_data** — pixels carry the orientation, not a display matrix. **Upright is confirmed by eye**, which geometry could not do: frames at t=300 s and t=1900 s both show floor signage whose lettering reads correctly, and a 180° rotation would invert it — a flipped picture is also 1280×720 landscape with no rotation matrix, so the columns above are consistent with an upside-down broadcast. Preview and flip still need a live handset | HLS samples from `94f526ff…` via ffprobe; download enabled at `…/downloads/default.mp4` |
 | 8 | **Fail** on every 20 s sample pulled from the recording. mean_volume **−42.3 / −47.9 / −60.2 dB** (early ~2 min / mid ~16 min / late ~30 min), all below the −40 dB floor. max_volume −19.2 / −20.1 / −38.9 dB. The mid reading matches the MP4 download byte-for-byte on volume, so this is not an HLS packaging artefact. Quiet room + phone mic, not a dead encoder — but the criterion is a level floor, and the floor was missed. **Not a screen-off mute either.** The late −60.2 dB reading sits on the screen-off boundary (t≈1797 s), which could have meant Android handing a backgrounded app a silenced mic, so a per-10 s RMS timeline of the whole audio rendition was taken: the level had already fallen to −57…−61 dB about **45 s before** screen-off; **0 of 200 windows are digital silence** (floor −66 dB, a quiet room's noise floor rather than zeros); and **−41 / −40 dB of real sound was captured at t=1955–1965 s with the screen off**. The `microphone` foreground service kept capturing through screen-off until the process died | `.p5/run-a-sample-{early,mid,late}.ts` + volumedetect; MP4 download mid agrees; `.p5/run-a-audio-rms10s.txt` |
-| 9 | **Not reached**; the floor over charging rows was 57% when the run died. The supply is a finding in itself: `Max charging current: 900000` µA at 5 V, i.e. **4.5 W** from the MacBook's port, against a 720p30 encode plus an LTE radio. Battery fell 68% → 57% by minute 39, between 14.7 and 28%/hour depending on the window. It is not marginal: after the relaunch, **idle and not publishing**, the handset still lost 61% → 54% in 53 min on the same supply. A power bank or powered hub is a prerequisite, not a convenience. **Retry 2026-09-12 afternoon:** handset is on the **Anker USB-C hub** (adb `12be753e` alive), still reporting the same **900 mA / 4.5 W** ceiling, and `batterystats` shows discharge steps into the mid-30%s while USB-powered — so this hub path is bus-powered (or under-powered) and does **not** yet clear the gate. Prefer a *wall-powered* hub so the existing adb driver survives; a power bank only if marks / screen / airplane / stop are redesigned without adb | `dumpsys battery`, `run-a-full.csv`; hub recheck via `adb` + `ioreg` |
+| 9 | **Not reached**; the floor over charging rows was 57% when the run died. The supply is a finding in itself, though not for the reason first written here: this row originally cited `Max charging current: 900000` µA at 5 V as a **4.5 W** ceiling, but on this build that field carries a broadcast timestamp of +1d19h, i.e. it is never refreshed, so it says nothing about any supply and **the 4.5 W figure is withdrawn**. The drain is what is measured. Battery fell 68% → 57% by minute 39, between 14.7 and 28%/hour depending on the window. It is not marginal: after the relaunch, **idle and not publishing**, the handset still lost 61% → 54% in 53 min on the same supply. A power bank or powered hub is a prerequisite, not a convenience. **Retry 2026-09-12 afternoon:** handset is on the **Anker USB-C hub** (adb `12be753e` alive), still reporting the same stale `Max charging current` (so no evidence either way), and `batterystats` shows discharge steps into the mid-30%s while USB-powered — so this hub path is bus-powered (or under-powered) and does **not** yet clear the gate. Prefer a *wall-powered* hub so the existing adb driver survives; a power bank only if marks / screen / airplane / stop are redesigned without adb. **Supply under load, 2026-09-13: FAIL.** With the battery full, only a charge counter held under encode load can prove a supply, so it was sampled every 15 s through 11.4 min of continuous SRT publish: **3,722,000 → 3,530,000 µAh, 192 mAh in 684.7 s = 16.8 mAh/min**, against a pre-registered pass of about 2 mAh/min and 10–18 on the old supply. Battery 33.8 → 43.4 °C. The display read **100%** and the HUD **charging** throughout while 192 mAh drained, so criterion 9 is read from the charge counter, never the percentage or the charging flag. `Battery current` on this OPLUS build is negative when charging and positive when discharging, so the positive values seen during Run A were net discharge. From full at that rate a 3 h soak ends near 19%, under the floor: the soak still needs a wall-powered supply; the few-minute H-P5-1 cells do not | `dumpsys battery`, `run-a-full.csv`; hub recheck via `adb` + `ioreg`; `.p5/p5-h1-clean-20260913T095410Z.power.csv` |
 
 **Two things the frames settle that no column could.**
 
@@ -416,6 +474,41 @@ the RTMPS credentials in the same payload are the real ones.
 
 Every peek writes a `peek-<default\|browser>-at-subscribe-<status>` mark the moment it subscribes, so
 an otherwise empty peek row means the peek was never opened — not that `statusChange` stayed silent.
+
+### B-frames at the source (retry requirement 8)
+
+Low-latency HLS on this account needs a broadcast with no B-frames, and a
+downstream pull cannot say whether the phone sends any: Cloudflare's standard
+pipeline adds them when it re-encodes (`has_b_frames=2` delivered from a publish
+verified to have none). So the question is read from the encoder's own output.
+
+**Library level.** StreamPack 3.2.0 never sets `max-bframes`: the key is absent
+from the whole of core's `classes.jar`, while `profile`, `level` and
+`i-frame-interval` are present. The spike's `VideoConfig` passes only mime,
+3 Mbps, 1280×720, 30 fps and a 2 s GOP, so the profile comes from StreamPack's
+`avcProfilePriority` — High, Main, Extended, Baseline, ConstrainedHigh,
+ConstrainedBaseline — where the first profile the device's encoder advertises
+wins. A Snapdragon 8 Gen 1 advertises High, which permits B-frames. Whether they
+appear is the encoder's default, not our configuration.
+
+**On device, 2026-09-14: none.** The phone published RTMP to an ffmpeg listener
+on the laptop through `adb reverse tcp:1935`, written `-c copy` to FLV so nothing
+re-encodes. RTMP only because adb reverse carries TCP; B-frames are an encoder
+property, the same whichever transport carries them. A 25 s capture read
+`profile=High`, 1280×720, `has_b_frames=0`, and frames **13 I + 737 P + 0 B**:
+750 frames at 30 fps, an IDR about every 2 s. The detector was proven both ways
+first, on known libx264 encodes: `-bf 0` read zero B-frames, and the default read
+`has_b_frames=2` with 88 B.
+
+**What it does not settle.** This is one SoC's default. Nothing in our
+configuration keeps B-frames out, so a volunteer's handset whose encoder does
+emit them would silently lose low latency. The capture engine should decide it
+explicitly — `max-bframes = 0` through `VideoCodecConfig`'s `customize` hook, or a
+forced ConstrainedHigh profile, which carries no B-slices by definition — rather
+than inherit a library default. SRT into a low-latency input (retry requirement
+9) is still unmeasured: every low-latency measurement so far was RTMPS.
+
+Evidence: `.p5/bframe-20260914T153644Z.log`.
 
 ## The telemetry CSV
 
