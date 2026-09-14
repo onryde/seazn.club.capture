@@ -788,6 +788,12 @@ run: a repeat with `validated=true` and a well-formed shape would move the findi
 
 ## Follow-ups
 
+- **The recordings cited as evidence above no longer exist.** On 2026-09-14, with the owner's
+  approval, every test input from Run A, the H-P5-1 cells and the reconnect cells was deleted with its
+  recordings (`cf.ts cleanup`, one input at a time): Run A's `94f526ff…` and `79c59856…`, F-P5-4's
+  `3eaa12e0…`, and `e2f192ec…`, `ad27e224…`, `d4036285…`, `69e03e52…`. The figures here, the watcher
+  and status CSVs, and the extracted frames under `.p5/` and the session scratchpad are what remain;
+  nothing more can be read from those recordings.
 - `main`'s `eas.json` `soak` profile extends `development` (a dev client that needs Metro); fix
   before any soak build from `main`. The spike branch's copy is fixed — it extends `base`, builds an
   internal-distribution APK, and sets `EXPO_PUBLIC_SEAZN_SOAK=1` — but the branch is never merged,
