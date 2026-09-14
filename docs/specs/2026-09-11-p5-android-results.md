@@ -414,11 +414,11 @@ What it settles:
 
 Still open:
 
-- **A reconnect inside the ~30 s notice window.** Whether Cloudflare accepts a new
-  SRT publisher on the same stream ID while it still holds the dead session is
-  unmeasured, and it is the uplink-loss case exactly. F-P5-2's reconnects do not
-  answer it: those sessions were closed by Cloudflare (`endpoint-closed`), so
-  there was nothing to wait out.
+- **A reconnect inside the ~30 s notice window — answered the same day: it is
+  accepted.** See *Reconnect inside Cloudflare's notice window* below. The note
+  first written here, that F-P5-2's sessions were closed by Cloudflare, read too
+  much into `endpoint-closed`: the 20 s cut produced the same reason with no
+  network at all, so it says the phone's endpoint closed, not who closed it.
 - **Run A's residual.** Its 225.2 s is 12.7 s more than the kill cell's 212.3 s.
   Run A's process died during screen-off rather than by force-stop (F-P5-3), and
   its input's status history has since been overwritten by a later session, so its
@@ -433,6 +433,63 @@ duration was usable here because both recordings pass F-P5-4's regularity check:
 `.p5/p5-h1-clean-20260914T154012Z.*` and `.p5/p5-h1-kill-20260914T155017Z.*`
 (driver log, watcher CSV, power samples, device CSV); inputs `fab08b34…` and
 `766971f7…`; videos `e2f192ec…` and `ad27e224…`.
+
+### Reconnect inside Cloudflare's notice window — measured 2026-09-14
+
+H-P5-1 left one question: a phone that loses its uplink leaves no close behind,
+Cloudflare takes ~30 s to notice, and a reconnect inside that window might be
+refused while the platform still holds the dead session. Two cells on the OnePlus,
+cellular with wifi off, a fresh input each, mobile data switched off with
+`svc data disable` (measured first: data returns in ~0.9 s, airplane mode in
+~3.0 s), and Cloudflare's live input status sampled every second.
+
+| | 10 s cut | 20 s cut |
+|---|---|---|
+| Data off → on | 16:11:59.35 → 16:12:09.83Z (10.5 s) | 16:20:18.14 → 16:20:38.39Z (20.2 s) |
+| The app | no `dropped`; `streaming=true` throughout | `dropped` (`endpoint-closed`) 6.0 s after the cut; retries every 2 s failed on DNS with `validated=false`, so none counted toward fallback; `publishing` 2.3 s after restore |
+| Egress column during the cut | 3.5–4.5 Mbps with `network=none` | 3.1–5.7 Mbps with `network=none` until the drop |
+| Cloudflare status | `connected` unbroken from 16:10:46Z to the clean stop | new session `connected` 16:20:41.150Z; old session `client_disconnect` 16:20:48.867Z |
+| Playlist head | frozen ~8.8 s; `stalled` after 6 s; same variant | frozen ~25.4 s; `stalled` after 6.2 s; moving again 16:20:47.1Z in the same variant |
+| Recordings | **1** (165.68 s) | **1** (161.99 s) |
+| The seam | one 0.121 s video PTS gap at media 75.3 s; one 1.75 s segment | one 0.158 s video and 0.224 s audio PTS gap at media 74.0 s; all 81 segments regular; no discontinuity tag |
+| Wall time absent from the recording | ~11 s | ~25 s |
+| Hold after the clean stop, from Cloudflare's disconnect | 182.38 s | 182.43 s |
+
+What it settles:
+
+- **Cloudflare accepts a reconnect while it still holds the dead session.** The new
+  SRT session connected 7.7 s before Cloudflare declared the old one gone, on the
+  same stream ID, and the broadcast carried on in the same playlist variant and
+  the same recording. No refusal, so no fallback provoked by one.
+- **A dead network does not trigger fallback.** Retries during the cut failed on
+  name resolution with `validated=false`, which the engine does not count toward
+  C1's three failures, so the phone came back on SRT as designed.
+- **Lost seconds are spliced out of the recording.** Both recordings are single,
+  regular and continuous, with a seam of a few hundred milliseconds where 11 s and
+  25 s of wall time went, and nothing in the playlist marks the place. It is
+  F-P5-4's missing 650 s reproduced on demand: a recording's duration is media
+  received, never time on air.
+- **A ~10 s cut never reaches the session layer.** No drop on the phone, no
+  disconnect at Cloudflare. Only the playlist showed it, as a stall the new 6 s
+  threshold caught and the old 9 s one would not have.
+- **Criterion 4's shape on SRT:** a drop well inside the hold resumes into one
+  recording, at 10 s and at 20 s. Run A never reached its minute-65 outage, so this
+  is the first evidence for it on this transport.
+- **The hold is four for four:** 182.45, 182.53, 182.38 and 182.43 s from
+  Cloudflare's disconnect.
+
+Still open:
+
+- **Why the 10 s cut left the session alive.** The 20 s cut dropped 5 s after the
+  phone reported no network, yet the 10 s cut had 8 s with no network and no drop.
+  So survival is not a fixed timeout, and this is not understood.
+- **What a viewer's player does at the seam** — rebuffer, skip, or stall out — is
+  unmeasured.
+
+Evidence: `.p5/p5-reconnect-10s-20260914T161013Z.*` and
+`.p5/p5-reconnect-20s-20260914T161826Z.*` (driver log, watcher CSV, Cloudflare
+status CSV, power samples, device CSV); inputs `919db59b…` and `a7db40f5…`; videos
+`d4036285…` and `69e03e52…`.
 
 ## Runs
 
