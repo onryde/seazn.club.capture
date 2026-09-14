@@ -805,3 +805,8 @@ run: a repeat with `validated=true` and a well-formed shape would move the findi
   the flag without clearing the cache silently produces an APK for the other mode. The APK for these
   runs is safe (its bundle task reported "Bundler cache is empty, rebuilding"), but any rebuild needs
   a cold cache. This is a general trap for `EXPO_PUBLIC_*`-gated behaviour, not a spike-only one.
+  **Scope, found 2026-09-14:** the trap cannot bite a Gradle release build. React Native's
+  Gradle plugin passes `--reset-cache` to every bundle command it runs
+  (`BundleHermesCTask.kt:155` in `@react-native/gradle-plugin` 0.86.3), which is why every
+  `assembleRelease` log says the bundler cache is empty. It bites a hand-run Metro or
+  `expo export:embed` without `--reset-cache`.
