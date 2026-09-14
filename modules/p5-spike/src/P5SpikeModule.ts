@@ -30,7 +30,15 @@ export type SpikeSample = {
   readonly srtBandwidthMbps: number | null;
   /** The bitrate regulator's video target in bits per second (F-P5-5); null when none is in force. */
   readonly videoTargetBitrate: number | null;
+  /** Native's account of the picture (F-P5-6). The HUD says LIVE only for `ok`. */
+  readonly videoState: VideoState;
 };
+
+/**
+ * VideoStallWatchdog.kt's states. `ok` means video frames are advancing in the current publish.
+ * `idle` means not publishing, or no frame yet. `failed` means auto-recovery has stopped.
+ */
+export type VideoState = 'ok' | 'stalled' | 'recovering' | 'failed' | 'idle';
 
 export type SpikeEvent = { readonly kind: string; readonly atMs: number } & Readonly<
   Record<string, unknown>

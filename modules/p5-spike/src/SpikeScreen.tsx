@@ -13,8 +13,9 @@ import { useVideoPlayer, VideoView } from 'expo-video';
 import { ErrorBoundary } from '@/ui/components/ErrorBoundary';
 import { OverlayPreview } from '@/ui/components/OverlayPreview';
 import { Text } from '@/ui/components/Text';
-import { colour, layout, space } from '@/ui/theme/tokens';
+import { colour, layout, space, status } from '@/ui/theme/tokens';
 import P5Spike from './P5SpikeModule';
+import { liveLine } from './liveLine';
 import { P5SpikePreview } from './P5SpikePreview';
 import { type SpikeState, useSpike } from './spikeStore';
 
@@ -169,11 +170,15 @@ function Hud() {
   const sample = useSpike(selectSample);
   const event = useSpike(selectLastEvent);
   if (sample === null) return <Text variant="metricUnit">{`Waiting… ${event?.kind ?? ''}`}</Text>;
-  const live = sample.streaming ? `LIVE ${sample.transport ?? ''}` : 'not publishing';
+  // F-P5-6: LIVE only while native reports video frames advancing. The streaming flag stayed up
+  // through eleven minutes without a picture.
+  const live = liveLine(sample);
   const charging = sample.charging ? ' · charging' : '';
   return (
     <View style={styles.hud}>
-      <Text variant="metricUnit">{live}</Text>
+      <Text variant="metricUnit" style={live.tone === 'caution' ? styles.caution : undefined}>
+        {live.text}
+      </Text>
       <Text variant="metricUnit">{`${decimal(sample.videoBitrate, 0, 1000)} kbps`}</Text>
       <Text variant="metricUnit">{`thermal ${decimal(sample.thermalStatus, 0)} · ${decimal(sample.thermalHeadroom, 2)}`}</Text>
       <Text variant="metricUnit">{`${decimal(sample.batteryPercent, 0)}% · ${decimal(sample.batteryTempC, 1)}°C${charging}`}</Text>
@@ -273,6 +278,8 @@ const styles = StyleSheet.create({
   stage: { flex: 1, backgroundColor: colour.stage, alignItems: 'center', justifyContent: 'center' },
   column: { width: layout.columnWidth, padding: space.sm, gap: space.sm },
   hud: { gap: space.xs },
+  /** AGENTS.md §5: red is ON AIR only, so a picture that is not reaching viewers reads orange. */
+  caution: { color: status.degraded },
   controls: { flex: 1, gap: space.md },
   actions: { flex: 1 },
   actionsContent: { flexGrow: 1, justifyContent: 'flex-end', gap: space.xs },

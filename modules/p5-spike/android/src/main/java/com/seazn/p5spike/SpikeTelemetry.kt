@@ -64,6 +64,9 @@ object SpikeTelemetry {
       // F-P5-5. Gated on streaming as well as cleared at the end of each attempt: a tick already in
       // flight when the controller stops must not leave a target standing on a not-publishing row.
       "videoTargetBitrate" to LinkRegulators.targetBps?.takeIf { streaming },
+      // F-P5-6: native's account of the picture. JS only renders it, and says LIVE only for `ok`.
+      // Not a CSV column: the video-* events already record every transition.
+      "videoState" to SpikeSession.watchdog.state.wire,
     ) + frames(streamer) + srt(streamer)
   }
 
