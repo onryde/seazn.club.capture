@@ -90,17 +90,22 @@ export function judge(
  * version of this fix traded a false green for a false red.
  *
  * The URL also carries `llhlsHBs`, but that is not Low-Latency HLS. What this
- * watcher pulls is STANDARD HLS: `#EXT-X-TARGETDURATION:2`, plain 2 s segments,
- * no `EXT-X-PART`. Low latency does exist on this account, but only with all three
+ * watcher pulls is STANDARD HLS: plain ~2 s segments, no `EXT-X-PART`. Low latency does exist on this account, but only with all three
  * of: `preferLowLatency: true` on the input (a GET omits the key until it is set),
  * the player requesting `manifest/video.m3u8?protocol=llhls` (the plain URL stays
  * standard even when the field is on), and a broadcast with no B-frames. Measured
  * 2026-09-13, RTMPS only — SRT into a low-latency input is unmeasured.
  *
  * It matters to `judge` because the stall threshold derives from the target
- * duration: 2 on the standard playlist gives 6 s, while the low-latency playlist
- * reported 3, which gives 9 s. A watcher pointed at the llhls URL changes its own
- * sensitivity without any code changing.
+ * duration, and that number is not stable. Standard inputs on 2026-09-13 and -14
+ * declared 3 over 2 s segments, not the 2 this comment used to state, so the
+ * threshold was 9 s; the low-latency playlist reported 3 as well. Worse, it grows
+ * and does not come back: one reconnect storm in the 2026-09-13 retry left two
+ * ~7 s segments, the playlist went 3 -> 4 -> 7 -> 8 within 90 s and declared 8 for
+ * the rest of the session, and the threshold went from 9 s to 24 s — least
+ * sensitive exactly while delivery was degrading (F-P5-4). The threshold should
+ * not come from the playlist; until it does not, read `targetDuration` beside
+ * every verdict in the CSV.
  */
 export function variantKey(uri: string): string {
   try {

@@ -270,6 +270,16 @@ would both have passed this window. A playlist-head check was not running after
 would most likely have passed too. **Delivery has to be measured in frames and
 audio packets, not in connection state, egress or playlist movement.**
 
+The watcher that did run had already been blunted. Its stall threshold is three
+target durations, and the playlist's target duration only grew: 3 at the start,
+4 at the first reconnect (09:57:24Z), 7 and then 8 by 09:58:46Z as the reconnect
+storm left two ~7 s segments, and 8 for every remaining poll. So after the first
+90 seconds the watcher needed **24 s** of a frozen head to say `stalled` instead
+of 9, and its 286 polls at target duration 8 never said it once. A threshold
+derived from the playlist loosens precisely when the stream starts going wrong;
+it has to come from the segment length we configure, not from what the platform
+declares.
+
 **It also breaks a clock this document relies on.** "Last media received =
 recording created + duration" puts the end of this recording at 10:33:37Z, and the
 retry was first written up as having stopped then. It had not. The recording's
