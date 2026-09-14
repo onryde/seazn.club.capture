@@ -762,6 +762,71 @@ Evidence:
 - The live diagnosis capture `p5-soak-a-20260914T165838Z.diag-20260914T192258Z/`: screenshots, logcat,
   camera, services, thermal, power and process dumps.
 
+### Delivery safeguards on the device — 2026-09-14 evening
+
+**Setup.**
+
+- **Build:** the safeguards build (`7f714e7`, `41261b3`, `b6dd050`) on the OnePlus.
+- **Uplink:** roaming cellular with wifi off, the same link Soak A ended on.
+- **Run:** one SRT publish on a fresh input, deleted afterwards.
+- **Note:** a first attempt died at setup because the phone was at its lock screen; the app launches behind
+  the keyguard and never arms. The driver now dismisses the keyguard and fails loudly if it stays up.
+
+**A — healthy, 150 s: watchdog and status line pass.**
+
+- 0 `video-*` events.
+- Video 30.01 fps.
+- A `regulator` event (SRT, floor 500k, ceiling 3000k, start 3000k).
+- Column 25 filled in 149 of 149 publishing samples.
+- Status line `LIVE srt`.
+
+**B — stall hook pushed while video flowed: pass end to end.**
+
+| Time (Z) | Event |
+|---|---|
+| 21:22:36.9 | Hook pushed |
+| 21:22:37.2 | `video-stall-simulation present=true` |
+| 21:22:40.4 | `video-stalled msSinceAdvance=3007 audioAdvancing=true`, 3.7 s after the push |
+| 21:22:40.4 | `dropped reason=video-stalled` → `video-recovery attempt=1 simulated=true` → hook file deleted |
+| 21:22:43.3 | Publishing again (510 ms), regulator starting at 1000k |
+| 21:22:43.9 | `video-recovered msStalled=6529` |
+
+The status line read `NO VIDEO — recovering` in caution orange during the stall and `LIVE srt` after. The
+Tier A scorebug kept its own red `Live` badge throughout. That badge comes from the fixture, not delivery,
+and §7 forbids re-rendering it, so the product has to decide whether the overlay preview sheds or dims while
+no video is delivering.
+
+**C — 20 s mobile-data cut: transport handling passes, regulation needs tuning.**
+
+- **Transport:** SRT dropped 6 s into the cut. Retries failed on the dead network without counting toward
+  fallback, and publishing resumed 2.3 s after data returned. The new attempt's regulator started at the last
+  target (500k), not the ceiling.
+- **The encoder follows the target mid-stream:** egress ~0.75 Mbps at the 500k floor and 1.6–2.1 Mbps at
+  1.5–1.75M targets. That settles the report's open question about `c2.qti.avc.encoder`.
+
+**The regulator's direction is right and its raise is wrong for a weak link.** This link carried about
+0.8–1.0 Mbps in total. Across phases A and C:
+
+- At connect, 3000k went straight in: send buffer 1.3–1.9 s, 1,512 sender drops, floor reached in 7 s.
+- It then saw-toothed about ten times in four minutes. Each time the send buffer drained to ~50 ms, it
+  raised (in one case 750k → 1750k in 8 s, a raise every 2 s), and within 2–4 s the buffer was back at
+  ~1.9 s and it cut to the floor.
+- **Every probe dropped picture:** 360–470 packets per probe, and about 1,350 after one post-reconnect raise.
+  Egress stayed at 1.25–1.46 Mbps against a 500k target while the backlog drained.
+
+Needed before any soak:
+
+- Raise far more slowly.
+- Remember a target that failed and hold below it for minutes.
+- Judge capacity from measured egress, not the target: audio, TS overhead and retransmits added
+  0.25–0.6 Mbps here.
+- Start below the ceiling.
+- Write the `regulator` event only when a connect succeeds (a cut wrote eight).
+- Ignore the negative send-buffer readings.
+
+Evidence: `.p5/p5-safeguards-20260914T211920Z.*` (log, device CSV, watcher and status CSVs, HUD screenshots
+A, B-stall and B-after).
+
 ### Run B — RTMPS, wifi, 1 h (T5, N5)
 
 ### Run C — forced fallback (bad SRT port)
