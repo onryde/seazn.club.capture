@@ -61,6 +61,9 @@ object SpikeTelemetry {
       "streaming" to streaming,
       "transport" to SpikeSession.transport,
       "videoBitrate" to throughput.bitsPerSecond(if (streaming) bytesWritten(streamer) else null),
+      // F-P5-5. Gated on streaming as well as cleared at the end of each attempt: a tick already in
+      // flight when the controller stops must not leave a target standing on a not-publishing row.
+      "videoTargetBitrate" to LinkRegulators.targetBps?.takeIf { streaming },
     ) + frames(streamer) + srt(streamer)
   }
 

@@ -11,7 +11,8 @@
  *
  * Columns 1–14 never move: shell one-liners read them positionally. The delivery
  * columns F-P5-4 asked for (frames, SRT counters) sit after `detail`, which is safe
- * only because SpikeLog strips commas from every cell it writes.
+ * only because SpikeLog strips commas from every cell it writes. Column 25 is F-P5-5's
+ * regulator target, appended after them for the same reason.
  *
  * Pure on purpose — `telemetry-report.ts` is the CLI. A CLI in this file would
  * run on every test import.
@@ -53,6 +54,12 @@ export type Sample = {
   readonly srtSndBufMs: number | null;
   readonly srtFlightSizePkts: number | null;
   readonly srtBandwidthMbps: number | null;
+  /**
+   * Column 25, F-P5-5: the video target the bitrate regulator last applied, in bits per
+   * second. Not egress — egress is what that target produced. Null when no regulator was
+   * in force, and on every row written before the column existed.
+   */
+  readonly videoTargetBitrate: number | null;
 };
 
 export type Row =
@@ -128,6 +135,7 @@ function sampleRow(atMs: number, cell: readonly string[]): Row {
       srtSndBufMs: figure(cell[21]),
       srtFlightSizePkts: figure(cell[22]),
       srtBandwidthMbps: figure(cell[23]),
+      videoTargetBitrate: figure(cell[24]),
     },
   };
 }
@@ -280,6 +288,14 @@ export type DeliveryMinute = {
   readonly srtWriteLost: number | null;
   readonly rttMsP50: number | null;
   readonly rttMsMax: number | null;
+  /**
+   * F-P5-5, egress beside the target that produced it: the median of the minute's measured
+   * egress, then the regulator's target (column 25) at its lowest and its median. The target
+   * figures are null in a minute with no regulator in force, never 0.
+   */
+  readonly egressBpsMedian: number | null;
+  readonly videoTargetBpsMin: number | null;
+  readonly videoTargetBpsMedian: number | null;
 };
 
 type Counter =
@@ -377,7 +393,9 @@ export function deliveryMinutes(rows: readonly Row[]): readonly DeliveryMinute[]
     .sort((left, right) => left - right)
     .map((fromMs) => {
       const inMinute = spans.get(fromMs) ?? [];
-      const rtts = present((samples.get(fromMs) ?? []).map((row) => row.sample.srtRttMs));
+      const publishing = samples.get(fromMs) ?? [];
+      const rtts = present(publishing.map((row) => row.sample.srtRttMs));
+      const targets = present(publishing.map((row) => row.sample.videoTargetBitrate));
       return {
         fromMs,
         from: new Date(fromMs).toISOString(),
@@ -388,6 +406,9 @@ export function deliveryMinutes(rows: readonly Row[]): readonly DeliveryMinute[]
         srtWriteLost: total(inMinute, 'srtPacketsWriteLost'),
         rttMsP50: percentile(rtts, 0.5),
         rttMsMax: percentile(rtts, 1),
+        egressBpsMedian: percentile(present(publishing.map((row) => row.sample.videoBitrate)), 0.5),
+        videoTargetBpsMin: percentile(targets, 0),
+        videoTargetBpsMedian: percentile(targets, 0.5),
       };
     });
 }
@@ -402,6 +423,8 @@ export type Delivery = {
   readonly srtWriteLost: number | null;
   /** Over every publishing sample with a reading. */
   readonly rttMs: { readonly p50: number | null; readonly max: number | null };
+  /** F-P5-5: the regulator's target over every publishing sample that had one. */
+  readonly videoTargetBps: { readonly min: number | null; readonly median: number | null };
 };
 
 export function delivery(rows: readonly Row[]): Delivery {
@@ -417,6 +440,7 @@ export function delivery(rows: readonly Row[]): Delivery {
     srtRetransmitted: sum(across((minute) => minute.srtRetransmitted)),
     srtWriteLost: sum(across((minute) => minute.srtWriteLost)),
     rttMs: { p50: percentile(rtts, 0.5), max: percentile(rtts, 1) },
+    videoTargetBps: spread(present(publishingRows(rows).map((row) => row.sample.videoTargetBitrate))),
   };
 }
 

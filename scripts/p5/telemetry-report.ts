@@ -8,6 +8,10 @@
  * retransmits and losses, and RTT p50/max — then the run's floor, median and totals.
  * On a CSV written before the delivery columns existed every figure there is null.
  *
+ * Beside them, F-P5-5's regulation: each minute's median egress next to the regulator's
+ * video target (column 25), min and median, and the target's floor and median across
+ * the run. A minute with no regulator in force reads null, never 0.
+ *
  * Separate from `telemetry.ts` so that module stays pure and importable: a CLI
  * in the same file would run on every test import.
  */

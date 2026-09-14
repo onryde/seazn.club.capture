@@ -28,6 +28,8 @@ export type SpikeSample = {
   readonly srtSndBufMs: number | null;
   readonly srtFlightSizePkts: number | null;
   readonly srtBandwidthMbps: number | null;
+  /** The bitrate regulator's video target in bits per second (F-P5-5); null when none is in force. */
+  readonly videoTargetBitrate: number | null;
 };
 
 export type SpikeEvent = { readonly kind: string; readonly atMs: number } & Readonly<

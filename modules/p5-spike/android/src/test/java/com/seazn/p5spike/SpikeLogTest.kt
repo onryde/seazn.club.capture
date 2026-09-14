@@ -19,9 +19,22 @@ class SpikeLogTest {
         "videoFrames", "audioFrames", "srtPacketsWritten", "srtPacketsRetransmitted",
         "srtPacketsWriteLost", "srtPacketsWriteDropped", "srtRttMs", "srtSndBufMs",
         "srtFlightSizePkts", "srtBandwidthMbps",
+        "videoTargetBitrate",
       ),
       SpikeLog.COLUMNS,
     )
+  }
+
+  @Test
+  fun `the regulator's target lands in column 25, blank when none is in force`() {
+    val sample = SpikeLog.row(SpikeLog.sampleCells(7L, mapOf("videoTargetBitrate" to 1_500_000))).split(",")
+    val idle = SpikeLog.row(SpikeLog.sampleCells(8L, mapOf("videoTargetBitrate" to null))).split(",")
+    val event = SpikeLog.row(SpikeLog.eventCells(9L, "publishing", "transport=srt")).split(",")
+
+    assertEquals(24, SpikeLog.COLUMNS.indexOf("videoTargetBitrate"))
+    assertEquals("1500000", sample[24])
+    assertEquals("", idle[24])
+    assertEquals(SpikeLog.COLUMNS.size, event.size)
   }
 
   @Test

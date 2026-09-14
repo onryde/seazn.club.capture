@@ -13,7 +13,7 @@ import {
 } from './telemetry.ts';
 
 const HEADER =
-  'epochMs,kind,thermalStatus,thermalHeadroom,batteryPercent,batteryTempC,charging,currentMicroAmps,network,screenOn,streaming,transport,videoBitrate,detail,videoFrames,audioFrames,srtPacketsWritten,srtPacketsRetransmitted,srtPacketsWriteLost,srtPacketsWriteDropped,srtRttMs,srtSndBufMs,srtFlightSizePkts,srtBandwidthMbps';
+  'epochMs,kind,thermalStatus,thermalHeadroom,batteryPercent,batteryTempC,charging,currentMicroAmps,network,screenOn,streaming,transport,videoBitrate,detail,videoFrames,audioFrames,srtPacketsWritten,srtPacketsRetransmitted,srtPacketsWriteLost,srtPacketsWriteDropped,srtRttMs,srtSndBufMs,srtFlightSizePkts,srtBandwidthMbps,videoTargetBitrate';
 
 type Cell = number | string;
 
@@ -29,6 +29,8 @@ type Delivery = {
   sndBufMs?: Cell;
   flight?: Cell;
   bandwidth?: Cell;
+  /** Column 25: the regulator's video target (F-P5-5). */
+  target?: Cell;
 };
 
 /** A sample row in the real column order, so a reordering breaks the tests. */
@@ -68,10 +70,11 @@ const sample = (
     options.sndBufMs ?? '',
     options.flight ?? '',
     options.bandwidth ?? '',
+    options.target ?? '',
   ].join(',');
 
 const event = (atMs: number, name: string, detail = '') =>
-  [atMs, name, '', '', '', '', '', '', '', '', '', '', '', detail, '', '', '', '', '', '', '', '', '', ''].join(',');
+  [atMs, name, '', '', '', '', '', '', '', '', '', '', '', detail, '', '', '', '', '', '', '', '', '', '', ''].join(',');
 
 /** A minute boundary on the wall clock, so bucketing is exact. */
 const MINUTE_0 = 1_789_200_000_000;
@@ -430,5 +433,56 @@ describe('summarise', () => {
       rttMs: { p50: 60, max: 700 },
     });
     expect(summarise(csv).delivery.minutes).toHaveLength(2);
+  });
+});
+
+describe('the regulator target — column 25 (F-P5-5)', () => {
+  it('reads the target that follows the delivery columns, and a blank as no regulator', () => {
+    const rows = parseRows([HEADER, sample(1, { target: 1_500_000 }), sample(2)].join('\n'));
+    expect(rows[0]?.kind === 'sample' && rows[0].sample.videoTargetBitrate).toBe(1_500_000);
+    expect(rows[1]?.kind === 'sample' && rows[1].sample.videoTargetBitrate).toBeNull();
+  });
+
+  it('reads a row written before the regulator existed as no target, not zero', () => {
+    const before = sample(1, { videoFrames: 900 }).split(',').slice(0, 24).join(',');
+    const row = parseRows([HEADER, before].join('\n'))[0];
+    expect(row?.kind === 'sample' && row.sample.videoTargetBitrate).toBeNull();
+    expect(row?.kind === 'sample' && row.sample.videoFrames).toBe(900);
+  });
+
+  it('puts the target min and median beside median egress, per minute, over publishing samples', () => {
+    const rows = parseRows(
+      [
+        HEADER,
+        sample(MINUTE_0, { bitrate: 4_400_000, target: 3_000_000 }),
+        sample(MINUTE_0 + 1000, { bitrate: 4_500_000, target: 1_500_000 }),
+        sample(MINUTE_0 + 2000, { bitrate: 1_600_000, target: 750_000 }),
+        sample(MINUTE_0 + 3000, { bitrate: 0, target: 1, streaming: false }),
+      ].join('\n'),
+    );
+    expect(deliveryMinutes(rows)[0]).toMatchObject({
+      egressBpsMedian: 4_400_000,
+      videoTargetBpsMin: 750_000,
+      videoTargetBpsMedian: 1_500_000,
+    });
+  });
+
+  it('leaves the target missing, never zero, in a minute no regulator was in force', () => {
+    const rows = parseRows([HEADER, sample(MINUTE_0), sample(MINUTE_0 + 1000)].join('\n'));
+    expect(deliveryMinutes(rows)[0]).toMatchObject({
+      egressBpsMedian: 3_200_000,
+      videoTargetBpsMin: null,
+      videoTargetBpsMedian: null,
+    });
+  });
+
+  it('reports the target floor and median across the run', () => {
+    const csv = [
+      HEADER,
+      sample(MINUTE_0, { target: 3_000_000 }),
+      sample(MINUTE_0 + 60_000, { target: 500_000 }),
+      sample(MINUTE_0 + 61_000, { target: 750_000 }),
+    ].join('\n');
+    expect(summarise(csv).delivery.videoTargetBps).toEqual({ min: 500_000, median: 750_000 });
   });
 });

@@ -58,13 +58,23 @@ class SpikeLog(context: Context) {
       "srtRttMs", "srtSndBufMs", "srtFlightSizePkts", "srtBandwidthMbps",
     )
 
-    val COLUMNS: List<String> = listOf("epochMs", "kind") + SAMPLE_KEYS + "detail" + DELIVERY_KEYS
+    /**
+     * F-P5-5: the video target the bitrate regulator has set, in bits per second, beside the egress
+     * it produced. Blank when no regulator is in force: not publishing, or before its first tick.
+     * Appended for the same reason as [DELIVERY_KEYS].
+     */
+    val REGULATION_KEYS = listOf("videoTargetBitrate")
+
+    val COLUMNS: List<String> =
+      listOf("epochMs", "kind") + SAMPLE_KEYS + "detail" + DELIVERY_KEYS + REGULATION_KEYS
 
     fun sampleCells(atMs: Long, values: Map<String, Any?>): List<Any?> =
-      listOf<Any?>(atMs, "sample") + SAMPLE_KEYS.map { values[it] } + "" + DELIVERY_KEYS.map { values[it] }
+      listOf<Any?>(atMs, "sample") + SAMPLE_KEYS.map { values[it] } + "" +
+        DELIVERY_KEYS.map { values[it] } + REGULATION_KEYS.map { values[it] }
 
     fun eventCells(atMs: Long, kind: String, detail: String): List<Any?> =
-      listOf<Any?>(atMs, kind) + SAMPLE_KEYS.map { null } + detail + DELIVERY_KEYS.map { null }
+      listOf<Any?>(atMs, kind) + SAMPLE_KEYS.map { null } + detail +
+        DELIVERY_KEYS.map { null } + REGULATION_KEYS.map { null }
 
     /**
      * The only escaping in the file, and every cell passes through it — header, kind, detail,
