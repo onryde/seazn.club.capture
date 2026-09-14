@@ -184,13 +184,30 @@ tripod in daylight is a mirror. Palette and type in [AGENTS.md](../../AGENTS.md)
 the same rust that marks the unbroken RTMPS lane in the programme's own
 diagrams.
 
-Two calls worth restating:
+Three calls worth restating:
 
-- **Go Live is a tap; Stop is hold-to-confirm.** An accidental start costs a
-  Machine; an accidental stop costs the match.
+- **Go Live and Stop are both 3-second holds** — decided 2026-09-11 by the
+  product owner at 5 s and shortened to 3 s on 2026-09-12, superseding this document's original "Go Live is a tap; Stop is
+  hold-to-confirm". That split guarded only the expensive mistake, on the
+  assumption that the cheap one was a deliberate decision. At a ground it is
+  not: it is a mis-tap from a pocket, a tripod pan bar or a hand steadying the
+  phone, and starting a broadcast by accident is not cheap either — it is a
+  Machine minute and a stream the club did not mean to publish. A three-second
+  hold under a progress fill cannot be produced by accident in either direction,
+  and it costs the operator three seconds once a match. Both controls use the
+  same duration so the gesture is never relearned mid-match. The preview control
+  is held too but is *not* a confirmation — it answers instantly and the hold
+  exists only to stop a billed preview running unattended.
 - **Go Live enables only when armed** — credentials parsed, camera running,
   audio above a level floor, network reachable. The pre-flight is the safety,
   not a gesture.
+- **Settings and Diagnostics are reachable while live** — decided 2026-09-11,
+  replacing the original "configuration is unavailable on air". Diagnostics is
+  written for a broadcast in progress, so the state that hid it was the state it
+  was for. Both screens show a LIVE plate beside the way back, and the guard
+  moves down to the control that needs it: a setting that would disturb a live
+  broadcast is disabled while live with a one-line reason, the encode profile
+  being the first such setting.
 
 ## 9. Testing
 

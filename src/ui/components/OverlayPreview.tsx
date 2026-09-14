@@ -22,9 +22,19 @@ import { space } from '@/ui/theme/tokens';
  * react-native-web can render because it *is* React DOM.
  */
 
-/** The canvas the overlay page is authored against. */
-const CANVAS_WIDTH = 1280;
-const CANVAS_HEIGHT = 720;
+/**
+ * The page scales ITSELF: `transform: scale(min(vw/1920, vh/1080))` from the
+ * top-left of a fixed 1920×1080 canvas (seazn.club overlay-stage.tsx). So the
+ * only thing it needs from us is a 16:9 box the size of the picture — never a
+ * second scale of our own.
+ *
+ * Sizing the view to the canvas and scaling it down was wrong twice over: the
+ * box was 1280×720 *dp* (3840px on a 3× phone, four times the pixels it could
+ * ever show), and centring a box that large inside the frame put the page's
+ * top-left scorebug outside the visible area entirely. On a OnePlus 10 Pro the
+ * overlay was invisible, and a plain white test page was too.
+ */
+const PREVIEW_ASPECT = 16 / 9;
 
 type Props = { url: string; visible: boolean; caption?: string };
 
@@ -37,21 +47,21 @@ export function OverlayPreview(props: Props) {
 }
 
 /**
- * Proportional, not responsive. If the scorebug sits 40px from the left edge at
- * 720p it must sit at the same *proportion* here, or the operator frames
- * against a lie. Scale is uniform and both boxes are centred, so no transform
- * origin is needed — which Android would reject anyway.
+ * The same 16:9 fit the camera preview uses, so the overlay lands on the
+ * picture rather than beside it. Whichever axis binds, binds for both.
  */
-function useFittedScale() {
-  const [width, setWidth] = useState(0);
+function useFittedFrame() {
+  const [frame, setFrame] = useState<{ width: number; height: number } | null>(null);
   const onLayout = useCallback((event: LayoutChangeEvent) => {
-    setWidth(event.nativeEvent.layout.width);
+    const { width, height } = event.nativeEvent.layout;
+    const fitted = Math.min(width, height * PREVIEW_ASPECT);
+    setFrame({ width: fitted, height: fitted / PREVIEW_ASPECT });
   }, []);
-  return { onLayout, scale: width === 0 ? 0 : width / CANVAS_WIDTH };
+  return { onLayout, frame };
 }
 
 function WebOverlay({ url, visible, caption }: Props) {
-  const { onLayout, scale } = useFittedScale();
+  const { onLayout, frame } = useFittedFrame();
 
   return (
     <View
@@ -59,20 +69,19 @@ function WebOverlay({ url, visible, caption }: Props) {
       onLayout={onLayout}
       pointerEvents="none"
     >
-      {scale > 0 ? (
+      {frame === null ? null : (
         <iframe
           src={url}
           title="Score overlay"
           style={{
-            width: CANVAS_WIDTH,
-            height: CANVAS_HEIGHT,
+            width: frame.width,
+            height: frame.height,
             border: 0,
             backgroundColor: 'transparent',
-            transform: `scale(${scale})`,
             pointerEvents: 'none',
           }}
         />
-      ) : null}
+      )}
       <Caption caption={caption} />
     </View>
   );
@@ -84,7 +93,7 @@ const loadWebView = () => import('react-native-webview');
 
 function NativeOverlay({ url, visible, caption }: Props) {
   const webview = useOptionalNativeModule<WebViewModule>(loadWebView);
-  const { onLayout, scale } = useFittedScale();
+  const { onLayout, frame } = useFittedFrame();
   const [failed, setFailed] = useState(false);
 
   if (webview.status !== 'ready' || failed) {
@@ -110,11 +119,11 @@ function NativeOverlay({ url, visible, caption }: Props) {
       onLayout={onLayout}
       pointerEvents="none"
     >
-      {scale > 0 ? (
+      {frame === null ? null : (
         <Surface
           source={{ uri: url }}
-          style={[styles.canvas, { transform: [{ scale }] }]}
-          containerStyle={styles.canvasContainer}
+          style={[styles.surface, frame]}
+          containerStyle={frame}
           opaque={false}
           androidLayerType="hardware"
           scrollEnabled={false}
@@ -128,7 +137,7 @@ function NativeOverlay({ url, visible, caption }: Props) {
           onError={() => setFailed(true)}
           onHttpError={() => setFailed(true)}
         />
-      ) : null}
+      )}
       <Caption caption={caption} />
     </View>
   );
@@ -158,15 +167,9 @@ const styles = StyleSheet.create({
   hidden: {
     opacity: 0,
   },
-  canvas: {
-    width: CANVAS_WIDTH,
-    height: CANVAS_HEIGHT,
-    backgroundColor: 'transparent',
-  },
-  canvasContainer: {
-    width: CANVAS_WIDTH,
-    height: CANVAS_HEIGHT,
-    flexGrow: 0,
+  // Transparent, so the camera shows through everywhere the page has not
+  // painted — which is most of it.
+  surface: {
     backgroundColor: 'transparent',
   },
   caption: {

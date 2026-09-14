@@ -78,6 +78,21 @@ export const typeScale = {
     textTransform: 'uppercase',
     color: colour.ink,
   },
+  /**
+   * The secondary action — today only the peek control. Same face, caps and
+   * letterspacing as `action`, so a column holding "HOLD TO PREVIEW" above
+   * "HOLD TO STOP" reads as one pair of controls rather than a link above a
+   * button. Smaller because it is subordinate, and because 24px condensed sets
+   * "HOLD TO PREVIEW SCORE" on three lines in a 150px column.
+   */
+  actionSecondary: {
+    fontFamily: font.displaySemibold,
+    fontSize: 16,
+    lineHeight: 19,
+    letterSpacing: 0.6,
+    textTransform: 'uppercase',
+    color: colour.ink2,
+  },
   status: {
     fontFamily: font.body,
     fontSize: 13.5,

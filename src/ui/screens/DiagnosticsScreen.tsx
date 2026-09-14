@@ -8,6 +8,7 @@ import {
   selectTransport,
 } from '@/hooks/engineSelectors';
 import { useEngineSelector, useSnapshotFreshness } from '@/hooks/useCaptureEngine';
+import { LivePlate } from '@/ui/components/LivePlate';
 import { Metric } from '@/ui/components/Metric';
 import { Text } from '@/ui/components/Text';
 import { formatBitrate, formatRtt, formatTransport } from '@/ui/format';
@@ -18,6 +19,11 @@ import { colour, space } from '@/ui/theme/tokens';
  *
  * A three-hour outdoor stream fails by degrading, not crashing (AGENTS.md §11),
  * so this is the screen that matters after a bad afternoon — not a crash report.
+ *
+ * Reachable while live (§6), which is the state it was written for: every
+ * reading here is about a broadcast in progress. A LIVE plate sits by the way
+ * back, because looking at numbers is exactly when an operator forgets what the
+ * phone is still doing.
  */
 export function DiagnosticsScreen({ onBack }: { onBack: () => void }) {
   const stateKind = useEngineSelector(selectStateKind);
@@ -34,9 +40,12 @@ export function DiagnosticsScreen({ onBack }: { onBack: () => void }) {
 
   return (
     <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
-      <Pressable onPress={onBack} accessibilityRole="button" style={styles.back}>
-        <Text variant="control">Back to viewfinder</Text>
-      </Pressable>
+      <View style={styles.backRow}>
+        <Pressable onPress={onBack} accessibilityRole="button" style={styles.back}>
+          <Text variant="control">Back to viewfinder</Text>
+        </Pressable>
+        <LivePlate />
+      </View>
 
       <Text variant="title">Diagnostics</Text>
 
@@ -121,6 +130,13 @@ const styles = StyleSheet.create({
   content: {
     padding: space.xl,
     gap: space.lg,
+  },
+  // Plate opposite the way back, matching Settings — same question, same place.
+  backRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: space.md,
   },
   back: {
     minHeight: 44,

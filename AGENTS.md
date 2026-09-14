@@ -174,11 +174,33 @@ Three rules travel with these tokens:
 
 - Landscape-locked. P4: it is the only orientation that matters.
 - Full-bleed preview. Controls live in the side gutters, never over the middle
-  third — that is the shot being framed.
-- **Go Live is a tap. Stop is hold-to-confirm.** An accidental start costs a
-  Machine; an accidental stop costs the match. Guard the expensive mistake.
+  third — that is the shot being framed. Advisory text (device conditions, the
+  lock rule) rides a solid strip on the top or bottom **edge** of the stage,
+  which is the only thing ever drawn over the preview: the column is for what
+  the operator acts on, and it has no height to spare for prose.
+- **Go Live and Stop are both 3-second holds, with a progress fill.** Product
+  owner's call, 2026-09-11, replacing "Go Live is a tap, Stop is
+  hold-to-confirm"; first set at 5 s and shortened to 3 s on 2026-09-12. The reason the asymmetry was wrong: at a ground the likely
+  mistake is not a deliberate wrong decision but a *mis-tap* — a pocket, a
+  tripod pan bar, a volunteer steadying the phone — and that is as costly
+  starting as stopping. A tap cannot be distinguished from an accident; three
+  seconds under a moving fill cannot be mistaken for one, in either direction,
+  and costs the operator three seconds once a match. One hold length for both, so
+  the gesture never has to be relearned mid-match.
+- **Press-and-hold is not always a confirmation.** The preview control is held
+  too, and reads as a pair with the action below it, but it answers on the
+  instant the finger lands — there the hold *is* the feature, the thing that
+  stops a billed preview running unattended (§7). Never put a confirmation delay
+  on it.
 - Go Live enables only when *armed*: credentials parsed, camera running, audio
   above a level floor, network reachable. The pre-flight is the safety.
+- **Settings and Diagnostics stay reachable in every state, live included.**
+  Mid-match is exactly when somebody needs Diagnostics, and hiding it on air
+  made the app least useful when it mattered most. Both screens carry a LIVE
+  plate beside the way back so the broadcast is never out of sight. The
+  protection belongs on the individual control, not the screen: a setting that
+  would disturb a live broadcast is disabled while live with a one-line reason —
+  the encode profile is the first one that will be.
 - The audio meter is permanent, not in Settings. Nothing downstream
   normalises — a quiet mic reaches YouTube quiet.
 - One persistent status line that always says something true. Never an
@@ -265,6 +287,9 @@ thermal member. Only transport trouble degrades a session.
 - EAS Build from day one. A signed build on a real handset is a prerequisite
   for the P5 spike that gates the architecture, not a step-nine nicety.
 - ESLint + Prettier, one toolchain, so `eslint-plugin-boundaries` comes free.
+- pnpm, pinned by `packageManager` to the main repo's version, and EAS builds
+  with `corepack: true` so that pin is the only one. Default isolated linker —
+  see `pnpm-workspace.yaml` for what was verified and the rule for hoisting.
 - TypeScript `strict`.
 - Expo Updates: check on launch only, and **never apply while a session is
   armed or live**. A phone updating at 2pm on a Saturday is a self-inflicted

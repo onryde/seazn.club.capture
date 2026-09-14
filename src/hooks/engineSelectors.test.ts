@@ -108,7 +108,7 @@ describe('selectStatusLine', () => {
     const atFloor = selectStatusLine(snapshot({ kind: 'armed' }, { audioLevel: AUDIO_FLOOR }));
 
     expect(justUnder).toContain('Check the mic');
-    expect(atFloor).toContain('Tap to go live');
+    expect(atFloor).toContain('Hold to go live');
   });
 
   it('carries the hold countdown native reports', () => {

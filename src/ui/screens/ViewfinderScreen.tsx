@@ -1,8 +1,10 @@
-import { Pressable, StyleSheet, View } from 'react-native';
+import type { ReactNode } from 'react';
+import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import {
   type TallyState,
   selectAudioLevel,
   selectHoldWindowSeconds,
+  selectIsOnAir,
   selectOverlayUrl,
   selectPlaybackUrl,
   selectScoreUpdates,
@@ -33,6 +35,15 @@ import { colour, plate, plateInk, space, status } from '@/ui/theme/tokens';
 const AUDIO_FLOOR = 0.05;
 
 /**
+ * Both directions are guarded, and guarded identically (AGENTS.md §6). At a
+ * ground the likely mistake is a mis-tap — a pocket, a tripod pan bar, a
+ * volunteer steadying the phone — not a deliberate wrong decision, and it is as
+ * costly starting as stopping. Three seconds under a moving fill cannot be done
+ * by accident in either direction, and costs the operator three seconds a match.
+ */
+const COMMIT_HOLD_MS = 3000;
+
+/**
  * Arm and Live are one screen, not two.
  *
  * The scope lock names five screens, but arming and going live differ only in
@@ -57,15 +68,11 @@ export function ViewfinderScreen({
   const scoreUpdates = useEngineSelector(selectScoreUpdates);
   const peek = usePeek();
   const { settings } = useSettings();
+  const onAir = useEngineSelector(selectIsOnAir);
   const survivesBackground = useEngineSelector(selectSurvivesBackground);
   const holdWindowSeconds = useEngineSelector(selectHoldWindowSeconds);
   const lifecycle = useAppLifecycle();
   const stale = useSnapshotFreshness();
-
-  const onAir = tally === 'live' || tally === 'trouble';
-  // Configuration is unavailable while live. Nobody should be changing the
-  // encode profile at 3-1 in the 40th over.
-  const canConfigure = !onAir;
 
   // Before air the only thing worth looking at is the overlay, for framing.
   // On air the output is strictly more informative: it carries the overlay
@@ -106,12 +113,51 @@ export function ViewfinderScreen({
         ) : null}
 
         {shed !== null ? (
-          <View style={styles.edgeNote} pointerEvents="none">
+          <StageEdge edge="top" tone="caution">
             <Text variant="metricUnit" style={styles.edgeNoteText}>
               {shedNote(shed)}
             </Text>
-          </View>
+          </StageEdge>
         ) : null}
+
+        {/*
+          Advice, not state: the lock rule reads along the bottom edge of the
+          stage rather than inside the column, which has no height to give it
+          and where its two lines were the reason the column scrolled.
+
+          Yields while a peek is showing. Both previews put their own caption on
+          this exact edge, and two sentences stacked on one edge is how both stop
+          being read. The peek lasts seconds; the advice is there before and after.
+        */}
+        {peek.showing ? null : (
+          <StageEdge edge="bottom" tone="plain">
+            {/*
+              The two screens live here, not in the column: they are read and
+              tapped at arm's length, once, and the column's height belongs to
+              the holds. Mid-match is exactly when someone needs Diagnostics,
+              so both are reachable in every state; each screen carries a LIVE
+              plate so the broadcast is never out of sight.
+            */}
+            <View style={styles.links}>
+              <Pressable onPress={onOpenSettings} accessibilityRole="button" style={styles.link}>
+                <Text variant="control">Settings</Text>
+              </Pressable>
+              <Pressable onPress={onOpenDiagnostics} accessibilityRole="button" style={styles.link}>
+                <Text variant="control">Diagnostics</Text>
+              </Pressable>
+            </View>
+            {survivesBackground ? null : (
+              <View style={styles.edgeAdvice}>
+                <LockNotice
+                  onAir={onAir}
+                  holdWindowSeconds={holdWindowSeconds}
+                  absences={lifecycle.absences}
+                  lastAwayMs={lifecycle.lastAwayMs}
+                />
+              </View>
+            )}
+          </StageEdge>
+        )}
       </View>
 
       {/*
@@ -155,7 +201,13 @@ export function ViewfinderScreen({
           </StatusLine>
         </View>
 
-        <View style={styles.zoneAction}>
+        {/*
+          ZONE 3a · The two holds, both always whole. Nothing in this column
+          scrolls any more: a control an operator has to find by scrolling, on a
+          tripod, is a control they do not have. Everything that is read rather
+          than pressed moved to the stage's bottom edge, which is wide and empty.
+        */}
+        <View style={styles.zonePeek}>
           <PeekButton
             label={peekLabel(onAir, overlayOff, shed !== null)}
             active={peek.showing}
@@ -163,58 +215,76 @@ export function ViewfinderScreen({
             onPress={peek.press}
             onRelease={peek.release}
           />
-
-          {canConfigure ? (
-            <View style={styles.links}>
-              <Pressable onPress={onOpenSettings} accessibilityRole="button" style={styles.link}>
-                <Text variant="control">Settings</Text>
-              </Pressable>
-              <Pressable onPress={onOpenDiagnostics} accessibilityRole="button" style={styles.link}>
-                <Text variant="control">Diagnostics</Text>
-              </Pressable>
-            </View>
-          ) : null}
-
-          {survivesBackground ? null : (
-            <LockNotice
-              onAir={onAir}
-              holdWindowSeconds={holdWindowSeconds}
-              absences={lifecycle.absences}
-              lastAwayMs={lifecycle.lastAwayMs}
-            />
-          )}
-
-          {onAir ? (
-            /* Ink, not red. Red is the tally — a state, never an action — and a
-               red destructive button would make the colour mean two things. */
-            <ActionZone
-              label="Hold to stop"
-              mode="hold"
-              accent={colour.ink}
-              onAction={() => engine.send({ kind: 'stop' })}
-            />
-          ) : stateKind === 'ended' ? (
-            // Without this the operator is stranded: a finished session can
-            // neither go live again nor get back to the scan screen.
-            /* Named for what it does: reset returns to the scan screen. */
-            <ActionZone
-              label="Scan another"
-              mode="tap"
-              accent={status.healthy}
-              onAction={() => engine.send({ kind: 'reset' })}
-            />
-          ) : (
-            <ActionZone
-              label="Go live"
-              mode="tap"
-              accent={status.healthy}
-              disabled={stateKind !== 'armed' || audio < AUDIO_FLOOR}
-              reason={goLiveReason(audio)}
-              onAction={() => engine.send({ kind: 'start' })}
-            />
-          )}
         </View>
+
+        {/* ZONE 3b · ACTION — pinned to the bottom edge, never scrolled away. */}
+        {onAir ? (
+          /* Ink, not red. Red is the tally — a state, never an action — and a
+             red destructive button would make the colour mean two things. */
+          <ActionZone
+            label="Hold to stop"
+            mode="hold"
+            holdMs={COMMIT_HOLD_MS}
+            accent={colour.ink}
+            onAction={() => engine.send({ kind: 'stop' })}
+          />
+        ) : stateKind === 'ended' ? (
+          // Without this the operator is stranded: a finished session can
+          // neither go live again nor get back to the scan screen.
+          /* Named for what it does: reset returns to the scan screen. */
+          <ActionZone
+            label="Scan another"
+            mode="tap"
+            accent={status.healthy}
+            onAction={() => engine.send({ kind: 'reset' })}
+          />
+        ) : (
+          <ActionZone
+            label="Hold to go live"
+            mode="hold"
+            holdMs={COMMIT_HOLD_MS}
+            accent={status.healthy}
+            disabled={stateKind !== 'armed' || audio < AUDIO_FLOOR}
+            reason={goLiveReason(audio)}
+            onAction={() => engine.send({ kind: 'start' })}
+          />
+        )}
       </TallyColumn>
+    </View>
+  );
+}
+
+/**
+ * Text over the stage, pinned to an edge and never the middle third (§6).
+ *
+ * Two edges, two jobs: the top carries device conditions in caution, the bottom
+ * carries rules of engagement in plain ink. Solid ground behind the text rather
+ * than a scrim — a translucent plate over grass is unreadable outdoors — and a
+ * hairline on the stage side so the strip reads as a frame edge, not a caption
+ * floating in the picture. Never takes a touch: the stage below it is the shot.
+ */
+function StageEdge({
+  edge,
+  tone,
+  children,
+}: {
+  edge: 'top' | 'bottom';
+  tone: 'caution' | 'plain';
+  children: ReactNode;
+}) {
+  return (
+    <View
+      style={[
+        styles.edgeNote,
+        edge === 'top' ? styles.edgeTop : styles.edgeBottom,
+        tone === 'caution' ? styles.edgeCaution : styles.edgePlain,
+      ]}
+      // `box-none`, not `none`: the strip itself must never swallow a touch
+      // meant for the shot behind it, but the links inside it have to be
+      // tappable.
+      pointerEvents="box-none"
+    >
+      {children}
     </View>
   );
 }
@@ -256,11 +326,18 @@ function goLiveReason(audio: number): string | undefined {
   return audio < AUDIO_FLOOR ? 'No sound yet' : undefined;
 }
 
-/** Says why, not merely that. "Unavailable" reads as a fault the operator caused. */
+/**
+ * Says why, not merely that. "Unavailable" reads as a fault the operator caused.
+ *
+ * "Hold to preview" deliberately echoes "Hold to stop" beneath it: the two are
+ * the column's controls and both are held. What differs is what the hold means —
+ * here the hold is the preview itself, not a confirmation, so it answers
+ * instantly (see PeekButton).
+ */
 function peekLabel(onAir: boolean, overlayOff: boolean, hot: boolean): string {
   if (overlayOff) return 'Score preview off';
   if (hot) return 'Paused, phone is hot';
-  return onAir ? 'Hold to see output' : 'Hold to see score';
+  return onAir ? 'Hold to preview' : 'Hold to preview score';
 }
 
 /**
@@ -321,17 +398,37 @@ const styles = StyleSheet.create({
   stage: {
     flex: 1,
   },
-  // Top edge only. Never the middle third — that is the shot being framed.
+  // Edges only. Never the middle third — that is the shot being framed.
   edgeNote: {
     position: 'absolute',
-    top: 0,
     left: 0,
     right: 0,
     backgroundColor: colour.ground,
-    borderBottomWidth: 1,
-    borderBottomColor: status.degraded,
     paddingHorizontal: space.md,
     paddingVertical: space.xs,
+  },
+  edgeTop: {
+    top: 0,
+    borderBottomWidth: 1,
+  },
+  // The bottom edge carries two things at once — the way back and the advice —
+  // so it is a row: controls first, where a thumb expects them, prose after.
+  edgeBottom: {
+    bottom: 0,
+    borderTopWidth: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: space.lg,
+  },
+  edgeAdvice: {
+    flex: 1,
+  },
+  // Only one side has a width, so a single border colour is unambiguous.
+  edgeCaution: {
+    borderColor: status.degraded,
+  },
+  edgePlain: {
+    borderColor: colour.rule,
   },
   edgeNoteText: {
     color: status.degraded,
@@ -363,16 +460,17 @@ const styles = StyleSheet.create({
     paddingHorizontal: space.md,
     gap: space.md,
   },
-  // ZONE 3 · ACTION, anchored to the bottom edge so the primary control sits
-  // against the bezel where a cold hand can find it.
-  zoneAction: {
+  // ZONE 3a takes whatever height is left, so the two holds sit against the
+  // bottom bezel where a cold hand finds them, with the slack above rather
+  // than between them.
+  zonePeek: {
     marginTop: 'auto',
   },
-  // Stacked, not side by side: two labels overflowed the 150px column and
-  // clipped "Diagnostics".
+  // Side by side on the stage edge, where width is what there is plenty of —
+  // the reason they were stacked was a 150dp column they no longer live in.
   links: {
-    paddingHorizontal: space.md,
-    paddingBottom: space.xs,
+    flexDirection: 'row',
+    gap: space.lg,
   },
   // 44pt, because these are the only way back and they get pressed with cold
   // wet hands. They were 16pt tall and 4pt apart.

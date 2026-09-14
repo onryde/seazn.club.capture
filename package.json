@@ -16,7 +16,7 @@
     "format": "prettier --write \"**/*.{ts,tsx,json,md}\"",
     "test": "vitest run",
     "test:watch": "vitest",
-    "check": "npm run typecheck && npm run lint && npm run test",
+    "check": "pnpm typecheck && pnpm lint && pnpm test",
     "eas": "eas",
     "expo": "expo",
     "deps:check": "expo install --check",
@@ -36,6 +36,7 @@
     "react": "19.2.3",
     "react-dom": "^19.2.3",
     "react-native": "0.86.3",
+    "react-native-safe-area-context": "~5.7.0",
     "react-native-web": "^0.21.2",
     "react-native-webview": "13.16.1"
   },
@@ -50,5 +51,6 @@
     "prettier": "^3.9.6",
     "typescript": "~6.0.3",
     "vitest": "^5.0.0"
-  }
+  },
+  "packageManager": "pnpm@10.34.5"
 }

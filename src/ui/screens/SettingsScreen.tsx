@@ -1,5 +1,6 @@
 import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useSettings } from '@/hooks/useSettings';
+import { LivePlate } from '@/ui/components/LivePlate';
 import { Text } from '@/ui/components/Text';
 import { Toggle } from '@/ui/components/Toggle';
 import { colour, space, status } from '@/ui/theme/tokens';
@@ -9,15 +10,30 @@ import { colour, space, status } from '@/ui/theme/tokens';
  * changes something an operator at a ground would actually need to change, and
  * every row actually works: a control that looks live and does nothing is worse
  * than no control at all.
+ *
+ * Reachable while live (§6), with a LIVE plate beside the way back so the
+ * broadcast is never out of sight. The rule that comes with that: **a setting
+ * that would disturb a live broadcast is disabled while live, with a one-line
+ * reason** — the screen is not withheld, the individual control is. Both rows
+ * below are safe to change mid-match (one gates a preview the operator has to
+ * hold anyway, the other moves this column), so neither is disabled. The first
+ * row that is not safe will be the encode profile, which restarts the publish:
+ * that one lands here with `disabled` set from the engine's on-air state and its
+ * reason on the row. `Toggle` already carries `disabled`; the reason line is the
+ * only thing to add, and it should be added with the row that needs it rather
+ * than as a prop nothing passes.
  */
 export function SettingsScreen({ onBack }: { onBack: () => void }) {
   const { settings, update, persistent } = useSettings();
 
   return (
     <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
-      <Pressable onPress={onBack} accessibilityRole="button" style={styles.back}>
-        <Text variant="control">Back to viewfinder</Text>
-      </Pressable>
+      <View style={styles.backRow}>
+        <Pressable onPress={onBack} accessibilityRole="button" style={styles.back}>
+          <Text variant="control">Back to viewfinder</Text>
+        </Pressable>
+        <LivePlate />
+      </View>
 
       <Text variant="title">Settings</Text>
 
@@ -84,6 +100,14 @@ const styles = StyleSheet.create({
   },
   name: {
     color: colour.ink,
+  },
+  // The plate sits opposite the way back: both are read on arrival, and the
+  // operator should not have to hunt for whether the match is still going out.
+  backRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: space.md,
   },
   // The only way back, pressed with cold hands.
   back: {

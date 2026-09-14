@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { StyleSheet, View, useWindowDimensions } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colour, layout, space } from '@/ui/theme/tokens';
 
 /**
@@ -25,7 +26,12 @@ export function TallyColumn({
   side?: 'left' | 'right';
   children: ReactNode;
 }) {
-  const { width, height } = useWindowDimensions();
+  // The window includes the system bars; the root's safe area does not. Measure
+  // what is actually left, or the column is computed for space it cannot use.
+  const window = useWindowDimensions();
+  const insets = useSafeAreaInsets();
+  const width = window.width - insets.left - insets.right;
+  const height = window.height - insets.top - insets.bottom;
   const leftover = Math.round(width - height * layout.previewAspect);
   const columnWidth = Math.max(layout.columnWidth, leftover);
 

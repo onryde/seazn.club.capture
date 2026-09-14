@@ -13,10 +13,11 @@ import { colour, space } from '@/ui/theme/tokens';
  * Plain ink, not orange. This is a rule of engagement, not a fault, and orange
  * has to stay meaningful for degraded and for failure.
  *
- * Pre-air it is full size, sitting immediately above the action — the last
- * thing read before the thumb lands on Go live. On air it collapses into the
- * slot the Settings and Diagnostics links vacate, so it costs no extra height
- * in a column that has none to give.
+ * It rides the bottom edge of the preview stage, not the control column. It was
+ * the one variable-height block in a column that has no height to spare, and it
+ * is advice rather than state — so it belongs where there is room to say the
+ * whole sentence on one line, against an edge, never over the middle third of
+ * the shot (§6). The column keeps only what the operator acts on.
  */
 export function LockNotice({
   onAir,
@@ -30,49 +31,59 @@ export function LockNotice({
   lastAwayMs: number | null;
 }) {
   const window = holdWindowSeconds === null ? null : `${holdWindowSeconds}s`;
-
-  if (!onAir) {
-    return (
-      <View style={styles.block}>
-        <Text variant="metricUnit" style={styles.label}>
-          Keep screen on
-        </Text>
-        <Text variant="status">
-          {window === null
-            ? 'Locking the phone or leaving the app pauses the picture.'
-            : `Locking the phone or leaving the app pauses the picture. You have ${window} to get back.`}
-        </Text>
-      </View>
-    );
-  }
-
-  // Once it has happened, the operator's own tally is more use than the rule.
-  if (absences > 0) {
-    return (
-      <View style={styles.block}>
-        <Text variant="metricUnit">
-          {`Paused ${absences}×${lastAwayMs === null ? '' : `, last ${Math.round(lastAwayMs / 1000)}s`}`}
-        </Text>
-      </View>
-    );
-  }
+  const detail = onAir ? liveDetail(window, absences, lastAwayMs) : armedDetail(window);
 
   return (
-    <View style={styles.block}>
-      <Text variant="metricUnit">
-        {window === null ? 'Keep screen on' : `Keep screen on. ${window} to return.`}
+    <View style={styles.row}>
+      <Text variant="metricUnit" style={styles.label} numberOfLines={1}>
+        Keep screen on
       </Text>
+      {detail === null ? null : (
+        <Text variant="status" style={styles.detail} numberOfLines={2}>
+          {detail}
+        </Text>
+      )}
     </View>
   );
 }
 
+/**
+ * One line before air, not the full rule. It shares the strip with the two
+ * links and is read at arm's length: "locking pauses the picture" is the whole
+ * point, and the seconds say what it costs. The long version told an operator
+ * nothing extra and pushed the sentence onto a second line.
+ */
+function armedDetail(window: string | null): string {
+  const rule = 'Locking pauses it.';
+  return window === null ? rule : `${rule} ${window} to get back.`;
+}
+
+/** On air, once it has happened the operator's own tally is more use than the rule. */
+function liveDetail(
+  window: string | null,
+  absences: number,
+  lastAwayMs: number | null,
+): string | null {
+  if (absences > 0) {
+    const last = lastAwayMs === null ? '' : `, last ${Math.round(lastAwayMs / 1000)}s`;
+    return `Paused ${absences}×${last}.`;
+  }
+  return window === null ? null : `${window} to get back if you lock it.`;
+}
+
 const styles = StyleSheet.create({
-  block: {
-    paddingHorizontal: space.md,
-    paddingBottom: space.sm,
-    gap: space.xs,
+  // A row, not a stack: the strip is as wide as the stage and as short as it
+  // can be, so label and sentence sit beside each other on one line.
+  row: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    gap: space.sm,
   },
   label: {
     color: colour.ink,
+  },
+  // Shrinks rather than pushing the label off the strip on a narrow stage.
+  detail: {
+    flexShrink: 1,
   },
 });
