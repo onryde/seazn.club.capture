@@ -827,6 +827,52 @@ Needed before any soak:
 Evidence: `.p5/p5-safeguards-20260914T211920Z.*` (log, device CSV, watcher and status CSVs, HUD screenshots
 A, B-stall and B-after).
 
+### F-P5-6 repro attempts — 2026-09-14 late evening
+
+**Attempt 1 — rotate while live, then a 20 s data cut.** Not exercised. The owner turned the phone while it
+published (`rotation 0 → 1`, 0.75 s apart). The data cut was real — `network=none` for 18 s, send buffer
+pinned at 2 s, sender drops 2,749 → 6,054 — but the SRT session survived it with no `dropped` event. There was
+no stop, so any pending rotation was never consumed, and video stayed at 30 fps. Whether a cut drops SRT is
+not consistent: the 10 s cell rode through, one 20 s cell dropped at 6 s, and this 20 s cut rode through.
+
+**Attempt 2 — rotate while live, then stop and restart in the same process.** Aborted before the stop, and
+it turned up something else. At 21:56:03.9Z the system log records the app **going to the background**:
+`switch to background`, focus to the launcher, the task moved `TO_BACK`, `setAppVisibility visible=false`,
+the window at `viewVisibility=8`, and `CLOSE_SYSTEM_DIALOGS reason:recentapps`. The app's `rotation 0 → 1`
+events (0.32 s apart) are the portrait launcher and the app's return, not a turn inside the app. Within a
+second of that:
+
+- **Video died with no stop or reconnect:** egress 6.2 Mbps → 176 kbps of audio.
+- **The watchdog caught it:** `video-stalled` at 21:56:10Z, `msSinceAdvance=3006`, audio advancing, then
+  `dropped reason=video-stalled` and `video-recovery attempt=1`.
+- **The recovery never reconnected:** `streaming=false` from 21:56:12Z, with **no `connecting` event in the
+  14 s** before the driver force-stopped the app (a normal retry emits one within 2 s).
+- **The driver's Stop press did not register.** Whether the app's intent queue was blocked or the press
+  landed on the launcher is **not established**.
+- **The evidence is gone.** The app's own log lines for the recovery had rolled out of the device's log ring
+  buffer by the time they were read, about 8 minutes later. Device repros now stream logcat to a file.
+
+**Driven by adb, backgrounding does not reproduce it.**
+
+- **Home while live, 10 s away:** video dipped to 16–19 fps for ~2 s, then ran 30 fps in the background and
+  after the return. No stall, no drop.
+- **Recents while live, back in ~1 s:** video and audio hitched for ~2 s (12–20 fps, audio 7/s), then 30
+  fps. The same `rotation 0 → 1` pair, 0.39 s apart. No stall, no drop.
+
+So the dead video at 21:56Z needed more than a trip to the background. The owner was handling the phone
+physically at the same moment, and it may simply be intermittent. Two things stand:
+
+1. **Going to the background while live can kill video** on this build. The watchdog detects it within ~5 s.
+2. **Stall recovery can fail to reconnect at all.** That is the more serious half: an unrecoverable session
+   the operator may not be able to stop. It is open until a repro captures it with continuous logcat and a
+   thread dump.
+
+For the product (AGENTS.md §9): an operator pressing Home or taking a call while live is a normal event, not
+an edge case. Its test is a lifecycle cell with the frame counters on, not a soak.
+
+Evidence: `.p5/p5-rotation-repro-20260914T212628Z.*`, `.p5/p5-rotation-restart-20260914T215359Z.*`,
+`.p5/p5-background-20260914T215942Z.*`, `.p5/p5-lifecycle-recents-1s-20260914T220309Z.*`.
+
 ### Run B — RTMPS, wifi, 1 h (T5, N5)
 
 ### Run C — forced fallback (bad SRT port)
