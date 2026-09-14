@@ -317,6 +317,23 @@ extracted at 60, 1200, 2280, 2320, 2335 and 2341 s.
 
 ### F-P5-5 — nothing adapts the bitrate, so a burst the uplink cannot carry is delivered as nothing
 
+> **Correction, same day — the first freeze was not an uplink overrun.** The per-second device data
+> contradicts the story below, and the story stays only so the correction can be read against it. The
+> phone was already sending 4.3–4.9 Mbps at 19:12:50Z. From then until 19:14:08Z, SRT reported clean
+> delivery: zero retransmits, drops or losses, RTT 31–39 ms, send buffer ≤ 346 ms, 30 fps. Yet Cloudflare's
+> playlist head stopped at 3998 at 19:12:56Z, advanced briefly to 4002 at 19:13:30–38Z, and stopped again.
+> **Cloudflare's SRT receiver was acknowledging a clean 4.5 Mbps while it stopped packaging.** The SRT
+> distress in the table below (19:14 onwards) came after the freeze. It may be the cellular link, or
+> Cloudflare no longer reading, which would back up the sender the same way; the data cannot separate the
+> two. The same doubt covers the congestion after the 19:27Z reconnect. What stands: no bitrate regulation
+> exists, SRT's latency makes an overloaded link deliver nothing decodable, and broadcast 2 was recorded
+> with no video while SRT dropped packets at the sender. What does not stand: that a burst overran the
+> uplink and caused the first freeze. **Open:** why Cloudflare stopped packaging at 19:12:56Z while
+> receiving a clean stream whose bitrate had just jumped. Replaying Soak A through the regulator built
+> afterwards (`7f714e7`) confirms it would not have acted before 19:15:14Z, too late for broadcast 1's
+> picture. The telemetry also recorded negative `srtSndBufMs` values (e.g. −336) — a reading artefact to
+> keep out of any threshold.
+
 Soak A, 2026-09-14. The engine encodes VBR at a 3 Mbps target, and nothing regulates it against
 the link. StreamPack 3.2.0 ships a bitrate regulator (`IntervalBitrateRegulatorController`), but the spike
 configures none. For the hour before 19:13Z the phone sent a full 30 fps at only 0.5–0.7 Mbps: VBR on a
@@ -669,7 +686,9 @@ Thermal curve (minute → status, headroom, battery °C):
 | 17:12:14 | Thermal status 3 (severe); it stays there, never reaching 4 |
 | 17:00–17:40 | Egress median 3.7–4.0 Mbps at 30 fps |
 | 18:20–19:12 | Egress median 0.52–0.70 Mbps, still 30 fps, RTT ~31–35 ms, no SRT drops |
-| 19:13 | Egress jumps to ~4.5 Mbps and the uplink overruns (F-P5-5) |
+| 19:12:50 | Egress already ~4.3–4.9 Mbps; SRT clean (no loss, RTT ~35 ms) through 19:14:08 |
+| 19:12:56 | Playlist head stops at 3998 while SRT reports clean delivery; see the correction under F-P5-5 |
+| 19:14–19:16 | SRT distress begins: retransmits, send buffer to 2 s, RTT to 1.66 s |
 | 19:13:38 | Last segment packaged in broadcast 1 |
 | 19:16:41 | App `dropped` (`endpoint-closed`); Cloudflare `client_disconnect` the same second |
 | 19:16:44 | Reconnected; **video frames 0/s from here**, audio normal, HUD `LIVE` (F-P5-6) |
