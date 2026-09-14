@@ -33,6 +33,7 @@ import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.merge
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -67,6 +68,15 @@ object SpikeSession {
   @Volatile var transport: String? = null
     private set
 
+  /** F-P5-6's detector. The sampler reads its state; the publish loop answers its stalls. */
+  val watchdog = VideoStallWatchdog(SystemClock::elapsedRealtime)
+
+  /** Bumped to ask the publish loop to end the current attempt for a stall. A StateFlow, so a wait never misses one. */
+  private val stallRequests = MutableStateFlow(0)
+
+  /** From `publishing` until the attempt ends: the watchdog judges only a publish the loop itself vouches for. */
+  @Volatile private var attemptPublishing = false
+
   /** Survives JS reloads: a second attach only swaps the emitter. */
   fun attach(context: Context, emitter: (String, Map<String, Any?>) -> Unit) {
     emit = emitter
@@ -78,6 +88,8 @@ object SpikeSession {
     scope.launch { ExitHistory.record(context) }
     runIntents()
     watchMarkFile(context)
+    StallSimulation.watch(context, scope) { present -> event("video-stall-simulation", "present" to present) }
+    watchVideo()
     SpikeTelemetry.start(context, scope) { sample ->
       log.sample(sample)
       emit("onSample", sample)
@@ -94,9 +106,13 @@ object SpikeSession {
       session = file
       if (streamerFlow.value == null) {
         // The default endpoint, counted (F-P5-4): encoded frames reaching the endpoint are what
-        // tells a starving encoder from a lossy transport.
+        // tells a starving encoder from a lossy transport. With F-P5-6's proof hook present it
+        // also discards video, so a stall can be proven on a device (StallSimulation).
         val streamer = withContext(Dispatchers.Main) {
-          cameraSingleStreamer(appContext, endpointFactory = CountingEndpointFactory())
+          cameraSingleStreamer(
+            appContext,
+            endpointFactory = CountingEndpointFactory(discardVideo = StallSimulation::discardVideo),
+          )
         }
         streamer.setAudioConfig(
           AudioConfig(
@@ -165,6 +181,9 @@ object SpikeSession {
       runCatching { it.close() }
       endRegulation(it)
     }
+    // A new intent is a new session: no stall episode and no recovery count carry over.
+    attemptPublishing = false
+    watchdog.reset()
     // Cleared for every branch: a throwing service start below must not leave stale state.
     wanted = null
     transport = null
@@ -201,11 +220,18 @@ object SpikeSession {
       // throwableFlow is a StateFlow: without this, a stale error from the last
       // attempt would end the next wait instantly.
       val stale = streamer.throwableFlow.value
+      // Likewise for stall requests: only one made during this attempt may end it.
+      val stallsBefore = stallRequests.value
       try {
         connect(streamer, file, current)
         srtFailures = 0
-        event("dropped", "transport" to current, *awaitDrop(streamer, stale))
+        attemptPublishing = true
+        val drop = awaitDrop(streamer, stale, stallsBefore)
+        attemptPublishing = false
+        event("dropped", "transport" to current, *drop.detail)
+        if (drop.reason == VIDEO_STALLED) beginVideoRecovery()
       } catch (failure: Throwable) {
+        attemptPublishing = false
         // A real cancel (the next intent) rethrows here. A timeout or a stray
         // library cancellation falls through and counts as a failed connect.
         currentCoroutineContext().ensureActive()
@@ -238,6 +264,8 @@ object SpikeSession {
   /** One attempt, from connecting to publishing. Throws on failure or timeout. */
   private suspend fun connect(streamer: SingleStreamer, file: SessionFile, via: String) {
     transport = via
+    // Before this attempt's first frame, so a hook file pushed just before a start applies from it.
+    StallSimulation.refresh()
     event("connecting", "transport" to via)
     regulate(streamer, via, file.srt.latencyMs)
     val startedAt = SystemClock.elapsedRealtime()
@@ -330,30 +358,108 @@ object SpikeSession {
    * ClosedException on the next frame write, a frame later — and it lost the race every
    * time. So take the first signal, then give a throwable a moment to catch up, and report
    * the endpoint and input states that tell the three causes apart.
+   *
+   * F-P5-6 adds a signal of our own: the watchdog asking for a recovery. It ends the attempt with
+   * `video-stalled`, so the recovery is this loop's own reconnect, and no second authority ever
+   * touches the session (AGENTS.md §2).
    */
-  private suspend fun awaitDrop(streamer: SingleStreamer, stale: Throwable?): Array<Pair<String, Any?>> {
+  private suspend fun awaitDrop(streamer: SingleStreamer, stale: Throwable?, stallsBefore: Int): Drop {
     val fresh = streamer.throwableFlow.filterNotNull().filter { it !== stale }
-    val first: Throwable? = merge(
-      streamer.isStreamingFlow.filter { !it }.map<Boolean, Throwable?> { null },
-      fresh.map<Throwable, Throwable?> { it },
+    val first: DropSignal = merge(
+      streamer.isStreamingFlow.filter { !it }.map<Boolean, DropSignal> { DropSignal.InputsStopped },
+      fresh.map<Throwable, DropSignal> { DropSignal.Failed(it) },
+      stallRequests.filter { it != stallsBefore }.map<Int, DropSignal> { DropSignal.VideoStalled },
     ).first()
-    val failure = first ?: withTimeoutOrNull(DROP_CAUSE_GRACE_MS) { fresh.first() }
+    val failure = when (first) {
+      is DropSignal.Failed -> first.cause
+      DropSignal.InputsStopped -> withTimeoutOrNull(DROP_CAUSE_GRACE_MS) { fresh.first() }
+      DropSignal.VideoStalled -> null
+    }
     val open = streamer.isOpenFlow.value
-    return arrayOf(
-      // `requested` is rare by construction: a stop intent cancels this wait before it can
-      // report. It exists so that if it ever does fire, the CSV never calls our own stop a
-      // failure — which is the distinction the run notes could not make before.
-      "reason" to when {
-        wanted == null -> "requested"
-        !open -> "endpoint-closed"
-        else -> "inputs-stopped"
-      },
+    // `requested` is rare by construction: a stop intent cancels this wait before it can
+    // report. It exists so that if it ever does fire, the CSV never calls our own stop a
+    // failure — which is the distinction the run notes could not make before.
+    val reason = when {
+      wanted == null -> "requested"
+      first == DropSignal.VideoStalled -> VIDEO_STALLED
+      !open -> "endpoint-closed"
+      else -> "inputs-stopped"
+    }
+    val detail = arrayOf<Pair<String, Any?>>(
+      "reason" to reason,
       "message" to (failure?.let { describe(it) } ?: "none"),
       "endpointOpen" to open,
       // Which input went away: a camera or microphone interruption is not a transport fault.
       "audioStreaming" to runCatching { streamer.audioInput.isStreamingFlow.value }.getOrNull(),
       "videoStreaming" to runCatching { streamer.videoInput.isStreamingFlow.value }.getOrNull(),
     )
+    return Drop(reason, detail)
+  }
+
+  /** Why [awaitDrop] stopped waiting. */
+  private sealed interface DropSignal {
+    object InputsStopped : DropSignal
+    class Failed(val cause: Throwable) : DropSignal
+    object VideoStalled : DropSignal
+  }
+
+  /** How an attempt ended: [reason] for the loop, [detail] for the `dropped` row. */
+  private class Drop(val reason: String, val detail: Array<Pair<String, Any?>>)
+
+  /** The drop reason F-P5-6's recovery ends an attempt with. The loop reconnects on it as on any other drop. */
+  private const val VIDEO_STALLED = "video-stalled"
+
+  private const val WATCHDOG_TICK_MS = 500L
+
+  /**
+   * F-P5-6: judges the video frame counter twice a second. It only detects, reports and asks; the
+   * publish loop does the recovering. Best-effort, like the mark file: a failing tick must never
+   * take the heartbeat or the loop with it.
+   */
+  private fun watchVideo() {
+    scope.launch {
+      while (isActive) {
+        runCatching { judgeVideo() }
+        delay(WATCHDOG_TICK_MS)
+      }
+    }
+  }
+
+  private fun judgeVideo() {
+    val streamer = streamerFlow.value
+    val counts = (streamer?.endpoint as? CountingEndpoint)?.counts
+    // The loop's word and the pipeline's together: a drop reaches the pipeline a moment before the loop.
+    val publishing = attemptPublishing && streamer?.isStreamingFlow?.value == true
+    watchdog.tick(publishing, counts?.videoFrames, counts?.audioFrames, transport).forEach(::report)
+  }
+
+  private fun report(verdict: VideoVerdict) {
+    when (verdict) {
+      is VideoVerdict.Stalled -> {
+        event(
+          "video-stalled",
+          "msSinceAdvance" to verdict.msSinceAdvance,
+          "videoFrames" to verdict.videoFrames,
+          "audioAdvancing" to verdict.audioAdvancing,
+          "transport" to verdict.transport,
+        )
+        stallRequests.update { it + 1 }
+      }
+      is VideoVerdict.Recovered -> event("video-recovered", "msStalled" to verdict.msStalled)
+      is VideoVerdict.RecoveryFailed -> event("video-recovery-failed", "attempts" to verdict.attempts)
+    }
+  }
+
+  /**
+   * The loop has ended an attempt for a stall, and the reconnect that follows is the recovery: the
+   * same stopStream, close and startStream as the manual reconnect that healed F-P5-6. The hook
+   * file goes now, so the next attempt carries video, and one run proves detection, recovery and
+   * recovered together.
+   */
+  private fun beginVideoRecovery() {
+    val attempt = watchdog.recoveryStarted() ?: return
+    event("video-recovery", "attempt" to attempt, "simulated" to StallSimulation.discardVideo())
+    StallSimulation.clear()
   }
 
   /**

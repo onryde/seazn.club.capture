@@ -77,8 +77,38 @@ class CountingEndpointTest {
     assertTrue(inner.released)
   }
 
+  /**
+   * F-P5-6's on-device proof hook: the counter must go flat exactly as it did in Soak A, so a
+   * discarded frame is never counted — and it is closed, because frames are pooled and the endpoint
+   * that would have closed it never sees it.
+   */
+  @Test
+  fun `a simulated stall discards video before counting it, closes it, and leaves audio alone`() = runBlocking<Unit> {
+    val inner = FakeEndpoint()
+    var simulating = true
+    val endpoint = CountingEndpoint(inner, mime = { (it as FakeFrame).mimeWhileOpen() }, discardVideo = { simulating })
+    val discarded = FakeFrame("video/avc")
+    val audio = FakeFrame("audio/mp4a-latm")
+
+    endpoint.write(discarded, 1)
+    endpoint.write(audio, 2)
+
+    assertTrue(discarded.closed)
+    assertEquals(0L, endpoint.counts.videoFrames)
+    assertEquals(1L, endpoint.counts.audioFrames)
+    assertEquals(listOf<Pair<Frame, Int>>(audio to 2), inner.written)
+
+    simulating = false
+    val carried = FakeFrame("video/avc")
+    endpoint.write(carried, 1)
+
+    assertEquals(1L, endpoint.counts.videoFrames)
+    assertEquals(listOf<Pair<Frame, Int>>(audio to 2, carried to 1), inner.written)
+  }
+
   private class FakeFrame(private val mime: String) : Frame {
-    private var closed = false
+    var closed = false
+      private set
 
     fun mimeWhileOpen(): String {
       check(!closed) { "read after close" }

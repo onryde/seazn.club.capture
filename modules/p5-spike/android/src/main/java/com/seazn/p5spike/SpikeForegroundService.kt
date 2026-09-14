@@ -45,7 +45,12 @@ class SpikeForegroundService : Service() {
         .newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "p5spike:publish")
         .apply { acquire() }
     }
-    SpikeSession.event("service-started", "wakeLock" to (wakeLock != null))
+    SpikeSession.event(
+      "service-started",
+      "wakeLock" to (wakeLock != null),
+      // F-P5-6's proof hook: a CSV must never read a simulated stall as a real one.
+      "simulateVideoStall" to StallSimulation.present(this),
+    )
     return START_NOT_STICKY
   }
 

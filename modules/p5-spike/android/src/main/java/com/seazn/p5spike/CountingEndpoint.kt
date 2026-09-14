@@ -47,11 +47,13 @@ class FrameCounts {
  * casts the endpoint to it. A wrapper that implemented only `IEndpointInternal` would hide them,
  * and the egress column would read blank from then on with nothing failing.
  *
- * [mime] exists for the JVM tests, which have no working `MediaFormat`.
+ * [mime] exists for the JVM tests, which have no working `MediaFormat`. [discardVideo] is F-P5-6's
+ * on-device proof hook ([StallSimulation]); it is false unless the hook file is present.
  */
 class CountingEndpoint(
   private val inner: IEndpointInternal,
   private val mime: (Frame) -> String? = ::encodedMime,
+  private val discardVideo: () -> Boolean = { false },
 ) : IEndpointInternal by inner, WithEndpointMetrics<Any> {
   val counts = FrameCounts()
 
@@ -61,7 +63,14 @@ class CountingEndpoint(
   override suspend fun write(frame: Frame, streamPid: Int) {
     // Before delegating: the endpoint closes the frame, and a closed frame is back in a pool,
     // where the next encoder output may already have overwritten it.
-    counts.count(readMime(frame))
+    val kind = readMime(frame)
+    if (kind?.startsWith("video/") == true && discardVideo()) {
+      // Neither counted nor written, so the counter goes flat exactly as F-P5-6's did. Closed
+      // here because the endpoint that would have closed it never sees it.
+      frame.close()
+      return
+    }
+    counts.count(kind)
     inner.write(frame, streamPid)
   }
 
@@ -78,7 +87,8 @@ private fun encodedMime(frame: Frame): String? = frame.format.getString(MediaFor
 /** [inner] is StreamPack's default unless told otherwise, so only the counting is new. */
 class CountingEndpointFactory(
   private val inner: IEndpointInternal.Factory = DynamicEndpointFactory(),
+  private val discardVideo: () -> Boolean = { false },
 ) : IEndpointInternal.Factory {
   override fun create(context: Context, dispatcherProvider: IDispatcherProvider): IEndpointInternal =
-    CountingEndpoint(inner.create(context, dispatcherProvider))
+    CountingEndpoint(inner.create(context, dispatcherProvider), discardVideo = discardVideo)
 }
