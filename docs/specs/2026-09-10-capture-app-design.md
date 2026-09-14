@@ -186,8 +186,8 @@ diagrams.
 
 Three calls worth restating:
 
-- **Go Live and Stop are both 5-second holds** — decided 2026-09-11 by the
-  product owner, superseding this document's original "Go Live is a tap; Stop is
+- **Go Live and Stop are both 3-second holds** — decided 2026-09-11 by the
+  product owner at 5 s and shortened to 3 s on 2026-09-12, superseding this document's original "Go Live is a tap; Stop is
   hold-to-confirm". That split guarded only the expensive mistake, on the
   assumption that the cheap one was a deliberate decision. At a ground it is
   not: it is a mis-tap from a pocket, a tripod pan bar or a hand steadying the

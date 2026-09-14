@@ -10,7 +10,7 @@ import { colour, space } from '@/ui/theme/tokens';
  * the output player spends radio, battery and billed delivery. A glance costs
  * nothing; three hours of either would matter (N16).
  *
- * Deliberately NOT one of §6's 5s holds. Go live and Stop are holds because the
+ * Deliberately NOT one of §6's 3s holds. Go live and Stop are holds because the
  * hold is the confirmation; here the hold IS the feature — the preview appears
  * the instant the finger lands and goes when it lifts, and what the hold buys is
  * that it can never be left running unattended on billed delivery. A delay here

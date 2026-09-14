@@ -6,7 +6,7 @@ import { colour, space, status } from '@/ui/theme/tokens';
 /**
  * The hold a caller gets if it does not ask for one. Short — it suits a
  * secondary confirmation, not the two actions that decide whether a match is
- * broadcast. Those pass 5000 explicitly (AGENTS.md §6).
+ * broadcast. Those pass 3000 explicitly (AGENTS.md §6).
  */
 const DEFAULT_HOLD_MS = 1200;
 

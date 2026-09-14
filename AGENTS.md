@@ -178,9 +178,9 @@ Three rules travel with these tokens:
   lock rule) rides a solid strip on the top or bottom **edge** of the stage,
   which is the only thing ever drawn over the preview: the column is for what
   the operator acts on, and it has no height to spare for prose.
-- **Go Live and Stop are both 5-second holds, with a progress fill.** Product
+- **Go Live and Stop are both 3-second holds, with a progress fill.** Product
   owner's call, 2026-09-11, replacing "Go Live is a tap, Stop is
-  hold-to-confirm". The reason the asymmetry was wrong: at a ground the likely
+  hold-to-confirm"; first set at 5 s and shortened to 3 s on 2026-09-12. The reason the asymmetry was wrong: at a ground the likely
   mistake is not a deliberate wrong decision but a *mis-tap* — a pocket, a
   tripod pan bar, a volunteer steadying the phone — and that is as costly
   starting as stopping. A tap cannot be distinguished from an accident; three
