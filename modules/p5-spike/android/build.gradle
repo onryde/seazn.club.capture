@@ -26,4 +26,6 @@ dependencies {
   implementation 'io.github.thibaultbee.streampack:streampack-rtmp:3.2.0'
   implementation 'androidx.core:core-ktx:1.16.0'
   implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2'
+  // JVM tests for what the telemetry depends on and can be proven without a handset.
+  testImplementation 'junit:junit:4.13.2'
 }

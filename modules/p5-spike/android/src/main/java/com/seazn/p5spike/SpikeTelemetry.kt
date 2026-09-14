@@ -11,6 +11,7 @@ import android.os.PowerManager
 import android.os.SystemClock
 import io.github.thibaultbee.streampack.core.elements.metrics.WithEndpointMetrics
 import io.github.thibaultbee.streampack.core.streamers.single.SingleStreamer
+import io.github.thibaultbee.streampack.ext.srt.elements.endpoints.SrtEndpointMetrics
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
@@ -60,13 +61,54 @@ object SpikeTelemetry {
       "streaming" to streaming,
       "transport" to SpikeSession.transport,
       "videoBitrate" to throughput.bitsPerSecond(if (streaming) bytesWritten(streamer) else null),
-    )
+    ) + frames(streamer) + srt(streamer)
   }
 
-  /** Cumulative bytes the endpoint has sent, or null when it exposes no metrics. */
+  /**
+   * Cumulative bytes the endpoint has sent, or null when it exposes no metrics. Through the
+   * counting wrapper this is still the inner endpoint's figure: [CountingEndpoint] passes
+   * `WithEndpointMetrics` through, and `CountingEndpointTest` holds this exact expression to it.
+   */
   private fun bytesWritten(streamer: SingleStreamer?): Long? = runCatching {
     (streamer?.endpoint as? WithEndpointMetrics<*>)?.metrics?.bytesWritten
   }.getOrNull()
+
+  /** Cumulative encoded frames handed to the endpoint (F-P5-4); null before arm creates one. */
+  private fun frames(streamer: SingleStreamer?): Map<String, Any?> {
+    val counts = (streamer?.endpoint as? CountingEndpoint)?.counts
+    return mapOf("videoFrames" to counts?.videoFrames, "audioFrames" to counts?.audioFrames)
+  }
+
+  /**
+   * SRT's own account of the socket, which egress cannot give: egress counts retransmissions, and
+   * bytes handed to a socket with no network behind it (2026-09-14, nine seconds of network=none
+   * at 3.5–4.5 Mbps). Reached by the same path as [bytesWritten]: DynamicEndpoint forwards
+   * `metrics` to the open endpoint, the SRT one is a CompositeEndpointWithMetrics delegating to
+   * SrtSink, and SrtSink's metrics are an [SrtEndpointMetrics] built from `srt_bstats`.
+   *
+   * All or nothing, and nothing unless the socket is connected: SrtEndpointMetrics reports a
+   * disconnected socket as zeros (SrtStatsHelper.ZERO, uptime 0), and a dead socket must not read
+   * as a clean one. `clear = false` so no other reader's interval counters are reset under it.
+   */
+  private fun srt(streamer: SingleStreamer?): Map<String, Any?> {
+    val reading = runCatching {
+      val metrics = (streamer?.endpoint as? WithEndpointMetrics<*>)?.metrics as? SrtEndpointMetrics
+      val instant = metrics?.rawMetrics?.bistatsOrNull(clear = false, instantaneous = true)
+      if (metrics == null || instant == null || !metrics.uptime.isPositive()) null else metrics to instant
+    }.getOrNull()
+    val metrics = reading?.first
+    val instant = reading?.second
+    return mapOf(
+      "srtPacketsWritten" to metrics?.packetsWritten,
+      "srtPacketsRetransmitted" to metrics?.packetsRetransmitted,
+      "srtPacketsWriteLost" to metrics?.packetsWriteLost,
+      "srtPacketsWriteDropped" to metrics?.packetsWriteDropped,
+      "srtRttMs" to instant?.msRTT,
+      "srtSndBufMs" to instant?.msSndBuf,
+      "srtFlightSizePkts" to instant?.pktFlightSize,
+      "srtBandwidthMbps" to instant?.mbpsBandwidth,
+    )
+  }
 
   private fun percent(battery: Intent?): Int {
     val level = battery?.getIntExtra(BatteryManager.EXTRA_LEVEL, -1) ?: -1

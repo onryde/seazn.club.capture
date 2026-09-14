@@ -73,6 +73,9 @@ object SpikeSession {
     if (::appContext.isInitialized) return
     appContext = context
     log = SpikeLog(context)
+    // First thing after the log exists: on a cable-free run this is the only record of how the
+    // last process ended. Off the caller's thread, because it is a binder call.
+    scope.launch { ExitHistory.record(context) }
     runIntents()
     watchMarkFile(context)
     SpikeTelemetry.start(context, scope) { sample ->
@@ -90,7 +93,11 @@ object SpikeSession {
       } ?: return@launch event("error", "message" to "No session file. Run cf.ts create, then adb push.")
       session = file
       if (streamerFlow.value == null) {
-        val streamer = withContext(Dispatchers.Main) { cameraSingleStreamer(appContext) }
+        // The default endpoint, counted (F-P5-4): encoded frames reaching the endpoint are what
+        // tells a starving encoder from a lossy transport.
+        val streamer = withContext(Dispatchers.Main) {
+          cameraSingleStreamer(appContext, endpointFactory = CountingEndpointFactory())
+        }
         streamer.setAudioConfig(
           AudioConfig(
             mimeType = MediaFormat.MIMETYPE_AUDIO_AAC,

@@ -9,6 +9,10 @@
  * ConnectivityManager momentarily answers null, so it is not an outage log and
  * plays no part in deciding whether a sample was publishing.
  *
+ * Columns 1–14 never move: shell one-liners read them positionally. The delivery
+ * columns F-P5-4 asked for (frames, SRT counters) sit after `detail`, which is safe
+ * only because SpikeLog strips commas from every cell it writes.
+ *
  * Pure on purpose — `telemetry-report.ts` is the CLI. A CLI in this file would
  * run on every test import.
  */
@@ -22,8 +26,33 @@ export type Sample = {
   readonly screenOn: boolean;
   readonly streaming: boolean;
   readonly transport: string | null;
-  /** Measured egress in bits per second — never the encoder's configured target. */
+  /**
+   * Measured egress in bits per second — never the encoder's configured target. It is
+   * bytes handed to the transport, retransmissions included, so it kept reading
+   * 3.5–4.5 Mbps through nine seconds with no network at all (2026-09-14 reconnect cell).
+   */
   readonly videoBitrate: number | null;
+  /**
+   * F-P5-4's missing witnesses, in the columns after `detail`. Frame counts are
+   * cumulative encoded frames handed to the endpoint over its life, which spans
+   * reconnects; the SRT counters are cumulative per socket, so they restart on every
+   * reconnect. Every one is null on rows written before the columns existed, and the
+   * SRT ones whenever the transport is not a connected SRT socket.
+   */
+  readonly videoFrames: number | null;
+  readonly audioFrames: number | null;
+  /** Data packets sent, retransmissions included. */
+  readonly srtPacketsWritten: number | null;
+  readonly srtPacketsRetransmitted: number | null;
+  /** Packets the receiver reported lost (NAKed). */
+  readonly srtPacketsWriteLost: number | null;
+  /** SRT's too-late send drops: packets it gave up on, which the platform never received. */
+  readonly srtPacketsWriteDropped: number | null;
+  /** Instantaneous readings, not counters. */
+  readonly srtRttMs: number | null;
+  readonly srtSndBufMs: number | null;
+  readonly srtFlightSizePkts: number | null;
+  readonly srtBandwidthMbps: number | null;
 };
 
 export type Row =
@@ -87,6 +116,18 @@ function sampleRow(atMs: number, cell: readonly string[]): Row {
       streaming: cell[10] === 'true',
       transport: text(cell[11]),
       videoBitrate: figure(cell[12]),
+      // cell[13] is detail. The delivery columns were appended after it rather than
+      // inserted before it, so every positional reader of columns 1–14 kept working.
+      videoFrames: figure(cell[14]),
+      audioFrames: figure(cell[15]),
+      srtPacketsWritten: figure(cell[16]),
+      srtPacketsRetransmitted: figure(cell[17]),
+      srtPacketsWriteLost: figure(cell[18]),
+      srtPacketsWriteDropped: figure(cell[19]),
+      srtRttMs: figure(cell[20]),
+      srtSndBufMs: figure(cell[21]),
+      srtFlightSizePkts: figure(cell[22]),
+      srtBandwidthMbps: figure(cell[23]),
     },
   };
 }
@@ -220,6 +261,165 @@ export function batteryFloorWhileCharging(rows: readonly Row[]): number | null {
     .reduce<number | null>((lowest, value) => (lowest === null || value < lowest ? value : lowest), null);
 }
 
+/**
+ * F-P5-4: a recording fell to 3–9 fps with a seventh of its audio while the app said
+ * `streaming=true` at 3–4 Mbps and Cloudflare said connected. Delivery has to be read
+ * in frames and packets, so these figures come from counter deltas and nothing else.
+ * Frames low with SRT quiet points at capture or encode; frames steady with drops and
+ * retransmits climbing points at transport.
+ */
+export type DeliveryMinute = {
+  /** The wall-clock minute, so a row lines up with Cloudflare's and ffprobe's timelines. */
+  readonly fromMs: number;
+  readonly from: string;
+  /** Encoded video frames handed to the endpoint, per second of real elapsed time. */
+  readonly videoFps: number | null;
+  readonly audioFramesPerSecond: number | null;
+  readonly srtWriteDropped: number | null;
+  readonly srtRetransmitted: number | null;
+  readonly srtWriteLost: number | null;
+  readonly rttMsP50: number | null;
+  readonly rttMsMax: number | null;
+};
+
+type Counter =
+  | 'videoFrames'
+  | 'audioFrames'
+  | 'srtPacketsWriteDropped'
+  | 'srtPacketsRetransmitted'
+  | 'srtPacketsWriteLost';
+
+type SampleRow = { readonly atMs: number; readonly sample: Sample };
+
+type Interval = {
+  /** The later sample's time, which decides the minute the interval counts in. */
+  readonly atMs: number;
+  readonly elapsedMs: number;
+  readonly before: Sample;
+  readonly after: Sample;
+};
+
+const MINUTE_MS = 60_000;
+const minuteOf = (atMs: number) => Math.floor(atMs / MINUTE_MS) * MINUTE_MS;
+const round2 = (value: number) => Math.round(value * 100) / 100;
+
+const sampleRows = (rows: readonly Row[]): readonly SampleRow[] =>
+  rows.flatMap((row) => (row.kind === 'sample' ? [{ atMs: row.atMs, sample: row.sample }] : []));
+
+/**
+ * Two adjacent sample rows, both publishing, with time between them. A pair touching
+ * a not-publishing sample is never an interval: bridging a reconnect would charge its
+ * dead seconds to the frame rate, and on SRT it would subtract one socket's counters
+ * from another's. Elapsed time is the rows' own clock, never one second per row — a
+ * sample that failed to write leaves a two-second interval, not a missing half.
+ */
+function intervals(rows: readonly Row[]): readonly Interval[] {
+  const samples = sampleRows(rows);
+  return samples.flatMap((after, index) => {
+    const before = samples[index - 1];
+    if (before === undefined || !before.sample.streaming || !after.sample.streaming) return [];
+    const elapsedMs = after.atMs - before.atMs;
+    return elapsedMs > 0 ? [{ atMs: after.atMs, elapsedMs, before: before.sample, after: after.sample }] : [];
+  });
+}
+
+/**
+ * How far a cumulative counter advanced across an interval, or null when that cannot
+ * be said. As with `Throughput` in SpikeTelemetry.kt, a counter that went backwards
+ * was reset and never yields a negative. Unlike `Throughput`'s zero, the interval is
+ * skipped: a zero here would read as starvation, which is the very thing measured.
+ */
+function advance(interval: Interval, counter: Counter): number | null {
+  const before = interval.before[counter];
+  const after = interval.after[counter];
+  return before === null || after === null || after < before ? null : after - before;
+}
+
+/** Per second over only the intervals where the counter could be read. */
+function rate(spans: readonly Interval[], counter: Counter): number | null {
+  let count = 0;
+  let elapsedMs = 0;
+  for (const span of spans) {
+    const advanced = advance(span, counter);
+    if (advanced === null) continue;
+    count += advanced;
+    elapsedMs += span.elapsedMs;
+  }
+  return elapsedMs === 0 ? null : round2((count * 1000) / elapsedMs);
+}
+
+const sum = (values: readonly number[]): number | null =>
+  values.length === 0 ? null : values.reduce((total, value) => total + value, 0);
+
+const present = <T>(values: readonly (T | null)[]): readonly T[] =>
+  values.flatMap((value) => (value === null ? [] : [value]));
+
+function total(spans: readonly Interval[], counter: Counter): number | null {
+  return sum(present(spans.map((span) => advance(span, counter))));
+}
+
+function groupByMinute<T extends { readonly atMs: number }>(items: readonly T[]): Map<number, T[]> {
+  const groups = new Map<number, T[]>();
+  for (const item of items) {
+    const minute = minuteOf(item.atMs);
+    groups.set(minute, [...(groups.get(minute) ?? []), item]);
+  }
+  return groups;
+}
+
+const publishingRows = (rows: readonly Row[]) => sampleRows(rows).filter((row) => row.sample.streaming);
+
+/** One row per wall-clock minute that holds a publishing sample. */
+export function deliveryMinutes(rows: readonly Row[]): readonly DeliveryMinute[] {
+  const spans = groupByMinute(intervals(rows));
+  const samples = groupByMinute(publishingRows(rows));
+  return [...samples.keys()]
+    .sort((left, right) => left - right)
+    .map((fromMs) => {
+      const inMinute = spans.get(fromMs) ?? [];
+      const rtts = present((samples.get(fromMs) ?? []).map((row) => row.sample.srtRttMs));
+      return {
+        fromMs,
+        from: new Date(fromMs).toISOString(),
+        videoFps: rate(inMinute, 'videoFrames'),
+        audioFramesPerSecond: rate(inMinute, 'audioFrames'),
+        srtWriteDropped: total(inMinute, 'srtPacketsWriteDropped'),
+        srtRetransmitted: total(inMinute, 'srtPacketsRetransmitted'),
+        srtWriteLost: total(inMinute, 'srtPacketsWriteLost'),
+        rttMsP50: percentile(rtts, 0.5),
+        rttMsMax: percentile(rtts, 1),
+      };
+    });
+}
+
+export type Delivery = {
+  readonly minutes: readonly DeliveryMinute[];
+  /** Over minutes, so one slow minute is visible as the floor rather than averaged away. */
+  readonly videoFps: { readonly min: number | null; readonly median: number | null };
+  readonly audioFramesPerSecond: { readonly min: number | null; readonly median: number | null };
+  readonly srtWriteDropped: number | null;
+  readonly srtRetransmitted: number | null;
+  readonly srtWriteLost: number | null;
+  /** Over every publishing sample with a reading. */
+  readonly rttMs: { readonly p50: number | null; readonly max: number | null };
+};
+
+export function delivery(rows: readonly Row[]): Delivery {
+  const minutes = deliveryMinutes(rows);
+  const across = (pick: (minute: DeliveryMinute) => number | null) => present(minutes.map(pick));
+  const spread = (values: readonly number[]) => ({ min: percentile(values, 0), median: percentile(values, 0.5) });
+  const rtts = present(publishingRows(rows).map((row) => row.sample.srtRttMs));
+  return {
+    minutes,
+    videoFps: spread(across((minute) => minute.videoFps)),
+    audioFramesPerSecond: spread(across((minute) => minute.audioFramesPerSecond)),
+    srtWriteDropped: sum(across((minute) => minute.srtWriteDropped)),
+    srtRetransmitted: sum(across((minute) => minute.srtRetransmitted)),
+    srtWriteLost: sum(across((minute) => minute.srtWriteLost)),
+    rttMs: { p50: percentile(rtts, 0.5), max: percentile(rtts, 1) },
+  };
+}
+
 export type Summary = {
   readonly samples: number;
   readonly criterion1: ReturnType<typeof publishingShare>;
@@ -230,6 +430,7 @@ export type Summary = {
   };
   readonly thermal: ReturnType<typeof thermalPeak>;
   readonly batteryFloorCharging: number | null;
+  readonly delivery: Delivery;
 };
 
 export function summarise(csv: string): Summary {
@@ -245,5 +446,6 @@ export function summarise(csv: string): Summary {
     },
     thermal: thermalPeak(rows),
     batteryFloorCharging: batteryFloorWhileCharging(rows),
+    delivery: delivery(rows),
   };
 }
