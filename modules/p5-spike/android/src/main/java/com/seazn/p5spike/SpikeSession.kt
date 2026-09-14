@@ -306,9 +306,13 @@ object SpikeSession {
    * 20 s data cut wrote eight). The start target is applied at once: the controller's first tick is a
    * poll later (`CoroutineScheduler` delays before it acts), and until then the codec runs at the
    * rate it was configured or reset with, 3000k. If the codec refuses it now, that first tick applies it.
+   *
+   * Applied off the publish loop. The setter is `MediaCodec.setParameters`, which can wait on the
+   * codec, and nothing a codec is slow to answer may hold a connect or a stall recovery (28b050d: a
+   * recovery that never reconnected, cause open).
    */
   private fun startAt(streamer: SingleStreamer, via: String, startBps: Int) {
-    runCatching { streamer.videoEncoder?.bitrate = startBps }
+    scope.launch { runCatching { streamer.videoEncoder?.bitrate = startBps } }
     event(
       "regulator",
       "transport" to via,
