@@ -181,9 +181,10 @@ object SpikeSession {
       runCatching { it.close() }
       endRegulation(it)
     }
-    // A new intent is a new session: no stall episode and no recovery count carry over.
+    // A new intent is a new session: no stall episode, no recovery count and no regulation carry over.
     attemptPublishing = false
     watchdog.reset()
+    LinkRegulators.newSession()
     // Cleared for every branch: a throwing service start below must not leave stale state.
     wanted = null
     transport = null
@@ -267,7 +268,7 @@ object SpikeSession {
     // Before this attempt's first frame, so a hook file pushed just before a start applies from it.
     StallSimulation.refresh()
     event("connecting", "transport" to via)
-    regulate(streamer, via, file.srt.latencyMs)
+    val startBps = regulate(streamer, via, file.srt.latencyMs)
     val startedAt = SystemClock.elapsedRealtime()
     withTimeout(CONNECT_TIMEOUT_MS) {
       if (via == "srt") {
@@ -277,6 +278,7 @@ object SpikeSession {
         streamer.startStream(file.rtmpsUrl)
       }
     }
+    if (startBps != null) startAt(streamer, via, startBps)
     event("publishing", "transport" to via, "connectMs" to SystemClock.elapsedRealtime() - startedAt)
   }
 
@@ -286,21 +288,34 @@ object SpikeSession {
    * uses, and C1's fallback switches SRT to RTMPS. And StreamPack's interval controller never ticks
    * again once stopped, which happens at every drop (StreamPackSchedulerTest). A regulator that
    * cannot be installed must never cost the broadcast, so the attempt publishes unregulated and says so.
+   *
+   * @return the target this attempt starts at (the session's last, or a fresh session's start), or
+   *   null when no regulator was installed.
    */
-  private fun regulate(streamer: SingleStreamer, via: String, srtLatencyMs: Int) {
-    try {
-      streamer.bitrateRegulatorControllerFactory = LinkRegulators.controllerFactory(via, srtLatencyMs)
-      event(
-        "regulator",
-        "transport" to via,
-        "floorBps" to VideoBitratePolicy.FLOOR_BPS,
-        "ceilingBps" to VideoBitratePolicy.CEILING_BPS,
-        // The encoder keeps the last attempt's target, so a reconnect starts where regulation left off.
-        "startBps" to streamer.videoEncoder?.bitrate,
-      )
-    } catch (failure: Exception) {
-      event("error", "message" to "regulator not installed: ${describe(failure)}")
-    }
+  private fun regulate(streamer: SingleStreamer, via: String, srtLatencyMs: Int): Int? = try {
+    val startBps = LinkRegulators.startBps()
+    streamer.bitrateRegulatorControllerFactory = LinkRegulators.controllerFactory(via, srtLatencyMs)
+    startBps
+  } catch (failure: Exception) {
+    event("error", "message" to "regulator not installed: ${describe(failure)}")
+    null
+  }
+
+  /**
+   * Once the stream has started, and only then, so a failed connect writes no `regulator` row (a
+   * 20 s data cut wrote eight). The start target is applied at once: the controller's first tick is a
+   * poll later (`CoroutineScheduler` delays before it acts), and until then the codec runs at the
+   * rate it was configured or reset with, 3000k. If the codec refuses it now, that first tick applies it.
+   */
+  private fun startAt(streamer: SingleStreamer, via: String, startBps: Int) {
+    runCatching { streamer.videoEncoder?.bitrate = startBps }
+    event(
+      "regulator",
+      "transport" to via,
+      "floorBps" to VideoBitratePolicy.FLOOR_BPS,
+      "ceilingBps" to VideoBitratePolicy.CEILING_BPS,
+      "startBps" to startBps,
+    )
   }
 
   /** Stops this attempt's controller, and blanks column 25 until the next attempt's first tick. */

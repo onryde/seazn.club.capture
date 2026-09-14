@@ -30,6 +30,13 @@ object LinkRegulators {
   @Volatile var targetBps: Int? = null
     private set
 
+  /**
+   * This operator session's regulation, carried from attempt to attempt so a reconnect keeps its
+   * target, its last cut and its failed rate. Replaced, never cleared, by [newSession]: a tick still
+   * in flight from the last session writes to the old holder, which nothing reads again.
+   */
+  @Volatile private var session = CarriedRegulation()
+
   /** Once a second: the CSV's own cadence, so every change lines up with one sample row. */
   private val POLL = 1.seconds
 
@@ -40,11 +47,20 @@ object LinkRegulators {
    */
   private const val RTMP_DRAIN_MS = 2_000
 
-  /** A new controller for one attempt on [transport]. */
-  fun controllerFactory(transport: String, srtLatencyMs: Int): IBitrateRegulatorController.Factory =
-    IntervalBitrateRegulatorController.Factory(
+  /** Every operator intent: a fresh session starts at [VideoBitratePolicy.START_BPS]. */
+  fun newSession() {
+    session = CarriedRegulation()
+  }
+
+  /** The target the next attempt starts at: the session's last, or the fresh-session start. */
+  fun startBps(): Int = VideoBitratePolicy.attemptStarted(session.state).targetBps
+
+  /** A new controller for one attempt on [transport], carrying this session's regulation. */
+  fun controllerFactory(transport: String, srtLatencyMs: Int): IBitrateRegulatorController.Factory {
+    val carried = session
+    return IntervalBitrateRegulatorController.Factory(
       bitrateRegulatorFactory =
-        if (transport == "srt") SrtLinkRegulator.Factory(srtLatencyMs) else RtmpLinkRegulator.Factory(),
+        if (transport == "srt") SrtLinkRegulator.Factory(srtLatencyMs, carried) else RtmpLinkRegulator.Factory(carried),
       // The same range the policy enforces, so StreamPack's own coercion never moves a target.
       bitrateRegulatorConfig = BitrateRegulatorConfig(
         videoBitrateRange = Range(VideoBitratePolicy.FLOOR_BPS, VideoBitratePolicy.CEILING_BPS),
@@ -52,6 +68,7 @@ object LinkRegulators {
       ),
       pollingTime = POLL,
     )
+  }
 
   fun cleared() {
     targetBps = null
@@ -65,6 +82,11 @@ object LinkRegulators {
   internal val rtmpDrainMs: Int get() = RTMP_DRAIN_MS
 }
 
+/** One session's [Regulation], written by whichever attempt's regulator is ticking. */
+internal class CarriedRegulation {
+  @Volatile var state: Regulation? = null
+}
+
 /**
  * One attempt's regulation: reads the link, asks [VideoBitratePolicy], applies the answer.
  *
@@ -72,7 +94,7 @@ object LinkRegulators {
  * handler, so a throw would crash the process, and the broadcast with it. The likeliest throw is
  * `setParameters` before the codec has started; the next tick simply tries again.
  */
-private class AttemptRegulation(private val latencyMs: Int) {
+private class AttemptRegulation(private val latencyMs: Int, private val carried: CarriedRegulation) {
   private var regulation: Regulation? = null
 
   /**
@@ -85,10 +107,10 @@ private class AttemptRegulation(private val latencyMs: Int) {
   @Synchronized
   fun update(encoderTargetBps: Int, read: () -> LinkSample?, apply: (Int) -> Unit) {
     try {
-      val state = regulation ?: Regulation(encoderTargetBps)
-      val link = read()
-      val next = if (link == null) state else VideoBitratePolicy.next(state, link, SystemClock.elapsedRealtime(), latencyMs)
+      val state = regulation ?: VideoBitratePolicy.attemptStarted(carried.state)
+      val next = VideoBitratePolicy.next(state, read(), SystemClock.elapsedRealtime(), latencyMs)
       regulation = next
+      carried.state = next
       if (!applied || next.targetBps != encoderTargetBps) {
         apply(next.targetBps)
         applied = true
@@ -100,8 +122,8 @@ private class AttemptRegulation(private val latencyMs: Int) {
   }
 }
 
-/** Sender drops since the last reading, from a cumulative counter; a counter that went backwards is none. */
-private class DropCounter {
+/** Packets since the last reading, from a cumulative counter; a counter that went backwards is none. */
+private class CounterDelta {
   private var lastTotal: Long? = null
 
   fun since(total: Long): Long {
@@ -111,41 +133,67 @@ private class DropCounter {
   }
 }
 
+/**
+ * Bits per second from the endpoint's cumulative byte counter over the real interval between
+ * readings, exactly as `SpikeTelemetry` computes column 13. Null on the first reading, or when the
+ * counter went backwards: no interval to judge.
+ */
+private class EgressMeter {
+  private var lastBytes: Long? = null
+  private var lastAtMs = 0L
+
+  fun bitsPerSecond(totalBytes: Long): Long? {
+    val atMs = SystemClock.elapsedRealtime()
+    val previous = lastBytes
+    val elapsedMs = atMs - lastAtMs
+    lastBytes = totalBytes
+    lastAtMs = atMs
+    if (previous == null || elapsedMs <= 0 || totalBytes < previous) return null
+    return (totalBytes - previous) * 8_000 / elapsedMs
+  }
+}
+
 private class SrtLinkRegulator(
   metricsTracker: EndpointMetricsTracker,
   bitrateRegulatorConfig: BitrateRegulatorConfig,
   onVideoTargetBitrateChange: (Int) -> Unit,
   onAudioTargetBitrateChange: (Int) -> Unit,
   latencyMs: Int,
+  carried: CarriedRegulation,
 ) : SrtBitrateRegulator(metricsTracker, bitrateRegulatorConfig, onVideoTargetBitrateChange, onAudioTargetBitrateChange) {
-  private val regulation = AttemptRegulation(latencyMs)
-  private val drops = DropCounter()
+  private val regulation = AttemptRegulation(latencyMs, carried)
+  private val drops = CounterDelta()
+  private val losses = CounterDelta()
+  private val egress = EgressMeter()
 
   override fun update(currentVideoBitrate: Int, currentAudioBitrate: Int) =
     regulation.update(currentVideoBitrate, ::read, onVideoTargetBitrateChange)
 
   /**
    * One `srt_bistats`, never cleared: SpikeTelemetry reads the same socket's counters. Null while no
-   * SRT socket is connected, which holds the target.
+   * SRT socket is connected, which holds the target. `byteSentTotal` is what column 13's
+   * `bytesWritten` is built from (`SrtEndpointMetrics`), retransmits included.
    */
   private fun read(): LinkSample? {
     val raw = metricsTracker.rawMetrics as? SrtRawMetrics ?: return null
     val stats = raw.bistatsOrNull(clear = false, instantaneous = true) ?: return null
     return LinkSample(
       droppedPackets = drops.since(stats.pktSndDropTotal.toLong()),
+      lostPackets = losses.since(stats.pktSndLossTotal.toLong()),
       sendBufferMs = stats.msSndBuf,
       bandwidthBps = (stats.mbpsBandwidth * 1_000_000).toLong(),
+      egressBps = egress.bitsPerSecond(stats.byteSentTotal),
     )
   }
 
-  class Factory(private val latencyMs: Int) : SrtBitrateRegulator.Factory {
+  class Factory(private val latencyMs: Int, private val carried: CarriedRegulation) : SrtBitrateRegulator.Factory {
     override fun newBitrateRegulator(
       metricsTracker: EndpointMetricsTracker,
       bitrateRegulatorConfig: BitrateRegulatorConfig,
       onVideoTargetBitrateChange: (Int) -> Unit,
       onAudioTargetBitrateChange: (Int) -> Unit,
     ): SrtBitrateRegulator = SrtLinkRegulator(
-      metricsTracker, bitrateRegulatorConfig, onVideoTargetBitrateChange, onAudioTargetBitrateChange, latencyMs,
+      metricsTracker, bitrateRegulatorConfig, onVideoTargetBitrateChange, onAudioTargetBitrateChange, latencyMs, carried,
     )
   }
 }
@@ -155,30 +203,41 @@ private class SrtLinkRegulator(
  * through a 10-tag channel with `DROP_OLDEST`, and counts every tag it drops into
  * `messagesSendDropped` = `packetsWriteDropped`. Verified in the 3.2.0 sources, and in the cached jar
  * (`frameDropped`, `getSyncMetrics`). A socket that cannot keep up therefore shows as drops, and only
- * as drops.
+ * as drops. `RtmpEndpointMetrics` reports `packetsWriteLost` as 0, so losses never make it unclean.
  */
 private class RtmpLinkRegulator(
   metricsTracker: EndpointMetricsTracker,
   bitrateRegulatorConfig: BitrateRegulatorConfig,
   onVideoTargetBitrateChange: (Int) -> Unit,
   onAudioTargetBitrateChange: (Int) -> Unit,
+  carried: CarriedRegulation,
 ) : RtmpBitrateRegulator(metricsTracker, bitrateRegulatorConfig, onVideoTargetBitrateChange, onAudioTargetBitrateChange) {
-  private val regulation = AttemptRegulation(LinkRegulators.rtmpDrainMs)
-  private val drops = DropCounter()
+  private val regulation = AttemptRegulation(LinkRegulators.rtmpDrainMs, carried)
+  private val drops = CounterDelta()
+  private val losses = CounterDelta()
+  private val egress = EgressMeter()
 
   override fun update(currentVideoBitrate: Int, currentAudioBitrate: Int) =
     regulation.update(currentVideoBitrate, ::read, onVideoTargetBitrateChange)
 
-  private fun read(): LinkSample =
-    LinkSample(drops.since(metricsTracker.cumulative.packetsWriteDropped), sendBufferMs = null, bandwidthBps = null)
+  private fun read(): LinkSample {
+    val cumulative = metricsTracker.cumulative
+    return LinkSample(
+      droppedPackets = drops.since(cumulative.packetsWriteDropped),
+      lostPackets = losses.since(cumulative.packetsWriteLost),
+      sendBufferMs = null,
+      bandwidthBps = null,
+      egressBps = egress.bitsPerSecond(cumulative.bytesWritten),
+    )
+  }
 
-  class Factory : RtmpBitrateRegulator.Factory {
+  class Factory(private val carried: CarriedRegulation) : RtmpBitrateRegulator.Factory {
     override fun newBitrateRegulator(
       metricsTracker: EndpointMetricsTracker,
       bitrateRegulatorConfig: BitrateRegulatorConfig,
       onVideoTargetBitrateChange: (Int) -> Unit,
       onAudioTargetBitrateChange: (Int) -> Unit,
     ): RtmpBitrateRegulator =
-      RtmpLinkRegulator(metricsTracker, bitrateRegulatorConfig, onVideoTargetBitrateChange, onAudioTargetBitrateChange)
+      RtmpLinkRegulator(metricsTracker, bitrateRegulatorConfig, onVideoTargetBitrateChange, onAudioTargetBitrateChange, carried)
   }
 }
