@@ -315,6 +315,64 @@ faa37499c97f16d4ed392f95b4f80f60`; the live input's `status` from the Stream API
 ffprobe packet cadence on the recording's 720p and audio renditions; frames
 extracted at 60, 1200, 2280, 2320, 2335 and 2341 s.
 
+### F-P5-5 — nothing adapts the bitrate, so a burst the uplink cannot carry is delivered as nothing
+
+Soak A, 2026-09-14. The engine encodes VBR at a 3 Mbps target, and nothing regulates it against
+the link. StreamPack 3.2.0 ships a bitrate regulator (`IntervalBitrateRegulatorController`), but the spike
+configures none. For the hour before 19:13Z the phone sent a full 30 fps at only 0.5–0.7 Mbps: VBR on a
+still scene. At 19:13 its output jumped to about 4.5 Mbps. The phone had not been moved; what changed in
+the picture is not established. The roaming cellular uplink could not carry that rate:
+
+| Minute (Z) | Egress | SRT retransmits | Send buffer | RTT |
+|---|---|---|---|---|
+| 19:12 | ~0.7 Mbps | 0 | 346 ms | 41 ms |
+| 19:14 | ~4.5 Mbps | 46 | 198 ms | 58 ms |
+| 19:15 | ~4.5 Mbps | 783 | 1300 ms | 42 ms |
+| 19:16 | ~3.2 Mbps | — | 2049 ms | 1658 ms |
+
+Cloudflare packaged its last segment at 19:13:38Z, and the SRT session broke at 19:16:41Z. After a later
+reconnect the link was worse. SRT estimated the uplink at **1.2 Mbps** against 3.3–3.9 Mbps offered, the
+send buffer sat at the 2049 ms latency limit, and by 19:30:49Z SRT had discarded **77,888 packets** at the
+sender against 49,160 sent. The broadcast Cloudflare recorded from that session has **no video at all**:
+input 0×0, size 0, and one variant labelled `undefinedxundefined`, carrying 181 s of audio. Over the run
+SRT dropped 184,022 packets at the sender.
+
+SRT's latency makes this all or nothing. Data later than the 2000 ms window is dropped, so an overloaded
+link does not degrade to lower quality; it delivers nothing decodable. The degradation ladder (§8) puts
+the encode last, but last still has to exist: **the engine needs a bitrate regulator driven by SRT's own
+bandwidth estimate, send buffer and drop counters, with a floor**, before a 3000k ceiling means anything
+on cellular.
+
+### F-P5-6 — a reconnect can leave the encoder with no picture while everything else says LIVE
+
+Soak A, 2026-09-14. After the reconnect at 19:16:44Z the phone's video frame counter stayed flat for 11
+minutes while every other witness said the broadcast was healthy:
+
+- **Audio** kept flowing at 46.9 frames/s; egress ~180 kbps.
+- **The camera kept delivering.** `dumpsys media.camera` shows device 0 feeding both StreamPack's
+  `SurfaceTexture` (the GL surface processor's input) and the preview `SurfaceView` at 30.0 fps: 182 frames
+  in 6.06 s on each.
+- **The encoder had no input.** Its log: `c2.qti.avc.encoder … 1280x720 inputFps=0 outputFps=0`.
+- **The process was healthy.** Foreground service running, process not frozen, wake lock held, no app
+  warning or error in logcat.
+- **The HUD read `LIVE srt · 184 kbps · last: publishing`** over a moving preview with the scorebug on.
+  Cloudflare reported the session connected.
+
+So the break sits between StreamPack's surface processor output and the video encoder's input surface. A
+further reconnect (a 20 s data cut at 19:27Z) restored 30 fps, and the reconnect cells earlier the same day
+resumed video too, so it is conditional. This session followed 2 h 17 min of publishing at thermal status 3.
+
+Three consequences:
+
+1. **LIVE must be gated on encoded video frames advancing**, not on the transport or the streaming flag.
+   The counter this run added is the signal.
+2. **Video frames stalling while publishing is a native state**: the engine should detect it and rebuild
+   the video pipeline (a reconnect did it here), never leave it silent.
+3. **It needs a repro**: reconnect cells under the soak's conditions, with the frame counters on.
+
+Without the delivery columns added for this run (`890da01`), this soak would have read as F-P5-4 again:
+connected, streaming, and nothing to say why.
+
 ### H-P5-1 (hypothesis, with its test; measured 2026-09-14 — it holds) — on SRT the hold may start late, so dropout tolerance is not the configured number
 
 Run A's hold ran **225.2 s** from ingest end against **183 s** measured over RTMPS
@@ -591,6 +649,80 @@ cumulative `bytesWritten` and retransmissions into a broken link still count.
 only the playlist head says what arrived. Read them together or not at all.
 
 Thermal curve (minute → status, headroom, battery °C):
+
+### Soak A — SRT, cellular, hands-off and cable-free — 2026-09-14
+
+**Setup.**
+
+- **Handset and build:** the OnePlus with the delivery-telemetry build (`890da01`). The telemetry was checked
+  on the live session before the unplug: 30.02 fps video, 46.88 audio frames/s, SRT RTT 31 ms, and an
+  `exit-history` row present.
+- **Uplink:** a fresh input (`b99563f0…`), wifi off, roaming cellular.
+- **Screen:** on, with manual brightness 80 (of 8191); the app in the foreground.
+- **Start:** warm, by the owner's decision (thermal 1, battery 38.6 °C). SRT publishing from 16:59:14Z.
+- **Power:** the cable came out at 17:02:33Z onto the phone's own wall charger.
+- **Watching:** from the laptop only, polling the playlist every 2 s and Cloudflare's status every 5 s.
+- **Plan:** 3 h.
+
+| Time (Z) | What |
+|---|---|
+| 17:12:14 | Thermal status 3 (severe); it stays there, never reaching 4 |
+| 17:00–17:40 | Egress median 3.7–4.0 Mbps at 30 fps |
+| 18:20–19:12 | Egress median 0.52–0.70 Mbps, still 30 fps, RTT ~31–35 ms, no SRT drops |
+| 19:13 | Egress jumps to ~4.5 Mbps and the uplink overruns (F-P5-5) |
+| 19:13:38 | Last segment packaged in broadcast 1 |
+| 19:16:41 | App `dropped` (`endpoint-closed`); Cloudflare `client_disconnect` the same second |
+| 19:16:44 | Reconnected; **video frames 0/s from here**, audio normal, HUD `LIVE` (F-P5-6) |
+| 19:22:5x | Owner replugs the cable so the phone can be read live; no longer cable-free |
+| 19:27:22–43 | Controller forces a reconnect with a 20 s mobile-data cut |
+| 19:27:45 | Publishing again; 30 fps back on the phone |
+| 19:27:48 | Cloudflare opens broadcast 2 |
+| 19:27:45–19:36:54 | 3.3–3.9 Mbps offered into a link estimated at 1.2 Mbps; send buffer pinned at 2.05 s |
+| 19:36:54.7 | Owner stops with Hold to stop; Cloudflare `client_disconnect` 19:36:56.297 |
+| 19:39:58.577 | First 204: hold **182.28 s** from the disconnect, the fifth measurement at ~182.3–182.5 s |
+
+**Recordings.**
+
+- **Broadcast 1** (`f49c893b…`): 8031.32 s (2 h 13 min 51 s). 4009 segments, 4003 of them ~2 s. No
+  discontinuity. 30.02 fps with a largest gap of 34 ms in every window sampled from media 60 s to 7950 s.
+- **Broadcast 2** (`9a5eb609…`): 181.01 s of audio with no video; see F-P5-5.
+- **What viewers got:** nothing from 19:13:38Z to 19:27:48Z, then an audio-only broadcast until the stop.
+  That is about 23 of the run's 158 minutes without a picture.
+
+| Criterion | Result |
+|---|---|
+| 1 | **Fail.** From publish to stop the streaming flag said publishing in 99.79% of samples, while no picture reached viewers for the last ~23 minutes. The flag half of the criterion passes a run whose playlist half fails, as Run A warned. |
+| 2 | **Pass.** Peak thermal status 3 from 17:12:14Z to the end; never 4. Battery peak 46.8 °C. |
+| 3 | **Fail as written — read it with care.** Egress median 1.89 Mbps over the run. For the hour before 19:13 it was 0.5–0.7 Mbps at a full 30 fps: VBR on a still scene, below the floor without anything shedding. After 19:16:44 it was ~180 kbps of audio only. Egress still cannot show delivery (F-P5-5). |
+| 4–7 | Not in this run's hands-off shape. |
+| 8 | Not measured. |
+| 9 | **Pass.** Battery floor while charging 55%; it ran 56% → 68% on the wall charger. |
+
+**Telemetry totals** (`telemetry-report.ts`):
+
+| Measure | Value |
+|---|---|
+| Video fps | median 30.01, minimum 0 |
+| Audio frames/s | median 46.87 |
+| SRT send drops | 184,022 |
+| SRT retransmits | 8,840 |
+| SRT write-lost | 11,282 |
+| RTT | p50 33 ms, max 2234 ms |
+
+**Method notes paid for here.**
+
+- **The cable-free alarm had a blind spot.** Relaunched after a stall, it could not fire again until it
+  had seen a fresh advance, so it stayed silent through the second freeze. It was fixed during the run.
+- **A probe of a frozen live playlist re-reads old segments.** `ffmpeg -live_start_index` on a playlist
+  that is not advancing measures pre-freeze media, and it briefly reported the stream as recovered when it
+  was not.
+
+Evidence:
+
+- `.p5/p5-soak-a-20260914T165838Z.*`: log, env, watcher CSV, Cloudflare status CSV, device CSV, and
+  `report.json`.
+- The live diagnosis capture `p5-soak-a-20260914T165838Z.diag-20260914T192258Z/`: screenshots, logcat,
+  camera, services, thermal, power and process dumps.
 
 ### Run B — RTMPS, wifi, 1 h (T5, N5)
 
