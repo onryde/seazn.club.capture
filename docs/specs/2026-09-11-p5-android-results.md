@@ -306,7 +306,7 @@ faa37499c97f16d4ed392f95b4f80f60`; the live input's `status` from the Stream API
 ffprobe packet cadence on the recording's 720p and audio renditions; frames
 extracted at 60, 1200, 2280, 2320, 2335 and 2341 s.
 
-### H-P5-1 (hypothesis, with its test) — on SRT the hold may start late, so dropout tolerance is not the configured number
+### H-P5-1 (hypothesis, with its test; measured 2026-09-14 — it holds) — on SRT the hold may start late, so dropout tolerance is not the configured number
 
 Run A's hold ran **225.2 s** from ingest end against **183 s** measured over RTMPS
 at the same `timeoutSeconds=180`, with only 4.16 s of detection uncertainty. The
@@ -362,6 +362,69 @@ entirely RTMPS after the first 12 s. No `hls-watch` CSV for this window landed
 in `.p5/`, so hold-to-204 cannot be reconstructed. **H-P5-1 remains open;**
 re-run the two SRT cells with the watcher teed.
 
+A first attempt on 2026-09-13 is not scored either: its driver failed at the cut
+and the handset published unattended for 50 minutes, which is where F-P5-4 came
+from.
+
+**Measured 2026-09-14 — H-P5-1 holds.** Both cells on the OnePlus, wifi off,
+cellular, a fresh input each, 120 s of SRT publish, the watcher polling every
+~1.3–1.7 s (so each 204 is bounded to that by the last 200 before it).
+
+| | SRT clean stop | SRT kill (`am force-stop`) |
+|---|---|---|
+| Publisher ends | hold released 15:43:01.34Z; `service-stopped` 15:43:01.30 on the device clock (at most 0.14 s ahead) | force-stop 15:53:01.69–02.16Z; last device sample 15:53:01.63 on the device clock |
+| Recording end, created + duration | 15:42:59.25Z | 15:53:02.41Z |
+| Last playlist head advance | 15:43:01.094Z | 15:53:05.095Z |
+| Cloudflare `client_disconnect` | 15:43:01.408Z | **15:53:32.176Z** |
+| Last 200 / first 204 | 15:46:02.517Z / 15:46:03.860Z | 15:56:33.097Z / 15:56:34.708Z |
+| Polls carrying `EXT-X-ENDLIST` | 0 | 0 |
+| **204 − Cloudflare's disconnect** | **182.45 s** | **182.53 s** |
+| **204 − recording end** | 184.61 s | **212.30 s** |
+
+Against RTMPS on the bench account, 183.5 s clean and 182.8 s killed, measured
+from the end of media.
+
+What it settles:
+
+- **The hold is timed from when Cloudflare notices the publisher is gone, not from
+  the last media it received.** Measured from the disconnect, the two cells land
+  0.08 s apart; measured from the end of media, they land 27.7 s apart.
+- **Transport is innocent; close semantics own the gap.** SRT with a clean close
+  matches RTMPS. A clean close is noticed within about a quarter of a second of
+  the app stopping. A killed publisher is noticed **about 30 s** later: 29.8 s
+  after the recording's end and 30.0–30.5 s after the force-stop. The unattended
+  retry in F-P5-4 agrees independently, at about 31 s between the process's last
+  sample and Cloudflare's disconnect.
+- **A phone that vanishes without closing therefore gets about 212 s, not 180.**
+  Killed, crashed, or cut off from its uplink, which is how a handset at a ground
+  actually drops, it leaves no close behind it. The configured number understates
+  how long the platform waits, and that is the safe direction for sizing
+  tolerance. It is the unsafe direction for everything reading "ended": a dead
+  SRT stream keeps serving 200s for about 212 s after its last frame, and anything
+  downstream that treats 180 s from the last media as the end is about 30 s early.
+
+Still open:
+
+- **A reconnect inside the ~30 s notice window.** Whether Cloudflare accepts a new
+  SRT publisher on the same stream ID while it still holds the dead session is
+  unmeasured, and it is the uplink-loss case exactly. F-P5-2's reconnects do not
+  answer it: those sessions were closed by Cloudflare (`endpoint-closed`), so
+  there was nothing to wait out.
+- **Run A's residual.** Its 225.2 s is 12.7 s more than the kill cell's 212.3 s.
+  Run A's process died during screen-off rather than by force-stop (F-P5-3), and
+  its input's status history has since been overwritten by a later session, so its
+  notice time cannot be recovered.
+
+Method, for whoever repeats this: Cloudflare's own live input status is the direct
+clock for "noticed". `GET /stream/live_inputs/<uid>` returns
+`status.current.statusEnteredAt` with reason `client_disconnect`, but it keeps only
+the latest session per input, so read it straight after each cell. Created +
+duration was usable here because both recordings pass F-P5-4's regularity check:
+67 and 69 segments of ~2 s, 30.02 fps, largest frame gap 39 and 36 ms. Evidence:
+`.p5/p5-h1-clean-20260914T154012Z.*` and `.p5/p5-h1-kill-20260914T155017Z.*`
+(driver log, watcher CSV, power samples, device CSV); inputs `fab08b34…` and
+`766971f7…`; videos `e2f192ec…` and `ad27e224…`.
+
 ## Runs
 
 ### Run A — SRT, cellular, 3 h
@@ -414,7 +477,7 @@ empty cell cannot be mistaken for a pass.
 | 2 | **Pass.** Peak status 2, never reached 3, across the full window. Battery 32.7 → 39.4 °C, headroom 0.53 → 0.77 | 2476 samples in `run-a-full.csv` |
 | 3 | **Pass.** 60 s rolling means over the full window: min **3949.2** / median **4181.0** / p5 **4158.1** kbps, all above the 3000 floor. Reads high because it counts audio, container and SRT overhead, as the note above says | `telemetry-report.ts` on `run-a-full.csv` |
 | 4 | **Not reached.** The minute-65 outage never happened — the driver issued it after adb was gone | — |
-| 5 | **Not reached** as designed — no minute-125 outage, so the split is untested. But the unplanned death answered something more useful: **no `EXT-X-ENDLIST` is ever served at `timeoutSeconds=180`.** My playlist sat frozen at head 997 for ~3.5 min, last 200 at 11:05:50.9Z still serving segments, then master 204 at 11:05:55.0Z — a 4.16 s gap, too small for an ENDLIST to appear and vanish inside. A controlled pair run elsewhere on this account settles that it is the *value* and not the manner of ending: a clean cut (SIGINT, trailer written) and an abrupt death (SIGKILL) both reached 204 with no ENDLIST, at +183.5 s and +182.8 s — 0.7 s apart — while 10 and 60 both emit one at ≈ timeout + 3 s. **Consequence for the whole programme: nothing may treat `EXT-X-ENDLIST` as the end-of-stream signal, because at the value we would configure it never arrives.** One difference stays open: my hold ran **225.2 s** from ingest end (212.3 s from the last head advance) against their 183 s, and my detection uncertainty is only 4.16 s, so it is not measurement lag. See **H-P5-1** for the proposed mechanism and the two cells that would settle it | `p5-run-a.hls2.csv` lines 673–759 |
+| 5 | **Not reached** as designed — no minute-125 outage, so the split is untested. But the unplanned death answered something more useful: **no `EXT-X-ENDLIST` is ever served at `timeoutSeconds=180`.** My playlist sat frozen at head 997 for ~3.5 min, last 200 at 11:05:50.9Z still serving segments, then master 204 at 11:05:55.0Z — a 4.16 s gap, too small for an ENDLIST to appear and vanish inside. A controlled pair run elsewhere on this account settles that it is the *value* and not the manner of ending: a clean cut (SIGINT, trailer written) and an abrupt death (SIGKILL) both reached 204 with no ENDLIST, at +183.5 s and +182.8 s — 0.7 s apart — while 10 and 60 both emit one at ≈ timeout + 3 s. **Consequence for the whole programme: nothing may treat `EXT-X-ENDLIST` as the end-of-stream signal, because at the value we would configure it never arrives.** One difference stays open: my hold ran **225.2 s** from ingest end (212.3 s from the last head advance) against their 183 s, and my detection uncertainty is only 4.16 s, so it is not measurement lag. See **H-P5-1** for the proposed mechanism and the two cells that would settle it — settled 2026-09-14: the hold runs 182.5 s from when Cloudflare notices the publisher is gone, and for a killed SRT publisher that is about 30 s after its last media | `p5-run-a.hls2.csv` lines 673–759 |
 | 6 | **Failed, and the cable is largely exonerated.** Delivery stopped 3 min 22 s into the 10-minute screen-off window. Three independent clocks separate the two candidate causes without needing the handset: ingest stopped at **11:02:09.8Z** (10:28:51.599Z plus the recording's own 1998.23 s); the device wrote its **last telemetry row at 11:02:20.7Z**, still claiming `streaming=true` at 4.4 Mbps; and **adb was still alive at 11:02:51–57Z**, when a background check successfully ran `adb shell` against that CSV. So the cable was still connected when delivery ended, and the 1 Hz sampler had stopped writing ~35 s before a read that still worked — with `SpikeLog` flushing on every write, that is not buffering. The app stopped while the device was reachable, which points at the process being killed or frozen during screen-off rather than at the unplug. **Mechanism from on-device CSV:** zero `dropped` / `error` / `service-stopped` rows — the process ceased without the transport observing a close (see F-P5-3) | `cf.ts videos`, `p5-run-a.hls2.csv`, `.p5/run-a-full.csv`, the 11:02:5x watcher output |
 | 7 | **Not reached for the flip; partial on encoded orientation.** Minute-95 never happened, so the three P4 assertions (preview / encoded / rotation metadata across a 180° flip) cannot be scored. What the 33 min recording *does* show: encoded picture is **1280×720** landscape throughout (early / mid / late HLS samples), with **no rotation side_data** — pixels carry the orientation, not a display matrix. **Upright is confirmed by eye**, which geometry could not do: frames at t=300 s and t=1900 s both show floor signage whose lettering reads correctly, and a 180° rotation would invert it — a flipped picture is also 1280×720 landscape with no rotation matrix, so the columns above are consistent with an upside-down broadcast. Preview and flip still need a live handset | HLS samples from `94f526ff…` via ffprobe; download enabled at `…/downloads/default.mp4` |
 | 8 | **Fail** on every 20 s sample pulled from the recording. mean_volume **−42.3 / −47.9 / −60.2 dB** (early ~2 min / mid ~16 min / late ~30 min), all below the −40 dB floor. max_volume −19.2 / −20.1 / −38.9 dB. The mid reading matches the MP4 download byte-for-byte on volume, so this is not an HLS packaging artefact. Quiet room + phone mic, not a dead encoder — but the criterion is a level floor, and the floor was missed. **Not a screen-off mute either.** The late −60.2 dB reading sits on the screen-off boundary (t≈1797 s), which could have meant Android handing a backgrounded app a silenced mic, so a per-10 s RMS timeline of the whole audio rendition was taken: the level had already fallen to −57…−61 dB about **45 s before** screen-off; **0 of 200 windows are digital silence** (floor −66 dB, a quiet room's noise floor rather than zeros); and **−41 / −40 dB of real sound was captured at t=1955–1965 s with the screen off**. The `microphone` foreground service kept capturing through screen-off until the process died | `.p5/run-a-sample-{early,mid,late}.ts` + volumedetect; MP4 download mid agrees; `.p5/run-a-audio-rms10s.txt` |
