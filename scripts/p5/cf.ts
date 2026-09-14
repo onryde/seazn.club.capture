@@ -40,7 +40,18 @@ async function call(method: string, path: string, body?: unknown): Promise<unkno
     },
     body: body === undefined ? undefined : JSON.stringify(body),
   });
-  const json = (await response.json()) as { success?: boolean; errors?: unknown; result?: unknown };
+  // `DELETE /stream/<video>` answers 200 with an EMPTY body, so an empty success is
+  // not a parse failure. Found 2026-09-14: `cleanup` threw "Unexpected end of JSON
+  // input" after each first recording delete and left six inputs and one recording
+  // on the account.
+  const text = await response.text();
+  if (response.ok && text === '') return undefined;
+  let json: { success?: boolean; errors?: unknown; result?: unknown };
+  try {
+    json = JSON.parse(text) as typeof json;
+  } catch {
+    throw new Error(`${method} ${path} → ${response.status} with a body that is not JSON`);
+  }
   if (!response.ok || json.success !== true) {
     throw new Error(`${method} ${path} → ${response.status} ${JSON.stringify(json.errors)}`);
   }
