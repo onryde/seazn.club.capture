@@ -1,7 +1,5 @@
 package com.seazn.p5spike
 
-import kotlin.math.min
-
 /**
  * One tick's view of the uplink, reduced from the transport's own counters by the regulators in
  * `LinkRegulators.kt`. Nothing here reads a socket, so every rule below is proven on the JVM.
@@ -9,17 +7,40 @@ import kotlin.math.min
 data class LinkSample(
   /** Packets the sender gave up on since the last tick: SRT's too-late drops, or StreamPack's RTMP send queue overflowing. */
   val droppedPackets: Long,
-  /** SRT's unacknowledged span (`msSndBuf`); null on a transport that has none. */
+  /** Packets reported lost since the last tick (SRT's `pktSndLoss`, each one retransmitted or dropped). RTMP reports none. */
+  val lostPackets: Long = 0,
+  /**
+   * SRT's unacknowledged span (`msSndBuf`); null on a transport that has none. A negative value is
+   * no reading: SRT reported -336 and -90 on 2026-09-14, and negatives through Soak A's rotation.
+   */
   val sendBufferMs: Int?,
   /** SRT's bandwidth estimate; null when there is none. It sizes a cut and never triggers one. */
   val bandwidthBps: Long?,
+  /**
+   * What the endpoint wrote since the last tick, in bits per second: column 13's source, so audio,
+   * TS packaging and retransmits are all in it. Null when there is no earlier reading to diff.
+   */
+  val egressBps: Long? = null,
 )
 
-/** What the regulator remembers between ticks. */
+/** A target the link failed to carry: the one in force when congestion forced a cut, and when. */
+data class FailedRate(val bps: Int, val atMs: Long)
+
+/** What the regulator remembers between ticks, and between the attempts of one operator session. */
 data class Regulation(
   val targetBps: Int,
   val lastCutAtMs: Long? = null,
   val lastRaiseAtMs: Long? = null,
+  /**
+   * Where the current clean interval began: the last step, or the last tick that was not clean. A
+   * tick with no send-buffer reading leaves it alone unless that tick still counted drops or losses.
+   * Null before an attempt's first tick, so a new connection proves itself afresh.
+   */
+  val cleanSinceMs: Long? = null,
+  /** The newest failed rate. For [VideoBitratePolicy.FAILED_RATE_MEMORY_MS], raises stay under 80% of it. */
+  val failed: FailedRate? = null,
+  /** Egress of the most recent clean ticks, oldest first, at most [VideoBitratePolicy.CLEAN_EGRESS_TICKS]. */
+  val cleanEgressBps: List<Long> = emptyList(),
 )
 
 /**
@@ -34,7 +55,12 @@ data class Regulation(
  *   buffer. An application-limited sender cannot be measured.
  * - At 19:15, as the link failed, it read 247 Mbps.
  *
- * So the estimate only sizes a cut once congestion is already visible.
+ * Cutting was right on the device; raising was not. On 2026-09-14's roaming cellular link (0.8–1.0
+ * Mbps in all), a +250k raise every 2 s once the buffer drained probed about ten times in four
+ * minutes, each probe losing 360–470 packets of picture. So a raise is small, rare, only on a link
+ * that has been clean the whole time, never soon after a cut, and never back up to a rate that just
+ * failed. And a cut is sized from what the link carried, not from a target that egress overshot by
+ * 0.25–0.6 Mbps.
  */
 object VideoBitratePolicy {
   /** AGENTS.md §8: 720p30 at 3000k is the encode ceiling. Nothing above it is ever asked for. */
@@ -48,8 +74,15 @@ object VideoBitratePolicy {
    */
   const val FLOOR_BPS = 500_000
 
-  /** AAC at 128k, set at arm and never regulated. Subtracted when the estimate sizes a cut. */
+  /** AAC at 128k, set at arm and never regulated. Part of the egress a cut must leave room for. */
   const val AUDIO_BPS = 128_000
+
+  /**
+   * A fresh session's first target, half the ceiling. Connecting at the ceiling on 2026-09-14 put
+   * 1.3–1.9 s in the send buffer and cost 1,512 sender drops before the floor was reached. A good link
+   * climbs from here; a weak one starts closer to what it can carry.
+   */
+  const val START_BPS = 1_500_000
 
   /** Sender drops are data already lost to viewers: halve. */
   private const val CUT_ON_DROPS = 0.5
@@ -66,33 +99,64 @@ object VideoBitratePolicy {
   private const val ESTIMATE_HEADROOM = 0.8
 
   /**
-   * 250k at most every 2 s, so floor to ceiling in 20 s. That is small enough that one step cannot
-   * turn a carried rate into F-P5-5's overload before the send buffer shows it.
+   * A cut leaves expected egress (video target + audio, plus 15% for TS packaging and retransmits) at
+   * no more than 80% of the egress last carried cleanly. Percentages, so the arithmetic is exact.
    */
-  const val RAISE_STEP_BPS = 250_000
-  const val RAISE_INTERVAL_MS = 2_000L
+  private const val EGRESS_HEADROOM_PERCENT = 80L
+  private const val EGRESS_OVERHEAD_PERCENT = 115L
+
+  /** The clean ticks whose mean egress sizes a cut: ten seconds, enough to average out VBR. */
+  const val CLEAN_EGRESS_TICKS = 10
+
+  /** At most +100k at most every 10 s: floor to ceiling in over four minutes, one small probe at a time. */
+  const val RAISE_STEP_BPS = 100_000
+  const val RAISE_INTERVAL_MS = 10_000L
 
   /** A cut means the link has just failed to carry the old rate. Probing straight back would recreate the overload. */
-  const val RAISE_AFTER_CUT_MS = 10_000L
+  const val RAISE_AFTER_CUT_MS = 30_000L
+
+  /** Clean means a send buffer under a tenth of the latency (200 ms at 2000): drained, not merely draining. */
+  private const val CLEAN_BUFFER_DIVISOR = 10
+
+  /** How long a failed rate caps raises, and the cap: 80% of it. */
+  const val FAILED_RATE_MEMORY_MS = 300_000L
+  private const val FAILED_RATE_HEADROOM_PERCENT = 80
 
   /**
+   * An attempt's starting regulation. A fresh session starts at [START_BPS]. A reconnect in the same
+   * session keeps its target, its last cut and its failed rate, because the link that just dropped
+   * is the one it reconnects to. Only the clean interval restarts: the new connection has proven
+   * nothing yet, and the gap between attempts was never observed.
+   */
+  fun attemptStarted(carried: Regulation?): Regulation =
+    carried?.copy(cleanSinceMs = null) ?: Regulation(START_BPS)
+
+  /**
+   * @param link null when there was nothing to read, which holds like a negative send buffer. Such a
+   *   tick neither cuts nor raises. It restarts the clean wait only if it counted drops or losses:
+   *   Soak A's healthy hours read a negative buffer on 1,063 of 7,803 ticks with nothing dropped, and
+   *   restarting the wait on each cost 17 minutes at the ceiling without avoiding a single cut.
    * @param latencyMs the transport's delivery window. The send buffer is judged against it
-   *   (backlogged at half, strained at a quarter). After a cut, it is how long the data queued before
+   *   (backlogged at half, clean under a tenth). After a cut, it is how long the data queued before
    *   the cut takes to be sent or dropped, so drops inside it say nothing about the new rate.
    */
-  fun next(state: Regulation, link: LinkSample, nowMs: Long, latencyMs: Int): Regulation {
+  fun next(state: Regulation, link: LinkSample?, nowMs: Long, latencyMs: Int): Regulation {
     val current = state.copy(targetBps = state.targetBps.coerceIn(FLOOR_BPS, CEILING_BPS))
-    val sendBufferMs = link.sendBufferMs ?: 0
+    val reading = link?.sendBufferMs
+    if (link == null || (reading != null && reading < 0)) {
+      val lossy = link != null && (link.droppedPackets > 0 || link.lostPackets > 0)
+      return if (lossy) current.copy(cleanSinceMs = nowMs) else current
+    }
+    val sendBufferMs = reading ?: 0
     val dropping = link.droppedPackets > 0
     val backlogged = sendBufferMs >= latencyMs / 2
     val draining = current.lastCutAtMs?.let { nowMs - it < latencyMs } ?: false
+    val clean = !dropping && link.lostPackets <= 0 && sendBufferMs < latencyMs / CLEAN_BUFFER_DIVISOR
     return when {
       (dropping || backlogged) && !draining ->
         cut(current, link, nowMs, if (dropping) CUT_ON_DROPS else CUT_ON_BACKLOG)
-      dropping || backlogged || sendBufferMs >= latencyMs / 4 -> current
-      raiseDue(current, nowMs) ->
-        current.copy(targetBps = min(current.targetBps + RAISE_STEP_BPS, CEILING_BPS), lastRaiseAtMs = nowMs)
-      else -> current
+      !clean -> current.copy(cleanSinceMs = nowMs)
+      else -> raiseIfDue(carriedCleanly(current, link, nowMs), nowMs)
     }
   }
 
@@ -100,12 +164,41 @@ object VideoBitratePolicy {
     val byFactor = (state.targetBps * factor).toLong()
     val byEstimate = link.bandwidthBps?.takeIf { it > 0 }
       ?.let { (it * ESTIMATE_HEADROOM).toLong() - AUDIO_BPS } ?: Long.MAX_VALUE
-    val target = min(byFactor, byEstimate).coerceIn(FLOOR_BPS.toLong(), state.targetBps.toLong())
-    return state.copy(targetBps = target.toInt(), lastCutAtMs = nowMs)
+    val byEgress = state.cleanEgressBps.takeIf { it.isNotEmpty() }
+      ?.let { it.sum() / it.size * EGRESS_HEADROOM_PERCENT / EGRESS_OVERHEAD_PERCENT - AUDIO_BPS } ?: Long.MAX_VALUE
+    val target = minOf(byFactor, byEstimate, byEgress).coerceIn(FLOOR_BPS.toLong(), state.targetBps.toLong())
+    return state.copy(
+      targetBps = target.toInt(),
+      lastCutAtMs = nowMs,
+      cleanSinceMs = nowMs,
+      failed = FailedRate(state.targetBps, nowMs),
+    )
   }
 
-  private fun raiseDue(state: Regulation, nowMs: Long): Boolean =
-    state.targetBps < CEILING_BPS &&
-      (state.lastCutAtMs?.let { nowMs - it >= RAISE_AFTER_CUT_MS } ?: true) &&
-      (state.lastRaiseAtMs?.let { nowMs - it >= RAISE_INTERVAL_MS } ?: true)
+  /** A clean tick extends the clean interval, and its egress joins the ticks a cut is sized from. */
+  private fun carriedCleanly(state: Regulation, link: LinkSample, nowMs: Long): Regulation = state.copy(
+    cleanSinceMs = state.cleanSinceMs ?: nowMs,
+    cleanEgressBps = link.egressBps?.let { (state.cleanEgressBps + it).takeLast(CLEAN_EGRESS_TICKS) }
+      ?: state.cleanEgressBps,
+  )
+
+  private fun raiseIfDue(state: Regulation, nowMs: Long): Regulation {
+    val due = since(state.cleanSinceMs, nowMs) >= RAISE_INTERVAL_MS &&
+      since(state.lastRaiseAtMs, nowMs) >= RAISE_INTERVAL_MS &&
+      since(state.lastCutAtMs, nowMs) >= RAISE_AFTER_CUT_MS
+    val raised = minOf(state.targetBps + RAISE_STEP_BPS, CEILING_BPS, raiseCap(state, nowMs))
+    return if (due && raised > state.targetBps) {
+      state.copy(targetBps = raised, lastRaiseAtMs = nowMs, cleanSinceMs = nowMs)
+    } else {
+      state
+    }
+  }
+
+  /** 80% of a rate that failed less than [FAILED_RATE_MEMORY_MS] ago; otherwise only the ceiling. */
+  private fun raiseCap(state: Regulation, nowMs: Long): Int =
+    state.failed?.takeIf { nowMs - it.atMs < FAILED_RATE_MEMORY_MS }
+      ?.let { it.bps / 100 * FAILED_RATE_HEADROOM_PERCENT } ?: CEILING_BPS
+
+  /** Milliseconds since [atMs]; forever if it never happened. */
+  private fun since(atMs: Long?, nowMs: Long): Long = atMs?.let { nowMs - it } ?: Long.MAX_VALUE
 }
