@@ -144,6 +144,15 @@ class VideoStallWatchdog(private val clock: () -> Long) {
   /** The open stall is held for contention: no recovery is asked for, and none may start. */
   private var held = false
 
+  /** A tick was paused for our own camera switch; the next one only re-takes the baseline. */
+  private var rebaseline = false
+
+  /**
+   * After a reopen, a held stall lets itself go no sooner than this, so the reopened camera gets
+   * [STALL_MS] to deliver before the deferred recovery rebuilds over it (`both`).
+   */
+  private var holdReleaseNotBeforeMs = 0L
+
   /** When video was last seen before the open stall episode; null when none is open. */
   private var episodeSinceMs: Long? = null
 
@@ -171,7 +180,15 @@ class VideoStallWatchdog(private val clock: () -> Long) {
     val starved: Boolean get() = video < VIDEO_FLOOR_FPS || (audio != null && audio < AUDIO_FLOOR_FPS)
   }
 
-  /** [contended]: another app holds a camera now (F-P5-10). It matters only under `hold`. */
+  /**
+   * [contended]: another app holds a camera now (F-P5-10). It matters only under `hold`: a held stall
+   * whose tick sees it false lets itself go, so a release that lands between the session reading
+   * contention and this tick cannot leave it held for good.
+   *
+   * [paused]: our own `reopen` is switching cameras. Its frames are the other camera's, muted to
+   * black, so nothing is judged (no stall, starvation or recovery). The first tick after a pause only
+   * re-takes the baseline and clears the readings: the next judgement is the reopened camera's.
+   */
   @Synchronized
   fun tick(
     publishing: Boolean,
@@ -179,13 +196,19 @@ class VideoStallWatchdog(private val clock: () -> Long) {
     audioFrames: Long?,
     transport: String?,
     contended: Boolean = false,
+    paused: Boolean = false,
   ): List<VideoVerdict> {
     if (!publishing || videoFrames == null) {
       endPeriod()
       return emptyList()
     }
+    if (paused) {
+      rebaseline = true
+      return emptyList()
+    }
     val now = clock()
     val current = period ?: Period(now, videoFrames, audioFrames).also { period = it }
+    if (rebaseline) return rebaselined(current, now, videoFrames, audioFrames)
     val advancing = videoFrames > current.videoFrames
     // A stall healing within this publish: the window across the gap is not the picture now, and
     // would read as starved on the first frame back. The next judgement needs a fresh full window.
@@ -194,9 +217,26 @@ class VideoStallWatchdog(private val clock: () -> Long) {
     val rate = windowRate(current, now)
     return if (advancing) {
       advanced(current, now, videoFrames, audioFrames) + judgeDelivery(now, rate, transport)
+    } else if (held && !contended && now >= holdReleaseNotBeforeMs) {
+      releaseHold()
     } else {
       judge(current, now, videoFrames, audioFrames, transport, contended)
     }
+  }
+
+  /**
+   * After our camera switch: the counts now are the baseline, and the window starts again. A stall
+   * clock that was running restarts from here, so the reopened camera gets a full [STALL_MS]. An open
+   * stall episode, held or not, stays open: the next frame is its `Recovered`.
+   */
+  private fun rebaselined(period: Period, now: Long, videoFrames: Long, audioFrames: Long?): List<VideoVerdict> {
+    rebaseline = false
+    period.videoFrames = videoFrames
+    period.audioAtAdvance = audioFrames
+    if (period.lastAdvanceMs != null) period.lastAdvanceMs = now
+    if (held) holdReleaseNotBeforeMs = now + STALL_MS
+    healWindow(period)
+    return emptyList()
   }
 
   /** The publish loop ended the attempt for a stall. The attempt number, or null when no stall was pending. */
@@ -215,8 +255,10 @@ class VideoStallWatchdog(private val clock: () -> Long) {
    * the judgement the hold replaced would have been.
    */
   @Synchronized
-  fun contentionEnded(): List<VideoVerdict> {
-    if (!held) return emptyList()
+  fun contentionEnded(): List<VideoVerdict> = if (held) releaseHold() else emptyList()
+
+  /** The one place a hold ends without video: from [contentionEnded] or a tick, whichever is first. */
+  private fun releaseHold(): List<VideoVerdict> {
     held = false
     if (attempts >= MAX_RECOVERIES) {
       state = VideoState.FAILED
@@ -234,6 +276,8 @@ class VideoStallWatchdog(private val clock: () -> Long) {
   fun reset(holdWhileContended: Boolean = false) {
     this.holdWhileContended = holdWhileContended
     held = false
+    rebaseline = false
+    holdReleaseNotBeforeMs = 0L
     period = null
     episodeSinceMs = null
     starvedSinceMs = null
@@ -344,6 +388,7 @@ class VideoStallWatchdog(private val clock: () -> Long) {
     val since = episodeSinceMs ?: silentSince.also { episodeSinceMs = it }
     state = VideoState.STALLED
     held = holding
+    holdReleaseNotBeforeMs = 0L
     val audioAdvancing = audioFrames != null && (period.audioAtAdvance?.let { audioFrames > it } ?: false)
     // A stall is starvation at its worst: it takes the episode over and recovers as before.
     val msStarved = starvedSinceMs?.let { now - it }

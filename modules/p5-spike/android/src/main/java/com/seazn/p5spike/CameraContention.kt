@@ -54,6 +54,11 @@ class CameraContention(
     selfSwitchUntilMs = SystemClock.elapsedRealtime() + SELF_SWITCH_GRACE_MS
   }
 
+  /** A new intent: no window survives the session whose reopen opened it. */
+  fun selfSwitchReset() {
+    selfSwitchUntilMs = 0L
+  }
+
   private fun selfSwitch(cameraId: String, available: Boolean): Boolean {
     if (SystemClock.elapsedRealtime() >= selfSwitchUntilMs) return false
     onEvent("camera-reopen-status", arrayOf("cameraId" to cameraId, "available" to available))

@@ -21,11 +21,12 @@ class VideoStallWatchdogTest {
     videoFlowing: Boolean = true,
     audioFlowing: Boolean = true,
     contended: Boolean = false,
+    paused: Boolean = false,
   ): List<VideoVerdict> {
     if (videoFlowing) video += 15
     if (audioFlowing) audio += 23
     now = atMs
-    return watchdog.tick(publishing, video, audio, "srt", contended)
+    return watchdog.tick(publishing, video, audio, "srt", contended, paused)
   }
 
   /** Every 500 ms from [fromMs] to [toMs] inclusive; all verdicts, in order. */
@@ -36,7 +37,9 @@ class VideoStallWatchdogTest {
     videoFlowing: Boolean = true,
     audioFlowing: Boolean = true,
     contended: Boolean = false,
-  ): List<VideoVerdict> = (fromMs..toMs step 500).flatMap { tick(it, publishing, videoFlowing, audioFlowing, contended) }
+    paused: Boolean = false,
+  ): List<VideoVerdict> =
+    (fromMs..toMs step 500).flatMap { tick(it, publishing, videoFlowing, audioFlowing, contended, paused) }
 
   /** Video flows 0–2000 ms, then stops; the stall is reported at 5000 ms. */
   private fun stallAt5s(): List<VideoVerdict> {
@@ -414,5 +417,31 @@ class VideoStallWatchdogTest {
     assertEquals(listOf(VideoVerdict.Stalled(3_000, video, audioAdvancing = true, transport = "srt")), verdicts)
     assertEquals(1, watchdog.recoveryStarted())
     assertEquals(emptyList<VideoVerdict>(), watchdog.contentionEnded())
+  }
+
+  @Test
+  fun `hold - a tick that sees the camera released lets the held stall go, once, with no contentionEnded call`() {
+    // The release can land between the session reading contention and the tick judging with it.
+    watchdog.reset(holdWhileContended = true)
+    ticks(0, 2_000)
+    ticks(2_500, 10_000, videoFlowing = false, contended = true)
+
+    val released = ticks(10_500, 30_000, videoFlowing = false, contended = false)
+    assertEquals(listOf(VideoVerdict.HoldReleased(msStalled = 8_500)), released)
+    assertEquals(1, watchdog.recoveryStarted())
+    assertEquals(emptyList<VideoVerdict>(), watchdog.contentionEnded())
+  }
+
+  @Test
+  fun `reopen - frames during our own camera switch are not judged, and the first after it is a fresh baseline`() {
+    // While muted for the round trip, the other camera's black frames advance the counter.
+    watchdog.reset(holdWhileContended = true)
+    ticks(0, 2_000)
+    ticks(2_500, 10_000, videoFlowing = false, contended = true)
+
+    assertEquals(emptyList<VideoVerdict>(), ticks(10_500, 12_000, paused = true))
+    // Resumed: the first tick only sets the baseline; the next frame is the reopened camera's.
+    assertEquals(emptyList<VideoVerdict>(), tick(12_500))
+    assertEquals(listOf(VideoVerdict.Recovered(msStalled = 11_000)), tick(13_000))
   }
 }
