@@ -10,6 +10,17 @@ class P5SpikeModule : Module() {
     Events("onSample", "onEvent")
 
     OnCreate {
+      // F-P5-12 spike guard, before anything can open a socket: a network cut on RTMPS must end
+      // the attempt, not the process. Once per process; the product engine decides the real fix.
+      KtorAbortGuard.install { thread, throwable, count ->
+        SpikeSession.event(
+          "uncaught-swallowed",
+          "thread" to thread.name,
+          "exception" to throwable.javaClass.name,
+          "message" to throwable.message,
+          "count" to count,
+        )
+      }
       val context = appContext.reactContext ?: return@OnCreate
       SpikeSession.attach(context.applicationContext) { name, body -> sendEvent(name, body) }
     }
