@@ -30,8 +30,10 @@ Helpers:
 - **They clean up only the input they created.** Cleanup runs `cf.ts cleanup <uid>`, never
   account-wide, on a shared prepaid account.
 - **The listener scripts need `ffmpeg` on the laptop.** ffmpeg 9.0.1 cannot write the phone's
-  RTMP stream to a file, so the listener decodes it to a null sink (`-f null -`) and logs
-  per-second stats. A loop restarts it so it accepts reconnects.
+  RTMP stream to a file, so the listener decodes it instead. In `interrupt.sh` it keeps one
+  JPEG a second per connection, as `frames-s<N>-<nnnn>.jpg`, because the picture is the
+  evidence (F-P5-10). A loop restarts it so it accepts reconnects. The run's closing
+  "no capture written" warning is expected.
 
 ## Output
 

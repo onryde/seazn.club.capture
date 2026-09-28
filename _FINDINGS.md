@@ -654,10 +654,11 @@ is a product call.
    window running out.
 2. **Never try to take the camera or mic back.** A reconnect cannot win the
    camera from a call. Retrying would only add a reconnect storm on top of the
-   starvation. F-P5-10 makes this sharper: a stream rebuild during a WhatsApp
-   video call was followed by a broadcast of noise that no rebuild cured. Do not
-   rebuild while a camera is contended, and reopen the camera source after it
-   is released (both untested).
+   starvation. F-P5-10 makes this sharper. WhatsApp's concurrent camera open
+   turns our picture to noise on its own, and a rebuild buys nothing. So hold
+   while a camera is contended, and reopen our camera once it is released. On
+   the device, the reopen healed the picture in about 1.2 s (2026-09-28, one
+   run each of `reopen` and `both`).
 3. **Prevent it at Arm.** Add a pre-flight warning unless Do Not Disturb is on
    **total silence**: `NotificationManager.getCurrentInterruptionFilter()` ==
    `INTERRUPTION_FILTER_NONE`, which an app can read without a special
@@ -701,7 +702,7 @@ verdict.
 | **F-P5-7**  | The regulator raises on a quiet picture, so the next busy picture overruns the link                             | Fixed (`31dc781`); held on the device for a quiet picture. Overrun on a thin link untested                             |
 | **F-P5-8**  | A phone call silences the broadcast's microphone, and nothing says so                                           | Detection verified on the device 2026-09-28 (phone and WhatsApp calls; HUD shows it). See N18, N21                     |
 | **F-P5-9**  | Another app taking a camera can starve the broadcast without stopping it                                        | Camera contention verified on the device; rate floor not exercised (all three calls stalled to zero). See F-P5-10, N21 |
-| **F-P5-10** | After another app takes a camera, the broadcast can carry noise at full frame rate while every signal says LIVE | Open, serious. A stream rebuild does not heal it; a relaunch does. Prevented by total-silence DND. See N21             |
+| **F-P5-10** | After another app takes a camera, the broadcast can carry noise at full frame rate while every signal says LIVE | Trigger found: the concurrent open, not our rebuild. Reopening the camera on release heals it. Open: noise for the whole call. See N21 |
 | **H-P5-1**  | On SRT the hold may start late, so dropout tolerance is not the configured number                               | Holds (measured 2026-09-14): 225.2 s over SRT against 183 s over RTMPS at `timeoutSeconds=180`                         |
 
 Device scripts that produced the evidence: `scripts/p5/device/`.

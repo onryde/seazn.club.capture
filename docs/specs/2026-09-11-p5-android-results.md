@@ -546,25 +546,58 @@ after `camera-released` (`stopStream`/`startStream` and a reconnect, on the same
 picture stayed noise for the remaining 90 s. Every run so far that force-stopped and relaunched the app came
 back with a healthy picture, including a browser run between the first and second WhatsApp runs.
 
-**Not established:** whether the noise comes from WhatsApp's concurrent open of camera 1 alone, or from our
-recovery rebuilding the stream while that camera is held.
-- In the first run the preview was still the healthy scene at 16:59:22Z, after the stall had fired.
-- It was noise at 16:59:26Z, after the recovery reconnected.
-- That fits the second explanation. But a stalled preview may simply show its last good frame, so it does
-  not prove it.
+The evening's runs left open whether the noise came from WhatsApp's concurrent open alone, or from our
+recovery rebuilding the stream while the camera was held. The preview was healthy at 16:59:22Z, after the
+stall, and noise at 16:59:26Z, after the reconnect. That fitted the rebuild, but a stalled preview may only
+show its last good frame. The experiments below settle it.
+
+**Measured on the device — the trigger and the remedy, 2026-09-28 20:00Z.** The APK was `9f34ef68…`, with
+two experiments behind a runtime switch (`47b7c69` to `c7a4434`):
+- `hold`: no rebuild while a camera is contended.
+- `reopen`: on `camera-released`, reopen our camera through a camera-ID round trip, 0 → 1 → 0. The broadcast
+  is muted to black for the round trip. The endpoint and encoders are untouched, so the stream is not
+  stopped.
+- `both`: the two together.
+
+Each run was one WhatsApp video call over RTMPS to the laptop listener, with one decoded frame a second:
+
+| Run | During the call | Picture | After `camera-released` |
+|---|---|---|---|
+| `hold` (`…T195840Z`) | Stall held (`held=camera-contended`); video came back **by itself** after 6.1 s, with no rebuild and no reconnect | Noise from the frame video came back (`s2-0298`) | Noise to the end of the run, about 100 s later. No heal |
+| `reopen` (`…T200834Z`) | Stall, then the usual recovery rebuild | Noise after the rebuild (`s2-0001` to `s2-0022`) | Round trip took 1263 ms. One black frame, then a **clean, sharp picture** (`s2-0024` to `s2-0033`) until the owner moved the phone |
+| `both` (`…T201338Z`) | Stall held; video came back by itself after 5.5 s | Clean before the call (`s1-0001` to `s1-0039`), noise from video's return (`s1-0040` to `s1-0059`) | Round trip took 1174 ms. One black frame (`s1-0060`), then **clean and live** to the end of the run, about 100 s (`s1-0061` to `s1-0158`) |
+
+1. **The trigger is the concurrent open, not our rebuild.** In `hold` and `both` the stream was never torn
+   down, and the picture was still noise from the moment video resumed. The first run's healthy preview at
+   16:59:22Z was a stalled preview holding its last frame.
+2. **A stream rebuild does not heal it; reopening the camera does.** Reopening healed the noise both after
+   a rebuild (`reopen`) and without one (`both`). It took about 1.2 s, and the one black frame is the cost.
+3. **The noise lasts for the whole call.** It stops only when the other app releases the camera and ours is
+   reopened. For all of that time the status line reads `LIVE rtmps`, at 3.6 Mbps.
+4. **The status line depends on the path.** Under hold, the stall read `NO VIDEO — camera in use by another
+   app`. Without hold, the recovery read `NO VIDEO — recovering`, which says nothing about the other app.
+
+These are single runs on one handset and one calling app.
 
 Consequences:
 1. **Frame arrival is not picture health.** The zero test (F-P5-6) and the rate floor (F-P5-9) both pass on
    noise. A cheap detector is an egress jump with no scene change, but that is a heuristic. Content checks
    cost CPU the encode may need.
-2. **Recovery during contention may be harmful.** Two candidate rules, both untested:
-   - do not rebuild while a camera is contended;
-   - reopen the camera source, not just the stream, on `camera-released`.
-3. **Prevention works** (N21). With Do Not Disturb on total silence, neither a phone call nor a WhatsApp
+2. **Rules for the product engine:**
+   - hold, don't rebuild, while a camera is contended: the rebuild buys nothing;
+   - reopen our camera on `camera-released`;
+   - a reopen must complete, or be joined, before the next session starts. That race was parked in the
+     spike (ledger ruling, 2026-09-28).
+3. **Open, and a product decision:** what goes to air between the other app's open and its release. Today
+   it is noise under a LIVE badge. Muting to black or a slate while contended is the obvious candidate. It
+   is untested, and it would depend on `camera-contended` staying reliable.
+4. **Prevention works** (N21). With Do Not Disturb on total silence, neither a phone call nor a WhatsApp
    video call reached the operator, and the broadcast was untouched.
 
-Evidence: `.p5/p5-interrupt-whatsapp-20260928T165758Z.*`, `…T170717Z.*`, `…T171822Z.*` (`frames-s*`,
-`hud-*`, device events in the run logs).
+Evidence:
+- Evening runs: `.p5/p5-interrupt-whatsapp-20260928T165758Z.*`, `…T170717Z.*` and `…T171822Z.*`. These
+  are the cited frames and HUDs, plus device events in the run logs; the rest is in the evidence tar.
+- Experiment runs: `…T195840Z.*`, `…T200834Z.*` and `…T201338Z.*`, as frames, run logs and session JSON.
 
 ### H-P5-1 (hypothesis, with its test; measured 2026-09-14 — it holds) — on SRT the hold may start late, so dropout tolerance is not the configured number
 
@@ -1157,6 +1190,9 @@ Three things this changes:
 
 A starved episode's HUD line was not captured on screen. The screenshots began after the 3.7 s episode had
 ended.
+
+The F-P5-10 experiments followed at 20:00Z on APK `9f34ef68…`: `hold`, `reopen` and `both`, one WhatsApp
+video call each, DND off. Results are under F-P5-10.
 
 ### Run B — RTMPS, wifi, 1 h (T5, N5)
 
