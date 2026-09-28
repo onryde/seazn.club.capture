@@ -13,8 +13,11 @@ class VideoBitratePolicyTest {
   /** Both sessions: SRT latency 2000 ms. */
   private val latencyMs = 2_000
 
-  /** Soak A 17:00–17:40: 3.4–4.7 Mbps carried with a ~34 ms buffer, nothing dropped or lost. */
-  private val healthy = LinkSample(droppedPackets = 0, sendBufferMs = 34, bandwidthBps = 11_000_000)
+  /**
+   * Soak A 17:00–17:40: 3.4–4.7 Mbps carried with a ~34 ms buffer, nothing dropped or lost. Its
+   * egress tests every target up to the ceiling (F-P5-7), so the raise rules below are judged alone.
+   */
+  private val healthy = LinkSample(droppedPackets = 0, sendBufferMs = 34, bandwidthBps = 11_000_000, egressBps = 3_400_000)
 
   private val dropping = healthy.copy(droppedPackets = 91)
 
@@ -104,10 +107,13 @@ class VideoBitratePolicyTest {
     assertNull(strained.lastCutAtMs)
   }
 
-  /** RTMPS has no buffer or estimate to read: StreamPack's 10-tag send queue overflowing is its only signal. */
+  /**
+   * RTMPS has no buffer or estimate to read: StreamPack's 10-tag send queue overflowing is its only
+   * congestion signal. Its egress is read (`bytesWritten`), so a raise is tested as on SRT.
+   */
   @Test
   fun `a link with only a drop counter still regulates`() {
-    val rtmp = LinkSample(droppedPackets = 0, sendBufferMs = null, bandwidthBps = null)
+    val rtmp = LinkSample(droppedPackets = 0, sendBufferMs = null, bandwidthBps = null, egressBps = 3_400_000)
 
     assertEquals(1_500_000, next(Regulation(3_000_000), rtmp.copy(droppedPackets = 3), nowMs = 0).targetBps)
     assertEquals(1_100_000, ride(Regulation(1_000_000), rtmp, fromMs = 0, toMs = 10_000).targetBps)
@@ -267,5 +273,47 @@ class VideoBitratePolicyTest {
     assertEquals(1_000_000, lossy.targetBps)
     assertEquals(1_000_000, ride(lossy, healthy, fromMs = 11_000, toMs = 19_000).targetBps)
     assertEquals(1_100_000, ride(lossy, healthy, fromMs = 11_000, toMs = 20_000).targetBps)
+  }
+
+  // F-P5-7: raise only when the link was tested
+
+  /** 1,000,000 bps of video is expected to send (1,000k + 128k audio) x 1.15 = 1,297,200 bps; 70% is 908,040. */
+  private val testedAtOneMillion = healthy.copy(egressBps = 908_040)
+
+  /** 2026-09-28 from 14:53Z: a still picture sent ~371 kbps against a 1830k target, and every interval was clean. */
+  private val quiet = healthy.copy(egressBps = 371_000)
+
+  @Test
+  fun `a clean interval whose egress is far below the target holds`() {
+    assertEquals(1_830_000, ride(Regulation(1_830_000), quiet, fromMs = 0, toMs = 10_000).targetBps)
+    // The 2026-09-28 run climbed 1830k -> 3000k in twelve such steps; here a whole minute stays put.
+    assertEquals(1_830_000, ride(Regulation(1_830_000), quiet, fromMs = 0, toMs = 60_000).targetBps)
+  }
+
+  @Test
+  fun `a clean interval whose egress reaches 70 percent of the expected egress raises`() {
+    assertEquals(1_100_000, ride(Regulation(1_000_000), testedAtOneMillion, fromMs = 0, toMs = 10_000).targetBps)
+    val justShort = testedAtOneMillion.copy(egressBps = 908_039)
+    assertEquals(1_000_000, ride(Regulation(1_000_000), justShort, fromMs = 0, toMs = 10_000).targetBps)
+  }
+
+  @Test
+  fun `after a quiet interval, the raise waits for an interval of its own that was tested`() {
+    val heldQuiet = ride(Regulation(1_000_000), quiet, fromMs = 0, toMs = 10_000)
+
+    assertEquals(1_000_000, heldQuiet.targetBps)
+    // Tested from 11 s. A rolling window would raise at 16 s; the quiet interval counts for nothing.
+    assertEquals(1_000_000, ride(heldQuiet, testedAtOneMillion, fromMs = 11_000, toMs = 19_000).targetBps)
+    assertEquals(1_100_000, ride(heldQuiet, testedAtOneMillion, fromMs = 11_000, toMs = 20_000).targetBps)
+  }
+
+  /** Held ticks (no send-buffer reading) count for nothing, and a test never borrows readings from before its interval. */
+  @Test
+  fun `a test is judged only on the readable ticks inside its own interval`() {
+    val heldQuiet = ride(Regulation(1_000_000), quiet, fromMs = 0, toMs = 10_000)
+    val unreadButBusy = ride(heldQuiet, healthy.copy(sendBufferMs = -90, egressBps = 2_000_000), fromMs = 11_000, toMs = 15_000)
+
+    assertEquals(1_100_000, ride(unreadButBusy, testedAtOneMillion, fromMs = 16_000, toMs = 20_000).targetBps)
+    assertEquals(1_000_000, ride(unreadButBusy, quiet, fromMs = 16_000, toMs = 20_000).targetBps)
   }
 }
