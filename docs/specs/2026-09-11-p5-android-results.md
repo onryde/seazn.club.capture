@@ -1171,6 +1171,29 @@ straight after a driver was killed with SIGKILL mid-publish, and minutes before 
 `SurfaceTexture` read `Frames produced 0`. **Hypothesis, not proven:** both defects need a camera session
 already in a bad state. Its test: kill the app mid-publish, relaunch, then HOME while live.
 
+**That test, run 2026-09-28 21:03Z: not reproduced.** The setup was RTMPS to the laptop listener:
+1. A `capture-background.sh` run published for 10 s.
+2. Its driver and listener were then killed with SIGKILL.
+3. The app was left retrying every 2 s (`EOFException`) for 20 s.
+4. A fresh run force-stopped and relaunched it, published, and pressed HOME for 5 s at +25 s.
+
+What happened:
+- `CameraSessionController: Capture failed with code 0` was logged at the HOME press (21:04:38Z).
+- Video kept going regardless: 30 fps before HOME, 22–28 fps in the transition seconds, then 30 fps.
+- The listener counted 30 fps throughout. No `video-stalled`, and no `Frames produced 0`.
+
+So `Capture failed` at HOME is not the defect on its own: here it came and went harmlessly. One run
+cannot rule out the hypothesis, but the precondition it names is not enough to reproduce either 14 Sep
+failure. Those also had SRT over cellular and rotation in play.
+
+Evidence: `.p5/p5-capbg-20260928T210350Z.*`. The priming run's own output was lost to the SIGKILL, as
+intended.
+
+A driver fix came out of the first attempt. The fresh run opened its single-shot listener before
+force-stopping the app. The app left retrying reached the listener first, died mid-handshake, and ffmpeg
+exited (`Input/output error`), so the relaunched app had no one to publish to.
+`capture-background.sh` now force-stops the app before the listener opens.
+
 A setup note for the driver: ffmpeg 9.0.1 as the listener never saw the phone's video configuration record
 (`extract_extradata: No start code is found`, `Could not write header`) and dropped the connection 0.8 s in,
 even with larger probe settings. A null sink (`-f null -`) holds the connection and reports per-second

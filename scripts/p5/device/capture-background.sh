@@ -63,6 +63,10 @@ cat > $OUT.session.json <<'JSON'
  "playbackUrl":"about:blank"}
 JSON
 
+# Stop any app still publishing before the listener opens. On 2026-09-28 an app left retrying by a killed
+# driver reached the new single-shot listener first, died mid-handshake at the force-stop below, and ffmpeg
+# exited ("Input/output error"), so the fresh app had no one to publish to.
+adb -s $SERIAL shell am force-stop com.seazn.capture
 adb -s $SERIAL reverse tcp:1935 tcp:1935 >/dev/null || die "adb reverse failed"
 # Null sink: on 2026-09-28 ffmpeg 9.0.1 still never saw the video config record ("No start code is found",
 # "Could not write header") even with probe room, so it cannot write a file. A null sink still holds the
