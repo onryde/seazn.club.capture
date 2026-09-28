@@ -266,11 +266,35 @@ class VideoStallWatchdogTest {
     seconds(0, healthy(10))
     val starvedAt = seconds(10_000, callC).single().atMs
 
-    // Healthy from 30 000. The window ending 30 500 still averages 17.7 audio frames/s; the one
-    // ending 31 000 (call C's last two seconds and one healthy) averages 18.0 fps and 24.7 audio
-    // frames/s, above both floors. A window's average decides, not its last second.
+    // Healthy from 30 000. The window ending 30 500 still averages 17.7 audio frames/s: the last
+    // judgement below a floor. Every judgement from 31 000 on is above both, and clearing takes 3000 ms
+    // of them, so it clears at 33 500 — not at 31 000, the first window above.
     val heard = seconds(30_000, healthy(10))
-    assertEquals(Heard(31_000, VideoVerdict.DeliveryRestored(msStarved = 31_000 - starvedAt)), heard.single())
+    assertEquals(Heard(33_500, VideoVerdict.DeliveryRestored(msStarved = 33_500 - starvedAt)), heard.single())
+    assertEquals(VideoState.OK, watchdog.state)
+  }
+
+  @Test
+  fun `one window above the floor inside call C does not end the episode`() {
+    // Call C's video with audio healthy. The whole-second windows run 4+1+20 = 8.3 fps, 1+20+3 = 8.0,
+    // 20+3+12 = 11.7 (above the floor), 3+12+8 = 7.7, and the rest stay below or rise above only briefly.
+    // Without 3000 ms of continuous above-floor judgements, one episode, no restore at 11.7.
+    seconds(0, healthy(10))
+    val heard = seconds(10_000, callC.map { (videoPerS, _) -> videoPerS to 47 })
+
+    assertEquals(listOf(VideoVerdict.Starved::class), heard.map { it.verdict::class })
+    assertEquals(VideoState.STARVED, watchdog.state)
+  }
+
+  @Test
+  fun `a stall that heals by itself does not go straight to starved`() {
+    seconds(0, healthy(10))
+    // Video stops at 10 000 with the publish still up; the stall fires at 12 500.
+    assertEquals(listOf(VideoVerdict.Stalled::class), seconds(10_000, List(3) { 0 to 47 }).map { it.verdict::class })
+    // It comes back before any recovery reconnects. The window across the gap is not the picture now.
+    val heard = seconds(13_000, healthy(10))
+
+    assertEquals(listOf(VideoVerdict.Recovered::class), heard.map { it.verdict::class })
     assertEquals(VideoState.OK, watchdog.state)
   }
 

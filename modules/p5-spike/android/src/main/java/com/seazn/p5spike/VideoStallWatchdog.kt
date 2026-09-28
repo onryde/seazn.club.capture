@@ -14,7 +14,8 @@ enum class VideoState(val wire: String) {
   /**
    * F-P5-9: publishing with frames still advancing, but the last full window fell below a rate
    * floor. The broadcast is a slideshow or has broken audio. Surfaced only: a reconnect cannot give
-   * a camera back to us, so nothing is recovered. Leaves when a full window is back above both floors.
+   * a camera back to us, so nothing is recovered. Leaves when every judgement for a full window has
+   * been above both floors.
    */
   STARVED("starved"),
 
@@ -52,8 +53,9 @@ sealed interface VideoVerdict {
   data class Starved(val videoFps: Double, val audioFps: Double?, val transport: String?) : VideoVerdict
 
   /**
-   * A full window is back above both floors, [msStarved] after starvation was detected. Detection
-   * lags the onset by up to a window, and this lags the end by a window, so the two roughly cancel.
+   * Every judgement for a full window has been above both floors, [msStarved] after starvation was
+   * detected. Detection lags the onset by up to a window. This lags the end by up to two (the last
+   * low window, then 3000 ms of good ones), so [msStarved] can overstate the starvation by a window.
    */
   data class DeliveryRestored(val msStarved: Long) : VideoVerdict
 
@@ -85,8 +87,11 @@ class VideoStallWatchdog(private val clock: () -> Long) {
     private set
 
   /**
-   * The video frame rate over the last full [WINDOW_MS], to one decimal, for the snapshot and the
-   * HUD (F-P5-9). Null while not publishing, and before a full window exists in this publish.
+   * The video frame rate of the last starvation judgement's window, to one decimal, for the snapshot
+   * and the HUD (F-P5-9). Published only from a judgement that agrees with the state: while starved,
+   * only from windows below a floor, so the HUD never quotes a rate above the floor under LOW VIDEO
+   * (and holds the last low one through the 3000 ms it takes to clear). Null while not publishing,
+   * before a full window exists in this publish, and after a stall heals, until a fresh window.
    */
   @Volatile var videoFps: Double? = null
     private set
@@ -101,6 +106,9 @@ class VideoStallWatchdog(private val clock: () -> Long) {
 
   /** When the open starvation episode was detected; null when none is open. */
   private var starvedSinceMs: Long? = null
+
+  /** The last judgement below a floor in the open episode. It clears only [WINDOW_MS] after this. */
+  private var lastBelowFloorMs: Long? = null
 
   /** Recoveries started since video last flowed. */
   private var attempts = 0
@@ -141,10 +149,11 @@ class VideoStallWatchdog(private val clock: () -> Long) {
     val now = clock()
     val current = period ?: Period(now, videoFrames, audioFrames).also { period = it }
     val advancing = videoFrames > current.videoFrames
+    // A stall healing within this publish: the window across the gap is not the picture now, and
+    // would read as starved on the first frame back. The next judgement needs a fresh full window.
+    if (advancing && episodeSinceMs != null) healWindow(current)
     if (advancing || current.lastAdvanceMs != null) current.readings.addLast(Reading(now, videoFrames, audioFrames))
     val rate = windowRate(current, now)
-    videoFps = rate?.video?.let(::oneDecimal)
-    audioFps = rate?.audio?.let(::oneDecimal)
     return if (advancing) {
       advanced(current, now, videoFrames, audioFrames) + judgeDelivery(now, rate, transport)
     } else {
@@ -167,10 +176,17 @@ class VideoStallWatchdog(private val clock: () -> Long) {
     period = null
     episodeSinceMs = null
     starvedSinceMs = null
+    lastBelowFloorMs = null
     attempts = 0
     videoFps = null
     audioFps = null
     state = VideoState.IDLE
+  }
+
+  private fun healWindow(period: Period) {
+    period.readings.clear()
+    videoFps = null
+    audioFps = null
   }
 
   /**
@@ -192,23 +208,37 @@ class VideoStallWatchdog(private val clock: () -> Long) {
    * F-P5-9, judged only on a tick where video advanced. A picture that stops dead therefore never
    * reads as starved on its way to the zero-frame stall, which keeps precedence and recovers as
    * before. At 1 fps a frame still lands within a second, so real starvation is never missed.
+   *
+   * Clearing has hysteresis: every judgement over the last [WINDOW_MS] must be above both floors.
+   * Call C's video alone ran 8.3, 8.0, 11.7, 7.7 fps windows; clearing on the single 11.7 would have
+   * split one starvation into three rows and flickered the HUD.
    */
   private fun judgeDelivery(now: Long, rate: Rate?, transport: String?): List<VideoVerdict> {
     if (rate == null) return emptyList()
     val since = starvedSinceMs
+    if (rate.starved) lastBelowFloorMs = now
     val verdicts = when {
       rate.starved && since == null -> {
         starvedSinceMs = now
         listOf(VideoVerdict.Starved(oneDecimal(rate.video), rate.audio?.let(::oneDecimal), transport))
       }
-      !rate.starved && since != null -> {
+      !rate.starved && since != null && now - (lastBelowFloorMs ?: since) >= WINDOW_MS -> {
         starvedSinceMs = null
+        lastBelowFloorMs = null
         listOf(VideoVerdict.DeliveryRestored(msStarved = now - since))
       }
       else -> emptyList()
     }
+    publish(rate)
     state = if (starvedSinceMs != null) VideoState.STARVED else VideoState.OK
     return verdicts
+  }
+
+  /** Only rates that agree with the state reach the snapshot: a low one while starved, any while not. */
+  private fun publish(rate: Rate) {
+    if (starvedSinceMs != null && !rate.starved) return
+    videoFps = oneDecimal(rate.video)
+    audioFps = rate.audio?.let(::oneDecimal)
   }
 
   private fun advanced(period: Period, now: Long, videoFrames: Long, audioFrames: Long?): List<VideoVerdict> {
@@ -252,6 +282,7 @@ class VideoStallWatchdog(private val clock: () -> Long) {
     // A stall is starvation at its worst: it takes the episode over and recovers as before.
     val msStarved = starvedSinceMs?.let { now - it }
     starvedSinceMs = null
+    lastBelowFloorMs = null
     return listOf(VideoVerdict.Stalled(now - since, videoFrames, audioAdvancing, transport, msStarved))
   }
 

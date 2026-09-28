@@ -67,8 +67,9 @@ object SpikeTelemetry {
       // F-P5-6: native's account of the picture. JS only renders it, and says LIVE only for `ok`.
       // Not a CSV column: the video-* events already record every transition.
       "videoState" to SpikeSession.watchdog.state.wire,
-      // F-P5-9: the watchdog's 3000 ms window rate, one decimal; null off air and before a full
-      // window. The HUD's LOW VIDEO line quotes it, so it is the same number that was judged.
+      // F-P5-9: the 3000 ms window rate of the watchdog's last starvation judgement that agrees with
+      // its state, one decimal; null off air, before a full window, and after a stall heals. The HUD's
+      // LOW VIDEO line quotes it, so it is a number that was judged, never one above the floor.
       "videoFps" to SpikeSession.watchdog.videoFps,
       // The same window's audio rate. JS words a starved state by it; native alone judges it.
       "audioFps" to SpikeSession.watchdog.audioFps,
