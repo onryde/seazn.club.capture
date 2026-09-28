@@ -538,7 +538,7 @@ when the audio is a commentator who may simply be muted.
 ### N18 — Muting the phone's audio is a fourth way to ship silence
 
 **Status:** open · design constraints settled, control placement is not
-**Where:** capture app · audio path · relates to D1, D2, T1, N3
+**Where:** capture app · audio path · relates to D1, D2, T1, N3, F-P5-8
 
 There are legitimate reasons to mute: copyright music over the PA, crowd audio
 that cannot be broadcast, a dead mic, or commentary being added elsewhere. It is
@@ -569,6 +569,14 @@ bypass the audio floor, or the app could never go live muted at all.
 the control is the indicator, with the meter and status line both shouting while
 it is on. That is poor discoverability for a volunteer, which is arguably
 correct for something this dangerous, but it is a product call.
+
+**Measured on the device, 2026-09-28 (F-P5-8).** The system can ship silence
+too. An answered phone call made Android silence the app's record track for the
+whole call (`AF::RecordTrack: setSilenced`), and audio frames kept counting at
+about 47/s. Like a deliberate mute, it looks correct to every check that counts
+frames. The meter's **MUTED** state here and the spike's
+`MIC SILENCED BY SYSTEM` status line are the same design problem: the meter
+must say _why_ it is silent, not only that it is.
 
 ### N19 — Pause is free in the compositor and needs a channel the phone does not have
 
@@ -608,6 +616,31 @@ If the phone gets it, three constraints carry over from N18: unmistakable while
 active, hard to leave on, and impossible to confuse with Stop, which *ends* the
 broadcast. Suggested control shape, inverting the Go-live/Stop asymmetry:
 **hold to enter, tap to resume** — hard to trigger, trivial to undo.
+
+---
+
+## P5 device spike (Android)
+
+The P5 findings, as an index. The full text, evidence and corrections for each
+live in [`docs/specs/2026-09-11-p5-android-results.md`](docs/specs/2026-09-11-p5-android-results.md),
+under a heading of the same ID; F-P5-1 is under "Findings raised". The status
+is as of 28 September 2026. What the product engine must inherit waits on the P5
+verdict.
+
+| ID         | Finding                                                                                      | Status                                                                                                     |
+| ---------- | -------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| **F-P5-1** | libsrt's "Bad parameters" is how srtdroid reports a host that did not resolve                | Explained from the vendor source; the cause is DNS, not our parameters                                     |
+| **F-P5-2** | On a weak link the SRT session collapses every 6–22 s, and the watcher calls it healthy      | Watcher fixed; open: C1's fallback counts only _connect_ failures, so mid-session drops never try RTMPS    |
+| **F-P5-3** | The app can die while the device stays perfectly reachable                                   | Open for the product engine: liveness needs a heartbeat from the socket write path, not a cached flag      |
+| **F-P5-4** | The broadcast fell to a few frames a second for half an hour, and nothing we collect noticed | Watcher threshold fixed 2026-09-14; on-device detection is F-P5-9                                          |
+| **F-P5-5** | Nothing adapts the bitrate, so a burst the uplink cannot carry arrives as nothing            | Regulator built in the spike and retuned; all six rules held on the device 2026-09-28                      |
+| **F-P5-6** | A reconnect can leave the encoder with no picture while everything else says LIVE            | Spike watchdog detects and recovers. Root cause not reproduced; candidate is a pending same-value rotation |
+| **F-P5-7** | The regulator raises on a quiet picture, so the next busy picture overruns the link          | Fixed (`31dc781`); held on the device for a quiet picture. Overrun on a thin link untested                 |
+| **F-P5-8** | A phone call silences the broadcast's microphone, and nothing says so                        | Detection being built in the spike; not verified on the device. See N18                                    |
+| **F-P5-9** | Another app taking a camera can starve the broadcast without stopping it                     | Rate-floor and camera-contention detection being built; not verified on the device                         |
+| **H-P5-1** | On SRT the hold may start late, so dropout tolerance is not the configured number            | Holds (measured 2026-09-14): 225.2 s over SRT against 183 s over RTMPS at `timeoutSeconds=180`             |
+
+Device scripts that produced the evidence: `scripts/p5/device/`.
 
 ---
 
