@@ -527,6 +527,53 @@ In the product, a failure during a peek would hide the shot for that peek. AGENT
 failure must never take anything live with it, and here the operator lost the ability to frame. The fix is
 a small caption over the camera, not a plate.
 
+### F-P5-12 — losing the network on RTMPS crashes the app
+
+Run B, 2026-09-28 21:33:50Z: the first network cut over RTMPS killed the process. From the continuous
+logcat (`.p5/p5-runb-20260928T211315Z.logcat.txt`):
+
+```
+E AndroidRuntime: FATAL EXCEPTION: DefaultDispatcher-worker-3
+E AndroidRuntime: io.ktor.utils.io.ClosedWriteChannelException: Software caused connection abort
+E AndroidRuntime:   at io.ktor.network.tls.RenderKt.writeRecord(Render.kt:18)
+E AndroidRuntime:   at io.ktor.network.tls.TLSClientHandshake$output$2$1$1.invokeSuspend(TLSClientHandshake.kt:132)
+E AndroidRuntime:   Suppressed: ...[CoroutineName(cio-tls-closer), StandaloneCoroutine{Cancelling}, Dispatchers.IO]
+E AndroidRuntime: Caused by: java.io.IOException: Software caused connection abort
+```
+
+- **The exception is thrown inside Ktor.** StreamPack's RTMPS uses Ktor 3.3.3's TLS client, and the
+  exception comes from Ktor's own `cio-tls-closer` coroutine. The spike's session scope has a
+  `CoroutineExceptionHandler` (`SpikeSession.kt:57`), but this coroutine does not run in that scope, so the
+  handler never sees it. The exception reaches the thread's uncaught handler, which on Android kills the
+  process.
+- **Our code saw the drop first.** StreamPack reported `endpoint-closed` 63 ms before the crash. The
+  reconnect logic had its event and never got to use it.
+- **It is a known class upstream.** An exception from a Ktor socket or TLS client, when the network is
+  switched off on Android, cannot be caught by the caller:
+  [KTOR-3565](https://youtrack.jetbrains.com/issue/KTOR-3565/Uncatchable-Software-caused-connection-abort-on-WSS)
+  and [ktor#1734](https://github.com/ktorio/ktor/issues/1734).
+- **Every earlier RTMP drop in this spike went to a laptop listener on plain `rtmp://`,** which has no TLS
+  (`capture-background.sh`, `interrupt.sh`). That is why this was not seen before. The earlier drops on
+  Cloudflare RTMPS (H-P5-1, 2026-09-14) were a clean stop and a `SIGKILL`: the app ended each one itself, so
+  none of them took the network away from a live app.
+
+**Why it matters:**
+
+- **Hardware and RTMP-only clubs:** RTMPS is the only path for RTMP-only hardware (N5), but those
+  encoders do not run this code. The app is what crashes.
+- **Fallback:** under C1, RTMPS is where the app falls back when SRT will not connect. Any network blip
+  after that fallback, such as a tunnel, a lift or a Wi-Fi handover, ends the broadcast and kills the app.
+  It does not come back without a person.
+- **Hold window:** the 180 s hold window gives nothing here, because no process is left to resume.
+
+**For the product engine**, one of these:
+
+- guard the process against this exception class, turning it into a session drop;
+- move to a Ktor release that fixes it, after testing that it does;
+- give RTMPS a TLS transport that raises errors to the caller.
+
+Whichever is chosen, test it by cutting the network on RTMPS against Cloudflare, not a local listener.
+
 ### F-P5-8 — a phone call silences the broadcast's microphone, and nothing says so
 
 2026-09-28, an answered phone call while live. Android's audio server silenced the app's record track for
@@ -1283,6 +1330,30 @@ The F-P5-10 experiments followed at 20:00Z on APK `9f34ef68…`: `hold`, `reopen
 video call each, DND off. Results are under F-P5-10.
 
 ### Run B — RTMPS, wifi, 1 h (T5, N5)
+
+**2026-09-28 21:13:48Z, `scripts/p5/device/run-rtmps.sh`. Stopped at minute 20: the app crashed at the
+first outage (F-P5-12).** Planned: 60 min publishing, with Wi-Fi and data off for 20 s at minute 20
+(criterion 4) and for 200 s at minute 40 (criterion 5), on a fresh input deleted at the end.
+
+The 20 minutes before the outage were clean:
+
+| Measure | Result |
+|---|---|
+| Connect → publishing | 3.5 s |
+| Publishing share | 100% of 1186 samples |
+| Regulator | 1500k start, 3000k ceiling reached at +151 s, no cut |
+| Egress p5 / median / p95 | 2254k / 3086k / 3603k |
+| 60 s rolling mean after the ramp (criterion 3) | never below 3000k (minimum 3048k) |
+| Playlist | 471 advancing, 12 isolated one-poll holds, no stall |
+| Thermal | status 2 for 84% of samples; battery 42% → 36% while charging |
+
+At 21:33:49.9Z the script turned off Wi-Fi and data. StreamPack reported the drop
+(`dropped transport=rtmps reason=endpoint-closed`, 21:33:49.979Z), and 63 ms later the process died.
+The network was back at 21:34:10Z and nothing reconnected, because nothing was running. Cloudflare
+marked the input `disconnected` (`client_disconnect`) at 21:34:20Z. The driver was stopped by hand before
+its second outage: with the app gone, its closing hold-to-stop would have landed on the launcher.
+
+Criteria 4 and 5 are therefore untested on RTMPS, and cannot be tested until F-P5-12 is fixed.
 
 ### Run C — forced fallback (bad SRT port)
 

@@ -704,6 +704,7 @@ verdict.
 | **F-P5-9**  | Another app taking a camera can starve the broadcast without stopping it                                        | Camera contention verified on the device; rate floor not exercised (all three calls stalled to zero). See F-P5-10, N21 |
 | **F-P5-10** | After another app takes a camera, the broadcast can carry noise at full frame rate while every signal says LIVE | Trigger found: the concurrent open, not our rebuild. Reopening the camera on release heals it. Open: noise for the whole call. See N21 |
 | **F-P5-11** | On a thin link, SRT dumps its backlog at many times the link rate                                               | Measured 2026-09-28: 13.9 and 17.0 Mbps bursts into a 1.5 Mbps link. Open for the product engine: bound the sender (`SRTO_MAXBW`) |
+| **F-P5-12** | Losing the network on RTMPS crashes the app                                                                     | Found in Run B 2026-09-28: an uncatchable Ktor TLS exception at the first 20 s cut. Blocks criteria 4 and 5 on RTMPS, and C1's fallback. Open |
 | **H-P5-1**  | On SRT the hold may start late, so dropout tolerance is not the configured number                               | Holds (measured 2026-09-14): 225.2 s over SRT against 183 s over RTMPS at `timeoutSeconds=180`                         |
 
 Device scripts that produced the evidence: `scripts/p5/device/`.
@@ -727,7 +728,7 @@ Register items that bind this repo. Full text lives in the main register.
 | **M3** | Add the slot concept while the contract is open. |
 | **Q3** | A club without `realtime` polls at fifteen seconds, which on the phone reads as a frozen overlay with no compositor to mask it. Needs a UI line. |
 | **T1** | Assert a level floor, not stream presence. The same mistake is just as easy to make here. |
-| **T5** | Sharpened by N5. |
+| **T5** | Sharpened by N5. Run B (2026-09-28) found that the app itself dies on RTMPS when the network goes (F-P5-12), so the fallback is not yet a fallback. |
 | **U1** | What the playback side sees during the hold is undocumented. Does not block this app, but the app should not assume it can resume indefinitely. |
 
 ---

@@ -9,6 +9,7 @@ what counts as a pass. This file covers what they share.
 | `verify-safeguards.sh`                               | Delivery safeguards: regulator, stall hook, 20 s data cut (F-P5-6, the retuned regulator) | SRT over cellular          | Fresh input, deleted at the end |
 | `verify-raisegate.sh`                                | F-P5-7 raise gate: uncovered, lens covered, uncovered                                     | SRT over cellular          | Fresh input, deleted at the end |
 | `LAN=1 verify-raisegate.sh`                          | The same on a thin link, `LAN_KBPS` (default 1500): the overrun, F-P5-11                  | SRT over Wi-Fi, throttled  | None                            |
+| `run-rtmps.sh`                                       | Run B: RTMPS for 60 min, network off 20 s at min 20 and 200 s at min 40 (criteria 4, 5)   | RTMPS over Wi-Fi           | Fresh input, deleted at the end |
 | `capture-background.sh [awaySeconds]`                | HOME and return; `STALL=1` exercises stall recovery (F-P5-6)                              | RTMPS to a laptop listener | None                            |
 | `interrupt.sh browser\|call\|whatsapp [awaySeconds]` | Interruptions while live (F-P5-8, F-P5-9)                                                 | RTMPS to a laptop listener | None                            |
 
