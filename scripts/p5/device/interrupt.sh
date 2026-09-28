@@ -37,6 +37,7 @@ LOGPID=''
 now_ms() { node -e 'process.stdout.write(String(Date.now()))' }
 say() { print -r -- "$(now_ms) $(date -u +%H:%M:%SZ) $*" | tee -a $OUT.log }
 cleanup() {
+  adb -s $SERIAL shell rm -f $FILES/p5-f10-mode >/dev/null 2>&1
   [[ -n ${SHOT_PID:-} ]] && kill $SHOT_PID 2>/dev/null
   [[ -n $LPID ]] && kill $LPID 2>/dev/null
   pkill -f 'rtmp://127.0.0.1:1935/live/capbg' 2>/dev/null
@@ -87,6 +88,14 @@ sleep 2
 
 adb -s $SERIAL push $OUT.session.json $FILES/p5-session.json >/dev/null 2>&1 || die "session push failed"
 adb -s $SERIAL shell rm -f $FILES/p5-simulate-video-stall
+# F10=hold|reopen|both selects an F-P5-10 experiment (fb32d3b). The app reads p5-f10-mode at each Start and logs
+# f10-mode; absent means today's behaviour. Always rewritten or removed, so a previous run's mode cannot leak in.
+if [[ -n ${F10:-} ]]; then
+  adb -s $SERIAL shell "echo $F10 > $FILES/p5-f10-mode" || die "f10 mode push failed"
+  say "F-P5-10 experiment: $F10"
+else
+  adb -s $SERIAL shell rm -f $FILES/p5-f10-mode
+fi
 adb -s $SERIAL shell am force-stop com.seazn.capture
 adb -s $SERIAL shell input keyevent KEYCODE_WAKEUP
 adb -s $SERIAL shell monkey -p com.seazn.capture -c android.intent.category.LAUNCHER 1 >/dev/null 2>&1
