@@ -450,6 +450,18 @@ freezes.
 
 Evidence: `.p5/p5-safeguards-20260928T142729Z.*`.
 
+**Fix, on the device the same day (`31dc781`).** A due raise now also needs the interval's mean egress at 70%
+or more of `(target + 128k) × 1.15`. One SRT run on cellular, with the owner covering the lens:
+
+- **Busy picture (15:56:43–15:58:50Z):** 1500k → 2700k at +100k per ~10 s, egress 0.6–1.2 of expected,
+  send buffer ≤ 500 ms, no drops. The gate does not slow a tested climb.
+- **Quiet picture (15:58:54Z to the stop at 16:00:14Z):** egress ~0.5 Mbps, 0.15–0.17 of expected at 2700k.
+  **No raise in 80 s**, where the old rule would have reached 3000k within 30 s.
+
+Not exercised: the busy picture returning on a thin link, which is the overrun itself. This link was fat
+(SRT estimated 10–320 Mbps), and the picture stayed quiet to the end. Evidence:
+`.p5/p5-raisegate-20260928T155604Z.*`.
+
 ### F-P5-8 — a phone call silences the broadcast's microphone, and nothing says so
 
 2026-09-28, an answered phone call while live. Android's audio server silenced the app's record track for
