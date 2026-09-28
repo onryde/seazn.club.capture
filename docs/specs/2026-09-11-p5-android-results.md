@@ -574,6 +574,62 @@ E AndroidRuntime: Caused by: java.io.IOException: Software caused connection abo
 
 Whichever is chosen, test it by cutting the network on RTMPS against Cloudflare, not a local listener.
 
+**Guard measured on the device, 2026-09-28.** The spike's guard (`KtorAbortGuard.kt`, `a15c8d8` and
+`4b00812`) swallows only an I/O failure raised from `io.ktor.network.` off the main thread. It never
+swallows an `Error`, and never swallows a top-level exception from our own code. Across the three RTMPS
+runs that followed, it swallowed **10** `ClosedWriteChannelException`s (`Broken pipe` or
+`Software caused connection abort`), each within 50 ms of a `dropped`. There were 18 drops: 10 network cuts
+and 8 far-end closes (F-P5-13). The process lived through every one and reconnected. So Ktor's closer
+throws on more than half of all RTMPS drops; without the guard, each of those would have been Run B's crash.
+
+### F-P5-13 — on RTMPS, a reconnect can go dark while the phone and Cloudflare both say live
+
+Short Run B, 20 s cut at 22:47:00Z (`p5-runb-20260928T224127Z`). The phone reconnected 1.4 s after the
+network returned. For the next 4.5 minutes it sent 30 fps video and 47 audio frames a second at 2.7–3.4 Mbps.
+Cloudflare's live-input status read `connected` from 22:47:39Z. Yet the playlist gained one segment (150 →
+151) and then **stalled until the next cut**. The recording ended at the cut (303.8 s), and none of those
+4.5 minutes is in any recording. Nothing on the phone could tell: every signal it has said LIVE.
+
+It is not every reconnect. Nine RTMPS cuts of 60 s or less in three runs, all APK `af55dc7c…` or `6c81494f…`:
+
+| Run | Cuts | Went dark | Resumed | First new segment after the network returned |
+|---|---|---|---|---|
+| `…T224127Z` | 20 s | **1** | 0 | never, for 4.5 min |
+| `…T231316Z` | 20 s, 60 s | 0 | 2 | ≈ 5 s |
+| `…T232909Z` | 6 × 20 s | 0 | 6 | 0.3–2.4 s |
+
+In every resumed case the same pattern followed:
+
+1. The far end closed the reconnected session about 31 s after it connected (`dropped … audioStreaming=true`).
+   That happened after the 60 s cut too, when Cloudflare had already dropped the old session.
+2. The phone reconnected within 3 s.
+3. Viewers saw a 10–16 s freeze.
+4. The broadcast stayed in one recording, which is criterion 4's shape.
+
+The one dark case is also the one reconnect that the far end did *not* close 31 s later.
+
+**What this settles:** criterion 4 holds on RTMPS in 8 of 9 cuts, not 9 of 9. The failure is silent at the
+phone and at Cloudflare's status API. Only a watcher on the delivered playlist saw it (`hls-watch`: `stalled`).
+SRT's two cuts inside the notice window on 2026-09-14 both resumed. There is no RTMPS-style second close on
+SRT on record, but two cuts cannot rule out a rare failure there either.
+
+**What it does not settle:** the mechanism. One hypothesis fits:
+
+- RTMP sends the AVC decoder config once, at the start of a publish, while SRT's MPEG-TS repeats SPS/PPS
+  with every keyframe.
+- A new RTMP session whose opening frames Cloudflare discarded may therefore never become decodable.
+- The ~31 s second close would then be Cloudflare resetting the key, which happens to heal it.
+
+Nothing here tests this.
+
+**For the product engine:**
+
+- The phone already holds the session's `playbackUrl` (the peek uses it). While publishing, it can watch
+  its own delivered playlist. If the head has not advanced for about 20 s, it forces a reconnect.
+- That turns a silent 4.5 min outage into roughly one more reconnect. It is also the only on-device signal
+  for F-P5-3's "the app says LIVE, nothing is delivered", and for the 2026-09-14 packager stalls.
+- The session record should carry the playlist's own verdict next to the transport's.
+
 ### F-P5-8 — a phone call silences the broadcast's microphone, and nothing says so
 
 2026-09-28, an answered phone call while live. Android's audio server silenced the app's record track for
@@ -1355,14 +1411,47 @@ its second outage: with the app gone, its closing hold-to-stop would have landed
 
 Criteria 4 and 5 are therefore untested on RTMPS, and cannot be tested until F-P5-12 is fixed.
 
+**Rerun with the F-P5-12 guard, 2026-09-28 22:41:58Z (`p5-runb-20260928T224127Z`), 20 min.** APK `6c81494f…`
+(guard round 0; round 1 only narrows what it swallows). The cuts were a 20 s outage at +5 min and a 200 s
+outage at +10 min.
+
+| | 20 s cut (22:47:00Z) | 200 s cut (22:52:00Z) |
+|---|---|---|
+| The app | `dropped` (`endpoint-closed`, streams still flagged on); **no guard swallow**, because Ktor's closer did not throw this time | `dropped`, then `uncaught-swallowed … ClosedWriteChannelException message=Broken pipe` 48 ms later; **the process lived** |
+| Retries | 10 × `connect-failed UnresolvedAddressException validated=false`, not counted | ~100, the same, not counted; no fallback, as designed |
+| Publishing again | 1.4 s after the network returned (`connectMs=808`) | 1.7 s after (`connectMs=392`) |
+| Cloudflare | old session `disconnected` 22:47:31Z, `connected` 22:47:39Z | `disconnected` 22:52:31Z, `connected` 22:55:27Z |
+| Playlist | head 150 → 151 at 22:47:34Z, then **stalled 4.5 min**, until the next cut | new variant from 22:55:30Z, advancing to the stop |
+| Recordings | first recording **ends at the cut (303.8 s)**, and the 4.5 min after it are in no recording | a second recording (397.8 s), as criterion 5 expects |
+
+- **Criterion 5 on RTMPS: pass.** The app reconnected unaided and a second recording started. It served no
+  `EXT-X-ENDLIST`, the same as SRT (Run A's note).
+- **Criterion 4 on RTMPS: fail, and it is not the phone's fault.** The phone sent 30 fps video and 47 audio
+  frames a second at 2.7–3.4 Mbps for the whole 4.5 minutes, and Cloudflare said `connected`. Nothing was
+  packaged and nothing recorded. See F-P5-13.
+- **F-P5-12's guard held on the device.** The swallow is timing-dependent. It fired on one cut of two, and
+  Run B's crash also came from one cut. The process and its PID survived, and the reconnect worked.
+- Stop by hold, both recordings and the input deleted.
+
 ### Run C — forced fallback (bad SRT port)
 
-Set `P5_SRT_URL_OVERRIDE` in `.env.local` before `cf.ts create`; only the SRT address is broken, so
-the RTMPS credentials in the same payload are the real ones.
+Set `P5_SRT_URL_OVERRIDE` before `cf.ts create`. Only the SRT address is broken, so the RTMPS credentials in
+the same payload are the real ones.
+
+**Measured 2026-09-28 23:07:36Z (`p5-runb-20260928T230714Z`).** Driven by
+`START=srt P5_SRT_URL_OVERRIDE=srt://live.cloudflare.com:779 CUT1_S=0 CUT2_S=0 END_S=90 run-rtmps.sh`. The real
+port is 778. APK `af55dc7c…`.
 
 | Measure | Result |
 |---|---|
-| First connecting → RTMPS publishing (s) | |
+| First connecting → RTMPS publishing (s) | **18.8** |
+| SRT attempts | 3 × `connect-failed … SocketException: Connection was broken`, `counted=true validated=true`, about 5 s each with 2 s between |
+| Fallback | `fell-back` at the third failure, then `connecting transport=rtmps` 2 s later, `publishing` in 574 ms |
+| Delivery | playlist advancing within seconds; one recording (89.95 s for 90 s published) |
+
+C1's fallback works as designed on a broken SRT address. Its 18.8 s is mostly three SRT timeouts. An
+operator sees about 19 s of "connecting" before going live, and the product should say what is happening
+in that time.
 
 ### Output check (U1-S6, U1-S7)
 

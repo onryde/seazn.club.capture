@@ -5,6 +5,10 @@
 #
 #   run-rtmps.sh            publish 60 min; no network for 20 s at minute 20 and for 200 s at minute 40
 #   CUT1_S=… CUT2_S=… END_S=… run-rtmps.sh      the same timeline, rescaled (seconds from publishing)
+#   CUT1_LEN=… CUT2_LEN=…                         outage lengths (default 20 and 200 s); a CUT*_S of 0 skips it
+#   CUTS="120:20 300:20 …"                        any number of outages as at:length, replacing CUT1 and CUT2
+#   START=srt P5_SRT_URL_OVERRIDE=srt://host:badport run-rtmps.sh     Run C: tap Start SRT on a broken SRT
+#                                                 address and measure the fallback to RTMPS
 #
 # The outages turn off Wi-Fi AND mobile data, since the phone would otherwise fail over to cellular. The
 # 20 s outage sits inside the 180 s hold window, so it should resume into one recording (criterion 4). The
@@ -22,6 +26,11 @@ OUT=$REPO/.p5/$RUN
 CUT1_S=${CUT1_S:-1200}
 CUT2_S=${CUT2_S:-2400}
 END_S=${END_S:-3600}
+CUT1_LEN=${CUT1_LEN:-20}
+CUT2_LEN=${CUT2_LEN:-200}
+CUTS=${CUTS:-}
+START=${START:-rtmps}
+[[ $START == srt ]] && START_LABEL="^Start SRT$" || START_LABEL="^Start RTMPS$"
 WPID=''
 CPID=''
 LPID=''
@@ -63,7 +72,8 @@ outage() {
   sleep $watch
   pull
   say "$label: events from the cut:"
-  events_since $cut 'dropped|connecting|publishing|fell-back|video-stalled|video-recovery|video-recovered' | grep -v connect-failed | while read -r line; do say "  $line"; done
+  events_since $cut 'dropped|connecting|publishing|fell-back|video-stalled|video-recovery|video-recovered|uncaught-swallowed' | grep -v connect-failed | while read -r line; do say "  $line"; done
+  [[ -n $(adb -s $SERIAL shell pidof com.seazn.capture | tr -d '\r') ]] || die "$label: the app process is gone (F-P5-12?)"
   local pub=$(awk -F, -v t=$back 'NR > 1 && $1 >= t && $2 == "publishing" {print $1; exit}' $OUT.device.csv)
   [[ -n $pub ]] && say "$label: publishing again $(( (pub - back) / 1000 )).$(( (pub - back) % 1000 / 100 )) s after the network came back" \
     || say "$label: NOT publishing again within $watch s of the network coming back"
@@ -71,7 +81,7 @@ outage() {
 
 mkdir -p $REPO/.p5
 : > $OUT.log
-say "Run B run=$RUN cut1=${CUT1_S}s cut2=${CUT2_S}s end=${END_S}s"
+say "Run B run=$RUN start=$START cut1=${CUT1_S}s/${CUT1_LEN}s cut2=${CUT2_S}s/${CUT2_LEN}s end=${END_S}s srtOverride=${P5_SRT_URL_OVERRIDE:+set}"
 adb -s $SERIAL logcat -v threadtime > $OUT.logcat.txt 2>&1 &
 LPID=$!
 adb devices | grep -q "^$SERIAL" || die "phone not attached"
@@ -119,25 +129,35 @@ CPID=$!
 
 started=''
 for attempt in 1 2 3; do
-  node $HERE/tap-visible.mjs "^Start RTMPS$" $SERIAL >> $OUT.log 2>&1 || continue
+  node $HERE/tap-visible.mjs "$START_LABEL" $SERIAL >> $OUT.log 2>&1 || { sleep 2; continue; }
   for i in {1..10}; do adb -s $SERIAL shell "grep -q ',connecting,' $CSV" && { started=yes; break }; sleep 1; done
   [[ -n $started ]] && break
 done
-[[ -n $started ]] || die "Start RTMPS never produced a connecting event"
-for i in {1..30}; do adb -s $SERIAL shell "grep -q ',publishing,.*transport=rtmps' $CSV" && break; sleep 1; done
+[[ -n $started ]] || die "$START_LABEL never produced a connecting event"
+for i in {1..90}; do adb -s $SERIAL shell "grep -q ',publishing,.*transport=rtmps' $CSV" && break; sleep 1; done
 adb -s $SERIAL shell "grep -q ',publishing,.*transport=rtmps' $CSV" || die "never publishing over RTMPS"
 T0=$(now_ms)
 say "publishing over RTMPS; the run ends at +${END_S} s"
-sleep 60
-adb -s $SERIAL exec-out screencap -p > $OUT.hud-start.png
+if [[ $START == srt ]]; then
+  pull
+  first=$(awk -F, 'NR > 1 && $2 == "connecting" {print $1; exit}' $OUT.device.csv)
+  pubr=$(awk -F, 'NR > 1 && $2 == "publishing" && $14 ~ /transport=rtmps/ {print $1; exit}' $OUT.device.csv)
+  say "Run C: first connecting -> RTMPS publishing $(( (pubr - first) / 1000 )).$(( (pubr - first) % 1000 / 100 )) s"
+  awk -F, 'NR > 1 && $2 ~ /^(connecting|connect-failed|fell-back|publishing)$/' $OUT.device.csv | cut -d, -f1,2,14 | cut -c1-200 | while read -r line; do say "  $line"; done
+fi
 
-wait_until $(( T0 + CUT1_S * 1000 ))
-outage CUT1 20 60
-wait_until $(( T0 + CUT2_S * 1000 ))
-outage CUT2 200 90
-adb -s $SERIAL exec-out screencap -p > $OUT.hud-after-cut2.png
+# No screenshots: the frame is the camera's view of wherever the phone stands; the CSV carries the evidence.
+if [[ -n $CUTS ]]; then
+  n=0
+  for c in ${=CUTS}; do n=$(( n + 1 )); wait_until $(( T0 + ${c%:*} * 1000 )); outage CUT$n ${c#*:} 60; done
+else
+  if (( CUT1_S > 0 )); then wait_until $(( T0 + CUT1_S * 1000 )); outage CUT1 $CUT1_LEN 60; fi
+  if (( CUT2_S > 0 )); then wait_until $(( T0 + CUT2_S * 1000 )); outage CUT2 $CUT2_LEN 90; fi
+fi
 wait_until $(( T0 + END_S * 1000 ))
 
+# F-P5-12: if the app died, a hold here would land on the launcher.
+[[ -n $(adb -s $SERIAL shell pidof com.seazn.capture | tr -d '\r') ]] || die "app not running at the end (see logcat for FATAL EXCEPTION)"
 HX=${HOLD_XY%,*}; HY=${HOLD_XY#*,}
 say "stop: hold at $HX,$HY"
 adb -s $SERIAL shell input motionevent DOWN $HX $HY; sleep 1.5; adb -s $SERIAL shell input motionevent UP $HX $HY
@@ -161,4 +181,5 @@ done
 say "recordings (criteria 4 and 5 want 2: one across the 20 s outage, a second after the 200 s one): $(print -r -- "$vids" | tr '\n' ';')"
 node --env-file=.env.local scripts/p5/cf.ts cleanup $UID_CF 2>&1 | grep -v "MODULE_TYPELESS\|Reparsing\|eliminate this\|trace-warnings" | while read -r line; do say "cleanup: $line"; done
 UID_CF=''
+say "logcat FATAL EXCEPTION lines: $(grep -c 'FATAL EXCEPTION' $OUT.logcat.txt); guard lines: $(grep -c 'P5KtorGuard' $OUT.logcat.txt)"
 say "DONE run=$RUN"
