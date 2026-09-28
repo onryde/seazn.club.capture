@@ -9,6 +9,7 @@ import android.net.NetworkCapabilities
 import android.net.Uri
 import android.os.SystemClock
 import android.util.Size
+import io.github.thibaultbee.streampack.core.elements.sources.video.camera.ICameraSource
 import io.github.thibaultbee.streampack.core.interfaces.startStream
 import io.github.thibaultbee.streampack.core.streamers.orientation.DisplayRotationProvider
 import io.github.thibaultbee.streampack.core.streamers.orientation.asFlowProvider
@@ -70,6 +71,16 @@ object SpikeSession {
 
   /** F-P5-6's detector. The sampler reads its state; the publish loop answers its stalls. */
   val watchdog = VideoStallWatchdog(SystemClock::elapsedRealtime)
+
+  /**
+   * F-P5-9's evidence: another app opening a camera while a publish is wanted. "While publishing"
+   * here includes the gaps between attempts, because a reconnect does not give a camera back.
+   */
+  val cameraContention = CameraContention(
+    ownCameraId = ::ownCameraId,
+    publishing = { wanted != null },
+    onEvent = { kind, extras -> event(kind, *extras) },
+  )
 
   /** Bumped to ask the publish loop to end the current attempt for a stall. A StateFlow, so a wait never misses one. */
   private val stallRequests = MutableStateFlow(0)
@@ -133,6 +144,9 @@ object SpikeSession {
         )
         streamerFlow.value = streamer
         watchRotation(streamer)
+        // Best-effort, like the mark file: evidence must never cost the arm.
+        runCatching { cameraContention.register(appContext) }
+          .onFailure { event("error", "message" to "camera contention not watched: ${describe(it)}") }
       }
       event("armed", "overlayUrl" to file.overlayUrl, "playbackUrl" to file.playbackUrl)
     }
@@ -461,11 +475,22 @@ object SpikeSession {
           "videoFrames" to verdict.videoFrames,
           "audioAdvancing" to verdict.audioAdvancing,
           "transport" to verdict.transport,
+          // Only when the stall took over an open starvation episode, so other rows read as before.
+          *listOfNotNull(verdict.msStarved?.let { "msStarved" to it }).toTypedArray(),
         )
         stallRequests.update { it + 1 }
       }
       is VideoVerdict.Recovered -> event("video-recovered", "msStalled" to verdict.msStalled)
       is VideoVerdict.RecoveryFailed -> event("video-recovery-failed", "attempts" to verdict.attempts)
+      // F-P5-9: surfaced, never recovered. A reconnect cannot give a camera back to us.
+      is VideoVerdict.Starved -> event(
+        "delivery-starved",
+        "videoFps" to verdict.videoFps,
+        "audioFps" to verdict.audioFps,
+        "transport" to verdict.transport,
+        "cameraContended" to cameraContention.anyContended,
+      )
+      is VideoVerdict.DeliveryRestored -> event("delivery-restored", "msStarved" to verdict.msStarved)
     }
   }
 
@@ -480,6 +505,14 @@ object SpikeSession {
     event("video-recovery", "attempt" to attempt, "simulated" to StallSimulation.discardVideo())
     StallSimulation.clear()
   }
+
+  /**
+   * The camera this session holds, from StreamPack at the time of asking (F-P5-9). Null before arm,
+   * or when the video source is not a camera.
+   */
+  private fun ownCameraId(): String? = runCatching {
+    (streamerFlow.value?.videoInput?.sourceFlow?.value as? ICameraSource)?.cameraId
+  }.getOrNull()
 
   /**
    * C1 counts an SRT failure only on a validated network: a blackout says

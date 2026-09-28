@@ -32,13 +32,21 @@ export type SpikeSample = {
   readonly videoTargetBitrate: number | null;
   /** Native's account of the picture (F-P5-6). The HUD says LIVE only for `ok`. */
   readonly videoState: VideoState;
+  /**
+   * The watchdog's video frame rate over its 3000 ms window, one decimal (F-P5-9). null when not
+   * publishing, or before the first full window of a publish.
+   */
+  readonly videoFps: number | null;
+  /** Another app opened a camera while live and has not released it (F-P5-9). Evidence only. */
+  readonly cameraContended: boolean;
 };
 
 /**
  * VideoStallWatchdog.kt's states. `ok` means video frames are advancing in the current publish.
  * `idle` means not publishing, or no frame yet. `failed` means auto-recovery has stopped.
+ * `starved` means frames advance below a rate floor (F-P5-9); it is surfaced, never recovered.
  */
-export type VideoState = 'ok' | 'stalled' | 'recovering' | 'failed' | 'idle';
+export type VideoState = 'ok' | 'starved' | 'stalled' | 'recovering' | 'failed' | 'idle';
 
 export type SpikeEvent = { readonly kind: string; readonly atMs: number } & Readonly<
   Record<string, unknown>

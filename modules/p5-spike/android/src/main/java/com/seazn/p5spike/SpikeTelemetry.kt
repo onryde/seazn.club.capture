@@ -67,6 +67,11 @@ object SpikeTelemetry {
       // F-P5-6: native's account of the picture. JS only renders it, and says LIVE only for `ok`.
       // Not a CSV column: the video-* events already record every transition.
       "videoState" to SpikeSession.watchdog.state.wire,
+      // F-P5-9: the watchdog's 3000 ms window rate, one decimal; null off air and before a full
+      // window. The HUD's LOW VIDEO line quotes it, so it is the same number that was judged.
+      "videoFps" to SpikeSession.watchdog.videoFps,
+      // F-P5-9: another app took a camera while live and has not released it. Evidence only.
+      "cameraContended" to SpikeSession.cameraContention.anyContended,
     ) + frames(streamer) + srt(streamer)
   }
 
