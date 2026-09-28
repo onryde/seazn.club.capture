@@ -462,6 +462,71 @@ Not exercised: the busy picture returning on a thin link, which is the overrun i
 (SRT estimated 10–320 Mbps), and the picture stayed quiet to the end. Evidence:
 `.p5/p5-raisegate-20260928T155604Z.*`.
 
+**On a thin link, 2026-09-28 20:52Z.** The setup, `verify-raisegate.sh` with `LAN=1`:
+- The phone published SRT over home Wi-Fi through `udp-throttle.mjs` on the laptop, then to
+  `srt-live-transmit`.
+- The throttle is a 1.5 Mbps link with a 300 ms drop-tail queue. It is exact: it forwarded 1.50 Mbps in
+  every saturated second.
+- The picture was a video on the laptop screen, then the lens covered, then the video again.
+
+Two other ways of making a thin link failed first and are recorded in the script header: a USB reverse
+tether, and a pf dummynet cap.
+
+| Phase | Target | Egress (median) | Max send buffer | Sender drops | Link: forwarded / dropped |
+|---|---|---|---|---|---|
+| P1 busy, 90 s | 1500k → **500k** at +32 s | 685 kbps | 1975 ms | 1252 | 763 kbps / 4692 packets |
+| P2 covered, 60 s | 500k, **no raise** | 546 kbps | 214 ms | 0 | 605 kbps / 0 |
+| P3 busy again, 60 s | 500k, **no raise** | 985 kbps | 1998 ms | 2215 | 1035 kbps / 8344 packets |
+
+- **The gate held on the thin link.** After the cut, nothing was raised for the remaining 150 s, quiet or
+  busy. So the F-P5-7 sequence did not happen: no raise on the quiet picture, and no overrun when the busy
+  one returned. On the busy picture the clean wait never reached 10 s. Keyframe bursts put the send buffer
+  at 350–430 ms every 5 s or so, and each one restarts the wait.
+- **The busy picture still overran the link at the floor, for about 18 s** (P3 +163 to +181 s). The
+  encoder's egress at a 500k target was 0.95–1.0 Mbps on the busy picture. That is the known overshoot, and
+  it fits under 1.5 Mbps. The overrun came from how SRT sends, not from the regulator: see F-P5-11.
+- **Caveat:** this is a shallow queue. A real cellular uplink buffers more, which turns some of the loss
+  into latency instead.
+
+Evidence: `.p5/p5-raisegate-20260928T205201Z.*` (`device.csv`, `throttle.csv`, `logcat.txt`).
+
+### F-P5-11 — on a thin link, SRT dumps its backlog at many times the link rate
+
+In the thin-link run above the phone's SRT sender twice sent a burst far above anything the encoder
+produces:
+
+| When | Phone egress that second | Arriving at the 1.5 Mbps link | Dropped by the link |
+|---|---|---|---|
+| P1 +32 s | 13.9 Mbps | 19.8 Mbps | 1994 packets |
+| P3 +169 s | 17.0 Mbps | 18.0 Mbps | 1788 packets |
+
+- Both bursts came as the send buffer reached 1.1–1.9 s, and both were mostly retransmissions. The
+  retransmit counter rose by 7,581 across the P3 overrun.
+- The two counters agree: the phone's own egress and what arrived at the relay.
+- So a link already short of capacity is hit with 10× its rate. Most of that is lost, which causes more
+  retransmits, and the sender drops what passes the latency (2215 packets in P3).
+- The spike sets no `SRTO_MAXBW`, `SRTO_INPUTBW` or `SRTO_OHEADBW`. In live mode libsrt then paces
+  nothing: `SRTO_MAXBW` defaults to −1, meaning unlimited.
+
+**For the product engine:** bound the sender. For example, set `SRTO_MAXBW` from the regulator's current
+target, with room for audio and retransmits, or set `SRTO_INPUTBW` and `SRTO_OHEADBW`. Test it the same way,
+on the same throttle.
+
+**Open:** whether these bursts are part of F-P5-2's collapses every 6–22 s on a weak cellular link. That is
+a hypothesis; nothing here tests it.
+
+### Observation — an overlay that fails to load hides the shot
+
+In the same run the session had no overlay URL (`about:blank`), and the operator reported that the camera
+had not opened. It had: the HUD read `LIVE srt 1136 kbps` at 30 fps. `PeekNotice`
+(`src/ui/components/OverlayPreview.tsx`, `PeekNotice.tsx`) painted `The score overlay did not load.` on an
+opaque `colour.ground` plate over the whole preview. The spike build keeps the overlay always on, so this
+blanked the viewfinder for the whole run.
+
+In the product, a failure during a peek would hide the shot for that peek. AGENTS.md §7 says an overlay
+failure must never take anything live with it, and here the operator lost the ability to frame. The fix is
+a small caption over the camera, not a plate.
+
 ### F-P5-8 — a phone call silences the broadcast's microphone, and nothing says so
 
 2026-09-28, an answered phone call while live. Android's audio server silenced the app's record track for

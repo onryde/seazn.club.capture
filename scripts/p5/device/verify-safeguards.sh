@@ -23,6 +23,7 @@ CPID=''
 LPID=''
 PUBLISHING=''
 DATA_OFF=''
+UID_CF=''
 
 now_ms() { node -e 'process.stdout.write(String(Date.now()))' }
 say() { print -r -- "$(now_ms) $(date -u +%H:%M:%SZ) $*" | tee -a $OUT.log }
@@ -34,8 +35,14 @@ cleanup() {
 }
 die() {
   say "FATAL: $*"
-  [[ -n $PUBLISHING ]] && adb -s $SERIAL shell am force-stop com.seazn.capture >/dev/null 2>&1 && say "force-stopped the app"
+  # Stop the app whatever it was doing: on 2026-09-28 a run that died "never publishing" left it retrying
+  # SRT, and left its input on the shared account. Delete only the input this run created.
+  adb -s $SERIAL shell am force-stop com.seazn.capture >/dev/null 2>&1 && say "force-stopped the app"
   cleanup
+  adb -s $SERIAL shell svc wifi enable >/dev/null 2>&1
+  if [[ -n $UID_CF ]]; then
+    ( cd $REPO && node --env-file=.env.local scripts/p5/cf.ts cleanup $UID_CF 2>&1 ) | grep -E "^deleted|rror" | while read -r line; do say "cleanup: $line"; done
+  fi
   exit 1
 }
 trap cleanup EXIT INT TERM

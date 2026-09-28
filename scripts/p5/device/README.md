@@ -8,6 +8,7 @@ what counts as a pass. This file covers what they share.
 | ---------------------------------------------------- | ----------------------------------------------------------------------------------------- | -------------------------- | ------------------------------- |
 | `verify-safeguards.sh`                               | Delivery safeguards: regulator, stall hook, 20 s data cut (F-P5-6, the retuned regulator) | SRT over cellular          | Fresh input, deleted at the end |
 | `verify-raisegate.sh`                                | F-P5-7 raise gate: uncovered, lens covered, uncovered                                     | SRT over cellular          | Fresh input, deleted at the end |
+| `LAN=1 verify-raisegate.sh`                          | The same on a thin link, `LAN_KBPS` (default 1500): the overrun, F-P5-11                  | SRT over Wi-Fi, throttled  | None                            |
 | `capture-background.sh [awaySeconds]`                | HOME and return; `STALL=1` exercises stall recovery (F-P5-6)                              | RTMPS to a laptop listener | None                            |
 | `interrupt.sh browser\|call\|whatsapp [awaySeconds]` | Interruptions while live (F-P5-8, F-P5-9)                                                 | RTMPS to a laptop listener | None                            |
 
@@ -17,6 +18,8 @@ Helpers:
 - `tap.mjs` is the plain tap.
 - `cf-status-watch.mjs` samples the live input's status.
 - `soak-alarm.mjs` wakes a person when a cable-free soak needs one.
+- `udp-throttle.mjs` is a thin uplink for one UDP flow (rate cap and short drop-tail queue), in user
+  space. A pf dummynet cap broke the SRT handshake on this Mac.
 
 ## Before you run
 

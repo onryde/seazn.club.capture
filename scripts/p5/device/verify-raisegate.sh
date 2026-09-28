@@ -2,6 +2,17 @@
 # Device check for the F-P5-7 raise gate (31dc781): SRT over cellular on a fresh input, deleted at the end.
 #   P1 90 s uncovered, P2 60 s lens covered (quiet picture: the target must not climb), P3 60 s uncovered
 #   (busy again: no overrun). The owner covers and uncovers the lens on the prompts.
+#
+# LAN=1: the same phases on a link that cannot carry the ceiling. This is the overrun F-P5-7 left untested.
+# Cellular cannot be capped, so the phone publishes SRT over home Wi-Fi to this laptop, through
+# udp-throttle.mjs (LAN_KBPS, default 1500, with a 300 ms drop-tail queue), to srt-live-transmit on loopback.
+# The regulator reads only its own SRT link, so a capped laptop leg is a fair stand-in for a thin uplink, and
+# no Cloudflare input is needed. Per-second throttle stats go to $OUT.throttle.csv.
+# Tried first on 2026-09-28 and rejected:
+#   - a gnirehtet USB reverse tether: the Rust relay segfaulted, and the Java relay's tunnel went silent
+#     20-40 s after each start while OnePlus's background control cut the app's network;
+#   - a pf dummynet cap: it broke the SRT handshake (the listener accepted, the phone's connect failed at
+#     3 s), while the same connect uncapped published in 208 ms.
 set -u
 
 SERIAL=12be753e
@@ -15,19 +26,29 @@ CPID=''
 LPID=''
 PUBLISHING=''
 DATA_OFF=''
+UID_CF=''
+RPID=''
+TPID=''
 
 now_ms() { node -e 'process.stdout.write(String(Date.now()))' }
 say() { print -r -- "$(now_ms) $(date -u +%H:%M:%SZ) $*" | tee -a $OUT.log }
 cleanup() {
   if [[ -n $DATA_OFF ]]; then adb -s $SERIAL shell svc data enable >/dev/null 2>&1; DATA_OFF=''; fi
   adb -s $SERIAL shell rm -f $FILES/p5-simulate-video-stall >/dev/null 2>&1
-  for pid in $WPID $CPID $LPID; do [[ -n $pid ]] && kill $pid 2>/dev/null; done
-  WPID=''; CPID=''; LPID=''
+  for pid in $WPID $CPID $LPID $RPID $TPID; do [[ -n $pid ]] && kill $pid 2>/dev/null; done
+  pkill -f 'srt://127.0.0.1:9101' 2>/dev/null
+  WPID=''; CPID=''; LPID=''; RPID=''; TPID=''
 }
 die() {
   say "FATAL: $*"
-  [[ -n $PUBLISHING ]] && adb -s $SERIAL shell am force-stop com.seazn.capture >/dev/null 2>&1 && say "force-stopped the app"
+  # Stop the app whatever it was doing: on 2026-09-28 a run that died "never publishing" left it retrying
+  # SRT, and left its input on the shared account. Delete only the input this run created.
+  adb -s $SERIAL shell am force-stop com.seazn.capture >/dev/null 2>&1 && say "force-stopped the app"
   cleanup
+  adb -s $SERIAL shell svc wifi enable >/dev/null 2>&1
+  if [[ -n $UID_CF ]]; then
+    ( cd $REPO && node --env-file=.env.local scripts/p5/cf.ts cleanup $UID_CF 2>&1 ) | grep -E "^deleted|rror" | while read -r line; do say "cleanup: $line"; done
+  fi
   exit 1
 }
 trap cleanup EXIT INT TERM
@@ -55,17 +76,39 @@ for i in {1..6}; do
   sleep 1
 done
 [[ -z $locked ]] || die "phone is locked; unlock it and run again"
-adb -s $SERIAL shell svc wifi disable; sleep 6
-[[ $(adb -s $SERIAL shell cmd wifi status | head -1 | tr -d '\r') == *disabled* ]] || die "wifi did not disable"
-adb -s $SERIAL shell ping -c 2 -W 3 1.1.1.1 >/dev/null 2>&1 || die "no cellular reachability"
+if [[ ${LAN:-0} == 1 ]]; then
+  LAPTOP_IP=$(ipconfig getifaddr en0) || die "laptop has no Wi-Fi address"
+  adb -s $SERIAL shell svc wifi enable; sleep 3
+  PHONE_IP=$(adb -s $SERIAL shell ip -4 -o addr show wlan0 | tr -d '\r' | awk '{print $4}' | cut -d/ -f1)
+  [[ ${PHONE_IP%.*} == ${LAPTOP_IP%.*} ]] || die "phone ($PHONE_IP) and laptop ($LAPTOP_IP) are not on the same Wi-Fi"
+  command -v srt-live-transmit >/dev/null || die "srt-live-transmit missing (brew install srt)"
+  lsof -nP -iUDP:9100 -iUDP:9101 >/dev/null 2>&1 && die "UDP 9100 or 9101 already in use on the laptop"
+  # A loop, so a reconnect finds a listener: srt-live-transmit serves one connection and exits.
+  ( while :; do srt-live-transmit "srt://127.0.0.1:9101?mode=listener&latency=2000" file://con > /dev/null 2>> $OUT.srt-receiver.log; done ) &
+  RPID=$!
+  node $HERE/udp-throttle.mjs 9100 9101 ${LAN_KBPS:-1500} > $OUT.throttle.csv 2>> $OUT.log &
+  TPID=$!
+  sleep 1
+  kill -0 $TPID 2>/dev/null || die "udp-throttle did not start"
+  say "LAN: phone $PHONE_IP -> laptop $LAPTOP_IP:9100, capped at ${LAN_KBPS:-1500} kbps -> srt-live-transmit :9101"
+else
+  adb -s $SERIAL shell svc wifi disable; sleep 6
+  [[ $(adb -s $SERIAL shell cmd wifi status | head -1 | tr -d '\r') == *disabled* ]] || die "wifi did not disable"
+  adb -s $SERIAL shell ping -c 2 -W 3 1.1.1.1 >/dev/null 2>&1 || die "no cellular reachability"
+fi
 adb -s $SERIAL shell rm -f $FILES/p5-simulate-video-stall
 
 cd $REPO || die "repo missing"
-created=$(node --env-file=.env.local scripts/p5/cf.ts create $RUN 2>/dev/null) || die "cf.ts create failed"
-UID_CF=$(print -r -- "$created" | awk '/^uid/{print $2}')
-PLAYBACK=$(print -r -- "$created" | awk '/^playback/{print $2}')
-[[ -n $UID_CF && -n $PLAYBACK ]] || die "could not read uid or playback"
-say "input uid=$UID_CF"
+if [[ ${LAN:-0} == 1 ]]; then
+  # No passphrase: SessionFile treats it as optional, and nothing leaves the house.
+  node -e 'const [f,ip]=process.argv.slice(1); require("fs").writeFileSync(f, JSON.stringify({v:1, slotId:"lan", holdWindowSeconds:180, preferred:"srt", overlayUrl:"about:blank", playbackUrl:"about:blank", scoreUpdates:"realtime", srt:{url:`srt://${ip}:9100`, streamId:"p5-lan", latencyMs:2000}, rtmps:{url:`rtmps://${ip}:443/live/`, streamKey:"lan"}}))' $OUT.session.json $LAPTOP_IP
+else
+  created=$(node --env-file=.env.local scripts/p5/cf.ts create $RUN 2>/dev/null) || die "cf.ts create failed"
+  UID_CF=$(print -r -- "$created" | awk '/^uid/{print $2}')
+  PLAYBACK=$(print -r -- "$created" | awk '/^playback/{print $2}')
+  [[ -n $UID_CF && -n $PLAYBACK ]] || die "could not read uid or playback"
+  say "input uid=$UID_CF"
+fi
 adb -s $SERIAL push $OUT.session.json $FILES/p5-session.json >/dev/null 2>&1 || die "session push failed"
 adb -s $SERIAL shell am force-stop com.seazn.capture
 adb -s $SERIAL shell input keyevent KEYCODE_WAKEUP
@@ -78,10 +121,12 @@ HOLD_XY=$(print -r -- "$resolved" | awk '/^DRY:/{for (i = 1; i <= NF; i++) if ($
 [[ $HOLD_XY == *,* ]] || die "could not resolve Hold to stop"
 say "armed; csv $CSV; hold at $HOLD_XY"
 
-node scripts/p5/hls-watch.ts "$PLAYBACK" 2000 > $OUT.hls.csv 2> $OUT.hls.err &
-WPID=$!
-node --env-file=.env.local $HERE/cf-status-watch.mjs $UID_CF 2000 > $OUT.cfstatus.csv 2> $OUT.cfstatus.err &
-CPID=$!
+if [[ ${LAN:-0} != 1 ]]; then
+  node scripts/p5/hls-watch.ts "$PLAYBACK" 2000 > $OUT.hls.csv 2> $OUT.hls.err &
+  WPID=$!
+  node --env-file=.env.local $HERE/cf-status-watch.mjs $UID_CF 2000 > $OUT.cfstatus.csv 2> $OUT.cfstatus.err &
+  CPID=$!
+fi
 
 started=''
 for attempt in 1 2 3; do
@@ -94,6 +139,11 @@ for i in {1..30}; do adb -s $SERIAL shell "grep -q ',publishing,' $CSV" && break
 adb -s $SERIAL shell "grep -q ',publishing,' $CSV" || die "never publishing"
 PUBLISHING=yes
 T0=$(now_ms)
+if [[ ${LAN:-0} == 1 ]]; then
+  sleep 3
+  grep -qi "accepted" $OUT.srt-receiver.log || die "srt-live-transmit shows no accepted connection: SRT is not reaching the laptop"
+  say "LAN: receiver accepted the phone's SRT connection"
+fi
 say "P1: publishing; 90 s UNCOVERED (point it at something that moves if you can)"
 sleep 90
 P2=$(now_ms)
@@ -130,14 +180,20 @@ pull
 sleep 3
 kill $WPID $CPID 2>/dev/null; WPID=''; CPID=''
 adb -s $SERIAL shell svc wifi enable
-
-say "waiting for recordings to finalise before cleanup"
-for i in {1..30}; do
-  vids=$(node --env-file=.env.local scripts/p5/cf.ts videos $UID_CF 2>/dev/null)
-  total=$(print -r -- "$vids" | awk '/^count/{print $2}'); ready=$(print -r -- "$vids" | grep -c ' ready ')
-  [[ -n $total && $ready -eq $total ]] && break
-  sleep 15
-done
-say "videos: $(print -r -- "$vids" | tr '\n' ';')"
-node --env-file=.env.local scripts/p5/cf.ts cleanup $UID_CF 2>&1 | grep -v "MODULE_TYPELESS\|Reparsing\|eliminate this\|trace-warnings" | while read -r line; do say "cleanup: $line"; done
+if [[ ${LAN:-0} == 1 ]]; then
+  kill $RPID $TPID 2>/dev/null; pkill -f 'srt://127.0.0.1:9101' 2>/dev/null; RPID=''; TPID=''
+  say "LAN: throttle per phase (kbps forwarded, packets dropped):"
+  awk -F, -v p2=$P2 -v p3=$P3 -v t0=$T0 -v p4=$P4 'NR > 1 && $1 >= t0 && $1 < p4 { ph = ($1 < p2) ? "P1" : ($1 < p3) ? "P2" : "P3"; out[ph] += $3; drop[ph] += $4; n[ph]++ }
+    END { for (ph in n) printf "  %s: forwarded %d kbps mean, dropped %d packets\n", ph, out[ph] * 8 / 1000 / n[ph], drop[ph] }' $OUT.throttle.csv | sort | while read -r line; do say "$line"; done
+else
+  say "waiting for recordings to finalise before cleanup"
+  for i in {1..30}; do
+    vids=$(node --env-file=.env.local scripts/p5/cf.ts videos $UID_CF 2>/dev/null)
+    total=$(print -r -- "$vids" | awk '/^count/{print $2}'); ready=$(print -r -- "$vids" | grep -c ' ready ')
+    [[ -n $total && $ready -eq $total ]] && break
+    sleep 15
+  done
+  say "videos: $(print -r -- "$vids" | tr '\n' ';')"
+  node --env-file=.env.local scripts/p5/cf.ts cleanup $UID_CF 2>&1 | grep -v "MODULE_TYPELESS\|Reparsing\|eliminate this\|trace-warnings" | while read -r line; do say "cleanup: $line"; done
+fi
 say "DONE run=$RUN"
