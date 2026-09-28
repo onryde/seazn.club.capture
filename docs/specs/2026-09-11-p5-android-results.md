@@ -409,6 +409,47 @@ the product engine must never call `setTargetRotation` while streaming, or must 
 Without the delivery columns added for this run (`890da01`), this soak would have read as F-P5-4 again:
 connected, streaming, and nothing to say why.
 
+### F-P5-7 — the regulator raises on a quiet picture, so the next busy picture overruns the link anyway
+
+2026-09-28, the retuned regulator (`256088c`, `4b32cbc`, `0658a45`) on the OnePlus over roaming cellular. Its
+raise gate asks only whether the link *stayed clean*: send buffer under latency/10, no new sender drops or
+write-losses. A clean interval says nothing about capacity when the encoder is not using the target. VBR on
+a still or dark picture sends far below it, so every interval is clean and the target climbs anyway:
+
+| Time (Z) | Target | Egress | SRT bandwidth estimate | Send buffer | Sender drops (cumulative) |
+|---|---|---|---|---|---|
+| 14:52:30 | 1830k | 2149 kbps | 1.6 Mbps | 98 ms | 249 |
+| 14:53:11 | 1930k | 371 kbps | 0.96 Mbps | 102 ms | 249 |
+| 14:55:22 | 3000k | 630 kbps | 0.95 Mbps | 43 ms | 249 |
+| 14:58:24 | 3000k | 704 kbps | 1.37 Mbps | 43 ms | 249 |
+| 14:58:35 | 500k | 3379 kbps | 0.94 Mbps | 1929 ms | 528 |
+
+Video ran at 30 fps throughout; only the picture's complexity changed. From 14:53 the scene went quiet and
+egress fell to 0.4–0.9 Mbps, and in the next two minutes the regulator raised 1830k → 3000k in twelve clean
+steps. At 14:58:35 the phone was picked up (a `rotation` event at 14:58:39). VBR jumped to 3.4 Mbps on a
+link SRT estimated at about 1 Mbps, the send buffer hit 1.9 s, 279 packets were dropped at the sender, and
+the target fell to the floor.
+
+This is F-P5-5's failure — a VBR jump on a thin link — reached again, this time *through* the regulator. The
+link's capacity moved during the session: it carried 3.5–3.8 Mbps without a drop before 14:40, then forced
+cuts at 14:40 and 14:45, the second down to the floor. From then on it carried at most 2.3 Mbps, yet the target sat at the
+ceiling for three minutes.
+
+**What the raise needs:** evidence the link carried something close to the target, not only that it stayed
+clean. Two candidate rules, to be judged by replay against this CSV and Soak A:
+
+- **Raise only when tested:** raise only if the clean interval's measured egress reached a set share of
+  the expected egress at the current target (video + 128k audio + overhead). A quiet picture then holds the
+  target where it is.
+- **Cap by proven capacity:** never let the target exceed a set multiple of the highest egress carried
+  without drops in the last few minutes.
+
+Either rule leaves a quiet picture on a fat link below the ceiling until the picture gets busy. That costs
+quality at the first busy moment, which is the right trade: a picture that is briefly soft, not one that
+freezes.
+
+Evidence: `.p5/p5-safeguards-20260928T142729Z.*`.
+
 ### H-P5-1 (hypothesis, with its test; measured 2026-09-14 — it holds) — on SRT the hold may start late, so dropout tolerance is not the configured number
 
 Run A's hold ran **225.2 s** from ingest end against **183 s** measured over RTMPS
@@ -872,6 +913,78 @@ an edge case. Its test is a lifecycle cell with the frame counters on, not a soa
 
 Evidence: `.p5/p5-rotation-repro-20260914T212628Z.*`, `.p5/p5-rotation-restart-20260914T215359Z.*`,
 `.p5/p5-background-20260914T215942Z.*`, `.p5/p5-lifecycle-recents-1s-20260914T220309Z.*`.
+
+### F-P5-6 caught with continuous logcat — 2026-09-14, 22:26Z
+
+A later run reproduced both halves over RTMPS, publishing to an ffmpeg listener on the laptop through
+`adb reverse` (no Cloudflare), with logcat streamed to a file. HOME at +25 s, app back at +31 s. The app's
+own log gives the sequence:
+
+1. **HOME removes the preview surface.** `PreviewView onWindowVisibilityChanged 8` → `Stopping preview` →
+   `surfaceDestroyed`; the camera logs `Error queueing buffer to native window: No such device (-19)`.
+2. **That stops the encoder's frames too.** `CameraController: Target preview removed`, then
+   `CameraSessionController: Capture failed with code 0` twice, and `c2.qti.avc.encoder` input fell
+   27 → 5 → 0 fps within two seconds. The foreground service kept publishing audio.
+3. **A rotation was left pending,** but the video died before any stop:
+   `EncodingPipelineOutput: Can't change rotation to 0 while streaming. Waiting for stopStream`.
+4. **The watchdog fired** 3.0 s after the last frame (`video-stalled`, audio advancing) and started a recovery.
+   StreamPack stopped the audio input, then the video input and all outputs.
+5. **The recovery never reconnected.** From then on the audio encoder logged
+   `Failed to get input buffer: IllegalStateException: Audio source is not recording` several times a
+   millisecond, and no `connecting` followed for the 90 s before the app was force-stopped.
+
+Two caveats. OPLUS log flow control (`LOGS OVER PROC QUOTA`) dropped the app's logs within a second of
+step 5, so the silence after it is not evidence of a hang; only the missing `connecting` in the device CSV
+is. And these files lived in a scratch directory that has since been cleared; the sequence above survives
+in the working ledger only.
+
+### F-P5-6 follow-up and the retuned regulator — 2026-09-28
+
+**Background, again, does not kill video on its own.** Same driver, same pre-tuning build (the
+`capture-background` runs):
+
+- **HOME for 5 s over RTMPS:** the same steps 1 and 3 as above — preview stopped, surface destroyed,
+  `Target preview removed`, a pending rotation — but **no `Capture failed`**. The encoder kept 30 fps
+  through the transition (13–34 frames/s in the transition seconds, then 30), and the listener received
+  30 fps with no gap.
+- **Simulated stall over RTMPS** (the stall hook, a listener that accepts reconnects): `video-stalled` 5.0 s
+  after publishing (the first-frame grace), reconnect 2.1 s after the recovery began, `video-recovered`
+  `msStalled=8024`, then 30 fps for 1 min 51 s. **Recovery over RTMPS works.**
+
+So losing the preview surface alone does not stop encoder capture, and RTMPS recovery does not hang as such.
+Both failures on 14 Sep came with the camera session itself failing (`Capture failed`). That run started
+straight after a driver was killed with SIGKILL mid-publish, and minutes before it, the armed app's encoder
+`SurfaceTexture` read `Frames produced 0`. **Hypothesis, not proven:** both defects need a camera session
+already in a bad state. Its test: kill the app mid-publish, relaunch, then HOME while live.
+
+A setup note for the driver: ffmpeg 9.0.1 as the listener never saw the phone's video configuration record
+(`extract_extradata: No start code is found`, `Could not write header`) and dropped the connection 0.8 s in,
+even with larger probe settings. A null sink (`-f null -`) holds the connection and reports per-second
+packet counts. It gives up the file capture.
+
+**The retuned regulator on the device.** The safeguards check, again on roaming cellular with wifi off, on
+the build with `256088c`, `4b32cbc`, `0658a45`:
+
+| Rule | On the device |
+|---|---|
+| Start at 1500k | One `regulator` event, `startBps=1500000`; 30.01 fps; column 25 filled 149/149 |
+| Raise +100k per 10 s, only after a clean interval | 1.5M → 3.0M in 150 s on a clean link; first raise after the data cut 31 s after it |
+| Remember a failed rate for 5 min | Caps at 1200000, 1401600 and 630720 (80% of 1500k, 1752k, 788.4k); the first and last lifted after 5 min, the middle one replaced by a newer cut |
+| Size a cut from measured egress | 3000k → 1552000 on a 1.1 s send buffer with no drops |
+| Reconnect at the last target | 3000k after the stall recovery, 750k after the data cut |
+| Log `regulator` only on a successful connect | 7 failed connects during the 20 s cut wrote none (the old build wrote eight) |
+
+The stall check passed as before: detected 3.7 s after the hook, publishing again 2.7 s later,
+`video-recovered msStalled=6531`. The status line read `NO VIDEO — recovering` in orange during the stall and
+`LIVE srt` after.
+
+The owner then unplugged the phone, so the driver lost adb and could not stop the app. It published
+unattended for another 27 minutes and reached 47 °C at thermal status 3. That stretch produced F-P5-7. The
+whole session, with three reconnects, became one recording of 1825.7 s. Recording and input were deleted
+afterwards.
+
+Evidence: `.p5/p5-capbg-20260928T134309Z.*` (listener rejected), `.p5/p5-capbg-20260928T134656Z.*` (HOME),
+`.p5/p5-capbg-20260928T135043Z.*` (simulated stall), `.p5/p5-safeguards-20260928T142729Z.*`.
 
 ### Run B — RTMPS, wifi, 1 h (T5, N5)
 
