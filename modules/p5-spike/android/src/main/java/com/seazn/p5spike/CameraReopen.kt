@@ -8,9 +8,11 @@ import io.github.thibaultbee.streampack.core.elements.sources.video.camera.ICame
 import io.github.thibaultbee.streampack.core.interfaces.setCameraId
 import io.github.thibaultbee.streampack.core.streamers.single.SingleStreamer
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.async
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.isActive
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 
 /**
@@ -46,6 +48,9 @@ object CameraReopen {
   class LegFailure(val leg: Int, val timedOut: Boolean, cause: Throwable?) :
     Exception(if (timedOut) "timeout" else cause?.toString(), cause)
 
+  /** A new intent took over while a leg ran. The reopen stops, and acts on nothing it no longer owns. */
+  class Stale : Exception("stale reopen")
+
   /**
    * The camera to pass through: the one just released when it is a real camera other than ours,
    * else the first other camera the device lists. Null on a single-camera device.
@@ -62,21 +67,54 @@ object CameraReopen {
    * cancellation is abandoned rather than waited for.
    */
   @SuppressLint("MissingPermission") // CAMERA is granted before arm, which built this streamer.
-  suspend fun roundTrip(scope: CoroutineScope, streamer: SingleStreamer, own: String, via: String) {
+  suspend fun roundTrip(
+    scope: CoroutineScope,
+    streamer: SingleStreamer,
+    own: String,
+    via: String,
+    isCurrent: () -> Boolean,
+  ) {
     val input = streamer.videoInput
     input.isMuted = true
     try {
-      leg(scope, 1) { streamer.setCameraId(via) }
-      leg(scope, 2) { streamer.setCameraId(own) }
+      leg(scope, 1, isCurrent) { streamer.setCameraId(via) }
+      leg(scope, 2, isCurrent) { streamer.setCameraId(own) }
     } catch (failure: LegFailure) {
-      runCatching { restore(scope, streamer, own) }.exceptionOrNull()?.let(failure::addSuppressed)
+      runCatching { restore(scope, streamer, own, isCurrent) }.exceptionOrNull()?.let(failure::addSuppressed)
+      // Gone stale during the restore: the restore stopped, so our camera still goes back.
+      if (!isCurrent()) withContext(NonCancellable) { putBack(scope, streamer, own) }
       throw failure
+    } catch (abandoned: Exception) {
+      // Cancelled by a new intent, or [Stale]: nothing of the session is touched any more, but the
+      // camera is the app's, not the session's. A reopen stopped after leg 1 would leave the next
+      // session broadcasting the via camera, so ours goes back, and nothing else happens.
+      withContext(NonCancellable) { putBack(scope, streamer, own) }
+      throw abandoned
     } finally {
       input.isMuted = false
     }
   }
 
-  private suspend fun leg(scope: CoroutineScope, n: Int, block: suspend () -> Unit) {
+  /** After an abandoned reopen: our camera again, if the input is not on it. One bounded leg, no rows. */
+  @SuppressLint("MissingPermission")
+  private suspend fun putBack(scope: CoroutineScope, streamer: SingleStreamer, own: String) {
+    if (currentCameraId(streamer) == own) return
+    runCatching { leg(scope, 5, isCurrent = { true }) { streamer.setCameraId(own) } }
+  }
+
+  /**
+   * StreamPack 3.2.0's `setCameraId` cannot be relied on to stop when cancelled. The camera open and
+   * the session configure are cancellable waits, but `CameraSessionController.close()` and
+   * `VideoInput.setSource`'s stop and release steps catch every Throwable, the cancel included. So a
+   * leg is checked against [isCurrent] before it starts and after it returns.
+   */
+  private suspend fun leg(scope: CoroutineScope, n: Int, isCurrent: () -> Boolean, block: suspend () -> Unit) {
+    if (!isCurrent()) throw Stale()
+    timedLeg(scope, n, block)
+    if (!isCurrent()) throw Stale()
+  }
+
+  private suspend fun timedLeg(scope: CoroutineScope, n: Int, block: suspend () -> Unit) {
     val job = scope.async { block() }
     val done = try {
       withTimeoutOrNull(LEG_TIMEOUT_MS) { job.await() }
@@ -105,11 +143,11 @@ object CameraReopen {
    * leaves [via] set, and own is simply set again.
    */
   @SuppressLint("MissingPermission")
-  private suspend fun restore(scope: CoroutineScope, streamer: SingleStreamer, own: String) {
+  private suspend fun restore(scope: CoroutineScope, streamer: SingleStreamer, own: String, isCurrent: () -> Boolean) {
     if (currentCameraId(streamer) == own) {
       val blank = BitmapSourceFactory(Bitmap.createBitmap(16, 16, Bitmap.Config.ARGB_8888))
-      leg(scope, 3) { streamer.setVideoSource(blank) }
+      leg(scope, 3, isCurrent) { streamer.setVideoSource(blank) }
     }
-    leg(scope, 4) { streamer.setCameraId(own) }
+    leg(scope, 4, isCurrent) { streamer.setCameraId(own) }
   }
 }

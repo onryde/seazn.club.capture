@@ -21,12 +21,11 @@ class VideoStallWatchdogTest {
     videoFlowing: Boolean = true,
     audioFlowing: Boolean = true,
     contended: Boolean = false,
-    paused: Boolean = false,
   ): List<VideoVerdict> {
     if (videoFlowing) video += 15
     if (audioFlowing) audio += 23
     now = atMs
-    return watchdog.tick(publishing, video, audio, "srt", contended, paused)
+    return watchdog.tick(publishing, video, audio, "srt", contended)
   }
 
   /** Every 500 ms from [fromMs] to [toMs] inclusive; all verdicts, in order. */
@@ -37,9 +36,8 @@ class VideoStallWatchdogTest {
     videoFlowing: Boolean = true,
     audioFlowing: Boolean = true,
     contended: Boolean = false,
-    paused: Boolean = false,
   ): List<VideoVerdict> =
-    (fromMs..toMs step 500).flatMap { tick(it, publishing, videoFlowing, audioFlowing, contended, paused) }
+    (fromMs..toMs step 500).flatMap { tick(it, publishing, videoFlowing, audioFlowing, contended) }
 
   /** Video flows 0–2000 ms, then stops; the stall is reported at 5000 ms. */
   private fun stallAt5s(): List<VideoVerdict> {
@@ -439,9 +437,33 @@ class VideoStallWatchdogTest {
     ticks(0, 2_000)
     ticks(2_500, 10_000, videoFlowing = false, contended = true)
 
-    assertEquals(emptyList<VideoVerdict>(), ticks(10_500, 12_000, paused = true))
+    now = 10_200
+    watchdog.reopenStarted()
+    assertEquals(emptyList<VideoVerdict>(), ticks(10_500, 12_000))
+    now = 12_200
+    watchdog.reopenEnded()
     // Resumed: the first tick only sets the baseline; the next frame is the reopened camera's.
     assertEquals(emptyList<VideoVerdict>(), tick(12_500))
     assertEquals(listOf(VideoVerdict.Recovered(msStalled = 11_000)), tick(13_000))
+  }
+
+  @Test
+  fun `reopen - a switch that starts and ends between two ticks gives no recovered, and needs a fresh window`() {
+    // Healthy to 10 000 (a judged 30 fps), then no frame: held at 13 000 while contended.
+    watchdog.reset(holdWhileContended = true)
+    ticks(0, 10_000)
+    assertEquals(30.0, watchdog.videoFps!!, 0.0)
+    ticks(10_500, 13_500, videoFlowing = false, contended = true)
+
+    // A whole reopen inside one tick gap; the via camera's black frames advance the counter.
+    now = 13_600
+    watchdog.reopenStarted()
+    video += 12
+    now = 13_900
+    watchdog.reopenEnded()
+    assertNull(watchdog.videoFps)
+
+    assertEquals(emptyList<VideoVerdict>(), tick(14_000, videoFlowing = false))
+    assertEquals(listOf(VideoVerdict.Recovered(msStalled = 4_500)), tick(14_500))
   }
 }

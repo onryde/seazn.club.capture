@@ -23,6 +23,7 @@ import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.channels.Channel
@@ -44,6 +45,7 @@ import kotlinx.coroutines.withTimeoutOrNull
 import java.io.File
 import java.net.InetAddress
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicInteger
 
 /**
  * The native session, as a process singleton. Native owns it (AGENTS.md §2):
@@ -89,10 +91,17 @@ object SpikeSession {
   @Volatile private var f10Mode = F10Mode.OFF
 
   /**
-   * A `reopen` is switching our cameras. Set on the main thread before the launch, so no tick judges
-   * in the gap; while set, the watchdog judges nothing (its frames are the other camera's).
+   * A `reopen` is switching our cameras: one at a time. The watchdog is told directly
+   * ([VideoStallWatchdog.reopenStarted]); this only refuses a second.
    */
   private val reopening = AtomicBoolean(false)
+
+  /**
+   * Each reopen's number. A new intent bumps it, so a reopen it cancelled, whose `finally` runs
+   * later, touches nothing of the session that replaced it. Checked and changed under [reopenLock].
+   */
+  private val reopenGeneration = AtomicInteger(0)
+  private val reopenLock = Any()
 
   /** The reopen in flight, so a new intent can end it. */
   @Volatile private var reopenJob: Job? = null
@@ -286,7 +295,9 @@ object SpikeSession {
         val drop = awaitDrop(streamer, stale, stallsBefore)
         attemptPublishing = false
         event("dropped", "transport" to current, *drop.detail)
-        if (drop.reason == VIDEO_STALLED) beginVideoRecovery()
+        if (drop.reason == VIDEO_STALLED) beginVideoRecovery(forced = false)
+        // F-P5-10: a failed reopen's rebuild is the episode's recovery, with an attempt counted.
+        if (drop.reason == REOPEN_FAILED) beginVideoRecovery(forced = true)
       } catch (failure: Throwable) {
         attemptPublishing = false
         // A real cancel (the next intent) rethrows here. A timeout or a stray
@@ -509,16 +520,8 @@ object SpikeSession {
     val counts = (streamer?.endpoint as? CountingEndpoint)?.counts
     // The loop's word and the pipeline's together: a drop reaches the pipeline a moment before the loop.
     val publishing = attemptPublishing && streamer?.isStreamingFlow?.value == true
-    // F-P5-10: nothing is judged while our own reopen switches cameras.
-    val verdicts = watchdog.tick(
-      publishing,
-      counts?.videoFrames,
-      counts?.audioFrames,
-      transport,
-      contended = cameraContention.anyContended,
-      paused = reopening.get(),
-    )
-    verdicts.forEach(::report)
+    val contended = cameraContention.anyContended
+    watchdog.tick(publishing, counts?.videoFrames, counts?.audioFrames, transport, contended).forEach(::report)
   }
 
   private fun report(verdict: VideoVerdict) {
@@ -562,7 +565,7 @@ object SpikeSession {
    * file goes now, so the next attempt carries video, and one run proves detection, recovery and
    * recovered together.
    */
-  private fun beginVideoRecovery() {
+  private fun beginVideoRecovery(forced: Boolean) {
     val attempt = watchdog.recoveryStarted() ?: return
     val afterRelease = recoveryAfterRelease
     recoveryAfterRelease = false
@@ -572,6 +575,8 @@ object SpikeSession {
       "simulated" to StallSimulation.discardVideo(),
       // Only on the recovery a `hold` deferred (F-P5-10), so other rows read as before.
       *listOfNotNull(("afterRelease" to true).takeIf { afterRelease }).toTypedArray(),
+      // Only on the rebuild a failed reopen forced (F-P5-10).
+      *listOfNotNull(("forced" to true).takeIf { forced }).toTypedArray(),
     )
     StallSimulation.clear()
   }
@@ -589,37 +594,63 @@ object SpikeSession {
   private fun cameraReleased(releasedId: String) {
     val mode = f10Mode
     when {
-      mode.reopen && wanted != null -> {
-        // Here, not in the launch: a tick between the release and the launch must not judge.
-        if (!reopening.compareAndSet(false, true)) return event("camera-reopen-skipped", "reason" to "in-flight")
-        reopenJob = scope.launch { reopenCamera(releasedId) }
-      }
+      mode.reopen && wanted != null -> startReopen(releasedId)
       mode.hold -> watchdog.contentionEnded().forEach(::report)
     }
   }
 
-  /** Once per release that empties contention. Whatever happens, judging and contention resume. */
-  private suspend fun reopenCamera(releasedId: String) {
-    try {
+  /**
+   * On the main looper, before CameraContention clears `anyContended`, so no tick can judge between
+   * the release and the watchdog knowing (F-P5-10). Everything that marks the reopen started happens
+   * here, synchronously; the switch itself runs on the session scope.
+   */
+  private fun startReopen(releasedId: String) {
+    val generation = synchronized(reopenLock) {
+      if (!reopening.compareAndSet(false, true)) return event("camera-reopen-skipped", "reason" to "in-flight")
+      watchdog.reopenStarted()
       cameraContention.selfSwitchStarted()
-      reopenOwnCamera(releasedId)
+      reopenGeneration.incrementAndGet()
+    }
+    reopenJob = scope.launch { reopenCamera(releasedId, generation) }
+  }
+
+  /** Once per release that empties contention. However it ends, judging and contention resume. */
+  private suspend fun reopenCamera(releasedId: String, generation: Int) {
+    try {
+      reopenOwnCamera(releasedId, generation)
     } finally {
-      cameraContention.selfSwitchEnded()
-      reopening.set(false)
-      // From here any `video-recovered` is the reopened camera's: the next tick re-takes the baseline.
-      runCatching { event("camera-reopen-judging-resumed") }
+      // Back on the main looper, where it started, whether it succeeded, failed or was cancelled.
+      withContext(NonCancellable + Dispatchers.Main) { endReopenIfCurrent(generation) }
     }
   }
 
+  /** Only a reopen that is still the current one may end the window and resume judging. */
+  private fun endReopenIfCurrent(generation: Int) {
+    val current = synchronized(reopenLock) {
+      (reopenGeneration.get() == generation).also { current ->
+        if (!current) return@also
+        cameraContention.selfSwitchEnded()
+        watchdog.reopenEnded()
+        reopening.set(false)
+      }
+    }
+    // From here any `video-recovered` is the reopened camera's: the next tick re-takes the baseline.
+    if (current) runCatching { event("camera-reopen-judging-resumed") }
+  }
+
   /**
-   * A new intent ends any reopen, and clears what a stuck one would leave: judging paused, contention
-   * silenced, the broadcast muted. None of that may outlive the session that started it.
+   * A new intent ends any reopen, and clears what a stuck one would leave: contention silenced and
+   * the broadcast muted (the watchdog's side goes with its `reset`). The generation moves on first,
+   * so the cancelled reopen's `finally` finds itself stale and touches none of the next session.
    */
   private fun endReopen() {
+    synchronized(reopenLock) {
+      reopenGeneration.incrementAndGet()
+      reopening.set(false)
+      cameraContention.selfSwitchReset()
+    }
     reopenJob?.cancel()
     reopenJob = null
-    reopening.set(false)
-    cameraContention.selfSwitchReset()
     forcedRebuild.set(false)
     runCatching { streamerFlow.value?.videoInput?.isMuted = false }
   }
@@ -629,7 +660,8 @@ object SpikeSession {
    * [CameraReopen] puts our camera back and unmutes before it throws; then the stream is rebuilt
    * once, because the restored camera may be open but not started.
    */
-  private suspend fun reopenOwnCamera(releasedId: String) {
+  private suspend fun reopenOwnCamera(releasedId: String, generation: Int) {
+    val isCurrent = { reopenGeneration.get() == generation }
     val startedAt = SystemClock.elapsedRealtime()
     try {
       val streamer = checkNotNull(streamerFlow.value) { "no streamer" }
@@ -637,11 +669,13 @@ object SpikeSession {
       val cameras = checkNotNull(appContext.getSystemService(CameraManager::class.java)) { "no camera service" }
       val via = checkNotNull(CameraReopen.viaCamera(cameras, own, releasedId)) { "no other camera to pass through" }
       event("camera-reopen-start", "cameraId" to own, "method" to CameraReopen.METHOD, "via" to via, "muted" to true)
-      CameraReopen.roundTrip(scope, streamer, own, via)
+      CameraReopen.roundTrip(scope, streamer, own, via, isCurrent)
       event("camera-reopened", "msTaken" to SystemClock.elapsedRealtime() - startedAt, "cameraId" to ownCameraId())
     } catch (failure: Throwable) {
-      // A new intent cancelling the reopen is not a failure, and must not force a rebuild.
+      // A new intent cancelling or superseding the reopen is not a failure, and must not force a
+      // rebuild into the next session.
       currentCoroutineContext().ensureActive()
+      if (failure is CameraReopen.Stale || !isCurrent()) return
       runCatching { reopenFailed(failure, SystemClock.elapsedRealtime() - startedAt) }
       forceRebuild()
     }
@@ -666,6 +700,8 @@ object SpikeSession {
    */
   private fun forceRebuild() {
     if (wanted == null) return
+    // A held stall stops being held, so this rebuild is the only one; it is the episode's recovery.
+    watchdog.rebuildForced()
     runCatching { event("camera-reopen-recovery", "forced" to true) }
     forcedRebuild.set(true)
     stallRequests.update { it + 1 }

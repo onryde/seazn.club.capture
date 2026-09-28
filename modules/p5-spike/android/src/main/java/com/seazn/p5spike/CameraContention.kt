@@ -29,7 +29,10 @@ class CameraContention(
   private val ownCameraId: () -> String?,
   private val publishing: () -> Boolean,
   private val onEvent: (String, Array<Pair<String, Any?>>) -> Unit,
-  /** On the main looper, inside this class's guard: the ID whose release left nothing contended. */
+  /**
+   * On the main looper, inside this class's guard: the ID whose release left nothing contended.
+   * Called before [anyContended] clears and before the `camera-released` row.
+   */
   private val onAllReleased: (String) -> Unit = {},
 ) {
   /** Touched only on the main looper, where the callbacks run. */
@@ -100,9 +103,15 @@ class CameraContention(
   private fun available(cameraId: String) {
     if (selfSwitch(cameraId, available = true)) return
     if (!contended.remove(cameraId)) return
-    anyContended = contended.isNotEmpty()
-    onEvent("camera-released", arrayOf("cameraId" to cameraId, "ownCameraId" to ownCameraId()))
-    if (!anyContended) onAllReleased(cameraId)
+    val allReleased = contended.isEmpty()
+    try {
+      // F-P5-10: the session's handler first, while ticks still read contended. A `reopen` marks
+      // itself started there, so no tick in the gap can release a hold and rebuild into the switch.
+      if (allReleased) onAllReleased(cameraId)
+    } finally {
+      anyContended = !allReleased
+      onEvent("camera-released", arrayOf("cameraId" to cameraId, "ownCameraId" to ownCameraId()))
+    }
   }
 
   private companion object {
