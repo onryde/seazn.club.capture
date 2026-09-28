@@ -70,6 +70,8 @@ object SpikeTelemetry {
       // F-P5-9: the watchdog's 3000 ms window rate, one decimal; null off air and before a full
       // window. The HUD's LOW VIDEO line quotes it, so it is the same number that was judged.
       "videoFps" to SpikeSession.watchdog.videoFps,
+      // The same window's audio rate. JS words a starved state by it; native alone judges it.
+      "audioFps" to SpikeSession.watchdog.audioFps,
       // F-P5-9: another app took a camera while live and has not released it. Evidence only.
       "cameraContended" to SpikeSession.cameraContention.anyContended,
       // F-P5-8: the system is silencing our recording (a phone call). The frames still count.

@@ -37,6 +37,11 @@ export type SpikeSample = {
    * publishing, or before the first full window of a publish.
    */
   readonly videoFps: number | null;
+  /**
+   * The audio frame rate over the same window, one decimal (fix round 1). null exactly when
+   * `videoFps` is. It only picks the starved wording; native alone decides starvation.
+   */
+  readonly audioFps: number | null;
   /** Another app opened a camera while live and has not released it (F-P5-9). Evidence only. */
   readonly cameraContended: boolean;
   /**

@@ -6,13 +6,20 @@ type Case = {
   readonly videoState: VideoState;
   readonly streaming: boolean;
   readonly videoFps?: number | null;
+  readonly audioFps?: number | null;
   readonly cameraContended?: boolean;
   readonly micSilenced?: boolean;
 };
 
 /** The streaming flag stayed true through F-P5-6's eleven minutes without a picture. */
-const line = ({ videoState, streaming, videoFps = null, cameraContended = false, micSilenced = false }: Case) =>
-  liveLine({ videoState, streaming, transport: 'srt', videoFps, cameraContended, micSilenced });
+const line = ({
+  videoState,
+  streaming,
+  videoFps = null,
+  audioFps = null,
+  cameraContended = false,
+  micSilenced = false,
+}: Case) => liveLine({ videoState, streaming, transport: 'srt', videoFps, audioFps, cameraContended, micSilenced });
 
 describe('liveLine — LIVE only while video frames are advancing (F-P5-6)', () => {
   it('says LIVE and the transport when native reports video ok', () => {
@@ -87,6 +94,20 @@ describe('liveLine — interruptions while live (F-P5-8, F-P5-9), first match wi
   it('3. starved before a full window after a reconnect has no fps to quote, and invents none', () => {
     expect(line({ videoState: 'starved', streaming: true, videoFps: null })).toEqual({
       text: 'LOW VIDEO',
+      tone: 'caution',
+    });
+  });
+
+  it('3. starved with the picture at 30 fps is audio starving: LOW AUDIO, with no number', () => {
+    expect(line({ videoState: 'starved', streaming: true, videoFps: 30, audioFps: 5 })).toEqual({
+      text: 'LOW AUDIO',
+      tone: 'caution',
+    });
+  });
+
+  it('3. LOW AUDIO names the other app too when native saw a camera taken', () => {
+    expect(line({ videoState: 'starved', streaming: true, videoFps: 30, audioFps: 5, cameraContended: true })).toEqual({
+      text: 'LOW AUDIO — camera in use by another app',
       tone: 'caution',
     });
   });

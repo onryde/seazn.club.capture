@@ -91,6 +91,14 @@ class VideoStallWatchdog(private val clock: () -> Long) {
   @Volatile var videoFps: Double? = null
     private set
 
+  /**
+   * The audio frame rate over the same window, one decimal; null exactly when [videoFps] is, or
+   * when no audio count was read. The HUD uses it only to word starvation as LOW AUDIO rather than
+   * a LOW VIDEO that quotes a healthy picture (AGENTS.md §6).
+   */
+  @Volatile var audioFps: Double? = null
+    private set
+
   /** When the open starvation episode was detected; null when none is open. */
   private var starvedSinceMs: Long? = null
 
@@ -136,6 +144,7 @@ class VideoStallWatchdog(private val clock: () -> Long) {
     if (advancing || current.lastAdvanceMs != null) current.readings.addLast(Reading(now, videoFrames, audioFrames))
     val rate = windowRate(current, now)
     videoFps = rate?.video?.let(::oneDecimal)
+    audioFps = rate?.audio?.let(::oneDecimal)
     return if (advancing) {
       advanced(current, now, videoFrames, audioFrames) + judgeDelivery(now, rate, transport)
     } else {
@@ -160,6 +169,7 @@ class VideoStallWatchdog(private val clock: () -> Long) {
     starvedSinceMs = null
     attempts = 0
     videoFps = null
+    audioFps = null
     state = VideoState.IDLE
   }
 
@@ -252,10 +262,16 @@ class VideoStallWatchdog(private val clock: () -> Long) {
   private fun endPeriod() {
     period = null
     videoFps = null
+    audioFps = null
     if (state == VideoState.OK || state == VideoState.STARVED) state = VideoState.IDLE
   }
 
-  private fun oneDecimal(value: Double): Double = Math.round(value * 10) / 10.0
+  /**
+   * Truncated, not rounded: a rate shown is below a floor exactly when the rate judged was. Rounded,
+   * 9.96 fps was judged starved and shown as 10.0, and the HUD picks LOW VIDEO or LOW AUDIO by
+   * comparing the shown rate with the floor.
+   */
+  private fun oneDecimal(value: Double): Double = Math.floor(value * 10) / 10.0
 
   companion object {
     /**

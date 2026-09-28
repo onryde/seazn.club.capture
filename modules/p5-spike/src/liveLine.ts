@@ -4,8 +4,15 @@ export type LiveLine = { readonly text: string; readonly tone: 'plain' | 'cautio
 
 type LiveLineSample = Pick<
   SpikeSample,
-  'streaming' | 'transport' | 'videoState' | 'videoFps' | 'cameraContended' | 'micSilenced'
+  'streaming' | 'transport' | 'videoState' | 'videoFps' | 'audioFps' | 'cameraContended' | 'micSilenced'
 >;
+
+/**
+ * VideoStallWatchdog.VIDEO_FLOOR_FPS. Used only to word a state native has already judged: which
+ * floor was breached, never whether one was. Native truncates its rates to one decimal, so a rate
+ * shown here is below the floor exactly when the rate native judged was.
+ */
+const VIDEO_FLOOR_FPS = 10;
 
 /**
  * The HUD's first line. F-P5-6: for eleven minutes it read `LIVE srt` while the encoder had no
@@ -50,11 +57,20 @@ function okLine(sample: LiveLineSample): LiveLine {
 }
 
 /**
- * F-P5-9. The fps is the window rate native judged, so the line and the decision never disagree.
- * Before a full window after a reconnect there is none, and none is invented.
+ * F-P5-9. Starved means video below 10 fps or audio below 20 frames/s, and a line that quoted a
+ * healthy 30 fps under LOW VIDEO would not be true (AGENTS.md §6). So the picture's rate picks the
+ * word: below its floor is LOW VIDEO with the rate native judged; otherwise only audio can be
+ * starving, and it is LOW AUDIO with no number, because frames a second mean nothing to a volunteer.
+ * Without an audio rate (an older native build) or before a full window, LOW VIDEO, as before, and
+ * no number is invented.
  */
 function starvedText(sample: LiveLineSample): string {
-  const fps = typeof sample.videoFps === 'number' ? ` ${sample.videoFps.toFixed(1)} fps` : '';
   const contended = sample.cameraContended === true ? ' — camera in use by another app' : '';
-  return `LOW VIDEO${fps}${contended}`;
+  return `${starvedWord(sample)}${contended}`;
+}
+
+function starvedWord({ videoFps, audioFps }: LiveLineSample): string {
+  if (typeof videoFps !== 'number') return 'LOW VIDEO';
+  if (videoFps >= VIDEO_FLOOR_FPS && typeof audioFps === 'number') return 'LOW AUDIO';
+  return `LOW VIDEO ${videoFps.toFixed(1)} fps`;
 }
