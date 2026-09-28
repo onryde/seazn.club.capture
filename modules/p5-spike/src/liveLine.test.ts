@@ -66,8 +66,18 @@ describe('liveLine — LIVE only while video frames are advancing (F-P5-6)', () 
 describe('liveLine — interruptions while live (F-P5-8, F-P5-9), first match wins', () => {
   it('1. a stall outranks everything the interruption rows would say', () => {
     const worst = { streaming: true, videoFps: 0, cameraContended: true, micSilenced: true };
-    expect(line({ videoState: 'stalled', ...worst })).toEqual({ text: 'NO VIDEO — recovering', tone: 'caution' });
+    expect(line({ videoState: 'stalled', ...worst })).toEqual({
+      text: 'NO VIDEO — camera in use by another app',
+      tone: 'caution',
+    });
     expect(line({ videoState: 'recovering', ...worst })).toEqual({ text: 'NO VIDEO — recovering', tone: 'caution' });
+  });
+
+  it('1. a stall with a camera taken by another app names it, not a recovery that is not running (F-P5-10)', () => {
+    expect(line({ videoState: 'stalled', streaming: true, cameraContended: true })).toEqual({
+      text: 'NO VIDEO — camera in use by another app',
+      tone: 'caution',
+    });
   });
 
   it('2. stopped recovering outranks them too', () => {

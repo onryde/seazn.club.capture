@@ -35,6 +35,7 @@ export function liveLine(sample: LiveLineSample): LiveLine {
     case 'starved':
       return { text: starvedText(sample), tone: 'caution' };
     case 'stalled':
+      return { text: stalledText(sample), tone: 'caution' };
     case 'recovering':
       return { text: 'NO VIDEO — recovering', tone: 'caution' };
     case 'failed':
@@ -46,6 +47,14 @@ export function liveLine(sample: LiveLineSample): LiveLine {
       // The bridge does not honour TypeScript: a native build without the field must not read as LIVE.
       return { text: 'video state unknown', tone: 'caution' };
   }
+}
+
+/**
+ * F-P5-10: while another app holds a camera, native may hold a stall rather than rebuild into it, so
+ * "recovering" would not be true. Naming the other app is: it is what the operator can act on.
+ */
+function stalledText(sample: LiveLineSample): string {
+  return sample.cameraContended === true ? 'NO VIDEO — camera in use by another app' : 'NO VIDEO — recovering';
 }
 
 /** F-P5-8: frames flowing, so it is LIVE, but a quiet mic reaches YouTube quiet (AGENTS.md §6). */
