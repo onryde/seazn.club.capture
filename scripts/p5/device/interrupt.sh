@@ -126,9 +126,9 @@ if [[ $MODE == browser ]]; then
 elif [[ $MODE == whatsapp ]]; then
   # A VoIP call never shows in telephony.registry; the audio mode does: RINGTONE while it rings,
   # IN_COMMUNICATION while it is up. A video call also takes the camera.
-  say ">>> WHATSAPP VIDEO CALL THE PHONE NOW. Answer it, keep it ~15 s, then hang up. (waiting up to 120 s)"
+  say ">>> WHATSAPP VIDEO CALL THE PHONE NOW. Answer it, keep it ~15 s, then hang up. (waiting up to about 5 min)"
   rang=''; up=''
-  for i in {1..150}; do
+  for i in {1..300}; do
     md=$(adb -s $SERIAL shell dumpsys audio | tr -d '\r' | grep -m1 -- "- Actual mode" | awk '{print $NF}')
     if [[ $md == MODE_RINGTONE && -z $rang ]]; then rang=$(now_ms); say "ringing ($md)"; fi
     if [[ $md == MODE_IN_COMMUNICATION && -z $up ]]; then up=$(now_ms); [[ -z $rang ]] && rang=$up; say "call up ($md)"; sleep 3; hud_watch; fi
@@ -161,6 +161,28 @@ fi
 sleep 2
 focused && say "app back in front" || say "WARN: app not in front"
 say "interruption at +$(( (INT_MS - PUB_MS) / 1000 )) s of publishing, back at +$(( (BACK_MS - PUB_MS) / 1000 )) s"
+
+# HEAL=1: does a rebuild after the camera comes back heal the picture? On 2026-09-28 a stall recovery during a
+# WhatsApp video call left the stream sending green blocks at 30 fps, and they stayed after camera-released. Wait
+# for the app's own camera-released row (the audio mode is not a reliable end of the call), keep 10 s of
+# post-release frames as the "still broken" evidence, then push the stall hook to force one more rebuild.
+if [[ ${HEAL:-0} == 1 ]]; then
+  say "HEAL: waiting up to 180 s for camera-released"
+  rel=''
+  for i in {1..180}; do
+    rel=$(adb -s $SERIAL shell "awk -F, '\$2==\"camera-released\" {print \$1; exit}' $CSV" | tr -d '\r')
+    [[ -n $rel ]] && break
+    sleep 1
+  done
+  if [[ -n $rel ]]; then
+    say "HEAL: camera released at $rel; 10 s of post-release frames, then the stall hook"
+    sleep 10
+    adb -s $SERIAL shell touch $FILES/p5-simulate-video-stall
+    say "HEAL: stall hook pushed at $(now_ms)"
+  else
+    say "HEAL: no camera-released row; hook not pushed"
+  fi
+fi
 
 # While the capture runs: if a stall recovery starts and no connecting follows within 8 s, capture the proof a
 # log cannot give (OPLUS log flow control dropped the app's logs mid-loop on 2026-09-14): a Java thread dump and
