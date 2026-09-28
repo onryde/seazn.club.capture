@@ -37,6 +37,7 @@ LOGPID=''
 now_ms() { node -e 'process.stdout.write(String(Date.now()))' }
 say() { print -r -- "$(now_ms) $(date -u +%H:%M:%SZ) $*" | tee -a $OUT.log }
 cleanup() {
+  [[ -n ${SHOT_PID:-} ]] && kill $SHOT_PID 2>/dev/null
   [[ -n $LPID ]] && kill $LPID 2>/dev/null
   pkill -f 'rtmp://127.0.0.1:1935/live/capbg' 2>/dev/null
   [[ -n $LOGPID ]] && kill $LOGPID 2>/dev/null
@@ -98,6 +99,19 @@ PUB_MS=$(now_ms)
 say "publishing to the local listener; 20 s before the interruption"
 sleep 20
 
+# The status line is the thing under test (F-P5-8, F-P5-9), and the call screen covers it. Once a call is
+# up, bring the app back in front as an operator would, and screenshot the HUD every 2 s until 5 s after
+# the call ends, so the words the operator reads are evidence, not inferred from the event log.
+SHOT_PID=''
+hud_watch() {
+  adb -s $SERIAL shell am start -n com.seazn.capture/.MainActivity >/dev/null 2>&1
+  ( n=0; while :; do adb -s $SERIAL exec-out screencap -p > $OUT.hud-$(printf %03d $n).png 2>/dev/null; n=$((n + 1)); sleep 2; done ) &
+  SHOT_PID=$!
+  say "app brought in front during the call; HUD screenshots every 2 s"
+}
+hud_stop() { [[ -n $SHOT_PID ]] || return 0; sleep 5; kill $SHOT_PID 2>/dev/null; wait $SHOT_PID 2>/dev/null; SHOT_PID=''; say "HUD screenshots: $(ls $OUT.hud-*.png 2>/dev/null | wc -l | tr -d ' ')"; }
+say "do not disturb: zen_mode=$(adb -s $SERIAL shell settings get global zen_mode | tr -d '\r') (0 off, 1 priority, 2 total silence, 3 alarms)"
+
 INT_MS=$(now_ms)
 if [[ $MODE == browser ]]; then
   adb -s $SERIAL shell am start -a android.intent.action.VIEW -d https://www.bbc.co.uk/sport >/dev/null 2>&1
@@ -114,8 +128,8 @@ elif [[ $MODE == whatsapp ]]; then
   for i in {1..150}; do
     md=$(adb -s $SERIAL shell dumpsys audio | tr -d '\r' | grep -m1 -- "- Actual mode" | awk '{print $NF}')
     if [[ $md == MODE_RINGTONE && -z $rang ]]; then rang=$(now_ms); say "ringing ($md)"; fi
-    if [[ $md == MODE_IN_COMMUNICATION && -z $up ]]; then up=$(now_ms); [[ -z $rang ]] && rang=$up; say "call up ($md)"; fi
-    if [[ -n $up && $md == MODE_NORMAL ]]; then say "call ended"; break; fi
+    if [[ $md == MODE_IN_COMMUNICATION && -z $up ]]; then up=$(now_ms); [[ -z $rang ]] && rang=$up; say "call up ($md)"; sleep 3; hud_watch; fi
+    if [[ -n $up && $md == MODE_NORMAL ]]; then say "call ended"; hud_stop; break; fi
     [[ -n $rang && -z $up && $md == MODE_NORMAL ]] && { say "call ended without being answered"; break; }
     sleep 1
   done
@@ -130,8 +144,8 @@ else
   for i in {1..120}; do
     st=$(adb -s $SERIAL shell dumpsys telephony.registry | tr -d '\r' | grep -oE "mCallState=[0-9]" | cut -d= -f2 | sort -r | head -1)
     if [[ $st == 1 && -z $rang ]]; then rang=$(now_ms); say "ringing"; fi
-    if [[ $st == 2 && -z ${off:-} ]]; then off=$(now_ms); say "answered (offhook)"; fi
-    if [[ -n ${off:-} && $st == 0 ]]; then say "call ended"; break; fi
+    if [[ $st == 2 && -z ${off:-} ]]; then off=$(now_ms); say "answered (offhook)"; sleep 3; hud_watch; fi
+    if [[ -n ${off:-} && $st == 0 ]]; then say "call ended"; hud_stop; break; fi
     [[ -n $rang && -z ${off:-} && $st == 0 ]] && { say "call ended without being answered"; break; }
     sleep 1
   done
