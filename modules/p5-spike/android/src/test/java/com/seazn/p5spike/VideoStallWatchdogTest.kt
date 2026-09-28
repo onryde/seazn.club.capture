@@ -20,11 +20,12 @@ class VideoStallWatchdogTest {
     publishing: Boolean = true,
     videoFlowing: Boolean = true,
     audioFlowing: Boolean = true,
+    contended: Boolean = false,
   ): List<VideoVerdict> {
     if (videoFlowing) video += 15
     if (audioFlowing) audio += 23
     now = atMs
-    return watchdog.tick(publishing, video, audio, "srt")
+    return watchdog.tick(publishing, video, audio, "srt", contended)
   }
 
   /** Every 500 ms from [fromMs] to [toMs] inclusive; all verdicts, in order. */
@@ -34,7 +35,8 @@ class VideoStallWatchdogTest {
     publishing: Boolean = true,
     videoFlowing: Boolean = true,
     audioFlowing: Boolean = true,
-  ): List<VideoVerdict> = (fromMs..toMs step 500).flatMap { tick(it, publishing, videoFlowing, audioFlowing) }
+    contended: Boolean = false,
+  ): List<VideoVerdict> = (fromMs..toMs step 500).flatMap { tick(it, publishing, videoFlowing, audioFlowing, contended) }
 
   /** Video flows 0–2000 ms, then stops; the stall is reported at 5000 ms. */
   private fun stallAt5s(): List<VideoVerdict> {
@@ -359,5 +361,58 @@ class VideoStallWatchdogTest {
     val after = seconds(21_000, healthy(10))
     assertEquals(listOf(VideoVerdict.Recovered::class), after.map { it.verdict::class })
     assertEquals(VideoState.OK, watchdog.state)
+  }
+
+  // F-P5-10 `hold`: after WhatsApp took camera 1, the recovery that rebuilt the stream was followed by
+  // noise at 30 fps. Under `hold`, a stall while another app holds a camera is surfaced and waited
+  // out, and the recovery runs once the camera is released. Video flows 0–2000 ms in each case.
+
+  @Test
+  fun `hold - a stall while a camera is contended is held, asks for no recovery, and counts no attempt`() {
+    watchdog.reset(holdWhileContended = true)
+    ticks(0, 2_000)
+
+    val verdicts = ticks(2_500, 5_000, videoFlowing = false, contended = true)
+    assertEquals(listOf(VideoVerdict.Stalled(3_000, video, audioAdvancing = true, transport = "srt", held = true)), verdicts)
+    assertEquals(VideoState.STALLED, watchdog.state)
+    assertNull(watchdog.recoveryStarted())
+    // Held for a minute, past three resume windows: no second verdict, and never failed.
+    assertEquals(emptyList<VideoVerdict>(), ticks(5_500, 65_000, videoFlowing = false, contended = true))
+    assertEquals(VideoState.STALLED, watchdog.state)
+  }
+
+  @Test
+  fun `hold - the camera released with video still stalled asks for the recovery at once, as the first attempt`() {
+    watchdog.reset(holdWhileContended = true)
+    ticks(0, 2_000)
+    ticks(2_500, 20_000, videoFlowing = false, contended = true)
+    now = 20_200
+
+    // The last frame was at 2000 ms.
+    assertEquals(listOf(VideoVerdict.HoldReleased(msStalled = 18_200)), watchdog.contentionEnded())
+    assertEquals(1, watchdog.recoveryStarted())
+    assertEquals(VideoState.RECOVERING, watchdog.state)
+  }
+
+  @Test
+  fun `hold - video resuming by itself while held is recovered, with no attempt and nothing asked on release`() {
+    watchdog.reset(holdWhileContended = true)
+    ticks(0, 2_000)
+    ticks(2_500, 10_000, videoFlowing = false, contended = true)
+    assertNull(watchdog.recoveryStarted())
+
+    assertEquals(listOf(VideoVerdict.Recovered(msStalled = 8_500)), tick(10_500, contended = true))
+    assertEquals(VideoState.OK, watchdog.state)
+    assertEquals(emptyList<VideoVerdict>(), watchdog.contentionEnded())
+  }
+
+  @Test
+  fun `hold off - a stall while a camera is contended recovers as before`() {
+    ticks(0, 2_000)
+
+    val verdicts = ticks(2_500, 5_000, videoFlowing = false, contended = true)
+    assertEquals(listOf(VideoVerdict.Stalled(3_000, video, audioAdvancing = true, transport = "srt")), verdicts)
+    assertEquals(1, watchdog.recoveryStarted())
+    assertEquals(emptyList<VideoVerdict>(), watchdog.contentionEnded())
   }
 }

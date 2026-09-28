@@ -4,6 +4,7 @@ import android.content.Context
 import android.hardware.camera2.CameraManager
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 
 /**
  * F-P5-9: evidence that another app has opened a camera while we publish. On 2026-09-28 WhatsApp
@@ -18,11 +19,18 @@ import android.os.Looper
  * camera's current status, and a camera closed off air says nothing about the broadcast. A contended
  * camera stays contended until it is available again, across a drop and a reconnect: a reconnect
  * does not give it back. Evidence only; nothing here changes recovery.
+ *
+ * F-P5-10 hands the session the release that leaves no camera contended ([onAllReleased]), for its
+ * `hold` and `reopen` experiments. A `reopen` switches our own cameras, and those opens and closes
+ * are not another app's: inside [selfSwitchStarted]..[selfSwitchEnded] they are logged as
+ * `camera-reopen-status`, which is also the evidence that our camera really closed and reopened.
  */
 class CameraContention(
   private val ownCameraId: () -> String?,
   private val publishing: () -> Boolean,
   private val onEvent: (String, Array<Pair<String, Any?>>) -> Unit,
+  /** On the main looper, inside this class's guard: the ID whose release left nothing contended. */
+  private val onAllReleased: (String) -> Unit = {},
 ) {
   /** Touched only on the main looper, where the callbacks run. */
   private val contended = linkedSetOf<String>()
@@ -30,6 +38,27 @@ class CameraContention(
   /** For the ~1 Hz snapshot, read from the sampler's thread. */
   @Volatile var anyContended = false
     private set
+
+  /**
+   * Until when (elapsedRealtime) camera callbacks are our own reopen's. [Long.MAX_VALUE] while it
+   * runs. The service dispatches status changes asynchronously, so a grace after the switch keeps a
+   * late one from reading as another app, which would start a second reopen off our own.
+   */
+  @Volatile private var selfSwitchUntilMs = 0L
+
+  fun selfSwitchStarted() {
+    selfSwitchUntilMs = Long.MAX_VALUE
+  }
+
+  fun selfSwitchEnded() {
+    selfSwitchUntilMs = SystemClock.elapsedRealtime() + SELF_SWITCH_GRACE_MS
+  }
+
+  private fun selfSwitch(cameraId: String, available: Boolean): Boolean {
+    if (SystemClock.elapsedRealtime() >= selfSwitchUntilMs) return false
+    onEvent("camera-reopen-status", arrayOf("cameraId" to cameraId, "available" to available))
+    return true
+  }
 
   /**
    * The callbacks run on the main looper, outside the session scope's exception handler, and
@@ -56,6 +85,7 @@ class CameraContention(
   }
 
   private fun unavailable(cameraId: String) {
+    if (selfSwitch(cameraId, available = false)) return
     val own = ownCameraId()
     if (cameraId == own || !publishing() || !contended.add(cameraId)) return
     anyContended = true
@@ -63,8 +93,15 @@ class CameraContention(
   }
 
   private fun available(cameraId: String) {
+    if (selfSwitch(cameraId, available = true)) return
     if (!contended.remove(cameraId)) return
     anyContended = contended.isNotEmpty()
     onEvent("camera-released", arrayOf("cameraId" to cameraId, "ownCameraId" to ownCameraId()))
+    if (!anyContended) onAllReleased(cameraId)
+  }
+
+  private companion object {
+    /** Four status changes in a round trip, each within a few hundred ms of the open or close behind it. */
+    const val SELF_SWITCH_GRACE_MS = 1_500L
   }
 }

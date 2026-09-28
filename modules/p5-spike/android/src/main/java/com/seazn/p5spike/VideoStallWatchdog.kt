@@ -19,7 +19,11 @@ enum class VideoState(val wire: String) {
    */
   STARVED("starved"),
 
-  /** A stall was detected, and the publish loop has been asked to end the attempt. */
+  /**
+   * A stall was detected, and the publish loop has been asked to end the attempt. Under F-P5-10's
+   * `hold`, a stall while another app holds a camera stays here with no recovery asked for, until
+   * the camera is released or video resumes.
+   */
   STALLED("stalled"),
 
   /** The loop ended the attempt to rebuild the pipeline. Video is awaited in the next publish. */
@@ -33,7 +37,10 @@ enum class VideoState(val wire: String) {
 }
 
 sealed interface VideoVerdict {
-  /** No video frame for [msSinceAdvance] while publishing. Answered by a recovery through the publish loop. */
+  /**
+   * No video frame for [msSinceAdvance] while publishing. Answered by a recovery through the publish
+   * loop, unless [held].
+   */
   data class Stalled(
     val msSinceAdvance: Long,
     val videoFrames: Long,
@@ -44,7 +51,18 @@ sealed interface VideoVerdict {
      * was. The stall owns the story from here, so that episode ends without a `delivery-restored`.
      */
     val msStarved: Long? = null,
+    /**
+     * F-P5-10 `hold`: another app held a camera when this stall was judged, so no recovery is asked
+     * for. The stall waits for [HoldReleased] or for video to resume.
+     */
+    val held: Boolean = false,
   ) : VideoVerdict
+
+  /**
+   * F-P5-10 `hold`: the camera was released with the held stall still stalled, [msStalled] after the
+   * last frame. Answered at once by the recovery the hold deferred.
+   */
+  data class HoldReleased(val msStalled: Long) : VideoVerdict
 
   /**
    * F-P5-9: a full window below a floor while frames still advance. Rates are per second over the
@@ -78,6 +96,9 @@ sealed interface VideoVerdict {
  * F-P5-9 adds a rate floor beside the zero test. A WhatsApp call held video at 1–20 fps and audio
  * at 1–9 frames/s for 20 s, and a zero test never fires while any frame arrives. Starvation is
  * surfaced and never recovered, because the cause is another app holding a camera.
+ *
+ * F-P5-10 adds `hold`, a per-session experiment: a stall judged while another app holds a camera
+ * asks for no recovery until the camera is released ([contentionEnded]) or video resumes.
  *
  * Pure, with an injected clock, so every rule is a JVM test. Synchronized because the watchdog tick,
  * the publish loop, the intent actor and the sampler all call in.
@@ -113,6 +134,16 @@ class VideoStallWatchdog(private val clock: () -> Long) {
   /** Recoveries started since video last flowed. */
   private var attempts = 0
 
+  /**
+   * F-P5-10's `hold`, set per session from the `p5-f10-mode` file. After WhatsApp took camera 1, the
+   * recovery that rebuilt the stream while the camera was held was followed by noise at 30 fps, so
+   * under `hold` a stall judged while contended is surfaced and waited out, not rebuilt.
+   */
+  private var holdWhileContended = false
+
+  /** The open stall is held for contention: no recovery is asked for, and none may start. */
+  private var held = false
+
   /** When video was last seen before the open stall episode; null when none is open. */
   private var episodeSinceMs: Long? = null
 
@@ -140,8 +171,15 @@ class VideoStallWatchdog(private val clock: () -> Long) {
     val starved: Boolean get() = video < VIDEO_FLOOR_FPS || (audio != null && audio < AUDIO_FLOOR_FPS)
   }
 
+  /** [contended]: another app holds a camera now (F-P5-10). It matters only under `hold`. */
   @Synchronized
-  fun tick(publishing: Boolean, videoFrames: Long?, audioFrames: Long?, transport: String?): List<VideoVerdict> {
+  fun tick(
+    publishing: Boolean,
+    videoFrames: Long?,
+    audioFrames: Long?,
+    transport: String?,
+    contended: Boolean = false,
+  ): List<VideoVerdict> {
     if (!publishing || videoFrames == null) {
       endPeriod()
       return emptyList()
@@ -157,22 +195,45 @@ class VideoStallWatchdog(private val clock: () -> Long) {
     return if (advancing) {
       advanced(current, now, videoFrames, audioFrames) + judgeDelivery(now, rate, transport)
     } else {
-      judge(current, now, videoFrames, audioFrames, transport)
+      judge(current, now, videoFrames, audioFrames, transport, contended)
     }
   }
 
   /** The publish loop ended the attempt for a stall. The attempt number, or null when no stall was pending. */
   @Synchronized
   fun recoveryStarted(): Int? {
-    if (state != VideoState.STALLED) return null
+    if (state != VideoState.STALLED || held) return null
     attempts += 1
     state = VideoState.RECOVERING
     return attempts
   }
 
-  /** A new operator intent: whatever happened before belongs to the last session. */
+  /**
+   * F-P5-10: no camera is held by another app any more. A held stall that is still stalled is
+   * answered now, with the recovery the hold deferred. Holding was never an attempt; if the
+   * recoveries before the hold had already used up the cap, it is [VideoVerdict.RecoveryFailed], as
+   * the judgement the hold replaced would have been.
+   */
   @Synchronized
-  fun reset() {
+  fun contentionEnded(): List<VideoVerdict> {
+    if (!held) return emptyList()
+    held = false
+    if (attempts >= MAX_RECOVERIES) {
+      state = VideoState.FAILED
+      return listOf(VideoVerdict.RecoveryFailed(attempts))
+    }
+    val since = episodeSinceMs ?: return emptyList()
+    return listOf(VideoVerdict.HoldReleased(msStalled = clock() - since))
+  }
+
+  /**
+   * A new operator intent: whatever happened before belongs to the last session. [holdWhileContended]
+   * is this session's F-P5-10 `hold`, read from the mode file at the start intent.
+   */
+  @Synchronized
+  fun reset(holdWhileContended: Boolean = false) {
+    this.holdWhileContended = holdWhileContended
+    held = false
     period = null
     episodeSinceMs = null
     starvedSinceMs = null
@@ -252,6 +313,7 @@ class VideoStallWatchdog(private val clock: () -> Long) {
     val since = episodeSinceMs ?: return emptyList()
     episodeSinceMs = null
     attempts = 0
+    held = false
     return listOf(VideoVerdict.Recovered(msStalled = now - since))
   }
 
@@ -261,6 +323,7 @@ class VideoStallWatchdog(private val clock: () -> Long) {
     videoFrames: Long,
     audioFrames: Long?,
     transport: String?,
+    contended: Boolean,
   ): List<VideoVerdict> {
     if (period.reported || state == VideoState.FAILED) return emptyList()
     val lastSeen = period.lastAdvanceMs
@@ -272,18 +335,21 @@ class VideoStallWatchdog(private val clock: () -> Long) {
     }
     if (now - silentSince < limit) return emptyList()
     period.reported = true
-    if (episodeSinceMs != null && attempts >= MAX_RECOVERIES) {
+    // F-P5-10: a hold is not an attempt, so it neither counts toward the cap nor ends in FAILED.
+    val holding = holdWhileContended && contended
+    if (!holding && episodeSinceMs != null && attempts >= MAX_RECOVERIES) {
       state = VideoState.FAILED
       return listOf(VideoVerdict.RecoveryFailed(attempts))
     }
     val since = episodeSinceMs ?: silentSince.also { episodeSinceMs = it }
     state = VideoState.STALLED
+    held = holding
     val audioAdvancing = audioFrames != null && (period.audioAtAdvance?.let { audioFrames > it } ?: false)
     // A stall is starvation at its worst: it takes the episode over and recovers as before.
     val msStarved = starvedSinceMs?.let { now - it }
     starvedSinceMs = null
     lastBelowFloorMs = null
-    return listOf(VideoVerdict.Stalled(now - since, videoFrames, audioAdvancing, transport, msStarved))
+    return listOf(VideoVerdict.Stalled(now - since, videoFrames, audioAdvancing, transport, msStarved, holding))
   }
 
   /**

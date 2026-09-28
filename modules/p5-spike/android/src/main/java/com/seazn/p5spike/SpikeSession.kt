@@ -2,6 +2,7 @@ package com.seazn.p5spike
 
 import android.annotation.SuppressLint
 import android.content.Context
+import android.hardware.camera2.CameraManager
 import android.media.AudioFormat
 import android.media.MediaFormat
 import android.net.ConnectivityManager
@@ -42,6 +43,7 @@ import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.withTimeoutOrNull
 import java.io.File
 import java.net.InetAddress
+import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * The native session, as a process singleton. Native owns it (AGENTS.md §2):
@@ -80,7 +82,17 @@ object SpikeSession {
     ownCameraId = ::ownCameraId,
     publishing = { wanted != null },
     onEvent = { kind, extras -> event(kind, *extras) },
+    onAllReleased = ::cameraReleased,
   )
+
+  /** F-P5-10's experiment for the current session, read from `p5-f10-mode` at its start intent. */
+  @Volatile private var f10Mode = F10Mode.OFF
+
+  /** A `reopen` is switching our cameras. Held as contention, so no rebuild runs into it. */
+  private val reopening = AtomicBoolean(false)
+
+  /** The next `video-recovery` is the one a `hold` deferred until the camera was released. */
+  @Volatile private var recoveryAfterRelease = false
 
   /** F-P5-8: the system silencing our microphone, which no frame counter can see. */
   val micSilence = MicSilence(
@@ -205,7 +217,12 @@ object SpikeSession {
     }
     // A new intent is a new session: no stall episode, no recovery count and no regulation carry over.
     attemptPublishing = false
-    watchdog.reset()
+    // F-P5-10: this session's experiment, read at its start intent, so a file pushed just before
+    // applies. A stop runs none.
+    val f10 = if (intent == null) null else F10Mode.read(appContext)
+    f10Mode = f10?.mode ?: F10Mode.OFF
+    recoveryAfterRelease = false
+    watchdog.reset(holdWhileContended = f10Mode.hold)
     // Nor a silenced-mic episode (F-P5-8): it closes with the session it belonged to.
     micSilence.sessionEnded()
     LinkRegulators.newSession()
@@ -229,6 +246,9 @@ object SpikeSession {
           throw failure
         }
         wanted = intent // After the service: if it throws, nothing claims to be wanted.
+        // Once per start. A pushed word that is not a mode is quoted, so a typo is not a silent off.
+        val unrecognised = listOfNotNull(f10?.unrecognised?.let { "unrecognised" to it })
+        event("f10-mode", "mode" to f10Mode.word, *unrecognised.toTypedArray())
         publishJob = scope.launch { publishLoop(file, streamer, intent) }
       }
     }
@@ -473,7 +493,9 @@ object SpikeSession {
     val counts = (streamer?.endpoint as? CountingEndpoint)?.counts
     // The loop's word and the pipeline's together: a drop reaches the pipeline a moment before the loop.
     val publishing = attemptPublishing && streamer?.isStreamingFlow?.value == true
-    watchdog.tick(publishing, counts?.videoFrames, counts?.audioFrames, transport).forEach(::report)
+    // F-P5-10: our own reopen counts as contention, so a `hold` never rebuilds into the switch.
+    val contended = cameraContention.anyContended || reopening.get()
+    watchdog.tick(publishing, counts?.videoFrames, counts?.audioFrames, transport, contended).forEach(::report)
   }
 
   private fun report(verdict: VideoVerdict) {
@@ -487,7 +509,14 @@ object SpikeSession {
           "transport" to verdict.transport,
           // Only when the stall took over an open starvation episode, so other rows read as before.
           *listOfNotNull(verdict.msStarved?.let { "msStarved" to it }).toTypedArray(),
+          // F-P5-10 `hold`: surfaced, not rebuilt, while another app holds a camera.
+          *listOfNotNull(("held" to "camera-contended").takeIf { verdict.held }).toTypedArray(),
         )
+        if (!verdict.held) stallRequests.update { it + 1 }
+      }
+      // F-P5-10 `hold`: the camera is back and video is not. The deferred recovery, at once.
+      is VideoVerdict.HoldReleased -> {
+        recoveryAfterRelease = true
         stallRequests.update { it + 1 }
       }
       is VideoVerdict.Recovered -> event("video-recovered", "msStalled" to verdict.msStalled)
@@ -512,8 +541,74 @@ object SpikeSession {
    */
   private fun beginVideoRecovery() {
     val attempt = watchdog.recoveryStarted() ?: return
-    event("video-recovery", "attempt" to attempt, "simulated" to StallSimulation.discardVideo())
+    val afterRelease = recoveryAfterRelease
+    recoveryAfterRelease = false
+    event(
+      "video-recovery",
+      "attempt" to attempt,
+      "simulated" to StallSimulation.discardVideo(),
+      // Only on the recovery a `hold` deferred (F-P5-10), so other rows read as before.
+      *listOfNotNull(("afterRelease" to true).takeIf { afterRelease }).toTypedArray(),
+    )
     StallSimulation.clear()
+  }
+
+  /**
+   * F-P5-10: another app released the last contended camera. On the main looper, inside
+   * CameraContention's guard, so this only decides and launches. `reopen` (and `both`) reopen our
+   * camera while a publish is wanted; `hold` answers a held stall at once; `both` does so after the
+   * reopen.
+   */
+  private fun cameraReleased(releasedId: String) {
+    val mode = f10Mode
+    when {
+      mode.reopen && wanted != null -> scope.launch { reopenCamera(releasedId, recoverAfter = mode.hold) }
+      mode.hold -> watchdog.contentionEnded().forEach(::report)
+    }
+  }
+
+  /** Once per release that empties contention; a second one during a reopen is logged and skipped. */
+  private suspend fun reopenCamera(releasedId: String, recoverAfter: Boolean) {
+    if (!reopening.compareAndSet(false, true)) return event("camera-reopen-skipped", "reason" to "in-flight")
+    cameraContention.selfSwitchStarted()
+    try {
+      reopenOwnCamera(releasedId)
+    } finally {
+      cameraContention.selfSwitchEnded()
+      reopening.set(false)
+      // `both`: if video is still stalled after the reopen, the recovery the hold deferred follows.
+      if (recoverAfter) runCatching { watchdog.contentionEnded().forEach(::report) }
+    }
+  }
+
+  /**
+   * Best-effort, like every F-P5 hook: a reopen that fails is a row, never a stopped broadcast.
+   * [CameraReopen] puts our camera back and unmutes before it rethrows.
+   */
+  private suspend fun reopenOwnCamera(releasedId: String) {
+    val startedAt = SystemClock.elapsedRealtime()
+    val streamer = streamerFlow.value
+    runCatching {
+      checkNotNull(streamer) { "no streamer" }
+      val own = checkNotNull(ownCameraId()) { "no camera source" }
+      val cameras = checkNotNull(appContext.getSystemService(CameraManager::class.java)) { "no camera service" }
+      val via = checkNotNull(CameraReopen.viaCamera(cameras, own, releasedId)) { "no other camera to pass through" }
+      event("camera-reopen-start", "cameraId" to own, "method" to CameraReopen.METHOD, "via" to via, "muted" to true)
+      CameraReopen.roundTrip(streamer, own, via)
+    }.onSuccess {
+      event("camera-reopened", "msTaken" to SystemClock.elapsedRealtime() - startedAt, "cameraId" to ownCameraId())
+    }.onFailure { failure ->
+      runCatching {
+        event(
+          "camera-reopen-failed",
+          "error" to describe(failure),
+          "msTaken" to SystemClock.elapsedRealtime() - startedAt,
+          // Where the input ended up after the restore: our camera, or evidence it is not.
+          "cameraId" to ownCameraId(),
+          *listOfNotNull(failure.suppressed.firstOrNull()?.let { "restoreError" to describe(it) }).toTypedArray(),
+        )
+      }
+    }
   }
 
   /**
