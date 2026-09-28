@@ -476,6 +476,16 @@ the frames arrive, they are silent. The engine needs either the platform's silen
 (`AudioManager.AudioRecordingCallback` delivers `AudioRecordingConfiguration.isClientSilenced()` on
 Android 10+; untested here) or a level floor on the encoded audio, and it must surface the result as a state.
 
+**Detection on the device, 2026-09-28 evening** (`4fef392`, `0772888`). The callback works as described.
+Our own recording is matched by its audio session ID (`tie=session` on every run):
+- **Phone call:** `mic-silenced` fired 3 s before the driver saw the answer, and `mic-restored` 1 s after
+  hang-up, with `msSilenced=11899`.
+- **Status line during the call:** it read `LIVE rtmps — MIC SILENCED BY SYSTEM` in caution orange (HUD
+  screenshots), and plain `LIVE rtmps` after.
+- **WhatsApp:** its video calls silence the microphone too, for 33 s, 66 s and 36 s. So this is every call,
+  not only a cellular one.
+- **Unexplained:** one run logged an extra 1.2 s silence about 45 s after its call ended.
+
 ### F-P5-9 — another app taking a camera can starve the broadcast without stopping it
 
 2026-09-28, WhatsApp video calls answered while live. The OnePlus gives WhatsApp the front camera (ID 1)
@@ -500,6 +510,61 @@ Why one call stopped video and the other starved both tracks is not established.
 A call that only rings is harmless to the stream, but its full-screen ringing UI covered the app while it
 was arming (call A, 15:45:04–15:45:21Z): `Target preview removed` and four `Capture failed`. The app still
 armed.
+
+**Detection on the device, 2026-09-28 evening** (`1d88c2c`, `518be6b`, `0772888`). Across three answered
+WhatsApp video calls, `camera-contended cameraId=1 ownCameraId=0` fired as each call came up, before the
+driver's own audio-mode poll saw it, and `camera-released` fired as each call ended. See "Interruption detection on the
+device — 2026-09-28 evening" under Runs. All three calls also stalled video to zero, so the rate floor was
+not exercised on the device (call C's shape did not recur). What those recoveries left behind is F-P5-10.
+
+### F-P5-10 — after another app takes a camera, the broadcast can carry noise at full frame rate while every signal says LIVE
+
+2026-09-28 evening, three WhatsApp video calls answered while live over RTMPS to the laptop listener. Each
+time, WhatsApp opened camera 1 while the app held camera 0 (`camera-contended` at 16:59:17.1Z, 17:10:52.0Z
+and 17:19:39.9Z). About 4 s later video stalled to zero, and the watchdog's recovery reconnected
+(`video-recovered` at 16:59:24.1Z, 17:10:59.7Z and 17:19:46.9Z). **From then on, the encoded stream carried
+green and purple macroblock noise at 30 fps.** It kept doing so after WhatsApp released its camera and until
+the run stopped the app.
+
+The listener decoded the stream and kept one frame a second (`e4028a6`), so this is the picture viewers
+would get, not only the preview:
+
+| Run | Last frame before the stall | After the recovery, camera still held | After `camera-released` |
+|---|---|---|---|
+| `…T170717Z` | `s2-0186` healthy | `s3-0005`, `s3-0040` noise | `s3-0070` (10 s after), `s3-0102` (end of run) noise |
+| `…T171822Z` (heal test) | `s1-0056` healthy | `s2-0004` noise | `s2-0035`, `s2-0051` noise; after a forced rebuild, `s3-0005` to `s3-0089` still noise |
+
+Nothing in the app noticed:
+- The frame counter advanced at 30 fps, so the watchdog was satisfied.
+- The status line read `LIVE rtmps`.
+- The only outward sign was egress. The HUD showed 3.2–3.6 Mbps against 0.1–0.4 Mbps on the same dark
+  scene before, because noise is expensive to encode.
+- On Cloudflare, at a match, this is a broadcast of noise with a green Live badge.
+
+**A stream-level rebuild does not heal it.** In the heal run, the stall hook forced one more recovery 22 s
+after `camera-released` (`stopStream`/`startStream` and a reconnect, on the same camera session). The
+picture stayed noise for the remaining 90 s. Every run so far that force-stopped and relaunched the app came
+back with a healthy picture, including a browser run between the first and second WhatsApp runs.
+
+**Not established:** whether the noise comes from WhatsApp's concurrent open of camera 1 alone, or from our
+recovery rebuilding the stream while that camera is held.
+- In the first run the preview was still the healthy scene at 16:59:22Z, after the stall had fired.
+- It was noise at 16:59:26Z, after the recovery reconnected.
+- That fits the second explanation. But a stalled preview may simply show its last good frame, so it does
+  not prove it.
+
+Consequences:
+1. **Frame arrival is not picture health.** The zero test (F-P5-6) and the rate floor (F-P5-9) both pass on
+   noise. A cheap detector is an egress jump with no scene change, but that is a heuristic. Content checks
+   cost CPU the encode may need.
+2. **Recovery during contention may be harmful.** Two candidate rules, both untested:
+   - do not rebuild while a camera is contended;
+   - reopen the camera source, not just the stream, on `camera-released`.
+3. **Prevention works** (N21). With Do Not Disturb on total silence, neither a phone call nor a WhatsApp
+   video call reached the operator, and the broadcast was untouched.
+
+Evidence: `.p5/p5-interrupt-whatsapp-20260928T165758Z.*`, `…T170717Z.*`, `…T171822Z.*` (`frames-s*`,
+`hud-*`, device events in the run logs).
 
 ### H-P5-1 (hypothesis, with its test; measured 2026-09-14 — it holds) — on SRT the hold may start late, so dropout tolerance is not the configured number
 
@@ -1057,6 +1122,41 @@ setMode` from WhatsApp, `CameraService` connect and disconnect) and the device C
 
 Evidence: `.p5/p5-interrupt-browser-20260928T*`, `.p5/p5-interrupt-call-20260928T*`,
 `.p5/p5-interrupt-whatsapp-20260928T*`.
+
+### Interruption detection on the device — 2026-09-28 evening
+
+The APK was `ef8441b1…`, carrying the F-P5-8/F-P5-9 detection after two review rounds (`1d88c2c` to
+`0772888`). The setup was the same: RTMPS to a laptop listener. The driver `scripts/p5/device/interrupt.sh`
+now:
+- screenshots the HUD every 2 s once a call is up;
+- records Do Not Disturb (`zen_mode`);
+- keeps one decoded frame a second (`e4028a6`, `a4171d3`).
+
+The owner placed every call from a second phone.
+
+| Run | DND | What happened | Detection |
+|---|---|---|---|
+| No call (`…call-…T164838Z`) | off | Publishing about 4 min, no interruption | No `starved`, `mic-*` or `camera-*` rows: no false alarm |
+| Phone call answered (`…call-…T165404Z`) | off | Video 17 then 12 fps and audio 23 then 25/s for 2 s at answer; mic silenced for the call | `mic-silenced`/`mic-restored` (11.9 s); HUD `MIC SILENCED BY SYSTEM`. Also `delivery-starved videoFps=9.7 audioFps=15.2` for 3.7 s at answer |
+| WhatsApp video ×3 (`…whatsapp-…T165758Z`, `T170717Z`, `T171822Z`) | off | Camera 1 taken, video stalled, recovered; mic silenced for the call | `camera-contended`/`released`, `video-stalled`/`recovered`, `mic-*`; **the stream carried noise after the recovery (F-P5-10)** |
+| Phone call from a starred contact | priority | **Rang aloud**, answered; mic silenced 14.9 s | As above |
+| WhatsApp video call | total silence | **Nothing on the phone**; the audio mode stayed normal | No rows; broadcast untouched |
+| Phone call from a starred contact | total silence | Reached the phone silently (call state ringing); the owner saw and heard nothing; ended unanswered | No rows; 0 bad seconds in 115 s |
+
+Three things this changes:
+
+1. **The answer dip can cross the starvation floor.** The brief assumed from the morning's call that it would
+   not. Here the window judged 9.7 fps and 15.2 audio frames/s. By the precedence rules the line would have read
+   `LOW VIDEO 9.7 fps` for 3.7 s before the silenced-mic line, but this was not captured on screen.
+   - It is a true statement, briefly.
+   - The per-second rows (17 and 12 fps) do not reconcile exactly with the window's 9.7. That is not
+     explained.
+2. **Priority Do Not Disturb does not protect a broadcast.** It lets starred contacts through, and those are
+   exactly who rings a volunteer mid-match. Total silence stopped both kinds of call (N21).
+3. **Detection is not enough on its own** where a recovery can leave the stream broken: F-P5-10.
+
+A starved episode's HUD line was not captured on screen. The screenshots began after the 3.7 s episode had
+ended.
 
 ### Run B — RTMPS, wifi, 1 h (T5, N5)
 

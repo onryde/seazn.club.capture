@@ -639,8 +639,8 @@ exists, since the phone could then report the state as well.
 
 ### N21 — When the system or another app takes the camera or mic, say so, don't fight it, and prevent it at arm
 
-**Status:** recommendation · agreed with the owner 2026-09-28 · detection is in the spike; prevention is untested
-**Where:** capture engine · Arm pre-flight · status line · relates to F-P5-8, F-P5-9, N18, AGENTS.md §6, §9
+**Status:** recommendation · agreed with the owner 2026-09-28 · detection verified on the device; prevention measured: total silence works, priority does not
+**Where:** capture engine · Arm pre-flight · status line · relates to F-P5-8, F-P5-9, F-P5-10, N18, AGENTS.md §6, §9
 
 A phone call silences our microphone (F-P5-8), and a WhatsApp video call can
 starve our camera (F-P5-9). Both happened while the broadcast kept running and
@@ -654,19 +654,31 @@ is a product call.
    window running out.
 2. **Never try to take the camera or mic back.** A reconnect cannot win the
    camera from a call. Retrying would only add a reconnect storm on top of the
-   starvation.
-3. **Prevent it at Arm.** Add a pre-flight warning when Do Not Disturb is off.
-   Android lets an app *read* the interruption filter
-   (`NotificationManager.getCurrentInterruptionFilter()`) without a special
+   starvation. F-P5-10 makes this sharper: a stream rebuild during a WhatsApp
+   video call was followed by a broadcast of noise that no rebuild cured. Do not
+   rebuild while a camera is contended, and reopen the camera source after it
+   is released (both untested).
+3. **Prevent it at Arm.** Add a pre-flight warning unless Do Not Disturb is on
+   **total silence**: `NotificationManager.getCurrentInterruptionFilter()` ==
+   `INTERRUPTION_FILTER_NONE`, which an app can read without a special
    permission. Changing it needs notification-policy access, so the app warns
-   and does not toggle it. The theory: a phone that does not ring is a phone the
-   volunteer does not answer mid-over.
+   and does not toggle it. A phone that does not ring is a phone the volunteer
+   does not answer mid-over. Priority mode is not enough; see below.
 
-**Unverified:** whether Do Not Disturb stops a cellular call and a WhatsApp call
-from reaching the camera and mic on this handset. Repeat callers and starred
-contacts can break through, depending on settings. Test it on the device before
-the pre-flight relies on it (§0: a vendor behaviour that carries weight is
-tested, not read).
+**Measured on the device, 2026-09-28 evening** (results doc, "Interruption
+detection on the device"):
+- **Priority mode** (calls from starred contacts only) let a starred caller
+  ring aloud, and the call silenced the broadcast's mic for 15 s. Starred
+  contacts are exactly who rings a volunteer mid-match.
+- **Total silence** stopped a WhatsApp video call outright: nothing on screen,
+  and the audio mode never changed. A cellular call reached the phone
+  silently, the operator saw nothing, and the broadcast was untouched.
+
+**Still open:**
+- Whether priority mode with calls set to *none* is equivalent, and whether an
+  app can read that policy without access.
+- Whether other handsets' Do Not Disturb behaves the same (§0: a vendor
+  behaviour that carries weight is tested, not read).
 
 ---
 
@@ -678,18 +690,19 @@ under a heading of the same ID; F-P5-1 is under "Findings raised". The status
 is as of 28 September 2026. What the product engine must inherit waits on the P5
 verdict.
 
-| ID         | Finding                                                                                      | Status                                                                                                     |
-| ---------- | -------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
-| **F-P5-1** | libsrt's "Bad parameters" is how srtdroid reports a host that did not resolve                | Explained from the vendor source; the cause is DNS, not our parameters                                     |
-| **F-P5-2** | On a weak link the SRT session collapses every 6–22 s, and the watcher calls it healthy      | Watcher fixed; open: C1's fallback counts only _connect_ failures, so mid-session drops never try RTMPS    |
-| **F-P5-3** | The app can die while the device stays perfectly reachable                                   | Open for the product engine: liveness needs a heartbeat from the socket write path, not a cached flag      |
-| **F-P5-4** | The broadcast fell to a few frames a second for half an hour, and nothing we collect noticed | Watcher threshold fixed 2026-09-14; on-device detection is F-P5-9                                          |
-| **F-P5-5** | Nothing adapts the bitrate, so a burst the uplink cannot carry arrives as nothing            | Regulator built in the spike and retuned; all six rules held on the device 2026-09-28                      |
-| **F-P5-6** | A reconnect can leave the encoder with no picture while everything else says LIVE            | Spike watchdog detects and recovers. Root cause not reproduced; candidate is a pending same-value rotation |
-| **F-P5-7** | The regulator raises on a quiet picture, so the next busy picture overruns the link          | Fixed (`31dc781`); held on the device for a quiet picture. Overrun on a thin link untested                 |
-| **F-P5-8** | A phone call silences the broadcast's microphone, and nothing says so                        | Detection built in the spike (`4fef392`); not verified on the device. See N18, N21                         |
-| **F-P5-9** | Another app taking a camera can starve the broadcast without stopping it                     | Rate-floor and camera-contention detection built (`1d88c2c`); not verified on the device. See N21          |
-| **H-P5-1** | On SRT the hold may start late, so dropout tolerance is not the configured number            | Holds (measured 2026-09-14): 225.2 s over SRT against 183 s over RTMPS at `timeoutSeconds=180`             |
+| ID          | Finding                                                                                                         | Status                                                                                                                 |
+| ----------- | --------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| **F-P5-1**  | libsrt's "Bad parameters" is how srtdroid reports a host that did not resolve                                   | Explained from the vendor source; the cause is DNS, not our parameters                                                 |
+| **F-P5-2**  | On a weak link the SRT session collapses every 6–22 s, and the watcher calls it healthy                         | Watcher fixed; open: C1's fallback counts only _connect_ failures, so mid-session drops never try RTMPS                |
+| **F-P5-3**  | The app can die while the device stays perfectly reachable                                                      | Open for the product engine: liveness needs a heartbeat from the socket write path, not a cached flag                  |
+| **F-P5-4**  | The broadcast fell to a few frames a second for half an hour, and nothing we collect noticed                    | Watcher threshold fixed 2026-09-14; on-device detection is F-P5-9                                                      |
+| **F-P5-5**  | Nothing adapts the bitrate, so a burst the uplink cannot carry arrives as nothing                               | Regulator built in the spike and retuned; all six rules held on the device 2026-09-28                                  |
+| **F-P5-6**  | A reconnect can leave the encoder with no picture while everything else says LIVE                               | Spike watchdog detects and recovers. Root cause not reproduced; candidate is a pending same-value rotation             |
+| **F-P5-7**  | The regulator raises on a quiet picture, so the next busy picture overruns the link                             | Fixed (`31dc781`); held on the device for a quiet picture. Overrun on a thin link untested                             |
+| **F-P5-8**  | A phone call silences the broadcast's microphone, and nothing says so                                           | Detection verified on the device 2026-09-28 (phone and WhatsApp calls; HUD shows it). See N18, N21                     |
+| **F-P5-9**  | Another app taking a camera can starve the broadcast without stopping it                                        | Camera contention verified on the device; rate floor not exercised (all three calls stalled to zero). See F-P5-10, N21 |
+| **F-P5-10** | After another app takes a camera, the broadcast can carry noise at full frame rate while every signal says LIVE | Open, serious. A stream rebuild does not heal it; a relaunch does. Prevented by total-silence DND. See N21             |
+| **H-P5-1**  | On SRT the hold may start late, so dropout tolerance is not the configured number                               | Holds (measured 2026-09-14): 225.2 s over SRT against 183 s over RTMPS at `timeoutSeconds=180`                         |
 
 Device scripts that produced the evidence: `scripts/p5/device/`.
 
