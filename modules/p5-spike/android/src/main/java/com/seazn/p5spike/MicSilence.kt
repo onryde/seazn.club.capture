@@ -26,6 +26,11 @@ import androidx.annotation.RequiresApi
  * When our session ID cannot be read, every silenced configuration is taken as ours, and each row
  * says which basis was used (`tie=session` or `tie=any`).
  *
+ * Under `tie=session` our own configuration disappears whenever StreamPack stops the recorder: at a
+ * drop, a stall recovery, or a stop. That is not the system giving the microphone back, so an open
+ * silence is held while ours is absent and restored only when ours is present and not silenced.
+ * The session's end ([sessionEnded]) closes a silence still open, with `reason=session-ended`.
+ *
  * Below API 29 there is no silenced flag to read: nothing is watched, [silenced] stays
  * false, and one `mic-silence-unwatched` row says so.
  */
@@ -40,6 +45,9 @@ class MicSilence(
   /** When the open silence began; touched only on the main looper, where the callback runs. */
   private var silencedSinceMs: Long? = null
 
+  /** The main looper, once registered. Every judgement runs on it, so the state has one thread. */
+  @Volatile private var main: Handler? = null
+
   /** Once, for the session's lifetime: the session is a process singleton and is never torn down. */
   fun register(context: Context) {
     if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
@@ -47,15 +55,37 @@ class MicSilence(
       return
     }
     val audio = context.getSystemService(AudioManager::class.java) ?: return
-    val main = Handler(Looper.getMainLooper())
-    audio.registerAudioRecordingCallback(callback(), main)
+    val handler = Handler(Looper.getMainLooper())
+    main = handler
+    audio.registerAudioRecordingCallback(callback(), handler)
     // The callback only reports changes; judge what is active now, on the callback's thread.
-    main.post { judge(audio.activeRecordingConfigurations) }
+    handler.post { guarded { judge(audio.activeRecordingConfigurations) } }
+  }
+
+  /**
+   * The operator's stop, or a new intent replacing the session: a silence still open ends with the
+   * session, not with the system unsilencing. Called from the intent actor; runs on the main looper.
+   */
+  fun sessionEnded() {
+    main?.post { guarded { closeSilence("session-ended", tie = null) } }
   }
 
   @RequiresApi(Build.VERSION_CODES.Q)
   private fun callback() = object : AudioManager.AudioRecordingCallback() {
-    override fun onRecordingConfigChanged(configs: MutableList<AudioRecordingConfiguration>) = judge(configs)
+    override fun onRecordingConfigChanged(configs: MutableList<AudioRecordingConfiguration>) =
+      guarded { judge(configs) }
+  }
+
+  /**
+   * The callback and the posted judgements run on the main looper, outside the session scope's
+   * exception handler, and [onEvent] writes the CSV. A throw here would kill the process
+   * mid-broadcast, so nothing leaves.
+   */
+  private fun guarded(body: () -> Unit) {
+    runCatching(body).onFailure { failure ->
+      // Reporting it is best-effort too: the log may be what failed.
+      runCatching { onEvent("error", arrayOf("message" to "mic silence callback: $failure")) }
+    }
   }
 
   @RequiresApi(Build.VERSION_CODES.Q)
@@ -65,20 +95,26 @@ class MicSilence(
     val ours = if (own != null) configs.filter { it.clientAudioSessionId == own } else configs
     // Evidence of what a non-privileged app sees: session:source:silenced for every config.
     onEvent("recording-configs", arrayOf("ownSessionId" to own, "configs" to describe(configs)))
+    // Under tie=session, our config absent is our own recorder stopped, which says nothing either way.
+    if (own != null && ours.isEmpty()) return
     val now = ours.any { it.isClientSilenced }
-    val since = silencedSinceMs
     when {
-      now && since == null -> {
+      now && silencedSinceMs == null -> {
         silencedSinceMs = SystemClock.elapsedRealtime()
         silenced = true
         onEvent("mic-silenced", arrayOf("ownSessionId" to own, "tie" to tie))
       }
-      !now && since != null -> {
-        silencedSinceMs = null
-        silenced = false
-        onEvent("mic-restored", arrayOf("msSilenced" to SystemClock.elapsedRealtime() - since, "tie" to tie))
-      }
+      !now -> closeSilence("unsilenced", tie)
     }
+  }
+
+  /** Ends an open silence with [reason]; nothing when none is open. */
+  private fun closeSilence(reason: String, tie: String?) {
+    val since = silencedSinceMs ?: return
+    silencedSinceMs = null
+    silenced = false
+    val ms = SystemClock.elapsedRealtime() - since
+    onEvent("mic-restored", arrayOf("msSilenced" to ms, "reason" to reason, "tie" to tie))
   }
 
   @RequiresApi(Build.VERSION_CODES.Q)

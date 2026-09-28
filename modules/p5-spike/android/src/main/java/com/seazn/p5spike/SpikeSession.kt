@@ -206,6 +206,8 @@ object SpikeSession {
     // A new intent is a new session: no stall episode, no recovery count and no regulation carry over.
     attemptPublishing = false
     watchdog.reset()
+    // Nor a silenced-mic episode (F-P5-8): it closes with the session it belonged to.
+    micSilence.sessionEnded()
     LinkRegulators.newSession()
     // Cleared for every branch: a throwing service start below must not leave stale state.
     wanted = null

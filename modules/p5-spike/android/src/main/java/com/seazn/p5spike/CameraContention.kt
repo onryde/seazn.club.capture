@@ -31,9 +31,20 @@ class CameraContention(
   @Volatile var anyContended = false
     private set
 
+  /**
+   * The callbacks run on the main looper, outside the session scope's exception handler, and
+   * [onEvent] writes the CSV. A throw here would kill the process mid-broadcast, so nothing leaves.
+   */
   private val callback = object : CameraManager.AvailabilityCallback() {
-    override fun onCameraUnavailable(cameraId: String) = unavailable(cameraId)
-    override fun onCameraAvailable(cameraId: String) = available(cameraId)
+    override fun onCameraUnavailable(cameraId: String) = guarded { unavailable(cameraId) }
+    override fun onCameraAvailable(cameraId: String) = guarded { available(cameraId) }
+  }
+
+  private fun guarded(body: () -> Unit) {
+    runCatching(body).onFailure { failure ->
+      // Reporting it is best-effort too: the log may be what failed.
+      runCatching { onEvent("error", arrayOf("message" to "camera contention callback: $failure")) }
+    }
   }
 
   /** Once, for the session's lifetime: the session is a process singleton and is never torn down. */
