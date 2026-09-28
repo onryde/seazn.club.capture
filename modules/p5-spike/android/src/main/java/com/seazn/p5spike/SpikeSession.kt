@@ -82,6 +82,12 @@ object SpikeSession {
     onEvent = { kind, extras -> event(kind, *extras) },
   )
 
+  /** F-P5-8: the system silencing our microphone, which no frame counter can see. */
+  val micSilence = MicSilence(
+    ownSessionId = ::ownAudioSessionId,
+    onEvent = { kind, extras -> event(kind, *extras) },
+  )
+
   /** Bumped to ask the publish loop to end the current attempt for a stall. A StateFlow, so a wait never misses one. */
   private val stallRequests = MutableStateFlow(0)
 
@@ -147,6 +153,8 @@ object SpikeSession {
         // Best-effort, like the mark file: evidence must never cost the arm.
         runCatching { cameraContention.register(appContext) }
           .onFailure { event("error", "message" to "camera contention not watched: ${describe(it)}") }
+        runCatching { micSilence.register(appContext) }
+          .onFailure { event("error", "message" to "mic silencing not watched: ${describe(it)}") }
       }
       event("armed", "overlayUrl" to file.overlayUrl, "playbackUrl" to file.playbackUrl)
     }
@@ -512,6 +520,11 @@ object SpikeSession {
    */
   private fun ownCameraId(): String? = runCatching {
     (streamerFlow.value?.videoInput?.sourceFlow?.value as? ICameraSource)?.cameraId
+  }.getOrNull()
+
+  /** Our AudioRecord's session ID, to pick our own recording out of the device's (F-P5-8). */
+  private fun ownAudioSessionId(): Int? = runCatching {
+    streamerFlow.value?.audioInput?.sourceFlow?.value?.let(MicSilence::audioSessionIdOf)
   }.getOrNull()
 
   /**

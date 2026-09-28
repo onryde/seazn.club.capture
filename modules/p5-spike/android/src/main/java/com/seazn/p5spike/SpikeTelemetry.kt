@@ -72,6 +72,8 @@ object SpikeTelemetry {
       "videoFps" to SpikeSession.watchdog.videoFps,
       // F-P5-9: another app took a camera while live and has not released it. Evidence only.
       "cameraContended" to SpikeSession.cameraContention.anyContended,
+      // F-P5-8: the system is silencing our recording (a phone call). The frames still count.
+      "micSilenced" to SpikeSession.micSilence.silenced,
     ) + frames(streamer) + srt(streamer)
   }
 

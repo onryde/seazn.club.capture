@@ -39,6 +39,11 @@ export type SpikeSample = {
   readonly videoFps: number | null;
   /** Another app opened a camera while live and has not released it (F-P5-9). Evidence only. */
   readonly cameraContended: boolean;
+  /**
+   * The system is silencing this app's recording, as it did for a whole phone call (F-P5-8). The
+   * audio frames still count, so only this says the broadcast is silent. false below Android 10.
+   */
+  readonly micSilenced: boolean;
 };
 
 /**
