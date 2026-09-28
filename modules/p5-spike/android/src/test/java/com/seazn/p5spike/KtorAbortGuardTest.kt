@@ -10,20 +10,40 @@ import org.junit.Test
 class KtorAbortGuardTest {
   private val worker = "DefaultDispatcher-worker-3"
 
-  /** Run B's frames, from the logcat in F-P5-12, and the socket write under them. */
-  private val tlsFrames = arrayOf(
-    StackTraceElement("io.ktor.network.tls.RenderKt", "writeRecord", "Render.kt", 18),
-    StackTraceElement("io.ktor.network.tls.TLSClientHandshake\$output\$2\$1\$1", "invokeSuspend", "TLSClientHandshake.kt", 132),
-    StackTraceElement("kotlinx.coroutines.DispatchedTask", "run", "DispatchedTask.kt", 100),
+  /**
+   * Run B's frames, verbatim from the logcat in F-P5-12 (`.p5/p5-runb-20260928T211315Z.logcat.txt`),
+   * abridged: the top seven as logged, then two of the scheduler's. The top frames are ktor-io's, not
+   * Ktor's network package.
+   */
+  private val closerFrames = arrayOf(
+    frame("io.ktor.utils.io.ByteChannel\$writeBuffer\$1", "invoke", "ByteChannel.kt", 54),
+    frame("io.ktor.utils.io.CloseToken", "wrapCause", "CloseToken.kt", 21),
+    frame("io.ktor.utils.io.CloseToken", "throwOrNull", "CloseToken.kt", 26),
+    frame("io.ktor.utils.io.ByteChannel", "getWriteBuffer", "ByteChannel.kt", 54),
+    frame("io.ktor.utils.io.ByteWriteChannelOperationsKt", "writeByte", "ByteWriteChannelOperations.kt", 19),
+    frame("io.ktor.network.tls.RenderKt", "writeRecord", "Render.kt", 18),
+    frame("io.ktor.network.tls.TLSClientHandshake\$output\$2\$1\$1", "invokeSuspend", "TLSClientHandshake.kt", 132),
+    frame("kotlinx.coroutines.DispatchedTask", "run", "DispatchedTask.kt", 100),
+    frame("kotlinx.coroutines.scheduling.CoroutineScheduler", "runSafely", "CoroutineScheduler.kt", 586),
   )
-  private val ourFrames = arrayOf(
-    StackTraceElement("com.seazn.p5spike.SpikeSession", "publishLoop", "SpikeSession.kt", 292),
-    StackTraceElement("kotlinx.coroutines.DispatchedTask", "run", "DispatchedTask.kt", 100),
+  private val abortFrames = arrayOf(
+    frame("sun.nio.ch.FileDispatcherImpl", "write0", null, -2),
+    frame("sun.nio.ch.SocketChannelImpl", "write", "SocketChannelImpl.java", 512),
+    frame("io.ktor.network.sockets.CIOWriterKt\$attachForWritingDirectImpl\$1", "invokeSuspend", "CIOWriter.kt", 77),
   )
 
+  /** Frames that are Ktor's, and next to its network package, but not in it. */
+  private val notNetworkFrames = arrayOf(
+    frame("io.ktor.utils.io.ByteChannel", "getWriteBuffer", "ByteChannel.kt", 54),
+    frame("sun.nio.ch.SocketChannelImpl", "write", "SocketChannelImpl.java", 512),
+    frame("com.seazn.p5spike.SpikeSession", "publishLoop", "SpikeSession.kt", 292),
+  )
+
+  private fun frame(cls: String, method: String, file: String?, line: Int) = StackTraceElement(cls, method, file, line)
+
   private fun runB(): Throwable {
-    val abort = IOException("Software caused connection abort").apply { stackTrace = ourFrames }
-    return ClosedWriteChannelException(abort).apply { stackTrace = tlsFrames }
+    val abort = IOException("Software caused connection abort").apply { stackTrace = abortFrames }
+    return ClosedWriteChannelException(abort).apply { stackTrace = closerFrames }
   }
 
   @Test
@@ -38,14 +58,14 @@ class KtorAbortGuardTest {
 
   @Test
   fun `an IOException with no Ktor network frame is not swallowed`() {
-    val ours = IOException("Software caused connection abort").apply { stackTrace = ourFrames }
+    val ours = IOException("Software caused connection abort").apply { stackTrace = notNetworkFrames }
 
     assertFalse(KtorAbortGuard.shouldSwallow(ours, worker, isMainThread = false))
   }
 
   @Test
   fun `a bug raised with Ktor frames is not swallowed`() {
-    val bug = IllegalStateException("not an I/O failure").apply { stackTrace = tlsFrames }
+    val bug = IllegalStateException("not an I/O failure").apply { stackTrace = closerFrames }
 
     assertFalse(KtorAbortGuard.shouldSwallow(bug, worker, isMainThread = false))
   }
@@ -53,16 +73,16 @@ class KtorAbortGuardTest {
   /** `a -> b -> a` is legal (only a self-cause is refused), and must not loop. */
   @Test(timeout = 2_000)
   fun `a cause cycle terminates`() {
-    val a = IllegalStateException("a").apply { stackTrace = tlsFrames }
-    val b = IllegalArgumentException("b").apply { stackTrace = ourFrames }
+    val a = IllegalStateException("a").apply { stackTrace = closerFrames }
+    val b = IllegalArgumentException("b").apply { stackTrace = notNetworkFrames }
     a.initCause(b)
     b.initCause(a)
 
     assertFalse(KtorAbortGuard.shouldSwallow(a, worker, isMainThread = false))
 
     // The same cycle with Run B's failure inside it is still judged, not just abandoned.
-    val io = IOException("Software caused connection abort").apply { stackTrace = tlsFrames }
-    val c = IllegalStateException("c").apply { stackTrace = ourFrames }
+    val io = IOException("Software caused connection abort").apply { stackTrace = abortFrames }
+    val c = IllegalStateException("c").apply { stackTrace = notNetworkFrames }
     c.initCause(io)
     io.initCause(c)
 
