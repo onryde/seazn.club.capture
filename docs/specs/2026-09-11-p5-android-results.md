@@ -450,6 +450,45 @@ freezes.
 
 Evidence: `.p5/p5-safeguards-20260928T142729Z.*`.
 
+### F-P5-8 — a phone call silences the broadcast's microphone, and nothing says so
+
+2026-09-28, an answered phone call while live. Android's audio server silenced the app's record track for
+the whole call: `AF::RecordTrack: setSilenced … (silenced)` at 15:43:06.8Z, `(unsilenced)` at 15:43:19.5Z,
+against a call that went active at 15:43:06.0Z and ended at 15:43:19.5Z. Audio frames kept counting at
+~47/s, video kept 30 fps apart from a 2 s dip at answer, and the stream never dropped. The broadcast carried
+13 s of silence, and neither the status line nor the CSV recorded it.
+
+AGENTS.md §9 requires every audio-session interruption to be a visible state, never a silent one, and §6
+makes the audio meter permanent because a quiet mic reaches YouTube quiet. A frame counter cannot see this:
+the frames arrive, they are silent. The engine needs either the platform's silencing signal
+(`AudioManager.AudioRecordingCallback` delivers `AudioRecordingConfiguration.isClientSilenced()` on
+Android 10+; untested here) or a level floor on the encoded audio, and it must surface the result as a state.
+
+### F-P5-9 — another app taking a camera can starve the broadcast without stopping it
+
+2026-09-28, WhatsApp video calls answered while live. The OnePlus gives WhatsApp the front camera (ID 1)
+while the app holds the rear one (ID 0), and the broadcast suffers two different ways:
+
+- **Call B (15:45:33.9–15:45:39.9Z):** video fell to 0 fps. The watchdog fired (`video-stalled`,
+  `msSinceAdvance=3351`), the recovery reconnected, and video returned at 15:45:42Z, 3 s after WhatsApp
+  released its camera (15:45:39.1Z).
+- **Call C (15:47:17.7–15:47:48.4Z):** video fell to 1–20 fps **and audio to 1–9 frames/s** for about 20 s,
+  with egress at 0–200 kbps. **No `video-stalled`**, because some frames still arrived and the watchdog
+  fires only after 3 s with none. The session looked healthy while the broadcast carried a slideshow with
+  broken audio.
+
+Why one call stopped video and the other starved both tracks is not established. What stands:
+
+1. **The watchdog needs a rate floor, not a zero test.** For example, fewer than 10 video frames/s or 20
+   audio frames/s over 3 s while publishing.
+2. **Camera contention is a normal operating event**, like a call. The operator needs the status line to
+   name it. The product has to decide whether the engine should recover, or wait for the other app to
+   release the camera and say so.
+
+A call that only rings is harmless to the stream, but its full-screen ringing UI covered the app while it
+was arming (call A, 15:45:04–15:45:21Z): `Target preview removed` and four `Capture failed`. The app still
+armed.
+
 ### H-P5-1 (hypothesis, with its test; measured 2026-09-14 — it holds) — on SRT the hold may start late, so dropout tolerance is not the configured number
 
 Run A's hold ran **225.2 s** from ingest end against **183 s** measured over RTMPS
@@ -985,6 +1024,27 @@ afterwards.
 
 Evidence: `.p5/p5-capbg-20260928T134309Z.*` (listener rejected), `.p5/p5-capbg-20260928T134656Z.*` (HOME),
 `.p5/p5-capbg-20260928T135043Z.*` (simulated stall), `.p5/p5-safeguards-20260928T142729Z.*`.
+
+### Interruptions while live — 2026-09-28
+
+The retuned build published RTMPS to a reconnect-accepting listener on the laptop through `adb reverse`, with
+continuous logcat. Each run published for 20 s, then took the interruption.
+
+| Interruption | Stream | Finding |
+|---|---|---|
+| Browser (Chrome in front 13 s, then back) | 30 fps apart from one second at 12 fps and one at 21 fps; audio ~47/s; no drop | none |
+| Phone call rung and declined (19 s) | No effect | none |
+| Phone call answered (13.5 s) | Video 13–16 fps for 2 s at answer, 15 fps for 1 s at hang-up; no drop; **microphone silenced for the whole call** | F-P5-8 |
+| WhatsApp call rung, not answered, during launch | Ringing UI covered the arming app; preview removed, `Capture failed` ×4; still armed | F-P5-9 |
+| WhatsApp video call answered (6 s) | Video to 0; watchdog recovered in 6.9 s | F-P5-9 |
+| WhatsApp video call answered (30 s) | Video 1–20 fps and audio 1–9/s for ~20 s; **not detected** | F-P5-9 |
+
+Both kinds of call were placed by the owner from a second phone. The WhatsApp calls began before the driver
+prompted for them, so its own call timing is not used; the times above come from logcat (`AudioManager
+setMode` from WhatsApp, `CameraService` connect and disconnect) and the device CSV.
+
+Evidence: `.p5/p5-interrupt-browser-20260928T*`, `.p5/p5-interrupt-call-20260928T*`,
+`.p5/p5-interrupt-whatsapp-20260928T*`.
 
 ### Run B — RTMPS, wifi, 1 h (T5, N5)
 
