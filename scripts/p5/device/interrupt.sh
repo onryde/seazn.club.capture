@@ -74,8 +74,11 @@ adb -s $SERIAL reverse tcp:1935 tcp:1935 >/dev/null || die "adb reverse failed"
 # connection open, and its per-second stats show when video packets stop arriving.
 # Probe room: at 22:31Z ffmpeg rejected the first packets ("unspecified size", could not write header), exited,
 # and turned the whole run into reconnect failures.
+# The listener decodes what the phone sends and keeps one frame a second per connection (segment), so the
+# picture viewers would get is evidence: on 2026-09-28 the preview broke into green blocks after a WhatsApp
+# video call while the HUD read LIVE, and a copy-to-null listener could not say whether the stream did too.
 if [[ $STALL == 1 ]]; then
-  ( while true; do ffmpeg -hide_banner -v warning -listen 1 -timeout 90 -i rtmp://127.0.0.1:1935/live/capbg -c copy -stats -stats_period 1 -f null -; print "listener ended $(date -u +%H:%M:%SZ)"; done ) > $OUT.ffmpeg.log 2>&1 &
+  ( seg=0; while true; do seg=$((seg + 1)); print "listener segment $seg starts $(date -u +%H:%M:%SZ)"; ffmpeg -hide_banner -v warning -analyzeduration 10000000 -probesize 20000000 -listen 1 -timeout 90 -i rtmp://127.0.0.1:1935/live/capbg -an -vf fps=1 -q:v 5 -stats -stats_period 1 $OUT.frames-s$seg-%04d.jpg; print "listener ended $(date -u +%H:%M:%SZ)"; done ) > $OUT.ffmpeg.log 2>&1 &
 else
   ffmpeg -hide_banner -v warning -analyzeduration 10000000 -probesize 20000000 -listen 1 -timeout 90 -i rtmp://127.0.0.1:1935/live/capbg -c copy -t 70 -stats -stats_period 1 -f null - > $OUT.ffmpeg.log 2>&1 &
 fi
