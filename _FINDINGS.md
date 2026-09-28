@@ -617,6 +617,57 @@ active, hard to leave on, and impossible to confuse with Stop, which *ends* the
 broadcast. Suggested control shape, inverting the Go-live/Stop asymmetry:
 **hold to enter, tap to resume** — hard to trigger, trivial to undo.
 
+### N20 — The overlay's Live badge stays lit while the phone sends no picture
+
+**Status:** recommendation · agreed with the owner 2026-09-28 · leave as is
+**Where:** overlay route (main repo) · compositor slate · relates to F-P5-6, N19, AGENTS.md §7
+
+During a NO VIDEO episode (F-P5-6), the Cloudflare input stays connected and
+the overlay's Live badge stays lit over a frozen or black picture. The phone
+knows, and its status line says so; viewers see only the badge.
+
+Leave it. The badge belongs to the Tier A browser-source route, and driving it
+from the phone would mean either a second render path, which §7 forbids, or an
+outbound channel the phone does not have (N19). The spike's watchdog has
+recovered every episode within seconds, and viewers see the frozen picture
+either way.
+
+If this is ever fixed, fix it where the signal is. The compositor's slate
+should cover the picture when Cloudflare stops packaging, and the badge should
+follow it. That belongs in the main register. Revisit it when N19's channel
+exists, since the phone could then report the state as well.
+
+### N21 — When the system or another app takes the camera or mic, say so, don't fight it, and prevent it at arm
+
+**Status:** recommendation · agreed with the owner 2026-09-28 · detection is in the spike; prevention is untested
+**Where:** capture engine · Arm pre-flight · status line · relates to F-P5-8, F-P5-9, N18, AGENTS.md §6, §9
+
+A phone call silences our microphone (F-P5-8), and a WhatsApp video call can
+starve our camera (F-P5-9). Both happened while the broadcast kept running and
+looked healthy. The spike now detects both. What the app should *do* about them
+is a product call.
+
+1. **Surface it; keep publishing.** Use a caution status line naming the cause,
+   such as `LOW VIDEO … — camera in use by another app` or
+   `MIC SILENCED BY SYSTEM`, as §9 asks. Never stop automatically: an
+   accidental stop costs the match, and a starved picture still beats the hold
+   window running out.
+2. **Never try to take the camera or mic back.** A reconnect cannot win the
+   camera from a call. Retrying would only add a reconnect storm on top of the
+   starvation.
+3. **Prevent it at Arm.** Add a pre-flight warning when Do Not Disturb is off.
+   Android lets an app *read* the interruption filter
+   (`NotificationManager.getCurrentInterruptionFilter()`) without a special
+   permission. Changing it needs notification-policy access, so the app warns
+   and does not toggle it. The theory: a phone that does not ring is a phone the
+   volunteer does not answer mid-over.
+
+**Unverified:** whether Do Not Disturb stops a cellular call and a WhatsApp call
+from reaching the camera and mic on this handset. Repeat callers and starred
+contacts can break through, depending on settings. Test it on the device before
+the pre-flight relies on it (§0: a vendor behaviour that carries weight is
+tested, not read).
+
 ---
 
 ## P5 device spike (Android)
@@ -636,8 +687,8 @@ verdict.
 | **F-P5-5** | Nothing adapts the bitrate, so a burst the uplink cannot carry arrives as nothing            | Regulator built in the spike and retuned; all six rules held on the device 2026-09-28                      |
 | **F-P5-6** | A reconnect can leave the encoder with no picture while everything else says LIVE            | Spike watchdog detects and recovers. Root cause not reproduced; candidate is a pending same-value rotation |
 | **F-P5-7** | The regulator raises on a quiet picture, so the next busy picture overruns the link          | Fixed (`31dc781`); held on the device for a quiet picture. Overrun on a thin link untested                 |
-| **F-P5-8** | A phone call silences the broadcast's microphone, and nothing says so                        | Detection being built in the spike; not verified on the device. See N18                                    |
-| **F-P5-9** | Another app taking a camera can starve the broadcast without stopping it                     | Rate-floor and camera-contention detection being built; not verified on the device                         |
+| **F-P5-8** | A phone call silences the broadcast's microphone, and nothing says so                        | Detection built in the spike (`4fef392`); not verified on the device. See N18, N21                         |
+| **F-P5-9** | Another app taking a camera can starve the broadcast without stopping it                     | Rate-floor and camera-contention detection built (`1d88c2c`); not verified on the device. See N21          |
 | **H-P5-1** | On SRT the hold may start late, so dropout tolerance is not the configured number            | Holds (measured 2026-09-14): 225.2 s over SRT against 183 s over RTMPS at `timeoutSeconds=180`             |
 
 Device scripts that produced the evidence: `scripts/p5/device/`.
