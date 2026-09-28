@@ -2,6 +2,8 @@ package com.seazn.p5spike
 
 import io.ktor.utils.io.ClosedWriteChannelException
 import java.io.IOException
+import kotlinx.coroutines.CompletionHandlerException
+import kotlinx.coroutines.InternalCoroutinesApi
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -32,11 +34,20 @@ class KtorAbortGuardTest {
     frame("io.ktor.network.sockets.CIOWriterKt\$attachForWritingDirectImpl\$1", "invokeSuspend", "CIOWriter.kt", 77),
   )
 
-  /** Frames that are Ktor's, and next to its network package, but not in it. */
+  /**
+   * Frames next to Ktor's network package but not in it. None is ours, so a case using them is
+   * judged on the network-frame rule, not refused as our own code.
+   */
   private val notNetworkFrames = arrayOf(
     frame("io.ktor.utils.io.ByteChannel", "getWriteBuffer", "ByteChannel.kt", 54),
     frame("sun.nio.ch.SocketChannelImpl", "write", "SocketChannelImpl.java", 512),
+    frame("kotlinx.coroutines.DispatchedTask", "run", "DispatchedTask.kt", 100),
+  )
+
+  /** Our own code raising: what `SpikeSession`'s loop would look like wrapping a Ktor failure. */
+  private val ourFrames = arrayOf(
     frame("com.seazn.p5spike.SpikeSession", "publishLoop", "SpikeSession.kt", 292),
+    frame("kotlinx.coroutines.DispatchedTask", "run", "DispatchedTask.kt", 100),
   )
 
   private fun frame(cls: String, method: String, file: String?, line: Int) = StackTraceElement(cls, method, file, line)
@@ -54,6 +65,44 @@ class KtorAbortGuardTest {
   @Test
   fun `Run B's exception on the main thread is not swallowed`() {
     assertFalse(KtorAbortGuard.shouldSwallow(runB(), "main", isMainThread = true))
+  }
+
+  /** Production reads the main thread from the Looper, not the name: the flag alone must refuse. */
+  @Test
+  fun `Run B's exception on the main thread under another name is not swallowed`() {
+    assertFalse(KtorAbortGuard.shouldSwallow(runB(), "worker-1", isMainThread = true))
+  }
+
+  /** e.g. kotlinx's CoroutinesInternalError, which carries the failure it was handling as its cause. */
+  @Test
+  fun `an Error caused by Run B's exception is not swallowed`() {
+    val fatal = Error("Fatal exception in coroutines machinery", runB()).apply {
+      stackTrace = arrayOf(frame("kotlinx.coroutines.DispatchedTask", "handleFatalException", "DispatchedTask.kt", 144))
+    }
+
+    assertFalse(KtorAbortGuard.shouldSwallow(fatal, worker, isMainThread = false))
+  }
+
+  /**
+   * The rule reads the whole cause chain, not only the top: kotlinx wraps a failure thrown from an
+   * `invokeOnCompletion` handler (`JobSupport.kt:313`) and reports the wrapper, which is neither an
+   * Error nor ours.
+   */
+  @OptIn(InternalCoroutinesApi::class)
+  @Test
+  fun `kotlinx's wrapper around Run B's exception is swallowed`() {
+    val wrapper = CompletionHandlerException("Exception in completion handler", runB()).apply {
+      stackTrace = arrayOf(frame("kotlinx.coroutines.JobSupport", "notifyCompletion", "JobSupport.kt", 313))
+    }
+
+    assertTrue(KtorAbortGuard.shouldSwallow(wrapper, worker, isMainThread = false))
+  }
+
+  @Test
+  fun `our own exception caused by Run B's exception is not swallowed`() {
+    val ours = IllegalStateException("publish failed", runB()).apply { stackTrace = ourFrames }
+
+    assertFalse(KtorAbortGuard.shouldSwallow(ours, worker, isMainThread = false))
   }
 
   @Test
@@ -80,12 +129,12 @@ class KtorAbortGuardTest {
 
     assertFalse(KtorAbortGuard.shouldSwallow(a, worker, isMainThread = false))
 
-    // The same cycle with Run B's failure inside it is still judged, not just abandoned.
+    // A Ktor-framed IOException whose cause cycles back to it is still judged, not just abandoned.
     val io = IOException("Software caused connection abort").apply { stackTrace = abortFrames }
     val c = IllegalStateException("c").apply { stackTrace = notNetworkFrames }
-    c.initCause(io)
     io.initCause(c)
+    c.initCause(io)
 
-    assertTrue(KtorAbortGuard.shouldSwallow(c, worker, isMainThread = false))
+    assertTrue(KtorAbortGuard.shouldSwallow(io, worker, isMainThread = false))
   }
 }
