@@ -538,7 +538,7 @@ when the audio is a commentator who may simply be muted.
 ### N18 — Muting the phone's audio is a fourth way to ship silence
 
 **Status:** open · design constraints settled, control placement is not
-**Where:** capture app · audio path · relates to D1, D2, T1, N3
+**Where:** capture app · audio path · relates to D1, D2, T1, N3, F-P5-8
 
 There are legitimate reasons to mute: copyright music over the PA, crowd audio
 that cannot be broadcast, a dead mic, or commentary being added elsewhere. It is
@@ -569,6 +569,14 @@ bypass the audio floor, or the app could never go live muted at all.
 the control is the indicator, with the meter and status line both shouting while
 it is on. That is poor discoverability for a volunteer, which is arguably
 correct for something this dangerous, but it is a product call.
+
+**Measured on the device, 2026-09-28 (F-P5-8).** The system can ship silence
+too. An answered phone call made Android silence the app's record track for the
+whole call (`AF::RecordTrack: setSilenced`), and audio frames kept counting at
+about 47/s. Like a deliberate mute, it looks correct to every check that counts
+frames. The meter's **MUTED** state here and the spike's
+`MIC SILENCED BY SYSTEM` status line are the same design problem: the meter
+must say _why_ it is silent, not only that it is.
 
 ### N19 — Pause is free in the compositor and needs a channel the phone does not have
 
@@ -609,6 +617,99 @@ active, hard to leave on, and impossible to confuse with Stop, which *ends* the
 broadcast. Suggested control shape, inverting the Go-live/Stop asymmetry:
 **hold to enter, tap to resume** — hard to trigger, trivial to undo.
 
+### N20 — The overlay's Live badge stays lit while the phone sends no picture
+
+**Status:** recommendation · agreed with the owner 2026-09-28 · leave as is
+**Where:** overlay route (main repo) · compositor slate · relates to F-P5-6, N19, AGENTS.md §7
+
+During a NO VIDEO episode (F-P5-6), the Cloudflare input stays connected and
+the overlay's Live badge stays lit over a frozen or black picture. The phone
+knows, and its status line says so; viewers see only the badge.
+
+Leave it. The badge belongs to the Tier A browser-source route, and driving it
+from the phone would mean either a second render path, which §7 forbids, or an
+outbound channel the phone does not have (N19). The spike's watchdog has
+recovered every episode within seconds, and viewers see the frozen picture
+either way.
+
+If this is ever fixed, fix it where the signal is. The compositor's slate
+should cover the picture when Cloudflare stops packaging, and the badge should
+follow it. That belongs in the main register. Revisit it when N19's channel
+exists, since the phone could then report the state as well.
+
+### N21 — When the system or another app takes the camera or mic, say so, don't fight it, and prevent it at arm
+
+**Status:** recommendation · agreed with the owner 2026-09-28 · detection verified on the device; prevention measured: total silence works, priority does not
+**Where:** capture engine · Arm pre-flight · status line · relates to F-P5-8, F-P5-9, F-P5-10, N18, AGENTS.md §6, §9
+
+A phone call silences our microphone (F-P5-8), and a WhatsApp video call can
+starve our camera (F-P5-9). Both happened while the broadcast kept running and
+looked healthy. The spike now detects both. What the app should *do* about them
+is a product call.
+
+1. **Surface it; keep publishing.** Use a caution status line naming the cause,
+   such as `LOW VIDEO … — camera in use by another app` or
+   `MIC SILENCED BY SYSTEM`, as §9 asks. Never stop automatically: an
+   accidental stop costs the match, and a starved picture still beats the hold
+   window running out.
+2. **Never try to take the camera or mic back.** A reconnect cannot win the
+   camera from a call. Retrying would only add a reconnect storm on top of the
+   starvation. F-P5-10 makes this sharper. WhatsApp's concurrent camera open
+   turns our picture to noise on its own, and a rebuild buys nothing. So hold
+   while a camera is contended, and reopen our camera once it is released. On
+   the device, the reopen healed the picture in about 1.2 s (2026-09-28, one
+   run each of `reopen` and `both`).
+3. **Prevent it at Arm.** Add a pre-flight warning unless Do Not Disturb is on
+   **total silence**: `NotificationManager.getCurrentInterruptionFilter()` ==
+   `INTERRUPTION_FILTER_NONE`, which an app can read without a special
+   permission. Changing it needs notification-policy access, so the app warns
+   and does not toggle it. A phone that does not ring is a phone the volunteer
+   does not answer mid-over. Priority mode is not enough; see below.
+
+**Measured on the device, 2026-09-28 evening** (results doc, "Interruption
+detection on the device"):
+- **Priority mode** (calls from starred contacts only) let a starred caller
+  ring aloud, and the call silenced the broadcast's mic for 15 s. Starred
+  contacts are exactly who rings a volunteer mid-match.
+- **Total silence** stopped a WhatsApp video call outright: nothing on screen,
+  and the audio mode never changed. A cellular call reached the phone
+  silently, the operator saw nothing, and the broadcast was untouched.
+
+**Still open:**
+- Whether priority mode with calls set to *none* is equivalent, and whether an
+  app can read that policy without access.
+- Whether other handsets' Do Not Disturb behaves the same (§0: a vendor
+  behaviour that carries weight is tested, not read).
+
+---
+
+## P5 device spike (Android)
+
+The P5 findings, as an index. The full text, evidence and corrections for each
+live in [`docs/specs/2026-09-11-p5-android-results.md`](docs/specs/2026-09-11-p5-android-results.md),
+under a heading of the same ID; F-P5-1 is under "Findings raised". The status
+is as of 28 September 2026. What the product engine must inherit waits on the P5
+verdict.
+
+| ID          | Finding                                                                                                         | Status                                                                                                                 |
+| ----------- | --------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| **F-P5-1**  | libsrt's "Bad parameters" is how srtdroid reports a host that did not resolve                                   | Explained from the vendor source; the cause is DNS, not our parameters                                                 |
+| **F-P5-2**  | On a weak link the SRT session collapses every 6–22 s, and the watcher calls it healthy                         | Watcher fixed; open: C1's fallback counts only _connect_ failures, so mid-session drops never try RTMPS                |
+| **F-P5-3**  | The app can die while the device stays perfectly reachable                                                      | Open for the product engine: liveness needs a heartbeat from the socket write path, not a cached flag                  |
+| **F-P5-4**  | The broadcast fell to a few frames a second for half an hour, and nothing we collect noticed                    | Watcher threshold fixed 2026-09-14; on-device detection is F-P5-9                                                      |
+| **F-P5-5**  | Nothing adapts the bitrate, so a burst the uplink cannot carry arrives as nothing                               | Regulator built in the spike and retuned; all six rules held on the device 2026-09-28                                  |
+| **F-P5-6**  | A reconnect can leave the encoder with no picture while everything else says LIVE                               | Spike watchdog detects and recovers. Root cause not reproduced (nor by kill-then-HOME, 2026-09-28); candidate is a pending same-value rotation |
+| **F-P5-7**  | The regulator raises on a quiet picture, so the next busy picture overruns the link                             | Fixed (`31dc781`); held on the device, including on a 1.5 Mbps link: no raise after the cut. Overrun there came from F-P5-11 |
+| **F-P5-8**  | A phone call silences the broadcast's microphone, and nothing says so                                           | Detection verified on the device 2026-09-28 (phone and WhatsApp calls; HUD shows it). See N18, N21                     |
+| **F-P5-9**  | Another app taking a camera can starve the broadcast without stopping it                                        | Camera contention verified on the device; rate floor not exercised (all three calls stalled to zero). See F-P5-10, N21 |
+| **F-P5-10** | After another app takes a camera, the broadcast can carry noise at full frame rate while every signal says LIVE | Trigger found: the concurrent open, not our rebuild. Reopening the camera on release heals it. Open: noise for the whole call. See N21 |
+| **F-P5-11** | On a thin link, SRT dumps its backlog at many times the link rate                                               | Measured 2026-09-28: 13.9 and 17.0 Mbps bursts into a 1.5 Mbps link. Open for the product engine: bound the sender (`SRTO_MAXBW`) |
+| **F-P5-12** | Losing the network on RTMPS crashes the app                                                                     | Found in Run B 2026-09-28: an uncatchable Ktor TLS exception. The spike guard (`4b00812`) held on the device: 10 swallows in 18 RTMPS drops, the process lived. Open for the product engine |
+| **F-P5-13** | A session can go dark while the phone and Cloudflare both say live                                               | Both transports. After a reconnect inside Cloudflare's ~30 s notice: unpackaged until the far end's close ~31 s later, and once (RTMPS, 1 of 9) dark 4.5 min. **Without any outage** (90-min soak 2026-09-29): Cloudflare fell ~500 s behind and never packaged the backlog (~13 min unrecorded), and twice stopped acknowledging (~30 s freeze each). 83% of published time was recorded. Open: the engine should watch delivered media time against wall time and force a new session |
+| **H-P5-1**  | On SRT the hold may start late, so dropout tolerance is not the configured number                               | Holds (measured 2026-09-14): 225.2 s over SRT against 183 s over RTMPS at `timeoutSeconds=180`                         |
+
+Device scripts that produced the evidence: `scripts/p5/device/`.
+
 ---
 
 ## Inherited
@@ -628,7 +729,7 @@ Register items that bind this repo. Full text lives in the main register.
 | **M3** | Add the slot concept while the contract is open. |
 | **Q3** | A club without `realtime` polls at fifteen seconds, which on the phone reads as a frozen overlay with no compositor to mask it. Needs a UI line. |
 | **T1** | Assert a level floor, not stream presence. The same mistake is just as easy to make here. |
-| **T5** | Sharpened by N5. |
+| **T5** | Sharpened by N5. Run B (2026-09-28) found that the app itself dies on RTMPS when the network goes (F-P5-12), so the fallback is not yet a fallback. With the spike guard, RTMPS reconnects unaided (criterion 5), resumes one recording in 8 of 9 short cuts, and goes silently dark in the ninth (F-P5-13). Run C: the fallback takes 18.8 s. |
 | **U1** | What the playback side sees during the hold is undocumented. Does not block this app, but the app should not assume it can resume indefinitely. |
 
 ---
