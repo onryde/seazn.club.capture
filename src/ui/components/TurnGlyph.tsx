@@ -24,16 +24,15 @@ const TARGET = 1;
  * the target pose; the words carry the instruction.
  */
 export const TurnGlyph = memo(function TurnGlyph({ card }: { card: TurnCardKind }) {
+  // Reanimated reads the system setting once, when the app starts, and does
+  // not re-render on a change. Under reduced motion the glyph mounts in the
+  // target pose and stays there; otherwise it loops until it unmounts. A
+  // mid-session toggle takes effect the next time the app starts.
   const reduce = useReducedMotion();
   const turn = useSharedValue(reduce ? TARGET : HELD);
 
   useEffect(() => {
-    if (reduce) {
-      // Also settles a loop cancelled mid-turn, so it never rests at a tilt.
-      turn.value = TARGET;
-      return undefined;
-    }
-    turn.value = HELD;
+    if (reduce) return undefined;
     turn.value = turnLoop();
     return () => cancelAnimation(turn);
   }, [reduce, turn]);

@@ -67,8 +67,11 @@ describe('CodePanel', () => {
       <CodePanel outcome={{ kind: 'foreign', tapped: 'stream' }} time={null} {...handlers()} />,
     );
     const sheet = container.querySelector('[aria-modal="true"]');
+    expect(sheet).not.toBeNull();
+    // Native VoiceOver reads accessibilityViewIsModal, not aria-modal.
+    expect(sheet?.getAttribute('data-view-is-modal')).toBe('true');
     expect(sheet?.textContent).toContain('Not a Seazn code');
-    expect(sheet?.textContent).not.toContain('Close');
+    expect(sheet?.contains(screen.getByRole('button', { name: 'Close' }))).toBe(false);
   });
 
   it('closes when the dimmed background is tapped', () => {

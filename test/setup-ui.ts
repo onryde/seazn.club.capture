@@ -1,4 +1,5 @@
 import { cleanup } from '@testing-library/react';
+import type { ViewProps } from 'react-native';
 import { afterEach, vi } from 'vitest';
 import { disposeFakePorts } from './fakePorts';
 
@@ -18,7 +19,14 @@ vi.mock('@/ui/components/ModeIcon', () => ({ ModeIcon: () => null }));
 vi.mock('@/ui/components/TurnGlyph', () => ({ TurnGlyph: () => null }));
 
 // The sheet's entrance is drawing only; the panel inside it is what tests read.
+// react-native-web drops accessibilityViewIsModal, the prop native reads, so
+// the stand-in surfaces it as data-view-is-modal for tests to assert.
 vi.mock('@/ui/components/SlideUpSheet', async () => {
+  const { createElement } = await import('react');
   const { View } = await import('react-native');
-  return { SlideUpSheet: View };
+  function SlideUpSheet({ accessibilityViewIsModal, ...props }: ViewProps) {
+    const dataSet = { viewIsModal: String(accessibilityViewIsModal === true) };
+    return createElement(View, { ...props, dataSet } as ViewProps);
+  }
+  return { SlideUpSheet };
 });

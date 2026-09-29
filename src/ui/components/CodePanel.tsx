@@ -64,6 +64,8 @@ type CodePanelProps = {
 /**
  * Slides up over a dimmed Home; tapping the dim closes it. The sheet is modal
  * to a screen reader, so focus stays on the panel, not on Home beneath it.
+ * Both props are needed: native reads `accessibilityViewIsModal` (RN 0.86's
+ * View does not map `aria-modal`), and react-native-web reads `aria-modal`.
  */
 export const CodePanel = memo(function CodePanel(props: CodePanelProps) {
   const { t } = useT();
@@ -80,7 +82,7 @@ export const CodePanel = memo(function CodePanel(props: CodePanelProps) {
         onPress={props.onClose}
         style={styles.dim}
       />
-      <SlideUpSheet aria-modal style={styles.sheet}>
+      <SlideUpSheet accessibilityViewIsModal aria-modal style={styles.sheet}>
         <Text variant="metricUnit">
           {t('panel.opened', { mode: t(MODE_NAME[outcome.tapped]) })}
         </Text>
