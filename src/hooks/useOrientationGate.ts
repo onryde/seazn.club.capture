@@ -7,6 +7,9 @@ import {
   type Physical,
   type Target,
 } from '@/domain/orientation/orientation';
+import type { EngineSnapshot } from '@/engine/CaptureEnginePort';
+import { selectEngineStatus } from '@/hooks/engineSelectors';
+import { useEngineSelector } from '@/hooks/useCaptureEngine';
 import { usePorts } from '@/hooks/usePorts';
 
 /** Live Stream is the only landscape mode (decision record ruling 4). */
@@ -15,15 +18,26 @@ export function routeTarget(pathname: string): Target {
 }
 
 /**
+ * Armed or live: the activity must not rotate under the camera (R24, P4).
+ * Module scope and primitive, so a telemetry tick re-renders nothing (AGENTS §8).
+ */
+function selectOnAir(snapshot: EngineSnapshot): boolean {
+  const status = selectEngineStatus(snapshot);
+  return status === 'armed' || status === 'live';
+}
+
+/**
  * The one orientation controller (spec §5), mounted in the root layout. Reads
- * how the phone is held from the accelerometer, keeps the current lock while
- * the phone disagrees with the target (so the turn card reads upright in the
- * operator's hands), and locks once they agree. React state changes only when
- * the settled reading does, never per sample.
+ * how the phone is held from the accelerometer. While the phone disagrees with
+ * the target it locks to the hands, so the turn card reads upright (R24),
+ * unless the engine is on air, when the current lock stays. Locks to the target
+ * once they agree. React state changes only when the settled reading or the
+ * on-air status does, never per sample or per telemetry tick.
  */
 export function useOrientationGate(target: Target): GateView {
   const physical = usePhysicalOrientation();
-  const view = orientationGate(target, physical);
+  const onAir = useEngineSelector(selectOnAir);
+  const view = orientationGate(target, physical, onAir);
   const { orientationLock } = usePorts();
   const locked = useRef<Target | null>(null);
 

@@ -1,6 +1,7 @@
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import type { Gravity, Target } from '@/domain/orientation/orientation';
+import type { SessionState } from '@/domain/session/SessionState';
 import { routeTarget, useOrientationGate } from '@/hooks/useOrientationGate';
 import { createFakePorts } from '../../test/fakePorts';
 import { wrapperFor } from '../../test/renderWithPorts';
@@ -30,21 +31,57 @@ async function gate(target: Target, fakes = createFakePorts()) {
 }
 
 describe('useOrientationGate', () => {
-  it('asks for sideways and keeps the lock while the phone is upright', async () => {
+  it('locks portrait and asks for sideways when Stream is tilted upright while idle (R24)', async () => {
     const { fakes, hook } = await gate('landscape');
-    hold(fakes, UPRIGHT, 0);
-    expect(hook.result.current).toEqual({ lock: 'keep', card: 'turnSideways' });
-    expect(fakes.orientationLock.locks).toEqual([]);
+    hold(fakes, SIDEWAYS, 0);
+    hold(fakes, UPRIGHT, 1000);
+    expect(hook.result.current).toEqual({ lock: 'portrait', card: 'turnSideways' });
+    expect(fakes.orientationLock.locks).toEqual(['landscape', 'portrait']);
   });
 
-  it('locks landscape once the phone is sideways, and does not re-lock after a turn back', async () => {
-    const { fakes, hook } = await gate('landscape');
+  it.each<[string, SessionState]>([
+    ['armed', { kind: 'armed' }],
+    ['live', { kind: 'publishing', transport: 'srt', sinceEpochMs: 1 }],
+  ])(
+    'on air (%s), a tilt upright shows the card without locking, and the turn back does not re-lock',
+    async (_status, state) => {
+      const fakes = createFakePorts();
+      fakes.engine.forceState(state);
+      const { hook } = await gate('landscape', fakes);
+      hold(fakes, SIDEWAYS, 0);
+      hold(fakes, UPRIGHT, 1000); // the operator tilts up mid-broadcast: card, lock kept
+      expect(hook.result.current).toEqual({ lock: 'keep', card: 'turnSideways' });
+      hold(fakes, SIDEWAYS, 2000);
+      expect(hook.result.current).toEqual({ lock: 'landscape', card: 'none' });
+      expect(fakes.orientationLock.locks).toEqual(['landscape']);
+    },
+  );
+
+  it('follows the hands again once the broadcast ends', async () => {
+    const fakes = createFakePorts();
+    fakes.engine.forceState({ kind: 'publishing', transport: 'srt', sinceEpochMs: 1 });
+    const { hook } = await gate('landscape', fakes);
+    hold(fakes, SIDEWAYS, 0);
+    hold(fakes, UPRIGHT, 1000);
+    act(() => fakes.engine.forceState({ kind: 'ended', reason: 'operator-stopped' }));
+    expect(hook.result.current).toEqual({ lock: 'portrait', card: 'turnSideways' });
+    expect(fakes.orientationLock.locks).toEqual(['landscape', 'portrait']);
+  });
+
+  it('locks landscape on Home held sideways, and portrait once turned upright (R24)', async () => {
+    const { fakes, hook } = await gate('portrait');
     hold(fakes, UPRIGHT, 0);
     hold(fakes, SIDEWAYS, 1000);
-    expect(hook.result.current).toEqual({ lock: 'landscape', card: 'none' });
-    hold(fakes, UPRIGHT, 2000); // the operator tilts back up for a moment: card, lock kept
-    expect(hook.result.current).toEqual({ lock: 'keep', card: 'turnSideways' });
-    hold(fakes, SIDEWAYS, 3000);
+    expect(hook.result.current).toEqual({ lock: 'landscape', card: 'turnUpright' });
+    hold(fakes, UPRIGHT, 2000);
+    expect(hook.result.current).toEqual({ lock: 'portrait', card: 'none' });
+    expect(fakes.orientationLock.locks).toEqual(['portrait', 'landscape', 'portrait']);
+  });
+
+  it('locks to how the phone is held at a cold start held sideways (R24)', async () => {
+    const { fakes, hook } = await gate('portrait');
+    hold(fakes, SIDEWAYS, 0);
+    expect(hook.result.current).toEqual({ lock: 'landscape', card: 'turnUpright' });
     expect(fakes.orientationLock.locks).toEqual(['landscape']);
   });
 
@@ -66,7 +103,8 @@ describe('useOrientationGate', () => {
     const { fakes, hook } = await gate('landscape');
     hold(fakes, SIDEWAYS, 0);
     hook.rerender({ to: 'portrait' });
-    expect(hook.result.current).toEqual({ lock: 'keep', card: 'turnUpright' });
+    // The landscape lock already matches the hands (R24): card, no new lock.
+    expect(hook.result.current).toEqual({ lock: 'landscape', card: 'turnUpright' });
     hold(fakes, UPRIGHT, 1000);
     expect(fakes.orientationLock.locks).toEqual(['landscape', 'portrait']);
   });

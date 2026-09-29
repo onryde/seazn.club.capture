@@ -5,8 +5,11 @@ import {
   INITIAL_TRACKER,
   orientationGate,
   track,
+  type GateView,
   type Gravity,
   type OrientationTracker,
+  type Physical,
+  type Target,
 } from '@/domain/orientation/orientation';
 
 /** Gravity for a phone rotated `deg` from upright about the screen normal. */
@@ -103,21 +106,25 @@ describe('track', () => {
 });
 
 describe('orientationGate', () => {
-  it('locks straight away when the phone already matches', () => {
-    expect(orientationGate('landscape', 'landscape')).toEqual({ lock: 'landscape', card: 'none' });
-    expect(orientationGate('portrait', 'portrait')).toEqual({ lock: 'portrait', card: 'none' });
-  });
-
-  it('keeps the current lock and asks for a turn when it does not', () => {
-    expect(orientationGate('landscape', 'portrait')).toEqual({ lock: 'keep', card: 'turnSideways' });
-    expect(orientationGate('portrait', 'landscape')).toEqual({ lock: 'keep', card: 'turnUpright' });
-  });
-
-  it('never blocks a phone lying flat', () => {
-    expect(orientationGate('landscape', 'flat')).toEqual({ lock: 'landscape', card: 'none' });
-  });
-
-  it('waits quietly before the first settled reading', () => {
-    expect(orientationGate('landscape', 'unknown')).toEqual({ lock: 'keep', card: 'none' });
+  // Every (target, physical, onAir) combination (ruling R24).
+  it.each<[Target, Physical, boolean, GateView]>([
+    ['portrait', 'portrait', false, { lock: 'portrait', card: 'none' }],
+    ['portrait', 'portrait', true, { lock: 'portrait', card: 'none' }],
+    ['portrait', 'landscape', false, { lock: 'landscape', card: 'turnUpright' }],
+    ['portrait', 'landscape', true, { lock: 'keep', card: 'turnUpright' }],
+    ['portrait', 'flat', false, { lock: 'portrait', card: 'none' }],
+    ['portrait', 'flat', true, { lock: 'portrait', card: 'none' }],
+    ['portrait', 'unknown', false, { lock: 'keep', card: 'none' }],
+    ['portrait', 'unknown', true, { lock: 'keep', card: 'none' }],
+    ['landscape', 'landscape', false, { lock: 'landscape', card: 'none' }],
+    ['landscape', 'landscape', true, { lock: 'landscape', card: 'none' }],
+    ['landscape', 'portrait', false, { lock: 'portrait', card: 'turnSideways' }],
+    ['landscape', 'portrait', true, { lock: 'keep', card: 'turnSideways' }],
+    ['landscape', 'flat', false, { lock: 'landscape', card: 'none' }],
+    ['landscape', 'flat', true, { lock: 'landscape', card: 'none' }],
+    ['landscape', 'unknown', false, { lock: 'keep', card: 'none' }],
+    ['landscape', 'unknown', true, { lock: 'keep', card: 'none' }],
+  ])('target %s, held %s, on air %s → %j', (target, physical, onAir, view) => {
+    expect(orientationGate(target, physical, onAir)).toEqual(view);
   });
 });

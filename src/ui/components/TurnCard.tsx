@@ -8,7 +8,8 @@ import { colour, space } from '@/ui/theme/tokens';
 
 /**
  * Covers the app until the phone is held the right way (spec §5). Rendered
- * under the current lock, so it reads upright in the operator's hands.
+ * under a lock that follows the hands, so it reads upright in them (R24);
+ * on air the lock stays put and the card may read sideways.
  */
 export const TurnCard = memo(function TurnCard({ card }: { card: TurnCardKind }) {
   const { t } = useT();

@@ -76,11 +76,17 @@ export type GateView = {
 export type TurnCardKind = Exclude<GateView['card'], 'none'>;
 
 /**
- * Keep the current lock while the phone is held the other way, so the turn
- * card reads upright in the operator's hands; lock once they match.
+ * While the phone is held the other way from the target, lock to how it is
+ * held, so the turn card and its glyph read upright in the operator's hands;
+ * lock to the target once they match (ruling R24).
+ *
+ * On air (engine armed or live) the current lock stays instead: a tilt
+ * mid-broadcast must never rotate the activity under the camera (AGENTS §8,
+ * P4). The card then reads sideways, which R24 accepts.
  */
-export function orientationGate(target: Target, physical: Physical): GateView {
+export function orientationGate(target: Target, physical: Physical, onAir: boolean): GateView {
   if (physical === 'unknown') return { lock: 'keep', card: 'none' };
   if (physical === 'flat' || physical === target) return { lock: target, card: 'none' };
-  return { lock: 'keep', card: target === 'landscape' ? 'turnSideways' : 'turnUpright' };
+  const card = target === 'landscape' ? 'turnSideways' : 'turnUpright';
+  return { lock: onAir ? 'keep' : physical, card };
 }
