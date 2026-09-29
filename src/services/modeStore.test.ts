@@ -57,6 +57,21 @@ describe('modeStore', () => {
     expect(ready(store).dropped).toBe(false);
   });
 
+  it('lands on nothing saved, rather than hanging, when storage cannot be read', async () => {
+    const broken: KeyValueStore = {
+      get: () => Promise.reject(new Error('keystore unavailable')),
+      set: () => Promise.reject(new Error('keystore unavailable')),
+      delete: () => Promise.reject(new Error('keystore unavailable')),
+    };
+    const store = createModeStore(broken);
+    const listener = vi.fn();
+    store.subscribe(listener);
+    await expect(store.load()).resolves.toBeUndefined();
+    expect(ready(store).saved).toEqual({ active: null, codes: {} });
+    expect(ready(store).dropped).toBe(true);
+    expect(listener).toHaveBeenCalled();
+  });
+
   it('drops a record filed under another mode', async () => {
     const kv = createMemoryKeyValueStore({ [STORE_KEYS.code('scoring')]: encodeSavedCode(code) });
     const store = createModeStore(kv);

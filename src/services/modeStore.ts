@@ -47,8 +47,16 @@ const EMPTY: Ready = {
 };
 
 /**
+ * Storage that throws on read lands where an unreadable record does: nothing
+ * saved, and Home says so (ruling R12). Nothing is deleted — a read that failed
+ * once may succeed next launch, and a good code should survive that.
+ */
+const UNREADABLE: Ready = { ...EMPTY, dropped: true };
+
+/**
  * Which code each mode holds and which mode is active (spec §4). Shaped for
  * useSyncExternalStore: the snapshot object only changes when state does.
+ * `load()` never rejects; callers wait for a `ready` snapshot before any other call.
  */
 export function createModeStore(kv: KeyValueStore): ModeStore {
   let snapshot: ModeStoreSnapshot = { status: 'loading' };
@@ -61,7 +69,7 @@ export function createModeStore(kv: KeyValueStore): ModeStore {
   const withSaved = (saved: SavedState): Ready => ({ ...current(), saved });
 
   return {
-    load: async () => publish(await readAll(kv)),
+    load: async () => publish(await readAll(kv).catch(() => UNREADABLE)),
     getSnapshot: () => snapshot,
     subscribe: (listener) => {
       listeners.add(listener);
