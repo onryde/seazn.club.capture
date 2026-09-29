@@ -6,7 +6,10 @@ import { renderWithPorts } from '../../../test/renderWithPorts';
 describe('LanguagePicker', () => {
   it('shows the current language and switches everything on a pick', () => {
     renderWithPorts(<LanguagePicker />);
-    fireEvent.click(screen.getByRole('button', { name: /Language.*English/ }));
+    const toggle = screen.getByRole('button', { name: /Language.*English/ });
+    expect(toggle.getAttribute('aria-expanded')).toBe('false');
+    fireEvent.click(toggle);
+    expect(toggle.getAttribute('aria-expanded')).toBe('true');
     fireEvent.click(screen.getByRole('button', { name: 'Español' }));
     expect(screen.getByRole('button', { name: /Idioma.*Español/ })).toBeTruthy();
   });

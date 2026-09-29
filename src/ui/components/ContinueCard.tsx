@@ -20,7 +20,9 @@ export const ContinueCard = memo(function ContinueCard(props: {
   const mode = t(MODE_NAME[props.mode]);
   return (
     <View style={styles.card}>
-      <Text variant="state">{t('home.continue.title', { mode })}</Text>
+      <Text variant="state" style={styles.title}>
+        {t('home.continue.title', { mode })}
+      </Text>
       <Text variant="control">
         {t('home.continue.detail', { slot: props.slot ?? '–', time: props.validTill })}
       </Text>
@@ -41,5 +43,8 @@ const styles = StyleSheet.create({
     borderColor: colour.lime,
     backgroundColor: colour.surface,
   },
+  // The `state` role sets no colour, and the platform default is black, which
+  // is invisible on `surface`.
+  title: { color: colour.ink },
   actions: { flexDirection: 'row', alignItems: 'center', gap: space.sm },
 });

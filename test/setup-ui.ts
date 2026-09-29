@@ -16,3 +16,9 @@ afterEach(() => {
 // tiles and the turn card is their text and their presses.
 vi.mock('@/ui/components/ModeIcon', () => ({ ModeIcon: () => null }));
 vi.mock('@/ui/components/TurnGlyph', () => ({ TurnGlyph: () => null }));
+
+// The sheet's entrance is drawing only; the panel inside it is what tests read.
+vi.mock('@/ui/components/SlideUpSheet', async () => {
+  const { View } = await import('react-native');
+  return { SlideUpSheet: View };
+});

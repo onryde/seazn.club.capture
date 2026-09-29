@@ -7,6 +7,7 @@ import { MODE_NAME } from '@/i18n/modeNames';
 import type { Translator } from '@/i18n/translate';
 import { Button } from '@/ui/components/Button';
 import { GhostButton } from '@/ui/components/GhostButton';
+import { SlideUpSheet } from '@/ui/components/SlideUpSheet';
 import { Text } from '@/ui/components/Text';
 import { colour, radius, space } from '@/ui/theme/tokens';
 
@@ -52,14 +53,19 @@ function panelCopy(outcome: PanelOutcome, t: Translator['t'], time: string | nul
   }
 }
 
-/** Slides up over a dimmed Home; tapping the dim closes it. */
-export const CodePanel = memo(function CodePanel(props: {
+type CodePanelProps = {
   outcome: PanelOutcome;
   time: string | null;
   onOpen: (code: ModeCode) => void;
   onScanAgain: () => void;
   onClose: () => void;
-}) {
+};
+
+/**
+ * Slides up over a dimmed Home; tapping the dim closes it. The sheet is modal
+ * to a screen reader, so focus stays on the panel, not on Home beneath it.
+ */
+export const CodePanel = memo(function CodePanel(props: CodePanelProps) {
   const { t } = useT();
   const { outcome, onOpen } = props;
   const copy = panelCopy(outcome, t, props.time);
@@ -74,7 +80,7 @@ export const CodePanel = memo(function CodePanel(props: {
         onPress={props.onClose}
         style={styles.dim}
       />
-      <View style={styles.sheet}>
+      <SlideUpSheet aria-modal style={styles.sheet}>
         <Text variant="metricUnit">
           {t('panel.opened', { mode: t(MODE_NAME[outcome.tapped]) })}
         </Text>
@@ -82,7 +88,7 @@ export const CodePanel = memo(function CodePanel(props: {
         {copy.body === null ? null : <Text variant="body">{copy.body}</Text>}
         {copy.open === null ? null : <Button label={copy.open} onPress={open} />}
         <GhostButton label={t('panel.scanAgain')} onPress={props.onScanAgain} />
-      </View>
+      </SlideUpSheet>
     </View>
   );
 });

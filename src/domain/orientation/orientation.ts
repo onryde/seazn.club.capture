@@ -72,6 +72,9 @@ export type GateView = {
   readonly card: 'none' | 'turnSideways' | 'turnUpright';
 };
 
+/** Which turn card is showing, when one is. */
+export type TurnCardKind = Exclude<GateView['card'], 'none'>;
+
 /**
  * Keep the current lock while the phone is held the other way, so the turn
  * card reads upright in the operator's hands; lock once they match.

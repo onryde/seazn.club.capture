@@ -1,11 +1,10 @@
 import { memo } from 'react';
 import { StyleSheet, View } from 'react-native';
+import type { TurnCardKind } from '@/domain/orientation/orientation';
 import { useT } from '@/hooks/useLanguage';
 import { Text } from '@/ui/components/Text';
 import { TurnGlyph } from '@/ui/components/TurnGlyph';
 import { colour, space } from '@/ui/theme/tokens';
-
-export type TurnCardKind = 'turnSideways' | 'turnUpright';
 
 /**
  * Covers the app until the phone is held the right way (spec §5). Rendered

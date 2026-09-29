@@ -30,12 +30,13 @@ describe('CodePanel', () => {
       'This is a Seazn page, not a code. Scan the code on the page.',
     ],
     [{ kind: 'foreign', tapped: 'stream' }, 'Not a Seazn code', "This isn't a Seazn code."],
-  ])('explains %j in plain words, with Scan again', (outcome, title, body) => {
+  ])('explains %j in plain words, with Scan again and nowhere to open', (outcome, title, body) => {
     const h = handlers();
     renderWithPorts(<CodePanel outcome={outcome} time="18:40" {...h} />);
     expect(screen.getByText('You opened Live Stream')).toBeTruthy();
     expect(screen.getByText(title)).toBeTruthy();
     if (body !== null) expect(screen.getByText(body)).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /^Open/ })).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Scan again' }));
     expect(h.onScanAgain).toHaveBeenCalledTimes(1);
   });
@@ -59,6 +60,15 @@ describe('CodePanel', () => {
       <CodePanel outcome={{ kind: 'foreign', tapped: 'stream' }} time={null} {...handlers()} />,
     );
     expect(screen.queryByRole('button', { name: /^Open/ })).toBeNull();
+  });
+
+  it('holds screen-reader focus in the sheet while it is up', () => {
+    const { container } = renderWithPorts(
+      <CodePanel outcome={{ kind: 'foreign', tapped: 'stream' }} time={null} {...handlers()} />,
+    );
+    const sheet = container.querySelector('[aria-modal="true"]');
+    expect(sheet?.textContent).toContain('Not a Seazn code');
+    expect(sheet?.textContent).not.toContain('Close');
   });
 
   it('closes when the dimmed background is tapped', () => {

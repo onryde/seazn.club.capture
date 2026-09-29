@@ -1,22 +1,37 @@
 import { memo } from 'react';
-import { Pressable, StyleSheet } from 'react-native';
+import { type PressableStateCallbackType, Pressable, StyleSheet } from 'react-native';
 import { Text } from '@/ui/components/Text';
 import { colour, radius, space } from '@/ui/theme/tokens';
+
+type GhostButtonProps = {
+  label: string;
+  onPress: () => void;
+  /** Set only on a button that shows and hides something, like the language list. */
+  expanded?: boolean;
+};
 
 /** The secondary action beside a lime plate: outlined, never a second lime. */
 export const GhostButton = memo(function GhostButton({
   label,
   onPress,
-}: {
-  label: string;
-  onPress: () => void;
-}) {
+  expanded,
+}: GhostButtonProps) {
   return (
-    <Pressable accessibilityRole="button" onPress={onPress} style={styles.ghost}>
+    <Pressable
+      accessibilityRole="button"
+      aria-expanded={expanded}
+      onPress={onPress}
+      style={ghostStyle}
+    >
       <Text variant="control">{label}</Text>
     </Pressable>
   );
 });
+
+/** Module-level so render allocates no function; pressed dims the outline, as Button does. */
+function ghostStyle({ pressed }: PressableStateCallbackType) {
+  return pressed ? pressedGhost : styles.ghost;
+}
 
 const styles = StyleSheet.create({
   ghost: {
@@ -28,4 +43,7 @@ const styles = StyleSheet.create({
     borderColor: colour.ink3,
     borderRadius: radius.card,
   },
+  pressed: { opacity: 0.85 },
 });
+
+const pressedGhost = [styles.ghost, styles.pressed];

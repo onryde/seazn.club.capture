@@ -21,7 +21,7 @@ export const LanguagePicker = memo(function LanguagePicker() {
   const label = `${translator.t('home.footer.language')} · ${translator.t(NAME[lang])}`;
   return (
     <View style={styles.picker}>
-      <GhostButton label={label} onPress={toggle} />
+      <GhostButton label={label} onPress={toggle} expanded={open} />
       {open ? (
         <Choices
           onPick={(next) => {
