@@ -15,6 +15,11 @@ const tilted = (deg: number): Gravity => {
   return { x: Math.sin(rad), y: Math.cos(rad), z: 0 };
 };
 const FLAT: Gravity = { x: 0.05, y: 0.05, z: 0.99 };
+/** Gravity for an upright phone whose screen is `deg` above horizontal (0 = on a table). */
+const reclined = (deg: number): Gravity => {
+  const rad = (deg * Math.PI) / 180;
+  return { x: 0, y: Math.sin(rad), z: Math.cos(rad) };
+};
 
 describe('classify', () => {
   it.each([
@@ -34,6 +39,14 @@ describe('classify', () => {
 
   it('reads a phone on a table as flat', () => {
     expect(classify(FLAT)).toBe('flat');
+  });
+
+  it('reads a phone ~25° off the table as undecided, not flat', () => {
+    expect(classify(reclined(25))).toBeNull();
+  });
+
+  it('reads an upright phone reclined to ~40° as portrait', () => {
+    expect(classify(reclined(40))).toBe('portrait');
   });
 
   it('reads no gravity as unknown', () => {
@@ -69,6 +82,16 @@ describe('track', () => {
       swing.slice(0, n + 1).reduce((t, g, i) => track(t, g, 1000 + i * 50), upright),
     );
     expect(states.map((s) => s.settled)).toEqual(['portrait', 'portrait', 'portrait', 'portrait']);
+  });
+
+  it('never settles flat while a held phone drifts between 25° and 40° reclined', () => {
+    const upright = feed(repeat(tilted(0), 10));
+    const drift = [25, 40, 25].flatMap((deg) => repeat(reclined(deg), 8));
+    const settled = drift.reduce<OrientationTracker[]>(
+      (states, g, i) => [...states, track(states[states.length - 1] ?? upright, g, 1000 + i * 50)],
+      [],
+    );
+    expect(settled.every((s) => s.settled === 'portrait')).toBe(true);
   });
 
   it('restarts the hold when a reading dips into the band', () => {
