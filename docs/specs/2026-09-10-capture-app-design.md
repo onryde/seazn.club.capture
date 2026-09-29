@@ -76,6 +76,10 @@ produces two authorities that disagree mid-match.
 - Events: `SessionArmed`, `PublishStarted`, `TransportDegraded`,
   `FellBackToRtmps`, `UplinkLost`, `PublishResumed`, `ThermalCeilingHit`,
   `SessionEnded`.
+- **Missing, and needed for M1 (P5, F-P5-13):** a session can be publishing and
+  not delivered. The model needs a way to say so: a `DeliveryStalled` event, a
+  `not-delivered` degrade reason (or a delivery state beside the transport
+  state), and the delivered lag in the snapshot. See §4.1.
 
 ### 3.3 Patterns
 
@@ -121,6 +125,43 @@ time, with a stated preference.
 **C2 matters to this app specifically:** the hold window is a behavioural
 clause of the front-door contract, and the app needs `holdWindowSeconds` in the
 payload to know whether a resume is still the same broadcast or a new one.
+
+**Measured on Android (P5, 2026-09-29, [results](2026-09-11-p5-android-results.md)):**
+
+- The transport choice holds. Reconnects are unaided, 1.4–2.7 s after the
+  network returns, on both SRT and RTMPS.
+- The fallback is configuration, as designed: a broken SRT address reaches
+  RTMPS publishing in 18.8 s. That is mostly three SRT timeouts, so the status
+  line must say what "connecting" is doing for those ~19 s.
+- The engine must carry four things StreamPack does not do for us:
+  - **F-P5-12:** a guard for Ktor's TLS closer, which otherwise crashes the
+    process on an RTMPS network cut;
+  - **F-P5-11:** `SRTO_MAXBW`;
+  - **`max-bframes = 0`**, set explicitly;
+  - **a bitrate regulator that resumes at its last target** when the far end
+    drops a healthy link.
+
+### 4.1 Delivery is not publishing
+
+The P5 spike's most expensive finding (F-P5-13) is not about the phone.
+Cloudflare can do all of the following while the phone's transport and
+Cloudflare's own status API both say live:
+
+- accept an ingest session and acknowledge every packet;
+- report the input `connected`;
+- still not deliver it:
+  - after a reconnect;
+  - as a lag that grows with no outage, whose backlog is never packaged;
+  - or as a receiver that stops acknowledging.
+
+In the 90-minute soak, only 83% of published time reached a recording.
+
+So the engine watches what viewers get. It polls its own delivered playlist
+through `playbackUrl`, a few KB of text every couple of seconds and no video.
+When delivered media time falls behind wall time, or the head stops for about
+20 s, it forces a new session and reports the fact. This is the only on-device
+signal for the failure, and it is why `playbackUrl` is required in the QR
+payload rather than optional.
 
 ## 5. Overlay preview
 
@@ -236,6 +277,10 @@ Four of them constrain artefacts open right now and should not wait: **N1**
 specified measures a load the shipping app never runs), and **N8** (phone and
 hardware contributors want opposite credential lifetimes).
 
+The P5 Android spike added F-P5-1 to F-P5-13 and H-P5-1, indexed in the same
+file and argued in [the results](2026-09-11-p5-android-results.md). Its Verdict
+section lists the ten things the Android engine must inherit.
+
 ## 11. Build order
 
 1. **EAS Build and a signed build on a real handset.** Not a step-nine nicety —
@@ -250,18 +295,39 @@ hardware contributors want opposite credential lifetimes).
 5. **The real engine** — Android first.
 6. **iOS lifecycle**, which is where the hard work is.
 
+**Status, 2026-09-29:**
+
+| Step | Status |
+|---|---|
+| 1 | Done, built locally with Gradle and adb rather than EAS. `eas.json`'s `soak` profile still extends `development`, which needs Metro; fix it before any EAS soak build. |
+| 2 | **Android done**: the architecture holds, and F-P5-13 is the open risk. The iOS half (HaishinKit.swift on an iPhone) is deferred until the Apple Developer decision (N14). A full 3 h soak and the 180° flip test are deferred until near app completion, on the real engine. |
+| 3 | **Not done.** `contracts/` has no `capture-qr.v1.json`. This is R1's work, and it gates step 5. |
+| 4 | Done: `FakeCaptureEngine`, the domain, and the screens. Scan, Viewfinder (Arm + Live), Settings and Diagnostics run against the fake. |
+| 5 | Next (M1). Extend the fake with the not-delivered state first (§3.2, §4.1). |
+| 6 | Later (M3). |
+
 ## 12. Open
 
-- **Does the app show the operator the broadcast is alive?** Pulling a WHEP or
-  LL-HLS preview back is the only way they learn the compositor died, but it
-  costs battery, bandwidth and thermal headroom on the device least able to
-  spare them. Lean: a manual "check output" button, not a persistent monitor.
-- **Who decides the fallback happened?** Lean: switch SRT→RTMPS silently,
-  report loudly.
+- ~~**Does the app show the operator the broadcast is alive?**~~ **Settled by
+  P5.** There are two tiers:
+  - a **persistent playlist watch**, text only and cheap, that owns reconnect
+    (§4.1);
+  - the **manual video peek**, kept as an operator convenience.
+
+  The earlier lean (manual button only) assumed a pull-back costs video
+  bandwidth. It does not, and the spike showed delivery can fail while
+  everything else says live.
+- ~~**Who decides the fallback happened?**~~ **Settled by P5.** Native decides
+  and switches silently, and the report is loud. Run C measured 18.8 s from
+  SRT failure to RTMPS publishing.
 - **i18n.** String extraction is cheap on five screens now and painful to
   retrofit across a shipped fleet — same argument as M2's timestamp field. Only
   worth it if Seazn might see a non-English club.
 - **Theme provenance.** The palette here is taken from the relay signal path
   document's token block. If that was styling for one document rather than the
   house style, §8 changes.
-- **Repo remote.** Local only so far. No GitHub remote created.
+- ~~**Repo remote.**~~ `onryde/seazn.club.capture` on GitHub.
+- **Questions for Cloudflare** (from P5):
+  - Does a `connected` live input guarantee packaging?
+  - Is a growing packager lag with acknowledged ingest a known failure?
+  - Is there a signal for it that we can read?
