@@ -14,7 +14,16 @@ import { colour, status } from '@/ui/theme/tokens';
  * The system face is used deliberately — if the failure is in font loading or
  * the theme, the scale cannot be trusted to render the message.
  */
-type Props = { children: ReactNode; label?: string };
+type Props = {
+  children: ReactNode;
+  label?: string;
+  /**
+   * Called on each caught error, after the fallback commits. At the root it
+   * hides the native splash: a render error before the shell hides it would
+   * otherwise leave this message behind a splash that never lifts (ruling R15).
+   */
+  onCatch?: () => void;
+};
 type State = { error: Error | null; stack: string | null };
 
 export class ErrorBoundary extends Component<Props, State> {
@@ -26,6 +35,7 @@ export class ErrorBoundary extends Component<Props, State> {
 
   componentDidCatch(error: Error, info: ErrorInfo) {
     this.setState({ error, stack: info.componentStack ?? null });
+    this.props.onCatch?.();
   }
 
   render() {
@@ -34,9 +44,7 @@ export class ErrorBoundary extends Component<Props, State> {
 
     return (
       <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
-        <RNText style={styles.heading}>
-          {this.props.label ?? 'Something broke'}
-        </RNText>
+        <RNText style={styles.heading}>{this.props.label ?? 'Something broke'}</RNText>
         <RNText style={styles.message}>{error.message}</RNText>
         {stack === null ? null : (
           <View style={styles.stackBox}>

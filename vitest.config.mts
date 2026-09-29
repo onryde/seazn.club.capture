@@ -32,7 +32,7 @@ export default defineConfig({
         extends: true,
         test: {
           name: 'domain',
-          include: ['src/**/*.test.ts', 'modules/**/*.test.ts'],
+          include: ['src/**/*.test.ts', 'modules/**/*.test.ts', 'test/**/*.test.ts'],
           environment: 'node',
         },
       },

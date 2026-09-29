@@ -111,7 +111,11 @@ function fakeBack(): BackPort & { press(): boolean } {
   return {
     subscribe: (onBack) => {
       handlers.unshift(onBack);
-      return () => handlers.splice(handlers.indexOf(onBack), 1);
+      return () => {
+        // A second unsubscribe must not splice(-1) away someone else's handler.
+        const at = handlers.indexOf(onBack);
+        if (at !== -1) handlers.splice(at, 1);
+      };
     },
     press: () => handlers.some((handler) => handler()),
   };

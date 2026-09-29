@@ -76,6 +76,13 @@ export default [
               ],
             },
             {
+              // Type-only: a screen may name a port's types (Route, …), which
+              // carry no native code. Values still come through usePorts().
+              from: { element: { type: 'ui' } },
+              dependency: { kind: 'type' },
+              allow: [{ to: { element: { type: 'services' } } }],
+            },
+            {
               from: { element: { type: 'hooks' } },
               allow: [
                 { to: { element: { type: 'hooks' } } },
@@ -141,7 +148,14 @@ export default [
         {
           patterns: [
             {
-              group: ['react-native-safe-area-context', 'expo-*', '@/services/*'],
+              group: [
+                'react-native-safe-area-context',
+                'expo-*',
+                '@/services/*',
+                '@/hooks/nativePorts',
+              ],
+              // Port and value types (Route, …) are fine: they carry no native code.
+              allowTypeImports: true,
               message: 'Screens reach native capabilities through ports (spec §9)',
             },
           ],
