@@ -48,6 +48,12 @@ not obviously touch — an encode profile can starve a compositor two hops away
 
 ## 1. Scope lock
 
+> **Superseded in part, 2026-09-29.** The owner ruled that the app becomes three modes: Live Stream, Remote
+> Scoring and a tournament Dashboard. Each mode is unlocked by its own QR code, still with no login. Live
+> Stream is the only landscape mode. See
+> [the decision record](docs/specs/2026-09-29-multi-mode-app-decisions.md). This section and §6 are
+> rewritten in S0. Until then, the five screens below describe the **Live Stream** mode.
+
 The whole app is five screens:
 
 **Scan** (QR → credentials) → **Arm** (preview, pre-flight) → **Live** (HUD) →
