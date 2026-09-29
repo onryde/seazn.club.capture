@@ -94,6 +94,49 @@ describe('useReopenGate: beyond the happy path', () => {
     process.off('unhandledRejection', onRejection);
   });
 
+  it('does not re-render its host when the store publishes without a status change', async () => {
+    const fakes = createFakePorts({ kvSeed: inStream });
+    let renders = 0;
+    renderHook(
+      () => {
+        renders += 1;
+        useReopenGate(true);
+      },
+      { wrapper: wrapperFor(fakes) },
+    );
+    await waitFor(() => expect(fakes.navigation.current()).toBe('stream'));
+    const settled = renders;
+    await act(() => fakes.ports.modeStore.setActive(null));
+    act(() => fakes.ports.modeStore.dismissNotices());
+    expect(renders).toBe(settled);
+  });
+
+  it('never expires the code the engine is holding, and names it once the engine lets go (R23)', async () => {
+    const fakes = createFakePorts({ kvSeed: inStream });
+    gate(fakes);
+    await waitFor(() => expect(fakes.navigation.current()).toBe('stream'));
+    act(() =>
+      fakes.engine.forceState({
+        kind: 'publishing',
+        transport: 'srt',
+        sinceEpochMs: TEST_NOW.getTime(),
+      }),
+    );
+    fakes.setNow(new Date(EXPIRY.getTime() + 60_000));
+    act(() => fakes.foreground.fire());
+    await act(async () => undefined);
+    expect(fakes.navigation.current()).toBe('stream');
+    expect(fakes.kv.entries.has(STORE_KEYS.code('stream'))).toBe(true);
+    expect(fakes.kv.entries.get(STORE_KEYS.active)).toBe('stream');
+    expect(noticeOf(fakes)).toBeNull();
+
+    act(() => fakes.engine.forceState({ kind: 'ended', reason: 'hold-window-expired' }));
+    act(() => fakes.foreground.fire());
+    await waitFor(() => expect(fakes.navigation.current()).toBe('home'));
+    expect(noticeOf(fakes)).toEqual({ mode: 'stream', expiredAt: EXPIRY });
+    expect(fakes.kv.entries.has(STORE_KEYS.code('stream'))).toBe(false);
+  });
+
   it('does not move on a return to the foreground before the navigator is ready', async () => {
     const fakes = createFakePorts({ kvSeed: inStream });
     gate(fakes, false);

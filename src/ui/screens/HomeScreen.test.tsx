@@ -431,6 +431,31 @@ describe('Home: a refused save is never silent (R19)', () => {
     expect(rejections).toEqual([]);
   });
 
+  it('names a code that expired on air once the engine lets go, never silently (R23)', async () => {
+    const seed = {
+      [STORE_KEYS.code('stream')]: savedStream(AT_1840),
+      [STORE_KEYS.active]: 'stream',
+    };
+    const fakes = createFakePorts({ kvSeed: seed });
+    render(<GateThenHome />, { wrapper: wrapperFor(fakes) });
+    await waitFor(() => expect(fakes.navigation.current()).toBe('stream'));
+    act(() =>
+      fakes.engine.forceState({
+        kind: 'publishing',
+        transport: 'srt',
+        sinceEpochMs: TEST_NOW.getTime(),
+      }),
+    );
+    fakes.setNow(new Date(AT_1840.getTime() + 60_000));
+    act(() => fakes.foreground.fire());
+    await act(async () => undefined);
+    expect(fakes.navigation.current()).toBe('stream');
+    act(() => fakes.engine.forceState({ kind: 'ended', reason: 'hold-window-expired' }));
+    act(() => fakes.foreground.fire());
+    await screen.findByText(EXPIRED_1840);
+    expect(fakes.navigation.current()).toBe('home');
+  });
+
   it("shows the reopen gate's expiry on Home when the phone will not delete the code (R21)", async () => {
     const seed = { ...leftStream, [STORE_KEYS.active]: 'stream' };
     const fakes = createFakePorts({ modeStore: refusingStore(seed, every) });

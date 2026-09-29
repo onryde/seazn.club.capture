@@ -19,7 +19,8 @@ function ignoreRefusedDelete(): void {}
  */
 export function useReopenGate(navigatorReady: boolean): void {
   const { modeStore, foreground, splash } = usePorts();
-  const snapshot = useSyncExternalStore(modeStore.subscribe, modeStore.getSnapshot);
+  // Only the status: Shell must not re-render on every store publish.
+  const status = useSyncExternalStore(modeStore.subscribe, () => modeStore.getSnapshot().status);
   const decided = useRef(false);
   const settle = useSettle();
 
@@ -28,11 +29,11 @@ export function useReopenGate(navigatorReady: boolean): void {
   }, [modeStore]);
 
   useEffect(() => {
-    if (!navigatorReady || snapshot.status !== 'ready' || decided.current) return;
+    if (!navigatorReady || status !== 'ready' || decided.current) return;
     decided.current = true;
     settle();
     splash.hide();
-  }, [navigatorReady, snapshot.status, settle, splash]);
+  }, [navigatorReady, status, settle, splash]);
 
   // Not before the first decision: Expo Router refuses a move before its navigator mounts.
   useEffect(
@@ -61,7 +62,11 @@ function useSettle(): () => void {
     });
     // Read the target first: expiring removes the code the notice names.
     const notice = target.go === 'home' ? (target.notice ?? null) : null;
-    void modeStore.expire(expiredModes(current.saved, now), notice).catch(ignoreRefusedDelete);
+    // R23: never expire the mode the operator is sent to. A valid code is not
+    // expired anyway; an expired one is there because the engine holds it, and
+    // the settle after the engine lets go expires it with the notice.
+    const expired = expiredModes(current.saved, now).filter((mode) => mode !== target.go);
+    void modeStore.expire(expired, notice).catch(ignoreRefusedDelete);
     navigation.go(target.go);
   }, [modeStore, clock, engine, navigation]);
 }
