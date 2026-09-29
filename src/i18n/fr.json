@@ -39,6 +39,7 @@
   "scanner.failed": "Le lecteur de codes ne s'est pas ouvert. Réessayez.",
   "reopen.expired": "Votre code {mode} a expiré à {time}. Scannez-en un nouveau.",
   "store.unreadable": "Impossible de lire les codes enregistrés. Scannez à nouveau pour continuer.",
+  "store.saveFailed": "Impossible d'enregistrer sur ce téléphone. Réessayez.",
   "turn.sideways.title": "Tournez votre téléphone à l'horizontale",
   "turn.sideways.body": "La diffusion en direct filme en paysage. Dans un sens ou dans l'autre.",
   "turn.upright.title": "Remettez votre téléphone à la verticale",

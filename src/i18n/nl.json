@@ -39,6 +39,7 @@
   "scanner.failed": "De codescanner ging niet open. Probeer het opnieuw.",
   "reopen.expired": "Je code voor {mode} is om {time} verlopen. Scan een nieuwe.",
   "store.unreadable": "Opgeslagen codes konden niet worden gelezen. Scan opnieuw om verder te gaan.",
+  "store.saveFailed": "Opslaan op deze telefoon is niet gelukt. Probeer het opnieuw.",
   "turn.sideways.title": "Draai je telefoon op z'n kant",
   "turn.sideways.body": "Livestream filmt liggend. Welke kant op maakt niet uit.",
   "turn.upright.title": "Houd je telefoon rechtop",

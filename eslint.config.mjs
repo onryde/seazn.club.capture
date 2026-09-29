@@ -3,6 +3,30 @@ import boundaries from 'eslint-plugin-boundaries';
 import prettier from 'eslint-config-prettier';
 
 /**
+ * What the ui layer may never import by value, because each loads native code
+ * that cannot render on react-native-web (spec §9). Shared by the ui rule and
+ * its test override below, so a new ban reaches both. Type imports stay
+ * allowed: a type carries no native code.
+ */
+const UI_NATIVE_IMPORTS = [
+  'react-native-safe-area-context',
+  'expo',
+  'expo-*',
+  '@/scanner/*',
+  '@/hooks/nativePorts',
+];
+
+/** The ui import rule, for a given list of services the files may not import. */
+function uiRestrictedImports(services, message) {
+  return [
+    'error',
+    {
+      patterns: [{ group: [...UI_NATIVE_IMPORTS, services], allowTypeImports: true, message }],
+    },
+  ];
+}
+
+/**
  * The layering rule IS the architecture. See AGENTS.md §3.
  *
  * `domain/` must stay pure TypeScript so its tests run in milliseconds with no
@@ -80,11 +104,14 @@ export default [
               ],
             },
             {
-              // Type-only: a screen may name a port's types (Route, …), which
-              // carry no native code. Values still come through usePorts().
+              // Type-only: a screen may name a port's types (Route, ScanResult,
+              // …), which carry no native code. Values still come through usePorts().
               from: { element: { type: 'ui' } },
               dependency: { kind: 'type' },
-              allow: [{ to: { element: { type: 'services' } } }],
+              allow: [
+                { to: { element: { type: 'services' } } },
+                { to: { element: { type: 'scanner' } } },
+              ],
             },
             {
               from: { element: { type: 'hooks' } },
@@ -147,24 +174,11 @@ export default [
     files: ['src/ui/**/*.{ts,tsx}'],
     ignores: ['src/ui/components/ShellFrame.tsx'],
     rules: {
-      'no-restricted-imports': [
-        'error',
-        {
-          patterns: [
-            {
-              group: [
-                'react-native-safe-area-context',
-                'expo-*',
-                '@/services/*',
-                '@/hooks/nativePorts',
-              ],
-              // Port and value types (Route, …) are fine: they carry no native code.
-              allowTypeImports: true,
-              message: 'Screens reach native capabilities through ports (spec §9)',
-            },
-          ],
-        },
-      ],
+      // Port and value types (Route, …) are fine: they carry no native code.
+      'no-restricted-imports': uiRestrictedImports(
+        '@/services/*',
+        'Screens reach native capabilities through ports (spec §9)',
+      ),
     },
   },
   {
@@ -174,23 +188,10 @@ export default [
     // renders on react-native-web, so native services stay barred here too.
     files: ['src/ui/**/*.test.tsx'],
     rules: {
-      'no-restricted-imports': [
-        'error',
-        {
-          patterns: [
-            {
-              group: [
-                'react-native-safe-area-context',
-                'expo-*',
-                '@/services/native/*',
-                '@/hooks/nativePorts',
-              ],
-              allowTypeImports: true,
-              message: 'UI tests render through fake ports; native services never load (spec §9)',
-            },
-          ],
-        },
-      ],
+      'no-restricted-imports': uiRestrictedImports(
+        '@/services/native/*',
+        'UI tests render through fake ports; native services never load (spec §9)',
+      ),
     },
   },
   {

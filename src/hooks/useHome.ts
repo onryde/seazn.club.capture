@@ -34,7 +34,10 @@ export type HomeActions = {
 };
 
 type SetPanel = (panel: PanelOutcome | null) => void;
-type SetScannerKey = (key: MessageKey | null) => void;
+/** Home's own line of news: a scanner reason, or a refused save. Cleared by the next tap. */
+type SetStatusKey = (key: MessageKey | null) => void;
+type OpenCode = (code: ModeCode) => Promise<void>;
+type HandleScan = (tapped: Mode, result: ScanResult) => Promise<void>;
 type ReadyStore = Extract<ModeStoreSnapshot, { status: 'ready' }>;
 
 const SCANNER_MESSAGE: Readonly<Record<ScanUnavailableReason, MessageKey>> = {
@@ -53,8 +56,17 @@ function isReady(store: ModeStore): boolean {
   return store.getSnapshot().status === 'ready';
 }
 
-/** A write that failed changes nothing: the store publishes only after storage agrees. */
-function ignoreFailedWrite(): void {}
+function savedStream(store: ModeStore): SavedCode | null {
+  const snapshot = store.getSnapshot();
+  return snapshot.status === 'ready' ? (snapshot.saved.codes.stream ?? null) : null;
+}
+
+/**
+ * A throw that is not a refused write is a bug (in navigation, say). Nothing
+ * true can be said about it, so Home stays as it was, still usable, and no
+ * rejection escapes. Refused writes never land here: they say so (R19).
+ */
+function ignoreUnexpected(): void {}
 
 /**
  * Home's behaviour (spec §3): tap, scan, recognise, then open or explain.
@@ -63,63 +75,85 @@ export function useHome(): { view: HomeView; actions: HomeActions } {
   const { modeStore } = usePorts();
   const snapshot = useSyncExternalStore(modeStore.subscribe, modeStore.getSnapshot);
   const [panel, setPanel] = useState<PanelOutcome | null>(null);
-  const [scannerKey, setScannerKey] = useState<MessageKey | null>(null);
-  const openCode = useOpenCode();
-  const handle = useHandleScan(openCode, setPanel, setScannerKey);
-  const tapTile = useTapTile(handle, setPanel, setScannerKey);
-  const view = useHomeView(snapshot, panel, scannerKey);
+  const [statusKey, setStatusKey] = useState<MessageKey | null>(null);
+  const saveFailed = useSaveFailed(setStatusKey);
+  const openCode = useOpenCode(setStatusKey, saveFailed);
+  const handle = useHandleScan(openCode, setPanel, setStatusKey);
+  const tapTile = useTapTile(handle, setPanel, setStatusKey);
+  const view = useHomeView(snapshot, panel, statusKey);
   const panelActions = usePanelActions(panel, tapTile, openCode, setPanel);
-  const continueActions = useContinueActions();
+  const continueStream = useContinue(setStatusKey, saveFailed);
+  const forgetStream = useForget(setStatusKey, saveFailed);
   const pasteRaw = usePaste(handle);
-  return { view, actions: { tapTile, ...panelActions, ...continueActions, useRaw: pasteRaw } };
+  const actions = { tapTile, ...panelActions, continueStream, forgetStream, useRaw: pasteRaw };
+  return { view, actions };
+}
+
+/**
+ * Ruling R19: a write the phone refuses is never silent. It outranks any
+ * notice, so the notices are dismissed and the refusal takes the line.
+ */
+function useSaveFailed(setStatusKey: SetStatusKey): () => void {
+  const { modeStore } = usePorts();
+  return useCallback(() => {
+    modeStore.dismissNotices();
+    setStatusKey('store.saveFailed');
+  }, [modeStore, setStatusKey]);
 }
 
 /**
  * Save the code and make it active, then open its mode. A code that could not
  * be saved is not opened: the stream screen reads it back from the store.
  */
-function useOpenCode(): (code: ModeCode) => void {
+function useOpenCode(setStatusKey: SetStatusKey, saveFailed: () => void): OpenCode {
   const { modeStore, clock, navigation } = usePorts();
   return useCallback(
-    (code: ModeCode) => {
+    async (code: ModeCode) => {
       if (!isReady(modeStore)) return;
-      void modeStore.open(savedCodeFrom(code, clock())).then(() => {
-        if (code.mode === 'stream') navigation.go('stream');
-      }, ignoreFailedWrite);
+      try {
+        await modeStore.open(savedCodeFrom(code, clock()));
+      } catch {
+        return saveFailed();
+      }
+      setStatusKey(null);
+      if (code.mode === 'stream') navigation.go('stream');
     },
-    [modeStore, clock, navigation],
+    [modeStore, clock, navigation, setStatusKey, saveFailed],
   );
 }
 
-/** One scan's result: nothing, a reason on the status line, an open, or a panel. */
+/**
+ * One scan's result: nothing, a reason on the status line, an open, or a
+ * panel. Settles only once any save has, so the scan guard covers the write.
+ */
 function useHandleScan(
-  openCode: (code: ModeCode) => void,
+  openCode: OpenCode,
   setPanel: SetPanel,
-  setScannerKey: SetScannerKey,
-): (tapped: Mode, result: ScanResult) => void {
+  setStatusKey: SetStatusKey,
+): HandleScan {
   const { clock, hosts } = usePorts();
   return useCallback(
-    (tapped: Mode, result: ScanResult) => {
+    async (tapped: Mode, result: ScanResult) => {
       if (result.outcome === 'cancelled') return;
-      if (result.outcome === 'unavailable') return setScannerKey(SCANNER_MESSAGE[result.reason]);
+      if (result.outcome === 'unavailable') return setStatusKey(SCANNER_MESSAGE[result.reason]);
       const outcome = scanOutcome(tapped, recognise(result.raw, clock(), hosts));
-      if (outcome.kind === 'open') openCode(outcome.code);
-      else setPanel(outcome);
+      if (outcome.kind === 'open') return openCode(outcome.code);
+      setPanel(outcome);
     },
-    [clock, hosts, openCode, setPanel, setScannerKey],
+    [clock, hosts, openCode, setPanel, setStatusKey],
   );
 }
 
 /**
  * One scan at a time. A second native `startScan()` cancels the first, or
- * fails with status 204 (Task 8), so taps while the scanner is up are ignored.
- * The guard is released on every outcome, a broken scanner included, so Home
- * can never be left with no way to scan.
+ * fails with status 204 (Task 8), so taps are ignored while the scanner is up
+ * and while its code is being saved. The guard is released on every outcome,
+ * a broken scanner included, so Home can never be left with no way to scan.
  */
 function useTapTile(
-  handle: (tapped: Mode, result: ScanResult) => void,
+  handle: HandleScan,
   setPanel: SetPanel,
-  setScannerKey: SetScannerKey,
+  setStatusKey: SetStatusKey,
 ): (mode: Mode) => void {
   const { modeStore, scanner } = usePorts();
   const scanning = useRef(false);
@@ -129,15 +163,16 @@ function useTapTile(
       if (!isReady(modeStore)) return;
       scanning.current = true;
       setPanel(null);
-      setScannerKey(null);
+      setStatusKey(null);
       modeStore.dismissNotices();
       void scanSafely(scanner)
         .then((result) => handle(mode, result))
+        .catch(ignoreUnexpected)
         .finally(() => {
           scanning.current = false;
         });
     },
-    [modeStore, scanner, handle, setPanel, setScannerKey],
+    [modeStore, scanner, handle, setPanel, setStatusKey],
   );
 }
 
@@ -156,7 +191,7 @@ async function scanSafely(scanner: CodeScannerPort): Promise<ScanResult> {
 function useHomeView(
   snapshot: ModeStoreSnapshot,
   panel: PanelOutcome | null,
-  scannerKey: MessageKey | null,
+  statusKey: MessageKey | null,
 ): HomeView {
   const { t } = useT();
   const { clock } = usePorts();
@@ -167,7 +202,7 @@ function useHomeView(
   // Never null for an expired panel, which would read "expired at ." (Task 10 carry).
   const panelTime = panel?.kind === 'expired' ? format(panel.at, null) : null;
   return {
-    statusText: statusText(ready, scannerKey, t, format),
+    statusText: statusText(ready, statusKey, t, format),
     panel,
     panelTime,
     continueCode,
@@ -177,10 +212,13 @@ function useHomeView(
   };
 }
 
-/** What the one status line says, most important first (AGENTS §6: always something true). */
+/**
+ * What the one status line says, most important first (AGENTS §6: always
+ * something true). A refused save outranks the notices by dismissing them.
+ */
 function statusText(
   ready: ReadyStore | null,
-  scannerKey: MessageKey | null,
+  statusKey: MessageKey | null,
   t: Translator['t'],
   format: (at: Date, zone: string | null) => string,
 ): string {
@@ -190,15 +228,18 @@ function statusText(
     return t('reopen.expired', { mode, time: format(notice.expiredAt, null) });
   }
   if (ready?.dropped) return t('store.unreadable');
-  if (scannerKey !== null) return t(scannerKey);
+  if (statusKey !== null) return t(statusKey);
   return t('home.status.idle');
 }
 
-/** The panel's buttons: open the code it named, scan again from the same tile, or close. */
+/**
+ * The panel's buttons: open the code it named, scan again from the same tile,
+ * or close. Open closes the panel first, so a refused save replaces it.
+ */
 function usePanelActions(
   panel: PanelOutcome | null,
   tapTile: (mode: Mode) => void,
-  openCode: (code: ModeCode) => void,
+  openCode: OpenCode,
   setPanel: SetPanel,
 ): Pick<HomeActions, 'scanAgain' | 'openFromPanel' | 'closePanel'> {
   const scanAgain = useCallback(() => {
@@ -207,7 +248,7 @@ function usePanelActions(
   const openFromPanel = useCallback(
     (code: ModeCode) => {
       setPanel(null);
-      openCode(code);
+      void openCode(code).catch(ignoreUnexpected);
     },
     [openCode, setPanel],
   );
@@ -216,27 +257,44 @@ function usePanelActions(
 }
 
 /**
- * The Continue card's two buttons; Forget is immediate, with no confirmation
- * (spec §4). No ready check here: the card renders only from a `ready`
- * snapshot, so neither button exists before the store has loaded (R12).
+ * The Continue button. The card renders only from a `ready` snapshot (R12).
+ * Expiry is judged again on the press, against the current clock: a code that
+ * ran out while Home sat open is expired the way the reopen gate does it, which
+ * removes the card and says so on the status line.
  */
-function useContinueActions(): Pick<HomeActions, 'continueStream' | 'forgetStream'> {
-  const { modeStore, navigation } = usePorts();
-  const continueStream = useCallback(() => {
-    void modeStore.setActive('stream').then(() => navigation.go('stream'), ignoreFailedWrite);
-  }, [modeStore, navigation]);
-  const forgetStream = useCallback(() => {
-    void modeStore.forget('stream').catch(ignoreFailedWrite);
-  }, [modeStore]);
-  return { continueStream, forgetStream };
+function useContinue(setStatusKey: SetStatusKey, saveFailed: () => void): () => void {
+  const { modeStore, navigation, clock } = usePorts();
+  return useCallback(() => {
+    const code = savedStream(modeStore);
+    if (code === null) return;
+    if (code.expiresAt !== null && isExpired(code, clock())) {
+      const notice = { mode: 'stream' as const, expiredAt: code.expiresAt };
+      return void modeStore.expire(['stream'], notice).catch(saveFailed);
+    }
+    void modeStore
+      .setActive('stream')
+      .then(() => {
+        setStatusKey(null);
+        navigation.go('stream');
+      }, saveFailed)
+      .catch(ignoreUnexpected);
+  }, [modeStore, navigation, clock, setStatusKey, saveFailed]);
+}
+
+/** The Forget button: immediate, with no confirmation (spec §4). */
+function useForget(setStatusKey: SetStatusKey, saveFailed: () => void): () => void {
+  const { modeStore } = usePorts();
+  return useCallback(() => {
+    void modeStore.forget('stream').then(() => setStatusKey(null), saveFailed);
+  }, [modeStore, setStatusKey, saveFailed]);
 }
 
 /** Development builds only: a pasted code goes where a Live Stream scan would. */
-function usePaste(handle: (tapped: Mode, result: ScanResult) => void): (raw: string) => void {
+function usePaste(handle: HandleScan): (raw: string) => void {
   const { devTools } = usePorts();
   return useCallback(
     (raw: string) => {
-      if (devTools) handle('stream', { outcome: 'scanned', raw });
+      if (devTools) void handle('stream', { outcome: 'scanned', raw }).catch(ignoreUnexpected);
     },
     [devTools, handle],
   );

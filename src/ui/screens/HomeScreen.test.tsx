@@ -300,8 +300,144 @@ describe('Home: store calls wait for a ready store (R12)', () => {
     await act(() => home.ports.modeStore.load());
     expect(screen.getByRole('button', { name: 'Forget' })).toBeTruthy();
   });
+});
 
-  describe('when a storage write fails', () => {
+describe('Home: a refused save is never silent (R19)', () => {
+  const SAVE_FAILED = "Couldn't save on this phone. Try again.";
+  const rejections: unknown[] = [];
+  const onRejection = (reason: unknown) => rejections.push(reason);
+  beforeEach(() => {
+    rejections.length = 0;
+    process.on('unhandledRejection', onRejection);
+  });
+  afterEach(() => {
+    process.off('unhandledRejection', onRejection);
+  });
+
+  /** Reads always work; a write to a key `refuses` names throws, as a locked Keystore does. */
+  function refusingStore(seed: Record<string, string>, refuses: (key: string) => boolean) {
+    const memory = createMemoryKeyValueStore(seed);
+    const refuse = () => Promise.reject(new Error('keystore locked'));
+    const kv: KeyValueStore = {
+      get: memory.get,
+      set: (key, value) => (refuses(key) ? refuse() : memory.set(key, value)),
+      delete: (key) => (refuses(key) ? refuse() : memory.delete(key)),
+    };
+    return createModeStore(kv);
+  }
+  const every = () => true;
+  const activeOnly = (key: string) => key === STORE_KEYS.active;
+  const leftStream = { [STORE_KEYS.code('stream')]: savedStream(AT_1840) };
+
+  it.each([
+    ['every write', every],
+    ['only the active-mode write', activeOnly],
+  ])('says so and stays on Home when a scanned code hits %s refused', async (_, refuses) => {
+    const home = await renderHome({ modeStore: refusingStore({}, refuses) });
+    home.scanner.queue({ outcome: 'scanned', raw: streamRaw(IN_TWO_HOURS) });
+    fireEvent.click(liveStreamTile());
+    await screen.findByText(SAVE_FAILED);
+    expect(home.navigation.current()).toBe('home');
+    expect(rejections).toEqual([]);
+  });
+
+  it('says so when a pasted code cannot be saved', async () => {
+    await renderHome({ modeStore: refusingStore({}, every) });
+    const field = screen.getByPlaceholderText('Paste a code (development only)');
+    fireEvent.change(field, { target: { value: streamRaw(IN_TWO_HOURS) } });
+    fireEvent.click(screen.getByRole('button', { name: 'Use pasted code' }));
+    await screen.findByText(SAVE_FAILED);
+    expect(rejections).toEqual([]);
+  });
+
+  it.each([
+    ['Continue', leftStream, every],
+    ['Forget', leftStream, every],
+    ['Forget', { ...leftStream, [STORE_KEYS.active]: 'stream' }, activeOnly],
+  ])('says so when %s cannot write, and keeps the card', async (name, seed, refuses) => {
+    const home = await renderHome({ modeStore: refusingStore(seed, refuses) });
+    fireEvent.click(screen.getByRole('button', { name }));
+    await screen.findByText(SAVE_FAILED);
+    expect(home.navigation.current()).toBe('home');
+    expect(rejections).toEqual([]);
+  });
+
+  it('closes the panel for good when Open cannot save', async () => {
+    const fakes = createFakePorts({ modeStore: refusingStore({}, every) });
+    await fakes.ports.modeStore.load();
+    const { result } = renderHook(() => useHome(), { wrapper: wrapperFor(fakes) });
+    fakes.scanner.queue({ outcome: 'scanned', raw: streamRaw(IN_TWO_HOURS) });
+    act(() => result.current.actions.tapTile('scoring'));
+    await waitFor(() => expect(result.current.view.panel?.kind).toBe('otherMode'));
+    const panel = result.current.view.panel;
+    if (panel?.kind !== 'otherMode') throw new Error('expected the other-mode panel');
+    act(() => result.current.actions.openFromPanel(panel.code));
+    await waitFor(() => expect(result.current.view.statusText).toBe(SAVE_FAILED));
+    expect(result.current.view.panel).toBeNull();
+    expect(fakes.navigation.current()).toBe('home');
+  });
+
+  it('outranks the unreadable notice', async () => {
+    const garbage = STORE_KEYS.code('scoring');
+    const seed = { ...leftStream, [garbage]: 'garbage' };
+    // The load deletes the unreadable record; every later write is refused.
+    await renderHome({ modeStore: refusingStore(seed, (key) => key !== garbage) });
+    expect(screen.getByText("Couldn't read saved codes. Scan again to continue.")).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Forget' }));
+    await screen.findByText(SAVE_FAILED);
+  });
+
+  it('clears on the next tap', async () => {
+    const home = await renderHome({ modeStore: refusingStore({}, every) });
+    home.scanner.queue(
+      { outcome: 'scanned', raw: streamRaw(IN_TWO_HOURS) },
+      { outcome: 'cancelled' },
+    );
+    fireEvent.click(liveStreamTile());
+    await screen.findByText(SAVE_FAILED);
+    fireEvent.click(liveStreamTile());
+    await waitFor(() => expect(home.scanner.scans).toBe(2));
+    expect(screen.getByText(IDLE)).toBeTruthy();
+  });
+
+  it.each(['Continue', 'Forget'])('clears once %s succeeds', async (name) => {
+    let locked = true;
+    await renderHome({ modeStore: refusingStore(leftStream, () => locked) });
+    fireEvent.click(screen.getByRole('button', { name }));
+    await screen.findByText(SAVE_FAILED);
+    locked = false;
+    fireEvent.click(screen.getByRole('button', { name }));
+    await screen.findByText(IDLE);
+  });
+});
+
+describe('Home: after the scan', () => {
+  it('opens no second scanner while a scanned code is still being saved', async () => {
+    let finishWrite: () => void = () => undefined;
+    const written = new Promise<void>((resolve) => {
+      finishWrite = resolve;
+    });
+    const memory = createMemoryKeyValueStore();
+    const slow: KeyValueStore = {
+      ...memory,
+      set: async (key, value) => {
+        await written;
+        await memory.set(key, value);
+      },
+    };
+    const home = await renderHome({ modeStore: createModeStore(slow) });
+    home.scanner.queue({ outcome: 'scanned', raw: streamRaw(IN_TWO_HOURS) });
+    fireEvent.click(liveStreamTile());
+    await waitFor(() => expect(home.scanner.scans).toBe(1));
+    await act(async () => undefined);
+    fireEvent.click(liveStreamTile());
+    fireEvent.click(liveStreamTile());
+    await act(async () => finishWrite());
+    await waitFor(() => expect(memory.entries.get(STORE_KEYS.active)).toBe('stream'));
+    expect(home.scanner.scans).toBe(1);
+  });
+
+  describe('when navigation throws', () => {
     const rejections: unknown[] = [];
     const onRejection = (reason: unknown) => rejections.push(reason);
     beforeEach(() => {
@@ -312,32 +448,34 @@ describe('Home: store calls wait for a ready store (R12)', () => {
       process.off('unhandledRejection', onRejection);
     });
 
-    /** Reads work; every write throws, as a locked Keystore does. */
-    function lockedStore(seed: Record<string, string> = {}): KeyValueStore {
-      const memory = createMemoryKeyValueStore(seed);
-      const locked = () => Promise.reject(new Error('keystore locked'));
-      return { get: memory.get, set: locked, delete: locked };
-    }
-
-    it('stays on Home rather than opening a code it could not save', async () => {
-      const home = await renderHome({ modeStore: createModeStore(lockedStore()) });
+    it('lets nothing escape, and Home can still scan', async () => {
+      const navigation = {
+        current: () => 'home' as const,
+        go: () => {
+          throw new Error('navigator not mounted');
+        },
+      };
+      const home = await renderHome({ navigation });
       home.scanner.queue({ outcome: 'scanned', raw: streamRaw(IN_TWO_HOURS) });
       fireEvent.click(liveStreamTile());
-      await waitFor(() => expect(home.scanner.scans).toBe(1));
+      await waitFor(() => expect(home.kv.entries.get(STORE_KEYS.active)).toBe('stream'));
       await act(async () => undefined);
-      expect(home.navigation.current()).toBe('home');
+      fireEvent.click(liveStreamTile());
+      await waitFor(() => expect(home.scanner.scans).toBe(2));
       expect(rejections).toEqual([]);
     });
+  });
 
-    it.each(['Continue', 'Forget'])('rejects nothing when %s cannot write', async (name) => {
-      const seed = { [STORE_KEYS.code('stream')]: savedStream(AT_1840) };
-      const home = await renderHome({ modeStore: createModeStore(lockedStore(seed)) });
-      fireEvent.click(screen.getByRole('button', { name }));
-      await act(async () => undefined);
-      expect(home.navigation.current()).toBe('home');
-      expect(screen.getByText('Continue Live Stream')).toBeTruthy();
-      expect(rejections).toEqual([]);
+  it('expires a code that ran out while Home sat open, instead of continuing', async () => {
+    const home = await renderHome({
+      kvSeed: { [STORE_KEYS.code('stream')]: savedStream(AT_1840) },
     });
+    home.setNow(new Date(AT_1840.getTime() + 60_000));
+    fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
+    await screen.findByText('Your Live Stream code expired at 18:40. Scan a new one.');
+    expect(screen.queryByText('Continue Live Stream')).toBeNull();
+    expect(home.kv.entries.has(STORE_KEYS.code('stream'))).toBe(false);
+    expect(home.navigation.current()).toBe('home');
   });
 });
 

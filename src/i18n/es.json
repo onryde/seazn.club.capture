@@ -39,6 +39,7 @@
   "scanner.failed": "El escáner no se abrió. Vuelve a intentarlo.",
   "reopen.expired": "Tu código de {mode} caducó a las {time}. Escanea uno nuevo.",
   "store.unreadable": "No se pudieron leer los códigos guardados. Escanea de nuevo para continuar.",
+  "store.saveFailed": "No se pudo guardar en este teléfono. Vuelve a intentarlo.",
   "turn.sideways.title": "Gira el teléfono en horizontal",
   "turn.sideways.body": "La emisión en directo graba en horizontal. Sirve en cualquier sentido.",
   "turn.upright.title": "Pon el teléfono en vertical",
