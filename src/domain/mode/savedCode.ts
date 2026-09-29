@@ -53,7 +53,8 @@ export function decodeSavedCode(text: string): SavedCode | null {
   const data = parse(text);
   if (data === null || data.v !== VERSION) return null;
   const mode = decodeMode(typeof data.mode === 'string' ? data.mode : null);
-  if (mode === null || typeof data.raw !== 'string' || typeof data.savedAt !== 'number') return null;
+  if (mode === null || typeof data.raw !== 'string' || typeof data.savedAt !== 'number')
+    return null;
   if (!isTimeOrNull(data.expiresAt) || !isStringOrNull(data.venueTz)) return null;
   if (!isSlotOrNull(data.slot)) return null;
   return {

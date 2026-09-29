@@ -151,7 +151,10 @@ describe('parseSessionCredentials', () => {
   it.each([[null], ['a string'], [42], [['an', 'array']], [undefined]])(
     'rejects %o as not an object',
     (input) => {
-      expect(parseSessionCredentials(input)).toEqual({ ok: false, error: { kind: 'not-an-object' } });
+      expect(parseSessionCredentials(input)).toEqual({
+        ok: false,
+        error: { kind: 'not-an-object' },
+      });
     },
   );
 });

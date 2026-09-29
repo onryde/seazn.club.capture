@@ -56,8 +56,14 @@ describe('scanOutcome', () => {
       mode: 'stream',
       at,
     });
-    expect(scanOutcome('stream', { outcome: 'foreign' })).toEqual({ kind: 'foreign', tapped: 'stream' });
-    expect(scanOutcome('stream', { outcome: 'seaznPage' })).toEqual({ kind: 'seaznPage', tapped: 'stream' });
+    expect(scanOutcome('stream', { outcome: 'foreign' })).toEqual({
+      kind: 'foreign',
+      tapped: 'stream',
+    });
+    expect(scanOutcome('stream', { outcome: 'seaznPage' })).toEqual({
+      kind: 'seaznPage',
+      tapped: 'stream',
+    });
     expect(scanOutcome('stream', { outcome: 'newerVersion', mode: 'stream' })).toEqual({
       kind: 'newerVersion',
       tapped: 'stream',
