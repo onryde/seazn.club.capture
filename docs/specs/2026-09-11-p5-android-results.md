@@ -1,12 +1,75 @@
 # P5 Device Spike — Android Results
 
-**Status:** Run A aborted at about protocol minute 97 — see Run A below. Runs B and C pending
+**Status:** complete for Android, 2026-09-29, apart from criterion 7 (flip, needs hands) and a full 3 h run. See the Verdict below.
 **Handset:** OnePlus 10 Pro (NE2211), Snapdragon 8 Gen 1 (SM8450), Android 16, build NE2211_16.0.3.530(EX01), adb serial `12be753e`
 **Engine:** StreamPack 3.2.0 (Apache-2.0) with libsrt (MPL-2.0, unmodified)
 **Encode:** 1280×720, 30 fps, 3000 kbps, GOP 2 s, AAC 128 kbps 48 kHz
 **Target:** Cloudflare live input, `recording.timeoutSeconds=180`, overlay from stg.seazn.club (football, in play)
 **Power:** charging from a power bank throughout, except the screen-locked step — see the note under Run A
 **Code:** branch `spike/p5-android` — throwaway, never merged, deleted after this document is complete
+
+## Verdict — 2026-09-29
+
+**The phone holds. The delivery behind it does not, and the phone cannot see it without being told to look.**
+
+**What the phone did**, across Run A, Soak A, Runs B and C and the 90-min final soak:
+
+- **Publishing:** 99.9% of samples outside deliberate outages (final soak).
+- **Reconnects:** unaided, 1.4–2.7 s after the network returned, on SRT and RTMPS.
+- **Fallback:** SRT → RTMPS in 18.8 s (Run C).
+- **Thermal:** peak 3, never 4.
+- **Audio:** −14 to −18 dB delivered.
+- **Screen locked:** kept publishing.
+- **Crashes:** none, once the F-P5-12 guard was in.
+- **The output check:** plays on both user agents.
+
+That is enough to keep the architecture — StreamPack natively, SRT first, RTMPS as the fallback, and
+native owning the session — for the Android engine.
+
+**What it did not settle:**
+
+- **Criterion 3 fails**, because of our regulator's policy, not the encoder. After each drop it restarts
+  low and climbs for four minutes.
+- **Criterion 7** (a 180° flip) was never run.
+- **No clean 3 h run.** Run A aborted at minute 97, and the final soak was 90 min at the owner's request.
+
+**The open risk is F-P5-13.** Cloudflare can accept an ingest session, acknowledge it, report it
+`connected`, and still not deliver it:
+
+- after a reconnect inside its notice window;
+- as a growing lag with no outage at all, where the backlog is never packaged;
+- as a receiver that stops acknowledging.
+
+In the final soak only 83% of published time reached a recording. The phone's transport and Cloudflare's
+status API were both blind to the worst case. Only a watcher on the delivered playlist saw it.
+
+**What the product engine must inherit from this spike:**
+
+1. **F-P5-13 — watch the delivered playlist.** The phone already holds `playbackUrl`. Compare delivered media
+   time against wall time. When the lag grows, or the head stops for ~20 s, force a new session, and put
+   the playlist verdict in the session record. This is the only on-device signal for the dark case.
+2. **F-P5-12 — Ktor's TLS closer crashes the process on a network cut.** Keep an uncaught-exception guard
+   scoped to `io.ktor.network` IOExceptions, off the main thread. Or replace the RTMPS TLS path. Either
+   way, prove it with a cut.
+3. **Regulator restart.** Restart at the last target when the far end dropped a healthy link: ACKs
+   stopped while RTT and loss were clean. Halve it only when the link was failing (F-P5-11's case).
+4. **F-P5-11 — cap SRT's send rate** (`SRTO_MAXBW`), so a thin link does not get its backlog dumped at many
+   times its rate.
+5. **F-P5-10 — reopen the camera on `camera-released`** (a 0 → 1 → 0 ID round trip, ~1.2 s). A stream
+   rebuild does not clear the noise.
+6. **B-frames: set `max-bframes = 0`** (or a Constrained High profile) explicitly. This handset's
+   default happened to be zero.
+7. **Scrub at the sink, not the source.** The same value is a secret in one role and a public path segment
+   in another. The rule is "public URLs are public", not "the stream id is public" (the output check's 404).
+8. **Say what "connecting" is doing.** An operator sees ~19 s of it before a fallback goes live (Run C).
+9. **An overlay that fails to load must not hide the shot**, and it gets a caption (Observation under
+   F-P5-11).
+10. **Power.** A 4.5 W USB supply loses about 0.3% a minute under the 720p30 encode. A three-hour match
+    needs a supply that out-delivers the encode, and the pre-flight should say so.
+
+**Questions for Cloudflare**, before the product relies on its status API: does a `connected` live input
+guarantee packaging? Is a growing packager lag with acknowledged ingest a known failure? Is there a
+signal for it that we can read?
 
 ## Baseline
 
@@ -616,6 +679,29 @@ There was one recording. So the ~31 s second close is not RTMPS-only, and neithe
 that Cloudflare accepts but does not package. On SRT that close healed it after about half a minute. On
 2026-09-14 the SRT cuts showed only a ~25 s freeze and no second close was recorded on the phone.
 
+**Without an outage, 2026-09-29, final soak (SRT, Wi-Fi).** Two more shapes, neither preceded by a cut:
+
+1. **Cloudflare packages late, then never.**
+   - After the 20 s cut's reconnect, the playlist advanced normally for seven minutes. From 07:16Z it gained
+     about one segment a minute: stalls of 96 s, 33 s, 61 s and 4 min 17 s, each ending with +1 segment.
+   - At 07:26Z all four renditions stood at head 477.
+   - The segments themselves were whole: 2 s each, 60 frames, one keyframe, and consecutive timestamps. So
+     nothing was dropped in transit; Cloudflare's timeline had fallen ~500 s behind real time.
+   - The phone was clean throughout: 30 fps, RTT ~13 ms, no loss, a send buffer under 200 ms. Cloudflare's
+     SRT receiver kept acknowledging, and its status API said `connected`.
+   - The 200 s cut ended the session. **The backlog was never packaged**: the recording is 957.6 s for
+     ~1,745 s published.
+2. **Cloudflare stops acknowledging.** Twice (07:35:13Z, 07:44:41Z):
+   - The receiver went silent: RTT froze, the send buffer filled to ~2 s, and the sender dropped late packets.
+   - ~30 s later SRT declared the connection broken, and the phone reconnected in ~2.7 s.
+   - Here SRT's own timeout was the watchdog, and it worked. In shape 1 it could not, because the
+     acknowledgements kept coming.
+
+Evidence: `.p5/p5-soakf-20260929T065901Z.freeze.txt`. So F-P5-13 is wider than "a reconnect inside the
+notice window". **An ingest session Cloudflare accepts can stop being delivered at any time, and neither the
+phone's transport nor Cloudflare's status API sees it.** One run, one input, one evening: whether this is
+Cloudflare's normal behaviour or a bad night on their side is not settled.
+
 **What this settles:**
 
 - Criterion 4, one recording across a short outage, held in every cut on both transports.
@@ -635,6 +721,10 @@ cause, such as a decoder config sent once per publish, is ruled out by the SRT c
 
 - The phone already holds the session's `playbackUrl` (the peek uses it). While publishing, it can watch
   its own delivered playlist. If the head has not advanced for about 20 s, it forces a reconnect.
+- Watch delivered media time against wall time, not only whether the head moved. In the soak's lag the
+  head still advanced once a minute. A 20 s no-advance rule would have fired on every gap (33 s to 257 s),
+  but a drip that fits under the threshold would slip past it. Growing lag is the signal that cannot be
+  gamed that way. The fix was a new session, and the 200 s cut is what provided one.
 - That turns a silent 4.5 min outage into roughly one more reconnect. It is also the only on-device signal
   for F-P5-3's "the app says LIVE, nothing is delivered", and for the 2026-09-14 packager stalls.
 - The session record should carry the playlist's own verdict next to the transport's.
@@ -1462,13 +1552,114 @@ C1's fallback works as designed on a broken SRT address. Its 18.8 s is mostly th
 operator sees about 19 s of "connecting" before going live, and the product should say what is happening
 in that time.
 
+### Final soak — SRT, Wi-Fi, 90 min — 2026-09-29
+
+**06:59:43Z–08:29:47Z, `scripts/p5/device/soak-final.sh` (`p5-soakf-20260929T065901Z`), APK `af55dc7c…`.**
+The phone was on the laptop's USB (4.5 W) and never touched. The timeline:
+
+- a laptop probe at +4 min;
+- two peeks at +5 and +7 min;
+- a 20 s outage at +8 min;
+- audio samples at +11, +45 and +80 min;
+- a 200 s outage at +30 min;
+- a simulated unplug with the screen locked from +80 min;
+- a force-stop at +90 min, because the keyguard is secure.
+
+The owner asked for 90 min rather than 3 h, so criterion 1's duration is not met by construction.
+
+| # | Criterion | Result |
+|---|---|---|
+| 1 | Publishing ≥ 99% outside deliberate outages, **and the playlist advancing** | Phone **99.90%** (5,025 of 5,030 samples; the only gaps are two far-end drops of 3 s and 2 s). Playlist **fail**: 07:16–07:29Z it gained about one segment a minute. See F-P5-13, *Without an outage*. |
+| 2 | Thermal never 4 | **Pass**: peak 3, first at 07:20Z; 54% of samples at 3, 40% at 2 |
+| 3 | 60 s rolling mean ≥ 3000k | **Fail**: min 643k, p5 742k, median 1,931k. The regulator was at its 3000k ceiling for only 41% of samples, because each of seven drops restarted it low (see below). With the target at 3000k: median 3,164k, 53% of windows ≥ 3000k. |
+| 4 | Drop inside 180 s → one recording | **Shape passes, content does not.** One recording spans the 20 s cut, but it is 957.6 s long for ~1,750 s published: the minutes Cloudflare fell behind on were never recorded. |
+| 5 | Drop beyond 180 s → second recording, unaided reconnect | **Pass**. Publishing again 1.4 s after the network came back, and a second recording from 07:33:14Z (3,255 s). No `EXT-X-ENDLIST` served, as in Run A. |
+| 6 | Screen locked 10 min, playlist advancing | **Pass over 9.7 min** (08:20:04–08:29:47Z): head 1335 → 1618, 566 s of media in 583 s, one 3 s hold at the battery reset. The lock fired 5 min late (a script ordering bug, below). |
+| 7 | 180° flip | Not attempted: it needs hands. |
+| 8 | Audio > −40 dB | **Pass**: −18.3, −14.7, −14.4 dB mean (max −0.5 to −0.6) |
+| 9 | Battery ≥ 20% while charging | **Pass**: 79% → 51%, on a 4.5 W supply that the encode outdraws by ~0.3%/min |
+
+**Drops.** Seven in all. Two were our cuts, and each was followed by the far end closing the reconnected
+session 31–33 s later (F-P5-13's shape, now seen after a >180 s cut too). Two more came with **no cut**,
+at 07:35:13Z and 07:44:41Z. Before each, Cloudflare stopped acknowledging: RTT froze at its last value,
+the send buffer filled to ~2 s, and the sender dropped too-late packets. SRT declared the connection
+broken ~30 s later, the phone reconnected in ~2.7 s, and the viewer saw ~30 s of freeze. The phone's
+link was clean on either side of both: RTT ~13 ms, no loss.
+
+**The regulator made each drop cost minutes of quality.** Each reconnect restarts it from half the last
+target (1500k → 516k → 500k floor), and it climbs at +100k per 10 s, so floor to ceiling takes over four
+minutes. That caution is right for a thin link (F-P5-11). It is wrong for a far-end drop on a good link,
+and the regulator cannot tell the two apart. **For the product:** restart at the last target when the drop
+was the far end's (acknowledgements stopped while RTT and loss were clean), and at half only when the
+link was failing.
+
+**Delivery.** Of ~5,100 s published outside the deliberate cuts, **4,213 s were recorded (83%)**. The
+phone sent 27–30 fps and 42–47 audio frames a second in every minute. The 17% was lost at Cloudflare:
+~790 s in the 07:16–07:29Z lag (recording 1 is 957.6 s for ~1,745 s published) and ~140 s in the second
+session's two far-end drops and short stalls (3,255 s for ~3,395 s).
+
+**Script defect.** `soak-final.sh` runs its steps in order, and `AUDIO_S` 4800 comes before `LOCK_S` 4500 in
+that order. So the lock started at 08:20:04Z, not 08:14:43Z. The fix is to order the steps by time, or to
+reject an audio sample scheduled after the lock.
+
+**Crashes: none.** The run's logcat has three `FATAL EXCEPTION` lines, all from the buffer before the run:
+a Vodafone app, Run B's pre-guard crash (21:33Z), and a UiAutomation dump.
+
+Evidence: `.p5/p5-soakf-20260929T065901Z.*`, including `freeze.txt` for the lag and `probe.txt` for the
+output check. Both recordings and the input were deleted at the end.
+
 ### Output check (U1-S6, U1-S7)
+
+**First attempt, 2026-09-29, APK `af55dc7c` — both peeks failed, and the fault was ours.**
 
 | Peek | Status sequence | Plays? |
 |---|---|---|
-| Default UA | | |
-| Browser UA | | |
-| Airplane 20 s during peek — events fired | | |
+| Default UA | `idle` → `loading` → `error` in 3.2 s: `Source error Response code: 404` | No |
+| Browser UA | `loading` → `error` in 3.3 s: `Source error Response code: 404` | No |
+| Airplane 20 s during peek — events fired | not run: no peek was playing to interrupt | — |
+
+**The 404 was not Cloudflare refusing the player.** Four hypotheses were ruled out from the laptop,
+all while the phone was publishing (`scripts/p5/device/peek-probe.mjs`, run by the soak at +250 s):
+
+- master and variant with a browser UA and an ExoPlayer UA: **200**;
+- the variant with every LL-HLS delivery directive a player may add (`_HLS_msn`, `_HLS_part`,
+  `_HLS_skip`, and combinations): **200**, 36–264 ms;
+- the audio rendition: **200**;
+- IPv4 against IPv6: **200** on both.
+
+**Root cause: the scrubber rewrote the URL before JS saw it.** `SpikeSession.event` scrubbed every extra
+and sent the scrubbed map to *both* sinks, the CSV and JS. `srt.streamId` is one of the masked secrets,
+and on Cloudflare it equals the live input id, which is also a path segment of the public playback URL.
+So the `armed` event handed JS `https://customer-….cloudflarestream.com/***/manifest/video.m3u8`, and
+the player asked Cloudflare for an input named `***`. The CSV `armed` row shows the same masked URL.
+
+**Fix, `763c783`:** `EventExtras.split` produces a CSV copy and a JS copy. `playbackUrl` and
+`overlayUrl` reach JS verbatim, because every viewer's player and every overlay browser source already
+holds them. Every other extra is scrubbed in both sinks as before, and the CSV row still reads `***`.
+Reviewed; 93 JVM tests green, and five logged mutants are each killed. APK `1692c696`.
+
+**The product rule this teaches:** scrub at the sink, not at the source. The same value can be a secret in
+one role (an SRT stream id) and public in another (a playback path segment), so masking by value at the
+source breaks the public use. The allow-list is "public URLs are public", **not** "the stream id is
+public".
+
+**U1-S6's premise did not reproduce.** The register recorded non-browser User-Agents getting
+`403 1010` from the delivery host. On 2026-09-29, every UA tried got 200, the browser UA and the
+ExoPlayer UA alike. The browser-UA toggle stays in the spike as a switch, but on this evidence the product
+player does not need to spoof a browser.
+
+**Re-check on `1692c696`, 2026-09-29 08:36:33Z (`p5-soakf-20260929T083633Z`): pass.** 200 s of SRT publishing
+on a fresh input, with peeks at +45 s and +105 s.
+
+| Peek | Status sequence | Plays? |
+|---|---|---|
+| Default UA | `idle` → `loading` → `readyToPlay` in 2.7 s | **Yes** |
+| Browser UA | `loading` → `readyToPlay` in 0.8 s | **Yes** |
+
+The CSV `armed` row still reads `…/***/manifest/video.m3u8`. JS got the real URL, and the log kept the mask,
+which is the only check on the wiring the brief left untested. The playlist advanced throughout, and
+there was one recording of 205.9 s. The airplane row (a cut during a playing peek) was not repeated. The
+final soak already covers reconnect behaviour, and the peek is an operator convenience, not the broadcast.
 
 Every peek writes a `peek-<default\|browser>-at-subscribe-<status>` mark the moment it subscribes, so
 an otherwise empty peek row means the peek was never opened — not that `statusChange` stayed silent.
