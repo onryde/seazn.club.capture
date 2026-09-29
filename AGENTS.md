@@ -59,6 +59,8 @@ code scanner, not a screen of ours.
 
 **Live Stream** keeps the five-screen shape of its own: **Scan** → **Arm** →
 **Live** (HUD) → **Settings** → **Diagnostics**. S1 designs those screens.
+(Scan is now Home's Live Stream tile plus the system scanner, not a screen,
+and S1 redraws this list.)
 
 No accounts, no login, no fixture browsing, no chat, no replays, no gallery,
 no upload, no in-app payments. Push alerts go only to phones holding a
@@ -76,7 +78,8 @@ page in the main repo, not here. Do not grow the app to accommodate them.
 **Native owns the session. JS renders and sends intents.**
 
 - Native owns: capture, encode, connect, publish, reconnect, SRT→RTMPS
-  fallback, orientation, capture timestamps.
+  fallback, encoded orientation (P4), capture timestamps. The activity's
+  screen lock is the JS orientation gate (§6).
 - JS receives a ~1 Hz state snapshot. That is the entire upward contract.
 - Commands are **intents, not RPC**: `start`, `stop`, `switchCamera` return
   void and are reconciled against native state. A promise that must resolve
@@ -89,8 +92,8 @@ page in the main repo, not here. Do not grow the app to accommodate them.
 ## 3. Layering — enforced, not documented
 
 ```
-app/               # Expo Router routes. Thin: a route imports a screen, nothing else.
-  _layout.tsx      # composition root: ports, language, reopen gate, orientation gate
+app/               # Expo Router routes. Thin: they import ui, hooks and packages only.
+  _layout.tsx      # the composition root: ports, language, reopen gate, orientation gate
   index.tsx        # Home
   stream/          # Live Stream (landscape); S2/S4 add scoring/ and dashboard/
 src/
@@ -109,21 +112,25 @@ src/
                    # useReopenGate, useOrientationGate, useCaptureEngine, …
   services/        # ports (key-value store, device ports) + implementations
 modules/
-  capture-engine/  # Expo Module. Port + fake today; S1 brings StreamPack.
+  capture-engine/  # port + fake today; the native Expo module (StreamPack) arrives in S1
   code-scanner/    # Expo Module. Google's code scanner (Android), iOS stub, fake.
 contracts/         # capture-qr.v1.json, once vendored (see its README)
 ```
 
 - `eslint-plugin-boundaries` enforces `domain/` purity. The rule is the
   architecture; the diagram is just a picture of it.
-- **Every native capability reaches React through a port** in the `Ports`
-  object, built once by `createNativePorts()` and provided from
-  `app/_layout.tsx`. Screens and components never import an `expo-*`
-  package, a scanner or service value, or `react-native-safe-area-context`
-  (the one exception is `ShellFrame`, for insets). That is what lets them be
-  tested on react-native-web with fakes; the few components that draw with
-  Reanimated or SVG are stubbed in `test/setup-ui.ts`. Lint enforces the
-  imports.
+- **Screens and components reach native capabilities only through ports**
+  in the `Ports` object, built once by `createNativePorts()` and provided
+  from `app/_layout.tsx`. They never import an `expo-*` package, a scanner
+  or service value, or `react-native-safe-area-context` (the one exception
+  is `ShellFrame`, for insets). That is what lets them be tested on
+  react-native-web with fakes; the few components that draw with Reanimated
+  or SVG are stubbed in `test/setup-ui.ts`. Lint enforces the imports.
+- Hooks and the root layout may import native modules. Four places do
+  today, outside the ports: `useAppFonts` (`expo-font`), `useKeepAwake` (a dynamic
+  `expo-keep-awake` import), `useAppLifecycle` (`AppState`), and
+  `app/_layout.tsx` (`SplashScreen.preventAutoHideAsync()`). None of them
+  can be faked through `Ports`.
 - **No barrel files.** `index.ts` re-exports launder paths past the boundary
   rule and cause circular imports.
 - No `types/` folder — types live with the behaviour they describe.

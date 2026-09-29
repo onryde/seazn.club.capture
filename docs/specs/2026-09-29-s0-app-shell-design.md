@@ -206,7 +206,7 @@ tile tap → scan()
 - **Android backup is off for this store**, through the SecureStore config plugin. Keystore keys do not survive a restore, so a restored phone would otherwise hold records it cannot decrypt.
 - **Never stored:** scores, approvals and engine state (native owns the engine state, AGENTS §2).
 - **Reading never fails the app.** `load()` never rejects (R12). A record it cannot read is deleted; a store that throws on read is treated as empty and nothing is deleted, since the read may work next launch. Either way the status line says "Couldn't read saved codes. Scan again to continue." (R13).
-- **A refused write is never silent.** The status line says "Couldn't save on this phone. Try again." (R19), and a code that could not be saved is not opened.
+- **A refused write on Home is never silent.** Saving a scanned code, Continue and Forget each say "Couldn't save on this phone. Try again." on the status line (R19), and a code that could not be saved is not opened. The other refused writes are not shown: the language pick (kept for the session), the expiry deletes (R21) and the leave write (R30).
 - **Writes are not atomic.** Opening a code writes the code, then the active mode. If the second write is refused, the code is on disk but not active, so the next launch lands on Home with the Continue card.
 
 **The reopen gate** lives in the root `_layout`. **The splash screen stays up until the gate decides**; there is no spinner.
@@ -335,7 +335,7 @@ That is enough to exercise:
 | **Device** (OnePlus, Gradle + adb, **no EAS**) | before S0 is called done | see the checklist below |
 | **Mutation** | once per rule family | each break below must turn its tests red |
 
-- **Screens never reach a native capability directly.** Every port (engine, scanner, store, accelerometer, orientation lock, back button, foreground, navigation, splash) sits in one `Ports` object that reaches hooks through a provider. The concrete `expo-*` implementations are built only by `createNativePorts()`, which the root `_layout` calls. That is what lets screen tests run on `react-native-web` with fakes (`test/fakePorts.ts`); the components that draw with Reanimated or SVG are stubbed in `test/setup-ui.ts`.
+- **Screens never reach a native capability directly.** Every port (engine, scanner, store, accelerometer, orientation lock, back button, foreground, navigation, splash) sits in one `Ports` object that reaches hooks through a provider. For these ports, the concrete `expo-*` implementations are built only by `createNativePorts()`, which the root `_layout` calls. That is what lets screen tests run on `react-native-web` with fakes (`test/fakePorts.ts`); the components that draw with Reanimated or SVG are stubbed in `test/setup-ui.ts`. Hooks and the root layout may still import native modules outside the ports; AGENTS §3 names the four places that do.
 - The Android hardware Back button sits behind a small `BackPort`, because `react-native-web` has no `BackHandler`. The leave guard is tested on the placeholder screen against a fake `BackPort`.
 - **Mutations to run:**
   - `recognise` accepts a suffix host;
