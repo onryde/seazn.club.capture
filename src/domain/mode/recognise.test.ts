@@ -69,6 +69,7 @@ describe('recognise — stream codes', () => {
     ['fractional exp', { exp: 1.5 }],
     ['unknown preferred', { preferred: 'webrtc' }],
     ['empty sid', { sid: '' }],
+    ['exp beyond the date range', { exp: 1e13 }],
   ])('rejects a malformed v1 code: %s', (_label, overrides) => {
     expect(recognise(stream(overrides), NOW, HOSTS)).toEqual({ outcome: 'foreign' });
   });

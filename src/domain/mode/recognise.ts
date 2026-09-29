@@ -45,6 +45,8 @@ function recogniseStream(raw: string, text: string, now: Date): Recognition {
   if (isInteger(data.v) && data.v > 1) return { outcome: 'newerVersion', mode: 'stream' };
   if (data.v !== 1 || !isStreamV1(data)) return FOREIGN;
   const expiresAt = new Date(data.exp * 1000);
+  // An integer `exp` can still overflow the Date range; never hand on an Invalid Date.
+  if (Number.isNaN(expiresAt.getTime())) return FOREIGN;
   if (expiresAt.getTime() <= now.getTime()) {
     return { outcome: 'expired', mode: 'stream', at: expiresAt };
   }
