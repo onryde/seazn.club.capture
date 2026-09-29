@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { leaveRule, type LeaveRule } from '@/domain/mode/reopen';
+import type { CaptureEnginePort } from '@/engine/CaptureEnginePort';
 import { selectEngineStatus } from '@/hooks/engineSelectors';
 import { useEngineSelector } from '@/hooks/useCaptureEngine';
 import { usePorts } from '@/hooks/usePorts';
@@ -56,6 +57,8 @@ export function useStreamLeave(): {
  * `stopped`, the engine would make the next code's first leave a forget too.
  * Sent however the forget went: a refused one leaves the spent code saved, and
  * it waits on the Continue card until it expires or is forgotten (spec §4).
+ * Sent only if the engine is still `stopped` once the write settles: native is
+ * the authority, and a session that moved on meanwhile is not ours to clear.
  */
 function useLeaveOnce(): (rule: FreeRule) => void {
   const { modeStore, navigation, engine } = usePorts();
@@ -66,12 +69,16 @@ function useLeaveOnce(): (rule: FreeRule) => void {
       pending.current = true;
       void saveLeave(modeStore, rule).then(() => {
         pending.current = false;
-        if (rule === 'freeAndForget') engine.send({ kind: 'reset' });
+        if (rule === 'freeAndForget' && stillStopped(engine)) engine.send({ kind: 'reset' });
         navigation.go('home');
       });
     },
     [modeStore, navigation, engine],
   );
+}
+
+function stillStopped(engine: CaptureEnginePort): boolean {
+  return selectEngineStatus(engine.getSnapshot()) === 'stopped';
 }
 
 /**

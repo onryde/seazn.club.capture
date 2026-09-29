@@ -246,6 +246,24 @@ describe('Live Stream placeholder: one leave at a time', () => {
     expect(go).toHaveBeenCalledTimes(1);
   });
 
+  it.each<[string, SessionState]>([
+    ['went live again', LIVE],
+    ['was armed again', { kind: 'armed' }],
+  ])('clears no session that %s while the stopped leave was saving (I1)', async (_, state) => {
+    const { modeStore, release } = slowStore();
+    const view = await renderStream({ modeStore });
+    const send = vi.spyOn(view.engine, 'send');
+    act(() => view.engine.forceState(STOPPED));
+    act(() => {
+      view.back.press();
+    });
+    act(() => view.engine.forceState(state));
+    release();
+    await waitFor(() => expect(view.navigation.current()).toBe('home'));
+    expect(send).not.toHaveBeenCalled();
+    expect(view.engine.getSnapshot().state).toEqual(state);
+  });
+
   it('keeps Back handled while the first leave is still saving', async () => {
     const { modeStore, release } = slowStore();
     const view = await renderStream({ modeStore });
