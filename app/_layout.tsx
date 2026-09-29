@@ -1,14 +1,16 @@
-import { Stack, useRootNavigationState } from 'expo-router';
+import { Stack, usePathname, useRootNavigationState } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { useEffect, useState, type ReactNode } from 'react';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { createNativePorts } from '@/hooks/nativePorts';
 import { useAppFonts } from '@/hooks/useAppFonts';
 import { LanguageProvider } from '@/hooks/useLanguage';
+import { routeTarget } from '@/hooks/useOrientationGate';
 import { PortsProvider, usePorts, type Ports } from '@/hooks/usePorts';
 import { useReopenGate } from '@/hooks/useReopenGate';
 import { BootFailure } from '@/ui/components/BootFailure';
 import { ErrorBoundary } from '@/ui/components/ErrorBoundary';
+import { OrientationGate } from '@/ui/components/OrientationGate';
 import { ShellFrame } from '@/ui/components/ShellFrame';
 
 // The splash holds until the shell knows where to land: no spinner (AGENTS §6).
@@ -44,9 +46,11 @@ function Shell() {
   const navigatorReady = useRootNavigationState()?.key !== undefined;
   // The gate decides where to land, then hides the splash (spec §4).
   useReopenGate(navigatorReady);
+  const target = routeTarget(usePathname());
   return (
     <ShellFrame>
       <Stack screenOptions={{ headerShown: false, animation: 'none', gestureEnabled: false }} />
+      <OrientationGate target={target} />
     </ShellFrame>
   );
 }

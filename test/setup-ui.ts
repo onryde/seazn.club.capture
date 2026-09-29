@@ -30,3 +30,8 @@ vi.mock('@/ui/components/SlideUpSheet', async () => {
   }
   return { SlideUpSheet };
 });
+
+// The overlay's exit fade is drawing only; the card inside it is what tests read.
+vi.mock('@/ui/components/FadeOut', () => ({
+  FadeOut: ({ children }: { children: unknown }) => children,
+}));

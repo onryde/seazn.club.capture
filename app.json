@@ -3,7 +3,7 @@
     "name": "Seazn Capture",
     "slug": "capture",
     "version": "1.0.0",
-    "orientation": "portrait",
+    "orientation": "default",
     "scheme": "seazn-capture",
     "userInterfaceStyle": "dark",
     "icon": "./assets/icon.png",
@@ -47,6 +47,12 @@
         {
           "configureAndroidBackup": true,
           "faceIDPermission": false
+        }
+      ],
+      [
+        "expo-screen-orientation",
+        {
+          "initialOrientation": "PORTRAIT_UP"
         }
       ]
     ]
