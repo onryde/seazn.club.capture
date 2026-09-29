@@ -8,6 +8,7 @@
       "@/hooks/*": ["./src/hooks/*"],
       "@/services/*": ["./src/services/*"],
       "@/navigation/*": ["./src/navigation/*"],
+      "@/i18n/*": ["./src/i18n/*"],
       "@/engine/*": ["./modules/capture-engine/src/*"],
       "@/contracts/*": ["./contracts/*"]
     }

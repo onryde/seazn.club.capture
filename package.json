@@ -20,6 +20,7 @@
     "eas": "eas",
     "expo": "expo",
     "deps:check": "expo install --check",
+    "i18n:release-check": "node scripts/check-i18n-release.mjs",
     "build:web": "expo export --platform web"
   },
   "dependencies": {

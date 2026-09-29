@@ -32,6 +32,7 @@ export default [
         { type: 'hooks', pattern: 'src/hooks/**' },
         { type: 'services', pattern: 'src/services/**' },
         { type: 'navigation', pattern: 'src/navigation/**' },
+        { type: 'i18n', pattern: 'src/i18n/**' },
         { type: 'engine', pattern: 'modules/capture-engine/**' },
         { type: 'contracts', pattern: 'contracts/**' },
       ],
@@ -59,11 +60,17 @@ export default [
               ],
             },
             {
+              // Pure, like domain: no external allowance, so no react.
+              from: { element: { type: 'i18n' } },
+              allow: [{ to: { element: { type: 'i18n' } } }],
+            },
+            {
               from: { element: { type: 'ui' } },
               allow: [
                 { to: { element: { type: 'ui' } } },
                 { to: { element: { type: 'domain' } } },
                 { to: { element: { type: 'hooks' } } },
+                { to: { element: { type: 'i18n' } } },
                 { to: { module: { origin: ['external', 'core'] } } },
               ],
             },
@@ -73,6 +80,7 @@ export default [
                 { to: { element: { type: 'hooks' } } },
                 { to: { element: { type: 'domain' } } },
                 { to: { element: { type: 'services' } } },
+                { to: { element: { type: 'i18n' } } },
                 { to: { element: { type: 'engine' } } },
                 { to: { module: { origin: ['external', 'core'] } } },
               ],
