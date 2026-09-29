@@ -108,6 +108,28 @@ describe('Live Stream placeholder', () => {
   });
 });
 
+describe('Live Stream placeholder: the next code after a stop (I1)', () => {
+  it('keeps a code opened after the last broadcast was stopped', async () => {
+    const view = await renderStream();
+    act(() => view.engine.forceState(STOPPED));
+    act(() => {
+      view.back.press();
+    });
+    await waitFor(() => expect(view.navigation.current()).toBe('home'));
+    // The spent session is cleared, so it cannot spend the next code too.
+    expect(view.engine.getSnapshot().state).toEqual({ kind: 'idle' });
+
+    const next: SavedCode = { ...code, raw: '{"fake":"next"}', slot: 5 };
+    await act(() => view.ports.modeStore.open(next));
+    view.navigation.go('stream');
+    act(() => {
+      view.back.press();
+    });
+    await waitFor(() => expect(view.navigation.current()).toBe('home'));
+    expect(view.kv.entries.get(STORE_KEYS.code('stream'))).toBe(encodeSavedCode(next));
+  });
+});
+
 describe('Live Stream placeholder: the four questions', () => {
   it('says there is no slot when the engine holds a session with nothing saved', async () => {
     // Reachable: the reopen gate sends an armed or live engine here whatever is saved.

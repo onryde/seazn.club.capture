@@ -226,12 +226,12 @@ The same check runs **when the app returns to the foreground**. A code that expi
 
 **A code is forgotten when:**
 - its `exp` passes;
-- the stream ends normally (the engine reaches `stopped`, and the operator leaves);
+- the stream ends normally (the engine reaches `stopped`, and the operator leaves). Leaving then sends the engine `reset`, so the spent session is cleared and the next code starts from an `idle` engine; left `stopped`, the engine would make that code's first leave a forget too (I1);
 - the operator taps Forget on the Continue card. Forget is immediate, with no confirmation, because the code can be scanned again.
 
 A stream that ends in **failure keeps its code**, so the operator can go straight back in.
 
-If the phone refuses the leave's write (the forget, or clearing the active mode), the app still goes Home (R30): the operator asked to leave. The active mode stays set, so the next check reopens Live Stream, and leaving again retries the write. After a refused forget and a process death, the fresh engine is `idle`, so that second leave keeps the spent code: it sits on the Continue card until it expires or the operator taps Forget.
+If the phone refuses the leave's write (the forget, or clearing the active mode), the app still goes Home (R30): the operator asked to leave. The active mode stays set, so the next check reopens Live Stream, and leaving again retries clearing it. The reset is sent whether or not the forget went through, so after a refused forget the engine is `idle` and that second leave keeps the spent code: it sits on the Continue card until it expires or the operator taps Forget.
 
 ## 5. Orientation
 

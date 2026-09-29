@@ -51,9 +51,14 @@ export function useStreamLeave(): {
  * first write is pending would otherwise write twice and navigate twice. Set
  * only once a leave is allowed, so a Back refused on air never sets it, and
  * released when the write settles either way, so it can never stick.
+ *
+ * Leaving a stopped broadcast also clears the spent session (I1). Left
+ * `stopped`, the engine would make the next code's first leave a forget too.
+ * Sent however the forget went: a refused one leaves the spent code saved, and
+ * it waits on the Continue card until it expires or is forgotten (spec §4).
  */
 function useLeaveOnce(): (rule: FreeRule) => void {
-  const { modeStore, navigation } = usePorts();
+  const { modeStore, navigation, engine } = usePorts();
   const pending = useRef(false);
   return useCallback(
     (rule: FreeRule) => {
@@ -61,10 +66,11 @@ function useLeaveOnce(): (rule: FreeRule) => void {
       pending.current = true;
       void saveLeave(modeStore, rule).then(() => {
         pending.current = false;
+        if (rule === 'freeAndForget') engine.send({ kind: 'reset' });
         navigation.go('home');
       });
     },
-    [modeStore, navigation],
+    [modeStore, navigation, engine],
   );
 }
 
