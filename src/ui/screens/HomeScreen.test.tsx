@@ -537,6 +537,60 @@ describe('Home: after the scan', () => {
   });
 });
 
+describe('Home: coming back from the scanner is not a reopen (I2)', () => {
+  // The phone's scanner is Play services' own activity: returning from it is a
+  // return to the foreground, which runs the reopen gate.
+  it('keeps Home and the panel when the scanner returns while the engine is armed', async () => {
+    const fakes = createFakePorts();
+    render(<GateThenHome />, { wrapper: wrapperFor(fakes) });
+    await waitFor(() => expect(fakes.splash.hides).toBe(1));
+    act(() => fakes.engine.forceState({ kind: 'armed' }));
+    const finish = fakes.scanner.deferNext();
+    fireEvent.click(liveStreamTile());
+    act(() => fakes.foreground.fire());
+    await act(async () => finish({ outcome: 'scanned', raw: 'https://example.com/menu' }));
+    await screen.findByText("This isn't a Seazn code.");
+    expect(fakes.navigation.current()).toBe('home');
+
+    // Once the scan is over, the next return to the foreground is a reopen again.
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+    act(() => fakes.foreground.fire());
+    await waitFor(() => expect(fakes.navigation.current()).toBe('stream'));
+  });
+
+  it('keeps the fresh code when the saved one expired while the scanner was up', async () => {
+    const memory = createMemoryKeyValueStore({ [STORE_KEYS.code('stream')]: savedStream(AT_1840) });
+    let release: () => void = () => undefined;
+    const saving = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const kv: KeyValueStore = {
+      get: memory.get,
+      set: async (key, value) => saving.then(() => memory.set(key, value)),
+      delete: async (key) => saving.then(() => memory.delete(key)),
+    };
+    const fakes = createFakePorts({ modeStore: createModeStore(kv) });
+    render(<GateThenHome />, { wrapper: wrapperFor(fakes) });
+    await screen.findByText('Continue Live Stream');
+    const finish = fakes.scanner.deferNext();
+    fireEvent.click(liveStreamTile());
+    const later = new Date(AT_1840.getTime() + 60_000);
+    fakes.setNow(later);
+    const freshRaw = streamRaw(new Date(later.getTime() + 2 * 3600_000), 4);
+    await act(async () => finish({ outcome: 'scanned', raw: freshRaw }));
+    // The fresh code's two writes are still in flight when the app is back.
+    act(() => fakes.foreground.fire());
+    await act(async () => release());
+    await waitFor(() => expect(fakes.navigation.current()).toBe('stream'));
+    const saved = memory.entries.get(STORE_KEYS.code('stream')) ?? '';
+    expect(saved).toContain('"slot":4');
+    expect(memory.entries.get(STORE_KEYS.active)).toBe('stream');
+    const snapshot = fakes.ports.modeStore.getSnapshot();
+    expect(snapshot.status === 'ready' && snapshot.saved.codes.stream?.slot).toBe(4);
+    expect(snapshot.status === 'ready' && snapshot.notice).toBeNull();
+  });
+});
+
 describe('Home: the code panel is modal to TalkBack too', () => {
   it('hides Home behind the panel from the accessibility tree, and restores it on close', async () => {
     const home = await renderHome();

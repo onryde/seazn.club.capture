@@ -13,6 +13,7 @@ import type {
 } from '@/services/devicePorts';
 import { createMemoryKeyValueStore, type MemoryKeyValueStore } from '@/services/KeyValueStore';
 import { createModeStore } from '@/services/modeStore';
+import { createScanFlight } from '@/services/scanFlight';
 
 export const TEST_NOW = new Date('2026-10-03T13:00:00Z');
 
@@ -57,6 +58,7 @@ export function createFakePorts(
     ...fakes,
     devEngine: engine,
     modeStore: createModeStore(kv),
+    scanFlight: createScanFlight(),
     clock: () => now,
     hosts: ['stg.seazn.club'],
     deviceLanguages: ['en'],

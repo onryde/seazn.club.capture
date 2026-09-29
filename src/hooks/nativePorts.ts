@@ -4,6 +4,7 @@ import { createFakeCaptureEngine } from '@/engine/FakeCaptureEngine';
 import type { Ports } from '@/hooks/usePorts';
 import { createNativeCodeScanner } from '@/scanner/nativeCodeScanner';
 import { createModeStore } from '@/services/modeStore';
+import { createScanFlight } from '@/services/scanFlight';
 import { createExpoRouterNavigation } from '@/services/native/expoRouterNavigation';
 import { createNativeBack } from '@/services/native/nativeBack';
 import { createNativeForeground } from '@/services/native/nativeForeground';
@@ -29,6 +30,7 @@ export function createNativePorts(): Ports {
     scanner,
     kv,
     modeStore: createModeStore(kv),
+    scanFlight: createScanFlight(),
     motion: createNativeMotion(),
     orientationLock: createNativeOrientationLock(),
     back: createNativeBack(),

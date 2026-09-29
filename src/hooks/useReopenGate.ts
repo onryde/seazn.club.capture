@@ -18,7 +18,7 @@ function ignoreRefusedDelete(): void {}
  * clock at that moment — a code can expire in a pocket.
  */
 export function useReopenGate(navigatorReady: boolean): void {
-  const { modeStore, foreground, splash } = usePorts();
+  const { modeStore, foreground, splash, scanFlight } = usePorts();
   // Only the status: Shell must not re-render on every store publish.
   const status = useSyncExternalStore(modeStore.subscribe, () => modeStore.getSnapshot().status);
   const decided = useRef(false);
@@ -35,13 +35,15 @@ export function useReopenGate(navigatorReady: boolean): void {
     splash.hide();
   }, [navigatorReady, status, settle, splash]);
 
-  // Not before the first decision: Expo Router refuses a move before its navigator mounts.
+  // Not before the first decision: Expo Router refuses a move before its
+  // navigator mounts. Not on the way back from Home's scanner either (I2): that
+  // is Play services' activity closing, and Home owns what comes next.
   useEffect(
     () =>
       foreground.subscribe(() => {
-        if (decided.current) settle();
+        if (decided.current && !scanFlight.active()) settle();
       }),
-    [foreground, settle],
+    [foreground, settle, scanFlight],
   );
 }
 

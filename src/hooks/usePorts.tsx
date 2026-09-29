@@ -13,6 +13,7 @@ import type {
 } from '@/services/devicePorts';
 import type { KeyValueStore } from '@/services/KeyValueStore';
 import type { ModeStore } from '@/services/modeStore';
+import type { ScanFlight } from '@/services/scanFlight';
 
 /**
  * Everything native, in one object that never changes after launch — which is
@@ -26,6 +27,8 @@ export type Ports = {
   readonly scanner: CodeScannerPort;
   readonly kv: KeyValueStore;
   readonly modeStore: ModeStore;
+  /** Home's scan in flight, which the reopen gate leaves alone (I2). */
+  readonly scanFlight: ScanFlight;
   readonly motion: MotionPort;
   readonly orientationLock: OrientationLockPort;
   readonly back: BackPort;

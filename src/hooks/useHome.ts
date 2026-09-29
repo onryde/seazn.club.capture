@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState, useSyncExternalStore } from 'react';
+import { useCallback, useState, useSyncExternalStore } from 'react';
 import type { Mode, ModeCode } from '@/domain/mode/Mode';
 import { recognise } from '@/domain/mode/recognise';
 import { isExpired, savedCodeFrom, type SavedCode } from '@/domain/mode/savedCode';
@@ -154,32 +154,30 @@ function useHandleScan(
 /**
  * One scan at a time. A second native `startScan()` cancels the first, or
  * fails with status 204 (Task 8), so taps are ignored while the scanner is up
- * and while its code is being saved. The guard is released on every outcome,
- * a broken scanner included, so Home can never be left with no way to scan.
+ * and while its code is being saved. The same flight holds the reopen gate off
+ * the return from the scanner (I2). It ends on every outcome, a broken scanner
+ * included, so Home can never be left with no way to scan.
  */
 function useTapTile(
   handle: HandleScan,
   setPanel: SetPanel,
   setStatusKey: SetStatusKey,
 ): (mode: Mode) => void {
-  const { modeStore, scanner } = usePorts();
-  const scanning = useRef(false);
+  const { modeStore, scanner, scanFlight } = usePorts();
   return useCallback(
     (mode: Mode) => {
-      if (scanning.current) return;
+      // Ready first: a tap on a loading store must not raise the flag.
       if (!isReady(modeStore)) return;
-      scanning.current = true;
+      if (!scanFlight.begin()) return;
       setPanel(null);
       setStatusKey(null);
       modeStore.dismissNotices();
       void scanSafely(scanner)
         .then((result) => handle(mode, result))
         .catch(ignoreUnexpected)
-        .finally(() => {
-          scanning.current = false;
-        });
+        .finally(() => scanFlight.end());
     },
-    [modeStore, scanner, handle, setPanel, setStatusKey],
+    [modeStore, scanner, scanFlight, handle, setPanel, setStatusKey],
   );
 }
 

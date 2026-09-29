@@ -147,6 +147,73 @@ describe('modeStore', () => {
     expect(memory.entries.has(STORE_KEYS.code('stream'))).toBe(true);
   });
 
+  describe('one write at a time (I2)', () => {
+    /** Every write waits for `release()`, then lands in the order it was asked. */
+    function slowKv(seed: Record<string, string>) {
+      const memory = createMemoryKeyValueStore(seed);
+      let release = () => undefined as void;
+      const gate = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      const kv: KeyValueStore = {
+        get: memory.get,
+        set: async (key, value) => gate.then(() => memory.set(key, value)),
+        delete: async (key) => gate.then(() => memory.delete(key)),
+      };
+      return { kv, memory, release: () => release() };
+    }
+    const stale: SavedCode = { ...code, raw: '{"fake":"stale"}' };
+    const fresh: SavedCode = { ...code, raw: '{"fake":"fresh"}' };
+
+    it('never expires a code opened after the expired one was judged', async () => {
+      const { kv, memory, release } = slowKv({
+        [STORE_KEYS.code('stream')]: encodeSavedCode(stale),
+      });
+      const store = createModeStore(kv);
+      await store.load();
+      const opened = store.open(fresh);
+      // The reopen gate judged the stale code before the fresh one was published.
+      const notice = { mode: 'stream' as const, expiredAt: code.expiresAt as Date };
+      const expired = store.expire(['stream'], notice);
+      release();
+      await Promise.all([opened, expired]);
+      expect(memory.entries.get(STORE_KEYS.code('stream'))).toBe(encodeSavedCode(fresh));
+      expect(memory.entries.get(STORE_KEYS.active)).toBe('stream');
+      expect(ready(store).saved).toEqual({ active: 'stream', codes: { stream: fresh } });
+      expect(ready(store).notice).toBeNull();
+    });
+
+    it('lands Continue then a quick Forget as a forget, on disk and on screen (M-e)', async () => {
+      const { kv, memory, release } = slowKv({
+        [STORE_KEYS.code('stream')]: encodeSavedCode(code),
+      });
+      const store = createModeStore(kv);
+      await store.load();
+      const continued = store.setActive('stream');
+      const forgotten = store.forget('stream');
+      release();
+      await Promise.all([continued, forgotten]);
+      expect([...memory.entries.keys()]).toEqual([]);
+      expect(ready(store).saved).toEqual({ active: null, codes: {} });
+    });
+
+    it('takes the next write after one the phone refused', async () => {
+      const memory = createMemoryKeyValueStore();
+      let refuse = true;
+      const kv: KeyValueStore = {
+        ...memory,
+        set: (key, value) =>
+          refuse ? Promise.reject(new Error('keystore locked')) : memory.set(key, value),
+      };
+      const store = createModeStore(kv);
+      await store.load();
+      await expect(store.open(code)).rejects.toThrow('keystore locked');
+      refuse = false;
+      await store.open(code);
+      expect(memory.entries.get(STORE_KEYS.active)).toBe('stream');
+    });
+  });
+
   describe('survives a relaunch', () => {
     it('keeps an opened code', async () => {
       const kv = createMemoryKeyValueStore();

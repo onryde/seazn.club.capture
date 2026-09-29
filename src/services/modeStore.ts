@@ -57,6 +57,9 @@ const UNREADABLE: Ready = { ...EMPTY, dropped: true };
  * Which code each mode holds and which mode is active (spec §4). Shaped for
  * useSyncExternalStore: the snapshot object only changes when state does.
  * `load()` never rejects; callers wait for a `ready` snapshot before any other call.
+ *
+ * Writes run one at a time, in call order, and each reads the state it acts on
+ * when it runs, not when it was asked for (I2).
  */
 export function createModeStore(kv: KeyValueStore): ModeStore {
   let snapshot: ModeStoreSnapshot = { status: 'loading' };
@@ -67,6 +70,7 @@ export function createModeStore(kv: KeyValueStore): ModeStore {
     for (const listener of listeners) listener();
   };
   const withSaved = (saved: SavedState): Ready => ({ ...current(), saved });
+  const serial = serialWrites();
 
   return {
     load: async () => publish(await readAll(kv).catch(() => UNREADABLE)),
@@ -75,29 +79,37 @@ export function createModeStore(kv: KeyValueStore): ModeStore {
       listeners.add(listener);
       return () => listeners.delete(listener);
     },
-    open: async (code) => {
-      await kv.set(STORE_KEYS.code(code.mode), encodeSavedCode(code));
-      await kv.set(STORE_KEYS.active, code.mode);
-      publish(
-        withSaved({ active: code.mode, codes: { ...current().saved.codes, [code.mode]: code } }),
-      );
-    },
-    setActive: async (mode) => {
-      await (mode === null ? kv.delete(STORE_KEYS.active) : kv.set(STORE_KEYS.active, mode));
-      publish(withSaved({ ...current().saved, active: mode }));
-    },
-    forget: async (mode) => {
-      await removeCodes(kv, [mode], current().saved.active === mode);
-      publish(withSaved(without(current().saved, [mode])));
-    },
+    open: (code) =>
+      serial(async () => {
+        await kv.set(STORE_KEYS.code(code.mode), encodeSavedCode(code));
+        await kv.set(STORE_KEYS.active, code.mode);
+        const codes = { ...current().saved.codes, [code.mode]: code };
+        publish(withSaved({ active: code.mode, codes }));
+      }),
+    setActive: (mode) =>
+      serial(async () => {
+        await (mode === null ? kv.delete(STORE_KEYS.active) : kv.set(STORE_KEYS.active, mode));
+        publish(withSaved({ ...current().saved, active: mode }));
+      }),
+    forget: (mode) =>
+      serial(async () => {
+        await removeCodes(kv, [mode], current().saved.active === mode);
+        publish(withSaved(without(current().saved, [mode])));
+      }),
     // R21: publish first. An expired code is unusable whether or not the phone
     // lets it be deleted, so the notice is true either way; a refused delete
     // still rejects, and the next load expires the same code again.
     expire: async (modes, notice) => {
       if (modes.length === 0 && notice === null) return;
-      const clearsActive = modes.some((mode) => mode === current().saved.active);
-      publish({ ...withSaved(without(current().saved, modes)), notice });
-      await removeCodes(kv, modes, clearsActive);
+      // The codes as the caller judged them, read now; the write runs later.
+      const judged = current().saved.codes;
+      return serial(async () => {
+        const { gone, named } = stillExpired(current().saved, judged, modes, notice);
+        if (gone.length === 0 && named === null) return;
+        const clearsActive = gone.some((mode) => mode === current().saved.active);
+        publish({ ...withSaved(without(current().saved, gone)), notice: named });
+        await removeCodes(kv, gone, clearsActive);
+      });
     },
     dismissNotices: () => {
       const ready = current();
@@ -106,6 +118,37 @@ export function createModeStore(kv: KeyValueStore): ModeStore {
       }
     },
   };
+}
+
+/**
+ * One write at a time, in call order. SecureStore does not promise to finish
+ * two writes in the order they were asked, and a check on return from the
+ * scanner can land between the two writes of an open. A refused write rejects
+ * its own caller and never blocks the next.
+ */
+function serialWrites(): (write: () => Promise<void>) => Promise<void> {
+  let tail: Promise<void> = Promise.resolve();
+  return (write) => {
+    const run = tail.then(write);
+    tail = run.catch(() => undefined);
+    return run;
+  };
+}
+
+/**
+ * Of the modes judged expired, those still holding the code that was judged.
+ * A code opened since is a fresh one and is kept, and the notice that named
+ * the old one is dropped with it: it would be about a code no longer saved.
+ */
+function stillExpired(
+  saved: SavedState,
+  judged: SavedState['codes'],
+  modes: readonly Mode[],
+  notice: ExpiryNotice | null,
+): { gone: readonly Mode[]; named: ExpiryNotice | null } {
+  const still = (mode: Mode) => saved.codes[mode] === judged[mode];
+  const named = notice !== null && still(notice.mode) ? notice : null;
+  return { gone: modes.filter(still), named };
 }
 
 async function readAll(kv: KeyValueStore): Promise<Ready> {
