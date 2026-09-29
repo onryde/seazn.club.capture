@@ -48,6 +48,9 @@ export default defineConfig({
           include: ['src/**/*.test.tsx', 'modules/**/*.test.tsx'],
           environment: 'jsdom',
           setupFiles: ['./test/setup-ui.ts'],
+          // A cold jsdom + react-native-web render can pass 5 s on a loaded
+          // laptop (a Gradle build alongside), failing tests that are correct.
+          testTimeout: 15_000,
         },
       },
     ],
