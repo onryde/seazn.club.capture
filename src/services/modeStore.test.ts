@@ -129,6 +129,24 @@ describe('modeStore', () => {
     expect(store.getSnapshot()).toBe(before);
   });
 
+  it('publishes an expiry even when the phone refuses the delete, and still rejects (R21)', async () => {
+    const memory = createMemoryKeyValueStore({
+      [STORE_KEYS.active]: 'stream',
+      [STORE_KEYS.code('stream')]: encodeSavedCode(code),
+    });
+    const kv: KeyValueStore = {
+      ...memory,
+      delete: () => Promise.reject(new Error('keystore locked')),
+    };
+    const store = createModeStore(kv);
+    await store.load();
+    const notice = { mode: 'stream' as const, expiredAt: code.expiresAt as Date };
+    await expect(store.expire(['stream'], notice)).rejects.toThrow('keystore locked');
+    expect(ready(store).saved).toEqual({ active: null, codes: {} });
+    expect(ready(store).notice).toEqual(notice);
+    expect(memory.entries.has(STORE_KEYS.code('stream'))).toBe(true);
+  });
+
   describe('survives a relaunch', () => {
     it('keeps an opened code', async () => {
       const kv = createMemoryKeyValueStore();

@@ -21,6 +21,11 @@ const inStream = {
   [STORE_KEYS.code('stream')]: encodeSavedCode(code),
 };
 
+function noticeOf(fakes: ReturnType<typeof createFakePorts>) {
+  const snapshot = fakes.ports.modeStore.getSnapshot();
+  return snapshot.status === 'ready' ? snapshot.notice : undefined;
+}
+
 function gate(fakes: ReturnType<typeof createFakePorts>, navigatorReady = true) {
   return renderHook(({ ready }) => useReopenGate(ready), {
     initialProps: { ready: navigatorReady },
@@ -98,27 +103,31 @@ describe('useReopenGate: beyond the happy path', () => {
     expect(fakes.kv.entries.has(STORE_KEYS.code('stream'))).toBe(true);
   });
 
-  it('still lands on Home when the phone refuses to delete an expired code, and retries on return', async () => {
+  it('names the expiry on Home even when the phone refuses the delete; the next launch re-expires it (R21)', async () => {
     const memory = createMemoryKeyValueStore(inStream);
     let refuse = true;
     const kv: KeyValueStore = {
       ...memory,
       delete: (key) => (refuse ? Promise.reject(new Error('keystore locked')) : memory.delete(key)),
     };
-    const fakes = createFakePorts({ modeStore: createModeStore(kv) });
-    fakes.setNow(new Date(EXPIRY.getTime() + 1));
-    gate(fakes);
-    await waitFor(() => expect(fakes.splash.hides).toBe(1));
-    expect(fakes.navigation.current()).toBe('home');
+    const launch = () => {
+      const fakes = createFakePorts({ modeStore: createModeStore(kv) });
+      fakes.setNow(new Date(EXPIRY.getTime() + 1));
+      gate(fakes);
+      return fakes;
+    };
+    const first = launch();
+    await waitFor(() => expect(first.splash.hides).toBe(1));
+    expect(first.navigation.current()).toBe('home');
+    expect(noticeOf(first)).toEqual({ mode: 'stream', expiredAt: EXPIRY });
     expect(memory.entries.has(STORE_KEYS.code('stream'))).toBe(true);
-    refuse = false;
-    act(() => fakes.foreground.fire());
-    await waitFor(() => expect(memory.entries.has(STORE_KEYS.code('stream'))).toBe(false));
-    const snapshot = fakes.ports.modeStore.getSnapshot();
-    expect(snapshot.status === 'ready' && snapshot.notice).toEqual({
-      mode: 'stream',
-      expiredAt: EXPIRY,
-    });
+    await act(async () => undefined);
     expect(rejections).toEqual([]);
+
+    refuse = false;
+    const second = launch();
+    await waitFor(() => expect(memory.entries.has(STORE_KEYS.code('stream'))).toBe(false));
+    expect(noticeOf(second)).toEqual({ mode: 'stream', expiredAt: EXPIRY });
+    expect(second.navigation.current()).toBe('home');
   });
 });

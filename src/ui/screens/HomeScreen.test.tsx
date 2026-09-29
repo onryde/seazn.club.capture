@@ -1,7 +1,8 @@
-import { act, fireEvent, renderHook, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, renderHook, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { encodeSavedCode } from '@/domain/mode/savedCode';
 import { useHome } from '@/hooks/useHome';
+import { useReopenGate } from '@/hooks/useReopenGate';
 import type { CodeScannerPort, ScanUnavailableReason } from '@/scanner/CodeScannerPort';
 import { createMemoryKeyValueStore, type KeyValueStore } from '@/services/KeyValueStore';
 import { createModeStore, STORE_KEYS } from '@/services/modeStore';
@@ -50,6 +51,14 @@ async function renderHome(options?: Parameters<typeof renderWithPorts>[1]) {
   const result = renderWithPorts(<HomeScreen />, options);
   await act(() => result.ports.modeStore.load());
   return result;
+}
+
+const EXPIRED_1840 = 'Your Live Stream code expired at 18:40. Scan a new one.';
+
+/** Launch as the root layout does it: the gate decides, then Home renders. */
+function GateThenHome() {
+  useReopenGate(true);
+  return <HomeScreen />;
 }
 
 const liveStreamTile = () => screen.getByRole('button', { name: /Live Stream/ });
@@ -408,6 +417,30 @@ describe('Home: a refused save is never silent (R19)', () => {
     locked = false;
     fireEvent.click(screen.getByRole('button', { name }));
     await screen.findByText(IDLE);
+  });
+
+  it('names the expiry, not a failed save, when Continue finds an expired code the phone will not delete (R21)', async () => {
+    const home = await renderHome({ modeStore: refusingStore(leftStream, every) });
+    home.setNow(new Date(AT_1840.getTime() + 60_000));
+    fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
+    await screen.findByText(EXPIRED_1840);
+    await act(async () => undefined);
+    expect(screen.queryByText(SAVE_FAILED)).toBeNull();
+    expect(screen.queryByText('Continue Live Stream')).toBeNull();
+    expect(home.navigation.current()).toBe('home');
+    expect(rejections).toEqual([]);
+  });
+
+  it("shows the reopen gate's expiry on Home when the phone will not delete the code (R21)", async () => {
+    const seed = { ...leftStream, [STORE_KEYS.active]: 'stream' };
+    const fakes = createFakePorts({ modeStore: refusingStore(seed, every) });
+    fakes.setNow(new Date(AT_1840.getTime() + 60_000));
+    render(<GateThenHome />, { wrapper: wrapperFor(fakes) });
+    await screen.findByText(EXPIRED_1840);
+    await act(async () => undefined);
+    expect(screen.queryByText(SAVE_FAILED)).toBeNull();
+    expect(fakes.navigation.current()).toBe('home');
+    expect(rejections).toEqual([]);
   });
 });
 

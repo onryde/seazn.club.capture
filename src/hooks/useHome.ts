@@ -69,6 +69,13 @@ function savedStream(store: ModeStore): SavedCode | null {
 function ignoreUnexpected(): void {}
 
 /**
+ * Ruling R21: an expired code the phone won't delete is still expired. The
+ * store has already published the notice, which is the true message, so a
+ * refused expiry raises no `store.saveFailed`; the next launch expires it again.
+ */
+function expiredAnyway(): void {}
+
+/**
  * Home's behaviour (spec §3): tap, scan, recognise, then open or explain.
  */
 export function useHome(): { view: HomeView; actions: HomeActions } {
@@ -269,7 +276,7 @@ function useContinue(setStatusKey: SetStatusKey, saveFailed: () => void): () => 
     if (code === null) return;
     if (code.expiresAt !== null && isExpired(code, clock())) {
       const notice = { mode: 'stream' as const, expiredAt: code.expiresAt };
-      return void modeStore.expire(['stream'], notice).catch(saveFailed);
+      return void modeStore.expire(['stream'], notice).catch(expiredAnyway);
     }
     void modeStore
       .setActive('stream')

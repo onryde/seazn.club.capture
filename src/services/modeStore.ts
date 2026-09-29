@@ -90,11 +90,14 @@ export function createModeStore(kv: KeyValueStore): ModeStore {
       await removeCodes(kv, [mode], current().saved.active === mode);
       publish(withSaved(without(current().saved, [mode])));
     },
+    // R21: publish first. An expired code is unusable whether or not the phone
+    // lets it be deleted, so the notice is true either way; a refused delete
+    // still rejects, and the next load expires the same code again.
     expire: async (modes, notice) => {
       if (modes.length === 0 && notice === null) return;
       const clearsActive = modes.some((mode) => mode === current().saved.active);
-      await removeCodes(kv, modes, clearsActive);
       publish({ ...withSaved(without(current().saved, modes)), notice });
+      await removeCodes(kv, modes, clearsActive);
     },
     dismissNotices: () => {
       const ready = current();

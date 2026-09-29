@@ -4,10 +4,10 @@ import { selectEngineStatus } from '@/hooks/engineSelectors';
 import { usePorts } from '@/hooks/usePorts';
 
 /**
- * A delete the phone refuses leaves the expired code on disk. The store
- * publishes only after its deletes, so no notice shows; Home still hides the
- * card, because it judges expiry itself. The next return to the foreground
- * tries the delete again. Nothing escapes as an unhandled rejection.
+ * A delete the phone refuses leaves the expired code on disk, but the store
+ * has already published the removal and the notice (R21), so Home names the
+ * expiry either way. The next launch expires the same code again. Nothing
+ * escapes as an unhandled rejection.
  */
 function ignoreRefusedDelete(): void {}
 
