@@ -224,6 +224,8 @@ read modeStore + engine snapshot
 
 The same check runs **when the app returns to the foreground**. A code that expired in a pocket sends the operator Home, with "Your Live Stream code expired at {time}. Scan a new one."
 
+**Coming back from Home's scanner is not a return that counts** (I2, R36). Google's scanner is Play services' own activity, so a scan sends the app to the background and brings it back. Home raises a scan flight (`services/scanFlight.ts`, in the ports) from the tap until the result is saved or explained. The flight notes if the app left while it was up. If the result lands first — Android delivers it about 44 ms before the return, measured on the Redmi — the flight stays up until the app is back, and the gate skips that one return. A scan that never left the app (no Play services, say) ends at once, so the next return is checked as usual. There is no timer. Every store write also runs one at a time, and an expiry deletes a code only if it is still the one judged expired.
+
 **A code is forgotten when:**
 - its `exp` passes;
 - the stream ends normally (the engine reaches `stopped`, and the operator leaves). Leaving then sends the engine `reset`, so the spent session is cleared and the next code starts from an `idle` engine; left `stopped`, the engine would make that code's first leave a forget too (I1);
@@ -428,6 +430,7 @@ Decisions taken while building S0, recorded here so they outlive the build's wor
 - **R30** — leaving writes and navigates once; a refused write still goes Home. See §4 and §8.
 - **R31** — Android Back closes an open CodePanel on Home, as Android apps do; it had sent the app to the launcher. The open language list closes the same way.
 - **R34** — with no settled reading, the gate locks the target (no card) unless the engine is armed or live, when the current lock stays. Found on the release device check: a phone face down and tilted about 20° sits in the flat/held dead band for good, so it was never locked, and with Android's activity `unspecified` Home followed auto-rotate and Live Stream could open in portrait. See §5.
+- **R36** — the scan flight covers the return from the scanner in either order: the result before the return (as Android delivers it) or after. The foreground port reports the app leaving as well as coming back. See §4.
 
 ## Main-repo asks raised by S0
 

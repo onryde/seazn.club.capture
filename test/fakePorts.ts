@@ -27,7 +27,8 @@ export type FakePorts = {
   readonly motion: FakeMotion;
   readonly orientationLock: OrientationLockPort & { readonly locks: readonly Target[] };
   readonly back: BackPort & { press(): boolean };
-  readonly foreground: ForegroundPort & { fire(): void };
+  /** `leave()` is the app going to the background; `fire()` is its return. */
+  readonly foreground: ForegroundPort & { fire(): void; leave(): void };
   readonly navigation: NavigationPort & { readonly history: readonly Route[] };
   readonly splash: SplashPort & { readonly hides: number };
   setNow(at: Date): void;
@@ -123,15 +124,23 @@ function fakeBack(): BackPort & { press(): boolean } {
   };
 }
 
-function fakeForeground(): ForegroundPort & { fire(): void } {
-  const listeners = new Set<() => void>();
+function fakeForeground(): ForegroundPort & { fire(): void; leave(): void } {
+  const returns = new Set<() => void>();
+  const leaves = new Set<() => void>();
+  const add = (listeners: Set<() => void>, listener: () => void) => {
+    listeners.add(listener);
+    return () => {
+      listeners.delete(listener);
+    };
+  };
   return {
-    subscribe: (onForeground) => {
-      listeners.add(onForeground);
-      return () => listeners.delete(onForeground);
-    },
+    subscribe: (onForeground) => add(returns, onForeground),
+    subscribeBackground: (onBackground) => add(leaves, onBackground),
     fire: () => {
-      for (const listener of listeners) listener();
+      for (const listener of returns) listener();
+    },
+    leave: () => {
+      for (const listener of leaves) listener();
     },
   };
 }

@@ -21,8 +21,11 @@ export interface BackPort {
   subscribe(onBack: () => boolean): () => void;
 }
 
+/** The app coming back to the foreground, and leaving it. */
 export interface ForegroundPort {
   subscribe(onForeground: () => void): () => void;
+  /** Fires when the app leaves the foreground: another app's screen, Home, the lock. */
+  subscribeBackground(onBackground: () => void): () => void;
 }
 
 export type Route = 'home' | 'stream';

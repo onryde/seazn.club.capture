@@ -556,18 +556,28 @@ describe('Home: after the scan', () => {
   });
 });
 
-describe('Home: coming back from the scanner is not a reopen (I2)', () => {
-  // The phone's scanner is Play services' own activity: returning from it is a
-  // return to the foreground, which runs the reopen gate.
-  it('keeps Home and the panel when the scanner returns while the engine is armed', async () => {
+describe('Home: coming back from the scanner is not a reopen (I2, R36)', () => {
+  // The phone's scanner is Play services' own activity: going to it sends the
+  // app to the background, and coming back is a return to the foreground,
+  // which runs the reopen gate. Android delivers the scan result before that
+  // return (Redmi, ~44 ms); the tests cover both orders.
+  const FOREIGN = 'https://example.com/menu';
+
+  async function armedHome() {
     const fakes = createFakePorts();
     render(<GateThenHome />, { wrapper: wrapperFor(fakes) });
     await waitFor(() => expect(fakes.splash.hides).toBe(1));
     act(() => fakes.engine.forceState({ kind: 'armed' }));
+    return fakes;
+  }
+
+  it('keeps Home and the panel when the return lands before the result', async () => {
+    const fakes = await armedHome();
     const finish = fakes.scanner.deferNext();
     fireEvent.click(liveStreamTile());
+    act(() => fakes.foreground.leave());
     act(() => fakes.foreground.fire());
-    await act(async () => finish({ outcome: 'scanned', raw: 'https://example.com/menu' }));
+    await act(async () => finish({ outcome: 'scanned', raw: FOREIGN }));
     await screen.findByText("This isn't a Seazn code.");
     expect(fakes.navigation.current()).toBe('home');
 
@@ -577,8 +587,37 @@ describe('Home: coming back from the scanner is not a reopen (I2)', () => {
     await waitFor(() => expect(fakes.navigation.current()).toBe('stream'));
   });
 
-  it('keeps the fresh code when the saved one expired while the scanner was up', async () => {
-    const memory = createMemoryKeyValueStore({ [STORE_KEYS.code('stream')]: savedStream(AT_1840) });
+  it('keeps Home and the panel when the result lands before the return (R36)', async () => {
+    const fakes = await armedHome();
+    const finish = fakes.scanner.deferNext();
+    fireEvent.click(liveStreamTile());
+    act(() => fakes.foreground.leave());
+    await act(async () => finish({ outcome: 'scanned', raw: FOREIGN }));
+    await screen.findByText("This isn't a Seazn code.");
+    act(() => fakes.foreground.fire());
+    await act(async () => undefined);
+    expect(fakes.navigation.current()).toBe('home');
+    expect(screen.getByText("This isn't a Seazn code.")).toBeTruthy();
+
+    // The swallowed return lowered the flight: the next one is a reopen.
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+    act(() => fakes.foreground.fire());
+    await waitFor(() => expect(fakes.navigation.current()).toBe('stream'));
+  });
+
+  it('treats the next return as a reopen when the scanner never left the app', async () => {
+    const fakes = await armedHome();
+    fakes.scanner.queue({ outcome: 'unavailable', reason: 'noPlayServices' });
+    fireEvent.click(liveStreamTile());
+    await screen.findByText("This phone can't open the code scanner.");
+    act(() => fakes.foreground.leave());
+    act(() => fakes.foreground.fire());
+    await waitFor(() => expect(fakes.navigation.current()).toBe('stream'));
+  });
+
+  /** Every write waits for `release()`: the fresh code's save is still in flight. */
+  function slowStore(seed: Record<string, string>) {
+    const memory = createMemoryKeyValueStore(seed);
     let release: () => void = () => undefined;
     const saving = new Promise<void>((resolve) => {
       release = resolve;
@@ -588,23 +627,68 @@ describe('Home: coming back from the scanner is not a reopen (I2)', () => {
       set: async (key, value) => saving.then(() => memory.set(key, value)),
       delete: async (key) => saving.then(() => memory.delete(key)),
     };
-    const fakes = createFakePorts({ modeStore: createModeStore(kv) });
+    return { memory, modeStore: createModeStore(kv), release: () => release() };
+  }
+
+  /** Home with a saved code that runs out while the operator is away; returns the fresh code. */
+  async function expiringHome() {
+    const store = slowStore({ [STORE_KEYS.code('stream')]: savedStream(AT_1840) });
+    const fakes = createFakePorts({ modeStore: store.modeStore });
     render(<GateThenHome />, { wrapper: wrapperFor(fakes) });
     await screen.findByText('Continue Live Stream');
-    const finish = fakes.scanner.deferNext();
-    fireEvent.click(liveStreamTile());
+    // Counted from here: the launch decision itself is a move to Home.
+    const go = vi.spyOn(fakes.navigation, 'go');
     const later = new Date(AT_1840.getTime() + 60_000);
-    fakes.setNow(later);
     const freshRaw = streamRaw(new Date(later.getTime() + 2 * 3600_000), 4);
-    await act(async () => finish({ outcome: 'scanned', raw: freshRaw }));
-    // The fresh code's two writes are still in flight when the app is back.
-    act(() => fakes.foreground.fire());
-    await act(async () => release());
-    await waitFor(() => expect(fakes.navigation.current()).toBe('stream'));
-    const saved = memory.entries.get(STORE_KEYS.code('stream')) ?? '';
-    expect(saved).toContain('"slot":4');
-    expect(memory.entries.get(STORE_KEYS.active)).toBe('stream');
-    const snapshot = fakes.ports.modeStore.getSnapshot();
+    return { ...store, fakes, go, freshRaw, later };
+  }
+
+  function expectFreshKept(home: Awaited<ReturnType<typeof expiringHome>>) {
+    expect(home.fakes.navigation.current()).toBe('stream');
+    // Never sent Home on the way: the only move is into the fresh code.
+    expect(home.go.mock.calls.map(([route]) => route)).not.toContain('home');
+    expect(home.memory.entries.get(STORE_KEYS.code('stream')) ?? '').toContain('"slot":4');
+    expect(home.memory.entries.get(STORE_KEYS.active)).toBe('stream');
+    const snapshot = home.fakes.ports.modeStore.getSnapshot();
+    expect(snapshot.status === 'ready' && snapshot.saved.codes.stream?.slot).toBe(4);
+    expect(snapshot.status === 'ready' && snapshot.notice).toBeNull();
+  }
+
+  it.each([
+    ['the return lands while the fresh code is saving', 'during'],
+    ['the result and the save land before the return (R36)', 'after'],
+  ] as const)(
+    'keeps the fresh code when the saved one expired in the scanner: %s',
+    async (_, returnAt) => {
+      const home = await expiringHome();
+      const finish = home.fakes.scanner.deferNext();
+      fireEvent.click(liveStreamTile());
+      act(() => home.fakes.foreground.leave());
+      home.fakes.setNow(home.later);
+      await act(async () => finish({ outcome: 'scanned', raw: home.freshRaw }));
+      if (returnAt === 'during') act(() => home.fakes.foreground.fire());
+      await act(async () => home.release());
+      await waitFor(() => expect(home.fakes.navigation.current()).toBe('stream'));
+      if (returnAt === 'after') act(() => home.fakes.foreground.fire());
+      await act(async () => undefined);
+      expectFreshKept(home);
+    },
+  );
+
+  // No scan, so no flight: the settle runs, and its expiry lands inside the
+  // open. Only the store's check that the code is still the one judged keeps it.
+  it('keeps a pasted fresh code when a reopen expires the old one mid-save', async () => {
+    const home = await expiringHome();
+    home.fakes.setNow(home.later);
+    const field = screen.getByPlaceholderText('Paste a code (development only)');
+    fireEvent.change(field, { target: { value: home.freshRaw } });
+    fireEvent.click(screen.getByRole('button', { name: 'Use pasted code' }));
+    await act(async () => undefined);
+    act(() => home.fakes.foreground.fire());
+    await act(async () => home.release());
+    await waitFor(() => expect(home.fakes.navigation.current()).toBe('stream'));
+    expect(home.memory.entries.get(STORE_KEYS.code('stream')) ?? '').toContain('"slot":4');
+    const snapshot = home.fakes.ports.modeStore.getSnapshot();
     expect(snapshot.status === 'ready' && snapshot.saved.codes.stream?.slot).toBe(4);
     expect(snapshot.status === 'ready' && snapshot.notice).toBeNull();
   });

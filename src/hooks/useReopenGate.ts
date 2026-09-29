@@ -36,15 +36,17 @@ export function useReopenGate(navigatorReady: boolean): void {
   }, [navigatorReady, status, settle, splash]);
 
   // Not before the first decision: Expo Router refuses a move before its
-  // navigator mounts. Not on the way back from Home's scanner either (I2): that
-  // is Play services' activity closing, and Home owns what comes next.
+  // navigator mounts. Not on the way back from Home's scanner either (I2, R36):
+  // that is Play services' activity closing, and Home owns what comes next.
+  // The flight is asked on every return, so the one it claims is always spent.
   useEffect(
     () =>
       foreground.subscribe(() => {
-        if (decided.current && !scanFlight.active()) settle();
+        if (!scanFlight.appReturned() && decided.current) settle();
       }),
     [foreground, settle, scanFlight],
   );
+  useEffect(() => foreground.subscribeBackground(scanFlight.appLeft), [foreground, scanFlight]);
 }
 
 /**
