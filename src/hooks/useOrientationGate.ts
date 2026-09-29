@@ -7,23 +7,14 @@ import {
   type Physical,
   type Target,
 } from '@/domain/orientation/orientation';
-import type { EngineSnapshot } from '@/engine/CaptureEnginePort';
-import { selectEngineStatus } from '@/hooks/engineSelectors';
+import { selectHoldsOrientation } from '@/hooks/engineSelectors';
 import { useEngineSelector } from '@/hooks/useCaptureEngine';
 import { usePorts } from '@/hooks/usePorts';
+import type { MotionPort } from '@/services/devicePorts';
 
 /** Live Stream is the only landscape mode (decision record ruling 4). */
 export function routeTarget(pathname: string): Target {
   return pathname === '/stream' || pathname.startsWith('/stream/') ? 'landscape' : 'portrait';
-}
-
-/**
- * Armed or live: the activity must not rotate under the camera (R24, P4).
- * Module scope and primitive, so a telemetry tick re-renders nothing (AGENTS §8).
- */
-function selectOnAir(snapshot: EngineSnapshot): boolean {
-  const status = selectEngineStatus(snapshot);
-  return status === 'armed' || status === 'live';
 }
 
 /**
@@ -36,15 +27,20 @@ function selectOnAir(snapshot: EngineSnapshot): boolean {
  */
 export function useOrientationGate(target: Target): GateView {
   const physical = usePhysicalOrientation();
-  const onAir = useEngineSelector(selectOnAir);
+  // Module-scope, primitive selector: a telemetry tick re-renders nothing (AGENTS §8).
+  const onAir = useEngineSelector(selectHoldsOrientation);
   const view = orientationGate(target, physical, onAir);
   const { orientationLock } = usePorts();
   const locked = useRef<Target | null>(null);
 
   useEffect(() => {
     if (view.lock === 'keep' || view.lock === locked.current) return;
-    locked.current = view.lock;
-    void orientationLock.lock(view.lock);
+    const wanted = view.lock;
+    locked.current = wanted;
+    orientationLock.lock(wanted).catch(() => {
+      // R26: forget it, so the next differing lock retries. Unlogged: the AGENTS §11 logger is S1.
+      if (locked.current === wanted) locked.current = null;
+    });
   }, [view.lock, orientationLock]);
 
   return view;
@@ -53,25 +49,30 @@ export function useOrientationGate(target: Target): GateView {
 function usePhysicalOrientation(): Physical {
   const { motion } = usePorts();
   const [physical, setPhysical] = useState<Physical>('unknown');
-
-  useEffect(() => {
-    let tracker = INITIAL_TRACKER;
-    let unsubscribe: (() => void) | null = null;
-    let alive = true;
-    void motion.isAvailable().then((available) => {
-      if (!alive) return;
-      // No accelerometer: never block the operator behind a card (spec §5).
-      if (!available) return setPhysical('flat');
-      unsubscribe = motion.subscribe((g, atMs) => {
-        tracker = track(tracker, g, atMs);
-        setPhysical(tracker.settled);
-      });
-    });
-    return () => {
-      alive = false;
-      unsubscribe?.();
-    };
-  }, [motion]);
-
+  useEffect(() => watchPhysical(motion, setPhysical), [motion]);
   return physical;
+}
+
+/**
+ * Feeds settled readings to `onSettled` and returns the unsubscribe. No
+ * accelerometer reads as `flat`: never block the operator behind a card (spec §5).
+ */
+function watchPhysical(motion: MotionPort, onSettled: (physical: Physical) => void): () => void {
+  let tracker = INITIAL_TRACKER;
+  let unsubscribe: (() => void) | null = null;
+  let alive = true;
+  // R26: a failed check counts as no accelerometer. Unlogged: the AGENTS §11 logger is S1.
+  const availability = motion.isAvailable().catch(() => false);
+  void availability.then((available) => {
+    if (!alive) return;
+    if (!available) return onSettled('flat');
+    unsubscribe = motion.subscribe((g, atMs) => {
+      tracker = track(tracker, g, atMs);
+      onSettled(tracker.settled);
+    });
+  });
+  return () => {
+    alive = false;
+    unsubscribe?.();
+  };
 }

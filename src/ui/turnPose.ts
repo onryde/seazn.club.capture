@@ -7,8 +7,8 @@ import type { TurnCardKind } from '@/domain/orientation/orientation';
  * The card renders under a lock that follows the hands (`orientationGate`,
  * ruling R24), so the outline starts in the pose the operator is holding and
  * ends in the pose asked for (ruling R17). On air the lock stays put and the
- * outline is drawn in that frame instead, which R24 accepts. Progress 1 is that target pose, where reduced
- * motion holds it.
+ * outline is drawn in that frame instead, which R24 accepts. Progress 1 is
+ * that target pose, where reduced motion holds it.
  *
  * A worklet, because the glyph's animated style calls it on the UI thread.
  */

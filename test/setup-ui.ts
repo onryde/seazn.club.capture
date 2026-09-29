@@ -32,6 +32,17 @@ vi.mock('@/ui/components/SlideUpSheet', async () => {
 });
 
 // The overlay's exit fade is drawing only; the card inside it is what tests read.
-vi.mock('@/ui/components/FadeOut', () => ({
-  FadeOut: ({ children }: { children: unknown }) => children,
-}));
+// Like SlideUpSheet, the stand-in surfaces the native-only accessibility props
+// react-native-web drops, as data-view-is-modal and data-live-region.
+vi.mock('@/ui/components/FadeOut', async () => {
+  const { createElement } = await import('react');
+  const { View } = await import('react-native');
+  function FadeOut({ accessibilityViewIsModal, accessibilityLiveRegion, ...props }: ViewProps) {
+    const dataSet = {
+      viewIsModal: String(accessibilityViewIsModal === true),
+      liveRegion: String(accessibilityLiveRegion),
+    };
+    return createElement(View, { ...props, dataSet } as ViewProps);
+  }
+  return { FadeOut };
+});

@@ -68,6 +68,17 @@ export function selectEngineStatus(snapshot: EngineSnapshot): EngineStatus {
 }
 
 /**
+ * Whether the orientation gate must hold its lock (ruling R24): armed or live.
+ * Armed counts, unlike `selectIsOnAir`, because the camera is already running
+ * and a rotation would re-lay it out; this asks "is the camera committed", not
+ * "is something going out".
+ */
+export function selectHoldsOrientation(snapshot: EngineSnapshot): boolean {
+  const status = selectEngineStatus(snapshot);
+  return status === 'armed' || status === 'live';
+}
+
+/**
  * Declared at module scope so their identity is stable across renders.
  * An inline `(s) => s.telemetry.bitrateKbps` is a new function every render,
  * which defeats the memoisation this hook exists for.

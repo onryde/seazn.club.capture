@@ -123,6 +123,65 @@ describe('useOrientationGate', () => {
     expect(subscriptions).toBe(0);
   });
 
+  it('treats a failed accelerometer check as no accelerometer (R26)', async () => {
+    const fakes = createFakePorts();
+    fakes.motion.isAvailable = () => Promise.reject(new Error('sensor service died'));
+    const { hook } = await gate('landscape', fakes);
+    await waitFor(() => expect(hook.result.current).toEqual({ lock: 'landscape', card: 'none' }));
+    expect(fakes.orientationLock.locks).toEqual(['landscape']);
+  });
+
+  it('retries a lock the platform refused (R26)', async () => {
+    const fakes = createFakePorts();
+    fakes.engine.forceState({ kind: 'publishing', transport: 'srt', sinceEpochMs: 1 });
+    const lock = fakes.orientationLock.lock;
+    let refusals = 1;
+    fakes.orientationLock.lock = (target) =>
+      refusals-- > 0 ? Promise.reject(new Error('refused')) : lock(target);
+    await gate('landscape', fakes);
+    hold(fakes, SIDEWAYS, 0); // refused
+    await act(async () => undefined);
+    hold(fakes, UPRIGHT, 1000); // on air: keep
+    hold(fakes, SIDEWAYS, 2000); // the same lock again: sent, not deduped
+    expect(fakes.orientationLock.locks).toEqual(['landscape']);
+  });
+
+  it('stops the accelerometer on unmount', async () => {
+    const fakes = createFakePorts();
+    const subscribe = fakes.motion.subscribe;
+    let stopped = 0;
+    fakes.motion.subscribe = (onSample) => {
+      const off = subscribe(onSample);
+      return () => {
+        stopped += 1;
+        off();
+      };
+    };
+    const { hook } = await gate('landscape', fakes);
+    hook.unmount();
+    expect(stopped).toBe(1);
+  });
+
+  it('does not re-render on a telemetry tick (AGENTS §8)', async () => {
+    const fakes = createFakePorts();
+    const live: SessionState = { kind: 'publishing', transport: 'srt', sinceEpochMs: 1 };
+    fakes.engine.forceState(live);
+    let renders = 0;
+    renderHook(
+      () => {
+        renders += 1;
+        return useOrientationGate('landscape');
+      },
+      { wrapper: wrapperFor(fakes) },
+    );
+    await act(async () => undefined);
+    const settled = renders;
+    act(() => {
+      for (let tick = 0; tick < 3; tick += 1) fakes.engine.forceState(live);
+    });
+    expect(renders).toBe(settled);
+  });
+
   it('shows nothing before the first settled reading', async () => {
     const { hook } = await gate('landscape');
     expect(hook.result.current).toEqual({ lock: 'keep', card: 'none' });

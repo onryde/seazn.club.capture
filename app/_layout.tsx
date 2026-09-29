@@ -5,7 +5,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { createNativePorts } from '@/hooks/nativePorts';
 import { useAppFonts } from '@/hooks/useAppFonts';
 import { LanguageProvider } from '@/hooks/useLanguage';
-import { routeTarget } from '@/hooks/useOrientationGate';
+import { routeTarget, useOrientationGate } from '@/hooks/useOrientationGate';
 import { PortsProvider, usePorts, type Ports } from '@/hooks/usePorts';
 import { useReopenGate } from '@/hooks/useReopenGate';
 import { BootFailure } from '@/ui/components/BootFailure';
@@ -46,11 +46,13 @@ function Shell() {
   const navigatorReady = useRootNavigationState()?.key !== undefined;
   // The gate decides where to land, then hides the splash (spec §4).
   useReopenGate(navigatorReady);
-  const target = routeTarget(usePathname());
+  // The one orientation controller (spec §5); its card covers the stack (R25).
+  const { card } = useOrientationGate(routeTarget(usePathname()));
   return (
     <ShellFrame>
-      <Stack screenOptions={{ headerShown: false, animation: 'none', gestureEnabled: false }} />
-      <OrientationGate target={target} />
+      <OrientationGate card={card}>
+        <Stack screenOptions={{ headerShown: false, animation: 'none', gestureEnabled: false }} />
+      </OrientationGate>
     </ShellFrame>
   );
 }
