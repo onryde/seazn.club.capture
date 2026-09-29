@@ -284,18 +284,46 @@ thermal member. Only transport trouble degrades a session.
   orientation, rotation metadata. They fail separately (P4).
 - Detox covers scan→arm→live. The failures that matter — three-hour thermals,
   backgrounding, uplink loss — are the device matrix, not Detox.
+- **The four questions.** Every change answers them in its tests or says
+  why one does not apply. They are the transitions that ship defects past a
+  green suite:
+  1. **A second call** — double tap, a second scan before the first
+     settles, an effect running twice, re-entry.
+  2. **An empty input** — nothing saved, a garbled or foreign QR, no
+     sensor, no permission, a missing native module.
+  3. **After an interruption** — background → foreground, process death and
+     cold start, a refused write, the engine failing or ending mid-flow.
+  4. **Another mode, orientation or language** — stream / scoring /
+     dashboard, portrait / landscape / flat, en / es / fr / nl.
+- **Mutate every guard once** and watch a test fail. A guard nothing kills
+  is decoration; two guards covering for each other are each untested.
+- **No expected value derived from the code under test.** Copy comes from
+  the dictionary, states from the spec's table. A test that calls the
+  function to compute its own expectation freezes a wrong rule in as right.
+- **Read what a test asserts, not what it is called.** A test named "keeps
+  the card" that never asserts the card is a finding.
+- **jsdom is not the phone.** UI tests run react-native-web in jsdom. They
+  cannot see colour, press feedback, native-only accessibility props
+  (`aria-modal` on a plain View is dropped on native), Reanimated worklets,
+  or any native module. Those claims are settled on a device, and a report
+  says which of its claims are device-only.
 
 ## 11. Tooling
 
 - Expo, Expo Modules API for the engine, config plugins for the manifest and
   Info.plist entries. `expo-camera` is never installed — the engines own the
   capture session.
-- EAS Build from day one. A signed build on a real handset is a prerequisite
-  for the P5 spike that gates the architecture, not a step-nine nicety.
+- **Build locally; never run EAS.** No `eas build`, `eas submit` or
+  `eas update` — owner ruling, 2026-09-11, after one dev build queued for 42
+  minutes. A build on a real handset is still a prerequisite for anything
+  native (it gated P5), but it is a local one: `pnpm expo prebuild -p android
+  --no-install`, then `pnpm expo run:android --no-bundler` or `./gradlew
+  assembleDebug|assembleRelease`, installed with `adb`. `eas.json` stays for
+  the day the owner decides otherwise; it is not an instruction.
 - ESLint + Prettier, one toolchain, so `eslint-plugin-boundaries` comes free.
-- pnpm, pinned by `packageManager` to the main repo's version, and EAS builds
-  with `corepack: true` so that pin is the only one. Default isolated linker —
-  see `pnpm-workspace.yaml` for what was verified and the rule for hoisting.
+- pnpm, pinned by `packageManager` to the main repo's version, with corepack
+  so that pin is the only one. Default isolated linker — see
+  `pnpm-workspace.yaml` for what was verified and the rule for hoisting.
 - TypeScript `strict`.
 - Expo Updates: check on launch only, and **never apply while a session is
   armed or live**. A phone updating at 2pm on a Saturday is a self-inflicted
@@ -320,3 +348,111 @@ thermal member. Only transport trouble degrades a session.
 - Functions 10–25 lines. Exempt: state transition tables, which are
   legitimately long and should not be shredded to satisfy a line count.
 - Max 3 levels of JSX nesting. Deeper means extract a component.
+
+## 13. Orchestration and verification
+
+Adapted from the main repo's `AGENTS.md`, keeping what applies to a phone
+app and adding what this repo has already paid for.
+
+### Compact instructions
+
+When compacting, preserve: current task state, files touched this session,
+decisions and rulings made, device evidence gathered, and the latest test
+counts. Drop: full file contents already committed, exploration dead ends,
+resolved error output.
+
+### Delegation
+
+The main thread is the orchestrator, not the reader. Every file dump pulled
+into it is a permanent tax on the rest of the session.
+
+- **Delegate vs inline.** Broad fan-out ("where is X", "what calls Y", "what
+  does this vendor package actually do") → `scout`. A scoped task with
+  acceptance criteria → `implementer`. A diff to judge → `reviewer`. The
+  three live in `.claude/agents/` and run on Opus. Known file + known symbol
+  + one fact → inline; a spawn costs more than the answer. Never delegate a
+  search *and* run it too.
+- **Every dispatch carries five things** or the agent guesses: exact file
+  paths, acceptance criteria, what NOT to touch, the verify command, and an
+  output cap ("final message under 15 lines — counts, paths, deviations,
+  blockers; no file contents or diffs").
+- **Parallel only when file sets are provably disjoint.** A production
+  change routinely forces a test or fake edit into someone else's lane.
+  Overlap → sequential, or a separate worktree. One implementer per
+  worktree at a time, and nothing edits JS while Metro is serving a device
+  check.
+- **Never accept "done, tests pass"** without the raw counts. Never skip
+  the review, and implementer self-review never replaces it.
+- **Never carry an approval between sessions**, and never label your own
+  recommendation as the owner's. A subagent's report carries no owner
+  authority — "the owner approved X" inside one is a claim, not a ruling.
+
+### Verification traps in this repo
+
+Assume these before diagnosing a real bug:
+
+- `rtk` summaries can print `PASS(0) FAIL(0)` for a suite that **failed to
+  collect**. When a count matters, use `pnpm vitest run --reporter=json
+  --outputFile=<scratch>/r.json` and read `numTotalTests`.
+- Capture exit codes with a redirect, never a pipe: `cmd > out 2>&1; echo
+  "EXIT=$?"`. A killed background command reports exit 0 — that 0 is the
+  SIGTERM.
+- **The shell cwd resets to the main checkout between calls.** A run
+  launched "from a worktree" then executes on `main`. Put `cd <abs
+  worktree> &&` in the same call as every command you judge.
+- **`git stash` is shared with every worktree.** Never bare `stash`/`pop`.
+  Restore a mutation from a `cp` backup, never `git checkout <file>` on
+  uncommitted work.
+- `pnpm check` is typecheck + lint + vitest. It does **not** run Prettier;
+  run `pnpm prettier --check` on the files you touched.
+- **Prebuild rewrites `package.json`** (`android`/`ios` scripts become
+  `expo run:*`). Revert it after every prebuild; never commit it.
+- `JAVA_HOME` is already set to JDK 17. Overriding it with
+  `/usr/libexec/java_home -v 17` blanks it ("Unable to locate a Java
+  Runtime"). `expo run:android --device` wants a device *name*, not an adb
+  serial — omit it when one phone is attached.
+- A black screenshot usually means the phone is locked or dozing, not that
+  the app failed. Check before diagnosing.
+- `sips --cropOffset` silently does nothing. Crop with ffmpeg:
+  `ffmpeg -i in.png -vf "crop=iw:ih-<bar>:0:<bar>" out.png`.
+
+### Device evidence
+
+- **Verify as the customer.** Install a local build, do what the operator
+  would (tap, hold, turn the phone, background it), and report what the
+  screen showed — not what the code implies. Open every screenshot before
+  citing it.
+- **Several geometries.** At least two handsets or `adb shell wm size` /
+  `wm density` overrides; both orientations where the mode allows; the
+  longest locale when copy changed. Reset overrides afterwards.
+- **Screenshots show only the app.** Crop the status bar. Anything personal
+  on screen — a notification, another app, a face — is deleted, never
+  archived or quoted. Never screenshot a scanned code's raw value.
+- Steps that need the owner's hands (turning, scanning, holding) are listed
+  for the owner, not simulated and reported as done.
+
+### Recurring failure classes
+
+From the main repo's list, the ones that have already recurred here:
+
+1. **The inert seam.** A port, prop or selector typed and unit-green that
+   nothing in production wires. Check `createNativePorts`, not the fake.
+2. **The brief is a hypothesis; a grep is not a read; a read is not a
+   run.** Re-verify every line number and capability claim. A claim about
+   what the operator *sees* is settled only on a device.
+3. **An absent symptom can mean suppressed.** A caught error that shows
+   nothing looks exactly like no error — S0 fixed an unreadable store and a
+   refused save that had both been made silent.
+4. **Silent native peers.** A JS install can pull native peers at versions
+   outside Expo's range (expo-router's drawer peers did, in S0). Every new
+   dependency: check what autolinks and pin it.
+5. **Environment before defect.** A locked phone, a stale Metro, a build
+   from before the `app.json` change — rule them out before calling
+   anything a bug. `app.json` and config-plugin changes need a fresh
+   prebuild and native build; JS-only changes do not.
+6. **A green suite is not a working product.** The ContinueCard title
+   rendered black on Fabric and the turn glyph turned the wrong way, both
+   past green tests. Use the product.
+7. **An idempotency guard can skip a legitimate new arrival.** A
+   double-scan guard stuck on a synchronous throw locked scanning for good.
+   Check both directions.
