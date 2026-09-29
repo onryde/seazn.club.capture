@@ -1,0 +1,2 @@
+# Gradle output from the local compile; the root /android ignore does not reach it.
+android/build/

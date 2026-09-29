@@ -1,0 +1,5 @@
+{
+  "platforms": ["apple", "android"],
+  "apple": { "modules": ["CodeScannerModule"] },
+  "android": { "modules": ["expo.modules.codescanner.CodeScannerModule"] }
+}

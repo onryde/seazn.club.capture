@@ -34,6 +34,7 @@ export default [
         { type: 'navigation', pattern: 'src/navigation/**' },
         { type: 'i18n', pattern: 'src/i18n/**' },
         { type: 'engine', pattern: 'modules/capture-engine/**' },
+        { type: 'scanner', pattern: 'modules/code-scanner/**' },
         { type: 'contracts', pattern: 'contracts/**' },
       ],
       'boundaries/include': ['src/**', 'modules/**', 'contracts/**'],
@@ -82,6 +83,7 @@ export default [
                 { to: { element: { type: 'services' } } },
                 { to: { element: { type: 'i18n' } } },
                 { to: { element: { type: 'engine' } } },
+                { to: { element: { type: 'scanner' } } },
                 { to: { module: { origin: ['external', 'core'] } } },
               ],
             },
@@ -108,6 +110,13 @@ export default [
               allow: [
                 { to: { element: { type: 'engine' } } },
                 { to: { element: { type: 'domain' } } },
+                { to: { module: { origin: ['external', 'core'] } } },
+              ],
+            },
+            {
+              from: { element: { type: 'scanner' } },
+              allow: [
+                { to: { element: { type: 'scanner' } } },
                 { to: { module: { origin: ['external', 'core'] } } },
               ],
             },

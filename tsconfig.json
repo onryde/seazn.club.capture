@@ -10,6 +10,7 @@
       "@/navigation/*": ["./src/navigation/*"],
       "@/i18n/*": ["./src/i18n/*"],
       "@/engine/*": ["./modules/capture-engine/src/*"],
+      "@/scanner/*": ["./modules/code-scanner/src/*"],
       "@/contracts/*": ["./contracts/*"]
     }
   },

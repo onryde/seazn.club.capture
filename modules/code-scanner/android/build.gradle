@@ -1,0 +1,24 @@
+plugins {
+  id 'com.android.library'
+  id 'expo-module-gradle-plugin'
+}
+
+group = 'expo.modules.codescanner'
+version = '0.1.0'
+
+android {
+  namespace "expo.modules.codescanner"
+  defaultConfig {
+    versionCode 1
+    versionName "0.1.0"
+  }
+  lintOptions {
+    abortOnError false
+  }
+}
+
+// Google's code scanner runs in Play services' own activity: no camera
+// permission, no camera session of ours (AGENTS.md §11 still holds).
+dependencies {
+  implementation 'com.google.android.gms:play-services-code-scanner:16.1.0'
+}
