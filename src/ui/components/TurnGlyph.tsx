@@ -21,7 +21,8 @@ const TARGET = 1;
 /**
  * A phone outline that turns from the pose the operator holds to the one asked
  * for, on the UI thread (AGENTS §8). Under reduced motion it stands still in
- * the target pose; the words carry the instruction.
+ * the target pose. Since R28 the card has no visible words, so that still pose
+ * is the whole visual instruction; screen readers get the title as a label.
  */
 export const TurnGlyph = memo(function TurnGlyph({ card }: { card: TurnCardKind }) {
   // Reanimated reads the system setting once, when the app starts, and does

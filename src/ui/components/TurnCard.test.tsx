@@ -1,19 +1,16 @@
 import { screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
+import type { TurnCardKind } from '@/domain/orientation/orientation';
 import { TurnCard } from '@/ui/components/TurnCard';
 import { renderWithPorts } from '../../../test/renderWithPorts';
 
 describe('TurnCard', () => {
-  it('asks for sideways on the way into Live Stream', () => {
-    renderWithPorts(<TurnCard card="turnSideways" />);
-    expect(screen.getByText('Turn your phone sideways')).toBeTruthy();
-    expect(
-      screen.getByText('Live Stream films in landscape. Either way round works.'),
-    ).toBeTruthy();
-  });
-
-  it('asks for upright on the way out', () => {
-    renderWithPorts(<TurnCard card="turnUpright" />);
-    expect(screen.getByText('Turn your phone upright')).toBeTruthy();
-  });
+  it.each<TurnCardKind>(['turnSideways', 'turnUpright'])(
+    '%s shows the turning glyph and no words (R28)',
+    (card) => {
+      const { container } = renderWithPorts(<TurnCard card={card} />);
+      expect(screen.getByTestId('turn-glyph').getAttribute('data-card')).toBe(card);
+      expect(container.textContent).toBe('');
+    },
+  );
 });

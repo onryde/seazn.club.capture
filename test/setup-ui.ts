@@ -14,9 +14,17 @@ afterEach(() => {
 });
 
 // Drawing only: an icon and a looping rotation. Everything testable about the
-// tiles and the turn card is their text and their presses.
+// tiles is their text and their presses. The turn card is its glyph alone
+// (R28), so the glyph's stand-in is a marker tests can find, carrying its kind.
 vi.mock('@/ui/components/ModeIcon', () => ({ ModeIcon: () => null }));
-vi.mock('@/ui/components/TurnGlyph', () => ({ TurnGlyph: () => null }));
+vi.mock('@/ui/components/TurnGlyph', async () => {
+  const { createElement } = await import('react');
+  const { View } = await import('react-native');
+  return {
+    TurnGlyph: ({ card }: { card: string }) =>
+      createElement(View, { testID: 'turn-glyph', dataSet: { card } } as ViewProps),
+  };
+});
 
 // The sheet's entrance is drawing only; the panel inside it is what tests read.
 // react-native-web drops accessibilityViewIsModal, the prop native reads, so
@@ -33,12 +41,20 @@ vi.mock('@/ui/components/SlideUpSheet', async () => {
 
 // The overlay's exit fade is drawing only; the card inside it is what tests read.
 // Like SlideUpSheet, the stand-in surfaces the native-only accessibility props
-// react-native-web drops, as data-view-is-modal and data-live-region.
+// react-native-web drops, as data-accessible, data-view-is-modal and
+// data-live-region. accessibilityLabel passes through: react-native-web
+// renders it as aria-label.
 vi.mock('@/ui/components/FadeOut', async () => {
   const { createElement } = await import('react');
   const { View } = await import('react-native');
-  function FadeOut({ accessibilityViewIsModal, accessibilityLiveRegion, ...props }: ViewProps) {
+  function FadeOut({
+    accessible,
+    accessibilityViewIsModal,
+    accessibilityLiveRegion,
+    ...props
+  }: ViewProps) {
     const dataSet = {
+      accessible: String(accessible === true),
       viewIsModal: String(accessibilityViewIsModal === true),
       liveRegion: String(accessibilityLiveRegion),
     };
