@@ -452,8 +452,9 @@ Assume these before diagnosing a real bug:
 - **`git stash` is shared with every worktree.** Never bare `stash`/`pop`.
   Restore a mutation from a `cp` backup, never `git checkout <file>` on
   uncommitted work.
-- `pnpm check` is typecheck + lint + vitest. It does **not** run Prettier;
-  run `pnpm prettier --check` on the files you touched.
+- `pnpm check` is typecheck + lint + Prettier check (`src app modules test`)
+  + vitest. Prettier on docs and config is not in it: run
+  `pnpm prettier --check` on any other file you touched.
 - **Prebuild rewrites `package.json`** (`android`/`ios` scripts become
   `expo run:*`). Revert it after every prebuild; never commit it.
 - `JAVA_HOME` is already set to JDK 17. Overriding it with

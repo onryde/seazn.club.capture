@@ -63,9 +63,9 @@ complete it end to end.
   `cmd > /tmp/x.txt 2>&1; echo "EXIT=$?"; tail -n 20 /tmp/x.txt`.
 - Put `cd <abs worktree> &&` in every command you judge — the shell cwd
   resets to the main checkout between calls.
-- Focused tests first, then `pnpm check` once (typecheck, lint, vitest).
-  `pnpm check` does not run Prettier: run `pnpm prettier --check` on every
-  file you touched.
+- Focused tests first, then `pnpm check` once (typecheck, lint, Prettier
+  on `src app modules test`, vitest). Run `pnpm prettier --check` on any
+  touched file outside those folders.
 - Do not trust wrapper summaries. `rtk` can print `PASS(0) FAIL(0)` for a
   suite that failed to collect; when a count matters, use
   `pnpm vitest run --reporter=json --outputFile=/tmp/r.json <paths>` and read
