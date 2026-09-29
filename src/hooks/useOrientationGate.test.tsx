@@ -82,7 +82,8 @@ describe('useOrientationGate', () => {
     const { fakes, hook } = await gate('portrait');
     hold(fakes, SIDEWAYS, 0);
     expect(hook.result.current).toEqual({ lock: 'landscape', card: 'turnUpright' });
-    expect(fakes.orientationLock.locks).toEqual(['landscape']);
+    // Portrait first, before any reading has settled (R34).
+    expect(fakes.orientationLock.locks).toEqual(['portrait', 'landscape']);
   });
 
   it('never blocks a phone lying flat', async () => {
@@ -182,9 +183,31 @@ describe('useOrientationGate', () => {
     expect(renders).toBe(settled);
   });
 
-  it('shows nothing before the first settled reading', async () => {
-    const { hook } = await gate('landscape');
+  it('locks the route target with no card before the first settled reading (R34)', async () => {
+    const { fakes, hook } = await gate('landscape');
+    expect(hook.result.current).toEqual({ lock: 'landscape', card: 'none' });
+    expect(fakes.orientationLock.locks).toEqual(['landscape']);
+  });
+
+  it.each<[Target]>([['portrait'], ['landscape']])(
+    'locks %s when the phone never leaves a dead band (R34)',
+    async (target) => {
+      const { fakes, hook } = await gate(target);
+      // The Redmi face down, tilted about 20°: between flat and held, for good.
+      const DEAD_BAND: Gravity = { x: -3.39 / 9.81, y: -0.53 / 9.81, z: -9.39 / 9.81 };
+      hold(fakes, DEAD_BAND, 0);
+      hold(fakes, DEAD_BAND, 1000);
+      expect(hook.result.current).toEqual({ lock: target, card: 'none' });
+      expect(fakes.orientationLock.locks).toEqual([target]);
+    },
+  );
+
+  it('keeps the lock on air while nothing has settled (R34)', async () => {
+    const fakes = createFakePorts();
+    fakes.engine.forceState({ kind: 'armed' });
+    const { hook } = await gate('landscape', fakes);
     expect(hook.result.current).toEqual({ lock: 'keep', card: 'none' });
+    expect(fakes.orientationLock.locks).toEqual([]);
   });
 });
 

@@ -83,9 +83,15 @@ export type TurnCardKind = Exclude<GateView['card'], 'none'>;
  * On air (engine armed or live) the current lock stays instead: a tilt
  * mid-broadcast must never rotate the activity under the camera (AGENTS §8,
  * P4). The card then reads sideways, which R24 accepts.
+ *
+ * With no settled reading (`unknown`) the target is locked, with no card
+ * (R34). A phone can sit in a dead band for good (face down, tilted), and
+ * Android's activity is `unspecified` until the first lock, so waiting for a
+ * reading left Home following auto-rotate and Live Stream open in portrait.
+ * On air the current lock stays, as above.
  */
 export function orientationGate(target: Target, physical: Physical, onAir: boolean): GateView {
-  if (physical === 'unknown') return { lock: 'keep', card: 'none' };
+  if (physical === 'unknown') return { lock: onAir ? 'keep' : target, card: 'none' };
   if (physical === 'flat' || physical === target) return { lock: target, card: 'none' };
   const card = target === 'landscape' ? 'turnSideways' : 'turnUpright';
   return { lock: onAir ? 'keep' : physical, card };

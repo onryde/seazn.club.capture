@@ -236,7 +236,7 @@ If the phone refuses the leave's write (the forget, or clearing the active mode)
 ## 5. Orientation
 
 - `app.json` sets `"orientation": "default"`, plus the `expo-screen-orientation` plugin with `initialOrientation: "PORTRAIT_UP"`.
-  - On iOS the app starts in portrait before any JavaScript runs. The plugin writes `initialOrientation` only to `Info.plist`; on Android the activity's orientation is `unspecified`, so the system rotation policy applies until the gate's first lock, which follows the first settled sensor reading.
+  - On iOS the app starts in portrait before any JavaScript runs. The plugin writes `initialOrientation` only to `Info.plist`; on Android the activity's orientation is `unspecified`, so the system rotation policy applies until the gate's first lock, which it applies on mount, before any sensor reading has settled (R34).
   - A plain `"portrait"` would leave landscape out of iOS's `UISupportedInterfaceOrientations`, and the Live Stream lock would then fail on iOS.
 - **One controller.** `useOrientationGate(target)` is mounted in the root layout. The target comes from the path:
   - `/stream` and anything under it: `landscape`, meaning either side;
@@ -248,7 +248,7 @@ If the phone refuses the leave's write (the forget, or clearing the active mode)
   1. The target differs from how the phone is held, so the app locks to how the phone is held and the turn card shows. The card reads upright in the operator's hands (R24). It is glyph only: the words "Turn your phone sideways" / "Turn your phone upright" are spoken, not shown (R28). **Exception:** while the engine is armed or live, the current lock stays, because a tilt mid-broadcast must never rotate the activity under the camera; the card may then read sideways.
   2. The phone matches the target, so the target lock is applied and the card fades.
   3. `flat`: the target lock is applied with no card. A phone lying on a table is never blocked.
-  4. `unknown` (no settled reading yet, in the first ~300 ms): the current lock is kept and no card shows. If the phone has no accelerometer, or the check for one fails, it is treated as `flat` (R26).
+  4. `unknown` (no settled reading yet: the first ~300 ms, or for good while the phone stays in a dead band, such as face down and tilted): the target lock is applied and no card shows (R34). **Exception:** while the engine is armed or live, the current lock is kept, as in step 1. If the phone has no accelerometer, or the check for one fails, it is treated as `flat` (R26).
 - **The 180° flip is allowed.** The landscape lock accepts both sides, and in S1 the engine keeps the encoded picture upright (P4).
 - **A refused lock is forgotten,** so the gate asks again the next time its lock changes (R26).
 - **While the card shows,** the app behind it is hidden from screen readers, and the card is modal and a polite live region (R25). The view around the navigator is never collapsed, so showing the card never reparents the native stack (R27).
@@ -426,6 +426,7 @@ Decisions taken while building S0, recorded here so they outlive the build's wor
 - **R29** — under reduced motion the still glyph in the target pose is the cue. See §5.
 - **R30** — leaving writes and navigates once; a refused write still goes Home. See §4 and §8.
 - **R31** — Android Back closes an open CodePanel on Home, as Android apps do; it had sent the app to the launcher. Not yet built when this was written.
+- **R34** — with no settled reading, the gate locks the target (no card) unless the engine is armed or live, when the current lock stays. Found on the release device check: a phone face down and tilted about 20° sits in the flat/held dead band for good, so it was never locked, and with Android's activity `unspecified` Home followed auto-rotate and Live Stream could open in portrait. See §5.
 
 ## Main-repo asks raised by S0
 

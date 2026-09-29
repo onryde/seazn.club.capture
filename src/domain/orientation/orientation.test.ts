@@ -106,7 +106,7 @@ describe('track', () => {
 });
 
 describe('orientationGate', () => {
-  // Every (target, physical, onAir) combination (ruling R24).
+  // Every (target, physical, onAir) combination (rulings R24, R34).
   it.each<[Target, Physical, boolean, GateView]>([
     ['portrait', 'portrait', false, { lock: 'portrait', card: 'none' }],
     ['portrait', 'portrait', true, { lock: 'portrait', card: 'none' }],
@@ -114,7 +114,7 @@ describe('orientationGate', () => {
     ['portrait', 'landscape', true, { lock: 'keep', card: 'turnUpright' }],
     ['portrait', 'flat', false, { lock: 'portrait', card: 'none' }],
     ['portrait', 'flat', true, { lock: 'portrait', card: 'none' }],
-    ['portrait', 'unknown', false, { lock: 'keep', card: 'none' }],
+    ['portrait', 'unknown', false, { lock: 'portrait', card: 'none' }],
     ['portrait', 'unknown', true, { lock: 'keep', card: 'none' }],
     ['landscape', 'landscape', false, { lock: 'landscape', card: 'none' }],
     ['landscape', 'landscape', true, { lock: 'landscape', card: 'none' }],
@@ -122,7 +122,7 @@ describe('orientationGate', () => {
     ['landscape', 'portrait', true, { lock: 'keep', card: 'turnSideways' }],
     ['landscape', 'flat', false, { lock: 'landscape', card: 'none' }],
     ['landscape', 'flat', true, { lock: 'landscape', card: 'none' }],
-    ['landscape', 'unknown', false, { lock: 'keep', card: 'none' }],
+    ['landscape', 'unknown', false, { lock: 'landscape', card: 'none' }],
     ['landscape', 'unknown', true, { lock: 'keep', card: 'none' }],
   ])('target %s, held %s, on air %s → %j', (target, physical, onAir, view) => {
     expect(orientationGate(target, physical, onAir)).toEqual(view);

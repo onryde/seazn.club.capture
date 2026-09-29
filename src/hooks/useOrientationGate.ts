@@ -22,8 +22,9 @@ export function routeTarget(pathname: string): Target {
  * how the phone is held from the accelerometer. While the phone disagrees with
  * the target it locks to the hands, so the turn card reads upright (R24),
  * unless the engine is on air, when the current lock stays. Locks to the target
- * once they agree. React state changes only when the settled reading or the
- * on-air status does, never per sample or per telemetry tick.
+ * once they agree, and before any reading has settled (R34). React state
+ * changes only when the settled reading or the on-air status does, never per
+ * sample or per telemetry tick.
  */
 export function useOrientationGate(target: Target): GateView {
   const physical = usePhysicalOrientation();
