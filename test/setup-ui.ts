@@ -1,5 +1,5 @@
 import { cleanup } from '@testing-library/react';
-import { afterEach } from 'vitest';
+import { afterEach, vi } from 'vitest';
 import { disposeFakePorts } from './fakePorts';
 
 // Testing Library only auto-cleans when the runner exposes globals; vitest
@@ -11,3 +11,8 @@ afterEach(() => {
 afterEach(() => {
   disposeFakePorts();
 });
+
+// Drawing only: an icon and a looping rotation. Everything testable about the
+// tiles and the turn card is their text and their presses.
+vi.mock('@/ui/components/ModeIcon', () => ({ ModeIcon: () => null }));
+vi.mock('@/ui/components/TurnGlyph', () => ({ TurnGlyph: () => null }));

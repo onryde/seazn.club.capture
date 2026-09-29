@@ -61,9 +61,13 @@ export default [
               ],
             },
             {
-              // Pure, like domain: no external allowance, so no react.
+              // Pure, like domain: no external allowance, so no react. It may
+              // name domain types (a mode's name key), since both are pure.
               from: { element: { type: 'i18n' } },
-              allow: [{ to: { element: { type: 'i18n' } } }],
+              allow: [
+                { to: { element: { type: 'i18n' } } },
+                { to: { element: { type: 'domain' } } },
+              ],
             },
             {
               from: { element: { type: 'ui' } },

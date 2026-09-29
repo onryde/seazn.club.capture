@@ -127,3 +127,11 @@ export const layout = {
   tallyStripe: 4,
   previewAspect: 16 / 9,
 } as const;
+
+/**
+ * Cards and tiles are rounded, as in the owner-approved Home layout A; plates
+ * (Button, the state plate) stay square, because a plate is an area of signal.
+ */
+export const radius = {
+  card: 12,
+} as const;
