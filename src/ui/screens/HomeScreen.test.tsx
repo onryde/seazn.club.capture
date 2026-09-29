@@ -591,6 +591,55 @@ describe('Home: coming back from the scanner is not a reopen (I2)', () => {
   });
 });
 
+describe('Home: Android Back closes what is open (R31)', () => {
+  const languageToggle = () => screen.getByRole('button', { name: /Language/ });
+  function press(home: { back: { press(): boolean } }): boolean {
+    let handled = false;
+    act(() => {
+      handled = home.back.press();
+    });
+    return handled;
+  }
+
+  it('closes an open code panel and stays in the app', async () => {
+    const home = await renderHome();
+    home.scanner.queue({ outcome: 'scanned', raw: 'https://example.com/menu' });
+    fireEvent.click(liveStreamTile());
+    await screen.findByText("This isn't a Seazn code.");
+    expect(press(home)).toBe(true);
+    expect(screen.queryByText("This isn't a Seazn code.")).toBeNull();
+    expect(home.navigation.current()).toBe('home');
+  });
+
+  it('closes an open language list (M-f)', async () => {
+    const home = await renderHome();
+    fireEvent.click(languageToggle());
+    expect(screen.getByRole('button', { name: 'Español' })).toBeTruthy();
+    expect(press(home)).toBe(true);
+    expect(screen.queryByRole('button', { name: 'Español' })).toBeNull();
+    expect(languageToggle().getAttribute('aria-expanded')).toBe('false');
+  });
+
+  it('leaves Back to the phone when nothing is open', async () => {
+    const home = await renderHome();
+    expect(press(home)).toBe(false);
+  });
+
+  it('closes the panel, then the list under it, then lets Back go', async () => {
+    const home = await renderHome();
+    fireEvent.click(languageToggle());
+    home.scanner.queue({ outcome: 'scanned', raw: 'https://example.com/menu' });
+    fireEvent.click(liveStreamTile());
+    await screen.findByText("This isn't a Seazn code.");
+    expect(press(home)).toBe(true);
+    expect(screen.queryByText("This isn't a Seazn code.")).toBeNull();
+    expect(screen.getByRole('button', { name: 'Español' })).toBeTruthy();
+    expect(press(home)).toBe(true);
+    expect(screen.queryByRole('button', { name: 'Español' })).toBeNull();
+    expect(press(home)).toBe(false);
+  });
+});
+
 describe('Home: the code panel is modal to TalkBack too', () => {
   it('hides Home behind the panel from the accessibility tree, and restores it on close', async () => {
     const home = await renderHome();

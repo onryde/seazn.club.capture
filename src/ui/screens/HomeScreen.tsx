@@ -2,6 +2,7 @@ import { memo } from 'react';
 import { StyleSheet, View } from 'react-native';
 import type { Mode } from '@/domain/mode/Mode';
 import { BUILT_MODES } from '@/domain/mode/scanOutcome';
+import { useBackCloses } from '@/hooks/useBackCloses';
 import { useHome, type HomeActions, type HomeView } from '@/hooks/useHome';
 import { useT } from '@/hooks/useLanguage';
 import { usePorts } from '@/hooks/usePorts';
@@ -15,9 +16,13 @@ import { Tile } from '@/ui/components/Tile';
 import { MODES } from '@/ui/modeCopy';
 import { colour, space } from '@/ui/theme/tokens';
 
-/** Layout A (spec §7): brand, status, Continue, three equal tiles, footer; the panel over all. */
+/**
+ * Layout A (spec §7): brand, status, Continue, three equal tiles, footer; the
+ * panel over all. Back closes the panel (R31).
+ */
 export function HomeScreen() {
   const { view, actions } = useHome();
+  useBackCloses(view.panel !== null, actions.closePanel);
   return (
     <View style={styles.screen}>
       <HomeContent view={view} actions={actions} />

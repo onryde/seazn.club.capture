@@ -1,5 +1,6 @@
 import { memo, useCallback, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
+import { useBackCloses } from '@/hooks/useBackCloses';
 import { useLanguage } from '@/hooks/useLanguage';
 import { LANGS, type Lang } from '@/i18n/language';
 import type { MessageKey } from '@/i18n/messages';
@@ -13,11 +14,13 @@ const NAME: Readonly<Record<Lang, MessageKey>> = {
   nl: 'language.nl',
 };
 
-/** Footer control: tap to show the four languages, pick one, done (decision 8). */
+/** Footer control: tap to show the four languages, pick one, done (decision 8). Back closes it. */
 export const LanguagePicker = memo(function LanguagePicker() {
   const { translator, lang, setLang } = useLanguage();
   const [open, setOpen] = useState(false);
   const toggle = useCallback(() => setOpen((value) => !value), []);
+  const close = useCallback(() => setOpen(false), []);
+  useBackCloses(open, close);
   const label = `${translator.t('home.footer.language')} · ${translator.t(NAME[lang])}`;
   return (
     <View style={styles.picker}>
