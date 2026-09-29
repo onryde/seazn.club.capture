@@ -106,25 +106,49 @@ describe('track', () => {
 });
 
 describe('orientationGate', () => {
-  // Every (target, physical, onAir) combination (rulings R24, R34).
-  it.each<[Target, Physical, boolean, GateView]>([
-    ['portrait', 'portrait', false, { lock: 'portrait', card: 'none' }],
-    ['portrait', 'portrait', true, { lock: 'portrait', card: 'none' }],
-    ['portrait', 'landscape', false, { lock: 'landscape', card: 'turnUpright' }],
-    ['portrait', 'landscape', true, { lock: 'keep', card: 'turnUpright' }],
-    ['portrait', 'flat', false, { lock: 'portrait', card: 'none' }],
-    ['portrait', 'flat', true, { lock: 'portrait', card: 'none' }],
-    ['portrait', 'unknown', false, { lock: 'portrait', card: 'none' }],
-    ['portrait', 'unknown', true, { lock: 'keep', card: 'none' }],
-    ['landscape', 'landscape', false, { lock: 'landscape', card: 'none' }],
-    ['landscape', 'landscape', true, { lock: 'landscape', card: 'none' }],
-    ['landscape', 'portrait', false, { lock: 'portrait', card: 'turnSideways' }],
-    ['landscape', 'portrait', true, { lock: 'keep', card: 'turnSideways' }],
-    ['landscape', 'flat', false, { lock: 'landscape', card: 'none' }],
-    ['landscape', 'flat', true, { lock: 'landscape', card: 'none' }],
-    ['landscape', 'unknown', false, { lock: 'landscape', card: 'none' }],
-    ['landscape', 'unknown', true, { lock: 'keep', card: 'none' }],
-  ])('target %s, held %s, on air %s → %j', (target, physical, onAir, view) => {
-    expect(orientationGate(target, physical, onAir)).toEqual(view);
+  const UP = { card: 'turnUpright' } as const;
+  const SIDE = { card: 'turnSideways' } as const;
+  // Expected values from rulings R24, R34, R35 and R37, not from the code.
+  // `current` is the lock last applied, or null when nothing is locked yet.
+  it.each<[Target, Physical, boolean, Target | null, GateView]>([
+    // Held as the target, or flat: the target, no card, whatever is locked.
+    ['portrait', 'portrait', false, null, { lock: 'portrait', card: 'none' }],
+    ['portrait', 'portrait', true, null, { lock: 'portrait', card: 'none' }],
+    ['portrait', 'portrait', true, 'landscape', { lock: 'portrait', card: 'none' }],
+    ['portrait', 'flat', false, null, { lock: 'portrait', card: 'none' }],
+    ['portrait', 'flat', true, null, { lock: 'portrait', card: 'none' }],
+    ['portrait', 'flat', true, 'landscape', { lock: 'portrait', card: 'none' }],
+    ['landscape', 'landscape', false, null, { lock: 'landscape', card: 'none' }],
+    ['landscape', 'landscape', true, null, { lock: 'landscape', card: 'none' }],
+    ['landscape', 'landscape', true, 'portrait', { lock: 'landscape', card: 'none' }],
+    ['landscape', 'flat', false, null, { lock: 'landscape', card: 'none' }],
+    ['landscape', 'flat', true, null, { lock: 'landscape', card: 'none' }],
+    ['landscape', 'flat', true, 'portrait', { lock: 'landscape', card: 'none' }],
+    // Held the other way: the target's card; lock to the hands, or keep on air (R24).
+    ['portrait', 'landscape', false, null, { lock: 'landscape', ...UP }],
+    ['portrait', 'landscape', false, 'portrait', { lock: 'landscape', ...UP }],
+    ['portrait', 'landscape', true, null, { lock: 'keep', ...UP }],
+    ['portrait', 'landscape', true, 'landscape', { lock: 'keep', ...UP }],
+    ['landscape', 'portrait', false, null, { lock: 'portrait', ...SIDE }],
+    ['landscape', 'portrait', false, 'landscape', { lock: 'portrait', ...SIDE }],
+    ['landscape', 'portrait', true, null, { lock: 'keep', ...SIDE }],
+    ['landscape', 'portrait', true, 'portrait', { lock: 'keep', ...SIDE }],
+    // No settled reading, not on air: the target, no card (R34).
+    ['portrait', 'unknown', false, null, { lock: 'portrait', card: 'none' }],
+    ['portrait', 'unknown', false, 'portrait', { lock: 'portrait', card: 'none' }],
+    ['portrait', 'unknown', false, 'landscape', { lock: 'portrait', card: 'none' }],
+    ['landscape', 'unknown', false, null, { lock: 'landscape', card: 'none' }],
+    ['landscape', 'unknown', false, 'landscape', { lock: 'landscape', card: 'none' }],
+    ['landscape', 'unknown', false, 'portrait', { lock: 'landscape', card: 'none' }],
+    // No settled reading, on air: nothing locked yet → the target (R37); the
+    // kept lock matches → nothing; the kept lock disagrees → the target's card (R35).
+    ['portrait', 'unknown', true, null, { lock: 'portrait', card: 'none' }],
+    ['portrait', 'unknown', true, 'portrait', { lock: 'keep', card: 'none' }],
+    ['portrait', 'unknown', true, 'landscape', { lock: 'keep', ...UP }],
+    ['landscape', 'unknown', true, null, { lock: 'landscape', card: 'none' }],
+    ['landscape', 'unknown', true, 'landscape', { lock: 'keep', card: 'none' }],
+    ['landscape', 'unknown', true, 'portrait', { lock: 'keep', ...SIDE }],
+  ])('target %s, held %s, on air %s, locked %s → %j', (target, physical, onAir, current, view) => {
+    expect(orientationGate(target, physical, onAir, current)).toEqual(view);
   });
 });

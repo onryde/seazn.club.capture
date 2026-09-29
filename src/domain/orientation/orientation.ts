@@ -88,11 +88,31 @@ export type TurnCardKind = Exclude<GateView['card'], 'none'>;
  * (R34). A phone can sit in a dead band for good (face down, tilted), and
  * Android's activity is `unspecified` until the first lock, so waiting for a
  * reading left Home following auto-rotate and Live Stream open in portrait.
- * On air the current lock stays, as above.
+ * On air the current lock stays, as above, with two refinements:
+ * - nothing locked yet (`current` null, e.g. the activity remounted
+ *   mid-broadcast) locks the target, since there is no lock to keep (R37);
+ * - a kept lock that disagrees with the target shows the target's card, or
+ *   the screen is drawn against the wrong lock (R35: Home in landscape, with
+ *   tiles overlapping, after leaving an armed Live Stream).
+ *
+ * `current` is the lock last applied, or null when nothing has been locked.
  */
-export function orientationGate(target: Target, physical: Physical, onAir: boolean): GateView {
-  if (physical === 'unknown') return { lock: onAir ? 'keep' : target, card: 'none' };
+export function orientationGate(
+  target: Target,
+  physical: Physical,
+  onAir: boolean,
+  current: Target | null,
+): GateView {
+  if (physical === 'unknown') return unsettled(target, onAir, current);
   if (physical === 'flat' || physical === target) return { lock: target, card: 'none' };
-  const card = target === 'landscape' ? 'turnSideways' : 'turnUpright';
-  return { lock: onAir ? 'keep' : physical, card };
+  return { lock: onAir ? 'keep' : physical, card: cardFor(target) };
+}
+
+function unsettled(target: Target, onAir: boolean, current: Target | null): GateView {
+  if (!onAir || current === null) return { lock: target, card: 'none' };
+  return { lock: 'keep', card: current === target ? 'none' : cardFor(target) };
+}
+
+function cardFor(target: Target): TurnCardKind {
+  return target === 'landscape' ? 'turnSideways' : 'turnUpright';
 }

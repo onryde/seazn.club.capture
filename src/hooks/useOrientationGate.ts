@@ -22,7 +22,9 @@ export function routeTarget(pathname: string): Target {
  * how the phone is held from the accelerometer. While the phone disagrees with
  * the target it locks to the hands, so the turn card reads upright (R24),
  * unless the engine is on air, when the current lock stays. Locks to the target
- * once they agree, and before any reading has settled (R34). React state
+ * once they agree, and before any reading has settled (R34). On air with no
+ * reading, a kept lock that disagrees with the target shows the target's card
+ * (R35), and with nothing locked yet the target is locked (R37). React state
  * changes only when the settled reading or the on-air status does, never per
  * sample or per telemetry tick.
  */
@@ -30,9 +32,11 @@ export function useOrientationGate(target: Target): GateView {
   const physical = usePhysicalOrientation();
   // Module-scope, primitive selector: a telemetry tick re-renders nothing (AGENTS §8).
   const onAir = useEngineSelector(selectHoldsOrientation);
-  const view = orientationGate(target, physical, onAir);
   const { orientationLock } = usePorts();
   const locked = useRef<Target | null>(null);
+  // The lock last applied (R35, R37). Read in render on purpose: it changes
+  // only in the effect below, and only to what this render already decided.
+  const view = orientationGate(target, physical, onAir, locked.current);
 
   useEffect(() => {
     if (view.lock === 'keep' || view.lock === locked.current) return;

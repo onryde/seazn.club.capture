@@ -139,9 +139,9 @@ describe('useOrientationGate', () => {
     let refusals = 1;
     fakes.orientationLock.lock = (target) =>
       refusals-- > 0 ? Promise.reject(new Error('refused')) : lock(target);
-    await gate('landscape', fakes);
-    hold(fakes, SIDEWAYS, 0); // refused
+    await gate('landscape', fakes); // on air, nothing locked: landscape at once (R37), refused
     await act(async () => undefined);
+    hold(fakes, SIDEWAYS, 0); // still landscape: the gate's lock has not changed
     hold(fakes, UPRIGHT, 1000); // on air: keep
     hold(fakes, SIDEWAYS, 2000); // the same lock again: sent, not deduped
     expect(fakes.orientationLock.locks).toEqual(['landscape']);
@@ -202,12 +202,21 @@ describe('useOrientationGate', () => {
     },
   );
 
-  it('keeps the lock on air while nothing has settled (R34)', async () => {
+  it('locks the target on air when nothing is locked yet, then keeps it (R37)', async () => {
     const fakes = createFakePorts();
     fakes.engine.forceState({ kind: 'armed' });
     const { hook } = await gate('landscape', fakes);
-    expect(hook.result.current).toEqual({ lock: 'keep', card: 'none' });
-    expect(fakes.orientationLock.locks).toEqual([]);
+    expect(hook.result.current).toEqual({ lock: 'landscape', card: 'none' });
+    expect(fakes.orientationLock.locks).toEqual(['landscape']);
+  });
+
+  it('shows the upright card on Home while an armed engine keeps the landscape lock (R35)', async () => {
+    const { fakes, hook } = await gate('landscape');
+    expect(fakes.orientationLock.locks).toEqual(['landscape']);
+    act(() => fakes.engine.forceState({ kind: 'armed' }));
+    hook.rerender({ to: 'portrait' });
+    expect(hook.result.current).toEqual({ lock: 'keep', card: 'turnUpright' });
+    expect(fakes.orientationLock.locks).toEqual(['landscape']);
   });
 });
 
