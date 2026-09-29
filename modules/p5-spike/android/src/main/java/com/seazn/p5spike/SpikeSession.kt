@@ -787,15 +787,17 @@ object SpikeSession {
   }
 
   fun event(kind: String, vararg extras: Pair<String, Any?>) {
-    val safe = extras.map { (key, value) -> key to scrub(value) }
-    log.event(kind, safe.joinToString(" ") { "${it.first}=${it.second}" })
-    emit("onEvent", mapOf<String, Any?>("kind" to kind, "atMs" to System.currentTimeMillis()) + safe)
+    // The CSV is scrubbed whole; JS gets the public URLs verbatim (the output check's 404).
+    val (csv, js) = EventExtras.split(extras.asList(), ::scrub)
+    log.event(kind, csv.joinToString(" ") { "${it.first}=${it.second}" })
+    emit("onEvent", mapOf<String, Any?>("kind" to kind, "atMs" to System.currentTimeMillis()) + js)
   }
 
   /**
    * Defence in depth: whoever built the extra, no credential of the current
-   * session and no line break reaches the CSV or JS. Longest first, so a
-   * secret that contains another is masked whole.
+   * session and no line break reaches the CSV or JS — except that JS gets
+   * EventExtras.PUBLIC_URL_KEYS verbatim (the output check's 404). Longest
+   * first, so a secret that contains another is masked whole.
    */
   private fun scrub(value: Any?): Any? {
     if (value == null || value is Number || value is Boolean) return value
