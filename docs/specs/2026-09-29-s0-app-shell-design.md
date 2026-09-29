@@ -206,7 +206,7 @@ tile tap → scan()
 - **Android backup is off for this store**, through the SecureStore config plugin. Keystore keys do not survive a restore, so a restored phone would otherwise hold records it cannot decrypt.
 - **Never stored:** scores, approvals and engine state (native owns the engine state, AGENTS §2).
 - **Reading never fails the app.** `load()` never rejects (R12). A record it cannot read is deleted; a store that throws on read is treated as empty and nothing is deleted, since the read may work next launch. Either way the status line says "Couldn't read saved codes. Scan again to continue." (R13).
-- **A refused write on Home is never silent.** Saving a scanned code, Continue and Forget each say "Couldn't save on this phone. Try again." on the status line (R19), and a code that could not be saved is not opened. The other refused writes are not shown: the language pick (kept for the session), the expiry deletes (R21) and the leave write (R30).
+- **A refused save of a code is never silent.** Saving a scanned code, Continue and Forget each say "Couldn't save on this phone. Try again." on the status line (R19), and a code that could not be saved is not opened. Three refused writes are not shown: the language pick (kept for the session), the expiry deletes (R21), including the one Continue makes on an expired code, and the leave write (R30).
 - **Writes are not atomic.** Opening a code writes the code, then the active mode. If the second write is refused, the code is on disk but not active, so the next launch lands on Home with the Continue card.
 
 **The reopen gate** lives in the root `_layout`. **The splash screen stays up until the gate decides**; there is no spinner.
@@ -415,7 +415,7 @@ Decisions taken while building S0, recorded here so they outlive the build's wor
 - **R16, R20** — `ui` may `import type` from `services` and the scanner module, and never a value: a type carries no native code, and a screen may need to name a port's types, such as `Route` or `ScanResult`.
 - **R17** — the turn glyph turns from the pose held to the pose asked for, on both cards, so it shows the turn to make.
 - **R18** — UI tests may import pure `services` values (`STORE_KEYS`, the in-memory store); native services stay barred. Test code is not shipped UI.
-- **R19** — a refused store write is shown, never silent. See §4.
+- **R19** — a refused save of a code is shown, never silent. See §4.
 - **R21** — expiry is published before the deletes. See §4.
 - **R22** — no system link chooses the screen. See §4.
 - **R23** — the reopen gate never expires the mode the engine holds. See §4.

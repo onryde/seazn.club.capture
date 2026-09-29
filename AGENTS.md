@@ -129,8 +129,8 @@ contracts/         # capture-qr.v1.json, once vendored (see its README)
 - Hooks and the root layout may import native modules. Four places do
   today, outside the ports: `useAppFonts` (`expo-font`), `useKeepAwake` (a dynamic
   `expo-keep-awake` import), `useAppLifecycle` (`AppState`), and
-  `app/_layout.tsx` (`SplashScreen.preventAutoHideAsync()`). None of them
-  can be faked through `Ports`.
+  `app/_layout.tsx` (`SplashScreen.preventAutoHideAsync()`,
+  `SafeAreaProvider`). None of them can be faked through `Ports`.
 - **No barrel files.** `index.ts` re-exports launder paths past the boundary
   rule and cause circular imports.
 - No `types/` folder — types live with the behaviour they describe.

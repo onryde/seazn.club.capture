@@ -135,7 +135,7 @@ export default [
               ],
             },
             {
-              // Routes are thin: a route file renders a screen and nothing else.
+              // Routes are thin: they import ui, hooks and packages only.
               from: { element: { type: 'app' } },
               allow: [
                 { to: { element: { type: 'ui' } } },
