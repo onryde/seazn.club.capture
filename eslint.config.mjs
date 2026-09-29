@@ -116,7 +116,7 @@ export default [
     // Tests may import the test runner. The purity rule exists to keep React
     // Native out of what ships and to keep domain tests fast; vitest is neither
     // shipped nor slow.
-    files: ['**/*.test.ts'],
+    files: ['**/*.test.ts', '**/*.test.tsx', 'test/**/*.ts'],
     rules: { 'boundaries/dependencies': 'off' },
   },
   prettier,
