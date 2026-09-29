@@ -68,6 +68,13 @@ describe('expiredModes', () => {
     expect(expiredModes(inStream, NOW)).toEqual([]);
     expect(expiredModes(inStream, AFTER_EXPIRY)).toEqual(['stream']);
   });
+
+  // Without exactOptionalPropertyTypes a present-but-undefined key is a valid
+  // SavedState. It must not throw inside the reopen gate before the splash hides.
+  it('skips a mode whose code is undefined', () => {
+    const hollow: SavedState = { active: 'stream', codes: { stream: undefined } };
+    expect(expiredModes(hollow, NOW)).toEqual([]);
+  });
 });
 
 describe('leaveRule', () => {

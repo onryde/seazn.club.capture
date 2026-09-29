@@ -42,7 +42,8 @@ export function reopenTarget(input: {
 
 /** Modes whose saved code has expired. The caller deletes them after reading the target. */
 export function expiredModes(saved: SavedState, now: Date): readonly Mode[] {
-  return (Object.values(saved.codes) as SavedCode[])
+  return Object.values(saved.codes)
+    .filter((code): code is SavedCode => code !== undefined)
     .filter((code) => isExpired(code, now))
     .map((code) => code.mode);
 }
