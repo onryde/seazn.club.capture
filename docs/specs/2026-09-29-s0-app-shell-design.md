@@ -56,6 +56,7 @@ src/
     mode/                    NEW, pure: Mode, ModeCode, recognise(), reopenTarget(), leaveRule()
     orientation/             NEW, pure: physical orientation from accelerometer samples
     session/  policy/        kept (projection, transport policy, audio floor)
+    credentials/             kept until S1 (the engine port and SessionState speak its types)
     Result.ts                kept
   hooks/                     useActiveMode, useScanner, useOrientationGate, useLeaveGuard, useCaptureEngine (kept)
   services/                  CodeStore port + SecureStore implementation + fake
@@ -65,9 +66,10 @@ src/
     components/              Tile, ContinueCard, CodePanel, TurnCard, StatusLine, Text, Button
     screens/                 HomeScreen, StreamPlaceholderScreen
 modules/
-  capture-engine/            kept (P5-proven)
+  capture-engine/            kept: port + fake (the P5 StreamPack code lives on spike/p5-android; S1 brings it)
   code-scanner/              NEW local Expo module: port, Android implementation, iOS stub, fake
 contracts/                   unchanged
+.github/workflows/check.yml  NEW: typecheck, lint, tests, i18n check on every push
 ```
 
 - **`app/` is a layer, and lint enforces it.** `eslint-plugin-boundaries` learns an `app` element type:
@@ -83,11 +85,10 @@ contracts/                   unchanged
 
 | Kept, as parts | Removed |
 |---|---|
-| `modules/capture-engine/` (port, fake, Android engine) | `src/navigation/Router.tsx` |
-| `domain/session/`, `domain/policy/`, `domain/Result.ts` | `ui/screens/{Scan,Viewfinder,Settings,Diagnostics}Screen.tsx` |
+| `modules/capture-engine/` (port and fake; main has no native engine yet) | `src/navigation/Router.tsx` |
+| `domain/session/`, `domain/policy/`, `domain/Result.ts`, `domain/credentials/` (the engine port and `SessionState` import its types; S1 replaces its parser with the v1 contract plus the descriptor) | `ui/screens/{Scan,Viewfinder,Settings,Diagnostics}Screen.tsx` |
 | `hooks/useCaptureEngine`, `engineSelectors`, `useOptionalNativeModule`, `useAppLifecycle`, `useKeepAwake` | Components used only by those screens: TallyColumn, ActionZone, LivePlate, PeekButton, PeekNotice, LockNotice, OutputPreview, OverlayPreview, PreviewSurface, AudioMeter, Metric, Elapsed, Toggle |
 | `ui/theme/`, `ui/components/{Text,Button,ErrorBoundary,StatusLine}` | `domain/settings/`, `hooks/useSettings`, `hooks/usePeek`, and the AsyncStorage dependency |
-| | `domain/credentials/` (S1 replaces it with the v1 contract plus the descriptor) |
 | | `ui/format.ts` (used only by removed screens) |
 
 **Kept does not mean frozen.** A kept part is re-read against this design when S0 or S1 first uses it, and is deleted if it no longer fits. Removed code stays in git history, so S1 can take anything worth keeping back out of it.
@@ -301,7 +302,7 @@ That is enough to exercise:
 - the code being forgotten after `stopped`, and kept after `failed`;
 - reopening into Live Stream while the fake engine reports `armed` or `live`.
 
-The real engine stays linked but is not driven by S0. **Proving "the engine wins at reopen" against the real foreground service is an S1 acceptance criterion.**
+**Main has no native engine.** The P5 StreamPack implementation lives in `modules/p5-spike` on `origin/spike/p5-android`, and S1 brings it into `modules/capture-engine`. S0's composition root wires the fake engine, as `App.tsx` does today. **Proving "the engine wins at reopen" against the real foreground service is an S1 acceptance criterion.**
 
 ## 9. Testing and verification
 
@@ -310,9 +311,11 @@ The real engine stays linked but is not driven by S0. **Proving "the engine wins
 | **Domain** (vitest, pure) | every push | `recognise()` for every outcome, including hostile input (over 4 KB, binary, the lookalike host `seazn.club.evil.io`, `http://`, and `/score/` with an empty token); `reopenTarget()` across the engine, saved-state and clock combinations; `leaveRule()`; `physicalOrientation()` over recorded sample sequences, including the flicker at 45°; the plural table for the 4 languages, French 0 included; `formatTime()` with a matching and a differing zone |
 | **Screen** (vitest + `react-native-web` + `@testing-library/react`) | every push | Home: 3 tiles with 2 "Coming soon", and the Continue card shown, hidden and Forget. Every CodePanel variant. TurnCard shown and hidden against a fake accelerometer. The placeholder blocking Back while `live`. Driven by the fake engine, scanner, store and accelerometer. **No snapshot tests** (AGENTS §10). Assertions check what the operator can see. |
 | **i18n** | CI | keys and placeholders match across the 4 files; `_review` markers block release builds |
+| **CI** | every push | **The repo has no CI today** (no `.github/`). S0 adds one GitHub Actions workflow: `pnpm install --frozen-lockfile`, typecheck, lint, all tests, the i18n check. AGENTS §0 already claims "CI runs domain tests on every push"; S0 makes that true. |
 | **Device** (OnePlus, Gradle + adb, **no EAS**) | before S0 is called done | see the checklist below |
 | **Mutation** | once per rule family | each break below must turn its tests red |
 
+- **Screens never import a native module.** Every port (engine, scanner, store, accelerometer, back button) reaches hooks through a provider, and the concrete `expo-*` implementations are wired only in the root `_layout`. That is what lets screen tests run on `react-native-web` with fakes.
 - The Android hardware Back button sits behind a small `BackPort`, because `react-native-web` has no `BackHandler`. The leave guard is tested at the hook level against a fake `BackPort`.
 - **Mutations to run:**
   - `recognise` accepts a suffix host;
