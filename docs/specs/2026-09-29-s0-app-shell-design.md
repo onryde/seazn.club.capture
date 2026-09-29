@@ -393,6 +393,7 @@ All are installed with `pnpm expo install` so they match SDK 57. That also broug
   - "This code was turned off by the organiser" and "Can't check this code — no connection. Try again." (decided in the brainstorm) arrive with S1's descriptor fetch, for stream codes.
   - Venue-zone times arrive the same way. Until then, times use the phone's zone.
 - **"The engine wins at reopen"** is proven only against the fake engine in S0. The real proof is in S1.
+- **Armed is free to leave, but a reopen with the engine armed returns to Live Stream** — the engine is the authority (AGENTS §2; `reopenTarget` in `src/domain/mode/reopen.ts`). S1 decides whether an armed-but-not-live reopen should prompt instead (I3). The return from Home's own scanner is not a reopen and never does this (I2).
 - **The translation release check runs in no build** (R11). S0 has only local debug and device builds, with no store-build path. Wiring the check into Gradle now would fail every local release build on markers no native speaker can clear yet. The first store-build task wires it in.
 - **The turn card's announcement:**
   - iOS: the live region is Android-only, so VoiceOver is neither told nor moved to the card when it appears. iOS is not built in S0.
@@ -425,7 +426,7 @@ Decisions taken while building S0, recorded here so they outlive the build's wor
 - **R28** — the turn card is glyph only (owner, on the device); its words are the screen-reader label. See decision 6, §5 and §7.
 - **R29** — under reduced motion the still glyph in the target pose is the cue. See §5.
 - **R30** — leaving writes and navigates once; a refused write still goes Home. See §4 and §8.
-- **R31** — Android Back closes an open CodePanel on Home, as Android apps do; it had sent the app to the launcher. Not yet built when this was written.
+- **R31** — Android Back closes an open CodePanel on Home, as Android apps do; it had sent the app to the launcher. The open language list closes the same way.
 - **R34** — with no settled reading, the gate locks the target (no card) unless the engine is armed or live, when the current lock stays. Found on the release device check: a phone face down and tilted about 20° sits in the flat/held dead band for good, so it was never locked, and with Android's activity `unspecified` Home followed auto-rotate and Live Stream could open in portrait. See §5.
 
 ## Main-repo asks raised by S0
