@@ -31,13 +31,13 @@ export default [
         { type: 'ui', pattern: 'src/ui/**' },
         { type: 'hooks', pattern: 'src/hooks/**' },
         { type: 'services', pattern: 'src/services/**' },
-        { type: 'navigation', pattern: 'src/navigation/**' },
         { type: 'i18n', pattern: 'src/i18n/**' },
         { type: 'engine', pattern: 'modules/capture-engine/**' },
         { type: 'scanner', pattern: 'modules/code-scanner/**' },
         { type: 'contracts', pattern: 'contracts/**' },
+        { type: 'app', pattern: 'app/**' },
       ],
-      'boundaries/include': ['src/**', 'modules/**', 'contracts/**'],
+      'boundaries/include': ['src/**', 'modules/**', 'contracts/**', 'app/**'],
       // Without this, `@/domain/...` reads as an external package rather than
       // resolving to the local element, and every cross-layer import is denied.
       'import/resolver': {
@@ -97,9 +97,9 @@ export default [
               ],
             },
             {
-              from: { element: { type: 'navigation' } },
+              // Routes are thin: a route file renders a screen and nothing else.
+              from: { element: { type: 'app' } },
               allow: [
-                { to: { element: { type: 'navigation' } } },
                 { to: { element: { type: 'ui' } } },
                 { to: { element: { type: 'hooks' } } },
                 { to: { module: { origin: ['external', 'core'] } } },
@@ -123,6 +123,26 @@ export default [
             {
               from: { element: { type: 'contracts' } },
               allow: [{ to: { element: { type: 'contracts' } } }],
+            },
+          ],
+        },
+      ],
+    },
+  },
+  {
+    // Screens and components never touch a native capability directly: it
+    // arrives through the Ports object, which is what lets them render on
+    // react-native-web in tests. ShellFrame is the one exception, for insets.
+    files: ['src/ui/**/*.{ts,tsx}'],
+    ignores: ['src/ui/components/ShellFrame.tsx'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            {
+              group: ['react-native-safe-area-context', 'expo-*', '@/services/*'],
+              message: 'Screens reach native capabilities through ports (spec §9)',
             },
           ],
         },
