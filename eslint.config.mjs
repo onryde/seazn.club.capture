@@ -168,6 +168,32 @@ export default [
     },
   },
   {
+    // UI tests seed and inspect storage through the same pure services the
+    // fake ports are built from (STORE_KEYS, createModeStore, the in-memory
+    // KeyValueStore). The rule above exists to keep native code out of what
+    // renders on react-native-web, so native services stay barred here too.
+    files: ['src/ui/**/*.test.tsx'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            {
+              group: [
+                'react-native-safe-area-context',
+                'expo-*',
+                '@/services/native/*',
+                '@/hooks/nativePorts',
+              ],
+              allowTypeImports: true,
+              message: 'UI tests render through fake ports; native services never load (spec §9)',
+            },
+          ],
+        },
+      ],
+    },
+  },
+  {
     // Tests may import the test runner. The purity rule exists to keep React
     // Native out of what ships and to keep domain tests fast; vitest is neither
     // shipped nor slow.
