@@ -1,4 +1,4 @@
-import { Stack } from 'expo-router';
+import { Stack, useRootNavigationState } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { useEffect, useState, type ReactNode } from 'react';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
@@ -6,6 +6,7 @@ import { createNativePorts } from '@/hooks/nativePorts';
 import { useAppFonts } from '@/hooks/useAppFonts';
 import { LanguageProvider } from '@/hooks/useLanguage';
 import { PortsProvider, usePorts, type Ports } from '@/hooks/usePorts';
+import { useReopenGate } from '@/hooks/useReopenGate';
 import { BootFailure } from '@/ui/components/BootFailure';
 import { ErrorBoundary } from '@/ui/components/ErrorBoundary';
 import { ShellFrame } from '@/ui/components/ShellFrame';
@@ -39,9 +40,10 @@ function ShellProviders({ ports, children }: { ports: Ports; children: ReactNode
 }
 
 function Shell() {
-  const { splash } = usePorts();
-  // Task 12 replaces this with the reopen gate, which hides the splash once it has decided.
-  useEffect(() => splash.hide(), [splash]);
+  // Expo Router refuses navigation before the root navigator has mounted.
+  const navigatorReady = useRootNavigationState()?.key !== undefined;
+  // The gate decides where to land, then hides the splash (spec §4).
+  useReopenGate(navigatorReady);
   return (
     <ShellFrame>
       <Stack screenOptions={{ headerShown: false, animation: 'none', gestureEnabled: false }} />
