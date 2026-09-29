@@ -195,7 +195,7 @@ tile tap → scan()
 | Key | Value |
 |---|---|
 | `mode.active` | `'stream'`, or absent (S2 and S4 add `'scoring'` and `'dashboard'`) |
-| `code.stream` | `{ v: 1, raw, savedAt, venueTz: string \| null }` |
+| `code.stream` | `{ v: 1, mode, raw, savedAt, expiresAt: number \| null, venueTz: string \| null }` (times in epoch ms; `expiresAt` is stored so a reopen can name the expiry without re-parsing the code) |
 | `lang` | `'en' \| 'es' \| 'fr' \| 'nl'`, or absent, meaning follow the phone |
 
 - Every record carries `v`. **A record that is unknown or unreadable is deleted, never migrated.**
@@ -228,11 +228,12 @@ A stream that ends in **failure keeps its code**, so the operator can go straigh
 - **One controller.** `useOrientationGate(target)` is mounted in the root layout. Each route group declares its target:
   - Home: `portraitUp`;
   - `(stream)`: `landscape`, meaning either side.
-- **How the phone is held** comes from `expo-sensors` (the accelerometer), which needs no permission. The pure function `physicalOrientation(samples)` in `domain/orientation/` returns `portrait | landscapeLeft | landscapeRight | flat | unknown`. It has hysteresis: the phone must be tilted clearly past about 60° for about 300 ms. The screen-orientation API is not used for this, because it reports the *locked* orientation.
+- **How the phone is held** comes from `expo-sensors` (the accelerometer), which needs no permission. The pure functions in `domain/orientation/` classify each sample as `portrait | landscape | flat | unknown` and settle it over time. Left and right are not told apart, because the landscape lock accepts both sides. It has hysteresis: the phone must be tilted clearly past about 60° for about 300 ms. The screen-orientation API is not used for this, because it reports the *locked* orientation.
 - **The sequence:**
   1. The target differs from how the phone is held, so the current lock stays and the TurnCard shows ("Turn your phone sideways" / "Turn upright"). The card reads upright in the operator's hands.
   2. The phone matches the target, so the lock is applied and the card fades.
-  3. `flat` or `unknown`: the target lock is applied with no card. A phone lying on a table is never blocked.
+  3. `flat`: the target lock is applied with no card. A phone lying on a table is never blocked.
+  4. `unknown` (no settled reading yet, in the first ~300 ms): the current lock is kept and no card shows. If the phone has no accelerometer, it is treated as `flat`.
 - **The 180° flip is allowed.** The landscape lock accepts both sides, and in S1 the engine keeps the encoded picture upright (P4).
 - **Reduced motion:** the card's rotating icon stands still, and the text remains.
 
