@@ -5,9 +5,11 @@ import type {
   EndReason,
   SessionState,
 } from '@/domain/session/SessionState';
+import type { EngineStatus } from '@/domain/mode/reopen';
 import type { EngineSnapshot, Interruption, Telemetry } from '@/engine/CaptureEnginePort';
 import {
   STATUS_LINE_BUDGET,
+  selectEngineStatus,
   selectStatusLine,
   selectTally,
 } from '@/hooks/engineSelectors';
@@ -133,5 +135,21 @@ describe('selectTally', () => {
     [{ kind: 'reconnecting', holdRemainingSeconds: 9, sinceEpochMs: NOW } as SessionState, 'trouble'],
   ])('maps %o to %s', (state, expected) => {
     expect(selectTally(snapshot(state))).toBe(expected);
+  });
+});
+
+describe('selectEngineStatus', () => {
+  it.each<[SessionState, EngineStatus]>([
+    [{ kind: 'idle' }, 'idle'],
+    [{ kind: 'armed' }, 'armed'],
+    [{ kind: 'connecting', transport: 'srt' }, 'live'],
+    [{ kind: 'publishing', transport: 'srt', sinceEpochMs: 1 }, 'live'],
+    [{ kind: 'degraded', transport: 'rtmps', reason: 'poor-uplink', sinceEpochMs: 1 }, 'live'],
+    [{ kind: 'reconnecting', holdRemainingSeconds: 30, sinceEpochMs: 1 }, 'live'],
+    [{ kind: 'ended', reason: 'operator-stopped' }, 'stopped'],
+    [{ kind: 'ended', reason: 'hold-window-expired' }, 'failed'],
+    [{ kind: 'ended', reason: 'fatal-error' }, 'failed'],
+  ])('%j is %s', (state, status) => {
+    expect(selectEngineStatus(snapshot(state))).toBe(status);
   });
 });

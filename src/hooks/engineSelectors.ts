@@ -1,3 +1,4 @@
+import type { EngineStatus } from '@/domain/mode/reopen';
 import type { EngineSnapshot } from '@/engine/CaptureEnginePort';
 import { AUDIO_FLOOR } from '@/domain/policy/audioFloor';
 import type { DegradeReason, EndReason } from '@/domain/session/SessionState';
@@ -42,6 +43,28 @@ export function selectTally(snapshot: EngineSnapshot): TallyState {
 export function selectIsOnAir(snapshot: EngineSnapshot): boolean {
   const tally = selectTally(snapshot);
   return tally === 'live' || tally === 'trouble';
+}
+
+/**
+ * The engine as the shell's reopen and leave rules see it. Module scope and
+ * primitive-returning, like every selector here, so a 1 Hz tick re-renders
+ * nothing unless the status itself changes.
+ */
+export function selectEngineStatus(snapshot: EngineSnapshot): EngineStatus {
+  const { state } = snapshot;
+  switch (state.kind) {
+    case 'idle':
+      return 'idle';
+    case 'armed':
+      return 'armed';
+    case 'connecting':
+    case 'publishing':
+    case 'degraded':
+    case 'reconnecting':
+      return 'live';
+    case 'ended':
+      return state.reason === 'operator-stopped' ? 'stopped' : 'failed';
+  }
 }
 
 /**
