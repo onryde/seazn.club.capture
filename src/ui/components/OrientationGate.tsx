@@ -17,7 +17,9 @@ export function OrientationGate({ card, children }: Props) {
   const covered = card !== 'none';
   return (
     <>
+      {/* R27: never flattened, so showing the card never reparents the ScreenStack. */}
       <View
+        collapsable={false}
         style={styles.stage}
         aria-hidden={covered}
         importantForAccessibility={covered ? 'no-hide-descendants' : 'auto'}
