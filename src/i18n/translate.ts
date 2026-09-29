@@ -25,11 +25,17 @@ export function createTranslator(
   dictionaries: Readonly<Record<Lang, Messages>> = DICTIONARIES,
 ): Translator {
   const lookup = (key: string): string => dictionaries[lang][key] ?? dictionaries.en[key] ?? key;
+  // The plural form follows the language that supplies the string: a French
+  // key missing its plural falls back to English, and English rules then pick
+  // "0 scores", never French rules applied to English text.
+  const plural = (key: string, count: number): string => {
+    const own = dictionaries[lang][`${key}.${pluralCategory(lang, count)}`];
+    return own ?? lookup(`${key}.${pluralCategory('en', count)}`);
+  };
   return {
     lang,
     t: (key, vars) => fill(lookup(key), vars),
-    tp: (key, count, vars) =>
-      fill(lookup(`${key}.${pluralCategory(lang, count)}`), { ...vars, count }),
+    tp: (key, count, vars) => fill(plural(key, count), { ...vars, count }),
   };
 }
 

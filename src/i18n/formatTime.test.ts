@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { formatTime } from '@/i18n/formatTime';
 
 // 17:40 UTC on a BST day: 18:40 in London, 19:40 in Madrid.
@@ -25,5 +25,18 @@ describe('formatTime', () => {
     expect(formatTime(AT, { lang: 'en', zone: 'Not/AZone', phoneZone: 'Europe/London' })).toBe(
       '18:40',
     );
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('does not hide a failure that is not an unknown zone', () => {
+    vi.spyOn(Intl, 'DateTimeFormat').mockImplementationOnce(function () {
+      throw new TypeError('not a zone problem');
+    });
+    expect(() =>
+      formatTime(AT, { lang: 'en', zone: 'Europe/Madrid', phoneZone: 'Europe/London' }),
+    ).toThrow('not a zone problem');
   });
 });

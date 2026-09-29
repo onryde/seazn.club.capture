@@ -12,8 +12,10 @@ export function formatTime(
   const zone = options.zone ?? options.phoneZone;
   try {
     return format(at, options.lang, zone, zone !== options.phoneZone);
-  } catch {
-    // An IANA name this platform's ICU does not know throws RangeError.
+  } catch (error) {
+    // Only an IANA name this platform's ICU does not know (a RangeError) falls
+    // back to the phone's zone. Anything else is a real fault and is rethrown.
+    if (!(error instanceof RangeError)) throw error;
     return format(at, options.lang, options.phoneZone, false);
   }
 }
