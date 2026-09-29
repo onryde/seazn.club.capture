@@ -367,6 +367,10 @@ describe('Home: a refused save is never silent (R19)', () => {
     const home = await renderHome({ modeStore: refusingStore(seed, refuses) });
     fireEvent.click(screen.getByRole('button', { name }));
     await screen.findByText(SAVE_FAILED);
+    expect(screen.getByText('Continue Live Stream')).toBeTruthy();
+    expect(screen.getByText('Slot 1 · code valid till 18:40')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Continue' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Forget' })).toBeTruthy();
     expect(home.navigation.current()).toBe('home');
     expect(rejections).toEqual([]);
   });
@@ -394,6 +398,21 @@ describe('Home: a refused save is never silent (R19)', () => {
     expect(screen.getByText("Couldn't read saved codes. Scan again to continue.")).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Forget' }));
     await screen.findByText(SAVE_FAILED);
+  });
+
+  it('outranks the expiry notice (M-c)', async () => {
+    const home = await renderHome({ modeStore: refusingStore(leftStream, every) });
+    const later = new Date(AT_1840.getTime() + 60_000);
+    home.setNow(later);
+    fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
+    await screen.findByText(EXPIRED_1840);
+    const field = screen.getByPlaceholderText('Paste a code (development only)');
+    const fresh = streamRaw(new Date(later.getTime() + 2 * 3600_000));
+    fireEvent.change(field, { target: { value: fresh } });
+    fireEvent.click(screen.getByRole('button', { name: 'Use pasted code' }));
+    await screen.findByText(SAVE_FAILED);
+    expect(screen.queryByText(EXPIRED_1840)).toBeNull();
+    expect(rejections).toEqual([]);
   });
 
   it('clears on the next tap', async () => {
