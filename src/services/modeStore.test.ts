@@ -72,6 +72,16 @@ describe('modeStore', () => {
     expect(listener).toHaveBeenCalled();
   });
 
+  it('keeps a good code through a read that fails once', async () => {
+    const backing = createMemoryKeyValueStore({
+      [STORE_KEYS.active]: 'stream',
+      [STORE_KEYS.code('stream')]: encodeSavedCode(code),
+    });
+    const flaky: KeyValueStore = { ...backing, get: () => Promise.reject(new Error('busy')) };
+    await createModeStore(flaky).load();
+    expect(await relaunch(backing)).toEqual({ active: 'stream', codes: { stream: code } });
+  });
+
   it('drops a record filed under another mode', async () => {
     const kv = createMemoryKeyValueStore({ [STORE_KEYS.code('scoring')]: encodeSavedCode(code) });
     const store = createModeStore(kv);

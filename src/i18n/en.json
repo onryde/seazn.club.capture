@@ -37,7 +37,7 @@
   "scanner.installing": "Getting the scanner ready… Try again in a moment.",
   "scanner.failed": "The code scanner didn't open. Try again.",
   "reopen.expired": "Your {mode} code expired at {time}. Scan a new one.",
-  "store.unreadable": "A saved code couldn't be read, so it was removed.",
+  "store.unreadable": "Couldn't read saved codes. Scan again to continue.",
   "turn.sideways.title": "Turn your phone sideways",
   "turn.sideways.body": "Live Stream films in landscape. Either way round works.",
   "turn.upright.title": "Turn your phone upright",
