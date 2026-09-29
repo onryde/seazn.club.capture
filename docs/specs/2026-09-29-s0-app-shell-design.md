@@ -400,6 +400,7 @@ All are installed with `pnpm expo install` so they match SDK 57. That also broug
 - **The turn card's announcement:**
   - iOS: the live region is Android-only, so VoiceOver is neither told nor moved to the card when it appears. iOS is not built in S0.
   - Android: a live region that is freshly mounted may not be announced, because Fabric inserts the children before the parent. The device check settles it; the fallback is `AccessibilityInfo.announceForAccessibility` with the title when the card appears.
+- **A store write that never settles blocks the app's saved state.** Writes run one at a time, so one SecureStore call that never returns holds every later write, and a scan saving that code keeps the scan flight up, which turns the reopen gate off for the rest of the process. Low risk: a Keystore key without user authentication does not wait on anything. S1's logger, or a timeout on the key-value port, is where to catch it.
 - **No logger yet** (AGENTS §11; it arrives with S1). A refused orientation lock or leave write is handled, but recorded nowhere.
 
 ## Rulings made during S0
