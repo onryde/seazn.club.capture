@@ -43,7 +43,7 @@ export function useStreamLeave(): {
     [back, leave],
   );
 
-  return { canLeave: status !== 'live', blocked, leave };
+  return { canLeave: leaveRule('stream', status) !== 'blockedOnAir', blocked, leave };
 }
 
 /**

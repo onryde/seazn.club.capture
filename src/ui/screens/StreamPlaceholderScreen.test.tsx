@@ -49,6 +49,16 @@ describe('Live Stream placeholder', () => {
     expect(view.kv.entries.has(STORE_KEYS.active)).toBe(false);
   });
 
+  it('leaves for Home while armed, keeping the code and the armed session', async () => {
+    const view = await renderStream();
+    act(() => view.engine.forceState({ kind: 'armed' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Home' }));
+    await waitFor(() => expect(view.navigation.current()).toBe('home'));
+    expect(view.kv.entries.has(STORE_KEYS.code('stream'))).toBe(true);
+    // Armed is free to leave (decision 5): the engine is not told anything.
+    expect(view.engine.getSnapshot().state).toEqual({ kind: 'armed' });
+  });
+
   it('cannot be left on air: Home is hidden and Back explains', async () => {
     const view = await renderStream();
     act(() => view.engine.forceState(LIVE));
