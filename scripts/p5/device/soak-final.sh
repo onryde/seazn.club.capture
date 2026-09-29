@@ -5,6 +5,7 @@
 #   PEEK1_S=… CUT_LONG_S=0 … soak-final.sh      the same timeline, rescaled; 0 skips a step (smoke runs)
 #
 # Timeline, in seconds from publishing (each overridable):
+#   PROBE_S      240    peek-probe.mjs from the laptop: which playlist request 404s   output check
 #   PEEK1_S      300    Peek default UA                          output check row 1
 #   PEEK2_S      420    Peek browser UA                          output check row 2
 #   CUT_SHORT_S  480    Wi-Fi and data off 20 s, during the peek criterion 4; output check row 3
@@ -28,11 +29,12 @@ REPO=${HERE:h:h:h}   # scripts/p5/device -> repo root
 FILES=/sdcard/Android/data/com.seazn.capture/files
 RUN=p5-soakf-$(date -u +%Y%m%dT%H%M%SZ)
 OUT=$REPO/.p5/$RUN
+PROBE_S=${PROBE_S:-240}
 PEEK1_S=${PEEK1_S:-300}
 PEEK2_S=${PEEK2_S:-420}
 CUT_SHORT_S=${CUT_SHORT_S:-480}
 PEEKOFF_S=${PEEKOFF_S:-600}
-AUDIO_S=${AUDIO_S:-660 3600 9000}
+AUDIO_S=${AUDIO_S-660 3600 9000}   # "-", not ":-": an empty list means no samples
 CUT_LONG_S=${CUT_LONG_S:-1800}
 LOCK_S=${LOCK_S:-9600}
 LOCK_END_S=${LOCK_END_S:-10200}
@@ -89,7 +91,23 @@ at() {
   alive || die "app process gone before step at +$1 s"
   return 0
 }
-tap() { node $HERE/tap-visible.mjs "$1" $SERIAL >> $OUT.log 2>&1 && say "tapped $1" || say "WARN: could not tap $1" }
+# While publishing, uiautomator never sees an idle UI (1 Hz HUD, live overlay), so tap-visible cannot run then
+# (smoke run 2026-09-28 23:56Z: "no fresh uiautomator dump", three minutes per tap). Everything tapped while
+# live is resolved before the publish, with the control list scrolled to its top, and tapped by coordinates
+# after the same scroll. The peek's own `peek-*` marks in the CSV prove each tap landed.
+typeset -A XY
+scroll_top() { repeat 2 { adb -s $SERIAL shell input swipe $LIST_X $(( LIST_T + 20 )) $LIST_X $(( LIST_B - 10 )) 300; sleep 0.6 } }
+resolve() {   # resolve <key> <pattern>
+  local out xy
+  for attempt in 1 2 3; do
+    out=$(node $HERE/tap-visible.mjs "$2" $SERIAL 60 --dry 2>>$OUT.log)
+    xy=$(print -r -- "$out" | awk '/^DRY:/{for (i = 1; i <= NF; i++) if ($i == "at") print $(i + 1)}')
+    [[ $xy == *,* ]] && { XY[$1]=$xy; return 0 }
+    sleep 2
+  done
+  return 1
+}
+tap() { scroll_top; adb -s $SERIAL shell input tap ${XY[$1]%,*} ${XY[$1]#*,}; say "tapped $1 at ${XY[$1]}" }
 events_since() { awk -F, -v t=$1 -v k="$2" 'NR > 1 && $1 >= t && $2 ~ ("^(" k ")$") {print}' $OUT.device.csv | cut -c1-200 }
 outage() {
   local label=$1 secs=$2 watch=$3 cut back pub
@@ -144,6 +162,15 @@ sleep 10
 CSV=$(adb -s $SERIAL shell "ls -t $FILES/p5-*.csv | head -1" | tr -d '\r')
 adb -s $SERIAL shell "grep -q ',armed,' $CSV" || die "app did not arm ($CSV)"
 say "armed; csv $CSV"
+list=$(adb -s $SERIAL shell uiautomator dump /sdcard/soak-ui.xml >/dev/null 2>&1; adb -s $SERIAL shell cat /sdcard/soak-ui.xml | tr '>' '\n' | grep -m1 'scrollable="true"' | grep -oE 'bounds="[^"]+"' | tr -c '0-9\n' ' ')
+read -r l t r b <<< "$list"
+[[ -n ${b:-} ]] || die "could not find the control list"
+LIST_X=$(( (l + r) / 2 )); LIST_T=$t; LIST_B=$b
+scroll_top
+resolve default "^Peek default UA$" || die "could not resolve Peek default UA"
+resolve browser "^Peek browser UA$" || die "could not resolve Peek browser UA"
+resolve off "^Peek off$" || die "could not resolve Peek off"
+say "list x=$LIST_X y=$LIST_T..$LIST_B; peeks at default=${XY[default]} browser=${XY[browser]} off=${XY[off]}"
 
 node scripts/p5/hls-watch.ts "$PLAYBACK" 2000 > $OUT.hls.csv 2> $OUT.hls.err &
 WPID=$!
@@ -163,11 +190,12 @@ T0=$(now_ms)
 mark soak-publishing
 say "publishing ($(adb -s $SERIAL shell "grep -m1 ',publishing,' $CSV" | tr -d '\r' | cut -d, -f14)); ends at +$END_S s"
 
-at $PEEK1_S && { mark peek-default; tap "^Peek default UA$"; }
-at $PEEK2_S && { mark peek-browser; tap "^Peek browser UA$"; }
+at $PROBE_S && { node $HERE/peek-probe.mjs "$PLAYBACK" > $OUT.probe.txt 2>&1; say "probe: $(tr '\n' ';' < $OUT.probe.txt | cut -c1-900)"; }
+at $PEEK1_S && { mark peek-default; tap default; }
+at $PEEK2_S && { mark peek-browser; tap browser; }
 at $CUT_SHORT_S && outage cut-short 20 60
 # No screenshots: the frame is the camera's view of wherever the phone stands. The peek marks carry the evidence.
-at $PEEKOFF_S && { mark peek-off; tap "^Peek off$"; }
+at $PEEKOFF_S && { mark peek-off; tap off; }
 audio_n=0
 for a in ${=AUDIO_S}; do
   if (( CUT_LONG_S > 0 && a > CUT_LONG_S )) && [[ -z ${long_done:-} ]]; then

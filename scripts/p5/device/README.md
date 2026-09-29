@@ -20,6 +20,8 @@ Helpers:
 - `tap.mjs` is the plain tap.
 - `cf-status-watch.mjs` samples the live input's status.
 - `soak-alarm.mjs` wakes a person when a cable-free soak needs one.
+- `peek-probe.mjs <playbackUrl>` requests the delivered playlist the ways a player might: with each LL-HLS
+  delivery directive, and with a browser UA and a player UA. It exists for the output check's 404.
 - `udp-throttle.mjs` is a thin uplink for one UDP flow (rate cap and short drop-tail queue), in user
   space. A pf dummynet cap broke the SRT handshake on this Mac.
 

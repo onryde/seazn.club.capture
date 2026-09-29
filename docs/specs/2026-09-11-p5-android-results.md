@@ -582,7 +582,7 @@ runs that followed, it swallowed **10** `ClosedWriteChannelException`s (`Broken 
 and 8 far-end closes (F-P5-13). The process lived through every one and reconnected. So Ktor's closer
 throws on more than half of all RTMPS drops; without the guard, each of those would have been Run B's crash.
 
-### F-P5-13 — on RTMPS, a reconnect can go dark while the phone and Cloudflare both say live
+### F-P5-13 — a reconnect can go dark while the phone and Cloudflare both say live
 
 Short Run B, 20 s cut at 22:47:00Z (`p5-runb-20260928T224127Z`). The phone reconnected 1.4 s after the
 network returned. For the next 4.5 minutes it sent 30 fps video and 47 audio frames a second at 2.7–3.4 Mbps.
@@ -608,19 +608,28 @@ In every resumed case the same pattern followed:
 
 The one dark case is also the one reconnect that the far end did *not* close 31 s later.
 
-**What this settles:** criterion 4 holds on RTMPS in 8 of 9 cuts, not 9 of 9. The failure is silent at the
-phone and at Cloudflare's status API. Only a watcher on the delivered playlist saw it (`hls-watch`: `stalled`).
-SRT's two cuts inside the notice window on 2026-09-14 both resumed. There is no RTMPS-style second close on
-SRT on record, but two cuts cannot rule out a rare failure there either.
+**The same shape on SRT, 2026-09-29 00:02Z** (final-soak smoke run `p5-soakf-20260928T235519Z`, one 20 s
+cut). The phone was publishing again 1.5 s after the network returned. The playlist gained one segment,
+then froze for about 36 s. The far end closed the reconnected SRT session 33 s after it connected
+(`dropped … Connection was broken`). The phone reconnected in 2.7 s, and the playlist advanced from then on.
+There was one recording. So the ~31 s second close is not RTMPS-only, and neither is a reconnected session
+that Cloudflare accepts but does not package. On SRT that close healed it after about half a minute. On
+2026-09-14 the SRT cuts showed only a ~25 s freeze and no second close was recorded on the phone.
 
-**What it does not settle:** the mechanism. One hypothesis fits:
+**What this settles:**
 
-- RTMP sends the AVC decoder config once, at the start of a publish, while SRT's MPEG-TS repeats SPS/PPS
-  with every keyframe.
-- A new RTMP session whose opening frames Cloudflare discarded may therefore never become decodable.
-- The ~31 s second close would then be Cloudflare resetting the key, which happens to heal it.
+- Criterion 4, one recording across a short outage, held in every cut on both transports.
+- What a viewer gets after a reconnect inside Cloudflare's ~30 s notice window is not deterministic:
+  - an immediate resume, with a 10–16 s freeze at the far end's close about 31 s later (RTMPS, 8 of 9);
+  - a freeze of about 36 s until that close (SRT, 1 of 1 tonight);
+  - a 4.5 min blackout, when the close never came (RTMPS, 1 of 9).
+- It is silent at the phone and at Cloudflare's status API. Only a watcher on the delivered playlist saw it
+  (`hls-watch`: `stalled`).
 
-Nothing here tests this.
+**What it does not settle:** the mechanism. The close about 31 s after a reconnect looks like Cloudflare
+expiring the dead session and taking the stream key's live connection with it. That fits its ~30 s notice
+time (H-P5-1). When the close does not come, nothing ever resets the unpackaged session. An RTMP-only
+cause, such as a decoder config sent once per publish, is ruled out by the SRT case. None of this is tested.
 
 **For the product engine:**
 
