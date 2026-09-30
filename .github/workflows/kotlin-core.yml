@@ -1,0 +1,43 @@
+# The capture engine's pure-Kotlin core (S1 plan B; spec §6): the session
+# machine and every rule P5 paid for. Its tests need JDK 17 and Gradle and
+# nothing else — no Android SDK, no emulator, no device — so they run on every
+# push like the domain tests in `check.yml`.
+#
+# A workflow of its own rather than a second job in `check.yml`: the two share
+# no tools, and a red Kotlin build then names itself in the PR checks.
+name: kotlin-core
+
+# The same triggers as check.yml. No path filter: the run is short, and a
+# filtered workflow that is a required check never reports on a PR it skips.
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: kotlin-core-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  kotlin-core:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: modules/capture-engine/android/core
+    steps:
+      - uses: actions/checkout@v5
+      # The wrapper jar is a binary in the repo; refuse one Gradle did not publish.
+      - uses: gradle/actions/wrapper-validation@v6
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+          cache-dependency-path: |
+            modules/capture-engine/android/core/*.gradle.kts
+            modules/capture-engine/android/core/gradle/wrapper/gradle-wrapper.properties
+      - run: ./gradlew test --no-daemon --console=plain
