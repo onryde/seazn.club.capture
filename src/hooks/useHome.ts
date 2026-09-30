@@ -1,17 +1,17 @@
-import {
-  useCallback,
-  useEffect,
-  useState,
-  useSyncExternalStore,
-  type Dispatch,
-  type SetStateAction,
-} from 'react';
-import { type Result, err } from '@/domain/Result';
+import { useCallback, useEffect, useState, useSyncExternalStore } from 'react';
 import type { DescriptorError, SessionDescriptor } from '@/domain/credentials/SessionDescriptor';
 import type { Mode, ModeCode } from '@/domain/mode/Mode';
 import { recognise } from '@/domain/mode/recognise';
 import { isExpired, savedCodeFrom, venueZone, type SavedCode } from '@/domain/mode/savedCode';
 import { scanOutcome, type ScanOutcome } from '@/domain/mode/scanOutcome';
+import {
+  ignoreUnexpected,
+  isReady,
+  useDescriptorCheck,
+  type OpenCode,
+  type OpenOrCheck,
+  type SetPanel,
+} from '@/hooks/useDescriptorCheck';
 import { useFormatTime } from '@/hooks/useFormatTime';
 import { useT } from '@/hooks/useLanguage';
 import { usePorts } from '@/hooks/usePorts';
@@ -19,8 +19,6 @@ import type { MessageKey } from '@/i18n/messages';
 import { MODE_NAME } from '@/i18n/modeNames';
 import type { Translator } from '@/i18n/translate';
 import type { CodeScannerPort, ScanResult, ScanUnavailableReason } from '@/scanner/CodeScannerPort';
-import type { DescriptorPort } from '@/services/descriptorPort';
-import type { Logger } from '@/services/logger';
 import type { ModeStore, ModeStoreSnapshot } from '@/services/modeStore';
 
 /** A scan that did not simply open: what the panel explains. */
@@ -59,12 +57,8 @@ export type HomeActions = {
   useRaw(raw: string): void;
 };
 
-type SetPanel = Dispatch<SetStateAction<HomePanel | null>>;
 /** Home's own line of news: a scanner reason, or a refused save. Cleared by the next tap. */
 type SetStatusKey = (key: MessageKey | null) => void;
-type OpenCode = (code: ModeCode, descriptor: SessionDescriptor | null) => Promise<void>;
-type OpenOrCheck = (code: ModeCode) => Promise<void>;
-type Answer = Result<SessionDescriptor, DescriptorError>;
 type HandleScan = (tapped: Mode, result: ScanResult) => Promise<void>;
 type ReadyStore = Extract<ModeStoreSnapshot, { status: 'ready' }>;
 /** Which of Home's writes the phone refused, as the record names it. */
@@ -78,28 +72,11 @@ const SCANNER_MESSAGE: Readonly<Record<ScanUnavailableReason, MessageKey>> = {
 };
 
 const DID_NOT_OPEN: ScanResult = { outcome: 'unavailable', reason: 'failed' };
-const NO_ANSWER: Answer = err({ kind: 'offline' });
-const CHECKING: HomePanel = { kind: 'checking', tapped: 'stream' };
-
-/**
- * Ruling R12: the store takes writes only once it is `ready`. Read at call
- * time, not from a render, so a tap never acts on a stale snapshot.
- */
-function isReady(store: ModeStore): boolean {
-  return store.getSnapshot().status === 'ready';
-}
 
 function savedStream(store: ModeStore): SavedCode | null {
   const snapshot = store.getSnapshot();
   return snapshot.status === 'ready' ? (snapshot.saved.codes.stream ?? null) : null;
 }
-
-/**
- * A throw that is not a refused write is a bug (in navigation, say). Nothing
- * true can be said about it, so Home stays as it was, still usable, and no
- * rejection escapes. Refused writes never land here: they say so (R19).
- */
-function ignoreUnexpected(): void {}
 
 /**
  * Home's behaviour (spec §3): tap, scan, recognise, then open or explain.
@@ -111,13 +88,11 @@ export function useHome(): { view: HomeView; actions: HomeActions } {
   const [statusKey, setStatusKey] = useState<MessageKey | null>(null);
   const saveFailed = useSaveFailed(setStatusKey);
   const openCode = useOpenCode(setStatusKey, saveFailed);
-  const openOrCheck = useOpenOrCheck(openCode, setPanel);
+  const { openOrCheck, retryCheck } = useDescriptorCheck(openCode, panel, setPanel);
   const handle = useHandleScan(openOrCheck, setPanel, setStatusKey);
   const tapTile = useTapTile(handle, setPanel, setStatusKey);
   const view = useHomeView(snapshot, panel, statusKey);
   const panelActions = usePanelActions(panel, tapTile, openOrCheck, setPanel);
-  const retryCheck = useRetryCheck(panel, openOrCheck);
-  useBusyRetry(panel, retryCheck);
   const continueStream = useContinue(setStatusKey, saveFailed);
   const forgetStream = useForget(setStatusKey, saveFailed);
   const pasteRaw = usePaste(handle);
@@ -168,78 +143,6 @@ function useOpenCode(setStatusKey: SetStatusKey, saveFailed: SaveFailed): OpenCo
     },
     [modeStore, clock, navigation, setStatusKey, saveFailed],
   );
-}
-
-/**
- * Spec §1: a stream code is checked with the server before anything is saved.
- * The scan flight is still up while this runs, so a second tap is ignored
- * until the answer is in. A store that is not ready is not asked (R12), nor is
- * a code that ran out while its panel sat open (a Try again), and a port that
- * throws or rejects is read as no connection.
- */
-function useOpenOrCheck(openCode: OpenCode, setPanel: SetPanel): OpenOrCheck {
-  const { descriptor, modeStore, logger, clock } = usePorts();
-  return useCallback(
-    async (code: ModeCode) => {
-      if (code.mode !== 'stream') return openCode(code, null);
-      if (!isReady(modeStore)) return;
-      if (code.expiresAt.getTime() <= clock().getTime()) {
-        return setPanel({ kind: 'expired', tapped: 'stream', mode: 'stream', at: code.expiresAt });
-      }
-      setPanel(CHECKING);
-      const answer = await askSafely(descriptor, code, logger);
-      if (!answer.ok) {
-        return setPanel({ kind: 'descriptorError', tapped: 'stream', error: answer.error, code });
-      }
-      setPanel(null);
-      await openCode(code, answer.value);
-    },
-    [descriptor, modeStore, logger, clock, openCode, setPanel],
-  );
-}
-
-/**
- * A port that throws, synchronously or by rejecting, is no connection: the
- * panel always settles, never "Checking code…" for good (a missing module).
- * The fetch port logs its own refusals; a throw is recorded here, so it is
- * never silent either (spec §5). The token is never a field.
- */
-async function askSafely(
-  descriptor: DescriptorPort,
-  code: StreamCode,
-  logger: Logger,
-): Promise<Answer> {
-  try {
-    return await descriptor.fetch(code.sid, code.token);
-  } catch {
-    logger.warn('descriptor.error', { kind: 'offline', status: 0, problem: 'port-threw' });
-    return NO_ANSWER;
-  }
-}
-
-/**
- * Try again (offline) and the busy retry (D5): the same code, under a scan
- * flight of its own so a tile tap cannot interleave, and a second press
- * before the first is answered asks nothing more.
- */
-function useRetryCheck(panel: HomePanel | null, openOrCheck: OpenOrCheck): () => void {
-  const { scanFlight } = usePorts();
-  return useCallback(() => {
-    if (panel?.kind !== 'descriptorError') return;
-    if (!scanFlight.begin()) return;
-    void openOrCheck(panel.code)
-      .catch(ignoreUnexpected)
-      .finally(() => scanFlight.end());
-  }, [panel, openOrCheck, scanFlight]);
-}
-
-/** D5: one automatic retry per 429 answer, cancelled if the panel changes first. */
-function useBusyRetry(panel: HomePanel | null, retry: () => void): void {
-  useEffect(() => {
-    if (panel?.kind !== 'descriptorError' || panel.error.kind !== 'rate-limited') return;
-    const timer = setTimeout(retry, panel.error.retryAfterS * 1000);
-    return () => clearTimeout(timer);
-  }, [panel, retry]);
 }
 
 /**
