@@ -1,4 +1,13 @@
-import { useCallback, useState, useSyncExternalStore } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useState,
+  useSyncExternalStore,
+  type Dispatch,
+  type SetStateAction,
+} from 'react';
+import { type Result, err } from '@/domain/Result';
+import type { DescriptorError, SessionDescriptor } from '@/domain/credentials/SessionDescriptor';
 import type { Mode, ModeCode } from '@/domain/mode/Mode';
 import { recognise } from '@/domain/mode/recognise';
 import { isExpired, savedCodeFrom, venueZone, type SavedCode } from '@/domain/mode/savedCode';
@@ -10,13 +19,28 @@ import type { MessageKey } from '@/i18n/messages';
 import { MODE_NAME } from '@/i18n/modeNames';
 import type { Translator } from '@/i18n/translate';
 import type { CodeScannerPort, ScanResult, ScanUnavailableReason } from '@/scanner/CodeScannerPort';
+import type { DescriptorPort } from '@/services/descriptorPort';
+import type { Logger } from '@/services/logger';
 import type { ModeStore, ModeStoreSnapshot } from '@/services/modeStore';
 
-type PanelOutcome = Exclude<ScanOutcome, { kind: 'open' }>;
+/** A scan that did not simply open: what the panel explains. */
+export type PanelOutcome = Exclude<ScanOutcome, { kind: 'open' }>;
+export type StreamCode = Extract<ModeCode, { mode: 'stream' }>;
+
+/** What the panel shows: a scan's outcome, the check in flight, or the server's refusal. */
+export type HomePanel =
+  | PanelOutcome
+  | { readonly kind: 'checking'; readonly tapped: Mode }
+  | {
+      readonly kind: 'descriptorError';
+      readonly tapped: Mode;
+      readonly error: DescriptorError;
+      readonly code: StreamCode;
+    };
 
 export type HomeView = {
   readonly statusText: string;
-  readonly panel: PanelOutcome | null;
+  readonly panel: HomePanel | null;
   readonly panelTime: string | null;
   readonly continueCode: SavedCode | null;
   readonly continueTill: string | null;
@@ -27,16 +51,20 @@ export type HomeActions = {
   scanAgain(): void;
   openFromPanel(code: ModeCode): void;
   closePanel(): void;
+  /** Try again on the no-connection panel: the same code, checked again (D27). */
+  retryCheck(): void;
   continueStream(): void;
   forgetStream(): void;
   /** Development builds only: a pasted code, handled as if scanned from Live Stream. */
   useRaw(raw: string): void;
 };
 
-type SetPanel = (panel: PanelOutcome | null) => void;
+type SetPanel = Dispatch<SetStateAction<HomePanel | null>>;
 /** Home's own line of news: a scanner reason, or a refused save. Cleared by the next tap. */
 type SetStatusKey = (key: MessageKey | null) => void;
-type OpenCode = (code: ModeCode) => Promise<void>;
+type OpenCode = (code: ModeCode, descriptor: SessionDescriptor | null) => Promise<void>;
+type OpenOrCheck = (code: ModeCode) => Promise<void>;
+type Answer = Result<SessionDescriptor, DescriptorError>;
 type HandleScan = (tapped: Mode, result: ScanResult) => Promise<void>;
 type ReadyStore = Extract<ModeStoreSnapshot, { status: 'ready' }>;
 /** Which of Home's writes the phone refused, as the record names it. */
@@ -50,6 +78,8 @@ const SCANNER_MESSAGE: Readonly<Record<ScanUnavailableReason, MessageKey>> = {
 };
 
 const DID_NOT_OPEN: ScanResult = { outcome: 'unavailable', reason: 'failed' };
+const NO_ANSWER: Answer = err({ kind: 'offline' });
+const CHECKING: HomePanel = { kind: 'checking', tapped: 'stream' };
 
 /**
  * Ruling R12: the store takes writes only once it is `ready`. Read at call
@@ -77,18 +107,28 @@ function ignoreUnexpected(): void {}
 export function useHome(): { view: HomeView; actions: HomeActions } {
   const { modeStore } = usePorts();
   const snapshot = useSyncExternalStore(modeStore.subscribe, modeStore.getSnapshot);
-  const [panel, setPanel] = useState<PanelOutcome | null>(null);
+  const [panel, setPanel] = useState<HomePanel | null>(null);
   const [statusKey, setStatusKey] = useState<MessageKey | null>(null);
   const saveFailed = useSaveFailed(setStatusKey);
   const openCode = useOpenCode(setStatusKey, saveFailed);
-  const handle = useHandleScan(openCode, setPanel, setStatusKey);
+  const openOrCheck = useOpenOrCheck(openCode, setPanel);
+  const handle = useHandleScan(openOrCheck, setPanel, setStatusKey);
   const tapTile = useTapTile(handle, setPanel, setStatusKey);
   const view = useHomeView(snapshot, panel, statusKey);
-  const panelActions = usePanelActions(panel, tapTile, openCode, setPanel);
+  const panelActions = usePanelActions(panel, tapTile, openOrCheck, setPanel);
+  const retryCheck = useRetryCheck(panel, openOrCheck);
+  useBusyRetry(panel, retryCheck);
   const continueStream = useContinue(setStatusKey, saveFailed);
   const forgetStream = useForget(setStatusKey, saveFailed);
   const pasteRaw = usePaste(handle);
-  const actions = { tapTile, ...panelActions, continueStream, forgetStream, useRaw: pasteRaw };
+  const actions = {
+    tapTile,
+    ...panelActions,
+    retryCheck,
+    continueStream,
+    forgetStream,
+    useRaw: pasteRaw,
+  };
   return { view, actions };
 }
 
@@ -116,10 +156,10 @@ function useSaveFailed(setStatusKey: SetStatusKey): SaveFailed {
 function useOpenCode(setStatusKey: SetStatusKey, saveFailed: SaveFailed): OpenCode {
   const { modeStore, clock, navigation } = usePorts();
   return useCallback(
-    async (code: ModeCode) => {
+    async (code: ModeCode, descriptor: SessionDescriptor | null) => {
       if (!isReady(modeStore)) return;
       try {
-        await modeStore.open(savedCodeFrom(code, clock(), null));
+        await modeStore.open(savedCodeFrom(code, clock(), descriptor));
       } catch {
         return saveFailed('open');
       }
@@ -131,11 +171,80 @@ function useOpenCode(setStatusKey: SetStatusKey, saveFailed: SaveFailed): OpenCo
 }
 
 /**
+ * Spec §1: a stream code is checked with the server before anything is saved.
+ * The scan flight is still up while this runs, so a second tap is ignored
+ * until the answer is in. A store that is not ready is not asked (R12), and a
+ * port that throws or rejects is read as no connection.
+ */
+function useOpenOrCheck(openCode: OpenCode, setPanel: SetPanel): OpenOrCheck {
+  const { descriptor, modeStore, logger } = usePorts();
+  return useCallback(
+    async (code: ModeCode) => {
+      if (code.mode !== 'stream') return openCode(code, null);
+      if (!isReady(modeStore)) return;
+      setPanel(CHECKING);
+      const answer = await askSafely(descriptor, code, logger);
+      if (!answer.ok) {
+        return setPanel({ kind: 'descriptorError', tapped: 'stream', error: answer.error, code });
+      }
+      setPanel(null);
+      await openCode(code, answer.value);
+    },
+    [descriptor, modeStore, logger, openCode, setPanel],
+  );
+}
+
+/**
+ * A port that throws, synchronously or by rejecting, is no connection: the
+ * panel always settles, never "Checking code…" for good (a missing module).
+ * The fetch port logs its own refusals; a throw is recorded here, so it is
+ * never silent either (spec §5). The token is never a field.
+ */
+async function askSafely(
+  descriptor: DescriptorPort,
+  code: StreamCode,
+  logger: Logger,
+): Promise<Answer> {
+  try {
+    return await descriptor.fetch(code.sid, code.token);
+  } catch {
+    logger.warn('descriptor.error', { kind: 'offline', status: 0, problem: 'port-threw' });
+    return NO_ANSWER;
+  }
+}
+
+/**
+ * Try again (offline) and the busy retry (D5): the same code, under a scan
+ * flight of its own so a tile tap cannot interleave, and a second press
+ * before the first is answered asks nothing more.
+ */
+function useRetryCheck(panel: HomePanel | null, openOrCheck: OpenOrCheck): () => void {
+  const { scanFlight } = usePorts();
+  return useCallback(() => {
+    if (panel?.kind !== 'descriptorError') return;
+    if (!scanFlight.begin()) return;
+    void openOrCheck(panel.code)
+      .catch(ignoreUnexpected)
+      .finally(() => scanFlight.end());
+  }, [panel, openOrCheck, scanFlight]);
+}
+
+/** D5: one automatic retry per 429 answer, cancelled if the panel changes first. */
+function useBusyRetry(panel: HomePanel | null, retry: () => void): void {
+  useEffect(() => {
+    if (panel?.kind !== 'descriptorError' || panel.error.kind !== 'rate-limited') return;
+    const timer = setTimeout(retry, panel.error.retryAfterS * 1000);
+    return () => clearTimeout(timer);
+  }, [panel, retry]);
+}
+
+/**
  * One scan's result: nothing, a reason on the status line, an open, or a
- * panel. Settles only once any save has, so the scan guard covers the write.
+ * panel. Settles only once any check and save have, so the scan guard covers
+ * both.
  */
 function useHandleScan(
-  openCode: OpenCode,
+  openOrCheck: OpenOrCheck,
   setPanel: SetPanel,
   setStatusKey: SetStatusKey,
 ): HandleScan {
@@ -145,10 +254,10 @@ function useHandleScan(
       if (result.outcome === 'cancelled') return;
       if (result.outcome === 'unavailable') return setStatusKey(SCANNER_MESSAGE[result.reason]);
       const outcome = scanOutcome(tapped, recognise(result.raw, clock(), hosts));
-      if (outcome.kind === 'open') return openCode(outcome.code);
+      if (outcome.kind === 'open') return openOrCheck(outcome.code);
       setPanel(outcome);
     },
-    [clock, hosts, openCode, setPanel, setStatusKey],
+    [clock, hosts, openOrCheck, setPanel, setStatusKey],
   );
 }
 
@@ -196,7 +305,7 @@ async function scanSafely(scanner: CodeScannerPort): Promise<ScanResult> {
 
 function useHomeView(
   snapshot: ModeStoreSnapshot,
-  panel: PanelOutcome | null,
+  panel: HomePanel | null,
   statusKey: MessageKey | null,
 ): HomeView {
   const { t } = useT();
@@ -240,12 +349,14 @@ function statusText(
 
 /**
  * The panel's buttons: open the code it named, scan again from the same tile,
- * or close. Open closes the panel first, so a refused save replaces it.
+ * or close. Open closes the panel first, so a refused save replaces it. A
+ * stream code opened here is checked like a scanned one. "Checking code…"
+ * never closes (D27): the fetch's own deadline ends it.
  */
 function usePanelActions(
-  panel: PanelOutcome | null,
+  panel: HomePanel | null,
   tapTile: (mode: Mode) => void,
-  openCode: OpenCode,
+  openOrCheck: OpenOrCheck,
   setPanel: SetPanel,
 ): Pick<HomeActions, 'scanAgain' | 'openFromPanel' | 'closePanel'> {
   const scanAgain = useCallback(() => {
@@ -254,11 +365,14 @@ function usePanelActions(
   const openFromPanel = useCallback(
     (code: ModeCode) => {
       setPanel(null);
-      void openCode(code).catch(ignoreUnexpected);
+      void openOrCheck(code).catch(ignoreUnexpected);
     },
-    [openCode, setPanel],
+    [openOrCheck, setPanel],
   );
-  const closePanel = useCallback(() => setPanel(null), [setPanel]);
+  const closePanel = useCallback(
+    () => setPanel((open) => (open?.kind === 'checking' ? open : null)),
+    [setPanel],
+  );
   return { scanAgain, openFromPanel, closePanel };
 }
 

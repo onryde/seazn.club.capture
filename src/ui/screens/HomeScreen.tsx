@@ -33,6 +33,7 @@ export function HomeScreen() {
           onOpen={actions.openFromPanel}
           onScanAgain={actions.scanAgain}
           onClose={actions.closePanel}
+          onTryAgain={actions.retryCheck}
         />
       )}
     </View>

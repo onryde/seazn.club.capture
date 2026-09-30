@@ -1,7 +1,8 @@
 import { fireEvent, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import type { ModeCode } from '@/domain/mode/Mode';
-import { CodePanel, type PanelOutcome } from '@/ui/components/CodePanel';
+import type { PanelOutcome } from '@/hooks/useHome';
+import { CodePanel } from '@/ui/components/CodePanel';
 import { renderWithPorts } from '../../../test/renderWithPorts';
 
 const streamCode: ModeCode = {
@@ -12,7 +13,12 @@ const streamCode: ModeCode = {
   token: 'fake-token',
   expiresAt: new Date(),
 };
-const handlers = () => ({ onOpen: vi.fn(), onScanAgain: vi.fn(), onClose: vi.fn() });
+const handlers = () => ({
+  onOpen: vi.fn(),
+  onScanAgain: vi.fn(),
+  onClose: vi.fn(),
+  onTryAgain: vi.fn(),
+});
 
 describe('CodePanel', () => {
   it.each<[PanelOutcome, string, string | null]>([
@@ -86,6 +92,53 @@ describe('CodePanel', () => {
     renderWithPorts(
       <CodePanel outcome={{ kind: 'foreign', tapped: 'stream' }} time={null} {...h} />,
     );
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+    expect(h.onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it('says Checking code… with no way out: no buttons, and the dim does not close (D27)', () => {
+    const h = handlers();
+    renderWithPorts(
+      <CodePanel outcome={{ kind: 'checking', tapped: 'stream' }} time={null} {...h} />,
+    );
+    expect(screen.getByText('Checking code…')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Scan again' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+    expect(h.onClose).not.toHaveBeenCalled();
+  });
+
+  it('offers Try again, and Scan again, only when there was no connection', () => {
+    const h = handlers();
+    const offline = {
+      kind: 'descriptorError',
+      tapped: 'stream',
+      error: { kind: 'offline' },
+      code: streamCode,
+    } as const;
+    renderWithPorts(<CodePanel outcome={offline} time={null} {...h} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+    expect(h.onTryAgain).toHaveBeenCalledTimes(1);
+    fireEvent.click(screen.getByRole('button', { name: 'Scan again' }));
+    expect(h.onScanAgain).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    [{ kind: 'invalid' }, 'Not valid for streaming'],
+    [{ kind: 'ended', endReason: 'stopped' }, 'Stream ended'],
+    [{ kind: 'rate-limited', retryAfterS: 7 }, 'Server busy'],
+  ] as const)('has no Try again for %j, and closes on the dim', (error, title) => {
+    const h = handlers();
+    renderWithPorts(
+      <CodePanel
+        outcome={{ kind: 'descriptorError', tapped: 'stream', error, code: streamCode }}
+        time={null}
+        {...h}
+      />,
+    );
+    expect(screen.getByText(title)).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Scan again' })).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Close' }));
     expect(h.onClose).toHaveBeenCalledTimes(1);
   });

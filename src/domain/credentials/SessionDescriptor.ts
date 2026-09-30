@@ -41,3 +41,8 @@ export type DescriptorError =
   | { readonly kind: 'ended'; readonly endReason: OrganiserEndReason }
   | { readonly kind: 'offline' }
   | { readonly kind: 'rate-limited'; readonly retryAfterS: number };
+
+/** D4: these two read "timed out" to the operator; every other reason reads "ended by the organiser". */
+export function endedByTimeout(reason: OrganiserEndReason): boolean {
+  return reason === 'no-inbound-timeout' || reason === 'max-duration';
+}
