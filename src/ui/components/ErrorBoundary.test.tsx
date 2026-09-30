@@ -1,5 +1,6 @@
 import { render, screen } from '@testing-library/react';
 import type { ReactElement } from 'react';
+import { Text as RNText } from 'react-native';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useReopenGate } from '@/hooks/useReopenGate';
 import { ErrorBoundary } from '@/ui/components/ErrorBoundary';
@@ -33,6 +34,28 @@ describe('ErrorBoundary', () => {
     );
     expect(screen.getByText('render failed')).toBeTruthy();
     expect(splash.hides).toBe(1);
+  });
+
+  it('shows the given fallback instead of the full-screen message', () => {
+    const onCatch = vi.fn();
+    const view = render(
+      <ErrorBoundary fallback={null} onCatch={onCatch}>
+        <Boom />
+      </ErrorBoundary>,
+    );
+    expect(screen.queryByText('Something broke')).toBeNull();
+    expect(screen.queryByText('render failed')).toBeNull();
+    expect(view.container.textContent).toBe('');
+    expect(onCatch).toHaveBeenCalledTimes(1);
+  });
+
+  it('still shows its children when nothing threw, fallback or not', () => {
+    render(
+      <ErrorBoundary fallback={null}>
+        <RNText>fine</RNText>
+      </ErrorBoundary>,
+    );
+    expect(screen.getByText('fine')).toBeTruthy();
   });
 
   it('hides the splash when the reopen gate throws while deciding (R15)', async () => {

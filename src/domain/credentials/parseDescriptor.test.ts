@@ -129,7 +129,7 @@ describe('parseDescriptor', () => {
     ['https://stg.seazn.club/relay'],
     ['https://stg.seazn.club/relay/'],
     ['https://stg.seazn.club/x/relay/y'],
-    ['https://stg.seazn.club/overlay/fixtures/fake-fixture/relay?delayMs=0'],
+    ['https://stg.seazn.club/overlay/fixtures/fake-fixture/relay?delay=0'],
     ['https://stg.seazn.club/Relay'],
   ])('reads an overlay with a relay path segment, %s, as no overlay (AGENTS §7)', (url) => {
     const result = parseDescriptor(descriptorWire({ overlayUrl: url }));

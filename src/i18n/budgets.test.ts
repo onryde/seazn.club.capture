@@ -14,6 +14,10 @@ const BUDGETS: readonly (readonly [keys: RegExp, max: number])[] = [
   [/^stream\.status\./, 48],
   [/^stream\.tally\./, 12],
   [/^stream\.action\.(goLive|stop)$/, 16],
+  [/^stream\.chip\.(camera|sound|network|code)$/, 10],
+  [/^stream\.blocker\./, 24],
+  [/^stream\.goLiveBy$/, 32],
+  [/^stream\.advisory\./, 56],
 ];
 
 const WIDEST: Readonly<Record<string, string>> = {

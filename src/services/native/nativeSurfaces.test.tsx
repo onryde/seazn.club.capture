@@ -16,7 +16,7 @@ vi.mock('expo-video', () => {
   throw new Error("Cannot find native module 'ExpoVideo'");
 });
 
-const OVERLAY = 'https://stg.seazn.club/overlay/fixtures/fake-fixture?delayMs=0';
+const OVERLAY = 'https://stg.seazn.club/overlay/fixtures/fake-fixture?delay=0';
 const PEEK = 'https://video.example/fake/manifest/video.m3u8?clientBandwidthHint=1.0';
 
 type Props = Record<string, unknown>;
@@ -115,6 +115,16 @@ describe('the native overlay, confined to its own origin (I1)', () => {
     expect(guard({ url: 'intent://scan/#Intent;end' })).toBe(false);
     expect(onFailed).toHaveBeenCalledTimes(1);
     expect(built.entries()).toEqual([{ event: 'overlay.blocked', fields: { host: 'scan' } }]);
+  });
+
+  it('refuses an off-origin subframe without failing the overlay (carry 10)', async () => {
+    const { props, onFailed } = await renderOverlay(build());
+    const guard = props.onShouldStartLoadWithRequest as (request: {
+      url: string;
+      isTopFrame?: boolean;
+    }) => boolean;
+    expect(guard({ url: 'https://ads.example/', isTopFrame: false })).toBe(false);
+    expect(onFailed).not.toHaveBeenCalled();
   });
 
   it('reports every way the WebView can fail', async () => {

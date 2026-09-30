@@ -23,6 +23,8 @@ type Props = {
    * otherwise leave this message behind a splash that never lifts (ruling R15).
    */
   onCatch?: () => void;
+  /** Rendered instead of the full-screen message — around the overlay, nothing at all (AGENTS §7). */
+  fallback?: ReactNode;
 };
 type State = { error: Error | null; stack: string | null };
 
@@ -41,6 +43,7 @@ export class ErrorBoundary extends Component<Props, State> {
   render() {
     const { error, stack } = this.state;
     if (error === null) return this.props.children;
+    if (this.props.fallback !== undefined) return this.props.fallback;
 
     return (
       <ScrollView style={styles.screen} contentContainerStyle={styles.content}>

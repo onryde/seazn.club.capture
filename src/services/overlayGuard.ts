@@ -13,19 +13,34 @@ import type { Logger } from '@/services/logger';
 export const OVERLAY_ORIGIN_WHITELIST: string[] = ['*'];
 
 /**
+ * What the WebView asks about. `isTopFrame` is optional on purpose:
+ * react-native-webview 13.16.1 on Android sends none on its usual path
+ * (RNCWebViewClient.java `createWebViewEvent`), though its type says boolean.
+ */
+export type OverlayNavigation = { readonly url: string; readonly isTopFrame?: boolean };
+
+/**
  * The `onShouldStartLoadWithRequest` for one overlay URL: its own origin
- * loads; anything else is refused, never opened elsewhere, logged by host
- * alone (`overlay.blocked`), and reported as an overlay failure, so the stage
- * says so instead of showing a page nobody vouched for.
+ * loads; anything else is refused, never opened elsewhere, and logged by host
+ * alone (`overlay.blocked`). A refused top-frame navigation is reported as an
+ * overlay failure, so the stage says so instead of showing a page nobody
+ * vouched for. A refused subframe (carry 10) is not: the scorebug is still
+ * drawing. Only `isTopFrame === false` is a subframe, so a missing field fails
+ * closed.
  */
 export function overlayNavigationGuard(deps: {
   readonly url: string;
   readonly onFailed: () => void;
   readonly logger: Logger;
-}): (request: { readonly url: string }) => boolean {
+}): (request: OverlayNavigation) => boolean {
   return (request) => {
     if (staysOnOverlayOrigin(deps.url, request.url)) return true;
-    deps.logger.warn('overlay.blocked', { host: navigationHost(request.url) });
+    const host = navigationHost(request.url);
+    if (request.isTopFrame === false) {
+      deps.logger.warn('overlay.blocked', { host, kind: 'subframe' });
+      return false;
+    }
+    deps.logger.warn('overlay.blocked', { host });
     deps.onFailed();
     return false;
   };

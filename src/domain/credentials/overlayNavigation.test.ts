@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { navigationHost, staysOnOverlayOrigin } from '@/domain/credentials/overlayNavigation';
 
-const OVERLAY = 'https://stg.seazn.club/overlay/fixtures/fake-fixture?delayMs=0';
+const OVERLAY = 'https://stg.seazn.club/overlay/fixtures/fake-fixture?delay=0';
 
 describe('staysOnOverlayOrigin (I1: the overlay WebView keeps to its own origin)', () => {
   it.each([

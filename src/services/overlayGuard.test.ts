@@ -9,7 +9,7 @@ import {
 } from '@/services/overlayGuard';
 import { createRingRecord } from '@/services/sessionRecord';
 
-const OVERLAY = 'https://stg.seazn.club/overlay/fixtures/fake-fixture?delayMs=0';
+const OVERLAY = 'https://stg.seazn.club/overlay/fixtures/fake-fixture?delay=0';
 
 function build() {
   const record = createRingRecord();
@@ -55,6 +55,40 @@ describe('the overlay navigation guard (I1)', () => {
     expect(entries()).toEqual([{ event: 'overlay.blocked', fields: { host } }]);
   });
 
+  /**
+   * Carry 10: a page's own off-origin iframe (an embed, an ad) is refused and
+   * logged, but the scorebug is still drawing, so the overlay has not failed.
+   * `isTopFrame === false` alone means a subframe. react-native-webview 13.16.1
+   * on Android sends no `isTopFrame` on its usual path (RNCWebViewClient.java
+   * `createWebViewEvent`), though the type says boolean: absent reads as the
+   * top frame, so Android fails closed.
+   */
+  it('refuses an off-origin subframe and logs it, without failing the overlay', () => {
+    const { guard, onFailed, entries } = build();
+    expect(guard({ url: 'https://ads.example/frame?id=secret', isTopFrame: false })).toBe(false);
+    expect(onFailed).not.toHaveBeenCalled();
+    expect(entries()).toEqual([
+      { event: 'overlay.blocked', fields: { host: 'ads.example', kind: 'subframe' } },
+    ]);
+  });
+
+  it('lets a subframe on its own origin load, silently', () => {
+    const { guard, onFailed, entries } = build();
+    expect(guard({ url: OVERLAY, isTopFrame: false })).toBe(true);
+    expect(onFailed).not.toHaveBeenCalled();
+    expect(entries()).toEqual([]);
+  });
+
+  it.each([[true], [undefined]])(
+    'fails the overlay for a refused top frame (isTopFrame %s)',
+    (isTopFrame) => {
+      const { guard, onFailed, entries } = build();
+      expect(guard({ url: 'https://evil.example/', isTopFrame })).toBe(false);
+      expect(onFailed).toHaveBeenCalledTimes(1);
+      expect(entries()).toEqual([{ event: 'overlay.blocked', fields: { host: 'evil.example' } }]);
+    },
+  );
+
   it('reports each refusal, so a second one after a re-render is not lost', () => {
     const { guard, onFailed } = build();
     guard({ url: 'https://evil.example/' });
@@ -99,8 +133,10 @@ describe('through the installed vendor path: Linking is never called', () => {
     createOnShouldStartLoadWithRequest: (
       loadRequest: (shouldStart: boolean, url: string, lock: number) => void,
       originWhitelist: readonly string[],
-      onShouldStartLoadWithRequest: (event: { url: string }) => boolean,
-    ) => (event: { nativeEvent: { url: string; lockIdentifier: number } }) => void;
+      onShouldStartLoadWithRequest: (event: { url: string; isTopFrame?: boolean }) => boolean,
+    ) => (event: {
+      nativeEvent: { url: string; lockIdentifier: number; isTopFrame?: boolean };
+    }) => void;
   };
 
   afterAll(() => {
@@ -136,6 +172,21 @@ describe('through the installed vendor path: Linking is never called', () => {
     ['whatsapp://send?text=hi', false],
   ])('%s: start %s, and no other app is opened', (url, start) => {
     expect(decide(OVERLAY_ORIGIN_WHITELIST, url)).toEqual({ start, linking: 0 });
+  });
+
+  it('passes isTopFrame through to the guard: a refused subframe opens nothing', () => {
+    linking.canOpenURL.mockClear();
+    linking.openURL.mockClear();
+    const { guard, onFailed } = build();
+    const loadRequest = vi.fn();
+    createOnShouldStartLoadWithRequest(
+      loadRequest,
+      OVERLAY_ORIGIN_WHITELIST,
+      guard,
+    )({ nativeEvent: { url: 'https://ads.example/', lockIdentifier: 7, isTopFrame: false } });
+    expect(loadRequest.mock.calls[0]?.[0]).toBe(false);
+    expect(onFailed).not.toHaveBeenCalled();
+    expect(linking.canOpenURL.mock.calls.length + linking.openURL.mock.calls.length).toBe(0);
   });
 
   // Controls: the same test sees the hand-off it guards against.
