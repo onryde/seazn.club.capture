@@ -246,11 +246,11 @@ class StallWatchdogTest {
 
   @Test
   fun `after a counter goes backwards the window starts again`() {
-    // The encoder's counters restart. Readings kept from before would give the window 1 s later a
-    // base of 90 frames against a count of 30: −20 fps.
+    // The video encoder's counter restarts and audio's runs on, so only the video reset clears the
+    // window. Readings kept from before would give the window 1 s later a base of 90 frames against a
+    // count of 30: −20 fps.
     val drive = healthy()
     drive.video = 0
-    drive.audio = 0
     drive.steps(8, 15, 23)
     assertTrue(drive.verdicts.isEmpty(), "got ${drive.verdicts}")
     assertEquals(30.0, drive.dog.videoFps)
