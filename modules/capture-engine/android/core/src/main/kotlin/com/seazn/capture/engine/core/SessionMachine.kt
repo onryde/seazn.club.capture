@@ -351,15 +351,16 @@ internal object Devices {
    * The operator's switch (ruling 14). On air, the stall watchdog starts a fresh window, so the
    * switch's frame pause is neither a no-video nor a rate-floor rebuild, and the session's LIVE state
    * holds until the new camera's first frame. Only a camera that has delivered a frame is switched
-   * that way: before the first frame, F-P5-6's 5 s grace already covers the pause, and a second switch
-   * before the new camera's first frame keeps the first one's window, so LIVE with no new frame is
-   * bounded by 3 s from the first switch.
+   * that way: before the first frame, F-P5-6's 5 s grace already covers the pause. A re-baseline
+   * clears the last frame, and the camera is ours again in the step that brings the next one, so a
+   * second switch before the new camera's first frame finds no frame and keeps the first one's
+   * window: LIVE with no new frame is bounded by 3 s from the first switch.
    */
   fun switched(phase: Phase, now: Now): Step {
     val session = phase.session ?: return SessionMachine.ignored(phase, "switch-camera")
     if (session.camera.slateOnAir) return SessionMachine.ignored(phase, "switch-camera")
     val commands = listOf(Command.SwitchCamera, record("camera-switched"))
-    if (phase !is Phase.OnAir || session.camera != CameraState.OWN || phase.watchdog.lastAdvanceAtMs == null) return Step(phase, commands)
+    if (phase !is Phase.OnAir || phase.watchdog.lastAdvanceAtMs == null) return Step(phase, commands)
     val switching = phase.copy(session = session.copy(camera = CameraState.SWITCHING), watchdog = phase.watchdog.rebaselined(now.monoMs))
     return Step(switching, commands)
   }
