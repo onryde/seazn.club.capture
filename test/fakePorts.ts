@@ -11,6 +11,7 @@ import type {
   Route,
   SplashPort,
 } from '@/services/devicePorts';
+import { createFakeDescriptorPort, type FakeDescriptorPort } from '@/services/fakeDescriptorPort';
 import { createMemoryKeyValueStore, type MemoryKeyValueStore } from '@/services/KeyValueStore';
 import { createLogger } from '@/services/logger';
 import { createModeStore } from '@/services/modeStore';
@@ -25,6 +26,7 @@ export type FakePorts = {
   readonly ports: Ports;
   readonly engine: FakeCaptureEngine;
   readonly scanner: FakeCodeScanner;
+  readonly descriptor: FakeDescriptorPort;
   readonly kv: MemoryKeyValueStore;
   readonly motion: FakeMotion;
   readonly orientationLock: OrientationLockPort & { readonly locks: readonly Target[] };
@@ -54,6 +56,7 @@ export function createFakePorts(
   const fakes = {
     engine,
     scanner: createFakeCodeScanner(),
+    descriptor: createFakeDescriptorPort(() => now),
     kv,
     motion: fakeMotion(),
     orientationLock: fakeLock(),

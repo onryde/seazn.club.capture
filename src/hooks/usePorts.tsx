@@ -3,6 +3,7 @@ import type { CaptureEnginePort } from '@/engine/CaptureEnginePort';
 import type { FakeCaptureEngine } from '@/engine/FakeCaptureEngine';
 import { EngineProvider } from '@/hooks/useCaptureEngine';
 import type { CodeScannerPort } from '@/scanner/CodeScannerPort';
+import type { DescriptorPort } from '@/services/descriptorPort';
 import type {
   BackPort,
   ForegroundPort,
@@ -27,6 +28,8 @@ export type Ports = {
   /** The fake engine's extra controls, for the development-only buttons. Null in release. */
   readonly devEngine: FakeCaptureEngine | null;
   readonly scanner: CodeScannerPort;
+  /** The server's word on a scanned stream code (spec §2). */
+  readonly descriptor: DescriptorPort;
   readonly kv: KeyValueStore;
   readonly modeStore: ModeStore;
   /** Home's scan in flight, which the reopen gate leaves alone (I2). */

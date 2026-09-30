@@ -3,8 +3,11 @@ import { getLocales } from 'expo-localization';
 import { createFakeCaptureEngine } from '@/engine/FakeCaptureEngine';
 import type { Ports } from '@/hooks/usePorts';
 import { createNativeCodeScanner } from '@/scanner/nativeCodeScanner';
+import { createFakeDescriptorPort } from '@/services/fakeDescriptorPort';
+import { createFetchDescriptorPort } from '@/services/fetchDescriptorPort';
 import { withTimeout } from '@/services/kvTimeout';
-import { createLogger } from '@/services/logger';
+import type { DescriptorPort } from '@/services/descriptorPort';
+import { createLogger, type Logger } from '@/services/logger';
 import { createModeStore } from '@/services/modeStore';
 import { createScanFlight } from '@/services/scanFlight';
 import { createExpoRouterNavigation } from '@/services/native/expoRouterNavigation';
@@ -14,7 +17,7 @@ import { createNativeMotion } from '@/services/native/nativeMotion';
 import { createNativeOrientationLock } from '@/services/native/nativeOrientationLock';
 import { createNativeSplash } from '@/services/native/nativeSplash';
 import { createSecureKeyValueStore } from '@/services/native/secureKeyValueStore';
-import { seaznHosts } from '@/services/seaznHosts';
+import { descriptorOrigin, seaznHosts } from '@/services/seaznHosts';
 import { createRingRecord } from '@/services/sessionRecord';
 
 /**
@@ -29,10 +32,15 @@ export function createNativePorts(): Ports {
   const kv = withTimeout(createSecureKeyValueStore(), { logger });
   const scanner = createNativeCodeScanner();
   scanner.prepare();
+  const clock = () => new Date();
+  const env = process.env.EXPO_PUBLIC_SEAZN_ENV;
+  const hosts = seaznHosts(env);
+  const descriptor = createDescriptorPort({ env, hosts, clock, logger });
   return {
     engine,
     devEngine: __DEV__ ? engine : null,
     scanner,
+    descriptor,
     kv,
     modeStore: createModeStore(kv),
     scanFlight: createScanFlight(),
@@ -44,11 +52,32 @@ export function createNativePorts(): Ports {
     splash: createNativeSplash(),
     logger,
     record,
-    clock: () => new Date(),
-    hosts: seaznHosts(process.env.EXPO_PUBLIC_SEAZN_ENV),
+    clock,
+    hosts,
     deviceLanguages: getLocales().map((locale) => locale.languageCode),
     phoneZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
     appVersion: Constants.expoConfig?.version ?? '0.0.0',
     devTools: __DEV__,
   };
+}
+
+/**
+ * D25: the web endpoint does not exist yet, so a development build can opt
+ * into the fake with `EXPO_PUBLIC_FAKE_DESCRIPTOR=1`. A release never can.
+ */
+function createDescriptorPort(deps: {
+  env: string | undefined;
+  hosts: readonly string[];
+  clock: () => Date;
+  logger: Logger;
+}): DescriptorPort {
+  if (__DEV__ && process.env.EXPO_PUBLIC_FAKE_DESCRIPTOR === '1') {
+    return createFakeDescriptorPort(deps.clock);
+  }
+  return createFetchDescriptorPort({
+    origin: descriptorOrigin(deps.env),
+    hosts: deps.hosts,
+    fetch: (url, init) => fetch(url, init),
+    logger: deps.logger,
+  });
 }
