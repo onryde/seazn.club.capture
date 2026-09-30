@@ -9,7 +9,11 @@ enum class StallCause(override val wire: String) : Wire {
 sealed interface StallVerdict {
   data object None : StallVerdict
 
-  /** The camera is taken (F-P5-10): video may stop, and nothing is rebuilt, because a rebuild buys nothing. */
+  /**
+   * The camera is taken (F-P5-10): video may stop, and nothing is rebuilt, because a rebuild buys
+   * nothing. Informational only: production acts on [Rebuild] alone, and the Projection reads the
+   * hold from the camera state, not from this verdict.
+   */
   data object Held : StallVerdict
 
   data class Rebuild(val cause: StallCause, val msSinceAdvance: Long, val videoFps: Double?, val audioFps: Double?) :
@@ -74,7 +78,7 @@ data class StallWatchdog(
     val limit = if (stallFrom == null) FIRST_FRAME_GRACE_MS else STALL_MS
     return when {
       silentMs < limit -> this to StallVerdict.None
-      cameraTaken -> copy(readings = emptyList()) to StallVerdict.Held
+      cameraTaken -> copy(readings = emptyList(), videoFps = null, audioFps = null) to StallVerdict.Held
       stallFrom == null -> this to StallVerdict.Rebuild(StallCause.NO_FIRST_FRAME, silentMs, null, null)
       else -> this to StallVerdict.Rebuild(StallCause.NO_VIDEO, silentMs, videoFps, audioFps)
     }

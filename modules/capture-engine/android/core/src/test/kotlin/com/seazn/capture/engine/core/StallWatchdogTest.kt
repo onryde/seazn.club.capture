@@ -129,6 +129,17 @@ class StallWatchdogTest {
   }
 
   @Test
+  fun `F-P5-10 a camera held with video stopped shows no rates`() {
+    // Held from 3 s after the last frame. The 30.0 and 46.0 from before are not a rate of a camera
+    // that is sending nothing, so Diagnostics must not show them, as it does not for a slate.
+    val drive = healthy()
+    drive.steps(6, 0, 23, cameraTaken = true)
+    assertEquals(listOf<Pair<Long, StallVerdict>>(8_000L to StallVerdict.Held), drive.verdicts)
+    assertNull(drive.dog.videoFps)
+    assertNull(drive.dog.audioFps)
+  }
+
+  @Test
   fun `F-P5-10 a slate at a low rate is not judged while the camera is taken`() {
     val drive = healthy()
     drive.steps(12, 1, 23, cameraTaken = true)
@@ -253,12 +264,14 @@ class StallWatchdogTest {
     assertNull(slate.dog.videoFps, "a taken camera's slate has no rate")
     slate.steps(7, 15, 23)
     assertTrue(slate.verdicts.isEmpty(), "got ${slate.verdicts}")
+    assertEquals(30.0, slate.dog.videoFps)
     // Video stopped while taken (held), then the camera again at 30 fps with no reopen.
     val stopped = healthy()
     stopped.steps(12, 0, 23, cameraTaken = true)
     stopped.verdicts.clear()
     stopped.steps(7, 15, 23)
     assertTrue(stopped.verdicts.isEmpty(), "got ${stopped.verdicts}")
+    assertEquals(30.0, stopped.dog.videoFps)
   }
 
   @Test
