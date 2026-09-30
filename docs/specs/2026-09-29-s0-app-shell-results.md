@@ -4,7 +4,7 @@
 
 **Device:** Redmi Note 7 Pro (Android 10, MIUI, 1080×2340 @440), serial ending `b6fb`.
 The spec names the OnePlus; it was not available, so everything below was
-checked on the Redmi. Builds were local (debug through `expo run:android` and
+checked on the Redmi, except the German fallback, which needs Android 13+ and ran on a OnePlus NE2211 (Android 16) once it was available. Builds were local (debug through `expo run:android` and
 Metro; release through `expo run:android --variant release`), never EAS.
 
 Codes used in testing were made up (`fake-sid-1`, empty credentials). No real
@@ -25,7 +25,7 @@ worktree and are not committed.
 | 7 | Codes survive a restart; Forget removes them | PASS | Continue card "Slot 1 · code valid till 04:30" after relaunch; Forget survives a relaunch |
 | 8 | Turn card both ways, reads upright in the hand | PASS (owner) | Owner held the phone: portrait Home → sideways → card → landscape → Back → card → portrait. Glyph-only card per R28. |
 | 9 | Flat on a table enters Live Stream with no card | PASS | Face-down phone → `/stream`, no card |
-| 10 | Four languages switch all text and persist; German shows English | PASS / not testable | es, fr, nl, en on Home and the code panel; nl survived a restart. German fallback needs per-app locales (Android 13+); the Redmi is Android 10. Unit-tested only. |
+| 10 | Four languages switch all text and persist; German shows English | PASS | es, fr, nl, en on Home and the code panel (Redmi); nl survived a restart. German fallback on the OnePlus NE2211 (Android 16): app storage cleared, per-app locale `de-DE` → Home in English (`op-de-home.png`); control, per-app locale `es-ES` → Home in Spanish, so the phone's locale really drives the choice. A saved language choice correctly outranks the phone (seen before the clear: stored `en` won over `es`). |
 | 11 | Fits at 2–3 sizes | PASS | Redmi, 720×1280 @320 and 1080×2400 @420 (`wm size`/`density`, reset after) — Home, code panel and placeholder, nothing clipped |
 
 ## Release build
@@ -82,7 +82,6 @@ implementer with RED evidence, reviewed in two scoped re-reviews.
 
 - iOS: nothing in S0 was run on an iPhone. VoiceOver announcement of the turn card is a known gap.
 - The real capture engine: S0 has only the fake. Keep-awake while armed or live, orientation holds under a real camera session, and R37 (the lock after a remount mid-broadcast) are S1's.
-- German-to-English fallback on a real phone (needs Android 13+).
 - Scanner first-use install.
-- The hand-only checks listed for the owner: turn card on Home and Stream with no flash, TalkBack announcement and no reach behind the card, reduced motion (still glyph), unsupported-locale fallback.
+- The hand-only checks listed for the owner: turn card on Home and Stream with no flash, TalkBack announcement and no reach behind the card, reduced motion (still glyph).
 - The 3-hour soak (deferred to app completion).
