@@ -222,6 +222,28 @@ describe('useOrientationGate', () => {
     expect(readRecord(fakes.record).map((e) => e.event)).toContain('orientation.lock-refused');
   });
 
+  it('keeps a newer applied lock when an older, superseded lock is refused late (R26)', async () => {
+    const fakes = createFakePorts();
+    let refuse: (reason: Error) => void = () => undefined;
+    const lock = fakes.orientationLock.lock;
+    let first = true;
+    fakes.orientationLock.lock = (target) => {
+      if (!first) return lock(target);
+      first = false;
+      return new Promise((_, reject) => {
+        refuse = reject;
+      });
+    };
+    await gate('landscape', fakes); // landscape asked for; the platform has not answered
+    hold(fakes, UPRIGHT, 0); // off air: lock to the hands, portrait applied
+    expect(fakes.orientationLock.locks).toEqual(['portrait']);
+    await act(async () => refuse(new Error('refused'))); // the old landscape refusal lands
+    act(() => fakes.engine.forceState({ kind: 'armed' })); // keep
+    act(() => fakes.engine.forceState({ kind: 'idle' })); // portrait again: still applied
+    await act(async () => undefined);
+    expect(fakes.orientationLock.locks).toEqual(['portrait']);
+  });
+
   it('stops the accelerometer on unmount', async () => {
     const fakes = createFakePorts();
     const subscribe = fakes.motion.subscribe;
