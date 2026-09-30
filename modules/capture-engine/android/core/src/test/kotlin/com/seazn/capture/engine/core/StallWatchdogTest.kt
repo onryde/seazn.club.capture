@@ -18,7 +18,7 @@ class StallWatchdogTest {
       t += 500
       video += videoAdd
       audio += audioAdd
-      val (afterFrames, frameVerdict) = dog.frames(video, audio, t, cameraTaken)
+      val (afterFrames, frameVerdict) = dog.frames(video, audio, t, cameraTaken, false)
       val (afterTick, tickVerdict) = afterFrames.tick(t, cameraTaken)
       dog = afterTick
       for (verdict in listOf(frameVerdict, tickVerdict)) if (verdict != StallVerdict.None) verdicts += t to verdict
@@ -28,7 +28,7 @@ class StallWatchdogTest {
       repeat(count) { step(videoAdd, audioAdd, cameraTaken) }
   }
 
-  private fun healthy(): Drive = Drive().apply { dog = dog.frames(0, 0, 0, false).first; steps(10, 15, 23) }
+  private fun healthy(): Drive = Drive().apply { dog = dog.frames(0, 0, 0, false, false).first; steps(10, 15, 23) }
 
   @Test
   fun `F-P5-6 no video frame for 3 s is a rebuild, while audio still flows`() {
@@ -54,7 +54,7 @@ class StallWatchdogTest {
 
   @Test
   fun `F-P5-9 a slideshow above zero is a rebuild - 8 fps`() {
-    val drive = Drive().apply { dog = dog.frames(0, 0, 0, false).first }
+    val drive = Drive().apply { dog = dog.frames(0, 0, 0, false, false).first }
     drive.steps(7, 4, 23)
     val (at, verdict) = drive.verdicts.single()
     assertEquals(3_500L, at, "the first full window after the first frame")
@@ -66,7 +66,7 @@ class StallWatchdogTest {
   @Test
   fun `F-P5-4 audio at a seventh of its rate is a rebuild though video runs 30 fps`() {
     // F-P5-4: 6.36 audio packets/s against the full AAC rate of 46.88.
-    val drive = Drive().apply { dog = dog.frames(0, 0, 0, false).first }
+    val drive = Drive().apply { dog = dog.frames(0, 0, 0, false, false).first }
     drive.steps(7, 15, 3)
     val (at, verdict) = drive.verdicts.single()
     assertEquals(3_500L, at)
@@ -76,10 +76,26 @@ class StallWatchdogTest {
   }
 
   @Test
+  fun `F-P5-8 while the mic is silenced only the video floor is judged`() {
+    // P5, a phone call answered on 2026-09-28 evening: "delivery-starved videoFps=9.7 audioFps=15.2", the
+    // mic silenced by the system. Readings 2 s apart make a 4 s window: 39 video and 61 audio frames are
+    // 9.75 and 15.25 a second, shown as 9.7 and 15.2. 40 video frames are 10.0, on the floor.
+    fun verdict(videoFrames: Long, micSilenced: Boolean): StallVerdict {
+      var dog = StallWatchdog(startedAtMs = 0).frames(0, 0, 0, false, micSilenced).first
+      dog = dog.frames(15, 23, 500, false, micSilenced).first
+      dog = dog.frames(35, 53, 2_500, false, micSilenced).first
+      return dog.frames(15 + videoFrames, 23 + 61, 4_500, false, micSilenced).second
+    }
+    assertEquals(StallVerdict.Rebuild(StallCause.BELOW_FLOOR, 0, 9.7, 15.2), verdict(39, micSilenced = true))
+    assertEquals(StallVerdict.None, verdict(40, micSilenced = true))
+    assertEquals(StallVerdict.Rebuild(StallCause.BELOW_FLOOR, 0, 10.0, 15.2), verdict(40, micSilenced = false))
+  }
+
+  @Test
   fun `F-P5-9 a short dip that averages above the floors is not a rebuild`() {
     // Video: P5's browser run, "30 fps apart from one second at 12 fps". Audio: a dip to 15 and 18
     // frames/s, chosen here. The worst 3 s windows hold 72 video and 80 audio frames: 24.0 and 26.6 a second.
-    val drive = Drive().apply { dog = dog.frames(0, 0, 0, false).first }
+    val drive = Drive().apply { dog = dog.frames(0, 0, 0, false, false).first }
     val video = listOf(15L, 15, 15, 6, 6, 15, 15, 15, 15, 15, 15, 15)
     val audio = listOf(23L, 23, 24, 7, 8, 9, 9, 23, 24, 23, 24, 23)
     video.zip(audio).forEach { (v, a) -> drive.step(v, a) }
@@ -88,7 +104,7 @@ class StallWatchdogTest {
 
   @Test
   fun `exactly 10 video fps and 20 audio frames a second is not starved`() {
-    val drive = Drive().apply { dog = dog.frames(0, 0, 0, false).first }
+    val drive = Drive().apply { dog = dog.frames(0, 0, 0, false, false).first }
     drive.steps(12, 5, 10)
     assertTrue(drive.verdicts.isEmpty(), "got ${drive.verdicts}")
     assertEquals(10.0, drive.dog.videoFps)
@@ -125,7 +141,7 @@ class StallWatchdogTest {
   @Test
   fun `a counter that goes backwards is a fresh baseline, not an advance`() {
     val drive = healthy()
-    val (dog, verdict) = drive.dog.frames(3, 5, drive.t + 500, cameraTaken = false)
+    val (dog, verdict) = drive.dog.frames(3, 5, drive.t + 500, cameraTaken = false, micSilenced = false)
     assertEquals(StallVerdict.None, verdict)
     assertEquals(3L, dog.lastVideo)
     assertEquals(drive.dog.lastAdvanceAtMs, dog.lastAdvanceAtMs)
@@ -144,7 +160,7 @@ class StallWatchdogTest {
   fun `the rates shown are the window's, truncated to one decimal`() {
     // Audio 23, 23, 24 frames a half second: every 3 s window holds 140 frames, 46.67 a second.
     // Truncated, that shows 46.6; rounded, it would show 46.7.
-    val drive = Drive().apply { dog = dog.frames(0, 0, 0, false).first }
+    val drive = Drive().apply { dog = dog.frames(0, 0, 0, false, false).first }
     repeat(4) {
       drive.step(15, 23)
       drive.step(15, 23)
