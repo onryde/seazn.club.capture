@@ -38,4 +38,11 @@ class HoldClockTest {
     assertNull(HoldClock.started(mapOf(Transport.SRT to 0), Transport.SRT, 0))
     assertNull(HoldClock.started(emptyMap(), Transport.RTMPS, 0))
   }
+
+  // Below: added in B4's mutation pass.
+
+  @Test
+  fun `a negative window gives no hold`() {
+    assertNull(HoldClock.started(mapOf(Transport.RTMPS to -180), Transport.RTMPS, 0))
+  }
 }
