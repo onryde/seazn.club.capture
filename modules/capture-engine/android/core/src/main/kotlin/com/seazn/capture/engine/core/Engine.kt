@@ -118,7 +118,7 @@ class Engine(
     for (entry in lines) contained(errors) { record.append(now.wallMs, entry) }
     contained(errors) { publish(input, now) }
     val first = errors.firstOrNull() ?: return
-    for (later in errors) if (later !== first) first.addSuppressed(later)
+    for (later in errors.drop(1)) first.addSuppressed(later)
     throw first
   }
 

@@ -491,6 +491,8 @@ class EngineTest {
 
   @Test
   fun `final review M-1 one Error thrown by two effects of a step is rethrown once, never suppressed by itself`() {
+    // Throwable's own addSuppressed would throw on itself. Kotlin's extension, which the engine calls,
+    // skips it (kotlin-stdlib 2.1.20, ExceptionsKt.addSuppressed: `if (this !== exception)`).
     val crash = SinkCrash()
     onLine = { line -> if (""""kind":"ended"""" in line) throw crash }
     onSnapshot = { snapshot -> if (snapshot.state is SnapshotState.Ended) throw crash }
