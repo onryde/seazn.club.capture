@@ -270,6 +270,17 @@ class StallWatchdogTest {
   }
 
   @Test
+  fun `an audio restart is judged against the last reading, not the window's base`() {
+    // The count restarts at 100 and reads 123, under the last reading's 230 but over the base's 92.
+    // Against the base, the window from 2.5 s would read (123 - 115) / 3 = 2.6 a second: a rebuild.
+    val drive = healthy()
+    drive.audio = 100
+    drive.steps(7, 15, 23)
+    assertTrue(drive.verdicts.isEmpty(), "got ${drive.verdicts}")
+    assertEquals(46.0, drive.dog.audioFps)
+  }
+
+  @Test
   fun `an audio counter that goes backwards on a reading with no new frame restarts the window too`() {
     val drive = healthy()
     drive.audio = 0
