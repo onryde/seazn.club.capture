@@ -161,6 +161,17 @@ describe('Home', () => {
     expect(screen.queryByText('Continue Live Stream')).toBeNull();
   });
 
+  it('drops Continue at the next render once the code has expired on screen', async () => {
+    const home = await renderHome({
+      kvSeed: { [STORE_KEYS.code('stream')]: savedStream(AT_1840) },
+    });
+    expect(screen.getByText('Continue Live Stream')).toBeTruthy();
+    home.setNow(new Date(AT_1840.getTime() + 60_000));
+    // Any render of Home will do: the card reads the clock when it renders.
+    home.rerender(<HomeScreen />);
+    expect(screen.queryByText('Continue Live Stream')).toBeNull();
+  });
+
   it('shows the expiry notice left by the reopen gate', async () => {
     const home = await renderHome();
     await act(() =>
