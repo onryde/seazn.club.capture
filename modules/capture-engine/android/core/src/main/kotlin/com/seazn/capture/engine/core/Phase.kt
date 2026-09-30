@@ -169,10 +169,10 @@ fun Phase.withNetwork(validated: Boolean): Phase =
  * The phase a session ends in, from any phase: the ids and the network fact carry on to the next
  * session. The duration counts from the first encoded frame on the wall clock, outages included, as
  * the HUD's elapsed clock does (final review M-3); a wall clock set back past that frame reads 0. An
- * ended session ended again (the engine's fatal error) keeps the duration it had.
+ * ended session ended again stays as it ended: its reason and duration stand (final review N-2).
  */
 fun Phase.ended(reason: EndReason, now: Now): Phase.Ended {
-  if (this is Phase.Ended) return copy(reason = reason)
+  if (this is Phase.Ended) return this
   val durationMs = session?.liveSinceEpochMs?.let { (now.wallMs - it).coerceAtLeast(0) }
   return Phase.Ended(reason, ids, durationMs, networkValidated)
 }

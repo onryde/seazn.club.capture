@@ -96,12 +96,15 @@ class Engine(
    * secrets unprotected; an exception from a command, the record's sink or the snapshot is counted.
    * No exception reaches the scheduler's thread. An arm outside idle is one the machine ignores, so its
    * config never runs: an exception while protecting it is recorded, and the session carries on (B7 E1).
+   * Once the session has ended, an exception inside the machine is only recorded: the first end reason
+   * stands and no second End goes out (final review N-2).
    *
    * An `Error` is not the engine's to catch, and it does reach the scheduler's thread (carry 15), but
    * never halfway through a step (final review M-1). The platform's commands go first, so nothing
    * the record or the snapshot throws can hold one back, an End least of all; then every record line,
-   * then the snapshot. Each runs whatever the one before it threw, and the first `Error` is rethrown
-   * once all of them have. One from the machine itself is thrown before the step changes anything.
+   * in the machine's order, then the snapshot. Each runs whatever the one before it threw, and the
+   * first `Error` is rethrown once all of them have, with any later ones attached as suppressed. One
+   * from the machine itself is thrown before the step changes anything.
    */
   private fun process(input: Input) {
     val now = clock.now()
@@ -114,7 +117,9 @@ class Engine(
     }
     for (entry in lines) contained(errors) { record.append(now.wallMs, entry) }
     contained(errors) { publish(input, now) }
-    errors.firstOrNull()?.let { throw it }
+    val first = errors.firstOrNull() ?: return
+    for (later in errors) if (later !== first) first.addSuppressed(later)
+    throw first
   }
 
   private fun reduced(input: Input, now: Now): Step =
@@ -124,7 +129,8 @@ class Engine(
       val reduced = reducer(phase, input, now)
       if (unprotected == null) reduced else reduced.copy(commands = listOf(engineError(unprotected)) + reduced.commands)
     } catch (failure: Exception) {
-      Step(phase.ended(EndReason.FATAL_ERROR, now), listOf(engineError(failure), Command.End(EndReason.FATAL_ERROR)))
+      if (phase is Phase.Ended) Step(phase, listOf(engineError(failure)))
+      else Step(phase.ended(EndReason.FATAL_ERROR, now), listOf(engineError(failure), Command.End(EndReason.FATAL_ERROR)))
     }
 
   /** Runs [effect]; what it throws is kept in [errors], so the step's next effect still runs. */

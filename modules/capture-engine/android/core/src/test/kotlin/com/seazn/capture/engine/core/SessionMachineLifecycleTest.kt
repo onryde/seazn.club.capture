@@ -769,6 +769,12 @@ class SessionMachineLifecycleTest {
   }
 
   @Test
+  fun `final review N-2 an ended session ended again stays as it ended - its reason and duration stand`() {
+    val stopped = Phase.Ended(EndReason.OPERATOR_STOPPED, Ids(attempt = 3), durationMs = 42_000, networkValidated = true)
+    assertEquals(stopped, stopped.ended(EndReason.FATAL_ERROR, Now(90_000, 1_790_000_090_000)))
+  }
+
+  @Test
   fun `final review M-5 a failure the platform knows is permanent ends fatal-error, and says why`() {
     val rig = MachineRig().live()
     rig.advance(9_000)

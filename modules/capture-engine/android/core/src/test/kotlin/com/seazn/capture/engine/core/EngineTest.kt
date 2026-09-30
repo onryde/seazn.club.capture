@@ -481,10 +481,25 @@ class EngineTest {
     scheduler.advanceBy(0)
     engine.send(Input.Stop)
     // The End threw first, then the ended line, then the ended snapshot: each still ran.
-    assertFailsWith<LinkCrash> { scheduler.advanceBy(0) }
+    val thrown = assertFailsWith<LinkCrash> { scheduler.advanceBy(0) }
     assertEquals(1, engine.commandFailures, "an Error from the platform is counted too")
     assertTrue(lines.last().contains(""""kind":"command-failed"""") && "libsrt.so not found" in lines.last(), lines.last())
     assertIs<SnapshotState.Ended>(published.last().second.state)
+    // The later two ride on it, for plan C's crash report.
+    assertEquals(listOf(SinkCrash::class, BridgeCrash::class), thrown.suppressed.map { it::class })
+  }
+
+  @Test
+  fun `final review M-1 one Error thrown by two effects of a step is rethrown once, never suppressed by itself`() {
+    val crash = SinkCrash()
+    onLine = { line -> if (""""kind":"ended"""" in line) throw crash }
+    onSnapshot = { snapshot -> if (snapshot.state is SnapshotState.Ended) throw crash }
+    val engine = engine()
+    engine.send(Input.Arm(Configs.valid()))
+    engine.send(Input.Stop)
+    val thrown = assertFailsWith<SinkCrash> { scheduler.advanceBy(0) }
+    assertTrue(thrown === crash)
+    assertTrue(thrown.suppressed.isEmpty())
   }
 
   @Test
@@ -506,11 +521,55 @@ class EngineTest {
     assertEquals(EndReason.FATAL_ERROR, ended.reason)
     assertEquals(10_000L, ended.durationMs)
     assertTrue(ended.networkValidated)
-    // A second failure, once ended, ends it again: the session it ends is still the one that was live.
+    // A second failure, once ended, is only recorded (final review N-2): the session stays as it ended.
     scheduler.advanceBy(1_500)
     engine.send(Input.SwitchCamera)
     scheduler.advanceBy(0)
     assertEquals(ended, engine.phase)
+    assertEquals(listOf(Command.End(EndReason.FATAL_ERROR)), executed.filterIsInstance<Command.End>())
+    assertEquals(2, lines.count { """"kind":"engine-error"""" in it })
+  }
+
+  @Test
+  fun `final review N-2 a fatal error after an operator stop is only recorded - the stop stands and one End goes out`() {
+    // Owner-visible (final review N-2): plan A keeps a failed session's code for Continue, never a stopped one's.
+    val engine = engine { phase, input, now -> if (input == Input.SwitchCamera) error("bug") else SessionMachine.reduce(phase, input, now) }
+    engine.send(Input.Arm(Configs.valid()))
+    engine.send(Input.Start)
+    engine.send(Input.Stop)
+    scheduler.advanceBy(0)
+    val stopped = assertIs<Phase.Ended>(engine.phase)
+    assertEquals(EndReason.OPERATOR_STOPPED, stopped.reason)
+    val snapshots = published.size
+    engine.send(Input.SwitchCamera)
+    scheduler.advanceBy(0)
+    assertEquals(stopped, engine.phase)
+    assertEquals(listOf(Command.End(EndReason.OPERATOR_STOPPED)), executed.filterIsInstance<Command.End>())
+    assertEquals(snapshots, published.size, "nothing changed, so nothing new goes up")
+    assertEquals(SnapshotState.Ended(EndReason.OPERATOR_STOPPED, durationMs = null), published.last().second.state)
+    assertTrue(""""kind":"engine-error"""" in lines.last() && "bug" in lines.last(), lines.last())
+  }
+
+  @Test
+  fun `final review N-1 a step's lines go in the machine's order, a failed command's line in its place, before its snapshot`() {
+    onCommand = { e, command ->
+      if (command is Command.Connect) e.send(Input.Connected(command.attemptId))
+      if (command is Command.Rebuild) throw IllegalStateException("encoder busy")
+    }
+    lateinit var engine: Engine
+    var atSnapshot: List<String>? = null
+    onSnapshot = { if (clock.mono == 5_000L) atSnapshot = engine.record.lastLines() }
+    engine = engine().apply { start() }
+    engine.send(Input.Arm(Configs.valid()))
+    engine.send(Input.Start)
+    // Connected at once and no frame since: at 5 s the watchdog asks for a rebuild, and the platform throws on it.
+    scheduler.advanceBy(4_500)
+    lines.clear()
+    scheduler.advanceBy(500)
+    val kinds = lines.map { Regex(""""kind":"([^"]+)"""").find(it)!!.groupValues[1] }
+    assertEquals(listOf("video-stalled", "command-failed", "connecting"), kinds)
+    assertTrue("Rebuild" in lines[1] && "encoder busy" in lines[1], lines[1])
+    assertEquals(lines.last(), atSnapshot?.last(), "the record held the step's last line when its snapshot went up")
   }
 
   @Test
