@@ -174,6 +174,17 @@ class SessionMachineLifecycleTest {
   }
 
   @Test
+  fun `final review I-1 a repeated network fact with no session is recorded once`() {
+    val rig = MachineRig()
+    rig.send(Input.Network(true))
+    rig.send(Input.Network(true))
+    rig.send(Input.Arm(rig.config))
+    rig.send(Input.Stop)
+    rig.send(Input.Network(true))
+    assertEquals(listOf<Any?>(true), rig.records("network").map { it.field("validated") })
+  }
+
+  @Test
   fun `stop while reconnecting ends operator-stopped, and says it had been live`() {
     val rig = MachineRig().live()
     rig.send(Input.Dropped(1, DropReason.ENDPOINT_CLOSED, null))

@@ -153,6 +153,24 @@ class SessionMachineOutageTest {
   }
 
   @Test
+  fun `final review I-1 a network fact that changes while connecting or on air applies to that session at once`() {
+    // Connecting on a dead network that then validates: the next three timeouts count.
+    val connecting = MachineRig().armed(validated = false)
+    connecting.send(Input.Start)
+    connecting.send(Input.Network(validated = true))
+    connecting.failingConnects(6_500, ConnectFailure.TIMEOUT)
+    assertEquals(srtThreeTimesThenRtmps, connecting.connects().map { it.target.transport })
+
+    // On air when the network goes: the drop and the timeouts after it never count (F-P5-1).
+    val onAir = MachineRig().live()
+    onAir.send(Input.Network(validated = false))
+    onAir.send(Input.Dropped(1, DropReason.ENDPOINT_CLOSED, null))
+    onAir.failingConnects(40_000, ConnectFailure.TIMEOUT)
+    assertTrue(onAir.connects().size >= 20)
+    assertTrue(onAir.connects().all { it.target.transport == Transport.SRT })
+  }
+
+  @Test
   fun `final review I-1 a network fact that lands after the end is the next session's, and asks nothing`() {
     val rig = MachineRig().armed(validated = true)
     rig.send(Input.Stop)
