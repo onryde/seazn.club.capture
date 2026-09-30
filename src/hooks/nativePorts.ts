@@ -16,6 +16,7 @@ import { createNativeForeground } from '@/services/native/nativeForeground';
 import { createNativeMotion } from '@/services/native/nativeMotion';
 import { createNativeOrientationLock } from '@/services/native/nativeOrientationLock';
 import { createNativeSplash } from '@/services/native/nativeSplash';
+import { createNativeSurfaces } from '@/services/native/nativeSurfaces';
 import { createSecureKeyValueStore } from '@/services/native/secureKeyValueStore';
 import { descriptorOrigin, seaznHosts } from '@/services/seaznHosts';
 import { createRingRecord } from '@/services/sessionRecord';
@@ -50,6 +51,7 @@ export function createNativePorts(): Ports {
     foreground: createNativeForeground(),
     navigation: createExpoRouterNavigation(),
     splash: createNativeSplash(),
+    surfaces: createNativeSurfaces(),
     logger,
     record,
     clock,

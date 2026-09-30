@@ -17,6 +17,7 @@ import { createLogger } from '@/services/logger';
 import { createModeStore } from '@/services/modeStore';
 import { createScanFlight } from '@/services/scanFlight';
 import { createRingRecord, type SessionRecord } from '@/services/sessionRecord';
+import { createFakeSurfaces, type FakeSurfaces } from './fakeSurfaces';
 
 export const TEST_NOW = new Date('2026-10-03T13:00:00Z');
 
@@ -35,6 +36,7 @@ export type FakePorts = {
   readonly foreground: ForegroundPort & { fire(): void; leave(): void };
   readonly navigation: NavigationPort & { readonly history: readonly Route[] };
   readonly splash: SplashPort & { readonly hides: number };
+  readonly surfaces: FakeSurfaces;
   /** The session record the ports' logger writes to; read it with `readRecord`. */
   readonly record: SessionRecord;
   setNow(at: Date): void;
@@ -64,6 +66,7 @@ export function createFakePorts(
     foreground: fakeForeground(),
     navigation: fakeNavigation(),
     splash: fakeSplash(),
+    surfaces: createFakeSurfaces(),
     record,
   };
   const ports: Ports = {

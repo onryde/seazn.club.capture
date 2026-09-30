@@ -17,6 +17,7 @@ import type { Logger } from '@/services/logger';
 import type { ModeStore } from '@/services/modeStore';
 import type { ScanFlight } from '@/services/scanFlight';
 import type { SessionRecord } from '@/services/sessionRecord';
+import type { Surfaces } from '@/services/surfaces';
 
 /**
  * Everything native, in one object that never changes after launch — which is
@@ -40,6 +41,8 @@ export type Ports = {
   readonly foreground: ForegroundPort;
   readonly navigation: NavigationPort;
   readonly splash: SplashPort;
+  /** The native views the viewfinder draws (D16). */
+  readonly surfaces: Surfaces;
   /** The one levelled logger (AGENTS §11); its entries land in `record`, scrubbed. */
   readonly logger: Logger;
   /** The session record Diagnostics shows and shares (spec §4). */
