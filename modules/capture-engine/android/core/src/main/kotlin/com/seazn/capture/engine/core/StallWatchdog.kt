@@ -136,8 +136,9 @@ data class StallWatchdog(
     const val WINDOW_MS = 3_000L
 
     /**
-     * Frame readings come at least twice a second ([Input.Frames]). A frame within this long of now is
-     * the latest reading's: frames were still advancing (B7 N3).
+     * One sample at the rate frame readings come, twice a second ([Input.Frames] says at least). A
+     * frame within this long of now means frames were still advancing (B7 N3). At two readings a
+     * second it is the latest reading's frame; at a faster rate it may be one reading older.
      */
     const val FRAME_SAMPLE_MS = 500L
 

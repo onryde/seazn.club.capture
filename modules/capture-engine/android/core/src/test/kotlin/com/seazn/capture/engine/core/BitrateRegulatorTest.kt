@@ -180,6 +180,8 @@ class BitrateRegulatorTest {
   @Test
   fun `a send buffer of 0 ms is drained, not missing`() {
     assertEquals(1_100_000, run(Regulation(1_000_000), 1_000, 11_000) { reading(buffer = 0) }.targetBps)
+    // B7 m4: a drained buffer is still a reading, so SRT sender drops on it cut by half: 3_000_000 → 1_500_000.
+    assertEquals(1_500_000, run(Regulation(3_000_000), 1_000, 1_000) { reading(buffer = 0, dropped = 10) }.targetBps)
   }
 
   @Test
@@ -260,6 +262,23 @@ class BitrateRegulatorTest {
     val restarted = BitrateRegulator.afterDrop(healthy, nowMs = 6_000)
     assertEquals(1_500_000, restarted.targetBps)
     assertEquals(FailedRate(3_000_000, 1_000), restarted.failed)
+  }
+
+  @Test
+  fun `B7 BR-04 a halving in the same millisecond as the last healthy reading is that episode's, so a clean restart forgets it`() {
+    // Loss at 1 s marks the link failing. The reading at 2 s is clean, and a far-end drop lands in the
+    // same millisecond: the link failed within 10 s, so it halves 1_500_000 to 750_000. At 12.5 s the
+    // failing reading is 11.5 s old, so a clean far-end drop restarts at the healthy 1_500_000 and,
+    // the tie counting as this episode's, forgets the rate. One millisecond earlier or later does not
+    // decide the tie: the failing drop wins.
+    val lossy = run(BitrateRegulator.sessionStarted(), 1_000, 1_000) { reading(lost = 5) }
+    val healthy = run(lossy, 2_000, 2_000)
+    val halved = BitrateRegulator.afterDrop(healthy, nowMs = 2_000)
+    assertEquals(750_000, halved.targetBps)
+    assertEquals(FailedRate(1_500_000, 2_000), halved.failed)
+    val restarted = BitrateRegulator.afterDrop(halved, nowMs = 12_500)
+    assertEquals(1_500_000, restarted.targetBps)
+    assertNull(restarted.failed)
   }
 
   @Test

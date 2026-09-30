@@ -139,6 +139,18 @@ class HeartbeatTest {
   }
 
   @Test
+  fun `B7 m5 one beat in flight at most - a beat due while one is in flight and not yet given up waits`() {
+    // A state `due` never makes while INTERVAL_MS == TIMEOUT_MS: the next beat is due at 5 s, and the
+    // one in flight since 0 is not given up until 10 s. The in-flight rule alone holds the next.
+    val inFlight = HeartbeatState(nextDueAtMs = 5_000, inFlightId = 1, inFlightSinceMs = 0, nextId = 2)
+    val (held, none) = Heartbeat.due(inFlight, 5_000, 5_000)
+    assertNull(none)
+    assertEquals(inFlight, held)
+    val (_, next) = Heartbeat.due(inFlight, 10_000, 10_000)
+    assertEquals(2, next, "given up at 10 s, the next beat goes")
+  }
+
+  @Test
   fun `a heartbeat that fails forever keeps beating every 10 s`() {
     var state = HeartbeatState()
     var sent = 0

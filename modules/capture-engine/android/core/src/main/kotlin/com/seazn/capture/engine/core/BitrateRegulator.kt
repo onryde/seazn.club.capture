@@ -63,6 +63,11 @@ object BitrateRegulator {
   /**
    * The regulator restart (P5 final soak): a drop after a clean link was the far end's, and restarts
    * at the last healthy target. Only a link that was failing within [FAILING_LOOKBACK_MS] halves.
+   *
+   * A clean restart forgets a rate that failed in its own episode, since the last healthy reading. A
+   * failure in the same millisecond as that reading is the episode's (B7 BR-04): the failing drop wins
+   * the tie. A drop ends the on-air phase, and the next reading comes a retry later, so a tie can only
+   * be a reading and then a drop.
    */
   fun afterDrop(state: Regulation, nowMs: Long): Regulation {
     val failing = state.failingAtMs?.let { nowMs - it <= FAILING_LOOKBACK_MS } ?: false
@@ -73,7 +78,7 @@ object BitrateRegulator {
         .cleanWaitRestarted(null)
     }
     val healthySince = state.healthyAtMs ?: Long.MIN_VALUE
-    val failedInEpisode = state.failed?.let { it.atMs > healthySince } ?: false
+    val failedInEpisode = state.failed?.let { it.atMs >= healthySince } ?: false
     return state
       .copy(targetBps = state.healthyTargetBps, failed = if (failedInEpisode) null else state.failed)
       .cleanWaitRestarted(null)

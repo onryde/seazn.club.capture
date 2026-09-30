@@ -440,6 +440,55 @@ class SessionMachineLifecycleTest {
     }
   }
 
+  /**
+   * [holdRunsOutOnAir], except that the new attempt sends flat readings from 3 s: its next advancing
+   * frame, sent at [ms], is the picture coming back. Returns the commands that frame produced.
+   */
+  private fun pictureReturnsAt(ms: Long): Pair<MachineRig, List<Command>> {
+    val rig = MachineRig(sevenSecondHolds).live()
+    rig.send(Input.Dropped(1, DropReason.ENDPOINT_CLOSED, null))
+    rig.advance(2_000)
+    rig.send(Input.Connected(2))
+    rig.advance(4_500, videoPerStep = 0)
+    rig.at(ms)
+    return rig to rig.send(Input.Frames(2, 15, 1_000))
+  }
+
+  @Test
+  fun `B7 m2 a picture that comes back after the hold ran out, before the tick, is too late - hold-window-expired`() {
+    // Owner-visible (B7 ruling m2): the hold is the published limit, and the tick at 8 s would end it too.
+    val (rig, commands) = pictureReturnsAt(8_000)
+    assertEquals(listOf(Command.End(EndReason.HOLD_WINDOW_EXPIRED)), commands.filterNot { it is Command.Record })
+    assertEquals(SnapshotState.Ended(EndReason.HOLD_WINDOW_EXPIRED), rig.state)
+    assertTrue(rig.records("resumed").isEmpty())
+  }
+
+  @Test
+  fun `B7 m3 a picture that comes back 1 ms before the hold runs out resumes the broadcast`() {
+    val (rig, commands) = pictureReturnsAt(7_999)
+    assertTrue(commands.none { it is Command.End }, "$commands")
+    assertIs<SnapshotState.Publishing>(rig.state)
+    assertEquals(1, rig.records("resumed").size)
+  }
+
+  @Test
+  fun `B7 m2 an organiser stop that lands after the hold ran out, before the tick, reads hold-window-expired`() {
+    // The heartbeat in flight since 0.5 s and the drop's descriptor ask both answer that the session
+    // is over, at 8 s. The hold ended it first (B7 ruling m2).
+    val answers: List<(MachineRig) -> Input> =
+      listOf(
+        { rig -> Input.HeartbeatAnswered(rig.sent<Command.PostHeartbeat>().last().beatId, HeartbeatResponse.Answered(200, "ending", "organiser")) },
+        { rig -> Input.DescriptorChecked(rig.sent<Command.FetchDescriptor>().last().requestId, DescriptorCheck.Over("stopped")) },
+      )
+    for (answer in answers) {
+      val rig = holdRunsOutOnAir()
+      val input = answer(rig)
+      val commands = rig.send(input)
+      assertEquals(listOf(Command.End(EndReason.HOLD_WINDOW_EXPIRED)), commands.filterNot { it is Command.Record }, "$input")
+      assertEquals(SnapshotState.Ended(EndReason.HOLD_WINDOW_EXPIRED), rig.state, "$input")
+    }
+  }
+
   @Test
   fun `B6 ruling C2 a frame that lands after the window closed is late - the rebuild was judged first`() {
     val rig = gateJustClosed()

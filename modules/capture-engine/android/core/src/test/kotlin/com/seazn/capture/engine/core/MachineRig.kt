@@ -53,8 +53,9 @@ class MachineRig(val config: SessionConfig = Configs.valid()) {
     }
   }
 
-  /** Moves time to [ms] with no input: nothing runs until the next [send]. */
+  /** Moves time to [ms] with no input: nothing runs until the next [send]. Never backwards; [ms] may be now. */
   fun at(ms: Long) {
+    require(ms >= mono) { "at($ms): time never runs backwards from $mono" }
     wall += ms - mono
     mono = ms
   }

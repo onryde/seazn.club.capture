@@ -7,9 +7,9 @@ package com.seazn.capture.engine.core
  *
  * A refused connect asks at most once per [SPACING_MS], and never while an ask is in flight (B6
  * ruling C1), before the first frame as well as within an outage; so does a rebuild or a forced new
- * session, which reconnects the link too (B7). An ask with no answer in
- * [GIVE_UP_MS] no longer blocks the next, so a lost answer never stops the asks for good; its answer
- * still counts until a newer ask supersedes it. A drop always asks, whatever is in flight.
+ * session, which reconnects the link too (B7). An ask with no answer in [GIVE_UP_MS] no longer blocks
+ * the next, so a lost answer never stops the asks for good; its answer still counts until a newer ask
+ * supersedes it. A drop always asks, whatever is in flight.
  */
 data class DescriptorAsks(val nextId: Int = 1, val inFlightId: Int? = null, val lastAskAtMs: Long? = null) {
   /** Whether a refused connect, a rebuild or a forced new session may ask at [nowMs]. */
