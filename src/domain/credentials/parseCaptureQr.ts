@@ -94,8 +94,8 @@ function readPair(input: Source): Read<Pick<CaptureCode, 'primary' | 'fallback'>
 
 /**
  * The separate fields are canonical (lane D); native composes the query
- * string. A query already on the url is dropped, so the fixture's embedded
- * form and production's bare form read the same (D7).
+ * string. A query or fragment already on the url is dropped, so the
+ * fixture's embedded form and production's bare form read the same (D7).
  */
 function parseSrt(srt: Source): Read<SrtCredentials> {
   const url = readSchemeUrl(srt, 'url', 'srt', 'cred.srt.url');
@@ -108,7 +108,7 @@ function parseSrt(srt: Source): Read<SrtCredentials> {
   if (!latencyMs.ok) return latencyMs;
   return ok({
     transport: 'srt',
-    url: url.value.split('?')[0] ?? url.value,
+    url: url.value.split(/[?#]/)[0] ?? url.value,
     streamId: streamId.value,
     passphrase: passphrase.value,
     latencyMs: latencyMs.value,

@@ -47,8 +47,18 @@ describe('parseCaptureQr (spec §2)', () => {
   });
 
   it('reads both SRT url forms, keeping the separate fields canonical (lane D)', () => {
+    const bare = withSrt({ url: 'srt://ingest.example:778' });
     const embedded = withSrt({ url: 'srt://ingest.example:778?streamid=other&passphrase=other' });
+    expect(parseCaptureQr(bare)).toMatchObject({ ok: true, value: { primary: SRT } });
     expect(parseCaptureQr(embedded)).toMatchObject({ ok: true, value: { primary: SRT } });
+  });
+
+  it.each([
+    ['srt://ingest.example:778#frag'],
+    ['srt://ingest.example:778?streamid=other#frag'],
+    ['srt://ingest.example:778#frag?passphrase=other'],
+  ])('drops a fragment from the SRT url as well as a query: %s', (url) => {
+    expect(parseCaptureQr(withSrt({ url }))).toMatchObject({ ok: true, value: { primary: SRT } });
   });
 
   it('refuses a code with no token', () => {
