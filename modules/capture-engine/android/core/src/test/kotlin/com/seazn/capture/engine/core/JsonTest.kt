@@ -56,6 +56,7 @@ class JsonTest {
     assertEquals("0.1", Decimal.tenths(0.05)?.text)
     assertEquals("-2.5", Decimal.tenths(-2.46)?.text)
     assertEquals("12.0", Decimal.tenths(12.0)?.text)
+    assertEquals("0.0", Decimal.tenths(-0.04)?.text) // 0.4 tenths rounds to zero, which has no sign
   }
 
   @Test
