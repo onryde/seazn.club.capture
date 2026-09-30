@@ -11,8 +11,8 @@ export type SrtCredentials = {
   readonly transport: 'srt';
   readonly url: string;
   readonly streamId: string;
-  /** Absent means an unencrypted SRT session. */
-  readonly passphrase?: string;
+  /** Required in v2 (D7): Cloudflare's SRT ingest is always encrypted. */
+  readonly passphrase: string;
   /** Generous by default — the latency budget has headroom, YouTube's 15-40s dominates. */
   readonly latencyMs: number;
 };
