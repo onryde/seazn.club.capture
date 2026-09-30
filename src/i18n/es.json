@@ -113,6 +113,8 @@
   "stream.advisory.overlayFailed": "Falló la vista del marcador: la emisión sigue igual",
   "stream.advisory.scoreAhead": "Ves el marcador un poco antes que el público",
   "stream.advisory.notCharging": "No está cargando: conéctalo para un partido largo",
+  "stream.peek.label": "Lo que ve el público",
+  "stream.peek.hint": "Mantén pulsado para ver lo que ve el público",
   "language.en": "English",
   "language.es": "Español",
   "language.fr": "Français",

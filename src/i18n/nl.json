@@ -113,6 +113,8 @@
   "stream.advisory.overlayFailed": "Scorevoorbeeld mislukt: de uitzending loopt door",
   "stream.advisory.scoreAhead": "Je ziet de score iets eerder dan kijkers",
   "stream.advisory.notCharging": "Laadt niet op: sluit aan voor een lange wedstrijd",
+  "stream.peek.label": "Wat kijkers zien",
+  "stream.peek.hint": "Ingedrukt houden om te zien wat kijkers zien",
   "language.en": "English",
   "language.es": "Español",
   "language.fr": "Français",

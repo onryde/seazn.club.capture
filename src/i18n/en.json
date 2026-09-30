@@ -112,6 +112,8 @@
   "stream.advisory.overlayFailed": "Score preview failed — the broadcast is not affected",
   "stream.advisory.scoreAhead": "You see the score slightly ahead of viewers",
   "stream.advisory.notCharging": "Not charging — plug in for a long match",
+  "stream.peek.label": "What viewers see",
+  "stream.peek.hint": "Press and hold to watch what viewers see",
   "language.en": "English",
   "language.es": "Español",
   "language.fr": "Français",

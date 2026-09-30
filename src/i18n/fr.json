@@ -113,6 +113,8 @@
   "stream.advisory.overlayFailed": "Aperçu du score en panne : la diffusion continue",
   "stream.advisory.scoreAhead": "Vous voyez le score un peu avant le public",
   "stream.advisory.notCharging": "Pas en charge : branchez pour un long match",
+  "stream.peek.label": "Ce que voit le public",
+  "stream.peek.hint": "Maintenez appuyé pour voir ce que voit le public",
   "language.en": "English",
   "language.es": "Español",
   "language.fr": "Français",

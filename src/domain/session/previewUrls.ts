@@ -25,3 +25,15 @@ export function withQueryParam(url: string, name: string, value: string): string
 export function overlayPreviewUrl(overlayUrl: string): string {
   return withQueryParam(overlayUrl, 'delay', '0');
 }
+
+/**
+ * Cloudflare's own-player hint, in Mbps: the master playlist is restricted to
+ * the rendition closest to it, so a peek on cellular costs little (D35).
+ * Deliberately no `protocol=llhls`: it works only on low-latency inputs,
+ * unconfirmed pending lane D (D36).
+ */
+export const PEEK_BANDWIDTH_MBPS = '1.0';
+
+export function peekPlaybackUrl(playbackUrl: string): string {
+  return withQueryParam(playbackUrl, 'clientBandwidthHint', PEEK_BANDWIDTH_MBPS);
+}

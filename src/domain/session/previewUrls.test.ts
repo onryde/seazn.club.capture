@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { overlayPreviewUrl, withQueryParam } from '@/domain/session/previewUrls';
+import {
+  overlayPreviewUrl,
+  PEEK_BANDWIDTH_MBPS,
+  peekPlaybackUrl,
+  withQueryParam,
+} from '@/domain/session/previewUrls';
 
 describe('withQueryParam', () => {
   it('adds a query to a URL with none', () => {
@@ -71,5 +76,33 @@ describe('overlayPreviewUrl (AGENTS §7: the phone runs delayMs = 0)', () => {
     expect(
       overlayPreviewUrl('https://stg.seazn.club/overlay/fixtures/f1?style=bold&lang=nl&key=k1'),
     ).toBe('https://stg.seazn.club/overlay/fixtures/f1?style=bold&lang=nl&key=k1&delay=0');
+  });
+});
+
+const PLAYBACK = 'https://customer-x.cloudflarestream.com/abc/manifest/video.m3u8';
+
+describe('peekPlaybackUrl (D35: a capped rendition, so a peek costs little)', () => {
+  it('hints 1.0 Mbps, the coordinator’s figure (D35)', () => {
+    expect(PEEK_BANDWIDTH_MBPS).toBe('1.0');
+  });
+
+  it('asks for the rendition closest to 1 Mbps', () => {
+    expect(peekPlaybackUrl(PLAYBACK)).toBe(`${PLAYBACK}?clientBandwidthHint=1.0`);
+  });
+
+  it('keeps a query the server already put on the URL', () => {
+    expect(peekPlaybackUrl(`${PLAYBACK}?token=abc`)).toBe(
+      `${PLAYBACK}?token=abc&clientBandwidthHint=1.0`,
+    );
+  });
+
+  it('replaces a hint already there instead of sending two', () => {
+    expect(peekPlaybackUrl(`${PLAYBACK}?clientBandwidthHint=8`)).toBe(
+      `${PLAYBACK}?clientBandwidthHint=1.0`,
+    );
+  });
+
+  it('never asks for LL-HLS, pending lane D (D36)', () => {
+    expect(peekPlaybackUrl(PLAYBACK)).not.toContain('protocol=');
   });
 });
