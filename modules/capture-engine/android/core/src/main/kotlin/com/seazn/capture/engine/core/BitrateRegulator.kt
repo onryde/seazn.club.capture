@@ -80,23 +80,19 @@ object BitrateRegulator {
   }
 
   /**
-   * @param link null when nothing could be read. A negative send buffer is no reading either, and so
-   *   is a missing one on SRT, which always reports it. RTMPS has none, and reads as empty.
+   * @param link null when nothing could be read, which holds the target and the clean wait. A reading
+   *   with no usable send buffer ([usableBufferMs]) is still judged on its drops and loss.
    */
   fun next(state: Regulation, link: LinkSample?, nowMs: Long, transport: Transport, srtLatencyMs: Int): Regulation {
     val current = state.copy(targetBps = state.targetBps.coerceIn(Encode.FLOOR_BPS, Encode.CEILING_BPS))
-    val reading = link?.sendBufferMs
-    val unreadable = reading?.let { it < 0 } ?: (transport == Transport.SRT)
-    if (link == null || unreadable) {
-      val lossy = link != null && (link.droppedPackets > 0 || link.lostPackets > 0)
-      return if (lossy) current.cleanWaitRestarted(nowMs) else current
-    }
+    if (link == null) return current
     val windowMs = if (transport == Transport.SRT) srtLatencyMs else RTMPS_DRAIN_MS
     val marked = if (failing(link, transport)) current.copy(failingAtMs = nowMs) else current
-    val sendBufferMs = reading ?: 0
     val dropping = link.droppedPackets > 0
-    val backlogged = sendBufferMs >= windowMs / 2
     val draining = marked.lastCutAtMs?.let { nowMs - it < windowMs } ?: false
+    val sendBufferMs =
+      usableBufferMs(link, transport) ?: return withoutBuffer(marked, link, nowMs, dropping && !draining)
+    val backlogged = sendBufferMs >= windowMs / 2
     val clean = !dropping && link.lostPackets <= 0 && sendBufferMs < windowMs / CLEAN_BUFFER_DIVISOR
     return when {
       (dropping || backlogged) && !draining ->
@@ -111,6 +107,26 @@ object BitrateRegulator {
     state.failed
       ?.takeIf { nowMs - it.atMs < FAILED_RATE_MEMORY_MS }
       ?.let { it.bps / 100 * FAILED_RATE_PERCENT } ?: Encode.CEILING_BPS
+
+  /**
+   * The send buffer, or null when it has no value to judge: negative (P5: −336, "a reading artefact to
+   * keep out of any threshold"), or missing on SRT, which always reports one. RTMPS has none: empty.
+   */
+  private fun usableBufferMs(link: LinkSample, transport: Transport): Int? {
+    val reported = link.sendBufferMs ?: return if (transport == Transport.SRT) null else 0
+    return reported.takeIf { it >= 0 }
+  }
+
+  /**
+   * Only the buffer's value is unknown (F-P5-5). Drops still cut, since P5 saw every SRT failure as
+   * sender drops, and loss has already marked the link failing; neither is clean. A quiet reading holds.
+   */
+  private fun withoutBuffer(state: Regulation, link: LinkSample, nowMs: Long, cutDue: Boolean): Regulation =
+    when {
+      cutDue -> cut(state, link, nowMs, CUT_ON_DROPS_PERCENT)
+      link.droppedPackets > 0 || link.lostPackets > 0 -> state.cleanWaitRestarted(nowMs)
+      else -> state
+    }
 
   /** Loss is the SRT link failing; a far end that stops acknowledging drops packets but reports none. */
   private fun failing(link: LinkSample, transport: Transport): Boolean =

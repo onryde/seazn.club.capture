@@ -149,6 +149,33 @@ class BitrateRegulatorTest {
     assertEquals(1_100_000, rtmps.targetBps)
   }
 
+  /**
+   * P5 saw every SRT failure as sender drops ("SRT dropped 184,022 packets at the sender"); what it keeps
+   * out of thresholds is the send buffer's value (−336), not the drops. With no value to read, drops still
+   * cut, loss still marks the link failing, and nothing reads clean.
+   */
+  private fun assertDropsCutWithout(buffer: Int?) {
+    val start = Regulation(3_000_000)
+    val cut = run(start, 1_000, 1_000) { reading(buffer = buffer, dropped = 10) }
+    assertEquals(1_500_000, cut.targetBps)
+    assertEquals(FailedRate(3_000_000, 1_000), cut.failed)
+    val drained = run(start, 1_000, 2_000) { reading(buffer = buffer, dropped = 10) }
+    assertEquals(1_500_000, drained.targetBps, "draining")
+    assertEquals(2_000, drained.cleanSinceMs, "drops while draining are not clean")
+    assertEquals(750_000, run(start, 1_000, 3_000) { reading(buffer = buffer, dropped = 10) }.targetBps)
+    val lossy = run(Regulation(1_500_000), 1_000, 1_000) { reading(buffer = buffer, lost = 5) }
+    assertEquals(750_000, BitrateRegulator.afterDrop(lossy, nowMs = 5_000).targetBps)
+    val quiet = run(Regulation(1_000_000), 1_000, 11_000) { reading(buffer = buffer) }
+    assertEquals(1_000_000, quiet.targetBps)
+    assertNull(quiet.cleanSinceMs)
+  }
+
+  @Test
+  fun `F-P5-5 sender drops cut on SRT even when the send buffer is missing`() = assertDropsCutWithout(buffer = null)
+
+  @Test
+  fun `F-P5-5 sender drops cut on SRT even when the send buffer reads negative`() = assertDropsCutWithout(buffer = -336)
+
   @Test
   fun `a send buffer of 0 ms is drained, not missing`() {
     assertEquals(1_100_000, run(Regulation(1_000_000), 1_000, 11_000) { reading(buffer = 0) }.targetBps)
@@ -158,7 +185,7 @@ class BitrateRegulatorTest {
   fun `a cut restarts the clean interval, so egress from before it never passes a raise gate`() {
     // Clean at 4000k egress from 1 s to 9 s, then drops at 10 s cut 2000k to 1000k: the halving is
     // under the egress sizing, 4_000_000 * 80 / 115 - 128_000 = 2_654_608. Then 500k of egress every
-    // 4 s. The raise is due at 42 s, 30 s after the cut, and the interval since the cut is 8 readings
+    // 4 s. The raise is first due at 42 s, 32 s after the cut, and the interval since the cut is 8 readings
     // of 500k, under the gate of 908_040. Egress from before the cut would make the last 10 readings
     // 2 of 4000k and 8 of 500k, a mean of 1200k, and raise a link that just failed.
     val clean = run(Regulation(2_000_000), 1_000, 9_000) { reading(egress = 4_000_000) }
@@ -246,13 +273,14 @@ class BitrateRegulatorTest {
   }
 
   @Test
-  fun `a negative send buffer with drops or loss still restarts the clean wait`() {
-    for (unclean in listOf(reading(buffer = -336, dropped = 1), reading(buffer = -336, lost = 1))) {
-      // Clean from 1 s, so due at 11 s; the unclean reading at 10 s moves that to 20 s.
-      val marked = run(run(Regulation(1_000_000), 1_000, 9_000), 10_000, 10_000) { unclean }
-      assertEquals(1_000_000, run(marked, 11_000, 19_000).targetBps, "$unclean")
-      assertEquals(1_100_000, run(marked, 11_000, 20_000).targetBps, "$unclean")
-    }
+  fun `with a negative send buffer, drops still cut and loss still restarts the clean wait`() {
+    // Clean from 1 s at 4000k of egress. Drops at 10 s halve 1000k to the 500k floor.
+    val clean = run(Regulation(1_000_000), 1_000, 9_000)
+    assertEquals(500_000, run(clean, 10_000, 10_000) { reading(buffer = -336, dropped = 1) }.targetBps)
+    // A raise was due at 11 s; loss at 10 s moves that to 20 s.
+    val lossy = run(clean, 10_000, 10_000) { reading(buffer = -336, lost = 1) }
+    assertEquals(1_000_000, run(lossy, 11_000, 19_000).targetBps)
+    assertEquals(1_100_000, run(lossy, 11_000, 20_000).targetBps)
   }
 
   @Test
