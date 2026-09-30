@@ -188,4 +188,112 @@ class EngineTest {
     scheduler.advanceBy(2_000)
     assertEquals(listOf(500L, 1_000L, 1_500L, 2_000L), published.map { it.first })
   }
+
+  @Test
+  fun `a stop from inside a tick is the last tick`() {
+    lateinit var engine: Engine
+    engine =
+      Engine(
+        clock,
+        scheduler,
+        commands = { executed += it },
+        snapshots = {
+          published += clock.mono to it
+          if (clock.mono == 1_000L) engine.stop()
+        },
+        record = SessionRecord { lines += it },
+      )
+    engine.start()
+    scheduler.advanceBy(5_000)
+    assertEquals(listOf(500L, 1_000L), published.map { it.first })
+    assertEquals(0, scheduler.pending)
+  }
+
+  @Test
+  fun `an intent with no session is recorded as ignored, and nothing is asked of the platform`() {
+    val engine = engine()
+    engine.send(Input.Start)
+    engine.send(Input.Stop)
+    scheduler.advanceBy(0)
+    assertEquals(Phase.Idle, engine.phase)
+    assertTrue(executed.isEmpty())
+    assertEquals(2, lines.count { """"kind":"intent-ignored"""" in it })
+  }
+
+  @Test
+  fun `carry 12 a machine failure on the arm itself is masked - the config is protected before the machine runs`() {
+    val engine = engine { phase, input, now ->
+      if (input is Input.Arm) throw IllegalStateException("cannot parse srt://h?passphrase=${Configs.PASSPHRASE}")
+      SessionMachine.reduce(phase, input, now)
+    }
+    engine.send(Input.Arm(Configs.valid()))
+    scheduler.advanceBy(0)
+    val error = lines.single { "engine-error" in it }
+    assertFalse(Configs.PASSPHRASE in error, error)
+    assertTrue(SessionRecord.MASK in error, error)
+  }
+
+  @Test
+  fun `carry 12 a machine failure that quotes a secret is masked in the record`() {
+    val engine = engine { phase, input, now ->
+      if (input == Input.Start) throw IllegalStateException("srt://h?passphrase=${Configs.PASSPHRASE}&streamid=${Configs.STREAM_ID}")
+      SessionMachine.reduce(phase, input, now)
+    }
+    engine.send(Input.Arm(Configs.valid()))
+    engine.send(Input.Start)
+    scheduler.advanceBy(0)
+    val error = lines.single { "engine-error" in it }
+    assertFalse(Configs.PASSPHRASE in error, error)
+    assertFalse(Configs.STREAM_ID in error, error)
+    assertTrue(SessionRecord.MASK in error, error)
+  }
+
+  @Test
+  fun `carry 12 a platform exception that quotes a secret is masked in the record`() {
+    onCommand = { _, command -> if (command is Command.Connect) throw IllegalStateException("rtmps://h/live/${Configs.STREAM_KEY} refused") }
+    val engine = engine()
+    engine.send(Input.Arm(Configs.valid(primary = Configs.rtmps, fallback = Configs.srt)))
+    engine.send(Input.Start)
+    scheduler.advanceBy(0)
+    val failure = lines.single { "command-failed" in it }
+    assertFalse(Configs.STREAM_KEY in failure, failure)
+    assertTrue("Connect: " in failure && SessionRecord.MASK in failure, failure)
+  }
+
+  @Test
+  fun `carry 12 a heartbeat failure that quotes the token is masked in the record`() {
+    onCommand = { e, command ->
+      if (command is Command.PostHeartbeat) e.send(Input.HeartbeatAnswered(command.beatId, HeartbeatResponse.Failed("401 for Bearer ${Configs.TOKEN}")))
+    }
+    val engine = engine().apply { start() }
+    engine.send(Input.Arm(Configs.valid()))
+    scheduler.advanceBy(500)
+    val heartbeat = lines.single { """"kind":"heartbeat"""" in it }
+    assertFalse(Configs.TOKEN in heartbeat, heartbeat)
+    assertTrue("401 for Bearer ${SessionRecord.MASK}" in heartbeat, heartbeat)
+  }
+
+  @Test
+  fun `carry 12 an unreachable descriptor that quotes a secret is masked in the record`() {
+    val engine = engine()
+    engine.send(Input.Arm(Configs.valid()))
+    engine.send(Input.DescriptorChecked(DescriptorCheck.Unreachable("GET https://stg.seazn.club/c?tok=${Configs.TOKEN} timed out")))
+    scheduler.advanceBy(0)
+    val descriptor = lines.single { """"kind":"descriptor"""" in it }
+    assertFalse(Configs.TOKEN in descriptor, descriptor)
+    assertTrue("tok=${SessionRecord.MASK} timed out" in descriptor, descriptor)
+  }
+
+  @Test
+  fun `carry 12 an arm the machine ignores still protects its secrets`() {
+    val other = SrtTarget("srt://live.cloudflare.com:778", "f0e1d2c3b4a5968778695a4b3c2d1e0f", "other+secret/9a8b7c", latencyMs = 2_000)
+    val engine = engine()
+    engine.send(Input.Arm(Configs.valid()))
+    engine.send(Input.Arm(Configs.valid(primary = other)))
+    engine.send(Input.DescriptorChecked(DescriptorCheck.Unreachable("srt://h?passphrase=other+secret/9a8b7c")))
+    scheduler.advanceBy(0)
+    assertEquals(1, lines.count { """"kind":"intent-ignored"""" in it }, "the second arm was ignored")
+    val descriptor = lines.single { """"kind":"descriptor"""" in it }
+    assertFalse("other+secret/9a8b7c" in descriptor, descriptor)
+  }
 }
