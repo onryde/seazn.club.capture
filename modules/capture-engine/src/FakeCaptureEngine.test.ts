@@ -114,7 +114,23 @@ describe('the fake engine (spec §2: scripted snapshots, no state machine of its
     expect(state()).toEqual({ kind: 'ended', reason: 'operator-stopped', durationMs: ON_AIR_MS });
     // An ended session reads nothing: no ready camera, no moving meter.
     expect(telemetry()).toEqual(IDLE_TELEMETRY);
+    // A literal, not the fake's own constant: a sounding meter on Ended is a lie (N2).
+    expect(telemetry().audioLevel).toBe(0);
   });
+
+  it.each<FakeScene>(['holding', 'stalled', 'restarting'])(
+    'counts the time on air when stopped while reconnecting (%s)',
+    (scene) => {
+      engine.scene(scene);
+      wait(1000);
+      engine.send({ kind: 'stop' });
+      expect(state()).toEqual({
+        kind: 'ended',
+        reason: 'operator-stopped',
+        durationMs: ON_AIR_MS + 1000,
+      });
+    },
+  );
 
   it('keeps the first ending when Stop arrives twice (a double hold)', () => {
     engine.scene('live');
@@ -341,7 +357,19 @@ describe('after our own camera reopen (F-P5-10; plan B holds it degraded)', () =
       sinceEpochMs: NOW - ON_AIR_MS,
     });
     expect(telemetry().encodedVideoFps).toBe(30);
+    // Not vacuous: the held state and the first frame were both recorded (N4).
+    expect(kinds[0]).toBe('degraded');
+    expect(kinds.at(-1)).toBe('publishing');
     expect(kinds).not.toContain('connecting');
+  });
+
+  it('reports no ready camera until the reopened camera’s first frame (cameraReady’s own doc)', () => {
+    engine.scene('camera-reopened');
+    expect(telemetry().cameraReady).toBe(false);
+    wait(2999);
+    expect(telemetry().cameraReady).toBe(false);
+    wait(1);
+    expect(telemetry().cameraReady).toBe(true);
   });
 
   it('counts the time on air when stopped before the first frame', () => {

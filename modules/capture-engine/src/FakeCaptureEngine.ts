@@ -238,10 +238,11 @@ function sceneOf(name: FakeScene, now: number): Scene {
     case 'camera-reopened':
       // Plan B holds the session until our reopened camera's first frame: it
       // reads degraded camera-taken with its time on air, never connecting
-      // (Projection.onAir). Clean again once a real frame advances.
+      // (Projection.onAir). Until that frame the camera is producing none, so
+      // `cameraReady` is false by its own doc. Clean again once a frame advances.
       return {
         state: degraded('srt', 'camera-taken', since),
-        telemetry: noEncodedRates(live),
+        telemetry: noEncodedRates({ ...live, cameraReady: false }),
         then: { afterMs: REOPEN_FIRST_FRAME_MS, state: publishing('srt', since) },
       };
     case 'mic-silenced':
@@ -310,7 +311,13 @@ export function createFakeCaptureEngine(now: () => number = Date.now): FakeCaptu
     if (pending !== null) clearTimeout(pending);
     pending = null;
   };
-  /** Native reporting a new state by itself, `afterMs` from now. Callers cancel first. */
+  /**
+   * Native reporting a new state by itself, `afterMs` from now. It overwrites
+   * `pending` without cancelling it, which is safe only because nothing is ever
+   * pending when it runs: `play` cancels first, and `start` runs only while
+   * armed, which every path reaches with nothing pending (`reset`, `forceState`
+   * and `play` cancel; `arm` runs only from idle).
+   */
   const later = (afterMs: number, next: () => SessionState): void => {
     pending = setTimeout(() => {
       pending = null;
