@@ -84,6 +84,48 @@ describe('parseDescriptor', () => {
   });
 
   it.each([
+    ['playbackUrl', 'https://evil.example\\.video.example/a'],
+    ['overlayUrl', 'https://evil.example\\.stg.seazn.club/overlay/fixtures/x'],
+    ['heartbeatUrl', 'https://evil.example\\.stg.seazn.club/hb'],
+    ['playbackUrl', 'https://video.example\\@evil.example/a'],
+    ['overlayUrl', 'https://stg.seazn.club\\evil.example/overlay'],
+    ['heartbeatUrl', 'https://stg.seazn.club:443\\@evil.example/hb'],
+  ])('refuses a %s with a backslash in its authority: WHATWG reads it as a slash', (field, url) => {
+    const result = parseDescriptor(descriptorWire({ [field]: url }));
+    expect(result).toMatchObject({ ok: false, error: { kind: 'invalid-field', field } });
+  });
+
+  it.each([
+    ['playbackUrl', 'https://user@video.example/a'],
+    ['overlayUrl', 'https://stg.seazn.club@evil.example/overlay/fixtures/x'],
+    ['heartbeatUrl', 'https://stg.seazn.club:443@evil.example/hb'],
+    ['heartbeatUrl', 'https://@stg.seazn.club/hb'],
+  ])('refuses a %s with userinfo in its authority', (field, url) => {
+    const result = parseDescriptor(descriptorWire({ [field]: url }));
+    expect(result).toMatchObject({ ok: false, error: { kind: 'invalid-field', field } });
+  });
+
+  it.each([
+    ['https://stg.seazn.club/hb\\x', 'a backslash in the path'],
+    ['https://stg.seazn.club/@x', 'an @ in the path'],
+  ])('keeps %j: %s leaves the host alone', (url) => {
+    const result = parseDescriptor(descriptorWire({ heartbeatUrl: url }));
+    expect(result).toMatchObject({ ok: true, value: { heartbeatUrl: url } });
+  });
+
+  it.each([
+    ['playbackUrl', 'https://fake-pass-0000@video.example/a'],
+    ['overlayUrl', 'https://evil.example\\fake-key-0000.stg.seazn.club/o'],
+    ['heartbeatUrl', 'https://fake-token-00000000000000000000\\@evil.example/hb'],
+    ['heartbeatUrl', 'https://fake-stream-id:fake-pass-0000@evil.example/hb'],
+  ])('never echoes a refused %s authority (ruling 7)', (field, url) => {
+    const result = parseDescriptor(descriptorWire({ [field]: url }));
+    expect(result.ok).toBe(false);
+    const said = JSON.stringify(result);
+    for (const secret of FIXTURE_SECRETS) expect(said).not.toContain(secret);
+  });
+
+  it.each([
     ['https://stg.seazn.club/relay'],
     ['https://stg.seazn.club/relay/'],
     ['https://stg.seazn.club/x/relay/y'],

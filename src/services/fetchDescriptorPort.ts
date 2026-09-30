@@ -1,10 +1,10 @@
 import { type Result, err, ok } from '@/domain/Result';
+import { descriptorOnHost } from '@/domain/credentials/descriptorOnHost';
 import { parseDescriptor, parseEndReason } from '@/domain/credentials/parseDescriptor';
 import type { DescriptorError, SessionDescriptor } from '@/domain/credentials/SessionDescriptor';
-import { isRecord } from '@/domain/credentials/wire';
+import { httpsHost, isRecord } from '@/domain/credentials/wire';
 import type { DescriptorPort } from '@/services/descriptorPort';
 import type { Logger } from '@/services/logger';
-import { isSeaznUrl } from '@/services/seaznHosts';
 
 /** The slice of `fetch` this port uses, so tests stub it without a DOM. */
 export type FetchResponse = {
@@ -30,9 +30,11 @@ type Refusal = {
 /** An answer not yet logged: only the one that wins the deadline race ever is. */
 type Verdict = Result<SessionDescriptor, Refusal>;
 type Deps = {
+  /**
+   * Where the descriptor lives. Its host is the only one the descriptor's own
+   * URLs may name (ruling 6); an origin with no https host trusts nothing.
+   */
   origin: string;
-  /** The Seazn hosts the descriptor's own URLs must sit on (ruling 6). */
-  hosts: readonly string[];
   fetch: FetchLike;
   logger: Logger;
   timeoutMs?: number;
@@ -66,10 +68,11 @@ const refusal = (error: DescriptorError, status: number, problem?: string): Verd
 
 export function createFetchDescriptorPort(deps: Deps): DescriptorPort {
   const ms = deps.timeoutMs ?? DESCRIPTOR_TIMEOUT_MS;
+  const host = httpsHost(deps.origin) ?? '';
   return {
     fetch: async (sid, token) => {
       const verdict = await withDeadline((signal) => ask(deps, sid, token, signal), ms);
-      return settle(verdict.ok ? onSeaznHosts(verdict.value, deps) : verdict, deps.logger);
+      return settle(verdict.ok ? onHost(verdict.value, host, deps.logger) : verdict, deps.logger);
     },
   };
 }
@@ -149,19 +152,14 @@ function readDescriptor(data: unknown, sid: string): Verdict {
   return ok(parsed.value);
 }
 
-/**
- * Ruling 6. The heartbeat carries the Bearer token, so a heartbeat off the
- * Seazn hosts refuses the whole answer. An overlay off them is no overlay, as
- * `/relay` is (AGENTS §7): the WebView never loads a page nobody vouched for.
- */
-function onSeaznHosts(descriptor: SessionDescriptor, deps: Deps): Verdict {
-  if (!isSeaznUrl(descriptor.heartbeatUrl, deps.hosts)) {
-    return refusal(INVALID, 200, 'foreign-heartbeat');
+/** Ruling 6, via `descriptorOnHost`; a dropped overlay is said in the record, never silent. */
+function onHost(descriptor: SessionDescriptor, host: string, logger: Logger): Verdict {
+  const checked = descriptorOnHost(descriptor, host);
+  if (!checked.ok) return refusal(INVALID, 200, checked.error);
+  if (descriptor.overlayUrl !== null && checked.value.overlayUrl === null) {
+    logger.warn('descriptor.overlay-dropped', { problem: 'foreign-host' });
   }
-  const { overlayUrl } = descriptor;
-  if (overlayUrl === null || isSeaznUrl(overlayUrl, deps.hosts)) return ok(descriptor);
-  deps.logger.warn('descriptor.overlay-dropped', { problem: 'foreign-host' });
-  return ok({ ...descriptor, overlayUrl: null });
+  return ok(checked.value);
 }
 
 const body = (response: FetchResponse): Promise<unknown> => response.json().catch(() => null);

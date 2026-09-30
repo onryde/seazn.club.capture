@@ -1065,7 +1065,6 @@ describe('Home: checking a stream code with the server (spec §1)', () => {
     const fakes = createFakePorts();
     const descriptor = createFetchDescriptorPort({
       origin: 'https://stg.seazn.club',
-      hosts: ['stg.seazn.club'],
       fetch: () => new Promise(() => undefined),
       logger: fakes.ports.logger,
     });

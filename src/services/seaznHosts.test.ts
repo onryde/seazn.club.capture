@@ -22,7 +22,7 @@ describe('descriptorOrigin', () => {
   });
 });
 
-describe('isSeaznUrl (ruling 6)', () => {
+describe('isSeaznUrl (ruling 6): exact names only', () => {
   const STAGING = ['stg.seazn.club'];
   const PRODUCTION = ['seazn.club'];
 
@@ -30,7 +30,6 @@ describe('isSeaznUrl (ruling 6)', () => {
     ['the host itself', 'https://stg.seazn.club/api/hb', STAGING],
     ['the host, any case, with a port', 'HTTPS://STG.Seazn.Club:443/api/hb', STAGING],
     ['a bare host', 'https://stg.seazn.club', STAGING],
-    ['a proper subdomain', 'https://api.stg.seazn.club/hb', STAGING],
     ['the production host', 'https://seazn.club/overlay/fixtures/x', PRODUCTION],
     ['a query straight after the host', 'https://seazn.club?x=1', PRODUCTION],
   ])('accepts %s', (_label, url, hosts) => {
@@ -48,6 +47,15 @@ describe('isSeaznUrl (ruling 6)', () => {
     ['a port that is not a number', 'https://stg.seazn.club:x/hb', STAGING],
     ['the host only in the path', 'https://evil.example/stg.seazn.club', STAGING],
     ['no host list', 'https://stg.seazn.club/hb', []],
+    ['a proper subdomain: exact names only', 'https://api.stg.seazn.club/hb', STAGING],
+    ['the staging host on a production build', 'https://stg.seazn.club/hb', PRODUCTION],
+    ['www on a production build', 'https://www.seazn.club/hb', PRODUCTION],
+    [
+      'a backslash, which WHATWG reads as the end of the host',
+      'https://evil.example\\.stg.seazn.club/hb',
+      STAGING,
+    ],
+    ['a backslash on a production build', 'https://evil.example\\.seazn.club/hb', PRODUCTION],
   ])('refuses %s', (_label, url, hosts) => {
     expect(isSeaznUrl(url, hosts)).toBe(false);
   });

@@ -35,7 +35,7 @@ export function createNativePorts(): Ports {
   const clock = () => new Date();
   const env = process.env.EXPO_PUBLIC_SEAZN_ENV;
   const hosts = seaznHosts(env);
-  const descriptor = createDescriptorPort({ env, hosts, clock, logger });
+  const descriptor = createDescriptorPort({ env, clock, logger });
   return {
     engine,
     devEngine: __DEV__ ? engine : null,
@@ -67,7 +67,6 @@ export function createNativePorts(): Ports {
  */
 function createDescriptorPort(deps: {
   env: string | undefined;
-  hosts: readonly string[];
   clock: () => Date;
   logger: Logger;
 }): DescriptorPort {
@@ -76,7 +75,6 @@ function createDescriptorPort(deps: {
   }
   return createFetchDescriptorPort({
     origin: descriptorOrigin(deps.env),
-    hosts: deps.hosts,
     fetch: (url, init) => fetch(url, init),
     logger: deps.logger,
   });

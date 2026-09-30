@@ -82,7 +82,10 @@ export function readEpochSeconds(source: Source, key: string, label: string = ke
 
 /**
  * A URL with the given scheme, a host with no userinfo, and no whitespace.
- * Regex rather than `URL`: Hermes' URL polyfill has lacked `hostname`.
+ * The authority refuses `@` (userinfo) and `\`, which WHATWG `URL` — and so
+ * the WebView — reads as `/` in an https URL: `https://evil.example\.seazn.club`
+ * is a request to `evil.example`. Regex rather than `URL`: Hermes' URL
+ * polyfill has lacked `hostname`.
  */
 export function readSchemeUrl(
   source: Source,
@@ -92,8 +95,21 @@ export function readSchemeUrl(
 ): Read<string> {
   const text = readString(source, key, label);
   if (!text.ok) return text;
-  const shape = new RegExp(`^${scheme}://[^\\s/?#@]+([/?#]\\S*)?$`, 'i');
+  const shape = new RegExp(`^${scheme}://[^\\s/?#@\\\\]+([/?#]\\S*)?$`, 'i');
   return shape.test(text.value) ? text : invalid(label, `expected a ${scheme}:// URL`);
+}
+
+const HTTPS_HOST = /^https:\/\/([^/?#@:\\\s]+)(?::\d+)?(?:[/?#]|$)/i;
+
+/**
+ * The host of an https URL, lower-cased, with any port dropped; `null` when
+ * there is none. The host stops at `/`, `?`, `#` or a numeric port and admits
+ * no `@`, `:` or `\`, so a URL a browser would send elsewhere (userinfo, a
+ * backslash) has no host here. Compare it exactly: a suffix is a trust
+ * decision nobody made.
+ */
+export function httpsHost(url: string): string | null {
+  return HTTPS_HOST.exec(url)?.[1]?.toLowerCase() ?? null;
 }
 
 /** A closed set: an unrecognised value fails loudly rather than defaulting to the reassuring answer. */

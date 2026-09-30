@@ -1,9 +1,11 @@
+import { httpsHost } from '@/domain/credentials/wire';
+
 /**
- * The hosts whose links count as Seazn (spec §2). Exact names, never a suffix.
- * Production only on an explicit `EXPO_PUBLIC_SEAZN_ENV=production`: a build
- * that forgets the variable reads staging codes, which fails safe — a club's
- * real codes are refused rather than a staging code being trusted in a
- * release.
+ * The one host whose links count as Seazn (spec §2), matched exactly: never a
+ * subdomain, never a suffix. Production only on an explicit
+ * `EXPO_PUBLIC_SEAZN_ENV=production`: a build that forgets the variable reads
+ * staging codes, which fails safe — a club's real codes are refused rather
+ * than a staging code being trusted in a release.
  */
 export function seaznHosts(env: string | undefined): readonly string[] {
   return env === 'production' ? ['seazn.club'] : ['stg.seazn.club'];
@@ -15,19 +17,13 @@ export function descriptorOrigin(env: string | undefined): string {
 }
 
 /**
- * The host of an https URL, lower-cased, with any port dropped. The host group
- * excludes `@` and `:`, so userinfo (`https://seazn.club@evil.example`) never
- * matches. Regex rather than `URL`: Hermes' URL polyfill has lacked `hostname`.
- */
-const HTTPS_HOST = /^https:\/\/([^/?#@:\s]+)(?::\d+)?(?:[/?#]|$)/i;
-
-/**
- * Whether a URL the server handed over points at Seazn (ruling 6): one of
- * `hosts` exactly, or a proper subdomain of one. Never a substring:
- * `evilseazn.club` and `seazn.club.evil.example` are foreign.
+ * Whether a URL points at one of `hosts` exactly (ruling 6). Never a
+ * subdomain (`api.stg.seazn.club`), never a substring (`evilseazn.club`,
+ * `seazn.club.evil.example`), and never a URL a browser would send elsewhere
+ * (userinfo, a backslash): see `httpsHost`.
  */
 export function isSeaznUrl(url: string, hosts: readonly string[]): boolean {
-  const host = HTTPS_HOST.exec(url)?.[1]?.toLowerCase();
-  if (host === undefined) return false;
-  return hosts.some((seazn) => host === seazn || host.endsWith(`.${seazn}`));
+  const host = httpsHost(url);
+  if (host === null) return false;
+  return hosts.includes(host);
 }

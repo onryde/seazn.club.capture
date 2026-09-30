@@ -26,10 +26,10 @@ function respond(
   return { status, headers: { get: (name) => headers[name] ?? null }, json: async () => body };
 }
 
-const STAGING = { origin: 'https://stg.seazn.club', hosts: ['stg.seazn.club'] } as const;
-const PRODUCTION = { origin: 'https://seazn.club', hosts: ['seazn.club'] } as const;
+const STAGING = { origin: 'https://stg.seazn.club' };
+const PRODUCTION = { origin: 'https://seazn.club' };
 
-function portOver(fetch: FetchLike, env: typeof STAGING | typeof PRODUCTION = STAGING) {
+function portOver(fetch: FetchLike, env: { origin: string } = STAGING) {
   const record = createRingRecord();
   const calls: Parameters<FetchLike>[] = [];
   const descriptor = createFetchDescriptorPort({
@@ -310,9 +310,46 @@ describe('the fetch descriptor port: Seazn hosts only (ruling 6)', () => {
     });
   });
 
-  it('keeps a proper subdomain of the Seazn host', async () => {
-    const wire = descriptorWire(seazn('api.stg.seazn.club'));
-    expect((await portOver(answering(respond(200, wire))).ask()).ok).toBe(true);
+  it('refuses a staging heartbeat on a production build, and drops a staging overlay', async () => {
+    const heartbeat = descriptorWire(seazn('stg.seazn.club'));
+    expect(await portOver(answering(respond(200, heartbeat)), PRODUCTION).ask()).toEqual({
+      ok: false,
+      error: { kind: 'invalid' },
+    });
+    const overlay = descriptorWire({
+      ...seazn('seazn.club'),
+      overlayUrl: 'https://stg.seazn.club/overlay/fixtures/fake-fixture',
+    });
+    const port = portOver(answering(respond(200, overlay)), PRODUCTION);
+    expect(await port.ask()).toMatchObject({ ok: true, value: { overlayUrl: null } });
+    expect(port.lines().join('\n')).toContain('"event":"descriptor.overlay-dropped"');
+  });
+
+  it('refuses a production heartbeat on a staging build', async () => {
+    const wire = descriptorWire(seazn('seazn.club'));
+    expect(await portOver(answering(respond(200, wire))).ask()).toEqual({
+      ok: false,
+      error: { kind: 'invalid' },
+    });
+  });
+
+  it.each(['api.stg.seazn.club', 'evil.example\\.stg.seazn.club'])(
+    'refuses a heartbeat on %s',
+    async (host) => {
+      const wire = descriptorWire({ heartbeatUrl: `https://${host}/hb` });
+      expect(await portOver(answering(respond(200, wire))).ask()).toEqual({
+        ok: false,
+        error: { kind: 'invalid' },
+      });
+    },
+  );
+
+  it('trusts no host at all when its own origin is not https', async () => {
+    const port = portOver(answering(respond(200, descriptorWire())), {
+      origin: 'http://stg.seazn.club',
+    });
+    expect(await port.ask()).toEqual({ ok: false, error: { kind: 'invalid' } });
+    expect(errorLines(port.lines())[0]).toContain('"problem":"foreign-heartbeat"');
   });
 
   it('keeps no overlay when the descriptor already had none', async () => {
