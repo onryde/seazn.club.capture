@@ -159,4 +159,77 @@ class HeartbeatTest {
     assertFalse(over)
     assertEquals(second, after)
   }
+
+  // Below: added in B4's mutation pass and for the dispatch's secrets ruling.
+
+  private fun answer(response: HeartbeatResponse): Pair<HeartbeatState, Boolean> {
+    val (sent, id) = Heartbeat.due(HeartbeatState(), 0, 0)
+    return Heartbeat.answered(sent, id!!, response)
+  }
+
+  @Test
+  fun `ruling 5 any 2xx is an answer, and a finished state outside a 2xx is not`() {
+    // Only a 410, or a 2xx whose state is ending, completed or failed, ends the session.
+    assertTrue(answer(HeartbeatResponse.Answered(202, "ending", null)).second)
+    val (empty, emptyOver) = answer(HeartbeatResponse.Answered(204, null, null))
+    assertFalse(emptyOver)
+    assertEquals(HeartbeatResult.OK, empty.lastResult)
+    val (refused, refusedOver) = answer(HeartbeatResponse.Answered(500, "failed", null))
+    assertFalse(refusedOver)
+    assertEquals(HeartbeatResult.FAILED, refused.lastResult)
+  }
+
+  @Test
+  fun `every answer closes its beat, so an answered beat is never later timed out`() {
+    val responses =
+      listOf(HeartbeatResponse.Answered(200, "live", null), HeartbeatResponse.Answered(410, null, null), HeartbeatResponse.Failed("timeout"))
+    for (response in responses) assertNull(answer(response).first.inFlightId, response.toString())
+    val (answered, _) = answer(HeartbeatResponse.Answered(200, "live", null))
+    val (next, id) = Heartbeat.due(answered, 10_000, 10_000)
+    assertEquals(2, id)
+    assertEquals(0, next.failures)
+  }
+
+  @Test
+  fun `the status reports the last beat's wall time and both failure counts`() {
+    val wall = 1_790_778_725_123
+    val (sent, id) = Heartbeat.due(HeartbeatState(consecutiveFailures = 2, failures = 5), nowMs = 5_000, wallMs = wall)
+    val (after, _) = Heartbeat.answered(sent, id!!, HeartbeatResponse.Failed("timeout"))
+    assertEquals(HeartbeatStatus(wall, HeartbeatResult.FAILED, consecutiveFailures = 3, failures = 6), after.status)
+  }
+
+  @Test
+  fun `a phone that cannot read its battery or thermal state sends nulls`() {
+    val unread = facts.copy(batteryPercent = null, charging = null, drainPctPerHour = null, thermalStatus = null)
+    val body = Heartbeat.payload(unread)
+    assertTrue(""""battery":{"percent":null,"charging":null,"drainPctPerHour":null},"thermal":null,""" in body, body)
+  }
+
+  @Test
+  fun `ruling 5 the token has no way into a beat - no field for it, and a failure keeps no message`() {
+    // The per-session token is the Bearer header plan C sets from SessionConfig.token. The core's heartbeat
+    // never holds it: the facts are the Ask's fields and nothing else, and a failed beat's platform
+    // message, which could quote the request, is counted and dropped.
+    assertEquals(
+      setOf(
+        "sid", "atEpochMs", "state", "transport", "bitrateKbps", "delivery", "deliveredLagMs", "audioOk",
+        "batteryPercent", "charging", "drainPctPerHour", "thermalStatus", "dataUsedBytes", "appVersion",
+      ),
+      HeartbeatFacts::class.java.declaredFields.filterNot { it.isSynthetic }.map { it.name }.toSet(),
+    )
+    val (sent, id) = Heartbeat.due(HeartbeatState(), 0, 0)
+    val (after, _) = Heartbeat.answered(sent, id!!, HeartbeatResponse.Failed("401 for Authorization: Bearer ${Configs.TOKEN}"))
+    assertFalse(Configs.TOKEN in after.toString())
+    assertFalse(Configs.TOKEN in after.status.toString())
+  }
+
+  @Test
+  fun `an answer delivered twice is used once`() {
+    val (sent, id) = Heartbeat.due(HeartbeatState(), 0, 0)
+    val (once, _) = Heartbeat.answered(sent, id!!, HeartbeatResponse.Failed("timeout"))
+    val (twice, over) = Heartbeat.answered(once, id, HeartbeatResponse.Answered(410, null, null))
+    assertFalse(over)
+    assertEquals(once, twice)
+    assertEquals(1, twice.failures)
+  }
 }
