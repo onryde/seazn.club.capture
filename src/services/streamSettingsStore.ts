@@ -11,9 +11,10 @@ export type SaveResult = 'saved' | 'refused';
 
 /**
  * Spec §4's two stream settings, behind the key-value port (D23). A change
- * applies at once; a refused save is logged and the choice holds for the
- * session. Shaped for useSyncExternalStore. `load()` never rejects and reads
- * once, however often it is called.
+ * applies at once and is saved once the saved record has been read, on top of
+ * it; a refused save is logged and the choice holds for the session. Shaped
+ * for useSyncExternalStore. `load()` never rejects and reads once, however
+ * often it is called, a change's own read included.
  */
 export type StreamSettingsStore = {
   load(): Promise<void>;
@@ -25,26 +26,29 @@ export type StreamSettingsStore = {
 export function createStreamSettingsStore(kv: KeyValueStore, logger: Logger): StreamSettingsStore {
   let settings = DEFAULT_STREAM_SETTINGS;
   let loading: Promise<void> | null = null;
-  let touched = false;
+  /** The operator's changes, laid over the saved record once it is read (m1). */
+  let changes: Partial<StreamSettings> | null = null;
   const listeners = new Set<() => void>();
   const publish = (next: StreamSettings) => {
     settings = next;
     for (const listener of listeners) listener();
   };
-  const save = serialSaves(kv, logger, () => settings);
+  const load = () =>
+    (loading ??= read(kv, logger).then((saved) => {
+      // A choice made while the first read was slow is newer than it; the
+      // fields it did not touch keep what was saved.
+      publish(changes === null ? saved : { ...saved, ...changes });
+    }));
+  const save = serialSaves(kv, logger, () => settings, load);
   return {
-    load: () =>
-      (loading ??= read(kv, logger).then((saved) => {
-        // A choice made while the first read was slow is newer than it.
-        if (!touched) publish(saved);
-      })),
+    load,
     getSnapshot: () => settings,
     subscribe: (listener) => {
       listeners.add(listener);
       return () => listeners.delete(listener);
     },
     set: (change) => {
-      touched = true;
+      changes = { ...changes, ...change };
       publish({ ...settings, ...change });
       return save();
     },
@@ -54,18 +58,23 @@ export function createStreamSettingsStore(kv: KeyValueStore, logger: Logger): St
 /**
  * One write at a time, as the mode store's (I2): SecureStore does not promise
  * to finish two writes in the order they were asked, and the older one landing
- * last would bring back a choice the operator had undone. Each write saves the
- * settings as they are when it runs, so the last choice is the one kept, and a
- * refused write never blocks the next. The key-value timeout bounds each one.
+ * last would bring back a choice the operator had undone. No write runs before
+ * the saved record is read (`loaded` never rejects), so a change can never
+ * persist the defaults over a field it did not touch; after a refused read it
+ * saves over the defaults, and the read's refusal is logged. Each write saves
+ * the settings as they are when it runs, so the last choice is the one kept,
+ * and a refused write never blocks the next. The key-value timeout bounds each.
  */
 function serialSaves(
   kv: KeyValueStore,
   logger: Logger,
   current: () => StreamSettings,
+  loaded: () => Promise<void>,
 ): () => Promise<SaveResult> {
   let tail: Promise<SaveResult> = Promise.resolve('saved');
   return () => {
     tail = tail
+      .then(loaded)
       .then(() => kv.set(SETTINGS_KEY, encode(current())))
       .then(
         (): SaveResult => 'saved',

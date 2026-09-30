@@ -145,11 +145,13 @@ describe('stream settings (D23)', () => {
     expect(events()).toContain('settings.write-refused');
   });
 
-  it('reads a saved choice back after a cold start', async () => {
+  it('reads a saved choice back after a cold start, under the key D23 names', async () => {
     const kv = createMemoryKeyValueStore();
     const first = build(kv).store;
     await first.load();
     await first.set({ overlay: false, side: 'left' });
+    // A literal, not SETTINGS_KEY: renaming the key would reset every operator's settings (m2).
+    expect(kv.entries.get('settings.stream')).toBe('{"v":1,"overlay":false,"side":"left"}');
     const { store: second, events } = build(kv);
     await second.load();
     expect(second.getSnapshot()).toEqual({ overlay: false, side: 'left' });
@@ -164,20 +166,92 @@ describe('stream settings (D23)', () => {
     await store.load();
     expect(get).toHaveBeenCalledTimes(1);
   });
+});
 
-  it('never lets a slow first read overwrite a choice made meanwhile', async () => {
+/**
+ * A choice made before the first read settles (m1): it lands on top of what
+ * was saved, and nothing is written until the saved record is known.
+ */
+describe('a change before the saved settings are read', () => {
+  /** A keystore whose first read answers only when the test says. */
+  function slowRead() {
+    const kv = createMemoryKeyValueStore();
+    const set = vi.spyOn(kv, 'set');
     let answer: (text: string | null) => void = () => undefined;
     const slow: KeyValueStore = {
       get: () => new Promise((resolve) => (answer = resolve)),
-      set: async () => undefined,
-      delete: async () => undefined,
+      set: kv.set,
+      delete: kv.delete,
     };
+    return { kv, set, slow, answer: (text: string | null) => answer(text) };
+  }
+
+  it('never lets a slow first read overwrite a choice made meanwhile', async () => {
+    const { slow, answer } = slowRead();
     const { store } = build(slow);
     const loading = store.load();
-    await store.set({ side: 'left' });
+    const saving = store.set({ side: 'left' });
     answer('{"v":1,"overlay":true,"side":"right"}');
     await loading;
     expect(store.getSnapshot().side).toBe('left');
+    expect(await saving).toBe('saved');
+  });
+
+  it('keeps the saved field the operator did not touch (score preview off stays off)', async () => {
+    const { kv, set, slow, answer } = slowRead();
+    const { store, events } = build(slow);
+    const loading = store.load();
+    const saving = store.set({ side: 'right' });
+    expect(store.getSnapshot().side).toBe('right');
+    await flush();
+    // Nothing is written while the saved record is still unknown.
+    expect(set).not.toHaveBeenCalled();
+    answer('{"v":1,"overlay":false,"side":"left"}');
+    await loading;
+    expect(store.getSnapshot()).toEqual({ overlay: false, side: 'right' });
+    expect(await saving).toBe('saved');
+    expect(kv.entries.get(SETTINGS_KEY)).toBe('{"v":1,"overlay":false,"side":"right"}');
+    expect(events()).toEqual([]);
+  });
+
+  it('keeps every change made before the read settles, not only the last', async () => {
+    const { kv, slow, answer } = slowRead();
+    const { store } = build(slow);
+    const loading = store.load();
+    const first = store.set({ overlay: false });
+    const second = store.set({ side: 'left' });
+    answer('{"v":1,"overlay":true,"side":"right"}');
+    await loading;
+    expect(store.getSnapshot()).toEqual({ overlay: false, side: 'left' });
+    expect([await first, await second]).toEqual(['saved', 'saved']);
+    expect(kv.entries.get(SETTINGS_KEY)).toBe('{"v":1,"overlay":false,"side":"left"}');
+  });
+
+  it('reads the saved settings first when a change comes before any load', async () => {
+    const kv = createMemoryKeyValueStore({
+      [SETTINGS_KEY]: '{"v":1,"overlay":false,"side":"left"}',
+    });
+    const get = vi.spyOn(kv, 'get');
+    const { store } = build(kv);
+    expect(await store.set({ side: 'right' })).toBe('saved');
+    expect(kv.entries.get(SETTINGS_KEY)).toBe('{"v":1,"overlay":false,"side":"right"}');
+    await store.load();
+    expect(get).toHaveBeenCalledTimes(1);
+    expect(store.getSnapshot()).toEqual({ overlay: false, side: 'right' });
+  });
+
+  it('saves the change over the defaults after a refused read, and says the read failed', async () => {
+    const kv = createMemoryKeyValueStore();
+    const refusingRead: KeyValueStore = {
+      get: () => Promise.reject(new Error('keystore locked')),
+      set: kv.set,
+      delete: kv.delete,
+    };
+    const { store, events } = build(refusingRead);
+    expect(await store.set({ side: 'left' })).toBe('saved');
+    expect(store.getSnapshot()).toEqual({ overlay: true, side: 'left' });
+    expect(kv.entries.get(SETTINGS_KEY)).toBe('{"v":1,"overlay":true,"side":"left"}');
+    expect(events()).toEqual(['settings.read-refused']);
   });
 });
 
