@@ -3,6 +3,7 @@ import { AUDIO_FLOOR } from '@/domain/policy/audioFloor';
 import {
   createFakeCaptureEngine,
   FAKE_SCENES,
+  IDLE_TELEMETRY,
   type FakeCaptureEngine,
   type FakeScene,
 } from './FakeCaptureEngine';
@@ -111,6 +112,8 @@ describe('the fake engine (spec §2: scripted snapshots, no state machine of its
     engine.scene('live');
     engine.send({ kind: 'stop' });
     expect(state()).toEqual({ kind: 'ended', reason: 'operator-stopped', durationMs: ON_AIR_MS });
+    // An ended session reads nothing: no ready camera, no moving meter.
+    expect(telemetry()).toEqual(IDLE_TELEMETRY);
   });
 
   it('keeps the first ending when Stop arrives twice (a double hold)', () => {
@@ -166,6 +169,14 @@ describe('the fake engine (spec §2: scripted snapshots, no state machine of its
     wait(5000);
     expect(state()).toEqual({ kind: 'connecting', transport: 'srt' });
     expect(engine.getSnapshot().reportedAtMs).toBe(NOW);
+  });
+
+  it('lets a forced state win over a pending connect (the dev panel’s Fail)', () => {
+    engine.send({ kind: 'arm', session, heartbeat });
+    engine.send({ kind: 'start' });
+    engine.forceState({ kind: 'ended', reason: 'fatal-error', durationMs: null });
+    wait(5000);
+    expect(state()).toEqual({ kind: 'ended', reason: 'fatal-error', durationMs: null });
   });
 
   it('lets a scene win over a pending connect', () => {
@@ -224,7 +235,12 @@ describe('scenes: every state spec §6 lists', () => {
     restarting: { kind: 'reconnecting', cause: 'not-delivered', holdRemainingSeconds: 38 },
     'not-delivered': { kind: 'degraded', reason: 'not-delivered' },
     'camera-taken': { kind: 'degraded', reason: 'camera-taken' },
-    'camera-reopened': { kind: 'connecting', transport: 'srt' },
+    'camera-reopened': {
+      kind: 'degraded',
+      transport: 'srt',
+      reason: 'camera-taken',
+      sinceEpochMs: NOW - ON_AIR_MS,
+    },
     'mic-silenced': { kind: 'degraded', reason: 'mic-silenced' },
     stopped: { kind: 'ended', reason: 'operator-stopped', durationMs: ON_AIR_MS },
     'stopped-by-organiser': {
@@ -298,11 +314,25 @@ describe('no reading is null, as the Kotlin engine reports it', () => {
   );
 });
 
-describe('after our own camera reopen (F-P5-10, F-P5-6)', () => {
-  it('is not LIVE until a real frame arrives, then carries on the same broadcast', () => {
+/**
+ * Plan B's `Projection.onAir`: a session whose camera is not our own, with no
+ * outage, is held. It reads degraded camera-taken with its time on air, and
+ * never connecting, until the reopened camera's first frame.
+ */
+describe('after our own camera reopen (F-P5-10; plan B holds it degraded)', () => {
+  const HELD = {
+    kind: 'degraded',
+    transport: 'srt',
+    reason: 'camera-taken',
+    sinceEpochMs: NOW - ON_AIR_MS,
+  };
+
+  it('holds degraded camera-taken until the first frame, then publishes the same broadcast', () => {
+    const kinds: string[] = [];
+    engine.subscribe(() => kinds.push(state().kind));
     engine.scene('camera-reopened');
     wait(2999);
-    expect(state()).toEqual({ kind: 'connecting', transport: 'srt' });
+    expect(state()).toEqual(HELD);
     expect(telemetry().encodedVideoFps).toBeNull();
     wait(1);
     expect(state()).toEqual({
@@ -310,15 +340,8 @@ describe('after our own camera reopen (F-P5-10, F-P5-6)', () => {
       transport: 'srt',
       sinceEpochMs: NOW - ON_AIR_MS,
     });
-  });
-
-  it('starts the next session with no time on air', () => {
-    engine.scene('camera-reopened');
-    engine.send({ kind: 'reset' });
-    engine.send({ kind: 'arm', session, heartbeat });
-    engine.send({ kind: 'start' });
-    engine.send({ kind: 'stop' });
-    expect(state()).toEqual({ kind: 'ended', reason: 'operator-stopped', durationMs: null });
+    expect(telemetry().encodedVideoFps).toBe(30);
+    expect(kinds).not.toContain('connecting');
   });
 
   it('counts the time on air when stopped before the first frame', () => {
@@ -331,5 +354,28 @@ describe('after our own camera reopen (F-P5-10, F-P5-6)', () => {
       reason: 'operator-stopped',
       durationMs: ON_AIR_MS + 1000,
     });
+  });
+});
+
+/**
+ * The fake keeps no time on air of its own: a stop reads it from the state
+ * native reports now. Nothing from a session before a reset or a forced state
+ * reaches the next ending.
+ */
+describe('no stale time on air (M4)', () => {
+  it('forgets it across a reset: the next session, stopped while connecting, has none', () => {
+    engine.scene('camera-reopened');
+    engine.send({ kind: 'reset' });
+    engine.send({ kind: 'arm', session, heartbeat });
+    engine.send({ kind: 'start' });
+    engine.send({ kind: 'stop' });
+    expect(state()).toEqual({ kind: 'ended', reason: 'operator-stopped', durationMs: null });
+  });
+
+  it('forgets it when a state is forced: a forced connect then stopped ends with none', () => {
+    engine.scene('camera-reopened');
+    engine.forceState({ kind: 'connecting', transport: 'srt' });
+    engine.send({ kind: 'stop' });
+    expect(state()).toEqual({ kind: 'ended', reason: 'operator-stopped', durationMs: null });
   });
 });

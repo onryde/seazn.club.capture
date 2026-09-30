@@ -135,7 +135,7 @@ export type Telemetry = {
   /** From the charge counter: P5 found the percentage unreliable for drain. */
   readonly drainPctPerHour: number | null;
   readonly thermalStatus: ThermalStatus | null;
-  /** Android API 30+; −1 below it; null when unknown. */
+  /** Android API 30+; null below it or when unknown (plan B passes null where Android reads −1). */
   readonly thermalHeadroom: number | null;
   /** M2: NTP-synced, reported even single-camera. */
   readonly captureTimestampMs: number | null;

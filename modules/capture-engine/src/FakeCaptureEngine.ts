@@ -75,9 +75,9 @@ export type FakeCaptureEngine = CaptureEnginePort & {
 const ON_AIR_MS = 754_000;
 const CONNECT_MS = 1000;
 /**
- * F-P5-10: after our own reopen the camera gets a full 3 s stall window, and
- * native is not LIVE until a real frame advances (F-P5-6). The fake's first
- * frame lands at the end of it: the longest the operator waits.
+ * F-P5-10: after our own reopen the camera gets a full 3 s stall window for
+ * its first frame. The fake's first frame lands at the end of it: the longest
+ * the operator waits.
  */
 const REOPEN_FIRST_FRAME_MS = 3000;
 const REPORT_MS = 1000;
@@ -173,8 +173,6 @@ const noEncodedRates = (telemetry: Telemetry): Telemetry => ({
 type Scene = {
   readonly state: SessionState;
   readonly telemetry: Telemetry;
-  /** When the state itself carries no `sinceEpochMs`, the session's time on air still counts. */
-  readonly onAirSince?: number;
   /** A snapshot native reports by itself a moment later. */
   readonly then?: { readonly afterMs: number; readonly state: SessionState };
 };
@@ -238,11 +236,12 @@ function sceneOf(name: FakeScene, now: number): Scene {
         telemetry: noEncodedRates({ ...live, cameraReady: false }),
       };
     case 'camera-reopened':
-      // Our camera is back, but native is not LIVE until a real frame advances.
+      // Plan B holds the session until our reopened camera's first frame: it
+      // reads degraded camera-taken with its time on air, never connecting
+      // (Projection.onAir). Clean again once a real frame advances.
       return {
-        state: { kind: 'connecting', transport: 'srt' },
+        state: degraded('srt', 'camera-taken', since),
         telemetry: noEncodedRates(live),
-        onAirSince: since,
         then: { afterMs: REOPEN_FIRST_FRAME_MS, state: publishing('srt', since) },
       };
     case 'mic-silenced':
@@ -296,11 +295,6 @@ export function createFakeCaptureEngine(now: () => number = Date.now): FakeCaptu
     survivesBackground: false,
   };
   let primary: Transport = 'srt';
-  /**
-   * Plan B's `liveSinceEpochMs`, for a scene whose state carries no
-   * `sinceEpochMs` (a camera reopen): a stop there still counts time on air.
-   */
-  let onAirSince: number | null = null;
   const intents: EngineIntent[] = [];
   const listeners = new Set<() => void>();
   let pending: ReturnType<typeof setTimeout> | null = null;
@@ -316,9 +310,8 @@ export function createFakeCaptureEngine(now: () => number = Date.now): FakeCaptu
     if (pending !== null) clearTimeout(pending);
     pending = null;
   };
-  /** Native reporting a new state by itself, `afterMs` from now. */
+  /** Native reporting a new state by itself, `afterMs` from now. Callers cancel first. */
   const later = (afterMs: number, next: () => SessionState): void => {
-    cancelPending();
     pending = setTimeout(() => {
       pending = null;
       show(next());
@@ -328,7 +321,6 @@ export function createFakeCaptureEngine(now: () => number = Date.now): FakeCaptu
   const arm = (descriptor: SessionDescriptor, transport: Transport): void => {
     if (snapshot.state.kind !== 'idle') return;
     primary = transport;
-    onAirSince = null;
     publish({ state: { kind: 'armed' }, telemetry: ARMED, descriptor });
   };
   const start = (): void => {
@@ -340,7 +332,7 @@ export function createFakeCaptureEngine(now: () => number = Date.now): FakeCaptu
     const { kind } = snapshot.state;
     if (kind === 'idle' || kind === 'ended') return;
     cancelPending();
-    const since = sinceOf(snapshot.state) ?? onAirSince;
+    const since = sinceOf(snapshot.state);
     show(ended('operator-stopped', since === null ? null : now() - since));
   };
   const reset = (): void => {
@@ -349,7 +341,6 @@ export function createFakeCaptureEngine(now: () => number = Date.now): FakeCaptu
   };
   const play = (scene: Scene): void => {
     cancelPending();
-    onAirSince = scene.onAirSince ?? null;
     show(scene.state, scene.telemetry);
     const { then } = scene;
     if (then !== undefined) later(then.afterMs, () => then.state);
@@ -387,6 +378,7 @@ export function createFakeCaptureEngine(now: () => number = Date.now): FakeCaptu
     getSnapshot: () => snapshot,
     intents,
     scene: (name) => play(sceneOf(name, now())),
+    // A forced state wins over a pending connect or first frame.
     forceState: (state) => {
       cancelPending();
       show(state);
