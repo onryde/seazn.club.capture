@@ -101,7 +101,9 @@ describe('useStreamLeave', () => {
     expect(leaving.hook.result.current.canLeave).toBe(true);
   });
 
-  // Reachable: the reopen gate sends an armed or stopped engine here whatever is saved.
+  // Reachable with nothing saved. Armed: the reopen gate sends an armed or live
+  // engine here whatever is saved (reopen.ts). Stopped: a stopped leave that was
+  // cancelled on air had already forgotten the code, and then the broadcast stops.
   it.each<[string, SessionState]>([
     ['armed', { kind: 'armed' }],
     ['stopped', STOPPED],
