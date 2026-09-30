@@ -13,7 +13,7 @@ object Encode {
   const val EGRESS_OVERHEAD_PERCENT = 115L
 
   fun expectedEgressBps(videoTargetBps: Int): Long =
-    (videoTargetBps + AUDIO_BPS).toLong() * EGRESS_OVERHEAD_PERCENT / 100
+    (videoTargetBps.toLong() + AUDIO_BPS) * EGRESS_OVERHEAD_PERCENT / 100
 }
 
 /**

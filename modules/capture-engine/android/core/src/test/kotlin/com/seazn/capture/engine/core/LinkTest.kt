@@ -97,6 +97,13 @@ class LinkTest {
     assertTrue(capBps > 1_000_000, "a 500k target measured 0.95–1.0 Mbps on a busy picture")
   }
 
+  // (2 147 483 647 + 128 000) × 115 / 100 = 2 147 611 647 × 115 / 100 = 2 469 753 394, worked by hand.
+  // Adding audio in Int would wrap past Int.MAX_VALUE and go negative.
+  @Test
+  fun `expected egress widens before adding audio, so the largest target stays positive`() {
+    assertEquals(2_469_753_394, Encode.expectedEgressBps(Int.MAX_VALUE))
+  }
+
   // The range's ends, worked by hand above: 3 000 000 gives 899 300, and 500 000 gives 180 550.
   @Test
   fun `a target outside the encode range is capped as the range`() {
