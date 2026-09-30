@@ -352,4 +352,116 @@ class SessionMachineOutageTest {
     assertEquals(listOf(Command.SetBitrate(1, 1_600_000)), rig.sent<Command.SetBitrate>())
     assertTrue(rig.sent<Command.SetMaxBw>().isEmpty())
   }
+
+  @Test
+  fun `C1 a fallback on connect failures is recorded once, from SRT to RTMPS`() {
+    val rig = MachineRig().armed(validated = true)
+    rig.send(Input.Start)
+    rig.failingConnects(6_500, ConnectFailure.TIMEOUT)
+    val fell = rig.records("fell-back").single()
+    assertEquals(Transport.SRT, fell.field("from"))
+    assertEquals(Transport.RTMPS, fell.field("to"))
+  }
+
+  @Test
+  fun `only a refused connect asks the descriptor`() {
+    val rig = MachineRig().armed()
+    rig.send(Input.Start)
+    rig.failingConnects(4_000, ConnectFailure.OTHER)
+    rig.failingConnects(2_000, ConnectFailure.UNRESOLVED)
+    assertTrue(rig.sent<Command.FetchDescriptor>().isEmpty(), "a failure that is not a refusal says nothing about the session")
+    rig.failingConnects(2_000, ConnectFailure.REFUSED)
+    assertEquals(1, rig.sent<Command.FetchDescriptor>().size)
+  }
+
+  @Test
+  fun `C2 a second drop before the first frame keeps the first drop's hold`() {
+    val rig = MachineRig().live()
+    val since = (rig.state as SnapshotState.Publishing).sinceEpochMs
+    rig.send(Input.Dropped(1, DropReason.ENDPOINT_CLOSED, null))
+    rig.advance(2_000)
+    rig.send(Input.Connected(2))
+    rig.advance(1_000, feeding = false)
+    rig.send(Input.Dropped(2, DropReason.ENDPOINT_CLOSED, null))
+    // The hold started at the first drop, at 1 s: 183 − 3 = 180 s left at 4 s.
+    assertEquals(SnapshotState.Reconnecting(ReconnectCause.UPLINK_LOST, 180, 183, since), rig.state)
+  }
+
+  @Test
+  fun `a drop on air is retried 2 s later`() {
+    val rig = MachineRig().live()
+    rig.send(Input.Dropped(1, DropReason.ENDPOINT_CLOSED, null))
+    rig.advance(1_500)
+    assertEquals(1, rig.connects().size)
+    rig.advance(500)
+    assertEquals(listOf(1, 2), rig.connects().map { it.attemptId })
+  }
+
+  @Test
+  fun `frames after a reconnect end the outage, so its hold never ends a publishing session`() {
+    val rig = MachineRig(Configs.valid(holdWindowSeconds = mapOf(Transport.SRT to 5, Transport.RTMPS to 5))).live()
+    rig.send(Input.Dropped(1, DropReason.ENDPOINT_CLOSED, null))
+    rig.advance(2_000)
+    rig.send(Input.Connected(2))
+    // The hold from the drop at 1 s would have run out at 6 s.
+    rig.advance(10_000)
+    assertIs<SnapshotState.Publishing>(rig.state)
+    assertEquals(1, rig.records("resumed").size)
+  }
+
+  @Test
+  fun `C2 the hold ends a reconnected attempt that shows no frame, at the window`() {
+    val rig = MachineRig(Configs.valid(holdWindowSeconds = mapOf(Transport.SRT to 5, Transport.RTMPS to 5))).live()
+    rig.send(Input.Dropped(1, DropReason.ENDPOINT_CLOSED, null))
+    rig.advance(2_000)
+    rig.send(Input.Connected(2))
+    rig.advance(2_500, feeding = false)
+    assertIs<SnapshotState.Reconnecting>(rig.state, "5.5 s: half a second of the 5 s hold from the drop at 1 s")
+    rig.advance(500, feeding = false)
+    assertEquals(SnapshotState.Ended(EndReason.HOLD_WINDOW_EXPIRED), rig.state)
+  }
+
+  @Test
+  fun `a stall rebuild during an outage keeps the outage's hold and cause`() {
+    val rig = MachineRig().live()
+    val since = (rig.state as SnapshotState.Publishing).sinceEpochMs
+    rig.send(Input.Dropped(1, DropReason.ENDPOINT_CLOSED, null))
+    rig.advance(2_000)
+    rig.send(Input.Connected(2))
+    rig.advance(5_000, feeding = false)
+    assertEquals(1, rig.sent<Command.Rebuild>().size, "attempt 2 had no first frame in 5 s")
+    // Still the uplink outage from 1 s: 183 − 7 = 176 s left at 8 s.
+    assertEquals(SnapshotState.Reconnecting(ReconnectCause.UPLINK_LOST, 176, 183, since), rig.state)
+  }
+
+  @Test
+  fun `a link reading the meter cannot rate keeps the last bitrate`() {
+    val rig = MachineRig()
+    var bytes = 0L
+    rig.link = { t ->
+      bytes += 500_000
+      LinkCounters(bytes, t, 0, 0, 0, 20, 50, null)
+    }
+    rig.live()
+    assertEquals(4_000, rig.snapshot.bitrateKbps)
+    // Counters that went backwards (the platform restarted its own): no rate from this reading.
+    rig.send(Input.Link(1, LinkCounters(0, 0, 0, 0, 0, 20, 50, null)))
+    assertEquals(4_000, rig.snapshot.bitrateKbps)
+  }
+
+  @Test
+  fun `each attempt restarts the regulator's clean interval`() {
+    val rig = MachineRig()
+    rig.link = cleanLink()
+    rig.live()
+    rig.advance(5_000)
+    rig.advance(3_000, videoPerStep = 0)
+    assertEquals(1, rig.sent<Command.Rebuild>().size, "no video for 3 s at 9 s")
+    rig.send(Input.Connected(2))
+    // Attempt 2's first clean reading is at 10 s: its raise is due 10 s later, at 20 s.
+    rig.advance(10_500)
+    assertTrue(rig.sent<Command.SetBitrate>().isEmpty(), "${rig.sent<Command.SetBitrate>()}")
+    rig.advance(500)
+    assertEquals(listOf(Command.SetBitrate(2, 1_600_000)), rig.sent<Command.SetBitrate>())
+  }
 }

@@ -202,4 +202,78 @@ class SessionMachineServerTest {
     // 10 000 − 9 000 = 1 000 ms. So 6 000 + 1 000 = 7 000.
     assertEquals(7_000, skipped.mediaMs)
   }
+
+  @Test
+  fun `carry 8 the heartbeat says audio not ok while the mic is silenced, whatever the rate`() {
+    val rig = MachineRig()
+    rig.beats = { HeartbeatResponse.Answered(200, "live", null) }
+    rig.live()
+    rig.send(Input.MicSilenced(true))
+    rig.advance(10_000)
+    assertEquals(46.0, rig.snapshot.audioPacketsPerSecond, "the encoder still runs")
+    assertTrue(""""audioOk":false""" in rig.sent<Command.PostHeartbeat>()[1].body)
+  }
+
+  @Test
+  fun `the heartbeat says audio ok at exactly the floor`() {
+    val rig = MachineRig()
+    rig.beats = { HeartbeatResponse.Answered(200, "live", null) }
+    rig.live()
+    // 10 audio frames every 500 ms: 20 a second, the floor.
+    rig.advance(10_000, audioPerStep = 10)
+    assertEquals(20.0, rig.snapshot.audioPacketsPerSecond)
+    assertTrue(""""audioOk":true""" in rig.sent<Command.PostHeartbeat>()[1].body)
+  }
+
+  @Test
+  fun `the heartbeat names the transport while reconnecting`() {
+    val rig = MachineRig()
+    rig.beats = { HeartbeatResponse.Answered(200, "live", null) }
+    rig.live()
+    rig.send(Input.Dropped(1, DropReason.ENDPOINT_CLOSED, null))
+    rig.advance(10_000)
+    val body = rig.sent<Command.PostHeartbeat>()[1].body
+    assertTrue(""""state":"reconnecting"""" in body, body)
+    assertTrue(""""transport":"srt"""" in body, body)
+  }
+
+  @Test
+  fun `the data used survives a drop`() {
+    val rig = MachineRig()
+    var bytes = 0L
+    rig.link = { t ->
+      bytes += 500_000
+      LinkCounters(bytes, t, 0, 0, 0, 20, 50, null)
+    }
+    rig.live()
+    rig.advance(1_000)
+    rig.send(Input.Dropped(1, DropReason.ENDPOINT_CLOSED, null))
+    // Readings at 1 s and 2 s, 500 000 bytes each.
+    assertEquals(1_000_000, rig.snapshot.dataUsedBytes)
+  }
+
+  @Test
+  fun `an outage adds no publishing time to the delivery watch`() {
+    val rig = MachineRig().live()
+    rig.send(Input.Dropped(1, DropReason.ENDPOINT_CLOSED, null))
+    rig.advance(500)
+    val first = (rig.phase as Phase.Connecting).session.delivery
+    rig.advance(1_000)
+    val later = (rig.phase as Phase.Connecting).session.delivery
+    assertFalse(later.onAir)
+    assertEquals(first.onAirMs, later.onAirMs, "off air, time does not count")
+    assertEquals(null, later.pending)
+  }
+
+  @Test
+  fun `carry 11 a playlist answer that lands in a camera switch's pause changes nothing`() {
+    val rig = MachineRig()
+    rig.playlists = { null }
+    rig.live()
+    val inFlight = rig.sent<Command.FetchPlaylist>().single()
+    rig.send(Input.SwitchCamera)
+    val paused = rig.phase
+    assertEquals(emptyList(), rig.send(Input.PlaylistFetched(inFlight.requestId, FetchResult.Body(masterText))))
+    assertEquals(paused, rig.phase)
+  }
 }

@@ -233,4 +233,59 @@ class SessionMachineDeviceTest {
     assertEquals(empty, rig.snapshot.device)
     assertIs<SnapshotState.Publishing>(rig.state)
   }
+
+  @Test
+  fun `a reopened camera that delivered and then stalls is counted from its last frame`() {
+    val rig = MachineRig().live()
+    rig.send(Input.CameraContended)
+    rig.send(Input.CameraReleased)
+    rig.send(Input.CameraReopened(ok = true))
+    // 1.5 s is the reopened camera's baseline, 2 s its first advance.
+    rig.advance(1_000)
+    rig.advance(3_000, videoPerStep = 0)
+    val stalled = rig.records("video-stalled").single()
+    assertEquals(3_000L, stalled.field("msSinceAdvance"))
+    assertEquals(false, stalled.field("rebaselined"))
+  }
+
+  @Test
+  fun `a camera taken twice is recorded once`() {
+    val rig = MachineRig().live()
+    rig.send(Input.CameraContended)
+    rig.send(Input.CameraContended)
+    assertEquals(1, rig.records("camera-taken").size)
+  }
+
+  @Test
+  fun `a camera taken across a reconnect reads reconnecting until the slate's frames advance`() {
+    val rig = MachineRig().live()
+    val since = (rig.state as SnapshotState.Publishing).sinceEpochMs
+    rig.send(Input.CameraContended)
+    rig.send(Input.Dropped(1, DropReason.ENDPOINT_CLOSED, null))
+    rig.advance(2_000)
+    rig.send(Input.Connected(2))
+    rig.advance(1_000, videoPerStep = 0)
+    // Connected, and nothing on air yet: the uplink outage from 1 s still stands.
+    assertEquals(SnapshotState.Reconnecting(ReconnectCause.UPLINK_LOST, 180, 183, since), rig.state)
+  }
+
+  @Test
+  fun `F-P5-10 while the reopen is pending the state reads degraded camera-taken`() {
+    val rig = MachineRig().live()
+    rig.send(Input.CameraContended)
+    rig.send(Input.CameraReleased)
+    val states = mutableListOf<SnapshotState>()
+    rig.advance(3_000, videoPerStep = 0) { states += rig.state }
+    val held = SnapshotState.Degraded(Transport.SRT, listOf(DegradeReason.CAMERA_TAKEN), 1_790_000_001_000)
+    assertEquals(List<SnapshotState>(6) { held }, states)
+  }
+
+  @Test
+  fun `the snapshot relays the device sample while armed`() {
+    val rig = MachineRig().armed()
+    val sample = DeviceSample(1, 0.4, 80, true, 6.0, null)
+    rig.send(Input.Device(sample))
+    assertEquals(sample, rig.snapshot.device)
+    assertEquals(true, rig.snapshot.charging)
+  }
 }

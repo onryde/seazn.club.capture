@@ -2,6 +2,7 @@ package com.seazn.capture.engine.core
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
 
@@ -286,5 +287,71 @@ class SessionMachineLifecycleTest {
     held.send(Input.SwitchCamera)
     assertTrue(held.sent<Command.SwitchCamera>().isEmpty(), "no camera of ours to switch while the slate is up")
     assertEquals(2, held.records("intent-ignored").size)
+  }
+
+  @Test
+  fun `a stop or a reset with no session is recorded as ignored`() {
+    val rig = MachineRig()
+    rig.send(Input.Stop)
+    rig.send(Input.Reset)
+    assertEquals(Phase.Idle, rig.phase)
+    assertEquals(listOf("stop" to "idle", "reset" to "idle"), rig.records("intent-ignored").map { it.field("intent") to it.field("phase") })
+    assertTrue(rig.sent<Command.End>().isEmpty())
+  }
+
+  @Test
+  fun `facts about an old attempt are ignored while the next one connects and once it is on air`() {
+    val rig = MachineRig().live()
+    rig.send(Input.Dropped(1, DropReason.ENDPOINT_CLOSED, null))
+    rig.advance(2_000)
+    val requested = rig.phase
+    assertEquals(emptyList(), rig.send(Input.ConnectFailed(1, ConnectFailure.OTHER, null)))
+    assertEquals(requested, rig.phase, "attempt 2 is still asked for")
+    rig.send(Input.Connected(2))
+    val onAir = rig.phase
+    val old = listOf(Input.Frames(1, 999, 999), Input.Link(1, LinkCounters(9_000_000, 1, 0, 0, 0, 20, 50, null)), Input.Dropped(1, DropReason.ENDPOINT_CLOSED, null))
+    for (fact in old) {
+      assertEquals(emptyList(), rig.send(fact), "$fact")
+      assertEquals(onAir, rig.phase, "$fact")
+    }
+  }
+
+  @Test
+  fun `F-P5-6 the LIVE gate closes 3 s after the last frame, even before the tick rebuilds`() {
+    val rig = MachineRig().live()
+    rig.advance(2_500, videoPerStep = 0)
+    assertIs<SnapshotState.Publishing>(rig.state, "3.5 s: 2.5 s since the last frame at 1 s")
+    // 4 s, before the tick at 4 s runs: an input landing here must not read LIVE.
+    rig.mono += 500
+    rig.wall += 500
+    val state = rig.state
+    assertFalse(state is SnapshotState.Publishing || state is SnapshotState.Degraded, "$state")
+  }
+
+  @Test
+  fun `ruling 14 a switch after the new camera is back starts a window of its own`() {
+    val rig = MachineRig().live()
+    rig.advance(3_000)
+    rig.send(Input.SwitchCamera)
+    // 4.5 s is the new camera's baseline, 5 s its first advance: the camera is ours again.
+    rig.advance(1_000)
+    assertEquals(1, rig.records("camera-resumed").size)
+    rig.send(Input.SwitchCamera)
+    rig.advance(3_000, videoPerStep = 0)
+    val stalled = rig.records("video-stalled").single()
+    assertEquals(3_000L, stalled.field("msSinceAdvance"))
+    assertEquals(true, stalled.field("rebaselined"), "counted from the second switch at 5 s")
+  }
+
+  @Test
+  fun `F-P5-4 a no-first-frame rebuild counts from the connect, and is not re-baselined`() {
+    val rig = MachineRig().armed()
+    rig.send(Input.Start)
+    rig.send(Input.Connected(1))
+    rig.advance(5_000, videoPerStep = 0)
+    val stalled = rig.records("video-stalled").single()
+    assertEquals(StallCause.NO_FIRST_FRAME, stalled.field("cause"))
+    assertEquals(5_000L, stalled.field("msSinceAdvance"))
+    assertEquals(false, stalled.field("rebaselined"))
   }
 }
