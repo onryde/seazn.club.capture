@@ -22,8 +22,9 @@ object SessionMachine {
 
   /**
    * The tick runs every time-based rule in its own order. Any other input is applied only after the
-   * stall watchdog has judged the phase as it stands (B6 ruling C2): nothing lands between the
-   * LIVE gate closing and the rebuild, so no snapshot reads connecting there, and a switch in that
+   * phase as it stands has been judged the way the tick would (B6 ruling C2): a hold that has run out
+   * ends the session first (B7 N1), and then the stall watchdog judges it, so nothing lands between
+   * the LIVE gate closing and the rebuild, no snapshot reads connecting there, and a switch in that
    * gap cannot re-open LIVE. A stop is not judged (B6 fix 2): it ends the session whatever the
    * picture does, so a rebuild first would only be torn down by the end.
    */
@@ -127,11 +128,17 @@ internal object Transports {
     return Step(phase, listOf(connect, record("connecting", "transport" to transport, "attempt" to connect.attemptId)))
   }
 
-  /** A new attempt that replaces a live one: a [Command.Rebuild] or a [Command.StartNewSession]. */
+  /**
+   * A new attempt that replaces a live one: a [Command.Rebuild] or a [Command.StartNewSession]. Both
+   * reconnect the link, so both ask the descriptor again (spec §1: on every reconnect), spaced as a
+   * refusal's asks are (B6 ruling C1, B7).
+   */
   fun replace(onAir: Phase.OnAir, session: Session, outage: Outage?, now: Now, wrap: (Command.Connect) -> Command): Step {
-    val (next, connect) = connectCommand(session, onAir.transport) ?: return missingTarget(session, onAir.transport)
+    val (connected, connect) = connectCommand(session, onAir.transport) ?: return missingTarget(session, onAir.transport)
+    val (next, fetch) = if (connected.descriptor.mayAsk(now.monoMs)) askDescriptor(connected, now) else connected to null
     val phase = Phase.Connecting(next, onAir.transport, ConnectStep.Requested(connect.attemptId, now.monoMs), outage)
-    return Step(phase, listOf(wrap(connect), record("connecting", "transport" to onAir.transport, "attempt" to connect.attemptId)))
+    val connecting = record("connecting", "transport" to onAir.transport, "attempt" to connect.attemptId)
+    return Step(phase, listOfNotNull(wrap(connect), connecting, fetch))
   }
 
   private fun connectCommand(session: Session, transport: Transport): Pair<Session, Command.Connect>? {
@@ -318,8 +325,14 @@ internal object Timers {
     }
   }
 
-  /** The no-video judgement alone, as it stands before an input other than the tick (B6 ruling C2). */
+  /**
+   * What the tick would judge first, before an input other than the tick (B6 ruling C2), in the
+   * tick's own order: a hold that has run out ends the session (B7 N1), so nothing is sent into a hold
+   * that is already over; then the no-video judgement.
+   */
   fun judged(phase: Phase, now: Now): Step {
+    val outage = (phase as? Phase.OnAir)?.outage ?: (phase as? Phase.Connecting)?.outage
+    if (outage != null && outage.hold.expired(now.monoMs)) return expired(phase, outage)
     if (phase !is Phase.OnAir) return Step(phase)
     val verdict = phase.watchdog.tick(now.monoMs, phase.session.camera.slateOnAir).second
     return if (verdict is StallVerdict.Rebuild) rebuild(phase, verdict, now) else Step(phase)
@@ -344,8 +357,8 @@ internal object Timers {
   /**
    * The stall watchdog asked for a rebuild (F-P5-6, F-P5-9). The record's `msSinceAdvance` counts
    * from the last frame; for `no-first-frame`, from the connect; and when `rebaselined` is true, from
-   * our own camera reopen, which is not a frame (carry 7), or for a switch from the last frame
-   * before it (B6 fix 2).
+   * our own camera reopen, which is not a frame (carry 7), or for a switch from the tap or the last
+   * frame before it ([Devices.switched]).
    */
   fun rebuild(onAir: Phase.OnAir, verdict: StallVerdict.Rebuild, now: Now): Step {
     val outage = onAir.outage ?: Transports.outageFor(onAir.session, onAir.transport, now, ReconnectCause.VIDEO_STALLED)
@@ -406,11 +419,11 @@ internal object Devices {
    * clears the last frame, and the camera is ours again in the step that brings the next one, so a
    * second switch before the new camera's first frame keeps the first one's window.
    *
-   * The owner-visible bound (B6 review m4, B6 fix 2): LIVE never outlasts the last real frame by
-   * more than 3 s plus one tick. The zero test keeps counting from the last frame before the first
-   * switch, which is min(first switch, last frame), so a switch in the middle of a stall cannot
-   * stretch it. The next input at or after those 3 s rebuilds, and the tick is an input every
-   * [Engine.TICK_MS].
+   * The owner-visible bound (B6 review m4, B6 fix 2, B7 N3): a healthy switch, one taken within
+   * [StallWatchdog.FRAME_SAMPLE_MS] of a frame, has its full 3 s from the tap. Any other counts from
+   * the last frame before the first switch, so a switch in the middle of a stall cannot stretch LIVE.
+   * Either way LIVE never outlasts the last real frame by more than 3 s plus one sample, and the
+   * next input at or after those 3 s rebuilds; the tick is an input every [Engine.TICK_MS].
    */
   fun switched(phase: Phase, now: Now): Step {
     val session = phase.session ?: return SessionMachine.ignored(phase, "switch-camera")
@@ -419,7 +432,8 @@ internal object Devices {
     if (phase !is Phase.OnAir || !phase.watchdog.advancing(now.monoMs)) return Step(phase, commands)
     // Advancing means a frame has arrived, so the fallback to now never applies.
     val lastFrameMs = phase.watchdog.lastAdvanceAtMs ?: now.monoMs
-    val switching = phase.copy(session = session.copy(camera = CameraState.SWITCHING), watchdog = phase.watchdog.rebaselined(lastFrameMs))
+    val fromMs = if (now.monoMs - lastFrameMs < StallWatchdog.FRAME_SAMPLE_MS) now.monoMs else lastFrameMs
+    val switching = phase.copy(session = session.copy(camera = CameraState.SWITCHING), watchdog = phase.watchdog.rebaselined(fromMs))
     return Step(switching, commands)
   }
 

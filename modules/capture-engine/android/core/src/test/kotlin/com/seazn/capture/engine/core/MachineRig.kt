@@ -53,6 +53,12 @@ class MachineRig(val config: SessionConfig = Configs.valid()) {
     }
   }
 
+  /** Moves time to [ms] with no input: nothing runs until the next [send]. */
+  fun at(ms: Long) {
+    wall += ms - mono
+    mono = ms
+  }
+
   /** Moves time in 500 ms steps. On air and [videoPerStep] > 0 is 30 fps; [audioPerStep] 23 is ~46 a second. */
   fun advance(ms: Long, videoPerStep: Long = 15, audioPerStep: Long = 23, feeding: Boolean = true, onStep: () -> Unit = {}) {
     val end = mono + ms

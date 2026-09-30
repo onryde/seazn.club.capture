@@ -25,8 +25,8 @@ enum class CameraState(override val wire: String, val slateOnAir: Boolean, val s
 
   /**
    * The operator switched cameras, and the new one has not delivered a frame yet (ruling 14). LIVE
-   * holds until 3 s after the last frame before the switch, plus at most one tick, then the pipeline
-   * is rebuilt (B6 fix 2).
+   * holds until 3 s after the switch when a frame came within one sample of it (B7 N3), otherwise 3 s
+   * after the last frame before it (B6 fix 2), plus at most one tick; then the pipeline is rebuilt.
    */
   SWITCHING("switching", slateOnAir = false, shownTaken = false),
 }

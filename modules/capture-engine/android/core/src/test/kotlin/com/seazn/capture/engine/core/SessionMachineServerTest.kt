@@ -37,6 +37,18 @@ class SessionMachineServerTest {
   }
 
   @Test
+  fun `B7 spec 1 - a forced new session reconnects the link, so it asks the descriptor again`() {
+    val rig = MachineRig()
+    rig.playlists = { url -> FetchResult.Body(if (url == Configs.PLAYBACK_URL + "?clientBandwidthHint=0.1") masterText else media(100)) }
+    rig.live()
+    rig.advance(20_000)
+    rig.sent<Command.StartNewSession>().single()
+    val ask = rig.sent<Command.FetchDescriptor>().single()
+    rig.send(Input.DescriptorChecked(ask.requestId, DescriptorCheck.Over("stopped")))
+    assertEquals(SnapshotState.Ended(EndReason.STOPPED_BY_ORGANISER), rig.state)
+  }
+
+  @Test
   fun `the playlist is polled only while LIVE`() {
     val rig = MachineRig().armed()
     rig.send(Input.Start)

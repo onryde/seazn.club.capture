@@ -297,6 +297,47 @@ class SessionMachineOutageTest {
   }
 
   @Test
+  fun `B7 spec 1 - a rebuild reconnects the link, so it asks the descriptor again, and the answer counts`() {
+    val rig = MachineRig().live()
+    rig.advance(3_000, videoPerStep = 0)
+    assertEquals(1, rig.sent<Command.Rebuild>().size, "no video for 3 s at 4 s")
+    val ask = rig.sent<Command.FetchDescriptor>().single()
+    rig.send(Input.DescriptorChecked(ask.requestId, DescriptorCheck.Over("stopped")))
+    assertEquals(SnapshotState.Ended(EndReason.STOPPED_BY_ORGANISER), rig.state)
+  }
+
+  /**
+   * A camera that never delivers again after 1 s: the stall rebuilds at 4 s, and every attempt after
+   * it is connected at once and rebuilt no-first-frame 5 s later. Each ask is answered with [answer]
+   * (none when null) at the end of its step. Returns when each ask went.
+   */
+  private fun MachineRig.rebuiltEvery5s(ms: Long, answer: DescriptorCheck?): List<Long> {
+    val asked = mutableListOf<Long>()
+    var seen = commands.size
+    advance(ms, videoPerStep = 0) {
+      val asks = commands.drop(seen).filterIsInstance<Command.FetchDescriptor>()
+      seen = commands.size
+      for (ask in asks) {
+        asked += mono
+        if (answer != null) send(Input.DescriptorChecked(ask.requestId, answer))
+      }
+      val step = (phase as? Phase.Connecting)?.step
+      if (step is ConnectStep.Requested) send(Input.Connected(step.attemptId))
+      seen = commands.size
+    }
+    return asked
+  }
+
+  @Test
+  fun `B7 spec 1 - rebuilds ask under the refusals' spacing - once per 10 s at most, and never with an ask in flight`() {
+    val answered = MachineRig().live()
+    assertEquals(listOf(4_000L, 14_000L, 24_000L, 34_000L, 44_000L, 54_000L), answered.rebuiltEvery5s(58_000, DescriptorCheck.Live))
+    assertEquals(12, answered.sent<Command.Rebuild>().size, "a rebuild every 5 s from 4 s to 59 s")
+    val unanswered = MachineRig().live()
+    assertEquals(listOf(4_000L, 34_000L), unanswered.rebuiltEvery5s(58_000, answer = null))
+  }
+
+  @Test
   fun `B6 review I2 a late descriptor answer from the last session changes nothing in the next`() {
     val rig = MachineRig().live()
     rig.send(Input.Dropped(1, DropReason.ENDPOINT_CLOSED, null))

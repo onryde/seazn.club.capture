@@ -82,24 +82,38 @@ class Engine(
   }
 
   /**
-   * One input, contained (B6 review m7): a throw while protecting an arm's secrets or inside the machine
-   * ends the session fatal-error, never armed with its secrets unprotected; a throw while projecting
-   * or publishing the snapshot is counted. None of them reaches the scheduler's thread.
+   * One input, contained (B6 review m7): a throw inside the machine, or while protecting the secrets
+   * of an arm that would take effect, ends the session fatal-error, never armed with its secrets
+   * unprotected; a throw while projecting or publishing the snapshot is counted. None of them reaches
+   * the scheduler's thread. An arm outside idle is one the machine ignores, so its config never runs:
+   * a throw while protecting it is recorded, and the session carries on (B7 E1).
    */
   private fun process(input: Input) {
     val now = clock.now()
     val step =
       try {
-        if (input is Input.Arm) record.protect(input.config)
-        reducer(phase, input, now)
+        val unprotected = (input as? Input.Arm)?.let { protectFailure(it.config) }
+        if (unprotected != null && phase is Phase.Idle) throw unprotected
+        val reduced = reducer(phase, input, now)
+        if (unprotected == null) reduced else reduced.copy(commands = listOf(engineError(unprotected)) + reduced.commands)
       } catch (failure: Exception) {
-        val noted = Command.Record(RecordEntry("engine-error", listOf("message" to failure.toString())))
-        Step(Phase.Ended(EndReason.FATAL_ERROR, phase.ids), listOf(noted, Command.End(EndReason.FATAL_ERROR)))
+        Step(Phase.Ended(EndReason.FATAL_ERROR, phase.ids), listOf(engineError(failure), Command.End(EndReason.FATAL_ERROR)))
       }
     phase = step.phase
     for (command in step.commands) dispatch(command, now)
     publish(input, now)
   }
+
+  /** Protects an arm's secrets before any line can carry them. The exception, when protecting threw. */
+  private fun protectFailure(config: SessionConfig): Exception? =
+    try {
+      record.protect(config)
+      null
+    } catch (failure: Exception) {
+      failure
+    }
+
+  private fun engineError(failure: Exception): Command = Command.Record(RecordEntry("engine-error", listOf("message" to failure.toString())))
 
   /** On every tick, and at once when the state changes. */
   private fun publish(input: Input, now: Now) {

@@ -372,6 +372,74 @@ class SessionMachineLifecycleTest {
     assertTrue(rig.sent<Command.Rebuild>().isEmpty(), "the session is over: nothing to rebuild")
   }
 
+  private val sevenSecondHolds = Configs.valid(holdWindowSeconds = mapOf(Transport.SRT to 7, Transport.RTMPS to 7))
+
+  /**
+   * 7 s holds. Live, dropped at 1 s and connected again at 3 s with no frame since: at 8 s the hold
+   * from the drop runs out as the new attempt's first-frame grace does. Time moved to 8 s with no input.
+   */
+  private fun holdRunsOutOnAir(): MachineRig {
+    val rig = MachineRig(sevenSecondHolds).live()
+    rig.send(Input.Dropped(1, DropReason.ENDPOINT_CLOSED, null))
+    rig.advance(2_000)
+    rig.send(Input.Connected(2))
+    rig.advance(4_500, feeding = false)
+    rig.at(8_000)
+    return rig
+  }
+
+  @Test
+  fun `B7 N1 an input that lands as the hold runs out ends the session first - no rebuild and no connect`() {
+    val inputs =
+      listOf(
+        Input.Frames(2, 0, 0),
+        Input.Link(2, LinkCounters(1, 1, 0, 0, 0, 20, 40, null)),
+        Input.Network(false),
+        Input.MicSilenced(true),
+        Input.Device(DeviceSample(1, null, 50, false, null, null)),
+        Input.PlaylistFetched(1, FetchResult.NoContent),
+        Input.HeartbeatAnswered(1, HeartbeatResponse.Failed("timeout")),
+        Input.DescriptorChecked(1, DescriptorCheck.Live),
+        Input.CameraContended,
+        Input.SwitchCamera,
+        Input.Start,
+      )
+    for (input in inputs) {
+      val rig = holdRunsOutOnAir()
+      assertIs<SnapshotState.Reconnecting>(rig.state, "8 s, projected with no input")
+      val commands = rig.send(input)
+      assertEquals(listOf(Command.End(EndReason.HOLD_WINDOW_EXPIRED)), commands.filterNot { it is Command.Record }, "$input")
+      assertEquals(SnapshotState.Ended(EndReason.HOLD_WINDOW_EXPIRED), rig.state, "$input")
+      assertTrue(rig.records("video-stalled").isEmpty(), "$input")
+      assertEquals(ReconnectCause.UPLINK_LOST, rig.records("ended").single().field("cause"), "$input")
+      assertEquals(emptyList(), rig.send(Input.Tick), "the tick after it: $input")
+    }
+  }
+
+  @Test
+  fun `B7 N1 an answer that lands as the hold runs out while connecting ends the session first`() {
+    val inputs =
+      listOf(
+        Input.Connected(2),
+        Input.ConnectFailed(2, ConnectFailure.REFUSED, "publish rejected"),
+        Input.Dropped(2, DropReason.ENDPOINT_CLOSED, null),
+        Input.Network(false),
+        Input.Device(DeviceSample(1, null, 50, false, null, null)),
+      )
+    for (input in inputs) {
+      // Attempt 2 was asked for at 3 s and has not answered by 8 s, when the hold from the drop at 1 s runs out.
+      val rig = MachineRig(sevenSecondHolds).live()
+      rig.send(Input.Dropped(1, DropReason.ENDPOINT_CLOSED, null))
+      rig.advance(6_500)
+      rig.at(8_000)
+      assertIs<SnapshotState.Reconnecting>(rig.state, "8 s, projected with no input")
+      val commands = rig.send(input)
+      assertEquals(Command.End(EndReason.HOLD_WINDOW_EXPIRED), commands.filterNot { it is Command.Record }.first(), "$input")
+      assertTrue(commands.none { it is Command.Connect || it is Command.FetchDescriptor || it is Command.Rebuild }, "$input: $commands")
+      assertEquals(SnapshotState.Ended(EndReason.HOLD_WINDOW_EXPIRED), rig.state, "$input")
+    }
+  }
+
   @Test
   fun `B6 ruling C2 a frame that lands after the window closed is late - the rebuild was judged first`() {
     val rig = gateJustClosed()
@@ -394,8 +462,9 @@ class SessionMachineLifecycleTest {
   }
 
   /**
-   * Live with frames to 4 s, then a switch at 4.2 s. The ticks then fall at 4.8, 5.3 … s, so the 3 s
-   * from the last frame (7.0 s) lands between two ticks.
+   * Live with frames to 4 s, then a switch at 4.2 s, inside the sample after that frame, so its 3 s
+   * count from the switch (B7 N3). The ticks then fall at 4.8, 5.3 … s, so the 3 s (7.2 s) land
+   * between two ticks.
    */
   private fun switchedOffGrid(): MachineRig {
     val rig = MachineRig().live()
@@ -415,19 +484,18 @@ class SessionMachineLifecycleTest {
     rig.advance(2_500, feeding = false) { states += rig.state }
     assertEquals(5, states.size)
     assertTrue(states.all { it is SnapshotState.Publishing }, "ticks at 4.8 to 6.8 s: $states")
-    // 7.0 s is 3 s after the last frame. With no other input, the tick at 7.3 s is the first to judge it.
+    // 7.2 s is 3 s after the switch. With no other input, the tick at 7.3 s is the first to judge it.
     rig.advance(500, feeding = false)
     assertEquals(ReconnectCause.VIDEO_STALLED, assertIs<SnapshotState.Reconnecting>(rig.state).cause)
-    assertEquals(3_300L, rig.records("video-stalled").single().field("msSinceAdvance"))
+    assertEquals(3_100L, rig.records("video-stalled").single().field("msSinceAdvance"))
   }
 
   @Test
-  fun `B6 review m4 any input from 3 s after the last frame closes LIVE without waiting for the tick`() {
+  fun `B6 review m4 any input from 3 s into a switch's hold closes LIVE without waiting for the tick`() {
     val rig = switchedOffGrid()
     rig.advance(2_500, feeding = false)
-    rig.mono += 200
-    rig.wall += 200
-    assertIs<SnapshotState.Publishing>(rig.state, "7.0 s, projected with no input")
+    rig.at(7_200)
+    assertIs<SnapshotState.Publishing>(rig.state, "7.2 s, projected with no input")
     rig.send(Input.Network(true))
     assertEquals(ReconnectCause.VIDEO_STALLED, assertIs<SnapshotState.Reconnecting>(rig.state).cause)
     assertEquals(3_000L, rig.records("video-stalled").single().field("msSinceAdvance"))
@@ -445,6 +513,66 @@ class SessionMachineLifecycleTest {
     val stalled = rig.records("video-stalled").single()
     assertEquals(3_000L, stalled.field("msSinceAdvance"))
     assertEquals(true, stalled.field("rebaselined"))
+  }
+
+  /** Live with a frame at every 500 ms reading to 4.0 s, and the operator's switch [afterMs] after that last reading. */
+  private fun switchedAfterLastFrame(afterMs: Long): MachineRig {
+    val rig = MachineRig().live()
+    rig.advance(3_000)
+    rig.at(4_000 + afterMs)
+    rig.send(Input.SwitchCamera)
+    return rig
+  }
+
+  @Test
+  fun `B7 N3 a healthy switch has its full 3 s from the tap - no rebuild before then`() {
+    // The last frame came in at the 4.0 s reading and the operator switched 400 ms later, inside the
+    // next sample: the new camera has until 7.4 s to show a frame, not until 7.0 s.
+    val rig = switchedAfterLastFrame(400)
+    for (at in 4_500L..7_300L step 100) {
+      rig.at(at)
+      rig.send(Input.Tick)
+      assertTrue(rig.sent<Command.Rebuild>().isEmpty(), "rebuilt by $at ms: ${rig.records("video-stalled")}")
+      assertIs<SnapshotState.Publishing>(rig.state, "$at ms")
+    }
+    rig.at(7_400)
+    rig.send(Input.Tick)
+    assertEquals(1, rig.sent<Command.Rebuild>().size)
+    assertEquals(3_000L, rig.records("video-stalled").single().field("msSinceAdvance"), "counted from the switch at 4.4 s")
+  }
+
+  @Test
+  fun `B7 N3 a healthy switch whose new camera shows its first frame 2_6 s after the tap stays LIVE`() {
+    // The re-review's probe: the last frame at the 4.0 s reading, the tap at 4.4 s, and the new
+    // camera's frames first seen at the 7.0 s reading. Counted from the last frame, 7.0 s was already late.
+    val rig = switchedAfterLastFrame(400)
+    val states = mutableListOf<SnapshotState>()
+    for (at in 4_500L..7_500L step 500) {
+      rig.at(at)
+      // The rig fed 15 frames a reading to 4.0 s, 120 in all; the new camera's first 15 are in the 7.0 s reading.
+      rig.send(Input.Frames(1, if (at >= 7_000) 135 else 120, at / 10))
+      rig.send(Input.Tick)
+      states += rig.state
+    }
+    assertTrue(rig.sent<Command.Rebuild>().isEmpty(), "rebuilt: ${rig.records("video-stalled")}")
+    assertTrue(states.all { it is SnapshotState.Publishing }, "$states")
+    assertEquals(1, rig.records("camera-resumed").size)
+  }
+
+  @Test
+  fun `B7 N3 a switch a whole sample after the last frame counts from that frame`() {
+    // Readings come every 500 ms. 499 ms after the last frame the switch is inside the next sample, and
+    // its 3 s count from the tap; at 500 ms the stalled camera's next reading is due, and they count
+    // from the frame, so LIVE never outlasts the last real frame by more than 3 s plus one sample.
+    for ((afterMs, dueMs) in listOf(499L to 7_499L, 500L to 7_000L)) {
+      val rig = switchedAfterLastFrame(afterMs)
+      rig.at(dueMs - 1)
+      rig.send(Input.Network(true))
+      assertTrue(rig.sent<Command.Rebuild>().isEmpty(), "switched at +$afterMs, rebuilt at ${dueMs - 1} ms")
+      rig.at(dueMs)
+      rig.send(Input.Network(true))
+      assertEquals(3_000L, rig.records("video-stalled").single().field("msSinceAdvance"), "switched at +$afterMs")
+    }
   }
 
   @Test

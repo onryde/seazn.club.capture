@@ -32,7 +32,7 @@ data class StallWatchdog(
   val lastVideo: Long? = null,
   /** When an encoded video frame last arrived. Only a frame sets it: it is the LIVE gate. */
   val lastAdvanceAtMs: Long? = null,
-  /** Our own reopen, which starts the zero test's clock without opening the gate (F-P5-10). */
+  /** Our own reopen or switch, which starts the zero test's clock without opening the gate (F-P5-10). */
   val stallFromMs: Long? = null,
   /** Readings since the first frame, pruned to one window. */
   val readings: List<FrameReading> = emptyList(),
@@ -89,8 +89,9 @@ data class StallWatchdog(
 
   /**
    * Our own camera reopen finished, or our own switch began. The zero test counts [STALL_MS] from
-   * [fromMs]: the reopen itself, or for a switch the last frame before it (B6 fix 2). Neither is a
-   * new frame: [advancing] stays false until one arrives, and the rate window starts at it.
+   * [fromMs]: the reopen itself, or for a switch the tap when a frame came within [FRAME_SAMPLE_MS]
+   * of it (B7 N3), and otherwise the last frame before it (B6 fix 2). Neither is a new frame:
+   * [advancing] stays false until one arrives, and the rate window starts at it.
    */
   fun rebaselined(fromMs: Long): StallWatchdog =
     copy(
@@ -133,6 +134,12 @@ data class StallWatchdog(
 
     /** F-P5-9's rolling window. */
     const val WINDOW_MS = 3_000L
+
+    /**
+     * Frame readings come at least twice a second ([Input.Frames]). A frame within this long of now is
+     * the latest reading's: frames were still advancing (B7 N3).
+     */
+    const val FRAME_SAMPLE_MS = 500L
 
     /** F-P5-9: "fewer than 10 video frames/s or 20 audio frames/s over 3 s". */
     const val VIDEO_FLOOR_FPS = 10.0

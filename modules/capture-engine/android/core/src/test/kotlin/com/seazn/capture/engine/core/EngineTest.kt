@@ -362,6 +362,37 @@ class EngineTest {
     assertEquals(listOf(0L, 500L, 1_000L), published.map { it.first })
   }
 
+  /**
+   * A fresh engine armed on a validated network, then [setup], then a second arm whose config no Kotlin
+   * caller can build. Returns the phase before and after that arm; [executed] and [lines] hold only its effects.
+   */
+  private fun malformedArmAfter(setup: List<Input>): Pair<Phase, Phase> {
+    onCommand = { e, command -> if (command is Command.Connect) e.send(Input.Connected(command.attemptId)) }
+    val engine = engine()
+    engine.send(Input.Arm(Configs.valid()))
+    engine.send(Input.Network(true))
+    for (input in setup) engine.send(input)
+    scheduler.advanceBy(0)
+    val before = engine.phase
+    executed.clear()
+    lines.clear()
+    engine.send(Input.Arm(nullConfig()))
+    scheduler.advanceBy(0)
+    return before to engine.phase
+  }
+
+  @Test
+  fun `B7 E1 a malformed arm while a session runs is ignored and recorded, as the machine does - never fatal-error`() {
+    // Armed, on air, and ended by the operator: the machine ignores an arm in each, so its config never runs.
+    for (setup in listOf(emptyList(), listOf(Input.Start), listOf(Input.Start, Input.Stop))) {
+      val (before, after) = malformedArmAfter(setup)
+      assertEquals(before, after, "after $setup")
+      assertTrue(executed.isEmpty(), "after $setup, asked of the platform: $executed")
+      assertEquals(1, lines.count { """"kind":"engine-error"""" in it }, "after $setup")
+      assertEquals(1, lines.count { """"kind":"intent-ignored"""" in it }, "after $setup")
+    }
+  }
+
   @Test
   fun `B6 review m7 a throw from the projection is counted, and the tick carries on`() {
     var failing = true
