@@ -99,6 +99,13 @@ describe('the fetch descriptor port', () => {
     expect(answer).toEqual({ ok: false, error: { kind: 'rate-limited', retryAfterS: 30 } });
   });
 
+  it("reads an HTTP-date Retry-After against the port's own clock (D5)", async () => {
+    // FIXTURE_NOW is 13:00:00Z; the port is given it as `now`, never Date.now().
+    const headers = { 'Retry-After': 'Sat, 03 Oct 2026 13:00:42 GMT' };
+    const answer = await portOver(answering(respond(429, null, headers))).ask();
+    expect(answer).toEqual({ ok: false, error: { kind: 'rate-limited', retryAfterS: 42 } });
+  });
+
   it('refuses a descriptor for a different session (the sid guard, D3)', async () => {
     const other = descriptorWire({ sid: '5d9c1d0e-0000-4000-8000-00000000beef' });
     expect(await portOver(answering(respond(200, other))).ask()).toEqual({
@@ -128,6 +135,20 @@ describe('the fetch descriptor port', () => {
       ok: false,
       error: { kind: 'ended', endReason: 'stopped' },
     });
+  });
+
+  it('reads a 200 for a failed session as ended, with its reason', async () => {
+    const failed = descriptorWire({ state: 'failed', endReason: 'target_rejected' });
+    expect(await portOver(answering(respond(200, failed))).ask()).toEqual({
+      ok: false,
+      error: { kind: 'ended', endReason: 'target-rejected' },
+    });
+  });
+
+  it('reads an unknown reason for a 200 that is over and gives none', async () => {
+    const port = portOver(answering(respond(200, descriptorWire({ state: 'completed' }))));
+    expect(await port.ask()).toEqual({ ok: false, error: { kind: 'ended', endReason: 'unknown' } });
+    expect(errorLines(port.lines())[0]).toContain('"problem":"over"');
   });
 
   it('calls a network failure offline', async () => {
@@ -227,6 +248,14 @@ describe('the fetch descriptor port', () => {
       answering(respond(200, { sid: FIXTURE_SID })),
       answering(respond(200, descriptorWire({ heartbeatUrl: 'https://evil.example/hb' }))),
       answering(respond(200, descriptorWire({ overlayUrl: 'https://evil.example/o' }))),
+      // A malformed 200 is never quoted, even the field that names the session.
+      answering(respond(200, { sid: TOKEN })),
+      answering(
+        respond(200, descriptorWire({ heartbeatUrl: 'https://evil.example\\fake-key-0000.x/hb' })),
+      ),
+      answering(
+        respond(200, descriptorWire({ overlayUrl: 'https://fake-pass-0000@evil.example/o' })),
+      ),
       () => Promise.reject(new Error(`Network request failed for ${TOKEN}`)),
     ];
     for (const fetch of answers) {

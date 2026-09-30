@@ -173,15 +173,19 @@ function useOpenCode(setStatusKey: SetStatusKey, saveFailed: SaveFailed): OpenCo
 /**
  * Spec §1: a stream code is checked with the server before anything is saved.
  * The scan flight is still up while this runs, so a second tap is ignored
- * until the answer is in. A store that is not ready is not asked (R12), and a
- * port that throws or rejects is read as no connection.
+ * until the answer is in. A store that is not ready is not asked (R12), nor is
+ * a code that ran out while its panel sat open (a Try again), and a port that
+ * throws or rejects is read as no connection.
  */
 function useOpenOrCheck(openCode: OpenCode, setPanel: SetPanel): OpenOrCheck {
-  const { descriptor, modeStore, logger } = usePorts();
+  const { descriptor, modeStore, logger, clock } = usePorts();
   return useCallback(
     async (code: ModeCode) => {
       if (code.mode !== 'stream') return openCode(code, null);
       if (!isReady(modeStore)) return;
+      if (code.expiresAt.getTime() <= clock().getTime()) {
+        return setPanel({ kind: 'expired', tapped: 'stream', mode: 'stream', at: code.expiresAt });
+      }
       setPanel(CHECKING);
       const answer = await askSafely(descriptor, code, logger);
       if (!answer.ok) {
@@ -190,7 +194,7 @@ function useOpenOrCheck(openCode: OpenCode, setPanel: SetPanel): OpenOrCheck {
       setPanel(null);
       await openCode(code, answer.value);
     },
-    [descriptor, modeStore, logger, openCode, setPanel],
+    [descriptor, modeStore, logger, clock, openCode, setPanel],
   );
 }
 
@@ -426,13 +430,20 @@ function useForget(setStatusKey: SetStatusKey, saveFailed: SaveFailed): () => vo
   }, [modeStore, setStatusKey, saveFailed]);
 }
 
-/** Development builds only: a pasted code goes where a Live Stream scan would. */
+/**
+ * Development builds only: a pasted code goes where a Live Stream scan would,
+ * under a scan flight of its own as Try again is, so a second press or a tile
+ * tap cannot start a second check.
+ */
 function usePaste(handle: HandleScan): (raw: string) => void {
-  const { devTools } = usePorts();
+  const { devTools, scanFlight } = usePorts();
   return useCallback(
     (raw: string) => {
-      if (devTools) void handle('stream', { outcome: 'scanned', raw }).catch(ignoreUnexpected);
+      if (!devTools || !scanFlight.begin()) return;
+      void handle('stream', { outcome: 'scanned', raw })
+        .catch(ignoreUnexpected)
+        .finally(() => scanFlight.end());
     },
-    [devTools, handle],
+    [devTools, scanFlight, handle],
   );
 }
