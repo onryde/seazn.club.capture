@@ -1,11 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import type { SessionState } from '@/domain/session/SessionState';
-import type { EngineSnapshot, Telemetry } from '@/engine/CaptureEnginePort';
+import type { DegradeReason, SessionState } from '@/domain/session/SessionState';
+import type { CameraState, EngineSnapshot, Telemetry } from '@/engine/CaptureEnginePort';
 import { IDLE_TELEMETRY } from '@/engine/FakeCaptureEngine';
 import {
   selectHoldRemaining,
   selectHoldWindow,
   selectStatusKey,
+  STATUS_LINE_BUDGET,
   viewfinderStatusKey,
 } from '@/hooks/statusKey';
 import en from '@/i18n/en.json';
@@ -15,10 +16,18 @@ import nl from '@/i18n/nl.json';
 import { createTranslator } from '@/i18n/translate';
 
 const ARMED_OK: Partial<Telemetry> = { cameraReady: true, networkReachable: true, audioLevel: 0.4 };
-const snap = (state: SessionState, telemetry: Partial<Telemetry> = ARMED_OK): EngineSnapshot => ({
+/** Plan B's `Snapshot.camera`: our own with a session, none without one. */
+const ownCamera = (state: SessionState): CameraState | null =>
+  state.kind === 'idle' || state.kind === 'ended' ? null : 'own';
+const snap = (
+  state: SessionState,
+  telemetry: Partial<Telemetry> = ARMED_OK,
+  camera: CameraState | null = ownCamera(state),
+): EngineSnapshot => ({
   state,
   telemetry: { ...IDLE_TELEMETRY, ...telemetry },
   descriptor: null,
+  camera,
   reportedAtMs: 0,
   survivesBackground: true,
 });
@@ -199,6 +208,65 @@ describe('in every language', () => {
     });
     expect(said).toBe(fill(dictionary['stream.status.holding']));
     expect(said).not.toMatch(/[{}]/);
+  });
+});
+
+/**
+ * Carry 11 (owner-visible): whose camera is on air says itself, whatever the
+ * state. Another app's take is the slate line, even connecting before the
+ * first frame; our own reopen or switch makes no slate claim. Copy from en.json.
+ */
+describe('whose camera is on air (carry 11)', () => {
+  const TAKEN = 'Camera taken by another app — slate on air';
+  const REOPENING = 'Camera reopening — picture back shortly';
+  const CONNECTING: SessionState = { kind: 'connecting', transport: 'srt' };
+  const degraded = (reason: DegradeReason): SessionState => ({
+    kind: 'degraded',
+    transport: 'srt',
+    reason,
+    sinceEpochMs: since,
+  });
+  const STATES: readonly (readonly [string, SessionState])[] = [
+    ['armed', { kind: 'armed' }],
+    ['connecting', CONNECTING],
+    ['publishing', LIVE],
+    ['degraded camera-taken', degraded('camera-taken')],
+    ['degraded not-delivered', degraded('not-delivered')],
+    ['degraded mic-silenced', degraded('mic-silenced')],
+    ['reconnecting', holding('uplink-lost')],
+  ];
+
+  it.each(STATES)('another app’s take reads the slate line while %s', (_, state) => {
+    expect(line(snap(state, ARMED_OK, 'taken'))).toBe(TAKEN);
+  });
+
+  it.each(
+    (['reopening', 'resuming', 'switching'] as const).flatMap((camera) =>
+      STATES.map(([name, state]) => [camera, name, state] as const),
+    ),
+  )('our own %s reads the reopening line while %s, with no slate claim', (camera, _, state) => {
+    const said = line(snap(state, ARMED_OK, camera));
+    expect(said).toBe(REOPENING);
+    expect(said).not.toMatch(/slate/i);
+  });
+
+  it('leaves every line alone while the camera is our own', () => {
+    expect(line(snap(CONNECTING, ARMED_OK, 'own'))).toBe('Opening the link.');
+    expect(line(snap(degraded('camera-taken'), ARMED_OK, 'own'))).toBe(TAKEN);
+    expect(line(snap(degraded('not-delivered'), ARMED_OK, 'own'))).toBe(
+      'Viewers not receiving — restarting',
+    );
+  });
+
+  it('says the reopening line in every language, within the column', () => {
+    for (const lang of ['en', 'es', 'fr', 'nl'] as const) {
+      const said = createTranslator(lang).t(selectStatusKey(snap(LIVE, ARMED_OK, 'switching')));
+      expect({
+        lang,
+        fits: said.length <= STATUS_LINE_BUDGET,
+        key: said.startsWith('stream.'),
+      }).toEqual({ lang, fits: true, key: false });
+    }
   });
 });
 

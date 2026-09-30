@@ -32,6 +32,15 @@ export type EngineIntent =
   | { readonly kind: 'switchCamera' };
 
 /**
+ * Whose camera is on air: plan B's `CameraState.wire` (its Phase.kt). `taken`
+ * is another app's; `reopening` is ours after it let go, the slate still up;
+ * `resuming` is ours reopened with no frame yet; `switching` is the operator's
+ * switch waiting for the new camera's first frame. Plan B holds LIVE through
+ * all four while there is no outage.
+ */
+export type CameraState = 'own' | 'taken' | 'reopening' | 'resuming' | 'switching';
+
+/**
  * Reported upward at ~1 Hz. Never put this in React state — see AGENTS.md §8.
  *
  * **Heartbeat contract:** native emits a snapshot at least once a second even
@@ -48,6 +57,8 @@ export type EngineSnapshot = {
    * never the token, passphrase or stream key. Null before an arm.
    */
   readonly descriptor: SessionDescriptor | null;
+  /** Null with no session: idle, and once ended (plan B's `Snapshot.camera`). */
+  readonly camera: CameraState | null;
   /**
    * The phone clock when native emitted this. The app compares it against now
    * to decide whether it still trusts what it is holding: a projection that

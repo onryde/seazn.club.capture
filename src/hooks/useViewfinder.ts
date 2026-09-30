@@ -1,6 +1,11 @@
 import { useCallback } from 'react';
 import type { SessionState } from '@/domain/session/SessionState';
-import { selectStateKind, selectVenueZone, selectWarmingDeadlineMs } from '@/hooks/engineSelectors';
+import {
+  selectPlaybackUrl,
+  selectStateKind,
+  selectVenueZone,
+  selectWarmingDeadlineMs,
+} from '@/hooks/engineSelectors';
 import {
   codeCheck,
   goLiveBlocker,
@@ -41,6 +46,8 @@ export type Viewfinder = {
   readonly goLiveBy: string | null;
   readonly action: ViewfinderAction;
   readonly onAir: boolean;
+  /** On air with a viewer picture to play (carry 13): the peek's one gate. */
+  readonly peekable: boolean;
   start(): void;
   stop(): void;
 };
@@ -62,21 +69,21 @@ export function useViewfinder(): Viewfinder {
   const { preflight, code, goLiveBy } = usePreflight(unusable);
   const blocker = goLiveBlocker(preflight);
   const engineKey = useEngineSelector(selectStatusKey);
-  const holdRemaining = useEngineSelector(selectHoldRemaining);
-  const holdWindow = useEngineSelector(selectHoldWindow);
+  const countdown = useHoldCountdown();
   const intents = useIntents();
+  const playable = useEngineSelector(selectPlaybackUrl) !== null;
   const action = ACTION[kind];
   return {
     kind,
     plate: unusable && kind === 'idle' ? 'notReady' : tallyPlateFor(kind, blocker === null),
     statusKey: viewfinderStatusKey(engineKey, { kind, code }),
-    holdRemaining,
-    holdWindow,
+    ...countdown,
     preflight,
     blocker,
     goLiveBy: action === 'goLive' ? goLiveBy : null,
     action,
     onAir: action === 'stop',
+    peekable: action === 'stop' && playable,
     ...intents,
   };
 }
@@ -103,6 +110,13 @@ function usePreflight(unusable: boolean): PreflightView {
     code,
     goLiveBy: usable ? format(new Date(deadlineMs), zone) : null,
   };
+}
+
+/** The reconnect hold's countdown, for the `holding*` lines; null otherwise. */
+function useHoldCountdown() {
+  const holdRemaining = useEngineSelector(selectHoldRemaining);
+  const holdWindow = useEngineSelector(selectHoldWindow);
+  return { holdRemaining, holdWindow };
 }
 
 /** Intents, not RPC (AGENTS §2): they return nothing and are reconciled against native state. */

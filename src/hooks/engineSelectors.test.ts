@@ -30,6 +30,8 @@ function snapshot(
     state,
     telemetry: { ...IDLE_TELEMETRY, ...overrides },
     descriptor,
+    // Plan B's `Snapshot.camera`: our own with a session, none without one.
+    camera: state.kind === 'idle' || state.kind === 'ended' ? null : 'own',
     reportedAtMs: NOW,
     survivesBackground: false,
   };

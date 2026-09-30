@@ -1,11 +1,15 @@
 import { memo } from 'react';
-import { Pressable, StyleSheet, type PressableStateCallbackType } from 'react-native';
+import { Pressable, StyleSheet, View, type PressableStateCallbackType } from 'react-native';
 import { useHeldPress } from '@/hooks/useHeldPress';
 import { useT } from '@/hooks/useLanguage';
 import { Text } from '@/ui/components/Text';
 import { colour, space } from '@/ui/theme/tokens';
 
 type ViewerPeekProps = {
+  /** Nothing to play (carry 13): a press that cannot play lights nothing. */
+  readonly disabled: boolean;
+  /** Why it is off, said at the control (spec §1's rule for Go live). */
+  readonly reason: string | null;
   readonly onPressIn: () => void;
   readonly onPressOut: () => void;
 };
@@ -19,20 +23,27 @@ type ViewerPeekProps = {
  * `accessibilityHint` reaches TalkBack; react-native-web drops it. If the
  * control unmounts while held it lets go itself (useHeldPress).
  */
-export const ViewerPeek = memo(function ViewerPeek({ onPressIn, onPressOut }: ViewerPeekProps) {
+export const ViewerPeek = memo(function ViewerPeek(props: ViewerPeekProps) {
   const { t } = useT();
-  const press = useHeldPress(onPressIn, onPressOut);
+  const { disabled, reason } = props;
+  const press = useHeldPress(props.onPressIn, props.onPressOut);
   return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={t('stream.peek.label')}
-      accessibilityHint={t('stream.peek.hint')}
-      onPressIn={press.pressIn}
-      onPressOut={press.pressOut}
-      style={peekStyle}
-    >
-      <Text variant="actionSecondary">{t('stream.peek.label')}</Text>
-    </Pressable>
+    <View style={styles.zone}>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={t('stream.peek.label')}
+        accessibilityHint={t('stream.peek.hint')}
+        disabled={disabled}
+        onPressIn={press.pressIn}
+        onPressOut={press.pressOut}
+        style={disabled ? offPeek : peekStyle}
+      >
+        <Text variant="actionSecondary" style={disabled ? styles.labelOff : null}>
+          {t('stream.peek.label')}
+        </Text>
+      </Pressable>
+      {reason === null ? null : <Text variant="metricUnit">{reason}</Text>}
+    </View>
   );
 });
 
@@ -41,6 +52,7 @@ function peekStyle({ pressed }: PressableStateCallbackType) {
 }
 
 const styles = StyleSheet.create({
+  zone: { gap: space.xs },
   peek: {
     minHeight: 48,
     justifyContent: 'center',
@@ -49,6 +61,9 @@ const styles = StyleSheet.create({
     borderColor: colour.ink3,
   },
   pressed: { borderColor: colour.ink },
+  off: { borderColor: colour.rule },
+  labelOff: { color: colour.ink3 },
 });
 
 const pressedPeek = [styles.peek, styles.pressed];
+const offPeek = [styles.peek, styles.off];

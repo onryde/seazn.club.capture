@@ -5,7 +5,7 @@ import type {
   ReconnectCause,
   SessionState,
 } from '@/domain/session/SessionState';
-import type { EngineSnapshot, Telemetry } from '@/engine/CaptureEnginePort';
+import type { CameraState, EngineSnapshot, Telemetry } from '@/engine/CaptureEnginePort';
 import type { CodeCheck } from '@/hooks/preflight';
 import type { MessageKey } from '@/i18n/messages';
 
@@ -42,15 +42,34 @@ const ENDED: Readonly<Record<EndReason, StatusKey>> = {
 };
 
 /**
- * The one true sentence (AGENTS §6), as a key (spec §4). Reads state and
- * pre-flight only. It never reads the heartbeat: a failing heartbeat never
+ * Carry 11 (owner-visible): whose camera is on air says itself, whatever the
+ * state, before any state's own line. Another app's take is the slate line,
+ * connecting before the first frame included; our own reopen or switch makes
+ * no slate claim. Our own camera leaves the state's line alone.
+ */
+const CAMERA: Readonly<Record<CameraState, StatusKey | null>> = {
+  own: null,
+  taken: 'stream.status.cameraTaken',
+  reopening: 'stream.status.cameraReopening',
+  resuming: 'stream.status.cameraReopening',
+  switching: 'stream.status.cameraReopening',
+};
+
+/**
+ * The one true sentence (AGENTS §6), as a key (spec §4). Reads the camera,
+ * state and pre-flight only. It never reads the heartbeat: a failing heartbeat never
  * blocks or degrades the stream (ruling 5), so it never changes what the
  * operator is told. Heat is the top strip's, never this line's (AGENTS §8).
  * Nor does it read the encoded rates or the delivered lag: native's state
  * already says what they mean, and a null there is no reading, not trouble.
  */
 export function selectStatusKey(snapshot: EngineSnapshot): StatusKey {
-  const { state, telemetry } = snapshot;
+  const camera = snapshot.camera === null ? null : CAMERA[snapshot.camera];
+  return camera ?? stateKey(snapshot);
+}
+
+/** Each state's own line. A table, exempt from the line count (AGENTS §12). */
+function stateKey({ state, telemetry }: EngineSnapshot): StatusKey {
   switch (state.kind) {
     case 'idle':
       return 'stream.status.starting';

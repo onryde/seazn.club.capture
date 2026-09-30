@@ -16,7 +16,7 @@ export function StreamScreen() {
   const view = useViewfinder();
   const { settings } = useStreamSettings();
   const leave = useStreamLeave();
-  const peek = usePeek(view.onAir);
+  const peek = usePeek(view.peekable);
   return (
     <View style={settings.side === 'left' ? styles.columnLeft : styles.columnRight}>
       <StreamStage

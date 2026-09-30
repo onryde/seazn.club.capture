@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AUDIO_FLOOR } from '@/domain/policy/audioFloor';
+import type { CameraState } from './CaptureEnginePort';
 import {
   createFakeCaptureEngine,
   FAKE_SCENES,
@@ -257,6 +258,7 @@ describe('scenes: every state spec §6 lists', () => {
       reason: 'camera-taken',
       sinceEpochMs: NOW - ON_AIR_MS,
     },
+    'camera-switching': { kind: 'publishing', transport: 'srt', sinceEpochMs: NOW - ON_AIR_MS },
     'mic-silenced': { kind: 'degraded', reason: 'mic-silenced' },
     stopped: { kind: 'ended', reason: 'operator-stopped', durationMs: ON_AIR_MS },
     'stopped-by-organiser': {
@@ -405,5 +407,86 @@ describe('no stale time on air (M4)', () => {
     engine.forceState({ kind: 'connecting', transport: 'srt' });
     engine.send({ kind: 'stop' });
     expect(state()).toEqual({ kind: 'ended', reason: 'operator-stopped', durationMs: null });
+  });
+});
+
+/**
+ * Plan B's `Snapshot.camera` (carry 10): whose camera is on air, null with no
+ * session. Our own reopen or switch reads apart from another app's take.
+ */
+describe('whose camera is on air (carry 10)', () => {
+  const camera = () => engine.getSnapshot().camera;
+
+  /** Plan B's wire strings, a row per scene: the compiler refuses a scene without one. */
+  const CAMERA: Readonly<Record<FakeScene, CameraState | null>> = {
+    'armed-not-ready': 'own',
+    'armed-ready': 'own',
+    connecting: 'own',
+    live: 'own',
+    'fell-back': 'own',
+    holding: 'own',
+    stalled: 'own',
+    restarting: 'own',
+    'not-delivered': 'own',
+    'camera-taken': 'taken',
+    'camera-reopened': 'reopening',
+    'camera-switching': 'switching',
+    'mic-silenced': 'own',
+    stopped: null,
+    'stopped-by-organiser': null,
+    fatal: null,
+    shed: 'own',
+  };
+
+  it.each(FAKE_SCENES)('%s', (scene) => {
+    engine.scene(scene);
+    expect(camera()).toBe(CAMERA[scene]);
+  });
+
+  it('has none before a session, its own once armed and on air, and none after', () => {
+    expect(camera()).toBeNull();
+    engine.send({ kind: 'arm', session, heartbeat });
+    expect(camera()).toBe('own');
+    engine.send({ kind: 'start' });
+    expect(camera()).toBe('own');
+    wait(1000);
+    expect(camera()).toBe('own');
+    engine.send({ kind: 'stop' });
+    expect(camera()).toBeNull();
+  });
+
+  it('has none after a reset', () => {
+    engine.scene('camera-taken');
+    engine.send({ kind: 'reset' });
+    expect(camera()).toBeNull();
+  });
+
+  it('follows a forced state: the camera is our own on air, none once ended', () => {
+    engine.scene('camera-taken');
+    engine.forceState({ kind: 'publishing', transport: 'srt', sinceEpochMs: NOW });
+    expect(camera()).toBe('own');
+    engine.forceState({ kind: 'ended', reason: 'fatal-error', durationMs: null });
+    expect(camera()).toBeNull();
+  });
+
+  it('reads reopening until the reopened camera’s first frame, then its own', () => {
+    engine.scene('camera-reopened');
+    wait(2999);
+    expect(camera()).toBe('reopening');
+    wait(1);
+    expect(camera()).toBe('own');
+  });
+
+  it('holds LIVE through our own switch, with no reading until the new camera’s first frame', () => {
+    engine.scene('camera-switching');
+    const live = { kind: 'publishing', transport: 'srt', sinceEpochMs: NOW - ON_AIR_MS };
+    expect(state()).toEqual(live);
+    expect([telemetry().encodedVideoFps, telemetry().cameraReady]).toEqual([null, false]);
+    wait(2999);
+    expect(camera()).toBe('switching');
+    wait(1);
+    expect(camera()).toBe('own');
+    expect(state()).toEqual(live);
+    expect([telemetry().encodedVideoFps, telemetry().cameraReady]).toEqual([30, true]);
   });
 });

@@ -40,15 +40,32 @@ export const StreamColumn = memo(function StreamColumn({ view, blocked, peek }: 
       {view.action === 'goLive' ? (
         <PreflightChips preflight={view.preflight} goLiveBy={view.goLiveBy} />
       ) : null}
-      {view.onAir ? <ViewerPeek onPressIn={peek.pressIn} onPressOut={peek.pressOut} /> : null}
+      <ColumnPeek view={view} peek={peek} />
       <ColumnAction view={view} />
     </View>
+  );
+});
+
+/** What viewers see, on air only; off, with its reason, when there is no picture (carry 13). */
+const ColumnPeek = memo(function ColumnPeek({ view, peek }: { view: Viewfinder; peek: Peek }) {
+  const { t } = useT();
+  if (!view.onAir) return null;
+  return (
+    <ViewerPeek
+      disabled={!view.peekable}
+      reason={view.peekable ? null : t('stream.peek.unavailable')}
+      onPressIn={peek.pressIn}
+      onPressOut={peek.pressOut}
+    />
   );
 });
 
 /**
  * Go live before air, Stop on it; after it, nothing here yet. Go live says
  * why it is off only once armed: before that the plate and line already do.
+ * Keyed by the action (carry 13): a hold belongs to the control the finger
+ * landed on, so Go live turning into Stop under it abandons it, while a
+ * change of state that keeps Stop keeps the hold.
  */
 const ColumnAction = memo(function ColumnAction({ view }: { view: Viewfinder }) {
   const { t } = useT();
@@ -57,6 +74,7 @@ const ColumnAction = memo(function ColumnAction({ view }: { view: Viewfinder }) 
   const armedBlocker = view.kind === 'armed' ? view.blocker : null;
   return (
     <HoldAction
+      key={view.action}
       label={t(stop ? 'stream.action.stop' : 'stream.action.goLive')}
       tone={stop ? 'stop' : 'go'}
       disabled={!stop && (view.kind !== 'armed' || view.blocker !== null)}

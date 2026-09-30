@@ -7,6 +7,7 @@ import type {
   SessionState,
 } from '@/domain/session/SessionState';
 import type {
+  CameraState,
   CaptureEnginePort,
   EngineIntent,
   EngineSnapshot,
@@ -31,6 +32,7 @@ export type FakeScene =
   | 'not-delivered'
   | 'camera-taken'
   | 'camera-reopened'
+  | 'camera-switching'
   | 'mic-silenced'
   | 'stopped'
   | 'stopped-by-organiser'
@@ -49,6 +51,7 @@ export const FAKE_SCENES: readonly FakeScene[] = [
   'not-delivered',
   'camera-taken',
   'camera-reopened',
+  'camera-switching',
   'mic-silenced',
   'stopped',
   'stopped-by-organiser',
@@ -77,7 +80,7 @@ const CONNECT_MS = 1000;
 /**
  * F-P5-10: after our own reopen the camera gets a full 3 s stall window for
  * its first frame. The fake's first frame lands at the end of it: the longest
- * the operator waits.
+ * the operator waits. A switch's new camera gets the same window (ruling 14).
  */
 const REOPEN_FIRST_FRAME_MS = 3000;
 const REPORT_MS = 1000;
@@ -173,6 +176,8 @@ const noEncodedRates = (telemetry: Telemetry): Telemetry => ({
 type Scene = {
   readonly state: SessionState;
   readonly telemetry: Telemetry;
+  /** Whose camera, when not what the state's kind implies (`cameraFor`). */
+  readonly camera?: CameraState;
   /** A snapshot native reports by itself a moment later. */
   readonly then?: { readonly afterMs: number; readonly state: SessionState };
 };
@@ -234,6 +239,7 @@ function sceneOf(name: FakeScene, now: number): Scene {
       return {
         state: degraded('srt', 'camera-taken', since),
         telemetry: noEncodedRates({ ...live, cameraReady: false }),
+        camera: 'taken',
       };
     case 'camera-reopened':
       // Plan B holds the session until our reopened camera's first frame: it
@@ -243,6 +249,16 @@ function sceneOf(name: FakeScene, now: number): Scene {
       return {
         state: degraded('srt', 'camera-taken', since),
         telemetry: noEncodedRates({ ...live, cameraReady: false }),
+        camera: 'reopening',
+        then: { afterMs: REOPEN_FIRST_FRAME_MS, state: publishing('srt', since) },
+      };
+    case 'camera-switching':
+      // Plan B holds LIVE through the operator's switch until the new
+      // camera's first frame (`SWITCHING`: not shown taken, so no degrade).
+      return {
+        state: publishing('srt', since),
+        telemetry: noEncodedRates({ ...live, cameraReady: false }),
+        camera: 'switching',
         then: { afterMs: REOPEN_FIRST_FRAME_MS, state: publishing('srt', since) },
       };
     case 'mic-silenced':
@@ -284,6 +300,10 @@ function telemetryFor(state: SessionState, now: number): Telemetry {
   }
 }
 
+/** Plan B's `Snapshot.camera`: ours whenever there is a session, none without one. */
+const cameraFor = (state: SessionState): CameraState | null =>
+  state.kind === 'idle' || state.kind === 'ended' ? null : 'own';
+
 const sinceOf = (state: SessionState): number | null =>
   'sinceEpochMs' in state ? state.sinceEpochMs : null;
 
@@ -292,6 +312,7 @@ export function createFakeCaptureEngine(now: () => number = Date.now): FakeCaptu
     state: { kind: 'idle' },
     telemetry: IDLE_TELEMETRY,
     descriptor: null,
+    camera: null,
     reportedAtMs: now(),
     survivesBackground: false,
   };
@@ -305,8 +326,11 @@ export function createFakeCaptureEngine(now: () => number = Date.now): FakeCaptu
     snapshot = { ...snapshot, ...next, reportedAtMs: now() };
     for (const listener of listeners) listener();
   };
-  const show = (state: SessionState, telemetry: Telemetry = telemetryFor(state, now())) =>
-    publish({ state, telemetry });
+  const show = (
+    state: SessionState,
+    telemetry: Telemetry = telemetryFor(state, now()),
+    camera: CameraState | null = cameraFor(state),
+  ) => publish({ state, telemetry, camera });
   const cancelPending = (): void => {
     if (pending !== null) clearTimeout(pending);
     pending = null;
@@ -328,7 +352,7 @@ export function createFakeCaptureEngine(now: () => number = Date.now): FakeCaptu
   const arm = (descriptor: SessionDescriptor, transport: Transport): void => {
     if (snapshot.state.kind !== 'idle') return;
     primary = transport;
-    publish({ state: { kind: 'armed' }, telemetry: ARMED, descriptor });
+    publish({ state: { kind: 'armed' }, telemetry: ARMED, descriptor, camera: 'own' });
   };
   const start = (): void => {
     if (snapshot.state.kind !== 'armed') return;
@@ -344,11 +368,11 @@ export function createFakeCaptureEngine(now: () => number = Date.now): FakeCaptu
   };
   const reset = (): void => {
     cancelPending();
-    publish({ state: { kind: 'idle' }, telemetry: IDLE_TELEMETRY, descriptor: null });
+    publish({ state: { kind: 'idle' }, telemetry: IDLE_TELEMETRY, descriptor: null, camera: null });
   };
   const play = (scene: Scene): void => {
     cancelPending();
-    show(scene.state, scene.telemetry);
+    show(scene.state, scene.telemetry, scene.camera);
     const { then } = scene;
     if (then !== undefined) later(then.afterMs, () => then.state);
   };

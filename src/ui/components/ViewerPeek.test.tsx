@@ -16,7 +16,14 @@ function PeekHarness({ available, control = true }: { available: boolean; contro
   const peek = usePeek(available);
   return (
     <>
-      {control ? <ViewerPeek onPressIn={peek.pressIn} onPressOut={peek.pressOut} /> : null}
+      {control ? (
+        <ViewerPeek
+          disabled={false}
+          reason={null}
+          onPressIn={peek.pressIn}
+          onPressOut={peek.pressOut}
+        />
+      ) : null}
       {peek.mounted ? <StageVideo url={PLAYBACK} showing={peek.showing} /> : null}
     </>
   );
@@ -246,15 +253,56 @@ describe('What viewers see (spec §4)', () => {
   });
 });
 
+/** Carry 13: with nothing to play the control is off, says why, and a press lights nothing. */
+describe('ViewerPeek off', () => {
+  const off = (handlers: { pressIn: () => void; pressOut: () => void }) =>
+    renderWithPorts(
+      <ViewerPeek
+        disabled
+        reason="No viewer picture"
+        onPressIn={handlers.pressIn}
+        onPressOut={handlers.pressOut}
+      />,
+    );
+
+  it('never answers a press, and keeps its quiet rule', () => {
+    const handlers = { pressIn: vi.fn(), pressOut: vi.fn() };
+    off(handlers);
+    const quiet = getComputedStyle(peekButton()).borderTopColor;
+    pressIn(peekButton());
+    expect(handlers.pressIn).not.toHaveBeenCalled();
+    expect(getComputedStyle(peekButton()).borderTopColor).toBe(quiet);
+    expect(quiet).not.toBe(borderOf(TOKEN.ink));
+  });
+
+  it('says it is off, and why, at the control', () => {
+    off({ pressIn: vi.fn(), pressOut: vi.fn() });
+    expect(peekButton().getAttribute('aria-disabled')).toBe('true');
+    expect(screen.getByText('No viewer picture')).toBeTruthy();
+  });
+});
+
 describe('ViewerPeek alone', () => {
   it('lets go through the latest handler on unmount, and never on a re-render', () => {
     const first = { pressIn: vi.fn(), pressOut: vi.fn() };
     const view = renderWithPorts(
-      <ViewerPeek onPressIn={first.pressIn} onPressOut={first.pressOut} />,
+      <ViewerPeek
+        disabled={false}
+        reason={null}
+        onPressIn={first.pressIn}
+        onPressOut={first.pressOut}
+      />,
     );
     pressIn(peekButton());
     const next = { pressIn: vi.fn(), pressOut: vi.fn() };
-    view.rerender(<ViewerPeek onPressIn={next.pressIn} onPressOut={next.pressOut} />);
+    view.rerender(
+      <ViewerPeek
+        disabled={false}
+        reason={null}
+        onPressIn={next.pressIn}
+        onPressOut={next.pressOut}
+      />,
+    );
     expect(first.pressOut).not.toHaveBeenCalled();
     view.unmount();
     expect(next.pressOut).toHaveBeenCalledTimes(1);
