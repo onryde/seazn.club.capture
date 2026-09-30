@@ -1,5 +1,5 @@
 import { act, render, screen } from '@testing-library/react';
-import { StyleSheet, Text as RNText, View, type ViewStyle } from 'react-native';
+import { StyleSheet, Text as RNText, View, type TextStyle, type ViewStyle } from 'react-native';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { TallyPlate as Plate } from '@/hooks/preflight';
 import { AudioMeter } from '@/ui/components/AudioMeter';
@@ -7,7 +7,7 @@ import { EdgeStrip } from '@/ui/components/EdgeStrip';
 import { Elapsed } from '@/ui/components/Elapsed';
 import { LivePlate } from '@/ui/components/LivePlate';
 import { TallyPlate } from '@/ui/components/TallyPlate';
-import { colour, plate as plateColour } from '@/ui/theme/tokens';
+import { colour, plate as plateColour, plateInk } from '@/ui/theme/tokens';
 import { TEST_NOW } from '../../../test/fakePorts';
 import { renderWithPorts } from '../../../test/renderWithPorts';
 
@@ -36,6 +36,23 @@ function paintOf(style: ViewStyle): string {
 
 const backgroundOf = (element: Element) => getComputedStyle(element).backgroundColor;
 
+/** The ink a plate's word takes: night on a solid plate, cream on the inert one. */
+const INK = StyleSheet.create({
+  onPlate: { color: plateInk },
+  onInert: { color: colour.ink },
+});
+
+function inkOf(style: TextStyle): string {
+  const reference = render(
+    <RNText testID="ink-reference" style={style}>
+      ink
+    </RNText>,
+  );
+  const painted = getComputedStyle(reference.getByTestId('ink-reference')).color;
+  reference.unmount();
+  return painted;
+}
+
 describe('TallyPlate', () => {
   it.each<[Plate, string]>([
     ['starting', 'Starting'],
@@ -62,6 +79,28 @@ describe('TallyPlate', () => {
   ])('%s is painted with its D14 plate token', (plate, token) => {
     renderWithPorts(<TallyPlate plate={plate} />);
     expect(backgroundOf(screen.getByTestId('tally-plate'))).toBe(paintOf(token));
+  });
+
+  // Fabric's default text is black, which vanishes on the inert night plate
+  // (the ContinueCard lesson, AGENTS §13): every plate names its ink.
+  it.each<[Plate, string, TextStyle]>([
+    ['starting', 'Starting', INK.onInert],
+    ['notReady', 'Not ready', INK.onInert],
+    ['ready', 'Ready', INK.onPlate],
+    ['connecting', 'Connecting', INK.onInert],
+    ['live', 'Live', INK.onPlate],
+    ['trouble', 'Trouble', INK.onPlate],
+    ['ended', 'Ended', INK.onInert],
+  ])('%s sets its word in its plate’s ink', (plate, word, ink) => {
+    renderWithPorts(<TallyPlate plate={plate} />);
+    expect(getComputedStyle(screen.getByText(word)).color).toBe(inkOf(ink));
+  });
+
+  it('announces a change of state politely to a screen reader', () => {
+    renderWithPorts(<TallyPlate plate="trouble" />);
+    // react-native-web renders accessibilityLiveRegion as aria-live; whether
+    // TalkBack speaks LIVE → TROUBLE is a device check.
+    expect(screen.getByTestId('tally-plate').getAttribute('aria-live')).toBe('polite');
   });
 
   it('speaks the operator’s language', () => {
@@ -147,7 +186,7 @@ describe('Elapsed', () => {
     expect(screen.queryByText(/\d:\d\d:\d\d/)).toBeNull();
   });
 
-  it('reads no clock at all off air (AGENTS §8: nothing ticks for nothing)', () => {
+  it('does not tick off air (AGENTS §8: nothing ticks for nothing)', () => {
     renderElapsed();
     clock.mockClear();
     act(() => vi.advanceTimersByTime(5000));

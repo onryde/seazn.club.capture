@@ -1,8 +1,9 @@
 import { act, render, renderHook, screen } from '@testing-library/react';
-import { Pressable, Text } from 'react-native';
+import { Pressable, StyleSheet, Text, type TextStyle } from 'react-native';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { HOLD_MS, useHold } from '@/hooks/useHold';
 import { HoldAction } from '@/ui/components/HoldAction';
+import { colour } from '@/ui/theme/tokens';
 import { pressIn, pressOut } from '../../../test/press';
 import { renderWithPorts } from '../../../test/renderWithPorts';
 
@@ -27,6 +28,23 @@ describe('the press path in jsdom (probe)', () => {
 });
 
 type Props = Parameters<typeof HoldAction>[0];
+
+/** Which token a label was set in; the colour on screen is a device check. */
+const LABEL = StyleSheet.create({
+  enabled: { color: colour.ink },
+  disabled: { color: colour.ink3 },
+});
+
+function inkOf(style: TextStyle): string {
+  const reference = render(
+    <Text testID="ink-reference" style={style}>
+      ink
+    </Text>,
+  );
+  const painted = getComputedStyle(reference.getByTestId('ink-reference')).color;
+  reference.unmount();
+  return painted;
+}
 
 function renderHold(props: Partial<Props> = {}, options?: Parameters<typeof renderWithPorts>[1]) {
   const onHeld = vi.fn();
@@ -109,6 +127,13 @@ describe('HoldAction (AGENTS §6: a 3 s hold, both ways)', () => {
     expect(hold.container.querySelectorAll('[dir="auto"]')).toHaveLength(1);
   });
 
+  it('sets a disabled label in the inert ink, and an enabled one in cream', () => {
+    const hold = renderHold({ disabled: true, reason: 'No sound' });
+    expect(getComputedStyle(screen.getByText('Go live')).color).toBe(inkOf(LABEL.disabled));
+    hold.rerender(<HoldAction {...hold.all} disabled={false} />);
+    expect(getComputedStyle(screen.getByText('Go live')).color).toBe(inkOf(LABEL.enabled));
+  });
+
   it('abandons a hold when it becomes disabled mid-way', () => {
     const hold = renderHold();
     pressIn(hold.button());
@@ -132,6 +157,24 @@ describe('HoldAction (AGENTS §6: a 3 s hold, both ways)', () => {
     pressIn(hold.button());
     act(() => vi.advanceTimersByTime(HOLD_MS));
     expect(hold.onHeld).toHaveBeenCalledTimes(1);
+  });
+
+  // The hold does what was pressed (useHold): a parent re-rendering mid-hold,
+  // with a fresh onHeld or a new reason, neither restarts it nor acts twice.
+  it('keeps its clock and its action through a re-render mid-hold', () => {
+    const hold = renderHold();
+    pressIn(hold.button());
+    act(() => vi.advanceTimersByTime(1500));
+    const later = vi.fn();
+    hold.rerender(<HoldAction {...hold.all} onHeld={later} reason="Uplink weak" />);
+    expect(screen.getByTestId('hold-fill').dataset.holding).toBe('true');
+    act(() => vi.advanceTimersByTime(1499));
+    expect(hold.onHeld).not.toHaveBeenCalled();
+    act(() => vi.advanceTimersByTime(1));
+    expect(hold.onHeld).toHaveBeenCalledTimes(1);
+    act(() => vi.advanceTimersByTime(HOLD_MS * 2));
+    expect(hold.onHeld).toHaveBeenCalledTimes(1);
+    expect(later).not.toHaveBeenCalled();
   });
 
   it('abandons a hold when unmounted mid-way', () => {
@@ -194,6 +237,21 @@ describe('useHold, under the control', () => {
     expect(onHeld).toHaveBeenCalledTimes(1);
     act(() => vi.advanceTimersByTime(5000));
     expect(onHeld).toHaveBeenCalledTimes(1);
+  });
+
+  it('acts once, as first pressed, when a re-render and a second press land mid-hold', () => {
+    const first = vi.fn();
+    const second = vi.fn();
+    const { result, rerender } = renderHook(({ onHeld }) => useHold(onHeld, true), {
+      initialProps: { onHeld: first },
+    });
+    act(() => result.current.pressIn());
+    act(() => vi.advanceTimersByTime(1000));
+    rerender({ onHeld: second });
+    act(() => result.current.pressIn());
+    act(() => vi.advanceTimersByTime(HOLD_MS * 2));
+    expect(first).toHaveBeenCalledTimes(1);
+    expect(second).not.toHaveBeenCalled();
   });
 
   it('leaves nothing running once it acted: the next press is a fresh full hold', () => {
