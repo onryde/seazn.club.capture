@@ -137,4 +137,41 @@ class PlaylistParserTest {
     assertEquals("https://customer-x.cloudflarestream.com/root.m3u8", PlaylistParser.resolve(master, "/root.m3u8"))
     assertNull(PlaylistParser.resolve(master, "has space.m3u8"))
   }
+
+  // Below: added in B4's mutation pass, each killing a mutant the tests above left alive.
+
+  @Test
+  fun `a tag after a stream-inf is never taken for a variant URI`() {
+    val text = "#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=928000\n#EXT-X-STREAM-INF:BANDWIDTH=3128000\nstream_720/video.m3u8\n"
+    assertEquals(Playlist.Master(listOf("stream_720/video.m3u8")), PlaylistParser.parse(text))
+  }
+
+  @Test
+  fun `a media playlist with no sequence tag starts at 0`() {
+    // RFC 8216 §4.3.3.2: with no EXT-X-MEDIA-SEQUENCE, the first segment's number "SHALL be considered to be 0".
+    val media = assertIs<Playlist.Media>(PlaylistParser.parse("#EXTM3U\n#EXT-X-TARGETDURATION:2\n#EXTINF:2.0,\na.ts\n"))
+    assertEquals(0L, media.mediaSequence)
+    assertEquals(0L, media.head)
+  }
+
+  @Test
+  fun `a part-info tag with no part listed yet is still LL-HLS`() {
+    val text = "#EXTM3U\n#EXT-X-TARGETDURATION:2\n#EXT-X-PART-INF:PART-TARGET=0.5\n#EXTINF:2.0,\na.mp4\n"
+    val media = assertIs<Playlist.Media>(PlaylistParser.parse(text))
+    assertTrue(media.lowLatency)
+    assertEquals(0L, media.partsMs)
+  }
+
+  @Test
+  fun `a negative segment, and a negative or infinite part, is invalid`() {
+    assertEquals(Playlist.Invalid("bad EXTINF"), PlaylistParser.parse("#EXTM3U\n#EXT-X-TARGETDURATION:2\n#EXTINF:-2.0,\na.ts\n"))
+    assertEquals(
+      Playlist.Invalid("bad EXT-X-PART"),
+      PlaylistParser.parse("#EXTM3U\n#EXT-X-TARGETDURATION:2\n#EXT-X-PART:DURATION=-0.5,URI=\"a.mp4\"\n"),
+    )
+    assertEquals(
+      Playlist.Invalid("bad EXT-X-PART"),
+      PlaylistParser.parse("#EXTM3U\n#EXT-X-TARGETDURATION:2\n#EXT-X-PART:DURATION=Infinity,URI=\"a.mp4\"\n"),
+    )
+  }
 }
