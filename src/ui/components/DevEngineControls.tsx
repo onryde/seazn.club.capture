@@ -28,11 +28,11 @@ export const DevEngineControls = memo(function DevEngineControls() {
     [devEngine, clock],
   );
   const stop = useCallback(
-    () => devEngine?.forceState({ kind: 'ended', reason: 'operator-stopped' }),
+    () => devEngine?.forceState({ kind: 'ended', reason: 'operator-stopped', durationMs: null }),
     [devEngine],
   );
   const fail = useCallback(
-    () => devEngine?.forceState({ kind: 'ended', reason: 'fatal-error' }),
+    () => devEngine?.forceState({ kind: 'ended', reason: 'fatal-error', durationMs: null }),
     [devEngine],
   );
   if (!devTools || devEngine === null) return null;

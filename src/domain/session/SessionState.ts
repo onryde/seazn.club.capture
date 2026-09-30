@@ -10,6 +10,11 @@ import type { Transport } from '@/domain/credentials/StreamCredentials';
  *
  * Illegal states are unrepresentable on purpose: no
  * `isLive && !isReconnecting && hasFallenBack` booleans.
+ *
+ * The Kotlin `SessionMachine` (plan B) is the authority, and this is its
+ * report: every `kind` and every reason below equals one of its `.wire`
+ * strings (D40). Nothing in TypeScript moves a session from one state to
+ * another; the fake engine plays scripted snapshots instead (spec §2).
  */
 export type SessionState =
   | { readonly kind: 'idle' }
@@ -24,13 +29,17 @@ export type SessionState =
       readonly reason: DegradeReason;
       readonly sinceEpochMs: number;
     }
-  /** Uplink gone. Cloudflare is holding the input for `holdRemainingSeconds`. */
+  /** Uplink gone. The front door is holding the input for the rest of the window. */
   | {
       readonly kind: 'reconnecting';
+      /** Which of plan B's three triggers is being ridden out; the status line names it (D38). */
+      readonly cause: ReconnectCause;
       readonly holdRemainingSeconds: number;
+      readonly holdWindowSeconds: number;
       readonly sinceEpochMs: number;
     }
-  | { readonly kind: 'ended'; readonly reason: EndReason };
+  /** `durationMs` is time on air, or null when the session never went live. */
+  | { readonly kind: 'ended'; readonly reason: EndReason; readonly durationMs: number | null };
 
 /**
  * `sinceEpochMs` deliberately survives a drop. The broadcast is continuous
@@ -39,37 +48,41 @@ export type SessionState =
  */
 
 /**
+ * Why a live session is reconnecting, as plan B's `ReconnectCause.wire`:
+ * the uplink dropped, the video stopped advancing (F-P5-6), or viewers stopped
+ * receiving and native is forcing a new session (F-P5-13).
+ */
+export type ReconnectCause = 'uplink-lost' | 'video-stalled' | 'not-delivered';
+
+/**
  * Reasons the *broadcast* is impaired. Note what is absent: thermal pressure.
  * A device getting hot is a condition of the handset, not of the stream, and
  * per the degradation ladder (AGENTS.md §8) it sheds the operator's overlay
  * preview long before it touches the encode. It is carried in telemetry
  * instead, so a hot phone that is still publishing cleanly does not get
  * reported as a damaged broadcast.
+ *
+ * Native sends one reason, the most important of plan B's ordered list (D39).
+ * `audio-below-floor` is TypeScript-only and never on the wire: the level
+ * floor is a display rule here (spec §2, "audioFloor stays"), not native's.
  */
-export type DegradeReason = 'fell-back-to-rtmps' | 'poor-uplink' | 'audio-below-floor';
+export type DegradeReason =
+  | 'fell-back-to-rtmps'
+  | 'poor-uplink'
+  | 'audio-below-floor'
+  /** DeliveryWatch: viewers are not receiving, and native is forcing a new session (F-P5-13). */
+  | 'not-delivered'
+  /** Another app holds the camera; a phone-made slate is on air (spec decision 7). */
+  | 'camera-taken'
+  /** A call silenced the microphone (F-P5-8). */
+  | 'mic-silenced';
 
-export type EndReason = 'operator-stopped' | 'hold-window-expired' | 'fatal-error';
-
-/**
- * Emitted by native, projected into the read model above. Also the vocabulary
- * the post-match session record is written in — a three-hour outdoor stream
- * fails by degrading, not crashing, so the record matters more than a crash
- * report (AGENTS.md §11).
- */
-export type SessionEvent =
-  | { readonly kind: 'SessionArmed' }
-  | { readonly kind: 'PublishStarted'; readonly transport: Transport }
-  | { readonly kind: 'TransportDegraded'; readonly reason: DegradeReason }
-  | { readonly kind: 'FellBackToRtmps' }
-  /** Carries the window because only native knows it, from C2's contract field. */
-  | { readonly kind: 'UplinkLost'; readonly holdWindowSeconds: number }
-  | { readonly kind: 'HoldTicked'; readonly holdRemainingSeconds: number }
-  | { readonly kind: 'PublishResumed'; readonly transport: Transport }
-  /** A device condition. Does not move the session state machine. */
-  | { readonly kind: 'ThermalCeilingHit'; readonly shed: ShedStep }
-  | { readonly kind: 'SessionEnded'; readonly reason: EndReason }
-  /** Back to idle so the phone can be handed on and a new fixture scanned. */
-  | { readonly kind: 'SessionReset' };
+export type EndReason =
+  | 'operator-stopped'
+  /** A 410 on reconnect, a heartbeat saying the session is over, or refused ingest (spec §1). */
+  | 'stopped-by-organiser'
+  | 'hold-window-expired'
+  | 'fatal-error';
 
 /**
  * The degradation ladder, in order, never reordered (AGENTS.md §8).

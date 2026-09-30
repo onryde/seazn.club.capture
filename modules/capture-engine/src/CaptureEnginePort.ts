@@ -1,4 +1,5 @@
-import type { SessionCredentials } from '@/domain/credentials/StreamCredentials';
+import type { SessionDescriptor } from '@/domain/credentials/SessionDescriptor';
+import type { StreamSession } from '@/domain/credentials/StreamSession';
 import type { SessionState, ShedStep } from '@/domain/session/SessionState';
 
 /**
@@ -8,6 +9,9 @@ import type { SessionState, ShedStep } from '@/domain/session/SessionState';
  * fake. Build the fake first — every screen, state and failure mode must be
  * developable on a laptop with no device.
  */
+
+/** Where native posts the heartbeat from its foreground service (spec decisions 5 and 6). */
+export type HeartbeatTarget = { readonly url: string; readonly token: string };
 
 /**
  * Intents, not RPC. Every command returns void and is reconciled against
@@ -20,7 +24,7 @@ import type { SessionState, ShedStep } from '@/domain/session/SessionState';
  * a live input the compositor already considers finished.
  */
 export type EngineIntent =
-  | { readonly kind: 'arm'; readonly credentials: SessionCredentials }
+  | { readonly kind: 'arm'; readonly session: StreamSession; readonly heartbeat: HeartbeatTarget }
   | { readonly kind: 'start' }
   | { readonly kind: 'stop' }
   /** Clear a finished session so the next fixture can be scanned. */
@@ -39,11 +43,11 @@ export type EngineSnapshot = {
   readonly state: SessionState;
   readonly telemetry: Telemetry;
   /**
-   * What the session was armed with, or null before a scan. Native holds the
-   * session, so it holds the descriptor too — the UI needs `overlayUrl` and
-   * `playbackUrl` from it to peek (§7, N16).
+   * What the session was armed with, secrets left behind (D8): the UI needs
+   * the overlay and playback URLs, the label and the warming deadline, and
+   * never the token, passphrase or stream key. Null before an arm.
    */
-  readonly credentials: SessionCredentials | null;
+  readonly descriptor: SessionDescriptor | null;
   /**
    * The phone clock when native emitted this. The app compares it against now
    * to decide whether it still trusts what it is holding: a projection that
@@ -64,36 +68,81 @@ export type EngineSnapshot = {
   readonly survivesBackground: boolean;
 };
 
-export type Telemetry = {
-  readonly bitrateKbps: number;
-  readonly droppedFrames: number;
+/** What the delivered playlist says (F-P5-13): moving, not moving, or no evidence either way. */
+export type Delivery = 'ok' | 'stalled' | 'unknown';
+
+/** Android's PowerManager thermal status names. */
+export type ThermalStatus =
+  'none' | 'light' | 'moderate' | 'severe' | 'critical' | 'emergency' | 'shutdown';
+
+/** SRT's own counters, cumulative since the attempt connected: plan B's `SrtTelemetry`. */
+export type SrtStats = {
+  readonly sent: number;
+  readonly retransmitted: number;
+  readonly dropped: number;
   readonly rttMs: number | null;
-  /** Peak audio level, 0-1. Nothing downstream normalises, so this is load-bearing. */
-  readonly audioLevel: number;
-  readonly thermalHeadroom: number | null;
-  readonly batteryLevel: number | null;
-  /** M2: NTP-synced, reported even single-camera. Cheap now, a fleet migration later. */
-  readonly captureTimestampMs: number | null;
-  /**
-   * How far down the degradation ladder the device has been pushed, or null if
-   * nothing has been shed. A device condition rather than a broadcast state —
-   * `overlay-preview` costs the operator a convenience, `encode` costs viewers
-   * picture, and the UI should say so differently.
-   */
-  readonly shed: ShedStep | null;
-  /**
-   * Why capture is currently impaired by something outside the app, or null.
-   *
-   * Carried in telemetry rather than as a SessionState member, for the same
-   * reason as `shed`: a phone call is a condition of the *device*, not a
-   * damaged broadcast. On iOS a call keeps the app in the foreground while
-   * killing the microphone, and this field is the only way the status line can
-   * say so.
-   */
-  readonly interruption: Interruption | null;
 };
 
-export type Interruption = 'background' | 'call' | 'camera-in-use' | 'system';
+/** Plan B's `HeartbeatResult.wire`. */
+export type HeartbeatResult = 'ok' | 'failed' | 'session-over';
+
+/** Counted and dropped, never blocking (ruling 5). Diagnostics shows it; nothing else reads it. */
+export type HeartbeatStatus = {
+  readonly lastSentAtEpochMs: number | null;
+  /** `session-over` is the server saying the organiser ended it; native turns that into `ended`. */
+  readonly lastResult: HeartbeatResult | null;
+  readonly consecutiveFailures: number;
+  readonly failures: number;
+};
+
+/**
+ * Names match plan B's `Snapshot` where the core reports the value (D40):
+ * `bitrateKbps`, `targetBitrateKbps`, `encodedVideoFps`, `audioPacketsPerSecond`,
+ * `srt`, `delivery`, `deliveredLagMs`, `dataUsedBytes`, `charging`,
+ * `heartbeat`, `shed`. The device fields are plan B's `DeviceSample`
+ * flattened, with the thermal int named. `audioLevel`, `cameraReady`,
+ * `networkReachable`, `deliveryCheckedAtMs` and `captureTimestampMs` are
+ * platform facts plan C's bridge adds.
+ *
+ * **Null is "no reading", never zero and never healthy.** Native reports null
+ * off air, while the camera is taken (the stall watchdog holds, so the
+ * encoded rates are null), and for the delivered lag whenever `delivery` is
+ * `unknown`. A reader shows a dash, not a 0.
+ */
+export type Telemetry = {
+  /** Measured egress: what actually left the phone. Null off air. */
+  readonly bitrateKbps: number | null;
+  /** The regulator's video target. */
+  readonly targetBitrateKbps: number | null;
+  /** Peak audio level, 0-1. Nothing downstream normalises, so this is load-bearing. */
+  readonly audioLevel: number;
+  /** Pre-flight (spec §1): the camera is producing frames. */
+  readonly cameraReady: boolean;
+  /** Pre-flight: a validated network, not merely a connected one. */
+  readonly networkReachable: boolean;
+  /** F-P5-4: encoded video frames and audio packets per second. Null off air and while the camera is taken. */
+  readonly encodedVideoFps: number | null;
+  readonly audioPacketsPerSecond: number | null;
+  /** Null while on RTMPS or before connecting. */
+  readonly srt: SrtStats | null;
+  readonly delivery: Delivery;
+  /** Null whenever `delivery` is `unknown`. */
+  readonly deliveredLagMs: number | null;
+  readonly deliveryCheckedAtMs: number | null;
+  readonly dataUsedBytes: number;
+  readonly charging: boolean | null;
+  readonly batteryPercent: number | null;
+  /** From the charge counter: P5 found the percentage unreliable for drain. */
+  readonly drainPctPerHour: number | null;
+  readonly thermalStatus: ThermalStatus | null;
+  /** Android API 30+; −1 below it; null when unknown. */
+  readonly thermalHeadroom: number | null;
+  /** M2: NTP-synced, reported even single-camera. */
+  readonly captureTimestampMs: number | null;
+  /** How far down the degradation ladder the device is (AGENTS §8). A device condition, not a state. */
+  readonly shed: ShedStep | null;
+  readonly heartbeat: HeartbeatStatus;
+};
 
 /**
  * Shaped for `useSyncExternalStore` — subscribe/getSnapshot with selectors, so

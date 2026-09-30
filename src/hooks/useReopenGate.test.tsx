@@ -130,7 +130,9 @@ describe('useReopenGate: beyond the happy path', () => {
     expect(fakes.kv.entries.get(STORE_KEYS.active)).toBe('stream');
     expect(noticeOf(fakes)).toBeNull();
 
-    act(() => fakes.engine.forceState({ kind: 'ended', reason: 'hold-window-expired' }));
+    act(() =>
+      fakes.engine.forceState({ kind: 'ended', reason: 'hold-window-expired', durationMs: null }),
+    );
     act(() => fakes.foreground.fire());
     await waitFor(() => expect(fakes.navigation.current()).toBe('home'));
     expect(noticeOf(fakes)).toEqual({

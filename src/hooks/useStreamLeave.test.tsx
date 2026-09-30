@@ -24,8 +24,8 @@ const LIVE: SessionState = {
   transport: 'srt',
   sinceEpochMs: TEST_NOW.getTime(),
 };
-const STOPPED: SessionState = { kind: 'ended', reason: 'operator-stopped' };
-const FAILED: SessionState = { kind: 'ended', reason: 'fatal-error' };
+const STOPPED: SessionState = { kind: 'ended', reason: 'operator-stopped', durationMs: null };
+const FAILED: SessionState = { kind: 'ended', reason: 'fatal-error', durationMs: null };
 
 async function leaveHook(options: Parameters<typeof createFakePorts>[0] = {}) {
   const fakes = createFakePorts({ kvSeed: inStream, ...options });

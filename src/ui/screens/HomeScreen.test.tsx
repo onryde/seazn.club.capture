@@ -530,7 +530,9 @@ describe('Home: a refused save is never silent (R19)', () => {
     act(() => fakes.foreground.fire());
     await act(async () => undefined);
     expect(fakes.navigation.current()).toBe('stream');
-    act(() => fakes.engine.forceState({ kind: 'ended', reason: 'hold-window-expired' }));
+    act(() =>
+      fakes.engine.forceState({ kind: 'ended', reason: 'hold-window-expired', durationMs: null }),
+    );
     act(() => fakes.foreground.fire());
     await screen.findByText(EXPIRED_1840);
     expect(fakes.navigation.current()).toBe('home');

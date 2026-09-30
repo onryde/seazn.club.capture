@@ -4,7 +4,7 @@ import type { StreamCredentials } from '@/domain/credentials/StreamCredentials';
 
 /**
  * Everything `arm` needs (spec §2): the scanned code's credentials plus the
- * server's descriptor. Replaces S0's `SessionCredentials`. `token` is a
+ * server's descriptor. Replaces S0's credentials-plus-URLs type. `token` is a
  * secret: it goes to native and nowhere else.
  */
 export type StreamSession = {

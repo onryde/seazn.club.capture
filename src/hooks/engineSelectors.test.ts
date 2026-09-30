@@ -1,131 +1,57 @@
-import { describe, expect, it } from 'vitest';
-import { AUDIO_FLOOR } from '@/domain/policy/audioFloor';
-import type { DegradeReason, EndReason, SessionState } from '@/domain/session/SessionState';
+import { describe, expect, expectTypeOf, it } from 'vitest';
+import type { Transport } from '@/domain/credentials/StreamCredentials';
 import type { EngineStatus } from '@/domain/mode/reopen';
-import type { EngineSnapshot, Interruption, Telemetry } from '@/engine/CaptureEnginePort';
+import type {
+  DegradeReason,
+  EndReason,
+  ReconnectCause,
+  SessionState,
+  ShedStep,
+} from '@/domain/session/SessionState';
+import type {
+  Delivery,
+  EngineSnapshot,
+  HeartbeatResult,
+  Telemetry,
+} from '@/engine/CaptureEnginePort';
+import { IDLE_TELEMETRY } from '@/engine/FakeCaptureEngine';
 import {
-  STATUS_LINE_BUDGET,
+  selectBitrateKbps,
   selectEngineStatus,
   selectHoldsOrientation,
-  selectStatusLine,
+  selectLabel,
+  selectOverlayUrl,
+  selectPlaybackUrl,
+  selectScoreUpdates,
   selectTally,
+  selectWarmingDeadlineMs,
 } from '@/hooks/engineSelectors';
+import { streamSession } from '../../test/fixtures/session';
 
 const NOW = 1_700_000_000_000;
 
-const telemetry: Telemetry = {
-  bitrateKbps: 3000,
-  droppedFrames: 0,
-  rttMs: 48,
-  audioLevel: 0.4,
-  thermalHeadroom: 0.7,
-  batteryLevel: 0.8,
-  captureTimestampMs: NOW,
-  shed: null,
-  interruption: null,
-};
-
-function snapshot(state: SessionState, overrides: Partial<Telemetry> = {}): EngineSnapshot {
+function snapshot(
+  state: SessionState,
+  overrides: Partial<Telemetry> = {},
+  descriptor: EngineSnapshot['descriptor'] = null,
+): EngineSnapshot {
   return {
     state,
-    telemetry: { ...telemetry, ...overrides },
-    credentials: null,
+    telemetry: { ...IDLE_TELEMETRY, ...overrides },
+    descriptor,
     reportedAtMs: NOW,
     survivesBackground: false,
   };
 }
 
-const DEGRADE_REASONS: DegradeReason[] = ['fell-back-to-rtmps', 'poor-uplink', 'audio-below-floor'];
-const END_REASONS: EndReason[] = ['operator-stopped', 'hold-window-expired', 'fatal-error'];
-const INTERRUPTIONS: Interruption[] = ['background', 'call', 'camera-in-use', 'system'];
-
-const EVERY_STATE: SessionState[] = [
-  { kind: 'idle' },
-  { kind: 'armed' },
-  { kind: 'connecting', transport: 'srt' },
-  { kind: 'publishing', transport: 'srt', sinceEpochMs: NOW },
-  ...DEGRADE_REASONS.map<SessionState>((reason) => ({
-    kind: 'degraded',
-    transport: 'srt',
-    reason,
-    sinceEpochMs: NOW,
-  })),
-  { kind: 'reconnecting', holdRemainingSeconds: 38, sinceEpochMs: NOW },
-  ...END_REASONS.map<SessionState>((reason) => ({ kind: 'ended', reason })),
-];
-
-describe('selectStatusLine', () => {
-  // A StatusLine truncation is silent — no error, no failing render — so the
-  // budget has to be asserted or the instruction quietly disappears. This is
-  // the test that would have caught "Check it…".
-  it.each(EVERY_STATE)('stays inside the copy budget for %o', (state) => {
-    const line = selectStatusLine(snapshot(state));
-
-    expect(line.length).toBeLessThanOrEqual(STATUS_LINE_BUDGET);
-  });
-
-  it.each(INTERRUPTIONS)('stays inside the copy budget while interrupted by %s', (kind) => {
-    const line = selectStatusLine(
-      snapshot({ kind: 'publishing', transport: 'srt', sinceEpochMs: NOW }, { interruption: kind }),
-    );
-
-    expect(line.length).toBeLessThanOrEqual(STATUS_LINE_BUDGET);
-  });
-
-  it.each(EVERY_STATE)('always says something for %o', (state) => {
-    expect(selectStatusLine(snapshot(state)).length).toBeGreaterThan(0);
-  });
-
-  // An outside interruption outranks the session copy: "Live" would be true
-  // about the transport and a lie about the broadcast.
-  it('prefers an interruption over the session line', () => {
-    const line = selectStatusLine(
-      snapshot(
-        { kind: 'publishing', transport: 'srt', sinceEpochMs: NOW },
-        { interruption: 'call' },
-      ),
-    );
-
-    expect(line).toContain('call');
-  });
-
-  // Thermal state belongs to the stage's edge note, not here. Saying it in
-  // both places put the same sentence on screen twice, worded differently.
-  it('does not mention thermal state, which the edge note owns', () => {
-    const line = selectStatusLine(
-      snapshot({ kind: 'publishing', transport: 'srt', sinceEpochMs: NOW }, { shed: 'encode' }),
-    );
-
-    expect(line).toBe('Live. Sound and picture going out.');
-  });
-
-  // One authority on the audio question: the line and the Go live control must
-  // not disagree between 0 and the floor.
-  it('agrees with the Go live gate about what counts as sound', () => {
-    const justUnder = selectStatusLine(
-      snapshot({ kind: 'armed' }, { audioLevel: AUDIO_FLOOR - 0.01 }),
-    );
-    const atFloor = selectStatusLine(snapshot({ kind: 'armed' }, { audioLevel: AUDIO_FLOOR }));
-
-    expect(justUnder).toContain('Check the mic');
-    expect(atFloor).toContain('Hold to go live');
-  });
-
-  it('carries the hold countdown native reports', () => {
-    const line = selectStatusLine(
-      snapshot({ kind: 'reconnecting', holdRemainingSeconds: 38, sinceEpochMs: NOW }),
-    );
-
-    expect(line).toBe('Signal lost. Holding 38s.');
-  });
-});
+const LIVE: SessionState = { kind: 'publishing', transport: 'srt', sinceEpochMs: NOW };
 
 describe('selectTally', () => {
   it.each([
     [{ kind: 'idle' } as SessionState, 'idle'],
-    [{ kind: 'ended', reason: 'operator-stopped' } as SessionState, 'idle'],
+    [{ kind: 'ended', reason: 'operator-stopped', durationMs: null } as SessionState, 'idle'],
     [{ kind: 'armed' } as SessionState, 'ready'],
-    [{ kind: 'publishing', transport: 'srt', sinceEpochMs: NOW } as SessionState, 'live'],
+    [LIVE, 'live'],
     [
       {
         kind: 'degraded',
@@ -136,7 +62,13 @@ describe('selectTally', () => {
       'trouble',
     ],
     [
-      { kind: 'reconnecting', holdRemainingSeconds: 9, sinceEpochMs: NOW } as SessionState,
+      {
+        kind: 'reconnecting',
+        cause: 'uplink-lost',
+        holdRemainingSeconds: 9,
+        holdWindowSeconds: 183,
+        sinceEpochMs: NOW,
+      } as SessionState,
       'trouble',
     ],
   ])('maps %o to %s', (state, expected) => {
@@ -151,10 +83,20 @@ describe('selectEngineStatus', () => {
     [{ kind: 'connecting', transport: 'srt' }, 'live'],
     [{ kind: 'publishing', transport: 'srt', sinceEpochMs: 1 }, 'live'],
     [{ kind: 'degraded', transport: 'rtmps', reason: 'poor-uplink', sinceEpochMs: 1 }, 'live'],
-    [{ kind: 'reconnecting', holdRemainingSeconds: 30, sinceEpochMs: 1 }, 'live'],
-    [{ kind: 'ended', reason: 'operator-stopped' }, 'stopped'],
-    [{ kind: 'ended', reason: 'hold-window-expired' }, 'failed'],
-    [{ kind: 'ended', reason: 'fatal-error' }, 'failed'],
+    [
+      {
+        kind: 'reconnecting',
+        cause: 'uplink-lost',
+        holdRemainingSeconds: 30,
+        holdWindowSeconds: 183,
+        sinceEpochMs: 1,
+      },
+      'live',
+    ],
+    [{ kind: 'ended', reason: 'operator-stopped', durationMs: null }, 'stopped'],
+    [{ kind: 'ended', reason: 'stopped-by-organiser', durationMs: 1 }, 'stopped'],
+    [{ kind: 'ended', reason: 'hold-window-expired', durationMs: null }, 'failed'],
+    [{ kind: 'ended', reason: 'fatal-error', durationMs: null }, 'failed'],
   ])('%j is %s', (state, status) => {
     expect(selectEngineStatus(snapshot(state))).toBe(status);
   });
@@ -167,10 +109,110 @@ describe('selectHoldsOrientation', () => {
     [{ kind: 'connecting', transport: 'srt' }, true],
     [{ kind: 'publishing', transport: 'srt', sinceEpochMs: 1 }, true],
     [{ kind: 'degraded', transport: 'rtmps', reason: 'poor-uplink', sinceEpochMs: 1 }, true],
-    [{ kind: 'reconnecting', holdRemainingSeconds: 30, sinceEpochMs: 1 }, true],
-    [{ kind: 'ended', reason: 'operator-stopped' }, false],
-    [{ kind: 'ended', reason: 'fatal-error' }, false],
+    [
+      {
+        kind: 'reconnecting',
+        cause: 'video-stalled',
+        holdRemainingSeconds: 30,
+        holdWindowSeconds: 183,
+        sinceEpochMs: 1,
+      },
+      true,
+    ],
+    [{ kind: 'ended', reason: 'operator-stopped', durationMs: null }, false],
+    [{ kind: 'ended', reason: 'fatal-error', durationMs: null }, false],
   ])('%j holds the lock: %s', (state, holds) => {
     expect(selectHoldsOrientation(snapshot(state))).toBe(holds);
+  });
+});
+
+describe('the descriptor selectors (D8: the snapshot carries the descriptor, never a secret)', () => {
+  const session = streamSession();
+  const armed = snapshot({ kind: 'armed' }, {}, session.descriptor);
+
+  it('read what the session was armed with', () => {
+    expect({
+      overlay: selectOverlayUrl(armed),
+      playback: selectPlaybackUrl(armed),
+      scoreUpdates: selectScoreUpdates(armed),
+      label: selectLabel(armed),
+      deadline: selectWarmingDeadlineMs(armed),
+    }).toEqual({
+      overlay: 'https://stg.seazn.club/overlay/fixtures/fake-fixture',
+      playback: 'https://video.example/fake/manifest/video.m3u8',
+      scoreUpdates: 'realtime',
+      label: 'Seazn XI v Fake CC',
+      deadline: Date.parse('2026-10-03T13:10:00Z'),
+    });
+  });
+
+  it('read null before an arm', () => {
+    const idle = snapshot({ kind: 'idle' });
+    expect([
+      selectOverlayUrl(idle),
+      selectPlaybackUrl(idle),
+      selectScoreUpdates(idle),
+      selectLabel(idle),
+      selectWarmingDeadlineMs(idle),
+    ]).toEqual([null, null, null, null, null]);
+  });
+
+  it('read no overlay when the server sent a /relay one (carried as null)', () => {
+    const relay = streamSession({
+      overlayUrl: 'https://stg.seazn.club/overlay/fixtures/fake-fixture/relay',
+    });
+    expect(relay.descriptor.overlayUrl).toBeNull();
+    expect(selectOverlayUrl(snapshot({ kind: 'armed' }, {}, relay.descriptor))).toBeNull();
+  });
+
+  it('give the same deadline number on every tick, so a 1 Hz report re-renders nothing', () => {
+    const later = { ...armed, reportedAtMs: NOW + 1000 };
+    expect(Object.is(selectWarmingDeadlineMs(armed), selectWarmingDeadlineMs(later))).toBe(true);
+  });
+});
+
+describe('no reading is null, never zero (plan B reports null off air)', () => {
+  it('passes a null egress through', () => {
+    expect(selectBitrateKbps(snapshot(LIVE, { bitrateKbps: null }))).toBeNull();
+    expect(selectBitrateKbps(snapshot(LIVE, { bitrateKbps: 2840 }))).toBe(2840);
+  });
+
+  it('types every rate native may not have as nullable', () => {
+    expectTypeOf<Telemetry['encodedVideoFps']>().toEqualTypeOf<number | null>();
+    expectTypeOf<Telemetry['audioPacketsPerSecond']>().toEqualTypeOf<number | null>();
+    expectTypeOf<Telemetry['deliveredLagMs']>().toEqualTypeOf<number | null>();
+    expectTypeOf<Telemetry['bitrateKbps']>().toEqualTypeOf<number | null>();
+    expectTypeOf<Telemetry['targetBitrateKbps']>().toEqualTypeOf<number | null>();
+  });
+});
+
+/**
+ * D40: each union equals plan B's `.wire` strings, copied here by hand from
+ * plan B's `Vocabulary.kt`. `expectTypeOf` is checked by `pnpm typecheck`
+ * (vitest strips types), so a rename on the TypeScript side fails the check;
+ * a rename on the Kotlin side has to change these literals too.
+ */
+describe('wire strings equal plan B’s (D40)', () => {
+  it('pins the state kinds and reasons', () => {
+    expectTypeOf<SessionState['kind']>().toEqualTypeOf<
+      'idle' | 'armed' | 'connecting' | 'publishing' | 'degraded' | 'reconnecting' | 'ended'
+    >();
+    expectTypeOf<Exclude<DegradeReason, 'audio-below-floor'>>().toEqualTypeOf<
+      'not-delivered' | 'camera-taken' | 'mic-silenced' | 'poor-uplink' | 'fell-back-to-rtmps'
+    >();
+    expectTypeOf<EndReason>().toEqualTypeOf<
+      'operator-stopped' | 'stopped-by-organiser' | 'hold-window-expired' | 'fatal-error'
+    >();
+    expectTypeOf<ReconnectCause>().toEqualTypeOf<
+      'uplink-lost' | 'video-stalled' | 'not-delivered'
+    >();
+  });
+
+  it('pins delivery, the shed ladder, the transports and the heartbeat results', () => {
+    expectTypeOf<Delivery>().toEqualTypeOf<'ok' | 'stalled' | 'unknown'>();
+    expectTypeOf<ShedStep>().toEqualTypeOf<'overlay-preview' | 'preview-framerate' | 'encode'>();
+    expectTypeOf<Transport>().toEqualTypeOf<'srt' | 'rtmps'>();
+    expectTypeOf<HeartbeatResult>().toEqualTypeOf<'ok' | 'failed' | 'session-over'>();
+    expectTypeOf<Telemetry['heartbeat']['lastResult']>().toEqualTypeOf<HeartbeatResult | null>();
   });
 });

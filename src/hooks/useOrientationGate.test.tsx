@@ -65,7 +65,9 @@ describe('useOrientationGate', () => {
     const { hook } = await gate('landscape', fakes);
     hold(fakes, SIDEWAYS, 0);
     hold(fakes, UPRIGHT, 1000);
-    act(() => fakes.engine.forceState({ kind: 'ended', reason: 'operator-stopped' }));
+    act(() =>
+      fakes.engine.forceState({ kind: 'ended', reason: 'operator-stopped', durationMs: null }),
+    );
     expect(hook.result.current).toEqual({ lock: 'portrait', card: 'turnSideways' });
     expect(fakes.orientationLock.locks).toEqual(['landscape', 'portrait']);
   });
