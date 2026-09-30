@@ -21,9 +21,19 @@ enum class CameraState(val slateOnAir: Boolean, val shownTaken: Boolean) {
    */
   RESUMING(slateOnAir = false, shownTaken = true),
 
-  /** The operator switched cameras, and the new one has not delivered a frame yet (ruling 14). */
+  /**
+   * The operator switched cameras, and the new one has not delivered a frame yet (ruling 14). LIVE
+   * holds for 3 s from the switch plus at most one tick, then the pipeline is rebuilt.
+   */
   SWITCHING(slateOnAir = false, shownTaken = false),
 }
+
+/**
+ * The next id of each kind of platform request. Carried from one session to the next — through
+ * [Phase.Ended] and [Phase.Idle] — so an answer the last session asked for never matches one the
+ * next session asks for (B6 review m3).
+ */
+data class Ids(val attempt: Int = 1, val descriptor: Int = 1, val beat: Int = 1, val playlist: Int = 1)
 
 /** What one operator session carries from arm to its end. */
 data class Session(
@@ -33,6 +43,7 @@ data class Session(
   val heartbeat: HeartbeatState,
   val delivery: DeliveryWatch,
   val nextAttemptId: Int = 1,
+  val descriptor: DescriptorAsks = DescriptorAsks(),
   val networkValidated: Boolean = false,
   /** Set by the first encoded frame, and kept across drops: the HUD's elapsed time never resets. */
   val liveSinceEpochMs: Long? = null,
@@ -62,7 +73,7 @@ sealed interface ConnectStep {
 sealed interface Phase {
   val name: String
 
-  data object Idle : Phase {
+  data class Idle(val ids: Ids = Ids()) : Phase {
     override val name = "idle"
   }
 
@@ -92,7 +103,7 @@ sealed interface Phase {
     override val name = "on-air"
   }
 
-  data class Ended(val reason: EndReason) : Phase {
+  data class Ended(val reason: EndReason, val ids: Ids) : Phase {
     override val name = "ended"
   }
 }
@@ -103,13 +114,27 @@ val Phase.session: Session?
       is Phase.Armed -> session
       is Phase.Connecting -> session
       is Phase.OnAir -> session
-      Phase.Idle, is Phase.Ended -> null
+      is Phase.Idle, is Phase.Ended -> null
     }
+
+/** The ids the next request of each kind takes, in any phase. */
+val Phase.ids: Ids
+  get() =
+    when (this) {
+      is Phase.Idle -> ids
+      is Phase.Ended -> ids
+      is Phase.Armed -> session.ids
+      is Phase.Connecting -> session.ids
+      is Phase.OnAir -> session.ids
+    }
+
+val Session.ids: Ids
+  get() = Ids(attempt = nextAttemptId, descriptor = descriptor.nextId, beat = heartbeat.nextId, playlist = delivery.nextRequestId)
 
 fun Phase.withSession(session: Session): Phase =
   when (this) {
     is Phase.Armed -> copy(session = session)
     is Phase.Connecting -> copy(session = session)
     is Phase.OnAir -> copy(session = session)
-    Phase.Idle, is Phase.Ended -> this
+    is Phase.Idle, is Phase.Ended -> this
   }

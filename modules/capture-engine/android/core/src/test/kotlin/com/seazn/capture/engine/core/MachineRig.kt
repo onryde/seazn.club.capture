@@ -6,7 +6,7 @@ package com.seazn.capture.engine.core
  * playlist fetches and heartbeats.
  */
 class MachineRig(val config: SessionConfig = Configs.valid()) {
-  var phase: Phase = Phase.Idle
+  var phase: Phase = Phase.Idle()
   var mono = 0L
   var wall = 1_790_000_000_000L
   val commands = mutableListOf<Command>()

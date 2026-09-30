@@ -67,5 +67,6 @@ sealed interface Input {
 
   data class HeartbeatAnswered(val beatId: Int, val response: HeartbeatResponse) : Input
 
-  data class DescriptorChecked(val result: DescriptorCheck) : Input
+  /** The answer to [Command.FetchDescriptor] [requestId]. Only the latest ask's answer is acted on. */
+  data class DescriptorChecked(val requestId: Int, val result: DescriptorCheck) : Input
 }

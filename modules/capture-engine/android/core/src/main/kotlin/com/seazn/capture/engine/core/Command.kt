@@ -45,8 +45,11 @@ sealed interface Command {
     override fun toString(): String = "PostHeartbeat(beatId=$beatId, url=$url, bearer=<${bearer.length} chars>, body=$body)"
   }
 
-  /** Fetch the descriptor again with the session's `tok` (spec §1: on every reconnect). */
-  data object FetchDescriptor : Command
+  /**
+   * Fetch the descriptor again with the session's `tok` (spec §1: on every reconnect), answered as
+   * [Input.DescriptorChecked] with the same [requestId].
+   */
+  data class FetchDescriptor(val requestId: Int) : Command
 
   /** Tear the capture session down: stream, camera, foreground service. */
   data class End(val reason: EndReason) : Command

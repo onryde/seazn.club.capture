@@ -15,7 +15,10 @@ class EngineTest {
   private val lines = mutableListOf<String>()
   private var onCommand: (Engine, Command) -> Unit = { _, _ -> }
 
-  private fun engine(reducer: (Phase, Input, Now) -> Step = SessionMachine::reduce): Engine {
+  private fun engine(
+    projection: (Phase, Now) -> Snapshot = Projection::snapshot,
+    reducer: (Phase, Input, Now) -> Step = SessionMachine::reduce,
+  ): Engine {
     lateinit var engine: Engine
     engine =
       Engine(
@@ -28,6 +31,7 @@ class EngineTest {
         snapshots = { published += clock.mono to it },
         record = SessionRecord { lines += it },
         reducer = reducer,
+        projection = projection,
       )
     return engine
   }
@@ -46,7 +50,7 @@ class EngineTest {
   fun `send returns before the input runs, and inputs run one at a time in order`() {
     val engine = engine()
     engine.send(Input.Arm(Configs.valid()))
-    assertEquals(Phase.Idle, engine.phase, "nothing runs until the scheduler does")
+    assertEquals(Phase.Idle(), engine.phase, "nothing runs until the scheduler does")
     // An adapter that answers synchronously: its answer is simply the next input.
     onCommand = { e, command -> if (command is Command.Connect) e.send(Input.Connected(command.attemptId)) }
     engine.send(Input.Start)
@@ -99,7 +103,7 @@ class EngineTest {
     scheduler.advanceBy(0)
     assertEquals(1, engine.commandFailures)
     assertTrue(lines.any { "command-failed" in it && "camera busy" in it })
-    assertEquals(Phase.Ended(EndReason.OPERATOR_STOPPED), engine.phase)
+    assertEquals(EndReason.OPERATOR_STOPPED, assertIs<Phase.Ended>(engine.phase).reason)
   }
 
   @Test
@@ -129,7 +133,7 @@ class EngineTest {
     val engine = engine { _, _, _ -> throw IllegalStateException("bug") }
     engine.send(Input.Start)
     scheduler.advanceBy(0)
-    assertEquals(Phase.Ended(EndReason.FATAL_ERROR), engine.phase)
+    assertEquals(Phase.Ended(EndReason.FATAL_ERROR, Ids()), engine.phase)
     assertTrue(Command.End(EndReason.FATAL_ERROR) in executed)
     assertTrue(lines.any { "engine-error" in it })
   }
@@ -215,7 +219,7 @@ class EngineTest {
     engine.send(Input.Start)
     engine.send(Input.Stop)
     scheduler.advanceBy(0)
-    assertEquals(Phase.Idle, engine.phase)
+    assertEquals(Phase.Idle(), engine.phase)
     assertTrue(executed.isEmpty())
     assertEquals(2, lines.count { """"kind":"intent-ignored"""" in it })
   }
@@ -273,11 +277,23 @@ class EngineTest {
     assertTrue("401 for Bearer ${SessionRecord.MASK}" in heartbeat, heartbeat)
   }
 
+  /** An adapter whose ingest refuses every connect, and whose descriptor fetch answers [result]. */
+  private fun refusedIngest(result: DescriptorCheck) {
+    onCommand = { e, command ->
+      when (command) {
+        is Command.Connect -> e.send(Input.ConnectFailed(command.attemptId, ConnectFailure.REFUSED, "publish rejected"))
+        is Command.FetchDescriptor -> e.send(Input.DescriptorChecked(command.requestId, result))
+        else -> Unit
+      }
+    }
+  }
+
   @Test
   fun `carry 12 an unreachable descriptor that quotes a secret is masked in the record`() {
     val engine = engine()
+    refusedIngest(DescriptorCheck.Unreachable("GET https://stg.seazn.club/c?tok=${Configs.TOKEN} timed out"))
     engine.send(Input.Arm(Configs.valid()))
-    engine.send(Input.DescriptorChecked(DescriptorCheck.Unreachable("GET https://stg.seazn.club/c?tok=${Configs.TOKEN} timed out")))
+    engine.send(Input.Start)
     scheduler.advanceBy(0)
     val descriptor = lines.single { """"kind":"descriptor"""" in it }
     assertFalse(Configs.TOKEN in descriptor, descriptor)
@@ -288,9 +304,10 @@ class EngineTest {
   fun `carry 12 an arm the machine ignores still protects its secrets`() {
     val other = SrtTarget("srt://live.cloudflare.com:778", "f0e1d2c3b4a5968778695a4b3c2d1e0f", "other+secret/9a8b7c", latencyMs = 2_000)
     val engine = engine()
+    refusedIngest(DescriptorCheck.Unreachable("srt://h?passphrase=other+secret/9a8b7c"))
     engine.send(Input.Arm(Configs.valid()))
     engine.send(Input.Arm(Configs.valid(primary = other)))
-    engine.send(Input.DescriptorChecked(DescriptorCheck.Unreachable("srt://h?passphrase=other+secret/9a8b7c")))
+    engine.send(Input.Start)
     scheduler.advanceBy(0)
     assertEquals(1, lines.count { """"kind":"intent-ignored"""" in it }, "the second arm was ignored")
     val descriptor = lines.single { """"kind":"descriptor"""" in it }
@@ -307,5 +324,50 @@ class EngineTest {
     engine.send(Input.Device(DeviceSample(null, null, 70, true, null, null)))
     scheduler.advanceBy(0)
     assertEquals(1, published.size, "still armed: the next tick carries the rest")
+  }
+
+  @Test
+  fun `B6 review m3 ids outlive a fatal error, so the next session's attempts are new`() {
+    val engine = engine { phase, input, now -> if (input == Input.SwitchCamera) error("bug") else SessionMachine.reduce(phase, input, now) }
+    engine.send(Input.Arm(Configs.valid()))
+    engine.send(Input.Start)
+    engine.send(Input.SwitchCamera)
+    engine.send(Input.Reset)
+    engine.send(Input.Arm(Configs.valid()))
+    engine.send(Input.Start)
+    scheduler.advanceBy(0)
+    assertEquals(listOf(1, 2), executed.filterIsInstance<Command.Connect>().map { it.attemptId })
+  }
+
+  /** A config no Kotlin caller can build: every field null. Only a bug on the platform's side makes one. */
+  private fun nullConfig(): SessionConfig {
+    val field = Class.forName("sun.misc.Unsafe").getDeclaredField("theUnsafe").apply { isAccessible = true }
+    val unsafe = field.get(null)
+    return unsafe.javaClass.getMethod("allocateInstance", Class::class.java).invoke(unsafe, SessionConfig::class.java) as SessionConfig
+  }
+
+  @Test
+  fun `B6 review m7 a throw from protecting an arm's secrets ends fatal-error, is recorded, and the tick carries on`() {
+    val engine = engine().apply { start() }
+    engine.send(Input.Arm(nullConfig()))
+    scheduler.advanceBy(0)
+    assertEquals(EndReason.FATAL_ERROR, assertIs<Phase.Ended>(engine.phase).reason, "never armed with its secrets unprotected")
+    assertEquals(1, lines.count { """"kind":"engine-error"""" in it })
+    scheduler.advanceBy(1_000)
+    assertEquals(listOf(0L, 500L, 1_000L), published.map { it.first })
+  }
+
+  @Test
+  fun `B6 review m7 a throw from the projection is counted, and the tick carries on`() {
+    var failing = true
+    val engine = engine(projection = { phase, now -> if (failing) error("projection") else Projection.snapshot(phase, now) }).apply { start() }
+    engine.send(Input.Arm(Configs.valid()))
+    scheduler.advanceBy(1_000)
+    assertIs<Phase.Armed>(engine.phase, "the input still ran")
+    assertEquals(3, engine.snapshotFailures, "the arm and two ticks")
+    assertTrue(published.isEmpty())
+    failing = false
+    scheduler.advanceBy(500)
+    assertEquals(listOf(1_500L), published.map { it.first })
   }
 }

@@ -20,12 +20,25 @@ object SessionMachine {
   /** A regulator cut this recent shows as `poor-uplink`, the same span a raise waits after a cut. */
   const val POOR_UPLINK_MS = BitrateRegulator.RAISE_AFTER_CUT_MS
 
-  fun reduce(phase: Phase, input: Input, now: Now): Step =
+  /**
+   * The tick runs every time-based rule in its own order. Any other input is applied only after the
+   * stall watchdog has judged the phase as it stands (B6 ruling C2): nothing lands between the
+   * LIVE gate closing and the rebuild, so no snapshot reads connecting there, and a switch in that
+   * gap cannot re-open LIVE.
+   */
+  fun reduce(phase: Phase, input: Input, now: Now): Step {
+    if (input == Input.Tick) return apply(phase, input, now)
+    val judged = Timers.judged(phase, now)
+    val step = apply(judged.phase, input, now)
+    return if (judged.commands.isEmpty()) step else step.copy(commands = judged.commands + step.commands)
+  }
+
+  private fun apply(phase: Phase, input: Input, now: Now): Step =
     when (input) {
       is Input.Arm -> arm(phase, input.config, now)
       Input.Start -> start(phase, now)
       Input.Stop -> if (phase.session == null) ignored(phase, "stop") else end(phase, EndReason.OPERATOR_STOPPED)
-      Input.Reset -> if (phase is Phase.Ended) Step(Phase.Idle, listOf(record("reset"))) else ignored(phase, "reset")
+      Input.Reset -> if (phase is Phase.Ended) Step(Phase.Idle(phase.ids), listOf(record("reset"))) else ignored(phase, "reset")
       Input.SwitchCamera -> Devices.switched(phase, now)
       Input.Tick -> Heartbeats.tick(Timers.tick(phase, now), now)
       is Input.Connected -> Transports.connected(phase, input.attemptId, now)
@@ -41,7 +54,7 @@ object SessionMachine {
       is Input.Device -> Devices.sampled(phase, input.sample)
       is Input.PlaylistFetched -> Deliveries.fetched(phase, input, now)
       is Input.HeartbeatAnswered -> Heartbeats.answered(phase, input)
-      is Input.DescriptorChecked -> descriptor(phase, input.result)
+      is Input.DescriptorChecked -> descriptor(phase, input)
     }
 
   internal fun ignored(phase: Phase, intent: String): Step =
@@ -49,7 +62,7 @@ object SessionMachine {
 
   internal fun end(phase: Phase, reason: EndReason, vararg fields: Pair<String, Any?>): Step {
     val liveMs = phase.session?.liveSinceEpochMs
-    return Step(Phase.Ended(reason), listOf(record("ended", "reason" to reason, "wasLive" to (liveMs != null), *fields), Command.End(reason)))
+    return Step(Phase.Ended(reason, phase.ids), listOf(record("ended", "reason" to reason, "wasLive" to (liveMs != null), *fields), Command.End(reason)))
   }
 
   private fun arm(phase: Phase, config: SessionConfig, now: Now): Step {
@@ -57,15 +70,19 @@ object SessionMachine {
     val problems = config.problems()
     if (problems.isNotEmpty()) {
       val refused = record("arm-refused", "problems" to problems.joinToString("; "))
-      return Step(Phase.Ended(EndReason.FATAL_ERROR), listOf(refused, Command.End(EndReason.FATAL_ERROR)))
+      return Step(Phase.Ended(EndReason.FATAL_ERROR, phase.ids), listOf(refused, Command.End(EndReason.FATAL_ERROR)))
     }
+    // Ids carry on from the last session (B6 review m3): its late answers never match this one's asks.
+    val ids = phase.ids
     val session =
       Session(
         config = config,
         fallback = FallbackPolicy(config.primary.transport, config.fallback?.transport),
         regulation = BitrateRegulator.sessionStarted(),
-        heartbeat = HeartbeatState(nextDueAtMs = now.monoMs),
-        delivery = DeliveryWatch(config.playbackUrl),
+        heartbeat = HeartbeatState(nextDueAtMs = now.monoMs, nextId = ids.beat),
+        delivery = DeliveryWatch(config.playbackUrl, nextRequestId = ids.playlist),
+        nextAttemptId = ids.attempt,
+        descriptor = DescriptorAsks(nextId = ids.descriptor),
       )
     val armed = record("armed", "sid" to config.sid, "transport" to config.primary.transport, "playbackUrl" to config.playbackUrl)
     return Step(Phase.Armed(session), listOf(armed))
@@ -82,13 +99,18 @@ object SessionMachine {
     return Step(phase.withSession(session.copy(networkValidated = validated)), listOf(record("network", "validated" to validated)))
   }
 
-  /** A 410 or a finished state on a reconnect's descriptor fetch is an organiser stop (spec §1). */
-  private fun descriptor(phase: Phase, result: DescriptorCheck): Step {
-    if (phase.session == null) return Step(phase)
-    return when (result) {
-      is DescriptorCheck.Over -> end(phase, EndReason.STOPPED_BY_ORGANISER, "endReason" to result.endReason)
-      DescriptorCheck.Live -> Step(phase, listOf(record("descriptor", "result" to "live")))
-      is DescriptorCheck.Unreachable -> Step(phase, listOf(record("descriptor", "result" to "unreachable", "message" to result.message)))
+  /**
+   * A 410 or a finished state on a reconnect's descriptor fetch is an organiser stop (spec §1). Only
+   * the answer to the ask in flight is acted on (B6 review I2): any other changes nothing.
+   */
+  private fun descriptor(phase: Phase, input: Input.DescriptorChecked): Step {
+    val session = phase.session ?: return Step(phase)
+    val asks = session.descriptor.answered(input.requestId) ?: return Step(phase)
+    val answered = phase.withSession(session.copy(descriptor = asks))
+    return when (val result = input.result) {
+      is DescriptorCheck.Over -> end(answered, EndReason.STOPPED_BY_ORGANISER, "endReason" to result.endReason)
+      DescriptorCheck.Live -> Step(answered, listOf(record("descriptor", "result" to "live")))
+      is DescriptorCheck.Unreachable -> Step(answered, listOf(record("descriptor", "result" to "unreachable", "message" to result.message)))
     }
   }
 }
@@ -143,34 +165,53 @@ internal object Transports {
     return failed(phase, input.failure, input.message, now)
   }
 
-  /** A failed connect: counted or not by the fallback policy, then a retry [SessionMachine.RETRY_MS] later. */
-  fun failed(phase: Phase.Connecting, failure: ConnectFailure, message: String?, now: Now): Step {
+  /**
+   * A failed connect: counted or not by the fallback policy, then a retry [SessionMachine.RETRY_MS]
+   * later. A [drop] before the connect answered is judged by the policy's drop rule with nothing
+   * published: the far end closing counts (F-P5-2's collapse), a local stop does not (B6 review m5).
+   */
+  fun failed(phase: Phase.Connecting, failure: ConnectFailure, message: String?, now: Now, drop: DropReason? = null): Step {
     val session = phase.session
-    val decision = session.fallback.connectFailed(failure, session.networkValidated)
-    val commands =
-      mutableListOf(
-        record(
-          "connect-failed",
-          "transport" to phase.transport,
-          "failure" to failure,
-          "validated" to session.networkValidated,
-          "counted" to decision.counted,
-          "message" to message,
-        )
-      )
+    val validated = session.networkValidated
+    val decision = if (drop == null) session.fallback.connectFailed(failure, validated) else session.fallback.dropped(drop, validated, publishedMs = 0)
+    val commands = mutableListOf(failedRecord(phase.transport, failure, drop, validated, decision.counted, message))
     if (decision.fellBack) commands += record("fell-back", "from" to phase.transport, "to" to decision.policy.current)
-    if (failure == ConnectFailure.REFUSED) commands += Command.FetchDescriptor
+    var next = session.copy(fallback = decision.policy)
+    // Ruling 15: refused ingest may mean the organiser stopped the session. B6 ruling C1 spaces them.
+    if (failure == ConnectFailure.REFUSED && next.descriptor.mayAsk(now.monoMs)) {
+      val (asked, fetch) = askDescriptor(next, now)
+      next = asked
+      commands += fetch
+    }
     val waiting = ConnectStep.Waiting(now.monoMs + SessionMachine.RETRY_MS)
-    return Step(phase.copy(session = session.copy(fallback = decision.policy), transport = decision.policy.current, step = waiting), commands)
+    return Step(phase.copy(session = next, transport = decision.policy.current, step = waiting), commands)
+  }
+
+  private fun failedRecord(transport: Transport, failure: ConnectFailure, drop: DropReason?, validated: Boolean, counted: Boolean, message: String?): Command {
+    val fields =
+      listOfNotNull(
+        "transport" to transport,
+        "failure" to failure,
+        drop?.let { "reason" to it },
+        "validated" to validated,
+        "counted" to counted,
+        "message" to message,
+      )
+    return record("connect-failed", *fields.toTypedArray())
+  }
+
+  private fun askDescriptor(session: Session, now: Now): Pair<Session, Command> {
+    val (asks, id) = session.descriptor.asked(now.monoMs)
+    return session.copy(descriptor = asks) to Command.FetchDescriptor(id)
   }
 
   fun dropped(phase: Phase, input: Input.Dropped, now: Now): Step {
     val step = (phase as? Phase.Connecting)?.step
     if (phase is Phase.Connecting && step is ConnectStep.Requested && step.attemptId == input.attemptId) {
-      return failed(phase, ConnectFailure.OTHER, input.message, now)
+      return failed(phase, ConnectFailure.OTHER, input.message, now, drop = input.reason)
     }
     if (phase !is Phase.OnAir || phase.attemptId != input.attemptId) return Step(phase)
-    val session = phase.session
+    val (session, fetch) = askDescriptor(phase.session, now)
     val publishedMs = now.monoMs - phase.connectedAtMs
     val decision = session.fallback.dropped(input.reason, session.networkValidated, publishedMs)
     val outage = phase.outage ?: outageFor(session, phase.transport, now, ReconnectCause.UPLINK_LOST)
@@ -185,7 +226,7 @@ internal object Transports {
           "publishedMs" to publishedMs,
           "message" to input.message,
         ),
-        Command.FetchDescriptor,
+        fetch,
       )
     if (decision.fellBack) commands += record("fell-back", "from" to phase.transport, "to" to decision.policy.current)
     val next = session.copy(fallback = decision.policy, regulation = BitrateRegulator.afterDrop(session.regulation, now.monoMs))
@@ -256,7 +297,7 @@ internal object Timers {
     when (phase) {
       is Phase.Connecting -> connecting(phase, now)
       is Phase.OnAir -> onAir(phase, now)
-      Phase.Idle, is Phase.Armed, is Phase.Ended -> Step(phase)
+      is Phase.Idle, is Phase.Armed, is Phase.Ended -> Step(phase)
     }
 
   private fun connecting(connecting: Phase.Connecting, now: Now): Step {
@@ -274,6 +315,13 @@ internal object Timers {
           failed.copy(commands = listOf(Command.Disconnect(step.attemptId)) + failed.commands)
         }
     }
+  }
+
+  /** The no-video judgement alone, as it stands before an input other than the tick (B6 ruling C2). */
+  fun judged(phase: Phase, now: Now): Step {
+    if (phase !is Phase.OnAir) return Step(phase)
+    val verdict = phase.watchdog.tick(now.monoMs, phase.session.camera.slateOnAir).second
+    return if (verdict is StallVerdict.Rebuild) rebuild(phase, verdict, now) else Step(phase)
   }
 
   private fun onAir(phase: Phase.OnAir, now: Now): Step {
@@ -350,17 +398,21 @@ internal object Devices {
   /**
    * The operator's switch (ruling 14). On air, the stall watchdog starts a fresh window, so the
    * switch's frame pause is neither a no-video nor a rate-floor rebuild, and the session's LIVE state
-   * holds until the new camera's first frame. Only a camera that has delivered a frame is switched
-   * that way: before the first frame, F-P5-6's 5 s grace already covers the pause. A re-baseline
-   * clears the last frame, and the camera is ours again in the step that brings the next one, so a
-   * second switch before the new camera's first frame finds no frame and keeps the first one's
-   * window: LIVE with no new frame is bounded by 3 s from the first switch.
+   * holds until the new camera's first frame. Only while frames advance is a switch handled that
+   * way (B6 review I1): before the first frame, F-P5-6's 5 s grace already covers the pause, and a
+   * picture already past its stall window was judged a rebuild before this input (B6 ruling C2). A
+   * re-baseline clears the last frame, and the camera is ours again in the step that brings the next
+   * one, so a second switch before the new camera's first frame keeps the first one's window.
+   *
+   * The owner-visible bound (B6 review m4): a switch whose camera never delivers holds LIVE for 3 s
+   * from the first switch, plus at most one tick — the next input at or after 3 s rebuilds, and the
+   * tick is an input every [Engine.TICK_MS].
    */
   fun switched(phase: Phase, now: Now): Step {
     val session = phase.session ?: return SessionMachine.ignored(phase, "switch-camera")
     if (session.camera.slateOnAir) return SessionMachine.ignored(phase, "switch-camera")
     val commands = listOf(Command.SwitchCamera, record("camera-switched"))
-    if (phase !is Phase.OnAir || phase.watchdog.lastAdvanceAtMs == null) return Step(phase, commands)
+    if (phase !is Phase.OnAir || !phase.watchdog.advancing(now.monoMs)) return Step(phase, commands)
     val switching = phase.copy(session = session.copy(camera = CameraState.SWITCHING), watchdog = phase.watchdog.rebaselined(now.monoMs))
     return Step(switching, commands)
   }

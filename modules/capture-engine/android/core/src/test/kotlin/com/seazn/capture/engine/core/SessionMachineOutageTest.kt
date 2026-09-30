@@ -106,14 +106,14 @@ class SessionMachineOutageTest {
   fun `every reconnect fetches the descriptor again`() {
     val rig = MachineRig().live()
     rig.send(Input.Dropped(1, DropReason.ENDPOINT_CLOSED, null))
-    assertEquals(listOf(Command.FetchDescriptor), rig.sent<Command.FetchDescriptor>())
+    assertEquals(listOf(Command.FetchDescriptor(1)), rig.sent<Command.FetchDescriptor>())
   }
 
   @Test
   fun `a descriptor that says the session is over ends stopped-by-organiser`() {
     val rig = MachineRig().live()
     rig.send(Input.Dropped(1, DropReason.ENDPOINT_CLOSED, null))
-    rig.send(Input.DescriptorChecked(DescriptorCheck.Over("stopped")))
+    rig.send(Input.DescriptorChecked(1, DescriptorCheck.Over("stopped")))
     assertEquals(SnapshotState.Ended(EndReason.STOPPED_BY_ORGANISER), rig.state)
     assertEquals(Command.End(EndReason.STOPPED_BY_ORGANISER), rig.sent<Command.End>().single())
   }
@@ -124,7 +124,7 @@ class SessionMachineOutageTest {
     rig.send(Input.Start)
     rig.send(Input.ConnectFailed(1, ConnectFailure.REFUSED, "publish rejected"))
     assertEquals(1, rig.sent<Command.FetchDescriptor>().size)
-    rig.send(Input.DescriptorChecked(DescriptorCheck.Live))
+    rig.send(Input.DescriptorChecked(1, DescriptorCheck.Live))
     rig.advance(2_000)
     assertEquals(2, rig.connects().size)
   }
@@ -254,15 +254,109 @@ class SessionMachineOutageTest {
     assertEquals(1_500, snapshot.targetBitrateKbps, "the start target (decision 3)")
   }
 
-  /** Answers every connect with a refusal, and every descriptor fetch with [answer]. */
-  private fun MachineRig.refusedConnects(ms: Long, answer: DescriptorCheck?) =
+  /**
+   * Answers every connect with a refusal, and every descriptor fetch at once with [answer] (none when
+   * null). Returns when each fetch was asked for.
+   */
+  private fun MachineRig.refusedConnects(ms: Long, answer: DescriptorCheck?): List<Long> {
+    val asked = mutableListOf<Long>()
     advance(ms) {
       val step = (phase as? Phase.Connecting)?.step
       if (step is ConnectStep.Requested) {
-        val asked = send(Input.ConnectFailed(step.attemptId, ConnectFailure.REFUSED, "publish rejected"))
-        if (answer != null && Command.FetchDescriptor in asked) send(Input.DescriptorChecked(answer))
+        val commands = send(Input.ConnectFailed(step.attemptId, ConnectFailure.REFUSED, "publish rejected"))
+        val fetch = commands.filterIsInstance<Command.FetchDescriptor>().singleOrNull()
+        if (fetch != null) asked += mono
+        if (answer != null && fetch != null) send(Input.DescriptorChecked(fetch.requestId, answer))
       }
     }
+    return asked
+  }
+
+  @Test
+  fun `B6 ruling C1 refused connects before the first frame ask the descriptor at most once per 10 s`() {
+    val rig = MachineRig().armed()
+    rig.send(Input.Start)
+    assertEquals(listOf(500L, 10_500L, 20_500L, 30_500L, 40_500L, 50_500L), rig.refusedConnects(60_000, DescriptorCheck.Live))
+    assertEquals(30, rig.records("connect-failed").size, "refused every 2 s")
+  }
+
+  @Test
+  fun `B6 ruling C1 never with an ask in flight - an unanswered ask holds the next until it is given up at 30 s`() {
+    val rig = MachineRig().armed()
+    rig.send(Input.Start)
+    assertEquals(listOf(500L, 30_500L), rig.refusedConnects(60_000, answer = null))
+  }
+
+  @Test
+  fun `B6 ruling C1 within an outage the drop asks, and the refusals after it keep the spacing`() {
+    val rig = MachineRig().live()
+    rig.send(Input.Dropped(1, DropReason.ENDPOINT_CLOSED, null))
+    assertEquals(listOf(Command.FetchDescriptor(1)), rig.sent<Command.FetchDescriptor>(), "the drop asks at 1 s")
+    rig.send(Input.DescriptorChecked(1, DescriptorCheck.Live))
+    assertEquals(listOf(11_000L, 21_000L, 31_000L), rig.refusedConnects(30_000, DescriptorCheck.Live))
+  }
+
+  @Test
+  fun `B6 review I2 a late descriptor answer from the last session changes nothing in the next`() {
+    val rig = MachineRig().live()
+    rig.send(Input.Dropped(1, DropReason.ENDPOINT_CLOSED, null))
+    rig.send(Input.Stop)
+    rig.send(Input.Reset)
+    rig.armed()
+    assertEquals(emptyList(), rig.send(Input.DescriptorChecked(1, DescriptorCheck.Over("no_inbound_timeout"))))
+    assertIs<Phase.Armed>(rig.phase)
+    rig.send(Input.Start)
+    rig.send(Input.ConnectFailed(rig.attempt!!, ConnectFailure.REFUSED, "publish rejected"))
+    assertEquals(listOf(1, 2), rig.sent<Command.FetchDescriptor>().map { it.requestId }, "ids carry on across sessions")
+    assertEquals(emptyList(), rig.send(Input.DescriptorChecked(1, DescriptorCheck.Over("no_inbound_timeout"))))
+    assertIs<Phase.Connecting>(rig.phase)
+    rig.send(Input.DescriptorChecked(2, DescriptorCheck.Over("stopped")))
+    assertEquals(SnapshotState.Ended(EndReason.STOPPED_BY_ORGANISER), rig.state)
+  }
+
+  @Test
+  fun `B6 review I2 an answer nobody asked for changes nothing`() {
+    val armed = MachineRig().armed()
+    assertEquals(emptyList(), armed.send(Input.DescriptorChecked(1, DescriptorCheck.Over("stopped"))))
+    assertIs<Phase.Armed>(armed.phase)
+    val live = MachineRig().live()
+    assertEquals(emptyList(), live.send(Input.DescriptorChecked(1, DescriptorCheck.Over("stopped"))))
+    assertIs<SnapshotState.Publishing>(live.state)
+  }
+
+  @Test
+  fun `B6 review I2 only the latest ask's answer counts, and only once`() {
+    val rig = MachineRig().live()
+    rig.send(Input.Dropped(1, DropReason.ENDPOINT_CLOSED, null))
+    rig.advance(2_000)
+    rig.send(Input.Connected(2))
+    rig.advance(1_000)
+    rig.send(Input.Dropped(2, DropReason.ENDPOINT_CLOSED, null))
+    assertEquals(listOf(1, 2), rig.sent<Command.FetchDescriptor>().map { it.requestId }, "a drop asks, whatever is in flight")
+    assertEquals(emptyList(), rig.send(Input.DescriptorChecked(1, DescriptorCheck.Over("stopped"))), "superseded")
+    rig.send(Input.DescriptorChecked(2, DescriptorCheck.Live))
+    assertEquals(1, rig.records("descriptor").size)
+    assertEquals(emptyList(), rig.send(Input.DescriptorChecked(2, DescriptorCheck.Over("stopped"))), "a second answer to one ask")
+    assertIs<SnapshotState.Reconnecting>(rig.state)
+  }
+
+  @Test
+  fun `B6 review m5 - F-P5-2 a far-end close mid-connect counts toward the three, and a local stop does not`() {
+    val cases = listOf(DropReason.ENDPOINT_CLOSED to true, DropReason.INPUTS_STOPPED to false, DropReason.REQUESTED to false)
+    for ((reason, counted) in cases) {
+      val rig = MachineRig().armed()
+      rig.send(Input.Start)
+      repeat(3) {
+        rig.send(Input.Dropped(rig.attempt!!, reason, "gone"))
+        rig.advance(2_000)
+      }
+      val failed = rig.records("connect-failed")
+      assertEquals(List(3) { counted }, failed.map { it.field("counted") }, "$reason")
+      assertEquals(List(3) { reason }, failed.map { it.field("reason") }, "$reason")
+      val srt = List(3) { Transport.SRT }
+      assertEquals(srt + if (counted) Transport.RTMPS else Transport.SRT, rig.connects().map { it.target.transport }, "$reason")
+    }
+  }
 
   @Test
   fun `ruling 15 refused ingest alone never ends a live session - the hold's end does`() {
@@ -271,7 +365,7 @@ class SessionMachineOutageTest {
       rig.send(Input.Dropped(1, DropReason.ENDPOINT_CLOSED, null))
       rig.refusedConnects(182_500, answer)
       assertIs<SnapshotState.Reconnecting>(rig.state, "answer $answer")
-      assertTrue(rig.sent<Command.FetchDescriptor>().size > 1, "each refusal asks the descriptor")
+      assertTrue(rig.sent<Command.FetchDescriptor>().size > 1, "refusals keep asking the descriptor, 10 s apart")
       rig.refusedConnects(500, answer)
       assertEquals(SnapshotState.Ended(EndReason.HOLD_WINDOW_EXPIRED), rig.state, "answer $answer")
     }
@@ -281,11 +375,11 @@ class SessionMachineOutageTest {
   fun `ruling 15 a refused first connect ends stopped-by-organiser only when the descriptor says so`() {
     val rig = MachineRig().armed()
     rig.send(Input.Start)
-    rig.send(Input.ConnectFailed(1, ConnectFailure.REFUSED, "publish rejected"))
-    rig.send(Input.DescriptorChecked(DescriptorCheck.Unreachable("timeout")))
-    rig.send(Input.DescriptorChecked(DescriptorCheck.Live))
+    rig.refusedConnects(10_000, DescriptorCheck.Unreachable("timeout"))
+    rig.refusedConnects(10_000, DescriptorCheck.Live)
     assertIs<Phase.Connecting>(rig.phase)
-    rig.send(Input.DescriptorChecked(DescriptorCheck.Over("stopped")))
+    assertEquals(2, rig.sent<Command.FetchDescriptor>().size)
+    rig.refusedConnects(10_000, DescriptorCheck.Over("stopped"))
     assertEquals(SnapshotState.Ended(EndReason.STOPPED_BY_ORGANISER), rig.state)
     assertEquals("stopped", rig.records("ended").single().field("endReason"))
   }

@@ -34,8 +34,9 @@ class SessionMachineDeviceTest {
     assertEquals(listOf(Command.ReopenCamera), rig.sent<Command.ReopenCamera>())
     rig.send(Input.CameraReopened(ok = true))
     assertEquals(listOf(Command.Slate(true), Command.Slate(false)), rig.sent<Command.Slate>())
-    rig.advance(2_500, videoPerStep = 0)
+    rig.advance(2_000, videoPerStep = 0)
     assertTrue(rig.sent<Command.Rebuild>().isEmpty(), "the reopened camera gets 3 s")
+    // Its first frame at 13.5 s, 2.5 s after the reopen. One at 3 s would be late: C2 judges first.
     rig.advance(1_000)
     assertIs<SnapshotState.Publishing>(rig.state)
   }
@@ -47,6 +48,53 @@ class SessionMachineDeviceTest {
     rig.send(Input.CameraReleased)
     rig.send(Input.CameraReopened(ok = false))
     assertEquals(1, rig.sent<Command.Rebuild>().size)
+    assertEquals(false, rig.records("camera-reopened").single().field("ok"), "the record says it failed")
+  }
+
+  /** Live, the camera taken, the uplink dropped, then the camera released and its reopen answered [ok]. */
+  private fun reopenedWhileReconnecting(ok: Boolean): MachineRig {
+    val rig = MachineRig().live()
+    rig.send(Input.CameraContended)
+    rig.send(Input.Dropped(1, DropReason.ENDPOINT_CLOSED, null))
+    rig.send(Input.CameraReleased)
+    rig.send(Input.CameraReopened(ok))
+    return rig
+  }
+
+  @Test
+  fun `B6 review I4 a reopen answered while reconnecting gives the camera back, and the next attempt reads LIVE on frames`() {
+    for (ok in listOf(true, false)) {
+      val rig = reopenedWhileReconnecting(ok)
+      assertEquals(CameraState.OWN, rig.phase.session?.camera, "ok=$ok")
+      assertEquals(listOf(Command.Slate(on = true), Command.Slate(on = false)), rig.sent<Command.Slate>(), "ok=$ok")
+      assertEquals(ok, rig.records("camera-reopened").single().field("ok"))
+      assertTrue(rig.sent<Command.Rebuild>().isEmpty(), "off air there is no pipeline to rebuild: ok=$ok")
+      rig.advance(2_000)
+      rig.send(Input.Connected(2))
+      rig.advance(1_000)
+      assertIs<SnapshotState.Publishing>(rig.state, "not camera-taken: ok=$ok")
+    }
+  }
+
+  @Test
+  fun `B6 review I4 after a reopen answered off air, a camera that shows nothing is rebuilt, not held`() {
+    val rig = reopenedWhileReconnecting(ok = true)
+    rig.advance(2_000)
+    rig.send(Input.Connected(2))
+    rig.advance(5_000, feeding = false)
+    assertEquals(StallCause.NO_FIRST_FRAME, rig.records("video-stalled").single().field("cause"))
+  }
+
+  @Test
+  fun `B6 review I4 a reopen answered while armed gives the preview camera back`() {
+    val rig = MachineRig().armed()
+    rig.send(Input.CameraContended)
+    rig.send(Input.CameraReleased)
+    rig.send(Input.CameraReopened(ok = true))
+    assertEquals(CameraState.OWN, rig.phase.session?.camera)
+    assertEquals(listOf(Command.Slate(on = true), Command.Slate(on = false)), rig.sent<Command.Slate>())
+    rig.send(Input.SwitchCamera)
+    assertEquals(listOf(Command.SwitchCamera), rig.sent<Command.SwitchCamera>(), "a camera of ours to switch again")
   }
 
   @Test
@@ -153,11 +201,11 @@ class SessionMachineDeviceTest {
     rig.send(Input.CameraReleased)
     rig.send(Input.CameraReopened(ok = true))
     val states = mutableListOf<SnapshotState>()
-    rig.advance(2_500, videoPerStep = 0) { states += rig.state }
+    rig.advance(2_000, videoPerStep = 0) { states += rig.state }
     val held = SnapshotState.Degraded(Transport.SRT, listOf(DegradeReason.CAMERA_TAKEN), 1_790_000_001_000)
-    assertEquals(List<SnapshotState>(5) { held }, states)
+    assertEquals(List<SnapshotState>(4) { held }, states)
     rig.advance(500)
-    assertIs<SnapshotState.Publishing>(rig.state, "the reopened camera's first frame at 14 s")
+    assertIs<SnapshotState.Publishing>(rig.state, "the reopened camera's first frame at 13.5 s")
     assertEquals(1, rig.records("camera-resumed").size)
   }
 

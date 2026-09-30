@@ -79,7 +79,7 @@ class SessionMachineLifecycleTest {
     rig.send(Input.Stop)
     assertIs<Phase.Ended>(rig.phase)
     rig.send(Input.Reset)
-    assertEquals(Phase.Idle, rig.phase)
+    assertIs<Phase.Idle>(rig.phase)
     rig.send(Input.Arm(Configs.valid()))
     assertIs<Phase.Armed>(rig.phase)
   }
@@ -186,6 +186,7 @@ class SessionMachineLifecycleTest {
   fun `facts that land after the end change nothing and ask nothing`() {
     val rig = MachineRig().live()
     rig.send(Input.Stop)
+    val ended = rig.phase
     val facts =
       listOf(
         Input.Frames(1, 99, 99),
@@ -200,25 +201,27 @@ class SessionMachineLifecycleTest {
         Input.Device(DeviceSample(3, null, 50, false, null, null)),
         Input.PlaylistFetched(1, FetchResult.NoContent),
         Input.HeartbeatAnswered(1, HeartbeatResponse.Answered(200, "ending", "stopped")),
-        Input.DescriptorChecked(DescriptorCheck.Over("stopped")),
+        Input.DescriptorChecked(1, DescriptorCheck.Over("stopped")),
         Input.Tick,
       )
     for (fact in facts) assertEquals(emptyList(), rig.send(fact), "$fact")
-    assertEquals(Phase.Ended(EndReason.OPERATOR_STOPPED), rig.phase)
+    assertEquals(EndReason.OPERATOR_STOPPED, assertIs<Phase.Ended>(ended).reason)
+    assertEquals(ended, rig.phase)
   }
 
   @Test
   fun `ruling 14 a camera switch asks the platform, and its paused picture is not rebuilt`() {
     val rig = MachineRig().live()
-    rig.advance(3_000)
+    rig.advance(3_000, videoPerStep = 12)
     rig.send(Input.SwitchCamera)
     assertEquals(listOf(Command.SwitchCamera), rig.sent<Command.SwitchCamera>())
     assertEquals(1, rig.records("camera-switched").size)
-    // F-P5-9's window over a 2.5 s pause would read 15 frames in 3 s: 5 a second, under the floor.
-    // The switch starts a fresh window, so the pause is never rated.
+    // At 24 fps, F-P5-9's window over the switch's 2.5 s gap (the new camera's first frame at 6.5 s)
+    // would read 24 frames in 3 s: 8 a second, under the floor. The switch starts a fresh window, so
+    // the pause is never rated. A first frame 3 s after the switch would be late (C2).
     val states = mutableListOf<SnapshotState>()
-    rig.advance(2_500, videoPerStep = 0) { states += rig.state }
-    rig.advance(1_000) { states += rig.state }
+    rig.advance(2_000, videoPerStep = 0) { states += rig.state }
+    rig.advance(1_000, videoPerStep = 12) { states += rig.state }
     assertTrue(rig.sent<Command.Rebuild>().isEmpty(), "rebuilt: ${rig.records("video-stalled")}")
     assertTrue(states.all { it is SnapshotState.Publishing }, "LIVE holds through the operator's own switch: $states")
   }
@@ -294,7 +297,7 @@ class SessionMachineLifecycleTest {
     val rig = MachineRig()
     rig.send(Input.Stop)
     rig.send(Input.Reset)
-    assertEquals(Phase.Idle, rig.phase)
+    assertEquals(Phase.Idle(), rig.phase)
     assertEquals(listOf("stop" to "idle", "reset" to "idle"), rig.records("intent-ignored").map { it.field("intent") to it.field("phase") })
     assertTrue(rig.sent<Command.End>().isEmpty())
   }
@@ -316,16 +319,160 @@ class SessionMachineLifecycleTest {
     }
   }
 
-  @Test
-  fun `F-P5-6 the LIVE gate closes 3 s after the last frame, even before the tick rebuilds`() {
+  /** Live, the picture stopped at 1 s, and time moved to 4 s with no input: the tick at 4 s has not run. */
+  private fun gateJustClosed(): MachineRig {
     val rig = MachineRig().live()
     rig.advance(2_500, videoPerStep = 0)
     assertIs<SnapshotState.Publishing>(rig.state, "3.5 s: 2.5 s since the last frame at 1 s")
-    // 4 s, before the tick at 4 s runs: an input landing here must not read LIVE.
     rig.mono += 500
     rig.wall += 500
-    val state = rig.state
-    assertFalse(state is SnapshotState.Publishing || state is SnapshotState.Degraded, "$state")
+    return rig
+  }
+
+  @Test
+  fun `B6 ruling C2 the LIVE gate closes 3 s after the last frame, and the next input of any kind is judged a rebuild first`() {
+    val inputs =
+      listOf(
+        Input.Frames(1, 30, 999),
+        Input.Link(1, LinkCounters(1, 1, 0, 0, 0, 20, 40, null)),
+        Input.Network(false),
+        Input.MicSilenced(true),
+        Input.Device(DeviceSample(1, null, 50, false, null, null)),
+        Input.PlaylistFetched(1, FetchResult.NoContent),
+        Input.HeartbeatAnswered(1, HeartbeatResponse.Failed("timeout")),
+        Input.DescriptorChecked(1, DescriptorCheck.Live),
+        Input.CameraContended,
+        Input.Start,
+      )
+    for (input in inputs) {
+      val rig = gateJustClosed()
+      val state = rig.state
+      assertFalse(state is SnapshotState.Publishing || state is SnapshotState.Degraded, "the gate alone, with no input: $state")
+      rig.send(input)
+      val reconnecting = assertIs<SnapshotState.Reconnecting>(rig.state, "$input")
+      assertEquals(ReconnectCause.VIDEO_STALLED, reconnecting.cause, "$input")
+      assertEquals(StallCause.NO_VIDEO, rig.records("video-stalled").single().field("cause"), "$input")
+      assertEquals(1, rig.sent<Command.Rebuild>().size, "$input")
+    }
+  }
+
+  @Test
+  fun `B6 ruling C2 a frame that lands after the window closed is late - the rebuild was judged first`() {
+    val rig = gateJustClosed()
+    rig.send(Input.Frames(1, 45, 999))
+    assertEquals(3_000L, rig.records("video-stalled").single().field("msSinceAdvance"))
+    assertTrue(rig.records("resumed").isEmpty())
+    assertIs<SnapshotState.Reconnecting>(rig.state)
+  }
+
+  @Test
+  fun `B6 review I1 a switch after the LIVE gate closed cannot re-open LIVE`() {
+    val rig = gateJustClosed()
+    rig.send(Input.SwitchCamera)
+    assertEquals(ReconnectCause.VIDEO_STALLED, assertIs<SnapshotState.Reconnecting>(rig.state).cause)
+    assertEquals(listOf(Command.SwitchCamera), rig.sent<Command.SwitchCamera>(), "the operator's switch still goes")
+    assertTrue(rig.commands.indexOfFirst { it is Command.Rebuild } < rig.commands.indexOf(Command.SwitchCamera), "judged first")
+    val states = mutableListOf<SnapshotState>()
+    rig.advance(3_000, videoPerStep = 0) { states += rig.state }
+    assertTrue(states.none { it is SnapshotState.Publishing || it is SnapshotState.Degraded }, "$states")
+  }
+
+  /** Live with frames to 4 s, then a switch at 4.2 s, off the 500 ms tick grid; time is back on it at 4.5 s. */
+  private fun switchedOffGrid(): MachineRig {
+    val rig = MachineRig().live()
+    rig.advance(3_000)
+    rig.mono += 200
+    rig.wall += 200
+    rig.send(Input.SwitchCamera)
+    rig.mono += 300
+    rig.wall += 300
+    return rig
+  }
+
+  @Test
+  fun `B6 review m4 a switch holds LIVE for 3 s plus at most one tick`() {
+    val rig = switchedOffGrid()
+    val states = mutableListOf<SnapshotState>()
+    rig.advance(2_500, feeding = false) { states += rig.state }
+    assertEquals(5, states.size)
+    assertTrue(states.all { it is SnapshotState.Publishing }, "ticks at 5.0 to 7.0 s: $states")
+    // 7.2 s is 3 s after the switch. With no other input, the tick at 7.5 s is the first to judge it.
+    rig.advance(500, feeding = false)
+    assertEquals(ReconnectCause.VIDEO_STALLED, assertIs<SnapshotState.Reconnecting>(rig.state).cause)
+    assertEquals(3_300L, rig.records("video-stalled").single().field("msSinceAdvance"))
+  }
+
+  @Test
+  fun `B6 review m4 any input from 3 s after the switch closes LIVE without waiting for the tick`() {
+    val rig = switchedOffGrid()
+    rig.advance(2_500, feeding = false)
+    rig.mono += 200
+    rig.wall += 200
+    assertIs<SnapshotState.Publishing>(rig.state, "7.2 s, projected with no input")
+    rig.send(Input.Network(true))
+    assertEquals(ReconnectCause.VIDEO_STALLED, assertIs<SnapshotState.Reconnecting>(rig.state).cause)
+    assertEquals(3_000L, rig.records("video-stalled").single().field("msSinceAdvance"))
+  }
+
+  @Test
+  fun `B6 review m3 attempt ids never repeat across sessions, so a late connect from the last one is closed`() {
+    val rig = MachineRig().armed()
+    rig.send(Input.Start)
+    rig.send(Input.Stop)
+    rig.send(Input.Reset)
+    rig.armed()
+    rig.send(Input.Start)
+    assertEquals(listOf(1, 2), rig.connects().map { it.attemptId })
+    rig.send(Input.Connected(1))
+    assertEquals(listOf(Command.Disconnect(1)), rig.sent<Command.Disconnect>(), "the first session's late answer")
+    assertEquals(ConnectStep.Requested(2, 0), assertIs<Phase.Connecting>(rig.phase).step)
+    rig.send(Input.Connected(2))
+    assertIs<Phase.OnAir>(rig.phase)
+  }
+
+  @Test
+  fun `B6 review m3 ids outlive a refused arm too`() {
+    val rig = MachineRig().armed()
+    rig.send(Input.Start)
+    rig.send(Input.Stop)
+    rig.send(Input.Reset)
+    val refused =
+      SessionConfig("sess_42", Configs.TOKEN, Configs.srt, Configs.rtmps, mapOf(Transport.SRT to 183, Transport.RTMPS to 180), "", "https://h/", "1.0.0")
+    rig.send(Input.Arm(refused))
+    assertEquals(SnapshotState.Ended(EndReason.FATAL_ERROR), rig.state, "refused")
+    rig.send(Input.Reset)
+    rig.armed()
+    rig.send(Input.Start)
+    assertEquals(listOf(1, 2), rig.connects().map { it.attemptId })
+  }
+
+  @Test
+  fun `B6 review m3 a late heartbeat answer from the last session changes nothing in the next`() {
+    val rig = MachineRig().armed()
+    rig.advance(500)
+    rig.send(Input.Stop)
+    rig.send(Input.Reset)
+    rig.armed()
+    rig.advance(500)
+    assertEquals(listOf(1, 2), rig.sent<Command.PostHeartbeat>().map { it.beatId })
+    assertEquals(emptyList(), rig.send(Input.HeartbeatAnswered(1, HeartbeatResponse.Answered(410, null, null))))
+    assertIs<Phase.Armed>(rig.phase)
+    rig.send(Input.HeartbeatAnswered(2, HeartbeatResponse.Answered(410, null, null)))
+    assertEquals(SnapshotState.Ended(EndReason.STOPPED_BY_ORGANISER), rig.state)
+  }
+
+  @Test
+  fun `B6 review m3 playlist request ids carry on into the next session`() {
+    val rig = MachineRig().live()
+    rig.advance(1_000)
+    val first = rig.sent<Command.FetchPlaylist>().map { it.requestId }
+    rig.send(Input.Stop)
+    rig.send(Input.Reset)
+    rig.live()
+    rig.advance(1_000)
+    val second = rig.sent<Command.FetchPlaylist>().map { it.requestId } - first.toSet()
+    assertTrue(first.isNotEmpty() && second.isNotEmpty(), "$first / $second")
+    assertTrue(second.all { it > first.max() }, "$first then $second")
   }
 
   @Test

@@ -15,6 +15,10 @@ fun interface SnapshotSink {
  * from an adapter, its own tick — is posted to the injected [Scheduler] and run there one at a time,
  * so the reducer never sees two inputs at once and a command that answers synchronously is simply
  * the next input. It holds no rule: those are all in [SessionMachine].
+ *
+ * Threads: [send] may be called from any thread. [start] and [stop] must run on the scheduler's
+ * thread (post them through the scheduler), because the tick reads what they write. The public
+ * fields are written only there and are volatile, so any thread reads a current value.
  */
 class Engine(
   private val clock: Clock,
@@ -23,26 +27,31 @@ class Engine(
   private val snapshots: SnapshotSink,
   val record: SessionRecord,
   private val reducer: (Phase, Input, Now) -> Step = SessionMachine::reduce,
+  private val projection: (Phase, Now) -> Snapshot = Projection::snapshot,
 ) {
-  var phase: Phase = Phase.Idle
+  @Volatile
+  var phase: Phase = Phase.Idle()
     private set
 
   /** Commands the platform threw on. Each is also a record line. */
+  @Volatile
   var commandFailures: Int = 0
     private set
 
-  /** Snapshots the bridge threw on. Counted only: the next tick sends a fresh one. */
+  /** Snapshots that were not handed up: the projection or the bridge threw. Counted only: the next tick sends a fresh one. */
+  @Volatile
   var snapshotFailures: Int = 0
     private set
 
   private var lastPublished: SnapshotState? = null
   private var ticking: Cancellable? = null
 
-  /** Starts the tick. Idempotent. */
+  /** Starts the tick. Idempotent. On the scheduler's thread only. */
   fun start() {
     if (ticking == null) scheduleTick()
   }
 
+  /** Stops the tick. On the scheduler's thread only: a tick running elsewhere could reschedule itself. */
   fun stop() {
     ticking?.cancel()
     ticking = null
@@ -72,26 +81,35 @@ class Engine(
     ticking = tick
   }
 
+  /**
+   * One input, contained (B6 review m7): a throw while protecting an arm's secrets or inside the machine
+   * ends the session fatal-error, never armed with its secrets unprotected; a throw while projecting
+   * or publishing the snapshot is counted. None of them reaches the scheduler's thread.
+   */
   private fun process(input: Input) {
     val now = clock.now()
-    if (input is Input.Arm) record.protect(input.config)
     val step =
       try {
+        if (input is Input.Arm) record.protect(input.config)
         reducer(phase, input, now)
       } catch (failure: Exception) {
         val noted = Command.Record(RecordEntry("engine-error", listOf("message" to failure.toString())))
-        Step(Phase.Ended(EndReason.FATAL_ERROR), listOf(noted, Command.End(EndReason.FATAL_ERROR)))
+        Step(Phase.Ended(EndReason.FATAL_ERROR, phase.ids), listOf(noted, Command.End(EndReason.FATAL_ERROR)))
       }
     phase = step.phase
     for (command in step.commands) dispatch(command, now)
-    val snapshot = Projection.snapshot(phase, now)
-    if (input == Input.Tick || snapshot.state != lastPublished) {
+    publish(input, now)
+  }
+
+  /** On every tick, and at once when the state changes. */
+  private fun publish(input: Input, now: Now) {
+    try {
+      val snapshot = projection(phase, now)
+      if (input != Input.Tick && snapshot.state == lastPublished) return
       lastPublished = snapshot.state
-      try {
-        snapshots.publish(snapshot)
-      } catch (_: Exception) {
-        snapshotFailures += 1
-      }
+      snapshots.publish(snapshot)
+    } catch (_: Exception) {
+      snapshotFailures += 1
     }
   }
 
