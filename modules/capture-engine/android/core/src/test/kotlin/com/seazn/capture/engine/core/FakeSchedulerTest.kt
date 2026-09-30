@@ -12,8 +12,10 @@ class FakeSchedulerTest {
     val seen = mutableListOf<Pair<String, Long>>()
     scheduler.schedule(300) { seen += "b" to clock.mono }
     scheduler.schedule(100) { seen += "a" to clock.mono }
+    // Due with "a", scheduled after it: a tie runs first-scheduled first, as Engine.send's schedule(0) inputs need.
+    scheduler.schedule(100) { seen += "a2" to clock.mono }
     scheduler.advanceBy(1_000)
-    assertEquals(listOf("a" to 100L, "b" to 300L), seen)
+    assertEquals(listOf("a" to 100L, "a2" to 100L, "b" to 300L), seen)
     assertEquals(1_000L, clock.mono)
   }
 
