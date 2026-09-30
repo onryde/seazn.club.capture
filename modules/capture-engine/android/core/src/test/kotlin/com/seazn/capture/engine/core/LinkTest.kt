@@ -27,9 +27,9 @@ class LinkTest {
   @Test
   fun `drops and losses are deltas`() {
     val (meter, _) = LinkMeter().read(counters(0, dropped = 249, lost = 10), nowMs = 0)
-    val (_, sample) = meter.read(counters(0, dropped = 528, lost = 10), nowMs = 1_000)
+    val (_, sample) = meter.read(counters(0, dropped = 528, lost = 14), nowMs = 1_000)
     assertEquals(279, sample.droppedPackets)
-    assertEquals(0, sample.lostPackets)
+    assertEquals(4, sample.lostPackets)
   }
 
   @Test
@@ -55,6 +55,31 @@ class LinkTest {
     val (_, sample) = meter.read(counters(1_000), nowMs = 1_000)
     assertNull(sample.egressBps)
     assertEquals(1_000, sample.bytes)
+  }
+
+  @Test
+  fun `a counter that did not move is zero egress, not no reading`() {
+    val (meter, _) = LinkMeter().read(counters(1_000), nowMs = 1_000)
+    val (_, sample) = meter.read(counters(1_000), nowMs = 2_000)
+    assertEquals(0, sample.egressBps)
+    assertEquals(0, sample.bytes)
+  }
+
+  // Counters restart at zero on a reconnect. The reset becomes the baseline: 1 000 → 3 000 bytes in 1 s is 16 000 bps.
+  @Test
+  fun `after a counter reset the next reading measures from the reset`() {
+    val (first, _) = LinkMeter().read(counters(5_000), nowMs = 0)
+    val (reset, _) = first.read(counters(1_000), nowMs = 1_000)
+    val (_, sample) = reset.read(counters(3_000), nowMs = 2_000)
+    assertEquals(2_000, sample.bytes)
+    assertEquals(16_000, sample.egressBps)
+  }
+
+  // SRT's estimate sizes a cut (F-P5-5), so the meter hands it on untouched.
+  @Test
+  fun `SRT's bandwidth estimate passes through`() {
+    val (_, sample) = LinkMeter().read(LinkCounters(0, 0, 0, 0, 0, 20, 50, 4_000_000), nowMs = 0)
+    assertEquals(4_000_000, sample.bandwidthBps)
   }
 
   // Expected bytes/s worked by hand from the rule: (target + 128k) × 115% × 2 / 8.
