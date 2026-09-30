@@ -180,6 +180,13 @@ describe('parseCaptureQr (spec §2)', () => {
     });
   });
 
+  it('reads slot 0, the web’s first slot', () => {
+    expect(parseCaptureQr(captureWire({ slot: 0 }))).toMatchObject({
+      ok: true,
+      value: { slot: 0 },
+    });
+  });
+
   it('parses an expired code: expiry is recognise’s call, against the clock', () => {
     expect(parseCaptureQrText(captureRaw({ exp: 1 }))).toMatchObject({ ok: true });
   });
