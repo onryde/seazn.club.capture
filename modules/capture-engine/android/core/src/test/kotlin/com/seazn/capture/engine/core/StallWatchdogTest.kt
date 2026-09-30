@@ -4,6 +4,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class StallWatchdogTest {
@@ -168,5 +169,89 @@ class StallWatchdogTest {
     }
     assertEquals(30.0, drive.dog.videoFps)
     assertEquals(46.6, drive.dog.audioFps)
+  }
+
+  // Each test below pins a guard that a mutation of the code above showed no other test kills.
+
+  @Test
+  fun `F-P5-4 a slideshow after healthy video is caught within one window`() {
+    // F-P5-4: 30.02 fps for 20 minutes, then 3.2–9.1 fps. At 4 frames a half second: 2.5 s in, the
+    // window still holds one healthy half second (35 frames, 11.6 a second); 3 s in it holds 24 (8.0).
+    val drive = healthy()
+    drive.steps(5, 4, 23)
+    assertTrue(drive.verdicts.isEmpty(), "got ${drive.verdicts}")
+    drive.step(4, 23)
+    val (at, verdict) = drive.verdicts.single()
+    assertEquals(8_000L, at)
+    assertIs<StallVerdict.Rebuild>(verdict)
+    assertEquals(8.0, verdict.videoFps)
+  }
+
+  @Test
+  fun `F-P5-6 a first frame late inside its grace is judged from its own arrival`() {
+    // No frame for 4 s, then 30 fps. Readings from the wait would make the window at 4.5 s one frame
+    // step in 3 s: 5 fps.
+    val drive = Drive().apply { dog = dog.frames(0, 0, 0, false, false).first }
+    drive.steps(8, 0, 23)
+    drive.steps(8, 15, 23)
+    assertTrue(drive.verdicts.isEmpty(), "got ${drive.verdicts}")
+    assertEquals(30.0, drive.dog.videoFps)
+  }
+
+  @Test
+  fun `the window is the last 3 s, a pause inside it included`() {
+    // 1.5 s without video, then 15 frames a half second. The 3 s ending at the fourth step after the
+    // pause hold those four steps: 60 / 3 = 20.0. Stretched back to the last frame before the pause,
+    // it would read 60 / 3.5 = 17.1.
+    val drive = healthy()
+    drive.steps(3, 0, 23)
+    drive.steps(4, 15, 23)
+    assertTrue(drive.verdicts.isEmpty(), "got ${drive.verdicts}")
+    assertEquals(20.0, drive.dog.videoFps)
+  }
+
+  @Test
+  fun `after a counter goes backwards the window starts again`() {
+    // The encoder's counters restart. Readings kept from before would give the window 1 s later a
+    // base of 90 frames against a count of 30: −20 fps.
+    val drive = healthy()
+    drive.video = 0
+    drive.audio = 0
+    drive.steps(8, 15, 23)
+    assertTrue(drive.verdicts.isEmpty(), "got ${drive.verdicts}")
+    assertEquals(30.0, drive.dog.videoFps)
+  }
+
+  @Test
+  fun `F-P5-10 a camera back on its own is judged from its return`() {
+    // A slate at 2 frames a second while taken, then the camera again at 30 fps with no reopen.
+    val slate = healthy()
+    slate.steps(12, 1, 23, cameraTaken = true)
+    assertNull(slate.dog.videoFps, "a taken camera's slate has no rate")
+    slate.steps(7, 15, 23)
+    assertTrue(slate.verdicts.isEmpty(), "got ${slate.verdicts}")
+    // Video stopped while taken (held), then the camera again at 30 fps with no reopen.
+    val stopped = healthy()
+    stopped.steps(12, 0, 23, cameraTaken = true)
+    stopped.verdicts.clear()
+    stopped.steps(7, 15, 23)
+    assertTrue(stopped.verdicts.isEmpty(), "got ${stopped.verdicts}")
+  }
+
+  @Test
+  fun `F-P5-10 after our reopen the old rates are gone and the wait for a frame is not judged`() {
+    val drive = healthy()
+    drive.steps(20, 0, 23, cameraTaken = true)
+    drive.verdicts.clear()
+    drive.dog = drive.dog.rebaselined(drive.t)
+    assertNull(drive.dog.videoFps)
+    assertNull(drive.dog.audioFps)
+    // No frame for 2 s after the reopen, then 18 fps. Counting the reopen's first reading into the
+    // window would judge 3 steps of 9 frames over 3 s, 9.0 fps, at 3.5 s; the window from the second
+    // reading, at 4 s, holds 4 steps: 36 / 3 = 12.0.
+    drive.steps(4, 0, 23)
+    drive.steps(4, 9, 23)
+    assertTrue(drive.verdicts.isEmpty(), "got ${drive.verdicts}")
+    assertEquals(12.0, drive.dog.videoFps)
   }
 }
