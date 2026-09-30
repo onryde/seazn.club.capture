@@ -298,6 +298,25 @@ class SessionMachineDeviceTest {
   }
 
   @Test
+  fun `B7 sweep - a camera taken, reopening or resuming before the first frame is not LIVE - nothing has been on air to hold`() {
+    val rig = MachineRig().armed()
+    rig.send(Input.Start)
+    rig.send(Input.Connected(rig.attempt!!))
+    val steps =
+      listOf(
+        Input.CameraContended to CameraState.TAKEN,
+        Input.CameraReleased to CameraState.REOPENING,
+        Input.CameraReopened(ok = true) to CameraState.RESUMING,
+      )
+    for ((input, camera) in steps) {
+      rig.send(input)
+      assertEquals(camera, rig.snapshot.camera, "after $input")
+      rig.advance(1_000, feeding = false)
+      assertEquals(SnapshotState.Connecting(Transport.SRT), rig.state, "after $input")
+    }
+  }
+
+  @Test
   fun `a camera taken twice is recorded once`() {
     val rig = MachineRig().live()
     rig.send(Input.CameraContended)

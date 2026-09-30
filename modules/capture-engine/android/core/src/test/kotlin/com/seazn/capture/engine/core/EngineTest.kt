@@ -362,6 +362,20 @@ class EngineTest {
     assertEquals(listOf(0L, 500L, 1_000L), published.map { it.first })
   }
 
+  @Test
+  fun `B7 E1 an idle arm whose secrets cannot be protected ends fatal-error, even when the machine would take it`() {
+    // The real machine throws on this config too. A stand-in that arms on any config leaves the
+    // protect failure as the only thing between the session and an arm with its secrets unprotected.
+    val arming: (Phase, Input, Now) -> Step = { phase, input, now ->
+      SessionMachine.reduce(phase, if (input is Input.Arm) Input.Arm(Configs.valid()) else input, now)
+    }
+    val engine = engine(reducer = arming)
+    engine.send(Input.Arm(nullConfig()))
+    scheduler.advanceBy(0)
+    assertEquals(EndReason.FATAL_ERROR, assertIs<Phase.Ended>(engine.phase).reason)
+    assertEquals(1, lines.count { """"kind":"engine-error"""" in it })
+  }
+
   /**
    * A fresh engine armed on a validated network, then [setup], then a second arm whose config no Kotlin
    * caller can build. Returns the phase before and after that arm; [executed] and [lines] hold only its effects.

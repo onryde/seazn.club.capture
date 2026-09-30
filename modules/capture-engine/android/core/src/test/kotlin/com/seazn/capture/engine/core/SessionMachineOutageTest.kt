@@ -89,6 +89,20 @@ class SessionMachineOutageTest {
   }
 
   @Test
+  fun `B7 sweep - F-P5-2 an attempt that published 25 s clears the count - short, short, long, short, short never falls back`() {
+    // Each attempt publishes for the time shown, then the far end closes it. Only the third reaches 25 s.
+    val rig = MachineRig().live()
+    for (publishMs in listOf(6_000L, 6_000, 26_000, 6_000, 6_000)) {
+      rig.advance(publishMs)
+      rig.send(Input.Dropped(rig.attempt!!, DropReason.ENDPOINT_CLOSED, "Connection was broken"))
+      rig.advance(2_000)
+      rig.send(Input.Connected(rig.attempt!!))
+    }
+    assertEquals(List(6) { Transport.SRT }, rig.connects().map { it.target.transport })
+    assertTrue(rig.records("fell-back").isEmpty())
+  }
+
+  @Test
   fun `C1 three validated connect failures fall back, and a dead network never does`() {
     val validated = MachineRig().armed(validated = true)
     validated.send(Input.Start)

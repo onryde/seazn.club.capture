@@ -112,6 +112,18 @@ class StallWatchdogTest {
   }
 
   @Test
+  fun `B7 sweep - one frame short of a floor over 3 s is starved - 9_6 video fps, or 19_6 audio frames a second`() {
+    // Every 3 s window holds one frame too few: 29 video frames (9.67 a second) with audio at 20, or
+    // 59 audio frames (19.67 a second) with video at 10. Truncated to one decimal: 9.6 and 19.6.
+    val video = Drive().apply { dog = dog.frames(0, 0, 0, false, false).first }
+    repeat(2) { listOf(5L, 5, 5, 5, 5, 4).forEach { video.step(it, 10) } }
+    assertEquals(3_500L to StallVerdict.Rebuild(StallCause.BELOW_FLOOR, 0, 9.6, 20.0), video.verdicts.first())
+    val audio = Drive().apply { dog = dog.frames(0, 0, 0, false, false).first }
+    repeat(2) { listOf(10L, 10, 10, 10, 10, 9).forEach { audio.step(5, it) } }
+    assertEquals(3_500L to StallVerdict.Rebuild(StallCause.BELOW_FLOOR, 0, 10.0, 19.6), audio.verdicts.first())
+  }
+
+  @Test
   fun `exactly 10 video fps and 20 audio frames a second is not starved`() {
     val drive = Drive().apply { dog = dog.frames(0, 0, 0, false, false).first }
     drive.steps(12, 5, 10)
