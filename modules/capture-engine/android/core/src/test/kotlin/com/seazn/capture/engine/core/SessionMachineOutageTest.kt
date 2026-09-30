@@ -131,14 +131,25 @@ class SessionMachineOutageTest {
   }
 
   @Test
-  fun `final review I-1 one network fact spans two sessions`() {
-    val rig = MachineRig().armed(validated = true)
-    rig.send(Input.Stop)
-    rig.send(Input.Reset)
-    rig.send(Input.Arm(rig.config))
-    rig.send(Input.Start)
-    rig.failingConnects(6_500, ConnectFailure.TIMEOUT)
-    assertEquals(srtThreeTimesThenRtmps, rig.connects().map { it.target.transport })
+  fun `final review I-1 one network fact spans two sessions, however the first one ended`() {
+    // The first session is stopped while armed, while connecting, and once it has been live.
+    val firstSessions: List<Pair<String, (MachineRig) -> Unit>> =
+      listOf(
+        "armed" to { rig -> rig.armed(validated = true) },
+        "connecting" to { rig -> rig.armed(validated = true).send(Input.Start) },
+        "live" to { rig -> rig.live() },
+      )
+    for ((name, first) in firstSessions) {
+      val rig = MachineRig()
+      first(rig)
+      rig.send(Input.Stop)
+      rig.send(Input.Reset)
+      val before = rig.connects().size
+      rig.send(Input.Arm(rig.config))
+      rig.send(Input.Start)
+      rig.failingConnects(6_500, ConnectFailure.TIMEOUT)
+      assertEquals(srtThreeTimesThenRtmps, rig.connects().drop(before).map { it.target.transport }, name)
+    }
   }
 
   @Test
