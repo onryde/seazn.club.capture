@@ -4,14 +4,17 @@ import type { SessionState } from '@/domain/session/SessionState';
 import type { EngineSnapshot, Telemetry } from '@/engine/CaptureEnginePort';
 import { IDLE_TELEMETRY } from '@/engine/FakeCaptureEngine';
 import {
+  METER_SEGMENTS,
   selectBitrateKbps,
   selectEngineStatus,
   selectHoldsOrientation,
+  selectIsOnAir,
   selectLabel,
+  selectMeterSegments,
   selectOverlayUrl,
   selectPlaybackUrl,
   selectScoreUpdates,
-  selectTally,
+  selectOnAirPhase,
   selectWarmingDeadlineMs,
 } from '@/hooks/engineSelectors';
 import { streamSession } from '../../test/fixtures/session';
@@ -34,11 +37,12 @@ function snapshot(
 
 const LIVE: SessionState = { kind: 'publishing', transport: 'srt', sinceEpochMs: NOW };
 
-describe('selectTally', () => {
+describe('selectOnAirPhase (a phase, not a colour: connecting is on air, its plate is not red)', () => {
   it.each([
     [{ kind: 'idle' } as SessionState, 'idle'],
     [{ kind: 'ended', reason: 'operator-stopped', durationMs: null } as SessionState, 'idle'],
     [{ kind: 'armed' } as SessionState, 'ready'],
+    [{ kind: 'connecting', transport: 'srt' } as SessionState, 'live'],
     [LIVE, 'live'],
     [
       {
@@ -60,7 +64,30 @@ describe('selectTally', () => {
       'trouble',
     ],
   ])('maps %o to %s', (state, expected) => {
-    expect(selectTally(snapshot(state))).toBe(expected);
+    expect(selectOnAirPhase(snapshot(state))).toBe(expected);
+  });
+});
+
+describe('selectIsOnAir (something is going out, or the app is fighting to keep it going)', () => {
+  it.each<[SessionState, boolean]>([
+    [{ kind: 'idle' }, false],
+    [{ kind: 'armed' }, false],
+    [{ kind: 'connecting', transport: 'srt' }, true],
+    [LIVE, true],
+    [{ kind: 'degraded', transport: 'rtmps', reason: 'poor-uplink', sinceEpochMs: 1 }, true],
+    [
+      {
+        kind: 'reconnecting',
+        cause: 'uplink-lost',
+        holdRemainingSeconds: 30,
+        holdWindowSeconds: 183,
+        sinceEpochMs: 1,
+      },
+      true,
+    ],
+    [{ kind: 'ended', reason: 'operator-stopped', durationMs: null }, false],
+  ])('%j is on air: %s', (state, onAir) => {
+    expect(selectIsOnAir(snapshot(state))).toBe(onAir);
   });
 });
 
@@ -163,5 +190,33 @@ describe('no reading is null, never zero (plan B reports null off air)', () => {
   it('passes a null egress through', () => {
     expect(selectBitrateKbps(snapshot(LIVE, { bitrateKbps: null }))).toBeNull();
     expect(selectBitrateKbps(snapshot(LIVE, { bitrateKbps: 2840 }))).toBe(2840);
+  });
+});
+
+/**
+ * Spec §4: six segments, orange below the floor. A segment lights once the
+ * level reaches into its sixth of 0..1, so any sound at all shows: with
+ * AUDIO_FLOOR at 0.05, a faint mic is one (orange) segment, never an empty
+ * meter beside a green sound chip.
+ */
+describe('selectMeterSegments', () => {
+  it('has six segments', () => {
+    expect(METER_SEGMENTS).toBe(6);
+  });
+
+  it.each([
+    [0, 0],
+    [0.01, 1],
+    [0.05, 1],
+    [0.16, 1],
+    [0.17, 2],
+    [0.42, 3],
+    [0.99, 6],
+    [1, 6],
+    [1.5, 6],
+    [-1, 0],
+    [Number.NaN, 0],
+  ])('level %d lights %i', (audioLevel, lit) => {
+    expect(selectMeterSegments(snapshot(LIVE, { audioLevel }))).toBe(lit);
   });
 });

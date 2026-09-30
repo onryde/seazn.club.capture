@@ -10,10 +10,16 @@ import type { EngineSnapshot } from '@/engine/CaptureEnginePort';
  * identity and a fresh object would re-render on every 1 Hz tick.
  */
 
-/** The three states the tally colour distinguishes. Everything else is detail. */
-export type TallyState = 'idle' | 'ready' | 'live' | 'trouble';
+/**
+ * Where the session stands relative to going out: nothing yet, armed, on air,
+ * or on air and fighting. A phase, NOT a colour: `connecting` is phase `live`
+ * here, yet its plate is inert, never red, because LIVE waits for frames to
+ * advance (F-P5-6). A plate's colour comes only from `tallyPlateFor` and
+ * `tallyTone` in preflight.ts; lint bars src/ui from importing this.
+ */
+export type OnAirPhase = 'idle' | 'ready' | 'live' | 'trouble';
 
-export function selectTally(snapshot: EngineSnapshot): TallyState {
+export function selectOnAirPhase(snapshot: EngineSnapshot): OnAirPhase {
   switch (snapshot.state.kind) {
     case 'idle':
     case 'ended':
@@ -39,8 +45,8 @@ export function selectTally(snapshot: EngineSnapshot): TallyState {
  * reconnecting. Those are exactly the moments when stopping costs the match.
  */
 export function selectIsOnAir(snapshot: EngineSnapshot): boolean {
-  const tally = selectTally(snapshot);
-  return tally === 'live' || tally === 'trouble';
+  const phase = selectOnAirPhase(snapshot);
+  return phase === 'live' || phase === 'trouble';
 }
 
 /**
@@ -128,4 +134,18 @@ export function selectIsPublishing(snapshot: EngineSnapshot): boolean {
 export function selectSinceEpochMs(snapshot: EngineSnapshot): number | null {
   const { state } = snapshot;
   return 'sinceEpochMs' in state ? state.sinceEpochMs : null;
+}
+
+export const METER_SEGMENTS = 6;
+
+/**
+ * Whole segments lit, not the level: a primitive that changes only when a
+ * segment does. A segment lights once the level reaches into its sixth, so any
+ * sound shows — a faint mic below AUDIO_FLOOR is one orange segment, never an
+ * empty meter (spec §4). A level off the wire outside 0..1, or not a number,
+ * is clamped rather than drawn.
+ */
+export function selectMeterSegments(snapshot: EngineSnapshot): number {
+  const lit = Math.ceil(snapshot.telemetry.audioLevel * METER_SEGMENTS);
+  return Number.isFinite(lit) ? Math.min(METER_SEGMENTS, Math.max(0, lit)) : 0;
 }

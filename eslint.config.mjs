@@ -95,11 +95,25 @@ const NO_COLOUR_LITERALS = [
   { selector: `JSXAttribute[name.name=${COLOUR_PROP}] ${NAMED_COLOUR}`, message: COLOUR_MESSAGE },
 ];
 
+/**
+ * The on-air phase is not a colour: `connecting` is phase `live`, yet its plate
+ * is inert. A plate or component that coloured itself from the phase would
+ * paint connecting red, so ui never reads it; `tallyPlateFor` and `tallyTone`
+ * are the one colour authority (D14, batch 7 carry 5).
+ */
+const NO_PHASE_AS_COLOUR = {
+  name: '@/hooks/engineSelectors',
+  importNames: ['selectOnAirPhase', 'OnAirPhase'],
+  message:
+    'The on-air phase is not a colour (D14): plates take theirs from tallyPlateFor and tallyTone; ask selectIsOnAir for on/off.',
+};
+
 /** The ui import rule, for a given list of services the files may not import. */
 function uiRestrictedImports(services, message) {
   return [
     'error',
     {
+      paths: [NO_PHASE_AS_COLOUR],
       patterns: [{ group: [...UI_NATIVE_IMPORTS, services], allowTypeImports: true, message }],
     },
   ];

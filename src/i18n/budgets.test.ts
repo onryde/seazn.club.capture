@@ -10,7 +10,10 @@ import nl from '@/i18n/nl.json';
  * budget is enforced here, in every language, with the widest values filled in.
  * Later tasks add rows.
  */
-const BUDGETS: readonly (readonly [keys: RegExp, max: number])[] = [[/^stream\.status\./, 48]];
+const BUDGETS: readonly (readonly [keys: RegExp, max: number])[] = [
+  [/^stream\.status\./, 48],
+  [/^stream\.tally\./, 12],
+];
 
 const WIDEST: Readonly<Record<string, string>> = {
   remaining: '183',
