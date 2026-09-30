@@ -325,6 +325,13 @@ The web branch cites this section as the source of the shapes. The route paths, 
   heartbeatUrl }
 ```
 
+`playbackUrl` is the bare Cloudflare HLS manifest of the live input, `https://customer-<code>.cloudflarestream.com/<LIVE_INPUT_UID>/manifest/video.m3u8`, with no query parameters (lane D, 2026-09-30). The phone adds its own parameters:
+
+- `clientBandwidthHint` (in Mbps) on the peek, so it uses little cellular data, and on the delivery watch, so it follows one rendition.
+- `protocol=llhls` only if low latency is ever enabled.
+
+Cloudflare's rule is that manifests are dynamic: "Do not cache, proxy, or store manifests". The phone fetches a fresh copy on every poll and every peek.
+
 | Status | Meaning                                                                                                     |
 | ------ | ----------------------------------------------------------------------------------------------------------- |
 | 401    | Bad or missing token                                                                                        |
@@ -369,3 +376,4 @@ The phone keeps the descriptor for the session's life and fetches it again on ev
   The session record is how S1's staging run adds evidence to these.
 
 - **Heartbeat cost on cellular** is small (~1 KB per 10 s), but it is not yet measured next to the ~1.41 GB/h of video.
+- **Low-latency HLS is off.** The web creates live inputs without it (`createLiveInput`, as of 2026-09-30), so the peek plays standard HLS and runs further behind than the spike's LL-HLS peek. The delivery watch still parses both forms, and detects which one it has from the playlist. Turning LL on is a web-side upgrade: a beta option that would also need its setting read back, and it needs P5's open question "SRT into a low-latency input" measured on staging first. When that happens, the phone adds `protocol=llhls`.
