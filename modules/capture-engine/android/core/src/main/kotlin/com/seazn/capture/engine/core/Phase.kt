@@ -4,28 +4,31 @@ package com.seazn.capture.engine.core
  * Our camera, as the machine knows it. [slateOnAir]: the slate is on air in its place, so the stall
  * watchdog holds instead of rebuilding (F-P5-10). [shownTaken]: the snapshot says `camera-taken`.
  * A state other than [OWN] with no outage holds the session's LIVE state while frames pause: the
- * pause is another app's, or our own reopen or switch waiting for its camera's first frame.
+ * pause is another app's, or our own reopen or switch waiting for its camera's first frame. The
+ * snapshot carries it as `camera` (B6 fix 2), so JavaScript can tell our own reopen or switch from a
+ * camera another app has taken.
  */
-enum class CameraState(val slateOnAir: Boolean, val shownTaken: Boolean) {
-  OWN(slateOnAir = false, shownTaken = false),
+enum class CameraState(override val wire: String, val slateOnAir: Boolean, val shownTaken: Boolean) : Wire {
+  OWN("own", slateOnAir = false, shownTaken = false),
 
   /** Another app holds a camera (F-P5-9). */
-  TAKEN(slateOnAir = true, shownTaken = true),
+  TAKEN("taken", slateOnAir = true, shownTaken = true),
 
   /** Released, and [Command.ReopenCamera] asked for; the slate stays up until the answer. */
-  REOPENING(slateOnAir = true, shownTaken = true),
+  REOPENING("reopening", slateOnAir = true, shownTaken = true),
 
   /**
    * Reopened and the slate off, with no frame from the camera yet. Still shown as taken: the reopen
    * is not a frame (carry 6), and a camera that never delivers is rebuilt 3 s after the reopen.
    */
-  RESUMING(slateOnAir = false, shownTaken = true),
+  RESUMING("resuming", slateOnAir = false, shownTaken = true),
 
   /**
    * The operator switched cameras, and the new one has not delivered a frame yet (ruling 14). LIVE
-   * holds for 3 s from the switch plus at most one tick, then the pipeline is rebuilt.
+   * holds until 3 s after the last frame before the switch, plus at most one tick, then the pipeline
+   * is rebuilt (B6 fix 2).
    */
-  SWITCHING(slateOnAir = false, shownTaken = false),
+  SWITCHING("switching", slateOnAir = false, shownTaken = false),
 }
 
 /**

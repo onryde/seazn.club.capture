@@ -34,6 +34,11 @@ class VocabularyTest {
   }
 
   @Test
+  fun `B6 fix 2 camera states spell in the house wire style`() {
+    assertEquals(listOf("own", "taken", "reopening", "resuming", "switching"), CameraState.entries.map { it.wire })
+  }
+
+  @Test
   fun `snapshot states are the TypeScript SessionState kinds`() {
     val kinds =
       listOf(

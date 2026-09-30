@@ -20,6 +20,7 @@ object Projection {
       heartbeat = (session?.heartbeat ?: HeartbeatState()).status,
       shed = session?.device?.shed,
       device = session?.device,
+      camera = session?.camera,
     )
   }
 
@@ -35,8 +36,9 @@ object Projection {
   /**
    * The LIVE gate (F-P5-6): publishing or degraded only while encoded video frames advance, or while
    * a live session is held — its camera taken, or our own reopen or switch waiting for the camera's
-   * first frame, which the stall watchdog bounds at 3 s plus at most one tick: the machine judges it
-   * before every input ([SessionMachine.reduce]), and the tick is one ([CameraState]). A held session
+   * first frame, which the stall watchdog bounds at 3 s plus at most one tick — from the reopen, or
+   * from the last frame before a switch: the machine judges it before every input
+   * ([SessionMachine.reduce]), and the tick is one ([CameraState]). A held session
    * with the camera shown taken reads degraded camera-taken, never connecting (carry 6).
    */
   private fun onAir(phase: Phase.OnAir, now: Now): SnapshotState {

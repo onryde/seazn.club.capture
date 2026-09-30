@@ -3,6 +3,7 @@ package com.seazn.capture.engine.core
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class SessionMachineDeviceTest {
@@ -335,5 +336,25 @@ class SessionMachineDeviceTest {
     rig.send(Input.Device(sample))
     assertEquals(sample, rig.snapshot.device)
     assertEquals(true, rig.snapshot.charging)
+  }
+
+  @Test
+  fun `B6 fix 2 the snapshot carries the camera state, so our own reopen or switch reads apart from a take`() {
+    assertNull(MachineRig().snapshot.camera, "no session")
+    assertEquals(CameraState.OWN, MachineRig().armed().snapshot.camera)
+    val rig = MachineRig().live()
+    assertEquals(CameraState.OWN, rig.snapshot.camera)
+    rig.send(Input.CameraContended)
+    assertEquals(CameraState.TAKEN, rig.snapshot.camera)
+    rig.send(Input.CameraReleased)
+    assertEquals(CameraState.REOPENING, rig.snapshot.camera)
+    rig.send(Input.CameraReopened(ok = true))
+    assertEquals(CameraState.RESUMING, rig.snapshot.camera)
+    rig.advance(1_000)
+    assertEquals(CameraState.OWN, rig.snapshot.camera, "the reopened camera's first frame")
+    rig.send(Input.SwitchCamera)
+    assertEquals(CameraState.SWITCHING, rig.snapshot.camera)
+    rig.send(Input.Stop)
+    assertNull(rig.snapshot.camera, "ended")
   }
 }

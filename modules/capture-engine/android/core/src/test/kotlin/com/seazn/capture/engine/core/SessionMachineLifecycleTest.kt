@@ -227,7 +227,7 @@ class SessionMachineLifecycleTest {
   }
 
   @Test
-  fun `ruling 14 a switched camera that shows nothing is rebuilt 3 s after the switch`() {
+  fun `ruling 14 a switched camera that shows nothing is rebuilt 3 s after its last frame`() {
     val rig = MachineRig().live()
     rig.advance(3_000)
     rig.send(Input.SwitchCamera)
@@ -239,7 +239,8 @@ class SessionMachineLifecycleTest {
     assertEquals(ReconnectCause.VIDEO_STALLED, assertIs<SnapshotState.Reconnecting>(rig.state).cause)
     val stalled = rig.records("video-stalled").single()
     assertEquals(StallCause.NO_VIDEO, stalled.field("cause"))
-    // Carry 7: the 3 000 ms count from the switch, not from a frame, and the line says so.
+    // Carry 7: the 3 000 ms count from the last frame before the switch (here the same instant), and the
+    // line says the window was re-baselined.
     assertEquals(3_000L, stalled.field("msSinceAdvance"))
     assertEquals(true, stalled.field("rebaselined"))
   }
@@ -392,15 +393,18 @@ class SessionMachineLifecycleTest {
     assertTrue(states.none { it is SnapshotState.Publishing || it is SnapshotState.Degraded }, "$states")
   }
 
-  /** Live with frames to 4 s, then a switch at 4.2 s, off the 500 ms tick grid; time is back on it at 4.5 s. */
+  /**
+   * Live with frames to 4 s, then a switch at 4.2 s. The ticks then fall at 4.8, 5.3 … s, so the 3 s
+   * from the last frame (7.0 s) lands between two ticks.
+   */
   private fun switchedOffGrid(): MachineRig {
     val rig = MachineRig().live()
     rig.advance(3_000)
     rig.mono += 200
     rig.wall += 200
     rig.send(Input.SwitchCamera)
-    rig.mono += 300
-    rig.wall += 300
+    rig.mono += 100
+    rig.wall += 100
     return rig
   }
 
@@ -410,23 +414,47 @@ class SessionMachineLifecycleTest {
     val states = mutableListOf<SnapshotState>()
     rig.advance(2_500, feeding = false) { states += rig.state }
     assertEquals(5, states.size)
-    assertTrue(states.all { it is SnapshotState.Publishing }, "ticks at 5.0 to 7.0 s: $states")
-    // 7.2 s is 3 s after the switch. With no other input, the tick at 7.5 s is the first to judge it.
+    assertTrue(states.all { it is SnapshotState.Publishing }, "ticks at 4.8 to 6.8 s: $states")
+    // 7.0 s is 3 s after the last frame. With no other input, the tick at 7.3 s is the first to judge it.
     rig.advance(500, feeding = false)
     assertEquals(ReconnectCause.VIDEO_STALLED, assertIs<SnapshotState.Reconnecting>(rig.state).cause)
     assertEquals(3_300L, rig.records("video-stalled").single().field("msSinceAdvance"))
   }
 
   @Test
-  fun `B6 review m4 any input from 3 s after the switch closes LIVE without waiting for the tick`() {
+  fun `B6 review m4 any input from 3 s after the last frame closes LIVE without waiting for the tick`() {
     val rig = switchedOffGrid()
     rig.advance(2_500, feeding = false)
     rig.mono += 200
     rig.wall += 200
-    assertIs<SnapshotState.Publishing>(rig.state, "7.2 s, projected with no input")
+    assertIs<SnapshotState.Publishing>(rig.state, "7.0 s, projected with no input")
     rig.send(Input.Network(true))
     assertEquals(ReconnectCause.VIDEO_STALLED, assertIs<SnapshotState.Reconnecting>(rig.state).cause)
     assertEquals(3_000L, rig.records("video-stalled").single().field("msSinceAdvance"))
+  }
+
+  @Test
+  fun `B6 fix 2 (T2) a switch mid-stall cannot stretch LIVE past 3 s from the last frame`() {
+    val rig = MachineRig().live()
+    rig.advance(2_500, videoPerStep = 0)
+    rig.send(Input.SwitchCamera)
+    assertEquals(listOf(Command.SwitchCamera), rig.sent<Command.SwitchCamera>())
+    assertIs<SnapshotState.Publishing>(rig.state, "3.5 s: 2.5 s since the last frame at 1 s")
+    rig.advance(500, feeding = false)
+    assertEquals(ReconnectCause.VIDEO_STALLED, assertIs<SnapshotState.Reconnecting>(rig.state).cause, "4 s: 3 s since the last frame")
+    val stalled = rig.records("video-stalled").single()
+    assertEquals(3_000L, stalled.field("msSinceAdvance"))
+    assertEquals(true, stalled.field("rebaselined"))
+  }
+
+  @Test
+  fun `B6 fix 2 a stop in the C2 gap ends the session and sends no rebuild first`() {
+    val rig = gateJustClosed()
+    val commands = rig.send(Input.Stop)
+    assertEquals(listOf(Command.End(EndReason.OPERATOR_STOPPED)), commands.filterNot { it is Command.Record })
+    assertTrue(rig.records("video-stalled").isEmpty())
+    assertEquals(SnapshotState.Ended(EndReason.OPERATOR_STOPPED), rig.state)
+    assertEquals(true, rig.records("ended").single().field("wasLive"))
   }
 
   @Test

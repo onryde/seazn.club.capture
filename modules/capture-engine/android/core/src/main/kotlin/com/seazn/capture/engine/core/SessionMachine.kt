@@ -24,10 +24,11 @@ object SessionMachine {
    * The tick runs every time-based rule in its own order. Any other input is applied only after the
    * stall watchdog has judged the phase as it stands (B6 ruling C2): nothing lands between the
    * LIVE gate closing and the rebuild, so no snapshot reads connecting there, and a switch in that
-   * gap cannot re-open LIVE.
+   * gap cannot re-open LIVE. A stop is not judged (B6 fix 2): it ends the session whatever the
+   * picture does, so a rebuild first would only be torn down by the end.
    */
   fun reduce(phase: Phase, input: Input, now: Now): Step {
-    if (input == Input.Tick) return apply(phase, input, now)
+    if (input == Input.Tick || input == Input.Stop) return apply(phase, input, now)
     val judged = Timers.judged(phase, now)
     val step = apply(judged.phase, input, now)
     return if (judged.commands.isEmpty()) step else step.copy(commands = judged.commands + step.commands)
@@ -343,7 +344,8 @@ internal object Timers {
   /**
    * The stall watchdog asked for a rebuild (F-P5-6, F-P5-9). The record's `msSinceAdvance` counts
    * from the last frame; for `no-first-frame`, from the connect; and when `rebaselined` is true, from
-   * our own camera reopen or switch, which is not a frame (carry 7).
+   * our own camera reopen, which is not a frame (carry 7), or for a switch from the last frame
+   * before it (B6 fix 2).
    */
   fun rebuild(onAir: Phase.OnAir, verdict: StallVerdict.Rebuild, now: Now): Step {
     val outage = onAir.outage ?: Transports.outageFor(onAir.session, onAir.transport, now, ReconnectCause.VIDEO_STALLED)
@@ -396,24 +398,28 @@ internal object Devices {
   }
 
   /**
-   * The operator's switch (ruling 14). On air, the stall watchdog starts a fresh window, so the
-   * switch's frame pause is neither a no-video nor a rate-floor rebuild, and the session's LIVE state
-   * holds until the new camera's first frame. Only while frames advance is a switch handled that
-   * way (B6 review I1): before the first frame, F-P5-6's 5 s grace already covers the pause, and a
-   * picture already past its stall window was judged a rebuild before this input (B6 ruling C2). A
-   * re-baseline clears the last frame, and the camera is ours again in the step that brings the next
-   * one, so a second switch before the new camera's first frame keeps the first one's window.
+   * The operator's switch (ruling 14). On air, the stall watchdog starts a fresh rate window, so the
+   * switch's frame pause is not a rate-floor rebuild, and the session's LIVE state holds until the
+   * new camera's first frame. Only while frames advance is a switch handled that way (B6 review
+   * I1): before the first frame, F-P5-6's 5 s grace already covers the pause, and a picture already
+   * past its stall window was judged a rebuild before this input (B6 ruling C2). A re-baseline
+   * clears the last frame, and the camera is ours again in the step that brings the next one, so a
+   * second switch before the new camera's first frame keeps the first one's window.
    *
-   * The owner-visible bound (B6 review m4): a switch whose camera never delivers holds LIVE for 3 s
-   * from the first switch, plus at most one tick — the next input at or after 3 s rebuilds, and the
-   * tick is an input every [Engine.TICK_MS].
+   * The owner-visible bound (B6 review m4, B6 fix 2): LIVE never outlasts the last real frame by
+   * more than 3 s plus one tick. The zero test keeps counting from the last frame before the first
+   * switch, which is min(first switch, last frame), so a switch in the middle of a stall cannot
+   * stretch it. The next input at or after those 3 s rebuilds, and the tick is an input every
+   * [Engine.TICK_MS].
    */
   fun switched(phase: Phase, now: Now): Step {
     val session = phase.session ?: return SessionMachine.ignored(phase, "switch-camera")
     if (session.camera.slateOnAir) return SessionMachine.ignored(phase, "switch-camera")
     val commands = listOf(Command.SwitchCamera, record("camera-switched"))
     if (phase !is Phase.OnAir || !phase.watchdog.advancing(now.monoMs)) return Step(phase, commands)
-    val switching = phase.copy(session = session.copy(camera = CameraState.SWITCHING), watchdog = phase.watchdog.rebaselined(now.monoMs))
+    // Advancing means a frame has arrived, so the fallback to now never applies.
+    val lastFrameMs = phase.watchdog.lastAdvanceAtMs ?: now.monoMs
+    val switching = phase.copy(session = session.copy(camera = CameraState.SWITCHING), watchdog = phase.watchdog.rebaselined(lastFrameMs))
     return Step(switching, commands)
   }
 

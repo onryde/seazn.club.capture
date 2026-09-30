@@ -78,4 +78,6 @@ data class Snapshot(
   val heartbeat: HeartbeatStatus,
   val shed: ShedStep?,
   val device: DeviceSample?,
+  /** Whose camera is on air; null with no session. Our own reopen or switch reads apart from a take. */
+  val camera: CameraState?,
 )

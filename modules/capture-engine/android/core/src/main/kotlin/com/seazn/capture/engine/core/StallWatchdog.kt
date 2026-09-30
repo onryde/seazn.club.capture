@@ -88,14 +88,15 @@ data class StallWatchdog(
   }
 
   /**
-   * Our own camera reopen finished. The reopened camera gets a full [STALL_MS] from now, but a
-   * reopen is not a frame: [advancing] stays false until one arrives, and the window starts at it.
+   * Our own camera reopen finished, or our own switch began. The zero test counts [STALL_MS] from
+   * [fromMs]: the reopen itself, or for a switch the last frame before it (B6 fix 2). Neither is a
+   * new frame: [advancing] stays false until one arrives, and the rate window starts at it.
    */
-  fun rebaselined(nowMs: Long): StallWatchdog =
+  fun rebaselined(fromMs: Long): StallWatchdog =
     copy(
       lastVideo = null,
       lastAdvanceAtMs = null,
-      stallFromMs = nowMs,
+      stallFromMs = fromMs,
       readings = emptyList(),
       videoFps = null,
       audioFps = null,
