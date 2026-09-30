@@ -2,9 +2,12 @@ package com.seazn.capture.engine.core
 
 import java.io.IOException
 import java.net.URLEncoder
+import java.util.Objects
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class SessionRecordTest {
@@ -30,9 +33,13 @@ class SessionRecordTest {
 
   @Test
   fun `the token is masked even inside a public URL`() {
-    val line = write("playbackUrl" to "${Configs.PLAYBACK_URL}?tok=${Configs.TOKEN}")
+    // Fix round 1: so is the passphrase, raw and URL-encoded, which the brief masks everywhere.
+    val url = "${Configs.PLAYBACK_URL}?tok=${Configs.TOKEN}&passphrase=${Configs.PASSPHRASE}&passphrase=pass%2Bphrase%2F6d1e8b0c"
+    val line = write("playbackUrl" to url)
     assertFalse(Configs.TOKEN in line)
     assertTrue(Configs.STREAM_ID in line)
+    val masked = "${Configs.PLAYBACK_URL}?tok=***&passphrase=***&passphrase=***"
+    assertEquals("""{"at":"2026-09-30T14:32:05.123Z","kind":"test","playbackUrl":"$masked"}""", line)
   }
 
   @Test
@@ -50,6 +57,43 @@ class SessionRecordTest {
     val line = write("message" to quoted)
     for (secret in secrets + encoded) assertFalse(secret in line, "leaked $secret")
     assertTrue("live.cloudflare.com" in line)
+
+    // Fix round 1. Every form is hand-written. Masked where it stands: the raw value, URLEncoder's
+    // form (space as +), and the form android.net.Uri.encode writes (space as %20, ~ ! ' ( ) raw),
+    // which srtdroid's SrtUri.Builder puts in the SRT query. Masked whole: a form that only
+    // percent-decoding reveals.
+    val inPlace = "passphrase=***"
+    val whole = "***"
+    val forms = listOf(
+      Triple("correct horse battery", "correct horse battery", inPlace),
+      Triple("correct horse battery", "correct+horse+battery", inPlace),
+      Triple("correct horse battery", "correct%20horse%20battery", inPlace),
+      Triple("pass/word~x1", "pass%2Fword~x1", inPlace),
+      Triple("pass+word!x1", "pass%2Bword!x1", inPlace),
+      Triple("pass=word(x)", "pass%3Dword(x)", inPlace),
+      Triple("pass'word/x1", "pass'word%2Fx1", inPlace),
+      Triple(Configs.PASSPHRASE, "pass%2bphrase%2f6d1e8b0c", whole), // lowercase hex
+      Triple(Configs.PASSPHRASE, "pass%2Bphrase/6d1e8b0c", whole), // "/" left raw
+      Triple("a b/c+d xyz", "a%20b/c+d%20xyz", whole), // %20 with a raw + and /
+      Triple("a b/c~d xyz", "a+b%2Fc~d+xyz", whole), // + for a space, ~ raw
+      Triple("trailing-pass/", "trailing-pass%2f", whole), // ends on an escape
+      Triple("p\u00e4ssw\u00f6rd-x1", "p%c3%a4ssw%c3%b6rd-x1", whole), // two-byte UTF-8, lowercase
+      Triple("100%z5%5z-pass+x1", "100%z5%5z-pass%2bx1", whole), // a literal % that is not an escape
+    )
+    for ((passphrase, form, expected) in forms) {
+      val out = mutableListOf<String>()
+      val srt = SrtTarget("srt://live.cloudflare.com:778", Configs.STREAM_ID, passphrase, latencyMs = 2_000)
+      SessionRecord { out += it }
+        .apply { protect(Configs.valid(primary = srt)) }
+        .append(0, RecordEntry("test", listOf("message" to "passphrase=$form")))
+      assertEquals("""{"at":"1970-01-01T00:00:00.000Z","kind":"test","message":"$expected"}""", out.single(), form)
+    }
+  }
+
+  @Test
+  fun `a stray percent sign is kept as it is, neither decoded nor refused`() {
+    val line = write("message" to "100% done, %zz, and a trailing %2")
+    assertEquals("""{"at":"2026-09-30T14:32:05.123Z","kind":"test","message":"100% done, %zz, and a trailing %2"}""", line)
   }
 
   @Test
@@ -248,5 +292,131 @@ class SessionRecordTest {
     assertEquals(25, lines.size)
     assertTrue(lines.first().endsWith(""""attempt":0}"""))
     assertEquals(20, record.lastLines().size)
+  }
+
+  // Fix round 1 (review of B5).
+
+  @Test
+  fun `a sink that appends once from inside terminates, in one order for the sink and lastLines`() {
+    val out = mutableListOf<String>()
+    lateinit var echoing: SessionRecord
+    var echoed = false
+    echoing = SessionRecord { line ->
+      if (!echoed) {
+        echoed = true
+        echoing.append(0, RecordEntry("logger-echo"))
+      }
+      out += line
+    }
+    echoing.append(0, RecordEntry("armed"))
+    val expected = listOf("""{"at":"1970-01-01T00:00:00.000Z","kind":"armed"}""", """{"at":"1970-01-01T00:00:00.000Z","kind":"logger-echo"}""")
+    assertEquals(expected, out)
+    assertEquals(expected, echoing.lastLines())
+  }
+
+  // The levelled logger feeds the record (AGENTS §11) and the record's sink feeds the logger. If that
+  // loop closes, a queue alone would deliver echoes forever: one echo is written, the next is dropped.
+  // The appends run on a daemon thread with a bounded join, so a loop that never ends fails the test
+  // instead of hanging the build.
+  @Test
+  fun `a sink that appends for every line is cut after one echo, and the drop is counted`() {
+    val out = mutableListOf<String>()
+    lateinit var cyclic: SessionRecord
+    cyclic = SessionRecord { line ->
+      cyclic.append(0, RecordEntry("echo"))
+      if (out.size < 100) out += line
+    }
+    val scheduler = Thread {
+      cyclic.append(0, RecordEntry("armed"))
+      cyclic.append(0, RecordEntry("connecting"))
+    }
+    scheduler.isDaemon = true
+    scheduler.start()
+    scheduler.join(10_000)
+    assertFalse(scheduler.isAlive, "the sink loop never ended")
+    val echo = """{"at":"1970-01-01T00:00:00.000Z","kind":"echo"}"""
+    val expected = listOf("""{"at":"1970-01-01T00:00:00.000Z","kind":"armed"}""", echo, """{"at":"1970-01-01T00:00:00.000Z","kind":"connecting"}""", echo)
+    assertEquals(expected, out)
+    assertEquals(expected, cyclic.lastLines())
+    assertEquals(2, cyclic.reentrantDropped)
+  }
+
+  @Test
+  fun `two appends from inside the sink are written in the order they were made`() {
+    val out = mutableListOf<String>()
+    lateinit var echoing: SessionRecord
+    echoing = SessionRecord { line ->
+      if (out.isEmpty()) {
+        echoing.append(0, RecordEntry("first-echo"))
+        echoing.append(0, RecordEntry("second-echo"))
+      }
+      out += line
+    }
+    echoing.append(0, RecordEntry("armed"))
+    val kinds = out.map { it.substringAfter(""""kind":"""").substringBefore('"') }
+    assertEquals(listOf("armed", "first-echo", "second-echo"), kinds)
+    assertEquals(out, echoing.lastLines())
+  }
+
+  @Test
+  fun `an Error from the sink escapes append, and the next append still reaches the sink`() {
+    val out = mutableListOf<String>()
+    var failed = false
+    val fragile = SessionRecord { line ->
+      if (!failed) {
+        failed = true
+        TODO("sink not written")
+      }
+      out += line
+    }
+    assertFailsWith<NotImplementedError> { fragile.append(0, RecordEntry("armed")) }
+    assertEquals(0, fragile.sinkFailures)
+    fragile.append(0, RecordEntry("connecting"))
+    assertEquals(listOf("""{"at":"1970-01-01T00:00:00.000Z","kind":"connecting"}"""), out)
+  }
+
+  @Test
+  fun `a field named at or kind is written as field_at or field_kind, never twice`() {
+    val line = write("kind" to Transport.SRT, "at" to 5)
+    assertEquals("""{"at":"2026-09-30T14:32:05.123Z","kind":"test","field_kind":"srt","field_at":5}""", line)
+  }
+
+  @Test
+  fun `the kind is masked by value like a field`() {
+    record.append(1_790_778_725_123, RecordEntry(Configs.TOKEN))
+    assertEquals("""{"at":"2026-09-30T14:32:05.123Z","kind":"***"}""", lines.last())
+    // Masked as text, not as a public URL: the stream id is a secret here.
+    record.append(1_790_778_725_123, RecordEntry("connect ${Configs.STREAM_ID}"))
+    assertEquals("""{"at":"2026-09-30T14:32:05.123Z","kind":"connect ***"}""", lines.last())
+  }
+
+  // Appends belong to the scheduler thread; Diagnostics reads from another. A fixed number of appends,
+  // and at least 1,000 reads, so the run is bounded and nothing depends on timing to pass.
+  @Test
+  fun `lastLines and sinkFailures can be read from another thread while appends run`() {
+    val shared = SessionRecord { if (""""kind":"refuse"""" in it) throw IllegalStateException("disk full") }
+    val writer = Thread {
+      repeat(5_000) { shared.append(0, RecordEntry(if (it % 2 == 0) "keep" else "refuse", listOf("attempt" to it))) }
+    }
+    var thrown: Throwable? = null
+    var nulls = 0
+    var reads = 0
+    writer.start()
+    while (writer.isAlive || reads < 1_000) {
+      try {
+        val last = shared.lastLines()
+        if (last.size > 20) thrown = AssertionError("${last.size} lines")
+        nulls += last.count { Objects.isNull(it) }
+        if (shared.sinkFailures > 2_500) thrown = AssertionError("sinkFailures ${shared.sinkFailures}")
+      } catch (failure: Throwable) {
+        thrown = failure
+      }
+      reads += 1
+    }
+    writer.join()
+    assertNull(thrown)
+    assertEquals(0, nulls)
+    assertEquals(2_500, shared.sinkFailures)
+    assertTrue(shared.lastLines().last().endsWith(""""attempt":4999}"""))
   }
 }
