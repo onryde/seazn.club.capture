@@ -35,21 +35,64 @@ const NO_ANY = {
 };
 
 /**
+ * The colour names React Native accepts, less `transparent` (the absence of a
+ * colour, which stays allowed): `normalizeKeyword` in
+ * @react-native/normalize-colors 0.86.3, the CSS named colours plus RN's own
+ * `burntsienna`.
+ */
+const NAMED_COLOURS = `
+  aliceblue antiquewhite aqua aquamarine azure beige bisque black blanchedalmond blue blueviolet
+  brown burlywood burntsienna cadetblue chartreuse chocolate coral cornflowerblue cornsilk
+  crimson cyan darkblue darkcyan darkgoldenrod darkgray darkgreen darkgrey darkkhaki darkmagenta
+  darkolivegreen darkorange darkorchid darkred darksalmon darkseagreen darkslateblue
+  darkslategray darkslategrey darkturquoise darkviolet deeppink deepskyblue dimgray dimgrey
+  dodgerblue firebrick floralwhite forestgreen fuchsia gainsboro ghostwhite gold goldenrod gray
+  green greenyellow grey honeydew hotpink indianred indigo ivory khaki lavender lavenderblush
+  lawngreen lemonchiffon lightblue lightcoral lightcyan lightgoldenrodyellow lightgray lightgreen
+  lightgrey lightpink lightsalmon lightseagreen lightskyblue lightslategray lightslategrey
+  lightsteelblue lightyellow lime limegreen linen magenta maroon mediumaquamarine mediumblue
+  mediumorchid mediumpurple mediumseagreen mediumslateblue mediumspringgreen mediumturquoise
+  mediumvioletred midnightblue mintcream mistyrose moccasin navajowhite navy oldlace olive
+  olivedrab orange orangered orchid palegoldenrod palegreen paleturquoise palevioletred
+  papayawhip peachpuff peru pink plum powderblue purple rebeccapurple red rosybrown royalblue
+  saddlebrown salmon sandybrown seagreen seashell sienna silver skyblue slateblue slategray
+  slategrey snow springgreen steelblue tan teal thistle tomato turquoise violet wheat white
+  whitesmoke yellow yellowgreen
+`
+  .trim()
+  .split(/\s+/);
+
+/**
+ * Where a name is a colour: a style value or prop whose name holds "color"
+ * (`color`, `backgroundColor`, `tintColor`, `placeholderTextColor`, `colors`, …)
+ * or is an SVG `fill` / `stroke`. Scoped, because `'red'` or `'lime'` elsewhere
+ * can be a word, not a colour (n4).
+ */
+const COLOUR_PROP = '/colou?r|^(fill|stroke)$/i';
+const NAMED_COLOUR = `Literal[value=/^(${NAMED_COLOURS.join('|')})$/i]`;
+
+/**
  * AGENTS §5: styles reference tokens only; a colour literal in a component is
- * a review blocker. Hex (#rgb, #rgba, #rrggbb, #rrggbbaa) and rgb()/rgba()/
- * hsl()/hsla(), in a string, a JSX attribute or the head of a template.
+ * a review blocker. Hex (#rgb, #rgba, #rrggbb, #rrggbbaa) and the colour
+ * functions (rgb/rgba, hsl/hsla, hwb, lab, lch, oklab, oklch), in a string, a
+ * JSX attribute or the head of a template; and a named colour in a style value
+ * or colour prop (n4).
  */
 const COLOUR_MESSAGE = 'A colour literal outside src/ui/theme (AGENTS §5): use a theme token.';
+const COLOUR_FUNCTION = '((rgb|hsl)a?|hwb|lab|lch|oklab|oklch)\\(';
 const NO_COLOUR_LITERALS = [
   {
     selector: 'Literal[value=/^#([0-9a-f]{3,4}|[0-9a-f]{6}|[0-9a-f]{8})$/i]',
     message: COLOUR_MESSAGE,
   },
-  { selector: 'Literal[value=/^(rgb|hsl)a?\\(/i]', message: COLOUR_MESSAGE },
+  { selector: `Literal[value=/^${COLOUR_FUNCTION}/i]`, message: COLOUR_MESSAGE },
   {
-    selector: 'TemplateElement[value.raw=/^(#[0-9a-f]{3,8}\\b|(rgb|hsl)a?\\()/i]',
+    selector: `TemplateElement[value.raw=/^(#[0-9a-f]{3,8}\\b|${COLOUR_FUNCTION})/i]`,
     message: COLOUR_MESSAGE,
   },
+  { selector: `Property[key.name=${COLOUR_PROP}] ${NAMED_COLOUR}`, message: COLOUR_MESSAGE },
+  { selector: `Property[key.value=${COLOUR_PROP}] ${NAMED_COLOUR}`, message: COLOUR_MESSAGE },
+  { selector: `JSXAttribute[name.name=${COLOUR_PROP}] ${NAMED_COLOUR}`, message: COLOUR_MESSAGE },
 ];
 
 /** The ui import rule, for a given list of services the files may not import. */

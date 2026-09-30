@@ -84,12 +84,26 @@ describe('the native overlay, confined to its own origin (I1)', () => {
       setSupportMultipleWindows: false,
       javaScriptCanOpenWindowsAutomatically: false,
       mediaCapturePermissionGrantType: 'deny',
+      // n1: an overlay page that autoplays audible media would play through the
+      // speaker, beside the broadcast mic.
+      mediaPlaybackRequiresUserAction: true,
       allowFileAccess: false,
       allowFileAccessFromFileURLs: false,
       allowUniversalAccessFromFileURLs: false,
       injectedJavaScriptBeforeContentLoaded: NO_MEDIA_CAPTURE,
       injectedJavaScriptBeforeContentLoadedForMainFrameOnly: false,
     });
+  });
+
+  // n3: a touch on the stage would give the page user activation, and on Android
+  // an `<input type=file capture>` could then launch the camera app over the
+  // broadcast (RNCWebChromeClient.onShowFileChooser). The controls live in the gutters.
+  it('never takes a touch: the WebView sits in a wrapper with pointer events off', async () => {
+    const { view } = await renderOverlay(build());
+    const webview = within(view.container).getByTestId('webview');
+    const wrapper = webview.parentElement;
+    expect(wrapper).not.toBeNull();
+    expect(getComputedStyle(wrapper as HTMLElement).pointerEvents).toBe('none');
   });
 
   it('lets its own origin load and refuses the rest, reporting and logging by host', async () => {

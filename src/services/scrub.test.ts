@@ -23,6 +23,8 @@ describe('scrubFields (allow-list, spec §3)', () => {
     expect(scrubFields({ host: 'evil.example' })).toEqual({ host: 'evil.example' });
     expect(scrubFields({ host: null })).toEqual({ host: null });
     expect(scrubFields({ host: 'evil.example/p?token=abc' })).toEqual({ host: SCRUBBED });
+    // n2: a userinfo token passed off as a host never reaches the record.
+    expect(scrubFields({ host: 'user@evil.example' })).toEqual({ host: SCRUBBED });
   });
 
   it('scrubs a secret under a key nobody expected', () => {

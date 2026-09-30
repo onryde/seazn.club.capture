@@ -52,6 +52,8 @@ describe('navigationHost (what a refused navigation is logged as)', () => {
     ['tel:+441234567890', null],
     ['about:blank', null],
     ['https://user:pass@evil.example/', null],
+    // n2: userinfo with no `:`, which the port exclusion alone would not refuse.
+    ['https://secret@evil.example/', null],
     ['', null],
   ])('reads %s as %s: the host only, never a path, query or userinfo', (url, host) => {
     expect(navigationHost(url)).toBe(host);
