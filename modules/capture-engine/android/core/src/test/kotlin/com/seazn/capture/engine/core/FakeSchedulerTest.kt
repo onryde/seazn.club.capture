@@ -70,4 +70,14 @@ class FakeSchedulerTest {
     assertEquals("advanceBy(-1): time never runs backwards", error.message)
     assertEquals(0L, clock.mono)
   }
+
+  // The guard's boundary: zero is legal, and runs what is already due, as Engine.send's schedule(0) inputs need.
+  @Test
+  fun `advancing by zero runs work already due and leaves the clock where it was`() {
+    var ran = false
+    scheduler.schedule(0) { ran = true }
+    scheduler.advanceBy(0)
+    assertEquals(true, ran)
+    assertEquals(0L, clock.mono)
+  }
 }
