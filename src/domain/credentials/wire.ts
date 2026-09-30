@@ -27,6 +27,16 @@ const invalid = (field: string, reason: string): Read<never> =>
   err({ kind: 'invalid-field', field, reason });
 
 /**
+ * A nested object. Absent is `missing-field`; present but not an object
+ * (null, an array, a string) is `invalid-field`, so both parsers say the same.
+ */
+export function readRecord(source: Source, key: string, label: string = key): Read<Source> {
+  const value = source[key];
+  if (value === undefined) return err({ kind: 'missing-field', field: label });
+  return isRecord(value) ? ok(value) : invalid(label, 'expected an object');
+}
+
+/**
  * `key` is the property actually read; `label` is what an error names.
  * Keeping them apart means an error can never name a path the code did not walk.
  */

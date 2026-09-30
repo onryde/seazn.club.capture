@@ -158,9 +158,18 @@ describe('parseCaptureQr (spec §2)', () => {
     });
   });
 
+  it.each([[null], ['x'], [[]]])('refuses a cred of %j as invalid, not missing', (value) => {
+    expect(parseCaptureQr(captureWire({ cred: value }))).toEqual({
+      ok: false,
+      error: { kind: 'invalid-field', field: 'cred', reason: 'expected an object' },
+    });
+  });
+
   it.each([
     ['SRT', { srt: cred.srt }],
     ['RTMPS', { rtmps: cred.rtmps }],
+    ['RTMPS, with SRT null', { srt: null, rtmps: cred.rtmps }],
+    ['SRT, with RTMPS null', { srt: cred.srt, rtmps: null }],
   ])('refuses a code carrying only %s, which leaves no fallback (C1)', (_only, pair) => {
     expect(parseCaptureQr(captureWire({ cred: pair }))).toEqual({
       ok: false,
@@ -207,6 +216,7 @@ describe('parseCaptureQr never echoes a secret (ruling 3)', () => {
     ['an SRT url', withSrt({ url: 'srt://ingest.example:778?passphrase=fake-pass-0000 x' })],
     ['an SRT latency', withSrt({ latencyMs: 'fake-stream-id' })],
     ['an RTMPS url', withRtmps({ url: 'rtmp://ingest.example/live/fake-key-0000' })],
+    ['a cred that is not an object', { cred: 'fake-key-0000' }],
   ])('in the error for %s', (_what, overrides) => {
     const result = parseCaptureQr(captureWire(overrides));
     expect(result.ok).toBe(false);

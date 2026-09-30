@@ -10,6 +10,7 @@ import {
   readEpochSeconds,
   readOneOf,
   readPositiveNumber,
+  readRecord,
   readSchemeUrl,
   readString,
   type WireError,
@@ -112,14 +113,11 @@ function readTimes(input: Source): Read<Times> {
 }
 
 function readHoldWindows(input: Source): Read<Readonly<Record<Transport, number>>> {
-  const hold = input.holdWindowSeconds;
-  if (hold === undefined) return err({ kind: 'missing-field', field: 'holdWindowSeconds' });
-  if (!isRecord(hold)) {
-    return err({ kind: 'invalid-field', field: 'holdWindowSeconds', reason: 'expected an object' });
-  }
-  const srt = readPositiveNumber(hold, 'srt', 'holdWindowSeconds.srt');
+  const hold = readRecord(input, 'holdWindowSeconds');
+  if (!hold.ok) return hold;
+  const srt = readPositiveNumber(hold.value, 'srt', 'holdWindowSeconds.srt');
   if (!srt.ok) return srt;
-  const rtmps = readPositiveNumber(hold, 'rtmps', 'holdWindowSeconds.rtmps');
+  const rtmps = readPositiveNumber(hold.value, 'rtmps', 'holdWindowSeconds.rtmps');
   if (!rtmps.ok) return rtmps;
   return ok({ srt: srt.value, rtmps: rtmps.value });
 }

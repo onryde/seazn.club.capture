@@ -167,6 +167,7 @@ describe('parseDescriptor', () => {
     ['playbackUrl', 'http://video.example/a?passphrase=fake-pass-0000'],
     ['overlayUrl', 'https://video.example/a?streamid=fake-stream-id x'],
     ['holdWindowSeconds', { srt: 'fake-pass-0000', rtmps: 183 }],
+    ['holdWindowSeconds', 'fake-pass-0000'],
     ['warmingDeadline', 'fake-key-0000'],
   ])('never echoes the value of a refused %s (ruling 3)', (field, value) => {
     const result = parseDescriptor(descriptorWire({ [field]: value }));

@@ -11,6 +11,7 @@ import {
   readInteger,
   readOneOf,
   readPositiveNumber,
+  readRecord,
   readSchemeUrl,
   readString,
   type WireError,
@@ -74,14 +75,15 @@ function readHead(input: Source): Read<Pick<CaptureCode, 'sid' | 'slot' | 'token
  * arrived, the phone has no fallback when UDP is blocked at the ground.
  */
 function readPair(input: Source): Read<Pick<CaptureCode, 'primary' | 'fallback'>> {
-  const cred = input.cred;
-  if (!isRecord(cred)) return err({ kind: 'missing-field', field: 'cred' });
-  if (!isRecord(cred.srt) || !isRecord(cred.rtmps)) return err({ kind: 'missing-fallback' });
+  const cred = readRecord(input, 'cred');
+  if (!cred.ok) return cred;
+  const pair = cred.value;
+  if (!isRecord(pair.srt) || !isRecord(pair.rtmps)) return err({ kind: 'missing-fallback' });
   const preferred = readOneOf(input, 'preferred', TRANSPORTS);
   if (!preferred.ok) return preferred;
-  const srt = parseSrt(cred.srt);
+  const srt = parseSrt(pair.srt);
   if (!srt.ok) return srt;
-  const rtmps = parseRtmps(cred.rtmps);
+  const rtmps = parseRtmps(pair.rtmps);
   if (!rtmps.ok) return rtmps;
   const srtFirst = preferred.value === 'srt';
   return ok({
