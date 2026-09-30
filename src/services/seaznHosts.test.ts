@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { descriptorOrigin, isSeaznUrl, seaznHosts } from '@/services/seaznHosts';
+import { descriptorOrigin, seaznHosts } from '@/services/seaznHosts';
 
 describe('seaznHosts', () => {
   it('uses production only when the build says production', () => {
@@ -19,44 +19,5 @@ describe('descriptorOrigin', () => {
 
   it.each(['', 'staging', 'PRODUCTION '])('asks staging for %j', (env) => {
     expect(descriptorOrigin(env)).toBe('https://stg.seazn.club');
-  });
-});
-
-describe('isSeaznUrl (ruling 6): exact names only', () => {
-  const STAGING = ['stg.seazn.club'];
-  const PRODUCTION = ['seazn.club'];
-
-  it.each([
-    ['the host itself', 'https://stg.seazn.club/api/hb', STAGING],
-    ['the host, any case, with a port', 'HTTPS://STG.Seazn.Club:443/api/hb', STAGING],
-    ['a bare host', 'https://stg.seazn.club', STAGING],
-    ['the production host', 'https://seazn.club/overlay/fixtures/x', PRODUCTION],
-    ['a query straight after the host', 'https://seazn.club?x=1', PRODUCTION],
-  ])('accepts %s', (_label, url, hosts) => {
-    expect(isSeaznUrl(url, hosts)).toBe(true);
-  });
-
-  it.each([
-    ['a foreign suffix', 'https://stg.seazn.club.evil.example/hb', STAGING],
-    ['a name ending in the host, with no dot', 'https://evilstg.seazn.club/hb', STAGING],
-    ['a name ending in the production host', 'https://evilseazn.club/hb', PRODUCTION],
-    ['the production host on a staging build', 'https://seazn.club/hb', STAGING],
-    ['userinfo naming the host', 'https://stg.seazn.club@evil.example/hb', STAGING],
-    ['plain http', 'http://stg.seazn.club/hb', STAGING],
-    ['a trailing dot', 'https://stg.seazn.club./hb', STAGING],
-    ['a port that is not a number', 'https://stg.seazn.club:x/hb', STAGING],
-    ['the host only in the path', 'https://evil.example/stg.seazn.club', STAGING],
-    ['no host list', 'https://stg.seazn.club/hb', []],
-    ['a proper subdomain: exact names only', 'https://api.stg.seazn.club/hb', STAGING],
-    ['the staging host on a production build', 'https://stg.seazn.club/hb', PRODUCTION],
-    ['www on a production build', 'https://www.seazn.club/hb', PRODUCTION],
-    [
-      'a backslash, which WHATWG reads as the end of the host',
-      'https://evil.example\\.stg.seazn.club/hb',
-      STAGING,
-    ],
-    ['a backslash on a production build', 'https://evil.example\\.seazn.club/hb', PRODUCTION],
-  ])('refuses %s', (_label, url, hosts) => {
-    expect(isSeaznUrl(url, hosts)).toBe(false);
   });
 });

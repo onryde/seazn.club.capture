@@ -95,6 +95,20 @@ describe('descriptorOnHost (ruling 6)', () => {
       error: 'foreign-heartbeat',
     });
   });
+
+  it.each([
+    ['www, a proper subdomain', 'https://www.seazn.club/hb'],
+    ['a name that merely ends in the host', 'https://evilseazn.club/hb'],
+    [
+      'a backslash, which WHATWG reads as the end of the host',
+      'https://evil.example\\.seazn.club/hb',
+    ],
+  ])('refuses a heartbeat on %s on a production build', (_label, url) => {
+    expect(descriptorOnHost(descriptor({ heartbeatUrl: url }), 'seazn.club')).toEqual({
+      ok: false,
+      error: 'foreign-heartbeat',
+    });
+  });
 });
 
 describe('httpsHost', () => {
