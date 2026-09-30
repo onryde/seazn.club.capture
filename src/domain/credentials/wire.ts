@@ -99,7 +99,7 @@ export function readSchemeUrl(
   return shape.test(text.value) ? text : invalid(label, `expected a ${scheme}:// URL`);
 }
 
-const HTTPS_HOST = /^https:\/\/([^/?#@:\\\s]+)(?::\d+)?(?:[/?#]|$)/i;
+const HTTPS_HOST = /^https:\/\/([^/?#@:\\\s]+)(?::(\d+))?(?:[/?#]|$)/i;
 
 /**
  * The host of an https URL, lower-cased, with any port dropped; `null` when
@@ -110,6 +110,18 @@ const HTTPS_HOST = /^https:\/\/([^/?#@:\\\s]+)(?::\d+)?(?:[/?#]|$)/i;
  */
 export function httpsHost(url: string): string | null {
   return HTTPS_HOST.exec(url)?.[1]?.toLowerCase() ?? null;
+}
+
+/**
+ * The origin of an https URL — scheme, lower-cased host and any port other
+ * than 443 — read as `httpsHost` reads the host; `null` when there is none.
+ * Two URLs share an origin only when these strings are equal.
+ */
+export function httpsOrigin(url: string): string | null {
+  const match = HTTPS_HOST.exec(url);
+  if (match === null) return null;
+  const port = match[2] === undefined || Number(match[2]) === 443 ? '' : `:${match[2]}`;
+  return `https://${match[1].toLowerCase()}${port}`;
 }
 
 /** A closed set: an unrecognised value fails loudly rather than defaulting to the reassuring answer. */

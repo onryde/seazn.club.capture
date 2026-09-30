@@ -15,6 +15,8 @@ const PLAIN_KEYS: ReadonlySet<string> = new Set([
   'attempt',
   'count',
   'endReason',
+  // I1: where a refused overlay navigation aimed; a bare host, never a path or query.
+  'host',
   'key',
   'kind',
   'lock',

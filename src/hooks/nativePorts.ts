@@ -53,7 +53,7 @@ export function createNativePorts(): Ports {
     foreground: createNativeForeground(),
     navigation: createExpoRouterNavigation(),
     splash: createNativeSplash(),
-    surfaces: createNativeSurfaces(),
+    surfaces: createNativeSurfaces({ logger }),
     logger,
     record,
     clock,

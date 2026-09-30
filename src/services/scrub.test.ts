@@ -19,6 +19,12 @@ describe('scrubFields (allow-list, spec §3)', () => {
     expect(scrubFields({ slot: 3 })).toEqual({ slot: 3 });
   });
 
+  it('keeps a bare host, the only thing a refused overlay navigation logs (I1)', () => {
+    expect(scrubFields({ host: 'evil.example' })).toEqual({ host: 'evil.example' });
+    expect(scrubFields({ host: null })).toEqual({ host: null });
+    expect(scrubFields({ host: 'evil.example/p?token=abc' })).toEqual({ host: SCRUBBED });
+  });
+
   it('scrubs a secret under a key nobody expected', () => {
     const fields = { tok: 'abc', passphrase: 'p', streamKey: 'k', token: 't', raw: '{"v":2}' };
     expect(scrubFields(fields)).toEqual({
