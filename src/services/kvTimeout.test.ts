@@ -23,12 +23,20 @@ describe('withTimeout', () => {
     expect(events()).toEqual([]);
   });
 
-  it('rejects a call that never settles after 5 s, and logs it', async () => {
+  // The spec's 5 s as literals, never the module's own constant: a test that
+  // advances by KV_TIMEOUT_MS passes whatever the constant says.
+  it('rejects a call that never settles at 5000 ms, not before, and logs it', async () => {
     const hanging: KeyValueStore = { get: never, set: never, delete: never };
     const { store, events } = wrap(hanging);
     const write = store.set('code.stream', 'x');
+    let settledYet = false;
+    const mark = () => {
+      settledYet = true;
+    };
+    void write.then(mark, mark);
     const settled = expect(write).rejects.toSatisfy(isKvTimeout);
-    await vi.advanceTimersByTimeAsync(KV_TIMEOUT_MS - 1);
+    await vi.advanceTimersByTimeAsync(4999);
+    expect(settledYet).toBe(false);
     expect(events()).toEqual([]);
     await vi.advanceTimersByTimeAsync(1);
     await settled;
@@ -36,7 +44,7 @@ describe('withTimeout', () => {
       expect.objectContaining({
         level: 'warn',
         event: 'kv.timeout',
-        fields: { op: 'set', key: 'code.stream', ms: KV_TIMEOUT_MS },
+        fields: { op: 'set', key: 'code.stream', ms: 5000 },
       }),
     ]);
   });
