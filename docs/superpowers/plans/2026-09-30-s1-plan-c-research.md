@@ -316,3 +316,96 @@ Nothing matching R3, F-P5-6, F-P5-8, F-P5-10, F-P5-12, B-frames or SRT pacing is
 8. **Battery.** Charge-counter units and granularity on a second OEM. The charging flag has already been shown to lie on the OnePlus.
 9. **The FGS start points.** Arm, then background, then a reconnect or camera reopen must never start a service from the background (no `SecurityException` in logcat). Test on Android 14 and on 16.
 10. **The Kotlin window.** If anyone proposes StreamPack `main`, komuxer 0.4.1+ or Ktor 3.5+, run a real `assembleDebug` first. The failure predicted here is not built.
+
+## StreamPack-boilerplate (reference only)
+
+**Read:** [ThibaultBee/StreamPack-boilerplate](https://github.com/ThibaultBee/StreamPack-boilerplate) at `34f9bf8` (2026-08-23), shared by the owner "for idea and reference only". Nothing is copied. Boilerplate paths below are relative to `app/src/main/java/io/github/thibaultbee/streampack/app/` unless they start with `app/` or `gradle/`. StreamPack paths are cited at tag `3.2.0` (`a5d112d`), read locally, because the boilerplate's behaviour lives in what it calls. All of it is **VERIFIED (source)** unless tagged **INFERRED**.
+
+### 1. Versions
+
+- It targets **StreamPack 3.2.0**: `core`, `ui`, `rtmp`, `srt`, and not `services` (`gradle/libs.versions.toml:12,23-26`; `app/build.gradle.kts:48-54`). That is our pin exactly.
+- The toolchain is **not ours**: Kotlin **2.4.10** and AGP **9.2.1** (`libs.versions.toml:2,9`), compileSdk/targetSdk **37**, minSdk 24, JVM 18 (`app/build.gradle.kts:10-17,33-40`), Gradle 9.4.1, and the AGP 9 opt-outs `android.builtInKotlin=false` / `android.newDsl=false` (`gradle.properties:33-34`).
+- **Compatibility.** The library pin is compatible, because what matters is the AARs' stdlib (2.2.21, §1), not the boilerplate's compiler. Its build files are not reusable at Kotlin 2.1.20 / AGP 8.12, and its code uses `Build.VERSION_CODES.CINNAMON_BUN` (API 37) with `ACCESS_LOCAL_NETWORK` (`MainActivity.kt:89-91`), which does not compile at our compileSdk 36. **INFERRED:** Cloudflare ingest is a public host, so the local-network permission does not apply to us even at 37.
+
+### 2. Building the streamer
+
+- **Single endpoint.** `SingleStreamer(application)` with every default (`MainViewModelFactory.kt:39-50`). `DualStreamer` appears only in a comment. The defaults are `endpointFactory = DynamicEndpointFactory()` and `defaultRotation = context.displayRotation` (`SingleStreamer.kt:207-214`). For an application context, that rotation is the default display's at construction time (`ContextExtensions.kt:48-52`).
+- **Sources.** `setAudioSource(MicrophoneSourceFactory())` and `setCameraId(defaultCameraId)`, set only after the permission grant (`MainViewModel.kt:161-177`; `MainActivity.kt:170-180`).
+- **Config.** `AudioConfig(AAC, 44100, stereo)` (`MainViewModel.kt:124-128`) and `VideoConfig(AVC, 1280×720, fps = 25)` (`MainViewModel.kt:149-151`). **No bitrate, profile, GOP or B-frame setting.** The defaults then apply:
+  - 2 Mbit/s and a 1 s GOP (`VideoCodecConfig.kt:65,82`);
+  - the **best** AVC profile, with **High first** (`VideoCodecConfig.kt:340-348`), which is the profile that allows B-frames.
+
+  This is consistent with P5 needing `KEY_MAX_B_FRAMES = 0` (§1 "B-frames").
+
+- **SRT vs RTMP.** It uses the URL scheme only: `startStream(url)` → `open(uri)` → `DynamicEndpoint.getEndpoint(type)` (`MainViewModel.kt:92`; `IStreamer.kt:164-172`; `DynamicEndpoint.kt:196-214`). There is **no fallback**.
+  - `DynamicEndpoint` creates **one** SRT and **one** RTMP endpoint, lazily, and caches them for its lifetime (`DynamicEndpoint.kt:257-269`).
+  - Both come from `internal` helpers, and RTMP is built by reflection with the streamer's shared `ioDispatcher` (`Endpoints.kt:15-23,93`).
+
+### 3. Preview and orientation
+
+- **The preview** is the `streampack-ui` `PreviewView`, `match_parent`, with no attributes (`app/src/main/res/layout/activity_main.xml:9-16`). It is bound with `setVideoSourceProvider(streamer)` (`MainActivity.kt:182-186`). Its defaults are pinch-zoom **on**, tap-to-focus **on**, and scale **FILL**, which crops (`PreviewView.kt:140-145`).
+- **The view owns the camera preview.** It stops the preview whenever the window stops being visible. On **every size change** it runs `stopPreview` → `resetPreview` → `requestSurface` → `startPreview` on the camera source (`PreviewView.kt:289-313,434-450`). Binding a different streamer calls `requestRelease()` on the old source (`PreviewView.kt:242-265`).
+- **Rotation: the F-P5-6 trigger, verbatim.**
+  - `SensorRotationProvider` is collected for the ViewModel's lifetime and fed to `streamer.setTargetRotation(it)`, **including while streaming** (`MainViewModel.kt:73-77`; `RotationRepository.kt:21`).
+  - While streaming, the activity locks to `SCREEN_ORIENTATION_LOCKED` (`MainActivity.kt:124-129,150-158`). The sensor still fires, however.
+  - The repository's own comment says to use `DisplayRotationProvider` when orientation is locked (`RotationRepository.kt:14-19`).
+- Nothing addresses #288.
+
+### 4. Service and permissions
+
+- **No foreground service** of any kind: no `<service>`, no `FOREGROUND_SERVICE_*` and no `POST_NOTIFICATIONS` (`AndroidManifest.xml:13-19`).
+- **Instead**, `StreamerLifeCycleObserver(streamer)` is attached to the activity (`MainActivity.kt:64,103`). On **`onPause`** it runs `stopStream()`, `close()` and `audioInput.stopCapture()` (`StreamerLifeCycleObserver.kt:70-94@3.2.0`). Backgrounding therefore ends the broadcast by design.
+- **The streamer's lifetime is the ViewModel's** (`onCleared` → `releaseBlocking`, `MainViewModel.kt:186-188`).
+- **Permissions.** `CAMERA` and `RECORD_AUDIO` are requested on every `onStart`, with a rationale dialog (`MainActivity.kt:28-59,164-167`; `utils/PermissionsManager.kt:26-66`).
+
+### 5. Errors and reconnect
+
+- **Observation** (`MainViewModel.kt:43-67`):
+  - `isStreamingFlow` becomes the button state;
+  - `throwableFlow` is split into `isClosedException` (a disconnect) and everything else;
+  - a connect failure is caught around `startStream(url)`.
+
+  Each ends in a **toast** (`MainActivity.kt:109-122`). **There is no reconnect loop.**
+
+- **What a drop does inside 3.2.0.**
+  - The output stops itself. A write failure or an `isOpen → false` calls `stopStream()` and emits the throwable (`EncodingPipelineOutput.kt:246-256,295-331`).
+  - When the last output stops, the pipeline stops the inputs' streaming (`StreamerPipeline.kt:842-866`).
+  - **INFERRED:** every reconnect is therefore a fresh `open` + `startStream`, with an encoder reset and an input restart. Each one is a #306 "session".
+- **`throwableFlow` is a `StateFlow`,** both in `EncodingPipelineOutput` (`:213-214`) and after `stateIn` (`SingleStreamerImpl.kt:99-103`). A slow collector sees only the latest of two quick errors, and a new collector replays the last one. That is why the boilerplate's `asLiveData` re-toasts an old disconnect after a configuration change. This adds to R3: counting drops from `throwableFlow` both under-counts and double-counts.
+- **Camera taken (3.2.0 source).**
+  - `onDisconnected` / `onError(ERROR_CAMERA_IN_USE)` sets `isClosedFlow` (`CameraUtils.kt:58-85`), and `CameraSource` drops `isStreaming` (`CameraSource.kt:108-115`).
+  - The pipeline then stops only **video-only** outputs while audio still streams (`StreamerPipeline.kt:175-196`), so an A/V output **stays open** with a starved encoder.
+  - **INFERRED (device-unverified):** StreamPack does not end the session on eviction. `StallWatchdog`'s "hold, don't rebuild" is what stops a rebuild.
+
+### 6–7. Regulator, SRT and RTMPS options
+
+- There is **no bitrate regulator**; `bitrateRegulatorControllerFactory` is never set.
+- **SRT** appears only as a comment: `srt://host:9998?streamid=…&passphrase=…` (`MainViewModel.kt:89-91`). It sets no latency, MAXBW or connect timeout.
+- **3.2.0 also offers a typed descriptor,** `SrtMediaDescriptor(host, port, streamId, passPhrase, latency, connectionTimeout)` (`SrtMediaDescriptor.kt:80-122`), so no secret has to live in a URI string.
+- **RTMPS** is never mentioned. The default URL is `rtmp://` (`data/storage/StorageRepository.kt:8`). `RtmpMediaDescriptor` accepts `rtmps` and defaults to port 443 (`RtmpMediaDescriptor.kt:65,153`). Nothing touches TLS or F-P5-12.
+
+### 8. Adopt / avoid for plan C
+
+| Pattern                                                                                                                           | Verdict                                               | Our rule                                                                                                                                                                                                                                                                               |
+| --------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| The UI state is re-derived from native flows. Taps are filtered by `isPressed` and never set the state (`MainActivity.kt:85-147`) | **Adopt**, the shape                                  | Intents, not RPC: `start`/`stop` return void, and the snapshot is the truth                                                                                                                                                                                                            |
+| Sources are set only after the grant (`@RequiresPermission`)                                                                      | **Adopt**                                             | The arm pre-flight includes the permission                                                                                                                                                                                                                                             |
+| `ClosedException` is split from other throwables                                                                                  | **Adopt** as a classifier, **not** as the drop signal | `FallbackPolicy` counts drops from our sink's completion flow (R3), not from a conflated `StateFlow`                                                                                                                                                                                   |
+| `open` and `startStream` fused in `startStream(url)`                                                                              | **Avoid**                                             | Call them separately, so that connect failures (which count toward fallback) are told apart from start failures                                                                                                                                                                        |
+| Typed `SrtMediaDescriptor(host, port, streamId, passPhrase, latency)`                                                             | **Adopt** over a URL string                           | The allow-list scrub; no passphrase inside a `Uri` that could be logged                                                                                                                                                                                                                |
+| `DynamicEndpointFactory` (the default)                                                                                            | **Avoid**                                             | It cannot take our SRT sink (rec. 2), and it shares one `ioDispatcher` with RTMP (rec. 4). **INFERRED:** plan C needs its own `IEndpointInternal.Factory` that routes SRT to `TsMuxer` + our sink and RTMP to `RtmpEndpointFactory` with the RTMP-only dispatcher, on **one** streamer |
+| `defaultRotation` defaulted from the app context at construction                                                                  | **Avoid**                                             | Pass it explicitly at arm, from the landscape side held (P4)                                                                                                                                                                                                                           |
+| `SensorRotationProvider` → `setTargetRotation`, also while live                                                                   | **Avoid**                                             | F-P5-6: never call it while streaming. The JS orientation gate owns the activity lock                                                                                                                                                                                                  |
+| `StreamerLifeCycleObserver` (stops and closes on `onPause`)                                                                       | **Avoid**                                             | Native owns the session through `CaptureForegroundService`; the activity lifecycle never stops it                                                                                                                                                                                      |
+| The streamer's lifetime is the ViewModel's                                                                                        | **Avoid**                                             | The engine and service scope survive activity recreation                                                                                                                                                                                                                               |
+| `isStreamingFlow` as "live"                                                                                                       | **Avoid**                                             | LIVE only while encoded frames advance. `isStreamingFlow` is the pipeline's **input** flag (`SingleStreamerImpl.kt:108`)                                                                                                                                                               |
+| `PreviewView` defaults (FILL, zoom and tap on)                                                                                    | **Avoid**                                             | Set FIT (16:9, letterboxed) and disable zoom and tap (§5). #288 is still open                                                                                                                                                                                                          |
+
+### What this changes in the recommendations
+
+Nothing here reverses the recommendations above. It adds four:
+
+1. **Recs 2 and 4 need a custom endpoint factory.** `DynamicEndpointFactory` can host neither our SRT sink nor an RTMP-only dispatcher, so plan C passes its own `endpointFactory` to one `SingleStreamer`. It does not rebuild the streamer per transport, which would be a rebuild, and a #306 leak per switch. **INFERRED.**
+2. **Never attach `StreamerLifeCycleObserver`.** Add this to rec. 5.
+3. **Pass `defaultRotation` explicitly.** Add this to rec. 3.
+4. **New device check (Open 11):** `PreviewView` restarts the camera preview on every size change. With Fabric laying the view out, prove that resizing it while live (overlay toggle, Settings round trip, a layout pass) causes no encoded-frame gap that the watchdog would read as a stall. **INFERRED** risk; unmeasured.
