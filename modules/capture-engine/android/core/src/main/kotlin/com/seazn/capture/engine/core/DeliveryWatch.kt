@@ -194,7 +194,7 @@ data class DeliveryWatch(
    */
   private fun unlistedMs(previous: Long, firstListed: Long): Long {
     val count = (firstListed - previous - 1).coerceAtLeast(0)
-    return minOf(count * CONFIGURED_SEGMENT_MS, onAirMs - lags.last().onAirMs)
+    return minOf(count * CONFIGURED_SEGMENT_MS, onAirMs - (lags.lastOrNull()?.onAirMs ?: baselineOnAirMs))
   }
 
   /** No evidence either way: delivery claims nothing, and shows no lag. */

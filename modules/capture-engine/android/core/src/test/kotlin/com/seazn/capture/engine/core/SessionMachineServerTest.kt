@@ -185,4 +185,21 @@ class SessionMachineServerTest {
     assertEquals(1, rig.records("heartbeat").size)
     assertEquals(HeartbeatResult.OK, rig.snapshot.heartbeat.lastResult)
   }
+
+  @Test
+  fun `carry 10 a delivery watch with a head and no lag points reads its next playlist`() {
+    // Built through copy, as no machine path builds it: a head, and an empty lag history.
+    val variant = "https://customer-x.cloudflarestream.com/v/stream_720/video.m3u8"
+    val watch =
+      DeliveryWatch(Configs.PLAYBACK_URL)
+        .copy(variantUrl = variant, head = 100, onAirMs = 10_000, baselineOnAirMs = 9_000, pending = PlaylistRequest(7, variant), pendingIsMaster = false)
+    val next = watch.fetched(7, FetchResult.Body(media(103)), 10_000).first
+    // Segments 101–103 are listed; none came and went unlisted. Their 6 000 ms are delivered media.
+    assertEquals(6_000, next.mediaMs)
+    val skipped = watch.fetched(7, FetchResult.Body(media(105)), 10_000).first
+    // Segments 103–105 listed (6 000 ms), and 101–102 came and went unlisted: 2 × 2 000 ms, capped at
+    // the publishing time since the last look. With no lag point, the last look is the baseline:
+    // 10 000 − 9 000 = 1 000 ms. So 6 000 + 1 000 = 7 000.
+    assertEquals(7_000, skipped.mediaMs)
+  }
 }
