@@ -50,8 +50,8 @@ sealed interface Input {
 
   /**
    * The engine's clock, every [Engine.TICK_MS]. Every time-based rule runs on it. The two that end or
-   * rebuild a session, hold expiry and the stall watchdog, are also judged before any other input
-   * but a stop or a platform failure ([SessionMachine.reduce], B6 ruling C2).
+   * rebuild a session are also judged before other inputs ([SessionMachine.reduce], B6 ruling C2):
+   * hold expiry before any but a stop, the stall watchdog before any but a stop or a platform failure.
    */
   data object Tick : Input
 
@@ -97,8 +97,13 @@ sealed interface Input {
 
   /**
    * A failure plan C's adapter knows is permanent: an encoder that can never start, a native library
-   * that will not load. Ends the session fatal-error (spec §5), with [message] in the record, masked as
-   * free text. A failure the adapter can retry is not one.
+   * that will not load. A failure the adapter can retry is not one. [attemptId] is the attempt it came
+   * from (final review N-4). From the attempt in hand — the one in flight or, with none in flight, the
+   * next — it ends the session fatal-error (spec §5), and an idle engine too, with [message] in the
+   * record, masked as free text. From an older attempt it is stale, the teardown of an attempt or a
+   * session that is already over, and only recorded; so is any failure after the end. Only an older id
+   * is stale. A hold that has run out is judged first, so in the gap before the tick it reads
+   * hold-window-expired ([SessionMachine.reduce]).
    */
-  data class PlatformFailed(val message: String) : Input
+  data class PlatformFailed(val attemptId: Int, val message: String) : Input
 }

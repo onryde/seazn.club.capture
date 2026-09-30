@@ -576,7 +576,7 @@ class EngineTest {
   fun `final review M-5 a permanent platform failure that quotes a secret is masked in the record`() {
     val engine = engine()
     engine.send(Input.Arm(Configs.valid()))
-    engine.send(Input.PlatformFailed("srt://h?passphrase=${Configs.PASSPHRASE} cannot open"))
+    engine.send(Input.PlatformFailed(1, "srt://h?passphrase=${Configs.PASSPHRASE} cannot open"))
     scheduler.advanceBy(0)
     val ended = lines.single { """"kind":"ended"""" in it }
     assertFalse(Configs.PASSPHRASE in ended, ended)

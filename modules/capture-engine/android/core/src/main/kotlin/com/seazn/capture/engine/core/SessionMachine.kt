@@ -26,16 +26,17 @@ object SessionMachine {
    * ends the session first (B7 N1), and then the stall watchdog judges it, so nothing lands between
    * the LIVE gate closing and the rebuild, no snapshot reads connecting there, and a switch in that
    * gap cannot re-open LIVE. A stop is not judged (B6 fix 2): it ends the session whatever the
-   * picture does, so a rebuild first would only be torn down by the end. Nor is a permanent platform
-   * failure, for the same reason (final review M-5).
+   * picture does, so a rebuild first would only be torn down by the end. A permanent platform failure
+   * is judged for the hold only (final review M-5, N-4): the watchdog is skipped for the stop's reason.
    *
-   * So once the hold has run out, any input that lands before the tick ends the session
-   * hold-window-expired, a picture that comes back and an organiser stop included (B7 ruling m2): the
-   * hold is the published limit, and the tick at that instant would end it the same way.
+   * So once the hold has run out, any input but a stop that lands before the tick ends the session
+   * hold-window-expired, a picture that comes back, an organiser stop and a platform failure included
+   * (B7 ruling m2, final review N-4): the hold is the published limit, and the tick at that instant
+   * would end it the same way. A stop in that gap reads operator-stopped.
    */
   fun reduce(phase: Phase, input: Input, now: Now): Step {
-    if (input == Input.Tick || input == Input.Stop || input is Input.PlatformFailed) return apply(phase, input, now)
-    val judged = Timers.judged(phase, now)
+    if (input == Input.Tick || input == Input.Stop) return apply(phase, input, now)
+    val judged = if (input is Input.PlatformFailed) Timers.holdRanOut(phase, now) ?: Step(phase) else Timers.judged(phase, now)
     val step = apply(judged.phase, input, now)
     return if (judged.commands.isEmpty()) step else step.copy(commands = judged.commands + step.commands)
   }
@@ -62,7 +63,7 @@ object SessionMachine {
       is Input.PlaylistFetched -> Deliveries.fetched(phase, input, now)
       is Input.HeartbeatAnswered -> Heartbeats.answered(phase, input, now)
       is Input.DescriptorChecked -> descriptor(phase, input, now)
-      is Input.PlatformFailed -> platformFailed(phase, input.message, now)
+      is Input.PlatformFailed -> platformFailed(phase, input, now)
     }
 
   internal fun ignored(phase: Phase, intent: String): Step =
@@ -110,12 +111,24 @@ object SessionMachine {
 
   /**
    * A failure the platform knows is permanent (spec §5, final review M-5) ends any session, and an
-   * idle engine too, fatal-error. After the end it is only recorded: the session already said why it ended.
+   * idle engine too, fatal-error, when it comes from the attempt in hand. One from an older attempt is
+   * stale (final review N-4), and one after the end comes too late: the session already said why it
+   * ended. Both are only recorded.
    */
-  private fun platformFailed(phase: Phase, message: String, now: Now): Step {
-    if (phase is Phase.Ended) return Step(phase, listOf(record("platform-failed", "message" to message)))
-    return end(phase, EndReason.FATAL_ERROR, now, "message" to message)
+  private fun platformFailed(phase: Phase, input: Input.PlatformFailed, now: Now): Step {
+    val fields = arrayOf("attempt" to input.attemptId, "message" to input.message)
+    if (phase is Phase.Ended || input.attemptId < phase.attemptInHand) return Step(phase, listOf(record("platform-failed", *fields)))
+    return end(phase, EndReason.FATAL_ERROR, now, *fields)
   }
+
+  /** The attempt a platform failure can come from: the one in flight or, with none in flight, the next. */
+  private val Phase.attemptInHand: Int
+    get() =
+      when (this) {
+        is Phase.OnAir -> attemptId
+        is Phase.Connecting -> (step as? ConnectStep.Requested)?.attemptId ?: ids.attempt
+        is Phase.Idle, is Phase.Armed, is Phase.Ended -> ids.attempt
+      }
 
   /**
    * A 410 or a finished state on a reconnect's descriptor fetch is an organiser stop (spec §1). Only
@@ -342,17 +355,23 @@ internal object Timers {
   }
 
   /**
-   * What the tick would judge first, before an input other than the tick (B6 ruling C2), in the
-   * tick's own order: a hold that has run out ends the session (B7 N1), so nothing is sent into a hold
-   * that is already over, and the input itself is never applied, whatever it says (B7 ruling m2); then
-   * the no-video judgement.
+   * What the tick would judge first, before an input other than the tick or a stop (B6 ruling C2), in
+   * the tick's own order: a hold that has run out ends the session (B7 N1), so nothing is sent into a
+   * hold that is already over, and the input lands on the ended session, where it can reopen nothing
+   * (B7 ruling m2); then the no-video judgement. A platform failure is judged by [holdRanOut] alone.
    */
   fun judged(phase: Phase, now: Now): Step {
-    val outage = (phase as? Phase.OnAir)?.outage ?: (phase as? Phase.Connecting)?.outage
-    if (outage != null && outage.hold.expired(now.monoMs)) return expired(phase, outage, now)
+    holdRanOut(phase, now)?.let { return it }
     if (phase !is Phase.OnAir) return Step(phase)
     val verdict = phase.watchdog.tick(now.monoMs, phase.session.camera.slateOnAir).second
     return if (verdict is StallVerdict.Rebuild) rebuild(phase, verdict, now) else Step(phase)
+  }
+
+  /** The session ended by a hold that has run out (B7 N1), or null while none has. */
+  fun holdRanOut(phase: Phase, now: Now): Step? {
+    val outage = (phase as? Phase.OnAir)?.outage ?: (phase as? Phase.Connecting)?.outage
+    if (outage != null && outage.hold.expired(now.monoMs)) return expired(phase, outage, now)
+    return null
   }
 
   private fun onAir(phase: Phase.OnAir, now: Now): Step {

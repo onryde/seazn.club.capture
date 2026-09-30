@@ -778,16 +778,18 @@ class SessionMachineLifecycleTest {
   fun `final review M-5 a failure the platform knows is permanent ends fatal-error, and says why`() {
     val rig = MachineRig().live()
     rig.advance(9_000)
-    val commands = rig.send(Input.PlatformFailed("encoder cannot start"))
+    val commands = rig.send(Input.PlatformFailed(1, "encoder cannot start"))
     assertEquals(listOf(Command.End(EndReason.FATAL_ERROR)), commands.filterNot { it is Command.Record })
     assertEquals(SnapshotState.Ended(EndReason.FATAL_ERROR, durationMs = 9_000), rig.state)
     val ended = rig.records("ended").single()
     assertEquals(EndReason.FATAL_ERROR, ended.field("reason"))
+    assertEquals(1, ended.field("attempt"))
     assertEquals("encoder cannot start", ended.field("message"))
   }
 
   @Test
-  fun `final review M-5 a permanent failure ends idle, armed and connecting too`() {
+  fun `final review N-4 a permanent failure from the attempt in hand ends idle, armed and connecting too`() {
+    // Before the first connect, the attempt in hand is the next one: attempt 1 here.
     val setups: List<Pair<String, (MachineRig) -> Unit>> =
       listOf(
         "idle" to { _ -> },
@@ -797,7 +799,7 @@ class SessionMachineLifecycleTest {
     for ((name, setup) in setups) {
       val rig = MachineRig()
       setup(rig)
-      rig.send(Input.PlatformFailed("no camera"))
+      rig.send(Input.PlatformFailed(1, "no camera"))
       assertEquals(SnapshotState.Ended(EndReason.FATAL_ERROR, durationMs = null), rig.state, name)
       assertEquals(listOf(Command.End(EndReason.FATAL_ERROR)), rig.sent<Command.End>(), name)
       assertEquals("no camera", rig.records("ended").single().field("message"), name)
@@ -805,24 +807,104 @@ class SessionMachineLifecycleTest {
   }
 
   @Test
-  fun `final review M-5 a permanent failure after the end is recorded, and ends nothing twice`() {
+  fun `final review N-4 a failure from the last session's teardown is stale in the next one - only recorded`() {
+    // Attempt 1 was the first session's. Its failure lands once that session is reset, and again once the next is armed.
     val rig = MachineRig().live()
     rig.send(Input.Stop)
-    val commands = rig.send(Input.PlatformFailed("encoder released late"))
+    rig.send(Input.Reset)
+    for (name in listOf("idle", "armed")) {
+      if (name == "armed") rig.armed()
+      val before = rig.phase
+      val commands = rig.send(Input.PlatformFailed(1, "encoder released late"))
+      assertEquals(before, rig.phase, name)
+      val line = commands.map { (it as Command.Record).entry }.single()
+      assertEquals("platform-failed", line.kind, name)
+      assertEquals(1, line.field("attempt"), name)
+      assertEquals("encoder released late", line.field("message"), name)
+    }
+    assertEquals(listOf(Command.End(EndReason.OPERATOR_STOPPED)), rig.sent<Command.End>())
+  }
+
+  @Test
+  fun `final review N-4 a failure from an attempt that is over is stale - only the attempt in hand ends the session`() {
+    val rig = MachineRig().live()
+    val stale = Input.PlatformFailed(1, "encoder released late")
+    rig.send(Input.Dropped(1, DropReason.ENDPOINT_CLOSED, null))
+    // Waiting to retry: attempt 1 is over, and the attempt in hand is the next one, 2.
+    val waiting = rig.phase
+    rig.send(stale)
+    assertEquals(waiting, rig.phase, "waiting")
+    rig.advance(2_000)
+    assertEquals(2, rig.attempt, "attempt 2 asked for")
+    val requested = rig.phase
+    rig.send(stale)
+    assertEquals(requested, rig.phase, "connecting")
+    rig.send(Input.Connected(2))
+    val onAir = rig.phase
+    rig.send(stale)
+    assertEquals(onAir, rig.phase, "on air")
+    assertEquals(listOf<Any?>(1, 1, 1), rig.records("platform-failed").map { it.field("attempt") })
+    assertTrue(rig.sent<Command.End>().isEmpty())
+    rig.send(Input.PlatformFailed(2, "encoder cannot start"))
+    assertEquals(EndReason.FATAL_ERROR, rig.state.endReason)
+    assertEquals(2, rig.records("ended").single().field("attempt"))
+  }
+
+  @Test
+  fun `final review N-4 only an older attempt is stale - a failure stamped ahead of the attempt in hand still ends the session`() {
+    val rig = MachineRig().armed()
+    rig.send(Input.PlatformFailed(2, "no camera"))
+    assertEquals(EndReason.FATAL_ERROR, rig.state.endReason)
+  }
+
+  @Test
+  fun `final review M-5 a permanent failure after the end is only recorded, even from the next attempt, and ends nothing twice`() {
+    // The stop leaves attempt 2 next, so this failure is not from an older attempt: the end alone makes it stale.
+    val rig = MachineRig().live()
+    rig.send(Input.Stop)
+    val commands = rig.send(Input.PlatformFailed(2, "encoder released late"))
     val line = commands.map { (it as Command.Record).entry }.single()
     assertEquals("platform-failed", line.kind)
+    assertEquals(2, line.field("attempt"))
     assertEquals("encoder released late", line.field("message"))
     assertEquals(EndReason.OPERATOR_STOPPED, rig.state.endReason)
     assertEquals(listOf(Command.End(EndReason.OPERATOR_STOPPED)), rig.sent<Command.End>())
   }
 
   @Test
-  fun `final review M-5 a permanent failure is not judged first - nothing is rebuilt on its way to the end`() {
+  fun `final review M-5 a permanent failure is not judged by the watchdog - nothing is rebuilt on its way to the end`() {
     val rig = gateJustClosed()
-    val commands = rig.send(Input.PlatformFailed("encoder cannot start"))
+    val commands = rig.send(Input.PlatformFailed(1, "encoder cannot start"))
     assertEquals(listOf(Command.End(EndReason.FATAL_ERROR)), commands.filterNot { it is Command.Record })
     assertTrue(rig.records("video-stalled").isEmpty())
     assertEquals(EndReason.FATAL_ERROR, rig.state.endReason)
+  }
+
+  @Test
+  fun `final review N-4 a permanent failure that lands after the hold ran out, before the tick, reads hold-window-expired`() {
+    // Owner-visible only in B7 m2's gap, at most 500 ms: the hold ran out at 8 s and the failure, from
+    // the attempt in hand, lands at 8.2 s, on air or still connecting. The hold ended the session
+    // first, as the tick would have, and the failure is recorded against the ended session.
+    val setups: List<Pair<String, () -> MachineRig>> =
+      listOf(
+        "on air" to { holdRunsOutOnAir() },
+        "connecting" to {
+          MachineRig(sevenSecondHolds).live().apply {
+            send(Input.Dropped(1, DropReason.ENDPOINT_CLOSED, null))
+            advance(6_500)
+            at(8_000)
+          }
+        },
+      )
+    for ((name, setup) in setups) {
+      val rig = setup()
+      assertEquals(2, rig.attempt, name)
+      rig.at(8_200)
+      val commands = rig.send(Input.PlatformFailed(2, "encoder cannot start"))
+      assertEquals(listOf(Command.End(EndReason.HOLD_WINDOW_EXPIRED)), commands.filterNot { it is Command.Record }, name)
+      assertEquals(EndReason.HOLD_WINDOW_EXPIRED, rig.state.endReason, name)
+      assertEquals(listOf("ended", "platform-failed"), commands.filterIsInstance<Command.Record>().map { it.entry.kind }, name)
+    }
   }
 
   @Test
