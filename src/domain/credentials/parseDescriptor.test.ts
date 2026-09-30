@@ -148,6 +148,10 @@ describe('parseDescriptor', () => {
     expect(result).toMatchObject({ ok: true, value: { endReason: null } });
   });
 
+  it('stores exactly the wire form, with no key the parser would ignore (D28)', () => {
+    expect(descriptorToWire(EXPECTED)).toStrictEqual(descriptorWire({ endReason: null }));
+  });
+
   it('survives a round trip through storage', () => {
     expect(parseDescriptor(descriptorToWire(EXPECTED))).toEqual({ ok: true, value: EXPECTED });
   });
