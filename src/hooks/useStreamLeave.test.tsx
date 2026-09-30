@@ -240,6 +240,18 @@ describe('useStreamLeave: one leave at a time', () => {
     expect(leaving.navigation.current()).toBe('stream');
   });
 
+  it('releases a leave cancelled on air, so the next leave goes once the broadcast stops (T14 M2)', async () => {
+    const { modeStore, release } = slowStore();
+    const leaving = await leaveHook({ modeStore });
+    act(() => leaving.hook.result.current.leave());
+    act(() => leaving.engine.forceState(LIVE));
+    release();
+    await waitFor(() => expect(leaving.hook.result.current.blocked).toBe(true));
+    act(() => leaving.engine.forceState(STOPPED));
+    act(() => leaving.hook.result.current.leave());
+    await waitFor(() => expect(leaving.navigation.current()).toBe('home'));
+  });
+
   it('forgets once and goes Home once when Back and Home land together', async () => {
     const { modeStore, release } = slowStore();
     const forget = vi.spyOn(modeStore, 'forget');
