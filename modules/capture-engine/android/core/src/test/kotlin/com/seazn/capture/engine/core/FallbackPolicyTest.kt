@@ -108,6 +108,12 @@ class FallbackPolicyTest {
     assertFalse(proven.counted)
     assertEquals(0, proven.policy.count)
     assertTrue(two.dropped(DropReason.ENDPOINT_CLOSED, networkValidated = true, publishedMs = 24_999).fellBack)
+    // The attempt proved the path worked, whatever the network is doing now.
+    val provenUnvalidated = two.dropped(DropReason.ENDPOINT_CLOSED, networkValidated = false, publishedMs = 30_000)
+    assertFalse(provenUnvalidated.counted)
+    assertEquals(0, provenUnvalidated.policy.count)
+    // So did one we ended ourselves.
+    assertEquals(0, two.dropped(DropReason.REQUESTED, networkValidated = true, publishedMs = 40_000).policy.count)
   }
 
   @Test

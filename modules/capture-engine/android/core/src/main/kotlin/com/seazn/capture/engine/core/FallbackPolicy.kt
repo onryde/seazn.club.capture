@@ -22,7 +22,8 @@ data class FallbackPolicy(
 
   /**
    * A drop counts when the far end closed an attempt that published for less than
-   * [SHORT_ATTEMPT_MS]. A longer attempt proves the link: it clears the count and does not count.
+   * [SHORT_ATTEMPT_MS]. A longer attempt proves the path worked: it clears the count and does not
+   * count, even on a network that is not validated now, and whatever the reason.
    */
   fun dropped(reason: DropReason, networkValidated: Boolean, publishedMs: Long): FallbackDecision {
     if (publishedMs >= SHORT_ATTEMPT_MS) return FallbackDecision(copy(count = 0), counted = false, fellBack = false)
