@@ -26,14 +26,15 @@ object SessionMachine {
    * ends the session first (B7 N1), and then the stall watchdog judges it, so nothing lands between
    * the LIVE gate closing and the rebuild, no snapshot reads connecting there, and a switch in that
    * gap cannot re-open LIVE. A stop is not judged (B6 fix 2): it ends the session whatever the
-   * picture does, so a rebuild first would only be torn down by the end.
+   * picture does, so a rebuild first would only be torn down by the end. Nor is a permanent platform
+   * failure, for the same reason (final review M-5).
    *
    * So once the hold has run out, any input that lands before the tick ends the session
    * hold-window-expired, a picture that comes back and an organiser stop included (B7 ruling m2): the
    * hold is the published limit, and the tick at that instant would end it the same way.
    */
   fun reduce(phase: Phase, input: Input, now: Now): Step {
-    if (input == Input.Tick || input == Input.Stop) return apply(phase, input, now)
+    if (input == Input.Tick || input == Input.Stop || input is Input.PlatformFailed) return apply(phase, input, now)
     val judged = Timers.judged(phase, now)
     val step = apply(judged.phase, input, now)
     return if (judged.commands.isEmpty()) step else step.copy(commands = judged.commands + step.commands)
@@ -43,8 +44,8 @@ object SessionMachine {
     when (input) {
       is Input.Arm -> arm(phase, input.config, now)
       Input.Start -> start(phase, now)
-      Input.Stop -> if (phase.session == null) ignored(phase, "stop") else end(phase, EndReason.OPERATOR_STOPPED)
-      Input.Reset -> if (phase is Phase.Ended) Step(Phase.Idle(phase.ids), listOf(record("reset"))) else ignored(phase, "reset")
+      Input.Stop -> if (phase.session == null) ignored(phase, "stop") else end(phase, EndReason.OPERATOR_STOPPED, now)
+      Input.Reset -> if (phase is Phase.Ended) Step(Phase.Idle(phase.ids, phase.networkValidated), listOf(record("reset"))) else ignored(phase, "reset")
       Input.SwitchCamera -> Devices.switched(phase, now)
       Input.Tick -> Heartbeats.tick(Timers.tick(phase, now), now)
       is Input.Connected -> Transports.connected(phase, input.attemptId, now)
@@ -59,16 +60,17 @@ object SessionMachine {
       is Input.MicSilenced -> Devices.mic(phase, input.silenced)
       is Input.Device -> Devices.sampled(phase, input.sample)
       is Input.PlaylistFetched -> Deliveries.fetched(phase, input, now)
-      is Input.HeartbeatAnswered -> Heartbeats.answered(phase, input)
-      is Input.DescriptorChecked -> descriptor(phase, input)
+      is Input.HeartbeatAnswered -> Heartbeats.answered(phase, input, now)
+      is Input.DescriptorChecked -> descriptor(phase, input, now)
+      is Input.PlatformFailed -> platformFailed(phase, input.message, now)
     }
 
   internal fun ignored(phase: Phase, intent: String): Step =
     Step(phase, listOf(record("intent-ignored", "intent" to intent, "phase" to phase.name)))
 
-  internal fun end(phase: Phase, reason: EndReason, vararg fields: Pair<String, Any?>): Step {
+  internal fun end(phase: Phase, reason: EndReason, now: Now, vararg fields: Pair<String, Any?>): Step {
     val liveMs = phase.session?.liveSinceEpochMs
-    return Step(Phase.Ended(reason, phase.ids), listOf(record("ended", "reason" to reason, "wasLive" to (liveMs != null), *fields), Command.End(reason)))
+    return Step(phase.ended(reason, now), listOf(record("ended", "reason" to reason, "wasLive" to (liveMs != null), *fields), Command.End(reason)))
   }
 
   private fun arm(phase: Phase, config: SessionConfig, now: Now): Step {
@@ -76,7 +78,7 @@ object SessionMachine {
     val problems = config.problems()
     if (problems.isNotEmpty()) {
       val refused = record("arm-refused", "problems" to problems.joinToString("; "))
-      return Step(Phase.Ended(EndReason.FATAL_ERROR, phase.ids), listOf(refused, Command.End(EndReason.FATAL_ERROR)))
+      return Step(phase.ended(EndReason.FATAL_ERROR, now), listOf(refused, Command.End(EndReason.FATAL_ERROR)))
     }
     // Ids carry on from the last session (B6 review m3): its late answers never match this one's asks.
     val ids = phase.ids
@@ -89,6 +91,7 @@ object SessionMachine {
         delivery = DeliveryWatch(config.playbackUrl, nextRequestId = ids.playlist),
         nextAttemptId = ids.attempt,
         descriptor = DescriptorAsks(nextId = ids.descriptor),
+        networkValidated = phase.networkValidated,
       )
     val armed = record("armed", "sid" to config.sid, "transport" to config.primary.transport, "playbackUrl" to config.playbackUrl)
     return Step(Phase.Armed(session), listOf(armed))
@@ -99,22 +102,31 @@ object SessionMachine {
     return Transports.connect(phase.session, phase.session.fallback.current, outage = null, now = now)
   }
 
+  /** Recorded when it changes, in any phase: with no session it is kept for the next (final review I-1). */
   private fun network(phase: Phase, validated: Boolean): Step {
-    val session = phase.session ?: return Step(phase)
-    if (session.networkValidated == validated) return Step(phase)
-    return Step(phase.withSession(session.copy(networkValidated = validated)), listOf(record("network", "validated" to validated)))
+    if (phase.networkValidated == validated) return Step(phase)
+    return Step(phase.withNetwork(validated), listOf(record("network", "validated" to validated)))
+  }
+
+  /**
+   * A failure the platform knows is permanent (spec §5, final review M-5) ends any session, and an
+   * idle engine too, fatal-error. After the end it is only recorded: the session already said why it ended.
+   */
+  private fun platformFailed(phase: Phase, message: String, now: Now): Step {
+    if (phase is Phase.Ended) return Step(phase, listOf(record("platform-failed", "message" to message)))
+    return end(phase, EndReason.FATAL_ERROR, now, "message" to message)
   }
 
   /**
    * A 410 or a finished state on a reconnect's descriptor fetch is an organiser stop (spec §1). Only
    * the answer to the ask in flight is acted on (B6 review I2): any other changes nothing.
    */
-  private fun descriptor(phase: Phase, input: Input.DescriptorChecked): Step {
+  private fun descriptor(phase: Phase, input: Input.DescriptorChecked, now: Now): Step {
     val session = phase.session ?: return Step(phase)
     val asks = session.descriptor.answered(input.requestId) ?: return Step(phase)
     val answered = phase.withSession(session.copy(descriptor = asks))
     return when (val result = input.result) {
-      is DescriptorCheck.Over -> end(answered, EndReason.STOPPED_BY_ORGANISER, "endReason" to result.endReason)
+      is DescriptorCheck.Over -> end(answered, EndReason.STOPPED_BY_ORGANISER, now, "endReason" to result.endReason)
       DescriptorCheck.Live -> Step(answered, listOf(record("descriptor", "result" to "live")))
       is DescriptorCheck.Unreachable -> Step(answered, listOf(record("descriptor", "result" to "unreachable", "message" to result.message)))
     }
@@ -127,7 +139,7 @@ internal object Transports {
   private val CONNECT_COUNTERS = LinkCounters(0, 0, 0, 0, 0, null, null, null)
 
   fun connect(session: Session, transport: Transport, outage: Outage?, now: Now): Step {
-    val (next, connect) = connectCommand(session, transport) ?: return missingTarget(session, transport)
+    val (next, connect) = connectCommand(session, transport) ?: return missingTarget(session, transport, now)
     val phase = Phase.Connecting(next, transport, ConnectStep.Requested(connect.attemptId, now.monoMs), outage)
     return Step(phase, listOf(connect, record("connecting", "transport" to transport, "attempt" to connect.attemptId)))
   }
@@ -138,7 +150,7 @@ internal object Transports {
    * refusal's asks are (B6 ruling C1, B7).
    */
   fun replace(onAir: Phase.OnAir, session: Session, outage: Outage?, now: Now, wrap: (Command.Connect) -> Command): Step {
-    val (connected, connect) = connectCommand(session, onAir.transport) ?: return missingTarget(session, onAir.transport)
+    val (connected, connect) = connectCommand(session, onAir.transport) ?: return missingTarget(session, onAir.transport, now)
     val (next, fetch) = if (connected.descriptor.mayAsk(now.monoMs)) askDescriptor(connected, now) else connected to null
     val phase = Phase.Connecting(next, onAir.transport, ConnectStep.Requested(connect.attemptId, now.monoMs), outage)
     val connecting = record("connecting", "transport" to onAir.transport, "attempt" to connect.attemptId)
@@ -154,8 +166,8 @@ internal object Transports {
   }
 
   /** Unreachable after arm's checks; kept total so a bug ends the session visibly rather than throwing. */
-  private fun missingTarget(session: Session, transport: Transport): Step =
-    SessionMachine.end(Phase.Armed(session), EndReason.FATAL_ERROR, "transport" to transport)
+  private fun missingTarget(session: Session, transport: Transport, now: Now): Step =
+    SessionMachine.end(Phase.Armed(session), EndReason.FATAL_ERROR, now, "transport" to transport)
 
   fun connected(phase: Phase, attemptId: Int, now: Now): Step {
     val step = (phase as? Phase.Connecting)?.step
@@ -313,7 +325,7 @@ internal object Timers {
     }
 
   private fun connecting(connecting: Phase.Connecting, now: Now): Step {
-    if (connecting.outage?.hold?.expired(now.monoMs) == true) return expired(connecting, connecting.outage)
+    if (connecting.outage?.hold?.expired(now.monoMs) == true) return expired(connecting, connecting.outage, now)
     // Off air: the delivery watch must see it, or the gap would count as a delivery stall.
     val offAir = connecting.session.delivery.tick(now.monoMs, onAirNow = false).first
     val phase = connecting.copy(session = connecting.session.copy(delivery = offAir))
@@ -337,7 +349,7 @@ internal object Timers {
    */
   fun judged(phase: Phase, now: Now): Step {
     val outage = (phase as? Phase.OnAir)?.outage ?: (phase as? Phase.Connecting)?.outage
-    if (outage != null && outage.hold.expired(now.monoMs)) return expired(phase, outage)
+    if (outage != null && outage.hold.expired(now.monoMs)) return expired(phase, outage, now)
     if (phase !is Phase.OnAir) return Step(phase)
     val verdict = phase.watchdog.tick(now.monoMs, phase.session.camera.slateOnAir).second
     return if (verdict is StallVerdict.Rebuild) rebuild(phase, verdict, now) else Step(phase)
@@ -345,7 +357,7 @@ internal object Timers {
 
   private fun onAir(phase: Phase.OnAir, now: Now): Step {
     val outage = phase.outage
-    if (outage != null && outage.hold.expired(now.monoMs)) return expired(phase, outage)
+    if (outage != null && outage.hold.expired(now.monoMs)) return expired(phase, outage, now)
     val (watchdog, verdict) = phase.watchdog.tick(now.monoMs, phase.session.camera.slateOnAir)
     val watched = phase.copy(watchdog = watchdog)
     if (verdict is StallVerdict.Rebuild) return rebuild(watched, verdict, now)
@@ -356,8 +368,8 @@ internal object Timers {
     return Step(polled, requests.map { Command.FetchPlaylist(it.id, it.url) })
   }
 
-  private fun expired(phase: Phase, outage: Outage): Step =
-    SessionMachine.end(phase, EndReason.HOLD_WINDOW_EXPIRED, "transport" to outage.hold.transport, "cause" to outage.cause)
+  private fun expired(phase: Phase, outage: Outage, now: Now): Step =
+    SessionMachine.end(phase, EndReason.HOLD_WINDOW_EXPIRED, now, "transport" to outage.hold.transport, "cause" to outage.cause)
 
   /**
    * The stall watchdog asked for a rebuild (F-P5-6, F-P5-9). The record's `msSinceAdvance` counts
@@ -429,7 +441,8 @@ internal object Devices {
    * the last frame before the first switch, so a switch in the middle of a stall cannot stretch LIVE.
    * The next input at or after those 3 s rebuilds, and the tick is an input every [Engine.TICK_MS]. So
    * LIVE outlasts the last real frame by at most 3.5 s while Frames readings come every tick, and by
-   * at most 3.9 s when no reading follows the tap and the ticks fall off the frame grid (B7 ruling m1).
+   * under 4 s when no reading follows the tap and the ticks fall off the frame grid (B7 ruling m1,
+   * amended).
    * Plan C keeps the readings coming through a switch, flat or not.
    */
   fun switched(phase: Phase, now: Now): Step {
@@ -512,14 +525,14 @@ internal object Heartbeats {
     return Step(next, commands)
   }
 
-  fun answered(phase: Phase, input: Input.HeartbeatAnswered): Step {
+  fun answered(phase: Phase, input: Input.HeartbeatAnswered, now: Now): Step {
     val session = phase.session ?: return Step(phase)
     val (heartbeat, over) = Heartbeat.answered(session.heartbeat, input.beatId, input.response)
     if (heartbeat == session.heartbeat) return Step(phase)
     val status = (input.response as? HeartbeatResponse.Answered)?.status
     if (over) {
       val answered = (input.response as? HeartbeatResponse.Answered)?.endReason
-      return SessionMachine.end(phase, EndReason.STOPPED_BY_ORGANISER, "status" to status, "endReason" to answered)
+      return SessionMachine.end(phase, EndReason.STOPPED_BY_ORGANISER, now, "status" to status, "endReason" to answered)
     }
     val noted = record("heartbeat", "result" to heartbeat.lastResult, "status" to status, "message" to (input.response as? HeartbeatResponse.Failed)?.message)
     return Step(phase.withSession(session.copy(heartbeat = heartbeat)), listOf(noted))

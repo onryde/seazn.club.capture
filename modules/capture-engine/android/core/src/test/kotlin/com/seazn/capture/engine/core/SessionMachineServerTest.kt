@@ -9,9 +9,51 @@ import kotlin.test.assertTrue
 class SessionMachineServerTest {
   private val masterText = "#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=3128000\nstream_720/video.m3u8\n"
 
-  private fun media(head: Long) =
+  private fun media(head: Long, seconds: String = "2.000") =
     "#EXTM3U\n#EXT-X-TARGETDURATION:2\n#EXT-X-MEDIA-SEQUENCE:${head - 2}\n" +
-      (head - 2..head).joinToString("") { "#EXTINF:2.000,\ns$it.ts\n" }
+      (head - 2..head).joinToString("") { "#EXTINF:$seconds,\ns$it.ts\n" }
+
+  private val masterUrl = Configs.PLAYBACK_URL + "?clientBandwidthHint=0.1"
+
+  @Test
+  fun `final review I-2 a playlist that moves reads delivery ok with its lag, in the snapshot and the next beat`() {
+    var head = 100L
+    val rig = MachineRig()
+    rig.playlists = { url -> FetchResult.Body(if (url == masterUrl) masterText else media(head++, seconds = "1.500")) }
+    rig.beats = { HeartbeatResponse.Answered(200, "live", null) }
+    rig.live()
+    rig.advance(9_500)
+    // Live at 1 s, where the first look is the baseline. Each poll after it (3, 5, 7 and 9 s) finds one
+    // new 1.5 s segment for 2 s of publishing: 0.5 s more behind each time, 2.0 s by 9 s (F-P5-13).
+    assertEquals(Delivery.OK, rig.snapshot.delivery)
+    assertEquals(2_000L, rig.snapshot.deliveredLagMs)
+    // The second beat goes at 10.5 s.
+    val beat = rig.sent<Command.PostHeartbeat>().last()
+    assertEquals(2, beat.beatId)
+    assertTrue(""""delivery":"ok","deliveredLagS":2.0,""" in beat.body, beat.body)
+  }
+
+  @Test
+  fun `final review I-2 a playlist that stops moving reads delivery stalled after 6 s of publishing`() {
+    val rig = MachineRig()
+    rig.playlists = { url -> FetchResult.Body(if (url == masterUrl) masterText else media(100)) }
+    rig.live()
+    // The look at 1 s is the baseline. At the poll at 5 s the head has not moved for 4 s of publishing.
+    rig.advance(4_000)
+    assertEquals(Delivery.UNKNOWN, rig.snapshot.delivery)
+    // At 7 s, 6 s: three configured segments.
+    rig.advance(2_000)
+    assertEquals(Delivery.STALLED, rig.snapshot.delivery)
+  }
+
+  @Test
+  fun `final review I-2 the beat's at is the wall clock`() {
+    val rig = MachineRig().armed()
+    rig.advance(500)
+    // The rig's wall clock starts at 1_790_000_000_000, 2026-09-21T14:13:20Z. The first beat goes at 0.5 s.
+    val body = rig.sent<Command.PostHeartbeat>().single().body
+    assertTrue(body.startsWith("""{"sid":"sess_42","at":"2026-09-21T14:13:20.500Z","""), body)
+  }
 
   @Test
   fun `F-P5-13 not-delivered forces a new session and shows until the playlist moves again`() {
@@ -45,7 +87,7 @@ class SessionMachineServerTest {
     rig.sent<Command.StartNewSession>().single()
     val ask = rig.sent<Command.FetchDescriptor>().single()
     rig.send(Input.DescriptorChecked(ask.requestId, DescriptorCheck.Over("stopped")))
-    assertEquals(SnapshotState.Ended(EndReason.STOPPED_BY_ORGANISER), rig.state)
+    assertEquals(EndReason.STOPPED_BY_ORGANISER, rig.state.endReason)
   }
 
   @Test
@@ -79,7 +121,7 @@ class SessionMachineServerTest {
     val rig = MachineRig().live()
     rig.beats = { HeartbeatResponse.Answered(200, "ending", "stopped") }
     rig.advance(10_000)
-    assertEquals(SnapshotState.Ended(EndReason.STOPPED_BY_ORGANISER), rig.state)
+    assertEquals(EndReason.STOPPED_BY_ORGANISER, rig.state.endReason)
   }
 
   @Test

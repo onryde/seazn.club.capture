@@ -42,7 +42,11 @@ sealed interface SnapshotState : Wire {
     override val wire = "reconnecting"
   }
 
-  data class Ended(val reason: EndReason) : SnapshotState {
+  /**
+   * [durationMs]: how long the session was live, from its first encoded frame to its end, outages
+   * included, as the HUD's elapsed clock counts it; null if it never went live (final review M-3).
+   */
+  data class Ended(val reason: EndReason, val durationMs: Long?) : SnapshotState {
     override val wire = "ended"
   }
 }

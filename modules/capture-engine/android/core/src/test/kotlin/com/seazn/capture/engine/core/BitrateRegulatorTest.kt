@@ -269,8 +269,9 @@ class BitrateRegulatorTest {
     // Loss at 1 s marks the link failing. The reading at 2 s is clean, and a far-end drop lands in the
     // same millisecond: the link failed within 10 s, so it halves 1_500_000 to 750_000. At 12.5 s the
     // failing reading is 11.5 s old, so a clean far-end drop restarts at the healthy 1_500_000 and,
-    // the tie counting as this episode's, forgets the rate. One millisecond earlier or later does not
-    // decide the tie: the failing drop wins.
+    // the tie counting as this episode's, forgets the rate. Only the tie is the ruling's: a halving
+    // 1 ms after the reading is this episode's under `>` too, and one 1 ms before it belongs to the
+    // episode before, whose rate a clean restart keeps.
     val lossy = run(BitrateRegulator.sessionStarted(), 1_000, 1_000) { reading(lost = 5) }
     val healthy = run(lossy, 2_000, 2_000)
     val halved = BitrateRegulator.afterDrop(healthy, nowMs = 2_000)

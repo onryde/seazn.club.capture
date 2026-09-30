@@ -27,7 +27,8 @@ enum class CameraState(override val wire: String, val slateOnAir: Boolean, val s
    * The operator switched cameras, and the new one has not delivered a frame yet (ruling 14). LIVE
    * holds until 3 s after the switch when a frame came within one sample of it (B7 N3), otherwise 3 s
    * after the last frame before it (B6 fix 2), plus at most one tick; then the pipeline is rebuilt.
-   * Past the last real frame that is at most 3.5 s with readings every tick, 3.9 s without (B7 m1).
+   * Past the last real frame that is at most 3.5 s with Frames readings every tick, and under 4 s
+   * without (B7 ruling m1, amended).
    */
   SWITCHING("switching", slateOnAir = false, shownTaken = false),
 }
@@ -48,6 +49,7 @@ data class Session(
   val delivery: DeliveryWatch,
   val nextAttemptId: Int = 1,
   val descriptor: DescriptorAsks = DescriptorAsks(),
+  /** Seeded at arm from the last network fact, which outlives the session before it (final review I-1). */
   val networkValidated: Boolean = false,
   /** Set by the first encoded frame, and kept across drops: the HUD's elapsed time never resets. */
   val liveSinceEpochMs: Long? = null,
@@ -77,7 +79,8 @@ sealed interface ConnectStep {
 sealed interface Phase {
   val name: String
 
-  data class Idle(val ids: Ids = Ids()) : Phase {
+  /** Before the first session, and after a reset. [networkValidated] is the last network fact (final review I-1). */
+  data class Idle(val ids: Ids = Ids(), val networkValidated: Boolean = false) : Phase {
     override val name = "idle"
   }
 
@@ -107,7 +110,12 @@ sealed interface Phase {
     override val name = "on-air"
   }
 
-  data class Ended(val reason: EndReason, val ids: Ids) : Phase {
+  /**
+   * The session is over. [durationMs] is how long it was live, from its first encoded frame to its end
+   * (final review M-3); null if it never was. [networkValidated] is the last network fact, kept for the
+   * next session (final review I-1).
+   */
+  data class Ended(val reason: EndReason, val ids: Ids, val durationMs: Long?, val networkValidated: Boolean) : Phase {
     override val name = "ended"
   }
 }
@@ -131,6 +139,43 @@ val Phase.ids: Ids
       is Phase.Connecting -> session.ids
       is Phase.OnAir -> session.ids
     }
+
+/**
+ * The last network fact (`NET_CAPABILITY_VALIDATED`), in any phase. The platform pushes it when it
+ * changes, which can be before an arm or once for two sessions, so it is kept between sessions the
+ * way [Ids] are, and each session is seeded with it at arm (final review I-1).
+ */
+val Phase.networkValidated: Boolean
+  get() =
+    when (this) {
+      is Phase.Idle -> networkValidated
+      is Phase.Ended -> networkValidated
+      is Phase.Armed -> session.networkValidated
+      is Phase.Connecting -> session.networkValidated
+      is Phase.OnAir -> session.networkValidated
+    }
+
+/** This phase with [validated] as the network fact, in the session or, with none, kept for the next. */
+fun Phase.withNetwork(validated: Boolean): Phase =
+  when (this) {
+    is Phase.Idle -> copy(networkValidated = validated)
+    is Phase.Ended -> copy(networkValidated = validated)
+    is Phase.Armed -> copy(session = session.copy(networkValidated = validated))
+    is Phase.Connecting -> copy(session = session.copy(networkValidated = validated))
+    is Phase.OnAir -> copy(session = session.copy(networkValidated = validated))
+  }
+
+/**
+ * The phase a session ends in, from any phase: the ids and the network fact carry on to the next
+ * session. The duration counts from the first encoded frame on the wall clock, outages included, as
+ * the HUD's elapsed clock does (final review M-3); a wall clock set back past that frame reads 0. An
+ * ended session ended again (the engine's fatal error) keeps the duration it had.
+ */
+fun Phase.ended(reason: EndReason, now: Now): Phase.Ended {
+  if (this is Phase.Ended) return copy(reason = reason)
+  val durationMs = session?.liveSinceEpochMs?.let { (now.wallMs - it).coerceAtLeast(0) }
+  return Phase.Ended(reason, ids, durationMs, networkValidated)
+}
 
 val Session.ids: Ids
   get() = Ids(attempt = nextAttemptId, descriptor = descriptor.nextId, beat = heartbeat.nextId, playlist = delivery.nextRequestId)

@@ -15,6 +15,10 @@ class EngineTest {
   private val lines = mutableListOf<String>()
   private var onCommand: (Engine, Command) -> Unit = { _, _ -> }
 
+  /** Runs on every record line before it is kept, and on every snapshot after it is: either may throw. */
+  private var onLine: (String) -> Unit = {}
+  private var onSnapshot: (Snapshot) -> Unit = {}
+
   private fun engine(
     projection: (Phase, Now) -> Snapshot = Projection::snapshot,
     reducer: (Phase, Input, Now) -> Step = SessionMachine::reduce,
@@ -28,8 +32,15 @@ class EngineTest {
           executed += command
           onCommand(engine, command)
         },
-        snapshots = { published += clock.mono to it },
-        record = SessionRecord { lines += it },
+        snapshots = {
+          published += clock.mono to it
+          onSnapshot(it)
+        },
+        record =
+          SessionRecord {
+            onLine(it)
+            lines += it
+          },
         reducer = reducer,
         projection = projection,
       )
@@ -133,7 +144,7 @@ class EngineTest {
     val engine = engine { _, _, _ -> throw IllegalStateException("bug") }
     engine.send(Input.Start)
     scheduler.advanceBy(0)
-    assertEquals(Phase.Ended(EndReason.FATAL_ERROR, Ids()), engine.phase)
+    assertEquals(Phase.Ended(EndReason.FATAL_ERROR, Ids(), durationMs = null, networkValidated = false), engine.phase)
     assertTrue(Command.End(EndReason.FATAL_ERROR) in executed)
     assertTrue(lines.any { "engine-error" in it })
   }
@@ -419,5 +430,111 @@ class EngineTest {
     failing = false
     scheduler.advanceBy(500)
     assertEquals(listOf(1_500L), published.map { it.first })
+  }
+
+  @Test
+  fun `final review I-2 the snapshot and the record read the wall clock, never the monotonic one`() {
+    val engine = engine()
+    scheduler.advanceBy(2_000)
+    engine.send(Input.Arm(Configs.valid()))
+    scheduler.advanceBy(0)
+    // FakeClock: monotonic 2_000, wall 1_790_000_002_000, which is 2026-09-21T14:13:22Z.
+    assertEquals(1_790_000_002_000L, published.single().second.reportedAtMs)
+    assertTrue(lines.single().startsWith("""{"at":"2026-09-21T14:13:22.000Z","kind":"armed","""), lines.single())
+  }
+
+  private class SinkCrash : Error("sink crash")
+
+  private class LinkCrash : Error("libsrt.so not found")
+
+  private class BridgeCrash : Error("bridge crash")
+
+  @Test
+  fun `final review M-1 an Error from the record sink on the ended line never holds back the End`() {
+    var endedFirst = false
+    onLine = { line ->
+      if (""""kind":"ended"""" in line) {
+        endedFirst = Command.End(EndReason.OPERATOR_STOPPED) in executed
+        throw SinkCrash()
+      }
+    }
+    val engine = engine()
+    engine.send(Input.Arm(Configs.valid()))
+    engine.send(Input.Start)
+    engine.send(Input.Stop)
+    // The Error still reaches the scheduler's thread, as the platform's own would.
+    assertFailsWith<SinkCrash> { scheduler.advanceBy(0) }
+    assertEquals(Command.End(EndReason.OPERATOR_STOPPED), executed.last())
+    assertTrue(endedFirst, "the platform had the End before the record had the ended line")
+    assertEquals(SnapshotState.Ended(EndReason.OPERATOR_STOPPED, durationMs = null), published.last().second.state)
+    assertEquals(EndReason.OPERATOR_STOPPED, assertIs<Phase.Ended>(engine.phase).reason)
+  }
+
+  @Test
+  fun `final review M-1 every effect of a step runs, and the first Error is the one rethrown`() {
+    onCommand = { _, command -> if (command is Command.End) throw LinkCrash() }
+    onLine = { line -> if (""""kind":"ended"""" in line) throw SinkCrash() }
+    onSnapshot = { snapshot -> if (snapshot.state is SnapshotState.Ended) throw BridgeCrash() }
+    val engine = engine()
+    engine.send(Input.Arm(Configs.valid()))
+    engine.send(Input.Start)
+    scheduler.advanceBy(0)
+    engine.send(Input.Stop)
+    // The End threw first, then the ended line, then the ended snapshot: each still ran.
+    assertFailsWith<LinkCrash> { scheduler.advanceBy(0) }
+    assertEquals(1, engine.commandFailures, "an Error from the platform is counted too")
+    assertTrue(lines.last().contains(""""kind":"command-failed"""") && "libsrt.so not found" in lines.last(), lines.last())
+    assertIs<SnapshotState.Ended>(published.last().second.state)
+  }
+
+  @Test
+  fun `final review M-3 and I-1 a fatal error in a live session keeps how long it was live, and the network fact`() {
+    onCommand = { e, command -> if (command is Command.Connect) e.send(Input.Connected(command.attemptId)) }
+    val engine = engine { phase, input, now -> if (input == Input.SwitchCamera) error("bug") else SessionMachine.reduce(phase, input, now) }
+    engine.send(Input.Arm(Configs.valid()))
+    engine.send(Input.Network(true))
+    engine.send(Input.Start)
+    scheduler.advanceBy(0)
+    engine.send(Input.Frames(1, 15, 23))
+    scheduler.advanceBy(500)
+    // 0.5 s: the first frame that advances. The session is live from here.
+    engine.send(Input.Frames(1, 30, 46))
+    scheduler.advanceBy(10_000)
+    engine.send(Input.SwitchCamera)
+    scheduler.advanceBy(0)
+    val ended = assertIs<Phase.Ended>(engine.phase)
+    assertEquals(EndReason.FATAL_ERROR, ended.reason)
+    assertEquals(10_000L, ended.durationMs)
+    assertTrue(ended.networkValidated)
+    // A second failure, once ended, ends it again: the session it ends is still the one that was live.
+    scheduler.advanceBy(1_500)
+    engine.send(Input.SwitchCamera)
+    scheduler.advanceBy(0)
+    assertEquals(ended, engine.phase)
+  }
+
+  @Test
+  fun `final review M-5 a permanent platform failure that quotes a secret is masked in the record`() {
+    val engine = engine()
+    engine.send(Input.Arm(Configs.valid()))
+    engine.send(Input.PlatformFailed("srt://h?passphrase=${Configs.PASSPHRASE} cannot open"))
+    scheduler.advanceBy(0)
+    val ended = lines.single { """"kind":"ended"""" in it }
+    assertFalse(Configs.PASSPHRASE in ended, ended)
+    assertTrue("passphrase=${SessionRecord.MASK} cannot open" in ended, ended)
+    assertEquals(listOf<Command>(Command.End(EndReason.FATAL_ERROR)), executed)
+  }
+
+  @Test
+  fun `final review M-6 a log line is posted through the scheduler into the record, scrubbed, on the wall clock`() {
+    val engine = engine()
+    scheduler.advanceBy(1_500)
+    engine.send(Input.Arm(Configs.valid()))
+    engine.log(RecordEntry("js.warn", listOf("message" to "retrying with stream key ${Configs.STREAM_KEY}")))
+    assertTrue(lines.isEmpty(), "nothing is written off the scheduler's thread")
+    scheduler.advanceBy(0)
+    // In order with the engine's own lines. 1_790_000_001_500 is 2026-09-21T14:13:21.500Z.
+    assertEquals(2, lines.size)
+    assertEquals("""{"at":"2026-09-21T14:13:21.500Z","kind":"js.warn","message":"retrying with stream key ***"}""", lines[1])
   }
 }

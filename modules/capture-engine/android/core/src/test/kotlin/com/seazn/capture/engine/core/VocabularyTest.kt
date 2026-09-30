@@ -48,7 +48,7 @@ class VocabularyTest {
         SnapshotState.Publishing(Transport.SRT, 0),
         SnapshotState.Degraded(Transport.SRT, listOf(DegradeReason.MIC_SILENCED), 0),
         SnapshotState.Reconnecting(ReconnectCause.UPLINK_LOST, 38, 183, 0),
-        SnapshotState.Ended(EndReason.OPERATOR_STOPPED),
+        SnapshotState.Ended(EndReason.OPERATOR_STOPPED, durationMs = null),
       )
     assertEquals(
       listOf("idle", "armed", "connecting", "publishing", "degraded", "reconnecting", "ended"),

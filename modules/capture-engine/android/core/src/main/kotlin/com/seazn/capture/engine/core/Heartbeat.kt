@@ -53,9 +53,6 @@ object Heartbeat {
   const val INTERVAL_MS = 10_000L
   const val TIMEOUT_MS = 10_000L
 
-  /** Descriptor states that mean the session is over (spec, _Ask_ → Descriptor). */
-  val OVER_STATES = setOf("ending", "completed", "failed")
-
   /** The id of the beat to send now, or null. */
   fun due(state: HeartbeatState, nowMs: Long, wallMs: Long): Pair<HeartbeatState, Int?> {
     var next = state
@@ -71,12 +68,10 @@ object Heartbeat {
     ) to id
   }
 
-  /** The answer to beat [id]. The boolean is true when the server says the session is over. */
+  /** The answer to beat [id]. The boolean is true when the server says the session is over ([SessionOver]). */
   fun answered(state: HeartbeatState, id: Int, response: HeartbeatResponse): Pair<HeartbeatState, Boolean> {
     if (state.inFlightId != id) return state to false
-    val over =
-      response is HeartbeatResponse.Answered &&
-        (response.status == 410 || (response.status in 200..299 && response.state in OVER_STATES))
+    val over = response is HeartbeatResponse.Answered && SessionOver.said(response.status, response.state)
     return when {
       over -> state.copy(inFlightId = null, lastResult = HeartbeatResult.SESSION_OVER) to true
       response is HeartbeatResponse.Answered && response.status in 200..299 ->

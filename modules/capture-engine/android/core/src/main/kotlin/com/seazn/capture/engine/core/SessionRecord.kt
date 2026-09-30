@@ -11,10 +11,11 @@ data class RecordEntry(val kind: String, val fields: List<Pair<String, Any?>> = 
  * thermal readings and heartbeat results, one JSON object per line.
  *
  * Scrubbed at the sink, by allow-list (P5's scrub rule). A string passes only under a key this
- * object knows; public URLs pass verbatim, because every viewer already holds them. The same value
- * can be a secret in one role and public in another: the SRT stream id is a secret, and on
- * Cloudflare it is also a path segment of the public playback URL. So the stream id is masked
- * everywhere except inside a public URL, and `tok`, passphrases and stream keys are masked everywhere.
+ * object knows. Public URLs pass, because every viewer already holds them, but not whole: `tok`,
+ * passphrases and stream keys are masked inside them too. The same value can be a secret in one role
+ * and public in another: the SRT stream id is a secret, and on Cloudflare it is also a path segment
+ * of the public playback URL. So the stream id is masked everywhere except inside a public URL, and
+ * `tok`, passphrases and stream keys are masked everywhere.
  *
  * Threads: [protect] and [append] belong to the engine's scheduler thread, the one serial thread
  * plan C backs [Scheduler] with. [lastLines], [sinkFailures] and [reentrantDropped] may be read

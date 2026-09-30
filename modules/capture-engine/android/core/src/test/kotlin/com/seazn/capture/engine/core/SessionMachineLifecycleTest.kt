@@ -68,7 +68,7 @@ class SessionMachineLifecycleTest {
   fun `stop ends operator-stopped, and a second stop does nothing`() {
     val rig = MachineRig().live()
     rig.send(Input.Stop)
-    assertEquals(SnapshotState.Ended(EndReason.OPERATOR_STOPPED), rig.state)
+    assertEquals(EndReason.OPERATOR_STOPPED, rig.state.endReason)
     rig.send(Input.Stop)
     assertEquals(listOf(Command.End(EndReason.OPERATOR_STOPPED)), rig.sent<Command.End>())
   }
@@ -106,7 +106,7 @@ class SessionMachineLifecycleTest {
       SessionConfig("sess_42", Configs.TOKEN, Configs.srt, Configs.rtmps, mapOf(Transport.SRT to 183, Transport.RTMPS to 180), "", "https://h/", "1.0.0")
     val rig = MachineRig(empty)
     rig.send(Input.Arm(empty))
-    assertEquals(SnapshotState.Ended(EndReason.FATAL_ERROR), rig.state)
+    assertEquals(EndReason.FATAL_ERROR, rig.state.endReason)
     assertEquals("playbackUrl is not https", rig.records("arm-refused").single().fields.single().second)
   }
 
@@ -178,7 +178,7 @@ class SessionMachineLifecycleTest {
     val rig = MachineRig().live()
     rig.send(Input.Dropped(1, DropReason.ENDPOINT_CLOSED, null))
     rig.send(Input.Stop)
-    assertEquals(SnapshotState.Ended(EndReason.OPERATOR_STOPPED), rig.state)
+    assertEquals(EndReason.OPERATOR_STOPPED, rig.state.endReason)
     assertEquals(true, rig.records("ended").single().field("wasLive"))
   }
 
@@ -193,7 +193,7 @@ class SessionMachineLifecycleTest {
         Input.Link(1, LinkCounters(1, 1, 0, 0, 0, 20, 40, null)),
         Input.Dropped(1, DropReason.ENDPOINT_CLOSED, null),
         Input.ConnectFailed(1, ConnectFailure.OTHER, null),
-        Input.Network(false),
+        // A network fact is kept for the next session (final review I-1): SessionMachineOutageTest.
         Input.CameraContended,
         Input.CameraReleased,
         Input.CameraReopened(true),
@@ -368,7 +368,7 @@ class SessionMachineLifecycleTest {
     rig.advance(4_500, feeding = false)
     assertIs<SnapshotState.Reconnecting>(rig.state)
     rig.advance(500, feeding = false)
-    assertEquals(SnapshotState.Ended(EndReason.HOLD_WINDOW_EXPIRED), rig.state)
+    assertEquals(EndReason.HOLD_WINDOW_EXPIRED, rig.state.endReason)
     assertTrue(rig.sent<Command.Rebuild>().isEmpty(), "the session is over: nothing to rebuild")
   }
 
@@ -409,7 +409,7 @@ class SessionMachineLifecycleTest {
       assertIs<SnapshotState.Reconnecting>(rig.state, "8 s, projected with no input")
       val commands = rig.send(input)
       assertEquals(listOf(Command.End(EndReason.HOLD_WINDOW_EXPIRED)), commands.filterNot { it is Command.Record }, "$input")
-      assertEquals(SnapshotState.Ended(EndReason.HOLD_WINDOW_EXPIRED), rig.state, "$input")
+      assertEquals(EndReason.HOLD_WINDOW_EXPIRED, rig.state.endReason, "$input")
       assertTrue(rig.records("video-stalled").isEmpty(), "$input")
       assertEquals(ReconnectCause.UPLINK_LOST, rig.records("ended").single().field("cause"), "$input")
       assertEquals(emptyList(), rig.send(Input.Tick), "the tick after it: $input")
@@ -436,30 +436,34 @@ class SessionMachineLifecycleTest {
       val commands = rig.send(input)
       assertEquals(Command.End(EndReason.HOLD_WINDOW_EXPIRED), commands.filterNot { it is Command.Record }.first(), "$input")
       assertTrue(commands.none { it is Command.Connect || it is Command.FetchDescriptor || it is Command.Rebuild }, "$input: $commands")
-      assertEquals(SnapshotState.Ended(EndReason.HOLD_WINDOW_EXPIRED), rig.state, "$input")
+      assertEquals(EndReason.HOLD_WINDOW_EXPIRED, rig.state.endReason, "$input")
     }
   }
 
   /**
-   * [holdRunsOutOnAir], except that the new attempt sends flat readings from 3 s: its next advancing
-   * frame, sent at [ms], is the picture coming back. Returns the commands that frame produced.
+   * 7 s holds. Live, dropped at 1 s, and attempt 2 asked for at 3 s answers at 3.5 s, so its
+   * first-frame grace runs to 8.5 s, past the hold's end at 8 s. It sends flat readings from 4 s to
+   * 7.5 s; its next advancing frame, sent at [ms] with no tick since 7.5 s, is the picture coming back.
+   * Returns the commands that frame produced.
    */
   private fun pictureReturnsAt(ms: Long): Pair<MachineRig, List<Command>> {
     val rig = MachineRig(sevenSecondHolds).live()
     rig.send(Input.Dropped(1, DropReason.ENDPOINT_CLOSED, null))
-    rig.advance(2_000)
+    rig.advance(2_500)
     rig.send(Input.Connected(2))
-    rig.advance(4_500, videoPerStep = 0)
+    rig.advance(4_000, videoPerStep = 0)
     rig.at(ms)
     return rig to rig.send(Input.Frames(2, 15, 1_000))
   }
 
   @Test
   fun `B7 m2 a picture that comes back after the hold ran out, before the tick, is too late - hold-window-expired`() {
-    // Owner-visible (B7 ruling m2): the hold is the published limit, and the tick at 8 s would end it too.
-    val (rig, commands) = pictureReturnsAt(8_000)
+    // Owner-visible (B7 ruling m2), and its cost: a picture back at 8.2 s, 200 ms after the hold ran
+    // out and before the 8.5 s tick, ends the session. Nothing else would have: the first-frame grace
+    // runs to 8.5 s. The hold is the published limit, and the tick would end it the same way.
+    val (rig, commands) = pictureReturnsAt(8_200)
     assertEquals(listOf(Command.End(EndReason.HOLD_WINDOW_EXPIRED)), commands.filterNot { it is Command.Record })
-    assertEquals(SnapshotState.Ended(EndReason.HOLD_WINDOW_EXPIRED), rig.state)
+    assertEquals(EndReason.HOLD_WINDOW_EXPIRED, rig.state.endReason)
     assertTrue(rig.records("resumed").isEmpty())
   }
 
@@ -485,7 +489,7 @@ class SessionMachineLifecycleTest {
       val input = answer(rig)
       val commands = rig.send(input)
       assertEquals(listOf(Command.End(EndReason.HOLD_WINDOW_EXPIRED)), commands.filterNot { it is Command.Record }, "$input")
-      assertEquals(SnapshotState.Ended(EndReason.HOLD_WINDOW_EXPIRED), rig.state, "$input")
+      assertEquals(EndReason.HOLD_WINDOW_EXPIRED, rig.state.endReason, "$input")
     }
   }
 
@@ -630,7 +634,7 @@ class SessionMachineLifecycleTest {
     val commands = rig.send(Input.Stop)
     assertEquals(listOf(Command.End(EndReason.OPERATOR_STOPPED)), commands.filterNot { it is Command.Record })
     assertTrue(rig.records("video-stalled").isEmpty())
-    assertEquals(SnapshotState.Ended(EndReason.OPERATOR_STOPPED), rig.state)
+    assertEquals(EndReason.OPERATOR_STOPPED, rig.state.endReason)
     assertEquals(true, rig.records("ended").single().field("wasLive"))
   }
 
@@ -659,7 +663,7 @@ class SessionMachineLifecycleTest {
     val refused =
       SessionConfig("sess_42", Configs.TOKEN, Configs.srt, Configs.rtmps, mapOf(Transport.SRT to 183, Transport.RTMPS to 180), "", "https://h/", "1.0.0")
     rig.send(Input.Arm(refused))
-    assertEquals(SnapshotState.Ended(EndReason.FATAL_ERROR), rig.state, "refused")
+    assertEquals(EndReason.FATAL_ERROR, rig.state.endReason, "refused")
     rig.send(Input.Reset)
     rig.armed()
     rig.send(Input.Start)
@@ -678,7 +682,7 @@ class SessionMachineLifecycleTest {
     assertEquals(emptyList(), rig.send(Input.HeartbeatAnswered(1, HeartbeatResponse.Answered(410, null, null))))
     assertIs<Phase.Armed>(rig.phase)
     rig.send(Input.HeartbeatAnswered(2, HeartbeatResponse.Answered(410, null, null)))
-    assertEquals(SnapshotState.Ended(EndReason.STOPPED_BY_ORGANISER), rig.state)
+    assertEquals(EndReason.STOPPED_BY_ORGANISER, rig.state.endReason)
   }
 
   @Test
@@ -708,6 +712,100 @@ class SessionMachineLifecycleTest {
     val stalled = rig.records("video-stalled").single()
     assertEquals(3_000L, stalled.field("msSinceAdvance"))
     assertEquals(true, stalled.field("rebaselined"), "counted from the second switch at 5 s")
+  }
+
+  @Test
+  fun `final review M-3 the ended state says how long the session was live`() {
+    // Live at 1 s, its first advancing frame; stopped at 60 s.
+    val rig = MachineRig().live()
+    rig.advance(59_000)
+    rig.send(Input.Stop)
+    assertEquals(SnapshotState.Ended(EndReason.OPERATOR_STOPPED, durationMs = 59_000), rig.state)
+    assertEquals(59_000L, assertIs<Phase.Ended>(rig.phase).durationMs)
+  }
+
+  @Test
+  fun `final review M-3 an outage counts in the duration, as it does on the HUD's clock`() {
+    // Live at 1 s and dropped at once; the 7 s hold runs out at 8 s with nothing published since.
+    val rig = MachineRig(sevenSecondHolds).live()
+    rig.send(Input.Dropped(1, DropReason.ENDPOINT_CLOSED, null))
+    rig.advance(7_000, feeding = false)
+    assertEquals(SnapshotState.Ended(EndReason.HOLD_WINDOW_EXPIRED, durationMs = 7_000), rig.state)
+  }
+
+  @Test
+  fun `final review M-3 a session that never went live has no duration`() {
+    val armed = MachineRig().armed()
+    armed.send(Input.Stop)
+    assertEquals(SnapshotState.Ended(EndReason.OPERATOR_STOPPED, durationMs = null), armed.state)
+
+    // Connected, with frames that never advance.
+    val connected = MachineRig().armed()
+    connected.send(Input.Start)
+    connected.send(Input.Connected(1))
+    connected.advance(2_000, videoPerStep = 0)
+    connected.send(Input.Stop)
+    assertEquals(SnapshotState.Ended(EndReason.OPERATOR_STOPPED, durationMs = null), connected.state)
+  }
+
+  @Test
+  fun `final review M-3 a wall clock set back past the live instant reads a duration of 0, never negative`() {
+    // Live at 1 s (wall 14:13:21Z). The phone's clock is then corrected 2 s back, to 14:13:19Z.
+    val rig = MachineRig().live()
+    rig.wall -= 2_000
+    rig.send(Input.Stop)
+    assertEquals(SnapshotState.Ended(EndReason.OPERATOR_STOPPED, durationMs = 0), rig.state)
+  }
+
+  @Test
+  fun `final review M-5 a failure the platform knows is permanent ends fatal-error, and says why`() {
+    val rig = MachineRig().live()
+    rig.advance(9_000)
+    val commands = rig.send(Input.PlatformFailed("encoder cannot start"))
+    assertEquals(listOf(Command.End(EndReason.FATAL_ERROR)), commands.filterNot { it is Command.Record })
+    assertEquals(SnapshotState.Ended(EndReason.FATAL_ERROR, durationMs = 9_000), rig.state)
+    val ended = rig.records("ended").single()
+    assertEquals(EndReason.FATAL_ERROR, ended.field("reason"))
+    assertEquals("encoder cannot start", ended.field("message"))
+  }
+
+  @Test
+  fun `final review M-5 a permanent failure ends idle, armed and connecting too`() {
+    val setups: List<Pair<String, (MachineRig) -> Unit>> =
+      listOf(
+        "idle" to { _ -> },
+        "armed" to { rig -> rig.armed() },
+        "connecting" to { rig -> rig.armed().send(Input.Start) },
+      )
+    for ((name, setup) in setups) {
+      val rig = MachineRig()
+      setup(rig)
+      rig.send(Input.PlatformFailed("no camera"))
+      assertEquals(SnapshotState.Ended(EndReason.FATAL_ERROR, durationMs = null), rig.state, name)
+      assertEquals(listOf(Command.End(EndReason.FATAL_ERROR)), rig.sent<Command.End>(), name)
+      assertEquals("no camera", rig.records("ended").single().field("message"), name)
+    }
+  }
+
+  @Test
+  fun `final review M-5 a permanent failure after the end is recorded, and ends nothing twice`() {
+    val rig = MachineRig().live()
+    rig.send(Input.Stop)
+    val commands = rig.send(Input.PlatformFailed("encoder released late"))
+    val line = commands.map { (it as Command.Record).entry }.single()
+    assertEquals("platform-failed", line.kind)
+    assertEquals("encoder released late", line.field("message"))
+    assertEquals(EndReason.OPERATOR_STOPPED, rig.state.endReason)
+    assertEquals(listOf(Command.End(EndReason.OPERATOR_STOPPED)), rig.sent<Command.End>())
+  }
+
+  @Test
+  fun `final review M-5 a permanent failure is not judged first - nothing is rebuilt on its way to the end`() {
+    val rig = gateJustClosed()
+    val commands = rig.send(Input.PlatformFailed("encoder cannot start"))
+    assertEquals(listOf(Command.End(EndReason.FATAL_ERROR)), commands.filterNot { it is Command.Record })
+    assertTrue(rig.records("video-stalled").isEmpty())
+    assertEquals(EndReason.FATAL_ERROR, rig.state.endReason)
   }
 
   @Test

@@ -28,7 +28,7 @@ object Projection {
     when (phase) {
       is Phase.Idle -> SnapshotState.Idle
       is Phase.Armed -> SnapshotState.Armed
-      is Phase.Ended -> SnapshotState.Ended(phase.reason)
+      is Phase.Ended -> SnapshotState.Ended(phase.reason, phase.durationMs)
       is Phase.Connecting -> phase.outage?.let { reconnecting(phase.session, it, now) } ?: SnapshotState.Connecting(phase.transport)
       is Phase.OnAir -> onAir(phase, now)
     }

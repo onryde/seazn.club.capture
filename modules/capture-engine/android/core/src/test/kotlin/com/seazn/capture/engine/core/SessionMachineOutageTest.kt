@@ -33,7 +33,7 @@ class SessionMachineOutageTest {
     rig.failingConnects(182_500)
     assertIs<SnapshotState.Reconnecting>(rig.state)
     rig.failingConnects(500)
-    assertEquals(SnapshotState.Ended(EndReason.HOLD_WINDOW_EXPIRED), rig.state)
+    assertEquals(EndReason.HOLD_WINDOW_EXPIRED, rig.state.endReason)
   }
 
   @Test
@@ -116,6 +116,46 @@ class SessionMachineOutageTest {
     assertTrue(dead.connects().all { it.target.transport == Transport.SRT })
   }
 
+  private val srtThreeTimesThenRtmps = listOf(Transport.SRT, Transport.SRT, Transport.SRT, Transport.RTMPS)
+
+  @Test
+  fun `final review I-1 a network fact pushed before the arm counts toward C1, and is recorded`() {
+    // Plan C's network callback can fire once, before any arm, and not again while nothing changes.
+    val rig = MachineRig()
+    rig.send(Input.Network(validated = true))
+    rig.send(Input.Arm(rig.config))
+    rig.send(Input.Start)
+    rig.failingConnects(6_500, ConnectFailure.TIMEOUT)
+    assertEquals(srtThreeTimesThenRtmps, rig.connects().map { it.target.transport })
+    assertEquals(listOf<Any?>(true), rig.records("network").map { it.field("validated") })
+  }
+
+  @Test
+  fun `final review I-1 one network fact spans two sessions`() {
+    val rig = MachineRig().armed(validated = true)
+    rig.send(Input.Stop)
+    rig.send(Input.Reset)
+    rig.send(Input.Arm(rig.config))
+    rig.send(Input.Start)
+    rig.failingConnects(6_500, ConnectFailure.TIMEOUT)
+    assertEquals(srtThreeTimesThenRtmps, rig.connects().map { it.target.transport })
+  }
+
+  @Test
+  fun `final review I-1 a network fact that lands after the end is the next session's, and asks nothing`() {
+    val rig = MachineRig().armed(validated = true)
+    rig.send(Input.Stop)
+    val lost = rig.send(Input.Network(validated = false))
+    assertEquals(listOf<Any?>(false), lost.map { (it as Command.Record).entry.field("validated") }, "recorded, nothing asked")
+    assertEquals(EndReason.OPERATOR_STOPPED, rig.state.endReason)
+    rig.send(Input.Reset)
+    rig.send(Input.Arm(rig.config))
+    rig.send(Input.Start)
+    rig.failingConnects(40_000, ConnectFailure.TIMEOUT)
+    assertTrue(rig.connects().size >= 20)
+    assertTrue(rig.connects().all { it.target.transport == Transport.SRT }, "a dead network never falls back (F-P5-1)")
+  }
+
   @Test
   fun `every reconnect fetches the descriptor again`() {
     val rig = MachineRig().live()
@@ -128,7 +168,7 @@ class SessionMachineOutageTest {
     val rig = MachineRig().live()
     rig.send(Input.Dropped(1, DropReason.ENDPOINT_CLOSED, null))
     rig.send(Input.DescriptorChecked(1, DescriptorCheck.Over("stopped")))
-    assertEquals(SnapshotState.Ended(EndReason.STOPPED_BY_ORGANISER), rig.state)
+    assertEquals(EndReason.STOPPED_BY_ORGANISER, rig.state.endReason)
     assertEquals(Command.End(EndReason.STOPPED_BY_ORGANISER), rig.sent<Command.End>().single())
   }
 
@@ -317,7 +357,7 @@ class SessionMachineOutageTest {
     assertEquals(1, rig.sent<Command.Rebuild>().size, "no video for 3 s at 4 s")
     val ask = rig.sent<Command.FetchDescriptor>().single()
     rig.send(Input.DescriptorChecked(ask.requestId, DescriptorCheck.Over("stopped")))
-    assertEquals(SnapshotState.Ended(EndReason.STOPPED_BY_ORGANISER), rig.state)
+    assertEquals(EndReason.STOPPED_BY_ORGANISER, rig.state.endReason)
   }
 
   /**
@@ -366,7 +406,7 @@ class SessionMachineOutageTest {
     assertEquals(emptyList(), rig.send(Input.DescriptorChecked(1, DescriptorCheck.Over("no_inbound_timeout"))))
     assertIs<Phase.Connecting>(rig.phase)
     rig.send(Input.DescriptorChecked(2, DescriptorCheck.Over("stopped")))
-    assertEquals(SnapshotState.Ended(EndReason.STOPPED_BY_ORGANISER), rig.state)
+    assertEquals(EndReason.STOPPED_BY_ORGANISER, rig.state.endReason)
   }
 
   @Test
@@ -422,7 +462,7 @@ class SessionMachineOutageTest {
       assertIs<SnapshotState.Reconnecting>(rig.state, "answer $answer")
       assertTrue(rig.sent<Command.FetchDescriptor>().size > 1, "refusals keep asking the descriptor, 10 s apart")
       rig.refusedConnects(500, answer)
-      assertEquals(SnapshotState.Ended(EndReason.HOLD_WINDOW_EXPIRED), rig.state, "answer $answer")
+      assertEquals(EndReason.HOLD_WINDOW_EXPIRED, rig.state.endReason, "answer $answer")
     }
   }
 
@@ -435,7 +475,7 @@ class SessionMachineOutageTest {
     assertIs<Phase.Connecting>(rig.phase)
     assertEquals(2, rig.sent<Command.FetchDescriptor>().size)
     rig.refusedConnects(10_000, DescriptorCheck.Over("stopped"))
-    assertEquals(SnapshotState.Ended(EndReason.STOPPED_BY_ORGANISER), rig.state)
+    assertEquals(EndReason.STOPPED_BY_ORGANISER, rig.state.endReason)
     assertEquals("stopped", rig.records("ended").single().field("endReason"))
   }
 
@@ -444,7 +484,7 @@ class SessionMachineOutageTest {
     val rig = MachineRig().live()
     rig.beats = { HeartbeatResponse.Answered(410, null, null) }
     rig.advance(10_000)
-    assertEquals(SnapshotState.Ended(EndReason.STOPPED_BY_ORGANISER), rig.state)
+    assertEquals(EndReason.STOPPED_BY_ORGANISER, rig.state.endReason)
   }
 
   @Test
@@ -567,7 +607,7 @@ class SessionMachineOutageTest {
     rig.advance(2_500, feeding = false)
     assertIs<SnapshotState.Reconnecting>(rig.state, "5.5 s: half a second of the 5 s hold from the drop at 1 s")
     rig.advance(500, feeding = false)
-    assertEquals(SnapshotState.Ended(EndReason.HOLD_WINDOW_EXPIRED), rig.state)
+    assertEquals(EndReason.HOLD_WINDOW_EXPIRED, rig.state.endReason)
   }
 
   @Test

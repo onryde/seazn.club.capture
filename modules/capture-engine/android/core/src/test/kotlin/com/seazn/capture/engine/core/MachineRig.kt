@@ -118,3 +118,7 @@ class MachineRig(val config: SessionConfig = Configs.valid()) {
 
 /** The value a record line carries under [key]; fails if the key is missing or written twice. */
 fun RecordEntry.field(key: String): Any? = fields.single { it.first == key }.second
+
+/** Why the session ended, or null while it has not. How long it was live is asserted where that is the point. */
+val SnapshotState.endReason: EndReason?
+  get() = (this as? SnapshotState.Ended)?.reason
