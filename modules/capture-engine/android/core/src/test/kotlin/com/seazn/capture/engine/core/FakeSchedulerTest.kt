@@ -1,0 +1,44 @@
+package com.seazn.capture.engine.core
+
+import kotlin.test.Test
+import kotlin.test.assertEquals
+
+class FakeSchedulerTest {
+  private val clock = FakeClock()
+  private val scheduler = FakeScheduler(clock)
+
+  @Test
+  fun `tasks run at their own due time, in due order`() {
+    val seen = mutableListOf<Pair<String, Long>>()
+    scheduler.schedule(300) { seen += "b" to clock.mono }
+    scheduler.schedule(100) { seen += "a" to clock.mono }
+    scheduler.advanceBy(1_000)
+    assertEquals(listOf("a" to 100L, "b" to 300L), seen)
+    assertEquals(1_000L, clock.mono)
+  }
+
+  @Test
+  fun `a cancelled task never runs`() {
+    var ran = false
+    scheduler.schedule(10) { ran = true }.cancel()
+    scheduler.advanceBy(100)
+    assertEquals(false, ran)
+    assertEquals(0, scheduler.pending)
+  }
+
+  @Test
+  fun `a task scheduled by a task runs within the same advance when it falls due`() {
+    val seen = mutableListOf<Long>()
+    scheduler.schedule(100) { scheduler.schedule(100) { seen += clock.mono } }
+    scheduler.advanceBy(250)
+    assertEquals(listOf(200L), seen)
+  }
+
+  @Test
+  fun `wall time moves with monotonic time`() {
+    val wallBefore = clock.wallMs()
+    scheduler.advanceBy(1_500)
+    assertEquals(wallBefore + 1_500, clock.wallMs())
+    assertEquals(Now(1_500, wallBefore + 1_500), clock.now())
+  }
+}
