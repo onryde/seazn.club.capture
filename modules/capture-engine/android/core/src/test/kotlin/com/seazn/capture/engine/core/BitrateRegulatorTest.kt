@@ -140,6 +140,37 @@ class BitrateRegulatorTest {
   }
 
   @Test
+  fun `a missing send buffer is no reading on SRT, which always reports one, and empty on RTMPS, which has none`() {
+    // Clean readings from 1 s make a raise due at 11 s; 4000k of egress passes the gate (908_040 at 1000k).
+    val srt = run(Regulation(1_000_000), 1_000, 11_000) { reading(buffer = null) }
+    assertEquals(1_000_000, srt.targetBps)
+    assertNull(srt.cleanSinceMs)
+    val rtmps = run(Regulation(1_000_000), 1_000, 11_000, Transport.RTMPS) { reading(buffer = null) }
+    assertEquals(1_100_000, rtmps.targetBps)
+  }
+
+  @Test
+  fun `a send buffer of 0 ms is drained, not missing`() {
+    assertEquals(1_100_000, run(Regulation(1_000_000), 1_000, 11_000) { reading(buffer = 0) }.targetBps)
+  }
+
+  @Test
+  fun `a cut restarts the clean interval, so egress from before it never passes a raise gate`() {
+    // Clean at 4000k egress from 1 s to 9 s, then drops at 10 s cut 2000k to 1000k: the halving is
+    // under the egress sizing, 4_000_000 * 80 / 115 - 128_000 = 2_654_608. Then 500k of egress every
+    // 4 s. The raise is due at 42 s, 30 s after the cut, and the interval since the cut is 8 readings
+    // of 500k, under the gate of 908_040. Egress from before the cut would make the last 10 readings
+    // 2 of 4000k and 8 of 500k, a mean of 1200k, and raise a link that just failed.
+    val clean = run(Regulation(2_000_000), 1_000, 9_000) { reading(egress = 4_000_000) }
+    var state = run(clean, 10_000, 10_000) { reading(dropped = 5) }
+    assertEquals(1_000_000, state.targetBps)
+    for (t in 14_000L..46_000L step 4_000) {
+      state = BitrateRegulator.next(state, reading(egress = 500_000), t, Transport.SRT, latency)
+    }
+    assertEquals(1_000_000, state.targetBps)
+  }
+
+  @Test
   fun `regulator restart - a clean far-end drop restarts at the last healthy target`() {
     // P5 final soak: Cloudflare stopped acknowledging on a clean link (no loss), the buffer filled,
     // the sender dropped late packets, and the old build restarted at 1500k → 516k → 500k.

@@ -79,11 +79,15 @@ object BitrateRegulator {
       .cleanWaitRestarted(null)
   }
 
-  /** @param link null when nothing could be read, which holds like a negative send buffer. */
+  /**
+   * @param link null when nothing could be read. A negative send buffer is no reading either, and so
+   *   is a missing one on SRT, which always reports it. RTMPS has none, and reads as empty.
+   */
   fun next(state: Regulation, link: LinkSample?, nowMs: Long, transport: Transport, srtLatencyMs: Int): Regulation {
     val current = state.copy(targetBps = state.targetBps.coerceIn(Encode.FLOOR_BPS, Encode.CEILING_BPS))
     val reading = link?.sendBufferMs
-    if (link == null || (reading != null && reading < 0)) {
+    val unreadable = reading?.let { it < 0 } ?: (transport == Transport.SRT)
+    if (link == null || unreadable) {
       val lossy = link != null && (link.droppedPackets > 0 || link.lostPackets > 0)
       return if (lossy) current.cleanWaitRestarted(nowMs) else current
     }
