@@ -165,6 +165,7 @@ class BitrateRegulatorTest {
     assertEquals(750_000, run(start, 1_000, 3_000) { reading(buffer = buffer, dropped = 10) }.targetBps)
     val lossy = run(Regulation(1_500_000), 1_000, 1_000) { reading(buffer = buffer, lost = 5) }
     assertEquals(750_000, BitrateRegulator.afterDrop(lossy, nowMs = 5_000).targetBps)
+    assertEquals(1_000, lossy.cleanSinceMs)
     val quiet = run(Regulation(1_000_000), 1_000, 11_000) { reading(buffer = buffer) }
     assertEquals(1_000_000, quiet.targetBps)
     assertNull(quiet.cleanSinceMs)
