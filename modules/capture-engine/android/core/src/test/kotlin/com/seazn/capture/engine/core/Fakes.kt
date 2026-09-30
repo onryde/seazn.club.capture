@@ -7,6 +7,7 @@ class FakeClock(var mono: Long = 0, var wall: Long = 1_790_000_000_000) : Clock 
   override fun wallMs(): Long = wall
 
   fun advance(ms: Long) {
+    require(ms >= 0) { "advance($ms): time never runs backwards" }
     mono += ms
     wall += ms
   }
@@ -31,6 +32,7 @@ class FakeScheduler(private val clock: FakeClock) : Scheduler {
   }
 
   fun advanceBy(ms: Long) {
+    require(ms >= 0) { "advanceBy($ms): time never runs backwards" }
     val end = clock.mono + ms
     while (true) {
       val next =

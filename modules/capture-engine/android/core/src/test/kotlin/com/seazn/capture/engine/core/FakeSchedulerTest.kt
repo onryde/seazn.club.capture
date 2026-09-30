@@ -2,6 +2,7 @@ package com.seazn.capture.engine.core
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 
 class FakeSchedulerTest {
   private val clock = FakeClock()
@@ -53,5 +54,20 @@ class FakeSchedulerTest {
     scheduler.advanceBy(1_500)
     assertEquals(wallBefore + 1_500, clock.wallMs())
     assertEquals(Now(1_500, wallBefore + 1_500), clock.now())
+  }
+
+  @Test
+  fun `the clock refuses to run backwards`() {
+    val error = assertFailsWith<IllegalArgumentException> { clock.advance(-1) }
+    assertEquals("advance(-1): time never runs backwards", error.message)
+    assertEquals(0L, clock.mono)
+  }
+
+  // The message names the guard: without its own, advanceBy would still throw, from the clock's.
+  @Test
+  fun `the scheduler refuses to run time backwards`() {
+    val error = assertFailsWith<IllegalArgumentException> { scheduler.advanceBy(-1) }
+    assertEquals("advanceBy(-1): time never runs backwards", error.message)
+    assertEquals(0L, clock.mono)
   }
 }
