@@ -10,29 +10,15 @@ import { createModeStore, STORE_KEYS } from '@/services/modeStore';
 import { HomeScreen } from '@/ui/screens/HomeScreen';
 import { createFakePorts, readRecord, TEST_NOW } from '../../../test/fakePorts';
 import { renderWithPorts, wrapperFor } from '../../../test/renderWithPorts';
+import { captureRaw, epochSeconds } from '../../../test/fixtures/wire';
 
 const IN_TWO_HOURS = new Date(TEST_NOW.getTime() + 2 * 3600_000);
 // 17:40Z is 18:40 in the fake phone's Europe/London zone (BST).
 const AT_1840 = new Date('2026-10-03T17:40:00Z');
 
-/** Made-up credentials. */
+/** Made-up credentials, v2. */
 function streamRaw(exp: Date, slot = 1): string {
-  return JSON.stringify({
-    v: 1,
-    sid: '5d9c1d0e-0000-4000-8000-000000000001',
-    slot,
-    cred: {
-      srt: {
-        url: 'srt://ingest.example:9001',
-        streamId: 'fake',
-        passphrase: 'fake-pass-0000',
-        latencyMs: 2000,
-      },
-      rtmps: { url: 'rtmps://ingest.example/live', streamKey: 'fake-key' },
-    },
-    preferred: 'srt',
-    exp: Math.floor(exp.getTime() / 1000),
-  });
+  return captureRaw({ exp: epochSeconds(exp), slot });
 }
 
 /** A stream code saved by an earlier scan, as the store writes it. */

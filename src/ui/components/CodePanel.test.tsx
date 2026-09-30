@@ -4,7 +4,14 @@ import type { ModeCode } from '@/domain/mode/Mode';
 import { CodePanel, type PanelOutcome } from '@/ui/components/CodePanel';
 import { renderWithPorts } from '../../../test/renderWithPorts';
 
-const streamCode: ModeCode = { mode: 'stream', raw: '{}', slot: 0, expiresAt: new Date() };
+const streamCode: ModeCode = {
+  mode: 'stream',
+  raw: '{}',
+  sid: 'fake-sid',
+  slot: 0,
+  token: 'fake-token',
+  expiresAt: new Date(),
+};
 const handlers = () => ({ onOpen: vi.fn(), onScanAgain: vi.fn(), onClose: vi.fn() });
 
 describe('CodePanel', () => {

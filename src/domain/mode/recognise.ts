@@ -1,3 +1,4 @@
+import { parseCaptureQr } from '@/domain/credentials/parseCaptureQr';
 import type { Recognition } from '@/domain/mode/Mode';
 
 /**
@@ -39,37 +40,22 @@ function recogniseLink(raw: string, text: string, hosts: readonly string[]): Rec
   return { outcome: 'code', code: { mode: 'scoring', raw, token } };
 }
 
+/**
+ * capture-qr.v2 only (spec §1, D6): v1 and anything older are foreign; a
+ * higher version that still names a sid asks for an update. The full parse
+ * runs here, so a code the parser would refuse is never offered as a code.
+ */
 function recogniseStream(raw: string, text: string, now: Date): Recognition {
   const data = parseJson(text);
   if (!isRecord(data) || !isNonEmptyString(data.sid)) return FOREIGN;
-  if (isInteger(data.v) && data.v > 1) return { outcome: 'newerVersion', mode: 'stream' };
-  if (data.v !== 1 || !isStreamV1(data)) return FOREIGN;
-  const expiresAt = new Date(data.exp * 1000);
-  // An integer `exp` can still overflow the Date range; never hand on an Invalid Date.
-  if (Number.isNaN(expiresAt.getTime())) return FOREIGN;
+  if (isInteger(data.v) && data.v > 2) return { outcome: 'newerVersion', mode: 'stream' };
+  const parsed = parseCaptureQr(data);
+  if (!parsed.ok) return FOREIGN;
+  const { sid, slot, token, expiresAt } = parsed.value;
   if (expiresAt.getTime() <= now.getTime()) {
     return { outcome: 'expired', mode: 'stream', at: expiresAt };
   }
-  return { outcome: 'code', code: { mode: 'stream', raw, slot: data.slot, expiresAt } };
-}
-
-type StreamV1Shape = { readonly slot: number; readonly exp: number };
-
-/** Shape only. Credential validation is S1's parser, not this. */
-function isStreamV1(
-  data: Record<string, unknown>,
-): data is Record<string, unknown> & StreamV1Shape {
-  const cred = data.cred;
-  return (
-    isInteger(data.slot) &&
-    data.slot >= 0 &&
-    isInteger(data.exp) &&
-    data.exp >= 1 &&
-    (data.preferred === 'srt' || data.preferred === 'rtmps') &&
-    isRecord(cred) &&
-    isRecord(cred.srt) &&
-    isRecord(cred.rtmps)
-  );
+  return { outcome: 'code', code: { mode: 'stream', raw, sid, slot, token, expiresAt } };
 }
 
 function parseJson(text: string): unknown {

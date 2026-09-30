@@ -51,7 +51,19 @@ describe('saved codes', () => {
   });
 
   it('builds a saved code from a recognised one', () => {
-    expect(savedCodeFrom({ mode: 'stream', raw: 'r', slot: 0, expiresAt: LATER }, NOW)).toEqual({
+    expect(
+      savedCodeFrom(
+        {
+          mode: 'stream',
+          raw: 'r',
+          sid: 'fake-sid',
+          slot: 0,
+          token: 'fake-token',
+          expiresAt: LATER,
+        },
+        NOW,
+      ),
+    ).toEqual({
       mode: 'stream',
       raw: 'r',
       slot: 0,
