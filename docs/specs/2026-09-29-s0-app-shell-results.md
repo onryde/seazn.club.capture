@@ -28,6 +28,14 @@ worktree and are not committed.
 | 10 | Four languages switch all text and persist; German shows English | PASS | es, fr, nl, en on Home and the code panel (Redmi); nl survived a restart. German fallback on the OnePlus NE2211 (Android 16): app storage cleared, per-app locale `de-DE` → Home in English (`op-de-home.png`); control, per-app locale `es-ES` → Home in Spanish, so the phone's locale really drives the choice. A saved language choice correctly outranks the phone (seen before the clear: stored `en` won over `es`). |
 | 11 | Fits at 2–3 sizes | PASS | Redmi, 720×1280 @320 and 1080×2400 @420 (`wm size`/`density`, reset after) — Home, code panel and placeholder, nothing clipped |
 
+## Owner hand checks (OnePlus NE2211, Android 16)
+
+| Check | Result | Notes |
+|---|---|---|
+| Turn card, no flash, Home and Live Stream | PASS (owner) | See row 8 |
+| Reduced motion: still glyph | PASS (owner) | Animation scales set to 0 (what "Remove animations" writes), app restarted: the glyph stands still in the target pose. Reanimated reads the setting once at app start (`getIsReducedMotion` reads `TRANSITION_ANIMATION_SCALE`), so a mid-session toggle shows only after a restart, as `TurnGlyph.tsx` documents. Scales restored to 1.0. |
+| TalkBack | Skipped (owner choice) | See *Not proven here* |
+
 ## Release build
 
 | Check | Result |
