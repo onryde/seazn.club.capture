@@ -257,6 +257,39 @@ class StallWatchdogTest {
   }
 
   @Test
+  fun `an audio counter that goes backwards restarts the window, and the video advance still counts`() {
+    // The audio encoder restarts on its own. Against the window's base of 115 audio frames, a count
+    // of 23 would read (23 - 115) / 3 = −30.7 a second: a rebuild of a healthy pipeline.
+    val drive = healthy()
+    drive.audio = 0
+    drive.step(15, 23)
+    assertEquals(drive.t, drive.dog.lastAdvanceAtMs, "15 new video frames are still a frame")
+    drive.steps(7, 15, 23)
+    assertTrue(drive.verdicts.isEmpty(), "got ${drive.verdicts}")
+    assertEquals(46.0, drive.dog.audioFps)
+  }
+
+  @Test
+  fun `an audio counter that goes backwards on a reading with no new frame restarts the window too`() {
+    val drive = healthy()
+    drive.audio = 0
+    drive.step(0, 23)
+    drive.steps(7, 15, 23)
+    assertTrue(drive.verdicts.isEmpty(), "got ${drive.verdicts}")
+    assertEquals(46.0, drive.dog.audioFps)
+  }
+
+  @Test
+  fun `F-P5-4 audio that stops dead while video runs is caught within one window`() {
+    // A flat audio count is not a restart. From 5 s: windows from 2.5, 3, 3.5 and 4 s end at 230
+    // audio frames against bases of 115, 138, 161 and 184, which is 38.3, 30.6, 23.0, then 15.3.
+    val drive = healthy()
+    drive.steps(4, 15, 0)
+    val rebuild = StallVerdict.Rebuild(StallCause.BELOW_FLOOR, 0, 30.0, 15.3)
+    assertEquals(listOf<Pair<Long, StallVerdict>>(7_000L to rebuild), drive.verdicts)
+  }
+
+  @Test
   fun `F-P5-10 a camera back on its own is judged from its return`() {
     // A slate at 2 frames a second while taken, then the camera again at 30 fps with no reopen.
     val slate = healthy()

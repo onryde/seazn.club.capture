@@ -61,12 +61,15 @@ data class StallWatchdog(
   ): Pair<StallWatchdog, StallVerdict> {
     val previous = lastVideo
     if (previous == null || video < previous) return copy(lastVideo = video, readings = emptyList()) to StallVerdict.None
+    val reading = FrameReading(nowMs, video, audio)
+    // An audio counter that went backwards restarts the window at this reading, as video's does, and
+    // any video advance in it still counts. Kept readings would rate the restart as negative audio.
+    val kept = if (audio < (readings.lastOrNull()?.audio ?: audio)) emptyList() else readings
     if (video == previous) {
-      val kept = if (lastAdvanceAtMs == null) readings else pruned(readings + FrameReading(nowMs, video, audio), nowMs)
-      return copy(readings = kept) to StallVerdict.None
+      val flat = if (lastAdvanceAtMs == null) kept else pruned(kept + reading, nowMs)
+      return copy(readings = flat) to StallVerdict.None
     }
-    val advanced =
-      copy(lastVideo = video, lastAdvanceAtMs = nowMs, readings = pruned(readings + FrameReading(nowMs, video, audio), nowMs))
+    val advanced = copy(lastVideo = video, lastAdvanceAtMs = nowMs, readings = pruned(kept + reading, nowMs))
     if (cameraTaken) return advanced.copy(readings = emptyList(), videoFps = null, audioFps = null) to StallVerdict.None
     return advanced.judgeRate(nowMs, micSilenced)
   }
