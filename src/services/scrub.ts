@@ -47,9 +47,16 @@ export function scrubEvent(event: string): string {
   return PLAIN_WORD.test(event) ? event : SCRUBBED;
 }
 
-function scrubValue(key: string, value: LogValue): LogValue {
+/**
+ * `unknown`, not `LogValue`: the types can be laundered past (a parsed native
+ * payload, an `as`), and this is the boundary. It ends closed — only a plain
+ * word, a finite number, a boolean or null passes; an object, array or bigint
+ * never reaches the record whole.
+ */
+function scrubValue(key: string, value: unknown): LogValue {
   if (key === 'url') return typeof value === 'string' && PUBLIC_URL.test(value) ? value : SCRUBBED;
   if (!PLAIN_KEYS.has(key)) return SCRUBBED;
   if (typeof value === 'string') return PLAIN_WORD.test(value) ? value : SCRUBBED;
-  return typeof value === 'number' && !Number.isFinite(value) ? SCRUBBED : value;
+  if (typeof value === 'number') return Number.isFinite(value) ? value : SCRUBBED;
+  return typeof value === 'boolean' || value === null ? value : SCRUBBED;
 }

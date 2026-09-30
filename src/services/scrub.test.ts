@@ -1,9 +1,17 @@
 import { describe, expect, it } from 'vitest';
-import { SCRUBBED, scrubEvent, scrubFields } from '@/services/scrub';
+import { SCRUBBED, scrubEvent, scrubFields, type LogFields } from '@/services/scrub';
 
 describe('scrubFields (allow-list, spec §3)', () => {
-  it('keeps allow-listed keys holding plain words, numbers and booleans', () => {
-    const fields = { kind: 'offline', status: 503, attempt: 2, op: 'set', key: 'code.stream' };
+  it('keeps allow-listed keys holding plain words, numbers, booleans and null', () => {
+    const fields = {
+      kind: 'offline',
+      status: 503,
+      attempt: 2,
+      op: 'set',
+      key: 'code.stream',
+      lock: false,
+      endReason: null,
+    };
     expect(scrubFields(fields)).toEqual(fields);
   });
 
@@ -37,6 +45,17 @@ describe('scrubFields (allow-list, spec §3)', () => {
     ['http://video.example/a', false],
   ])('passes %s as a url only when it is public: %s', (url, passes) => {
     expect(scrubFields({ url })).toEqual({ url: passes ? url : SCRUBBED });
+  });
+
+  // The types say LogValue, but a caller can launder anything past them (a
+  // parsed native payload, an `as`). The scrub is the boundary: it ends closed.
+  it.each([
+    ['an object', { tok: 'secret-token' }],
+    ['an array', ['secret-token']],
+    ['a bigint', BigInt(1)],
+  ])('scrubs %s under an allow-listed key', (_, value) => {
+    const fields = { reason: value } as unknown as LogFields;
+    expect(scrubFields(fields)).toEqual({ reason: SCRUBBED });
   });
 
   it('scrubs a number that is not finite', () => {
