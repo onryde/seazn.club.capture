@@ -331,11 +331,16 @@ class EngineTest {
     val engine = engine { phase, input, now -> if (input == Input.SwitchCamera) error("bug") else SessionMachine.reduce(phase, input, now) }
     engine.send(Input.Arm(Configs.valid()))
     engine.send(Input.Start)
+    // A failure while connecting, again once ended, and again once idle: each keeps the ids.
+    engine.send(Input.SwitchCamera)
+    engine.send(Input.SwitchCamera)
+    engine.send(Input.Reset)
     engine.send(Input.SwitchCamera)
     engine.send(Input.Reset)
     engine.send(Input.Arm(Configs.valid()))
     engine.send(Input.Start)
     scheduler.advanceBy(0)
+    assertEquals(3, lines.count { """"kind":"engine-error"""" in it })
     assertEquals(listOf(1, 2), executed.filterIsInstance<Command.Connect>().map { it.attemptId })
   }
 

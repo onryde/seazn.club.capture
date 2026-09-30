@@ -343,6 +343,7 @@ class SessionMachineLifecycleTest {
         Input.DescriptorChecked(1, DescriptorCheck.Live),
         Input.CameraContended,
         Input.Start,
+        Input.Reset,
       )
     for (input in inputs) {
       val rig = gateJustClosed()
@@ -354,6 +355,20 @@ class SessionMachineLifecycleTest {
       assertEquals(StallCause.NO_VIDEO, rig.records("video-stalled").single().field("cause"), "$input")
       assertEquals(1, rig.sent<Command.Rebuild>().size, "$input")
     }
+  }
+
+  @Test
+  fun `B6 ruling C2 the tick keeps its own order - a hold that ends as a rebuild falls due ends without it`() {
+    val rig = MachineRig(Configs.valid(holdWindowSeconds = mapOf(Transport.SRT to 7, Transport.RTMPS to 7))).live()
+    rig.send(Input.Dropped(1, DropReason.ENDPOINT_CLOSED, null))
+    rig.advance(2_000)
+    // 3 s: the first-frame grace runs out at 8 s, the moment the 7 s hold from the drop at 1 s does.
+    rig.send(Input.Connected(2))
+    rig.advance(4_500, feeding = false)
+    assertIs<SnapshotState.Reconnecting>(rig.state)
+    rig.advance(500, feeding = false)
+    assertEquals(SnapshotState.Ended(EndReason.HOLD_WINDOW_EXPIRED), rig.state)
+    assertTrue(rig.sent<Command.Rebuild>().isEmpty(), "the session is over: nothing to rebuild")
   }
 
   @Test
