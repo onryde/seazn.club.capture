@@ -69,6 +69,21 @@ export default [
       },
     },
     rules: {
+      // AGENTS §11: no console anywhere — one levelled logger feeds the session
+      // record, scrubbed. A console line is unscrubbed and lost at the ground.
+      'no-console': 'error',
+      // AGENTS §4: `any` is banned; the escape hatch is `unknown` plus a parse
+      // function at the boundary. @typescript-eslint/eslint-plugin is not
+      // installed (only the parser is), so this is the core rule on the
+      // parser's own `TSAnyKeyword` node — every `any` annotation, cast and
+      // type argument — with no new dependency.
+      'no-restricted-syntax': [
+        'error',
+        {
+          selector: 'TSAnyKeyword',
+          message: '`any` is banned (AGENTS §4): use `unknown` and parse it at the boundary.',
+        },
+      ],
       'boundaries/dependencies': [
         'error',
         {
