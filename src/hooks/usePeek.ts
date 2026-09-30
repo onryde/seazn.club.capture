@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { usePorts } from '@/hooks/usePorts';
+import { useTurnCardShowing } from '@/hooks/useTurnCard';
 
 /** Spec §4: the player stays warm this long after release. */
 export const PEEK_WARM_MS = 30_000;
@@ -17,40 +18,71 @@ export type Peek = {
  * lands and stops a billed preview running unattended. No confirmation delay.
  * Off air (`available` false) a press does nothing, and a peek already open is
  * let go at once, warm player and all. The same happens when the app leaves
- * the foreground (ruling M5): nothing is left frozen over the camera on return.
+ * the foreground (ruling M5) and while the turn card covers the stage (ruling
+ * N4): nothing is left playing where the operator cannot see it.
  */
 export function usePeek(available: boolean): Peek {
-  const { foreground } = usePorts();
+  const playable = available && !useTurnCardShowing();
   const [showing, setShowing] = useState(false);
   const [mounted, setMounted] = useState(false);
-  const cooling = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const stopCooling = useCallback(() => {
-    if (cooling.current !== null) clearTimeout(cooling.current);
-    cooling.current = null;
-  }, []);
+  const cooling = useCooling(setMounted);
   const letGo = useCallback(() => {
-    stopCooling();
+    cooling.stop();
     setShowing(false);
     setMounted(false);
-  }, [stopCooling]);
+  }, [cooling]);
   const pressIn = useCallback(() => {
-    if (!available) return;
-    stopCooling();
+    if (!playable) return;
+    cooling.stop();
     setMounted(true);
     setShowing(true);
-  }, [available, stopCooling]);
+  }, [playable, cooling]);
   const pressOut = useCallback(() => {
     setShowing(false);
-    stopCooling();
-    cooling.current = setTimeout(() => {
-      cooling.current = null;
+    cooling.start();
+  }, [cooling]);
+  useLetGo(playable, letGo);
+  return { showing, mounted, pressIn, pressOut };
+}
+
+/** Lets go the moment the peek cannot play, and whenever the app leaves (ruling M5). */
+function useLetGo(playable: boolean, letGo: () => void): void {
+  const { foreground } = usePorts();
+  useEffect(() => {
+    if (!playable) letGo();
+  }, [playable, letGo]);
+  useEffect(() => foreground.subscribeBackground(letGo), [foreground, letGo]);
+}
+
+type Cooling = { start(): void; stop(): void };
+
+/**
+ * The warm player's 30 s after a release, counted from the latest one. It
+ * never outlives the hook (N3): React tears an owner down before its
+ * children, so a control unmounting with it lets go into a hook already gone,
+ * and that release must not start a timer nothing will clear.
+ */
+function useCooling(setMounted: (mounted: boolean) => void): Cooling {
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const alive = useRef(false);
+  const stop = useCallback(() => {
+    if (timer.current !== null) clearTimeout(timer.current);
+    timer.current = null;
+  }, []);
+  const start = useCallback(() => {
+    stop();
+    if (!alive.current) return;
+    timer.current = setTimeout(() => {
+      timer.current = null;
       setMounted(false);
     }, PEEK_WARM_MS);
-  }, [stopCooling]);
+  }, [stop, setMounted]);
   useEffect(() => {
-    if (!available) letGo();
-  }, [available, letGo]);
-  useEffect(() => foreground.subscribeBackground(letGo), [foreground, letGo]);
-  useEffect(() => stopCooling, [stopCooling]);
-  return { showing, mounted, pressIn, pressOut };
+    alive.current = true;
+    return () => {
+      alive.current = false;
+      stop();
+    };
+  }, [stop]);
+  return useMemo(() => ({ start, stop }), [start, stop]);
 }

@@ -3,6 +3,7 @@ import { Pressable, StyleSheet, Text, type TextStyle } from 'react-native';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { HOLD_MS, useHold } from '@/hooks/useHold';
 import { HoldAction } from '@/ui/components/HoldAction';
+import { OrientationGate } from '@/ui/components/OrientationGate';
 import { colour } from '@/ui/theme/tokens';
 import { pressIn, pressOut } from '../../../test/press';
 import { createFakePorts } from '../../../test/fakePorts';
@@ -200,6 +201,27 @@ describe('HoldAction (AGENTS §6: a 3 s hold, both ways)', () => {
     expect(hold.onHeld).toHaveBeenCalledTimes(1);
   });
 
+  // N1: the cancel runs inside the port's own callback, not a render and an
+  // effect later. On a phone a deferred cancel leaves a gap in which a hold
+  // timer already due still fires; here the leave and the deadline land in one
+  // act, with no flush between them to hide that gap.
+  it.each([
+    [HOLD_MS - 1, 1],
+    [2000, 1000],
+  ])(
+    'never acts when leaving lands in the same tick as the deadline (%i ms, then %i)',
+    (first, rest) => {
+      const hold = renderHold();
+      pressIn(hold.button());
+      act(() => vi.advanceTimersByTime(first));
+      act(() => {
+        hold.foreground.leave();
+        vi.advanceTimersByTime(rest);
+      });
+      expect(hold.onHeld).not.toHaveBeenCalled();
+    },
+  );
+
   it('abandons a hold when unmounted mid-way', () => {
     const hold = renderHold();
     pressIn(hold.button());
@@ -231,6 +253,54 @@ describe('HoldAction (AGENTS §6: a 3 s hold, both ways)', () => {
     expect(
       screen.getByRole('button', { name: 'Passer en direct. Maintenez appuyé 3 secondes.' }),
     ).toBeTruthy();
+  });
+});
+
+describe('HoldAction under the turn card (ruling N4)', () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  /** The root layout's gate around the control, with the card up or down. */
+  function renderGated() {
+    const onHeld = vi.fn();
+    const props: Props = { label: 'Stop', tone: 'stop', disabled: false, reason: null, onHeld };
+    const gated = (card: 'none' | 'turnSideways') => (
+      <OrientationGate card={card}>
+        <HoldAction {...props} />
+      </OrientationGate>
+    );
+    const view = renderWithPorts(gated('none'));
+    const cover = (card: 'none' | 'turnSideways') => view.rerender(gated(card));
+    const button = () => screen.getByRole('button', { name: /Press and hold/ });
+    return { onHeld, cover, button };
+  }
+
+  // The card covers the controls: a hold running under it never acts, though
+  // the finger may still be down (an RN responder is not ended by a view
+  // mounting over it). The operator re-holds once the phone is turned back.
+  it('abandons a hold in progress when the card covers it', () => {
+    const gate = renderGated();
+    pressIn(gate.button());
+    act(() => vi.advanceTimersByTime(1500));
+    gate.cover('turnSideways');
+    expect(screen.getByTestId('hold-fill').dataset.holding).toBe('false');
+    act(() => vi.advanceTimersByTime(HOLD_MS * 2));
+    gate.cover('none');
+    act(() => vi.advanceTimersByTime(HOLD_MS * 2));
+    expect(gate.onHeld).not.toHaveBeenCalled();
+    pressOut(gate.button());
+    pressIn(gate.button());
+    act(() => vi.advanceTimersByTime(HOLD_MS));
+    expect(gate.onHeld).toHaveBeenCalledTimes(1);
+  });
+
+  it('starts no hold while the card is up', () => {
+    const gate = renderGated();
+    gate.cover('turnSideways');
+    pressIn(screen.getByRole('button', { name: /Press and hold/, hidden: true }));
+    act(() => vi.advanceTimersByTime(HOLD_MS));
+    expect(gate.onHeld).not.toHaveBeenCalled();
+    expect(screen.getByTestId('hold-fill').dataset.holding).toBe('false');
   });
 });
 

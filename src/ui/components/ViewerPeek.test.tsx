@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { PEEK_WARM_MS, usePeek } from '@/hooks/usePeek';
 import { StageVideo } from '@/ui/components/StageVideo';
 import { ViewerPeek } from '@/ui/components/ViewerPeek';
+import { OrientationGate } from '@/ui/components/OrientationGate';
 import { colour } from '@/ui/theme/tokens';
 import { createFakePorts } from '../../../test/fakePorts';
 import { pressIn, pressOut } from '../../../test/press';
@@ -143,6 +144,46 @@ describe('What viewers see (spec §4)', () => {
     expect(layer().getAttribute('aria-hidden')).toBe('true');
     act(() => vi.advanceTimersByTime(PEEK_WARM_MS));
     expect(video()).toBeNull();
+  });
+
+  // N3: React tears the owner down before its children (ReactFabric-dev.js,
+  // deletion effects parent first), so the control's own let-go reaches a peek
+  // already gone. It must not start a new 30 s there.
+  it('leaves no timer behind when the owner and its control go together mid-press', () => {
+    const view = renderWithPorts(<PeekHarness available />);
+    const before = vi.getTimerCount();
+    pressIn(peekButton());
+    expect(video()?.dataset.playing).toBe('true');
+    view.unmount();
+    expect(vi.getTimerCount()).toBe(before);
+  });
+
+  // Ruling N4: the turn card covers the stage and the controls, so nothing
+  // under it plays on. The finger may still be down; the picture goes anyway.
+  it('drops the picture and the player when the turn card covers them mid-peek', () => {
+    const view = renderWithPorts(
+      <OrientationGate card="none">
+        <PeekHarness available />
+      </OrientationGate>,
+    );
+    pressIn(peekButton());
+    expect(video()?.dataset.playing).toBe('true');
+    view.rerender(
+      <OrientationGate card="turnSideways">
+        <PeekHarness available />
+      </OrientationGate>,
+    );
+    expect(video()).toBeNull();
+    view.rerender(
+      <OrientationGate card="none">
+        <PeekHarness available />
+      </OrientationGate>,
+    );
+    expect(video()).toBeNull();
+    // Once the card lifts, a fresh press plays as usual.
+    pressOut(peekButton());
+    pressIn(peekButton());
+    expect(video()?.dataset.playing).toBe('true');
   });
 
   it('lets a control that is not held go quietly', () => {
