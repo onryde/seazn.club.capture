@@ -83,6 +83,34 @@ describe('parseDescriptor', () => {
     });
   });
 
+  it.each([
+    ['https://stg.seazn.club/relay'],
+    ['https://stg.seazn.club/relay/'],
+    ['https://stg.seazn.club/x/relay/y'],
+    ['https://stg.seazn.club/overlay/fixtures/fake-fixture/relay?delayMs=0'],
+    ['https://stg.seazn.club/Relay'],
+  ])('reads an overlay with a relay path segment, %s, as no overlay (AGENTS §7)', (url) => {
+    const result = parseDescriptor(descriptorWire({ overlayUrl: url }));
+    expect(result).toMatchObject({ ok: true, value: { overlayUrl: null } });
+  });
+
+  it.each([
+    ['https://stg.seazn.club/relayed'],
+    ['https://stg.seazn.club/overlay/fixtures/relay-cup'],
+    ['https://stg.seazn.club/overlay/fixtures/prerelay'],
+    ['https://stg.seazn.club/overlay/fixtures/fake-fixture?next=/relay'],
+    ['https://stg.seazn.club/overlay/fixtures/fake-fixture#/relay'],
+    ['https://relay.seazn.club/overlay/fixtures/fake-fixture'],
+  ])('keeps %s: relay is not a path segment there', (url) => {
+    const result = parseDescriptor(descriptorWire({ overlayUrl: url }));
+    expect(result).toMatchObject({ ok: true, value: { overlayUrl: url } });
+  });
+
+  it('reads an explicit null overlay as no overlay, the form storage keeps', () => {
+    const result = parseDescriptor(descriptorWire({ overlayUrl: null }));
+    expect(result).toMatchObject({ ok: true, value: { overlayUrl: null } });
+  });
+
   it('refuses a state it does not know, rather than guessing', () => {
     const result = parseDescriptor(descriptorWire({ state: 'paused' }));
     expect(result).toMatchObject({ ok: false, error: { kind: 'invalid-field', field: 'state' } });
@@ -152,8 +180,19 @@ describe('parseDescriptor', () => {
     expect(descriptorToWire(EXPECTED)).toStrictEqual(descriptorWire({ endReason: null }));
   });
 
+  it('stores no overlay as null', () => {
+    expect(descriptorToWire({ ...EXPECTED, overlayUrl: null })).toStrictEqual(
+      descriptorWire({ endReason: null, overlayUrl: null }),
+    );
+  });
+
   it('survives a round trip through storage', () => {
     expect(parseDescriptor(descriptorToWire(EXPECTED))).toEqual({ ok: true, value: EXPECTED });
+  });
+
+  it('keeps no overlay through storage', () => {
+    const bare: SessionDescriptor = { ...EXPECTED, overlayUrl: null };
+    expect(parseDescriptor(descriptorToWire(bare))).toEqual({ ok: true, value: bare });
   });
 
   it.each(['stopped', 'no-inbound-timeout', 'target-rejected', 'max-duration', 'unknown'] as const)(

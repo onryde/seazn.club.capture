@@ -87,7 +87,7 @@ function readFacts(input: Source): Read<Facts> {
 function readUrls(input: Source): Read<Urls> {
   const playbackUrl = readSchemeUrl(input, 'playbackUrl', 'https');
   if (!playbackUrl.ok) return playbackUrl;
-  const overlayUrl = readSchemeUrl(input, 'overlayUrl', 'https');
+  const overlayUrl = readOverlayUrl(input);
   if (!overlayUrl.ok) return overlayUrl;
   const heartbeatUrl = readSchemeUrl(input, 'heartbeatUrl', 'https');
   if (!heartbeatUrl.ok) return heartbeatUrl;
@@ -96,6 +96,25 @@ function readUrls(input: Source): Read<Urls> {
     overlayUrl: overlayUrl.value,
     heartbeatUrl: heartbeatUrl.value,
   });
+}
+
+/**
+ * A `relay` path segment anywhere in the path, in any case. A segment, not a
+ * substring: `/relayed`, a query, a fragment or a host named relay do not count.
+ */
+const RELAY_SEGMENT = /^https:\/\/[^/?#]+(?:\/[^?#]*)?\/relay(?:[/?#]|$)/i;
+
+/**
+ * AGENTS §7: the phone never loads the `/relay` variant, which carries the
+ * WHEP video element, so it reads as no overlay rather than a refused code.
+ * An explicit `null` is no overlay too: it is how storage keeps that answer.
+ * Absent or not https is still refused.
+ */
+function readOverlayUrl(input: Source): Read<string | null> {
+  if (input.overlayUrl === null) return ok(null);
+  const url = readSchemeUrl(input, 'overlayUrl', 'https');
+  if (!url.ok) return url;
+  return ok(RELAY_SEGMENT.test(url.value) ? null : url.value);
 }
 
 function readTimes(input: Source): Read<Times> {

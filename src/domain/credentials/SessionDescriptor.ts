@@ -16,8 +16,11 @@ export type SessionDescriptor = {
   readonly endReason: OrganiserEndReason | null;
   /** Required: the delivery watch depends on it (F-P5-13). */
   readonly playbackUrl: string;
-  /** The Tier A `/overlay/fixtures/[id]` route, never `/relay` (AGENTS §7). */
-  readonly overlayUrl: string;
+  /**
+   * The Tier A `/overlay/fixtures/[id]` route. `null` is no overlay: the
+   * server sent the `/relay` variant, which the phone never loads (AGENTS §7).
+   */
+  readonly overlayUrl: string | null;
   /** C2: whether a resume is the same broadcast, per transport. */
   readonly holdWindowSeconds: Readonly<Record<Transport, number>>;
   /** IANA name. Every time the operator reads is shown in it (spec §2). */
