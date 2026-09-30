@@ -186,6 +186,22 @@ class SessionMachineOutageTest {
   }
 
   @Test
+  fun `final review N-3 a refused arm keeps the network fact for the next session, and was never live`() {
+    // Plan C's callback fires once, the first code scanned is refused, and the next one arms with C1 intact.
+    val refused =
+      SessionConfig("sess_42", Configs.TOKEN, Configs.srt, Configs.rtmps, mapOf(Transport.SRT to 183, Transport.RTMPS to 180), "", "https://h/", "1.0.0")
+    val rig = MachineRig()
+    rig.send(Input.Network(validated = true))
+    rig.send(Input.Arm(refused))
+    assertEquals(SnapshotState.Ended(EndReason.FATAL_ERROR, durationMs = null), rig.state)
+    rig.send(Input.Reset)
+    rig.send(Input.Arm(rig.config))
+    rig.send(Input.Start)
+    rig.failingConnects(6_500, ConnectFailure.TIMEOUT)
+    assertEquals(srtThreeTimesThenRtmps, rig.connects().map { it.target.transport })
+  }
+
+  @Test
   fun `every reconnect fetches the descriptor again`() {
     val rig = MachineRig().live()
     rig.send(Input.Dropped(1, DropReason.ENDPOINT_CLOSED, null))
