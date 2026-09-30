@@ -3,6 +3,7 @@ import { getLocales } from 'expo-localization';
 import { createFakeCaptureEngine } from '@/engine/FakeCaptureEngine';
 import type { Ports } from '@/hooks/usePorts';
 import { createNativeCodeScanner } from '@/scanner/nativeCodeScanner';
+import { createLogger } from '@/services/logger';
 import { createModeStore } from '@/services/modeStore';
 import { createScanFlight } from '@/services/scanFlight';
 import { createExpoRouterNavigation } from '@/services/native/expoRouterNavigation';
@@ -13,6 +14,7 @@ import { createNativeOrientationLock } from '@/services/native/nativeOrientation
 import { createNativeSplash } from '@/services/native/nativeSplash';
 import { createSecureKeyValueStore } from '@/services/native/secureKeyValueStore';
 import { seaznHosts } from '@/services/seaznHosts';
+import { createRingRecord } from '@/services/sessionRecord';
 
 /**
  * The composition root's parts. The engine is the fake in S0 — main has no
@@ -20,6 +22,8 @@ import { seaznHosts } from '@/services/seaznHosts';
  * this one line (spec §8).
  */
 export function createNativePorts(): Ports {
+  const record = createRingRecord();
+  const logger = createLogger({ record, now: Date.now, minLevel: __DEV__ ? 'debug' : 'info' });
   const engine = createFakeCaptureEngine();
   const kv = createSecureKeyValueStore();
   const scanner = createNativeCodeScanner();
@@ -37,6 +41,8 @@ export function createNativePorts(): Ports {
     foreground: createNativeForeground(),
     navigation: createExpoRouterNavigation(),
     splash: createNativeSplash(),
+    logger,
+    record,
     clock: () => new Date(),
     hosts: seaznHosts(process.env.EXPO_PUBLIC_SEAZN_ENV),
     deviceLanguages: getLocales().map((locale) => locale.languageCode),

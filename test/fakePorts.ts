@@ -12,8 +12,10 @@ import type {
   SplashPort,
 } from '@/services/devicePorts';
 import { createMemoryKeyValueStore, type MemoryKeyValueStore } from '@/services/KeyValueStore';
+import { createLogger } from '@/services/logger';
 import { createModeStore } from '@/services/modeStore';
 import { createScanFlight } from '@/services/scanFlight';
+import { createRingRecord, type SessionRecord } from '@/services/sessionRecord';
 
 export const TEST_NOW = new Date('2026-10-03T13:00:00Z');
 
@@ -31,6 +33,8 @@ export type FakePorts = {
   readonly foreground: ForegroundPort & { fire(): void; leave(): void };
   readonly navigation: NavigationPort & { readonly history: readonly Route[] };
   readonly splash: SplashPort & { readonly hides: number };
+  /** The session record the ports' logger writes to; read it with `readRecord`. */
+  readonly record: SessionRecord;
   setNow(at: Date): void;
 };
 
@@ -44,6 +48,9 @@ export function createFakePorts(
   const engine = createFakeCaptureEngine(() => now.getTime());
   created.push(engine);
   const kv = createMemoryKeyValueStore(kvSeed);
+  // The real logger over the ring record: both are pure, so no double is needed (D34).
+  const record = createRingRecord();
+  const logger = createLogger({ record, now: () => now.getTime() });
   const fakes = {
     engine,
     scanner: createFakeCodeScanner(),
@@ -54,6 +61,7 @@ export function createFakePorts(
     foreground: fakeForeground(),
     navigation: fakeNavigation(),
     splash: fakeSplash(),
+    record,
   };
   const ports: Ports = {
     ...fakes,
@@ -66,6 +74,7 @@ export function createFakePorts(
     phoneZone: 'Europe/London',
     appVersion: '0.0.0-test',
     devTools: true,
+    logger,
     ...portOverrides,
   };
   return {
@@ -75,6 +84,17 @@ export function createFakePorts(
       now = at;
     },
   };
+}
+
+export type RecordedEntry = {
+  readonly level: string;
+  readonly event: string;
+  readonly fields: Readonly<Record<string, unknown>>;
+};
+
+/** The record's lines, parsed, for assertions. */
+export function readRecord(record: SessionRecord): RecordedEntry[] {
+  return record.lines().map((line) => JSON.parse(line) as RecordedEntry);
 }
 
 /** Stops every fake engine's heartbeat. Called after each UI test (test/setup-ui.ts). */

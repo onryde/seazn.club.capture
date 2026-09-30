@@ -12,8 +12,10 @@ import type {
   SplashPort,
 } from '@/services/devicePorts';
 import type { KeyValueStore } from '@/services/KeyValueStore';
+import type { Logger } from '@/services/logger';
 import type { ModeStore } from '@/services/modeStore';
 import type { ScanFlight } from '@/services/scanFlight';
+import type { SessionRecord } from '@/services/sessionRecord';
 
 /**
  * Everything native, in one object that never changes after launch — which is
@@ -35,6 +37,10 @@ export type Ports = {
   readonly foreground: ForegroundPort;
   readonly navigation: NavigationPort;
   readonly splash: SplashPort;
+  /** The one levelled logger (AGENTS §11); its entries land in `record`, scrubbed. */
+  readonly logger: Logger;
+  /** The session record Diagnostics shows and shares (spec §4). */
+  readonly record: SessionRecord;
   readonly clock: () => Date;
   readonly hosts: readonly string[];
   readonly deviceLanguages: readonly (string | null)[];
