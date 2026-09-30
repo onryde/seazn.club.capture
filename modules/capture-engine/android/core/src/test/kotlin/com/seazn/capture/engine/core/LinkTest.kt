@@ -41,6 +41,22 @@ class LinkTest {
     assertEquals(0, sample.droppedPackets)
   }
 
+  @Test
+  fun `the first reading has no interval, so no drops or losses either`() {
+    val (_, sample) = LinkMeter().read(counters(0, dropped = 249, lost = 10), nowMs = 1_000)
+    assertEquals(0, sample.droppedPackets)
+    assertEquals(0, sample.lostPackets)
+  }
+
+  // A second read in the same millisecond (a double tick) has no interval to divide by. Its bytes still count.
+  @Test
+  fun `a second reading at the same instant has no egress, and its bytes still count`() {
+    val (meter, _) = LinkMeter().read(counters(0), nowMs = 1_000)
+    val (_, sample) = meter.read(counters(1_000), nowMs = 1_000)
+    assertNull(sample.egressBps)
+    assertEquals(1_000, sample.bytes)
+  }
+
   // Expected bytes/s worked by hand from the rule: (target + 128k) × 115% × 2 / 8.
   @Test
   fun `F-P5-11 SRTO_MAXBW follows the target`() {
