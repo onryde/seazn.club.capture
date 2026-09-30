@@ -1,5 +1,6 @@
 import { memo } from 'react';
 import { Pressable, StyleSheet, type PressableStateCallbackType } from 'react-native';
+import { useHeldPress } from '@/hooks/useHeldPress';
 import { useT } from '@/hooks/useLanguage';
 import { Text } from '@/ui/components/Text';
 import { colour, space } from '@/ui/theme/tokens';
@@ -15,17 +16,19 @@ type ViewerPeekProps = {
  * keeps for it. No press delay to remove: RN's Pressable passes
  * `unstable_pressDelay` (unset) as Pressability's `delayPressIn`, which
  * defaults to 0, and Pressable has no `delayPressIn` prop of its own.
- * `accessibilityHint` reaches TalkBack; react-native-web drops it.
+ * `accessibilityHint` reaches TalkBack; react-native-web drops it. If the
+ * control unmounts while held it lets go itself (useHeldPress).
  */
 export const ViewerPeek = memo(function ViewerPeek({ onPressIn, onPressOut }: ViewerPeekProps) {
   const { t } = useT();
+  const press = useHeldPress(onPressIn, onPressOut);
   return (
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={t('stream.peek.label')}
       accessibilityHint={t('stream.peek.hint')}
-      onPressIn={onPressIn}
-      onPressOut={onPressOut}
+      onPressIn={press.pressIn}
+      onPressOut={press.pressOut}
       style={peekStyle}
     >
       <Text variant="actionSecondary">{t('stream.peek.label')}</Text>

@@ -5,7 +5,8 @@ import { HOLD_MS, useHold } from '@/hooks/useHold';
 import { HoldAction } from '@/ui/components/HoldAction';
 import { colour } from '@/ui/theme/tokens';
 import { pressIn, pressOut } from '../../../test/press';
-import { renderWithPorts } from '../../../test/renderWithPorts';
+import { createFakePorts } from '../../../test/fakePorts';
+import { renderWithPorts, wrapperFor } from '../../../test/renderWithPorts';
 
 describe('the press path in jsdom (probe)', () => {
   it('reaches onPressIn on press and onPressOut on release', () => {
@@ -177,6 +178,28 @@ describe('HoldAction (AGENTS §6: a 3 s hold, both ways)', () => {
     expect(later).not.toHaveBeenCalled();
   });
 
+  // Ruling M5: a call, the lock or Home mid-hold abandons it, so Go live or
+  // Stop can never act on the return with no finger on the glass. Android
+  // keeps JS timers paused while away; on return a pending one would fire.
+  it.each([
+    ['go', 'Go live'],
+    ['stop', 'Stop'],
+  ] as const)('never completes a %s hold across leaving the app', (tone, label) => {
+    const hold = renderHold({ tone, label });
+    pressIn(hold.button());
+    act(() => vi.advanceTimersByTime(2000));
+    act(() => hold.foreground.leave());
+    expect(screen.getByTestId('hold-fill').dataset.holding).toBe('false');
+    act(() => hold.foreground.fire());
+    act(() => vi.advanceTimersByTime(HOLD_MS * 2));
+    expect(hold.onHeld).not.toHaveBeenCalled();
+    // A fresh full hold after the return acts as usual.
+    pressOut(hold.button());
+    pressIn(hold.button());
+    act(() => vi.advanceTimersByTime(HOLD_MS));
+    expect(hold.onHeld).toHaveBeenCalledTimes(1);
+  });
+
   it('abandons a hold when unmounted mid-way', () => {
     const hold = renderHold();
     pressIn(hold.button());
@@ -215,9 +238,11 @@ describe('useHold, under the control', () => {
   beforeEach(() => vi.useFakeTimers());
   afterEach(() => vi.useRealTimers());
 
+  const wrapper = () => wrapperFor(createFakePorts());
+
   it('ignores a press while not enabled, even if the control let it through', () => {
     const onHeld = vi.fn();
-    const { result } = renderHook(() => useHold(onHeld, false));
+    const { result } = renderHook(() => useHold(onHeld, false), { wrapper: wrapper() });
     act(() => result.current.pressIn());
     expect(result.current.holding).toBe(false);
     act(() => vi.advanceTimersByTime(HOLD_MS));
@@ -229,7 +254,7 @@ describe('useHold, under the control', () => {
   // accessibility action on a phone could.
   it('keeps the first press’s clock when a second press lands mid-hold', () => {
     const onHeld = vi.fn();
-    const { result } = renderHook(() => useHold(onHeld, true));
+    const { result } = renderHook(() => useHold(onHeld, true), { wrapper: wrapper() });
     act(() => result.current.pressIn());
     act(() => vi.advanceTimersByTime(1000));
     act(() => result.current.pressIn());
@@ -244,6 +269,7 @@ describe('useHold, under the control', () => {
     const second = vi.fn();
     const { result, rerender } = renderHook(({ onHeld }) => useHold(onHeld, true), {
       initialProps: { onHeld: first },
+      wrapper: wrapper(),
     });
     act(() => result.current.pressIn());
     act(() => vi.advanceTimersByTime(1000));
@@ -256,7 +282,7 @@ describe('useHold, under the control', () => {
 
   it('leaves nothing running once it acted: the next press is a fresh full hold', () => {
     const onHeld = vi.fn();
-    const { result } = renderHook(() => useHold(onHeld, true));
+    const { result } = renderHook(() => useHold(onHeld, true), { wrapper: wrapper() });
     act(() => result.current.pressIn());
     act(() => vi.advanceTimersByTime(HOLD_MS));
     act(() => result.current.pressIn());
@@ -265,9 +291,20 @@ describe('useHold, under the control', () => {
     expect(onHeld).toHaveBeenCalledTimes(2);
   });
 
+  it('stops listening for the app leaving once unmounted', () => {
+    const fakes = createFakePorts();
+    const { result, unmount } = renderHook(() => useHold(vi.fn(), true), {
+      wrapper: wrapperFor(fakes),
+    });
+    expect(fakes.foreground.leaveListeners()).toBe(1);
+    act(() => result.current.pressIn());
+    unmount();
+    expect(fakes.foreground.leaveListeners()).toBe(0);
+  });
+
   it('lets a release with no hold running pass quietly', () => {
     const onHeld = vi.fn();
-    const { result } = renderHook(() => useHold(onHeld, true));
+    const { result } = renderHook(() => useHold(onHeld, true), { wrapper: wrapper() });
     act(() => result.current.pressOut());
     expect(result.current.holding).toBe(false);
     act(() => result.current.pressIn());

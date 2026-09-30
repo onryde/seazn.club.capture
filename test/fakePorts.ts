@@ -33,8 +33,11 @@ export type FakePorts = {
   readonly motion: FakeMotion;
   readonly orientationLock: OrientationLockPort & { readonly locks: readonly Target[] };
   readonly back: BackPort & { press(): boolean };
-  /** `leave()` is the app going to the background; `fire()` is its return. */
-  readonly foreground: ForegroundPort & { fire(): void; leave(): void };
+  /**
+   * `leave()` is the app going to the background; `fire()` is its return.
+   * `leaveListeners()` counts who would hear a `leave()`.
+   */
+  readonly foreground: FakeForeground;
   readonly navigation: NavigationPort & { readonly history: readonly Route[] };
   readonly splash: SplashPort & { readonly hides: number };
   readonly surfaces: FakeSurfaces;
@@ -152,7 +155,13 @@ function fakeBack(): BackPort & { press(): boolean } {
   };
 }
 
-function fakeForeground(): ForegroundPort & { fire(): void; leave(): void } {
+type FakeForeground = ForegroundPort & {
+  fire(): void;
+  leave(): void;
+  leaveListeners(): number;
+};
+
+function fakeForeground(): FakeForeground {
   const returns = new Set<() => void>();
   const leaves = new Set<() => void>();
   const add = (listeners: Set<() => void>, listener: () => void) => {
@@ -170,6 +179,7 @@ function fakeForeground(): ForegroundPort & { fire(): void; leave(): void } {
     leave: () => {
       for (const listener of leaves) listener();
     },
+    leaveListeners: () => leaves.size,
   };
 }
 

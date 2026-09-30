@@ -11,11 +11,11 @@ import { renderWithPorts, wrapperFor } from '../../../test/renderWithPorts';
 
 const PLAYBACK = 'https://video.example/fake/manifest/video.m3u8';
 
-function PeekHarness({ available }: { available: boolean }) {
+function PeekHarness({ available, control = true }: { available: boolean; control?: boolean }) {
   const peek = usePeek(available);
   return (
     <>
-      <ViewerPeek onPressIn={peek.pressIn} onPressOut={peek.pressOut} />
+      {control ? <ViewerPeek onPressIn={peek.pressIn} onPressOut={peek.pressOut} /> : null}
       {peek.mounted ? <StageVideo url={PLAYBACK} showing={peek.showing} /> : null}
     </>
   );
@@ -132,6 +132,51 @@ describe('What viewers see (spec §4)', () => {
     expect(video()?.dataset.playing).toBe('true');
   });
 
+  // Review M4: RN resets a Pressable that unmounts mid-press and sends no
+  // onPressOut (usePressability.js, Pressability.reset), so the control lets
+  // go itself; a billed preview must never run on with no finger on it.
+  it('stops the picture when its control goes mid-press', () => {
+    const view = renderWithPorts(<PeekHarness available />);
+    pressIn(peekButton());
+    view.rerender(<PeekHarness available control={false} />);
+    expect(video()?.dataset.playing).toBe('false');
+    expect(layer().getAttribute('aria-hidden')).toBe('true');
+    act(() => vi.advanceTimersByTime(PEEK_WARM_MS));
+    expect(video()).toBeNull();
+  });
+
+  it('lets a control that is not held go quietly', () => {
+    const view = renderWithPorts(<PeekHarness available />);
+    pressIn(peekButton());
+    pressOut(peekButton());
+    act(() => vi.advanceTimersByTime(10_000));
+    view.rerender(<PeekHarness available control={false} />);
+    act(() => vi.advanceTimersByTime(PEEK_WARM_MS - 10_000));
+    expect(video()).toBeNull();
+  });
+
+  // Ruling M5: a call, the lock or Home stops the peek and lets the player go;
+  // on the return nothing is left frozen over the camera.
+  it('drops the picture and the player when the app leaves mid-peek', () => {
+    const view = renderWithPorts(<PeekHarness available />);
+    pressIn(peekButton());
+    act(() => view.foreground.leave());
+    expect(video()).toBeNull();
+    act(() => view.foreground.fire());
+    expect(video()).toBeNull();
+    pressOut(peekButton());
+    pressIn(peekButton());
+    expect(video()?.dataset.playing).toBe('true');
+  });
+
+  it('drops a warm player when the app leaves', () => {
+    const view = renderWithPorts(<PeekHarness available />);
+    pressIn(peekButton());
+    pressOut(peekButton());
+    act(() => view.foreground.leave());
+    expect(video()).toBeNull();
+  });
+
   it('warms and lets go the same when effects run twice (StrictMode)', () => {
     const fakes = createFakePorts();
     render(<PeekHarness available />, { wrapper: wrapperFor(fakes), reactStrictMode: true });
@@ -160,9 +205,27 @@ describe('What viewers see (spec §4)', () => {
   });
 });
 
+describe('ViewerPeek alone', () => {
+  it('lets go through the latest handler on unmount, and never on a re-render', () => {
+    const first = { pressIn: vi.fn(), pressOut: vi.fn() };
+    const view = renderWithPorts(
+      <ViewerPeek onPressIn={first.pressIn} onPressOut={first.pressOut} />,
+    );
+    pressIn(peekButton());
+    const next = { pressIn: vi.fn(), pressOut: vi.fn() };
+    view.rerender(<ViewerPeek onPressIn={next.pressIn} onPressOut={next.pressOut} />);
+    expect(first.pressOut).not.toHaveBeenCalled();
+    view.unmount();
+    expect(next.pressOut).toHaveBeenCalledTimes(1);
+    expect(first.pressOut).not.toHaveBeenCalled();
+  });
+});
+
 describe('usePeek, under the control', () => {
   beforeEach(() => vi.useFakeTimers());
   afterEach(() => vi.useRealTimers());
+
+  const wrapper = () => wrapperFor(createFakePorts());
 
   it('stays warm for 30 s, the spec’s figure (§4)', () => {
     expect(PEEK_WARM_MS).toBe(30_000);
@@ -171,6 +234,7 @@ describe('usePeek, under the control', () => {
   it('drops the picture and the player when the broadcast ends while held', () => {
     const { result, rerender } = renderHook(({ available }) => usePeek(available), {
       initialProps: { available: true },
+      wrapper: wrapper(),
     });
     act(() => result.current.pressIn());
     rerender({ available: false });
@@ -179,14 +243,14 @@ describe('usePeek, under the control', () => {
   });
 
   it('ignores a press off air, even if the control let it through', () => {
-    const { result } = renderHook(() => usePeek(false));
+    const { result } = renderHook(() => usePeek(false), { wrapper: wrapper() });
     act(() => result.current.pressIn());
     expect(result.current.showing).toBe(false);
     expect(result.current.mounted).toBe(false);
   });
 
   it('keeps one player for a second press landing while held', () => {
-    const { result } = renderHook(() => usePeek(true));
+    const { result } = renderHook(() => usePeek(true), { wrapper: wrapper() });
     act(() => result.current.pressIn());
     act(() => result.current.pressIn());
     expect(result.current.showing).toBe(true);
@@ -198,7 +262,7 @@ describe('usePeek, under the control', () => {
   // A release arriving twice (a lost press-in on a phone) restarts the 30 s
   // rather than leaving the first timer to cut it short.
   it('counts from the latest release when two arrive', () => {
-    const { result } = renderHook(() => usePeek(true));
+    const { result } = renderHook(() => usePeek(true), { wrapper: wrapper() });
     act(() => result.current.pressIn());
     act(() => result.current.pressOut());
     act(() => vi.advanceTimersByTime(10_000));
@@ -212,21 +276,44 @@ describe('usePeek, under the control', () => {
   it('leaves no timer behind when the broadcast ends while it cools', () => {
     const { result, rerender } = renderHook(({ available }) => usePeek(available), {
       initialProps: { available: true },
+      wrapper: wrapper(),
     });
+    const others = vi.getTimerCount();
     act(() => result.current.pressIn());
     act(() => result.current.pressOut());
-    expect(vi.getTimerCount()).toBe(1);
+    expect(vi.getTimerCount()).toBe(others + 1);
     rerender({ available: false });
     expect(result.current.mounted).toBe(false);
-    expect(vi.getTimerCount()).toBe(0);
+    expect(vi.getTimerCount()).toBe(others);
+  });
+
+  it('drops everything, timer included, when the app leaves while it cools', () => {
+    const fakes = createFakePorts();
+    const { result } = renderHook(() => usePeek(true), { wrapper: wrapperFor(fakes) });
+    const others = vi.getTimerCount();
+    act(() => result.current.pressIn());
+    act(() => result.current.pressOut());
+    act(() => fakes.foreground.leave());
+    expect(result.current.showing).toBe(false);
+    expect(result.current.mounted).toBe(false);
+    expect(vi.getTimerCount()).toBe(others);
+  });
+
+  it('stops listening for the app leaving once unmounted', () => {
+    const fakes = createFakePorts();
+    const { unmount } = renderHook(() => usePeek(true), { wrapper: wrapperFor(fakes) });
+    expect(fakes.foreground.leaveListeners()).toBe(1);
+    unmount();
+    expect(fakes.foreground.leaveListeners()).toBe(0);
   });
 
   it('leaves no timer behind when it unmounts while it cools', () => {
-    const { result, unmount } = renderHook(() => usePeek(true));
+    const { result, unmount } = renderHook(() => usePeek(true), { wrapper: wrapper() });
+    const others = vi.getTimerCount();
     act(() => result.current.pressIn());
     act(() => result.current.pressOut());
-    expect(vi.getTimerCount()).toBe(1);
+    expect(vi.getTimerCount()).toBe(others + 1);
     unmount();
-    expect(vi.getTimerCount()).toBe(0);
+    expect(vi.getTimerCount()).toBe(others);
   });
 });

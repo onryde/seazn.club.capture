@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { usePorts } from '@/hooks/usePorts';
+import { useStableCallback } from '@/hooks/useStableCallback';
 
 type Trouble = 'overlay.failed' | 'overlay.crashed' | 'overlay.absent';
 
@@ -11,15 +12,6 @@ export type OverlayAttempt = {
   /** For the error boundary's `onCatch`. */
   readonly crash: () => void;
 };
-
-/** A callback whose identity never changes, calling the latest `fn` given. */
-function useStableCallback(fn: () => void): () => void {
-  const latest = useRef(fn);
-  useLayoutEffect(() => {
-    latest.current = fn;
-  });
-  return useCallback(() => latest.current(), []);
-}
 
 /**
  * One attempt at drawing the overlay, for one URL and one showing. However
