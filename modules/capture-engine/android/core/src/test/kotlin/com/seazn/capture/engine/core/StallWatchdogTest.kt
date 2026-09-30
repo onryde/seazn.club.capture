@@ -9,7 +9,7 @@ import kotlin.test.assertTrue
 
 class StallWatchdogTest {
   /** A reading every 500 ms with the given increments; ticks after each one. Returns the first rebuild or held verdict. */
-  private class Drive(var dog: StallWatchdog = StallWatchdog(startedAtMs = 0)) {
+  private class Drive(var dog: StallWatchdog = StallWatchdog(startedAtMs = 0), val micSilenced: Boolean = false) {
     var video = 0L
     var audio = 0L
     var t = 0L
@@ -19,7 +19,7 @@ class StallWatchdogTest {
       t += 500
       video += videoAdd
       audio += audioAdd
-      val (afterFrames, frameVerdict) = dog.frames(video, audio, t, cameraTaken, false)
+      val (afterFrames, frameVerdict) = dog.frames(video, audio, t, cameraTaken, micSilenced)
       val (afterTick, tickVerdict) = afterFrames.tick(t, cameraTaken)
       dog = afterTick
       for (verdict in listOf(frameVerdict, tickVerdict)) if (verdict != StallVerdict.None) verdicts += t to verdict
@@ -29,7 +29,8 @@ class StallWatchdogTest {
       repeat(count) { step(videoAdd, audioAdd, cameraTaken) }
   }
 
-  private fun healthy(): Drive = Drive().apply { dog = dog.frames(0, 0, 0, false, false).first; steps(10, 15, 23) }
+  private fun healthy(mic: Boolean = false): Drive =
+    Drive(micSilenced = mic).apply { dog = dog.frames(0, 0, 0, false, mic).first; steps(10, 15, 23) }
 
   @Test
   fun `F-P5-6 no video frame for 3 s is a rebuild, while audio still flows`() {
@@ -77,19 +78,26 @@ class StallWatchdogTest {
   }
 
   @Test
-  fun `F-P5-8 while the mic is silenced only the video floor is judged`() {
+  fun `F-P5-8 while the mic is silenced no rate floor is judged, and a frozen picture still rebuilds`() {
     // P5, a phone call answered on 2026-09-28 evening: "delivery-starved videoFps=9.7 audioFps=15.2", the
     // mic silenced by the system. Readings 2 s apart make a 4 s window: 39 video and 61 audio frames are
-    // 9.75 and 15.25 a second, shown as 9.7 and 15.2. 40 video frames are 10.0, on the floor.
-    fun verdict(videoFrames: Long, micSilenced: Boolean): StallVerdict {
+    // 9.75 and 15.25 a second, shown as 9.7 and 15.2.
+    fun dip(micSilenced: Boolean): Pair<StallWatchdog, StallVerdict> {
       var dog = StallWatchdog(startedAtMs = 0).frames(0, 0, 0, false, micSilenced).first
       dog = dog.frames(15, 23, 500, false, micSilenced).first
       dog = dog.frames(35, 53, 2_500, false, micSilenced).first
-      return dog.frames(15 + videoFrames, 23 + 61, 4_500, false, micSilenced).second
+      return dog.frames(15 + 39, 23 + 61, 4_500, false, micSilenced)
     }
-    assertEquals(StallVerdict.Rebuild(StallCause.BELOW_FLOOR, 0, 9.7, 15.2), verdict(39, micSilenced = true))
-    assertEquals(StallVerdict.None, verdict(40, micSilenced = true))
-    assertEquals(StallVerdict.Rebuild(StallCause.BELOW_FLOOR, 0, 10.0, 15.2), verdict(40, micSilenced = false))
+    val (silenced, verdict) = dip(micSilenced = true)
+    assertEquals(StallVerdict.None, verdict)
+    assertEquals(9.7, silenced.videoFps, "Diagnostics still shows the rates")
+    assertEquals(15.2, silenced.audioFps)
+    assertEquals(StallVerdict.Rebuild(StallCause.BELOW_FLOOR, 0, 9.7, 15.2), dip(micSilenced = false).second)
+    // The zero test is not a rate floor: a picture that stops dead is rebuilt, mic or no mic.
+    val frozen = healthy(mic = true)
+    frozen.steps(6, 0, 23)
+    val rebuild = StallVerdict.Rebuild(StallCause.NO_VIDEO, 3_000, 30.0, 46.0)
+    assertEquals(listOf<Pair<Long, StallVerdict>>(8_000L to rebuild), frozen.verdicts)
   }
 
   @Test

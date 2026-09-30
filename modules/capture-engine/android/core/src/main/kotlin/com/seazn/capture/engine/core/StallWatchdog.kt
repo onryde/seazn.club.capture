@@ -43,8 +43,10 @@ data class StallWatchdog(
    * advanced, so a picture that stops dead reaches the zero test in [tick] rather than reading as
    * starved on its way there. A camera that is taken is never judged.
    *
-   * @param micSilenced the system has silenced the microphone (F-P5-8). The audio floor is not
-   *   judged then: the source is silenced, and a rebuild cannot bring it back. The video floor is.
+   * @param micSilenced the system has silenced the microphone (F-P5-8). No rate floor is judged
+   *   then: P5's call starved video as well as audio (9.7 and 15.2 a second), and a rebuild cannot
+   *   end the call. The rates are still taken, for Diagnostics, and a picture that stops dead is
+   *   still rebuilt by the zero test in [tick].
    */
   fun frames(
     video: Long,
@@ -100,7 +102,7 @@ data class StallWatchdog(
     val audio = oneDecimal((last.audio - base.audio) / seconds)
     val rated = copy(videoFps = video, audioFps = audio)
     if (video >= VIDEO_FLOOR_FPS && audio >= AUDIO_FLOOR_FPS) return rated to StallVerdict.None
-    if (micSilenced && video >= VIDEO_FLOOR_FPS) return rated to StallVerdict.None
+    if (micSilenced) return rated to StallVerdict.None
     return rated to StallVerdict.Rebuild(StallCause.BELOW_FLOOR, 0, video, audio)
   }
 
