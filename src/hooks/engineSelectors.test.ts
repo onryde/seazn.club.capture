@@ -1,19 +1,7 @@
-import { describe, expect, expectTypeOf, it } from 'vitest';
-import type { Transport } from '@/domain/credentials/StreamCredentials';
+import { describe, expect, it } from 'vitest';
 import type { EngineStatus } from '@/domain/mode/reopen';
-import type {
-  DegradeReason,
-  EndReason,
-  ReconnectCause,
-  SessionState,
-  ShedStep,
-} from '@/domain/session/SessionState';
-import type {
-  Delivery,
-  EngineSnapshot,
-  HeartbeatResult,
-  Telemetry,
-} from '@/engine/CaptureEnginePort';
+import type { SessionState } from '@/domain/session/SessionState';
+import type { EngineSnapshot, Telemetry } from '@/engine/CaptureEnginePort';
 import { IDLE_TELEMETRY } from '@/engine/FakeCaptureEngine';
 import {
   selectBitrateKbps,
@@ -175,44 +163,5 @@ describe('no reading is null, never zero (plan B reports null off air)', () => {
   it('passes a null egress through', () => {
     expect(selectBitrateKbps(snapshot(LIVE, { bitrateKbps: null }))).toBeNull();
     expect(selectBitrateKbps(snapshot(LIVE, { bitrateKbps: 2840 }))).toBe(2840);
-  });
-
-  it('types every rate native may not have as nullable', () => {
-    expectTypeOf<Telemetry['encodedVideoFps']>().toEqualTypeOf<number | null>();
-    expectTypeOf<Telemetry['audioPacketsPerSecond']>().toEqualTypeOf<number | null>();
-    expectTypeOf<Telemetry['deliveredLagMs']>().toEqualTypeOf<number | null>();
-    expectTypeOf<Telemetry['bitrateKbps']>().toEqualTypeOf<number | null>();
-    expectTypeOf<Telemetry['targetBitrateKbps']>().toEqualTypeOf<number | null>();
-  });
-});
-
-/**
- * D40: each union equals plan B's `.wire` strings, copied here by hand from
- * plan B's `Vocabulary.kt`. `expectTypeOf` is checked by `pnpm typecheck`
- * (vitest strips types), so a rename on the TypeScript side fails the check;
- * a rename on the Kotlin side has to change these literals too.
- */
-describe('wire strings equal plan B’s (D40)', () => {
-  it('pins the state kinds and reasons', () => {
-    expectTypeOf<SessionState['kind']>().toEqualTypeOf<
-      'idle' | 'armed' | 'connecting' | 'publishing' | 'degraded' | 'reconnecting' | 'ended'
-    >();
-    expectTypeOf<Exclude<DegradeReason, 'audio-below-floor'>>().toEqualTypeOf<
-      'not-delivered' | 'camera-taken' | 'mic-silenced' | 'poor-uplink' | 'fell-back-to-rtmps'
-    >();
-    expectTypeOf<EndReason>().toEqualTypeOf<
-      'operator-stopped' | 'stopped-by-organiser' | 'hold-window-expired' | 'fatal-error'
-    >();
-    expectTypeOf<ReconnectCause>().toEqualTypeOf<
-      'uplink-lost' | 'video-stalled' | 'not-delivered'
-    >();
-  });
-
-  it('pins delivery, the shed ladder, the transports and the heartbeat results', () => {
-    expectTypeOf<Delivery>().toEqualTypeOf<'ok' | 'stalled' | 'unknown'>();
-    expectTypeOf<ShedStep>().toEqualTypeOf<'overlay-preview' | 'preview-framerate' | 'encode'>();
-    expectTypeOf<Transport>().toEqualTypeOf<'srt' | 'rtmps'>();
-    expectTypeOf<HeartbeatResult>().toEqualTypeOf<'ok' | 'failed' | 'session-over'>();
-    expectTypeOf<Telemetry['heartbeat']['lastResult']>().toEqualTypeOf<HeartbeatResult | null>();
   });
 });

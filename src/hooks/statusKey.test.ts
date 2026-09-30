@@ -116,6 +116,17 @@ describe('the status line (spec §4 and §5)', () => {
     expect(line(snap(LIVE))).toBe('Live. Sound and picture going out.');
   });
 
+  it.each([
+    ['just under the floor', 0.049, 'Live with no sound. Check the mic now.'],
+    [
+      'exactly at the floor, where the meter and Go Live call it sound',
+      0.05,
+      'Live. Sound and picture going out.',
+    ],
+  ])('draws the on-air floor where the armed one is: %s', (_name, audioLevel, copy) => {
+    expect(line(snap(LIVE, { ...ARMED_OK, audioLevel }))).toBe(copy);
+  });
+
   it('never lets a failing heartbeat change what it says (ruling 5)', () => {
     const heartbeat = {
       lastSentAtEpochMs: 1,
@@ -148,8 +159,9 @@ describe('the status line (spec §4 and §5)', () => {
 
 /**
  * Carry 8: every wire string plan B's engine can send reaches a sentence.
- * The literals are plan B's `.wire` values, copied by hand: a rename on
- * either side leaves one of them without a line.
+ * The literals are plan B's `.wire` values, copied by hand: a TypeScript-side
+ * rename leaves one of them without a line. A Kotlin-side rename leaves these
+ * literals green; plan C's contract test is what catches that drift.
  */
 describe('every native reason has a line', () => {
   const KEYS = new Set(Object.keys(en));

@@ -23,6 +23,9 @@ const alias = {
  * `ui` renders components, screens and hooks through react-native-web in
  * jsdom. It only works because screens never import a native module — every
  * native capability arrives through a port with a fake (spec §9).
+ *
+ * `types` runs the `*.test-d.ts` type tests through `tsc`: an `expectTypeOf`
+ * in a runtime project is stripped and passes whatever the types say.
  */
 export default defineConfig({
   resolve: { alias },
@@ -51,6 +54,19 @@ export default defineConfig({
           // A cold jsdom + react-native-web render can pass 5 s on a loaded
           // laptop (a Gradle build alongside), failing tests that are correct.
           testTimeout: 15_000,
+        },
+      },
+      {
+        extends: true,
+        test: {
+          name: 'types',
+          include: [],
+          typecheck: {
+            enabled: true,
+            only: true,
+            include: ['src/**/*.test-d.ts', 'modules/**/*.test-d.ts'],
+            tsconfig: './tsconfig.json',
+          },
         },
       },
     ],
