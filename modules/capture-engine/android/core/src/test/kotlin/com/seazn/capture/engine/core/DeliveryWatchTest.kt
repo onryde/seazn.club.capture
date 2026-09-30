@@ -245,4 +245,208 @@ class DeliveryWatchTest {
     assertEquals(Delivery.UNKNOWN, fresh.delivery)
     assertNull(fresh.pending)
   }
+
+  // Below: added in B4's mutation pass, each killing a mutant the tests above left alive.
+
+  /** A plain media playlist listing every 2 s segment from [first] to [head]. */
+  private fun windowText(first: Long, head: Long): String =
+    "#EXTM3U\n#EXT-X-TARGETDURATION:2\n#EXT-X-MEDIA-SEQUENCE:$first\n" +
+      (first..head).joinToString("") { "#EXTINF:2.000,\nseg$it.ts\n" }
+
+  @Test
+  fun `going off air withdraws a delivery claim and its lag`() {
+    val harness = Harness(DeliveryWatch(master))
+    harness.run(0, 10_000, answer = respond { t -> mediaText(100 + t / 2_000) })
+    assertEquals(Delivery.OK, harness.watch.delivery)
+    harness.run(10_500, 10_500, onAir = { false }, answer = respond { mediaText(105) })
+    assertEquals(Delivery.UNKNOWN, harness.watch.delivery)
+    assertNull(harness.watch.deliveredLagMs)
+  }
+
+  @Test
+  fun `a poll that brings no evidence withdraws an OK`() {
+    val noEvidence =
+      listOf<(Long, String) -> FetchResult>(
+        { _, _ -> FetchResult.Failed("timeout") },
+        { _, _ -> FetchResult.HttpError(503) },
+        { _, _ -> FetchResult.Body("<html>502</html>") },
+        { _, url -> if (url == polled) FetchResult.Body(masterText("has space.m3u8")) else FetchResult.Body(mediaText(106)) },
+      )
+    for (answer in noEvidence) {
+      val harness = Harness(DeliveryWatch(master))
+      harness.run(0, 10_000, answer = respond { t -> mediaText(100 + t / 2_000) })
+      assertEquals(Delivery.OK, harness.watch.delivery)
+      harness.run(10_500, 12_000, answer = answer)
+      assertEquals(Delivery.UNKNOWN, harness.watch.delivery, "2 s since the last advance: no evidence, and not yet a stall")
+    }
+  }
+
+  @Test
+  fun `a 204 on the variant is no evidence - only the master's 204 means nothing is live`() {
+    val harness = Harness(DeliveryWatch(master))
+    harness.run(0, 60_000) { _, url -> if (url == polled) FetchResult.Body(masterText()) else FetchResult.NoContent }
+    assertNull(harness.verdict)
+    assertEquals(Delivery.UNKNOWN, harness.watch.delivery)
+  }
+
+  @Test
+  fun `a variant that answers with a master is no evidence and is not followed`() {
+    val harness = Harness(DeliveryWatch(master))
+    harness.run(0, 4_000) { t, url ->
+      when (url) {
+        polled -> FetchResult.Body(masterText())
+        variant -> FetchResult.Body(masterText("nested.m3u8"))
+        else -> FetchResult.Body(mediaText(100 + t / 2_000))
+      }
+    }
+    assertEquals(listOf(polled, variant, polled, variant, polled, variant), harness.requests.map { it.second.url })
+    assertEquals(Delivery.UNKNOWN, harness.watch.delivery)
+  }
+
+  @Test
+  fun `F-P5-13 a master that 204s 6 s after the last advance shows stalled, with no lag`() {
+    val harness = Harness(DeliveryWatch(master))
+    harness.run(0, 16_000) { t, url ->
+      when {
+        t > 10_000 && url == polled -> FetchResult.NoContent
+        url == polled -> FetchResult.Body(masterText())
+        else -> FetchResult.Body(mediaText(100 + t / 2_000))
+      }
+    }
+    assertEquals(Delivery.STALLED, harness.watch.delivery, "6 s = 3 × 2 s since the last advance at 10 s")
+    assertNull(harness.watch.deliveredLagMs)
+  }
+
+  @Test
+  fun `F-P5-4 stalled shows at exactly three configured segments without an advance`() {
+    val harness = Harness(DeliveryWatch(master))
+    harness.run(0, 10_000, answer = respond { t -> mediaText(100 + t / 2_000, target = 8) })
+    harness.run(10_500, 16_000, answer = respond { mediaText(105, target = 8) })
+    assertEquals(Delivery.STALLED, harness.watch.delivery, "6 s = 3 × 2 s since the last advance at 10 s")
+  }
+
+  @Test
+  fun `two short freezes a minute apart are not lagging - growth is judged within one minute`() {
+    // Freezes of 12 s (from 10 s) and 10 s (from 90 s), each resumed without catching up, so the lag at a
+    // poll steps 0 → 12 s → 22 s. Neither freeze reaches 20 s, and inside any minute the lag grows at most
+    // 12 s; only measured from the session's start has it grown 22 s.
+    val head = { t: Long ->
+      when {
+        t <= 10_000 -> 100 + t / 2_000
+        t < 22_000 -> 105L
+        t <= 90_000 -> 105 + (t - 22_000) / 2_000
+        t < 100_000 -> 139L
+        else -> 139 + (t - 100_000) / 2_000
+      }
+    }
+    val harness = Harness(DeliveryWatch(master))
+    harness.run(0, 200_000, answer = respond { t -> mediaText(head(t)) })
+    assertNull(harness.verdict)
+    assertEquals(22_000L, harness.watch.deliveredLagMs, "200 s published, 89 segments of 2 s delivered after the first")
+  }
+
+  @Test
+  fun `delivered lag is measured from the best the session has shown`() {
+    // The head holds at 100 for one poll, then is 103 at 4 s and moves on. Lag at a poll (published minus
+    // delivered): 0 at 0 s, 2 s at 2 s, then 4 − 6 = −2 s from 4 s on. The best is −2 s, so the lag shown is 0.
+    val harness = Harness(DeliveryWatch(master))
+    harness.run(0, 2_000, answer = respond { mediaText(100) })
+    assertEquals(2_000L, harness.watch.deliveredLagMs)
+    harness.run(2_500, 10_000, answer = respond { t -> mediaText(101 + t / 2_000) })
+    assertEquals(0L, harness.watch.deliveredLagMs)
+  }
+
+  @Test
+  fun `a playlist that has not moved since the first poll is never OK`() {
+    val harness = Harness(DeliveryWatch(master))
+    harness.run(0, 4_000, answer = respond { mediaText(100) })
+    assertEquals(Delivery.UNKNOWN, harness.watch.delivery, "one position proves nothing, and 4 s is not yet a stall")
+  }
+
+  @Test
+  fun `F-P5-2 a variant change carries nothing over from the old variant`() {
+    // The 720 variant's head jumps 11 segments at 2 s: 22 s delivered in 2 s published, a lag of −20 s, then
+    // steady. At 10 s the master names the 360 variant, which starts at 505 and moves 2 s every 2 s.
+    val v360 = "https://customer-x.cloudflarestream.com/abc/manifest/stream_360/video.m3u8"
+    val answer = { t: Long, url: String ->
+      when {
+        url == polled -> FetchResult.Body(masterText(if (t < 10_000) "stream_720/video.m3u8" else "stream_360/video.m3u8"))
+        url == variant -> FetchResult.Body(windowText(90, if (t == 0L) 100 else 110 + t / 2_000))
+        else -> FetchResult.Body(mediaText(500 + t / 2_000))
+      }
+    }
+    val harness = Harness(DeliveryWatch(master))
+    harness.run(0, 10_000, answer = answer)
+    assertEquals(v360, harness.requests.last().second.url)
+    assertEquals(Delivery.UNKNOWN, harness.watch.delivery, "the first position on a new variant proves nothing")
+    harness.run(10_500, 20_000, answer = answer)
+    assertNull(harness.verdict)
+    assertEquals(Delivery.OK, harness.watch.delivery)
+    assertEquals(10_000L, harness.watch.mediaMs, "five 2 s segments on the 360 variant, 10 s to 20 s")
+    assertEquals(0L, harness.watch.deliveredLagMs)
+  }
+
+  @Test
+  fun `a head that goes backwards is a new baseline, not progress`() {
+    // The variant restarts its numbering at 50 after 10 s. The last real advance was at 10 s, so
+    // not-delivered still comes 20 s of publishing later.
+    val harness = Harness(DeliveryWatch(master))
+    harness.run(0, 40_000, answer = respond { t -> mediaText(if (t <= 10_000) 100 + t / 2_000 else 50) })
+    assertEquals(30_000L, harness.verdict!!.first)
+    assertEquals(NotDeliveredCause.STALLED, harness.verdict!!.second.cause, "the frozen head, not growing lag")
+  }
+
+  @Test
+  fun `a playlist that slid past the last head seen is progress, never a crash`() {
+    // Answered at 0 s, failing until 18 s, then at 20 s it lists 108 to 110: every segment listed is new.
+    val harness = Harness(DeliveryWatch(master))
+    harness.run(0, 0, answer = respond { mediaText(100) })
+    harness.run(500, 18_000) { _, _ -> FetchResult.Failed("timeout") }
+    harness.run(18_500, 20_000, answer = respond { mediaText(110) })
+    assertEquals(Delivery.OK, harness.watch.delivery)
+    assertEquals(0L, harness.watch.sinceAdvanceMs)
+  }
+
+  @Test
+  fun `LL-HLS delivered media never runs backwards when rounded parts overrun their segment`() {
+    // Four parts of 0.5006 s round to 501 ms each, 2 004 ms in all; the segment they complete says 2.002 s.
+    val parts = (0 until 4).joinToString("") { "#EXT-X-PART:DURATION=0.5006,URI=\"p101.$it.mp4\"\n" }
+    val head = "#EXTM3U\n#EXT-X-TARGETDURATION:2\n#EXT-X-PART-INF:PART-TARGET=0.5\n#EXT-X-MEDIA-SEQUENCE:100\n#EXTINF:2.000,\ns100.mp4\n"
+    val harness = Harness(DeliveryWatch(master))
+    harness.run(0, 0, answer = respond { head + parts })
+    harness.run(500, 2_000, answer = respond { head + parts + "#EXTINF:2.002,\ns101.mp4\n" })
+    assertEquals(0L, harness.watch.mediaMs)
+    assertEquals(0L, harness.watch.sinceAdvanceMs, "a completed segment is still an advance")
+  }
+
+  @Test
+  fun `a new session shows no lag and does not take the old session's head as its own`() {
+    val harness = Harness(DeliveryWatch(master))
+    harness.run(0, 10_000, answer = respond { t -> mediaText(100 + t / 2_000) })
+    harness.watch = harness.watch.newSession()
+    assertNull(harness.watch.deliveredLagMs)
+    harness.run(10_500, 12_000, answer = respond { mediaText(106) })
+    assertEquals(Delivery.UNKNOWN, harness.watch.delivery, "one position of the new session proves nothing")
+  }
+
+  @Test
+  fun `an answer delivered twice is used once`() {
+    val (watch, issued) = DeliveryWatch(master).tick(0, onAirNow = true)
+    val (once, variantRequests, _) = watch.fetched(issued.single().id, FetchResult.Body(masterText()), 100)
+    val (twice, more, verdict) = once.fetched(issued.single().id, FetchResult.Body(masterText()), 200)
+    assertEquals(listOf(PlaylistRequest(2, variant)), variantRequests)
+    assertEquals(once, twice)
+    assertTrue(more.isEmpty())
+    assertNull(verdict)
+  }
+
+  @Test
+  fun `a new session ignores the answer to a request the old one sent`() {
+    val (watch, issued) = DeliveryWatch(master).tick(0, onAirNow = true)
+    val fresh = watch.newSession()
+    val (after, more, verdict) = fresh.fetched(issued.single().id, FetchResult.Body(masterText()), 100)
+    assertEquals(fresh, after)
+    assertTrue(more.isEmpty())
+    assertNull(verdict)
+  }
 }
