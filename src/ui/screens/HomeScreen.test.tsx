@@ -1116,6 +1116,22 @@ describe('Home: checking a stream code with the server (spec §1)', () => {
     expect(home.scanner.scans).toBe(2);
   });
 
+  it("gives the code's own expiry, not the time of the Try again, minutes after it ran out", async () => {
+    const home = await renderHome();
+    home.descriptor.answer(err({ kind: 'offline' }));
+    home.scanner.queue({
+      outcome: 'scanned',
+      raw: streamRaw(new Date(TEST_NOW.getTime() + 60_000)),
+    });
+    fireEvent.click(liveStreamTile());
+    await screen.findByText('No connection');
+    home.setNow(new Date(TEST_NOW.getTime() + 5 * 60_000));
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+    await screen.findByText('This code expired at 14:01. Ask the desk for a new one.');
+    expect(screen.queryByText(/14:05/)).toBeNull();
+    expect(home.descriptor.calls).toHaveLength(1);
+  });
+
   it('checks a pasted code once, however many times Use is pressed (dev)', async () => {
     const home = await renderHome({ devTools: true });
     const release = home.descriptor.hold();
