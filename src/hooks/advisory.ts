@@ -13,6 +13,9 @@ export const ADVISORY_KEY: Readonly<Record<Advisory, MessageKey>> = {
 /**
  * The top strip's one caption (D17). Device conditions go here, never in the
  * status line: heat sheds the overlay while the broadcast is fine (AGENTS §8).
+ * A device advisory — heat, not charging — outranks the score-ahead note,
+ * which shows while arming only when nothing else is up (ruling M6, over
+ * D17/D18): arming is when plugging in disturbs nothing.
  */
 export function topAdvisory(input: {
   shed: boolean;
@@ -23,8 +26,8 @@ export function topAdvisory(input: {
 }): Advisory | null {
   if (input.shed) return 'shed';
   if (input.overlayOn && input.overlayFailed) return 'overlayFailed';
-  if (input.overlayOn && input.armed) return 'scoreAhead';
   if (input.charging === false) return 'notCharging';
+  if (input.overlayOn && input.armed) return 'scoreAhead';
   return null;
 }
 

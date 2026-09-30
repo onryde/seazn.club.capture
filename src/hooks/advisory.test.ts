@@ -33,8 +33,23 @@ describe('topAdvisory (D17: one caption at a time, most important first)', () =>
     expect(topAdvisory({ ...QUIET, overlayFailed: true, overlayOn: false })).toBeNull();
   });
 
-  it('tells the operator once, while arming, that the score runs ahead (D18)', () => {
-    expect(topAdvisory({ ...QUIET, armed: true, charging: false })).toBe('scoreAhead');
+  // Ruling M6 (overrides D17/D18): a device advisory outranks the score note,
+  // which shows while arming only when nothing else is up.
+  it('puts a device advisory before the score note while arming', () => {
+    expect(topAdvisory({ ...QUIET, armed: true, charging: false })).toBe('notCharging');
+    expect(topAdvisory({ ...QUIET, armed: true, shed: true })).toBe('shed');
+  });
+
+  it.each([[true], [null]] as const)(
+    'tells the operator, while arming, that the score runs ahead when nothing else is up (charging %s)',
+    (charging) => {
+      expect(topAdvisory({ ...QUIET, armed: true, charging })).toBe('scoreAhead');
+    },
+  );
+
+  it('drops the score note once not arming, leaving the charging warning', () => {
+    expect(topAdvisory({ ...QUIET, armed: false })).toBeNull();
+    expect(topAdvisory({ ...QUIET, armed: false, charging: false })).toBe('notCharging');
   });
 
   it('does not mention the score with the preview off', () => {
