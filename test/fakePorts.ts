@@ -17,6 +17,7 @@ import { createLogger } from '@/services/logger';
 import { createModeStore } from '@/services/modeStore';
 import { createScanFlight } from '@/services/scanFlight';
 import { createRingRecord, type SessionRecord } from '@/services/sessionRecord';
+import { createStreamSettingsStore } from '@/services/streamSettingsStore';
 import { createFakeSurfaces, type FakeSurfaces } from './fakeSurfaces';
 
 export const TEST_NOW = new Date('2026-10-03T13:00:00Z');
@@ -74,6 +75,7 @@ export function createFakePorts(
     devEngine: engine,
     modeStore: createModeStore(kv),
     scanFlight: createScanFlight(),
+    streamSettings: createStreamSettingsStore(kv, logger),
     clock: () => now,
     hosts: ['stg.seazn.club'],
     deviceLanguages: ['en'],

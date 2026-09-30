@@ -17,6 +17,7 @@ import type { Logger } from '@/services/logger';
 import type { ModeStore } from '@/services/modeStore';
 import type { ScanFlight } from '@/services/scanFlight';
 import type { SessionRecord } from '@/services/sessionRecord';
+import type { StreamSettingsStore } from '@/services/streamSettingsStore';
 import type { Surfaces } from '@/services/surfaces';
 
 /**
@@ -35,6 +36,8 @@ export type Ports = {
   readonly modeStore: ModeStore;
   /** Home's scan in flight, which the reopen gate leaves alone (I2). */
   readonly scanFlight: ScanFlight;
+  /** Score preview on or off, controls left or right (spec §4 Settings, D23). */
+  readonly streamSettings: StreamSettingsStore;
   readonly motion: MotionPort;
   readonly orientationLock: OrientationLockPort;
   readonly back: BackPort;

@@ -20,6 +20,7 @@ import { createNativeSurfaces } from '@/services/native/nativeSurfaces';
 import { createSecureKeyValueStore } from '@/services/native/secureKeyValueStore';
 import { descriptorOrigin, seaznHosts } from '@/services/seaznHosts';
 import { createRingRecord } from '@/services/sessionRecord';
+import { createStreamSettingsStore } from '@/services/streamSettingsStore';
 
 /**
  * The composition root's parts. The engine is the fake in S0 — main has no
@@ -45,6 +46,7 @@ export function createNativePorts(): Ports {
     kv,
     modeStore: createModeStore(kv),
     scanFlight: createScanFlight(),
+    streamSettings: createStreamSettingsStore(kv, logger),
     motion: createNativeMotion(),
     orientationLock: createNativeOrientationLock(),
     back: createNativeBack(),
