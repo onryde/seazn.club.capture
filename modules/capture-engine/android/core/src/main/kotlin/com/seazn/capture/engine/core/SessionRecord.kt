@@ -153,7 +153,7 @@ class SessionRecord(private val sink: (String) -> Unit) {
     val NEVER = setOf("tok", "token", "passphrase", "streamKey", "streamId", "bearer", "authorization")
 
     /** Keys every line starts with. A field under one of them is written as `field_<key>`. */
-    val RESERVED_KEYS = setOf("at", "kind")
+    private val RESERVED_KEYS = setOf("at", "kind")
 
     /** What `android.net.Uri.encode` leaves raw and `URLEncoder` does not. `*` is raw in both. */
     private val COMPONENT_RAW = listOf("%7E" to "~", "%21" to "!", "%27" to "'", "%28" to "(", "%29" to ")")
