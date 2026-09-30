@@ -1,7 +1,10 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { encodeSavedCode, type SavedCode } from '@/domain/mode/savedCode';
 import { createMemoryKeyValueStore, type KeyValueStore } from '@/services/KeyValueStore';
+import { KV_TIMEOUT_MS, withTimeout } from '@/services/kvTimeout';
+import { createLogger } from '@/services/logger';
 import { createModeStore, STORE_KEYS } from '@/services/modeStore';
+import { createRingRecord } from '@/services/sessionRecord';
 
 const code: SavedCode = {
   mode: 'stream',
@@ -261,5 +264,35 @@ describe('modeStore', () => {
     store.subscribe(listener);
     await store.setActive('stream');
     expect(listener).toHaveBeenCalled();
+  });
+});
+
+describe('mode store behind the 5 s timeout (spec §5)', () => {
+  afterEach(() => vi.useRealTimers());
+
+  it('lets the next write run once a stuck one times out', async () => {
+    vi.useFakeTimers();
+    const memory = createMemoryKeyValueStore();
+    // Only the first write hangs. The flag flips when that write reaches the
+    // store: the serial queue starts it a few microtasks after the call, so a
+    // flip from the test body would un-stick it before it ever ran.
+    let stuck = true;
+    const hanging: KeyValueStore = {
+      get: memory.get,
+      set: (key, value) => {
+        if (!stuck) return memory.set(key, value);
+        stuck = false;
+        return new Promise(() => undefined);
+      },
+      delete: memory.delete,
+    };
+    const logger = createLogger({ record: createRingRecord(), now: () => 0 });
+    const store = createModeStore(withTimeout(hanging, { logger }));
+    await store.load();
+    const first = expect(store.setActive('stream')).rejects.toThrow('did not settle');
+    const second = store.forget('stream');
+    await vi.advanceTimersByTimeAsync(KV_TIMEOUT_MS);
+    await first;
+    await expect(second).resolves.toBeUndefined();
   });
 });

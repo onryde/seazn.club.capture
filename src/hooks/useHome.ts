@@ -39,6 +39,9 @@ type SetStatusKey = (key: MessageKey | null) => void;
 type OpenCode = (code: ModeCode) => Promise<void>;
 type HandleScan = (tapped: Mode, result: ScanResult) => Promise<void>;
 type ReadyStore = Extract<ModeStoreSnapshot, { status: 'ready' }>;
+/** Which of Home's writes the phone refused, as the record names it. */
+type SaveAction = 'open' | 'continue' | 'forget';
+type SaveFailed = (action: SaveAction) => void;
 
 const SCANNER_MESSAGE: Readonly<Record<ScanUnavailableReason, MessageKey>> = {
   noPlayServices: 'scanner.noPlayServices',
@@ -69,13 +72,6 @@ function savedStream(store: ModeStore): SavedCode | null {
 function ignoreUnexpected(): void {}
 
 /**
- * Ruling R21: an expired code the phone won't delete is still expired. The
- * store has already published the notice, which is the true message, so a
- * refused expiry raises no `store.saveFailed`; the next launch expires it again.
- */
-function expiredAnyway(): void {}
-
-/**
  * Home's behaviour (spec §3): tap, scan, recognise, then open or explain.
  */
 export function useHome(): { view: HomeView; actions: HomeActions } {
@@ -97,22 +93,27 @@ export function useHome(): { view: HomeView; actions: HomeActions } {
 }
 
 /**
- * Ruling R19: a write the phone refuses is never silent. It outranks any
- * notice, so the notices are dismissed and the refusal takes the line.
+ * Ruling R19: a write the phone refuses is never silent — on screen, and now
+ * in the record too (spec §5). It outranks any notice, so the notices are
+ * dismissed and the refusal takes the line.
  */
-function useSaveFailed(setStatusKey: SetStatusKey): () => void {
-  const { modeStore } = usePorts();
-  return useCallback(() => {
-    modeStore.dismissNotices();
-    setStatusKey('store.saveFailed');
-  }, [modeStore, setStatusKey]);
+function useSaveFailed(setStatusKey: SetStatusKey): SaveFailed {
+  const { modeStore, logger } = usePorts();
+  return useCallback(
+    (action: SaveAction) => {
+      logger.warn('store.write-refused', { action });
+      modeStore.dismissNotices();
+      setStatusKey('store.saveFailed');
+    },
+    [modeStore, logger, setStatusKey],
+  );
 }
 
 /**
  * Save the code and make it active, then open its mode. A code that could not
  * be saved is not opened: the stream screen reads it back from the store.
  */
-function useOpenCode(setStatusKey: SetStatusKey, saveFailed: () => void): OpenCode {
+function useOpenCode(setStatusKey: SetStatusKey, saveFailed: SaveFailed): OpenCode {
   const { modeStore, clock, navigation } = usePorts();
   return useCallback(
     async (code: ModeCode) => {
@@ -120,7 +121,7 @@ function useOpenCode(setStatusKey: SetStatusKey, saveFailed: () => void): OpenCo
       try {
         await modeStore.open(savedCodeFrom(code, clock()));
       } catch {
-        return saveFailed();
+        return saveFailed('open');
       }
       setStatusKey(null);
       if (code.mode === 'stream') navigation.go('stream');
@@ -266,31 +267,44 @@ function usePanelActions(
  * Expiry is judged again on the press, against the current clock: a code that
  * ran out while Home sat open is expired the way the reopen gate does it, which
  * removes the card and says so on the status line.
+ *
+ * Ruling R21: an expired code the phone won't delete is still expired. The
+ * store has already published the notice, which is the true message, so a
+ * refused expiry raises no `store.saveFailed` — it is only recorded, and the
+ * next launch expires it again.
  */
-function useContinue(setStatusKey: SetStatusKey, saveFailed: () => void): () => void {
-  const { modeStore, navigation, clock } = usePorts();
+function useContinue(setStatusKey: SetStatusKey, saveFailed: SaveFailed): () => void {
+  const { modeStore, navigation, clock, logger } = usePorts();
   return useCallback(() => {
     const code = savedStream(modeStore);
     if (code === null) return;
     if (code.expiresAt !== null && isExpired(code, clock())) {
       const notice = { mode: 'stream' as const, expiredAt: code.expiresAt };
-      return void modeStore.expire(['stream'], notice).catch(expiredAnyway);
+      return void modeStore
+        .expire(['stream'], notice)
+        .catch(() => logger.warn('store.write-refused', { action: 'expire' }));
     }
     void modeStore
       .setActive('stream')
-      .then(() => {
-        setStatusKey(null);
-        navigation.go('stream');
-      }, saveFailed)
+      .then(
+        () => {
+          setStatusKey(null);
+          navigation.go('stream');
+        },
+        () => saveFailed('continue'),
+      )
       .catch(ignoreUnexpected);
-  }, [modeStore, navigation, clock, setStatusKey, saveFailed]);
+  }, [modeStore, navigation, clock, logger, setStatusKey, saveFailed]);
 }
 
 /** The Forget button: immediate, with no confirmation (spec §4). */
-function useForget(setStatusKey: SetStatusKey, saveFailed: () => void): () => void {
+function useForget(setStatusKey: SetStatusKey, saveFailed: SaveFailed): () => void {
   const { modeStore } = usePorts();
   return useCallback(() => {
-    void modeStore.forget('stream').then(() => setStatusKey(null), saveFailed);
+    void modeStore.forget('stream').then(
+      () => setStatusKey(null),
+      () => saveFailed('forget'),
+    );
   }, [modeStore, setStatusKey, saveFailed]);
 }
 

@@ -4,14 +4,6 @@ import { selectEngineStatus } from '@/hooks/engineSelectors';
 import { usePorts } from '@/hooks/usePorts';
 
 /**
- * A delete the phone refuses leaves the expired code on disk, but the store
- * has already published the removal and the notice (R21), so Home names the
- * expiry either way. The next launch expires the same code again. Nothing
- * escapes as an unhandled rejection.
- */
-function ignoreRefusedDelete(): void {}
-
-/**
  * Where the app lands, decided before the splash lifts (spec §4): engine
  * first, then the last mode while its code is valid, else Home with the
  * expiry named. Runs again on every return to the foreground, against the
@@ -52,9 +44,14 @@ export function useReopenGate(navigatorReady: boolean): void {
 /**
  * One decision, from the store and engine as they are now. A store still
  * loading decides nothing (R12: `load()` never rejects, so it always arrives).
+ *
+ * R21: a delete the phone refuses leaves the expired code on disk, but the
+ * store has already published the removal and the notice, so Home names the
+ * expiry either way and the next launch expires it again. The refusal is
+ * recorded (spec §5), and nothing escapes as an unhandled rejection.
  */
 function useSettle(): () => void {
-  const { modeStore, engine, navigation, clock } = usePorts();
+  const { modeStore, engine, navigation, clock, logger } = usePorts();
   return useCallback(() => {
     const current = modeStore.getSnapshot();
     if (current.status !== 'ready') return;
@@ -70,7 +67,9 @@ function useSettle(): () => void {
     // expired anyway; an expired one is there because the engine holds it, and
     // the settle after the engine lets go expires it with the notice.
     const expired = expiredModes(current.saved, now).filter((mode) => mode !== target.go);
-    void modeStore.expire(expired, notice).catch(ignoreRefusedDelete);
+    void modeStore
+      .expire(expired, notice)
+      .catch(() => logger.warn('store.write-refused', { action: 'expire' }));
     navigation.go(target.go);
-  }, [modeStore, clock, engine, navigation]);
+  }, [modeStore, clock, engine, navigation, logger]);
 }

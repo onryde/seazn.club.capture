@@ -3,6 +3,7 @@ import { getLocales } from 'expo-localization';
 import { createFakeCaptureEngine } from '@/engine/FakeCaptureEngine';
 import type { Ports } from '@/hooks/usePorts';
 import { createNativeCodeScanner } from '@/scanner/nativeCodeScanner';
+import { withTimeout } from '@/services/kvTimeout';
 import { createLogger } from '@/services/logger';
 import { createModeStore } from '@/services/modeStore';
 import { createScanFlight } from '@/services/scanFlight';
@@ -25,7 +26,7 @@ export function createNativePorts(): Ports {
   const record = createRingRecord();
   const logger = createLogger({ record, now: Date.now, minLevel: __DEV__ ? 'debug' : 'info' });
   const engine = createFakeCaptureEngine();
-  const kv = createSecureKeyValueStore();
+  const kv = withTimeout(createSecureKeyValueStore(), { logger });
   const scanner = createNativeCodeScanner();
   scanner.prepare();
   return {

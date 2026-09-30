@@ -5,9 +5,10 @@ import { useHome } from '@/hooks/useHome';
 import { useReopenGate } from '@/hooks/useReopenGate';
 import type { CodeScannerPort, ScanUnavailableReason } from '@/scanner/CodeScannerPort';
 import { createMemoryKeyValueStore, type KeyValueStore } from '@/services/KeyValueStore';
+import { KV_TIMEOUT_MS, withTimeout } from '@/services/kvTimeout';
 import { createModeStore, STORE_KEYS } from '@/services/modeStore';
 import { HomeScreen } from '@/ui/screens/HomeScreen';
-import { createFakePorts, TEST_NOW } from '../../../test/fakePorts';
+import { createFakePorts, readRecord, TEST_NOW } from '../../../test/fakePorts';
 import { renderWithPorts, wrapperFor } from '../../../test/renderWithPorts';
 
 const IN_TWO_HOURS = new Date(TEST_NOW.getTime() + 2 * 3600_000);
@@ -63,6 +64,7 @@ function GateThenHome() {
 
 const liveStreamTile = () => screen.getByRole('button', { name: /Live Stream/ });
 const IDLE = 'Tap a mode, then scan its code.';
+const SAVE_FAILED = "Couldn't save on this phone. Try again.";
 
 describe('Home', () => {
   it('shows three tiles, two of them coming soon', async () => {
@@ -323,7 +325,6 @@ describe('Home: store calls wait for a ready store (R12)', () => {
 });
 
 describe('Home: a refused save is never silent (R19)', () => {
-  const SAVE_FAILED = "Couldn't save on this phone. Try again.";
   const rejections: unknown[] = [];
   const onRejection = (reason: unknown) => rejections.push(reason);
   beforeEach(() => {
@@ -359,6 +360,9 @@ describe('Home: a refused save is never silent (R19)', () => {
     await screen.findByText(SAVE_FAILED);
     expect(home.navigation.current()).toBe('home');
     expect(rejections).toEqual([]);
+    expect(readRecord(home.record)).toContainEqual(
+      expect.objectContaining({ event: 'store.write-refused', fields: { action: 'open' } }),
+    );
   });
 
   it('says so when a pasted code cannot be saved', async () => {
@@ -384,6 +388,10 @@ describe('Home: a refused save is never silent (R19)', () => {
     expect(screen.getByRole('button', { name: 'Forget' })).toBeTruthy();
     expect(home.navigation.current()).toBe('home');
     expect(rejections).toEqual([]);
+    const action = name === 'Continue' ? 'continue' : 'forget';
+    expect(readRecord(home.record)).toContainEqual(
+      expect.objectContaining({ event: 'store.write-refused', fields: { action } }),
+    );
   });
 
   it('closes the panel for good when Open cannot save', async () => {
@@ -459,6 +467,9 @@ describe('Home: a refused save is never silent (R19)', () => {
     expect(screen.queryByText('Continue Live Stream')).toBeNull();
     expect(home.navigation.current()).toBe('home');
     expect(rejections).toEqual([]);
+    expect(readRecord(home.record)).toContainEqual(
+      expect.objectContaining({ event: 'store.write-refused', fields: { action: 'expire' } }),
+    );
   });
 
   it('names a code that expired on air once the engine lets go, never silently (R23)', async () => {
@@ -496,6 +507,44 @@ describe('Home: a refused save is never silent (R19)', () => {
     expect(screen.queryByText(SAVE_FAILED)).toBeNull();
     expect(fakes.navigation.current()).toBe('home');
     expect(rejections).toEqual([]);
+    expect(readRecord(fakes.record)).toContainEqual(
+      expect.objectContaining({ event: 'store.write-refused', fields: { action: 'expire' } }),
+    );
+  });
+});
+
+describe('Home: a store write that never settles (spec §5)', () => {
+  afterEach(() => vi.useRealTimers());
+
+  it('says so after 5 s and lets the operator scan again', async () => {
+    vi.useFakeTimers();
+    const memory = createMemoryKeyValueStore();
+    const stuck: KeyValueStore = {
+      get: memory.get,
+      set: () => new Promise(() => undefined),
+      delete: memory.delete,
+    };
+    const fakes = createFakePorts();
+    const modeStore = createModeStore(withTimeout(stuck, { logger: fakes.ports.logger }));
+    const home = renderWithPorts(<HomeScreen />, { modeStore });
+    await act(() => home.ports.modeStore.load());
+    home.scanner.queue({ outcome: 'scanned', raw: streamRaw(IN_TWO_HOURS) });
+    fireEvent.click(liveStreamTile());
+    await act(() => vi.advanceTimersByTimeAsync(KV_TIMEOUT_MS));
+    expect(screen.getByText(SAVE_FAILED)).toBeTruthy();
+    fireEvent.click(liveStreamTile());
+    await act(async () => undefined);
+    expect(home.scanner.scans).toBe(2);
+    // The store's logger is `fakes`'; the screen's is `home`'s own.
+    expect(readRecord(fakes.record)).toContainEqual(
+      expect.objectContaining({
+        event: 'kv.timeout',
+        fields: { op: 'set', key: STORE_KEYS.code('stream'), ms: KV_TIMEOUT_MS },
+      }),
+    );
+    expect(readRecord(home.record)).toContainEqual(
+      expect.objectContaining({ event: 'store.write-refused', fields: { action: 'open' } }),
+    );
   });
 });
 
