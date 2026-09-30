@@ -14,6 +14,42 @@ const UI_NATIVE_IMPORTS = [
   'expo-*',
   '@/scanner/*',
   '@/hooks/nativePorts',
+  // Behind the surfaces port (D16), never drawn by a screen directly (m6).
+  // `expo-*` already matches expo-video; it is named so the ban outlives a
+  // narrower glob.
+  'react-native-webview',
+  'expo-video',
+];
+
+/**
+ * AGENTS §4: `any` is banned; the escape hatch is `unknown` plus a parse
+ * function at the boundary. @typescript-eslint/eslint-plugin is not installed
+ * (only the parser is), so this is the core rule on the parser's own
+ * `TSAnyKeyword` node — every `any` annotation, cast and type argument — with
+ * no new dependency. Shared because a later `no-restricted-syntax` replaces an
+ * earlier one for the files it matches: every block that sets the rule repeats it.
+ */
+const NO_ANY = {
+  selector: 'TSAnyKeyword',
+  message: '`any` is banned (AGENTS §4): use `unknown` and parse it at the boundary.',
+};
+
+/**
+ * AGENTS §5: styles reference tokens only; a colour literal in a component is
+ * a review blocker. Hex (#rgb, #rgba, #rrggbb, #rrggbbaa) and rgb()/rgba()/
+ * hsl()/hsla(), in a string, a JSX attribute or the head of a template.
+ */
+const COLOUR_MESSAGE = 'A colour literal outside src/ui/theme (AGENTS §5): use a theme token.';
+const NO_COLOUR_LITERALS = [
+  {
+    selector: 'Literal[value=/^#([0-9a-f]{3,4}|[0-9a-f]{6}|[0-9a-f]{8})$/i]',
+    message: COLOUR_MESSAGE,
+  },
+  { selector: 'Literal[value=/^(rgb|hsl)a?\\(/i]', message: COLOUR_MESSAGE },
+  {
+    selector: 'TemplateElement[value.raw=/^(#[0-9a-f]{3,8}\\b|(rgb|hsl)a?\\()/i]',
+    message: COLOUR_MESSAGE,
+  },
 ];
 
 /** The ui import rule, for a given list of services the files may not import. */
@@ -72,18 +108,7 @@ export default [
       // AGENTS §11: no console anywhere — one levelled logger feeds the session
       // record, scrubbed. A console line is unscrubbed and lost at the ground.
       'no-console': 'error',
-      // AGENTS §4: `any` is banned; the escape hatch is `unknown` plus a parse
-      // function at the boundary. @typescript-eslint/eslint-plugin is not
-      // installed (only the parser is), so this is the core rule on the
-      // parser's own `TSAnyKeyword` node — every `any` annotation, cast and
-      // type argument — with no new dependency.
-      'no-restricted-syntax': [
-        'error',
-        {
-          selector: 'TSAnyKeyword',
-          message: '`any` is banned (AGENTS §4): use `unknown` and parse it at the boundary.',
-        },
-      ],
+      'no-restricted-syntax': ['error', NO_ANY],
       'boundaries/dependencies': [
         'error',
         {
@@ -195,6 +220,13 @@ export default [
         'Screens reach native capabilities through ports (spec §9)',
       ),
     },
+  },
+  {
+    // Colour comes from the theme and nowhere else (AGENTS §5). Repeats NO_ANY:
+    // this block's `no-restricted-syntax` replaces the one above for these files.
+    files: ['src/ui/**/*.{ts,tsx}', 'app/**/*.{ts,tsx}'],
+    ignores: ['src/ui/theme/**'],
+    rules: { 'no-restricted-syntax': ['error', NO_ANY, ...NO_COLOUR_LITERALS] },
   },
   {
     // UI tests seed and inspect storage through the same pure services the
