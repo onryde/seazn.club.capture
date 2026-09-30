@@ -296,4 +296,16 @@ class EngineTest {
     val descriptor = lines.single { """"kind":"descriptor"""" in it }
     assertFalse("other+secret/9a8b7c" in descriptor, descriptor)
   }
+
+  @Test
+  fun `an input that leaves the state as it was waits for the tick`() {
+    val engine = engine()
+    engine.send(Input.Arm(Configs.valid()))
+    scheduler.advanceBy(0)
+    assertEquals(listOf(SnapshotState.Armed), published.map { it.second.state })
+    engine.send(Input.Network(true))
+    engine.send(Input.Device(DeviceSample(null, null, 70, true, null, null)))
+    scheduler.advanceBy(0)
+    assertEquals(1, published.size, "still armed: the next tick carries the rest")
+  }
 }
