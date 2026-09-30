@@ -99,6 +99,34 @@ class SessionConfigTest {
     )
   }
 
+  // The window is looked up per transport: SRT's does not stand in for RTMPS's.
+  @Test
+  fun `each transport needs its own hold window`() {
+    assertEquals(
+      listOf("no hold window for rtmps"),
+      Configs.valid(holdWindowSeconds = mapOf(Transport.SRT to 183)).problems(),
+    )
+  }
+
+  @Test
+  fun `an RTMPS-preferred config has the same four secrets and no problems`() {
+    val rtmpsFirst = Configs.valid(primary = Configs.rtmps, fallback = Configs.srt)
+    assertEquals(
+      setOf(Configs.TOKEN, Configs.PASSPHRASE, Configs.STREAM_ID, Configs.STREAM_KEY),
+      rtmpsFirst.secrets().toSet(),
+    )
+    assertEquals(emptyList(), rtmpsFirst.problems())
+  }
+
+  @Test
+  fun `an SRT fallback's passphrase is checked like a primary's`() {
+    val shortFallback = SrtTarget(Configs.srt.url, Configs.STREAM_ID, "p".repeat(9), 2_000)
+    assertEquals(
+      listOf("srt passphrase is not 10–79 characters"),
+      Configs.valid(primary = Configs.rtmps, fallback = shortFallback).problems(),
+    )
+  }
+
   // libsrt takes a passphrase of 10–79 characters (P5 results, F-P5-1's ruled-out list).
   @Test
   fun `an SRT passphrase of 10 or 79 characters is fine, and 9 or 80 is a problem`() {
