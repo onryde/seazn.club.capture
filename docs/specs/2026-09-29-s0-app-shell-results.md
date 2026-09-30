@@ -23,7 +23,7 @@ worktree and are not committed.
 | 5 | An expired code shows the expiry at the right local time | PASS | "This code expired at 22:20." for `exp` 22:20 local |
 | 6 | Reopen lands on the placeholder while valid; after `exp`, Home with the notice | PASS | Cold reopen → placeholder. Short-lived code, cold after `exp` → "Your Live Stream code expired at 22:45. Scan a new one."; background→foreground variant → 22:46 notice. (A short `exp` stood in for moving the phone clock.) |
 | 7 | Codes survive a restart; Forget removes them | PASS | Continue card "Slot 1 · code valid till 04:30" after relaunch; Forget survives a relaunch |
-| 8 | Turn card both ways, reads upright in the hand | PASS (owner) | Owner held the phone: portrait Home → sideways → card → landscape → Back → card → portrait. Glyph-only card per R28. |
+| 8 | Turn card both ways, reads upright in the hand | PASS (owner) | Redmi: owner held the phone through portrait Home → sideways → card → landscape → Back → card → portrait. OnePlus NE2211 (Android 16): owner checked Home and Live Stream (opened by scanning a made-up QR held upright) — card shows, no flash of the wrong layout, both sideways directions. Glyph-only card per R28. The scanner itself is Google's activity and rotates on its own; the card belongs to our screens only. |
 | 9 | Flat on a table enters Live Stream with no card | PASS | Face-down phone → `/stream`, no card |
 | 10 | Four languages switch all text and persist; German shows English | PASS | es, fr, nl, en on Home and the code panel (Redmi); nl survived a restart. German fallback on the OnePlus NE2211 (Android 16): app storage cleared, per-app locale `de-DE` → Home in English (`op-de-home.png`); control, per-app locale `es-ES` → Home in Spanish, so the phone's locale really drives the choice. A saved language choice correctly outranks the phone (seen before the clear: stored `en` won over `es`). |
 | 11 | Fits at 2–3 sizes | PASS | Redmi, 720×1280 @320 and 1080×2400 @420 (`wm size`/`density`, reset after) — Home, code panel and placeholder, nothing clipped |
@@ -83,5 +83,5 @@ implementer with RED evidence, reviewed in two scoped re-reviews.
 - iOS: nothing in S0 was run on an iPhone. VoiceOver announcement of the turn card is a known gap.
 - The real capture engine: S0 has only the fake. Keep-awake while armed or live, orientation holds under a real camera session, and R37 (the lock after a remount mid-broadcast) are S1's.
 - Scanner first-use install.
-- The hand-only checks listed for the owner: turn card on Home and Stream with no flash, TalkBack announcement and no reach behind the card, reduced motion (still glyph).
+- TalkBack on a device: whether Android speaks the card's label when it appears, and that swipe focus cannot reach behind it. Skipped by owner choice (2026-09-30): the operators are volunteers who rarely use a screen reader, and the screen tests already cover the hidden-behind and label props. S1 re-checks it before Go Live sits behind the card.
 - The 3-hour soak (deferred to app completion).
