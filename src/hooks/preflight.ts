@@ -22,6 +22,28 @@ export const selectNetworkReachable = (snapshot: EngineSnapshot) =>
 export const selectSoundReady = (snapshot: EngineSnapshot) =>
   snapshot.telemetry.audioLevel >= AUDIO_FLOOR;
 
+/**
+ * The saved code as the viewfinder judges it. `noDeadline` is an engine with no
+ * descriptor yet (still arming, or a session native reopened with none).
+ */
+export type CodeCheck = 'usable' | 'unusable' | 'timedOut' | 'noDeadline';
+
+/**
+ * R3: the code chip is green only when the saved code is usable AND the
+ * warming gate is open. The one reading behind the chip, Go live's blocker and
+ * the status line (`viewfinderStatusKey`), so the three never disagree. An
+ * unusable code is named first: no wait on the phone fixes it.
+ */
+export function codeCheck(input: {
+  unusable: boolean;
+  deadlineKnown: boolean;
+  passed: boolean;
+}): CodeCheck {
+  if (input.unusable) return 'unusable';
+  if (!input.deadlineKnown) return 'noDeadline';
+  return input.passed ? 'timedOut' : 'usable';
+}
+
 /** Go live enables only when every chip is green (spec §1; AGENTS §6: the pre-flight is the safety). */
 export function goLiveBlocker(preflight: Preflight): Chip | null {
   return BLOCKER_ORDER.find((chip) => !preflight[chip]) ?? null;

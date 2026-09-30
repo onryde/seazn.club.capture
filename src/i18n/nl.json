@@ -54,8 +54,6 @@
   "store.saveFailed": "Opslaan op deze telefoon is niet gelukt. Probeer het opnieuw.",
   "turn.sideways.title": "Draai je telefoon op z'n kant",
   "turn.upright.title": "Houd je telefoon rechtop",
-  "stream.placeholder.title": "De zoeker komt hierna",
-  "stream.placeholder.body": "Positie {slot}. De camera komt in de volgende versie.",
   "stream.home": "Home",
   "stream.leaveOnAir": "Stop eerst de uitzending: houd Stop ingedrukt.",
   "stream.status.starting": "Camera wordt gestart…",

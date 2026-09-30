@@ -4,6 +4,7 @@ import type { EngineSnapshot, Telemetry } from '@/engine/CaptureEnginePort';
 import { IDLE_TELEMETRY } from '@/engine/FakeCaptureEngine';
 import {
   CHIP_ORDER,
+  codeCheck,
   goLiveBlocker,
   selectCameraReady,
   selectNetworkReachable,
@@ -45,6 +46,32 @@ describe('goLiveBlocker (spec §1: Go live only when every chip is green)', () =
 
   it('shows the chips in spec §1’s order: camera, sound, network, code', () => {
     expect(CHIP_ORDER).toEqual(['camera', 'sound', 'network', 'code']);
+  });
+});
+
+/**
+ * R3: the code chip is the saved code usable AND the warming gate open. One
+ * reading for the chip, Go live's blocker and the status line
+ * (viewfinderStatusKey), so the three can never disagree.
+ */
+describe('codeCheck', () => {
+  it.each([
+    [{ unusable: false, deadlineKnown: true, passed: false }, 'usable'],
+    [{ unusable: false, deadlineKnown: true, passed: true }, 'timedOut'],
+    [{ unusable: false, deadlineKnown: false, passed: false }, 'noDeadline'],
+    [{ unusable: true, deadlineKnown: true, passed: false }, 'unusable'],
+    // No wait on the phone fixes an unusable code, so it is named first.
+    [{ unusable: true, deadlineKnown: true, passed: true }, 'unusable'],
+    [{ unusable: true, deadlineKnown: false, passed: false }, 'unusable'],
+  ] as const)('%j reads %s', (input, check) => {
+    expect(codeCheck(input)).toBe(check);
+  });
+
+  it('turns the chip green only for a usable code before its deadline', () => {
+    const green = (['usable', 'timedOut', 'noDeadline', 'unusable'] as const).filter(
+      (check) => goLiveBlocker({ ...ALL_GREEN, code: check === 'usable' }) === null,
+    );
+    expect(green).toEqual(['usable']);
   });
 });
 

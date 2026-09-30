@@ -104,6 +104,11 @@ export const selectPlaybackUrl = (snapshot: EngineSnapshot) =>
 export const selectScoreUpdates = (snapshot: EngineSnapshot) =>
   snapshot.descriptor?.scoreUpdates ?? null;
 export const selectLabel = (snapshot: EngineSnapshot) => snapshot.descriptor?.label ?? null;
+/** The venue's zone from the armed descriptor: every time the operator reads is in it (spec §2). */
+export const selectVenueZone = (snapshot: EngineSnapshot) =>
+  snapshot.descriptor?.venueTimezone ?? null;
+/** Whether native holds a session it was armed with; before that there is no overlay to try. */
+export const selectHasDescriptor = (snapshot: EngineSnapshot) => snapshot.descriptor !== null;
 /** A number, not the Date: `useEngineSelector` compares by identity. */
 export const selectWarmingDeadlineMs = (snapshot: EngineSnapshot) =>
   snapshot.descriptor?.warmingDeadline.getTime() ?? null;

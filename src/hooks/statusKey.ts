@@ -6,6 +6,7 @@ import type {
   SessionState,
 } from '@/domain/session/SessionState';
 import type { EngineSnapshot, Telemetry } from '@/engine/CaptureEnginePort';
+import type { CodeCheck } from '@/hooks/preflight';
 import type { MessageKey } from '@/i18n/messages';
 
 export type StatusKey = Extract<MessageKey, `stream.status.${string}`>;
@@ -81,16 +82,17 @@ function armedKey(telemetry: Telemetry): StatusKey {
 
 /**
  * Arm-time facts the snapshot cannot know: whether the saved code is usable,
- * and whether the clock has passed the warming deadline (spec §5). They never
- * override an on-air line.
+ * and whether the clock has passed the warming deadline (spec §5), read from
+ * the same `codeCheck` as the code chip (R3). They never override an on-air
+ * line.
  */
 export function viewfinderStatusKey(
   engineKey: StatusKey,
-  input: { kind: SessionState['kind']; unusable: boolean; codeTimedOut: boolean },
+  input: { kind: SessionState['kind']; code: CodeCheck },
 ): StatusKey {
   const arming = input.kind === 'idle' || input.kind === 'armed';
-  if (arming && input.unusable) return 'stream.status.unusable';
-  if (input.kind === 'armed' && input.codeTimedOut) return 'stream.status.codeTimedOut';
+  if (arming && input.code === 'unusable') return 'stream.status.unusable';
+  if (input.kind === 'armed' && input.code === 'timedOut') return 'stream.status.codeTimedOut';
   return engineKey;
 }
 

@@ -54,8 +54,6 @@
   "store.saveFailed": "No se pudo guardar en este teléfono. Vuelve a intentarlo.",
   "turn.sideways.title": "Gira el teléfono en horizontal",
   "turn.upright.title": "Pon el teléfono en vertical",
-  "stream.placeholder.title": "El visor llega pronto",
-  "stream.placeholder.body": "Posición {slot}. La cámara llega en la próxima versión.",
   "stream.home": "Inicio",
   "stream.leaveOnAir": "Primero detén la emisión: mantén pulsado Detener.",
   "stream.status.starting": "Encendiendo la cámara…",

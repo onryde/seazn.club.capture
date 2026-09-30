@@ -54,8 +54,6 @@
   "store.saveFailed": "Impossible d'enregistrer sur ce téléphone. Réessayez.",
   "turn.sideways.title": "Tournez votre téléphone à l'horizontale",
   "turn.upright.title": "Remettez votre téléphone à la verticale",
-  "stream.placeholder.title": "Le viseur arrive bientôt",
-  "stream.placeholder.body": "Emplacement {slot}. La caméra arrive dans la prochaine version.",
   "stream.home": "Accueil",
   "stream.leaveOnAir": "Arrêtez d'abord la diffusion : maintenez Arrêter.",
   "stream.status.starting": "Démarrage de la caméra…",

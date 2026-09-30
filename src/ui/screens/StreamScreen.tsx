@@ -1,0 +1,37 @@
+import { StyleSheet, View } from 'react-native';
+import { usePeek } from '@/hooks/usePeek';
+import { useStreamLeave } from '@/hooks/useStreamLeave';
+import { useStreamSettings } from '@/hooks/useStreamSettings';
+import { useViewfinder } from '@/hooks/useViewfinder';
+import { StreamColumn } from '@/ui/components/StreamColumn';
+import { StreamStage } from '@/ui/components/StreamStage';
+import { colour } from '@/ui/theme/tokens';
+
+/**
+ * Live Stream's viewfinder (spec §4): Arm, on air and Ended are one screen,
+ * a projection of the engine's state. The column sits on the side the
+ * operator picked in Settings.
+ */
+export function StreamScreen() {
+  const view = useViewfinder();
+  const { settings } = useStreamSettings();
+  const leave = useStreamLeave();
+  const peek = usePeek(view.onAir);
+  return (
+    <View style={settings.side === 'left' ? styles.columnLeft : styles.columnRight}>
+      <StreamStage
+        armed={view.kind === 'armed'}
+        overlayOn={settings.overlay}
+        peek={peek}
+        canLeave={leave.canLeave}
+        onHome={leave.leave}
+      />
+      <StreamColumn view={view} blocked={leave.blocked} peek={peek} />
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  columnRight: { flex: 1, flexDirection: 'row', backgroundColor: colour.ground },
+  columnLeft: { flex: 1, flexDirection: 'row-reverse', backgroundColor: colour.ground },
+});

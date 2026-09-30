@@ -204,65 +204,41 @@ describe('in every language', () => {
 
 describe('viewfinderStatusKey', () => {
   it('says the code timed out once the warming deadline passes while armed (spec §5, D13)', () => {
-    const key = viewfinderStatusKey('stream.status.ready', {
-      kind: 'armed',
-      unusable: false,
-      codeTimedOut: true,
-    });
+    const key = viewfinderStatusKey('stream.status.ready', { kind: 'armed', code: 'timedOut' });
     expect(t(key)).toBe('Code timed out — ask the organiser for a new one');
   });
 
   it('says a saved code cannot be used before and while arming', () => {
     for (const kind of ['idle', 'armed'] as const) {
-      expect(
-        viewfinderStatusKey('stream.status.starting', {
-          kind,
-          unusable: true,
-          codeTimedOut: false,
-        }),
-      ).toBe('stream.status.unusable');
+      expect(viewfinderStatusKey('stream.status.starting', { kind, code: 'unusable' })).toBe(
+        'stream.status.unusable',
+      );
     }
   });
 
-  it('puts an unusable code before a timed-out one: no wait on the phone fixes it', () => {
-    expect(
-      viewfinderStatusKey('stream.status.ready', {
-        kind: 'armed',
-        unusable: true,
-        codeTimedOut: true,
-      }),
-    ).toBe('stream.status.unusable');
-  });
-
   it('says nothing of the deadline before the engine is armed', () => {
-    expect(
-      viewfinderStatusKey('stream.status.starting', {
-        kind: 'idle',
-        unusable: false,
-        codeTimedOut: true,
-      }),
-    ).toBe('stream.status.starting');
+    expect(viewfinderStatusKey('stream.status.starting', { kind: 'idle', code: 'timedOut' })).toBe(
+      'stream.status.starting',
+    );
   });
 
-  it('leaves an on-air line alone, whatever the clock says', () => {
-    expect(
-      viewfinderStatusKey('stream.status.live', {
-        kind: 'publishing',
-        unusable: true,
-        codeTimedOut: true,
-      }),
-    ).toBe('stream.status.live');
-  });
+  it.each(['unusable', 'timedOut'] as const)(
+    'leaves an on-air line alone, whatever the code (%s)',
+    (code) => {
+      expect(viewfinderStatusKey('stream.status.live', { kind: 'publishing', code })).toBe(
+        'stream.status.live',
+      );
+    },
+  );
 
-  it('leaves the engine’s line alone when nothing is wrong with the code', () => {
-    expect(
-      viewfinderStatusKey('stream.status.ready', {
-        kind: 'armed',
-        unusable: false,
-        codeTimedOut: false,
-      }),
-    ).toBe('stream.status.ready');
-  });
+  it.each(['usable', 'noDeadline'] as const)(
+    'leaves the engine’s line alone when the code is %s',
+    (code) => {
+      expect(viewfinderStatusKey('stream.status.ready', { kind: 'armed', code })).toBe(
+        'stream.status.ready',
+      );
+    },
+  );
 });
 
 describe('the hold countdown', () => {
