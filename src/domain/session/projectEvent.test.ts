@@ -50,9 +50,9 @@ describe('projectEvent', () => {
     expect(projectEvent(publishing, { kind: 'ThermalCeilingHit', shed: 'encode' }, START)).toBe(
       publishing,
     );
-    expect(
-      projectEvent(armed, { kind: 'ThermalCeilingHit', shed: 'overlay-preview' }, START),
-    ).toBe(armed);
+    expect(projectEvent(armed, { kind: 'ThermalCeilingHit', shed: 'overlay-preview' }, START)).toBe(
+      armed,
+    );
   });
 
   // The property the front door exists for: the broadcast is continuous across
@@ -64,7 +64,11 @@ describe('projectEvent', () => {
       { kind: 'UplinkLost', holdWindowSeconds: 60 },
       START + 9_000,
     );
-    const resumed = projectEvent(lost, { kind: 'PublishResumed', transport: 'srt' }, START + 30_000);
+    const resumed = projectEvent(
+      lost,
+      { kind: 'PublishResumed', transport: 'srt' },
+      START + 30_000,
+    );
 
     expect(lost).toMatchObject({ kind: 'reconnecting', sinceEpochMs: START });
     expect(resumed).toEqual({ kind: 'publishing', transport: 'srt', sinceEpochMs: START });

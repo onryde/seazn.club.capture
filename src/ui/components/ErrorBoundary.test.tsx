@@ -1,0 +1,56 @@
+import { render, screen } from '@testing-library/react';
+import type { ReactElement } from 'react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { useReopenGate } from '@/hooks/useReopenGate';
+import { ErrorBoundary } from '@/ui/components/ErrorBoundary';
+import { createFakePorts } from '../../../test/fakePorts';
+import { wrapperFor } from '../../../test/renderWithPorts';
+
+function Boom(): ReactElement {
+  throw new Error('render failed');
+}
+
+function Gate(): null {
+  useReopenGate(true);
+  return null;
+}
+
+describe('ErrorBoundary', () => {
+  // React reports every caught render error on console.error; keep the run quiet.
+  beforeEach(() => {
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+  });
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('hides the splash when a render error is caught, so the message is visible (R15)', () => {
+    const { splash } = createFakePorts();
+    render(
+      <ErrorBoundary onCatch={splash.hide}>
+        <Boom />
+      </ErrorBoundary>,
+    );
+    expect(screen.getByText('render failed')).toBeTruthy();
+    expect(splash.hides).toBe(1);
+  });
+
+  it('hides the splash when the reopen gate throws while deciding (R15)', async () => {
+    const fakes = createFakePorts({
+      navigation: {
+        current: () => 'home',
+        go: () => {
+          throw new Error('navigator not mounted');
+        },
+      },
+    });
+    render(
+      <ErrorBoundary onCatch={fakes.splash.hide}>
+        <Gate />
+      </ErrorBoundary>,
+      { wrapper: wrapperFor(fakes) },
+    );
+    await screen.findByText('navigator not mounted');
+    expect(fakes.splash.hides).toBe(1);
+  });
+});

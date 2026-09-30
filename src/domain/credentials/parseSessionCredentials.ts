@@ -76,9 +76,7 @@ export function parseSessionCredentials(input: unknown): Result<SessionCredentia
  * based on this, so an unrecognised value must fail loudly rather than default
  * to the reassuring answer.
  */
-function readScoreUpdates(
-  source: Record<string, unknown>,
-): Result<ScoreUpdates, ParseError> {
+function readScoreUpdates(source: Record<string, unknown>): Result<ScoreUpdates, ParseError> {
   const value = source.scoreUpdates;
   if (value === undefined) return err({ kind: 'missing-field', field: 'scoreUpdates' });
   if (value !== 'realtime' && value !== 'polled') {

@@ -42,3 +42,9 @@ yarn-error.*
 
 # Agent worktrees
 .claude/worktrees/
+
+# Device evidence for S0 Task 16, kept local
+.s0/
+
+# Vitest run cache
+.vitest/

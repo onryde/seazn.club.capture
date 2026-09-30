@@ -1,0 +1,43 @@
+# AGENTS.md §0 claims "CI runs domain tests on every push". This is that CI:
+# one job, the same `pnpm check` a developer runs (typecheck, lint, Prettier on
+# the code folders, and every vitest project — the i18n key check is one of the
+# tests).
+#
+# Not here on purpose: `pnpm i18n:release-check`. It refuses `_review` markers
+# that no native speaker has cleared yet, so it belongs to the first store
+# build, not to every push (spec R11). Nor the contract drift check: nothing is
+# vendored under contracts/ until S1.
+name: check
+
+# PRs are validated before they merge; main is re-checked after, since a merge
+# can combine two green branches into a red tree.
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+# Cancel superseded runs on the same ref.
+concurrency:
+  group: check-${{ github.ref }}
+  cancel-in-progress: true
+
+# Least privilege for GITHUB_TOKEN: the job only reads the repo.
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    # A clean run takes a few minutes; a hung vitest worker should not hold a
+    # runner for the default six hours.
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+      # Reads the pnpm version from package.json `packageManager`.
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm check

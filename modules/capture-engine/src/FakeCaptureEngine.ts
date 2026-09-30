@@ -184,9 +184,7 @@ export function createFakeCaptureEngine(now: () => number = Date.now): FakeCaptu
       startHeartbeat();
       if (outcome === 'held') {
         apply({ kind: 'UplinkLost', holdWindowSeconds: 60 });
-        timers.push(
-          setTimeout(() => apply({ kind: 'PublishResumed', transport: 'rtmps' }), 1200),
-        );
+        timers.push(setTimeout(() => apply({ kind: 'PublishResumed', transport: 'rtmps' }), 1200));
         return;
       }
       apply({ kind: 'SessionEnded', reason: 'hold-window-expired' });

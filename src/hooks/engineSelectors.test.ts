@@ -1,13 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { AUDIO_FLOOR } from '@/domain/policy/audioFloor';
-import type {
-  DegradeReason,
-  EndReason,
-  SessionState,
-} from '@/domain/session/SessionState';
+import type { DegradeReason, EndReason, SessionState } from '@/domain/session/SessionState';
+import type { EngineStatus } from '@/domain/mode/reopen';
 import type { EngineSnapshot, Interruption, Telemetry } from '@/engine/CaptureEnginePort';
 import {
   STATUS_LINE_BUDGET,
+  selectEngineStatus,
+  selectHoldsOrientation,
   selectStatusLine,
   selectTally,
 } from '@/hooks/engineSelectors';
@@ -36,11 +35,7 @@ function snapshot(state: SessionState, overrides: Partial<Telemetry> = {}): Engi
   };
 }
 
-const DEGRADE_REASONS: DegradeReason[] = [
-  'fell-back-to-rtmps',
-  'poor-uplink',
-  'audio-below-floor',
-];
+const DEGRADE_REASONS: DegradeReason[] = ['fell-back-to-rtmps', 'poor-uplink', 'audio-below-floor'];
 const END_REASONS: EndReason[] = ['operator-stopped', 'hold-window-expired', 'fatal-error'];
 const INTERRUPTIONS: Interruption[] = ['background', 'call', 'camera-in-use', 'system'];
 
@@ -85,7 +80,10 @@ describe('selectStatusLine', () => {
   // about the transport and a lie about the broadcast.
   it('prefers an interruption over the session line', () => {
     const line = selectStatusLine(
-      snapshot({ kind: 'publishing', transport: 'srt', sinceEpochMs: NOW }, { interruption: 'call' }),
+      snapshot(
+        { kind: 'publishing', transport: 'srt', sinceEpochMs: NOW },
+        { interruption: 'call' },
+      ),
     );
 
     expect(line).toContain('call');
@@ -104,7 +102,9 @@ describe('selectStatusLine', () => {
   // One authority on the audio question: the line and the Go live control must
   // not disagree between 0 and the floor.
   it('agrees with the Go live gate about what counts as sound', () => {
-    const justUnder = selectStatusLine(snapshot({ kind: 'armed' }, { audioLevel: AUDIO_FLOOR - 0.01 }));
+    const justUnder = selectStatusLine(
+      snapshot({ kind: 'armed' }, { audioLevel: AUDIO_FLOOR - 0.01 }),
+    );
     const atFloor = selectStatusLine(snapshot({ kind: 'armed' }, { audioLevel: AUDIO_FLOOR }));
 
     expect(justUnder).toContain('Check the mic');
@@ -127,11 +127,50 @@ describe('selectTally', () => {
     [{ kind: 'armed' } as SessionState, 'ready'],
     [{ kind: 'publishing', transport: 'srt', sinceEpochMs: NOW } as SessionState, 'live'],
     [
-      { kind: 'degraded', transport: 'srt', reason: 'poor-uplink', sinceEpochMs: NOW } as SessionState,
+      {
+        kind: 'degraded',
+        transport: 'srt',
+        reason: 'poor-uplink',
+        sinceEpochMs: NOW,
+      } as SessionState,
       'trouble',
     ],
-    [{ kind: 'reconnecting', holdRemainingSeconds: 9, sinceEpochMs: NOW } as SessionState, 'trouble'],
+    [
+      { kind: 'reconnecting', holdRemainingSeconds: 9, sinceEpochMs: NOW } as SessionState,
+      'trouble',
+    ],
   ])('maps %o to %s', (state, expected) => {
     expect(selectTally(snapshot(state))).toBe(expected);
+  });
+});
+
+describe('selectEngineStatus', () => {
+  it.each<[SessionState, EngineStatus]>([
+    [{ kind: 'idle' }, 'idle'],
+    [{ kind: 'armed' }, 'armed'],
+    [{ kind: 'connecting', transport: 'srt' }, 'live'],
+    [{ kind: 'publishing', transport: 'srt', sinceEpochMs: 1 }, 'live'],
+    [{ kind: 'degraded', transport: 'rtmps', reason: 'poor-uplink', sinceEpochMs: 1 }, 'live'],
+    [{ kind: 'reconnecting', holdRemainingSeconds: 30, sinceEpochMs: 1 }, 'live'],
+    [{ kind: 'ended', reason: 'operator-stopped' }, 'stopped'],
+    [{ kind: 'ended', reason: 'hold-window-expired' }, 'failed'],
+    [{ kind: 'ended', reason: 'fatal-error' }, 'failed'],
+  ])('%j is %s', (state, status) => {
+    expect(selectEngineStatus(snapshot(state))).toBe(status);
+  });
+});
+
+describe('selectHoldsOrientation', () => {
+  it.each<[SessionState, boolean]>([
+    [{ kind: 'idle' }, false],
+    [{ kind: 'armed' }, true],
+    [{ kind: 'connecting', transport: 'srt' }, true],
+    [{ kind: 'publishing', transport: 'srt', sinceEpochMs: 1 }, true],
+    [{ kind: 'degraded', transport: 'rtmps', reason: 'poor-uplink', sinceEpochMs: 1 }, true],
+    [{ kind: 'reconnecting', holdRemainingSeconds: 30, sinceEpochMs: 1 }, true],
+    [{ kind: 'ended', reason: 'operator-stopped' }, false],
+    [{ kind: 'ended', reason: 'fatal-error' }, false],
+  ])('%j holds the lock: %s', (state, holds) => {
+    expect(selectHoldsOrientation(snapshot(state))).toBe(holds);
   });
 });

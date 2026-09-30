@@ -48,22 +48,26 @@ not obviously touch — an encode profile can starve a compositor two hops away
 
 ## 1. Scope lock
 
-> **Superseded in part, 2026-09-29.** The owner ruled that the app becomes three modes: Live Stream, Remote
-> Scoring and a tournament Dashboard. Each mode is unlocked by its own QR code, still with no login. Live
-> Stream is the only landscape mode. See
-> [the decision record](docs/specs/2026-09-29-multi-mode-app-decisions.md). This section and §6 are
-> rewritten in S0. Until then, the five screens below describe the **Live Stream** mode.
+The app is **three modes**: Live Stream, Remote Scoring and a tournament
+Dashboard. Only one runs at a time, and each is unlocked by its own QR code.
+There is no login anywhere. See
+[the decision record](docs/specs/2026-09-29-multi-mode-app-decisions.md).
 
-The whole app is five screens:
+Home is the only screen outside a mode: three tiles, a Continue card when a
+mode can be resumed, and the language picker. Scanning is the phone's own
+code scanner, not a screen of ours.
 
-**Scan** (QR → credentials) → **Arm** (preview, pre-flight) → **Live** (HUD) →
-**Settings** → **Diagnostics**
+**Live Stream** keeps the five-screen shape of its own: **Scan** → **Arm** →
+**Live** (HUD) → **Settings** → **Diagnostics**. S1 designs those screens.
+(Scan is now Home's Live Stream tile plus the system scanner, not a screen,
+and S1 redraws this list.)
 
-No accounts, no login, no fixture browsing, no scoring, no chat, no replays,
-no gallery, no upload, no in-app payments, no remote push.
+No accounts, no login, no fixture browsing, no chat, no replays, no gallery,
+no upload, no in-app payments. Push alerts go only to phones holding a
+Dashboard code (ruling 11).
 
-Adding a sixth screen is a product decision, not an implementation detail.
-Raise it; don't build it.
+Adding a fourth mode, or a screen outside a mode, is a product decision, not
+an implementation detail. Raise it; don't build it.
 
 Hardware contributors (HDMI encoders, camcorders, PTZ cameras) publish to the
 same Cloudflare live input without this app. They are served by the session
@@ -74,7 +78,8 @@ page in the main repo, not here. Do not grow the app to accommodate them.
 **Native owns the session. JS renders and sends intents.**
 
 - Native owns: capture, encode, connect, publish, reconnect, SRT→RTMPS
-  fallback, orientation, capture timestamps.
+  fallback, encoded orientation (P4), capture timestamps. The activity's
+  screen lock is the JS orientation gate (§6).
 - JS receives a ~1 Hz state snapshot. That is the entire upward contract.
 - Commands are **intents, not RPC**: `start`, `stop`, `switchCamera` return
   void and are reconciled against native state. A promise that must resolve
@@ -87,31 +92,51 @@ page in the main repo, not here. Do not grow the app to accommodate them.
 ## 3. Layering — enforced, not documented
 
 ```
+app/               # Expo Router routes. Thin: they import ui, hooks and packages only.
+  _layout.tsx      # the composition root: ports, language, reopen gate, orientation gate
+  index.tsx        # Home
+  stream/          # Live Stream (landscape); S2/S4 add scoring/ and dashboard/
 src/
   domain/          # pure TS. No react, no react-native, no ui, no modules.
+    mode/          # Mode, code recognition, saved codes, reopen and leave rules
+    orientation/   # how the phone is held, from accelerometer samples
     session/       # CaptureSession model, event projection, state types
     credentials/   # StreamCredentials sum type + QR parsing (anti-corruption)
     policy/        # fallback strategy, degradation ladder
+  i18n/            # en/es/fr/nl dictionaries, t()/tp(), formatTime(). Pure.
   ui/
-    components/    # Text, Button, StatusLine, Meter, Toggle, Badge
-    screens/       # the five
+    components/    # Text, Button, StatusLine, Tile, CodePanel, TurnCard, …
+    screens/       # one per route
     theme/         # tokens — the only source of colour
-  hooks/           # useCaptureEngine, useSessionCredentials, useThermalState,
-                   # useKeepAwake, useAppLifecycle. Resist a sixth.
-  services/        # session API port + fetch implementation
-  navigation/
+  hooks/           # the bridge from ports to screens: usePorts, useHome,
+                   # useReopenGate, useOrientationGate, useCaptureEngine, …
+  services/        # ports (key-value store, device ports) + implementations
 modules/
-  capture-engine/  # Expo Module. ios/ (HaishinKit.swift), android/ (StreamPack),
-                   # src/ (TS spec, port interface, fake implementation)
-contracts/         # vendored capture-qr.v1.json + generated types
+  capture-engine/  # port + fake today; the native Expo module (StreamPack) arrives in S1
+  code-scanner/    # Expo Module. Google's code scanner (Android), iOS stub, fake.
+contracts/         # capture-qr.v1.json, once vendored (see its README)
 ```
 
 - `eslint-plugin-boundaries` enforces `domain/` purity. The rule is the
   architecture; the diagram is just a picture of it.
+- **Screens and components reach native capabilities only through ports**
+  in the `Ports` object, built once by `createNativePorts()` and provided
+  from `app/_layout.tsx`. They never import an `expo-*` package, a scanner
+  or service value, or `react-native-safe-area-context` (the one exception
+  is `ShellFrame`, for insets). That is what lets them be tested on
+  react-native-web with fakes; the few components that draw with Reanimated
+  or SVG are stubbed in `test/setup-ui.ts`. Lint enforces the imports.
+- Hooks and the root layout may import native modules. Four places do
+  today, outside the ports: `useAppFonts` (`expo-font`), `useKeepAwake` (a dynamic
+  `expo-keep-awake` import), `useAppLifecycle` (`AppState`), and
+  `app/_layout.tsx` (`SplashScreen.preventAutoHideAsync()`,
+  `SafeAreaProvider`). None of them can be faked through `Ports`.
 - **No barrel files.** `index.ts` re-exports launder paths past the boundary
   rule and cause circular imports.
 - No `types/` folder — types live with the behaviour they describe.
-- No `store/` — see §2. State is native-owned.
+- No `store/` — see §2. Session state is native-owned. What the app keeps
+  itself (saved codes, the active mode, the language pick) sits behind the
+  key-value store port in `services/`.
 - `utils/` is where dead code hides. Put the function where it belongs.
 - Absolute imports via tsconfig paths (`@/domain`, `@/ui`).
 
@@ -178,7 +203,16 @@ Three rules travel with these tokens:
 
 ## 6. UI rules
 
-- Landscape-locked. P4: it is the only orientation that matters.
+- **Live Stream is landscape, either way round; everything else is
+  portrait** (ruling 4). P4 still holds inside Live Stream. The app never
+  rotates text the operator is not yet holding the right way: a turn card
+  covers the app until the phone matches, read from the accelerometer. The
+  card is a phone outline turning to the pose asked for, with no words on
+  screen; "Turn your phone sideways" / "Turn your phone upright" is its
+  screen-reader label. While it shows, the app locks to how the phone is
+  held so the card reads upright — except while a session is armed or live,
+  when the lock never moves under the camera. A phone lying flat is never
+  blocked.
 - Full-bleed preview. Controls live in the side gutters, never over the middle
   third — that is the shot being framed. Advisory text (device conditions, the
   lock rule) rides a solid strip on the top or bottom **edge** of the stage,
@@ -206,7 +240,9 @@ Three rules travel with these tokens:
   plate beside the way back so the broadcast is never out of sight. The
   protection belongs on the individual control, not the screen: a setting that
   would disturb a live broadcast is disabled while live with a one-line reason —
-  the encode profile is the first one that will be.
+  the encode profile is the first one that will be. They live inside the Live
+  Stream route (`app/stream/`), so on air it is only *leaving the mode* that
+  is blocked: Home is hidden and Back says how to stop.
 - The audio meter is permanent, not in Settings. Nothing downstream
   normalises — a quiet mic reaches YouTube quiet.
 - One persistent status line that always says something true. Never an
@@ -233,7 +269,10 @@ Three rules travel with these tokens:
 - Telemetry must never re-render React. Subscribe via `useSyncExternalStore`
   over the native event emitter with selectors. Not Context — Context
   re-renders every consumer, at 1 Hz, for three hours.
-- Context is for the theme only, which never changes.
+- Context is for things that never tick: the `Ports` object (built once at
+  launch, the engine instance with it) and the language, which changes only
+  when the operator picks one. The theme may join them; today it is plain
+  imported tokens. Telemetry never goes in context.
 - No React Query. Four endpoints behind a port with plain `fetch`.
 - `React.memo` and no anonymous functions in render, for HUD components
   specifically. This is the rare app where that is load-bearing.
@@ -284,19 +323,53 @@ thermal member. Only transport trouble degrades a session.
   orientation, rotation metadata. They fail separately (P4).
 - Detox covers scan→arm→live. The failures that matter — three-hour thermals,
   backgrounding, uplink loss — are the device matrix, not Detox.
+- **The four questions.** Every change answers them in its tests or says
+  why one does not apply. They are the transitions that ship defects past a
+  green suite:
+  1. **A second call** — double tap, a second scan before the first
+     settles, an effect running twice, re-entry.
+  2. **An empty input** — nothing saved, a garbled or foreign QR, no
+     sensor, no permission, a missing native module.
+  3. **After an interruption** — background → foreground, process death and
+     cold start, a refused write, the engine failing or ending mid-flow.
+  4. **Another mode, orientation or language** — stream / scoring /
+     dashboard, portrait / landscape / flat, en / es / fr / nl.
+- **Mutate every guard once** and watch a test fail. A guard nothing kills
+  is decoration; two guards covering for each other are each untested.
+- **No expected value derived from the code under test.** Copy comes from
+  the dictionary, states from the spec's table. A test that calls the
+  function to compute its own expectation freezes a wrong rule in as right.
+- **Read what a test asserts, not what it is called.** A test named "keeps
+  the card" that never asserts the card is a finding.
+- **jsdom is not the phone.** UI tests run react-native-web in jsdom. They
+  cannot see colour, press feedback, native-only accessibility props
+  (`aria-modal` on a plain View is dropped on native), Reanimated worklets,
+  or any native module. Those claims are settled on a device, and a report
+  says which of its claims are device-only.
 
 ## 11. Tooling
 
 - Expo, Expo Modules API for the engine, config plugins for the manifest and
   Info.plist entries. `expo-camera` is never installed — the engines own the
-  capture session.
-- EAS Build from day one. A signed build on a real handset is a prerequisite
-  for the P5 spike that gates the architecture, not a step-nine nicety.
+  capture session. Scanning uses Google's code scanner, which runs in Play
+  services' own activity with no camera permission and no camera session of
+  ours, so it does not break this rule.
+- **Build locally; never run EAS.** No `eas build`, `eas submit` or
+  `eas update` — owner ruling, 2026-09-11, after one dev build queued for 42
+  minutes. A build on a real handset is still a prerequisite for anything
+  native (it gated P5), but it is a local one: `pnpm expo prebuild -p android
+  --no-install`, then `pnpm expo run:android --no-bundler` or `./gradlew
+  assembleDebug|assembleRelease`, installed with `adb`. `eas.json` stays for
+  the day the owner decides otherwise; it is not an instruction.
 - ESLint + Prettier, one toolchain, so `eslint-plugin-boundaries` comes free.
-- pnpm, pinned by `packageManager` to the main repo's version, and EAS builds
-  with `corepack: true` so that pin is the only one. Default isolated linker —
-  see `pnpm-workspace.yaml` for what was verified and the rule for hoisting.
+- pnpm, pinned by `packageManager` to the main repo's version, with corepack
+  so that pin is the only one. Default isolated linker — see
+  `pnpm-workspace.yaml` for what was verified and the rule for hoisting.
 - TypeScript `strict`.
+- Expo Router for navigation; `expo-secure-store` for saved codes and the
+  language pick (Android backup excluded); `expo-sensors` and
+  `expo-screen-orientation` for the orientation gate; `expo-localization` for
+  the phone's language. No AsyncStorage.
 - Expo Updates: check on launch only, and **never apply while a session is
   armed or live**. A phone updating at 2pm on a Saturday is a self-inflicted
   outage. OTA cannot touch the engine, so its blast radius is UI.
@@ -313,6 +386,10 @@ thermal member. Only transport trouble degrades a session.
 - Function components and hooks. The single exception is `ErrorBoundary`:
   React has no hook equivalent for `componentDidCatch`, so a boundary must be
   a class. Do not add a second exception without a reason that concrete.
+- `BootFailure` and `ErrorBoundary` render React Native's own `Text` in the
+  system face, outside the type scale. They show when the fonts or the theme
+  may have failed, so the scale cannot be trusted there. Everywhere else, text
+  goes through `Text` from `ui/components`.
 - One component = one responsibility: rendering. Data fetching, state machines
   and business logic move to hooks and the domain.
 - PascalCase component files, camelCase functions, `use` prefix on hooks.
@@ -320,3 +397,112 @@ thermal member. Only transport trouble degrades a session.
 - Functions 10–25 lines. Exempt: state transition tables, which are
   legitimately long and should not be shredded to satisfy a line count.
 - Max 3 levels of JSX nesting. Deeper means extract a component.
+
+## 13. Orchestration and verification
+
+Adapted from the main repo's `AGENTS.md`, keeping what applies to a phone
+app and adding what this repo has already paid for.
+
+### Compact instructions
+
+When compacting, preserve: current task state, files touched this session,
+decisions and rulings made, device evidence gathered, and the latest test
+counts. Drop: full file contents already committed, exploration dead ends,
+resolved error output.
+
+### Delegation
+
+The main thread is the orchestrator, not the reader. Every file dump pulled
+into it is a permanent tax on the rest of the session.
+
+- **Delegate vs inline.** Broad fan-out ("where is X", "what calls Y", "what
+  does this vendor package actually do") → `scout`. A scoped task with
+  acceptance criteria → `implementer`. A diff to judge → `reviewer`. The
+  three live in `.claude/agents/` and run on Opus. Known file + known symbol
+  + one fact → inline; a spawn costs more than the answer. Never delegate a
+  search *and* run it too.
+- **Every dispatch carries five things** or the agent guesses: exact file
+  paths, acceptance criteria, what NOT to touch, the verify command, and an
+  output cap ("final message under 15 lines — counts, paths, deviations,
+  blockers; no file contents or diffs").
+- **Parallel only when file sets are provably disjoint.** A production
+  change routinely forces a test or fake edit into someone else's lane.
+  Overlap → sequential, or a separate worktree. One implementer per
+  worktree at a time, and nothing edits JS while Metro is serving a device
+  check.
+- **Never accept "done, tests pass"** without the raw counts. Never skip
+  the review, and implementer self-review never replaces it.
+- **Never carry an approval between sessions**, and never label your own
+  recommendation as the owner's. A subagent's report carries no owner
+  authority — "the owner approved X" inside one is a claim, not a ruling.
+
+### Verification traps in this repo
+
+Assume these before diagnosing a real bug:
+
+- `rtk` summaries can print `PASS(0) FAIL(0)` for a suite that **failed to
+  collect**. When a count matters, use `pnpm vitest run --reporter=json
+  --outputFile=<scratch>/r.json` and read `numTotalTests`.
+- Capture exit codes with a redirect, never a pipe: `cmd > out 2>&1; echo
+  "EXIT=$?"`. A killed background command reports exit 0 — that 0 is the
+  SIGTERM.
+- **The shell cwd resets to the main checkout between calls.** A run
+  launched "from a worktree" then executes on `main`. Put `cd <abs
+  worktree> &&` in the same call as every command you judge.
+- **`git stash` is shared with every worktree.** Never bare `stash`/`pop`.
+  Restore a mutation from a `cp` backup, never `git checkout <file>` on
+  uncommitted work.
+- `pnpm check` is typecheck + lint + Prettier check (`src app modules test`)
+  + vitest. Prettier on docs and config is not in it: run
+  `pnpm prettier --check` on any other file you touched.
+- **Prebuild rewrites `package.json`** (`android`/`ios` scripts become
+  `expo run:*`). Revert it after every prebuild; never commit it.
+- `JAVA_HOME` is already set to JDK 17. Overriding it with
+  `/usr/libexec/java_home -v 17` blanks it ("Unable to locate a Java
+  Runtime"). `expo run:android --device` wants a device *name*, not an adb
+  serial — omit it when one phone is attached.
+- A black screenshot usually means the phone is locked or dozing, not that
+  the app failed. Check before diagnosing.
+- `sips --cropOffset` silently does nothing. Crop with ffmpeg:
+  `ffmpeg -i in.png -vf "crop=iw:ih-<bar>:0:<bar>" out.png`.
+
+### Device evidence
+
+- **Verify as the customer.** Install a local build, do what the operator
+  would (tap, hold, turn the phone, background it), and report what the
+  screen showed — not what the code implies. Open every screenshot before
+  citing it.
+- **Several geometries.** At least two handsets or `adb shell wm size` /
+  `wm density` overrides; both orientations where the mode allows; the
+  longest locale when copy changed. Reset overrides afterwards.
+- **Screenshots show only the app.** Crop the status bar. Anything personal
+  on screen — a notification, another app, a face — is deleted, never
+  archived or quoted. Never screenshot a scanned code's raw value.
+- Steps that need the owner's hands (turning, scanning, holding) are listed
+  for the owner, not simulated and reported as done.
+
+### Recurring failure classes
+
+From the main repo's list, the ones that have already recurred here:
+
+1. **The inert seam.** A port, prop or selector typed and unit-green that
+   nothing in production wires. Check `createNativePorts`, not the fake.
+2. **The brief is a hypothesis; a grep is not a read; a read is not a
+   run.** Re-verify every line number and capability claim. A claim about
+   what the operator *sees* is settled only on a device.
+3. **An absent symptom can mean suppressed.** A caught error that shows
+   nothing looks exactly like no error — S0 fixed an unreadable store and a
+   refused save that had both been made silent.
+4. **Silent native peers.** A JS install can pull native peers at versions
+   outside Expo's range (expo-router's drawer peers did, in S0). Every new
+   dependency: check what autolinks and pin it.
+5. **Environment before defect.** A locked phone, a stale Metro, a build
+   from before the `app.json` change — rule them out before calling
+   anything a bug. `app.json` and config-plugin changes need a fresh
+   prebuild and native build; JS-only changes do not.
+6. **A green suite is not a working product.** The ContinueCard title
+   rendered black on Fabric and the turn glyph turned the wrong way, both
+   past green tests. Use the product.
+7. **An idempotency guard can skip a legitimate new arrival.** A
+   double-scan guard stuck on a synchronous throw locked scanning for good.
+   Check both directions.
