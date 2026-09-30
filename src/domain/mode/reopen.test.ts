@@ -7,19 +7,14 @@ import {
   type SavedState,
 } from '@/domain/mode/reopen';
 import type { SavedCode } from '@/domain/mode/savedCode';
+import { sampleDescriptor } from '@/services/fakeDescriptorPort';
+import { savedStreamCode } from '../../../test/fixtures/savedStream';
 
 const NOW = new Date('2026-10-03T13:00:00Z');
 const EXPIRY = new Date('2026-10-03T18:40:00Z');
 const AFTER_EXPIRY = new Date('2026-10-03T19:00:00Z');
 
-const streamCode: SavedCode = {
-  mode: 'stream',
-  raw: '{"fake":true}',
-  slot: 0,
-  savedAt: NOW,
-  expiresAt: EXPIRY,
-  venueTz: null,
-};
+const streamCode: SavedCode = savedStreamCode({ expiresAt: EXPIRY });
 
 const inStream: SavedState = { active: 'stream', codes: { stream: streamCode } };
 const nothing: SavedState = { active: null, codes: {} };
@@ -39,7 +34,25 @@ describe('reopenTarget', () => {
   it('goes Home with a notice once the code has expired', () => {
     expect(reopenTarget({ engine: 'idle', saved: inStream, now: AFTER_EXPIRY })).toEqual({
       go: 'home',
-      notice: { mode: 'stream', expiredAt: EXPIRY },
+      notice: { mode: 'stream', expiredAt: EXPIRY, venueTz: 'Europe/London' },
+    });
+  });
+
+  it('names the venue zone in the notice, and none when the code has no descriptor', () => {
+    const madrid = savedStreamCode({
+      expiresAt: EXPIRY,
+      descriptor: sampleDescriptor(NOW, { venueTimezone: 'Europe/Madrid' }),
+    });
+    const inMadrid: SavedState = { active: 'stream', codes: { stream: madrid } };
+    expect(reopenTarget({ engine: 'idle', saved: inMadrid, now: AFTER_EXPIRY })).toMatchObject({
+      notice: { venueTz: 'Europe/Madrid' },
+    });
+    const bare: SavedState = {
+      active: 'stream',
+      codes: { stream: { ...madrid, descriptor: null } },
+    };
+    expect(reopenTarget({ engine: 'idle', saved: bare, now: AFTER_EXPIRY })).toMatchObject({
+      notice: { venueTz: null },
     });
   });
 
@@ -57,7 +70,9 @@ describe('reopenTarget', () => {
   it('goes Home when the active mode is not built yet', () => {
     const scoring: SavedState = {
       active: 'scoring',
-      codes: { scoring: { ...streamCode, mode: 'scoring', slot: null, expiresAt: null } },
+      codes: {
+        scoring: { ...streamCode, mode: 'scoring', slot: null, expiresAt: null, descriptor: null },
+      },
     };
     expect(reopenTarget({ engine: 'idle', saved: scoring, now: NOW })).toEqual({ go: 'home' });
   });

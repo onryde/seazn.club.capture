@@ -16,7 +16,12 @@ export const STORE_KEYS = {
   code: (mode: Mode) => `code.${mode}`,
 } as const;
 
-export type ExpiryNotice = { readonly mode: Mode; readonly expiredAt: Date };
+export type ExpiryNotice = {
+  readonly mode: Mode;
+  readonly expiredAt: Date;
+  /** The venue's zone, when the code's descriptor named one (spec §2). */
+  readonly venueTz: string | null;
+};
 
 export type ModeStoreSnapshot =
   | { readonly status: 'loading' }

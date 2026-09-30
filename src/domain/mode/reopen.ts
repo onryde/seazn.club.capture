@@ -1,5 +1,5 @@
 import type { Mode } from '@/domain/mode/Mode';
-import { isExpired, type SavedCode } from '@/domain/mode/savedCode';
+import { isExpired, venueZone, type SavedCode } from '@/domain/mode/savedCode';
 
 /**
  * The engine as the shell sees it. `live` covers connecting, publishing,
@@ -16,7 +16,15 @@ export type SavedState = {
 
 export type ReopenTarget =
   | { readonly go: 'stream' }
-  | { readonly go: 'home'; readonly notice?: { readonly mode: Mode; readonly expiredAt: Date } };
+  | {
+      readonly go: 'home';
+      /** `venueTz` is the saved descriptor's zone, so the notice reads in venue time (spec §2). */
+      readonly notice?: {
+        readonly mode: Mode;
+        readonly expiredAt: Date;
+        readonly venueTz: string | null;
+      };
+    };
 
 /**
  * Where the app lands on launch and on every return to the foreground
@@ -35,7 +43,10 @@ export function reopenTarget(input: {
   const code = saved.codes.stream;
   if (code === undefined) return { go: 'home' };
   if (code.expiresAt !== null && isExpired(code, now)) {
-    return { go: 'home', notice: { mode: 'stream', expiredAt: code.expiresAt } };
+    return {
+      go: 'home',
+      notice: { mode: 'stream', expiredAt: code.expiresAt, venueTz: venueZone(code) },
+    };
   }
   return { go: 'stream' };
 }

@@ -5,15 +5,14 @@ import { KV_TIMEOUT_MS, withTimeout } from '@/services/kvTimeout';
 import { createLogger } from '@/services/logger';
 import { createModeStore, STORE_KEYS } from '@/services/modeStore';
 import { createRingRecord } from '@/services/sessionRecord';
+import { savedStreamCode } from '../../test/fixtures/savedStream';
 
-const code: SavedCode = {
-  mode: 'stream',
+const code: SavedCode = savedStreamCode({
   raw: '{"fake":true}',
   slot: 0,
   savedAt: new Date('2026-10-03T13:00:00Z'),
   expiresAt: new Date('2026-10-03T18:40:00Z'),
-  venueTz: null,
-};
+});
 
 const ready = (store: ReturnType<typeof createModeStore>) => {
   const snapshot = store.getSnapshot();
@@ -114,7 +113,11 @@ describe('modeStore', () => {
     const store = createModeStore(createMemoryKeyValueStore());
     await store.load();
     await store.open(code);
-    const notice = { mode: 'stream' as const, expiredAt: code.expiresAt as Date };
+    const notice = {
+      mode: 'stream' as const,
+      expiredAt: code.expiresAt as Date,
+      venueTz: 'Europe/London',
+    };
     await store.expire(['stream'], notice);
     expect(ready(store).saved.codes).toEqual({});
     expect(ready(store).notice).toEqual(notice);
@@ -126,7 +129,11 @@ describe('modeStore', () => {
     const store = createModeStore(createMemoryKeyValueStore());
     await store.load();
     await store.open(code);
-    await store.expire(['stream'], { mode: 'stream', expiredAt: code.expiresAt as Date });
+    await store.expire(['stream'], {
+      mode: 'stream',
+      expiredAt: code.expiresAt as Date,
+      venueTz: 'Europe/London',
+    });
     const before = store.getSnapshot();
     await store.expire([], null);
     expect(store.getSnapshot()).toBe(before);
@@ -143,7 +150,11 @@ describe('modeStore', () => {
     };
     const store = createModeStore(kv);
     await store.load();
-    const notice = { mode: 'stream' as const, expiredAt: code.expiresAt as Date };
+    const notice = {
+      mode: 'stream' as const,
+      expiredAt: code.expiresAt as Date,
+      venueTz: 'Europe/London',
+    };
     await expect(store.expire(['stream'], notice)).rejects.toThrow('keystore locked');
     expect(ready(store).saved).toEqual({ active: null, codes: {} });
     expect(ready(store).notice).toEqual(notice);
@@ -176,7 +187,11 @@ describe('modeStore', () => {
       await store.load();
       const opened = store.open(fresh);
       // The reopen gate judged the stale code before the fresh one was published.
-      const notice = { mode: 'stream' as const, expiredAt: code.expiresAt as Date };
+      const notice = {
+        mode: 'stream' as const,
+        expiredAt: code.expiresAt as Date,
+        venueTz: 'Europe/London',
+      };
       const expired = store.expire(['stream'], notice);
       release();
       await Promise.all([opened, expired]);

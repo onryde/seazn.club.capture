@@ -5,17 +5,16 @@ import { useReopenGate } from '@/hooks/useReopenGate';
 import { createMemoryKeyValueStore, type KeyValueStore } from '@/services/KeyValueStore';
 import { createModeStore, STORE_KEYS } from '@/services/modeStore';
 import { createFakePorts, TEST_NOW } from '../../test/fakePorts';
+import { savedStreamCode } from '../../test/fixtures/savedStream';
 import { wrapperFor } from '../../test/renderWithPorts';
 
 const EXPIRY = new Date(TEST_NOW.getTime() + 3600_000);
-const code: SavedCode = {
-  mode: 'stream',
+const code: SavedCode = savedStreamCode({
   raw: '{}',
   slot: 0,
   savedAt: TEST_NOW,
   expiresAt: EXPIRY,
-  venueTz: null,
-};
+});
 const inStream = {
   [STORE_KEYS.active]: 'stream',
   [STORE_KEYS.code('stream')]: encodeSavedCode(code),
@@ -51,6 +50,7 @@ describe('useReopenGate', () => {
     expect(snapshot.status === 'ready' && snapshot.notice).toEqual({
       mode: 'stream',
       expiredAt: EXPIRY,
+      venueTz: 'Europe/London',
     });
     expect(fakes.kv.entries.has(STORE_KEYS.code('stream'))).toBe(false);
   });
@@ -133,7 +133,11 @@ describe('useReopenGate: beyond the happy path', () => {
     act(() => fakes.engine.forceState({ kind: 'ended', reason: 'hold-window-expired' }));
     act(() => fakes.foreground.fire());
     await waitFor(() => expect(fakes.navigation.current()).toBe('home'));
-    expect(noticeOf(fakes)).toEqual({ mode: 'stream', expiredAt: EXPIRY });
+    expect(noticeOf(fakes)).toEqual({
+      mode: 'stream',
+      expiredAt: EXPIRY,
+      venueTz: 'Europe/London',
+    });
     expect(fakes.kv.entries.has(STORE_KEYS.code('stream'))).toBe(false);
   });
 
@@ -162,7 +166,11 @@ describe('useReopenGate: beyond the happy path', () => {
     const first = launch();
     await waitFor(() => expect(first.splash.hides).toBe(1));
     expect(first.navigation.current()).toBe('home');
-    expect(noticeOf(first)).toEqual({ mode: 'stream', expiredAt: EXPIRY });
+    expect(noticeOf(first)).toEqual({
+      mode: 'stream',
+      expiredAt: EXPIRY,
+      venueTz: 'Europe/London',
+    });
     expect(memory.entries.has(STORE_KEYS.code('stream'))).toBe(true);
     await act(async () => undefined);
     expect(rejections).toEqual([]);
@@ -170,7 +178,11 @@ describe('useReopenGate: beyond the happy path', () => {
     refuse = false;
     const second = launch();
     await waitFor(() => expect(memory.entries.has(STORE_KEYS.code('stream'))).toBe(false));
-    expect(noticeOf(second)).toEqual({ mode: 'stream', expiredAt: EXPIRY });
+    expect(noticeOf(second)).toEqual({
+      mode: 'stream',
+      expiredAt: EXPIRY,
+      venueTz: 'Europe/London',
+    });
     expect(second.navigation.current()).toBe('home');
   });
 });

@@ -6,16 +6,15 @@ import { useStreamLeave } from '@/hooks/useStreamLeave';
 import { createMemoryKeyValueStore, type KeyValueStore } from '@/services/KeyValueStore';
 import { createModeStore, STORE_KEYS } from '@/services/modeStore';
 import { createFakePorts, readRecord, TEST_NOW } from '../../test/fakePorts';
+import { savedStreamCode } from '../../test/fixtures/savedStream';
 import { wrapperFor } from '../../test/renderWithPorts';
 
-const code: SavedCode = {
-  mode: 'stream',
+const code: SavedCode = savedStreamCode({
   raw: '{"fake":true}',
   slot: 2,
   savedAt: TEST_NOW,
   expiresAt: new Date(TEST_NOW.getTime() + 3600_000),
-  venueTz: null,
-};
+});
 const inStream = {
   [STORE_KEYS.active]: 'stream',
   [STORE_KEYS.code('stream')]: encodeSavedCode(code),

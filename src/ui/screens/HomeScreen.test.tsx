@@ -6,10 +6,12 @@ import { useReopenGate } from '@/hooks/useReopenGate';
 import type { CodeScannerPort, ScanUnavailableReason } from '@/scanner/CodeScannerPort';
 import { createMemoryKeyValueStore, type KeyValueStore } from '@/services/KeyValueStore';
 import { KV_TIMEOUT_MS, withTimeout } from '@/services/kvTimeout';
+import { sampleDescriptor } from '@/services/fakeDescriptorPort';
 import { createModeStore, STORE_KEYS } from '@/services/modeStore';
 import { HomeScreen } from '@/ui/screens/HomeScreen';
 import { createFakePorts, readRecord, TEST_NOW } from '../../../test/fakePorts';
 import { renderWithPorts, wrapperFor } from '../../../test/renderWithPorts';
+import { savedStreamCode } from '../../../test/fixtures/savedStream';
 import { captureRaw, epochSeconds } from '../../../test/fixtures/wire';
 
 const IN_TWO_HOURS = new Date(TEST_NOW.getTime() + 2 * 3600_000);
@@ -22,16 +24,8 @@ function streamRaw(exp: Date, slot = 1): string {
 }
 
 /** A stream code saved by an earlier scan, as the store writes it. */
-function savedStream(expiresAt: Date): string {
-  const raw = streamRaw(expiresAt);
-  return encodeSavedCode({
-    mode: 'stream',
-    raw,
-    slot: 1,
-    savedAt: TEST_NOW,
-    expiresAt,
-    venueTz: null,
-  });
+function savedStream(expiresAt: Date, descriptor = sampleDescriptor(TEST_NOW)): string {
+  return encodeSavedCode(savedStreamCode({ raw: streamRaw(expiresAt), expiresAt, descriptor }));
 }
 
 async function renderHome(options?: Parameters<typeof renderWithPorts>[1]) {
@@ -135,6 +129,43 @@ describe('Home', () => {
     expect(home.kv.entries.has(STORE_KEYS.code('stream'))).toBe(false);
   });
 
+  it('gives the Continue time in the venue’s zone, naming it when it is not the phone’s (spec §2)', async () => {
+    const madrid = sampleDescriptor(TEST_NOW, { venueTimezone: 'Europe/Madrid' });
+    await renderHome({ kvSeed: { [STORE_KEYS.code('stream')]: savedStream(AT_1840, madrid) } });
+    const detail = screen.getByText(/Slot 1 · code valid till/);
+    expect(detail.textContent).toMatch(/19:40/);
+    expect(detail.textContent).not.toBe('Slot 1 · code valid till 19:40');
+  });
+
+  it('gives the Continue time plainly when the venue is in the phone’s zone', async () => {
+    await renderHome({ kvSeed: { [STORE_KEYS.code('stream')]: savedStream(AT_1840) } });
+    expect(screen.getByText('Slot 1 · code valid till 18:40')).toBeTruthy();
+  });
+
+  it('gives an expiry notice in the venue’s zone', async () => {
+    const home = await renderHome();
+    await act(() =>
+      home.ports.modeStore.expire(['stream'], {
+        mode: 'stream',
+        expiredAt: AT_1840,
+        venueTz: 'Europe/Madrid',
+      }),
+    );
+    const line = screen.getByText(/Your Live Stream code expired at/);
+    expect(line.textContent).toMatch(/19:40/);
+  });
+
+  it('names the venue’s time when Continue finds the code expired', async () => {
+    const madrid = sampleDescriptor(TEST_NOW, { venueTimezone: 'Europe/Madrid' });
+    const home = await renderHome({
+      kvSeed: { [STORE_KEYS.code('stream')]: savedStream(AT_1840, madrid) },
+    });
+    home.setNow(new Date(AT_1840.getTime() + 60_000));
+    fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
+    const line = await screen.findByText(/Your Live Stream code expired at/);
+    expect(line.textContent).toMatch(/19:40/);
+  });
+
   it('Continue reopens Live Stream', async () => {
     const home = await renderHome({
       kvSeed: { [STORE_KEYS.code('stream')]: savedStream(AT_1840) },
@@ -163,7 +194,11 @@ describe('Home', () => {
   it('shows the expiry notice left by the reopen gate', async () => {
     const home = await renderHome();
     await act(() =>
-      home.ports.modeStore.expire(['stream'], { mode: 'stream', expiredAt: AT_1840 }),
+      home.ports.modeStore.expire(['stream'], {
+        mode: 'stream',
+        expiredAt: AT_1840,
+        venueTz: 'Europe/London',
+      }),
     );
     expect(
       screen.getByText('Your Live Stream code expired at 18:40. Scan a new one.'),
@@ -178,7 +213,13 @@ describe('Home', () => {
 
   it('clears the expiry notice once the operator taps to scan', async () => {
     const home = await renderHome();
-    await act(() => home.ports.modeStore.expire([], { mode: 'stream', expiredAt: AT_1840 }));
+    await act(() =>
+      home.ports.modeStore.expire([], {
+        mode: 'stream',
+        expiredAt: AT_1840,
+        venueTz: 'Europe/London',
+      }),
+    );
     fireEvent.click(liveStreamTile());
     await waitFor(() => expect(home.scanner.scans).toBe(1));
     expect(screen.getByText(IDLE)).toBeTruthy();

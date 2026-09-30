@@ -1,7 +1,7 @@
 import { useCallback, useState, useSyncExternalStore } from 'react';
 import type { Mode, ModeCode } from '@/domain/mode/Mode';
 import { recognise } from '@/domain/mode/recognise';
-import { isExpired, savedCodeFrom, type SavedCode } from '@/domain/mode/savedCode';
+import { isExpired, savedCodeFrom, venueZone, type SavedCode } from '@/domain/mode/savedCode';
 import { scanOutcome, type ScanOutcome } from '@/domain/mode/scanOutcome';
 import { useFormatTime } from '@/hooks/useFormatTime';
 import { useT } from '@/hooks/useLanguage';
@@ -119,7 +119,7 @@ function useOpenCode(setStatusKey: SetStatusKey, saveFailed: SaveFailed): OpenCo
     async (code: ModeCode) => {
       if (!isReady(modeStore)) return;
       try {
-        await modeStore.open(savedCodeFrom(code, clock()));
+        await modeStore.open(savedCodeFrom(code, clock(), null));
       } catch {
         return saveFailed('open');
       }
@@ -213,7 +213,7 @@ function useHomeView(
     panelTime,
     continueCode,
     continueTill: continueCode?.expiresAt
-      ? format(continueCode.expiresAt, continueCode.venueTz)
+      ? format(continueCode.expiresAt, venueZone(continueCode))
       : null,
   };
 }
@@ -231,7 +231,7 @@ function statusText(
   const notice = ready?.notice ?? null;
   if (notice !== null) {
     const mode = t(MODE_NAME[notice.mode]);
-    return t('reopen.expired', { mode, time: format(notice.expiredAt, null) });
+    return t('reopen.expired', { mode, time: format(notice.expiredAt, notice.venueTz) });
   }
   if (ready?.dropped) return t('store.unreadable');
   if (statusKey !== null) return t(statusKey);
@@ -279,7 +279,11 @@ function useContinue(setStatusKey: SetStatusKey, saveFailed: SaveFailed): () => 
     const code = savedStream(modeStore);
     if (code === null) return;
     if (code.expiresAt !== null && isExpired(code, clock())) {
-      const notice = { mode: 'stream' as const, expiredAt: code.expiresAt };
+      const notice = {
+        mode: 'stream' as const,
+        expiredAt: code.expiresAt,
+        venueTz: venueZone(code),
+      };
       return void modeStore
         .expire(['stream'], notice)
         .catch(() => logger.warn('store.write-refused', { action: 'expire' }));
