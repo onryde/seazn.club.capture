@@ -244,6 +244,8 @@ class DeliveryWatchTest {
     assertEquals(0L, fresh.sinceAdvanceMs)
     assertEquals(Delivery.UNKNOWN, fresh.delivery)
     assertNull(fresh.pending)
+    assertNull(fresh.variantUrl, "the old session's variant is no baseline")
+    assertNull(fresh.head, "nor is its head")
   }
 
   // Below: added in B4's mutation pass, each killing a mutant the tests above left alive.
@@ -264,7 +266,7 @@ class DeliveryWatchTest {
   }
 
   @Test
-  fun `a poll that brings no evidence withdraws an OK`() {
+  fun `a poll that brings no evidence withdraws an OK and its lag`() {
     val noEvidence =
       listOf<(Long, String) -> FetchResult>(
         { _, _ -> FetchResult.Failed("timeout") },
@@ -278,6 +280,7 @@ class DeliveryWatchTest {
       assertEquals(Delivery.OK, harness.watch.delivery)
       harness.run(10_500, 12_000, answer = answer)
       assertEquals(Delivery.UNKNOWN, harness.watch.delivery, "2 s since the last advance: no evidence, and not yet a stall")
+      assertNull(harness.watch.deliveredLagMs)
     }
   }
 
@@ -398,13 +401,16 @@ class DeliveryWatchTest {
 
   @Test
   fun `a playlist that slid past the last head seen is progress, never a crash`() {
-    // Answered at 0 s, failing until 18 s, then at 20 s it lists 108 to 110: every segment listed is new.
+    // Answered at 0 s, failing until 18 s, then at 20 s it lists 108 to 110: every segment listed is new, and
+    // 101 to 107 came and went unlisted.
     val harness = Harness(DeliveryWatch(master))
     harness.run(0, 0, answer = respond { mediaText(100) })
     harness.run(500, 18_000) { _, _ -> FetchResult.Failed("timeout") }
     harness.run(18_500, 20_000, answer = respond { mediaText(110) })
     assertEquals(Delivery.OK, harness.watch.delivery)
     assertEquals(0L, harness.watch.sinceAdvanceMs)
+    assertEquals(20_000L, harness.watch.mediaMs, "ten 2 s segments since 100: seven unlisted, three listed")
+    assertEquals(0L, harness.watch.deliveredLagMs)
   }
 
   @Test
@@ -448,5 +454,111 @@ class DeliveryWatchTest {
     assertEquals(fresh, after)
     assertTrue(more.isEmpty())
     assertNull(verdict)
+  }
+
+  // Below: fix round 1. Segments that came and went unlisted are credited; an answer that lands off
+  // air, a request given up and a poll with no evidence all claim nothing; the lag window is pinned.
+
+  @Test
+  fun `F-P5-13 a fetch outage longer than the listed window is not lag`() {
+    // Healthy throughout; every fetch from 20.5 s to 79.5 s is a 503. At 80 s the playlist lists 138 to 140,
+    // so 111 to 137 were never listed at a poll. They are credited at the configured 2 s.
+    val harness = Harness(DeliveryWatch(master))
+    val healthy = respond { t -> mediaText(100 + t / 2_000) }
+    harness.run(0, 20_000, answer = healthy)
+    harness.run(20_500, 79_500) { _, _ -> FetchResult.HttpError(503) }
+    harness.run(80_000, 120_000, answer = healthy)
+    assertNull(harness.verdict)
+    assertEquals(Delivery.OK, harness.watch.delivery)
+    assertEquals(120_000L, harness.watch.mediaMs, "heads 100 to 160: 60 segments of 2 s, 27 never listed at a poll")
+    assertEquals(0L, harness.watch.deliveredLagMs)
+  }
+
+  @Test
+  fun `F-P5-13 a drip hidden behind a fetch outage is lagging once fetches return`() {
+    // One 2 s segment every 15 s, and every fetch fails from 0.5 s to 59.5 s. At 60 s the playlist lists 102 to
+    // 104, so 101 went unlisted: 4 segments, 8 s, delivered in 60 s published. Lag growth: 60 − 8 = 52 s.
+    val harness = Harness(DeliveryWatch(master))
+    harness.run(0, 0, answer = respond { mediaText(100) })
+    harness.run(500, 59_500) { _, _ -> FetchResult.Failed("timeout") }
+    harness.run(60_000, 60_000, answer = respond { t -> mediaText(100 + t / 15_000) })
+    val (at, verdict) = harness.verdict!!
+    assertEquals(60_000L, at)
+    assertEquals(NotDeliveredCause.LAGGING, verdict.cause)
+    assertEquals(52_000L, verdict.lagGrowthMs)
+  }
+
+  @Test
+  fun `a tick that comes 30 s late on a healthy stream is not lag`() {
+    val harness = Harness(DeliveryWatch(master))
+    val healthy = respond { t -> mediaText(100 + t / 2_000) }
+    harness.run(0, 20_000, answer = healthy)
+    harness.run(50_000, 60_000, answer = healthy)
+    assertNull(harness.verdict)
+    assertEquals(0L, harness.watch.deliveredLagMs)
+  }
+
+  @Test
+  fun `F-P5-13 unlisted segments are credited no faster than publishing time`() {
+    // Moving to 102 by 4 s; at 6 s the sequence has jumped and the playlist lists 120 to 122. 103 to 119 were
+    // never listed, but only 2 s was published since the look at 4 s: they are credited 2 s, and the three
+    // listed segments 6 s. Delivered: 4 + 2 + 6 = 12 s.
+    val harness = Harness(DeliveryWatch(master))
+    harness.run(0, 4_000, answer = respond { t -> mediaText(100 + t / 2_000) })
+    harness.run(4_500, 6_000, answer = respond { mediaText(122) })
+    assertEquals(12_000L, harness.watch.mediaMs)
+  }
+
+  @Test
+  fun `a master answer that lands after going off air is dropped`() {
+    val (watch, issued) = DeliveryWatch(master).tick(0, onAirNow = true)
+    val (offAir, _) = watch.tick(500, onAirNow = false)
+    val (after, more, verdict) = offAir.fetched(issued.single().id, FetchResult.Body(masterText()), 600)
+    assertEquals(offAir, after)
+    assertTrue(more.isEmpty(), "no variant fetch while off air")
+    assertNull(verdict)
+  }
+
+  @Test
+  fun `a variant answer that lands after going off air gives no verdict and claims nothing`() {
+    // Frozen at 105 since 10 s. The 30 s poll's variant answer lands at 30.6 s, after going off air at 30.5 s,
+    // by when 20.5 s of publishing had passed without an advance.
+    val harness = Harness(DeliveryWatch(master))
+    harness.run(0, 10_000, answer = respond { t -> mediaText(100 + t / 2_000) })
+    harness.run(10_500, 28_000, answer = respond { mediaText(105) })
+    val (polling, masterRequest) = harness.watch.tick(30_000, onAirNow = true)
+    val (following, variantRequest, _) = polling.fetched(masterRequest.single().id, FetchResult.Body(masterText()), 30_000)
+    val (offAir, _) = following.tick(30_500, onAirNow = false)
+    val (after, _, verdict) = offAir.fetched(variantRequest.single().id, FetchResult.Body(mediaText(105)), 30_600)
+    assertNull(verdict)
+    assertEquals(Delivery.UNKNOWN, after.delivery)
+  }
+
+  @Test
+  fun `a request given up unanswered withdraws an OK and its lag`() {
+    val harness = Harness(DeliveryWatch(master))
+    harness.run(0, 10_000, answer = respond { t -> mediaText(100 + t / 2_000) })
+    harness.run(10_500, 22_000) { _, _ -> null }
+    assertEquals(Delivery.UNKNOWN, harness.watch.delivery, "the 12 s poll was given up at 22 s")
+    assertNull(harness.watch.deliveredLagMs)
+  }
+
+  @Test
+  fun `delivery at two thirds of real time is lagging within the minute`() {
+    // One 2 s segment every 3 s. Lag at a poll is t − 2000 × floor(t / 3000); its growth over the last 60 s
+    // first reaches 20 000 at t = 56 000.
+    val harness = Harness(DeliveryWatch(master))
+    harness.run(0, 120_000, answer = respond { t -> mediaText(100 + t / 3_000) })
+    val (at, verdict) = harness.verdict!!
+    assertEquals(56_000L, at)
+    assertEquals(NotDeliveredCause.LAGGING, verdict.cause)
+  }
+
+  @Test
+  fun `delivery at 70 percent of real time never gains 20 s in a minute`() {
+    // Seven 2 s segments per 20 s: over any 60 s the lag grows 18 s, plus at most 1.8 s of poll phase.
+    val harness = Harness(DeliveryWatch(master))
+    harness.run(0, 300_000, answer = respond { t -> mediaText(100 + t * 7 / 20_000) })
+    assertNull(harness.verdict)
   }
 }

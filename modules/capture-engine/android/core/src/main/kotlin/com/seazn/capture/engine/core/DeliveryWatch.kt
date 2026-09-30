@@ -39,14 +39,16 @@ data class LagPoint(val onAirMs: Long, val lagMs: Long)
  *   the same rendition from poll to poll. It never downloads a segment, so the rendition's size
  *   costs nothing.
  * - Plain HLS and LL-HLS are both read. Delivered media time is completed segments plus the parts
- *   published after them; a part that rolls into a completed segment is counted once.
+ *   published after them; a part that rolls into a completed segment is counted once. Segments that came
+ *   and went unlisted between two polls (a fetch outage, a late tick) are credited at the configured segment.
  *
  * - Only publishing time counts: an outage is the hold clock's, not a delivery stall.
  * - A variant change is not progress, and does not reset the stall clock (F-P5-2).
  * - The thresholds come from the segment we configure, never the playlist's `targetDuration`,
  *   which only grows as a stream goes wrong (F-P5-4).
  * - `EXT-X-ENDLIST` never means ended (H-P5-1).
- * - A failed fetch is no evidence either way: it never means not-delivered.
+ * - A failed, abandoned or unreadable fetch is no evidence either way: it never means not-delivered, and it
+ *   withdraws any claim. An answer that lands after going off air is dropped.
  */
 data class DeliveryWatch(
   /** The session's playback URL: the master, as Cloudflare hands it to every viewer. */
@@ -81,8 +83,10 @@ data class DeliveryWatch(
     val elapsed = lastTickMs?.let { if (onAir) nowMs - it else 0 } ?: 0
     var next =
       copy(lastTickMs = nowMs, onAir = onAirNow, onAirMs = onAirMs + elapsed, sinceAdvanceMs = sinceAdvanceMs + elapsed)
-    if (!onAirNow) return next.copy(delivery = Delivery.UNKNOWN, deliveredLagMs = null) to emptyList()
-    if (next.pending != null && nowMs - next.pendingSinceMs >= REQUEST_TIMEOUT_MS) next = next.copy(pending = null)
+    if (!onAirNow) return next.copy(pending = null).withoutEvidence() to emptyList()
+    if (next.pending != null && nowMs - next.pendingSinceMs >= REQUEST_TIMEOUT_MS) {
+      next = next.copy(pending = null).withoutEvidence()
+    }
     if (next.pending != null || nowMs < next.nextPollAtMs) return next to emptyList()
     val request = PlaylistRequest(next.nextRequestId, pollUrl)
     return next.copy(
@@ -103,7 +107,7 @@ data class DeliveryWatch(
       result == FetchResult.NoContent && pendingIsMaster -> cleared.nothingLive()
       playlist is Playlist.Master && pendingIsMaster -> cleared.fetchVariant(playlist, nowMs)
       playlist is Playlist.Media -> cleared.observed(pending.url, playlist)
-      else -> Triple(cleared.copy(delivery = Delivery.UNKNOWN), emptyList(), null)
+      else -> Triple(cleared.withoutEvidence(), emptyList(), null)
     }
   }
 
@@ -125,7 +129,7 @@ data class DeliveryWatch(
 
   private fun fetchVariant(master: Playlist.Master, nowMs: Long): Triple<DeliveryWatch, List<PlaylistRequest>, NotDelivered?> {
     val url = PlaylistParser.resolve(pollUrl, master.variants.first())
-      ?: return Triple(copy(delivery = Delivery.UNKNOWN), emptyList(), null)
+      ?: return Triple(withoutEvidence(), emptyList(), null)
     val request = PlaylistRequest(nextRequestId, url)
     val next = copy(pending = request, pendingIsMaster = false, pendingSinceMs = nowMs, nextRequestId = nextRequestId + 1)
     return Triple(next, listOf(request), null)
@@ -157,7 +161,8 @@ data class DeliveryWatch(
   /**
    * Positions compare only within one variant. A new variant is a new baseline and not progress.
    * The position is the head plus its trailing parts: a new part is progress, and when parts roll
-   * into a completed segment, the parts already counted are taken off that segment's duration.
+   * into a completed segment, the parts already counted are taken off that segment's duration. Segments
+   * that came and went unlisted are credited by [unlistedMs].
    */
   private fun advancedBy(url: String, media: Playlist.Media): DeliveryWatch {
     val previous = head
@@ -175,9 +180,25 @@ data class DeliveryWatch(
     }
     if (media.head == previous && media.partsMs <= partsMs) return this
     val firstNew = (previous + 1 - media.mediaSequence).coerceAtLeast(0).toInt()
-    val added = (media.segmentDurationsMs.drop(firstNew).sum() - partsMs + media.partsMs).coerceAtLeast(0)
+    val listedMs = media.segmentDurationsMs.drop(firstNew).sum()
+    val added = (unlistedMs(previous, media.mediaSequence) + listedMs - partsMs + media.partsMs).coerceAtLeast(0)
     return copy(head = media.head, partsMs = media.partsMs, mediaMs = mediaMs + added, sinceAdvanceMs = 0, advancedInVariant = true)
   }
+
+  /**
+   * The segments after [previous] and before [firstListed]: they came and went between two looks without
+   * ever being listed, in a fetch outage longer than the playlist's window or behind a late tick (F-P5-13).
+   * Each is credited at the configured segment, and all of them together never at more than the publishing
+   * time since the last look, so a sequence that jumps is not media. [lags] ends with that look: every
+   * observation adds one, and what empties it (a rebaseline, a new session) makes the next look a rebaseline.
+   */
+  private fun unlistedMs(previous: Long, firstListed: Long): Long {
+    val count = (firstListed - previous - 1).coerceAtLeast(0)
+    return minOf(count * CONFIGURED_SEGMENT_MS, onAirMs - lags.last().onAirMs)
+  }
+
+  /** No evidence either way: delivery claims nothing, and shows no lag. */
+  private fun withoutEvidence(): DeliveryWatch = copy(delivery = Delivery.UNKNOWN, deliveredLagMs = null)
 
   private fun stalledOr(otherwise: Delivery): Delivery = if (sinceAdvanceMs >= STALLED_AFTER_MS) Delivery.STALLED else otherwise
 
