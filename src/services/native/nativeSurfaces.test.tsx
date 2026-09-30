@@ -238,7 +238,10 @@ describe('the native viewer video', () => {
     await screen.findByTestId('video-view');
     expect(built.video.useVideoPlayer.mock.calls[0]?.[0]).toEqual({ uri: PEEK, useCaching: false });
     expect(built.video.player).toMatchObject({ muted: true, loop: false });
-    expect(built.video.player.play).toHaveBeenCalledTimes(1);
+    // play() is called from an effect. findBy can resolve on the commit before
+    // React flushes it, once a render outlasts the Scheduler's 5 ms slice
+    // (it flaked once under `pnpm check`), so wait for the call itself.
+    await waitFor(() => expect(built.video.player.play).toHaveBeenCalledTimes(1));
     view.rerender(createElement(built.surfaces.Video, { url: PEEK, playing: false }));
     expect(built.video.player.pause).toHaveBeenCalledTimes(1);
   });
