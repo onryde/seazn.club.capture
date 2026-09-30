@@ -62,3 +62,16 @@ vi.mock('@/ui/components/FadeOut', async () => {
   }
   return { FadeOut };
 });
+
+// The hold's fill is a Reanimated worklet; tests read whether it is running and its tone.
+vi.mock('@/ui/components/HoldFill', async () => {
+  const { createElement } = await import('react');
+  const { View } = await import('react-native');
+  return {
+    HoldFill: ({ holding, tone }: { holding: boolean; tone: string }) =>
+      createElement(View, {
+        testID: 'hold-fill',
+        dataSet: { holding: String(holding), tone },
+      } as ViewProps),
+  };
+});

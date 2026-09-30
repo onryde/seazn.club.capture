@@ -13,6 +13,7 @@ import nl from '@/i18n/nl.json';
 const BUDGETS: readonly (readonly [keys: RegExp, max: number])[] = [
   [/^stream\.status\./, 48],
   [/^stream\.tally\./, 12],
+  [/^stream\.action\.(goLive|stop)$/, 16],
 ];
 
 const WIDEST: Readonly<Record<string, string>> = {
