@@ -35,6 +35,17 @@ class FakeSchedulerTest {
   }
 
   @Test
+  fun `a task due after the advance waits for the advance that reaches it`() {
+    val seen = mutableListOf<Long>()
+    scheduler.schedule(1_000) { seen += clock.mono }
+    scheduler.advanceBy(999)
+    assertEquals(emptyList<Long>(), seen)
+    assertEquals(1, scheduler.pending)
+    scheduler.advanceBy(1)
+    assertEquals(listOf(1_000L), seen)
+  }
+
+  @Test
   fun `wall time moves with monotonic time`() {
     val wallBefore = clock.wallMs()
     scheduler.advanceBy(1_500)
