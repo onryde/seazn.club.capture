@@ -26,7 +26,10 @@ data class FrameReading(val atMs: Long, val video: Long, val audio: Long)
 data class StallWatchdog(
   val startedAtMs: Long,
   val lastVideo: Long? = null,
+  /** When an encoded video frame last arrived. Only a frame sets it: it is the LIVE gate. */
   val lastAdvanceAtMs: Long? = null,
+  /** Our own reopen, which starts the zero test's clock without opening the gate (F-P5-10). */
+  val stallFromMs: Long? = null,
   /** Readings since the first frame, pruned to one window. */
   val readings: List<FrameReading> = emptyList(),
   val videoFps: Double? = null,
@@ -62,22 +65,32 @@ data class StallWatchdog(
     return advanced.judgeRate(nowMs, micSilenced)
   }
 
-  /** The time-based rules: the first-frame grace and the zero test. */
+  /** The time-based rules: the first-frame grace and the zero test, which a reopen restarts. */
   fun tick(nowMs: Long, cameraTaken: Boolean): Pair<StallWatchdog, StallVerdict> {
-    val lastAdvance = lastAdvanceAtMs
-    val silentMs = nowMs - (lastAdvance ?: startedAtMs)
-    val limit = if (lastAdvance == null) FIRST_FRAME_GRACE_MS else STALL_MS
+    val stallFrom = lastAdvanceAtMs ?: stallFromMs
+    val silentMs = nowMs - (stallFrom ?: startedAtMs)
+    val limit = if (stallFrom == null) FIRST_FRAME_GRACE_MS else STALL_MS
     return when {
       silentMs < limit -> this to StallVerdict.None
       cameraTaken -> copy(readings = emptyList()) to StallVerdict.Held
-      lastAdvance == null -> this to StallVerdict.Rebuild(StallCause.NO_FIRST_FRAME, silentMs, null, null)
+      stallFrom == null -> this to StallVerdict.Rebuild(StallCause.NO_FIRST_FRAME, silentMs, null, null)
       else -> this to StallVerdict.Rebuild(StallCause.NO_VIDEO, silentMs, videoFps, audioFps)
     }
   }
 
-  /** Our own camera reopen finished: the window starts again and the reopened camera gets a full [STALL_MS]. */
+  /**
+   * Our own camera reopen finished. The reopened camera gets a full [STALL_MS] from now, but a
+   * reopen is not a frame: [advancing] stays false until one arrives, and the window starts at it.
+   */
   fun rebaselined(nowMs: Long): StallWatchdog =
-    copy(lastVideo = null, lastAdvanceAtMs = nowMs, readings = emptyList(), videoFps = null, audioFps = null)
+    copy(
+      lastVideo = null,
+      lastAdvanceAtMs = null,
+      stallFromMs = nowMs,
+      readings = emptyList(),
+      videoFps = null,
+      audioFps = null,
+    )
 
   private fun judgeRate(nowMs: Long, micSilenced: Boolean): Pair<StallWatchdog, StallVerdict> {
     val base = readings.firstOrNull()?.takeIf { it.atMs <= nowMs - WINDOW_MS } ?: return this to StallVerdict.None

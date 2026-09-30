@@ -158,6 +158,21 @@ class StallWatchdogTest {
   }
 
   @Test
+  fun `F-P5-6 the LIVE gate - a reopen is not a frame`() {
+    val reopened = StallWatchdog(startedAtMs = 0).rebaselined(1_000)
+    assertFalse(reopened.advancing(1_000))
+    val baseline = reopened.frames(40, 60, 1_500, false, false).first
+    assertFalse(baseline.advancing(1_500), "the first reading after a reopen is a baseline")
+    // The reopened camera still gets its full 3 s, counted from the reopen.
+    assertEquals(StallVerdict.None, baseline.tick(3_999, cameraTaken = false).second)
+    assertEquals(StallVerdict.Rebuild(StallCause.NO_VIDEO, 3_000, null, null), baseline.tick(4_000, cameraTaken = false).second)
+    // A count that grew across the reopen is a baseline too, not a frame.
+    val drive = healthy()
+    val after = drive.dog.rebaselined(drive.t).frames(drive.video + 15, drive.audio + 23, drive.t + 500, false, false).first
+    assertFalse(after.advancing(drive.t + 500))
+  }
+
+  @Test
   fun `the rates shown are the window's, truncated to one decimal`() {
     // Audio 23, 23, 24 frames a half second: every 3 s window holds 140 frames, 46.67 a second.
     // Truncated, that shows 46.6; rounded, it would show 46.7.
@@ -239,19 +254,22 @@ class StallWatchdogTest {
   }
 
   @Test
-  fun `F-P5-10 after our reopen the old rates are gone and the wait for a frame is not judged`() {
+  fun `F-P5-10 after our reopen the old rates are gone and the window starts at the first frame`() {
+    // The camera is taken for 2 s with video stopped, not yet held, so the old window's rates still show.
     val drive = healthy()
-    drive.steps(20, 0, 23, cameraTaken = true)
-    drive.verdicts.clear()
+    drive.steps(4, 0, 23, cameraTaken = true)
+    assertEquals(30.0, drive.dog.videoFps)
     drive.dog = drive.dog.rebaselined(drive.t)
     assertNull(drive.dog.videoFps)
     assertNull(drive.dog.audioFps)
-    // No frame for 2 s after the reopen, then 18 fps. Counting the reopen's first reading into the
-    // window would judge 3 steps of 9 frames over 3 s, 9.0 fps, at 3.5 s; the window from the second
-    // reading, at 4 s, holds 4 steps: 36 / 3 = 12.0.
+    // No frame for 2 s after the reopen, then 9 frames a half second from 2.5 s. The first window is
+    // judged 3 s after that first frame, at 5.5 s: six steps of 9, 54 / 3 = 18.0. Readings from the
+    // wait would start the window 1 s after the reopen and judge it at 4 s: 36 / 3 = 12.0.
     drive.steps(4, 0, 23)
-    drive.steps(4, 9, 23)
+    drive.steps(6, 9, 23)
+    assertNull(drive.dog.videoFps, "5 s after the reopen, no window is full yet")
+    drive.step(9, 23)
     assertTrue(drive.verdicts.isEmpty(), "got ${drive.verdicts}")
-    assertEquals(12.0, drive.dog.videoFps)
+    assertEquals(18.0, drive.dog.videoFps)
   }
 }
