@@ -98,4 +98,26 @@ class FallbackPolicyTest {
     val policy = FallbackPolicy(Transport.RTMPS, Transport.SRT).failConnect(3)
     assertEquals(Transport.SRT, policy.current)
   }
+
+  // Each test below pins a guard that a mutation of the code above showed no other test kills.
+
+  @Test
+  fun `25 s of publishing clears the count, and 24_999 ms still counts`() {
+    val two = start.failConnect(2)
+    val proven = two.dropped(DropReason.ENDPOINT_CLOSED, networkValidated = true, publishedMs = 25_000)
+    assertFalse(proven.counted)
+    assertEquals(0, proven.policy.count)
+    assertTrue(two.dropped(DropReason.ENDPOINT_CLOSED, networkValidated = true, publishedMs = 24_999).fellBack)
+  }
+
+  @Test
+  fun `short drops count nothing after the fallback, or with no fallback transport`() {
+    val fell = start.failConnect(3)
+    val alone = FallbackPolicy(Transport.SRT, fallback = null)
+    for ((policy, stays) in listOf(fell to Transport.RTMPS, alone to Transport.SRT)) {
+      val after = (1..5).fold(policy) { p, _ -> p.dropped(DropReason.ENDPOINT_CLOSED, true, publishedMs = 6_000).policy }
+      assertEquals(stays, after.current)
+      assertEquals(0, after.count)
+    }
+  }
 }
