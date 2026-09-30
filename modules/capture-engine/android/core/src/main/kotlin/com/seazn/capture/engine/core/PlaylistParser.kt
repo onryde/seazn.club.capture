@@ -51,6 +51,9 @@ object PlaylistParser {
   private const val ENDLIST = "#EXT-X-ENDLIST"
   private const val PART = "#EXT-X-PART:"
   private const val PART_INF = "#EXT-X-PART-INF:"
+
+  /** The longest duration read, in seconds. No live segment or part is an hour long; past that it is garbage. */
+  private const val MAX_DURATION_S = 3_600.0
   private val ATTRIBUTE = Regex("""([A-Z0-9-]+)=("[^"]*"|[^,]*)""")
 
   fun parse(text: String): Playlist {
@@ -64,12 +67,26 @@ object PlaylistParser {
   fun resolve(baseUrl: String, reference: String): String? =
     runCatching { URI(baseUrl).resolve(URI(reference)).toString() }.getOrNull()
 
+  /** Each `EXT-X-STREAM-INF` takes the next line that is not a tag or comment; a URI line nothing announced is ignored. */
   private fun master(lines: List<String>): Playlist {
-    val variants = lines.zipWithNext().filter { (tag, _) -> tag.startsWith(STREAM_INF) }.map { it.second }
-    val uris = variants.filter { !it.startsWith("#") }
+    val uris = mutableListOf<String>()
+    var announced = false
+    for (line in lines) {
+      when {
+        line.startsWith(STREAM_INF) -> announced = true
+        announced && !line.startsWith("#") -> {
+          uris += line
+          announced = false
+        }
+      }
+    }
     return if (uris.isEmpty()) Playlist.Invalid("master without variants") else Playlist.Master(uris)
   }
 
+  /**
+   * A segment is its tags, then its URI (RFC 8216 §4.3.2): an `EXTINF` waits for the next line that is not a
+   * tag or comment. Exactly one `EXTINF` per URI, and parts listed before a URI are that segment's.
+   */
   private fun media(lines: List<String>): Playlist {
     val target = lines.firstOrNull { it.startsWith(TARGET_DURATION) }?.removePrefix(TARGET_DURATION)?.toIntOrNull()
       ?: return Playlist.Invalid("neither a master nor a media playlist")
@@ -77,24 +94,24 @@ object PlaylistParser {
     val partTarget = lines.firstOrNull { it.startsWith(PART_INF) }?.let { seconds(attributes(it.removePrefix(PART_INF))["PART-TARGET"]) }
     val durations = mutableListOf<Long>()
     val parts = mutableListOf<Long>()
-    for ((index, line) in lines.withIndex()) {
+    var extinf: Long? = null
+    for (line in lines) {
       when {
         line.startsWith(PART) -> parts += part(line) ?: return Playlist.Invalid("bad EXT-X-PART")
         line.startsWith(EXTINF) -> {
-          durations += segment(line, lines.getOrNull(index + 1)) ?: return Playlist.Invalid("bad EXTINF")
+          if (extinf != null) return Playlist.Invalid("bad EXTINF")
+          extinf = seconds(line.removePrefix(EXTINF).substringBefore(',')) ?: return Playlist.Invalid("bad EXTINF")
+        }
+        !line.startsWith("#") -> {
+          durations += extinf ?: return Playlist.Invalid("bad EXTINF")
+          extinf = null
           parts.clear()
         }
       }
     }
+    if (extinf != null) return Playlist.Invalid("bad EXTINF")
     val lowLatency = partTarget != null || lines.any { it.startsWith(PART) }
     return Playlist.Media(target, sequence, durations, lines.any { it == ENDLIST }, lowLatency, partTarget, parts.filter { it >= 0 })
-  }
-
-  /** A segment's duration, when its `EXTINF` is well formed and a URI follows it. */
-  private fun segment(line: String, uri: String?): Long? {
-    val seconds = line.removePrefix(EXTINF).substringBefore(',').toDoubleOrNull()
-    if (seconds == null || seconds < 0 || uri == null || uri.startsWith("#")) return null
-    return Math.round(seconds * 1_000)
   }
 
   /** A part's duration; -1 for a gap, which is listed but carries no media. Null when malformed. */
@@ -105,7 +122,9 @@ object PlaylistParser {
     return if (attributes["GAP"] == "YES") -1 else duration
   }
 
-  private fun seconds(value: String?): Long? = value?.toDoubleOrNull()?.takeIf { it >= 0 && it.isFinite() }?.let { Math.round(it * 1_000) }
+  /** Milliseconds, for a number of seconds from 0 to [MAX_DURATION_S]. NaN and the infinities are outside it. */
+  private fun seconds(value: String?): Long? =
+    value?.toDoubleOrNull()?.takeIf { it in 0.0..MAX_DURATION_S }?.let { Math.round(it * 1_000) }
 
   private fun attributes(list: String): Map<String, String> =
     ATTRIBUTE.findAll(list).associate { it.groupValues[1] to it.groupValues[2] }

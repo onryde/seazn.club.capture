@@ -174,4 +174,80 @@ class PlaylistParserTest {
       PlaylistParser.parse("#EXTM3U\n#EXT-X-TARGETDURATION:2\n#EXT-X-PART:DURATION=Infinity,URI=\"a.mp4\"\n"),
     )
   }
+
+  // Below: fix round 1. A segment's URI is the next line that is not a tag (RFC 8216 §4.3.2), a
+  // variant's is the next such line after its stream-inf, and a duration runs from 0 s to an hour.
+
+  @Test
+  fun `RFC 8216 tags between an EXTINF and its URI change nothing`() {
+    // §4.3.2: "Each Media Segment is specified by a series of Media Segment tags followed by a URI."
+    val between =
+      listOf(
+        "#EXT-X-BYTERANGE:75232@0",
+        "#EXT-X-PROGRAM-DATE-TIME:2026-09-30T14:32:05.123Z",
+        "#EXT-X-DISCONTINUITY",
+        "#EXT-X-KEY:METHOD=NONE",
+        "#EXT-X-BITRATE:3000",
+        "# a comment",
+      )
+    var checked = 0
+    for (tag in between) {
+      val text = "#EXTM3U\n#EXT-X-TARGETDURATION:2\n#EXT-X-MEDIA-SEQUENCE:5\n#EXTINF:2.0,\n$tag\na.ts\n#EXTINF:1.5,\nb.ts\n"
+      assertEquals(Playlist.Media(2, 5, listOf(2_000L, 1_500L), endList = false), PlaylistParser.parse(text), tag)
+      checked += 1
+    }
+    assertEquals(6, checked)
+  }
+
+  @Test
+  fun `a part listed between an EXTINF and its URI belongs to that segment, not the trailing ones`() {
+    val text = "#EXTM3U\n#EXT-X-TARGETDURATION:2\n#EXTINF:2.0,\n#EXT-X-PART:DURATION=0.5,URI=\"p.mp4\"\na.mp4\n"
+    val media = assertIs<Playlist.Media>(PlaylistParser.parse(text))
+    assertEquals(listOf(2_000L), media.segmentDurationsMs)
+    assertEquals(emptyList(), media.trailingPartsMs)
+  }
+
+  @Test
+  fun `every segment URI needs exactly one EXTINF before it`() {
+    val head = "#EXTM3U\n#EXT-X-TARGETDURATION:2\n"
+    assertEquals(Playlist.Invalid("bad EXTINF"), PlaylistParser.parse(head + "#EXTINF:2.0,\n#EXTINF:2.0,\na.ts\n"), "two for one URI")
+    assertEquals(Playlist.Invalid("bad EXTINF"), PlaylistParser.parse(head + "#EXTINF:2.0,\na.ts\n#EXTINF:2.0,\n"), "one with no URI")
+    assertEquals(Playlist.Invalid("bad EXTINF"), PlaylistParser.parse(head + "#EXTINF:2.0,\na.ts\nb.ts\n"), "a URI with none")
+  }
+
+  @Test
+  fun `a stream-inf takes the next URI line, past any tag or comment`() {
+    val text =
+      "#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=3128000\n# the 720 rendition\nstream_720/video.m3u8\n" +
+        "#EXT-X-STREAM-INF:BANDWIDTH=928000\nstream_360/video.m3u8\n"
+    assertEquals(Playlist.Master(listOf("stream_720/video.m3u8", "stream_360/video.m3u8")), PlaylistParser.parse(text))
+  }
+
+  @Test
+  fun `a URI line that no stream-inf announced is not a variant`() {
+    val text = "#EXTM3U\nbefore.m3u8\n#EXT-X-STREAM-INF:BANDWIDTH=928000\nstream_360/video.m3u8\nafter.m3u8\n"
+    assertEquals(Playlist.Master(listOf("stream_360/video.m3u8")), PlaylistParser.parse(text))
+  }
+
+  @Test
+  fun `a non-finite, negative or absurd duration is invalid`() {
+    for (duration in listOf("Infinity", "NaN", "-2.0", "1e300")) {
+      assertEquals(
+        Playlist.Invalid("bad EXTINF"),
+        PlaylistParser.parse("#EXTM3U\n#EXT-X-TARGETDURATION:2\n#EXTINF:$duration,\na.ts\n"),
+        duration,
+      )
+    }
+    assertEquals(
+      Playlist.Invalid("bad EXT-X-PART"),
+      PlaylistParser.parse("#EXTM3U\n#EXT-X-TARGETDURATION:2\n#EXT-X-PART:DURATION=1e300,URI=\"a\"\n"),
+    )
+  }
+
+  @Test
+  fun `a duration runs from 0 s to an hour`() {
+    val bounds = PlaylistParser.parse("#EXTM3U\n#EXT-X-TARGETDURATION:2\n#EXTINF:0,\na.ts\n#EXTINF:3600,\nb.ts\n")
+    assertEquals(listOf(0L, 3_600_000L), assertIs<Playlist.Media>(bounds).segmentDurationsMs)
+    assertEquals(Playlist.Invalid("bad EXTINF"), PlaylistParser.parse("#EXTM3U\n#EXT-X-TARGETDURATION:2\n#EXTINF:3600.5,\na.ts\n"))
+  }
 }
