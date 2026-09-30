@@ -132,7 +132,7 @@ class HeartbeatTest {
     val (first, id) = Heartbeat.due(HeartbeatState(), 0, 0)
     assertEquals(1, id)
     val (skipped, none) = Heartbeat.due(first, 5_000, 5_000)
-    assertNull(none, "no second beat while one is in flight")
+    assertNull(none, "not due until 10 s: the interval holds this, since a 10 s timeout clears a beat in flight first")
     val (second, next) = Heartbeat.due(skipped, 10_000, 10_000)
     assertEquals(2, next)
     assertEquals(1, second.failures)
