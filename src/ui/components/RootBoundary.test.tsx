@@ -95,7 +95,7 @@ describe('RootBoundary', () => {
     [
       'es',
       'Algo falló',
-      'Puede que la emisión siga en directo. Reintenta para volver a Detener.',
+      'Puede que la emisión siga en directo. Toca Reintentar para volver al botón Detener.',
       'Reintentar',
     ],
     [
