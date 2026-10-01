@@ -172,6 +172,39 @@ describe('useStreamLeave', () => {
   });
 });
 
+/**
+ * M2 (final review): the record says why a session vanished. A leave's reset
+ * is recorded like every other intent, with the leave named as its cause.
+ */
+describe('useStreamLeave: the record names the leave’s reset (M2)', () => {
+  const resetLines = (leaving: Awaited<ReturnType<typeof leaveHook>>) =>
+    readRecord(leaving.record)
+      .filter((entry) => entry.event === 'intent.reset')
+      .map(({ level, event, fields }) => ({ level, event, fields }));
+
+  it.each([
+    ['stopped', STOPPED],
+    ['failed', FAILED],
+  ])('records the reset of a %s session it clears on the way Home', async (_, state) => {
+    const leaving = await leaveHook();
+    act(() => leaving.engine.forceState(state));
+    act(() => leaving.hook.result.current.leave());
+    await waitFor(() => expect(leaving.navigation.current()).toBe('home'));
+    expect(leaving.engine.getSnapshot().state).toEqual({ kind: 'idle' });
+    expect(resetLines(leaving)).toEqual([
+      { level: 'info', event: 'intent.reset', fields: { action: 'leave' } },
+    ]);
+  });
+
+  it('records no reset for a leave that sends none', async () => {
+    const leaving = await leaveHook();
+    act(() => leaving.engine.forceState({ kind: 'armed' }));
+    act(() => leaving.hook.result.current.leave());
+    await waitFor(() => expect(leaving.navigation.current()).toBe('home'));
+    expect(resetLines(leaving)).toEqual([]);
+  });
+});
+
 describe('useStreamLeave: the next code after a stop (I1)', () => {
   // Fix round 3: a replace passes through the old session's Ended (N1). A
   // leave there spends nothing of this code's: it is kept, and the old

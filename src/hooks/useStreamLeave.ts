@@ -143,7 +143,11 @@ function useFinishLeave(onBlocked: () => void): FinishLeave {
         return onBlocked();
       }
       beforeHome();
-      if (clearsSession(rule, status)) engine.send({ kind: 'reset' });
+      if (clearsSession(rule, status)) {
+        // M2: recorded like every intent, so the record says why the session went.
+        logger.info('intent.reset', { action: 'leave' });
+        engine.send({ kind: 'reset' });
+      }
       navigation.go('home');
     },
     [navigation, engine, logger, onBlocked],
