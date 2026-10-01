@@ -27,7 +27,11 @@ export type EngineIntent =
   | { readonly kind: 'arm'; readonly session: StreamSession; readonly heartbeat: HeartbeatTarget }
   | { readonly kind: 'start' }
   | { readonly kind: 'stop' }
-  /** Clear a finished session so the next fixture can be scanned. */
+  /**
+   * Clear a finished session so the next fixture can be scanned. Ended only:
+   * native ignores it in any other state (plan B's SessionMachine.kt), so an
+   * armed session is stopped first (fix round 3, N1).
+   */
   | { readonly kind: 'reset' }
   | { readonly kind: 'switchCamera' };
 
@@ -65,6 +69,14 @@ export type EngineSnapshot = {
    * native snapshot carries neither; plan C's bridge must report both.
    */
   readonly slot: number | null;
+  /**
+   * N2: `tokenTag` of the armed session's token, never the token (D8). With
+   * `descriptor.sid` and `slot` it names the code native holds, so a re-issued
+   * code (same match and slot, new token) is told from the first. Null before
+   * an arm and after a reset. Plan C: the bridge computes it at the arm with
+   * the same `tokenTag` and native echoes it (C8).
+   */
+  readonly tokenTag: string | null;
   /** Null with no session: idle, and once ended (plan B's `Snapshot.camera`). */
   readonly camera: CameraState | null;
   /**

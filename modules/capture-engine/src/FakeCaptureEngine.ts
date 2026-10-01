@@ -1,6 +1,7 @@
 import type { SessionDescriptor } from '@/domain/credentials/SessionDescriptor';
 import type { Transport } from '@/domain/credentials/StreamCredentials';
 import type { StreamSession } from '@/domain/credentials/StreamSession';
+import { tokenTag } from '@/domain/credentials/tokenTag';
 import type {
   DegradeReason,
   EndReason,
@@ -73,6 +74,8 @@ export type FakeCaptureEngine = CaptureEnginePort & {
   setDescriptor(descriptor: SessionDescriptor | null): void;
   /** Replace the armed slot alone: a session native holds from before this visit. */
   setSlot(slot: number | null): void;
+  /** Replace the armed token's tag alone, likewise (N2). */
+  setTokenTag(tag: string | null): void;
   /** Every intent received, in order. */
   readonly intents: readonly EngineIntent[];
   /** Stop reporting: what a suspended process looks like from JS. */
@@ -320,6 +323,7 @@ export function createFakeCaptureEngine(now: () => number = Date.now): FakeCaptu
     telemetry: IDLE_TELEMETRY,
     descriptor: null,
     slot: null,
+    tokenTag: null,
     camera: null,
     reportedAtMs: now(),
     survivesBackground: false,
@@ -357,10 +361,11 @@ export function createFakeCaptureEngine(now: () => number = Date.now): FakeCaptu
     }, afterMs);
   };
 
-  const arm = ({ descriptor, slot, primary: credential }: StreamSession): void => {
+  const arm = ({ descriptor, slot, token, primary: credential }: StreamSession): void => {
     if (snapshot.state.kind !== 'idle') return;
     primary = credential.transport;
-    publish({ state: { kind: 'armed' }, telemetry: ARMED, descriptor, slot, camera: 'own' });
+    const named = { descriptor, slot, tokenTag: tokenTag(token) };
+    publish({ state: { kind: 'armed' }, telemetry: ARMED, ...named, camera: 'own' });
   };
   const start = (): void => {
     if (snapshot.state.kind !== 'armed') return;
@@ -374,13 +379,16 @@ export function createFakeCaptureEngine(now: () => number = Date.now): FakeCaptu
     const since = sinceOf(snapshot.state);
     show(ended('operator-stopped', since === null ? null : now() - since));
   };
+  // N1: native resets only from Ended (plan B's SessionMachine.kt); so does the fake.
   const reset = (): void => {
+    if (snapshot.state.kind !== 'ended') return;
     cancelPending();
     publish({
       state: { kind: 'idle' },
       telemetry: IDLE_TELEMETRY,
       descriptor: null,
       slot: null,
+      tokenTag: null,
       camera: null,
     });
   };
@@ -432,6 +440,7 @@ export function createFakeCaptureEngine(now: () => number = Date.now): FakeCaptu
     setCamera: (camera) => publish({ camera }),
     setDescriptor: (descriptor) => publish({ descriptor }),
     setSlot: (slot) => publish({ slot }),
+    setTokenTag: (tag) => publish({ tokenTag: tag }),
     // A suspended process reports nothing at all, a pending connect included.
     suspend: () => {
       cancelPending();

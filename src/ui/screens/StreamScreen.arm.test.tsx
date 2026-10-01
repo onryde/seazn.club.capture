@@ -5,6 +5,7 @@ import { sampleDescriptor } from '@/services/fakeDescriptorPort';
 import { readRecord, TEST_NOW } from '../../../test/fakePorts';
 import { savedStreamCode } from '../../../test/fixtures/savedStream';
 import { FIXTURE_NOW, FIXTURE_SECRETS } from '../../../test/fixtures/wire';
+import { holdCode } from '../../../test/holdCode';
 import { pressIn } from '../../../test/press';
 import { renderViewfinder } from '../../../test/renderViewfinder';
 
@@ -204,7 +205,7 @@ describe('the viewfinder arming (spec §1)', () => {
     expect(arms(view)).toHaveLength(1);
   });
 
-  // Native's session for this code, as a reopen finds it (I1, C7: by sid and slot).
+  // Native's session for this code, as a reopen finds it (I1, C7, N2: by sid, slot and token).
   it.each(['armed-ready', 'live'] as const)(
     'does not arm an engine that is already %s with this code',
     async (scene) => {
@@ -212,10 +213,8 @@ describe('the viewfinder arming (spec §1)', () => {
         {},
         {
           prepare: (fakes) => {
-            const saved = savedStreamCode();
             fakes.engine.scene(scene);
-            fakes.engine.setDescriptor(saved.descriptor);
-            fakes.engine.setSlot(saved.slot);
+            holdCode(fakes.engine, savedStreamCode());
           },
         },
       );
@@ -225,13 +224,14 @@ describe('the viewfinder arming (spec §1)', () => {
   );
 
   // Batch 9 I1: a session native holds but cannot name is not this code's to
-  // adopt. It is reset and the code armed in its place.
+  // adopt. It is replaced by native's own path (N1: stop, reset) and the code
+  // armed in its place.
   it('replaces an armed session native cannot name, and arms this code', async () => {
     const view = await renderViewfinder(
       {},
       { prepare: (fakes) => fakes.engine.scene('armed-ready') },
     );
-    expect(view.engine.intents.map((intent) => intent.kind)).toEqual(['reset', 'arm']);
+    expect(view.engine.intents.map((intent) => intent.kind)).toEqual(['stop', 'reset', 'arm']);
     expect(plate()).toBe('Ready');
   });
 

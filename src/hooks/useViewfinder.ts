@@ -53,6 +53,12 @@ export type Viewfinder = {
   readonly onAir: boolean;
   /** On air with a viewer picture to play (carry 13): the peek's one gate. */
   readonly peekable: boolean;
+  /**
+   * N3: on the way from another code's session to this one's arm. The column
+   * reads not ready until it arrives, and the stage shows nothing of the old
+   * session (its label, overlay or Ended screen).
+   */
+  readonly replacing: boolean;
   start(): void;
   stop(): void;
 };
@@ -74,9 +80,11 @@ const ACTION: Readonly<Record<Kind, ViewfinderAction>> = {
  * hands the column the same object and its React.memo parts skip (AGENTS §8).
  */
 export function useViewfinder(departed: () => boolean): Viewfinder {
-  const { unusable } = useStreamArm(departed);
-  const kind = useEngineSelector(selectStateKind);
-  const checks = usePreflight(unusable);
+  const { unusable, replacing } = useStreamArm(departed);
+  // N3: a replace reads as armed with no details yet, whatever the old session is doing.
+  const engineKind = useEngineSelector(selectStateKind);
+  const kind = replacing ? 'armed' : engineKind;
+  const checks = usePreflight(unusable, replacing);
   const engineKey = useEngineSelector(selectStatusKey);
   const countdown = useHoldCountdown();
   const intents = useIntents();
@@ -86,8 +94,9 @@ export function useViewfinder(departed: () => boolean): Viewfinder {
       ...project({ kind, unusable, checks, engineKey, playable }),
       ...countdown,
       ...intents,
+      replacing,
     }),
-    [kind, unusable, checks, engineKey, playable, countdown, intents],
+    [kind, unusable, checks, engineKey, playable, countdown, intents, replacing],
   );
 }
 
@@ -102,7 +111,7 @@ type ProjectInput = {
 /** The column's reading of native state and the saved code. Pure: a projection, no state machine. */
 function project(
   input: ProjectInput,
-): Omit<Viewfinder, 'holdRemaining' | 'holdWindow' | 'start' | 'stop'> {
+): Omit<Viewfinder, 'holdRemaining' | 'holdWindow' | 'start' | 'stop' | 'replacing'> {
   const { kind, checks } = input;
   const blocker = goLiveBlocker(checks.preflight);
   const action = ACTION[kind];
@@ -126,8 +135,12 @@ type PreflightView = {
   readonly goLiveBy: string | null;
 };
 
-/** Spec §1's four chips; the code chip is `CODE_READS`', as the status line is (R3). Memoised (M7). */
-function usePreflight(unusable: boolean): PreflightView {
+/**
+ * Spec §1's four chips; the code chip is `CODE_READS`', as the status line is
+ * (R3). Memoised (M7). While replacing (N3) this code's details are not known
+ * yet, whatever the old session's descriptor says.
+ */
+function usePreflight(unusable: boolean, replacing: boolean): PreflightView {
   const camera = useEngineSelector(selectCameraReady);
   const network = useEngineSelector(selectNetworkReachable);
   const sound = useEngineSelector(selectSoundReady);
@@ -135,7 +148,8 @@ function usePreflight(unusable: boolean): PreflightView {
   const zone = useEngineSelector(selectVenueZone);
   const passed = useDeadlinePassed(deadlineMs);
   const format = useFormatTime();
-  const code = codeCheck({ unusable, deadlineKnown: deadlineMs !== null, passed });
+  const deadlineKnown = deadlineMs !== null && !replacing;
+  const code = codeCheck({ unusable, deadlineKnown, passed });
   const chip = CODE_READS[code].chip;
   const goLiveBy = chip && deadlineMs !== null ? format(new Date(deadlineMs), zone) : null;
   return useMemo(

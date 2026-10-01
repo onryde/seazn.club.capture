@@ -104,6 +104,10 @@ export const selectPlaybackUrl = (snapshot: EngineSnapshot) =>
 export const selectScoreUpdates = (snapshot: EngineSnapshot) =>
   snapshot.descriptor?.scoreUpdates ?? null;
 export const selectLabel = (snapshot: EngineSnapshot) => snapshot.descriptor?.label ?? null;
+/** What names native's session (I1, C7, N2): read apart, so each is a stable scalar. */
+export const selectHeldSid = (snapshot: EngineSnapshot) => snapshot.descriptor?.sid ?? null;
+export const selectHeldSlot = (snapshot: EngineSnapshot) => snapshot.slot;
+export const selectHeldTokenTag = (snapshot: EngineSnapshot) => snapshot.tokenTag;
 /** The venue's zone from the armed descriptor: every time the operator reads is in it (spec §2). */
 export const selectVenueZone = (snapshot: EngineSnapshot) =>
   snapshot.descriptor?.venueTimezone ?? null;

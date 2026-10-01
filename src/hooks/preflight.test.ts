@@ -30,6 +30,7 @@ const armed = (telemetry: Partial<Telemetry>): EngineSnapshot => ({
   telemetry: { ...IDLE_TELEMETRY, ...telemetry },
   descriptor: null,
   slot: null,
+  tokenTag: null,
   camera: 'own',
   reportedAtMs: 0,
   survivesBackground: true,

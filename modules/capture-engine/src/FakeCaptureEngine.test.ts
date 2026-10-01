@@ -150,7 +150,7 @@ describe('the fake engine (spec §2: scripted snapshots, no state machine of its
   });
 
   // Fix round 2 (C7): the slot is what tells one camera of a session from another.
-  it('reports the slot it was armed with, keeps the first on a second arm, and forgets it on reset', () => {
+  it('reports the slot it was armed with, keeps the first on a second arm and once ended, and forgets it on reset', () => {
     expect(engine.getSnapshot().slot).toBeNull();
     engine.send({ kind: 'arm', session: streamSession({}, { slot: 2 }), heartbeat });
     expect(engine.getSnapshot().slot).toBe(2);
@@ -158,20 +158,42 @@ describe('the fake engine (spec §2: scripted snapshots, no state machine of its
     expect(engine.getSnapshot().slot).toBe(2);
     engine.send({ kind: 'start' });
     expect(engine.getSnapshot().slot).toBe(2);
+    engine.send({ kind: 'stop' });
+    expect(engine.getSnapshot().slot).toBe(2);
     engine.send({ kind: 'reset' });
     expect(engine.getSnapshot().slot).toBeNull();
   });
 
-  it('resets to idle and forgets the descriptor', () => {
+  // N2: the token's tag, never the token (D8); the kit pins it too (test/engineContract.ts).
+  it('reports the tag of the token it was armed with, and forgets it on reset', () => {
+    expect(engine.getSnapshot().tokenTag).toBeNull();
     engine.send({ kind: 'arm', session, heartbeat });
+    // FNV-1a 32 of the fixture token, from an independent Python FNV-1a.
+    expect(engine.getSnapshot().tokenTag).toBe('e5da86ff');
+    engine.send({ kind: 'stop' });
+    expect(engine.getSnapshot().tokenTag).toBe('e5da86ff');
+    engine.send({ kind: 'reset' });
+    expect(engine.getSnapshot().tokenTag).toBeNull();
+  });
+
+  // N1: reset is Ended-only, as plan B's core's is; an armed session is stopped first.
+  it('ignores a reset while armed, and resets to idle and forgets the descriptor once ended', () => {
+    engine.send({ kind: 'arm', session, heartbeat });
+    engine.send({ kind: 'reset' });
+    expect(state()).toEqual({ kind: 'armed' });
+    expect(engine.getSnapshot().descriptor).toBe(session.descriptor);
+    engine.send({ kind: 'stop' });
     engine.send({ kind: 'reset' });
     expect(state()).toEqual({ kind: 'idle' });
     expect(engine.getSnapshot().descriptor).toBeNull();
   });
 
-  it('stays idle after a reset while connecting', () => {
+  it('ignores a reset while connecting; stopped and reset, no pending connect revives it', () => {
     engine.send({ kind: 'arm', session, heartbeat });
     engine.send({ kind: 'start' });
+    engine.send({ kind: 'reset' });
+    expect(state()).toEqual({ kind: 'connecting', transport: 'srt' });
+    engine.send({ kind: 'stop' });
     engine.send({ kind: 'reset' });
     wait(5000);
     expect(state()).toEqual({ kind: 'idle' });
@@ -408,6 +430,7 @@ describe('after our own camera reopen (F-P5-10; plan B holds it degraded)', () =
 describe('no stale time on air (M4)', () => {
   it('forgets it across a reset: the next session, stopped while connecting, has none', () => {
     engine.scene('camera-reopened');
+    engine.send({ kind: 'stop' });
     engine.send({ kind: 'reset' });
     engine.send({ kind: 'arm', session, heartbeat });
     engine.send({ kind: 'start' });
@@ -469,7 +492,8 @@ describe('whose camera is on air (carry 10)', () => {
   });
 
   it('has none after a reset', () => {
-    engine.scene('camera-taken');
+    engine.scene('stopped');
+    engine.setCamera('taken');
     engine.send({ kind: 'reset' });
     expect(camera()).toBeNull();
   });

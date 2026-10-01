@@ -7,6 +7,7 @@ import { STORE_KEYS } from '@/services/modeStore';
 import { StreamScreen } from '@/ui/screens/StreamScreen';
 import { createFakePorts, type FakePorts } from '../../../test/fakePorts';
 import { savedStreamCode } from '../../../test/fixtures/savedStream';
+import { holdCode } from '../../../test/holdCode';
 import { pressIn } from '../../../test/press';
 import { renderViewfinder } from '../../../test/renderViewfinder';
 import { wrapperFor } from '../../../test/renderWithPorts';
@@ -18,12 +19,10 @@ const FAILED = { kind: 'ended', reason: 'fatal-error', durationMs: 5000 } as con
 /** Lets the leave's write settle: fake timers hold waitFor's own clock. */
 const settle = () => act(() => vi.advanceTimersByTimeAsync(10));
 
-/** Native already holding this code's session, as a reopen finds it (I1, C7: matched by sid and slot). */
+/** Native already holding this code's session, as a reopen finds it (I1, C7, N2: sid, slot and token). */
 const holding = (scene: FakeScene) => (fakes: FakePorts) => {
-  const saved = savedStreamCode();
   fakes.engine.scene(scene);
-  fakes.engine.setDescriptor(saved.descriptor);
-  fakes.engine.setSlot(saved.slot);
+  holdCode(fakes.engine, savedStreamCode());
 };
 
 /**

@@ -16,6 +16,8 @@ import { colour } from '@/ui/theme/tokens';
 
 type StageProps = {
   readonly armed: boolean;
+  /** N3: replacing another code's session, so nothing of it is shown: no label, no overlay. */
+  readonly replacing: boolean;
   readonly overlayOn: boolean;
   readonly peek: Peek;
   readonly canLeave: boolean;
@@ -32,7 +34,8 @@ type StageProps = {
  */
 export const StreamStage = memo(function StreamStage(props: StageProps) {
   const { surfaces } = usePorts();
-  const overlay = useStageOverlay(props.overlayOn);
+  const overlayOn = props.overlayOn && !props.replacing;
+  const overlay = useStageOverlay(overlayOn);
   const playbackUrl = useEngineSelector(selectPlaybackUrl);
   const { Preview } = surfaces;
   return (
@@ -46,9 +49,10 @@ export const StreamStage = memo(function StreamStage(props: StageProps) {
         shed={overlay.shed}
         overlayFailed={overlay.failed}
         armed={props.armed}
-        overlayOn={props.overlayOn}
+        overlayOn={overlayOn}
       />
       <BottomStrip
+        labelled={!props.replacing}
         canLeave={props.canLeave}
         onHome={props.onHome}
         onSettings={props.onSettings}
@@ -79,6 +83,8 @@ const TopStrip = memo(function TopStrip(props: TopStripProps) {
 });
 
 type BottomStripProps = {
+  /** False while replacing (N3): the label native holds is the old session's. */
+  readonly labelled: boolean;
   readonly canLeave: boolean;
   readonly onHome: () => void;
   readonly onSettings: () => void;
@@ -90,6 +96,7 @@ type BottomStripProps = {
  * included (AGENTS §6); and Home whenever leaving is allowed (never on air).
  */
 const BottomStrip = memo(function BottomStrip({
+  labelled,
   canLeave,
   onHome,
   onSettings,
@@ -100,7 +107,7 @@ const BottomStrip = memo(function BottomStrip({
   return (
     <EdgeStrip edge="bottom">
       <Text variant="metricUnit" numberOfLines={1} style={styles.label}>
-        {label ?? ''}
+        {labelled ? (label ?? '') : ''}
       </Text>
       <GhostButton label={t('stream.link.settings')} onPress={onSettings} />
       <GhostButton label={t('stream.link.diagnostics')} onPress={onDiagnostics} />

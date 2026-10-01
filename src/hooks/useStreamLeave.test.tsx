@@ -7,10 +7,12 @@ import { createMemoryKeyValueStore, type KeyValueStore } from '@/services/KeyVal
 import { createModeStore, STORE_KEYS } from '@/services/modeStore';
 import { createFakePorts, readRecord, TEST_NOW } from '../../test/fakePorts';
 import { savedStreamCode } from '../../test/fixtures/savedStream';
+import { captureRaw } from '../../test/fixtures/wire';
+import { holdCode } from '../../test/holdCode';
 import { wrapperFor } from '../../test/renderWithPorts';
 
 const code: SavedCode = savedStreamCode({
-  raw: '{"fake":true}',
+  raw: captureRaw({ slot: 2 }),
   slot: 2,
   savedAt: TEST_NOW,
   expiresAt: new Date(TEST_NOW.getTime() + 3600_000),
@@ -27,8 +29,13 @@ const LIVE: SessionState = {
 const STOPPED: SessionState = { kind: 'ended', reason: 'operator-stopped', durationMs: null };
 const FAILED: SessionState = { kind: 'ended', reason: 'fatal-error', durationMs: null };
 
+/**
+ * The engine names this code's session, as it does once this visit armed it
+ * (I1, C7, N2), so a state forced below is this code's own.
+ */
 async function leaveHook(options: Parameters<typeof createFakePorts>[0] = {}) {
   const fakes = createFakePorts({ kvSeed: inStream, ...options });
+  holdCode(fakes.engine, code);
   const hook = renderHook(() => useStreamLeave(), { wrapper: wrapperFor(fakes) });
   await act(() => fakes.ports.modeStore.load());
   fakes.navigation.go('stream');
@@ -166,6 +173,28 @@ describe('useStreamLeave', () => {
 });
 
 describe('useStreamLeave: the next code after a stop (I1)', () => {
+  // Fix round 3: a replace passes through the old session's Ended (N1). A
+  // leave there spends nothing of this code's: it is kept, and the old
+  // session is left for the next visit's replace.
+  it('keeps the code when the stopped session is another code’s', async () => {
+    const leaving = await leaveHook();
+    holdCode(
+      leaving.engine,
+      savedStreamCode({
+        raw: captureRaw({ slot: 2, tok: 'fake-token-other-0000000000000' }),
+        slot: 2,
+      }),
+    );
+    act(() => leaving.engine.forceState(STOPPED));
+    const send = vi.spyOn(leaving.engine, 'send');
+    act(() => {
+      leaving.back.press();
+    });
+    await waitFor(() => expect(leaving.navigation.current()).toBe('home'));
+    expect(leaving.kv.entries.get(STORE_KEYS.code('stream'))).toBe(encodeSavedCode(code));
+    expect(send).not.toHaveBeenCalled();
+  });
+
   it('keeps a code opened after the last broadcast was stopped', async () => {
     const leaving = await leaveHook();
     act(() => leaving.engine.forceState(STOPPED));

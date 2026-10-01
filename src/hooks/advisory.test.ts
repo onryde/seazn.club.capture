@@ -74,6 +74,7 @@ function snapshot(telemetry: Partial<Telemetry>): EngineSnapshot {
     telemetry: { ...IDLE_TELEMETRY, ...telemetry },
     descriptor: null,
     slot: null,
+    tokenTag: null,
     camera: 'own',
     reportedAtMs: 1,
     survivesBackground: false,

@@ -26,6 +26,7 @@ export function StreamScreen() {
     <View style={settings.side === 'left' ? styles.columnLeft : styles.columnRight}>
       <StreamStage
         armed={view.kind === 'armed'}
+        replacing={view.replacing}
         overlayOn={settings.overlay}
         peek={peek}
         canLeave={leave.canLeave}

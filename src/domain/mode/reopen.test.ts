@@ -4,11 +4,15 @@ import {
   leaveRule,
   orphanedSession,
   reopenTarget,
+  replaceStep,
+  stillReplacing,
   visitArm,
   type EngineStatus,
+  type ReplaceStep,
   type SavedState,
   type VisitArm,
 } from '@/domain/mode/reopen';
+import { NO_NAME, type CodeName } from '@/domain/mode/codeName';
 import type { SavedCode } from '@/domain/mode/savedCode';
 import { sampleDescriptor } from '@/services/fakeDescriptorPort';
 import { savedStreamCode } from '../../../test/fixtures/savedStream';
@@ -125,68 +129,126 @@ describe('orphanedSession', () => {
 });
 
 /**
- * I1 (fix round 1, owner-visible): a visit adopts native's session only when
- * it is this code's: the same sid and the same slot (C7, fix round 2). Another
- * code's session, another slot's, or one native cannot name, is reset and the
- * code armed in its place. Live is never reset: it cannot
- * reach Home, and a reset under a broadcast would end it.
+ * I1 (owner-visible): a visit adopts native's session only when it is this
+ * code's: the same sid (fix round 1), slot (C7, fix round 2) and token tag
+ * (N2, fix round 3). Any other non-live session is replaced and the code armed
+ * in its place. Live is always adopted: it cannot reach Home, and replacing it
+ * would end a broadcast.
  */
 describe('visitArm', () => {
-  const SID = {
-    A: '5d9c1d0e-0000-4000-8000-00000000000a',
-    B: '5d9c1d0e-0000-4000-8000-00000000000b',
-  } as const;
-  type Sid = keyof typeof SID | null;
-  const sid = (label: Sid) => (label === null ? null : SID[label]);
-  // [engine, engine sid, engine slot, code sid, code slot, expected]
-  it.each<[EngineStatus, Sid, number | null, Sid, number | null, VisitArm]>([
-    ['idle', null, null, 'A', 1, 'arm'],
-    ['idle', 'B', 2, 'A', 1, 'arm'],
-    ['armed', 'A', 1, 'A', 1, 'adopt'],
-    ['stopped', 'A', 1, 'A', 1, 'adopt'],
-    ['failed', 'A', 1, 'A', 1, 'adopt'],
-    ['armed', 'B', 1, 'A', 1, 'replace'],
-    ['stopped', 'B', 1, 'A', 1, 'replace'],
-    ['failed', 'B', 1, 'A', 1, 'replace'],
-    // Fix round 2 (C7): another slot of the same session is another camera.
-    ['armed', 'A', 1, 'A', 2, 'replace'],
-    ['stopped', 'A', 1, 'A', 2, 'replace'],
-    ['failed', 'A', 2, 'A', 1, 'replace'],
-    ['armed', 'A', null, 'A', 1, 'replace'],
-    ['armed', 'A', 1, 'A', null, 'replace'],
-    ['armed', 'A', null, 'A', null, 'replace'],
-    ['armed', null, 1, 'A', 1, 'replace'],
-    ['stopped', null, 1, 'A', 1, 'replace'],
-    ['armed', 'A', 1, null, 1, 'replace'],
-    ['armed', null, 1, null, 1, 'replace'],
-    ['live', 'A', 1, 'A', 1, 'adopt'],
-    ['live', 'B', 1, 'A', 1, 'adopt'],
-    ['live', 'A', 1, 'A', 2, 'adopt'],
-    ['live', null, null, null, null, 'adopt'],
+  const NAMES = {
+    none: NO_NAME,
+    A1: { sid: 'a', slot: 1, tokenTag: 't1' },
+    A2: { sid: 'a', slot: 2, tokenTag: 't1' },
+    /** A1 re-issued: the same match and slot, a new token (N2). */
+    A1r: { sid: 'a', slot: 1, tokenTag: 't2' },
+    B1: { sid: 'b', slot: 1, tokenTag: 't1' },
+    noSid: { sid: null, slot: 1, tokenTag: 't1' },
+    noSlot: { sid: 'a', slot: null, tokenTag: 't1' },
+    noTag: { sid: 'a', slot: 1, tokenTag: null },
+  } as const satisfies Record<string, CodeName>;
+  type Name = keyof typeof NAMES;
+  it.each<[EngineStatus, Name, Name, VisitArm]>([
+    ['idle', 'none', 'A1', 'arm'],
+    ['idle', 'B1', 'A1', 'arm'],
+    ['armed', 'A1', 'A1', 'adopt'],
+    ['stopped', 'A1', 'A1', 'adopt'],
+    ['failed', 'A1', 'A1', 'adopt'],
+    ['armed', 'B1', 'A1', 'replace'],
+    ['stopped', 'B1', 'A1', 'replace'],
+    ['failed', 'B1', 'A1', 'replace'],
+    // C7: another slot of the same match is another camera.
+    ['armed', 'A1', 'A2', 'replace'],
+    ['stopped', 'A1', 'A2', 'replace'],
+    ['failed', 'A2', 'A1', 'replace'],
+    // N2: a re-issued code is another code.
+    ['armed', 'A1', 'A1r', 'replace'],
+    ['stopped', 'A1', 'A1r', 'replace'],
+    ['failed', 'A1r', 'A1', 'replace'],
+    // A session native cannot name, or a code the phone cannot, is never adopted.
+    ['armed', 'noSid', 'A1', 'replace'],
+    ['armed', 'noSlot', 'A1', 'replace'],
+    ['stopped', 'noTag', 'A1', 'replace'],
+    ['armed', 'A1', 'noSid', 'replace'],
+    ['armed', 'A1', 'noTag', 'replace'],
+    ['armed', 'none', 'none', 'replace'],
+    ['stopped', 'noTag', 'noTag', 'replace'],
+    // Live is always adopted: it cannot reach Home, and a stop would end it.
+    ['live', 'A1', 'A1', 'adopt'],
+    ['live', 'B1', 'A1', 'adopt'],
+    ['live', 'A1', 'A2', 'adopt'],
+    ['live', 'A1', 'A1r', 'adopt'],
+    ['live', 'none', 'none', 'adopt'],
+  ])('%s, engine holding %s, code %s → %s', (engine, held, code, expected) => {
+    expect(visitArm({ engine, held: NAMES[held], code: NAMES[code] })).toBe(expected);
+  });
+});
+
+/**
+ * N1 (plan B's contract): native resets only from Ended and arms only from
+ * Idle. So another code's session is cleared by the documented path, one
+ * intent per snapshot: stop an armed one, reset an ended one, arm at idle.
+ * Never a stop on air.
+ */
+describe('replaceStep', () => {
+  it.each<[EngineStatus, ReplaceStep]>([
+    ['armed', 'stop'],
+    ['stopped', 'reset'],
+    ['failed', 'reset'],
+    ['idle', 'arm'],
+    ['live', null],
+  ])('%s → %s', (engine, step) => {
+    expect(replaceStep(engine)).toBe(step);
+  });
+});
+
+/**
+ * N3 (owner-visible): a replacing visit shows not ready, never the session it
+ * replaces, until native holds this code's session; for a code the phone
+ * cannot use, until the old session is cleared. Never over a broadcast.
+ */
+describe('stillReplacing', () => {
+  it.each<[VisitArm, boolean, boolean, EngineStatus, boolean]>([
+    ['replace', false, false, 'armed', true],
+    ['replace', false, false, 'stopped', true],
+    ['replace', false, false, 'failed', true],
+    ['replace', false, false, 'idle', true],
+    ['replace', true, false, 'armed', false],
+    ['replace', true, false, 'stopped', false],
+    ['replace', false, true, 'armed', true],
+    ['replace', false, true, 'stopped', true],
+    ['replace', false, true, 'idle', false],
+    ['replace', false, false, 'live', false],
+    ['replace', false, true, 'live', false],
+    ['adopt', false, false, 'armed', false],
+    ['adopt', false, false, 'stopped', false],
+    ['arm', false, false, 'idle', false],
+    ['arm', false, true, 'idle', false],
   ])(
-    '%s, engine sid %s slot %s, code sid %s slot %s → %s',
-    (engine, engineSid, engineSlot, codeSid, codeSlot, expected) => {
-      expect(
-        visitArm({
-          engine,
-          engineSid: sid(engineSid),
-          engineSlot,
-          codeSid: sid(codeSid),
-          codeSlot,
-        }),
-      ).toBe(expected);
+    'a visit to %s, own session %s, unusable code %s, engine %s → %s',
+    (plan, own, unusable, engine, expected) => {
+      expect(stillReplacing({ plan, own, unusable, engine })).toBe(expected);
     },
   );
 });
 
 describe('leaveRule', () => {
-  it.each<[EngineStatus, string]>([
-    ['idle', 'free'],
-    ['armed', 'free'],
-    ['failed', 'free'],
-    ['live', 'blockedOnAir'],
-    ['stopped', 'freeAndForget'],
-  ])('when the engine is %s, leaving Live Stream is %s', (engine, rule) => {
-    expect(leaveRule('stream', engine)).toBe(rule);
-  });
+  it.each<[EngineStatus, boolean, string]>([
+    ['idle', true, 'free'],
+    ['armed', true, 'free'],
+    ['failed', true, 'free'],
+    ['live', true, 'blockedOnAir'],
+    ['stopped', true, 'freeAndForget'],
+    // Fix round 3: another code's stopped session spends nothing of this code's.
+    ['stopped', false, 'free'],
+    ['idle', false, 'free'],
+    ['armed', false, 'free'],
+    ['failed', false, 'free'],
+    ['live', false, 'blockedOnAir'],
+  ])(
+    'when the engine is %s (this code’s session: %s), leaving Live Stream is %s',
+    (engine, own, rule) => {
+      expect(leaveRule('stream', engine, own)).toBe(rule);
+    },
+  );
 });

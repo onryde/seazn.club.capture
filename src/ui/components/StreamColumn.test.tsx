@@ -24,6 +24,7 @@ const viewOf = (overrides: Partial<Viewfinder>): Viewfinder => ({
   action: 'goLive',
   onAir: false,
   peekable: false,
+  replacing: false,
   start: vi.fn(),
   stop: vi.fn(),
   ...overrides,

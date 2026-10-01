@@ -3,6 +3,7 @@ import { leaveRule, type EngineStatus, type LeaveRule } from '@/domain/mode/reop
 import { selectEngineStatus, selectStateKind } from '@/hooks/engineSelectors';
 import { useEngineSelector } from '@/hooks/useCaptureEngine';
 import { usePorts } from '@/hooks/usePorts';
+import { useOwnSession, useSavedStream } from '@/hooks/useSavedStream';
 import { isStreamSubRoute } from '@/services/devicePorts';
 import type { Logger } from '@/services/logger';
 import type { ModeStore } from '@/services/modeStore';
@@ -33,6 +34,8 @@ export function useStreamLeave(): {
   departed(): boolean;
 } {
   const status = useEngineSelector(selectEngineStatus);
+  // Fix round 3: a stopped session spends this code only if it is this code's.
+  const own = useOwnSession(useSavedStream());
   const [blocked, block] = useRefusalLine();
   const left = useRef(false);
   const departed = useCallback(() => left.current, []);
@@ -40,15 +43,15 @@ export function useStreamLeave(): {
 
   const leaveWith = useCallback(
     (beforeHome: () => void) => {
-      const rule = leaveRule('stream', status);
+      const rule = leaveRule('stream', status, own);
       if (rule === 'blockedOnAir') return block();
       leaveOnce(rule, beforeHome);
     },
-    [status, leaveOnce, block],
+    [status, own, leaveOnce, block],
   );
   const leave = useCallback(() => leaveWith(NOTHING), [leaveWith]);
   useBackLeaves(leave);
-  const canLeave = leaveRule('stream', status) !== 'blockedOnAir';
+  const canLeave = leaveRule('stream', status, own) !== 'blockedOnAir';
   return { canLeave, blocked, leave, leaveWith, departed };
 }
 
@@ -134,7 +137,8 @@ function useFinishLeave(onBlocked: () => void): FinishLeave {
   return useCallback(
     (rule: FreeRule, beforeHome: () => void) => {
       const status = selectEngineStatus(engine.getSnapshot());
-      if (leaveRule('stream', status) === 'blockedOnAir') {
+      // Only on air matters here, and whose session it is never changes that.
+      if (leaveRule('stream', status, false) === 'blockedOnAir') {
         logger.warn('leave.cancelled-on-air', { action: rule });
         return onBlocked();
       }

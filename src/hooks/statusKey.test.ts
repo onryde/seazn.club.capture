@@ -29,6 +29,7 @@ const snap = (
   telemetry: { ...IDLE_TELEMETRY, ...telemetry },
   descriptor: null,
   slot: null,
+  tokenTag: null,
   camera,
   reportedAtMs: 0,
   survivesBackground: true,
