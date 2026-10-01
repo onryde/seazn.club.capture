@@ -96,7 +96,11 @@ export const NEVER_KEYS: ReadonlySet<string> = new Set([
 
 /** A word, not a sentence: no spaces, slashes, `?`, `=` or `@`, so no URL or message fits. */
 const PLAIN_WORD = /^[\w.:-]{1,64}$/;
-const PUBLIC_URL = /^https:\/\/[^/?#@\s:]+(:\d+)?(\/[^?#\s]*)?$/i;
+/**
+ * Whitespace is ASCII's six, spelled out as native spells them: JS's `\s` holds
+ * Unicode spaces and Java's does not. Here `\v` is the one character U+000B.
+ */
+const PUBLIC_URL = /^https:\/\/[^/?#@ \t\n\v\f\r:]+(:\d+)?(\/[^?# \t\n\v\f\r]*)?$/i;
 
 const NOTHING_HELD: SessionSecrets = { secrets: [], streamIds: [] };
 

@@ -205,7 +205,12 @@ class SessionRecord(private val sink: (String) -> Unit) {
 
     /** A word, not a sentence: no spaces, slashes, `?`, `=` or `@`, so no URL or message fits. */
     private val PLAIN_WORD = Regex("^[\\w.:-]{1,64}$")
-    private val PUBLIC_URL = Regex("^https://[^/?#@\\s:]+(:\\d+)?(/[^?#\\s]*)?$", RegexOption.IGNORE_CASE)
+    /**
+     * Whitespace is ASCII's six, spelled out as scrub.ts spells them, so the two sides cannot read
+     * `\s` differently (JS's holds Unicode spaces). `\x0B`, not `\v`: Java's `\v` is a class that
+     * also holds U+2028, where JS's is the one character.
+     */
+    private val PUBLIC_URL = Regex("^https://[^/?#@ \\t\\n\\x0B\\f\\r:]+(:\\d+)?(/[^?# \\t\\n\\x0B\\f\\r]*)?$", RegexOption.IGNORE_CASE)
 
     /** What `android.net.Uri.encode` leaves raw and `URLEncoder` does not. `*` is raw in both. */
     private val COMPONENT_RAW = listOf("%7E" to "~", "%21" to "!", "%27" to "'", "%28" to "(", "%29" to ")")

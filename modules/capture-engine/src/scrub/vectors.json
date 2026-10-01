@@ -94,6 +94,24 @@
       "expected": "***"
     },
     {
+      "why": "a non-breaking space is not ASCII whitespace, so it does not break a public URL on either side",
+      "key": "url",
+      "value": "https://stg.seazn.club/a\u00a0b",
+      "expected": "https://stg.seazn.club/a\u00a0b"
+    },
+    {
+      "why": "a line separator is not ASCII whitespace either (Java's \\v class holds it; JS's \\v does not)",
+      "key": "url",
+      "value": "https://stg.seazn.club/a\u2028b",
+      "expected": "https://stg.seazn.club/a\u2028b"
+    },
+    {
+      "why": "a vertical tab is ASCII whitespace, so a URL holding one is masked whole",
+      "key": "url",
+      "value": "https://stg.seazn.club/a\u000bb",
+      "expected": "***"
+    },
+    {
       "why": "text masks a raw secret in place",
       "key": "message",
       "value": "connect failed tok=tok-9f3c2a7e5b1d4680 at x",

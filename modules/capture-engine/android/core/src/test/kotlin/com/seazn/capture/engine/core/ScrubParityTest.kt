@@ -28,7 +28,7 @@ class ScrubParityTest {
   fun `carry 11 every shared case writes what the vectors say`() {
     val cases = vectors.getJSONArray("cases")
     // The file's row count, so an emptied or truncated file cannot pass by sweeping nothing (PV12).
-    assertEquals(27, cases.length())
+    assertEquals(30, cases.length())
     // Every row is checked and every wrong one named, as JS's it.each reports them.
     val wrong =
       (0 until cases.length()).mapNotNull { i ->

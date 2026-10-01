@@ -31,6 +31,11 @@ tasks.test {
     .dir(layout.projectDirectory.dir("../../src/wire"))
     .withPropertyName("sharedVectors")
     .withPathSensitivity(PathSensitivity.RELATIVE)
+  // The record's allow-list and scrub vectors (CD6, carry 11), under the same rule.
+  inputs
+    .dir(layout.projectDirectory.dir("../../src/scrub"))
+    .withPropertyName("scrubVectors")
+    .withPathSensitivity(PathSensitivity.RELATIVE)
   testLogging {
     events("failed")
     exceptionFormat = TestExceptionFormat.FULL
