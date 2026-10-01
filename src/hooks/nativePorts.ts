@@ -1,5 +1,6 @@
 import Constants from 'expo-constants';
 import { getLocales } from 'expo-localization';
+import { router } from 'expo-router';
 import { createFakeCaptureEngine } from '@/engine/FakeCaptureEngine';
 import type { Ports } from '@/hooks/usePorts';
 import { createNativeCodeScanner } from '@/scanner/nativeCodeScanner';
@@ -54,7 +55,7 @@ export function createNativePorts(): Ports {
     orientationLock: createNativeOrientationLock(),
     back: createNativeBack(),
     foreground: createNativeForeground(),
-    navigation: createExpoRouterNavigation(),
+    navigation: createExpoRouterNavigation(router),
     splash: createNativeSplash(),
     surfaces: createNativeSurfaces({ logger }),
     logger,

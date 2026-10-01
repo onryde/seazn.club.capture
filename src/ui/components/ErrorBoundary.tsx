@@ -33,6 +33,8 @@ type Props = {
    * remounted shell reopens the viewfinder on air.
    */
   retryLabel?: string;
+  /** Called on Try again, before the children remount (I-A: the navigation port restarts). */
+  onRetry?: () => void;
 };
 type State = { error: Error | null; stack: string | null };
 
@@ -50,6 +52,7 @@ export class ErrorBoundary extends Component<Props, State> {
 
   /** A class field, so render allocates no function (AGENTS §8). */
   private retry = () => {
+    this.props.onRetry?.();
     this.setState({ error: null, stack: null });
   };
 

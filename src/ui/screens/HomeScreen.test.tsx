@@ -646,6 +646,7 @@ describe('Home: after the scan', () => {
         go: () => {
           throw new Error('navigator not mounted');
         },
+        restart: () => undefined,
       };
       const home = await renderHome({ navigation });
       home.scanner.queue({ outcome: 'scanned', raw: streamRaw(IN_TWO_HOURS) });

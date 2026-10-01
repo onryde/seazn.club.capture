@@ -1,13 +1,19 @@
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import type { ReactElement } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { selectStateKind } from '@/hooks/engineSelectors';
+import { selectAudioLevel, selectStateKind } from '@/hooks/engineSelectors';
 import { useEngineSelector } from '@/hooks/useCaptureEngine';
 import { RootBoundary } from '@/ui/components/RootBoundary';
 import { createFakePorts, readRecord, TEST_NOW } from '../../../test/fakePorts';
 import { captureRaw, epochSeconds } from '../../../test/fixtures/wire';
 import { pressIn, pressOut } from '../../../test/press';
-import { flush, intentKinds, launchApp, scanFromHome } from '../../../test/routedApp';
+import {
+  backgroundAndBack,
+  flush,
+  intentKinds,
+  launchApp,
+  scanFromHome,
+} from '../../../test/routedApp';
 
 function Boom(): ReactElement {
   throw new Error('render failed at fake-token-0001');
@@ -31,6 +37,13 @@ const crash = { on: false };
 function HudPart(): null {
   const kind = useEngineSelector(selectStateKind);
   if (crash.on) throw new Error(`render failed while ${kind}`);
+  return null;
+}
+
+/** The same, re-rendered by the sound level: a crash while armed, with no change of state. */
+function MeterPart(): null {
+  const level = useEngineSelector(selectAudioLevel);
+  if (crash.on) throw new Error(`render failed at ${level}`);
   return null;
 }
 
@@ -149,5 +162,90 @@ describe('RootBoundary', () => {
         reason: 'operator-stopped',
       });
     });
+
+    // Final fix round 2, I-A: the Stack starts afresh at Home after Try again,
+    // while the navigation port outlives the remount. The port must not
+    // believe it is still on the viewfinder.
+    it('Try again never leaves the port believing the old route', async () => {
+      const app = await launchOnAirThenCrash();
+      fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+      await flush();
+      expect(app.nav.current()).toBe('stream');
+      expect(app.ports.navigation.current()).toBe('stream');
+      expect(app.nav.history.slice(-1)).toEqual(['stream']);
+      expect(screen.getByRole('button', { name: STOP })).toBeTruthy();
+    });
+
+    it('after Try again, the next foreground keeps the viewfinder and its Stop', async () => {
+      const app = await launchOnAirThenCrash();
+      fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+      await flush();
+      await backgroundAndBack(app);
+      expect(app.nav.current()).toBe('stream');
+      expect(screen.getByRole('button', { name: STOP })).toBeTruthy();
+    });
+
+    it('a fresh scan after Try again opens the viewfinder', async () => {
+      const app = await launchOnAirThenCrash();
+      fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+      await flush();
+      await hold(STOP);
+      fireEvent.click(screen.getByRole('button', { name: 'Home' }));
+      await flush();
+      expect(app.nav.current()).toBe('home');
+      await scanFromHome(app, CODE);
+      expect(app.nav.current()).toBe('stream');
+      expect(screen.getByRole('button', { name: GO_LIVE })).toBeTruthy();
+    });
+  });
+
+  describe('armed', () => {
+    beforeEach(() => vi.useFakeTimers());
+    afterEach(() => {
+      crash.on = false;
+      vi.useRealTimers();
+    });
+
+    it('a crash before air: Try again returns to Arm, and Home then Continue still opens it', async () => {
+      const app = await launchApp({
+        extra: <MeterPart />,
+        around: (ui, fakes) => <RootBoundary ports={fakes.ports}>{ui}</RootBoundary>,
+      });
+      await scanFromHome(app, CODE);
+      crash.on = true;
+      act(() => app.engine.patch({ audioLevel: 0.31 }));
+      expect(screen.getByText(MAY_BE_LIVE)).toBeTruthy();
+      crash.on = false;
+      fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+      await flush();
+      expect(app.nav.current()).toBe('stream');
+      expect(screen.getByRole('button', { name: GO_LIVE })).toBeTruthy();
+      fireEvent.click(screen.getByRole('button', { name: 'Home' }));
+      await flush();
+      expect(app.nav.current()).toBe('home');
+      fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
+      await flush();
+      expect(app.nav.current()).toBe('stream');
+      expect(screen.getByRole('button', { name: GO_LIVE })).toBeTruthy();
+      // Adopted every time, never re-armed: the same code's session.
+      expect(intentKinds(app)).toEqual(['arm']);
+    });
   });
 });
+
+const CODE = captureRaw({ exp: epochSeconds(new Date(TEST_NOW.getTime() + 7_200_000)) });
+
+/** Scan, hold Go live, then crash the HUD as native reports the fall-back. */
+async function launchOnAirThenCrash() {
+  const app = await launchApp({
+    extra: <HudPart />,
+    around: (ui, fakes) => <RootBoundary ports={fakes.ports}>{ui}</RootBoundary>,
+  });
+  await scanFromHome(app, CODE);
+  await hold(GO_LIVE);
+  crash.on = true;
+  act(() => app.engine.scene('fell-back'));
+  crash.on = false;
+  expect(screen.getByText(MAY_BE_LIVE)).toBeTruthy();
+  return app;
+}

@@ -221,6 +221,9 @@ function fakeNavigation(): NavigationPort & { readonly history: Route[] } {
       current = route;
       history.push(route);
     },
+    restart: () => {
+      current = 'home';
+    },
   };
 }
 

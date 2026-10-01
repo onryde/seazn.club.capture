@@ -121,6 +121,7 @@ describe('ErrorBoundary', () => {
         go: () => {
           throw new Error('navigator not mounted');
         },
+        restart: () => undefined,
       },
     });
     render(

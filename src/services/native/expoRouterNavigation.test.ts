@@ -1,9 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const router = vi.hoisted(() => ({ push: vi.fn(), back: vi.fn(), replace: vi.fn() }));
-vi.mock('expo-router', () => ({ router }));
+import { createExpoRouterNavigation as adapter } from '@/services/native/expoRouterNavigation';
+import type { Route } from '@/services/devicePorts';
 
-import { createExpoRouterNavigation } from '@/services/native/expoRouterNavigation';
+const router = { push: vi.fn(), back: vi.fn(), replace: vi.fn() };
+const createExpoRouterNavigation = (initial?: Route) => adapter(router, initial);
 
 describe('the Expo Router adapter (D19)', () => {
   beforeEach(() => vi.clearAllMocks());
@@ -64,6 +65,29 @@ describe('the Expo Router adapter (D19)', () => {
     navigation.go('streamSettings');
     expect(router.push).not.toHaveBeenCalled();
     expect(router.replace).toHaveBeenCalledWith('/stream/settings');
+  });
+
+  // Final fix round 2, I-A: Try again after a crash remounts the root Stack,
+  // which Expo Router starts afresh at its first route; the port outlives it.
+  it.each(['stream', 'streamSettings', 'streamDiagnostics'] as const)(
+    'forgets %s when the root restarts, so the next move to it is made',
+    (from) => {
+      const navigation = createExpoRouterNavigation('home');
+      navigation.go(from);
+      vi.clearAllMocks();
+      navigation.restart();
+      expect(navigation.current()).toBe('home');
+      navigation.go('stream');
+      expect(router.replace).toHaveBeenCalledWith('/stream');
+      expect(navigation.current()).toBe('stream');
+    },
+  );
+
+  it('restarts at the route it was built on', () => {
+    const navigation = createExpoRouterNavigation('stream');
+    navigation.go('home');
+    navigation.restart();
+    expect(navigation.current()).toBe('stream');
   });
 
   // Review M8: `current()` names a screen only once the router has moved to it.
