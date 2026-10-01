@@ -1,5 +1,25 @@
 import { describe, expect, it } from 'vitest';
+import type { SessionSecrets } from '@/domain/credentials/StreamSession';
 import { SCRUBBED, scrubEvent, scrubFields, type LogFields } from '@/services/scrub';
+
+const TOKEN = 'fake-token-0001';
+const PASSPHRASE = 'fake-pass-0001';
+const STREAM_KEY = 'fake-key-0001';
+const STREAM_ID = 'fake-stream-id-0001';
+/** Characters an encoder escapes, so only a decode can find it in a URL. */
+const ODD_PASSPHRASE = 'p@ss/w0rd!';
+const HELD: SessionSecrets = {
+  secrets: [
+    TOKEN,
+    PASSPHRASE,
+    STREAM_KEY,
+    ODD_PASSPHRASE,
+    'fake pass 0001',
+    'odd%41pass',
+    'plus+pass+0001',
+  ],
+  streamIds: [STREAM_ID],
+};
 
 describe('scrubFields (allow-list, spec §3)', () => {
   it('keeps allow-listed keys holding plain words, numbers, booleans and null', () => {
@@ -80,5 +100,64 @@ describe('scrubEvent', () => {
     expect(scrubEvent('kv.timeout')).toBe('kv.timeout');
     expect(scrubEvent('tok=abc')).toBe(SCRUBBED);
     expect(scrubEvent('')).toBe(SCRUBBED);
+  });
+
+  it('scrubs an event name that carries a held secret (M3)', () => {
+    expect(scrubEvent('intent.stop', HELD)).toBe('intent.stop');
+    expect(scrubEvent(`intent.${TOKEN}`, HELD)).toBe(SCRUBBED);
+    expect(scrubEvent(`intent.${STREAM_ID}`, HELD)).toBe(SCRUBBED);
+  });
+});
+
+/**
+ * M3 (final review): parity with plan B's SessionRecord. Once a session is
+ * held, its token, passphrases and stream keys never reach the record under
+ * any key, and its stream id only inside a public URL: Cloudflare puts it in
+ * the playback path, which every viewer holds. Made-up values.
+ */
+describe('scrubFields: the held session’s secrets, by value (M3)', () => {
+  it.each([
+    ['the token', TOKEN],
+    ['the passphrase', PASSPHRASE],
+    ['the stream key', STREAM_KEY],
+    ['the stream id', STREAM_ID],
+  ])('scrubs %s under an allow-listed key, alone or inside a word', (_, secret) => {
+    expect(scrubFields({ problem: secret }, HELD)).toEqual({ problem: SCRUBBED });
+    expect(scrubFields({ kind: `bad-${secret}-x` }, HELD)).toEqual({ kind: SCRUBBED });
+  });
+
+  it('keeps words that carry none of them', () => {
+    const fields = { kind: 'offline', problem: 'port-threw', action: 'stop', slot: 2 };
+    expect(scrubFields(fields, HELD)).toEqual(fields);
+  });
+
+  it('lets a public URL carry the stream id, as the playback path does', () => {
+    const url = `https://video.example/${STREAM_ID}/manifest/video.m3u8`;
+    expect(scrubFields({ url }, HELD)).toEqual({ url });
+  });
+
+  it.each([
+    ['the token', `https://video.example/a/${TOKEN}`],
+    ['the stream key', `https://video.example/live/${STREAM_KEY}`],
+    ['a passphrase percent-encoded', `https://video.example/${encodeURIComponent(ODD_PASSPHRASE)}`],
+    ['a passphrase form-encoded, space as +', 'https://video.example/fake+pass+0001'],
+    // A + in the secret itself: only the decoded text, + kept, shows it.
+    ['a passphrase holding a +, percent-encoded', 'https://video.example/plus%2Bpass%2B0001'],
+    ['a passphrase that holds an escape, raw', 'https://video.example/a/odd%41pass'],
+  ])('scrubs a public URL that carries %s', (_, url) => {
+    expect(scrubFields({ url }, HELD)).toEqual({ url: SCRUBBED });
+  });
+
+  it('survives a malformed escape and keeps the URL when it holds no secret', () => {
+    const url = 'https://video.example/a%E0%A4b/c%zz';
+    expect(scrubFields({ url }, HELD)).toEqual({ url });
+  });
+
+  it('never masks with a blank value', () => {
+    const blank: SessionSecrets = { secrets: ['', '  '], streamIds: [''] };
+    expect(scrubFields({ kind: 'offline' }, blank)).toEqual({ kind: 'offline' });
+    expect(scrubEvent('kv.timeout', blank)).toBe('kv.timeout');
+    const url = 'https://video.example/a';
+    expect(scrubFields({ url }, blank)).toEqual({ url });
   });
 });

@@ -22,6 +22,47 @@ describe('the logger', () => {
     expect(parsed(record.lines())[0].fields).toEqual({ tok: SCRUBBED });
   });
 
+  // M3 (final review): plan B's SessionRecord.protect, the same promise in JS.
+  it('masks a protected value under any key from then on, and only from then on', () => {
+    const record = createRingRecord();
+    const logger = createLogger({ record, now: () => 0 });
+    logger.warn('before', { problem: 'fake-token-0001' });
+    logger.protect({ secrets: ['fake-token-0001'], streamIds: ['fake-stream-id-0001'] });
+    logger.warn('after', { problem: 'fake-token-0001', kind: 'fake-stream-id-0001' });
+    expect(parsed(record.lines()).map((line) => line.fields)).toEqual([
+      { problem: 'fake-token-0001' },
+      { problem: SCRUBBED, kind: SCRUBBED },
+    ]);
+  });
+
+  it('masks a protected value in the event name too', () => {
+    const record = createRingRecord();
+    const logger = createLogger({ record, now: () => 0 });
+    logger.protect({ secrets: ['fake-token-0001'], streamIds: [] });
+    logger.info('intent.fake-token-0001');
+    logger.info('intent.stop');
+    expect(parsed(record.lines()).map((line) => line.event)).toEqual([SCRUBBED, 'intent.stop']);
+  });
+
+  it('only ever adds: a second session’s protect keeps the first one’s values masked', () => {
+    const record = createRingRecord();
+    const logger = createLogger({ record, now: () => 0 });
+    logger.protect({ secrets: ['fake-token-000a'], streamIds: ['fake-stream-id-000a'] });
+    logger.protect({ secrets: ['fake-token-000b'], streamIds: ['fake-stream-id-000b'] });
+    logger.info('probe', {
+      problem: 'fake-token-000a',
+      kind: 'fake-stream-id-000a',
+      reason: 'fake-token-000b',
+      state: 'fake-stream-id-000b',
+    });
+    expect(parsed(record.lines())[0].fields).toEqual({
+      problem: SCRUBBED,
+      kind: SCRUBBED,
+      reason: SCRUBBED,
+      state: SCRUBBED,
+    });
+  });
+
   it('drops entries below its floor', () => {
     const record = createRingRecord();
     const logger = createLogger({ record, now: () => 0, minLevel: 'info' });

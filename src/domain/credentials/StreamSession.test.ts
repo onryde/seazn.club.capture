@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { parseCaptureQr } from '@/domain/credentials/parseCaptureQr';
 import { parseDescriptor } from '@/domain/credentials/parseDescriptor';
-import { buildStreamSession } from '@/domain/credentials/StreamSession';
+import { buildStreamSession, sessionSecrets } from '@/domain/credentials/StreamSession';
 import { captureWire, descriptorWire, FIXTURE_SID } from '../../../test/fixtures/wire';
 
 describe('buildStreamSession', () => {
@@ -39,4 +39,25 @@ describe('buildStreamSession', () => {
       descriptor: descriptor.value,
     });
   });
+});
+
+/** M3 (final review): plan B's SessionConfig.secrets(), with the stream id apart. */
+describe('sessionSecrets', () => {
+  it.each(['srt', 'rtmps'])(
+    'names the token, passphrase and key, and the stream id apart, preferring %s',
+    (preferred) => {
+      const code = parseCaptureQr(captureWire({ preferred }));
+      const descriptor = parseDescriptor(descriptorWire());
+      if (!code.ok || !descriptor.ok) throw new Error('fixtures must parse');
+      const { secrets, streamIds } = sessionSecrets(
+        buildStreamSession(code.value, descriptor.value),
+      );
+      expect([...secrets].sort()).toEqual([
+        'fake-key-0000',
+        'fake-pass-0000',
+        'fake-token-00000000000000000000',
+      ]);
+      expect(streamIds).toEqual(['fake-stream-id']);
+    },
+  );
 });

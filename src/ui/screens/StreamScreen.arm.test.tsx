@@ -2,6 +2,7 @@ import { act, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { HOLD_MS } from '@/hooks/useHold';
 import { sampleDescriptor } from '@/services/fakeDescriptorPort';
+import { SCRUBBED } from '@/services/scrub';
 import { readRecord, TEST_NOW } from '../../../test/fakePorts';
 import { savedStreamCode } from '../../../test/fixtures/savedStream';
 import { FIXTURE_NOW, FIXTURE_SECRETS } from '../../../test/fixtures/wire';
@@ -20,6 +21,46 @@ const OVERLAY_FAILED = 'Score preview failed — the broadcast is not affected';
 const UNUSABLE = "This code can't be used. Go Home and scan again.";
 /** The other environment's host: a staging build trusts stg.seazn.club only (ruling 6). */
 const PRODUCTION = 'https://seazn.club';
+
+/**
+ * M3 (final review): from the moment the viewfinder holds its session, the
+ * session's token, passphrase, stream key and stream id never reach the
+ * record under any key, armed by this visit or adopted from native.
+ */
+describe('the viewfinder protects its session’s secrets in the record (M3)', () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  /** Each fixture secret logged under an allow-listed key, as a careless line would. */
+  const probe = (view: Awaited<ReturnType<typeof renderViewfinder>>) => {
+    for (const secret of FIXTURE_SECRETS) view.ports.logger.warn('probe', { problem: secret });
+    return readRecord(view.record)
+      .filter((entry) => entry.event === 'probe')
+      .map((entry) => entry.fields.problem);
+  };
+
+  it('once it arms the code', async () => {
+    const view = await renderViewfinder();
+    expect(arms(view)).toHaveLength(1);
+    expect(probe(view)).toEqual([SCRUBBED, SCRUBBED, SCRUBBED, SCRUBBED]);
+  });
+
+  it('when it adopts the code’s broadcast, sending no arm', async () => {
+    const saved = savedStreamCode();
+    const view = await renderViewfinder(
+      {},
+      {
+        saved,
+        prepare: (fakes) => {
+          fakes.engine.scene('live');
+          holdCode(fakes.engine, saved);
+        },
+      },
+    );
+    expect(view.engine.intents).toEqual([]);
+    expect(probe(view)).toEqual([SCRUBBED, SCRUBBED, SCRUBBED, SCRUBBED]);
+  });
+});
 
 describe('the viewfinder arming (spec §1)', () => {
   beforeEach(() => vi.useFakeTimers());

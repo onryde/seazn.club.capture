@@ -10,6 +10,7 @@ import {
 } from '@/domain/mode/reopen';
 import type { SavedCode } from '@/domain/mode/savedCode';
 import { sessionFromSaved } from '@/domain/mode/savedSession';
+import { sessionSecrets } from '@/domain/credentials/StreamSession';
 import type { CaptureEnginePort, EngineSnapshot } from '@/engine/CaptureEnginePort';
 import { selectEngineStatus } from '@/hooks/engineSelectors';
 import { useEngine, useEngineSelector } from '@/hooks/useCaptureEngine';
@@ -44,6 +45,7 @@ export function useStreamArm(departed: () => boolean): StreamArm {
   );
   const visit = useVisit(saved);
   const status = useEngineSelector(selectEngineStatus);
+  useProtect(session);
   useReconcile(visit, session, status, departed);
   const own = useOwnSession(saved);
   const unusable = session !== null && !session.ok;
@@ -52,6 +54,18 @@ export function useStreamArm(departed: () => boolean): StreamArm {
 }
 
 type SavedSession = ReturnType<typeof sessionFromSaved>;
+
+/**
+ * M3 (final review): from the moment the viewfinder holds a session, armed by
+ * this visit or adopted, its secrets never reach the record. Declared before
+ * `useReconcile`, so its effect runs first and the arm is already covered.
+ */
+function useProtect(session: SavedSession | null): void {
+  const { logger } = usePorts();
+  useEffect(() => {
+    if (session?.ok) logger.protect(sessionSecrets(session.value));
+  }, [session, logger]);
+}
 type Visit = { readonly raw: string; readonly plan: VisitArm };
 
 /**
