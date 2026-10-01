@@ -401,12 +401,27 @@ describe('Back’s line on air (ruling I2)', () => {
     'stream.status.notDelivered',
     'stream.status.cameraTaken',
     'stream.status.cameraReopening',
+    // N2: reachable on air as connecting with the camera taken, then Back.
+    'stream.status.cameraInUse',
     'stream.status.micSilenced',
     'stream.status.holding',
     'stream.status.holdingStalled',
     'stream.status.holdingNotDelivered',
   ] as const)('is outranked by the fault line %s', (key) => {
     expect(columnLineKey(key, true)).toBe(key);
+  });
+
+  // N2: built from the dictionary, so a status line added later is covered
+  // without anyone remembering this list. Only the two calm lines yield.
+  it('is outranked by every other status line in the dictionary', () => {
+    const calm = ['stream.status.connecting', 'stream.status.live'];
+    const others = Object.keys(en).filter(
+      (key) => key.startsWith('stream.status.') && !calm.includes(key),
+    ) as Parameters<typeof columnLineKey>[0][];
+    expect(others.length).toBeGreaterThan(20);
+    for (const key of others) {
+      expect({ key, shown: columnLineKey(key, true) }).toEqual({ key, shown: key });
+    }
   });
 
   it('is not shown without a refused Back', () => {

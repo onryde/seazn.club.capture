@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   expiredModes,
   leaveRule,
+  orphanedSession,
   reopenTarget,
   type EngineStatus,
   type SavedState,
@@ -89,6 +90,35 @@ describe('expiredModes', () => {
   it('skips a mode whose code is undefined', () => {
     const hollow: SavedState = { active: 'stream', codes: { stream: undefined } };
     expect(expiredModes(hollow, NOW)).toEqual([]);
+  });
+});
+
+/**
+ * N4: an ended session is shown only on its own code's Ended screen. Once the
+ * phone no longer holds that code, nothing can show it, and the next code
+ * opened would land on it instead of arming.
+ */
+describe('orphanedSession', () => {
+  const keptOnly: SavedState = { active: null, codes: { stream: streamCode } };
+  const neverExpires: SavedState = {
+    active: 'stream',
+    codes: { stream: savedStreamCode({ expiresAt: null }) },
+  };
+  it.each<[string, boolean, EngineStatus, SavedState, Date]>([
+    ['stopped, its code expired', true, 'stopped', inStream, AFTER_EXPIRY],
+    ['failed, its code expired', true, 'failed', inStream, AFTER_EXPIRY],
+    ['stopped, the code expiring this instant', true, 'stopped', inStream, EXPIRY],
+    ['stopped, nothing saved', true, 'stopped', nothing, NOW],
+    ['failed, nothing saved', true, 'failed', nothing, NOW],
+    ['stopped, its code still valid', false, 'stopped', inStream, NOW],
+    ['failed, its code still valid', false, 'failed', inStream, NOW],
+    ['stopped, its code kept though not active', false, 'stopped', keptOnly, NOW],
+    ['stopped, a code with no expiry', false, 'stopped', neverExpires, AFTER_EXPIRY],
+    ['idle, nothing saved', false, 'idle', nothing, NOW],
+    ['armed, its code expired', false, 'armed', inStream, AFTER_EXPIRY],
+    ['live, its code expired', false, 'live', inStream, AFTER_EXPIRY],
+  ])('%s → orphaned: %s', (_, orphaned, engine, saved, now) => {
+    expect(orphanedSession({ engine, saved, now })).toBe(orphaned);
   });
 });
 

@@ -1,7 +1,21 @@
-import { act, fireEvent, screen, waitFor } from '@testing-library/react';
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  renderHook,
+  screen,
+  waitFor,
+} from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
+import { useReopenGate } from '@/hooks/useReopenGate';
+import { sampleDescriptor } from '@/services/fakeDescriptorPort';
 import { STORE_KEYS } from '@/services/modeStore';
+import { StreamScreen } from '@/ui/screens/StreamScreen';
+import { savedStreamCode } from '../../../test/fixtures/savedStream';
+import { captureRaw, epochSeconds } from '../../../test/fixtures/wire';
 import { renderViewfinder } from '../../../test/renderViewfinder';
+import { wrapperFor } from '../../../test/renderWithPorts';
 
 const plate = () => screen.getByTestId('tally-plate').textContent;
 const scanAnother = () => screen.getByRole('button', { name: 'Scan another' });
@@ -119,5 +133,41 @@ describe('reopening while live (spec §1: the engine wins)', () => {
     act(() => view.engine.scene('stopped'));
     expect(plate()).toBe('Ended');
     expect(view.engine.intents.some((intent) => intent.kind === 'arm')).toBe(false);
+  });
+});
+
+/**
+ * N4 (owner-visible): the code expires while the phone sits on a stopped
+ * Ended screen, and the operator comes back to the app. The reopen gate sends
+ * them Home with the expiry named; the next code they scan must open on Arm,
+ * never on the old broadcast's Ended screen.
+ */
+describe('a code that expired on a stopped Ended screen (N4)', () => {
+  it('lets the next code scanned arm, never reopening the old Ended screen', async () => {
+    const view = await renderViewfinder();
+    act(() => view.engine.scene('stopped'));
+    renderHook(() => useReopenGate(true), { wrapper: wrapperFor(view) });
+    expect(plate()).toBe('Ended');
+    const later = new Date(view.ports.clock().getTime() + 5 * 3600_000);
+    view.setNow(later);
+    act(() => view.foreground.fire());
+    await waitFor(() => expect(view.navigation.current()).toBe('home'));
+
+    // Home opens a new code (spec §2), and the viewfinder mounts for it.
+    const fresh = savedStreamCode({
+      raw: captureRaw({ exp: epochSeconds(new Date(later.getTime() + 4 * 3600_000)) }),
+      savedAt: later,
+      expiresAt: new Date(later.getTime() + 4 * 3600_000),
+      descriptor: sampleDescriptor(later),
+    });
+    await act(() => view.ports.modeStore.open(fresh));
+    cleanup();
+    render(<StreamScreen />, { wrapper: wrapperFor(view) });
+    view.navigation.go('stream');
+    await act(async () => undefined);
+
+    expect(view.engine.intents.map((intent) => intent.kind)).toEqual(['arm', 'reset', 'arm']);
+    expect(plate()).not.toBe('Ended');
+    expect(screen.queryByRole('button', { name: 'Scan another' })).toBeNull();
   });
 });

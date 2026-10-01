@@ -83,13 +83,17 @@ describe('a visit never arms on its way out (I1)', () => {
 
   // The adoption on its own, with no leave: the engine wins at reopen, so its
   // session is this visit's arm and a fall to idle is recovered by Continue.
-  it('adopts a session it reopened on: a fall to idle mid-visit is not re-armed', async () => {
-    const view = await renderViewfinder({}, { prepare: (fakes) => fakes.engine.scene('live') });
-    act(() => view.engine.forceState({ kind: 'idle' }));
-    await settle();
-    expect(view.navigation.current()).toBe('stream');
-    expect(kinds(view)).toEqual([]);
-  });
+  // N1: an armed session is adopted as surely as a live one (mutant R30).
+  it.each(['armed-ready', 'live'] as const)(
+    'adopts a %s session it reopened on: a fall to idle mid-visit is not re-armed',
+    async (scene) => {
+      const view = await renderViewfinder({}, { prepare: (fakes) => fakes.engine.scene(scene) });
+      act(() => view.engine.forceState({ kind: 'idle' }));
+      await settle();
+      expect(view.navigation.current()).toBe('stream');
+      expect(kinds(view)).toEqual([]);
+    },
+  );
 
   it('never arms a code that loads after the visit started to leave', async () => {
     const fakes = createFakePorts({
@@ -104,6 +108,33 @@ describe('a visit never arms on its way out (I1)', () => {
     await settle();
     await act(() => fakes.ports.modeStore.load());
     // Not vacuous: the code is there to arm with, and the engine is idle.
+    expect(fakes.ports.modeStore.getSnapshot()).toMatchObject({
+      status: 'ready',
+      saved: { codes: { stream: expect.anything() } },
+    });
+    expect(fakes.engine.getSnapshot().state).toEqual({ kind: 'idle' });
+    expect(kinds(fakes)).toEqual([]);
+  });
+
+  // N1, the "during" half (mutant R4): a visit has started to leave from the
+  // moment its write is asked, not once the write settles.
+  it('never arms a code that loads while its leave is still being written', async () => {
+    const fakes = createFakePorts({
+      kvSeed: {
+        [STORE_KEYS.active]: 'stream',
+        [STORE_KEYS.code('stream')]: encodeSavedCode(savedStreamCode()),
+      },
+    });
+    const written = vi
+      .spyOn(fakes.ports.modeStore, 'setActive')
+      .mockReturnValue(new Promise<void>(() => undefined));
+    render(<StreamScreen />, { wrapper: wrapperFor(fakes) });
+    fakes.navigation.go('stream');
+    act(() => void fakes.back.press());
+    await act(() => fakes.ports.modeStore.load());
+    // Still leaving: the write was asked and never settles.
+    expect(written).toHaveBeenCalledWith(null);
+    expect(fakes.navigation.current()).toBe('stream');
     expect(fakes.ports.modeStore.getSnapshot()).toMatchObject({
       status: 'ready',
       saved: { codes: { stream: expect.anything() } },

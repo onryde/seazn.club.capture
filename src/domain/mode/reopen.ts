@@ -51,6 +51,24 @@ export function reopenTarget(input: {
   return { go: 'stream' };
 }
 
+/**
+ * N4 (owner-visible): an ended session is shown only on its own code's Ended
+ * screen. Once the phone no longer holds that code — expired, or never saved
+ * — nothing can show it, and the next code opened would land on its Ended
+ * screen instead of arming. The reopen gate clears it on the way Home. A code
+ * still saved, active or not, keeps its session: Continue opens it, truthfully.
+ */
+export function orphanedSession(input: {
+  engine: EngineStatus;
+  saved: SavedState;
+  now: Date;
+}): boolean {
+  const { engine, saved, now } = input;
+  if (engine !== 'stopped' && engine !== 'failed') return false;
+  const code = saved.codes.stream;
+  return code === undefined || isExpired(code, now);
+}
+
 /** Modes whose saved code has expired. The caller deletes them after reading the target. */
 export function expiredModes(saved: SavedState, now: Date): readonly Mode[] {
   return Object.values(saved.codes)

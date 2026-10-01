@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useSyncExternalStore } from 'react';
-import { expiredModes, reopenTarget } from '@/domain/mode/reopen';
+import { expiredModes, orphanedSession, reopenTarget } from '@/domain/mode/reopen';
 import { selectEngineStatus } from '@/hooks/engineSelectors';
 import { usePorts } from '@/hooks/usePorts';
 
@@ -49,18 +49,21 @@ export function useReopenGate(navigatorReady: boolean): void {
  * store has already published the removal and the notice, so Home names the
  * expiry either way and the next launch expires it again. The refusal is
  * recorded (spec §5), and nothing escapes as an unhandled rejection.
+ *
+ * N4: the gate's one intent is the reset of an ended session whose code is
+ * gone (`orphanedSession`). It is decided from the same snapshot as the
+ * target, in the same tick, so no session that moved on is cleared.
  */
 function useSettle(): () => void {
   const { modeStore, engine, navigation, clock, logger } = usePorts();
   return useCallback(() => {
     const current = modeStore.getSnapshot();
     if (current.status !== 'ready') return;
+    const facts = { engine: selectEngineStatus(engine.getSnapshot()), saved: current.saved };
     const now = clock();
-    const target = reopenTarget({
-      engine: selectEngineStatus(engine.getSnapshot()),
-      saved: current.saved,
-      now,
-    });
+    const target = reopenTarget({ ...facts, now });
+    // N4: an ended session whose code is gone is cleared on the way Home.
+    if (orphanedSession({ ...facts, now })) engine.send({ kind: 'reset' });
     // Read the target first: expiring removes the code the notice names.
     const notice = target.go === 'home' ? (target.notice ?? null) : null;
     // R23: never expire the mode the operator is sent to. A valid code is not

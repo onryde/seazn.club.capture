@@ -188,3 +188,68 @@ describe('useReopenGate: beyond the happy path', () => {
     expect(second.navigation.current()).toBe('home');
   });
 });
+
+/**
+ * N4 (owner-visible): a session that ended under a code the phone no longer
+ * holds has no screen left to show it on. Sent Home, the gate clears it, so
+ * the next code scanned never opens on the old Ended screen.
+ */
+describe('useReopenGate: an ended session whose code is gone (N4)', () => {
+  const kinds = (fakes: ReturnType<typeof createFakePorts>) =>
+    fakes.engine.intents.map((intent) => intent.kind);
+
+  it.each(['stopped', 'stopped-by-organiser', 'fatal'] as const)(
+    'clears a %s session once its code expired while the app was away',
+    async (scene) => {
+      const fakes = createFakePorts({ kvSeed: inStream });
+      fakes.engine.scene(scene);
+      gate(fakes);
+      // Its Ended screen while the code is valid: nothing cleared.
+      await waitFor(() => expect(fakes.navigation.current()).toBe('stream'));
+      expect(kinds(fakes)).toEqual([]);
+      fakes.setNow(new Date(EXPIRY.getTime() + 60_000));
+      act(() => fakes.foreground.fire());
+      await waitFor(() => expect(fakes.navigation.current()).toBe('home'));
+      expect(noticeOf(fakes)).toMatchObject({ mode: 'stream', expiredAt: EXPIRY });
+      expect(kinds(fakes)).toEqual(['reset']);
+      expect(fakes.engine.getSnapshot().state).toEqual({ kind: 'idle' });
+    },
+  );
+
+  it('clears an ended session found at launch with no code saved', async () => {
+    const fakes = createFakePorts();
+    fakes.engine.scene('stopped');
+    gate(fakes);
+    await waitFor(() => expect(fakes.splash.hides).toBe(1));
+    expect(fakes.navigation.current()).toBe('home');
+    expect(kinds(fakes)).toEqual(['reset']);
+  });
+
+  // A kept code still owns its Ended screen: Continue opens it, truthfully.
+  it('keeps an ended session whose code is still saved, though not active', async () => {
+    const fakes = createFakePorts({
+      kvSeed: { [STORE_KEYS.code('stream')]: encodeSavedCode(code) },
+    });
+    fakes.engine.scene('stopped');
+    gate(fakes);
+    await waitFor(() => expect(fakes.splash.hides).toBe(1));
+    expect(fakes.navigation.current()).toBe('home');
+    expect(kinds(fakes)).toEqual([]);
+    expect(fakes.engine.getSnapshot().state.kind).toBe('ended');
+  });
+
+  it.each([
+    ['idle', null],
+    ['armed', 'armed-ready'],
+    ['live', 'live'],
+  ] as const)('never clears an engine that is %s', async (_, scene) => {
+    const fakes = createFakePorts({ kvSeed: inStream });
+    if (scene !== null) fakes.engine.scene(scene);
+    fakes.setNow(new Date(EXPIRY.getTime() + 60_000));
+    gate(fakes);
+    await waitFor(() => expect(fakes.splash.hides).toBe(1));
+    act(() => fakes.foreground.fire());
+    await act(async () => undefined);
+    expect(kinds(fakes)).toEqual([]);
+  });
+});
