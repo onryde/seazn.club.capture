@@ -67,10 +67,15 @@ Each follows from a ruling above. Lane D answered all ten on 2026-10-01: asks 1�
 
 **Contract details agreed with lane D, 2026-10-01** (consistent with the rulings above; our coordinator agreed them):
 
-- **G0-d, `cred` only to the current phone.** `GET code` carries `?phone=<id>`. The server returns `cred` only to the slot's current phone; any other caller gets the waiting or session state with `cred` absent, and a hint to claim. See _Who reads what_.
+- **G0-d, `cred` only to the current phone.** `GET code` carries `?phone=<id>`. The server returns `cred` only to the slot's current phone; any other caller gets the waiting or session state with `cred` absent. There is no hint field: a session shape with no `cred` is itself the sign to claim. See _Who reads what_.
 - **G0-e, the phone's model.** Beats that carry a `claim` may carry `device:{model}`, `Build.MODEL` only, and nothing that identifies a person. The organiser's panel shows which phone is paired, and a takeover notice names it.
 - **G0-f, `failed`.** A new `endReason` for a server-side end that is neither a Stop nor a timeout: a credit running out mid-stream, or a provider fault. The phone returns to Paired with "Stream ended by Seazn — ask the organiser", never "Organiser stopped it".
-- **G0-g, a claim and a stop are independent.** A claim refused while it carries `stopped` (an A17 re-send from a phone that is not current) is answered `taken` or `replaced` by the claim rules, not `over`; the stop is still applied to its `sid`.
+- **G0-g, a claim and a stop are independent.** A claim refused while it carries `stopped` (an A17 re-send from a phone that is not current) is answered `taken` or `replaced` by the claim rules, not `over`; the stop is still applied to its `sid`, subject to A17's refinement (_The operator's Stop wins_).
+- **Round 5, agreed with lane D after a schema diff:**
+  - **Refusal bodies.** A success is the bare shape. Every refusal is `{code, message}` plus its extras (_Contract shapes_). The phone shows its own translated line, keyed by `code`, and never the server's `message` for a known code. For an unknown `code` it shows "Can't go live — ask the organiser" and logs `message` to the record.
+  - **The session shape carries the waiting fields** it lacked: `pollSeconds`, `code`, `scheduledStart` and `destinationName`, so a phone that only ever fetched a session still has its cadence and its waiting lines.
+  - **`GET code` carries `?slot=`**, which the server defaults to 0. The phone always sends it; S3's court phones need it.
+  - **A17's edge** is refined under _The operator's Stop wins_.
 
 ## 1. States and contract
 
@@ -137,21 +142,26 @@ Names are negotiable until the web publishes the schemas in `docs/contracts/`; t
 ```
 QR v2:      { v:2, code, slot, tok, exp? }
 
-GET code?phone=<id>   (Authorization: Bearer <tok>, Cache-Control: no-store) → one of:   // native sends phone; JS's scan fetch does not
+GET code?slot=<n>&phone=<id>   (Authorization: Bearer <tok>, Cache-Control: no-store) → one of:   // slot always (server default 0); phone from native only, never JS's scan fetch
   waiting:  { state:"waiting", code, label, venueTimezone, scheduledStart?, pollSeconds,
               autoAllowed, destinationName|null, overlayUrl|null, heartbeatUrl, startUrl }
   session:  { state:"warming"|"live"|"ending"|"completed"|"failed", endReason?, sid,   // endReason: the beat's vocabulary
               cred?:{ srt:{url,streamId,passphrase,latencyMs}|null, rtmps:{url,streamKey} }, preferred,   // cred only to the current phone (G0-d); srt null ⇒ preferred "rtmps" (A18)
               playbackUrl, overlayUrl|null, holdWindowSeconds:{srt,rtmps}, maxDurationMinutes,
-              warmingDeadline, label, venueTimezone, scoreUpdates, autoAllowed, heartbeatUrl, startUrl }
+              warmingDeadline, label, venueTimezone, scoreUpdates, autoAllowed, heartbeatUrl, startUrl,
+              code, scheduledStart?, destinationName|null, pollSeconds }   // the waiting fields too (round 5)
   401 → the code is expired or revoked: forget it.   404 → not a stream code.   429 → Retry-After.
   410 → the broadcast is over (at a scan, a server fault: read as not valid).
 
 POST start  (Bearer tok) { phone }
-                         → 200 { sid }
-                         | 409 already_live { sid, startedBy }  (take that broadcast over)
-                         | 409 replaced  (this phone no longer holds the slot: unpair, as a beat's `replaced`)
-                         | 409 no_destination | 402 no_credit | 403 not_entitled  (stay paired; show why)
+                         → 200 { sid }                                   // a success is the bare shape
+                         | 409 { code:"already_live", message, sid, startedBy }  (take that broadcast over)
+                         | 409 { code:"replaced", message }  (this phone no longer holds the slot: unpair, as a beat's `replaced`)
+                         | 409 { code:"no_destination", message } | 402 { code:"no_credit", message }
+                         | 403 { code:"not_entitled", message }          (stay paired; show our line for `code`)
+                         | any other { code, message }                   (stay paired; our generic line; `message` logged)
+  Every refusal is { code, message } plus its extras. The phone keys its own translated line by `code`;
+  the server's `message` is never shown for a known code.
 
 POST beat   (Bearer tok) { code, slot, phone, claim:"new"|"resume"|null, sid|null, at,
               state:"paired"|"arming"|"armed"|"connecting"|"publishing"|"degraded"|"reconnecting"|"ended",
@@ -296,6 +306,7 @@ New core work. On `stop` from a broadcast whose first encoded frame went out, th
 - **What is kept.** On every operator `stop` from Arming on, live or not, native writes a **stopped record** `{code, slot, sid, stoppedAt, keepUntil}` before `Command.End`. `keepUntil` is `stoppedAt` plus the broadcast's `maxDurationMinutes`: after that the broadcast cannot still be open. A Stop before the descriptor has answered (in Arming, while "Starting — can't reach Seazn, retrying") has no `maxDurationMinutes`; its `keepUntil` is `stoppedAt` plus **`StoppedRecord.DEFAULT_KEEP_MS`, 12 h**, a named constant in the core. S1 sets no cap of its own (the descriptor's value is the only one), so 12 h is chosen: longer than any match broadcast we expect, so the record cannot lapse while the broadcast might be open, and short enough that a stale record ignores one dead `sid` for an afternoon at most. A test pins it and a mutation must fail it. One record per code and slot; a newer Stop on the same code and slot replaces it.
 - **Where it lives.** In native app-private storage, beside the phone's id, excluded from backup, written synchronously. Not in JS: JS forgets the code at the Stop (A3), and the record must outlive both that forget and the process. It holds a `sid`, which is not a secret, and no `tok`.
 - **On the next pairing** of the same code and slot, every paired beat — one that holds no `sid` — carries `stopped: sid` until it is delivered. A beat that holds a `sid` never carries it, so no answer can be read as being about two broadcasts. A paired beat always comes again: every pairing starts Paired, and every broadcast ends back in Paired or ends the pairing. While the record exists, a `go-live` or `live` naming that `sid` is ignored: the phone never rejoins it, and waits in Paired for a fresh Go live (a new `sid`). The engine's in-memory refused `sid`s also gain it, so a server that still names it after delivery is ignored for the pairing's life.
+- **Refinement agreed with lane D (round 5).** A `stopped: X` from the slot's current phone always applies. From a phone that is not current, it closes X only if no current phone holds X; otherwise the server ignores it. Either way the `taken` or `replaced` answer counts as delivered (G0-g). So the operator's Stop wins over its own phone's rejoin, never over another phone's live broadcast taken over under A14.
 - **Delivered** means any 2xx to a beat that carried it — `over` for that `sid`, and also `taken` or `replaced`, since a refused claim still has its stop applied (G0-g) — or a defensive 410. The server closes the `sid` if it is still open, and answers 200 as a no-op if it has already ended or a newer `sid` exists (web ask 7). The record is then deleted.
 - **Not delivered** — a 404, 429, 5xx or no answer — keeps the record. It rides every paired beat of that pairing, then of any later pairing of the same code and slot, until delivered or until `keepUntil` passes. A 401 for its code also deletes it: the code is dead, and the server's no-signal timeout or the organiser closes the broadcast.
 - **Cleared** by delivery, by a 401 for its code, or at startup once past `keepUntil`. Nothing else clears it.
@@ -357,7 +368,7 @@ What JS sends, and what it reads. JS never derives any of it by comparing snapsh
 | `pairing`          | `{code, slot, tokenTag, automatic, label, venueTimezone, scheduledStart, autoAllowed, destinationName, overlayUrl, pollSeconds}` | from `pair` until `reset` or Idle; replaces the top-level `slot` and `tokenTag`                                                                     |
 | `broadcast`        | `{sid, cause, playbackUrl, overlayUrl, label, holdWindowSeconds, maxDurationMinutes, scoreUpdates}`                              | while a broadcast is held, and in Ended; replaces `descriptor`                                                                                      |
 | `ready`            | `{camera, sound, network, held}`, booleans                                                                                       | always; false when unknown                                                                                                                          |
-| `refusal`          | `no_destination`, `no_credit`, `not_entitled`, `start-failed`, or null                                                           | until the next start or the end of the pairing                                                                                                      |
+| `refusal`          | `no_destination`, `no_credit`, `not_entitled`, `unknown`, `start-failed`, or null                                                | until the next start or the end of the pairing                                                                                                      |
 | `lastEnd`          | why the last broadcast ended, or null                                                                                            | in Paired after a broadcast, until the next start                                                                                                   |
 | `unpaired`         | `{reason: code-ended \| replaced \| taken \| permissions, code, slot, tokenTag}` or null                                         | in Idle after an unpair the operator did not ask for, until the next `pair`                                                                         |
 | `codeEndedPending` | boolean                                                                                                                          | a 401 seen while a broadcast is held. No HUD line: Diagnostics' heartbeat row shows the 401, and the "Code ended" panel follows the broadcast's end |
@@ -401,7 +412,9 @@ English shown. Every string ships in en/es/fr/nl, checked against `docs/i18n-glo
   - `no_destination`: **"Ask the organiser to pick where to stream"**
   - `no_credit`: **"No streaming credit — ask the organiser"**
   - `not_entitled`: **"Streaming isn't included for this club"**
+  - any other refusal `code`: **"Can't go live — ask the organiser"**, with the server's `message` logged, never shown;
   - no answer, 404, 429, 5xx, a foreign `cred` host, a bad config: **"Couldn't start the stream — try again"**
+  - The line is chosen by the body's `code`, never by the status alone, and the server's `message` is never shown.
 - **Starting** (Arming and Armed; the action column shows Stop from Arming on, and never Go live):
   - the console's Go live: **"Going live — started by the organiser"**;
   - automatic mode, at match start or on a late pairing (A16): **"Going live — the match has started"**;
@@ -458,6 +471,7 @@ Lengths are English, counted as `budgets.test.ts` counts. Key names are proposal
 | `stream.status.refusedDestination` | Ask the organiser to pick where to stream                                                          |     41 |     48 |
 | `stream.status.refusedCredit`      | No streaming credit — ask the organiser                                                            |     39 |     48 |
 | `stream.status.refusedEntitlement` | Streaming isn't included for this club                                                             |     38 |     48 |
+| `stream.status.refusedUnknown`     | Can't go live — ask the organiser                                                                  |     33 |     48 |
 | `stream.status.startFailed`        | Couldn't start the stream — try again                                                              |     37 |     48 |
 | `stream.status.startRetrying`      | Starting — can't reach Seazn, retrying                                                             |     38 |     48 |
 | `stream.status.goingLiveOrganiser` | Going live — started by the organiser                                                              |     37 |     48 |
@@ -639,10 +653,10 @@ Built in revised plan C's first batch, each citing its ruling. The text below is
 - **Battery while waiting** is measured at plan C's device gate; server push is the fallback, and would need a ruling against AGENTS §1's push scope.
 - **iOS** stays out of scope (plan C M3). The paired phase relies on Android's foreground service; iOS cannot hold a camera in the background (P1).
 - **The printed code is now a lasting bearer.** Under S1 decision 4, `tok` lasted one session. Now it lasts the code's life, which has no time cap (web-side ruling), and it authorises a `POST start`, whose broadcast spends a credit once video arrives, and the claim that unlocks the publish credentials. A photographed code is usable until the match finishes plus 2 h, or until the organiser revokes it. This is recorded, not a request to change the web's ruling.
-- **A Stop before the first frame sends no beat at the moment of the Stop (A8).** The server's broadcast stays warming until the stopping phone pairs again and delivers A17's stopped signal, or until the 10-minute no-signal timeout. It blocks no other phone's pairing (only a LIVE slot refuses a takeover), and it costs no credit: none is spent until video reaches Cloudflare. Ask 10 ends it within 60 s, `phone_lost`.
+- **A Stop before the first frame sends no beat at the moment of the Stop (A8).** The server's broadcast stays warming until the stopping phone pairs again and delivers A17's stopped signal, or until the 10-minute no-signal timeout. It blocks no other phone's pairing (only a LIVE slot refuses a takeover), and it costs no credit: none is spent until video reaches Cloudflare. Ask 10, agreed by lane D, ends it within 60 s of the phone's last beat, as `phone_lost`.
 - **A takeover before ingest lands.** If a new phone takes over while the old one is connecting, both can publish to the same input for up to one beat interval (10 s while a broadcast is held) before the old one hears `replaced`. Cloudflare keeps one of them.
 - **A dead phone that comes back (A14).** A phone silent for 60 s may still be inside its own hold window. If it reconnects after a newer phone took the slot, both publish until its next beat is answered `replaced`, at most 10 s.
-- **A Stop before the first frame, and a second phone.** A17's memory is per phone. If another phone pairs the same code and slot before the stopping phone pairs again, its claim can join the stopped broadcast while it is still warming, until the 10-minute no-signal timeout. Closed if lane D agrees ask 10, which ends that broadcast within 60 s of the stopping phone's last beat.
+- **A Stop before the first frame, and a second phone: closed.** A17's memory is per phone, so another phone pairing the same code and slot could have joined the stopped broadcast while it was still warming. Lane D agreed ask 10 (`phone_lost`), which ends that broadcast within 60 s of the stopping phone's last beat. What remains is a second phone claiming inside those 60 s; A9 makes it the slot's rightful holder anyway.
 
 ## Review dispositions
 
@@ -734,3 +748,14 @@ After the owner approved this document, lane D answered the asks on 2026-10-01. 
 | A18             | The Decisions table; the contract's nullable `cred.srt`; _Who reads what_; §3's plan C list; the AGENTS §4 edit; _Known gaps_.                     |
 | G0-d to G0-g    | Under the asks; the contract; _Who reads what_ (cred only to the current phone); `ServerWord`; A17's delivery rule; §2.                            |
 | Credit timing   | Corrected wherever a note said a credit is spent at `POST start` or Go live: it is spent when video first reaches Cloudflare.                      |
+
+### Round 5: lane D's schema diff
+
+| Item                   | Where it is folded in                                                                                                                |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| Refusal bodies         | _Contract shapes_ (`POST start`); §2's refusal lines and the generic "Can't go live — ask the organiser"; `refusal` gains `unknown`. |
+| G0-d's hint            | Removed: a session shape with no `cred` is the sign to claim.                                                                        |
+| Session waiting fields | _Contract shapes_: `pollSeconds`, `code`, `scheduledStart`, `destinationName`.                                                       |
+| Ask 10 agreed          | _Known gaps_: the second-phone gap is closed, apart from a claim inside the 60 s.                                                    |
+| `?slot=`               | _Contract shapes_: always sent; the server defaults it to 0.                                                                         |
+| A17's edge             | _The operator's Stop wins_: a non-current phone's stop never closes another phone's broadcast.                                       |
