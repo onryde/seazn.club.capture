@@ -54,9 +54,15 @@ function GateThenHome() {
 
 const liveStreamTile = () => screen.getByRole('button', { name: /Live Stream/ });
 
-/** Home under the reopen gate with a session armed: a return to the foreground reopens Live Stream. */
+/**
+ * Home under the reopen gate with a session armed and its code kept, as a
+ * leave leaves it: a return to the foreground reopens Live Stream. With no
+ * code saved the session would be an orphan, cleared on the way Home (I1).
+ */
 async function armedHome() {
-  const fakes = createFakePorts();
+  const fakes = createFakePorts({
+    kvSeed: { [STORE_KEYS.code('stream')]: savedStream(IN_TWO_HOURS) },
+  });
   render(<GateThenHome />, { wrapper: wrapperFor(fakes) });
   await waitFor(() => expect(fakes.splash.hides).toBe(1));
   act(() => fakes.engine.forceState({ kind: 'armed' }));

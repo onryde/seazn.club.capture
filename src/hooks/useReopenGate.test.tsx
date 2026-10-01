@@ -55,9 +55,19 @@ describe('useReopenGate', () => {
     expect(fakes.kv.entries.has(STORE_KEYS.code('stream'))).toBe(false);
   });
 
+  // The store says no mode is active; the engine is armed with the kept code.
   it('follows the engine over the store', async () => {
-    const fakes = createFakePorts();
+    const fakes = createFakePorts({
+      kvSeed: { [STORE_KEYS.code('stream')]: encodeSavedCode(code) },
+    });
     fakes.engine.forceState({ kind: 'armed' });
+    gate(fakes);
+    await waitFor(() => expect(fakes.navigation.current()).toBe('stream'));
+  });
+
+  it('follows a broadcast even with nothing saved', async () => {
+    const fakes = createFakePorts();
+    fakes.engine.scene('live');
     gate(fakes);
     await waitFor(() => expect(fakes.navigation.current()).toBe('stream'));
   });

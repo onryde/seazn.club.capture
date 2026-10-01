@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useSyncExternalStore } from 'react';
 import { expiredModes, orphanedSession, reopenTarget } from '@/domain/mode/reopen';
 import { selectEngineStatus } from '@/hooks/engineSelectors';
+import { useDisarm } from '@/hooks/useDisarm';
 import { usePorts } from '@/hooks/usePorts';
 import { isStreamSubRoute } from '@/services/devicePorts';
 
@@ -51,20 +52,22 @@ export function useReopenGate(navigatorReady: boolean): void {
  * expiry either way and the next launch expires it again. The refusal is
  * recorded (spec §5), and nothing escapes as an unhandled rejection.
  *
- * N4: the gate's one intent is the reset of an ended session whose code is
- * gone (`orphanedSession`). It is decided from the same snapshot as the
- * target, in the same tick, so no session that moved on is cleared.
+ * N4 and I1 (final review): the gate clears a session no saved code owns
+ * (`orphanedSession`): an ended one is reset, an armed one stopped, then reset
+ * (`useDisarm`). It is decided from the same snapshot as the target, in the
+ * same tick, so no session that moved on is cleared.
  */
 function useSettle(): () => void {
   const { modeStore, engine, navigation, clock, logger } = usePorts();
+  const disarm = useDisarm();
   return useCallback(() => {
     const current = modeStore.getSnapshot();
     if (current.status !== 'ready') return;
     const facts = { engine: selectEngineStatus(engine.getSnapshot()), saved: current.saved };
     const now = clock();
     const target = reopenTarget({ ...facts, now });
-    // N4: an ended session whose code is gone is cleared on the way Home.
-    if (orphanedSession({ ...facts, now })) engine.send({ kind: 'reset' });
+    // N4, I1: a session whose code is gone is cleared on the way Home.
+    if (orphanedSession({ ...facts, now })) disarm('orphan');
     // Read the target first: expiring removes the code the notice names.
     const notice = target.go === 'home' ? (target.notice ?? null) : null;
     // R23: never expire the mode the operator is sent to. A valid code is not
@@ -78,5 +81,5 @@ function useSettle(): () => void {
     if (!(target.go === 'stream' && isStreamSubRoute(navigation.current()))) {
       navigation.go(target.go);
     }
-  }, [modeStore, clock, engine, navigation, logger]);
+  }, [modeStore, clock, engine, navigation, logger, disarm]);
 }

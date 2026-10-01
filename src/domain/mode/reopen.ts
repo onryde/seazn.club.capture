@@ -31,7 +31,10 @@ export type ReopenTarget =
  * Where the app lands on launch and on every return to the foreground
  * (spec §4). The engine wins: under the Android foreground service a
  * broadcast can outlive the UI, and hiding it would be the worst lie the app
- * could tell. S0 builds only Live Stream; S2 and S4 widen the union.
+ * could tell. An armed session wins only while a saved code owns it (I1,
+ * final review): one whose code was forgotten is an orphan (`orphanedSession`),
+ * cleared on the way Home, never a Ready viewfinder. S0 builds only Live
+ * Stream; S2 and S4 widen the union.
  */
 export function reopenTarget(input: {
   engine: EngineStatus;
@@ -39,7 +42,8 @@ export function reopenTarget(input: {
   now: Date;
 }): ReopenTarget {
   const { engine, saved, now } = input;
-  if (engine === 'armed' || engine === 'live') return { go: 'stream' };
+  if (engine === 'live') return { go: 'stream' };
+  if (engine === 'armed' && saved.codes.stream !== undefined) return { go: 'stream' };
   if (saved.active !== 'stream') return { go: 'home' };
   const code = saved.codes.stream;
   if (code === undefined) return { go: 'home' };
@@ -58,6 +62,11 @@ export function reopenTarget(input: {
  * — nothing can show it, and the next code opened would land on its Ended
  * screen instead of arming. The reopen gate clears it on the way Home. A code
  * still saved, active or not, keeps its session: Continue opens it, truthfully.
+ *
+ * I1 (final review, owner-visible): an armed session with no code saved is an
+ * orphan too, or every foreground would reopen a Ready viewfinder for a code
+ * the operator forgot. An armed session's expired code still owns it (R23).
+ * Never a broadcast: on air nothing is an orphan.
  */
 export function orphanedSession(input: {
   engine: EngineStatus;
@@ -65,8 +74,9 @@ export function orphanedSession(input: {
   now: Date;
 }): boolean {
   const { engine, saved, now } = input;
-  if (engine !== 'stopped' && engine !== 'failed') return false;
   const code = saved.codes.stream;
+  if (engine === 'armed') return code === undefined;
+  if (engine !== 'stopped' && engine !== 'failed') return false;
   return code === undefined || isExpired(code, now);
 }
 

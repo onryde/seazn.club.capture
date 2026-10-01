@@ -27,12 +27,27 @@ const inStream: SavedState = { active: 'stream', codes: { stream: streamCode } }
 const nothing: SavedState = { active: null, codes: {} };
 
 describe('reopenTarget', () => {
-  it.each<EngineStatus>(['armed', 'live'])(
-    'returns to Live Stream when the engine is %s, whatever was saved',
-    (engine) => {
-      expect(reopenTarget({ engine, saved: nothing, now: AFTER_EXPIRY })).toEqual({ go: 'stream' });
-    },
-  );
+  it('returns to Live Stream when the engine is live, whatever was saved', () => {
+    expect(reopenTarget({ engine: 'live', saved: nothing, now: AFTER_EXPIRY })).toEqual({
+      go: 'stream',
+    });
+  });
+
+  // R23: an expired code is kept while the engine holds it.
+  it.each<[string, SavedState, Date]>([
+    ['active and valid', inStream, NOW],
+    ['active and expired', inStream, AFTER_EXPIRY],
+    ['kept though not active', { active: null, codes: { stream: streamCode } }, NOW],
+  ])('returns to Live Stream when the engine is armed and a code is saved, %s', (_, saved, now) => {
+    expect(reopenTarget({ engine: 'armed', saved, now })).toEqual({ go: 'stream' });
+  });
+
+  // I1 (final review): nothing saved owns it, so it is an orphan, cleared on the way Home.
+  it('goes Home quietly when the engine is armed and no code is saved', () => {
+    expect(reopenTarget({ engine: 'armed', saved: nothing, now: NOW })).toEqual({ go: 'home' });
+    const activeOnly: SavedState = { active: 'stream', codes: {} };
+    expect(reopenTarget({ engine: 'armed', saved: activeOnly, now: NOW })).toEqual({ go: 'home' });
+  });
 
   it('returns to the last mode while its code is valid', () => {
     expect(reopenTarget({ engine: 'idle', saved: inStream, now: NOW })).toEqual({ go: 'stream' });
@@ -121,8 +136,14 @@ describe('orphanedSession', () => {
     ['stopped, its code kept though not active', false, 'stopped', keptOnly, NOW],
     ['stopped, a code with no expiry', false, 'stopped', neverExpires, AFTER_EXPIRY],
     ['idle, nothing saved', false, 'idle', nothing, NOW],
+    // I1 (final review): an armed session no saved code owns is an orphan too.
+    ['armed, nothing saved', true, 'armed', nothing, NOW],
+    ['armed, its code still valid', false, 'armed', inStream, NOW],
+    ['armed, its code kept though not active', false, 'armed', keptOnly, NOW],
+    // R23: the engine holds the expired code; the settle after it lets go expires it.
     ['armed, its code expired', false, 'armed', inStream, AFTER_EXPIRY],
     ['live, its code expired', false, 'live', inStream, AFTER_EXPIRY],
+    ['live, nothing saved', false, 'live', nothing, NOW],
   ])('%s → orphaned: %s', (_, orphaned, engine, saved, now) => {
     expect(orphanedSession({ engine, saved, now })).toBe(orphaned);
   });

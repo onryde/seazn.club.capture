@@ -12,6 +12,7 @@ import {
   type OpenOrCheck,
   type SetPanel,
 } from '@/hooks/useDescriptorCheck';
+import { useDisarm } from '@/hooks/useDisarm';
 import { useFormatTime } from '@/hooks/useFormatTime';
 import { useT } from '@/hooks/useLanguage';
 import { usePorts } from '@/hooks/usePorts';
@@ -334,15 +335,25 @@ function useContinue(setStatusKey: SetStatusKey, saveFailed: SaveFailed): () => 
   }, [modeStore, navigation, clock, logger, setStatusKey, saveFailed]);
 }
 
-/** The Forget button: immediate, with no confirmation (spec §4). */
+/**
+ * The Forget button: immediate, with no confirmation (spec §4). I1 (final
+ * review, owner-visible): the code's session goes with it, armed or ended, so
+ * nothing is left to reopen or go live on. On air Home is hidden, so a
+ * broadcast never reaches here, and `useDisarm` never touches one anyway. A
+ * refused forget keeps the code, and so its session.
+ */
 function useForget(setStatusKey: SetStatusKey, saveFailed: SaveFailed): () => void {
   const { modeStore } = usePorts();
+  const disarm = useDisarm();
   return useCallback(() => {
     void modeStore.forget('stream').then(
-      () => setStatusKey(null),
+      () => {
+        setStatusKey(null);
+        disarm('forget');
+      },
       () => saveFailed('forget'),
     );
-  }, [modeStore, setStatusKey, saveFailed]);
+  }, [modeStore, setStatusKey, saveFailed, disarm]);
 }
 
 /**
