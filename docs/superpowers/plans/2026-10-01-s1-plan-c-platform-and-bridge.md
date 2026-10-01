@@ -17,23 +17,23 @@ On the JavaScript side, `createNativeCaptureEngine` maps native's snapshot event
 - Expo SDK 57 (expo-modules-core 57.0.17), React Native 0.86.3, TypeScript 6 strict, vitest 5;
 - Kotlin 2.1.20, AGP 8.12.0, Gradle 9.3.1, JDK 17, compileSdk/targetSdk 36, minSdk 24;
 - StreamPack 3.2.0 (`core`, `ui`, `srt`, `rtmp`), srtdroid-ktx 1.10.1 (libsrt 1.5.7), komuxer rtmp 0.4.0 (Ktor 3.3.3);
-- OkHttp at the version React Native already resolves (Task 23 checks it), and `org.json` on the JVM test classpath only.
+- OkHttp 4.9.2 as `compileOnly`, the version `react-android` 0.86.3 declares (`node_modules/react-native/gradle/libs.versions.toml`), so the app's own copy is the one that runs and Task 20 records what the app resolves; `org.json` on the JVM test classpath only.
 
 **Spec:** `docs/specs/2026-09-30-s1-live-stream-design.md` (owner-approved; binding; do not edit). It covers §3 (`platform/` and _Bridge_), §5, §6 (_CI_, _Device checks_) and §7 phase 4.
 
 **Sources, in authority order:**
 
 1. the spec;
-2. the owner's rulings of 2026-10-01: the crash-screen copy is approved as built, and plan C builds a viewfinder-only error boundary around the native preview;
+2. the owner's rulings of 2026-10-01: the crash-screen copy is approved as built; plan C builds a viewfinder-only error boundary around the native preview; and an AI translation review against `docs/i18n-glossary.md` replaces the native-speaker review (PR #9), which CI enforces with `pnpm i18n:release-check` (PR #10);
 3. the carries in `docs/specs/2026-09-30-s1-plan-a-results.md`, _Carried to plan C_ (all 28 are traced below);
 4. the research in `docs/superpowers/plans/2026-09-30-s1-plan-c-research.md`;
-5. this plan's own judgment, recorded under **Plan decisions**.
+5. this plan's own judgment, recorded under **Plan decisions**. Three of those decisions are **PROPOSED — awaiting owner** (see _Proposed decisions_): they are written so the plan can be built either way.
 
 Plans A and B are merged: `docs/superpowers/plans/2026-09-30-s1-plan-a-js-domain-and-screens.md` and `docs/superpowers/plans/2026-09-30-s1-plan-b-kotlin-core.md`. P5 findings are cited by ID from `docs/specs/2026-09-11-p5-android-results.md`.
 
 ## Global Constraints
 
-- **Worktree.** Execute in a worktree of `main` (at or after `a65bede`) on branch `feat/s1-plan-c`. Run `pnpm install --frozen-lockfile` once. Put `cd <absolute worktree path> &&` in every command you judge, because the shell cwd resets to the main checkout between calls (AGENTS §13).
+- **Worktree.** Execute in a worktree of `main` (at or after `d6931c1`) on branch `feat/s1-plan-c`. Run `pnpm install --frozen-lockfile` once. Put `cd <absolute worktree path> &&` in every command you judge, because the shell cwd resets to the main checkout between calls (AGENTS §13).
 - **Never EAS.** No `eas build`, `eas submit` or `eas update`, ever. Native builds are local: `pnpm expo prebuild -p android --no-install`, then Gradle and `adb` (AGENTS §11).
 - **Prebuild rewrites `package.json`.** Before every prebuild, `cp package.json "$TMPDIR/package.json.bak"`. After it, `cp "$TMPDIR/package.json.bak" package.json`, then `git diff --exit-code package.json`. Never commit the rewrite. The root `android/` is gitignored prebuild output and is never committed.
 - **`expo-camera` is never installed.** StreamPack owns the capture session. `streampack-services` is never added, and `StreamerLifeCycleObserver` is never attached (research, boilerplate §8).
@@ -60,11 +60,12 @@ Plans A and B are merged: `docs/superpowers/plans/2026-09-30-s1-plan-a-js-domain
   ```bash
   cd "$WT/modules/capture-engine/android/core" && grep -ho ' tests="[0-9]*"' build/test-results/test/*.xml host/build/test-results/test/*.xml 2>/dev/null | tr -dc '0-9\n' | paste -sd+ - | bc
   ```
-  JS: `pnpm vitest run --reporter=json --outputFile="$TMPDIR/r.json"`, then read `numTotalTests` and `numFailedTests`. Capture exit codes with `cmd > out 2>&1; echo "EXIT=$?"`, never through a pipe. Baselines at `a65bede`: **452** Kotlin tests and **1919** JS tests, 0 failed.
+  JS: `pnpm vitest run --reporter=json --outputFile="$TMPDIR/r.json"`, then read `numTotalTests` and `numFailedTests`. Capture exit codes with `cmd > out 2>&1; echo "EXIT=$?"`, never through a pipe. Baselines at `d6931c1`: **452** Kotlin tests and **1928** JS tests, 0 failed. Re-count both at the worktree's base before Task 1 and use those numbers: every "rises by" in this plan is relative to them.
 - **Checks.** `pnpm check` covers typecheck, lint, Prettier on `src app modules test`, and vitest. Also run `pnpm prettier --check` on every other file you touch (docs, `app.json`, workflows).
 - **Kotlin style.** `allWarningsAsErrors` stays on in the core build. Pure units take time as arguments or through `Clock`, and never read a system clock.
-- **Copy.** Every operator-visible string is in all four dictionaries. Non-English entries keep `"_review": "pending native speaker"`. Status lines fit `STATUS_LINE_BUDGET` (48), which `src/i18n/budgets.test.ts` enforces.
-- **Device claims.** A claim about what the operator sees, or about Android behaviour, is settled only on a phone, and the report says so. Steps that need the owner's hands are listed for the owner, never simulated (AGENTS §13).
+- **Copy.** Every operator-visible string is in all four dictionaries, and every new key is in the same task's commit **with its es, fr and nl translation already reviewed against `docs/i18n-glossary.md`**: CI's `pnpm i18n:release-check` (`scripts/check-i18n-release.mjs`) fails on any `_review` key, so no `"_review": "pending translation review"` marker may be left in a commit. The glossary's rules bind: es tú, fr vous, nl je; es, fr and nl status lines split on a colon, never an em dash; French puts U+00A0 (written `\u00a0` in the JSON) before `:` `;` `?` `!`, which `dictionaries.test.ts` enforces; straight apostrophes; sentence case. A term the glossary lacks is added to it in the same commit (this plan adds **engine**: motor / moteur / engine). Lengths fit the patterns in `src/i18n/budgets.test.ts` (status lines 48, advisories 56), counted with `s.length` as `budgets.test.ts` counts, never by eye.
+- **Device claims.** A claim about what the operator sees, or about Android behaviour, is settled only on a phone, and the report says so. Steps that need the owner's hands are listed for the owner, never simulated (AGENTS §13). Every device check names **what to read** — a record line, a Diagnostics row, a `dumpsys` or `ffprobe` field — never "it works".
+- **Files.** Config files are `vitest.config.mts` and `eslint.config.mjs`. A `git add` of a path that does not exist aborts the whole add.
 - **Commits.** Use `git commit -F -` with a heredoc, staging files by explicit path, never `git add -A`. Messages are conventional and end with exactly:
   ```
   Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
@@ -76,70 +77,86 @@ Plans A and B are merged: `docs/superpowers/plans/2026-09-30-s1-plan-a-js-domain
 These are the inputs the spec implies that ordinary happy-path tests would miss, most likely first. Each has a test in the task named.
 
 1. **An adapter blocks the scheduler thread**: a StreamPack suspend call under `runBlocking`, a DNS lookup in `connect`, or a slow HTTP answer read inline. Snapshots stop, and the HUD would keep claiming LIVE. Expected: nothing in the glue blocks. If native goes quiet anyway, the column says so within 3 s and the plate stops claiming LIVE. Pinned in Task 11 (`GlueRulesTest` forbids `runBlocking` and `InetAddress` in the glue outside the resolver) and in Task 18 (the silence line and plate, with a mutation).
-2. **JavaScript restarts while native is live**: Try again after a crash, or a dev reload. Expected: the first `getSnapshot()` already says publishing, names the session, and the record shows the lines from before the restart. Pinned in Task 12 (`current()` before any tick) and Task 15 (the engine built over a native that already reports publishing, and the record seeded from `tail()`).
-3. **A permanent failure before the first connect**: camera permission refused, or libsrt failing to load. Expected: the session ends fatal-error and still names its code, Go live never spins, the Ended block says to allow the permission, and the code is kept. Pinned in Task 6 (sticky failure, attempt in hand), Task 12 (named ended) and Task 18 (the permission line).
-4. **A secret inside a library's message or a forwarded JS line**, in raw, form-encoded or component-encoded form. Expected: `***` in the native record, never the value. Pinned in Task 3 (the shared vectors, run on both sides, with mutations).
+2. **JavaScript restarts while native is live**: Try again after a crash, or a dev reload. Expected: the first `getSnapshot()` already says publishing, names the session, and the record shows the lines from before the restart. Pinned in Task 12 (`current()` before any tick) and Task 15 (the engine built over a native that already reports publishing, and the record seeded from `tail()`). The new module instance takes over the event listener and the `AppContext` from the old one, and the old one's `OnDestroy` clears only what is still its own, whichever runs first (Task 12's `OwnedSlot`, which Task 20's `EngineHost` uses; the device check is Task 26's JS reload while live).
+3. **A permanent failure before the first connect**: camera permission refused, or libsrt failing to load. Expected: the session ends fatal-error and still names its code, Go live never spins, the Ended block says to allow the permission, and the code is kept. Pinned in Task 6 (sticky failure, attempt in hand), Task 12 (named ended, including a throw from `platform.armed` itself, which must never be swallowed by the snapshot sink) and Task 18 (the permission line). On Android 14+ the permissions are asked **before** the camera-and-microphone foreground service starts, or `startForeground` throws `SecurityException` and the first arm on a fresh install kills the process (Task 24, with a fresh-install device step in Task 26).
+4. **A secret inside a library's message or a forwarded JS line**, in raw, form-encoded or component-encoded form. Expected: `***` in the native record, never the value. Pinned in Task 3 (the shared vectors, run on both sides, with mutations). StreamPack's own logger is replaced, so no vendor message reaches logcat unscrubbed (Task 20; `GlueRulesTest` checks the replacement is installed).
 5. **A drop reported twice for one attempt, or a second `Connected` for it.** StreamPack's `throwableFlow` is a conflated `StateFlow` that replays (research, boilerplate §5). Expected: one drop counted, and one Frames poller and one Link poller per attempt. Pinned in Task 7 (pollers) and Task 11 (`AttemptSignals`).
 
 ## Dispatch batches
 
 Each batch goes to **one implementer** as a single brief. Every task commits on its own. A batch ends with its suite green, the raw counts reported, and every task's commit present. The reviewer then reviews the batch diff before the next batch starts.
 
-| Batch  | Tasks | Unit                                                                                                                                               | Files it owns, beyond its new files                                                                                                                                                                                                                                 | Ends with                                            |
-| ------ | ----- | -------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------- |
-| **C1** | 1–3   | Core carries: RR-12 and RR-13; the session's name with the token-tag vectors; the shared scrub on both sides                                       | `core/**` (Engine, SessionConfig, Phase, Snapshot, Projection, SessionMachine, SessionRecord, build.gradle.kts), `src/services/{scrub,sessionRecord}.ts(+tests)`, `modules/capture-engine/src/{wire,scrub}/**`, `test/fakePorts.ts` (`readRecord`), the results doc | `./gradlew test`, `pnpm check`                       |
-| **C2** | 4–8   | Adapter logic I: arm and intent mapping, the snapshot wire, the guarded scheduler and sticky failures, the attempt pollers, HTTP                   | `core/src/main/kotlin/com/seazn/capture/engine/adapter/**`, `core/.../core/{Json,Phase,SessionMachine}.kt`, `modules/capture-engine/src/wire/**`                                                                                                                    | `./gradlew test`                                     |
-| **C3** | 9–11  | Adapter logic II: device readings and exit reasons; the mic, camera and notification logic; SRT options, the TLS guard, drop signal and glue rules | `core/.../adapter/**` (new files only), `core/build.gradle.kts` (system properties)                                                                                                                                                                                 | `./gradlew test`                                     |
-| **C4** | 12–16 | `BridgeCore`, the JVM host, the JS bridge, the routed record, and the contract kit run against the host                                            | `core/settings.gradle.kts`, `core/host/**`, `modules/capture-engine/src/**`, `src/services/sessionRecord.ts`, `test/engineContract.ts`, `vitest.config.ts`, `.github/workflows/kotlin-core.yml`                                                                     | both suites, plus `pnpm vitest run --project bridge` |
-| **C5** | 17–19 | JS product changes: the disarm bound, silence, the keep-open advisory, the permission line and record counters, and the composition root           | `src/hooks/**`, `src/ui/**`, i18n, `src/hooks/nativePorts.ts`, `modules/capture-engine/src/FakeCaptureEngine.ts`                                                                                                                                                    | `pnpm check`                                         |
-| **C6** | 20–22 | Android glue I: the module scaffold and compile job, the SRT sink and endpoints, the streamer adapter                                              | `modules/capture-engine/{expo-module.config.json,android/build.gradle,android/src/**}`, `.github/workflows/android-compile.yml`                                                                                                                                     | `assembleDebug` green, local build installed         |
-| **C7** | 23–25 | Android glue II: the watchers and HTTP, the foreground service, the preview view and its boundary                                                  | `modules/capture-engine/android/src/**`, `src/services/native/nativeSurfaces.tsx`, `src/ui/components/{StreamStage,PreviewBoundary}.tsx`, i18n                                                                                                                      | `assembleDebug`, `pnpm check`                        |
-| **C8** | 26    | The device gate: a local release build, the owner's checklist, and the plan C results document                                                     | `docs/specs/2026-10-0x-s1-plan-c-results.md` (new)                                                                                                                                                                                                                  | the owner's ticks                                    |
+| Batch   | Tasks | Unit                                                                                                                                                                             | Files it owns, beyond its new files                                                                                                                                                                                                                                                                                                      | Ends with                                                                                        |
+| ------- | ----- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| **C1**  | 1–3   | Core carries: RR-12 and RR-13; the session's name with the token-tag vectors; the shared scrub on both sides                                                                     | `core/**` (Engine, SessionConfig, Phase, Snapshot, Projection, SessionMachine, SessionRecord, build.gradle.kts, and the tests Task 3 lists), `src/services/{scrub,sessionRecord,logger}.ts(+tests)`, the JS tests Task 3 lists, `modules/capture-engine/src/{wire,scrub}/**`, `test/fakePorts.ts` (`readRecord`), the plan A results doc | `./gradlew test`, `pnpm check`                                                                   |
+| **C2**  | 4–8   | Adapter logic I: arm and intent mapping, the snapshot wire, the guarded scheduler and sticky failures, the attempt pollers, HTTP                                                 | `core/src/main/kotlin/com/seazn/capture/engine/adapter/**`, `core/.../core/{Json,Phase,SessionMachine}.kt`, `modules/capture-engine/src/wire/**`                                                                                                                                                                                         | `./gradlew test`                                                                                 |
+| **C3**  | 9–11  | Adapter logic II: device readings, lateness and exit reasons; the mic, camera and notification logic; SRT options, the TLS guard, drop signal and glue rules                     | `core/.../adapter/**` (new files only), `core/build.gradle.kts` (system properties)                                                                                                                                                                                                                                                      | `./gradlew test`                                                                                 |
+| **C4a** | 12–13 | `BridgeCore`, `OwnedSlot` and the JVM host                                                                                                                                       | `core/.../adapter/{Platform,BridgeCore,OwnedSlot}.kt(+tests)`, `core/settings.gradle.kts`, `core/host/**`                                                                                                                                                                                                                                | `./gradlew test`, host smoke                                                                     |
+| **C4b** | 14–16 | The JS bridge, the routed record, and the contract kit run against the host                                                                                                      | `modules/capture-engine/src/**`, `src/hooks/useStreamArm.ts` (the arm's language, PROPOSED CD16), `src/services/sessionRecord.ts`, `test/engineContract.ts`, `test/hostEngine.ts`, `vitest.config.mts`, `.github/workflows/bridge-contract.yml` (new)                                                                                    | `pnpm check`, plus `CAPTURE_BRIDGE=1 pnpm vitest run --project bridge`                           |
+| **C5**  | 17–19 | JS product changes: the disarm bound, silence, the keep-open advisory, the permission line and record counters, the composition root, and (PROPOSED) the crash screen's language | `src/hooks/**`, `src/ui/**`, `src/i18n/*.json`, `src/i18n/budgets.test.ts`, `docs/i18n-glossary.md`, `src/hooks/nativePorts.ts`, `test/fakePorts.ts` (`nativeEngine`), `modules/capture-engine/src/FakeCaptureEngine.ts`                                                                                                                 | `pnpm check`, `pnpm i18n:release-check`                                                          |
+| **C6**  | 20–22 | Android glue I: the module scaffold, the vendor logger and the compile job, the SRT sink and endpoints, the streamer adapter                                                     | `modules/capture-engine/{expo-module.config.json,android/build.gradle,android/.gitignore,android/src/**}`, `core/src/test/.../adapter/{GlueRulesTest,SlateColoursTest}.kt`, `core/build.gradle.kts` (`capture.tokens`), `.github/workflows/android-compile.yml`                                                                          | `assembleDebug` green, core suite green; no device check (those wait for C5, see Task 23 Step 1) |
+| **C7**  | 23–25 | The device checks C6 could not run; Android glue II: the watchers and HTTP, the foreground service, the preview view and its boundary                                            | `modules/capture-engine/android/src/**`, `modules/capture-engine/src/nativeCaptureEngine{,.test}.ts` (`pauseReports`), `src/services/native/nativeSurfaces.tsx`, `src/ui/components/{StreamStage,PreviewBoundary,DevScenes}.tsx`, `test/fakeSurfaces.ts`, `src/i18n/*.json`                                                              | `assembleDebug`, `pnpm check`, `pnpm i18n:release-check`                                         |
+| **C8**  | 26    | The device gate: a local release build, the owner's checklist, and the plan C results document                                                                                   | `docs/specs/2026-10-0x-s1-plan-c-results.md` (new)                                                                                                                                                                                                                                                                                       | the owner's ticks                                                                                |
 
 **Sequencing.**
 
-- C1 → C2 → C3 → C4 → C5, in one worktree. Each later batch compiles against the one before it.
-- C6 may start once C4 has merged into the branch, because the glue implements `PlatformEvents` and calls `BridgeCore`.
-- **The one parallel lane:** C5 and C6 may run at the same time in two worktrees. Their file sets are disjoint: C5 touches only `src/**` and `modules/capture-engine/src/FakeCaptureEngine.ts`, and C6 only `modules/capture-engine/android/**`, `modules/capture-engine/expo-module.config.json` and one new workflow. Confirm with `git diff --name-only` before merging. If either touched the other's set, merge sequentially and rerun both suites.
+- C1 → C2 → C3 → C4a → C4b → C5, in one worktree. Each later batch compiles against the one before it.
+- C6 may start once C4a has merged into the branch, because the glue implements `Platform` and calls `BridgeCore`. It needs nothing from C4b or C5 to compile.
+- **The one parallel lane:** C6 may run beside C4b and C5 (which stay sequential with each other) in a second worktree. The file sets are disjoint: C4b and C5 touch `src/**`, `test/**`, `modules/capture-engine/src/**`, `vitest.config.mts`, `docs/i18n-glossary.md` and `bridge-contract.yml`; C6 touches only `modules/capture-engine/android/**`, `modules/capture-engine/expo-module.config.json` and `android-compile.yml`. Confirm with `git diff --name-only` before merging. If either touched the other's set, merge sequentially and rerun both suites.
+- **C6 runs no device check.** Its glue only reaches the screen once Task 19 wires JS to the native engine and Task 18 adds the Diagnostics rows, both in C5. The device checks C6's tasks would run are Task 23 Step 1, the first step of C7.
 - C7 follows both C5 and C6. Task 25 edits `StreamStage.tsx` and the dictionaries, which C5 also edits.
 - C8 is last.
 - **No JS file may be edited while Metro serves a device check** (AGENTS §13).
 
 ## Plan decisions
 
-The spec was silent, or a carry asked for a decision, on each of these points. **OWNER-VISIBLE** marks a decision the owner sees on screen. Those are built as stated and listed in the results for the owner's review, as plan A did.
+The spec was silent, or a carry asked for a decision, on each of these points. **OWNER-VISIBLE** marks a decision the owner sees on screen. Those are built as stated and listed in the results for the owner's review, as plan A did. **PROPOSED — awaiting owner** marks a decision the coordinator is putting to the owner; it is built as written unless the owner rules otherwise before its batch starts, and each one says what to skip if the answer is no.
 
-| #    | Decision                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
-| ---- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| CD1  | **Android only.** The spec makes iOS M3 (HaishinKit, P1, VoiceOver). `expo-module.config.json` lists `android` alone. On iOS, Expo Go and the web export, `requireOptionalNativeModule('CaptureEngine')` is null, so the composition root wires the absent engine (CD23). An arm there ends fatal-error at once, which is the spec §5 row "the native module missing". Android goes first for features and iOS first for lifecycle (AGENTS §9), and S1's lifecycle work is Android's foreground service, so nothing here waits on iOS.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
-| CD2  | **The Android library compiles the core's sources itself.** `sourceSets.main.java.srcDirs += 'core/src/main/kotlin'`. This **reverses plan B's decision 1** (`includeBuild`). An included build would need a line in the prebuilt `android/settings.gradle`, which is gitignored output, so it would need a config plugin, and its `kotlin("jvm")` plugin would meet AGP's in one composite. The same Kotlin 2.1.20 compiles both ways. The core's standalone build, wrapper and CI job are unchanged, and keep running every pure test.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
-| CD3  | **The adapter logic is pure Kotlin, beside the core.** It lives in package `com.seazn.capture.engine.adapter` under `core/src/main/kotlin`, in the same Gradle build, so `kotlin-core` CI runs its tests on every push. The Android glue (`com.seazn.capture.engine`, under `modules/capture-engine/android/src/main/java`) turns Android facts into calls on these units and holds no rule. A glue class longer than about 150 lines is a sign a rule leaked into it.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
-| CD4  | **`org.json` on test classpaths only.** The core's `testImplementation` and the host subproject read the shared vector files with `org.json:json:20240303`. `main` stays dependency-free, as plan B ruled. On Android, `org.json` is the platform's own.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
-| CD5  | **The session's name (carry 2).** `SessionConfig` gains `slot`, `descriptorUrl` and `descriptorJson`, each with a default so plan B's tests still compile. `SessionName(sid, slot, tokenTag, descriptorJson)` is derived from the config. `Phase.Ended` keeps the name of the session it ended, **including an arm refused straight to Ended**, and the snapshot carries `session`. `TokenTag` is FNV-1a 32-bit over UTF-16 code units, the same function as `src/domain/credentials/tokenTag.ts`, pinned by one vector file read on both sides. The descriptor travels to native as the opaque JSON of `descriptorToWire` and comes back unchanged. JS re-hydrates it with `parseDescriptor`, which rebuilds its `Date` fields (carry 4). Native never reads it.                                                                                                                                                                                                                                                                                                                                                  |
-| CD6  | **One scrub, both sides (carry 11).** `modules/capture-engine/src/scrub/allow-list.json` is the source of record, decided key by key, with each key's reason in the file. The marker is **`***`** everywhere: JavaScript's `SCRUBBED` changes from `[scrubbed]`, and every JS test already uses the constant. A string survives only under an allow-listed key. A number, boolean or null passes under any key, as native already did; no secret is a number. Each class of key has one rule: **plain** keys pass a short plain word, or else the whole value is masked; **public-url** keys pass a public https URL with no query, fragment or userinfo and no held secret (the stream id is allowed), or else the whole value is masked; **text** keys mask each held secret in place, then mask the whole value if decoding what is left still reveals one; **never** keys are always masked. Native's URL keys change from in-place to whole-value masking, so four `SessionRecordTest` expectations change, as Task 3 lists. Both sides check their key sets against the file and run one shared vector file. |
-| CD7  | **One record (carry 11, spec §5).** While a session exists (the snapshot is not `idle`), each JS log entry goes to the native record through `BridgeCore.log`, which posts it through the scheduler (carry 12). Native writes every line to an NDJSON file and echoes it up as an `onRecord` event. Otherwise, JS entries go to the JS ring. Diagnostics and Share read the JS ring, which holds both. **The line format is unified on native's flat shape**: `{"at","kind","level",…fields}`, where a field named `at`, `kind` or `level` is renamed `field_<key>`. JS's `toRecordLine` changes to it, and `test/fakePorts.ts`'s `readRecord` parses it back to `{event, level, fields}`, so no screen test changes.                                                                                                                                                                                                                                                                                                                                                                                              |
-| CD8  | **The contract kit against the bridge (carry 1).** The kit's scenarios move to `modules/capture-engine/src/contract/engineScenarios.ts`, which imports no vitest. `test/engineContract.ts` wraps each scenario in an `it`, and `make` may now return a promise. The bridge runs them in vitest over a **JVM host process** (`core/host`): the real `Engine` and `BridgeCore` with a scripted platform, speaking NDJSON on stdin and stdout. Its `settle` waits for the next snapshot event or 700 ms, whichever comes first, because an ignored intent emits nothing and the tick is 500 ms. A `bridge` vitest project runs it, kept out of `pnpm test` so `check.yml` needs no JDK. The `kotlin-core` workflow runs it. The **device run** is a development-build button that runs the same scenarios against the real native engine and writes `probe.pass` or `probe.fail` lines into the record.                                                                                                                                                                                                               |
-| CD9  | **The thread model (carry 15).** One `HandlerThread` named `capture-engine` backs `Scheduler`, wrapped in `GuardedScheduler`. The wrapper catches any `Throwable` at the task boundary, so the thread never dies, and hands it to `BridgeCore.failed`, which records it and classifies it (CD11). `Engine.start` is posted onto the thread. StreamPack's suspend calls run on the adapter's own coroutine scope, and their outcomes come back as inputs.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
-| CD10 | **Deep sleep (carry 14).** A `PARTIAL_WAKE_LOCK` is held from the arm the machine accepts until `Command.End`. While it is held, `Handler.postDelayed` (`uptimeMillis`) and the clock (`elapsedRealtime`) cannot drift apart. Without a session the tick may pause in deep sleep, which is harmless. The lock is tagged `seazn:capture`, and its holding is a record line.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
-| CD11 | **Permanent failures are sticky (carry 18).** A failure is permanent when it is a `LinkageError` (`UnsatisfiedLinkError`, `NoClassDefFoundError`) or a `PermanentPlatformFailure`. The glue wraps a codec that cannot be configured, and a refused camera or microphone permission, in the latter. Once one is seen, `StickyFailure` answers every later `Connect`, `Rebuild.next` and `StartNewSession.next` with `PlatformFailed(thatAttemptId, message)` and executes none of them. **A failure before a session's first Connect** is reported at once with the attempt in hand (`Phase.attemptInHand`, made public), so an armed session ends fatal-error and still names its code. There is one `BridgeCore`, and so one `Engine`, per process.                                                                                                                                                                                                                                                                                                                                                               |
-| CD12 | **Pollers (carries 16 and 19).** `AttemptPollers` runs one Frames reader every 500 ms and one Link reader every 1000 ms **per attempt**. A second `begin` for the same attempt changes nothing, and a new attempt cancels the old one's. They keep running through a camera switch, so the switch's LIVE bound stays at 3.5 s or less. They stop on a drop, `Disconnect`, `Rebuild`, `StartNewSession` and `End`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
-| CD13 | **HTTP (carries 17 and 20, F-P5-13).** OkHttp is built with no cache, and every playlist fetch sends `Cache-Control: no-cache`. Heartbeat and descriptor requests send `no-store`. The timeouts are 8 s. **A 204 maps to `NoContent` before any test of success**, because OkHttp's `isSuccessful` is true for it. The descriptor answer always echoes its request id and calls the core's `DescriptorCheck.answered`. The User-Agent is OkHttp's default: P5 found U1-S6's 403 did not reproduce, and a 403 reads as no evidence, never as a stall (`withoutEvidence`).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
-| CD14 | **Our own SRT sink (F-P5-11, F-P5-1, R3).** `SeaznSrtSink`, adapted from StreamPack 3.2.0's `SrtSink` under Apache-2.0 with attribution, composed with StreamPack's `TsMuxer` through `CompositeEndpointWithMetricsFactory`. It resolves the host first, off the scheduler thread, and reports `UnknownHostException` as `UNRESOLVED`. It sets `STREAMID`, `PASSPHRASE` and `LATENCY` as socket flags, so **no SRT URL string carrying a secret is ever built**. That makes carry 13's `URLEncoder` proposal moot for SRT. It sets `MAXBW` in bytes per second after connect and on every `SetMaxBw`, with `INPUTBW` 0 so libsrt never derives its own. It exposes its completion cause, so a drop is known at once and once.                                                                                                                                                                                                                                                                                                                                                                                      |
-| CD15 | **RTMPS (F-P5-12, carry 13).** StreamPack's `RtmpEndpointFactory` gets an RTMP-only IO dispatcher: two threads whose uncaught-exception handler applies `TlsCloserGuard`. The spike's global handler is kept behind `TlsGuard.MODE`, and the device decides between them (Task 26). The publish URL is the code's `url` plus the stream key encoded with `URLEncoder` as defence in depth (carry 13), and the record masks that form too.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
-| CD16 | **The foreground service.** It is started when the machine accepts an arm, which is always in answer to an intent from the visible viewfinder. It is never started from a reconnect, a reopen or the background (research §4). It is `START_NOT_STICKY`, with types `camera\|microphone`, and stops at `Command.End`. `survivesBackground` is true from the service's start request at arm until that start fails or the session ends. It is optimistic so the keep-open caption never flashes at every arm (CD18), and a refused start sets it false at once. The notification reads `LIVE · 3000k · 47 min`, with the state word taken from the dictionaries' `stream.tally.*` in upper case, **in the phone's language**: native has no channel to the operator's pick, and the notification is OS chrome, as the crash screen is.                                                                                                                                                                                                                                                                              |
-| CD17 | **OWNER-VISIBLE — stale snapshots (carry 8).** When the session is armed or on air and native has not reported for 3 s (six ticks), the status line reads "Engine not responding — check the phone", and the plate shows TROUBLE in orange instead of claiming READY or LIVE. Diagnostics shows "Last report … s ago". This is a display rule over `reportedAtMs` and the clock. It moves no session.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
-| CD18 | **OWNER-VISIBLE — keep-open advisory (carry 7).** While armed or on air with `survivesBackground` false, the top strip reads "Keep the app open — capture stops in the background". It outranks every other advisory. On Android it shows only if the foreground service failed to start. It is the iOS P1 warning's home for M3, driven by `selectSurvivesBackground` and never by a platform check.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
-| CD19 | **OWNER-VISIBLE — the viewfinder boundary (owner ruling 2).** `PreviewBoundary` wraps only the native preview. Its fallback is a stage caption, "Camera preview stopped — the session carries on", with a **Show preview** ghost button that remounts the preview. The column, its plate and the Stop hold are outside the boundary and stay. The crash is logged as `preview.crashed`. AGENTS §7's boundary around the overlay is unchanged.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
-| CD20 | **Shedding.** The platform computes `shed` from the thermal status: `moderate` is `overlay-preview`, `severe` is `preview-framerate`, and `critical` or worse is `encode`. In S1 only the overlay step acts, in JS, as plan A built it. The other two are reported and recorded but not acted on natively: lowering the preview's rate apart from the encoder's needs a second camera stream. This is deferred to the soak, with the reason recorded.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
-| CD21 | **OWNER-VISIBLE — permission refused.** Native asks for `CAMERA` and `RECORD_AUDIO` when it accepts an arm, through Expo's permissions manager, and asks for `POST_NOTIFICATIONS` on API 33+ without waiting on it. A refusal of camera or microphone is a permanent failure (CD11). The telemetry fact `permissionsRefused` is set, and the Ended block for fatal-error adds "Allow the camera and microphone for Seazn Capture in Android Settings, then try again". A refused notification permission blocks nothing.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
-| CD22 | **The previous exit (F-P5-3).** At module creation, the glue reads `ApplicationExitInfo` (API 30+) and a session marker file. The marker is written at arm and deleted at End. When the marker is present, the record gains `previous-session-lost` with the exit reason's wire name, so "the app died mid-match" is evidence, not a guess. A user stop from Task Manager reads `user-requested`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
-| CD23 | **The absent engine.** With no native module, `createAbsentCaptureEngine` reports idle, answers an arm with `ended{fatal-error}` naming that session, and answers a reset of that with idle. It ignores everything else. This is the one TypeScript engine with a rule of its own, and it holds no session to disagree about. It is exempt from the contract kit, and pinned by its own tests.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
-| CD24 | **Development switches.** `EXPO_PUBLIC_FAKE_ENGINE=1` keeps the fake in a `__DEV__` build, for UI work on a device. Without it, a dev build runs the native engine with `devEngine: null`. `EXPO_PUBLIC_FAKE_PLAYBACK_URL` (dev only) puts a real staging live input's **public** playback URL into the fake descriptor, so phase 4's delivery watch has a manifest to poll. Neither is readable in a release build.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
-| CD25 | **The Android compile job.** `.github/workflows/android-compile.yml` runs on PRs touching `modules/**`, `app.json`, `plugins/**` or `pnpm-lock.yaml` (spec §6), on temurin 17 with the Android SDK the runner image carries. It runs prebuild then `./gradlew assembleDebug`. Gradle, not EAS. It is **not** a required check, because a path-filtered workflow never reports on a PR it skips.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
-| CD26 | **A stop native never answers (carry 27).** Native answers every stop within one tick (Task 12 pins that). The JS clearing is bounded anyway: `useDisarm` gives up after 5 s, logs `disarm.gave-up`, and frees the engine for the next caller. Covering a native that never answers is cheap, and a lock on every caller is not.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
-| CD27 | **StreamPack use.** One `SingleStreamer` per armed session, built at the accepted arm and released at `End` (reconnects reuse it), with our own `IEndpointInternal.Factory` (CD14, CD15), which routes SRT to `TsMuxer` plus our sink and RTMPS to `RtmpEndpointFactory`. `defaultRotation` is passed explicitly at arm, from the landscape side held (P4). **`setTargetRotation` is never called** (F-P5-6; enforced by `GlueRulesTest`). `KEY_MAX_B_FRAMES = 0` is set on API 29+ through `customize`. The encode is 720p30 with a 2 s GOP, starting at 1500k, and AAC-LC 128k at 48 kHz stereo. The preview is `PreviewView` in FIT, with pinch-zoom and tap-to-focus off.                                                                                                                                                                                                                                                                                                                                                                                                                                      |
-| CD28 | **The audio level.** An `IConsumerAudioEffect` on `audioInput.processor` hands each PCM frame to `PcmPeak`. `PeakMeter` keeps the highest peak between snapshots, and each snapshot takes it. Nothing is normalised (AGENTS §6).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
-| CD29 | **`switchCamera` (carry 10).** It is mapped through to `Input.SwitchCamera`, and the glue swaps to the camera facing the other way. S1 has no control for it. It is reserved, not a defect.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| #    | Decision                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| ---- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| CD1  | **Android only.** The spec makes iOS M3 (HaishinKit, P1, VoiceOver). `expo-module.config.json` lists `android` alone. On iOS, Expo Go and the web export, `requireOptionalNativeModule('CaptureEngine')` is null, so the composition root wires the absent engine (CD23). An arm there ends fatal-error at once, which is the spec §5 row "the native module missing". Android goes first for features and iOS first for lifecycle (AGENTS §9), and S1's lifecycle work is Android's foreground service, so nothing here waits on iOS.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| CD2  | **The Android library compiles the core's sources itself.** `sourceSets.main.java.srcDirs += 'core/src/main/kotlin'`. This **reverses plan B's decision 1** (`includeBuild`). An included build would need a line in the prebuilt `android/settings.gradle`, which is gitignored output, so it would need a config plugin, and its `kotlin("jvm")` plugin would meet AGP's in one composite. The same Kotlin 2.1.20 compiles both ways. The core's standalone build, wrapper and CI job are unchanged, and keep running every pure test.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| CD3  | **The adapter logic is pure Kotlin, beside the core.** It lives in package `com.seazn.capture.engine.adapter` under `core/src/main/kotlin`, in the same Gradle build, so `kotlin-core` CI runs its tests on every push. The Android glue (`com.seazn.capture.engine`, under `modules/capture-engine/android/src/main/java`) turns Android facts into calls on these units and holds no rule. A glue class longer than about 150 lines is a sign a rule leaked into it.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| CD4  | **`org.json` on test classpaths only.** The core's `testImplementation` and the host subproject read the shared vector files with `org.json:json:20240303`. `main` stays dependency-free, as plan B ruled. On Android, `org.json` is the platform's own.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| CD5  | **The session's name (carry 2).** `SessionConfig` gains `slot`, `descriptorUrl` and `descriptorJson`, each with a default so plan B's tests still compile (and, under PROPOSED CD16, `language`). `SessionName(sid, slot, tokenTag, descriptorJson)` is derived from the config. `Phase.Ended` keeps the name of the session it ended in a new field **`sessionName`**, **including an arm refused straight to Ended**, and the snapshot carries `session`. The field is not `name`, which `Phase` already declares as the phase's word, and not `session`, which would shadow the existing extension `Phase.session: Session?` with a different type. `TokenTag` is FNV-1a 32-bit over UTF-16 code units, the same function as `src/domain/credentials/tokenTag.ts`, pinned by one vector file read on both sides. The descriptor travels to native as the opaque JSON of `descriptorToWire` and comes back unchanged. JS re-hydrates it with `parseDescriptor`, which rebuilds its `Date` fields (carry 4). Native never reads it.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| CD6  | **One scrub, both sides (carry 11).** `modules/capture-engine/src/scrub/allow-list.json` is the source of record, decided key by key, with each key's reason in the file. The marker is **`***`** everywhere: JavaScript's `SCRUBBED` changes from `[scrubbed]`, and every JS test already uses the constant. A string survives only under an allow-listed key. A finite number, boolean or null passes under any key, as native already did; no secret is a number. A non-finite number is masked on both sides (native wrote NaN as `null` before). Each class of key has one rule: **plain** keys pass a short plain word, or else the whole value is masked; **public-url** keys pass a public https URL with no query, fragment or userinfo and no held secret (the stream id is allowed), or else the whole value is masked; **text** keys mask each held secret in place, then mask the whole value if decoding what is left still reveals one; **never** keys are always masked. JS keeps `kind` as a plain key (it logs failure kinds such as `descriptor.error {kind}`), written to the line as `field_kind`. **One JS-only rule:** a text key is masked whole while the logger holds no protected secrets, because JS holds a code's secrets from the scan, before `protect` runs at arm; native holds nothing before an arm, so it needs no such rule. Native's plain and URL keys change from in-place to whole-value masking. That changes the point of eight `SessionRecordTest` tests, each listed in Task 3 with its restated point. Both sides check their key sets against the file and run one shared vector file. |
+| CD7  | **OWNER-VISIBLE — one record (carry 11, spec §5).** While a session exists (the snapshot is not `idle`), each JS log entry goes to the native record through `BridgeCore.log`, which posts it through the scheduler (carry 12) and rounds a fractional number to tenths, as every native number is. Native writes every line to an NDJSON file and echoes it up as an `onRecord` event. Otherwise, JS entries go to the JS ring. Diagnostics and Share read the JS ring, which holds both. **The line format is unified on native's flat shape**: `{"at","kind",…fields}`, with `"level"` after `kind` only when it is not `info`, so every line native writes today is unchanged. A field named `at`, `kind` or `level` is written `field_<key>`. JS's `toRecordLine` changes to it; `parseRecordLine` reads a line back to `{atMs, level, event, fields}`, defaulting the level to `info` and undoing the `field_` renames, so `readRecord` users read `fields.kind` as before. Tests that parse a line themselves change, and Task 3 lists each. The owner sees the change in Diagnostics and in a shared record.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| CD8  | **The contract kit against the bridge (carry 1).** The kit's scenarios move to `modules/capture-engine/src/contract/engineScenarios.ts`, which imports no vitest. `test/engineContract.ts` wraps each scenario in an `it`, and `make` may now return a promise. The bridge runs them in vitest over a **JVM host process** (`core/host`): the real `Engine` and `BridgeCore` with a scripted platform, speaking NDJSON on stdin and stdout. **Settling is an acknowledgement, not a timeout:** the JS bridge numbers each intent with a `seq`, and `BridgeCore.send` posts `platform.acked(seq)` after the input's own tasks, so the ack lands after every snapshot that input caused and before any later tick's. The host writes it as `{"ev":"ack","seq":n}` and Android emits it as `onAck`; `NativeCaptureEngine.settled()` resolves on the ack of the last intent sent, and `settle` is that. A `bridge` vitest project runs it, kept out of `pnpm test` by two guards (an exclude in the `domain` project and the `CAPTURE_BRIDGE` gate), each mutated on its own. It runs in its own workflow, `bridge-contract.yml`, so `kotlin-core.yml` stays JDK and Gradle only, as spec §6 says. The **device run** is a development-build button that runs the same scenarios against the real native engine, settling on the same `onAck`, and writes `probe.pass` or `probe.fail` lines into the record.                                                                                                                                                                                                                              |
+| CD9  | **The thread model (carry 15).** One `HandlerThread` named `capture-engine` backs `Scheduler`, wrapped in `GuardedScheduler`. The wrapper catches any `Throwable` at the task boundary, so the thread never dies, and hands it to `BridgeCore.failed`, which records it and classifies it (CD11). `Engine.start` is posted onto the thread. StreamPack's suspend calls run on the adapter's own coroutine scope, and their outcomes come back as inputs. **Work that needs the main thread or does IO is posted off the scheduler thread**: the `SessionKeeper` (marker file, wake lock, permission request, `startForegroundService`) runs on the main looper, and reports back through `BridgeCore`. Every coroutine scope in the glue has a `CoroutineExceptionHandler` that reports to `BridgeCore`, so a vendor throw never reaches the thread's uncaught-exception handler.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| CD10 | **Deep sleep (carry 14).** A `PARTIAL_WAKE_LOCK` is held from the arm the machine accepts until `Command.End`. While it is held, `Handler.postDelayed` (`uptimeMillis`) and the clock (`elapsedRealtime`) cannot drift apart. Without a session the tick may pause in deep sleep, which is harmless. The lock is tagged `seazn:capture`, and its holding is a record line. **The evidence is a line:** `BridgeCore` writes `tick-late {gapMs}` whenever two ticks are more than 1000 ms apart on the monotonic clock (`Lateness`, Task 9), so a phone that slept through a session says so in its record.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| CD11 | **Permanent failures are sticky (carry 18).** A failure is permanent when it is a `LinkageError` (`UnsatisfiedLinkError`, `NoClassDefFoundError`) or a `PermanentPlatformFailure`. The glue wraps a codec that cannot be configured, and a refused camera or microphone permission, in the latter. Once one is seen, `StickyFailure` answers every later `Connect`, `Rebuild.next` and `StartNewSession.next` with `PlatformFailed(thatAttemptId, message)` and executes none of them. **A failure before a session's first Connect** is reported at once with the attempt in hand (`Phase.attemptInHand`, made public), so an armed session ends fatal-error and still names its code. There is one `BridgeCore`, and so one `Engine`, per process.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| CD12 | **Pollers (carries 16 and 19).** `AttemptPollers` runs one Frames reader every 500 ms and one Link reader every 1000 ms **per attempt**. A second `begin` for the same attempt changes nothing, and a new attempt cancels the old one's. They keep running through a camera switch, so the switch's LIVE bound stays at 3.5 s or less. They stop on a drop, `Disconnect`, `Rebuild`, `StartNewSession` and `End`. While publishing, a Frames read whose video count has not moved for more than 500 ms writes `frames-gap {gapMs}` once per gap (`Lateness`, Task 9), which is what research Open 11's resize check reads.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| CD13 | **HTTP (carries 17 and 20, F-P5-13).** OkHttp is built with no cache, and every playlist fetch sends `Cache-Control: no-cache`. Heartbeat and descriptor requests send `no-store`. The timeouts are 8 s. **A 204 maps to `NoContent` before any test of success**, because OkHttp's `isSuccessful` is true for it. The descriptor answer always echoes its request id and calls the core's `DescriptorCheck.answered`. The User-Agent is OkHttp's default: P5 found U1-S6's 403 did not reproduce, and a 403 reads as no evidence, never as a stall (`withoutEvidence`).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| CD14 | **Our own SRT sink (F-P5-11, F-P5-1, R3).** `SeaznSrtSink`, adapted from StreamPack 3.2.0's `SrtSink` under Apache-2.0 with attribution, composed with StreamPack's `TsMuxer` through `CompositeEndpointWithMetricsFactory`. It resolves the host first, off the scheduler thread, and reports `UnknownHostException` as `UNRESOLVED`. It sets `STREAMID`, `PASSPHRASE` and `LATENCY` as socket flags, so **no SRT URL string carrying a secret is ever built**. That makes carry 13's `URLEncoder` proposal moot for SRT. It sets `MAXBW` in bytes per second after connect and on every `SetMaxBw`, with `INPUTBW` 0 so libsrt never derives its own. It exposes its completion cause, so a drop is known at once and once.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| CD15 | **RTMPS (F-P5-12, carry 13).** StreamPack's `RtmpEndpointFactory` gets an RTMP-only IO dispatcher: two threads whose uncaught-exception handler applies `TlsCloserGuard`. The spike's global handler is kept behind `TlsGuard.MODE`, and the device decides between them (Task 26). The publish URL is the code's `url` plus the stream key encoded with `URLEncoder` as defence in depth (carry 13), and the record masks that form too.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| CD16 | **PROPOSED — awaiting owner. The foreground service.** It is started when the machine accepts an arm, which is always in answer to an intent from the visible viewfinder, and **only after `CAMERA` and `RECORD_AUDIO` are granted**: on Android 14+ a `camera\|microphone` service started without them throws `SecurityException` from `startForeground` (research §4). It is never started from a reconnect, a reopen or the background. It is `START_NOT_STICKY`, with types `camera\|microphone`, and stops at `Command.End`. `survivesBackground` is true from the accepted arm until the service's start fails or the session ends. It is optimistic so the keep-open caption never flashes while the permission dialog is up or at every arm (CD18), and a refused start sets it false at once. The notification reads `LIVE · 3000k · 47 min`, with the state word taken from the dictionaries' `stream.tally.*` in upper case. **Its language (PROPOSED):** the arm intent carries the operator's language (`language`, one field in `armWire` and `ArmMapping`), and native picks `NotificationText.WORDS[language]`, then the phone's language, then `en`, so the shade and the HUD agree. A language changed mid-session keeps the arm's until the next arm. If the owner declines, the field is not added and the notification follows the phone's language; Tasks 2, 4, 10, 14 and 24 mark the steps to skip.                                                                                                                                                                                                           |
+| CD17 | **OWNER-VISIBLE, PROPOSED accept — awaiting owner. Stale snapshots (carry 8).** When the session is armed or on air and native has not reported for 3 s (six ticks), the status line reads "Engine not responding — check the phone", and the plate shows TROUBLE in orange instead of claiming READY or LIVE. TROUBLE then means either "broadcast degraded" or "engine silent", and the status line tells them apart. Diagnostics shows "Last report … s ago". This is a display rule over `reportedAtMs` and the clock. It moves no session.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| CD18 | **OWNER-VISIBLE, PROPOSED accept — awaiting owner. Keep-open advisory (carry 7).** While armed or on air with `survivesBackground` false, the top strip reads "Keep the app open — capture stops in the background". It outranks every other advisory. On Android it shows only if the foreground service failed to start, which a stock phone cannot be made to do, so it is proved in jsdom only and labelled unproved on a device. It is the iOS P1 warning's home for M3, driven by `selectSurvivesBackground` and never by a platform check.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| CD19 | **OWNER-VISIBLE, PROPOSED accept — awaiting owner. The viewfinder boundary (owner ruling 2).** `PreviewBoundary` wraps only the native preview. Its fallback is a stage caption, "Camera preview stopped — the session carries on", with a **Show preview** ghost button that remounts the preview: the button bumps a `generation` used as the **`ErrorBoundary`'s own `key`**, because `ErrorBoundary` keeps returning its fallback while it holds an error, whatever its children. The column, its plate and the Stop hold are outside the boundary and stay. The crash is logged as `preview.crashed`. AGENTS §7's boundary around the overlay is unchanged.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| CD20 | **Shedding.** The platform computes `shed` from the thermal status: `moderate` is `overlay-preview`, `severe` is `preview-framerate`, and `critical` or worse is `encode`. In S1 only the overlay step acts, in JS, as plan A built it. The other two are reported and recorded but not acted on natively: lowering the preview's rate apart from the encoder's needs a second camera stream. This is deferred to the soak, with the reason recorded.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| CD21 | **OWNER-VISIBLE, PROPOSED accept — awaiting owner. Permission refused.** Native asks for `CAMERA` and `RECORD_AUDIO` when it accepts an arm, through Expo's permissions manager, before the foreground service starts (CD16), and asks for `POST_NOTIFICATIONS` on API 33+ without waiting on it. A refusal of camera or microphone is a permanent failure (CD11). The telemetry fact `permissionsRefused` is set, and the Ended block for fatal-error adds one string, `stream.ended.permissions`: "Allow the camera and microphone in Android Settings, then try again" (this is the one string; the batch C5 table holds it in all four languages. The app's name is left out: the system's permission dialog the operator just refused named it. M3's iOS needs its own string, since "Android Settings" is Android's). A refused notification permission blocks nothing.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| CD22 | **The previous exit (F-P5-3).** At module creation, the glue reads `ApplicationExitInfo` (API 30+) and a session marker file. The marker is written at arm and deleted at End. When the marker is present, the record gains `previous-session-lost` with the exit reason's wire name, so "the app died mid-match" is evidence, not a guess. A stop from the system's Task Manager reads `user-requested`; what a swipe from Recents does to a process holding a foreground service is recorded separately on the device, not assumed.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| CD23 | **The absent engine.** With no native module, `createAbsentCaptureEngine` reports idle, answers an arm with `ended{fatal-error}` naming that session, and answers a reset of that with idle. It ignores everything else. This is the one TypeScript engine with a rule of its own, and it holds no session to disagree about. It is exempt from the contract kit, and pinned by its own tests.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| CD24 | **Development switches.** `EXPO_PUBLIC_FAKE_ENGINE=1` keeps the fake in a `__DEV__` build, for UI work on a device. Without it, a dev build runs the native engine with `devEngine: null`. `EXPO_PUBLIC_FAKE_PLAYBACK_URL` (dev only) puts a real staging live input's **public** playback URL into the fake descriptor, so phase 4's delivery watch has a manifest to poll. Neither is readable in a release build.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| CD25 | **The Android compile job.** `.github/workflows/android-compile.yml` runs on PRs touching `modules/**`, `app.json`, `plugins/**` or `pnpm-lock.yaml` (spec §6), on temurin 17 with the Android SDK the runner image carries. It runs prebuild then `./gradlew assembleDebug`. Gradle, not EAS. It is **not** a required check, because a path-filtered workflow never reports on a PR it skips.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| CD26 | **A stop native never answers (carry 27).** Native answers every stop within one tick (Task 12 pins that). The JS clearing is bounded anyway: `useDisarm` gives up after 5 s, logs `disarm.gave-up`, and frees the engine for the next caller. Covering a native that never answers is cheap, and a lock on every caller is not.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| CD27 | **StreamPack use.** One `SingleStreamer` per armed session, built at the accepted arm and released at `End` (reconnects reuse it), with our own `IEndpointInternal.Factory` (CD14, CD15), which routes SRT to `TsMuxer` plus our sink and RTMPS to `RtmpEndpointFactory`. `defaultRotation` is passed explicitly at arm, from the landscape side held (P4). **`setTargetRotation` is never called** (F-P5-6; enforced by `GlueRulesTest`). `KEY_MAX_B_FRAMES = 0` is set on API 29+ through `customize`. The encode is 720p30 with a 2 s GOP, starting at 1500k, and AAC-LC 128k at 48 kHz stereo with `byteFormat = ENCODING_PCM_16BIT` set explicitly, because `PcmPeak` reads 16-bit samples. The preview is `PreviewView` in FIT, with pinch-zoom and tap-to-focus off.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| CD28 | **The audio level.** An `IConsumerAudioEffect` on `audioInput.processor` hands each PCM frame to `PcmPeak`. `PeakMeter` keeps the highest peak between snapshots, and each snapshot takes it. Nothing is normalised (AGENTS §6).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| CD29 | **`switchCamera` (carry 10).** It is mapped through to `Input.SwitchCamera`, and the glue swaps to the camera facing the other way. S1 has no control for it. It is reserved, not a defect.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| CD30 | **StreamPack's logger is ours (I14).** Task 20 sets `io.github.thibaultbee.streampack.core.logger.Logger.logger` to a `VendorLogger` in `EngineHost`'s first use, before any streamer exists. It forwards warnings and errors to `BridgeCore.log` as `vendor-log {tag, message, error}` at level `warn` or `error`, where `message` is a text key and so masked by value, and `error` is the throwable's class name only (never its message, which can quote a URL with a key). Info, debug and verbose are dropped. It writes nothing to logcat in any build: the glue may not import `android.util.Log` (`GlueRulesTest`), and the record is the one place a line goes. `GlueRulesTest` checks the assignment exists, once, in `EngineHost.kt`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| CD31 | **The accepted arm is noticed outside the snapshot sink (I1).** `Engine.publish` catches every `Exception` from the snapshot sink and only counts it, so nothing that must fail visibly may run there. `BridgeCore.report` posts, after each input, a task that compares the session held with the last one it acted on (by identity). On a new one it calls `platform.armed(config)` in that task; an `Exception` becomes a sticky failure with the attempt in hand (permanent or not, as CD11 classifies it), and an `Error` reaches `GuardedScheduler`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| CD32 | **One process core, many module instances (I2).** `BridgeCore.shared` is per process and is built on `context.applicationContext`, never a React context. `EngineHost` holds the current snapshot listener and the current `AppContext` (for permission requests) in two `OwnedSlot`s: a module's `OnCreate` takes both, and its `OnDestroy` releases each only if it still owns it. A dev reload or an Expo Updates reload therefore never leaves the core talking to a destroyed context, whichever of the old `OnDestroy` and the new `OnCreate` runs first.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| CD33 | **Lateness is recorded.** `Lateness` (Task 9) is pure: `TickLateness` writes `tick-late {gapMs}` when two ticks are more than 1000 ms apart, and `FrameGaps` writes `frames-gap {gapMs}` once per stall when the video count has not moved for more than 500 ms while publishing. They are the evidence for CD10's wake lock and research Open 11, and production evidence of deep sleep.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+
+## Proposed decisions — awaiting owner
+
+The independent review of this plan (2026-10-01) raised three questions only the owner can settle. Its recommendations are written into the plan as the default. The coordinator puts them to the owner; **no step below may be labelled as the owner's ruling until the owner has ruled** (AGENTS §13).
+
+| #   | Question                                                                        | Proposed answer                                                                                                                                                                                                                                                                                               | Where it is built                                    | If the owner says no                                                                                                                                                                   |
+| --- | ------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| P1  | The crash screen's language                                                     | The root boundary reads the language the provider last resolved, from a module-level holder set synchronously when the language resolves (no storage read on the crash path), falling back to the phone's language, with its strings from the dictionaries. It matches the HUD the operator was just reading. | Task 19, Step 6                                      | Skip Task 19 Step 6. The crash screen keeps the phone's language, and Task 26 records that choice in the results.                                                                      |
+| P2  | CD17, CD18, CD19 and CD21: four owner-visible behaviours with plan-written copy | Accept each as built, with the copy rewritten to `docs/i18n-glossary.md` (the table under Batch C5). TROUBLE now means "broadcast degraded" or "engine silent", and the status line tells them apart. CD18 is proved in jsdom only. CD21 is one string.                                                       | Tasks 18 and 25                                      | The owner's own copy replaces the table's rows before Task 18 starts, still reviewed against the glossary; a behaviour the owner rejects is dropped from Task 18 or 25 with its tests. |
+| P3  | The notification's language                                                     | Pass the operator's language in the arm intent (CD16): one `language` field in `armWire` and `ArmMapping`; native picks `NotificationText.WORDS[language]`, then the phone's language, then `en`.                                                                                                             | Tasks 2, 4, 10, 14 and 24, each step marked **(P3)** | Skip every step marked (P3). The notification follows the phone's language, as CD16 first said, and the results list the mismatch with the HUD.                                        |
 
 ## Carry traceability
 
@@ -147,25 +164,25 @@ Every item of `docs/specs/2026-09-30-s1-plan-a-results.md` § _Carried to plan C
 
 | Carry | Subject                                                                                               | Where                                                                                                                                                                                                                                             |
 | ----- | ----------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 1     | Replace the fake; run the contract kit (real settle, 500 ms tick, native state at construction)       | Tasks 12, 15, 16, 19; CD8                                                                                                                                                                                                                         |
+| 1     | Replace the fake; run the contract kit (real settle, 500 ms tick, native state at construction)       | Tasks 12, 13, 15, 16 (ack-settled, CD8), 19                                                                                                                                                                                                       |
 | 2     | sid, slot and tokenTag in the snapshot; refused arm still named; cross-language FNV-1a with non-ASCII | Tasks 2, 5, 14; CD5                                                                                                                                                                                                                               |
 | 3     | Map `Snapshot.camera`; a null camera keeps Go live off                                                | Task 5 (wire vectors), Task 14 (JS mapping test)                                                                                                                                                                                                  |
 | 4     | Re-hydrate the descriptor with its Dates                                                              | Task 14; CD5                                                                                                                                                                                                                                      |
 | 5     | Platform telemetry, `reasons.first()`, null rates stay null                                           | Tasks 5, 9, 14, 22, 23                                                                                                                                                                                                                            |
 | 6     | Pin `ConnectFailure` and `HeartbeatResult` wires and the snapshot shape (no `shed` in the state)      | Task 5 (vocabulary in the vectors file), Task 14                                                                                                                                                                                                  |
-| 7     | `survivesBackground` drives the P1 warning                                                            | Task 18 (CD18), Task 24 (native fact)                                                                                                                                                                                                             |
+| 7     | `survivesBackground` drives the P1 warning                                                            | Task 18 (CD18), Task 24 (native fact, optimistic from the accepted arm; permissions before the service, C3)                                                                                                                                       |
 | 8     | Stale snapshots                                                                                       | Task 18 (CD17)                                                                                                                                                                                                                                    |
 | 9     | The native preview replaces the empty stage                                                           | Task 25                                                                                                                                                                                                                                           |
 | 10    | `switchCamera` reserved                                                                               | Task 4; CD29                                                                                                                                                                                                                                      |
 | 11    | One record, one allow-list, drift tests both sides, mask marker, one vector                           | Task 3, Task 15; CD6, CD7                                                                                                                                                                                                                         |
 | 12    | Logger feed posted through the Scheduler; `reentrantDropped` beside `sinkFailures`                    | Task 12 (`log` posts through `Engine.log`), Task 18 (Diagnostics rows)                                                                                                                                                                            |
 | 13    | The SRT URL built with `URLEncoder`                                                                   | CD14 (no SRT URL string exists), CD15 (RTMPS key encoded), Tasks 21–22                                                                                                                                                                            |
-| 14    | Deep sleep: wake lock or documented lateness                                                          | Task 24; CD10                                                                                                                                                                                                                                     |
-| 15    | Report any `Throwable` at the task boundary; start and stop on the scheduler                          | Tasks 6, 12, 20; CD9                                                                                                                                                                                                                              |
+| 14    | Deep sleep: wake lock or documented lateness                                                          | Task 9 (`tick-late`, CD33), Task 24 (the wake lock); CD10. Device evidence: Task 26 reads `tick-late` lines across a screen lock                                                                                                                  |
+| 15    | Report any `Throwable` at the task boundary; start and stop on the scheduler                          | Tasks 6, 12 (`armed` outside the sink, CD31), 20; CD9                                                                                                                                                                                             |
 | 16    | One poller per link, or a minimum interval                                                            | Task 7; CD12                                                                                                                                                                                                                                      |
 | 17    | Descriptor adapter: echo the id; call the pure rule                                                   | Task 8; CD13                                                                                                                                                                                                                                      |
-| 18    | Sticky permanent failures; one Engine per process; failure before first Connect                       | Tasks 6, 12; CD11                                                                                                                                                                                                                                 |
-| 19    | Frames every 500 ms through a switch                                                                  | Task 7; CD12                                                                                                                                                                                                                                      |
+| 18    | Sticky permanent failures; one Engine per process; failure before first Connect                       | Tasks 6, 12 (including a throw from `platform.armed`); CD11, CD31                                                                                                                                                                                 |
+| 19    | Frames every 500 ms through a switch                                                                  | Task 7; CD12; `frames-gap` (Task 9, CD33)                                                                                                                                                                                                         |
 | 20    | 204 → NoContent; no-cache; staging hint and window                                                    | Task 8, Task 23. **Partly deferred to plan D:** "hint 0.1 returns one variant" and "Cloudflare's listed window" need the real stg fixture and descriptor (spec phase 5). Task 26 records the playlist evidence on the raw input, where it exists. |
 | 21    | RR-12 table test; RR-13 KDoc                                                                          | Task 1                                                                                                                                                                                                                                            |
 | 22    | Mic at a call: order of events; audio at hang-up                                                      | Task 26 (device checklist, owner's hands)                                                                                                                                                                                                         |
@@ -197,56 +214,61 @@ The spec maps these to `platform/`. Each one enters as a named failing test befo
 
 ## Device-only claims
 
-No test in this plan can prove the following. Each is on the owner's checklist in Task 26:
+No test in this plan can prove the following. Each is on the owner's checklist in Task 26, with what to read:
 
-- the preview, its framing against the encoded stream (#288), FIT letterboxing and both landscape sides (P4's three assertions);
-- B-frames off on two SoCs, by `ffprobe` `has_b_frames=0`;
+- the preview, its framing against the encoded stream (#288), FIT letterboxing and both landscape sides — P4's three assertions, each read separately: the preview upright on screen (a screenshot), the encoded picture upright (a frame grabbed with `ffmpeg -ss 5 -frames:v 1`, opened and looked at), and the rotation metadata (`ffprobe -show_streams`: no `rotation` side data, `width` 1280 and `height` 720);
+- B-frames off on two SoCs: `ffprobe -show_frames` counts zero `pict_type=B` frames, with `has_b_frames=0` beside it;
+- the capture clock: `CaptureClock` assumes StreamPack's frame timestamps use the clock `monoNowUs` reads (`TimeUtils.currentTime()`, uptime). Read on the device as the `capture-clock {lagMs}` line Task 22 writes at each attempt's first video frame (`lagMs` = wall now minus `CaptureClock.epochMs` of that frame): between 0 and a few hundred ms, never negative and never in the thousands;
 - `MAXBW` pacing on a thin link (F-P5-11's 1.5 Mbit/s cell), and what a paced `send` does to the encoder (#302);
 - srtdroid 1.10.1 publishing to Cloudflare for at least 10 minutes with a reconnect;
 - the TLS guard: at least 10 RTMPS cuts against Cloudflare with no crash, and a mutation run where the crash returns;
-- the foreground service's start points on Android 14 and 16: no `SecurityException`, and the notification text;
-- the wake lock across a 5-minute screen lock;
+- the foreground service on Android 14 and 16: on a **fresh install**, the permission dialog comes first, both grants lead to the service and no `SecurityException`, and the notification text (`adb shell dumpsys activity services com.seazn.capture` shows the service with `types=camera|microphone`);
+- the wake lock across a 5-minute screen lock: no `tick-late` line in the record for that span (CD33);
+- a JS reload while armed and while live: snapshots keep arriving, and a re-arm's permission flow works (CD32);
+- the preview after a Settings round trip while armed, then End, then a re-arm: the preview shows each time (Task 25);
+- the audio level floor on both phones: Go live stays off with the mic covered in a quiet room, and enables with a voice;
 - mic silencing at a real call; camera contention from a second app; the slate on air; the reopen;
 - the charge-counter drain on a second OEM; thermal readings;
 - memory after 20 forced reconnects (#306);
-- a `PreviewView` resize while live causing no encoded-frame gap (research, Open 11);
+- a `PreviewView` resize while live causing no `frames-gap` line (research, Open 11);
+- what a swipe from Recents does to a process holding the foreground service, recorded as seen (the `user-requested` exit reason is read from a Task Manager stop);
 - what the operator sees: every colour, plate, line and the boundary's fallback.
 
 ## File map
 
 `K` is `modules/capture-engine/android/core/src/main/kotlin/com/seazn/capture/engine`, `T` the same under `src/test`, and `G` is `modules/capture-engine/android/src/main/java/com/seazn/capture/engine`.
 
-| Path                                                                                                                                                                                                                                                                                            | Responsibility                                                                                                                    | Task |
-| ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- | ---- |
-| `T/core/EndPathsTest.kt`                                                                                                                                                                                                                                                                        | RR-12: every end path keeps the duration and the network fact                                                                     | 1    |
-| `K/core/TokenTag.kt`, `SessionConfig.kt`, `Phase.kt`, `Snapshot.kt`, `Projection.kt`, `SessionMachine.kt`                                                                                                                                                                                       | The session's name                                                                                                                | 2    |
-| `modules/capture-engine/src/wire/token-tag-vectors.json`                                                                                                                                                                                                                                        | The FNV-1a vectors both sides read                                                                                                | 2    |
-| `modules/capture-engine/src/scrub/{allow-list,vectors}.json`                                                                                                                                                                                                                                    | The shared scrub, and its cross-language vectors                                                                                  | 3    |
-| `K/core/SessionRecord.kt`, `src/services/scrub.ts`, `src/services/sessionRecord.ts`                                                                                                                                                                                                             | The scrub reconciled; the flat line format                                                                                        | 3    |
-| `K/adapter/ArmMapping.kt`, `IntentMapping.kt`                                                                                                                                                                                                                                                   | Bridge maps → `SessionConfig`, `Input`                                                                                            | 4    |
-| `K/adapter/PlatformFacts.kt`, `SnapshotWire.kt`; `modules/capture-engine/src/wire/snapshot-vectors.json`                                                                                                                                                                                        | Snapshot → the wire map; the shared vectors                                                                                       | 5    |
-| `K/adapter/GuardedScheduler.kt`, `Failures.kt`                                                                                                                                                                                                                                                  | The task boundary; permanent and sticky failures                                                                                  | 6    |
-| `K/adapter/AttemptPollers.kt`                                                                                                                                                                                                                                                                   | Frames every 500 ms and Link every 1000 ms, one per attempt                                                                       | 7    |
-| `K/adapter/Http.kt`                                                                                                                                                                                                                                                                             | Request specs and answer mapping                                                                                                  | 8    |
-| `K/adapter/DeviceReadings.kt`, `PreviousExit.kt`, `FrameTally.kt`                                                                                                                                                                                                                               | PCM peak, drain, thermal, shed, capture time, exit reasons, frame counting                                                        | 9    |
-| `K/adapter/MicSilenceWatch.kt`, `CameraAvailability.kt`, `NotificationText.kt`                                                                                                                                                                                                                  | The watch logic and the notification copy                                                                                         | 10   |
-| `K/adapter/SrtOptions.kt`, `TlsCloserGuard.kt`, `AttemptSignals.kt`, `EncoderKeys.kt`; `T/adapter/GlueRulesTest.kt`                                                                                                                                                                             | SRT socket options and the host resolution; the TLS guard; one drop per attempt; B-frames and rotation; source rules for the glue | 11   |
-| `K/adapter/BridgeCore.kt`                                                                                                                                                                                                                                                                       | The engine host every platform uses                                                                                               | 12   |
-| `modules/capture-engine/android/core/host/**`                                                                                                                                                                                                                                                   | The JVM host process for the contract kit                                                                                         | 13   |
-| `modules/capture-engine/src/snapshotWire.ts`, `armWire.ts`                                                                                                                                                                                                                                      | Wire ↔ `EngineSnapshot`; arm intent → wire                                                                                        | 14   |
-| `modules/capture-engine/src/{nativeModule,nativeCaptureEngine,absentCaptureEngine}.ts`                                                                                                                                                                                                          | The JS bridge and the absent engine                                                                                               | 15   |
-| `src/services/sessionRecord.ts` (`createRoutedRecord`)                                                                                                                                                                                                                                          | The record routed by session                                                                                                      | 15   |
-| `modules/capture-engine/src/contract/engineScenarios.ts`, `test/engineContract.ts`, `test/hostEngine.ts`, `modules/capture-engine/src/NativeCaptureEngine.bridge.test.ts`                                                                                                                       | The contract kit, its host harness and its run                                                                                    | 16   |
-| `src/hooks/useDisarm.ts`                                                                                                                                                                                                                                                                        | The 5 s bound                                                                                                                     | 17   |
-| `src/hooks/engineSilence.ts`, `advisory.ts`, `preflight.ts`, `useViewfinder.ts`, `diagnostics.ts`, `src/ui/components/EndedBlock.tsx`, i18n                                                                                                                                                     | Silence, keep-open, permission line, record counters                                                                              | 18   |
-| `src/hooks/nativePorts.ts`, `src/hooks/useEngineProbe.ts`, `src/ui/components/DevScenes.tsx`                                                                                                                                                                                                    | The composition root; the device probe                                                                                            | 19   |
-| `modules/capture-engine/expo-module.config.json`, `android/build.gradle`, `android/src/main/AndroidManifest.xml`, `G/{CaptureEngineModule,EngineHost,HandlerScheduler,AndroidClock,RecordFile,AndroidPlatform,HttpAdapter}.kt`, `G/capture/Capture.kt`; `.github/workflows/android-compile.yml` | The module scaffold                                                                                                               | 20   |
-| `G/srt/SeaznSrtSink.kt`, `G/endpoints/{CaptureEndpointFactory,CountingEndpoint,RtmpDispatcher,TlsGuard}.kt`                                                                                                                                                                                     | Endpoints                                                                                                                         | 21   |
-| `G/StreamerAdapter.kt`, `G/SlateSource.kt`, `G/AudioLevelEffect.kt`                                                                                                                                                                                                                             | Capture, encode, publish                                                                                                          | 22   |
-| `G/watch/{CameraWatch,MicWatch,NetworkWatch,DeviceSampler}.kt`                                                                                                                                                                                                                                  | Android facts → inputs                                                                                                            | 23   |
-| `G/CaptureForegroundService.kt`, `G/SessionKeeper.kt`, `G/Permissions.kt`, `G/ExitReader.kt`                                                                                                                                                                                                    | The foreground service, the wake lock, the permissions, the previous exit                                                         | 24   |
-| `G/CapturePreviewView.kt`, `src/services/native/nativeSurfaces.tsx`, `src/ui/components/PreviewBoundary.tsx`, `StreamStage.tsx`                                                                                                                                                                 | The preview and its boundary                                                                                                      | 25   |
-| `docs/specs/2026-10-0x-s1-plan-c-results.md`                                                                                                                                                                                                                                                    | The results and the owner's checklist                                                                                             | 26   |
+| Path                                                                                                                                                                                                                                                                                                                                           | Responsibility                                                                                                                    | Task |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- | ---- |
+| `T/core/EndPathsTest.kt`                                                                                                                                                                                                                                                                                                                       | RR-12: every end path keeps the duration and the network fact                                                                     | 1    |
+| `K/core/TokenTag.kt`, `SessionConfig.kt` (`language`, P3), `Phase.kt` (`Ended.sessionName`), `Snapshot.kt`, `Projection.kt`, `SessionMachine.kt`                                                                                                                                                                                               | The session's name                                                                                                                | 2    |
+| `modules/capture-engine/src/wire/token-tag-vectors.json`                                                                                                                                                                                                                                                                                       | The FNV-1a vectors both sides read                                                                                                | 2    |
+| `modules/capture-engine/src/scrub/{allow-list,vectors}.json`                                                                                                                                                                                                                                                                                   | The shared scrub, and its cross-language vectors                                                                                  | 3    |
+| `K/core/SessionRecord.kt`, `src/services/scrub.ts`, `src/services/sessionRecord.ts` (`parseRecordLine`), `test/fakePorts.ts`                                                                                                                                                                                                                   | The scrub reconciled; the flat line format, `level` only when not info                                                            | 3    |
+| `K/adapter/ArmMapping.kt`, `IntentMapping.kt`                                                                                                                                                                                                                                                                                                  | Bridge maps → `SessionConfig`, `Input`                                                                                            | 4    |
+| `K/adapter/PlatformFacts.kt`, `SnapshotWire.kt`; `modules/capture-engine/src/wire/snapshot-vectors.json`                                                                                                                                                                                                                                       | Snapshot → the wire map; the shared vectors                                                                                       | 5    |
+| `K/adapter/GuardedScheduler.kt`, `Failures.kt`                                                                                                                                                                                                                                                                                                 | The task boundary; permanent and sticky failures                                                                                  | 6    |
+| `K/adapter/AttemptPollers.kt`                                                                                                                                                                                                                                                                                                                  | Frames every 500 ms and Link every 1000 ms, one per attempt                                                                       | 7    |
+| `K/adapter/Http.kt`                                                                                                                                                                                                                                                                                                                            | Request specs and answer mapping                                                                                                  | 8    |
+| `K/adapter/DeviceReadings.kt`, `PreviousExit.kt`, `FrameTally.kt`, `Lateness.kt`                                                                                                                                                                                                                                                               | PCM peak, drain, thermal, shed, capture time, exit reasons, frame counting; `tick-late` and `frames-gap` (CD33)                   | 9    |
+| `K/adapter/MicSilenceWatch.kt`, `CameraAvailability.kt`, `NotificationText.kt`                                                                                                                                                                                                                                                                 | The watch logic and the notification copy, channel and language                                                                   | 10   |
+| `K/adapter/SrtOptions.kt`, `TlsCloserGuard.kt`, `AttemptSignals.kt`, `EncoderKeys.kt`; `T/adapter/GlueRulesTest.kt`                                                                                                                                                                                                                            | SRT socket options and the host resolution; the TLS guard; one drop per attempt; B-frames and rotation; source rules for the glue | 11   |
+| `K/adapter/BridgeCore.kt`, `Platform.kt`, `OwnedSlot.kt`; `T/adapter/{BridgeCoreTest,OwnedSlotTest,RecordingPlatform,ArmWire}.kt`                                                                                                                                                                                                              | The engine host every platform uses; the arm noticed outside the sink (CD31); slots owned by a module instance (CD32)             | 12   |
+| `modules/capture-engine/android/core/host/**` (`Main.kt`, `Host.kt`, `Protocol.kt`, `ScriptedPlatform.kt`)                                                                                                                                                                                                                                     | The JVM host process for the contract kit, with the ack                                                                           | 13   |
+| `modules/capture-engine/src/snapshotWire.ts`, `armWire.ts`; `CaptureEnginePort.ts`; `src/hooks/useStreamArm.ts`                                                                                                                                                                                                                                | Wire ↔ `EngineSnapshot`; arm intent → wire, with the language (P3)                                                                | 14   |
+| `modules/capture-engine/src/{nativeModule,nativeCaptureEngine,absentCaptureEngine}.ts`                                                                                                                                                                                                                                                         | The JS bridge (`settled()`), and the absent engine                                                                                | 15   |
+| `src/services/sessionRecord.ts` (`createRoutedRecord`, `recordGoesNative`)                                                                                                                                                                                                                                                                     | The record routed by session                                                                                                      | 15   |
+| `modules/capture-engine/src/contract/engineScenarios.ts`, `test/engineContract.ts`, `test/hostEngine.ts`, `modules/capture-engine/src/NativeCaptureEngine.bridge.test.ts`, `vitest.config.mts`, `.github/workflows/bridge-contract.yml`                                                                                                        | The contract kit, its host harness, its run and its workflow                                                                      | 16   |
+| `src/hooks/useDisarm.ts`                                                                                                                                                                                                                                                                                                                       | The 5 s bound                                                                                                                     | 17   |
+| `src/hooks/engineSilence.ts`, `advisory.ts`, `useViewfinder.ts`, `diagnostics.ts`, `src/ui/components/{EndedBlock,StreamStage}.tsx`, `src/i18n/*.json`, `src/i18n/budgets.test.ts`, `docs/i18n-glossary.md`                                                                                                                                    | Silence, keep-open, permission line, record counters, and their reviewed copy                                                     | 18   |
+| `src/hooks/{nativePorts,engineWiring,useEngineProbe,probeSessions,usePorts}.ts(x)`, `src/ui/components/DevProbe.tsx`; (P1) `src/hooks/lastLanguage.ts`, `src/ui/components/RootBoundary.tsx`, `src/hooks/useLanguage.tsx`                                                                                                                      | The composition root; the device probe; (P1) the crash screen's language                                                          | 19   |
+| `modules/capture-engine/expo-module.config.json`, `android/build.gradle`, `android/.gitignore`, `android/src/main/AndroidManifest.xml`, `G/{CaptureEngineModule,EngineHost,VendorLogger,HandlerScheduler,AndroidClock,RecordFile,AndroidPlatform,HttpAdapter}.kt`, `G/capture/{Capture,NoCapture}.kt`; `.github/workflows/android-compile.yml` | The module scaffold, StreamPack's logger replaced                                                                                 | 20   |
+| `G/srt/{SeaznSrtSink.kt,NOTICE.md}`, `G/endpoints/{CaptureEndpointFactory,RoutingEndpoint,CountingEndpoint,CaptureClockLine,RtmpDispatcher,RtmpDispatcherProvider,TlsGuard}.kt`                                                                                                                                                                | Endpoints                                                                                                                         | 21   |
+| `G/capture/{StreamerAdapter,AudioSessionIds,SlateSource,AudioLevelEffect}.kt`, `android/src/main/res/{drawable/slate.xml,values/colors.xml}`, `T/adapter/SlateColoursTest.kt`                                                                                                                                                                  | Capture, encode, publish; the slate and its colours                                                                               | 22   |
+| `G/watch/{CameraWatch,MicWatch,NetworkWatch,DeviceSampler}.kt`                                                                                                                                                                                                                                                                                 | Android facts → inputs; the first phone run                                                                                       | 23   |
+| `G/{CaptureForegroundService,SessionKeeper,Permissions,ExitReader}.kt`                                                                                                                                                                                                                                                                         | Permissions, then the foreground service; the wake lock; the notification; the previous exit                                      | 24   |
+| `G/CapturePreviewView.kt`, `src/services/native/nativeSurfaces.tsx`, `src/ui/components/{PreviewBoundary,StreamStage,DevScenes}.tsx`, `test/fakeSurfaces.ts`, `modules/capture-engine/src/nativeCaptureEngine.ts` (`pauseReports`)                                                                                                             | The preview, its boundary, and the dev controls                                                                                   | 25   |
+| `docs/specs/2026-10-0x-s1-plan-c-results.md`                                                                                                                                                                                                                                                                                                   | The results and the owner's checklist                                                                                             | 26   |
 
 ---
 
@@ -404,7 +426,8 @@ Carry 2 and CD5. Today native's snapshot cannot say which session it holds. Plan
   - `TokenTag.of(token: String): String`;
   - `data class SessionName(val sid: String, val slot: Int, val tokenTag: String, val descriptorJson: String)`;
   - `SessionConfig.slot: Int`, `.descriptorUrl: String`, `.descriptorJson: String` and `.name: SessionName`;
-  - `Phase.Ended.name: SessionName?`;
+  - **(P3)** `SessionConfig.language: String`, default `""`, which the machine never reads;
+  - `Phase.Ended.sessionName: SessionName?`. Not `name`: `Phase` already declares `val name: String`, the phase's word, which `Ended` overrides as `"ended"` (`Phase.kt:80`, `:119`), so a second `name` does not compile. Not `session` either: the extension `val Phase.session: Session?` (`Phase.kt:123`) already answers "the session held", with a different type;
   - `Snapshot.session: SessionName?`.
 
 - [ ] **Step 1: The vector file.** Every value was computed in Node with `tokenTag` and checked independently with a Python FNV-1a over UTF-16 code units:
@@ -582,6 +605,8 @@ Add three constructor parameters at the end, with defaults (Kotlin's positional 
   val descriptorUrl: String = "",
   /** The descriptor as JS parsed it, as JSON; echoed in the snapshot, never read here. */
   val descriptorJson: String = "{}",
+  /** (P3) The operator's language at arm, for the notification only (CD16); blank when JS sent none. */
+  val language: String = "",
 ) {
   val name: SessionName
     get() = SessionName(sid, slot, TokenTag.of(token), descriptorJson)
@@ -603,7 +628,7 @@ In `Phase.kt`, give `Ended` its name, last and defaulted, so plan B's positional
     val durationMs: Long?,
     val networkValidated: Boolean,
     /** The session that ended, so the snapshot still names it (carry 2); null only for a phase that never had one. */
-    val name: SessionName? = null,
+    val sessionName: SessionName? = null,
   ) : Phase {
 ```
 
@@ -616,7 +641,7 @@ and in `Phase.ended`:
 In `SessionMachine.arm`'s refused branch:
 
 ```kotlin
-      return Step(phase.ended(EndReason.FATAL_ERROR, now).copy(name = config.name), listOf(refused, Command.End(EndReason.FATAL_ERROR)))
+      return Step(phase.ended(EndReason.FATAL_ERROR, now).copy(sessionName = config.name), listOf(refused, Command.End(EndReason.FATAL_ERROR)))
 ```
 
 In `Snapshot.kt`, add last, defaulted:
@@ -629,10 +654,10 @@ In `Snapshot.kt`, add last, defaulted:
 In `Projection.snapshot`:
 
 ```kotlin
-      session = session?.config?.name ?: (phase as? Phase.Ended)?.name,
+      session = session?.config?.name ?: (phase as? Phase.Ended)?.sessionName,
 ```
 
-- [ ] **Step 6: Run the core suite.** Expected: green, except `EngineTest` line 147 and `SessionMachineLifecycleTest` line 773 if they compare an `Ended` built without a name against one that now has one. Update only those expectations, adding `name = Configs.valid().name` where a session existed. Never change the machine to fit an old expectation.
+- [ ] **Step 6: Run the core suite.** Expected: green, except `EngineTest` line 147 and `SessionMachineLifecycleTest` line 773 if they compare an `Ended` built without a name against one that now has one. Update only those expectations, adding `sessionName = Configs.valid().name` where a session existed. Never change the machine to fit an old expectation.
 
 - [ ] **Step 7: The JS side reads the same file.** `modules/capture-engine/src/tokenTagVectors.test.ts`: the engine may import the domain, and the domain must not import a file under `modules/`, so the test lives here.
 
@@ -653,7 +678,7 @@ describe('carry 2: one token tag in two languages', () => {
 
 - [ ] **Step 8: Mutate.** Mutate one thing at a time, from a `cp` backup, and confirm a test fails each time:
   1. In `TokenTag.of`, change `unit.code` to `unit.code and 0xff`. The non-ASCII rows fail.
-  2. Drop `.copy(name = config.name)`. The refused-arm test fails.
+  2. Drop `.copy(sessionName = config.name)`. The refused-arm test fails.
   3. In `Phase.ended`, pass `null`. The ended test fails.
 
 - [ ] **Step 9: Verify and commit.** The core suite: EXIT=0, and the count rises by the number of new tests. Run `pnpm check`: EXIT=0, with `numTotalTests` rising by 8. Then commit:
@@ -687,9 +712,16 @@ Carry 11, CD6 and CD7. Today the two scrubs disagree on the following, and one r
 
 - Create: `modules/capture-engine/src/scrub/allow-list.json`, `modules/capture-engine/src/scrub/vectors.json`
 - Create: `core/src/test/kotlin/com/seazn/capture/engine/core/ScrubParityTest.kt`, `src/services/scrubParity.test.ts`
-- Modify: `core/.../SessionRecord.kt`, `core/.../Engine.kt` (none, if `RecordEntry` gains its level with a default), `core/src/test/.../SessionRecordTest.kt` (four expectations, listed in Step 6)
-- Modify: `src/services/scrub.ts`, `src/services/sessionRecord.ts`, `test/fakePorts.ts` (`readRecord`)
-- Modify: the JS tests that parse a line themselves, which change to the new `parseRecordLine`: `src/services/{sessionRecord,logger,kvTimeout,overlayGuard,streamSettingsStore}.test.ts` and `src/services/native/nativeSurfaces.test.tsx`
+- Modify: `core/.../SessionRecord.kt` (`RecordEntry` gains its level with a default, so `Engine.kt` and every caller are unchanged)
+- Modify: `core/src/test/.../SessionRecordTest.kt`. **Eight tests change their point**, each listed in Step 6 with its old point, its new point and its new expectation. Every other literal line in the file is unchanged, because a line whose level is `info` writes no `level` key (CD7).
+- Modify: `src/services/scrub.ts`, `src/services/scrub.test.ts` (one added test, Step 7), `src/services/sessionRecord.ts`, `test/fakePorts.ts` (`readRecord`)
+- Modify: the JS tests that read a line's raw JSON themselves, which change to `parseRecordLine` or to the flat keys. Each keeps its point:
+  - `src/services/sessionRecord.test.ts:12, 23, 45-46` — the line's own shape, now flat;
+  - `src/services/logger.test.ts:6` — `parsed` becomes `lines.map(parseRecordLine)`;
+  - `src/services/kvTimeout.test.ts:12`, `src/services/overlayGuard.test.ts:24`, `src/services/streamSettingsStore.test.ts:14` — `JSON.parse(line)` becomes `parseRecordLine(line)`;
+  - `src/services/native/nativeSurfaces.test.tsx:65, 229` — the same; line 229 reads `fields.kind`, which `parseRecordLine` restores from `field_kind`;
+  - `src/services/fetchDescriptorPort.test.ts:53, 237, 312, 354` — these match `'"event":"descriptor.error"'` in the raw text, which becomes `'"kind":"descriptor.error"'`.
+- Unchanged, and run to prove it: `src/ui/screens/HomeScreen.test.tsx` (15 files use `readRecord`, which keeps returning `{ level, event, fields }` with `fields.kind` restored) and `src/services/scrub.test.ts`'s existing tests (`kind` stays a plain key, so lines 37, 136, 140 and 189 hold).
 
 **Interfaces:**
 
@@ -699,10 +731,10 @@ Carry 11, CD6 and CD7. Today the two scrubs disagree on the following, and one r
 - Produces, in JS:
   - `SCRUBBED === '***'`;
   - the sets `PLAIN_KEYS`, `PUBLIC_URL_KEYS`, `TEXT_KEYS` and `NEVER_KEYS`, exported for the drift test;
-  - `toRecordLine(entry)`, which writes `{"at","kind","level",…fields}`;
-  - `parseRecordLine(line): RecordedEntry`, which reads back `{ atMs, level, event, fields }`.
+  - `toRecordLine(entry)`, which writes `{"at","kind",…fields}`, with `"level"` after `kind` only when it is not `info`;
+  - `parseRecordLine(line): RecordedEntry`, which reads back `{ atMs, level, event, fields }`, the level defaulting to `info` and each `field_<reserved>` key restored to `<reserved>`.
 
-- [ ] **Step 1: The allow-list file**, decided key by key. The union of both lists is shown, with each key's reason:
+- [ ] **Step 1: The allow-list file**, decided key by key. Both sides keep exactly these sets as code; the file is the source of record, and each key's reason names the side that writes it:
 
 ```json
 {
@@ -718,12 +750,14 @@ Carry 11, CD6 and CD7. Today the two scrubs disagree on the following, and one r
     "count",
     "delivery",
     "endReason",
+    "error",
     "exit",
     "failure",
     "from",
     "host",
     "intent",
     "key",
+    "kind",
     "lock",
     "mode",
     "ms",
@@ -740,6 +774,7 @@ Carry 11, CD6 and CD7. Today the two scrubs disagree on the following, and one r
     "slot",
     "state",
     "status",
+    "tag",
     "to",
     "transport"
   ],
@@ -754,12 +789,14 @@ Carry 11, CD6 and CD7. Today the two scrubs disagree on the following, and one r
     "count": "JS: a count",
     "delivery": "native: Delivery wire",
     "endReason": "both: EndReason wire, or the server's reason word",
+    "error": "plan C: a throwable's class name only, never its message (CD30)",
     "exit": "plan C: ApplicationExitInfo reason wire (CD22)",
     "failure": "native: ConnectFailure wire",
     "from": "native: a state or phase name",
     "host": "both: a bare host, never a path or query (plan A I1)",
     "intent": "native: an intent name",
     "key": "JS: a dictionary or store key name, never a value",
+    "kind": "JS: a failure kind word (descriptor.error, surface.unavailable), written to the line as field_kind; native: a Wire",
     "lock": "JS: an orientation lock name",
     "mode": "JS: a mode name",
     "ms": "JS: a duration",
@@ -776,6 +813,7 @@ Carry 11, CD6 and CD7. Today the two scrubs disagree on the following, and one r
     "slot": "JS: a camera position on the match",
     "state": "both: a state word",
     "status": "JS: an HTTP status or a check word",
+    "tag": "plan C: a vendor log's tag, a class name (CD30)",
     "to": "native: a state or phase name",
     "transport": "both: srt or rtmps"
   }
@@ -807,6 +845,12 @@ Carry 11, CD6 and CD7. Today the two scrubs disagree on the following, and one r
     { "why": "an unknown key masks a string", "key": "note", "value": "hello", "expected": "***" },
     { "why": "a number passes under any key", "key": "bytes", "value": 1410, "expected": 1410 },
     { "why": "a boolean passes under any key", "key": "wasLive", "value": true, "expected": true },
+    {
+      "why": "a failure kind passes as a plain word, under the reserved name",
+      "key": "kind",
+      "value": "offline",
+      "expected": "offline"
+    },
     { "why": "null passes under any key", "key": "status", "value": null, "expected": null },
     {
       "why": "a plain word passes a plain key",
@@ -958,8 +1002,11 @@ class ScrubParityTest {
     val cases = vectors.getJSONArray("cases")
     for (i in 0 until cases.length()) {
       val case = cases.getJSONObject(i)
-      val line = JSONObject(written(RecordEntry("probe", listOf(case.getString("key") to value(case, "value")))))
-      assertEquals(value(case, "expected"), value(line, case.getString("key")), case.getString("why"))
+      val key = case.getString("key")
+      val line = JSONObject(written(RecordEntry("probe", listOf(key to value(case, "value")))))
+      // A field named like a line key is written field_<key> (CD7); the value is what the vectors pin.
+      val writtenAs = if (key in SessionRecord.RESERVED_KEYS) "field_$key" else key
+      assertEquals(value(case, "expected"), value(line, writtenAs), case.getString("why"))
     }
   }
 
@@ -1030,15 +1077,15 @@ describe('carry 11: one scrub, pinned by the file native reads too', () => {
 });
 ```
 
-Relative imports reach the JSON from `src/services`. If the boundaries lint refuses a services import of a file under `modules/`, add `modules/capture-engine/src/scrub/*.json` to the `contracts` element type in `eslint.config.js`: services may import contracts. Do not widen services any further.
+Relative imports reach the JSON from `src/services`. The boundaries rule is off for test files, so a test may import it; confirm with `pnpm lint`, and change `eslint.config.mjs` only if it refuses, by adding `modules/capture-engine/src/scrub/*.json` to the `contracts` element type. Do not widen services any further.
 
 - [ ] **Step 4: Run both.** Expected: both fail. The key sets differ, the marker differs, and native masks URLs in place.
 
 - [ ] **Step 5: Reconcile the Kotlin side.** In `SessionRecord.kt`:
   - Replace the companion's sets with the file's (`PLAIN_KEYS`, `PUBLIC_URL_KEYS` adds `url`, `RESERVED_KEYS` becomes public and adds `level`).
   - Add a level: `data class RecordEntry(val kind: String, val fields: List<Pair<String, Any?>> = emptyList(), val level: String = "info")`.
-  - Write the head as `listOf("at" to …, "kind" to kindWord(entry.kind), "level" to entry.level)`.
-  - Rewrite the scrub to the four rules:
+  - Write the head as `listOf("at" to …, "kind" to kindWord(entry.kind))`, then `"level" to entry.level` only when it is not `"info"`, so every line the core writes today keeps its exact shape (CD7). `BridgeCore.log` (Task 12) only ever passes `debug`, `info`, `warn` or `error`.
+  - Rewrite the scrub to the four rules. A non-finite `Double` is now masked, as JS masks it, where it was written as `null`:
 
 ```kotlin
   private fun scrub(key: String, value: Any?): Any? =
@@ -1076,13 +1123,26 @@ with these in the companion:
 
 `masked()` stays as it is for text keys: in place, then whole when a decode still reveals a secret. Update the class KDoc to describe the four rules, and point to `allow-list.json` as the source of record.
 
-- [ ] **Step 6: Update the Kotlin expectations that encoded in-place URL masking.** Read each line before you change it. In `SessionRecordTest.kt`, the assertions at about lines 37–42, 185–189, 199–203 and 222–224 expect `?tok=***` inside a URL; each now expects the whole value `"***"`. Any test that asserts a plain key's in-place masking (`"sid"` holding a secret, for example) now expects `"***"`. Each changed assertion keeps its test's name and point: the secret never reaches the line. List every changed line in the commit body.
+- [ ] **Step 6: Restate the eight `SessionRecordTest` tests whose point changes.** Read each before you change it. Never weaken one silently: rename it to its new point, and list every change in the commit body. Line numbers are at `d6931c1`.
+
+| Line | Test today                                                                                                | Its new point and name                                                                                                                                                                         | New expectation                                                                                                                                                 |
+| ---- | --------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 35   | the token is masked even inside a public URL (in place, `STREAM_ID in line`)                              | **a public URL with a query is masked whole, so nothing in it reaches the line**                                                                                                               | `"playbackUrl":"***"`; drop `assertTrue(STREAM_ID in line)` (line 30's test still pins the stream id passing in a clean URL); keep `assertFalse(TOKEN in line)` |
+| 154  | a long, a null and a Decimal pass under any key, and a NaN is written as null                             | **… and a NaN is masked, as JS masks it**                                                                                                                                                      | `"drain":"***"`                                                                                                                                                 |
+| 163  | a plain key passes its text, with a secret in it masked                                                   | **a plain key passes a plain word, and masks anything else whole**                                                                                                                             | `"host":"live.cloudflare.com","reason":"***"`                                                                                                                   |
+| 169  | every key on the allow-lists passes plain text (`"plain words"`)                                          | **every key passes what its class allows**: each `PLAIN_KEYS` key passes `"plain-word"`, each `PUBLIC_URL_KEYS` key passes `Configs.PLAYBACK_URL`, each `TEXT_KEYS` key passes `"plain words"` | three loops over the class sets, each expecting its input back                                                                                                  |
+| 180  | RTMPS preferred — the SRT fallback's stream id passes inside the public URL (`?tok=***`) and nowhere else | unchanged point, a clean URL: `"playbackUrl" to Configs.PLAYBACK_URL`                                                                                                                          | the URL verbatim, the stream id in its path; the message line unchanged, `streamid=***`                                                                         |
+| 195  | RTMPS only — the stream key and the token are masked in text and inside a public URL                      | **… masked in text, and a public URL carrying them is masked whole**                                                                                                                           | `"playbackUrl":"***"`; the message unchanged                                                                                                                    |
+| 209  | secrets from an earlier arm stay masked after a second arm (URL `?tok=***`)                               | unchanged point                                                                                                                                                                                | `"playbackUrl":"***"`; the message `"first *** second ***"` unchanged                                                                                           |
+| 385  | the kind is masked by value like a field (`connect ***`)                                                  | **the kind is a plain word, or masked whole**                                                                                                                                                  | the token kind stays `"***"`; `"connect $STREAM_ID"` becomes `"kind":"***"`                                                                                     |
+
+Line 379 (`field_kind`, `field_at`) is unchanged: `kind` is now a plain key on both sides, and `Transport.SRT` is a `Wire`. Run the whole core suite: any other literal line that changes is a finding, so stop and report it rather than edit it.
 
 - [ ] **Step 7: Reconcile the JS side.** In `src/services/scrub.ts`:
   - `export const SCRUBBED = '***';`
   - Export `PLAIN_KEYS` with the file's list.
   - Add `PUBLIC_URL_KEYS = new Set(['url', 'playbackUrl', 'overlayUrl'])`, `TEXT_KEYS = new Set(['message', 'problems'])` and `NEVER_KEYS`.
-  - Rewrite `scrubValue`:
+  - Rewrite `scrubValue`. **One JS-only rule (CD6, I12):** a text key is masked whole while nothing is held. JS holds a code's `tok` from the scan, before `logger.protect()` runs at arm (`useStreamArm.ts:66`), so a `message` logged during the descriptor check would otherwise pass with only the shape check between it and the record. Native holds nothing before an arm, so it needs no such rule, and the shared vectors (which always hold secrets) are unaffected.
 
 ```ts
 function scrubValue(key: string, value: unknown, mask: Mask): LogValue {
@@ -1094,7 +1154,9 @@ function scrubValue(key: string, value: unknown, mask: Mask): LogValue {
   if (PLAIN_KEYS.has(key)) {
     return PLAIN_WORD.test(value) && !reveals(value, mask.anywhere) ? value : SCRUBBED;
   }
-  if (TEXT_KEYS.has(key)) return maskedText(value, mask.anywhere);
+  if (TEXT_KEYS.has(key)) {
+    return mask.anywhere.length === 0 ? SCRUBBED : maskedText(value, mask.anywhere);
+  }
   return SCRUBBED;
 }
 
@@ -1126,15 +1188,30 @@ function formsOf(secret: string): readonly string[] {
 
 `reveals` must read the replaced text: the `***` it inserts is not a secret, so it reveals nothing.
 
+Add to `scrub.test.ts`:
+
+```ts
+it('I12 masks free text whole while nothing is protected: JS holds the code before the arm', () => {
+  expect(scrubFields({ message: 'Connection refused (errno 111)' })).toEqual({ message: SCRUBBED });
+  expect(scrubFields({ message: 'Connection refused (errno 111)' }, HELD)).toEqual({
+    message: 'Connection refused (errno 111)',
+  });
+});
+```
+
 - [ ] **Step 8: Unify the line format (CD7).** In `src/services/sessionRecord.ts`:
 
 ```ts
 /** Fields named like the line's own keys are written as `field_<key>`, as native does. */
 const RESERVED = new Set(['at', 'kind', 'level']);
 
-/** One flat NDJSON line, the same shape native writes: `{at, kind, level, …fields}`. */
+/**
+ * One flat NDJSON line, the same shape native writes: `{at, kind, …fields}`,
+ * with `level` after `kind` only when it is not `info` (CD7).
+ */
 export function toRecordLine({ atMs, level, event, fields }: LogEntry): string {
-  const line: Record<string, unknown> = { at: new Date(atMs).toISOString(), kind: event, level };
+  const line: Record<string, unknown> = { at: new Date(atMs).toISOString(), kind: event };
+  if (level !== 'info') line.level = level;
   for (const [key, value] of Object.entries(fields))
     line[RESERVED.has(key) ? `field_${key}` : key] = value;
   return JSON.stringify(line);
@@ -1147,9 +1224,18 @@ export type RecordedEntry = {
   readonly fields: Readonly<Record<string, unknown>>;
 };
 
-/** A line back into its parts, either side's. A line with no level is native's core, which writes info. */
+/**
+ * A line back into its parts, either side's. No `level` means `info`, which
+ * neither side writes. A `field_<key>` rename is undone, so a reader sees the
+ * fields as they were logged.
+ */
 export function parseRecordLine(line: string): RecordedEntry {
-  const { at, kind, level, ...fields } = JSON.parse(line) as Record<string, unknown>;
+  const { at, kind, level, ...written } = JSON.parse(line) as Record<string, unknown>;
+  const fields: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(written)) {
+    const original = key.startsWith('field_') ? key.slice('field_'.length) : key;
+    fields[RESERVED.has(original) ? original : key] = value;
+  }
   return {
     atMs: Date.parse(String(at)),
     level: typeof level === 'string' ? level : 'info',
@@ -1159,7 +1245,7 @@ export function parseRecordLine(line: string): RecordedEntry {
 }
 ```
 
-In `test/fakePorts.ts`, make `RecordedEntry` re-export the services type, and change `readRecord` to `record.lines().map(parseRecordLine)`. Screen tests that read `entry.event`, `entry.fields` and `entry.level` then need no change. In the six tests that parse a line themselves (listed under Files), replace `JSON.parse(line)` with `parseRecordLine(line)`, and expectations of `{ at, level, event, fields }` with the parsed parts. Add to `sessionRecord.test.ts`:
+In `test/fakePorts.ts`, keep `RecordedEntry` as `{ level, event, fields }` and change `readRecord` to `record.lines().map((line) => { const { level, event, fields } = parseRecordLine(line); return { level, event, fields }; })`, so a test comparing whole entries is unchanged. Screen tests that read `entry.event`, `entry.fields` and `entry.level` then need no change. Change each JS test listed under Files as it says there. Add to `sessionRecord.test.ts`:
 
 ```ts
 it('CD7 writes the flat line native writes, renaming a field that reuses a line key', () => {
@@ -1180,36 +1266,46 @@ it('CD7 writes the flat line native writes, renaming a field that reuses a line 
     atMs: 0,
     level: 'warn',
     event: 'probe',
-    fields: { field_kind: 'x', ms: 3 },
+    fields: { kind: 'x', ms: 3 },
   });
+});
+
+it('CD7 writes no level for info, as native does, and reads a missing level back as info', () => {
+  const line = toRecordLine({ atMs: 0, level: 'info', event: 'probe', fields: {} });
+  expect(line).toBe('{"at":"1970-01-01T00:00:00.000Z","kind":"probe"}');
+  expect(parseRecordLine(line).level).toBe('info');
 });
 ```
 
-- [ ] **Step 9: Run both suites.** Expected: green. JS tests asserting `'[scrubbed]'` used the constant (all 20 uses do; confirm with `grep -rn "\[scrubbed\]" src test` → no matches). A JS test that expected a number under an unknown key to be masked now fails. It encoded the old rule, so change its expectation to the number, and note it in the commit.
+- [ ] **Step 9: Run both suites.** Expected: green. JS tests asserting `'[scrubbed]'` used the constant (confirm with `grep -rn "\[scrubbed\]" src test` → no matches). If a JS test expected a number under an unknown key to be masked, it encoded the old rule: change its expectation to the number, restate its name, and note it in the commit. Run `pnpm vitest run src/ui/screens/HomeScreen.test.tsx` on its own and record its count: it must pass unchanged.
 
 - [ ] **Step 10: Mutate, one at a time:**
   1. Native `isPublicUrl` returning true. The query, path-token and userinfo rows fail.
   2. JS `maskedText` returning `text`. The text rows fail.
   3. Drop `formsOf`'s `form`. The form-encoded row fails on the JS side.
   4. Add a key to `PLAIN_KEYS` on one side only. The drift test fails.
+  5. Write `level` for `info` lines on the native side. The unchanged literal lines in `SessionRecordTest` fail.
+  6. In `parseRecordLine`, keep `field_kind` as written. `nativeSurfaces.test.tsx:229` and the CD7 test fail.
+  7. In JS `scrubValue`, drop the nothing-held rule. The I12 test fails.
 
 - [ ] **Step 11: Verify and commit** both suites' raw counts and `pnpm check` EXIT=0. Then commit:
 
 ```bash
-cd "$WT" && git add modules/capture-engine/src/scrub modules/capture-engine/android/core/src src/services test/fakePorts.ts eslint.config.js && git commit -F - <<'EOF'
+cd "$WT" && git add modules/capture-engine/src/scrub modules/capture-engine/android/core/src src/services test/fakePorts.ts && git commit -F - <<'EOF'
 feat(record): one scrub and one line format on both sides
 
 Carry 11. allow-list.json is the source of record, decided key by key;
 both sides test their sets against it and run one vector file. Marker
-*** both sides; scalars pass under any key; plain and URL keys mask the
-whole value; text masks in place. Lines are flat {at, kind, level, ...}.
+*** both sides; finite scalars pass under any key; plain and URL keys
+mask the whole value; text masks in place (JS: whole until protected).
+Lines are flat {at, kind, [level unless info], ...}.
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
 Claude-Session: https://claude.ai/code/session_01PDXw352Q1KB2MG9qCcG8Pu
 EOF
 ```
 
-Stage only the files you changed. Confirm `git status --short` shows nothing else, and drop `eslint.config.js` from the list if Step 3 did not need it.
+Stage only the files you changed. Confirm `git status --short` shows nothing else, and add `eslint.config.mjs` to the list only if Step 3 needed it.
 
 ## Batch C2 — adapter logic I (pure Kotlin, JVM-tested)
 
@@ -1239,7 +1335,8 @@ The arm wire (Task 14 writes it) is:
   primary:  { transport: "srt", url, streamId, passphrase, latencyMs } | { transport: "rtmps", url, streamKey },
   fallback: same shape | null,
   holdWindowSeconds: { srt: n, rtmps: n },
-  playbackUrl, heartbeatUrl, descriptorUrl, descriptorJson, appVersion }
+  playbackUrl, heartbeatUrl, descriptorUrl, descriptorJson, appVersion,
+  language }            // (P3) optional; "" when absent
 ```
 
 - [ ] **Step 1: Write the failing tests.**
@@ -1273,6 +1370,7 @@ class ArmMappingTest {
       "descriptorUrl" to "https://stg.seazn.club/api/capture/sessions/sess_42/descriptor",
       "descriptorJson" to """{"sid":"sess_42"}""",
       "appVersion" to "1.0.0",
+      "language" to "fr",
     )
 
   @Test
@@ -1284,6 +1382,7 @@ class ArmMappingTest {
     assertEquals(Configs.STREAM_KEY, (config.fallback as RtmpsTarget).streamKey)
     assertEquals(mapOf(Transport.SRT to 183, Transport.RTMPS to 180), config.holdWindowSeconds)
     assertEquals("""{"sid":"sess_42"}""", config.descriptorJson)
+    assertEquals("fr", config.language, "(P3) the notification's language")
   }
 
   @Test
@@ -1390,6 +1489,8 @@ object ArmMapping {
       slot = WireValues.int(wire["slot"]) ?: 0,
       descriptorUrl = WireValues.text(wire["descriptorUrl"]),
       descriptorJson = wire["descriptorJson"] as? String ?: "{}",
+      // (P3) The operator's language, for the notification only (CD16).
+      language = WireValues.text(wire["language"]),
     )
 
   private fun target(value: Any?): IngestTarget? {
@@ -1885,7 +1986,7 @@ data class PlatformFacts(
   val deliveryCheckedAtMs: Long? = null,
   /** Capture time of the last encoded video frame, epoch ms (spec §2). */
   val captureTimestampMs: Long? = null,
-  /** True only once `startForeground` returned for this session (CD16). */
+  /** True from the accepted arm until the foreground service's start fails or the session ends (CD16): optimistic, so the caption never flashes. */
   val survivesBackground: Boolean = false,
   /** Camera or microphone refused at this session's arm (CD21). */
   val permissionsRefused: Boolean = false,
@@ -2641,14 +2742,14 @@ object HttpAnswers {
 
 ## Batch C3 — adapter logic II (pure Kotlin, JVM-tested)
 
-### Task 9: Device readings, frame tally and the previous exit
+### Task 9: Device readings, frame tally, lateness and the previous exit
 
-Carry 5, F-P5-3, F-P5-4, CD20, CD22 and CD28. Every rule the device sampler, the audio effect, the counting endpoint and the exit reader follow is pure and tested here. The glue only reads Android's values and hands them in.
+Carry 5, carry 14's evidence, F-P5-3, F-P5-4, CD20, CD22, CD28 and CD33. Every rule the device sampler, the audio effect, the counting endpoint and the exit reader follow is pure and tested here, and so are the two lateness lines the device checks read. The glue only reads Android's values and hands them in.
 
 **Files:**
 
-- Create: `adapter/DeviceReadings.kt`, `adapter/FrameTally.kt`, `adapter/PreviousExit.kt`
-- Test: `adapter/DeviceReadingsTest.kt`, `adapter/FrameTallyTest.kt`, `adapter/PreviousExitTest.kt`
+- Create: `adapter/DeviceReadings.kt`, `adapter/FrameTally.kt`, `adapter/PreviousExit.kt`, `adapter/Lateness.kt`
+- Test: `adapter/DeviceReadingsTest.kt`, `adapter/FrameTallyTest.kt`, `adapter/PreviousExitTest.kt`, `adapter/LatenessTest.kt`
 
 **Interfaces:**
 
@@ -2662,7 +2763,9 @@ Carry 5, F-P5-3, F-P5-4, CD20, CD22 and CD28. Every rule the device sampler, the
   - `DeviceReadings.sample(raw, drain): DeviceSample`;
   - `CaptureClock.epochMs(ptsUs, monoNowUs, wallNowMs): Long`;
   - `class FrameTally { begin(attemptId); counted(mime: String?, bytes: Int); read(attemptId): FrameCount?; bytes(attemptId): Long? }`;
-  - `PreviousExit.reason(code: Int): String`, `PreviousExit.entry(markerPresent: Boolean, code: Int?, exitAtMs: Long?): RecordEntry?`.
+  - `PreviousExit.reason(code: Int): String`, `PreviousExit.entry(markerPresent: Boolean, code: Int?, exitAtMs: Long?): RecordEntry?`;
+  - `class TickLateness { fun observe(monoMs: Long, sessionHeld: Boolean): RecordEntry? }` (CD33, `tick-late {gapMs}`);
+  - `class FrameGaps { fun read(attemptId: Int, video: Long, monoMs: Long, publishing: Boolean): RecordEntry? }` (CD33, `frames-gap {attempt, gapMs}`).
 
 - [ ] **Step 1: Write the failing tests.** Every expected number is worked in a comment.
 
@@ -2805,6 +2908,60 @@ class PreviousExitTest {
 }
 ```
 
+```kotlin
+package com.seazn.capture.engine.adapter
+
+import com.seazn.capture.engine.core.RecordEntry
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertNull
+
+/** CD33: the two lines the device checks read for deep sleep (carry 14) and a preview resize (Open 11). */
+class LatenessTest {
+  @Test
+  fun `carry 14 ticks more than 1000 ms apart while a session is held are recorded with the gap`() {
+    val ticks = TickLateness()
+    assertNull(ticks.observe(0, sessionHeld = true), "the first tick has nothing to be late against")
+    assertNull(ticks.observe(500, true))
+    assertNull(ticks.observe(1_500, true), "exactly 1000 ms is not late")
+    // 1 500 → 4 000: a 2 500 ms gap, the shape of a phone that slept.
+    assertEquals(RecordEntry("tick-late", listOf("gapMs" to 2_500L)), ticks.observe(4_000, true))
+  }
+
+  @Test
+  fun `without a session a slow tick is harmless, and the next session starts a fresh baseline`() {
+    val ticks = TickLateness()
+    ticks.observe(0, sessionHeld = false)
+    assertNull(ticks.observe(60_000, sessionHeld = false), "deep sleep with no session is allowed (CD10)")
+    assertNull(ticks.observe(120_000, sessionHeld = true), "the first tick of a session is its baseline, however long the sleep before it")
+    assertNull(ticks.observe(120_500, true))
+  }
+
+  @Test
+  fun `Open 11 video that stops moving while publishing is one gap, recorded with its length when it moves again`() {
+    val gaps = FrameGaps()
+    assertNull(gaps.read(attemptId = 3, video = 0, monoMs = 0, publishing = true))
+    assertNull(gaps.read(3, 15, 500, true))
+    assertNull(gaps.read(3, 15, 1_000, true), "still stalled: nothing yet")
+    assertNull(gaps.read(3, 15, 1_500, true))
+    // Last moved at 500, moved again at 2 000: a 1 500 ms gap, written once.
+    assertEquals(RecordEntry("frames-gap", listOf("attempt" to 3, "gapMs" to 1_500L)), gaps.read(3, 20, 2_000, true))
+    assertNull(gaps.read(3, 35, 2_500, true))
+  }
+
+  @Test
+  fun `exactly 500 ms between moves is not a gap, and nothing counts while not publishing or across attempts`() {
+    val gaps = FrameGaps()
+    gaps.read(3, 10, 0, true)
+    assertNull(gaps.read(3, 11, 500, true), "moved again after exactly 500 ms is not more than 500 ms")
+    assertNull(gaps.read(3, 11, 9_000, publishing = false), "a stall while not publishing is the machine's business, not a gap")
+    assertNull(gaps.read(3, 12, 9_500, true), "publishing again starts a fresh baseline")
+    assertNull(gaps.read(4, 0, 20_000, true), "a new attempt starts a fresh baseline")
+    assertNull(gaps.read(4, 1, 20_500, true))
+  }
+}
+```
+
 The JVM test pins the words. The ints are Android's, and Task 24 checks them against `android.jar` with `javap -constants android.app.ApplicationExitInfo` before it uses them, recording the output in the commit body.
 
 - [ ] **Step 2: Run them.** Expected: compile failure.
@@ -2908,6 +3065,66 @@ object CaptureClock {
 }
 ```
 
+`Lateness.kt`:
+
+```kotlin
+package com.seazn.capture.engine.adapter
+
+import com.seazn.capture.engine.core.RecordEntry
+
+/**
+ * CD33, carry 14's evidence. Ticks are 500 ms apart; two more than [LATE_MS] apart while a session is
+ * held mean the thread stalled or the phone slept through the wake lock. Without a session the tick
+ * may pause in deep sleep, which is harmless (CD10), so it is not recorded and the baseline restarts.
+ */
+class TickLateness {
+  private var lastMs: Long? = null
+
+  fun observe(monoMs: Long, sessionHeld: Boolean): RecordEntry? {
+    val last = lastMs
+    lastMs = if (sessionHeld) monoMs else null
+    if (!sessionHeld || last == null) return null
+    val gap = monoMs - last
+    return if (gap > LATE_MS) RecordEntry("tick-late", listOf("gapMs" to gap)) else null
+  }
+
+  companion object {
+    const val LATE_MS = 1_000L
+  }
+}
+
+/**
+ * CD33, research Open 11. Read with each Frames poll (500 ms). The video count not moving for more
+ * than [GAP_MS] while publishing is one gap, written once, with its length, when video moves again.
+ * A stall that never ends is the machine's own business: it becomes a drop or a stall there.
+ */
+class FrameGaps {
+  private var attempt: Int? = null
+  private var lastVideo = 0L
+  private var movedAtMs = 0L
+
+  fun read(attemptId: Int, video: Long, monoMs: Long, publishing: Boolean): RecordEntry? {
+    if (!publishing || attemptId != attempt) {
+      attempt = if (publishing) attemptId else null
+      lastVideo = video
+      movedAtMs = monoMs
+      return null
+    }
+    if (video == lastVideo) return null
+    val gap = monoMs - movedAtMs
+    lastVideo = video
+    movedAtMs = monoMs
+    return if (gap > GAP_MS) RecordEntry("frames-gap", listOf("attempt" to attemptId, "gapMs" to gap)) else null
+  }
+
+  companion object {
+    const val GAP_MS = 500L
+  }
+}
+```
+
+`gapMs` and `attempt` are numbers, so the scrub passes them under any key (CD6). Both classes run only on the scheduler thread (`BridgeCore`, Task 12), so they need no lock.
+
 `DeviceSample`'s constructor order is `(thermalStatus, thermalHeadroom, batteryPercent, charging, drainPctPerHour, shed)`. Check it in `Vocabulary.kt` before compiling.
 
 `FrameTally` keeps an `AtomicLong` each for video, audio and bytes, and a `@Volatile` current attempt id. `begin` swaps in fresh counters, so a frame racing the swap counts toward one attempt or the other, never toward a third. `counted` classifies by `mime?.startsWith("video/")` or `"audio/"`, and adds bytes in either case. `PreviousExit.reason` indexes the word list from the test, or returns `"unknown"`. `entry` returns `RecordEntry("previous-session-lost", listOf("exit" to (code?.let(::reason) ?: "unknown"), "exitAtMs" to exitAtMs))` when the marker is present, and null otherwise.
@@ -2916,8 +3133,12 @@ object CaptureClock {
   1. Read the PCM samples big-endian. The peak test fails.
   2. Drop the `c1 > c0` guard. The rising-charge test fails.
   3. Count audio as video. The F-P5-4 test fails.
+  4. Change `gap > LATE_MS` to `gap >= LATE_MS`. The "exactly 1000 ms" assertion fails.
+  5. In `TickLateness.observe`, keep `lastMs` when no session is held. The fresh-baseline test fails.
+  6. In `FrameGaps.read`, drop the `attemptId != attempt` reset. The new-attempt assertion fails.
+  7. Change `gap > GAP_MS` to `gap >= GAP_MS`. The "exactly 500 ms" assertion fails.
 
-  Then commit: `feat(adapter): device readings, frame tally and the previous exit`, with the trailer lines.
+  Then commit: `feat(adapter): device readings, frame tally, lateness and the previous exit`, with the trailer lines.
 
 ### Task 10: Mic silencing, camera availability, and the notification's words
 
@@ -2936,7 +3157,9 @@ F-P5-8, F-P5-9, F-P5-10, carry 23 and CD16. The spike proved each rule on a devi
   - `class MicSilenceWatch(sdk: Int) { fun update(ours: Int?, configs: List<RecordingConfig>): Boolean? }`, where non-null means changed;
   - `class CameraAvailability(selfWindowMs = 1_500)`, with `held(id: String?, monoMs)`, `selfChange(monoMs)`, `unavailable(id, monoMs): Input?`, `available(id, monoMs): Input?`, `sessionStarted(): Input?` and `sessionEnded()`;
   - `NotificationText.line(word, targetKbps: Int?, liveSinceEpochMs: Long?, nowEpochMs: Long, locale: Locale): String`;
-  - `NotificationText.WORDS: Map<String, Map<String, String>>`, keyed by language and then by tally key.
+  - `NotificationText.WORDS: Map<String, Map<String, String>>`, keyed by language and then by tally key;
+  - `NotificationText.CHANNEL: Map<String, String>`, the channel's name per language: the `mode.stream` word (M18, owner-visible in Android's notification settings);
+  - **(P3)** `NotificationText.language(armLanguage: String, phoneLanguage: String): String`, the first of the two that `WORDS` holds, else `"en"`.
 
 - [ ] **Step 1: Write the failing tests.**
 
@@ -3013,14 +3236,49 @@ class NotificationTextTest {
     assertEquals("EN DIRECTO · 1500k · 0 min", NotificationText.line("En directo", 1_500, 0, 59_000, Locale("es")))
   }
 
+  /** Spec §4's plate table, less not-ready, which has no meaning in a notification. Written out, not read from the code. */
+  private val tallyKeys = setOf("starting", "ready", "connecting", "live", "trouble", "ended")
+
   @Test
-  fun `the words are the app's own dictionary words, in every language`() {
+  fun `the words are the app's own dictionary words, exactly the six tally keys in each of the four languages`() {
     val root = System.getProperty("capture.i18n")
+    assertEquals(setOf("en", "es", "fr", "nl"), NotificationText.WORDS.keys)
     for ((language, words) in NotificationText.WORDS) {
+      assertEquals(tallyKeys, words.keys, "$language holds every key and no other")
       val dictionary = JSONObject(File(root, "$language.json").readText())
       for ((key, word) in words) assertEquals(dictionary.getString("stream.tally.$key"), word, "$language $key")
     }
-    assertEquals(setOf("en", "es", "fr", "nl"), NotificationText.WORDS.keys)
+  }
+
+  @Test
+  fun `M18 the channel is named for the mode, in every language`() {
+    val root = System.getProperty("capture.i18n")
+    assertEquals(setOf("en", "es", "fr", "nl"), NotificationText.CHANNEL.keys)
+    for ((language, name) in NotificationText.CHANNEL) {
+      assertEquals(JSONObject(File(root, "$language.json").readText()).getString("mode.stream"), name, language)
+    }
+  }
+
+  @Test
+  fun `CD16 the notification is read from the wire the bridge publishes, so the glue holds no rule`() {
+    val live = mapOf(
+      "state" to mapOf("kind" to "publishing", "sinceEpochMs" to 1_790_000_000_000.0),
+      "telemetry" to mapOf("targetBitrateKbps" to 3_000.0),
+    )
+    assertEquals("EN DIRECT · 3000k · 47 min", NotificationText.content(live, 1_790_002_850_000, "fr"))
+    val armed = mapOf("state" to mapOf("kind" to "armed", "sinceEpochMs" to 0.0))
+    assertEquals("PRÊT", NotificationText.content(armed, 1_790_002_850_000, "fr"), "minutes only while live")
+    assertEquals("STARTING", NotificationText.content(mapOf("state" to mapOf("kind" to "exploded")), 0, "en"), "an unknown kind")
+    assertEquals("STARTING", NotificationText.content(emptyMap(), 0, "en"), "no state at all")
+  }
+
+  // (P3, PROPOSED CD16) Skip this test, `language` and its use in Task 24 if the owner declines.
+  @Test
+  fun `P3 the arm's language wins, then the phone's, then English`() {
+    assertEquals("fr", NotificationText.language(armLanguage = "fr", phoneLanguage = "es"))
+    assertEquals("es", NotificationText.language(armLanguage = "", phoneLanguage = "es"))
+    assertEquals("es", NotificationText.language(armLanguage = "de", phoneLanguage = "es"))
+    assertEquals("en", NotificationText.language(armLanguage = "de", phoneLanguage = "pt"))
   }
 }
 ```
@@ -3037,15 +3295,22 @@ The imports are `kotlin.test.*`, `java.util.Locale`, `java.io.File`, `org.json.J
     - `available` removes the id, and returns `CameraReleased` when the set empties while `inSession`.
     - `sessionStarted` sets `inSession` and returns `CameraContended` if the set is not empty.
     - `sessionEnded` clears `inSession`, and keeps the set: it is the device's truth, needed for the next session.
+    - Every public method is `@Synchronized`: the camera callback (main looper, Task 23) and the capture scope (Task 22) both call it.
     - `held(id)` also drops `id` from `contended`.
-  - **`NotificationText.WORDS`** holds the six `stream.tally.*` words (`starting`, `ready`, `connecting`, `live`, `trouble`, `ended`) for en, es, fr and nl, copied from the dictionaries. The test keeps them equal.
+  - **`NotificationText.WORDS`** holds the six `stream.tally.*` words (`starting`, `ready`, `connecting`, `live`, `trouble`, `ended`) for en, es, fr and nl, copied from the dictionaries. The test keeps them equal, and fails on a language missing a key or holding an extra one.
+  - **`NotificationText.CHANNEL`** holds `mode.stream` for each language: "Live Stream", "Emisión en directo", "Diffusion en direct", "Livestream". The channel's name is fixed when the channel is first created, in the language of that moment, and Android shows it in the app's notification settings.
+  - **(P3) `NotificationText.language`** returns `armLanguage` if `WORDS` has it, else `phoneLanguage` if `WORDS` has it, else `"en"`.
   - **`NotificationText.line`** upper-cases the word in `locale`. It adds `"${kbps}k"` when the target is known, and `"${minutes} min"` when the session is live, with minutes as `(now − since) / 60 000`.
   - **`NotificationText.tallyKey(state: SnapshotState): String`**, also tested, maps publishing to `live`, degraded and reconnecting to `trouble`, connecting to `connecting`, armed to `ready`, ended to `ended`, and idle to `starting`. That is plan A's plate table, without the not-ready case, which has no meaning in a notification.
+  - **`NotificationText.content(wire: Map<String, Any?>, nowEpochMs: Long, language: String): String`** is what the service shows. It reads `state.kind` and looks it up in a `kind → tally key` map built once from `tallyKey` over every `SnapshotState`'s `wire` name (so the two cannot drift; an unknown or missing kind is `starting`), reads `state.sinceEpochMs` only when the key is `live`, and `telemetry.targetBitrateKbps`, each a `Double` on the wire (`.toLong()`/`.toInt()`), then returns `line(WORDS[language][key], kbps, since, now, Locale(language))`. `language` is already resolved by `language(…)`. The glue calls only this (Task 24).
 
 - [ ] **Step 4: Run, mutate, commit.** Mutate one at a time:
   1. Drop the self-window check. The switch test fails.
   2. Report silencing below 29. The carry 23 test fails.
   3. Change one Dutch word. The dictionary test fails.
+  4. Drop `ended` from the Spanish words. The exact-keys assertion fails (a value-only comparison would have passed).
+  5. (P3) Return `phoneLanguage` first. The arm-language assertion fails.
+  6. In `content`, pass `sinceEpochMs` whatever the key. The `PRÊT` assertion fails.
 
   Then commit: `feat(adapter): mic silencing, camera availability and the notification's words`, with the trailer lines.
 
@@ -3187,17 +3452,29 @@ class EncoderKeysTest {
 class GlueRulesTest {
   private val root = File(System.getProperty("capture.glue"))
 
-  private fun sources(): List<File> = root.walkTopDown().filter { it.extension == "kt" }.toList()
+  /**
+   * The glue's Kotlin files. Until Task 20 the folder does not exist, and every rule here reports
+   * SKIPPED, never a vacuous pass; Task 20 deletes the assumption. A folder that exists but holds no
+   * Kotlin is a wrong path, and fails.
+   */
+  private fun sources(): List<File> {
+    assumeTrue(root.exists(), "the glue arrives in Task 20") // Task 20 deletes this line.
+    return root.walkTopDown().filter { it.extension == "kt" }.toList().also { assertTrue(it.isNotEmpty(), "no Kotlin under ${root.path}") }
+  }
 
   @Test
   fun `F-P5-6 no glue code calls setTargetRotation`() {
-    if (!root.exists()) return // Task 20 deletes this line once the glue exists.
     for (file in sources()) assertFalse("setTargetRotation(" in file.readText(), file.path)
   }
 
   @Test
+  fun `CD30 StreamPack's logger is replaced before any streamer exists`() {
+    val assigned = sources().filter { "Logger.logger = VendorLogger" in it.readText() }
+    assertEquals(listOf("EngineHost.kt"), assigned.map { it.name }, "one assignment, in EngineHost's first use")
+  }
+
+  @Test
   fun `Review Focus 1 nothing in the glue blocks the scheduler thread`() {
-    if (!root.exists()) return // Task 20 deletes this line once the glue exists.
     for (file in sources()) {
       val text = file.readText()
       assertFalse("runBlocking" in text, "${file.path}: runBlocking")
@@ -3207,7 +3484,6 @@ class GlueRulesTest {
 
   @Test
   fun `the glue never attaches StreamPack's lifecycle observer, logs to the console, or names a service`() {
-    if (!root.exists()) return // Task 20 deletes this line once the glue exists.
     for (file in sources()) {
       val text = file.readText()
       for (banned in listOf("StreamerLifeCycleObserver", "android.util.Log", "println(", "streampack.services")) assertFalse(banned in text, "${file.path}: $banned")
@@ -3218,7 +3494,7 @@ class GlueRulesTest {
 
 The `MediaFormat.KEY_MAX_B_FRAMES` constant is the string `"max-bframes"`. The glue uses the constant, and Task 22 checks it with `javap`.
 
-- [ ] **Step 2: Run them.** Expected: compile failure. `GlueRulesTest` passes vacuously until Task 20.
+- [ ] **Step 2: Run them.** Expected: compile failure. Once they compile, `GlueRulesTest`'s four tests report **skipped** (`assumeTrue` from `org.junit.jupiter.api.Assumptions`: `core/build.gradle.kts` uses `kotlin("test")` on `useJUnitPlatform()`, which brings JUnit 5's API) until Task 20. Read the skipped count in the Gradle report: a skip is honest, a pass would not be.
 
 - [ ] **Step 3: Implement.**
 
@@ -3309,23 +3585,32 @@ object TlsCloserGuard {
 
   Then commit: `feat(adapter): SRT options, the TLS guard, attempt signals and the glue's rules`, with the trailer lines.
 
-## Batch C4 — the bridge core, the JVM host, and the JS bridge
+## Batch C4a — the bridge core and the JVM host
+
+The suite is the core's (`./gradlew test`), plus the host's smoke run in Task 13.
 
 ### Task 12: `BridgeCore` — the engine host every platform uses
 
-Carries 1, 12, 15, 17, 18 and 27, and CD7, CD9 and CD11. `BridgeCore` joins plan B's `Engine` to a `Platform`, and this is the one place where the rules from Tasks 4–11 meet. The Android glue (Task 20) and the JVM host (Task 13) are both thin `Platform`s around it, so every rule here is JVM-tested once and runs unchanged on the phone.
+Carries 1, 12, 14, 15, 17, 18 and 27, and CD7, CD9, CD11, CD31, CD32 and CD33. `BridgeCore` joins plan B's `Engine` to a `Platform`, and this is the one place where the rules from Tasks 4–11 meet. The Android glue (Task 20) and the JVM host (Task 13) are both thin `Platform`s around it, so every rule here is JVM-tested once and runs unchanged on the phone.
 
 **Files:**
 
-- Create: `adapter/BridgeCore.kt`, `adapter/Platform.kt`
-- Test: `adapter/BridgeCoreTest.kt`, with a `RecordingPlatform` test double in the same file
+- Create: `adapter/BridgeCore.kt`, `adapter/Platform.kt`, `adapter/OwnedSlot.kt`
+- Test: `adapter/BridgeCoreTest.kt`, with a `RecordingPlatform` test double in `adapter/RecordingPlatform.kt`; `adapter/OwnedSlotTest.kt`; `adapter/ArmWire.kt` (the shared test arm map)
 
 **Interfaces:**
 
-- Consumes everything from Tasks 4–11, plus `Engine`, `SessionRecord`, `Projection`, `Phase.attemptInHand` and `Clock`.
-- Produces:
+- Consumes everything from Tasks 4–11, plus `Engine`, `SessionRecord`, `Projection`, `Phase.attemptInHand`, `Phase.session` and `Clock`.
+- Produces `Platform`, `BridgeCore` and `OwnedSlot<T>` (`take(by, value)`, `release(by)`, `value`), all below.
 
 ```kotlin
+package com.seazn.capture.engine.adapter
+
+import com.seazn.capture.engine.core.Command
+import com.seazn.capture.engine.core.LinkCounters
+import com.seazn.capture.engine.core.SessionConfig
+
+/** What a platform gives `BridgeCore`. Android's is the glue (Task 20); the JVM host's is scripted (Task 13). */
 interface Platform {
   /** Carry out one command. Never blocks the calling (scheduler) thread; outcomes come back through BridgeCore. */
   fun execute(command: Command)
@@ -3333,7 +3618,12 @@ interface Platform {
   /** One HTTP request, answered once on any thread. */
   fun http(request: HttpRequest, answer: (HttpOutcome) -> Unit)
 
-  /** The machine accepted an arm: ask permissions, open the camera, start the foreground service, hold the wake lock. */
+  /**
+   * The machine accepted an arm (CD31). Called once per accepted session, on the scheduler thread,
+   * outside the snapshot sink. Must return at once: post anything slow or main-thread-bound (the
+   * permission request, then the foreground service, CD16) and report back through BridgeCore. A
+   * throw ends the session fatal-error and named, sticky for the process when it is permanent.
+   */
   fun armed(config: SessionConfig)
 
   /** Cumulative counts for the attempt, or null when it is not the attempt the endpoint holds. */
@@ -3347,87 +3637,305 @@ interface Platform {
   fun snapshot(wire: Map<String, Any?>)
 
   fun recordLine(line: String)
+
+  /** CD8: the intent numbered [seq] has run, with every snapshot and line it caused. Emitted as an event. */
+  fun acked(seq: Int)
 }
 ```
 
-`BridgeCore(clock: Clock, scheduler: Scheduler, platform: Platform, readBody: (String) -> BodyFields)` has these methods:
+```kotlin
+package com.seazn.capture.engine.adapter
 
-- `start()`;
-- `send(intent: Map<String, Any?>)`;
-- `report(input: Input)`, called by the platform from any thread;
-- `failure(t: Throwable)`, from any thread;
-- `refused(message: String, scope: Scope)`, from any thread;
-- `log(level: String, kind: String, fields: Map<String, Any?>)`;
-- `current(): Map<String, Any?>`;
-- `tail(): List<String>`.
+/**
+ * CD32: one value, owned by whoever took it last. A module instance takes the slot in `OnCreate` and
+ * releases it in `OnDestroy`. A release by an owner that has since been replaced changes nothing, so
+ * a JS reload never clears the new instance's listener, whichever of the two runs first.
+ */
+class OwnedSlot<T : Any> {
+  private var owner: Any? = null
 
-`BridgeCore.shared(factory: () -> BridgeCore): BridgeCore` makes one per process.
+  @Volatile
+  var value: T? = null
+    private set
 
-**What `BridgeCore` does, in order of the tests:**
+  @Synchronized
+  fun take(by: Any, value: T) {
+    owner = by
+    this.value = value
+  }
 
-1. **Construction.** `current()` is the idle wire before any tick (Review Focus 2). It builds a `GuardedScheduler` over the given one, whose failure handler is `failed(t)`.
-2. **`start()`.** It posts `engine.start()` onto the scheduler (carry 15), and nothing else. The network fact comes from the platform's watcher, like any other input.
-3. **`send(intent)`.** It maps the intent through `IntentMapping`. An unknown kind becomes a record line, `intent-unknown`, with `intent` set to the kind if it is a plain word. Otherwise it calls `report(input)`.
-4. **`report(input)`.** It posts `pollers.onInput(input)` and then `engine.send(input)`. Both are posted, so the poller and the machine see inputs in one order.
-5. **The command sink.** It is `StickyFailure` around `route`:
-   - `FetchPlaylist`, `PostHeartbeat` and `FetchDescriptor` become `platform.http(...)`. Each answer becomes `report(HttpAnswers.…)`.
-   - A playlist answer of any kind also sets `deliveryCheckedAtMs` to `clock.wallMs()` (carry 5).
-   - `FetchDescriptor` reads the held config from `engine.phase.session?.config`. With no request (a blank URL), it reports `DescriptorChecked(id, Unreachable("no descriptor url"))` at once, so the id is still echoed (carry 17).
-   - Every command passes through `pollers.onCommand` first. Every other command goes to `platform.execute`.
-   - An exception from `platform.execute` that `Failures.permanent` recognises becomes `sticky.fail(describe, phase.attemptInHand, Scope.PROCESS)` and is not rethrown. Any other exception is rethrown, and plan B's engine records it as `command-failed`.
-6. **The snapshot sink.**
-   - It builds `SnapshotWire.of(snapshot, platform.facts().copy(deliveryCheckedAtMs = checkedAt), RecordCounters(record.sinkFailures, record.reentrantDropped))`, stores it as `current`, and calls `platform.snapshot(wire)`.
-   - When the state moves from `idle` to `armed`, it calls `sticky.armAccepted()` and then `platform.armed(config)`, using the config of `engine.phase` (an accepted arm, CD16 and CD21).
-   - When the state moves to `ended`, it does nothing more: `Command.End` already reached the platform.
-7. **The record.** It is `SessionRecord { line -> platform.recordLine(line) }`, given to the `Engine`.
-8. **`log(level, kind, fields)`.** It converts each JS number that is a whole `Double` to a `Long`, so a count prints as `3`, not `3.0`. It keeps the level only if it is one of `debug`, `info`, `warn` or `error`, and otherwise uses `info`. It calls `engine.log(RecordEntry(kind, fields, level))`, which is posted (carry 12). The record renames `at`, `kind` and `level` fields (Task 3).
-9. **`failed(t)`, on the scheduler thread.** It records `engine-error`, with `message` set to `Failures.describe(t)`. If `Failures.permanent(t)`, it calls `sticky.fail(…, Scope.PROCESS)`.
-10. **`failure(t)` and `refused(message, scope)`.** Both post onto the scheduler. `refused` calls `sticky.fail(message, engine.phase.attemptInHand, scope)`, which reports `PlatformFailed` against the attempt in hand: before the first Connect, that is the next attempt, so an armed session ends fatal-error and named (CD11, Review Focus 3).
-11. **`tail()`.** It returns `record.lastLines()`.
+  @Synchronized
+  fun release(by: Any) {
+    if (owner !== by) return
+    owner = null
+    value = null
+  }
+}
+```
 
-- [ ] **Step 1: Write the failing tests.**
-  - `RecordingPlatform` records every call.
-  - It answers `Connect` by reporting `Connected` through the core it was given. When `throwOnConnect` holds a `Throwable`, `execute` throws it for a `Connect` instead.
-  - When `throwOnFactsOnce` holds one, the next `facts()` throws it and clears it.
-  - It keeps `lines` (every record line), `snapshots` (every wire), `armed` (every config) and `http` (every request).
-  - It answers HTTP from a queue the test fills.
-  - It returns frames that advance 15 and 23 every read after `Connected`.
-  - Its facts are ready, reachable, with a level of 0.5.
-  - Drive it with the core's `FakeClock` and `FakeScheduler`, and advance with `scheduler.advanceBy`.
+**`BridgeCore`**, in full. Each function stays within 10–25 lines (AGENTS §12).
 
 ```kotlin
+package com.seazn.capture.engine.adapter
+
+import com.seazn.capture.engine.core.Clock
+import com.seazn.capture.engine.core.Command
+import com.seazn.capture.engine.core.CommandSink
+import com.seazn.capture.engine.core.DescriptorCheck
+import com.seazn.capture.engine.core.Engine
+import com.seazn.capture.engine.core.Input
+import com.seazn.capture.engine.core.Phase
+import com.seazn.capture.engine.core.Projection
+import com.seazn.capture.engine.core.RecordEntry
+import com.seazn.capture.engine.core.Scheduler
+import com.seazn.capture.engine.core.SessionConfig
+import com.seazn.capture.engine.core.SessionRecord
+import com.seazn.capture.engine.core.Snapshot
+import com.seazn.capture.engine.core.SnapshotSink
+import com.seazn.capture.engine.core.attemptInHand
+import com.seazn.capture.engine.core.now
+import com.seazn.capture.engine.core.session
+import kotlin.math.abs
+
+/**
+ * The engine host every platform uses (CD3). Intents in, commands out, snapshots and record lines
+ * up. Every rule from Tasks 4–11 meets here, so the Android glue and the JVM host are both thin.
+ * Every input is posted, so the poller, the machine and the arm notice see inputs in one order.
+ */
+class BridgeCore(
+  private val clock: Clock,
+  scheduler: Scheduler,
+  private val platform: Platform,
+  private val readBody: (String) -> BodyFields,
+) {
+  private val guarded = GuardedScheduler(scheduler, ::failed)
+  private val record = SessionRecord { line -> platform.recordLine(line) }
+  private val sticky = StickyFailure(CommandSink(::route), ::report)
+  private val pollers = AttemptPollers(guarded, ::frames, platform::link, ::report)
+  private val ticks = TickLateness()
+  private val gaps = FrameGaps()
+  private val engine = Engine(clock, guarded, sticky, SnapshotSink(::published), record)
+
+  /** The config `platform.armed` last saw, compared by identity (CD31). Scheduler thread only. */
+  private var lastArmed: SessionConfig? = null
+
+  @Volatile private var checkedAtMs: Long? = null
+
+  /** Review Focus 2: an answer before the first tick, so a restarted JS never reads nothing. */
+  @Volatile private var current: Map<String, Any?> = wire(Projection.snapshot(Phase.Idle(), clock.now()), PlatformFacts())
+
+  /** Carry 15: the tick starts on the scheduler thread. */
+  fun start() {
+    guarded.schedule(0) { engine.start() }
+  }
+
+  /**
+   * An intent from JS. When it carries a `seq`, an ack is posted after the input's own tasks, so it
+   * reaches JS after everything the input caused and before any later tick's snapshot (CD8).
+   */
+  fun send(intent: Map<String, Any?>) {
+    val input = IntentMapping.input(intent)
+    if (input != null) report(input) else engine.log(RecordEntry("intent-unknown", listOf("intent" to intent["kind"] as? String)))
+    WireValues.int(intent["seq"])?.let { seq -> guarded.schedule(0) { platform.acked(seq) } }
+  }
+
+  /** From any thread. The arm is noticed after the machine has run the input, never inside the snapshot sink (CD31). */
+  fun report(input: Input) {
+    guarded.schedule(0) { pollers.onInput(input) }
+    engine.send(input)
+    guarded.schedule(0) { noticeArm() }
+  }
+
+  /** From any thread: a failure the glue caught on its own scope (CD9). */
+  fun failure(t: Throwable) {
+    guarded.schedule(0) { failed(t) }
+  }
+
+  /** From any thread: a refusal before or during a session (CD21), against the attempt in hand (CD11). */
+  fun refused(message: String, scope: Scope) {
+    guarded.schedule(0) { sticky.fail(message, engine.phase.attemptInHand, scope) }
+  }
+
+  /**
+   * Carry 12: a JS line, posted. A whole JS number prints as `3`, not `3.0`; a fraction is kept and
+   * written to tenths like every native number. An unknown level is `info`.
+   */
+  fun log(level: String, kind: String, fields: Map<String, Any?>) {
+    val kept = if (level in LEVELS) level else "info"
+    engine.log(RecordEntry(kind, fields.map { (key, value) -> key to whole(value) }, kept))
+  }
+
+  fun current(): Map<String, Any?> = current
+
+  fun tail(): List<String> = record.lastLines()
+
+  private fun noticeArm() {
+    val config = engine.phase.session?.config ?: return
+    if (config === lastArmed) return
+    lastArmed = config
+    sticky.armAccepted()
+    try {
+      platform.armed(config)
+    } catch (failure: Throwable) {
+      val scope = if (Failures.permanent(failure)) Scope.PROCESS else Scope.SESSION
+      sticky.fail(Failures.describe(failure), engine.phase.attemptInHand, scope)
+      if (failure !is Exception) throw failure
+    }
+  }
+
+  private fun route(command: Command) {
+    pollers.onCommand(command)
+    when (command) {
+      is Command.FetchPlaylist ->
+        platform.http(HttpRequests.playlist(command)) { outcome ->
+          checkedAtMs = clock.wallMs()
+          report(HttpAnswers.playlist(command.requestId, outcome))
+        }
+      is Command.PostHeartbeat -> platform.http(HttpRequests.heartbeat(command)) { report(HttpAnswers.heartbeat(command.beatId, it, readBody)) }
+      is Command.FetchDescriptor -> descriptor(command.requestId)
+      else -> executed(command)
+    }
+  }
+
+  /** Carry 17: the id is echoed even when there is nothing to fetch. */
+  private fun descriptor(requestId: Int) {
+    val request = engine.phase.session?.config?.let(HttpRequests::descriptor)
+    if (request == null) return report(Input.DescriptorChecked(requestId, DescriptorCheck.Unreachable("no descriptor url")))
+    platform.http(request) { report(HttpAnswers.descriptor(requestId, it, readBody)) }
+  }
+
+  /** CD11: a permanent failure is sticky, never retried; anything else is plan B's `command-failed`. */
+  private fun executed(command: Command) {
+    try {
+      platform.execute(command)
+    } catch (failure: Throwable) {
+      if (!Failures.permanent(failure)) throw failure
+      sticky.fail(Failures.describe(failure), engine.phase.attemptInHand, Scope.PROCESS)
+    }
+  }
+
+  private fun published(snapshot: Snapshot) {
+    ticks.observe(clock.monotonicMs(), engine.phase.session != null)?.let(engine::log)
+    val wire = wire(snapshot, platform.facts().copy(deliveryCheckedAtMs = checkedAtMs))
+    current = wire
+    platform.snapshot(wire)
+  }
+
+  private fun wire(snapshot: Snapshot, facts: PlatformFacts): Map<String, Any?> =
+    SnapshotWire.of(snapshot, facts, RecordCounters(record.sinkFailures, record.reentrantDropped))
+
+  /** The Frames poller's read, with CD33's gap line. Scheduler thread. */
+  private fun frames(attemptId: Int): FrameCount? {
+    val count = platform.frames(attemptId) ?: return null
+    gaps.read(attemptId, count.video, clock.monotonicMs(), engine.phase is Phase.OnAir)?.let(engine::log)
+    return count
+  }
+
+  /** Whatever reached the task boundary (carry 15): recorded, and sticky when permanent (CD11). */
+  private fun failed(t: Throwable) {
+    engine.log(RecordEntry("engine-error", listOf("message" to Failures.describe(t))))
+    if (Failures.permanent(t)) sticky.fail(Failures.describe(t), engine.phase.attemptInHand, Scope.PROCESS)
+  }
+
+  private fun whole(value: Any?): Any? = if (value is Double && value % 1.0 == 0.0 && abs(value) <= MAX_EXACT) value.toLong() else value
+
+  companion object {
+    private val LEVELS = setOf("debug", "info", "warn", "error")
+
+    /** 2^53: every whole Double up to it is exact. */
+    private const val MAX_EXACT = 9_007_199_254_740_992.0
+
+    @Volatile private var instance: BridgeCore? = null
+
+    /** One engine per process (carry 18). A JS reload makes a new module over this same core (CD32). */
+    fun shared(factory: () -> BridgeCore): BridgeCore = instance ?: synchronized(this) { instance ?: factory().also { instance = it } }
+
+    /** Tests only: the next [shared] builds afresh. */
+    internal fun resetShared() {
+      synchronized(this) { instance = null }
+    }
+  }
+}
+```
+
+Check before compiling, and fix the call, never the rule: `Phase.session` is the existing extension in `Phase.kt`; `Phase.Idle()` takes no argument; `DescriptorCheck.Unreachable` takes the message; `RecordEntry` has its `level` from Task 3. `NaN % 1.0` is `NaN`, so a non-finite number stays a `Double` and the record masks it (CD6). The test double, `RecordingPlatform`, records every call:
+
+- It keeps `lines` (every record line), `snapshots` (every wire), `armed` (every config), `http` (every request) and `events` (`"snapshot"` and `"ack:<seq>"`, in the order they happened), and answers HTTP from a queue the test fills.
+- It answers `Connect` by reporting `Connected` through `core`. When `throwOnConnect` holds a `Throwable`, `execute` throws it for a `Connect` instead.
+- When `throwOnArmed` holds a `Throwable`, `armed` records the config and then throws it.
+- When `throwOnFactsOnce` holds one, the next `facts()` throws it and clears it.
+- It returns frames that advance 15 video and 23 audio every read after `Connected`, and holds the count still while `frozen` is true.
+- Its facts are ready, reachable, with a level of 0.5.
+- `dropCurrent()` reports `Dropped(attemptInHand, ENDPOINT_CLOSED, "cut")` through `core`.
+
+`ArmWire.valid()` is the map from `ArmMappingTest.wire()`, moved into `adapter/ArmWire.kt` and used by both tests.
+
+- [ ] **Step 1: Write the failing tests.** Drive them with the core's `FakeClock` and `FakeScheduler`, and advance with `scheduler.advanceBy`.
+
+```kotlin
+package com.seazn.capture.engine.adapter
+
+import com.seazn.capture.engine.core.Cancellable
+import com.seazn.capture.engine.core.Engine
+import com.seazn.capture.engine.core.FakeClock
+import com.seazn.capture.engine.core.FakeScheduler
+import com.seazn.capture.engine.core.Input
+import com.seazn.capture.engine.core.Scheduler
+import kotlin.test.AfterTest
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertSame
+import kotlin.test.assertTrue
+import org.json.JSONObject
+
 class BridgeCoreTest {
   private val clock = FakeClock()
   private val scheduler = FakeScheduler(clock)
   private val platform = RecordingPlatform()
   private val core = BridgeCore(clock, scheduler, platform) { BodyFields(null, null) }.also { platform.core = it }
 
-  private fun state() = (core.current()["state"] as Map<*, *>)["kind"]
+  private fun state(of: BridgeCore = core) = (of.current()["state"] as Map<*, *>)["kind"]
+
+  private fun lines(of: RecordingPlatform = platform) = of.lines.map(::JSONObject)
 
   private fun arm(config: Map<String, Any?> = ArmWire.valid()) {
     core.send(config)
     scheduler.advanceBy(0)
   }
 
-  @Test
-  fun `Review Focus 2 the current snapshot is idle before any tick, and live once live`() {
-    assertEquals("idle", state())
+  private fun live() {
     core.start()
     core.report(Input.Network(true))
     arm()
     core.send(mapOf("kind" to "start"))
     scheduler.advanceBy(1_500)
+  }
+
+  @AfterTest
+  fun forgetShared() = BridgeCore.resetShared()
+
+  @Test
+  fun `Review Focus 2 the current snapshot is idle before any tick, and live once live`() {
+    assertEquals("idle", state())
+    live()
     assertEquals("publishing", state())
     assertEquals("sess_42", (core.current()["session"] as Map<*, *>)["sid"])
   }
 
   @Test
-  fun `carry 27 native answers a stop within one tick`() {
+  fun `CD8 an intent's ack comes after the snapshot it caused, and an unknown intent is acked too`() {
     core.start()
-    core.report(Input.Network(true))
-    arm()
-    core.send(mapOf("kind" to "start"))
-    scheduler.advanceBy(1_500)
+    core.send(ArmWire.valid() + ("seq" to 1.0))
+    core.send(mapOf("kind" to "explode", "seq" to 2.0))
+    scheduler.advanceBy(0)
+    val armed = platform.events.indexOf("ack:1")
+    assertTrue(platform.events.indexOf("snapshot") in 0 until armed, "the armed snapshot is out before its ack")
+    assertEquals("ack:2", platform.events.last())
+  }
+
+  @Test
+  fun `carry 27 native answers a stop within one tick`() {
+    live()
     core.send(mapOf("kind" to "stop"))
     scheduler.advanceBy(Engine.TICK_MS)
     assertEquals("ended", state())
@@ -3439,11 +3947,24 @@ class BridgeCoreTest {
     arm()
     arm()
     assertEquals(1, platform.armed.size, "the second arm is ignored by the machine")
-    val other = BridgeCore(clock, scheduler, RecordingPlatform()) { BodyFields(null, null) }
+    val refusing = RecordingPlatform()
+    val other = BridgeCore(clock, scheduler, refusing) { BodyFields(null, null) }.also { refusing.core = it }
     other.start()
     other.send(mapOf("kind" to "arm"))
     scheduler.advanceBy(0)
-    assertEquals("ended", (other.current()["state"] as Map<*, *>)["kind"])
+    assertEquals("ended", state(other))
+    assertEquals(emptyList(), refusing.armed, "a refused arm never reaches the platform")
+  }
+
+  @Test
+  fun `CD31 the same code armed again after a reset reaches the platform again`() {
+    core.start()
+    arm()
+    core.send(mapOf("kind" to "stop"))
+    core.send(mapOf("kind" to "reset"))
+    scheduler.advanceBy(0)
+    arm()
+    assertEquals(2, platform.armed.size, "an equal config is a new session: compared by identity")
   }
 
   @Test
@@ -3458,6 +3979,53 @@ class BridgeCoreTest {
   }
 
   @Test
+  fun `CD21 after a refused permission the next arm can connect`() {
+    core.start()
+    core.report(Input.Network(true))
+    arm()
+    core.refused("camera permission refused", Scope.SESSION)
+    scheduler.advanceBy(0)
+    assertEquals("ended", state())
+    core.send(mapOf("kind" to "reset"))
+    scheduler.advanceBy(0)
+    arm()
+    core.send(mapOf("kind" to "start"))
+    scheduler.advanceBy(1_500)
+    assertEquals("publishing", state())
+  }
+
+  @Test
+  fun `I1 a permanent throw from platform armed ends the session fatal-error, named, never swallowed`() {
+    platform.throwOnArmed = PermanentPlatformFailure("capture not built")
+    core.start()
+    arm()
+    scheduler.advanceBy(0)
+    val state = core.current()["state"] as Map<*, *>
+    assertEquals(listOf("ended", "fatal-error"), listOf(state["kind"], state["reason"]))
+    assertEquals("sess_42", (core.current()["session"] as Map<*, *>)["sid"])
+    val ended = lines().single { it.getString("kind") == "ended" }
+    assertEquals("PermanentPlatformFailure: capture not built", ended.getString("message"))
+  }
+
+  @Test
+  fun `I1 an Error from platform armed ends the session and is recorded at the task boundary`() {
+    platform.throwOnArmed = UnsatisfiedLinkError("libsrt.so not found")
+    core.start()
+    arm()
+    assertEquals("ended", state())
+    assertTrue(lines().any { it.getString("kind") == "engine-error" && "UnsatisfiedLinkError" in it.getString("message") })
+  }
+
+  @Test
+  fun `I1 a throwing facts read on the arming publish still reaches the platform's armed exactly once`() {
+    core.start()
+    platform.throwOnFactsOnce = IllegalStateException("facts")
+    arm()
+    scheduler.advanceBy(Engine.TICK_MS * 2)
+    assertEquals(1, platform.armed.size)
+  }
+
+  @Test
   fun `carry 18 a linkage error from a connect ends the session fatal-error and stays sticky`() {
     core.start()
     core.report(Input.Network(true))
@@ -3466,7 +4034,7 @@ class BridgeCoreTest {
     core.send(mapOf("kind" to "start"))
     scheduler.advanceBy(Engine.TICK_MS)
     assertEquals("ended", state())
-    val ended = platform.lines.map(::JSONObject).single { it.getString("kind") == "ended" }
+    val ended = lines().single { it.getString("kind") == "ended" }
     assertEquals("UnsatisfiedLinkError: libsrt.so not found", ended.getString("message"))
   }
 
@@ -3475,7 +4043,7 @@ class BridgeCoreTest {
     core.start()
     platform.throwOnFactsOnce = StackOverflowError("facts")
     scheduler.advanceBy(Engine.TICK_MS)
-    assertTrue(platform.lines.map(::JSONObject).any { it.getString("kind") == "engine-error" && "StackOverflowError" in it.getString("message") })
+    assertTrue(lines().any { it.getString("kind") == "engine-error" && "StackOverflowError" in it.getString("message") })
     val before = platform.snapshots.size
     scheduler.advanceBy(Engine.TICK_MS * 4)
     assertEquals(before + 4, platform.snapshots.size, "every later tick still publishes")
@@ -3491,7 +4059,7 @@ class BridgeCoreTest {
     platform.dropCurrent()
     scheduler.advanceBy(0)
     // Plan B writes `descriptor` only for an answer whose id matches the ask (SessionMachine.descriptor).
-    val answered = platform.lines.map(::JSONObject).single { it.getString("kind") == "descriptor" }
+    val answered = lines().single { it.getString("kind") == "descriptor" }
     assertEquals("unreachable", answered.getString("result"))
     assertEquals("no descriptor url", answered.getString("message"))
     assertTrue(platform.http.none { "descriptor" in it.url }, "nothing was fetched")
@@ -3500,7 +4068,7 @@ class BridgeCoreTest {
   @Test
   fun `carry 12 a forwarded JS line is written through the scheduler, its level kept and a level field renamed`() {
     core.start()
-    core.log("warn", "intent.stop", mapOf("level" to "x", "count" to 3.0))
+    core.log("warn", "intent.stop", mapOf("level" to "x", "count" to 3.0, "ms" to 2.25))
     assertTrue(platform.lines.none { "intent.stop" in it }, "not written before the scheduler runs it")
     scheduler.advanceBy(0)
     val line = JSONObject(platform.lines.single { "intent.stop" in it })
@@ -3508,10 +4076,45 @@ class BridgeCoreTest {
     // Renamed, and masked: a field called `level` is on no allow-list (Task 3).
     assertEquals("***", line.getString("field_level"))
     assertEquals(3, line.getInt("count"))
+    // Decimal.tenths: Math.round(2.25 × 10) = Math.round(22.5) = 23, so 2.3.
+    assertEquals(2.3, line.getDouble("ms"), "a fraction is written to tenths, like every native number")
+  }
+
+  @Test
+  fun `CD33 a tick that comes late while a session is held is recorded with its gap`() {
+    var stall = false
+    val slow =
+      object : Scheduler {
+        override fun schedule(delayMs: Long, task: () -> Unit): Cancellable =
+          scheduler.schedule(if (stall && delayMs == Engine.TICK_MS) 2_000 else delayMs, task)
+      }
+    val late = RecordingPlatform()
+    val stalled = BridgeCore(clock, slow, late) { BodyFields(null, null) }.also { late.core = it }
+    stalled.start()
+    stalled.send(ArmWire.valid())
+    scheduler.advanceBy(Engine.TICK_MS)
+    stall = true
+    // The tick already due runs on time and schedules the next 2 000 ms out: one gap of 2 000 ms.
+    scheduler.advanceBy(Engine.TICK_MS + 2_000)
+    assertEquals(listOf(2_000L), lines(late).filter { it.getString("kind") == "tick-late" }.map { it.getLong("gapMs") })
+  }
+
+  @Test
+  fun `CD33 video that stops moving while live is one frames-gap line with its length`() {
+    live()
+    // Reads run every 500 ms from the Connected at 0; the last one at 1 500 moved the count.
+    platform.frozen = true
+    scheduler.advanceBy(1_500)
+    platform.frozen = false
+    scheduler.advanceBy(500)
+    // Last moved at 1 500, moved again at 3 500: 2 000 ms.
+    val gap = lines().single { it.getString("kind") == "frames-gap" }
+    assertEquals(2_000L, gap.getLong("gapMs"))
   }
 
   @Test
   fun `carry 18 one engine per process`() {
+    BridgeCore.resetShared()
     var built = 0
     val first = BridgeCore.shared { built += 1; core }
     val second = BridgeCore.shared { built += 1; core }
@@ -3519,20 +4122,48 @@ class BridgeCoreTest {
     assertEquals(1, built)
   }
 }
+
+class OwnedSlotTest {
+  @Test
+  fun `CD32 the newer owner keeps the slot when the older one releases late`() {
+    val slot = OwnedSlot<String>()
+    val old = Any()
+    val new = Any()
+    slot.take(old, "old listener")
+    slot.take(new, "new listener")
+    slot.release(old)
+    assertEquals("new listener", slot.value)
+  }
+
+  @Test
+  fun `an owner's release clears its own value, and a release of an empty slot is harmless`() {
+    val slot = OwnedSlot<String>()
+    val only = Any()
+    slot.release(only)
+    assertEquals(null, slot.value)
+    slot.take(only, "x")
+    slot.release(only)
+    assertEquals(null, slot.value)
+  }
+}
 ```
 
-`ArmWire.valid()` is the map from `ArmMappingTest.wire()`. Move it into a shared test object, `adapter/ArmWire.kt`, and use it in both tests. `RecordingPlatform.dropCurrent()` reports `Dropped(attemptInHand, ENDPOINT_CLOSED, "cut")` through the core.
-
-`BridgeCore.shared` holds its instance in a companion `@Volatile` field, set under `synchronized`. The test resets it through an `internal fun resetShared()`, which is annotated `@VisibleForTesting` in the KDoc only: there is no Android annotation in the core.
+The two timing tests are worked by hand in their comments. If `Connected` lands later than time 0 in `live()`, shift the times by the same amount and rework the comment. If the frames-gap test finds the session no longer `OnAir` during a 1.5 s freeze, read the stall rule in `Timers` and shorten the freeze; never change the rule. The frames-gap baseline is the first read made while `OnAir` (1 000), so the read at 1 500 is the last move.
 
 - [ ] **Step 2: Run them.** Expected: compile failure.
 
-- [ ] **Step 3: Implement `Platform.kt` and `BridgeCore.kt`** to the numbered list above. Keep each function within 10–25 lines (AGENTS §12). The class will be around 150 lines; split the HTTP routing into a private `HttpRoutes` class in the same file if it grows past that.
+- [ ] **Step 3: Implement `Platform.kt`, `OwnedSlot.kt` and `BridgeCore.kt`** as written above, and `RecordingPlatform` to its list.
 
 - [ ] **Step 4: Run, mutate, commit.** Mutate one at a time:
   1. Call `engine.start()` directly in `start()`, not posted. No test may depend on that, but `GlueRulesTest` will not catch it either, so this mutation is recorded as **survived by design**: thread identity is a device and code-review fact. Record it in the commit body.
-  2. Drop `sticky.armAccepted()`. The scope test in Task 6 still passes, so add a `BridgeCoreTest` that refuses a permission, re-arms, and connects; it must fail under this mutation.
-  3. Initialise `current` lazily. Review Focus 2 fails.
+  2. Drop `sticky.armAccepted()`. The `CD21 after a refused permission` test fails.
+  3. Initialise `current` lazily, on the first publish. Review Focus 2 fails.
+  4. Call `platform.armed` from `published` when the state moves to armed, as the first draft did, and delete `noticeArm`. Both I1 tests fail.
+  5. Compare `config == lastArmed` instead of `===`. The re-arm test fails.
+  6. In `noticeArm`, delete the `sticky.fail` call. The permanent `I1` test fails: the session stays armed. Restore, then delete the `if (failure !is Exception) throw failure`: the `Error` test fails on its missing `engine-error` line.
+  7. In `OwnedSlot.release`, drop the owner check. The CD32 test fails.
+  8. In `log`, keep every `Double`. The `count` assertion fails.
+  9. Post the ack before `report(input)`. The CD8 ack test fails.
 
   Then commit: `feat(adapter): BridgeCore hosts the engine for every platform`, with the trailer lines.
 
@@ -3543,18 +4174,19 @@ Carry 1 and CD8. A small program runs `BridgeCore` with a scripted platform, and
 **Files:**
 
 - Modify: `modules/capture-engine/android/core/settings.gradle.kts`: add `include("host")`, and update the header comment, which says the core is consumed through `includeBuild` (CD2 reverses that)
-- Create: `core/host/build.gradle.kts`, `core/host/src/main/kotlin/com/seazn/capture/engine/host/{Main.kt,ScriptedPlatform.kt,Protocol.kt,ExecutorScheduler.kt}`
+- Create: `core/host/build.gradle.kts`, `core/host/src/main/kotlin/com/seazn/capture/engine/host/{Main.kt,Host.kt,ScriptedPlatform.kt,Protocol.kt,ExecutorScheduler.kt}`
 - Create: `core/host/src/test/kotlin/com/seazn/capture/engine/host/ProtocolTest.kt`
 
 **Interfaces:**
 
 - **stdin**, one JSON object a line:
-  - `{"op":"send","intent":{…}}`;
+  - `{"op":"send","seq":n,"intent":{…}}`;
   - `{"op":"log","level":"info","kind":"x","fields":{…}}`;
   - `{"op":"exit"}`.
 - **stdout**, one JSON object a line:
   - `{"ev":"ready","current":{…},"tail":[…]}`, first;
-  - then `{"ev":"snapshot","body":{…}}` and `{"ev":"record","line":"…"}`.
+  - then `{"ev":"snapshot","body":{…}}`, `{"ev":"record","line":"…"}` and `{"ev":"ack","seq":n}`.
+- **The ack (CD8).** `BridgeCore.send` posts `platform.acked(seq)` after the input's own tasks (Task 12), and the host's platform writes it as `{"ev":"ack","seq":n}`. The scheduler runs equal delays in the order they were posted (a `ScheduledThreadPoolExecutor` breaks ties by submission order), so the ack is written after every snapshot and record line that input caused, and before any later tick's. An intent the machine ignores is acked too, so the kit never waits on a timeout.
 - Nothing else is written to stdout. Diagnostics go to stderr.
 
 - [ ] **Step 1: The build.**
@@ -3601,8 +4233,23 @@ class ProtocolTest {
     assertFalse('\n' in line)
     assertEquals("{\"a\":1}\n", JSONObject(line).getString("line"))
   }
+
+  @Test
+  fun `CD8 the ack for an intent is written after the snapshot that intent caused`() {
+    val out = mutableListOf<String>()
+    val executor = ExecutorScheduler()
+    val host = Host(executor) { synchronized(out) { out += it } }
+    host.handle("""{"op":"send","seq":1,"intent":{"kind":"arm"}}""")
+    executor.drain()
+    val events = synchronized(out) { out.map { JSONObject(it).getString("ev") } }
+    assertEquals("ack", events.last(), "nothing that input caused comes after its ack")
+    assertTrue("snapshot" in events.dropLast(1), "the refused arm's snapshot comes before the ack")
+    executor.shutdown()
+  }
 }
 ```
+
+`Host(scheduler, write)` is `Main`'s logic without stdin and stdout, so it is testable. `ExecutorScheduler.drain()` is a test helper: it schedules a marker task with delay 0 and waits for it, repeating until no task was posted meanwhile. A refused arm (no fields) ends at once, so its snapshot is certain. The JVM scheduler's tie order is what this test adds over Task 12's, which ran on `FakeScheduler`.
 
 - [ ] **Step 3: Implement.**
   - **`ExecutorScheduler`** wraps one `ScheduledExecutorService` thread named `capture-engine`. Its `Cancellable` cancels the future.
@@ -3613,25 +4260,24 @@ class ProtocolTest {
     - Every HTTP request is answered `Failed("scripted host: no network")`. That is no evidence (CD13), so delivery stays unknown and the heartbeat counts failures, which never degrade a stream (ruling 5).
     - Its facts are `PlatformFacts(audioLevel = 0.5, cameraReady = true, networkReachable = true, survivesBackground = true)`.
     - `snapshot` and `recordLine` write events to stdout, under a lock.
-  - **`Main`**:
-    - It builds the core.
-    - It reports `Network(true)` and calls `start()`.
-    - It writes `ready`, with `current()` and `tail()`.
-    - It then reads stdin line by line until `exit` or EOF.
-    - On exit it shuts the executors down and exits 0.
-    - A line that does not parse is written to stderr and skipped.
+  - **`Host(scheduler, write: (String) -> Unit)`** builds the core over the scheduler and a `ScriptedPlatform` that writes through `write`, reports `Network(true)` and calls `start()`. `handle(line)` parses one stdin line: `send` calls `core.send(Protocol.toWire(intent))` with the line's `seq` put into the intent map; `log` calls `core.log`; a line that does not parse goes to stderr and is skipped. `ScriptedPlatform.acked(seq)` writes `Protocol.encode("ack", mapOf("seq" to seq))`.
+  - **`Main`** builds a `Host` over an `ExecutorScheduler`, writing to stdout under a lock. It writes `ready` with `current()` and `tail()`, then feeds stdin to `handle` line by line until `exit` or EOF. On exit it shuts the executors down and exits 0.
 
 - [ ] **Step 4: Build and smoke it.**
 
 ```bash
 cd "$WT/modules/capture-engine/android/core" && ./gradlew :host:test :host:installDist --console=plain > "$TMPDIR/host.txt" 2>&1; echo "EXIT=$?"
-printf '%s\n' '{"op":"send","intent":{"kind":"start"}}' '{"op":"exit"}' | host/build/install/host/bin/host > "$TMPDIR/host-out.txt"; echo "EXIT=$?"
+printf '%s\n' '{"op":"send","seq":1,"intent":{"kind":"start"}}' '{"op":"exit"}' | host/build/install/host/bin/host > "$TMPDIR/host-out.txt"; echo "EXIT=$?"
 head -1 "$TMPDIR/host-out.txt"
 ```
 
-Expected: EXIT=0 twice, and a first line starting `{"ev":"ready","current":{"state":{"kind":"idle"}`. The start is ignored from idle, and the record shows `intent-ignored`.
+Expected: EXIT=0 twice, and a first line starting `{"ev":"ready","current":{"state":{"kind":"idle"}`. The start is ignored from idle, the record shows `intent-ignored`, and an `{"ev":"ack","seq":1}` line follows it.
 
 - [ ] **Step 5: Commit.** Use `feat(host): a JVM host for the engine contract kit`, with the trailer lines. Stage `settings.gradle.kts` and `host/` by path. `host/build/` is ignored by the core's existing `.gitignore`; check it.
+
+## Batch C4b — the JS bridge, the routed record and the contract kit
+
+The suite is `pnpm check`, plus the bridge project (`CAPTURE_BRIDGE=1 pnpm vitest run --project bridge`), which needs JDK 17 and the host built in C4a.
 
 ### Task 14: The JS snapshot wire and arm wire
 
@@ -3642,13 +4288,14 @@ Carries 2–6 and CD5. These are pure functions in the engine module. They need 
 - Create: `modules/capture-engine/src/snapshotWire.ts`, `modules/capture-engine/src/armWire.ts`
 - Test: `modules/capture-engine/src/snapshotWire.test.ts`, `modules/capture-engine/src/armWire.test.ts`
 - Modify: `modules/capture-engine/src/CaptureEnginePort.ts`: `Telemetry` gains `permissionsRefused: boolean`, `recordSinkFailures: number` and `recordReentrantDropped: number`. Then `FakeCaptureEngine.ts`'s `IDLE_TELEMETRY` gains `false, 0, 0`, as do any telemetry fixtures (`grep -rn "thermalHeadroom:" src test modules`).
+- Modify **(P3)**: `CaptureEnginePort.ts`, where the arm intent gains `readonly language?: string` (a two-letter code; `engine` may not import `@/i18n`, so it is a string here), and `src/hooks/useStreamArm.ts`, where `useReconcile` reads `lang` from `useLanguage()` into a ref updated each render and sends `language: langRef.current` with the arm. A ref keeps the effect's dependencies unchanged, so a language pick never re-runs the reconcile. Tests that assert the whole arm intent with `toEqual` gain `language: 'en'` (the test provider's language); find them with `grep -rn "kind: 'arm'" src test` and list each in the commit body.
 
 **Interfaces:**
 
 - `toEngineSnapshot(wire: unknown, cache?: DescriptorCache): EngineSnapshot | null`, where null means malformed;
 - `createDescriptorCache(): DescriptorCache`;
 - `WIRE_VOCABULARY`, an object of `ReadonlySet`s, one per vocabulary key;
-- `armWire(intent: Extract<EngineIntent, { kind: 'arm' }>, deps: { appVersion: string; descriptorUrl: (sid: string) => string }): Record<string, unknown>`.
+- `armWire(intent: Extract<EngineIntent, { kind: 'arm' }>, deps: { appVersion: string; descriptorUrl: (sid: string) => string }): Record<string, unknown>`, which writes `language` as the intent's or `''` (P3).
 
 - [ ] **Step 1: Write the failing tests.**
 
@@ -3707,16 +4354,18 @@ describe('carries 2-6: the snapshot wire, as native writes it', () => {
     expect(toEngineSnapshot(wire)).toBeNull();
   });
 
-  it('a descriptor that does not parse is no descriptor, and the session is still named', () => {
+  it('M4 a descriptor that does not parse is no descriptor: named by slot and tag, but not by sid', () => {
     const wire = merged(vectors.cases.find((c) => c.name === 'ended-refused')!.wire);
     const snapshot = toEngineSnapshot(wire)!;
     expect(snapshot.descriptor).toBeNull();
     expect([snapshot.slot, snapshot.tokenTag]).toEqual([2, 'c980ff38']);
+    // The kit names a session by descriptor?.sid, so this one reads unnamed by sid. Pinned, not hidden.
+    expect(snapshot.descriptor?.sid ?? null).toBeNull();
   });
 });
 ```
 
-The contract kit names a session by `descriptor?.sid`. A refused arm with an unparseable descriptor would then read sid null, but JS always sends the parsed descriptor, so that cannot happen from JS. Add a `sid` field to `EngineSnapshot` only if Task 16's kit run shows otherwise, and record the reason.
+The contract kit names a session by `descriptor?.sid`. A refused arm with an unparseable descriptor therefore reads sid null, which the M4 test pins. JS always sends the descriptor it parsed, so this needs a hand-made wire and cannot come from JS. Add a `sid` field to `EngineSnapshot` only if Task 16's kit run shows otherwise, and record the reason.
 
 ```ts
 import { describe, expect, it } from 'vitest';
@@ -3761,6 +4410,14 @@ describe('the arm intent as native reads it (Task 4)', () => {
   it('sends the heartbeat target the intent names', () => {
     expect(wire.heartbeatUrl).toBe(session.descriptor.heartbeatUrl);
     expect(wire.playbackUrl).toBe(session.descriptor.playbackUrl);
+  });
+
+  // (P3, PROPOSED CD16) Skip with the language field if the owner declines.
+  it("P3 carries the operator's language for the notification, and nothing when there is none", () => {
+    const deps = { appVersion: '1.0.0', descriptorUrl: () => 'https://stg.seazn.club/d' };
+    const heartbeat = { url: session.descriptor.heartbeatUrl, token: session.token };
+    expect(armWire({ kind: 'arm', session, heartbeat, language: 'fr' }, deps).language).toBe('fr');
+    expect(armWire({ kind: 'arm', session, heartbeat }, deps).language).toBe('');
   });
 });
 ```
@@ -3865,7 +4522,7 @@ type Arm = Extract<EngineIntent, { kind: 'arm' }>;
 
 /** The arm intent flattened for native (Task 4's wire). Credentials travel whole; native scrubs and never logs them. */
 export function armWire(
-  { session, heartbeat }: Arm,
+  { session, heartbeat, language }: Arm,
   deps: { readonly appVersion: string; readonly descriptorUrl: (sid: string) => string },
 ): Record<string, unknown> {
   const { descriptor } = session;
@@ -3882,9 +4539,13 @@ export function armWire(
     descriptorUrl: deps.descriptorUrl(session.sid),
     descriptorJson: JSON.stringify(descriptorToWire(descriptor)),
     appVersion: deps.appVersion,
+    // P3: the notification's language; native falls back to the phone's, then English.
+    language: language ?? '',
   };
 }
 ```
+
+**(P3)** Native reads it in Task 4's `ArmMapping` into `SessionConfig.language` (Task 2), and nothing reads it but the notification (Task 24).
 
 `heartbeat.token` is not sent separately. Plan A's arm builds it from `session.token` (confirm in `useStreamArm`), and native uses the one token for both the heartbeat and the descriptor (decision 4). If the two can differ, stop and raise it: that is a spec question, not an implementation detail.
 
@@ -3892,6 +4553,7 @@ export function armWire(
   1. Skip the cache. The identity test fails.
   2. Accept any camera word. The malformed test fails.
   3. Drop `descriptorJson`. The re-hydration test fails.
+  4. (P3) Write `language: 'en'` always. The language test fails.
 
   Run `pnpm check`. Then commit: `feat(engine): read native's snapshot and write its arm`, with the trailer lines.
 
@@ -3917,6 +4579,7 @@ export type CaptureEngineNative = {
   tail(): readonly string[];
   addListener(event: 'onSnapshot', listener: (body: unknown) => void): Subscription;
   addListener(event: 'onRecord', listener: (body: { line: string }) => void): Subscription;
+  addListener(event: 'onAck', listener: (body: { seq: number }) => void): Subscription;
 };
 export function loadCaptureEngineNative(): CaptureEngineNative | null; // requireOptionalNativeModule('CaptureEngine')
 
@@ -3928,6 +4591,12 @@ export type ForwardedEntry = {
 };
 export type NativeCaptureEngine = CaptureEnginePort & {
   forward(entry: ForwardedEntry): void;
+  /**
+   * CD8: resolves once native has acked the last intent sent, so every snapshot that intent
+   * caused has arrived. Resolves at once when nothing is outstanding. Test and probe use only;
+   * the product never waits on native (AGENTS §2).
+   */
+  settled(): Promise<void>;
   dispose(): void;
 };
 export function createNativeCaptureEngine(
@@ -3948,6 +4617,8 @@ export function createRoutedRecord(
   ring: RingRecord,
   route: { active(): boolean; forward(entry: LogEntry): void },
 ): SessionRecord;
+/** M16: JS lines go to native's record only while native holds a session. Pure, so it is tested. */
+export function recordGoesNative(nativeWired: boolean, kind: SessionState['kind']): boolean;
 ```
 
 The engine module may not import `services`, so `ForwardedEntry` is structurally `LogEntry` without `atMs`. Native stamps the time when it runs the line (RR-13).
@@ -3985,7 +4656,25 @@ describe('the native engine (carry 1)', () => {
     });
     engine.send({ kind: 'stop' });
     expect(native.sent.map((intent) => intent.kind)).toEqual(['arm', 'stop']);
-    expect(native.sent[0]).toEqual(armWire(/* the same intent */ armIntent, deps));
+    expect(native.sent[0]).toEqual({ ...armWire(armIntent, deps), seq: 1 });
+    expect(native.sent[1]).toEqual({ kind: 'stop', seq: 2 });
+  });
+
+  it('CD8 settled() waits for the ack of the last intent sent, not for any snapshot', async () => {
+    const native = new FakeNativeModule();
+    const engine = createNativeCaptureEngine(native, deps);
+    await engine.settled(); // nothing outstanding: resolves at once
+    engine.send({ kind: 'stop' });
+    engine.send({ kind: 'reset' });
+    let done = false;
+    void engine.settled().then(() => (done = true));
+    native.emit('onSnapshot', armedWire); // a tick's snapshot is not an answer
+    native.emit('onAck', { seq: 1 });
+    await Promise.resolve();
+    expect(done).toBe(false);
+    native.emit('onAck', { seq: 2 });
+    await Promise.resolve();
+    expect(done).toBe(true);
   });
 
   it('notifies subscribers on each snapshot, and keeps the last good one through a malformed body', () => {
@@ -4046,8 +4735,19 @@ describe('the absent engine (CD23: no native module, iOS in S1)', () => {
     engine.send({ kind: 'reset' });
     expect(engine.getSnapshot().state).toEqual({ kind: 'idle' });
   });
+
+  it('M5 an arm while ended is ignored: it stays ended, still naming the first session', () => {
+    const engine = createAbsentCaptureEngine(() => 1_790_000_000_000);
+    const heartbeat = { url: session.descriptor.heartbeatUrl, token: session.token };
+    engine.send({ kind: 'arm', session, heartbeat });
+    engine.send({ kind: 'arm', session: otherSession, heartbeat });
+    expect(engine.getSnapshot().state.kind).toBe('ended');
+    expect(engine.getSnapshot().tokenTag).toBe(tokenTag(session.token));
+  });
 });
 ```
+
+`otherSession` is a second made-up session with a different `tok`, built as `session` is.
 
 Routed record, in `sessionRecord.test.ts`:
 
@@ -4067,7 +4767,19 @@ it('CD7 sends entries to native while a session exists, to the ring otherwise; r
   expect(forwarded.map((e) => e.event)).toEqual(['during']);
   expect(record.lines().map((line) => parseRecordLine(line).event)).toEqual(['before', 'during']);
 });
+
+it.each([
+  [true, 'idle', false],
+  [true, 'armed', true],
+  [true, 'publishing', true],
+  [true, 'ended', true],
+  [false, 'publishing', false],
+] as const)('M16 native wired %s, engine %s: JS lines go to native %s', (wired, kind, native) => {
+  expect(recordGoesNative(wired, kind)).toBe(native);
+});
 ```
+
+Ended goes to native because native still holds the ended session's record until the reset; idle stays in JS, because native has no session to file the line under.
 
 - [ ] **Step 2: Run them.** Expected: they fail.
 
@@ -4076,15 +4788,19 @@ it('CD7 sends entries to native while a session exists, to the ring otherwise; r
   - It seeds the record with `native.tail().forEach(deps.onRecordLine)`.
   - It adds the two listeners.
   - On each `onSnapshot` it parses. When the result is non-null, it stores it and notifies the subscribers.
-  - `send` is `native.send(intent.kind === 'arm' ? armWire(intent, deps) : { kind: intent.kind })`.
+  - `send` numbers the intent (`seq`, from 1) and calls `native.send({ ...(intent.kind === 'arm' ? armWire(intent, deps) : { kind: intent.kind }), seq })`. It returns void, as every intent does.
+  - On each `onAck` it records the highest `seq` acked, and resolves every `settled()` waiter whose target is at or below it. `settled()` targets the last `seq` sent.
   - `forward` is `native.log(entry.level, entry.event, entry.fields)`.
-  - `dispose` removes both subscriptions.
+  - `dispose` removes all three subscriptions, and resolves any waiter, so a disposed engine never leaves a test hanging.
 
   `createAbsentCaptureEngine` has three snapshots (idle, ended-named, idle) and no timers. `createRingRecord` gains `appendLine`, which pushes a pre-formatted line with the same capacity rule. `createRoutedRecord` delegates `lines` and `subscribe` to the ring.
 
 - [ ] **Step 4: Run, mutate, commit.** Mutate one at a time:
   1. Seed from `tail()` after the listeners are added, and emit a line in between. Assert the order. The seed test must fail if a line can be lost or doubled. If it cannot fail, record why.
   2. Forward while idle. The routed test fails.
+  3. Resolve `settled()` on any snapshot. The CD8 test fails.
+  4. In `recordGoesNative`, return true for idle. The M16 table fails.
+  5. Let the absent engine take an arm while ended. The M5 test fails.
 
   Run `pnpm check`. Then commit: `feat(engine): the native engine, the absent engine and the routed record`, with the trailer lines.
 
@@ -4099,7 +4815,7 @@ Carries 1, 27 and 28, and CD8. Plan A wrote the kit to run "against the bridge".
 - Create: `test/hostEngine.ts`, which spawns the host and returns an `EngineUnderTest` and a `Settle`
 - Create: `modules/capture-engine/src/NativeCaptureEngine.bridge.test.ts`
 - Modify: `vitest.config.mts`, adding a `bridge` project behind `CAPTURE_BRIDGE=1` and excluding `**/*.bridge.test.ts` from `domain`
-- Modify: `.github/workflows/kotlin-core.yml`, adding a `bridge-contract` job
+- Create: `.github/workflows/bridge-contract.yml`. `kotlin-core.yml` is untouched: its header and spec §6 say JDK 17 and Gradle and nothing else (I11)
 
 **Interfaces:**
 
@@ -4159,8 +4875,8 @@ Run both against the fake: they pass, because the fake is synchronous and ordere
     - `tail()` returns the `ready` tail;
     - `send` and `log` write stdin lines;
     - `addListener` dispatches the events.
-  - It wraps the adapter in `createNativeCaptureEngine`, so the kit runs the real JS bridge too.
-  - **`settle`** resolves on the next `snapshot` event, or after 700 ms. That is the 500 ms tick plus slack: an ignored intent emits nothing until the tick.
+  - It wraps the adapter in `createNativeCaptureEngine`, so the kit runs the real JS bridge too: each intent goes out with its `seq`, and the host's `ack` lines are dispatched as `onAck`.
+  - **`settle`** is `engine.settled()` (CD8): it resolves on the ack of the last intent sent, which the host writes after every snapshot that intent caused. It never resolves on a tick's snapshot, so the tick race (I10) is gone. A 5 s guard rejects with "no ack for seq n", so a lost ack fails the scenario rather than hanging the run.
   - **`dispose`** writes `exit`, and waits for the process to close (2 s at most) before killing it.
 
 - [ ] **Step 4: The bridge test and project.** `NativeCaptureEngine.bridge.test.ts`:
@@ -4202,58 +4918,82 @@ node -e 'const r=require(process.env.TMPDIR+"/bridge.json");console.log(r.numTot
 
 Expected: EXIT=0 and `8 0`. A failure here is a disagreement between the fake and native. **Native is the authority** (AGENTS §2): fix the JS bridge, the mapping, or the fake, never the core to suit a test. Record each disagreement found, and how it was resolved, in the commit body.
 
-- [ ] **Step 6: CI.** Add this job to `kotlin-core.yml`:
+- [ ] **Step 6: CI.** Create `.github/workflows/bridge-contract.yml`. Copy the `on:` triggers and `paths:` filter from `kotlin-core.yml`, and add `src/**`, `modules/capture-engine/src/**`, `test/**` and `vitest.config.mts` to the paths, since the JS bridge is half of what it tests:
 
 ```yaml
-bridge-contract:
-  runs-on: ubuntu-latest
-  timeout-minutes: 15
-  steps:
-    - uses: actions/checkout@v5
-    - uses: gradle/actions/wrapper-validation@v6
-    - uses: actions/setup-java@v6
-      with:
-        distribution: temurin
-        java-version: '17'
-        cache: gradle
-        cache-dependency-path: |
-          modules/capture-engine/android/core/**/*.gradle.kts
-          modules/capture-engine/android/core/gradle/wrapper/gradle-wrapper.properties
-    - uses: pnpm/action-setup@v4
-    - uses: actions/setup-node@v5
-      with:
-        node-version-file: .nvmrc
-        cache: pnpm
-    - run: pnpm install --frozen-lockfile
-    - run: ./gradlew :host:installDist --no-daemon --console=plain
-      working-directory: modules/capture-engine/android/core
-    - run: pnpm vitest run --project bridge
-      env:
-        CAPTURE_BRIDGE: '1'
+name: bridge-contract
+# The engine contract over the real Kotlin core: a JVM host and the JS bridge (plan C, CD8).
+# Separate from kotlin-core, which stays JDK and Gradle only (spec §6).
+on:
+  # copy kotlin-core.yml's triggers here, with the extra paths above
+jobs:
+  bridge-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+      - uses: gradle/actions/wrapper-validation@v6
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+          cache-dependency-path: |
+            modules/capture-engine/android/core/**/*.gradle.kts
+            modules/capture-engine/android/core/gradle/wrapper/gradle-wrapper.properties
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: ./gradlew :host:installDist --no-daemon --console=plain
+        working-directory: modules/capture-engine/android/core
+      - run: pnpm vitest run --project bridge
+        env:
+          CAPTURE_BRIDGE: '1'
 ```
 
-Copy the `pnpm/action-setup` and `setup-node` steps from `check.yml` exactly, so their pins match. Run `pnpm prettier --check .github/workflows/kotlin-core.yml`.
+Indent the steps under `jobs.bridge-contract` as `check.yml` does. Copy the `pnpm/action-setup` and `setup-node` steps from `check.yml` exactly, so their pins match. Run `pnpm prettier --check .github/workflows/bridge-contract.yml`.
 
-- [ ] **Step 7: Mutate.** Make the host's platform skip `Connected`. The start scenarios fail through the bridge and still pass against the fake. That shows the bridge run tests something the fake run does not. Restore the platform, then commit: `test(engine): run the engine contract against the real core over the bridge`, with the trailer lines.
+- [ ] **Step 7: Mutate.** One at a time, restoring each from its `cp` backup:
+  1. Make the host's platform skip `Connected`. The start scenarios fail through the bridge and still pass against the fake. That shows the bridge run tests something the fake run does not.
+  2. **The exclude alone (I11).** Delete `**/*.bridge.test.ts` from the `domain` project's exclude, and run `pnpm test` without `CAPTURE_BRIDGE`. Expected: the domain project collects `NativeCaptureEngine.bridge.test.ts` and fails on the missing host or the jsdom environment. Record what it printed.
+  3. **The gate alone (I11).** Restore the exclude, then make the `bridge` project unconditional. Run `pnpm test`: the bridge project now runs as part of the default suite (its count appears in `--reporter=json`'s `numTotalTests`). The two guards keep it out of different projects, so neither covers for the other, and each was seen to matter.
+
+  Then commit: `test(engine): run the engine contract against the real core over the bridge`, with the trailer lines. Stage `.github/workflows/bridge-contract.yml` by path.
 
 ## Batch C5 — JS product changes
 
-`pnpm check` is the suite for every task in this batch. Each owner-visible string goes into all four dictionaries, with `"_review": "pending native speaker"` on es, fr and nl (see the dictionaries' existing convention), and a budget row in `src/i18n/budgets.test.ts`. The copy below is the plan's. CD17–CD21 mark it for the owner's review.
+`pnpm check` and `pnpm i18n:release-check` are the suite for every task in this batch. Each new string goes into all four dictionaries in the task that first renders it, already reviewed against `docs/i18n-glossary.md` (Global Constraints, Copy), so no `_review` marker is ever committed. The review was done when this plan was written, and is recorded here so the implementer copies it rather than re-translating:
 
-| Key                          | en                                                              | es                                                             | fr                                                                    | nl                                                                     | Budget |
-| ---------------------------- | --------------------------------------------------------------- | -------------------------------------------------------------- | --------------------------------------------------------------------- | ---------------------------------------------------------------------- | ------ |
-| `stream.status.engineSilent` | Engine not responding — check the phone                         | El motor no responde: revisa el teléfono                       | Le moteur ne répond plus — vérifiez le téléphone                      | Engine reageert niet — controleer de telefoon                          | 48     |
-| `stream.advisory.keepOpen`   | Keep the app open — capture stops in the background             | Mantén la app abierta: en segundo plano no graba               | Gardez l’app ouverte — en arrière-plan, rien n’est filmé              | Houd de app open — op de achtergrond stopt de opname                   | 56     |
-| `stream.ended.permissions`   | Allow camera and microphone in Android Settings, then try again | Permite cámara y micrófono en Ajustes de Android y reinténtalo | Autorisez caméra et micro dans les Paramètres Android, puis réessayez | Sta camera en microfoon toe in Android-instellingen en probeer opnieuw | 72     |
-| `stream.preview.stopped`     | Camera preview stopped — the session carries on                 | Vista previa detenida: la sesión continúa                      | Aperçu arrêté — la session continue                                   | Voorbeeld gestopt — de sessie gaat door                                | 56     |
-| `stream.preview.show`        | Show preview                                                    | Ver vista previa                                               | Voir l’aperçu                                                         | Toon voorbeeld                                                         | 16     |
-| `diag.section.engine`        | Engine                                                          | Motor                                                          | Moteur                                                                | Engine                                                                 | —      |
-| `diag.lastReport`            | Last report                                                     | Último informe                                                 | Dernier rapport                                                       | Laatste melding                                                        | —      |
-| `diag.recordRefused`         | Record lines refused                                            | Líneas de registro rechazadas                                  | Lignes du journal refusées                                            | Logregels geweigerd                                                    | —      |
-| `diag.recordDropped`         | Record lines dropped                                            | Líneas de registro descartadas                                 | Lignes du journal abandonnées                                         | Logregels overgeslagen                                                 | —      |
-| `stream.dev.probe`           | Run engine contract                                             | Ejecutar contrato del motor                                    | Lancer le contrat moteur                                              | Enginecontract uitvoeren                                               | —      |
+- **Glossary terms used:** móvil (es phone), vista previa / aperçu / voorbeeld (preview), sesión / session / sessie, registro de la sesión / journal de session / sessielogboek (the record, so nl says _logboek_, never _log_), Inténtalo de nuevo / Réessayez / Probeer het opnieuw (Try again in a sentence), Ajustes / Paramètres / Instellingen (Settings), cámara, micro / caméra, micro / camera, microfoon.
+- **New term, added to the glossary's Terms table in Task 18's commit:** `engine (the capture engine, Diagnostics and status) | motor | moteur | engine | nl keeps the loanword, as the Dutch Android and dev vocabulary does; es and fr take the plain word.`
+- **Typography:** es, fr and nl split each status line and advisory on a colon, never the English em dash; fr writes `\u00a0` before the colon in the JSON; straight apostrophes.
+- **Budgets**, counted with `s.length` as `budgets.test.ts` counts (en / es / fr / nl):
+  - `stream.status.engineSilent` 39 / 37 / 48 / 44, under the existing `stream.status.` row (48). French is exactly at the limit, so any change to it is re-counted before commit.
+  - `stream.advisory.keepOpen` 51 / 51 / 56 / 51, under the existing `stream.advisory.` row (56).
+  - `stream.preview.stopped` 47 / 41 / 39 / 49, under a new row `[/^stream\.preview\.stopped$/, 56]`: it is drawn in the advisory strip's place (Task 25), so it takes the advisory's budget.
+  - `stream.preview.show` 12 / 16 / 13 / 14, under a new row `[/^stream\.preview\.show$/, 16]`, the Go live button's budget, since it is a button in the same type.
+  - `stream.ended.permissions` 67 / 71 / 75 / 74: **no budget row**. `EndedBlock` renders it as a `status` Text with no `numberOfLines`, so it wraps rather than truncates; Task 26's copy-fit check reads it on the narrow phone in fr.
+  - The Diagnostics and dev keys have no budget: Diagnostics rows wrap, and dev keys never ship.
 
-The lengths were counted with `String.prototype.length`, and the longest is the French `keepOpen` at 56. The `stream.preview.*` keys are used by Task 25, and are added here so that the copy lands in one commit.
+| Key                          | en                                                                  | es                                                                      | fr                                                                          | nl                                                                         |
+| ---------------------------- | ------------------------------------------------------------------- | ----------------------------------------------------------------------- | --------------------------------------------------------------------------- | -------------------------------------------------------------------------- |
+| `stream.status.engineSilent` | Engine not responding — check the phone                             | El motor no responde: revisa el móvil                                   | Le moteur ne répond plus\u00a0: vérifiez le téléphone                       | Engine reageert niet: controleer de telefoon                               |
+| `stream.advisory.keepOpen`   | Keep the app open — capture stops in the background                 | Mantén la app abierta: en segundo plano no se graba                     | Gardez l'app ouverte\u00a0: en arrière-plan, rien n'est filmé               | Houd de app open: op de achtergrond stopt de opname                        |
+| `stream.ended.permissions`   | Allow the camera and microphone in Android Settings, then try again | Permite la cámara y el micro en Ajustes de Android e inténtalo de nuevo | Autorisez la caméra et le micro dans les Paramètres Android, puis réessayez | Sta camera en microfoon toe in Android-instellingen en probeer het opnieuw |
+| `stream.preview.stopped`     | Camera preview stopped — the session carries on                     | La vista previa se cerró: la sesión sigue                               | Aperçu interrompu\u00a0: la session continue                                | Cameravoorbeeld onderbroken: de sessie loopt door                          |
+| `stream.preview.show`        | Show preview                                                        | Ver vista previa                                                        | Voir l'aperçu                                                               | Toon voorbeeld                                                             |
+| `diag.section.engine`        | Engine                                                              | Motor                                                                   | Moteur                                                                      | Engine                                                                     |
+| `diag.lastReport`            | Last report                                                         | Último informe                                                          | Dernier rapport                                                             | Laatste melding                                                            |
+| `diag.recordRefused`         | Record lines refused                                                | Líneas del registro rechazadas                                          | Lignes du journal refusées                                                  | Logboekregels geweigerd                                                    |
+| `diag.recordDropped`         | Record lines dropped                                                | Líneas del registro descartadas                                         | Lignes du journal abandonnées                                               | Logboekregels overgeslagen                                                 |
+| `stream.dev.probe`           | Run engine contract                                                 | Ejecutar contrato del motor                                             | Lancer le contrat du moteur                                                 | Enginecontract uitvoeren                                                   |
+
+`\u00a0` in the fr column is the JSON escape, written literally into `fr.json`. The `stream.preview.*` keys are rendered by Task 25 (C7) but land here, with Task 18, so the C5 copy is reviewed in one commit; `budgets.test.ts`'s `keys.length > 0` check passes for their rows from this commit on. Task 25 adds the two dev keys it needs, reviewed the same way, in its own commit.
+
+**This copy is PROPOSED (P2) and awaits the owner.** If the owner changes a line, the change is one dictionary edit per language, re-reviewed against the glossary, with the budget re-counted.
 
 ### Task 17: Bound the clearing (carry 27)
 
@@ -4298,12 +5038,12 @@ Adapt `renderDisarm`, `intents()` and `suspend()` to the helpers the file alread
 
 ### Task 18: Silence, keep open, refused permissions, and the record's counters
 
-Carries 7, 8 and 12, CD17, CD18 and CD21.
+Carries 7, 8 and 12, CD17, CD18 and CD21. **The copy is PROPOSED (P2), awaiting owner**; build it as written, from the reviewed table in the batch intro.
 
 **Files:**
 
 - Create: `src/hooks/engineSilence.ts`, `src/hooks/engineSilence.test.ts`
-- Modify: `src/hooks/useViewfinder.ts` (the plate and line when silent), `src/hooks/advisory.ts`, `src/hooks/advisory.test.ts`, `src/ui/components/StreamStage.tsx` (passes `keepOpen` to `topAdvisory`), `src/ui/components/EndedBlock.tsx`, `src/hooks/engineSelectors.ts`, `src/hooks/diagnostics.ts`, `src/hooks/diagnostics.test.ts`, `modules/capture-engine/src/FakeCaptureEngine.ts` (`survivesBackground` is true while a session is armed or on air, as on Android with the service running), the four dictionaries, and `src/i18n/budgets.test.ts`
+- Modify: `src/hooks/useViewfinder.ts` (the plate and line when silent), `src/hooks/advisory.ts`, `src/hooks/advisory.test.ts`, `src/ui/components/StreamStage.tsx` (passes `keepOpen` to `topAdvisory`), `src/ui/components/EndedBlock.tsx`, `src/hooks/engineSelectors.ts`, `src/hooks/diagnostics.ts`, `src/hooks/diagnostics.test.ts`, `modules/capture-engine/src/FakeCaptureEngine.ts` (`survivesBackground` is true while a session is armed or on air, as on Android with the service running), the four dictionaries (the batch intro's table, all ten keys, already reviewed), `src/i18n/budgets.test.ts` (the two `stream.preview.` rows) and `docs/i18n-glossary.md` (the **engine** row)
 - Test: `src/ui/screens/StreamScreen.native.test.tsx` (new), which holds the screen-level assertions below
 
 **Interfaces:**
@@ -4392,7 +5132,7 @@ it.each(['es', 'fr', 'nl'] as const)('CD17 the silent line reads in %s', (lang) 
 });
 ```
 
-`renderStream` is a local helper. It wraps plan A's `renderWithPorts(<StreamScreen />)` with the fake engine set to the named scene, and with the given telemetry overrides applied through the fake's `publish` hook (read `FakeCaptureEngine.ts` for its name). `publishNow()` is the fake's own report: the fake reports every `REPORT_MS` and stamps `reportedAtMs` with the ports' clock. Check how the fake's timer runs under vitest fake timers, and advance it rather than calling a private method if it is not exposed. The plate is upper-cased by the component; assert the text as the component renders it.
+`renderStream` is a helper local to this file, over the house helper `test/renderViewfinder.tsx` (the viewfinder as the operator reaches it): its `prepare` sets the fake engine's scene and applies the given telemetry overrides through the fake's `publish` hook (read `FakeCaptureEngine.ts` for its name), and `language` becomes `{ deviceLanguages: [language] }`. Task 25 does not reuse it; it uses `renderViewfinder` directly. `publishNow()` is the fake's own report: the fake reports every `REPORT_MS` and stamps `reportedAtMs` with the ports' clock. Check how the fake's timer runs under vitest fake timers, and advance it rather than calling a private method if it is not exposed. The plate is upper-cased by the component; assert the text as the component renders it.
 
 Diagnostics, in `diagnostics.test.ts`:
 
@@ -4433,7 +5173,10 @@ it('carry 12 shows when native last reported, and the record lines it refused an
   3. Put `keepOpen` last in `topAdvisory`. The rank test fails.
   4. Leave the plate alone when silent. The screen test fails.
 
-  Run `pnpm check`, then `pnpm prettier --check src/i18n/*.json`. Then commit: `feat(stream): say when the engine is silent, when to keep the app open, and how to allow permissions`, with the trailer lines.
+  5. Write the fr `engineSilent` with a plain space before its colon. `dictionaries.test.ts`'s French spacing test fails.
+  6. Add `"_review": "pending translation review"` to `es.json`. `pnpm i18n:release-check` exits non-zero; remove it.
+
+  Run `pnpm check`, `pnpm i18n:release-check` (EXIT=0) and `pnpm prettier --check src/i18n/*.json docs/i18n-glossary.md`. Then commit: `feat(stream): say when the engine is silent, when to keep the app open, and how to allow permissions`, with the trailer lines.
 
 ### Task 19: The composition root, and the device probe
 
@@ -4441,9 +5184,10 @@ Carry 1 and CD24. This is the one line plan A left for plan C: `createNativePort
 
 **Files:**
 
-- Modify: `src/hooks/nativePorts.ts`, `src/hooks/usePorts.tsx` (`devEngine` stays a `FakeCaptureEngine | null`)
+- Modify: `src/hooks/nativePorts.ts`, `src/hooks/usePorts.tsx` (`devEngine` stays a `FakeCaptureEngine | null`; a new `nativeEngine: NativeCaptureEngine | null`, read only by the dev probe for `settled()`), `test/fakePorts.ts` (`nativeEngine: null`)
 - Create: `src/hooks/engineWiring.ts`, the pure choice of engine, tested; `src/hooks/engineWiring.test.ts`
 - Create: `src/hooks/useEngineProbe.ts`, `src/hooks/probeSessions.ts`, and `src/ui/components/DevProbe.tsx`, placed in `DiagnosticsScreen` beside `DevScenes`
+- **(P1, PROPOSED — awaiting owner; Step 6)** Create: `src/hooks/lastLanguage.ts`, `src/hooks/lastLanguage.test.ts`. Modify: `src/hooks/useLanguage.tsx`, `src/ui/components/RootBoundary.tsx`, `src/ui/components/RootBoundary.test.tsx`
 
 **Interfaces:**
 
@@ -4516,11 +5260,13 @@ export function createNativePorts(): Ports {
     },
   });
   const record = createRoutedRecord(ring, {
-    active: () => wired.native !== null && wired.engine.getSnapshot().state.kind !== 'idle',
+    // M16: the predicate is pure and tested in Task 15; only its inputs are read here.
+    active: () => recordGoesNative(wired.native !== null, wired.engine.getSnapshot().state.kind),
     forward: (entry) => wired.native?.forward(entry),
   });
   const logger = createLogger({ record, now: Date.now, minLevel: __DEV__ ? 'debug' : 'info' });
-  // … the rest as today, with `engine: wired.engine` and `devEngine: wired.devEngine`.
+  // … the rest as today, with `engine: wired.engine`, `devEngine: wired.devEngine`
+  // and `nativeEngine: wired.native`.
 }
 ```
 
@@ -4528,19 +5274,75 @@ export function createNativePorts(): Ports {
 
 - [ ] **Step 4: The device probe.**
   - `useEngineProbe` runs each scenario of `ENGINE_SCENARIOS` in turn against `ports.engine`, with `PROBE_SESSIONS`.
-  - Its `settle` resolves on the engine's next notification, or after 700 ms.
+  - Its `settle` is `ports.nativeEngine.settled()` (CD8): the ack of the last intent sent, never a tick's snapshot, so the probe has no tick race (I10). A 5 s guard logs `probe.fail` with `{ scene, reason: 'no-ack' }` and stops the run.
   - Its `expect` logs `probe.fail` with `{ scene: <scenario index>, reason: <what> }` on a mismatch. Scenarios compare only states, names and tags, so nothing secret can be logged. A pass logs `probe.pass` with `{ scene }`.
   - Between scenarios it sends `stop` and then `reset`, and waits for idle, so each scenario starts as the kit does.
   - It is offered only in a dev build, with `native` wired and the engine idle.
   - `DevProbe` is one `GhostButton` labelled `t('stream.dev.probe')` and a line with the state.
 
-Test `useEngineProbe` against the fake: wire the fake as `engine` with `devEngine: null`, run it, and assert eight `probe.pass` lines, one for each scenario, with no `probe.fail`.
+Test `useEngineProbe` against the fake: wire the fake as `engine` with `devEngine: null`, and a `nativeEngine` stub whose `settled()` resolves at once (the fake is synchronous). Run it, and assert eight `probe.pass` lines, one for each scenario, with no `probe.fail`. A second test gives a `settled()` that never resolves, advances fake timers 5 s, and asserts one `probe.fail` with `reason: 'no-ack'` and the run stopped.
 
 - [ ] **Step 5: Run, mutate, commit.** Mutate one at a time:
   1. Return the fake in `chooseEngine` when `dev` is true, whatever the flag. The second test fails.
-  2. Make `active` always true. No unit test can see this: `createNativePorts` imports `expo-*`, and plan A never unit-tested it. Record the mutation as **covered by Task 26's device check**, where Diagnostics must show JS lines while idle.
+  2. Make `active` always true in `createNativePorts`. No unit test can see the wiring itself: `createNativePorts` imports `expo-*`, and plan A never unit-tested it. The rule is Task 15's `recordGoesNative`, tested there (M16); the wiring is **covered by Task 26's device check**, where Diagnostics must show JS lines while idle. Record it so.
+  3. (P1) In `RootBoundary`, ignore `lastLanguage()`. The Step 6 French test fails.
 
-  Run `pnpm check`. Then commit: `feat(ports): wire the native engine; a dev probe runs the contract on the phone`, with the trailer lines.
+  Run `pnpm check` and `pnpm i18n:release-check`. Then commit: `feat(ports): wire the native engine; a dev probe runs the contract on the phone`, with the trailer lines. Step 6 is a separate commit.
+
+- [ ] **Step 6 (P1, PROPOSED — awaiting owner): the crash screen reads the operator's language.** Skip this step, and record "P1 declined: the crash screen keeps the phone's language", if the owner declines. The boundary sits outside the language provider, which may be what crashed, so it cannot read the context. It reads a module-level holder the provider sets when the language resolves. There is no storage read on the crash path.
+
+```ts
+// src/hooks/lastLanguage.ts
+import type { Lang } from '@/i18n/language';
+
+let last: Lang | null = null;
+
+/** Set by LanguageProvider each time it resolves a language. An idempotent write, safe in render. */
+export function noteLanguage(lang: Lang): void {
+  last = lang;
+}
+
+/** The language the provider last resolved, or null before it first did (a crash at launch). */
+export function lastLanguage(): Lang | null {
+  return last;
+}
+
+/** Tests only: forget the last language, so each test starts as a cold launch. */
+export function resetLastLanguage(): void {
+  last = null;
+}
+```
+
+In `LanguageProvider`, call `noteLanguage(lang)` inside the `useMemo` that builds the value, so it is set before any child renders. In `RootBoundary`, keep the translator in state and refresh it in `onCatch`, before the fallback renders:
+
+```tsx
+const phone = useCallback(() => pickLanguage(null, ports.deviceLanguages), [ports.deviceLanguages]);
+const [lang, setLang] = useState<Lang>(phone);
+const { t } = useMemo(() => createTranslator(lang), [lang]);
+const onCatch = useCallback(() => {
+  ports.splash.hide();
+  ports.logger.error('ui.crash');
+  // P1: the operator's language, else the phone's. Read now, not at mount: it may have changed since.
+  setLang(lastLanguage() ?? phone());
+}, [ports, phone]);
+```
+
+Update the component's comment: it reads the operator's last language, falling back to the phone's. Tests, in `RootBoundary.test.tsx`, each calling `resetLastLanguage()` in `beforeEach`:
+
+```tsx
+it('P1 a crash after the operator picked French reads in French, though the phone is English', () => {
+  noteLanguage('fr');
+  renderCrashing({ deviceLanguages: ['en'] });
+  expect(screen.getByText(fr['crash.heading'])).toBeTruthy();
+});
+
+it('P1 a crash before any language resolved reads in the phone language', () => {
+  renderCrashing({ deviceLanguages: ['nl'] });
+  expect(screen.getByText(nl['crash.heading'])).toBeTruthy();
+});
+```
+
+`renderCrashing` is the file's existing way to render a child that throws (read the file; it spies on `console.error` at line 58). Mutate: `setLang(phone())` in `onCatch`; the French test fails. Run `pnpm check`. Commit: `feat(ui): the crash screen reads the operator's last language (P1)`, with the trailer lines.
 
 ## Batch C6 — Android glue I
 
@@ -4561,9 +5363,9 @@ Carry 15, CD1, CD2, CD9 and CD25.
 **Files:**
 
 - Create: `modules/capture-engine/expo-module.config.json`, `modules/capture-engine/android/build.gradle`, `modules/capture-engine/android/.gitignore` (`build/`, `.gradle/`, `.cxx/`), `modules/capture-engine/android/src/main/AndroidManifest.xml`
-- Create in `G`: `CaptureEngineModule.kt`, `EngineHost.kt`, `HandlerScheduler.kt`, `AndroidClock.kt`, `RecordFile.kt`, `AndroidPlatform.kt`, `HttpAdapter.kt`, `capture/Capture.kt` (the interface Task 22 implements), `capture/NoCapture.kt`
+- Create in `G`: `CaptureEngineModule.kt`, `EngineHost.kt`, `VendorLogger.kt`, `HandlerScheduler.kt`, `AndroidClock.kt`, `RecordFile.kt`, `AndroidPlatform.kt`, `HttpAdapter.kt`, `capture/Capture.kt` (the interface Task 22 implements), `capture/NoCapture.kt`
 - Create: `.github/workflows/android-compile.yml`
-- Modify: `core/src/test/.../adapter/GlueRulesTest.kt`, deleting the three `if (!root.exists()) return` lines
+- Modify: `core/src/test/.../adapter/GlueRulesTest.kt`, deleting the `assumeTrue` line in `sources()`
 
 **Interfaces:**
 
@@ -4572,15 +5374,10 @@ Carry 15, CD1, CD2, CD9 and CD25.
   - `Function("log") { level: String, kind: String, fields: Map<String, Any?> -> }`;
   - `Function("current")`;
   - `Function("tail")`;
-  - `Events("onSnapshot", "onRecord")`;
+  - `Events("onSnapshot", "onRecord", "onAck")`;
   - in Task 25, `View(CapturePreviewView::class)`.
-- **`interface Capture`**:
-  - `prepare(config: SessionConfig, rotation: Int)`;
-  - `execute(command: Command)`;
-  - `frames(attemptId: Int): FrameCount?`;
-  - `link(attemptId: Int): LinkCounters?`;
-  - `facts(): CaptureFacts`, where `data class CaptureFacts(audioLevel: Double, cameraReady: Boolean, captureTimestampMs: Long?)`;
-  - `release()`.
+- **`interface Capture`**: `streamer: StateFlow<SingleStreamer?>`, `prepare(config, rotation)`, `execute(command)`, `frames(attemptId)`, `link(attemptId)` and `facts(): CaptureFacts`. Its session ends with `Command.End`; there is no separate `release`.
+- **`EngineHost`**: `listener` and `appContext` (`OwnedSlot`s, CD32), `core(context)`, `capture(context)` and `line(entry)`.
 
 - [ ] **Step 1: Write the module config and build.**
 
@@ -4625,11 +5422,13 @@ dependencies {
   // komuxer's RTMP client and the Ktor it brings (research §Toolchain): read their exact coordinates with
   // `./gradlew :capture-engine:dependencies --configuration releaseRuntimeClasspath`, then pin them here,
   // strictly, at komuxer 0.4.0 and Ktor 3.3.3.
-  implementation 'com.squareup.okhttp3:okhttp'
+  // M14: compiled against, never shipped by us. react-android 0.86.3 brings OkHttp 4.9.2 at runtime
+  // (node_modules/react-native/gradle/libs.versions.toml), so the app has exactly one.
+  compileOnly 'com.squareup.okhttp3:okhttp:4.9.2'
 }
 ```
 
-Prebuild's `settings.gradle` names the project after its directory. Confirm that it is `:capture-engine` with `./gradlew projects` and use the real name. OkHttp's version comes from React Native's platform constraints. Confirm with `dependencies` that one OkHttp resolves, and record the version in the commit. Replace the komuxer comment with the two pinned lines once you have read the coordinates: the comment is an instruction for this step, and must not survive into the commit.
+Prebuild's `settings.gradle` names the project after its directory. Confirm that it is `:capture-engine` with `./gradlew projects` and use the real name. Confirm with `./gradlew :app:dependencies --configuration releaseRuntimeClasspath | grep okhttp3:okhttp` that the app resolves one OkHttp, at 4.9.2, and record the line in the commit. Replace the komuxer comment with the two pinned lines once you have read the coordinates: the comment is an instruction for this step, and must not survive into the commit.
 
 - [ ] **Step 2: Write the manifest.** It merges into the app; no config plugin is needed (CD25 checks the merge).
 
@@ -4688,45 +5487,360 @@ object AndroidClock : Clock {
 }
 ```
 
-- [ ] **Step 4: `EngineHost`, `AndroidPlatform`, `HttpAdapter`, `RecordFile` and the module.**
-  - **`EngineHost`** is an `object`. `core(context)` returns `BridgeCore.shared { … }`, which builds the `HandlerThread("capture-engine")`, the `AndroidPlatform` and the core, then calls `core.start()`. It keeps a `@Volatile var listener: ((String, Map<String, Any?>) -> Unit)?`, which the module sets on create and clears on destroy. There is one core per process (carry 18). A JS reload makes a new module over the same core.
-  - **`AndroidPlatform(context, capture: Capture, http: HttpAdapter, record: RecordFile)`** implements `Platform`. It holds no rule:
-    - `execute` passes to `capture.execute`;
-    - `http` passes to `HttpAdapter`;
-    - `armed` calls `capture.prepare(config, EncoderKeys.rotationAtArm(displayRotation()))`;
-    - `frames` and `link` pass to `capture`;
-    - `facts` merges `capture.facts()` with the network fact and the keeper's fact, in Tasks 23 and 24;
-    - `snapshot` calls the listener with `onSnapshot`;
-    - `recordLine` calls `record.append(line)` and the listener with `onRecord` and `mapOf("line" to line)`.
+- [ ] **Step 4: `EngineHost`, `VendorLogger`, `AndroidPlatform`, `HttpAdapter`, `RecordFile`, `NoCapture` and the module.** Every class below holds no rule (CD3): each decision is a call into `adapter/`.
 
-    `displayRotation()` reads `context.display.rotation` on API 30+ and the window manager's default display below. It is read once, at the accepted arm, and never again for that session (P4).
+**`capture/Capture.kt`** and **`capture/NoCapture.kt`**:
 
-  - **`HttpAdapter(client: OkHttpClient)`** builds the client with `cache(null)`, and connect, read and call timeouts of `HttpRequests.TIMEOUT_MS`. `http(request, answer)` makes an OkHttp `Request` from `HttpRequest` (method, url, headers, and a JSON body when present), and `enqueue`s it.
-    - On a response, it answers `HttpOutcome.Answered(code, body.string())`, with the body read inside `use`.
-    - On failure, it answers `HttpOutcome.Failed(e.javaClass.simpleName)`. That is the class name only, because OkHttp's messages can quote the URL. The scrub would mask a held secret anyway, but a playback URL is not held.
+```kotlin
+package com.seazn.capture.engine.capture
 
-    `readBody(text)` parses with `org.json`, reads `optString("state")` and `optString("endReason")` (blank becomes null), and returns `BodyFields(null, null)` on any exception (Task 8).
+import com.seazn.capture.engine.adapter.FrameCount
+import com.seazn.capture.engine.core.Command
+import com.seazn.capture.engine.core.LinkCounters
+import com.seazn.capture.engine.core.SessionConfig
+import io.github.thibaultbee.streampack.core.streamers.single.SingleStreamer
+import kotlinx.coroutines.flow.StateFlow
 
-  - **`RecordFile(dir: File)`** appends each line plus `\n` to `session-record.ndjson` on its own single-thread executor, so no file IO happens on the scheduler thread. At 5 MB it rotates to `session-record.1.ndjson`, replacing the old one. Its failures are counted, never thrown.
-  - **`NoCapture`** implements `Capture` for this task only. `prepare` throws `PermanentPlatformFailure("capture not built")`, which `BridgeCore` turns into a sticky fatal end, so the first device run proves the bridge, the failure path and the named end with no camera at all. Every other method is a no-op or returns null. Task 22 replaces it and deletes the file.
-  - **`CaptureEngineModule`**:
+data class CaptureFacts(val audioLevel: Double, val cameraReady: Boolean, val captureTimestampMs: Long?)
+
+/** What the platform asks of the camera, microphone and endpoints. Task 22's `StreamerAdapter` is the real one. */
+interface Capture {
+  /** The session's streamer while one exists; the preview view binds to it (Task 25). */
+  val streamer: StateFlow<SingleStreamer?>
+
+  /** Build the session's streamer, after CAMERA and RECORD_AUDIO are granted (CD16). Returns at once. */
+  fun prepare(config: SessionConfig, rotation: Int)
+
+  /** Carry out one command. Returns at once; outcomes are reported, never returned. */
+  fun execute(command: Command)
+
+  fun frames(attemptId: Int): FrameCount?
+
+  fun link(attemptId: Int): LinkCounters?
+
+  /** Volatile reads only: called on the scheduler thread at every publish. */
+  fun facts(): CaptureFacts
+}
+```
+
+```kotlin
+package com.seazn.capture.engine.capture
+
+import com.seazn.capture.engine.adapter.PermanentPlatformFailure
+import com.seazn.capture.engine.core.Command
+import com.seazn.capture.engine.core.SessionConfig
+import io.github.thibaultbee.streampack.core.streamers.single.SingleStreamer
+import kotlinx.coroutines.flow.MutableStateFlow
+
+/**
+ * Task 20 only, deleted by Task 22. `prepare` refuses permanently, so the first device run proves the
+ * bridge, the arm noticed outside the sink (CD31) and the named fatal end, with no camera at all.
+ */
+object NoCapture : Capture {
+  override val streamer = MutableStateFlow<SingleStreamer?>(null)
+
+  override fun prepare(config: SessionConfig, rotation: Int): Unit = throw PermanentPlatformFailure("capture not built")
+
+  override fun execute(command: Command) = Unit
+
+  override fun frames(attemptId: Int) = null
+
+  override fun link(attemptId: Int) = null
+
+  override fun facts() = CaptureFacts(0.0, cameraReady = false, captureTimestampMs = null)
+}
+```
+
+`prepare` throws inside `BridgeCore.noticeArm`, which is its own scheduler task (Task 12), so the throw reaches `sticky.fail` and the session ends fatal-error and named. Before CD31 this throw was swallowed by `Engine.publish` (I1).
+
+**`VendorLogger.kt`** (CD30):
 
 ```kotlin
 package com.seazn.capture.engine
 
+import io.github.thibaultbee.streampack.core.logger.ILogger
+
+/**
+ * StreamPack's logger, replaced (CD30). Warnings and errors go to the session record, where
+ * `message` is a text key and so masked by value; the throwable is its class name only, because a
+ * vendor message can quote a URL holding a stream key. Nothing reaches logcat, in any build.
+ */
+class VendorLogger(private val line: (level: String, fields: Map<String, Any?>) -> Unit) : ILogger {
+  override fun e(tag: String, message: String, tr: Throwable?) = forward("error", tag, message, tr)
+
+  override fun w(tag: String, message: String, tr: Throwable?) = forward("warn", tag, message, tr)
+
+  override fun i(tag: String, message: String, tr: Throwable?) = Unit
+
+  override fun v(tag: String, message: String, tr: Throwable?) = Unit
+
+  override fun d(tag: String, message: String, tr: Throwable?) = Unit
+
+  private fun forward(level: String, tag: String, message: String, tr: Throwable?) =
+    line(level, mapOf("tag" to tag, "message" to message, "error" to tr?.javaClass?.name))
+}
+```
+
+`ILogger`'s five functions are `(tag: String, message: String, tr: Throwable? = null)` (StreamPack 3.2.0 `core/logger/ILogger.kt`); an override may not restate the default.
+
+**`EngineHost.kt`** (CD9, CD30, CD32, carry 18). Tasks 22–24 replace `build` as they add parts; each shows its whole new `build`.
+
+```kotlin
+package com.seazn.capture.engine
+
+import android.content.Context
+import android.os.Handler
+import android.os.HandlerThread
+import com.seazn.capture.engine.adapter.BridgeCore
+import com.seazn.capture.engine.adapter.OwnedSlot
+import com.seazn.capture.engine.capture.Capture
+import com.seazn.capture.engine.capture.NoCapture
+import com.seazn.capture.engine.core.RecordEntry
+import expo.modules.kotlin.AppContext
+import io.github.thibaultbee.streampack.core.logger.Logger
+import java.io.File
+
+/**
+ * One engine per process (carry 18), built on the application context so a JS reload never leaves
+ * it holding a dead React context (CD32). Module instances come and go; each takes the listener and
+ * the AppContext slots in OnCreate and releases them in OnDestroy, and a stale release is a no-op.
+ */
+object EngineHost {
+  val listener = OwnedSlot<(String, Map<String, Any?>) -> Unit>()
+  val appContext = OwnedSlot<AppContext>()
+
+  private class Parts(val core: BridgeCore, val capture: Capture)
+
+  @Volatile private var parts: Parts? = null
+
+  fun core(context: Context): BridgeCore = parts(context).core
+
+  fun capture(context: Context): Capture = parts(context).capture
+
+  /** A glue line into the record, from any thread; dropped before the core exists. */
+  fun line(entry: RecordEntry) {
+    parts?.core?.log(entry.level, entry.kind, entry.fields.toMap())
+  }
+
+  @Synchronized
+  private fun parts(context: Context): Parts = parts ?: build(context.applicationContext).also { parts = it }
+
+  private fun build(app: Context): Parts {
+    Logger.logger = VendorLogger { level, fields -> parts?.core?.log(level, "vendor-log", fields) }
+    val thread = HandlerThread("capture-engine").apply { start() }
+    val platform = AndroidPlatform(app, NoCapture, HttpAdapter(), RecordFile(File(app.filesDir, "record")), ::emit)
+    val core = BridgeCore.shared { BridgeCore(AndroidClock, HandlerScheduler(Handler(thread.looper)), platform, HttpAdapter::readBody) }
+    core.start()
+    return Parts(core, NoCapture)
+  }
+
+  private fun emit(event: String, body: Map<String, Any?>) {
+    listener.value?.invoke(event, body)
+  }
+}
+```
+
+**`AndroidPlatform.kt`**:
+
+```kotlin
+package com.seazn.capture.engine
+
+import android.content.Context
+import android.hardware.display.DisplayManager
+import android.view.Display
+import android.view.Surface
+import com.seazn.capture.engine.adapter.EncoderKeys
+import com.seazn.capture.engine.adapter.HttpOutcome
+import com.seazn.capture.engine.adapter.HttpRequest
+import com.seazn.capture.engine.adapter.Platform
+import com.seazn.capture.engine.adapter.PlatformFacts
+import com.seazn.capture.engine.capture.Capture
+import com.seazn.capture.engine.core.Command
+import com.seazn.capture.engine.core.SessionConfig
+
+/** The Android `Platform` (CD3): every call passes through to a part. `app` is the application context (CD32). */
+class AndroidPlatform(
+  private val app: Context,
+  private val capture: Capture,
+  private val http: HttpAdapter,
+  private val file: RecordFile,
+  private val emit: (String, Map<String, Any?>) -> Unit,
+) : Platform {
+  override fun execute(command: Command) = capture.execute(command)
+
+  override fun http(request: HttpRequest, answer: (HttpOutcome) -> Unit) = http.send(request, answer)
+
+  /** P4: the side held is read once, here, at the accepted arm, and never again for the session. */
+  override fun armed(config: SessionConfig) = capture.prepare(config, EncoderKeys.rotationAtArm(displayRotation()))
+
+  override fun frames(attemptId: Int) = capture.frames(attemptId)
+
+  override fun link(attemptId: Int) = capture.link(attemptId)
+
+  override fun facts(): PlatformFacts {
+    val read = capture.facts()
+    // networkReachable arrives with Task 23's NetworkWatch; survivesBackground and permissionsRefused with Task 24's keeper.
+    return PlatformFacts(read.audioLevel, read.cameraReady, networkReachable = true, deliveryCheckedAtMs = null,
+      captureTimestampMs = read.captureTimestampMs, survivesBackground = false, permissionsRefused = false)
+  }
+
+  override fun snapshot(wire: Map<String, Any?>) = emit("onSnapshot", wire)
+
+  override fun recordLine(line: String) {
+    file.append(line)
+    emit("onRecord", mapOf("line" to line))
+  }
+
+  override fun acked(seq: Int) = emit("onAck", mapOf("seq" to seq.toDouble()))
+
+  /** DisplayManager, not `context.display`: the application context has no display of its own on API 30+. */
+  private fun displayRotation(): Int =
+    app.getSystemService(DisplayManager::class.java)?.getDisplay(Display.DEFAULT_DISPLAY)?.rotation ?: Surface.ROTATION_0
+}
+```
+
+Check `PlatformFacts`' parameter names against Task 5 before compiling; fix the call, never the type.
+
+**`HttpAdapter.kt`**:
+
+```kotlin
+package com.seazn.capture.engine
+
+import com.seazn.capture.engine.adapter.BodyFields
+import com.seazn.capture.engine.adapter.HttpOutcome
+import com.seazn.capture.engine.adapter.HttpRequest
+import com.seazn.capture.engine.adapter.HttpRequests
+import java.io.IOException
+import java.util.concurrent.TimeUnit
+import okhttp3.Call
+import okhttp3.Callback
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import okhttp3.RequestBody.Companion.toRequestBody
+import okhttp3.Response
+import org.json.JSONObject
+
+/** One request, answered once, on OkHttp's threads (Task 8's rules). A failure is its class name only: OkHttp's messages can quote the URL. */
+class HttpAdapter(private val client: OkHttpClient = client()) {
+  fun send(request: HttpRequest, answer: (HttpOutcome) -> Unit) {
+    val built = try {
+      build(request)
+    } catch (e: IllegalArgumentException) {
+      return answer(HttpOutcome.Failed(e.javaClass.simpleName))
+    }
+    client.newCall(built).enqueue(Answer(answer))
+  }
+
+  private class Answer(private val answer: (HttpOutcome) -> Unit) : Callback {
+    override fun onFailure(call: Call, e: IOException) = answer(HttpOutcome.Failed(e.javaClass.simpleName))
+
+    override fun onResponse(call: Call, response: Response) {
+      val outcome = try {
+        response.use { HttpOutcome.Answered(it.code, it.body?.string().orEmpty()) }
+      } catch (e: IOException) {
+        HttpOutcome.Failed(e.javaClass.simpleName)
+      }
+      answer(outcome)
+    }
+  }
+
+  private fun build(request: HttpRequest): Request {
+    val builder = Request.Builder().url(request.url)
+    for ((name, value) in request.headers) builder.header(name, value)
+    return builder.method(request.method, request.body?.toRequestBody(JSON)).build()
+  }
+
+  companion object {
+    private val JSON = "application/json; charset=utf-8".toMediaType()
+
+    private fun client() = OkHttpClient.Builder().cache(null)
+      .connectTimeout(HttpRequests.TIMEOUT_MS, TimeUnit.MILLISECONDS)
+      .readTimeout(HttpRequests.TIMEOUT_MS, TimeUnit.MILLISECONDS)
+      .callTimeout(HttpRequests.TIMEOUT_MS, TimeUnit.MILLISECONDS)
+      .build()
+
+    /** Task 8's body reader: the two fields, or none on anything that is not a JSON object. */
+    fun readBody(text: String): BodyFields = try {
+      val json = JSONObject(text)
+      BodyFields(json.optString("state").ifBlank { null }, json.optString("endReason").ifBlank { null })
+    } catch (e: Exception) {
+      BodyFields(null, null)
+    }
+  }
+}
+```
+
+OkHttp is `compileOnly` 4.9.2, the version react-android 0.86.3 brings at runtime; its Kotlin API (`code`, `body`, `toMediaType`, `toRequestBody`) is 4.x's.
+
+**`RecordFile.kt`**:
+
+```kotlin
+package com.seazn.capture.engine
+
+import java.io.File
+import java.io.IOException
+import java.util.concurrent.Executors
+
+/** The record on disk, for Share after a crash (CD7). Its own thread: no file IO on the scheduler thread (CD9). */
+class RecordFile(private val dir: File) {
+  private val io = Executors.newSingleThreadExecutor { task -> Thread(task, "capture-record") }
+
+  /** Lines the disk refused, counted and never thrown. Written on the record thread only. */
+  @Volatile var failures = 0
+    private set
+
+  fun append(line: String) {
+    io.execute { write(line) }
+  }
+
+  private fun write(line: String) {
+    try {
+      dir.mkdirs()
+      val file = File(dir, NAME)
+      if (file.length() >= MAX_BYTES) file.renameTo(File(dir, ROTATED)) // replaces the old rotation
+      file.appendText(line + "\n")
+    } catch (e: IOException) {
+      failures += 1
+    }
+  }
+
+  companion object {
+    const val NAME = "session-record.ndjson"
+    const val ROTATED = "session-record.1.ndjson"
+    const val MAX_BYTES = 5L * 1024 * 1024
+  }
+}
+```
+
+**`CaptureEngineModule.kt`**:
+
+```kotlin
+package com.seazn.capture.engine
+
+import android.content.Context
 import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
 
-/** The Expo bridge (spec §3 _Bridge_): intents in, snapshots and record lines out. Holds no rule. */
+/** The Expo bridge (spec §3 _Bridge_): intents in, snapshots, record lines and acks out. Holds no rule. */
 class CaptureEngineModule : Module() {
-  private val core by lazy { EngineHost.core(appContext.reactContext ?: error("no React context")) }
+  private fun app(): Context = appContext.reactContext?.applicationContext ?: error("no React context")
+
+  private val core get() = EngineHost.core(app())
 
   override fun definition() = ModuleDefinition {
     Name("CaptureEngine")
-    Events("onSnapshot", "onRecord")
+    Events("onSnapshot", "onRecord", "onAck")
 
-    OnCreate { EngineHost.listener = { event, body -> sendEvent(event, body) } }
-    OnDestroy { EngineHost.listener = null }
+    // CD32: this instance takes both slots; a later instance's take replaces it, and only the owner's release clears.
+    OnCreate {
+      EngineHost.listener.take(this@CaptureEngineModule) { event, body -> sendEvent(event, body) }
+      EngineHost.appContext.take(this@CaptureEngineModule, appContext)
+    }
+    OnDestroy {
+      EngineHost.listener.release(this@CaptureEngineModule)
+      EngineHost.appContext.release(this@CaptureEngineModule)
+    }
 
     // Intents, not RPC (AGENTS §2): every one returns nothing.
     Function("send") { intent: Map<String, Any?> -> core.send(intent) }
@@ -4737,9 +5851,9 @@ class CaptureEngineModule : Module() {
 }
 ```
 
-`sendEvent` drops events while JS has no listener. That is the research's `OnStartObserving` gate, and it is harmless here: `current()` answers the first read (Review Focus 2), and JS subscribes at construction.
+`sendEvent` drops events while JS has no listener. That is the research's `OnStartObserving` gate, and it is harmless here: `current()` answers the first read (Review Focus 2), `tail()` seeds the record, and JS subscribes at construction.
 
-- [ ] **Step 5: Remove the vacuous guard in `GlueRulesTest`.** Run the core suite: the three glue rules now read real files and pass. Mutate by adding a scratch line `// setTargetRotation(` to `HandlerScheduler.kt`: the F-P5-6 rule fails. The rule reads text, so a comment counts, which is deliberate. Restore from the `cp` backup.
+- [ ] **Step 5: Remove the skip in `GlueRulesTest`.** Run the core suite: the four glue rules now read real files and pass, with zero skipped. Mutate by deleting `Logger.logger = VendorLogger` from `EngineHost.kt`: the CD30 rule fails. Mutate by adding a scratch line `// setTargetRotation(` to `HandlerScheduler.kt`: the F-P5-6 rule fails. The rule reads text, so a comment counts, which is deliberate. Restore from the `cp` backup.
 
 - [ ] **Step 6: The compile job.** Create `.github/workflows/android-compile.yml`:
 
@@ -4786,247 +5900,1382 @@ jobs:
 
 Copy the pnpm and node steps from `check.yml`, so the pins match. The runner image carries an Android SDK; if `sdkmanager` licences block the build, add `android-actions/setup-android@v3` before prebuild, and record why.
 
-- [ ] **Step 7: Build locally, and run the first device check.** Run prebuild (reverting `package.json`), then `assembleDebug`. Expected: EXIT=0. Then confirm the merged manifest:
+- [ ] **Step 7: Build locally.** Run prebuild (reverting `package.json`), then `assembleDebug`. Expected: EXIT=0. Then confirm the merged manifest:
 
 ```bash
 cd "$WT/android" && grep -c 'FOREGROUND_SERVICE_CAMERA\|CaptureForegroundService' app/build/intermediates/merged_manifests/debug/processDebugManifest/AndroidManifest.xml
 ```
 
-Expected: 2 or more. Install the APK with `adb`, open the app, scan a made-up test code (the owner's hands; list the step), and hold Go live. Expected: the viewfinder reads Ended with the fatal line, and Diagnostics' record shows `engine-error` or `platform-failed` naming "capture not built". The session is named, and its code is kept. This is the bridge's first proof on a phone. It is the absent-capture path, deliberately.
+Expected: 2 or more. **No device check here (I6):** JS still wires the fake engine until Task 19 (C5), so a phone run would prove nothing about the bridge. `NoCapture`'s refusal is JVM-proved by Task 12's I1 tests (a permanent throw from `armed` ends the session fatal-error and named); on a phone, the same path is proved by Task 24's refused permission. The bridge's first phone run is Task 23 Step 1, after C5 has merged, with Task 22's real capture.
 
 - [ ] **Step 8: Commit** with the message `feat(engine): the Expo module, its scheduler thread and the compile job`, and the trailer lines. Stage by path: `modules/capture-engine/expo-module.config.json`, `modules/capture-engine/android/{build.gradle,.gitignore,src}`, `.github/workflows/android-compile.yml` and the `GlueRulesTest` change. Never stage `android/` (the root prebuild output) or `package.json`.
 
 ### Task 21: Our SRT sink, the endpoints, and the RTMP guard
 
-F-P5-1, F-P5-4, F-P5-11, F-P5-12, R3, CD14 and CD15.
+F-P5-1, F-P5-4, F-P5-11, F-P5-12, R3, carry 5, CD14 and CD15.
 
 **Files:**
 
-- Create in `G`: `srt/SeaznSrtSink.kt`, `srt/NOTICE.md` (the Apache-2.0 attribution for the adapted `SrtSink`), `endpoints/CaptureEndpointFactory.kt`, `endpoints/RoutingEndpoint.kt`, `endpoints/CountingEndpoint.kt`, `endpoints/RtmpDispatcher.kt`, `endpoints/TlsGuard.kt`
+- Create in `G`: `srt/SeaznSrtSink.kt`, `srt/NOTICE.md` (the Apache-2.0 attribution for the adapted `SrtSink`), `endpoints/CaptureEndpointFactory.kt`, `endpoints/RoutingEndpoint.kt`, `endpoints/CountingEndpoint.kt`, `endpoints/CaptureClockLine.kt`, `endpoints/RtmpDispatcher.kt`, `endpoints/RtmpDispatcherProvider.kt`, `endpoints/TlsGuard.kt`
 
 **Interfaces:**
 
-- `SeaznSrtSink(dispatcher, signals: AttemptSignals, report: (Input) -> Unit)`, with `next(plan: SrtPlan, attemptId: Int)`, `setMaxBw(bytesPerSecond: Long)` and `counters(): LinkCounters?`;
-- `CaptureEndpointFactory(tally: FrameTally, srtSink: () -> SeaznSrtSink, rtmpDispatcher: CoroutineDispatcher) : IEndpointInternal.Factory`;
-- `CountingEndpoint(inner: IEndpointInternal, tally: FrameTally) : IEndpointInternal by inner`;
-- `RtmpDispatcher.create(): CoroutineDispatcher`;
-- `TlsGuard.install(mode: TlsGuard.Mode)`, where `Mode` is `SCOPED` or `GLOBAL`, and `TlsGuard.MODE`.
+- `SeaznSrtSink(dispatcher, signals: AttemptSignals, report: (Input) -> Unit) : AbstractSink`, with `next(plan: SrtPlan, attemptId: Int)`, `setMaxBw(attemptId: Int, bytesPerSecond: Long)` and `counters(attemptId: Int): LinkCounters?`;
+- `CaptureEndpointFactory(tally: FrameTally, sink: SeaznSrtSink, rtmpIo: CoroutineDispatcher, clock: CaptureClockLine) : IEndpointInternal.Factory`;
+- `RoutingEndpoint(srt, rtmp) : IEndpointInternal`;
+- `CountingEndpoint(inner, tally, clock) : IEndpointInternal by inner`;
+- `CaptureClockLine(line: (RecordEntry) -> Unit)`, with `newAttempt()`, `videoFrame(ptsUs)` and `lastVideoEpochMs`;
+- `RtmpDispatcher.create(): CoroutineDispatcher`, `RtmpDispatcherProvider(base, io) : IDispatcherProvider by base`;
+- `TlsGuard`, with `Mode { SCOPED, GLOBAL }`, `MODE`, `handler(previous)`, `install(mode)` and `record: (RecordEntry) -> Unit`.
 
-- [ ] **Step 1: Read the shapes from the jar.** Read them before writing; the research doc lists them, and `javap` is authoritative:
+The shapes below were read from StreamPack 3.2.0's source (`AbstractSink`, `SrtSink`, `CompositeEndpoint`, `IEndpointInternal`, `RtmpEndpointFactory`, `SrtMediaDescriptor(host, port, …)`, `IDispatcherProvider`). srtdroid-ktx **1.10.1** is not in the local Gradle cache (1.9.5 is), so each srtdroid call is marked `// confirm:` and is checked against the 1.10.1 jar in Step 1.
+
+- [ ] **Step 1: Confirm the srtdroid calls against the jar.** Resolve the dependency, then read the classes:
 
 ```bash
 cd "$WT/android" && ./gradlew :capture-engine:dependencies --configuration debugRuntimeClasspath > "$TMPDIR/deps.txt"; grep -n 'streampack\|srtdroid\|komuxer\|ktor' "$TMPDIR/deps.txt" | head -40
+AAR=$(find ~/.gradle/caches/modules-2 -name 'srtdroid-ktx-1.10.1.aar' | head -1); mkdir -p "$TMPDIR/srt" && unzip -o -q "$AAR" classes.jar -d "$TMPDIR/srt"
+javap -cp "$TMPDIR/srt/classes.jar" io.github.thibaultbee.srtdroid.ktx.CoroutineSrtSocket | grep -E 'connect|send|setSockFlag|bistats|isConnected|connectionTime|socketContext|close'
 ```
 
-Unpack `streampack-core-3.2.0.aar`'s `classes.jar` from the Gradle cache, then run `javap` on these classes:
+Each `// confirm:` line must match a member printed here. A mismatch changes the call, never the rule; write each signature used into the commit body.
 
-- `elements.endpoints.composites.sinks.AbstractSink`;
-- `ISinkInternal`;
-- `elements.endpoints.composites.CompositeEndpointWithMetricsFactory` (or `CompositeEndpoint`'s constructor);
-- `elements.endpoints.composites.muxers.ts.TsMuxer`;
-- `elements.data.Packet`;
-- srtdroid-ktx 1.10.1's `CoroutineSrtSocket`. Its `send` consumes the buffer in 1.10.x, and `trySend` exists.
-
-Write each signature you rely on into the commit body.
-
-- [ ] **Step 2: `SeaznSrtSink`.** It is adapted from StreamPack's `SrtSink` (Apache-2.0; keep its header and add ours). Its differences are this plan's rules.
+- [ ] **Step 2: `SeaznSrtSink`.** It is adapted from StreamPack's `SrtSink` (Apache-2.0; keep its header and add ours, and say so in `srt/NOTICE.md`). Its differences are this plan's rules.
 
 ```kotlin
+package com.seazn.capture.engine.srt
+
+import com.seazn.capture.engine.adapter.AttemptSignals
+import com.seazn.capture.engine.adapter.SrtOpt
+import com.seazn.capture.engine.adapter.SrtPlan
+import com.seazn.capture.engine.core.Input
+import com.seazn.capture.engine.core.LinkCounters
+import io.github.thibaultbee.srtdroid.core.enums.Boundary
+import io.github.thibaultbee.srtdroid.core.enums.SockOpt
+import io.github.thibaultbee.srtdroid.core.enums.Transtype
+import io.github.thibaultbee.srtdroid.core.models.MsgCtrl
+import io.github.thibaultbee.srtdroid.ktx.CoroutineSrtSocket
+import io.github.thibaultbee.streampack.core.configuration.mediadescriptor.MediaDescriptor
+import io.github.thibaultbee.streampack.core.elements.endpoints.ClosedException
+import io.github.thibaultbee.streampack.core.elements.endpoints.MediaSinkType
+import io.github.thibaultbee.streampack.core.elements.endpoints.composites.data.Packet
+import io.github.thibaultbee.streampack.core.elements.endpoints.composites.data.SrtPacket
+import io.github.thibaultbee.streampack.core.elements.endpoints.composites.sinks.AbstractSink
+import io.github.thibaultbee.streampack.core.elements.endpoints.composites.sinks.SinkConfiguration
+import java.net.InetAddress
+import java.net.InetSocketAddress
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.withContext
+
 /**
  * Our SRT sink (CD14). StreamPack's SrtSink sets MAXBW 0 and INPUTBW in bits, where libsrt reads
- * bytes (F-P5-11). This one sets every option from [SrtOptions], resolves the host first on its IO
- * dispatcher (F-P5-1), never builds a URL that holds a secret, and reports one drop per attempt from
- * the socket's completion (R3).
+ * bytes (F-P5-11). This one sets every option from [SrtPlan], resolves the host first on its IO
+ * dispatcher (F-P5-1), takes its secrets as socket options and never in a URL, and reports one drop
+ * per attempt from the socket's completion (R3).
  */
 class SeaznSrtSink(
   private val dispatcher: CoroutineDispatcher,
   private val signals: AttemptSignals,
   private val report: (Input) -> Unit,
 ) : AbstractSink() {
-  private var socket: CoroutineSrtSocket? = null
+  override val supportedSinkTypes: List<MediaSinkType> = listOf(MediaSinkType.SRT)
+
+  private val open = MutableStateFlow(false)
+  override val isOpenFlow = open.asStateFlow()
+
+  @Volatile private var socket: CoroutineSrtSocket? = null
   @Volatile private var pending: Pair<SrtPlan, Int>? = null
   @Volatile private var attemptId: Int? = null
+  @Volatile private var completion: Throwable? = null
 
   /** Set by the streamer adapter before `startStream`; the descriptor it passes carries host and port only. */
   fun next(plan: SrtPlan, attemptId: Int) {
     pending = plan to attemptId
   }
 
-  override suspend fun openImpl(mediaDescriptor: MediaDescriptor) =
-    withContext(dispatcher) {
-      val (plan, id) = pending ?: throw IllegalStateException("no SRT plan for this connect")
-      val address = InetAddress.getByName(plan.host) // F-P5-1: UnknownHostException → UNRESOLVED
-      val opened = CoroutineSrtSocket(dispatcher)
-      for ((option, value) in plan.before) opened.setSockFlag(sockOpt(option), value)
-      opened.connect(InetSocketAddress(address, plan.port))
-      opened.setSockFlag(SockOpt.MAXBW, plan.maxBwBytesPerSecond) // F-P5-11: after connect, in bytes per second
-      opened.socketContext.invokeOnCompletion { cause -> signals.dropped(id, cause)?.let(report) }
-      socket = opened
-      attemptId = id
-    }
+  /** INPUTBW and MAXBW come from the plan, never from the encoder's bitrate (F-P5-11). */
+  override fun configure(config: SinkConfiguration) = Unit
 
-  override suspend fun write(packet: Packet): Int = socket?.send(packet.buffer) ?: throw IOException("SRT socket not open")
-
-  fun setMaxBw(bytesPerSecond: Long) {
-    socket?.setSockFlag(SockOpt.MAXBW, bytesPerSecond)
+  override suspend fun openImpl(mediaDescriptor: MediaDescriptor) = withContext(dispatcher) {
+    val (plan, id) = pending ?: throw IllegalStateException("no SRT plan for this connect")
+    val address = InetAddress.getByName(plan.host) // F-P5-1: UnknownHostException → UNRESOLVED, on IO
+    val opened = CoroutineSrtSocket(dispatcher) // confirm: (CoroutineDispatcher)
+    opened.setSockFlag(SockOpt.PAYLOADSIZE, PAYLOAD_SIZE)
+    for ((option, value) in plan.before) opened.setSockFlag(sockOpt(option), flagValue(option, value)) // confirm: (SockOpt, Any)
+    completion = null
+    opened.socketContext.invokeOnCompletion { cause -> closed(id, cause) } // confirm: socketContext: Job
+    opened.connect(InetSocketAddress(address, plan.port)) // confirm: suspend connect(InetSocketAddress)
+    opened.setSockFlag(SockOpt.MAXBW, plan.maxBwBytesPerSecond) // F-P5-11: after connect, in bytes per second
+    socket = opened
+    attemptId = id
+    open.value = true
   }
 
-  /** One reading for the Link poller (CD12). A JNI call, quick and non-blocking: allowed on the scheduler thread. */
-  fun counters(): LinkCounters? =
-    socket?.bistats(clear = false, instantaneous = true)?.let {
-      LinkCounters(it.byteSentTotal, it.pktSentTotal, it.pktRetransTotal, it.pktSndDropTotal, it.pktSndLossTotal.toLong(), it.msRTT.toInt(), it.msSndBuf.takeIf { ms -> ms >= 0 }, (it.mbpsBandwidth * 1_000_000).toLong())
-    }
+  override suspend fun startStream() {
+    val held = socket ?: throw ClosedException("SRT socket not open")
+    if (!held.isConnected) throw ClosedException("SRT socket not connected") // confirm: isConnected
+  }
 
-  override suspend fun closeImpl() {
+  override suspend fun write(packet: Packet): Int {
+    completion?.let { throw ClosedException(it) }
+    val held = socket ?: throw ClosedException("SRT socket not open")
+    if (packet.ts != 0L && held.connectionTime > packet.ts) return -1 // as SrtSink: older than the connection
+    return held.send(packet.buffer, msgCtrl(packet)) // confirm: suspend send(ByteBuffer, MsgCtrl): Int
+  }
+
+  override suspend fun stopStream() = Unit
+
+  override suspend fun close() {
     socket?.close()
     socket = null
+    attemptId = null
+    open.value = false
   }
 
-  private fun sockOpt(option: SrtOpt): SockOpt =
-    when (option) {
-      SrtOpt.TRANSTYPE_LIVE -> SockOpt.TRANSTYPE
-      else -> SockOpt.valueOf(option.name)
+  fun setMaxBw(forAttempt: Int, bytesPerSecond: Long) {
+    if (attemptId == forAttempt) socket?.setSockFlag(SockOpt.MAXBW, bytesPerSecond)
+  }
+
+  /** One reading for the Link poller (CD12): a quick JNI call, allowed on the scheduler thread. */
+  fun counters(forAttempt: Int): LinkCounters? {
+    if (attemptId != forAttempt) return null
+    val stats = socket?.bistats(clear = false, instantaneous = true) ?: return null // confirm: bistats(Boolean, Boolean)
+    return LinkCounters(stats.byteSentTotal, stats.pktSentTotal, stats.pktRetransTotal, stats.pktSndDropTotal,
+      stats.pktSndLossTotal.toLong(), stats.msRTT.toInt(), stats.msSndBuf.takeIf { it >= 0 }, (stats.mbpsBandwidth * 1_000_000).toLong())
+  }
+
+  private fun closed(id: Int, cause: Throwable?) {
+    completion = cause
+    open.value = false
+    signals.dropped(id, cause)?.let(report)
+  }
+
+  private fun sockOpt(option: SrtOpt): SockOpt = if (option == SrtOpt.TRANSTYPE_LIVE) SockOpt.TRANSTYPE else SockOpt.valueOf(option.name)
+
+  private fun flagValue(option: SrtOpt, value: Any): Any = if (option == SrtOpt.TRANSTYPE_LIVE) Transtype.LIVE else value
+
+  /** Copied from StreamPack's SrtSink.buildMsgCtrl. */
+  private fun msgCtrl(packet: Packet): MsgCtrl {
+    val boundary = (packet as? SrtPacket)?.let {
+      when {
+        it.isFirstPacketFrame && it.isLastPacketFrame -> Boundary.SOLO
+        it.isFirstPacketFrame -> Boundary.FIRST
+        it.isLastPacketFrame -> Boundary.LAST
+        else -> Boundary.SUBSEQUENT
+      }
     }
+    return when {
+      packet.ts == 0L && boundary == null -> MsgCtrl()
+      packet.ts == 0L -> MsgCtrl(boundary = boundary!!)
+      boundary == null -> MsgCtrl(srcTime = packet.ts)
+      else -> MsgCtrl(srcTime = packet.ts, boundary = boundary)
+    }
+  }
+
+  companion object {
+    private const val PAYLOAD_SIZE = 1316
+  }
 }
 ```
 
-`TRANSTYPE_LIVE`'s value is `Transtype.LIVE`. Map `true` to it in the `setSockFlag` loop, with an explicit `when` on the value's type rather than a cast. `AbstractSink`'s abstract members (`supportedSinkTypes`, `isOpenFlow`, `metrics` and the rest) are implemented as StreamPack's own `SrtSink` implements them, copied, with `supportedSinkTypes = listOf(MediaSinkType.SRT)`. The `report` path posts through `BridgeCore.report`, so a drop reaches the machine on its thread.
+The `LinkCounters` field order is plan B's (8 parameters, `Link.kt`); check `bistats`' field names in the jar with the same `javap` (`io.github.thibaultbee.srtdroid.core.models.Stats`). The `report` path posts through `BridgeCore.report`, so a drop reaches the machine on its thread.
 
 - [ ] **Step 3: The endpoints.**
-  - **`CaptureEndpointFactory.create(context, dispatcherProvider)`** returns `CountingEndpoint(RoutingEndpoint(srt = CompositeEndpointWithMetrics(TsMuxer(), sink), rtmp = RtmpEndpointFactory().create(context, RtmpDispatcherProvider(dispatcherProvider, rtmpDispatcher))), tally)`. Use the composite's real constructor or factory, read in Step 1.
-  - **`RoutingEndpoint`** implements `IEndpointInternal`. `open(descriptor)` chooses `srt` for a `SrtMediaDescriptor`, and `rtmp` otherwise, and records the choice. Every other member delegates to the chosen endpoint, or to `srt` before any choice. `isOpenFlow` and `throwableFlow` are its own `MutableStateFlow`s, mirrored from the chosen endpoint by one collector job per open.
-  - **`CountingEndpoint`** overrides only `write`. It calls `tally.counted(frame.format.getString(MediaFormat.KEY_MIME), frame.rawBuffer.remaining())` and then `inner.write(frame, streamPid)` (F-P5-4: frames that reached the endpoint).
-  - **`RtmpDispatcherProvider`** overrides `io` to return the RTMP dispatcher, and delegates everything else.
-  - **`RtmpDispatcher.create()`** is `Executors.newFixedThreadPool(2) { r -> Thread(r, "rtmp-io").apply { uncaughtExceptionHandler = TlsGuard.handler(previous = null) } }.asCoroutineDispatcher()`.
-  - **`TlsGuard.handler(previous)`** swallows when `TlsCloserGuard.swallows(e, Looper.getMainLooper().isCurrentThread)`, and records `tls-closer-swallowed` through `EngineHost.core.log` (the message masked by the scrub). Otherwise it calls `previous`, or rethrows on the thread.
-  - **`TlsGuard.install(GLOBAL)`** wraps `Thread.getDefaultUncaughtExceptionHandler()` once (the spike's fallback). `MODE` is `SCOPED`, and Task 26 decides.
 
-  Ktor may run its TLS closer on `Dispatchers.IO` rather than on the endpoint's `io`, in which case the scoped handler never sees it. That is exactly what Task 26's ten-cut test proves or disproves. Write `SCOPED` here, and switch `MODE` only on that evidence.
+```kotlin
+package com.seazn.capture.engine.endpoints
 
-- [ ] **Step 4: Build.** Run `assembleDebug` (EXIT=0) and the core suite (`GlueRulesTest`: `InetAddress` only in `srt/SeaznSrtSink.kt`; no `runBlocking`).
+import android.content.Context
+import com.seazn.capture.engine.adapter.FrameTally
+import com.seazn.capture.engine.srt.SeaznSrtSink
+import io.github.thibaultbee.streampack.core.elements.endpoints.IEndpointInternal
+import io.github.thibaultbee.streampack.core.elements.endpoints.composites.CompositeEndpoint
+import io.github.thibaultbee.streampack.core.elements.endpoints.composites.muxers.ts.TsMuxer
+import io.github.thibaultbee.streampack.core.pipelines.IDispatcherProvider
+import io.github.thibaultbee.streampack.ext.rtmp.elements.endpoints.RtmpEndpointFactory
+import kotlinx.coroutines.CoroutineDispatcher
 
-- [ ] **Step 5: Commit** with the message `feat(engine): our SRT sink, the routed endpoint, and a scoped TLS guard`, and the trailer lines. The body lists every StreamPack and srtdroid signature read in Step 1.
+/** CD14 and CD15: SRT through TsMuxer and our sink, RTMPS through StreamPack's endpoint on our IO threads; both counted. */
+class CaptureEndpointFactory(
+  private val tally: FrameTally,
+  private val sink: SeaznSrtSink,
+  private val rtmpIo: CoroutineDispatcher,
+  private val clock: CaptureClockLine,
+) : IEndpointInternal.Factory {
+  override fun create(context: Context, dispatcherProvider: IDispatcherProvider): IEndpointInternal {
+    val srt = CompositeEndpoint(TsMuxer(), sink)
+    val rtmp = RtmpEndpointFactory().create(context, RtmpDispatcherProvider(dispatcherProvider, rtmpIo))
+    return CountingEndpoint(RoutingEndpoint(srt, rtmp), tally, clock)
+  }
+}
+```
+
+```kotlin
+package com.seazn.capture.engine.endpoints
+
+import io.github.thibaultbee.streampack.core.configuration.mediadescriptor.MediaDescriptor
+import io.github.thibaultbee.streampack.core.elements.data.Frame
+import io.github.thibaultbee.streampack.core.elements.encoders.CodecConfig
+import io.github.thibaultbee.streampack.core.elements.endpoints.IEndpointInternal
+import io.github.thibaultbee.streampack.core.elements.endpoints.MediaSinkType
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
+
+/**
+ * SRT or RTMPS, chosen at each open by the descriptor's sink type. The open state is copied
+ * synchronously after open and close, so StreamPack never reads a stale value, and mirrored after.
+ */
+class RoutingEndpoint(private val srt: IEndpointInternal, private val rtmp: IEndpointInternal) : IEndpointInternal {
+  @Volatile private var chosen: IEndpointInternal = srt
+  private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+  private var mirror: Job? = null
+  private val open = MutableStateFlow(false)
+  private val thrown = MutableStateFlow<Throwable?>(null)
+
+  override val isOpenFlow = open.asStateFlow()
+  override val throwableFlow = thrown.asStateFlow()
+  override val info get() = chosen.info
+
+  override fun getInfo(type: MediaDescriptor.Type) = pick(type.sinkType).getInfo(type)
+
+  override suspend fun open(descriptor: MediaDescriptor) {
+    chosen = pick(descriptor.type.sinkType)
+    chosen.open(descriptor)
+    open.value = chosen.isOpenFlow.value
+    mirror?.cancel()
+    mirror = scope.launch {
+      launch { chosen.isOpenFlow.collect { open.value = it } }
+      launch { chosen.throwableFlow.collect { thrown.value = it } }
+    }
+  }
+
+  override suspend fun close() {
+    mirror?.cancel()
+    chosen.close()
+    open.value = false
+  }
+
+  override suspend fun write(frame: Frame, streamPid: Int) = chosen.write(frame, streamPid)
+
+  override suspend fun addStreams(streamConfigs: List<CodecConfig>) = chosen.addStreams(streamConfigs)
+
+  override suspend fun addStream(streamConfig: CodecConfig) = chosen.addStream(streamConfig)
+
+  override suspend fun startStream() = chosen.startStream()
+
+  override suspend fun stopStream() = chosen.stopStream()
+
+  override suspend fun release() {
+    srt.release()
+    rtmp.release()
+    scope.cancel()
+  }
+
+  private fun pick(type: MediaSinkType) = if (type == MediaSinkType.SRT) srt else rtmp
+}
+```
+
+```kotlin
+package com.seazn.capture.engine.endpoints
+
+import android.media.MediaFormat
+import com.seazn.capture.engine.adapter.FrameTally
+import io.github.thibaultbee.streampack.core.elements.data.Frame
+import io.github.thibaultbee.streampack.core.elements.endpoints.IEndpointInternal
+
+/** F-P5-4: counts the encoded frames that reached the endpoint, video apart from audio, then writes them. */
+class CountingEndpoint(
+  private val inner: IEndpointInternal,
+  private val tally: FrameTally,
+  private val clock: CaptureClockLine,
+) : IEndpointInternal by inner {
+  override suspend fun write(frame: Frame, streamPid: Int) {
+    val mime = frame.format.getString(MediaFormat.KEY_MIME)
+    tally.counted(mime, frame.rawBuffer.remaining())
+    if (mime?.startsWith("video/") == true) clock.videoFrame(frame.ptsInUs)
+    inner.write(frame, streamPid)
+  }
+}
+```
+
+```kotlin
+package com.seazn.capture.engine.endpoints
+
+import com.seazn.capture.engine.adapter.CaptureClock
+import com.seazn.capture.engine.core.RecordEntry
+import io.github.thibaultbee.streampack.core.elements.utils.time.TimeUtils
+
+/**
+ * Carry 5: the last video frame's capture time on the wall clock. StreamPack stamps frames with
+ * `TimeUtils.currentTime()` (uptime, in µs), so that is the clock read here. The first frame of each
+ * attempt writes `capture-clock {lagMs}`: the device check reads it (Device-only claims).
+ */
+class CaptureClockLine(private val line: (RecordEntry) -> Unit) {
+  @Volatile var lastVideoEpochMs: Long? = null
+    private set
+
+  @Volatile private var firstPending = false
+
+  fun newAttempt() {
+    firstPending = true
+  }
+
+  fun videoFrame(ptsUs: Long) {
+    val wallNowMs = System.currentTimeMillis()
+    val epochMs = CaptureClock.epochMs(ptsUs, TimeUtils.currentTime(), wallNowMs)
+    lastVideoEpochMs = epochMs
+    if (!firstPending) return
+    firstPending = false
+    line(RecordEntry("capture-clock", listOf("lagMs" to wallNowMs - epochMs)))
+  }
+}
+```
+
+```kotlin
+package com.seazn.capture.engine.endpoints
+
+import io.github.thibaultbee.streampack.core.pipelines.IDispatcherProvider
+import java.util.concurrent.Executors
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.asCoroutineDispatcher
+
+/** RTMP's IO runs on our two threads, each with the TLS guard as its handler (F-P5-12, CD15). */
+object RtmpDispatcher {
+  fun create(): CoroutineDispatcher =
+    Executors.newFixedThreadPool(2) { task -> Thread(task, "rtmp-io").apply { uncaughtExceptionHandler = TlsGuard.handler(previous = null) } }
+      .asCoroutineDispatcher()
+}
+
+/** StreamPack's provider with `io` replaced; `RtmpEndpointFactory` reads `default` and `io` only. */
+class RtmpDispatcherProvider(base: IDispatcherProvider, override val io: CoroutineDispatcher) : IDispatcherProvider by base
+```
+
+```kotlin
+package com.seazn.capture.engine.endpoints
+
+import android.os.Looper
+import com.seazn.capture.engine.adapter.TlsCloserGuard
+import com.seazn.capture.engine.core.RecordEntry
+
+/**
+ * F-P5-12: Ktor's TLS closer can throw an IOException on an IO thread after a cut. SCOPED guards our
+ * RTMP threads only; GLOBAL wraps the process default, the spike's fallback. Task 26's ten cuts decide.
+ */
+object TlsGuard {
+  enum class Mode { SCOPED, GLOBAL }
+
+  val MODE = Mode.SCOPED
+
+  /** Where a swallowed throw is recorded. EngineHost sets it to `EngineHost::line`. */
+  @Volatile var record: (RecordEntry) -> Unit = {}
+
+  private var installed = false
+
+  fun handler(previous: Thread.UncaughtExceptionHandler?) = Thread.UncaughtExceptionHandler { thread, failure ->
+    if (TlsCloserGuard.swallows(failure, Looper.getMainLooper().isCurrentThread)) {
+      record(RecordEntry("tls-closer-swallowed", listOf("error" to failure.javaClass.name)))
+    } else {
+      (previous ?: Thread.getDefaultUncaughtExceptionHandler())?.uncaughtException(thread, failure)
+    }
+  }
+
+  @Synchronized
+  fun install(mode: Mode) {
+    if (mode != Mode.GLOBAL || installed) return
+    installed = true
+    Thread.setDefaultUncaughtExceptionHandler(handler(Thread.getDefaultUncaughtExceptionHandler()))
+  }
+}
+```
+
+A coroutine's uncaught throw on a dispatcher thread goes to that thread's handler, which is how the scoped guard sees it. Ktor may run its TLS closer on `Dispatchers.IO` rather than on the endpoint's `io`, in which case the scoped handler never sees it. That is exactly what Task 26's ten-cut test proves or disproves. Write `SCOPED` here, and switch `MODE` only on that evidence. `EngineHost.build` sets `TlsGuard.record = ::line` and calls `TlsGuard.install(TlsGuard.MODE)` (Task 22's `build`).
+
+- [ ] **Step 4: Build.** Run `assembleDebug` (EXIT=0) and the core suite (`GlueRulesTest`: `InetAddress` only in `srt/SeaznSrtSink.kt`; no `runBlocking` in our files, although StreamPack's `CompositeEndpoint` uses one around `sink.write` on the muxer's thread, never ours).
+
+- [ ] **Step 5: Commit** with the message `feat(engine): our SRT sink, the routed endpoint, and a scoped TLS guard`, and the trailer lines. The body lists every srtdroid signature confirmed in Step 1.
 
 ### Task 22: The streamer adapter, the slate, and the audio level
 
-P4, F-P5-6, the B-frames finding, CD27 and CD28. This replaces `NoCapture`.
+P4, F-P5-6, the B-frames finding, carry 5, CD9, CD27 and CD28. This replaces `NoCapture`.
 
 **Files:**
 
-- Create in `G`: `capture/StreamerAdapter.kt`, `capture/SlateSource.kt`, `capture/AudioLevelEffect.kt`, `res/drawable/slate.xml` (the card: the camera glyph and the Seazn mark on night, with no words)
+- Create in `G`: `capture/StreamerAdapter.kt`, `capture/AudioSessionIds.kt`, `capture/SlateSource.kt`, `capture/AudioLevelEffect.kt`
+- Create: `modules/capture-engine/android/src/main/res/drawable/slate.xml` (the card's glyph: the camera and the Seazn mark, with no words), `modules/capture-engine/android/src/main/res/values/colors.xml`
+- Create: `core/src/test/kotlin/com/seazn/capture/engine/adapter/SlateColoursTest.kt` (M11)
 - Delete: `capture/NoCapture.kt`
-- Modify: `EngineHost.kt` (wires `StreamerAdapter`)
+- Modify: `EngineHost.kt` (`build` wires `StreamerAdapter`, the TLS guard's record, and the capture clock line)
 
-**Interfaces:** `StreamerAdapter(context, scope, tally: FrameTally, signals: AttemptSignals, cameras: CameraAvailability, meter: PeakMeter, report: (Input) -> Unit, failure: (Throwable) -> Unit) : Capture`, and `val streamer: StateFlow<SingleStreamer?>`, which the preview view reads in Task 25.
+**Interfaces:** `StreamerAdapter(context, tally: FrameTally, signals: AttemptSignals, cameras: CameraAvailability, meter: PeakMeter, report: (Input) -> Unit, failure: (Throwable) -> Unit, line: (RecordEntry) -> Unit) : Capture`, plus `audioSessionId(): Int?` for Task 23's `MicWatch`.
 
-**What it does.** Every command runs on `scope` (`Dispatchers.Default` plus a `SupervisorJob`) under one `Mutex`, so no two StreamPack calls interleave. Nothing blocks the scheduler thread: `execute` launches and returns.
+**What it does.** Every command runs on one scope (`Dispatchers.Default`, a `SupervisorJob`, and a `CoroutineExceptionHandler` that hands any escaped throw to `BridgeCore.failure`, I5), under one `Mutex`, so no two StreamPack calls interleave. Nothing blocks the scheduler thread: `prepare` and `execute` launch and return.
 
-| Command                           | StreamPack calls                                                                                                                                                                                                                                                                                                                                                                                                                                             | Reports                                                                                                                                                                  |
-| --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `prepare(config, rotation)`       | `cameraSingleStreamer(context, cameraId = back camera, audioSourceFactory = MicrophoneSourceFactory(), endpointFactory = CaptureEndpointFactory(…), defaultRotation = rotation)`; `setAudioConfig(AAC-LC 128k 48 kHz stereo)`; `setVideoConfig(H.264 1280×720 30 fps, gop 2 s, start Encode.START_BPS, customize = EncoderKeys.videoKeys(SDK_INT))`; add `AudioLevelEffect(meter)` to `audioInput.processor`; `cameras.held(id)`; `cameras.sessionStarted()` | `cameras.sessionStarted()`'s input, if any. A thrown codec error becomes `failure(PermanentPlatformFailure("encoder: …", e))`                                            |
-| `Connect(id, target, bps, maxBw)` | `tally.begin(id)`; `videoEncoder.bitrate = bps`; SRT: `sink.next(SrtOptions.plan(target, maxBw), id)` then `startStream(SrtMediaDescriptor(SrtUrl(host, port), serviceInfo))`; RTMPS: `startStream(target.url.trimEnd('/') + "/" + URLEncoder.encode(target.streamKey, "UTF-8"))`                                                                                                                                                                            | success: `signals.connected(id)`; a throw: `signals.connectFailed(id, t)` (with `SrtOptions.failure`); a null plan: `ConnectFailed(id, OTHER, "srt url does not parse")` |
-| `Disconnect(id)`                  | `stopStream()`, `close()`                                                                                                                                                                                                                                                                                                                                                                                                                                    | none (the machine asked)                                                                                                                                                 |
-| `Rebuild` / `StartNewSession`     | `stopStream()`, `close()`, then `Connect(next)` as above. These are the same calls as the manual reconnect that healed F-P5-6 in P5                                                                                                                                                                                                                                                                                                                          | as Connect                                                                                                                                                               |
-| `SetBitrate(id, bps)`             | `videoEncoder?.bitrate = bps`                                                                                                                                                                                                                                                                                                                                                                                                                                | none                                                                                                                                                                     |
-| `SetMaxBw(id, b)`                 | `sink.setMaxBw(b)` (F-P5-11)                                                                                                                                                                                                                                                                                                                                                                                                                                 | none                                                                                                                                                                     |
-| `SwitchCamera`                    | `cameras.selfChange(now)`; `setVideoSource(CameraSourceFactory(other))`; `cameras.held(other)`                                                                                                                                                                                                                                                                                                                                                               | none; frames keep coming (carry 19)                                                                                                                                      |
-| `ReopenCamera`                    | `cameras.selfChange(now)`; `setVideoSource(CameraSourceFactory(id))`                                                                                                                                                                                                                                                                                                                                                                                         | `CameraReopened(ok)`                                                                                                                                                     |
-| `Slate(on)`                       | on: `setVideoSource(SlateSource.factory(context))`, `audioInput.isMuted = true`; off: camera source back, `isMuted = false`                                                                                                                                                                                                                                                                                                                                  | none                                                                                                                                                                     |
-| `End`                             | `stopStream()`, `close()`, `release()`; `streamer.value = null`; `cameras.sessionEnded()`; `tally.begin(-1)`                                                                                                                                                                                                                                                                                                                                                 | none                                                                                                                                                                     |
+| Command                       | StreamPack calls                                                                                                                                                            | Reports                                                                                                    |
+| ----------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| `prepare(config, rotation)`   | `cameraSingleStreamer(context, back camera, endpointFactory = ours, defaultRotation = rotation)`; `setAudioConfig`; `setVideoConfig`; the level effect                      | `cameras.sessionStarted()`'s input, if any. A failure is `PermanentPlatformFailure` (CD11)                 |
+| `Connect`                     | `tally.begin(id)`; `clock.newAttempt()`; `videoEncoder.bitrate = bps`; SRT: `sink.next(plan, id)`, `startStream(SrtMediaDescriptor(host, port))`; RTMPS: `startStream(url)` | `signals.connected(id)`, or `signals.connectFailed(id, t)`; an SRT URL that does not plan: `ConnectFailed` |
+| `Disconnect(id)`              | `stopStream()`, `close()`                                                                                                                                                   | none (the machine asked)                                                                                   |
+| `Rebuild` / `StartNewSession` | `stopStream()`, `close()`, then `Connect(next)`. These are the calls of the manual reconnect that healed F-P5-6 in P5                                                       | as Connect                                                                                                 |
+| `SetBitrate(id, bps)`         | `videoEncoder?.bitrate = bps`                                                                                                                                               | none                                                                                                       |
+| `SetMaxBw(id, b)`             | `sink.setMaxBw(id, b)` (F-P5-11)                                                                                                                                            | none                                                                                                       |
+| `SwitchCamera`                | `cameras.selfChange(now)`; `setVideoSource(CameraSourceFactory(other))`; `cameras.held(other, now)`                                                                         | none; frames keep coming (carry 19)                                                                        |
+| `ReopenCamera`                | `cameras.selfChange(now)`; `setVideoSource(CameraSourceFactory(id))`                                                                                                        | `CameraReopened(ok)`                                                                                       |
+| `Slate(on)`                   | on: `setVideoSource(SlateSource.factory(context))`, `audioInput.isMuted = true`; off: the camera back, `isMuted = false`                                                    | none                                                                                                       |
+| `End`                         | `streamer.value = null` first (the preview unbinds), then `stopStream()`, `close()`, `release()`; `cameras.sessionEnded()`; `tally.begin(-1)`                               | none                                                                                                       |
 
 **Rules:**
 
-- An RTMPS endpoint closing without our asking is a drop. Collect the endpoint's `isOpenFlow` and call `signals.dropped(id, IOException("endpoint closed"))` when it goes false and no stop was requested for that attempt.
+- An endpoint closing without our asking is a drop. After each successful connect, a job waits for the endpoint's `isOpenFlow` to go false and calls `signals.dropped(id, IOException("endpoint closed"))` unless that attempt's stop was requested. For SRT the sink's completion usually reports first; `AttemptSignals` keeps one drop per attempt (R3).
 - **`setTargetRotation` is never called** (F-P5-6, CD27). `GlueRulesTest` enforces it.
 - The streamer is built once per accepted arm, with that arm's rotation, and released at `End`. Reconnects reuse it. That bounds #306's per-streamer surface leak to one per session. Task 26 measures RSS across 20 reconnects to see whether the leak follows `startStream` instead.
-- `serviceInfo` is a `TSServiceInfo` named "Seazn" by provider "Seazn Capture". It carries no session data.
-- `KEY_MAX_B_FRAMES` is the constant `MediaFormat.KEY_MAX_B_FRAMES`, and its value must equal `EncoderKeys`' `"max-bframes"`. Check with `javap -constants android.media.MediaFormat` against `android.jar`, and record the output.
-- `facts()` returns `CaptureFacts(meter.take(), cameraReady = streamer != null && cameraOpened, captureTimestampMs = tally.lastVideoEpochMs())`, where the counting endpoint records each video frame's `CaptureClock.epochMs(frame.ptsInUs, nowUs, wallNowMs)`. StreamPack's pts clock must be the one `nowUs` reads. Read `TimeUtils` in the jar, and use the same source (`System.nanoTime() / 1000` or `SystemClock.elapsedRealtimeNanos() / 1000`).
-- **`SlateSource`** is StreamPack's `BitmapSourceFactory` over a 1280×720 bitmap, drawn once from `res/drawable/slate.xml` onto `ground` (`#150b36`) with the camera glyph and the Seazn mark in `ink`. It has no words (spec §3), so it needs no translation. The colour literals live in `res/values/colors.xml` as named tokens copied from `src/ui/theme/tokens.ts`.
+- `SERVICE` is a `TSServiceInfo(DIGITAL_TV, 0x4698, "Seazn", "Seazn Capture")`. It carries no session data.
+- `KEY_MAX_B_FRAMES` is the constant `MediaFormat.KEY_MAX_B_FRAMES`, and its value must equal `EncoderKeys`' `"max-bframes"`: `javap -constants -cp "$ANDROID_HOME/platforms/android-36/android.jar" android.media.MediaFormat | grep MAX_B_FRAMES`. Record the output.
+- `cameraReady` is read, never kept: the current video source is a camera (`ICameraSource`, so never the slate) that is previewing or streaming. Both are `StateFlow` values, safe to read on the scheduler thread.
 
-- [ ] **Step 1: Write the adapter, the slate and the effect** to the table and rules above. Keep each `when` branch to one call into a private function of 10–25 lines.
+- [ ] **Step 1: Write the adapter, the slate and the effect.**
 
-- [ ] **Step 2: Build.** Run `assembleDebug` (EXIT=0) and the core suite. Then make the first live device check (the owner's hands): arm a hand-made v2 code for the raw stg input (Task 26, prerequisites), hold Go live, and confirm in Diagnostics that the state reaches publishing, that the fps reads about 30, and that `srt` counters move. Stop. Then the owner deletes the recording (`DELETE /stream/{video_uid}`).
+```kotlin
+package com.seazn.capture.engine.capture
 
-- [ ] **Step 3: Commit** with the message `feat(engine): capture and publish with StreamPack, never rotating the encode`, and the trailer lines.
+import android.annotation.SuppressLint
+import android.content.Context
+import android.media.AudioFormat
+import android.media.MediaFormat
+import android.os.Build
+import android.os.SystemClock
+import android.util.Size
+import com.seazn.capture.engine.adapter.AttemptSignals
+import com.seazn.capture.engine.adapter.CameraAvailability
+import com.seazn.capture.engine.adapter.EncoderKeys
+import com.seazn.capture.engine.adapter.FrameTally
+import com.seazn.capture.engine.adapter.PeakMeter
+import com.seazn.capture.engine.adapter.PermanentPlatformFailure
+import com.seazn.capture.engine.adapter.SrtOptions
+import com.seazn.capture.engine.core.Command
+import com.seazn.capture.engine.core.ConnectFailure
+import com.seazn.capture.engine.core.Encode
+import com.seazn.capture.engine.core.Input
+import com.seazn.capture.engine.core.RecordEntry
+import com.seazn.capture.engine.core.RtmpsTarget
+import com.seazn.capture.engine.core.SessionConfig
+import com.seazn.capture.engine.core.SrtTarget
+import com.seazn.capture.engine.endpoints.CaptureClockLine
+import com.seazn.capture.engine.endpoints.CaptureEndpointFactory
+import com.seazn.capture.engine.endpoints.RtmpDispatcher
+import com.seazn.capture.engine.srt.SeaznSrtSink
+import io.github.thibaultbee.streampack.core.configuration.mediadescriptor.MediaDescriptor
+import io.github.thibaultbee.streampack.core.elements.encoders.AudioCodecConfig
+import io.github.thibaultbee.streampack.core.elements.encoders.VideoCodecConfig
+import io.github.thibaultbee.streampack.core.elements.endpoints.composites.muxers.ts.data.TSServiceInfo
+import io.github.thibaultbee.streampack.core.elements.sources.video.camera.CameraSourceFactory
+import io.github.thibaultbee.streampack.core.elements.sources.video.camera.ICameraSource
+import io.github.thibaultbee.streampack.core.elements.sources.video.camera.extensions.backCameras
+import io.github.thibaultbee.streampack.core.elements.sources.video.camera.extensions.cameraManager
+import io.github.thibaultbee.streampack.core.elements.sources.video.camera.extensions.defaultCameraId
+import io.github.thibaultbee.streampack.core.elements.sources.video.camera.extensions.frontCameras
+import io.github.thibaultbee.streampack.core.elements.sources.video.camera.extensions.isBackCamera
+import io.github.thibaultbee.streampack.core.interfaces.startStream
+import io.github.thibaultbee.streampack.core.streamers.single.SingleStreamer
+import io.github.thibaultbee.streampack.core.streamers.single.cameraSingleStreamer
+import io.github.thibaultbee.streampack.ext.srt.configuration.mediadescriptor.SrtMediaDescriptor
+import java.io.IOException
+import java.net.URLEncoder
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineExceptionHandler
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+
+/** Capture and publish with StreamPack (CD27). Holds no rule: each decision is an adapter call. */
+@SuppressLint("MissingPermission") // CD16: prepare runs only after CAMERA and RECORD_AUDIO are granted
+class StreamerAdapter(
+  private val context: Context,
+  private val tally: FrameTally,
+  private val signals: AttemptSignals,
+  private val cameras: CameraAvailability,
+  private val meter: PeakMeter,
+  private val report: (Input) -> Unit,
+  private val failure: (Throwable) -> Unit,
+  private val line: (RecordEntry) -> Unit,
+) : Capture {
+  private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default + CoroutineExceptionHandler { _, t -> failure(t) })
+  private val mutex = Mutex()
+  private val sink = SeaznSrtSink(Dispatchers.IO.limitedParallelism(2), signals, report)
+  private val clock = CaptureClockLine(line)
+  private val endpoints = CaptureEndpointFactory(tally, sink, RtmpDispatcher.create(), clock)
+  private val current = MutableStateFlow<SingleStreamer?>(null)
+  override val streamer: StateFlow<SingleStreamer?> = current
+
+  @Volatile private var cameraId: String? = null
+  @Volatile private var stopAsked: Int? = null
+  private var closeWatch: Job? = null
+
+  override fun prepare(config: SessionConfig, rotation: Int) = serial { build(rotation) }
+
+  override fun execute(command: Command) = serial { run(command) }
+
+  override fun frames(attemptId: Int) = tally.read(attemptId)
+
+  override fun link(attemptId: Int) = sink.counters(attemptId)
+
+  override fun facts() = CaptureFacts(meter.take(), current.value?.let(::cameraOpened) ?: false, clock.lastVideoEpochMs)
+
+  /** Task 23's MicWatch: our AudioRecord's session id, by reflection (StreamPack keeps it private). */
+  fun audioSessionId(): Int? = current.value?.audioInput?.sourceFlow?.value?.let(AudioSessionIds::of)
+
+  private fun serial(block: suspend () -> Unit) {
+    scope.launch { mutex.withLock { block() } }
+  }
+
+  private suspend fun build(rotation: Int) {
+    val manager = context.cameraManager
+    val id = manager.backCameras.firstOrNull() ?: context.defaultCameraId
+    val made = try {
+      cameraSingleStreamer(context, cameraId = id, endpointFactory = endpoints, defaultRotation = rotation)
+    } catch (e: CancellationException) {
+      throw e
+    } catch (e: Exception) {
+      throw PermanentPlatformFailure("camera: ${e.javaClass.simpleName}", e)
+    }
+    configure(made)
+    cameraId = id
+    cameras.held(id, SystemClock.elapsedRealtime())
+    cameras.sessionStarted()?.let(report)
+    current.value = made
+  }
+
+  private suspend fun configure(made: SingleStreamer) {
+    try {
+      made.setAudioConfig(AUDIO)
+      made.setVideoConfig(video())
+    } catch (e: CancellationException) {
+      throw e
+    } catch (e: Exception) {
+      made.release()
+      throw PermanentPlatformFailure("encoder: ${e.javaClass.simpleName}", e)
+    }
+    made.audioInput.processor.add(AudioLevelEffect(meter))
+  }
+
+  private suspend fun run(command: Command) {
+    if (command is Command.End) return end()
+    val held = current.value ?: return // nothing armed: nothing to carry out
+    when (command) {
+      is Command.Connect -> connect(held, command)
+      is Command.Disconnect -> disconnect(held, command.attemptId)
+      is Command.Rebuild -> reconnect(held, command.previousAttemptId, command.next)
+      is Command.StartNewSession -> reconnect(held, command.previousAttemptId, command.next)
+      is Command.SetBitrate -> held.videoEncoder?.bitrate = command.bps
+      is Command.SetMaxBw -> sink.setMaxBw(command.attemptId, command.bytesPerSecond)
+      Command.SwitchCamera -> switchCamera(held)
+      Command.ReopenCamera -> reopenCamera(held)
+      is Command.Slate -> slate(held, command.on)
+      else -> Unit // HTTP, the descriptor and record lines are BridgeCore's
+    }
+  }
+
+  private suspend fun connect(held: SingleStreamer, command: Command.Connect) {
+    val id = command.attemptId
+    tally.begin(id)
+    clock.newAttempt()
+    stopAsked = null
+    held.videoEncoder?.bitrate = command.startBitrateBps
+    try {
+      when (val target = command.target) {
+        is SrtTarget -> held.startStream(srt(target, command) ?: return report(Input.ConnectFailed(id, ConnectFailure.OTHER, "srt url does not parse")))
+        is RtmpsTarget -> held.startStream(target.url.trimEnd('/') + "/" + URLEncoder.encode(target.streamKey, "UTF-8"))
+      }
+    } catch (e: CancellationException) {
+      throw e
+    } catch (e: Exception) {
+      return signals.connectFailed(id, e)?.let(report) ?: Unit
+    }
+    signals.connected(id)?.let(report)
+    watchClose(held, id)
+  }
+
+  private fun srt(target: SrtTarget, command: Command.Connect): MediaDescriptor? {
+    val plan = SrtOptions.plan(target, command.maxBwBytesPerSecond) ?: return null
+    sink.next(plan, command.attemptId)
+    return SrtMediaDescriptor(plan.host, plan.port, serviceInfo = SERVICE)
+  }
+
+  private fun watchClose(held: SingleStreamer, id: Int) {
+    closeWatch?.cancel()
+    closeWatch = scope.launch {
+      held.endpoint.isOpenFlow.first { open -> !open }
+      if (stopAsked != id) signals.dropped(id, IOException("endpoint closed"))?.let(report)
+    }
+  }
+
+  private suspend fun disconnect(held: SingleStreamer, id: Int) {
+    stopAsked = id
+    closeWatch?.cancel()
+    quietly("stop") { held.stopStream() }
+    quietly("close") { held.close() }
+  }
+
+  private suspend fun reconnect(held: SingleStreamer, previous: Int, next: Command.Connect) {
+    disconnect(held, previous)
+    connect(held, next)
+  }
+
+  private suspend fun switchCamera(held: SingleStreamer) {
+    val manager = context.cameraManager
+    val onBack = cameraId?.let(manager::isBackCamera) ?: true
+    val other = (if (onBack) manager.frontCameras else manager.backCameras).firstOrNull() ?: return
+    cameras.selfChange(SystemClock.elapsedRealtime())
+    held.setVideoSource(CameraSourceFactory(other))
+    cameraId = other
+    cameras.held(other, SystemClock.elapsedRealtime())
+  }
+
+  private suspend fun reopenCamera(held: SingleStreamer) {
+    val id = cameraId ?: return report(Input.CameraReopened(false))
+    cameras.selfChange(SystemClock.elapsedRealtime())
+    val ok = quietly("reopen") { held.setVideoSource(CameraSourceFactory(id)) }
+    report(Input.CameraReopened(ok))
+  }
+
+  private suspend fun slate(held: SingleStreamer, on: Boolean) {
+    if (on) held.setVideoSource(SlateSource.factory(context)) else cameraId?.let { held.setVideoSource(CameraSourceFactory(it)) }
+    held.audioInput.isMuted = on
+  }
+
+  private suspend fun end() {
+    val held = current.value
+    current.value = null // the preview unbinds first (Task 25)
+    closeWatch?.cancel()
+    if (held != null) {
+      quietly("stop") { held.stopStream() }
+      quietly("close") { held.close() }
+      quietly("release") { held.release() }
+    }
+    cameras.sessionEnded()
+    tally.begin(-1)
+  }
+
+  /** A teardown call whose failure is recorded and does not stop the next one. Never swallows cancellation. */
+  private suspend fun quietly(action: String, block: suspend () -> Unit): Boolean = try {
+    block()
+    true
+  } catch (e: CancellationException) {
+    throw e
+  } catch (e: Exception) {
+    line(RecordEntry("capture-call-failed", listOf("action" to action, "error" to e.javaClass.name)))
+    false
+  }
+
+  private fun cameraOpened(held: SingleStreamer): Boolean {
+    val source = held.videoInput.sourceFlow.value as? ICameraSource ?: return false
+    return source.isStreamingFlow.value || source.isPreviewingFlow.value
+  }
+
+  private fun video() = VideoCodecConfig(
+    mimeType = MediaFormat.MIMETYPE_VIDEO_AVC,
+    startBitrate = Encode.START_BPS,
+    resolution = Size(1280, 720),
+    fps = 30,
+    gopDurationInS = 2f,
+    customize = { _ -> EncoderKeys.videoKeys(Build.VERSION.SDK_INT).forEach { (key, value) -> setInteger(key, value) } },
+  )
+
+  companion object {
+    private val SERVICE = TSServiceInfo(TSServiceInfo.ServiceType.DIGITAL_TV, 0x4698, "Seazn", "Seazn Capture")
+
+    /** M10: PcmPeak reads 16-bit samples, so the byte format is set, never left to a default. */
+    private val AUDIO = AudioCodecConfig(
+      mimeType = MediaFormat.MIMETYPE_AUDIO_AAC,
+      startBitrate = 128_000,
+      sampleRate = 48_000,
+      channelConfig = AudioFormat.CHANNEL_IN_STEREO,
+      byteFormat = AudioFormat.ENCODING_PCM_16BIT,
+    )
+  }
+}
+```
+
+`AudioConfig` and `VideoConfig` are StreamPack's type aliases of `AudioCodecConfig` and `VideoCodecConfig`; use whichever name the jar exports. `SingleStreamer.endpoint`, `videoEncoder`, `audioInput`, `videoInput`, `setVideoSource` and the `startStream(descriptor | uriString)` extensions are StreamPack 3.2.0's (`streamers/single/SingleStreamer.kt`, `interfaces/IStreamer.kt:128-170`, `interfaces/ISource.kt:74`). Each `when` branch is one call into a private function, and every function stays within 25 lines.
+
+```kotlin
+package com.seazn.capture.engine.capture
+
+import io.github.thibaultbee.streampack.core.elements.sources.audio.IAudioSource
+
+/**
+ * Task 23's MicWatch needs our AudioRecord's session id. StreamPack keeps the AudioRecord in a private
+ * field, `audioRecord`, of its internal `AudioRecordSource` (3.2.0 `AudioRecordSource.kt:44`), which
+ * `MicrophoneSource` extends. A failure is null: MicWatch then reports nothing (carry 23's position).
+ */
+object AudioSessionIds {
+  fun of(source: IAudioSource): Int? = try {
+    val field = generateSequence(source.javaClass as Class<*>) { it.superclass }.firstNotNullOfOrNull { type ->
+      type.declaredFields.firstOrNull { it.name == "audioRecord" }
+    } ?: return null
+    field.isAccessible = true
+    (field.get(source) as? android.media.AudioRecord)?.audioSessionId
+  } catch (e: ReflectiveOperationException) {
+    null
+  } catch (e: SecurityException) {
+    null
+  }
+}
+```
+
+```kotlin
+package com.seazn.capture.engine.capture
+
+import com.seazn.capture.engine.adapter.PcmPeak
+import com.seazn.capture.engine.adapter.PeakMeter
+import io.github.thibaultbee.streampack.core.elements.data.RawFrame
+import io.github.thibaultbee.streampack.core.elements.processing.audio.IConsumerAudioEffect
+
+/** The permanent meter's source (AGENTS §6): the peak of each raw 16-bit frame, before the encoder. */
+class AudioLevelEffect(private val meter: PeakMeter) : IConsumerAudioEffect {
+  override fun consume(isMuted: Boolean, data: RawFrame) = meter.offer(if (isMuted) 0.0 else PcmPeak.of(data.rawBuffer))
+
+  override fun close() = Unit
+}
+```
+
+```kotlin
+package com.seazn.capture.engine.capture
+
+import android.content.Context
+import android.graphics.Bitmap
+import android.graphics.Canvas
+import androidx.core.content.ContextCompat
+import com.seazn.capture.engine.R
+import io.github.thibaultbee.streampack.core.elements.sources.video.bitmap.BitmapSourceFactory
+
+/** The phone-made still on air while the camera is someone else's (spec §3): no words, so no language. */
+object SlateSource {
+  @Volatile private var card: Bitmap? = null
+
+  fun factory(context: Context) = BitmapSourceFactory(card ?: draw(context).also { card = it })
+
+  private fun draw(context: Context): Bitmap {
+    val bitmap = Bitmap.createBitmap(1280, 720, Bitmap.Config.ARGB_8888)
+    val canvas = Canvas(bitmap)
+    canvas.drawColor(ContextCompat.getColor(context, R.color.seazn_ground))
+    val glyph = ContextCompat.getDrawable(context, R.drawable.slate) ?: return bitmap
+    glyph.setBounds(520, 240, 760, 480) // 240 px square, centred
+    glyph.draw(canvas)
+    return bitmap
+  }
+}
+```
+
+`res/values/colors.xml`:
+
+```xml
+<resources>
+  <!-- Copied from src/ui/theme/tokens.ts; SlateColoursTest keeps them equal (M11). -->
+  <color name="seazn_ground">#150b36</color>
+  <color name="seazn_ink">#f5f0e8</color>
+</resources>
+```
+
+`res/drawable/slate.xml` is a vector drawable, 240 dp square, filled with `@color/seazn_ink`: the camera outline and the Seazn mark. Copy the mark's path from the web repo's own SVG (read-only; copy, never edit there) or draw the camera alone if the mark's licence or path is unclear, and say which in the commit.
+
+- [ ] **Step 2: The slate colours test (M11).**
+
+```kotlin
+package com.seazn.capture.engine.adapter
+
+import java.io.File
+import kotlin.test.Test
+import kotlin.test.assertEquals
+
+class SlateColoursTest {
+  private fun tokens(): String = File(System.getProperty("capture.tokens")).readText()
+
+  private fun colours(): String = File(System.getProperty("capture.glue"), "../res/values/colors.xml").readText()
+
+  @Test
+  fun `M11 the slate's colours are the app's theme tokens, copied exactly`() {
+    for ((token, resource) in listOf("ground" to "seazn_ground", "ink" to "seazn_ink")) {
+      val theme = Regex("""$token:\s*'(#[0-9a-fA-F]{6})'""").find(tokens())?.groupValues?.get(1)
+      val android = Regex("""name="$resource">(#[0-9a-fA-F]{6})<""").find(colours())?.groupValues?.get(1)
+      assertEquals(theme?.lowercase(), android?.lowercase(), token)
+    }
+  }
+}
+```
+
+Add `systemProperty("capture.tokens", layout.projectDirectory.file("../../../../src/ui/theme/tokens.ts").asFile.absolutePath)` to `core/build.gradle.kts`'s test task beside `capture.glue` (Task 11) and `capture.i18n` (Task 10). `tokens.ts` writes `ground: '#150b36',` and `ink: '#f5f0e8',` (lines 23 and 30), which the regex reads. `capture.glue` is `android/src/main/java`, so `../res/values/colors.xml` is `android/src/main/res/values/colors.xml`. Mutate: change `seazn_ground` to `#150b37`. The test fails.
+
+- [ ] **Step 3: `EngineHost.build`, with the real capture.**
+
+```kotlin
+  private fun build(app: Context): Parts {
+    Logger.logger = VendorLogger { level, fields -> parts?.core?.log(level, "vendor-log", fields) }
+    TlsGuard.record = ::line
+    TlsGuard.install(TlsGuard.MODE)
+    val thread = HandlerThread("capture-engine").apply { start() }
+    lateinit var core: BridgeCore
+    val capture = StreamerAdapter(app, FrameTally(), AttemptSignals(), CameraAvailability(), PeakMeter(),
+      report = { core.report(it) }, failure = { core.failure(it) }, line = ::line)
+    val platform = AndroidPlatform(app, capture, HttpAdapter(), RecordFile(File(app.filesDir, "record")), ::emit)
+    core = BridgeCore.shared { BridgeCore(AndroidClock, HandlerScheduler(Handler(thread.looper)), platform, HttpAdapter::readBody) }
+    core.start()
+    return Parts(core, capture)
+  }
+```
+
+`report` and `failure` close over `core`, assigned before anything can call them: nothing reaches the capture until `core.start()` has run and an intent arrives. Delete `capture/NoCapture.kt`.
+
+- [ ] **Step 4: Build.** Run `assembleDebug` (EXIT=0) and the core suite (`SlateColoursTest` green; `GlueRulesTest` green). The first live device check is Task 23 Step 1 (I6).
+
+- [ ] **Step 5: Commit** with the message `feat(engine): capture and publish with StreamPack, never rotating the encode`, and the trailer lines. Stage `core/build.gradle.kts` and `SlateColoursTest.kt` by path with the glue.
 
 ## Batch C7 — Android glue II and the preview
 
-### Task 23: The watchers — camera, microphone, network and device
+### Task 23: The bridge's first phone run, and the watchers — camera, microphone, network and device
 
-F-P5-8, F-P5-9, F-P5-10, carry 5, carry 23 and CD20. Each watcher turns an Android callback into a call on its pure rule (Tasks 9–10), and reports through `BridgeCore.report`.
+F-P5-8, F-P5-9, F-P5-10, carry 5, carry 23, CD20 and I6. Step 1 runs the device checks C6 could not (Tasks 20–22): by now C5 has merged, so JS wires the native engine and Diagnostics has its engine rows. Each watcher turns an Android callback into a call on its pure rule (Tasks 9–10), and reports through `BridgeCore.report`.
 
 **Files:**
 
 - Create in `G`: `watch/CameraWatch.kt`, `watch/MicWatch.kt`, `watch/NetworkWatch.kt`, `watch/DeviceSampler.kt`
-- Modify: `EngineHost.kt` (starts them with the core), `AndroidPlatform.kt` (`facts()` includes `networkReachable`)
+- Modify: `EngineHost.kt` (`build` starts them), `AndroidPlatform.kt` (`facts()` reads `NetworkWatch.reachable`; `armed` tells `DeviceSampler`)
 
 **Interfaces:**
 
-- `CameraWatch(context, rule: CameraAvailability, report)`, with `start()` and `stop()`;
-- `MicWatch(context, sessionId: () -> Int?, rule: MicSilenceWatch, report)`;
-- `NetworkWatch(context, report)`, with `@Volatile val reachable: Boolean`;
-- `DeviceSampler(context, scheduler, report)`, which samples every 10 s.
+- `CameraWatch(context, rule: CameraAvailability, report, line)`, with `start()`;
+- `MicWatch(context, sessionId: () -> Int?, rule: MicSilenceWatch, report, line)`, with `start()`;
+- `NetworkWatch(context, report)`, with `start()` and `@Volatile var reachable: Boolean`;
+- `DeviceSampler(context, report)`, with `start()` and `armed()`, which starts a new `ChargeDrain` (drain is per session).
 
-**What each does:**
+All four live for the process, by design: the contended camera set and the network must be true before the first arm.
 
-- **`CameraWatch`.** It registers `CameraManager.AvailabilityCallback` on the main looper. `onCameraUnavailable(id)` and `onCameraAvailable(id)` call the rule with `SystemClock.elapsedRealtime()`, and report a non-null result. Each callback is wrapped in `runCatching`, with its failure recorded, because a callback that throws on the main thread kills the app (the spike's guarded callbacks). It is registered at process start, so the contended set is true before the first arm (`sessionStarted` re-reports it).
-- **`MicWatch`.** On API 29+ it registers `AudioManager.AudioRecordingCallback`. Each `onRecordingConfigChanged(configs)` maps to `RecordingConfig(c.clientAudioSessionId, c.isClientSilenced)` and calls the rule. Our id is read the way the spike read it, by reflection on `MicrophoneSource`'s `AudioRecord` field. Name the field, with its `javap` evidence, in the commit body. A reflection failure is recorded once, and the watch stays off: no silencing is reported, which is carry 23's position below API 29 too. Below 29 it registers nothing.
-- **`NetworkWatch`.** It calls `ConnectivityManager.registerDefaultNetworkCallback`. `onCapabilitiesChanged` reads `NET_CAPABILITY_VALIDATED`, and `onLost` is false. It reports `Input.Network(validated)` on each change, and keeps `reachable` for the facts.
-- **`DeviceSampler`.** Every 10 s it reads, on its own executor (binder calls never run on the scheduler thread):
-  - `PowerManager.currentThermalStatus` (API 29+);
-  - `getThermalHeadroom(10)` (API 30+);
-  - `BatteryManager.BATTERY_PROPERTY_CAPACITY` and `BATTERY_PROPERTY_CHARGE_COUNTER`;
-  - the sticky `ACTION_BATTERY_CHANGED` intent's `EXTRA_PLUGGED != 0`.
+- [ ] **Step 1: The bridge's first phone run (Tasks 20–22's device checks, I6).** Prerequisites: C5 merged into this branch, a local `assembleDebug` installed with `adb`, and Task 26's hand-made v2 code and local descriptor. The owner's hands: scan the code, hold Go live, then hold Stop. Read, and record in the commit body:
+  - **The bridge (Task 20):** Diagnostics' record shows the `intent.arm` JS line and native's `armed` line in one list, in order, with `kind` keys. `adb shell run-as com.seazn.capture cat files/record/session-record.ndjson | tail -5` shows the same lines on disk (a debug build; never paste a line that holds a URL into the results).
+  - **Publishing (Task 22):** the state reaches publishing; Diagnostics reads about 30 fps and the `srt` counters move; the stg player shows the picture.
+  - **The capture clock (Device-only claims):** `capture-clock` has a `lagMs` between 0 and a few hundred, never negative and never in the thousands.
+  - **The vendor logger (CD30):** `adb logcat -d --pid="$(adb shell pidof com.seazn.capture)" | grep -cE 'SrtSink|RtmpEndpoint|AbstractSink|CameraSource|StreamPack'` prints 0, and Diagnostics' record has any `vendor-log` lines instead.
+  - Then the owner deletes the recording (`DELETE /stream/{video_uid}`).
 
-  It builds `RawDevice`, feeds `ChargeDrain` with `SystemClock.elapsedRealtime()`, and reports `Input.Device(DeviceReadings.sample(raw, drain))`. A new `ChargeDrain` starts at each accepted arm, so drain is per session.
+- [ ] **Step 2: Write the four watchers.**
 
-- [ ] **Step 1: Write the four watchers.**
+```kotlin
+package com.seazn.capture.engine.watch
 
-- [ ] **Step 2: Build.** Run `assembleDebug` (EXIT=0) and the core suite.
+import android.content.Context
+import android.hardware.camera2.CameraManager
+import android.os.Handler
+import android.os.Looper
+import android.os.SystemClock
+import com.seazn.capture.engine.adapter.CameraAvailability
+import com.seazn.capture.engine.core.Input
+import com.seazn.capture.engine.core.RecordEntry
 
-- [ ] **Step 3: Make a device check** (the owner's hands). Toggle aeroplane mode: Diagnostics' network chip follows within seconds. Open another camera app while armed: the status line reads the camera-in-use line. Close it: the line clears. Plug and unplug the charger: the not-charging caption follows.
+/** F-P5-9 and F-P5-10: another app's camera use, from the availability callback. Registered at process start. */
+class CameraWatch(
+  private val context: Context,
+  private val rule: CameraAvailability,
+  private val report: (Input) -> Unit,
+  private val line: (RecordEntry) -> Unit,
+) {
+  fun start() {
+    val manager = context.getSystemService(CameraManager::class.java) ?: return
+    manager.registerAvailabilityCallback(Callback(), Handler(Looper.getMainLooper()))
+  }
 
-- [ ] **Step 4: Commit** with the message `feat(engine): camera, microphone, network and device watchers`, and the trailer lines.
+  private inner class Callback : CameraManager.AvailabilityCallback() {
+    override fun onCameraUnavailable(cameraId: String) = guarded { rule.unavailable(cameraId, SystemClock.elapsedRealtime()) }
+
+    override fun onCameraAvailable(cameraId: String) = guarded { rule.available(cameraId, SystemClock.elapsedRealtime()) }
+  }
+
+  /** A callback that throws on the main thread kills the app: record it instead (the spike's guarded callbacks). */
+  private fun guarded(read: () -> Input?) {
+    try {
+      read()?.let(report)
+    } catch (e: Exception) {
+      line(RecordEntry("watch-failed", listOf("action" to "camera", "error" to e.javaClass.name)))
+    }
+  }
+}
+```
+
+```kotlin
+package com.seazn.capture.engine.watch
+
+import android.content.Context
+import android.media.AudioManager
+import android.media.AudioRecordingConfiguration
+import android.os.Build
+import android.os.Handler
+import android.os.Looper
+import com.seazn.capture.engine.adapter.MicSilenceWatch
+import com.seazn.capture.engine.adapter.RecordingConfig
+import com.seazn.capture.engine.core.Input
+import com.seazn.capture.engine.core.RecordEntry
+
+/** F-P5-8: a call silencing our recording, matched by our AudioRecord's session id. API 29+ only (carry 23). */
+class MicWatch(
+  private val context: Context,
+  private val sessionId: () -> Int?,
+  private val rule: MicSilenceWatch,
+  private val report: (Input) -> Unit,
+  private val line: (RecordEntry) -> Unit,
+) {
+  fun start() {
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return
+    val audio = context.getSystemService(AudioManager::class.java) ?: return
+    audio.registerAudioRecordingCallback(Callback(), Handler(Looper.getMainLooper()))
+  }
+
+  private inner class Callback : AudioManager.AudioRecordingCallback() {
+    override fun onRecordingConfigChanged(configs: List<AudioRecordingConfiguration>) {
+      try {
+        val read = configs.map { RecordingConfig(it.clientAudioSessionId, it.isClientSilenced) }
+        rule.update(sessionId(), read)?.let { report(Input.MicSilenced(it)) }
+      } catch (e: Exception) {
+        line(RecordEntry("watch-failed", listOf("action" to "mic", "error" to e.javaClass.name)))
+      }
+    }
+  }
+}
+```
+
+`sessionId` is `StreamerAdapter::audioSessionId` (Task 22's `AudioSessionIds`, the field `audioRecord`). When it returns null, the rule reads nothing, which is carry 23's position; record it once as `watch-failed {action: "mic-session"}` the first time a session is armed and the id is null, so a reflection failure is evidence, not silence. `isClientSilenced` is API 29; the early return covers it.
+
+```kotlin
+package com.seazn.capture.engine.watch
+
+import android.content.Context
+import android.net.ConnectivityManager
+import android.net.Network
+import android.net.NetworkCapabilities
+import com.seazn.capture.engine.core.Input
+
+/** The network pre-flight (AGENTS §6): the default network's VALIDATED capability. */
+class NetworkWatch(private val context: Context, private val report: (Input) -> Unit) {
+  @Volatile var reachable = false
+    private set
+
+  fun start() {
+    val manager = context.getSystemService(ConnectivityManager::class.java) ?: return
+    manager.registerDefaultNetworkCallback(object : ConnectivityManager.NetworkCallback() {
+      override fun onCapabilitiesChanged(network: Network, caps: NetworkCapabilities) = changed(caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED))
+
+      override fun onLost(network: Network) = changed(false)
+    })
+  }
+
+  private fun changed(validated: Boolean) {
+    if (validated == reachable) return
+    reachable = validated
+    report(Input.Network(validated))
+  }
+}
+```
+
+```kotlin
+package com.seazn.capture.engine.watch
+
+import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
+import android.os.BatteryManager
+import android.os.Build
+import android.os.PowerManager
+import android.os.SystemClock
+import com.seazn.capture.engine.adapter.ChargeDrain
+import com.seazn.capture.engine.adapter.DeviceReadings
+import com.seazn.capture.engine.adapter.RawDevice
+import com.seazn.capture.engine.core.Input
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
+
+/** Thermal and battery every 10 s, on its own thread: binder calls never run on the scheduler thread (CD9). */
+class DeviceSampler(private val context: Context, private val report: (Input) -> Unit) {
+  private val io = Executors.newSingleThreadScheduledExecutor { task -> Thread(task, "capture-device") }
+
+  @Volatile private var drain = ChargeDrain()
+
+  fun start() {
+    io.scheduleWithFixedDelay({ sample() }, 0, 10, TimeUnit.SECONDS)
+  }
+
+  /** A new drain at each accepted arm: drain is per session. */
+  fun armed() {
+    drain = ChargeDrain()
+  }
+
+  private fun sample() {
+    try {
+      report(Input.Device(DeviceReadings.sample(read(), drain)))
+    } catch (e: Exception) {
+      // A failed reading skips one sample; the next comes in 10 s. Never stops the executor.
+    }
+  }
+
+  private fun read(): RawDevice {
+    val power = context.getSystemService(PowerManager::class.java)
+    val battery = context.getSystemService(BatteryManager::class.java)
+    val sticky = context.registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
+    val raw = RawDevice(
+      thermalStatus = if (Build.VERSION.SDK_INT >= 29) power?.currentThermalStatus else null,
+      thermalHeadroom = if (Build.VERSION.SDK_INT >= 30) power?.getThermalHeadroom(10) else null,
+      batteryPercent = battery?.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY)?.takeIf { it in 0..100 },
+      chargeUah = battery?.getLongProperty(BatteryManager.BATTERY_PROPERTY_CHARGE_COUNTER)?.takeIf { it > 0 },
+      plugged = sticky?.getIntExtra(BatteryManager.EXTRA_PLUGGED, -1)?.takeIf { it >= 0 }?.let { it != 0 },
+    )
+    drain.add(SystemClock.elapsedRealtime(), raw.chargeUah, raw.batteryPercent)
+    return raw
+  }
+}
+```
+
+A skipped sample is not recorded: at 10 s for three hours, a recurring failure would flood the record. If the `drain` reading is null for a whole session, the soak's Diagnostics shows it. `DeviceReadings.sample` only reads `drain.pctPerHour()` (Task 9), so the `add` here is the one place a sample is counted.
+
+- [ ] **Step 3: Wire them.** In `AndroidPlatform`, take `network: NetworkWatch` and `device: DeviceSampler`; `facts()` passes `networkReachable = network.reachable`, and `armed` calls `device.armed()` before `capture.prepare`. `EngineHost.build`, whole:
+
+```kotlin
+  private fun build(app: Context): Parts {
+    Logger.logger = VendorLogger { level, fields -> parts?.core?.log(level, "vendor-log", fields) }
+    TlsGuard.record = ::line
+    TlsGuard.install(TlsGuard.MODE)
+    val thread = HandlerThread("capture-engine").apply { start() }
+    lateinit var core: BridgeCore
+    val report: (Input) -> Unit = { core.report(it) }
+    val cameras = CameraAvailability()
+    val capture = StreamerAdapter(app, FrameTally(), AttemptSignals(), cameras, PeakMeter(), report, { core.failure(it) }, ::line)
+    val network = NetworkWatch(app, report)
+    val device = DeviceSampler(app, report)
+    val platform = AndroidPlatform(app, capture, HttpAdapter(), RecordFile(File(app.filesDir, "record")), network, device, ::emit)
+    core = BridgeCore.shared { BridgeCore(AndroidClock, HandlerScheduler(Handler(thread.looper)), platform, HttpAdapter::readBody) }
+    core.start()
+    CameraWatch(app, cameras, report, ::line).start()
+    MicWatch(app, capture::audioSessionId, MicSilenceWatch(Build.VERSION.SDK_INT), report, ::line).start()
+    network.start()
+    device.start()
+    return Parts(core, capture)
+  }
+```
+
+The watchers start after `core.start()`, so their first reports are posted to a running engine.
+
+- [ ] **Step 4: Build.** Run `assembleDebug` (EXIT=0) and the core suite.
+
+- [ ] **Step 5: Make a device check** (the owner's hands). Read each on the screen, and record what it showed:
+  - Toggle aeroplane mode: Diagnostics' network chip follows within seconds, and the record has the `Network` transitions.
+  - Open another camera app while armed: the status line reads the camera-in-use line. Close it: the line clears.
+  - Plug and unplug the charger: the not-charging caption follows, and Diagnostics' battery row changes.
+  - Place a phone call to the handset while live (API 29+): the status line reads the mic-silenced line; end the call: it clears. If nothing happens, read the record for `watch-failed {action: "mic-session"}` before calling it a defect.
+
+- [ ] **Step 6: Commit** with the message `feat(engine): the first phone run; camera, microphone, network and device watchers`, and the trailer lines.
 
 ### Task 24: The foreground service, the wake lock, permissions, and the previous exit
 
-AGENTS §9, carries 7 and 14, F-P5-3, CD10, CD16, CD21 and CD22.
+AGENTS §9, carries 7 and 14, F-P5-3, CD10, CD16 (PROPOSED), CD21, CD22, M8 and M9.
 
 **Files:**
 
 - Create in `G`: `CaptureForegroundService.kt`, `SessionKeeper.kt`, `Permissions.kt`, `ExitReader.kt`
-- Modify: `AndroidPlatform.kt` (`armed` goes through `SessionKeeper`; `End` releases it; `snapshot` updates the notification), `EngineHost.kt`
+- Modify: `AndroidPlatform.kt` (`armed` goes through the keeper; `End` tells it; `snapshot` updates the notification; `facts()` reads its two facts), `EngineHost.kt` (`keeper`, and the previous exit at first build)
 
 **Interfaces:**
 
-- `SessionKeeper(context, permissions: Permissions, report, refused: (String, Scope) -> Unit)`, with:
-  - `armed(config, then: () -> Unit)`;
-  - `ended()`;
-  - `notify(wire: Map<String, Any?>)`;
-  - `@Volatile val survivesBackground: Boolean`;
-  - `@Volatile val permissionsRefused: Boolean`.
-- `Permissions(appContext: expo AppContext)`, with `request(onResult: (cameraAndMic: Boolean) -> Unit)`.
+- `SessionKeeper(context, permissions: Permissions, line: (RecordEntry) -> Unit, refused: (String, Scope) -> Unit)`, with `armed(config, then: () -> Unit)`, `ended()`, `fgsRefused(e)`, `notify(wire)`, `notification(): Notification`, and `@Volatile` `survivesBackground` and `permissionsRefused`;
+- `Permissions(appContext: () -> AppContext?)`, with `request(onResult: (Grant) -> Unit)`, where `enum class Grant { GRANTED, REFUSED, UNAVAILABLE }`;
 - `ExitReader.previousLoss(context): RecordEntry?`.
 
-**`SessionKeeper.armed`, in order:**
+**The order is the fix for C3.** On Android 14+, a `camera|microphone` foreground service started before `CAMERA` and `RECORD_AUDIO` are granted throws `SecurityException` from `startForeground` (research §4). So the permissions come first, and the service starts only on a grant.
 
-1. It writes the session marker file (`filesDir/session.marker`, holding nothing but `"1"`).
-2. It acquires `PARTIAL_WAKE_LOCK`, tagged `"seazn:capture"`, with no timeout (CD10), and records `wake-lock` with `{ state: "held" }`.
-3. It starts `CaptureForegroundService` with `ContextCompat.startForegroundService`. The arm is always an answer to an intent from the visible viewfinder, so this is a start from the foreground (research §4). It sets `survivesBackground = true` when the start is requested. A `ForegroundServiceStartNotAllowedException` or `SecurityException` sets it false, and is recorded as `fgs-refused` with the class name. Showing an armed session the keep-open caption before the service has started would flash the caption at every arm, so the fact is optimistic until the start fails (CD18).
-4. It asks `Permissions` for `CAMERA` and `RECORD_AUDIO`, and on API 33+ for `POST_NOTIFICATIONS`, which blocks nothing.
-5. When camera and microphone are granted, it calls `then()`, which is `capture.prepare(…)`. When refused, it sets `permissionsRefused` and calls `refused("camera or microphone permission refused", Scope.SESSION)`. That is CD21: the session ends fatal-error, named.
+**`SessionKeeper`**, which runs its work on the main looper (M8: the marker write, the wake lock, the permission request and the service start are file IO and binder calls, which never run on the scheduler thread; the permission request wants the main thread anyway):
 
-**The rest of the keeper and the service:**
+```kotlin
+package com.seazn.capture.engine
 
-- **`SessionKeeper.ended()`** stops the service, releases the wake lock (and records it), deletes the marker, and sets `survivesBackground = false`. `permissionsRefused` stays as it was until the next arm, so the Ended block can say it.
-- **`CaptureForegroundService`** is `START_NOT_STICKY`. In `onStartCommand` it calls `ServiceCompat.startForeground(this, ID, notification, FOREGROUND_SERVICE_TYPE_CAMERA or FOREGROUND_SERVICE_TYPE_MICROPHONE)` on API 29+, and the two-argument form below.
-  - Its notification channel is `"capture"`, at `IMPORTANCE_LOW`, so it never makes a sound. The channel's name is the `stream.tally.live` word.
-  - The notification's text is `NotificationText.line(word, targetKbps, since, now, locale)`, where `word` is `NotificationText.WORDS[language][NotificationText.tallyKey(state)]`, falling back to `en`. The language is the phone's (CD16).
-  - Tapping it opens the app's launcher activity.
-  - It is updated from `notify(wire)` at most once every 5 s, and on a change of state word, because notifications are rate-limited.
-  - A refused `POST_NOTIFICATIONS` hides the notification and nothing else: the service still runs (research: it appears only in Task Manager).
-- **`ExitReader.previousLoss`**, at module creation on API 30+, reads `ActivityManager.getHistoricalProcessExitReasons(packageName, 0, 1)` and the marker. It returns `PreviousExit.entry(marker.exists(), info?.reason, info?.timestamp)`, and `EngineHost` logs it through `core.log` once. It then deletes the marker. Below API 30 it passes `null` for the reason. Before using the ints, check that `PreviousExit`'s word table matches `android.jar`:
+import android.annotation.SuppressLint
+import android.app.Notification
+import android.content.Context
+import android.content.Intent
+import android.os.Handler
+import android.os.Looper
+import android.os.PowerManager
+import androidx.core.content.ContextCompat
+import com.seazn.capture.engine.adapter.Scope
+import com.seazn.capture.engine.core.RecordEntry
+import com.seazn.capture.engine.core.SessionConfig
+import java.io.File
+
+/** CD10, CD16 and CD21: what keeps an armed session alive in the background, and who may start it. */
+class SessionKeeper(
+  private val context: Context,
+  private val permissions: Permissions,
+  private val line: (RecordEntry) -> Unit,
+  private val refused: (String, Scope) -> Unit,
+) {
+  private val main = Handler(Looper.getMainLooper())
+  private val marker = File(context.filesDir, MARKER)
+  private val wakeLock = context.getSystemService(PowerManager::class.java)
+    .newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "seazn:capture").apply { setReferenceCounted(false) }
+  private val notes = CaptureNotification(context)
+
+  /** CD16: optimistic from the accepted arm, so the keep-open caption never flashes; false once the start fails or the session ends. */
+  @Volatile var survivesBackground = false
+    private set
+
+  /** CD21: kept after the end, so the Ended block can say it; cleared at the next arm. */
+  @Volatile var permissionsRefused = false
+    private set
+
+  /** On the scheduler thread; returns at once. [then] builds the capture, once camera and microphone are granted. */
+  fun armed(config: SessionConfig, then: () -> Unit) {
+    survivesBackground = true
+    permissionsRefused = false
+    notes.language(config.language) // (P3)
+    main.post { guarded("arm") { begin(then) } }
+  }
+
+  fun ended() {
+    survivesBackground = false
+    main.post { guarded("end") { finish() } }
+  }
+
+  /** The service could not go foreground (C3's catch): the session carries on, and says to keep the app open. */
+  fun fgsRefused(e: Throwable) {
+    survivesBackground = false
+    line(RecordEntry("fgs-refused", listOf("error" to e.javaClass.name)))
+  }
+
+  fun notify(wire: Map<String, Any?>) = notes.update(wire)
+
+  fun notification(): Notification = notes.current()
+
+  @SuppressLint("WakelockTimeout") // CD10: held for the session, released at End, never on a timer
+  private fun begin(then: () -> Unit) {
+    marker.writeText("1")
+    wakeLock.acquire()
+    line(RecordEntry("wake-lock", listOf("state" to "held")))
+    permissions.request { grant -> main.post { guarded("permissions") { answered(grant, then) } } }
+  }
+
+  private fun answered(grant: Grant, then: () -> Unit) {
+    when (grant) {
+      Grant.GRANTED -> {
+        startService()
+        then()
+      }
+      Grant.REFUSED -> {
+        permissionsRefused = true
+        survivesBackground = false
+        refused("camera or microphone permission refused", Scope.SESSION)
+      }
+      Grant.UNAVAILABLE -> {
+        survivesBackground = false
+        refused("permission request unavailable", Scope.SESSION)
+      }
+    }
+  }
+
+  private fun startService() {
+    try {
+      ContextCompat.startForegroundService(context, Intent(context, CaptureForegroundService::class.java))
+    } catch (e: IllegalStateException) { // ForegroundServiceStartNotAllowedException, API 31+
+      fgsRefused(e)
+    } catch (e: SecurityException) {
+      fgsRefused(e)
+    }
+  }
+
+  private fun finish() {
+    context.stopService(Intent(context, CaptureForegroundService::class.java))
+    if (wakeLock.isHeld) {
+      wakeLock.release()
+      line(RecordEntry("wake-lock", listOf("state" to "released")))
+    }
+    marker.delete()
+  }
+
+  private fun guarded(action: String, block: () -> Unit) {
+    try {
+      block()
+    } catch (e: Exception) {
+      line(RecordEntry("keeper-failed", listOf("action" to action, "error" to e.javaClass.name)))
+    }
+  }
+
+  companion object {
+    const val MARKER = "session.marker"
+  }
+}
+```
+
+A refusal ends the session fatal-error and named (CD21), with the wake lock and marker released by the `End` that follows, through `ended()`. `UNAVAILABLE` (no activity to ask from, or another request in flight) is not "refused": it does not set `permissionsRefused`, so the Ended block never tells the operator to change a setting they never saw.
+
+**`Permissions`**:
+
+```kotlin
+package com.seazn.capture.engine
+
+import android.Manifest
+import android.os.Build
+import expo.modules.interfaces.permissions.PermissionsStatus
+import expo.modules.kotlin.AppContext
+
+enum class Grant { GRANTED, REFUSED, UNAVAILABLE }
+
+/** CD21: camera and microphone through Expo's permissions manager, on the current module's AppContext (CD32). */
+class Permissions(private val appContext: () -> AppContext?) {
+  fun request(onResult: (Grant) -> Unit) {
+    val manager = appContext()?.permissions ?: return onResult(Grant.UNAVAILABLE)
+    try {
+      manager.askForPermissions({ answers ->
+        val granted = NEEDED.all { answers[it]?.status == PermissionsStatus.GRANTED }
+        onResult(if (granted) Grant.GRANTED else Grant.REFUSED)
+      }, *(NEEDED + optional()))
+    } catch (e: IllegalStateException) { // "Another permissions request is in progress", or no activity
+      onResult(Grant.UNAVAILABLE)
+    }
+  }
+
+  /** POST_NOTIFICATIONS is asked with them on API 33+, and blocks nothing: a refusal only hides the notification. */
+  private fun optional(): Array<String> =
+    if (Build.VERSION.SDK_INT >= 33) arrayOf(Manifest.permission.POST_NOTIFICATIONS) else emptyArray()
+
+  companion object {
+    private val NEEDED = arrayOf(Manifest.permission.CAMERA, Manifest.permission.RECORD_AUDIO)
+  }
+}
+```
+
+`AppContext.permissions` is `Permissions?` (expo-modules-core 57 `AppContext.kt:215`), and `askForPermissions(PermissionsResponseListener, String...)` throws `IllegalStateException` when another request is in flight (`PermissionsService.kt:182`) or when there is no activity provider (`:94`).
+
+**`CaptureNotification`** (in `SessionKeeper.kt`, beside the keeper), which holds no rule: `NotificationText.content` decides the words (Task 10).
+
+```kotlin
+/** The persistent notification (AGENTS §9): `LIVE · 3000k · 47 min`, in the operator's language (P3), else the phone's. */
+class CaptureNotification(private val context: Context) {
+  @Volatile private var lang = "en"
+  @Volatile private var text = ""
+  private var shownAtMs = 0L
+  private var shownKind: Any? = null
+
+  fun language(armLanguage: String) {
+    lang = NotificationText.language(armLanguage, Locale.getDefault().language)
+  }
+
+  /** At most once every 5 s, or on a change of state word: notifications are rate-limited. Main looper. */
+  fun update(wire: Map<String, Any?>) {
+    val kind = (wire["state"] as? Map<*, *>)?.get("kind")
+    val now = SystemClock.elapsedRealtime()
+    text = NotificationText.content(wire, System.currentTimeMillis(), lang)
+    if (kind == shownKind && now - shownAtMs < 5_000) return
+    shownKind = kind
+    shownAtMs = now
+    NotificationManagerCompat.from(context).takeIf { it.areNotificationsEnabled() }?.notify(ID, current())
+  }
+
+  fun current(): Notification {
+    channel()
+    val open = context.packageManager.getLaunchIntentForPackage(context.packageName)
+    val tap = PendingIntent.getActivity(context, 0, open, PendingIntent.FLAG_IMMUTABLE)
+    return NotificationCompat.Builder(context, CHANNEL_ID).setSmallIcon(R.drawable.slate).setContentText(text)
+      .setOngoing(true).setOnlyAlertOnce(true).setContentIntent(tap).build()
+  }
+
+  private fun channel() {
+    if (Build.VERSION.SDK_INT < 26) return
+    val name = NotificationText.CHANNEL[lang] ?: NotificationText.CHANNEL.getValue("en")
+    context.getSystemService(NotificationManager::class.java)
+      .createNotificationChannel(NotificationChannel(CHANNEL_ID, name, NotificationManager.IMPORTANCE_LOW))
+  }
+
+  companion object {
+    const val ID = 7_301
+    const val CHANNEL_ID = "capture"
+  }
+}
+```
+
+`AndroidPlatform.snapshot` calls `keeper.notify(wire)` on the main looper (`main.post`), and only while `survivesBackground` is true, so an idle phone posts nothing. The channel's name is fixed when it is first created (M18); `createNotificationChannel` with the same id later changes nothing but the name, which Android allows. Add the imports (`NotificationChannel`, `NotificationManager`, `PendingIntent`, `SystemClock`, `Build`, `Locale`, `NotificationCompat`, `NotificationManagerCompat`, `NotificationText`).
+
+**`CaptureForegroundService`** (the C3 catch):
+
+```kotlin
+package com.seazn.capture.engine
+
+import android.app.Service
+import android.content.Intent
+import android.content.pm.ServiceInfo
+import android.os.Build
+import android.os.IBinder
+import androidx.core.app.ServiceCompat
+
+/** AGENTS §9: camera + microphone, started only after both are granted (CD16). START_NOT_STICKY: never restarted by the system. */
+class CaptureForegroundService : Service() {
+  override fun onBind(intent: Intent?): IBinder? = null
+
+  override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+    val keeper = EngineHost.keeper(this)
+    try {
+      ServiceCompat.startForeground(this, CaptureNotification.ID, keeper.notification(), TYPES)
+    } catch (e: RuntimeException) { // SecurityException, ForegroundServiceStartNotAllowedException
+      keeper.fgsRefused(e)
+      stopSelf()
+    }
+    return START_NOT_STICKY
+  }
+
+  companion object {
+    private val TYPES =
+      if (Build.VERSION.SDK_INT >= 29) ServiceInfo.FOREGROUND_SERVICE_TYPE_CAMERA or ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE else 0
+  }
+}
+```
+
+`ServiceCompat.startForeground(service, id, notification, type)` ignores the type below API 29.
+
+**`ExitReader`** (CD22):
+
+```kotlin
+package com.seazn.capture.engine
+
+import android.app.ActivityManager
+import android.content.Context
+import android.os.Build
+import com.seazn.capture.engine.adapter.PreviousExit
+import com.seazn.capture.engine.core.RecordEntry
+import java.io.File
+
+/** F-P5-3: was the last session lost with its process? Read once, at the engine's first build. */
+object ExitReader {
+  fun previousLoss(context: Context): RecordEntry? {
+    val marker = File(context.filesDir, SessionKeeper.MARKER)
+    val present = marker.exists()
+    val info = if (Build.VERSION.SDK_INT >= 30) {
+      context.getSystemService(ActivityManager::class.java)?.getHistoricalProcessExitReasons(context.packageName, 0, 1)?.firstOrNull()
+    } else {
+      null
+    }
+    marker.delete()
+    return PreviousExit.entry(present, info?.reason, info?.timestamp)
+  }
+}
+```
+
+Before using the ints, check that `PreviousExit`'s word table matches `android.jar`:
 
 ```bash
 javap -constants -cp "$ANDROID_HOME/platforms/android-36/android.jar" android.app.ApplicationExitInfo | grep 'REASON_'
@@ -5034,23 +7283,57 @@ javap -constants -cp "$ANDROID_HOME/platforms/android-36/android.jar" android.ap
 
 Record the output in the commit body. A difference changes `PreviousExit`'s table and test, never the glue.
 
-- [ ] **Step 1: Write the four files** to the order above.
+- [ ] **Step 1: Write the four files**, and wire them. `AndroidPlatform` takes `keeper: SessionKeeper`:
+  - `armed(config)` is `device.armed(); val rotation = EncoderKeys.rotationAtArm(displayRotation()); keeper.armed(config) { capture.prepare(config, rotation) }`. The rotation is read at the accepted arm, before the permission dialog, as P4 requires;
+  - `execute(command)` calls `keeper.ended()` for `Command.End`, then `capture.execute(command)`;
+  - `snapshot(wire)` also posts `keeper.notify(wire)` to the main looper while `keeper.survivesBackground`;
+  - `facts()` passes `survivesBackground = keeper.survivesBackground` and `permissionsRefused = keeper.permissionsRefused`.
 
-- [ ] **Step 2: Build and check the merged manifest** (Task 20, Step 7). Run `assembleDebug` (EXIT=0).
+  `EngineHost` gains `fun keeper(context: Context): SessionKeeper = parts(context).keeper`, with `keeper` added to `Parts`. Its `build`, whole and final:
 
-- [ ] **Step 3: Make a device check** (the owner's hands).
-  - Arm: the notification shows "READY".
-  - Go live: within 5 s it reads `LIVE · 1500k · 0 min`, with the target in k.
-  - Lock the screen for 5 minutes, then unlock: still publishing, and the record shows no gap in ticks longer than 1 s (CD10).
-  - Refuse the camera permission on a fresh install: the session ends with the permissions line, and the code is kept.
-  - Swipe the app away from Recents while live, then reopen it: the record's first lines include `previous-session-lost` with `exit` `user-requested` (on Android 11+).
-  - Then the owner deletes the recording.
+```kotlin
+  private fun build(app: Context): Parts {
+    Logger.logger = VendorLogger { level, fields -> parts?.core?.log(level, "vendor-log", fields) }
+    TlsGuard.record = ::line
+    TlsGuard.install(TlsGuard.MODE)
+    val thread = HandlerThread("capture-engine").apply { start() }
+    lateinit var core: BridgeCore
+    val report: (Input) -> Unit = { core.report(it) }
+    val cameras = CameraAvailability()
+    val capture = StreamerAdapter(app, FrameTally(), AttemptSignals(), cameras, PeakMeter(), report, { core.failure(it) }, ::line)
+    val network = NetworkWatch(app, report)
+    val device = DeviceSampler(app, report)
+    // CD32, I2: the AppContext is read at request time, so a JS reload's new module is the one asked.
+    val keeper = SessionKeeper(app, Permissions { appContext.value }, ::line) { message, scope -> core.refused(message, scope) }
+    val platform = AndroidPlatform(app, capture, HttpAdapter(), RecordFile(File(app.filesDir, "record")), network, device, keeper, ::emit)
+    core = BridgeCore.shared { BridgeCore(AndroidClock, HandlerScheduler(Handler(thread.looper)), platform, HttpAdapter::readBody) }
+    core.start()
+    ExitReader.previousLoss(app)?.let { core.log("warn", it.kind, it.fields.toMap()) }
+    CameraWatch(app, cameras, report, ::line).start()
+    MicWatch(app, capture::audioSessionId, MicSilenceWatch(Build.VERSION.SDK_INT), report, ::line).start()
+    network.start()
+    device.start()
+    return Parts(core, capture, keeper)
+  }
+```
 
-- [ ] **Step 4: Commit** with the message `feat(engine): foreground service, wake lock, permissions and the previous exit`, and the trailer lines.
+`build` is now 22 lines, inside AGENTS §12's bound; if a later change pushes it past 25, move the watchers' four lines into a `startWatchers` function.
+
+- [ ] **Step 2: Build and check the merged manifest** (Task 20, Step 7). Run `assembleDebug` (EXIT=0) and the core suite.
+
+- [ ] **Step 3: Make the device checks** (the owner's hands). Each names what to read:
+  - **Fresh install on Android 14+ (C3).** `adb uninstall com.seazn.capture`, install, scan, and grant both permissions when asked. Expected: no crash; `adb shell dumpsys activity services com.seazn.capture | grep -c 'isForeground=true'` prints 1 while armed; the record has no `fgs-refused`. Repeat with the camera **refused**: the session ends with the permissions line (`stream.ended.permissions`), the code is kept, and `dumpsys` shows no service.
+  - **The arm's AppState cycle (M9).** The permission dialog takes the activity to the background and back. Expected: the viewfinder stays on the armed session, the hold is not left half-filled, and the reopen gate does not navigate away. Record what the screen showed.
+  - **The notification (CD16, P3).** Armed with the app in French: the shade reads `PRÊT`. Go live: within 5 s it reads `EN DIRECT · 1500k · 0 min`. Android's app notification settings list the channel as "Diffusion en direct".
+  - **The wake lock (CD10, carry 14).** Lock the screen for 5 minutes while live, then unlock. Expected: still publishing, and the record has **no `tick-late` line** (CD33 writes one for any tick gap over 1000 ms). One `tick-late` is a finding: record its `gapMs`.
+  - **The previous exit (CD22).** While live, stop the app from Android's **Task Manager** (Settings → Apps → Seazn Capture → Force stop, or the notification shade's active-apps list on Android 13+), then reopen it. Expected: the record's first lines include `previous-session-lost` with `exit` `user-requested` (Android 11+). Then, separately, swipe the app from Recents while live, and **record what happens**: whether the process survives (the foreground service usually keeps it), and what `exit` the next launch reads. Do not assume either.
+  - Then the owner deletes the recordings.
+
+- [ ] **Step 4: Commit** with the message `feat(engine): foreground service after permissions, wake lock, and the previous exit`, and the trailer lines.
 
 ### Task 25: The native preview, and the viewfinder's own boundary
 
-Carry 9, owner ruling 2 (2026-10-01), CD19, CD27, research Open 11, and #288.
+Carry 9, owner ruling 2 (2026-10-01), CD19 (PROPOSED copy, P2), CD27, CD33, research Open 11, #288, I4 and I5.
 
 **Files:**
 
@@ -5059,109 +7342,242 @@ Carry 9, owner ruling 2 (2026-10-01), CD19, CD27, research Open 11, and #288.
 - Modify: `src/services/native/nativeSurfaces.tsx` (`NativePreview` renders the native view when the module is present, and an empty `View` otherwise)
 - Create: `src/ui/components/PreviewBoundary.tsx`, `src/ui/components/PreviewBoundary.test.tsx`
 - Modify: `src/ui/components/StreamStage.tsx` (wraps `<Preview />` only)
+- Modify: `test/fakeSurfaces.ts` (`crashPreview()` and `restorePreview()`, beside `crashOverlay()`)
+- Modify: `modules/capture-engine/src/nativeCaptureEngine.ts` (the dev-only `pauseReports(ms)`), `src/ui/components/DevScenes.tsx` (two dev buttons), the four dictionaries (two dev keys)
 
 **Interfaces:**
 
-- `PreviewBoundary({ children })`. Its fallback is the caption, plus a Show preview ghost button that remounts the children under a new key. It logs `preview.crashed`, with `{ count }`.
+- `PreviewBoundary({ children })`. Its fallback is the caption plus a Show preview ghost button. The button bumps a `generation` used as the **`ErrorBoundary`'s own `key`** (I4): `ErrorBoundary` returns its `fallback` for as long as it holds an error (`ErrorBoundary.tsx:58-62`), so only a new boundary instance clears it. Each catch logs `preview.crashed` with `{ count }`.
+- `FakeSurfaces.crashPreview()` makes `Preview` throw on every render until `restorePreview()`.
+- `NativeCaptureEngine.pauseReports(ms: number): void`, dev only: snapshots are ignored for `ms`, so CD17's silence can be seen on a phone.
 - `CapturePreviewView(context, appContext) : ExpoView`, with `shouldUseAndroidLayout = true`.
 
-- [ ] **Step 1: Write the failing boundary test.** It runs in jsdom: a child that throws stands in for the preview.
+- [ ] **Step 1: The fake.** In `test/fakeSurfaces.ts`, add `crashPreview` and `restorePreview` to `FakeSurfaces`, a `previewCrashing` flag, and `if (previewCrashing) throw new Error('preview crashed');` at the top of `Preview`, as `Overlay` does for `crashOverlay`.
+
+- [ ] **Step 2: Write the failing boundary tests**, in `PreviewBoundary.test.tsx`, over the house helper `test/renderViewfinder.tsx` (as `StreamScreen.onAir.test.tsx:273` does for the overlay). Each spies on `console.error` locally, as `ErrorBoundary.test.tsx:22` does: `test/setup-ui.ts` does not silence React's error log.
 
 ```tsx
-function Boom(): never {
-  throw new Error('preview gone');
-}
+import { act, fireEvent, screen } from '@testing-library/react';
+import { afterEach, beforeEach, expect, it, vi } from 'vitest';
+import en from '@/i18n/en.json';
+import es from '@/i18n/es.json';
+import fr from '@/i18n/fr.json';
+import nl from '@/i18n/nl.json';
+import { readRecord } from '../../../test/fakePorts';
+import { renderViewfinder } from '../../../test/renderViewfinder';
 
-it('CD19 a preview crash shows the caption and keeps the column: plate, line and Stop', () => {
-  const view = renderStream({ scene: 'live', Preview: Boom });
-  expect(view.getByText(en['stream.preview.stopped'])).toBeTruthy();
-  expect(view.getByText(en['stream.tally.live'].toUpperCase())).toBeTruthy();
-  expect(view.getByRole('button', { name: en['stream.action.stop'] })).toBeTruthy();
-  expect(readRecord(view.record).map((e) => e.event)).toContain('preview.crashed');
+let errors: ReturnType<typeof vi.spyOn>;
+beforeEach(() => {
+  errors = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+});
+afterEach(() => errors.mockRestore());
+
+const live = (lang?: 'es' | 'fr' | 'nl') =>
+  renderViewfinder(lang ? { deviceLanguages: [lang] } : {}, {
+    prepare: (fakes) => {
+      fakes.engine.scene('live');
+      fakes.surfaces.crashPreview();
+    },
+  });
+
+it('CD19 a preview crash shows the caption and keeps the column: plate, line and Stop', async () => {
+  const view = await live();
+  expect(screen.getByText(en['stream.preview.stopped'])).toBeTruthy();
+  expect(screen.getByTestId('tally-plate')).toBeTruthy();
+  expect(screen.getByRole('button', { name: en['stream.action.stop'] })).toBeTruthy();
+  expect(screen.queryByText('Something broke')).toBeNull();
+  expect(readRecord(view.record)).toContainEqual(
+    expect.objectContaining({ event: 'preview.crashed', fields: { count: 1 } }),
+  );
 });
 
-it('Show preview remounts the preview, and a second crash shows the caption again', () => {
-  let throws = true;
-  function Flaky() {
-    if (throws) throw new Error('once');
-    return <Text>preview back</Text>;
-  }
-  const view = renderStream({ scene: 'live', Preview: Flaky });
-  throws = false;
-  fireEvent.press(view.getByText(en['stream.preview.show']));
-  expect(view.getByText('preview back')).toBeTruthy();
+it('I4 Show preview brings the preview back; a second crash shows the caption again, counted', async () => {
+  const view = await live();
+  act(() => view.surfaces.restorePreview());
+  fireEvent.click(screen.getByText(en['stream.preview.show']));
+  expect(screen.getByTestId('preview')).toBeTruthy();
+  expect(screen.queryByText(en['stream.preview.stopped'])).toBeNull();
+  act(() => view.surfaces.crashPreview());
+  act(() => view.engine.scene('live')); // any re-render reaches the throwing preview
+  expect(screen.getByText(en['stream.preview.stopped'])).toBeTruthy();
+  expect(readRecord(view.record)).toContainEqual(
+    expect.objectContaining({ event: 'preview.crashed', fields: { count: 2 } }),
+  );
 });
 
-it.each(['es', 'fr', 'nl'] as const)('the caption reads in %s', (lang) => {
-  const view = renderStream({ scene: 'live', Preview: Boom, language: lang });
-  expect(view.getByText(dictionaries[lang]['stream.preview.stopped'])).toBeTruthy();
+it.each([
+  ['es', es],
+  ['fr', fr],
+  ['nl', nl],
+] as const)('the caption and the button read in %s', async (lang, dictionary) => {
+  await live(lang);
+  expect(screen.getByText(dictionary['stream.preview.stopped'])).toBeTruthy();
+  expect(screen.getByText(dictionary['stream.preview.show'])).toBeTruthy();
 });
 ```
 
-`renderStream` is Task 18's helper. Inject `Preview` through the fake `surfaces` port, the way plan A's stage tests inject surfaces. Check `test/fakePorts.ts`. Plan A's `test/setup-ui.ts` already silences React's error log for boundary tests; reuse it.
+The language comes from `deviceLanguages`: `createFakePorts(overrides: Partial<Ports> & { kvSeed? })` spreads the overrides over its defaults (`test/fakePorts.ts:59-99`, `['en']` by default), and no language is saved, so the provider picks the phone's. Press the `GhostButton` the way the existing tests do (`fireEvent.click` or the `press` helper). The tally plate's test id and the Stop button's role are what `StreamScreen.onAir.test.tsx` already finds. If a re-render through `engine.scene('live')` does not reach `Preview` (memoised), drive one through the fake's next report instead, and say which in the test's comment.
 
-- [ ] **Step 2: Run it.** Expected: it fails, because the crash currently reaches the root boundary.
+- [ ] **Step 3: Run them.** Expected: they fail, because the crash currently reaches the root boundary.
 
-- [ ] **Step 3: Implement `PreviewBoundary`** over plan A's `ErrorBoundary`. It passes `label="preview"`, an `onCatch` that logs `preview.crashed`, and a `fallback` that renders the caption (`Text variant="status"`, tone caution) and a `GhostButton` for `stream.preview.show`, which bumps a `generation` state used as the children's `key`. `StreamStage` wraps `<Preview />` in it, and nothing else on the stage. The overlay keeps its own boundary (AGENTS §7).
+- [ ] **Step 4: Implement `PreviewBoundary`.**
 
-- [ ] **Step 4: Implement the native view.**
+```tsx
+import { memo, useCallback, useRef, useState, type ReactNode } from 'react';
+import { StyleSheet, View } from 'react-native';
+import { usePorts } from '@/hooks/usePorts';
+import { useT } from '@/hooks/useLanguage';
+import { ErrorBoundary } from '@/ui/components/ErrorBoundary';
+import { GhostButton } from '@/ui/components/GhostButton';
+import { Text } from '@/ui/components/Text';
+
+/**
+ * The viewfinder's own boundary (owner ruling 2, CD19): a preview crash leaves the column, its
+ * plate and the Stop hold standing. The key is on the boundary itself (I4): it keeps its fallback
+ * while it holds an error, so Show preview mounts a new one.
+ */
+export const PreviewBoundary = memo(function PreviewBoundary({
+  children,
+}: {
+  children: ReactNode;
+}) {
+  const t = useT();
+  const { logger } = usePorts();
+  const [generation, setGeneration] = useState(0);
+  const crashes = useRef(0);
+  const onCatch = useCallback(() => {
+    crashes.current += 1;
+    logger.warn('preview.crashed', { count: crashes.current });
+  }, [logger]);
+  const show = useCallback(() => setGeneration((n) => n + 1), []);
+  const fallback = (
+    <View style={styles.fallback}>
+      <Text variant="status" style={styles.caption}>
+        {t('stream.preview.stopped')}
+      </Text>
+      <GhostButton label={t('stream.preview.show')} onPress={show} />
+    </View>
+  );
+  return (
+    <ErrorBoundary key={generation} label="preview" onCatch={onCatch} fallback={fallback}>
+      {children}
+    </ErrorBoundary>
+  );
+});
+
+const styles = StyleSheet.create({
+  fallback: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12 },
+  caption: { color: colour.caution },
+});
+```
+
+Import `colour` from `@/ui/theme/tokens` (`caution` is `#fb923c`, AGENTS §5). `Text` takes `variant` and a style; `GhostButton` takes `label` and `onPress`. Use a spacing token for `gap` if the theme has one. `count` is a plain number (CD6). The fallback is the stage's middle, which is the preview's own area: a caption there covers nothing the operator frames, because there is no picture. `StreamStage` wraps `<Preview />` in it, and nothing else on the stage. The overlay keeps its own boundary (AGENTS §7).
+
+- [ ] **Step 5: Implement the native view** (I5: collect while attached, unbind on a null streamer, never crash the app).
 
 ```kotlin
 package com.seazn.capture.engine
 
 import android.content.Context
+import com.seazn.capture.engine.core.RecordEntry
 import expo.modules.kotlin.AppContext
 import expo.modules.kotlin.views.ExpoView
 import io.github.thibaultbee.streampack.ui.views.PreviewView
+import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 
 /**
  * The full-bleed native preview (AGENTS §6, carry 9). Frames never cross the bridge. FIT, so the
  * operator frames exactly what is encoded (#288). No pinch-zoom or tap-to-focus: a tap on a tripod
- * is a mis-tap (AGENTS §6). It binds to the session's streamer while one exists.
+ * is a mis-tap. It follows the session's streamer while attached, and only then: a screen pushed
+ * over the viewfinder may detach it and attach it again without a rebuild.
  */
 class CapturePreviewView(context: Context, appContext: AppContext) : ExpoView(context, appContext) {
   override val shouldUseAndroidLayout = true
 
-  private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
-  private val preview =
-    PreviewView(context).apply {
-      scaleMode = PreviewView.ScaleMode.FIT
-      enableZoomOnPinch = false
-      enableTapToFocus = false
-    }
+  private val failed = CoroutineExceptionHandler { _, t ->
+    EngineHost.line(RecordEntry("preview-failed", listOf("error" to t.javaClass.name)))
+  }
+  private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main + failed)
+  private var following: Job? = null
+  private val preview = PreviewView(context).apply {
+    scaleMode = PreviewView.ScaleMode.FIT
+    enableZoomOnPinch = false
+    enableTapToFocus = false
+  }
 
   init {
     addView(preview, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
-    scope.launch { EngineHost.capture.streamer.collect { streamer -> streamer?.let { preview.setVideoSourceProvider(it) } } }
+  }
+
+  override fun onAttachedToWindow() {
+    super.onAttachedToWindow()
+    following?.cancel()
+    following = scope.launch {
+      EngineHost.capture(context).streamer.collect { streamer -> preview.setVideoSourceProvider(streamer) }
+    }
   }
 
   override fun onDetachedFromWindow() {
+    following?.cancel()
+    following = null
     super.onDetachedFromWindow()
-    scope.cancel()
   }
 }
 ```
 
-`setVideoSourceProvider` is a suspend function taking `IWithVideoSource` (javap, research). `EngineHost.capture` is the process's `StreamerAdapter`. In `nativeSurfaces.tsx`, `NativePreview` is `requireNativeView('CaptureEngine')`, behind the same optional-module check plan A's lazy surfaces use, so the web and jsdom builds still render an empty stage.
+`setVideoSourceProvider(newStreamer: IWithVideoSource? = null)` is a suspend function (`PreviewView.kt:242`), so a null streamer unbinds. A throw there is recorded as `preview-failed` and goes no further: a native crash is beyond the JS boundary's reach. In `nativeSurfaces.tsx`, `NativePreview` is `requireNativeView('CaptureEngine')`, behind the same optional-module check plan A's lazy surfaces use, so the web and jsdom builds still render an empty stage.
 
-- [ ] **Step 5: Run `pnpm check`, build, and make a device check** (the owner's hands).
+- [ ] **Step 6: The dev controls (C7 owns these files).** In `nativeCaptureEngine.ts`, `pauseReports(ms)` sets a `pausedUntil` that the `onSnapshot` listener checks; it is on `NativeCaptureEngine` only, which a release build reaches only through `ports.nativeEngine` in a dev build. Add a test in `nativeCaptureEngine.test.ts`: after `pauseReports(5_000)`, an emitted snapshot does not notify, and after 5 s one does (fake timers). In `PreviewBoundary.tsx`, the dev crash, rendered beside `{children}` inside the boundary only when `__DEV__`:
+
+```tsx
+const devCrash = { armed: false, listeners: new Set<() => void>() };
+
+/** Dev only: the boundary's next render throws, as a native preview crash would reach it. */
+export function crashPreviewOnce(): void {
+  devCrash.armed = true;
+  devCrash.listeners.forEach((listener) => listener());
+}
+
+function DevCrash(): null {
+  const [, bump] = useReducer((n: number) => n + 1, 0);
+  useEffect(() => {
+    devCrash.listeners.add(bump);
+    return () => {
+      devCrash.listeners.delete(bump);
+    };
+  }, []);
+  if (!devCrash.armed) return null;
+  devCrash.armed = false;
+  throw new Error('dev preview crash');
+}
+```
+
+In `DevScenes.tsx`, beside the probe, two `__DEV__`-only `GhostButton`s: **Crash preview** (`stream.dev.crashPreview`), which calls `crashPreviewOnce()`, and **Pause engine reports** (`stream.dev.pauseReports`), which calls `ports.nativeEngine?.pauseReports(5_000)` and is hidden when `nativeEngine` is null. Add a jsdom test: with `__DEV__` true, `crashPreviewOnce()` shows the caption. Their copy, reviewed against the glossary as the batch C5 intro says, and committed with no `_review` marker:
+
+| Key                       | en                   | es                        | fr                               | nl                        |
+| ------------------------- | -------------------- | ------------------------- | -------------------------------- | ------------------------- |
+| `stream.dev.crashPreview` | Crash preview        | Romper vista previa       | Planter l'aperçu                 | Voorbeeld laten crashen   |
+| `stream.dev.pauseReports` | Pause engine reports | Pausar informes del motor | Suspendre les rapports du moteur | Engine-meldingen pauzeren |
+
+They use the glossary's preview (vista previa, aperçu, voorbeeld) and the **engine** row Task 18 added. Dev keys have no budget.
+
+- [ ] **Step 7: Run, mutate, build, and make the device checks.** Run `pnpm check` and `pnpm i18n:release-check`. Mutate one at a time:
+  1. Put `key={generation}` on the children instead of the `ErrorBoundary`. The I4 test fails: the caption stays (the review's finding, now pinned).
+  2. Drop `crashes.current += 1`. The count assertion fails.
+
+  Then `assembleDebug`, install, and the owner's hands. Read each, and record what the screen showed:
   - Armed, the preview shows the camera full-bleed with letterbox bars (FIT).
-  - Hold the phone landscape-left, then landscape-right: the preview is upright both ways, and the encoded stream on the stg player is upright for the side held at arm (P4's three assertions, recorded in Task 26).
-  - Live, pull down the notification shade so the view resizes: the record shows no frame gap over 500 ms (Open 11).
-  - Kill the preview with the dev menu's "Crash preview" entry: the caption shows, Stop still works, and Show preview brings the picture back.
+  - **The Settings round trip (I5).** Armed, open Settings, come back: the preview shows. Then End, scan again and re-arm: the preview shows the new session.
+  - **The resize (Open 11, CD33).** Live, pull down the notification shade so the view resizes, and push it back. Expected: the record has **no `frames-gap` line** (CD33 writes one for any video stall over 500 ms while publishing). One `frames-gap` is a finding: record its `gapMs`.
+  - **The boundary (CD19).** Tap **Crash preview**: the caption shows, the plate and Stop are still there, and Show preview brings the picture back. Tap it twice: the record has `preview.crashed` with `count` 1, then 2.
+  - **Silence on a phone (CD17).** Live, tap **Pause engine reports**: within 3 s the plate reads TROUBLE and the line reads the silent line; after 5 s it reads LIVE again.
 
-  Add two `__DEV__`-only `GhostButton`s with this step, shown in `DevScenes` beside the probe:
-  - **"Crash preview"** makes the stage's preview throw on its next render;
-  - **"Pause engine reports"** makes the native engine ignore `onSnapshot` for 5 s. It is a dev-only `pauseReports(ms)` on `NativeCaptureEngine`, which a release build never wires.
-
-  Both labels are dev-only English, like plan A's dev scene labels (`stream.dev.*`). Add them to all four dictionaries as the dev keys are.
-
-- [ ] **Step 6: Commit** with the message `feat(stream): the native preview, with a boundary of its own`, and the trailer lines.
+- [ ] **Step 8: Commit** with the message `feat(stream): the native preview, with a boundary of its own`, and the trailer lines.
 
 ## Batch C8 — the device gate
 
@@ -5182,17 +7598,21 @@ Spec §6 _Device checks_ and §7 phase 4's exit, carries 20, 22–26, research O
 
 **The checklist.** Two handsets: OnePlus NE2211 (Android 14+) and Redmi Note 7 Pro (Android 10). Both orientations the mode allows, and en and fr where the copy changed. Crop screenshots to the app, and delete anything personal.
 
-- [ ] **The contract on the phone.** Dev build, Diagnostics → Run engine contract: eight `probe.pass`, no `probe.fail` (carry 1).
-- [ ] **P4, three independent assertions** for each landscape side:
-  1. the preview is upright;
-  2. the encoded stream is upright, checked with `ffprobe -show_streams` on the stg recording's download;
-  3. the rotation metadata is absent or 0.
-- [ ] **B-frames off on both SoCs:** `ffprobe -show_streams` gives `has_b_frames=0`.
+- [ ] **The contract on the phone.** Dev build, Diagnostics → Run engine contract: eight `probe.pass`, no `probe.fail` (carry 1). The probe settles on each intent's ack (CD8).
+- [ ] **A fresh install on Android 14+ (C3).** On the OnePlus: `adb uninstall com.seazn.capture`, install the release build, scan, grant both permissions. Expected: no crash, `adb shell dumpsys activity services com.seazn.capture | grep -c 'isForeground=true'` prints 1 while armed, and the record has no `fgs-refused`. Then uninstall, install, and **refuse** the camera: the permissions line shows, the code is kept, and `dumpsys` lists no service.
+- [ ] **P4, three independent assertions** for each landscape side, each read with its own tool, so they fail separately:
+  1. **the preview is upright:** a screenshot of the viewfinder, cropped to the app;
+  2. **the encoded picture is upright:** download the stg recording, grab one frame with `ffmpeg -ss 5 -i rec.mp4 -frames:v 1 frame.png`, and open it (`ffprobe` cannot see uprightness);
+  3. **the rotation metadata is absent or 0:** `ffprobe -v error -show_streams -show_entries stream_side_data=rotation rec.mp4`, and the stream's `width` is greater than its `height`.
+- [ ] **B-frames off on both SoCs (M12):** `ffprobe -v error -select_streams v -show_frames -show_entries frame=pict_type -of csv rec.mp4 | grep -c ',B'` prints 0, and `-show_streams` gives `has_b_frames=0`.
 - [ ] **F-P5-11:** throttle the laptop hotspot to 1.5 Mbit/s. The SRT `msSndBuf` stays bounded and the egress follows the target. Record the encoder's frame rate under paced `send` (#302).
 - [ ] **srtdroid 1.10.1:** 10 minutes on air over SRT to Cloudflare, with one forced reconnect (aeroplane mode for 5 s). The stg player shows the stream after the reconnect.
 - [ ] **F-P5-12:** 10 RTMPS cuts (aeroplane mode for 3 s each) with `MODE = SCOPED`. If any crashes, switch to `GLOBAL` and repeat. Then mutate the guard to swallow nothing, and see the crash return at least once. Record which mode shipped.
-- [ ] **The foreground service on Android 14 and 16** (or the newest the owner has): no `SecurityException` at arm, and the notification text in the phone's language.
-- [ ] **Wake lock:** the screen locked for 5 minutes on air; the record shows ticks every 500 ms throughout.
+- [ ] **The foreground service on Android 14 and 16** (or the newest the owner has): no `SecurityException` at arm (`adb logcat -d | grep -c SecurityException` is 0 for the app's pid), and the notification text in the operator's language (P3, if accepted; else the phone's).
+- [ ] **Wake lock (CD10, CD33):** the screen locked for 5 minutes on air, on both phones. Expected: the record holds **no `tick-late` line**; any one is recorded with its `gapMs`.
+- [ ] **The previous exit (CD22):** a Task Manager stop while live, then reopen: `previous-session-lost {exit: user-requested}`. Then a swipe from Recents while live: record whether the process survived and what the next launch read. A swipe is not assumed to be `user-requested`.
+- [ ] **The audio floor (AGENTS §10, T1), on both phones:** armed, the microphone covered or the room silent: Go live stays disabled and the sound chip reads not ready. A voice at arm's length: Go live enables. Assert the level floor, never the stream's presence.
+- [ ] **A JS reload while live (Review Focus 2, CD32):** dev build, live, then reload from the dev menu. Expected: the viewfinder comes back on air without a re-arm, snapshots arrive (the plate stays LIVE past 3 s), and Diagnostics shows the lines from before the reload. Then stop, scan again, and arm: the permission flow (if asked) and the arm work on the new instance.
 - [ ] **Carry 22:** take a phone call while live. Record the order of `mic-silenced`, `degraded` and the call's end, and what the audio is at hang-up (stg player).
 - [ ] **Carry 23:** on the API 28 handset or below, a call: no silencing line, as designed. Measure whether the link collapses every 25–30 s against the 25 s reset.
 - [ ] **Carry 24:** another app takes the camera with no slate frames. Measure how long Degraded reads, and the switch-camera time (dev only).
@@ -5200,18 +7620,20 @@ Spec §6 _Device checks_ and §7 phase 4's exit, carries 20, 22–26, research O
 - [ ] **Carry 26:** keep this run's session records, whose delivery lines carry the delivered lag. Plan D measures the 20 s-per-60 s rule from them at the staging match (deferred, as traced).
 - [ ] **Carry 20:** record the 204s seen on the raw input before first frame, and the playlist variants Cloudflare served. Hint 0.1 against one variant is plan D's, with the real descriptor.
 - [ ] **#306:** RSS (`adb shell dumpsys meminfo <pkg>`) after 20 forced reconnects. Compare per reconnect and per session.
-- [ ] **Open 11:** a preview resize while live; no encoded-frame gap over 500 ms in the record.
+- [ ] **Open 11 (CD33):** a preview resize while live (the shade pulled down and back, and a Settings round trip): the record holds **no `frames-gap` line**; any one is recorded with its `gapMs`.
+- [ ] **The capture clock (carry 5):** every attempt's `capture-clock {lagMs}` is between 0 and a few hundred, never negative and never in the thousands.
 - [ ] **Battery drain** on the second OEM: `drainPctPerHour` after 30 minutes live. Compare with a reading from the Settings battery screen.
 - [ ] **The Kotlin window:** record `./gradlew --version` and the Kotlin plugin version the build used; confirm that no 2.3+ metadata error appeared.
 - [ ] **What the operator sees**, on both phones, en and fr:
-  - the silence line, using the dev menu's "Pause engine reports" (Task 25, Step 5);
+  - the silence line, using the dev menu's "Pause engine reports" (Task 25, Step 6);
   - the permissions line, the preview boundary, every plate colour, and the notification.
+- [ ] **The copy-fit check (plan A's results, the three-line check), extended with this plan's lines:** on the narrower phone, in fr (the longest), read `stream.status.engineSilent` (48 characters, at its budget), `stream.advisory.keepOpen` (56) in the top strip (forced with the fake engine's scene in a dev build), `stream.preview.stopped` and `stream.preview.show` on the stage, and `stream.ended.permissions` in the Ended block. Each is whole: no clipped word, and the status line within its three lines.
 
   The keep-open caption shows only on a real refusal of the service's start, which cannot be forced on a stock phone. It is proved in jsdom, and listed as **unproved on a device** unless one occurs.
 
-- [ ] **Step 1: Write the results document** with each tick and its evidence. Every claim names the handset, build and screenshot. Include:
-  - the owner-visible decisions CD17, CD18, CD19 and CD21, for review, with their copy in four languages;
-  - the open question carried from plan A (the crash screen's language);
+- [ ] **Step 1: Write the results document** with each tick and its evidence. Every claim names the handset, build and screenshot, and says which claims are device-only. Include:
+  - the **PROPOSED decisions** (P1, P2, P3) and the owner's answer to each, as given in the owner's own words; a decision still unanswered is listed as such, never as accepted;
+  - the owner-visible decisions CD7 (the line format), CD17, CD18, CD19 and CD21, with their copy in four languages;
   - deviations, each with its reason.
 
 - [ ] **Step 2: Write the plan D section,** _Prerequisites left for plan D_:
@@ -5225,53 +7647,61 @@ Spec §6 _Device checks_ and §7 phase 4's exit, carries 20, 22–26, research O
 
 ## The four questions (AGENTS §10)
 
-| Question                                  | Where this plan answers it                                                                                                                                                                                                                                     |
-| ----------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **A second call**                         | One poller per attempt (Task 7); one drop and one connect per attempt (Task 11); a second arm ignored (Task 12); one engine per process (Task 12); a clearing under way drops a second call (Task 17); stop and arm unsettled (Task 16)                        |
-| **An empty input**                        | An empty arm refused by name (Task 4); no native module gives the absent engine (Tasks 15, 19); a malformed snapshot is kept out (Task 14); no descriptor URL (Task 12); no PCM, no charge counter, NaN headroom (Task 9); a permission refused (Tasks 12, 24) |
-| **After an interruption**                 | JS restarting under a live native (Tasks 12, 15); a permanent failure mid-session (Task 6); a stop never answered (Task 17); deep sleep (Task 24, CD10); the process lost mid-match (Tasks 9, 24); a preview crash (Task 25)                                   |
-| **Another mode, orientation or language** | Either landscape side fixed at arm (Tasks 11, 22, 26); four languages for every new line (Tasks 18, 25) and for the notification (Task 10); Scoring and Dashboard never touch the engine, and S2–S4 own them                                                   |
+| Question                                  | Where this plan answers it                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| ----------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **A second call**                         | One poller per attempt (Task 7); one drop and one connect per attempt (Task 11); a second arm ignored, and `armed` noticed once per session by identity (Task 12, CD31); one engine per process (Task 12); a second module instance after a JS reload, whichever of `OnCreate` and `OnDestroy` runs first (Task 12's `OwnedSlot`, CD32); an absent engine armed while ended (Task 15, M5); a clearing under way drops a second call (Task 17); stop and arm unsettled, settled by ack (Task 16); Show preview pressed twice, counted (Task 25); a second permission request in flight is `UNAVAILABLE`, not refused (Task 24) |
+| **An empty input**                        | An empty arm refused by name (Task 4); no native module gives the absent engine (Tasks 15, 19); a malformed snapshot is kept out (Task 14); an unparseable descriptor pinned unnamed by sid (Task 14, M4); no descriptor URL (Task 12); no PCM, no charge counter, NaN headroom (Task 9); a permission refused, or no activity to ask from (Tasks 12, 24); free text logged before anything is protected (Task 3, I12); no glue files yet, reported skipped, never a vacuous pass (Task 11); no language in the arm (Tasks 10, 14, P3); no ack (Tasks 16, 19: a 5 s guard)                                                    |
+| **After an interruption**                 | JS restarting under a live native (Tasks 12, 15, 26); a permanent failure mid-session, or thrown by `armed` itself (Tasks 6, 12); a stop never answered (Task 17); deep sleep, recorded as `tick-late` (Tasks 9, 12, 24, 26); a video stall, recorded as `frames-gap` (Tasks 9, 12, 25, 26); the process lost mid-match (Tasks 9, 24); the permission dialog's AppState cycle (Task 24, M9); a preview crash, and the preview detached and attached again (Task 25); a vendor log during a cut (Task 20, CD30)                                                                                                                |
+| **Another mode, orientation or language** | Either landscape side fixed at arm (Tasks 11, 22, 26); four languages for every new line, reviewed against the glossary (Tasks 18, 25), for the notification and its channel (Tasks 10, 24, P3), and for the crash screen (Task 19, P1); the copy-fit check in fr on the narrow phone (Task 26); Scoring and Dashboard never touch the engine, and S2–S4 own them                                                                                                                                                                                                                                                             |
 
 ## Self-review
 
+Re-run after the 2026-10-01 review's fixes.
+
 **Spec coverage.** Spec §3 lists the platform's pieces. Each maps to a task:
 
-| Spec §3 item                                                   | Task                                           |
-| -------------------------------------------------------------- | ---------------------------------------------- |
-| StreamPack, max B-frames 0                                     | 11 (rule), 22 (glue), 26 (`ffprobe`)           |
-| No `setTargetRotation`; orientation fixed at arm               | 11 (rule + `GlueRulesTest`), 22, 26 (P4 ×3)    |
-| Ktor guard, proven by cuts against Cloudflare                  | 11, 21, 26                                     |
-| Foreground service, wake lock, heartbeat                       | 24 (service, lock); 8, 12, 20 (heartbeat HTTP) |
-| MicSilence                                                     | 10, 23, 26                                     |
-| Camera contention and reopen                                   | 10, 22, 23, 26                                 |
-| SlateSource: the card, no words, silent audio                  | 22                                             |
-| HTTP playlist and heartbeat clients                            | 8, 12, 20                                      |
-| Battery charge counter; thermal with headroom                  | 9, 23, 26                                      |
-| Bridge: intents void, snapshot ≥ 1 Hz, native preview          | 12, 14, 15, 20, 25                             |
-| §6 CI: the Android compile job                                 | 20                                             |
-| §6 device checks                                               | 26                                             |
-| §7 phase 4: raw stg input, hand-made v2 code, local descriptor | 19 (CD24), 26                                  |
+| Spec §3 item                                                   | Task                                                                                               |
+| -------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| StreamPack, max B-frames 0                                     | 11 (rule), 22 (glue), 26 (`pict_type=B` count)                                                     |
+| No `setTargetRotation`; orientation fixed at arm               | 11 (rule + `GlueRulesTest`), 20 (`displayRotation` at arm), 22, 26 (P4 ×3, each with its own tool) |
+| Ktor guard, proven by cuts against Cloudflare                  | 11, 21, 26                                                                                         |
+| Foreground service, wake lock, heartbeat                       | 24 (permissions, then the service; the lock); 8, 12, 20 (heartbeat HTTP)                           |
+| MicSilence                                                     | 10, 22 (`AudioSessionIds`), 23, 26                                                                 |
+| Camera contention and reopen                                   | 10, 22, 23, 26                                                                                     |
+| SlateSource: the card, no words, silent audio                  | 22 (with `SlateColoursTest`)                                                                       |
+| HTTP playlist and heartbeat clients                            | 8, 12, 20                                                                                          |
+| Battery charge counter; thermal with headroom                  | 9, 23, 26                                                                                          |
+| Bridge: intents void, snapshot ≥ 1 Hz, native preview          | 12, 13 (ack), 14, 15, 20, 25                                                                       |
+| §6 CI: the Android compile job; the bridge contract            | 20; 16 (its own workflow)                                                                          |
+| §6 device checks                                               | 23 Step 1, 24, 25, 26                                                                              |
+| §7 phase 4: raw stg input, hand-made v2 code, local descriptor | 19 (CD24), 23 Step 1, 26                                                                           |
 
-Owner ruling 1 (the crash copy) and ruling 2 (the viewfinder boundary) are recorded in Task 1 and built in Task 25. All 28 carries are traced; 26 are fully mapped, and 20 and 26 are partly deferred to plan D for the staging match, with their reasons. iOS is out of scope (CD1) and gets the absent engine.
+Owner ruling 1 (the crash copy) and ruling 2 (the viewfinder boundary) are recorded in Task 1 and built in Task 25. All 28 carries are traced (the carry table); 26 are fully mapped, and 20 and 26 are partly deferred to plan D for the staging match, with their reasons. iOS is out of scope (CD1) and gets the absent engine. The three PROPOSED decisions (P1–P3) are built as steps that can be skipped whole, each with its "if no" path.
 
-**Placeholder scan.** A search of this file for `TBD`, `TODO`, `fill in`, `similar to Task` and `implement later` finds none. Four places name a value this plan cannot know before the implementer reads a jar, and each says exactly how to read it:
+**Placeholder scan.** A search of this file for `TBD`, `TODO`, `fill in`, `similar to Task` and `implement later` finds none. Every Android glue step is now code (I7): Tasks 20–25 each show their classes, and `EngineHost.build` is shown whole at each change. Five places name a value this plan cannot know before the implementer reads a jar or a file, and each says exactly how to read it, and that a mismatch changes the call, never the rule:
 
 - komuxer's Maven coordinates (Task 20, Step 1);
-- StreamPack 3.2.0's composite-endpoint constructor (Task 21, Step 1);
-- the `MicrophoneSource` field (Task 23);
+- srtdroid-ktx **1.10.1**'s `CoroutineSrtSocket` members and `Stats` field names, each marked `// confirm:` (Task 21, Step 1: 1.9.5 is in the local cache, 1.10.1 is not);
+- `KEY_MAX_B_FRAMES`' constant and `ApplicationExitInfo`'s `REASON_` ints (`javap`, Tasks 22 and 24);
+- StreamPack's `AudioConfig`/`VideoConfig` alias names (Task 22);
 - `test/fixtures/wire.ts`'s descriptor JSON (Task 5, Step 1).
 
 **Type consistency.** These names are spelled the same in every task that uses them:
 
-- `SessionName(sid, slot, tokenTag, descriptorJson)`;
+- `SessionName(sid, slot, tokenTag, descriptorJson)`; `Phase.Ended.sessionName` (Tasks 2, 5); `Snapshot.session`; `SessionConfig.language` (P3: Tasks 2, 4, 14, 24);
 - `PlatformFacts` (seven fields) and `RecordCounters`;
 - `FrameCount(video, audio)`;
-- `HttpOutcome.Answered` and `.Failed`, `BodyFields`;
-- `Scope.PROCESS` and `.SESSION`;
-- `SrtPlan`, `SrtOpt`, `AttemptSignals`;
-- `Capture` and `CaptureFacts`;
-- `NativeCaptureEngine.forward` and `ForwardedEntry`;
-- `RingRecord.appendLine` and `createRoutedRecord`;
+- `HttpOutcome.Answered` and `.Failed`, `BodyFields`, `HttpAdapter.readBody`;
+- `Scope.PROCESS` and `.SESSION`; `BridgeCore.report`, `failure`, `refused`, `log`, `send` (with `seq`), `current`, `tail`;
+- `Platform.armed` (outside the sink, CD31) and `Platform.acked(seq)` (CD8); the wire event `onAck {seq}` (Tasks 12, 13, 15, 20); `NativeCaptureEngine.settled()` (Tasks 15, 16, 19);
+- `TickLateness` → `tick-late {gapMs}` and `FrameGaps` → `frames-gap {attempt, gapMs}` (Tasks 9, 12, 24, 25, 26);
+- `OwnedSlot.take(by, value)` / `release(by)` (Tasks 12, 20);
+- `VendorLogger` → `vendor-log {tag, message, error}` (CD30; `tag` and `error` are plain keys in Task 3's allow-list);
+- `SrtPlan`, `SrtOpt`, `AttemptSignals`; `SeaznSrtSink.counters(attemptId)` and `setMaxBw(attemptId, b)` (Tasks 21, 22);
+- `Capture` (with `streamer`) and `CaptureFacts`; `EngineHost.core(context)`, `capture(context)`, `keeper(context)`, `line(entry)`;
+- `Grant.GRANTED`, `REFUSED`, `UNAVAILABLE` (Task 24);
+- `NotificationText.content`, `language`, `CHANNEL`, `WORDS` (Tasks 10, 24);
+- `NativeCaptureEngine.forward`, `pauseReports` and `ForwardedEntry`; `RingRecord.appendLine`, `createRoutedRecord` and `recordGoesNative`;
 - `ENGINE_SCENARIOS` and `ScenarioKit`.
 
 The wire's telemetry field names equal plan A's `Telemetry`, plus the three Task 14 adds.
@@ -5279,7 +7709,46 @@ The wire's telemetry field names equal plan A's `Telemetry`, plus the three Task
 **Review Focus.** Each of the five lines has a named test:
 
 1. `GlueRulesTest` (Task 11), and the silence screen test with its mutation (Task 18);
-2. `BridgeCoreTest` Review Focus 2 (Task 12), and the native-engine construction test (Task 15);
-3. `BridgeCoreTest` Review Focus 3 (Task 12), with sticky failure (Task 6) and the permissions line (Task 18);
-4. the shared scrub vectors with mutations (Task 3);
+2. `BridgeCoreTest` Review Focus 2 (Task 12), `OwnedSlotTest` (Task 12), and the native-engine construction test (Task 15);
+3. `BridgeCoreTest` Review Focus 3 and the I1 tests (Task 12), with sticky failure (Task 6) and the permissions line (Task 18); the fresh-install step (Tasks 24, 26);
+4. the shared scrub vectors with mutations (Task 3), and `GlueRulesTest`'s CD30 rule (Task 11);
 5. `AttemptPollersTest` (Task 7) and `AttemptSignalsTest` R3 (Task 11).
+
+**Counts.** 26 tasks in 9 batches (C1, C2, C3, C4a, C4b, C5, C6, C7, C8).
+
+## Review dispositions
+
+The independent review of 2026-10-01 (`.superpowers/plan-c-review.md`) found 3 Critical, 14 Important, 18 Minor and 19 wrong claims. Each was re-verified against `main` at `d6931c1` before it was acted on. Where this plan departs from the review's proposed fix, the reason is here.
+
+**Critical.**
+
+| Finding                               | Disposition                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| ------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| C1 `Ended.name` does not compile      | Fixed, **with a different name than proposed.** The review proposed `session`. `Phase.kt:123` already declares the extension `val Phase.session: Session?` ("the session held"), which `BridgeCore`, `Projection` and the machine read; a member `Ended.session: SessionName?` would shadow it for `Ended` with a different type and meaning. The field is `sessionName` (Task 2), used in every place the review listed.                                                  |
+| C2 Task 3's churn, and `kind`         | Fixed by the review's first option: **`level` is omitted when it is `info`** (CD7), so the ~26 literal lines keep their shape. The eight tests whose point changes are listed with old point, new point and new expectation (Task 3, Step 6). `kind` stays a plain key on both sides, written `field_kind` and restored by `parseRecordLine`. Every JS test the review named is in Task 3's Files with its change, and `HomeScreen.test.tsx` is run to prove it unchanged. |
+| C3 the service before the permissions | Fixed as proposed (Task 24): permissions first, the service on a grant, `survivesBackground` optimistic from the arm, the service's own catch, and a fresh-install Android 14+ step in Tasks 24 and 26.                                                                                                                                                                                                                                                                    |
+
+**Important.**
+
+| Finding                                    | Disposition                                                                                                                                                                                                                                                                              |
+| ------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| I1 a throw from `armed` swallowed          | Fixed as proposed (CD31): the arm is noticed in its own posted task after each input, `armed` runs outside the sink under the guarded scheduler, by config identity, so a throwing `facts()` cannot skip it. Three tests (permanent, `Error`, `throwOnFactsOnce`), each with a mutation. |
+| I2 the core bound to the first JS instance | Fixed as proposed (CD32): the platform on the application context; `OwnedSlot`s for the listener and the `AppContext`; `Permissions` reads the slot at request time. Device check in Task 26.                                                                                            |
+| I3 the pre-PR-#9 i18n base                 | Fixed: rebased onto `d6931c1`; the copy table rewritten to the glossary and reviewed in this plan, so no `_review` marker is ever committed; **engine** added to the glossary; baselines re-counted at the base; the new lines in Task 26's copy-fit check.                              |
+| I4 the boundary cannot remount             | Fixed as proposed: `key` on the `ErrorBoundary`; `crashPreview()` in `test/fakeSurfaces.ts`; tests spy on `console.error` locally; the second-crash test asserts the caption and the count; mutation 1 is the review's defect.                                                           |
+| I5 the preview scope                       | Fixed as proposed: collect on attach, cancel on detach, a null streamer unbinds, and both scopes have a `CoroutineExceptionHandler` (Tasks 22, 25).                                                                                                                                      |
+| I6 C5 ∥ C6 device checks                   | Fixed: C6 runs no device check; Task 23 Step 1 runs them after C5. `NoCapture`'s phone check is dropped: its path is JVM-proved (Task 12) and reached on a phone by Task 24's refusal.                                                                                                   |
+| I7 glue as prose                           | Fixed: Tasks 20–25 are code; every undefined reference the review listed is now defined (`EngineHost.capture`, `EngineHost.line`, `cameraOpened`, `RtmpDispatcherProvider`, `TlsGuard.handler`/`record`, `DeviceSampler.armed`, `pauseReports`).                                         |
+| I8 device claims with nothing to read      | Fixed: `tick-late` and `frames-gap` (CD33, Task 9, wired in Task 12); `ffmpeg -frames:v 1` for uprightness; Task Manager for `user-requested`, the swipe recorded as seen; the audio floor on both phones; the `capture-clock` line.                                                     |
+| I9 config file names                       | Fixed: `vitest.config.mts`, `eslint.config.mjs` (and no eslint change unless lint refuses).                                                                                                                                                                                              |
+| I10 the settle/tick race                   | Fixed as proposed (CD8): `seq` and `ack`, posted after the input's own tasks; `settle` and the device probe wait for the ack, with a 5 s guard.                                                                                                                                          |
+| I11 two guards; the CI shape               | Fixed: each guard mutated on its own; `bridge-contract.yml` is its own workflow, so `kotlin-core.yml` stays JDK and Gradle only.                                                                                                                                                         |
+| I12 JS text keys before `protect()`        | Fixed with the review's second option: JS masks a text key whole while nothing is held (CD6). The first option (protect at scan) would move `protect()` into the scan flow, which plan A owns; this keeps the change inside the scrub, with one JS-only test.                            |
+| I13 tests promising more                   | Fixed: the CD16 test asserts the refusing platform's `armed` is empty; `GlueRulesTest` skips (never passes) with no glue and fails on an empty folder; the notification test asserts exactly six keys per language.                                                                      |
+| I14 StreamPack's logger                    | Fixed as proposed (CD30), stricter: nothing reaches logcat in **any** build, since the glue may not import `android.util.Log`.                                                                                                                                                           |
+
+**Minor.** All fixed: M1 (CD7 is owner-visible), M2 (device-only list and the `capture-clock` line), M3 (`resetShared` in `@AfterTest`), M4 (pinned), M5 (tested), M6 (CD7 and `BridgeCore.log` say JS fractions are written to tenths), M7 (the reason text), M8 (the keeper on the main looper), M9 (Task 24's device step), M10 (`byteFormat`), M11 (`SlateColoursTest`), M12 (`pict_type=B` count), M13 (the file map rewritten), M14 (OkHttp `compileOnly` 4.9.2), M15 (C4a and C4b), M16 (`recordGoesNative`), M17 (one CD21 string), M18 (the channel is `mode.stream`, per language).
+
+**Wrong claims.** All 19 corrected in place; each was a fact the review checked against `main` and this revision re-checked: 1 and 2 (I9); 3, 4 and 5 (C2); 6 (C1); 7 (I3, the marker); 8 (baselines at `d6931c1`); 9, 10 and 11 (I4); 12 and 13 (I8a, I8b); 14 (I8c); 15 (I8d); 16 (I6, I1); 17 (this self-review, I7); 18 (`EngineHost.line`); 19 (CD16: the arm intent is the channel, P3).
+
+**Owner questions.** Not decided here: written as P1–P3 under _Proposed decisions — awaiting owner_, each with its "if no" path.
