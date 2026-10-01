@@ -731,6 +731,6 @@ After the owner approved this document, lane D answered the asks on 2026-10-01. 
 | Asks 1–7, 9     | Marked agreed; ask 5's entitlement and ask 6's late-pairing trigger recorded.                                                                      |
 | Ask 8, changed  | Beats never answer 410; an ended `sid` is answered 200 `over`. The contract, `ServerWord` and the answer table read a beat's 410 defensively only. |
 | Ask 10, changed | The new `endReason` `phone_lost`, with no credit spent, and its line in §2.                                                                        |
-| A18             | The Decisions table; the contract's `cred.srt                                                                                                      | null`; _Who reads what_; §3's plan C list; the AGENTS §4 edit; _Known gaps_. |
+| A18             | The Decisions table; the contract's nullable `cred.srt`; _Who reads what_; §3's plan C list; the AGENTS §4 edit; _Known gaps_.                     |
 | G0-d to G0-g    | Under the asks; the contract; _Who reads what_ (cred only to the current phone); `ServerWord`; A17's delivery rule; §2.                            |
 | Credit timing   | Corrected wherever a note said a credit is spent at `POST start` or Go live: it is spent when video first reaches Cloudflare.                      |
