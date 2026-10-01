@@ -1,7 +1,7 @@
 # S1 — Live Stream, handheld — design
 
 **Status:** owner-approved design, 2026-09-30, brainstormed section by section.
-**Amended by:** [the stable stream code](2026-10-01-s1-amendment-stable-code-design.md) (2026-10-01). It replaces decision 4's QR shape, §1 _Getting in_ and the Arm state, the contract parts of §2, and the _Ask_ section; where the two disagree, the amendment wins.
+**Amended by:** [the stable stream code](2026-10-01-s1-amendment-stable-code-design.md) (2026-10-01). Its _What this changes in S1_ table lists every part of this spec it replaces, changes, keeps or drops — decisions 4, 5, 8 and 9, all of §1, much of §2 and §3, and parts of §4–§7 and the _Ask_. Where the two disagree, the amendment wins.
 **Parent:** [the three-mode decision record](2026-09-29-multi-mode-app-decisions.md) (binding; not reopened here), inside [the S0 shell](2026-09-29-s0-app-shell-design.md).
 **Reference, not code to lift:** [the pre-P5 design](2026-09-10-capture-app-design.md), [the P5 Android results](2026-09-11-p5-android-results.md) (F-P5-1 … F-P5-13, H-P5-1), the spike on `origin/spike/p5-android`, and the spike screens removed in `5921ce1`.
 **Web side:** the _Ask_ section below is the source of the shapes for the seazn.club branch that follows `feat/fixture-page-stream` (lane D, agreed 2026-09-30).
