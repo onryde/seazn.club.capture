@@ -19,7 +19,7 @@ export function StreamScreen() {
   const view = useViewfinder(leave.departed);
   const { settings } = useStreamSettings();
   const peek = usePeek(view.peekable);
-  const scanAnother = useScanAnother(leave.leave);
+  const scanAnother = useScanAnother(leave.leaveWith);
   return (
     <View style={settings.side === 'left' ? styles.columnLeft : styles.columnRight}>
       <StreamStage
@@ -35,16 +35,14 @@ export function StreamScreen() {
 }
 
 /**
- * Ended's Scan another (D24): ask Home to scan, then leave. Only Home calls
- * `scan()`; the leave is one at a time (useLeaveOnce), so a double press
- * leaves once, and a second request before Home takes the first is one scan.
+ * Ended's Scan another (D24): leave, asking Home to scan on the way. Only Home
+ * calls `scan()`. The request is made only by a leave that goes Home (M9), so
+ * a leave cancelled on air leaves nothing waiting for the next Home. The leave
+ * is one at a time (useLeaveOnce), so a double press leaves and asks once.
  */
-function useScanAnother(leave: () => void): () => void {
+function useScanAnother(leaveWith: (beforeHome: () => void) => void): () => void {
   const { homeIntent } = usePorts();
-  return useCallback(() => {
-    homeIntent.requestScan();
-    leave();
-  }, [homeIntent, leave]);
+  return useCallback(() => leaveWith(homeIntent.requestScan), [homeIntent, leaveWith]);
 }
 
 const styles = StyleSheet.create({

@@ -8,6 +8,8 @@ import type { ModeStore } from '@/services/modeStore';
 
 type FreeRule = Exclude<LeaveRule, 'blockedOnAir'>;
 
+const NOTHING = () => undefined;
+
 /** Ruling I2: how long Back's line on air stays, unless the state changes first. */
 const REFUSAL_LINE_MS = 4000;
 
@@ -24,22 +26,34 @@ export function useStreamLeave(): {
   readonly canLeave: boolean;
   readonly blocked: boolean;
   leave(): void;
+  /** A leave that runs `beforeHome` only if it goes Home, just before it goes (M9). */
+  leaveWith(beforeHome: () => void): void;
   /** Whether this visit has started a leave, cancelled or not (ruling I1). Stable. */
   departed(): boolean;
 } {
-  const { back, navigation } = usePorts();
   const status = useEngineSelector(selectEngineStatus);
   const [blocked, block] = useRefusalLine();
   const left = useRef(false);
   const departed = useCallback(() => left.current, []);
   const leaveOnce = useLeaveOnce(block, left);
 
-  const leave = useCallback(() => {
-    const rule = leaveRule('stream', status);
-    if (rule === 'blockedOnAir') return block();
-    leaveOnce(rule);
-  }, [status, leaveOnce, block]);
+  const leaveWith = useCallback(
+    (beforeHome: () => void) => {
+      const rule = leaveRule('stream', status);
+      if (rule === 'blockedOnAir') return block();
+      leaveOnce(rule, beforeHome);
+    },
+    [status, leaveOnce, block],
+  );
+  const leave = useCallback(() => leaveWith(NOTHING), [leaveWith]);
+  useBackLeaves(leave);
+  const canLeave = leaveRule('stream', status) !== 'blockedOnAir';
+  return { canLeave, blocked, leave, leaveWith, departed };
+}
 
+/** Back on the stream route is a leave; on a stream sub-screen it is the navigator's. */
+function useBackLeaves(leave: () => void): void {
+  const { back, navigation } = usePorts();
   useEffect(
     () =>
       back.subscribe(() => {
@@ -49,8 +63,6 @@ export function useStreamLeave(): {
       }),
     [back, navigation, leave],
   );
-
-  return { canLeave: leaveRule('stream', status) !== 'blockedOnAir', blocked, leave, departed };
 }
 
 /**
@@ -89,26 +101,41 @@ function useRefusalLine(): [boolean, () => void] {
  * leave-on-air line; the engine is the authority, so nothing is written back
  * — a reopen goes to the stream whatever is saved (spec §1).
  */
-function useLeaveOnce(onBlocked: () => void, left: { current: boolean }): (rule: FreeRule) => void {
-  const { modeStore, navigation, engine, logger } = usePorts();
+function useLeaveOnce(onBlocked: () => void, left: { current: boolean }): FinishLeave {
+  const { modeStore, logger } = usePorts();
+  const finish = useFinishLeave(onBlocked);
   const pending = useRef(false);
   return useCallback(
-    (rule: FreeRule) => {
+    (rule: FreeRule, beforeHome: () => void) => {
       if (pending.current) return;
       pending.current = true;
       left.current = true;
       void saveLeave(modeStore, rule, logger).then(() => {
         pending.current = false;
-        const status = selectEngineStatus(engine.getSnapshot());
-        if (leaveRule('stream', status) === 'blockedOnAir') {
-          logger.warn('leave.cancelled-on-air', { action: rule });
-          return onBlocked();
-        }
-        if (clearsSession(rule, status)) engine.send({ kind: 'reset' });
-        navigation.go('home');
+        finish(rule, beforeHome);
       });
     },
-    [modeStore, navigation, engine, logger, onBlocked, left],
+    [modeStore, logger, finish, left],
+  );
+}
+
+type FinishLeave = (rule: FreeRule, beforeHome: () => void) => void;
+
+/** Once the write settles: stay if native went on air meanwhile (T14 M2), else go Home. */
+function useFinishLeave(onBlocked: () => void): FinishLeave {
+  const { navigation, engine, logger } = usePorts();
+  return useCallback(
+    (rule: FreeRule, beforeHome: () => void) => {
+      const status = selectEngineStatus(engine.getSnapshot());
+      if (leaveRule('stream', status) === 'blockedOnAir') {
+        logger.warn('leave.cancelled-on-air', { action: rule });
+        return onBlocked();
+      }
+      beforeHome();
+      if (clearsSession(rule, status)) engine.send({ kind: 'reset' });
+      navigation.go('home');
+    },
+    [navigation, engine, logger, onBlocked],
   );
 }
 

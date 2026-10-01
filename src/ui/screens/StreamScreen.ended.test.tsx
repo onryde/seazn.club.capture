@@ -55,6 +55,25 @@ describe('Ended (spec §4)', () => {
     expect(view.ports.homeIntent.takeScan()).toBe(true);
   });
 
+  // M9: the request is made only by a leave that goes Home, so a leave
+  // cancelled on air never leaves a scan waiting for the next Home.
+  it('asks Home for nothing when the broadcast is back on air before it leaves', async () => {
+    const view = await renderViewfinder();
+    act(() => view.engine.scene('stopped'));
+    let release = () => undefined as void;
+    const written = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    vi.spyOn(view.ports.modeStore, 'forget').mockImplementation(() => written);
+    fireEvent.click(scanAnother());
+    act(() =>
+      view.engine.forceState({ kind: 'publishing', transport: 'srt', sinceEpochMs: Date.now() }),
+    );
+    await act(async () => release());
+    expect(view.navigation.current()).toBe('stream');
+    expect(view.ports.homeIntent.takeScan()).toBe(false);
+  });
+
   it('leaves once for a double press', async () => {
     const view = await renderViewfinder();
     act(() => view.engine.scene('stopped'));

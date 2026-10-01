@@ -416,3 +416,24 @@ describe('useStreamLeave: Back on air says so briefly (ruling I2)', () => {
     expect(leaving.hook.result.current.blocked).toBe(true);
   });
 });
+
+/** M9: what a leave does on its way Home runs only if it goes, and before it goes. */
+describe('useStreamLeave: leaveWith', () => {
+  it('runs its step just before going Home', async () => {
+    const leaving = await leaveHook();
+    const seen: string[] = [];
+    act(() => leaving.hook.result.current.leaveWith(() => seen.push(leaving.navigation.current())));
+    await waitFor(() => expect(leaving.navigation.current()).toBe('home'));
+    expect(seen).toEqual(['stream']);
+  });
+
+  it('never runs it for a leave refused on air', async () => {
+    const leaving = await leaveHook();
+    const step = vi.fn();
+    act(() => leaving.engine.forceState(LIVE));
+    act(() => leaving.hook.result.current.leaveWith(step));
+    await act(async () => undefined);
+    expect(step).not.toHaveBeenCalled();
+    expect(leaving.hook.result.current.blocked).toBe(true);
+  });
+});

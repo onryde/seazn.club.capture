@@ -15,8 +15,7 @@ import { usePorts } from '@/hooks/usePorts';
  * leaving and Continue.
  */
 export function useStreamArm(departed: () => boolean): { readonly unusable: boolean } {
-  const { logger, hosts } = usePorts();
-  const engine = useEngine();
+  const { hosts } = usePorts();
   const saved = useSavedStream();
   // seaznHosts gives a build exactly one host; an empty list trusts nothing.
   const host = hosts[0] ?? '';
@@ -24,6 +23,20 @@ export function useStreamArm(departed: () => boolean): { readonly unusable: bool
     () => (saved === null ? null : sessionFromSaved(saved, host)),
     [saved, host],
   );
+  useArmOnce(saved, session, departed);
+  return { unusable: session !== null && !session.ok };
+}
+
+type SavedSession = ReturnType<typeof sessionFromSaved>;
+
+/** The one arm per visit and code, or the adoption of native's session in its place. */
+function useArmOnce(
+  saved: SavedCode | null,
+  session: SavedSession | null,
+  departed: () => boolean,
+): void {
+  const { logger } = usePorts();
+  const engine = useEngine();
   const kind = useEngineSelector(selectStateKind);
   const armedFor = useRef<string | null>(null);
   useEffect(() => {
@@ -38,7 +51,6 @@ export function useStreamArm(departed: () => boolean): { readonly unusable: bool
     engine.send({ kind: 'arm', session: value, heartbeat });
     logger.info('intent.arm', { slot: value.slot });
   }, [saved, session, kind, engine, logger, departed]);
-  return { unusable: session !== null && !session.ok };
 }
 
 /** The saved stream code, or null before the store has loaded and when none is saved. */
