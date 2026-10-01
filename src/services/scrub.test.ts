@@ -8,6 +8,13 @@ const STREAM_KEY = 'fake-key-0001';
 const STREAM_ID = 'fake-stream-id-0001';
 /** Characters an encoder escapes, so only a decode can find it in a URL. */
 const ODD_PASSPHRASE = 'p@ss/w0rd!';
+/** Every byte of `text`'s UTF-8 as `%XX`, so the whole of it sits in one escape run. */
+const escapedBytes = (text: string) =>
+  Array.from(
+    new TextEncoder().encode(text),
+    (byte) => `%${byte.toString(16).padStart(2, '0')}`,
+  ).join('');
+
 const HELD: SessionSecrets = {
   secrets: [
     TOKEN,
@@ -17,6 +24,9 @@ const HELD: SessionSecrets = {
     'fake pass 0001',
     'odd%41pass',
     'plus+pass+0001',
+    'fake pass+0002',
+    'fake-pæss-0003',
+    'fake+pæss-0005',
   ],
   streamIds: [STREAM_ID],
 };
@@ -143,6 +153,27 @@ describe('scrubFields: the held session’s secrets, by value (M3)', () => {
     ['a passphrase form-encoded, space as +', 'https://video.example/fake+pass+0001'],
     // A + in the secret itself: only the decoded text, + kept, shows it.
     ['a passphrase holding a +, percent-encoded', 'https://video.example/plus%2Bpass%2B0001'],
+    // Final fix round 2, M-a: URLEncoder's form, space as + and + as %2B. Only
+    // reading + as a space BEFORE decoding shows it.
+    [
+      'a passphrase holding a space and a +, form-encoded',
+      'https://video.example/fake+pass%2B0002',
+    ],
+    // A form-encoded value escaped again for a path: decoded, THEN + as a space.
+    ['a form-encoded passphrase escaped again', 'https://video.example/fake%2Bpass%2B0001'],
+    // encodeURI leaves + raw beside its escapes: only the plain decoding shows it.
+    [
+      'a passphrase with a raw + beside escapes',
+      `https://video.example/${encodeURI('fake+pæss-0005')}`,
+    ],
+    // M-b: one escape that is not UTF-8 never hides the rest of its run.
+    ['the token after an invalid escape', `https://video.example/a/%FF${escapedBytes(TOKEN)}`],
+    ['the token after a cut-short escape', `https://video.example/a/%E0%A4${escapedBytes(TOKEN)}`],
+    ['the token between two invalid escapes', `https://video.example/%C3${escapedBytes(TOKEN)}%FF`],
+    [
+      'a non-ASCII passphrase after an invalid escape',
+      `https://video.example/%FF${escapedBytes('fake-pæss-0003')}`,
+    ],
     ['a passphrase that holds an escape, raw', 'https://video.example/a/odd%41pass'],
   ])('scrubs a public URL that carries %s', (_, url) => {
     expect(scrubFields({ url }, HELD)).toEqual({ url: SCRUBBED });

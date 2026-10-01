@@ -73,26 +73,55 @@ function maskOf({ secrets, streamIds }: SessionSecrets): Mask {
 /**
  * Whether `text` shows any of `values`, raw or encoded. Native masks the raw,
  * form-encoded and component-encoded forms, then the whole value if decoding
- * what is left still reveals one; a hit here takes the whole value at once,
- * so reading the decoded text, `+` as a space too, finds every encoded form.
+ * what is left still reveals one; a hit here takes the whole value at once.
  */
 function reveals(text: string, values: readonly string[]): boolean {
-  const decoded = percentDecoded(text);
-  const spaced = decoded.replace(/\+/g, ' ');
-  return values.some(
-    (value) => text.includes(value) || decoded.includes(value) || spaced.includes(value),
-  );
+  const readings = readingsOf(text);
+  return values.some((value) => readings.some((reading) => reading.includes(value)));
 }
 
-/** Runs of `%XX` decoded as UTF-8; a run that is not valid UTF-8 stays as it is. */
+/**
+ * Every way an encoder could have written a secret into `text`, each read on
+ * its own (final fix round 2, M-a): as it stands; percent-decoded; decoded,
+ * then `+` read as a space; and `+` read as a space, then decoded, which is
+ * URLEncoder's form, where a `+` in the secret is `%2B`.
+ */
+function readingsOf(text: string): readonly string[] {
+  const decoded = percentDecoded(text);
+  return [text, decoded, decoded.replace(/\+/g, ' '), percentDecoded(text.replace(/\+/g, ' '))];
+}
+
+/** Runs of `%XX` decoded as UTF-8, leniently (M-b). */
 function percentDecoded(text: string): string {
-  return text.replace(/(?:%[0-9a-f]{2})+/gi, (run) => {
+  return text.replace(/(?:%[0-9a-f]{2})+/gi, decodeRun);
+}
+
+/**
+ * One run of escapes, a character at a time: a byte that starts no valid
+ * UTF-8 sequence reads as U+FFFD, as native's decoder does, and decoding goes
+ * on after it. Decoding the run whole would let one bad byte hide the rest.
+ */
+function decodeRun(run: string): string {
+  const bytes = run.match(/%[0-9a-f]{2}/gi) ?? [];
+  let text = '';
+  for (let at = 0; at < bytes.length;) {
+    const [size, chars] = nextCharacter(bytes, at);
+    text += chars;
+    at += size;
+  }
+  return text;
+}
+
+/** The longest valid UTF-8 sequence at `at` (at most 4 bytes), or U+FFFD for one byte. */
+function nextCharacter(bytes: readonly string[], at: number): readonly [number, string] {
+  for (let size = 4; size > 0; size -= 1) {
     try {
-      return decodeURIComponent(run);
+      return [size, decodeURIComponent(bytes.slice(at, at + size).join(''))];
     } catch {
-      return run;
+      // Not UTF-8 at this length; try a shorter one.
     }
-  });
+  }
+  return [1, '\uFFFD'];
 }
 
 /**
