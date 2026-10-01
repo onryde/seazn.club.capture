@@ -2,6 +2,7 @@ import { act, fireEvent, screen, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { font } from '@/ui/theme/tokens';
 import { DiagnosticsScreen } from '@/ui/screens/DiagnosticsScreen';
+import { describeBackFromSubScreen } from '../../../test/backFromSubScreen';
 import { readRecord } from '../../../test/fakePorts';
 import { captureWire } from '../../../test/fixtures/wire';
 import { renderViewfinder } from '../../../test/renderViewfinder';
@@ -41,8 +42,9 @@ describe('Diagnostics (spec §4)', () => {
     view.rerender(<DiagnosticsScreen />);
     act(() => view.engine.scene('live'));
     expect(faceOf('2840 kbps')).toBe(font.numeric);
-    expect(faceOf('Bitrate')).not.toBe(font.numeric);
-    expect(getComputedStyle(screen.getByText(/intent\.arm/)).fontFamily).not.toBe(font.numeric);
+    // M6: Geist Medium, the `metricUnit` face, named rather than "not mono".
+    expect(faceOf('Bitrate')).toBe(font.bodyMedium);
+    expect(getComputedStyle(screen.getByText(/intent\.arm/)).fontFamily).toBe(font.bodyMedium);
   });
 
   it('shows the latest session record lines and shares them, with no secret in them', async () => {
@@ -160,3 +162,5 @@ describe('Diagnostics (spec §4)', () => {
     expect(screen.getByRole('button', { name: 'Terug naar camera' })).toBeTruthy();
   });
 });
+
+describeBackFromSubScreen('Diagnostics', <DiagnosticsScreen />);

@@ -23,11 +23,16 @@ export function createExpoRouterNavigation(initial: Route = 'home'): NavigationP
     current: () => current,
     go: (route) => {
       if (route === current) return;
-      const from = current;
+      move(current, route);
+      // Review M8: only once the router has moved. A throw leaves `current()`
+      // on the screen still showing, and is not swallowed.
       current = route;
-      if (from === 'stream' && isStreamSubRoute(route)) return router.push(PATH[route]);
-      if (isStreamSubRoute(from) && route === 'stream') return router.back();
-      router.replace(PATH[route]);
     },
   };
+}
+
+function move(from: Route, route: Route): void {
+  if (from === 'stream' && isStreamSubRoute(route)) return router.push(PATH[route]);
+  if (isStreamSubRoute(from) && route === 'stream') return router.back();
+  router.replace(PATH[route]);
 }

@@ -65,4 +65,25 @@ describe('the Expo Router adapter (D19)', () => {
     expect(router.push).not.toHaveBeenCalled();
     expect(router.replace).toHaveBeenCalledWith('/stream/settings');
   });
+
+  // Review M8: `current()` names a screen only once the router has moved to it.
+  // A sub-route named with no sub-screen mounted would give Back away on air.
+  it.each([
+    ['push', 'stream', 'streamSettings'],
+    ['back', 'streamDiagnostics', 'stream'],
+    ['replace', 'stream', 'home'],
+  ] as const)(
+    'keeps the route it was on when %s throws, and lets the fault through',
+    (call, from, to) => {
+      const navigation = createExpoRouterNavigation(from);
+      router[call].mockImplementationOnce(() => {
+        throw new Error('navigator not ready');
+      });
+      expect(() => navigation.go(to)).toThrow('navigator not ready');
+      expect(navigation.current()).toBe(from);
+      navigation.go(to);
+      expect(navigation.current()).toBe(to);
+      expect(router[call]).toHaveBeenCalledTimes(2);
+    },
+  );
 });

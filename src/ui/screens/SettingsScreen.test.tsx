@@ -1,15 +1,11 @@
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
-import { encodeSavedCode } from '@/domain/mode/savedCode';
+import { act, fireEvent, screen, waitFor } from '@testing-library/react';
+import { describe, expect, it } from 'vitest';
 import type { KeyValueStore } from '@/services/KeyValueStore';
-import { STORE_KEYS } from '@/services/modeStore';
 import { SETTINGS_KEY } from '@/services/streamSettingsStore';
 import { SettingsScreen } from '@/ui/screens/SettingsScreen';
-import { StreamScreen } from '@/ui/screens/StreamScreen';
-import { createFakePorts } from '../../../test/fakePorts';
-import { savedStreamCode } from '../../../test/fixtures/savedStream';
+import { describeBackFromSubScreen } from '../../../test/backFromSubScreen';
 import { renderViewfinder } from '../../../test/renderViewfinder';
-import { renderWithPorts, wrapperFor } from '../../../test/renderWithPorts';
+import { renderWithPorts } from '../../../test/renderWithPorts';
 
 function renderSettings(options: Parameters<typeof renderWithPorts>[1] = {}) {
   const view = renderWithPorts(<SettingsScreen />, options);
@@ -19,7 +15,6 @@ function renderSettings(options: Parameters<typeof renderWithPorts>[1] = {}) {
 }
 
 const overlaySwitch = () => screen.getByRole('switch', { name: 'Score preview' });
-const LEAVE_ON_AIR = 'Stop the broadcast first — hold Stop.';
 
 describe('Settings (spec §4)', () => {
   it('turns the score preview off, and saves it', async () => {
@@ -174,76 +169,4 @@ describe('the viewfinder’s ways into Settings and Diagnostics (AGENTS §6)', (
   });
 });
 
-/** The stream stack as Expo Router keeps it: the viewfinder stays mounted under a pushed Settings. */
-function Stack({ settings }: { settings: boolean }) {
-  return (
-    <>
-      <StreamScreen />
-      {settings ? <SettingsScreen /> : null}
-    </>
-  );
-}
-
-async function renderStack() {
-  const fakes = createFakePorts({
-    kvSeed: {
-      [STORE_KEYS.active]: 'stream',
-      [STORE_KEYS.code('stream')]: encodeSavedCode(savedStreamCode()),
-    },
-  });
-  const rendered = render(<Stack settings={false} />, { wrapper: wrapperFor(fakes) });
-  await act(() => fakes.ports.modeStore.load());
-  fakes.navigation.go('stream');
-  const openSettings = () => {
-    fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
-    rendered.rerender(<Stack settings />);
-  };
-  return { ...rendered, ...fakes, openSettings };
-}
-
-/**
- * M21 and carry 9: Back belongs to whichever screen is showing. The viewfinder
- * re-subscribes its Back on every state change, so it is often asked first,
- * even under Settings; it answers only off a named sub-screen.
- */
-describe('Back between the viewfinder and Settings (M21)', () => {
-  it('a state change under Settings, then Back, returns to the camera without leaving', async () => {
-    const view = await renderStack();
-    view.openSettings();
-    const setActive = vi.spyOn(view.ports.modeStore, 'setActive');
-    act(() => view.engine.scene('live'));
-    let handled = false;
-    act(() => {
-      handled = view.back.press();
-    });
-    expect(handled).toBe(true);
-    expect(view.navigation.current()).toBe('stream');
-    expect(screen.queryByText(LEAVE_ON_AIR)).toBeNull();
-    expect(setActive).not.toHaveBeenCalled();
-  });
-
-  it('Back on the camera after a round trip on air still says how to stop', async () => {
-    const view = await renderStack();
-    act(() => view.engine.scene('live'));
-    view.openSettings();
-    act(() => void view.back.press());
-    expect(view.navigation.current()).toBe('stream');
-    // Settings has not gone yet: the press is still the viewfinder's.
-    let handled = false;
-    act(() => {
-      handled = view.back.press();
-    });
-    expect(handled).toBe(true);
-    expect(view.navigation.current()).toBe('stream');
-    expect(screen.getByText(LEAVE_ON_AIR)).toBeTruthy();
-    expect(screen.queryByRole('button', { name: 'Home' })).toBeNull();
-  });
-
-  it('Back on the camera after a round trip off air leaves for Home', async () => {
-    const view = await renderStack();
-    view.openSettings();
-    act(() => void view.back.press());
-    act(() => void view.back.press());
-    await waitFor(() => expect(view.navigation.current()).toBe('home'));
-  });
-});
+describeBackFromSubScreen('Settings', <SettingsScreen />);
