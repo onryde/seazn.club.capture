@@ -161,6 +161,7 @@ type FakeForeground = ForegroundPort & {
   fire(): void;
   leave(): void;
   leaveListeners(): number;
+  returnListeners(): number;
 };
 
 function fakeForeground(): FakeForeground {
@@ -182,6 +183,7 @@ function fakeForeground(): FakeForeground {
       for (const listener of leaves) listener();
     },
     leaveListeners: () => leaves.size,
+    returnListeners: () => returns.size,
   };
 }
 

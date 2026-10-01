@@ -124,6 +124,32 @@ describe('the viewfinder arming (spec §1)', () => {
     expect(screen.getByText('Go live by 14:10')).toBeTruthy();
   });
 
+  // M8: Android pauses JS timers with the host, so a phone locked across the
+  // deadline comes back before its timer fires. The return re-reads the clock.
+  it('re-reads the deadline on the return to the foreground, timer or not', async () => {
+    const view = await renderViewfinder();
+    view.setNow(new Date(TEST_NOW.getTime() + 10 * 60_000));
+    expect(screen.getByLabelText('Code: ready')).toBeTruthy();
+    act(() => view.foreground.fire());
+    expect(screen.getByText('Code timed out — ask the organiser for a new one')).toBeTruthy();
+    expect(screen.getByLabelText('Code: not ready')).toBeTruthy();
+    pressIn(goLive());
+    act(() => vi.advanceTimersByTime(HOLD_MS));
+    expect(view.engine.intents.some((intent) => intent.kind === 'start')).toBe(false);
+  });
+
+  it('keeps Go live on a return before the deadline, and still times out on it', async () => {
+    const view = await renderViewfinder();
+    view.setNow(new Date(TEST_NOW.getTime() + 10 * 60_000 - 1));
+    act(() => view.foreground.fire());
+    expect(screen.getByLabelText('Code: ready')).toBeTruthy();
+    act(() => {
+      view.setNow(new Date(TEST_NOW.getTime() + 10 * 60_000));
+      vi.advanceTimersByTime(10 * 60_000);
+    });
+    expect(screen.getByLabelText('Code: not ready')).toBeTruthy();
+  });
+
   it('opens already timed out when the deadline passed before the visit', async () => {
     await renderViewfinder(
       {},
