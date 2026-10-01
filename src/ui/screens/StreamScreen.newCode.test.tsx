@@ -7,7 +7,7 @@ import { sampleDescriptor } from '@/services/fakeDescriptorPort';
 import { StreamScreen } from '@/ui/screens/StreamScreen';
 import type { FakePorts } from '../../../test/fakePorts';
 import { savedStreamCode } from '../../../test/fixtures/savedStream';
-import { captureRaw, FIXTURE_NOW } from '../../../test/fixtures/wire';
+import { captureRaw, FIXTURE_NOW, FIXTURE_SID } from '../../../test/fixtures/wire';
 import { pressIn } from '../../../test/press';
 import { renderViewfinder } from '../../../test/renderViewfinder';
 import { wrapperFor } from '../../../test/renderWithPorts';
@@ -21,6 +21,26 @@ const codeB = (): SavedCode =>
   savedStreamCode({
     raw: captureRaw({ sid: SID_B }),
     descriptor: sampleDescriptor(FIXTURE_NOW, { sid: SID_B, label: LABEL_B }),
+  });
+
+const SLOT_TWO_STREAM_ID = 'fake-stream-id-slot-2';
+
+/** The same session's second camera: same sid, slot 2, its own credential. Made-up values. */
+const slotTwo = (): SavedCode =>
+  savedStreamCode({
+    raw: captureRaw({
+      slot: 2,
+      cred: {
+        srt: {
+          url: 'srt://ingest.example:778',
+          streamId: SLOT_TWO_STREAM_ID,
+          passphrase: 'fake-pass-0002',
+          latencyMs: 2000,
+        },
+        rtmps: { url: 'rtmps://ingest.example:443/live/', streamKey: 'fake-key-0002' },
+      },
+    }),
+    slot: 2,
   });
 
 const kinds = (fakes: FakePorts) => fakes.engine.intents.map((intent) => intent.kind);
@@ -46,8 +66,9 @@ async function homeThenOpen(fakes: FakePorts, code: SavedCode | null) {
 
 /**
  * I1 (fix round 1, owner-visible): a visit adopts native's session only when
- * it is the same code, by sid. A code opened over another code's armed or
- * ended session resets it and arms the new code.
+ * it is the same code: the same sid and, since fix round 2 (C7), the same
+ * slot. A code opened over another code's armed or ended session, another
+ * slot of the same match included, resets it and arms the new code.
  */
 describe('a new code over another code’s session (I1)', () => {
   beforeEach(() => vi.useFakeTimers());
@@ -92,6 +113,56 @@ describe('a new code over another code’s session (I1)', () => {
       status: 'ready',
       saved: { codes: { stream: { raw: b.raw } } },
     });
+  });
+
+  // Fix round 2 (C7): a different slot is a different camera position and credential.
+  it('arms another slot of the same session over the first, and goes live on its credential', async () => {
+    const view = await renderViewfinder();
+    expect(lastArm(view)?.session.slot).toBe(1);
+    await homeThenOpen(view, slotTwo());
+    expect(kinds(view)).toEqual(['arm', 'reset', 'arm']);
+    const armed = lastArm(view)?.session;
+    expect(armed?.sid).toBe(FIXTURE_SID);
+    expect(armed?.slot).toBe(2);
+    expect(armed?.primary).toMatchObject({ transport: 'srt', streamId: SLOT_TWO_STREAM_ID });
+    expect(view.engine.getSnapshot().slot).toBe(2);
+    pressIn(goLive());
+    act(() => vi.advanceTimersByTime(HOLD_MS));
+    expect(kinds(view)).toEqual(['arm', 'reset', 'arm', 'start']);
+    expect(view.engine.getSnapshot()).toMatchObject({ state: { kind: 'connecting' }, slot: 2 });
+  });
+
+  it('never opens another slot on the first slot’s Ended screen', async () => {
+    const view = await renderViewfinder();
+    fireEvent.click(screen.getByRole('button', { name: 'Home' }));
+    await settle();
+    act(() => view.engine.scene('stopped-by-organiser'));
+    cleanup();
+    await act(() => view.ports.modeStore.open(slotTwo()));
+    render(<StreamScreen />, { wrapper: wrapperFor(view) });
+    view.navigation.go('stream');
+    await settle();
+    expect(kinds(view)).toEqual(['arm', 'reset', 'arm']);
+    expect(lastArm(view)?.session.slot).toBe(2);
+    expect(plate()).toBe('Ready');
+    expect(screen.queryByRole('button', { name: 'Scan another' })).toBeNull();
+  });
+
+  it('never resets a live session for another slot of it', async () => {
+    const one = savedStreamCode();
+    const view = await renderViewfinder(
+      {},
+      {
+        saved: slotTwo(),
+        prepare: (fakes) => {
+          fakes.engine.scene('live');
+          fakes.engine.setDescriptor(one.descriptor);
+          fakes.engine.setSlot(one.slot);
+        },
+      },
+    );
+    expect(kinds(view)).toEqual([]);
+    expect(plate()).toBe('Live');
   });
 
   it('adopts its own armed session when the same code is opened again', async () => {

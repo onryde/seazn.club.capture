@@ -149,6 +149,19 @@ describe('the fake engine (spec §2: scripted snapshots, no state machine of its
     expect(state()).toEqual({ kind: 'ended', reason: 'operator-stopped', durationMs: null });
   });
 
+  // Fix round 2 (C7): the slot is what tells one camera of a session from another.
+  it('reports the slot it was armed with, keeps the first on a second arm, and forgets it on reset', () => {
+    expect(engine.getSnapshot().slot).toBeNull();
+    engine.send({ kind: 'arm', session: streamSession({}, { slot: 2 }), heartbeat });
+    expect(engine.getSnapshot().slot).toBe(2);
+    engine.send({ kind: 'arm', session: streamSession({}, { slot: 3 }), heartbeat });
+    expect(engine.getSnapshot().slot).toBe(2);
+    engine.send({ kind: 'start' });
+    expect(engine.getSnapshot().slot).toBe(2);
+    engine.send({ kind: 'reset' });
+    expect(engine.getSnapshot().slot).toBeNull();
+  });
+
   it('resets to idle and forgets the descriptor', () => {
     engine.send({ kind: 'arm', session, heartbeat });
     engine.send({ kind: 'reset' });

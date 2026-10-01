@@ -74,8 +74,10 @@ export type VisitArm = 'arm' | 'adopt' | 'replace';
 
 /**
  * I1 (owner-visible): a visit adopts native's session only when it is this
- * code's, by sid. Another code's armed or ended session, or one native cannot
- * name, is `replace`d: reset, then this code armed. Adopting it would show the
+ * code's: the same sid AND the same slot (C7: another slot of one match is
+ * another camera position with its own credential). Another code's armed or
+ * ended session, or one native cannot name, is `replace`d: reset, then this
+ * code armed. Adopting it would show the
  * old match's label and Ended screen, and Go live would publish to the old
  * match. Live is always adopted: it cannot reach Home, and a reset under a
  * broadcast would end it.
@@ -83,12 +85,16 @@ export type VisitArm = 'arm' | 'adopt' | 'replace';
 export function visitArm(input: {
   engine: EngineStatus;
   engineSid: string | null;
+  engineSlot: number | null;
   codeSid: string | null;
+  codeSlot: number | null;
 }): VisitArm {
-  const { engine, engineSid, codeSid } = input;
+  const { engine, engineSid, engineSlot, codeSid, codeSlot } = input;
   if (engine === 'idle') return 'arm';
   if (engine === 'live') return 'adopt';
-  return engineSid !== null && engineSid === codeSid ? 'adopt' : 'replace';
+  const sameSid = engineSid !== null && engineSid === codeSid;
+  const sameSlot = engineSlot !== null && engineSlot === codeSlot;
+  return sameSid && sameSlot ? 'adopt' : 'replace';
 }
 
 /** Modes whose saved code has expired. The caller deletes them after reading the target. */

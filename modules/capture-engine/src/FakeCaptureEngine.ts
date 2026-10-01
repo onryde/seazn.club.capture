@@ -1,5 +1,6 @@
 import type { SessionDescriptor } from '@/domain/credentials/SessionDescriptor';
 import type { Transport } from '@/domain/credentials/StreamCredentials';
+import type { StreamSession } from '@/domain/credentials/StreamSession';
 import type {
   DegradeReason,
   EndReason,
@@ -70,6 +71,8 @@ export type FakeCaptureEngine = CaptureEnginePort & {
   setCamera(camera: CameraState | null): void;
   /** Replace the descriptor alone, as native's re-fetch on a reconnect does (spec §1). */
   setDescriptor(descriptor: SessionDescriptor | null): void;
+  /** Replace the armed slot alone: a session native holds from before this visit. */
+  setSlot(slot: number | null): void;
   /** Every intent received, in order. */
   readonly intents: readonly EngineIntent[];
   /** Stop reporting: what a suspended process looks like from JS. */
@@ -316,6 +319,7 @@ export function createFakeCaptureEngine(now: () => number = Date.now): FakeCaptu
     state: { kind: 'idle' },
     telemetry: IDLE_TELEMETRY,
     descriptor: null,
+    slot: null,
     camera: null,
     reportedAtMs: now(),
     survivesBackground: false,
@@ -353,10 +357,10 @@ export function createFakeCaptureEngine(now: () => number = Date.now): FakeCaptu
     }, afterMs);
   };
 
-  const arm = (descriptor: SessionDescriptor, transport: Transport): void => {
+  const arm = ({ descriptor, slot, primary: credential }: StreamSession): void => {
     if (snapshot.state.kind !== 'idle') return;
-    primary = transport;
-    publish({ state: { kind: 'armed' }, telemetry: ARMED, descriptor, camera: 'own' });
+    primary = credential.transport;
+    publish({ state: { kind: 'armed' }, telemetry: ARMED, descriptor, slot, camera: 'own' });
   };
   const start = (): void => {
     if (snapshot.state.kind !== 'armed') return;
@@ -372,7 +376,13 @@ export function createFakeCaptureEngine(now: () => number = Date.now): FakeCaptu
   };
   const reset = (): void => {
     cancelPending();
-    publish({ state: { kind: 'idle' }, telemetry: IDLE_TELEMETRY, descriptor: null, camera: null });
+    publish({
+      state: { kind: 'idle' },
+      telemetry: IDLE_TELEMETRY,
+      descriptor: null,
+      slot: null,
+      camera: null,
+    });
   };
   const play = (scene: Scene): void => {
     cancelPending();
@@ -385,7 +395,7 @@ export function createFakeCaptureEngine(now: () => number = Date.now): FakeCaptu
     intents.push(intent);
     switch (intent.kind) {
       case 'arm':
-        return arm(intent.session.descriptor, intent.session.primary.transport);
+        return arm(intent.session);
       case 'start':
         return start();
       case 'stop':
@@ -421,6 +431,7 @@ export function createFakeCaptureEngine(now: () => number = Date.now): FakeCaptu
     patch: (telemetry) => publish({ telemetry: { ...snapshot.telemetry, ...telemetry } }),
     setCamera: (camera) => publish({ camera }),
     setDescriptor: (descriptor) => publish({ descriptor }),
+    setSlot: (slot) => publish({ slot }),
     // A suspended process reports nothing at all, a pending connect included.
     suspend: () => {
       cancelPending();

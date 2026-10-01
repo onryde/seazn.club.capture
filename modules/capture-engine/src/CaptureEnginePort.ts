@@ -57,6 +57,14 @@ export type EngineSnapshot = {
    * never the token, passphrase or stream key. Null before an arm.
    */
   readonly descriptor: SessionDescriptor | null;
+  /**
+   * The slot the session was armed with: which camera position of the match,
+   * and so which credential, this phone publishes. Null before an arm and
+   * after a reset. Together with `descriptor.sid` it names the session a
+   * returning code may adopt (C7: another slot is another camera). Plan B's
+   * native snapshot carries neither; plan C's bridge must report both.
+   */
+  readonly slot: number | null;
   /** Null with no session: idle, and once ended (plan B's `Snapshot.camera`). */
   readonly camera: CameraState | null;
   /**

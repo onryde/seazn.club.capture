@@ -63,7 +63,9 @@ function planFor(engine: CaptureEnginePort, saved: SavedCode) {
   return visitArm({
     engine: selectEngineStatus(snapshot),
     engineSid: snapshot.descriptor?.sid ?? null,
+    engineSlot: snapshot.slot,
     codeSid: saved.descriptor?.sid ?? null,
+    codeSlot: saved.slot,
   });
 }
 

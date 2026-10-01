@@ -73,6 +73,7 @@ function snapshot(telemetry: Partial<Telemetry>): EngineSnapshot {
     state: { kind: 'publishing', transport: 'srt', sinceEpochMs: 1 },
     telemetry: { ...IDLE_TELEMETRY, ...telemetry },
     descriptor: null,
+    slot: null,
     camera: 'own',
     reportedAtMs: 1,
     survivesBackground: false,

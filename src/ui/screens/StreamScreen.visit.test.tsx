@@ -18,10 +18,12 @@ const FAILED = { kind: 'ended', reason: 'fatal-error', durationMs: 5000 } as con
 /** Lets the leave's write settle: fake timers hold waitFor's own clock. */
 const settle = () => act(() => vi.advanceTimersByTimeAsync(10));
 
-/** Native already holding this code's session, as a reopen finds it (batch 9 I1: matched by sid). */
+/** Native already holding this code's session, as a reopen finds it (I1, C7: matched by sid and slot). */
 const holding = (scene: FakeScene) => (fakes: FakePorts) => {
+  const saved = savedStreamCode();
   fakes.engine.scene(scene);
-  fakes.engine.setDescriptor(savedStreamCode().descriptor);
+  fakes.engine.setDescriptor(saved.descriptor);
+  fakes.engine.setSlot(saved.slot);
 };
 
 /**

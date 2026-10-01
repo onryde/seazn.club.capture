@@ -204,7 +204,7 @@ describe('the viewfinder arming (spec §1)', () => {
     expect(arms(view)).toHaveLength(1);
   });
 
-  // Native's session for this code, as a reopen finds it (batch 9 I1: by sid).
+  // Native's session for this code, as a reopen finds it (I1, C7: by sid and slot).
   it.each(['armed-ready', 'live'] as const)(
     'does not arm an engine that is already %s with this code',
     async (scene) => {
@@ -212,8 +212,10 @@ describe('the viewfinder arming (spec §1)', () => {
         {},
         {
           prepare: (fakes) => {
+            const saved = savedStreamCode();
             fakes.engine.scene(scene);
-            fakes.engine.setDescriptor(savedStreamCode().descriptor);
+            fakes.engine.setDescriptor(saved.descriptor);
+            fakes.engine.setSlot(saved.slot);
           },
         },
       );

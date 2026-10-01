@@ -126,32 +126,57 @@ describe('orphanedSession', () => {
 
 /**
  * I1 (fix round 1, owner-visible): a visit adopts native's session only when
- * it is this code's, by sid. Another code's session, or one native cannot name,
- * is reset and the code armed in its place. Live is never reset: it cannot
+ * it is this code's: the same sid and the same slot (C7, fix round 2). Another
+ * code's session, another slot's, or one native cannot name, is reset and the
+ * code armed in its place. Live is never reset: it cannot
  * reach Home, and a reset under a broadcast would end it.
  */
 describe('visitArm', () => {
-  const A = '5d9c1d0e-0000-4000-8000-00000000000a';
-  const B = '5d9c1d0e-0000-4000-8000-00000000000b';
-  it.each<[EngineStatus, string | null, string | null, VisitArm]>([
-    ['idle', null, A, 'arm'],
-    ['idle', B, A, 'arm'],
-    ['armed', A, A, 'adopt'],
-    ['stopped', A, A, 'adopt'],
-    ['failed', A, A, 'adopt'],
-    ['armed', B, A, 'replace'],
-    ['stopped', B, A, 'replace'],
-    ['failed', B, A, 'replace'],
-    ['armed', null, A, 'replace'],
-    ['stopped', null, A, 'replace'],
-    ['armed', A, null, 'replace'],
-    ['armed', null, null, 'replace'],
-    ['live', A, A, 'adopt'],
-    ['live', B, A, 'adopt'],
-    ['live', null, null, 'adopt'],
-  ])('%s, engine sid %s, code sid %s → %s', (engine, engineSid, codeSid, expected) => {
-    expect(visitArm({ engine, engineSid, codeSid })).toBe(expected);
-  });
+  const SID = {
+    A: '5d9c1d0e-0000-4000-8000-00000000000a',
+    B: '5d9c1d0e-0000-4000-8000-00000000000b',
+  } as const;
+  type Sid = keyof typeof SID | null;
+  const sid = (label: Sid) => (label === null ? null : SID[label]);
+  // [engine, engine sid, engine slot, code sid, code slot, expected]
+  it.each<[EngineStatus, Sid, number | null, Sid, number | null, VisitArm]>([
+    ['idle', null, null, 'A', 1, 'arm'],
+    ['idle', 'B', 2, 'A', 1, 'arm'],
+    ['armed', 'A', 1, 'A', 1, 'adopt'],
+    ['stopped', 'A', 1, 'A', 1, 'adopt'],
+    ['failed', 'A', 1, 'A', 1, 'adopt'],
+    ['armed', 'B', 1, 'A', 1, 'replace'],
+    ['stopped', 'B', 1, 'A', 1, 'replace'],
+    ['failed', 'B', 1, 'A', 1, 'replace'],
+    // Fix round 2 (C7): another slot of the same session is another camera.
+    ['armed', 'A', 1, 'A', 2, 'replace'],
+    ['stopped', 'A', 1, 'A', 2, 'replace'],
+    ['failed', 'A', 2, 'A', 1, 'replace'],
+    ['armed', 'A', null, 'A', 1, 'replace'],
+    ['armed', 'A', 1, 'A', null, 'replace'],
+    ['armed', 'A', null, 'A', null, 'replace'],
+    ['armed', null, 1, 'A', 1, 'replace'],
+    ['stopped', null, 1, 'A', 1, 'replace'],
+    ['armed', 'A', 1, null, 1, 'replace'],
+    ['armed', null, 1, null, 1, 'replace'],
+    ['live', 'A', 1, 'A', 1, 'adopt'],
+    ['live', 'B', 1, 'A', 1, 'adopt'],
+    ['live', 'A', 1, 'A', 2, 'adopt'],
+    ['live', null, null, null, null, 'adopt'],
+  ])(
+    '%s, engine sid %s slot %s, code sid %s slot %s → %s',
+    (engine, engineSid, engineSlot, codeSid, codeSlot, expected) => {
+      expect(
+        visitArm({
+          engine,
+          engineSid: sid(engineSid),
+          engineSlot,
+          codeSid: sid(codeSid),
+          codeSlot,
+        }),
+      ).toBe(expected);
+    },
+  );
 });
 
 describe('leaveRule', () => {
