@@ -208,6 +208,11 @@ describe('the fake engine (spec §2: scripted snapshots, no state machine of its
     expect(engine.intentKinds).toEqual(['arm', 'switchCamera']);
     const kept = JSON.stringify(engine);
     for (const secret of FIXTURE_SECRETS) expect(kept).not.toContain(secret);
+    // Final fix round 2 (nit): what it reports holds none either — the session
+    // is named by its descriptor, slot and tag, never its token or keys.
+    const reported = JSON.stringify(engine.getSnapshot());
+    expect(reported).toContain('"tokenTag"');
+    for (const secret of FIXTURE_SECRETS) expect(reported).not.toContain(secret);
   });
 
   it('keeps only the latest 100 kinds over a long match', () => {
