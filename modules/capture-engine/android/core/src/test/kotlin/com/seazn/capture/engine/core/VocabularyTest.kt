@@ -43,7 +43,10 @@ class VocabularyTest {
     val kinds =
       listOf(
         SnapshotState.Idle,
-        SnapshotState.Armed,
+        SnapshotState.Pairing,
+        SnapshotState.Paired,
+        SnapshotState.Arming(Cause.ORGANISER, retrying = false),
+        SnapshotState.Armed(Cause.ORGANISER, notReady = null),
         SnapshotState.Connecting(Transport.SRT),
         SnapshotState.Publishing(Transport.SRT, 0),
         SnapshotState.Degraded(Transport.SRT, listOf(DegradeReason.MIC_SILENCED), 0),
@@ -51,7 +54,7 @@ class VocabularyTest {
         SnapshotState.Ended(EndReason.OPERATOR_STOPPED, durationMs = null),
       )
     assertEquals(
-      listOf("idle", "armed", "connecting", "publishing", "degraded", "reconnecting", "ended"),
+      listOf("idle", "pairing", "paired", "arming", "armed", "connecting", "publishing", "degraded", "reconnecting", "ended"),
       kinds.map { it.wire },
     )
   }

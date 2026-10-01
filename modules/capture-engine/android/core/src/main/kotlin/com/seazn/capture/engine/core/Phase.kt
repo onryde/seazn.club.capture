@@ -69,7 +69,7 @@ data class PairingState(
   val lastEnd: LastEnd? = null,
   /** A 401 heard while a broadcast is held: the pairing ends with the broadcast (the 401 deferral). */
   val codeEndedPending: Boolean = false,
-  /** The fields of the last `beat` line written while paired (Task 9). */
+  /** The last `heartbeat` line's fields, message aside: a paired line is written only when they change. */
   val lastBeatLine: List<Pair<String, Any?>>? = null,
 ) {
   val name: PairingName

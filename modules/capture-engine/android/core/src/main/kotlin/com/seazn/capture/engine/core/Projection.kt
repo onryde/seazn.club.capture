@@ -21,15 +21,46 @@ object Projection {
       shed = session?.device?.shed,
       device = session?.device,
       camera = phase.camera,
+      pairing = phase.pairing?.let { PairingView(it.name, it.automatic, it.waiting) },
+      broadcast = session?.let { broadcastView(it) },
+      ready = ready(phase),
+      refusal = phase.pairing?.refusal,
+      lastEnd = phase.pairing?.lastEnd,
+      unpaired = (phase as? Phase.Idle)?.unpaired,
+      codeEndedPending = phase.pairing?.codeEndedPending ?: false,
+      language = phase.pairing?.language,
     )
+  }
+
+  private fun broadcastView(session: Session): BroadcastView {
+    val broadcast = session.broadcast
+    return BroadcastView(
+      sid = session.sid,
+      cause = session.cause,
+      playbackUrl = session.config.playbackUrl,
+      overlayUrl = broadcast.overlayUrl,
+      label = broadcast.label,
+      holdWindowSeconds = broadcast.holdWindowSeconds,
+      maxDurationMinutes = broadcast.maxDurationMinutes,
+      scoreUpdates = broadcast.scoreUpdates,
+      srtOffered = broadcast.srtOffered,
+    )
+  }
+
+  /** A11's checks; the camera is ours and showing frames (I3). All false with no pairing. */
+  private fun ready(phase: Phase): ReadyView {
+    val readiness = phase.pairing?.readiness ?: return ReadyView.NONE
+    val camera = readiness.cameraFrames && phase.camera == CameraState.OWN
+    return ReadyView(camera = camera, sound = readiness.sound, network = phase.networkValidated, held = readiness.held)
   }
 
   fun state(phase: Phase, now: Now): SnapshotState =
     when (phase) {
       is Phase.Idle -> SnapshotState.Idle
-      // Until Task 9 gives them their own states, the paired phases read as plan B's armed.
-      is Phase.Pairing, is Phase.Paired, is Phase.Arming -> SnapshotState.Armed
-      is Phase.Armed -> SnapshotState.Armed
+      is Phase.Pairing -> SnapshotState.Pairing
+      is Phase.Paired -> SnapshotState.Paired
+      is Phase.Arming -> SnapshotState.Arming(phase.cause, phase.retrying)
+      is Phase.Armed -> SnapshotState.Armed(phase.session.cause, phase.session.pairing.readiness.notReady(phase.session.camera, phase.session.networkValidated))
       is Phase.Ended -> SnapshotState.Ended(phase.reason, phase.durationMs)
       is Phase.Connecting -> phase.outage?.let { reconnecting(phase.session, it, now) } ?: SnapshotState.Connecting(phase.transport)
       is Phase.OnAir -> onAir(phase, now)

@@ -77,7 +77,8 @@ class EngineTest {
     assertEquals(listOf(500L, 1_000L, 1_500L, 2_000L), published.map { it.first })
     engine.sendAll(Configs.pairInputs(ready = false))
     scheduler.advanceBy(0)
-    assertEquals(SnapshotState.Armed, published.last().second.state)
+    // The organiser's go-live; no readiness reading yet, so the camera is the first check that fails.
+    assertEquals(SnapshotState.Armed(Cause.ORGANISER, NotReady.CAMERA), published.last().second.state)
     assertEquals(2_000L, published.last().first)
   }
 
@@ -334,11 +335,13 @@ class EngineTest {
     val engine = engine()
     engine.sendAll(Configs.pairInputs(ready = false))
     scheduler.advanceBy(0)
-    assertEquals(listOf(SnapshotState.Armed), published.map { it.second.state })
+    // Each state change goes up at once: the pair, the permission, the go-live and the code's answer.
+    val armed = SnapshotState.Armed(Cause.ORGANISER, NotReady.CAMERA)
+    assertEquals(listOf(SnapshotState.Pairing, SnapshotState.Paired, SnapshotState.Arming(Cause.ORGANISER, retrying = false), armed), published.map { it.second.state })
     engine.send(Input.Network(true))
     engine.send(Input.Device(DeviceSample(null, null, 70, true, null, null)))
     scheduler.advanceBy(0)
-    assertEquals(1, published.size, "still armed: the next tick carries the rest")
+    assertEquals(4, published.size, "still armed: the next tick carries the rest")
   }
 
   @Test
@@ -478,8 +481,9 @@ class EngineTest {
     scheduler.advanceBy(2_000)
     engine.sendAll(Configs.pairInputs(ready = false))
     scheduler.advanceBy(0)
-    // FakeClock: monotonic 2_000, wall 1_790_000_002_000, which is 2026-09-21T14:13:22Z.
-    assertEquals(1_790_000_002_000L, published.single().second.reportedAtMs)
+    // FakeClock: monotonic 2_000, wall 1_790_000_002_000, which is 2026-09-21T14:13:22Z. Each paired state
+    // on the way to Armed goes up at once (pairing, paired, arming, armed), all at that instant.
+    assertEquals(List(4) { 1_790_000_002_000L }, published.map { it.second.reportedAtMs })
     val armed = lines.single { """"kind":"armed"""" in it }
     assertTrue(armed.startsWith("""{"at":"2026-09-21T14:13:22.000Z","kind":"armed","""), armed)
   }

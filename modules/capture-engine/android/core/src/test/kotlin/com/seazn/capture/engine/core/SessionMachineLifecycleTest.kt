@@ -734,11 +734,11 @@ class SessionMachineLifecycleTest {
   @Test
   fun `final review M-3 an outage counts in the duration, as it does on the HUD's clock`() {
     // Live at 1 s and dropped at once; the 7 s hold runs out at 8 s with nothing published since. The
-    // broadcast returns to Paired (Task 9's Paired state; Armed until then), and its line says it was live.
+    // broadcast returns to Paired, and its line says it was live.
     val rig = MachineRig(descriptor = sevenSecondHolds).live()
     rig.send(Input.Dropped(1, DropReason.ENDPOINT_CLOSED, null))
     rig.advance(7_000, feeding = false)
-    assertEquals(SnapshotState.Armed, rig.state)
+    assertEquals(SnapshotState.Paired, rig.state)
     assertEquals(true, rig.records("broadcast-ended").single().field("wasLive"))
     // The duration moves to an operator stop: stopped at 7.5 s, in the outage, it counts from 1 s.
     val stopped = MachineRig(descriptor = sevenSecondHolds).live()

@@ -588,22 +588,28 @@ internal object Heartbeats {
         waiting = response?.reply?.waiting?.takeIf { ok } ?: pairing.waiting,
         stoppedInFlight = null,
       )
-    val noted =
-      record(
-        "heartbeat",
+    // The beat line. Its claim is the one the answered beat carried, before this answer cleared it
+    // (PV11). Paired, it is written only when it changes, message aside, so hours of waiting cost a
+    // few lines; a held beat is written every time, as plan B wrote them.
+    val fields =
+      listOf(
         "result" to heartbeat.lastResult,
         "status" to response?.status,
         "word" to word::class.simpleName,
+        "claim" to pairing.claim,
         "message" to (input.response as? HeartbeatResponse.Failed)?.message,
       )
+    val compared = fields.filter { it.first != "message" }
+    val changed = phase.heldSid != null || compared != pairing.lastBeatLine
+    val noted = if (changed) listOf(Command.Record(RecordEntry("heartbeat", fields))) else emptyList()
     // A17: a beat that carried the stopped record and was heard delivers it (G0-g); a 401 ends its code.
     val status = response?.status
     val delivered = pairing.stoppedInFlight != null && StoppedRecord.delivered(status)
     val codeDead = word == ServerWord.CodeEnded && pairing.stopped != null
     val deletes = if (delivered || codeDead) listOf(Command.DeleteStopped(pairing.name.code, pairing.name.slot), record("stopped-delivered", "status" to status)) else emptyList()
     // The refused set keeps the sid for the pairing's life (A17): a server that names it later is still ignored.
-    val kept = if (delivered || codeDead) refreshed.copy(stopped = null) else refreshed
+    val kept = (if (delivered || codeDead) refreshed.copy(stopped = null) else refreshed).copy(lastBeatLine = compared)
     val decided = Verdicts.beat(phase.withPairing(kept), word, now)
-    return decided.copy(commands = listOf(noted) + deletes + decided.commands)
+    return decided.copy(commands = noted + deletes + decided.commands)
   }
 }
