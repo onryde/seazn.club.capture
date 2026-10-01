@@ -143,7 +143,7 @@ describe('Settings (spec §4)', () => {
   it('reads in Dutch', () => {
     renderSettings({ deviceLanguages: ['nl'] });
     expect(screen.getByRole('switch', { name: 'Scorevoorbeeld' })).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Terug naar camera' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Terug naar de camera' })).toBeTruthy();
     expect(screen.getByRole('radio', { name: 'Linkerkant' })).toBeTruthy();
   });
 });
