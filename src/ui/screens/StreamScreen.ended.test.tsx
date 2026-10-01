@@ -38,6 +38,14 @@ describe('Ended (spec §4)', () => {
     expect(screen.getByText('On air 1:02:03')).toBeTruthy();
   });
 
+  // M5: a session that ended inside its first second did go live.
+  it('reads a zero time on air as on air, never as never live', async () => {
+    const view = await renderViewfinder();
+    act(() => view.engine.forceState({ kind: 'ended', reason: 'fatal-error', durationMs: 0 }));
+    expect(screen.getByText('On air 0:00:00')).toBeTruthy();
+    expect(screen.queryByText('Never went live')).toBeNull();
+  });
+
   it('Scan another forgets the spent code, goes Home, and asks Home to scan', async () => {
     const view = await renderViewfinder();
     act(() => view.engine.scene('stopped'));

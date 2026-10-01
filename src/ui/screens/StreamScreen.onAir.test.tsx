@@ -292,6 +292,20 @@ describe('the score preview on air', () => {
     expect(screen.getByTestId('overlay')).toBeTruthy();
   });
 
+  // M1: native re-fetches the descriptor on every reconnect (spec §1); a new
+  // overlay URL is a new showing, tried afresh, with no caption.
+  it('tries a new overlay URL afresh, with no caption (carry 13)', async () => {
+    const view = await onAir('live');
+    act(() => view.surfaces.failOverlay());
+    expect(screen.getByText(OVERLAY_FAILED)).toBeTruthy();
+    const descriptor = view.engine.getSnapshot().descriptor;
+    if (descriptor === null) throw new Error('armed with no descriptor');
+    const next = 'https://stg.seazn.club/overlay/fixtures/next-fixture';
+    act(() => view.engine.setDescriptor({ ...descriptor, overlayUrl: next }));
+    expect(screen.queryByText(OVERLAY_FAILED)).toBeNull();
+    expect(screen.getByTestId('overlay').dataset.url).toBe(`${next}?delay=0`);
+  });
+
   it('tries again once the phone cools, with no caption (carry 13)', async () => {
     const view = await onAir('live');
     act(() => view.surfaces.failOverlay());
