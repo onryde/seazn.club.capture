@@ -50,7 +50,7 @@ Plans A and B are merged: `docs/superpowers/plans/2026-09-30-s1-plan-a-js-domain
   - No TypeScript state machine, apart from the absent engine (CD23).
   - Frames never cross the bridge; the preview is a native view.
   - Publish credentials never reach TypeScript: JS parses the QR and the waiting fields only (AGENTS §4 as amended).
-- **Threads (CD9).** One `HandlerThread` named `capture-engine` backs the `Scheduler`. `Engine.start` and `Engine.stop` run only on it, and every adapter reports through `BridgeCore`, which posts. **No adapter blocks the scheduler thread**: no `runBlocking` in the glue (the `GlueRulesTest` in Task 19 enforces it), and no DNS lookup, socket call or file write on it (`PairingStore` writes through the platform's store, posted).
+- **Threads (CD9).** One `HandlerThread` named `capture-engine` backs the `Scheduler`. `Engine.start` and `Engine.stop` run only on it, and every adapter reports through `BridgeCore`, which posts. **No adapter blocks the scheduler thread**: no `runBlocking` in the glue (the `GlueRulesTest` in Task 19 enforces it), and no DNS lookup or socket call on it. **File writes, with one exception:** `PairingStore` writes on the scheduler thread, synchronously, through `PrivateStore` (Task 20), because A17 says the stopped record is "written synchronously": it must be durable before the `End` that follows it, and the phone id with it. Those are a few hundred bytes in app-private storage. The session record's file is not: it is written by `RecordFile` off the scheduler thread (Task 33).
 - **Layering.** `src/domain` stays pure. `ui/` reaches native only through `Ports`. `engine` (`modules/capture-engine/src`) may import `engine` and `domain` only, so the bridge takes its logger as an injected function. Lint enforces all of it.
 - **Secrets.** Never log, print, screenshot or commit a code's raw value, `tok`, an SRT passphrase or stream id, or an RTMPS stream key. Test fixtures are made up. Real staging credentials come from the owner in person, never over a session channel, and live only on the owner's laptop. The Cloudflare token likewise comes from the owner directly. The scripted code server's file is copied into the app's private storage with `adb shell run-as`, never left on `/sdcard`, never committed, and deleted from the phone and the laptop after the run. A release build carries none of it, and a `GlueRulesTest` rule checks that (Task 34).
 - **Cloudflare.** The account is shared and prepaid. Every device publish ends with the owner deleting the recording (`DELETE /stream/{video_uid}`): recordings outlive their inputs.
@@ -144,7 +144,7 @@ The amendment or the spec was silent, or a carry asked for a decision, on each o
 | CD8  | **The contract kit against the bridge (carry 1).** The kit's scenarios live in `modules/capture-engine/src/contract/engineScenarios.ts` (Task 23), which imports no vitest, with the server's side scripted through `serverSays.ts`. `test/engineContract.ts` wraps each scenario in an `it`, and `make` may now return a promise. The bridge runs them in vitest over a **JVM host process** (`core/host`): the real `Engine` and `BridgeCore` with a scripted platform and a scripted server (Task 21), speaking NDJSON on stdin and stdout. **Settling is an acknowledgement, not a timeout:** the JS bridge numbers each intent with a `seq`, and `BridgeCore.send` posts `platform.acked(seq)` after the input's own tasks, so the ack lands after every snapshot that input caused and before any later tick's. The host writes it as `{"ev":"ack","seq":n}` and Android emits it as `onAck`; `NativeCaptureEngine.settled()` resolves on the ack of the last intent sent, and `settle` is that. A `bridge` vitest project runs it, kept out of `pnpm test` by two guards (an exclude in the `domain` project and the `CAPTURE_BRIDGE` gate), each mutated on its own. It runs in its own workflow, `bridge-contract.yml`, so `kotlin-core.yml` stays JDK and Gradle only, as spec §6 says. The **device run** is a development-build button on Home, beside the dev paste (Task 32), that runs the scenarios marked `onPhone` against the real native engine, settling on the same `onAck` and then on the engine leaving `pairing`, with the scripted code server answering (Task 34), and writes `probe.pass`, `probe.skip {count}` or `probe.fail` lines into the record. |
 | CD9  | **The thread model (carry 15).** One `HandlerThread` named `capture-engine` backs `Scheduler`, wrapped in `GuardedScheduler`. The wrapper catches any `Throwable` at the task boundary, so the thread never dies, and hands it to `BridgeCore.failed`, which records it and classifies it (CD11). `Engine.start` is posted onto the thread. StreamPack's suspend calls run on the adapter's own coroutine scope, and their outcomes come back as inputs. **Work that needs the main thread or does IO is posted off the scheduler thread**: the `PairingKeeper` (marker file, wake lock, permission request, `startForegroundService`, Task 38) runs on the main looper, and reports back through `BridgeCore`. Every coroutine scope in the glue has a `CoroutineExceptionHandler` that reports to `BridgeCore`, so a vendor throw never reaches the thread's uncaught-exception handler.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
 | CD10 | **Deep sleep (carry 14).** A `PARTIAL_WAKE_LOCK` is held **from the accepted `pair` (after permissions) to the unpair or Ended**, by `PairingKeeper` (Task 38), because the phone must beat while locked for the whole pairing. While it is held, `Handler.postDelayed` (`uptimeMillis`) and the clock (`elapsedRealtime`) cannot drift apart. The lock is tagged `seazn:capture`, and its holding is a record line. **The evidence is a line:** `BridgeCore` writes `tick-late {gapMs}` whenever two ticks are more than 1000 ms apart on the monotonic clock (`Lateness`, Task 17). Doze's effect on the network for a foreground-service process is a device-only claim (Task 40's 30-minute row).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
-| CD11 | **Permanent failures are sticky, but a permission is not a failure (carry 18).** A failure is permanent when it is a `LinkageError` (`UnsatisfiedLinkError`, `NoClassDefFoundError`) or a `PermanentPlatformFailure`, which the glue uses for an encoder that cannot be configured. Once one is seen, `StickyFailure` answers every later `Connect`, `Rebuild.next` and `StartNewSession.next` with `PlatformFailed(thatAttemptId, message)` and executes none of them, and the pairing ends fatal-error. **A camera that fails to open is passed to `pairFailed` as it is (P12)**: permanent only if it is a `LinkageError`, so Continue can pair again without killing the app (closes D5). **A refused camera or microphone permission at `pair` does not pair**: it returns to Idle with `unpaired.reason` `permissions` (Home's panel, CD21) and is asked again at the next `pair`. A permission request that cannot run (no activity) is `askFailed`, not a refusal (Task 20). **A failure before a broadcast's first Connect** is reported at once with the attempt in hand (`Phase.attemptInHand`, made public). There is one `BridgeCore`, and so one `Engine`, per process.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| CD11 | **Permanent failures are sticky, but a permission is not a failure (carry 18).** A failure is permanent when it is a `LinkageError` (`UnsatisfiedLinkError`, `NoClassDefFoundError`) or a `PermanentPlatformFailure`, which the glue uses for an encoder that cannot be configured. Once one is seen, `StickyFailure` answers every later `Connect`, `Rebuild.next` and `StartNewSession.next` with `PlatformFailed(thatAttemptId, message)` and executes none of them, and the pairing ends fatal-error. **A camera that fails to open is passed to `pairFailed` as it is (P12)**: permanent only if it is a `LinkageError`, so Continue can pair again without killing the app (closes D5). **Another app holding the camera is not a failure (I4, A11)**: an open that fails with Camera2's `CAMERA_IN_USE` or `MAX_CAMERAS_IN_USE` goes to `BridgeCore.cameraBusy`, the pairing stays, readiness reports not ready, `camera`, and the release opens the camera again (Tasks 18, 20, 36). **A refused camera or microphone permission at `pair` does not pair**: it returns to Idle with `unpaired.reason` `permissions` (Home's panel, CD21) and is asked again at the next `pair`. A permission request that cannot run (no activity) is `askFailed`, not a refusal (Task 20). **A failure before a broadcast's first Connect** is reported at once with the attempt in hand (`Phase.attemptInHand`, made public). There is one `BridgeCore`, and so one `Engine`, per process.                                                                                                                                                                                                |
 | CD12 | **Pollers (carries 16 and 19).** `AttemptPollers` runs one Frames reader every 500 ms and one Link reader every 1000 ms **per attempt**. A second `begin` for the same attempt changes nothing, and a new attempt cancels the old one's. They keep running through a camera switch, so the switch's LIVE bound stays at 3.5 s or less. They stop on a drop, `Disconnect`, `Rebuild`, `StartNewSession` and `End`. While publishing, a Frames read whose video count has not moved for more than 500 ms writes `frames-gap {gapMs}` once per gap (`Lateness`, Task 17), which is what research Open 11's resize check reads.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
 | CD13 | **HTTP (carries 17 and 20, F-P5-13).** OkHttp is built with no cache, and every playlist fetch sends `Cache-Control: no-cache`. Code, beat and start requests send `no-store`, and pass `Retry-After` up to the core. The timeouts are 8 s. **A 204 maps to `NoContent` before any test of success**, because OkHttp's `isSuccessful` is true for it. The code's answer always echoes its request id and is read by `Bodies` against the pairing's environment (Task 15), the only place `cred` is read. The User-Agent is OkHttp's default: P5 found U1-S6's 403 did not reproduce, and a 403 reads as no evidence, never as a stall (`withoutEvidence`).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
 | CD14 | **Our own SRT sink (F-P5-11, F-P5-1, R3).** `SeaznSrtSink`, adapted from StreamPack 3.2.0's `SrtSink` under Apache-2.0 with attribution, composed with StreamPack's `TsMuxer` through `CompositeEndpointWithMetricsFactory`. It resolves the host first, off the scheduler thread, and reports `UnknownHostException` as `UNRESOLVED`. It sets `STREAMID`, `PASSPHRASE` and `LATENCY` as socket flags, so **no SRT URL string carrying a secret is ever built**. That makes carry 13's `URLEncoder` proposal moot for SRT. It sets `MAXBW` in bytes per second after connect and on every `SetMaxBw`, with `INPUTBW` 0 so libsrt never derives its own. It exposes its completion cause, so a drop is known at once and once.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
@@ -164,7 +164,7 @@ The amendment or the spec was silent, or a carry asked for a decision, on each o
 | CD28 | **The audio level.** An `IConsumerAudioEffect` on `audioInput.processor` hands each PCM frame to `PcmPeak`. `PeakMeter` keeps the highest peak between snapshots, and each snapshot takes it. Before the first connect the level comes from our own `SoundMeter` instead (CD42). Nothing is normalised (AGENTS §6).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
 | CD29 | **`switchCamera` (carry 10).** It is mapped through to `Input.SwitchCamera`, and the glue swaps to the camera facing the other way. S1 has no control for it. It is reserved, not a defect.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
 | CD30 | **StreamPack's logger is ours (I14).** Task 33 sets `io.github.thibaultbee.streampack.core.logger.Logger.logger` to a `VendorLogger` in `EngineHost`'s first use, before any streamer exists. It forwards warnings and errors to `BridgeCore.log` as `vendor-log {tag, message, error}` at level `warn` or `error`, where `message` is a text key and so masked by value, and `error` is the throwable's class name only (never its message, which can quote a URL with a key). Info, debug and verbose are dropped. It writes nothing to logcat in any build: the glue may not import `android.util.Log` (`GlueRulesTest`), and the record is the one place a line goes. `GlueRulesTest` checks the assignment exists, once, in `EngineHost.kt`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
-| CD31 | **The pairing noticed outside the snapshot sink (I1, rewritten as the pair notice).** `Engine.publish` catches every `Exception` from the snapshot sink and only counts it, so nothing that must fail visibly may run there. `BridgeCore.report` posts, after each input, a task that compares the pairing held with the last one it acted on (by identity), and the capture wanted with the capture it opened and the pairing it opened it for (CD37). On a new pairing it calls the platform's pair work (service, permissions, wake lock); on a new broadcast, the broadcast's; an `Exception` from either becomes `pairFailed` (permanent or not, as CD11 classifies it), which ends the pairing fatal-error, and an `Error` reaches `GuardedScheduler`. A late failure for a pairing already gone writes `pair-step-late` and ends nothing newer (N1).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| CD31 | **The pairing noticed outside the snapshot sink (I1, rewritten as the pair notice).** `Engine.publish` catches every `Exception` from the snapshot sink and only counts it, so nothing that must fail visibly may run there. `BridgeCore.report` posts, after each input, a task that compares the pairing held with the last one it acted on (by identity), and the capture wanted with the capture it opened and the pairing it opened it for (CD37). On a new pairing it heals the pairing-scope failures (CD11) and replays the platform's readiness (A11); on a change of the capture wanted, it calls `Platform.capture`. The pair work itself is the machine's commands, `AskPermissions`, `Hold` and `Release`, which the platform executes off the scheduler thread (Task 38's `PairingKeeper`); work the platform posts for a pairing reports a failure through `pairFailed` (permanent or not, as CD11 classifies it), which ends the pairing fatal-error, or, for a busy camera, through `cameraBusy` (I4). An `Error` reaches `GuardedScheduler`. A late failure for a pairing already gone writes `pair-step-late` and ends nothing newer (N1).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 | CD32 | **One process core, many module instances (I2).** `BridgeCore.shared` is per process and is built on `context.applicationContext`, never a React context. `EngineHost` holds the current snapshot listener and the current `AppContext` (for permission requests) in two `OwnedSlot`s: a module's `OnCreate` takes both, and its `OnDestroy` releases each only if it still owns it. A dev reload or an Expo Updates reload therefore never leaves the core talking to a destroyed context, whichever of the old `OnDestroy` and the new `OnCreate` runs first.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
 | CD33 | **Lateness is recorded.** `Lateness` (Task 17) is pure: `TickLateness` writes `tick-late {gapMs}` when two ticks are more than 1000 ms apart, and `FrameGaps` writes `frames-gap {gapMs}` once per stall when the video count has not moved for more than 500 ms while publishing. They are the evidence for CD10's wake lock and research Open 11, and production evidence of deep sleep.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
 | CD34 | **Android 12+ (owner ruling, 2026-10-01).** `minSdkVersion` is **31**, set with `expo-build-properties` (`android.minSdkVersion: 31` in `app.json`'s plugins, pinned to Expo 57's `~57.0.22`; it is a config plugin with no native code, so nothing autolinks). Task 33 checks the merged manifest says 31, and `android-compile.yml` fails if it does not. Every branch for an older API is deleted, with its test: `MicSilenceWatch` takes no SDK and always reads the silencing signal (API 29+); `EncoderKeys.VIDEO` always sets B-frames off (API 29+); `ApplicationExitInfo` (30+), the thermal status (29) and headroom (30), the notification channel (26+) and the service types (29+) are read with no version check. `POST_NOTIFICATIONS` is asked on API 33+ only, since 31 and 32 allow notifications by default. **Carry 23 (API 24–28 has no silencing signal) is closed by this ruling**, not deferred. The Redmi Note 7 Pro (Android 10) is no longer supported: the device gate's second geometry is the OnePlus under `adb shell wm size` and `wm density` overrides, reset afterwards, plus an Android 12 or 13 phone if the owner has one (Task 40).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
@@ -173,9 +173,9 @@ The amendment or the spec was silent, or a carry asked for a decision, on each o
 | CD37 | **Capture is wanted while a broadcast is held, or while the engine is Paired and the viewfinder is shown.** The amendment (_Readiness_) has the camera and mic open on the viewfinder and closed while waiting with the phone locked or the app elsewhere, and a go-live opening them from the service. `BridgeCore` decides and the platform builds and tears down (`capture(wanted, request)`). The viewfinder is the glue's preview view attached to a window, reported through `viewfinder(shown)` (Task 39). A re-pair over a shown viewfinder closes the capture for the old pairing and opens it for the new one (`capturedFor`, Task 20).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
 | CD38 | **The default cadence.** Before the server's first 2xx, nothing is known: `WaitingFields.UNKNOWN` carries `BeatCadence.DEFAULT_POLL_S` (10 s), so a claim that failed is retried soon. After a 2xx, `pollSeconds` is clamped (Task 4), and at least every 10 s while a broadcast is held.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
 | CD39 | **The Continue card of a code with no `exp`.** A v2 code may have no `exp` (A1). The card then names the slot, `home.continue.slot` ("Slot {slot}"), where a code with `exp` names its expiry (Task 29).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
-| CD40 | **Ended carries the pairing, not the broadcast.** The amendment says the snapshot's `broadcast` is present "while a broadcast is held, and in Ended". Task 9 frees the session at Ended, so `Ended` carries the pairing's name and the `sid` it ended, and no `broadcast` block; nothing on the Ended screen reads one.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
-| CD41 | **A7's confirm sheet is unreachable from a scan in S1.** A scoring or dashboard code answers "coming soon" at the scan (`scanOutcome`, `BUILT_MODES`), so the sheet is tested through `openFromPanel` with a made-up scoring code, which is the path S2's scan will take (Task 30).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
-| CD42 | **Readiness before the first connect.** The amendment's camera check counts frames, but before `startStream` StreamPack produces no encoded frames, so before the first connect **camera readiness is "the video source is our camera, not the slate"**, with contention from the engine's `camera` field (Task 18's `CameraAvailability`). **Sound readiness before connect is read from our own `SoundMeter`** (an `AudioRecord` at the encoder's format), stopped before Connect so the streamer's microphone is the only one open while publishing (Task 36). **The rotation** is the build's `defaultRotation` from the side held; an `Orient` for the other side rebuilds the streamer before Connect, recorded as `capture-rebuilt {action: "orient"}`. `setTargetRotation` stays banned: a pending same-value rotation is F-P5-6's candidate cause. What StreamPack's camera and microphone do with no preview surface before `startStream` is a device-only claim (Task 40).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| CD40 | **Ended carries the pairing, not the broadcast.** _Accepted by the controller, fix round 1 (not an owner ruling)._ The amendment says the snapshot's `broadcast` is present "while a broadcast is held, and in Ended". Task 9 frees the session at Ended, so `Ended` carries the pairing's name and the `sid` it ended, and no `broadcast` block; nothing on the Ended screen reads one.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| CD41 | **A7's confirm sheet is unreachable from a scan in S1.** _Accepted by the controller, fix round 1 (not an owner ruling)._ Its on-device row moves to S2's device gate (Task 40). A scoring or dashboard code answers "coming soon" at the scan (`scanOutcome`, `BUILT_MODES`), so the sheet is tested through `openFromPanel` with a made-up scoring code, which is the path S2's scan will take (Task 30).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| CD42 | **Readiness before the first connect.** **Owner ruling, 2026-10-01: accepted.** A11's camera check before connecting means: our camera, not the slate, is the source; no other app holds the camera (contention, live while Paired, I3); sound above the floor; the network up; the phone held sideways. Real frames are proved after connecting, by F-P5-6's LIVE gate: ON AIR shows only once video flows, and otherwise the status line says why. This refines the amendment's A11 wording. The reasoning: the amendment's camera check counts frames, but before `startStream` StreamPack produces no encoded frames, so before the first connect **camera readiness is "the video source is our camera, not the slate"**, with contention from the engine's `camera` field (Task 18's `CameraAvailability`). **Sound readiness before connect is read from our own `SoundMeter`** (an `AudioRecord` at the encoder's format), stopped before Connect so the streamer's microphone is the only one open while publishing (Task 36). **The rotation** is the build's `defaultRotation` from the side held; an `Orient` for the other side rebuilds the streamer before Connect, recorded as `capture-rebuilt {action: "orient"}`. `setTargetRotation` stays banned: a pending same-value rotation is F-P5-6's candidate cause. What StreamPack's camera and microphone do with no preview surface before `startStream` is a device-only claim (Task 40).                                                                                                                                                                                                                         |
 
 ## Owner rulings of 2026-10-01
 
@@ -285,7 +285,8 @@ No test in this plan can prove the following. Each is on the owner's checklist i
 - the **accelerometer delivering with the screen off** while the wake lock is held: the go-live's `side` read from a locked phone, and an upright phone answered `notReady: "held"`;
 - an **OEM kill** during a long wait, and **battery** over a 60-minute wait at a 60 s cadence;
 - what a remote start does **with another app holding the camera**: not ready, `camera`; no slate on air;
-- **CD42**: what StreamPack's camera and microphone do with no preview surface before `startStream`, and whether the `SoundMeter`'s `AudioRecord` and the streamer's microphone ever overlap;
+- **I4**: which Camera2 failure an open meets when another app already holds the camera (`CAMERA_IN_USE`, `MAX_CAMERAS_IN_USE`, or a `StateCallback` error), whether StreamPack surfaces it at the build where Task 36 classifies it, and that the pairing then stays Paired and not ready, `camera`, until the release;
+- **CD42** (owner ruling, 2026-10-01): what StreamPack's camera and microphone do with no preview surface before `startStream`, and whether the `SoundMeter`'s `AudioRecord` and the streamer's microphone ever overlap;
 - the preview, its framing against the encoded stream (#288), FIT letterboxing and both landscape sides — P4's three assertions, each read separately: the preview upright on screen (a screenshot), the encoded picture upright (a frame grabbed with `ffmpeg -ss 5 -frames:v 1`, opened and looked at), and the rotation metadata (`ffprobe -show_streams`: no `rotation` side data, `width` 1280 and `height` 720);
 - B-frames off on each handset the run uses: `ffprobe -show_frames` counts zero `pict_type=B` frames, with `has_b_frames=0` beside it;
 - the capture clock: `CaptureClock` assumes StreamPack's frame timestamps use the clock `monoNowUs` reads. Read on the device as the `capture-clock {lagMs}` line Task 35 writes at each attempt's first video frame: between 0 and a few hundred ms, never negative and never in the thousands;
@@ -436,7 +437,20 @@ The amendment's _AGENTS.md changes_ are built in this first batch, each citing i
   4.9.2, for the reasons in plan C's CD35.
 ```
 
-- [ ] **Step 5: Verify and commit.** Run the core suite: EXIT=0, and the count is the base count (452 at `d6931c1`), unchanged. Run `pnpm prettier --check AGENTS.md docs/specs/2026-09-30-s1-plan-a-results.md`: EXIT=0. Read the AGENTS.md diff once: fourteen edits, nothing else. Then commit:
+- [ ] **Step 5: Verify and commit.** Run the core suite: EXIT=0, and the count is the base count (452 at `d6931c1`), unchanged. Run `pnpm prettier --check AGENTS.md docs/specs/2026-09-30-s1-plan-a-results.md`: EXIT=0. Read the AGENTS.md diff once: fourteen edits, nothing else. Then the document checks. Each is a fixed string with no line number, since the numbers move with every edit, and it is run over the file with its line breaks folded to spaces, since prettier wraps AGENTS.md's prose. The count expected is in each comment:
+
+```bash
+cd "$WT" && tr -s '\n ' '  ' < AGENTS.md | grep -oF '**Scan** → **Paired** →' | wc -l                          # 1 (edit 1)
+cd "$WT" && tr -s '\n ' '  ' < AGENTS.md | grep -oF 'Detox covers scan→pair→live.' | wc -l                     # 1 (edit 13)
+cd "$WT" && tr -s '\n ' '  ' < AGENTS.md | grep -oF 'never apply while the phone is paired or holding a broadcast' | wc -l  # 1 (edit 14)
+cd "$WT" && tr -s '\n ' '  ' < AGENTS.md | grep -oE '\*\*Scan\*\* → \*\*Arm\*\* →|scan→arm→live|never apply while a session is armed or live' | wc -l  # 0: the old lines are gone
+cd "$WT" && tr -s '\n ' '  ' < docs/specs/2026-09-30-s1-plan-a-results.md | grep -oF 'ruled by the owner on 2026-10-01' | wc -l  # 1
+cd "$WT" && grep -cF 'stamped when the scheduler runs it' modules/capture-engine/android/core/src/main/kotlin/com/seazn/capture/engine/core/Engine.kt  # 1 (RR-13)
+```
+
+§6's other "while a session is armed or live" (the turn card's lock) is not one of the fourteen edits and stays.
+
+Then commit:
 
 ```bash
 cd "$WT" && git add AGENTS.md modules/capture-engine/android/core/src/main/kotlin/com/seazn/capture/engine/core/Engine.kt docs/specs/2026-09-30-s1-plan-a-results.md && git commit -F - <<'EOF'
@@ -692,6 +706,15 @@ class HostsTest {
     assertEquals(Environment.STAGING, Environment.of(null))
     assertEquals(Environment.STAGING, Environment.of("prod"))
     assertEquals(Environment.PRODUCTION, Environment.of("production"))
+  }
+
+  @Test
+  fun `a URL with userinfo has no host at all - it is refused, not read past the at sign`() {
+    // The vector rows cannot see this: with or without the `@` exclusion, `stg.seazn.club@evil.io`
+    // is never a Seazn host, so their verdict is the same. Only hostOf's own answer differs (review M1).
+    assertEquals(null, Hosts.hostOf("https://stg.seazn.club@evil.io/x", "https"))
+    assertEquals(null, Hosts.hostOf("srt://user@live.cloudflare.com:778", "srt"))
+    assertEquals("stg.seazn.club", Hosts.hostOf("https://STG.seazn.club:8443/x", "https"))
   }
 }
 ```
@@ -1065,14 +1088,14 @@ describe('one Seazn-host rule in two languages', () => {
 - [ ] **Step 7: Mutate.** One at a time, from a `cp` backup, and confirm a test fails each time:
   1. In `TokenTag.of`, change `unit.code` to `unit.code and 0xff`. The non-ASCII rows fail.
   2. In `Hosts.hostOf`, drop `.lowercase()`. The `STG.seazn.club` row fails.
-  3. In `Hosts.SHAPE`, remove `@` from the host's excluded characters. The userinfo row fails.
+  3. In `Hosts.SHAPE`, remove `@` from the host's excluded characters. The userinfo `hostOf` test fails. (The vector's userinfo row survives this mutant by design: a host holding `@` never equals a Seazn or ingest host, so the verdict is the same either way; the `hostOf` test is the one that sees it.)
      3a. In `Hosts.onIngest`, allow `CLOUDFLARE_SRT` whatever the scheme. The RTMPS-on-Cloudflare row fails.
      3b. In `Hosts.onIngest`, match `CLOUDFLARE_SRT` with `endsWith`. The lookalike rows fail.
   4. In `Environment.of`, return `PRODUCTION` for `null`. The fail-safe test fails.
   5. Drop the `"failed"` entry of `LastEnd.SERVER`. The end-reason table fails.
   6. In `Refusal.of`, return `START_FAILED` for an unknown code. The refusal test fails.
 
-- [ ] **Step 8: Verify and commit.** The core suite: EXIT=0, and the count rises by 7. `pnpm check`: EXIT=0, and `numTotalTests` rises by 18 (8 token rows and 10 Seazn rows; the ingest rows are Kotlin's alone). Then commit:
+- [ ] **Step 8: Verify and commit.** The core suite: EXIT=0, and the count rises by 9 (1 `TokenTagTest`, 3 `HostsTest`, 5 `PairingValuesTest`). `pnpm check`: EXIT=0, and `numTotalTests` rises by 18 (8 token rows and 10 Seazn rows; the ingest rows are Kotlin's alone). Then commit:
 
 ```bash
 cd "$WT" && git add modules/capture-engine/android/core modules/capture-engine/src/wire/token-tag-vectors.json modules/capture-engine/src/wire/host-vectors.json modules/capture-engine/src/tokenTagVectors.test.ts modules/capture-engine/src/hostVectors.test.ts && git commit -F - <<'EOF'
@@ -1160,6 +1183,15 @@ Two contract changes of 2026-10-01 are read here. **A session shape with no `cre
       "named": "S",
       "word": "no-evidence",
       "ends": false
+    },
+    {
+      "source": "code",
+      "answer": "not-current",
+      "sid": "N",
+      "named": "S",
+      "word": "open",
+      "wordSid": "N",
+      "ends": true
     },
     {
       "source": "code",
@@ -1597,7 +1629,9 @@ sealed interface ServerWord {
             410 -> Over(named, answer.endReason)
             else -> NoEvidence
           }
-        is CodeAnswer.NotCurrent, is CodeAnswer.ForeignIngest, is CodeAnswer.Unreadable, is CodeAnswer.Unreachable -> NoEvidence
+        // No `cred` naming another sid while one is held is still "another sid" (M8): it ends the held one.
+        is CodeAnswer.NotCurrent -> if (named != null && answer.sid != named) Open(answer.sid, null) else NoEvidence
+        is CodeAnswer.ForeignIngest, is CodeAnswer.Unreadable, is CodeAnswer.Unreachable -> NoEvidence
       }
   }
 }
@@ -1623,7 +1657,8 @@ and `Heartbeat.answered`'s over test reads `SessionOver.said(response.status, re
   2. In `ends`, make `is Open -> sid == held`. The `Open(N)` rows fail.
   3. In `ofBeat`, map 410 to `Over(null, …)`. The beat-410-named-S row fails.
   4. In `ofReply`, read `"live"` as `Open(it, Cause.startedBy(reply.startedBy))`. The rejoin row fails on its cause.
-  5. In `ofCode`, read `NotCurrent` as `Open`. The not-current row fails.
+  5. In `ofCode`, read `NotCurrent` as `Open`. The not-current-S row fails.
+     5b. (M8) In `ofCode`, read every `NotCurrent` as `NoEvidence`, whatever its sid. The not-current-N row fails.
 
 - [ ] **Step 7: Verify and commit.** The core suite: EXIT=0; the count rises by 2. Then commit:
 
@@ -2189,7 +2224,7 @@ Plan B's arm seeds the first beat with `HeartbeatState(nextDueAtMs = now.monoMs,
   1. `DEFAULT_KEEP_MS` to 6 h. The RR2 test fails.
   2. In `StoppedRecord.of`, ignore `maxDurationMinutes`. The A17 keep test fails.
   3. In `delivered`, drop the `410` clause. The delivery test fails.
-  4. In `delivered`, drop `ServerWord.Replaced`. The delivery test fails.
+  4. In `delivered`, drop `ServerWord.Replaced`. **Survives, an equivalent mutant (review M2):** a beat's `replaced` and `taken` arrive only in a 200 (the amendment's beat answer; `ServerWord.ofBeat` reads them only `in 200..299`), so the 2xx clause already delivers them. The word clauses stay as the 2026-10-01 rule written where a reader looks, and the test's two rows pin the outcome, not the clause. Record it in the commit body.
   5. In `isFor`, compare `tokenTag` too (`PairingName` has it; pass the whole name). The per-code test fails.
   6. In `notReady`, swap the sound and network branches. The order test fails.
   7. In `Readiness.held`, read `NoSensor` as not held. The no-accelerometer test fails.
@@ -2198,7 +2233,8 @@ Plan B's arm seeds the first beat with `HeartbeatState(nextDueAtMs = now.monoMs,
   10. In `Beats.payload`, send `stopped` whatever `sid` is. The RR3 test fails.
   11. In `Beats.payload`, send `device` on every beat. The RR3 test fails.
   12. In `Heartbeat.due`, ignore `notBeforeMs`. The 429 test fails.
-  13. `AUDIO_FLOOR` to 0.06. The shared-floor test fails, on both sides.
+  13. `Readiness.AUDIO_FLOOR` to 0.06. The Kotlin shared-floor test fails; the JS test does not, since it compares plan A's `AUDIO_FLOOR` with the file, not with Kotlin.
+      13b. `audio-floor.json`'s `floor` to 0.06. Both shared-floor tests fail, the Kotlin one and `audioFloor.test.ts`.
 
 - [ ] **Step 6: Verify and commit.** The core suite: EXIT=0; the count rises by 19. `pnpm check`: EXIT=0; `numTotalTests` rises by 1. Then commit:
 
@@ -2236,8 +2272,8 @@ The skeleton the rest of C0b fills in. A `pair` asks for permissions, then holds
 - Create: `K/core/Pairings.kt` (`Pairings`: pair, permissions, unpair, the settings, readiness and the gate; `Starts.arm` and the open answer)
 - Modify: `K/core/SessionMachine.kt` (`apply`'s table; `arm` and `start` go; `Heartbeats` beats from the pairing; `Timers.tick` covers Arming)
 - Modify: `K/core/Projection.kt` (`beatFacts` replaces `heartbeatFacts`), `K/core/Heartbeat.kt` (`HeartbeatFacts` and `payload` go; `soon()`)
-- Modify: `K/core/Engine.kt` (protects the token and the code at `Pair`, the credentials at an open `CodeAnswered`), `K/core/SessionRecord.kt` (`protect(secrets, notInUrls)`)
-- Modify: `K/core/BroadcastDescriptor` in `K/core/Answers.kt` (`secrets()`, `config(pairing)`), `K/core/Pairing.kt` (`PairRequest.secrets()`)
+- Modify: `K/core/Engine.kt` (protects the token at `Pair`, and the code in free text only, M3; the credentials at an open `CodeAnswered`), `K/core/SessionRecord.kt` (`protect(secrets, notInUrls, inTextOnly)`)
+- Modify: `K/core/BroadcastDescriptor` in `K/core/Answers.kt` (`secrets()`, `config(pairing)`), `K/core/Pairing.kt` (`PairRequest.secrets()`, `PairRequest.textSecrets()`)
 - Modify: `T/core/MachineRig.kt` (rewritten: `paired()`, `hear()`, `armed()`, `ready()`, `live()`), `T/core/Configs.kt` (`waiting()`, `open()`, `READY`)
 - Modify: every plan B machine and engine test, per the migration table in Step 6
 - Create: `T/core/PairingTest.kt`
@@ -2263,6 +2299,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertIs
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import org.json.JSONObject
 
 class PairingTest {
   @Test
@@ -2429,9 +2466,24 @@ class PairingTest {
   @Test
   fun `the record never carries the token or the code, from the pair on`() {
     val rig = MachineRig().live()
+    // The entries as the machine writes them, before any masking: no field names either (field level, M3).
     val lines = rig.sent<Command.Record>().joinToString("\n") { it.entry.toString() }
     assertTrue(Configs.TOKEN !in lines)
+    assertTrue(rig.request.name.code !in lines)
     assertTrue(rig.records("pair").single().field("tokenTag") == "c980ff38")
+  }
+
+  @Test
+  fun `M3 the code is masked in free text, and never inside a closed word that happens to contain it`() {
+    val lines = mutableListOf<String>()
+    val record = SessionRecord { lines += it }
+    val request = Configs.pairRequest(code = "on")
+    record.protect(request.secrets(), inTextOnly = request.textSecrets())
+    record.append(0, RecordEntry("connecting", listOf("state" to "connecting", "message" to "GET /codes/on/beat failed")))
+    val line = JSONObject(lines.single())
+    assertEquals("connecting", line.getString("kind"))
+    assertEquals("connecting", line.getString("state"))
+    assertTrue("/codes/on/" !in line.getString("message"))
   }
 }
 ```
@@ -2831,7 +2883,7 @@ In `Answers.kt`, `BroadcastDescriptor` gains:
     SessionConfig(sid, pairing.token, primary, fallback, holdWindowSeconds, playbackUrl, pairing.request.heartbeatUrl, pairing.phone.appVersion)
 ```
 
-and `PairRequest` gains `fun secrets(): List<String> = listOf(token, code).filter { it.isNotBlank() }`: the code is masked too, so no record line can carry it (Global Constraints, security).
+and `PairRequest` gains `fun secrets(): List<String> = listOf(token).filter { it.isNotBlank() }` and `fun textSecrets(): List<String> = listOf(code).filter { it.isNotBlank() }`. **The code is kept out of the record at field level (M3):** no line the machine writes names it (the `pair` line carries `slot` and `tokenTag`), and it is masked by value only in free text (`TEXT_KEYS`: `message`, `problems`), where a library's error can quote a URL holding it. It is never masked inside a closed-vocabulary word or a kind, so a short code cannot mangle `connecting` because it contains `on`. The token stays masked everywhere, as plan B did (Global Constraints, security). A scanned code's raw value never reaches native: JS sends the parsed fields.
 
 In `SessionMachine.kt`, `apply`'s table becomes:
 
@@ -2857,7 +2909,7 @@ In `SessionMachine.kt`, `apply`'s table becomes:
     }
 ```
 
-and `reduce` ends with `return Pairings.gate(merged, now)`, where `merged` is the step it returns today. `arm`, `start` and `descriptor` are deleted. `Timers.tick` gains `is Phase.Arming -> Starts.tick(phase, now)`, and `Idle`, `Pairing`, `Paired` and `Armed` stay `Step(phase)`. `Transports.replace` and `Transports.failed` ask the code with `Command.FetchCode(id, session.pairing.request.codeUrl, session.pairing.token, session.pairing.phone.phoneId, session.pairing.name.slot, session.pairing.request.environment)` where they built `FetchDescriptor(id)`. `Devices.contended` and its siblings act only `phase.session ?: return Step(phase)`, as before: Paired has no session, so a camera taken while paired puts up no slate.
+and `reduce` ends with `return Pairings.gate(merged, now)`, where `merged` is the step it returns today. `arm`, `start` and `descriptor` are deleted. `Timers.tick` gains `is Phase.Arming -> Starts.tick(phase, now)`, and `Idle`, `Pairing`, `Paired` and `Armed` stay `Step(phase)`. `Transports.replace` and `Transports.failed` ask the code with `Command.FetchCode(id, session.pairing.request.codeUrl, session.pairing.token, session.pairing.phone.phoneId, session.pairing.name.slot, session.pairing.request.environment)` where they built `FetchDescriptor(id)`. `Devices.contended` and its siblings act only `phase.session ?: return Step(phase)`, as before, in this task. Task 7 keeps the camera on the pairing while no broadcast is held (I3) and puts the slate up only while sending (I2).
 
 `Verdicts`, in a new section of `Pairings.kt`, holds what Task 5 needs of the answers; Tasks 6 and 7 complete it:
 
@@ -2997,7 +3049,7 @@ In `Engine.kt`, `reduced` protects before the machine sees a secret:
   private fun protectFailure(input: Input): Exception? =
     try {
       when (input) {
-        is Input.Pair -> record.protect(input.request.secrets())
+        is Input.Pair -> record.protect(input.request.secrets(), inTextOnly = input.request.textSecrets())
         is Input.CodeAnswered -> (input.answer as? CodeAnswer.Open)?.descriptor?.let { record.protect(it.secrets(), notInUrls = it.streamIds()) }
         else -> Unit
       }
@@ -3007,7 +3059,7 @@ In `Engine.kt`, `reduced` protects before the machine sees a secret:
     }
 ```
 
-`SessionRecord.protect(config)` becomes `protect(secrets: List<String>, notInUrls: List<String> = emptyList())`, with the same body over `secrets` and `secrets - notInUrls`; plan B's callers pass `config.secrets()` and the stream ids.
+`SessionRecord.protect(config)` becomes `protect(secrets: List<String>, notInUrls: List<String> = emptyList(), inTextOnly: List<String> = emptyList())`, with the same body over `secrets` and `secrets - notInUrls`, and `textSecrets = withEncodings(textSecrets + inTextOnly)` in a new field. `scrub`'s `key in PLAIN_KEYS || key in TEXT_KEYS -> masked(value, secrets)` splits in two: `key in TEXT_KEYS -> masked(value, secrets + textSecrets)` first, then `key in PLAIN_KEYS -> masked(value, secrets)`; the kind is masked with `secrets` alone. Plan B's callers pass `config.secrets()` and the stream ids.
 
 - [ ] **Step 6: The rig, and plan B's tests migrated.** `MachineRig`'s constructor becomes `MachineRig(val request: PairRequest = Configs.pairRequest(), val descriptor: BroadcastDescriptor = Configs.descriptor())`. Its auto-answers gain `permissions: Boolean? = true` (for `AskPermissions`), `codes: ((Int) -> CodeAnswer?)? = { Configs.open(descriptor = descriptor) }` (for `FetchCode`) and `starts: ((Int) -> StartAnswer?)? = null` (for `PostStart`). Its helpers:
 
@@ -3068,6 +3120,7 @@ Every plan B test is migrated by these rules, and by no other edit:
 | `Session(…, heartbeat = …)` built by hand                                                                                       | the rig's phase, read after `armed()`                                                                                                                                                                                                                                                                                                                                 |
 | `Input.Reset` from Ended to `Phase.Idle()`                                                                                      | unchanged; `Idle` compares with `unpaired = null`                                                                                                                                                                                                                                                                                                                     |
 | a beat test's `HeartbeatResponse.Answered(200, BeatReply("over", …))` ending the session                                        | `rig.hear("over", sid = "sess_42", endReason = …)`; Task 6 changes its expectation                                                                                                                                                                                                                                                                                    |
+| `SessionMachineDeviceTest`'s "B6 review I4 a reopen answered while armed gives the preview camera back"                         | migrated by the rules above with its expectation unchanged here (`[Slate(true), Slate(false)]`); Task 7 rewrites it: Armed puts up no slate (I2)                                                                                                                                                                                                                      |
 | `EngineTest`'s `engine.send(Input.Arm(config))`                                                                                 | `Configs.pairInputs()` sent in order through `engine.send`: `Pair`, `PermissionsAnswered(true)`, `Network(true)`, `HeartbeatAnswered(1, go-live sess_42)`, `CodeAnswered(1, Configs.open())`, `ReadinessChanged(Configs.READY)`; protection tests assert the token and the code masked from the `Pair`, and the passphrase, stream id and key from the `CodeAnswered` |
 
 Expectations do not change in this task, with one exception per rule above: an `Input.Start`'s `intent-ignored` line now reads in Paired's or Armed's terms, and the first `Connect` follows an `Orient`.
@@ -3082,8 +3135,10 @@ Expectations do not change in this task, with one exception per rule above: an `
   7. In `Heartbeats.answered`, clear `claim` on any answer. The claim test fails.
   8. In `Heartbeats.tick`, pass `held = false`. The 10 s cadence test fails.
   9. In `Engine.protectFailure`, drop the `Pair` branch. `EngineTest`'s token-masking test fails.
+  10. (M3) In `scrub`, mask `PLAIN_KEYS` with `secrets + textSecrets`. The M3 test fails on `state`.
+  11. (M3) In `scrub`, mask `TEXT_KEYS` with `secrets` alone. The M3 test fails on `message`.
 
-- [ ] **Step 8: Verify and commit.** The core suite: EXIT=0. The count is the base count plus the 17 tests of `PairingTest`, minus the tests the commit body names as moved or deleted (each with its replacement). Then commit:
+- [ ] **Step 8: Verify and commit.** The core suite: EXIT=0. The count is the base count plus the 18 tests of `PairingTest`, minus the tests the commit body names as moved or deleted (each with its replacement). Then commit:
 
 ```bash
 cd "$WT" && git add modules/capture-engine/android/core && git commit -F - <<'EOF'
@@ -3178,13 +3233,41 @@ class AnswerTableTest {
     assertEquals("sess_43", assertIs<Phase.Arming>(rig.phase).sid)
   }
 
-  @Test fun `go-live N on air - S is over, end it, then Arming for N`() {
+  @Test fun `live N on air - S is over, end it, then Arming for N, a rejoin`() {
     val rig = MachineRig().live()
     rig.codes = null
     rig.hear("live", sid = "sess_43")
     assertEquals("sess_43", assertIs<Phase.Arming>(rig.phase).sid)
     assertEquals(Cause.REJOIN, (rig.phase as Phase.Arming).cause)
     assertEquals(1, rig.sent<Command.StopBroadcast>().size)
+  }
+
+  @Test fun `go-live N on air - S is over, end it, then Arming for N with its cause`() {
+    val rig = MachineRig().live()
+    rig.codes = null
+    rig.hear("go-live", sid = "sess_43", startedBy = "organiser")
+    assertEquals("sess_43", assertIs<Phase.Arming>(rig.phase).sid)
+    assertEquals(Cause.ORGANISER, (rig.phase as Phase.Arming).cause)
+    assertEquals(1, rig.sent<Command.StopBroadcast>().size)
+  }
+
+  @Test fun `live N while Armed drops S's start and rejoins N - nothing was publishing`() {
+    val rig = MachineRig().armed()
+    rig.codes = null
+    rig.hear("live", sid = "sess_43")
+    assertEquals("sess_43", assertIs<Phase.Arming>(rig.phase).sid)
+    assertEquals(Cause.REJOIN, (rig.phase as Phase.Arming).cause)
+    assertTrue(rig.sent<Command.StopBroadcast>().isEmpty())
+  }
+
+  @Test fun `go-live N while Arming S - S is over, Arming for N`() {
+    val rig = MachineRig().paired()
+    rig.codes = null
+    rig.hear("go-live", sid = "sess_42")
+    rig.hear("go-live", sid = "sess_43")
+    assertEquals("sess_43", assertIs<Phase.Arming>(rig.phase).sid)
+    assertTrue(rig.sent<Command.StopBroadcast>().isEmpty())
+    assertEquals(LastEnd.STOPPED, rig.phase.pairing!!.lastEnd)
   }
 
   @Test fun `go-live or live S is a confirmation in every held phase`() {
@@ -3243,6 +3326,18 @@ class AnswerTableTest {
     assertEquals(listOf(Command.StopBroadcast, Command.Release), commands.filter { it == Command.StopBroadcast || it == Command.Release })
   }
 
+  @Test fun `replaced while Arming or Armed - Idle, unpaired replaced, nothing to stop`() {
+    val arming = MachineRig().paired()
+    arming.codes = null
+    arming.hear("go-live", sid = "sess_42")
+    arming.hear("replaced")
+    assertEquals(UnpairReason.REPLACED, idle(arming).unpaired?.reason)
+    val armed = MachineRig().armed()
+    armed.hear("replaced")
+    assertEquals(UnpairReason.REPLACED, idle(armed).unpaired?.reason)
+    assertTrue(armed.sent<Command.StopBroadcast>().isEmpty())
+  }
+
   @Test fun `taken while paired - Idle, unpaired taken - and ignored while held`() {
     val paired = MachineRig().paired()
     paired.hear("taken")
@@ -3271,6 +3366,15 @@ class AnswerTableTest {
     val rig = MachineRig().live()
     rig.hear(null, status = 401)
     assertIs<Phase.OnAir>(rig.phase)
+    assertTrue(rig.phase.pairing!!.codeEndedPending)
+    rig.hear("over", sid = "sess_42", endReason = "stopped")
+    assertEquals(UnpairReason.CODE_ENDED, idle(rig).unpaired?.reason)
+  }
+
+  @Test fun `the 401 deferral while Armed - held until S is over, then code-ended`() {
+    val rig = MachineRig().armed()
+    rig.hear(null, status = 401)
+    assertIs<Phase.Armed>(rig.phase)
     assertTrue(rig.phase.pairing!!.codeEndedPending)
     rig.hear("over", sid = "sess_42", endReason = "stopped")
     assertEquals(UnpairReason.CODE_ENDED, idle(rig).unpaired?.reason)
@@ -3311,6 +3415,13 @@ class AnswerTableTest {
     rig.codes = { CodeAnswer.Over("sess_42", "max_duration") }
     rig.send(Input.Dropped(rig.attempt!!, DropReason.REMOTE, null))
     assertEquals(LastEnd.MAX_DURATION, paired(rig).lastEnd)
+  }
+
+  @Test fun `M8 a reconnect's code answer naming N with no cred - S is over, end it, Paired, stopped`() {
+    val rig = MachineRig().live()
+    rig.codes = { CodeAnswer.NotCurrent("sess_43") }
+    rig.send(Input.Dropped(rig.attempt!!, DropReason.REMOTE, null))
+    assertEquals(LastEnd.STOPPED, paired(rig).lastEnd)
   }
 
   @Test fun `a waiting-shaped code at Arming is NoBroadcast - Paired, stopped, S not refused`() {
@@ -3419,8 +3530,8 @@ class AnswerTableTest {
     val asks = session.descriptor.answered(input.requestId) ?: return Step(phase)
     val answered = phase.withSession(session.copy(descriptor = asks))
     val word = ServerWord.ofCode(input.answer, held)
-    if (word is ServerWord.Over && word.ends(held)) return over(answered, LastEnd.of(word.endReason), now)
-    if (word == ServerWord.NoBroadcast) return over(answered, LastEnd.STOPPED, now)
+    // One rule for the server's word: Over(S), NoBroadcast and another sid (with or without cred, M8) end S.
+    if (word.ends(held)) return over(answered, LastEnd.of((word as? ServerWord.Over)?.endReason), now)
     return Step(answered, listOf(line("code", "answer" to input.answer::class.simpleName)))
   }
 ```
@@ -3460,10 +3571,13 @@ class AnswerTableTest {
   4. In `over`, ignore `codeEndedPending`. The 401 deferral test fails.
   5. In `paired`, act on `Taken` from `held` too. The taken-held test fails.
   6. In `over`, always send `StopBroadcast`. The Armed waiting test fails.
-  7. In `held`, read `Open(N)` as a confirmation. The go-live-N-on-air test fails.
+  7. In `held`, read `Open(N)` as a confirmation. The go-live-N and live-N tests fail, on air, Armed and Arming.
+     7b. (M7) In `held`, unpair on `CodeEnded` in Armed as in Arming. The Armed 401 deferral test fails.
+     7c. (M7) In `held`, read `Replaced` only while publishing. The Arming-or-Armed replaced test fails.
+     7d. (M8) In `reconnectAnswer`, act only on `Over` and `NoBroadcast`, as before. The M8 reconnect test fails.
   8. In `Starts.answered`, treat `Waiting` as a refusal. The waiting-shaped test fails on `refused`.
 
-- [ ] **Step 6: Verify and commit.** The core suite: EXIT=0; the count rises by the 26 tests of `AnswerTableTest`. Then commit:
+- [ ] **Step 6: Verify and commit.** The core suite: EXIT=0; the count rises by the 32 tests of `AnswerTableTest`. Then commit:
 
 ```bash
 cd "$WT" && git add modules/capture-engine/android/core && git commit -F - <<'EOF'
@@ -3487,14 +3601,19 @@ EOF
 
 The operator's Go live hold is `POST start` from Paired when ready; a beat's `go-live` starts without it. Arming fetches the code and acts on every row of the amendment's _Start failures_. A refused `sid` is never retried from beat answers. A session shape with no `cred` is "not current": a `resume` claim goes at once, and the code is fetched again when the claim is answered with the same `sid` (G0-d). A late `POST start` answer never moves the engine.
 
+**The camera across the pairing (A11).** The capture opens on the viewfinder while Paired (CD37), so another app can take the camera before any go-live. Plan B kept the camera on the session alone, and `Devices` dropped a contention heard with no session, so a broadcast armed over a taken camera started as ours. Here the pairing keeps the camera while no broadcast is held, a broadcast starts from it, and a broadcast that ends hands it back. The slate, a picture sent in our camera's place, goes up only while sending (Connecting or On air): Armed sends nothing.
+
 **Files:**
 
-- Modify: `K/core/Pairings.kt` (`Verdicts.postStart`, `Verdicts.started`; `Starts.answered` complete, `Starts.failed`, `Starts.claimed`)
+- Modify: `K/core/Pairings.kt` (`Verdicts.postStart`, `Verdicts.started`; `Starts.answered` complete, `Starts.failed`, `Starts.claimed`; `Starts.opened` and `Verdicts.over` carry the camera)
+- Modify: `K/core/Phase.kt` (`PairingState.camera`, `Phase.camera`), `K/core/SessionMachine.kt` (`Devices`), `K/core/Projection.kt` (`camera` and `beatFacts.notReady` read `phase.camera`)
 - Create: `T/core/StartTest.kt`
+- Modify: `T/core/SessionMachineDeviceTest.kt` (plan B's "B6 review I4 a reopen answered while armed …", rewritten in Step 3b)
 
 **Interfaces:**
 
-- Produces: `Starts.failed(arming, failure): Step`, `Starts.claimed(arming, now): Step`.
+- Produces: `Starts.failed(arming, failure): Step`, `Starts.claimed(arming, now): Step`, `PairingState.camera: CameraState`, `val Phase.camera: CameraState?`.
+- Consumes: `Beats.startBody(phoneId)` (Task 4): `POST start`'s body is `{phone}` alone (web ask 9).
 
 - [ ] **Step 1: Write the failing tests.**
 
@@ -3678,6 +3797,14 @@ class StartTest {
     assertEquals(2, rig.sent<Command.FetchCode>().size)
   }
 
+  @Test fun `M8 no cred naming N while Arming S - S is over, Paired, and no claim loop for S`() {
+    val rig = MachineRig().paired()
+    rig.codes = { CodeAnswer.NotCurrent("sess_43") }
+    rig.hear("go-live", sid = "sess_42")
+    assertEquals(LastEnd.STOPPED, paired(rig).lastEnd)
+    assertTrue(rig.records("not-current").isEmpty())
+  }
+
   @Test fun `G0-d no cred, then replaced - unpairs as usual`() {
     val rig = MachineRig().paired()
     rig.codes = { CodeAnswer.NotCurrent("sess_42") }
@@ -3698,6 +3825,33 @@ class StartTest {
     val commands = rig.send(Input.CameraContended)
     assertTrue(commands.none { it is Command.Slate })
   }
+
+  @Test fun `I3 a camera taken while paired stays taken into the broadcast - not ready, camera - and it connects once back`() {
+    val rig = MachineRig().paired()
+    rig.ready()
+    rig.send(Input.CameraContended)
+    assertEquals(CameraState.TAKEN, paired(rig).camera)
+    rig.send(Input.Start)
+    assertTrue(rig.sent<Command.PostStart>().isEmpty(), "the hold waits for the camera")
+    rig.hear("go-live", sid = "sess_42")
+    assertEquals(CameraState.TAKEN, assertIs<Phase.Armed>(rig.phase).session.camera)
+    rig.advance(10_000)
+    assertEquals("camera", Configs.body(rig.sent<Command.PostHeartbeat>().last()).getString("notReady"))
+    assertTrue(rig.sent<Command.Connect>().isEmpty())
+    rig.send(Input.CameraReleased)
+    rig.send(Input.CameraReopened(ok = true))
+    assertIs<Phase.Connecting>(rig.phase)
+    assertTrue(rig.sent<Command.Slate>().isEmpty(), "nothing was on air to cover")
+  }
+
+  @Test fun `I3 a broadcast that ends with the camera taken hands it back to the pairing`() {
+    val rig = MachineRig().armed()
+    rig.send(Input.CameraContended)
+    rig.hear("over", sid = "sess_42", endReason = "stopped")
+    assertEquals(CameraState.TAKEN, paired(rig).camera)
+    rig.send(Input.CameraReleased)
+    assertEquals(listOf(Command.ReopenCamera), rig.sent<Command.ReopenCamera>())
+  }
 }
 ```
 
@@ -3710,11 +3864,11 @@ class StartTest {
   fun postStart(phase: Phase, now: Now): Step {
     if (phase !is Phase.Paired) return SessionMachine.ignored(phase, "start")
     val pairing = phase.pairing
-    val notReady = pairing.readiness.notReady(CameraState.OWN, phase.networkValidated)
+    val notReady = pairing.readiness.notReady(pairing.camera, phase.networkValidated)
     if (notReady != null || pairing.starts.inFlightId != null) return SessionMachine.ignored(phase, "start")
     val id = pairing.starts.nextId
     val asked = pairing.copy(starts = StartAsks(id + 1, id), refusal = null, startFailed = null, lastEnd = null)
-    val post = Command.PostStart(id, pairing.request.startUrl, pairing.token, Beats.startBody(pairing.phone.phoneId, pairing.name.slot))
+    val post = Command.PostStart(id, pairing.request.startUrl, pairing.token, Beats.startBody(pairing.phone.phoneId))
     return Step(phase.withPairing(asked), listOf(post, line("start-asked")))
   }
 
@@ -3752,7 +3906,7 @@ class StartTest {
         else opened(answered, answer)
       is CodeAnswer.Over -> if (answer.sid == sid) Verdicts.over(answered, LastEnd.of(answer.endReason), now) else Step(answered)
       is CodeAnswer.Waiting -> Verdicts.over(answered, LastEnd.STOPPED, now)
-      is CodeAnswer.NotCurrent -> notCurrent(answered, now)
+      is CodeAnswer.NotCurrent -> if (answer.sid != sid) Verdicts.over(answered, LastEnd.STOPPED, now) else notCurrent(answered, now)
       is CodeAnswer.ForeignIngest -> failed(answered, StartFailure.CRED_HOST, line("cred-host-refused", "sid" to sid))
       is CodeAnswer.Unreadable -> failed(answered, StartFailure.CONFIG, line("code-unreadable", "problem" to answer.problem))
       is CodeAnswer.Status ->
@@ -3791,6 +3945,78 @@ class StartTest {
 
 `Starts.arm` refuses nothing itself: the refused check is `Verdicts.beat`'s, and `started`'s for `POST start`'s sids. `SessionMachine.ignored` for `start` keeps the hold's own guard visible in the record.
 
+- [ ] **Step 3b: The camera across the pairing (I2, I3).** In `Phase.kt`, `PairingState` gains, after `readiness`:
+
+```kotlin
+  /** I3: the camera while no broadcast is held (CD37 opens it on the viewfinder). A broadcast starts from it. */
+  val camera: CameraState = CameraState.OWN,
+```
+
+and beside `Phase.heldSid`:
+
+```kotlin
+/** I3: the camera as the engine knows it: the session's while a broadcast is held, the pairing's otherwise. */
+val Phase.camera: CameraState?
+  get() = session?.camera ?: pairing?.camera
+```
+
+In `SessionMachine.kt`, `Devices.contended`, `released` and `reopened` become:
+
+```kotlin
+  /** I2: the slate is a picture sent in our camera's place, so it goes up only while sending. Armed sends nothing. */
+  private fun sending(phase: Phase) = phase is Phase.Connecting || phase is Phase.OnAir
+
+  fun contended(phase: Phase): Step {
+    val session = phase.session ?: return onPairing(phase, CameraState.TAKEN, record("camera-taken")) { it != CameraState.TAKEN }
+    if (session.camera == CameraState.TAKEN) return Step(phase)
+    val next = phase.withSession(session.copy(camera = CameraState.TAKEN))
+    // Taken again mid-reopen: the slate never came down, so it is not put up twice.
+    val slate = if (!sending(phase) || session.camera.slateOnAir) emptyList() else listOf(Command.Slate(on = true))
+    return Step(next, slate + record("camera-taken"))
+  }
+
+  fun released(phase: Phase): Step {
+    val session = phase.session ?: return onPairing(phase, CameraState.REOPENING, Command.ReopenCamera, record("camera-released")) { it == CameraState.TAKEN }
+    if (session.camera != CameraState.TAKEN) return Step(phase)
+    return Step(phase.withSession(session.copy(camera = CameraState.REOPENING)), listOf(Command.ReopenCamera, record("camera-released")))
+  }
+
+  fun reopened(phase: Phase, ok: Boolean, now: Now): Step {
+    val session = phase.session ?: return onPairing(phase, CameraState.OWN, record("camera-reopened", "ok" to ok)) { it == CameraState.REOPENING }
+    if (session.camera != CameraState.REOPENING) return Step(phase)
+    val own = phase.withSession(session.copy(camera = CameraState.OWN))
+    val commands = (if (sending(phase)) listOf(Command.Slate(on = false)) else emptyList()) + record("camera-reopened", "ok" to ok)
+    if (own !is Phase.OnAir) return Step(own, commands)
+    // … plan B's On air branch, unchanged …
+  }
+
+  /** I3: no broadcast held, so the pairing keeps the camera. No slate: nothing is sent. Ended keeps nothing. */
+  private fun onPairing(phase: Phase, to: CameraState, vararg commands: Command, from: (CameraState) -> Boolean): Step {
+    val pairing = phase.pairing?.takeIf { phase !is Phase.Ended && from(it.camera) } ?: return Step(phase)
+    return Step(phase.withPairing(pairing.copy(camera = to)), commands.toList())
+  }
+```
+
+`Starts.opened` builds its `Session` with `camera = pairing.camera`. `Verdicts.over` builds its `Paired` from `pairing.copy(lastEnd = lastEnd, camera = phase.camera ?: CameraState.OWN)`. In `Projection`, the snapshot's `camera` is `phase.camera` (it was `session?.camera`), and `beatFacts.notReady` reads `phase.camera ?: CameraState.OWN` where it read `session?.camera ?: CameraState.OWN`. `postStart` reads `pairing.camera` (above), so the hold waits for the camera as the beat says.
+
+In `SessionMachineDeviceTest.kt`, plan B's "B6 review I4 a reopen answered while armed gives the preview camera back" (Task 5 migrated it unchanged) becomes:
+
+```kotlin
+  @Test
+  fun `B6 review I4 a reopen answered while armed gives the camera back, and puts up no slate - nothing is on air (I2)`() {
+    val rig = MachineRig().armed()
+    rig.send(Input.CameraContended)
+    rig.send(Input.CameraReleased)
+    rig.send(Input.CameraReopened(ok = true))
+    assertEquals(CameraState.OWN, rig.phase.session?.camera)
+    assertTrue(rig.sent<Command.Slate>().isEmpty())
+    rig.send(Input.SwitchCamera)
+    assertEquals(listOf(Command.SwitchCamera), rig.sent<Command.SwitchCamera>(), "a camera of ours to switch again")
+  }
+```
+
+Plan B's two "reopen answered while reconnecting" tests keep `[Slate(true), Slate(false)]`: their helper `reopenedWhileReconnecting` (`SessionMachineDeviceTest.kt:56`) starts from `live()` and drops the endpoint, so the camera is taken and released while On air with an outage, which is sending.
+
 - [ ] **Step 4: Mutate.** One at a time, from a `cp` backup:
   1. In `postStart`, drop the readiness check. The not-ready test fails.
   2. In `postStart`, drop the in-flight check. The double-hold test fails.
@@ -3801,8 +4027,14 @@ class StartTest {
   7. In `claimed`, keep `notCurrent`. The G0-d test fails on the second fetch.
   8. In `Starts.tick`, ignore `notCurrent`. The G0-d test fails: a fetch goes before the claim's answer.
   9. In `Starts.answered`, treat `Unreadable` as retrying. The bad-config row fails.
+  10. (I2) In `Devices.contended`, drop `!sending(phase)`. The no-slate test and the rewritten B6 I4 test fail.
+  11. (I3) In `Devices.contended`, return `Step(phase)` with no session, as plan B did. The I3 paired test fails: the pairing's camera stays own.
+  12. (I3) In `Starts.opened`, leave `camera` at its default. The I3 paired test fails on Armed's camera.
+  13. (I3) In `Verdicts.over`, drop the `camera` carry. The hand-back test fails.
+  14. (I1) In `postStart`, pass the phone's model to `startBody` as its id. The exact-body test fails.
+  15. (M8) In `answered`, send every `NotCurrent` to `notCurrent`, whatever its sid. The M8 test fails: Arming, claiming resume for S.
 
-- [ ] **Step 5: Verify and commit.** The core suite: EXIT=0; the count rises by 19. Then commit:
+- [ ] **Step 5: Verify and commit.** The core suite: EXIT=0; the count rises by 22 (`StartTest`; the B6 I4 test is rewritten, not added). Then commit:
 
 ```bash
 cd "$WT" && git add modules/capture-engine/android/core && git commit -F - <<'EOF'
@@ -3812,7 +4044,9 @@ POST start from Paired when ready, one in flight; its answers per the
 contract, and a late one never moves the engine. Arming acts on every row
 of the start-failure table; a refused sid is never retried from beats. A
 session shape with no cred claims resume at once and fetches again when
-the claim names S (G0-d). RTMPS alone plans no fallback (A18).
+the claim names S (G0-d). RTMPS alone plans no fallback (A18). The
+pairing keeps the camera while no broadcast is held, and the slate goes
+up only while sending (A11).
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
 Claude-Session: https://claude.ai/code/session_01PDXw352Q1KB2MG9qCcG8Pu
@@ -3821,7 +4055,7 @@ EOF
 
 **Both suites, before the commit** (Global Constraints, _Every task carries_): `pnpm check` and the core suite (`cd "$WT/modules/capture-engine/android/core" && ./gradlew test`), EXIT=0 each, with `numTotalTests` and the XML count in the report.
 
-**The four questions.** (1) A second call: a second hold while one is in flight is one post; a late start answer naming the held `sid` moves nothing; a refused `sid` is not retried from beats. (2) An empty input: no `cred` (G0-d) stays Arming and claims `resume`; `cred.srt` null plans RTMPS alone (A18); a hold when not ready is ignored. (3) After an interruption: an unreachable descriptor stays Arming, retrying 10 s apart; a 429 waits its Retry-After; a 401 unpairs; a camera taken while Armed puts up no slate. (4) Another mode, orientation or language: both causes (operator and organiser) carry through to the snapshot; each refusal has its own line in every language (Task 28).
+**The four questions.** (1) A second call: a second hold while one is in flight is one post; a late start answer naming the held `sid` moves nothing; a refused `sid` is not retried from beats. (2) An empty input: no `cred` (G0-d) stays Arming and claims `resume`; `cred.srt` null plans RTMPS alone (A18); a hold when not ready is ignored. (3) After an interruption: an unreachable descriptor stays Arming, retrying 10 s apart; a 429 waits its Retry-After; a 401 unpairs; a camera taken while Armed puts up no slate; a camera taken while Paired carries into the broadcast as not ready, camera, and back to the pairing when the broadcast ends (I3). (4) Another mode, orientation or language: both causes (operator and organiser) carry through to the snapshot; each refusal has its own line in every language (Task 28).
 
 ### Task 8: The operator's Stop — A8's final beat, A17's record, and the release
 
@@ -4293,7 +4527,7 @@ data class BroadcastView(
 data class ReadyView(val camera: Boolean, val sound: Boolean, val network: Boolean, val held: Boolean)
 ```
 
-The new `Snapshot` fields come last, each with a default (`null`, `false`, or an all-false `ReadyView`), so every snapshot plan B's tests build by hand compiles unchanged. `Projection.snapshot` fills them: `pairing` from `phase.pairing` (Ended included); `broadcast` from `phase.session` (or, in Arming, null); `ready` from `pairing.readiness` and `phase.networkValidated` (all false with no pairing); `refusal`, `lastEnd`, `codeEndedPending` and `language` from the pairing; `unpaired` from `Phase.Idle`. `Projection.state` maps each phase to its state.
+The new `Snapshot` fields come last, each with a default (`null`, `false`, or an all-false `ReadyView`), so every snapshot plan B's tests build by hand compiles unchanged. `Projection.snapshot` fills them: `pairing` from `phase.pairing` (Ended included); `broadcast` from `phase.session` (or, in Arming, null); `ready` from `pairing.readiness` and `phase.networkValidated`, its `camera` being `readiness.cameraFrames && phase.camera == CameraState.OWN` (Task 7, I3) (all false with no pairing); `refusal`, `lastEnd`, `codeEndedPending` and `language` from the pairing; `unpaired` from `Phase.Idle`. `Projection.state` maps each phase to its state.
 
 The paired beat line, in `Heartbeats.answered`: build the line's fields as before. While `phase.heldSid == null`, write it only when `fields - "message"` differs from `pairing.lastBeatLine`, and keep the new fields in `lastBeatLine`. A held beat is written every time.
 
@@ -8199,7 +8433,7 @@ The notification now lives for the whole pairing (amendment §2, _Android notifi
 - Produces:
   - `data class RecordingConfig(sessionId: Int, silenced: Boolean)`;
   - `class MicSilenceWatch { fun update(ours: Int?, configs: List<RecordingConfig>): Boolean? }`, where non-null means changed (no SDK argument: minSdk 31, CD34);
-  - `class CameraAvailability(selfWindowMs = 1_500)`, with `held(id: String?, monoMs)`, `selfChange(monoMs)`, `unavailable(id, monoMs): Input?`, `available(id, monoMs): Input?`, `sessionStarted(): Input?` and `sessionEnded()`;
+  - `class CameraAvailability(selfWindowMs = 1_500)`, with `held(id: String?, monoMs)`, `selfChange(monoMs)`, `unavailable(id, monoMs): Input?`, `available(id, monoMs): Input?`, `sessionStarted(): Input?` and `sessionEnded()`; `waiting(id)` (I4: our open failed on a camera another app holds); and, in its companion, `busy(reason: Int?)` and `busyError(error: Int)`, which camera-open failures are another app holding the camera (I4);
   - `NotificationText.line(word, targetKbps: Int?, liveSinceEpochMs: Long?, nowEpochMs: Long, locale: Locale): String`;
   - `NotificationText.KEYS: List<String>`, the ten dictionary keys the notification shows: `stream.tally.{starting,connecting,live,trouble,ended}`, `stream.notification.paired` and `stream.status.notReady{Camera,Sound,Network,Held}`;
   - `NotificationText.WORDS: Map<String, Map<String, String>>`, keyed by language and then by dictionary key;
@@ -8263,6 +8497,36 @@ class CameraAvailabilityTest {
     assertEquals(Input.CameraContended, idle.sessionStarted())
     idle.sessionEnded()
     assertEquals(null, idle.available("1", 2_000))
+  }
+
+  @Test
+  fun `I4 a camera in use, or too many cameras in use, is contention - any other open failure is not`() {
+    // javap -constants, android-36: CameraAccessException 1 disabled, 2 disconnected, 3 error, 4 in use, 5 max in use;
+    // CameraDevice.StateCallback 1 in use, 2 max in use, 3 disabled, 4 device, 5 service. The two number differently.
+    assertTrue(CameraAvailability.busy(4))
+    assertTrue(CameraAvailability.busy(5))
+    for (reason in listOf(1, 2, 3, null)) assertFalse(CameraAvailability.busy(reason), "$reason")
+    assertTrue(CameraAvailability.busyError(1))
+    assertTrue(CameraAvailability.busyError(2))
+    for (error in 3..5) assertFalse(CameraAvailability.busyError(error), "$error")
+  }
+
+  @Test
+  fun `I4 an open that failed on a busy camera hears its release, though we hold nothing`() {
+    val failed = CameraAvailability()
+    failed.waiting("0")
+    assertEquals(Input.CameraReleased, failed.available("0", 3_000))
+    failed.held("0", 3_100)
+    assertEquals(null, failed.sessionStarted(), "rebuilt on the released camera: nothing contended")
+  }
+
+  @Test
+  fun `I3 a camera released while ours was closed is told at the next open, so the pairing's camera never stays taken`() {
+    cameras.unavailable("1", 5_000)
+    cameras.sessionEnded() // the viewfinder hidden while taken
+    assertEquals(null, cameras.available("1", 6_000), "closed: nothing reported")
+    assertEquals(Input.CameraReleased, cameras.sessionStarted())
+    assertEquals(null, cameras.sessionStarted(), "told once")
   }
 }
 ```
@@ -8382,10 +8646,12 @@ The imports are `kotlin.test.*`, `java.util.Locale`, `java.io.File`, `org.json.J
     - It keeps `ours: String?`, `selfUntil: Long`, `contended: MutableSet<String>` and `inSession: Boolean`.
     - `unavailable` ignores our id and anything inside the self window. Otherwise it adds the id, and returns `CameraContended` when the set goes from empty to not empty while `inSession`.
     - `available` removes the id, and returns `CameraReleased` when the set empties while `inSession`.
-    - `sessionStarted` sets `inSession` and returns `CameraContended` if the set is not empty.
+    - `sessionStarted` sets `inSession` and returns `CameraContended` if the set is not empty. **(I3)** It returns `CameraReleased` when the set is empty but the last report was `CameraContended` (a `told` flag: set by every `CameraContended` returned and by `waiting`, cleared by every `CameraReleased`), so a camera released while ours was closed is not left taken in the engine. The engine ignores a release it is not waiting for (Task 7's `Devices`).
     - `sessionEnded` clears `inSession`, and keeps the set: it is the device's truth, needed for the next session.
     - Every public method is `@Synchronized`: the camera callback (main looper, Task 37) and the capture scope (Task 36's streamer adapter) both call it.
     - `held(id)` also drops `id` from `contended`.
+    - **(I4)** `busy(reason)` is true for `CameraAccessException`'s `CAMERA_IN_USE` (4) and `MAX_CAMERAS_IN_USE` (5) only, and `busyError(error)` for `CameraDevice.StateCallback`'s `ERROR_CAMERA_IN_USE` (1) and `ERROR_MAX_CAMERAS_IN_USE` (2) only. The core holds no Android types, so both are private `const val`s named after the platform's, checked once with `javap -constants -cp "$ANDROID_HOME/platforms/android-36/android.jar"` on the two classes (the values above were read so on 2026-10-01); record the output in the commit body. A disconnect (`onDisconnected`, or reason 2) is **not** contention: it is also how a camera service restart looks, and plan B's F-P5-9 events already report another app's take.
+    - **(I4)** `waiting(id)` sets `ours = null` and `inSession = true`, and adds `id` to `contended` without a report: our open failed because another app holds `id`, so its release is what we wait for. `CameraAvailabilityTest` imports `assertTrue` and `assertFalse` from `kotlin.test`.
   - **`NotificationText.WORDS`** holds the ten `KEYS` for en, es, fr and nl, copied from the dictionaries. The test keeps them equal, and fails on a language missing a key or holding an extra one. `ready` and `notReady` tally words are not among them: a notification has no plate.
   - **`NotificationText.CHANNEL`** holds `mode.stream` for each language: "Live Stream", "Emisión en directo", "Diffusion en direct", "Livestream". The channel's name is fixed when the channel is first created, in the language of that moment, and Android shows it in the app's notification settings.
   - **(P3) `NotificationText.language`** returns `pairLanguage` if `WORDS` has it, else `phoneLanguage` if `WORDS` has it, else `"en"`.
@@ -8402,8 +8668,11 @@ The imports are `kotlin.test.*`, `java.util.Locale`, `java.io.File`, `org.json.J
   6. In `content`, pass `sinceEpochMs` whatever the key. The "no minutes before live" assertion fails.
   7. Map `armed` to `ready`. The vocabulary test fails.
   8. Upper-case the paired line. The paired assertion fails.
+  9. (I4) In `busy`, accept `3` (`CAMERA_ERROR`) too. The I4 classification test fails.
+  10. (I4) In `waiting`, leave `inSession` false. The I4 release test fails: no `CameraReleased`.
+  11. (I3) In `sessionStarted`, drop the `told` clause. The I3 closed-release test fails.
 
-- [ ] **Step 5: Verify and commit.** The core suite: EXIT=0; its count rises by 13. `pnpm check`: EXIT=0 (`dictionaries.test.ts` and `budgets.test.ts` pass with the five keys). `pnpm i18n:release-check`: EXIT=0. `pnpm prettier --check docs/i18n-glossary.md`: EXIT=0. Then commit:
+- [ ] **Step 5: Verify and commit.** The core suite: EXIT=0; its count rises by 16. `pnpm check`: EXIT=0 (`dictionaries.test.ts` and `budgets.test.ts` pass with the five keys). `pnpm i18n:release-check`: EXIT=0. `pnpm prettier --check docs/i18n-glossary.md`: EXIT=0. Then commit:
 
 ```bash
 cd "$WT" && git add modules/capture-engine/android/core src/i18n/en.json src/i18n/es.json src/i18n/fr.json src/i18n/nl.json docs/i18n-glossary.md && git commit -F - <<'EOF'
@@ -8763,7 +9032,7 @@ Pre-flight findings folded here: **P5** (plan C's `SessionConfig ===` mutant was
 **Interfaces:**
 
 - Consumes everything from Tasks 10–19, plus `Engine`, `SessionRecord`, `Projection`, `Phase.attemptInHand`, `Phase.pairing`, `Phase.holdsBroadcast`, `Readiness`, `StoppedRecord`, `PhoneFacts` and `Clock`.
-- Produces `Platform`, `PrivateStore`, `PairingStore`, `BridgeCore` (with `pairFailed(request, t)`, `askFailed(t)`, `language()`, `readiness(…)` and `viewfinder(shown)`) and `OwnedSlot<T>`, all below.
+- Produces `Platform`, `PrivateStore`, `PairingStore`, `BridgeCore` (with `pairFailed(request, t)`, `cameraBusy(request)` (I4), `askFailed(t)`, `language()`, `readiness(…)` and `viewfinder(shown)`) and `OwnedSlot<T>`, all below.
 
 **CD37 (new). Capture is wanted while a broadcast is held, or while the engine is Paired and the viewfinder is shown.** The amendment (_Readiness_) has the camera and mic open on the viewfinder and closed while waiting with the phone locked or the app elsewhere, and a go-live opening them from the service. `BridgeCore` decides; the platform builds and tears down. The viewfinder is the glue's preview view attached to a window, reported through `viewfinder(shown)`.
 
@@ -9019,6 +9288,23 @@ class BridgeCore(
       } else {
         val scope = if (Failures.permanent(t)) Scope.PROCESS else Scope.PAIRING
         sticky.fail(Failures.describe(t), engine.phase.attemptInHand, scope)
+      }
+    }
+  }
+
+  /**
+   * From any thread (I4, A11): the capture for [request] could not open because another app holds
+   * the camera. That is not ready, camera, never an end: the pairing stays, the engine reads the
+   * camera taken while paired or held (Task 7), and the release the platform sees opens it again
+   * through `ReopenCamera`. Checked by identity like [pairFailed]; a late one is only recorded.
+   */
+  fun cameraBusy(request: PairRequest) {
+    guarded.schedule(0) {
+      if (engine.phase.pairing?.request !== request || engine.phase is Phase.Ended) {
+        engine.log(RecordEntry("pair-step-late", listOf("error" to "camera-busy")))
+      } else {
+        engine.log(RecordEntry("camera-busy", emptyList()))
+        report(Input.CameraContended)
       }
     }
   }
@@ -9603,6 +9889,27 @@ class BridgeCoreTest {
   }
 
   @Test
+  fun `I4 a camera busy at open is not ready, camera - the pairing stays, and the release asks a reopen`() {
+    core.start()
+    core.report(Input.Network(true))
+    ready()
+    pair()
+    core.viewfinder(true)
+    scheduler.advanceBy(0)
+    core.cameraBusy(platform.captureRequests.last()!!)
+    scheduler.advanceBy(0)
+    assertEquals("paired", state())
+    assertEquals("taken", core.current()["camera"])
+    assertTrue(lines().any { it.getString("kind") == "camera-busy" })
+    core.cameraBusy(Configs.pairRequest())
+    scheduler.advanceBy(0)
+    assertTrue(lines().any { it.getString("kind") == "pair-step-late" }, "another pairing's busy camera is a line only")
+    core.report(Input.CameraReleased)
+    scheduler.advanceBy(0)
+    assertTrue(Command.ReopenCamera in platform.executed)
+  }
+
+  @Test
   fun `P11 a late failure for a pairing no longer held is recorded and ends nothing`() {
     core.start()
     pair()
@@ -9861,13 +10168,14 @@ The two timing tests are worked by hand in their comments. If `Connected` lands 
      7d. (P3) Set `language` from the pairing at `pair` only. The `setLanguage` assertion fails.
   8. (P11) In `pairFailed`, drop the identity check. The late-failure test fails: the pairing ends.
   9. (P11) In `pairFailed`, drop the `sticky.fail` call. The first P11 test fails: the pairing stays paired.
+     9b. (I4) In `cameraBusy`, call `sticky.fail` as `pairFailed` does. The I4 test fails: the state is `ended`.
   10. In `OwnedSlot.release`, drop the owner check. The CD32 test fails.
   11. (P6) In `log`, keep every `Double`. The `count` assertion fails.
   12. Post the ack before `report(input)`. The CD8 ack test fails.
   13. In `stored`, rethrow. The refused-write test fails: the stop never ends.
   14. In `PairingStore.records`, drop the `problem` call. The unreadable-line test fails.
 
-- [ ] **Step 5: Verify and commit.** The core suite: EXIT=0; its count rises by 33 (26 `BridgeCoreTest`, 5 `PairingStoreTest`, 2 `OwnedSlotTest`; `PairMappingTest` keeps its count). Then commit:
+- [ ] **Step 5: Verify and commit.** The core suite: EXIT=0; its count rises by 34 (27 `BridgeCoreTest`, 5 `PairingStoreTest`, 2 `OwnedSlotTest`; `PairMappingTest` keeps its count). Then commit:
 
 ```bash
 cd "$WT" && git add modules/capture-engine/android/core && git commit -F - <<'EOF'
@@ -11077,9 +11385,9 @@ Do not touch: the dictionaries (Task 28 deletes the keys this task stops using),
 
 - Consumes Task 22's `StreamCode`, `parseStreamCode(Text)`, `WaitingFields`, `parseWaitingFields`, `waitingToWire`, `CodeError`, `CodePort`, `createFetchCodePort`, `createFakeCodePort`, `sampleWaiting`; Task 10's `logger.release`; `tokenTag`.
 - Produces, for Tasks 24–32:
-  - `Pairing.ts`: `Transport`, `ScoreUpdates`, `Cause`, `NotReady`, `NOT_READY_ORDER`, `firstNotReady`, `Readiness`, `PairingInfo`, `BroadcastInfo`, `Refusal`, `LastEnd`, `UnpairReason`, `Unpaired`;
+  - `Pairing.ts`: `Environment` (M10), `Transport`, `ScoreUpdates`, `Cause`, `NotReady`, `NOT_READY_ORDER`, `firstNotReady`, `Readiness`, `PairingInfo`, `BroadcastInfo`, `Refusal`, `LastEnd`, `UnpairReason`, `Unpaired`;
   - `SessionState` with `pairing`, `paired`, `arming{cause, retrying}`, `armed{cause, notReady}`; `EndReason = 'operator-stopped' | 'fatal-error'`;
-  - the port: `Claim`, `Environment`, `PairIntent`, `EngineIntent` (`pair`, `start`, `stop`, `unpair`, `reset`, `setAutomatic`, `setLanguage`, `switchCamera`), `EngineSnapshot` (`pairing`, `broadcast`, `ready`, `refusal`, `lastEnd`, `unpaired`, `codeEndedPending`), `Telemetry` (less `cameraReady` and `networkReachable`, plus `recordSinkFailures` and `recordReentrantDropped`);
+  - the port: `Claim`, `PairIntent`, `EngineIntent` (`pair`, `start`, `stop`, `unpair`, `reset`, `setAutomatic`, `setLanguage`, `switchCamera`), `EngineSnapshot` (`pairing`, `broadcast`, `ready`, `refusal`, `lastEnd`, `unpaired`, `codeEndedPending`), `Telemetry` (less `cameraReady` and `networkReachable`, plus `recordSinkFailures` and `recordReentrantDropped`);
   - the fake: `hear(says)`, `setReady(partial)`, `setPermissions(answer)`, `setPairing(partial)`, the new `FakeScene` list, `FAKE_PAIRING`;
   - `ServerSays`; `ENGINE_SCENARIOS`, `ScenarioKit`, `Scenario`, `KIT_CODE_A`, `KIT_CODE_B`; `describeEngineContract(name, make, settle)` with `EngineUnderTest = { engine, say, ready, dispose }`;
   - `SavedCode` v3 with `stream: SavedStream | null`, `SavedStream = { waiting, codeUrl, tapToPair }`; `CodeName = { code, slot, tokenTag }`; `EngineStatus = 'idle' | 'paired' | 'live' | 'stopped' | 'failed'`; `scanStep`;
@@ -11100,6 +11408,13 @@ Do not touch: the dictionaries (Task 28 deletes the keys this task stops using),
 - [ ] **Step 1: The pairing's values.** `src/domain/session/Pairing.ts`:
 
 ```ts
+/**
+ * CD36: the build's environment, which names its Seazn and ingest hosts. In the
+ * domain, not the port, so `services/seaznHosts.ts` may name it (the boundary
+ * rule lets services import domain, never engine; review M10).
+ */
+export type Environment = 'production' | 'staging';
+
 /** The two ways out (C1). Publish credentials themselves are native's (AGENTS §4). */
 export type Transport = 'srt' | 'rtmps';
 
@@ -11209,6 +11524,7 @@ Delete `StreamCredentials.ts`. `pnpm typecheck` lists every import of `Transport
 ```ts
 import type {
   BroadcastInfo,
+  Environment,
   LastEnd,
   PairingInfo,
   Readiness,
@@ -11219,9 +11535,6 @@ import type { SessionState, ShedStep } from '@/domain/session/SessionState';
 
 /** A9: `new` from a scan or Continue, `resume` from the cold-start re-pair only. */
 export type Claim = 'new' | 'resume';
-
-/** CD36: the build's environment, which names its Seazn and ingest hosts. */
-export type Environment = 'production' | 'staging';
 
 /**
  * Everything native needs to pair (amendment, The engine port). `token` is
@@ -12293,7 +12606,7 @@ export function useProtectCode(): void {
 }
 ```
 
-`useProtectCode.test.tsx` moves Task 10's N7 viewfinder test here: with a saved code, a free-text line naming the token is masked; after `modeStore.forget('stream')`, a free-text line is masked whole (released). Delete the N7 test from `StreamScreen.newCode.test.tsx`: leaving the viewfinder no longer releases, by the amendment's CD6. 3. `seaznHosts.ts` gains `export function seaznEnvironment(env: string | undefined): Environment { return env === 'production' ? 'production' : 'staging'; }` (the same fail-safe as `seaznHosts`; `Environment` imported from `@/engine/CaptureEnginePort`, which `services` may import). 4. `streamSettingsStore.ts`: `StreamSettings` gains `automatic: boolean` (A4), `DEFAULT_STREAM_SETTINGS.automatic = true`, `encode` writes `{ v: 2, overlay, side, automatic }`, and `decode` reads v2, and reads a v1 record as its two values plus `automatic: true`, so an operator's overlay and side survive the upgrade. Its test gains both cases. 5. `src/hooks/usePairing.ts`:
+`useProtectCode.test.tsx` moves Task 10's N7 viewfinder test here: with a saved code, a free-text line naming the token is masked; after `modeStore.forget('stream')`, a free-text line is masked whole (released). Delete the N7 test from `StreamScreen.newCode.test.tsx`: leaving the viewfinder no longer releases, by the amendment's CD6. 3. `seaznHosts.ts` gains `export function seaznEnvironment(env: string | undefined): Environment { return env === 'production' ? 'production' : 'staging'; }` (the same fail-safe as `seaznHosts`; `Environment` imported from `@/domain/session/Pairing`: `eslint.config.mjs`'s boundary rule lets `services` import `services`, `domain` and `contracts` only, type imports included, so the port is out of reach). 4. `streamSettingsStore.ts`: `StreamSettings` gains `automatic: boolean` (A4), `DEFAULT_STREAM_SETTINGS.automatic = true`, `encode` writes `{ v: 2, overlay, side, automatic }`, and `decode` reads v2, and reads a v1 record as its two values plus `automatic: true`, so an operator's overlay and side survive the upgrade. Its test gains both cases. 5. `src/hooks/usePairing.ts`:
 
 ```ts
 import { useCallback } from 'react';
@@ -12301,7 +12614,8 @@ import { parseStreamCodeText } from '@/domain/credentials/streamCode';
 import { savedCodeName } from '@/domain/mode/codeName';
 import { scanStep } from '@/domain/mode/identity';
 import type { SavedCode } from '@/domain/mode/savedCode';
-import type { Claim, Environment, PairIntent } from '@/engine/CaptureEnginePort';
+import type { Environment } from '@/domain/session/Pairing';
+import type { Claim, PairIntent } from '@/engine/CaptureEnginePort';
 import { selectEngineStatus, selectHeldName } from '@/hooks/engineSelectors';
 import { useLanguage } from '@/hooks/useLanguage';
 import { usePorts } from '@/hooks/usePorts';
@@ -15392,6 +15706,7 @@ Amendment §2, _Settings_ and _Another mode while paired_; A4 and A7; owner ruli
 - Create: `src/domain/mode/otherMode.ts`, `src/domain/mode/otherMode.test.ts` (`asksBeforeOpening`)
 - Modify: `src/hooks/useHome.ts` (`HomePanel`'s `unpairConfirm`; `useOpenCode` asks first; `useUnpairConfirm`), `src/ui/components/CodePanel.tsx`, `src/ui/components/CodePanel.test.tsx`, `src/ui/screens/HomeScreen.tsx`
 - Create: `src/ui/screens/HomeScreen.otherMode.test.tsx`
+- Create, only if both tests need it: `test/refusingStore.ts` (`HomeScreen.test.tsx`'s `refusingStore`, moved, not copied)
 - Modify: `app/_layout.tsx` (`useEngineSync()` in `Shell`)
 - Modify: `src/i18n/en.json`, `es.json`, `fr.json`, `nl.json` (the Task 30 rows of Batch C5's copy table)
 
@@ -15408,7 +15723,8 @@ Do not touch: the engine, the fake (it already echoes `setAutomatic` in `pairing
   - a second snapshot with them equal sends nothing more (`intents` length unchanged across three reports);
   - paired with the pairing's `automatic: true` while the loaded settings say false (a cold start whose `pair` was sent before the store loaded): one `setAutomatic false` once loaded;
   - idle: a settings change sends nothing; held (on air): a settings change sends `setAutomatic` (the switch stays usable on air, amendment §2);
-  - paired, the operator picks French (`setLang('fr')`): the last intent is `{ kind: 'setLanguage', language: 'fr' }`; idle: nothing; the same language again: nothing.
+  - paired, the operator picks French (`setLang('fr')`): the last intent is `{ kind: 'setLanguage', language: 'fr' }`; idle: nothing; the same language again: nothing;
+  - **(M11) a pick made while idle is what native holds after the pair:** English; `setLang('fr')` while idle (no intent); pair (the `pair` intent carries `language: 'fr'`); `setLang('en')` while paired: the last intent is `{ kind: 'setLanguage', language: 'en' }`. Before the fix nothing was sent, and the notification stayed French.
 
 ```ts
 import { useEffect, useRef, useState } from 'react';
@@ -15461,15 +15777,15 @@ function useAutomaticSync(): void {
 function useLanguageSync(): void {
   const { engine, logger } = usePorts();
   const { lang } = useLanguage();
-  const sent = useRef<string | null>(null);
+  // What native holds, or will hold: the next `pair` carries the current pick
+  // (usePairing), so a pick made while idle is known too (review M11).
+  const known = useRef<string | null>(null);
   useEffect(() => {
+    const previous = known.current;
+    known.current = lang;
+    if (previous === null || previous === lang) return;
     const status = selectEngineStatus(engine.getSnapshot());
-    if (sent.current === null) {
-      sent.current = lang; // the pair carried it (usePairing)
-      return;
-    }
-    if (sent.current === lang || (status !== 'paired' && status !== 'live')) return;
-    sent.current = lang;
+    if (status !== 'paired' && status !== 'live') return;
     logger.info('intent.setLanguage', { action: lang });
     engine.send({ kind: 'setLanguage', language: lang });
   }, [lang, engine, logger]);
@@ -15478,7 +15794,20 @@ function useLanguageSync(): void {
 
 A `setAutomatic` native ignores leaves `pairing.automatic` unequal, so the reconciler would send it again on every snapshot; native ignores it only in Ended, which `sync` skips, so it cannot loop, and "a second snapshot sends nothing more" holds that line. Both lines log under `action`, already a plain key in Task 10's allow-list, with a closed value (`on`, `off`, or a two-letter language), so the allow-list is untouched.
 
-- [ ] **Step 2: The cold start waits for the settings.** In `useReopenGate.ts`, the first decision runs once the mode store is ready **and** `streamSettings.load()` has resolved, so the cold-start `pair` (Task 24) carries the operator's saved switch, not the default. `useReopenGate.test.tsx`: with `automatic: false` saved and a slow settings read (the fake kv's `holdReads`), no `pair` is sent until the read resolves, and then the `pair` carries `automatic: false`. `useEngineSync` stays as the backstop for anything this misses.
+- [ ] **Step 2: The cold start waits for the settings.** In `useReopenGate.ts`, the first decision runs once the mode store is ready **and** `streamSettings.load()` has resolved, so the cold-start `pair` (Task 24) carries the operator's saved switch, not the default. `useReopenGate.test.tsx`: with `automatic: false` saved and a slow settings read, no `pair` is sent until the read resolves, and then the `pair` carries `automatic: false`. No fake in `test/` holds a read today (`createMemoryKeyValueStore`, `src/services/KeyValueStore.ts`, answers at once), so this task adds one, local to `useReopenGate.test.tsx` because no other test needs it:
+
+```ts
+/** A store whose reads wait until `release()`; writes go straight through (review M12). */
+function heldReads(inner: KeyValueStore): { store: KeyValueStore; release: () => void } {
+  let release: () => void = () => undefined;
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  return { store: { ...inner, get: async (key) => gate.then(() => inner.get(key)) }, release };
+}
+```
+
+The test builds the fake ports as usual, then replaces only `streamSettings` with `createStreamSettingsStore(held.store, fake.ports.logger)` over its own memory store seeded with the saved switch, so the mode store (on the ports' own kv) is ready at once and only the settings read waits. `useEngineSync` stays as the backstop for anything this misses.
 
 - [ ] **Step 3: The switch.** In `SettingsScreen`, after the overlay hint:
 
@@ -15520,10 +15849,15 @@ if (asksBeforeOpening(code.mode, selectEngineStatus(engine.getSnapshot()))) {
 }
 ```
 
-and `useUnpairConfirm(panel, setPanel, openCode)` returns `{ confirm, cancel }` and closes the sheet as Cancel when the engine leaves Paired while it is open:
+and `useUnpairConfirm(panel, setPanel, openCode, saveFailed)` returns `{ confirm, cancel }` and closes the sheet as Cancel when the engine leaves Paired while it is open:
 
 ```ts
-function useUnpairConfirm(panel: HomePanel | null, setPanel: SetPanel, openCode: OpenCode) {
+function useUnpairConfirm(
+  panel: HomePanel | null,
+  setPanel: SetPanel,
+  openCode: OpenCode,
+  saveFailed: SaveFailed,
+) {
   const { modeStore } = usePorts();
   const unpair = useUnpair();
   const status = useEngineSelector(selectEngineStatus);
@@ -15537,12 +15871,13 @@ function useUnpairConfirm(panel: HomePanel | null, setPanel: SetPanel, openCode:
     unpair('otherMode', (outcome) => {
       if (outcome === 'held') return;
       // A7's confirm forgets the stream code, as the operator's Stop does (Process death and reopen).
-      void modeStore
-        .forget('stream')
-        .then(() => openCode(open.code, null))
-        .catch(ignoreUnexpected);
+      // A refused forget is never silent (R19): the line says so, and the other mode does not open.
+      modeStore.forget('stream').then(
+        () => openCode(open.code, null),
+        () => saveFailed('forget'),
+      );
     });
-  }, [open, setPanel, unpair, modeStore, openCode]);
+  }, [open, setPanel, unpair, modeStore, openCode, saveFailed]);
   const cancel = useCallback(() => setPanel(null), [setPanel]);
   return { confirm, cancel };
 }
@@ -15559,9 +15894,10 @@ function useUnpairConfirm(panel: HomePanel | null, setPanel: SetPanel, openCode:
 
 with `Copy` gaining `cancel: string | null` (null in `settled`), rendered as a `GhostButton` beside the open button, and `onOpen` for this kind calling `onConfirmUnpair` (a new `CodePanel` prop) instead of `onOpen(code)`. `HomeScreen` wires `onConfirmUnpair={actions.confirmUnpair}` and the cancel to `actions.cancelUnpair`.
 
-- [ ] **Step 6: The sheet's tests (CD41).** In S1 a scoring or dashboard code never reaches `openCode` from a scan: `scanOutcome` answers "coming soon" for a mode not in `BUILT_MODES` (`src/domain/mode/scanOutcome.ts:8`). So `HomeScreen.otherMode.test.tsx` drives `openFromPanel` with a made-up scoring `ModeCode` (the scoring fixture `recognise.test.ts` builds), which is the path S2's scan will take once scoring is built:
+- [ ] **Step 6: The sheet's tests (CD41, accepted by the controller in fix round 1).** In S1 a scoring or dashboard code never reaches `openCode` from a scan: `scanOutcome` answers "coming soon" for a mode not in `BUILT_MODES` (`src/domain/mode/scanOutcome.ts:8`). So `HomeScreen.otherMode.test.tsx` drives `openFromPanel` with a made-up scoring `ModeCode` (the scoring fixture `recognise.test.ts` builds), which is the path S2's scan will take once scoring is built:
   - paired: the sheet shows "This phone is paired for streaming. Opening Remote Scoring unpairs it." with "Unpair & open" and "Cancel"; nothing is unpaired yet;
   - Confirm: `engine.intents` ends with `unpair`, the stream code is forgotten, then the scoring code is saved and active (the store's `active` is `scoring`);
+  - a refused forget (the `modeStore` port overridden with `createModeStore` over a memory store whose `delete` rejects, as `HomeScreen.test.tsx`'s `refusingStore(seed, refuses)` does for R19; move that helper to `test/` if both files need it, rather than copying it): the line reads `store.saveFailed`, a `store.write-refused {action: "forget"}` line is in the record, and the scoring code is not opened;
   - Cancel: nothing is sent, the stream code is kept;
   - the engine leaves Paired while the sheet is open (`hear({ word: 'replaced' })`): the sheet closes, as Cancel;
   - a Go live races the confirm (`holdIntents(engine, ['unpair'])`, confirm, `hear({ word: 'go-live', cause: 'organiser' })`, release): the stream code is kept and the scoring code is not opened;
@@ -15573,9 +15909,11 @@ with `Copy` gaining `cancel: string | null` (null in `settled`), rendered as a `
   1. In `useAutomaticSync`, drop the equality check. "a second snapshot sends nothing more" fails.
   2. In `useAutomaticSync`, skip the `loaded` wait. The cold-start test sends `setAutomatic` against the default before the read, then again: the intent count fails.
   3. In `useLanguageSync`, send on the first render. The idle test (no intent) fails.
+     3b. (M11) In `useLanguageSync`, set `known.current` only when sending, as before. The en, fr idle, pair, en test fails: nothing is sent.
   4. In `asksBeforeOpening`, return true for `live` too. Its row fails.
   5. In `useUnpairConfirm`, forget on `held`. The race test fails.
   6. Drop the leave-Paired effect. The `replaced` test fails (the sheet stays).
+     6b. In `useUnpairConfirm`, swallow the forget's refusal (`.catch(() => undefined)`). The refused-forget test fails: the line says nothing.
   7. In `useReopenGate`, decide before the settings load. The Step 2 test sees `automatic: true`.
 
 - [ ] **Step 9: Verify and commit.** `pnpm check > "$SCRATCH/t30.txt" 2>&1; echo "EXIT=$?"`: EXIT=0, `numTotalTests` recorded. `pnpm i18n:release-check`: EXIT=0. `pnpm prettier --check src/i18n/*.json`: EXIT=0.
@@ -16767,7 +17105,7 @@ import java.io.File
 import java.io.IOException
 import java.util.concurrent.Executors
 
-/** The record on disk, for Share after a crash (CD7). Its own thread: no file IO on the scheduler thread (CD9). */
+/** The record on disk, for Share after a crash (CD7). Its own thread: the record's IO stays off the scheduler thread (CD9; A17's store is the one exception). */
 class RecordFile(private val dir: File) {
   private val io = Executors.newSingleThreadExecutor { task -> Thread(task, "capture-record") }
 
@@ -17810,10 +18148,10 @@ Then `cd "$WT/modules/capture-engine/android/core" && ./gradlew test > "$SCRATCH
 P4, F-P5-6, the B-frames finding, carry 5, CD9, CD27 and CD28, rewritten for the paired engine (CD37, CD42), with pre-flight **P11** and **P12** folded. This replaces `NoCapture`. Old plan C's Task 22, changed in three ways:
 
 - **When the capture opens.** Not at an arm: `open(request)` when `BridgeCore` wants it (the viewfinder while Paired, or a held broadcast), `close()` when it does not (CD37). Encoders and the endpoint are per broadcast; the camera and microphone are per opening.
-- **How a failure comes back (P11, P12).** `open` launches and returns, so its failure is reported, never thrown: `BridgeCore.pairFailed(request, e)`, which checks the pairing by identity. The camera's own failure is passed **as it is**, so it is permanent only when `Failures.permanent` says so (a `LinkageError`), and the operator recovers by tapping Continue, not by killing the app (P12, closing D5). The encoder's configuration failure stays `PermanentPlatformFailure` (CD11).
+- **How a failure comes back (P11, P12).** `open` launches and returns, so its failure is reported, never thrown: `BridgeCore.pairFailed(request, e)`, which checks the pairing by identity. The camera's own failure is passed **as it is**, so it is permanent only when `Failures.permanent` says so (a `LinkageError`), and the operator recovers by tapping Continue, not by killing the app (P12, closing D5). **Another app holding the camera is not a failure (I4, A11):** an open that fails with `CameraAccessException` reason `CAMERA_IN_USE` or `MAX_CAMERAS_IN_USE` (Task 18's `busy`) goes to `BridgeCore.cameraBusy(request)`, so the pairing stays, the engine reads the camera taken (not ready, camera, Task 7), and the release opens it again. The encoder's configuration failure stays `PermanentPlatformFailure` (CD11).
 - **Readiness (A11, CD42).** The adapter reports `cameraFrames` and the audio peak to `BridgeCore.readiness` every 500 ms while open. Before a broadcast publishes, StreamPack's microphone is not proved to run without a stream (a device-only claim), so the sound check reads **our own short-lived `AudioRecord`** (`SoundMeter`), stopped before every connect and started again after; from the connect on, the level effect on StreamPack's own audio reads it. The encoded rotation is the build's `defaultRotation`, from the side held; an `Orient` naming the other side rebuilds the streamer before the connect. `setTargetRotation` is never called (F-P5-6; `GlueRulesTest`).
 
-**CD42 (new). Readiness before the first connect, and the rotation without `setTargetRotation`.** The amendment's camera check reads "our camera delivers frames"; the platform's frame counter counts encoded frames, which exist only once a broadcast publishes. Before the connect, `cameraFrames` is "the video source is our camera" (not the slate), and contention is the engine's own `camera` field (F-P5-9, Task 18's `CameraAvailability`), which already makes the gate not ready. Frames are then proved by the Frames poller, LIVE only while they advance (plan B). The sound check needs audio before the stream, so `SoundMeter` records 48 kHz mono PCM for the meter only, never for the broadcast. The rotation is fixed at the build from the side held then (the viewfinder's pose, Task 37's tracker; `LEFT` until Task 37), and an `Orient` for the other side releases and rebuilds the streamer before `Connect`, recorded as `capture-rebuilt {action: "orient"}`. F-P5-6's candidate cause is a pending same-value rotation, so the rule stays absolute: the glue never calls `setTargetRotation`. What StreamPack's camera source and microphone do with no preview surface before `startStream` is a **device-only claim** (Task 37 Step 1 and Task 40).
+**CD42 (owner ruling, 2026-10-01). Readiness before the first connect, and the rotation without `setTargetRotation`.** The amendment's camera check reads "our camera delivers frames"; the platform's frame counter counts encoded frames, which exist only once a broadcast publishes. Before the connect, `cameraFrames` is "the video source is our camera" (not the slate), and contention is the engine's own `camera` field (F-P5-9, Task 18's `CameraAvailability`), kept live while Paired (Task 7, I3) and fed by an open that failed on a busy camera (I4), which makes the gate not ready. Frames are then proved by the Frames poller, LIVE only while they advance (plan B). The sound check needs audio before the stream, so `SoundMeter` records 48 kHz mono PCM for the meter only, never for the broadcast. The rotation is fixed at the build from the side held then (the viewfinder's pose, Task 37's tracker; `LEFT` until Task 37), and an `Orient` for the other side releases and rebuilds the streamer before `Connect`, recorded as `capture-rebuilt {action: "orient"}`. F-P5-6's candidate cause is a pending same-value rotation, so the rule stays absolute: the glue never calls `setTargetRotation`. What StreamPack's camera source and microphone do with no preview surface before `startStream` is a **device-only claim** (Task 37 Step 1 and Task 40).
 
 **Files:**
 
@@ -17828,27 +18166,28 @@ Do not touch: `core/src/main`, `BridgeCore` (Task 20 owns the capture-wanted rul
 
 **Interfaces:**
 
-- `class CoreCalls(report: (Input) -> Unit, failure: (Throwable) -> Unit, pairFailed: (PairRequest, Throwable) -> Unit, readiness: (cameraFrames: Boolean, audioPeak: Double) -> Unit, line: (RecordEntry) -> Unit)`;
+- `class CoreCalls(report: (Input) -> Unit, failure: (Throwable) -> Unit, pairFailed: (PairRequest, Throwable) -> Unit, cameraBusy: (PairRequest) -> Unit, readiness: (cameraFrames: Boolean, audioPeak: Double) -> Unit, line: (RecordEntry) -> Unit)`;
 - `StreamerAdapter(context, tally: FrameTally, signals: AttemptSignals, cameras: CameraAvailability, calls: CoreCalls, side: () -> Side) : Capture`, plus `audioSessionId(): Int?` for Task 37's `MicWatch`;
 - `SoundMeter(offer: (Double) -> Unit, line: (RecordEntry) -> Unit)`, with `start()` and `stop()`;
 - `AudioLevelEffect(offer: (Double) -> Unit)`.
 
 **What it does.** Every call runs on one scope (`Dispatchers.Default`, a `SupervisorJob`, and a `CoroutineExceptionHandler` that hands any escaped throw to `BridgeCore.failure`, I5), under one `Mutex`, so no two StreamPack calls interleave. Nothing blocks the scheduler thread: `open`, `close` and `execute` launch and return.
 
-| Call                          | StreamPack calls                                                                                                                                                                               | Reports                                                                                                                                      |
-| ----------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
-| `open(request)` (CD37)        | `cameraSingleStreamer(context, back camera, endpointFactory = ours, defaultRotation = surfaceRotation(side()))`; `setAudioConfig`; `setVideoConfig`; the level effect; `SoundMeter.start`      | `cameras.sessionStarted()`'s input, if any; readiness every 500 ms. Camera failure: `pairFailed(request, e)` as is (P12); encoder: permanent |
-| `close()` (CD37)              | `SoundMeter.stop`; `streamer.value = null` first (the preview unbinds), then `stopStream()`, `close()`, `release()`                                                                            | `cameras.sessionEnded()`; readiness `(false, 0.0)`                                                                                           |
-| `Orient(side)`                | none when the build's rotation is the side's; else `close` then `open` for the same request, with that side                                                                                    | `capture-rebuilt {action: "orient"}`                                                                                                         |
-| `Connect`                     | `SoundMeter.stop`; `tally.begin(id)`; `clock.newAttempt()`; `videoEncoder.bitrate = bps`; SRT: `sink.next(plan, id)`, `startStream(SrtMediaDescriptor(host, port))`; RTMPS: `startStream(url)` | `signals.connected(id)`, or `signals.connectFailed(id, t)`; an SRT URL that does not plan: `ConnectFailed`                                   |
-| `Disconnect(id)`              | `stopStream()`, `close()`                                                                                                                                                                      | none (the machine asked)                                                                                                                     |
-| `Rebuild` / `StartNewSession` | `stopStream()`, `close()`, then `Connect(next)`. These are the calls of the manual reconnect that healed F-P5-6 in P5                                                                          | as Connect                                                                                                                                   |
-| `SetBitrate(id, bps)`         | `videoEncoder?.bitrate = bps`                                                                                                                                                                  | none                                                                                                                                         |
-| `SetMaxBw(id, b)`             | `sink.setMaxBw(id, b)` (F-P5-11)                                                                                                                                                               | none                                                                                                                                         |
-| `SwitchCamera`                | `cameras.selfChange(now)`; `setVideoSource(CameraSourceFactory(other))`; `cameras.held(other, now)`                                                                                            | none; frames keep coming (carry 19)                                                                                                          |
-| `ReopenCamera`                | `cameras.selfChange(now)`; `setVideoSource(CameraSourceFactory(id))`                                                                                                                           | `CameraReopened(ok)`                                                                                                                         |
-| `Slate(on)`                   | on: `setVideoSource(SlateSource.factory(context))`, `audioInput.isMuted = true`; off: the camera back, `isMuted = false`                                                                       | none                                                                                                                                         |
-| `StopBroadcast` / `End`       | `stopStream()`, `close()` for the attempt held; the slate off; `tally.begin(-1)`; `SoundMeter.start`. The camera stays open until `close()`                                                    | none                                                                                                                                         |
+| Call                              | StreamPack calls                                                                                                                                                                               | Reports                                                                                                                                      |
+| --------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| `open(request)` (CD37)            | `cameraSingleStreamer(context, back camera, endpointFactory = ours, defaultRotation = surfaceRotation(side()))`; `setAudioConfig`; `setVideoConfig`; the level effect; `SoundMeter.start`      | `cameras.sessionStarted()`'s input, if any; readiness every 500 ms. Camera failure: `pairFailed(request, e)` as is (P12); encoder: permanent |
+| `close()` (CD37)                  | `SoundMeter.stop`; `streamer.value = null` first (the preview unbinds), then `stopStream()`, `close()`, `release()`                                                                            | `cameras.sessionEnded()`; readiness `(false, 0.0)`                                                                                           |
+| `Orient(side)`                    | none when the build's rotation is the side's; else `close` then `open` for the same request, with that side                                                                                    | `capture-rebuilt {action: "orient"}`                                                                                                         |
+| `Connect`                         | `SoundMeter.stop`; `tally.begin(id)`; `clock.newAttempt()`; `videoEncoder.bitrate = bps`; SRT: `sink.next(plan, id)`, `startStream(SrtMediaDescriptor(host, port))`; RTMPS: `startStream(url)` | `signals.connected(id)`, or `signals.connectFailed(id, t)`; an SRT URL that does not plan: `ConnectFailed`                                   |
+| `Disconnect(id)`                  | `stopStream()`, `close()`                                                                                                                                                                      | none (the machine asked)                                                                                                                     |
+| `Rebuild` / `StartNewSession`     | `stopStream()`, `close()`, then `Connect(next)`. These are the calls of the manual reconnect that healed F-P5-6 in P5                                                                          | as Connect                                                                                                                                   |
+| `SetBitrate(id, bps)`             | `videoEncoder?.bitrate = bps`                                                                                                                                                                  | none                                                                                                                                         |
+| `SetMaxBw(id, b)`                 | `sink.setMaxBw(id, b)` (F-P5-11)                                                                                                                                                               | none                                                                                                                                         |
+| `SwitchCamera`                    | `cameras.selfChange(now)`; `setVideoSource(CameraSourceFactory(other))`; `cameras.held(other, now)`                                                                                            | none; frames keep coming (carry 19)                                                                                                          |
+| `ReopenCamera`, nothing open (I4) | `open` again for the request held, after a busy camera's release                                                                                                                               | `CameraReopened(true)` once built, or `cameraBusy` again                                                                                     |
+| `ReopenCamera`                    | `cameras.selfChange(now)`; `setVideoSource(CameraSourceFactory(id))`                                                                                                                           | `CameraReopened(ok)`                                                                                                                         |
+| `Slate(on)`                       | on: `setVideoSource(SlateSource.factory(context))`, `audioInput.isMuted = true`; off: the camera back, `isMuted = false`                                                                       | none                                                                                                                                         |
+| `StopBroadcast` / `End`           | `stopStream()`, `close()` for the attempt held; the slate off; `tally.begin(-1)`; `SoundMeter.start`. The camera stays open until `close()`                                                    | none                                                                                                                                         |
 
 **Rules:**
 
@@ -17874,6 +18213,7 @@ class CoreCalls(
   val report: (Input) -> Unit,
   val failure: (Throwable) -> Unit,
   val pairFailed: (PairRequest, Throwable) -> Unit,
+  val cameraBusy: (PairRequest) -> Unit,
   val readiness: (cameraFrames: Boolean, audioPeak: Double) -> Unit,
   val line: (RecordEntry) -> Unit,
 )
@@ -18035,6 +18375,7 @@ package com.seazn.capture.engine.capture
 
 import android.annotation.SuppressLint
 import android.content.Context
+import android.hardware.camera2.CameraAccessException
 import android.media.AudioFormat
 import android.media.MediaFormat
 import android.os.SystemClock
@@ -18159,7 +18500,7 @@ class StreamerAdapter(
     } catch (e: CancellationException) {
       throw e
     } catch (e: Exception) {
-      return calls.pairFailed(asked, e)
+      return if (CameraAvailability.busy(accessReason(e))) busy(asked, id) else calls.pairFailed(asked, e)
     }
     if (!configured(asked, made)) return
     rotation = wanted
@@ -18171,6 +18512,16 @@ class StreamerAdapter(
     sound.start()
     readinessJob = scope.launch { reportReadiness() }
   }
+
+  /** I4, A11: another app holds the camera. Not ready, camera, never an end; its release opens it again. */
+  private fun busy(asked: PairRequest, id: String) {
+    cameras.waiting(id)
+    calls.cameraBusy(asked)
+  }
+
+  /** I4: the Camera2 reason anywhere in the cause chain, so a wrapper of StreamPack's does not hide it. */
+  private fun accessReason(e: Throwable): Int? =
+    generateSequence(e) { it.cause }.take(8).filterIsInstance<CameraAccessException>().firstOrNull()?.reason
 
   private suspend fun configured(asked: PairRequest, made: SingleStreamer): Boolean =
     try {
@@ -18219,7 +18570,7 @@ Each `when` branch below is one call into a private function, and every function
 
 ```kotlin
   private suspend fun run(command: Command) {
-    val held = current.value ?: return // nothing open: nothing to carry out
+    val held = current.value ?: return unheld(command)
     when (command) {
       is Command.Orient -> orient(command.side)
       is Command.Connect -> connect(held, command)
@@ -18234,6 +18585,14 @@ Each `when` branch below is one call into a private function, and every function
       Command.StopBroadcast, is Command.End -> stopBroadcast(held)
       else -> Unit // HTTP, the store, permissions, the service and record lines are BridgeCore's or the keeper's
     }
+  }
+
+  /** Nothing open: nothing to carry out, except the reopen a busy camera's release asked for (I4). */
+  private suspend fun unheld(command: Command) {
+    if (command != Command.ReopenCamera) return
+    val asked = request ?: return calls.report(Input.CameraReopened(false))
+    build(asked, EncoderKeys.surfaceRotation(side()))
+    if (current.value != null) calls.report(Input.CameraReopened(true))
   }
 
   /** CD42: the build's rotation is the broadcast's; another side rebuilds before the connect, never setTargetRotation. */
@@ -18425,6 +18784,7 @@ Add `systemProperty("capture.tokens", layout.projectDirectory.file("../../../../
     report = { core().report(it) },
     failure = { core().failure(it) },
     pairFailed = { request, t -> core().pairFailed(request, t) },
+    cameraBusy = { request -> core().cameraBusy(request) },
     readiness = { frames, peak -> core().readiness(cameraFrames = frames, audioPeak = peak) },
     line = ::line,
   )
@@ -18437,6 +18797,7 @@ Nothing reaches the capture until `core.start()` has run and an intent arrives, 
   2. Read `context.display.rotation` in `opened` for the build's rotation. The A11 rule fails.
   3. (P12) Wrap the camera failure in `build` as `PermanentPlatformFailure`. No JVM test can reach the glue; this is a code-review fact, checked against the P12 disposition, and Task 40's row "a camera-open failure lets Continue pair again" settles it on a phone. Record it so.
   4. (P11) Throw from `build` instead of `calls.pairFailed`. The CEH then reaches `BridgeCore.failure`, which ends nothing for a non-permanent throw: the same code-review fact, and the same Task 40 row.
+  5. (I4) In `build`'s catch, call `calls.pairFailed` whatever the reason. No JVM test reaches the glue: Task 20's `cameraBusy` test and Task 18's `busy` test hold the two halves, and Task 40's row "another app holds the camera at the viewfinder" settles the join on a phone. Record it so.
 
 The first live device check is Task 37 Step 1 (I6): it reads the readiness lines on the viewfinder, a locked go-live, and the sound check's `SoundMeter` before the connect.
 
@@ -19488,10 +19849,11 @@ and never with `adb push`, and never to `/sdcard`. After the run: `adb shell run
   2. **the encoded picture is upright:** download the stg recording, grab one frame with `ffmpeg -ss 5 -i rec.mp4 -frames:v 1 frame.png`, and open it (`ffprobe` cannot see uprightness);
   3. **the rotation metadata is absent or 0:** `ffprobe -v error -show_streams -show_entries stream_side_data=rotation rec.mp4`, and the stream's `width` is greater than its `height`.
 - [ ] **The side held, not the screen (A11, CD42).** The go-live with the phone upright on the tripod, locked: the beat carries `notReady: "held"` and the notification reads the held line; turn it sideways: it publishes, and the record has one `capture-rebuilt {action: "orient"}` only if the side differs from the one the viewfinder last built.
-- [ ] **Another app holds the camera at a go-live.** Open a camera app, then let the script's `go-live` arrive: not ready, `camera`, in the beat and on the status line; no slate on air (nothing is on air). Close the camera app: it publishes.
+- [ ] **Another app holds the camera at a go-live (I3).** Paired on the viewfinder, open a camera app, then let the script's `go-live` arrive: not ready, `camera`, in the beat and on the status line; no slate on air (nothing is on air). Close the camera app: it publishes.
+- [ ] **Another app holds the camera at the viewfinder (I4, device-only).** Open a camera app first, then scan and pair. Expected: Paired, never Ended; the camera chip not ready and a `camera-busy` line in the record; the beat carries `notReady: "camera"`. Close the camera app: the viewfinder shows the picture without a tap. If the phone never reaches the busy path (no `camera-busy` line: the other app yields, or the failure arrives another way, such as an `engine-error` end), list I4's join as **unproved on a device**, with what the record showed.
 - [ ] **A camera-open failure lets Continue pair again (P12).** If any of the runs above ends a pairing with `engine-error` at the capture's build, read Home: Continue pairs again, without killing the app. If none occurs, list it as **unproved on a device**; the rule is the code-review fact Task 36 recorded.
-- [ ] **A scripted `over`, then a second `go-live` on the same code.** _Script:_ `beat` answers `go-live` (sid A), then `over` (`endReason: stopped`), then `go-live` (sid B). Expected: on air, then Paired with "Stopped by the organiser", then on air again for B; Ended is never shown.
-- [ ] **Each `POST start` refusal, and a foreign `cred` host.** _Scripts:_ `start` answers each of `no_credit` (402), `not_entitled` (403), `no_destination` (409), `club_suspended` (403, the unknown code) and `already_live` (409); then a `code` answer whose RTMPS URL is on `live.cloudflare.com`. Expected: each refusal's own line after the Go live hold (Task 28), the unknown code's generic line with its message in the record only; the foreign host ends the broadcast fatal-error and named, and nothing connects.
+- [ ] **A scripted `over`, then a second `go-live` on the same code.** _Script:_ `beat` answers `go-live` (sid A), then `over` (`endReason: stopped`), then `go-live` (sid B). Expected: on air, then Paired with "Organiser stopped it — waiting for Go live" (`stream.status.stoppedOrganiser`), then on air again for B; Ended is never shown.
+- [ ] **Each `POST start` refusal, and a foreign `cred` host.** _Scripts:_ `start` answers each of `no_credit` (402), `not_entitled` (403), `no_destination` (409), `club_suspended` (403, the unknown code) and `already_live` (409); then a `code` answer whose RTMPS URL is on `live.cloudflare.com`. Expected: each refusal's own line after the Go live hold (Task 28), the unknown code's generic line with its message in the record only. The foreign host is refused per A18 (Task 7): back in Paired, never Ended; the beat carries `startFailed: "cred-host"`, the status line reads "Couldn't start the stream — try again" (`stream.status.startFailed`), the record has one `cred-host-refused` line with the sid, and nothing connects.
 - [ ] **A18: `cred.srt` null.** _Script:_ the open shape with `"srt": null` and `"preferred": "rtmps"`. Expected: RTMPS only, no fallback attempt in the record, and Diagnostics reads "RTMPS · SRT not offered".
 - [ ] **G0-d: a session shape with no `cred`.** _Script:_ `code` answers the open shape with `"cred": null` first, then with `cred`. Expected: a claim beat, a second fetch, and nothing shown to the operator between them.
 - [ ] **`over` with `phone_lost` and with `failed`.** _Scripts:_ each after a `go-live`. Expected: "Stream ended — this phone was offline" and "Stream ended by Seazn — ask the organiser" respectively, back in Paired.
@@ -19500,7 +19862,7 @@ and never with `adb push`, and never to `/sdcard`. After the run: `adb shell run
 - [ ] **A `resume` claim answered `replaced`.** As above, with `beat` answering `replaced`. Expected: Home's panel, the code forgotten, no takeover, no second `pair`.
 - [ ] **The permission dialog: one prompt, one `pair`; a refusal, then a foreground, prompts nothing.** Task 38 Step 3's two checks, on this build.
 - [ ] **A17: Stop, rescan.** Stop a scripted broadcast before its first frame (the phone face down, so readiness never passes), scan again. Expected: the claim beat carries `stopped` with the old sid; a scripted `go-live` naming that sid is ignored (nothing starts), and one naming a new sid starts.
-- [ ] **A7's confirm, then a foreground in Remote Scoring.** Paired, open Home's Remote Scoring tile with a scoring code (the owner's), confirm the sheet; background and foreground. Expected: no re-pair, no `/stream`.
+- [ ] **Another mode's code while paired leaves the pairing alone (A7, the S1 half).** Paired on the viewfinder, go back to Home, tap the Remote Scoring tile (it reads "Coming soon"), then scan a made-up scoring code from the Live Stream tile. Expected: the panel "This is a Remote Scoring code" / "Remote Scoring is coming soon."; back on Live Stream, still Paired, no new `pair` in the record, and Continue still names the code after a background and foreground. A7's confirm sheet itself cannot be reached from a scan in S1 (CD41, accepted by the controller): its on-device row, the sheet confirmed and then a foreground in Remote Scoring with no re-pair and no `/stream`, moves to **S2's device gate**, and the results document lists it there.
 - [ ] **B-frames off (M12)** on the OnePlus (and the Android 12/13 phone's SoC if there is one): `ffprobe -v error -select_streams v -show_frames -show_entries frame=pict_type -of csv rec.mp4 | grep -c ',B'` prints 0, and `-show_streams` gives `has_b_frames=0`.
 - [ ] **F-P5-11:** throttle the laptop hotspot to 1.5 Mbit/s. The SRT `msSndBuf` stays bounded and the egress follows the target. Record the encoder's frame rate under paced `send` (#302).
 - [ ] **srtdroid 1.10.1:** 10 minutes on air over SRT to `live.cloudflare.com`, with one forced reconnect (aeroplane mode for 5 s). The stg player shows the stream after the reconnect.
@@ -19538,7 +19900,9 @@ The console's Go live and Stop with the phone locked; the real start gates (cred
 - [ ] **Step 1: Write the results document** with each tick and its evidence. Every claim names the handset, build and screenshot, and says which claims are device-only. Include:
   - the **owner's rulings of 2026-10-01** (P1, P2, P3, A8's final beat, Android 12+, StreamPack 3.2.0 and srtdroid 1.10.1, never EAS, the crash copy, the viewfinder-only boundary, and SRT on `live.cloudflare.com` or the environment's `live.*` host with `cred.srt: null` accepted), each with where it was built and what the device showed for it;
   - the owner-visible decisions CD7 (the line format), CD17, CD18, CD19 and CD21, with their copy in four languages;
-  - CD42's two device-only answers: what StreamPack's camera and microphone did with no preview surface before `startStream`, and whether any `Orient` rebuilt;
+  - CD42 (owner ruling, 2026-10-01) as built: what StreamPack's camera and microphone did with no preview surface before `startStream`, whether any `Orient` rebuilt, and that ON AIR showed only once video flowed (F-P5-6's LIVE gate);
+  - I4's device-only answer: whether the busy camera reached `camera-busy`, and whether the pairing stayed;
+  - A7's on-device row, moved to S2's gate (CD41);
   - deviations, each with its reason.
 
 - [ ] **Step 2: Write the plan D section,** _Prerequisites left for plan D_:
@@ -19552,7 +19916,7 @@ The console's Go live and Stop with the phone locked; the real start gates (cred
 
 **Both suites, before the commit** (Global Constraints, _Every task carries_): `pnpm check` and the core suite (`cd "$WT/modules/capture-engine/android/core" && ./gradlew test`), EXIT=0 each, with `numTotalTests` and the XML count in the report.
 
-**The four questions.** (1) A second call: a second `go-live` on the same code after `over` (its row); a second scan while paired (Task 23's adopt, read in the record). (2) An empty input: `cred` absent (G0-d), `cred.srt` null (A18), a silent room (the audio floor), a camera held by another app. (3) After an interruption: a kill while live and the `resume` re-pair; a JS reload while live; Doze; an OEM kill; a phone call. (4) Another mode, orientation or language: A7's Remote Scoring row; both landscape sides and upright (A11); en and fr, and Dutch for the notification's `setLanguage`.
+**The four questions.** (1) A second call: a second `go-live` on the same code after `over` (its row); a second scan while paired (Task 23's adopt, read in the record). (2) An empty input: `cred` absent (G0-d), `cred.srt` null (A18), a silent room (the audio floor), a camera held by another app at the viewfinder (I4) and at a go-live (I3). (3) After an interruption: a kill while live and the `resume` re-pair; a JS reload while live; Doze; an OEM kill; a phone call. (4) Another mode, orientation or language: another mode's code while paired (A7's S1 half; the sheet's row is S2's, CD41); both landscape sides and upright (A11); en and fr, and Dutch for the notification's `setLanguage`.
 
 ## The four questions (AGENTS §10)
 
@@ -19626,6 +19990,8 @@ All 28 carries are traced (the carry table): 25 are fully mapped, 20 and 26 are 
 
 These are the earlier plan C's dispositions of the independent review of 2026-10-01, kept because tasks here cite their IDs (I1–I14, M1–M16, N1–N12). Task numbers are mapped to this plan's (_Revision against the amendment_). Where a disposition names something the amendment replaced, read it as its pairing equivalent: the arm is the accepted `pair`, `SessionName` and `sessionName` are the pairing's name (CD5), `armed(config)` is the pair notice (CD31), the Ended permission line is Home's panel (CD21), and `ArmTurns` is the core's `permissions-late` (_Pre-flight, folded_).
 
+**Superseded where marked (review M9).** Five dispositions below name mechanisms this plan no longer has, and each row says so in place: `ArmTurns` (N2) is retired, its late-answer rule now the core's `permissions-late`; `noticeArm` (I6) and `BridgeCore.armFailed` (N1) are the pair notice (CD31) and `pairFailed` (P11); and I12's and N7's "session in hand" rule is replaced by CD6's, which keys JS's masking on the **pairing in hand, from the scan to the unpair**, not on a session from `protect` to `release`. Where a row and CD6 disagree, CD6 rules.
+
 The independent review of 2026-10-01 (`.superpowers/plan-c-review.md`) found 3 Critical, 14 Important, 18 Minor and 19 wrong claims. Each was re-verified against `main` at `d6931c1` before it was acted on. Where this plan departs from the review's proposed fix, the reason is here.
 
 **Critical.**
@@ -19638,22 +20004,22 @@ The independent review of 2026-10-01 (`.superpowers/plan-c-review.md`) found 3 C
 
 **Important.**
 
-| Finding                                    | Disposition                                                                                                                                                                                                                                                                                                                                                                                                                          |
-| ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| I1 a throw from `armed` swallowed          | Fixed as proposed (CD31): the arm is noticed in its own posted task after each input, `armed` runs outside the sink under the guarded scheduler, by config identity, so a throwing `facts()` cannot skip it. Three tests (permanent, `Error`, `throwOnFactsOnce`), each with a mutation.                                                                                                                                             |
-| I2 the core bound to the first JS instance | Fixed as proposed (CD32): the platform on the application context; `OwnedSlot`s for the listener and the `AppContext`; `Permissions` reads the slot at request time. Device check in Task 40.                                                                                                                                                                                                                                        |
-| I3 the pre-PR-#9 i18n base                 | Fixed: rebased onto `d6931c1`; the copy table rewritten to the glossary and reviewed in this plan, so no `_review` marker is ever committed; **engine** added to the glossary; baselines re-counted at the base; the new lines in Task 40's copy-fit check.                                                                                                                                                                          |
-| I4 the boundary cannot remount             | Fixed as proposed: `key` on the `ErrorBoundary`; `crashPreview()` in `test/fakeSurfaces.ts`; tests spy on `console.error` locally; the second-crash test asserts the caption and the count; mutation 1 is the review's defect.                                                                                                                                                                                                       |
-| I5 the preview scope                       | Fixed as proposed: collect on attach, cancel on detach, a null streamer unbinds, and both scopes have a `CoroutineExceptionHandler` (Tasks 36, 39).                                                                                                                                                                                                                                                                                  |
-| I6 C5 ∥ C6 device checks                   | Fixed: C6 runs no device check; Task 37 Step 1 runs them after C5. `NoCapture`'s phone check is dropped: its path is JVM-proved by the three I1 tests (Task 20), and not reached on a phone (Task 36 replaces `NoCapture` before C5 wires the native engine; a refused permission goes through `BridgeCore.refused`, not `noticeArm`'s catch). Corrected after the re-review (N6).                                                   |
-| I7 glue as prose                           | Fixed: Tasks 33–39 are code; every undefined reference the review listed is now defined (`EngineHost.capture`, `EngineHost.line`, `cameraOpened`, `RtmpDispatcherProvider`, `TlsGuard.handler`/`record`, `DeviceSampler.armed`, `pauseReports`).                                                                                                                                                                                     |
-| I8 device claims with nothing to read      | Fixed: `tick-late` and `frames-gap` (CD33, Task 17, wired in Task 20); `ffmpeg -frames:v 1` for uprightness; Task Manager for `user-requested`, the swipe recorded as seen; the audio floor on each phone the gate uses; the `capture-clock` line.                                                                                                                                                                                   |
-| I9 config file names                       | Fixed: `vitest.config.mts`, `eslint.config.mjs` (and no eslint change unless lint refuses).                                                                                                                                                                                                                                                                                                                                          |
-| I10 the settle/tick race                   | Fixed as proposed (CD8): `seq` and `ack`, posted after the input's own tasks; `settle` and the device probe wait for the ack, with a 5 s guard.                                                                                                                                                                                                                                                                                      |
-| I11 two guards; the CI shape               | Fixed: each guard mutated on its own; `bridge-contract.yml` is its own workflow, so `kotlin-core.yml` stays JDK and Gradle only.                                                                                                                                                                                                                                                                                                     |
-| I12 JS text keys before `protect()`        | Fixed with the review's second option, keyed on the session in hand after the re-review (N7): JS masks a text key whole unless the viewfinder holds a protected session, from `protect` to `release` (CD6). The first option (protect at scan) would move `protect()` into the scan flow, which plan A owns; this keeps the change inside the scrub, the logger and `useProtect`'s cleanup, with a test of two codes in one process. |
-| I13 tests promising more                   | Fixed: the CD16 test asserts the refusing platform's `armed` is empty; `GlueRulesTest` skips (never passes) with no glue and fails on an empty folder; the notification test asserts exactly six keys per language.                                                                                                                                                                                                                  |
-| I14 StreamPack's logger                    | Fixed as proposed (CD30), stricter: nothing reaches logcat in **any** build, since the glue may not import `android.util.Log`.                                                                                                                                                                                                                                                                                                       |
+| Finding                                    | Disposition                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| ------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| I1 a throw from `armed` swallowed          | Fixed as proposed (CD31): the arm is noticed in its own posted task after each input, `armed` runs outside the sink under the guarded scheduler, by config identity, so a throwing `facts()` cannot skip it. Three tests (permanent, `Error`, `throwOnFactsOnce`), each with a mutation.                                                                                                                                                                                                                                           |
+| I2 the core bound to the first JS instance | Fixed as proposed (CD32): the platform on the application context; `OwnedSlot`s for the listener and the `AppContext`; `Permissions` reads the slot at request time. Device check in Task 40.                                                                                                                                                                                                                                                                                                                                      |
+| I3 the pre-PR-#9 i18n base                 | Fixed: rebased onto `d6931c1`; the copy table rewritten to the glossary and reviewed in this plan, so no `_review` marker is ever committed; **engine** added to the glossary; baselines re-counted at the base; the new lines in Task 40's copy-fit check.                                                                                                                                                                                                                                                                        |
+| I4 the boundary cannot remount             | Fixed as proposed: `key` on the `ErrorBoundary`; `crashPreview()` in `test/fakeSurfaces.ts`; tests spy on `console.error` locally; the second-crash test asserts the caption and the count; mutation 1 is the review's defect.                                                                                                                                                                                                                                                                                                     |
+| I5 the preview scope                       | Fixed as proposed: collect on attach, cancel on detach, a null streamer unbinds, and both scopes have a `CoroutineExceptionHandler` (Tasks 36, 39).                                                                                                                                                                                                                                                                                                                                                                                |
+| I6 C5 ∥ C6 device checks                   | Fixed: C6 runs no device check; Task 37 Step 1 runs them after C5. `NoCapture`'s phone check is dropped: its path is JVM-proved by the three I1 tests (Task 20), and not reached on a phone (Task 36 replaces `NoCapture` before C5 wires the native engine; a refused permission goes through `BridgeCore.refused`, not `noticeArm`'s catch). Corrected after the re-review (N6). **Superseded in part (M9):** `noticeArm` is the pair notice (CD31), and a refused permission is the core's `PermissionsAnswered(false)` (CD21). |
+| I7 glue as prose                           | Fixed: Tasks 33–39 are code; every undefined reference the review listed is now defined (`EngineHost.capture`, `EngineHost.line`, `cameraOpened`, `RtmpDispatcherProvider`, `TlsGuard.handler`/`record`, `DeviceSampler.armed`, `pauseReports`).                                                                                                                                                                                                                                                                                   |
+| I8 device claims with nothing to read      | Fixed: `tick-late` and `frames-gap` (CD33, Task 17, wired in Task 20); `ffmpeg -frames:v 1` for uprightness; Task Manager for `user-requested`, the swipe recorded as seen; the audio floor on each phone the gate uses; the `capture-clock` line.                                                                                                                                                                                                                                                                                 |
+| I9 config file names                       | Fixed: `vitest.config.mts`, `eslint.config.mjs` (and no eslint change unless lint refuses).                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| I10 the settle/tick race                   | Fixed as proposed (CD8): `seq` and `ack`, posted after the input's own tasks; `settle` and the device probe wait for the ack, with a 5 s guard.                                                                                                                                                                                                                                                                                                                                                                                    |
+| I11 two guards; the CI shape               | Fixed: each guard mutated on its own; `bridge-contract.yml` is its own workflow, so `kotlin-core.yml` stays JDK and Gradle only.                                                                                                                                                                                                                                                                                                                                                                                                   |
+| I12 JS text keys before `protect()`        | **Superseded by CD6 (M9): the pairing in hand, from the scan to the unpair.** Originally fixed with the review's second option, keyed on the session in hand after the re-review (N7): JS masks a text key whole unless the viewfinder holds a protected session, from `protect` to `release` (CD6). The first option (protect at scan) would move `protect()` into the scan flow, which plan A owns; this keeps the change inside the scrub, the logger and `useProtect`'s cleanup, with a test of two codes in one process.      |
+| I13 tests promising more                   | Fixed: the CD16 test asserts the refusing platform's `armed` is empty; `GlueRulesTest` skips (never passes) with no glue and fails on an empty folder; the notification test asserts exactly six keys per language.                                                                                                                                                                                                                                                                                                                |
+| I14 StreamPack's logger                    | Fixed as proposed (CD30), stricter: nothing reaches logcat in **any** build, since the glue may not import `android.util.Log`.                                                                                                                                                                                                                                                                                                                                                                                                     |
 
 **Minor.** All fixed: M1 (CD7 is owner-visible), M2 (device-only list and the `capture-clock` line), M3 (`resetShared` in `@AfterTest`), M4 (pinned), M5 (tested), M6 (CD7 and `BridgeCore.log` say JS fractions are written to tenths), M7 (the reason text), M8 (the keeper on the main looper), M9 (Task 38's device step), M10 (`byteFormat`), M11 (`SlateColoursTest`), M12 (`pict_type=B` count), M13 (the file map rewritten), M14 (OkHttp `compileOnly` 4.9.2), M15 (C4a and C4b), M16 (`recordGoesNative`), M17 (one CD21 string), M18 (the channel is `mode.stream`, per language).
 
@@ -19665,21 +20031,21 @@ The independent review of 2026-10-01 (`.superpowers/plan-c-review.md`) found 3 C
 
 The re-review (`.superpowers/plan-c-review.md`, _Re-review_) found two Important and eight Minor findings, and two carried Minors. Each was re-checked against the plan before it was acted on.
 
-| Finding                                     | Disposition                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
-| ------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| N1 the keeper swallows arm-path failures    | Fixed as proposed (Task 38): `forArm` hands any failure on the arm path to the new `BridgeCore.armFailed(config, t)` (Task 20), which ends that session fatal-error and named, or only records `arm-step-late` when the session is no longer held; `survivesBackground` drops with it. The marker and the wake lock are record-only, each on its own. `end` stays record-only. The core half is JVM-proved (two tests, two mutations); the keeper is glue, and an arm-path throw cannot be forced on a stock phone, so its wiring is a code-review fact. The stale `noticeArm` sentence in Task 33 now says where the claim stops holding. |
-| N2 a late grant starts a session that ended | Fixed as proposed: `ArmTurns` (pure, Task 38, four tests and two mutations) closes the turn at `ended()`, and `answered` drops a late answer as `permissions-late`. `StreamerAdapter.build` ends and releases a streamer it still holds before building another (Task 36). Device step in Tasks 38 and 40.                                                                                                                                                                                                                                                                                                                                 |
-| N3 `ICameraSource.isStreamingFlow`          | Fixed as proposed: `held.videoInput.isStreamingFlow.value \|\| source.isPreviewingFlow.value` (Task 36).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
-| N4 `Stats` `Int` fields                     | Fixed, and re-read from 1.10.1: `pktRetransTotal` and `pktSndDropTotal` take `.toLong()`; every `Stats` field type is written beside the call (Task 35).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
-| N5 nl "Toon voorbeeld"                      | Fixed: "Voorbeeld tonen" (15, within 16).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
-| N6 the I6 reason                            | Corrected in Task 33 Step 7 and the I6 row above.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
-| N7 I12 lapses after the first `protect()`   | Fixed rather than stated: the rule is keyed on the session in hand (`protect`/`release`), with a two-code logger test, a viewfinder test, and three mutations (Task 10). CD6's citation now says `useProtect`, at the viewfinder, not "at arm".                                                                                                                                                                                                                                                                                                                                                                                            |
-| N8 the mic-session line                     | Fixed with code: `StreamerAdapter.noteMicSession` records it once per session at the first connect (Task 36); Task 37's prose points there.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
-| N9 the sampler's failures                   | Fixed: the first failure in the process is a `watch-failed {action: "device"}` line (Task 37).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
-| N10 `stopSelf()` after a refused start      | Listed as unproved in the device-only claims and Task 40.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
-| `javaClass.name` under a plain key          | Fixed: every `error` field records `javaClass.simpleName`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
-| `probe.fail {reason}` as a phrase           | Fixed: `probe.fail` records `{ scene, check, reason: 'mismatch' }`, numbers and one plain word (Tasks 27, 32).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
-| srtdroid `// confirm:` lines                | Replaced by the verified 1.10.1 signatures, the `Stats` field types and `close()`'s synchronous completion, all read from the jar (Task 35, CD35).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| Finding                                     | Disposition                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| ------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| N1 the keeper swallows arm-path failures    | **Superseded (M9): `armFailed` is `pairFailed` (P11, Task 20), the arm path is the pair work (CD31).** Originally fixed as proposed (Task 38): `forArm` hands any failure on the arm path to the new `BridgeCore.armFailed(config, t)` (Task 20), which ends that session fatal-error and named, or only records `arm-step-late` when the session is no longer held; `survivesBackground` drops with it. The marker and the wake lock are record-only, each on its own. `end` stays record-only. The core half is JVM-proved (two tests, two mutations); the keeper is glue, and an arm-path throw cannot be forced on a stock phone, so its wiring is a code-review fact. The stale `noticeArm` sentence in Task 33 now says where the claim stops holding. |
+| N2 a late grant starts a session that ended | **Superseded (M9): `ArmTurns` is retired; the core drops a late answer as `permissions-late`.** Originally fixed as proposed: `ArmTurns` (pure, Task 38, four tests and two mutations) closes the turn at `ended()`, and `answered` drops a late answer as `permissions-late`. `StreamerAdapter.build` ends and releases a streamer it still holds before building another (Task 36). Device step in Tasks 38 and 40.                                                                                                                                                                                                                                                                                                                                        |
+| N3 `ICameraSource.isStreamingFlow`          | Fixed as proposed: `held.videoInput.isStreamingFlow.value \|\| source.isPreviewingFlow.value` (Task 36).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| N4 `Stats` `Int` fields                     | Fixed, and re-read from 1.10.1: `pktRetransTotal` and `pktSndDropTotal` take `.toLong()`; every `Stats` field type is written beside the call (Task 35).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| N5 nl "Toon voorbeeld"                      | Fixed: "Voorbeeld tonen" (15, within 16).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| N6 the I6 reason                            | Corrected in Task 33 Step 7 and the I6 row above.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| N7 I12 lapses after the first `protect()`   | **Superseded by CD6 (M9), as I12.** Originally fixed rather than stated: the rule is keyed on the session in hand (`protect`/`release`), with a two-code logger test, a viewfinder test, and three mutations (Task 10). CD6's citation now says `useProtect`, at the viewfinder, not "at arm".                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| N8 the mic-session line                     | Fixed with code: `StreamerAdapter.noteMicSession` records it once per session at the first connect (Task 36); Task 37's prose points there.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| N9 the sampler's failures                   | Fixed: the first failure in the process is a `watch-failed {action: "device"}` line (Task 37).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| N10 `stopSelf()` after a refused start      | Listed as unproved in the device-only claims and Task 40.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| `javaClass.name` under a plain key          | Fixed: every `error` field records `javaClass.simpleName`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| `probe.fail {reason}` as a phrase           | Fixed: `probe.fail` records `{ scene, check, reason: 'mismatch' }`, numbers and one plain word (Tasks 27, 32).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| srtdroid `// confirm:` lines                | Replaced by the verified 1.10.1 signatures, the `Stats` field types and `close()`'s synchronous completion, all read from the jar (Task 35, CD35).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
 
 ## Revision against the amendment
 
@@ -19718,8 +20084,32 @@ This plan rewrites the earlier plan C (26 tasks, never executed) as the amendmen
 | 25 (preview)                         | 39         | The viewfinder's report (CD37)                                                                                        |
 | 26 (device gate)                     | 40         | Split: plan C's scripted and release rows, plan D's staging rows                                                      |
 
-**Deviations from the amendment, for the owner's review.**
+**Deviations from the amendment, and how each was settled.**
 
-- **CD42.** The amendment's camera readiness counts frames. Before the first connect StreamPack produces no encoded frames, so that check cannot run then; this plan reads "our camera is the video source, not the slate" plus the engine's contention fact instead, and reads sound from its own `SoundMeter` until Connect. What StreamPack's capture does with no preview surface before `startStream` is settled on the phone (Task 40).
-- **CD40.** The amendment has `broadcast` in the snapshot "while a broadcast is held, and in Ended". Ended here carries the pairing's name and the ended `sid`, and no `broadcast`: the session is freed at Ended (Task 9), and no Ended screen reads one.
-- **CD41.** A7's sheet is unreachable from a scan in S1, because scoring and dashboard codes answer "coming soon"; it is tested through `openFromPanel`.
+- **CD42: owner ruling, 2026-10-01, accepted; no longer open.** It refines the amendment's A11 wording. A11's camera check before connecting means: our camera, not the slate, is the source; no other app holds the camera (contention, live while Paired, Task 7's I3 fix, and fed by a busy open, I4); sound is above the floor; the network is up; the phone is held sideways. Real frames are proved after connecting, by F-P5-6's LIVE gate: ON AIR shows only once video flows, and otherwise the status line says why. Sound is read from the plan's own `SoundMeter` until Connect. What StreamPack's capture does with no preview surface before `startStream` is still settled on the phone (Task 40), as a fact about the build, not an open question about the rule.
+- **CD40: accepted by the controller (fix round 1), not an owner ruling.** The amendment has `broadcast` in the snapshot "while a broadcast is held, and in Ended". Ended here carries the pairing's name and the ended `sid`, and no `broadcast`: the session is freed at Ended (Task 9), and no Ended screen reads one.
+- **CD41: accepted by the controller (fix round 1), not an owner ruling.** A7's sheet is unreachable from a scan in S1, because scoring and dashboard codes answer "coming soon"; it is tested through `openFromPanel`, and its on-device row moves to S2's device gate (Task 40).
+
+**Fix round 1 (review of `39d4b39`, `.superpowers/plan-c-v2-review.md`).** Each finding was checked against the merged code before it was fixed.
+
+| Finding                    | Where               | Fix                                                                                                                                                                                                               |
+| -------------------------- | ------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| I1 `startBody` arity       | 7                   | `Beats.startBody(phoneId)`, as Task 4 defines it; mutation 14                                                                                                                                                     |
+| I2 the Armed slate test    | 7                   | `Devices` puts the slate up only while sending (Connecting, On air); plan B's B6 I4 armed test migrates unchanged in Task 5 and is rewritten in Task 7                                                            |
+| I3 contention while Paired | 7, 9, 18            | `PairingState.camera` and `Phase.camera`: the pairing keeps the camera while no broadcast is held, a broadcast starts from it and hands it back; `CameraAvailability` tells a release heard while ours was closed |
+| I4 a busy camera at open   | 18, 20, 36, 40      | `CameraAvailability.busy`/`busyError` (constants read with `javap`), `waiting(id)`, `BridgeCore.cameraBusy(request)`, and the adapter's reopen with nothing open; a device-only claim                             |
+| I5 two stale Task 40 rows  | 40                  | The organiser-stop line from the dictionary; a foreign host refused per A18                                                                                                                                       |
+| I6 the unreachable A7 row  | 40                  | An S1 row (another mode's code while paired leaves the pairing alone); the sheet's row moves to S2's gate                                                                                                         |
+| M1                         | 2                   | A `hostOf` test the `@` mutant fails; the vector row's survival recorded; the count is 9                                                                                                                          |
+| M2                         | 4                   | Mutation 4 recorded as equivalent; mutation 13 split per side                                                                                                                                                     |
+| M3                         | 5                   | The code kept out at field level and masked in free text only; the test asserts it; two mutations                                                                                                                 |
+| M4                         | Global Constraints  | A17's synchronous write named as the one file write on the scheduler thread                                                                                                                                       |
+| M5                         | CD31                | The pair work is the machine's commands                                                                                                                                                                           |
+| M6                         | 1                   | Fixed-string checks over line-folded text, with no line numbers                                                                                                                                                   |
+| M7                         | 6                   | Five answer-table rows: `live N` and `go-live N` in held phases, `replaced` in Arming and Armed, the Armed 401 deferral                                                                                           |
+| M8                         | 3, 6, 7             | A no-`cred` shape naming N ≠ S ends S, at Arming and on a reconnect; a vector row                                                                                                                                 |
+| M9                         | Review dispositions | Five rows marked superseded; CD6 rules                                                                                                                                                                            |
+| M10                        | 23                  | `Environment` lives in `src/domain/session/Pairing.ts`                                                                                                                                                            |
+| M11                        | 30                  | `useLanguageSync` knows a pick made while idle; the en, fr, pair, en test                                                                                                                                         |
+| M12                        | 30                  | `heldReads`, written in the test that needs it                                                                                                                                                                    |
+| Gap hunt                   | 30                  | A refused forget at A7's confirm reaches `saveFailed('forget')`                                                                                                                                                   |
