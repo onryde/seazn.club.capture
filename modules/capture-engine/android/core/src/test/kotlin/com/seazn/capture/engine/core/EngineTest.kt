@@ -311,7 +311,7 @@ class EngineTest {
     engine.sendAll(Configs.pairInputs())
     // The code was fetched at Arming (0 s): a refused connect asks again 10 s on (B6 ruling C1's spacing).
     scheduler.advanceBy(10_000)
-    val descriptor = lines.single { """"kind":"descriptor"""" in it }
+    val descriptor = lines.single { """"kind":"code"""" in it }
     assertFalse(Configs.TOKEN in descriptor, descriptor)
     assertTrue("tok=${SessionRecord.MASK} timed out" in descriptor, descriptor)
   }
@@ -325,7 +325,7 @@ class EngineTest {
     engine.send(Input.Pair(Configs.pairRequest(slot = 2, token = otherToken), Configs.PHONE, null))
     scheduler.advanceBy(10_000)
     assertEquals(1, lines.count { """"kind":"intent-ignored"""" in it }, "the second pair was ignored")
-    val descriptor = lines.single { """"kind":"descriptor"""" in it }
+    val descriptor = lines.single { """"kind":"code"""" in it }
     assertFalse(otherToken in descriptor, descriptor)
   }
 

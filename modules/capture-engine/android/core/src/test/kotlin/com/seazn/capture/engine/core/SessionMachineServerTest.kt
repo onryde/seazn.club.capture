@@ -92,7 +92,7 @@ class SessionMachineServerTest {
     assertEquals(listOf(1, 2), rig.sent<Command.FetchCode>().map { it.requestId })
     val ask = rig.sent<Command.FetchCode>().last()
     rig.send(Input.CodeAnswered(ask.requestId, CodeAnswer.Over("sess_42", "stopped")))
-    assertEquals(EndReason.STOPPED_BY_ORGANISER, rig.state.endReason)
+    assertEquals(LastEnd.STOPPED_BY_ORGANISER, assertIs<Phase.Paired>(rig.phase).pairing.lastEnd)
   }
 
   @Test
@@ -126,7 +126,7 @@ class SessionMachineServerTest {
   fun `ruling 5 an organiser stop in the heartbeat's answer ends stopped-by-organiser`() {
     val rig = MachineRig().live()
     rig.hear("over", sid = "sess_42", endReason = "stopped")
-    assertEquals(EndReason.STOPPED_BY_ORGANISER, rig.state.endReason)
+    assertEquals(LastEnd.STOPPED_BY_ORGANISER, assertIs<Phase.Paired>(rig.phase).pairing.lastEnd)
   }
 
   @Test

@@ -28,10 +28,12 @@ enum class DegradeReason(override val wire: String) : Wire {
   FELL_BACK_TO_RTMPS("fell-back-to-rtmps"),
 }
 
+/**
+ * Why a pairing ended: the operator's stop, or a failure. A broadcast that ends without the operator
+ * (an organiser stop, a server end, a hold that runs out) returns to Paired with its [LastEnd].
+ */
 enum class EndReason(override val wire: String) : Wire {
   OPERATOR_STOPPED("operator-stopped"),
-  STOPPED_BY_ORGANISER("stopped-by-organiser"),
-  HOLD_WINDOW_EXPIRED("hold-window-expired"),
   FATAL_ERROR("fatal-error"),
 }
 

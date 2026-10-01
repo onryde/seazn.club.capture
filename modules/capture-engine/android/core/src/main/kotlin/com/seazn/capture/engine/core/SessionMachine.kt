@@ -353,8 +353,11 @@ internal object Timers {
     return Step(polled, requests.map { Command.FetchPlaylist(it.id, it.url) })
   }
 
-  private fun expired(phase: Phase, outage: Outage, now: Now): Step =
-    SessionMachine.end(phase, EndReason.HOLD_WINDOW_EXPIRED, now, "transport" to outage.hold.transport, "cause" to outage.cause)
+  /** The hold ran out: the broadcast is over for this phone, back to Paired. The server may keep it open, and a `live` rejoins (A10). */
+  private fun expired(phase: Phase, outage: Outage, now: Now): Step {
+    val over = Verdicts.over(phase, LastEnd.HOLD_WINDOW_EXPIRED, now)
+    return over.copy(commands = listOf(record("hold-expired", "transport" to outage.hold.transport, "cause" to outage.cause)) + over.commands)
+  }
 
   /**
    * The stall watchdog asked for a rebuild (F-P5-6, F-P5-9). The record's `msSinceAdvance` counts

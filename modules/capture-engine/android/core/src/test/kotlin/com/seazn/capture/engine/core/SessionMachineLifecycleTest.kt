@@ -360,7 +360,7 @@ class SessionMachineLifecycleTest {
     rig.advance(4_500, feeding = false)
     assertIs<SnapshotState.Reconnecting>(rig.state)
     rig.advance(500, feeding = false)
-    assertEquals(EndReason.HOLD_WINDOW_EXPIRED, rig.state.endReason)
+    assertEquals(LastEnd.HOLD_WINDOW_EXPIRED, assertIs<Phase.Paired>(rig.phase).pairing.lastEnd)
     assertTrue(rig.sent<Command.Rebuild>().isEmpty(), "the session is over: nothing to rebuild")
   }
 
@@ -406,10 +406,10 @@ class SessionMachineLifecycleTest {
       val rig = holdRunsOutOnAir()
       assertIs<SnapshotState.Reconnecting>(rig.state, "8 s, projected with no input")
       val commands = rig.send(input)
-      assertEquals(listOf(Command.End(EndReason.HOLD_WINDOW_EXPIRED)), commands.filterNot { it is Command.Record }, "$input")
-      assertEquals(EndReason.HOLD_WINDOW_EXPIRED, rig.state.endReason, "$input")
+      assertEquals(listOf(Command.StopBroadcast), commands.filterNot { it is Command.Record }, "$input")
+      assertEquals(LastEnd.HOLD_WINDOW_EXPIRED, assertIs<Phase.Paired>(rig.phase).pairing.lastEnd, "$input")
       assertTrue(rig.records("video-stalled").isEmpty(), "$input")
-      assertEquals(ReconnectCause.UPLINK_LOST, rig.records("ended").single().field("cause"), "$input")
+      assertEquals(ReconnectCause.UPLINK_LOST, rig.records("hold-expired").single().field("cause"), "$input")
       assertEquals(emptyList(), rig.send(Input.Tick), "the tick after it: $input")
     }
   }
@@ -432,9 +432,9 @@ class SessionMachineLifecycleTest {
       rig.at(8_000)
       assertIs<SnapshotState.Reconnecting>(rig.state, "8 s, projected with no input")
       val commands = rig.send(input)
-      assertEquals(Command.End(EndReason.HOLD_WINDOW_EXPIRED), commands.filterNot { it is Command.Record }.first(), "$input")
+      assertEquals(Command.StopBroadcast, commands.filterNot { it is Command.Record }.first(), "$input")
       assertTrue(commands.none { it is Command.Connect || it is Command.FetchCode || it is Command.Rebuild }, "$input: $commands")
-      assertEquals(EndReason.HOLD_WINDOW_EXPIRED, rig.state.endReason, "$input")
+      assertEquals(LastEnd.HOLD_WINDOW_EXPIRED, assertIs<Phase.Paired>(rig.phase).pairing.lastEnd, "$input")
     }
   }
 
@@ -460,8 +460,8 @@ class SessionMachineLifecycleTest {
     // out and before the 8.5 s tick, ends the session. Nothing else would have: the first-frame grace
     // runs to 8.5 s. The hold is the published limit, and the tick would end it the same way.
     val (rig, commands) = pictureReturnsAt(8_200)
-    assertEquals(listOf(Command.End(EndReason.HOLD_WINDOW_EXPIRED)), commands.filterNot { it is Command.Record })
-    assertEquals(EndReason.HOLD_WINDOW_EXPIRED, rig.state.endReason)
+    assertEquals(listOf(Command.StopBroadcast), commands.filterNot { it is Command.Record })
+    assertEquals(LastEnd.HOLD_WINDOW_EXPIRED, assertIs<Phase.Paired>(rig.phase).pairing.lastEnd)
     assertTrue(rig.records("resumed").isEmpty())
   }
 
@@ -487,8 +487,8 @@ class SessionMachineLifecycleTest {
       val rig = holdRunsOutOnAir(pollSeconds = 5)
       val input = answer(rig)
       val commands = rig.send(input)
-      assertEquals(listOf(Command.End(EndReason.HOLD_WINDOW_EXPIRED)), commands.filterNot { it is Command.Record }, "$input")
-      assertEquals(EndReason.HOLD_WINDOW_EXPIRED, rig.state.endReason, "$input")
+      assertEquals(listOf(Command.StopBroadcast), commands.filterNot { it is Command.Record }, "$input")
+      assertEquals(LastEnd.HOLD_WINDOW_EXPIRED, assertIs<Phase.Paired>(rig.phase).pairing.lastEnd, "$input")
     }
   }
 
@@ -681,7 +681,8 @@ class SessionMachineLifecycleTest {
     assertEquals(emptyList(), rig.send(Input.HeartbeatAnswered(1, HeartbeatResponse.Answered(410))))
     assertIs<Phase.Armed>(rig.phase)
     rig.send(Input.HeartbeatAnswered(3, HeartbeatResponse.Answered(410)))
-    assertEquals(EndReason.STOPPED_BY_ORGANISER, rig.state.endReason)
+    // The answer table: a beat's 410 naming S, with no endReason, is stopped.
+    assertEquals(LastEnd.STOPPED, assertIs<Phase.Paired>(rig.phase).pairing.lastEnd)
   }
 
   @Test
@@ -725,11 +726,19 @@ class SessionMachineLifecycleTest {
 
   @Test
   fun `final review M-3 an outage counts in the duration, as it does on the HUD's clock`() {
-    // Live at 1 s and dropped at once; the 7 s hold runs out at 8 s with nothing published since.
+    // Live at 1 s and dropped at once; the 7 s hold runs out at 8 s with nothing published since. The
+    // broadcast returns to Paired (Task 9's Paired state; Armed until then), and its line says it was live.
     val rig = MachineRig(descriptor = sevenSecondHolds).live()
     rig.send(Input.Dropped(1, DropReason.ENDPOINT_CLOSED, null))
     rig.advance(7_000, feeding = false)
-    assertEquals(SnapshotState.Ended(EndReason.HOLD_WINDOW_EXPIRED, durationMs = 7_000), rig.state)
+    assertEquals(SnapshotState.Armed, rig.state)
+    assertEquals(true, rig.records("broadcast-ended").single().field("wasLive"))
+    // The duration moves to an operator stop: stopped at 7.5 s, in the outage, it counts from 1 s.
+    val stopped = MachineRig(descriptor = sevenSecondHolds).live()
+    stopped.send(Input.Dropped(1, DropReason.ENDPOINT_CLOSED, null))
+    stopped.advance(6_500, feeding = false)
+    stopped.send(Input.Stop)
+    assertEquals(SnapshotState.Ended(EndReason.OPERATOR_STOPPED, durationMs = 6_500), stopped.state)
   }
 
   @Test
@@ -889,9 +898,9 @@ class SessionMachineLifecycleTest {
       assertEquals(2, rig.attempt, name)
       rig.at(8_200)
       val commands = rig.send(Input.PlatformFailed(2, "encoder cannot start"))
-      assertEquals(listOf(Command.End(EndReason.HOLD_WINDOW_EXPIRED)), commands.filterNot { it is Command.Record }, name)
-      assertEquals(EndReason.HOLD_WINDOW_EXPIRED, rig.state.endReason, name)
-      assertEquals(listOf("ended", "platform-failed"), commands.filterIsInstance<Command.Record>().map { it.entry.kind }, name)
+      assertEquals(listOf(Command.StopBroadcast), commands.filterNot { it is Command.Record }, name)
+      assertEquals(LastEnd.HOLD_WINDOW_EXPIRED, assertIs<Phase.Paired>(rig.phase).pairing.lastEnd, name)
+      assertEquals(listOf("hold-expired", "broadcast-ended", "platform-failed"), commands.filterIsInstance<Command.Record>().map { it.entry.kind }, name)
     }
   }
 

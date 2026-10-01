@@ -33,7 +33,7 @@ class SessionMachineOutageTest {
     rig.failingConnects(182_500)
     assertIs<SnapshotState.Reconnecting>(rig.state)
     rig.failingConnects(500)
-    assertEquals(EndReason.HOLD_WINDOW_EXPIRED, rig.state.endReason)
+    assertEquals(LastEnd.HOLD_WINDOW_EXPIRED, assertIs<Phase.Paired>(rig.phase).pairing.lastEnd)
   }
 
   @Test
@@ -229,8 +229,9 @@ class SessionMachineOutageTest {
     val rig = MachineRig().live()
     rig.send(Input.Dropped(1, DropReason.ENDPOINT_CLOSED, null))
     rig.send(Input.CodeAnswered(2, CodeAnswer.Over("sess_42", "stopped")))
-    assertEquals(EndReason.STOPPED_BY_ORGANISER, rig.state.endReason)
-    assertEquals(Command.End(EndReason.STOPPED_BY_ORGANISER), rig.sent<Command.End>().single())
+    assertEquals(LastEnd.STOPPED_BY_ORGANISER, assertIs<Phase.Paired>(rig.phase).pairing.lastEnd)
+    assertEquals(listOf(Command.StopBroadcast), rig.sent<Command.StopBroadcast>())
+    assertTrue(rig.sent<Command.End>().isEmpty(), "the pairing goes on")
   }
 
   @Test
@@ -425,7 +426,7 @@ class SessionMachineOutageTest {
     assertEquals(listOf(1, 2), rig.sent<Command.FetchCode>().map { it.requestId })
     val ask = rig.sent<Command.FetchCode>().last()
     rig.send(Input.CodeAnswered(ask.requestId, CodeAnswer.Over("sess_42", "stopped")))
-    assertEquals(EndReason.STOPPED_BY_ORGANISER, rig.state.endReason)
+    assertEquals(LastEnd.STOPPED_BY_ORGANISER, assertIs<Phase.Paired>(rig.phase).pairing.lastEnd)
   }
 
   /**
@@ -478,7 +479,7 @@ class SessionMachineOutageTest {
     assertEquals(emptyList(), rig.send(Input.CodeAnswered(2, CodeAnswer.Over("sess_42", "no_inbound_timeout"))))
     assertIs<Phase.Connecting>(rig.phase)
     rig.send(Input.CodeAnswered(4, CodeAnswer.Over("sess_42", "stopped")))
-    assertEquals(EndReason.STOPPED_BY_ORGANISER, rig.state.endReason)
+    assertEquals(LastEnd.STOPPED_BY_ORGANISER, assertIs<Phase.Paired>(rig.phase).pairing.lastEnd)
   }
 
   @Test
@@ -503,7 +504,7 @@ class SessionMachineOutageTest {
     assertEquals(listOf(1, 2, 3), rig.sent<Command.FetchCode>().map { it.requestId }, "a drop asks, whatever is in flight (fetch 1 armed)")
     assertEquals(emptyList(), rig.send(Input.CodeAnswered(2, CodeAnswer.Over("sess_42", "stopped"))), "superseded")
     rig.send(Input.CodeAnswered(3, Configs.open()))
-    assertEquals(1, rig.records("descriptor").size)
+    assertEquals(1, rig.records("code").size)
     assertEquals(emptyList(), rig.send(Input.CodeAnswered(3, CodeAnswer.Over("sess_42", "stopped"))), "a second answer to one ask")
     assertIs<SnapshotState.Reconnecting>(rig.state)
   }
@@ -536,7 +537,7 @@ class SessionMachineOutageTest {
       // After the fetch at Arming: the drop's, and the refusals', 10 s apart.
       assertTrue(rig.sent<Command.FetchCode>().drop(1).size > 1, "refusals keep asking the descriptor, 10 s apart")
       rig.refusedConnects(500, answer)
-      assertEquals(EndReason.HOLD_WINDOW_EXPIRED, rig.state.endReason, "answer $answer")
+      assertEquals(LastEnd.HOLD_WINDOW_EXPIRED, assertIs<Phase.Paired>(rig.phase).pairing.lastEnd, "answer $answer")
     }
   }
 
@@ -550,8 +551,8 @@ class SessionMachineOutageTest {
     assertIs<Phase.Connecting>(rig.phase)
     assertEquals(listOf(1, 2, 3), rig.sent<Command.FetchCode>().map { it.requestId })
     rig.refusedConnects(10_000, CodeAnswer.Over("sess_42", "stopped"))
-    assertEquals(EndReason.STOPPED_BY_ORGANISER, rig.state.endReason)
-    assertEquals("stopped", rig.records("ended").single().field("endReason"))
+    assertEquals(LastEnd.STOPPED_BY_ORGANISER, assertIs<Phase.Paired>(rig.phase).pairing.lastEnd)
+    assertEquals(LastEnd.STOPPED_BY_ORGANISER, rig.records("broadcast-ended").single().field("lastEnd"))
   }
 
   @Test
@@ -559,7 +560,8 @@ class SessionMachineOutageTest {
     val rig = MachineRig().live()
     rig.beats = { HeartbeatResponse.Answered(410) }
     rig.advance(10_000)
-    assertEquals(EndReason.STOPPED_BY_ORGANISER, rig.state.endReason)
+    // The answer table: a beat's 410 naming S, with no endReason, is stopped.
+    assertEquals(LastEnd.STOPPED, assertIs<Phase.Paired>(rig.phase).pairing.lastEnd)
   }
 
   @Test
@@ -683,7 +685,7 @@ class SessionMachineOutageTest {
     rig.advance(2_500, feeding = false)
     assertIs<SnapshotState.Reconnecting>(rig.state, "5.5 s: half a second of the 5 s hold from the drop at 1 s")
     rig.advance(500, feeding = false)
-    assertEquals(EndReason.HOLD_WINDOW_EXPIRED, rig.state.endReason)
+    assertEquals(LastEnd.HOLD_WINDOW_EXPIRED, assertIs<Phase.Paired>(rig.phase).pairing.lastEnd)
   }
 
   @Test

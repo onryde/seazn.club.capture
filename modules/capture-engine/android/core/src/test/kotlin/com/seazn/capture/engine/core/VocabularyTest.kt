@@ -17,9 +17,9 @@ class VocabularyTest {
   }
 
   @Test
-  fun `end reasons include stopped-by-organiser`() {
+  fun `end reasons are the two that end a pairing - a broadcast that ends without the operator returns to Paired`() {
     assertEquals(
-      setOf("operator-stopped", "stopped-by-organiser", "hold-window-expired", "fatal-error"),
+      setOf("operator-stopped", "fatal-error"),
       EndReason.entries.map { it.wire }.toSet(),
     )
   }
