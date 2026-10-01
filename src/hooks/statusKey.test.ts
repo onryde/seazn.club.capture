@@ -3,6 +3,7 @@ import type { DegradeReason, SessionState } from '@/domain/session/SessionState'
 import type { CameraState, EngineSnapshot, Telemetry } from '@/engine/CaptureEnginePort';
 import { IDLE_TELEMETRY } from '@/engine/FakeCaptureEngine';
 import {
+  columnLineKey,
   selectHoldRemaining,
   selectHoldWindow,
   selectStatusKey,
@@ -317,5 +318,37 @@ describe('the hold countdown', () => {
 
   it('is absent otherwise', () => {
     expect([selectHoldRemaining(snap(LIVE)), selectHoldWindow(snap(LIVE))]).toEqual([null, null]);
+  });
+});
+
+/**
+ * Ruling I2: Back's line on air stands in only for a calm on-air line. Every
+ * outage or fault line outranks it, so it can never hide one.
+ */
+describe('Back’s line on air (ruling I2)', () => {
+  it.each(['stream.status.connecting', 'stream.status.live'] as const)(
+    'stands in for the calm line %s',
+    (key) => {
+      expect(columnLineKey(key, true)).toBe('stream.leaveOnAir');
+    },
+  );
+
+  it.each([
+    'stream.status.liveNoSound',
+    'stream.status.weakSignal',
+    'stream.status.fellBack',
+    'stream.status.notDelivered',
+    'stream.status.cameraTaken',
+    'stream.status.cameraReopening',
+    'stream.status.micSilenced',
+    'stream.status.holding',
+    'stream.status.holdingStalled',
+    'stream.status.holdingNotDelivered',
+  ] as const)('is outranked by the fault line %s', (key) => {
+    expect(columnLineKey(key, true)).toBe(key);
+  });
+
+  it('is not shown without a refused Back', () => {
+    expect(columnLineKey('stream.status.live', false)).toBe('stream.status.live');
   });
 });

@@ -351,3 +351,68 @@ describe('useStreamLeave: one leave at a time', () => {
     expect(leaving.kv.entries.has(STORE_KEYS.code('stream'))).toBe(false);
   });
 });
+
+/**
+ * Ruling I2 (owner-visible): Back's line on air is transient. It goes about
+ * 4 s after the Back, or at the engine's next change of state, whichever
+ * comes first, so it never hides a later line for good.
+ */
+describe('useStreamLeave: Back on air says so briefly (ruling I2)', () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  async function refusedOnAir() {
+    const leaving = await leaveHook();
+    act(() => leaving.engine.forceState(LIVE));
+    act(() => void leaving.back.press());
+    expect(leaving.hook.result.current.blocked).toBe(true);
+    return leaving;
+  }
+
+  it('goes about 4 s after Back', async () => {
+    const leaving = await refusedOnAir();
+    act(() => vi.advanceTimersByTime(3999));
+    expect(leaving.hook.result.current.blocked).toBe(true);
+    act(() => vi.advanceTimersByTime(1));
+    expect(leaving.hook.result.current.blocked).toBe(false);
+    // Still on air: only the line went, never the rule.
+    expect(leaving.hook.result.current.canLeave).toBe(false);
+  });
+
+  it('goes at the engine’s next change of state, still on air', async () => {
+    const leaving = await refusedOnAir();
+    act(() =>
+      leaving.engine.forceState({
+        kind: 'degraded',
+        transport: 'srt',
+        reason: 'poor-uplink',
+        sinceEpochMs: TEST_NOW.getTime(),
+      }),
+    );
+    expect(leaving.hook.result.current.blocked).toBe(false);
+  });
+
+  it('stays through a snapshot that keeps the state', async () => {
+    const leaving = await refusedOnAir();
+    act(() => leaving.engine.patch({ audioLevel: 0.5 }));
+    act(() => leaving.engine.forceState(LIVE));
+    expect(leaving.hook.result.current.blocked).toBe(true);
+  });
+
+  it('a second Back says it for another 4 s', async () => {
+    const leaving = await refusedOnAir();
+    act(() => vi.advanceTimersByTime(3000));
+    act(() => void leaving.back.press());
+    act(() => vi.advanceTimersByTime(3999));
+    expect(leaving.hook.result.current.blocked).toBe(true);
+    act(() => vi.advanceTimersByTime(1));
+    expect(leaving.hook.result.current.blocked).toBe(false);
+  });
+
+  it('a Back after the line went says it again', async () => {
+    const leaving = await refusedOnAir();
+    act(() => vi.advanceTimersByTime(4000));
+    act(() => void leaving.back.press());
+    expect(leaving.hook.result.current.blocked).toBe(true);
+  });
+});

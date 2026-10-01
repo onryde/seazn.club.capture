@@ -115,6 +115,20 @@ export function viewfinderStatusKey(
   return engineKey;
 }
 
+/**
+ * Ruling I2: the on-air lines that Back's "stop the broadcast first" may stand
+ * in for. Every other line is an outage or a fault, and outranks it.
+ */
+const CALM_ON_AIR: ReadonlySet<StatusKey> = new Set<StatusKey>([
+  'stream.status.connecting',
+  'stream.status.live',
+]);
+
+/** The column's sentence: the status line, or Back's refusal over a calm one. */
+export function columnLineKey(statusKey: StatusKey, leaveRefused: boolean): MessageKey {
+  return leaveRefused && CALM_ON_AIR.has(statusKey) ? 'stream.leaveOnAir' : statusKey;
+}
+
 /** The hold's countdown, for the `holding*` lines' `{remaining}` and `{window}`. */
 export const selectHoldRemaining = (snapshot: EngineSnapshot) =>
   snapshot.state.kind === 'reconnecting' ? snapshot.state.holdRemainingSeconds : null;

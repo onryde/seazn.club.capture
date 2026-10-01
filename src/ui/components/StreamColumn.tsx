@@ -1,6 +1,7 @@
 import { memo } from 'react';
 import { StyleSheet, View } from 'react-native';
 import type { Chip } from '@/hooks/preflight';
+import { columnLineKey } from '@/hooks/statusKey';
 import { useT } from '@/hooks/useLanguage';
 import type { Peek } from '@/hooks/usePeek';
 import type { Viewfinder } from '@/hooks/useViewfinder';
@@ -38,7 +39,7 @@ export const StreamColumn = memo(function StreamColumn(props: ColumnProps) {
   const { view, blocked, peek } = props;
   const { t } = useT();
   const vars = { remaining: view.holdRemaining ?? '', window: view.holdWindow ?? '' };
-  const line = blocked ? t('stream.leaveOnAir') : t(view.statusKey, vars);
+  const line = t(columnLineKey(view.statusKey, blocked), vars);
   return (
     <View style={styles.column}>
       <TallyPlate plate={view.plate} />

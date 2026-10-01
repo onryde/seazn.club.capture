@@ -70,6 +70,24 @@ describe('on air (spec §6, through the fake)', () => {
     expect(view.navigation.current()).toBe('stream');
   });
 
+  it('says it for about 4 s, then the live line is back (ruling I2)', async () => {
+    const view = await onAir('live');
+    act(() => void view.back.press());
+    act(() => vi.advanceTimersByTime(3999));
+    expect(screen.getByText('Stop the broadcast first — hold Stop.')).toBeTruthy();
+    act(() => vi.advanceTimersByTime(1));
+    expect(screen.queryByText('Stop the broadcast first — hold Stop.')).toBeNull();
+    expect(screen.getByText(LIVE_LINE)).toBeTruthy();
+  });
+
+  it('never hides a fault: the no-sound line outranks it at once (ruling I2)', async () => {
+    const view = await onAir('live');
+    act(() => void view.back.press());
+    act(() => view.engine.patch({ audioLevel: 0 }));
+    expect(screen.getByText('Live with no sound. Check the mic now.')).toBeTruthy();
+    expect(screen.queryByText('Stop the broadcast first — hold Stop.')).toBeNull();
+  });
+
   it('stops once after a full 3 s hold on Stop', async () => {
     const view = await onAir('live');
     pressIn(stop());

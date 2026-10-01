@@ -1,12 +1,15 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { leaveRule, type EngineStatus, type LeaveRule } from '@/domain/mode/reopen';
-import { selectEngineStatus } from '@/hooks/engineSelectors';
+import { selectEngineStatus, selectStateKind } from '@/hooks/engineSelectors';
 import { useEngineSelector } from '@/hooks/useCaptureEngine';
 import { usePorts } from '@/hooks/usePorts';
 import type { Logger } from '@/services/logger';
 import type { ModeStore } from '@/services/modeStore';
 
 type FreeRule = Exclude<LeaveRule, 'blockedOnAir'>;
+
+/** Ruling I2: how long Back's line on air stays, unless the state changes first. */
+const REFUSAL_LINE_MS = 4000;
 
 /**
  * Leaving Live Stream (spec decision 5). On air it cannot be left: Home is
@@ -26,8 +29,7 @@ export function useStreamLeave(): {
 } {
   const { back, navigation } = usePorts();
   const status = useEngineSelector(selectEngineStatus);
-  const [blocked, setBlocked] = useState(false);
-  const block = useCallback(() => setBlocked(true), []);
+  const [blocked, block] = useRefusalLine();
   const left = useRef(false);
   const departed = useCallback(() => left.current, []);
   const leaveOnce = useLeaveOnce(block, left);
@@ -37,10 +39,6 @@ export function useStreamLeave(): {
     if (rule === 'blockedOnAir') return block();
     leaveOnce(rule);
   }, [status, leaveOnce, block]);
-
-  useEffect(() => {
-    if (status !== 'live') setBlocked(false);
-  }, [status]);
 
   useEffect(
     () =>
@@ -53,6 +51,31 @@ export function useStreamLeave(): {
   );
 
   return { canLeave: leaveRule('stream', status) !== 'blockedOnAir', blocked, leave, departed };
+}
+
+/**
+ * Ruling I2 (owner-visible): Back's line on air is brief. Each refused Back
+ * says it for REFUSAL_LINE_MS again; the engine's next change of state kind
+ * ends it sooner, the end of the broadcast included. A change that keeps the
+ * kind (another degrade reason or reconnect cause) brings a fault line, which
+ * outranks it on screen anyway (`columnLineKey`).
+ */
+function useRefusalLine(): [boolean, () => void] {
+  const kind = useEngineSelector(selectStateKind);
+  // 0 is no line; each refusal is a new count, so a second Back restarts the time.
+  const [refusal, setRefusal] = useState(0);
+  const [seenKind, setSeenKind] = useState(kind);
+  if (seenKind !== kind) {
+    setSeenKind(kind);
+    setRefusal(0);
+  }
+  useEffect(() => {
+    if (refusal === 0) return;
+    const timer = setTimeout(() => setRefusal(0), REFUSAL_LINE_MS);
+    return () => clearTimeout(timer);
+  }, [refusal]);
+  const refuse = useCallback(() => setRefusal((count) => count + 1), []);
+  return [refusal !== 0, refuse];
 }
 
 /**
