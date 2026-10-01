@@ -1,4 +1,12 @@
-import { act, fireEvent, render, renderHook, screen, waitFor } from '@testing-library/react';
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  renderHook,
+  screen,
+  waitFor,
+} from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { err } from '@/domain/Result';
 import { decodeSavedCode, encodeSavedCode } from '@/domain/mode/savedCode';
@@ -803,7 +811,8 @@ describe('Home: Android Back closes what is open (R31)', () => {
     home.scanner.queue({ outcome: 'scanned', raw: 'https://example.com/menu' });
     fireEvent.click(liveStreamTile());
     await screen.findByText("This isn't a Seazn code.");
-    expect(press(home)).toBe(true);
+    // The panel's Back handler is an effect: it may not be up when findBy resolves (carry 17).
+    await waitFor(() => expect(press(home)).toBe(true));
     expect(screen.queryByText("This isn't a Seazn code.")).toBeNull();
     expect(home.navigation.current()).toBe('home');
   });
@@ -828,12 +837,44 @@ describe('Home: Android Back closes what is open (R31)', () => {
     home.scanner.queue({ outcome: 'scanned', raw: 'https://example.com/menu' });
     fireEvent.click(liveStreamTile());
     await screen.findByText("This isn't a Seazn code.");
-    expect(press(home)).toBe(true);
+    await waitFor(() => expect(press(home)).toBe(true));
     expect(screen.queryByText("This isn't a Seazn code.")).toBeNull();
     expect(screen.getByRole('button', { name: 'Español' })).toBeTruthy();
     expect(press(home)).toBe(true);
     expect(screen.queryByRole('button', { name: 'Español' })).toBeNull();
     expect(press(home)).toBe(false);
+  });
+});
+
+describe('Scan another (D24)', () => {
+  it('scans from the Live Stream tile once Home is ready, and only once', async () => {
+    // Asked before Home mounts, on a store still loading: the request waits for it (R12).
+    const home = createFakePorts();
+    home.ports.homeIntent.requestScan();
+    render(<HomeScreen />, { wrapper: wrapperFor(home) });
+    expect(home.scanner.scans).toBe(0);
+    await act(() => home.ports.modeStore.load());
+    await waitFor(() => expect(home.scanner.scans).toBe(1));
+    await waitFor(() => expect(home.ports.scanFlight.active()).toBe(false));
+    // M19: a fresh Home over the same ports, as the next visit would mount it.
+    cleanup();
+    render(<HomeScreen />, { wrapper: wrapperFor(home) });
+    await act(async () => undefined);
+    expect(home.scanner.scans).toBe(1);
+  });
+
+  it('does nothing when nobody asked', async () => {
+    const home = await renderHome();
+    await act(async () => undefined);
+    expect(home.scanner.scans).toBe(0);
+  });
+
+  it('opens a stream code scanned on the hand-off, as a tap on the tile would', async () => {
+    const home = renderWithPorts(<HomeScreen />);
+    home.scanner.queue({ outcome: 'scanned', raw: streamRaw(IN_TWO_HOURS) });
+    home.ports.homeIntent.requestScan();
+    await act(() => home.ports.modeStore.load());
+    await waitFor(() => expect(home.navigation.current()).toBe('stream'));
   });
 });
 

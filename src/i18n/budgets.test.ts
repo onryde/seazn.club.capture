@@ -20,6 +20,8 @@ const BUDGETS: readonly (readonly [keys: RegExp, max: number])[] = [
   [/^stream\.advisory\./, 56],
   [/^stream\.peek\.label$/, 28],
   [/^stream\.peek\.unavailable$/, 24],
+  [/^stream\.ended\.scanAnother$/, 16],
+  [/^stream\.ended\.(duration|neverLive)$/, 24],
 ];
 
 const WIDEST: Readonly<Record<string, string>> = {

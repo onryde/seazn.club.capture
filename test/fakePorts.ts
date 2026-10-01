@@ -15,6 +15,7 @@ import { createFakeDescriptorPort, type FakeDescriptorPort } from '@/services/fa
 import { createMemoryKeyValueStore, type MemoryKeyValueStore } from '@/services/KeyValueStore';
 import { createLogger } from '@/services/logger';
 import { createModeStore } from '@/services/modeStore';
+import { createHomeIntent } from '@/services/homeIntent';
 import { createScanFlight } from '@/services/scanFlight';
 import { createRingRecord, type SessionRecord } from '@/services/sessionRecord';
 import { createStreamSettingsStore } from '@/services/streamSettingsStore';
@@ -78,6 +79,7 @@ export function createFakePorts(
     devEngine: engine,
     modeStore: createModeStore(kv),
     scanFlight: createScanFlight(),
+    homeIntent: createHomeIntent(),
     streamSettings: createStreamSettingsStore(kv, logger),
     clock: () => now,
     hosts: ['stg.seazn.club'],

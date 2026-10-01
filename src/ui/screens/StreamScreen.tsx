@@ -1,5 +1,7 @@
+import { useCallback } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { usePeek } from '@/hooks/usePeek';
+import { usePorts } from '@/hooks/usePorts';
 import { useStreamLeave } from '@/hooks/useStreamLeave';
 import { useStreamSettings } from '@/hooks/useStreamSettings';
 import { useViewfinder } from '@/hooks/useViewfinder';
@@ -17,6 +19,7 @@ export function StreamScreen() {
   const { settings } = useStreamSettings();
   const leave = useStreamLeave();
   const peek = usePeek(view.peekable);
+  const scanAnother = useScanAnother(leave.leave);
   return (
     <View style={settings.side === 'left' ? styles.columnLeft : styles.columnRight}>
       <StreamStage
@@ -26,9 +29,22 @@ export function StreamScreen() {
         canLeave={leave.canLeave}
         onHome={leave.leave}
       />
-      <StreamColumn view={view} blocked={leave.blocked} peek={peek} />
+      <StreamColumn view={view} blocked={leave.blocked} peek={peek} onScanAnother={scanAnother} />
     </View>
   );
+}
+
+/**
+ * Ended's Scan another (D24): ask Home to scan, then leave. Only Home calls
+ * `scan()`; the leave is one at a time (useLeaveOnce), so a double press
+ * leaves once, and a second request before Home takes the first is one scan.
+ */
+function useScanAnother(leave: () => void): () => void {
+  const { homeIntent } = usePorts();
+  return useCallback(() => {
+    homeIntent.requestScan();
+    leave();
+  }, [homeIntent, leave]);
 }
 
 const styles = StyleSheet.create({

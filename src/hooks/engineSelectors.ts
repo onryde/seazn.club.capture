@@ -107,6 +107,9 @@ export const selectLabel = (snapshot: EngineSnapshot) => snapshot.descriptor?.la
 /** The venue's zone from the armed descriptor: every time the operator reads is in it (spec §2). */
 export const selectVenueZone = (snapshot: EngineSnapshot) =>
   snapshot.descriptor?.venueTimezone ?? null;
+/** Time on air when it ended (plan B's `durationMs`); null for a session that never went live. */
+export const selectEndedDurationMs = (snapshot: EngineSnapshot) =>
+  snapshot.state.kind === 'ended' ? snapshot.state.durationMs : null;
 /** Whether native holds a session it was armed with; before that there is no overlay to try. */
 export const selectHasDescriptor = (snapshot: EngineSnapshot) => snapshot.descriptor !== null;
 /** A number, not the Date: `useEngineSelector` compares by identity. */

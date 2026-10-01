@@ -9,6 +9,7 @@ import { withTimeout } from '@/services/kvTimeout';
 import type { DescriptorPort } from '@/services/descriptorPort';
 import { createLogger, type Logger } from '@/services/logger';
 import { createModeStore } from '@/services/modeStore';
+import { createHomeIntent } from '@/services/homeIntent';
 import { createScanFlight } from '@/services/scanFlight';
 import { createExpoRouterNavigation } from '@/services/native/expoRouterNavigation';
 import { createNativeBack } from '@/services/native/nativeBack';
@@ -46,6 +47,7 @@ export function createNativePorts(): Ports {
     kv,
     modeStore: createModeStore(kv),
     scanFlight: createScanFlight(),
+    homeIntent: createHomeIntent(),
     streamSettings: createStreamSettingsStore(kv, logger),
     motion: createNativeMotion(),
     orientationLock: createNativeOrientationLock(),

@@ -7,6 +7,7 @@ import type { Viewfinder } from '@/hooks/useViewfinder';
 import type { MessageKey } from '@/i18n/messages';
 import { AudioMeter } from '@/ui/components/AudioMeter';
 import { Elapsed } from '@/ui/components/Elapsed';
+import { EndedBlock } from '@/ui/components/EndedBlock';
 import { HoldAction } from '@/ui/components/HoldAction';
 import { PreflightChips } from '@/ui/components/PreflightChips';
 import { StatusLine } from '@/ui/components/StatusLine';
@@ -21,13 +22,20 @@ const BLOCKER_KEY: Readonly<Record<Chip, MessageKey>> = {
   sound: 'stream.blocker.sound',
 };
 
-type ColumnProps = { readonly view: Viewfinder; readonly blocked: boolean; readonly peek: Peek };
+type ColumnProps = {
+  readonly view: Viewfinder;
+  readonly blocked: boolean;
+  readonly peek: Peek;
+  /** Ended's Scan another (D24). */
+  readonly onScanAnother: () => void;
+};
 
 /**
  * The side column (spec §4), top to bottom: state plate, elapsed, meter, the
  * one true sentence, then the pre-flight or the peek, then the action.
  */
-export const StreamColumn = memo(function StreamColumn({ view, blocked, peek }: ColumnProps) {
+export const StreamColumn = memo(function StreamColumn(props: ColumnProps) {
+  const { view, blocked, peek } = props;
   const { t } = useT();
   const vars = { remaining: view.holdRemaining ?? '', window: view.holdWindow ?? '' };
   const line = blocked ? t('stream.leaveOnAir') : t(view.statusKey, vars);
@@ -41,7 +49,7 @@ export const StreamColumn = memo(function StreamColumn({ view, blocked, peek }: 
         <PreflightChips preflight={view.preflight} goLiveBy={view.goLiveBy} />
       ) : null}
       <ColumnPeek view={view} peek={peek} />
-      <ColumnAction view={view} />
+      <ColumnAction view={view} onScanAnother={props.onScanAnother} />
     </View>
   );
 });
@@ -61,15 +69,19 @@ const ColumnPeek = memo(function ColumnPeek({ view, peek }: { view: Viewfinder; 
 });
 
 /**
- * Go live before air, Stop on it; after it, nothing here yet. Go live says
+ * Go live before air, Stop on it; after it, Ended's summary and Scan another. Go live says
  * why it is off only once armed: before that the plate and line already do.
  * Keyed by the action (carry 13): a hold belongs to the control the finger
  * landed on, so Go live turning into Stop under it abandons it, while a
  * change of state that keeps Stop keeps the hold.
  */
-const ColumnAction = memo(function ColumnAction({ view }: { view: Viewfinder }) {
+const ColumnAction = memo(function ColumnAction(props: {
+  view: Viewfinder;
+  onScanAnother: () => void;
+}) {
   const { t } = useT();
-  if (view.action === 'ended') return null;
+  const { view } = props;
+  if (view.action === 'ended') return <EndedBlock onScanAnother={props.onScanAnother} />;
   const stop = view.action === 'stop';
   const armedBlocker = view.kind === 'armed' ? view.blocker : null;
   return (

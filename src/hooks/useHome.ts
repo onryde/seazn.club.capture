@@ -91,6 +91,7 @@ export function useHome(): { view: HomeView; actions: HomeActions } {
   const { openOrCheck, retryCheck } = useDescriptorCheck(openCode, panel, setPanel);
   const handle = useHandleScan(openOrCheck, setPanel, setStatusKey);
   const tapTile = useTapTile(handle, setPanel, setStatusKey);
+  useScanRequest(snapshot.status === 'ready', tapTile);
   const view = useHomeView(snapshot, panel, statusKey);
   const panelActions = usePanelActions(panel, tapTile, openOrCheck, setPanel);
   const continueStream = useContinue(setStatusKey, saveFailed);
@@ -196,6 +197,17 @@ function useTapTile(
     },
     [modeStore, scanner, scanFlight, handle, setPanel, setStatusKey],
   );
+}
+
+/**
+ * Takes Ended's "Scan another" hand-off (D24) once the store is ready (R12),
+ * and scans from the Live Stream tile, under the tile's own scan flight.
+ */
+function useScanRequest(ready: boolean, tapTile: (mode: Mode) => void): void {
+  const { homeIntent } = usePorts();
+  useEffect(() => {
+    if (ready && homeIntent.takeScan()) tapTile('stream');
+  }, [ready, homeIntent, tapTile]);
 }
 
 /**
