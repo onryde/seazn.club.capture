@@ -63,9 +63,9 @@ class Engine(
   }
 
   /**
-   * A line for the session record from outside the machine: plan C forwards the JavaScript logger's
-   * lines here (AGENTS §11). Posted like [send], so it lands in order with the engine's own lines, on
-   * the scheduler's thread, and is scrubbed like every other line. Thread-safe as far as the [Scheduler] is.
+   * Appends [entry] to the record, posted through the scheduler like every input, so the record has
+   * one writer (carry 12). The line is stamped when the scheduler runs it, not when [log] was called:
+   * a line logged just before an input that is already queued is written, and timed, after it.
    */
   fun log(entry: RecordEntry) {
     scheduler.schedule(0) { record.append(clock.now().wallMs, entry) }

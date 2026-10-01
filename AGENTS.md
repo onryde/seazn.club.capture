@@ -57,8 +57,9 @@ Home is the only screen outside a mode: three tiles, a Continue card when a
 mode can be resumed, and the language picker. Scanning is the phone's own
 code scanner, not a screen of ours.
 
-**Live Stream** keeps the five-screen shape of its own: **Scan** → **Arm** →
-**Live** (HUD) → **Settings** → **Diagnostics**. S1 designs those screens.
+**Live Stream** keeps the five-screen shape of its own: **Scan** → **Paired** →
+**Live** (HUD) → **Settings** → **Diagnostics**. A stream code pairs the phone
+once and serves every Go live of the match (A1, A5). S1 designs those screens.
 (Scan is now Home's Live Stream tile plus the system scanner, not a screen,
 and S1 redraws this list.)
 
@@ -78,11 +79,13 @@ page in the main repo, not here. Do not grow the app to accommodate them.
 **Native owns the session. JS renders and sends intents.**
 
 - Native owns: capture, encode, connect, publish, reconnect, SRT→RTMPS
-  fallback, encoded orientation (P4), capture timestamps. The activity's
-  screen lock is the JS orientation gate (§6).
+  fallback, encoded orientation (P4), capture timestamps, pairing, heartbeats,
+  the server's answers, and the start readiness gate (A5, A11). The
+  activity's screen lock is the JS orientation gate (§6).
 - JS receives a ~1 Hz state snapshot. That is the entire upward contract.
-- Commands are **intents, not RPC**: `start`, `stop`, `switchCamera` return
-  void and are reconciled against native state. A promise that must resolve
+- Commands are **intents, not RPC**: `pair`, `start`, `stop`, `unpair`,
+  `reset`, `setAutomatic`, `setLanguage` and `switchCamera` return void and
+  are reconciled against native state. A promise that must resolve
   mid-reconnect is a deadlock waiting for a bad cell.
 - **Never build a second state machine in TypeScript.** The aggregate lives in
   native. The TS layer is a *projection* of native events. Two authorities
@@ -101,7 +104,7 @@ src/
     mode/          # Mode, code recognition, saved codes, reopen and leave rules
     orientation/   # how the phone is held, from accelerometer samples
     session/       # CaptureSession model, event projection, state types
-    credentials/   # StreamCredentials sum type + QR parsing (anti-corruption)
+    credentials/   # QR v2 and the waiting fields, parsed (anti-corruption); publish credentials are native's
     policy/        # fallback strategy, degradation ladder
   i18n/            # en/es/fr/nl dictionaries, t()/tp(), formatTime(). Pure.
   ui/
@@ -145,11 +148,16 @@ contracts/         # capture-qr.v1.json, once vendored (see its README)
 - `type` everywhere in `domain/`; `interface` only for ports. Value objects
   want discriminated unions and readonly fields, and `interface` is open to
   declaration merging — which you never want on a value object.
-- `StreamCredentials = SrtCredentials | RtmpsCredentials`. A sum type, never a
-  struct with optional fields. C1 requires both shapes in hand at scan time.
+- Publish credentials are a sum type, never a struct with optional fields:
+  `SrtTarget | RtmpsTarget`, in the native core only. C1 requires both shapes
+  in hand when offered, from the moment a broadcast starts (at Arming), kept
+  for its life; SRT may be absent as a safety net, and then RTMPS stands
+  alone (A18). They never reach TypeScript (A1, A5).
 - `any` is banned by lint. The escape hatch is `unknown` plus a parse function
   at the boundary — which is what the QR anti-corruption layer already is.
-- The wire shape never reaches the domain. A v2 contract touches one file.
+- The wire shape never reaches the domain. Each wire shape has one parser, in
+  one language: the QR and the waiting fields in TypeScript, the session shape
+  and the server's answers in Kotlin. A v2 of any shape touches one file.
 - Contracts are vendored. Changing `capture-qr.v1.json` requires the CI drift
   check against the main repo's copy.
 
@@ -204,15 +212,17 @@ Three rules travel with these tokens:
 ## 6. UI rules
 
 - **Live Stream is landscape, either way round; everything else is
-  portrait** (ruling 4). P4 still holds inside Live Stream. The app never
-  rotates text the operator is not yet holding the right way: a turn card
-  covers the app until the phone matches, read from the accelerometer. The
-  card is a phone outline turning to the pose asked for, with no words on
-  screen; "Turn your phone sideways" / "Turn your phone upright" is its
-  screen-reader label. While it shows, the app locks to how the phone is
-  held so the card reads upright — except while a session is armed or live,
-  when the lock never moves under the camera. A phone lying flat is never
-  blocked.
+  portrait** (ruling 4). P4 still holds inside Live Stream. The encoded
+  orientation is the side the phone is held, read from the accelerometer, never
+  the screen's rotation (A11). The app never rotates text the operator is not
+  yet holding the right way: a turn card covers the app until the phone
+  matches, read from the accelerometer. The card is a phone outline turning to
+  the pose asked for, with no words on screen; "Turn your phone sideways" /
+  "Turn your phone upright" is its screen-reader label. While it shows, the app
+  locks to how the phone is held so the card reads upright — except while a
+  session is armed or live, when the lock never moves under the camera. A phone
+  lying flat is never blocked by the card; Go live still waits until the phone
+  is held sideways (A11).
 - Full-bleed preview. Controls live in the side gutters, never over the middle
   third — that is the shot being framed. Advisory text (device conditions, the
   lock rule) rides a solid strip on the top or bottom **edge** of the stage,
@@ -226,23 +236,30 @@ Three rules travel with these tokens:
   starting as stopping. A tap cannot be distinguished from an accident; three
   seconds under a moving fill cannot be mistaken for one, in either direction,
   and costs the operator three seconds once a match. One hold length for both, so
-  the gesture never has to be relearned mid-match.
+  the gesture never has to be relearned mid-match. A start from the console,
+  from automatic mode, or a rejoin needs no hold: the operator is not there to
+  hold it, and the server's Go live is the decision (A2, A10). The Stop hold
+  ends the broadcast and unpairs (A3).
 - **Press-and-hold is not always a confirmation.** The preview control is held
   too, and reads as a pair with the action below it, but it answers on the
   instant the finger lands — there the hold *is* the feature, the thing that
   stops a billed preview running unattended (§7). Never put a confirmation delay
   on it.
-- Go Live enables only when *armed*: credentials parsed, camera running, audio
-  above a level floor, network reachable. The pre-flight is the safety.
+- Go Live enables only when _paired and ready_: camera running, audio above
+  the level floor, network reachable, phone held sideways, as native judges
+  it. The pre-flight is the safety, for every start, held or remote (A11).
 - **Settings and Diagnostics stay reachable in every state, live included.**
   Mid-match is exactly when somebody needs Diagnostics, and hiding it on air
   made the app least useful when it mattered most. Both screens carry a LIVE
   plate beside the way back so the broadcast is never out of sight. The
   protection belongs on the individual control, not the screen: a setting that
   would disturb a live broadcast is disabled while live with a one-line reason —
-  the encode profile is the first one that will be. They live inside the Live
-  Stream route (`app/stream/`), so on air it is only *leaving the mode* that
-  is blocked: Home is hidden and Back says how to stop.
+  the encode profile is the first one that will be. The named exception is
+  Settings' automatic switch: it stays usable on air, because it only affects
+  the automatic stop (A4). They live inside the Live Stream route
+  (`app/stream/`), so on air it is only *leaving the mode* that is blocked:
+  Home is hidden and Back says how to stop. A broadcast started remotely moves
+  the app to Live Stream from wherever it is (A2).
 - The audio meter is permanent, not in Settings. Nothing downstream
   normalises — a quiet mic reaches YouTube quiet.
 - One persistent status line that always says something true. Never an
@@ -297,8 +314,11 @@ thermal member. Only transport trouble degrades a session.
 ## 9. Lifecycle
 
 - **Android:** foreground service, `camera` + `microphone` foregroundServiceType,
-  matching `FOREGROUND_SERVICE_*` permissions, started from the foreground.
-  The persistent notification carries live status: `LIVE · 3000k · 47 min`.
+  matching `FOREGROUND_SERVICE_*` permissions, started from the foreground
+  **at pairing**, after the camera and microphone permissions, and held with a
+  partial wake lock for the whole pairing, so beats and a remote Go live work
+  with the phone locked (A5). The persistent notification carries status:
+  `Paired · waiting for Go live`, then `LIVE · 3000k · 47 min`.
 - **iOS:** the camera stops in background — no background mode grants it. So
   disable the idle timer, warn the operator at start, and treat the
   slate-and-resume choreography as a **normal operating mode**, not an edge
@@ -321,7 +341,7 @@ thermal member. Only transport trouble degrades a session.
   and it is just as easy to make here.
 - Orientation gets three independent assertions: preview orientation, encoded
   orientation, rotation metadata. They fail separately (P4).
-- Detox covers scan→arm→live. The failures that matter — three-hour thermals,
+- Detox covers scan→pair→live. The failures that matter — three-hour thermals,
   backgrounding, uplink loss — are the device matrix, not Detox.
 - **The four questions.** Every change answers them in its tests or says
   why one does not apply. They are the transitions that ship defects past a
@@ -370,9 +390,11 @@ thermal member. Only transport trouble degrades a session.
   language pick (Android backup excluded); `expo-sensors` and
   `expo-screen-orientation` for the orientation gate; `expo-localization` for
   the phone's language. No AsyncStorage.
-- Expo Updates: check on launch only, and **never apply while a session is
-  armed or live**. A phone updating at 2pm on a Saturday is a self-inflicted
-  outage. OTA cannot touch the engine, so its blast radius is UI.
+- Expo Updates: check on launch only, and **never apply while the phone is
+  paired or holding a broadcast**. A paired phone is waiting for a match, and a
+  remote Go live can arrive at any moment. A phone updating at 2pm on a
+  Saturday is a self-inflicted outage. OTA cannot touch the engine, so its
+  blast radius is UI.
 - Sentry for crashes — but a three-hour outdoor stream fails by *degrading*,
   not crashing. The thing that matters is a structured post-match session
   record: every transition, thermal reading, fallback and reconnect,

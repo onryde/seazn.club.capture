@@ -149,16 +149,41 @@ later ruling replaced an earlier one, both are listed.
 | 9, I1          | A visit adopts the engine's session only for the same code, meaning the same sid, slot (C7) and token (N2). Opening a different code over an armed or ended session replaces it: stop, then reset once Ended, then arm, each reconciled against the next snapshot (N1). A replacing visit never shows the old session's Ended screen; it reads "Waiting for the session details." until the new code is armed (N3).   |
 | Final, I1      | Forget while armed or ended disarms, and an orphaned session is cleared, as in the table above. It is never shown as a Ready viewfinder.                                                                                                                                                                                                                                                                              |
 
-**Also visible, not yet ruled by the owner:**
+**Also visible — ruled by the owner on 2026-10-01:**
 
-- **The M4 crash screen's copy:** "Something broke" / "The broadcast may
-  still be live. Try again to get back to Stop.", with a Try again button.
-  The copy is mine.
-- **The language of the crash screen.** It sits outside the language
-  provider, so it reads in the phone's language, not the operator's pick.
-- **A boundary for the viewfinder alone.** The reviewer suggested one whose
-  fallback keeps the plate and a Stop hold. It is an owner-visible design
-  call, so it is raised here and not built.
+- **The M4 crash screen's copy — approved as built** (owner, 2026-10-01):
+  "Something broke" / "The broadcast may still be live. Try again to get
+  back to Stop.", with a Try again button.
+- **The language of the crash screen — the app's last resolved language,
+  falling back to the phone's** (owner, 2026-10-01; plan C's P1, built in
+  plan C Task 32).
+- **A boundary for the viewfinder alone — decided** (owner, 2026-10-01): plan
+  C builds one around the native preview only, so a preview crash keeps the
+  HUD column and Stop without a full restart (plan C, CD19 and Task 39).
+
+**Rulings for plan C (owner, 2026-10-01):**
+
+- **The stable stream code** (A1–A18): the QR carries no credentials; the
+  phone pairs once per code and the server starts and stops each broadcast.
+  The design is `docs/specs/2026-10-01-s1-amendment-stable-code-design.md`,
+  built by plan C, renamed _platform, bridge and stable code_.
+- **P2 — four owner-visible behaviours accepted, with glossary-checked
+  copy:** the engine-silent status line and TROUBLE plate (CD17), the
+  keep-open advisory (CD18), the viewfinder boundary's caption and Show
+  preview button (CD19), and the permissions line (CD21, now a Home panel).
+- **P3 — the notification speaks the operator's language:** the pair intent
+  carries it, `setLanguage` updates it, and the foreground notification uses
+  it, then the phone's, then English (CD16).
+- **Android 12+ (minSdk 31).** Code and tests for older APIs are removed;
+  `POST_NOTIFICATIONS` is asked on Android 13+ only. Carry 23 (no silencing
+  signal on API 24–28) is closed by this ruling. The Redmi Note 7 Pro
+  (Android 10) is no longer supported; the second geometry is the OnePlus
+  under `adb shell wm size` / `wm density` overrides, reset afterwards, plus
+  an Android 12 or 13 phone if the owner has one.
+- **Execution:** subagent-driven, batch by batch.
+- **Versions:** the latest stable releases, StreamPack 3.2.0 and srtdroid
+  1.10.1 (Maven Central, 2026-10-01). komuxer stays at 0.4.0 and OkHttp at
+  4.9.2, for the reasons in plan C's CD35.
 
 **Plan B's owner-visible rulings,** from its ledger, for the record. Plan B
 merged without a results document.
