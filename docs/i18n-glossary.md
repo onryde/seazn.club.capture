@@ -112,8 +112,9 @@ is an owner decision, not a translation fix.
 - **New or changed English copy.** Add the key to es, fr and nl in the same
   change, and give each dictionary you touched the marker
   `"_review": "pending translation review"`. `pnpm i18n:release-check`
-  refuses a release while any dictionary carries a `_review` key; development
-  builds and CI ignore it.
+  refuses any dictionary that carries a `_review` key. CI runs it on every
+  pull request and on main, so a marked change cannot merge until its review
+  pass clears the marker; local development builds ignore it.
 - **Clearing the marker.** An AI review pass replaces the native-speaker
   review the S0 spec (§6, R11) required. This is the owner's ruling of
   2026-10-01. The pass checks every pending string against en, where and how
