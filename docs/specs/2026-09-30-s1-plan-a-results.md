@@ -359,6 +359,14 @@ from the briefs. These keys are the implementers' own wording:
 Copy budgets (`src/i18n/budgets.test.ts`) hold in all four languages, but they
 count characters, not pixels; the device list checks the fit.
 
+**Owner ruling, 2026-10-01: an AI translation review replaces the
+native-speaker review** that S0 §6 (R11) required. That review ran on branch
+`chore/i18n-ai-review`. It corrected 39 es, 40 fr and 31 nl strings and
+removed the marker from all three dictionaries, so `pnpm i18n:release-check`
+now passes. The terms it chose, and the rule for new strings (they get the
+marker, and an AI pass against the glossary clears it), are in
+[`docs/i18n-glossary.md`](../i18n-glossary.md).
+
 ## Deferred (known, not fixed)
 
 - **M6:** `selectSurvivesBackground` has no consumer. That is correct while
