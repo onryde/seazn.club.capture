@@ -101,7 +101,7 @@ describe('RootBoundary', () => {
     [
       'fr',
       'Un problème est survenu',
-      'Le direct est peut-être encore en cours. Réessayez pour revenir à Arrêter.',
+      'Le direct est peut-être encore en cours. Touchez Réessayer pour revenir au bouton Arrêter.',
       'Réessayer',
     ],
     [

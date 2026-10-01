@@ -55,8 +55,8 @@ describe('PreflightChips (spec §1)', () => {
       <PreflightChips preflight={{ ...GREEN, code: false }} goLiveBy="14:10 CEST" />,
       { deviceLanguages: ['fr'] },
     );
-    expect(screen.getByLabelText('Code : pas prêt')).toBeTruthy();
-    expect(screen.getByLabelText('Caméra : prêt')).toBeTruthy();
-    expect(screen.getByText('Direct avant 14:10 CEST')).toBeTruthy();
+    expect(screen.getByLabelText('Code : en attente')).toBeTruthy();
+    expect(screen.getByLabelText('Caméra : OK')).toBeTruthy();
+    expect(screen.getByText('Direct à lancer avant 14:10 CEST')).toBeTruthy();
   });
 });
