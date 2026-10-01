@@ -1,6 +1,6 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react';
-import { ScrollView, StyleSheet, Text as RNText, View } from 'react-native';
-import { colour, status } from '@/ui/theme/tokens';
+import { Pressable, ScrollView, StyleSheet, Text as RNText, View } from 'react-native';
+import { colour, plateInk, status } from '@/ui/theme/tokens';
 
 /**
  * The one sanctioned class component (AGENTS.md §12): React has no hook
@@ -25,6 +25,14 @@ type Props = {
   onCatch?: () => void;
   /** Rendered instead of the full-screen message — around the overlay, nothing at all (AGENTS §7). */
   fallback?: ReactNode;
+  /** A line under the heading: at the root, that the broadcast may still be live (M4). */
+  note?: string;
+  /**
+   * Offers a button that remounts the children (M4). At the root it is the way
+   * back to Stop: native keeps publishing through a render crash, and the
+   * remounted shell reopens the viewfinder on air.
+   */
+  retryLabel?: string;
 };
 type State = { error: Error | null; stack: string | null };
 
@@ -40,14 +48,26 @@ export class ErrorBoundary extends Component<Props, State> {
     this.props.onCatch?.();
   }
 
+  /** A class field, so render allocates no function (AGENTS §8). */
+  private retry = () => {
+    this.setState({ error: null, stack: null });
+  };
+
   render() {
     const { error, stack } = this.state;
     if (error === null) return this.props.children;
     if (this.props.fallback !== undefined) return this.props.fallback;
+    const { label, note, retryLabel } = this.props;
 
     return (
       <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
-        <RNText style={styles.heading}>{this.props.label ?? 'Something broke'}</RNText>
+        <RNText style={styles.heading}>{label ?? 'Something broke'}</RNText>
+        {note === undefined ? null : <RNText style={styles.note}>{note}</RNText>}
+        {retryLabel === undefined ? null : (
+          <Pressable accessibilityRole="button" onPress={this.retry} style={styles.retry}>
+            <RNText style={styles.retryLabel}>{retryLabel}</RNText>
+          </Pressable>
+        )}
         <RNText style={styles.message}>{error.message}</RNText>
         {stack === null ? null : (
           <View style={styles.stackBox}>
@@ -75,8 +95,27 @@ const styles = StyleSheet.create({
     fontSize: 17,
     fontWeight: '700',
   },
-  message: {
+  note: {
     color: colour.ink,
+    fontSize: 17,
+    lineHeight: 24,
+  },
+  // Button's lime plate with night ink, in the system face (AGENTS §5, §12).
+  retry: {
+    minHeight: 56,
+    alignSelf: 'flex-start',
+    paddingHorizontal: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colour.lime,
+  },
+  retryLabel: {
+    color: plateInk,
+    fontSize: 17,
+    fontWeight: '700',
+  },
+  message: {
+    color: colour.ink2,
     fontSize: 15,
     lineHeight: 22,
   },

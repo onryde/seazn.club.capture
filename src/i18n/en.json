@@ -1,6 +1,8 @@
 {
   "brand": "Seazn",
   "boot.fontsFailed": "The app's typefaces failed to load. Close the app and open it again.",
+  "crash.heading": "Something broke",
+  "crash.mayBeLive": "The broadcast may still be live. Try again to get back to Stop.",
   "mode.stream": "Live Stream",
   "mode.scoring": "Remote Scoring",
   "mode.dashboard": "Dashboard",

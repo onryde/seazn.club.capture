@@ -1,5 +1,5 @@
 import { act, render, screen, type RenderResult } from '@testing-library/react';
-import { useSyncExternalStore } from 'react';
+import { useSyncExternalStore, type ReactNode } from 'react';
 import { vi } from 'vitest';
 import { useReopenGate } from '@/hooks/useReopenGate';
 import type { NavigationPort, Route } from '@/services/devicePorts';
@@ -41,8 +41,9 @@ function routedNavigation(): RoutedNavigation {
 /**
  * The app as the root layout composes it: the reopen gate, then one screen per
  * route, with Settings and Diagnostics over a viewfinder that stays mounted.
+ * `extra` renders beside the screens, as part of the app.
  */
-function RoutedApp({ nav }: { nav: RoutedNavigation }) {
+function RoutedApp({ nav, extra }: { nav: RoutedNavigation; extra?: ReactNode }) {
   useReopenGate(true);
   const route = useSyncExternalStore(nav.subscribe, nav.current);
   return (
@@ -50,6 +51,7 @@ function RoutedApp({ nav }: { nav: RoutedNavigation }) {
       {route === 'home' ? <HomeScreen /> : <StreamScreen />}
       {route === 'streamSettings' ? <SettingsScreen /> : null}
       {route === 'streamDiagnostics' ? <DiagnosticsScreen /> : null}
+      {extra}
     </>
   );
 }
@@ -60,17 +62,23 @@ type Launch = {
   readonly kvSeed?: Record<string, string>;
   /** Runs before the first render: an engine native already holds, say. */
   readonly prepare?: (fakes: FakePorts) => void;
+  readonly extra?: ReactNode;
+  /** Wraps the whole app, as the root layout's error boundary does. */
+  readonly around?: (app: ReactNode, fakes: FakePorts) => ReactNode;
 };
 
 /**
  * The whole app on the fake ports, under fake timers, launched and left until
  * the reopen gate has decided. Moves go through `nav`, never `fakes.navigation`.
  */
-export async function launchApp({ kvSeed, prepare }: Launch = {}): Promise<LaunchedApp> {
+export async function launchApp(launch: Launch = {}): Promise<LaunchedApp> {
+  const { kvSeed, prepare, extra, around } = launch;
   const nav = routedNavigation();
   const fakes = createFakePorts({ navigation: nav, kvSeed });
   prepare?.(fakes);
-  const rendered = render(<RoutedApp nav={nav} />, { wrapper: wrapperFor(fakes) });
+  const app = <RoutedApp nav={nav} extra={extra} />;
+  const ui = around === undefined ? app : around(app, fakes);
+  const rendered = render(ui, { wrapper: wrapperFor(fakes) });
   await flush();
   return { ...fakes, ...rendered, nav };
 }

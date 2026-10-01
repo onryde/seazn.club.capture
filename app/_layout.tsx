@@ -9,8 +9,8 @@ import { routeTarget, useOrientationGate } from '@/hooks/useOrientationGate';
 import { PortsProvider, usePorts, type Ports } from '@/hooks/usePorts';
 import { useReopenGate } from '@/hooks/useReopenGate';
 import { BootFailure } from '@/ui/components/BootFailure';
-import { ErrorBoundary } from '@/ui/components/ErrorBoundary';
 import { OrientationGate } from '@/ui/components/OrientationGate';
+import { RootBoundary } from '@/ui/components/RootBoundary';
 import { ShellFrame } from '@/ui/components/ShellFrame';
 
 // The splash holds until the shell knows where to land: no spinner (AGENTS §6).
@@ -20,13 +20,13 @@ export default function RootLayout() {
   const [ports] = useState(createNativePorts);
   const fonts = useAppFonts();
   if (fonts === 'loading') return null;
-  // onCatch: a render error must never sit behind a splash that never lifts (R15).
+  // A crash lifts the splash (R15), is recorded, and offers Try again (M4).
   return (
-    <ErrorBoundary onCatch={ports.splash.hide}>
+    <RootBoundary ports={ports}>
       <ShellProviders ports={ports}>
         {fonts === 'failed' ? <BootFailureShown /> : <Shell />}
       </ShellProviders>
-    </ErrorBoundary>
+    </RootBoundary>
   );
 }
 

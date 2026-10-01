@@ -2,6 +2,8 @@
   "_review": "pending native speaker",
   "brand": "Seazn",
   "boot.fontsFailed": "No se pudieron cargar las tipografías de la app. Cierra la app y vuelve a abrirla.",
+  "crash.heading": "Algo falló",
+  "crash.mayBeLive": "Puede que la emisión siga en directo. Reintenta para volver a Detener.",
   "mode.stream": "Emisión en directo",
   "mode.scoring": "Puntuación remota",
   "mode.dashboard": "Panel",

@@ -2,6 +2,8 @@
   "_review": "pending native speaker",
   "brand": "Seazn",
   "boot.fontsFailed": "De lettertypen van de app konden niet laden. Sluit de app en open hem opnieuw.",
+  "crash.heading": "Er ging iets mis",
+  "crash.mayBeLive": "De uitzending is mogelijk nog live. Probeer opnieuw om terug te gaan naar Stoppen.",
   "mode.stream": "Livestream",
   "mode.scoring": "Scoren op afstand",
   "mode.dashboard": "Dashboard",

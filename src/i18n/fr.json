@@ -2,6 +2,8 @@
   "_review": "pending native speaker",
   "brand": "Seazn",
   "boot.fontsFailed": "Les polices de l'app n'ont pas pu se charger. Fermez l'app puis rouvrez-la.",
+  "crash.heading": "Un problème est survenu",
+  "crash.mayBeLive": "Le direct est peut-être encore en cours. Réessayez pour revenir à Arrêter.",
   "mode.stream": "Diffusion en direct",
   "mode.scoring": "Score à distance",
   "mode.dashboard": "Tableau de bord",
