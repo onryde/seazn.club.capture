@@ -3,6 +3,7 @@ import { leaveRule, type EngineStatus, type LeaveRule } from '@/domain/mode/reop
 import { selectEngineStatus, selectStateKind } from '@/hooks/engineSelectors';
 import { useEngineSelector } from '@/hooks/useCaptureEngine';
 import { usePorts } from '@/hooks/usePorts';
+import { isStreamSubRoute } from '@/services/devicePorts';
 import type { Logger } from '@/services/logger';
 import type { ModeStore } from '@/services/modeStore';
 
@@ -17,10 +18,10 @@ const REFUSAL_LINE_MS = 4000;
  * Leaving Live Stream (spec decision 5). On air it cannot be left: Home is
  * hidden and Back explains how to stop. Stopped means the code is spent and
  * forgotten; anything else keeps it, so a failed broadcast is one tap from
- * being retried. Back on the stream route is always handled here, so Android
- * never closes the app from this screen. Back on another route (a stream
- * sub-screen such as Settings, under which this stays mounted) is the
- * navigator's: it goes back, and never runs the leave rule.
+ * being retried. Back is always handled here, so Android never closes the app
+ * from this screen, except on a named stream sub-screen (Settings or
+ * Diagnostics, under which this stays mounted): there it is that screen's,
+ * which goes back to the camera and never runs the leave rule.
  */
 export function useStreamLeave(): {
   readonly canLeave: boolean;
@@ -51,13 +52,19 @@ export function useStreamLeave(): {
   return { canLeave, blocked, leave, leaveWith, departed };
 }
 
-/** Back on the stream route is a leave; on a stream sub-screen it is the navigator's. */
+/**
+ * Back is a leave, except on a named stream sub-screen (M21). This handler is
+ * re-subscribed on every status change, so it is often asked before the
+ * sub-screen's own; it gives Back away only on a route `isStreamSubRoute`
+ * names, never on a `current()` it did not expect, which on air would hand
+ * Back to Android and put the broadcast's app in the background.
+ */
 function useBackLeaves(leave: () => void): void {
   const { back, navigation } = usePorts();
   useEffect(
     () =>
       back.subscribe(() => {
-        if (navigation.current() !== 'stream') return false;
+        if (isStreamSubRoute(navigation.current())) return false;
         leave();
         return true;
       }),

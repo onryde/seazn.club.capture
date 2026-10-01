@@ -20,12 +20,15 @@ type StageProps = {
   readonly peek: Peek;
   readonly canLeave: boolean;
   readonly onHome: () => void;
+  readonly onSettings: () => void;
+  readonly onDiagnostics: () => void;
 };
 
 /**
  * The shot, full-bleed. Nothing is drawn over it but the overlay preview, the
  * peek, and the two solid edge strips (AGENTS §6, D17): the top one carries
- * one caption at a time, the bottom one the match label and the way out.
+ * one caption at a time, the bottom one the match label, Settings and
+ * Diagnostics, and the way out.
  */
 export const StreamStage = memo(function StreamStage(props: StageProps) {
   const { surfaces } = usePorts();
@@ -45,7 +48,12 @@ export const StreamStage = memo(function StreamStage(props: StageProps) {
         armed={props.armed}
         overlayOn={props.overlayOn}
       />
-      <BottomStrip canLeave={props.canLeave} onHome={props.onHome} />
+      <BottomStrip
+        canLeave={props.canLeave}
+        onHome={props.onHome}
+        onSettings={props.onSettings}
+        onDiagnostics={props.onDiagnostics}
+      />
     </View>
   );
 });
@@ -70,14 +78,23 @@ const TopStrip = memo(function TopStrip(props: TopStripProps) {
   );
 });
 
-/** The match label (D29), and Home whenever leaving is allowed (never on air). */
+type BottomStripProps = {
+  readonly canLeave: boolean;
+  readonly onHome: () => void;
+  readonly onSettings: () => void;
+  readonly onDiagnostics: () => void;
+};
+
+/**
+ * The match label (D29); Settings and Diagnostics in every state, live
+ * included (AGENTS §6); and Home whenever leaving is allowed (never on air).
+ */
 const BottomStrip = memo(function BottomStrip({
   canLeave,
   onHome,
-}: {
-  canLeave: boolean;
-  onHome: () => void;
-}) {
+  onSettings,
+  onDiagnostics,
+}: BottomStripProps) {
   const { t } = useT();
   const label = useEngineSelector(selectLabel);
   return (
@@ -85,6 +102,8 @@ const BottomStrip = memo(function BottomStrip({
       <Text variant="metricUnit" numberOfLines={1} style={styles.label}>
         {label ?? ''}
       </Text>
+      <GhostButton label={t('stream.link.settings')} onPress={onSettings} />
+      <GhostButton label={t('stream.link.diagnostics')} onPress={onDiagnostics} />
       {canLeave ? <GhostButton label={t('stream.home')} onPress={onHome} /> : null}
     </EdgeStrip>
   );

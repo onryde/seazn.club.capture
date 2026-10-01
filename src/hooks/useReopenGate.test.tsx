@@ -253,3 +253,38 @@ describe('useReopenGate: an ended session whose code is gone (N4)', () => {
     expect(kinds(fakes)).toEqual([]);
   });
 });
+
+/**
+ * M22: Settings and Diagnostics are inside Live Stream (AGENTS §6). A return
+ * to the foreground that lands on Live Stream leaves the operator where they
+ * were, never popping them back to the camera.
+ */
+describe('useReopenGate: inside Live Stream already (M22)', () => {
+  it.each([
+    ['streamSettings', 'a valid code', null],
+    ['streamDiagnostics', 'a valid code', null],
+    ['streamSettings', 'the engine on air', 'live'],
+    ['streamDiagnostics', 'the engine armed', 'armed-ready'],
+  ] as const)('stays on %s with %s', async (route, _, scene) => {
+    const fakes = createFakePorts({ kvSeed: inStream });
+    if (scene !== null) fakes.engine.scene(scene);
+    gate(fakes);
+    await waitFor(() => expect(fakes.navigation.current()).toBe('stream'));
+    fakes.navigation.go(route);
+    act(() => fakes.foreground.fire());
+    await act(async () => undefined);
+    expect(fakes.navigation.current()).toBe(route);
+    expect(fakes.navigation.history).toEqual(['stream', route]);
+  });
+
+  it('still leaves a sub-screen for Home once the code has expired', async () => {
+    const fakes = createFakePorts({ kvSeed: inStream });
+    gate(fakes);
+    await waitFor(() => expect(fakes.navigation.current()).toBe('stream'));
+    fakes.navigation.go('streamDiagnostics');
+    fakes.setNow(new Date(EXPIRY.getTime() + 60_000));
+    act(() => fakes.foreground.fire());
+    await waitFor(() => expect(fakes.navigation.current()).toBe('home'));
+    expect(noticeOf(fakes)).toMatchObject({ mode: 'stream', expiredAt: EXPIRY });
+  });
+});

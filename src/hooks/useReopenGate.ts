@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useSyncExternalStore } from 'react';
 import { expiredModes, orphanedSession, reopenTarget } from '@/domain/mode/reopen';
 import { selectEngineStatus } from '@/hooks/engineSelectors';
 import { usePorts } from '@/hooks/usePorts';
+import { isStreamSubRoute } from '@/services/devicePorts';
 
 /**
  * Where the app lands, decided before the splash lifts (spec §4): engine
@@ -73,6 +74,9 @@ function useSettle(): () => void {
     void modeStore
       .expire(expired, notice)
       .catch(() => logger.warn('store.write-refused', { action: 'expire' }));
-    navigation.go(target.go);
+    // M22: Settings and Diagnostics are inside Live Stream; going there is staying.
+    if (!(target.go === 'stream' && isStreamSubRoute(navigation.current()))) {
+      navigation.go(target.go);
+    }
   }, [modeStore, clock, engine, navigation, logger]);
 }

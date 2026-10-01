@@ -28,7 +28,17 @@ export interface ForegroundPort {
   subscribeBackground(onBackground: () => void): () => void;
 }
 
-export type Route = 'home' | 'stream';
+/** Settings and Diagnostics sit inside Live Stream (AGENTS §6): on air, only leaving the mode is blocked. */
+export type Route = 'home' | 'stream' | 'streamSettings' | 'streamDiagnostics';
+
+/**
+ * Live Stream's sub-screens, pushed over the mounted viewfinder (D19). Named
+ * one by one: Back is given away only on a route this names (M21), so a
+ * route nobody expected never hands Back to Android on air.
+ */
+export function isStreamSubRoute(route: Route): boolean {
+  return route === 'streamSettings' || route === 'streamDiagnostics';
+}
 
 /**
  * The only navigator. Every move goes through here (swipe-back is off and

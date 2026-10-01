@@ -115,21 +115,27 @@ describe('useStreamLeave', () => {
     expect(readRecord(leaving.record)).toEqual([]);
   });
 
-  // Back inside a stream sub-screen (Settings, Diagnostics) is the navigator's,
-  // not a leave. `home` stands in for them until Route gains them.
-  it.each<[string, SessionState | null]>([
-    ['nothing is live', null],
-    ['the broadcast is on air', LIVE],
-    ['the broadcast stopped', STOPPED],
-    ['the broadcast failed', FAILED],
-  ])('leaves Back to the navigator off the stream route when %s', async (_, state) => {
+  // Back inside a stream sub-screen (Settings, Diagnostics) is that screen's
+  // (useBackToViewfinder), not a leave: the viewfinder stays mounted under it.
+  it.each(
+    (['streamSettings', 'streamDiagnostics'] as const).flatMap((route) =>
+      (
+        [
+          ['nothing is live', null],
+          ['the broadcast is on air', LIVE],
+          ['the broadcast stopped', STOPPED],
+          ['the broadcast failed', FAILED],
+        ] as const
+      ).map(([what, state]) => [route, what, state] as const),
+    ),
+  )('leaves Back on %s to that screen when %s', async (route, _, state) => {
     const modeStore = createModeStore(createMemoryKeyValueStore(inStream));
     const setActive = vi.spyOn(modeStore, 'setActive');
     const forget = vi.spyOn(modeStore, 'forget');
     const leaving = await leaveHook({ modeStore });
     const send = vi.spyOn(leaving.engine, 'send');
     if (state !== null) act(() => leaving.engine.forceState(state));
-    leaving.navigation.go('home');
+    leaving.navigation.go(route);
     let handled = true;
     act(() => {
       handled = leaving.back.press();
@@ -140,7 +146,22 @@ describe('useStreamLeave', () => {
     expect(setActive).not.toHaveBeenCalled();
     expect(forget).not.toHaveBeenCalled();
     expect(send).not.toHaveBeenCalled();
-    expect(leaving.navigation.history).toEqual(['stream', 'home']);
+    expect(leaving.navigation.history).toEqual(['stream', route]);
+  });
+
+  // M21: only a NAMED sub-screen gives Back away. A `current()` that says
+  // anything else while this screen is up is stale, and handing Back to
+  // Android there would put the app in the background on air.
+  it('keeps Back on a stale route: on air it still says how to stop', async () => {
+    const leaving = await leaveHook();
+    act(() => leaving.engine.forceState(LIVE));
+    leaving.navigation.go('home');
+    let handled = false;
+    act(() => {
+      handled = leaving.back.press();
+    });
+    expect(handled).toBe(true);
+    expect(leaving.hook.result.current.blocked).toBe(true);
   });
 });
 

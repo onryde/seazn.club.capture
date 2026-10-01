@@ -3,6 +3,7 @@ import { StyleSheet, View } from 'react-native';
 import { usePeek } from '@/hooks/usePeek';
 import { usePorts } from '@/hooks/usePorts';
 import { useStreamLeave } from '@/hooks/useStreamLeave';
+import { useStreamLinks } from '@/hooks/useStreamLinks';
 import { useStreamSettings } from '@/hooks/useStreamSettings';
 import { useViewfinder } from '@/hooks/useViewfinder';
 import { StreamColumn } from '@/ui/components/StreamColumn';
@@ -20,6 +21,7 @@ export function StreamScreen() {
   const { settings } = useStreamSettings();
   const peek = usePeek(view.peekable);
   const scanAnother = useScanAnother(leave.leaveWith);
+  const links = useStreamLinks();
   return (
     <View style={settings.side === 'left' ? styles.columnLeft : styles.columnRight}>
       <StreamStage
@@ -28,6 +30,8 @@ export function StreamScreen() {
         peek={peek}
         canLeave={leave.canLeave}
         onHome={leave.leave}
+        onSettings={links.settings}
+        onDiagnostics={links.diagnostics}
       />
       <StreamColumn view={view} blocked={leave.blocked} peek={peek} onScanAnother={scanAnother} />
     </View>
