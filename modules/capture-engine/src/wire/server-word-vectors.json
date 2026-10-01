@@ -35,7 +35,8 @@
       "answer": "not-current",
       "sid": "S",
       "named": "S",
-      "word": "no-evidence",
+      "word": "open",
+      "wordSid": "S",
       "ends": false
     },
     {

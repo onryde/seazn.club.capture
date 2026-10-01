@@ -19,8 +19,12 @@ data class StoppedRecord(val code: String, val slot: Int, val sid: String, val s
      */
     const val DEFAULT_KEEP_MS = 12 * 60 * 60 * 1_000L
 
+    /**
+     * [maxDurationMinutes] of zero or less is read as none: a record kept until its own stop is never
+     * current, and the operator's Stop would be lost without a word (review C0a, M2).
+     */
     fun of(name: PairingName, sid: String, nowWallMs: Long, maxDurationMinutes: Int?): StoppedRecord {
-      val keepMs = maxDurationMinutes?.let { it * 60_000L } ?: DEFAULT_KEEP_MS
+      val keepMs = maxDurationMinutes?.takeIf { it > 0 }?.let { it * 60_000L } ?: DEFAULT_KEEP_MS
       return StoppedRecord(name.code, name.slot, sid, nowWallMs, nowWallMs + keepMs)
     }
 
@@ -28,11 +32,10 @@ data class StoppedRecord(val code: String, val slot: Int, val sid: String, val s
     fun pruned(records: List<StoppedRecord>, nowWallMs: Long): List<StoppedRecord> = records.filter { it.current(nowWallMs) }
 
     /**
-     * Whether a beat that carried the record delivered it: a 2xx or a 410 (A17), and a `replaced` or
-     * `taken` answer, which the server sends having read the beat (2026-10-01). A 404, 429, 5xx or
-     * no answer keeps it.
+     * Whether a beat that carried the record delivered it, by [status] alone: a 2xx or a 410 (A17). A
+     * `replaced` or `taken` answer is a 200, sent having read the beat (G0-g), so it delivers it too. A
+     * 404, 429, 5xx or no answer keeps it: a null [status] is in no range and equals no code.
      */
-    fun delivered(status: Int?, word: ServerWord): Boolean =
-      status != null && (status in 200..299 || status == 410 || word == ServerWord.Replaced || word == ServerWord.Taken)
+    fun delivered(status: Int?): Boolean = status in 200..299 || status == 410
   }
 }

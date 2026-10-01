@@ -117,7 +117,7 @@ src/
 modules/
   capture-engine/  # port + fake today; the native Expo module (StreamPack) arrives in S1
   code-scanner/    # Expo Module. Google's code scanner (Android), iOS stub, fake.
-contracts/         # capture-qr.v1.json, once vendored (see its README)
+contracts/         # capture-qr.v2.json, once vendored (see its README)
 ```
 
 - `eslint-plugin-boundaries` enforces `domain/` purity. The rule is the
@@ -158,7 +158,7 @@ contracts/         # capture-qr.v1.json, once vendored (see its README)
 - The wire shape never reaches the domain. Each wire shape has one parser, in
   one language: the QR and the waiting fields in TypeScript, the session shape
   and the server's answers in Kotlin. A v2 of any shape touches one file.
-- Contracts are vendored. Changing `capture-qr.v1.json` requires the CI drift
+- Contracts are vendored. Changing `capture-qr.v2.json` requires the CI drift
   check against the main repo's copy.
 
 ## 5. Theme

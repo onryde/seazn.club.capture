@@ -71,6 +71,16 @@ class BeatsTest {
   }
 
   @Test
+  fun `a beat names its slot, its state, and why the last start failed`() {
+    // Written field by field from the amendment's beat body (review C0a, I2): no default value stands in.
+    val failed = JSONObject(Beats.payload(paired.copy(slot = 3, startFailed = StartFailure.CRED_HOST)))
+    assertEquals(3, failed.getInt("slot"))
+    assertEquals("paired", failed.getString("state"))
+    assertEquals("cred-host", failed.getString("startFailed"))
+    assertTrue(JSONObject(Beats.payload(paired)).isNull("startFailed"))
+  }
+
+  @Test
   fun `the operator's mode reads operator`() {
     assertEquals("operator", JSONObject(Beats.payload(paired.copy(automatic = false))).getString("mode"))
   }

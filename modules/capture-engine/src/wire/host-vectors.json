@@ -8,12 +8,15 @@
       "ok": true
     },
     { "env": "staging", "role": "seazn", "url": "https://STG.seazn.club/x", "ok": true },
+    { "env": "staging", "role": "seazn", "url": "HTTPS://stg.seazn.club/x", "ok": true },
     { "env": "staging", "role": "seazn", "url": "https://stg.seazn.club:8443/x", "ok": true },
     { "env": "staging", "role": "seazn", "url": "https://seazn.club/x", "ok": false },
     { "env": "staging", "role": "seazn", "url": "https://evil.stg.seazn.club/x", "ok": false },
     { "env": "staging", "role": "seazn", "url": "https://stg.seazn.club.evil.io/x", "ok": false },
     { "env": "staging", "role": "seazn", "url": "https://stg.seazn.club@evil.io/x", "ok": false },
     { "env": "staging", "role": "seazn", "url": "http://stg.seazn.club/x", "ok": false },
+    { "env": "staging", "role": "seazn", "url": "https://stg.seazn.club\n", "ok": false },
+    { "env": "staging", "role": "seazn", "url": "httpſ://stg.seazn.club/x", "ok": false },
     {
       "env": "production",
       "role": "seazn",

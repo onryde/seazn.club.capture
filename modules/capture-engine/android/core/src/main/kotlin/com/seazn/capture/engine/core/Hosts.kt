@@ -19,11 +19,24 @@ enum class Environment(override val wire: String, val seaznHost: String, val ing
  * matched exactly and lower-cased: never a suffix, never a subdomain, never read through userinfo.
  */
 object Hosts {
-  private val SHAPE = Regex("^([a-z][a-z0-9+.-]*)://([^/?#@:\\\\\\s]+)(?::(\\d+))?(?:[/?#]|$)", RegexOption.IGNORE_CASE)
+  /**
+   * JS's `\s` (`wire.ts`'s `HTTPS_HOST`): Java's own `\s` is ASCII only, so the Unicode spaces JS also
+   * stops a host at are listed. Without them `hostOf` would read a host JS refuses (review C0a, M1).
+   */
+  private const val SPACE = "\\s\\u00a0\\u1680\\u2000-\\u200a\\u2028\\u2029\\u202f\\u205f\\u3000\\ufeff"
+
+  /**
+   * Read as JS reads `HTTPS_HOST`, edge for edge (review C0a, M1). The scheme's letters are ASCII,
+   * listed both cases, with no `IGNORE_CASE`: Kotlin's adds `UNICODE_CASE`, under which `ſ` matches
+   * `s`. This class is the one guard against a non-ASCII scheme letter (the `httpſ` row). The end is
+   * `\z`: Java's `$` also matches before a final line break, which JS's does not.
+   */
+  private val SHAPE = Regex("^([A-Za-z][A-Za-z0-9+.-]*)://([^/?#@:\\\\$SPACE]+)(?::(\\d+))?(?:[/?#]|\\z)")
 
   /** The host of [url] when its scheme is [scheme]; null for any other scheme or shape. */
   fun hostOf(url: String, scheme: String): String? {
     val match = SHAPE.find(url) ?: return null
+    // ASCII by SHAPE's class, so this compare never sees `ſ`: the class, not the compare, refuses it.
     if (!match.groupValues[1].equals(scheme, ignoreCase = true)) return null
     return match.groupValues[2].lowercase()
   }

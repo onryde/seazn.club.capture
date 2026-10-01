@@ -41,14 +41,28 @@ class StoppedRecordTest {
   }
 
   @Test
-  fun `A17 delivered by a 2xx or a 410, and by replaced or taken, never by anything else`() {
-    assertTrue(StoppedRecord.delivered(200, ServerWord.NoBroadcast))
-    assertTrue(StoppedRecord.delivered(410, ServerWord.Over("sess_42", null)))
-    assertTrue(StoppedRecord.delivered(200, ServerWord.Replaced))
-    assertTrue(StoppedRecord.delivered(200, ServerWord.Taken))
-    for (status in listOf(401, 404, 429, 500)) assertFalse(StoppedRecord.delivered(status, ServerWord.NoEvidence), "$status")
-    assertFalse(StoppedRecord.delivered(null, ServerWord.NoEvidence))
-    // No answer keeps it whatever word is passed: only an answer the server sent can deliver it.
-    assertFalse(StoppedRecord.delivered(null, ServerWord.Replaced))
+  fun `A17 delivered by a 2xx or a 410, never by anything else`() {
+    for (status in listOf(200, 204, 299, 410)) assertTrue(StoppedRecord.delivered(status), "$status")
+    for (status in listOf(199, 300, 401, 404, 409, 429, 500)) assertFalse(StoppedRecord.delivered(status), "$status")
+    assertFalse(StoppedRecord.delivered(null))
+  }
+
+  @Test
+  fun `G0-g a taken or a replaced answer comes in a 200, so it delivers the record`() {
+    // The server answers a claim it refuses with taken or replaced, and still applies the stop the beat
+    // carried (amendment, G0-g). Built as the beat's answer arrives: a 200 whose body says so.
+    for ((state, word) in listOf("taken" to ServerWord.Taken, "replaced" to ServerWord.Replaced)) {
+      val answer = HeartbeatResponse.Answered(200, BeatReply(state, null, null, null, null))
+      assertEquals(word, ServerWord.ofBeat(answer, named = "sess_41"), state)
+      assertTrue(StoppedRecord.delivered(answer.status), state)
+    }
+  }
+
+  @Test
+  fun `M2 a maximum duration of zero or less is read as none, so the record keeps twelve hours`() {
+    for (minutes in listOf(0, -5)) {
+      assertEquals(at + 43_200_000, StoppedRecord.of(name, "sess_42", at, minutes).keepUntilEpochMs, "$minutes")
+    }
+    assertEquals(at + 60_000, StoppedRecord.of(name, "sess_42", at, maxDurationMinutes = 1).keepUntilEpochMs)
   }
 }

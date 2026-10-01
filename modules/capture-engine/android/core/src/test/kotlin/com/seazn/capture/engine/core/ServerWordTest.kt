@@ -63,14 +63,18 @@ class ServerWordTest {
   }
 
   @Test
-  fun `an answer that names no sid, or a not-current answer with no sid held, is no evidence`() {
-    // Guards the vector rows do not reach: every beat row saying over or live carries a sid, and every
-    // code row is judged with S held.
+  fun `G0-d a session shape with no cred is Open, whether or not a sid is held`() {
+    // The amendment's table row (review C0a, M5): never no evidence. The vector rows judge it with S held.
+    assertEquals(ServerWord.Open("N", null), ServerWord.ofCode(CodeAnswer.NotCurrent("N"), named = null))
+  }
+
+  @Test
+  fun `a beat's over or live that names no sid is no evidence`() {
+    // Guards the vector rows do not reach: every beat row saying over or live carries a sid.
     for (state in listOf("over", "live")) {
       val noSid = HeartbeatResponse.Answered(200, BeatReply(state, null, null, "stopped", null))
       assertEquals(ServerWord.NoEvidence, ServerWord.ofBeat(noSid, named = "S"), state)
     }
-    assertEquals(ServerWord.NoEvidence, ServerWord.ofCode(CodeAnswer.NotCurrent("N"), named = null))
   }
 
   @Test

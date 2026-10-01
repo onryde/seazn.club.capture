@@ -17,6 +17,9 @@ class BeatCadenceTest {
     assertEquals(60_000L, BeatCadence.intervalMs(60, held = false))
     assertEquals(10_000L, BeatCadence.intervalMs(60, held = true))
     assertEquals(5_000L, BeatCadence.intervalMs(5, held = true))
+    // The clamp applies inside intervalMs too: an hour waits 300 s, a second waits 5 s.
+    assertEquals(300_000L, BeatCadence.intervalMs(3_600, held = false))
+    assertEquals(5_000L, BeatCadence.intervalMs(1, held = false))
   }
 
   @Test

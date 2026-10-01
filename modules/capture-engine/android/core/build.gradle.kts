@@ -25,6 +25,12 @@ tasks.test {
   useJUnitPlatform()
   // The vector files both languages read (CD5, CD6), relative to this build.
   systemProperty("capture.shared", layout.projectDirectory.dir("../../src").asFile.absolutePath)
+  // Gradle tracks the property's path, not the files under it: declared here, a vector-only edit
+  // reruns the tests instead of reading as UP-TO-DATE (review C0a, I3).
+  inputs
+    .dir(layout.projectDirectory.dir("../../src/wire"))
+    .withPropertyName("sharedVectors")
+    .withPathSensitivity(PathSensitivity.RELATIVE)
   testLogging {
     events("failed")
     exceptionFormat = TestExceptionFormat.FULL

@@ -77,8 +77,10 @@ sealed interface ServerWord {
             410 -> Over(named, answer.endReason)
             else -> NoEvidence
           }
-        // No `cred` naming another sid while one is held is still "another sid" (M8): it ends the held one.
-        is CodeAnswer.NotCurrent -> if (named != null && answer.sid != named) Open(answer.sid, null) else NoEvidence
+        // The amendment's table: a session shape with no `cred` is `Open(sid)`, not current (G0-d). The
+        // claim and the second fetch are the machine's, read from the answer itself; against a held sid
+        // it reads as any Open does, so another sid still ends the held one (M8).
+        is CodeAnswer.NotCurrent -> Open(answer.sid, null)
         is CodeAnswer.ForeignIngest, is CodeAnswer.Unreadable, is CodeAnswer.Unreachable -> NoEvidence
       }
   }

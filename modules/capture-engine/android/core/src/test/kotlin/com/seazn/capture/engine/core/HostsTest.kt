@@ -7,8 +7,8 @@ class HostsTest {
   @Test
   fun `every shared host row is judged as the file says, both roles`() {
     val rows = Shared.read("wire/host-vectors.json").getJSONArray("rows")
-    // The file's row count, 10 seazn and 11 ingest, so a truncated file cannot pass (PV12).
-    assertEquals(21, rows.length())
+    // The file's row count, 13 seazn and 11 ingest, so a truncated file cannot pass (PV12).
+    assertEquals(24, rows.length())
     for (i in 0 until rows.length()) {
       val row = rows.getJSONObject(i)
       val env = Environment.of(row.getString("env"))
@@ -36,5 +36,16 @@ class HostsTest {
     assertEquals(null, Hosts.hostOf("https://stg.seazn.club@evil.io/x", "https"))
     assertEquals(null, Hosts.hostOf("srt://user@live.cloudflare.com:778", "srt"))
     assertEquals("stg.seazn.club", Hosts.hostOf("https://STG.seazn.club:8443/x", "https"))
+  }
+
+  @Test
+  fun `hostOf stops where the JS rule stops - a final line break, a non-ASCII scheme letter, a Unicode space`() {
+    // Each is null in wire.ts's httpsHost too (review C0a, M1). The vector rows pin the first two
+    // verdicts; a host ending in a Unicode space never equals a Seazn host, so only hostOf can see it.
+    assertEquals(null, Hosts.hostOf("https://stg.seazn.club\n", "https"))
+    assertEquals(null, Hosts.hostOf("http\u017f://stg.seazn.club/x", "https"))
+    assertEquals(null, Hosts.hostOf("https://stg.seazn.club\u00a0/x", "https"))
+    assertEquals(null, Hosts.hostOf("srt://live.cloudflare.com:778\n", "srt"))
+    assertEquals("stg.seazn.club", Hosts.hostOf("https://stg.seazn.club/x\n", "https"))
   }
 }

@@ -240,8 +240,23 @@ class HeartbeatTest {
     var state = HeartbeatState()
     state = Heartbeat.due(state, 0, 0, intervalMs = 60_000).first
     state = Heartbeat.answered(state, 1, HeartbeatResponse.Answered(200), nowMs = 100).first
+    // At 60 s the next beat waits the full minute (review C0a, I1)…
+    assertEquals(null, Heartbeat.due(state, 59_999, 59_999, intervalMs = 60_000).second)
+    assertEquals(2, Heartbeat.due(state, 60_000, 60_000, intervalMs = 60_000).second)
+    // …and shortened to 10 s, the same state is due at 10 s.
     assertEquals(null, Heartbeat.due(state, 9_999, 9_999, intervalMs = 10_000).second)
     assertEquals(2, Heartbeat.due(state, 10_000, 10_000, intervalMs = 10_000).second)
+  }
+
+  @Test
+  fun `the next beat waits its whole interval, from the 5 s floor to the 300 s ceiling`() {
+    // BeatCadence's clamp edges, passed straight through: due neither caps nor floors the interval.
+    for (intervalMs in listOf(5_000L, 300_000L)) {
+      var state = Heartbeat.due(HeartbeatState(), 0, 0, intervalMs).first
+      state = Heartbeat.answered(state, 1, HeartbeatResponse.Answered(200), nowMs = 100).first
+      assertEquals(null, Heartbeat.due(state, intervalMs - 1, intervalMs - 1, intervalMs).second, "$intervalMs")
+      assertEquals(2, Heartbeat.due(state, intervalMs, intervalMs, intervalMs).second, "$intervalMs")
+    }
   }
 
   @Test
