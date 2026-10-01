@@ -171,6 +171,28 @@ describe('diagnosticsSections (spec §4)', () => {
     expect(rowsFor('live', {}, lang)).toMatchObject(expected);
   });
 
+  // Fix round 3 (n1): a native timestamp a moment ahead of the phone's clock
+  // (an NTP step) is no negative age, and Intl would write -0.04 as "-0".
+  it.each([
+    ['en', 40, { Checked: '0 s ago' }],
+    ['en', 2000, { Checked: '0 s ago' }],
+    ['es', 40, { Comprobado: 'hace 0 s' }],
+  ] as const)(
+    'reads a %s check %i ms ahead of the clock as no time ago',
+    (lang, aheadMs, expected) => {
+      const rows = rowsFor('live', { telemetry: { deliveryCheckedAtMs: NOW + aheadMs } }, lang);
+      expect(rows).toMatchObject(expected);
+    },
+  );
+
+  // Fix round 3 (n2): Data used is whole megabytes, rounded to the nearest.
+  it.each([
+    [312_400_000, '312 MB'],
+    [312_600_000, '313 MB'],
+  ])('reads %i bytes as %s', (bytes, expected) => {
+    expect(rowsFor('live', { telemetry: { dataUsedBytes: bytes } })['Data used']).toBe(expected);
+  });
+
   it('writes a fractional rate the language’s way, and counts ungrouped', () => {
     const rows = rowsFor(
       'live',

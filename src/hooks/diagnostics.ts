@@ -50,9 +50,13 @@ export function diagnosticsSections(
 
 const unit = ({ t, num }: Say, key: MessageKey, value: number | null): string =>
   value === null ? t('diag.none') : t(key, { value: num(value) });
-/** `atMs` is epoch ms, as `nowMs` is (the port's `deliveryCheckedAtMs`, `lastSentAtEpochMs`). */
+/**
+ * `atMs` is epoch ms, as `nowMs` is (the port's `deliveryCheckedAtMs`,
+ * `lastSentAtEpochMs`). An age is never below zero: a native time a moment
+ * ahead of the phone's clock (an NTP step) reads 0, never Intl's "-0" (n1).
+ */
 const secondsAgo = (say: Say, nowMs: number, atMs: number | null): string =>
-  unit(say, 'diag.unit.ago', atMs === null ? null : (nowMs - atMs) / 1000);
+  unit(say, 'diag.unit.ago', atMs === null ? null : Math.max(0, (nowMs - atMs) / 1000));
 
 /**
  * The uplink. "Sending audio" is the encoded audio packet rate: audio leaving
