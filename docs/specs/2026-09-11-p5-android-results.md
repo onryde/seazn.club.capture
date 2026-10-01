@@ -78,24 +78,24 @@ Every run starts with a 5-minute baseline, recorded below.
 
 ## Pass criteria (proposed — confirm before Run A)
 
-| # | Criterion | Why |
-|---|---|---|
-| 1 | 3 h completes, publishing in ≥ 99% of samples outside deliberate outages, **and the playlist head advancing across the same window** | P5 |
-| 2 | Thermal status never reaches 4 (critical) | P3; the ladder's thresholds come from the curve |
-| 3 | While streaming, the 60 s rolling mean of `videoBitrate` stays ≥ 3000 kbps; report min, median and p5 per run | §8: the encode is last |
-| 4 | Drop inside 180 s resumes into ONE recording | C2, U1-S7 |
-| 5 | Drop beyond 180 s: ENDLIST, second recording, app reconnects unaided | U1-S7 |
-| 6 | Screen locked 10 min: playlist keeps advancing | Android lifecycle, §9 |
-| 7 | 180° flip: preview, encoded picture and rotation metadata all correct | P4, three assertions |
-| 8 | Audio mean volume above −40 dB in a 20 s sample | T1: a level floor, not stream presence |
-| 9 | Battery never below 20% while charging | Power-bank setup is viable |
+| #   | Criterion                                                                                                                            | Why                                             |
+| --- | ------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------- |
+| 1   | 3 h completes, publishing in ≥ 99% of samples outside deliberate outages, **and the playlist head advancing across the same window** | P5                                              |
+| 2   | Thermal status never reaches 4 (critical)                                                                                            | P3; the ladder's thresholds come from the curve |
+| 3   | While streaming, the 60 s rolling mean of `videoBitrate` stays ≥ 3000 kbps; report min, median and p5 per run                        | §8: the encode is last                          |
+| 4   | Drop inside 180 s resumes into ONE recording                                                                                         | C2, U1-S7                                       |
+| 5   | Drop beyond 180 s: ENDLIST, second recording, app reconnects unaided                                                                 | U1-S7                                           |
+| 6   | Screen locked 10 min: playlist keeps advancing                                                                                       | Android lifecycle, §9                           |
+| 7   | 180° flip: preview, encoded picture and rotation metadata all correct                                                                | P4, three assertions                            |
+| 8   | Audio mean volume above −40 dB in a 20 s sample                                                                                      | T1: a level floor, not stream presence          |
+| 9   | Battery never below 20% while charging                                                                                               | Power-bank setup is viable                      |
 
-**Read criterion 3 carefully.** The `videoBitrate` column is *measured egress*, not the encoder's
+**Read criterion 3 carefully.** The `videoBitrate` column is _measured egress_, not the encoder's
 configured target: the per-tick delta of the StreamPack endpoint's cumulative `bytesWritten`, scaled
 by the real interval between samples. It therefore counts everything the endpoint sends — the 3000
 kbps video, the 128 kbps audio, container overhead, and for SRT the packet headers and any
 retransmissions — and it reads 0 when not streaming, on the first sample, and for one sample after a
-reconnect resets the counter. So a run that holds the encode sits *above* 3000 kbps — video plus 128
+reconnect resets the counter. So a run that holds the encode sits _above_ 3000 kbps — video plus 128
 kbps audio plus container is already about 3.2 Mbps before a single SRT retransmission — and the
 failure signal is a sustained sag toward and below 3000, not a departure from it. An earlier draft of
 this criterion said "stays at 3000 kbps"; that described a config echo which no longer exists, and an
@@ -111,14 +111,14 @@ Run before Run A to prove the protocol rather than the handset: publish over
 SRT with the staging overlay on, flip 180°, drop the network for 20 s, then 60 s
 with the screen off. Wifi, charging, indoors, a dark static scene.
 
-| Question | Result |
-|---|---|
-| Does the whole path work? | Yes. Camera → encoder → SRT → Cloudflare, playlist advancing (head 54 → 728, HTTP 200 throughout) |
-| Does the overlay composite? | Yes. The Tier A route renders over the live camera, top-left, as OBS gets it |
-| Does the screen-off case publish? | Yes. 58/58 screen-off samples still streaming; Cloudflare kept advancing through the lock |
-| Telemetry | 2156 samples at 1 Hz, publishing in 92% (the rest is arm/stop/outage) |
-| Throughput | mean 4110 kbps, max 14553 kbps — total endpoint throughput, see criterion 3 |
-| Thermals | battery 27.7 → 38.7 °C, peak thermal status 2 (moderate), headroom ≥ 0.45 |
+| Question                          | Result                                                                                            |
+| --------------------------------- | ------------------------------------------------------------------------------------------------- |
+| Does the whole path work?         | Yes. Camera → encoder → SRT → Cloudflare, playlist advancing (head 54 → 728, HTTP 200 throughout) |
+| Does the overlay composite?       | Yes. The Tier A route renders over the live camera, top-left, as OBS gets it                      |
+| Does the screen-off case publish? | Yes. 58/58 screen-off samples still streaming; Cloudflare kept advancing through the lock         |
+| Telemetry                         | 2156 samples at 1 Hz, publishing in 92% (the rest is arm/stop/outage)                             |
+| Throughput                        | mean 4110 kbps, max 14553 kbps — total endpoint throughput, see criterion 3                       |
+| Thermals                          | battery 27.7 → 38.7 °C, peak thermal status 2 (moderate), headroom ≥ 0.45                         |
 
 **Three defects the rehearsal exposed. All three fixed 2026-09-12, before Run A.**
 
@@ -134,7 +134,7 @@ with the screen off. Wifi, charging, indoors, a dark static scene.
    file is now the whole protocol: no UI, no unlocked screen, nothing to mis-tap.
    The `mark` intent and the Mark button stay for hand-driven runs.
 2. **SRT's first connection is rejected nine times.** `Operation not supported:
-   Bad parameters`, retried every 2 s for ~18 s, then connects normally
+Bad parameters`, retried every 2 s for ~18 s, then connects normally
    (`connectMs=598`). The failures are correctly `counted=false`, so C1's
    fallback rule is not tripped by them, but an 18-second lag between "go live"
    and "on air" is not acceptable at a ground.
@@ -150,7 +150,7 @@ with the screen off. Wifi, charging, indoors, a dark static scene.
    operator action, recovered automatically in 442 ms. Harmless here; unexplained
    is not acceptable over three hours.
    **Fixed: the cause was being thrown away by our own code.** StreamPack offers
-   two signals and they race. `isStreamingFlow` is the *pipeline's* — the camera
+   two signals and they race. `isStreamingFlow` is the _pipeline's_ — the camera
    and microphone inputs — and it goes false for a dead SRT socket exactly as it
    does for a dead camera, because the sink's `isOpenFlow` stops the output and
    the output stops the inputs. The endpoint's own `throwableFlow` is a constant
@@ -174,16 +174,16 @@ actually brings to a ground, against the OnePlus 10 Pro's flagship silicon.
 
 Two platform facts to read the columns by: `thermalStatus` works (API 29), but
 `thermalHeadroom` **does not exist before API 30** and logs −1.0. And MIUI
-refuses `adb install` (`INSTALL_FAILED_USER_RESTRICTED`) until *Install via USB*
+refuses `adb install` (`INSTALL_FAILED_USER_RESTRICTED`) until _Install via USB_
 is enabled in developer options.
 
 All three rehearsal fixes verified here:
 
-| Fix | Evidence on this handset |
-|---|---|
-| R1 marks | `adb push` of a one-line `p5-mark` produced `mark,label=redmi-verify-r1`; file consumed. No UI, no unlocked screen |
+| Fix            | Evidence on this handset                                                                                                              |
+| -------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| R1 marks       | `adb push` of a one-line `p5-mark` produced `mark,label=redmi-verify-r1`; file consumed. No UI, no unlocked screen                    |
 | R2 SRT connect | Connected first attempt, `connectMs=1344`, zero "Bad parameters" rejections — consistent with F-P5-1 being resolution, not parameters |
-| R3 drop causes | Every drop now names one: `reason=endpoint-closed message=ClosedException: Connection was broken endpointOpen=false` |
+| R3 drop causes | Every drop now names one: `reason=endpoint-closed message=ClosedException: Connection was broken endpointOpen=false`                  |
 
 ### F-P5-2 — on a weak link the SRT session collapses every 6–22 s, and the watcher calls it healthy
 
@@ -214,7 +214,8 @@ Three consequences, each worth more than the run that produced them:
    the carry turns that test red. Verdicts are now `advancing` / `holding` /
    `waiting` / `stalled` / `ended`, so a CSV distinguishes "no evidence yet"
    from "moving", which the old two-way split could not express.
-2. **C1's fallback never fires for this.** The SRT→RTMPS rule counts *connect*
+
+2. **C1's fallback never fires for this.** The SRT→RTMPS rule counts _connect_
    failures; these are mid-session drops that reconnect successfully. A link this
    bad would ride SRT all afternoon rather than falling back, and the phone would
    never try the transport that might survive it.
@@ -253,7 +254,7 @@ only `mark-5` survived and not `mark-3` or `mark-4`. So adb was working at least
 **The confound is ours, and it gates the conclusion.** The kill fell inside a
 window where `dumpsys battery unplug` had told the framework the device was
 discharging — `charging=false` in those very rows — and ColorOS power management
-keys off battery state, so the simulation is a candidate *cause* and not merely
+keys off battery state, so the simulation is a candidate _cause_ and not merely
 the condition. A real unplug at a ground produces the same framework state, so
 the field case may hold either way, but the clean test is a screen-off window
 with the framework seeing charging throughout. Until that runs, the class
@@ -285,17 +286,17 @@ of its life while nothing was arriving.
 
 The delivery stop, to the second, from the watcher CSV and the recording:
 
-| Time | What |
-|---|---|
+| Time        | What                                                               |
+| ----------- | ------------------------------------------------------------------ |
 | 11:02:09.8Z | Ingest content ends — 10:28:51.599Z plus the recording's 1998.23 s |
-| 11:02:20.7Z | Device writes its last telemetry row, `streaming=true`, 4.4 Mbps |
-| 11:02:22.7Z | Playlist head last advances, to 997 — **13 s after ingest ended** |
-| 11:02:39.9Z | Watcher calls `stalled`, 17.2 s after the last movement |
-| 11:05:50.9Z | Last 200: playlist still served, still frozen at head 997 |
-| 11:05:55.0Z | Master returns 204; the variant is gone |
+| 11:02:20.7Z | Device writes its last telemetry row, `streaming=true`, 4.4 Mbps   |
+| 11:02:22.7Z | Playlist head last advances, to 997 — **13 s after ingest ended**  |
+| 11:02:39.9Z | Watcher calls `stalled`, 17.2 s after the last movement            |
+| 11:05:50.9Z | Last 200: playlist still served, still frozen at head 997          |
+| 11:05:55.0Z | Master returns 204; the variant is gone                            |
 
 Two method notes from that. The head kept advancing for 13 s after ingest ended,
-which is Cloudflare's packaging tail — so the playlist is a *lagging* clock for
+which is Cloudflare's packaging tail — so the playlist is a _lagging_ clock for
 when a phone stopped sending, and the recording's duration is the exact one.
 And the watcher took 17.2 s to call the stall where a `targetDuration` of 2
 implies 6 s; that remains unexplained, because the watcher did not record the
@@ -310,10 +311,10 @@ the supply that fails under load.
 
 What the recording holds, by ffprobe packet cadence on its renditions:
 
-| Media time | Video, 720p rendition | Audio rendition | Segments |
-|---|---|---|---|
-| 100–1200 s | **30.02 fps**, largest gap 34 ms, in every 10 s window sampled (100, 700, 900, 1100, 1200 s) | **46.88 packets/s** at 300 s, the full AAC rate | ~2 s |
-| ~1227 s to the end | **3.2–9.1 fps** in every window sampled (1240, 1300, 1500, 1800, 2000, 2300 s) | **6.36 packets/s** at 2140 s, about one AAC frame in seven | 126 segments of 4.5–15.1 s |
+| Media time         | Video, 720p rendition                                                                        | Audio rendition                                            | Segments                   |
+| ------------------ | -------------------------------------------------------------------------------------------- | ---------------------------------------------------------- | -------------------------- |
+| 100–1200 s         | **30.02 fps**, largest gap 34 ms, in every 10 s window sampled (100, 700, 900, 1100, 1200 s) | **46.88 packets/s** at 300 s, the full AAC rate            | ~2 s                       |
+| ~1227 s to the end | **3.2–9.1 fps** in every window sampled (1240, 1300, 1500, 1800, 2000, 2300 s)               | **6.36 packets/s** at 2140 s, about one AAC frame in seven | 126 segments of 4.5–15.1 s |
 
 What every other witness said over the same wall-clock window:
 
@@ -403,12 +404,12 @@ configures none. For the hour before 19:13Z the phone sent a full 30 fps at only
 still scene. At 19:13 its output jumped to about 4.5 Mbps. The phone had not been moved; what changed in
 the picture is not established. The roaming cellular uplink could not carry that rate:
 
-| Minute (Z) | Egress | SRT retransmits | Send buffer | RTT |
-|---|---|---|---|---|
-| 19:12 | ~0.7 Mbps | 0 | 346 ms | 41 ms |
-| 19:14 | ~4.5 Mbps | 46 | 198 ms | 58 ms |
-| 19:15 | ~4.5 Mbps | 783 | 1300 ms | 42 ms |
-| 19:16 | ~3.2 Mbps | — | 2049 ms | 1658 ms |
+| Minute (Z) | Egress    | SRT retransmits | Send buffer | RTT     |
+| ---------- | --------- | --------------- | ----------- | ------- |
+| 19:12      | ~0.7 Mbps | 0               | 346 ms      | 41 ms   |
+| 19:14      | ~4.5 Mbps | 46              | 198 ms      | 58 ms   |
+| 19:15      | ~4.5 Mbps | 783             | 1300 ms     | 42 ms   |
+| 19:16      | ~3.2 Mbps | —               | 2049 ms     | 1658 ms |
 
 Cloudflare packaged its last segment at 19:13:38Z, and the SRT session broke at 19:16:41Z. After a later
 reconnect the link was worse. SRT estimated the uplink at **1.2 Mbps** against 3.3–3.9 Mbps offered, the
@@ -456,7 +457,7 @@ reproduced).** In `EncodingPipelineOutput`:
 - `setTargetRotation` while streaming only stores `pendingTargetRotation`.
 - Every `stopStream` runs `resetVideoEncoder()`. That emits a null input surface, then applies the pending
   rotation or, when there is none, calls `videoEncoder.reset()`.
-- A pending rotation *equal to the current one* changes nothing, so the encoder is neither rebuilt nor
+- A pending rotation _equal to the current one_ changes nothing, so the encoder is neither rebuilt nor
   reset, and its input surface is never offered again.
 
 Soak A was armed at rotation 1 and logged `rotation value=0` then `value=1` while streaming
@@ -475,17 +476,17 @@ connected, streaming, and nothing to say why.
 ### F-P5-7 — the regulator raises on a quiet picture, so the next busy picture overruns the link anyway
 
 2026-09-28, the retuned regulator (`256088c`, `4b32cbc`, `0658a45`) on the OnePlus over roaming cellular. Its
-raise gate asks only whether the link *stayed clean*: send buffer under latency/10, no new sender drops or
+raise gate asks only whether the link _stayed clean_: send buffer under latency/10, no new sender drops or
 write-losses. A clean interval says nothing about capacity when the encoder is not using the target. VBR on
 a still or dark picture sends far below it, so every interval is clean and the target climbs anyway:
 
-| Time (Z) | Target | Egress | SRT bandwidth estimate | Send buffer | Sender drops (cumulative) |
-|---|---|---|---|---|---|
-| 14:52:30 | 1830k | 2149 kbps | 1.6 Mbps | 98 ms | 249 |
-| 14:53:11 | 1930k | 371 kbps | 0.96 Mbps | 102 ms | 249 |
-| 14:55:22 | 3000k | 630 kbps | 0.95 Mbps | 43 ms | 249 |
-| 14:58:24 | 3000k | 704 kbps | 1.37 Mbps | 43 ms | 249 |
-| 14:58:35 | 500k | 3379 kbps | 0.94 Mbps | 1929 ms | 528 |
+| Time (Z) | Target | Egress    | SRT bandwidth estimate | Send buffer | Sender drops (cumulative) |
+| -------- | ------ | --------- | ---------------------- | ----------- | ------------------------- |
+| 14:52:30 | 1830k  | 2149 kbps | 1.6 Mbps               | 98 ms       | 249                       |
+| 14:53:11 | 1930k  | 371 kbps  | 0.96 Mbps              | 102 ms      | 249                       |
+| 14:55:22 | 3000k  | 630 kbps  | 0.95 Mbps              | 43 ms       | 249                       |
+| 14:58:24 | 3000k  | 704 kbps  | 1.37 Mbps              | 43 ms       | 249                       |
+| 14:58:35 | 500k   | 3379 kbps | 0.94 Mbps              | 1929 ms     | 528                       |
 
 Video ran at 30 fps throughout; only the picture's complexity changed. From 14:53 the scene went quiet and
 egress fell to 0.4–0.9 Mbps, and in the next two minutes the regulator raised 1830k → 3000k in twelve clean
@@ -493,7 +494,7 @@ steps. At 14:58:35 the phone was picked up (a `rotation` event at 14:58:39). VBR
 link SRT estimated at about 1 Mbps, the send buffer hit 1.9 s, 279 packets were dropped at the sender, and
 the target fell to the floor.
 
-This is F-P5-5's failure — a VBR jump on a thin link — reached again, this time *through* the regulator. The
+This is F-P5-5's failure — a VBR jump on a thin link — reached again, this time _through_ the regulator. The
 link's capacity moved during the session: it carried 3.5–3.8 Mbps without a drop before 14:40, then forced
 cuts at 14:40 and 14:45, the second down to the floor. From then on it carried at most 2.3 Mbps, yet the target sat at the
 ceiling for three minutes.
@@ -526,6 +527,7 @@ Not exercised: the busy picture returning on a thin link, which is the overrun i
 `.p5/p5-raisegate-20260928T155604Z.*`.
 
 **On a thin link, 2026-09-28 20:52Z.** The setup, `verify-raisegate.sh` with `LAN=1`:
+
 - The phone published SRT over home Wi-Fi through `udp-throttle.mjs` on the laptop, then to
   `srt-live-transmit`.
 - The throttle is a 1.5 Mbps link with a 300 ms drop-tail queue. It is exact: it forwarded 1.50 Mbps in
@@ -535,11 +537,11 @@ Not exercised: the busy picture returning on a thin link, which is the overrun i
 Two other ways of making a thin link failed first and are recorded in the script header: a USB reverse
 tether, and a pf dummynet cap.
 
-| Phase | Target | Egress (median) | Max send buffer | Sender drops | Link: forwarded / dropped |
-|---|---|---|---|---|---|
-| P1 busy, 90 s | 1500k → **500k** at +32 s | 685 kbps | 1975 ms | 1252 | 763 kbps / 4692 packets |
-| P2 covered, 60 s | 500k, **no raise** | 546 kbps | 214 ms | 0 | 605 kbps / 0 |
-| P3 busy again, 60 s | 500k, **no raise** | 985 kbps | 1998 ms | 2215 | 1035 kbps / 8344 packets |
+| Phase               | Target                    | Egress (median) | Max send buffer | Sender drops | Link: forwarded / dropped |
+| ------------------- | ------------------------- | --------------- | --------------- | ------------ | ------------------------- |
+| P1 busy, 90 s       | 1500k → **500k** at +32 s | 685 kbps        | 1975 ms         | 1252         | 763 kbps / 4692 packets   |
+| P2 covered, 60 s    | 500k, **no raise**        | 546 kbps        | 214 ms          | 0            | 605 kbps / 0              |
+| P3 busy again, 60 s | 500k, **no raise**        | 985 kbps        | 1998 ms         | 2215         | 1035 kbps / 8344 packets  |
 
 - **The gate held on the thin link.** After the cut, nothing was raised for the remaining 150 s, quiet or
   busy. So the F-P5-7 sequence did not happen: no raise on the quiet picture, and no overrun when the busy
@@ -558,10 +560,10 @@ Evidence: `.p5/p5-raisegate-20260928T205201Z.*` (`device.csv`, `throttle.csv`, `
 In the thin-link run above the phone's SRT sender twice sent a burst far above anything the encoder
 produces:
 
-| When | Phone egress that second | Arriving at the 1.5 Mbps link | Dropped by the link |
-|---|---|---|---|
-| P1 +32 s | 13.9 Mbps | 19.8 Mbps | 1994 packets |
-| P3 +169 s | 17.0 Mbps | 18.0 Mbps | 1788 packets |
+| When      | Phone egress that second | Arriving at the 1.5 Mbps link | Dropped by the link |
+| --------- | ------------------------ | ----------------------------- | ------------------- |
+| P1 +32 s  | 13.9 Mbps                | 19.8 Mbps                     | 1994 packets        |
+| P3 +169 s | 17.0 Mbps                | 18.0 Mbps                     | 1788 packets        |
 
 - Both bursts came as the send buffer reached 1.1–1.9 s, and both were mostly retransmissions. The
   retransmit counter rose by 7,581 across the P3 overrun.
@@ -649,17 +651,16 @@ throws on more than half of all RTMPS drops; without the guard, each of those wo
 
 Short Run B, 20 s cut at 22:47:00Z (`p5-runb-20260928T224127Z`). The phone reconnected 1.4 s after the
 network returned. For the next 4.5 minutes it sent 30 fps video and 47 audio frames a second at 2.7–3.4 Mbps.
-Cloudflare's live-input status read `connected` from 22:47:39Z. Yet the playlist gained one segment (150 →
-151) and then **stalled until the next cut**. The recording ended at the cut (303.8 s), and none of those
+Cloudflare's live-input status read `connected` from 22:47:39Z. Yet the playlist gained one segment (150 → 151) and then **stalled until the next cut**. The recording ended at the cut (303.8 s), and none of those
 4.5 minutes is in any recording. Nothing on the phone could tell: every signal it has said LIVE.
 
 It is not every reconnect. Nine RTMPS cuts of 60 s or less in three runs, all APK `af55dc7c…` or `6c81494f…`:
 
-| Run | Cuts | Went dark | Resumed | First new segment after the network returned |
-|---|---|---|---|---|
-| `…T224127Z` | 20 s | **1** | 0 | never, for 4.5 min |
-| `…T231316Z` | 20 s, 60 s | 0 | 2 | ≈ 5 s |
-| `…T232909Z` | 6 × 20 s | 0 | 6 | 0.3–2.4 s |
+| Run         | Cuts       | Went dark | Resumed | First new segment after the network returned |
+| ----------- | ---------- | --------- | ------- | -------------------------------------------- |
+| `…T224127Z` | 20 s       | **1**     | 0       | never, for 4.5 min                           |
+| `…T231316Z` | 20 s, 60 s | 0         | 2       | ≈ 5 s                                        |
+| `…T232909Z` | 6 × 20 s   | 0         | 6       | 0.3–2.4 s                                    |
 
 In every resumed case the same pattern followed:
 
@@ -669,7 +670,7 @@ In every resumed case the same pattern followed:
 3. Viewers saw a 10–16 s freeze.
 4. The broadcast stayed in one recording, which is criterion 4's shape.
 
-The one dark case is also the one reconnect that the far end did *not* close 31 s later.
+The one dark case is also the one reconnect that the far end did _not_ close 31 s later.
 
 **The same shape on SRT, 2026-09-29 00:02Z** (final-soak smoke run `p5-soakf-20260928T235519Z`, one 20 s
 cut). The phone was publishing again 1.5 s after the network returned. The playlist gained one segment,
@@ -745,6 +746,7 @@ Android 10+; untested here) or a level floor on the encoded audio, and it must s
 
 **Detection on the device, 2026-09-28 evening** (`4fef392`, `0772888`). The callback works as described.
 Our own recording is matched by its audio session ID (`tie=session` on every run):
+
 - **Phone call:** `mic-silenced` fired 3 s before the driver saw the answer, and `mic-restored` 1 s after
   hang-up, with `msSilenced=11899`.
 - **Status line during the call:** it read `LIVE rtmps — MIC SILENCED BY SYSTEM` in caution orange (HUD
@@ -796,12 +798,13 @@ the run stopped the app.
 The listener decoded the stream and kept one frame a second (`e4028a6`), so this is the picture viewers
 would get, not only the preview:
 
-| Run | Last frame before the stall | After the recovery, camera still held | After `camera-released` |
-|---|---|---|---|
-| `…T170717Z` | `s2-0186` healthy | `s3-0005`, `s3-0040` noise | `s3-0070` (10 s after), `s3-0102` (end of run) noise |
-| `…T171822Z` (heal test) | `s1-0056` healthy | `s2-0004` noise | `s2-0035`, `s2-0051` noise; after a forced rebuild, `s3-0005` to `s3-0089` still noise |
+| Run                     | Last frame before the stall | After the recovery, camera still held | After `camera-released`                                                                |
+| ----------------------- | --------------------------- | ------------------------------------- | -------------------------------------------------------------------------------------- |
+| `…T170717Z`             | `s2-0186` healthy           | `s3-0005`, `s3-0040` noise            | `s3-0070` (10 s after), `s3-0102` (end of run) noise                                   |
+| `…T171822Z` (heal test) | `s1-0056` healthy           | `s2-0004` noise                       | `s2-0035`, `s2-0051` noise; after a forced rebuild, `s3-0005` to `s3-0089` still noise |
 
 Nothing in the app noticed:
+
 - The frame counter advanced at 30 fps, so the watchdog was satisfied.
 - The status line read `LIVE rtmps`.
 - The only outward sign was egress. The HUD showed 3.2–3.6 Mbps against 0.1–0.4 Mbps on the same dark
@@ -820,6 +823,7 @@ show its last good frame. The experiments below settle it.
 
 **Measured on the device — the trigger and the remedy, 2026-09-28 20:00Z.** The APK was `9f34ef68…`, with
 two experiments behind a runtime switch (`47b7c69` to `c7a4434`):
+
 - `hold`: no rebuild while a camera is contended.
 - `reopen`: on `camera-released`, reopen our camera through a camera-ID round trip, 0 → 1 → 0. The broadcast
   is muted to black for the round trip. The endpoint and encoders are untouched, so the stream is not
@@ -828,11 +832,11 @@ two experiments behind a runtime switch (`47b7c69` to `c7a4434`):
 
 Each run was one WhatsApp video call over RTMPS to the laptop listener, with one decoded frame a second:
 
-| Run | During the call | Picture | After `camera-released` |
-|---|---|---|---|
-| `hold` (`…T195840Z`) | Stall held (`held=camera-contended`); video came back **by itself** after 6.1 s, with no rebuild and no reconnect | Noise from the frame video came back (`s2-0298`) | Noise to the end of the run, about 100 s later. No heal |
-| `reopen` (`…T200834Z`) | Stall, then the usual recovery rebuild | Noise after the rebuild (`s2-0001` to `s2-0022`) | Round trip took 1263 ms. One black frame, then a **clean, sharp picture** (`s2-0024` to `s2-0033`) until the owner moved the phone |
-| `both` (`…T201338Z`) | Stall held; video came back by itself after 5.5 s | Clean before the call (`s1-0001` to `s1-0039`), noise from video's return (`s1-0040` to `s1-0059`) | Round trip took 1174 ms. One black frame (`s1-0060`), then **clean and live** to the end of the run, about 100 s (`s1-0061` to `s1-0158`) |
+| Run                    | During the call                                                                                                   | Picture                                                                                            | After `camera-released`                                                                                                                   |
+| ---------------------- | ----------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| `hold` (`…T195840Z`)   | Stall held (`held=camera-contended`); video came back **by itself** after 6.1 s, with no rebuild and no reconnect | Noise from the frame video came back (`s2-0298`)                                                   | Noise to the end of the run, about 100 s later. No heal                                                                                   |
+| `reopen` (`…T200834Z`) | Stall, then the usual recovery rebuild                                                                            | Noise after the rebuild (`s2-0001` to `s2-0022`)                                                   | Round trip took 1263 ms. One black frame, then a **clean, sharp picture** (`s2-0024` to `s2-0033`) until the owner moved the phone        |
+| `both` (`…T201338Z`)   | Stall held; video came back by itself after 5.5 s                                                                 | Clean before the call (`s1-0001` to `s1-0039`), noise from video's return (`s1-0040` to `s1-0059`) | Round trip took 1174 ms. One black frame (`s1-0060`), then **clean and live** to the end of the run, about 100 s (`s1-0061` to `s1-0158`) |
 
 1. **The trigger is the concurrent open, not our rebuild.** In `hold` and `both` the stream was never torn
    down, and the picture was still noise from the moment video resumed. The first run's healthy preview at
@@ -842,11 +846,12 @@ Each run was one WhatsApp video call over RTMPS to the laptop listener, with one
 3. **The noise lasts for the whole call.** It stops only when the other app releases the camera and ours is
    reopened. For all of that time the status line reads `LIVE rtmps`, at 3.6 Mbps.
 4. **The status line depends on the path.** Under hold, the stall read `NO VIDEO — camera in use by another
-   app`. Without hold, the recovery read `NO VIDEO — recovering`, which says nothing about the other app.
+app`. Without hold, the recovery read `NO VIDEO — recovering`, which says nothing about the other app.
 
 These are single runs on one handset and one calling app.
 
 Consequences:
+
 1. **Frame arrival is not picture health.** The zero test (F-P5-6) and the rate floor (F-P5-9) both pass on
    noise. A cheap detector is an egress jump with no scene change, but that is a heuristic. Content checks
    cost CPU the encode may need.
@@ -862,6 +867,7 @@ Consequences:
    video call reached the operator, and the broadcast was untouched.
 
 Evidence:
+
 - Evening runs: `.p5/p5-interrupt-whatsapp-20260928T165758Z.*`, `…T170717Z.*` and `…T171822Z.*`. These
   are the cited frames and HUDs, plus device events in the run logs; the rest is in the evidence tar.
 - Experiment runs: `…T195840Z.*`, `…T200834Z.*` and `…T201338Z.*`, as frames, run logs and session JSON.
@@ -881,7 +887,7 @@ proposed mechanism is close semantics rather than the hold itself:
 
 If that holds, **the hold is timed from when the platform notices the publisher is
 gone, not from the last media it received**, and dropout tolerance on SRT is the
-SRT session timeout *plus* `timeoutSeconds`. Anyone sizing tolerance from the
+SRT session timeout _plus_ `timeoutSeconds`. Anyone sizing tolerance from the
 configured number is short by the difference — short in the direction that loses a
 broadcast. It cuts the other way too: a stream that is already dead keeps serving
 200s for longer, so the false-green window on SRT is wider than the 181.5 s
@@ -891,10 +897,10 @@ This is reasoning, not measurement, which is why it is labelled a hypothesis. Tw
 cells settle it and one does not — a single SRT clean stop confounds transport
 with close semantics:
 
-| Cell | Compared against | Isolates |
-|---|---|---|
-| SRT + clean stop | RTMPS clean cut (183 s) | transport |
-| SRT + kill | SRT clean stop | close semantics within SRT |
+| Cell             | Compared against        | Isolates                   |
+| ---------------- | ----------------------- | -------------------------- |
+| SRT + clean stop | RTMPS clean cut (183 s) | transport                  |
+| SRT + kill       | SRT clean stop          | close semantics within SRT |
 
 If SRT-clean lands near 183 s, transport is innocent and close semantics own the
 gap. If SRT-clean also lands near 213–225 s, the transport carries the extra ~30 s
@@ -907,14 +913,14 @@ available there.
 (`p5-1789214162964.csv`, CF video `79c59856…`, 400.65 s) is **not** those two
 cells. Timeline:
 
-| Time (Z) | What |
-|---|---|
-| 15:20:27.982 | SRT `publishing` (`connectMs=796`) |
-| 15:20:40.249 | RTMPS `publishing` (`connectMs=533`) — **11.7 s of SRT, then RTMPS** |
-| 15:20:44–15:21:35 | Peek marks; both browser and default UAs get **404** |
-| 15:21:30–15:21:35 | mark-1…mark-8 fired in a 5 s burst (not protocol spacing) |
-| 15:27:08.885 | Ingest ends (created + 400.65 s) |
-| 15:27:16.692 | Last device sample, still `streaming=true` / `rtmps` / screen off |
+| Time (Z)          | What                                                                 |
+| ----------------- | -------------------------------------------------------------------- |
+| 15:20:27.982      | SRT `publishing` (`connectMs=796`)                                   |
+| 15:20:40.249      | RTMPS `publishing` (`connectMs=533`) — **11.7 s of SRT, then RTMPS** |
+| 15:20:44–15:21:35 | Peek marks; both browser and default UAs get **404**                 |
+| 15:21:30–15:21:35 | mark-1…mark-8 fired in a 5 s burst (not protocol spacing)            |
+| 15:27:08.885      | Ingest ends (created + 400.65 s)                                     |
+| 15:27:16.692      | Last device sample, still `streaming=true` / `rtmps` / screen off    |
 
 No `dropped`, no `fell-back` event — the transport flip is a second
 `connecting`/`publishing` pair, not C1's fallback signal. One recording, almost
@@ -930,16 +936,16 @@ from.
 cellular, a fresh input each, 120 s of SRT publish, the watcher polling every
 ~1.3–1.7 s (so each 204 is bounded to that by the last 200 before it).
 
-| | SRT clean stop | SRT kill (`am force-stop`) |
-|---|---|---|
-| Publisher ends | hold released 15:43:01.34Z; `service-stopped` 15:43:01.30 on the device clock (at most 0.14 s ahead) | force-stop 15:53:01.69–02.16Z; last device sample 15:53:01.63 on the device clock |
-| Recording end, created + duration | 15:42:59.25Z | 15:53:02.41Z |
-| Last playlist head advance | 15:43:01.094Z | 15:53:05.095Z |
-| Cloudflare `client_disconnect` | 15:43:01.408Z | **15:53:32.176Z** |
-| Last 200 / first 204 | 15:46:02.517Z / 15:46:03.860Z | 15:56:33.097Z / 15:56:34.708Z |
-| Polls carrying `EXT-X-ENDLIST` | 0 | 0 |
-| **204 − Cloudflare's disconnect** | **182.45 s** | **182.53 s** |
-| **204 − recording end** | 184.61 s | **212.30 s** |
+|                                   | SRT clean stop                                                                                       | SRT kill (`am force-stop`)                                                        |
+| --------------------------------- | ---------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------- |
+| Publisher ends                    | hold released 15:43:01.34Z; `service-stopped` 15:43:01.30 on the device clock (at most 0.14 s ahead) | force-stop 15:53:01.69–02.16Z; last device sample 15:53:01.63 on the device clock |
+| Recording end, created + duration | 15:42:59.25Z                                                                                         | 15:53:02.41Z                                                                      |
+| Last playlist head advance        | 15:43:01.094Z                                                                                        | 15:53:05.095Z                                                                     |
+| Cloudflare `client_disconnect`    | 15:43:01.408Z                                                                                        | **15:53:32.176Z**                                                                 |
+| Last 200 / first 204              | 15:46:02.517Z / 15:46:03.860Z                                                                        | 15:56:33.097Z / 15:56:34.708Z                                                     |
+| Polls carrying `EXT-X-ENDLIST`    | 0                                                                                                    | 0                                                                                 |
+| **204 − Cloudflare's disconnect** | **182.45 s**                                                                                         | **182.53 s**                                                                      |
+| **204 − recording end**           | 184.61 s                                                                                             | **212.30 s**                                                                      |
 
 Against RTMPS on the bench account, 183.5 s clean and 182.8 s killed, measured
 from the end of media.
@@ -966,7 +972,7 @@ What it settles:
 Still open:
 
 - **A reconnect inside the ~30 s notice window — answered the same day: it is
-  accepted.** See *Reconnect inside Cloudflare's notice window* below. The note
+  accepted.** See _Reconnect inside Cloudflare's notice window_ below. The note
   first written here, that F-P5-2's sessions were closed by Cloudflare, read too
   much into `endpoint-closed`: the 20 s cut produced the same reason with no
   network at all, so it says the phone's endpoint closed, not who closed it.
@@ -994,17 +1000,17 @@ cellular with wifi off, a fresh input each, mobile data switched off with
 `svc data disable` (measured first: data returns in ~0.9 s, airplane mode in
 ~3.0 s), and Cloudflare's live input status sampled every second.
 
-| | 10 s cut | 20 s cut |
-|---|---|---|
-| Data off → on | 16:11:59.35 → 16:12:09.83Z (10.5 s) | 16:20:18.14 → 16:20:38.39Z (20.2 s) |
-| The app | no `dropped`; `streaming=true` throughout | `dropped` (`endpoint-closed`) 6.0 s after the cut; retries every 2 s failed on DNS with `validated=false`, so none counted toward fallback; `publishing` 2.3 s after restore |
-| Egress column during the cut | 3.5–4.5 Mbps with `network=none` | 3.1–5.7 Mbps with `network=none` until the drop |
-| Cloudflare status | `connected` unbroken from 16:10:46Z to the clean stop | new session `connected` 16:20:41.150Z; old session `client_disconnect` 16:20:48.867Z |
-| Playlist head | frozen ~8.8 s; `stalled` after 6 s; same variant | frozen ~25.4 s; `stalled` after 6.2 s; moving again 16:20:47.1Z in the same variant |
-| Recordings | **1** (165.68 s) | **1** (161.99 s) |
-| The seam | one 0.121 s video PTS gap at media 75.3 s; one 1.75 s segment | one 0.158 s video and 0.224 s audio PTS gap at media 74.0 s; all 81 segments regular; no discontinuity tag |
-| Wall time absent from the recording | ~11 s | ~25 s |
-| Hold after the clean stop, from Cloudflare's disconnect | 182.38 s | 182.43 s |
+|                                                         | 10 s cut                                                      | 20 s cut                                                                                                                                                                     |
+| ------------------------------------------------------- | ------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Data off → on                                           | 16:11:59.35 → 16:12:09.83Z (10.5 s)                           | 16:20:18.14 → 16:20:38.39Z (20.2 s)                                                                                                                                          |
+| The app                                                 | no `dropped`; `streaming=true` throughout                     | `dropped` (`endpoint-closed`) 6.0 s after the cut; retries every 2 s failed on DNS with `validated=false`, so none counted toward fallback; `publishing` 2.3 s after restore |
+| Egress column during the cut                            | 3.5–4.5 Mbps with `network=none`                              | 3.1–5.7 Mbps with `network=none` until the drop                                                                                                                              |
+| Cloudflare status                                       | `connected` unbroken from 16:10:46Z to the clean stop         | new session `connected` 16:20:41.150Z; old session `client_disconnect` 16:20:48.867Z                                                                                         |
+| Playlist head                                           | frozen ~8.8 s; `stalled` after 6 s; same variant              | frozen ~25.4 s; `stalled` after 6.2 s; moving again 16:20:47.1Z in the same variant                                                                                          |
+| Recordings                                              | **1** (165.68 s)                                              | **1** (161.99 s)                                                                                                                                                             |
+| The seam                                                | one 0.121 s video PTS gap at media 75.3 s; one 1.75 s segment | one 0.158 s video and 0.224 s audio PTS gap at media 74.0 s; all 81 segments regular; no discontinuity tag                                                                   |
+| Wall time absent from the recording                     | ~11 s                                                         | ~25 s                                                                                                                                                                        |
+| Hold after the clean stop, from Cloudflare's disconnect | 182.38 s                                                      | 182.43 s                                                                                                                                                                     |
 
 What it settles:
 
@@ -1046,25 +1052,25 @@ status CSV, power samples, device CSV); inputs `919db59b…` and `a7db40f5…`; 
 
 ### Run A — SRT, cellular, 3 h
 
-| Minute | Action | Mark |
-|---|---|---|
-| 0–5 | Baseline, not publishing | — |
-| 5 | Start SRT | mark-1 |
-| 35 | Lock screen 10 min | mark-2 / mark-3 |
-| 65 | Airplane mode 20 s | mark-4 / mark-5 |
-| 95 | Rotate phone 180°, 2 min, rotate back | mark-6 / mark-7 |
-| 125 | Airplane mode 200 s | mark-8 / mark-9 |
-| 185 | Stop | mark-10 |
+| Minute | Action                                | Mark            |
+| ------ | ------------------------------------- | --------------- |
+| 0–5    | Baseline, not publishing              | —               |
+| 5      | Start SRT                             | mark-1          |
+| 35     | Lock screen 10 min                    | mark-2 / mark-3 |
+| 65     | Airplane mode 20 s                    | mark-4 / mark-5 |
+| 95     | Rotate phone 180°, 2 min, rotate back | mark-6 / mark-7 |
+| 125    | Airplane mode 200 s                   | mark-8 / mark-9 |
+| 185    | Stop                                  | mark-10         |
 
 Two protocol notes for the screen-locked step (minute 35):
 
 - **Unplug the power bank for it.** Stay-awake-on-USB is set on this handset (`svc power stayon
-  usb`) and charging suppresses Doze, so a plugged screen-off test measures nothing. Check the CSV
+usb`) and charging suppresses Doze, so a plugged screen-off test measures nothing. Check the CSV
   shows `charging` false for those rows, then plug back in at mark-3. Criterion 9 is read over the
   charging rows only.
-- The foreground service takes a wake lock by default. To measure a lock cycle *without* it, put an
+- The foreground service takes a wake lock by default. To measure a lock cycle _without_ it, put an
   empty file at `/sdcard/Android/data/com.seazn.capture/files/p5-no-wakelock` before arming (`adb
-  push` it, `adb shell rm` it to undo); the `service-started` event carries `wakeLock` true or false
+push` it, `adb shell rm` it to undo); the `service-started` event carries `wakeLock` true or false
   either way, so the CSV always says which cycle was measured.
 - **The unplug is simulated, and the CSV says so.** adb runs over the USB cable and Run A uses
   cellular with wifi off, so a physical unplug would kill the driver mid-run. The driver calls
@@ -1085,20 +1091,20 @@ so if it is not recorded here nothing records it.
 Results — **ABORTED at about minute 97, 2026-09-12.** Ingest ran 10:28:51Z to
 about 11:02:09Z (33 min 18 s of the intended 180) and then stopped. adb was lost
 in the same window. Nothing below is a three-hour result, and the criteria the
-protocol never reached are marked *not reached* rather than left blank, so an
+protocol never reached are marked _not reached_ rather than left blank, so an
 empty cell cannot be mistaken for a pass.
 
-| Criterion | Result | Evidence |
-|---|---|---|
-| 1 | **100%, and that is the problem.** 1985 of 1985 samples publishing across the whole 33 min window. But Cloudflare stopped receiving at 11:02:09.8Z while the app went on reporting `streaming=true` until 11:02:20.7Z, so about 11 of those samples are false. **Criterion 1 therefore scored a perfect pass on a run that died** — it counts the app's own flag, and the flag was lying. **The certificate was issued by the thing being certified.** Numerically the error is 0.55%; in principle the criterion cannot detect this failure mode at all, and needs cross-checking against playlist advancement to mean anything | `run-a-full.csv` via `telemetry-report.ts` |
-| 2 | **Pass.** Peak status 2, never reached 3, across the full window. Battery 32.7 → 39.4 °C, headroom 0.53 → 0.77 | 2476 samples in `run-a-full.csv` |
-| 3 | **Pass.** 60 s rolling means over the full window: min **3949.2** / median **4181.0** / p5 **4158.1** kbps, all above the 3000 floor. Reads high because it counts audio, container and SRT overhead, as the note above says | `telemetry-report.ts` on `run-a-full.csv` |
-| 4 | **Not reached.** The minute-65 outage never happened — the driver issued it after adb was gone | — |
-| 5 | **Not reached** as designed — no minute-125 outage, so the split is untested. But the unplanned death answered something more useful: **no `EXT-X-ENDLIST` is ever served at `timeoutSeconds=180`.** My playlist sat frozen at head 997 for ~3.5 min, last 200 at 11:05:50.9Z still serving segments, then master 204 at 11:05:55.0Z — a 4.16 s gap, too small for an ENDLIST to appear and vanish inside. A controlled pair run elsewhere on this account settles that it is the *value* and not the manner of ending: a clean cut (SIGINT, trailer written) and an abrupt death (SIGKILL) both reached 204 with no ENDLIST, at +183.5 s and +182.8 s — 0.7 s apart — while 10 and 60 both emit one at ≈ timeout + 3 s. **Consequence for the whole programme: nothing may treat `EXT-X-ENDLIST` as the end-of-stream signal, because at the value we would configure it never arrives.** One difference stays open: my hold ran **225.2 s** from ingest end (212.3 s from the last head advance) against their 183 s, and my detection uncertainty is only 4.16 s, so it is not measurement lag. See **H-P5-1** for the proposed mechanism and the two cells that would settle it — settled 2026-09-14: the hold runs 182.5 s from when Cloudflare notices the publisher is gone, and for a killed SRT publisher that is about 30 s after its last media | `p5-run-a.hls2.csv` lines 673–759 |
-| 6 | **Failed, and the cable is largely exonerated.** Delivery stopped 3 min 22 s into the 10-minute screen-off window. Three independent clocks separate the two candidate causes without needing the handset: ingest stopped at **11:02:09.8Z** (10:28:51.599Z plus the recording's own 1998.23 s); the device wrote its **last telemetry row at 11:02:20.7Z**, still claiming `streaming=true` at 4.4 Mbps; and **adb was still alive at 11:02:51–57Z**, when a background check successfully ran `adb shell` against that CSV. So the cable was still connected when delivery ended, and the 1 Hz sampler had stopped writing ~35 s before a read that still worked — with `SpikeLog` flushing on every write, that is not buffering. The app stopped while the device was reachable, which points at the process being killed or frozen during screen-off rather than at the unplug. **Mechanism from on-device CSV:** zero `dropped` / `error` / `service-stopped` rows — the process ceased without the transport observing a close (see F-P5-3) | `cf.ts videos`, `p5-run-a.hls2.csv`, `.p5/run-a-full.csv`, the 11:02:5x watcher output |
-| 7 | **Not reached for the flip; partial on encoded orientation.** Minute-95 never happened, so the three P4 assertions (preview / encoded / rotation metadata across a 180° flip) cannot be scored. What the 33 min recording *does* show: encoded picture is **1280×720** landscape throughout (early / mid / late HLS samples), with **no rotation side_data** — pixels carry the orientation, not a display matrix. **Upright is confirmed by eye**, which geometry could not do: frames at t=300 s and t=1900 s both show floor signage whose lettering reads correctly, and a 180° rotation would invert it — a flipped picture is also 1280×720 landscape with no rotation matrix, so the columns above are consistent with an upside-down broadcast. Preview and flip still need a live handset | HLS samples from `94f526ff…` via ffprobe; download enabled at `…/downloads/default.mp4` |
-| 8 | **Fail** on every 20 s sample pulled from the recording. mean_volume **−42.3 / −47.9 / −60.2 dB** (early ~2 min / mid ~16 min / late ~30 min), all below the −40 dB floor. max_volume −19.2 / −20.1 / −38.9 dB. The mid reading matches the MP4 download byte-for-byte on volume, so this is not an HLS packaging artefact. Quiet room + phone mic, not a dead encoder — but the criterion is a level floor, and the floor was missed. **Not a screen-off mute either.** The late −60.2 dB reading sits on the screen-off boundary (t≈1797 s), which could have meant Android handing a backgrounded app a silenced mic, so a per-10 s RMS timeline of the whole audio rendition was taken: the level had already fallen to −57…−61 dB about **45 s before** screen-off; **0 of 200 windows are digital silence** (floor −66 dB, a quiet room's noise floor rather than zeros); and **−41 / −40 dB of real sound was captured at t=1955–1965 s with the screen off**. The `microphone` foreground service kept capturing through screen-off until the process died | `.p5/run-a-sample-{early,mid,late}.ts` + volumedetect; MP4 download mid agrees; `.p5/run-a-audio-rms10s.txt` |
-| 9 | **Not reached**; the floor over charging rows was 57% when the run died. The supply is a finding in itself, though not for the reason first written here: this row originally cited `Max charging current: 900000` µA at 5 V as a **4.5 W** ceiling, but on this build that field carries a broadcast timestamp of +1d19h, i.e. it is never refreshed, so it says nothing about any supply and **the 4.5 W figure is withdrawn**. The drain is what is measured. Battery fell 68% → 57% by minute 39, between 14.7 and 28%/hour depending on the window. It is not marginal: after the relaunch, **idle and not publishing**, the handset still lost 61% → 54% in 53 min on the same supply. A power bank or powered hub is a prerequisite, not a convenience. **Retry 2026-09-12 afternoon:** handset is on the **Anker USB-C hub** (adb `12be753e` alive), still reporting the same stale `Max charging current` (so no evidence either way), and `batterystats` shows discharge steps into the mid-30%s while USB-powered — so this hub path is bus-powered (or under-powered) and does **not** yet clear the gate. Prefer a *wall-powered* hub so the existing adb driver survives; a power bank only if marks / screen / airplane / stop are redesigned without adb. **Supply under load, 2026-09-13: FAIL.** With the battery full, only a charge counter held under encode load can prove a supply, so it was sampled every 15 s through 11.4 min of continuous SRT publish: **3,722,000 → 3,530,000 µAh, 192 mAh in 684.7 s = 16.8 mAh/min**, against a pre-registered pass of about 2 mAh/min and 10–18 on the old supply. Battery 33.8 → 43.4 °C. The display read **100%** and the HUD **charging** throughout while 192 mAh drained, so criterion 9 is read from the charge counter, never the percentage or the charging flag. `Battery current` on this OPLUS build is negative when charging and positive when discharging, so the positive values seen during Run A were net discharge. From full at that rate a 3 h soak ends near 19%, under the floor: the soak still needs a wall-powered supply; the few-minute H-P5-1 cells do not | `dumpsys battery`, `run-a-full.csv`; hub recheck via `adb` + `ioreg`; `.p5/p5-h1-clean-20260913T095410Z.power.csv` |
+| Criterion | Result                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   | Evidence                                                                                                           |
+| --------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| 1         | **100%, and that is the problem.** 1985 of 1985 samples publishing across the whole 33 min window. But Cloudflare stopped receiving at 11:02:09.8Z while the app went on reporting `streaming=true` until 11:02:20.7Z, so about 11 of those samples are false. **Criterion 1 therefore scored a perfect pass on a run that died** — it counts the app's own flag, and the flag was lying. **The certificate was issued by the thing being certified.** Numerically the error is 0.55%; in principle the criterion cannot detect this failure mode at all, and needs cross-checking against playlist advancement to mean anything                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         | `run-a-full.csv` via `telemetry-report.ts`                                                                         |
+| 2         | **Pass.** Peak status 2, never reached 3, across the full window. Battery 32.7 → 39.4 °C, headroom 0.53 → 0.77                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           | 2476 samples in `run-a-full.csv`                                                                                   |
+| 3         | **Pass.** 60 s rolling means over the full window: min **3949.2** / median **4181.0** / p5 **4158.1** kbps, all above the 3000 floor. Reads high because it counts audio, container and SRT overhead, as the note above says                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             | `telemetry-report.ts` on `run-a-full.csv`                                                                          |
+| 4         | **Not reached.** The minute-65 outage never happened — the driver issued it after adb was gone                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           | —                                                                                                                  |
+| 5         | **Not reached** as designed — no minute-125 outage, so the split is untested. But the unplanned death answered something more useful: **no `EXT-X-ENDLIST` is ever served at `timeoutSeconds=180`.** My playlist sat frozen at head 997 for ~3.5 min, last 200 at 11:05:50.9Z still serving segments, then master 204 at 11:05:55.0Z — a 4.16 s gap, too small for an ENDLIST to appear and vanish inside. A controlled pair run elsewhere on this account settles that it is the _value_ and not the manner of ending: a clean cut (SIGINT, trailer written) and an abrupt death (SIGKILL) both reached 204 with no ENDLIST, at +183.5 s and +182.8 s — 0.7 s apart — while 10 and 60 both emit one at ≈ timeout + 3 s. **Consequence for the whole programme: nothing may treat `EXT-X-ENDLIST` as the end-of-stream signal, because at the value we would configure it never arrives.** One difference stays open: my hold ran **225.2 s** from ingest end (212.3 s from the last head advance) against their 183 s, and my detection uncertainty is only 4.16 s, so it is not measurement lag. See **H-P5-1** for the proposed mechanism and the two cells that would settle it — settled 2026-09-14: the hold runs 182.5 s from when Cloudflare notices the publisher is gone, and for a killed SRT publisher that is about 30 s after its last media                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               | `p5-run-a.hls2.csv` lines 673–759                                                                                  |
+| 6         | **Failed, and the cable is largely exonerated.** Delivery stopped 3 min 22 s into the 10-minute screen-off window. Three independent clocks separate the two candidate causes without needing the handset: ingest stopped at **11:02:09.8Z** (10:28:51.599Z plus the recording's own 1998.23 s); the device wrote its **last telemetry row at 11:02:20.7Z**, still claiming `streaming=true` at 4.4 Mbps; and **adb was still alive at 11:02:51–57Z**, when a background check successfully ran `adb shell` against that CSV. So the cable was still connected when delivery ended, and the 1 Hz sampler had stopped writing ~35 s before a read that still worked — with `SpikeLog` flushing on every write, that is not buffering. The app stopped while the device was reachable, which points at the process being killed or frozen during screen-off rather than at the unplug. **Mechanism from on-device CSV:** zero `dropped` / `error` / `service-stopped` rows — the process ceased without the transport observing a close (see F-P5-3)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       | `cf.ts videos`, `p5-run-a.hls2.csv`, `.p5/run-a-full.csv`, the 11:02:5x watcher output                             |
+| 7         | **Not reached for the flip; partial on encoded orientation.** Minute-95 never happened, so the three P4 assertions (preview / encoded / rotation metadata across a 180° flip) cannot be scored. What the 33 min recording _does_ show: encoded picture is **1280×720** landscape throughout (early / mid / late HLS samples), with **no rotation side_data** — pixels carry the orientation, not a display matrix. **Upright is confirmed by eye**, which geometry could not do: frames at t=300 s and t=1900 s both show floor signage whose lettering reads correctly, and a 180° rotation would invert it — a flipped picture is also 1280×720 landscape with no rotation matrix, so the columns above are consistent with an upside-down broadcast. Preview and flip still need a live handset                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       | HLS samples from `94f526ff…` via ffprobe; download enabled at `…/downloads/default.mp4`                            |
+| 8         | **Fail** on every 20 s sample pulled from the recording. mean_volume **−42.3 / −47.9 / −60.2 dB** (early ~2 min / mid ~16 min / late ~30 min), all below the −40 dB floor. max_volume −19.2 / −20.1 / −38.9 dB. The mid reading matches the MP4 download byte-for-byte on volume, so this is not an HLS packaging artefact. Quiet room + phone mic, not a dead encoder — but the criterion is a level floor, and the floor was missed. **Not a screen-off mute either.** The late −60.2 dB reading sits on the screen-off boundary (t≈1797 s), which could have meant Android handing a backgrounded app a silenced mic, so a per-10 s RMS timeline of the whole audio rendition was taken: the level had already fallen to −57…−61 dB about **45 s before** screen-off; **0 of 200 windows are digital silence** (floor −66 dB, a quiet room's noise floor rather than zeros); and **−41 / −40 dB of real sound was captured at t=1955–1965 s with the screen off**. The `microphone` foreground service kept capturing through screen-off until the process died                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       | `.p5/run-a-sample-{early,mid,late}.ts` + volumedetect; MP4 download mid agrees; `.p5/run-a-audio-rms10s.txt`       |
+| 9         | **Not reached**; the floor over charging rows was 57% when the run died. The supply is a finding in itself, though not for the reason first written here: this row originally cited `Max charging current: 900000` µA at 5 V as a **4.5 W** ceiling, but on this build that field carries a broadcast timestamp of +1d19h, i.e. it is never refreshed, so it says nothing about any supply and **the 4.5 W figure is withdrawn**. The drain is what is measured. Battery fell 68% → 57% by minute 39, between 14.7 and 28%/hour depending on the window. It is not marginal: after the relaunch, **idle and not publishing**, the handset still lost 61% → 54% in 53 min on the same supply. A power bank or powered hub is a prerequisite, not a convenience. **Retry 2026-09-12 afternoon:** handset is on the **Anker USB-C hub** (adb `12be753e` alive), still reporting the same stale `Max charging current` (so no evidence either way), and `batterystats` shows discharge steps into the mid-30%s while USB-powered — so this hub path is bus-powered (or under-powered) and does **not** yet clear the gate. Prefer a _wall-powered_ hub so the existing adb driver survives; a power bank only if marks / screen / airplane / stop are redesigned without adb. **Supply under load, 2026-09-13: FAIL.** With the battery full, only a charge counter held under encode load can prove a supply, so it was sampled every 15 s through 11.4 min of continuous SRT publish: **3,722,000 → 3,530,000 µAh, 192 mAh in 684.7 s = 16.8 mAh/min**, against a pre-registered pass of about 2 mAh/min and 10–18 on the old supply. Battery 33.8 → 43.4 °C. The display read **100%** and the HUD **charging** throughout while 192 mAh drained, so criterion 9 is read from the charge counter, never the percentage or the charging flag. `Battery current` on this OPLUS build is negative when charging and positive when discharging, so the positive values seen during Run A were net discharge. From full at that rate a 3 h soak ends near 19%, under the floor: the soak still needs a wall-powered supply; the few-minute H-P5-1 cells do not | `dumpsys battery`, `run-a-full.csv`; hub recheck via `adb` + `ioreg`; `.p5/p5-h1-clean-20260913T095410Z.power.csv` |
 
 **Two things the frames settle that no column could.**
 
@@ -1107,7 +1113,7 @@ camera, while the device's own UI had the Tier A scorebug on screen throughout
 (`Live · H2 · seazn · ENG4 · CRO2` in the uiautomator dump). That is the
 architecture working as intended and not a defect: the phone is a camera with a
 network stack, and the scorebug is composited downstream by the browser source —
-which is precisely why §7 says the operator sees the score slightly *ahead* of
+which is precisely why §7 says the operator sees the score slightly _ahead_ of
 what viewers see. It is recorded because the opposite is a natural assumption:
 anyone concluding from the on-screen preview that the phone burns the overlay
 into the broadcast would be wrong, and would then mis-size both the encode and
@@ -1157,24 +1163,24 @@ Thermal curve (minute → status, headroom, battery °C):
 - **Watching:** from the laptop only, polling the playlist every 2 s and Cloudflare's status every 5 s.
 - **Plan:** 3 h.
 
-| Time (Z) | What |
-|---|---|
-| 17:12:14 | Thermal status 3 (severe); it stays there, never reaching 4 |
-| 17:00–17:40 | Egress median 3.7–4.0 Mbps at 30 fps |
-| 18:20–19:12 | Egress median 0.52–0.70 Mbps, still 30 fps, RTT ~31–35 ms, no SRT drops |
-| 19:12:50 | Egress already ~4.3–4.9 Mbps; SRT clean (no loss, RTT ~35 ms) through 19:14:08 |
-| 19:12:56 | Playlist head stops at 3998 while SRT reports clean delivery; see the correction under F-P5-5 |
-| 19:14–19:16 | SRT distress begins: retransmits, send buffer to 2 s, RTT to 1.66 s |
-| 19:13:38 | Last segment packaged in broadcast 1 |
-| 19:16:41 | App `dropped` (`endpoint-closed`); Cloudflare `client_disconnect` the same second |
-| 19:16:44 | Reconnected; **video frames 0/s from here**, audio normal, HUD `LIVE` (F-P5-6) |
-| 19:22:5x | Owner replugs the cable so the phone can be read live; no longer cable-free |
-| 19:27:22–43 | Controller forces a reconnect with a 20 s mobile-data cut |
-| 19:27:45 | Publishing again; 30 fps back on the phone |
-| 19:27:48 | Cloudflare opens broadcast 2 |
-| 19:27:45–19:36:54 | 3.3–3.9 Mbps offered into a link estimated at 1.2 Mbps; send buffer pinned at 2.05 s |
-| 19:36:54.7 | Owner stops with Hold to stop; Cloudflare `client_disconnect` 19:36:56.297 |
-| 19:39:58.577 | First 204: hold **182.28 s** from the disconnect, the fifth measurement at ~182.3–182.5 s |
+| Time (Z)          | What                                                                                          |
+| ----------------- | --------------------------------------------------------------------------------------------- |
+| 17:12:14          | Thermal status 3 (severe); it stays there, never reaching 4                                   |
+| 17:00–17:40       | Egress median 3.7–4.0 Mbps at 30 fps                                                          |
+| 18:20–19:12       | Egress median 0.52–0.70 Mbps, still 30 fps, RTT ~31–35 ms, no SRT drops                       |
+| 19:12:50          | Egress already ~4.3–4.9 Mbps; SRT clean (no loss, RTT ~35 ms) through 19:14:08                |
+| 19:12:56          | Playlist head stops at 3998 while SRT reports clean delivery; see the correction under F-P5-5 |
+| 19:14–19:16       | SRT distress begins: retransmits, send buffer to 2 s, RTT to 1.66 s                           |
+| 19:13:38          | Last segment packaged in broadcast 1                                                          |
+| 19:16:41          | App `dropped` (`endpoint-closed`); Cloudflare `client_disconnect` the same second             |
+| 19:16:44          | Reconnected; **video frames 0/s from here**, audio normal, HUD `LIVE` (F-P5-6)                |
+| 19:22:5x          | Owner replugs the cable so the phone can be read live; no longer cable-free                   |
+| 19:27:22–43       | Controller forces a reconnect with a 20 s mobile-data cut                                     |
+| 19:27:45          | Publishing again; 30 fps back on the phone                                                    |
+| 19:27:48          | Cloudflare opens broadcast 2                                                                  |
+| 19:27:45–19:36:54 | 3.3–3.9 Mbps offered into a link estimated at 1.2 Mbps; send buffer pinned at 2.05 s          |
+| 19:36:54.7        | Owner stops with Hold to stop; Cloudflare `client_disconnect` 19:36:56.297                    |
+| 19:39:58.577      | First 204: hold **182.28 s** from the disconnect, the fifth measurement at ~182.3–182.5 s     |
 
 **Recordings.**
 
@@ -1184,25 +1190,25 @@ Thermal curve (minute → status, headroom, battery °C):
 - **What viewers got:** nothing from 19:13:38Z to 19:27:48Z, then an audio-only broadcast until the stop.
   That is about 23 of the run's 158 minutes without a picture.
 
-| Criterion | Result |
-|---|---|
-| 1 | **Fail.** From publish to stop the streaming flag said publishing in 99.79% of samples, while no picture reached viewers for the last ~23 minutes. The flag half of the criterion passes a run whose playlist half fails, as Run A warned. |
-| 2 | **Pass.** Peak thermal status 3 from 17:12:14Z to the end; never 4. Battery peak 46.8 °C. |
-| 3 | **Fail as written — read it with care.** Egress median 1.89 Mbps over the run. For the hour before 19:13 it was 0.5–0.7 Mbps at a full 30 fps: VBR on a still scene, below the floor without anything shedding. After 19:16:44 it was ~180 kbps of audio only. Egress still cannot show delivery (F-P5-5). |
-| 4–7 | Not in this run's hands-off shape. |
-| 8 | Not measured. |
-| 9 | **Pass.** Battery floor while charging 55%; it ran 56% → 68% on the wall charger. |
+| Criterion | Result                                                                                                                                                                                                                                                                                                     |
+| --------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1         | **Fail.** From publish to stop the streaming flag said publishing in 99.79% of samples, while no picture reached viewers for the last ~23 minutes. The flag half of the criterion passes a run whose playlist half fails, as Run A warned.                                                                 |
+| 2         | **Pass.** Peak thermal status 3 from 17:12:14Z to the end; never 4. Battery peak 46.8 °C.                                                                                                                                                                                                                  |
+| 3         | **Fail as written — read it with care.** Egress median 1.89 Mbps over the run. For the hour before 19:13 it was 0.5–0.7 Mbps at a full 30 fps: VBR on a still scene, below the floor without anything shedding. After 19:16:44 it was ~180 kbps of audio only. Egress still cannot show delivery (F-P5-5). |
+| 4–7       | Not in this run's hands-off shape.                                                                                                                                                                                                                                                                         |
+| 8         | Not measured.                                                                                                                                                                                                                                                                                              |
+| 9         | **Pass.** Battery floor while charging 55%; it ran 56% → 68% on the wall charger.                                                                                                                                                                                                                          |
 
 **Telemetry totals** (`telemetry-report.ts`):
 
-| Measure | Value |
-|---|---|
-| Video fps | median 30.01, minimum 0 |
-| Audio frames/s | median 46.87 |
-| SRT send drops | 184,022 |
-| SRT retransmits | 8,840 |
-| SRT write-lost | 11,282 |
-| RTT | p50 33 ms, max 2234 ms |
+| Measure         | Value                   |
+| --------------- | ----------------------- |
+| Video fps       | median 30.01, minimum 0 |
+| Audio frames/s  | median 46.87            |
+| SRT send drops  | 184,022                 |
+| SRT retransmits | 8,840                   |
+| SRT write-lost  | 11,282                  |
+| RTT             | p50 33 ms, max 2234 ms  |
 
 **Method notes paid for here.**
 
@@ -1239,14 +1245,14 @@ Evidence:
 
 **B — stall hook pushed while video flowed: pass end to end.**
 
-| Time (Z) | Event |
-|---|---|
-| 21:22:36.9 | Hook pushed |
-| 21:22:37.2 | `video-stall-simulation present=true` |
-| 21:22:40.4 | `video-stalled msSinceAdvance=3007 audioAdvancing=true`, 3.7 s after the push |
+| Time (Z)   | Event                                                                                          |
+| ---------- | ---------------------------------------------------------------------------------------------- |
+| 21:22:36.9 | Hook pushed                                                                                    |
+| 21:22:37.2 | `video-stall-simulation present=true`                                                          |
+| 21:22:40.4 | `video-stalled msSinceAdvance=3007 audioAdvancing=true`, 3.7 s after the push                  |
 | 21:22:40.4 | `dropped reason=video-stalled` → `video-recovery attempt=1 simulated=true` → hook file deleted |
-| 21:22:43.3 | Publishing again (510 ms), regulator starting at 1000k |
-| 21:22:43.9 | `video-recovered msStalled=6529` |
+| 21:22:43.3 | Publishing again (510 ms), regulator starting at 1000k                                         |
+| 21:22:43.9 | `video-recovered msStalled=6529`                                                               |
 
 The status line read `NO VIDEO — recovering` in caution orange during the stall and `LIVE srt` after. The
 Tier A scorebug kept its own red `Live` badge throughout. That badge comes from the fixture, not delivery,
@@ -1374,12 +1380,14 @@ straight after a driver was killed with SIGKILL mid-publish, and minutes before 
 already in a bad state. Its test: kill the app mid-publish, relaunch, then HOME while live.
 
 **That test, run 2026-09-28 21:03Z: not reproduced.** The setup was RTMPS to the laptop listener:
+
 1. A `capture-background.sh` run published for 10 s.
 2. Its driver and listener were then killed with SIGKILL.
 3. The app was left retrying every 2 s (`EOFException`) for 20 s.
 4. A fresh run force-stopped and relaunched it, published, and pressed HOME for 5 s at +25 s.
 
 What happened:
+
 - `CameraSessionController: Capture failed with code 0` was logged at the HOME press (21:04:38Z).
 - Video kept going regardless: 30 fps before HOME, 22–28 fps in the transition seconds, then 30 fps.
 - The listener counted 30 fps throughout. No `video-stalled`, and no `Frames produced 0`.
@@ -1404,14 +1412,14 @@ packet counts. It gives up the file capture.
 **The retuned regulator on the device.** The safeguards check, again on roaming cellular with wifi off, on
 the build with `256088c`, `4b32cbc`, `0658a45`:
 
-| Rule | On the device |
-|---|---|
-| Start at 1500k | One `regulator` event, `startBps=1500000`; 30.01 fps; column 25 filled 149/149 |
-| Raise +100k per 10 s, only after a clean interval | 1.5M → 3.0M in 150 s on a clean link; first raise after the data cut 31 s after it |
-| Remember a failed rate for 5 min | Caps at 1200000, 1401600 and 630720 (80% of 1500k, 1752k, 788.4k); the first and last lifted after 5 min, the middle one replaced by a newer cut |
-| Size a cut from measured egress | 3000k → 1552000 on a 1.1 s send buffer with no drops |
-| Reconnect at the last target | 3000k after the stall recovery, 750k after the data cut |
-| Log `regulator` only on a successful connect | 7 failed connects during the 20 s cut wrote none (the old build wrote eight) |
+| Rule                                              | On the device                                                                                                                                    |
+| ------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Start at 1500k                                    | One `regulator` event, `startBps=1500000`; 30.01 fps; column 25 filled 149/149                                                                   |
+| Raise +100k per 10 s, only after a clean interval | 1.5M → 3.0M in 150 s on a clean link; first raise after the data cut 31 s after it                                                               |
+| Remember a failed rate for 5 min                  | Caps at 1200000, 1401600 and 630720 (80% of 1500k, 1752k, 788.4k); the first and last lifted after 5 min, the middle one replaced by a newer cut |
+| Size a cut from measured egress                   | 3000k → 1552000 on a 1.1 s send buffer with no drops                                                                                             |
+| Reconnect at the last target                      | 3000k after the stall recovery, 750k after the data cut                                                                                          |
+| Log `regulator` only on a successful connect      | 7 failed connects during the 20 s cut wrote none (the old build wrote eight)                                                                     |
 
 The stall check passed as before: detected 3.7 s after the hook, publishing again 2.7 s later,
 `video-recovered msStalled=6531`. The status line read `NO VIDEO — recovering` in orange during the stall and
@@ -1430,14 +1438,14 @@ Evidence: `.p5/p5-capbg-20260928T134309Z.*` (listener rejected), `.p5/p5-capbg-2
 The retuned build published RTMPS to a reconnect-accepting listener on the laptop through `adb reverse`, with
 continuous logcat. Each run published for 20 s, then took the interruption.
 
-| Interruption | Stream | Finding |
-|---|---|---|
-| Browser (Chrome in front 13 s, then back) | 30 fps apart from one second at 12 fps and one at 21 fps; audio ~47/s; no drop | none |
-| Phone call rung and declined (19 s) | No effect | none |
-| Phone call answered (13.5 s) | Video 13–16 fps for 2 s at answer, 15 fps for 1 s at hang-up; no drop; **microphone silenced for the whole call** | F-P5-8 |
-| WhatsApp call rung, not answered, during launch | Ringing UI covered the arming app; preview removed, `Capture failed` ×4; still armed | F-P5-9 |
-| WhatsApp video call answered (6 s) | Video to 0; watchdog recovered in 6.9 s | F-P5-9 |
-| WhatsApp video call answered (30 s) | Video 1–20 fps and audio 1–9/s for ~20 s; **not detected** | F-P5-9 |
+| Interruption                                    | Stream                                                                                                            | Finding |
+| ----------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- | ------- |
+| Browser (Chrome in front 13 s, then back)       | 30 fps apart from one second at 12 fps and one at 21 fps; audio ~47/s; no drop                                    | none    |
+| Phone call rung and declined (19 s)             | No effect                                                                                                         | none    |
+| Phone call answered (13.5 s)                    | Video 13–16 fps for 2 s at answer, 15 fps for 1 s at hang-up; no drop; **microphone silenced for the whole call** | F-P5-8  |
+| WhatsApp call rung, not answered, during launch | Ringing UI covered the arming app; preview removed, `Capture failed` ×4; still armed                              | F-P5-9  |
+| WhatsApp video call answered (6 s)              | Video to 0; watchdog recovered in 6.9 s                                                                           | F-P5-9  |
+| WhatsApp video call answered (30 s)             | Video 1–20 fps and audio 1–9/s for ~20 s; **not detected**                                                        | F-P5-9  |
 
 Both kinds of call were placed by the owner from a second phone. The WhatsApp calls began before the driver
 prompted for them, so its own call timing is not used; the times above come from logcat (`AudioManager
@@ -1451,20 +1459,21 @@ Evidence: `.p5/p5-interrupt-browser-20260928T*`, `.p5/p5-interrupt-call-20260928
 The APK was `ef8441b1…`, carrying the F-P5-8/F-P5-9 detection after two review rounds (`1d88c2c` to
 `0772888`). The setup was the same: RTMPS to a laptop listener. The driver `scripts/p5/device/interrupt.sh`
 now:
+
 - screenshots the HUD every 2 s once a call is up;
 - records Do Not Disturb (`zen_mode`);
 - keeps one decoded frame a second (`e4028a6`, `a4171d3`).
 
 The owner placed every call from a second phone.
 
-| Run | DND | What happened | Detection |
-|---|---|---|---|
-| No call (`…call-…T164838Z`) | off | Publishing about 4 min, no interruption | No `starved`, `mic-*` or `camera-*` rows: no false alarm |
-| Phone call answered (`…call-…T165404Z`) | off | Video 17 then 12 fps and audio 23 then 25/s for 2 s at answer; mic silenced for the call | `mic-silenced`/`mic-restored` (11.9 s); HUD `MIC SILENCED BY SYSTEM`. Also `delivery-starved videoFps=9.7 audioFps=15.2` for 3.7 s at answer |
-| WhatsApp video ×3 (`…whatsapp-…T165758Z`, `T170717Z`, `T171822Z`) | off | Camera 1 taken, video stalled, recovered; mic silenced for the call | `camera-contended`/`released`, `video-stalled`/`recovered`, `mic-*`; **the stream carried noise after the recovery (F-P5-10)** |
-| Phone call from a starred contact | priority | **Rang aloud**, answered; mic silenced 14.9 s | As above |
-| WhatsApp video call | total silence | **Nothing on the phone**; the audio mode stayed normal | No rows; broadcast untouched |
-| Phone call from a starred contact | total silence | Reached the phone silently (call state ringing); the owner saw and heard nothing; ended unanswered | No rows; 0 bad seconds in 115 s |
+| Run                                                               | DND           | What happened                                                                                      | Detection                                                                                                                                    |
+| ----------------------------------------------------------------- | ------------- | -------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| No call (`…call-…T164838Z`)                                       | off           | Publishing about 4 min, no interruption                                                            | No `starved`, `mic-*` or `camera-*` rows: no false alarm                                                                                     |
+| Phone call answered (`…call-…T165404Z`)                           | off           | Video 17 then 12 fps and audio 23 then 25/s for 2 s at answer; mic silenced for the call           | `mic-silenced`/`mic-restored` (11.9 s); HUD `MIC SILENCED BY SYSTEM`. Also `delivery-starved videoFps=9.7 audioFps=15.2` for 3.7 s at answer |
+| WhatsApp video ×3 (`…whatsapp-…T165758Z`, `T170717Z`, `T171822Z`) | off           | Camera 1 taken, video stalled, recovered; mic silenced for the call                                | `camera-contended`/`released`, `video-stalled`/`recovered`, `mic-*`; **the stream carried noise after the recovery (F-P5-10)**               |
+| Phone call from a starred contact                                 | priority      | **Rang aloud**, answered; mic silenced 14.9 s                                                      | As above                                                                                                                                     |
+| WhatsApp video call                                               | total silence | **Nothing on the phone**; the audio mode stayed normal                                             | No rows; broadcast untouched                                                                                                                 |
+| Phone call from a starred contact                                 | total silence | Reached the phone silently (call state ringing); the owner saw and heard nothing; ended unanswered | No rows; 0 bad seconds in 115 s                                                                                                              |
 
 Three things this changes:
 
@@ -1492,15 +1501,15 @@ first outage (F-P5-12).** Planned: 60 min publishing, with Wi-Fi and data off fo
 
 The 20 minutes before the outage were clean:
 
-| Measure | Result |
-|---|---|
-| Connect → publishing | 3.5 s |
-| Publishing share | 100% of 1186 samples |
-| Regulator | 1500k start, 3000k ceiling reached at +151 s, no cut |
-| Egress p5 / median / p95 | 2254k / 3086k / 3603k |
-| 60 s rolling mean after the ramp (criterion 3) | never below 3000k (minimum 3048k) |
-| Playlist | 471 advancing, 12 isolated one-poll holds, no stall |
-| Thermal | status 2 for 84% of samples; battery 42% → 36% while charging |
+| Measure                                        | Result                                                        |
+| ---------------------------------------------- | ------------------------------------------------------------- |
+| Connect → publishing                           | 3.5 s                                                         |
+| Publishing share                               | 100% of 1186 samples                                          |
+| Regulator                                      | 1500k start, 3000k ceiling reached at +151 s, no cut          |
+| Egress p5 / median / p95                       | 2254k / 3086k / 3603k                                         |
+| 60 s rolling mean after the ramp (criterion 3) | never below 3000k (minimum 3048k)                             |
+| Playlist                                       | 471 advancing, 12 isolated one-poll holds, no stall           |
+| Thermal                                        | status 2 for 84% of samples; battery 42% → 36% while charging |
 
 At 21:33:49.9Z the script turned off Wi-Fi and data. StreamPack reported the drop
 (`dropped transport=rtmps reason=endpoint-closed`, 21:33:49.979Z), and 63 ms later the process died.
@@ -1514,14 +1523,14 @@ Criteria 4 and 5 are therefore untested on RTMPS, and cannot be tested until F-P
 (guard round 0; round 1 only narrows what it swallows). The cuts were a 20 s outage at +5 min and a 200 s
 outage at +10 min.
 
-| | 20 s cut (22:47:00Z) | 200 s cut (22:52:00Z) |
-|---|---|---|
-| The app | `dropped` (`endpoint-closed`, streams still flagged on); **no guard swallow**, because Ktor's closer did not throw this time | `dropped`, then `uncaught-swallowed … ClosedWriteChannelException message=Broken pipe` 48 ms later; **the process lived** |
-| Retries | 10 × `connect-failed UnresolvedAddressException validated=false`, not counted | ~100, the same, not counted; no fallback, as designed |
-| Publishing again | 1.4 s after the network returned (`connectMs=808`) | 1.7 s after (`connectMs=392`) |
-| Cloudflare | old session `disconnected` 22:47:31Z, `connected` 22:47:39Z | `disconnected` 22:52:31Z, `connected` 22:55:27Z |
-| Playlist | head 150 → 151 at 22:47:34Z, then **stalled 4.5 min**, until the next cut | new variant from 22:55:30Z, advancing to the stop |
-| Recordings | first recording **ends at the cut (303.8 s)**, and the 4.5 min after it are in no recording | a second recording (397.8 s), as criterion 5 expects |
+|                  | 20 s cut (22:47:00Z)                                                                                                         | 200 s cut (22:52:00Z)                                                                                                     |
+| ---------------- | ---------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| The app          | `dropped` (`endpoint-closed`, streams still flagged on); **no guard swallow**, because Ktor's closer did not throw this time | `dropped`, then `uncaught-swallowed … ClosedWriteChannelException message=Broken pipe` 48 ms later; **the process lived** |
+| Retries          | 10 × `connect-failed UnresolvedAddressException validated=false`, not counted                                                | ~100, the same, not counted; no fallback, as designed                                                                     |
+| Publishing again | 1.4 s after the network returned (`connectMs=808`)                                                                           | 1.7 s after (`connectMs=392`)                                                                                             |
+| Cloudflare       | old session `disconnected` 22:47:31Z, `connected` 22:47:39Z                                                                  | `disconnected` 22:52:31Z, `connected` 22:55:27Z                                                                           |
+| Playlist         | head 150 → 151 at 22:47:34Z, then **stalled 4.5 min**, until the next cut                                                    | new variant from 22:55:30Z, advancing to the stop                                                                         |
+| Recordings       | first recording **ends at the cut (303.8 s)**, and the 4.5 min after it are in no recording                                  | a second recording (397.8 s), as criterion 5 expects                                                                      |
 
 - **Criterion 5 on RTMPS: pass.** The app reconnected unaided and a second recording started. It served no
   `EXT-X-ENDLIST`, the same as SRT (Run A's note).
@@ -1541,12 +1550,12 @@ the same payload are the real ones.
 `START=srt P5_SRT_URL_OVERRIDE=srt://live.cloudflare.com:779 CUT1_S=0 CUT2_S=0 END_S=90 run-rtmps.sh`. The real
 port is 778. APK `af55dc7c…`.
 
-| Measure | Result |
-|---|---|
-| First connecting → RTMPS publishing (s) | **18.8** |
-| SRT attempts | 3 × `connect-failed … SocketException: Connection was broken`, `counted=true validated=true`, about 5 s each with 2 s between |
-| Fallback | `fell-back` at the third failure, then `connecting transport=rtmps` 2 s later, `publishing` in 574 ms |
-| Delivery | playlist advancing within seconds; one recording (89.95 s for 90 s published) |
+| Measure                                 | Result                                                                                                                        |
+| --------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| First connecting → RTMPS publishing (s) | **18.8**                                                                                                                      |
+| SRT attempts                            | 3 × `connect-failed … SocketException: Connection was broken`, `counted=true validated=true`, about 5 s each with 2 s between |
+| Fallback                                | `fell-back` at the third failure, then `connecting transport=rtmps` 2 s later, `publishing` in 574 ms                         |
+| Delivery                                | playlist advancing within seconds; one recording (89.95 s for 90 s published)                                                 |
 
 C1's fallback works as designed on a broken SRT address. Its 18.8 s is mostly three SRT timeouts. An
 operator sees about 19 s of "connecting" before going live, and the product should say what is happening
@@ -1567,17 +1576,17 @@ The phone was on the laptop's USB (4.5 W) and never touched. The timeline:
 
 The owner asked for 90 min rather than 3 h, so criterion 1's duration is not met by construction.
 
-| # | Criterion | Result |
-|---|---|---|
-| 1 | Publishing ≥ 99% outside deliberate outages, **and the playlist advancing** | Phone **99.90%** (5,025 of 5,030 samples; the only gaps are two far-end drops of 3 s and 2 s). Playlist **fail**: 07:16–07:29Z it gained about one segment a minute. See F-P5-13, *Without an outage*. |
-| 2 | Thermal never 4 | **Pass**: peak 3, first at 07:20Z; 54% of samples at 3, 40% at 2 |
-| 3 | 60 s rolling mean ≥ 3000k | **Fail**: min 643k, p5 742k, median 1,931k. The regulator was at its 3000k ceiling for only 41% of samples, because each of seven drops restarted it low (see below). With the target at 3000k: median 3,164k, 53% of windows ≥ 3000k. |
-| 4 | Drop inside 180 s → one recording | **Shape passes, content does not.** One recording spans the 20 s cut, but it is 957.6 s long for ~1,750 s published: the minutes Cloudflare fell behind on were never recorded. |
-| 5 | Drop beyond 180 s → second recording, unaided reconnect | **Pass**. Publishing again 1.4 s after the network came back, and a second recording from 07:33:14Z (3,255 s). No `EXT-X-ENDLIST` served, as in Run A. |
-| 6 | Screen locked 10 min, playlist advancing | **Pass over 9.7 min** (08:20:04–08:29:47Z): head 1335 → 1618, 566 s of media in 583 s, one 3 s hold at the battery reset. The lock fired 5 min late (a script ordering bug, below). |
-| 7 | 180° flip | Not attempted: it needs hands. |
-| 8 | Audio > −40 dB | **Pass**: −18.3, −14.7, −14.4 dB mean (max −0.5 to −0.6) |
-| 9 | Battery ≥ 20% while charging | **Pass**: 79% → 51%, on a 4.5 W supply that the encode outdraws by ~0.3%/min |
+| #   | Criterion                                                                   | Result                                                                                                                                                                                                                                 |
+| --- | --------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | Publishing ≥ 99% outside deliberate outages, **and the playlist advancing** | Phone **99.90%** (5,025 of 5,030 samples; the only gaps are two far-end drops of 3 s and 2 s). Playlist **fail**: 07:16–07:29Z it gained about one segment a minute. See F-P5-13, _Without an outage_.                                 |
+| 2   | Thermal never 4                                                             | **Pass**: peak 3, first at 07:20Z; 54% of samples at 3, 40% at 2                                                                                                                                                                       |
+| 3   | 60 s rolling mean ≥ 3000k                                                   | **Fail**: min 643k, p5 742k, median 1,931k. The regulator was at its 3000k ceiling for only 41% of samples, because each of seven drops restarted it low (see below). With the target at 3000k: median 3,164k, 53% of windows ≥ 3000k. |
+| 4   | Drop inside 180 s → one recording                                           | **Shape passes, content does not.** One recording spans the 20 s cut, but it is 957.6 s long for ~1,750 s published: the minutes Cloudflare fell behind on were never recorded.                                                        |
+| 5   | Drop beyond 180 s → second recording, unaided reconnect                     | **Pass**. Publishing again 1.4 s after the network came back, and a second recording from 07:33:14Z (3,255 s). No `EXT-X-ENDLIST` served, as in Run A.                                                                                 |
+| 6   | Screen locked 10 min, playlist advancing                                    | **Pass over 9.7 min** (08:20:04–08:29:47Z): head 1335 → 1618, 566 s of media in 583 s, one 3 s hold at the battery reset. The lock fired 5 min late (a script ordering bug, below).                                                    |
+| 7   | 180° flip                                                                   | Not attempted: it needs hands.                                                                                                                                                                                                         |
+| 8   | Audio > −40 dB                                                              | **Pass**: −18.3, −14.7, −14.4 dB mean (max −0.5 to −0.6)                                                                                                                                                                               |
+| 9   | Battery ≥ 20% while charging                                                | **Pass**: 79% → 51%, on a 4.5 W supply that the encode outdraws by ~0.3%/min                                                                                                                                                           |
 
 **Drops.** Seven in all. Two were our cuts, and each was followed by the far end closing the reconnected
 session 31–33 s later (F-P5-13's shape, now seen after a >180 s cut too). Two more came with **no cut**,
@@ -1612,11 +1621,11 @@ output check. Both recordings and the input were deleted at the end.
 
 **First attempt, 2026-09-29, APK `af55dc7c` — both peeks failed, and the fault was ours.**
 
-| Peek | Status sequence | Plays? |
-|---|---|---|
-| Default UA | `idle` → `loading` → `error` in 3.2 s: `Source error Response code: 404` | No |
-| Browser UA | `loading` → `error` in 3.3 s: `Source error Response code: 404` | No |
-| Airplane 20 s during peek — events fired | not run: no peek was playing to interrupt | — |
+| Peek                                     | Status sequence                                                          | Plays? |
+| ---------------------------------------- | ------------------------------------------------------------------------ | ------ |
+| Default UA                               | `idle` → `loading` → `error` in 3.2 s: `Source error Response code: 404` | No     |
+| Browser UA                               | `loading` → `error` in 3.3 s: `Source error Response code: 404`          | No     |
+| Airplane 20 s during peek — events fired | not run: no peek was playing to interrupt                                | —      |
 
 **The 404 was not Cloudflare refusing the player.** Four hypotheses were ruled out from the laptop,
 all while the phone was publishing (`scripts/p5/device/peek-probe.mjs`, run by the soak at +250 s):
@@ -1628,7 +1637,7 @@ all while the phone was publishing (`scripts/p5/device/peek-probe.mjs`, run by t
 - IPv4 against IPv6: **200** on both.
 
 **Root cause: the scrubber rewrote the URL before JS saw it.** `SpikeSession.event` scrubbed every extra
-and sent the scrubbed map to *both* sinks, the CSV and JS. `srt.streamId` is one of the masked secrets,
+and sent the scrubbed map to _both_ sinks, the CSV and JS. `srt.streamId` is one of the masked secrets,
 and on Cloudflare it equals the live input id, which is also a path segment of the public playback URL.
 So the `armed` event handed JS `https://customer-….cloudflarestream.com/***/manifest/video.m3u8`, and
 the player asked Cloudflare for an input named `***`. The CSV `armed` row shows the same masked URL.
@@ -1651,10 +1660,10 @@ player does not need to spoof a browser.
 **Re-check on `1692c696`, 2026-09-29 08:36:33Z (`p5-soakf-20260929T083633Z`): pass.** 200 s of SRT publishing
 on a fresh input, with peeks at +45 s and +105 s.
 
-| Peek | Status sequence | Plays? |
-|---|---|---|
+| Peek       | Status sequence                             | Plays?  |
+| ---------- | ------------------------------------------- | ------- |
 | Default UA | `idle` → `loading` → `readyToPlay` in 2.7 s | **Yes** |
-| Browser UA | `loading` → `readyToPlay` in 0.8 s | **Yes** |
+| Browser UA | `loading` → `readyToPlay` in 0.8 s          | **Yes** |
 
 The CSV `armed` row still reads `…/***/manifest/video.m3u8`. JS got the real URL, and the log kept the mask,
 which is the only check on the wiring the brief left untested. The playlist advanced throughout, and
@@ -1694,8 +1703,7 @@ configuration keeps B-frames out, so a volunteer's handset whose encoder does
 emit them would silently lose low latency. The capture engine should decide it
 explicitly — `max-bframes = 0` through `VideoCodecConfig`'s `customize` hook, or a
 forced ConstrainedHigh profile, which carries no B-slices by definition — rather
-than inherit a library default. SRT into a low-latency input (retry requirement
-9) is still unmeasured: every low-latency measurement so far was RTMPS.
+than inherit a library default. SRT into a low-latency input (retry requirement 9) is still unmeasured: every low-latency measurement so far was RTMPS.
 
 Evidence: `.p5/bframe-20260914T153644Z.log`.
 
@@ -1832,7 +1840,7 @@ the fix is not in them:
    `InetSocketAddress::getNative(...)` and **never null-checks the result** before
    `srt_connect(u, reinterpret_cast<const sockaddr *>(ss), size)`.
 3. srtdroid's `connect(hostname, port)` is `connect(InetSocketAddress(address, port))`, and
-   `InetSocketAddress(String, int)` does **not** throw when DNS fails — it yields an *unresolved*
+   `InetSocketAddress(String, int)` does **not** throw when DNS fails — it yields an _unresolved_
    address whose `getAddress()` is null.
 
 So a name that will not resolve reaches libsrt as a null sockaddr and comes back as a parameter
@@ -1852,7 +1860,7 @@ connect — never touches the camera, so a camera race cannot produce a connect 
 `SrtUrl.init` validates only host and port, and `preApplyTo` applies latency, passphrase and
 streamId as plain unvalidated sockopts, so there is no vendor-side rejection of our values to find.
 
-The honest conclusion is that the 18 seconds was the network coming up, and the defect in *our* code
+The honest conclusion is that the 18 seconds was the network coming up, and the defect in _our_ code
 was reporting it as something else. The diagnostics added for item 2 confirm or refute this in one
 run: a repeat with `validated=true` and a well-formed shape would move the finding to the vendor.
 
