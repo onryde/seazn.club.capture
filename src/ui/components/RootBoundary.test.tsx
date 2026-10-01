@@ -107,7 +107,7 @@ describe('RootBoundary', () => {
     [
       'nl',
       'Er ging iets mis',
-      'De uitzending is mogelijk nog live. Probeer opnieuw om terug te gaan naar Stoppen.',
+      'De stream is mogelijk nog live. Tik op Opnieuw proberen om terug te gaan naar de knop Stoppen.',
       'Opnieuw proberen',
     ],
   ])('reads in the phone’s language: %s', (lang, title, note, retry) => {

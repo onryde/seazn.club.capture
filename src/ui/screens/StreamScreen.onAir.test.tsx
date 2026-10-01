@@ -161,7 +161,7 @@ describe('our own camera coming back (camera ruling)', () => {
 
   it('says it in Dutch', async () => {
     await onAir('camera-switching', { deviceLanguages: ['nl'] });
-    expect(screen.getByText('Camera gaat weer open — beeld zo terug')).toBeTruthy();
+    expect(screen.getByText('Camera gaat weer open: beeld zo terug')).toBeTruthy();
   });
 });
 
