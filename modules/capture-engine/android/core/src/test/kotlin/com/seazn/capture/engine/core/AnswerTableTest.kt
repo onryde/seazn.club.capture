@@ -2,6 +2,7 @@ package com.seazn.capture.engine.core
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
 
@@ -42,10 +43,19 @@ class AnswerTableTest {
       else -> phase.name
     }
 
-  /** Ticks until a beat is in flight, so the phase read before the answer is the one it answers. */
+  /** Ticks until a beat is in flight, so the phase read before the answer is the one it answers; fails after two minutes with none. */
   private fun beatDue(rig: MachineRig): Phase {
-    while (rig.phase.beating?.heartbeat?.inFlightId == null) rig.advance(500)
+    val until = rig.mono + 120_000
+    while (rig.phase.beating?.heartbeat?.inFlightId == null) {
+      check(rig.mono < until) { "no beat in flight in ${rig.phase.name} after two minutes" }
+      rig.advance(500)
+    }
     return rig.phase
+  }
+
+  @Test fun `beatDue fails, rather than hangs, on a rig that never beats`() {
+    val failure = assertFailsWith<IllegalStateException> { beatDue(MachineRig()) }
+    assertEquals("no beat in flight in idle after two minutes", failure.message)
   }
 
   // waiting

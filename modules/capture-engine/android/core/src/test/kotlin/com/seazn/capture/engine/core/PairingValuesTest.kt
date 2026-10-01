@@ -8,7 +8,7 @@ class PairingValuesTest {
   @Test
   fun `a pair request is named by code, slot and the token's tag, and never prints the token`() {
     val request = Configs.pairRequest()
-    assertEquals(PairingName("fx-42", 1, "c980ff38"), request.name)
+    assertEquals(PairingName("fx42hmnp7k2q", 1, "c980ff38"), request.name)
     assertTrue(Configs.TOKEN !in request.toString())
   }
 
@@ -27,9 +27,9 @@ class PairingValuesTest {
         code = " ",
         slot = -1,
         token = Configs.TOKEN,
-        codeUrl = "https://evil.io/api/capture/codes/fx-42",
-        heartbeatUrl = "https://stg.seazn.club/api/capture/codes/fx-42/beat",
-        startUrl = "https://stg.seazn.club.evil.io/api/capture/codes/fx-42/start",
+        codeUrl = "https://evil.io/api/capture/codes/fx42hmnp7k2q",
+        heartbeatUrl = "https://stg.seazn.club/api/capture/codes/fx42hmnp7k2q/beat",
+        startUrl = "https://stg.seazn.club.evil.io/api/capture/codes/fx42hmnp7k2q/start",
         language = "en",
         automatic = false,
         claim = Claim.RESUME,

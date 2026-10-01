@@ -46,14 +46,15 @@ object Configs {
       warmingDeadlineEpochS = 1_790_000_600,
     )
 
-  const val PHONE_ID = "phone-7f1e0c2a"
+  // Made up, within capture-beat.v1's 16 to 64 characters.
+  const val PHONE_ID = "phone-7f1e0c2a9b3d"
   val PHONE = PhoneFacts(PHONE_ID, appVersion = "1.0.0", model = "Test Phone")
 
   fun pairRequest(
-    code: String = "fx-42",
+    code: String = "fx42hmnp7k2q",
     slot: Int = 1,
     token: String = TOKEN,
-    heartbeatUrl: String = "https://stg.seazn.club/api/capture/codes/fx-42/beat",
+    heartbeatUrl: String = "https://stg.seazn.club/api/capture/codes/fx42hmnp7k2q/beat",
     claim: Claim = Claim.NEW,
     automatic: Boolean = true,
   ) =
@@ -61,9 +62,9 @@ object Configs {
       code = code,
       slot = slot,
       token = token,
-      codeUrl = "https://stg.seazn.club/api/capture/codes/fx-42",
+      codeUrl = "https://stg.seazn.club/api/capture/codes/fx42hmnp7k2q",
       heartbeatUrl = heartbeatUrl,
-      startUrl = "https://stg.seazn.club/api/capture/codes/fx-42/start",
+      startUrl = "https://stg.seazn.club/api/capture/codes/fx42hmnp7k2q/start",
       language = "en",
       automatic = automatic,
       claim = claim,

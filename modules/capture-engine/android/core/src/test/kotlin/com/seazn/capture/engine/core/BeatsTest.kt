@@ -17,7 +17,7 @@ class BeatsTest {
 
   private val paired =
     BeatFacts(
-      code = "fx-42",
+      code = "fx42hmnp7k2q",
       slot = 1,
       phoneId = Configs.PHONE_ID,
       claim = Claim.NEW,
@@ -44,7 +44,7 @@ class BeatsTest {
   @Test
   fun `a paired beat carries its claim, device, phone, mode and the stopped sid, and no secret`() {
     val body = JSONObject(Beats.payload(paired))
-    assertEquals("fx-42", body.getString("code"))
+    assertEquals("fx42hmnp7k2q", body.getString("code"))
     assertEquals(Configs.PHONE_ID, body.getString("phone"))
     assertEquals("new", body.getString("claim"))
     assertEquals("Test Phone", body.getJSONObject("device").getString("model"))
@@ -115,7 +115,7 @@ class BeatsTest {
 
   // The expected body is written out from the amendment's beat (_Contract shapes_), field by field, in its order.
   private val heldBody =
-    """{"code":"fx-42","slot":1,"phone":"${Configs.PHONE_ID}","claim":null,"sid":"sess_42","at":"2026-09-30T14:32:05.123Z",""" +
+    """{"code":"fx42hmnp7k2q","slot":1,"phone":"${Configs.PHONE_ID}","claim":null,"sid":"sess_42","at":"2026-09-30T14:32:05.123Z",""" +
       """"state":"degraded","cause":"organiser","notReady":null,"startFailed":null,"stopped":null,"device":null,"mode":"automatic",""" +
       """"transport":"rtmps","bitrateKbps":2900,"delivery":"ok","deliveredLagS":1.5,"audioOk":true,""" +
       """"battery":{"percent":64,"charging":false,"drainPctPerHour":18.0},"thermal":2,"dataUsedMB":1410.0,"appVersion":"1.0.0"}"""
@@ -157,6 +157,61 @@ class BeatsTest {
     val unknown = listOf(null to true, 64 to null, null to null, -1 to true, 101 to false)
     for ((percent, charging) in unknown) assertNull(BeatBattery.of(sample(percent, charging)), "$percent $charging")
     assertEquals(5, unknown.size)
+  }
+
+  // capture-beat.v1 (web 09e87aabd) bounds: a fact outside one is sent as null where null is allowed,
+  // so a bad reading never turns a whole beat into a 422.
+  private fun body(facts: BeatFacts) = Beats.payload(facts)
+
+  @Test
+  fun `R1 a drain outside 0 to 1000 per hour is sent as null, the battery still whole`() {
+    fun drain(value: Double) = BeatBattery.of(DeviceSample(thermalStatus = null, thermalHeadroom = null, batteryPercent = 64, charging = true, drainPctPerHour = value, shed = null))
+    assertEquals(BeatBattery(64, true, 1000.0), drain(1000.0))
+    assertEquals(BeatBattery(64, true, 0.0), drain(0.0))
+    val bad = listOf(-0.1, 1000.05, Double.NaN, Double.POSITIVE_INFINITY, Double.NEGATIVE_INFINITY)
+    for (value in bad) assertEquals(BeatBattery(64, true, null), drain(value), "$value")
+    assertEquals(5, bad.size)
+    assertTrue(""""drainPctPerHour":1000.0}""" in body(held.copy(battery = drain(1000.0))))
+  }
+
+  @Test
+  fun `the model is trimmed, cut to 80 characters, and a blank one sends device null`() {
+    fun device(model: String): String? = JSONObject(body(paired.copy(deviceModel = model))).let { if (it.isNull("device")) null else it.getJSONObject("device").getString("model") }
+    assertEquals("Pixel 8", device("  Pixel 8\n"))
+    assertNull(device("   "))
+    assertNull(device(""))
+    assertEquals("m".repeat(80), device("m".repeat(80)))
+    assertEquals("m".repeat(80), device("m".repeat(81)))
+    // Cut by characters, as the schema counts them: never half of a surrogate pair.
+    val camera = "\uD83D\uDCF7"
+    assertEquals("m".repeat(79) + camera, device("m".repeat(79) + camera + "m"))
+  }
+
+  @Test
+  fun `bitrateKbps outside 0 to 100000 is sent as null`() {
+    assertTrue(""""bitrateKbps":100000,""" in body(held.copy(bitrateKbps = 100_000)))
+    assertTrue(""""bitrateKbps":0,""" in body(held.copy(bitrateKbps = 0)))
+    for (kbps in listOf(100_001, -1)) assertTrue(""""bitrateKbps":null,""" in body(held.copy(bitrateKbps = kbps)), "$kbps")
+  }
+
+  @Test
+  fun `deliveredLagS outside 0 to 99999 s is sent as null`() {
+    assertTrue(""""deliveredLagS":99999.0,""" in body(held.copy(deliveredLagMs = 99_999_000)))
+    assertTrue(""""deliveredLagS":0.0,""" in body(held.copy(deliveredLagMs = 0)))
+    for (ms in listOf(99_999_050L, -1L)) assertTrue(""""deliveredLagS":null,""" in body(held.copy(deliveredLagMs = ms)), "$ms")
+  }
+
+  @Test
+  fun `thermal outside 0 to 6 is sent as null`() {
+    assertTrue(""""thermal":6,""" in body(held.copy(thermalStatus = 6)))
+    assertTrue(""""thermal":0,""" in body(held.copy(thermalStatus = 0)))
+    for (status in listOf(7, -1)) assertTrue(""""thermal":null,""" in body(held.copy(thermalStatus = status)), "$status")
+  }
+
+  @Test
+  fun `dataUsedMB outside 0 to 1000000 is sent as null`() {
+    assertTrue(""""dataUsedMB":1000000.0,""" in body(held.copy(dataUsedBytes = 1_000_000_000_000)), body(held.copy(dataUsedBytes = 1_000_000_000_000)))
+    for (bytes in listOf(1_000_000_050_000L, -1L)) assertTrue(""""dataUsedMB":null,""" in body(held.copy(dataUsedBytes = bytes)), "$bytes")
   }
 
   @Test

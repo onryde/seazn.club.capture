@@ -96,7 +96,16 @@ data class PairingName(val code: String, val slot: Int, val tokenTag: String)
 data class Unpaired(val reason: UnpairReason, val name: PairingName)
 
 /** What the phone says about itself, read by the glue: the install's id (A9), the app's version, `Build.MODEL`. */
-data class PhoneFacts(val phoneId: String, val appVersion: String, val model: String)
+data class PhoneFacts(val phoneId: String, val appVersion: String, val model: String) {
+  /**
+   * `capture-beat.v1` requires `phone` (16 to 64 characters) and `appVersion` (1 to 40) on every beat,
+   * with no null, so a beat cannot repair them: a bad one refuses the pair, before any beat goes.
+   */
+  fun problems(): List<String> = buildList {
+    if (phoneId.characters !in 16..64) add("phone id is not 16 to 64 characters")
+    if (appVersion.characters !in 1..40) add("app version is not 1 to 40 characters")
+  }
+}
 
 /**
  * The fields the server sends on every 2xx answer, beat or code (amendment, _Contract shapes_).
@@ -138,7 +147,7 @@ class PairRequest(
 
   /** Every reason this request cannot pair; empty when it can. JS checked the hosts already; native checks again. */
   fun problems(): List<String> = buildList {
-    if (code.isBlank()) add("code is blank")
+    if (code.isBlank()) add("code is blank") else if (!CODE.matches(code)) add("code is not 12 characters of the code alphabet")
     if (token.isBlank()) add("token is blank")
     if (slot < 0) add("slot is below 0")
     for ((key, url) in listOf("codeUrl" to codeUrl, "heartbeatUrl" to heartbeatUrl, "startUrl" to startUrl)) {
@@ -157,6 +166,11 @@ class PairRequest(
 
   override fun toString(): String =
     "PairRequest(slot=$slot, token=<${token.length} chars>, claim=${claim.wire}, environment=${environment.wire})"
+
+  private companion object {
+    /** `capture-beat.v1`'s `code`: 12 characters of the code alphabet, which has no i, l, o or u. */
+    val CODE = Regex("[0-9a-hjkmnp-tv-z]{12}")
+  }
 }
 
 /** The pairing's `POST start` asks: only the answer to the ask in flight is acted on. Ids carry across pairings ([Ids.start]). */

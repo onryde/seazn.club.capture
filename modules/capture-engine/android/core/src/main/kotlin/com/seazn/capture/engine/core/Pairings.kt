@@ -9,7 +9,7 @@ internal object Pairings {
     if (phase.holdsBroadcast || phase is Phase.Ended) return SessionMachine.ignored(phase, "pair")
     val name = input.request.name
     if ((phase is Phase.Pairing || phase is Phase.Paired) && phase.pairing?.name == name) return SessionMachine.ignored(phase, "pair")
-    val problems = input.request.problems()
+    val problems = input.request.problems() + input.phone.problems()
     if (problems.isNotEmpty()) {
       val refused = line("pair-refused", "problems" to problems.joinToString("; "))
       val release = if (phase.holdsService) listOf(Command.Release) else emptyList()

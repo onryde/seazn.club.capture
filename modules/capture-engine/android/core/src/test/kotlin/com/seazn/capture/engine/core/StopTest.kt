@@ -94,7 +94,7 @@ class StopTest {
       val rig = MachineRig()
       rig.send(Input.Pair(Configs.pairRequest(), Configs.PHONE, record))
       rig.hear(state, sid = "sess_41")
-      assertEquals(listOf(Command.DeleteStopped("fx-42", 1)), rig.sent<Command.DeleteStopped>(), state)
+      assertEquals(listOf(Command.DeleteStopped("fx42hmnp7k2q", 1)), rig.sent<Command.DeleteStopped>(), state)
     }
   }
 
@@ -131,7 +131,7 @@ class StopTest {
 
   @Test fun `A17 a record past keepUntil, or for another slot, is not carried`() {
     val name = Configs.pairRequest().name
-    val stale = StoppedRecord("fx-42", 1, "sess_41", 0, 1)
+    val stale = StoppedRecord("fx42hmnp7k2q", 1, "sess_41", 0, 1)
     val other = StoppedRecord.of(name.copy(slot = 2), "sess_41", 1_790_000_000_000, null)
     for (record in listOf(stale, other)) {
       val rig = MachineRig()
@@ -174,7 +174,7 @@ class StopTest {
     assertTrue(rig.phase.holdsBroadcast, "${rig.phase.name}")
     rig.hear(null, status = 401)
     assertTrue(rig.phase.pairing!!.codeEndedPending)
-    assertEquals(listOf(Command.DeleteStopped("fx-42", 1)), rig.sent<Command.DeleteStopped>())
+    assertEquals(listOf(Command.DeleteStopped("fx42hmnp7k2q", 1)), rig.sent<Command.DeleteStopped>())
   }
 
   @Test fun `A17 RR3 a held beat carries no record, so its 2xx delivers nothing`() {

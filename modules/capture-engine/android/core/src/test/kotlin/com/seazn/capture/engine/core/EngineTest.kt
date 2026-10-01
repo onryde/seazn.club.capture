@@ -250,14 +250,14 @@ class EngineTest {
   @Test
   fun `carry 12 a machine failure on the pair itself is masked - the token and the code are protected before the machine runs`() {
     val engine = engine { phase, input, now ->
-      if (input is Input.Pair) throw IllegalStateException("cannot read https://stg.seazn.club/api/capture/codes/fx-42?tok=${Configs.TOKEN}")
+      if (input is Input.Pair) throw IllegalStateException("cannot read https://stg.seazn.club/api/capture/codes/fx42hmnp7k2q?tok=${Configs.TOKEN}")
       SessionMachine.reduce(phase, input, now)
     }
     engine.send(Configs.pairInputs().first())
     scheduler.advanceBy(0)
     val error = lines.single { "engine-error" in it }
     assertFalse(Configs.TOKEN in error, error)
-    assertFalse("fx-42" in error, error)
+    assertFalse("fx42hmnp7k2q" in error, error)
     assertTrue("/codes/${SessionRecord.MASK}?tok=${SessionRecord.MASK}" in error, error)
   }
 

@@ -6,14 +6,14 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class StoppedRecordTest {
-  private val name = PairingName("fx-42", 1, "c980ff38")
+  private val name = PairingName("fx42hmnp7k2q", 1, "c980ff38")
   private val at = 1_790_000_000_000L
 
   @Test
   fun `A17 the record keeps the stopped sid until the broadcast's maximum duration has passed`() {
     // 300 minutes is 18 000 000 ms after the stop.
     val record = StoppedRecord.of(name, "sess_42", at, maxDurationMinutes = 300)
-    assertEquals(StoppedRecord("fx-42", 1, "sess_42", at, at + 18_000_000), record)
+    assertEquals(StoppedRecord("fx42hmnp7k2q", 1, "sess_42", at, at + 18_000_000), record)
   }
 
   @Test

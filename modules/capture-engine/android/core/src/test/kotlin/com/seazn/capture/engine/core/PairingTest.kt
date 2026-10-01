@@ -91,6 +91,43 @@ class PairingTest {
   }
 
   @Test
+  fun `a phone id outside 16 to 64 characters, or an app version outside 1 to 40, refuses the pair`() {
+    // capture-beat.v1 requires both with no null: a beat cannot repair them, so the pair refuses them.
+    val bad =
+      listOf(
+        Configs.PHONE.copy(phoneId = "p".repeat(15)) to "phone id is not 16 to 64 characters",
+        Configs.PHONE.copy(phoneId = "p".repeat(65)) to "phone id is not 16 to 64 characters",
+        Configs.PHONE.copy(appVersion = "") to "app version is not 1 to 40 characters",
+        Configs.PHONE.copy(appVersion = "1".repeat(41)) to "app version is not 1 to 40 characters",
+      )
+    for ((phone, problem) in bad) {
+      val rig = MachineRig()
+      rig.send(Input.Pair(Configs.pairRequest(), phone, null))
+      assertEquals(EndReason.FATAL_ERROR, assertIs<Phase.Ended>(rig.phase).reason, problem)
+      assertEquals(problem, rig.records("pair-refused").single().field("problems"))
+      assertTrue(rig.sent<Command.AskPermissions>().isEmpty(), problem)
+    }
+    val good = listOf(Configs.PHONE.copy(phoneId = "p".repeat(16)), Configs.PHONE.copy(phoneId = "p".repeat(64)), Configs.PHONE.copy(appVersion = "1".repeat(40)))
+    for (phone in good) {
+      val rig = MachineRig().apply { permissions = null }
+      rig.send(Input.Pair(Configs.pairRequest(), phone, null))
+      assertIs<Phase.Pairing>(rig.phase, "$phone")
+    }
+  }
+
+  @Test
+  fun `a code that is not 12 characters of the code alphabet refuses the pair`() {
+    val bad = listOf("fx-42", "fx42hmnp7k2", "fx42hmnp7k2qq", "FX42HMNP7K2Q", "fx42hmnp7k2i", "fx42hmnp7k2u")
+    for (code in bad) {
+      val rig = MachineRig()
+      rig.send(Input.Pair(Configs.pairRequest(code = code), Configs.PHONE, null))
+      assertEquals(EndReason.FATAL_ERROR, assertIs<Phase.Ended>(rig.phase).reason, code)
+      assertEquals("code is not 12 characters of the code alphabet", rig.records("pair-refused").single().field("problems"), code)
+    }
+    assertEquals(6, bad.size)
+  }
+
+  @Test
   fun `Release goes only where a Hold went - a refused re-pair from Paired releases, one from Pairing does not`() {
     val paired = MachineRig().paired()
     val fromPaired = paired.send(Input.Pair(Configs.pairRequest(slot = 2, token = ""), Configs.PHONE, null))
