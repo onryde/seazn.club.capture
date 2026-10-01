@@ -139,6 +139,13 @@ export type Telemetry = {
   readonly delivery: Delivery;
   /** Null whenever `delivery` is `unknown`. */
   readonly deliveredLagMs: number | null;
+  /**
+   * When the delivery watch last checked, in **epoch ms on the phone's wall
+   * clock**: the base of `reportedAtMs`, `heartbeat.lastSentAtEpochMs` and the
+   * app's `clock()`. Diagnostics shows "Checked … s ago" as `clock()` minus
+   * this, so plan C's bridge must never map a monotonic or boot-relative
+   * time here (batch 9 review M5). Null before the first check.
+   */
   readonly deliveryCheckedAtMs: number | null;
   readonly dataUsedBytes: number;
   readonly charging: boolean | null;

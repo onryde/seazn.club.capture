@@ -17,10 +17,10 @@ const wholeSnapshot = (snapshot: EngineSnapshot): EngineSnapshot => snapshot;
 
 /** Spec §4's link, delivery, phone and heartbeat values, read at the report's own clock. */
 export function useDiagnostics(): readonly DiagnosticsSection[] {
-  const { t } = useT();
+  const translator = useT();
   const { clock } = usePorts();
   const snapshot = useEngineSelector(wholeSnapshot);
-  return diagnosticsSections(snapshot, clock().getTime(), t);
+  return diagnosticsSections(snapshot, clock().getTime(), translator);
 }
 
 /**

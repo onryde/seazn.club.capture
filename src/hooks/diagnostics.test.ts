@@ -16,7 +16,7 @@ function rowsFor(
   engine.scene(scene);
   if (change.telemetry !== undefined) engine.patch(change.telemetry);
   if (change.camera !== undefined) engine.setCamera(change.camera);
-  const sections = diagnosticsSections(engine.getSnapshot(), NOW, createTranslator(lang).t);
+  const sections = diagnosticsSections(engine.getSnapshot(), NOW, createTranslator(lang));
   engine.dispose();
   return Object.fromEntries(
     sections.flatMap((section) => section.rows.map((row) => [row.label, row.value])),
@@ -51,7 +51,7 @@ describe('diagnosticsSections (spec §4)', () => {
 
   it('names its four sections', () => {
     const engine = createFakeCaptureEngine(() => NOW);
-    const titles = diagnosticsSections(engine.getSnapshot(), NOW, createTranslator('en').t).map(
+    const titles = diagnosticsSections(engine.getSnapshot(), NOW, createTranslator('en')).map(
       (section) => section.title,
     );
     engine.dispose();
@@ -158,6 +158,29 @@ describe('diagnosticsSections (spec §4)', () => {
     expect(rowsFor('live', { telemetry: { charging: true, batteryPercent: 100 } })).toMatchObject({
       Charging: 'Yes',
       Battery: '100%',
+    });
+  });
+
+  // Ruling 2 (fix round 1): the language's own decimal separator.
+  it.each([
+    ['en', { 'Behind live': '9.2 s', Checked: '1.5 s ago' }],
+    ['es', { Retraso: '9,2 s', Comprobado: 'hace 1,5 s' }],
+    ['fr', { Retard: '9,2 s', Vérifié: 'il y a 1,5 s' }],
+    ['nl', { Achterstand: '9,2 s', Gecontroleerd: '1,5 s geleden' }],
+  ] as const)('writes decimals the %s way', (lang, expected) => {
+    expect(rowsFor('live', {}, lang)).toMatchObject(expected);
+  });
+
+  it('writes a fractional rate the language’s way, and counts ungrouped', () => {
+    const rows = rowsFor(
+      'live',
+      { telemetry: { encodedVideoFps: 29.5, drainPctPerHour: 18.5 } },
+      'nl',
+    );
+    expect(rows).toMatchObject({
+      Video: '29,5 fps',
+      Verbruik: '18,5%/u',
+      'Opnieuw verzonden': '240 van 120000',
     });
   });
 
