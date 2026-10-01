@@ -120,7 +120,8 @@ function sendStep(
   { engine, logger }: { engine: CaptureEnginePort; logger: Logger },
 ): void {
   if (next === 'stop' || next === 'reset') {
-    logger.info('intent.replace', { step: next });
+    // R2: under an allow-listed key, so the record keeps which step it was.
+    logger.info('intent.replace', { action: next });
     return engine.send({ kind: next });
   }
   if (next !== 'arm') return;

@@ -5,7 +5,7 @@ import type { EngineIntent } from '@/engine/CaptureEnginePort';
 import { HOLD_MS } from '@/hooks/useHold';
 import { sampleDescriptor } from '@/services/fakeDescriptorPort';
 import { StreamScreen } from '@/ui/screens/StreamScreen';
-import type { FakePorts } from '../../../test/fakePorts';
+import { readRecord, type FakePorts } from '../../../test/fakePorts';
 import { savedStreamCode } from '../../../test/fixtures/savedStream';
 import { captureRaw, FIXTURE_NOW, FIXTURE_SID } from '../../../test/fixtures/wire';
 import { holdIntents } from '../../../test/holdIntents';
@@ -72,6 +72,38 @@ const lastArm = (fakes: FakePorts) =>
 const plate = () => screen.getByTestId('tally-plate').textContent;
 const goLive = () => screen.getByRole('button', { name: 'Go live. Press and hold for 3 seconds.' });
 const settle = () => act(() => vi.advanceTimersByTimeAsync(10));
+const replaceLines = (fakes: FakePorts) =>
+  readRecord(fakes.record)
+    .filter((entry) => entry.event === 'intent.replace')
+    .map(({ event, fields }) => ({ event, fields }));
+
+/**
+ * Every text the page held in any commit, read from the mutations React made
+ * while it ran: old text of changed nodes, and removed and added subtrees.
+ * jsdom never paints, but it does see each commit (R1).
+ */
+function recordCommittedText(): () => string {
+  const seen: string[] = [];
+  const collect = (records: MutationRecord[]) => {
+    for (const record of records) {
+      if (record.oldValue !== null) seen.push(record.oldValue);
+      record.removedNodes.forEach((node) => seen.push(node.textContent ?? ''));
+      record.addedNodes.forEach((node) => seen.push(node.textContent ?? ''));
+    }
+  };
+  const observer = new MutationObserver(collect);
+  observer.observe(document.body, {
+    subtree: true,
+    childList: true,
+    characterData: true,
+    characterDataOldValue: true,
+  });
+  return () => {
+    collect(observer.takeRecords());
+    observer.disconnect();
+    return seen.join(' | ');
+  };
+}
 
 /** Home, then a code opened there, then the viewfinder mounting for it, as `router.replace` does. */
 async function homeThenOpen(fakes: FakePorts, code: SavedCode | null) {
@@ -111,6 +143,29 @@ describe('a new code over another code’s session (I1)', () => {
     expect(kinds(view)).toEqual(['arm', 'stop', 'reset', 'arm', 'start']);
     expect(view.engine.getSnapshot().state.kind).toBe('connecting');
     expect(view.engine.getSnapshot().descriptor?.sid).toBe(SID_B);
+  });
+
+  // R2: native records A's end as an operator stop; these lines say it was a replace.
+  it('records each step of the replace by name', async () => {
+    const view = await renderViewfinder();
+    await homeThenOpen(view, codeB());
+    expect(replaceLines(view)).toEqual([
+      { event: 'intent.replace', fields: { action: 'stop' } },
+      { event: 'intent.replace', fields: { action: 'reset' } },
+    ]);
+  });
+
+  it('records only the reset when the old session had already ended', async () => {
+    const view = await renderViewfinder();
+    fireEvent.click(screen.getByRole('button', { name: 'Home' }));
+    await settle();
+    act(() => view.engine.scene('stopped-by-organiser'));
+    cleanup();
+    await act(() => view.ports.modeStore.open(codeB()));
+    render(<StreamScreen />, { wrapper: wrapperFor(view) });
+    view.navigation.go('stream');
+    await settle();
+    expect(replaceLines(view)).toEqual([{ event: 'intent.replace', fields: { action: 'reset' } }]);
   });
 
   it('never opens the new code on the old one’s Ended screen, and Home keeps it', async () => {
@@ -337,6 +392,30 @@ describe('a replace while native has not answered yet (N1, N3)', () => {
     expect(kinds(view)).toEqual(['arm', 'reset', 'arm']);
     expect(plate()).toBe('Ready');
   });
+
+  // R1: the replace is decided in render, so not even the first commit shows the old session.
+  it.each(['armed', 'ended'] as const)(
+    'shows nothing of an %s old session in any commit while the new viewfinder mounts',
+    async (from) => {
+      const view = await renderViewfinder();
+      fireEvent.click(screen.getByRole('button', { name: 'Home' }));
+      await settle();
+      if (from === 'ended') act(() => view.engine.scene('stopped-by-organiser'));
+      cleanup();
+      await act(() => view.ports.modeStore.open(codeB()));
+      const committed = recordCommittedText();
+      render(<StreamScreen />, { wrapper: wrapperFor(view) });
+      view.navigation.go('stream');
+      await settle();
+      const text = committed();
+      // The recorder saw the commits: the new code's label arrived.
+      expect(text).toContain(LABEL_B);
+      expect(text).not.toContain(LABEL_A);
+      expect(text).not.toContain('Scan another');
+      expect(text).not.toContain('Ended');
+      expect(text).not.toContain('On air');
+    },
+  );
 
   it('reads not ready at idle while the new code’s arm is unanswered', async () => {
     const view = await renderViewfinder();
