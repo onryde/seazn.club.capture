@@ -3,10 +3,11 @@
 # the code folders, and every vitest project — the i18n key check is one of the
 # tests).
 #
-# Not here on purpose: `pnpm i18n:release-check`. It refuses `_review` markers
-# that no native speaker has cleared yet, so it belongs to the first store
-# build, not to every push (spec R11). Nor the contract drift check: nothing is
-# vendored under contracts/ until S1.
+# Also `pnpm i18n:release-check`: it refuses any `_review` marker, so a string
+# that has not had its translation review (an AI pass against
+# docs/i18n-glossary.md — owner ruling 2026-10-01, replacing spec R11's native
+# speaker) cannot merge. Not here: the contract drift check — nothing is
+# vendored under contracts/ yet.
 name: check
 
 # PRs are validated before they merge; main is re-checked after, since a merge
@@ -41,3 +42,4 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm check
+      - run: pnpm i18n:release-check
