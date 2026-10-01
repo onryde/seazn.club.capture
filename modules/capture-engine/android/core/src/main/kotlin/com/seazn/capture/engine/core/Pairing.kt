@@ -100,7 +100,7 @@ data class PhoneFacts(val phoneId: String, val appVersion: String, val model: St
 
 /**
  * The fields the server sends on every 2xx answer, beat or code (amendment, _Contract shapes_).
- * [pollSeconds] is the server's, unclamped: the beat's cadence clamps it where it is used.
+ * [pollSeconds] is the server's, unclamped: [BeatCadence] clamps it where it is used.
  */
 data class WaitingFields(
   val label: String,
@@ -112,8 +112,8 @@ data class WaitingFields(
   val pollSeconds: Int,
 ) {
   companion object {
-    /** Before the first 2xx: nothing known, and the default cadence of 10 s (CD38). */
-    val UNKNOWN = WaitingFields("", "", null, false, null, null, 10)
+    /** Before the first 2xx: nothing known, and the default cadence (CD38). */
+    val UNKNOWN = WaitingFields("", "", null, false, null, null, BeatCadence.DEFAULT_POLL_S)
   }
 }
 

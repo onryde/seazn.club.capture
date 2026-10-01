@@ -34,7 +34,7 @@ class SessionOverTest {
     var over = 0
     for (status in statuses) {
       for (state in states) {
-        val beat = Heartbeat.answered(HeartbeatState(inFlightId = 1), 1, HeartbeatResponse.Answered(status, BeatReply(state, null, null, null, null))).second
+        val beat = Heartbeat.answered(HeartbeatState(inFlightId = 1), 1, HeartbeatResponse.Answered(status, BeatReply(state, null, null, null, null)), nowMs = 0).second
         val descriptor = DescriptorCheck.answered(status, state, null) is DescriptorCheck.Over
         assertEquals(descriptor, beat, "$status $state")
         if (beat) over += 1

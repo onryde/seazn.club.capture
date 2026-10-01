@@ -27,7 +27,10 @@ data class HeartbeatFacts(
 )
 
 data class HeartbeatState(
-  val nextDueAtMs: Long = 0,
+  /** When the last beat went, on the monotonic clock; null before the first. */
+  val lastSentAtMonoMs: Long? = null,
+  /** No beat before this, on the monotonic clock: the first beat's time, or a 429's Retry-After. */
+  val notBeforeMs: Long = 0,
   val inFlightId: Int? = null,
   val inFlightSinceMs: Long = 0,
   val nextId: Int = 1,
@@ -53,30 +56,31 @@ object Heartbeat {
   const val INTERVAL_MS = 10_000L
   const val TIMEOUT_MS = 10_000L
 
-  /** The id of the beat to send now, or null. */
-  fun due(state: HeartbeatState, nowMs: Long, wallMs: Long): Pair<HeartbeatState, Int?> {
+  /** The id of the beat to send now, or null. [intervalMs] is the cadence now: it may shorten between beats. */
+  fun due(state: HeartbeatState, nowMs: Long, wallMs: Long, intervalMs: Long): Pair<HeartbeatState, Int?> {
     var next = state
     if (next.inFlightId != null && nowMs - next.inFlightSinceMs >= TIMEOUT_MS) next = next.failed()
-    if (next.inFlightId != null || nowMs < next.nextDueAtMs) return next to null
+    val last = next.lastSentAtMonoMs
+    val waiting = next.inFlightId != null || nowMs < next.notBeforeMs || (last != null && nowMs < last + intervalMs)
+    if (waiting) return next to null
     val id = next.nextId
-    return next.copy(
-      inFlightId = id,
-      inFlightSinceMs = nowMs,
-      nextId = id + 1,
-      nextDueAtMs = nowMs + INTERVAL_MS,
-      lastSentAtEpochMs = wallMs,
-    ) to id
+    return next.copy(inFlightId = id, inFlightSinceMs = nowMs, nextId = id + 1, lastSentAtMonoMs = nowMs, lastSentAtEpochMs = wallMs) to id
   }
 
-  /** The answer to beat [id]. The boolean is true when the server says the session is over ([SessionOver]). */
-  fun answered(state: HeartbeatState, id: Int, response: HeartbeatResponse): Pair<HeartbeatState, Boolean> {
+  /**
+   * The answer to beat [id], or the state unchanged for any other. The boolean is true when the server
+   * says the session is over ([SessionOver]). A 429 sets [HeartbeatState.notBeforeMs].
+   */
+  fun answered(state: HeartbeatState, id: Int, response: HeartbeatResponse, nowMs: Long): Pair<HeartbeatState, Boolean> {
     if (state.inFlightId != id) return state to false
     val over = response is HeartbeatResponse.Answered && SessionOver.said(response.status, response.reply?.state)
+    val delayed = (response as? HeartbeatResponse.Answered)?.retryAfterS?.let { nowMs + BeatCadence.retryAfterMs(it) }
+    val answered = if (delayed != null) state.copy(notBeforeMs = delayed) else state
     return when {
-      over -> state.copy(inFlightId = null, lastResult = HeartbeatResult.SESSION_OVER) to true
+      over -> answered.copy(inFlightId = null, lastResult = HeartbeatResult.SESSION_OVER) to true
       response is HeartbeatResponse.Answered && response.status in 200..299 ->
-        state.copy(inFlightId = null, lastResult = HeartbeatResult.OK, consecutiveFailures = 0) to false
-      else -> state.failed() to false
+        answered.copy(inFlightId = null, lastResult = HeartbeatResult.OK, consecutiveFailures = 0) to false
+      else -> answered.failed() to false
     }
   }
 

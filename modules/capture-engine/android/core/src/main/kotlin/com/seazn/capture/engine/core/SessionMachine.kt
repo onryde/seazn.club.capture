@@ -88,7 +88,7 @@ object SessionMachine {
         config = config,
         fallback = FallbackPolicy(config.primary.transport, config.fallback?.transport),
         regulation = BitrateRegulator.sessionStarted(),
-        heartbeat = HeartbeatState(nextDueAtMs = now.monoMs, nextId = ids.beat),
+        heartbeat = HeartbeatState(notBeforeMs = now.monoMs, nextId = ids.beat),
         delivery = DeliveryWatch(config.playbackUrl, nextRequestId = ids.playlist),
         nextAttemptId = ids.attempt,
         descriptor = DescriptorAsks(nextId = ids.descriptor),
@@ -534,7 +534,7 @@ internal object Heartbeats {
   fun tick(step: Step, now: Now): Step {
     val phase = step.phase
     val session = phase.session ?: return step
-    val (heartbeat, id) = Heartbeat.due(session.heartbeat, now.monoMs, now.wallMs)
+    val (heartbeat, id) = Heartbeat.due(session.heartbeat, now.monoMs, now.wallMs, Heartbeat.INTERVAL_MS)
     val commands = step.commands.toMutableList()
     if (heartbeat.failures > session.heartbeat.failures) commands += record("heartbeat", "result" to HeartbeatResult.FAILED, "message" to "no answer")
     val next = phase.withSession(session.copy(heartbeat = heartbeat))
@@ -546,7 +546,7 @@ internal object Heartbeats {
 
   fun answered(phase: Phase, input: Input.HeartbeatAnswered, now: Now): Step {
     val session = phase.session ?: return Step(phase)
-    val (heartbeat, over) = Heartbeat.answered(session.heartbeat, input.beatId, input.response)
+    val (heartbeat, over) = Heartbeat.answered(session.heartbeat, input.beatId, input.response, now.monoMs)
     if (heartbeat == session.heartbeat) return Step(phase)
     val status = (input.response as? HeartbeatResponse.Answered)?.status
     if (over) {
