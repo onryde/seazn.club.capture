@@ -121,7 +121,7 @@ describe('Ended (spec §4)', () => {
   it('reads in Dutch, within the column', async () => {
     const view = await renderViewfinder({ deviceLanguages: ['nl'] });
     act(() => view.engine.scene('stopped'));
-    expect(screen.getByText('Live 0:12:34')).toBeTruthy();
+    expect(screen.getByText('Zendtijd 0:12:34')).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Nog een scannen' })).toBeTruthy();
   });
 });

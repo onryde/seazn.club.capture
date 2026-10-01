@@ -213,7 +213,7 @@ describe('diagnosticsSections (spec §4)', () => {
       'Données utilisées': '312 Mo',
       'Dernier envoi': 'il y a 4 s',
       Batterie: '74 %',
-      Chaleur: 'Normale',
+      Température: 'Normale',
     });
   });
 });

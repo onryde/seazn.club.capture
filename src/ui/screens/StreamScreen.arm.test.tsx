@@ -316,9 +316,9 @@ describe('the viewfinder arming (spec §1)', () => {
   it('reads in French', async () => {
     await renderViewfinder({ deviceLanguages: ['fr'] });
     expect(plate()).toBe('Prêt');
-    expect(screen.getByText('Prêt. Maintenez le bouton 3 secondes.')).toBeTruthy();
-    expect(screen.getByLabelText('Caméra : prêt')).toBeTruthy();
-    expect(screen.getByText('Direct avant 14:10')).toBeTruthy();
+    expect(screen.getByText('Prêt. Maintenez Passer en direct 3 secondes.')).toBeTruthy();
+    expect(screen.getByLabelText('Caméra : OK')).toBeTruthy();
+    expect(screen.getByText('Direct à lancer avant 14:10')).toBeTruthy();
     expect(
       screen.getByRole('button', { name: 'Passer en direct. Maintenez appuyé 3 secondes.' }),
     ).toBeTruthy();

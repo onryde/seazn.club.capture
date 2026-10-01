@@ -222,6 +222,14 @@ bridge.
       público", and the es/fr leave line.
 - [ ] **Column heights** at Arm, Live and Ended, on two landscape geometries.
       Nothing may be clipped.
+- [ ] **The longest status lines fit three lines.** `StatusLine` clamps at
+      three (`numberOfLines={3}`) and ellipsises silently. By Geist advance
+      widths, en `stream.status.holdingNotDelivered` ("Viewers not receiving —
+      restarting, 183 s of 183") needs four lines at 126 and 134 px, and
+      still four at "60 s of 60" on 126 px. Check it on the narrowest
+      handset during a hold. It is a copy-fit check for the en copy owner,
+      not fixed by the translation review. Also check the lines at their
+      48-character budget: fr and nl `holdingNotDelivered`, es `cameraTaken`.
 - [ ] **Touch targets:** the 56 dp plate and the 48 dp peek.
 - [ ] **The bottom strip** (label, Settings, Diagnostics, Home) in nl and fr,
       on the narrowest geometry.
@@ -358,6 +366,14 @@ from the briefs. These keys are the implementers' own wording:
 
 Copy budgets (`src/i18n/budgets.test.ts`) hold in all four languages, but they
 count characters, not pixels; the device list checks the fit.
+
+**Owner ruling, 2026-10-01: an AI translation review replaces the
+native-speaker review** that S0 §6 (R11) required. That review, and an
+independent second review of it, ran on branch `chore/i18n-ai-review`. They
+corrected 41 es, 43 fr and 37 nl strings and removed the marker from all three
+dictionaries, so `pnpm i18n:release-check` now passes. The terms chosen, and
+the rule for new strings (they get the marker, and an AI pass against the
+glossary clears it), are in [`docs/i18n-glossary.md`](../i18n-glossary.md).
 
 ## Deferred (known, not fixed)
 

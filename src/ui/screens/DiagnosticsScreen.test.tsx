@@ -159,7 +159,7 @@ describe('Diagnostics (spec §4)', () => {
     renderWithPorts(<DiagnosticsScreen />, { deviceLanguages: ['nl'] });
     expect(screen.getByText('Diagnose')).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Logboek delen' })).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Terug naar camera' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Terug naar de camera' })).toBeTruthy();
   });
 });
 

@@ -161,7 +161,7 @@ describe('our own camera coming back (camera ruling)', () => {
 
   it('says it in Dutch', async () => {
     await onAir('camera-switching', { deviceLanguages: ['nl'] });
-    expect(screen.getByText('Camera gaat weer open — beeld zo terug')).toBeTruthy();
+    expect(screen.getByText('Camera gaat weer open: beeld zo terug')).toBeTruthy();
   });
 });
 
@@ -238,7 +238,7 @@ describe('what viewers see (spec §4, carry 13)', () => {
 
   it('says why in French', async () => {
     await renderViewfinder({ deviceLanguages: ['fr'] }, liveWithNoDescriptor);
-    expect(screen.getByText("Pas d'image du public")).toBeTruthy();
+    expect(screen.getByText('Image indisponible')).toBeTruthy();
   });
 
   it('lets go of the picture when the broadcast ends under the finger', async () => {

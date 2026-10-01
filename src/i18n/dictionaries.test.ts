@@ -48,3 +48,38 @@ describe('dictionaries', () => {
     }
   });
 });
+
+/** U+00A0. French typography wants it before : ; ? ! and inside « » (docs/i18n-glossary.md). */
+const NO_BREAK = String.fromCodePoint(0x00a0);
+
+/** A high mark with anything but the no-break space before it, or « without one after. */
+function breaksFrenchSpacing(text: string): boolean {
+  const chars = [...text];
+  return chars.some(
+    (char, at) =>
+      (':;?!»'.includes(char) && chars[at - 1] !== NO_BREAK) ||
+      (char === '«' && chars[at + 1] !== NO_BREAK),
+  );
+}
+
+describe('French spacing', () => {
+  it.each([
+    [`Code${NO_BREAK}: OK`, false],
+    [`«${NO_BREAK}Live${NO_BREAK}»${NO_BREAK}?`, false],
+    ['Code : OK', true],
+    ['Code: OK', true],
+    [`Code${String.fromCodePoint(0x202f)}: OK`, true],
+    [`Prêt${NO_BREAK}!`, false],
+    ['Prêt !', true],
+    [`« Live${NO_BREAK}»`, true],
+  ])('reads %j as broken: %s', (text, broken) => {
+    expect(breaksFrenchSpacing(text)).toBe(broken);
+  });
+
+  it('every fr string puts the no-break space, never a plain one, before : ; ? ! and inside « »', () => {
+    const broken = Object.entries(fr as Dictionary)
+      .filter(([, value]) => breaksFrenchSpacing(value))
+      .map(([key]) => key);
+    expect(broken).toEqual([]);
+  });
+});

@@ -95,19 +95,19 @@ describe('RootBoundary', () => {
     [
       'es',
       'Algo falló',
-      'Puede que la emisión siga en directo. Reintenta para volver a Detener.',
+      'Puede que la emisión siga en directo. Toca Reintentar para volver al botón Detener.',
       'Reintentar',
     ],
     [
       'fr',
       'Un problème est survenu',
-      'Le direct est peut-être encore en cours. Réessayez pour revenir à Arrêter.',
+      'Le direct est peut-être encore en cours. Touchez Réessayer pour revenir au bouton Arrêter.',
       'Réessayer',
     ],
     [
       'nl',
       'Er ging iets mis',
-      'De uitzending is mogelijk nog live. Probeer opnieuw om terug te gaan naar Stoppen.',
+      'De stream is mogelijk nog live. Tik op Opnieuw proberen om terug te gaan naar de knop Stoppen.',
       'Opnieuw proberen',
     ],
   ])('reads in the phone’s language: %s', (lang, title, note, retry) => {
