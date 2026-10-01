@@ -15,9 +15,9 @@ import { colour } from '@/ui/theme/tokens';
  * operator picked in Settings.
  */
 export function StreamScreen() {
-  const view = useViewfinder();
-  const { settings } = useStreamSettings();
   const leave = useStreamLeave();
+  const view = useViewfinder(leave.departed);
+  const { settings } = useStreamSettings();
   const peek = usePeek(view.peekable);
   const scanAnother = useScanAnother(leave.leave);
   return (

@@ -7,12 +7,14 @@ import { usePorts } from '@/hooks/usePorts';
 
 /**
  * Arms the engine with the saved stream code on entering the viewfinder
- * (spec §1). Once per visit and code: an engine already armed or live is
- * native's session, never re-armed (the engine wins at reopen), and the leave
- * that resets a failed session must not re-arm it on its way out. An engine
- * that falls back to idle mid-visit is recovered by leaving and Continue.
+ * (spec §1). Once per visit and code. Ruling I1: a visit that finds native's
+ * session (armed, on air or ended) adopts it as its arm, since the engine wins
+ * at reopen; and once the visit has started to leave (`departed`), it never
+ * arms, so the reset that clears a failed session is never followed by an arm
+ * under Home. An engine that falls back to idle mid-visit is recovered by
+ * leaving and Continue.
  */
-export function useStreamArm(): { readonly unusable: boolean } {
+export function useStreamArm(departed: () => boolean): { readonly unusable: boolean } {
   const { logger, hosts } = usePorts();
   const engine = useEngine();
   const saved = useSavedStream();
@@ -25,16 +27,17 @@ export function useStreamArm(): { readonly unusable: boolean } {
   const kind = useEngineSelector(selectStateKind);
   const armedFor = useRef<string | null>(null);
   useEffect(() => {
-    if (saved === null || session === null || kind !== 'idle') return;
-    if (armedFor.current === saved.raw) return;
+    if (saved === null || session === null) return;
+    if (armedFor.current === saved.raw || departed()) return;
     armedFor.current = saved.raw;
+    if (kind !== 'idle') return;
     // Carry 6: the problem's name only, never the error or the code.
     if (!session.ok) return logger.warn('stream.unusable-code', { problem: session.error });
     const { value } = session;
     const heartbeat = { url: value.descriptor.heartbeatUrl, token: value.token };
     engine.send({ kind: 'arm', session: value, heartbeat });
     logger.info('intent.arm', { slot: value.slot });
-  }, [saved, session, kind, engine, logger]);
+  }, [saved, session, kind, engine, logger, departed]);
   return { unusable: session !== null && !session.ok };
 }
 

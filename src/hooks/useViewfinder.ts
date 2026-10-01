@@ -63,8 +63,9 @@ const ACTION: Readonly<Record<Kind, ViewfinderAction>> = {
   ended: 'ended',
 };
 
-export function useViewfinder(): Viewfinder {
-  const { unusable } = useStreamArm();
+/** `departed`: the visit has started to leave, so it never arms again (ruling I1). */
+export function useViewfinder(departed: () => boolean): Viewfinder {
+  const { unusable } = useStreamArm(departed);
   const kind = useEngineSelector(selectStateKind);
   const { preflight, code, goLiveBy } = usePreflight(unusable);
   const blocker = goLiveBlocker(preflight);

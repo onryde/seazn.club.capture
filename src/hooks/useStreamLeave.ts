@@ -21,12 +21,16 @@ export function useStreamLeave(): {
   readonly canLeave: boolean;
   readonly blocked: boolean;
   leave(): void;
+  /** Whether this visit has started a leave, cancelled or not (ruling I1). Stable. */
+  departed(): boolean;
 } {
   const { back, navigation } = usePorts();
   const status = useEngineSelector(selectEngineStatus);
   const [blocked, setBlocked] = useState(false);
   const block = useCallback(() => setBlocked(true), []);
-  const leaveOnce = useLeaveOnce(block);
+  const left = useRef(false);
+  const departed = useCallback(() => left.current, []);
+  const leaveOnce = useLeaveOnce(block, left);
 
   const leave = useCallback(() => {
     const rule = leaveRule('stream', status);
@@ -48,7 +52,7 @@ export function useStreamLeave(): {
     [back, navigation, leave],
   );
 
-  return { canLeave: leaveRule('stream', status) !== 'blockedOnAir', blocked, leave };
+  return { canLeave: leaveRule('stream', status) !== 'blockedOnAir', blocked, leave, departed };
 }
 
 /**
@@ -62,13 +66,14 @@ export function useStreamLeave(): {
  * leave-on-air line; the engine is the authority, so nothing is written back
  * — a reopen goes to the stream whatever is saved (spec §1).
  */
-function useLeaveOnce(onBlocked: () => void): (rule: FreeRule) => void {
+function useLeaveOnce(onBlocked: () => void, left: { current: boolean }): (rule: FreeRule) => void {
   const { modeStore, navigation, engine, logger } = usePorts();
   const pending = useRef(false);
   return useCallback(
     (rule: FreeRule) => {
       if (pending.current) return;
       pending.current = true;
+      left.current = true;
       void saveLeave(modeStore, rule, logger).then(() => {
         pending.current = false;
         const status = selectEngineStatus(engine.getSnapshot());
@@ -80,7 +85,7 @@ function useLeaveOnce(onBlocked: () => void): (rule: FreeRule) => void {
         navigation.go('home');
       });
     },
-    [modeStore, navigation, engine, logger, onBlocked],
+    [modeStore, navigation, engine, logger, onBlocked, left],
   );
 }
 
