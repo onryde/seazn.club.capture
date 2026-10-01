@@ -80,10 +80,10 @@ export type EngineSnapshot = {
   /** Null with no session: idle, and once ended (plan B's `Snapshot.camera`). */
   readonly camera: CameraState | null;
   /**
-   * The phone clock when native emitted this. The app compares it against now
-   * to decide whether it still trusts what it is holding: a projection that
-   * knows it is stale must refuse to make claims rather than keep showing LIVE
-   * for a broadcast that may have ended minutes ago.
+   * The phone clock when native emitted this, in epoch ms. Nothing in S1
+   * plan A reads it: the in-process fake cannot stall. What the app shows when
+   * native stops reporting (a stale snapshot) is plan C's decision, made with
+   * the bridge (final review M1); until then the app makes no staleness claim.
    */
   readonly reportedAtMs: number;
   /**

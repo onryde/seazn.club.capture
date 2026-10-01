@@ -94,7 +94,6 @@ export const selectStateKind = (snapshot: EngineSnapshot) => snapshot.state.kind
 export const selectBitrateKbps = (snapshot: EngineSnapshot) => snapshot.telemetry.bitrateKbps;
 export const selectAudioLevel = (snapshot: EngineSnapshot) => snapshot.telemetry.audioLevel;
 export const selectShed = (snapshot: EngineSnapshot) => snapshot.telemetry.shed;
-export const selectReportedAtMs = (snapshot: EngineSnapshot) => snapshot.reportedAtMs;
 export const selectSurvivesBackground = (snapshot: EngineSnapshot) => snapshot.survivesBackground;
 /** Null with no descriptor, and null when the server sent no usable overlay (a /relay or foreign URL). */
 export const selectOverlayUrl = (snapshot: EngineSnapshot) =>
