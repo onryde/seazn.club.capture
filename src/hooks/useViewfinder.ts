@@ -1,4 +1,4 @@
-import { useCallback } from 'react';
+import { useCallback, useMemo } from 'react';
 import type { SessionState } from '@/domain/session/SessionState';
 import {
   selectPlaybackUrl,
@@ -68,30 +68,55 @@ const ACTION: Readonly<Record<Kind, ViewfinderAction>> = {
   ended: 'ended',
 };
 
-/** `departed`: the visit has started to leave, so it never arms again (ruling I1). */
+/**
+ * `departed`: the visit has started to leave, so it never arms again (ruling
+ * I1). M7: memoised on its inputs, so a re-render that changes none of them
+ * hands the column the same object and its React.memo parts skip (AGENTS §8).
+ */
 export function useViewfinder(departed: () => boolean): Viewfinder {
   const { unusable } = useStreamArm(departed);
   const kind = useEngineSelector(selectStateKind);
-  const { preflight, code, goLiveBy } = usePreflight(unusable);
-  const blocker = goLiveBlocker(preflight);
+  const checks = usePreflight(unusable);
   const engineKey = useEngineSelector(selectStatusKey);
   const countdown = useHoldCountdown();
   const intents = useIntents();
   const playable = useEngineSelector(selectPlaybackUrl) !== null;
+  return useMemo(
+    () => ({
+      ...project({ kind, unusable, checks, engineKey, playable }),
+      ...countdown,
+      ...intents,
+    }),
+    [kind, unusable, checks, engineKey, playable, countdown, intents],
+  );
+}
+
+type ProjectInput = {
+  readonly kind: Kind;
+  readonly unusable: boolean;
+  readonly checks: PreflightView;
+  readonly engineKey: StatusKey;
+  readonly playable: boolean;
+};
+
+/** The column's reading of native state and the saved code. Pure: a projection, no state machine. */
+function project(
+  input: ProjectInput,
+): Omit<Viewfinder, 'holdRemaining' | 'holdWindow' | 'start' | 'stop'> {
+  const { kind, checks } = input;
+  const blocker = goLiveBlocker(checks.preflight);
   const action = ACTION[kind];
   return {
     kind,
-    plate: unusable && kind === 'idle' ? 'notReady' : tallyPlateFor(kind, blocker === null),
-    statusKey: viewfinderStatusKey(engineKey, { kind, code }),
-    ...countdown,
-    preflight,
+    plate: input.unusable && kind === 'idle' ? 'notReady' : tallyPlateFor(kind, blocker === null),
+    statusKey: viewfinderStatusKey(input.engineKey, { kind, code: checks.code }),
+    preflight: checks.preflight,
     blocker,
-    reason: blockerReason(blocker, code),
-    goLiveBy: action === 'goLive' ? goLiveBy : null,
+    reason: blockerReason(blocker, checks.code),
+    goLiveBy: action === 'goLive' ? checks.goLiveBy : null,
     action,
     onAir: action === 'stop',
-    peekable: action === 'stop' && playable,
-    ...intents,
+    peekable: action === 'stop' && input.playable,
   };
 }
 
@@ -101,7 +126,7 @@ type PreflightView = {
   readonly goLiveBy: string | null;
 };
 
-/** Spec §1's four chips; the code chip is `codeCheck`'s, as the status line is (R3). */
+/** Spec §1's four chips; the code chip is `CODE_READS`', as the status line is (R3). Memoised (M7). */
 function usePreflight(unusable: boolean): PreflightView {
   const camera = useEngineSelector(selectCameraReady);
   const network = useEngineSelector(selectNetworkReachable);
@@ -111,19 +136,19 @@ function usePreflight(unusable: boolean): PreflightView {
   const passed = useDeadlinePassed(deadlineMs);
   const format = useFormatTime();
   const code = codeCheck({ unusable, deadlineKnown: deadlineMs !== null, passed });
-  const usable = code === 'usable' && deadlineMs !== null;
-  return {
-    preflight: { code: CODE_READS[code].chip, camera, network, sound },
-    code,
-    goLiveBy: usable ? format(new Date(deadlineMs), zone) : null,
-  };
+  const chip = CODE_READS[code].chip;
+  const goLiveBy = chip && deadlineMs !== null ? format(new Date(deadlineMs), zone) : null;
+  return useMemo(
+    () => ({ preflight: { code: chip, camera, network, sound }, code, goLiveBy }),
+    [chip, camera, network, sound, code, goLiveBy],
+  );
 }
 
-/** The reconnect hold's countdown, for the `holding*` lines; null otherwise. */
+/** The reconnect hold's countdown, for the `holding*` lines; null otherwise. Memoised (M7). */
 function useHoldCountdown() {
   const holdRemaining = useEngineSelector(selectHoldRemaining);
   const holdWindow = useEngineSelector(selectHoldWindow);
-  return { holdRemaining, holdWindow };
+  return useMemo(() => ({ holdRemaining, holdWindow }), [holdRemaining, holdWindow]);
 }
 
 /** Intents, not RPC (AGENTS §2): they return nothing and are reconciled against native state. */
@@ -138,5 +163,5 @@ function useIntents() {
     logger.info('intent.stop');
     engine.send({ kind: 'stop' });
   }, [engine, logger]);
-  return { start, stop };
+  return useMemo(() => ({ start, stop }), [start, stop]);
 }

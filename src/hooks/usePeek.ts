@@ -31,18 +31,30 @@ export function usePeek(available: boolean): Peek {
     setShowing(false);
     setMounted(false);
   }, [cooling]);
+  const { pressIn, pressOut } = usePresses(playable, cooling, setShowing, setMounted);
+  useLetGo(playable, letGo);
+  // M7: the same object until a field changes, so the memoised stage and peek skip.
+  return useMemo(
+    () => ({ showing, mounted, pressIn, pressOut }),
+    [showing, mounted, pressIn, pressOut],
+  );
+}
+
+type SetFlag = (value: boolean) => void;
+
+/** The finger landing opens the player at once; lifting starts the warm 30 s. */
+function usePresses(playable: boolean, cooling: Cooling, setShowing: SetFlag, setMounted: SetFlag) {
   const pressIn = useCallback(() => {
     if (!playable) return;
     cooling.stop();
     setMounted(true);
     setShowing(true);
-  }, [playable, cooling]);
+  }, [playable, cooling, setShowing, setMounted]);
   const pressOut = useCallback(() => {
     setShowing(false);
     cooling.start();
-  }, [cooling]);
-  useLetGo(playable, letGo);
-  return { showing, mounted, pressIn, pressOut };
+  }, [cooling, setShowing]);
+  return { pressIn, pressOut };
 }
 
 /** Lets go the moment the peek cannot play, and whenever the app leaves (ruling M5). */

@@ -3,7 +3,8 @@ import { StyleSheet, View } from 'react-native';
 import { columnLineKey } from '@/hooks/statusKey';
 import { useT } from '@/hooks/useLanguage';
 import type { Peek } from '@/hooks/usePeek';
-import type { Viewfinder } from '@/hooks/useViewfinder';
+import type { BlockerKey } from '@/hooks/preflight';
+import type { Viewfinder, ViewfinderAction } from '@/hooks/useViewfinder';
 import { AudioMeter } from '@/ui/components/AudioMeter';
 import { Elapsed } from '@/ui/components/Elapsed';
 import { EndedBlock } from '@/ui/components/EndedBlock';
@@ -27,10 +28,8 @@ type ColumnProps = {
  * one true sentence, then the pre-flight or the peek, then the action.
  */
 export const StreamColumn = memo(function StreamColumn(props: ColumnProps) {
-  const { view, blocked, peek } = props;
-  const { t } = useT();
-  const vars = { remaining: view.holdRemaining ?? '', window: view.holdWindow ?? '' };
-  const line = t(columnLineKey(view.statusKey, blocked), vars);
+  const { view, peek } = props;
+  const line = useColumnLine(view, props.blocked);
   return (
     <View style={styles.column}>
       <TallyPlate plate={view.plate} />
@@ -40,50 +39,77 @@ export const StreamColumn = memo(function StreamColumn(props: ColumnProps) {
       {view.action === 'goLive' ? (
         <PreflightChips preflight={view.preflight} goLiveBy={view.goLiveBy} />
       ) : null}
-      <ColumnPeek view={view} peek={peek} />
-      <ColumnAction view={view} onScanAnother={props.onScanAnother} />
+      <ColumnPeek onAir={view.onAir} peekable={view.peekable} peek={peek} />
+      <ColumnAction
+        action={view.action}
+        goLiveOff={view.kind !== 'armed' || view.blocker !== null}
+        reason={view.kind === 'armed' ? view.reason : null}
+        start={view.start}
+        stop={view.stop}
+        onScanAnother={props.onScanAnother}
+      />
     </View>
   );
 });
 
-/** What viewers see, on air only; off, with its reason, when there is no picture (carry 13). */
-const ColumnPeek = memo(function ColumnPeek({ view, peek }: { view: Viewfinder; peek: Peek }) {
+/** The one true sentence: the status line, or Back's refusal over a calm one (ruling I2). */
+function useColumnLine(view: Viewfinder, blocked: boolean): string {
   const { t } = useT();
-  if (!view.onAir) return null;
+  const vars = { remaining: view.holdRemaining ?? '', window: view.holdWindow ?? '' };
+  return t(columnLineKey(view.statusKey, blocked), vars);
+}
+
+type PeekProps = { readonly onAir: boolean; readonly peekable: boolean; readonly peek: Peek };
+
+/**
+ * What viewers see, on air only; off, with its reason, when there is no
+ * picture (carry 13). Primitives, not the view, so memo skips (M7).
+ */
+const ColumnPeek = memo(function ColumnPeek({ onAir, peekable, peek }: PeekProps) {
+  const { t } = useT();
+  if (!onAir) return null;
   return (
     <ViewerPeek
-      disabled={!view.peekable}
-      reason={view.peekable ? null : t('stream.peek.unavailable')}
+      disabled={!peekable}
+      reason={peekable ? null : t('stream.peek.unavailable')}
       onPressIn={peek.pressIn}
       onPressOut={peek.pressOut}
     />
   );
 });
 
+type ActionProps = {
+  readonly action: ViewfinderAction;
+  /** Go live is off: before the engine is armed, or with a chip off. */
+  readonly goLiveOff: boolean;
+  /**
+   * Why Go live is off, given only while armed (ruling I3): before that the
+   * plate and line already say, and an armed engine never shows Stop.
+   */
+  readonly reason: BlockerKey | null;
+  readonly start: () => void;
+  readonly stop: () => void;
+  readonly onScanAnother: () => void;
+};
+
 /**
- * Go live before air, Stop on it; after it, Ended's summary and Scan another. Go live says
- * why it is off only once armed: before that the plate and line already do.
+ * Go live before air, Stop on it; after it, Ended's summary and Scan another.
  * Keyed by the action (carry 13): a hold belongs to the control the finger
  * landed on, so Go live turning into Stop under it abandons it, while a
- * change of state that keeps Stop keeps the hold.
+ * change of state that keeps Stop keeps the hold. Primitives, so memo skips (M7).
  */
-const ColumnAction = memo(function ColumnAction(props: {
-  view: Viewfinder;
-  onScanAnother: () => void;
-}) {
+const ColumnAction = memo(function ColumnAction(props: ActionProps) {
   const { t } = useT();
-  const { view } = props;
-  if (view.action === 'ended') return <EndedBlock onScanAnother={props.onScanAnother} />;
-  const stop = view.action === 'stop';
-  const reason = !stop && view.kind === 'armed' ? view.reason : null;
+  if (props.action === 'ended') return <EndedBlock onScanAnother={props.onScanAnother} />;
+  const stop = props.action === 'stop';
   return (
     <HoldAction
-      key={view.action}
+      key={props.action}
       label={t(stop ? 'stream.action.stop' : 'stream.action.goLive')}
       tone={stop ? 'stop' : 'go'}
-      disabled={!stop && (view.kind !== 'armed' || view.blocker !== null)}
-      reason={reason === null ? null : t(reason)}
-      onHeld={stop ? view.stop : view.start}
+      disabled={!stop && props.goLiveOff}
+      reason={props.reason === null ? null : t(props.reason)}
+      onHeld={stop ? props.stop : props.start}
     />
   );
 });
