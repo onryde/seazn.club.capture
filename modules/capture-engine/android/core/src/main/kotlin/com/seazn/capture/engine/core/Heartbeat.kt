@@ -2,8 +2,8 @@ package com.seazn.capture.engine.core
 
 /** The heartbeat's answer, already typed by the platform's HTTP client. */
 sealed interface HeartbeatResponse {
-  /** [state] and [endReason] are the response body's `{state, endReason?}`; null when absent or unreadable. */
-  data class Answered(val status: Int, val state: String?, val endReason: String?) : HeartbeatResponse
+  /** [reply] is the body as read (Task 15), null when absent or unreadable; [retryAfterS] a 429's. */
+  data class Answered(val status: Int, val reply: BeatReply? = null, val retryAfterS: Int? = null) : HeartbeatResponse
 
   data class Failed(val message: String) : HeartbeatResponse
 }
@@ -71,7 +71,7 @@ object Heartbeat {
   /** The answer to beat [id]. The boolean is true when the server says the session is over ([SessionOver]). */
   fun answered(state: HeartbeatState, id: Int, response: HeartbeatResponse): Pair<HeartbeatState, Boolean> {
     if (state.inFlightId != id) return state to false
-    val over = response is HeartbeatResponse.Answered && SessionOver.said(response.status, response.state)
+    val over = response is HeartbeatResponse.Answered && SessionOver.said(response.status, response.reply?.state)
     return when {
       over -> state.copy(inFlightId = null, lastResult = HeartbeatResult.SESSION_OVER) to true
       response is HeartbeatResponse.Answered && response.status in 200..299 ->

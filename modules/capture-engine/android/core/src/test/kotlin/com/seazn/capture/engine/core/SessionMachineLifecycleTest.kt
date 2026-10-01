@@ -211,7 +211,7 @@ class SessionMachineLifecycleTest {
         Input.MicSilenced(true),
         Input.Device(DeviceSample(3, null, 50, false, null, null)),
         Input.PlaylistFetched(1, FetchResult.NoContent),
-        Input.HeartbeatAnswered(1, HeartbeatResponse.Answered(200, "ending", "stopped")),
+        Input.HeartbeatAnswered(1, HeartbeatResponse.Answered(200, BeatReply("ending", null, null, "stopped", null))),
         Input.DescriptorChecked(1, DescriptorCheck.Over("stopped")),
         Input.Tick,
       )
@@ -492,7 +492,7 @@ class SessionMachineLifecycleTest {
     // is over, at 8 s. The hold ended it first (B7 ruling m2).
     val answers: List<(MachineRig) -> Input> =
       listOf(
-        { rig -> Input.HeartbeatAnswered(rig.sent<Command.PostHeartbeat>().last().beatId, HeartbeatResponse.Answered(200, "ending", "organiser")) },
+        { rig -> Input.HeartbeatAnswered(rig.sent<Command.PostHeartbeat>().last().beatId, HeartbeatResponse.Answered(200, BeatReply("ending", null, null, "organiser", null))) },
         { rig -> Input.DescriptorChecked(rig.sent<Command.FetchDescriptor>().last().requestId, DescriptorCheck.Over("stopped")) },
       )
     for (answer in answers) {
@@ -690,9 +690,9 @@ class SessionMachineLifecycleTest {
     rig.armed()
     rig.advance(500)
     assertEquals(listOf(1, 2), rig.sent<Command.PostHeartbeat>().map { it.beatId })
-    assertEquals(emptyList(), rig.send(Input.HeartbeatAnswered(1, HeartbeatResponse.Answered(410, null, null))))
+    assertEquals(emptyList(), rig.send(Input.HeartbeatAnswered(1, HeartbeatResponse.Answered(410))))
     assertIs<Phase.Armed>(rig.phase)
-    rig.send(Input.HeartbeatAnswered(2, HeartbeatResponse.Answered(410, null, null)))
+    rig.send(Input.HeartbeatAnswered(2, HeartbeatResponse.Answered(410)))
     assertEquals(EndReason.STOPPED_BY_ORGANISER, rig.state.endReason)
   }
 

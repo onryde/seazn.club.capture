@@ -527,7 +527,7 @@ class SessionMachineOutageTest {
   @Test
   fun `ruling 15 a 410 from the heartbeat ends stopped-by-organiser`() {
     val rig = MachineRig().live()
-    rig.beats = { HeartbeatResponse.Answered(410, null, null) }
+    rig.beats = { HeartbeatResponse.Answered(410) }
     rig.advance(10_000)
     assertEquals(EndReason.STOPPED_BY_ORGANISER, rig.state.endReason)
   }

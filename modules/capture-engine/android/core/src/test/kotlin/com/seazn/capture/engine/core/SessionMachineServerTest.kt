@@ -20,7 +20,7 @@ class SessionMachineServerTest {
     var head = 100L
     val rig = MachineRig()
     rig.playlists = { url -> FetchResult.Body(if (url == masterUrl) masterText else media(head++, seconds = "1.500")) }
-    rig.beats = { HeartbeatResponse.Answered(200, "live", null) }
+    rig.beats = { HeartbeatResponse.Answered(200, BeatReply("live", null, null, null, null)) }
     rig.live()
     rig.advance(9_500)
     // Live at 1 s, where the first look is the baseline. Each poll after it (3, 5, 7 and 9 s) finds one
@@ -102,7 +102,7 @@ class SessionMachineServerTest {
   @Test
   fun `ruling 5 heartbeats go every 10 s while armed, carrying the token only as the Bearer`() {
     val rig = MachineRig()
-    rig.beats = { HeartbeatResponse.Answered(200, "warming", null) }
+    rig.beats = { HeartbeatResponse.Answered(200, BeatReply("warming", null, null, null, null)) }
     rig.armed()
     rig.advance(30_000)
     val beats = rig.sent<Command.PostHeartbeat>()
@@ -119,7 +119,7 @@ class SessionMachineServerTest {
   @Test
   fun `ruling 5 an organiser stop in the heartbeat's answer ends stopped-by-organiser`() {
     val rig = MachineRig().live()
-    rig.beats = { HeartbeatResponse.Answered(200, "ending", "stopped") }
+    rig.beats = { HeartbeatResponse.Answered(200, BeatReply("ending", null, null, "stopped", null)) }
     rig.advance(10_000)
     assertEquals(EndReason.STOPPED_BY_ORGANISER, rig.state.endReason)
   }
@@ -186,7 +186,7 @@ class SessionMachineServerTest {
     assertTrue(""""audioOk":false""" in armed.sent<Command.PostHeartbeat>().single().body)
 
     val rig = MachineRig()
-    rig.beats = { HeartbeatResponse.Answered(200, "live", null) }
+    rig.beats = { HeartbeatResponse.Answered(200, BeatReply("live", null, null, null, null)) }
     rig.live()
     rig.advance(10_000)
     // 10.5 s: 46 audio frames a second, over the 20 floor.
@@ -234,8 +234,8 @@ class SessionMachineServerTest {
   fun `a heartbeat answer that comes twice is recorded once`() {
     val rig = MachineRig().live()
     val beat = rig.sent<Command.PostHeartbeat>().single()
-    rig.send(Input.HeartbeatAnswered(beat.beatId, HeartbeatResponse.Answered(200, "live", null)))
-    rig.send(Input.HeartbeatAnswered(beat.beatId, HeartbeatResponse.Answered(200, "live", null)))
+    rig.send(Input.HeartbeatAnswered(beat.beatId, HeartbeatResponse.Answered(200, BeatReply("live", null, null, null, null))))
+    rig.send(Input.HeartbeatAnswered(beat.beatId, HeartbeatResponse.Answered(200, BeatReply("live", null, null, null, null))))
     assertEquals(1, rig.records("heartbeat").size)
     assertEquals(HeartbeatResult.OK, rig.snapshot.heartbeat.lastResult)
   }
@@ -260,7 +260,7 @@ class SessionMachineServerTest {
   @Test
   fun `carry 8 the heartbeat says audio not ok while the mic is silenced, whatever the rate`() {
     val rig = MachineRig()
-    rig.beats = { HeartbeatResponse.Answered(200, "live", null) }
+    rig.beats = { HeartbeatResponse.Answered(200, BeatReply("live", null, null, null, null)) }
     rig.live()
     rig.send(Input.MicSilenced(true))
     rig.advance(10_000)
@@ -271,7 +271,7 @@ class SessionMachineServerTest {
   @Test
   fun `the heartbeat says audio ok at exactly the floor`() {
     val rig = MachineRig()
-    rig.beats = { HeartbeatResponse.Answered(200, "live", null) }
+    rig.beats = { HeartbeatResponse.Answered(200, BeatReply("live", null, null, null, null)) }
     rig.live()
     // 10 audio frames every 500 ms: 20 a second, the floor.
     rig.advance(10_000, audioPerStep = 10)
@@ -282,7 +282,7 @@ class SessionMachineServerTest {
   @Test
   fun `the heartbeat names the transport while reconnecting`() {
     val rig = MachineRig()
-    rig.beats = { HeartbeatResponse.Answered(200, "live", null) }
+    rig.beats = { HeartbeatResponse.Answered(200, BeatReply("live", null, null, null, null)) }
     rig.live()
     rig.send(Input.Dropped(1, DropReason.ENDPOINT_CLOSED, null))
     rig.advance(10_000)

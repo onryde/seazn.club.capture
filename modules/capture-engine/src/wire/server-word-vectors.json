@@ -1,0 +1,219 @@
+{
+  "about": "ServerWord over both sources (amendment, One rule for the server's word). Kotlin only: JS never reads a beat or a session shape. Change only with ServerWord.kt.",
+  "rows": [
+    {
+      "source": "code",
+      "answer": "over",
+      "sid": "S",
+      "endReason": "stopped",
+      "named": "S",
+      "word": "over",
+      "wordSid": "S",
+      "ends": true
+    },
+    {
+      "source": "code",
+      "answer": "open",
+      "sid": "S",
+      "named": "S",
+      "word": "open",
+      "wordSid": "S",
+      "ends": false
+    },
+    {
+      "source": "code",
+      "answer": "open",
+      "sid": "N",
+      "named": "S",
+      "word": "open",
+      "wordSid": "N",
+      "ends": true
+    },
+    { "source": "code", "answer": "waiting", "named": "S", "word": "no-broadcast", "ends": true },
+    {
+      "source": "code",
+      "answer": "not-current",
+      "sid": "S",
+      "named": "S",
+      "word": "no-evidence",
+      "ends": false
+    },
+    {
+      "source": "code",
+      "answer": "not-current",
+      "sid": "N",
+      "named": "S",
+      "word": "open",
+      "wordSid": "N",
+      "ends": true
+    },
+    {
+      "source": "code",
+      "answer": "status",
+      "status": 410,
+      "named": "S",
+      "word": "over",
+      "wordSid": "S",
+      "ends": true
+    },
+    {
+      "source": "code",
+      "answer": "status",
+      "status": 401,
+      "named": "S",
+      "word": "code-ended",
+      "ends": false
+    },
+    {
+      "source": "code",
+      "answer": "status",
+      "status": 404,
+      "named": "S",
+      "word": "not-found",
+      "ends": false
+    },
+    {
+      "source": "code",
+      "answer": "status",
+      "status": 429,
+      "named": "S",
+      "word": "no-evidence",
+      "ends": false
+    },
+    {
+      "source": "code",
+      "answer": "status",
+      "status": 503,
+      "named": "S",
+      "word": "no-evidence",
+      "ends": false
+    },
+    {
+      "source": "code",
+      "answer": "unreachable",
+      "named": "S",
+      "word": "no-evidence",
+      "ends": false
+    },
+    {
+      "source": "code",
+      "answer": "foreign-ingest",
+      "sid": "S",
+      "named": "S",
+      "word": "no-evidence",
+      "ends": false
+    },
+    {
+      "source": "beat",
+      "status": 200,
+      "state": "over",
+      "sid": "S",
+      "endReason": "phone_lost",
+      "named": "S",
+      "word": "over",
+      "wordSid": "S",
+      "ends": true
+    },
+    {
+      "source": "beat",
+      "status": 200,
+      "state": "over",
+      "sid": "N",
+      "named": "S",
+      "word": "over",
+      "wordSid": "N",
+      "ends": false
+    },
+    {
+      "source": "beat",
+      "status": 200,
+      "state": "go-live",
+      "sid": "S",
+      "startedBy": "automatic",
+      "named": "S",
+      "word": "open",
+      "wordSid": "S",
+      "cause": "automatic",
+      "ends": false
+    },
+    {
+      "source": "beat",
+      "status": 200,
+      "state": "go-live",
+      "sid": "N",
+      "startedBy": "organiser",
+      "named": "S",
+      "word": "open",
+      "wordSid": "N",
+      "cause": "organiser",
+      "ends": true
+    },
+    {
+      "source": "beat",
+      "status": 200,
+      "state": "live",
+      "sid": "N",
+      "named": null,
+      "word": "open",
+      "wordSid": "N",
+      "cause": "rejoin",
+      "ends": true
+    },
+    {
+      "source": "beat",
+      "status": 200,
+      "state": "waiting",
+      "named": "S",
+      "word": "no-broadcast",
+      "ends": true
+    },
+    {
+      "source": "beat",
+      "status": 200,
+      "state": "replaced",
+      "named": "S",
+      "word": "replaced",
+      "ends": false
+    },
+    {
+      "source": "beat",
+      "status": 200,
+      "state": "taken",
+      "named": null,
+      "word": "taken",
+      "ends": false
+    },
+    {
+      "source": "beat",
+      "status": 200,
+      "state": "go-live",
+      "named": "S",
+      "word": "no-evidence",
+      "ends": false
+    },
+    {
+      "source": "beat",
+      "status": 200,
+      "state": "dancing",
+      "sid": "S",
+      "named": "S",
+      "word": "no-evidence",
+      "ends": false
+    },
+    { "source": "beat", "status": 410, "named": "S", "word": "over", "wordSid": "S", "ends": true },
+    {
+      "source": "beat",
+      "status": 410,
+      "named": "T",
+      "word": "over",
+      "wordSid": "T",
+      "ends": false
+    },
+    { "source": "beat", "status": 410, "named": null, "word": "over", "ends": false },
+    { "source": "beat", "status": 401, "named": "S", "word": "code-ended", "ends": false },
+    { "source": "beat", "status": 404, "named": "S", "word": "not-found", "ends": false },
+    { "source": "beat", "status": 429, "named": "S", "word": "no-evidence", "ends": false },
+    { "source": "beat", "status": 500, "named": "S", "word": "no-evidence", "ends": false },
+    { "source": "beat", "failed": true, "named": "S", "word": "no-evidence", "ends": false }
+  ]
+}

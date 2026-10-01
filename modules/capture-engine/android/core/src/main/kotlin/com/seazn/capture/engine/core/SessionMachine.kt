@@ -550,7 +550,7 @@ internal object Heartbeats {
     if (heartbeat == session.heartbeat) return Step(phase)
     val status = (input.response as? HeartbeatResponse.Answered)?.status
     if (over) {
-      val answered = (input.response as? HeartbeatResponse.Answered)?.endReason
+      val answered = (input.response as? HeartbeatResponse.Answered)?.reply?.endReason
       return SessionMachine.end(phase, EndReason.STOPPED_BY_ORGANISER, now, "status" to status, "endReason" to answered)
     }
     val noted = record("heartbeat", "result" to heartbeat.lastResult, "status" to status, "message" to (input.response as? HeartbeatResponse.Failed)?.message)

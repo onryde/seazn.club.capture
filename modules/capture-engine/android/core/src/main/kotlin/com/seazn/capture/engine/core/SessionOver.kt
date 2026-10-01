@@ -4,6 +4,8 @@ package com.seazn.capture.engine.core
  * The server's word that a session is over (spec, _Ask_ → Descriptor and Heartbeat): a 410, or a 2xx
  * whose body's `state` is one of [STATES]. One rule for both answers (final review M-4), so the
  * heartbeat and the descriptor can never disagree about the same session.
+ *
+ * Replaced by [ServerWord]; kept until the machine's answer table (plan C Task 6) reads it instead.
  */
 object SessionOver {
   /** Descriptor states that mean the session is over. */

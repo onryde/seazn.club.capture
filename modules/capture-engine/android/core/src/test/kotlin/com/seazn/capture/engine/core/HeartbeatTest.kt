@@ -68,7 +68,7 @@ class HeartbeatTest {
       state = next
       if (id != null) {
         sent += t
-        state = Heartbeat.answered(state, id, HeartbeatResponse.Answered(200, "live", null)).first
+        state = Heartbeat.answered(state, id, HeartbeatResponse.Answered(200, BeatReply("live", null, null, null, null))).first
       }
     }
     assertEquals(listOf(0L, 10_000L, 20_000L, 30_000L), sent)
@@ -77,7 +77,7 @@ class HeartbeatTest {
   @Test
   fun `ruling 5 a 410 means the session is over`() {
     val (state, id) = Heartbeat.due(HeartbeatState(), 0, 0)
-    val (after, over) = Heartbeat.answered(state, id!!, HeartbeatResponse.Answered(410, null, "stopped"))
+    val (after, over) = Heartbeat.answered(state, id!!, HeartbeatResponse.Answered(410, BeatReply(null, null, null, "stopped", null)))
     assertTrue(over)
     assertEquals(HeartbeatResult.SESSION_OVER, after.lastResult)
   }
@@ -86,7 +86,7 @@ class HeartbeatTest {
   fun `ruling 5 a 200 with a finished state means the session is over`() {
     for (finished in listOf("ending", "completed", "failed")) {
       val (state, id) = Heartbeat.due(HeartbeatState(), 0, 0)
-      assertTrue(Heartbeat.answered(state, id!!, HeartbeatResponse.Answered(200, finished, "stopped")).second, finished)
+      assertTrue(Heartbeat.answered(state, id!!, HeartbeatResponse.Answered(200, BeatReply(finished, null, null, "stopped", null))).second, finished)
     }
   }
 
@@ -95,7 +95,7 @@ class HeartbeatTest {
     val failing = HeartbeatState(consecutiveFailures = 4, failures = 4)
     for (live in listOf("live", "warming")) {
       val (state, id) = Heartbeat.due(failing, 0, 0)
-      val (after, over) = Heartbeat.answered(state, id!!, HeartbeatResponse.Answered(200, live, null))
+      val (after, over) = Heartbeat.answered(state, id!!, HeartbeatResponse.Answered(200, BeatReply(live, null, null, null, null)))
       assertFalse(over)
       assertEquals(HeartbeatResult.OK, after.lastResult)
       assertEquals(0, after.consecutiveFailures)
@@ -107,8 +107,8 @@ class HeartbeatTest {
   fun `a 401, a 500 and a network failure are counted and never over, and a bare 200 is ok`() {
     val responses =
       listOf(
-        HeartbeatResponse.Answered(401, null, null),
-        HeartbeatResponse.Answered(500, null, null),
+        HeartbeatResponse.Answered(401),
+        HeartbeatResponse.Answered(500),
         HeartbeatResponse.Failed("timeout"),
       )
     var state = HeartbeatState()
@@ -124,7 +124,7 @@ class HeartbeatTest {
     assertEquals(3, state.consecutiveFailures)
     assertEquals(HeartbeatResult.FAILED, state.lastResult)
     val (sent, id) = Heartbeat.due(state, t, t)
-    assertFalse(Heartbeat.answered(sent, id!!, HeartbeatResponse.Answered(200, null, null)).second)
+    assertFalse(Heartbeat.answered(sent, id!!, HeartbeatResponse.Answered(200)).second)
   }
 
   @Test
@@ -167,7 +167,7 @@ class HeartbeatTest {
   fun `an answer to a beat already given up is ignored`() {
     val (first, id) = Heartbeat.due(HeartbeatState(), 0, 0)
     val (second, _) = Heartbeat.due(first, 10_000, 10_000)
-    val (after, over) = Heartbeat.answered(second, id!!, HeartbeatResponse.Answered(410, null, null))
+    val (after, over) = Heartbeat.answered(second, id!!, HeartbeatResponse.Answered(410))
     assertFalse(over)
     assertEquals(second, after)
   }
@@ -182,11 +182,11 @@ class HeartbeatTest {
   @Test
   fun `ruling 5 any 2xx is an answer, and a finished state outside a 2xx is not`() {
     // Only a 410, or a 2xx whose state is ending, completed or failed, ends the session.
-    assertTrue(answer(HeartbeatResponse.Answered(202, "ending", null)).second)
-    val (empty, emptyOver) = answer(HeartbeatResponse.Answered(204, null, null))
+    assertTrue(answer(HeartbeatResponse.Answered(202, BeatReply("ending", null, null, null, null))).second)
+    val (empty, emptyOver) = answer(HeartbeatResponse.Answered(204))
     assertFalse(emptyOver)
     assertEquals(HeartbeatResult.OK, empty.lastResult)
-    val (refused, refusedOver) = answer(HeartbeatResponse.Answered(500, "failed", null))
+    val (refused, refusedOver) = answer(HeartbeatResponse.Answered(500, BeatReply("failed", null, null, null, null)))
     assertFalse(refusedOver)
     assertEquals(HeartbeatResult.FAILED, refused.lastResult)
   }
@@ -194,9 +194,9 @@ class HeartbeatTest {
   @Test
   fun `every answer closes its beat, so an answered beat is never later timed out`() {
     val responses =
-      listOf(HeartbeatResponse.Answered(200, "live", null), HeartbeatResponse.Answered(410, null, null), HeartbeatResponse.Failed("timeout"))
+      listOf(HeartbeatResponse.Answered(200, BeatReply("live", null, null, null, null)), HeartbeatResponse.Answered(410), HeartbeatResponse.Failed("timeout"))
     for (response in responses) assertNull(answer(response).first.inFlightId, response.toString())
-    val (answered, _) = answer(HeartbeatResponse.Answered(200, "live", null))
+    val (answered, _) = answer(HeartbeatResponse.Answered(200, BeatReply("live", null, null, null, null)))
     val (next, id) = Heartbeat.due(answered, 10_000, 10_000)
     assertEquals(2, id)
     assertEquals(0, next.failures)
@@ -239,7 +239,7 @@ class HeartbeatTest {
   fun `an answer delivered twice is used once`() {
     val (sent, id) = Heartbeat.due(HeartbeatState(), 0, 0)
     val (once, _) = Heartbeat.answered(sent, id!!, HeartbeatResponse.Failed("timeout"))
-    val (twice, over) = Heartbeat.answered(once, id, HeartbeatResponse.Answered(410, null, null))
+    val (twice, over) = Heartbeat.answered(once, id, HeartbeatResponse.Answered(410))
     assertFalse(over)
     assertEquals(once, twice)
     assertEquals(1, twice.failures)
