@@ -44,7 +44,10 @@ const SessionRecord = memo(function SessionRecord() {
   return (
     <View style={styles.record}>
       <Text variant="control">{t('diag.section.record')}</Text>
-      {record.lines.slice(-RECORD_TAIL).map(renderLine)}
+      {/* Event names, not copy: the locale sweep reads around this block. */}
+      <View testID="session-record-lines" style={styles.record}>
+        {record.lines.slice(-RECORD_TAIL).map(renderLine)}
+      </View>
       <Button label={t('diag.share')} onPress={record.share} />
       {record.shareFailed ? <Text variant="status">{t('diag.shareFailed')}</Text> : null}
     </View>
