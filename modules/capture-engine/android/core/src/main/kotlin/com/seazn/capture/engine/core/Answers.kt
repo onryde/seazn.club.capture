@@ -33,6 +33,24 @@ class BroadcastDescriptor(
   val srtOffered: Boolean
     get() = primary.transport == Transport.SRT || fallback?.transport == Transport.SRT
 
+  /** The secrets the record must never carry. Blank ones are no secret. */
+  fun secrets(): List<String> =
+    listOfNotNull(primary, fallback)
+      .flatMap {
+        when (it) {
+          is SrtTarget -> listOf(it.passphrase, it.streamId)
+          is RtmpsTarget -> listOf(it.streamKey)
+        }
+      }
+      .filter { it.isNotBlank() }
+
+  /** The SRT stream ids: secrets everywhere but inside a public URL, whose path may hold one. */
+  fun streamIds(): List<String> = listOfNotNull(primary, fallback).filterIsInstance<SrtTarget>().map { it.streamId }
+
+  /** Plan B's publish plan for broadcast [sid], with the pairing's token and beat URL. */
+  fun config(sid: String, pairing: PairingState): SessionConfig =
+    SessionConfig(sid, pairing.token, primary, fallback, holdWindowSeconds, playbackUrl, pairing.request.heartbeatUrl, pairing.phone.appVersion)
+
   override fun toString(): String = "BroadcastDescriptor(primary=$primary, fallback=$fallback, label=$label)"
 }
 

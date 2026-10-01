@@ -10,9 +10,13 @@ import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
+/** Plan B's callers, as Task 5 re-states them: a config's secrets, its SRT stream ids allowed in public URLs. */
+private fun SessionRecord.protectConfig(config: SessionConfig) =
+  protect(config.secrets(), notInUrls = listOfNotNull(config.primary, config.fallback).filterIsInstance<SrtTarget>().map { it.streamId })
+
 class SessionRecordTest {
   private val lines = mutableListOf<String>()
-  private val record = SessionRecord { lines += it }.apply { protect(Configs.valid()) }
+  private val record = SessionRecord { lines += it }.apply { protectConfig(Configs.valid()) }
   private val secrets = listOf(Configs.TOKEN, Configs.PASSPHRASE, Configs.STREAM_ID, Configs.STREAM_KEY)
 
   private fun write(vararg fields: Pair<String, Any?>): String {
@@ -84,7 +88,7 @@ class SessionRecordTest {
       val out = mutableListOf<String>()
       val srt = SrtTarget("srt://live.cloudflare.com:778", Configs.STREAM_ID, passphrase, latencyMs = 2_000)
       SessionRecord { out += it }
-        .apply { protect(Configs.valid(primary = srt)) }
+        .apply { protectConfig(Configs.valid(primary = srt)) }
         .append(0, RecordEntry("test", listOf("message" to "passphrase=$form")))
       assertEquals("""{"at":"1970-01-01T00:00:00.000Z","kind":"test","message":"$expected"}""", out.single(), form)
     }
@@ -179,7 +183,7 @@ class SessionRecordTest {
   @Test
   fun `RTMPS preferred - the stream id of the SRT fallback passes inside the public URL and nowhere else`() {
     val out = mutableListOf<String>()
-    val rtmpsFirst = SessionRecord { out += it }.apply { protect(Configs.valid(primary = Configs.rtmps, fallback = Configs.srt)) }
+    val rtmpsFirst = SessionRecord { out += it }.apply { protectConfig(Configs.valid(primary = Configs.rtmps, fallback = Configs.srt)) }
     val encoded = URLEncoder.encode(Configs.PASSPHRASE, "UTF-8")
     val fields = listOf(
       "playbackUrl" to "${Configs.PLAYBACK_URL}?tok=${Configs.TOKEN}",
@@ -194,7 +198,7 @@ class SessionRecordTest {
   @Test
   fun `RTMPS only - the stream key and the token are masked in text and inside a public URL`() {
     val out = mutableListOf<String>()
-    val rtmpsOnly = SessionRecord { out += it }.apply { protect(Configs.valid(primary = Configs.rtmps, fallback = null)) }
+    val rtmpsOnly = SessionRecord { out += it }.apply { protectConfig(Configs.valid(primary = Configs.rtmps, fallback = null)) }
     val fields = listOf(
       "playbackUrl" to "${Configs.PLAYBACK_URL}?key=${Configs.STREAM_KEY}&tok=${Configs.TOKEN}",
       "message" to "rtmps://live.cloudflare.com:443/live/${Configs.STREAM_KEY} Bearer ${Configs.TOKEN}",
@@ -218,7 +222,7 @@ class SessionRecordTest {
       heartbeatUrl = "https://stg.seazn.club/api/capture/heartbeat",
       appVersion = "1.0.0",
     )
-    record.protect(second)
+    record.protectConfig(second)
     val line = write("playbackUrl" to "${Configs.PLAYBACK_URL}?tok=${Configs.TOKEN}", "message" to "first ${Configs.STREAM_KEY} second $secondToken")
     assertEquals(
       """{"at":"2026-09-30T14:32:05.123Z","kind":"test","playbackUrl":"${Configs.PLAYBACK_URL}?tok=***","message":"first *** second ***"}""",
@@ -231,14 +235,14 @@ class SessionRecordTest {
     val out = mutableListOf<String>()
     val keyWithId = "${Configs.STREAM_ID}k5e6f7a8b"
     val nested = SessionRecord { out += it }
-      .apply { protect(Configs.valid(fallback = RtmpsTarget("rtmps://live.cloudflare.com:443/live/", keyWithId))) }
+      .apply { protectConfig(Configs.valid(fallback = RtmpsTarget("rtmps://live.cloudflare.com:443/live/", keyWithId))) }
     nested.append(1_790_778_725_123, RecordEntry("test", listOf("message" to "key $keyWithId")))
     assertEquals("""{"at":"2026-09-30T14:32:05.123Z","kind":"test","message":"key ***"}""", out.single())
   }
 
   @Test
   fun `the same entry written twice gives two scrubbed lines, and a repeated arm changes nothing`() {
-    record.protect(Configs.valid())
+    record.protectConfig(Configs.valid())
     val entry = RecordEntry("heartbeat", listOf("result" to HeartbeatResult.FAILED, "message" to "401 for Bearer ${Configs.TOKEN}"))
     record.append(1_790_778_725_123, entry)
     record.append(1_790_778_725_123, entry)

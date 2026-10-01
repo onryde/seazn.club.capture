@@ -2,10 +2,10 @@ package com.seazn.capture.engine.core
 
 /**
  * Drives [SessionMachine] the way plan C's adapters will: intents, a tick every 500 ms, encoded
- * frames while on air, and — when a test sets them — link readings once a second and answers to
- * playlist fetches and heartbeats.
+ * frames while on air, permissions granted and the code answered open by default, and — when a test
+ * sets them — link readings once a second and answers to playlist fetches, heartbeats and starts.
  */
-class MachineRig(val config: SessionConfig = Configs.valid()) {
+class MachineRig(val request: PairRequest = Configs.pairRequest(), val descriptor: BroadcastDescriptor = Configs.descriptor()) {
   var phase: Phase = Phase.Idle()
   var mono = 0L
   var wall = 1_790_000_000_000L
@@ -20,6 +20,19 @@ class MachineRig(val config: SessionConfig = Configs.valid()) {
   /** Link counters once a second while on air; null sends none. */
   var link: ((Long) -> LinkCounters)? = null
 
+  /** Answers each permissions ask at once; null leaves it unanswered. */
+  var permissions: Boolean? = true
+
+  /**
+   * Answers each code fetch at once; null leaves it unanswered. The default answers the fetch at
+   * Arming open for `sess_42`, and leaves a reconnect's fetch in flight, as plan B's rig left its
+   * descriptor asks: a test that wants a reconnect answered sets its own.
+   */
+  var codes: ((Int) -> CodeAnswer?)? = { if (phase is Phase.Arming) Configs.open(descriptor = descriptor) else null }
+
+  /** Answers each `POST start` at once; null (the default) leaves it unanswered. */
+  var starts: ((Int) -> StartAnswer?)? = null
+
   private var video = 0L
   private var audio = 0L
   private var feedingAttempt: Int? = null
@@ -32,6 +45,10 @@ class MachineRig(val config: SessionConfig = Configs.valid()) {
 
   val snapshot: Snapshot
     get() = Projection.snapshot(phase, now)
+
+  /** The broadcast held, from Armed on. */
+  val session: Session
+    get() = phase.session!!
 
   /** The attempt the machine is connecting or publishing, if any. */
   val attempt: Int?
@@ -49,6 +66,9 @@ class MachineRig(val config: SessionConfig = Configs.valid()) {
     when (command) {
       is Command.FetchPlaylist -> playlists?.invoke(command.url)?.let { send(Input.PlaylistFetched(command.requestId, it)) }
       is Command.PostHeartbeat -> beats?.invoke(command.beatId)?.let { send(Input.HeartbeatAnswered(command.beatId, it)) }
+      Command.AskPermissions -> permissions?.let { send(Input.PermissionsAnswered(it)) }
+      is Command.FetchCode -> codes?.invoke(command.requestId)?.let { send(Input.CodeAnswered(command.requestId, it)) }
+      is Command.PostStart -> starts?.invoke(command.requestId)?.let { send(Input.StartAnswered(command.requestId, it)) }
       else -> Unit
     }
   }
@@ -85,16 +105,44 @@ class MachineRig(val config: SessionConfig = Configs.valid()) {
     send(Input.Frames(attemptId, video, audio))
   }
 
-  fun armed(validated: Boolean = true): MachineRig {
-    send(Input.Arm(config))
+  /**
+   * Paired: the pair, permissions granted, the network fact, and the claim beat in flight. The claim
+   * is left for [hear] even when [beats] is set, so a test's own answers start with the next beat.
+   */
+  fun paired(validated: Boolean = true): MachineRig {
+    val answering = beats
+    beats = null
+    send(Input.Pair(request, Configs.PHONE, stopped = null))
+    beats = answering
     send(Input.Network(validated))
     return this
   }
 
-  /** Armed, started, connected, and a second of encoded frames: LIVE. */
+  /** Answers the beat in flight, ticking until one is; fails after two minutes with none. */
+  fun hear(state: String?, sid: String? = null, startedBy: String? = null, endReason: String? = null, status: Int = 200, pollSeconds: Int = 10): List<Command> {
+    val until = mono + 120_000
+    while (phase.beating?.heartbeat?.inFlightId == null) {
+      check(mono < until) { "no beat in flight in ${phase.name}" }
+      advance(500)
+    }
+    val id = phase.beating!!.heartbeat.inFlightId!!
+    val reply = BeatReply(state, sid, startedBy, endReason, Configs.waiting(pollSeconds))
+    return send(Input.HeartbeatAnswered(id, HeartbeatResponse.Answered(status, reply)))
+  }
+
+  /** Armed for `sess_42`, by the organiser's Go live, and not yet ready. */
+  fun armed(validated: Boolean = true): MachineRig {
+    paired(validated)
+    hear("go-live", sid = "sess_42", startedBy = "organiser")
+    return this
+  }
+
+  fun ready(readiness: Readiness = Configs.READY): List<Command> = send(Input.ReadinessChanged(readiness))
+
+  /** Armed, ready, connected, and a second of encoded frames: LIVE. */
   fun live(): MachineRig {
     armed()
-    send(Input.Start)
+    ready()
     send(Input.Connected(attempt!!))
     advance(1_000)
     return this

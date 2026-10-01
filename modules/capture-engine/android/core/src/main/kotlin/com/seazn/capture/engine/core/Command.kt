@@ -40,18 +40,53 @@ sealed interface Command {
    */
   data class FetchPlaylist(val requestId: Int, val url: String) : Command
 
-  /** `POST url` with `Authorization: Bearer <bearer>`. The bearer is the session's `tok`. */
+  /**
+   * `POST url` with `Authorization: Bearer <bearer>`. The bearer is the code's `tok`. Prints no body
+   * and no URL: both carry the code.
+   */
   data class PostHeartbeat(val beatId: Int, val url: String, val bearer: String, val body: String) : Command {
-    override fun toString(): String = "PostHeartbeat(beatId=$beatId, url=$url, bearer=<${bearer.length} chars>, body=$body)"
+    override fun toString(): String =
+      "PostHeartbeat(beatId=$beatId, url=<${url.length} chars>, bearer=<${bearer.length} chars>, body=<${body.length} chars>)"
   }
 
-  /**
-   * Fetch the descriptor again with the session's `tok` (spec §1: on every reconnect), answered as
-   * [Input.DescriptorChecked] with the same [requestId].
-   */
-  data class FetchDescriptor(val requestId: Int) : Command
+  /** Ask for the camera and microphone (and, on Android 13+, notifications), answered as [Input.PermissionsAnswered]. */
+  data object AskPermissions : Command
 
-  /** Tear the capture session down: stream, camera, foreground service. */
+  /** Start the foreground service and take the partial wake lock, for the whole pairing (A5). */
+  data object Hold : Command
+
+  /** Stop the foreground service and release the wake lock. */
+  data object Release : Command
+
+  /** The broadcast's encoded rotation, before its first [Connect] (A11). */
+  data class Orient(val side: Side) : Command
+
+  /**
+   * `GET url?slot=slot&phone=phoneId` with the Bearer, no-store, answered as [Input.CodeAnswered]
+   * (G0-d), on arming and again on every reconnect (spec §1). [environment] names the ingest host the
+   * answer's `cred` must sit on.
+   */
+  data class FetchCode(val requestId: Int, val url: String, val bearer: String, val phoneId: String, val slot: Int, val environment: Environment) : Command {
+    override fun toString(): String = "FetchCode(requestId=$requestId, url=<${url.length} chars>, bearer=<${bearer.length} chars>)"
+  }
+
+  /** `POST url` with the Bearer and [body], answered as [Input.StartAnswered]. */
+  data class PostStart(val requestId: Int, val url: String, val bearer: String, val body: String) : Command {
+    override fun toString(): String = "PostStart(requestId=$requestId, url=<${url.length} chars>, bearer=<${bearer.length} chars>)"
+  }
+
+  /** Stop publishing this broadcast; the pairing, the camera and the service stay. */
+  data object StopBroadcast : Command
+
+  /** A17: write [record] to app-private storage, synchronously, before the [End] that follows it. */
+  data class WriteStopped(val record: StoppedRecord) : Command
+
+  /** A17: the record for this code and slot is delivered, or its code ended. */
+  data class DeleteStopped(val code: String, val slot: Int) : Command {
+    override fun toString(): String = "DeleteStopped(slot=$slot)"
+  }
+
+  /** The pairing is over: stop publishing and capture. The service goes with [Release]. */
   data class End(val reason: EndReason) : Command
 
   /** A line for the session record. The engine routes it to [SessionRecord]; the platform never sees it. */

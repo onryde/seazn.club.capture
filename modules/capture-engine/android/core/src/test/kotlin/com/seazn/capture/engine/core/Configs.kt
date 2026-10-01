@@ -32,11 +32,12 @@ object Configs {
     primary: IngestTarget = srt,
     fallback: IngestTarget? = rtmps,
     maxDurationMinutes: Int = 300,
+    holdWindowSeconds: Map<Transport, Int> = mapOf(Transport.SRT to 183, Transport.RTMPS to 180),
   ) =
     BroadcastDescriptor(
       primary = primary,
       fallback = fallback,
-      holdWindowSeconds = mapOf(Transport.SRT to 183, Transport.RTMPS to 180),
+      holdWindowSeconds = holdWindowSeconds,
       playbackUrl = PLAYBACK_URL,
       overlayUrl = "https://stg.seazn.club/overlay/fixtures/fx-42",
       label = "Example Town v Sample CC",
@@ -67,5 +68,39 @@ object Configs {
       automatic = automatic,
       claim = claim,
       environment = Environment.STAGING,
+    )
+
+  /** Every check passes, held with the top to the operator's left. */
+  val READY = Readiness(cameraFrames = true, audioPeak = 0.4, pose = Pose.Held(Side.LEFT))
+
+  fun waiting(pollSeconds: Int = 10, destinationName: String? = "YouTube · Example Town CC", autoAllowed: Boolean = true) =
+    WaitingFields(
+      label = "Example Town v Sample CC",
+      venueTimezone = "Europe/London",
+      scheduledStartEpochS = 1_790_003_600,
+      autoAllowed = autoAllowed,
+      destinationName = destinationName,
+      overlayUrl = "https://stg.seazn.club/overlay/fixtures/fx-42",
+      pollSeconds = pollSeconds,
+    )
+
+  fun open(sid: String = "sess_42", descriptor: BroadcastDescriptor = descriptor()) = CodeAnswer.Open(sid, "warming", descriptor, waiting())
+
+  fun body(beat: Command.PostHeartbeat) = org.json.JSONObject(beat.body)
+
+  /**
+   * A fresh engine's way to a broadcast, as the platform would send it (PV6): pair, permissions
+   * granted, a validated network, the organiser's Go live on the claim beat (beat 1), the code's open
+   * shape (fetch 1) and, when [ready], every readiness check passing. Ready, Armed connects on its own.
+   * A later pairing on the same engine names its own [beat] and [fetch] ids: ids carry across pairings.
+   */
+  fun pairInputs(descriptor: BroadcastDescriptor = descriptor(), ready: Boolean = true, beat: Int = 1, fetch: Int = 1): List<Input> =
+    listOfNotNull(
+      Input.Pair(pairRequest(), PHONE, stopped = null),
+      Input.PermissionsAnswered(granted = true),
+      Input.Network(true),
+      Input.HeartbeatAnswered(beat, HeartbeatResponse.Answered(200, BeatReply("go-live", "sess_42", "organiser", null, waiting()))),
+      Input.CodeAnswered(fetch, open(descriptor = descriptor)),
+      if (ready) Input.ReadinessChanged(READY) else null,
     )
 }

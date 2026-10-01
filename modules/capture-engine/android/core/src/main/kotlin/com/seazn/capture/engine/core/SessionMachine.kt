@@ -38,14 +38,21 @@ object SessionMachine {
     if (input == Input.Tick || input == Input.Stop) return apply(phase, input, now)
     val judged = if (input is Input.PlatformFailed) Timers.holdRanOut(phase, now) ?: Step(phase) else Timers.judged(phase, now)
     val step = apply(judged.phase, input, now)
-    return if (judged.commands.isEmpty()) step else step.copy(commands = judged.commands + step.commands)
+    val merged = if (judged.commands.isEmpty()) step else step.copy(commands = judged.commands + step.commands)
+    // A11: whatever the input, an Armed phase that is ready connects now.
+    return Pairings.gate(merged, now)
   }
 
   private fun apply(phase: Phase, input: Input, now: Now): Step =
     when (input) {
-      is Input.Arm -> arm(phase, input.config, now)
-      Input.Start -> start(phase, now)
-      Input.Stop -> if (phase.session == null) ignored(phase, "stop") else end(phase, EndReason.OPERATOR_STOPPED, now)
+      is Input.Pair -> Pairings.pair(phase, input, now)
+      is Input.PermissionsAnswered -> Pairings.permissions(phase, input.granted, now)
+      Input.Unpair -> Pairings.unpair(phase)
+      is Input.SetAutomatic -> Pairings.automatic(phase, input.on)
+      is Input.SetLanguage -> Pairings.language(phase, input.language)
+      is Input.ReadinessChanged -> Pairings.readiness(phase, input.readiness)
+      Input.Start -> Verdicts.postStart(phase, now)
+      Input.Stop -> if (!phase.holdsBroadcast) ignored(phase, "stop") else end(phase, EndReason.OPERATOR_STOPPED, now)
       Input.Reset -> if (phase is Phase.Ended) Step(Phase.Idle(phase.ids, phase.networkValidated), listOf(record("reset"))) else ignored(phase, "reset")
       Input.SwitchCamera -> Devices.switched(phase, now)
       Input.Tick -> Heartbeats.tick(Timers.tick(phase, now), now)
@@ -62,7 +69,8 @@ object SessionMachine {
       is Input.Device -> Devices.sampled(phase, input.sample)
       is Input.PlaylistFetched -> Deliveries.fetched(phase, input, now)
       is Input.HeartbeatAnswered -> Heartbeats.answered(phase, input, now)
-      is Input.DescriptorChecked -> descriptor(phase, input, now)
+      is Input.CodeAnswered -> Verdicts.code(phase, input, now)
+      is Input.StartAnswered -> Verdicts.started(phase, input, now)
       is Input.PlatformFailed -> platformFailed(phase, input, now)
     }
 
@@ -72,35 +80,6 @@ object SessionMachine {
   internal fun end(phase: Phase, reason: EndReason, now: Now, vararg fields: Pair<String, Any?>): Step {
     val liveMs = phase.session?.liveSinceEpochMs
     return Step(phase.ended(reason, now), listOf(record("ended", "reason" to reason, "wasLive" to (liveMs != null), *fields), Command.End(reason)))
-  }
-
-  private fun arm(phase: Phase, config: SessionConfig, now: Now): Step {
-    if (phase !is Phase.Idle) return ignored(phase, "arm")
-    val problems = config.problems()
-    if (problems.isNotEmpty()) {
-      val refused = record("arm-refused", "problems" to problems.joinToString("; "))
-      return Step(phase.ended(EndReason.FATAL_ERROR, now), listOf(refused, Command.End(EndReason.FATAL_ERROR)))
-    }
-    // Ids carry on from the last session (B6 review m3): its late answers never match this one's asks.
-    val ids = phase.ids
-    val session =
-      Session(
-        config = config,
-        fallback = FallbackPolicy(config.primary.transport, config.fallback?.transport),
-        regulation = BitrateRegulator.sessionStarted(),
-        heartbeat = HeartbeatState(notBeforeMs = now.monoMs, nextId = ids.beat),
-        delivery = DeliveryWatch(config.playbackUrl, nextRequestId = ids.playlist),
-        nextAttemptId = ids.attempt,
-        descriptor = DescriptorAsks(nextId = ids.descriptor),
-        networkValidated = phase.networkValidated,
-      )
-    val armed = record("armed", "sid" to config.sid, "transport" to config.primary.transport, "playbackUrl" to config.playbackUrl)
-    return Step(Phase.Armed(session), listOf(armed))
-  }
-
-  private fun start(phase: Phase, now: Now): Step {
-    if (phase !is Phase.Armed) return ignored(phase, "start")
-    return Transports.connect(phase.session, phase.session.fallback.current, outage = null, now = now)
   }
 
   /** Recorded when it changes, in any phase: with no session it is kept for the next (final review I-1). */
@@ -127,23 +106,8 @@ object SessionMachine {
       when (this) {
         is Phase.OnAir -> attemptId
         is Phase.Connecting -> (step as? ConnectStep.Requested)?.attemptId ?: ids.attempt
-        is Phase.Idle, is Phase.Armed, is Phase.Ended -> ids.attempt
+        is Phase.Idle, is Phase.Pairing, is Phase.Paired, is Phase.Arming, is Phase.Armed, is Phase.Ended -> ids.attempt
       }
-
-  /**
-   * A 410 or a finished state on a reconnect's descriptor fetch is an organiser stop (spec §1). Only
-   * the answer to the ask in flight is acted on (B6 review I2): any other changes nothing.
-   */
-  private fun descriptor(phase: Phase, input: Input.DescriptorChecked, now: Now): Step {
-    val session = phase.session ?: return Step(phase)
-    val asks = session.descriptor.answered(input.requestId) ?: return Step(phase)
-    val answered = phase.withSession(session.copy(descriptor = asks))
-    return when (val result = input.result) {
-      is DescriptorCheck.Over -> end(answered, EndReason.STOPPED_BY_ORGANISER, now, "endReason" to result.endReason)
-      DescriptorCheck.Live -> Step(answered, listOf(record("descriptor", "result" to "live")))
-      is DescriptorCheck.Unreachable -> Step(answered, listOf(record("descriptor", "result" to "unreachable", "message" to result.message)))
-    }
-  }
 }
 
 /** Connects, drops, frames and link readings: the attempt's life. */
@@ -237,9 +201,10 @@ internal object Transports {
     return record("connect-failed", *fields.toTypedArray())
   }
 
+  /** The code asked again on a reconnect (spec §1), spaced as plan B's descriptor asks were. */
   private fun askDescriptor(session: Session, now: Now): Pair<Session, Command> {
     val (asks, id) = session.descriptor.asked(now.monoMs)
-    return session.copy(descriptor = asks) to Command.FetchDescriptor(id)
+    return session.copy(descriptor = asks) to Starts.fetchCode(session.pairing, id)
   }
 
   fun dropped(phase: Phase, input: Input.Dropped, now: Now): Step {
@@ -334,7 +299,8 @@ internal object Timers {
     when (phase) {
       is Phase.Connecting -> connecting(phase, now)
       is Phase.OnAir -> onAir(phase, now)
-      is Phase.Idle, is Phase.Armed, is Phase.Ended -> Step(phase)
+      is Phase.Arming -> Starts.tick(phase, now)
+      is Phase.Idle, is Phase.Pairing, is Phase.Paired, is Phase.Armed, is Phase.Ended -> Step(phase)
     }
 
   private fun connecting(connecting: Phase.Connecting, now: Now): Step {
@@ -529,31 +495,49 @@ internal object Deliveries {
   }
 }
 
-/** The console heartbeat (ruling 5): due on the tick while armed or live, never gating anything. */
+/** The pairing's beats (amendment, _Contract shapes_): Paired to On air, never gating anything. */
 internal object Heartbeats {
   fun tick(step: Step, now: Now): Step {
     val phase = step.phase
-    val session = phase.session ?: return step
-    val (heartbeat, id) = Heartbeat.due(session.heartbeat, now.monoMs, now.wallMs, Heartbeat.INTERVAL_MS)
+    val pairing = phase.beating ?: return step
+    val held = phase.heldSid
+    val interval = BeatCadence.intervalMs(pairing.waiting.pollSeconds, held = held != null)
+    val (heartbeat, id) = Heartbeat.due(pairing.heartbeat, now.monoMs, now.wallMs, interval)
     val commands = step.commands.toMutableList()
-    if (heartbeat.failures > session.heartbeat.failures) commands += record("heartbeat", "result" to HeartbeatResult.FAILED, "message" to "no answer")
-    val next = phase.withSession(session.copy(heartbeat = heartbeat))
-    if (id == null) return Step(next, commands)
-    val body = Heartbeat.payload(Projection.heartbeatFacts(next, session.copy(heartbeat = heartbeat), now))
-    commands += Command.PostHeartbeat(id, session.config.heartbeatUrl, session.config.token, body)
-    return Step(next, commands)
+    if (heartbeat.failures > pairing.heartbeat.failures) commands += record("heartbeat", "result" to HeartbeatResult.FAILED, "message" to "no answer")
+    if (id == null) return Step(phase.withPairing(pairing.copy(heartbeat = heartbeat)), commands)
+    // RR3: the stopped sid rides only a beat that holds none.
+    val carried = if (held == null) pairing.stopped?.sid else null
+    val next = pairing.copy(heartbeat = heartbeat, stoppedInFlight = carried)
+    val nextPhase = phase.withPairing(next)
+    val body = Beats.payload(Projection.beatFacts(nextPhase, next, now))
+    commands += Command.PostHeartbeat(id, pairing.request.heartbeatUrl, pairing.token, body)
+    return Step(nextPhase, commands)
   }
 
   fun answered(phase: Phase, input: Input.HeartbeatAnswered, now: Now): Step {
-    val session = phase.session ?: return Step(phase)
-    val (heartbeat, over) = Heartbeat.answered(session.heartbeat, input.beatId, input.response, now.monoMs)
-    if (heartbeat == session.heartbeat) return Step(phase)
-    val status = (input.response as? HeartbeatResponse.Answered)?.status
-    if (over) {
-      val answered = (input.response as? HeartbeatResponse.Answered)?.reply?.endReason
-      return SessionMachine.end(phase, EndReason.STOPPED_BY_ORGANISER, now, "status" to status, "endReason" to answered)
-    }
-    val noted = record("heartbeat", "result" to heartbeat.lastResult, "status" to status, "message" to (input.response as? HeartbeatResponse.Failed)?.message)
-    return Step(phase.withSession(session.copy(heartbeat = heartbeat)), listOf(noted))
+    val pairing = phase.beating ?: return Step(phase)
+    val heartbeat = Heartbeat.answered(pairing.heartbeat, input.beatId, input.response, now.monoMs)
+    if (heartbeat == pairing.heartbeat) return Step(phase)
+    val response = input.response as? HeartbeatResponse.Answered
+    val word = ServerWord.ofBeat(input.response, named = phase.heldSid ?: pairing.stoppedInFlight)
+    val ok = response != null && response.status in 200..299
+    val refreshed =
+      pairing.copy(
+        heartbeat = heartbeat,
+        claim = if (ok) null else pairing.claim,
+        waiting = response?.reply?.waiting?.takeIf { ok } ?: pairing.waiting,
+        stoppedInFlight = null,
+      )
+    val noted =
+      record(
+        "heartbeat",
+        "result" to heartbeat.lastResult,
+        "status" to response?.status,
+        "word" to word::class.simpleName,
+        "message" to (input.response as? HeartbeatResponse.Failed)?.message,
+      )
+    val decided = Verdicts.beat(phase.withPairing(refreshed), word, now)
+    return decided.copy(commands = listOf(noted) + decided.commands)
   }
 }

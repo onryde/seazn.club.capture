@@ -27,7 +27,7 @@ class SessionMachineServerTest {
     // new 1.5 s segment for 2 s of publishing: 0.5 s more behind each time, 2.0 s by 9 s (F-P5-13).
     assertEquals(Delivery.OK, rig.snapshot.delivery)
     assertEquals(2_000L, rig.snapshot.deliveredLagMs)
-    // The second beat goes at 10.5 s.
+    // The second beat goes at 10 s: the first was the claim, at the pair.
     val beat = rig.sent<Command.PostHeartbeat>().last()
     assertEquals(2, beat.beatId)
     assertTrue(""""delivery":"ok","deliveredLagS":2.0,""" in beat.body, beat.body)
@@ -49,10 +49,12 @@ class SessionMachineServerTest {
   @Test
   fun `final review I-2 the beat's at is the wall clock`() {
     val rig = MachineRig().armed()
-    rig.advance(500)
-    // The rig's wall clock starts at 1_790_000_000_000, 2026-09-21T14:13:20Z. The first beat goes at 0.5 s.
-    val body = rig.sent<Command.PostHeartbeat>().single().body
-    assertTrue(body.startsWith("""{"sid":"sess_42","at":"2026-09-21T14:13:20.500Z","""), body)
+    rig.advance(10_000)
+    // The rig's wall clock starts at 1_790_000_000_000, 2026-09-21T14:13:20Z. The claim went at the
+    // pair (0 s); the first beat for the broadcast held goes 10 s later.
+    val body = Configs.body(rig.sent<Command.PostHeartbeat>().last())
+    assertEquals("sess_42", body.getString("sid"))
+    assertEquals("2026-09-21T14:13:30.000Z", body.getString("at"))
   }
 
   @Test
@@ -83,17 +85,20 @@ class SessionMachineServerTest {
     val rig = MachineRig()
     rig.playlists = { url -> FetchResult.Body(if (url == Configs.PLAYBACK_URL + "?clientBandwidthHint=0.1") masterText else media(100)) }
     rig.live()
+    rig.codes = null
     rig.advance(20_000)
     rig.sent<Command.StartNewSession>().single()
-    val ask = rig.sent<Command.FetchDescriptor>().single()
-    rig.send(Input.DescriptorChecked(ask.requestId, DescriptorCheck.Over("stopped")))
+    // Fetch 1 armed the broadcast; fetch 2 is the reconnect's.
+    assertEquals(listOf(1, 2), rig.sent<Command.FetchCode>().map { it.requestId })
+    val ask = rig.sent<Command.FetchCode>().last()
+    rig.send(Input.CodeAnswered(ask.requestId, CodeAnswer.Over("sess_42", "stopped")))
     assertEquals(EndReason.STOPPED_BY_ORGANISER, rig.state.endReason)
   }
 
   @Test
   fun `the playlist is polled only while LIVE`() {
     val rig = MachineRig().armed()
-    rig.send(Input.Start)
+    rig.ready()
     rig.send(Input.Connected(1))
     rig.advance(4_000, feeding = false)
     assertTrue(rig.sent<Command.FetchPlaylist>().isEmpty())
@@ -105,11 +110,12 @@ class SessionMachineServerTest {
     rig.beats = { HeartbeatResponse.Answered(200, BeatReply("warming", null, null, null, null)) }
     rig.armed()
     rig.advance(30_000)
-    val beats = rig.sent<Command.PostHeartbeat>()
+    // The claim went at the pair; three beats follow in the 30 s armed.
+    val beats = rig.sent<Command.PostHeartbeat>().drop(1)
     assertEquals(3, beats.size)
     for (beat in beats) {
       assertEquals(Configs.TOKEN, beat.bearer)
-      assertEquals(Configs.valid().heartbeatUrl, beat.url)
+      assertEquals(rig.session.config.heartbeatUrl, beat.url)
       assertFalse(Configs.TOKEN in beat.body)
       assertFalse(Configs.TOKEN in beat.toString())
       assertTrue(""""state":"armed"""" in beat.body)
@@ -119,8 +125,7 @@ class SessionMachineServerTest {
   @Test
   fun `ruling 5 an organiser stop in the heartbeat's answer ends stopped-by-organiser`() {
     val rig = MachineRig().live()
-    rig.beats = { HeartbeatResponse.Answered(200, BeatReply("ending", null, null, "stopped", null)) }
-    rig.advance(10_000)
+    rig.hear("over", sid = "sess_42", endReason = "stopped")
     assertEquals(EndReason.STOPPED_BY_ORGANISER, rig.state.endReason)
   }
 
@@ -133,16 +138,18 @@ class SessionMachineServerTest {
     rig.advance(600_000) { states += rig.state }
     assertTrue(states.all { it is SnapshotState.Publishing }, "the stream never noticed")
     assertTrue(rig.sent<Command.Rebuild>().isEmpty() && rig.sent<Command.End>().isEmpty())
-    assertEquals(61, rig.snapshot.heartbeat.failures)
+    // Live at 1 s, to 601 s: beats at 10 s, 20 s, … 600 s. The claim at the pair was answered (the go-live).
+    assertEquals(60, rig.snapshot.heartbeat.failures)
   }
 
   @Test
   fun `a heartbeat never answered is failed at 10 s, recorded, and the next goes`() {
     val rig = MachineRig().live()
     rig.advance(20_000)
+    // The claim (answered), the beat at 10 s (never answered), and the next at 20 s, when the one at 10 s is failed.
     assertEquals(3, rig.sent<Command.PostHeartbeat>().size)
-    assertEquals(2, rig.snapshot.heartbeat.failures)
-    assertEquals(2, rig.records("heartbeat").size)
+    assertEquals(1, rig.snapshot.heartbeat.failures)
+    assertEquals(listOf<Any?>(HeartbeatResult.OK, HeartbeatResult.FAILED), rig.records("heartbeat").map { it.field("result") })
   }
 
   @Test
@@ -233,10 +240,13 @@ class SessionMachineServerTest {
   @Test
   fun `a heartbeat answer that comes twice is recorded once`() {
     val rig = MachineRig().live()
-    val beat = rig.sent<Command.PostHeartbeat>().single()
+    rig.advance(9_000)
+    // The beat at 10 s; the claim before it was answered by the go-live.
+    val beat = rig.sent<Command.PostHeartbeat>().last()
+    val before = rig.records("heartbeat").size
     rig.send(Input.HeartbeatAnswered(beat.beatId, HeartbeatResponse.Answered(200, BeatReply("live", null, null, null, null))))
     rig.send(Input.HeartbeatAnswered(beat.beatId, HeartbeatResponse.Answered(200, BeatReply("live", null, null, null, null))))
-    assertEquals(1, rig.records("heartbeat").size)
+    assertEquals(before + 1, rig.records("heartbeat").size)
     assertEquals(HeartbeatResult.OK, rig.snapshot.heartbeat.lastResult)
   }
 

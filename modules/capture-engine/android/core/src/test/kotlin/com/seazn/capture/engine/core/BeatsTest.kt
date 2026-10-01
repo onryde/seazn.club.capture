@@ -1,5 +1,7 @@
 package com.seazn.capture.engine.core
 
+import java.util.Locale
+import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -7,6 +9,11 @@ import kotlin.test.assertTrue
 import org.json.JSONObject
 
 class BeatsTest {
+  private val saved = Locale.getDefault()
+
+  @AfterTest
+  fun restoreLocale() = Locale.setDefault(saved)
+
   private val paired =
     BeatFacts(
       code = "fx-42",
@@ -83,6 +90,63 @@ class BeatsTest {
   @Test
   fun `the operator's mode reads operator`() {
     assertEquals("operator", JSONObject(Beats.payload(paired.copy(automatic = false))).getString("mode"))
+  }
+
+  // Moved from HeartbeatTest with Beats.payload (PV4): plan B's degraded RTMPS beat, now held by a pairing.
+  private val held =
+    paired.copy(
+      claim = null,
+      sid = "sess_42",
+      atEpochMs = 1_790_778_725_123,
+      state = "degraded",
+      cause = Cause.ORGANISER,
+      notReady = null,
+      stopped = null,
+      transport = Transport.RTMPS,
+      bitrateKbps = 2_900,
+      delivery = Delivery.OK,
+      deliveredLagMs = 1_500,
+      audioOk = true,
+      batteryPercent = 64,
+      charging = false,
+      drainPctPerHour = 18.04,
+      thermalStatus = 2,
+      dataUsedBytes = 1_410_000_000,
+    )
+
+  // The expected body is written out from the amendment's beat (_Contract shapes_), field by field, in its order.
+  private val heldBody =
+    """{"code":"fx-42","slot":1,"phone":"${Configs.PHONE_ID}","claim":null,"sid":"sess_42","at":"2026-09-30T14:32:05.123Z",""" +
+      """"state":"degraded","cause":"organiser","notReady":null,"startFailed":null,"stopped":null,"mode":"automatic",""" +
+      """"transport":"rtmps","bitrateKbps":2900,"delivery":"ok","deliveredLagS":1.5,"audioOk":true,""" +
+      """"battery":{"percent":64,"charging":false,"drainPctPerHour":18.0},"thermal":2,"dataUsedMB":1410.0,"appVersion":"1.0.0"}"""
+
+  @Test
+  fun `ruling 5 a held beat carries the amendment's fields in its order`() {
+    assertEquals(heldBody, Beats.payload(held))
+  }
+
+  @Test
+  fun `the beat is the same on a French, Dutch or Spanish phone`() {
+    for (tag in listOf("fr-FR", "nl-NL", "es-ES")) {
+      Locale.setDefault(Locale.forLanguageTag(tag))
+      assertEquals(heldBody, Beats.payload(held), tag)
+    }
+  }
+
+  @Test
+  fun `an armed phone reports no transport, bitrate or lag`() {
+    val armed = held.copy(state = "armed", transport = null, bitrateKbps = null, deliveredLagMs = null, delivery = Delivery.UNKNOWN)
+    val body = Beats.payload(armed)
+    assertTrue(""""state":"armed",""" in body, body)
+    assertTrue(""""transport":null,"bitrateKbps":null,"delivery":"unknown","deliveredLagS":null""" in body, body)
+  }
+
+  @Test
+  fun `a phone that cannot read its battery or thermal state sends nulls`() {
+    val unread = held.copy(batteryPercent = null, charging = null, drainPctPerHour = null, thermalStatus = null)
+    val body = Beats.payload(unread)
+    assertTrue(""""battery":{"percent":null,"charging":null,"drainPctPerHour":null},"thermal":null,""" in body, body)
   }
 
   @Test

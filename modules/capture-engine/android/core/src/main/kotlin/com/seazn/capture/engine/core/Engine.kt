@@ -92,10 +92,11 @@ class Engine(
 
   /**
    * One input, contained (B6 review m7): an exception inside the machine, or while protecting the
-   * secrets of an arm that would take effect, ends the session fatal-error, never armed with its
-   * secrets unprotected; an exception from a command, the record's sink or the snapshot is counted.
-   * No exception reaches the scheduler's thread. An arm outside idle is one the machine ignores, so its
-   * config never runs: an exception while protecting it is recorded, and the session carries on (B7 E1).
+   * secrets of a pair or a code answer that would take effect, ends the pairing fatal-error, never
+   * paired or armed with its secrets unprotected; an exception from a command, the record's sink or
+   * the snapshot is counted. No exception reaches the scheduler's thread. A pair or a code answer the
+   * machine does not act on never reaches the platform: an exception while protecting it is
+   * recorded, and the pairing carries on (B7 E1).
    * Once the session has ended, an exception inside the machine is only recorded: the first end reason
    * stands and no second End goes out (final review N-2).
    *
@@ -124,14 +125,23 @@ class Engine(
 
   private fun reduced(input: Input, now: Now): Step =
     try {
-      val unprotected = (input as? Input.Arm)?.let { protectFailure(it.config) }
-      if (unprotected != null && phase is Phase.Idle) throw unprotected
+      val unprotected = protectFailure(input)
+      // A secret that could not be protected is never handed to an input that would act on it.
+      if (unprotected != null && acts(input)) throw unprotected
       val reduced = reducer(phase, input, now)
       if (unprotected == null) reduced else reduced.copy(commands = listOf(engineError(unprotected)) + reduced.commands)
     } catch (failure: Exception) {
       if (phase is Phase.Ended) Step(phase, listOf(engineError(failure)))
-      else Step(phase.ended(EndReason.FATAL_ERROR, now), listOf(engineError(failure), Command.End(EndReason.FATAL_ERROR)))
+      else Step(phase.ended(EndReason.FATAL_ERROR, now), listOf(engineError(failure), Command.End(EndReason.FATAL_ERROR), Command.Release))
     }
+
+  /**
+   * A pair from Idle, Pairing or Paired (a re-pair while permissions are asked acts too), or a code
+   * answer at Arming: the inputs whose secrets reach the platform.
+   */
+  private fun acts(input: Input): Boolean =
+    (input is Input.Pair && (phase is Phase.Idle || phase is Phase.Pairing || phase is Phase.Paired)) ||
+      (input is Input.CodeAnswered && phase is Phase.Arming)
 
   /** Runs [effect]; what it throws is kept in [errors], so the step's next effect still runs. */
   private inline fun contained(errors: MutableList<Throwable>, effect: () -> Unit) {
@@ -142,10 +152,17 @@ class Engine(
     }
   }
 
-  /** Protects an arm's secrets before any line can carry them. The exception, when protecting threw. */
-  private fun protectFailure(config: SessionConfig): Exception? =
+  /**
+   * Protects an input's secrets before any line can carry them: the token at a pair, and the code in
+   * free text only (M3); the credentials at an open code answer. The exception, when protecting threw.
+   */
+  private fun protectFailure(input: Input): Exception? =
     try {
-      record.protect(config)
+      when (input) {
+        is Input.Pair -> record.protect(input.request.secrets(), inTextOnly = input.request.textSecrets())
+        is Input.CodeAnswered -> (input.answer as? CodeAnswer.Open)?.descriptor?.let { record.protect(it.secrets(), notInUrls = it.streamIds()) }
+        else -> Unit
+      }
       null
     } catch (failure: Exception) {
       failure

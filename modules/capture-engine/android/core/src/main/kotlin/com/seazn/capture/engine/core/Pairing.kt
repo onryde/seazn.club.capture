@@ -146,6 +146,15 @@ class PairRequest(
     }
   }
 
+  /** The token: masked in every line, as plan B's `tok` was. */
+  fun secrets(): List<String> = listOf(token).filter { it.isNotBlank() }
+
+  /**
+   * The code: masked by value in free text only (M3). No line the machine writes names it, so it is
+   * kept out at field level; a short code must never mangle a closed word that happens to contain it.
+   */
+  fun textSecrets(): List<String> = listOf(code).filter { it.isNotBlank() }
+
   override fun toString(): String =
     "PairRequest(slot=$slot, token=<${token.length} chars>, claim=${claim.wire}, environment=${environment.wire})"
 }

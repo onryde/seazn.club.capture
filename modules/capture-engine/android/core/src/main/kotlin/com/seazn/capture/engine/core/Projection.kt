@@ -17,7 +17,7 @@ object Projection {
       targetBitrateKbps = onAir?.session?.regulation?.targetBps?.let { it / 1_000 },
       dataUsedBytes = session?.dataUsedBytes ?: 0,
       charging = session?.device?.charging,
-      heartbeat = (session?.heartbeat ?: HeartbeatState()).status,
+      heartbeat = (phase.pairing?.heartbeat ?: HeartbeatState()).status,
       shed = session?.device?.shed,
       device = session?.device,
       camera = session?.camera,
@@ -27,6 +27,8 @@ object Projection {
   fun state(phase: Phase, now: Now): SnapshotState =
     when (phase) {
       is Phase.Idle -> SnapshotState.Idle
+      // Until Task 9 gives them their own states, the paired phases read as plan B's armed.
+      is Phase.Pairing, is Phase.Paired, is Phase.Arming -> SnapshotState.Armed
       is Phase.Armed -> SnapshotState.Armed
       is Phase.Ended -> SnapshotState.Ended(phase.reason, phase.durationMs)
       is Phase.Connecting -> phase.outage?.let { reconnecting(phase.session, it, now) } ?: SnapshotState.Connecting(phase.transport)
@@ -86,31 +88,42 @@ object Projection {
   }
 
   /**
-   * The heartbeat body's facts. Only asked for in a phase with a session.
+   * One beat's facts (amendment, _Contract shapes_), in any beating phase.
    *
    * `audioOk` is true only on an audio rate measured at or above the floor with the mic not silenced
-   * (carry 8). No measurement is not health: it is false while armed, in an attempt's first 3 s, and
-   * while the slate's silent audio is on air (the watchdog clears the rates then).
+   * (carry 8). No measurement is not health: it is false with no broadcast, while armed, in an
+   * attempt's first 3 s, and while the slate's silent audio is on air (the watchdog clears the rates then).
    */
-  fun heartbeatFacts(phase: Phase, session: Session, now: Now): HeartbeatFacts {
-    val snapshot = snapshot(phase, now)
+  fun beatFacts(phase: Phase, pairing: PairingState, now: Now): BeatFacts {
+    val session = phase.session
     val onAir = phase as? Phase.OnAir
+    val snapshot = snapshot(phase, now)
     val audioFps = onAir?.watchdog?.audioFps
-    return HeartbeatFacts(
-      sid = session.config.sid,
+    return BeatFacts(
+      code = pairing.name.code,
+      slot = pairing.name.slot,
+      phoneId = pairing.phone.phoneId,
+      claim = pairing.claim,
+      deviceModel = pairing.phone.model,
+      sid = phase.heldSid,
       atEpochMs = now.wallMs,
-      state = snapshot.state,
+      state = snapshot.state.wire,
+      cause = session?.cause ?: (phase as? Phase.Arming)?.cause,
+      notReady = pairing.readiness.notReady(session?.camera ?: CameraState.OWN, phase.networkValidated),
+      startFailed = pairing.startFailed,
+      stopped = pairing.stoppedInFlight,
+      automatic = pairing.automatic,
       transport = onAir?.transport ?: (phase as? Phase.Connecting)?.transport,
       bitrateKbps = snapshot.bitrateKbps,
       delivery = snapshot.delivery,
       deliveredLagMs = snapshot.deliveredLagMs,
-      audioOk = !session.micSilenced && audioFps != null && audioFps >= StallWatchdog.AUDIO_FLOOR_FPS,
-      batteryPercent = session.device?.batteryPercent,
-      charging = session.device?.charging,
-      drainPctPerHour = session.device?.drainPctPerHour,
-      thermalStatus = session.device?.thermalStatus,
-      dataUsedBytes = session.dataUsedBytes,
-      appVersion = session.config.appVersion,
+      audioOk = session != null && !session.micSilenced && audioFps != null && audioFps >= StallWatchdog.AUDIO_FLOOR_FPS,
+      batteryPercent = session?.device?.batteryPercent,
+      charging = session?.device?.charging,
+      drainPctPerHour = session?.device?.drainPctPerHour,
+      thermalStatus = session?.device?.thermalStatus,
+      dataUsedBytes = session?.dataUsedBytes ?: 0,
+      appVersion = pairing.phone.appVersion,
     )
   }
 }

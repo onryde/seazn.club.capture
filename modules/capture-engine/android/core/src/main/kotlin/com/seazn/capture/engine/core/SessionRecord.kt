@@ -26,6 +26,10 @@ class SessionRecord(private val sink: (String) -> Unit) {
 
   private var secrets: List<String> = emptyList()
   private var urlSecrets: List<String> = emptyList()
+  private var textOnly: List<String> = emptyList()
+
+  /** [secrets] and [textOnly] together, longest first: what free text is masked with. */
+  private var textSecrets: List<String> = emptyList()
   private val recent = ArrayDeque<String>()
   private val queue = ArrayDeque<Pending>()
 
@@ -49,14 +53,17 @@ class SessionRecord(private val sink: (String) -> Unit) {
     private set
 
   /**
-   * Called for every arm, before the machine sees it. From then on these values never reach a line.
-   * It only ever adds: a value that was a secret in this process stays masked.
+   * Called before the machine sees a secret: the token at `pair`, the credentials at an open code
+   * answer. From then on [secrets] never reach a line, nor a public URL unless listed in [notInUrls]
+   * (a stream id, which is a path segment of the playback URL). [inTextOnly] is masked in free text
+   * alone (M3): the code, which no line names, but a library's error can quote in a URL. It only ever
+   * adds: a value that was a secret in this process stays masked.
    */
-  fun protect(config: SessionConfig) {
-    val all = config.secrets()
-    val streamIds = listOfNotNull(config.primary, config.fallback).filterIsInstance<SrtTarget>().map { it.streamId }
-    secrets = withEncodings(secrets + all)
-    urlSecrets = withEncodings(urlSecrets + (all - streamIds.toSet()))
+  fun protect(secrets: List<String>, notInUrls: List<String> = emptyList(), inTextOnly: List<String> = emptyList()) {
+    this.secrets = withEncodings(this.secrets + secrets)
+    urlSecrets = withEncodings(urlSecrets + (secrets - notInUrls.toSet()))
+    textOnly = withEncodings(textOnly + inTextOnly)
+    textSecrets = (this.secrets + textOnly).distinct().sortedByDescending { it.length }
   }
 
   /**
@@ -117,7 +124,8 @@ class SessionRecord(private val sink: (String) -> Unit) {
       value is Double -> Decimal.tenths(value)
       value !is String -> MASK
       key in PUBLIC_URL_KEYS -> masked(value, urlSecrets)
-      key in PLAIN_KEYS || key in TEXT_KEYS -> masked(value, secrets)
+      key in TEXT_KEYS -> masked(value, textSecrets)
+      key in PLAIN_KEYS -> masked(value, secrets)
       else -> MASK
     }
 

@@ -38,14 +38,57 @@ enum class CameraState(override val wire: String, val slateOnAir: Boolean, val s
  * [Phase.Ended] and [Phase.Idle] — so an answer the last session asked for never matches one the
  * next session asks for (B6 review m3).
  */
-data class Ids(val attempt: Int = 1, val descriptor: Int = 1, val beat: Int = 1, val playlist: Int = 1)
+data class Ids(val attempt: Int = 1, val descriptor: Int = 1, val beat: Int = 1, val playlist: Int = 1, val start: Int = 1)
 
-/** What one operator session carries from arm to its end. */
+/**
+ * One pairing (A5): what `pair` brought, and what the server has said since. Held from Pairing until
+ * Idle or Ended, with each broadcast's [Session] inside it. The token is the request's: never printed.
+ */
+data class PairingState(
+  val request: PairRequest,
+  val phone: PhoneFacts,
+  /** The claim the next beat carries: the request's kind until the first 2xx (A9); `resume` again while not current (G0-d). */
+  val claim: Claim?,
+  val automatic: Boolean,
+  val language: String,
+  val heartbeat: HeartbeatState,
+  val waiting: WaitingFields = WaitingFields.UNKNOWN,
+  /** The platform's last readiness facts (A11); the network is the phase's own fact. */
+  val readiness: Readiness = Readiness.UNKNOWN,
+  /** A17: this code and slot's stopped record, until delivered. */
+  val stopped: StoppedRecord? = null,
+  /** The stopped sid the beat in flight carried, so its answer can deliver it. */
+  val stoppedInFlight: String? = null,
+  /** Sids this pairing never starts or rejoins: refused starts (_Start failures_) and stopped ones (A17). */
+  val refused: Set<String> = emptySet(),
+  val starts: StartAsks = StartAsks(),
+  val refusal: Refusal? = null,
+  val startFailed: StartFailure? = null,
+  val lastEnd: LastEnd? = null,
+  /** A 401 heard while a broadcast is held: the pairing ends with the broadcast (the 401 deferral). */
+  val codeEndedPending: Boolean = false,
+  /** The fields of the last `beat` line written while paired (Task 9). */
+  val lastBeatLine: List<Pair<String, Any?>>? = null,
+) {
+  val name: PairingName
+    get() = request.name
+
+  val token: String
+    get() = request.token
+}
+
+/** What one broadcast carries from Armed to its end, inside its pairing. */
 data class Session(
+  val pairing: PairingState,
+  val sid: String,
+  val cause: Cause,
+  val broadcast: BroadcastDescriptor,
+  /** The publish plan, built from [broadcast] at Arming; plan B's transports read it unchanged. */
   val config: SessionConfig,
+  /** The side the broadcast encodes, read once when Armed turns to Connecting (A11). */
+  val side: Side = Side.LEFT,
   val fallback: FallbackPolicy,
   val regulation: Regulation,
-  val heartbeat: HeartbeatState,
   val delivery: DeliveryWatch,
   val nextAttemptId: Int = 1,
   val descriptor: DescriptorAsks = DescriptorAsks(),
@@ -72,16 +115,49 @@ sealed interface ConnectStep {
 }
 
 /**
- * The aggregate's phases: idle → armed → connecting → on air ⇄ connecting → ended (spec §3). Each
- * carries only what is true in it, so an attempt without a watchdog, or an ended session with a
- * transport, cannot be written down.
+ * The aggregate's phases (amendment, _The phases_): idle → pairing → paired → arming → armed →
+ * connecting ⇄ on air, and ended. Each carries only what is true in it, so an attempt without a
+ * watchdog, or an ended session with a transport, cannot be written down.
  */
 sealed interface Phase {
   val name: String
 
-  /** Before the first session, and after a reset. [networkValidated] is the last network fact (final review I-1). */
-  data class Idle(val ids: Ids = Ids(), val networkValidated: Boolean = false) : Phase {
+  /**
+   * Unpaired: before the first pairing, and after a reset or an unpair. [networkValidated] is the last
+   * network fact (final review I-1). [unpaired] says why the engine left a pairing the operator did not end.
+   */
+  data class Idle(val ids: Ids = Ids(), val networkValidated: Boolean = false, val unpaired: Unpaired? = null) : Phase {
     override val name = "idle"
+  }
+
+  /** `pair` heard; the camera and microphone permissions are being asked. No beat, no service yet. */
+  data class Pairing(val pairing: PairingState, val ids: Ids, val networkValidated: Boolean) : Phase {
+    override val name = "pairing"
+  }
+
+  /** Paired and waiting for a Go live (A5): beating, the service and the wake lock held. */
+  data class Paired(val pairing: PairingState, val ids: Ids, val networkValidated: Boolean) : Phase {
+    override val name = "paired"
+  }
+
+  /**
+   * A broadcast [sid] to start or rejoin, the code being fetched for its credentials (A5). [asks]
+   * spaces the fetches as plan B's descriptor asks; [notBeforeMs] holds a 429's Retry-After;
+   * [notCurrent] waits for a `resume` claim's answer before fetching again (G0-d); [retrying] is set
+   * by an answer that was no answer, for the status line.
+   */
+  data class Arming(
+    val pairing: PairingState,
+    val sid: String,
+    val cause: Cause,
+    val ids: Ids,
+    val networkValidated: Boolean,
+    val asks: DescriptorAsks,
+    val notBeforeMs: Long = 0,
+    val notCurrent: Boolean = false,
+    val retrying: Boolean = false,
+  ) : Phase {
+    override val name = "arming"
   }
 
   data class Armed(val session: Session) : Phase {
@@ -111,11 +187,19 @@ sealed interface Phase {
   }
 
   /**
-   * The session is over. [durationMs] is how long it was live, from its first encoded frame to its end
-   * (final review M-3); null if it never was. [networkValidated] is the last network fact, kept for the
-   * next session (final review I-1).
+   * The pairing is over. [durationMs] is how long the broadcast was live, from its first encoded frame
+   * to its end (final review M-3); null if it never was. [networkValidated] is the last network fact,
+   * kept for the next pairing (final review I-1). [pairing] and [sid] are kept for the snapshot and the
+   * final beat.
    */
-  data class Ended(val reason: EndReason, val ids: Ids, val durationMs: Long?, val networkValidated: Boolean) : Phase {
+  data class Ended(
+    val reason: EndReason,
+    val ids: Ids,
+    val durationMs: Long?,
+    val networkValidated: Boolean,
+    val pairing: PairingState? = null,
+    val sid: String? = null,
+  ) : Phase {
     override val name = "ended"
   }
 }
@@ -126,8 +210,49 @@ val Phase.session: Session?
       is Phase.Armed -> session
       is Phase.Connecting -> session
       is Phase.OnAir -> session
-      is Phase.Idle, is Phase.Ended -> null
+      is Phase.Idle, is Phase.Pairing, is Phase.Paired, is Phase.Arming, is Phase.Ended -> null
     }
+
+/** The pairing in any phase that has one; Ended keeps it for the snapshot and the final beat. */
+val Phase.pairing: PairingState?
+  get() =
+    when (this) {
+      is Phase.Pairing -> pairing
+      is Phase.Paired -> pairing
+      is Phase.Arming -> pairing
+      is Phase.Armed -> session.pairing
+      is Phase.Connecting -> session.pairing
+      is Phase.OnAir -> session.pairing
+      is Phase.Ended -> pairing
+      is Phase.Idle -> null
+    }
+
+/** The pairing that beats: Paired to On air. Not while permissions are asked, not once Ended. */
+val Phase.beating: PairingState?
+  get() = if (this is Phase.Pairing || this is Phase.Ended) null else pairing
+
+/** The sid the engine holds, from Arming to On air. */
+val Phase.heldSid: String?
+  get() =
+    when (this) {
+      is Phase.Arming -> sid
+      else -> session?.sid
+    }
+
+val Phase.holdsBroadcast: Boolean
+  get() = heldSid != null
+
+fun Phase.withPairing(pairing: PairingState): Phase =
+  when (this) {
+    is Phase.Pairing -> copy(pairing = pairing)
+    is Phase.Paired -> copy(pairing = pairing)
+    is Phase.Arming -> copy(pairing = pairing)
+    is Phase.Ended -> copy(pairing = pairing)
+    is Phase.Idle -> this
+    is Phase.Armed -> copy(session = session.copy(pairing = pairing))
+    is Phase.Connecting -> copy(session = session.copy(pairing = pairing))
+    is Phase.OnAir -> copy(session = session.copy(pairing = pairing))
+  }
 
 /** The ids the next request of each kind takes, in any phase. */
 val Phase.ids: Ids
@@ -135,6 +260,9 @@ val Phase.ids: Ids
     when (this) {
       is Phase.Idle -> ids
       is Phase.Ended -> ids
+      is Phase.Pairing -> ids.copy(beat = pairing.heartbeat.nextId, start = pairing.starts.nextId)
+      is Phase.Paired -> ids.copy(beat = pairing.heartbeat.nextId, start = pairing.starts.nextId)
+      is Phase.Arming -> ids.copy(beat = pairing.heartbeat.nextId, start = pairing.starts.nextId, descriptor = asks.nextId)
       is Phase.Armed -> session.ids
       is Phase.Connecting -> session.ids
       is Phase.OnAir -> session.ids
@@ -150,6 +278,9 @@ val Phase.networkValidated: Boolean
     when (this) {
       is Phase.Idle -> networkValidated
       is Phase.Ended -> networkValidated
+      is Phase.Pairing -> networkValidated
+      is Phase.Paired -> networkValidated
+      is Phase.Arming -> networkValidated
       is Phase.Armed -> session.networkValidated
       is Phase.Connecting -> session.networkValidated
       is Phase.OnAir -> session.networkValidated
@@ -160,6 +291,9 @@ fun Phase.withNetwork(validated: Boolean): Phase =
   when (this) {
     is Phase.Idle -> copy(networkValidated = validated)
     is Phase.Ended -> copy(networkValidated = validated)
+    is Phase.Pairing -> copy(networkValidated = validated)
+    is Phase.Paired -> copy(networkValidated = validated)
+    is Phase.Arming -> copy(networkValidated = validated)
     is Phase.Armed -> copy(session = session.copy(networkValidated = validated))
     is Phase.Connecting -> copy(session = session.copy(networkValidated = validated))
     is Phase.OnAir -> copy(session = session.copy(networkValidated = validated))
@@ -174,16 +308,23 @@ fun Phase.withNetwork(validated: Boolean): Phase =
 fun Phase.ended(reason: EndReason, now: Now): Phase.Ended {
   if (this is Phase.Ended) return this
   val durationMs = session?.liveSinceEpochMs?.let { (now.wallMs - it).coerceAtLeast(0) }
-  return Phase.Ended(reason, ids, durationMs, networkValidated)
+  return Phase.Ended(reason, ids, durationMs, networkValidated, pairing, heldSid)
 }
 
 val Session.ids: Ids
-  get() = Ids(attempt = nextAttemptId, descriptor = descriptor.nextId, beat = heartbeat.nextId, playlist = delivery.nextRequestId)
+  get() =
+    Ids(
+      attempt = nextAttemptId,
+      descriptor = descriptor.nextId,
+      beat = pairing.heartbeat.nextId,
+      playlist = delivery.nextRequestId,
+      start = pairing.starts.nextId,
+    )
 
 fun Phase.withSession(session: Session): Phase =
   when (this) {
     is Phase.Armed -> copy(session = session)
     is Phase.Connecting -> copy(session = session)
     is Phase.OnAir -> copy(session = session)
-    is Phase.Idle, is Phase.Ended -> this
+    is Phase.Idle, is Phase.Pairing, is Phase.Paired, is Phase.Arming, is Phase.Ended -> this
   }

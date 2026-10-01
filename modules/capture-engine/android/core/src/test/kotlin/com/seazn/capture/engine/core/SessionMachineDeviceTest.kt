@@ -300,7 +300,7 @@ class SessionMachineDeviceTest {
   @Test
   fun `B7 sweep - a camera taken, reopening or resuming before the first frame is not LIVE - nothing has been on air to hold`() {
     val rig = MachineRig().armed()
-    rig.send(Input.Start)
+    rig.ready()
     rig.send(Input.Connected(rig.attempt!!))
     val steps =
       listOf(

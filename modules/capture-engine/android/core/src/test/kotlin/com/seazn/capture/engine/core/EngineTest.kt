@@ -47,12 +47,13 @@ class EngineTest {
     return engine
   }
 
+  /** Plan B's arm, re-stated (Task 5): the platform's way from a pair to a broadcast, in order. */
+  private fun Engine.sendAll(inputs: List<Input>) = inputs.forEach(::send)
+
   @Test
   fun `the tick drives time-based rules with no platform answer - a connect times out`() {
     val engine = engine().apply { start() }
-    engine.send(Input.Arm(Configs.valid()))
-    engine.send(Input.Network(true))
-    engine.send(Input.Start)
+    engine.sendAll(Configs.pairInputs())
     scheduler.advanceBy(15_000)
     assertTrue(Command.Disconnect(1) in executed)
   }
@@ -60,11 +61,11 @@ class EngineTest {
   @Test
   fun `send returns before the input runs, and inputs run one at a time in order`() {
     val engine = engine()
-    engine.send(Input.Arm(Configs.valid()))
+    engine.sendAll(Configs.pairInputs(ready = false))
     assertEquals(Phase.Idle(), engine.phase, "nothing runs until the scheduler does")
     // An adapter that answers synchronously: its answer is simply the next input.
     onCommand = { e, command -> if (command is Command.Connect) e.send(Input.Connected(command.attemptId)) }
-    engine.send(Input.Start)
+    engine.send(Input.ReadinessChanged(Configs.READY))
     scheduler.advanceBy(0)
     assertIs<Phase.OnAir>(engine.phase)
   }
@@ -74,7 +75,7 @@ class EngineTest {
     val engine = engine().apply { start() }
     scheduler.advanceBy(2_000)
     assertEquals(listOf(500L, 1_000L, 1_500L, 2_000L), published.map { it.first })
-    engine.send(Input.Arm(Configs.valid()))
+    engine.sendAll(Configs.pairInputs(ready = false))
     scheduler.advanceBy(0)
     assertEquals(SnapshotState.Armed, published.last().second.state)
     assertEquals(2_000L, published.last().first)
@@ -83,17 +84,17 @@ class EngineTest {
   @Test
   fun `records go to the session record and never to the platform`() {
     val engine = engine()
-    engine.send(Input.Arm(Configs.valid()))
+    engine.sendAll(Configs.pairInputs(ready = false))
     scheduler.advanceBy(0)
     assertFalse(executed.any { it is Command.Record })
-    assertTrue(lines.single().contains(""""kind":"armed""""))
+    // A pairing writes several lines on its way to Armed; the arm is one of them, once.
+    assertEquals(1, lines.count { """"kind":"armed"""" in it }, lines.toString())
   }
 
   @Test
   fun `a secret quoted by the platform never reaches the record`() {
     val engine = engine()
-    engine.send(Input.Arm(Configs.valid()))
-    engine.send(Input.Start)
+    engine.sendAll(Configs.pairInputs())
     engine.send(Input.ConnectFailed(1, ConnectFailure.OTHER, "srt://h?passphrase=${Configs.PASSPHRASE}&streamid=${Configs.STREAM_ID}"))
     scheduler.advanceBy(0)
     for (secret in listOf(Configs.TOKEN, Configs.PASSPHRASE, Configs.STREAM_KEY)) {
@@ -108,8 +109,7 @@ class EngineTest {
   fun `a command the platform throws on is recorded, and the engine carries on`() {
     onCommand = { _, command -> if (command is Command.Connect) throw IllegalStateException("camera busy") }
     val engine = engine()
-    engine.send(Input.Arm(Configs.valid()))
-    engine.send(Input.Start)
+    engine.sendAll(Configs.pairInputs())
     engine.send(Input.Stop)
     scheduler.advanceBy(0)
     assertEquals(1, engine.commandFailures)
@@ -146,6 +146,7 @@ class EngineTest {
     scheduler.advanceBy(0)
     assertEquals(Phase.Ended(EndReason.FATAL_ERROR, Ids(), durationMs = null, networkValidated = false), engine.phase)
     assertTrue(Command.End(EndReason.FATAL_ERROR) in executed)
+    assertTrue(Command.Release in executed, "the service goes with the end")
     assertTrue(lines.any { "engine-error" in it })
   }
 
@@ -236,26 +237,27 @@ class EngineTest {
   }
 
   @Test
-  fun `carry 12 a machine failure on the arm itself is masked - the config is protected before the machine runs`() {
+  fun `carry 12 a machine failure on the pair itself is masked - the token and the code are protected before the machine runs`() {
     val engine = engine { phase, input, now ->
-      if (input is Input.Arm) throw IllegalStateException("cannot parse srt://h?passphrase=${Configs.PASSPHRASE}")
+      if (input is Input.Pair) throw IllegalStateException("cannot read https://stg.seazn.club/api/capture/codes/fx-42?tok=${Configs.TOKEN}")
       SessionMachine.reduce(phase, input, now)
     }
-    engine.send(Input.Arm(Configs.valid()))
+    engine.send(Configs.pairInputs().first())
     scheduler.advanceBy(0)
     val error = lines.single { "engine-error" in it }
-    assertFalse(Configs.PASSPHRASE in error, error)
-    assertTrue(SessionRecord.MASK in error, error)
+    assertFalse(Configs.TOKEN in error, error)
+    assertFalse("fx-42" in error, error)
+    assertTrue("/codes/${SessionRecord.MASK}?tok=${SessionRecord.MASK}" in error, error)
   }
 
   @Test
   fun `carry 12 a machine failure that quotes a secret is masked in the record`() {
+    // The credentials are protected at the open code answer: a later input that throws quoting them is masked.
     val engine = engine { phase, input, now ->
-      if (input == Input.Start) throw IllegalStateException("srt://h?passphrase=${Configs.PASSPHRASE}&streamid=${Configs.STREAM_ID}")
+      if (input is Input.ReadinessChanged) throw IllegalStateException("srt://h?passphrase=${Configs.PASSPHRASE}&streamid=${Configs.STREAM_ID}")
       SessionMachine.reduce(phase, input, now)
     }
-    engine.send(Input.Arm(Configs.valid()))
-    engine.send(Input.Start)
+    engine.sendAll(Configs.pairInputs())
     scheduler.advanceBy(0)
     val error = lines.single { "engine-error" in it }
     assertFalse(Configs.PASSPHRASE in error, error)
@@ -267,8 +269,7 @@ class EngineTest {
   fun `carry 12 a platform exception that quotes a secret is masked in the record`() {
     onCommand = { _, command -> if (command is Command.Connect) throw IllegalStateException("rtmps://h/live/${Configs.STREAM_KEY} refused") }
     val engine = engine()
-    engine.send(Input.Arm(Configs.valid(primary = Configs.rtmps, fallback = Configs.srt)))
-    engine.send(Input.Start)
+    engine.sendAll(Configs.pairInputs(descriptor = Configs.descriptor(primary = Configs.rtmps, fallback = Configs.srt)))
     scheduler.advanceBy(0)
     val failure = lines.single { "command-failed" in it }
     assertFalse(Configs.STREAM_KEY in failure, failure)
@@ -281,19 +282,23 @@ class EngineTest {
       if (command is Command.PostHeartbeat) e.send(Input.HeartbeatAnswered(command.beatId, HeartbeatResponse.Failed("401 for Bearer ${Configs.TOKEN}")))
     }
     val engine = engine().apply { start() }
-    engine.send(Input.Arm(Configs.valid()))
+    // Pair and permissions: the claim beat goes at once, and the next is 10 s away.
+    engine.sendAll(Configs.pairInputs().take(2))
     scheduler.advanceBy(500)
     val heartbeat = lines.single { """"kind":"heartbeat"""" in it }
     assertFalse(Configs.TOKEN in heartbeat, heartbeat)
     assertTrue("401 for Bearer ${SessionRecord.MASK}" in heartbeat, heartbeat)
   }
 
-  /** An adapter whose ingest refuses every connect, and whose descriptor fetch answers [result]. */
-  private fun refusedIngest(result: DescriptorCheck) {
+  /**
+   * An adapter whose ingest refuses every connect, and whose reconnect fetch of the code answers
+   * [result]. The fetch at Arming is answered by [Configs.pairInputs].
+   */
+  private fun refusedIngest(result: CodeAnswer) {
     onCommand = { e, command ->
       when (command) {
         is Command.Connect -> e.send(Input.ConnectFailed(command.attemptId, ConnectFailure.REFUSED, "publish rejected"))
-        is Command.FetchDescriptor -> e.send(Input.DescriptorChecked(command.requestId, result))
+        is Command.FetchCode -> if (e.phase !is Phase.Arming) e.send(Input.CodeAnswered(command.requestId, result))
         else -> Unit
       }
     }
@@ -301,34 +306,33 @@ class EngineTest {
 
   @Test
   fun `carry 12 an unreachable descriptor that quotes a secret is masked in the record`() {
-    val engine = engine()
-    refusedIngest(DescriptorCheck.Unreachable("GET https://stg.seazn.club/c?tok=${Configs.TOKEN} timed out"))
-    engine.send(Input.Arm(Configs.valid()))
-    engine.send(Input.Start)
-    scheduler.advanceBy(0)
+    val engine = engine().apply { start() }
+    refusedIngest(CodeAnswer.Unreachable("GET https://stg.seazn.club/c?tok=${Configs.TOKEN} timed out"))
+    engine.sendAll(Configs.pairInputs())
+    // The code was fetched at Arming (0 s): a refused connect asks again 10 s on (B6 ruling C1's spacing).
+    scheduler.advanceBy(10_000)
     val descriptor = lines.single { """"kind":"descriptor"""" in it }
     assertFalse(Configs.TOKEN in descriptor, descriptor)
     assertTrue("tok=${SessionRecord.MASK} timed out" in descriptor, descriptor)
   }
 
   @Test
-  fun `carry 12 an arm the machine ignores still protects its secrets`() {
-    val other = SrtTarget("srt://live.cloudflare.com:778", "f0e1d2c3b4a5968778695a4b3c2d1e0f", "other+secret/9a8b7c", latencyMs = 2_000)
-    val engine = engine()
-    refusedIngest(DescriptorCheck.Unreachable("srt://h?passphrase=other+secret/9a8b7c"))
-    engine.send(Input.Arm(Configs.valid()))
-    engine.send(Input.Arm(Configs.valid(primary = other)))
-    engine.send(Input.Start)
-    scheduler.advanceBy(0)
-    assertEquals(1, lines.count { """"kind":"intent-ignored"""" in it }, "the second arm was ignored")
+  fun `carry 12 a pair the machine ignores still protects its secrets`() {
+    val otherToken = "tok-0a1b2c3d4e5f6789"
+    val engine = engine().apply { start() }
+    refusedIngest(CodeAnswer.Unreachable("GET https://stg.seazn.club/c?tok=$otherToken timed out"))
+    engine.sendAll(Configs.pairInputs())
+    engine.send(Input.Pair(Configs.pairRequest(slot = 2, token = otherToken), Configs.PHONE, null))
+    scheduler.advanceBy(10_000)
+    assertEquals(1, lines.count { """"kind":"intent-ignored"""" in it }, "the second pair was ignored")
     val descriptor = lines.single { """"kind":"descriptor"""" in it }
-    assertFalse("other+secret/9a8b7c" in descriptor, descriptor)
+    assertFalse(otherToken in descriptor, descriptor)
   }
 
   @Test
   fun `an input that leaves the state as it was waits for the tick`() {
     val engine = engine()
-    engine.send(Input.Arm(Configs.valid()))
+    engine.sendAll(Configs.pairInputs(ready = false))
     scheduler.advanceBy(0)
     assertEquals(listOf(SnapshotState.Armed), published.map { it.second.state })
     engine.send(Input.Network(true))
@@ -340,32 +344,34 @@ class EngineTest {
   @Test
   fun `B6 review m3 ids outlive a fatal error, so the next session's attempts are new`() {
     val engine = engine { phase, input, now -> if (input == Input.SwitchCamera) error("bug") else SessionMachine.reduce(phase, input, now) }
-    engine.send(Input.Arm(Configs.valid()))
-    engine.send(Input.Start)
+    engine.sendAll(Configs.pairInputs())
     // A failure while connecting, again once ended, and again once idle: each keeps the ids.
     engine.send(Input.SwitchCamera)
     engine.send(Input.SwitchCamera)
     engine.send(Input.Reset)
     engine.send(Input.SwitchCamera)
     engine.send(Input.Reset)
-    engine.send(Input.Arm(Configs.valid()))
-    engine.send(Input.Start)
+    // The second pairing's claim is beat 2 and its code fetch is ask 2: those ids carried too.
+    engine.sendAll(Configs.pairInputs(beat = 2, fetch = 2))
     scheduler.advanceBy(0)
     assertEquals(3, lines.count { """"kind":"engine-error"""" in it })
     assertEquals(listOf(1, 2), executed.filterIsInstance<Command.Connect>().map { it.attemptId })
   }
 
-  /** A config no Kotlin caller can build: every field null. Only a bug on the platform's side makes one. */
-  private fun nullConfig(): SessionConfig {
+  /** An object no Kotlin caller can build: every field null. Only a bug on the platform's side makes one. */
+  private inline fun <reified T> nulled(): T {
     val field = Class.forName("sun.misc.Unsafe").getDeclaredField("theUnsafe").apply { isAccessible = true }
     val unsafe = field.get(null)
-    return unsafe.javaClass.getMethod("allocateInstance", Class::class.java).invoke(unsafe, SessionConfig::class.java) as SessionConfig
+    return unsafe.javaClass.getMethod("allocateInstance", Class::class.java).invoke(unsafe, T::class.java) as T
   }
 
+  /** A pair whose request no Kotlin caller can build. */
+  private fun nullPair(): Input.Pair = Input.Pair(nulled<PairRequest>(), Configs.PHONE, null)
+
   @Test
-  fun `B6 review m7 a throw from protecting an arm's secrets ends fatal-error, is recorded, and the tick carries on`() {
+  fun `B6 review m7 a throw from protecting a pair's secrets ends fatal-error, is recorded, and the tick carries on`() {
     val engine = engine().apply { start() }
-    engine.send(Input.Arm(nullConfig()))
+    engine.send(nullPair())
     scheduler.advanceBy(0)
     assertEquals(EndReason.FATAL_ERROR, assertIs<Phase.Ended>(engine.phase).reason, "never armed with its secrets unprotected")
     assertEquals(1, lines.count { """"kind":"engine-error"""" in it })
@@ -374,43 +380,77 @@ class EngineTest {
   }
 
   @Test
-  fun `B7 E1 an idle arm whose secrets cannot be protected ends fatal-error, even when the machine would take it`() {
-    // The real machine throws on this config too. A stand-in that arms on any config leaves the
-    // protect failure as the only thing between the session and an arm with its secrets unprotected.
-    val arming: (Phase, Input, Now) -> Step = { phase, input, now ->
-      SessionMachine.reduce(phase, if (input is Input.Arm) Input.Arm(Configs.valid()) else input, now)
+  fun `B7 E1 an idle pair whose secrets cannot be protected ends fatal-error, even when the machine would take it`() {
+    // The real machine throws on this request too. A stand-in that pairs on any request leaves the
+    // protect failure as the only thing between the pairing and a pair with its secrets unprotected.
+    val pairing: (Phase, Input, Now) -> Step = { phase, input, now ->
+      SessionMachine.reduce(phase, if (input is Input.Pair) Configs.pairInputs().first() else input, now)
     }
-    val engine = engine(reducer = arming)
-    engine.send(Input.Arm(nullConfig()))
+    val engine = engine(reducer = pairing)
+    engine.send(nullPair())
+    scheduler.advanceBy(0)
+    assertEquals(EndReason.FATAL_ERROR, assertIs<Phase.Ended>(engine.phase).reason)
+    assertEquals(1, lines.count { """"kind":"engine-error"""" in it })
+  }
+
+  @Test
+  fun `B7 E1 a re-pair while permissions are asked, whose secrets cannot be protected, ends fatal-error`() {
+    // Pairing acts on a pair for another code (it re-pairs), so its secrets must be protected first.
+    val pairing: (Phase, Input, Now) -> Step = { phase, input, now ->
+      SessionMachine.reduce(phase, if (input is Input.Pair && phase is Phase.Pairing) Input.Pair(Configs.pairRequest(slot = 2), Configs.PHONE, null) else input, now)
+    }
+    val engine = engine(reducer = pairing)
+    engine.send(Configs.pairInputs().first())
+    scheduler.advanceBy(0)
+    assertIs<Phase.Pairing>(engine.phase)
+    engine.send(nullPair())
+    scheduler.advanceBy(0)
+    assertEquals(EndReason.FATAL_ERROR, assertIs<Phase.Ended>(engine.phase).reason)
+    assertEquals(1, lines.count { """"kind":"engine-error"""" in it })
+  }
+
+  @Test
+  fun `B7 E1 an open code answer at Arming whose credentials cannot be protected ends fatal-error`() {
+    // A stand-in that arms on any answer leaves the protect failure as the only guard.
+    val opening: (Phase, Input, Now) -> Step = { phase, input, now ->
+      SessionMachine.reduce(phase, if (input is Input.CodeAnswered) Input.CodeAnswered(input.requestId, Configs.open()) else input, now)
+    }
+    val engine = engine(reducer = opening)
+    engine.sendAll(Configs.pairInputs(ready = false).dropLast(1))
+    scheduler.advanceBy(0)
+    assertIs<Phase.Arming>(engine.phase)
+    val unprotectable = Configs.descriptor(primary = nulled<SrtTarget>(), fallback = null)
+    engine.send(Input.CodeAnswered(1, Configs.open(descriptor = unprotectable)))
     scheduler.advanceBy(0)
     assertEquals(EndReason.FATAL_ERROR, assertIs<Phase.Ended>(engine.phase).reason)
     assertEquals(1, lines.count { """"kind":"engine-error"""" in it })
   }
 
   /**
-   * A fresh engine armed on a validated network, then [setup], then a second arm whose config no Kotlin
-   * caller can build. Returns the phase before and after that arm; [executed] and [lines] hold only its effects.
+   * A fresh engine paired and armed on a validated network, then [setup], then a second pair whose
+   * request no Kotlin caller can build. Returns the phase before and after that pair; [executed] and
+   * [lines] hold only its effects.
    */
-  private fun malformedArmAfter(setup: List<Input>): Pair<Phase, Phase> {
+  private fun malformedPairAfter(setup: List<Input>): Pair<Phase, Phase> {
     onCommand = { e, command -> if (command is Command.Connect) e.send(Input.Connected(command.attemptId)) }
     val engine = engine()
-    engine.send(Input.Arm(Configs.valid()))
-    engine.send(Input.Network(true))
+    engine.sendAll(Configs.pairInputs(ready = false))
     for (input in setup) engine.send(input)
     scheduler.advanceBy(0)
     val before = engine.phase
     executed.clear()
     lines.clear()
-    engine.send(Input.Arm(nullConfig()))
+    engine.send(nullPair())
     scheduler.advanceBy(0)
     return before to engine.phase
   }
 
   @Test
-  fun `B7 E1 a malformed arm while a session runs is ignored and recorded, as the machine does - never fatal-error`() {
-    // Armed, on air, and ended by the operator: the machine ignores an arm in each, so its config never runs.
-    for (setup in listOf(emptyList(), listOf(Input.Start), listOf(Input.Start, Input.Stop))) {
-      val (before, after) = malformedArmAfter(setup)
+  fun `B7 E1 a malformed pair while a broadcast is held is ignored and recorded, as the machine does - never fatal-error`() {
+    // Armed, on air, and ended by the operator: the machine ignores a pair in each, so its request never runs.
+    val ready = Input.ReadinessChanged(Configs.READY)
+    for (setup in listOf(emptyList(), listOf(ready), listOf(ready, Input.Stop))) {
+      val (before, after) = malformedPairAfter(setup)
       assertEquals(before, after, "after $setup")
       assertTrue(executed.isEmpty(), "after $setup, asked of the platform: $executed")
       assertEquals(1, lines.count { """"kind":"engine-error"""" in it }, "after $setup")
@@ -422,10 +462,10 @@ class EngineTest {
   fun `B6 review m7 a throw from the projection is counted, and the tick carries on`() {
     var failing = true
     val engine = engine(projection = { phase, now -> if (failing) error("projection") else Projection.snapshot(phase, now) }).apply { start() }
-    engine.send(Input.Arm(Configs.valid()))
+    engine.sendAll(Configs.pairInputs(ready = false))
     scheduler.advanceBy(1_000)
-    assertIs<Phase.Armed>(engine.phase, "the input still ran")
-    assertEquals(3, engine.snapshotFailures, "the arm and two ticks")
+    assertIs<Phase.Armed>(engine.phase, "the inputs still ran")
+    assertEquals(7, engine.snapshotFailures, "the five inputs to Armed and two ticks")
     assertTrue(published.isEmpty())
     failing = false
     scheduler.advanceBy(500)
@@ -436,11 +476,12 @@ class EngineTest {
   fun `final review I-2 the snapshot and the record read the wall clock, never the monotonic one`() {
     val engine = engine()
     scheduler.advanceBy(2_000)
-    engine.send(Input.Arm(Configs.valid()))
+    engine.sendAll(Configs.pairInputs(ready = false))
     scheduler.advanceBy(0)
     // FakeClock: monotonic 2_000, wall 1_790_000_002_000, which is 2026-09-21T14:13:22Z.
     assertEquals(1_790_000_002_000L, published.single().second.reportedAtMs)
-    assertTrue(lines.single().startsWith("""{"at":"2026-09-21T14:13:22.000Z","kind":"armed","""), lines.single())
+    val armed = lines.single { """"kind":"armed"""" in it }
+    assertTrue(armed.startsWith("""{"at":"2026-09-21T14:13:22.000Z","kind":"armed","""), armed)
   }
 
   private class SinkCrash : Error("sink crash")
@@ -459,8 +500,7 @@ class EngineTest {
       }
     }
     val engine = engine()
-    engine.send(Input.Arm(Configs.valid()))
-    engine.send(Input.Start)
+    engine.sendAll(Configs.pairInputs())
     engine.send(Input.Stop)
     // The Error still reaches the scheduler's thread, as the platform's own would.
     assertFailsWith<SinkCrash> { scheduler.advanceBy(0) }
@@ -476,8 +516,7 @@ class EngineTest {
     onLine = { line -> if (""""kind":"ended"""" in line) throw SinkCrash() }
     onSnapshot = { snapshot -> if (snapshot.state is SnapshotState.Ended) throw BridgeCrash() }
     val engine = engine()
-    engine.send(Input.Arm(Configs.valid()))
-    engine.send(Input.Start)
+    engine.sendAll(Configs.pairInputs())
     scheduler.advanceBy(0)
     engine.send(Input.Stop)
     // The End threw first, then the ended line, then the ended snapshot: each still ran.
@@ -497,7 +536,7 @@ class EngineTest {
     onLine = { line -> if (""""kind":"ended"""" in line) throw crash }
     onSnapshot = { snapshot -> if (snapshot.state is SnapshotState.Ended) throw crash }
     val engine = engine()
-    engine.send(Input.Arm(Configs.valid()))
+    engine.sendAll(Configs.pairInputs(ready = false))
     engine.send(Input.Stop)
     val thrown = assertFailsWith<SinkCrash> { scheduler.advanceBy(0) }
     assertTrue(thrown === crash)
@@ -508,9 +547,7 @@ class EngineTest {
   fun `final review M-3 and I-1 a fatal error in a live session keeps how long it was live, and the network fact`() {
     onCommand = { e, command -> if (command is Command.Connect) e.send(Input.Connected(command.attemptId)) }
     val engine = engine { phase, input, now -> if (input == Input.SwitchCamera) error("bug") else SessionMachine.reduce(phase, input, now) }
-    engine.send(Input.Arm(Configs.valid()))
-    engine.send(Input.Network(true))
-    engine.send(Input.Start)
+    engine.sendAll(Configs.pairInputs())
     scheduler.advanceBy(0)
     engine.send(Input.Frames(1, 15, 23))
     scheduler.advanceBy(500)
@@ -536,8 +573,7 @@ class EngineTest {
   fun `final review N-2 a fatal error after an operator stop is only recorded - the stop stands and one End goes out`() {
     // Owner-visible (final review N-2): plan A keeps a failed session's code for Continue, never a stopped one's.
     val engine = engine { phase, input, now -> if (input == Input.SwitchCamera) error("bug") else SessionMachine.reduce(phase, input, now) }
-    engine.send(Input.Arm(Configs.valid()))
-    engine.send(Input.Start)
+    engine.sendAll(Configs.pairInputs())
     engine.send(Input.Stop)
     scheduler.advanceBy(0)
     val stopped = assertIs<Phase.Ended>(engine.phase)
@@ -562,8 +598,7 @@ class EngineTest {
     var atSnapshot: List<String>? = null
     onSnapshot = { if (clock.mono == 5_000L) atSnapshot = engine.record.lastLines() }
     engine = engine().apply { start() }
-    engine.send(Input.Arm(Configs.valid()))
-    engine.send(Input.Start)
+    engine.sendAll(Configs.pairInputs())
     // Connected at once and no frame since: at 5 s the watchdog asks for a rebuild, and the platform throws on it.
     scheduler.advanceBy(4_500)
     lines.clear()
@@ -577,7 +612,9 @@ class EngineTest {
   @Test
   fun `final review M-5 a permanent platform failure that quotes a secret is masked in the record`() {
     val engine = engine()
-    engine.send(Input.Arm(Configs.valid()))
+    engine.sendAll(Configs.pairInputs(ready = false))
+    scheduler.advanceBy(0)
+    executed.clear()
     engine.send(Input.PlatformFailed(1, "srt://h?passphrase=${Configs.PASSPHRASE} cannot open"))
     scheduler.advanceBy(0)
     val ended = lines.single { """"kind":"ended"""" in it }
@@ -590,12 +627,13 @@ class EngineTest {
   fun `final review M-6 a log line is posted through the scheduler into the record, scrubbed, on the wall clock`() {
     val engine = engine()
     scheduler.advanceBy(1_500)
-    engine.send(Input.Arm(Configs.valid()))
+    engine.sendAll(Configs.pairInputs(ready = false))
     engine.log(RecordEntry("js.warn", listOf("message" to "retrying with stream key ${Configs.STREAM_KEY}")))
     assertTrue(lines.isEmpty(), "nothing is written off the scheduler's thread")
     scheduler.advanceBy(0)
-    // In order with the engine's own lines. 1_790_000_001_500 is 2026-09-21T14:13:21.500Z.
-    assertEquals(2, lines.size)
-    assertEquals("""{"at":"2026-09-21T14:13:21.500Z","kind":"js.warn","message":"retrying with stream key ***"}""", lines[1])
+    // In order with the engine's own lines, after every line of the inputs queued before it.
+    // 1_790_000_001_500 is 2026-09-21T14:13:21.500Z.
+    assertEquals(1, lines.count { "js.warn" in it })
+    assertEquals("""{"at":"2026-09-21T14:13:21.500Z","kind":"js.warn","message":"retrying with stream key ***"}""", lines.last())
   }
 }

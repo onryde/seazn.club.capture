@@ -1,41 +1,32 @@
 package com.seazn.capture.engine.core
 
 /**
- * The descriptor fetched again on a reconnect (spec §1). The platform's adapter types an HTTP answer
- * with [answered], which holds the rule; a fetch with no HTTP answer is [Unreachable] with its message.
- */
-sealed interface DescriptorCheck {
-  data object Live : DescriptorCheck
-
-  /** 410, or a state that is over. [endReason] is the server's, for the record. */
-  data class Over(val endReason: String?) : DescriptorCheck
-
-  data class Unreachable(val message: String) : DescriptorCheck
-
-  companion object {
-    /**
-     * An HTTP answer to the descriptor fetch: [status], and the body's `state` and `endReason` (null
-     * when absent or unreadable). Over by the heartbeat's own rule ([SessionOver], final review M-4);
-     * any other 2xx is live; any other status is no answer, whatever its body says.
-     */
-    fun answered(status: Int, state: String?, endReason: String?): DescriptorCheck =
-      when {
-        SessionOver.said(status, state) -> Over(endReason)
-        status in 200..299 -> Live
-        else -> Unreachable("HTTP $status")
-      }
-  }
-}
-
-/**
  * Everything that happens to the engine: operator intents, the engine's own tick, and platform
  * facts from plan C's adapters. Each adapter turns one Android fact into one of these and holds no
  * rule of its own (spec §3, `platform/`).
  */
 sealed interface Input {
-  /** Intents, not RPC (AGENTS §2): each returns nothing and is reconciled against the phase. */
-  data class Arm(val config: SessionConfig) : Input
+  /**
+   * A5: pair with a code. [stopped] is this code and slot's A17 record from app-private storage, read
+   * by the bridge, or null. [phone] is the install's facts. Intents, not RPC (AGENTS §2): each returns
+   * nothing and is reconciled against the phase.
+   */
+  data class Pair(val request: PairRequest, val phone: PhoneFacts, val stopped: StoppedRecord?) : Input
 
+  /** The answer to [Command.AskPermissions]: camera and microphone both granted, or not. */
+  data class PermissionsAnswered(val granted: Boolean) : Input
+
+  /** Forget, A7's confirm, an orphan clear. Paired only: never ends a held broadcast. */
+  data object Unpair : Input
+
+  data class SetAutomatic(val on: Boolean) : Input
+
+  data class SetLanguage(val language: String) : Input
+
+  /** The platform's readiness facts (A11), pushed on every change, in any phase. */
+  data class ReadinessChanged(val readiness: Readiness) : Input
+
+  /** The operator's Go live hold: `POST start` from Paired, when ready (amendment, _The engine port_). */
   data object Start : Input
 
   data object Stop : Input
@@ -92,8 +83,11 @@ sealed interface Input {
 
   data class HeartbeatAnswered(val beatId: Int, val response: HeartbeatResponse) : Input
 
-  /** The answer to [Command.FetchDescriptor] [requestId]. Only the latest ask's answer is acted on. */
-  data class DescriptorChecked(val requestId: Int, val result: DescriptorCheck) : Input
+  /** The answer to [Command.FetchCode] [requestId]. Only the latest ask's answer is acted on. */
+  data class CodeAnswered(val requestId: Int, val answer: CodeAnswer) : Input
+
+  /** The answer to [Command.PostStart] [requestId]. */
+  data class StartAnswered(val requestId: Int, val answer: StartAnswer) : Input
 
   /**
    * A failure plan C's adapter knows is permanent: an encoder that can never start, a native library
