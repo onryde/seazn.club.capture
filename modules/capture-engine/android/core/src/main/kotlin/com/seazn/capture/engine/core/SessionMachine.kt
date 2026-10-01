@@ -43,8 +43,9 @@ object SessionMachine {
     return Pairings.gate(merged, now)
   }
 
-  private fun apply(phase: Phase, input: Input, now: Now): Step =
-    when (input) {
+  private fun apply(phase: Phase, input: Input, now: Now): Step {
+    if (phase is Phase.Ended && phase.finalBeatId != null) finalBeat(phase, input, now)?.let { return it }
+    return when (input) {
       is Input.Pair -> Pairings.pair(phase, input, now)
       is Input.PermissionsAnswered -> Pairings.permissions(phase, input.granted, now)
       Input.Unpair -> Pairings.unpair(phase)
@@ -53,7 +54,7 @@ object SessionMachine {
       is Input.ReadinessChanged -> Pairings.readiness(phase, input.readiness)
       Input.Start -> Verdicts.postStart(phase, now)
       Input.Stop -> if (!phase.holdsBroadcast) ignored(phase, "stop") else end(phase, EndReason.OPERATOR_STOPPED, now)
-      Input.Reset -> if (phase is Phase.Ended) Step(Phase.Idle(phase.ids, phase.networkValidated), listOf(record("reset"))) else ignored(phase, "reset")
+      Input.Reset -> if (phase is Phase.Ended) reset(phase) else ignored(phase, "reset")
       Input.SwitchCamera -> Devices.switched(phase, now)
       Input.Tick -> Heartbeats.tick(Timers.tick(phase, now), now)
       is Input.Connected -> Transports.connected(phase, input.attemptId, now)
@@ -73,13 +74,59 @@ object SessionMachine {
       is Input.StartAnswered -> Verdicts.started(phase, input, now)
       is Input.PlatformFailed -> platformFailed(phase, input, now)
     }
+  }
+
+  /** A8: the final beat's answer, or its timeout, releases the service. Null for any other input. */
+  private fun finalBeat(ended: Phase.Ended, input: Input, now: Now): Step? {
+    val result =
+      when {
+        input is Input.HeartbeatAnswered && input.beatId == ended.finalBeatId ->
+          record("final-beat", "result" to "answered", "status" to (input.response as? HeartbeatResponse.Answered)?.status)
+        input == Input.Tick && now.monoMs >= ended.finalBeatAtMs + Heartbeat.TIMEOUT_MS -> record("final-beat", "result" to "timeout", "status" to null)
+        else -> return null
+      }
+    return Step(ended.copy(finalBeatId = null), listOf(Command.Release, result))
+  }
+
+  /** Back to Idle; a final beat still pending is let go, and the service with it. */
+  private fun reset(ended: Phase.Ended): Step {
+    val release = if (ended.finalBeatId != null) listOf(Command.Release) else emptyList()
+    return Step(Phase.Idle(ended.ids, ended.networkValidated), release + record("reset"))
+  }
 
   internal fun ignored(phase: Phase, intent: String): Step =
     Step(phase, listOf(record("intent-ignored", "intent" to intent, "phase" to phase.name)))
 
+  /**
+   * The pairing is over: the operator's Stop (A3) or a fatal error. A Stop writes A17's record before
+   * End; from a broadcast that went live it sends A8's one final beat and holds the service for it.
+   */
   internal fun end(phase: Phase, reason: EndReason, now: Now, vararg fields: Pair<String, Any?>): Step {
-    val liveMs = phase.session?.liveSinceEpochMs
-    return Step(phase.ended(reason, now), listOf(record("ended", "reason" to reason, "wasLive" to (liveMs != null), *fields), Command.End(reason)))
+    val pairing = phase.pairing
+    val sid = phase.heldSid
+    val wasLive = phase.session?.liveSinceEpochMs != null
+    val ended = phase.ended(reason, now)
+    val commands = mutableListOf<Command>(record("ended", "reason" to reason, "wasLive" to wasLive, *fields))
+    if (reason == EndReason.OPERATOR_STOPPED && pairing != null && sid != null) {
+      commands += Command.WriteStopped(StoppedRecord.of(pairing.name, sid, now.wallMs, phase.session?.broadcast?.maxDurationMinutes))
+    }
+    commands += Command.End(reason)
+    if (reason == EndReason.OPERATOR_STOPPED && wasLive && pairing != null) {
+      val (beat, id) = finalBeat(phase, pairing, now)
+      commands += beat
+      // The final beat's id is spent: the next pairing's beats start after it (plan B: ids never repeat).
+      val beating = pairing.copy(heartbeat = pairing.heartbeat.copy(nextId = id + 1, inFlightId = null))
+      return Step(ended.copy(ids = ended.ids.copy(beat = id + 1), pairing = beating, finalBeatId = id, finalBeatAtMs = now.monoMs), commands)
+    }
+    commands += Command.Release
+    return Step(ended, commands)
+  }
+
+  /** A8: `{sid, state:"ended", endReason:"operator-stopped"}`, once, never retried. */
+  private fun finalBeat(phase: Phase, pairing: PairingState, now: Now): Pair<Command, Int> {
+    val id = pairing.heartbeat.nextId
+    val facts = Projection.beatFacts(phase, pairing, now).copy(state = "ended", claim = null, deviceModel = null, endReason = EndReason.OPERATOR_STOPPED)
+    return Command.PostHeartbeat(id, pairing.request.heartbeatUrl, pairing.token, Beats.payload(facts)) to id
   }
 
   /** Recorded when it changes, in any phase: with no session it is kept for the next (final review I-1). */
@@ -549,7 +596,14 @@ internal object Heartbeats {
         "word" to word::class.simpleName,
         "message" to (input.response as? HeartbeatResponse.Failed)?.message,
       )
-    val decided = Verdicts.beat(phase.withPairing(refreshed), word, now)
-    return decided.copy(commands = listOf(noted) + decided.commands)
+    // A17: a beat that carried the stopped record and was heard delivers it (G0-g); a 401 ends its code.
+    val status = response?.status
+    val delivered = pairing.stoppedInFlight != null && StoppedRecord.delivered(status)
+    val codeDead = word == ServerWord.CodeEnded && pairing.stopped != null
+    val deletes = if (delivered || codeDead) listOf(Command.DeleteStopped(pairing.name.code, pairing.name.slot), record("stopped-delivered", "status" to status)) else emptyList()
+    // The refused set keeps the sid for the pairing's life (A17): a server that names it later is still ignored.
+    val kept = if (delivered || codeDead) refreshed.copy(stopped = null) else refreshed
+    val decided = Verdicts.beat(phase.withPairing(kept), word, now)
+    return decided.copy(commands = listOf(noted) + deletes + decided.commands)
   }
 }

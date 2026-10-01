@@ -201,6 +201,9 @@ sealed interface Phase {
     val networkValidated: Boolean,
     val pairing: PairingState? = null,
     val sid: String? = null,
+    /** A8: the final beat in flight, whose answer (or [Heartbeat.TIMEOUT_MS]) releases the service. */
+    val finalBeatId: Int? = null,
+    val finalBeatAtMs: Long = 0,
   ) : Phase {
     override val name = "ended"
   }

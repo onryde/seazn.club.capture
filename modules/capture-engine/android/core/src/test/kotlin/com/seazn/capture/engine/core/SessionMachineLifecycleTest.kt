@@ -635,7 +635,10 @@ class SessionMachineLifecycleTest {
   fun `B6 fix 2 a stop in the C2 gap ends the session and sends no rebuild first`() {
     val rig = gateJustClosed()
     val commands = rig.send(Input.Stop)
-    assertEquals(listOf(Command.End(EndReason.OPERATOR_STOPPED)), commands.filterNot { it is Command.Record })
+    // A17's record before End, and A8's final beat from a broadcast that was live: no rebuild among them.
+    val acted = commands.filterNot { it is Command.Record }
+    assertEquals(listOf(Command.WriteStopped::class, Command.End::class, Command.PostHeartbeat::class), acted.map { it::class })
+    assertEquals(Command.End(EndReason.OPERATOR_STOPPED), acted[1])
     assertTrue(rig.records("video-stalled").isEmpty())
     assertEquals(EndReason.OPERATOR_STOPPED, rig.state.endReason)
     assertEquals(true, rig.records("ended").single().field("wasLive"))
@@ -780,7 +783,7 @@ class SessionMachineLifecycleTest {
     val rig = MachineRig().live()
     rig.advance(9_000)
     val commands = rig.send(Input.PlatformFailed(1, "encoder cannot start"))
-    assertEquals(listOf(Command.End(EndReason.FATAL_ERROR)), commands.filterNot { it is Command.Record })
+    assertEquals(listOf(Command.End(EndReason.FATAL_ERROR), Command.Release), commands.filterNot { it is Command.Record })
     assertEquals(SnapshotState.Ended(EndReason.FATAL_ERROR, durationMs = 9_000), rig.state)
     val ended = rig.records("ended").single()
     assertEquals(EndReason.FATAL_ERROR, ended.field("reason"))
@@ -876,7 +879,7 @@ class SessionMachineLifecycleTest {
   fun `final review M-5 a permanent failure is not judged by the watchdog - nothing is rebuilt on its way to the end`() {
     val rig = gateJustClosed()
     val commands = rig.send(Input.PlatformFailed(1, "encoder cannot start"))
-    assertEquals(listOf(Command.End(EndReason.FATAL_ERROR)), commands.filterNot { it is Command.Record })
+    assertEquals(listOf(Command.End(EndReason.FATAL_ERROR), Command.Release), commands.filterNot { it is Command.Record })
     assertTrue(rig.records("video-stalled").isEmpty())
     assertEquals(EndReason.FATAL_ERROR, rig.state.endReason)
   }

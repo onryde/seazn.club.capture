@@ -504,7 +504,9 @@ class EngineTest {
     engine.send(Input.Stop)
     // The Error still reaches the scheduler's thread, as the platform's own would.
     assertFailsWith<SinkCrash> { scheduler.advanceBy(0) }
-    assertEquals(Command.End(EndReason.OPERATOR_STOPPED), executed.last())
+    // Connecting, never live: A17's record, the End, and the service released at once (A8).
+    assertEquals(listOf(Command.WriteStopped::class, Command.End::class, Command.Release::class), executed.takeLast(3).map { it::class })
+    assertEquals(Command.End(EndReason.OPERATOR_STOPPED), executed[executed.size - 2])
     assertTrue(endedFirst, "the platform had the End before the record had the ended line")
     assertEquals(SnapshotState.Ended(EndReason.OPERATOR_STOPPED, durationMs = null), published.last().second.state)
     assertEquals(EndReason.OPERATOR_STOPPED, assertIs<Phase.Ended>(engine.phase).reason)
@@ -620,7 +622,7 @@ class EngineTest {
     val ended = lines.single { """"kind":"ended"""" in it }
     assertFalse(Configs.PASSPHRASE in ended, ended)
     assertTrue("passphrase=${SessionRecord.MASK} cannot open" in ended, ended)
-    assertEquals(listOf<Command>(Command.End(EndReason.FATAL_ERROR)), executed)
+    assertEquals(listOf(Command.End(EndReason.FATAL_ERROR), Command.Release), executed)
   }
 
   @Test
