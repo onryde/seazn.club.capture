@@ -1,3 +1,4 @@
 # Prettier reads the root .gitignore, but not the one inside each module, so
 # the Gradle output of a local module compile would otherwise be checked.
 modules/*/android/build/
+modules/*/android/core/build/

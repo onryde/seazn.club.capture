@@ -1,0 +1,333 @@
+package com.seazn.capture.engine.core
+
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertIs
+import kotlin.test.assertTrue
+
+class SessionMachineServerTest {
+  private val masterText = "#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=3128000\nstream_720/video.m3u8\n"
+
+  private fun media(head: Long, seconds: String = "2.000") =
+    "#EXTM3U\n#EXT-X-TARGETDURATION:2\n#EXT-X-MEDIA-SEQUENCE:${head - 2}\n" +
+      (head - 2..head).joinToString("") { "#EXTINF:$seconds,\ns$it.ts\n" }
+
+  private val masterUrl = Configs.PLAYBACK_URL + "?clientBandwidthHint=0.1"
+
+  @Test
+  fun `final review I-2 a playlist that moves reads delivery ok with its lag, in the snapshot and the next beat`() {
+    var head = 100L
+    val rig = MachineRig()
+    rig.playlists = { url -> FetchResult.Body(if (url == masterUrl) masterText else media(head++, seconds = "1.500")) }
+    rig.beats = { HeartbeatResponse.Answered(200, "live", null) }
+    rig.live()
+    rig.advance(9_500)
+    // Live at 1 s, where the first look is the baseline. Each poll after it (3, 5, 7 and 9 s) finds one
+    // new 1.5 s segment for 2 s of publishing: 0.5 s more behind each time, 2.0 s by 9 s (F-P5-13).
+    assertEquals(Delivery.OK, rig.snapshot.delivery)
+    assertEquals(2_000L, rig.snapshot.deliveredLagMs)
+    // The second beat goes at 10.5 s.
+    val beat = rig.sent<Command.PostHeartbeat>().last()
+    assertEquals(2, beat.beatId)
+    assertTrue(""""delivery":"ok","deliveredLagS":2.0,""" in beat.body, beat.body)
+  }
+
+  @Test
+  fun `final review I-2 a playlist that stops moving reads delivery stalled after 6 s of publishing`() {
+    val rig = MachineRig()
+    rig.playlists = { url -> FetchResult.Body(if (url == masterUrl) masterText else media(100)) }
+    rig.live()
+    // The look at 1 s is the baseline. At the poll at 5 s the head has not moved for 4 s of publishing.
+    rig.advance(4_000)
+    assertEquals(Delivery.UNKNOWN, rig.snapshot.delivery)
+    // At 7 s, 6 s: three configured segments.
+    rig.advance(2_000)
+    assertEquals(Delivery.STALLED, rig.snapshot.delivery)
+  }
+
+  @Test
+  fun `final review I-2 the beat's at is the wall clock`() {
+    val rig = MachineRig().armed()
+    rig.advance(500)
+    // The rig's wall clock starts at 1_790_000_000_000, 2026-09-21T14:13:20Z. The first beat goes at 0.5 s.
+    val body = rig.sent<Command.PostHeartbeat>().single().body
+    assertTrue(body.startsWith("""{"sid":"sess_42","at":"2026-09-21T14:13:20.500Z","""), body)
+  }
+
+  @Test
+  fun `F-P5-13 not-delivered forces a new session and shows until the playlist moves again`() {
+    var head = 100L
+    var moving = false
+    val rig = MachineRig()
+    rig.playlists = { url -> FetchResult.Body(if (url == Configs.PLAYBACK_URL + "?clientBandwidthHint=0.1") masterText else media(if (moving) ++head else head)) }
+    rig.live()
+    // Live at 1 s; the first poll at 1 s is the baseline; 20 s of publishing with no movement.
+    rig.advance(19_500)
+    assertTrue(rig.sent<Command.StartNewSession>().isEmpty())
+    rig.advance(500)
+    val restart = rig.sent<Command.StartNewSession>().single()
+    assertEquals(1, restart.previousAttemptId)
+    assertEquals(ReconnectCause.NOT_DELIVERED, assertIs<SnapshotState.Reconnecting>(rig.state).cause)
+    rig.send(Input.Connected(restart.next.attemptId))
+    rig.advance(1_000)
+    assertEquals(listOf(DegradeReason.NOT_DELIVERED), assertIs<SnapshotState.Degraded>(rig.state).reasons)
+    moving = true
+    rig.advance(6_000)
+    assertIs<SnapshotState.Publishing>(rig.state)
+    assertEquals(1, rig.records("delivered").size)
+  }
+
+  @Test
+  fun `B7 spec 1 - a forced new session reconnects the link, so it asks the descriptor again`() {
+    val rig = MachineRig()
+    rig.playlists = { url -> FetchResult.Body(if (url == Configs.PLAYBACK_URL + "?clientBandwidthHint=0.1") masterText else media(100)) }
+    rig.live()
+    rig.advance(20_000)
+    rig.sent<Command.StartNewSession>().single()
+    val ask = rig.sent<Command.FetchDescriptor>().single()
+    rig.send(Input.DescriptorChecked(ask.requestId, DescriptorCheck.Over("stopped")))
+    assertEquals(EndReason.STOPPED_BY_ORGANISER, rig.state.endReason)
+  }
+
+  @Test
+  fun `the playlist is polled only while LIVE`() {
+    val rig = MachineRig().armed()
+    rig.send(Input.Start)
+    rig.send(Input.Connected(1))
+    rig.advance(4_000, feeding = false)
+    assertTrue(rig.sent<Command.FetchPlaylist>().isEmpty())
+  }
+
+  @Test
+  fun `ruling 5 heartbeats go every 10 s while armed, carrying the token only as the Bearer`() {
+    val rig = MachineRig()
+    rig.beats = { HeartbeatResponse.Answered(200, "warming", null) }
+    rig.armed()
+    rig.advance(30_000)
+    val beats = rig.sent<Command.PostHeartbeat>()
+    assertEquals(3, beats.size)
+    for (beat in beats) {
+      assertEquals(Configs.TOKEN, beat.bearer)
+      assertEquals(Configs.valid().heartbeatUrl, beat.url)
+      assertFalse(Configs.TOKEN in beat.body)
+      assertFalse(Configs.TOKEN in beat.toString())
+      assertTrue(""""state":"armed"""" in beat.body)
+    }
+  }
+
+  @Test
+  fun `ruling 5 an organiser stop in the heartbeat's answer ends stopped-by-organiser`() {
+    val rig = MachineRig().live()
+    rig.beats = { HeartbeatResponse.Answered(200, "ending", "stopped") }
+    rig.advance(10_000)
+    assertEquals(EndReason.STOPPED_BY_ORGANISER, rig.state.endReason)
+  }
+
+  @Test
+  fun `ruling 5 a heartbeat that fails forever never touches the stream`() {
+    val rig = MachineRig()
+    rig.beats = { HeartbeatResponse.Failed("timeout") }
+    rig.live()
+    val states = mutableListOf<SnapshotState>()
+    rig.advance(600_000) { states += rig.state }
+    assertTrue(states.all { it is SnapshotState.Publishing }, "the stream never noticed")
+    assertTrue(rig.sent<Command.Rebuild>().isEmpty() && rig.sent<Command.End>().isEmpty())
+    assertEquals(61, rig.snapshot.heartbeat.failures)
+  }
+
+  @Test
+  fun `a heartbeat never answered is failed at 10 s, recorded, and the next goes`() {
+    val rig = MachineRig().live()
+    rig.advance(20_000)
+    assertEquals(3, rig.sent<Command.PostHeartbeat>().size)
+    assertEquals(2, rig.snapshot.heartbeat.failures)
+    assertEquals(2, rig.records("heartbeat").size)
+  }
+
+  @Test
+  fun `no heartbeat after the session ends`() {
+    val rig = MachineRig().live()
+    rig.send(Input.Stop)
+    val before = rig.sent<Command.PostHeartbeat>().size
+    rig.advance(30_000)
+    assertEquals(before, rig.sent<Command.PostHeartbeat>().size)
+  }
+
+  @Test
+  fun `the snapshot carries spec 2's telemetry`() {
+    val rig = MachineRig()
+    var bytes = 0L
+    rig.link = { t ->
+      bytes += 500_000
+      LinkCounters(bytes, t, 7, 2, 0, 31, 40, null)
+    }
+    rig.live()
+    rig.advance(4_000)
+    val snapshot = rig.snapshot
+    assertEquals(SrtTelemetry(sent = 5_000, retransmitted = 7, dropped = 2, rttMs = 31), snapshot.srt)
+    assertEquals(4_000, snapshot.bitrateKbps)
+    // Carry 13: the meter starts at the connect's zero counters, so the first reading (at 1 s) shows
+    // the link's 2 sender drops as drops since the connect, and F-P5-5 cuts on drops by half:
+    // 1500k / 2 = 750k. (The plan's unseeded meter read that first reading as no drops: 1500.)
+    assertEquals(750, snapshot.targetBitrateKbps)
+    // Carry 13: five readings of 500 000 bytes (1 s to 5 s), the first counted from the connect:
+    // 5 × 500 000 = 2 500 000. (The plan's unseeded meter dropped the first: 2 000 000.)
+    assertEquals(2_500_000, snapshot.dataUsedBytes)
+    assertEquals(30.0, snapshot.encodedVideoFps)
+    assertEquals(46.0, snapshot.audioPacketsPerSecond)
+  }
+
+  @Test
+  fun `the heartbeat says audio ok only on a rate measured at the floor`() {
+    // Carry 8: no measurement is not health. Armed, nothing is encoded yet.
+    val armed = MachineRig().armed()
+    armed.advance(500)
+    assertTrue(""""audioOk":false""" in armed.sent<Command.PostHeartbeat>().single().body)
+
+    val rig = MachineRig()
+    rig.beats = { HeartbeatResponse.Answered(200, "live", null) }
+    rig.live()
+    rig.advance(10_000)
+    // 10.5 s: 46 audio frames a second, over the 20 floor.
+    assertTrue(""""audioOk":true""" in rig.sent<Command.PostHeartbeat>()[1].body)
+    rig.send(Input.CameraContended)
+    rig.advance(10_000, videoPerStep = 0)
+    // 20.5 s: the slate is up with its silent audio, and the held watchdog has cleared the rates.
+    assertTrue(""""audioOk":false""" in rig.sent<Command.PostHeartbeat>()[2].body)
+  }
+
+  @Test
+  fun `a playlist answer that lands off air neither clears not-delivered nor sets delivery`() {
+    // Carry 11: the watch drops a late answer once it has gone off air; so does the machine.
+    var head = 100L
+    var moving = false
+    var answerMedia = true
+    val rig = MachineRig()
+    rig.playlists = { url ->
+      when {
+        url == Configs.PLAYBACK_URL + "?clientBandwidthHint=0.1" -> FetchResult.Body(masterText)
+        answerMedia -> FetchResult.Body(media(if (moving) ++head else head))
+        else -> null
+      }
+    }
+    rig.live()
+    rig.advance(20_000)
+    val restart = rig.sent<Command.StartNewSession>().single()
+    rig.send(Input.Connected(restart.next.attemptId))
+    rig.advance(1_000)
+    moving = true
+    rig.advance(1_000) // 23 s: the new session's baseline
+    answerMedia = false
+    rig.advance(2_000) // 25 s: the master answered, the variant fetch in flight
+    val inFlight = rig.sent<Command.FetchPlaylist>().last()
+    assertTrue("stream_720" in inFlight.url)
+    rig.send(Input.Dropped(restart.next.attemptId, DropReason.ENDPOINT_CLOSED, null))
+    rig.send(Input.PlaylistFetched(inFlight.requestId, FetchResult.Body(media(++head))))
+    assertTrue(rig.records("delivered").isEmpty())
+    val session = assertIs<Phase.Connecting>(rig.phase).session
+    assertTrue(session.notDelivered, "still not delivered: the answer proves nothing off air")
+    assertEquals(Delivery.UNKNOWN, session.delivery.delivery)
+  }
+
+  @Test
+  fun `a heartbeat answer that comes twice is recorded once`() {
+    val rig = MachineRig().live()
+    val beat = rig.sent<Command.PostHeartbeat>().single()
+    rig.send(Input.HeartbeatAnswered(beat.beatId, HeartbeatResponse.Answered(200, "live", null)))
+    rig.send(Input.HeartbeatAnswered(beat.beatId, HeartbeatResponse.Answered(200, "live", null)))
+    assertEquals(1, rig.records("heartbeat").size)
+    assertEquals(HeartbeatResult.OK, rig.snapshot.heartbeat.lastResult)
+  }
+
+  @Test
+  fun `carry 10 a delivery watch with a head and no lag points reads its next playlist`() {
+    // Built through copy, as no machine path builds it: a head, and an empty lag history.
+    val variant = "https://customer-x.cloudflarestream.com/v/stream_720/video.m3u8"
+    val watch =
+      DeliveryWatch(Configs.PLAYBACK_URL)
+        .copy(variantUrl = variant, head = 100, onAirMs = 10_000, baselineOnAirMs = 9_000, pending = PlaylistRequest(7, variant), pendingIsMaster = false)
+    val next = watch.fetched(7, FetchResult.Body(media(103)), 10_000).first
+    // Segments 101–103 are listed; none came and went unlisted. Their 6 000 ms are delivered media.
+    assertEquals(6_000, next.mediaMs)
+    val skipped = watch.fetched(7, FetchResult.Body(media(105)), 10_000).first
+    // Segments 103–105 listed (6 000 ms), and 101–102 came and went unlisted: 2 × 2 000 ms, capped at
+    // the publishing time since the last look. With no lag point, the last look is the baseline:
+    // 10 000 − 9 000 = 1 000 ms. So 6 000 + 1 000 = 7 000.
+    assertEquals(7_000, skipped.mediaMs)
+  }
+
+  @Test
+  fun `carry 8 the heartbeat says audio not ok while the mic is silenced, whatever the rate`() {
+    val rig = MachineRig()
+    rig.beats = { HeartbeatResponse.Answered(200, "live", null) }
+    rig.live()
+    rig.send(Input.MicSilenced(true))
+    rig.advance(10_000)
+    assertEquals(46.0, rig.snapshot.audioPacketsPerSecond, "the encoder still runs")
+    assertTrue(""""audioOk":false""" in rig.sent<Command.PostHeartbeat>()[1].body)
+  }
+
+  @Test
+  fun `the heartbeat says audio ok at exactly the floor`() {
+    val rig = MachineRig()
+    rig.beats = { HeartbeatResponse.Answered(200, "live", null) }
+    rig.live()
+    // 10 audio frames every 500 ms: 20 a second, the floor.
+    rig.advance(10_000, audioPerStep = 10)
+    assertEquals(20.0, rig.snapshot.audioPacketsPerSecond)
+    assertTrue(""""audioOk":true""" in rig.sent<Command.PostHeartbeat>()[1].body)
+  }
+
+  @Test
+  fun `the heartbeat names the transport while reconnecting`() {
+    val rig = MachineRig()
+    rig.beats = { HeartbeatResponse.Answered(200, "live", null) }
+    rig.live()
+    rig.send(Input.Dropped(1, DropReason.ENDPOINT_CLOSED, null))
+    rig.advance(10_000)
+    val body = rig.sent<Command.PostHeartbeat>()[1].body
+    assertTrue(""""state":"reconnecting"""" in body, body)
+    assertTrue(""""transport":"srt"""" in body, body)
+  }
+
+  @Test
+  fun `the data used survives a drop`() {
+    val rig = MachineRig()
+    var bytes = 0L
+    rig.link = { t ->
+      bytes += 500_000
+      LinkCounters(bytes, t, 0, 0, 0, 20, 50, null)
+    }
+    rig.live()
+    rig.advance(1_000)
+    rig.send(Input.Dropped(1, DropReason.ENDPOINT_CLOSED, null))
+    // Readings at 1 s and 2 s, 500 000 bytes each.
+    assertEquals(1_000_000, rig.snapshot.dataUsedBytes)
+  }
+
+  @Test
+  fun `an outage adds no publishing time to the delivery watch`() {
+    val rig = MachineRig().live()
+    rig.send(Input.Dropped(1, DropReason.ENDPOINT_CLOSED, null))
+    rig.advance(500)
+    val first = (rig.phase as Phase.Connecting).session.delivery
+    rig.advance(1_000)
+    val later = (rig.phase as Phase.Connecting).session.delivery
+    assertFalse(later.onAir)
+    assertEquals(first.onAirMs, later.onAirMs, "off air, time does not count")
+    assertEquals(null, later.pending)
+  }
+
+  @Test
+  fun `carry 11 a playlist answer that lands in a camera switch's pause changes nothing`() {
+    val rig = MachineRig()
+    rig.playlists = { null }
+    rig.live()
+    val inFlight = rig.sent<Command.FetchPlaylist>().single()
+    rig.send(Input.SwitchCamera)
+    val paused = rig.phase
+    assertEquals(emptyList(), rig.send(Input.PlaylistFetched(inFlight.requestId, FetchResult.Body(masterText))))
+    assertEquals(paused, rig.phase)
+  }
+}
