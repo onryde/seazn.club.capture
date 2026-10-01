@@ -87,13 +87,13 @@ class SessionMachineDeviceTest {
   }
 
   @Test
-  fun `B6 review I4 a reopen answered while armed gives the preview camera back`() {
+  fun `B6 review I4 a reopen answered while armed gives the camera back, and puts up no slate - nothing is on air (I2)`() {
     val rig = MachineRig().armed()
     rig.send(Input.CameraContended)
     rig.send(Input.CameraReleased)
     rig.send(Input.CameraReopened(ok = true))
     assertEquals(CameraState.OWN, rig.phase.session?.camera)
-    assertEquals(listOf(Command.Slate(on = true), Command.Slate(on = false)), rig.sent<Command.Slate>())
+    assertTrue(rig.sent<Command.Slate>().isEmpty())
     rig.send(Input.SwitchCamera)
     assertEquals(listOf(Command.SwitchCamera), rig.sent<Command.SwitchCamera>(), "a camera of ours to switch again")
   }

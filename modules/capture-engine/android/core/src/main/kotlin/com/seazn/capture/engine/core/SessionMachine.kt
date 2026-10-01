@@ -384,26 +384,29 @@ internal object Timers {
 
 /** Camera, microphone and device conditions. */
 internal object Devices {
+  /** I2: the slate is a picture sent in our camera's place, so it goes up only while sending. Armed sends nothing. */
+  private fun sending(phase: Phase) = phase is Phase.Connecting || phase is Phase.OnAir
+
   fun contended(phase: Phase): Step {
-    val session = phase.session ?: return Step(phase)
+    val session = phase.session ?: return onPairing(phase, CameraState.TAKEN, record("camera-taken")) { it != CameraState.TAKEN }
     if (session.camera == CameraState.TAKEN) return Step(phase)
     val next = phase.withSession(session.copy(camera = CameraState.TAKEN))
     // Taken again mid-reopen: the slate never came down, so it is not put up twice.
-    val slate = if (session.camera.slateOnAir) emptyList() else listOf(Command.Slate(on = true))
+    val slate = if (!sending(phase) || session.camera.slateOnAir) emptyList() else listOf(Command.Slate(on = true))
     return Step(next, slate + record("camera-taken"))
   }
 
   fun released(phase: Phase): Step {
-    val session = phase.session ?: return Step(phase)
+    val session = phase.session ?: return onPairing(phase, CameraState.REOPENING, Command.ReopenCamera, record("camera-released")) { it == CameraState.TAKEN }
     if (session.camera != CameraState.TAKEN) return Step(phase)
     return Step(phase.withSession(session.copy(camera = CameraState.REOPENING)), listOf(Command.ReopenCamera, record("camera-released")))
   }
 
   fun reopened(phase: Phase, ok: Boolean, now: Now): Step {
-    val session = phase.session ?: return Step(phase)
+    val session = phase.session ?: return onPairing(phase, CameraState.OWN, record("camera-reopened", "ok" to ok)) { it == CameraState.REOPENING }
     if (session.camera != CameraState.REOPENING) return Step(phase)
     val own = phase.withSession(session.copy(camera = CameraState.OWN))
-    val commands = listOf(Command.Slate(on = false), record("camera-reopened", "ok" to ok))
+    val commands = (if (sending(phase)) listOf(Command.Slate(on = false)) else emptyList()) + record("camera-reopened", "ok" to ok)
     if (own !is Phase.OnAir) return Step(own, commands)
     if (ok) {
       // A fresh stall window from now, and camera-taken until the camera's first frame (carry 6).
@@ -413,6 +416,12 @@ internal object Devices {
     // The spike's forced rebuild: a reopen that failed leaves the stream's own restart as the recovery.
     val rebuilt = Timers.rebuild(own, StallVerdict.Rebuild(StallCause.NO_VIDEO, 0, null, null), now)
     return rebuilt.copy(commands = commands + rebuilt.commands)
+  }
+
+  /** I3: no broadcast held, so the pairing keeps the camera. No slate: nothing is sent. Ended keeps nothing. */
+  private fun onPairing(phase: Phase, to: CameraState, vararg commands: Command, from: (CameraState) -> Boolean): Step {
+    val pairing = phase.pairing?.takeIf { phase !is Phase.Ended && from(it.camera) } ?: return Step(phase)
+    return Step(phase.withPairing(pairing.copy(camera = to)), commands.toList())
   }
 
   /**

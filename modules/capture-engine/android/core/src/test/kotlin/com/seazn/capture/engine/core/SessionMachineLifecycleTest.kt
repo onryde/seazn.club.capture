@@ -406,8 +406,12 @@ class SessionMachineLifecycleTest {
       val rig = holdRunsOutOnAir()
       assertIs<SnapshotState.Reconnecting>(rig.state, "8 s, projected with no input")
       val commands = rig.send(input)
-      assertEquals(listOf(Command.StopBroadcast), commands.filterNot { it is Command.Record }, "$input")
-      assertEquals(LastEnd.HOLD_WINDOW_EXPIRED, assertIs<Phase.Paired>(rig.phase).pairing.lastEnd, "$input")
+      // Back in Paired and ready, the operator's hold is a fresh Go live (Task 7): it posts start, and connects nothing.
+      val expected = if (input == Input.Start) listOf(Command.StopBroadcast::class, Command.PostStart::class) else listOf(Command.StopBroadcast::class)
+      assertEquals(expected, commands.filterNot { it is Command.Record }.map { it::class }, "$input")
+      // Read from the end's line: a start clears lastEnd (amendment, "until the next start").
+      assertIs<Phase.Paired>(rig.phase, "$input")
+      assertEquals(LastEnd.HOLD_WINDOW_EXPIRED, rig.records("broadcast-ended").single().field("lastEnd"), "$input")
       assertTrue(rig.records("video-stalled").isEmpty(), "$input")
       assertEquals(ReconnectCause.UPLINK_LOST, rig.records("hold-expired").single().field("cause"), "$input")
       assertEquals(emptyList(), rig.send(Input.Tick), "the tick after it: $input")

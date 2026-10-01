@@ -119,6 +119,7 @@ internal object Starts {
         fallback = FallbackPolicy(config.primary.transport, config.fallback?.transport),
         regulation = BitrateRegulator.sessionStarted(),
         delivery = DeliveryWatch(config.playbackUrl, nextRequestId = ids.playlist),
+        camera = pairing.camera,
         nextAttemptId = ids.attempt,
         descriptor = arming.asks,
         networkValidated = arming.networkValidated,
@@ -134,20 +135,31 @@ internal object Starts {
     return Step(arming.copy(asks = asks), listOf(fetchCode(arming.pairing, id)))
   }
 
-  /**
-   * The code's answer at Arming: the open shape for the sid arms it; the over verdicts return to
-   * Paired; a 404 refuses the sid (PV8: Task 7's row, here for the refused-sid row). Task 7 completes it.
-   */
+  /** The code's answer at Arming: every row of the amendment's _Start failures_, and the over verdicts. */
   fun answered(arming: Phase.Arming, input: Input.CodeAnswered, now: Now): Step {
     val asks = arming.asks.answered(input.requestId) ?: return Step(arming)
     val answered = arming.copy(asks = asks, retrying = false)
-    val answer = input.answer
-    if (answer is CodeAnswer.Open && answer.sid == arming.sid) return opened(answered, answer)
-    val word = ServerWord.ofCode(answer, arming.sid)
-    if (word is ServerWord.Over && word.ends(arming.sid)) return Verdicts.over(answered, LastEnd.of(word.endReason), now)
-    if (word == ServerWord.NoBroadcast) return Verdicts.over(answered, LastEnd.STOPPED, now)
-    if (word == ServerWord.NotFound) return failed(answered, StartFailure.NOT_FOUND)
-    return Step(answered, listOf(line("code", "answer" to answer::class.simpleName)))
+    val sid = arming.sid
+    return when (val answer = input.answer) {
+      is CodeAnswer.Open ->
+        if (answer.sid != sid) Verdicts.over(answered, LastEnd.STOPPED, now)
+        else if (answer.descriptor.config(sid, arming.pairing).problems().isNotEmpty()) failed(answered, StartFailure.CONFIG)
+        else opened(answered, answer)
+      is CodeAnswer.Over -> if (answer.sid == sid) Verdicts.over(answered, LastEnd.of(answer.endReason), now) else Step(answered)
+      is CodeAnswer.Waiting -> Verdicts.over(answered, LastEnd.STOPPED, now)
+      is CodeAnswer.NotCurrent -> if (answer.sid != sid) Verdicts.over(answered, LastEnd.STOPPED, now) else notCurrent(answered, now)
+      is CodeAnswer.ForeignIngest -> failed(answered, StartFailure.CRED_HOST, line("cred-host-refused", "sid" to sid))
+      is CodeAnswer.Unreadable -> failed(answered, StartFailure.CONFIG, line("code-unreadable", "problem" to answer.problem))
+      is CodeAnswer.Status ->
+        when (answer.status) {
+          401 -> Pairings.unpaired(answered, UnpairReason.CODE_ENDED, now)
+          404 -> failed(answered, StartFailure.NOT_FOUND)
+          410 -> Verdicts.over(answered, LastEnd.of(answer.endReason), now)
+          429 -> Step(answered.copy(notBeforeMs = now.monoMs + BeatCadence.retryAfterMs(answer.retryAfterS ?: 0), retrying = true), listOf(line("code", "status" to 429)))
+          else -> Step(answered.copy(retrying = true), listOf(line("code", "status" to answer.status)))
+        }
+      is CodeAnswer.Unreachable -> Step(answered.copy(retrying = true), listOf(line("code", "answer" to "unreachable", "message" to answer.message)))
+    }
   }
 
   /** A start that failed for S: back to Paired, S refused for this pairing, the line until the next start. */
@@ -155,6 +167,13 @@ internal object Starts {
     val pairing = arming.pairing.copy(refused = arming.pairing.refused + arming.sid, startFailed = failure, refusal = Refusal.START_FAILED)
     val noted = line("start-failed", "sid" to arming.sid, "failure" to failure)
     return Step(Phase.Paired(pairing, arming.ids, arming.networkValidated), extra.toList() + noted)
+  }
+
+  /** G0-d: not the current phone yet. A `resume` claim at once, so it can never take the slot. */
+  private fun notCurrent(arming: Phase.Arming, now: Now): Step {
+    val pairing = arming.pairing.copy(claim = Claim.RESUME, heartbeat = arming.pairing.heartbeat.soon(now.monoMs))
+    // At once, as the claim at a pairing goes: the beat is due now, so it goes in this step.
+    return Heartbeats.tick(Step(arming.copy(pairing = pairing, notCurrent = true), listOf(line("not-current", "sid" to arming.sid))), now)
   }
 
   /** The claim was answered naming S: fetch the code again, spaced as the asks are. */
@@ -169,7 +188,7 @@ internal object Starts {
     Command.FetchCode(id, pairing.request.codeUrl, pairing.token, pairing.phone.phoneId, pairing.name.slot, pairing.request.environment)
 }
 
-/** The answer table (amendment, _The answer table_), by phase. Task 7 completes the start rows. */
+/** The answer table (amendment, _The answer table_), by phase, and the operator's start. */
 internal object Verdicts {
   /** The server's word on a beat, after the pairing's own bookkeeping ([Heartbeats.answered]). */
   fun beat(phase: Phase, word: ServerWord, now: Now): Step {
@@ -219,7 +238,7 @@ internal object Verdicts {
     if (pairing.codeEndedPending) return Pairings.unpaired(phase, UnpairReason.CODE_ENDED, now)
     val publishing = phase is Phase.Connecting || phase is Phase.OnAir
     val ended = line("broadcast-ended", "sid" to phase.heldSid, "lastEnd" to lastEnd, "wasLive" to (phase.session?.liveSinceEpochMs != null))
-    val paired = Phase.Paired(pairing.copy(lastEnd = lastEnd), phase.ids, phase.networkValidated)
+    val paired = Phase.Paired(pairing.copy(lastEnd = lastEnd, camera = phase.camera ?: CameraState.OWN), phase.ids, phase.networkValidated)
     return Step(paired, listOfNotNull(if (publishing) Command.StopBroadcast else null, ended))
   }
 
@@ -242,7 +261,34 @@ internal object Verdicts {
     return Step(answered, listOf(line("code", "answer" to input.answer::class.simpleName, "message" to message)))
   }
 
-  fun started(phase: Phase, input: Input.StartAnswered, now: Now): Step = Step(phase)
+  /** The operator's hold: `POST start` from Paired when ready (A11); one in flight at a time. */
+  fun postStart(phase: Phase, now: Now): Step {
+    if (phase !is Phase.Paired) return SessionMachine.ignored(phase, "start")
+    val pairing = phase.pairing
+    val notReady = pairing.readiness.notReady(pairing.camera, phase.networkValidated)
+    if (notReady != null || pairing.starts.inFlightId != null) return SessionMachine.ignored(phase, "start")
+    val id = pairing.starts.nextId
+    val asked = pairing.copy(starts = StartAsks(id + 1, id), refusal = null, startFailed = null, lastEnd = null)
+    val post = Command.PostStart(id, pairing.request.startUrl, pairing.token, Beats.startBody(pairing.phone.phoneId))
+    return Step(phase.withPairing(asked), listOf(post, line("start-asked")))
+  }
 
-  fun postStart(phase: Phase, now: Now): Step = SessionMachine.ignored(phase, "start")
+  /** `POST start`'s answer. In Paired it decides; anywhere else it is late, and never moves the engine. */
+  fun started(phase: Phase, input: Input.StartAnswered, now: Now): Step {
+    val pairing = phase.pairing ?: return Step(phase)
+    if (pairing.starts.inFlightId != input.requestId) return Step(phase)
+    val answered = phase.withPairing(pairing.copy(starts = pairing.starts.copy(inFlightId = null)))
+    val noted = line("start-answered", "answer" to input.answer::class.simpleName)
+    if (answered !is Phase.Paired) return Step(answered, listOf(noted))
+    val p = answered.pairing
+    val step =
+      when (val answer = input.answer) {
+        is StartAnswer.Started -> if (answer.sid in p.refused) Step(answered) else Starts.arm(answered, p, answer.sid, Cause.OPERATOR, now)
+        is StartAnswer.AlreadyLive -> if (answer.sid in p.refused) Step(answered) else Starts.arm(answered, p, answer.sid, Cause.startedBy(answer.startedBy), now)
+        StartAnswer.Replaced -> Pairings.unpaired(answered, UnpairReason.REPLACED, now)
+        is StartAnswer.Refused -> Step(answered.withPairing(p.copy(refusal = answer.refusal)), listOf(line("start-refused", "refusal" to answer.refusal, "message" to answer.message)))
+        is StartAnswer.Failed -> Step(answered.withPairing(p.copy(refusal = Refusal.START_FAILED, startFailed = StartFailure.START_ERROR)))
+      }
+    return step.copy(commands = listOf(noted) + step.commands)
+  }
 }

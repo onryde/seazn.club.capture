@@ -20,7 +20,7 @@ object Projection {
       heartbeat = (phase.pairing?.heartbeat ?: HeartbeatState()).status,
       shed = session?.device?.shed,
       device = session?.device,
-      camera = session?.camera,
+      camera = phase.camera,
     )
   }
 
@@ -109,7 +109,7 @@ object Projection {
       atEpochMs = now.wallMs,
       state = snapshot.state.wire,
       cause = session?.cause ?: (phase as? Phase.Arming)?.cause,
-      notReady = pairing.readiness.notReady(session?.camera ?: CameraState.OWN, phase.networkValidated),
+      notReady = pairing.readiness.notReady(phase.camera ?: CameraState.OWN, phase.networkValidated),
       startFailed = pairing.startFailed,
       stopped = pairing.stoppedInFlight,
       automatic = pairing.automatic,

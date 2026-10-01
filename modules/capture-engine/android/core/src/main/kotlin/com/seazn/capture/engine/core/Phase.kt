@@ -55,6 +55,8 @@ data class PairingState(
   val waiting: WaitingFields = WaitingFields.UNKNOWN,
   /** The platform's last readiness facts (A11); the network is the phase's own fact. */
   val readiness: Readiness = Readiness.UNKNOWN,
+  /** I3: the camera while no broadcast is held (CD37 opens it on the viewfinder). A broadcast starts from it. */
+  val camera: CameraState = CameraState.OWN,
   /** A17: this code and slot's stopped record, until delivered. */
   val stopped: StoppedRecord? = null,
   /** The stopped sid the beat in flight carried, so its answer can deliver it. */
@@ -241,6 +243,13 @@ val Phase.heldSid: String?
 
 val Phase.holdsBroadcast: Boolean
   get() = heldSid != null
+
+/**
+ * I3: the camera as the engine knows it: the session's while a broadcast is held, the pairing's
+ * otherwise. Ended holds none: the end stopped capture.
+ */
+val Phase.camera: CameraState?
+  get() = if (this is Phase.Ended) null else session?.camera ?: pairing?.camera
 
 fun Phase.withPairing(pairing: PairingState): Phase =
   when (this) {
