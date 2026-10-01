@@ -19,7 +19,7 @@ import { createLogger } from '@/services/logger';
 import { createModeStore } from '@/services/modeStore';
 import { createHomeIntent } from '@/services/homeIntent';
 import { createScanFlight } from '@/services/scanFlight';
-import { createRingRecord, type SessionRecord } from '@/services/sessionRecord';
+import { createRingRecord, parseRecordLine, type SessionRecord } from '@/services/sessionRecord';
 import { createStreamSettingsStore } from '@/services/streamSettingsStore';
 import { createFakeSurfaces, type FakeSurfaces } from './fakeSurfaces';
 
@@ -113,9 +113,15 @@ export type RecordedEntry = {
   readonly fields: Readonly<Record<string, unknown>>;
 };
 
-/** The record's lines, parsed, for assertions. */
+/**
+ * The record's lines, parsed, for assertions: `{ level, event, fields }`, with
+ * `fields.kind` restored from the line's `field_kind` (CD7).
+ */
 export function readRecord(record: SessionRecord): RecordedEntry[] {
-  return record.lines().map((line) => JSON.parse(line) as RecordedEntry);
+  return record.lines().map((line) => {
+    const { level, event, fields } = parseRecordLine(line);
+    return { level, event, fields };
+  });
 }
 
 /**

@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createMemoryKeyValueStore, type KeyValueStore } from '@/services/KeyValueStore';
 import { createLogger } from '@/services/logger';
-import { createRingRecord } from '@/services/sessionRecord';
+import { createRingRecord, parseRecordLine } from '@/services/sessionRecord';
 import {
   createStreamSettingsStore,
   DEFAULT_STREAM_SETTINGS,
@@ -11,7 +11,7 @@ import {
 function build(kv: KeyValueStore = createMemoryKeyValueStore()) {
   const record = createRingRecord();
   const store = createStreamSettingsStore(kv, createLogger({ record, now: () => 0 }));
-  return { store, events: () => record.lines().map((line) => JSON.parse(line).event) };
+  return { store, events: () => record.lines().map((line) => parseRecordLine(line).event) };
 }
 
 /** Lets every settled promise run its callbacks. */

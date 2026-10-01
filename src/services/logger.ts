@@ -17,6 +17,11 @@ export interface Logger {
    * this process stays masked.
    */
   protect(held: SessionSecrets): void;
+  /**
+   * N7: the viewfinder has let its session go. What was protected stays
+   * masked; free text is masked whole until the next `protect` (CD6).
+   */
+  release(): void;
 }
 
 const RANK: Readonly<Record<LogLevel, number>> = { debug: 0, info: 1, warn: 2, error: 3 };
@@ -28,11 +33,18 @@ export function createLogger(deps: {
 }): Logger {
   const floor = RANK[deps.minLevel ?? 'debug'];
   let held: SessionSecrets = { secrets: [], streamIds: [] };
+  // N7: keyed on the session in hand, not on "anything was ever protected", so a
+  // second code in the same process is covered as the first was.
+  let inHand = false;
   const protect = (more: SessionSecrets): void => {
     held = {
       secrets: [...held.secrets, ...more.secrets],
       streamIds: [...held.streamIds, ...more.streamIds],
     };
+    inHand = true;
+  };
+  const release = (): void => {
+    inHand = false;
   };
   const at =
     (level: LogLevel) =>
@@ -42,9 +54,16 @@ export function createLogger(deps: {
         atMs: deps.now(),
         level,
         event: scrubEvent(event, held),
-        fields: scrubFields(fields, held),
+        fields: scrubFields(fields, held, inHand),
       };
       deps.record.append(entry);
     };
-  return { debug: at('debug'), info: at('info'), warn: at('warn'), error: at('error'), protect };
+  return {
+    debug: at('debug'),
+    info: at('info'),
+    warn: at('warn'),
+    error: at('error'),
+    protect,
+    release,
+  };
 }

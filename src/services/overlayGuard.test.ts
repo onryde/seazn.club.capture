@@ -7,7 +7,7 @@ import {
   OVERLAY_ORIGIN_WHITELIST,
   overlayNavigationGuard,
 } from '@/services/overlayGuard';
-import { createRingRecord } from '@/services/sessionRecord';
+import { createRingRecord, parseRecordLine } from '@/services/sessionRecord';
 
 const OVERLAY = 'https://stg.seazn.club/overlay/fixtures/fake-fixture?delay=0';
 
@@ -21,7 +21,7 @@ function build() {
   });
   const entries = () =>
     record.lines().map((line) => {
-      const { event, fields } = JSON.parse(line);
+      const { event, fields } = parseRecordLine(line);
       return { event, fields };
     });
   return { guard, onFailed, entries };

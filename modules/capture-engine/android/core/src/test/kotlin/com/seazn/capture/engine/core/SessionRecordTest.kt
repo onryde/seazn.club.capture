@@ -35,15 +35,15 @@ class SessionRecordTest {
     assertTrue(Configs.PLAYBACK_URL in write("playbackUrl" to Configs.PLAYBACK_URL))
   }
 
+  // Task 10 (CD6): was "the token is masked even inside a public URL", in place. A public URL now
+  // passes whole or not at all; the test above still pins the stream id passing in a clean one.
   @Test
-  fun `the token is masked even inside a public URL`() {
+  fun `a public URL with a query is masked whole, so nothing in it reaches the line`() {
     // Fix round 1: so is the passphrase, raw and URL-encoded, which the brief masks everywhere.
     val url = "${Configs.PLAYBACK_URL}?tok=${Configs.TOKEN}&passphrase=${Configs.PASSPHRASE}&passphrase=pass%2Bphrase%2F6d1e8b0c"
     val line = write("playbackUrl" to url)
     assertFalse(Configs.TOKEN in line)
-    assertTrue(Configs.STREAM_ID in line)
-    val masked = "${Configs.PLAYBACK_URL}?tok=***&passphrase=***&passphrase=***"
-    assertEquals("""{"at":"2026-09-30T14:32:05.123Z","kind":"test","playbackUrl":"$masked"}""", line)
+    assertEquals("""{"at":"2026-09-30T14:32:05.123Z","kind":"test","playbackUrl":"***"}""", line)
   }
 
   @Test
@@ -92,6 +92,19 @@ class SessionRecordTest {
         .append(0, RecordEntry("test", listOf("message" to "passphrase=$form")))
       assertEquals("""{"at":"1970-01-01T00:00:00.000Z","kind":"test","message":"$expected"}""", out.single(), form)
     }
+  }
+
+  // Task 10 (carry 11): text reads a value as JS's readingsOf does. URLEncoder writes "fake pass+0002"
+  // as fake+pass%2B0002; with the escape in lowercase no form matches in place, and only reading + as a
+  // space before decoding shows it. Before Task 10 native wrote this line as it stood; JS masks it.
+  @Test
+  fun `text masks a secret whole when only reading + as a space, then decoding, reveals it`() {
+    val out = mutableListOf<String>()
+    val srt = SrtTarget("srt://live.cloudflare.com:778", Configs.STREAM_ID, "fake pass+0002", latencyMs = 2_000)
+    SessionRecord { out += it }
+      .apply { protectConfig(Configs.valid(primary = srt)) }
+      .append(0, RecordEntry("test", listOf("message" to "passphrase=fake+pass%2b0002")))
+    assertEquals("""{"at":"1970-01-01T00:00:00.000Z","kind":"test","message":"***"}""", out.single())
   }
 
   @Test
@@ -154,29 +167,37 @@ class SessionRecordTest {
     }
   }
 
+  // Task 10 (CD6): was "… and a NaN is written as null". JS masks a non-finite number; so does native.
   @Test
-  fun `a long, a null and a Decimal pass under any key, and a NaN is written as null`() {
+  fun `a long, a null and a Decimal pass under any key, and a NaN is masked, as JS masks it`() {
     val line = write("dataUsedBytes" to 5_000_000_000L, "thermalStatus" to null, "headroom" to Decimal.tenths(1.5), "drain" to Double.NaN)
     assertEquals(
-      """{"at":"2026-09-30T14:32:05.123Z","kind":"test","dataUsedBytes":5000000000,"thermalStatus":null,"headroom":1.5,"drain":null}""",
+      """{"at":"2026-09-30T14:32:05.123Z","kind":"test","dataUsedBytes":5000000000,"thermalStatus":null,"headroom":1.5,"drain":"***"}""",
       line,
     )
   }
 
+  // Task 10 (CD6): was "a plain key passes its text, with a secret in it masked", in place.
   @Test
-  fun `a plain key passes its text, with a secret in it masked`() {
+  fun `a plain key passes a plain word, and masks anything else whole`() {
     val line = write("host" to "live.cloudflare.com", "reason" to "refused ${Configs.STREAM_KEY}")
-    assertEquals("""{"at":"2026-09-30T14:32:05.123Z","kind":"test","host":"live.cloudflare.com","reason":"refused ***"}""", line)
+    assertEquals("""{"at":"2026-09-30T14:32:05.123Z","kind":"test","host":"live.cloudflare.com","reason":"***"}""", line)
   }
 
+  // Task 10 (CD6): was "every key on the allow-lists passes plain text" ("plain words" under each).
+  // Each class now passes what its rule allows; a field named like a line key is written field_<key> (P1).
   @Test
-  fun `every key on the allow-lists passes plain text`() {
-    val allowed = listOf(
-      "playbackUrl", "overlayUrl", "message", "problems", "sid", "transport", "reason", "cause", "failure", "from", "to",
-      "result", "state", "endReason", "delivery", "shed", "intent", "phase", "host", "appVersion",
-    )
-    for (key in allowed) {
-      assertEquals("""{"at":"2026-09-30T14:32:05.123Z","kind":"test","$key":"plain words"}""", write(key to "plain words"), key)
+  fun `every key passes what its class allows`() {
+    fun writtenAs(key: String) = if (key in SessionRecord.RESERVED_KEYS) "field_$key" else key
+    for (key in SessionRecord.PLAIN_KEYS) {
+      assertEquals("""{"at":"2026-09-30T14:32:05.123Z","kind":"test","${writtenAs(key)}":"plain-word"}""", write(key to "plain-word"), key)
+    }
+    for (key in SessionRecord.PUBLIC_URL_KEYS) {
+      val expected = """{"at":"2026-09-30T14:32:05.123Z","kind":"test","${writtenAs(key)}":"${Configs.PLAYBACK_URL}"}"""
+      assertEquals(expected, write(key to Configs.PLAYBACK_URL), key)
+    }
+    for (key in SessionRecord.TEXT_KEYS) {
+      assertEquals("""{"at":"2026-09-30T14:32:05.123Z","kind":"test","${writtenAs(key)}":"plain words"}""", write(key to "plain words"), key)
     }
   }
 
@@ -185,18 +206,20 @@ class SessionRecordTest {
     val out = mutableListOf<String>()
     val rtmpsFirst = SessionRecord { out += it }.apply { protectConfig(Configs.valid(primary = Configs.rtmps, fallback = Configs.srt)) }
     val encoded = URLEncoder.encode(Configs.PASSPHRASE, "UTF-8")
+    // Task 10 (CD6): the URL is a clean one now; one with a query is masked whole, whatever it holds.
     val fields = listOf(
-      "playbackUrl" to "${Configs.PLAYBACK_URL}?tok=${Configs.TOKEN}",
+      "playbackUrl" to Configs.PLAYBACK_URL,
       "message" to "streamid=${Configs.STREAM_ID} passphrase=$encoded key=${Configs.STREAM_KEY} Bearer ${Configs.TOKEN}",
     )
     rtmpsFirst.append(1_790_778_725_123, RecordEntry("test", fields))
-    val expected = """{"at":"2026-09-30T14:32:05.123Z","kind":"test","playbackUrl":"${Configs.PLAYBACK_URL}?tok=***",""" +
+    val expected = """{"at":"2026-09-30T14:32:05.123Z","kind":"test","playbackUrl":"${Configs.PLAYBACK_URL}",""" +
       """"message":"streamid=*** passphrase=*** key=*** Bearer ***"}"""
     assertEquals(expected, out.single())
   }
 
+  // Task 10 (CD6): was "… masked in text and inside a public URL", in place.
   @Test
-  fun `RTMPS only - the stream key and the token are masked in text and inside a public URL`() {
+  fun `RTMPS only - the stream key and the token are masked in text, and a public URL carrying them is masked whole`() {
     val out = mutableListOf<String>()
     val rtmpsOnly = SessionRecord { out += it }.apply { protectConfig(Configs.valid(primary = Configs.rtmps, fallback = null)) }
     val fields = listOf(
@@ -204,7 +227,7 @@ class SessionRecordTest {
       "message" to "rtmps://live.cloudflare.com:443/live/${Configs.STREAM_KEY} Bearer ${Configs.TOKEN}",
     )
     rtmpsOnly.append(1_790_778_725_123, RecordEntry("test", fields))
-    val expected = """{"at":"2026-09-30T14:32:05.123Z","kind":"test","playbackUrl":"${Configs.PLAYBACK_URL}?key=***&tok=***",""" +
+    val expected = """{"at":"2026-09-30T14:32:05.123Z","kind":"test","playbackUrl":"***",""" +
       """"message":"rtmps://live.cloudflare.com:443/live/*** Bearer ***"}"""
     assertEquals(expected, out.single())
   }
@@ -224,8 +247,9 @@ class SessionRecordTest {
     )
     record.protectConfig(second)
     val line = write("playbackUrl" to "${Configs.PLAYBACK_URL}?tok=${Configs.TOKEN}", "message" to "first ${Configs.STREAM_KEY} second $secondToken")
+    // Task 10 (CD6): the URL is masked whole now (it has a query); the message's point is unchanged.
     assertEquals(
-      """{"at":"2026-09-30T14:32:05.123Z","kind":"test","playbackUrl":"${Configs.PLAYBACK_URL}?tok=***","message":"first *** second ***"}""",
+      """{"at":"2026-09-30T14:32:05.123Z","kind":"test","playbackUrl":"***","message":"first *** second ***"}""",
       line,
     )
   }
@@ -385,13 +409,21 @@ class SessionRecordTest {
     assertEquals("""{"at":"2026-09-30T14:32:05.123Z","kind":"test","field_kind":"srt","field_at":5}""", line)
   }
 
+  // Task 10 (CD7): the JS line's shape. An info line keeps the shape every test above pins.
   @Test
-  fun `the kind is masked by value like a field`() {
+  fun `a level other than info is written after the kind, and a field named level is written field_level`() {
+    record.append(1_790_778_725_123, RecordEntry("probe", listOf("level" to 2, "ms" to 3), level = "warn"))
+    assertEquals("""{"at":"2026-09-30T14:32:05.123Z","kind":"probe","level":"warn","field_level":2,"ms":3}""", lines.last())
+  }
+
+  // Task 10 (CD6): was "the kind is masked by value like a field", in place ("connect ***").
+  @Test
+  fun `the kind is a plain word, or masked whole`() {
     record.append(1_790_778_725_123, RecordEntry(Configs.TOKEN))
     assertEquals("""{"at":"2026-09-30T14:32:05.123Z","kind":"***"}""", lines.last())
-    // Masked as text, not as a public URL: the stream id is a secret here.
+    // Not a word, and holding the stream id, a secret here: masked whole.
     record.append(1_790_778_725_123, RecordEntry("connect ${Configs.STREAM_ID}"))
-    assertEquals("""{"at":"2026-09-30T14:32:05.123Z","kind":"connect ***"}""", lines.last())
+    assertEquals("""{"at":"2026-09-30T14:32:05.123Z","kind":"***"}""", lines.last())
   }
 
   // Appends belong to the scheduler thread; Diagnostics reads from another. A fixed number of appends,

@@ -50,7 +50,7 @@ const answering =
     response;
 
 const errorLines = (lines: readonly string[]) =>
-  lines.filter((line) => line.includes('"event":"descriptor.error"'));
+  lines.filter((line) => line.includes('"kind":"descriptor.error"'));
 
 describe('the fetch descriptor port', () => {
   afterEach(() => vi.useRealTimers());
@@ -234,7 +234,7 @@ describe('the fetch descriptor port', () => {
   it('records every error and never the token', async () => {
     const port = portOver(answering(respond(401)));
     await port.ask();
-    expect(port.lines().join('\n')).toContain('"event":"descriptor.error"');
+    expect(port.lines().join('\n')).toContain('"kind":"descriptor.error"');
     expect(port.lines().join('\n')).not.toContain(TOKEN);
   });
 
@@ -309,7 +309,7 @@ describe('the fetch descriptor port: Seazn hosts only (ruling 6)', () => {
     const wire = descriptorWire({ overlayUrl: 'https://evil.example/overlay/fixtures/x' });
     const port = portOver(answering(respond(200, wire)));
     expect(await port.ask()).toMatchObject({ ok: true, value: { overlayUrl: null } });
-    expect(port.lines().join('\n')).toContain('"event":"descriptor.overlay-dropped"');
+    expect(port.lines().join('\n')).toContain('"kind":"descriptor.overlay-dropped"');
   });
 
   it.each([
@@ -351,7 +351,7 @@ describe('the fetch descriptor port: Seazn hosts only (ruling 6)', () => {
     });
     const port = portOver(answering(respond(200, overlay)), PRODUCTION);
     expect(await port.ask()).toMatchObject({ ok: true, value: { overlayUrl: null } });
-    expect(port.lines().join('\n')).toContain('"event":"descriptor.overlay-dropped"');
+    expect(port.lines().join('\n')).toContain('"kind":"descriptor.overlay-dropped"');
   });
 
   it('refuses a production heartbeat on a staging build', async () => {

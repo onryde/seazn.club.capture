@@ -3,19 +3,30 @@ package com.seazn.capture.engine.core
 import java.io.ByteArrayOutputStream
 import java.net.URLEncoder
 
-/** One line of the session record, before the scrub. [kind] is the core's own vocabulary. */
-data class RecordEntry(val kind: String, val fields: List<Pair<String, Any?>> = emptyList())
+/**
+ * One line of the session record, before the scrub. [kind] is the core's own vocabulary. [level] is
+ * written only when it is not `info` (CD7), so every line the core writes keeps its shape.
+ */
+data class RecordEntry(val kind: String, val fields: List<Pair<String, Any?>> = emptyList(), val level: String = "info")
 
 /**
  * The post-match session record (AGENTS §11): timestamped transitions, fallbacks, reconnects,
- * thermal readings and heartbeat results, one JSON object per line.
+ * thermal readings and heartbeat results, one flat JSON object per line, `{at, kind, [level], …}`.
  *
- * Scrubbed at the sink, by allow-list (P5's scrub rule). A string passes only under a key this
- * object knows. Public URLs pass, because every viewer already holds them, but not whole: `tok`,
- * passphrases and stream keys are masked inside them too. The same value can be a secret in one role
- * and public in another: the SRT stream id is a secret, and on Cloudflare it is also a path segment
- * of the public playback URL. So the stream id is masked everywhere except inside a public URL, and
- * `tok`, passphrases and stream keys are masked everywhere.
+ * Scrubbed at the sink by allow-list (CD6, carry 11), one rule set with the JS scrub. The source of
+ * record is `modules/capture-engine/src/scrub/allow-list.json`, which both sides test their sets
+ * against, and both run `scrub/vectors.json`. The masked value is [MASK]. The four rules:
+ * - a [NEVER] key is always masked, whatever it holds;
+ * - a finite number, a boolean, null, a [Wire] or a [Decimal] passes under any other key: no secret
+ *   is a number. A non-finite number is masked, as JS masks it;
+ * - a string passes only under a listed key, by its class. A [PLAIN_KEYS] key passes a short plain
+ *   word that shows no held secret, else the whole value is masked. A [PUBLIC_URL_KEYS] key passes a
+ *   public https URL with no query, fragment or userinfo, else the whole value is masked: every viewer
+ *   already holds those, and the SRT stream id, a secret elsewhere, is a path segment of Cloudflare's
+ *   playback URL, so it alone may stand in one. A [TEXT_KEYS] key masks each held secret where it
+ *   stands, then the whole value if decoding what is left still reveals one;
+ * - anything else is masked.
+ * The kind passes as a plain word, or is masked whole.
  *
  * Threads: [protect] and [append] belong to the engine's scheduler thread, the one serial thread
  * plan C backs [Scheduler] with. [lastLines], [sinkFailures] and [reentrantDropped] may be read
@@ -110,34 +121,54 @@ class SessionRecord(private val sink: (String) -> Unit) {
   }
 
   private fun line(atEpochMs: Long, entry: RecordEntry): String {
-    val head = listOf("at" to IsoTime.utc(atEpochMs), "kind" to masked(entry.kind, secrets))
-    return Json.obj(head + entry.fields.map { (key, value) -> fieldKey(key) to scrub(key, value) })
+    val head = listOf("at" to IsoTime.utc(atEpochMs), "kind" to kindWord(entry.kind))
+    val level = if (entry.level == "info") emptyList() else listOf("level" to entry.level)
+    return Json.obj(head + level + entry.fields.map { (key, value) -> fieldKey(key) to scrub(key, value) })
   }
 
   /** The record's own keys are never written twice: a field that reuses one is renamed, not dropped. */
   private fun fieldKey(key: String): String = if (key in RESERVED_KEYS) "field_$key" else key
 
+  /**
+   * The four rules (CD6). Text masks the code too ([textSecrets], M3); a plain word and the kind are
+   * checked against [secrets] alone, so a short code never masks a closed word that contains it.
+   */
   private fun scrub(key: String, value: Any?): Any? =
     when {
       key in NEVER -> MASK
       value == null || value is Boolean || value is Int || value is Long || value is Wire || value is Decimal -> value
-      value is Double -> Decimal.tenths(value)
+      value is Double -> if (value.isFinite()) Decimal.tenths(value) else MASK
       value !is String -> MASK
-      key in PUBLIC_URL_KEYS -> masked(value, urlSecrets)
+      key in PUBLIC_URL_KEYS -> if (isPublicUrl(value)) value else MASK
+      key in PLAIN_KEYS -> if (PLAIN_WORD.matches(value) && !revealed(value, secrets)) value else MASK
       key in TEXT_KEYS -> masked(value, textSecrets)
-      key in PLAIN_KEYS -> masked(value, secrets)
       else -> MASK
     }
 
+  private fun kindWord(kind: String): String = if (PLAIN_WORD.matches(kind) && !revealed(kind, secrets)) kind else MASK
+
+  /** https, a host, an optional port and path; no query, fragment or userinfo, and no secret but the stream id. */
+  private fun isPublicUrl(value: String): Boolean = PUBLIC_URL.matches(value) && !revealed(value, urlSecrets)
+
   /**
-   * Each known form of a secret is masked where it stands. If percent-decoding what is left still
-   * reveals one (lowercase hex, `/` left raw, two encoders mixed), the whole value is masked.
+   * Each known form of a secret is masked where it stands. If what is left still reveals one, read
+   * as [revealed] reads it (lowercase hex, `/` left raw, two encoders mixed), the whole value is
+   * masked: JS's `maskedText`, rule for rule.
    */
   private fun masked(text: String, values: List<String>): String {
     val replaced = values.fold(text) { acc, secret -> acc.replace(secret, MASK) }
-    val decoded = percentDecoded(replaced)
-    val revealed = values.any { it in decoded || it in decoded.replace('+', ' ') }
-    return if (revealed) MASK else replaced
+    return if (revealed(replaced, values)) MASK else replaced
+  }
+
+  /**
+   * Whether [text] shows any of [values], each reading on its own: as it stands; percent-decoded;
+   * decoded, then `+` read as a space; and `+` read as a space, then decoded, which is URLEncoder's
+   * form, where a `+` in the secret is `%2B`. JS's `readingsOf`, reading for reading.
+   */
+  private fun revealed(text: String, values: List<String>): Boolean {
+    val decoded = percentDecoded(text)
+    val readings = listOf(text, decoded, decoded.replace('+', ' '), percentDecoded(text.replace('+', ' ')))
+    return values.any { secret -> readings.any { secret in it } }
   }
 
   /** Longest first, so a secret that contains another is masked whole; its encoded forms too. */
@@ -148,23 +179,33 @@ class SessionRecord(private val sink: (String) -> Unit) {
     const val LAST_LINES = 20
     const val MASK = "***"
 
+    // The key sets are `scrub/allow-list.json`'s, each key with its reason there; ScrubParityTest
+    // holds these to it, and scrub.ts keeps the same sets. Add a key there, here and in JS.
+
     /** Public by construction: every viewer's player and every overlay browser source holds them. */
-    val PUBLIC_URL_KEYS = setOf("playbackUrl", "overlayUrl")
+    val PUBLIC_URL_KEYS = setOf("url", "playbackUrl", "overlayUrl")
 
     /** Free text from a library or the platform, which can quote a URL or a key. Masked by value. */
     val TEXT_KEYS = setOf("message", "problems")
 
-    /** The core's own vocabulary and measurements' labels. Masked by value too, as defence in depth. */
+    /** Closed words: each side's vocabulary, measurements' labels and tags that name no secret. */
     val PLAIN_KEYS =
-      setOf("sid", "transport", "reason", "cause", "failure", "from", "to", "result", "state", "endReason", "delivery", "shed", "intent", "phase", "host", "appVersion") +
-        // The pairing's words (plan C): each a closed vocabulary, or a tag that names no secret.
-        setOf("claim", "tokenTag", "notReady", "startFailed", "refusal", "lastEnd", "side", "word", "answer")
+      setOf(
+        "action", "answer", "appVersion", "attempt", "cause", "claim", "count", "delivery", "endReason", "error", "exit",
+        "failure", "from", "host", "intent", "key", "kind", "lastEnd", "lock", "mode", "ms", "notReady", "op", "phase",
+        "problem", "reason", "refusal", "result", "retryAfterS", "route", "scene", "shed", "side", "sid", "slot",
+        "startFailed", "state", "status", "tag", "to", "tokenTag", "transport", "word",
+      )
 
-    /** Never written, whatever the value, and never allowed onto the lists above. */
-    val NEVER = setOf("tok", "token", "passphrase", "streamKey", "streamId", "bearer", "authorization")
+    /** Never written, whatever the value, and never allowed onto the lists above. A line never carries a code. */
+    val NEVER = setOf("tok", "token", "code", "passphrase", "streamKey", "streamId", "bearer", "authorization")
 
-    /** Keys every line starts with. A field under one of them is written as `field_<key>`. */
-    private val RESERVED_KEYS = setOf("at", "kind")
+    /** Keys every line starts with. A field under one of them is written as `field_<key>` (CD7). */
+    val RESERVED_KEYS = setOf("at", "kind", "level")
+
+    /** A word, not a sentence: no spaces, slashes, `?`, `=` or `@`, so no URL or message fits. */
+    private val PLAIN_WORD = Regex("^[\\w.:-]{1,64}$")
+    private val PUBLIC_URL = Regex("^https://[^/?#@\\s:]+(:\\d+)?(/[^?#\\s]*)?$", RegexOption.IGNORE_CASE)
 
     /** What `android.net.Uri.encode` leaves raw and `URLEncoder` does not. `*` is raw in both. */
     private val COMPONENT_RAW = listOf("%7E" to "~", "%21" to "!", "%27" to "'", "%28" to "(", "%29" to ")")

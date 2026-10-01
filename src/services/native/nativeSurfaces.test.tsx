@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { createLogger } from '@/services/logger';
 import { createNativeSurfaces, type SurfacePackages } from '@/services/native/nativeSurfaces';
 import { NO_MEDIA_CAPTURE } from '@/services/overlayGuard';
-import { createRingRecord } from '@/services/sessionRecord';
+import { createRingRecord, parseRecordLine } from '@/services/sessionRecord';
 
 // This "binary" has neither package: importing one throws, as the native halves
 // do on a phone built without them (requireNativeModule / getEnforcing). With a
@@ -62,7 +62,7 @@ function build(packages: Partial<SurfacePackages> = {}) {
   });
   const entries = () =>
     record.lines().map((line) => {
-      const { event, fields } = JSON.parse(line);
+      const { event, fields } = parseRecordLine(line);
       return { event, fields };
     });
   return { surfaces, webview, video, loads, entries };
@@ -226,7 +226,7 @@ describe('a native package missing from the binary (m3)', () => {
     render(createElement(surfaces.Video, { url: PEEK, playing: true }));
     await waitFor(() => expect(onFailed).toHaveBeenCalledTimes(1));
     await waitFor(() => expect(record.lines()).toHaveLength(2));
-    const kinds = record.lines().map((line) => JSON.parse(line).fields.kind);
+    const kinds = record.lines().map((line) => parseRecordLine(line).fields.kind);
     expect(kinds.sort()).toEqual(['overlay', 'video']);
   });
 });

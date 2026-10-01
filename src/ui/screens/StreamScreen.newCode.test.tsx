@@ -4,6 +4,7 @@ import type { SavedCode } from '@/domain/mode/savedCode';
 import type { EngineIntent } from '@/engine/CaptureEnginePort';
 import { HOLD_MS } from '@/hooks/useHold';
 import { sampleDescriptor } from '@/services/fakeDescriptorPort';
+import { SCRUBBED } from '@/services/scrub';
 import { StreamScreen } from '@/ui/screens/StreamScreen';
 import { readRecord, type FakePorts } from '../../../test/fakePorts';
 import { savedStreamCode } from '../../../test/fixtures/savedStream';
@@ -465,5 +466,27 @@ describe('a replace while native has not answered yet (N1, N3)', () => {
     });
     expect(kinds(view)).toEqual(['arm', 'stop']);
     expect(native.held()).toEqual(['reset']);
+  });
+});
+
+/**
+ * N7 (Task 10): JS masks free text whole unless a session is in hand. The
+ * viewfinder protects its session while it holds it, and lets it go on leave,
+ * so a line logged between one code and the next carries no free text.
+ */
+describe('free text in the record around the viewfinder (N7)', () => {
+  it('keeps free text while the viewfinder holds its session, and masks it whole once it lets go', async () => {
+    const view = await renderViewfinder();
+    const message = 'Connection refused (errno 111)';
+    view.ports.logger.warn('in.view', { message });
+    view.unmount();
+    view.ports.logger.warn('after.leave', { message });
+    const logged = readRecord(view.record)
+      .filter((entry) => entry.event === 'in.view' || entry.event === 'after.leave')
+      .map(({ event, fields }) => ({ event, message: fields.message }));
+    expect(logged).toEqual([
+      { event: 'in.view', message },
+      { event: 'after.leave', message: SCRUBBED },
+    ]);
   });
 });

@@ -59,11 +59,16 @@ type SavedSession = ReturnType<typeof sessionFromSaved>;
  * M3 (final review): from the moment the viewfinder holds a session, armed by
  * this visit or adopted, its secrets never reach the record. Declared before
  * `useReconcile`, so its effect runs first and the arm is already covered.
+ * N7 (Task 10): the cleanup releases it, so a session change releases the old
+ * one before the new one is protected, and leaving the viewfinder releases it:
+ * free text is masked whole until the next `protect` (CD6).
  */
 function useProtect(session: SavedSession | null): void {
   const { logger } = usePorts();
   useEffect(() => {
-    if (session?.ok) logger.protect(sessionSecrets(session.value));
+    if (!session?.ok) return undefined;
+    logger.protect(sessionSecrets(session.value));
+    return () => logger.release();
   }, [session, logger]);
 }
 type Visit = { readonly raw: string; readonly plan: VisitArm };
