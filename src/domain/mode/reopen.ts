@@ -69,6 +69,28 @@ export function orphanedSession(input: {
   return code === undefined || isExpired(code, now);
 }
 
+/** What a viewfinder visit does with the engine it finds (I1). */
+export type VisitArm = 'arm' | 'adopt' | 'replace';
+
+/**
+ * I1 (owner-visible): a visit adopts native's session only when it is this
+ * code's, by sid. Another code's armed or ended session, or one native cannot
+ * name, is `replace`d: reset, then this code armed. Adopting it would show the
+ * old match's label and Ended screen, and Go live would publish to the old
+ * match. Live is always adopted: it cannot reach Home, and a reset under a
+ * broadcast would end it.
+ */
+export function visitArm(input: {
+  engine: EngineStatus;
+  engineSid: string | null;
+  codeSid: string | null;
+}): VisitArm {
+  const { engine, engineSid, codeSid } = input;
+  if (engine === 'idle') return 'arm';
+  if (engine === 'live') return 'adopt';
+  return engineSid !== null && engineSid === codeSid ? 'adopt' : 'replace';
+}
+
 /** Modes whose saved code has expired. The caller deletes them after reading the target. */
 export function expiredModes(saved: SavedState, now: Date): readonly Mode[] {
   return Object.values(saved.codes)

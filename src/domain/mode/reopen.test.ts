@@ -4,8 +4,10 @@ import {
   leaveRule,
   orphanedSession,
   reopenTarget,
+  visitArm,
   type EngineStatus,
   type SavedState,
+  type VisitArm,
 } from '@/domain/mode/reopen';
 import type { SavedCode } from '@/domain/mode/savedCode';
 import { sampleDescriptor } from '@/services/fakeDescriptorPort';
@@ -119,6 +121,36 @@ describe('orphanedSession', () => {
     ['live, its code expired', false, 'live', inStream, AFTER_EXPIRY],
   ])('%s → orphaned: %s', (_, orphaned, engine, saved, now) => {
     expect(orphanedSession({ engine, saved, now })).toBe(orphaned);
+  });
+});
+
+/**
+ * I1 (fix round 1, owner-visible): a visit adopts native's session only when
+ * it is this code's, by sid. Another code's session, or one native cannot name,
+ * is reset and the code armed in its place. Live is never reset: it cannot
+ * reach Home, and a reset under a broadcast would end it.
+ */
+describe('visitArm', () => {
+  const A = '5d9c1d0e-0000-4000-8000-00000000000a';
+  const B = '5d9c1d0e-0000-4000-8000-00000000000b';
+  it.each<[EngineStatus, string | null, string | null, VisitArm]>([
+    ['idle', null, A, 'arm'],
+    ['idle', B, A, 'arm'],
+    ['armed', A, A, 'adopt'],
+    ['stopped', A, A, 'adopt'],
+    ['failed', A, A, 'adopt'],
+    ['armed', B, A, 'replace'],
+    ['stopped', B, A, 'replace'],
+    ['failed', B, A, 'replace'],
+    ['armed', null, A, 'replace'],
+    ['stopped', null, A, 'replace'],
+    ['armed', A, null, 'replace'],
+    ['armed', null, null, 'replace'],
+    ['live', A, A, 'adopt'],
+    ['live', B, A, 'adopt'],
+    ['live', null, null, 'adopt'],
+  ])('%s, engine sid %s, code sid %s → %s', (engine, engineSid, codeSid, expected) => {
+    expect(visitArm({ engine, engineSid, codeSid })).toBe(expected);
   });
 });
 

@@ -163,6 +163,11 @@ describe('a code that expired on a stopped Ended screen (N4)', () => {
     act(() => view.foreground.fire());
     await waitFor(() => expect(view.navigation.current()).toBe('home'));
 
+    // M1: `router.replace('/')` unmounts the viewfinder before Home opens
+    // anything, so the old visit can neither arm the new code nor adopt it.
+    cleanup();
+    expect(view.engine.intents.map((intent) => intent.kind)).toEqual(['arm', 'reset']);
+
     // Home opens a new code (spec §2), and the viewfinder mounts for it.
     const fresh = savedStreamCode({
       raw: captureRaw({ exp: epochSeconds(new Date(later.getTime() + 4 * 3600_000)) }),
@@ -171,7 +176,7 @@ describe('a code that expired on a stopped Ended screen (N4)', () => {
       descriptor: sampleDescriptor(later),
     });
     await act(() => view.ports.modeStore.open(fresh));
-    cleanup();
+    expect(view.engine.intents.map((intent) => intent.kind)).toEqual(['arm', 'reset']);
     render(<StreamScreen />, { wrapper: wrapperFor(view) });
     view.navigation.go('stream');
     await act(async () => undefined);

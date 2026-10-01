@@ -1,6 +1,7 @@
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { encodeSavedCode } from '@/domain/mode/savedCode';
+import type { FakeScene } from '@/engine/FakeCaptureEngine';
 import { HOLD_MS } from '@/hooks/useHold';
 import { STORE_KEYS } from '@/services/modeStore';
 import { StreamScreen } from '@/ui/screens/StreamScreen';
@@ -16,6 +17,12 @@ const FAILED = { kind: 'ended', reason: 'fatal-error', durationMs: 5000 } as con
 
 /** Lets the leave's write settle: fake timers hold waitFor's own clock. */
 const settle = () => act(() => vi.advanceTimersByTimeAsync(10));
+
+/** Native already holding this code's session, as a reopen finds it (batch 9 I1: matched by sid). */
+const holding = (scene: FakeScene) => (fakes: FakePorts) => {
+  fakes.engine.scene(scene);
+  fakes.engine.setDescriptor(savedStreamCode().descriptor);
+};
 
 /**
  * The next visit to the viewfinder over the same phone, as the reopen gate
@@ -71,10 +78,7 @@ describe('a visit never arms on its way out (I1)', () => {
   });
 
   it('a reopen on an armed session leaves it armed, and arms nothing', async () => {
-    const view = await renderViewfinder(
-      {},
-      { prepare: (fakes) => fakes.engine.scene('armed-ready') },
-    );
+    const view = await renderViewfinder({}, { prepare: holding('armed-ready') });
     fireEvent.click(home());
     await settle();
     expect(kinds(view)).toEqual([]);
@@ -87,7 +91,7 @@ describe('a visit never arms on its way out (I1)', () => {
   it.each(['armed-ready', 'live'] as const)(
     'adopts a %s session it reopened on: a fall to idle mid-visit is not re-armed',
     async (scene) => {
-      const view = await renderViewfinder({}, { prepare: (fakes) => fakes.engine.scene(scene) });
+      const view = await renderViewfinder({}, { prepare: holding(scene) });
       act(() => view.engine.forceState({ kind: 'idle' }));
       await settle();
       expect(view.navigation.current()).toBe('stream');

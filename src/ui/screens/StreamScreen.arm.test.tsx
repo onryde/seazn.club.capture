@@ -27,6 +27,8 @@ describe('the viewfinder arming (spec §1)', () => {
   it('arms once with the saved code, and shows Arm ready', async () => {
     const view = await renderViewfinder();
     expect(arms(view)).toHaveLength(1);
+    // Batch 9 I1: an idle engine is armed as it is, with no reset first.
+    expect(view.engine.intents.map((intent) => intent.kind)).toEqual(['arm']);
     expect(plate()).toBe('Ready');
     expect(screen.getByText('Ready. Hold Go live for 3 seconds.')).toBeTruthy();
     expect(screen.getByLabelText('Camera: ready')).toBeTruthy();
@@ -202,18 +204,40 @@ describe('the viewfinder arming (spec §1)', () => {
     expect(arms(view)).toHaveLength(1);
   });
 
+  // Native's session for this code, as a reopen finds it (batch 9 I1: by sid).
   it.each(['armed-ready', 'live'] as const)(
-    'does not arm an engine that is already %s',
+    'does not arm an engine that is already %s with this code',
     async (scene) => {
-      const view = await renderViewfinder({}, { prepare: (fakes) => fakes.engine.scene(scene) });
+      const view = await renderViewfinder(
+        {},
+        {
+          prepare: (fakes) => {
+            fakes.engine.scene(scene);
+            fakes.engine.setDescriptor(savedStreamCode().descriptor);
+          },
+        },
+      );
       expect(arms(view)).toHaveLength(0);
+      expect(view.engine.intents).toEqual([]);
     },
   );
 
-  // Ruling I3: a session native reopened with no descriptor cannot go live,
+  // Batch 9 I1: a session native holds but cannot name is not this code's to
+  // adopt. It is reset and the code armed in its place.
+  it('replaces an armed session native cannot name, and arms this code', async () => {
+    const view = await renderViewfinder(
+      {},
+      { prepare: (fakes) => fakes.engine.scene('armed-ready') },
+    );
+    expect(view.engine.intents.map((intent) => intent.kind)).toEqual(['reset', 'arm']);
+    expect(plate()).toBe('Ready');
+  });
+
+  // Ruling I3: a session native reports with no descriptor cannot go live,
   // and plate, line, chip and reason all say so, none of them "timed out".
   it('reads not ready everywhere when armed with no session details', async () => {
-    await renderViewfinder({}, { prepare: (fakes) => fakes.engine.scene('armed-ready') });
+    const view = await renderViewfinder();
+    act(() => view.engine.setDescriptor(null));
     expect(plate()).toBe('Not ready');
     expect(screen.getByText('Waiting for the session details.')).toBeTruthy();
     expect(screen.getByText('No session details')).toBeTruthy();
