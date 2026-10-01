@@ -1,6 +1,8 @@
 import { AUDIO_FLOOR } from '@/domain/policy/audioFloor';
 import type { SessionState } from '@/domain/session/SessionState';
 import type { EngineSnapshot } from '@/engine/CaptureEnginePort';
+import type { StatusKey } from '@/hooks/statusKey';
+import type { MessageKey } from '@/i18n/messages';
 
 export type Chip = 'code' | 'camera' | 'network' | 'sound';
 export type Preflight = Readonly<Record<Chip, boolean>>;
@@ -15,7 +17,14 @@ export const CHIP_ORDER: readonly Chip[] = ['camera', 'sound', 'network', 'code'
  */
 const BLOCKER_ORDER: readonly Chip[] = ['code', 'camera', 'network', 'sound'];
 
-export const selectCameraReady = (snapshot: EngineSnapshot) => snapshot.telemetry.cameraReady;
+/**
+ * M2: ready only when the camera is ours and producing frames. Another app's
+ * take, our own reopen, resume or switch, and no session all read not ready,
+ * whatever the frames say, so the chip, the plate and Go live never sit READY
+ * beside a camera line.
+ */
+export const selectCameraReady = (snapshot: EngineSnapshot) =>
+  snapshot.telemetry.cameraReady && snapshot.camera === 'own';
 export const selectNetworkReachable = (snapshot: EngineSnapshot) =>
   snapshot.telemetry.networkReachable;
 /** The one floor, shared with the meter's notch (S0's audioFloor rule). */
@@ -42,6 +51,39 @@ export function codeCheck(input: {
   if (input.unusable) return 'unusable';
   if (!input.deadlineKnown) return 'noDeadline';
   return input.passed ? 'timedOut' : 'usable';
+}
+
+export type BlockerKey = Extract<MessageKey, `stream.blocker.${string}`>;
+
+/** What a code check reads as. `line: null` leaves the engine's line. */
+export type CodeRead = {
+  readonly chip: boolean;
+  readonly reason: BlockerKey | null;
+  readonly line: StatusKey | null;
+};
+
+/**
+ * R3 and ruling I3: the one table behind the code chip, Go live's reason and
+ * the status line (`viewfinderStatusKey`), so the three never disagree. No
+ * descriptor reads not ready everywhere, and never "timed out": nothing has.
+ */
+export const CODE_READS: Readonly<Record<CodeCheck, CodeRead>> = {
+  usable: { chip: true, reason: null, line: null },
+  unusable: { chip: false, reason: 'stream.blocker.unusable', line: 'stream.status.unusable' },
+  timedOut: { chip: false, reason: 'stream.blocker.code', line: 'stream.status.codeTimedOut' },
+  noDeadline: { chip: false, reason: 'stream.blocker.noDetails', line: 'stream.status.noDetails' },
+};
+
+const CHIP_REASON: Readonly<Record<Exclude<Chip, 'code'>, BlockerKey>> = {
+  camera: 'stream.blocker.camera',
+  network: 'stream.blocker.network',
+  sound: 'stream.blocker.sound',
+};
+
+/** Why Go live is off, at the control: the code's from `CODE_READS`, any other chip's own. */
+export function blockerReason(blocker: Chip | null, code: CodeCheck): BlockerKey | null {
+  if (blocker === null) return null;
+  return blocker === 'code' ? CODE_READS[code].reason : CHIP_REASON[blocker];
 }
 
 /** Go live enables only when every chip is green (spec §1; AGENTS §6: the pre-flight is the safety). */

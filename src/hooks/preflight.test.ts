@@ -4,6 +4,8 @@ import type { EngineSnapshot, Telemetry } from '@/engine/CaptureEnginePort';
 import { IDLE_TELEMETRY } from '@/engine/FakeCaptureEngine';
 import {
   CHIP_ORDER,
+  blockerReason,
+  CODE_READS,
   codeCheck,
   goLiveBlocker,
   selectCameraReady,
@@ -17,6 +19,9 @@ import {
   type TallyTone,
 } from '@/hooks/preflight';
 import { selectStatusKey } from '@/hooks/statusKey';
+import { createTranslator } from '@/i18n/translate';
+
+const { t } = createTranslator('en');
 
 const ALL_GREEN: Preflight = { code: true, camera: true, network: true, sound: true };
 
@@ -68,15 +73,55 @@ describe('codeCheck', () => {
     expect(codeCheck(input)).toBe(check);
   });
 
-  it('turns the chip green only for a usable code before its deadline', () => {
-    const green = (['usable', 'timedOut', 'noDeadline', 'unusable'] as const).filter(
-      (check) => goLiveBlocker({ ...ALL_GREEN, code: check === 'usable' }) === null,
-    );
-    expect(green).toEqual(['usable']);
+  // Ruling I3 and M6: the one table the chip, Go live's reason and the line read.
+  it('reads each check one way on the chip, at Go live and in the line', () => {
+    expect(CODE_READS).toEqual({
+      usable: { chip: true, reason: null, line: null },
+      unusable: { chip: false, reason: 'stream.blocker.unusable', line: 'stream.status.unusable' },
+      timedOut: { chip: false, reason: 'stream.blocker.code', line: 'stream.status.codeTimedOut' },
+      noDeadline: {
+        chip: false,
+        reason: 'stream.blocker.noDetails',
+        line: 'stream.status.noDetails',
+      },
+    });
+  });
+});
+
+describe('Go live’s reason (ruling I3)', () => {
+  it.each([
+    ['usable', null],
+    ['unusable', "Code can't be used"],
+    ['timedOut', 'Code timed out'],
+    ['noDeadline', 'No session details'],
+  ] as const)('a %s code reads %s', (code, said) => {
+    const key = blockerReason('code', code);
+    expect(key === null ? null : t(key)).toBe(said);
+  });
+
+  it.each([
+    ['camera', 'Camera not ready'],
+    ['network', 'No network'],
+    ['sound', 'No sound'],
+  ] as const)('the %s chip reads %s, whatever the code', (chip, said) => {
+    const key = blockerReason(chip, 'timedOut');
+    expect(key === null ? null : t(key)).toBe(said);
+  });
+
+  it('says nothing with nothing blocking', () => {
+    expect(blockerReason(null, 'usable')).toBeNull();
   });
 });
 
 describe('the chips read the snapshot', () => {
+  // M2: the chip reads whose camera it is, not only its frames.
+  it.each(['taken', 'reopening', 'resuming', 'switching', null] as const)(
+    'a %s camera is not ready, whatever its frames',
+    (camera) => {
+      expect(selectCameraReady({ ...armed({ cameraReady: true }), camera })).toBe(false);
+    },
+  );
+
   it('reads the camera and the network as native reports them', () => {
     const off = armed({ cameraReady: false, networkReachable: false });
     const on = armed({ cameraReady: true, networkReachable: true });

@@ -66,6 +66,10 @@ export type FakeCaptureEngine = CaptureEnginePort & {
   forceState(state: SessionState): void;
   /** Change telemetry alone, as the next 1 Hz report would. */
   patch(telemetry: Partial<Telemetry>): void;
+  /** Change whose camera it is alone, as native reports a take or a reopen under any state. */
+  setCamera(camera: CameraState | null): void;
+  /** Replace the descriptor alone, as native's re-fetch on a reconnect does (spec §1). */
+  setDescriptor(descriptor: SessionDescriptor | null): void;
   /** Every intent received, in order. */
   readonly intents: readonly EngineIntent[];
   /** Stop reporting: what a suspended process looks like from JS. */
@@ -415,6 +419,8 @@ export function createFakeCaptureEngine(now: () => number = Date.now): FakeCaptu
       show(state);
     },
     patch: (telemetry) => publish({ telemetry: { ...snapshot.telemetry, ...telemetry } }),
+    setCamera: (camera) => publish({ camera }),
+    setDescriptor: (descriptor) => publish({ descriptor }),
     // A suspended process reports nothing at all, a pending connect included.
     suspend: () => {
       cancelPending();

@@ -490,3 +490,32 @@ describe('whose camera is on air (carry 10)', () => {
     expect([telemetry().encodedVideoFps, telemetry().cameraReady]).toEqual([30, true]);
   });
 });
+
+/**
+ * Two of native's own reports, alone: whose camera it is (a take or a reopen
+ * under any state) and a re-fetched descriptor (spec §1, every reconnect).
+ */
+describe('reports that change one thing', () => {
+  it('changes whose camera it is and nothing else', () => {
+    engine.send({ kind: 'arm', session, heartbeat });
+    const before = engine.getSnapshot();
+    engine.setCamera('taken');
+    expect(engine.getSnapshot()).toEqual({ ...before, camera: 'taken' });
+  });
+
+  it('changes the descriptor and nothing else', () => {
+    engine.scene('live');
+    const before = engine.getSnapshot();
+    const next = { ...session.descriptor, overlayUrl: 'https://seazn.example/overlay/next' };
+    engine.setDescriptor(next);
+    expect(engine.getSnapshot()).toEqual({ ...before, descriptor: next });
+  });
+
+  it('tells its listeners', () => {
+    const heard = vi.fn();
+    engine.subscribe(heard);
+    engine.setCamera('reopening');
+    engine.setDescriptor(null);
+    expect(heard).toHaveBeenCalledTimes(2);
+  });
+});

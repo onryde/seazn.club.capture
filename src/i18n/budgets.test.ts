@@ -12,6 +12,8 @@ import nl from '@/i18n/nl.json';
  */
 const BUDGETS: readonly (readonly [keys: RegExp, max: number])[] = [
   [/^stream\.status\./, 48],
+  // M4: it stands in the status line, so it shares its budget.
+  [/^stream\.leaveOnAir$/, 48],
   [/^stream\.tally\./, 12],
   [/^stream\.action\.(goLive|stop)$/, 16],
   [/^stream\.chip\.(camera|sound|network|code)$/, 10],

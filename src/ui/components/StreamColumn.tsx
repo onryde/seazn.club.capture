@@ -1,11 +1,9 @@
 import { memo } from 'react';
 import { StyleSheet, View } from 'react-native';
-import type { Chip } from '@/hooks/preflight';
 import { columnLineKey } from '@/hooks/statusKey';
 import { useT } from '@/hooks/useLanguage';
 import type { Peek } from '@/hooks/usePeek';
 import type { Viewfinder } from '@/hooks/useViewfinder';
-import type { MessageKey } from '@/i18n/messages';
 import { AudioMeter } from '@/ui/components/AudioMeter';
 import { Elapsed } from '@/ui/components/Elapsed';
 import { EndedBlock } from '@/ui/components/EndedBlock';
@@ -15,13 +13,6 @@ import { StatusLine } from '@/ui/components/StatusLine';
 import { TallyPlate } from '@/ui/components/TallyPlate';
 import { ViewerPeek } from '@/ui/components/ViewerPeek';
 import { colour, layout, space } from '@/ui/theme/tokens';
-
-const BLOCKER_KEY: Readonly<Record<Chip, MessageKey>> = {
-  code: 'stream.blocker.code',
-  camera: 'stream.blocker.camera',
-  network: 'stream.blocker.network',
-  sound: 'stream.blocker.sound',
-};
 
 type ColumnProps = {
   readonly view: Viewfinder;
@@ -84,14 +75,14 @@ const ColumnAction = memo(function ColumnAction(props: {
   const { view } = props;
   if (view.action === 'ended') return <EndedBlock onScanAnother={props.onScanAnother} />;
   const stop = view.action === 'stop';
-  const armedBlocker = view.kind === 'armed' ? view.blocker : null;
+  const reason = !stop && view.kind === 'armed' ? view.reason : null;
   return (
     <HoldAction
       key={view.action}
       label={t(stop ? 'stream.action.stop' : 'stream.action.goLive')}
       tone={stop ? 'stop' : 'go'}
       disabled={!stop && (view.kind !== 'armed' || view.blocker !== null)}
-      reason={!stop && armedBlocker !== null ? t(BLOCKER_KEY[armedBlocker]) : null}
+      reason={reason === null ? null : t(reason)}
       onHeld={stop ? view.stop : view.start}
     />
   );

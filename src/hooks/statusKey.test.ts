@@ -213,12 +213,14 @@ describe('in every language', () => {
 });
 
 /**
- * Carry 11 (owner-visible): whose camera is on air says itself, whatever the
- * state. Another app's take is the slate line, even connecting before the
- * first frame; our own reopen or switch makes no slate claim. Copy from en.json.
+ * The camera ruling (fix round 1, replacing carry 11's "whatever the state"):
+ * another app's take reads the slate line on air and a plain "in use" line
+ * before it; our own reopen, resume or switch reads only on air; a hold's
+ * countdown and an ending outrank the camera. One row per cell.
  */
-describe('whose camera is on air (carry 11)', () => {
+describe('whose camera it is, by state (camera ruling)', () => {
   const TAKEN = 'Camera taken by another app — slate on air';
+  const IN_USE = 'Camera in use by another app';
   const REOPENING = 'Camera reopening — picture back shortly';
   const CONNECTING: SessionState = { kind: 'connecting', transport: 'srt' };
   const degraded = (reason: DegradeReason): SessionState => ({
@@ -227,28 +229,75 @@ describe('whose camera is on air (carry 11)', () => {
     reason,
     sinceEpochMs: since,
   });
-  const STATES: readonly (readonly [string, SessionState])[] = [
-    ['armed', { kind: 'armed' }],
-    ['connecting', CONNECTING],
+  const ON_AIR: readonly (readonly [string, SessionState])[] = [
     ['publishing', LIVE],
     ['degraded camera-taken', degraded('camera-taken')],
     ['degraded not-delivered', degraded('not-delivered')],
     ['degraded mic-silenced', degraded('mic-silenced')],
-    ['reconnecting', holding('uplink-lost')],
   ];
+  const OURS = ['reopening', 'resuming', 'switching'] as const;
+  const NOT_OWN = ['taken', ...OURS] as const;
+  const cells = <A, B>(as: readonly A[], bs: readonly B[]) =>
+    as.flatMap((a) => bs.map((b) => [a, b] as const));
 
-  it.each(STATES)('another app’s take reads the slate line while %s', (_, state) => {
+  it.each(ON_AIR)('another app’s take on air reads the slate line while %s', (_, state) => {
     expect(line(snap(state, ARMED_OK, 'taken'))).toBe(TAKEN);
   });
 
-  it.each(
-    (['reopening', 'resuming', 'switching'] as const).flatMap((camera) =>
-      STATES.map(([name, state]) => [camera, name, state] as const),
-    ),
-  )('our own %s reads the reopening line while %s, with no slate claim', (camera, _, state) => {
-    const said = line(snap(state, ARMED_OK, camera));
-    expect(said).toBe(REOPENING);
+  it.each<[string, SessionState]>([
+    ['armed', { kind: 'armed' }],
+    ['connecting', CONNECTING],
+  ])('another app’s take before air reads “in use”, with no slate claim, while %s', (_, state) => {
+    const said = line(snap(state, ARMED_OK, 'taken'));
+    expect(said).toBe(IN_USE);
     expect(said).not.toMatch(/slate/i);
+  });
+
+  it.each(cells(OURS, ON_AIR))(
+    'our own %s reads the reopening line on air (%j)',
+    (camera, [, state]) => {
+      const said = line(snap(state, ARMED_OK, camera));
+      expect(said).toBe(REOPENING);
+      expect(said).not.toMatch(/slate/i);
+    },
+  );
+
+  it.each(OURS)(
+    'our own %s before air says no reopening: armed reads the camera chip',
+    (camera) => {
+      expect(line(snap({ kind: 'armed' }, ARMED_OK, camera))).toBe('Camera not ready yet.');
+    },
+  );
+
+  it.each(OURS)('our own %s before air says no reopening: connecting opens the link', (camera) => {
+    expect(line(snap(CONNECTING, ARMED_OK, camera))).toBe('Opening the link.');
+  });
+
+  it.each(
+    cells(NOT_OWN, [
+      ['uplink-lost', 'Uplink lost — holding, 38 s of 183'],
+      ['video-stalled', 'Video stalled — restarting, 38 s of 183'],
+      ['not-delivered', 'Viewers not receiving — restarting, 38 s of 183'],
+    ] as const),
+  )('the hold’s countdown outranks a %s camera (%j)', (camera, [cause, said]) => {
+    expect(line(snap(holding(cause), ARMED_OK, camera))).toBe(said);
+  });
+
+  it.each(
+    cells(NOT_OWN, [
+      ['operator-stopped', 'You stopped the broadcast.'],
+      ['stopped-by-organiser', 'Stopped by the organiser'],
+      ['hold-window-expired', 'The connection was lost for too long.'],
+      ['fatal-error', 'Something failed. Your code is kept.'],
+    ] as const),
+  )('an ending says how it ended over a %s camera (%j)', (camera, [reason, said]) => {
+    const ended: SessionState = { kind: 'ended', reason, durationMs: null };
+    expect(line(snap(ended, ARMED_OK, camera))).toBe(said);
+  });
+
+  // Contract-excluded (plan B: no session, no camera), so pinned rather than trusted.
+  it.each(NOT_OWN)('names no %s camera before a session', (camera) => {
+    expect(line(snap({ kind: 'idle' }, ARMED_OK, camera))).toBe('Starting the camera…');
   });
 
   it('leaves every line alone while the camera is our own', () => {
@@ -259,9 +308,12 @@ describe('whose camera is on air (carry 11)', () => {
     );
   });
 
-  it('says the reopening line in every language, within the column', () => {
+  it.each([
+    ['reopening', LIVE, 'switching'],
+    ['in-use', { kind: 'armed' }, 'taken'],
+  ] as const)('says the %s line in every language, within the column', (_, state, camera) => {
     for (const lang of ['en', 'es', 'fr', 'nl'] as const) {
-      const said = createTranslator(lang).t(selectStatusKey(snap(LIVE, ARMED_OK, 'switching')));
+      const said = createTranslator(lang).t(selectStatusKey(snap(state, ARMED_OK, camera)));
       expect({
         lang,
         fits: said.length <= STATUS_LINE_BUDGET,
@@ -300,14 +352,23 @@ describe('viewfinderStatusKey', () => {
     },
   );
 
-  it.each(['usable', 'noDeadline'] as const)(
-    'leaves the engine’s line alone when the code is %s',
-    (code) => {
-      expect(viewfinderStatusKey('stream.status.ready', { kind: 'armed', code })).toBe(
-        'stream.status.ready',
-      );
-    },
-  );
+  it('leaves the engine’s line alone when the code is usable', () => {
+    expect(viewfinderStatusKey('stream.status.ready', { kind: 'armed', code: 'usable' })).toBe(
+      'stream.status.ready',
+    );
+  });
+
+  // Ruling I3: armed with no descriptor cannot go live, so it never reads Ready.
+  it('says the session details are missing while armed with none', () => {
+    const key = viewfinderStatusKey('stream.status.ready', { kind: 'armed', code: 'noDeadline' });
+    expect(t(key)).toBe('Waiting for the session details.');
+  });
+
+  it('leaves the arming line alone before the details could have come', () => {
+    expect(
+      viewfinderStatusKey('stream.status.starting', { kind: 'idle', code: 'noDeadline' }),
+    ).toBe('stream.status.starting');
+  });
 });
 
 describe('the hold countdown', () => {

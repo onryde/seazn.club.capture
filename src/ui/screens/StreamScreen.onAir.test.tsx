@@ -136,8 +136,8 @@ describe('on air (spec §6, through the fake)', () => {
   });
 });
 
-/** Carry 11 at the screen: our own reopen or switch makes no slate claim. */
-describe('our own camera coming back (carry 11)', () => {
+/** The camera ruling at the screen: our own reopen or switch on air makes no slate claim. */
+describe('our own camera coming back (camera ruling)', () => {
   beforeEach(() => vi.useFakeTimers());
   afterEach(() => vi.useRealTimers());
 

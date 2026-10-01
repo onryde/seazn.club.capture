@@ -7,12 +7,15 @@ import {
   selectWarmingDeadlineMs,
 } from '@/hooks/engineSelectors';
 import {
+  blockerReason,
+  CODE_READS,
   codeCheck,
   goLiveBlocker,
   selectCameraReady,
   selectNetworkReachable,
   selectSoundReady,
   tallyPlateFor,
+  type BlockerKey,
   type Chip,
   type CodeCheck,
   type Preflight,
@@ -43,6 +46,8 @@ export type Viewfinder = {
   readonly holdWindow: number | null;
   readonly preflight: Preflight;
   readonly blocker: Chip | null;
+  /** Why Go live is off, at the control (ruling I3); null with nothing blocking. */
+  readonly reason: BlockerKey | null;
   readonly goLiveBy: string | null;
   readonly action: ViewfinderAction;
   readonly onAir: boolean;
@@ -81,6 +86,7 @@ export function useViewfinder(departed: () => boolean): Viewfinder {
     ...countdown,
     preflight,
     blocker,
+    reason: blockerReason(blocker, code),
     goLiveBy: action === 'goLive' ? goLiveBy : null,
     action,
     onAir: action === 'stop',
@@ -107,7 +113,7 @@ function usePreflight(unusable: boolean): PreflightView {
   const code = codeCheck({ unusable, deadlineKnown: deadlineMs !== null, passed });
   const usable = code === 'usable' && deadlineMs !== null;
   return {
-    preflight: { code: code === 'usable', camera, network, sound },
+    preflight: { code: CODE_READS[code].chip, camera, network, sound },
     code,
     goLiveBy: usable ? format(new Date(deadlineMs), zone) : null,
   };

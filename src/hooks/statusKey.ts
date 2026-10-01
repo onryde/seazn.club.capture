@@ -5,8 +5,14 @@ import type {
   ReconnectCause,
   SessionState,
 } from '@/domain/session/SessionState';
-import type { CameraState, EngineSnapshot, Telemetry } from '@/engine/CaptureEnginePort';
-import type { CodeCheck } from '@/hooks/preflight';
+import type { CameraState, EngineSnapshot } from '@/engine/CaptureEnginePort';
+import {
+  CODE_READS,
+  selectCameraReady,
+  selectNetworkReachable,
+  selectSoundReady,
+  type CodeCheck,
+} from '@/hooks/preflight';
 import type { MessageKey } from '@/i18n/messages';
 
 export type StatusKey = Extract<MessageKey, `stream.status.${string}`>;
@@ -41,18 +47,41 @@ const ENDED: Readonly<Record<EndReason, StatusKey>> = {
   'fatal-error': 'stream.status.endedFatal',
 };
 
-/**
- * Carry 11 (owner-visible): whose camera is on air says itself, whatever the
- * state, before any state's own line. Another app's take is the slate line,
- * connecting before the first frame included; our own reopen or switch makes
- * no slate claim. Our own camera leaves the state's line alone.
- */
-const CAMERA: Readonly<Record<CameraState, StatusKey | null>> = {
+type Kind = SessionState['kind'];
+type CameraLines = Readonly<Record<CameraState, StatusKey | null>>;
+
+/** Before air: another app's take is named, with no slate claim; our own reopen is the chip's. */
+const BEFORE_AIR: CameraLines = {
+  own: null,
+  taken: 'stream.status.cameraInUse',
+  reopening: null,
+  resuming: null,
+  switching: null,
+};
+
+/** On air: another app's take is the slate line; our own reopen, resume or switch says so. */
+const ON_AIR: CameraLines = {
   own: null,
   taken: 'stream.status.cameraTaken',
   reopening: 'stream.status.cameraReopening',
   resuming: 'stream.status.cameraReopening',
   switching: 'stream.status.cameraReopening',
+};
+
+/**
+ * The camera ruling (fix round 1, owner-visible; replaces carry 11's "whatever
+ * the state"): whose camera it is says itself before the state's own line,
+ * but only before and on air. A hold's countdown outranks the camera, an
+ * ending says how it ended, and with no session there is no camera to name.
+ */
+const CAMERA_LINES: Readonly<Record<Kind, CameraLines | null>> = {
+  idle: null,
+  armed: BEFORE_AIR,
+  connecting: BEFORE_AIR,
+  publishing: ON_AIR,
+  degraded: ON_AIR,
+  reconnecting: null,
+  ended: null,
 };
 
 /**
@@ -64,17 +93,19 @@ const CAMERA: Readonly<Record<CameraState, StatusKey | null>> = {
  * already says what they mean, and a null there is no reading, not trouble.
  */
 export function selectStatusKey(snapshot: EngineSnapshot): StatusKey {
-  const camera = snapshot.camera === null ? null : CAMERA[snapshot.camera];
+  const lines = CAMERA_LINES[snapshot.state.kind];
+  const camera = lines === null || snapshot.camera === null ? null : lines[snapshot.camera];
   return camera ?? stateKey(snapshot);
 }
 
 /** Each state's own line. A table, exempt from the line count (AGENTS §12). */
-function stateKey({ state, telemetry }: EngineSnapshot): StatusKey {
+function stateKey(snapshot: EngineSnapshot): StatusKey {
+  const { state, telemetry } = snapshot;
   switch (state.kind) {
     case 'idle':
       return 'stream.status.starting';
     case 'armed':
-      return armedKey(telemetry);
+      return armedKey(snapshot);
     case 'connecting':
       return 'stream.status.connecting';
     case 'publishing':
@@ -91,28 +122,33 @@ function stateKey({ state, telemetry }: EngineSnapshot): StatusKey {
   }
 }
 
-/** The first pre-flight chip that is off, in the blocker's order after the code (Task 13). */
-function armedKey(telemetry: Telemetry): StatusKey {
-  if (!telemetry.cameraReady) return 'stream.status.noCamera';
-  if (!telemetry.networkReachable) return 'stream.status.noNetwork';
-  if (telemetry.audioLevel < AUDIO_FLOOR) return 'stream.status.noSound';
+/**
+ * The first pre-flight chip that is off, in the blocker's order after the
+ * code (Task 13), read through the chips' own selectors so the two agree.
+ */
+function armedKey(snapshot: EngineSnapshot): StatusKey {
+  if (!selectCameraReady(snapshot)) return 'stream.status.noCamera';
+  if (!selectNetworkReachable(snapshot)) return 'stream.status.noNetwork';
+  if (!selectSoundReady(snapshot)) return 'stream.status.noSound';
   return 'stream.status.ready';
 }
 
 /**
  * Arm-time facts the snapshot cannot know: whether the saved code is usable,
- * and whether the clock has passed the warming deadline (spec §5), read from
- * the same `codeCheck` as the code chip (R3). They never override an on-air
- * line.
+ * whether the clock has passed the warming deadline (spec §5), and whether
+ * the session's details are there at all, read from `CODE_READS` as the code
+ * chip and Go live's reason are (R3, ruling I3). An unusable code says so from
+ * the start, since no wait arms it; the others are facts of an armed session.
+ * None overrides an on-air line.
  */
 export function viewfinderStatusKey(
   engineKey: StatusKey,
-  input: { kind: SessionState['kind']; code: CodeCheck },
+  input: { kind: Kind; code: CodeCheck },
 ): StatusKey {
-  const arming = input.kind === 'idle' || input.kind === 'armed';
-  if (arming && input.code === 'unusable') return 'stream.status.unusable';
-  if (input.kind === 'armed' && input.code === 'timedOut') return 'stream.status.codeTimedOut';
-  return engineKey;
+  const { line } = CODE_READS[input.code];
+  if (line === null) return engineKey;
+  const says = input.kind === 'armed' || (input.kind === 'idle' && input.code === 'unusable');
+  return says ? line : engineKey;
 }
 
 /**

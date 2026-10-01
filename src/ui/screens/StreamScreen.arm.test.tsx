@@ -147,13 +147,15 @@ describe('the viewfinder arming (spec §1)', () => {
   });
 
   // Native refuses a start that is not armed; the control never sends one.
-  it('keeps Go live off until the engine is armed, whatever the chips say', async () => {
+  // M2: with no session there is no camera of ours, whatever its frames say.
+  // The column's own kind gate is pinned in StreamColumn.test.tsx.
+  it('keeps Go live off until the engine is armed: there is no camera yet', async () => {
     const view = await renderViewfinder();
     act(() => {
       view.engine.forceState({ kind: 'idle' });
       view.engine.patch({ cameraReady: true, networkReachable: true, audioLevel: 0.4 });
     });
-    expect(screen.getByLabelText('Camera: ready')).toBeTruthy();
+    expect(screen.getByLabelText('Camera: not ready')).toBeTruthy();
     expect(screen.getByLabelText('Code: ready')).toBeTruthy();
     pressIn(goLive());
     act(() => vi.advanceTimersByTime(HOLD_MS));
@@ -181,6 +183,33 @@ describe('the viewfinder arming (spec §1)', () => {
       expect(arms(view)).toHaveLength(0);
     },
   );
+
+  // Ruling I3: a session native reopened with no descriptor cannot go live,
+  // and plate, line, chip and reason all say so, none of them "timed out".
+  it('reads not ready everywhere when armed with no session details', async () => {
+    await renderViewfinder({}, { prepare: (fakes) => fakes.engine.scene('armed-ready') });
+    expect(plate()).toBe('Not ready');
+    expect(screen.getByText('Waiting for the session details.')).toBeTruthy();
+    expect(screen.getByText('No session details')).toBeTruthy();
+    expect(screen.getByLabelText('Code: not ready')).toBeTruthy();
+    expect(screen.queryByText(/timed out/i)).toBeNull();
+  });
+
+  // The camera ruling and M2: another app's take before air is named, with no
+  // slate claim, and nothing beside it reads ready.
+  it('reads not ready with the camera in use by another app before air', async () => {
+    const view = await renderViewfinder();
+    expect(plate()).toBe('Ready');
+    act(() => view.engine.setCamera('taken'));
+    expect(plate()).toBe('Not ready');
+    expect(screen.getByText('Camera in use by another app')).toBeTruthy();
+    expect(screen.queryByText(/slate/i)).toBeNull();
+    expect(screen.getByLabelText('Camera: not ready')).toBeTruthy();
+    expect(screen.getByText('Camera not ready')).toBeTruthy();
+    pressIn(goLive());
+    act(() => vi.advanceTimersByTime(HOLD_MS));
+    expect(view.engine.intents.some((intent) => intent.kind === 'start')).toBe(false);
+  });
 
   it('leaves for Home on Back while armed, with nothing to stop', async () => {
     const view = await renderViewfinder();
