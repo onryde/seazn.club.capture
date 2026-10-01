@@ -1,5 +1,5 @@
-import { StreamPlaceholderScreen } from '@/ui/screens/StreamPlaceholderScreen';
+import { StreamScreen } from '@/ui/screens/StreamScreen';
 
 export default function StreamRoute() {
-  return <StreamPlaceholderScreen />;
+  return <StreamScreen />;
 }

@@ -1,197 +1,579 @@
-import { afterEach, describe, expect, it } from 'vitest';
-import { createFakeCaptureEngine } from './FakeCaptureEngine';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { AUDIO_FLOOR } from '@/domain/policy/audioFloor';
+import type { CameraState } from './CaptureEnginePort';
+import {
+  createFakeCaptureEngine,
+  FAKE_SCENES,
+  IDLE_TELEMETRY,
+  INTENT_LOG_CAP,
+  type FakeCaptureEngine,
+  type FakeScene,
+} from './FakeCaptureEngine';
+import { streamSession } from '../../../test/fixtures/session';
+import { FIXTURE_SECRETS } from '../../../test/fixtures/wire';
 
-const NOW = 1_700_000_000_000;
+const NOW = Date.parse('2026-10-03T13:00:00Z');
+/** 12:34 on air, the fake's scenes' fixed time on air. */
+const ON_AIR_MS = 754_000;
+const session = streamSession();
+const heartbeat = { url: session.descriptor.heartbeatUrl, token: session.token };
 
-let engines: ReturnType<typeof createFakeCaptureEngine>[] = [];
+let clock = NOW;
+let engine: FakeCaptureEngine;
 
-function track<T extends ReturnType<typeof createFakeCaptureEngine>>(engine: T): T {
-  engines.push(engine);
-  return engine;
-}
-
-function armedAndPublishing(clock: () => number = () => NOW) {
-  const engine = track(createFakeCaptureEngine(clock));
-  engine.apply({ kind: 'SessionArmed' }, clock());
-  engine.apply({ kind: 'PublishStarted', transport: 'srt' }, clock());
-  return engine;
-}
-
+beforeEach(() => {
+  vi.useFakeTimers();
+  clock = NOW;
+  engine = createFakeCaptureEngine(() => clock);
+});
 afterEach(() => {
-  for (const engine of engines) engine.dispose();
-  engines = [];
+  engine.dispose();
+  vi.useRealTimers();
 });
 
-describe('FakeCaptureEngine', () => {
-  it('starts idle with no telemetry', () => {
-    const engine = track(createFakeCaptureEngine(() => NOW));
+const state = () => engine.getSnapshot().state;
+const telemetry = () => engine.getSnapshot().telemetry;
+/** Moves the fake's clock and its timers together, as the phone's would. */
+const wait = (ms: number) => {
+  clock += ms;
+  vi.advanceTimersByTime(ms);
+};
 
-    expect(engine.getSnapshot().state).toEqual({ kind: 'idle' });
-    expect(engine.getSnapshot().telemetry.bitrateKbps).toBe(0);
+describe('the fake engine (spec §2: scripted snapshots, no state machine of its own)', () => {
+  it('starts idle, knowing no session', () => {
+    expect(state()).toEqual({ kind: 'idle' });
+    expect(engine.getSnapshot().descriptor).toBeNull();
   });
 
-  it('reports live telemetry while publishing', () => {
-    const { state, telemetry } = armedAndPublishing().getSnapshot();
-
-    expect(state.kind).toBe('publishing');
-    expect(telemetry.bitrateKbps).toBeGreaterThan(2500);
-    expect(telemetry.rttMs).not.toBeNull();
+  it('arms with the session’s descriptor and a ready pre-flight', () => {
+    engine.send({ kind: 'arm', session, heartbeat });
+    expect(state()).toEqual({ kind: 'armed' });
+    expect(engine.getSnapshot().descriptor).toBe(session.descriptor);
+    const { cameraReady, networkReachable, audioLevel } = telemetry();
+    expect({ cameraReady, networkReachable, floor: audioLevel >= AUDIO_FLOOR }).toEqual({
+      cameraReady: true,
+      networkReachable: true,
+      floor: true,
+    });
   });
 
-  // Telemetry must describe the state it ships with. Pairing a new state with
-  // the previous state's telemetry renders "RECONNECTING · 3000k" and teaches
-  // the operator to distrust the display.
-  it('does not report a healthy uplink in the same snapshot as a lost one', () => {
-    const engine = armedAndPublishing();
-
-    engine.apply({ kind: 'UplinkLost', holdWindowSeconds: 60 }, NOW);
-    const { state, telemetry } = engine.getSnapshot();
-
-    expect(state.kind).toBe('reconnecting');
-    expect(telemetry.bitrateKbps).toBe(0);
-    expect(telemetry.rttMs).toBeNull();
-    expect(telemetry.captureTimestampMs).toBeNull();
+  it('ignores a second arm while armed: the first session stays (a double scan)', () => {
+    engine.send({ kind: 'arm', session, heartbeat });
+    engine.send({
+      kind: 'arm',
+      session: streamSession({ label: 'Other XI v Else CC' }),
+      heartbeat,
+    });
+    expect(engine.getSnapshot().descriptor).toBe(session.descriptor);
   });
 
-  it('records how far down the ladder the device was pushed', () => {
-    const engine = armedAndPublishing();
-
-    engine.apply({ kind: 'ThermalCeilingHit', shed: 'overlay-preview' }, NOW);
-    const { state, telemetry } = engine.getSnapshot();
-
-    expect(state.kind).toBe('publishing');
-    expect(telemetry.shed).toBe('overlay-preview');
-    expect(telemetry.thermalHeadroom).toBeLessThan(0.2);
+  it('never reports a secret back up, armed or on air (D8)', () => {
+    engine.send({ kind: 'arm', session, heartbeat });
+    const armed = JSON.stringify(engine.getSnapshot());
+    engine.send({ kind: 'start' });
+    wait(1000);
+    const onAir = JSON.stringify(engine.getSnapshot());
+    for (const secret of FIXTURE_SECRETS) {
+      expect({ secret, armed: armed.includes(secret), onAir: onAir.includes(secret) }).toEqual({
+        secret,
+        armed: false,
+        onAir: false,
+      });
+    }
   });
 
-  // forceState exists so screens can be built against any state without a
-  // device; leaving stale telemetry behind blanks the HUD it is used to build.
-  it('derives telemetry for a forced state', () => {
-    const engine = track(createFakeCaptureEngine(() => NOW));
-
-    engine.forceState({ kind: 'publishing', transport: 'rtmps', sinceEpochMs: NOW - 60_000 });
-    const { telemetry } = engine.getSnapshot();
-
-    expect(telemetry.bitrateKbps).toBeGreaterThan(2500);
-    expect(telemetry.audioLevel).toBeGreaterThan(0);
+  it('connects on start, then publishes a second later on the primary transport', () => {
+    engine.send({ kind: 'arm', session, heartbeat });
+    engine.send({ kind: 'start' });
+    expect(state()).toEqual({ kind: 'connecting', transport: 'srt' });
+    wait(1000);
+    expect(state()).toEqual({ kind: 'publishing', transport: 'srt', sinceEpochMs: NOW + 1000 });
   });
 
-  it('notifies subscribers and stops after unsubscribe', () => {
-    const engine = track(createFakeCaptureEngine(() => NOW));
+  it('connects on the code’s preferred transport when that is RTMPS', () => {
+    const rtmpsFirst = streamSession({}, { preferred: 'rtmps' });
+    engine.send({ kind: 'arm', session: rtmpsFirst, heartbeat });
+    engine.send({ kind: 'start' });
+    expect(state()).toEqual({ kind: 'connecting', transport: 'rtmps' });
+  });
+
+  it('ignores start unless armed, and a second start while connecting', () => {
+    engine.send({ kind: 'start' });
+    expect(state()).toEqual({ kind: 'idle' });
+    engine.send({ kind: 'arm', session, heartbeat });
+    engine.send({ kind: 'start' });
+    wait(500);
+    engine.send({ kind: 'start' });
+    wait(500);
+    expect(state()).toEqual({ kind: 'publishing', transport: 'srt', sinceEpochMs: NOW + 1000 });
+  });
+
+  it('stops with the time on air, and ignores a stop with nothing running', () => {
+    engine.send({ kind: 'stop' });
+    expect(state()).toEqual({ kind: 'idle' });
+    engine.scene('live');
+    engine.send({ kind: 'stop' });
+    expect(state()).toEqual({ kind: 'ended', reason: 'operator-stopped', durationMs: ON_AIR_MS });
+    // An ended session reads nothing: no ready camera, no moving meter.
+    expect(telemetry()).toEqual(IDLE_TELEMETRY);
+    // A literal, not the fake's own constant: a sounding meter on Ended is a lie (N2).
+    expect(telemetry().audioLevel).toBe(0);
+  });
+
+  it.each<FakeScene>(['holding', 'stalled', 'restarting'])(
+    'counts the time on air when stopped while reconnecting (%s)',
+    (scene) => {
+      engine.scene(scene);
+      wait(1000);
+      engine.send({ kind: 'stop' });
+      expect(state()).toEqual({
+        kind: 'ended',
+        reason: 'operator-stopped',
+        durationMs: ON_AIR_MS + 1000,
+      });
+    },
+  );
+
+  it('keeps the first ending when Stop arrives twice (a double hold)', () => {
+    engine.scene('live');
+    engine.send({ kind: 'stop' });
+    wait(5000);
+    engine.send({ kind: 'stop' });
+    expect(state()).toEqual({ kind: 'ended', reason: 'operator-stopped', durationMs: ON_AIR_MS });
+  });
+
+  it('ends with no time on air when stopped while connecting, and never publishes after', () => {
+    engine.send({ kind: 'arm', session, heartbeat });
+    engine.send({ kind: 'start' });
+    engine.send({ kind: 'stop' });
+    wait(5000);
+    expect(state()).toEqual({ kind: 'ended', reason: 'operator-stopped', durationMs: null });
+  });
+
+  // Fix round 2 (C7): the slot is what tells one camera of a session from another.
+  it('reports the slot it was armed with, keeps the first on a second arm and once ended, and forgets it on reset', () => {
+    expect(engine.getSnapshot().slot).toBeNull();
+    engine.send({ kind: 'arm', session: streamSession({}, { slot: 2 }), heartbeat });
+    expect(engine.getSnapshot().slot).toBe(2);
+    engine.send({ kind: 'arm', session: streamSession({}, { slot: 3 }), heartbeat });
+    expect(engine.getSnapshot().slot).toBe(2);
+    engine.send({ kind: 'start' });
+    expect(engine.getSnapshot().slot).toBe(2);
+    engine.send({ kind: 'stop' });
+    expect(engine.getSnapshot().slot).toBe(2);
+    engine.send({ kind: 'reset' });
+    expect(engine.getSnapshot().slot).toBeNull();
+  });
+
+  // N2: the token's tag, never the token (D8); the kit pins it too (test/engineContract.ts).
+  it('reports the tag of the token it was armed with, and forgets it on reset', () => {
+    expect(engine.getSnapshot().tokenTag).toBeNull();
+    engine.send({ kind: 'arm', session, heartbeat });
+    // FNV-1a 32 of the fixture token, from an independent Python FNV-1a.
+    expect(engine.getSnapshot().tokenTag).toBe('e5da86ff');
+    engine.send({ kind: 'stop' });
+    expect(engine.getSnapshot().tokenTag).toBe('e5da86ff');
+    engine.send({ kind: 'reset' });
+    expect(engine.getSnapshot().tokenTag).toBeNull();
+  });
+
+  // N1: reset is Ended-only, as plan B's core's is; an armed session is stopped first.
+  it('ignores a reset while armed, and resets to idle and forgets the descriptor once ended', () => {
+    engine.send({ kind: 'arm', session, heartbeat });
+    engine.send({ kind: 'reset' });
+    expect(state()).toEqual({ kind: 'armed' });
+    expect(engine.getSnapshot().descriptor).toBe(session.descriptor);
+    engine.send({ kind: 'stop' });
+    engine.send({ kind: 'reset' });
+    expect(state()).toEqual({ kind: 'idle' });
+    expect(engine.getSnapshot().descriptor).toBeNull();
+  });
+
+  it('ignores a reset while connecting; stopped and reset, no pending connect revives it', () => {
+    engine.send({ kind: 'arm', session, heartbeat });
+    engine.send({ kind: 'start' });
+    engine.send({ kind: 'reset' });
+    expect(state()).toEqual({ kind: 'connecting', transport: 'srt' });
+    engine.send({ kind: 'stop' });
+    engine.send({ kind: 'reset' });
+    wait(5000);
+    expect(state()).toEqual({ kind: 'idle' });
+  });
+
+  // M5 (final review): the fake is the production engine until plan C (D25),
+  // so its log must never hold an arm's token, passphrase or stream key.
+  it('keeps the kind of each intent, in order, and never a credential', () => {
+    engine.send({ kind: 'arm', session, heartbeat });
+    engine.send({ kind: 'switchCamera' });
+    expect(engine.intentKinds).toEqual(['arm', 'switchCamera']);
+    const kept = JSON.stringify(engine);
+    for (const secret of FIXTURE_SECRETS) expect(kept).not.toContain(secret);
+    // Final fix round 2 (nit): what it reports holds none either — the session
+    // is named by its descriptor, slot and tag, never its token or keys.
+    const reported = JSON.stringify(engine.getSnapshot());
+    expect(reported).toContain('"tokenTag"');
+    for (const secret of FIXTURE_SECRETS) expect(reported).not.toContain(secret);
+  });
+
+  it('keeps only the latest 100 kinds over a long match', () => {
+    expect(INTENT_LOG_CAP).toBe(100);
+    engine.send({ kind: 'arm', session, heartbeat });
+    for (let n = 0; n < 150; n += 1) engine.send({ kind: 'switchCamera' });
+    engine.send({ kind: 'start' });
+    expect(engine.intentKinds).toHaveLength(100);
+    expect(engine.intentKinds.at(0)).toBe('switchCamera');
+    expect(engine.intentKinds.at(-1)).toBe('start');
+    expect(engine.intentKinds).not.toContain('arm');
+  });
+
+  it('reports at least once a second, and stops when suspended', () => {
+    const first = engine.getSnapshot().reportedAtMs;
+    wait(1000);
+    expect(engine.getSnapshot().reportedAtMs).toBe(first + 1000);
+    engine.suspend();
+    wait(5000);
+    expect(engine.getSnapshot().reportedAtMs).toBe(first + 1000);
+  });
+
+  it('reports nothing at all once suspended, not even a pending connect', () => {
+    engine.send({ kind: 'arm', session, heartbeat });
+    engine.send({ kind: 'start' });
+    engine.suspend();
+    wait(5000);
+    expect(state()).toEqual({ kind: 'connecting', transport: 'srt' });
+    expect(engine.getSnapshot().reportedAtMs).toBe(NOW);
+  });
+
+  it('lets a forced state win over a pending connect (the dev panel’s Fail)', () => {
+    engine.send({ kind: 'arm', session, heartbeat });
+    engine.send({ kind: 'start' });
+    engine.forceState({ kind: 'ended', reason: 'fatal-error', durationMs: null });
+    wait(5000);
+    expect(state()).toEqual({ kind: 'ended', reason: 'fatal-error', durationMs: null });
+  });
+
+  it('lets a scene win over a pending connect', () => {
+    engine.send({ kind: 'arm', session, heartbeat });
+    engine.send({ kind: 'start' });
+    engine.scene('fell-back');
+    wait(5000);
+    expect(state()).toMatchObject({ kind: 'degraded', reason: 'fell-back-to-rtmps' });
+  });
+
+  it('notifies subscribers, and stops after unsubscribe', () => {
     let calls = 0;
     const unsubscribe = engine.subscribe(() => {
       calls += 1;
     });
-
-    engine.apply({ kind: 'SessionArmed' }, NOW);
+    engine.send({ kind: 'arm', session, heartbeat });
     expect(calls).toBe(1);
-
     unsubscribe();
-    engine.apply({ kind: 'PublishStarted', transport: 'srt' }, NOW);
+    engine.send({ kind: 'start' });
     expect(calls).toBe(1);
   });
 
-  it('ends the session on the stop intent', () => {
-    const engine = armedAndPublishing();
+  it('pairs a forced state with telemetry that describes it', () => {
+    engine.forceState({
+      kind: 'reconnecting',
+      cause: 'uplink-lost',
+      holdRemainingSeconds: 9,
+      holdWindowSeconds: 183,
+      sinceEpochMs: NOW - 60_000,
+    });
+    // "RECONNECTING · 2840k" would teach the operator to distrust the HUD.
+    expect({ bitrate: telemetry().bitrateKbps, delivery: telemetry().delivery }).toEqual({
+      bitrate: null,
+      delivery: 'unknown',
+    });
+    engine.forceState({ kind: 'publishing', transport: 'rtmps', sinceEpochMs: NOW - 60_000 });
+    expect(telemetry().bitrateKbps).toBe(2840);
+  });
+});
 
-    engine.send({ kind: 'stop' });
+describe('scenes: every state spec §6 lists', () => {
+  /** A row per scene: the compiler refuses a scene without one. */
+  const EXPECTED: Readonly<Record<FakeScene, object>> = {
+    'armed-not-ready': { kind: 'armed' },
+    'armed-ready': { kind: 'armed' },
+    connecting: { kind: 'connecting', transport: 'srt' },
+    live: { kind: 'publishing', transport: 'srt', sinceEpochMs: NOW - ON_AIR_MS },
+    'fell-back': { kind: 'degraded', transport: 'rtmps', reason: 'fell-back-to-rtmps' },
+    holding: {
+      kind: 'reconnecting',
+      cause: 'uplink-lost',
+      holdRemainingSeconds: 38,
+      holdWindowSeconds: 183,
+    },
+    stalled: { kind: 'reconnecting', cause: 'video-stalled', holdRemainingSeconds: 38 },
+    restarting: { kind: 'reconnecting', cause: 'not-delivered', holdRemainingSeconds: 38 },
+    'not-delivered': { kind: 'degraded', reason: 'not-delivered' },
+    'camera-taken': { kind: 'degraded', reason: 'camera-taken' },
+    'camera-reopened': {
+      kind: 'degraded',
+      transport: 'srt',
+      reason: 'camera-taken',
+      sinceEpochMs: NOW - ON_AIR_MS,
+    },
+    'camera-switching': { kind: 'publishing', transport: 'srt', sinceEpochMs: NOW - ON_AIR_MS },
+    'mic-silenced': { kind: 'degraded', reason: 'mic-silenced' },
+    stopped: { kind: 'ended', reason: 'operator-stopped', durationMs: ON_AIR_MS },
+    'stopped-by-organiser': {
+      kind: 'ended',
+      reason: 'stopped-by-organiser',
+      durationMs: ON_AIR_MS,
+    },
+    fatal: { kind: 'ended', reason: 'fatal-error' },
+    shed: { kind: 'publishing' },
+  };
 
-    expect(engine.getSnapshot().state).toEqual({ kind: 'ended', reason: 'operator-stopped' });
+  it('lists every scene once, for the dev controls', () => {
+    expect([...FAKE_SCENES].sort()).toEqual(Object.keys(EXPECTED).sort());
   });
 
-  // Without a reset the operator is stranded on a finished session: unable to
-  // go live again and unable to reach the scan screen.
-  it('returns to idle on the reset intent so another fixture can be scanned', () => {
-    const engine = armedAndPublishing();
+  it.each(FAKE_SCENES)('%s', (scene) => {
+    engine.scene(scene);
+    expect(state()).toMatchObject(EXPECTED[scene]);
+  });
 
+  it('puts armed-not-ready below the audio floor, and shed on the first ladder step', () => {
+    engine.scene('armed-not-ready');
+    expect(telemetry().audioLevel).toBeLessThan(AUDIO_FLOOR);
+    engine.scene('shed');
+    expect(telemetry().shed).toBe('overlay-preview');
+  });
+
+  it('keeps the descriptor across scenes', () => {
+    engine.send({ kind: 'arm', session, heartbeat });
+    engine.scene('live');
+    expect(engine.getSnapshot().descriptor).toBe(session.descriptor);
+  });
+});
+
+/**
+ * Plan B's engine reports null, not a number, where it has no reading. The
+ * fake does the same, so no screen is built against a zero that never comes.
+ */
+describe('no reading is null, as the Kotlin engine reports it', () => {
+  it('reads encoded frames and delivery on air', () => {
+    engine.scene('live');
+    const { encodedVideoFps, audioPacketsPerSecond, delivery, deliveredLagMs } = telemetry();
+    expect({ encodedVideoFps, audioPacketsPerSecond, delivery, deliveredLagMs }).toEqual({
+      encodedVideoFps: 30,
+      audioPacketsPerSecond: 47,
+      delivery: 'ok',
+      deliveredLagMs: 9200,
+    });
+  });
+
+  it('has no encoded-frame readings before going on air', () => {
+    engine.send({ kind: 'arm', session, heartbeat });
+    expect([telemetry().encodedVideoFps, telemetry().audioPacketsPerSecond]).toEqual([null, null]);
+  });
+
+  it('has no encoded-frame readings while the camera is taken (the watchdog holds)', () => {
+    engine.scene('camera-taken');
+    expect(telemetry().encodedVideoFps).toBeNull();
+    expect(telemetry().audioPacketsPerSecond).toBeNull();
+  });
+
+  it.each<FakeScene>(['holding', 'stalled', 'restarting'])(
+    'has no delivered lag while %s: delivery is unknown',
+    (scene) => {
+      engine.scene(scene);
+      expect({ delivery: telemetry().delivery, lag: telemetry().deliveredLagMs }).toEqual({
+        delivery: 'unknown',
+        lag: null,
+      });
+    },
+  );
+});
+
+/**
+ * Plan B's `Projection.onAir`: a session whose camera is not our own, with no
+ * outage, is held. It reads degraded camera-taken with its time on air, and
+ * never connecting, until the reopened camera's first frame.
+ */
+describe('after our own camera reopen (F-P5-10; plan B holds it degraded)', () => {
+  const HELD = {
+    kind: 'degraded',
+    transport: 'srt',
+    reason: 'camera-taken',
+    sinceEpochMs: NOW - ON_AIR_MS,
+  };
+
+  it('holds degraded camera-taken until the first frame, then publishes the same broadcast', () => {
+    const kinds: string[] = [];
+    engine.subscribe(() => kinds.push(state().kind));
+    engine.scene('camera-reopened');
+    wait(2999);
+    expect(state()).toEqual(HELD);
+    expect(telemetry().encodedVideoFps).toBeNull();
+    wait(1);
+    expect(state()).toEqual({
+      kind: 'publishing',
+      transport: 'srt',
+      sinceEpochMs: NOW - ON_AIR_MS,
+    });
+    expect(telemetry().encodedVideoFps).toBe(30);
+    // Not vacuous: the held state and the first frame were both recorded (N4).
+    expect(kinds[0]).toBe('degraded');
+    expect(kinds.at(-1)).toBe('publishing');
+    expect(kinds).not.toContain('connecting');
+  });
+
+  it('reports no ready camera until the reopened camera’s first frame (cameraReady’s own doc)', () => {
+    engine.scene('camera-reopened');
+    expect(telemetry().cameraReady).toBe(false);
+    wait(2999);
+    expect(telemetry().cameraReady).toBe(false);
+    wait(1);
+    expect(telemetry().cameraReady).toBe(true);
+  });
+
+  it('counts the time on air when stopped before the first frame', () => {
+    engine.scene('camera-reopened');
+    wait(1000);
+    engine.send({ kind: 'stop' });
+    wait(5000);
+    expect(state()).toEqual({
+      kind: 'ended',
+      reason: 'operator-stopped',
+      durationMs: ON_AIR_MS + 1000,
+    });
+  });
+});
+
+/**
+ * The fake keeps no time on air of its own: a stop reads it from the state
+ * native reports now. Nothing from a session before a reset or a forced state
+ * reaches the next ending.
+ */
+describe('no stale time on air (M4)', () => {
+  it('forgets it across a reset: the next session, stopped while connecting, has none', () => {
+    engine.scene('camera-reopened');
     engine.send({ kind: 'stop' });
     engine.send({ kind: 'reset' });
-
-    expect(engine.getSnapshot().state).toEqual({ kind: 'idle' });
-    expect(engine.getSnapshot().telemetry.bitrateKbps).toBe(0);
+    engine.send({ kind: 'arm', session, heartbeat });
+    engine.send({ kind: 'start' });
+    engine.send({ kind: 'stop' });
+    expect(state()).toEqual({ kind: 'ended', reason: 'operator-stopped', durationMs: null });
   });
 
-  describe('freshness', () => {
-    // Silence has to mean something, or reportedAtMs carries no information and
-    // a suspended process is indistinguishable from a working one.
-    it('stamps every snapshot with the time native emitted it', () => {
-      let clock = NOW;
-      const engine = armedAndPublishing(() => clock);
+  it('forgets it when a state is forced: a forced connect then stopped ends with none', () => {
+    engine.scene('camera-reopened');
+    engine.forceState({ kind: 'connecting', transport: 'srt' });
+    engine.send({ kind: 'stop' });
+    expect(state()).toEqual({ kind: 'ended', reason: 'operator-stopped', durationMs: null });
+  });
+});
 
-      expect(engine.getSnapshot().reportedAtMs).toBe(NOW);
+/**
+ * Plan B's `Snapshot.camera` (carry 10): whose camera is on air, null with no
+ * session. Our own reopen or switch reads apart from another app's take.
+ */
+describe('whose camera is on air (carry 10)', () => {
+  const camera = () => engine.getSnapshot().camera;
 
-      clock = NOW + 5_000;
-      engine.apply({ kind: 'ThermalCeilingHit', shed: 'preview-framerate' });
+  /** Plan B's wire strings, a row per scene: the compiler refuses a scene without one. */
+  const CAMERA: Readonly<Record<FakeScene, CameraState | null>> = {
+    'armed-not-ready': 'own',
+    'armed-ready': 'own',
+    connecting: 'own',
+    live: 'own',
+    'fell-back': 'own',
+    holding: 'own',
+    stalled: 'own',
+    restarting: 'own',
+    'not-delivered': 'own',
+    'camera-taken': 'taken',
+    'camera-reopened': 'reopening',
+    'camera-switching': 'switching',
+    'mic-silenced': 'own',
+    stopped: null,
+    'stopped-by-organiser': null,
+    fatal: null,
+    shed: 'own',
+  };
 
-      expect(engine.getSnapshot().reportedAtMs).toBe(NOW + 5_000);
-    });
-
-    // What an iPhone lock looks like from JavaScript: the timestamp stops
-    // advancing while the state still claims to be publishing.
-    it('freezes the timestamp when suspended, leaving a stale claim behind', () => {
-      let clock = NOW;
-      const engine = armedAndPublishing(() => clock);
-
-      engine.suspend();
-      clock = NOW + 120_000;
-
-      expect(engine.getSnapshot().reportedAtMs).toBe(NOW);
-      expect(engine.getSnapshot().state.kind).toBe('publishing');
-    });
-
-    it('resolves the ambiguity as ended when the hold window ran out', () => {
-      const engine = armedAndPublishing();
-
-      engine.suspend();
-      engine.resume(120_000, 'expired');
-
-      expect(engine.getSnapshot().state).toEqual({
-        kind: 'ended',
-        reason: 'hold-window-expired',
-      });
-    });
-
-    it('resolves the ambiguity as reconnecting when the hold covered it', () => {
-      const engine = armedAndPublishing();
-
-      engine.suspend();
-      engine.resume(8_000, 'held');
-
-      expect(engine.getSnapshot().state.kind).toBe('reconnecting');
-    });
+  it.each(FAKE_SCENES)('%s', (scene) => {
+    engine.scene(scene);
+    expect(camera()).toBe(CAMERA[scene]);
   });
 
-  describe('device conditions', () => {
-    // A call keeps the app foregrounded while killing the microphone, so this
-    // cannot be inferred from AppState — only native knows.
-    it('carries an interruption without moving the session', () => {
-      const engine = armedAndPublishing();
+  it('has none before a session, its own once armed and on air, and none after', () => {
+    expect(camera()).toBeNull();
+    engine.send({ kind: 'arm', session, heartbeat });
+    expect(camera()).toBe('own');
+    engine.send({ kind: 'start' });
+    expect(camera()).toBe('own');
+    wait(1000);
+    expect(camera()).toBe('own');
+    engine.send({ kind: 'stop' });
+    expect(camera()).toBeNull();
+  });
 
-      engine.interrupt('call');
+  it('has none after a reset', () => {
+    engine.scene('stopped');
+    engine.setCamera('taken');
+    engine.send({ kind: 'reset' });
+    expect(camera()).toBeNull();
+  });
 
-      expect(engine.getSnapshot().state.kind).toBe('publishing');
-      expect(engine.getSnapshot().telemetry.interruption).toBe('call');
-    });
+  it('follows a forced state: the camera is our own on air, none once ended', () => {
+    engine.scene('camera-taken');
+    engine.forceState({ kind: 'publishing', transport: 'srt', sinceEpochMs: NOW });
+    expect(camera()).toBe('own');
+    engine.forceState({ kind: 'ended', reason: 'fatal-error', durationMs: null });
+    expect(camera()).toBeNull();
+  });
 
-    it('clears an interruption when it ends', () => {
-      const engine = armedAndPublishing();
+  it('reads reopening until the reopened camera’s first frame, then its own', () => {
+    engine.scene('camera-reopened');
+    wait(2999);
+    expect(camera()).toBe('reopening');
+    wait(1);
+    expect(camera()).toBe('own');
+  });
 
-      engine.interrupt('call');
-      engine.interrupt(null);
+  it('holds LIVE through our own switch, with no reading until the new camera’s first frame', () => {
+    engine.scene('camera-switching');
+    const live = { kind: 'publishing', transport: 'srt', sinceEpochMs: NOW - ON_AIR_MS };
+    expect(state()).toEqual(live);
+    expect([telemetry().encodedVideoFps, telemetry().cameraReady]).toEqual([null, false]);
+    wait(2999);
+    expect(camera()).toBe('switching');
+    wait(1);
+    expect(camera()).toBe('own');
+    expect(state()).toEqual(live);
+    expect([telemetry().encodedVideoFps, telemetry().cameraReady]).toEqual([30, true]);
+  });
+});
 
-      expect(engine.getSnapshot().telemetry.interruption).toBeNull();
-    });
+/**
+ * Two of native's own reports, alone: whose camera it is (a take or a reopen
+ * under any state) and a re-fetched descriptor (spec §1, every reconnect).
+ */
+describe('reports that change one thing', () => {
+  it('changes whose camera it is and nothing else', () => {
+    engine.send({ kind: 'arm', session, heartbeat });
+    const before = engine.getSnapshot();
+    engine.setCamera('taken');
+    expect(engine.getSnapshot()).toEqual({ ...before, camera: 'taken' });
+  });
 
-    // The lock warning gates on this, never on Platform.OS: an Android
-    // foreground service that failed to start must report false.
-    it('reports whether capture survives backgrounding', () => {
-      const engine = armedAndPublishing();
+  it('changes the descriptor and nothing else', () => {
+    engine.scene('live');
+    const before = engine.getSnapshot();
+    const next = { ...session.descriptor, overlayUrl: 'https://seazn.example/overlay/next' };
+    engine.setDescriptor(next);
+    expect(engine.getSnapshot()).toEqual({ ...before, descriptor: next });
+  });
 
-      expect(engine.getSnapshot().survivesBackground).toBe(false);
-
-      engine.setSurvivesBackground(true);
-
-      expect(engine.getSnapshot().survivesBackground).toBe(true);
-    });
+  it('tells its listeners', () => {
+    const heard = vi.fn();
+    engine.subscribe(heard);
+    engine.setCamera('reopening');
+    engine.setDescriptor(null);
+    expect(heard).toHaveBeenCalledTimes(2);
   });
 });

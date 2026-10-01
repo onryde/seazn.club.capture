@@ -1,16 +1,18 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { encodeSavedCode, type SavedCode } from '@/domain/mode/savedCode';
 import { createMemoryKeyValueStore, type KeyValueStore } from '@/services/KeyValueStore';
+import { KV_TIMEOUT_MS, withTimeout } from '@/services/kvTimeout';
+import { createLogger } from '@/services/logger';
 import { createModeStore, STORE_KEYS } from '@/services/modeStore';
+import { createRingRecord } from '@/services/sessionRecord';
+import { savedStreamCode } from '../../test/fixtures/savedStream';
 
-const code: SavedCode = {
-  mode: 'stream',
+const code: SavedCode = savedStreamCode({
   raw: '{"fake":true}',
   slot: 0,
   savedAt: new Date('2026-10-03T13:00:00Z'),
   expiresAt: new Date('2026-10-03T18:40:00Z'),
-  venueTz: null,
-};
+});
 
 const ready = (store: ReturnType<typeof createModeStore>) => {
   const snapshot = store.getSnapshot();
@@ -111,7 +113,11 @@ describe('modeStore', () => {
     const store = createModeStore(createMemoryKeyValueStore());
     await store.load();
     await store.open(code);
-    const notice = { mode: 'stream' as const, expiredAt: code.expiresAt as Date };
+    const notice = {
+      mode: 'stream' as const,
+      expiredAt: code.expiresAt as Date,
+      venueTz: 'Europe/London',
+    };
     await store.expire(['stream'], notice);
     expect(ready(store).saved.codes).toEqual({});
     expect(ready(store).notice).toEqual(notice);
@@ -123,7 +129,11 @@ describe('modeStore', () => {
     const store = createModeStore(createMemoryKeyValueStore());
     await store.load();
     await store.open(code);
-    await store.expire(['stream'], { mode: 'stream', expiredAt: code.expiresAt as Date });
+    await store.expire(['stream'], {
+      mode: 'stream',
+      expiredAt: code.expiresAt as Date,
+      venueTz: 'Europe/London',
+    });
     const before = store.getSnapshot();
     await store.expire([], null);
     expect(store.getSnapshot()).toBe(before);
@@ -140,7 +150,11 @@ describe('modeStore', () => {
     };
     const store = createModeStore(kv);
     await store.load();
-    const notice = { mode: 'stream' as const, expiredAt: code.expiresAt as Date };
+    const notice = {
+      mode: 'stream' as const,
+      expiredAt: code.expiresAt as Date,
+      venueTz: 'Europe/London',
+    };
     await expect(store.expire(['stream'], notice)).rejects.toThrow('keystore locked');
     expect(ready(store).saved).toEqual({ active: null, codes: {} });
     expect(ready(store).notice).toEqual(notice);
@@ -173,7 +187,11 @@ describe('modeStore', () => {
       await store.load();
       const opened = store.open(fresh);
       // The reopen gate judged the stale code before the fresh one was published.
-      const notice = { mode: 'stream' as const, expiredAt: code.expiresAt as Date };
+      const notice = {
+        mode: 'stream' as const,
+        expiredAt: code.expiresAt as Date,
+        venueTz: 'Europe/London',
+      };
       const expired = store.expire(['stream'], notice);
       release();
       await Promise.all([opened, expired]);
@@ -261,5 +279,35 @@ describe('modeStore', () => {
     store.subscribe(listener);
     await store.setActive('stream');
     expect(listener).toHaveBeenCalled();
+  });
+});
+
+describe('mode store behind the 5 s timeout (spec §5)', () => {
+  afterEach(() => vi.useRealTimers());
+
+  it('lets the next write run once a stuck one times out', async () => {
+    vi.useFakeTimers();
+    const memory = createMemoryKeyValueStore();
+    // Only the first write hangs. The flag flips when that write reaches the
+    // store: the serial queue starts it a few microtasks after the call, so a
+    // flip from the test body would un-stick it before it ever ran.
+    let stuck = true;
+    const hanging: KeyValueStore = {
+      get: memory.get,
+      set: (key, value) => {
+        if (!stuck) return memory.set(key, value);
+        stuck = false;
+        return new Promise(() => undefined);
+      },
+      delete: memory.delete,
+    };
+    const logger = createLogger({ record: createRingRecord(), now: () => 0 });
+    const store = createModeStore(withTimeout(hanging, { logger }));
+    await store.load();
+    const first = expect(store.setActive('stream')).rejects.toThrow('did not settle');
+    const second = store.forget('stream');
+    await vi.advanceTimersByTimeAsync(KV_TIMEOUT_MS);
+    await first;
+    await expect(second).resolves.toBeUndefined();
   });
 });

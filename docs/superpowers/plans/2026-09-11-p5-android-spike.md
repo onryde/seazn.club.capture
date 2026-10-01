@@ -32,31 +32,31 @@
 
 All on branch `spike/p5-android` unless marked **main**.
 
-| Path | Responsibility |
-|---|---|
-| `scripts/p5/liveInput.ts` | Pure: build the live-input request, check the echo, read the create response, map it to the phone's session payload |
-| `scripts/p5/liveInput.test.ts` | Tests for the above, including a round trip through the app's own `parseSessionCredentials` |
-| `scripts/p5/cf.ts` | CLI: `verify`, `create <run>`, `cleanup <uid>` against the Cloudflare API |
-| `scripts/p5/playlist.ts` | Pure: parse master/variant playlists, decide advancing / stalled / ended |
-| `scripts/p5/playlist.test.ts` | Tests for the above |
-| `scripts/p5/hls-watch.ts` | CLI: poll the manifest with a browser UA, print a CSV line per poll |
-| `modules/p5-spike/expo-module.config.json` | Registers the Kotlin module (scaffolded) |
-| `modules/p5-spike/android/build.gradle` | StreamPack dependencies |
-| `modules/p5-spike/android/src/main/AndroidManifest.xml` | Permissions and the foreground service |
-| `modules/p5-spike/android/src/main/java/com/seazn/p5spike/P5SpikeModule.kt` | The JS surface: `arm`, `start`, `stop`, `mark`, `logPath`, events, the preview view |
-| `.../SpikeSession.kt` | The streamer, the publish/reconnect/fallback loop, rotation |
-| `.../SessionFile.kt` | Reads `p5-session.json` pushed by adb |
-| `.../SpikeTelemetry.kt` | 1 Hz sample: thermal, battery, power draw, network, screen, stream |
-| `.../SpikeLog.kt` | CSV writer on the phone |
-| `.../SpikeForegroundService.kt` | `camera|microphone` foreground service plus a partial wake lock |
-| `.../SpikePreviewView.kt` | ExpoView wrapping StreamPack's `PreviewView` |
-| `modules/p5-spike/src/P5SpikeModule.ts` | Typed native module |
-| `modules/p5-spike/src/P5SpikePreview.tsx` | Typed native view |
-| `modules/p5-spike/src/spikeStore.ts` | External store over native events, for `useSyncExternalStore` |
-| `modules/p5-spike/src/SpikeScreen.tsx` | Preview, always-on overlay, HUD, controls, output check |
-| `App.tsx` | Renders `SpikeScreen` when `EXPO_PUBLIC_SEAZN_SOAK === '1'` |
-| `eas.json` | `soak` profile becomes a standalone APK with the JS embedded |
-| `docs/specs/2026-09-11-p5-android-results.md` (**main**) | Protocol, pass criteria, results |
+| Path                                                                        | Responsibility                                                                                                      |
+| --------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| `scripts/p5/liveInput.ts`                                                   | Pure: build the live-input request, check the echo, read the create response, map it to the phone's session payload |
+| `scripts/p5/liveInput.test.ts`                                              | Tests for the above, including a round trip through the app's own `parseSessionCredentials`                         |
+| `scripts/p5/cf.ts`                                                          | CLI: `verify`, `create <run>`, `cleanup <uid>` against the Cloudflare API                                           |
+| `scripts/p5/playlist.ts`                                                    | Pure: parse master/variant playlists, decide advancing / stalled / ended                                            |
+| `scripts/p5/playlist.test.ts`                                               | Tests for the above                                                                                                 |
+| `scripts/p5/hls-watch.ts`                                                   | CLI: poll the manifest with a browser UA, print a CSV line per poll                                                 |
+| `modules/p5-spike/expo-module.config.json`                                  | Registers the Kotlin module (scaffolded)                                                                            |
+| `modules/p5-spike/android/build.gradle`                                     | StreamPack dependencies                                                                                             |
+| `modules/p5-spike/android/src/main/AndroidManifest.xml`                     | Permissions and the foreground service                                                                              |
+| `modules/p5-spike/android/src/main/java/com/seazn/p5spike/P5SpikeModule.kt` | The JS surface: `arm`, `start`, `stop`, `mark`, `logPath`, events, the preview view                                 |
+| `.../SpikeSession.kt`                                                       | The streamer, the publish/reconnect/fallback loop, rotation                                                         |
+| `.../SessionFile.kt`                                                        | Reads `p5-session.json` pushed by adb                                                                               |
+| `.../SpikeTelemetry.kt`                                                     | 1 Hz sample: thermal, battery, power draw, network, screen, stream                                                  |
+| `.../SpikeLog.kt`                                                           | CSV writer on the phone                                                                                             |
+| `.../SpikeForegroundService.kt`                                             | `camera                                                                                                             | microphone` foreground service plus a partial wake lock |
+| `.../SpikePreviewView.kt`                                                   | ExpoView wrapping StreamPack's `PreviewView`                                                                        |
+| `modules/p5-spike/src/P5SpikeModule.ts`                                     | Typed native module                                                                                                 |
+| `modules/p5-spike/src/P5SpikePreview.tsx`                                   | Typed native view                                                                                                   |
+| `modules/p5-spike/src/spikeStore.ts`                                        | External store over native events, for `useSyncExternalStore`                                                       |
+| `modules/p5-spike/src/SpikeScreen.tsx`                                      | Preview, always-on overlay, HUD, controls, output check                                                             |
+| `App.tsx`                                                                   | Renders `SpikeScreen` when `EXPO_PUBLIC_SEAZN_SOAK === '1'`                                                         |
+| `eas.json`                                                                  | `soak` profile becomes a standalone APK with the JS embedded                                                        |
+| `docs/specs/2026-09-11-p5-android-results.md` (**main**)                    | Protocol, pass criteria, results                                                                                    |
 
 ---
 
@@ -89,10 +89,12 @@ Expected: Gradle builds, the app installs and launches on the OnePlus, the mock 
 ### Task 1: Spike branch and Cloudflare live-input tooling
 
 **Files:**
+
 - Create: `scripts/p5/liveInput.ts`, `scripts/p5/liveInput.test.ts`, `scripts/p5/cf.ts`
 - Modify: `vitest.config.mts` (include), `tsconfig.json` (`allowImportingTsExtensions`), `.gitignore` (`.p5/`), `package.json` (`@types/node`)
 
 **Interfaces:**
+
 - Produces: `buildLiveInputRequest(run: string): LiveInputRequest`, `echoMismatches(sent, echoed: unknown): readonly string[]`, `readCreatedInput(result: unknown): CreatedInput`, `hlsManifestUrl(subdomain: string, uid: string): string`, `toSessionPayload(input: CreatedInput, opts: SessionOptions): SessionPayload`; files `.p5/<run>.input.json` and `.p5/<run>.session.json`.
 
 - [ ] **Step 1: Branch and wire the tooling**
@@ -465,9 +467,11 @@ git commit -m "spike(p5): Cloudflare live-input tooling with echo assertions"
 ### Task 2: HLS playlist watcher
 
 **Files:**
+
 - Create: `scripts/p5/playlist.ts`, `scripts/p5/playlist.test.ts`, `scripts/p5/hls-watch.ts`
 
 **Interfaces:**
+
 - Produces: `variantUris(master: string, masterUrl: string): readonly string[]`, `parseVariant(text: string): VariantState`, `head(state: VariantState): number`, `judge(previous: VariantState | null, next: VariantState, lastAdvanceMs: number, nowMs: number): Judgement`; a CLI printing `iso,masterStatus,variant,head,verdict` per poll.
 
 - [ ] **Step 1: Write the failing tests** — `scripts/p5/playlist.test.ts`
@@ -528,7 +532,10 @@ describe('judge', () => {
   });
 
   it('calls a stall after three target durations — U1-S7 fires no error', () => {
-    expect(judge(at(10, 3), at(10, 3), 0, 13_000)).toEqual({ verdict: 'stalled', lastAdvanceMs: 0 });
+    expect(judge(at(10, 3), at(10, 3), 0, 13_000)).toEqual({
+      verdict: 'stalled',
+      lastAdvanceMs: 0,
+    });
   });
 
   it('calls ENDLIST ended, whatever the timing', () => {
@@ -575,7 +582,8 @@ export function variantUris(master: string, masterUrl: string): readonly string[
 
 export function parseVariant(text: string): VariantState {
   const lines = text.split('\n').map((line) => line.trim());
-  const tag = (name: string) => lines.find((line) => line.startsWith(`${name}:`))?.slice(name.length + 1);
+  const tag = (name: string) =>
+    lines.find((line) => line.startsWith(`${name}:`))?.slice(name.length + 1);
   return {
     mediaSequence: Number(tag('#EXT-X-MEDIA-SEQUENCE') ?? 0),
     segments: lines.filter((line) => line.startsWith('#EXTINF')).length,
@@ -640,7 +648,12 @@ async function watch(masterUrl: string, intervalMs: number): Promise<void> {
     if (uri !== null) {
       const next = parseVariant((await get(uri)).text);
       // A new variant after a resume is a new sequence space; never compare across it.
-      const judgement = judge(uri === previousUri ? previous : null, next, lastAdvanceMs, Date.now());
+      const judgement = judge(
+        uri === previousUri ? previous : null,
+        next,
+        lastAdvanceMs,
+        Date.now(),
+      );
       lastAdvanceMs = judgement.lastAdvanceMs;
       line[3] = head(next);
       line[4] = judgement.verdict;
@@ -681,6 +694,7 @@ git commit -m "spike(p5): HLS watcher that detects stalls without errors"
 Kotlin in a throwaway spike gets no unit tests. Each native task is verified on the handset with explicit expectations instead.
 
 **Files:**
+
 - Create (scaffold): `modules/p5-spike/**`
 - Modify: `modules/p5-spike/android/build.gradle`, `.../AndroidManifest.xml`
 - Create: `.../SpikeSession.kt`, `.../SessionFile.kt`, `.../SpikeLog.kt`, `.../SpikeTelemetry.kt` (a stub for now), `.../SpikePreviewView.kt`, `.../SpikeForegroundService.kt` (a stub for now)
@@ -689,6 +703,7 @@ Kotlin in a throwaway spike gets no unit tests. Each native task is verified on 
 - Modify: `App.tsx`
 
 **Interfaces:**
+
 - Produces (native to JS): module `P5Spike` with `arm(): void`, `start(transport: 'srt' | 'rtmps'): void`, `stop(): void`, `mark(label: string): void`, `logPath(): string`; events `onSample(SpikeSample)` and `onEvent(SpikeEvent)` where `SpikeEvent.kind` ∈ `armed | error | connecting | publishing | dropped | connect-failed | fell-back | stopped | rotation | mark`; native view `P5Spike`.
 - Produces (JS): `useSpike<T>(select: (state: SpikeState) => T): T`; `SpikeScreen` component.
 
@@ -1148,7 +1163,11 @@ P5Spike.addListener('onSample', (sample) => set({ sample }));
 P5Spike.addListener('onEvent', (event) =>
   set(
     event.kind === 'armed'
-      ? { lastEvent: event, overlayUrl: String(event.overlayUrl), playbackUrl: String(event.playbackUrl) }
+      ? {
+          lastEvent: event,
+          overlayUrl: String(event.overlayUrl),
+          playbackUrl: String(event.playbackUrl),
+        }
       : { lastEvent: event },
   ),
 );
@@ -1169,7 +1188,13 @@ export function useSpike<T>(select: (current: SpikeState) => T): T {
 
 ```tsx
 import { useCallback, useEffect, useState } from 'react';
-import { type LayoutChangeEvent, PermissionsAndroid, Pressable, StyleSheet, View } from 'react-native';
+import {
+  type LayoutChangeEvent,
+  PermissionsAndroid,
+  Pressable,
+  StyleSheet,
+  View,
+} from 'react-native';
 import { useKeepAwake } from 'expo-keep-awake';
 import { ErrorBoundary } from '@/ui/components/ErrorBoundary';
 import { OverlayPreview } from '@/ui/components/OverlayPreview';
@@ -1199,11 +1224,13 @@ function useArmOnPermission(): boolean {
   const [denied, setDenied] = useState(false);
   useEffect(() => {
     const { CAMERA, RECORD_AUDIO, POST_NOTIFICATIONS } = PermissionsAndroid.PERMISSIONS;
-    void PermissionsAndroid.requestMultiple([CAMERA, RECORD_AUDIO, POST_NOTIFICATIONS]).then((result) => {
-      const granted = result[CAMERA] === 'granted' && result[RECORD_AUDIO] === 'granted';
-      if (granted) P5Spike.arm();
-      else setDenied(true);
-    });
+    void PermissionsAndroid.requestMultiple([CAMERA, RECORD_AUDIO, POST_NOTIFICATIONS]).then(
+      (result) => {
+        const granted = result[CAMERA] === 'granted' && result[RECORD_AUDIO] === 'granted';
+        if (granted) P5Spike.arm();
+        else setDenied(true);
+      },
+    );
   }, []);
   return denied;
 }
@@ -1340,6 +1367,7 @@ EXPO_PUBLIC_SEAZN_SOAK=1 pnpm start --dev-client
 
 Open the app on the phone. Grant camera, microphone and notifications.
 Expected:
+
 1. The HUD says `Waiting… error` (there is no session file yet). This proves the event path runs from native to JS.
 2. Run `node --env-file=.env.local scripts/p5/cf.ts create smoke`, run the printed `adb push` command, and reload the app (press `r` in Metro).
 3. The camera preview fills the 16:9 frame the right way up, and the staging overlay draws over it, with the scorebug inside the picture.
@@ -1358,9 +1386,11 @@ git commit -m "spike(p5): StreamPack preview module with always-on overlay"
 ### Task 4: Publishing, reconnect and SRT→RTMPS fallback
 
 **Files:**
+
 - Modify: `modules/p5-spike/android/src/main/java/com/seazn/p5spike/SpikeSession.kt`
 
 **Interfaces:**
+
 - Consumes: `SessionFile`, `streamerFlow`, `event(...)` from Task 3.
 - Produces: `start(transport)` and `stop()` behaviour. Events `connecting{transport}`, `publishing{transport, connectMs}`, `dropped{transport, reason}`, `connect-failed{transport, message}`, `fell-back`, `stopped`.
 
@@ -1504,9 +1534,11 @@ git commit -m "spike(p5): native publish loop with reconnect and SRT→RTMPS fal
 ### Task 5: Telemetry, foreground service and screen-off publishing
 
 **Files:**
+
 - Replace: `.../SpikeTelemetry.kt`, `.../SpikeForegroundService.kt`
 
 **Interfaces:**
+
 - Consumes: `SpikeSession.streamerFlow`, `SpikeSession.transport`, `SpikeLog.SAMPLE_KEYS`.
 - Produces: an `onSample` event every second carrying exactly the `SAMPLE_KEYS` plus `atMs`; a CSV at `SpikeSession.logPath()`.
 
@@ -1688,9 +1720,11 @@ git commit -m "spike(p5): 1 Hz telemetry CSV and camera/microphone foreground se
 JS only, so it needs no rebuild while the dev client is installed.
 
 **Files:**
+
 - Modify: `modules/p5-spike/src/SpikeScreen.tsx`
 
 **Interfaces:**
+
 - Consumes: `playbackUrl` from `useSpike`, `P5Spike.mark`.
 - Produces: marks `peek-default-<status>[-error]` and `peek-browser-<status>[-error]` in the CSV.
 
@@ -1733,7 +1767,14 @@ function OutputPlayer({ url, browserUa }: { url: string; browserUa: boolean }) {
     });
     return () => subscription.remove();
   }, [player, browserUa]);
-  return <VideoView player={player} style={StyleSheet.absoluteFill} contentFit="contain" nativeControls={false} />;
+  return (
+    <VideoView
+      player={player}
+      style={StyleSheet.absoluteFill}
+      contentFit="contain"
+      nativeControls={false}
+    />
+  );
 }
 ```
 
@@ -1776,7 +1817,11 @@ function Stage({ peek }: { peek: Peek }) {
   );
 }
 
-type ControlsProps = { onPeekDefault: () => void; onPeekBrowser: () => void; onPeekOff: () => void };
+type ControlsProps = {
+  onPeekDefault: () => void;
+  onPeekBrowser: () => void;
+  onPeekOff: () => void;
+};
 
 function Controls({ onPeekDefault, onPeekBrowser, onPeekOff }: ControlsProps) {
   return (
@@ -1797,6 +1842,7 @@ function Controls({ onPeekDefault, onPeekBrowser, onPeekOff }: ControlsProps) {
 
 With a live input publishing, press **Peek default UA** for 20 s, then **Peek off**, then **Peek browser UA** for 20 s, then **Peek off**.
 Expected outcomes to record (both are results, not failures):
+
 - default UA: either `readyToPlay`, or `error` with a 403 / `1010` message.
 - browser UA: `readyToPlay` and the composited-free picture about 6+ s behind.
 
@@ -1821,6 +1867,7 @@ git commit -m "spike(p5): output check comparing default and browser User-Agent"
 ### Task 7: Soak build and the results document
 
 **Files:**
+
 - Modify (spike branch): `eas.json`
 - Create (**main**): `docs/specs/2026-09-11-p5-android-results.md`
 
@@ -1875,45 +1922,45 @@ Every run starts with a 5-minute baseline, recorded below.
 
 ## Pass criteria (proposed — confirm before Run A)
 
-| # | Criterion | Why |
-|---|---|---|
-| 1 | 3 h completes, publishing in ≥ 99% of samples outside deliberate outages | P5 |
-| 2 | Thermal status never reaches 4 (critical) | P3; the ladder's thresholds come from the curve |
-| 3 | Video bitrate stays at 3000 kbps (no encode shed) | §8: the encode is last |
-| 4 | Drop inside 180 s resumes into ONE recording | C2, U1-S7 |
-| 5 | Drop beyond 180 s: ENDLIST, second recording, app reconnects unaided | U1-S7 |
-| 6 | Screen locked 10 min: playlist keeps advancing | Android lifecycle, §9 |
-| 7 | 180° flip: preview, encoded picture and rotation metadata all correct | P4, three assertions |
-| 8 | Audio mean volume above −40 dB in a 20 s sample | T1: a level floor, not stream presence |
-| 9 | Battery never below 20% while charging | Power-bank setup is viable |
+| #   | Criterion                                                                | Why                                             |
+| --- | ------------------------------------------------------------------------ | ----------------------------------------------- |
+| 1   | 3 h completes, publishing in ≥ 99% of samples outside deliberate outages | P5                                              |
+| 2   | Thermal status never reaches 4 (critical)                                | P3; the ladder's thresholds come from the curve |
+| 3   | Video bitrate stays at 3000 kbps (no encode shed)                        | §8: the encode is last                          |
+| 4   | Drop inside 180 s resumes into ONE recording                             | C2, U1-S7                                       |
+| 5   | Drop beyond 180 s: ENDLIST, second recording, app reconnects unaided     | U1-S7                                           |
+| 6   | Screen locked 10 min: playlist keeps advancing                           | Android lifecycle, §9                           |
+| 7   | 180° flip: preview, encoded picture and rotation metadata all correct    | P4, three assertions                            |
+| 8   | Audio mean volume above −40 dB in a 20 s sample                          | T1: a level floor, not stream presence          |
+| 9   | Battery never below 20% while charging                                   | Power-bank setup is viable                      |
 
 ## Runs
 
 ### Run A — SRT, cellular, 3 h
 
-| Minute | Action | Mark |
-|---|---|---|
-| 0–5 | Baseline, not publishing | — |
-| 5 | Start SRT | mark-1 |
-| 35 | Lock screen 10 min | mark-2 / mark-3 |
-| 65 | Airplane mode 20 s | mark-4 / mark-5 |
-| 95 | Rotate phone 180°, 2 min, rotate back | mark-6 / mark-7 |
-| 125 | Airplane mode 200 s | mark-8 / mark-9 |
-| 185 | Stop | mark-10 |
+| Minute | Action                                | Mark            |
+| ------ | ------------------------------------- | --------------- |
+| 0–5    | Baseline, not publishing              | —               |
+| 5      | Start SRT                             | mark-1          |
+| 35     | Lock screen 10 min                    | mark-2 / mark-3 |
+| 65     | Airplane mode 20 s                    | mark-4 / mark-5 |
+| 95     | Rotate phone 180°, 2 min, rotate back | mark-6 / mark-7 |
+| 125    | Airplane mode 200 s                   | mark-8 / mark-9 |
+| 185    | Stop                                  | mark-10         |
 
 Results:
 
-| Criterion | Result | Evidence |
-|---|---|---|
-| 1 | | `.p5/device/*.csv` |
-| 2 | | peak status, minute first reached 3 |
-| 3 | | |
-| 4 | | recordings count after mark-5 |
-| 5 | | ENDLIST time, reconnect seconds |
-| 6 | | watcher lines mark-2..3 |
-| 7 | | screenshot · ffprobe |
-| 8 | | ffmpeg volumedetect |
-| 9 | | |
+| Criterion | Result | Evidence                            |
+| --------- | ------ | ----------------------------------- |
+| 1         |        | `.p5/device/*.csv`                  |
+| 2         |        | peak status, minute first reached 3 |
+| 3         |        |                                     |
+| 4         |        | recordings count after mark-5       |
+| 5         |        | ENDLIST time, reconnect seconds     |
+| 6         |        | watcher lines mark-2..3             |
+| 7         |        | screenshot · ffprobe                |
+| 8         |        | ffmpeg volumedetect                 |
+| 9         |        |                                     |
 
 Thermal curve (minute → status, headroom, battery °C):
 
@@ -1921,17 +1968,17 @@ Thermal curve (minute → status, headroom, battery °C):
 
 ### Run C — forced fallback (bad SRT port)
 
-| Measure | Result |
-|---|---|
-| First connecting → RTMPS publishing (s) | |
+| Measure                                 | Result |
+| --------------------------------------- | ------ |
+| First connecting → RTMPS publishing (s) |        |
 
 ### Output check (U1-S6, U1-S7)
 
-| Peek | Status sequence | Plays? |
-|---|---|---|
-| Default UA | | |
-| Browser UA | | |
-| Airplane 20 s during peek — events fired | | |
+| Peek                                     | Status sequence | Plays? |
+| ---------------------------------------- | --------------- | ------ |
+| Default UA                               |                 |        |
+| Browser UA                               |                 |        |
+| Airplane 20 s during peek — events fired |                 |        |
 
 ## Commands
 

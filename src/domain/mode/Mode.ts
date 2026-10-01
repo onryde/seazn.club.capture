@@ -16,7 +16,10 @@ export type ModeCode =
   | {
       readonly mode: 'stream';
       readonly raw: string;
+      readonly sid: string;
       readonly slot: number;
+      /** The descriptor's Bearer (spec decision 4). A secret: never log it. */
+      readonly token: string;
       readonly expiresAt: Date;
     }
   | { readonly mode: 'scoring'; readonly raw: string; readonly token: string };

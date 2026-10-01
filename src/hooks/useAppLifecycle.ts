@@ -31,8 +31,8 @@ export type Lifecycle = {
  * native's own `reconnecting` state, or it does not appear at all.
  *
  * iOS `inactive` (Control Centre, a banner, the app switcher) is NOT
- * backgrounding and does not open an absence. Treating it as one would fire a
- * false interruption every time a notification slid down.
+ * backgrounding and does not open an absence. Treating it as one would record a
+ * false absence every time a notification slid down.
  */
 export function useAppLifecycle(): Lifecycle {
   const [phase, setPhase] = useState<LifecyclePhase>(() => normalise(AppState.currentState));

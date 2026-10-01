@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { StyleSheet, View } from 'react-native';
 import type { GateView, TurnCardKind } from '@/domain/orientation/orientation';
+import { TurnCardProvider } from '@/hooks/useTurnCard';
 import { useT } from '@/hooks/useLanguage';
 import type { MessageKey } from '@/i18n/messages';
 import { FadeOut } from '@/ui/components/FadeOut';
@@ -13,7 +14,8 @@ type Props = { card: GateView['card']; children: ReactNode };
  * mode. Behind the card, the app is hidden from screen readers and the card is
  * modal and spoken when it appears (ruling R25): an opaque card blocks touches,
  * not VoiceOver or TalkBack. `aria-hidden` plus the explicit Android prop, as
- * HomeScreen does behind its code panel.
+ * HomeScreen does behind its code panel. Nor does it end a press already under
+ * way, so the screens behind are told the card is up (ruling N4).
  */
 export function OrientationGate({ card, children }: Props) {
   const covered = card !== 'none';
@@ -26,7 +28,7 @@ export function OrientationGate({ card, children }: Props) {
         aria-hidden={covered}
         importantForAccessibility={covered ? 'no-hide-descendants' : 'auto'}
       >
-        {children}
+        <TurnCardProvider showing={covered}>{children}</TurnCardProvider>
       </View>
       {card === 'none' ? null : <TurnCover card={card} />}
     </>

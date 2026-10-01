@@ -9,6 +9,7 @@
 S0 turns a single-purpose capture spike into the frame that every later mode lives in.
 
 When S0 is done:
+
 - a volunteer opens the app, in portrait, on a home screen with three modes;
 - they tap one and scan a code with the phone's own scanner;
 - the app either opens that mode, or tells them in plain words why not;
@@ -18,30 +19,31 @@ When S0 is done:
 S0 ships no streaming, scoring or approving. S1, S2 and S4 fill those modes. S3 extends Live Stream.
 
 **Nothing has shipped to a customer.** Only the web console is live. So S0 is a **clean slate for everything the operator sees**:
+
 - no screen, route or stored value is kept for compatibility;
 - nothing is migrated.
 
-Code that P5 proved on a device is kept as parts. It is not kept as a design constraint: see *Kept and removed*.
+Code that P5 proved on a device is kept as parts. It is not kept as a design constraint: see _Kept and removed_.
 
 ## Decisions
 
 Each item was put to the owner as options, with a recommendation. The rejected options are kept so the reasoning survives.
 
-| # | Topic | Ruling | Rejected, and why |
-|---|---|---|---|
-| 1 | Scanning | **The system code scanner.** On Android that is Google's code scanner (`play-services-code-scanner`); iOS VisionKit follows later. The app never opens the camera to scan. AGENTS §11 (no `expo-camera`) stands. | Our own camera scanner (breaks §11, and fights the engine for the camera); `expo-camera` just for scanning (the same). |
-| 2 | Home | **Three tiles** (Live Stream, Remote Scoring, Dashboard). Each tile has a one-line purpose and says which code unlocks it. A **Continue** card appears only when a mode that was left still has a valid code, with **Forget**. The footer holds the language picker and the app version. | A single "Scan" button that routes by code type (hides what the app does); a mode list with no descriptions. |
-| 3 | Wrong code | **Recognise the code, then explain.** A panel: "This is a Remote Scoring code · Court 2 · Kestrels v Harriers", with [Open Remote Scoring] and [Scan again]. Plain messages cover the rest: "This isn't a Seazn code." / "This code expired at 18:40. Ask the desk for a new one." | "Invalid code" (a lie: the code is valid, just for another mode; decision record ruling 2). |
-| 4 | Reopen | **The last code per mode, plus the active mode, in secure storage.** Order on reopen: **the engine first** (armed or live means Live Stream); then the last active mode, if its code is still valid; then Home, with an "expired at" notice. | Always opening on Home (hides a live broadcast, ruling 3). |
-| 5 | Leaving a mode | **Live Stream:** armed means free to leave, and the code is kept. **On air, it cannot be left:** Home is hidden, and Back shows "Stop the broadcast first — hold Stop". Ended means leaving forgets the code. (Scoring and Dashboard rules are ruled, but built in S2 and S4.) | Leaving silently stops the stream (costs the match). |
-| 6 | Orientation | **Portrait baseline.** Live Stream locks landscape, **either way round**. A **turn card** shows until the phone is physically sideways, and again on the way out until it is upright. The card is glyph only, a phone outline turning to the pose asked for; "Turn your phone sideways" / "Turn your phone upright" is its screen-reader label (R28). | Rotating the UI at once, while the phone is still upright (the operator reads sideways text). |
-| 7 | Navigation | **Expo Router.** Scanning is not a route. Stream codes are JSON, not links, so **S0 claims no App Links**. Each mode claims its links when it ships, starting with Scoring's `/score/*` in S2. | Claiming all Seazn links in S0 (a tapped scoring link would open an app that cannot score). |
-| 8 | Language | **The phone's language, if it is en, es, fr or nl; otherwise English.** The footer picker overrides it and is remembered. The dictionaries use the web's format. es, fr and nl are drafted by us and **reviewed by a native speaker before release**. | English only until asked (ruling 12 says 4 locales from day one). |
-| 9 | Home look | **Layout A: three equal tiles** under the Continue card. See *Look*. | B, where Continue becomes the hero and the modes shrink to rows (a screen that changes shape is harder to teach); C, a lime Scan plate on every tile (three lime actions dilute "lime is *the* action"). |
-| 10 | Unbuilt modes | **Remote Scoring and Dashboard show "Coming soon" and cannot be tapped** until S2 and S4. A scoring code scanned from the Live Stream tile gets "Remote Scoring is coming soon" and a single [Scan again] button. | Handing scoring codes off to the web pad in the browser (owner: no); hiding the tiles (Home would change shape later). |
-| 11 | Testing | **Domain, then screen, then an i18n check in CI, then a device check with evidence.** Detox waits until S1, when scan → arm → live exists. | Detox now (it would only tap tiles that lead nowhere); domain tests only (screen rules such as "Back blocked on air" would go unguarded). |
-| 12 | Clean slate | Everything the operator sees is new, and **proven non-UI parts are kept**: the engine module and the pure domain. | Rewriting the engine and domain too (throws away P5's device-proven work); wrapping the spike-era screens (they were built to prove P5, not designed for an operator). |
-| 13 | Time zone | Every time the operator reads is shown in the **venue timezone**, which the **server resolves** (the web's venue lane: `schedule_settings.tz` → `organizations.timezone` → UTC, from V305). The zone is stored with the code. When it differs from the phone's zone, the zone name is added ("18:40 CEST"). **S0 has no server, so it uses the phone's zone.** | The phone's zone always (wrong for a remote Dashboard user or a travelling organiser); `users.timezone` (that is the personal lane, not the venue's). |
+| #   | Topic          | Ruling                                                                                                                                                                                                                                                                                                                                                         | Rejected, and why                                                                                                                                                                                        |
+| --- | -------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | Scanning       | **The system code scanner.** On Android that is Google's code scanner (`play-services-code-scanner`); iOS VisionKit follows later. The app never opens the camera to scan. AGENTS §11 (no `expo-camera`) stands.                                                                                                                                               | Our own camera scanner (breaks §11, and fights the engine for the camera); `expo-camera` just for scanning (the same).                                                                                   |
+| 2   | Home           | **Three tiles** (Live Stream, Remote Scoring, Dashboard). Each tile has a one-line purpose and says which code unlocks it. A **Continue** card appears only when a mode that was left still has a valid code, with **Forget**. The footer holds the language picker and the app version.                                                                       | A single "Scan" button that routes by code type (hides what the app does); a mode list with no descriptions.                                                                                             |
+| 3   | Wrong code     | **Recognise the code, then explain.** A panel: "This is a Remote Scoring code · Court 2 · Kestrels v Harriers", with [Open Remote Scoring] and [Scan again]. Plain messages cover the rest: "This isn't a Seazn code." / "This code expired at 18:40. Ask the desk for a new one."                                                                             | "Invalid code" (a lie: the code is valid, just for another mode; decision record ruling 2).                                                                                                              |
+| 4   | Reopen         | **The last code per mode, plus the active mode, in secure storage.** Order on reopen: **the engine first** (armed or live means Live Stream); then the last active mode, if its code is still valid; then Home, with an "expired at" notice.                                                                                                                   | Always opening on Home (hides a live broadcast, ruling 3).                                                                                                                                               |
+| 5   | Leaving a mode | **Live Stream:** armed means free to leave, and the code is kept. **On air, it cannot be left:** Home is hidden, and Back shows "Stop the broadcast first — hold Stop". Ended means leaving forgets the code. (Scoring and Dashboard rules are ruled, but built in S2 and S4.)                                                                                 | Leaving silently stops the stream (costs the match).                                                                                                                                                     |
+| 6   | Orientation    | **Portrait baseline.** Live Stream locks landscape, **either way round**. A **turn card** shows until the phone is physically sideways, and again on the way out until it is upright. The card is glyph only, a phone outline turning to the pose asked for; "Turn your phone sideways" / "Turn your phone upright" is its screen-reader label (R28).          | Rotating the UI at once, while the phone is still upright (the operator reads sideways text).                                                                                                            |
+| 7   | Navigation     | **Expo Router.** Scanning is not a route. Stream codes are JSON, not links, so **S0 claims no App Links**. Each mode claims its links when it ships, starting with Scoring's `/score/*` in S2.                                                                                                                                                                 | Claiming all Seazn links in S0 (a tapped scoring link would open an app that cannot score).                                                                                                              |
+| 8   | Language       | **The phone's language, if it is en, es, fr or nl; otherwise English.** The footer picker overrides it and is remembered. The dictionaries use the web's format. es, fr and nl are drafted by us and **reviewed by a native speaker before release**.                                                                                                          | English only until asked (ruling 12 says 4 locales from day one).                                                                                                                                        |
+| 9   | Home look      | **Layout A: three equal tiles** under the Continue card. See _Look_.                                                                                                                                                                                                                                                                                           | B, where Continue becomes the hero and the modes shrink to rows (a screen that changes shape is harder to teach); C, a lime Scan plate on every tile (three lime actions dilute "lime is _the_ action"). |
+| 10  | Unbuilt modes  | **Remote Scoring and Dashboard show "Coming soon" and cannot be tapped** until S2 and S4. A scoring code scanned from the Live Stream tile gets "Remote Scoring is coming soon" and a single [Scan again] button.                                                                                                                                              | Handing scoring codes off to the web pad in the browser (owner: no); hiding the tiles (Home would change shape later).                                                                                   |
+| 11  | Testing        | **Domain, then screen, then an i18n check in CI, then a device check with evidence.** Detox waits until S1, when scan → arm → live exists.                                                                                                                                                                                                                     | Detox now (it would only tap tiles that lead nowhere); domain tests only (screen rules such as "Back blocked on air" would go unguarded).                                                                |
+| 12  | Clean slate    | Everything the operator sees is new, and **proven non-UI parts are kept**: the engine module and the pure domain.                                                                                                                                                                                                                                              | Rewriting the engine and domain too (throws away P5's device-proven work); wrapping the spike-era screens (they were built to prove P5, not designed for an operator).                                   |
+| 13  | Time zone      | Every time the operator reads is shown in the **venue timezone**, which the **server resolves** (the web's venue lane: `schedule_settings.tz` → `organizations.timezone` → UTC, from V305). The zone is stored with the code. When it differs from the phone's zone, the zone name is added ("18:40 CEST"). **S0 has no server, so it uses the phone's zone.** | The phone's zone always (wrong for a remote Dashboard user or a travelling organiser); `users.timezone` (that is the personal lane, not the venue's).                                                    |
 
 ## 1. Structure
 
@@ -81,18 +83,19 @@ A route group such as `(stream)` has no URL segment, so its index would collide 
   - `domain/` stays pure, with no react, react-native, ui or modules.
 
   A route file holds no logic and no styles. The root `_layout` is the exception: it is the composition root.
+
 - **No barrel files**, as before (AGENTS §3).
 - **No `scoring/` or `dashboard/` folders in S0.** An empty route is dead code, and S2 and S4 add them.
 
 ### Kept and removed
 
-| Kept, as parts | Removed |
-|---|---|
-| `modules/capture-engine/` (port and fake; main has no native engine yet) | `src/navigation/Router.tsx` |
-| `domain/session/`, `domain/policy/`, `domain/Result.ts`, `domain/credentials/` (the engine port and `SessionState` import its types; S1 replaces its parser with the v1 contract plus the descriptor) | `ui/screens/{Scan,Viewfinder,Settings,Diagnostics}Screen.tsx` |
-| `hooks/useCaptureEngine`, `engineSelectors`, `useOptionalNativeModule`, `useAppLifecycle`, `useKeepAwake` | Components used only by those screens: TallyColumn, ActionZone, LivePlate, PeekButton, PeekNotice, LockNotice, OutputPreview, OverlayPreview, PreviewSurface, AudioMeter, Metric, Elapsed, Toggle |
-| `ui/theme/`, `ui/components/{Text,Button,ErrorBoundary,StatusLine}` | `domain/settings/`, `hooks/useSettings`, `hooks/usePeek`, and the AsyncStorage dependency |
-| | `ui/format.ts` (used only by removed screens) |
+| Kept, as parts                                                                                                                                                                                        | Removed                                                                                                                                                                                           |
+| ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `modules/capture-engine/` (port and fake; main has no native engine yet)                                                                                                                              | `src/navigation/Router.tsx`                                                                                                                                                                       |
+| `domain/session/`, `domain/policy/`, `domain/Result.ts`, `domain/credentials/` (the engine port and `SessionState` import its types; S1 replaces its parser with the v1 contract plus the descriptor) | `ui/screens/{Scan,Viewfinder,Settings,Diagnostics}Screen.tsx`                                                                                                                                     |
+| `hooks/useCaptureEngine`, `engineSelectors`, `useOptionalNativeModule`, `useAppLifecycle`, `useKeepAwake`                                                                                             | Components used only by those screens: TallyColumn, ActionZone, LivePlate, PeekButton, PeekNotice, LockNotice, OutputPreview, OverlayPreview, PreviewSurface, AudioMeter, Metric, Elapsed, Toggle |
+| `ui/theme/`, `ui/components/{Text,Button,ErrorBoundary,StatusLine}`                                                                                                                                   | `domain/settings/`, `hooks/useSettings`, `hooks/usePeek`, and the AsyncStorage dependency                                                                                                         |
+|                                                                                                                                                                                                       | `ui/format.ts` (used only by removed screens)                                                                                                                                                     |
 
 **Kept does not mean frozen.** A kept part is re-read against this design when S0 or S1 first uses it, and is deleted if it no longer fits. Removed code stays in git history, so S1 can take anything worth keeping back out of it.
 
@@ -104,8 +107,13 @@ A route group such as `(stream)` has no URL segment, so its index would collide 
 type Mode = 'stream' | 'scoring' | 'dashboard';
 
 type ModeCode =
-  | { readonly mode: 'stream';  readonly raw: string; readonly slot: number; readonly expiresAt: Date }   // capture QR v1 JSON
-  | { readonly mode: 'scoring'; readonly raw: string; readonly token: string };    // https://<host>/score/<token>
+  | {
+      readonly mode: 'stream';
+      readonly raw: string;
+      readonly slot: number;
+      readonly expiresAt: Date;
+    } // capture QR v1 JSON
+  | { readonly mode: 'scoring'; readonly raw: string; readonly token: string }; // https://<host>/score/<token>
 
 type Recognition =
   | { readonly outcome: 'code'; readonly code: ModeCode }
@@ -123,6 +131,7 @@ function recognise(raw: string, now: Date, hosts: readonly string[]): Recognitio
   - Any other malformation gives `foreign`. That includes an integer `exp` too large for a `Date` (R7).
 
   S0 checks only the shape and the expiry. It does not validate the credentials, because that is S1's parser.
+
 - **Scoring code:** an `https` URL whose host is **exactly** one of `hosts`, with the path `/score/<token>`. It has no expiry, because the server holds it (S2). The scanned host is compared in lower case; the path is case-sensitive, as the web's routes are, so `/Score/…` is a `seaznPage` (R8).
 - **`seaznPage`:** any other URL on a host in `hosts`. It is shown as "This is a Seazn page, not a code. Scan the code on the page."
 - **Tournament codes are not recognised in S0.** The main repo has not defined their shape yet, so S4 adds them.
@@ -141,10 +150,14 @@ type SavedState = {
   readonly codes: Readonly<Partial<Record<Mode, SavedCode>>>;
 };
 
-function reopenTarget(input: { engine: EngineStatus; saved: SavedState; now: Date }):
+function reopenTarget(input: {
+  engine: EngineStatus;
+  saved: SavedState;
+  now: Date;
+}):
   | { readonly go: 'stream' }
   | { readonly go: 'home'; readonly notice?: { readonly mode: Mode; readonly expiredAt: Date } };
-  // S0 builds only `stream`. S2 and S4 widen the union when their modes exist.
+// S0 builds only `stream`. S2 and S4 widen the union when their modes exist.
 
 function leaveRule(mode: 'stream', engine: EngineStatus): 'free' | 'freeAndForget' | 'blockedOnAir';
 ```
@@ -163,13 +176,16 @@ The scanner is a local Expo module, `modules/code-scanner/`.
 ```ts
 interface CodeScannerPort {
   scan(): Promise<ScanResult>;
-  prepare(): void;   // intent: fetch Google's scanner module ahead of the first tap
+  prepare(): void; // intent: fetch Google's scanner module ahead of the first tap
 }
 
 type ScanResult =
   | { readonly outcome: 'scanned'; readonly raw: string }
   | { readonly outcome: 'cancelled' }
-  | { readonly outcome: 'unavailable'; readonly reason: 'noPlayServices' | 'installing' | 'failed' };
+  | {
+      readonly outcome: 'unavailable';
+      readonly reason: 'noPlayServices' | 'installing' | 'failed';
+    };
 ```
 
 - **The promise is deliberate.** AGENTS §2's rule, "intents, not RPC", protects the long-lived stream session. A scan is a one-shot screen the operator completes or backs out of, and nothing is live while it is open. The stream route **never calls `scan()`**: it is reachable only from Home.
@@ -196,11 +212,11 @@ tile tap → scan()
 
 **The `KeyValueStore` port** lives in `services/`. It has one phone implementation, backed by `expo-secure-store` (the Android Keystore; the iOS Keychain), and an in-memory one for tests. **`modeStore`**, beside it, reads and writes the keys below and publishes a snapshot for `useSyncExternalStore`.
 
-| Key | Value |
-|---|---|
-| `mode.active` | `'stream'`, or absent (S2 and S4 add `'scoring'` and `'dashboard'`) |
+| Key           | Value                                                                                                                                                                                                           |
+| ------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `mode.active` | `'stream'`, or absent (S2 and S4 add `'scoring'` and `'dashboard'`)                                                                                                                                             |
 | `code.stream` | `{ v: 1, mode, raw, slot: number \| null, savedAt, expiresAt: number \| null, venueTz: string \| null }` (times in epoch ms; `expiresAt` is stored so a reopen can name the expiry without re-parsing the code) |
-| `lang` | `'en' \| 'es' \| 'fr' \| 'nl'`, or absent, meaning follow the phone |
+| `lang`        | `'en' \| 'es' \| 'fr' \| 'nl'`, or absent, meaning follow the phone                                                                                                                                             |
 
 - Every record carries `v`. **A record that is unknown or unreadable is deleted, never migrated.**
 - **Android backup is off for this store**, through the SecureStore config plugin. Keystore keys do not survive a restore, so a restored phone would otherwise hold records it cannot decrypt.
@@ -227,6 +243,7 @@ The same check runs **when the app returns to the foreground**. A code that expi
 **Coming back from Home's scanner is not a return that counts** (I2, R36). Google's scanner is Play services' own activity, so a scan sends the app to the background and brings it back. Home raises a scan flight (`services/scanFlight.ts`, in the ports) from the tap until the result is saved or explained. The flight notes if the app left while it was up. If the result lands first — Android delivers it about 44 ms before the return, measured on the Redmi — the flight stays up until the app is back, and the gate skips that one return. A scan that never left the app (no Play services, say) ends at once, so the next return is checked as usual. There is no timer. Every store write also runs one at a time, and an expiry deletes a code only if it is still the one judged expired.
 
 **A code is forgotten when:**
+
 - its `exp` passes;
 - the stream ends normally (the engine reaches `stopped`, and the operator leaves). Leaving then sends the engine `reset`, so the spent session is cleared and the next code starts from an `idle` engine; left `stopped`, the engine would make that code's first leave a forget too (I1);
 - the operator taps Forget on the Continue card. Forget is immediate, with no confirmation, because the code can be scanned again.
@@ -243,7 +260,7 @@ If the phone refuses the leave's write (the forget, or clearing the active mode)
 - **One controller.** `useOrientationGate(target)` is mounted in the root layout. The target comes from the path:
   - `/stream` and anything under it: `landscape`, meaning either side;
   - everything else, Home included: `portrait` (locked portrait-up).
-- **How the phone is held** comes from `expo-sensors` (the accelerometer), which needs no permission. The pure functions in `domain/orientation/` classify each sample as `portrait | landscape | flat | unknown` and settle it over time. Left and right are not told apart, because the landscape lock accepts both sides. The screen-orientation API is not used for this, because it reports the *locked* orientation. Hysteresis, twice over:
+- **How the phone is held** comes from `expo-sensors` (the accelerometer), which needs no permission. The pure functions in `domain/orientation/` classify each sample as `portrait | landscape | flat | unknown` and settle it over time. Left and right are not told apart, because the landscape lock accepts both sides. The screen-orientation API is not used for this, because it reports the _locked_ orientation. Hysteresis, twice over:
   - **Dead bands.** Past about 60° from upright is landscape and under about 30° is portrait. A screen within about 20° of horizontal is flat and one tilted more than about 30° up is held (R10). Readings between either pair decide nothing, so a reclined phone in the hand does not flicker between flat and portrait.
   - **Hold.** A new reading must hold for about 300 ms before it counts.
 - **The sequence:**
@@ -264,6 +281,7 @@ If the phone refuses the leave's write (the forget, or clearing the active mode)
   - plurals as `key.one` / `key.other`.
 
   This app has its own files, `src/i18n/{en,es,fr,nl}.json`.
+
 - **The runtime is our own, about 40 lines:** `t(key, vars?)`, `tp(key, count, vars?)` and `formatTime(date, tz)`, with no library.
 - **Choosing the language:**
   1. the stored `lang`;
@@ -271,10 +289,11 @@ If the phone refuses the leave's write (the forget, or clearing the active mode)
   3. otherwise `en`.
 
   The language lives in its own context. It changes only when the operator picks, so AGENTS §8's telemetry rule is unaffected. The pick is stored under `lang`; a refused read counts as no pick, and a refused write keeps the pick for the session.
+
 - **Plurals:** our own table for the four languages, used on every platform. Hermes in RN 0.86 implements only Collator, NumberFormat, DateTimeFormat and getCanonicalLocales, so `Intl.PluralRules` is absent there, and one table gives the same answer in tests and on the phone. French treats 0 as `one`.
 - **Times:** `Intl.DateTimeFormat` in the chosen language, at the given zone. The zone name is shown only when the zone differs from the phone's.
 - **CI:** every `en` key must exist in `es`, `fr` and `nl`, with the same set of placeholders.
-- **Review:** each non-English file carries `"_review": "pending native speaker"`. `pnpm i18n:release-check` fails while any marker remains, and development builds ignore it. It must run before any store build; S0 has none, so nothing runs it yet (R11, *Known gaps*).
+- **Review:** each non-English file carries `"_review": "pending native speaker"`. `pnpm i18n:release-check` fails while any marker remains, and development builds ignore it. It must run before any store build; S0 has none, so nothing runs it yet (R11, _Known gaps_).
 
 ## 7. Look
 
@@ -293,30 +312,32 @@ The palette, type and colour rules come from AGENTS §5, which stays in force (d
 
 Copy, in `en`. The keys are indicative, and the plan fixes them:
 
-| Where | Text |
-|---|---|
-| Tile, Live Stream | "Live Stream" · "Film a match to YouTube." · "Scan the stream code from the match page" |
-| Tile, Remote Scoring | "Remote Scoring" · "Score one match from the side." · "Coming soon" |
-| Tile, Dashboard | "Dashboard" · "Approve the next round of a tournament." · "Coming soon" |
-| Wrong mode | "This is a {mode} code" + [Open {mode}] |
-| Coming soon | "This is a {mode} code" · "{mode} is coming soon." |
-| Expired | "This code expired at {time}. Ask the desk for a new one." |
-| Newer version | "This code needs a newer version of the app." |
-| Seazn page | "This is a Seazn page, not a code. Scan the code on the page." |
-| Foreign | "This isn't a Seazn code." |
-| No scanner | "This phone can't open the code scanner." |
-| Installing | "Getting the scanner ready…" |
-| Leave on air | "Stop the broadcast first — hold Stop." |
-| Reopen expired | "Your {mode} code expired at {time}. Scan a new one." |
+| Where                | Text                                                                                    |
+| -------------------- | --------------------------------------------------------------------------------------- |
+| Tile, Live Stream    | "Live Stream" · "Film a match to YouTube." · "Scan the stream code from the match page" |
+| Tile, Remote Scoring | "Remote Scoring" · "Score one match from the side." · "Coming soon"                     |
+| Tile, Dashboard      | "Dashboard" · "Approve the next round of a tournament." · "Coming soon"                 |
+| Wrong mode           | "This is a {mode} code" + [Open {mode}]                                                 |
+| Coming soon          | "This is a {mode} code" · "{mode} is coming soon."                                      |
+| Expired              | "This code expired at {time}. Ask the desk for a new one."                              |
+| Newer version        | "This code needs a newer version of the app."                                           |
+| Seazn page           | "This is a Seazn page, not a code. Scan the code on the page."                          |
+| Foreign              | "This isn't a Seazn code."                                                              |
+| No scanner           | "This phone can't open the code scanner."                                               |
+| Installing           | "Getting the scanner ready…"                                                            |
+| Leave on air         | "Stop the broadcast first — hold Stop."                                                 |
+| Reopen expired       | "Your {mode} code expired at {time}. Scan a new one."                                   |
 
 ## 8. The stream placeholder
 
 `StreamPlaceholderScreen` exists to prove the shell's stream rules before S1 fills the route. It shows:
+
 - "Viewfinder coming next";
 - the slot from the recognised code;
 - a **dev-only** control that drives the **fake engine** through `armed`, then `live`, then `stopped` or `failed`.
 
 That is enough to exercise:
+
 - the landscape target and the TurnCard;
 - Back blocked while `live`;
 - the code being forgotten after `stopped`, and kept after `failed`;
@@ -328,14 +349,14 @@ That is enough to exercise:
 
 ## 9. Testing and verification
 
-| Layer | Runs | Covers |
-|---|---|---|
-| **Domain** (vitest, pure) | every push | `recognise()` for every outcome, including hostile input (over 4 KB, binary, the lookalike host `seazn.club.evil.io`, `http://`, and `/score/` with an empty token); `reopenTarget()` across the engine, saved-state and clock combinations; `leaveRule()`; `classify()` and `track()` over recorded sample sequences, including the flicker at 45°; the plural table for the 4 languages, French 0 included; `formatTime()` with a matching and a differing zone |
-| **Screen** (vitest + `react-native-web` + `@testing-library/react`) | every push | Home: 3 tiles with 2 "Coming soon", and the Continue card shown, hidden and Forget. Every CodePanel variant. TurnCard shown and hidden against a fake accelerometer. The placeholder blocking Back while `live`. Driven by the fake engine, scanner, store and accelerometer. **No snapshot tests** (AGENTS §10). Assertions check what the operator can see. |
-| **i18n** | CI | keys and placeholders match across the 4 files; `pnpm i18n:release-check` refuses `_review` markers, but no build runs it yet (*Known gaps*) |
-| **CI** | every push | Before S0 the repo had no CI (no `.github/`). S0 adds one GitHub Actions workflow: `pnpm install --frozen-lockfile`, then `pnpm check` (typecheck, lint, all tests; the i18n key check is one of the tests). AGENTS §0 already claimed "CI runs domain tests on every push"; S0 makes that true. |
-| **Device** (OnePlus, Gradle + adb, **no EAS**) | before S0 is called done | see the checklist below |
-| **Mutation** | once per rule family | each break below must turn its tests red |
+| Layer                                                               | Runs                     | Covers                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| ------------------------------------------------------------------- | ------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Domain** (vitest, pure)                                           | every push               | `recognise()` for every outcome, including hostile input (over 4 KB, binary, the lookalike host `seazn.club.evil.io`, `http://`, and `/score/` with an empty token); `reopenTarget()` across the engine, saved-state and clock combinations; `leaveRule()`; `classify()` and `track()` over recorded sample sequences, including the flicker at 45°; the plural table for the 4 languages, French 0 included; `formatTime()` with a matching and a differing zone |
+| **Screen** (vitest + `react-native-web` + `@testing-library/react`) | every push               | Home: 3 tiles with 2 "Coming soon", and the Continue card shown, hidden and Forget. Every CodePanel variant. TurnCard shown and hidden against a fake accelerometer. The placeholder blocking Back while `live`. Driven by the fake engine, scanner, store and accelerometer. **No snapshot tests** (AGENTS §10). Assertions check what the operator can see.                                                                                                     |
+| **i18n**                                                            | CI                       | keys and placeholders match across the 4 files; `pnpm i18n:release-check` refuses `_review` markers, but no build runs it yet (_Known gaps_)                                                                                                                                                                                                                                                                                                                      |
+| **CI**                                                              | every push               | Before S0 the repo had no CI (no `.github/`). S0 adds one GitHub Actions workflow: `pnpm install --frozen-lockfile`, then `pnpm check` (typecheck, lint, all tests; the i18n key check is one of the tests). AGENTS §0 already claimed "CI runs domain tests on every push"; S0 makes that true.                                                                                                                                                                  |
+| **Device** (OnePlus, Gradle + adb, **no EAS**)                      | before S0 is called done | see the checklist below                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| **Mutation**                                                        | once per rule family     | each break below must turn its tests red                                                                                                                                                                                                                                                                                                                                                                                                                          |
 
 - **Screens never reach a native capability directly.** Every port (engine, scanner, store, accelerometer, orientation lock, back button, foreground, navigation, splash) sits in one `Ports` object that reaches hooks through a provider. For these ports, the concrete `expo-*` implementations are built only by `createNativePorts()`, which the root `_layout` calls. That is what lets screen tests run on `react-native-web` with fakes (`test/fakePorts.ts`); the components that draw with Reanimated or SVG are stubbed in `test/setup-ui.ts`. Hooks and the root layout may still import native modules outside the ports; AGENTS §3 names the four places that do.
 - The Android hardware Back button sits behind a small `BackPort`, because `react-native-web` has no `BackHandler`. The leave guard is tested on the placeholder screen against a fake `BackPort`.
@@ -346,6 +367,7 @@ That is enough to exercise:
   - the i18n check ignores placeholders.
 
 **Device checklist:** evidence is screenshots or a screen recording, per "verify as customer".
+
 1. Google's scanner opens from the Live Stream tile, including the first-use install on a phone that has never had it.
 2. A real capture-v1 QR, printed or on a laptop screen, opens the stream placeholder.
 3. A `stg.seazn.club/score/…` QR shows "Remote Scoring is coming soon".
@@ -361,6 +383,7 @@ That is enough to exercise:
 ## 10. AGENTS.md changes (part of S0)
 
 The decision record says AGENTS.md is rewritten when the shell makes it true. S0 does it:
+
 - **§1, scope lock:** three modes, each unlocked by its own QR code, with no login. Live Stream keeps the five-screen description of its own screens, rewritten in S1 when those screens are designed. Adding a fourth mode is a product decision.
 - **§3, layering:** add `app/` as the routes layer and its lint rule. Remove `navigation/`.
 - **§6, UI rules:** "Landscape-locked" becomes "Live Stream is landscape, either way round; everything else is portrait". Add the TurnCard rule. "Settings and Diagnostics stay reachable in every state" still holds, because they sit inside the stream group; only leaving the mode is blocked on air.
@@ -372,6 +395,7 @@ The decision record says AGENTS.md is rewritten when the shell makes it true. S0
 ## 11. Dependencies
 
 **New:**
+
 - `expo-router`;
 - `expo-secure-store`;
 - `expo-screen-orientation`;
@@ -414,7 +438,7 @@ Decisions taken while building S0, recorded here so they outlive the build's wor
 - **R8** — scanned hosts compare in lower case; `/score/` is case-sensitive. See §2.
 - **R9** — finding expired codes skips a mode with no code rather than crashing on it: reopen must never crash, and its worst case is Home.
 - **R10** — a flat/held dead band beside the upright/sideways one. See §5.
-- **R11** — the translation release check exists but no build runs it yet. See §6 and *Known gaps*.
+- **R11** — the translation release check exists but no build runs it yet. See §6 and _Known gaps_.
 - **R12** — `load()` never rejects; a store that throws on read reads as empty. See §4.
 - **R13** — one unreadable-store message, true whether or not a record was deleted. See §4.
 - **R14** — Expo Router's drawer peers are pinned as direct dependencies. See §11.

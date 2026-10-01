@@ -31,7 +31,7 @@ job is to come back inside that window, not to keep the broadcast alive.
 Explicitly excluded: accounts, login, fixture browsing, scoring, chat, replays,
 gallery, upload, in-app payments, remote push.
 
-**There is no auth, and there should never be.** The QR code *is* the
+**There is no auth, and there should never be.** The QR code _is_ the
 credential. An operator is a volunteer handed a phone at a wet ground; a login
 screen there is a product failure. There is no user object and no profile —
 there is a session and a slot. This creates a requirement that flows back to
@@ -62,7 +62,7 @@ between them. C1 and C2 are contract negotiations across that boundary, which
 is why they freeze before code.
 
 The nuance most RN/DDD work gets wrong: **the aggregate lives in native code.**
-The TypeScript `domain/` layer is a *read model* — a projection of native
+The TypeScript `domain/` layer is a _read model_ — a projection of native
 events — plus the two things it genuinely owns: credential parsing and the
 fallback policy it hands down at start. Building a second state machine in TS
 produces two authorities that disagree mid-match.
@@ -178,7 +178,7 @@ destroys the invariant that a club moving between tiers sees identical output.
 Two honest limits to surface in the UI rather than let someone file as a bug:
 
 - The phone runs `delayMs = 0` because its picture is local and instant, so the
-  operator sees the score slightly *ahead* of where viewers see it. Same
+  operator sees the score slightly _ahead_ of where viewers see it. Same
   situation as Tier A, harmless.
 - Per Q3, a club on `streaming.overlay` without `realtime` polls at fifteen
   seconds. On the phone that reads as a frozen overlay, with no compositor in
@@ -237,7 +237,7 @@ Three calls worth restating:
   hold under a progress fill cannot be produced by accident in either direction,
   and it costs the operator three seconds once a match. Both controls use the
   same duration so the gesture is never relearned mid-match. The preview control
-  is held too but is *not* a confirmation — it answers instantly and the hold
+  is held too but is _not_ a confirmation — it answers instantly and the hold
   exists only to stop a billed preview running unattended.
 - **Go Live enables only when armed** — credentials parsed, camera running,
   audio above a level floor, network reachable. The pre-flight is the safety,
@@ -297,14 +297,14 @@ section lists the ten things the Android engine must inherit.
 
 **Status, 2026-09-29:**
 
-| Step | Status |
-|---|---|
-| 1 | Done, built locally with Gradle and adb rather than EAS. `eas.json`'s `soak` profile still extends `development`, which needs Metro; fix it before any EAS soak build. |
-| 2 | **Android done**: the architecture holds, and F-P5-13 is the open risk. The iOS half (HaishinKit.swift on an iPhone) is deferred until the Apple Developer decision (N14). A full 3 h soak and the 180° flip test are deferred until near app completion, on the real engine. |
-| 3 | **Not done.** `contracts/` has no `capture-qr.v1.json`. This is R1's work, and it gates step 5. |
-| 4 | Done: `FakeCaptureEngine`, the domain, and the screens. Scan, Viewfinder (Arm + Live), Settings and Diagnostics run against the fake. |
-| 5 | Next (M1). Extend the fake with the not-delivered state first (§3.2, §4.1). |
-| 6 | Later (M3). |
+| Step | Status                                                                                                                                                                                                                                                                        |
+| ---- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1    | Done, built locally with Gradle and adb rather than EAS. `eas.json`'s `soak` profile still extends `development`, which needs Metro; fix it before any EAS soak build.                                                                                                        |
+| 2    | **Android done**: the architecture holds, and F-P5-13 is the open risk. The iOS half (HaishinKit.swift on an iPhone) is deferred until the Apple Developer decision (N14). A full 3 h soak and the 180° flip test are deferred until near app completion, on the real engine. |
+| 3    | **Not done.** `contracts/` has no `capture-qr.v1.json`. This is R1's work, and it gates step 5.                                                                                                                                                                               |
+| 4    | Done: `FakeCaptureEngine`, the domain, and the screens. Scan, Viewfinder (Arm + Live), Settings and Diagnostics run against the fake.                                                                                                                                         |
+| 5    | Next (M1). Extend the fake with the not-delivered state first (§3.2, §4.1).                                                                                                                                                                                                   |
+| 6    | Later (M3).                                                                                                                                                                                                                                                                   |
 
 ## 12. Open
 
@@ -317,6 +317,7 @@ section lists the ten things the Android engine must inherit.
   The earlier lean (manual button only) assumed a pull-back costs video
   bandwidth. It does not, and the spike showed delivery can fail while
   everything else says live.
+
 - ~~**Who decides the fallback happened?**~~ **Settled by P5.** Native decides
   and switches silently, and the report is loud. Run C measured 18.8 s from
   SRT failure to RTMPS publishing.

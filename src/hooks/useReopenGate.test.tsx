@@ -5,17 +5,16 @@ import { useReopenGate } from '@/hooks/useReopenGate';
 import { createMemoryKeyValueStore, type KeyValueStore } from '@/services/KeyValueStore';
 import { createModeStore, STORE_KEYS } from '@/services/modeStore';
 import { createFakePorts, TEST_NOW } from '../../test/fakePorts';
+import { savedStreamCode } from '../../test/fixtures/savedStream';
 import { wrapperFor } from '../../test/renderWithPorts';
 
 const EXPIRY = new Date(TEST_NOW.getTime() + 3600_000);
-const code: SavedCode = {
-  mode: 'stream',
+const code: SavedCode = savedStreamCode({
   raw: '{}',
   slot: 0,
   savedAt: TEST_NOW,
   expiresAt: EXPIRY,
-  venueTz: null,
-};
+});
 const inStream = {
   [STORE_KEYS.active]: 'stream',
   [STORE_KEYS.code('stream')]: encodeSavedCode(code),
@@ -51,13 +50,24 @@ describe('useReopenGate', () => {
     expect(snapshot.status === 'ready' && snapshot.notice).toEqual({
       mode: 'stream',
       expiredAt: EXPIRY,
+      venueTz: 'Europe/London',
     });
     expect(fakes.kv.entries.has(STORE_KEYS.code('stream'))).toBe(false);
   });
 
+  // The store says no mode is active; the engine is armed with the kept code.
   it('follows the engine over the store', async () => {
-    const fakes = createFakePorts();
+    const fakes = createFakePorts({
+      kvSeed: { [STORE_KEYS.code('stream')]: encodeSavedCode(code) },
+    });
     fakes.engine.forceState({ kind: 'armed' });
+    gate(fakes);
+    await waitFor(() => expect(fakes.navigation.current()).toBe('stream'));
+  });
+
+  it('follows a broadcast even with nothing saved', async () => {
+    const fakes = createFakePorts();
+    fakes.engine.scene('live');
     gate(fakes);
     await waitFor(() => expect(fakes.navigation.current()).toBe('stream'));
   });
@@ -130,10 +140,16 @@ describe('useReopenGate: beyond the happy path', () => {
     expect(fakes.kv.entries.get(STORE_KEYS.active)).toBe('stream');
     expect(noticeOf(fakes)).toBeNull();
 
-    act(() => fakes.engine.forceState({ kind: 'ended', reason: 'hold-window-expired' }));
+    act(() =>
+      fakes.engine.forceState({ kind: 'ended', reason: 'hold-window-expired', durationMs: null }),
+    );
     act(() => fakes.foreground.fire());
     await waitFor(() => expect(fakes.navigation.current()).toBe('home'));
-    expect(noticeOf(fakes)).toEqual({ mode: 'stream', expiredAt: EXPIRY });
+    expect(noticeOf(fakes)).toEqual({
+      mode: 'stream',
+      expiredAt: EXPIRY,
+      venueTz: 'Europe/London',
+    });
     expect(fakes.kv.entries.has(STORE_KEYS.code('stream'))).toBe(false);
   });
 
@@ -162,7 +178,11 @@ describe('useReopenGate: beyond the happy path', () => {
     const first = launch();
     await waitFor(() => expect(first.splash.hides).toBe(1));
     expect(first.navigation.current()).toBe('home');
-    expect(noticeOf(first)).toEqual({ mode: 'stream', expiredAt: EXPIRY });
+    expect(noticeOf(first)).toEqual({
+      mode: 'stream',
+      expiredAt: EXPIRY,
+      venueTz: 'Europe/London',
+    });
     expect(memory.entries.has(STORE_KEYS.code('stream'))).toBe(true);
     await act(async () => undefined);
     expect(rejections).toEqual([]);
@@ -170,7 +190,111 @@ describe('useReopenGate: beyond the happy path', () => {
     refuse = false;
     const second = launch();
     await waitFor(() => expect(memory.entries.has(STORE_KEYS.code('stream'))).toBe(false));
-    expect(noticeOf(second)).toEqual({ mode: 'stream', expiredAt: EXPIRY });
+    expect(noticeOf(second)).toEqual({
+      mode: 'stream',
+      expiredAt: EXPIRY,
+      venueTz: 'Europe/London',
+    });
     expect(second.navigation.current()).toBe('home');
+  });
+});
+
+/**
+ * N4 (owner-visible): a session that ended under a code the phone no longer
+ * holds has no screen left to show it on. Sent Home, the gate clears it, so
+ * the next code scanned never opens on the old Ended screen.
+ */
+describe('useReopenGate: an ended session whose code is gone (N4)', () => {
+  const kinds = (fakes: ReturnType<typeof createFakePorts>) =>
+    fakes.engine.intents.map((intent) => intent.kind);
+
+  it.each(['stopped', 'stopped-by-organiser', 'fatal'] as const)(
+    'clears a %s session once its code expired while the app was away',
+    async (scene) => {
+      const fakes = createFakePorts({ kvSeed: inStream });
+      fakes.engine.scene(scene);
+      gate(fakes);
+      // Its Ended screen while the code is valid: nothing cleared.
+      await waitFor(() => expect(fakes.navigation.current()).toBe('stream'));
+      expect(kinds(fakes)).toEqual([]);
+      fakes.setNow(new Date(EXPIRY.getTime() + 60_000));
+      act(() => fakes.foreground.fire());
+      await waitFor(() => expect(fakes.navigation.current()).toBe('home'));
+      expect(noticeOf(fakes)).toMatchObject({ mode: 'stream', expiredAt: EXPIRY });
+      expect(kinds(fakes)).toEqual(['reset']);
+      expect(fakes.engine.getSnapshot().state).toEqual({ kind: 'idle' });
+    },
+  );
+
+  it('clears an ended session found at launch with no code saved', async () => {
+    const fakes = createFakePorts();
+    fakes.engine.scene('stopped');
+    gate(fakes);
+    await waitFor(() => expect(fakes.splash.hides).toBe(1));
+    expect(fakes.navigation.current()).toBe('home');
+    expect(kinds(fakes)).toEqual(['reset']);
+  });
+
+  // A kept code still owns its Ended screen: Continue opens it, truthfully.
+  it('keeps an ended session whose code is still saved, though not active', async () => {
+    const fakes = createFakePorts({
+      kvSeed: { [STORE_KEYS.code('stream')]: encodeSavedCode(code) },
+    });
+    fakes.engine.scene('stopped');
+    gate(fakes);
+    await waitFor(() => expect(fakes.splash.hides).toBe(1));
+    expect(fakes.navigation.current()).toBe('home');
+    expect(kinds(fakes)).toEqual([]);
+    expect(fakes.engine.getSnapshot().state.kind).toBe('ended');
+  });
+
+  it.each([
+    ['idle', null],
+    ['armed', 'armed-ready'],
+    ['live', 'live'],
+  ] as const)('never clears an engine that is %s', async (_, scene) => {
+    const fakes = createFakePorts({ kvSeed: inStream });
+    if (scene !== null) fakes.engine.scene(scene);
+    fakes.setNow(new Date(EXPIRY.getTime() + 60_000));
+    gate(fakes);
+    await waitFor(() => expect(fakes.splash.hides).toBe(1));
+    act(() => fakes.foreground.fire());
+    await act(async () => undefined);
+    expect(kinds(fakes)).toEqual([]);
+  });
+});
+
+/**
+ * M22: Settings and Diagnostics are inside Live Stream (AGENTS §6). A return
+ * to the foreground that lands on Live Stream leaves the operator where they
+ * were, never popping them back to the camera.
+ */
+describe('useReopenGate: inside Live Stream already (M22)', () => {
+  it.each([
+    ['streamSettings', 'a valid code', null],
+    ['streamDiagnostics', 'a valid code', null],
+    ['streamSettings', 'the engine on air', 'live'],
+    ['streamDiagnostics', 'the engine armed', 'armed-ready'],
+  ] as const)('stays on %s with %s', async (route, _, scene) => {
+    const fakes = createFakePorts({ kvSeed: inStream });
+    if (scene !== null) fakes.engine.scene(scene);
+    gate(fakes);
+    await waitFor(() => expect(fakes.navigation.current()).toBe('stream'));
+    fakes.navigation.go(route);
+    act(() => fakes.foreground.fire());
+    await act(async () => undefined);
+    expect(fakes.navigation.current()).toBe(route);
+    expect(fakes.navigation.history).toEqual(['stream', route]);
+  });
+
+  it('still leaves a sub-screen for Home once the code has expired', async () => {
+    const fakes = createFakePorts({ kvSeed: inStream });
+    gate(fakes);
+    await waitFor(() => expect(fakes.navigation.current()).toBe('stream'));
+    fakes.navigation.go('streamDiagnostics');
+    fakes.setNow(new Date(EXPIRY.getTime() + 60_000));
+    act(() => fakes.foreground.fire());
+    await waitFor(() => expect(fakes.navigation.current()).toBe('home'));
+    expect(noticeOf(fakes)).toMatchObject({ mode: 'stream', expiredAt: EXPIRY });
   });
 });

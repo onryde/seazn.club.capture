@@ -1,9 +1,9 @@
 import { act, renderHook, waitFor } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Gravity, Target } from '@/domain/orientation/orientation';
 import type { SessionState } from '@/domain/session/SessionState';
-import { routeTarget, useOrientationGate } from '@/hooks/useOrientationGate';
-import { createFakePorts } from '../../test/fakePorts';
+import { LOCK_RETRY_MS, routeTarget, useOrientationGate } from '@/hooks/useOrientationGate';
+import { createFakePorts, readRecord } from '../../test/fakePorts';
 import { wrapperFor } from '../../test/renderWithPorts';
 
 const tilted = (deg: number): Gravity => {
@@ -31,6 +31,8 @@ async function gate(target: Target, fakes = createFakePorts()) {
 }
 
 describe('useOrientationGate', () => {
+  afterEach(() => vi.useRealTimers());
+
   it('locks portrait and asks for sideways when Stream is tilted upright while idle (R24)', async () => {
     const { fakes, hook } = await gate('landscape');
     hold(fakes, SIDEWAYS, 0);
@@ -63,7 +65,9 @@ describe('useOrientationGate', () => {
     const { hook } = await gate('landscape', fakes);
     hold(fakes, SIDEWAYS, 0);
     hold(fakes, UPRIGHT, 1000);
-    act(() => fakes.engine.forceState({ kind: 'ended', reason: 'operator-stopped' }));
+    act(() =>
+      fakes.engine.forceState({ kind: 'ended', reason: 'operator-stopped', durationMs: null }),
+    );
     expect(hook.result.current).toEqual({ lock: 'portrait', card: 'turnSideways' });
     expect(fakes.orientationLock.locks).toEqual(['landscape', 'portrait']);
   });
@@ -130,9 +134,11 @@ describe('useOrientationGate', () => {
     const { hook } = await gate('landscape', fakes);
     await waitFor(() => expect(hook.result.current).toEqual({ lock: 'landscape', card: 'none' }));
     expect(fakes.orientationLock.locks).toEqual(['landscape']);
+    expect(readRecord(fakes.record).map((e) => e.event)).toContain('motion.check-failed');
   });
 
-  it('retries a lock the platform refused (R26)', async () => {
+  it('retries a refused lock once, half a second later, and logs it (D26)', async () => {
+    vi.useFakeTimers();
     const fakes = createFakePorts();
     fakes.engine.forceState({ kind: 'publishing', transport: 'srt', sinceEpochMs: 1 });
     const lock = fakes.orientationLock.lock;
@@ -140,11 +146,104 @@ describe('useOrientationGate', () => {
     fakes.orientationLock.lock = (target) =>
       refusals-- > 0 ? Promise.reject(new Error('refused')) : lock(target);
     await gate('landscape', fakes); // on air, nothing locked: landscape at once (R37), refused
-    await act(async () => undefined);
-    hold(fakes, SIDEWAYS, 0); // still landscape: the gate's lock has not changed
+    expect(fakes.orientationLock.locks).toEqual([]);
+    // D26's 500 ms as literals, never the module's own constant.
+    expect(LOCK_RETRY_MS).toBe(500);
+    await act(() => vi.advanceTimersByTimeAsync(499));
+    expect(fakes.orientationLock.locks).toEqual([]);
+    await act(() => vi.advanceTimersByTimeAsync(1));
+    expect(fakes.orientationLock.locks).toEqual(['landscape']);
+    hold(fakes, UPRIGHT, 0); // on air: keep
+    hold(fakes, SIDEWAYS, 1000); // the retry was applied, so it is remembered: not re-sent
+    expect(fakes.orientationLock.locks).toEqual(['landscape']);
+    expect(readRecord(fakes.record)).toContainEqual(
+      expect.objectContaining({
+        event: 'orientation.lock-refused',
+        fields: { lock: 'landscape', attempt: 1 },
+      }),
+    );
+  });
+
+  it('forgets a lock refused twice, so the next differing lock is sent again (R26)', async () => {
+    vi.useFakeTimers();
+    const fakes = createFakePorts();
+    fakes.engine.forceState({ kind: 'publishing', transport: 'srt', sinceEpochMs: 1 });
+    const lock = fakes.orientationLock.lock;
+    let refusals = 2;
+    fakes.orientationLock.lock = (target) =>
+      refusals-- > 0 ? Promise.reject(new Error('refused')) : lock(target);
+    await gate('landscape', fakes);
+    await act(() => vi.advanceTimersByTimeAsync(500));
+    expect(fakes.orientationLock.locks).toEqual([]);
+    await act(() => vi.advanceTimersByTimeAsync(500)); // no third attempt
+    expect(fakes.orientationLock.locks).toEqual([]);
     hold(fakes, UPRIGHT, 1000); // on air: keep
     hold(fakes, SIDEWAYS, 2000); // the same lock again: sent, not deduped
+    await act(async () => undefined);
     expect(fakes.orientationLock.locks).toEqual(['landscape']);
+    const refused = readRecord(fakes.record).filter((e) => e.event === 'orientation.lock-refused');
+    expect(refused.map((e) => e.fields.attempt)).toEqual([1, 2]);
+  });
+
+  it('forgets a refused lock whose retry an on-air keep cancelled, so it is sent again (R26)', async () => {
+    vi.useFakeTimers();
+    const fakes = createFakePorts();
+    fakes.engine.forceState({ kind: 'publishing', transport: 'srt', sinceEpochMs: 1 });
+    const lock = fakes.orientationLock.lock;
+    let refusals = 1;
+    fakes.orientationLock.lock = (target) =>
+      refusals-- > 0 ? Promise.reject(new Error('refused')) : lock(target);
+    await gate('landscape', fakes); // refused; the retry waits 500 ms
+    hold(fakes, UPRIGHT, 0); // on air: keep, which is no newer lock, cancels the retry
+    await act(() => vi.advanceTimersByTimeAsync(500));
+    expect(fakes.orientationLock.locks).toEqual([]);
+    hold(fakes, SIDEWAYS, 1000); // landscape wanted again: never applied, so sent
+    await act(async () => undefined);
+    expect(fakes.orientationLock.locks).toEqual(['landscape']);
+  });
+
+  it('forgets a lock refused after a newer view cancelled it, so it is sent again (R26)', async () => {
+    const fakes = createFakePorts();
+    fakes.engine.forceState({ kind: 'publishing', transport: 'srt', sinceEpochMs: 1 });
+    let refuse: (reason: Error) => void = () => undefined;
+    const lock = fakes.orientationLock.lock;
+    let first = true;
+    fakes.orientationLock.lock = (target) => {
+      if (!first) return lock(target);
+      first = false;
+      return new Promise((_, reject) => {
+        refuse = reject;
+      });
+    };
+    await gate('landscape', fakes); // landscape asked for; the platform has not answered
+    hold(fakes, UPRIGHT, 0); // on air: keep cancels the pending attempt
+    await act(async () => refuse(new Error('refused'))); // then the refusal lands
+    hold(fakes, SIDEWAYS, 1000);
+    await act(async () => undefined);
+    expect(fakes.orientationLock.locks).toEqual(['landscape']);
+    expect(readRecord(fakes.record).map((e) => e.event)).toContain('orientation.lock-refused');
+  });
+
+  it('keeps a newer applied lock when an older, superseded lock is refused late (R26)', async () => {
+    const fakes = createFakePorts();
+    let refuse: (reason: Error) => void = () => undefined;
+    const lock = fakes.orientationLock.lock;
+    let first = true;
+    fakes.orientationLock.lock = (target) => {
+      if (!first) return lock(target);
+      first = false;
+      return new Promise((_, reject) => {
+        refuse = reject;
+      });
+    };
+    await gate('landscape', fakes); // landscape asked for; the platform has not answered
+    hold(fakes, UPRIGHT, 0); // off air: lock to the hands, portrait applied
+    expect(fakes.orientationLock.locks).toEqual(['portrait']);
+    await act(async () => refuse(new Error('refused'))); // the old landscape refusal lands
+    act(() => fakes.engine.forceState({ kind: 'armed' })); // keep
+    act(() => fakes.engine.forceState({ kind: 'idle' })); // portrait again: still applied
+    await act(async () => undefined);
+    expect(fakes.orientationLock.locks).toEqual(['portrait']);
   });
 
   it('stops the accelerometer on unmount', async () => {

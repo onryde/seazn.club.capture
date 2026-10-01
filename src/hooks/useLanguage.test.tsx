@@ -4,7 +4,7 @@ import { LanguageProvider, useLanguage } from '@/hooks/useLanguage';
 import { PortsProvider } from '@/hooks/usePorts';
 import type { KeyValueStore } from '@/services/KeyValueStore';
 import { STORE_KEYS } from '@/services/modeStore';
-import { createFakePorts } from '../../test/fakePorts';
+import { createFakePorts, readRecord } from '../../test/fakePorts';
 
 function Probe() {
   const { translator, setLang } = useLanguage();
@@ -46,6 +46,7 @@ describe('LanguageProvider', () => {
     act(() => screen.getByText('nl').click());
     await waitFor(() => expect(screen.getByText('Binnenkort')).toBeTruthy());
     expect(fakes.kv.entries.get(STORE_KEYS.lang)).toBe('nl');
+    expect(readRecord(fakes.record)).toEqual([]);
   });
 
   describe('when storage misbehaves (R12)', () => {
@@ -74,6 +75,23 @@ describe('LanguageProvider', () => {
       act(() => screen.getByText('nl').click());
       await settle();
       expect(screen.getByText('Binnenkort')).toBeTruthy();
+      expect(rejections).toEqual([]);
+    });
+
+    it('records a refused write: nothing silent (spec §5)', async () => {
+      const kv = storeWith({ set: () => Promise.reject(new Error('keystore full')) });
+      const fakes = createFakePorts({ kv });
+      renderProbe(fakes);
+      await settle();
+      act(() => screen.getByText('nl').click());
+      await settle();
+      expect(readRecord(fakes.record)).toEqual([
+        expect.objectContaining({
+          level: 'warn',
+          event: 'store.write-refused',
+          fields: { action: 'language' },
+        }),
+      ]);
       expect(rejections).toEqual([]);
     });
 

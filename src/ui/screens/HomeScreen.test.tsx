@@ -1,50 +1,41 @@
-import { act, fireEvent, render, renderHook, screen, waitFor } from '@testing-library/react';
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  renderHook,
+  screen,
+  waitFor,
+} from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { encodeSavedCode } from '@/domain/mode/savedCode';
+import { err } from '@/domain/Result';
+import { decodeSavedCode, encodeSavedCode } from '@/domain/mode/savedCode';
 import { useHome } from '@/hooks/useHome';
 import { useReopenGate } from '@/hooks/useReopenGate';
 import type { CodeScannerPort, ScanUnavailableReason } from '@/scanner/CodeScannerPort';
 import { createMemoryKeyValueStore, type KeyValueStore } from '@/services/KeyValueStore';
+import { KV_TIMEOUT_MS, withTimeout } from '@/services/kvTimeout';
+import { sampleDescriptor } from '@/services/fakeDescriptorPort';
+import { createFetchDescriptorPort, DESCRIPTOR_TIMEOUT_MS } from '@/services/fetchDescriptorPort';
 import { createModeStore, STORE_KEYS } from '@/services/modeStore';
 import { HomeScreen } from '@/ui/screens/HomeScreen';
-import { createFakePorts, TEST_NOW } from '../../../test/fakePorts';
+import { createFakePorts, readRecord, TEST_NOW } from '../../../test/fakePorts';
 import { renderWithPorts, wrapperFor } from '../../../test/renderWithPorts';
+import { savedStreamCode } from '../../../test/fixtures/savedStream';
+import { captureRaw, epochSeconds } from '../../../test/fixtures/wire';
 
 const IN_TWO_HOURS = new Date(TEST_NOW.getTime() + 2 * 3600_000);
 // 17:40Z is 18:40 in the fake phone's Europe/London zone (BST).
 const AT_1840 = new Date('2026-10-03T17:40:00Z');
 
-/** Made-up credentials. */
+/** Made-up credentials, v2. */
 function streamRaw(exp: Date, slot = 1): string {
-  return JSON.stringify({
-    v: 1,
-    sid: '5d9c1d0e-0000-4000-8000-000000000001',
-    slot,
-    cred: {
-      srt: {
-        url: 'srt://ingest.example:9001',
-        streamId: 'fake',
-        passphrase: 'fake-pass-0000',
-        latencyMs: 2000,
-      },
-      rtmps: { url: 'rtmps://ingest.example/live', streamKey: 'fake-key' },
-    },
-    preferred: 'srt',
-    exp: Math.floor(exp.getTime() / 1000),
-  });
+  return captureRaw({ exp: epochSeconds(exp), slot });
 }
 
 /** A stream code saved by an earlier scan, as the store writes it. */
-function savedStream(expiresAt: Date): string {
-  const raw = streamRaw(expiresAt);
-  return encodeSavedCode({
-    mode: 'stream',
-    raw,
-    slot: 1,
-    savedAt: TEST_NOW,
-    expiresAt,
-    venueTz: null,
-  });
+function savedStream(expiresAt: Date, descriptor = sampleDescriptor(TEST_NOW)): string {
+  return encodeSavedCode(savedStreamCode({ raw: streamRaw(expiresAt), expiresAt, descriptor }));
 }
 
 async function renderHome(options?: Parameters<typeof renderWithPorts>[1]) {
@@ -62,7 +53,23 @@ function GateThenHome() {
 }
 
 const liveStreamTile = () => screen.getByRole('button', { name: /Live Stream/ });
+
+/**
+ * Home under the reopen gate with a session armed and its code kept, as a
+ * leave leaves it: a return to the foreground reopens Live Stream. With no
+ * code saved the session would be an orphan, cleared on the way Home (I1).
+ */
+async function armedHome() {
+  const fakes = createFakePorts({
+    kvSeed: { [STORE_KEYS.code('stream')]: savedStream(IN_TWO_HOURS) },
+  });
+  render(<GateThenHome />, { wrapper: wrapperFor(fakes) });
+  await waitFor(() => expect(fakes.splash.hides).toBe(1));
+  act(() => fakes.engine.forceState({ kind: 'armed' }));
+  return fakes;
+}
 const IDLE = 'Tap a mode, then scan its code.';
+const SAVE_FAILED = "Couldn't save on this phone. Try again.";
 
 describe('Home', () => {
   it('shows three tiles, two of them coming soon', async () => {
@@ -147,6 +154,43 @@ describe('Home', () => {
     expect(home.kv.entries.has(STORE_KEYS.code('stream'))).toBe(false);
   });
 
+  it('gives the Continue time in the venue’s zone, naming it when it is not the phone’s (spec §2)', async () => {
+    const madrid = sampleDescriptor(TEST_NOW, { venueTimezone: 'Europe/Madrid' });
+    await renderHome({ kvSeed: { [STORE_KEYS.code('stream')]: savedStream(AT_1840, madrid) } });
+    const detail = screen.getByText(/Slot 1 · code valid till/);
+    expect(detail.textContent).toMatch(/19:40/);
+    expect(detail.textContent).not.toBe('Slot 1 · code valid till 19:40');
+  });
+
+  it('gives the Continue time plainly when the venue is in the phone’s zone', async () => {
+    await renderHome({ kvSeed: { [STORE_KEYS.code('stream')]: savedStream(AT_1840) } });
+    expect(screen.getByText('Slot 1 · code valid till 18:40')).toBeTruthy();
+  });
+
+  it('gives an expiry notice in the venue’s zone', async () => {
+    const home = await renderHome();
+    await act(() =>
+      home.ports.modeStore.expire(['stream'], {
+        mode: 'stream',
+        expiredAt: AT_1840,
+        venueTz: 'Europe/Madrid',
+      }),
+    );
+    const line = screen.getByText(/Your Live Stream code expired at/);
+    expect(line.textContent).toMatch(/19:40/);
+  });
+
+  it('names the venue’s time when Continue finds the code expired', async () => {
+    const madrid = sampleDescriptor(TEST_NOW, { venueTimezone: 'Europe/Madrid' });
+    const home = await renderHome({
+      kvSeed: { [STORE_KEYS.code('stream')]: savedStream(AT_1840, madrid) },
+    });
+    home.setNow(new Date(AT_1840.getTime() + 60_000));
+    fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
+    const line = await screen.findByText(/Your Live Stream code expired at/);
+    expect(line.textContent).toMatch(/19:40/);
+  });
+
   it('Continue reopens Live Stream', async () => {
     const home = await renderHome({
       kvSeed: { [STORE_KEYS.code('stream')]: savedStream(AT_1840) },
@@ -175,7 +219,11 @@ describe('Home', () => {
   it('shows the expiry notice left by the reopen gate', async () => {
     const home = await renderHome();
     await act(() =>
-      home.ports.modeStore.expire(['stream'], { mode: 'stream', expiredAt: AT_1840 }),
+      home.ports.modeStore.expire(['stream'], {
+        mode: 'stream',
+        expiredAt: AT_1840,
+        venueTz: 'Europe/London',
+      }),
     );
     expect(
       screen.getByText('Your Live Stream code expired at 18:40. Scan a new one.'),
@@ -190,7 +238,13 @@ describe('Home', () => {
 
   it('clears the expiry notice once the operator taps to scan', async () => {
     const home = await renderHome();
-    await act(() => home.ports.modeStore.expire([], { mode: 'stream', expiredAt: AT_1840 }));
+    await act(() =>
+      home.ports.modeStore.expire([], {
+        mode: 'stream',
+        expiredAt: AT_1840,
+        venueTz: 'Europe/London',
+      }),
+    );
     fireEvent.click(liveStreamTile());
     await waitFor(() => expect(home.scanner.scans).toBe(1));
     expect(screen.getByText(IDLE)).toBeTruthy();
@@ -303,6 +357,7 @@ describe('Home: store calls wait for a ready store (R12)', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Use pasted code' }));
     await act(async () => undefined);
     expect(home.scanner.scans).toBe(0);
+    expect(home.descriptor.calls).toHaveLength(0);
     expect(home.kv.entries.size).toBe(0);
     expect(home.navigation.current()).toBe('home');
 
@@ -323,7 +378,6 @@ describe('Home: store calls wait for a ready store (R12)', () => {
 });
 
 describe('Home: a refused save is never silent (R19)', () => {
-  const SAVE_FAILED = "Couldn't save on this phone. Try again.";
   const rejections: unknown[] = [];
   const onRejection = (reason: unknown) => rejections.push(reason);
   beforeEach(() => {
@@ -359,6 +413,9 @@ describe('Home: a refused save is never silent (R19)', () => {
     await screen.findByText(SAVE_FAILED);
     expect(home.navigation.current()).toBe('home');
     expect(rejections).toEqual([]);
+    expect(readRecord(home.record)).toContainEqual(
+      expect.objectContaining({ event: 'store.write-refused', fields: { action: 'open' } }),
+    );
   });
 
   it('says so when a pasted code cannot be saved', async () => {
@@ -384,6 +441,10 @@ describe('Home: a refused save is never silent (R19)', () => {
     expect(screen.getByRole('button', { name: 'Forget' })).toBeTruthy();
     expect(home.navigation.current()).toBe('home');
     expect(rejections).toEqual([]);
+    const action = name === 'Continue' ? 'continue' : 'forget';
+    expect(readRecord(home.record)).toContainEqual(
+      expect.objectContaining({ event: 'store.write-refused', fields: { action } }),
+    );
   });
 
   it('closes the panel for good when Open cannot save', async () => {
@@ -459,6 +520,9 @@ describe('Home: a refused save is never silent (R19)', () => {
     expect(screen.queryByText('Continue Live Stream')).toBeNull();
     expect(home.navigation.current()).toBe('home');
     expect(rejections).toEqual([]);
+    expect(readRecord(home.record)).toContainEqual(
+      expect.objectContaining({ event: 'store.write-refused', fields: { action: 'expire' } }),
+    );
   });
 
   it('names a code that expired on air once the engine lets go, never silently (R23)', async () => {
@@ -480,7 +544,9 @@ describe('Home: a refused save is never silent (R19)', () => {
     act(() => fakes.foreground.fire());
     await act(async () => undefined);
     expect(fakes.navigation.current()).toBe('stream');
-    act(() => fakes.engine.forceState({ kind: 'ended', reason: 'hold-window-expired' }));
+    act(() =>
+      fakes.engine.forceState({ kind: 'ended', reason: 'hold-window-expired', durationMs: null }),
+    );
     act(() => fakes.foreground.fire());
     await screen.findByText(EXPIRED_1840);
     expect(fakes.navigation.current()).toBe('home');
@@ -496,6 +562,44 @@ describe('Home: a refused save is never silent (R19)', () => {
     expect(screen.queryByText(SAVE_FAILED)).toBeNull();
     expect(fakes.navigation.current()).toBe('home');
     expect(rejections).toEqual([]);
+    expect(readRecord(fakes.record)).toContainEqual(
+      expect.objectContaining({ event: 'store.write-refused', fields: { action: 'expire' } }),
+    );
+  });
+});
+
+describe('Home: a store write that never settles (spec §5)', () => {
+  afterEach(() => vi.useRealTimers());
+
+  it('says so after 5 s and lets the operator scan again', async () => {
+    vi.useFakeTimers();
+    const memory = createMemoryKeyValueStore();
+    const stuck: KeyValueStore = {
+      get: memory.get,
+      set: () => new Promise(() => undefined),
+      delete: memory.delete,
+    };
+    const fakes = createFakePorts();
+    const modeStore = createModeStore(withTimeout(stuck, { logger: fakes.ports.logger }));
+    const home = renderWithPorts(<HomeScreen />, { modeStore });
+    await act(() => home.ports.modeStore.load());
+    home.scanner.queue({ outcome: 'scanned', raw: streamRaw(IN_TWO_HOURS) });
+    fireEvent.click(liveStreamTile());
+    await act(() => vi.advanceTimersByTimeAsync(KV_TIMEOUT_MS));
+    expect(screen.getByText(SAVE_FAILED)).toBeTruthy();
+    fireEvent.click(liveStreamTile());
+    await act(async () => undefined);
+    expect(home.scanner.scans).toBe(2);
+    // The store's logger is `fakes`'; the screen's is `home`'s own.
+    expect(readRecord(fakes.record)).toContainEqual(
+      expect.objectContaining({
+        event: 'kv.timeout',
+        fields: { op: 'set', key: STORE_KEYS.code('stream'), ms: KV_TIMEOUT_MS },
+      }),
+    );
+    expect(readRecord(home.record)).toContainEqual(
+      expect.objectContaining({ event: 'store.write-refused', fields: { action: 'open' } }),
+    );
   });
 });
 
@@ -542,6 +646,7 @@ describe('Home: after the scan', () => {
         go: () => {
           throw new Error('navigator not mounted');
         },
+        restart: () => undefined,
       };
       const home = await renderHome({ navigation });
       home.scanner.queue({ outcome: 'scanned', raw: streamRaw(IN_TWO_HOURS) });
@@ -573,14 +678,6 @@ describe('Home: coming back from the scanner is not a reopen (I2, R36)', () => {
   // which runs the reopen gate. Android delivers the scan result before that
   // return (Redmi, ~44 ms); the tests cover both orders.
   const FOREIGN = 'https://example.com/menu';
-
-  async function armedHome() {
-    const fakes = createFakePorts();
-    render(<GateThenHome />, { wrapper: wrapperFor(fakes) });
-    await waitFor(() => expect(fakes.splash.hides).toBe(1));
-    act(() => fakes.engine.forceState({ kind: 'armed' }));
-    return fakes;
-  }
 
   it('keeps Home and the panel when the return lands before the result', async () => {
     const fakes = await armedHome();
@@ -686,9 +783,10 @@ describe('Home: coming back from the scanner is not a reopen (I2, R36)', () => {
     },
   );
 
-  // No scan, so no flight: the settle runs, and its expiry lands inside the
-  // open. Only the store's check that the code is still the one judged keeps it.
-  it('keeps a pasted fresh code when a reopen expires the old one mid-save', async () => {
+  // A paste takes the scan flight too (dev), so this return is the paste's and
+  // no settle runs. A settle landing inside an open is the store's to survive:
+  // modeStore.test, "never expires a code opened after the expired one was judged".
+  it('keeps a pasted fresh code when the app returns mid-save', async () => {
     const home = await expiringHome();
     home.fakes.setNow(home.later);
     const field = screen.getByPlaceholderText('Paste a code (development only)');
@@ -720,7 +818,8 @@ describe('Home: Android Back closes what is open (R31)', () => {
     home.scanner.queue({ outcome: 'scanned', raw: 'https://example.com/menu' });
     fireEvent.click(liveStreamTile());
     await screen.findByText("This isn't a Seazn code.");
-    expect(press(home)).toBe(true);
+    // The panel's Back handler is an effect: it may not be up when findBy resolves (carry 17).
+    await waitFor(() => expect(press(home)).toBe(true));
     expect(screen.queryByText("This isn't a Seazn code.")).toBeNull();
     expect(home.navigation.current()).toBe('home');
   });
@@ -745,12 +844,44 @@ describe('Home: Android Back closes what is open (R31)', () => {
     home.scanner.queue({ outcome: 'scanned', raw: 'https://example.com/menu' });
     fireEvent.click(liveStreamTile());
     await screen.findByText("This isn't a Seazn code.");
-    expect(press(home)).toBe(true);
+    await waitFor(() => expect(press(home)).toBe(true));
     expect(screen.queryByText("This isn't a Seazn code.")).toBeNull();
     expect(screen.getByRole('button', { name: 'Español' })).toBeTruthy();
     expect(press(home)).toBe(true);
     expect(screen.queryByRole('button', { name: 'Español' })).toBeNull();
     expect(press(home)).toBe(false);
+  });
+});
+
+describe('Scan another (D24)', () => {
+  it('scans from the Live Stream tile once Home is ready, and only once', async () => {
+    // Asked before Home mounts, on a store still loading: the request waits for it (R12).
+    const home = createFakePorts();
+    home.ports.homeIntent.requestScan();
+    render(<HomeScreen />, { wrapper: wrapperFor(home) });
+    expect(home.scanner.scans).toBe(0);
+    await act(() => home.ports.modeStore.load());
+    await waitFor(() => expect(home.scanner.scans).toBe(1));
+    await waitFor(() => expect(home.ports.scanFlight.active()).toBe(false));
+    // M19: a fresh Home over the same ports, as the next visit would mount it.
+    cleanup();
+    render(<HomeScreen />, { wrapper: wrapperFor(home) });
+    await act(async () => undefined);
+    expect(home.scanner.scans).toBe(1);
+  });
+
+  it('does nothing when nobody asked', async () => {
+    const home = await renderHome();
+    await act(async () => undefined);
+    expect(home.scanner.scans).toBe(0);
+  });
+
+  it('opens a stream code scanned on the hand-off, as a tap on the tile would', async () => {
+    const home = renderWithPorts(<HomeScreen />);
+    home.scanner.queue({ outcome: 'scanned', raw: streamRaw(IN_TWO_HOURS) });
+    home.ports.homeIntent.requestScan();
+    await act(() => home.ports.modeStore.load());
+    await waitFor(() => expect(home.navigation.current()).toBe('stream'));
   });
 });
 
@@ -769,5 +900,468 @@ describe('Home: the code panel is modal to TalkBack too', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Close' }));
     await waitFor(() => expect(liveStreamTile()).toBeTruthy());
     expect(home.container.querySelector('[aria-hidden="true"]')).toBeNull();
+  });
+});
+
+describe('Home: checking a stream code with the server (spec §1)', () => {
+  afterEach(() => vi.useRealTimers());
+
+  const scanStream = async (home: Awaited<ReturnType<typeof renderHome>>) => {
+    home.scanner.queue({ outcome: 'scanned', raw: streamRaw(IN_TWO_HOURS) });
+    fireEvent.click(liveStreamTile());
+  };
+  /** The tile behind a panel is hidden from the accessibility tree (M8). */
+  const hiddenTile = () => screen.getByRole('button', { name: /Live Stream/, hidden: true });
+
+  it('says Checking code… while it asks, then saves the descriptor and opens', async () => {
+    const home = await renderHome();
+    const release = home.descriptor.hold();
+    await scanStream(home);
+    await screen.findByText('Checking code…');
+    expect(home.navigation.current()).toBe('home');
+    release();
+    await waitFor(() => expect(home.navigation.current()).toBe('stream'));
+    const saved = decodeSavedCode(home.kv.entries.get(STORE_KEYS.code('stream')) ?? '');
+    expect(saved?.descriptor?.label).toBe('Seazn XI v Fake CC');
+    expect(home.descriptor.calls).toEqual([
+      { sid: '5d9c1d0e-0000-4000-8000-000000000001', token: 'fake-token-00000000000000000000' },
+    ]);
+  });
+
+  it('opens no second scanner while a code is being checked', async () => {
+    const home = await renderHome();
+    const release = home.descriptor.hold();
+    await scanStream(home);
+    await screen.findByText('Checking code…');
+    fireEvent.click(hiddenTile());
+    await act(async () => undefined);
+    expect(home.scanner.scans).toBe(1);
+    expect(screen.getByText('Checking code…')).toBeTruthy();
+    release();
+    await waitFor(() => expect(home.navigation.current()).toBe('stream'));
+  });
+
+  it('keeps Checking code… up against Back and the dim', async () => {
+    const home = await renderHome();
+    const release = home.descriptor.hold();
+    await scanStream(home);
+    await screen.findByText('Checking code…');
+    // The panel's Back handler registers in an effect after the text paints.
+    await act(async () => undefined);
+    let handled = false;
+    act(() => {
+      handled = home.back.press();
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+    expect(handled).toBe(true);
+    expect(screen.getByText('Checking code…')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Scan again' })).toBeNull();
+    release();
+    await waitFor(() => expect(home.navigation.current()).toBe('stream'));
+  });
+
+  it('is not a reopen when the app returns to the foreground mid-check (I2)', async () => {
+    const fakes = createFakePorts();
+    render(<GateThenHome />, { wrapper: wrapperFor(fakes) });
+    await waitFor(() => expect(fakes.splash.hides).toBe(1));
+    act(() => fakes.engine.forceState({ kind: 'armed' }));
+    const release = fakes.descriptor.hold();
+    fakes.scanner.queue({ outcome: 'scanned', raw: streamRaw(IN_TWO_HOURS) });
+    fireEvent.click(liveStreamTile());
+    await screen.findByText('Checking code…');
+    act(() => fakes.foreground.leave());
+    act(() => fakes.foreground.fire());
+    await act(async () => undefined);
+    expect(fakes.navigation.current()).toBe('home');
+    expect(screen.getByText('Checking code…')).toBeTruthy();
+    release();
+    await waitFor(() => expect(fakes.navigation.current()).toBe('stream'));
+  });
+
+  it.each([
+    [{ kind: 'invalid' }, 'Not valid for streaming', "This code isn't valid for streaming."],
+    [{ kind: 'not-found' }, 'Not valid for streaming', "This code isn't valid for streaming."],
+    [
+      { kind: 'ended', endReason: 'stopped' },
+      'Stream ended',
+      'This stream was ended by the organiser.',
+    ],
+    [
+      { kind: 'ended', endReason: 'unknown' },
+      'Stream ended',
+      'This stream was ended by the organiser.',
+    ],
+    [
+      { kind: 'ended', endReason: 'no-inbound-timeout' },
+      'Code timed out',
+      'This code timed out — ask the organiser for a new one.',
+    ],
+    [
+      { kind: 'ended', endReason: 'max-duration' },
+      'Code timed out',
+      'This code timed out — ask the organiser for a new one.',
+    ],
+    [{ kind: 'offline' }, 'No connection', "Can't check this code — no connection. Try again."],
+    [{ kind: 'rate-limited', retryAfterS: 7 }, 'Server busy', 'Busy — trying again in 7s'],
+  ] as const)('explains %j and saves nothing', async (error, title, body) => {
+    const home = await renderHome();
+    home.descriptor.answer(err(error));
+    await scanStream(home);
+    await screen.findByText(title);
+    expect(screen.getByText(body)).toBeTruthy();
+    expect(home.navigation.current()).toBe('home');
+    expect(home.kv.entries.has(STORE_KEYS.code('stream'))).toBe(false);
+  });
+
+  it('scans again from a refusal, with the same tile', async () => {
+    const home = await renderHome();
+    home.descriptor.answer(err({ kind: 'invalid' }));
+    await scanStream(home);
+    await screen.findByText('Not valid for streaming');
+    home.scanner.queue({ outcome: 'scanned', raw: streamRaw(IN_TWO_HOURS, 3) });
+    fireEvent.click(screen.getByRole('button', { name: 'Scan again' }));
+    await waitFor(() => expect(home.navigation.current()).toBe('stream'));
+    expect(home.scanner.scans).toBe(2);
+    expect(home.descriptor.calls).toHaveLength(2);
+  });
+
+  it('tries the same code again from the offline panel, without the scanner', async () => {
+    const home = await renderHome();
+    home.descriptor.answer(err({ kind: 'offline' }));
+    await scanStream(home);
+    fireEvent.click(await screen.findByRole('button', { name: 'Try again' }));
+    await waitFor(() => expect(home.navigation.current()).toBe('stream'));
+    expect(home.descriptor.calls).toHaveLength(2);
+    expect(home.scanner.scans).toBe(1);
+  });
+
+  it('never retries by itself when there was no connection', async () => {
+    vi.useFakeTimers();
+    const home = await renderHome();
+    home.descriptor.answer(err({ kind: 'offline' }));
+    await scanStream(home);
+    await act(async () => undefined);
+    expect(screen.getByText('No connection')).toBeTruthy();
+    await act(() => vi.advanceTimersByTimeAsync(130_000));
+    expect(home.descriptor.calls).toHaveLength(1);
+    expect(home.navigation.current()).toBe('home');
+  });
+
+  it('retries once by itself when the server says it is busy (D5)', async () => {
+    vi.useFakeTimers();
+    const home = await renderHome();
+    home.descriptor.answer(err({ kind: 'rate-limited', retryAfterS: 7 }));
+    await scanStream(home);
+    await act(async () => undefined);
+    expect(screen.getByText('Busy — trying again in 7s')).toBeTruthy();
+    await act(() => vi.advanceTimersByTimeAsync(6999));
+    expect(home.descriptor.calls).toHaveLength(1);
+    await act(() => vi.advanceTimersByTimeAsync(1));
+    await act(async () => undefined);
+    expect(home.descriptor.calls).toHaveLength(2);
+    expect(home.navigation.current()).toBe('stream');
+  });
+
+  it('retries a busy answer only once, even while the retry is still being checked', async () => {
+    vi.useFakeTimers();
+    const home = await renderHome();
+    home.descriptor.answer(err({ kind: 'rate-limited', retryAfterS: 7 }));
+    await scanStream(home);
+    await act(async () => undefined);
+    const release = home.descriptor.hold();
+    await act(() => vi.advanceTimersByTimeAsync(7000));
+    expect(screen.getByText('Checking code…')).toBeTruthy();
+    await act(() => vi.advanceTimersByTimeAsync(7000));
+    expect(home.descriptor.calls).toHaveLength(2);
+    release();
+    await act(async () => undefined);
+    expect(home.navigation.current()).toBe('stream');
+  });
+
+  it('drops the busy retry once the operator scans again instead', async () => {
+    vi.useFakeTimers();
+    const home = await renderHome();
+    home.descriptor.answer(err({ kind: 'rate-limited', retryAfterS: 7 }));
+    await scanStream(home);
+    await act(async () => undefined);
+    fireEvent.click(screen.getByRole('button', { name: 'Scan again' }));
+    await act(async () => undefined);
+    expect(home.scanner.scans).toBe(2);
+    await act(() => vi.advanceTimersByTimeAsync(10_000));
+    expect(home.descriptor.calls).toHaveLength(1);
+    expect(home.navigation.current()).toBe('home');
+  });
+
+  type Retry = 'Try again' | 'the busy retry';
+  const RETRIES: readonly Retry[] = ['Try again', 'the busy retry'];
+
+  /** Scans a stream code, then refuses it and its retry (I2): the retry's flight must end. */
+  async function refusedTwice(
+    fakes: Pick<Awaited<ReturnType<typeof renderHome>>, 'descriptor' | 'scanner'>,
+    retry: Retry,
+  ) {
+    const busy = retry === 'the busy retry';
+    const refusal = busy
+      ? ({ kind: 'rate-limited', retryAfterS: 7 } as const)
+      : ({ kind: 'offline' } as const);
+    fakes.descriptor.answer(err(refusal), err(refusal));
+    fakes.scanner.queue({ outcome: 'scanned', raw: streamRaw(IN_TWO_HOURS) });
+    fireEvent.click(liveStreamTile());
+    await act(async () => undefined);
+    if (busy) await act(() => vi.advanceTimersByTimeAsync(7000));
+    else fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+    await act(async () => undefined);
+    expect(fakes.descriptor.calls).toHaveLength(2);
+    expect(screen.getByText(busy ? 'Server busy' : 'No connection')).toBeTruthy();
+  }
+
+  it.each(RETRIES)(
+    'opens the scanner from a tile tap after %s is refused again (I2)',
+    async (retry) => {
+      vi.useFakeTimers();
+      const home = await renderHome();
+      await refusedTwice(home, retry);
+      home.scanner.queue({ outcome: 'scanned', raw: streamRaw(IN_TWO_HOURS, 3) });
+      fireEvent.click(hiddenTile());
+      await act(async () => undefined);
+      expect(home.scanner.scans).toBe(2);
+      expect(home.descriptor.calls).toHaveLength(3);
+      expect(home.navigation.current()).toBe('stream');
+    },
+  );
+
+  it.each(RETRIES)(
+    'still reopens on the next return after %s is refused again (I2)',
+    async (retry) => {
+      const fakes = await armedHome();
+      vi.useFakeTimers();
+      await refusedTwice(fakes, retry);
+      expect(fakes.navigation.current()).toBe('home');
+      act(() => fakes.foreground.leave());
+      act(() => fakes.foreground.fire());
+      await act(async () => undefined);
+      expect(fakes.navigation.current()).toBe('stream');
+    },
+  );
+
+  it('shows the expired panel, and asks nothing, for a Try again the minute the code ran out', async () => {
+    const home = await renderHome();
+    home.descriptor.answer(err({ kind: 'offline' }));
+    home.scanner.queue({
+      outcome: 'scanned',
+      raw: streamRaw(new Date(TEST_NOW.getTime() + 60_000)),
+    });
+    fireEvent.click(liveStreamTile());
+    await screen.findByText('No connection');
+    home.setNow(new Date(TEST_NOW.getTime() + 60_000));
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+    await screen.findByText('This code expired at 14:01. Ask the desk for a new one.');
+    expect(home.descriptor.calls).toHaveLength(1);
+    expect(screen.queryByText('Checking code…')).toBeNull();
+    expect(home.kv.entries.has(STORE_KEYS.code('stream'))).toBe(false);
+
+    // The retry's flight ended: the panel's own Scan again opens the scanner.
+    fireEvent.click(screen.getByRole('button', { name: 'Scan again' }));
+    await act(async () => undefined);
+    expect(home.scanner.scans).toBe(2);
+  });
+
+  it("gives the code's own expiry, not the time of the Try again, minutes after it ran out", async () => {
+    const home = await renderHome();
+    home.descriptor.answer(err({ kind: 'offline' }));
+    home.scanner.queue({
+      outcome: 'scanned',
+      raw: streamRaw(new Date(TEST_NOW.getTime() + 60_000)),
+    });
+    fireEvent.click(liveStreamTile());
+    await screen.findByText('No connection');
+    home.setNow(new Date(TEST_NOW.getTime() + 5 * 60_000));
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+    await screen.findByText('This code expired at 14:01. Ask the desk for a new one.');
+    expect(screen.queryByText(/14:05/)).toBeNull();
+    expect(home.descriptor.calls).toHaveLength(1);
+  });
+
+  it('checks a pasted code once, however many times Use is pressed (dev)', async () => {
+    const home = await renderHome({ devTools: true });
+    const release = home.descriptor.hold();
+    const field = screen.getByPlaceholderText('Paste a code (development only)');
+    fireEvent.change(field, { target: { value: streamRaw(IN_TWO_HOURS) } });
+    const use = screen.getByRole('button', { name: 'Use pasted code' });
+    fireEvent.click(use);
+    fireEvent.click(use);
+    await screen.findByText('Checking code…');
+    release();
+    await waitFor(() => expect(home.navigation.current()).toBe('stream'));
+    expect(home.descriptor.calls).toHaveLength(1);
+    expect(home.ports.scanFlight.active()).toBe(false);
+  });
+
+  it('opens no scanner from a tile while a pasted code is being checked (dev)', async () => {
+    const home = await renderHome({ devTools: true });
+    const release = home.descriptor.hold();
+    const field = screen.getByPlaceholderText('Paste a code (development only)');
+    fireEvent.change(field, { target: { value: streamRaw(IN_TWO_HOURS) } });
+    fireEvent.click(screen.getByRole('button', { name: 'Use pasted code' }));
+    await screen.findByText('Checking code…');
+    fireEvent.click(hiddenTile());
+    await act(async () => undefined);
+    expect(home.scanner.scans).toBe(0);
+    release();
+    await waitFor(() => expect(home.navigation.current()).toBe('stream'));
+  });
+
+  it.each([
+    ['rejects', () => Promise.reject(new Error('module missing'))],
+    [
+      'throws before it answers',
+      () => {
+        throw new Error('module missing');
+      },
+    ],
+  ])('calls a descriptor port that %s "no connection" (missing module)', async (_label, fetch) => {
+    const throwing = { fetch };
+    const home = await renderHome({ descriptor: throwing as never });
+    await scanStream(home);
+    await screen.findByText('No connection');
+    expect(screen.getByRole('button', { name: 'Try again' })).toBeTruthy();
+    expect(readRecord(home.record)).toContainEqual(
+      expect.objectContaining({
+        event: 'descriptor.error',
+        fields: { kind: 'offline', status: 0, problem: 'port-threw' },
+      }),
+    );
+  });
+
+  it('says no connection after 8 s when the server never answers, and scans again (Review Focus 1)', async () => {
+    vi.useFakeTimers();
+    const fakes = createFakePorts();
+    const descriptor = createFetchDescriptorPort({
+      origin: 'https://stg.seazn.club',
+      fetch: () => new Promise(() => undefined),
+      logger: fakes.ports.logger,
+    });
+    const home = await renderHome({ descriptor });
+    await scanStream(home);
+    await act(() => vi.advanceTimersByTimeAsync(DESCRIPTOR_TIMEOUT_MS));
+    expect(screen.getByText('No connection')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Scan again' }));
+    await act(async () => undefined);
+    expect(home.scanner.scans).toBe(2);
+  });
+
+  it('says so, and keeps no code, when the phone will not save a checked code', async () => {
+    const memory = createMemoryKeyValueStore();
+    const kv: KeyValueStore = {
+      ...memory,
+      set: () => Promise.reject(new Error('keystore locked')),
+    };
+    const home = await renderHome({ modeStore: createModeStore(kv) });
+    await scanStream(home);
+    await screen.findByText(SAVE_FAILED);
+    expect(home.descriptor.calls).toHaveLength(1);
+    expect(screen.queryByText('Checking code…')).toBeNull();
+    expect(home.navigation.current()).toBe('home');
+    expect(memory.entries.has(STORE_KEYS.code('stream'))).toBe(false);
+  });
+
+  it('never asks the server about a scoring code', async () => {
+    const home = await renderHome();
+    home.scanner.queue({ outcome: 'scanned', raw: 'https://stg.seazn.club/score/abc123' });
+    fireEvent.click(liveStreamTile());
+    await screen.findByText('This is a Remote Scoring code');
+    expect(home.descriptor.calls).toHaveLength(0);
+  });
+
+  it.each([
+    ['en', 'Live Stream', 'Checking code…', 'No connection', 'Try again'],
+    ['es', 'Emisión en directo', 'Comprobando el código…', 'Sin conexión', 'Reintentar'],
+    ['fr', 'Diffusion en direct', 'Vérification du code…', 'Pas de connexion', 'Réessayer'],
+    ['nl', 'Livestream', 'Code controleren…', 'Geen verbinding', 'Opnieuw proberen'],
+  ])('speaks %s while checking and when offline', async (lang, tile, checking, offline, retry) => {
+    const home = await renderHome({ deviceLanguages: [lang] });
+    home.descriptor.answer(err({ kind: 'offline' }));
+    const release = home.descriptor.hold();
+    home.scanner.queue({ outcome: 'scanned', raw: streamRaw(IN_TWO_HOURS) });
+    fireEvent.click(screen.getByRole('button', { name: new RegExp(tile) }));
+    await screen.findByText(checking);
+    release();
+    await screen.findByText(offline);
+    expect(screen.getByRole('button', { name: retry })).toBeTruthy();
+  });
+});
+
+describe('useHome: every open goes through the check', () => {
+  const streamCode = {
+    mode: 'stream',
+    raw: 'r',
+    sid: 'fake-sid',
+    slot: 0,
+    token: 'fake-token',
+    expiresAt: IN_TWO_HOURS,
+  } as const;
+
+  async function homeHook(options?: Parameters<typeof createFakePorts>[0]) {
+    const fakes = createFakePorts(options);
+    const hook = renderHook(() => useHome(), { wrapper: wrapperFor(fakes) });
+    await act(() => fakes.ports.modeStore.load());
+    return { ...fakes, hook };
+  }
+
+  it('checks a stream code opened from the panel, not only a scanned one', async () => {
+    const home = await homeHook();
+    act(() => home.hook.result.current.actions.openFromPanel(streamCode));
+    await waitFor(() => expect(home.navigation.current()).toBe('stream'));
+    expect(home.descriptor.calls).toEqual([{ sid: 'fake-sid', token: 'fake-token' }]);
+  });
+
+  const scoring = { mode: 'scoring', raw: 'https://stg.seazn.club/score/t', token: 't' } as const;
+
+  it('saves a scoring code opened from the panel without asking the server', async () => {
+    const home = await homeHook();
+    home.scanner.queue({ outcome: 'scanned', raw: scoring.raw });
+    act(() => home.hook.result.current.actions.tapTile('stream'));
+    await waitFor(() => expect(home.hook.result.current.view.panel).not.toBeNull());
+    act(() => home.hook.result.current.actions.openFromPanel(scoring));
+    await waitFor(() => expect(home.kv.entries.has(STORE_KEYS.code('scoring'))).toBe(true));
+    expect(home.hook.result.current.view.panel).toBeNull();
+    expect(home.descriptor.calls).toHaveLength(0);
+    const saved = decodeSavedCode(home.kv.entries.get(STORE_KEYS.code('scoring')) ?? '');
+    expect(saved?.descriptor).toBeNull();
+  });
+
+  it('saves nothing for a code opened from the panel before the store has loaded (R12)', async () => {
+    const fakes = createFakePorts();
+    const hook = renderHook(() => useHome(), { wrapper: wrapperFor(fakes) });
+    act(() => hook.result.current.actions.openFromPanel(scoring));
+    await act(async () => undefined);
+    await act(() => fakes.ports.modeStore.load());
+    await act(async () => undefined);
+    expect(fakes.kv.entries.size).toBe(0);
+    expect(fakes.navigation.current()).toBe('home');
+  });
+
+  it('asks nothing when Try again has no refused code to try', async () => {
+    const home = await homeHook();
+    act(() => home.hook.result.current.actions.retryCheck());
+    await act(async () => undefined);
+    expect(home.descriptor.calls).toHaveLength(0);
+    expect(home.ports.scanFlight.active()).toBe(false);
+  });
+
+  it('asks again once for two Try agains before the first is answered', async () => {
+    const home = await homeHook();
+    home.descriptor.answer(err({ kind: 'offline' }));
+    act(() => home.hook.result.current.actions.openFromPanel(streamCode));
+    await waitFor(() => expect(home.hook.result.current.view.panel?.kind).toBe('descriptorError'));
+    const release = home.descriptor.hold();
+    const { retryCheck } = home.hook.result.current.actions;
+    act(() => {
+      retryCheck();
+      retryCheck();
+    });
+    release();
+    await waitFor(() => expect(home.navigation.current()).toBe('stream'));
+    expect(home.descriptor.calls).toHaveLength(2);
   });
 });

@@ -14,13 +14,106 @@ const UI_NATIVE_IMPORTS = [
   'expo-*',
   '@/scanner/*',
   '@/hooks/nativePorts',
+  // Behind the surfaces port (D16), never drawn by a screen directly (m6).
+  // `expo-*` already matches expo-video; it is named so the ban outlives a
+  // narrower glob.
+  'react-native-webview',
+  'expo-video',
 ];
+
+/**
+ * AGENTS §4: `any` is banned; the escape hatch is `unknown` plus a parse
+ * function at the boundary. @typescript-eslint/eslint-plugin is not installed
+ * (only the parser is), so this is the core rule on the parser's own
+ * `TSAnyKeyword` node — every `any` annotation, cast and type argument — with
+ * no new dependency. Shared because a later `no-restricted-syntax` replaces an
+ * earlier one for the files it matches: every block that sets the rule repeats it.
+ */
+const NO_ANY = {
+  selector: 'TSAnyKeyword',
+  message: '`any` is banned (AGENTS §4): use `unknown` and parse it at the boundary.',
+};
+
+/**
+ * The colour names React Native accepts, less `transparent` (the absence of a
+ * colour, which stays allowed): `normalizeKeyword` in
+ * @react-native/normalize-colors 0.86.3, the CSS named colours plus RN's own
+ * `burntsienna`.
+ */
+const NAMED_COLOURS = `
+  aliceblue antiquewhite aqua aquamarine azure beige bisque black blanchedalmond blue blueviolet
+  brown burlywood burntsienna cadetblue chartreuse chocolate coral cornflowerblue cornsilk
+  crimson cyan darkblue darkcyan darkgoldenrod darkgray darkgreen darkgrey darkkhaki darkmagenta
+  darkolivegreen darkorange darkorchid darkred darksalmon darkseagreen darkslateblue
+  darkslategray darkslategrey darkturquoise darkviolet deeppink deepskyblue dimgray dimgrey
+  dodgerblue firebrick floralwhite forestgreen fuchsia gainsboro ghostwhite gold goldenrod gray
+  green greenyellow grey honeydew hotpink indianred indigo ivory khaki lavender lavenderblush
+  lawngreen lemonchiffon lightblue lightcoral lightcyan lightgoldenrodyellow lightgray lightgreen
+  lightgrey lightpink lightsalmon lightseagreen lightskyblue lightslategray lightslategrey
+  lightsteelblue lightyellow lime limegreen linen magenta maroon mediumaquamarine mediumblue
+  mediumorchid mediumpurple mediumseagreen mediumslateblue mediumspringgreen mediumturquoise
+  mediumvioletred midnightblue mintcream mistyrose moccasin navajowhite navy oldlace olive
+  olivedrab orange orangered orchid palegoldenrod palegreen paleturquoise palevioletred
+  papayawhip peachpuff peru pink plum powderblue purple rebeccapurple red rosybrown royalblue
+  saddlebrown salmon sandybrown seagreen seashell sienna silver skyblue slateblue slategray
+  slategrey snow springgreen steelblue tan teal thistle tomato turquoise violet wheat white
+  whitesmoke yellow yellowgreen
+`
+  .trim()
+  .split(/\s+/);
+
+/**
+ * Where a name is a colour: a style value or prop whose name holds "color"
+ * (`color`, `backgroundColor`, `tintColor`, `placeholderTextColor`, `colors`, …)
+ * or is an SVG `fill` / `stroke`. Scoped, because `'red'` or `'lime'` elsewhere
+ * can be a word, not a colour (n4).
+ */
+const COLOUR_PROP = '/colou?r|^(fill|stroke)$/i';
+const NAMED_COLOUR = `Literal[value=/^(${NAMED_COLOURS.join('|')})$/i]`;
+
+/**
+ * AGENTS §5: styles reference tokens only; a colour literal in a component is
+ * a review blocker. Hex (#rgb, #rgba, #rrggbb, #rrggbbaa) and the colour
+ * functions (rgb/rgba, hsl/hsla, hwb, lab, lch, oklab, oklch), in a string, a
+ * JSX attribute or the head of a template; and a named colour in a style value
+ * or colour prop (n4).
+ */
+const COLOUR_MESSAGE = 'A colour literal outside src/ui/theme (AGENTS §5): use a theme token.';
+const COLOUR_FUNCTION = '((rgb|hsl)a?|hwb|lab|lch|oklab|oklch)\\(';
+const NO_COLOUR_LITERALS = [
+  {
+    selector: 'Literal[value=/^#([0-9a-f]{3,4}|[0-9a-f]{6}|[0-9a-f]{8})$/i]',
+    message: COLOUR_MESSAGE,
+  },
+  { selector: `Literal[value=/^${COLOUR_FUNCTION}/i]`, message: COLOUR_MESSAGE },
+  {
+    selector: `TemplateElement[value.raw=/^(#[0-9a-f]{3,8}\\b|${COLOUR_FUNCTION})/i]`,
+    message: COLOUR_MESSAGE,
+  },
+  { selector: `Property[key.name=${COLOUR_PROP}] ${NAMED_COLOUR}`, message: COLOUR_MESSAGE },
+  { selector: `Property[key.value=${COLOUR_PROP}] ${NAMED_COLOUR}`, message: COLOUR_MESSAGE },
+  { selector: `JSXAttribute[name.name=${COLOUR_PROP}] ${NAMED_COLOUR}`, message: COLOUR_MESSAGE },
+];
+
+/**
+ * The on-air phase is not a colour: `connecting` is phase `live`, yet its plate
+ * is inert. A plate or component that coloured itself from the phase would
+ * paint connecting red, so ui never reads it; `tallyPlateFor` and `tallyTone`
+ * are the one colour authority (D14, batch 7 carry 5).
+ */
+const NO_PHASE_AS_COLOUR = {
+  name: '@/hooks/engineSelectors',
+  importNames: ['selectOnAirPhase', 'OnAirPhase'],
+  message:
+    'The on-air phase is not a colour (D14): plates take theirs from tallyPlateFor and tallyTone; ask selectIsOnAir for on/off.',
+};
 
 /** The ui import rule, for a given list of services the files may not import. */
 function uiRestrictedImports(services, message) {
   return [
     'error',
     {
+      paths: [NO_PHASE_AS_COLOUR],
       patterns: [{ group: [...UI_NATIVE_IMPORTS, services], allowTypeImports: true, message }],
     },
   ];
@@ -69,6 +162,10 @@ export default [
       },
     },
     rules: {
+      // AGENTS §11: no console anywhere — one levelled logger feeds the session
+      // record, scrubbed. A console line is unscrubbed and lost at the ground.
+      'no-console': 'error',
+      'no-restricted-syntax': ['error', NO_ANY],
       'boundaries/dependencies': [
         'error',
         {
@@ -180,6 +277,13 @@ export default [
         'Screens reach native capabilities through ports (spec §9)',
       ),
     },
+  },
+  {
+    // Colour comes from the theme and nowhere else (AGENTS §5). Repeats NO_ANY:
+    // this block's `no-restricted-syntax` replaces the one above for these files.
+    files: ['src/ui/**/*.{ts,tsx}', 'app/**/*.{ts,tsx}'],
+    ignores: ['src/ui/theme/**'],
+    rules: { 'no-restricted-syntax': ['error', NO_ANY, ...NO_COLOUR_LITERALS] },
   },
   {
     // UI tests seed and inspect storage through the same pure services the

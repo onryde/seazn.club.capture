@@ -1,3 +1,4 @@
+import type { EngineIntent } from '@/engine/CaptureEnginePort';
 import { createFakeCaptureEngine, type FakeCaptureEngine } from '@/engine/FakeCaptureEngine';
 import type { Gravity, Target } from '@/domain/orientation/orientation';
 import type { Ports } from '@/hooks/usePorts';
@@ -9,28 +10,47 @@ import type {
   NavigationPort,
   OrientationLockPort,
   Route,
+  SharePort,
   SplashPort,
 } from '@/services/devicePorts';
+import { createFakeDescriptorPort, type FakeDescriptorPort } from '@/services/fakeDescriptorPort';
 import { createMemoryKeyValueStore, type MemoryKeyValueStore } from '@/services/KeyValueStore';
+import { createLogger } from '@/services/logger';
 import { createModeStore } from '@/services/modeStore';
+import { createHomeIntent } from '@/services/homeIntent';
 import { createScanFlight } from '@/services/scanFlight';
+import { createRingRecord, type SessionRecord } from '@/services/sessionRecord';
+import { createStreamSettingsStore } from '@/services/streamSettingsStore';
+import { createFakeSurfaces, type FakeSurfaces } from './fakeSurfaces';
 
 export const TEST_NOW = new Date('2026-10-03T13:00:00Z');
 
 export type FakeMotion = MotionPort & { emit(g: Gravity, atMs: number): void; available: boolean };
 
+/** The fake engine, plus every intent it was sent, whole: tests only (M5). */
+export type TestEngine = FakeCaptureEngine & { readonly intents: readonly EngineIntent[] };
+
 export type FakePorts = {
   readonly ports: Ports;
-  readonly engine: FakeCaptureEngine;
+  readonly engine: TestEngine;
   readonly scanner: FakeCodeScanner;
+  readonly descriptor: FakeDescriptorPort;
   readonly kv: MemoryKeyValueStore;
   readonly motion: FakeMotion;
   readonly orientationLock: OrientationLockPort & { readonly locks: readonly Target[] };
   readonly back: BackPort & { press(): boolean };
-  /** `leave()` is the app going to the background; `fire()` is its return. */
-  readonly foreground: ForegroundPort & { fire(): void; leave(): void };
+  /**
+   * `leave()` is the app going to the background; `fire()` is its return.
+   * `leaveListeners()` counts who would hear a `leave()`.
+   */
+  readonly foreground: FakeForeground;
   readonly navigation: NavigationPort & { readonly history: readonly Route[] };
   readonly splash: SplashPort & { readonly hides: number };
+  readonly surfaces: FakeSurfaces;
+  /** The session record the ports' logger writes to; read it with `readRecord`. */
+  readonly record: SessionRecord;
+  /** What Share record sent, in order; `refuse()` makes every later share fail to open (M18). */
+  readonly share: SharePort & { readonly shared: string[]; refuse(): void };
   setNow(at: Date): void;
 };
 
@@ -41,12 +61,16 @@ export function createFakePorts(
 ): FakePorts {
   const { kvSeed, ...portOverrides } = overrides;
   let now = TEST_NOW;
-  const engine = createFakeCaptureEngine(() => now.getTime());
+  const engine = recordingIntents(createFakeCaptureEngine(() => now.getTime()));
   created.push(engine);
   const kv = createMemoryKeyValueStore(kvSeed);
+  // The real logger over the ring record: both are pure, so no double is needed (D34).
+  const record = createRingRecord();
+  const logger = createLogger({ record, now: () => now.getTime() });
   const fakes = {
     engine,
     scanner: createFakeCodeScanner(),
+    descriptor: createFakeDescriptorPort(() => now),
     kv,
     motion: fakeMotion(),
     orientationLock: fakeLock(),
@@ -54,18 +78,24 @@ export function createFakePorts(
     foreground: fakeForeground(),
     navigation: fakeNavigation(),
     splash: fakeSplash(),
+    surfaces: createFakeSurfaces(),
+    record,
+    share: fakeShare(),
   };
   const ports: Ports = {
     ...fakes,
     devEngine: engine,
     modeStore: createModeStore(kv),
     scanFlight: createScanFlight(),
+    homeIntent: createHomeIntent(),
+    streamSettings: createStreamSettingsStore(kv, logger),
     clock: () => now,
     hosts: ['stg.seazn.club'],
     deviceLanguages: ['en'],
     phoneZone: 'Europe/London',
     appVersion: '0.0.0-test',
     devTools: true,
+    logger,
     ...portOverrides,
   };
   return {
@@ -75,6 +105,32 @@ export function createFakePorts(
       now = at;
     },
   };
+}
+
+export type RecordedEntry = {
+  readonly level: string;
+  readonly event: string;
+  readonly fields: Readonly<Record<string, unknown>>;
+};
+
+/** The record's lines, parsed, for assertions. */
+export function readRecord(record: SessionRecord): RecordedEntry[] {
+  return record.lines().map((line) => JSON.parse(line) as RecordedEntry);
+}
+
+/**
+ * Records each intent whole as it reaches the engine. Wraps `send` on the same
+ * object, so the ports and `holdIntents` see one engine; a held intent is
+ * recorded when it is released, as native would only then have it.
+ */
+function recordingIntents(engine: FakeCaptureEngine): TestEngine {
+  const intents: EngineIntent[] = [];
+  const deliver = engine.send;
+  engine.send = (intent) => {
+    intents.push(intent);
+    deliver(intent);
+  };
+  return Object.assign(engine, { intents });
 }
 
 /** Stops every fake engine's heartbeat. Called after each UI test (test/setup-ui.ts). */
@@ -124,7 +180,14 @@ function fakeBack(): BackPort & { press(): boolean } {
   };
 }
 
-function fakeForeground(): ForegroundPort & { fire(): void; leave(): void } {
+type FakeForeground = ForegroundPort & {
+  fire(): void;
+  leave(): void;
+  leaveListeners(): number;
+  returnListeners(): number;
+};
+
+function fakeForeground(): FakeForeground {
   const returns = new Set<() => void>();
   const leaves = new Set<() => void>();
   const add = (listeners: Set<() => void>, listener: () => void) => {
@@ -142,6 +205,8 @@ function fakeForeground(): ForegroundPort & { fire(): void; leave(): void } {
     leave: () => {
       for (const listener of leaves) listener();
     },
+    leaveListeners: () => leaves.size,
+    returnListeners: () => returns.size,
   };
 }
 
@@ -155,6 +220,24 @@ function fakeNavigation(): NavigationPort & { readonly history: Route[] } {
       if (route === current) return;
       current = route;
       history.push(route);
+    },
+    restart: () => {
+      current = 'home';
+    },
+  };
+}
+
+function fakeShare(): SharePort & { readonly shared: string[]; refuse(): void } {
+  const shared: string[] = [];
+  let refusing = false;
+  return {
+    shared,
+    refuse: () => {
+      refusing = true;
+    },
+    share: async (text) => {
+      if (refusing) throw new Error('share sheet refused');
+      shared.push(text);
     },
   };
 }

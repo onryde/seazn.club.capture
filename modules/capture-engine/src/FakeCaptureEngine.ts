@@ -1,161 +1,434 @@
-import type { SessionEvent, SessionState, ShedStep } from '@/domain/session/SessionState';
-import { projectEvent } from '@/domain/session/projectEvent';
+import type { SessionDescriptor } from '@/domain/credentials/SessionDescriptor';
+import type { Transport } from '@/domain/credentials/StreamCredentials';
+import type { StreamSession } from '@/domain/credentials/StreamSession';
+import { tokenTag } from '@/domain/credentials/tokenTag';
 import type {
+  DegradeReason,
+  EndReason,
+  ReconnectCause,
+  SessionState,
+} from '@/domain/session/SessionState';
+import type {
+  CameraState,
   CaptureEnginePort,
   EngineIntent,
   EngineSnapshot,
-  Interruption,
   Telemetry,
 } from './CaptureEnginePort';
 
 /**
- * The fake is built first, on purpose (AGENTS.md §10).
- *
- * Every screen, state and failure mode must be developable on a laptop with no
- * device — and the states that matter most are the ones hardest to produce on
- * real hardware: an uplink dying mid-over, a handset hitting its thermal
- * ceiling, the hold window running out, an iPhone locking mid-match. Those are
- * one call away here.
+ * The fake is built first, on purpose (AGENTS §10), and it holds no state
+ * machine (spec §2, "One authority"): it plays named snapshots. Intents move
+ * it only the few steps a laptop needs — arm, start, stop, reset — and every
+ * other state is one `scene()` away.
  */
+export type FakeScene =
+  | 'armed-not-ready'
+  | 'armed-ready'
+  | 'connecting'
+  | 'live'
+  | 'fell-back'
+  | 'holding'
+  | 'stalled'
+  | 'restarting'
+  | 'not-delivered'
+  | 'camera-taken'
+  | 'camera-reopened'
+  | 'camera-switching'
+  | 'mic-silenced'
+  | 'stopped'
+  | 'stopped-by-organiser'
+  | 'fatal'
+  | 'shed';
+
+export const FAKE_SCENES: readonly FakeScene[] = [
+  'armed-not-ready',
+  'armed-ready',
+  'connecting',
+  'live',
+  'fell-back',
+  'holding',
+  'stalled',
+  'restarting',
+  'not-delivered',
+  'camera-taken',
+  'camera-reopened',
+  'camera-switching',
+  'mic-silenced',
+  'stopped',
+  'stopped-by-organiser',
+  'fatal',
+  'shed',
+];
+
 export type FakeCaptureEngine = CaptureEnginePort & {
-  /** Jump straight to any state, with telemetry derived to match it. */
+  /** Jump to a named state from spec §6's list, with telemetry to match. */
+  scene(name: FakeScene): void;
+  /** Jump to any state; telemetry follows its kind. */
   forceState(state: SessionState): void;
-  /** Feed a single native event through the real projection. */
-  apply(event: SessionEvent, atMs?: number): void;
+  /** Change telemetry alone, as the next 1 Hz report would. */
+  patch(telemetry: Partial<Telemetry>): void;
+  /** Change whose camera it is alone, as native reports a take or a reopen under any state. */
+  setCamera(camera: CameraState | null): void;
+  /** Replace the descriptor alone, as native's re-fetch on a reconnect does (spec §1). */
+  setDescriptor(descriptor: SessionDescriptor | null): void;
+  /** Replace the armed slot alone: a session native holds from before this visit. */
+  setSlot(slot: number | null): void;
+  /** Replace the armed token's tag alone, likewise (N2). */
+  setTokenTag(tag: string | null): void;
   /**
-   * Stop the heartbeat and freeze `reportedAtMs` — what an iPhone lock looks
-   * like from JavaScript. The snapshot goes stale and the app must stop
-   * claiming the broadcast is fine.
+   * The kind of each intent received, oldest first, at most INTENT_LOG_CAP.
+   * Only the kind (M5): until plan C this fake is the production engine
+   * (D25), and an arm carries the token, passphrase and stream key. Tests that
+   * need whole intents record them in the test factory (test/fakePorts.ts).
    */
+  readonly intentKinds: readonly EngineIntent['kind'][];
+  /** Stop reporting: what a suspended process looks like from JS. */
   suspend(): void;
-  /**
-   * Come back after `awayMs`, then resolve the ambiguity the way native would:
-   * either the hold covered the absence, or it ran out.
-   */
-  resume(awayMs: number, outcome: 'held' | 'expired'): void;
-  /** Report an interruption that leaves the app foregrounded, e.g. a call. */
-  interrupt(interruption: Interruption | null): void;
-  /** Whether capture survives backgrounding. Android true, iOS false. */
-  setSurvivesBackground(value: boolean): void;
-  /** Cancel the scripted session without ending it. */
-  cancelScript(): void;
   /** Stop every timer. Always call this in test teardown. */
   dispose(): void;
 };
 
-const IDLE_TELEMETRY: Telemetry = {
-  bitrateKbps: 0,
-  droppedFrames: 0,
-  rttMs: null,
+/** 12:34 on air: the elapsed clock shows every kind of digit. */
+const ON_AIR_MS = 754_000;
+const CONNECT_MS = 1000;
+/**
+ * F-P5-10: after our own reopen the camera gets a full 3 s stall window for
+ * its first frame. The fake's first frame lands at the end of it: the longest
+ * the operator waits. A switch's new camera gets the same window (ruling 14).
+ */
+const REOPEN_FIRST_FRAME_MS = 3000;
+const REPORT_MS = 1000;
+/** M5: a three-hour match sends a handful of intents; the cap only bounds a runaway. */
+export const INTENT_LOG_CAP = 100;
+
+export const IDLE_TELEMETRY: Telemetry = {
+  bitrateKbps: null,
+  targetBitrateKbps: null,
   audioLevel: 0,
+  cameraReady: false,
+  networkReachable: false,
+  encodedVideoFps: null,
+  audioPacketsPerSecond: null,
+  srt: null,
+  delivery: 'unknown',
+  deliveredLagMs: null,
+  deliveryCheckedAtMs: null,
+  dataUsedBytes: 0,
+  charging: null,
+  batteryPercent: null,
+  drainPctPerHour: null,
+  thermalStatus: null,
   thermalHeadroom: null,
-  batteryLevel: null,
   captureTimestampMs: null,
   shed: null,
-  interruption: null,
+  heartbeat: { lastSentAtEpochMs: null, lastResult: null, consecutiveFailures: 0, failures: 0 },
 };
 
-/** The scripted session, in seconds from `start`. Roughly a bad afternoon. */
-const SCRIPT: readonly (readonly [number, SessionEvent])[] = [
-  [0, { kind: 'PublishStarted', transport: 'srt' }],
-  [8, { kind: 'TransportDegraded', reason: 'poor-uplink' }],
-  [12, { kind: 'FellBackToRtmps' }],
-  [16, { kind: 'ThermalCeilingHit', shed: 'overlay-preview' }],
-  [18, { kind: 'UplinkLost', holdWindowSeconds: 60 }],
-  [26, { kind: 'PublishResumed', transport: 'rtmps' }],
-];
+/**
+ * Camera up, sound above the floor, network validated: every chip green.
+ * No encoded rates yet: plan B reads them from the on-air stall watchdog, so
+ * native reports null until the session is on air.
+ */
+const ARMED: Telemetry = {
+  ...IDLE_TELEMETRY,
+  audioLevel: 0.42,
+  cameraReady: true,
+  networkReachable: true,
+  charging: false,
+  batteryPercent: 74,
+  thermalStatus: 'none',
+  thermalHeadroom: 0.68,
+};
 
-const HEARTBEAT_MS = 1000;
+/** Fixed numbers, so UI tests can assert them; four- and five-digit values exercise tabular figures. */
+function onAir(now: number): Telemetry {
+  return {
+    ...ARMED,
+    bitrateKbps: 2840,
+    targetBitrateKbps: 3000,
+    encodedVideoFps: 30,
+    audioPacketsPerSecond: 47,
+    srt: { sent: 120_000, retransmitted: 240, dropped: 3, rttMs: 48 },
+    delivery: 'ok',
+    deliveredLagMs: 9200,
+    deliveryCheckedAtMs: now - 1500,
+    dataUsedBytes: 312_000_000,
+    drainPctPerHour: 18,
+    captureTimestampMs: now,
+    heartbeat: {
+      lastSentAtEpochMs: now - 4000,
+      lastResult: 'ok',
+      consecutiveFailures: 0,
+      failures: 0,
+    },
+  };
+}
+
+/**
+ * Reconnecting: native is back in its connect phase, so nothing on air is
+ * measured (plan B's projection reads these from the on-air phase only).
+ * Delivery is unknown, so there is no delivered lag either.
+ */
+function reconnectingTelemetry(now: number): Telemetry {
+  return {
+    ...onAir(now),
+    bitrateKbps: null,
+    targetBitrateKbps: null,
+    encodedVideoFps: null,
+    audioPacketsPerSecond: null,
+    srt: null,
+    delivery: 'unknown',
+    deliveredLagMs: null,
+  };
+}
+
+/** The encoded rates while the stall watchdog holds or has just rebaselined: no reading. */
+const noEncodedRates = (telemetry: Telemetry): Telemetry => ({
+  ...telemetry,
+  encodedVideoFps: null,
+  audioPacketsPerSecond: null,
+});
+
+type Scene = {
+  readonly state: SessionState;
+  readonly telemetry: Telemetry;
+  /** Whose camera, when not what the state's kind implies (`cameraFor`). */
+  readonly camera?: CameraState;
+  /** A snapshot native reports by itself a moment later. */
+  readonly then?: { readonly afterMs: number; readonly state: SessionState };
+};
+
+const publishing = (transport: Transport, since: number): SessionState => ({
+  kind: 'publishing',
+  transport,
+  sinceEpochMs: since,
+});
+const degraded = (transport: Transport, reason: DegradeReason, since: number): SessionState => ({
+  kind: 'degraded',
+  transport,
+  reason,
+  sinceEpochMs: since,
+});
+const reconnecting = (cause: ReconnectCause, since: number): SessionState => ({
+  kind: 'reconnecting',
+  cause,
+  holdRemainingSeconds: 38,
+  holdWindowSeconds: 183,
+  sinceEpochMs: since,
+});
+const ended = (reason: EndReason, durationMs: number | null): SessionState => ({
+  kind: 'ended',
+  reason,
+  durationMs,
+});
+
+/** Spec §6's states. A table, exempt from the line count (AGENTS §12). */
+function sceneOf(name: FakeScene, now: number): Scene {
+  const since = now - ON_AIR_MS;
+  const live = onAir(now);
+  switch (name) {
+    case 'armed-not-ready':
+      return { state: { kind: 'armed' }, telemetry: { ...ARMED, audioLevel: 0.01 } };
+    case 'armed-ready':
+      return { state: { kind: 'armed' }, telemetry: ARMED };
+    case 'connecting':
+      return { state: { kind: 'connecting', transport: 'srt' }, telemetry: ARMED };
+    case 'live':
+      return { state: publishing('srt', since), telemetry: live };
+    case 'fell-back':
+      return {
+        state: degraded('rtmps', 'fell-back-to-rtmps', since),
+        telemetry: { ...live, srt: null },
+      };
+    case 'holding':
+      return { state: reconnecting('uplink-lost', since), telemetry: reconnectingTelemetry(now) };
+    case 'stalled':
+      return { state: reconnecting('video-stalled', since), telemetry: reconnectingTelemetry(now) };
+    case 'restarting':
+      return { state: reconnecting('not-delivered', since), telemetry: reconnectingTelemetry(now) };
+    case 'not-delivered':
+      return {
+        state: degraded('srt', 'not-delivered', since),
+        telemetry: { ...live, delivery: 'stalled', deliveredLagMs: 21_000 },
+      };
+    case 'camera-taken':
+      return {
+        state: degraded('srt', 'camera-taken', since),
+        telemetry: noEncodedRates({ ...live, cameraReady: false }),
+        camera: 'taken',
+      };
+    case 'camera-reopened':
+      // Plan B holds the session until our reopened camera's first frame: it
+      // reads degraded camera-taken with its time on air, never connecting
+      // (Projection.onAir). Until that frame the camera is producing none, so
+      // `cameraReady` is false by its own doc. Clean again once a frame advances.
+      return {
+        state: degraded('srt', 'camera-taken', since),
+        telemetry: noEncodedRates({ ...live, cameraReady: false }),
+        camera: 'reopening',
+        then: { afterMs: REOPEN_FIRST_FRAME_MS, state: publishing('srt', since) },
+      };
+    case 'camera-switching':
+      // Plan B holds LIVE through the operator's switch until the new
+      // camera's first frame (`SWITCHING`: not shown taken, so no degrade).
+      return {
+        state: publishing('srt', since),
+        telemetry: noEncodedRates({ ...live, cameraReady: false }),
+        camera: 'switching',
+        then: { afterMs: REOPEN_FIRST_FRAME_MS, state: publishing('srt', since) },
+      };
+    case 'mic-silenced':
+      return {
+        state: degraded('srt', 'mic-silenced', since),
+        telemetry: { ...live, audioLevel: 0 },
+      };
+    case 'stopped':
+      return { state: ended('operator-stopped', ON_AIR_MS), telemetry: IDLE_TELEMETRY };
+    case 'stopped-by-organiser':
+      return { state: ended('stopped-by-organiser', ON_AIR_MS), telemetry: IDLE_TELEMETRY };
+    case 'fatal':
+      return { state: ended('fatal-error', ON_AIR_MS), telemetry: IDLE_TELEMETRY };
+    case 'shed':
+      return {
+        state: publishing('srt', since),
+        telemetry: {
+          ...live,
+          shed: 'overlay-preview',
+          thermalStatus: 'severe',
+          thermalHeadroom: 0.12,
+        },
+      };
+  }
+}
+
+function telemetryFor(state: SessionState, now: number): Telemetry {
+  switch (state.kind) {
+    case 'idle':
+    case 'ended':
+      return IDLE_TELEMETRY;
+    case 'armed':
+    case 'connecting':
+      return ARMED;
+    case 'reconnecting':
+      return reconnectingTelemetry(now);
+    default:
+      return onAir(now);
+  }
+}
+
+/** Plan B's `Snapshot.camera`: ours whenever there is a session, none without one. */
+const cameraFor = (state: SessionState): CameraState | null =>
+  state.kind === 'idle' || state.kind === 'ended' ? null : 'own';
+
+const sinceOf = (state: SessionState): number | null =>
+  'sinceEpochMs' in state ? state.sinceEpochMs : null;
 
 export function createFakeCaptureEngine(now: () => number = Date.now): FakeCaptureEngine {
   let snapshot: EngineSnapshot = {
     state: { kind: 'idle' },
     telemetry: IDLE_TELEMETRY,
-    credentials: null,
+    descriptor: null,
+    slot: null,
+    tokenTag: null,
+    camera: null,
     reportedAtMs: now(),
     survivesBackground: false,
   };
-
+  let primary: Transport = 'srt';
+  const intentKinds: EngineIntent['kind'][] = [];
   const listeners = new Set<() => void>();
-  const timers: ReturnType<typeof setTimeout>[] = [];
-  let heartbeat: ReturnType<typeof setInterval> | null = null;
+  let pending: ReturnType<typeof setTimeout> | null = null;
+  let report: ReturnType<typeof setInterval> | null = null;
 
-  const publish = (next: EngineSnapshot): void => {
-    snapshot = next;
+  const publish = (next: Partial<EngineSnapshot>): void => {
+    snapshot = { ...snapshot, ...next, reportedAtMs: now() };
     for (const listener of listeners) listener();
   };
-
-  const apply = (event: SessionEvent, atMs: number = now()): void => {
-    // Telemetry must describe the state it ships with, not the one before it —
-    // otherwise the HUD renders "RECONNECTING · 3000k" and the operator stops
-    // trusting the display.
-    const state = projectEvent(snapshot.state, event, atMs);
-    const shed = event.kind === 'ThermalCeilingHit' ? event.shed : snapshot.telemetry.shed;
-    publish({
-      ...snapshot,
-      state,
-      telemetry: telemetryFor(state, snapshot.telemetry, atMs, shed),
-      credentials: event.kind === 'SessionReset' ? null : snapshot.credentials,
-      reportedAtMs: atMs,
-    });
+  const show = (
+    state: SessionState,
+    telemetry: Telemetry = telemetryFor(state, now()),
+    camera: CameraState | null = cameraFor(state),
+  ) => publish({ state, telemetry, camera });
+  const cancelPending = (): void => {
+    if (pending !== null) clearTimeout(pending);
+    pending = null;
   };
-
   /**
-   * Re-emits an unchanged snapshot with a fresh timestamp. Without this,
-   * silence would be indistinguishable from absence and `reportedAtMs` would
-   * carry no information at all.
+   * Native reporting a new state by itself, `afterMs` from now. It overwrites
+   * `pending` without cancelling it, which is safe only because nothing is ever
+   * pending when it runs: `play` cancels first, and `start` runs only while
+   * armed, which every path reaches with nothing pending (`reset`, `forceState`
+   * and `play` cancel; `arm` runs only from idle).
    */
-  const beat = (): void => {
-    const atMs = now();
+  const later = (afterMs: number, next: () => SessionState): void => {
+    pending = setTimeout(() => {
+      pending = null;
+      show(next());
+    }, afterMs);
+  };
+
+  const arm = ({ descriptor, slot, token, primary: credential }: StreamSession): void => {
+    if (snapshot.state.kind !== 'idle') return;
+    primary = credential.transport;
+    const named = { descriptor, slot, tokenTag: tokenTag(token) };
+    publish({ state: { kind: 'armed' }, telemetry: ARMED, ...named, camera: 'own' });
+  };
+  const start = (): void => {
+    if (snapshot.state.kind !== 'armed') return;
+    show({ kind: 'connecting', transport: primary });
+    later(CONNECT_MS, () => publishing(primary, now()));
+  };
+  const stop = (): void => {
+    const { kind } = snapshot.state;
+    if (kind === 'idle' || kind === 'ended') return;
+    cancelPending();
+    const since = sinceOf(snapshot.state);
+    show(ended('operator-stopped', since === null ? null : now() - since));
+  };
+  // N1: native resets only from Ended (plan B's SessionMachine.kt); so does the fake.
+  const reset = (): void => {
+    if (snapshot.state.kind !== 'ended') return;
+    cancelPending();
     publish({
-      ...snapshot,
-      telemetry: telemetryFor(snapshot.state, snapshot.telemetry, atMs, snapshot.telemetry.shed),
-      reportedAtMs: atMs,
+      state: { kind: 'idle' },
+      telemetry: IDLE_TELEMETRY,
+      descriptor: null,
+      slot: null,
+      tokenTag: null,
+      camera: null,
     });
   };
-
-  const startHeartbeat = (): void => {
-    if (heartbeat === null) heartbeat = setInterval(beat, HEARTBEAT_MS);
-  };
-
-  const stopHeartbeat = (): void => {
-    if (heartbeat !== null) {
-      clearInterval(heartbeat);
-      heartbeat = null;
-    }
-  };
-
-  const cancelScript = (): void => {
-    for (const timer of timers) clearTimeout(timer);
-    timers.length = 0;
-  };
-
-  const runScript = (): void => {
-    cancelScript();
-    for (const [seconds, event] of SCRIPT) {
-      timers.push(setTimeout(() => apply(event), seconds * 1000));
-    }
+  const play = (scene: Scene): void => {
+    cancelPending();
+    show(scene.state, scene.telemetry, scene.camera);
+    const { then } = scene;
+    if (then !== undefined) later(then.afterMs, () => then.state);
   };
 
   const send = (intent: EngineIntent): void => {
+    intentKinds.push(intent.kind);
+    if (intentKinds.length > INTENT_LOG_CAP) intentKinds.shift();
     switch (intent.kind) {
       case 'arm':
-        snapshot = { ...snapshot, credentials: intent.credentials };
-        return apply({ kind: 'SessionArmed' });
+        return arm(intent.session);
       case 'start':
-        return runScript();
+        return start();
       case 'stop':
-        cancelScript();
-        return apply({ kind: 'SessionEnded', reason: 'operator-stopped' });
+        return stop();
       case 'reset':
-        cancelScript();
-        return apply({ kind: 'SessionReset' });
+        return reset();
       case 'switchCamera':
         return;
     }
   };
 
-  startHeartbeat();
+  const stopReporting = (): void => {
+    if (report !== null) clearInterval(report);
+    report = null;
+  };
+  // The heartbeat contract: a report at least once a second, changed or not.
+  report = setInterval(() => publish({}), REPORT_MS);
 
   return {
     send,
@@ -164,82 +437,26 @@ export function createFakeCaptureEngine(now: () => number = Date.now): FakeCaptu
       return () => listeners.delete(onChange);
     },
     getSnapshot: () => snapshot,
-
-    forceState: (state) =>
-      publish({
-        ...snapshot,
-        state,
-        telemetry: telemetryFor(state, snapshot.telemetry, now(), snapshot.telemetry.shed),
-        reportedAtMs: now(),
-      }),
-
-    apply,
-
+    intentKinds,
+    scene: (name) => play(sceneOf(name, now())),
+    // A forced state wins over a pending connect or first frame.
+    forceState: (state) => {
+      cancelPending();
+      show(state);
+    },
+    patch: (telemetry) => publish({ telemetry: { ...snapshot.telemetry, ...telemetry } }),
+    setCamera: (camera) => publish({ camera }),
+    setDescriptor: (descriptor) => publish({ descriptor }),
+    setSlot: (slot) => publish({ slot }),
+    setTokenTag: (tag) => publish({ tokenTag: tag }),
+    // A suspended process reports nothing at all, a pending connect included.
     suspend: () => {
-      stopHeartbeat();
-      cancelScript();
+      cancelPending();
+      stopReporting();
     },
-
-    resume: (awayMs, outcome) => {
-      startHeartbeat();
-      if (outcome === 'held') {
-        apply({ kind: 'UplinkLost', holdWindowSeconds: 60 });
-        timers.push(setTimeout(() => apply({ kind: 'PublishResumed', transport: 'rtmps' }), 1200));
-        return;
-      }
-      apply({ kind: 'SessionEnded', reason: 'hold-window-expired' });
-      void awayMs;
-    },
-
-    interrupt: (interruption) =>
-      publish({
-        ...snapshot,
-        telemetry: { ...snapshot.telemetry, interruption },
-        reportedAtMs: now(),
-      }),
-
-    setSurvivesBackground: (value) =>
-      publish({ ...snapshot, survivesBackground: value, reportedAtMs: now() }),
-
-    cancelScript,
-
     dispose: () => {
-      cancelScript();
-      stopHeartbeat();
+      cancelPending();
+      stopReporting();
     },
-  };
-}
-
-/**
- * Numbers that move, because a HUD rendered against constants hides every
- * layout bug that matters — a bitrate jittering between four and five digits is
- * exactly what tabular figures are there to hold still.
- */
-function telemetryFor(
-  state: SessionState,
-  previous: Telemetry,
-  atMs: number,
-  shed: ShedStep | null,
-): Telemetry {
-  if (state.kind === 'idle' || state.kind === 'ended') return IDLE_TELEMETRY;
-
-  const wobble = Math.sin(atMs / 700);
-  const live = state.kind === 'publishing' || state.kind === 'degraded';
-  // The microphone is open from the moment the session is armed, not from the
-  // moment it publishes. Reporting zero while `armed` held Go live disabled
-  // forever against the fake, which made the entire live HUD unreachable — so
-  // every on-air state went unreviewed.
-  const capturing = live || state.kind === 'armed' || state.kind === 'connecting';
-
-  return {
-    bitrateKbps: live ? Math.round(3000 + wobble * 240) : 0,
-    droppedFrames: previous.droppedFrames + (state.kind === 'degraded' ? 3 : 0),
-    rttMs: live ? Math.round(48 + wobble * 12) : null,
-    audioLevel: capturing ? 0.42 + wobble * 0.18 : 0,
-    thermalHeadroom: shed === null ? 0.68 : 0.12,
-    batteryLevel: 0.74,
-    captureTimestampMs: live ? atMs : null,
-    shed,
-    interruption: previous.interruption,
   };
 }

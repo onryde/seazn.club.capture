@@ -5,7 +5,9 @@ import { scanOutcome } from '@/domain/mode/scanOutcome';
 const streamCode: ModeCode = {
   mode: 'stream',
   raw: '{"fake":true}',
+  sid: 'fake-sid',
   slot: 0,
+  token: 'fake-token',
   expiresAt: new Date('2026-10-03T18:40:00Z'),
 };
 const scoringCode: ModeCode = { mode: 'scoring', raw: 'https://x/score/t', token: 't' };

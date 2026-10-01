@@ -11,6 +11,7 @@ import { parseLang, pickLanguage, type Lang } from '@/i18n/language';
 import { createTranslator, type Translator } from '@/i18n/translate';
 import { usePorts } from '@/hooks/usePorts';
 import type { KeyValueStore } from '@/services/KeyValueStore';
+import type { Logger } from '@/services/logger';
 import { STORE_KEYS } from '@/services/modeStore';
 
 export type LanguageValue = {
@@ -26,8 +27,8 @@ const LanguageContext = createContext<LanguageValue | null>(null);
  * changes only when the operator picks a language, never on a tick.
  */
 export function LanguageProvider({ children }: { children: ReactNode }) {
-  const { kv, deviceLanguages } = usePorts();
-  const [stored, setLang] = useStoredLang(kv);
+  const { kv, logger, deviceLanguages } = usePorts();
+  const [stored, setLang] = useStoredLang(kv, logger);
   const lang = pickLanguage(stored, deviceLanguages);
   const value = useMemo(
     () => ({ translator: createTranslator(lang), lang, setLang }),
@@ -39,10 +40,10 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
 /**
  * The operator's saved pick. Storage never rejects into the void (ruling R12):
  * a failed read counts as no pick, and a failed write keeps the pick for this
- * session. A read that lands after the operator has picked is ignored, so a
- * slow keystore can never undo a tap.
+ * session — and is recorded, never silent (spec §5). A read that lands after
+ * the operator has picked is ignored, so a slow keystore can never undo a tap.
  */
-function useStoredLang(kv: KeyValueStore): [Lang | null, (lang: Lang) => void] {
+function useStoredLang(kv: KeyValueStore, logger: Logger): [Lang | null, (lang: Lang) => void] {
   const [stored, setStored] = useState<Lang | null>(null);
 
   useEffect(() => {
@@ -61,11 +62,18 @@ function useStoredLang(kv: KeyValueStore): [Lang | null, (lang: Lang) => void] {
   const setLang = useCallback(
     (lang: Lang) => {
       setStored(lang);
-      void kv.set(STORE_KEYS.lang, lang).catch(() => undefined);
+      saveLang(kv, logger, lang);
     },
-    [kv],
+    [kv, logger],
   );
   return [stored, setLang];
+}
+
+/** A refused write keeps the pick for this session, and is recorded (spec §5). */
+function saveLang(kv: KeyValueStore, logger: Logger, lang: Lang): void {
+  void kv
+    .set(STORE_KEYS.lang, lang)
+    .catch(() => logger.warn('store.write-refused', { action: 'language' }));
 }
 
 export function useLanguage(): LanguageValue {
