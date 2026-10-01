@@ -76,8 +76,13 @@ export type FakeCaptureEngine = CaptureEnginePort & {
   setSlot(slot: number | null): void;
   /** Replace the armed token's tag alone, likewise (N2). */
   setTokenTag(tag: string | null): void;
-  /** Every intent received, in order. */
-  readonly intents: readonly EngineIntent[];
+  /**
+   * The kind of each intent received, oldest first, at most INTENT_LOG_CAP.
+   * Only the kind (M5): until plan C this fake is the production engine
+   * (D25), and an arm carries the token, passphrase and stream key. Tests that
+   * need whole intents record them in the test factory (test/fakePorts.ts).
+   */
+  readonly intentKinds: readonly EngineIntent['kind'][];
   /** Stop reporting: what a suspended process looks like from JS. */
   suspend(): void;
   /** Stop every timer. Always call this in test teardown. */
@@ -94,6 +99,8 @@ const CONNECT_MS = 1000;
  */
 const REOPEN_FIRST_FRAME_MS = 3000;
 const REPORT_MS = 1000;
+/** M5: a three-hour match sends a handful of intents; the cap only bounds a runaway. */
+export const INTENT_LOG_CAP = 100;
 
 export const IDLE_TELEMETRY: Telemetry = {
   bitrateKbps: null,
@@ -329,7 +336,7 @@ export function createFakeCaptureEngine(now: () => number = Date.now): FakeCaptu
     survivesBackground: false,
   };
   let primary: Transport = 'srt';
-  const intents: EngineIntent[] = [];
+  const intentKinds: EngineIntent['kind'][] = [];
   const listeners = new Set<() => void>();
   let pending: ReturnType<typeof setTimeout> | null = null;
   let report: ReturnType<typeof setInterval> | null = null;
@@ -400,7 +407,8 @@ export function createFakeCaptureEngine(now: () => number = Date.now): FakeCaptu
   };
 
   const send = (intent: EngineIntent): void => {
-    intents.push(intent);
+    intentKinds.push(intent.kind);
+    if (intentKinds.length > INTENT_LOG_CAP) intentKinds.shift();
     switch (intent.kind) {
       case 'arm':
         return arm(intent.session);
@@ -429,7 +437,7 @@ export function createFakeCaptureEngine(now: () => number = Date.now): FakeCaptu
       return () => listeners.delete(onChange);
     },
     getSnapshot: () => snapshot,
-    intents,
+    intentKinds,
     scene: (name) => play(sceneOf(name, now())),
     // A forced state wins over a pending connect or first frame.
     forceState: (state) => {

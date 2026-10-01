@@ -5,6 +5,7 @@ import {
   createFakeCaptureEngine,
   FAKE_SCENES,
   IDLE_TELEMETRY,
+  INTENT_LOG_CAP,
   type FakeCaptureEngine,
   type FakeScene,
 } from './FakeCaptureEngine';
@@ -199,10 +200,25 @@ describe('the fake engine (spec §2: scripted snapshots, no state machine of its
     expect(state()).toEqual({ kind: 'idle' });
   });
 
-  it('keeps every intent it was sent, in order', () => {
+  // M5 (final review): the fake is the production engine until plan C (D25),
+  // so its log must never hold an arm's token, passphrase or stream key.
+  it('keeps the kind of each intent, in order, and never a credential', () => {
     engine.send({ kind: 'arm', session, heartbeat });
     engine.send({ kind: 'switchCamera' });
-    expect(engine.intents.map((intent) => intent.kind)).toEqual(['arm', 'switchCamera']);
+    expect(engine.intentKinds).toEqual(['arm', 'switchCamera']);
+    const kept = JSON.stringify(engine);
+    for (const secret of FIXTURE_SECRETS) expect(kept).not.toContain(secret);
+  });
+
+  it('keeps only the latest 100 kinds over a long match', () => {
+    expect(INTENT_LOG_CAP).toBe(100);
+    engine.send({ kind: 'arm', session, heartbeat });
+    for (let n = 0; n < 150; n += 1) engine.send({ kind: 'switchCamera' });
+    engine.send({ kind: 'start' });
+    expect(engine.intentKinds).toHaveLength(100);
+    expect(engine.intentKinds.at(0)).toBe('switchCamera');
+    expect(engine.intentKinds.at(-1)).toBe('start');
+    expect(engine.intentKinds).not.toContain('arm');
   });
 
   it('reports at least once a second, and stops when suspended', () => {

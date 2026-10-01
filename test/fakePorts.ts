@@ -1,3 +1,4 @@
+import type { EngineIntent } from '@/engine/CaptureEnginePort';
 import { createFakeCaptureEngine, type FakeCaptureEngine } from '@/engine/FakeCaptureEngine';
 import type { Gravity, Target } from '@/domain/orientation/orientation';
 import type { Ports } from '@/hooks/usePorts';
@@ -26,9 +27,12 @@ export const TEST_NOW = new Date('2026-10-03T13:00:00Z');
 
 export type FakeMotion = MotionPort & { emit(g: Gravity, atMs: number): void; available: boolean };
 
+/** The fake engine, plus every intent it was sent, whole: tests only (M5). */
+export type TestEngine = FakeCaptureEngine & { readonly intents: readonly EngineIntent[] };
+
 export type FakePorts = {
   readonly ports: Ports;
-  readonly engine: FakeCaptureEngine;
+  readonly engine: TestEngine;
   readonly scanner: FakeCodeScanner;
   readonly descriptor: FakeDescriptorPort;
   readonly kv: MemoryKeyValueStore;
@@ -57,7 +61,7 @@ export function createFakePorts(
 ): FakePorts {
   const { kvSeed, ...portOverrides } = overrides;
   let now = TEST_NOW;
-  const engine = createFakeCaptureEngine(() => now.getTime());
+  const engine = recordingIntents(createFakeCaptureEngine(() => now.getTime()));
   created.push(engine);
   const kv = createMemoryKeyValueStore(kvSeed);
   // The real logger over the ring record: both are pure, so no double is needed (D34).
@@ -112,6 +116,21 @@ export type RecordedEntry = {
 /** The record's lines, parsed, for assertions. */
 export function readRecord(record: SessionRecord): RecordedEntry[] {
   return record.lines().map((line) => JSON.parse(line) as RecordedEntry);
+}
+
+/**
+ * Records each intent whole as it reaches the engine. Wraps `send` on the same
+ * object, so the ports and `holdIntents` see one engine; a held intent is
+ * recorded when it is released, as native would only then have it.
+ */
+function recordingIntents(engine: FakeCaptureEngine): TestEngine {
+  const intents: EngineIntent[] = [];
+  const deliver = engine.send;
+  engine.send = (intent) => {
+    intents.push(intent);
+    deliver(intent);
+  };
+  return Object.assign(engine, { intents });
 }
 
 /** Stops every fake engine's heartbeat. Called after each UI test (test/setup-ui.ts). */
