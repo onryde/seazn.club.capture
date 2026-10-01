@@ -1,8 +1,8 @@
 # S1 amendment — the stable stream code — design
 
-**Status:** owner-approved design, 2026-10-01, brainstormed section by section (§1 states and contract, §2 screens and copy, §3 what changes where). Revised the same day after an independent review and a re-review (_Review dispositions_, at the end), and nine further owner rulings (A9–A17). Awaiting owner review of this written amendment, then the revised plan C.
+**Status:** owner-approved design, 2026-10-01, brainstormed section by section (§1 states and contract, §2 screens and copy, §3 what changes where). Revised the same day after an independent review and a re-review (_Review dispositions_, at the end), and nine further owner rulings (A9–A17). The written amendment was owner-approved on 2026-10-01. Next: the revised plan C.
 **Amends:** [S1 — Live Stream, handheld](2026-09-30-s1-live-stream-design.md). Where the two disagree, this document wins. _What this changes in S1_ lists every part of S1 it replaces, keeps or drops. Nothing outside that list changes.
-**Web side:** agreed with the seazn.club lane D session (`r1-laned`) on 2026-10-01. Its owner's rulings for the web side are recorded under _Web-side rulings_; they are facts we build against, not rulings for this repo. This revision adds asks the web has not yet seen (_Asks for the web side_). The web holds its schema publish until this amendment is approved.
+**Web side:** agreed with the seazn.club lane D session (`r1-laned`) on 2026-10-01. Its owner's rulings for the web side are recorded under _Web-side rulings_; they are facts we build against, not rulings for this repo. This revision adds asks the web has not yet seen (_Asks for the web side_). The amendment is approved; the web publishes its schemas once lane D agrees to the asks.
 
 ## Why
 
