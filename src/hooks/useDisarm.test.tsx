@@ -108,6 +108,96 @@ describe('useDisarm', () => {
     expect(kinds(fakes)).toEqual(['arm', 'stop', 'reset', 'arm', 'stop', 'reset']);
   });
 
+  // Final fix round 2, M-d: Forget and the reopen gate are two callers of one
+  // clearing. A foreground while Forget's stop is unanswered sends no second stop.
+  describe('one clearing per engine, whoever asks', () => {
+    it('drops another caller while one is under way', () => {
+      const fakes = createFakePorts();
+      arm(fakes);
+      const native = holdIntents(fakes.engine, ['stop']);
+      const forget = disarmer(fakes);
+      const gate = disarmer(fakes);
+      act(() => forget.result.current('forget'));
+      act(() => gate.result.current('orphan'));
+      expect(native.held()).toEqual(['stop']);
+      act(() => native.release());
+      expect(kinds(fakes)).toEqual(['arm', 'stop', 'reset']);
+      expect(readRecord(fakes.record).map(({ event, fields }) => ({ event, fields }))).toEqual([
+        { event: 'intent.stop', fields: { action: 'forget' } },
+        { event: 'intent.reset', fields: { action: 'forget' } },
+      ]);
+    });
+
+    it('lets another caller run once it has ended', () => {
+      const fakes = createFakePorts();
+      arm(fakes);
+      const forget = disarmer(fakes);
+      const gate = disarmer(fakes);
+      act(() => forget.result.current('forget'));
+      act(() => arm(fakes));
+      act(() => gate.result.current('orphan'));
+      expect(kinds(fakes)).toEqual(['arm', 'stop', 'reset', 'arm', 'stop', 'reset']);
+    });
+
+    it('is not ended by another caller unmounting', () => {
+      const fakes = createFakePorts();
+      arm(fakes);
+      const native = holdIntents(fakes.engine, ['stop']);
+      const forget = disarmer(fakes);
+      const gate = disarmer(fakes);
+      act(() => forget.result.current('forget'));
+      gate.unmount();
+      act(() => native.release());
+      expect(kinds(fakes)).toEqual(['arm', 'stop', 'reset']);
+    });
+
+    it('frees the engine when its owner unmounts, so the next caller can clear it', () => {
+      const fakes = createFakePorts();
+      arm(fakes);
+      const native = holdIntents(fakes.engine, ['stop']);
+      const forget = disarmer(fakes);
+      const gate = disarmer(fakes);
+      act(() => forget.result.current('forget'));
+      forget.unmount();
+      act(() => native.release());
+      expect(fakes.engine.getSnapshot().state.kind).toBe('ended');
+      act(() => gate.result.current('orphan'));
+      expect(kinds(fakes)).toEqual(['arm', 'stop', 'reset']);
+      expect(fakes.engine.getSnapshot().state.kind).toBe('idle');
+    });
+
+    it('never frees a later clearing when a caller that already finished unmounts', () => {
+      const fakes = createFakePorts();
+      arm(fakes);
+      const forget = disarmer(fakes);
+      const gate = disarmer(fakes);
+      const third = disarmer(fakes);
+      // Forget's clearing ends after it returned: native answers its stop later.
+      const first = holdIntents(fakes.engine, ['stop']);
+      act(() => forget.result.current('forget'));
+      act(() => first.release());
+      act(() => arm(fakes));
+      const native = holdIntents(fakes.engine, ['stop']);
+      act(() => gate.result.current('orphan'));
+      forget.unmount();
+      act(() => third.result.current('orphan'));
+      expect(native.held()).toEqual(['stop']);
+    });
+
+    it('keeps engines apart: a clearing on one never blocks another', () => {
+      const one = createFakePorts();
+      const two = createFakePorts();
+      arm(one);
+      arm(two);
+      holdIntents(one.engine, ['stop']);
+      const first = disarmer(one);
+      const second = disarmer(two);
+      act(() => first.result.current('forget'));
+      act(() => second.result.current('forget'));
+      expect(kinds(two)).toEqual(['arm', 'stop', 'reset']);
+    });
+  });
+
   it('runs again after one that found nothing to clear', () => {
     const fakes = createFakePorts();
     const { result } = disarmer(fakes);

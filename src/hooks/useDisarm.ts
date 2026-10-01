@@ -9,23 +9,36 @@ import type { Logger } from '@/services/logger';
 export type DisarmCause = 'forget' | 'orphan';
 
 /**
+ * The clearing under way on each engine, whoever started it (final fix round
+ * 2, M-d). Forget and the reopen gate both clear; keyed by the engine, which
+ * is built once with the ports, so a foreground during Forget's unanswered
+ * stop sends no second stop, and a test's engine never meets another's.
+ */
+const underWay = new WeakMap<CaptureEnginePort, () => void>();
+
+/**
  * I1 (final review, owner-visible): clears a session that no saved code owns,
  * by native's own path (N1, `replaceStep`): an armed session is stopped, and
  * reset once native reports it Ended; an ended one is reset. It never arms and
- * never touches a broadcast. One clearing at a time: a call while one is under
- * way is dropped. It stops listening on unmount.
+ * never touches a broadcast. One clearing per engine at a time: a call while
+ * one is under way, from any caller, is dropped. A caller that unmounts stops
+ * listening to the clearing it started, and only that one.
  */
 export function useDisarm(): (cause: DisarmCause) => void {
   const { engine, logger } = usePorts();
-  const underWay = useRef<(() => void) | null>(null);
-  useEffect(() => () => underWay.current?.(), []);
+  const mine = useRef<(() => void) | null>(null);
+  useEffect(() => () => mine.current?.(), []);
   return useCallback(
     (cause: DisarmCause) => {
-      if (underWay.current !== null) return;
+      if (underWay.has(engine)) return;
       const done = () => {
-        underWay.current = null;
+        underWay.delete(engine);
+        mine.current = null;
       };
-      underWay.current = clearSession({ engine, logger }, cause, done);
+      const end = clearSession({ engine, logger }, cause, done);
+      if (end === null) return;
+      underWay.set(engine, end);
+      mine.current = end;
     },
     [engine, logger],
   );

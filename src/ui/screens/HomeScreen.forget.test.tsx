@@ -112,6 +112,26 @@ describe('Forget while the code’s session is armed (I1)', () => {
     expect(intentKinds(app)).toEqual(['arm', 'stop', 'reset']);
   });
 
+  // Final fix round 2, M-d: the reopen gate finds the forgotten session armed,
+  // an orphan, while Forget's stop is still unanswered. One stop, not two.
+  it('sends no second stop when the phone comes back before native answers', async () => {
+    const app = await armedThenHome();
+    const native = holdIntents(app.engine, ['stop']);
+    forget();
+    await flush();
+    await backgroundAndBack(app);
+    expect(native.held()).toEqual(['stop']);
+    act(() => native.release());
+    await flush();
+    expect(intentKinds(app)).toEqual(['arm', 'stop', 'reset']);
+    expect(intentLines(app)).toEqual([
+      { event: 'intent.arm', fields: { slot: 1 } },
+      { event: 'intent.stop', fields: { action: 'forget' } },
+      { event: 'intent.reset', fields: { action: 'forget' } },
+    ]);
+    expect(app.nav.current()).toBe('home');
+  });
+
   // After an interruption: a refused forget keeps the code, so its session is kept too.
   it('sends nothing when the phone refuses to forget the code', async () => {
     const app = await armedThenHome();
