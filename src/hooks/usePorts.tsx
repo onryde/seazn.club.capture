@@ -10,6 +10,7 @@ import type {
   MotionPort,
   NavigationPort,
   OrientationLockPort,
+  SharePort,
   SplashPort,
 } from '@/services/devicePorts';
 import type { KeyValueStore } from '@/services/KeyValueStore';
@@ -53,6 +54,8 @@ export type Ports = {
   readonly logger: Logger;
   /** The session record Diagnostics shows and shares (spec §4). */
   readonly record: SessionRecord;
+  /** The system share sheet, for Diagnostics' Share record (D21). */
+  readonly share: SharePort;
   readonly clock: () => Date;
   readonly hosts: readonly string[];
   readonly deviceLanguages: readonly (string | null)[];

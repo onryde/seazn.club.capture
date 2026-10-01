@@ -12,6 +12,7 @@ import { useReopenGate } from '@/hooks/useReopenGate';
 import { sampleDescriptor } from '@/services/fakeDescriptorPort';
 import { STORE_KEYS } from '@/services/modeStore';
 import { StreamScreen } from '@/ui/screens/StreamScreen';
+import { font } from '@/ui/theme/tokens';
 import { savedStreamCode } from '../../../test/fixtures/savedStream';
 import { captureRaw, epochSeconds } from '../../../test/fixtures/wire';
 import { renderViewfinder } from '../../../test/renderViewfinder';
@@ -106,6 +107,15 @@ describe('Ended (spec §4)', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Home' }));
     await waitFor(() => expect(view.navigation.current()).toBe('home'));
     expect(view.ports.homeIntent.takeScan()).toBe(false);
+  });
+
+  // M25: Geist Mono carries numerals in tables only; these are sentences.
+  it('sets how long it was on air, or that it never was, in the status face', async () => {
+    const view = await renderViewfinder();
+    act(() => view.engine.scene('stopped'));
+    expect(getComputedStyle(screen.getByText('On air 0:12:34')).fontFamily).toBe(font.body);
+    act(() => view.engine.forceState({ kind: 'ended', reason: 'fatal-error', durationMs: null }));
+    expect(getComputedStyle(screen.getByText('Never went live')).fontFamily).toBe(font.body);
   });
 
   it('reads in Dutch, within the column', async () => {

@@ -9,6 +9,7 @@ import type {
   NavigationPort,
   OrientationLockPort,
   Route,
+  SharePort,
   SplashPort,
 } from '@/services/devicePorts';
 import { createFakeDescriptorPort, type FakeDescriptorPort } from '@/services/fakeDescriptorPort';
@@ -44,6 +45,8 @@ export type FakePorts = {
   readonly surfaces: FakeSurfaces;
   /** The session record the ports' logger writes to; read it with `readRecord`. */
   readonly record: SessionRecord;
+  /** What Share record sent, in order; `refuse()` makes every later share fail to open (M18). */
+  readonly share: SharePort & { readonly shared: string[]; refuse(): void };
   setNow(at: Date): void;
 };
 
@@ -73,6 +76,7 @@ export function createFakePorts(
     splash: fakeSplash(),
     surfaces: createFakeSurfaces(),
     record,
+    share: fakeShare(),
   };
   const ports: Ports = {
     ...fakes,
@@ -197,6 +201,21 @@ function fakeNavigation(): NavigationPort & { readonly history: Route[] } {
       if (route === current) return;
       current = route;
       history.push(route);
+    },
+  };
+}
+
+function fakeShare(): SharePort & { readonly shared: string[]; refuse(): void } {
+  const shared: string[] = [];
+  let refusing = false;
+  return {
+    shared,
+    refuse: () => {
+      refusing = true;
+    },
+    share: async (text) => {
+      if (refusing) throw new Error('share sheet refused');
+      shared.push(text);
     },
   };
 }

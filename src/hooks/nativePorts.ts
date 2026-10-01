@@ -16,6 +16,7 @@ import { createNativeBack } from '@/services/native/nativeBack';
 import { createNativeForeground } from '@/services/native/nativeForeground';
 import { createNativeMotion } from '@/services/native/nativeMotion';
 import { createNativeOrientationLock } from '@/services/native/nativeOrientationLock';
+import { createNativeShare } from '@/services/native/nativeShare';
 import { createNativeSplash } from '@/services/native/nativeSplash';
 import { createNativeSurfaces } from '@/services/native/nativeSurfaces';
 import { createSecureKeyValueStore } from '@/services/native/secureKeyValueStore';
@@ -58,6 +59,7 @@ export function createNativePorts(): Ports {
     surfaces: createNativeSurfaces({ logger }),
     logger,
     record,
+    share: createNativeShare(),
     clock,
     hosts,
     deviceLanguages: getLocales().map((locale) => locale.languageCode),

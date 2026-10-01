@@ -52,3 +52,8 @@ export interface NavigationPort {
 export interface SplashPort {
   hide(): void;
 }
+
+/** The system share sheet (D21). Rejects when it could not open. */
+export interface SharePort {
+  share(text: string): Promise<void>;
+}

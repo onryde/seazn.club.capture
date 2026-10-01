@@ -1,4 +1,5 @@
-/** Diagnostics arrives in Task 25; the route exists so `Route` has no dead member. */
+import { DiagnosticsScreen } from '@/ui/screens/DiagnosticsScreen';
+
 export default function StreamDiagnosticsRoute() {
-  return null;
+  return <DiagnosticsScreen />;
 }

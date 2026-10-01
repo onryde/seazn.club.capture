@@ -27,7 +27,8 @@ export const EndedBlock = memo(function EndedBlock({
       : t('stream.ended.duration', { duration: formatElapsed(durationMs) });
   return (
     <View style={styles.block}>
-      <Text variant="metricValue">{summary}</Text>
+      {/* M25: a sentence, so the status face; Geist Mono carries numerals only. */}
+      <Text variant="status">{summary}</Text>
       <Button label={t('stream.ended.scanAnother')} onPress={onScanAnother} />
     </View>
   );
