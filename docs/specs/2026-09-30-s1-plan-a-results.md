@@ -520,3 +520,15 @@ research plan is
     the rebuild, and never counts toward the RTMPS fallback (N4). (B: B6)
 26. **The lag rule** (20 s per 60 s) is an unmeasured constant; measure it at
     the staging match. (B: B4)
+
+**From the final re-review** (plan A, not blocking today)
+
+27. **A stop native never answers.** One clearing per engine (M-d) means a
+    stop that never reaches Ended now blocks every caller on that engine, not
+    only its own. The fake always answers; the bridge needs a bound — give up
+    the clearing after a timeout and record it — or a test that native always
+    answers a stop.
+28. **Forget, then a re-scan of the same code** while native still holds the
+    stop. The new visit arms only from idle and the disarm ends at idle, so
+    the arm follows the reset; reaching it needs native to sit on a stop for a
+    whole scan round trip. Pin it with the contract kit once the bridge exists.
