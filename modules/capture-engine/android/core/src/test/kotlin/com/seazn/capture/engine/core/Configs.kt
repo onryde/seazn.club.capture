@@ -26,4 +26,28 @@ object Configs {
       heartbeatUrl = "https://stg.seazn.club/api/capture/heartbeat",
       appVersion = "1.0.0",
     )
+
+  const val PHONE_ID = "phone-7f1e0c2a"
+  val PHONE = PhoneFacts(PHONE_ID, appVersion = "1.0.0", model = "Test Phone")
+
+  fun pairRequest(
+    code: String = "fx-42",
+    slot: Int = 1,
+    token: String = TOKEN,
+    heartbeatUrl: String = "https://stg.seazn.club/api/capture/codes/fx-42/beat",
+    claim: Claim = Claim.NEW,
+    automatic: Boolean = true,
+  ) =
+    PairRequest(
+      code = code,
+      slot = slot,
+      token = token,
+      codeUrl = "https://stg.seazn.club/api/capture/codes/fx-42",
+      heartbeatUrl = heartbeatUrl,
+      startUrl = "https://stg.seazn.club/api/capture/codes/fx-42/start",
+      language = "en",
+      automatic = automatic,
+      claim = claim,
+      environment = Environment.STAGING,
+    )
 }

@@ -148,7 +148,9 @@ class SessionRecord(private val sink: (String) -> Unit) {
 
     /** The core's own vocabulary and measurements' labels. Masked by value too, as defence in depth. */
     val PLAIN_KEYS =
-      setOf("sid", "transport", "reason", "cause", "failure", "from", "to", "result", "state", "endReason", "delivery", "shed", "intent", "phase", "host", "appVersion")
+      setOf("sid", "transport", "reason", "cause", "failure", "from", "to", "result", "state", "endReason", "delivery", "shed", "intent", "phase", "host", "appVersion") +
+        // The pairing's words (plan C): each a closed vocabulary, or a tag that names no secret.
+        setOf("claim", "tokenTag", "notReady", "startFailed", "refusal", "lastEnd", "side", "word", "answer")
 
     /** Never written, whatever the value, and never allowed onto the lists above. */
     val NEVER = setOf("tok", "token", "passphrase", "streamKey", "streamId", "bearer", "authorization")

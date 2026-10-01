@@ -17,10 +17,14 @@ kotlin {
 
 dependencies {
   testImplementation(kotlin("test"))
+  // Reads the vector files shared with the JS side (CD4). Tests only: `main` stays dependency-free.
+  testImplementation("org.json:json:20240303")
 }
 
 tasks.test {
   useJUnitPlatform()
+  // The vector files both languages read (CD5, CD6), relative to this build.
+  systemProperty("capture.shared", layout.projectDirectory.dir("../../src").asFile.absolutePath)
   testLogging {
     events("failed")
     exceptionFormat = TestExceptionFormat.FULL

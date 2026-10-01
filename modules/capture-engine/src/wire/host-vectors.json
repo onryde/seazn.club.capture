@@ -1,0 +1,102 @@
+{
+  "about": "Which URLs sit on the build's Seazn host (role seazn: heartbeatUrl, startUrl, codeUrl, overlayUrl; JS and Kotlin) and on its ingest host (role ingest: cred urls; Kotlin only). Change only with both.",
+  "rows": [
+    {
+      "env": "staging",
+      "role": "seazn",
+      "url": "https://stg.seazn.club/api/capture/beat",
+      "ok": true
+    },
+    { "env": "staging", "role": "seazn", "url": "https://STG.seazn.club/x", "ok": true },
+    { "env": "staging", "role": "seazn", "url": "https://stg.seazn.club:8443/x", "ok": true },
+    { "env": "staging", "role": "seazn", "url": "https://seazn.club/x", "ok": false },
+    { "env": "staging", "role": "seazn", "url": "https://evil.stg.seazn.club/x", "ok": false },
+    { "env": "staging", "role": "seazn", "url": "https://stg.seazn.club.evil.io/x", "ok": false },
+    { "env": "staging", "role": "seazn", "url": "https://stg.seazn.club@evil.io/x", "ok": false },
+    { "env": "staging", "role": "seazn", "url": "http://stg.seazn.club/x", "ok": false },
+    {
+      "env": "production",
+      "role": "seazn",
+      "url": "https://seazn.club/api/capture/start",
+      "ok": true
+    },
+    { "env": "production", "role": "seazn", "url": "https://stg.seazn.club/x", "ok": false },
+    {
+      "env": "staging",
+      "role": "ingest",
+      "scheme": "srt",
+      "url": "srt://live.stg.seazn.club:778",
+      "ok": true
+    },
+    {
+      "env": "staging",
+      "role": "ingest",
+      "scheme": "rtmps",
+      "url": "rtmps://live.stg.seazn.club:443/live/",
+      "ok": true
+    },
+    {
+      "env": "staging",
+      "role": "ingest",
+      "scheme": "rtmps",
+      "url": "rtmps://live.seazn.club:443/live/",
+      "ok": false
+    },
+    {
+      "env": "staging",
+      "role": "ingest",
+      "scheme": "srt",
+      "url": "srt://live.cloudflare.com:778",
+      "ok": true
+    },
+    {
+      "env": "production",
+      "role": "ingest",
+      "scheme": "srt",
+      "url": "srt://LIVE.cloudflare.com:778",
+      "ok": true
+    },
+    {
+      "env": "staging",
+      "role": "ingest",
+      "scheme": "srt",
+      "url": "srt://live.cloudflare.com.evil.example:778",
+      "ok": false
+    },
+    {
+      "env": "staging",
+      "role": "ingest",
+      "scheme": "srt",
+      "url": "srt://x.live.cloudflare.com:778",
+      "ok": false
+    },
+    {
+      "env": "staging",
+      "role": "ingest",
+      "scheme": "rtmps",
+      "url": "rtmps://live.cloudflare.com:443/live/",
+      "ok": false
+    },
+    {
+      "env": "production",
+      "role": "ingest",
+      "scheme": "srt",
+      "url": "srt://live.seazn.club:778",
+      "ok": true
+    },
+    {
+      "env": "production",
+      "role": "ingest",
+      "scheme": "rtmps",
+      "url": "rtmps://x.live.seazn.club:443/live/",
+      "ok": false
+    },
+    {
+      "env": "production",
+      "role": "ingest",
+      "scheme": "srt",
+      "url": "rtmps://live.seazn.club:443/live/",
+      "ok": false
+    }
+  ]
+}
