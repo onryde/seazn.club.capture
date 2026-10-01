@@ -186,11 +186,13 @@ class SessionMachineServerTest {
   }
 
   @Test
-  fun `the heartbeat says audio ok only on a rate measured at the floor`() {
-    // Carry 8: no measurement is not health. Armed, nothing is encoded yet.
+  fun `the heartbeat says audio ok only on a rate measured at the floor, and null before anything publishes`() {
+    // D14: nothing publishes while Armed, so audioOk is null (unknown), not false. Carry 8 holds on air.
     val armed = MachineRig().armed()
-    armed.advance(500)
-    assertTrue(""""audioOk":false""" in armed.sent<Command.PostHeartbeat>().single().body)
+    armed.advance(10_000)
+    val beat = armed.sent<Command.PostHeartbeat>().last().body
+    assertTrue(""""state":"armed"""" in beat, beat)
+    assertTrue(""""audioOk":null""" in beat, beat)
 
     val rig = MachineRig()
     rig.beats = { HeartbeatResponse.Answered(200, BeatReply("live", null, null, null, null)) }

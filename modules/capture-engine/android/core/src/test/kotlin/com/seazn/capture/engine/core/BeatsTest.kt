@@ -5,6 +5,7 @@ import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import org.json.JSONObject
 
@@ -33,10 +34,8 @@ class BeatsTest {
       bitrateKbps = null,
       delivery = Delivery.UNKNOWN,
       deliveredLagMs = null,
-      audioOk = false,
-      batteryPercent = 74,
-      charging = false,
-      drainPctPerHour = null,
+      audioOk = null,
+      battery = BeatBattery(percent = 74, charging = false, drainPctPerHour = null),
       thermalStatus = 0,
       dataUsedBytes = 0,
       appVersion = "1.0.0",
@@ -59,15 +58,17 @@ class BeatsTest {
   }
 
   @Test
-  fun `RR3 a beat that holds a sid never carries stopped, and device rides the claim only`() {
+  fun `RR3 a beat that holds a sid never carries stopped, and D1 device is always there - null without a claim`() {
     val held = JSONObject(Beats.payload(paired.copy(sid = "sess_42", state = "armed", cause = Cause.ORGANISER, claim = null)))
     assertEquals("sess_42", held.getString("sid"))
     assertTrue(held.isNull("stopped"))
     assertTrue(held.isNull("claim"))
-    assertFalse(held.has("device"))
+    // D1: capture-beat.v1 requires the key; {model} only with a claim, null otherwise.
+    assertTrue(held.has("device") && held.isNull("device"))
     assertEquals("organiser", held.getString("cause"))
-    // A claim whose model the platform could not read sends no device object, not a null model.
-    assertFalse(JSONObject(Beats.payload(paired.copy(deviceModel = null))).has("device"))
+    // A claim whose model the platform could not read sends device null, never a null model.
+    val unread = JSONObject(Beats.payload(paired.copy(deviceModel = null)))
+    assertTrue(unread.has("device") && unread.isNull("device"))
   }
 
   @Test
@@ -107,9 +108,7 @@ class BeatsTest {
       delivery = Delivery.OK,
       deliveredLagMs = 1_500,
       audioOk = true,
-      batteryPercent = 64,
-      charging = false,
-      drainPctPerHour = 18.04,
+      battery = BeatBattery(percent = 64, charging = false, drainPctPerHour = 18.04),
       thermalStatus = 2,
       dataUsedBytes = 1_410_000_000,
     )
@@ -117,7 +116,7 @@ class BeatsTest {
   // The expected body is written out from the amendment's beat (_Contract shapes_), field by field, in its order.
   private val heldBody =
     """{"code":"fx-42","slot":1,"phone":"${Configs.PHONE_ID}","claim":null,"sid":"sess_42","at":"2026-09-30T14:32:05.123Z",""" +
-      """"state":"degraded","cause":"organiser","notReady":null,"startFailed":null,"stopped":null,"mode":"automatic",""" +
+      """"state":"degraded","cause":"organiser","notReady":null,"startFailed":null,"stopped":null,"device":null,"mode":"automatic",""" +
       """"transport":"rtmps","bitrateKbps":2900,"delivery":"ok","deliveredLagS":1.5,"audioOk":true,""" +
       """"battery":{"percent":64,"charging":false,"drainPctPerHour":18.0},"thermal":2,"dataUsedMB":1410.0,"appVersion":"1.0.0"}"""
 
@@ -143,10 +142,26 @@ class BeatsTest {
   }
 
   @Test
-  fun `a phone that cannot read its battery or thermal state sends nulls`() {
-    val unread = held.copy(batteryPercent = null, charging = null, drainPctPerHour = null, thermalStatus = null)
+  fun `D2 a phone that cannot read its battery or thermal state sends null for each, never an object of nulls`() {
+    val unread = held.copy(battery = null, thermalStatus = null)
     val body = Beats.payload(unread)
-    assertTrue(""""battery":{"percent":null,"charging":null,"drainPctPerHour":null},"thermal":null,""" in body, body)
+    assertTrue(""""battery":null,"thermal":null,""" in body, body)
+  }
+
+  @Test
+  fun `D2 a battery is known only with both its percent, 0 to 100, and whether it charges`() {
+    fun sample(percent: Int?, charging: Boolean?) = DeviceSample(thermalStatus = null, thermalHeadroom = null, batteryPercent = percent, charging = charging, drainPctPerHour = 12.5, shed = null)
+    assertEquals(BeatBattery(64, true, 12.5), BeatBattery.of(sample(64, true)))
+    assertEquals(BeatBattery(0, false, 12.5), BeatBattery.of(sample(0, false)))
+    assertEquals(BeatBattery(100, false, 12.5), BeatBattery.of(sample(100, false)))
+    val unknown = listOf(null to true, 64 to null, null to null, -1 to true, 101 to false)
+    for ((percent, charging) in unknown) assertNull(BeatBattery.of(sample(percent, charging)), "$percent $charging")
+    assertEquals(5, unknown.size)
+  }
+
+  @Test
+  fun `D14 audioOk is null when nothing is publishing`() {
+    assertTrue(""""audioOk":null,""" in Beats.payload(paired), Beats.payload(paired))
   }
 
   @Test

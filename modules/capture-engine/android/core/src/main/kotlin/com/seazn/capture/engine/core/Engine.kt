@@ -132,7 +132,11 @@ class Engine(
       if (unprotected == null) reduced else reduced.copy(commands = listOf(engineError(unprotected)) + reduced.commands)
     } catch (failure: Exception) {
       if (phase is Phase.Ended) Step(phase, listOf(engineError(failure)))
-      else Step(phase.ended(EndReason.FATAL_ERROR, now), listOf(engineError(failure), Command.End(EndReason.FATAL_ERROR), Command.Release))
+      else {
+        // Release only where a Hold went (review C0b M4).
+        val release = if (phase.holdsService) listOf(Command.Release) else emptyList()
+        Step(phase.ended(EndReason.FATAL_ERROR, now), listOf(engineError(failure), Command.End(EndReason.FATAL_ERROR)) + release)
+      }
     }
 
   /**

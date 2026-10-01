@@ -792,22 +792,37 @@ class SessionMachineLifecycleTest {
   }
 
   @Test
-  fun `final review N-4 a permanent failure from the attempt in hand ends idle, armed and connecting too`() {
-    // Before the first connect, the attempt in hand is the next one: attempt 1 here.
-    val setups: List<Pair<String, (MachineRig) -> Unit>> =
+  fun `final review N-4 a permanent failure from the attempt in hand ends pairing, armed and connecting too`() {
+    // Before the first connect, the attempt in hand is the next one: attempt 1 here. Pairing has asked
+    // for permissions, so no Hold went yet, and no Release goes with its End (review C0b M4).
+    val setups: List<Triple<String, (MachineRig) -> Unit, Boolean>> =
       listOf(
-        "idle" to { _ -> },
-        "armed" to { rig -> rig.armed() },
-        "connecting" to { rig -> rig.armed().ready() },
+        Triple("pairing", { rig -> rig.permissions = null; rig.send(Input.Pair(Configs.pairRequest(), Configs.PHONE, null)) }, false),
+        Triple("armed", { rig -> rig.armed() }, true),
+        Triple("connecting", { rig -> rig.armed().ready() }, true),
       )
-    for ((name, setup) in setups) {
+    for ((name, setup, held) in setups) {
       val rig = MachineRig()
       setup(rig)
+      assertEquals(name, rig.phase.name, "set-up")
       rig.send(Input.PlatformFailed(1, "no camera"))
       assertEquals(SnapshotState.Ended(EndReason.FATAL_ERROR, durationMs = null), rig.state, name)
       assertEquals(listOf(Command.End(EndReason.FATAL_ERROR)), rig.sent<Command.End>(), name)
+      assertEquals(if (held) listOf(Command.Release) else emptyList(), rig.sent<Command.Release>(), name)
       assertEquals("no camera", rig.records("ended").single().field("message"), name)
     }
+  }
+
+  @Test
+  fun `a permanent failure while Idle is only recorded - there is no pairing to end`() {
+    // Ruling (review C0b M3): the amendment's diagram says "from any phase but Idle", its _Permanent
+    // failures_ section "from any phase"; "ignored in Idle, nothing to fail" was picked, and recorded.
+    val rig = MachineRig()
+    val commands = rig.send(Input.PlatformFailed(1, "no camera"))
+    assertEquals(Phase.Idle(), rig.phase)
+    val line = commands.map { (it as Command.Record).entry }.single()
+    assertEquals("platform-failed", line.kind)
+    assertEquals("no camera", line.field("message"))
   }
 
   @Test

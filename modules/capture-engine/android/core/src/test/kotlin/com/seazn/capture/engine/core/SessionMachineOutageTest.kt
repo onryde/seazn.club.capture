@@ -556,7 +556,7 @@ class SessionMachineOutageTest {
   }
 
   @Test
-  fun `ruling 15 a 410 from the heartbeat ends stopped-by-organiser`() {
+  fun `ruling 15 a 410 from the heartbeat, with no endReason, ends stopped`() {
     val rig = MachineRig().live()
     rig.beats = { HeartbeatResponse.Answered(410) }
     rig.advance(10_000)

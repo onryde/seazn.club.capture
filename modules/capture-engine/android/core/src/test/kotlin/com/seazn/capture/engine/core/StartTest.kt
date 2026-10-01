@@ -77,15 +77,77 @@ class StartTest {
     assertEquals(UnpairReason.REPLACED, assertIs<Phase.Idle>(rig.phase).unpaired?.reason)
   }
 
-  @Test fun `a late start answer naming S moves nothing, and any other shows no refusal`() {
+  // A late POST start answer: the hold's request was in flight and a beat's go-live arrived first.
+  // "It never moves the engine and never shows a refusal" (amendment, the answer table).
+  private val lateAnswers =
+    listOf(
+      StartAnswer.Started("sess_42"),
+      StartAnswer.AlreadyLive("sess_42", "organiser"),
+      StartAnswer.Refused(Refusal.NO_CREDIT),
+      StartAnswer.Failed("503"),
+    )
+
+  /** Ready, the hold's POST start in flight, then the console's go-live S overtakes it: Arming S. */
+  private fun raced(): Pair<MachineRig, Int> {
     val rig = ready()
     rig.codes = null
     rig.send(Input.Start)
     val post = rig.sent<Command.PostStart>().single()
     rig.hear("go-live", sid = "sess_42")
-    rig.send(Input.StartAnswered(post.requestId, StartAnswer.Refused(Refusal.NO_CREDIT)))
-    val arming = assertIs<Phase.Arming>(rig.phase)
-    assertNull(arming.pairing.refusal)
+    assertIs<Phase.Arming>(rig.phase)
+    return rig to post.requestId
+  }
+
+  @Test fun `a late start answer while Arming S - Started or AlreadyLive naming S, or any other - changes nothing`() {
+    for (late in lateAnswers) {
+      val (rig, id) = raced()
+      val before = rig.phase
+      val commands = rig.send(Input.StartAnswered(id, late))
+      assertEquals(before, rig.phase, "$late")
+      assertEquals(listOf("start-answered"), commands.map { (it as Command.Record).entry.kind }, "$late")
+      assertEquals(true, rig.records("start-answered").single().field("late"), "$late")
+    }
+    assertEquals(4, lateAnswers.size)
+  }
+
+  @Test fun `I1 a late start answer after the broadcast it raced has ended moves nothing and shows no refusal`() {
+    for (late in lateAnswers) {
+      val (rig, id) = raced()
+      rig.hear("waiting")
+      assertEquals(LastEnd.STOPPED, paired(rig).lastEnd, "$late")
+      val before = rig.phase
+      rig.send(Input.StartAnswered(id, late))
+      assertEquals(before, rig.phase, "$late")
+      assertNull(paired(rig).refusal, "$late")
+      assertEquals(1, rig.sent<Command.FetchCode>().size, "$late: no code fetched for a broadcast the server ended")
+    }
+  }
+
+  @Test fun `a start answer that lands after a permanent failure ended the pairing moves nothing and shows no refusal`() {
+    for (late in lateAnswers) {
+      val rig = ready()
+      rig.send(Input.Start)
+      val post = rig.sent<Command.PostStart>().single()
+      rig.send(Input.PlatformFailed(1, "no camera"))
+      val ended = assertIs<Phase.Ended>(rig.phase)
+      rig.send(Input.StartAnswered(post.requestId, late))
+      assertIs<Phase.Ended>(rig.phase, "$late")
+      assertNull(rig.snapshot.refusal, "$late")
+      assertEquals(ended.pairing!!.starts.nextId, rig.phase.pairing!!.starts.nextId, "$late")
+      assertTrue(rig.sent<Command.FetchCode>().isEmpty(), "$late")
+    }
+  }
+
+  @Test fun `I1 once the raced broadcast ends the next hold posts at once, and the first hold's late answer never decides for it`() {
+    val (rig, first) = raced()
+    rig.hear("waiting")
+    rig.send(Input.Start)
+    val second = rig.sent<Command.PostStart>().last().requestId
+    assertEquals(2, rig.sent<Command.PostStart>().size)
+    rig.send(Input.StartAnswered(first, StartAnswer.Started("sess_42")))
+    assertIs<Phase.Paired>(rig.phase)
+    rig.send(Input.StartAnswered(second, StartAnswer.Refused(Refusal.NO_DESTINATION)))
+    assertEquals(Refusal.NO_DESTINATION, paired(rig).refusal)
   }
 
   @Test fun `the descriptor unreachable stays Arming, retrying, spaced 10 s apart`() {

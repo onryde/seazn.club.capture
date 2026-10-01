@@ -146,9 +146,19 @@ class EngineTest {
     engine.send(Input.Start)
     scheduler.advanceBy(0)
     assertEquals(Phase.Ended(EndReason.FATAL_ERROR, Ids(), durationMs = null, networkValidated = false), engine.phase)
-    assertTrue(Command.End(EndReason.FATAL_ERROR) in executed)
-    assertTrue(Command.Release in executed, "the service goes with the end")
+    assertEquals(listOf<Command>(Command.End(EndReason.FATAL_ERROR)), executed, "from Idle no Hold went, so no Release (review C0b M4)")
     assertTrue(lines.any { "engine-error" in it })
+  }
+
+  @Test
+  fun `a failure inside the machine once paired releases the service with the end`() {
+    val engine = engine { phase, input, now -> if (input == Input.Unpair) throw IllegalStateException("bug") else SessionMachine.reduce(phase, input, now) }
+    engine.sendAll(Configs.pairInputs(ready = false))
+    scheduler.advanceBy(0)
+    assertTrue(Command.Hold in executed)
+    engine.send(Input.Unpair)
+    scheduler.advanceBy(0)
+    assertEquals(listOf(Command.End(EndReason.FATAL_ERROR), Command.Release), executed.takeLast(2))
   }
 
   @Test

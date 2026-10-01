@@ -164,7 +164,7 @@ class HeartbeatTest {
       setOf(
         "code", "slot", "phoneId", "claim", "deviceModel", "sid", "atEpochMs", "state", "cause", "notReady",
         "startFailed", "stopped", "automatic", "transport", "bitrateKbps", "delivery", "deliveredLagMs", "audioOk",
-        "batteryPercent", "charging", "drainPctPerHour", "thermalStatus", "dataUsedBytes", "appVersion", "endReason",
+        "battery", "thermalStatus", "dataUsedBytes", "appVersion", "endReason",
       ),
       BeatFacts::class.java.declaredFields.filterNot { it.isSynthetic }.map { it.name }.toSet(),
     )

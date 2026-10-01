@@ -121,10 +121,13 @@ object Projection {
   /**
    * One beat's facts (amendment, _Contract shapes_), in any beating phase.
    *
-   * `audioOk` is true only on an audio rate measured at or above the floor with the mic not silenced
-   * (carry 8). No measurement is not health: it is false with no broadcast, while armed, in an
-   * attempt's first 3 s, and while the slate's silent audio is on air (the watchdog clears the rates then).
+   * `audioOk` is null whenever nothing is publishing (D14): paired, Arming, Armed, connecting and
+   * reconnecting. Publishing, it is true only on an audio rate measured at or above the floor with the
+   * mic not silenced (carry 8). No measurement is not health: it is false in an attempt's first 3 s,
+   * and while the slate's silent audio is on air (the watchdog clears the rates then).
    */
+  private fun publishing(state: SnapshotState): Boolean = state is SnapshotState.Publishing || state is SnapshotState.Degraded
+
   fun beatFacts(phase: Phase, pairing: PairingState, now: Now): BeatFacts {
     val session = phase.session
     val onAir = phase as? Phase.OnAir
@@ -148,10 +151,8 @@ object Projection {
       bitrateKbps = snapshot.bitrateKbps,
       delivery = snapshot.delivery,
       deliveredLagMs = snapshot.deliveredLagMs,
-      audioOk = session != null && !session.micSilenced && audioFps != null && audioFps >= StallWatchdog.AUDIO_FLOOR_FPS,
-      batteryPercent = session?.device?.batteryPercent,
-      charging = session?.device?.charging,
-      drainPctPerHour = session?.device?.drainPctPerHour,
+      audioOk = session?.takeIf { publishing(snapshot.state) }?.let { !it.micSilenced && audioFps != null && audioFps >= StallWatchdog.AUDIO_FLOOR_FPS },
+      battery = session?.device?.let(BeatBattery::of),
       thermalStatus = session?.device?.thermalStatus,
       dataUsedBytes = session?.dataUsedBytes ?: 0,
       appVersion = pairing.phone.appVersion,

@@ -12,9 +12,16 @@ internal object Pairings {
     val problems = input.request.problems()
     if (problems.isNotEmpty()) {
       val refused = line("pair-refused", "problems" to problems.joinToString("; "))
-      return Step(phase.ended(EndReason.FATAL_ERROR, now), listOf(refused, Command.End(EndReason.FATAL_ERROR), Command.Release))
+      val release = if (phase.holdsService) listOf(Command.Release) else emptyList()
+      return Step(phase.ended(EndReason.FATAL_ERROR, now), listOf(refused, Command.End(EndReason.FATAL_ERROR)) + release)
     }
-    val left = if (phase is Phase.Paired || phase is Phase.Pairing) listOf(Command.Release, line("unpaired", "reason" to "re-pair")) else emptyList()
+    // Leaving a pairing: Release only from Paired, where the Hold went; Pairing has not held the service yet.
+    val left =
+      when (phase) {
+        is Phase.Paired -> listOf(Command.Release, line("unpaired", "reason" to "re-pair"))
+        is Phase.Pairing -> listOf(line("unpaired", "reason" to "re-pair"))
+        else -> emptyList()
+      }
     val ids = phase.ids
     val stopped = input.stopped?.takeIf { it.isFor(name) && it.current(now.wallMs) }
     val pairing =
@@ -97,7 +104,8 @@ internal object Starts {
   /** Arming for [sid]: the line the operator saw is cleared, and the code is fetched at once. */
   fun arm(phase: Phase, pairing: PairingState, sid: String, cause: Cause, now: Now): Step {
     val ids = phase.ids
-    val cleared = pairing.copy(refusal = null, startFailed = null, lastEnd = null)
+    // I1: whatever arms the broadcast retires the hold's POST start, so its answer, arriving after, is late.
+    val cleared = pairing.copy(refusal = null, startFailed = null, lastEnd = null, starts = pairing.starts.copy(inFlightId = null))
     val (asks, id) = DescriptorAsks(nextId = ids.descriptor).asked(now.monoMs)
     val arming = Phase.Arming(cleared, sid, cause, ids, phase.networkValidated, asks)
     return Step(arming, listOf(line("broadcast-start", "sid" to sid, "cause" to cause), fetchCode(pairing, id)))
@@ -215,7 +223,7 @@ internal object Verdicts {
     return when {
       word == ServerWord.Replaced -> Pairings.unpaired(phase, UnpairReason.REPLACED, now)
       word == ServerWord.CodeEnded && phase is Phase.Arming -> Pairings.unpaired(phase, UnpairReason.CODE_ENDED, now)
-      word == ServerWord.CodeEnded -> Step(phase.withPairing(pairing.copy(codeEndedPending = true)), listOf(line("code-ended-pending")))
+      word == ServerWord.CodeEnded -> codeEndedPending(phase, pairing)
       word == ServerWord.NotFound && phase is Phase.Arming -> Starts.failed(phase, StartFailure.NOT_FOUND)
       word is ServerWord.Open && word.sid == held -> if (phase is Phase.Arming && phase.notCurrent) Starts.claimed(phase, now) else Step(phase)
       word is ServerWord.Open -> {
@@ -228,6 +236,10 @@ internal object Verdicts {
       else -> Step(phase)
     }
   }
+
+  /** A 401 while S is held from Armed on: S runs on, and the pairing ends with it (the 401 deferral). */
+  private fun codeEndedPending(phase: Phase, pairing: PairingState): Step =
+    Step(phase.withPairing(pairing.copy(codeEndedPending = true)), listOf(line("code-ended-pending")))
 
   /**
    * The held broadcast is over without the operator: back to Paired with [lastEnd], or, after a 401
@@ -248,7 +260,10 @@ internal object Verdicts {
     return if (phase is Phase.Arming) Starts.answered(phase, input, now) else reconnectAnswer(phase, held, input, now)
   }
 
-  /** A reconnect's fetch (plan B: on every reconnect): only the over verdicts act; anything else is recorded. */
+  /**
+   * A reconnect's fetch (plan B: on every reconnect): the over verdicts end S; a 401 is the 401 deferral,
+   * as on a beat (either source's 401 is `CodeEnded`); anything else is recorded.
+   */
   private fun reconnectAnswer(phase: Phase, held: String, input: Input.CodeAnswered, now: Now): Step {
     val session = phase.session ?: return Step(phase)
     val asks = session.descriptor.answered(input.requestId) ?: return Step(phase)
@@ -256,6 +271,7 @@ internal object Verdicts {
     val word = ServerWord.ofCode(input.answer, held)
     // One rule for the server's word: Over(S), NoBroadcast and another sid (with or without cred, M8) end S.
     if (word.ends(held)) return over(answered, LastEnd.of((word as? ServerWord.Over)?.endReason), now)
+    if (word == ServerWord.CodeEnded) return codeEndedPending(answered, answered.pairing!!)
     // Plan B's descriptor line kept why the server could not be reached; so does this one (carry 12 masks it).
     val message = (input.answer as? CodeAnswer.Unreachable)?.message
     return Step(answered, listOf(line("code", "answer" to input.answer::class.simpleName, "message" to message)))
@@ -273,10 +289,15 @@ internal object Verdicts {
     return Step(phase.withPairing(asked), listOf(post, line("start-asked")))
   }
 
-  /** `POST start`'s answer. In Paired it decides; anywhere else it is late, and never moves the engine. */
+  /**
+   * `POST start`'s answer. The one in flight decides in Paired. Any other is late: a broadcast armed
+   * first and retired it (I1), so it never moves the engine and never shows a refusal; it is recorded.
+   */
   fun started(phase: Phase, input: Input.StartAnswered, now: Now): Step {
     val pairing = phase.pairing ?: return Step(phase)
-    if (pairing.starts.inFlightId != input.requestId) return Step(phase)
+    if (pairing.starts.inFlightId != input.requestId) {
+      return Step(phase, listOf(line("start-answered", "answer" to input.answer::class.simpleName, "late" to true)))
+    }
     val answered = phase.withPairing(pairing.copy(starts = pairing.starts.copy(inFlightId = null)))
     val noted = line("start-answered", "answer" to input.answer::class.simpleName)
     if (answered !is Phase.Paired) return Step(answered, listOf(noted))

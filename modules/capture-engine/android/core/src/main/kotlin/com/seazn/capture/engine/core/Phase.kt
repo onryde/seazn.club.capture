@@ -248,6 +248,13 @@ val Phase.holdsBroadcast: Boolean
   get() = heldSid != null
 
 /**
+ * The foreground service is held: Hold went at the permission grant, so from Paired until the pairing
+ * ends. Release goes only where this is true (review C0b M4); Ended's final beat keeps its own.
+ */
+val Phase.holdsService: Boolean
+  get() = this is Phase.Paired || holdsBroadcast
+
+/**
  * I3: the camera as the engine knows it: the session's while a broadcast is held, the pairing's
  * otherwise. Ended holds none: the end stopped capture.
  */

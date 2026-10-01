@@ -86,6 +86,29 @@ class PairingTest {
     assertEquals(EndReason.FATAL_ERROR, assertIs<Phase.Ended>(rig.phase).reason)
     assertEquals("token is blank", rig.records("pair-refused").single().field("problems"))
     assertTrue(rig.sent<Command.AskPermissions>().isEmpty())
+    // Review C0b M4: no Hold went from Idle, so no Release goes with the End.
+    assertEquals(listOf(Command.End(EndReason.FATAL_ERROR)), rig.commands.filterNot { it is Command.Record })
+  }
+
+  @Test
+  fun `Release goes only where a Hold went - a refused re-pair from Paired releases, one from Pairing does not`() {
+    val paired = MachineRig().paired()
+    val fromPaired = paired.send(Input.Pair(Configs.pairRequest(slot = 2, token = ""), Configs.PHONE, null))
+    assertEquals(listOf(Command.End(EndReason.FATAL_ERROR), Command.Release), fromPaired.filterNot { it is Command.Record })
+    val pairing = MachineRig().apply { permissions = null }
+    pairing.send(Input.Pair(Configs.pairRequest(), Configs.PHONE, null))
+    assertIs<Phase.Pairing>(pairing.phase)
+    val fromPairing = pairing.send(Input.Pair(Configs.pairRequest(slot = 2, token = ""), Configs.PHONE, null))
+    assertEquals(listOf(Command.End(EndReason.FATAL_ERROR)), fromPairing.filterNot { it is Command.Record })
+  }
+
+  @Test
+  fun `a re-pair while permissions are asked sends no Release - no Hold went yet`() {
+    val rig = MachineRig().apply { permissions = null }
+    rig.send(Input.Pair(Configs.pairRequest(), Configs.PHONE, null))
+    val commands = rig.send(Input.Pair(Configs.pairRequest(slot = 2), Configs.PHONE, null))
+    assertEquals(listOf(Command.AskPermissions), commands.filterNot { it is Command.Record })
+    assertEquals("re-pair", rig.records("unpaired").single().field("reason"))
   }
 
   @Test

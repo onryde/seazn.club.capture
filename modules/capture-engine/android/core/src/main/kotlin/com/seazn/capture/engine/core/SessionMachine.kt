@@ -118,14 +118,15 @@ object SessionMachine {
       val beating = pairing.copy(heartbeat = pairing.heartbeat.copy(nextId = id + 1, inFlightId = null))
       return Step(ended.copy(ids = ended.ids.copy(beat = id + 1), pairing = beating, finalBeatId = id, finalBeatAtMs = now.monoMs), commands)
     }
-    commands += Command.Release
+    if (phase.holdsService) commands += Command.Release
     return Step(ended, commands)
   }
 
   /** A8: `{sid, state:"ended", endReason:"operator-stopped"}`, once, never retried. */
   private fun finalBeat(phase: Phase, pairing: PairingState, now: Now): Pair<Command, Int> {
     val id = pairing.heartbeat.nextId
-    val facts = Projection.beatFacts(phase, pairing, now).copy(state = "ended", claim = null, deviceModel = null, endReason = EndReason.OPERATOR_STOPPED)
+    // State ended: nothing publishes, so audioOk is null (D14), and with no claim device is null (D1).
+    val facts = Projection.beatFacts(phase, pairing, now).copy(state = "ended", claim = null, deviceModel = null, audioOk = null, endReason = EndReason.OPERATOR_STOPPED)
     return Command.PostHeartbeat(id, pairing.request.heartbeatUrl, pairing.token, Beats.payload(facts)) to id
   }
 
@@ -136,14 +137,15 @@ object SessionMachine {
   }
 
   /**
-   * A failure the platform knows is permanent (spec §5, final review M-5) ends any session, and an
-   * idle engine too, fatal-error, when it comes from the attempt in hand. One from an older attempt is
-   * stale (final review N-4), and one after the end comes too late: the session already said why it
-   * ended. Both are only recorded.
+   * A failure the platform knows is permanent (amendment, _Permanent failures_; final review M-5) ends
+   * the pairing fatal-error, from Pairing on, when it comes from the attempt in hand. In Idle there is
+   * no pairing to end: the amendment's diagram says "from any phase but Idle" and its section "from any
+   * phase", and the ruling (review C0b M3) is the diagram's. One from an older attempt is stale (final
+   * review N-4), and one after the end comes too late. All three are only recorded.
    */
   private fun platformFailed(phase: Phase, input: Input.PlatformFailed, now: Now): Step {
     val fields = arrayOf("attempt" to input.attemptId, "message" to input.message)
-    if (phase is Phase.Ended || input.attemptId < phase.attemptInHand) return Step(phase, listOf(record("platform-failed", *fields)))
+    if (phase is Phase.Idle || phase is Phase.Ended || input.attemptId < phase.attemptInHand) return Step(phase, listOf(record("platform-failed", *fields)))
     return end(phase, EndReason.FATAL_ERROR, now, *fields)
   }
 
