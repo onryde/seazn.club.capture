@@ -6,8 +6,9 @@ import com.seazn.capture.engine.core.PhoneFacts
 import com.seazn.capture.engine.core.StoppedRecord
 
 /**
- * An intent from JS → the core's input (AGENTS §2: intents, not RPC). Null: a kind this build does
- * not know. [phone] and [stopped] are the platform's, read by `BridgeCore` (Task 20).
+ * An intent from JS → the core's input (AGENTS §2: intents, not RPC). Null: an unknown kind, or a
+ * known kind whose payload cannot be read. [phone] and [stopped] are the platform's, read by
+ * `BridgeCore` (Task 20).
  */
 object IntentMapping {
   fun input(wire: Map<String, Any?>, phone: PhoneFacts, stopped: (PairingName) -> StoppedRecord?): Input? =
@@ -19,8 +20,8 @@ object IntentMapping {
       "unpair" -> Input.Unpair
       "reset" -> Input.Reset
       "setAutomatic" -> WireValues.flag(wire["on"])?.let { Input.SetAutomatic(it) }
-      // (P3) "" when absent: the notification falls back to the phone's language, then English.
-      "setLanguage" -> Input.SetLanguage(WireValues.text(wire["language"]))
+      // (P3) No string is no input, as setAutomatic's missing flag is: the pairing keeps its language.
+      "setLanguage" -> (wire["language"] as? String)?.let { Input.SetLanguage(it) }
       // Carry 10: reserved. S1 has no control for it; the platform swaps to the other facing camera.
       "switchCamera" -> Input.SwitchCamera
       else -> null

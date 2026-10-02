@@ -1,8 +1,10 @@
 package com.seazn.capture.engine.adapter
 
+import com.seazn.capture.engine.core.Claim
 import com.seazn.capture.engine.core.Command
 import com.seazn.capture.engine.core.Configs
 import com.seazn.capture.engine.core.EndReason
+import com.seazn.capture.engine.core.Environment
 import com.seazn.capture.engine.core.Input
 import com.seazn.capture.engine.core.MachineRig
 import com.seazn.capture.engine.core.PairingName
@@ -30,14 +32,39 @@ class IntentMappingTest {
     assertEquals(Input.SetLanguage("nl"), input("kind" to "setLanguage", "language" to "nl"))
   }
 
+  /** Every value differs from its default, so a request built from anything but this wire shows. */
+  private val production =
+    mapOf(
+      "kind" to "pair",
+      "code" to "fx42hmnp7k2q",
+      "slot" to 1.0,
+      "token" to Configs.TOKEN,
+      "codeUrl" to "https://seazn.club/api/capture/codes/fx42hmnp7k2q",
+      "heartbeatUrl" to "https://seazn.club/api/capture/codes/fx42hmnp7k2q/beat",
+      "startUrl" to "https://seazn.club/api/capture/codes/fx42hmnp7k2q/start",
+      "language" to "fr",
+      "automatic" to false,
+      "claim" to "new",
+      "environment" to "production",
+    )
+
   @Test
-  fun `pair carries the phone's facts and this code and slot's stopped record`() {
+  fun `pair carries the whole request, the phone's facts and this code and slot's stopped record`() {
     val record = StoppedRecord("fx42hmnp7k2q", 1, "sess_41", 0, Long.MAX_VALUE)
-    val pair =
-      IntentMapping.input(mapOf("kind" to "pair", "code" to "fx42hmnp7k2q", "slot" to 1.0), Configs.PHONE) {
-        if (it.code == "fx42hmnp7k2q" && it.slot == 1) record else null
-      }
+    val pair = IntentMapping.input(production, Configs.PHONE) { if (it.code == "fx42hmnp7k2q" && it.slot == 1) record else null }
     val mapped = assertIs<Input.Pair>(pair)
+    val request = mapped.request
+    assertEquals("fx42hmnp7k2q", request.code)
+    assertEquals(1, request.slot)
+    assertEquals(Configs.TOKEN, request.token)
+    assertEquals("https://seazn.club/api/capture/codes/fx42hmnp7k2q", request.codeUrl)
+    assertEquals("https://seazn.club/api/capture/codes/fx42hmnp7k2q/beat", request.heartbeatUrl)
+    assertEquals("https://seazn.club/api/capture/codes/fx42hmnp7k2q/start", request.startUrl)
+    assertEquals("fr", request.language)
+    assertEquals(false, request.automatic)
+    assertEquals(Claim.NEW, request.claim)
+    assertEquals(Environment.PRODUCTION, request.environment)
+    assertEquals(emptyList<String>(), request.problems())
     assertEquals(Configs.PHONE, mapped.phone)
     assertEquals(record, mapped.stopped)
   }
@@ -60,9 +87,9 @@ class IntentMappingTest {
   }
 
   @Test
-  fun `P3 a setLanguage with no language is the empty one - the phone's language, then English`() {
-    assertEquals(Input.SetLanguage(""), input("kind" to "setLanguage"))
-    assertEquals(Input.SetLanguage(""), input("kind" to "setLanguage", "language" to 1.0))
+  fun `P3 a setLanguage with no language is no input, so the pairing keeps the language it has`() {
+    assertEquals(null, input("kind" to "setLanguage"))
+    assertEquals(null, input("kind" to "setLanguage", "language" to 1.0))
   }
 
   @Test

@@ -22,8 +22,10 @@ object PairMapping {
       language = WireValues.text(wire["language"]),
       // A4: the Settings switch is on unless the operator turned it off.
       automatic = WireValues.flag(wire["automatic"]) ?: true,
-      // A9: a word this build does not know claims as a scan does, never as a resume.
-      claim = Claim.entries.firstOrNull { it.wire == wire["claim"] } ?: Claim.NEW,
+      // Absent or unknown is `resume` (controller ruling, review 11 I1): JS always names the claim, so a
+      // lost word is a bug, and it takes the safe side. A `resume` never takes the slot from a newer
+      // pairing (amendment, _Pairing, takeover and rejoin_); only a scan's own `new` can.
+      claim = Claim.entries.firstOrNull { it.wire == wire["claim"] } ?: Claim.RESUME,
       // CD36: anything but `production` is staging, so a forgotten variable refuses a club's real codes.
       environment = Environment.of(wire["environment"] as? String),
     )

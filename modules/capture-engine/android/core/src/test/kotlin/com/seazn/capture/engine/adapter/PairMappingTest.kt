@@ -10,7 +10,8 @@ import kotlin.test.assertTrue
 class PairMappingTest {
   /**
    * As Expo hands it over: every number a Double (expo-modules-core 57.0.20, `FrontendConverter.cpp`'s
-   * `AnyFrontendConvert`). The values are Configs' made-up ones, within `capture-beat.v1`.
+   * `AnyFrontendConvert`). The values are made up: the code, slot and phone within `capture-beat.v1`,
+   * the token Configs' own, which no rule shapes yet.
    */
   private fun wire(): MutableMap<String, Any?> =
     mutableMapOf(
@@ -82,19 +83,21 @@ class PairMappingTest {
     for (problem in named) assertTrue(problem in problems, "missing '$problem' in $problems")
     assertEquals("", request.language)
     assertEquals(true, request.automatic, "a string is no flag: the default, automatic on")
-    assertEquals(Claim.NEW, request.claim)
+    assertEquals(Claim.RESUME, request.claim, "a number is no claim: the default, resume")
     assertEquals(Environment.STAGING, request.environment)
   }
 
   @Test
-  fun `absent settings take their defaults - automatic on, claim new, staging`() {
+  fun `absent settings take their defaults - automatic on, claim resume, staging`() {
     val bare = wire().apply { remove("automatic"); remove("claim"); remove("environment"); remove("language") }
     val request = PairMapping.request(bare)
     assertEquals(true, request.automatic)
-    assertEquals(Claim.NEW, request.claim)
+    assertEquals(Claim.RESUME, request.claim, "ruling, review 11 I1: a lost claim word never takes the slot from a newer pairing")
     assertEquals(Environment.STAGING, request.environment)
     assertEquals("", request.language, "(P3) none: the phone's language, then English")
-    assertEquals(Claim.NEW, PairMapping.request(wire().apply { put("claim", "steal") }).claim)
+    assertEquals(Claim.RESUME, PairMapping.request(wire().apply { put("claim", "steal") }).claim)
+    assertEquals(Claim.RESUME, PairMapping.request(wire().apply { put("claim", "NEW") }).claim, "the word is matched exactly")
+    assertEquals(Claim.NEW, PairMapping.request(wire().apply { put("claim", "new") }).claim, "a scan's own word still claims new")
     assertEquals(Environment.STAGING, PairMapping.request(wire().apply { put("environment", "prod") }).environment)
   }
 
