@@ -16,10 +16,18 @@ class GuardedSchedulerTest {
       return Cancellable { tasks.remove(task) }
     }
 
+    /** Bounded, so work posted again for ever fails the test instead of hanging the suite. */
     fun runAll() {
-      while (tasks.isNotEmpty()) tasks.removeFirst()()
+      var ran = 0
+      while (tasks.isNotEmpty()) {
+        check(++ran <= MAX_TASKS) { "tasks were posted for ever" }
+        tasks.removeFirst()()
+      }
     }
   }
+
+  /** An `Error` JUnit lets fail one test. An `OutOfMemoryError` would abort the whole test executor. */
+  private class ReporterCrash : Error("reporter")
 
   @Test
   fun `carry 15 an Error at the task boundary is reported and the thread lives on`() {
@@ -42,5 +50,45 @@ class GuardedSchedulerTest {
     guarded.schedule(0) { throw RuntimeException("task") }
     inner.runAll()
     assertEquals(1, guarded.caught)
+  }
+
+  @Test
+  fun `review 13 I2 an onFailure that throws an Error is counted, never handed back or posted again, and later tasks run`() {
+    val inner = Direct()
+    var reports = 0
+    val guarded =
+      GuardedScheduler(inner) {
+        reports += 1
+        throw ReporterCrash()
+      }
+    var later = 0
+    guarded.schedule(0) { throw IllegalStateException("task") }
+    guarded.schedule(0) { later += 1 }
+    guarded.schedule(0) { later += 1 }
+    inner.runAll()
+    assertEquals(2, later, "the tasks after it still ran")
+    assertEquals(1, reports, "the reporter's own throw never came back to it")
+    assertTrue(inner.tasks.isEmpty(), "nothing was posted again")
+    assertEquals(1, guarded.caught)
+    assertEquals(1, guarded.reporterFailures)
+  }
+
+  @Test
+  fun `review 13 I3 caught counts every task that threw, Error or Exception, and no task that ran clean`() {
+    val inner = Direct()
+    val guarded = GuardedScheduler(inner) {}
+    var clean = false
+    guarded.schedule(0) { throw IllegalStateException("one") }
+    guarded.schedule(0) { clean = true }
+    guarded.schedule(0) { throw StackOverflowError("two") }
+    guarded.schedule(0) { throw PermanentPlatformFailure("three") }
+    inner.runAll()
+    assertTrue(clean)
+    assertEquals(3, guarded.caught)
+    assertEquals(0, guarded.reporterFailures, "a reporter that returns is no reporter failure")
+  }
+
+  private companion object {
+    const val MAX_TASKS = 1_000
   }
 }

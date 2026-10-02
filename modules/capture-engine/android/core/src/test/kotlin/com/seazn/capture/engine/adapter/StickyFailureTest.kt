@@ -14,13 +14,15 @@ import com.seazn.capture.engine.core.attemptInHand
 import kotlin.concurrent.thread
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
 
 class StickyFailureTest {
   private val executed = mutableListOf<Command>()
   private val reported = mutableListOf<Input>()
-  private val sticky = StickyFailure({ executed += it }) { reported += it }
+  private var attempt = 1
+  private val sticky = StickyFailure({ executed += it }, { attempt }) { reported += it }
   private val connect = Command.Connect(4, Configs.srt, 1_500_000, null)
 
   @Test
@@ -106,6 +108,54 @@ class StickyFailureTest {
   }
 
   @Test
+  fun `review 13 m1 a second process failure never replaces the first one's message`() {
+    sticky.fail("UnsatisfiedLinkError: libsrt", 1, Scope.PROCESS)
+    sticky.fail("NoClassDefFoundError: SrtSocket", 1, Scope.PROCESS)
+    sticky.pairAccepted()
+    sticky.execute(connect)
+    assertEquals(Input.PlatformFailed(4, "UnsatisfiedLinkError: libsrt"), reported.last())
+  }
+
+  @Test
+  fun `review 13 I4 failed says whether a failure is held - a pairing one until the next pair, a process one for good`() {
+    assertFalse(sticky.failed)
+    sticky.fail("MediaCodec.configure: unsupported", 1, Scope.PAIRING)
+    assertTrue(sticky.failed)
+    sticky.pairAccepted()
+    assertFalse(sticky.failed)
+    sticky.fail("UnsatisfiedLinkError: libsrt", 2, Scope.PROCESS)
+    sticky.pairAccepted()
+    assertTrue(sticky.failed)
+  }
+
+  @Test
+  fun `review 13 I1 a held process failure refuses the next pairing's permission ask, for the attempt in hand`() {
+    sticky.fail("UnsatisfiedLinkError: libsrt", 1, Scope.PROCESS)
+    sticky.pairAccepted()
+    attempt = 2
+    sticky.execute(Command.AskPermissions)
+    assertTrue(executed.isEmpty(), "no permission dialog, so no Hold and no claim beat can follow")
+    assertEquals(Input.PlatformFailed(2, "UnsatisfiedLinkError: libsrt"), reported.last())
+  }
+
+  @Test
+  fun `review 13 I1 a held pairing failure still lets the next pairing ask for permissions`() {
+    sticky.fail("MediaCodec.configure: unsupported", 1, Scope.PAIRING)
+    attempt = 2
+    // The pair's commands run before Task 20's noticePair calls pairAccepted: the failure is the last pairing's.
+    sticky.execute(Command.AskPermissions)
+    assertEquals(listOf<Command>(Command.AskPermissions), executed)
+    assertEquals(listOf<Input>(Input.PlatformFailed(1, "MediaCodec.configure: unsupported")), reported)
+  }
+
+  @Test
+  fun `review 13 m2 the walk reads eight links of the cause chain and no more`() {
+    fun wrapped(depth: Int): Throwable = (1..depth).fold<Int, Throwable>(PermanentPlatformFailure("codec")) { inner, n -> RuntimeException("wrap $n", inner) }
+    assertTrue(Failures.permanent(wrapped(7)), "the eighth link is read")
+    assertFalse(Failures.permanent(wrapped(8)), "the ninth is not")
+  }
+
+  @Test
   fun `a failure is described by its class and its message, and by its class alone with no message`() {
     assertEquals("UnsatisfiedLinkError: libsrt", Failures.describe(UnsatisfiedLinkError("libsrt")))
     assertEquals("StackOverflowError", Failures.describe(StackOverflowError()))
@@ -137,7 +187,7 @@ class StickyFailureTest {
     val guard = StickyFailure({ command ->
       platform += command
       if (command is Command.Connect) throw UnsatisfiedLinkError("libsrt.so not found")
-    }) { engine.send(it) }
+    }, { engine.phase.attemptInHand }) { engine.send(it) }
     val inner = FakeScheduler(clock)
     val scheduler =
       GuardedScheduler(inner) { failure ->
@@ -156,5 +206,52 @@ class StickyFailureTest {
     assertEquals(SnapshotState.Ended(EndReason.FATAL_ERROR, durationMs = null), published.last().second)
     assertEquals(30_000L, published.last().first, "the tick still runs after the Error")
     assertTrue(platform.drop(end).none { it is Command.PostHeartbeat || it is Command.Connect }, "no beat and no connect after the end")
+  }
+
+  /**
+   * Review 13 I1, the reviewer's probe as a row. A linkage Error ended the first pairing; the operator's
+   * Continue tap (reset, then pair) meets the held process failure at the pair's permission ask, and
+   * the new pairing ends fatal-error: no dialog, no Hold, no beat, so no claim on the slot. The fake
+   * platform grants permissions at once, so an ask that got through would reach Paired and beat.
+   */
+  @Test
+  fun `review 13 I1 a re-pair over a held process failure ends fatal-error before any Hold or beat`() {
+    val clock = FakeClock()
+    val platform = mutableListOf<Command>()
+    var granting = false
+    lateinit var engine: Engine
+    val sticky = StickyFailure({ command ->
+      platform += command
+      if (command is Command.Connect) throw UnsatisfiedLinkError("libsrt.so not found")
+      if (command == Command.AskPermissions && granting) engine.send(Input.PermissionsAnswered(granted = true))
+    }, { engine.phase.attemptInHand }) { engine.send(it) }
+    val inner = FakeScheduler(clock)
+    val scheduler =
+      GuardedScheduler(inner) { failure ->
+        if (Failures.permanent(failure)) sticky.fail(Failures.describe(failure), engine.phase.attemptInHand, Scope.PROCESS)
+      }
+    engine = Engine(clock, scheduler, sticky, {}, SessionRecord {})
+    engine.start()
+    Configs.pairInputs().forEach(engine::send)
+    inner.advanceBy(0)
+    assertEquals(EndReason.FATAL_ERROR, assertIs<Phase.Ended>(engine.phase).reason)
+    val tap = platform.size
+    granting = true
+    var accepted = false
+    engine.send(Input.Reset)
+    engine.send(Input.Pair(Configs.pairRequest(), Configs.PHONE, stopped = null))
+    // Where Task 20's noticePair calls it: posted after the pair, run once the phase is Pairing.
+    scheduler.schedule(0) {
+      if (engine.phase is Phase.Pairing) {
+        sticky.pairAccepted()
+        accepted = true
+      }
+    }
+    inner.advanceBy(600_000)
+    assertTrue(accepted, "the new pairing was accepted, and the process failure outlived it")
+    assertEquals(EndReason.FATAL_ERROR, assertIs<Phase.Ended>(engine.phase).reason)
+    val after = platform.drop(tap)
+    assertEquals(listOf<Command>(Command.End(EndReason.FATAL_ERROR)), after.filterIsInstance<Command.End>())
+    assertTrue(after.none { it is Command.AskPermissions || it is Command.Hold || it is Command.PostHeartbeat || it is Command.Release }, "$after")
   }
 }
