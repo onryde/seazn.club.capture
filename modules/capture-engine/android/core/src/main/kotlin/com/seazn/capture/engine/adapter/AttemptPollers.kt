@@ -10,9 +10,14 @@ data class FrameCount(val video: Long, val audio: Long)
 
 /**
  * Carries 16 and 19 (CD12): one Frames reader every 500 ms and one Link reader every second, for the
- * newest attempt that connected. Begun by its `Connected`, and kept through a camera switch so the LIVE
- * gate's bound holds. Ended by its drop or connect failure, or by a command that ends the attempt.
- * Scheduler thread only.
+ * newest attempt that connected. Begun by its `Connected`, and kept through a camera switch, and
+ * through every other command that does not end the attempt, so the LIVE gate's bound holds. Ended by
+ * its drop, or by a command that ends the attempt. Scheduler thread only.
+ *
+ * The pollers follow the machine, never judging an attempt's life themselves. A `ConnectFailed`
+ * stops nothing: the machine acts on one only before its attempt's `Connected` (Connecting,
+ * Requested), when no poller runs for it, and ignores one after. If that attempt's `Connected` still
+ * arrives, it is stale, and the machine's `Disconnect` of it ends the poller it began (review 14, I1).
  *
  * Attempt ids only grow, across sessions too ([com.seazn.capture.engine.core.Ids]), so a `Connected`
  * older than the running attempt is stale: the machine answers it with a `Disconnect` of that attempt
@@ -36,7 +41,6 @@ class AttemptPollers(
     when (input) {
       is Input.Connected -> begin(input.attemptId)
       is Input.Dropped -> if (input.attemptId == running) stop()
-      is Input.ConnectFailed -> if (input.attemptId == running) stop()
       else -> Unit
     }
   }

@@ -6,17 +6,21 @@ import com.seazn.capture.engine.core.Configs
 import com.seazn.capture.engine.core.ConnectFailure
 import com.seazn.capture.engine.core.DropReason
 import com.seazn.capture.engine.core.EndReason
+import com.seazn.capture.engine.core.Environment
 import com.seazn.capture.engine.core.FakeClock
 import com.seazn.capture.engine.core.FakeScheduler
 import com.seazn.capture.engine.core.Input
 import com.seazn.capture.engine.core.LinkCounters
+import com.seazn.capture.engine.core.MachineRig
+import com.seazn.capture.engine.core.RecordEntry
 import com.seazn.capture.engine.core.Scheduler
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
 /**
  * Every run advances the fake scheduler by a fixed duration, never "until idle": a mutant that posts
- * again for ever then fails on its counts instead of hanging the suite (Task 13).
+ * again for ever, with a delay, then fails on its counts instead of hanging the suite (Task 13). One
+ * that posts again with no delay still hangs it: `FakeScheduler.advanceBy` has no cap on tasks per call.
  */
 class AttemptPollersTest {
   private val scheduler = FakeScheduler(FakeClock())
@@ -43,12 +47,37 @@ class AttemptPollersTest {
   }
 
   @Test
-  fun `carry 19 frames keep coming every 500 ms through a camera switch`() {
-    pollers.onInput(Input.Connected(1))
-    scheduler.advanceBy(500)
-    pollers.onCommand(Command.SwitchCamera)
-    scheduler.advanceBy(3_000)
-    assertEquals(7, frames().size, "every 500 ms from 500 to 3500, the switch included")
+  fun `carry 19 frames keep coming every 500 ms through a camera switch, and through every command that does not end the attempt`() {
+    // Review 14, I2: what the machine sends while on air without ending the attempt. A poller stopped
+    // by any of them lets the LIVE gate drop and the watchdog rebuild a healthy broadcast.
+    val keeps =
+      listOf(
+        Command.SwitchCamera,
+        Command.SetBitrate(1, 1_200_000),
+        Command.SetMaxBw(1, 172_500),
+        Command.Slate(true),
+        Command.Slate(false),
+        Command.ReopenCamera,
+        Command.FetchPlaylist(1, Configs.PLAYBACK_URL),
+        Command.PostHeartbeat(1, "https://stg.seazn.club/api/capture/codes/fx42hmnp7k2q/beat", Configs.TOKEN, "{}"),
+        Command.FetchCode(1, "https://stg.seazn.club/api/capture/codes/fx42hmnp7k2q", Configs.TOKEN, Configs.PHONE_ID, 1, Environment.STAGING),
+        Command.Record(RecordEntry("bitrate")),
+      )
+    var checked = 0
+    for (command in keeps) {
+      val own = FakeScheduler(FakeClock())
+      val got = mutableListOf<Input>()
+      val row = AttemptPollers(own, frames = { FrameCount(1, 1) }, link = { counters }, send = { got += it })
+      row.onInput(Input.Connected(1))
+      own.advanceBy(500)
+      row.onCommand(command)
+      own.advanceBy(3_000)
+      assertEquals(7, got.filterIsInstance<Input.Frames>().size, "$command: every 500 ms from 500 to 3500")
+      assertEquals(3, got.filterIsInstance<Input.Link>().size, "$command: every second from 1000 to 3000")
+      assertEquals(1, row.running, "$command")
+      checked += 1
+    }
+    assertEquals(10, checked, "every row ran")
   }
 
   @Test
@@ -71,13 +100,13 @@ class AttemptPollersTest {
         // A broadcast that ends without the operator returns to Paired: its attempt is over too.
         { it.onCommand(Command.StopBroadcast) },
       )
-    for (stop in stops) {
+    stops.forEachIndexed { row, stop ->
       sent.clear()
       pollers.onInput(Input.Connected(1))
       stop(pollers)
       scheduler.advanceBy(2_000)
-      assertEquals(0, frames().size)
-      assertEquals(null, pollers.running)
+      assertEquals(emptyList(), sent, "row $row: no frames and no link")
+      assertEquals(null, pollers.running, "row $row")
     }
   }
 
@@ -109,12 +138,40 @@ class AttemptPollersTest {
   }
 
   @Test
-  fun `PV16 a connect failure of the running attempt stops its pollers`() {
+  fun `review 14 I1 a ConnectFailed after its Connected leaves the on-air attempt reading`() {
+    // The machine ignores it once on air (Transports.connectFailed acts only in Connecting, Requested),
+    // so the pollers do too: stopping here would starve a healthy broadcast into a watchdog rebuild.
     pollers.onInput(Input.Connected(1))
     pollers.onInput(Input.ConnectFailed(1, ConnectFailure.TIMEOUT, null))
+    scheduler.advanceBy(1_000)
+    assertEquals(listOf(1, 1), frames().map { it.attemptId })
+    assertEquals(listOf(Input.Link(1, counters)), links())
+    assertEquals(1, pollers.running)
+  }
+
+  @Test
+  fun `review 14 I1 a ConnectFailed before its Connected stops nothing itself, and the machine's Disconnect ends the poller a late Connected began`() {
+    // The real machine, wired in the plan's order (plan:9268, plan:9393): the pollers see each input
+    // first, then every command the machine answers it with.
+    val rig = MachineRig().armed()
+    fun report(input: Input) {
+      pollers.onInput(input)
+      val from = rig.commands.size
+      rig.send(input)
+      rig.commands.drop(from).forEach(pollers::onCommand)
+    }
+    val from = rig.commands.size
+    rig.ready()
+    rig.commands.drop(from).forEach(pollers::onCommand)
+    assertEquals(listOf(1), rig.connects().map { it.attemptId }, "ready, Armed asked for attempt 1")
+    report(Input.ConnectFailed(1, ConnectFailure.TIMEOUT, null))
+    assertEquals(null, rig.attempt, "the machine acted on it: a retry is waiting")
+    assertEquals(null, pollers.running)
+    report(Input.Connected(1))
+    assertEquals(listOf(Command.Disconnect(1)), rig.sent<Command.Disconnect>(), "the machine closed the stale attempt")
+    assertEquals(null, pollers.running, "the machine's Disconnect ended the poller the late Connected began")
     scheduler.advanceBy(2_000)
     assertEquals(emptyList(), sent)
-    assertEquals(null, pollers.running)
   }
 
   @Test
