@@ -68,6 +68,22 @@ describe('the logger', () => {
     });
   });
 
+  // M3, review I2: the code is masked in free text alone, and a later protect keeps an earlier code.
+  it('masks a text-only value in free text alone, and keeps it masked after a later protect', () => {
+    const record = createRingRecord();
+    const logger = createLogger({ record, now: () => 0 });
+    logger.protect({ secrets: ['fake-token-000a'], streamIds: [], textOnly: ['fakecode000a'] });
+    logger.protect({ secrets: ['fake-token-000b'], streamIds: [], textOnly: ['fakecode000b'] });
+    logger.info('probe', {
+      message: 'GET /codes/fakecode000a then /codes/fakecode000b',
+      tag: 'fakecode000a',
+    });
+    expect(parsed(record.lines())[0].fields).toEqual({
+      message: `GET /codes/${SCRUBBED} then /codes/${SCRUBBED}`,
+      tag: 'fakecode000a',
+    });
+  });
+
   // N7: keyed on the session in hand, so a second code in the same process is covered as the first was.
   it('N7 masks free text whole between one session and the next, and keeps the first masked', () => {
     const record = createRingRecord();

@@ -416,6 +416,19 @@ class SessionRecordTest {
     assertEquals("""{"at":"2026-09-30T14:32:05.123Z","kind":"probe","level":"warn","field_level":2,"ms":3}""", lines.last())
   }
 
+  // Review M4: the level is a caller's value; only the four the JS logger has are written.
+  @Test
+  fun `each of the other three levels is written as itself, and any other level is masked`() {
+    for (level in listOf("debug", "warn", "error")) {
+      record.append(1_790_778_725_123, RecordEntry("probe", level = level))
+      assertEquals("""{"at":"2026-09-30T14:32:05.123Z","kind":"probe","level":"$level"}""", lines.last())
+    }
+    for (level in listOf(Configs.TOKEN, "fatal", "WARN", "")) {
+      record.append(1_790_778_725_123, RecordEntry("probe", level = level))
+      assertEquals("""{"at":"2026-09-30T14:32:05.123Z","kind":"probe","level":"***"}""", lines.last(), level)
+    }
+  }
+
   // Task 10 (CD6): was "the kind is masked by value like a field", in place ("connect ***").
   @Test
   fun `the kind is a plain word, or masked whole`() {

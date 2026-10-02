@@ -1,7 +1,7 @@
 {
   "about": "The record's allow-list (CD6). SessionRecord.kt and scrub.ts each keep their sets as code and test them against this file. Add a key here and on both sides, with its reason. scalars names each key the core writes that only ever holds a number, a boolean or null: those pass under any key, so they sit on no list, and naming them here makes that a decision. kinds names each record kind the core writes, with what it records: a kind passes only as a plain word.",
   "mask": "***",
-  "plainWord": "^[\\w.:-]{1,64}$",
+  "plainWord": "^[A-Za-z0-9_.:-]{1,64}$",
   "reserved": ["at", "kind", "level"],
   "plain": [
     "action",

@@ -1,8 +1,9 @@
 {
-  "about": "Run by ScrubParityTest.kt and scrubParity.test.ts. expected is what the line carries under key.",
+  "about": "Run by ScrubParityTest.kt and scrubParity.test.ts. expected is what the line carries under key (a reserved key as field_<key>). held.textOnly is masked in free text alone: the code (M3). Both runners protect held more than once, as production does, before each row.",
   "held": {
     "secrets": ["tok-9f3c2a7e5b1d4680", "pass+phrase/6d1e8b0c", "key-4c7a0e2b9d5f1386"],
-    "streamIds": ["a1b2c3d4e5f60718293a4b5c6d7e8f90"]
+    "streamIds": ["a1b2c3d4e5f60718293a4b5c6d7e8f90"],
+    "textOnly": ["fx42hmnp7k2q"]
   },
   "cases": [
     {
@@ -164,6 +165,114 @@
       "key": "message",
       "value": "bad tok-9f3c2a7e5b1d4680 ñ",
       "expected": "bad *** ñ"
+    },
+    {
+      "why": "a plain word of 63 characters passes",
+      "key": "tag",
+      "value": "abcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabc",
+      "expected": "abcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabc"
+    },
+    {
+      "why": "a plain word of exactly 64 characters passes",
+      "key": "tag",
+      "value": "abcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcd",
+      "expected": "abcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcd"
+    },
+    {
+      "why": "a plain word of 65 characters is masked whole: the bound is what keeps an unheld long token off a plain key",
+      "key": "tag",
+      "value": "abcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcde",
+      "expected": "***"
+    },
+    {
+      "why": "a plain word may hold a colon, a dot, a dash and an underscore",
+      "key": "tag",
+      "value": "a:b.c-d_e",
+      "expected": "a:b.c-d_e"
+    },
+    {
+      "why": "a URL with a fragment in its path is masked whole",
+      "key": "url",
+      "value": "https://stg.seazn.club/a#f",
+      "expected": "***"
+    },
+    {
+      "why": "a URL with a fragment straight after its host is masked whole",
+      "key": "url",
+      "value": "https://stg.seazn.club#f",
+      "expected": "***"
+    },
+    {
+      "why": "a public URL with a port passes",
+      "key": "url",
+      "value": "https://stg.seazn.club:8443/a",
+      "expected": "https://stg.seazn.club:8443/a"
+    },
+    {
+      "why": "a URL whose port is not a number is masked whole",
+      "key": "url",
+      "value": "https://stg.seazn.club:x/a",
+      "expected": "***"
+    },
+    {
+      "why": "the scheme passes in any ASCII case",
+      "key": "playbackUrl",
+      "value": "HTTPS://stg.seazn.club/a",
+      "expected": "HTTPS://stg.seazn.club/a"
+    },
+    {
+      "why": "a long s is not an s: no Unicode case folding on either side, so this scheme is masked whole",
+      "key": "url",
+      "value": "http\u017f://stg.seazn.club/a",
+      "expected": "***"
+    },
+    {
+      "why": "a field named level is written field_level, never as the line's level",
+      "key": "level",
+      "value": 3,
+      "expected": 3
+    },
+    {
+      "why": "text naming the code masks it in place: the code is masked in free text (M3)",
+      "key": "message",
+      "value": "GET https://stg.seazn.club/api/capture/codes/fx42hmnp7k2q/beat failed",
+      "expected": "GET https://stg.seazn.club/api/capture/codes/***/beat failed"
+    },
+    {
+      "why": "text naming the code beside the token masks both in place",
+      "key": "problems",
+      "value": "code fx42hmnp7k2q tok tok-9f3c2a7e5b1d4680 refused",
+      "expected": "code *** tok *** refused"
+    },
+    {
+      "why": "a plain word containing the code passes: the code is masked in free text alone",
+      "key": "tag",
+      "value": "ref-fx42hmnp7k2q",
+      "expected": "ref-fx42hmnp7k2q"
+    },
+    {
+      "why": "an escape spelled with an Arabic-Indic digit is a hex digit on both sides, so the key it reveals masks the text whole",
+      "key": "message",
+      "value": "k=key%\u0662d4c7a0e2b9d5f1386",
+      "expected": "***"
+    },
+    {
+      "why": "an escape spelled with a fullwidth digit and a fullwidth letter decodes too, so the key it reveals masks the text whole",
+      "key": "message",
+      "value": "k=key%\uff12\uff444c7a0e2b9d5f1386",
+      "expected": "***"
+    },
+    {
+      "why": "a digit outside the BMP is two UTF-16 units, neither a hex digit on either side, so the escape is none and the text passes as written",
+      "key": "message",
+      "value": "k=key%\ud835\udfd0d4c7a0e2b9d5f1386",
+      "expected": "k=key%\ud835\udfd0d4c7a0e2b9d5f1386"
+    },
+    {
+      "why": "text carrying a secret encoded twice among other words is masked whole, after a second protect too",
+      "key": "message",
+      "value": "x pass%252Bphrase%252F6d1e8b0c y",
+      "expected": "***"
     }
   ],
   "kinds": [
@@ -173,6 +282,11 @@
       "value": "tok-9f3c2a7e5b1d4680",
       "expected": "***"
     },
-    { "why": "a kind that is not a word is masked", "value": "two words", "expected": "***" }
+    { "why": "a kind that is not a word is masked", "value": "two words", "expected": "***" },
+    {
+      "why": "a kind containing the code passes: the code is masked in free text alone",
+      "value": "pair.fx42hmnp7k2q",
+      "expected": "pair.fx42hmnp7k2q"
+    }
   ]
 }

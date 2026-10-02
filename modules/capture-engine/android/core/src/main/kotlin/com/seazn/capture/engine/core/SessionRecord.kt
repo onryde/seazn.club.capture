@@ -71,11 +71,19 @@ class SessionRecord(private val sink: (String) -> Unit) {
    * adds: a value that was a secret in this process stays masked.
    */
   fun protect(secrets: List<String>, notInUrls: List<String> = emptyList(), inTextOnly: List<String> = emptyList()) {
-    this.secrets = withEncodings(this.secrets + secrets)
-    urlSecrets = withEncodings(urlSecrets + (secrets - notInUrls.toSet()))
-    textOnly = withEncodings(textOnly + inTextOnly)
+    this.secrets = adding(this.secrets, secrets)
+    urlSecrets = adding(urlSecrets, secrets - notInUrls.toSet())
+    textOnly = adding(textOnly, inTextOnly)
     textSecrets = (this.secrets + textOnly).distinct().sortedByDescending { it.length }
   }
+
+  /**
+   * Only the new values are encoded. The engine protects at every input, so the same values arrive
+   * again; encoding what is held would add forms of forms, which no encoder writes and JS, deriving
+   * its forms from the raw values, never holds (review M3).
+   */
+  private fun adding(held: List<String>, more: List<String>): List<String> =
+    (held + withEncodings(more)).distinct().sortedByDescending { it.length }
 
   /**
    * Scrubs [entry] and hands the line to the sink. An append made from inside the sink is queued
@@ -122,9 +130,12 @@ class SessionRecord(private val sink: (String) -> Unit) {
 
   private fun line(atEpochMs: Long, entry: RecordEntry): String {
     val head = listOf("at" to IsoTime.utc(atEpochMs), "kind" to kindWord(entry.kind))
-    val level = if (entry.level == "info") emptyList() else listOf("level" to entry.level)
+    val level = if (entry.level == "info") emptyList() else listOf("level" to levelWord(entry.level))
     return Json.obj(head + level + entry.fields.map { (key, value) -> fieldKey(key) to scrub(key, value) })
   }
+
+  /** One of [LEVELS], or masked: a caller's level is a value like any other, and only those four are vetted. */
+  private fun levelWord(level: String): String = if (level in LEVELS) level else MASK
 
   /** The record's own keys are never written twice: a field that reuses one is renamed, not dropped. */
   private fun fieldKey(key: String): String = if (key in RESERVED_KEYS) "field_$key" else key
@@ -203,14 +214,24 @@ class SessionRecord(private val sink: (String) -> Unit) {
     /** Keys every line starts with. A field under one of them is written as `field_<key>` (CD7). */
     val RESERVED_KEYS = setOf("at", "kind", "level")
 
-    /** A word, not a sentence: no spaces, slashes, `?`, `=` or `@`, so no URL or message fits. */
-    private val PLAIN_WORD = Regex("^[\\w.:-]{1,64}$")
+    /** The levels a line may carry: the JS logger's four (`LogLevel`). `info` is the one never written. */
+    val LEVELS = setOf("debug", "info", "warn", "error")
+
+    /**
+     * A word, not a sentence: no spaces, slashes, `?`, `=` or `@`, so no URL or message fits. The
+     * file's `plainWord`, character for character. Its letters and digits are ASCII, spelled out:
+     * Android's regex engine is ICU, whose `\w` is not promised to be the JVM's or JS's.
+     */
+    val PLAIN_WORD = Regex("^[A-Za-z0-9_.:-]{1,64}$")
+
     /**
      * Whitespace is ASCII's six, spelled out as scrub.ts spells them, so the two sides cannot read
      * `\s` differently (JS's holds Unicode spaces). `\x0B`, not `\v`: Java's `\v` is a class that
-     * also holds U+2028, where JS's is the one character.
+     * also holds U+2028, where JS's is the one character. The scheme's case is spelled out too, with
+     * no case option: Kotlin's IGNORE_CASE adds UNICODE_CASE, which reads `httpſ` as `https` where
+     * JS does not (review M1). The port's digits are ASCII for the reason [PLAIN_WORD]'s are.
      */
-    private val PUBLIC_URL = Regex("^https://[^/?#@ \\t\\n\\x0B\\f\\r:]+(:\\d+)?(/[^?# \\t\\n\\x0B\\f\\r]*)?$", RegexOption.IGNORE_CASE)
+    private val PUBLIC_URL = Regex("^[Hh][Tt][Tt][Pp][Ss]://[^/?#@ \\t\\n\\x0B\\f\\r:]+(:[0-9]+)?(/[^?# \\t\\n\\x0B\\f\\r]*)?$")
 
     /** What `android.net.Uri.encode` leaves raw and `URLEncoder` does not. `*` is raw in both. */
     private val COMPONENT_RAW = listOf("%7E" to "~", "%21" to "!", "%27" to "'", "%28" to "(", "%29" to ")")
@@ -249,6 +270,11 @@ class SessionRecord(private val sink: (String) -> Unit) {
       return out.toString()
     }
 
+    /**
+     * `digitToIntOrNull(16)` is Java's `Character.digit`: it reads any decimal digit and the
+     * fullwidth A to F as hex digits, one UTF-16 unit at a time. scrub.ts reads them the same way,
+     * since decoding more masks more (review M2); `vectors.json` pins both.
+     */
     private fun escapedByte(text: String, at: Int): Int? {
       if (text[at] != '%' || at + 2 >= text.length) return null
       val high = text[at + 1].digitToIntOrNull(16) ?: return null

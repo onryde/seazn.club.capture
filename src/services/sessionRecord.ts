@@ -25,7 +25,7 @@ export interface SessionRecord {
 export const RECORD_CAPACITY = 1000;
 
 /** Fields named like the line's own keys are written as `field_<key>`, as native does. */
-const RESERVED: ReadonlySet<string> = new Set(['at', 'kind', 'level']);
+export const RESERVED_KEYS: ReadonlySet<string> = new Set(['at', 'kind', 'level']);
 
 /**
  * One flat NDJSON line, the same shape native writes: `{at, kind, …fields}`,
@@ -35,7 +35,7 @@ export function toRecordLine({ atMs, level, event, fields }: LogEntry): string {
   const line: Record<string, unknown> = { at: new Date(atMs).toISOString(), kind: event };
   if (level !== 'info') line.level = level;
   for (const [key, value] of Object.entries(fields)) {
-    line[RESERVED.has(key) ? `field_${key}` : key] = value;
+    line[RESERVED_KEYS.has(key) ? `field_${key}` : key] = value;
   }
   return JSON.stringify(line);
 }
@@ -57,7 +57,7 @@ export function parseRecordLine(line: string): RecordedEntry {
   const fields: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(written)) {
     const original = key.startsWith('field_') ? key.slice('field_'.length) : key;
-    fields[RESERVED.has(original) ? original : key] = value;
+    fields[RESERVED_KEYS.has(original) ? original : key] = value;
   }
   return {
     atMs: Date.parse(String(at)),
