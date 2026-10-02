@@ -2,13 +2,15 @@ package com.seazn.capture.engine.adapter
 
 import com.seazn.capture.engine.core.BroadcastView
 import com.seazn.capture.engine.core.PairingView
+import com.seazn.capture.engine.core.ScoreUpdates
 import com.seazn.capture.engine.core.Snapshot
 import com.seazn.capture.engine.core.SnapshotState
 
 /**
  * Native's snapshot → the `onSnapshot` event's body (spec §2's ~1 Hz contract; amendment, _The
  * engine port_). Pure. Every number is a Double, because JS has one number type and Expo's
- * conversion is never asked to carry a Long. An absent fact stays null, never false or 0 (D2, D14).
+ * conversion is never asked to carry a Long. An absent fact stays null, never false or 0 (D2, D14),
+ * and so does a reading that is not a finite number: JSON and the HUD hold no NaN (review 12 M1).
  * `scheduledStart` crosses in epoch seconds; the other times stay in milliseconds.
  *
  * What stays native: `language`, the notification's, which JS already holds; and the device
@@ -65,7 +67,8 @@ object SnapshotWire {
       "label" to view.label,
       "holdWindowSeconds" to view.holdWindowSeconds.entries.associate { (transport, seconds) -> transport.wire to num(seconds) },
       "maxDurationMinutes" to num(view.maxDurationMinutes),
-      "scoreUpdates" to view.scoreUpdates,
+      // A closed set (I2): a word outside it crosses as null, and the rest of the broadcast crosses as ever.
+      "scoreUpdates" to ScoreUpdates.of(view.scoreUpdates)?.wire,
       "srtOffered" to view.srtOffered,
     )
 
@@ -101,9 +104,10 @@ object SnapshotWire {
     linkedMapOf(
       "bitrateKbps" to s.bitrateKbps?.let(::num),
       "targetBitrateKbps" to s.targetBitrateKbps?.let(::num),
-      "audioLevel" to facts.audioLevel,
-      "encodedVideoFps" to s.encodedVideoFps,
-      "audioPacketsPerSecond" to s.audioPacketsPerSecond,
+      // Plan A types the level `number`: 0, its no-reading value, in place of a non-finite one.
+      "audioLevel" to (finite(facts.audioLevel) ?: 0.0),
+      "encodedVideoFps" to finite(s.encodedVideoFps),
+      "audioPacketsPerSecond" to finite(s.audioPacketsPerSecond),
       "srt" to
         s.srt?.let {
           linkedMapOf("sent" to num(it.sent), "retransmitted" to num(it.retransmitted), "dropped" to num(it.dropped), "rttMs" to it.rttMs?.let(::num))
@@ -114,10 +118,10 @@ object SnapshotWire {
       "dataUsedBytes" to num(s.dataUsedBytes),
       "charging" to s.charging,
       "batteryPercent" to s.device?.batteryPercent?.let(::num),
-      "drainPctPerHour" to s.device?.drainPctPerHour,
+      "drainPctPerHour" to finite(s.device?.drainPctPerHour),
       // An int outside the platform's 0 to 6 is no reading.
       "thermalStatus" to s.device?.thermalStatus?.let { THERMAL.getOrNull(it) },
-      "thermalHeadroom" to s.device?.thermalHeadroom,
+      "thermalHeadroom" to finite(s.device?.thermalHeadroom),
       "captureTimestampMs" to facts.captureTimestampMs?.let(::num),
       "shed" to s.shed?.wire,
       "heartbeat" to
@@ -134,4 +138,7 @@ object SnapshotWire {
     )
 
   private fun num(value: Number): Double = value.toDouble()
+
+  /** A reading that is NaN or infinite is no reading. */
+  private fun finite(value: Double?): Double? = value?.takeIf { it.isFinite() }
 }

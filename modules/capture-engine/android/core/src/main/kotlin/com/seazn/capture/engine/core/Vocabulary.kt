@@ -73,6 +73,21 @@ enum class HeartbeatResult(override val wire: String) : Wire {
   SESSION_OVER("session-over"),
 }
 
+/**
+ * How the overlay's score reaches it: the session shape's `scoreUpdates`, a closed set in the web
+ * descriptor schema (09e87aabd). The core holds the server's word as read; the snapshot wire crosses
+ * only these words, and any other as null, for that field alone (controller ruling, review 12 I2).
+ */
+enum class ScoreUpdates(override val wire: String) : Wire {
+  REALTIME("realtime"),
+  POLLED("polled");
+
+  companion object {
+    /** The server's word; null for any other, an absent one included. */
+    fun of(word: String?): ScoreUpdates? = entries.firstOrNull { it.wire == word }
+  }
+}
+
 /** Device conditions the platform reads (thermal, battery). Relayed, never judged (AGENTS §8). */
 data class DeviceSample(
   val thermalStatus: Int?,

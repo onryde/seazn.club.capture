@@ -1,5 +1,5 @@
 {
-  "about": "Native Snapshot → wire (SnapshotWireTest.kt) and wire → EngineSnapshot (snapshotWire.test.ts). A case's telemetry, pairing and broadcast are { ...base, ...case.wire.<field> } when an object. Change only with both.",
+  "about": "Native Snapshot → wire (SnapshotWireTest.kt) and wire → EngineSnapshot (snapshotWire.test.ts). A case's telemetry, pairing and broadcast are { ...base, ...case.wire.<field> } when an object. Every case is a snapshot native can send. telemetryKeys are the keys of telemetry, srt and heartbeat, which JS hands through unchanged. Change only with both.",
   "vocabulary": {
     "state": [
       "idle",
@@ -43,7 +43,34 @@
     "heartbeatResult": ["ok", "failed", "session-over"],
     "connectFailure": ["unresolved", "refused", "timeout", "other"],
     "camera": ["own", "taken", "reopening", "resuming", "switching"],
-    "thermal": ["none", "light", "moderate", "severe", "critical", "emergency", "shutdown"]
+    "thermal": ["none", "light", "moderate", "severe", "critical", "emergency", "shutdown"],
+    "scoreUpdates": ["realtime", "polled"]
+  },
+  "telemetryKeys": {
+    "telemetry": [
+      "bitrateKbps",
+      "targetBitrateKbps",
+      "audioLevel",
+      "encodedVideoFps",
+      "audioPacketsPerSecond",
+      "srt",
+      "delivery",
+      "deliveredLagMs",
+      "deliveryCheckedAtMs",
+      "dataUsedBytes",
+      "charging",
+      "batteryPercent",
+      "drainPctPerHour",
+      "thermalStatus",
+      "thermalHeadroom",
+      "captureTimestampMs",
+      "shed",
+      "heartbeat",
+      "recordSinkFailures",
+      "recordReentrantDropped"
+    ],
+    "srt": ["sent", "retransmitted", "dropped", "rttMs"],
+    "heartbeat": ["lastSentAtEpochMs", "lastResult", "consecutiveFailures", "failures"]
   },
   "telemetryBase": {
     "bitrateKbps": null,
@@ -120,7 +147,7 @@
         "state": { "kind": "idle" },
         "pairing": null,
         "broadcast": null,
-        "ready": { "camera": false, "sound": false, "network": true, "held": false },
+        "ready": { "camera": false, "sound": false, "network": false, "held": false },
         "refusal": null,
         "lastEnd": null,
         "unpaired": {
@@ -154,7 +181,7 @@
         "lastEnd": null,
         "unpaired": null,
         "codeEndedPending": false,
-        "camera": null,
+        "camera": "own",
         "reportedAtMs": 1790000001000,
         "survivesBackground": false,
         "telemetry": {}
@@ -166,12 +193,12 @@
         "state": { "kind": "paired" },
         "pairing": { "pollSeconds": 60 },
         "broadcast": null,
-        "ready": { "camera": true, "sound": true, "network": true, "held": false },
+        "ready": { "camera": true, "sound": false, "network": true, "held": false },
         "refusal": null,
         "lastEnd": "stopped-by-organiser",
         "unpaired": null,
         "codeEndedPending": false,
-        "camera": null,
+        "camera": "own",
         "reportedAtMs": 1790000002000,
         "survivesBackground": true,
         "telemetry": {
@@ -196,7 +223,7 @@
         "lastEnd": null,
         "unpaired": null,
         "codeEndedPending": false,
-        "camera": null,
+        "camera": "own",
         "reportedAtMs": 1790000003000,
         "survivesBackground": true,
         "telemetry": { "audioLevel": 0.42 }
@@ -213,7 +240,7 @@
         "lastEnd": null,
         "unpaired": null,
         "codeEndedPending": false,
-        "camera": null,
+        "camera": "own",
         "reportedAtMs": 1790000004000,
         "survivesBackground": true,
         "telemetry": {}
@@ -241,6 +268,40 @@
       }
     },
     {
+      "name": "armed-gate-open-no-overlay",
+      "wire": {
+        "state": { "kind": "armed", "cause": "operator", "notReady": null },
+        "pairing": { "overlayUrl": null },
+        "broadcast": { "cause": "operator", "overlayUrl": null },
+        "ready": { "camera": true, "sound": true, "network": true, "held": true },
+        "refusal": null,
+        "lastEnd": null,
+        "unpaired": null,
+        "codeEndedPending": false,
+        "camera": "own",
+        "reportedAtMs": 1790000005500,
+        "survivesBackground": true,
+        "telemetry": { "audioLevel": 0.3 }
+      }
+    },
+    {
+      "name": "connecting-unknown-score-updates",
+      "wire": {
+        "state": { "kind": "connecting", "transport": "srt" },
+        "pairing": {},
+        "broadcast": { "scoreUpdates": null },
+        "ready": { "camera": true, "sound": true, "network": true, "held": true },
+        "refusal": null,
+        "lastEnd": null,
+        "unpaired": null,
+        "codeEndedPending": false,
+        "camera": "own",
+        "reportedAtMs": 1790000006000,
+        "survivesBackground": true,
+        "telemetry": { "audioLevel": 0.3 }
+      }
+    },
+    {
       "name": "degraded-two-reasons",
       "wire": {
         "state": {
@@ -259,7 +320,7 @@
         "camera": "own",
         "reportedAtMs": 1790000060000,
         "survivesBackground": true,
-        "telemetry": {}
+        "telemetry": { "srt": { "sent": 600, "retransmitted": 0, "dropped": 0, "rttMs": null } }
       }
     },
     {
@@ -291,13 +352,30 @@
         "state": { "kind": "ended", "reason": "operator-stopped", "durationMs": 2700000 },
         "pairing": {},
         "broadcast": null,
-        "ready": { "camera": true, "sound": true, "network": true, "held": true },
+        "ready": { "camera": false, "sound": true, "network": true, "held": true },
         "refusal": null,
         "lastEnd": null,
         "unpaired": null,
         "codeEndedPending": false,
         "camera": null,
         "reportedAtMs": 1790002700000,
+        "survivesBackground": false,
+        "telemetry": {}
+      }
+    },
+    {
+      "name": "ended-pair-refused-never-live",
+      "wire": {
+        "state": { "kind": "ended", "reason": "fatal-error", "durationMs": null },
+        "pairing": null,
+        "broadcast": null,
+        "ready": { "camera": false, "sound": false, "network": false, "held": false },
+        "refusal": null,
+        "lastEnd": null,
+        "unpaired": null,
+        "codeEndedPending": false,
+        "camera": null,
+        "reportedAtMs": 1790000000200,
         "survivesBackground": false,
         "telemetry": {}
       }

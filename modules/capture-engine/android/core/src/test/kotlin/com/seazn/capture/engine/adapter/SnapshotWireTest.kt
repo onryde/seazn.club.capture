@@ -1,9 +1,11 @@
 package com.seazn.capture.engine.adapter
 
 import com.seazn.capture.engine.core.*
+import java.io.File
 import java.lang.reflect.Modifier
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertNotEquals
 import kotlin.test.assertTrue
@@ -70,37 +72,46 @@ class SnapshotWireTest {
   private val builders: Map<String, () -> Map<String, Any?>> =
     mapOf(
       "idle" to { SnapshotWire.of(bare(SnapshotState.Idle, 1_790_000_000_000), PlatformFacts(), clean) },
+      // M2: with no pairing, ready is all false (ReadyView.NONE), whatever the network.
       "idle-unpaired-replaced" to {
-        val snapshot =
-          bare(SnapshotState.Idle, 1_790_000_000_500)
-            .copy(ready = ReadyView(false, false, true, false), unpaired = Unpaired(UnpairReason.REPLACED, name))
+        val snapshot = bare(SnapshotState.Idle, 1_790_000_000_500).copy(unpaired = Unpaired(UnpairReason.REPLACED, name))
         SnapshotWire.of(snapshot, PlatformFacts(), clean)
       },
+      // A pairing holds the camera as its own (Phase.camera) from Pairing on; only Idle and Ended have none.
       "pairing" to {
         val snapshot =
           bare(SnapshotState.Pairing, 1_790_000_001_000)
-            .copy(pairing = PairingView(name, true, WaitingFields.UNKNOWN), ready = ReadyView(false, false, true, false))
+            .copy(pairing = PairingView(name, true, WaitingFields.UNKNOWN), ready = ReadyView(false, false, true, false), camera = CameraState.OWN)
         SnapshotWire.of(snapshot, PlatformFacts(), clean)
       },
+      // I1: camera and sound apart, so a swap of the two shows.
       "paired-after-organiser-stop" to {
         val snapshot =
           bare(SnapshotState.Paired, 1_790_000_002_000)
             .copy(
               pairing = pairing.copy(waiting = waiting(pollSeconds = 60)),
-              ready = ReadyView(true, true, true, false),
+              ready = ReadyView(camera = true, sound = false, network = true, held = false),
               lastEnd = LastEnd.STOPPED_BY_ORGANISER,
               heartbeat = HeartbeatStatus(1_790_000_001_500, HeartbeatResult.OK, 0, 0),
+              camera = CameraState.OWN,
             )
         SnapshotWire.of(snapshot, PlatformFacts(audioLevel = 0.42, survivesBackground = true), clean)
       },
       "paired-refused-no-destination" to {
         val snapshot =
           bare(SnapshotState.Paired, 1_790_000_003_000)
-            .copy(pairing = PairingView(name, false, waiting(destinationName = null)), ready = allReady, refusal = Refusal.NO_DESTINATION)
+            .copy(
+              pairing = PairingView(name, false, waiting(destinationName = null)),
+              ready = allReady,
+              refusal = Refusal.NO_DESTINATION,
+              camera = CameraState.OWN,
+            )
         SnapshotWire.of(snapshot, PlatformFacts(audioLevel = 0.42, survivesBackground = true), clean)
       },
       "arming-retrying" to {
-        val snapshot = bare(SnapshotState.Arming(Cause.AUTOMATIC, retrying = true), 1_790_000_004_000).copy(pairing = pairing, ready = allReady)
+        val snapshot =
+          bare(SnapshotState.Arming(Cause.AUTOMATIC, retrying = true), 1_790_000_004_000)
+            .copy(pairing = pairing, ready = allReady, camera = CameraState.OWN)
         SnapshotWire.of(snapshot, PlatformFacts(survivesBackground = true), clean)
       },
       "armed-not-held-rtmps-only" to {
@@ -110,9 +121,27 @@ class SnapshotWireTest {
             .copy(pairing = pairing, broadcast = rtmpsOnly, ready = ReadyView(true, true, true, false), camera = CameraState.OWN)
         SnapshotWire.of(snapshot, PlatformFacts(audioLevel = 0.3, survivesBackground = true), clean)
       },
+      // I1: the gate about to open (notReady null), and no overlay entitlement, so both overlay URLs are null.
+      "armed-gate-open-no-overlay" to {
+        val noOverlay = PairingView(name, true, waiting().copy(overlayUrl = null))
+        val snapshot =
+          bare(SnapshotState.Armed(Cause.OPERATOR, notReady = null), 1_790_000_005_500)
+            .copy(pairing = noOverlay, broadcast = broadcast.copy(cause = Cause.OPERATOR, overlayUrl = null), ready = allReady, camera = CameraState.OWN)
+        SnapshotWire.of(snapshot, PlatformFacts(audioLevel = 0.3, survivesBackground = true), clean)
+      },
+      // I2: a word outside the closed set crosses as null, for that field alone.
+      "connecting-unknown-score-updates" to {
+        val snapshot =
+          bare(SnapshotState.Connecting(Transport.SRT), 1_790_000_006_000)
+            .copy(pairing = pairing, broadcast = broadcast.copy(scoreUpdates = "hourly"), ready = allReady, camera = CameraState.OWN)
+        SnapshotWire.of(snapshot, PlatformFacts(audioLevel = 0.3, survivesBackground = true), clean)
+      },
+      // I1: SRT's counters before its first round-trip reading.
       "degraded-two-reasons" to {
         val state = SnapshotState.Degraded(Transport.SRT, listOf(DegradeReason.NOT_DELIVERED, DegradeReason.MIC_SILENCED), 1_790_000_001_000)
-        val snapshot = bare(state, 1_790_000_060_000).copy(pairing = pairing, broadcast = broadcast, ready = allReady, camera = CameraState.OWN)
+        val snapshot =
+          bare(state, 1_790_000_060_000)
+            .copy(srt = SrtTelemetry(600, 0, 0, rttMs = null), pairing = pairing, broadcast = broadcast, ready = allReady, camera = CameraState.OWN)
         SnapshotWire.of(snapshot, PlatformFacts(survivesBackground = true), clean)
       },
       "reconnecting-code-ended-pending" to {
@@ -122,9 +151,16 @@ class SnapshotWireTest {
             .copy(pairing = pairing, broadcast = broadcast, ready = ReadyView(true, true, false, true), codeEndedPending = true, camera = CameraState.OWN)
         SnapshotWire.of(snapshot, PlatformFacts(survivesBackground = true), clean)
       },
+      // Ended holds no camera, so the camera check reads false (Projection's I3).
       "ended-operator-stopped" to {
-        val snapshot = bare(SnapshotState.Ended(EndReason.OPERATOR_STOPPED, 2_700_000), 1_790_002_700_000).copy(pairing = pairing, ready = allReady)
+        val snapshot =
+          bare(SnapshotState.Ended(EndReason.OPERATOR_STOPPED, 2_700_000), 1_790_002_700_000)
+            .copy(pairing = pairing, ready = ReadyView(camera = false, sound = true, network = true, held = true))
         SnapshotWire.of(snapshot, PlatformFacts(), clean)
+      },
+      // I1: a pair refused from Idle ends at once: never live, so no duration, and no pairing.
+      "ended-pair-refused-never-live" to {
+        SnapshotWire.of(bare(SnapshotState.Ended(EndReason.FATAL_ERROR, durationMs = null), 1_790_000_000_200), PlatformFacts(), clean)
       },
       "live-telemetry" to { SnapshotWire.of(live, liveFacts, RecordCounters(2, 1)) },
     )
@@ -174,20 +210,68 @@ class SnapshotWireTest {
       SnapshotState.Ended(EndReason.OPERATOR_STOPPED, 2_700_000),
     )
 
+  /** Each case's name and its whole wire, the bases merged in. */
+  private fun cases(): List<Pair<String, JSONObject>> {
+    val cases = file.getJSONArray("cases")
+    return (0 until cases.length()).map { i ->
+      val case = cases.getJSONObject(i)
+      val wire = case.getJSONObject("wire")
+      merged(wire, "telemetry", "telemetryBase")
+      merged(wire, "pairing", "pairingBase")
+      merged(wire, "broadcast", "broadcastBase")
+      case.getString("name") to wire
+    }
+  }
+
   @Test
   fun `carries 3, 5, 6 each native snapshot becomes the shared wire`() {
-    val cases = file.getJSONArray("cases")
-    assertEquals(11, cases.length(), "the vector file's eleven cases")
-    assertEquals(cases.length(), builders.size, "one builder per case")
-    for (i in 0 until cases.length()) {
-      val case = cases.getJSONObject(i)
-      val name = case.getString("name")
-      val expected = case.getJSONObject("wire")
-      merged(expected, "telemetry", "telemetryBase")
-      merged(expected, "pairing", "pairingBase")
-      merged(expected, "broadcast", "broadcastBase")
-      assertJsonEquals(expected, JSONObject(WireJson.encode(builders.getValue(name)())), name)
+    val cases = cases()
+    assertEquals(14, cases.size, "the vector file's fourteen cases")
+    assertEquals(cases.map { it.first }.toSet(), builders.keys, "one builder per case")
+    for ((name, expected) in cases) assertJsonEquals(expected, JSONObject(WireJson.encode(builders.getValue(name)())), name)
+  }
+
+  /**
+   * M2: JS reads each case as what native sends, so each must be one the projection can produce. The
+   * rules are the Snapshot fields' own (Snapshot.kt) and A11's order, not read back from the code.
+   */
+  @Test
+  fun `M2 every vector is a snapshot native can send`() {
+    val holding = setOf("armed", "connecting", "publishing", "degraded", "reconnecting")
+    for ((name, wire) in cases()) {
+      val kind = wire.getJSONObject("state").getString("kind")
+      val ready = wire.getJSONObject("ready").let { r -> listOf("camera", "sound", "network", "held").map { r.getBoolean(it) } }
+      val noPairing = wire.isNull("pairing")
+      // `camera`: null with no pairing, and in Ended. `ready`: false with no pairing.
+      assertEquals(noPairing || kind == "ended", wire.isNull("camera"), "$name: camera")
+      if (noPairing) assertEquals(listOf(false, false, false, false), ready, "$name: ready with no pairing")
+      // The camera check is "ours and showing frames".
+      if (ready[0]) assertEquals("own", wire.optString("camera"), "$name: ready.camera without our camera")
+      // `broadcast` while one is held; `unpaired` in Idle; `lastEnd` in Paired.
+      assertEquals(kind in holding, !wire.isNull("broadcast"), "$name: broadcast")
+      if (!wire.isNull("unpaired")) assertEquals("idle", kind, "$name: unpaired")
+      if (!wire.isNull("lastEnd")) assertEquals("paired", kind, "$name: lastEnd")
+      if (kind == "idle") assertTrue(noPairing, "$name: Idle has no pairing")
+      if (kind == "armed") {
+        // A11: the first check that fails, in the status line's order; null when the gate is about to open.
+        val first = ready.indexOf(false).let { if (it < 0) null else vocabulary("notReady")[it] }
+        assertEquals(first, wire.getJSONObject("state").opt("notReady").takeUnless { it == JSONObject.NULL }, "$name: notReady")
+      }
     }
+  }
+
+  @Test
+  fun `M4 the telemetry keys JS hands through are the wire's own`() {
+    val keys = file.getJSONObject("telemetryKeys")
+    fun list(key: String) = keys.getJSONArray(key).let { a -> (0 until a.length()).map { a.getString(it) } }
+    val telemetry = wireOf(full)["telemetry"] as Map<*, *>
+    assertEquals(list("telemetry"), telemetry.keys.toList())
+    assertEquals(list("srt"), (telemetry["srt"] as Map<*, *>).keys.toList())
+    assertEquals(list("heartbeat"), (telemetry["heartbeat"] as Map<*, *>).keys.toList())
+    // The base every case merges over has the same keys, so no case can drop one.
+    val base = file.getJSONObject("telemetryBase")
+    assertEquals(list("telemetry").toSet(), base.keySet())
+    assertEquals(list("heartbeat").toSet(), base.getJSONObject("heartbeat").keySet())
   }
 
   @Test
@@ -208,6 +292,8 @@ class SnapshotWireTest {
     assertEquals(vocabulary("camera"), CameraState.entries.map { it.wire })
     assertEquals(vocabulary("transport"), Transport.entries.map { it.wire })
     assertEquals(vocabulary("thermal"), SnapshotWire.THERMAL)
+    // I2: the web descriptor schema's closed set (09e87aabd).
+    assertEquals(vocabulary("scoreUpdates"), ScoreUpdates.entries.map { it.wire })
   }
 
   private fun telemetry(device: DeviceSample?): Map<*, *> =
@@ -252,11 +338,85 @@ class SnapshotWireTest {
   }
 
   @Test
-  fun `the wire never carries the token or a publish secret`() {
-    val texts = builders.map { (_, build) -> WireJson.encode(build()) } + WireJson.encode(wireOf(full))
-    for (text in texts) {
-      for (secret in listOf(Configs.TOKEN, Configs.PASSPHRASE, Configs.STREAM_KEY)) assertEquals(false, secret in text)
+  fun `M1 a reading that is not a finite number crosses as no reading, so JS never sees NaN`() {
+    for (bad in listOf(Double.NaN, Double.POSITIVE_INFINITY, Double.NEGATIVE_INFINITY)) {
+      val snapshot =
+        bare(SnapshotState.Paired, 0).copy(encodedVideoFps = bad, audioPacketsPerSecond = bad, device = DeviceSample(2, bad, 81, true, bad, null))
+      // Read on the map Expo is handed, never through WireJson, which would write null either way.
+      val telemetry = SnapshotWire.of(snapshot, PlatformFacts(audioLevel = bad), clean)["telemetry"] as Map<*, *>
+      for (key in listOf("encodedVideoFps", "audioPacketsPerSecond", "thermalHeadroom", "drainPctPerHour")) {
+        assertTrue(key in telemetry.keys, "$key stays on the wire")
+        assertEquals(null, telemetry[key], "$key for $bad")
+      }
+      // Plan A types the level `number`, 0 with no reading (CaptureEnginePort.ts, CD28).
+      assertEquals(0.0, telemetry["audioLevel"], "audioLevel for $bad")
     }
+  }
+
+  // ---- I3: no credential crosses, through the real projection. ----
+
+  /** Configs' made-up credentials, each distinctive: the token, the publish secrets, and the ingest URLs. */
+  private val credentials =
+    listOf(
+      Configs.TOKEN,
+      Configs.PASSPHRASE,
+      Configs.STREAM_KEY,
+      Configs.srt.url,
+      Configs.rtmps.url,
+      Configs.rtmps.url + Configs.STREAM_KEY,
+      // The ingest host itself: no wire field names it.
+      "live.stg.seazn.club",
+    )
+
+  private fun assertNoCredential(text: String, where: String) {
+    for (secret in credentials) assertFalse(secret in text, "$where carries a credential: $secret")
+    // The stream id is a path segment of the public playback URL (SessionRecord's notInUrls), and nowhere else.
+    assertFalse(Configs.STREAM_ID in text.replace(Configs.PLAYBACK_URL, ""), "$where carries the stream id outside the playback URL")
+  }
+
+  /** Every string the wire holds, keys included. */
+  private fun strings(value: Any?): List<String> =
+    when (value) {
+      is String -> listOf(value)
+      is Map<*, *> -> value.entries.flatMap { (key, item) -> strings(key) + strings(item) }
+      is List<*> -> value.flatMap(::strings)
+      else -> emptyList()
+    }
+
+  /** Configs' session, every credential in it, through [Projection]: from Paired, on air over SRT, to Ended. */
+  private fun projected(): List<Snapshot> {
+    val rig = MachineRig()
+    rig.link = { ms -> LinkCounters(ms * 375, ms / 10, 0, 0, 0, 20, 50, null) }
+    val seen = mutableListOf<Snapshot>()
+    rig.paired()
+    seen += rig.snapshot
+    rig.hear("go-live", sid = "sess_42", startedBy = "organiser")
+    seen += rig.snapshot
+    rig.ready()
+    seen += rig.snapshot
+    rig.send(Input.Connected(rig.attempt!!))
+    rig.advance(3_000) { seen += rig.snapshot }
+    rig.send(Input.Dropped(rig.attempt!!, DropReason.ENDPOINT_CLOSED, null))
+    rig.advance(1_000) { seen += rig.snapshot }
+    rig.send(Input.Stop)
+    seen += rig.snapshot
+    return seen
+  }
+
+  @Test
+  fun `I3 no credential reaches the wire, its JSON or the vectors`() {
+    val snapshots = projected()
+    // Not vacuous: every phase that holds the broadcast, and SRT's own counters on air.
+    val kinds = snapshots.map { it.state.wire }.toSet()
+    for (kind in listOf("paired", "armed", "connecting", "publishing", "reconnecting", "ended")) assertTrue(kind in kinds, "the walk reaches $kind: $kinds")
+    assertTrue(snapshots.any { it.broadcast != null && it.srt != null }, "a held broadcast with SRT's counters")
+    for (snapshot in snapshots) {
+      val wire = SnapshotWire.of(snapshot, PlatformFacts(), clean)
+      assertNoCredential(strings(wire).joinToString("\n"), "the wire in ${snapshot.state.wire}")
+      assertNoCredential(WireJson.encode(wire), "the JSON in ${snapshot.state.wire}")
+    }
+    val vectors = File(System.getProperty("capture.shared"), "wire/snapshot-vectors.json").readText(Charsets.UTF_8)
+    assertNoCredential(vectors, "snapshot-vectors.json")
   }
 
   // ---- C0b's carry: every field of the snapshot and of what it holds is mapped, or named here. ----
