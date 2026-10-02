@@ -148,15 +148,6 @@ object SessionMachine {
     if (phase is Phase.Idle || phase is Phase.Ended || input.attemptId < phase.attemptInHand) return Step(phase, listOf(record("platform-failed", *fields)))
     return end(phase, EndReason.FATAL_ERROR, now, *fields)
   }
-
-  /** The attempt a platform failure can come from: the one in flight or, with none in flight, the next. */
-  private val Phase.attemptInHand: Int
-    get() =
-      when (this) {
-        is Phase.OnAir -> attemptId
-        is Phase.Connecting -> (step as? ConnectStep.Requested)?.attemptId ?: ids.attempt
-        is Phase.Idle, is Phase.Pairing, is Phase.Paired, is Phase.Arming, is Phase.Armed, is Phase.Ended -> ids.attempt
-      }
 }
 
 /** Connects, drops, frames and link readings: the attempt's life. */

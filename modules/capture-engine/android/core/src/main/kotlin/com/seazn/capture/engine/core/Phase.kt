@@ -287,6 +287,15 @@ val Phase.ids: Ids
       is Phase.OnAir -> session.ids
     }
 
+/** The attempt a platform failure can come from: the one in flight or, with none in flight, the next. */
+val Phase.attemptInHand: Int
+  get() =
+    when (this) {
+      is Phase.OnAir -> attemptId
+      is Phase.Connecting -> (step as? ConnectStep.Requested)?.attemptId ?: ids.attempt
+      is Phase.Idle, is Phase.Pairing, is Phase.Paired, is Phase.Arming, is Phase.Armed, is Phase.Ended -> ids.attempt
+    }
+
 /**
  * The last network fact (`NET_CAPABILITY_VALIDATED`), in any phase. The platform pushes it when it
  * changes, which can be before an arm or once for two sessions, so it is kept between sessions the
