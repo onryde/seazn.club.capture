@@ -5303,7 +5303,7 @@ The pair wire (Task 25 writes it) is:
 { kind: "pair", code, slot, token, codeUrl, heartbeatUrl, startUrl,
   language,            // (P3) the operator's language; "" when absent
   automatic,           // the Settings switch (A4); true when absent
-  claim,               // "new" | "resume" (A9); "new" when absent or unknown
+  claim,               // "new" | "resume" (A9); "resume" when absent or unknown (controller ruling, Task 11 review I1)
   environment }        // "production" | "staging" (CD36); staging when absent
 { kind: "setAutomatic", on }   { kind: "setLanguage", language }
 { kind: "start" } { kind: "stop" } { kind: "unpair" } { kind: "reset" } { kind: "switchCamera" }
@@ -5519,7 +5519,7 @@ object IntentMapping {
 - [ ] **Step 4: Run, then mutate**, one at a time from a `cp` backup:
   1. Make `WireValues.int` accept fractions (`value.toInt()` for any `Double`). The fractional test fails.
   2. Default `automatic` to false. The defaults test fails.
-  3. Map an unknown claim to `RESUME`. The defaults test fails.
+  3. Map an unknown claim to `NEW`. The defaults test fails.
   4. In `IntentMapping`, pass `null` for `stopped`. The stopped-record test fails.
 
 - [ ] **Step 5: Verify and commit.** The core suite: EXIT=0; the count rises by 11. Then commit:
@@ -5529,7 +5529,7 @@ cd "$WT" && git add modules/capture-engine/android/core && git commit -F - <<'EO
 feat(adapter): map pair and the intents from the bridge, never throwing
 
 The pair wire becomes a PairRequest whose problems name what is wrong;
-absent settings take their defaults (automatic on, claim new, staging).
+absent settings take their defaults (automatic on, claim resume, staging).
 pair carries the install's facts and this code and slot's stopped record,
 both supplied by the caller. arm is no longer an intent.
 
