@@ -20,7 +20,10 @@
     "preferred": "srt",
     "playbackUrl": "https://customer-x.cloudflarestream.com/a1b2c3d4e5f60718293a4b5c6d7e8f90/manifest/video.m3u8",
     "overlayUrl": "https://stg.seazn.club/overlay/fixtures/f1",
-    "holdWindowSeconds": { "srt": 183, "rtmps": 180 },
+    "holdWindowSeconds": {
+      "srt": 183,
+      "rtmps": 180
+    },
     "maxDurationMinutes": 300,
     "warmingDeadline": 1790000600,
     "label": "Example Town v Sample CC",
@@ -43,19 +46,23 @@
         "primary": "srt",
         "fallback": "rtmps",
         "srtOffered": true,
-        "scoreUpdates": "realtime"
+        "scoreUpdates": "realtime",
+        "overlayUrl": "https://stg.seazn.club/overlay/fixtures/f1"
       }
     },
     {
       "why": "RTMPS preferred, SRT the fallback",
-      "override": { "preferred": "rtmps" },
+      "override": {
+        "preferred": "rtmps"
+      },
       "expected": {
         "answer": "open",
         "sid": "3f9a2c7e-8b14-4d5e-a6f7-0c1d2e3f4a5b",
         "primary": "rtmps",
         "fallback": "srt",
         "srtOffered": true,
-        "scoreUpdates": "realtime"
+        "scoreUpdates": "realtime",
+        "overlayUrl": "https://stg.seazn.club/overlay/fixtures/f1"
       }
     },
     {
@@ -76,7 +83,8 @@
         "primary": "rtmps",
         "fallback": null,
         "srtOffered": false,
-        "scoreUpdates": "realtime"
+        "scoreUpdates": "realtime",
+        "overlayUrl": "https://stg.seazn.club/overlay/fixtures/f1"
       }
     },
     {
@@ -90,7 +98,10 @@
           }
         }
       },
-      "expected": { "answer": "unreadable", "problem": "preferred" }
+      "expected": {
+        "answer": "unreadable",
+        "problem": "preferred"
+      }
     },
     {
       "why": "G0-d no cred: not the current phone",
@@ -123,7 +134,8 @@
         "primary": "srt",
         "fallback": "rtmps",
         "srtOffered": true,
-        "scoreUpdates": "realtime"
+        "scoreUpdates": "realtime",
+        "overlayUrl": "https://stg.seazn.club/overlay/fixtures/f1"
       }
     },
     {
@@ -208,7 +220,8 @@
         "primary": "srt",
         "fallback": "rtmps",
         "srtOffered": true,
-        "scoreUpdates": "realtime"
+        "scoreUpdates": "realtime",
+        "overlayUrl": null
       }
     },
     {
@@ -235,19 +248,26 @@
     },
     {
       "why": "the live state reads open too, its score polled",
-      "override": { "state": "live", "scoreUpdates": "polled" },
+      "override": {
+        "state": "live",
+        "scoreUpdates": "polled"
+      },
       "expected": {
         "answer": "open",
         "sid": "3f9a2c7e-8b14-4d5e-a6f7-0c1d2e3f4a5b",
         "primary": "srt",
         "fallback": "rtmps",
         "srtOffered": true,
-        "scoreUpdates": "polled"
+        "scoreUpdates": "polled",
+        "overlayUrl": "https://stg.seazn.club/overlay/fixtures/f1"
       }
     },
     {
       "why": "a completed broadcast, which carries no cred",
-      "override": { "state": "completed", "endReason": "max_duration" },
+      "override": {
+        "state": "completed",
+        "endReason": "max_duration"
+      },
       "remove": ["cred"],
       "expected": {
         "answer": "over",
@@ -257,7 +277,10 @@
     },
     {
       "why": "an ending broadcast is over, its cred never read",
-      "override": { "state": "ending", "endReason": "auto_stopped" },
+      "override": {
+        "state": "ending",
+        "endReason": "auto_stopped"
+      },
       "expected": {
         "answer": "over",
         "sid": "3f9a2c7e-8b14-4d5e-a6f7-0c1d2e3f4a5b",
@@ -266,7 +289,10 @@
     },
     {
       "why": "a failed broadcast",
-      "override": { "state": "failed", "endReason": "failed" },
+      "override": {
+        "state": "failed",
+        "endReason": "failed"
+      },
       "remove": ["cred"],
       "expected": {
         "answer": "over",
@@ -276,7 +302,9 @@
     },
     {
       "why": "the waiting shape",
-      "override": { "state": "waiting" },
+      "override": {
+        "state": "waiting"
+      },
       "remove": [
         "sid",
         "cred",
@@ -287,11 +315,15 @@
         "warmingDeadline",
         "scoreUpdates"
       ],
-      "expected": { "answer": "waiting" }
+      "expected": {
+        "answer": "waiting"
+      }
     },
     {
       "why": "the waiting shape with no label",
-      "override": { "state": "waiting" },
+      "override": {
+        "state": "waiting"
+      },
       "remove": [
         "sid",
         "cred",
@@ -303,28 +335,49 @@
         "scoreUpdates",
         "label"
       ],
-      "expected": { "answer": "unreadable", "problem": "waiting" }
+      "expected": {
+        "answer": "unreadable",
+        "problem": "waiting"
+      }
     },
     {
       "why": "no sid on a session shape",
       "override": {},
       "remove": ["sid"],
-      "expected": { "answer": "unreadable", "problem": "sid" }
+      "expected": {
+        "answer": "unreadable",
+        "problem": "sid"
+      }
     },
     {
       "why": "a sid outside the schema's uuid pattern is refused: the core would echo it on every beat",
-      "override": { "sid": "sess_42" },
-      "expected": { "answer": "unreadable", "problem": "sid" }
+      "override": {
+        "sid": "sess_42"
+      },
+      "expected": {
+        "answer": "unreadable",
+        "problem": "sid"
+      }
     },
     {
       "why": "an unknown state",
-      "override": { "state": "paused" },
-      "expected": { "answer": "unreadable", "problem": "state" }
+      "override": {
+        "state": "paused"
+      },
+      "expected": {
+        "answer": "unreadable",
+        "problem": "state"
+      }
     },
     {
       "why": "cred not an object",
-      "override": { "cred": "srt://live.stg.seazn.club:778" },
-      "expected": { "answer": "unreadable", "problem": "cred" }
+      "override": {
+        "cred": "srt://live.stg.seazn.club:778"
+      },
+      "expected": {
+        "answer": "unreadable",
+        "problem": "cred"
+      }
     },
     {
       "why": "cred.srt without its passphrase",
@@ -341,7 +394,10 @@
           }
         }
       },
-      "expected": { "answer": "unreadable", "problem": "cred.srt" }
+      "expected": {
+        "answer": "unreadable",
+        "problem": "cred.srt"
+      }
     },
     {
       "why": "cred.rtmps without its key",
@@ -353,26 +409,293 @@
             "passphrase": "pass+phrase/6d1e8b0c",
             "latencyMs": 2000
           },
-          "rtmps": { "url": "rtmps://live.stg.seazn.club:443/live/" }
+          "rtmps": {
+            "url": "rtmps://live.stg.seazn.club:443/live/"
+          }
         }
       },
-      "expected": { "answer": "unreadable", "problem": "cred.rtmps" }
+      "expected": {
+        "answer": "unreadable",
+        "problem": "cred.rtmps"
+      }
     },
     {
       "why": "no hold window for a transport offered",
-      "override": { "holdWindowSeconds": { "srt": 183 } },
-      "expected": { "answer": "unreadable", "problem": "holdWindowSeconds" }
+      "override": {
+        "holdWindowSeconds": {
+          "srt": 183
+        }
+      },
+      "expected": {
+        "answer": "unreadable",
+        "problem": "holdWindowSeconds"
+      }
     },
     {
       "why": "no playbackUrl",
       "override": {},
       "remove": ["playbackUrl"],
-      "expected": { "answer": "unreadable", "problem": "playbackUrl" }
+      "expected": {
+        "answer": "unreadable",
+        "problem": "playbackUrl"
+      }
     },
     {
       "why": "maxDurationMinutes not a whole number",
-      "override": { "maxDurationMinutes": 90.5 },
-      "expected": { "answer": "unreadable", "problem": "maxDurationMinutes" }
+      "override": {
+        "maxDurationMinutes": 90.5
+      },
+      "expected": {
+        "answer": "unreadable",
+        "problem": "maxDurationMinutes"
+      }
+    },
+    {
+      "why": "an RTMPS url that carries its key still reads open: RtmpsTarget masks its url, so no toString prints the key",
+      "override": {
+        "cred": {
+          "srt": {
+            "url": "srt://live.stg.seazn.club:778",
+            "streamId": "a1b2c3d4e5f60718293a4b5c6d7e8f90",
+            "passphrase": "pass+phrase/6d1e8b0c",
+            "latencyMs": 2000
+          },
+          "rtmps": {
+            "url": "rtmps://live.stg.seazn.club:443/live/key-4c7a0e2b9d5f1386",
+            "streamKey": "key-4c7a0e2b9d5f1386"
+          }
+        }
+      },
+      "expected": {
+        "answer": "open",
+        "sid": "3f9a2c7e-8b14-4d5e-a6f7-0c1d2e3f4a5b",
+        "primary": "srt",
+        "fallback": "rtmps",
+        "srtOffered": true,
+        "scoreUpdates": "realtime",
+        "overlayUrl": "https://stg.seazn.club/overlay/fixtures/f1"
+      }
+    },
+    {
+      "why": "a production build keeps an overlay on the production Seazn host",
+      "env": "production",
+      "override": {
+        "overlayUrl": "https://seazn.club/overlay/fixtures/f1",
+        "cred": {
+          "srt": {
+            "url": "srt://live.seazn.club:778",
+            "streamId": "a1b2c3d4e5f60718293a4b5c6d7e8f90",
+            "passphrase": "pass+phrase/6d1e8b0c",
+            "latencyMs": 2000
+          },
+          "rtmps": {
+            "url": "rtmps://live.seazn.club:443/live/",
+            "streamKey": "key-4c7a0e2b9d5f1386"
+          }
+        }
+      },
+      "expected": {
+        "answer": "open",
+        "sid": "3f9a2c7e-8b14-4d5e-a6f7-0c1d2e3f4a5b",
+        "primary": "srt",
+        "fallback": "rtmps",
+        "srtOffered": true,
+        "scoreUpdates": "realtime",
+        "overlayUrl": "https://seazn.club/overlay/fixtures/f1"
+      }
+    },
+    {
+      "why": "an SRT url with no port: the platform could not connect it",
+      "override": {
+        "cred": {
+          "srt": {
+            "url": "srt://live.stg.seazn.club",
+            "streamId": "a1b2c3d4e5f60718293a4b5c6d7e8f90",
+            "passphrase": "pass+phrase/6d1e8b0c",
+            "latencyMs": 2000
+          },
+          "rtmps": {
+            "url": "rtmps://live.stg.seazn.club:443/live/",
+            "streamKey": "key-4c7a0e2b9d5f1386"
+          }
+        }
+      },
+      "expected": {
+        "answer": "unreadable",
+        "problem": "cred.srt"
+      }
+    },
+    {
+      "why": "an SRT url with a query: the platform composes the query, and a passphrase in the url would print",
+      "override": {
+        "cred": {
+          "srt": {
+            "url": "srt://live.stg.seazn.club:778?passphrase=pass+phrase/6d1e8b0c",
+            "streamId": "a1b2c3d4e5f60718293a4b5c6d7e8f90",
+            "passphrase": "pass+phrase/6d1e8b0c",
+            "latencyMs": 2000
+          },
+          "rtmps": {
+            "url": "rtmps://live.stg.seazn.club:443/live/",
+            "streamKey": "key-4c7a0e2b9d5f1386"
+          }
+        }
+      },
+      "expected": {
+        "answer": "unreadable",
+        "problem": "cred.srt"
+      }
+    },
+    {
+      "why": "an SRT url with a path",
+      "override": {
+        "cred": {
+          "srt": {
+            "url": "srt://live.stg.seazn.club:778/live",
+            "streamId": "a1b2c3d4e5f60718293a4b5c6d7e8f90",
+            "passphrase": "pass+phrase/6d1e8b0c",
+            "latencyMs": 2000
+          },
+          "rtmps": {
+            "url": "rtmps://live.stg.seazn.club:443/live/",
+            "streamKey": "key-4c7a0e2b9d5f1386"
+          }
+        }
+      },
+      "expected": {
+        "answer": "unreadable",
+        "problem": "cred.srt"
+      }
+    },
+    {
+      "why": "an SRT port outside 1 to 65535",
+      "override": {
+        "cred": {
+          "srt": {
+            "url": "srt://live.stg.seazn.club:0",
+            "streamId": "a1b2c3d4e5f60718293a4b5c6d7e8f90",
+            "passphrase": "pass+phrase/6d1e8b0c",
+            "latencyMs": 2000
+          },
+          "rtmps": {
+            "url": "rtmps://live.stg.seazn.club:443/live/",
+            "streamKey": "key-4c7a0e2b9d5f1386"
+          }
+        }
+      },
+      "expected": {
+        "answer": "unreadable",
+        "problem": "cred.srt"
+      }
+    },
+    {
+      "why": "an SRT latency below the schema's 1",
+      "override": {
+        "cred": {
+          "srt": {
+            "url": "srt://live.stg.seazn.club:778",
+            "streamId": "a1b2c3d4e5f60718293a4b5c6d7e8f90",
+            "passphrase": "pass+phrase/6d1e8b0c",
+            "latencyMs": 0
+          },
+          "rtmps": {
+            "url": "rtmps://live.stg.seazn.club:443/live/",
+            "streamKey": "key-4c7a0e2b9d5f1386"
+          }
+        }
+      },
+      "expected": {
+        "answer": "unreadable",
+        "problem": "cred.srt"
+      }
+    },
+    {
+      "why": "an empty passphrase (the schema's minLength 1)",
+      "override": {
+        "cred": {
+          "srt": {
+            "url": "srt://live.stg.seazn.club:778",
+            "streamId": "a1b2c3d4e5f60718293a4b5c6d7e8f90",
+            "passphrase": "",
+            "latencyMs": 2000
+          },
+          "rtmps": {
+            "url": "rtmps://live.stg.seazn.club:443/live/",
+            "streamKey": "key-4c7a0e2b9d5f1386"
+          }
+        }
+      },
+      "expected": {
+        "answer": "unreadable",
+        "problem": "cred.srt"
+      }
+    },
+    {
+      "why": "an empty stream key (the schema's minLength 1)",
+      "override": {
+        "cred": {
+          "srt": {
+            "url": "srt://live.stg.seazn.club:778",
+            "streamId": "a1b2c3d4e5f60718293a4b5c6d7e8f90",
+            "passphrase": "pass+phrase/6d1e8b0c",
+            "latencyMs": 2000
+          },
+          "rtmps": {
+            "url": "rtmps://live.stg.seazn.club:443/live/",
+            "streamKey": ""
+          }
+        }
+      },
+      "expected": {
+        "answer": "unreadable",
+        "problem": "cred.rtmps"
+      }
+    },
+    {
+      "why": "a hold window above the schema's 999",
+      "override": {
+        "holdWindowSeconds": {
+          "srt": 1000,
+          "rtmps": 180
+        }
+      },
+      "expected": {
+        "answer": "unreadable",
+        "problem": "holdWindowSeconds"
+      }
+    },
+    {
+      "why": "a hold window of 0 for a transport offered",
+      "override": {
+        "holdWindowSeconds": {
+          "srt": 183,
+          "rtmps": 0
+        }
+      },
+      "expected": {
+        "answer": "unreadable",
+        "problem": "holdWindowSeconds"
+      }
+    },
+    {
+      "why": "maxDurationMinutes below the schema's 1",
+      "override": {
+        "maxDurationMinutes": 0
+      },
+      "expected": {
+        "answer": "unreadable",
+        "problem": "maxDurationMinutes"
+      }
+    },
+    {
+      "why": "an empty playbackUrl",
+      "override": {
+        "playbackUrl": ""
+      },
+      "expected": {
+        "answer": "unreadable",
+        "problem": "playbackUrl"
+      }
     }
   ]
 }

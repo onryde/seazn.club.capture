@@ -77,6 +77,77 @@ class StartTest {
     assertEquals(UnpairReason.REPLACED, assertIs<Phase.Idle>(rig.phase).unpaired?.reason)
   }
 
+  @Test fun `401 code_ended forgets the code, as a beat's 401 does - Idle, code-ended, the service released`() {
+    val rig = ready()
+    rig.starts = { StartAnswer.CodeEnded }
+    rig.send(Input.Start)
+    assertEquals(UnpairReason.CODE_ENDED, assertIs<Phase.Idle>(rig.phase).unpaired?.reason)
+    assertEquals(1, rig.sent<Command.Release>().size)
+    assertTrue(rig.sent<Command.DeleteStopped>().isEmpty(), "no stopped record was held")
+    val noted = rig.records("start-answered").single()
+    assertEquals("CodeEnded", noted.field("answer"))
+    assertTrue(noted.fields.none { it.first == "late" }, "the answer in flight is not late: $noted")
+  }
+
+  @Test fun `A17 401 code_ended on the start deletes a held stopped record, once`() {
+    val record = StoppedRecord.of(Configs.pairRequest().name, "sess_41", 1_790_000_000_000, null)
+    val rig = MachineRig()
+    rig.send(Input.Pair(Configs.pairRequest(), Configs.PHONE, record))
+    rig.send(Input.Network(true))
+    rig.hear(null, status = 503)
+    rig.ready()
+    rig.starts = { StartAnswer.CodeEnded }
+    rig.send(Input.Start)
+    assertEquals(UnpairReason.CODE_ENDED, assertIs<Phase.Idle>(rig.phase).unpaired?.reason)
+    assertEquals(listOf(Command.DeleteStopped("fx42hmnp7k2q", 1)), rig.sent<Command.DeleteStopped>())
+  }
+
+  @Test fun `C0b a 401 to a start the console's go-live overtook - the broadcast runs on, and the code goes when it ends`() {
+    val (rig, id) = raced()
+    rig.send(Input.CodeAnswered(rig.sent<Command.FetchCode>().last().requestId, Configs.open()))
+    rig.send(Input.Connected(rig.attempt!!))
+    rig.advance(1_000)
+    assertIs<Phase.OnAir>(rig.phase)
+    val commands = rig.send(Input.StartAnswered(id, StartAnswer.CodeEnded))
+    assertIs<Phase.OnAir>(rig.phase)
+    assertTrue(commands.none { it == Command.StopBroadcast || it == Command.Release }, "$commands")
+    assertTrue(rig.phase.pairing!!.codeEndedPending)
+    assertEquals(true, rig.records("start-answered").last().field("late"))
+    rig.hear("over", sid = "sess_42", endReason = "stopped")
+    assertEquals(UnpairReason.CODE_ENDED, assertIs<Phase.Idle>(rig.phase).unpaired?.reason)
+  }
+
+  @Test fun `A17 a late 401 while S is held finds the record already delivered by the go-live that armed S - deleted once, never again`() {
+    val record = StoppedRecord.of(Configs.pairRequest().name, "sess_41", 1_790_000_000_000, null)
+    val rig = MachineRig()
+    rig.send(Input.Pair(Configs.pairRequest(), Configs.PHONE, record))
+    rig.send(Input.Network(true))
+    rig.hear(null, status = 503)
+    rig.ready()
+    rig.codes = null
+    rig.send(Input.Start)
+    val id = rig.sent<Command.PostStart>().single().requestId
+    // The go-live that overtakes the start answers a Paired beat, which carried the record (RR3): its 2xx delivers it.
+    rig.hear("go-live", sid = "sess_42")
+    assertEquals(listOf(Command.DeleteStopped("fx42hmnp7k2q", 1)), rig.sent<Command.DeleteStopped>())
+    rig.send(Input.CodeAnswered(rig.sent<Command.FetchCode>().last().requestId, Configs.open()))
+    assertTrue(rig.phase.holdsBroadcast, rig.phase.name)
+    rig.send(Input.StartAnswered(id, StartAnswer.CodeEnded))
+    assertTrue(rig.phase.pairing!!.codeEndedPending)
+    assertNull(rig.phase.pairing!!.stopped)
+    assertEquals(1, rig.sent<Command.DeleteStopped>().size)
+    // The broadcast ends, and the pairing with it: the record is not deleted a second time.
+    rig.hear("over", sid = "sess_42", endReason = "stopped")
+    assertEquals(UnpairReason.CODE_ENDED, assertIs<Phase.Idle>(rig.phase).unpaired?.reason)
+    assertEquals(1, rig.sent<Command.DeleteStopped>().size)
+  }
+
+  @Test fun `a 401 to a start that lands while Arming S forgets the code, as the answer table's 401 row says for Arming`() {
+    val (rig, id) = raced()
+    rig.send(Input.StartAnswered(id, StartAnswer.CodeEnded))
+    assertEquals(UnpairReason.CODE_ENDED, assertIs<Phase.Idle>(rig.phase).unpaired?.reason)
+  }
+
   // A late POST start answer: the hold's request was in flight and a beat's go-live arrived first.
   // "It never moves the engine and never shows a refusal" (amendment, the answer table).
   private val lateAnswers =

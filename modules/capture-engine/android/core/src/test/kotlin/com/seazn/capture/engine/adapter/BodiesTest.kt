@@ -20,8 +20,8 @@ class BodiesTest {
   @Test
   fun `the waiting fields, every shared case`() {
     val cases = waiting.getJSONArray("cases")
-    // The file's rows: 16, of which 3 are JS's alone (PV12: a truncated file cannot pass).
-    assertEquals(16, cases.length())
+    // The file's rows: 28, of which 3 are JS's alone (PV12: a truncated file cannot pass).
+    assertEquals(28, cases.length())
     var read = 0
     var beats = 0
     for (i in 0 until cases.length()) {
@@ -48,15 +48,25 @@ class BodiesTest {
         )
       assertEquals(expected, got, why)
     }
-    assertEquals(13, read)
+    assertEquals(25, read)
     assertEquals(2, beats)
+  }
+
+  @Test
+  fun `the waiting fields' lower edges are read - a scheduled start of 1 and a poll of 5`() {
+    val fields = JSONObject(base).put("scheduledStart", 1).put("pollSeconds", 5).plain()
+    val read = Bodies.waiting(fields, Environment.STAGING)
+    assertEquals(1L, read?.scheduledStartEpochS)
+    assertEquals(5, read?.pollSeconds)
+    // Past the schema's 2^53 - 1: a whole number, and still out of bounds.
+    assertNull(Bodies.waiting(JSONObject(base).put("scheduledStart", 9_007_199_254_740_992L).plain(), Environment.STAGING))
   }
 
   @Test
   fun `the session shape, every shared case`() {
     val cases = sessions.getJSONArray("cases")
     // The file's rows (PV12).
-    assertEquals(26, cases.length())
+    assertEquals(39, cases.length())
     val seen = mutableMapOf<String, Int>()
     for (i in 0 until cases.length()) {
       val case = cases.getJSONObject(i)
@@ -68,7 +78,35 @@ class BodiesTest {
       // The whole expected object against the answer read the same way: no key unchecked, none extra.
       assertEquals(e.toMap(), decisive(answer), why)
     }
-    assertEquals(mapOf("open" to 6, "unreadable" to 11, "not-current" to 1, "foreign-ingest" to 4, "over" to 3, "waiting" to 1), seen)
+    assertEquals(mapOf("open" to 8, "unreadable" to 22, "not-current" to 1, "foreign-ingest" to 4, "over" to 3, "waiting" to 1), seen)
+  }
+
+  @Test
+  fun `the session shape's bounds, edge for edge`() {
+    fun srt(url: String) = JSONObject(base).also { it.getJSONObject("cred").getJSONObject("srt").put("url", url) }.toString()
+    // The ingest-host rule reads the scheme and host in either case; the shape is srt://host:port and nothing after.
+    for (url in listOf("SRT://LIVE.STG.SEAZN.CLUB:778", "srt://live.stg.seazn.club:1", "srt://live.stg.seazn.club:65535")) {
+      assertIs<CodeAnswer.Open>(Bodies.code(200, srt(url), null, Environment.STAGING), url)
+    }
+    for (url in listOf("srt://live.stg.seazn.club:65536", "srt://live.stg.seazn.club:778#x", "srt://live.stg.seazn.club:778?latency=2000")) {
+      assertEquals(CodeAnswer.Unreadable("cred.srt"), Bodies.code(200, srt(url), null, Environment.STAGING), url)
+    }
+    // A host the host rule cannot read at all is refused there first, as any foreign host is.
+    for (url in listOf("srt://live.stg.seazn.club:778 ", "srt://live.stg.seazn.club:")) {
+      assertEquals(CodeAnswer.ForeignIngest(SID), Bodies.code(200, srt(url), null, Environment.STAGING), url)
+    }
+    // The upper and lower edges the schema allows are read.
+    val edges = JSONObject(base).put("holdWindowSeconds", JSONObject().put("srt", 999).put("rtmps", 1)).put("maxDurationMinutes", 1)
+    edges.getJSONObject("cred").getJSONObject("srt").put("latencyMs", 1)
+    val open = assertIs<CodeAnswer.Open>(Bodies.code(200, edges.toString(), null, Environment.STAGING))
+    assertEquals(mapOf(Transport.SRT to 999, Transport.RTMPS to 1), open.descriptor.holdWindowSeconds)
+    assertEquals(1, open.descriptor.maxDurationMinutes)
+    assertEquals(1, (open.descriptor.primary as SrtTarget).latencyMs)
+    // The broadcast's label is shown, never acted on: outside 1 to 200 characters it is "", and the broadcast still opens.
+    for (label in listOf("", "L".repeat(201))) {
+      assertEquals("", assertIs<CodeAnswer.Open>(Bodies.code(200, JSONObject(base).put("label", label).toString(), null, Environment.STAGING)).descriptor.label)
+    }
+    assertEquals("🏏".repeat(200), assertIs<CodeAnswer.Open>(Bodies.code(200, JSONObject(base).put("label", "🏏".repeat(200)).toString(), null, Environment.STAGING)).descriptor.label)
   }
 
   @Test
@@ -99,14 +137,79 @@ class BodiesTest {
   }
 
   @Test
-  fun `non-2xx code answers keep their status, only a 429 its Retry-After, a 410 its endReason`() {
+  fun `non-2xx code answers keep their status, only a 429 its Retry-After, only a 410 its endReason`() {
     assertEquals(CodeAnswer.Status(401, null, null), Bodies.code(401, refusal("code_ended"), null, Environment.STAGING))
     assertEquals(CodeAnswer.Status(429, 30, null), Bodies.code(429, refusal("rate_limited"), 30, Environment.STAGING))
     assertEquals(CodeAnswer.Status(503, null, null), Bodies.code(503, refusal("unavailable"), 30, Environment.STAGING))
     assertEquals(CodeAnswer.Status(410, null, "stopped"), Bodies.code(410, """{"endReason":"stopped"}""", null, Environment.STAGING))
     assertEquals(CodeAnswer.Status(410, null, null), Bodies.code(410, """{"endReason":"lunch"}""", null, Environment.STAGING))
-    assertEquals(CodeAnswer.Unreadable("body"), Bodies.code(200, "<html>", null, Environment.STAGING))
-    for (other in listOf("[]", "\"warming\"", "42", "null", "")) assertEquals(CodeAnswer.Unreadable("body"), Bodies.code(200, other, null, Environment.STAGING), other)
+    // An endReason on any other status is not the server's word about a broadcast: none is read.
+    assertEquals(CodeAnswer.Status(401, null, null), Bodies.code(401, """{"code":"code_ended","message":"m","endReason":"stopped"}""", null, Environment.STAGING))
+    // Any 2xx is the body's: a 201 reads as a 200 does.
+    assertEquals(decisive(Bodies.code(200, base, null, Environment.STAGING)), decisive(Bodies.code(201, base, null, Environment.STAGING)))
+  }
+
+  @Test
+  fun `a 2xx that is not a JSON object is no answer - transient on the code, the beat and the start, never the server's word`() {
+    // I1: a captive portal's page at the ground, or a body cut short. Transient: the code is fetched
+    // again, the beat counted failed, the start the operator's to try again. Never a bad config.
+    val pages = listOf(PORTAL, "", "[]", "\"warming\"", "42", "null", base.dropLast(1))
+    assertEquals(7, pages.size)
+    for (page in pages) {
+      val code = Bodies.code(200, page, null, Environment.STAGING)
+      assertEquals(CodeAnswer.Unreachable("not-json"), code, page)
+      assertEquals(ServerWord.NoEvidence, ServerWord.ofCode(code, named = SID), page)
+      val beat = Bodies.beat(200, page, null, Environment.STAGING)
+      assertEquals(HeartbeatResponse.Failed("not-json"), beat, page)
+      assertEquals(ServerWord.NoEvidence, ServerWord.ofBeat(beat, named = SID), page)
+      assertEquals(StartAnswer.Failed("not-json"), Bodies.start(200, page), page)
+    }
+    // A JSON object is the server's, even one that breaks a rule: a bad code still refuses, a bare beat answer is heard.
+    assertEquals(CodeAnswer.Unreadable("state"), Bodies.code(200, "{}", null, Environment.STAGING))
+    assertEquals(HeartbeatResponse.Answered(200, NO_REPLY, null), Bodies.beat(200, "{}", null, Environment.STAGING))
+    assertEquals(StartAnswer.Failed("200"), Bodies.start(200, "{}"))
+  }
+
+  @Test
+  fun `I1 a captive portal's 200 to the claim beat keeps the claim and the stopped record`() {
+    val record = StoppedRecord.of(Configs.pairRequest().name, OTHER, 1_790_000_000_000, null)
+    val rig = MachineRig()
+    rig.send(Input.Pair(Configs.pairRequest(), Configs.PHONE, record))
+    rig.send(Input.Network(true))
+    val claim = Configs.body(rig.sent<Command.PostHeartbeat>().single())
+    assertEquals(listOf("new", OTHER), listOf(claim.getString("claim"), claim.getString("stopped")))
+    rig.answerBeat(Bodies.beat(200, PORTAL, null, Environment.STAGING))
+    val kept = assertIs<Phase.Paired>(rig.phase).pairing
+    assertEquals(Claim.NEW, kept.claim)
+    assertEquals(record, kept.stopped)
+    assertTrue(rig.sent<Command.DeleteStopped>().isEmpty())
+    assertEquals(HeartbeatResult.FAILED, kept.heartbeat.lastResult)
+    // The next beat carries both again, and the server's own answer then clears the claim and delivers the record (A17).
+    rig.answerBeat(Bodies.beat(200, beat("waiting"), null, Environment.STAGING))
+    val again = Configs.body(rig.sent<Command.PostHeartbeat>()[1])
+    assertEquals(listOf("new", OTHER), listOf(again.getString("claim"), again.getString("stopped")))
+    val heard = assertIs<Phase.Paired>(rig.phase).pairing
+    assertNull(heard.claim)
+    assertNull(heard.stopped)
+    assertEquals(listOf(Command.DeleteStopped("fx42hmnp7k2q", 1)), rig.sent<Command.DeleteStopped>())
+  }
+
+  @Test
+  fun `I1 a captive portal's 200 to the code at Arming retries, and never refuses the broadcast`() {
+    val rig = MachineRig()
+    var portal = true
+    rig.codes = { if (rig.phase is Phase.Arming) Bodies.code(200, if (portal) PORTAL else base, null, Environment.STAGING) else null }
+    rig.paired()
+    rig.answerBeat(Bodies.beat(200, beat("go-live", "sid" to SID, "startedBy" to "organiser"), null, Environment.STAGING))
+    val arming = assertIs<Phase.Arming>(rig.phase)
+    assertTrue(arming.retrying)
+    assertTrue(SID !in arming.pairing.refused)
+    assertNull(arming.pairing.startFailed)
+    assertEquals("not-json", rig.records("code").single().field("message"))
+    assertTrue(rig.records("start-failed").isEmpty())
+    portal = false
+    rig.advance(10_000)
+    assertIs<Phase.Armed>(rig.phase)
   }
 
   @Test
@@ -131,8 +234,11 @@ class BodiesTest {
       val answered = Bodies.beat(status, body, 12, Environment.STAGING)
       assertEquals(HeartbeatResponse.Answered(status, NO_REPLY, retry), answered, word)
       assertEquals(beatWord, ServerWord.ofBeat(answered, named = SID), word)
-      // POST start: a failed start, the operator's to try again; never a refusal line.
-      assertEquals(StartAnswer.Failed("$status"), Bodies.start(status, body), word)
+      // POST start: a 401 ends the code, as a beat's does (amendment:41, D5); any other fails the
+      // start, the operator's to try again; never a refusal line.
+      val started = if (status == 401) StartAnswer.CodeEnded else StartAnswer.Failed("$status")
+      assertEquals(started, Bodies.start(status, body), word)
+      assertEquals(started, Bodies.start(status, ""), "$word, no body")
     }
     // A beat's 410 is never sent (ask 8) and is still read: Over for the sid the beat named.
     assertEquals(ServerWord.Over(SID, "stopped"), ServerWord.ofBeat(Bodies.beat(410, """{"endReason":"stopped"}""", null, Environment.STAGING), named = SID))
@@ -140,34 +246,36 @@ class BodiesTest {
 
   @Test
   fun `a beat's answer - its state, sid, startedBy, endReason and waiting fields`() {
-    val answered = Bodies.beat(200, beat("go-live", "sid" to SID, "startedBy" to "automatic"), null, Environment.STAGING)
-    assertEquals(HeartbeatResponse.Answered(200, BeatReply("go-live", SID, "automatic", null, WaitingFields("L", "", null, true, null, null, 10)), null), answered)
+    val goLive = Bodies.beat(200, beat("go-live", "sid" to SID, "startedBy" to "automatic"), null, Environment.STAGING)
+    val reply = BeatReply("go-live", SID, "automatic", null, WaitingFields("L", "", null, true, null, null, 10))
+    assertEquals(HeartbeatResponse.Answered(200, reply, null), goLive)
     val over = Bodies.beat(200, beat("over", "sid" to SID, "endReason" to "phone_lost"), null, Environment.STAGING)
     assertEquals(ServerWord.Over(SID, "phone_lost"), ServerWord.ofBeat(over, named = null))
-    val taken = Bodies.beat(200, """{"state":"taken"}""", null, Environment.STAGING)
+    val taken = answeredBeat(200, """{"state":"taken"}""")
     assertEquals(BeatReply("taken", null, null, null, null), taken.reply)
     assertEquals(ServerWord.Taken, ServerWord.ofBeat(taken, named = null))
+    // Any 2xx is the body's: a 204 reads as a 200 does.
+    assertEquals(HeartbeatResponse.Answered(204, reply, null), Bodies.beat(204, beat("go-live", "sid" to SID, "startedBy" to "automatic"), null, Environment.STAGING))
   }
 
   @Test
-  fun `a beat body no rule can read is an answer with no reply, and only a 429 keeps Retry-After`() {
-    assertEquals(HeartbeatResponse.Answered(200, NO_REPLY, null), Bodies.beat(200, "nope", null, Environment.STAGING))
+  fun `a beat answer outside 2xx is read whatever its body, and only a 429 keeps Retry-After`() {
     assertEquals(HeartbeatResponse.Answered(429, NO_REPLY, 12), Bodies.beat(429, "", 12, Environment.STAGING))
-    assertEquals(HeartbeatResponse.Answered(200, NO_REPLY, null), Bodies.beat(200, "[]", 12, Environment.STAGING))
-    assertEquals(HeartbeatResponse.Answered(503, NO_REPLY, null), Bodies.beat(503, "", 12, Environment.STAGING))
+    assertEquals(HeartbeatResponse.Answered(503, NO_REPLY, null), Bodies.beat(503, PORTAL, 12, Environment.STAGING))
+    assertEquals(HeartbeatResponse.Answered(401, NO_REPLY, null), Bodies.beat(401, refusal("code_ended"), 12, Environment.STAGING))
   }
 
   @Test
   fun `a sid outside the schema's uuid pattern is no sid - a beat's go-live is no evidence, a start failed`() {
     for (sid in listOf("sess_43", "", "3F9A2C7E-8B14-4D5E-A6F7-0C1D2E3F4A5B\n")) {
-      val answered = Bodies.beat(200, beat("go-live", "sid" to sid, "startedBy" to "organiser"), null, Environment.STAGING)
-      assertNull(answered.reply?.sid, sid)
-      assertEquals(ServerWord.NoEvidence, ServerWord.ofBeat(answered, named = null), sid)
+      val read = answeredBeat(200, beat("go-live", "sid" to sid, "startedBy" to "organiser"))
+      assertNull(read.reply?.sid, sid)
+      assertEquals(ServerWord.NoEvidence, ServerWord.ofBeat(read, named = null), sid)
       assertEquals(StartAnswer.Failed("200"), Bodies.start(200, """{"sid":${JSONObject.quote(sid)}}"""), sid)
       assertEquals(StartAnswer.Failed("409"), Bodies.start(409, """{"code":"already_live","message":"m","sid":${JSONObject.quote(sid)},"startedBy":"organiser"}"""), sid)
     }
     // A sid that is not a string at all.
-    assertNull(Bodies.beat(200, beat("live", "sid" to 42.0), null, Environment.STAGING).reply?.sid)
+    assertNull(answeredBeat(200, beat("live", "sid" to 42.0)).reply?.sid)
   }
 
   @Test
@@ -195,10 +303,10 @@ class BodiesTest {
   fun `a stopped key in a beat's answer is never read as its sid - stopped belongs to the beat, and only a paired one`() {
     // The answer schema has no `stopped`; the beat's `stopped` rides only a beat with no sid (RR3,
     // Beats.kt, pinned by BeatsTest). An answer that carried one anyway is read by its sid alone.
-    val both = Bodies.beat(200, beat("over", "sid" to SID, "endReason" to "stopped", "stopped" to OTHER), null, Environment.STAGING)
+    val both = answeredBeat(200, beat("over", "sid" to SID, "endReason" to "stopped", "stopped" to OTHER))
     assertEquals(SID, both.reply?.sid)
     assertEquals(ServerWord.Over(SID, "stopped"), ServerWord.ofBeat(both, named = SID))
-    val stoppedOnly = Bodies.beat(200, beat("over", "endReason" to "stopped", "stopped" to OTHER), null, Environment.STAGING)
+    val stoppedOnly = answeredBeat(200, beat("over", "endReason" to "stopped", "stopped" to OTHER))
     assertNull(stoppedOnly.reply?.sid)
     assertEquals(ServerWord.NoEvidence, ServerWord.ofBeat(stoppedOnly, named = SID))
     // A 410 to a beat that held SID names SID, whatever its body says.
@@ -208,9 +316,9 @@ class BodiesTest {
 
   @Test
   fun `a beat's words are closed - an unknown state, startedBy or endReason is null`() {
-    val odd = Bodies.beat(200, beat("paused", "sid" to SID, "startedBy" to "robot", "endReason" to "lunch"), null, Environment.STAGING)
+    val odd = answeredBeat(200, beat("paused", "sid" to SID, "startedBy" to "robot", "endReason" to "lunch"))
     assertEquals(BeatReply(null, SID, null, null, WaitingFields("L", "", null, true, null, null, 10)), odd.reply)
-    val known = Bodies.beat(200, beat("over", "sid" to SID, "startedBy" to "operator", "endReason" to "no_inbound_timeout"), null, Environment.STAGING)
+    val known = answeredBeat(200, beat("over", "sid" to SID, "startedBy" to "operator", "endReason" to "no_inbound_timeout"))
     assertEquals(listOf("over", "operator", "no_inbound_timeout"), listOf(known.reply?.state, known.reply?.startedBy, known.reply?.endReason))
     // An over state's endReason on the code is closed the same way.
     val over = JSONObject(base).put("state", "completed").put("endReason", "lunch").also { it.remove("cred") }
@@ -224,13 +332,13 @@ class BodiesTest {
     val startedBy = listOf("organiser", "automatic", "operator")
     val endReasons = listOf("stopped", "auto_stopped", "no_inbound_timeout", "target_rejected", "max_duration", "phone_lost", "failed")
     assertEquals(16, states.size + startedBy.size + endReasons.size)
-    for (state in states) assertEquals(state, Bodies.beat(200, beat(state), null, Environment.STAGING).reply?.state)
+    for (state in states) assertEquals(state, answeredBeat(200, beat(state)).reply?.state)
     for (who in startedBy) {
-      assertEquals(who, Bodies.beat(200, beat("go-live", "sid" to SID, "startedBy" to who), null, Environment.STAGING).reply?.startedBy)
+      assertEquals(who, answeredBeat(200, beat("go-live", "sid" to SID, "startedBy" to who)).reply?.startedBy)
       assertEquals(StartAnswer.AlreadyLive(SID, who), Bodies.start(409, """{"code":"already_live","message":"m","sid":"$SID","startedBy":"$who"}"""))
     }
     for (why in endReasons) {
-      assertEquals(why, Bodies.beat(200, beat("over", "sid" to SID, "endReason" to why), null, Environment.STAGING).reply?.endReason)
+      assertEquals(why, answeredBeat(200, beat("over", "sid" to SID, "endReason" to why)).reply?.endReason)
       assertEquals(CodeAnswer.Over(SID, why), Bodies.code(200, JSONObject(base).put("state", "ending").put("endReason", why).toString(), null, Environment.STAGING))
       assertEquals(CodeAnswer.Status(410, null, why), Bodies.code(410, """{"endReason":"$why"}""", null, Environment.STAGING))
     }
@@ -239,6 +347,11 @@ class BodiesTest {
   @Test
   fun `POST start's answers, each by status and code`() {
     assertEquals(StartAnswer.Started(SID), Bodies.start(200, """{"sid":"$SID"}"""))
+    // Any 2xx is the body's: a 201 reads as a 200 does.
+    assertEquals(StartAnswer.Started(SID), Bodies.start(201, """{"sid":"$SID"}"""))
+    // 401 code_ended: the code is over (amendment:41, D5), whatever the body says.
+    assertEquals(StartAnswer.CodeEnded, Bodies.start(401, refusal("code_ended")))
+    assertEquals(StartAnswer.CodeEnded, Bodies.start(401, """{"code":"no_credit","message":"m"}"""))
     assertEquals(StartAnswer.AlreadyLive(OTHER, "organiser"), Bodies.start(409, """{"code":"already_live","message":"m","sid":"$OTHER","startedBy":"organiser"}"""))
     assertEquals(StartAnswer.AlreadyLive(OTHER, null), Bodies.start(409, """{"code":"already_live","message":"m","sid":"$OTHER","startedBy":"robot"}"""))
     assertEquals(StartAnswer.Replaced, Bodies.start(409, """{"code":"replaced","message":"m"}"""))
@@ -306,8 +419,8 @@ class BodiesTest {
   @Test
   fun `a second read is the first's, whatever came between - and an empty map reads as nothing`() {
     val first = Bodies.code(200, base, null, Environment.STAGING)
-    assertEquals(CodeAnswer.Unreadable("body"), Bodies.code(200, base.dropLast(1), null, Environment.STAGING))
-    assertEquals(StartAnswer.Failed("200"), Bodies.start(200, "{\"sid\":"))
+    assertEquals(CodeAnswer.Unreachable("not-json"), Bodies.code(200, base.dropLast(1), null, Environment.STAGING))
+    assertEquals(StartAnswer.Failed("not-json"), Bodies.start(200, "{\"sid\":"))
     val second = Bodies.code(200, base, null, Environment.STAGING)
     assertEquals((first as CodeAnswer.Open).waiting, (second as CodeAnswer.Open).waiting)
     assertEquals(decisive(first), decisive(second))
@@ -316,13 +429,13 @@ class BodiesTest {
   }
 
   @Test
-  fun `a body cut short at any length is unreadable, never a throw`() {
+  fun `a body cut short at any length is no answer, never a throw`() {
     // A dropped connection hands over a prefix. Every prefix but the whole is malformed JSON.
     for (end in 0 until base.length) {
       val cut = base.substring(0, end)
-      assertEquals(CodeAnswer.Unreadable("body"), Bodies.code(200, cut, null, Environment.STAGING), "cut at $end")
-      assertEquals(NO_REPLY, Bodies.beat(200, cut, null, Environment.STAGING).reply, "cut at $end")
-      assertIs<StartAnswer.Failed>(Bodies.start(200, cut), "cut at $end")
+      assertEquals(CodeAnswer.Unreachable("not-json"), Bodies.code(200, cut, null, Environment.STAGING), "cut at $end")
+      assertEquals(HeartbeatResponse.Failed("not-json"), Bodies.beat(200, cut, null, Environment.STAGING), "cut at $end")
+      assertEquals(StartAnswer.Failed("not-json"), Bodies.start(200, cut), "cut at $end")
     }
   }
 
@@ -330,13 +443,13 @@ class BodiesTest {
   fun `no answer prints a secret`() {
     val cases = sessions.getJSONArray("cases")
     val answers = (0 until cases.length()).map { Bodies.code(200, body(cases.getJSONObject(it)), null, Environment.STAGING) } + Bodies.code(200, base, null, Environment.STAGING)
-    assertEquals(27, answers.size)
+    assertEquals(40, answers.size)
     assertTrue(answers.any { it is CodeAnswer.Open }, "an open answer, whose descriptor holds every secret")
     for (answer in answers) for (secret in SECRETS + Configs.STREAM_ID) assertFalse(secret in answer.toString(), "$secret in $answer")
   }
 
   @Test
-  fun `no cred value reaches a record line or the snapshot, on air and on every refused start`() {
+  fun `no cred value reaches a record line or the snapshot - on air, on four refused starts, and when not current`() {
     val entries = mutableListOf<RecordEntry>()
     val wires = mutableListOf<String>()
     // On air on the parsed descriptor, a drop, then the operator's Stop.
@@ -356,10 +469,15 @@ class BodiesTest {
     live.send(Input.Stop)
     wires += wire(live)
     entries += live.sent<Command.Record>().map { it.entry }
-    // A refused start each: a foreign ingest host, and an SRT block that holds a passphrase but no latency.
+    // A refused start each: a foreign ingest host; an SRT block that holds a passphrase but no latency;
+    // an SRT url that carries the passphrase in its query; a passphrase libsrt refuses (SessionConfig.problems).
+    // And a session shape with no cred: not the current phone, a claim and a second fetch.
     val foreign = JSONObject(base).also { it.getJSONObject("cred").getJSONObject("srt").put("url", "srt://live.cloudflare.com.evil.example:778") }
     val unread = JSONObject(base).also { it.getJSONObject("cred").getJSONObject("srt").remove("latencyMs") }
-    for (body in listOf(foreign, unread)) {
+    val query = JSONObject(base).also { it.getJSONObject("cred").getJSONObject("srt").put("url", "srt://live.stg.seazn.club:778?passphrase=${Configs.PASSPHRASE}") }
+    val short = JSONObject(base).also { it.getJSONObject("cred").getJSONObject("srt").put("passphrase", SHORT) }
+    val notCurrent = JSONObject(base).also { it.remove("cred") }
+    for (body in listOf(foreign, unread, query, short, notCurrent)) {
       val rig = MachineRig()
       rig.codes = { if (rig.phase is Phase.Arming) Bodies.code(200, body.toString(), null, Environment.STAGING) else null }
       rig.paired()
@@ -368,18 +486,21 @@ class BodiesTest {
       entries += rig.sent<Command.Record>().map { it.entry }
     }
     // Each path reached the line that would carry a leak.
-    for (kind in listOf("armed", "cred-host-refused", "code-unreadable", "start-failed")) assertTrue(entries.any { it.kind == kind }, kind)
+    for (kind in listOf("armed", "cred-host-refused", "code-unreadable", "start-failed", "not-current")) assertTrue(entries.any { it.kind == kind }, kind)
+    // Four refused starts, two of them unreadable; the fourth, the problems() path, has no line of its own.
+    val counts = listOf("start-failed", "code-unreadable", "cred-host-refused", "not-current").map { kind -> entries.count { it.kind == kind } }
+    assertEquals(listOf(4, 2, 1, 1), counts)
     assertTrue(wires.any { "\"broadcast\":{" in it }, "a snapshot that carried the broadcast")
     for (entry in entries) {
       for ((key, value) in entry.fields) {
         val text = value?.toString() ?: continue
-        for (secret in SECRETS) assertFalse(secret in text, "${entry.kind}.$key")
+        for (secret in SECRETS + SHORT) assertFalse(secret in text, "${entry.kind}.$key")
         // The stream id is a path segment of the public playback URL, and only there (the scrub's notInUrls).
         if (key != "playbackUrl") assertFalse(Configs.STREAM_ID in text, "${entry.kind}.$key")
       }
     }
     for (json in wires) {
-      for (secret in SECRETS) assertFalse(secret in json, json)
+      for (secret in SECRETS + SHORT) assertFalse(secret in json, json)
       assertFalse(Configs.STREAM_ID in json.replace(Configs.PLAYBACK_URL, ""), json)
     }
   }
@@ -395,13 +516,15 @@ class BodiesTest {
           "fallback" to answer.descriptor.fallback?.transport?.wire,
           "srtOffered" to answer.descriptor.srtOffered,
           "scoreUpdates" to answer.descriptor.scoreUpdates,
+          "overlayUrl" to answer.descriptor.overlayUrl,
         )
       is CodeAnswer.Over -> mapOf("answer" to "over", "sid" to answer.sid, "endReason" to answer.endReason)
       is CodeAnswer.NotCurrent -> mapOf("answer" to "not-current", "sid" to answer.sid)
       is CodeAnswer.ForeignIngest -> mapOf("answer" to "foreign-ingest", "sid" to answer.sid)
       is CodeAnswer.Waiting -> mapOf("answer" to "waiting")
       is CodeAnswer.Unreadable -> mapOf("answer" to "unreadable", "problem" to answer.problem)
-      else -> mapOf("answer" to answer.toString())
+      is CodeAnswer.Unreachable -> mapOf("answer" to "unreachable", "message" to answer.message)
+      is CodeAnswer.Status -> mapOf("answer" to "status", "status" to answer.status)
     }
 
   private fun body(case: JSONObject): String {
@@ -413,10 +536,13 @@ class BodiesTest {
     return body.toString()
   }
 
-  private fun MachineRig.answerBeat(answered: HeartbeatResponse.Answered) {
+  private fun MachineRig.answerBeat(answered: HeartbeatResponse) {
     repeat(240) { if (phase.beating?.heartbeat?.inFlightId == null) advance(500) }
     send(Input.HeartbeatAnswered(phase.beating!!.heartbeat.inFlightId!!, answered))
   }
+
+  /** A beat's answer that [Bodies.beat] read as an answer (any status but a 2xx that is no JSON object). */
+  private fun answeredBeat(status: Int, body: String): HeartbeatResponse.Answered = assertIs<HeartbeatResponse.Answered>(Bodies.beat(status, body, null, Environment.STAGING))
 
   private fun wire(rig: MachineRig): String = WireJson.encode(SnapshotWire.of(rig.snapshot, PlatformFacts(), RecordCounters(0, 0)))
 
@@ -424,6 +550,12 @@ class BodiesTest {
     const val SID = "3f9a2c7e-8b14-4d5e-a6f7-0c1d2e3f4a5b"
     const val OTHER = "7e2f9c1d-5b3a-4d4e-8f60-1b2c3d4e5f60"
     val NO_REPLY = BeatReply(null, null, null, null, null)
+
+    /** A captive portal's sign-in page, answered 200 to any request (I1). */
+    const val PORTAL = "<!doctype html><html><body><form action=\"/login\">Sign in to Ground Wi-Fi</form></body></html>"
+
+    /** A made-up passphrase of 9 characters: Bodies reads it, and SessionConfig.problems refuses it (libsrt wants 10 to 79). */
+    const val SHORT = "pw-3e7a91"
 
     /** The passphrase and the key, their URL-encoded forms, and the full ingest URLs that carry them. */
     val SECRETS =

@@ -59,6 +59,13 @@ class SessionConfigTest {
   }
 
   @Test
+  fun `an RTMPS url that carries its key never prints it - the url is masked`() {
+    val keyed = RtmpsTarget("rtmps://live.stg.seazn.club:443/live/${Configs.STREAM_KEY}", Configs.STREAM_KEY)
+    val printed = listOf(keyed.toString(), Configs.valid(fallback = keyed).toString(), Configs.descriptor(fallback = keyed).toString())
+    for (text in printed) assertFalse(Configs.STREAM_KEY in text, text)
+  }
+
+  @Test
   fun `secrets are the token, the SRT passphrase and stream id, and the RTMPS stream key`() {
     assertEquals(
       setOf(Configs.TOKEN, Configs.PASSPHRASE, Configs.STREAM_ID, Configs.STREAM_KEY),

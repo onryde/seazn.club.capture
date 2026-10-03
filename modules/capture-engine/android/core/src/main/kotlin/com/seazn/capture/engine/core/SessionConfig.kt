@@ -17,7 +17,8 @@ class SrtTarget(val url: String, val streamId: String, val passphrase: String, v
 class RtmpsTarget(val url: String, val streamKey: String) : IngestTarget {
   override val transport = Transport.RTMPS
 
-  override fun toString(): String = "RtmpsTarget(url=$url, streamKey=<${streamKey.length} chars>)"
+  /** The url masked too: a server that put the key in it would print the key (review 15, M1). */
+  override fun toString(): String = "RtmpsTarget(url=<${url.length} chars>, streamKey=<${streamKey.length} chars>)"
 }
 
 /**

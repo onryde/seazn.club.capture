@@ -29,6 +29,8 @@ internal object Pairings {
         request = input.request,
         phone = input.phone,
         claim = input.request.claim,
+        // The zone the scan's GET gave: the engine holds it from here (D4: a beat carries none).
+        waiting = WaitingFields.UNKNOWN.copy(venueTimezone = input.request.venueTimezone),
         automatic = input.request.automatic,
         language = input.request.language,
         heartbeat = HeartbeatState(nextId = ids.beat),
@@ -113,7 +115,7 @@ internal object Starts {
 
   /** An open session shape for the sid in hand: the broadcast's plan, then Armed. */
   fun opened(arming: Phase.Arming, answer: CodeAnswer.Open): Step {
-    val pairing = answer.waiting?.let { arming.pairing.copy(waiting = it) } ?: arming.pairing
+    val pairing = answer.waiting?.let { arming.pairing.copy(waiting = it.over(arming.pairing.waiting)) } ?: arming.pairing
     val descriptor = answer.descriptor
     val config = descriptor.config(arming.sid, pairing)
     val ids = arming.ids
@@ -295,6 +297,7 @@ internal object Verdicts {
    */
   fun started(phase: Phase, input: Input.StartAnswered, now: Now): Step {
     val pairing = phase.pairing ?: return Step(phase)
+    if (input.answer == StartAnswer.CodeEnded) return codeEnded(phase, input.requestId, now)
     if (pairing.starts.inFlightId != input.requestId) {
       return Step(phase, listOf(line("start-answered", "answer" to input.answer::class.simpleName, "late" to true)))
     }
@@ -309,7 +312,25 @@ internal object Verdicts {
         StartAnswer.Replaced -> Pairings.unpaired(answered, UnpairReason.REPLACED, now)
         is StartAnswer.Refused -> Step(answered.withPairing(p.copy(refusal = answer.refusal)), listOf(line("start-refused", "refusal" to answer.refusal, "message" to answer.message)))
         is StartAnswer.Failed -> Step(answered.withPairing(p.copy(refusal = Refusal.START_FAILED, startFailed = StartFailure.START_ERROR)))
+        // Read before this `when`, whenever it lands (codeEnded).
+        StartAnswer.CodeEnded -> Step(answered)
       }
     return step.copy(commands = listOf(noted) + step.commands)
+  }
+
+  /**
+   * A 401 to `POST start` is the code's end, not this start's (amendment:41, D5), so it holds whenever it
+   * lands, late or not: read as a beat's 401 is. Paired or Arming, the code is forgotten, and
+   * [Pairings.unpaired] deletes a held stopped record (A17). A broadcast held from Armed on runs on, and
+   * the pairing ends with it (the 401 deferral, C0b). A late answer can land there holding no record:
+   * only a Paired beat's go-live arms while a start is in flight, and that 2xx delivered it.
+   */
+  private fun codeEnded(phase: Phase, requestId: Int, now: Now): Step {
+    val pairing = phase.beating ?: return Step(phase, listOf(line("start-answered", "answer" to "CodeEnded", "late" to true)))
+    val late = pairing.starts.inFlightId != requestId
+    val noted = if (late) line("start-answered", "answer" to "CodeEnded", "late" to true) else line("start-answered", "answer" to "CodeEnded")
+    val answered = if (late) pairing else pairing.copy(starts = pairing.starts.copy(inFlightId = null))
+    val decided = beat(phase.withPairing(answered), ServerWord.CodeEnded, now)
+    return decided.copy(commands = listOf(noted) + decided.commands)
   }
 }

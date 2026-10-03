@@ -120,6 +120,12 @@ data class WaitingFields(
   val overlayUrl: String?,
   val pollSeconds: Int,
 ) {
+  /**
+   * These fields over the ones [held]: the venue's zone is the engine's to keep. A beat's answer carries
+   * none (D4, read as ""), so an empty zone keeps the one held; any other replaces it.
+   */
+  fun over(held: WaitingFields): WaitingFields = if (venueTimezone.isEmpty()) copy(venueTimezone = held.venueTimezone) else this
+
   companion object {
     /** Before the first 2xx: nothing known, and the default cadence (CD38). */
     val UNKNOWN = WaitingFields("", "", null, false, null, null, BeatCadence.DEFAULT_POLL_S)
@@ -141,6 +147,8 @@ class PairRequest(
   val automatic: Boolean,
   val claim: Claim,
   val environment: Environment,
+  /** The venue's zone from the code's GET at the scan, which seeds the pairing's; "" when JS sent none. Not a secret. */
+  val venueTimezone: String = "",
 ) {
   val name: PairingName
     get() = PairingName(code, slot, TokenTag.of(token))

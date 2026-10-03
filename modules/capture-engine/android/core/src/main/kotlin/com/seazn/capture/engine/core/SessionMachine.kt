@@ -578,7 +578,7 @@ internal object Heartbeats {
       pairing.copy(
         heartbeat = heartbeat,
         claim = if (ok) null else pairing.claim,
-        waiting = response?.reply?.waiting?.takeIf { ok } ?: pairing.waiting,
+        waiting = response?.reply?.waiting?.takeIf { ok }?.over(pairing.waiting) ?: pairing.waiting,
         stoppedInFlight = null,
       )
     // The beat line. Its claim is the one the answered beat carried, before this answer cleared it

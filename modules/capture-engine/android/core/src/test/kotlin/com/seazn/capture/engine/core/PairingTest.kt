@@ -8,6 +8,55 @@ import kotlin.test.assertTrue
 import org.json.JSONObject
 
 class PairingTest {
+  /** The pair as JS sends it: the zone from the code's GET at the scan (the saved code's waiting fields). */
+  private fun zoned(zone: String): PairRequest {
+    val r = Configs.pairRequest()
+    return PairRequest(r.code, r.slot, r.token, r.codeUrl, r.heartbeatUrl, r.startUrl, r.language, r.automatic, r.claim, r.environment, venueTimezone = zone)
+  }
+
+  /** Answers the beat in flight, 200, with [waiting]. */
+  private fun MachineRig.heard(waiting: WaitingFields, state: String = "waiting", sid: String? = null) {
+    repeat(240) { if (phase.beating?.heartbeat?.inFlightId == null) advance(500) }
+    send(Input.HeartbeatAnswered(phase.beating!!.heartbeat.inFlightId!!, HeartbeatResponse.Answered(200, BeatReply(state, sid, null, null, waiting))))
+  }
+
+  private val MachineRig.zone: String?
+    get() = snapshot.pairing?.waiting?.venueTimezone
+
+  @Test
+  fun `the venue's zone is the engine's - seeded at pair, kept over a beat that carries none, replaced by one that does`() {
+    val rig = MachineRig(request = zoned("Europe/London"))
+    rig.permissions = null
+    rig.send(Input.Pair(rig.request, Configs.PHONE, stopped = null))
+    assertEquals("Europe/London", rig.zone, "Pairing")
+    rig.send(Input.PermissionsAnswered(granted = true))
+    rig.send(Input.Network(true))
+    // A beat's answer has no venueTimezone (D4): Bodies reads it "", and the zone held stays.
+    val none = Configs.waiting(pollSeconds = 30).copy(venueTimezone = "")
+    rig.heard(none)
+    assertEquals("Europe/London", rig.zone)
+    assertEquals(30, rig.phase.pairing!!.waiting.pollSeconds, "the rest of the beat's fields still land")
+    rig.heard(none)
+    assertEquals("Europe/London", rig.zone, "a second beat with none")
+    rig.heard(none.copy(venueTimezone = "Europe/Paris"))
+    assertEquals("Europe/Paris", rig.zone)
+    // A pair with no zone (a JS that does not send one yet) holds "", as before.
+    val bare = MachineRig().paired()
+    assertEquals("", bare.zone)
+  }
+
+  @Test
+  fun `the descriptor's waiting fields land at Arming, keeping the held zone when they carry none`() {
+    for ((sent, held) in listOf("" to "Europe/London", "Europe/Madrid" to "Europe/Madrid")) {
+      val rig = MachineRig(request = zoned("Europe/London"))
+      rig.codes = { if (rig.phase is Phase.Arming) CodeAnswer.Open("sess_42", "warming", Configs.descriptor(), Configs.waiting(pollSeconds = 30).copy(venueTimezone = sent)) else null }
+      rig.paired()
+      rig.heard(Configs.waiting().copy(venueTimezone = ""), "go-live", "sess_42")
+      assertIs<Phase.Armed>(rig.phase, sent)
+      assertEquals(held, rig.zone, sent)
+      assertEquals(30, rig.phase.pairing!!.waiting.pollSeconds, sent)
+    }
+  }
   @Test
   fun `A5 pair asks for permissions, then holds the service and sends the claim at once`() {
     val rig = MachineRig()

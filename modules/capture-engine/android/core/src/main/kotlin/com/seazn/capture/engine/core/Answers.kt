@@ -77,7 +77,10 @@ sealed interface CodeAnswer {
   /** Any other status. [retryAfterS] for a 429; [endReason] from a 410's body. */
   data class Status(val status: Int, val retryAfterS: Int?, val endReason: String?) : CodeAnswer
 
-  /** No HTTP answer at all. */
+  /**
+   * No HTTP answer at all, or a 2xx whose body is no JSON object (a captive portal's page, I1): either
+   * way not the server's word, and fetched again. [message] is a reason, never a body.
+   */
   data class Unreachable(val message: String) : CodeAnswer
 }
 
@@ -91,12 +94,15 @@ sealed interface StartAnswer {
   /** `409 replaced`: this phone no longer holds the slot. */
   data object Replaced : StartAnswer
 
+  /** 401 `code_ended`: the code is expired or revoked, and the phone forgets it, as on a beat's 401 (amendment:41, D5). */
+  data object CodeEnded : StartAnswer
+
   /**
    * A refusal body `{code, message, …}`: `409 no_destination`, `402 no_credit`, `403 not_entitled`,
    * or a code the phone does not know ([Refusal.UNKNOWN]). [message] is the server's, for the record.
    */
   data class Refused(val refusal: Refusal, val message: String? = null) : StartAnswer
 
-  /** No answer, 404, 429, 5xx, or a body no rule can read. [detail] is a status or a reason, never a value. */
+  /** No answer, 404, 422, 429, 5xx, or a body no rule can read. [detail] is a status or a reason, never a value. */
   data class Failed(val detail: String) : StartAnswer
 }

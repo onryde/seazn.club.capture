@@ -46,6 +46,18 @@ class PairMappingTest {
   }
 
   @Test
+  fun `the venue's zone rides the pair - absent, mistyped or outside 1 to 64 characters it is empty, and never refuses`() {
+    assertEquals("Europe/London", PairMapping.request(wire().also { it["venueTimezone"] = "Europe/London" }).venueTimezone)
+    assertEquals("Z".repeat(64), PairMapping.request(wire().also { it["venueTimezone"] = "Z".repeat(64) }).venueTimezone)
+    assertEquals("", PairMapping.request(wire()).venueTimezone)
+    for (bad in listOf(null, 7.0, "", "Z".repeat(65))) {
+      val request = PairMapping.request(wire().also { it["venueTimezone"] = bad })
+      assertEquals("", request.venueTimezone, "$bad")
+      assertEquals(emptyList<String>(), request.problems(), "$bad")
+    }
+  }
+
+  @Test
   fun `an empty pair is never thrown, it is refused by name`() {
     val problems = PairMapping.request(mapOf("kind" to "pair")).problems()
     for (named in listOf("code is blank", "token is blank", "slot is below 0", "codeUrl is not on stg.seazn.club")) {
