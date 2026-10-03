@@ -1,0 +1,378 @@
+{
+  "about": "GET code's 2xx bodies, read by Bodies.code (Kotlin only: JS never reads cred). Each case is base, with override's keys set and remove's keys deleted, read with env (the file's env unless the case names one). expected names the CodeAnswer and its decisive fields. Made-up values; base is a schema-valid capture-descriptor.v1 warming body. Change only with Bodies.kt.",
+  "env": "staging",
+  "base": {
+    "state": "warming",
+    "code": "fx42hmnp7k2q",
+    "sid": "3f9a2c7e-8b14-4d5e-a6f7-0c1d2e3f4a5b",
+    "cred": {
+      "srt": {
+        "url": "srt://live.stg.seazn.club:778",
+        "streamId": "a1b2c3d4e5f60718293a4b5c6d7e8f90",
+        "passphrase": "pass+phrase/6d1e8b0c",
+        "latencyMs": 2000
+      },
+      "rtmps": {
+        "url": "rtmps://live.stg.seazn.club:443/live/",
+        "streamKey": "key-4c7a0e2b9d5f1386"
+      }
+    },
+    "preferred": "srt",
+    "playbackUrl": "https://customer-x.cloudflarestream.com/a1b2c3d4e5f60718293a4b5c6d7e8f90/manifest/video.m3u8",
+    "overlayUrl": "https://stg.seazn.club/overlay/fixtures/f1",
+    "holdWindowSeconds": { "srt": 183, "rtmps": 180 },
+    "maxDurationMinutes": 300,
+    "warmingDeadline": 1790000600,
+    "label": "Example Town v Sample CC",
+    "venueTimezone": "Europe/London",
+    "scheduledStart": 1790003600,
+    "destinationName": "YouTube · Example Town CC",
+    "scoreUpdates": "realtime",
+    "autoAllowed": true,
+    "pollSeconds": 10,
+    "heartbeatUrl": "https://stg.seazn.club/api/v1/capture/codes/fx42hmnp7k2q/beats",
+    "startUrl": "https://stg.seazn.club/api/v1/capture/codes/fx42hmnp7k2q/start"
+  },
+  "cases": [
+    {
+      "why": "an open broadcast, SRT preferred",
+      "override": {},
+      "expected": {
+        "answer": "open",
+        "sid": "3f9a2c7e-8b14-4d5e-a6f7-0c1d2e3f4a5b",
+        "primary": "srt",
+        "fallback": "rtmps",
+        "srtOffered": true,
+        "scoreUpdates": "realtime"
+      }
+    },
+    {
+      "why": "RTMPS preferred, SRT the fallback",
+      "override": { "preferred": "rtmps" },
+      "expected": {
+        "answer": "open",
+        "sid": "3f9a2c7e-8b14-4d5e-a6f7-0c1d2e3f4a5b",
+        "primary": "rtmps",
+        "fallback": "srt",
+        "srtOffered": true,
+        "scoreUpdates": "realtime"
+      }
+    },
+    {
+      "why": "A18 SRT absent with RTMPS preferred: RTMPS alone",
+      "override": {
+        "preferred": "rtmps",
+        "cred": {
+          "srt": null,
+          "rtmps": {
+            "url": "rtmps://live.stg.seazn.club:443/live/",
+            "streamKey": "key-4c7a0e2b9d5f1386"
+          }
+        }
+      },
+      "expected": {
+        "answer": "open",
+        "sid": "3f9a2c7e-8b14-4d5e-a6f7-0c1d2e3f4a5b",
+        "primary": "rtmps",
+        "fallback": null,
+        "srtOffered": false,
+        "scoreUpdates": "realtime"
+      }
+    },
+    {
+      "why": "A18 SRT absent with SRT preferred: a bad config (a server-side refine the schema states in prose)",
+      "override": {
+        "cred": {
+          "srt": null,
+          "rtmps": {
+            "url": "rtmps://live.stg.seazn.club:443/live/",
+            "streamKey": "key-4c7a0e2b9d5f1386"
+          }
+        }
+      },
+      "expected": { "answer": "unreadable", "problem": "preferred" }
+    },
+    {
+      "why": "G0-d no cred: not the current phone",
+      "override": {},
+      "remove": ["cred"],
+      "expected": {
+        "answer": "not-current",
+        "sid": "3f9a2c7e-8b14-4d5e-a6f7-0c1d2e3f4a5b"
+      }
+    },
+    {
+      "why": "SRT on Cloudflare's own host is allowed (owner, 2026-10-01)",
+      "override": {
+        "cred": {
+          "srt": {
+            "url": "srt://live.cloudflare.com:778",
+            "streamId": "a1b2c3d4e5f60718293a4b5c6d7e8f90",
+            "passphrase": "pass+phrase/6d1e8b0c",
+            "latencyMs": 2000
+          },
+          "rtmps": {
+            "url": "rtmps://live.stg.seazn.club:443/live/",
+            "streamKey": "key-4c7a0e2b9d5f1386"
+          }
+        }
+      },
+      "expected": {
+        "answer": "open",
+        "sid": "3f9a2c7e-8b14-4d5e-a6f7-0c1d2e3f4a5b",
+        "primary": "srt",
+        "fallback": "rtmps",
+        "srtOffered": true,
+        "scoreUpdates": "realtime"
+      }
+    },
+    {
+      "why": "SRT on a lookalike of Cloudflare's host",
+      "override": {
+        "cred": {
+          "srt": {
+            "url": "srt://live.cloudflare.com.evil.example:778",
+            "streamId": "a1b2c3d4e5f60718293a4b5c6d7e8f90",
+            "passphrase": "pass+phrase/6d1e8b0c",
+            "latencyMs": 2000
+          },
+          "rtmps": {
+            "url": "rtmps://live.stg.seazn.club:443/live/",
+            "streamKey": "key-4c7a0e2b9d5f1386"
+          }
+        }
+      },
+      "expected": {
+        "answer": "foreign-ingest",
+        "sid": "3f9a2c7e-8b14-4d5e-a6f7-0c1d2e3f4a5b"
+      }
+    },
+    {
+      "why": "RTMPS on Cloudflare's host is refused: RTMPS stays on live.*",
+      "override": {
+        "cred": {
+          "srt": {
+            "url": "srt://live.stg.seazn.club:778",
+            "streamId": "a1b2c3d4e5f60718293a4b5c6d7e8f90",
+            "passphrase": "pass+phrase/6d1e8b0c",
+            "latencyMs": 2000
+          },
+          "rtmps": {
+            "url": "rtmps://live.cloudflare.com:443/live/",
+            "streamKey": "key-4c7a0e2b9d5f1386"
+          }
+        }
+      },
+      "expected": {
+        "answer": "foreign-ingest",
+        "sid": "3f9a2c7e-8b14-4d5e-a6f7-0c1d2e3f4a5b"
+      }
+    },
+    {
+      "why": "RTMPS on the production ingest host for a staging build",
+      "override": {
+        "cred": {
+          "srt": null,
+          "rtmps": {
+            "url": "rtmps://live.seazn.club:443/live/",
+            "streamKey": "key-4c7a0e2b9d5f1386"
+          }
+        },
+        "preferred": "rtmps"
+      },
+      "expected": {
+        "answer": "foreign-ingest",
+        "sid": "3f9a2c7e-8b14-4d5e-a6f7-0c1d2e3f4a5b"
+      }
+    },
+    {
+      "why": "a production build: both transports on the production ingest host",
+      "env": "production",
+      "override": {
+        "cred": {
+          "srt": {
+            "url": "srt://live.seazn.club:778",
+            "streamId": "a1b2c3d4e5f60718293a4b5c6d7e8f90",
+            "passphrase": "pass+phrase/6d1e8b0c",
+            "latencyMs": 2000
+          },
+          "rtmps": {
+            "url": "rtmps://live.seazn.club:443/live/",
+            "streamKey": "key-4c7a0e2b9d5f1386"
+          }
+        }
+      },
+      "expected": {
+        "answer": "open",
+        "sid": "3f9a2c7e-8b14-4d5e-a6f7-0c1d2e3f4a5b",
+        "primary": "srt",
+        "fallback": "rtmps",
+        "srtOffered": true,
+        "scoreUpdates": "realtime"
+      }
+    },
+    {
+      "why": "a production build: SRT on the staging ingest host",
+      "env": "production",
+      "override": {
+        "cred": {
+          "srt": {
+            "url": "srt://live.stg.seazn.club:778",
+            "streamId": "a1b2c3d4e5f60718293a4b5c6d7e8f90",
+            "passphrase": "pass+phrase/6d1e8b0c",
+            "latencyMs": 2000
+          },
+          "rtmps": {
+            "url": "rtmps://live.seazn.club:443/live/",
+            "streamKey": "key-4c7a0e2b9d5f1386"
+          }
+        }
+      },
+      "expected": {
+        "answer": "foreign-ingest",
+        "sid": "3f9a2c7e-8b14-4d5e-a6f7-0c1d2e3f4a5b"
+      }
+    },
+    {
+      "why": "the live state reads open too, its score polled",
+      "override": { "state": "live", "scoreUpdates": "polled" },
+      "expected": {
+        "answer": "open",
+        "sid": "3f9a2c7e-8b14-4d5e-a6f7-0c1d2e3f4a5b",
+        "primary": "srt",
+        "fallback": "rtmps",
+        "srtOffered": true,
+        "scoreUpdates": "polled"
+      }
+    },
+    {
+      "why": "a completed broadcast, which carries no cred",
+      "override": { "state": "completed", "endReason": "max_duration" },
+      "remove": ["cred"],
+      "expected": {
+        "answer": "over",
+        "sid": "3f9a2c7e-8b14-4d5e-a6f7-0c1d2e3f4a5b",
+        "endReason": "max_duration"
+      }
+    },
+    {
+      "why": "an ending broadcast is over, its cred never read",
+      "override": { "state": "ending", "endReason": "auto_stopped" },
+      "expected": {
+        "answer": "over",
+        "sid": "3f9a2c7e-8b14-4d5e-a6f7-0c1d2e3f4a5b",
+        "endReason": "auto_stopped"
+      }
+    },
+    {
+      "why": "a failed broadcast",
+      "override": { "state": "failed", "endReason": "failed" },
+      "remove": ["cred"],
+      "expected": {
+        "answer": "over",
+        "sid": "3f9a2c7e-8b14-4d5e-a6f7-0c1d2e3f4a5b",
+        "endReason": "failed"
+      }
+    },
+    {
+      "why": "the waiting shape",
+      "override": { "state": "waiting" },
+      "remove": [
+        "sid",
+        "cred",
+        "preferred",
+        "playbackUrl",
+        "holdWindowSeconds",
+        "maxDurationMinutes",
+        "warmingDeadline",
+        "scoreUpdates"
+      ],
+      "expected": { "answer": "waiting" }
+    },
+    {
+      "why": "the waiting shape with no label",
+      "override": { "state": "waiting" },
+      "remove": [
+        "sid",
+        "cred",
+        "preferred",
+        "playbackUrl",
+        "holdWindowSeconds",
+        "maxDurationMinutes",
+        "warmingDeadline",
+        "scoreUpdates",
+        "label"
+      ],
+      "expected": { "answer": "unreadable", "problem": "waiting" }
+    },
+    {
+      "why": "no sid on a session shape",
+      "override": {},
+      "remove": ["sid"],
+      "expected": { "answer": "unreadable", "problem": "sid" }
+    },
+    {
+      "why": "a sid outside the schema's uuid pattern is refused: the core would echo it on every beat",
+      "override": { "sid": "sess_42" },
+      "expected": { "answer": "unreadable", "problem": "sid" }
+    },
+    {
+      "why": "an unknown state",
+      "override": { "state": "paused" },
+      "expected": { "answer": "unreadable", "problem": "state" }
+    },
+    {
+      "why": "cred not an object",
+      "override": { "cred": "srt://live.stg.seazn.club:778" },
+      "expected": { "answer": "unreadable", "problem": "cred" }
+    },
+    {
+      "why": "cred.srt without its passphrase",
+      "override": {
+        "cred": {
+          "srt": {
+            "url": "srt://live.stg.seazn.club:778",
+            "streamId": "a1b2c3d4e5f60718293a4b5c6d7e8f90",
+            "latencyMs": 2000
+          },
+          "rtmps": {
+            "url": "rtmps://live.stg.seazn.club:443/live/",
+            "streamKey": "key-4c7a0e2b9d5f1386"
+          }
+        }
+      },
+      "expected": { "answer": "unreadable", "problem": "cred.srt" }
+    },
+    {
+      "why": "cred.rtmps without its key",
+      "override": {
+        "cred": {
+          "srt": {
+            "url": "srt://live.stg.seazn.club:778",
+            "streamId": "a1b2c3d4e5f60718293a4b5c6d7e8f90",
+            "passphrase": "pass+phrase/6d1e8b0c",
+            "latencyMs": 2000
+          },
+          "rtmps": { "url": "rtmps://live.stg.seazn.club:443/live/" }
+        }
+      },
+      "expected": { "answer": "unreadable", "problem": "cred.rtmps" }
+    },
+    {
+      "why": "no hold window for a transport offered",
+      "override": { "holdWindowSeconds": { "srt": 183 } },
+      "expected": { "answer": "unreadable", "problem": "holdWindowSeconds" }
+    },
+    {
+      "why": "no playbackUrl",
+      "override": {},
+      "remove": ["playbackUrl"],
+      "expected": { "answer": "unreadable", "problem": "playbackUrl" }
+    },
+    {
+      "why": "maxDurationMinutes not a whole number",
+      "override": { "maxDurationMinutes": 90.5 },
+      "expected": { "answer": "unreadable", "problem": "maxDurationMinutes" }
+    }
+  ]
+}
