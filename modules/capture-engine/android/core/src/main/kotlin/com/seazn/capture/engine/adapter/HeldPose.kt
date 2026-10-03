@@ -65,8 +65,10 @@ object HeldPose {
  * change of side is a new reading here, where JS's one `landscape` is not. One thread.
  *
  * The settled reading is JS's, hysteresis and all, so it stays at parity with the turn card. Held is
- * not only that: A11 reads the dead band as not ready, so [pose] is not held while the latest reading
- * is in it, and held again as soon as the phone is back out, with no new hold.
+ * not only that: A11 reads the dead band as not ready. [pose] drops to not held only after the dead
+ * band has lasted [HeldPose.HOLD_MS] without a break, and comes back only after the phone has been out
+ * of it that long, settled sideways. Without that hold a phone parked on an edge flipped held at
+ * sensor rate, about 8 times a second, each a record line (task 17's review, N1).
  */
 class PoseTracker {
   /** Nothing settled yet is `unknown`, as JS's `INITIAL_TRACKER` starts. */
@@ -76,21 +78,29 @@ class PoseTracker {
   private var candidate = settled
   private var sinceMs = 0L
 
-  /** The latest reading was the dead band, or not finite. */
+  /**
+   * The current run is in the dead band (or not finite), and when it began. Before any reading the run
+   * is out of it, from 0: nothing is settled then, and a settle needs a hold of its own out of the dead
+   * band, so that run is never what holds a pose.
+   */
   private var inDeadBand = false
+  private var runSinceMs = 0L
 
   /**
-   * Held only on a settled side, and only while the latest reading is out of the dead band. Flat,
-   * upright, unknown, not yet settled and the dead band are not held.
+   * Held only on a settled side, out of the dead band for a hold. Flat, upright, unknown, not yet
+   * settled and a dead band that has lasted a hold are not held.
    */
-  val pose: Pose
-    get() = if (inDeadBand) Pose.NotHeld else settled.side?.let { Pose.Held(it) } ?: Pose.NotHeld
+  var pose: Pose = Pose.NotHeld
+    private set
 
   /** The new pose when this reading changes it, or null. */
   fun sample(x: Double, y: Double, z: Double, monoMs: Long): Pose? {
     val before = pose
     val reading = HeldPose.classify(x, y, z)
-    inDeadBand = reading == null
+    if ((reading == null) != inDeadBand) {
+      inDeadBand = reading == null
+      runSinceMs = monoMs
+    }
     when {
       reading == null -> {
         candidate = settled
@@ -105,6 +115,11 @@ class PoseTracker {
       // `reading != settled` is JS's too. Without it a settled reading would settle again as itself,
       // which changes nothing (mutant R6).
       reading != settled && monoMs - sinceMs >= HeldPose.HOLD_MS -> settled = reading
+    }
+    // A run shorter than a hold leaves the pose as it was. A settle always comes with a run out of the
+    // dead band at least a hold long, as the candidate's hold starts inside it.
+    if (monoMs - runSinceMs >= HeldPose.HOLD_MS) {
+      pose = if (inDeadBand) Pose.NotHeld else settled.side?.let { Pose.Held(it) } ?: Pose.NotHeld
     }
     return pose.takeIf { it != before }
   }
