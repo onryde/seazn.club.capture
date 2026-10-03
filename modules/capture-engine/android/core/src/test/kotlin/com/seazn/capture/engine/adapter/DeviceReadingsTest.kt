@@ -134,7 +134,7 @@ class DeviceReadingsTest {
   }
 
   @Test
-  fun `charging is the plug, not the battery's own flag`() {
+  fun `charging is the plug`() {
     val sample = DeviceReadings.sample(RawDevice(1, 0.5f, 81, 2_000_000, plugged = true), ChargeDrain())
     assertEquals(true, sample.charging)
     assertEquals(81, sample.batteryPercent)

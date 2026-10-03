@@ -108,6 +108,8 @@
   "scalars": {
     "audioFps": "native: video-stalled, audio packets per second, or null",
     "counted": "native: connect-failed and dropped, whether the failure counted toward a fallback",
+    "exitAtMs": "native: previous-session-lost, when the process exited (epoch ms), or null",
+    "gapMs": "native: tick-late and frames-gap, the gap's length",
     "granted": "native: permissions-late, the platform's answer",
     "headroom": "native: thermal, the platform's thermal headroom, or null",
     "lagGrowthMs": "native: not-delivered, how far the playlist fell behind, or null",
@@ -150,6 +152,7 @@
     "engine-error": "native: the engine caught its own failure",
     "fell-back": "native: the transport fell back",
     "final-beat": "native: A8's one final beat, answered or timed out",
+    "frames-gap": "native: video stopped moving for more than 500 ms while publishing, written once with the gap when it moved again (CD33, Open 11)",
     "heartbeat": "native: a beat's answer, written when it changes",
     "hold-expired": "native: an outage outlasted its hold window",
     "intent-ignored": "native: an intent that did not fit the phase",
@@ -157,6 +160,7 @@
     "mic-restored": "native: the microphone came back",
     "mic-silenced": "native: the microphone went silent",
     "network": "native: the network's validation changed",
+    "no-accelerometer": "native: the phone has no accelerometer, so held never blocks and the side is left (A11)",
     "not-current": "native: the code answered that the broadcast is not current",
     "not-delivered": "native: the playlist stopped showing delivery",
     "open-ignored": "native: the server named a sid this pairing refused",
@@ -165,6 +169,7 @@
     "paired": "native: the pairing was accepted",
     "permissions-late": "native: a permissions answer after the pairing moved on",
     "platform-failed": "native: a platform failure, stale or after the end",
+    "previous-session-lost": "native: the previous run held a session and its process died, with the exit reason (F-P5-3, CD22)",
     "ready": "native: every readiness check passed, with the side held",
     "reset": "native: the ended session was reset to idle",
     "resumed": "native: the broadcast resumed after an outage",
@@ -176,6 +181,7 @@
     "start-refused": "native: the server refused a start",
     "stopped-delivered": "native: A17's stopped record was heard, or its code ended",
     "thermal": "native: the thermal status changed",
+    "tick-late": "native: two snapshot ticks more than 1000 ms apart while Paired or a broadcast was held, with the gap (CD33, carry 14)",
     "unpaired": "native: the pairing ended without a broadcast end",
     "video-stalled": "native: the watchdog saw no frames and rebuilt the encoder"
   }

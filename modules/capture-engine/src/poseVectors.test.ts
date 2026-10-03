@@ -9,9 +9,9 @@ const gravity = (g: readonly number[]) => {
 
 describe('A11: JS and native share one held-pose rule', () => {
   // The file's counts, so an emptied or truncated file cannot pass by sweeping nothing (PV12).
-  it('sweeps all 23 shared rows and all 7 shared tracks', () => {
-    expect(shared.rows).toHaveLength(23);
-    expect(shared.tracks).toHaveLength(7);
+  it('sweeps all 24 shared rows and all 8 shared tracks', () => {
+    expect(shared.rows).toHaveLength(24);
+    expect(shared.tracks).toHaveLength(8);
   });
 
   it.each(shared.rows)('$why', ({ g, physical }) => {

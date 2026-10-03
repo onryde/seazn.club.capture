@@ -1,5 +1,5 @@
 {
-  "about": "The held-pose rule (A11): src/domain/orientation/orientation.ts classify() and track(), and HeldPose.classify and PoseTracker (Kotlin), pass every row and every track; JS ignores side. g is gravity in g; physical null is the dead band. side is native's alone: left is the phone's top to the left (gravity along +x, ROTATION_90), right the other way round (ROTATION_270), a hypothesis until the device gate reads the encoded picture upright both ways round (P4). The edge rows are the nearest readings either side of each comparison, as V8's Math.hypot and atan2 compute them (HeldPose.kt computes them the same way): 60 and 30 degrees exactly cannot be reached by any reading, so their rows are the readings one step either side. holdMs is HOLD_MS on both sides. Each track starts from nothing settled; settled and side are the tracker's settled reading after each step. Change only with both.",
+  "about": "The held-pose rule (A11): src/domain/orientation/orientation.ts classify() and track(), and HeldPose.classify and PoseTracker (Kotlin), pass every row and every track; JS ignores side. g is gravity in g; physical null is the dead band. side is native's alone: left is the phone's top to the left (gravity along +x, ROTATION_90), right the other way round (ROTATION_270), a hypothesis until the device gate reads the encoded picture upright both ways round (P4). The edge rows sit 1e-9 either side of each comparison, in the quantity compared (g, degrees, or the share of gravity through the screen): far above rounding (about 1e-16) and below a float32 sensor's step (about 6e-8 at 1 g), so any correct float maths classifies them alike. Which side a reading exactly on 0.94, 0.87, 30 or 60 degrees falls is deliberately not pinned: engines may round it either way. The floor row at exactly 0.3 g is single-axis, where the magnitude is exactly 0.3 under any correct float maths, so it does pin the floor's comparison. holdMs is HOLD_MS on both sides. Each track starts from nothing settled; settled and side are the tracker's settled reading after each step. Change only with both.",
   "holdMs": 300,
   "rows": [
     { "why": "upright", "g": [0, 1, 0], "physical": "portrait", "side": null },
@@ -39,6 +39,7 @@
     { "why": "on a table", "g": [0, 0, 1], "physical": "flat", "side": null },
     { "why": "face down", "g": [0, 0, -1], "physical": "flat", "side": null },
     { "why": "free fall", "g": [0, 0, 0.1], "physical": "unknown", "side": null },
+    { "why": "no gravity at all", "g": [0, 0, 0], "physical": "unknown", "side": null },
     {
       "why": "just under the magnitude floor",
       "g": [0.29, 0, 0],
@@ -52,56 +53,56 @@
       "side": "left"
     },
     {
-      "why": "edge: one step under 0.3 g is unknown",
-      "g": [0.29999999999999993, 0, 0],
+      "why": "edge: 1e-9 g under the 0.3 g floor is unknown",
+      "g": [0.299999999, 0, 0],
       "physical": "unknown",
       "side": null
     },
     {
-      "why": "edge: one step past 60 degrees (60.00000000000001), top to the right",
-      "g": [-0.8660254037844387, 0.5, 0],
+      "why": "edge: 1e-9 degree past 60, top to the right",
+      "g": [-0.866025403793, 0.499999999985, 0],
       "physical": "landscape",
       "side": "right"
     },
     {
-      "why": "edge: one step short of 60 degrees (59.99999999999999) is the dead band",
-      "g": [0.8660254037844386, 0.5, 0],
+      "why": "edge: 1e-9 degree short of 60 is the dead band",
+      "g": [0.866025403776, 0.500000000015, 0],
       "physical": null,
       "side": null
     },
     {
-      "why": "edge: one step past 30 degrees (30.000000000000004) is the dead band",
-      "g": [0.5, 0.8660254037844386, 0],
+      "why": "edge: 1e-9 degree past 30 is the dead band",
+      "g": [0.500000000015, 0.866025403776, 0],
       "physical": null,
       "side": null
     },
     {
-      "why": "edge: one step short of 30 degrees (29.999999999999996) is upright",
-      "g": [0.5, 0.8660254037844387, 0],
+      "why": "edge: 1e-9 degree short of 30 is upright",
+      "g": [0.499999999985, 0.866025403793, 0],
       "physical": "portrait",
       "side": null
     },
     {
-      "why": "edge: exactly 0.94 of gravity through the screen is the dead band, not flat",
-      "g": [0, 0.3411744421846382, 0.9399999999999968],
+      "why": "edge: 1e-9 under 0.94 of gravity through the screen is the dead band",
+      "g": [0, 0.34117444494, 0.939999999],
       "physical": null,
       "side": null
     },
     {
-      "why": "edge: one step past 0.94 (0.9400000000000001) is flat",
-      "g": [0, 0.3411744421846379, 0.9399999999999946],
+      "why": "edge: 1e-9 past 0.94 of gravity through the screen is flat",
+      "g": [0, 0.341174439429, 0.940000001],
       "physical": "flat",
       "side": null
     },
     {
-      "why": "edge: exactly 0.87 of gravity through the screen is the dead band, not held",
-      "g": [0, 0.4930517214248392, 0.8699999999999957],
+      "why": "edge: 1e-9 past 0.87 of gravity through the screen is the dead band",
+      "g": [0, 0.49305171966, 0.870000001],
       "physical": null,
       "side": null
     },
     {
-      "why": "edge: one step under 0.87 (0.8699999999999999) is held upright",
-      "g": [0, 0.4930517214248397, 0.8699999999999957],
+      "why": "edge: 1e-9 under 0.87 of gravity through the screen is held upright",
+      "g": [0, 0.493051723189, 0.869999999],
       "physical": "portrait",
       "side": null
     }
@@ -171,6 +172,17 @@
       "steps": [
         { "g": [0.707, 0.707, 0], "atMs": 0, "settled": "unknown", "side": null },
         { "g": [0.707, 0.707, 0], "atMs": 1000, "settled": "unknown", "side": null }
+      ]
+    },
+    {
+      "why": "a dip into the dead band, then no gravity: unknown settles a full hold after its own first reading",
+      "steps": [
+        { "g": [1, 0, 0], "atMs": 0, "settled": "unknown", "side": null },
+        { "g": [1, 0, 0], "atMs": 300, "settled": "landscape", "side": "left" },
+        { "g": [0.707, 0.707, 0], "atMs": 1000, "settled": "landscape", "side": "left" },
+        { "g": [0, 0, 0.1], "atMs": 1100, "settled": "landscape", "side": "left" },
+        { "g": [0, 0, 0.1], "atMs": 1300, "settled": "landscape", "side": "left" },
+        { "g": [0, 0, 0.1], "atMs": 1400, "settled": "unknown", "side": null }
       ]
     }
   ]

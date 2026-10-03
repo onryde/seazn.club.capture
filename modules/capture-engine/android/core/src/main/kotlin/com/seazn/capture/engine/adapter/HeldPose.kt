@@ -38,10 +38,14 @@ object HeldPose {
    * dead band. A value that is not finite is no reading, so it is the dead band too: it never crosses
    * as a pose. (JS's `classify` is never handed one: JSON cannot carry it, and expo-sensors' values
    * come from the same sensor.)
+   *
+   * The magnitude is a plain root where JS calls `Math.hypot`. The two can differ in the last bit, so a
+   * reading exactly on an edge may fall either way; on float32 sensor readings they agreed on every one
+   * swept (task 17's report, fix round 1). The shared rows sit 1e-9 off each edge for that reason.
    */
   fun classify(x: Double, y: Double, z: Double): PoseReading? {
     if (!x.isFinite() || !y.isFinite() || !z.isFinite()) return null
-    val magnitude = hypot(x, y, z)
+    val magnitude = sqrt(x * x + y * y + z * z)
     if (magnitude < MIN_MAGNITUDE_G) return PoseReading(Physical.UNKNOWN, null)
     val zShare = abs(z) / magnitude
     if (zShare > FLAT_ABOVE_Z_SHARE) return PoseReading(Physical.FLAT, null)
@@ -54,33 +58,15 @@ object HeldPose {
     if (fromUpright < PORTRAIT_UNDER_DEG) return PoseReading(Physical.PORTRAIT, null)
     return null
   }
-
-  /**
-   * `Math.hypot(x, y, z)` as V8 computes it (`src/builtins/math.tq`, `MathHypot`): each value over the
-   * largest, squared and Kahan-summed, then the root times the largest. A plain `sqrt(x² + y² + z²)`
-   * differs from it in the last bit on about a third of readings, which moves the edge rows. Finite
-   * values only: [classify] has turned the others away.
-   */
-  private fun hypot(x: Double, y: Double, z: Double): Double {
-    val values = doubleArrayOf(abs(x), abs(y), abs(z))
-    val max = values.max()
-    if (max == 0.0) return 0.0
-    var sum = 0.0
-    var compensation = 0.0
-    for (value in values) {
-      val n = value / max
-      val summand = n * n - compensation
-      val preliminary = sum + summand
-      compensation = (preliminary - sum) - summand
-      sum = preliminary
-    }
-    return sqrt(sum) * max
-  }
 }
 
 /**
  * JS's `track`: the dead band makes no progress, and a new reading must hold [HeldPose.HOLD_MS]. A
  * change of side is a new reading here, where JS's one `landscape` is not. One thread.
+ *
+ * The settled reading is JS's, hysteresis and all, so it stays at parity with the turn card. Held is
+ * not only that: A11 reads the dead band as not ready, so [pose] is not held while the latest reading
+ * is in it, and held again as soon as the phone is back out, with no new hold.
  */
 class PoseTracker {
   /** Nothing settled yet is `unknown`, as JS's `INITIAL_TRACKER` starts. */
@@ -90,28 +76,36 @@ class PoseTracker {
   private var candidate = settled
   private var sinceMs = 0L
 
-  /** Held only on a settled side; flat, upright, unknown and not yet settled are not held. */
-  val pose: Pose
-    get() = settled.side?.let { Pose.Held(it) } ?: Pose.NotHeld
+  /** The latest reading was the dead band, or not finite. */
+  private var inDeadBand = false
 
-  /** The new pose when the settled one changes it, or null. */
+  /**
+   * Held only on a settled side, and only while the latest reading is out of the dead band. Flat,
+   * upright, unknown, not yet settled and the dead band are not held.
+   */
+  val pose: Pose
+    get() = if (inDeadBand) Pose.NotHeld else settled.side?.let { Pose.Held(it) } ?: Pose.NotHeld
+
+  /** The new pose when this reading changes it, or null. */
   fun sample(x: Double, y: Double, z: Double, monoMs: Long): Pose? {
+    val before = pose
     val reading = HeldPose.classify(x, y, z)
+    inDeadBand = reading == null
     when {
       reading == null -> {
         candidate = settled
+        // JS's line, kept for the port: never read, as the next reading either differs from the
+        // candidate, which resets it, or is the settled one, which settles nothing (mutant 9c).
         sinceMs = monoMs
       }
       reading != candidate -> {
         candidate = reading
         sinceMs = monoMs
       }
-      reading != settled && monoMs - sinceMs >= HeldPose.HOLD_MS -> {
-        val before = pose
-        settled = reading
-        return pose.takeIf { it != before }
-      }
+      // `reading != settled` is JS's too. Without it a settled reading would settle again as itself,
+      // which changes nothing (mutant R6).
+      reading != settled && monoMs - sinceMs >= HeldPose.HOLD_MS -> settled = reading
     }
-    return null
+    return pose.takeIf { it != before }
   }
 }
