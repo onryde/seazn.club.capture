@@ -93,12 +93,16 @@ class HttpTest {
   }
 
   @Test
-  fun `a beat's 401, 403 and 404 are answers, and a portal's page or an empty 2xx is none`() {
-    for (status in listOf(401, 403, 404)) {
-      assertEquals(HeartbeatResponse.Answered(status, NO_REPLY, null), HttpAnswers.heartbeat(9, HttpOutcome.Answered(status, ""), Environment.STAGING).response, "$status")
+  fun `a beat's 401 and 404 are answers only as the server's refusals, a 403 always, and a portal's page or an empty 2xx is none`() {
+    // X1: a 401 or 404 with no refusal body is not the server's word, and ends nothing.
+    for (status in listOf(401, 404)) {
+      assertEquals(HeartbeatResponse.Failed("$status-not-refusal"), HttpAnswers.heartbeat(9, HttpOutcome.Answered(status, ""), Environment.STAGING).response, "$status")
     }
-    val ended = HttpAnswers.heartbeat(9, HttpOutcome.Answered(401, """{"code":"code_ended","message":"m"}"""), Environment.STAGING)
+    assertEquals(HeartbeatResponse.Answered(403, NO_REPLY, null), HttpAnswers.heartbeat(9, HttpOutcome.Answered(403, ""), Environment.STAGING).response)
+    val ended = HttpAnswers.heartbeat(9, HttpOutcome.Answered(401, refusal("code_ended")), Environment.STAGING)
     assertEquals(ServerWord.CodeEnded, ServerWord.ofBeat(ended.response, named = SID))
+    val notFound = HttpAnswers.heartbeat(9, HttpOutcome.Answered(404, refusal("not_a_stream_code")), Environment.STAGING)
+    assertEquals(ServerWord.NotFound, ServerWord.ofBeat(notFound.response, named = SID))
     val denied = HttpAnswers.heartbeat(9, HttpOutcome.Answered(403, "denied"), Environment.STAGING)
     assertEquals(ServerWord.NoEvidence, ServerWord.ofBeat(denied.response, named = SID))
     for (outcome in listOf(HttpOutcome.Answered(200, PORTAL), HttpOutcome.Answered(200, ""), HttpOutcome.Answered(204, ""))) {
@@ -151,7 +155,11 @@ class HttpTest {
   @Test
   fun `the code's 401, 403, 429 and 5xx keep their status, and a portal's page, an empty 200 or a 204 is no answer`() {
     fun code(id: Int, outcome: HttpOutcome) = HttpAnswers.code(id, outcome, Environment.STAGING)
-    assertEquals(Input.CodeAnswered(20, CodeAnswer.Status(401, null, null)), code(20, HttpOutcome.Answered(401, """{"code":"code_ended","message":"m"}""")))
+    assertEquals(Input.CodeAnswered(20, CodeAnswer.Status(401, null, null)), code(20, HttpOutcome.Answered(401, refusal("code_ended"))))
+    assertEquals(Input.CodeAnswered(27, CodeAnswer.Status(404, null, null)), code(27, HttpOutcome.Answered(404, refusal("not_a_stream_code"))))
+    // X1: an edge's 401 or 404 page is not the server's refusal: no answer, fetched again.
+    assertEquals(Input.CodeAnswered(28, CodeAnswer.Unreachable("401-not-refusal")), code(28, HttpOutcome.Answered(401, PORTAL)))
+    assertEquals(Input.CodeAnswered(29, CodeAnswer.Unreachable("404-not-refusal")), code(29, HttpOutcome.Answered(404, "")))
     assertEquals(Input.CodeAnswered(21, CodeAnswer.Status(403, null, null)), code(21, HttpOutcome.Answered(403, "")))
     assertEquals(Input.CodeAnswered(22, CodeAnswer.Status(429, 30, null)), code(22, HttpOutcome.Answered(429, "", retryAfter = "30")))
     assertEquals(Input.CodeAnswered(23, CodeAnswer.Status(503, null, null)), code(23, HttpOutcome.Answered(503, "", retryAfter = "30")))
@@ -182,7 +190,12 @@ class HttpTest {
   @Test
   fun `start's 401 ends the code, a 403 is its refusal, a 429 fails, and a portal's page, an empty 200 or a 204 is no answer`() {
     fun start(outcome: HttpOutcome) = HttpAnswers.start(6, outcome).answer
-    assertEquals(StartAnswer.CodeEnded, start(HttpOutcome.Answered(401, """{"code":"code_ended","message":"m"}""")))
+    assertEquals(StartAnswer.CodeEnded, start(HttpOutcome.Answered(401, refusal("code_ended"))))
+    // X1: only the server's code_ended ends the code. An edge's 401 page fails the start, the operator's to try again.
+    assertEquals(StartAnswer.Failed("401-not-refusal"), start(HttpOutcome.Answered(401, PORTAL)))
+    // A start's 404 ends nothing, refusal or not.
+    assertEquals(StartAnswer.Failed("404"), start(HttpOutcome.Answered(404, refusal("not_a_stream_code"))))
+    assertEquals(StartAnswer.Failed("404"), start(HttpOutcome.Answered(404, PORTAL)))
     assertEquals(StartAnswer.Refused(Refusal.NOT_ENTITLED, "m"), start(HttpOutcome.Answered(403, """{"code":"not_entitled","message":"m"}""")))
     assertEquals(StartAnswer.Failed("403"), start(HttpOutcome.Answered(403, "")))
     // A start is the operator's to try again: a 429 fails it, and its Retry-After is not kept.
@@ -201,6 +214,8 @@ class HttpTest {
         IOException("unexpected end of stream") to "IOException",
         UnknownHostException("stg.seazn.club") to "UnknownHostException",
         IllegalStateException("closed") to "IllegalStateException",
+        // Review 16 m3: an anonymous class has no simple name; its nearest named class stands in, never "".
+        object : IOException("cut") {} to "IOException",
       )
     for ((failure, name) in thrown) {
       val outcome = HttpOutcome.failed(failure)
@@ -214,9 +229,7 @@ class HttpTest {
 
   @Test
   fun `C0b a start that timed out frees the hold - the operator's next hold posts again`() {
-    val rig = MachineRig().paired()
-    rig.hear("waiting")
-    rig.ready()
+    val rig = readyRig()
     rig.starts = { id -> HttpAnswers.start(id, HttpOutcome.failed(SocketTimeoutException("timeout"))).answer }
     rig.send(Input.Start)
     assertEquals(Refusal.START_FAILED, assertIs<Phase.Paired>(rig.phase).pairing.refusal)
@@ -225,11 +238,141 @@ class HttpTest {
   }
 
   @Test
-  fun `the client gives up before the core does, so every request is answered first`() {
+  fun `a 3xx is transient on every endpoint, whatever its body - never the server's word`() {
+    // Review 16, I1: a portal's page and a body shaped as the server's, under each redirect status.
+    val over = """{"state":"over","sid":"$SID"}"""
+    val media = "#EXTM3U\n#EXT-X-TARGETDURATION:2\n#EXT-X-MEDIA-SEQUENCE:1\n#EXTINF:2.000,\nseg1.ts\n"
+    var rows = 0
+    for (status in listOf(301, 302, 303, 307, 308)) {
+      for (body in listOf(PORTAL, media)) {
+        assertEquals(FetchResult.HttpError(status), HttpAnswers.playlist(1, HttpOutcome.Answered(status, body)).result, "$status")
+        rows += 1
+      }
+      for (body in listOf(PORTAL, session)) {
+        assertEquals(CodeAnswer.Status(status, null, null), HttpAnswers.code(2, HttpOutcome.Answered(status, body), Environment.STAGING).answer, "$status")
+        rows += 1
+      }
+      for ((body, reply) in listOf(PORTAL to NO_REPLY, over to BeatReply("over", SID, null, null, null))) {
+        val response = HttpAnswers.heartbeat(3, HttpOutcome.Answered(status, body), Environment.STAGING).response
+        assertEquals(HeartbeatResponse.Answered(status, reply, null), response, "$status")
+        assertEquals(ServerWord.NoEvidence, ServerWord.ofBeat(response, named = SID), "$status")
+        rows += 1
+      }
+      for (body in listOf(PORTAL, """{"sid":"$SID"}""")) {
+        assertEquals(StartAnswer.Failed("$status"), HttpAnswers.start(4, HttpOutcome.Answered(status, body)).answer, "$status")
+        rows += 1
+      }
+    }
+    assertEquals(40, rows)
+  }
+
+  @Test
+  fun `a beat's 302 with an over body at Paired keeps the claim, the stopped record and the phase, and counts a failure`() {
+    val (rig, id) = pairedWithRecord()
+    rig.send(HttpAnswers.heartbeat(id, HttpOutcome.Answered(302, """{"state":"over","sid":"$STOPPED_SID"}"""), Environment.STAGING))
+    val pairing = assertIs<Phase.Paired>(rig.phase).pairing
+    // SessionMachine's 2xx test for the claim: a 3xx read as 2xx would clear it.
+    assertEquals(Claim.NEW, pairing.claim)
+    // StoppedRecord.delivered: a 3xx read as delivered would delete the record.
+    assertEquals(RECORD, pairing.stopped)
+    assertTrue(rig.sent<Command.DeleteStopped>().isEmpty())
+    // Heartbeat's 2xx test and ServerWord.ofBeat's: an OK or a session-over answer counts no failure.
+    assertEquals(1, pairing.heartbeat.consecutiveFailures)
+  }
+
+  @Test
+  fun `the code's 302 with an open session at Arming stays Arming, fetching again, S not refused`() {
+    val rig = armingRig()
+    rig.send(HttpAnswers.code(asked(rig), HttpOutcome.Answered(302, session), Environment.STAGING))
+    val arming = assertIs<Phase.Arming>(rig.phase)
+    assertTrue(arming.retrying)
+    assertTrue(SID !in arming.pairing.refused)
+    assertNull(arming.pairing.startFailed)
+  }
+
+  @Test
+  fun `X1 an edge's 401 on GET code at Arming keeps the code and fetches again, and the server's code_ended forgets it`() {
+    for (page in NOT_REFUSALS) {
+      val rig = armingRig()
+      rig.send(HttpAnswers.code(asked(rig), HttpOutcome.Answered(401, page), Environment.STAGING))
+      assertTrue(assertIs<Phase.Arming>(rig.phase, page).retrying, page)
+      rig.advance(10_000)
+      assertEquals(2, rig.sent<Command.FetchCode>().size, page)
+    }
+    val rig = armingRig()
+    rig.send(HttpAnswers.code(asked(rig), HttpOutcome.Answered(401, refusal("code_ended")), Environment.STAGING))
+    assertEquals(UnpairReason.CODE_ENDED, assertIs<Phase.Idle>(rig.phase).unpaired?.reason)
+  }
+
+  @Test
+  fun `X1 an edge's 401 on a beat keeps the code and the stopped record, and the next beat goes - the server's code_ended forgets both`() {
+    for (page in NOT_REFUSALS) {
+      val (rig, id) = pairedWithRecord()
+      rig.send(HttpAnswers.heartbeat(id, HttpOutcome.Answered(401, page), Environment.STAGING))
+      assertEquals(RECORD, assertIs<Phase.Paired>(rig.phase, page).pairing.stopped, page)
+      assertTrue(rig.sent<Command.DeleteStopped>().isEmpty(), page)
+      assertTrue(inFlight(rig) > id, page)
+    }
+    val (rig, id) = pairedWithRecord()
+    rig.send(HttpAnswers.heartbeat(id, HttpOutcome.Answered(401, refusal("code_ended")), Environment.STAGING))
+    assertEquals(UnpairReason.CODE_ENDED, assertIs<Phase.Idle>(rig.phase).unpaired?.reason)
+    assertEquals(listOf(Command.DeleteStopped(CODE, 1)), rig.sent<Command.DeleteStopped>())
+  }
+
+  @Test
+  fun `X1 an edge's 401 on POST start keeps the code, and the next hold posts again - the server's code_ended forgets it`() {
+    for (page in NOT_REFUSALS) {
+      val rig = readyRig()
+      rig.starts = { id -> HttpAnswers.start(id, HttpOutcome.Answered(401, page)).answer }
+      rig.send(Input.Start)
+      assertEquals(StartFailure.START_ERROR, assertIs<Phase.Paired>(rig.phase, page).pairing.startFailed, page)
+      rig.send(Input.Start)
+      assertEquals(2, rig.sent<Command.PostStart>().size, page)
+    }
+    val rig = readyRig()
+    rig.starts = { id -> HttpAnswers.start(id, HttpOutcome.Answered(401, refusal("code_ended"))).answer }
+    rig.send(Input.Start)
+    assertEquals(UnpairReason.CODE_ENDED, assertIs<Phase.Idle>(rig.phase).unpaired?.reason)
+  }
+
+  @Test
+  fun `X1 an edge's 404 on GET code or a beat at Arming keeps S, and the server's not_a_stream_code refuses it`() {
+    for (page in NOT_REFUSALS) {
+      val fetched = armingRig()
+      fetched.send(HttpAnswers.code(asked(fetched), HttpOutcome.Answered(404, page), Environment.STAGING))
+      assertTrue(assertIs<Phase.Arming>(fetched.phase, page).retrying, page)
+      val beaten = armingRig()
+      beaten.send(HttpAnswers.heartbeat(inFlight(beaten), HttpOutcome.Answered(404, page), Environment.STAGING))
+      assertTrue(SID !in assertIs<Phase.Arming>(beaten.phase, page).pairing.refused, page)
+    }
+    val fetched = armingRig()
+    fetched.send(HttpAnswers.code(asked(fetched), HttpOutcome.Answered(404, refusal("not_a_stream_code")), Environment.STAGING))
+    assertEquals(StartFailure.NOT_FOUND, assertIs<Phase.Paired>(fetched.phase).pairing.startFailed)
+    val beaten = armingRig()
+    beaten.send(HttpAnswers.heartbeat(inFlight(beaten), HttpOutcome.Answered(404, refusal("not_a_stream_code")), Environment.STAGING))
+    assertEquals(StartFailure.NOT_FOUND, assertIs<Phase.Paired>(beaten.phase).pairing.startFailed)
+  }
+
+  @Test
+  fun `a start's 404 ends nothing, refusal or not - a start error, and the next hold posts again`() {
+    for (body in NOT_REFUSALS + refusal("not_a_stream_code")) {
+      val rig = readyRig()
+      rig.starts = { id -> HttpAnswers.start(id, HttpOutcome.Answered(404, body)).answer }
+      rig.send(Input.Start)
+      assertEquals(StartFailure.START_ERROR, assertIs<Phase.Paired>(rig.phase, body).pairing.startFailed, body)
+      rig.send(Input.Start)
+      assertEquals(2, rig.sent<Command.PostStart>().size, body)
+    }
+  }
+
+  @Test
+  fun `the client's timeout is under each of the core's give-ups`() {
     assertEquals(8_000L, HttpRequests.TIMEOUT_MS)
-    // A beat and a playlist fetch are abandoned by the core at 10 s; a start never is.
+    // The core abandons a beat and a playlist fetch at 10 s and a code fetch at 30 s; a start never.
+    // That the client answers by then is the glue's call timeout (Task 33), not proven here.
     assertTrue(HttpRequests.TIMEOUT_MS < Heartbeat.TIMEOUT_MS)
     assertTrue(HttpRequests.TIMEOUT_MS < DeliveryWatch.REQUEST_TIMEOUT_MS)
+    assertTrue(HttpRequests.TIMEOUT_MS < DescriptorAsks.GIVE_UP_MS)
   }
 
   @Test
@@ -257,10 +400,59 @@ class HttpTest {
     for (answer in answers) for (secret in SECRETS) assertFalse(secret in answer.toString(), "$answer")
   }
 
+  /** Paired with a stopped record held, the claim beat in flight carrying the record's sid (RR3). */
+  private fun pairedWithRecord(): Pair<MachineRig, Int> {
+    val rig = MachineRig()
+    rig.send(Input.Pair(Configs.pairRequest(), Configs.PHONE, RECORD))
+    rig.send(Input.Network(true))
+    val id = inFlight(rig)
+    assertEquals(STOPPED_SID, rig.phase.pairing?.stoppedInFlight, "the beat in flight carries the record")
+    assertEquals(Claim.NEW, rig.phase.pairing?.claim, "the beat in flight is the claim")
+    return rig to id
+  }
+
+  /** Arming for [SID] after the organiser's go-live, its code fetch left in flight. */
+  private fun armingRig(): MachineRig {
+    val rig = MachineRig().paired()
+    rig.codes = null
+    rig.hear("go-live", sid = SID, startedBy = "organiser")
+    assertIs<Phase.Arming>(rig.phase)
+    return rig
+  }
+
+  /** Paired, waiting and ready: the operator's hold posts start. */
+  private fun readyRig(): MachineRig {
+    val rig = MachineRig().paired()
+    rig.hear("waiting")
+    rig.ready()
+    return rig
+  }
+
+  private fun asked(rig: MachineRig): Int = rig.sent<Command.FetchCode>().last().requestId
+
+  /** The id of the beat in flight, ticking until one is. */
+  private fun inFlight(rig: MachineRig): Int {
+    repeat(240) {
+      rig.phase.beating?.heartbeat?.inFlightId?.let { return it }
+      rig.advance(500)
+    }
+    error("no beat in flight in ${rig.phase.name}")
+  }
+
   private companion object {
     // capture-beat.v1's sid pattern and the 12-character codes (review 15, I3): no `sess_42`, no `fx-42`.
     const val SID = "3f9a2c7e-8b14-4d5e-a6f7-0c1d2e3f4a5b"
+    const val STOPPED_SID = "7e2f9c1d-5b3a-4d4e-8f60-1b2c3d4e5f60"
     const val CODE = "fx42hmnp7k2q"
+
+    /** A broadcast this phone stopped before its first frame (A17), for this code and slot. */
+    val RECORD = StoppedRecord.of(Configs.pairRequest().name, STOPPED_SID, 1_790_000_000_000, null)
+
+    /** The server's refusal body (`$defs.refusal`): its word and a developer message. */
+    fun refusal(code: String): String = """{"code":"$code","message":"m"}"""
+
+    /** Bodies a 401 or 404 may carry that are not the server's refusal (X1): an edge's page, nothing, no code, another word. */
+    val NOT_REFUSALS = listOf(PORTAL, "", """{"message":"m"}""", refusal("invalid"))
 
     // D3: the schema's paths.
     const val CODE_URL = "https://stg.seazn.club/api/v1/capture/codes/$CODE"

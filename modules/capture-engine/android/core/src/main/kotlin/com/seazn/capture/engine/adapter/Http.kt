@@ -36,9 +36,11 @@ sealed interface HttpOutcome {
     /**
      * Whatever the client threw (a timeout, any IOException, anything else) as an outcome, so every request
      * is answered: a `POST start` with none would leave the hold blocked (C0b carry). Named by its class
-     * alone: a client's message may name a host or a URL, and the URL's path holds the code.
+     * alone: a client's message may name a host or a URL, and the URL's path holds the code. An anonymous
+     * class has no simple name, so its nearest named superclass stands in: the reason is never "".
      */
-    fun failed(failure: Throwable): Failed = Failed(failure.javaClass.simpleName)
+    fun failed(failure: Throwable): Failed =
+      Failed(generateSequence<Class<*>>(failure.javaClass) { it.superclass }.map { it.simpleName }.first { it.isNotEmpty() })
   }
 }
 

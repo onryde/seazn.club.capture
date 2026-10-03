@@ -238,7 +238,9 @@ class BodiesTest {
       // start, the operator's to try again; never a refusal line.
       val started = if (status == 401) StartAnswer.CodeEnded else StartAnswer.Failed("$status")
       assertEquals(started, Bodies.start(status, body), word)
-      assertEquals(started, Bodies.start(status, ""), "$word, no body")
+      // X1: with no body, a 401 is not the server's code_ended, so it ends nothing.
+      val bare = if (status == 401) StartAnswer.Failed("401-not-refusal") else StartAnswer.Failed("$status")
+      assertEquals(bare, Bodies.start(status, ""), "$word, no body")
     }
     // A beat's 410 is never sent (ask 8) and is still read: Over for the sid the beat named.
     assertEquals(ServerWord.Over(SID, "stopped"), ServerWord.ofBeat(Bodies.beat(410, """{"endReason":"stopped"}""", null, Environment.STAGING), named = SID))
@@ -259,10 +261,37 @@ class BodiesTest {
   }
 
   @Test
-  fun `a beat answer outside 2xx is read whatever its body, and only a 429 keeps Retry-After`() {
+  fun `a beat answer outside 2xx is an answer whatever its body, a 401 or 404 aside, and only a 429 keeps Retry-After`() {
     assertEquals(HeartbeatResponse.Answered(429, NO_REPLY, 12), Bodies.beat(429, "", 12, Environment.STAGING))
     assertEquals(HeartbeatResponse.Answered(503, NO_REPLY, null), Bodies.beat(503, PORTAL, 12, Environment.STAGING))
     assertEquals(HeartbeatResponse.Answered(401, NO_REPLY, null), Bodies.beat(401, refusal("code_ended"), 12, Environment.STAGING))
+  }
+
+  @Test
+  fun `X1 a 401 or a 404 ends something only on the server's refusal naming it - any other body is no answer`() {
+    // Not the server's: an edge's page, nothing, a cut body, an object with no code or a code that is no
+    // string, and a refusal naming another status's word.
+    val pages = listOf(PORTAL, "", refusal("code_ended").dropLast(1), """{"message":"m"}""", """{"code":7,"message":"m"}""")
+    assertEquals(5, pages.size)
+    for ((status, other) in listOf(401 to "not_a_stream_code", 404 to "code_ended")) {
+      for (page in pages + refusal(other)) {
+        assertEquals(CodeAnswer.Unreachable("$status-not-refusal"), Bodies.code(status, page, null, Environment.STAGING), "$status $page")
+        assertEquals(HeartbeatResponse.Failed("$status-not-refusal"), Bodies.beat(status, page, null, Environment.STAGING), "$status $page")
+      }
+    }
+    for (page in pages + refusal("not_a_stream_code") + refusal("no_credit")) {
+      assertEquals(StartAnswer.Failed("401-not-refusal"), Bodies.start(401, page), page)
+    }
+    // The server's refusal acts, its message aside (the schema requires one; the word is what is read).
+    assertEquals(CodeAnswer.Status(401, null, null), Bodies.code(401, """{"code":"code_ended"}""", null, Environment.STAGING))
+    assertEquals(CodeAnswer.Status(404, null, null), Bodies.code(404, refusal("not_a_stream_code"), null, Environment.STAGING))
+    assertEquals(HeartbeatResponse.Answered(401, NO_REPLY, null), Bodies.beat(401, """{"code":"code_ended"}""", null, Environment.STAGING))
+    assertEquals(HeartbeatResponse.Answered(404, NO_REPLY, null), Bodies.beat(404, refusal("not_a_stream_code"), null, Environment.STAGING))
+    assertEquals(StartAnswer.CodeEnded, Bodies.start(401, """{"code":"code_ended"}"""))
+    // A start's 404 ends nothing (a start error), so it needs no refusal, and a 403 or a 410 is unchanged.
+    assertEquals(StartAnswer.Failed("404"), Bodies.start(404, PORTAL))
+    assertEquals(CodeAnswer.Status(403, null, null), Bodies.code(403, PORTAL, null, Environment.STAGING))
+    assertEquals(HeartbeatResponse.Answered(403, NO_REPLY, null), Bodies.beat(403, PORTAL, null, Environment.STAGING))
   }
 
   @Test
@@ -349,9 +378,9 @@ class BodiesTest {
     assertEquals(StartAnswer.Started(SID), Bodies.start(200, """{"sid":"$SID"}"""))
     // Any 2xx is the body's: a 201 reads as a 200 does.
     assertEquals(StartAnswer.Started(SID), Bodies.start(201, """{"sid":"$SID"}"""))
-    // 401 code_ended: the code is over (amendment:41, D5), whatever the body says.
+    // 401 code_ended: the code is over (amendment:41, D5). Only the server's refusal naming it says so (X1).
     assertEquals(StartAnswer.CodeEnded, Bodies.start(401, refusal("code_ended")))
-    assertEquals(StartAnswer.CodeEnded, Bodies.start(401, """{"code":"no_credit","message":"m"}"""))
+    assertEquals(StartAnswer.Failed("401-not-refusal"), Bodies.start(401, """{"code":"no_credit","message":"m"}"""))
     assertEquals(StartAnswer.AlreadyLive(OTHER, "organiser"), Bodies.start(409, """{"code":"already_live","message":"m","sid":"$OTHER","startedBy":"organiser"}"""))
     assertEquals(StartAnswer.AlreadyLive(OTHER, null), Bodies.start(409, """{"code":"already_live","message":"m","sid":"$OTHER","startedBy":"robot"}"""))
     assertEquals(StartAnswer.Replaced, Bodies.start(409, """{"code":"replaced","message":"m"}"""))
