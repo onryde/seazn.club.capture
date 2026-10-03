@@ -33,9 +33,10 @@ import com.seazn.capture.engine.core.characters
  * ground, or a body cut short. It is no answer at all — transient on the code, the beat and the start —
  * never a bad config and never the server's word. A JSON object that breaks a rule is the server's.
  *
- * The same holds for a status that ends something (X1): a 401 forgets the code and a 404 refuses S, so
- * each is read only from the server's refusal naming it (`$defs.refusal`, which the server always sends).
- * An edge's page, an empty body, no `code` or another word under either is no answer, and ends nothing.
+ * The same holds for a status that ends something (X1): a 401 forgets the code, a 404 refuses S and a
+ * 410 ends the held broadcast, so each is read only from the server's refusal (`$defs.refusal`, which
+ * the server always sends), and a 401 or 404 only from the one naming it. An edge's page, an empty body,
+ * no `code` or another word under any of them is no answer, and ends nothing.
  */
 object Bodies {
   private val OPEN = setOf("warming", "live")
@@ -62,12 +63,13 @@ object Bodies {
 
   /**
    * X1: the statuses that end something, each with the one word that says so (amendment, the answer
-   * table): a 401 forgets the code, a 404 refuses S. A start's 404 ends nothing (a start error), so a
-   * start holds only its 401 to this.
+   * table): a 401 forgets the code, a 404 refuses S. A 410 ends the held broadcast and delivers a stopped
+   * record (N1); neither route sends one (ask 8), so it names no word (null): any refusal's will do, and
+   * an `endReason` alone is none. A start's 404 and 410 end nothing, so a start holds only its 401 to this.
    */
-  private val ENDING = mapOf(401 to "code_ended", 404 to "not_a_stream_code")
+  private val ENDING: Map<Int, String?> = mapOf(401 to "code_ended", 404 to "not_a_stream_code", 410 to null)
 
-  /** Why a 401 or 404 is no answer: its body is not the server's refusal naming it. A literal, never the body. */
+  /** Why a 401, 404 or 410 is no answer: its body is not the server's refusal. A literal, never the body. */
   private const val NOT_REFUSAL = "not-refusal"
 
   /** capture-descriptor.v1's bounds. Lengths are in characters (code points). */
@@ -192,8 +194,8 @@ object Bodies {
   /**
    * Any status. A 2xx's body is the answer, unless it is no JSON object: then it is no answer (I1),
    * counted failed, so the claim and the stopped record ride the next beat. So is a 401 or 404 that is
-   * not the server's refusal naming it (X1). A 410's body carries its `endReason`, and only a 429 keeps
-   * Retry-After.
+   * not the server's refusal naming it, or a 410 that is not the server's refusal (X1, N1). A 410's
+   * refusal carries its `endReason`, and only a 429 keeps Retry-After.
    */
   fun beat(status: Int, body: String, retryAfterS: Int?, env: Environment): HeartbeatResponse {
     val fields = obj(body)
@@ -242,8 +244,12 @@ object Bodies {
       null
     }
 
-  /** X1: [status] ends something, and [fields] is not the server's refusal naming it. */
-  private fun unconfirmed(status: Int, fields: Map<String, Any?>?): Boolean = ENDING[status]?.let { it != fields?.get("code") } ?: false
+  /** X1: [status] ends something, and [fields] is not the server's refusal: no `code`, or not the word [ENDING] names. */
+  private fun unconfirmed(status: Int, fields: Map<String, Any?>?): Boolean {
+    if (status !in ENDING) return false
+    val code = fields?.get("code") as? String ?: return true
+    return ENDING[status]?.let { it != code } ?: false
+  }
 
   private fun notRefusal(status: Int): String = "$status-$NOT_REFUSAL"
 

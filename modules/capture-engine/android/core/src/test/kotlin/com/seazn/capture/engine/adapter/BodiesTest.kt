@@ -141,8 +141,8 @@ class BodiesTest {
     assertEquals(CodeAnswer.Status(401, null, null), Bodies.code(401, refusal("code_ended"), null, Environment.STAGING))
     assertEquals(CodeAnswer.Status(429, 30, null), Bodies.code(429, refusal("rate_limited"), 30, Environment.STAGING))
     assertEquals(CodeAnswer.Status(503, null, null), Bodies.code(503, refusal("unavailable"), 30, Environment.STAGING))
-    assertEquals(CodeAnswer.Status(410, null, "stopped"), Bodies.code(410, """{"endReason":"stopped"}""", null, Environment.STAGING))
-    assertEquals(CodeAnswer.Status(410, null, null), Bodies.code(410, """{"endReason":"lunch"}""", null, Environment.STAGING))
+    assertEquals(CodeAnswer.Status(410, null, "stopped"), Bodies.code(410, gone410("stopped"), null, Environment.STAGING))
+    assertEquals(CodeAnswer.Status(410, null, null), Bodies.code(410, gone410("lunch"), null, Environment.STAGING))
     // An endReason on any other status is not the server's word about a broadcast: none is read.
     assertEquals(CodeAnswer.Status(401, null, null), Bodies.code(401, """{"code":"code_ended","message":"m","endReason":"stopped"}""", null, Environment.STAGING))
     // Any 2xx is the body's: a 201 reads as a 200 does.
@@ -243,7 +243,7 @@ class BodiesTest {
       assertEquals(bare, Bodies.start(status, ""), "$word, no body")
     }
     // A beat's 410 is never sent (ask 8) and is still read: Over for the sid the beat named.
-    assertEquals(ServerWord.Over(SID, "stopped"), ServerWord.ofBeat(Bodies.beat(410, """{"endReason":"stopped"}""", null, Environment.STAGING), named = SID))
+    assertEquals(ServerWord.Over(SID, "stopped"), ServerWord.ofBeat(Bodies.beat(410, gone410("stopped"), null, Environment.STAGING), named = SID))
   }
 
   @Test
@@ -268,7 +268,7 @@ class BodiesTest {
   }
 
   @Test
-  fun `X1 a 401 or a 404 ends something only on the server's refusal naming it - any other body is no answer`() {
+  fun `X1 a 401, a 404 or a 410 ends something only on the server's refusal - any other body is no answer`() {
     // Not the server's: an edge's page, nothing, a cut body, an object with no code or a code that is no
     // string, and a refusal naming another status's word.
     val pages = listOf(PORTAL, "", refusal("code_ended").dropLast(1), """{"message":"m"}""", """{"code":7,"message":"m"}""")
@@ -282,13 +282,20 @@ class BodiesTest {
     for (page in pages + refusal("not_a_stream_code") + refusal("no_credit")) {
       assertEquals(StartAnswer.Failed("401-not-refusal"), Bodies.start(401, page), page)
     }
+    // Fix round 2 (N1): a 410 ends a held broadcast, and delivers a stopped record, only as the server's
+    // refusal. Neither route sends one (ask 8), so any word will do, but an endReason alone is not one.
+    for (page in pages + """{"endReason":"stopped"}""") {
+      assertEquals(CodeAnswer.Unreachable("410-not-refusal"), Bodies.code(410, page, null, Environment.STAGING), page)
+      assertEquals(HeartbeatResponse.Failed("410-not-refusal"), Bodies.beat(410, page, null, Environment.STAGING), page)
+    }
+    assertEquals(HeartbeatResponse.Answered(410, BeatReply(null, null, null, "stopped", null), null), Bodies.beat(410, gone410("stopped"), null, Environment.STAGING))
     // The server's refusal acts, its message aside (the schema requires one; the word is what is read).
     assertEquals(CodeAnswer.Status(401, null, null), Bodies.code(401, """{"code":"code_ended"}""", null, Environment.STAGING))
     assertEquals(CodeAnswer.Status(404, null, null), Bodies.code(404, refusal("not_a_stream_code"), null, Environment.STAGING))
     assertEquals(HeartbeatResponse.Answered(401, NO_REPLY, null), Bodies.beat(401, """{"code":"code_ended"}""", null, Environment.STAGING))
     assertEquals(HeartbeatResponse.Answered(404, NO_REPLY, null), Bodies.beat(404, refusal("not_a_stream_code"), null, Environment.STAGING))
     assertEquals(StartAnswer.CodeEnded, Bodies.start(401, """{"code":"code_ended"}"""))
-    // A start's 404 ends nothing (a start error), so it needs no refusal, and a 403 or a 410 is unchanged.
+    // A start's 404 ends nothing (a start error), so it needs no refusal, and a 403 is unchanged.
     assertEquals(StartAnswer.Failed("404"), Bodies.start(404, PORTAL))
     assertEquals(CodeAnswer.Status(403, null, null), Bodies.code(403, PORTAL, null, Environment.STAGING))
     assertEquals(HeartbeatResponse.Answered(403, NO_REPLY, null), Bodies.beat(403, PORTAL, null, Environment.STAGING))
@@ -339,7 +346,7 @@ class BodiesTest {
     assertNull(stoppedOnly.reply?.sid)
     assertEquals(ServerWord.NoEvidence, ServerWord.ofBeat(stoppedOnly, named = SID))
     // A 410 to a beat that held SID names SID, whatever its body says.
-    val gone = Bodies.beat(410, """{"sid":"$OTHER","stopped":"$OTHER","endReason":"stopped"}""", null, Environment.STAGING)
+    val gone = Bodies.beat(410, """{"code":"gone","message":"m","sid":"$OTHER","stopped":"$OTHER","endReason":"stopped"}""", null, Environment.STAGING)
     assertEquals(ServerWord.Over(SID, "stopped"), ServerWord.ofBeat(gone, named = SID))
   }
 
@@ -369,7 +376,7 @@ class BodiesTest {
     for (why in endReasons) {
       assertEquals(why, answeredBeat(200, beat("over", "sid" to SID, "endReason" to why)).reply?.endReason)
       assertEquals(CodeAnswer.Over(SID, why), Bodies.code(200, JSONObject(base).put("state", "ending").put("endReason", why).toString(), null, Environment.STAGING))
-      assertEquals(CodeAnswer.Status(410, null, why), Bodies.code(410, """{"endReason":"$why"}""", null, Environment.STAGING))
+      assertEquals(CodeAnswer.Status(410, null, why), Bodies.code(410, gone410(why), null, Environment.STAGING))
     }
   }
 
@@ -606,5 +613,8 @@ class BodiesTest {
 
     /** A refusal body, as `$defs.refusal` shapes it. */
     fun refusal(code: String): String = """{"code":"$code","message":"m"}"""
+
+    /** A 410 shaped as the server's refusal, with an [endReason]. Neither route sends one (ask 8); the word is made up. */
+    fun gone410(endReason: String): String = """{"code":"gone","message":"m","endReason":"$endReason"}"""
   }
 }

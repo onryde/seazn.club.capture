@@ -142,8 +142,10 @@ class HttpTest {
 
   @Test
   fun `carry 17 the code's answer echoes its request id, read by Bodies against the pairing's environment`() {
-    val gone = HttpAnswers.code(12, HttpOutcome.Answered(410, """{"endReason":"stopped"}"""), Environment.STAGING)
+    val gone = HttpAnswers.code(12, HttpOutcome.Answered(410, GONE), Environment.STAGING)
     assertEquals(Input.CodeAnswered(12, CodeAnswer.Status(410, null, "stopped")), gone)
+    // N1: an endReason alone is not the server's refusal, so it ends nothing.
+    assertEquals(Input.CodeAnswered(11, CodeAnswer.Unreachable("410-not-refusal")), HttpAnswers.code(11, HttpOutcome.Answered(410, """{"endReason":"stopped"}"""), Environment.STAGING))
     assertEquals(Input.CodeAnswered(13, CodeAnswer.Unreachable("dns")), HttpAnswers.code(13, HttpOutcome.Failed("dns"), Environment.STAGING))
     // The environment decides the ingest host: staging's `cred` is foreign to a production pairing.
     val open = HttpAnswers.code(14, HttpOutcome.Answered(200, session), Environment.STAGING)
@@ -235,6 +237,46 @@ class HttpTest {
     assertEquals(Refusal.START_FAILED, assertIs<Phase.Paired>(rig.phase).pairing.refusal)
     rig.send(Input.Start)
     assertEquals(2, rig.sent<Command.PostStart>().size)
+  }
+
+  @Test
+  fun `N1 an edge's 410 on a live beat leaves the broadcast on air, and the server's 410 refusal ends it`() {
+    for (page in NOT_REFUSALS_410) {
+      val rig = MachineRig().live()
+      rig.send(HttpAnswers.heartbeat(inFlight(rig), HttpOutcome.Answered(410, page), Environment.STAGING))
+      assertIs<Phase.OnAir>(rig.phase, page)
+      assertTrue(rig.sent<Command.StopBroadcast>().isEmpty(), page)
+    }
+    val rig = MachineRig().live()
+    rig.send(HttpAnswers.heartbeat(inFlight(rig), HttpOutcome.Answered(410, GONE), Environment.STAGING))
+    assertEquals(LastEnd.STOPPED_BY_ORGANISER, assertIs<Phase.Paired>(rig.phase).pairing.lastEnd)
+    assertEquals(1, rig.sent<Command.StopBroadcast>().size)
+  }
+
+  @Test
+  fun `N1 an edge's 410 on a Paired beat keeps the stopped record, and the server's 410 refusal delivers it`() {
+    for (page in NOT_REFUSALS_410) {
+      val (rig, id) = pairedWithRecord()
+      rig.send(HttpAnswers.heartbeat(id, HttpOutcome.Answered(410, page), Environment.STAGING))
+      assertEquals(RECORD, assertIs<Phase.Paired>(rig.phase, page).pairing.stopped, page)
+      assertTrue(rig.sent<Command.DeleteStopped>().isEmpty(), page)
+    }
+    val (rig, id) = pairedWithRecord()
+    rig.send(HttpAnswers.heartbeat(id, HttpOutcome.Answered(410, GONE), Environment.STAGING))
+    assertNull(assertIs<Phase.Paired>(rig.phase).pairing.stopped)
+    assertEquals(listOf(Command.DeleteStopped(CODE, 1)), rig.sent<Command.DeleteStopped>())
+  }
+
+  @Test
+  fun `N1 an edge's 410 on GET code at Arming fetches again, and the server's 410 refusal ends S with its endReason`() {
+    for (page in NOT_REFUSALS_410) {
+      val rig = armingRig()
+      rig.send(HttpAnswers.code(asked(rig), HttpOutcome.Answered(410, page), Environment.STAGING))
+      assertTrue(assertIs<Phase.Arming>(rig.phase, page).retrying, page)
+    }
+    val rig = armingRig()
+    rig.send(HttpAnswers.code(asked(rig), HttpOutcome.Answered(410, GONE), Environment.STAGING))
+    assertEquals(LastEnd.STOPPED_BY_ORGANISER, assertIs<Phase.Paired>(rig.phase).pairing.lastEnd)
   }
 
   @Test
@@ -450,6 +492,12 @@ class HttpTest {
 
     /** The server's refusal body (`$defs.refusal`): its word and a developer message. */
     fun refusal(code: String): String = """{"code":"$code","message":"m"}"""
+
+    /** A 410 shaped as the server's refusal (neither route sends one, ask 8: the word is made up), with its endReason. */
+    const val GONE = """{"code":"gone","message":"m","endReason":"stopped"}"""
+
+    /** Bodies a 410 may carry that are not the server's refusal (N1): an edge's page, nothing, an endReason with no code. */
+    val NOT_REFUSALS_410 = listOf(PORTAL, "", """{"endReason":"stopped"}""")
 
     /** Bodies a 401 or 404 may carry that are not the server's refusal (X1): an edge's page, nothing, no code, another word. */
     val NOT_REFUSALS = listOf(PORTAL, "", """{"message":"m"}""", refusal("invalid"))
