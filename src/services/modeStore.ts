@@ -132,7 +132,7 @@ export function createModeStore(kv: KeyValueStore): ModeStore {
       // The codes as the caller judged them, read now; the write runs later.
       const judged = current().saved.codes;
       return serial(async () => {
-        const { gone, named } = stillExpired(current().saved, judged, modes, notice);
+        const { gone, named } = stillExpired(current().saved, judged, modes, notice, scan);
         if (gone.length === 0 && named === null) return;
         const clearsActive = gone.some((mode) => mode === current().saved.active);
         publish({ ...withSaved(without(current().saved, gone)), notice: named });
@@ -179,14 +179,17 @@ function serialWrites(): <T>(write: () => Promise<T>) => Promise<T> {
  * Of the modes judged expired, those still holding the code that was judged.
  * A code opened since is a fresh one and is kept, and the notice that named
  * the old one is dropped with it: it would be about a code no longer saved.
+ * A record a mark re-wrote since is still the scan judged (`scan`, C4b-N2).
  */
 function stillExpired(
   saved: SavedState,
   judged: SavedState['codes'],
   modes: readonly Mode[],
   notice: ExpiryNotice | null,
+  scan: (code: SavedCode) => SavedCode,
 ): { gone: readonly Mode[]; named: ExpiryNotice | null } {
-  const still = (mode: Mode) => saved.codes[mode] === judged[mode];
+  const scanOf = (code: SavedCode | undefined) => (code === undefined ? undefined : scan(code));
+  const still = (mode: Mode) => scanOf(saved.codes[mode]) === scanOf(judged[mode]);
   const named = notice !== null && still(notice.mode) ? notice : null;
   return { gone: modes.filter(still), named };
 }

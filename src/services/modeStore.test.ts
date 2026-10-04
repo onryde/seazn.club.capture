@@ -7,11 +7,12 @@ import { createModeStore, STORE_KEYS } from '@/services/modeStore';
 import { createRingRecord } from '@/services/sessionRecord';
 import { savedStreamCode } from '../../test/fixtures/savedStream';
 
+const EXPIRES = new Date('2026-10-03T18:40:00Z');
 const code: SavedCode = savedStreamCode({
   raw: '{"fake":true}',
   slot: 0,
   savedAt: new Date('2026-10-03T13:00:00Z'),
-  expiresAt: new Date('2026-10-03T18:40:00Z'),
+  expiresAt: EXPIRES,
 });
 
 const ready = (store: ReturnType<typeof createModeStore>) => {
@@ -288,6 +289,37 @@ describe('modeStore', () => {
       expect(results).toEqual([true, true]);
       expect([...kv.entries.keys()]).toEqual([]);
       expect(ready(store).saved.codes.stream).toBeUndefined();
+    });
+
+    // C4b-N2, the reviewer's probe P6: an expiry judged on the code a mark,
+    // queued ahead and slow to write, re-writes. The code is still the one
+    // judged expired, so it goes, with its notice.
+    it('expires, and names, a code a mark queued ahead of it re-wrote', async () => {
+      const memory = createMemoryKeyValueStore({
+        [STORE_KEYS.active]: 'stream',
+        [STORE_KEYS.code('stream')]: encodeSavedCode(code),
+      });
+      const store = createModeStore(memory);
+      await store.load();
+      const loaded = ready(store).saved.codes.stream;
+      if (loaded === undefined) throw new Error('the seeded code did not load');
+      const write = memory.set;
+      let release = () => undefined as void;
+      const slow = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      vi.spyOn(memory, 'set').mockImplementation(async (key, value) => {
+        await slow;
+        return write(key, value);
+      });
+      const notice = { mode: 'stream' as const, expiredAt: EXPIRES, venueTz: null };
+      const marked = store.markTapToPair(true, loaded);
+      const expired = store.expire(['stream'], notice);
+      release();
+      await Promise.all([marked, expired]);
+      expect(ready(store).saved).toEqual({ active: null, codes: {} });
+      expect(ready(store).notice).toEqual(notice);
+      expect([...memory.entries.keys()]).toEqual([]);
     });
   });
 
