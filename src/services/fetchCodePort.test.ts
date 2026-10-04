@@ -119,6 +119,7 @@ describe('the code port (amendment §2, the Home outcome table)', () => {
     ['a 401 naming another word', respond(401, refusalBody('not_a_stream_code'))],
     ['an HTML 404', html(404)],
     ['a 404 with no code', respond(404, { message: 'not found' })],
+    ['a 404 naming another word', respond(404, refusalBody('code_ended'))],
     ['an HTML 410', html(410)],
     ['an empty 422', respond(422)],
     ['a 422 naming another word', respond(422, refusalBody('code_ended'))],

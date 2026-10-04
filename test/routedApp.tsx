@@ -2,6 +2,7 @@ import { act, render, screen, type RenderResult } from '@testing-library/react';
 import { useState, useSyncExternalStore, type ReactNode } from 'react';
 import { vi } from 'vitest';
 import { useEngineFollow } from '@/hooks/useEngineFollow';
+import { useProtectCode } from '@/hooks/useProtectCode';
 import { useReopenGate } from '@/hooks/useReopenGate';
 import type { Route } from '@/services/devicePorts';
 import {
@@ -80,6 +81,7 @@ function RoutedApp({ nav, extra }: { nav: RouterDouble; extra?: ReactNode }) {
   useState(nav.mounted);
   useReopenGate(true);
   useEngineFollow();
+  useProtectCode();
   const route = useSyncExternalStore(nav.subscribe, nav.current);
   return (
     <>

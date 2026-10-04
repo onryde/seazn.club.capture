@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { NO_NAME, savedCodeName, type CodeName } from '@/domain/mode/codeName';
+import { savedCodeName, type CodeName } from '@/domain/mode/codeName';
 import { forgetsSaved, tapToPairMark } from '@/domain/mode/reopen';
 import type { SavedCode } from '@/domain/mode/savedCode';
 import type { EngineSnapshot } from '@/engine/CaptureEnginePort';
@@ -71,8 +71,9 @@ export function useEngineFollow(): void {
       const ending = endingOf(facts);
       if (ending !== heard.current.ending) heard.current = { ending, code };
       if (code === undefined || code.stream === null) return;
+      // An unreadable raw names nothing (NO_NAME): `sameCode` never matches a null
+      // part, so no rule below can forget or mark it (M-4).
       const name = savedCodeName(code);
-      if (name === NO_NAME) return;
       if (heard.current.code === code && forgetsSaved({ saved: name, ...facts })) {
         // An unpair the operator did not ask for goes Home, to its panel (Task 29); their Stop stays on Ended.
         // Only if this code went: one saved behind the write is a new scan, and the app follows it (C4b-I2).

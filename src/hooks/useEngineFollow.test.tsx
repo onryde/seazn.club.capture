@@ -58,12 +58,28 @@ describe('useEngineFollow: native’s word on the saved code', () => {
     const fakes = await shell();
     expect(fakes.navigation.current()).toBe('stream');
     const forget = vi.spyOn(fakes.ports.modeStore, 'forget');
+    // M-5: the phone is slow to delete, so the code is still saved while
+    // native's 1 Hz reports keep re-emitting the snapshot that names it.
+    const remove = fakes.kv.delete;
+    let release = () => undefined as void;
+    const slow = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    vi.spyOn(fakes.kv, 'delete').mockImplementation(async (key) => {
+      await slow;
+      return remove(key);
+    });
     act(() => fakes.engine.hear({ word: 'replaced' }));
+    await flush(3_000);
+    expect(fakes.engine.getSnapshot().unpaired).toMatchObject({ slot: 1 });
+    expect(savedOf(fakes)).toBeDefined();
+    // Three reports, each still naming the code it is forgetting: no second write.
+    expect(forget).toHaveBeenCalledTimes(1);
+    act(() => release());
     await flush();
     expect(savedOf(fakes)).toBeUndefined();
     expect(fakes.kv.entries.has(STORE_KEYS.code('stream'))).toBe(false);
     expect(fakes.navigation.current()).toBe('home');
-    // Three more reports, each still naming the unpaired code: no second write.
     await flush(3_000);
     expect(forget).toHaveBeenCalledTimes(1);
   });

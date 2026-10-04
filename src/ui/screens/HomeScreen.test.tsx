@@ -19,12 +19,13 @@ import { KV_TIMEOUT_MS, withTimeout } from '@/services/kvTimeout';
 import { sampleWaiting } from '@/services/fakeCodePort';
 import { CODE_TIMEOUT_MS, codeUrl, createFetchCodePort } from '@/services/fetchCodePort';
 import { createModeStore, STORE_KEYS } from '@/services/modeStore';
+import { SCRUBBED } from '@/services/scrub';
 import { HomeScreen } from '@/ui/screens/HomeScreen';
 import { createFakePorts, readRecord, TEST_NOW } from '../../../test/fakePorts';
 import { renderWithPorts, wrapperFor } from '../../../test/renderWithPorts';
 import { savedStreamCode } from '../../../test/fixtures/savedStream';
 import { pairCode } from '../../../test/pairCode';
-import { captureRaw, epochSeconds, FIXTURE_CODE } from '../../../test/fixtures/wire';
+import { captureRaw, epochSeconds, FIXTURE_CODE, FIXTURE_TOKEN } from '../../../test/fixtures/wire';
 
 const IN_TWO_HOURS = new Date(TEST_NOW.getTime() + 2 * 3600_000);
 // 17:40Z is 18:40 in the fake phone's Europe/London zone (BST).
@@ -1087,6 +1088,27 @@ describe('Home: checking a stream code with the server (spec §1)', () => {
     expect(home.navigation.current()).toBe('home');
     expect(home.kv.entries.has(STORE_KEYS.code('stream'))).toBe(false);
     expect(home.engine.intents).toEqual([]);
+  });
+
+  // M-2 (CD6, "from the scan"): the token is masked before the server is
+  // asked, not once the code is saved. A code refused as ended is never saved,
+  // so this is all the protection its token gets, during the check and after.
+  it('masks the token from the scan, before the check, for a code refused as ended', async () => {
+    const home = await renderHome();
+    const release = home.code.hold();
+    home.code.answer(err({ kind: 'ended' }));
+    await scanStream(home);
+    await screen.findByText('Checking code…');
+    home.ports.logger.warn('probe', { problem: FIXTURE_TOKEN });
+    release();
+    await screen.findByText('Not valid for streaming');
+    home.ports.logger.warn('probe', { problem: FIXTURE_TOKEN });
+    const probes = readRecord(home.record).filter((entry) => entry.event === 'probe');
+    expect(probes.map((entry) => entry.fields)).toEqual([
+      { problem: SCRUBBED },
+      { problem: SCRUBBED },
+    ]);
+    expect(home.kv.entries.has(STORE_KEYS.code('stream'))).toBe(false);
   });
 
   it('scans again from a refusal, with the same tile', async () => {

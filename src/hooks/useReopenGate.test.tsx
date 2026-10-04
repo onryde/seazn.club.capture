@@ -372,18 +372,25 @@ describe('useReopenGate: the cold-start re-pair', () => {
     expiresAt: EXPIRY,
     stream: { ...(code.stream ?? fail()), tapToPair: true },
   });
-  it.each<[string, Record<string, string>, (fakes: ReturnType<typeof createFakePorts>) => void]>([
+  // `kept`: whether the stream code is still saved once the gate and the
+  // follow have both run. An expired code goes with its notice; one native's
+  // `unpaired` names is forgotten by the follow (M-1: heard at cold start).
+  it.each<
+    [string, Record<string, string>, (fakes: ReturnType<typeof createFakePorts>) => void, boolean]
+  >([
     [
       'the code is tapToPair',
       { [STORE_KEYS.active]: 'stream', [STORE_KEYS.code('stream')]: encodeSavedCode(marked) },
       () => undefined,
+      true,
     ],
     [
       'another mode is active',
       { [STORE_KEYS.active]: 'scoring', [STORE_KEYS.code('stream')]: encodeSavedCode(code) },
       () => undefined,
+      true,
     ],
-    ['the code expired', inStream, (fakes) => fakes.setNow(new Date(EXPIRY.getTime() + 1))],
+    ['the code expired', inStream, (fakes) => fakes.setNow(new Date(EXPIRY.getTime() + 1)), false],
     [
       'the snapshot’s unpaired names it',
       inStream,
@@ -391,6 +398,7 @@ describe('useReopenGate: the cold-start re-pair', () => {
         pairCode(fakes.engine, code);
         fakes.engine.hear({ word: 'taken' });
       },
+      false,
     ],
     [
       'the saved code cannot be read',
@@ -399,14 +407,16 @@ describe('useReopenGate: the cold-start re-pair', () => {
         [STORE_KEYS.code('stream')]: encodeSavedCode({ ...code, raw: '{}' }),
       },
       () => undefined,
+      true,
     ],
-  ])('sends no pair at cold start when %s, and goes Home', async (_why, kvSeed, prepare) => {
+  ])('sends no pair at cold start when %s, and goes Home', async (_why, kvSeed, prepare, kept) => {
     const fakes = createFakePorts({ kvSeed });
     prepare(fakes);
     const before = pairs(fakes).length;
     await shell(fakes);
     expect(pairs(fakes)).toHaveLength(before);
     expect(fakes.navigation.current()).toBe('home');
+    expect(fakes.kv.entries.has(STORE_KEYS.code('stream'))).toBe(kept);
   });
 
   // A JS reload while native lived: the engine is the authority.
