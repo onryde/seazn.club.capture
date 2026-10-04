@@ -111,6 +111,14 @@ class ProtocolTest {
 
     fun lastSnapshot(): JSONObject = synchronized(lines) { lines.last { it.getString("ev") == "snapshot" } }.getJSONObject("body")
 
+    /** The last snapshot written before the event [name]: what the kit holds when that event reaches it. */
+    fun snapshotBefore(name: String): JSONObject =
+      synchronized(lines) {
+        val at = lines.indexOfFirst { nameOf(it) == name }
+        assertTrue(at >= 0, "no $name in ${lines.map(::nameOf)}")
+        lines.subList(0, at).last { it.getString("ev") == "snapshot" }.getJSONObject("body")
+      }
+
     /** Polls every 20 ms for [name], at most [timeoutMs]; fails with every event seen. */
     fun await(name: String, timeoutMs: Long = 3_000) = awaitThat("$name", timeoutMs) { name in names() }
 
@@ -190,10 +198,10 @@ class ProtocolTest {
     host.shutdown()
   }
 
-  // The engine publishes a change that leaves the state as it was (a refusal while paired) on its next
-  // tick only: the quiet ack comes after that tick's snapshot, so the kit reads it.
+  // A refusal leaves the state paired: the engine publishes it with the start's answer (review C4c I-1),
+  // so the quiet ack, posted behind it, needs no tick to be read after it.
   @Test
-  fun `PV28 a quiet ack follows the next tick, so a refusal that leaves the state paired is read`() {
+  fun `PV28 a refusal that leaves the state paired is read at the quiet ack`() {
     val (host, events) = hostWithEvents()
     host.handle("""{"op":"send","seq":1,"intent":${ScriptedServer.PAIR}}""")
     events.awaitThat("sound held") { events.names().contains("ack:1") && events.lastSnapshot().getJSONObject("ready").getBoolean("sound") }
@@ -203,6 +211,38 @@ class ProtocolTest {
     events.await("ack:3")
     val last = events.lastSnapshot()
     assertEquals("paired" to "no_credit", last.getJSONObject("state").getString("kind") to last.getString("refusal"))
+    host.shutdown()
+  }
+
+  // Review C4c I-1: the engine publishes an input's own field changes with it, so the kit reads them at
+  // the ack. Here the pair's readiness and its claim beat's answer, which leave the state paired.
+  @Test
+  fun `I-1 a quiet ack after a pair follows the snapshot that shows its readiness, all four checks`() {
+    val (host, events) = hostWithEvents()
+    // Sound has held (review C4a I-1), so the pair hears all four checks passing at once.
+    host.handle("""{"op":"readiness","seq":1}""")
+    events.await("ack:1")
+    host.handle("""{"op":"send","seq":2,"intent":${ScriptedServer.PAIR}}""")
+    events.await("ack:2")
+    host.handle("""{"op":"quiet","seq":3}""")
+    events.await("ack:3")
+    val seen = events.snapshotBefore("ack:3")
+    val ready = seen.getJSONObject("ready")
+    assertEquals(listOf("paired", "true", "true", "true", "true"), listOf(seen.getJSONObject("state").getString("kind")) + listOf("camera", "sound", "network", "held").map { ready.getBoolean(it).toString() })
+    host.shutdown()
+  }
+
+  @Test
+  fun `I-1 setAutomatic's snapshot is written before its own ack, though the state stays paired`() {
+    val (host, events) = hostWithEvents()
+    host.handle("""{"op":"send","seq":1,"intent":${ScriptedServer.PAIR}}""")
+    host.handle("""{"op":"quiet","seq":2}""")
+    events.await("ack:2")
+    assertEquals(true, events.snapshotBefore("ack:2").getJSONObject("pairing").getBoolean("automatic"), "the pair's own switch, on")
+    host.handle("""{"op":"send","seq":3,"intent":{"kind":"setAutomatic","on":false}}""")
+    events.await("ack:3")
+    val seen = events.snapshotBefore("ack:3")
+    assertEquals("paired" to false, seen.getJSONObject("state").getString("kind") to seen.getJSONObject("pairing").getBoolean("automatic"))
     host.shutdown()
   }
 

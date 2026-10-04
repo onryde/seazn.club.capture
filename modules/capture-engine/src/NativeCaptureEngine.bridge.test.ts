@@ -61,6 +61,30 @@ describe('the host harness', () => {
     expect(seen).toEqual(checks.flatMap((check) => [`${check}:false`, `${check}:true`]));
   });
 
+  // Review C4c I-1: native publishes an input's own field changes with it, state or not.
+  it("I-1 reads the pair's readiness and pairing once it settles, with no tick to wait for", async () => {
+    host = await startHostEngine();
+    host.engine.send(KIT_CODE_A);
+    await host.settle!();
+    const { state, ready, pairing } = host.engine.getSnapshot();
+    expect([state.kind, ready, pairing?.code]).toEqual([
+      'paired',
+      { camera: true, sound: true, network: true, held: true },
+      KIT_CODE_A.code,
+    ]);
+  });
+
+  it("I-1 reads setAutomatic(false) at the intent's own ack, though the state stays paired", async () => {
+    host = await startHostEngine();
+    host.engine.send(KIT_CODE_A);
+    await host.settle!();
+    const before = host.engine.getSnapshot().pairing?.automatic;
+    host.engine.send({ kind: 'setAutomatic', on: false });
+    await host.engine.settled();
+    const { state, pairing } = host.engine.getSnapshot();
+    expect([before, state.kind, pairing?.automatic]).toEqual([true, 'paired', false]);
+  });
+
   it('hears a scripted refusal at the next operator start, not at once', async () => {
     host = await startHostEngine();
     host.engine.send(KIT_CODE_A);

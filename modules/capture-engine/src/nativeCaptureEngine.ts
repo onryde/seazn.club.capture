@@ -18,9 +18,12 @@ export type ForwardedEntry = {
 export type NativeCaptureEngine = CaptureEnginePort & {
   forward(entry: ForwardedEntry): void;
   /**
-   * CD8: resolves once native has acked the last intent sent, so every snapshot that intent
-   * caused has arrived. Resolves at once when nothing is outstanding. Test and probe use only;
-   * the product never waits on native (AGENTS §2).
+   * CD8: resolves once native has acked the last intent sent. Native publishes every change the
+   * intent's own input made, state or not (review C4c I-1), before the ack, so those have arrived.
+   * Work the input posted in turn, such as the permission answer that pairs, can land up to a
+   * tick (500 ms) later: read that by a bounded eventual poll, never at the ack. Resolves at once
+   * when nothing is outstanding. Test and probe use only; the product never waits on native
+   * (AGENTS §2).
    */
   settled(): Promise<void>;
   /** Numbers and sends a non-intent op that native acks (Task 27's host `script` and `readiness`). */

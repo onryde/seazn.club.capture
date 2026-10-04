@@ -3,7 +3,6 @@ package com.seazn.capture.engine.host
 import com.seazn.capture.engine.adapter.BridgeCore
 import com.seazn.capture.engine.adapter.PrivateStore
 import com.seazn.capture.engine.core.Clock
-import com.seazn.capture.engine.core.Engine
 import com.seazn.capture.engine.core.Input
 import com.seazn.capture.engine.core.Pose
 import com.seazn.capture.engine.core.Scheduler
@@ -88,10 +87,9 @@ class Host(private val scheduler: Scheduler, private val write: (String) -> Unit
    * scheduler's finished count is read on both sides). A timer not yet due (the next beat) is never
    * waited for, so quiet always comes. Acks go out in the order their lines arrived.
    *
-   * The ack is posted one [Engine.TICK_MS] on: the engine publishes for an input only when the state
-   * changes, and anything else (a refusal, readiness while paired) on its next tick, which always
-   * publishes. That tick is due no later than the ack and was posted before it, so its snapshot is
-   * written first, and the kit reads the quiet engine's last word.
+   * The ack is posted to the core's scheduler, behind every snapshot already due: the engine publishes
+   * each input's own field changes with it (review C4c I-1), a refusal or readiness while paired
+   * included, so the kit reads the quiet engine's last word without waiting for a tick.
    */
   private fun whenQuiet(seq: Int, afterMs: Long = 0) {
     val probe = scheduler as? ExecutorScheduler ?: error("a numbered line needs the ExecutorScheduler")
@@ -108,7 +106,7 @@ class Host(private val scheduler: Scheduler, private val write: (String) -> Unit
     val isQuiet = server.inFlight == 0 && probe.dueNow() == 0 && probe.completed() == finished
     while (isQuiet && waiting.isNotEmpty() && waiting.first().second <= nowMs) {
       val seq = waiting.removeFirst().first
-      scheduler.schedule(Engine.TICK_MS) { platform.acked(seq) }
+      scheduler.schedule(0) { platform.acked(seq) }
     }
     if (waiting.isNotEmpty()) quiet.schedule({ poll(probe) }, QUIET_POLL_MS, TimeUnit.MILLISECONDS)
   }

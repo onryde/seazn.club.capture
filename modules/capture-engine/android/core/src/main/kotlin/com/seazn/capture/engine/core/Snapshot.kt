@@ -118,6 +118,31 @@ data class Snapshot(
   val language: String? = null,
 )
 
+/**
+ * The snapshot with its clock and telemetry (what SnapshotWire sends under `telemetry`) set to one
+ * value: what the operator sees. The engine publishes an input's snapshot when this changes (review
+ * C4c I-1). A field added to [Snapshot] is compared unless it is cleared here, so a new one errs
+ * towards one more snapshot, never towards a change that waits for the tick.
+ */
+fun Snapshot.shown(): Snapshot =
+  copy(
+    reportedAtMs = 0,
+    delivery = Delivery.UNKNOWN,
+    deliveredLagMs = null,
+    encodedVideoFps = null,
+    audioPacketsPerSecond = null,
+    srt = null,
+    bitrateKbps = null,
+    targetBitrateKbps = null,
+    dataUsedBytes = 0,
+    charging = null,
+    heartbeat = NO_BEAT,
+    shed = null,
+    device = null,
+  )
+
+private val NO_BEAT = HeartbeatStatus(lastSentAtEpochMs = null, lastResult = null, consecutiveFailures = 0, failures = 0)
+
 /** The pairing as the snapshot carries it: its name (code, slot and token tag), never the token. */
 data class PairingView(val name: PairingName, val automatic: Boolean, val waiting: WaitingFields)
 

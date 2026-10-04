@@ -340,18 +340,34 @@ class EngineTest {
     assertFalse(otherToken in descriptor, descriptor)
   }
 
+  // Review C4c I-1: what the operator sees goes up with the input that changed it, state or not, so the
+  // intent's ack follows it (CD8); telemetry alone waits for the tick, which always publishes.
   @Test
-  fun `an input that leaves the state as it was waits for the tick`() {
+  fun `an input that changes only a field the snapshot shows goes up at once, and one that moves only telemetry waits for the tick`() {
     val engine = engine()
     engine.sendAll(Configs.pairInputs(ready = false))
     scheduler.advanceBy(0)
-    // Each state change goes up at once: the pair, the permission, the go-live and the code's answer.
+    // The pair, the permission, the network check passing while paired, the go-live and the code's answer.
     val armed = SnapshotState.Armed(Cause.ORGANISER, NotReady.CAMERA)
-    assertEquals(listOf(SnapshotState.Pairing, SnapshotState.Paired, SnapshotState.Arming(Cause.ORGANISER, retrying = false), armed), published.map { it.second.state })
-    engine.send(Input.Network(true))
-    engine.send(Input.Device(DeviceSample(null, null, 70, true, null, null)))
+    val arming = SnapshotState.Arming(Cause.ORGANISER, retrying = false)
+    assertEquals(
+      listOf(SnapshotState.Pairing to false, SnapshotState.Paired to false, SnapshotState.Paired to true, arming to true, armed to true),
+      published.map { it.second.state to it.second.ready.network },
+    )
+    engine.send(Input.SetAutomatic(false))
     scheduler.advanceBy(0)
-    assertEquals(4, published.size, "still armed: the next tick carries the rest")
+    assertEquals(listOf(true, false), published.takeLast(2).map { it.second.pairing?.automatic }, "the switch goes up with its input")
+    assertEquals(armed, published.last().second.state)
+    val shown = published.size
+    // A moment later, so the clock the snapshot carries has moved too: it is not what the operator sees.
+    scheduler.advanceBy(100)
+    engine.send(Input.Device(DeviceSample(null, null, 70, true, null, null)))
+    engine.send(Input.Network(true))
+    scheduler.advanceBy(0)
+    assertEquals(shown, published.size, "a device sample is telemetry, and the network as it was is nothing")
+    engine.start()
+    scheduler.advanceBy(Engine.TICK_MS)
+    assertEquals(listOf(shown + 1, 70), listOf(published.size, published.last().second.device?.batteryPercent), "the tick carries it")
   }
 
   @Test
@@ -491,9 +507,9 @@ class EngineTest {
     scheduler.advanceBy(2_000)
     engine.sendAll(Configs.pairInputs(ready = false))
     scheduler.advanceBy(0)
-    // FakeClock: monotonic 2_000, wall 1_790_000_002_000, which is 2026-09-21T14:13:22Z. Each paired state
-    // on the way to Armed goes up at once (pairing, paired, arming, armed), all at that instant.
-    assertEquals(List(4) { 1_790_000_002_000L }, published.map { it.second.reportedAtMs })
+    // FakeClock: monotonic 2_000, wall 1_790_000_002_000, which is 2026-09-21T14:13:22Z. Each change on the
+    // way to Armed goes up at once (pairing, paired, the network check, arming, armed), all at that instant.
+    assertEquals(List(5) { 1_790_000_002_000L }, published.map { it.second.reportedAtMs })
     val armed = lines.single { """"kind":"armed"""" in it }
     assertTrue(armed.startsWith("""{"at":"2026-09-21T14:13:22.000Z","kind":"armed","""), armed)
   }

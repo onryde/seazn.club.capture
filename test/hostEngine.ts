@@ -3,7 +3,7 @@ import { existsSync } from 'node:fs';
 import { createInterface } from 'node:readline';
 import { fileURLToPath } from 'node:url';
 import type { Readiness } from '@/domain/session/Pairing';
-import { createNativeCaptureEngine } from '@/engine/nativeCaptureEngine';
+import { createNativeCaptureEngine, type NativeCaptureEngine } from '@/engine/nativeCaptureEngine';
 import type { CaptureEngineNative, Subscription } from '@/engine/nativeModule';
 import type { EngineUnderTest } from './engineContract';
 import { scriptFor } from './serverScript';
@@ -37,6 +37,8 @@ type HostLine =
   | { ev: 'request'; path: string; body: unknown };
 
 export type HostEngine = EngineUnderTest & {
+  /** The bridge itself, so a test can wait on the intent's own ack (CD8) rather than on quiet. */
+  readonly engine: NativeCaptureEngine;
   /** The bodies the engine sent, by path: never a URL or the Bearer (Task 21). */
   readonly requests: readonly { readonly path: string; readonly body: unknown }[];
   /** The record lines native wrote, as the JS ring would hold them. */

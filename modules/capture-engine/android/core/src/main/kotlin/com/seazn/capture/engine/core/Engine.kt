@@ -43,7 +43,8 @@ class Engine(
   var snapshotFailures: Int = 0
     private set
 
-  private var lastPublished: SnapshotState? = null
+  /** The last snapshot published, as [Snapshot.shown] reads it. Scheduler thread. */
+  private var lastShown: Snapshot? = null
   private var ticking: Cancellable? = null
 
   /** Starts the tick. Idempotent. On the scheduler's thread only. */
@@ -174,12 +175,17 @@ class Engine(
 
   private fun engineError(failure: Exception): Command = Command.Record(RecordEntry("engine-error", listOf("message" to failure.toString())))
 
-  /** On every tick, and at once when the state changes. */
+  /**
+   * On every tick, and at once when an input changes what the snapshot shows, state or not (review
+   * C4c I-1): a refusal, a readiness check, the automatic switch. The intent's ack, posted after its
+   * tasks, then follows every change it caused itself (CD8). Telemetry alone waits for the tick.
+   */
   private fun publish(input: Input, now: Now) {
     try {
       val snapshot = projection(phase, now)
-      if (input != Input.Tick && snapshot.state == lastPublished) return
-      lastPublished = snapshot.state
+      val shown = snapshot.shown()
+      if (input != Input.Tick && shown == lastShown) return
+      lastShown = shown
       snapshots.publish(snapshot)
     } catch (_: Exception) {
       snapshotFailures += 1
