@@ -9,7 +9,6 @@ import nl from '@/i18n/nl.json';
 import type { KeyValueStore } from '@/services/KeyValueStore';
 import { DiagnosticsScreen } from '@/ui/screens/DiagnosticsScreen';
 import { SettingsScreen } from '@/ui/screens/SettingsScreen';
-import { savedStreamCode } from '../../../test/fixtures/savedStream';
 import { renderViewfinder } from '../../../test/renderViewfinder';
 
 const LANGS = ['en', 'es', 'fr', 'nl'] as const;
@@ -94,22 +93,20 @@ const SUB_STATES: Readonly<Record<string, (lang: Lang) => Promise<void>>> = {
     );
     expect(visibleCopy()).toContain(shown(lang, 'stream.advisory.overlayFailed'));
   },
-  'a code it cannot use': async (lang) => {
-    await renderViewfinder(
-      { deviceLanguages: [lang] },
-      { saved: savedStreamCode({ raw: 'not a capture code' }) },
-    );
-    expect(visibleCopy()).toContain(shown(lang, 'stream.status.unusable'));
+  // Amendment §2: a visit never pairs, so an engine found idle stays Starting.
+  'an idle engine': async (lang) => {
+    await renderViewfinder({ deviceLanguages: [lang] }, { engine: 'idle' });
+    expect(visibleCopy()).toContain(shown(lang, 'stream.status.starting'));
   },
-  'no session details': async (lang) => {
-    const view = await renderViewfinder({ deviceLanguages: [lang] });
-    act(() => view.engine.setDescriptor(null));
-    expect(visibleCopy()).toContain(shown(lang, 'stream.status.noDetails'));
-  },
+  // No broadcast reported on air: forced on an engine that holds no pairing.
   'on air with no viewer picture': async (lang) => {
     await renderViewfinder(
       { deviceLanguages: [lang] },
-      { prepare: (fakes) => fakes.engine.scene('live') },
+      {
+        engine: 'idle',
+        prepare: (fakes) =>
+          fakes.engine.forceState({ kind: 'publishing', transport: 'srt', sinceEpochMs: 1 }),
+      },
     );
     expect(visibleCopy()).toContain(shown(lang, 'stream.peek.unavailable'));
   },
@@ -122,10 +119,10 @@ const SUB_STATE_CASES = LANGS.flatMap((lang) =>
 
 describe('no screen in any state shows a raw key (AGENTS §10, question 4)', () => {
   // Review M3: an empty table registers no case and passes. Update the counts
-  // when a scene or a sub-state is added: 4 languages × 17 scenes, × 9 sub-states.
+  // when a scene or a sub-state is added: 4 languages × 23 scenes, × 8 sub-states.
   it('sweeps every scene and every sub-state, in every language', () => {
-    expect(SCENE_CASES).toHaveLength(68);
-    expect(SUB_STATE_CASES).toHaveLength(36);
+    expect(SCENE_CASES).toHaveLength(92);
+    expect(SUB_STATE_CASES).toHaveLength(32);
   });
 
   it.each(SUB_STATE_CASES)('%s, %s', async (lang, name) => {

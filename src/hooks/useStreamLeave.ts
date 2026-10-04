@@ -3,7 +3,7 @@ import { leaveRule, type EngineStatus, type LeaveRule } from '@/domain/mode/reop
 import { selectEngineStatus, selectStateKind } from '@/hooks/engineSelectors';
 import { useEngineSelector } from '@/hooks/useCaptureEngine';
 import { usePorts } from '@/hooks/usePorts';
-import { useOwnSession, useSavedStream } from '@/hooks/useSavedStream';
+import { useOwnPairing, useSavedStream } from '@/hooks/useSavedStream';
 import { isStreamSubRoute } from '@/services/devicePorts';
 import type { Logger } from '@/services/logger';
 import type { ModeStore } from '@/services/modeStore';
@@ -34,8 +34,8 @@ export function useStreamLeave(): {
   departed(): boolean;
 } {
   const status = useEngineSelector(selectEngineStatus);
-  // Fix round 3: a stopped session spends this code only if it is this code's.
-  const own = useOwnSession(useSavedStream());
+  // Fix round 3: a stopped engine spends this code only if its pairing was this code's.
+  const own = useOwnPairing(useSavedStream());
   const [blocked, block] = useRefusalLine();
   const left = useRef(false);
   const departed = useCallback(() => left.current, []);

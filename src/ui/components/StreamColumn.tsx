@@ -36,14 +36,12 @@ export const StreamColumn = memo(function StreamColumn(props: ColumnProps) {
       <Elapsed />
       <AudioMeter />
       <StatusLine>{line}</StatusLine>
-      {view.action === 'goLive' ? (
-        <PreflightChips preflight={view.preflight} goLiveBy={view.goLiveBy} />
-      ) : null}
+      {view.action === 'goLive' ? <PreflightChips preflight={view.preflight} /> : null}
       <ColumnPeek onAir={view.onAir} peekable={view.peekable} peek={peek} />
       <ColumnAction
         action={view.action}
-        goLiveOff={view.kind !== 'armed' || view.blocker !== null}
-        reason={view.kind === 'armed' ? view.reason : null}
+        goLiveOff={view.kind !== 'paired' || view.blocker !== null}
+        reason={view.kind === 'paired' ? view.reason : null}
         start={view.start}
         stop={view.stop}
         onScanAnother={props.onScanAnother}

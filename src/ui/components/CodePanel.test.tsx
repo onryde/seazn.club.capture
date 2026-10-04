@@ -5,14 +5,14 @@ import type { PanelOutcome } from '@/hooks/useHome';
 import { CodePanel } from '@/ui/components/CodePanel';
 import { renderWithPorts } from '../../../test/renderWithPorts';
 
-const streamCode: ModeCode = {
+const streamCode = {
   mode: 'stream',
   raw: '{}',
-  sid: 'fake-sid',
-  slot: 0,
-  token: 'fake-token',
+  code: 'fx42hmnp7k2q',
+  slot: 1,
+  token: 'tok-9f3c2a7e5b1d4680ab',
   expiresAt: new Date(),
-};
+} as const satisfies ModeCode;
 const handlers = () => ({
   onOpen: vi.fn(),
   onScanAgain: vi.fn(),
@@ -111,7 +111,7 @@ describe('CodePanel', () => {
   it('offers Try again, and Scan again, only when there was no connection', () => {
     const h = handlers();
     const offline = {
-      kind: 'descriptorError',
+      kind: 'codeError',
       tapped: 'stream',
       error: { kind: 'offline' },
       code: streamCode,
@@ -123,15 +123,18 @@ describe('CodePanel', () => {
     expect(h.onScanAgain).toHaveBeenCalledTimes(1);
   });
 
+  // Amendment §2: the code answer names no end reason ("the two 410 lines go"),
+  // so a code the server no longer knows, or has ended, reads as not valid.
   it.each([
     [{ kind: 'invalid' }, 'Not valid for streaming'],
-    [{ kind: 'ended', endReason: 'stopped' }, 'Stream ended'],
+    [{ kind: 'not-found' }, 'Not valid for streaming'],
+    [{ kind: 'ended' }, 'Not valid for streaming'],
     [{ kind: 'rate-limited', retryAfterS: 7 }, 'Server busy'],
   ] as const)('has no Try again for %j, and closes on the dim', (error, title) => {
     const h = handlers();
     renderWithPorts(
       <CodePanel
-        outcome={{ kind: 'descriptorError', tapped: 'stream', error, code: streamCode }}
+        outcome={{ kind: 'codeError', tapped: 'stream', error, code: streamCode }}
         time={null}
         {...h}
       />,

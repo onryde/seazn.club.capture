@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef } from 'react';
-import { replaceStep, type EngineStatus } from '@/domain/mode/reopen';
+import type { EngineStatus } from '@/domain/mode/reopen';
 import type { CaptureEnginePort } from '@/engine/CaptureEnginePort';
 import { selectEngineStatus } from '@/hooks/engineSelectors';
 import { usePorts } from '@/hooks/usePorts';
@@ -17,10 +17,10 @@ export type DisarmCause = 'forget' | 'orphan';
 const underWay = new WeakMap<CaptureEnginePort, () => void>();
 
 /**
- * I1 (final review, owner-visible): clears a session that no saved code owns,
- * by native's own path (N1, `replaceStep`): an armed session is stopped, and
- * reset once native reports it Ended; an ended one is reset. It never arms and
- * never touches a broadcast. One clearing per engine at a time: a call while
+ * I1 (final review, owner-visible): clears a pairing that no saved code owns,
+ * by native's own path (`clearStep`): a paired engine is unpaired; an ended
+ * one is reset. It never pairs and never touches a broadcast. Task 24 renames
+ * it, bounds it (P9) and reorders Forget. One clearing per engine at a time: a call while
  * one is under way, from any caller, is dropped. A caller that unmounts stops
  * listening to the clearing it started, and only that one.
  */
@@ -67,12 +67,19 @@ function clearSession(
     const status = selectEngineStatus(engine.getSnapshot());
     if (status === acted) return;
     acted = status;
-    const next = replaceStep(status);
-    if (next !== 'stop' && next !== 'reset') return end();
+    const next = clearStep(status);
+    if (next === null) return end();
     logger.info(`intent.${next}`, { action: cause });
     engine.send({ kind: next });
   };
   unsubscribe = engine.subscribe(step);
   step();
   return ended ? null : end;
+}
+
+/** The one intent that moves this engine toward Idle without touching a broadcast. */
+function clearStep(status: EngineStatus): 'unpair' | 'reset' | null {
+  if (status === 'paired') return 'unpair';
+  if (status === 'stopped' || status === 'failed') return 'reset';
+  return null;
 }

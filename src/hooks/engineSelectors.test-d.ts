@@ -1,5 +1,5 @@
 import { describe, expectTypeOf, it } from 'vitest';
-import type { Transport } from '@/domain/credentials/StreamCredentials';
+import type { Transport } from '@/domain/session/Pairing';
 import type {
   DegradeReason,
   EndReason,
@@ -32,14 +32,21 @@ describe('no reading is null, never zero (plan B reports null off air)', () => {
 describe('wire strings equal plan B’s (D40)', () => {
   it('pins the state kinds and reasons', () => {
     expectTypeOf<SessionState['kind']>().toEqualTypeOf<
-      'idle' | 'armed' | 'connecting' | 'publishing' | 'degraded' | 'reconnecting' | 'ended'
+      | 'idle'
+      | 'pairing'
+      | 'paired'
+      | 'arming'
+      | 'armed'
+      | 'connecting'
+      | 'publishing'
+      | 'degraded'
+      | 'reconnecting'
+      | 'ended'
     >();
     expectTypeOf<Exclude<DegradeReason, 'audio-below-floor'>>().toEqualTypeOf<
       'not-delivered' | 'camera-taken' | 'mic-silenced' | 'poor-uplink' | 'fell-back-to-rtmps'
     >();
-    expectTypeOf<EndReason>().toEqualTypeOf<
-      'operator-stopped' | 'stopped-by-organiser' | 'hold-window-expired' | 'fatal-error'
-    >();
+    expectTypeOf<EndReason>().toEqualTypeOf<'operator-stopped' | 'fatal-error'>();
     expectTypeOf<ReconnectCause>().toEqualTypeOf<
       'uplink-lost' | 'video-stalled' | 'not-delivered'
     >();

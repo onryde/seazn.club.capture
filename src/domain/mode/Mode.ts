@@ -1,3 +1,5 @@
+import type { StreamCode } from '@/domain/credentials/streamCode';
+
 /**
  * The three things the app does. Only one runs at a time, and each is
  * unlocked by its own code — there is no login (decision record, ruling 2).
@@ -6,22 +8,14 @@ export type Mode = 'stream' | 'scoring' | 'dashboard';
 
 /**
  * A code the app recognised and can act on. The wire shape stops here: `raw`
- * is kept whole for the mode that will parse it properly (S1's credential
+ * is kept whole for the mode that will parse it properly (the stream code's
  * parser, S2's scoring client), and nothing else reads it.
  *
- * `raw` for a stream code carries the SRT passphrase and RTMPS key. Never log
- * it, print it, or put it in a test snapshot.
+ * `raw` for a stream code carries the code's `tok`, a lasting bearer
+ * (amendment, Known gaps). Never log it, print it, or put it in a test snapshot.
  */
 export type ModeCode =
-  | {
-      readonly mode: 'stream';
-      readonly raw: string;
-      readonly sid: string;
-      readonly slot: number;
-      /** The descriptor's Bearer (spec decision 4). A secret: never log it. */
-      readonly token: string;
-      readonly expiresAt: Date;
-    }
+  | ({ readonly mode: 'stream'; readonly raw: string } & StreamCode)
   | { readonly mode: 'scoring'; readonly raw: string; readonly token: string };
 
 /**

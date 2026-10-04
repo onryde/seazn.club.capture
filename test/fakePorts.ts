@@ -13,7 +13,7 @@ import type {
   SharePort,
   SplashPort,
 } from '@/services/devicePorts';
-import { createFakeDescriptorPort, type FakeDescriptorPort } from '@/services/fakeDescriptorPort';
+import { createFakeCodePort, type FakeCodePort } from '@/services/fakeCodePort';
 import { createMemoryKeyValueStore, type MemoryKeyValueStore } from '@/services/KeyValueStore';
 import { createLogger } from '@/services/logger';
 import { createModeStore } from '@/services/modeStore';
@@ -34,7 +34,7 @@ export type FakePorts = {
   readonly ports: Ports;
   readonly engine: TestEngine;
   readonly scanner: FakeCodeScanner;
-  readonly descriptor: FakeDescriptorPort;
+  readonly code: FakeCodePort;
   readonly kv: MemoryKeyValueStore;
   readonly motion: FakeMotion;
   readonly orientationLock: OrientationLockPort & { readonly locks: readonly Target[] };
@@ -70,7 +70,7 @@ export function createFakePorts(
   const fakes = {
     engine,
     scanner: createFakeCodeScanner(),
-    descriptor: createFakeDescriptorPort(() => now),
+    code: createFakeCodePort(),
     kv,
     motion: fakeMotion(),
     orientationLock: fakeLock(),
@@ -91,6 +91,7 @@ export function createFakePorts(
     streamSettings: createStreamSettingsStore(kv, logger),
     clock: () => now,
     hosts: ['stg.seazn.club'],
+    environment: 'staging',
     deviceLanguages: ['en'],
     phoneZone: 'Europe/London',
     appVersion: '0.0.0-test',

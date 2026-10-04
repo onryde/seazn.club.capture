@@ -8,52 +8,84 @@ import {
   venueZone,
   type SavedCode,
 } from '@/domain/mode/savedCode';
-import { sampleDescriptor } from '@/services/fakeDescriptorPort';
+import { sampleWaiting, SAMPLE_CODE } from '@/services/fakeCodePort';
 import { savedStreamCode } from '../../../test/fixtures/savedStream';
-import { descriptorWire, FIXTURE_NOW } from '../../../test/fixtures/wire';
+import { FIXTURE_NOW, FIXTURE_TOKEN } from '../../../test/fixtures/wire';
 
 const LATER = new Date('2026-10-03T15:00:00Z');
+const CODE_URL = `https://stg.seazn.club/api/v1/capture/codes/${SAMPLE_CODE}`;
+
+/** The waiting fields as the server and the store write them: epoch seconds, by hand. */
+const waitingWire = (overrides: Record<string, unknown> = {}) => ({
+  code: SAMPLE_CODE,
+  label: 'Seazn XI v Fake CC',
+  venueTimezone: 'Europe/London',
+  scheduledStart: 1790003600,
+  autoAllowed: true,
+  destinationName: 'YouTube · Fake CC',
+  overlayUrl: 'https://stg.seazn.club/overlay/fixtures/fake-fixture',
+  pollSeconds: 60,
+  heartbeatUrl: `${CODE_URL}/beats`,
+  startUrl: `${CODE_URL}/start`,
+  ...overrides,
+});
 
 /** A stored record written by hand, with one field changed. `undefined` drops the field. */
 function record(overrides: Record<string, unknown>): string {
   return JSON.stringify({
-    v: 2,
+    v: 3,
     mode: 'stream',
     raw: 'r',
     slot: 0,
     savedAt: 1,
     expiresAt: null,
-    descriptor: descriptorWire(),
+    stream: { waiting: waitingWire(), codeUrl: CODE_URL, tapToPair: false },
     ...overrides,
   });
 }
 
-describe('saved codes, v2 (D28)', () => {
-  it('round-trips a stream code with its descriptor', () => {
-    const code = savedStreamCode();
+const streamCode = (token: string, expiresAt: Date | null) =>
+  ({ mode: 'stream', raw: 'r', code: SAMPLE_CODE, slot: 0, token, expiresAt }) as const;
+
+describe('saved codes, v3 (amendment §3)', () => {
+  it.each([false, true])('round-trips a stream code with its stream part, tapToPair %s', (tap) => {
+    const code = savedStreamCode({
+      stream: {
+        waiting: sampleWaiting({ scheduledStart: new Date(1790003600_000) }),
+        codeUrl: CODE_URL,
+        tapToPair: tap,
+      },
+    });
     expect(decodeSavedCode(encodeSavedCode(code))).toEqual(code);
   });
 
-  it('round-trips a scoring code, which has no descriptor', () => {
+  it('round-trips a scoring code, which has no stream part', () => {
     const code: SavedCode = {
       mode: 'scoring',
       raw: 'https://stg.seazn.club/score/abc',
       slot: null,
       savedAt: FIXTURE_NOW,
       expiresAt: null,
-      descriptor: null,
+      stream: null,
     };
     expect(decodeSavedCode(encodeSavedCode(code))).toEqual(code);
   });
 
   it('reads a record written by hand, not only its own round trip', () => {
-    expect(decodeSavedCode(record({}))).toMatchObject({
+    expect(decodeSavedCode(record({}))).toEqual({
       mode: 'stream',
       raw: 'r',
       slot: 0,
       savedAt: new Date(1),
       expiresAt: null,
-      descriptor: { label: 'Seazn XI v Fake CC', venueTimezone: 'Europe/London' },
+      stream: {
+        waiting: {
+          ...waitingWire(),
+          scheduledStart: new Date(1790003600_000),
+        },
+        codeUrl: CODE_URL,
+        tapToPair: false,
+      },
     });
   });
 
@@ -70,71 +102,101 @@ describe('saved codes, v2 (D28)', () => {
     expect(decodeSavedCode(v1)).toBeNull();
   });
 
-  it('drops a stream record with no descriptor', () => {
-    expect(decodeSavedCode(encodeSavedCode(savedStreamCode({ descriptor: null })))).toBeNull();
-    expect(decodeSavedCode(record({ descriptor: undefined }))).toBeNull();
+  it('drops a v2 record, which held the session and its credentials', () => {
+    const v2 = JSON.stringify({
+      v: 2,
+      mode: 'stream',
+      raw: 'r',
+      slot: 0,
+      savedAt: 1,
+      expiresAt: null,
+      descriptor: { sid: 's' },
+    });
+    expect(decodeSavedCode(v2)).toBeNull();
+    // The version alone drops it: this one carries a stream part that would read.
+    expect(decodeSavedCode(record({ v: 2 }))).toBeNull();
   });
 
-  it('drops a record whose descriptor no longer parses', () => {
-    const text = encodeSavedCode(savedStreamCode()).replace('"state":"warming"', '"state":"odd"');
-    expect(decodeSavedCode(text)).toBeNull();
+  it('drops a stream record with no stream part', () => {
+    expect(decodeSavedCode(encodeSavedCode(savedStreamCode({ stream: null })))).toBeNull();
+    expect(decodeSavedCode(record({ stream: undefined }))).toBeNull();
   });
 
-  it('keeps the descriptor handed over at save', () => {
-    const descriptor = sampleDescriptor(FIXTURE_NOW);
-    const code = savedCodeFrom(
-      { mode: 'stream', raw: 'r', sid: 's', slot: 0, token: 't', expiresAt: FIXTURE_NOW },
-      FIXTURE_NOW,
-      descriptor,
-    );
-    expect(code.descriptor).toBe(descriptor);
+  it("drops a stream part whose beat URL is off the code URL's host", () => {
+    const foreign = waitingWire({ heartbeatUrl: 'https://evil.example/beats' });
+    expect(
+      decodeSavedCode(
+        record({ stream: { waiting: foreign, codeUrl: CODE_URL, tapToPair: false } }),
+      ),
+    ).toBeNull();
+  });
+
+  it.each([
+    ['no codeUrl', { waiting: waitingWire(), tapToPair: false }],
+    ['a string tapToPair', { waiting: waitingWire(), codeUrl: CODE_URL, tapToPair: 'no' }],
+    ['no waiting fields', { codeUrl: CODE_URL, tapToPair: false }],
+    [
+      'an http codeUrl',
+      { waiting: waitingWire(), codeUrl: 'http://stg.seazn.club/x', tapToPair: false },
+    ],
+    ['a stream part that is not an object', 'waiting'],
+  ])('drops a stream part with %s', (_label, stream) => {
+    expect(decodeSavedCode(record({ stream }))).toBeNull();
+  });
+
+  it('keeps the stream part handed over at save', () => {
+    const stream = { waiting: sampleWaiting(), codeUrl: CODE_URL, tapToPair: false };
+    const code = savedCodeFrom(streamCode('t', FIXTURE_NOW), FIXTURE_NOW, stream);
+    expect(code.stream).toBe(stream);
   });
 
   it('never stores the token, which lives only in raw', () => {
-    const code = savedCodeFrom(
-      { mode: 'stream', raw: 'r', sid: 's', slot: 0, token: 'fake-tok-x', expiresAt: LATER },
-      FIXTURE_NOW,
-      sampleDescriptor(FIXTURE_NOW),
-    );
-    expect(encodeSavedCode(code)).not.toContain('fake-tok-x');
+    const stream = { waiting: sampleWaiting(), codeUrl: CODE_URL, tapToPair: false };
+    const code = savedCodeFrom(streamCode(FIXTURE_TOKEN, LATER), FIXTURE_NOW, stream);
+    expect(encodeSavedCode(code)).not.toContain(FIXTURE_TOKEN);
   });
 
-  it('builds a saved code from a recognised one', () => {
-    expect(
-      savedCodeFrom(
-        { mode: 'stream', raw: 'r', sid: 's', slot: 0, token: 't', expiresAt: LATER },
-        FIXTURE_NOW,
-        null,
-      ),
-    ).toEqual({
+  it('builds a saved code from a recognised one; a scoring code saves no stream part', () => {
+    expect(savedCodeFrom(streamCode('t', LATER), FIXTURE_NOW, null)).toEqual({
       mode: 'stream',
       raw: 'r',
       slot: 0,
       savedAt: FIXTURE_NOW,
       expiresAt: LATER,
-      descriptor: null,
+      stream: null,
     });
-    const fromScoring = savedCodeFrom({ mode: 'scoring', raw: 'u', token: 't' }, FIXTURE_NOW, null);
-    expect(fromScoring.expiresAt).toBeNull();
-    expect(fromScoring.slot).toBeNull();
+    const stream = { waiting: sampleWaiting(), codeUrl: CODE_URL, tapToPair: false };
+    const fromScoring = savedCodeFrom(
+      { mode: 'scoring', raw: 'u', token: 't' },
+      FIXTURE_NOW,
+      stream,
+    );
+    expect([fromScoring.expiresAt, fromScoring.slot, fromScoring.stream]).toEqual([
+      null,
+      null,
+      null,
+    ]);
   });
 
-  it('reads the venue zone from the descriptor, else none', () => {
+  it('keeps a code with no exp unexpiring', () => {
+    expect(savedCodeFrom(streamCode('t', null), FIXTURE_NOW, null).expiresAt).toBeNull();
+  });
+
+  it('reads the venue zone from the waiting fields, else none', () => {
     expect(venueZone(savedStreamCode())).toBe('Europe/London');
-    expect(venueZone(savedStreamCode({ descriptor: null }))).toBeNull();
+    expect(venueZone(savedStreamCode({ stream: null }))).toBeNull();
   });
 
   it.each([
     ['not JSON', 'nope'],
-    ['a future version', record({ v: 3 })],
-    // The version alone drops it: this one carries a descriptor that would parse.
-    ['a v1 record carrying a descriptor', record({ v: 1 })],
+    ['a future version', record({ v: 4 })],
+    ['a v1 record carrying a stream part', record({ v: 1 })],
     ['an unknown mode', record({ mode: 'chat' })],
     ['a missing raw', record({ raw: undefined })],
     ['a string time', record({ savedAt: 'yesterday' })],
     ['a fractional slot', record({ slot: 1.5 })],
     ['a negative slot', record({ slot: -1 })],
-    ['a descriptor that is not an object', record({ descriptor: 'warming' })],
+    ['a stream part that is not an object', record({ stream: 'waiting' })],
   ])('refuses %s', (_label, text) => {
     expect(decodeSavedCode(text)).toBeNull();
   });

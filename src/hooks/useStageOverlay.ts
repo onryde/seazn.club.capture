@@ -1,6 +1,6 @@
 import { useCallback, useState } from 'react';
 import { selectShedding } from '@/hooks/advisory';
-import { selectHasDescriptor, selectOverlayUrl } from '@/hooks/engineSelectors';
+import { selectHasPairing, selectOverlayUrl } from '@/hooks/engineSelectors';
 import { useEngineSelector } from '@/hooks/useCaptureEngine';
 
 export type StageOverlay = {
@@ -18,14 +18,14 @@ const NO_OVERLAY = 'no-overlay';
 
 /**
  * Whether the score preview is drawn over the stage, and whether it failed.
- * It is tried only once native holds a session: before the arm there is no
- * descriptor, so no overlay to miss. A failure belongs to one showing (carry
+ * It is tried only once native holds a pairing: before the pair there is no
+ * overlay URL, so no overlay to miss. A failure belongs to one showing (carry
  * 13): hidden (turned off, shed, disarmed) or given a new URL, the caption
  * clears and the next showing tries again, as OverlayPreview's own attempt does.
  */
 export function useStageOverlay(overlayOn: boolean): StageOverlay {
   const shed = useEngineSelector(selectShedding);
-  const armedWith = useEngineSelector(selectHasDescriptor);
+  const armedWith = useEngineSelector(selectHasPairing);
   const url = useEngineSelector(selectOverlayUrl);
   const visible = overlayOn && armedWith && !shed;
   const showing = visible ? (url ?? NO_OVERLAY) : null;

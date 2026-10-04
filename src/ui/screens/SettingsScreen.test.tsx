@@ -23,7 +23,9 @@ describe('Settings (spec §4)', () => {
     fireEvent.click(overlaySwitch());
     expect(overlaySwitch().getAttribute('aria-checked')).toBe('false');
     await waitFor(() =>
-      expect(view.kv.entries.get(SETTINGS_KEY)).toBe('{"v":1,"overlay":false,"side":"right"}'),
+      expect(view.kv.entries.get(SETTINGS_KEY)).toBe(
+        '{\"v\":2,"overlay":false,"side":"right",\"automatic\":true}',
+      ),
     );
   });
 
@@ -33,7 +35,9 @@ describe('Settings (spec §4)', () => {
     fireEvent.click(overlaySwitch());
     expect(overlaySwitch().getAttribute('aria-checked')).toBe('true');
     await waitFor(() =>
-      expect(view.kv.entries.get(SETTINGS_KEY)).toBe('{"v":1,"overlay":true,"side":"right"}'),
+      expect(view.kv.entries.get(SETTINGS_KEY)).toBe(
+        '{\"v\":2,"overlay":true,"side":"right",\"automatic\":true}',
+      ),
     );
   });
 
@@ -129,7 +133,9 @@ describe('Settings (spec §4)', () => {
     fireEvent.click(screen.getByRole('radio', { name: 'Left' }));
     expect(overlaySwitch().getAttribute('aria-checked')).toBe('false');
     await waitFor(() =>
-      expect(view.kv.entries.get(SETTINGS_KEY)).toBe('{"v":1,"overlay":false,"side":"left"}'),
+      expect(view.kv.entries.get(SETTINGS_KEY)).toBe(
+        '{\"v\":2,"overlay":false,"side":"left",\"automatic\":true}',
+      ),
     );
   });
 
@@ -149,7 +155,7 @@ describe('Settings (spec §4)', () => {
 });
 
 describe('the viewfinder’s ways into Settings and Diagnostics (AGENTS §6)', () => {
-  it.each(['armed-ready', 'connecting', 'live', 'holding', 'stopped', 'fatal'] as const)(
+  it.each(['paired-ready', 'connecting', 'live', 'holding', 'stopped', 'fatal'] as const)(
     'are both there while %s',
     async (scene) => {
       const view = await renderViewfinder();

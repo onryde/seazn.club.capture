@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import type { Readiness } from '@/domain/session/Pairing';
 import type { DegradeReason, SessionState } from '@/domain/session/SessionState';
 import type { CameraState, EngineSnapshot, Telemetry } from '@/engine/CaptureEnginePort';
 import { IDLE_TELEMETRY } from '@/engine/FakeCaptureEngine';
@@ -8,7 +9,6 @@ import {
   selectHoldWindow,
   selectStatusKey,
   STATUS_LINE_BUDGET,
-  viewfinderStatusKey,
 } from '@/hooks/statusKey';
 import en from '@/i18n/en.json';
 import es from '@/i18n/es.json';
@@ -16,24 +16,34 @@ import fr from '@/i18n/fr.json';
 import nl from '@/i18n/nl.json';
 import { createTranslator } from '@/i18n/translate';
 
-const ARMED_OK: Partial<Telemetry> = { cameraReady: true, networkReachable: true, audioLevel: 0.4 };
-/** Plan B's `Snapshot.camera`: our own with a session, none without one. */
+/** A level well above the on-air floor: the display rule (D39) reads sound. */
+const ARMED_OK: Partial<Telemetry> = { audioLevel: 0.4 };
+const READY: Readiness = { camera: true, sound: true, network: true, held: true };
+/** Plan B's `Snapshot.camera`: our own with a pairing, none without one. */
 const ownCamera = (state: SessionState): CameraState | null =>
   state.kind === 'idle' || state.kind === 'ended' ? null : 'own';
 const snap = (
   state: SessionState,
   telemetry: Partial<Telemetry> = ARMED_OK,
   camera: CameraState | null = ownCamera(state),
+  ready: Partial<Readiness> = {},
 ): EngineSnapshot => ({
   state,
   telemetry: { ...IDLE_TELEMETRY, ...telemetry },
-  descriptor: null,
-  slot: null,
-  tokenTag: null,
+  pairing: null,
+  broadcast: null,
+  ready: { ...READY, ...ready },
+  refusal: null,
+  lastEnd: null,
+  unpaired: null,
+  codeEndedPending: false,
   camera,
   reportedAtMs: 0,
   survivesBackground: true,
 });
+const PAIRED: SessionState = { kind: 'paired' };
+const ARMING: SessionState = { kind: 'arming', cause: 'organiser', retrying: false };
+const ARMED: SessionState = { kind: 'armed', cause: 'operator', notReady: 'sound' };
 const { t } = createTranslator('en');
 const line = (s: EngineSnapshot) => t(selectStatusKey(s), { remaining: 38, window: 183 });
 const since = 1;
@@ -81,21 +91,15 @@ describe('the status line (spec §4 and §5)', () => {
       'Mic silenced by a call',
     ],
     ['idle', { kind: 'idle' }, 'Starting the camera…'],
+    // Today's words on the new states; Task 28 gives them their own lines.
+    ['pairing', { kind: 'pairing' }, 'Starting the camera…'],
+    ['arming', ARMING, 'Opening the link.'],
+    ['armed', ARMED, 'Opening the link.'],
     ['connecting', { kind: 'connecting', transport: 'srt' }, 'Opening the link.'],
     [
       'the operator stopped',
       { kind: 'ended', reason: 'operator-stopped', durationMs: 754_000 },
       'You stopped the broadcast.',
-    ],
-    [
-      'organiser stop',
-      { kind: 'ended', reason: 'stopped-by-organiser', durationMs: 1 },
-      'Stopped by the organiser',
-    ],
-    [
-      'the hold ran out',
-      { kind: 'ended', reason: 'hold-window-expired', durationMs: 1 },
-      'The connection was lost for too long.',
     ],
     [
       'a fatal error',
@@ -106,19 +110,31 @@ describe('the status line (spec §4 and §5)', () => {
     expect(line(snap(state))).toBe(sentence);
   });
 
-  it.each<[string, Partial<Telemetry>, string]>([
-    ['no camera', { ...ARMED_OK, cameraReady: false }, 'stream.status.noCamera'],
-    ['no network', { ...ARMED_OK, networkReachable: false }, 'stream.status.noNetwork'],
-    ['no sound', { ...ARMED_OK, audioLevel: 0.049 }, 'stream.status.noSound'],
-    ['sound exactly at the floor', { ...ARMED_OK, audioLevel: 0.05 }, 'stream.status.ready'],
-    ['nothing ready, camera first', IDLE_TELEMETRY, 'stream.status.noCamera'],
+  it.each<[string, Partial<Readiness>, string]>([
+    ['no camera', { camera: false }, 'stream.status.noCamera'],
+    ['no network', { network: false }, 'stream.status.noNetwork'],
+    ['no sound', { sound: false }, 'stream.status.noSound'],
+    ['everything ready', {}, 'stream.status.ready'],
+    [
+      'nothing ready, camera first',
+      { camera: false, sound: false, network: false },
+      'stream.status.noCamera',
+    ],
     [
       'no network and no sound, network first',
-      { ...ARMED_OK, networkReachable: false, audioLevel: 0 },
+      { network: false, sound: false },
       'stream.status.noNetwork',
     ],
-  ])('names the first pre-flight problem when armed: %s', (_name, telemetry, key) => {
-    expect(selectStatusKey(snap({ kind: 'armed' }, telemetry))).toBe(key);
+  ])('names the first pre-flight problem when paired: %s', (_name, ready, key) => {
+    expect(selectStatusKey(snap(PAIRED, ARMED_OK, 'own', ready))).toBe(key);
+  });
+
+  // A11: native's verdict, not the meter, says whether there is sound before air.
+  it('reads sound from native while paired, whatever the level', () => {
+    expect(selectStatusKey(snap(PAIRED, { audioLevel: 0 }))).toBe('stream.status.ready');
+    expect(selectStatusKey(snap(PAIRED, { audioLevel: 0.9 }, 'own', { sound: false }))).toBe(
+      'stream.status.noSound',
+    );
   });
 
   it('says live with no sound when the level is under the floor on air (a display rule, D39)', () => {
@@ -135,7 +151,7 @@ describe('the status line (spec §4 and §5)', () => {
       0.05,
       'Live. Sound and picture going out.',
     ],
-  ])('draws the on-air floor where the armed one is: %s', (_name, audioLevel, copy) => {
+  ])('draws the on-air floor where the meter does: %s', (_name, audioLevel, copy) => {
     expect(line(snap(LIVE, { ...ARMED_OK, audioLevel }))).toBe(copy);
   });
 
@@ -148,7 +164,7 @@ describe('the status line (spec §4 and §5)', () => {
     };
     const failing = { ...ARMED_OK, heartbeat };
     expect(selectStatusKey(snap(LIVE, failing))).toBe('stream.status.live');
-    expect(selectStatusKey(snap({ kind: 'armed' }, failing))).toBe('stream.status.ready');
+    expect(selectStatusKey(snap(PAIRED, failing))).toBe('stream.status.ready');
   });
 
   it('never mentions heat, which the top strip owns (AGENTS §8)', () => {
@@ -184,13 +200,10 @@ describe('every native reason has a line', () => {
       expect(KEYS.has(selectStatusKey(snap(state as SessionState)))).toBe(true);
     },
   );
-  it.each(['operator-stopped', 'stopped-by-organiser', 'hold-window-expired', 'fatal-error'])(
-    'ended %s',
-    (reason) => {
-      const state = { kind: 'ended', reason, durationMs: null };
-      expect(KEYS.has(selectStatusKey(snap(state as SessionState)))).toBe(true);
-    },
-  );
+  it.each(['operator-stopped', 'fatal-error'])('ended %s', (reason) => {
+    const state = { kind: 'ended', reason, durationMs: null };
+    expect(KEYS.has(selectStatusKey(snap(state as SessionState)))).toBe(true);
+  });
   it.each(['uplink-lost', 'video-stalled', 'not-delivered'])('reconnecting %s', (cause) => {
     const state = { ...holding('uplink-lost'), cause };
     expect(KEYS.has(selectStatusKey(snap(state as SessionState)))).toBe(true);
@@ -247,7 +260,9 @@ describe('whose camera it is, by state (camera ruling)', () => {
   });
 
   it.each<[string, SessionState]>([
-    ['armed', { kind: 'armed' }],
+    ['paired', PAIRED],
+    ['arming', ARMING],
+    ['armed', ARMED],
     ['connecting', CONNECTING],
   ])('another app’s take before air reads “in use”, with no slate claim, while %s', (_, state) => {
     const said = line(snap(state, ARMED_OK, 'taken'));
@@ -265,9 +280,9 @@ describe('whose camera it is, by state (camera ruling)', () => {
   );
 
   it.each(OURS)(
-    'our own %s before air says no reopening: armed reads the camera chip',
+    'our own %s before air says no reopening: paired reads the camera chip',
     (camera) => {
-      expect(line(snap({ kind: 'armed' }, ARMED_OK, camera))).toBe('Camera not ready yet.');
+      expect(line(snap(PAIRED, ARMED_OK, camera))).toBe('Camera not ready yet.');
     },
   );
 
@@ -288,8 +303,6 @@ describe('whose camera it is, by state (camera ruling)', () => {
   it.each(
     cells(NOT_OWN, [
       ['operator-stopped', 'You stopped the broadcast.'],
-      ['stopped-by-organiser', 'Stopped by the organiser'],
-      ['hold-window-expired', 'The connection was lost for too long.'],
       ['fatal-error', 'Something failed. Your code is kept.'],
     ] as const),
   )('an ending says how it ended over a %s camera (%j)', (camera, [reason, said]) => {
@@ -302,6 +315,11 @@ describe('whose camera it is, by state (camera ruling)', () => {
     expect(line(snap({ kind: 'idle' }, ARMED_OK, camera))).toBe('Starting the camera…');
   });
 
+  // Pairing has no camera line: the dialog or the claim is what it waits on.
+  it.each(NOT_OWN)('names no %s camera while pairing', (camera) => {
+    expect(line(snap({ kind: 'pairing' }, ARMED_OK, camera))).toBe('Starting the camera…');
+  });
+
   it('leaves every line alone while the camera is our own', () => {
     expect(line(snap(CONNECTING, ARMED_OK, 'own'))).toBe('Opening the link.');
     expect(line(snap(degraded('camera-taken'), ARMED_OK, 'own'))).toBe(TAKEN);
@@ -312,7 +330,7 @@ describe('whose camera it is, by state (camera ruling)', () => {
 
   it.each([
     ['reopening', LIVE, 'switching'],
-    ['in-use', { kind: 'armed' }, 'taken'],
+    ['in-use', PAIRED, 'taken'],
   ] as const)('says the %s line in every language, within the column', (_, state, camera) => {
     for (const lang of ['en', 'es', 'fr', 'nl'] as const) {
       const said = createTranslator(lang).t(selectStatusKey(snap(state, ARMED_OK, camera)));
@@ -322,54 +340,6 @@ describe('whose camera it is, by state (camera ruling)', () => {
         key: said.startsWith('stream.'),
       }).toEqual({ lang, fits: true, key: false });
     }
-  });
-});
-
-describe('viewfinderStatusKey', () => {
-  it('says the code timed out once the warming deadline passes while armed (spec §5, D13)', () => {
-    const key = viewfinderStatusKey('stream.status.ready', { kind: 'armed', code: 'timedOut' });
-    expect(t(key)).toBe('Code timed out — ask the organiser for a new one');
-  });
-
-  it('says a saved code cannot be used before and while arming', () => {
-    for (const kind of ['idle', 'armed'] as const) {
-      expect(viewfinderStatusKey('stream.status.starting', { kind, code: 'unusable' })).toBe(
-        'stream.status.unusable',
-      );
-    }
-  });
-
-  it('says nothing of the deadline before the engine is armed', () => {
-    expect(viewfinderStatusKey('stream.status.starting', { kind: 'idle', code: 'timedOut' })).toBe(
-      'stream.status.starting',
-    );
-  });
-
-  it.each(['unusable', 'timedOut'] as const)(
-    'leaves an on-air line alone, whatever the code (%s)',
-    (code) => {
-      expect(viewfinderStatusKey('stream.status.live', { kind: 'publishing', code })).toBe(
-        'stream.status.live',
-      );
-    },
-  );
-
-  it('leaves the engine’s line alone when the code is usable', () => {
-    expect(viewfinderStatusKey('stream.status.ready', { kind: 'armed', code: 'usable' })).toBe(
-      'stream.status.ready',
-    );
-  });
-
-  // Ruling I3: armed with no descriptor cannot go live, so it never reads Ready.
-  it('says the session details are missing while armed with none', () => {
-    const key = viewfinderStatusKey('stream.status.ready', { kind: 'armed', code: 'noDeadline' });
-    expect(t(key)).toBe('Waiting for the session details.');
-  });
-
-  it('leaves the arming line alone before the details could have come', () => {
-    expect(
-      viewfinderStatusKey('stream.status.starting', { kind: 'idle', code: 'noDeadline' }),
-    ).toBe('stream.status.starting');
   });
 });
 

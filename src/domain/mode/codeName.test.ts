@@ -1,50 +1,46 @@
 import { describe, expect, it } from 'vitest';
 import { NO_NAME, sameCode, savedCodeName, type CodeName } from '@/domain/mode/codeName';
-import { captureRaw, FIXTURE_SID } from '../../../test/fixtures/wire';
+import { captureRaw, FIXTURE_CODE, FIXTURE_TOKEN } from '../../../test/fixtures/wire';
 import { savedStreamCode } from '../../../test/fixtures/savedStream';
 
-/** FNV-1a 32 of the fixture token, computed with an independent Python FNV-1a. */
-const FIXTURE_TAG = 'e5da86ff';
+/** FNV-1a 32 of the fixture token, from an independent FNV-1a (token-tag-vectors.json pins it). */
+const FIXTURE_TAG = 'b24bb97b';
 
-describe('savedCodeName (I1, C7, N2)', () => {
-  it('names a saved code by its descriptor sid, its slot and its token tag, never the token', () => {
+describe('savedCodeName (amendment, Identity rules in JS)', () => {
+  it('names a saved code by its code, its slot and its token tag, never the token', () => {
     const name = savedCodeName(savedStreamCode());
-    expect(name).toEqual({ sid: FIXTURE_SID, slot: 1, tokenTag: FIXTURE_TAG });
-    expect(JSON.stringify(name)).not.toContain('fake-token');
+    expect(name).toEqual({ code: FIXTURE_CODE, slot: 1, tokenTag: FIXTURE_TAG });
+    expect(JSON.stringify(name)).not.toContain(FIXTURE_TOKEN);
   });
 
-  it('knows no sid without a descriptor', () => {
-    expect(savedCodeName(savedStreamCode({ descriptor: null }))).toEqual({
-      sid: null,
-      slot: 1,
-      tokenTag: FIXTURE_TAG,
-    });
+  it('reads the slot from the QR, not the saved field', () => {
+    const saved = savedStreamCode({ raw: captureRaw({ slot: 3 }), slot: 1 });
+    expect(savedCodeName(saved).slot).toBe(3);
   });
 
-  it('knows no token tag for a raw it cannot read', () => {
-    expect(savedCodeName(savedStreamCode({ raw: 'not a capture code' })).tokenTag).toBeNull();
+  it('names nothing for a raw it cannot read', () => {
+    expect(savedCodeName(savedStreamCode({ raw: 'not a capture code' }))).toEqual(NO_NAME);
   });
 
   it('tags a re-issued code apart from the first', () => {
-    const reissued = savedStreamCode({
-      raw: captureRaw({ tok: 'fake-token-reissued-00000000000' }),
-    });
-    expect(savedCodeName(reissued).tokenTag).toBe('2bdf2246');
+    const reissued = savedStreamCode({ raw: captureRaw({ tok: 'tok-reissued-000000000' }) });
+    // From an independent FNV-1a, outside the code under test.
+    expect(savedCodeName(reissued).tokenTag).toBe('cd2b4f7d');
   });
 });
 
 describe('sameCode', () => {
-  const A1: CodeName = { sid: 'a', slot: 1, tokenTag: 't1' };
+  const A1: CodeName = { code: 'a', slot: 1, tokenTag: 't1' };
   it.each<[string, CodeName, CodeName, boolean]>([
     ['the same code', A1, { ...A1 }, true],
-    ['another match', { ...A1, sid: 'b' }, A1, false],
+    ['another code', { ...A1, code: 'b' }, A1, false],
     ['another slot', { ...A1, slot: 2 }, A1, false],
     ['another issue', { ...A1, tokenTag: 't2' }, A1, false],
-    ['a held session with no sid', { ...A1, sid: null }, A1, false],
-    ['a held session with no slot', { ...A1, slot: null }, A1, false],
-    ['a held session with no tag', { ...A1, tokenTag: null }, A1, false],
+    ['a held pairing with no code', { ...A1, code: null }, A1, false],
+    ['a held pairing with no slot', { ...A1, slot: null }, A1, false],
+    ['a held pairing with no tag', { ...A1, tokenTag: null }, A1, false],
     ['nothing named on either side', NO_NAME, NO_NAME, false],
-    ['no sid on either side', { ...A1, sid: null }, { ...A1, sid: null }, false],
+    ['no code on either side', { ...A1, code: null }, { ...A1, code: null }, false],
     ['no slot on either side', { ...A1, slot: null }, { ...A1, slot: null }, false],
     ['no tag on either side', { ...A1, tokenTag: null }, { ...A1, tokenTag: null }, false],
   ])('%s → %s', (_, held, code, expected) => {

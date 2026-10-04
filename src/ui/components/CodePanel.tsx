@@ -1,6 +1,6 @@
 import { memo, useCallback } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
-import { endedByTimeout, type DescriptorError } from '@/domain/credentials/SessionDescriptor';
+import type { CodeError } from '@/domain/credentials/waitingFields';
 import type { ModeCode } from '@/domain/mode/Mode';
 import type { HomePanel } from '@/hooks/useHome';
 import { useT } from '@/hooks/useLanguage';
@@ -63,22 +63,23 @@ function panelCopy(outcome: HomePanel, t: Translator['t'], time: string | null):
         retry: false,
         closable: false,
       };
-    case 'descriptorError':
-      return descriptorCopy(outcome.error, t);
+    case 'codeError':
+      return codeCopy(outcome.error, t);
   }
 }
 
-/** Spec §1's table, with a short title over the spec's sentence (D27). */
-function descriptorCopy(error: DescriptorError, t: Translator['t']): Copy {
+/**
+ * Spec §1's table, with a short title over the spec's sentence (D27). The code
+ * answer names no end reason, so an ended code reads as one that does not work
+ * (amendment §2: "the two 410 lines go").
+ */
+function codeCopy(error: CodeError, t: Translator['t']): Copy {
   const plain = (title: MessageKey, body: MessageKey): Copy => settled(t(title), t(body));
   switch (error.kind) {
     case 'invalid':
     case 'not-found':
-      return plain('panel.descriptor.invalid.title', 'panel.descriptor.invalid.body');
     case 'ended':
-      return endedByTimeout(error.endReason)
-        ? plain('panel.descriptor.timedOut.title', 'panel.descriptor.timedOut.body')
-        : plain('panel.descriptor.endedOrganiser.title', 'panel.descriptor.endedOrganiser.body');
+      return plain('panel.descriptor.invalid.title', 'panel.descriptor.invalid.body');
     case 'offline':
       return {
         ...plain('panel.descriptor.offline.title', 'panel.descriptor.offline.body'),

@@ -4,10 +4,10 @@ import { router } from 'expo-router';
 import { createFakeCaptureEngine } from '@/engine/FakeCaptureEngine';
 import type { Ports } from '@/hooks/usePorts';
 import { createNativeCodeScanner } from '@/scanner/nativeCodeScanner';
-import { createFakeDescriptorPort } from '@/services/fakeDescriptorPort';
-import { createFetchDescriptorPort } from '@/services/fetchDescriptorPort';
+import type { CodePort } from '@/services/codePort';
+import { createFakeCodePort } from '@/services/fakeCodePort';
+import { createFetchCodePort } from '@/services/fetchCodePort';
 import { withTimeout } from '@/services/kvTimeout';
-import type { DescriptorPort } from '@/services/descriptorPort';
 import { createLogger, type Logger } from '@/services/logger';
 import { createModeStore } from '@/services/modeStore';
 import { createHomeIntent } from '@/services/homeIntent';
@@ -21,7 +21,7 @@ import { createNativeShare } from '@/services/native/nativeShare';
 import { createNativeSplash } from '@/services/native/nativeSplash';
 import { createNativeSurfaces } from '@/services/native/nativeSurfaces';
 import { createSecureKeyValueStore } from '@/services/native/secureKeyValueStore';
-import { descriptorOrigin, seaznHosts } from '@/services/seaznHosts';
+import { seaznEnvironment, seaznHosts, seaznOrigin } from '@/services/seaznHosts';
 import { createRingRecord } from '@/services/sessionRecord';
 import { createStreamSettingsStore } from '@/services/streamSettingsStore';
 
@@ -40,12 +40,13 @@ export function createNativePorts(): Ports {
   const clock = () => new Date();
   const env = process.env.EXPO_PUBLIC_SEAZN_ENV;
   const hosts = seaznHosts(env);
-  const descriptor = createDescriptorPort({ env, clock, logger });
+  const code = createCodePort({ env, logger });
   return {
     engine,
     devEngine: __DEV__ ? engine : null,
     scanner,
-    descriptor,
+    code,
+    environment: seaznEnvironment(env),
     kv,
     modeStore: createModeStore(kv),
     scanFlight: createScanFlight(),
@@ -71,19 +72,15 @@ export function createNativePorts(): Ports {
 }
 
 /**
- * D25: the web endpoint does not exist yet, so a development build can opt
- * into the fake with `EXPO_PUBLIC_FAKE_DESCRIPTOR=1`. A release never can.
+ * D25: the web endpoint may not exist yet, so a development build can opt into
+ * the fake with `EXPO_PUBLIC_FAKE_CODE=1`. A release never can.
  */
-function createDescriptorPort(deps: {
-  env: string | undefined;
-  clock: () => Date;
-  logger: Logger;
-}): DescriptorPort {
-  if (__DEV__ && process.env.EXPO_PUBLIC_FAKE_DESCRIPTOR === '1') {
-    return createFakeDescriptorPort(deps.clock);
+function createCodePort(deps: { env: string | undefined; logger: Logger }): CodePort {
+  if (__DEV__ && process.env.EXPO_PUBLIC_FAKE_CODE === '1') {
+    return createFakeCodePort(seaznOrigin(deps.env));
   }
-  return createFetchDescriptorPort({
-    origin: descriptorOrigin(deps.env),
+  return createFetchCodePort({
+    origin: seaznOrigin(deps.env),
     fetch: (url, init) => fetch(url, init),
     logger: deps.logger,
   });

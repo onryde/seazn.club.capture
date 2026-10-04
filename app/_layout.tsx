@@ -7,6 +7,7 @@ import { useAppFonts } from '@/hooks/useAppFonts';
 import { LanguageProvider } from '@/hooks/useLanguage';
 import { routeTarget, useOrientationGate } from '@/hooks/useOrientationGate';
 import { PortsProvider, usePorts, type Ports } from '@/hooks/usePorts';
+import { useProtectCode } from '@/hooks/useProtectCode';
 import { useReopenGate } from '@/hooks/useReopenGate';
 import { BootFailure } from '@/ui/components/BootFailure';
 import { OrientationGate } from '@/ui/components/OrientationGate';
@@ -46,6 +47,7 @@ function Shell() {
   const navigatorReady = useRootNavigationState()?.key !== undefined;
   // The gate decides where to land, then hides the splash (spec §4).
   useReopenGate(navigatorReady);
+  useProtectCode();
   // The one orientation controller (spec §5); its card covers the stack (R25).
   const { card } = useOrientationGate(routeTarget(usePathname()));
   return (

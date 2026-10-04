@@ -1,3 +1,4 @@
+import { NO_NAME, type CodeName } from '@/domain/mode/codeName';
 import type { EngineStatus } from '@/domain/mode/reopen';
 import type { EngineSnapshot } from '@/engine/CaptureEnginePort';
 
@@ -11,21 +12,25 @@ import type { EngineSnapshot } from '@/engine/CaptureEnginePort';
  */
 
 /**
- * Where the session stands relative to going out: nothing yet, armed, on air,
+ * Where the session stands relative to going out: nothing yet, paired, on air,
  * or on air and fighting. A phase, NOT a colour: `connecting` is phase `live`
  * here, yet its plate is inert, never red, because LIVE waits for frames to
  * advance (F-P5-6). A plate's colour comes only from `tallyPlateFor` and
- * `tallyTone` in preflight.ts; lint bars src/ui from importing this.
+ * `tallyTone` in preflight.ts; lint bars src/ui from importing this. Arming
+ * and Armed hold a broadcast, so they are `live` (amendment, Identity rules).
  */
 export type OnAirPhase = 'idle' | 'ready' | 'live' | 'trouble';
 
 export function selectOnAirPhase(snapshot: EngineSnapshot): OnAirPhase {
   switch (snapshot.state.kind) {
     case 'idle':
+    case 'pairing':
     case 'ended':
       return 'idle';
-    case 'armed':
+    case 'paired':
       return 'ready';
+    case 'arming':
+    case 'armed':
     case 'connecting':
     case 'publishing':
       return 'live';
@@ -52,37 +57,34 @@ export function selectIsOnAir(snapshot: EngineSnapshot): boolean {
 /**
  * The engine as the shell's reopen and leave rules see it. Module scope and
  * primitive-returning, like every selector here, so a 1 Hz tick re-renders
- * nothing unless the status itself changes.
+ * nothing unless the status itself changes. The `default` is safe because
+ * `ended` and the resting kinds are named: a new broadcast kind is `live` by
+ * construction, which is the amendment's rule.
  */
 export function selectEngineStatus(snapshot: EngineSnapshot): EngineStatus {
   const { state } = snapshot;
   switch (state.kind) {
     case 'idle':
       return 'idle';
-    case 'armed':
-      return 'armed';
-    case 'connecting':
-    case 'publishing':
-    case 'degraded':
-    case 'reconnecting':
-      return 'live';
+    case 'pairing':
+    case 'paired':
+      return 'paired';
     case 'ended':
-      // D10: an organiser stop spends the code, exactly as the operator's does.
-      return state.reason === 'operator-stopped' || state.reason === 'stopped-by-organiser'
-        ? 'stopped'
-        : 'failed';
+      return state.reason === 'operator-stopped' ? 'stopped' : 'failed';
+    default:
+      return 'live';
   }
 }
 
 /**
- * Whether the orientation gate must hold its lock (ruling R24): armed or live.
- * Armed counts, unlike `selectIsOnAir`, because the camera is already running
- * and a rotation would re-lay it out; this asks "is the camera committed", not
- * "is something going out".
+ * Whether the orientation gate must hold its lock (ruling R24): paired or
+ * live. The camera is open while paired (CD37), so the lock holds from Paired
+ * on, as it did from Armed; this asks "is the camera committed", not "is
+ * something going out".
  */
 export function selectHoldsOrientation(snapshot: EngineSnapshot): boolean {
   const status = selectEngineStatus(snapshot);
-  return status === 'armed' || status === 'live';
+  return status === 'paired' || status === 'live';
 }
 
 /**
@@ -95,29 +97,36 @@ export const selectBitrateKbps = (snapshot: EngineSnapshot) => snapshot.telemetr
 export const selectAudioLevel = (snapshot: EngineSnapshot) => snapshot.telemetry.audioLevel;
 export const selectShed = (snapshot: EngineSnapshot) => snapshot.telemetry.shed;
 export const selectSurvivesBackground = (snapshot: EngineSnapshot) => snapshot.survivesBackground;
-/** Null with no descriptor, and null when the server sent no usable overlay (a /relay or foreign URL). */
+/** The broadcast's overlay, else the pairing's; null when the server sent no usable one. */
 export const selectOverlayUrl = (snapshot: EngineSnapshot) =>
-  snapshot.descriptor?.overlayUrl ?? null;
+  snapshot.broadcast?.overlayUrl ?? snapshot.pairing?.overlayUrl ?? null;
 export const selectPlaybackUrl = (snapshot: EngineSnapshot) =>
-  snapshot.descriptor?.playbackUrl ?? null;
+  snapshot.broadcast?.playbackUrl ?? null;
 export const selectScoreUpdates = (snapshot: EngineSnapshot) =>
-  snapshot.descriptor?.scoreUpdates ?? null;
-export const selectLabel = (snapshot: EngineSnapshot) => snapshot.descriptor?.label ?? null;
-/** What names native's session (I1, C7, N2): read apart, so each is a stable scalar. */
-export const selectHeldSid = (snapshot: EngineSnapshot) => snapshot.descriptor?.sid ?? null;
-export const selectHeldSlot = (snapshot: EngineSnapshot) => snapshot.slot;
-export const selectHeldTokenTag = (snapshot: EngineSnapshot) => snapshot.tokenTag;
-/** The venue's zone from the armed descriptor: every time the operator reads is in it (spec §2). */
+  snapshot.broadcast?.scoreUpdates ?? null;
+/** Pairing's label is empty until the claim is answered: read as none. */
+export const selectLabel = (snapshot: EngineSnapshot) =>
+  snapshot.broadcast?.label || snapshot.pairing?.label || null;
+/** The venue's zone from the pairing: every time the operator reads is in it (spec §2). */
 export const selectVenueZone = (snapshot: EngineSnapshot) =>
-  snapshot.descriptor?.venueTimezone ?? null;
+  snapshot.pairing?.venueTimezone || null;
 /** Time on air when it ended (plan B's `durationMs`); null for a session that never went live. */
 export const selectEndedDurationMs = (snapshot: EngineSnapshot) =>
   snapshot.state.kind === 'ended' ? snapshot.state.durationMs : null;
-/** Whether native holds a session it was armed with; before that there is no overlay to try. */
-export const selectHasDescriptor = (snapshot: EngineSnapshot) => snapshot.descriptor !== null;
-/** A number, not the Date: `useEngineSelector` compares by identity. */
-export const selectWarmingDeadlineMs = (snapshot: EngineSnapshot) =>
-  snapshot.descriptor?.warmingDeadline.getTime() ?? null;
+/** Whether native holds a pairing; before that there is no overlay to try. */
+export const selectHasPairing = (snapshot: EngineSnapshot) => snapshot.pairing !== null;
+/** What names native's pairing (amendment, Identity rules): read apart, so each is a stable scalar. */
+export const selectHeldCode = (snapshot: EngineSnapshot) => snapshot.pairing?.code ?? null;
+export const selectHeldSlot = (snapshot: EngineSnapshot) => snapshot.pairing?.slot ?? null;
+export const selectHeldTokenTag = (snapshot: EngineSnapshot) => snapshot.pairing?.tokenTag ?? null;
+
+/** For one-off reads (usePairing), never for useEngineSelector: a new object each call. */
+export function selectHeldName(snapshot: EngineSnapshot): CodeName {
+  const { pairing } = snapshot;
+  return pairing === null
+    ? NO_NAME
+    : { code: pairing.code, slot: pairing.slot, tokenTag: pairing.tokenTag };
+}
 
 /** The transport in use, or null when nothing is connected. */
 export function selectTransport(snapshot: EngineSnapshot): 'srt' | 'rtmps' | null {

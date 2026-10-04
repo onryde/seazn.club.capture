@@ -1,7 +1,7 @@
 import { useMemo, useSyncExternalStore } from 'react';
 import { sameCode, savedCodeName } from '@/domain/mode/codeName';
 import type { SavedCode } from '@/domain/mode/savedCode';
-import { selectHeldSid, selectHeldSlot, selectHeldTokenTag } from '@/hooks/engineSelectors';
+import { selectHeldCode, selectHeldSlot, selectHeldTokenTag } from '@/hooks/engineSelectors';
 import { useEngineSelector } from '@/hooks/useCaptureEngine';
 import { usePorts } from '@/hooks/usePorts';
 
@@ -13,14 +13,14 @@ export function useSavedStream(): SavedCode | null {
 }
 
 /**
- * Whether native's session is the saved stream code's: the same sid, slot and
- * token tag (I1, C7, N2). False with nothing saved, and for a session native
- * cannot name.
+ * Whether native's pairing is the saved stream code's: the same code, slot and
+ * token tag (amendment, Identity rules). False with nothing saved, and for a
+ * pairing native cannot name.
  */
-export function useOwnSession(saved: SavedCode | null): boolean {
-  const sid = useEngineSelector(selectHeldSid);
+export function useOwnPairing(saved: SavedCode | null): boolean {
+  const held = useEngineSelector(selectHeldCode);
   const slot = useEngineSelector(selectHeldSlot);
   const tag = useEngineSelector(selectHeldTokenTag);
   const code = useMemo(() => (saved === null ? null : savedCodeName(saved)), [saved]);
-  return code !== null && sameCode({ sid, slot, tokenTag: tag }, code);
+  return code !== null && sameCode({ code: held, slot, tokenTag: tag }, code);
 }

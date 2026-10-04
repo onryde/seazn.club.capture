@@ -1,5 +1,3 @@
-import type { SessionSecrets } from '@/domain/credentials/StreamSession';
-
 /**
  * The allow-list scrub (spec §3 SessionRecord, AGENTS §11), one rule set with
  * native's `SessionRecord` (CD6, carry 11). The source of record is
@@ -110,6 +108,16 @@ export const PLAIN_WORD = /^[A-Za-z0-9_.:-]{1,64}$/;
  */
 const PUBLIC_URL =
   /^[Hh][Tt][Tt][Pp][Ss]:\/\/[^/?#@ \t\n\v\f\r:]+(:[0-9]+)?(\/[^?# \t\n\v\f\r]*)?$/;
+
+/**
+ * The secrets one held code carries (CD6): the token, from the scan to the
+ * unpair. `streamIds` stays for what native still masks by that rule (M3):
+ * a value that is a secret yet also sits in a public URL.
+ */
+export type SessionSecrets = {
+  readonly secrets: readonly string[];
+  readonly streamIds: readonly string[];
+};
 
 /**
  * What a session holds (`SessionSecrets`), and `textOnly`: values masked in

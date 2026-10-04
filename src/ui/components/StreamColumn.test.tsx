@@ -8,11 +8,11 @@ import { pressIn } from '../../../test/press';
 import { renderWithPorts } from '../../../test/renderWithPorts';
 
 const PEEK: Peek = { showing: false, mounted: false, pressIn: vi.fn(), pressOut: vi.fn() };
-const GREEN = { code: true, camera: true, network: true, sound: true };
+const GREEN = { camera: true, network: true, sound: true };
 
 /** A hand-built projection, so the column's own gates are tested apart from the hooks'. */
 const viewOf = (overrides: Partial<Viewfinder>): Viewfinder => ({
-  kind: 'armed',
+  kind: 'paired',
   plate: 'ready',
   statusKey: 'stream.status.ready',
   holdRemaining: null,
@@ -20,11 +20,9 @@ const viewOf = (overrides: Partial<Viewfinder>): Viewfinder => ({
   preflight: GREEN,
   blocker: null,
   reason: null,
-  goLiveBy: null,
   action: 'goLive',
   onAir: false,
   peekable: false,
-  replacing: false,
   start: vi.fn(),
   stop: vi.fn(),
   ...overrides,
@@ -36,7 +34,7 @@ describe('StreamColumn’s Go live', () => {
   beforeEach(() => vi.useFakeTimers());
   afterEach(() => vi.useRealTimers());
 
-  it('starts after the hold when armed with nothing blocking', () => {
+  it('starts after the hold when paired with nothing blocking', () => {
     const view = viewOf({});
     renderWithPorts(
       <StreamColumn view={view} blocked={false} peek={PEEK} onScanAnother={vi.fn()} />,
@@ -46,33 +44,37 @@ describe('StreamColumn’s Go live', () => {
     expect(view.start).toHaveBeenCalledTimes(1);
   });
 
-  // Not reachable through the engine today (idle has no camera of ours), so
-  // pinned here: the column never offers Go live before the engine is armed.
-  it('stays off before the engine is armed, even with every chip green', () => {
-    const view = viewOf({ kind: 'idle', plate: 'starting' });
-    renderWithPorts(
-      <StreamColumn view={view} blocked={false} peek={PEEK} onScanAnother={vi.fn()} />,
-    );
-    pressIn(goLive());
-    act(() => vi.advanceTimersByTime(HOLD_MS));
-    expect(view.start).not.toHaveBeenCalled();
-  });
+  // Not reachable through the engine today (idle and pairing have no camera
+  // of ours ready), so pinned here: the column never offers Go live before the
+  // engine is paired, since native refuses a start that is not.
+  it.each(['idle', 'pairing'] as const)(
+    'stays off while the engine is %s, even with every chip green',
+    (kind) => {
+      const view = viewOf({ kind, plate: 'starting' });
+      renderWithPorts(
+        <StreamColumn view={view} blocked={false} peek={PEEK} onScanAnother={vi.fn()} />,
+      );
+      pressIn(goLive());
+      act(() => vi.advanceTimersByTime(HOLD_MS));
+      expect(view.start).not.toHaveBeenCalled();
+    },
+  );
 
-  it('says the code reason it is given, and only once armed', () => {
-    const reason = 'stream.blocker.noDetails' as const;
-    const blocked = { blocker: 'code', reason, preflight: { ...GREEN, code: false } } as const;
+  it('says the reason it is given, and only once paired', () => {
+    const reason = 'stream.blocker.sound' as const;
+    const blocked = { blocker: 'sound', reason, preflight: { ...GREEN, sound: false } } as const;
     const { rerender } = renderWithPorts(
       <StreamColumn view={viewOf(blocked)} blocked={false} peek={PEEK} onScanAnother={vi.fn()} />,
     );
-    expect(screen.getByText('No session details')).toBeTruthy();
+    expect(screen.getByText('No sound')).toBeTruthy();
     rerender(
       <StreamColumn
-        view={viewOf({ ...blocked, kind: 'idle' })}
+        view={viewOf({ ...blocked, kind: 'pairing' })}
         blocked={false}
         peek={PEEK}
         onScanAnother={vi.fn()}
       />,
     );
-    expect(screen.queryByText('No session details')).toBeNull();
+    expect(screen.queryByText('No sound')).toBeNull();
   });
 });

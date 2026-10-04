@@ -1,15 +1,33 @@
 import { act, fireEvent, screen, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
+import { HOLD_MS } from '@/hooks/useHold';
 import { font } from '@/ui/theme/tokens';
 import { DiagnosticsScreen } from '@/ui/screens/DiagnosticsScreen';
 import { describeBackFromSubScreen } from '../../../test/backFromSubScreen';
 import { readRecord } from '../../../test/fakePorts';
-import { captureWire } from '../../../test/fixtures/wire';
+import { FIXTURE_SECRETS } from '../../../test/fixtures/wire';
+import { pressIn } from '../../../test/press';
 import { renderViewfinder } from '../../../test/renderViewfinder';
 import { renderWithPorts } from '../../../test/renderWithPorts';
 
 const shareButton = () => screen.getByRole('button', { name: 'Share record' });
 const faceOf = (text: string) => getComputedStyle(screen.getByText(text)).fontFamily;
+
+/**
+ * The viewfinder, after the operator held Go live: a visit sends nothing until
+ * then (amendment §2), so the hold is what puts a line in the record.
+ */
+async function startedViewfinder() {
+  vi.useFakeTimers();
+  try {
+    const view = await renderViewfinder();
+    pressIn(screen.getByRole('button', { name: 'Go live. Press and hold for 3 seconds.' }));
+    act(() => vi.advanceTimersByTime(HOLD_MS));
+    return view;
+  } finally {
+    vi.useRealTimers();
+  }
+}
 
 describe('Diagnostics (spec §4)', () => {
   it('shows live values and follows the 1 Hz report (D32)', () => {
@@ -38,30 +56,26 @@ describe('Diagnostics (spec §4)', () => {
 
   // AGENTS §5 and M25: Geist Mono carries the values, never the labels or the record's prose.
   it('sets the values in Geist Mono, and the labels and record lines in Geist', async () => {
-    const view = await renderViewfinder();
+    const view = await startedViewfinder();
     view.rerender(<DiagnosticsScreen />);
     act(() => view.engine.scene('live'));
     expect(faceOf('2840 kbps')).toBe(font.numeric);
     // M6: Geist Medium, the `metricUnit` face, named rather than "not mono".
     expect(faceOf('Bitrate')).toBe(font.bodyMedium);
-    expect(getComputedStyle(screen.getByText(/intent\.arm/)).fontFamily).toBe(font.bodyMedium);
+    expect(getComputedStyle(screen.getByText(/intent\.start/)).fontFamily).toBe(font.bodyMedium);
   });
 
   it('shows the latest session record lines and shares them, with no secret in them', async () => {
-    const view = await renderViewfinder();
+    const view = await startedViewfinder();
     view.rerender(<DiagnosticsScreen />);
-    expect(screen.getByText(/intent\.arm/)).toBeTruthy();
+    expect(screen.getByText(/intent\.start/)).toBeTruthy();
     fireEvent.click(shareButton());
     await waitFor(() => expect(view.share.shared).toHaveLength(1));
     const shared = view.share.shared[0] ?? '';
-    expect(shared).toContain('intent.arm');
-    // M16: the token is the wire's top-level `tok`; every secret is checked.
-    const wire = captureWire() as {
-      tok: string;
-      cred: { srt: { passphrase: string; streamId: string }; rtmps: { streamKey: string } };
-    };
-    const secrets = [wire.tok, wire.cred.srt.passphrase, wire.cred.srt.streamId];
-    for (const secret of [...secrets, wire.cred.rtmps.streamKey]) {
+    expect(shared).toContain('intent.start');
+    // M16: the QR's token is the only secret it carries now; every one is checked.
+    expect(FIXTURE_SECRETS).toHaveLength(1);
+    for (const secret of FIXTURE_SECRETS) {
       expect(secret.length).toBeGreaterThan(0);
       expect({ secret, leaked: shared.includes(secret) }).toEqual({ secret, leaked: false });
     }

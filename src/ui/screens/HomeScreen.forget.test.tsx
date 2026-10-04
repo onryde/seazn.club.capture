@@ -2,9 +2,10 @@ import { act, fireEvent, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { STORE_KEYS } from '@/services/modeStore';
 import { readRecord, TEST_NOW } from '../../../test/fakePorts';
-import { streamSession } from '../../../test/fixtures/session';
+import { savedStreamCode } from '../../../test/fixtures/savedStream';
 import { captureRaw, epochSeconds } from '../../../test/fixtures/wire';
 import { holdIntents } from '../../../test/holdIntents';
+import { pairCode } from '../../../test/pairCode';
 import { pressIn, pressOut } from '../../../test/press';
 import {
   backgroundAndBack,
@@ -20,12 +21,12 @@ const LABEL = 'Seazn XI v Fake CC';
 const GO_LIVE = 'Go live. Press and hold for 3 seconds.';
 const IDLE = 'Tap a mode, then scan its code.';
 
-/** Scan a made-up code from Home, then go back Home: the code is kept, the engine armed. */
-async function armedThenHome(): Promise<LaunchedApp> {
+/** Scan a made-up code from Home, then go back Home: the code is kept, the engine paired. */
+async function pairedThenHome(): Promise<LaunchedApp> {
   const app = await launchApp();
   await scanFromHome(app, captureRaw({ exp: epochSeconds(IN_TWO_HOURS) }));
   expect(app.nav.current()).toBe('stream');
-  expect(app.engine.getSnapshot().state.kind).toBe('armed');
+  expect(app.engine.getSnapshot().state.kind).toBe('paired');
   fireEvent.click(screen.getByRole('button', { name: 'Home' }));
   await flush();
   expect(app.nav.current()).toBe('home');
@@ -40,167 +41,156 @@ const intentLines = (app: LaunchedApp) =>
     .map((entry) => ({ event: entry.event, fields: entry.fields }));
 
 /**
- * I1 (final review, owner-visible): Forget while the code's session is armed
- * or ended disarms it by native's own path, stop then reset once Ended; and an
- * armed or ended engine that no saved code owns is an orphan, cleared on the
- * way Home and never shown as a Ready viewfinder.
+ * I1 (final review, owner-visible): Forget while the code is paired or ended
+ * clears it by native's own path, unpair or reset; and a paired or ended
+ * engine that no saved code owns is an orphan, cleared on the way Home and
+ * never shown as a Ready viewfinder. Task 24 reorders Forget.
  */
-describe('Forget while the code’s session is armed (I1)', () => {
+describe('Forget while the code is paired (I1)', () => {
   beforeEach(() => vi.useFakeTimers());
   afterEach(() => vi.useRealTimers());
 
   // The reviewer's probe P2, end to end.
-  it('stops and resets the session, and the next foreground stays Home with no Go live', async () => {
-    const app = await armedThenHome();
+  it('unpairs the engine, and the next foreground stays Home with no Go live', async () => {
+    const app = await pairedThenHome();
     forget();
     await flush();
     expect(savedKeys(app)).toEqual([]);
-    expect(intentKinds(app)).toEqual(['arm', 'stop', 'reset']);
-    expect(app.engine.getSnapshot()).toMatchObject({ state: { kind: 'idle' }, descriptor: null });
+    expect(intentKinds(app)).toEqual(['pair', 'unpair']);
+    expect(app.engine.getSnapshot()).toMatchObject({ state: { kind: 'idle' }, pairing: null });
     await backgroundAndBack(app);
     expect(app.nav.current()).toBe('home');
     expect(screen.queryByRole('button', { name: GO_LIVE })).toBeNull();
     expect(screen.queryByText(LABEL)).toBeNull();
     expect(screen.getByText(IDLE)).toBeTruthy();
-    expect(intentKinds(app)).toEqual(['arm', 'stop', 'reset']);
+    expect(intentKinds(app)).toEqual(['pair', 'unpair']);
   });
 
-  it('records why the session was stopped and reset', async () => {
-    const app = await armedThenHome();
+  it('records the scan’s pair and why the code was unpaired', async () => {
+    const app = await pairedThenHome();
     forget();
     await flush();
     expect(intentLines(app)).toEqual([
-      { event: 'intent.arm', fields: { slot: 1 } },
-      { event: 'intent.stop', fields: { action: 'forget' } },
-      { event: 'intent.reset', fields: { action: 'forget' } },
+      { event: 'intent.pair', fields: { action: 'pair', claim: 'new', slot: 1 } },
+      { event: 'intent.unpair', fields: { action: 'forget' } },
     ]);
   });
 
-  it('resets, and never stops again, a session ended while the phone sat on Home', async () => {
-    const app = await armedThenHome();
-    // The organiser ends the match while the code waits on the Continue card.
-    act(() => app.engine.scene('stopped-by-organiser'));
+  it('resets, and never unpairs, an engine ended while the phone sat on Home', async () => {
+    const app = await pairedThenHome();
+    act(() => app.engine.scene('stopped'));
     forget();
     await flush();
-    expect(intentKinds(app)).toEqual(['arm', 'reset']);
+    expect(intentKinds(app)).toEqual(['pair', 'reset']);
     expect(app.engine.getSnapshot().state.kind).toBe('idle');
   });
 
-  it('waits for native to answer the stop before it resets', async () => {
-    const app = await armedThenHome();
-    const native = holdIntents(app.engine, ['stop']);
+  it('waits for native to answer the unpair, and sends nothing more', async () => {
+    const app = await pairedThenHome();
+    const native = holdIntents(app.engine, ['unpair']);
     forget();
     await flush();
-    expect(native.held()).toEqual(['stop']);
-    expect(intentKinds(app)).toEqual(['arm']);
+    expect(native.held()).toEqual(['unpair']);
+    expect(intentKinds(app)).toEqual(['pair']);
     act(() => native.release());
     await flush();
-    expect(intentKinds(app)).toEqual(['arm', 'stop', 'reset']);
+    expect(intentKinds(app)).toEqual(['pair', 'unpair']);
     expect(app.engine.getSnapshot().state.kind).toBe('idle');
   });
 
-  // Second call: a double tap before the card goes clears the session once.
-  it('stops once when Forget is pressed twice before native answers', async () => {
-    const app = await armedThenHome();
-    const native = holdIntents(app.engine, ['stop']);
+  // Second call: a double tap before the card goes clears the pairing once.
+  it('unpairs once when Forget is pressed twice before native answers', async () => {
+    const app = await pairedThenHome();
+    const native = holdIntents(app.engine, ['unpair']);
     const button = screen.getByRole('button', { name: 'Forget' });
     fireEvent.click(button);
     fireEvent.click(button);
     await flush();
     act(() => native.release());
     await flush();
-    expect(intentKinds(app)).toEqual(['arm', 'stop', 'reset']);
+    expect(intentKinds(app)).toEqual(['pair', 'unpair']);
   });
 
-  // Final fix round 2, M-d: the reopen gate finds the forgotten session armed,
-  // an orphan, while Forget's stop is still unanswered. One stop, not two.
-  it('sends no second stop when the phone comes back before native answers', async () => {
-    const app = await armedThenHome();
-    const native = holdIntents(app.engine, ['stop']);
+  // Final fix round 2, M-d: the reopen gate finds the forgotten pairing, an
+  // orphan, while Forget's unpair is still unanswered. One unpair, not two.
+  it('sends no second unpair when the phone comes back before native answers', async () => {
+    const app = await pairedThenHome();
+    const native = holdIntents(app.engine, ['unpair']);
     forget();
     await flush();
     await backgroundAndBack(app);
-    expect(native.held()).toEqual(['stop']);
+    expect(native.held()).toEqual(['unpair']);
     act(() => native.release());
     await flush();
-    expect(intentKinds(app)).toEqual(['arm', 'stop', 'reset']);
+    expect(intentKinds(app)).toEqual(['pair', 'unpair']);
     expect(intentLines(app)).toEqual([
-      { event: 'intent.arm', fields: { slot: 1 } },
-      { event: 'intent.stop', fields: { action: 'forget' } },
-      { event: 'intent.reset', fields: { action: 'forget' } },
+      { event: 'intent.pair', fields: { action: 'pair', claim: 'new', slot: 1 } },
+      { event: 'intent.unpair', fields: { action: 'forget' } },
     ]);
     expect(app.nav.current()).toBe('home');
   });
 
-  // After an interruption: a refused forget keeps the code, so its session is kept too.
+  // After an interruption: a refused forget keeps the code, so its pairing is kept too.
   it('sends nothing when the phone refuses to forget the code', async () => {
-    const app = await armedThenHome();
+    const app = await pairedThenHome();
     vi.spyOn(app.kv, 'delete').mockRejectedValue(new Error('keystore locked'));
     forget();
     await flush();
     expect(screen.getByText("Couldn't save on this phone. Try again.")).toBeTruthy();
-    expect(intentKinds(app)).toEqual(['arm']);
-    expect(app.engine.getSnapshot().state.kind).toBe('armed');
+    expect(intentKinds(app)).toEqual(['pair']);
+    expect(app.engine.getSnapshot().state.kind).toBe('paired');
   });
 });
 
 /**
- * I1's second half: an armed or ended engine that no saved code owns is an
+ * I1's second half: a paired or ended engine that no saved code owns is an
  * orphan. The reopen gate clears it on launch and on every foreground, by the
  * same path, and lands Home: never a Ready viewfinder for a code that is gone.
  */
-describe('a session no saved code owns (I1)', () => {
+describe('a pairing no saved code owns (I1)', () => {
   beforeEach(() => vi.useFakeTimers());
   afterEach(() => vi.useRealTimers());
 
-  const session = streamSession();
-  const armNative = (app: { engine: LaunchedApp['engine'] }) =>
-    app.engine.send({
-      kind: 'arm',
-      session,
-      heartbeat: { url: session.descriptor.heartbeatUrl, token: session.token },
-    });
+  const pairNative = (app: { engine: LaunchedApp['engine'] }) =>
+    pairCode(app.engine, savedStreamCode());
 
-  it('is stopped and reset at launch, and the app opens on Home', async () => {
-    const app = await launchApp({ prepare: armNative });
+  it('is unpaired at launch, and the app opens on Home', async () => {
+    const app = await launchApp({ prepare: pairNative });
     expect(app.nav.current()).toBe('home');
     expect(app.nav.history).toEqual([]);
-    expect(intentKinds(app)).toEqual(['arm', 'stop', 'reset']);
+    expect(intentKinds(app)).toEqual(['pair', 'unpair']);
     expect(app.engine.getSnapshot().state.kind).toBe('idle');
-    expect(intentLines(app)).toEqual([
-      { event: 'intent.stop', fields: { action: 'orphan' } },
-      { event: 'intent.reset', fields: { action: 'orphan' } },
-    ]);
+    expect(intentLines(app)).toEqual([{ event: 'intent.unpair', fields: { action: 'orphan' } }]);
   });
 
-  it('is stopped and reset on a return to the foreground, and Home stays', async () => {
+  it('is unpaired on a return to the foreground, and Home stays', async () => {
     const app = await launchApp();
-    act(() => armNative(app));
+    act(() => pairNative(app));
     await backgroundAndBack(app);
     expect(app.nav.current()).toBe('home');
     expect(screen.queryByRole('button', { name: GO_LIVE })).toBeNull();
-    expect(intentKinds(app)).toEqual(['arm', 'stop', 'reset']);
+    expect(intentKinds(app)).toEqual(['pair', 'unpair']);
     expect(app.engine.getSnapshot().state.kind).toBe('idle');
   });
 
   it('is kept, and reopened, while its code is still saved but not active', async () => {
-    const app = await armedThenHome();
+    const app = await pairedThenHome();
     expect(app.kv.entries.has(STORE_KEYS.code('stream'))).toBe(true);
     await backgroundAndBack(app);
     expect(app.nav.current()).toBe('stream');
-    expect(intentKinds(app)).toEqual(['arm']);
-    expect(app.engine.getSnapshot().state.kind).toBe('armed');
+    expect(intentKinds(app)).toEqual(['pair']);
+    expect(app.engine.getSnapshot().state.kind).toBe('paired');
   });
 
-  it('is never stopped on air, saved code or not', async () => {
+  it('is never touched on air, saved code or not', async () => {
     const app = await launchApp();
     act(() => {
-      armNative(app);
+      pairNative(app);
       app.engine.scene('live');
     });
     await backgroundAndBack(app);
     expect(app.nav.current()).toBe('stream');
-    expect(intentKinds(app)).toEqual(['arm']);
+    expect(intentKinds(app)).toEqual(['pair']);
     expect(
       screen.getByRole('button', { name: 'Stop. Press and hold for 3 seconds.' }),
     ).toBeTruthy();
@@ -208,7 +198,7 @@ describe('a session no saved code owns (I1)', () => {
 
   // The rest of probe P2: nothing reachable goes live on the forgotten code.
   it('leaves nothing to go live on after Forget and a foreground', async () => {
-    const app = await armedThenHome();
+    const app = await pairedThenHome();
     forget();
     await flush();
     await backgroundAndBack(app);

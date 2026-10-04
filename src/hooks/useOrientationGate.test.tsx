@@ -42,7 +42,10 @@ describe('useOrientationGate', () => {
   });
 
   it.each<[string, SessionState]>([
-    ['armed', { kind: 'armed' }],
+    // CD37: the camera is open from Pairing on, so the lock holds as it did from Armed.
+    ['pairing', { kind: 'pairing' }],
+    ['paired', { kind: 'paired' }],
+    ['armed', { kind: 'armed', cause: 'operator', notReady: 'sound' }],
     ['live', { kind: 'publishing', transport: 'srt', sinceEpochMs: 1 }],
   ])(
     'on air (%s), a tilt upright shows the card without locking, and the turn back does not re-lock',
@@ -240,7 +243,7 @@ describe('useOrientationGate', () => {
     hold(fakes, UPRIGHT, 0); // off air: lock to the hands, portrait applied
     expect(fakes.orientationLock.locks).toEqual(['portrait']);
     await act(async () => refuse(new Error('refused'))); // the old landscape refusal lands
-    act(() => fakes.engine.forceState({ kind: 'armed' })); // keep
+    act(() => fakes.engine.forceState({ kind: 'paired' })); // keep
     act(() => fakes.engine.forceState({ kind: 'idle' })); // portrait again: still applied
     await act(async () => undefined);
     expect(fakes.orientationLock.locks).toEqual(['portrait']);
@@ -303,16 +306,16 @@ describe('useOrientationGate', () => {
 
   it('locks the target on air when nothing is locked yet, then keeps it (R37)', async () => {
     const fakes = createFakePorts();
-    fakes.engine.forceState({ kind: 'armed' });
+    fakes.engine.forceState({ kind: 'paired' });
     const { hook } = await gate('landscape', fakes);
     expect(hook.result.current).toEqual({ lock: 'landscape', card: 'none' });
     expect(fakes.orientationLock.locks).toEqual(['landscape']);
   });
 
-  it('shows the upright card on Home while an armed engine keeps the landscape lock (R35)', async () => {
+  it('shows the upright card on Home while a paired engine keeps the landscape lock (R35)', async () => {
     const { fakes, hook } = await gate('landscape');
     expect(fakes.orientationLock.locks).toEqual(['landscape']);
-    act(() => fakes.engine.forceState({ kind: 'armed' }));
+    act(() => fakes.engine.forceState({ kind: 'paired' }));
     hook.rerender({ to: 'portrait' });
     expect(hook.result.current).toEqual({ lock: 'keep', card: 'turnUpright' });
     expect(fakes.orientationLock.locks).toEqual(['landscape']);

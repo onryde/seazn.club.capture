@@ -17,7 +17,7 @@ import { colour } from '@/ui/theme/tokens';
  */
 export function StreamScreen() {
   const leave = useStreamLeave();
-  const view = useViewfinder(leave.departed);
+  const view = useViewfinder();
   const { settings } = useStreamSettings();
   const peek = usePeek(view.peekable);
   const scanAnother = useScanAnother(leave.leaveWith);
@@ -25,8 +25,7 @@ export function StreamScreen() {
   return (
     <View style={settings.side === 'left' ? styles.columnLeft : styles.columnRight}>
       <StreamStage
-        armed={view.kind === 'armed'}
-        replacing={view.replacing}
+        paired={view.kind === 'paired'}
         overlayOn={settings.overlay}
         peek={peek}
         canLeave={leave.canLeave}

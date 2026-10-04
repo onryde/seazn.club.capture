@@ -1,20 +1,27 @@
 import { useCallback, useEffect, useState, useSyncExternalStore } from 'react';
-import type { DescriptorError, SessionDescriptor } from '@/domain/credentials/SessionDescriptor';
+import type { CodeError } from '@/domain/credentials/waitingFields';
 import type { Mode, ModeCode } from '@/domain/mode/Mode';
 import { recognise } from '@/domain/mode/recognise';
-import { isExpired, savedCodeFrom, venueZone, type SavedCode } from '@/domain/mode/savedCode';
+import {
+  isExpired,
+  savedCodeFrom,
+  venueZone,
+  type SavedCode,
+  type SavedStream,
+} from '@/domain/mode/savedCode';
 import { scanOutcome, type ScanOutcome } from '@/domain/mode/scanOutcome';
 import {
   ignoreUnexpected,
   isReady,
-  useDescriptorCheck,
+  useCodeCheck,
   type OpenCode,
   type OpenOrCheck,
   type SetPanel,
-} from '@/hooks/useDescriptorCheck';
+} from '@/hooks/useCodeCheck';
 import { useDisarm } from '@/hooks/useDisarm';
 import { useFormatTime } from '@/hooks/useFormatTime';
 import { useT } from '@/hooks/useLanguage';
+import { usePairing } from '@/hooks/usePairing';
 import { usePorts } from '@/hooks/usePorts';
 import type { MessageKey } from '@/i18n/messages';
 import { MODE_NAME } from '@/i18n/modeNames';
@@ -31,9 +38,9 @@ export type HomePanel =
   | PanelOutcome
   | { readonly kind: 'checking'; readonly tapped: Mode }
   | {
-      readonly kind: 'descriptorError';
+      readonly kind: 'codeError';
       readonly tapped: Mode;
-      readonly error: DescriptorError;
+      readonly error: CodeError;
       readonly code: StreamCode;
     };
 
@@ -89,7 +96,7 @@ export function useHome(): { view: HomeView; actions: HomeActions } {
   const [statusKey, setStatusKey] = useState<MessageKey | null>(null);
   const saveFailed = useSaveFailed(setStatusKey);
   const openCode = useOpenCode(setStatusKey, saveFailed);
-  const { openOrCheck, retryCheck } = useDescriptorCheck(openCode, panel, setPanel);
+  const { openOrCheck, retryCheck } = useCodeCheck(openCode, panel, setPanel);
   const handle = useHandleScan(openOrCheck, setPanel, setStatusKey);
   const tapTile = useTapTile(handle, setPanel, setStatusKey);
   useScanRequest(snapshot.status === 'ready', tapTile);
@@ -128,22 +135,28 @@ function useSaveFailed(setStatusKey: SetStatusKey): SaveFailed {
 
 /**
  * Save the code and make it active, then open its mode. A code that could not
- * be saved is not opened: the stream screen reads it back from the store.
+ * be saved is not opened: the stream screen reads it back from the store. A
+ * stream code is paired once it is saved, never before (amendment §2's
+ * outcome table: saved, then /stream, then pair).
  */
 function useOpenCode(setStatusKey: SetStatusKey, saveFailed: SaveFailed): OpenCode {
   const { modeStore, clock, navigation } = usePorts();
+  const pair = usePairing();
   return useCallback(
-    async (code: ModeCode, descriptor: SessionDescriptor | null) => {
+    async (code: ModeCode, stream: SavedStream | null) => {
       if (!isReady(modeStore)) return;
+      const saved = savedCodeFrom(code, clock(), stream);
       try {
-        await modeStore.open(savedCodeFrom(code, clock(), descriptor));
+        await modeStore.open(saved);
       } catch {
         return saveFailed('open');
       }
       setStatusKey(null);
-      if (code.mode === 'stream') navigation.go('stream');
+      if (code.mode !== 'stream') return;
+      navigation.go('stream');
+      pair(saved, 'new');
     },
-    [modeStore, clock, navigation, setStatusKey, saveFailed],
+    [modeStore, clock, navigation, pair, setStatusKey, saveFailed],
   );
 }
 
@@ -297,7 +310,9 @@ function usePanelActions(
 }
 
 /**
- * The Continue button. The card renders only from a `ready` snapshot (R12).
+ * The Continue button: makes the code active, opens Live Stream, and pairs by
+ * the identity rules (the same code paired is adopted). The card renders only
+ * from a `ready` snapshot (R12).
  * Expiry is judged again on the press, against the current clock: a code that
  * ran out while Home sat open is expired the way the reopen gate does it, which
  * removes the card and says so on the status line.
@@ -309,6 +324,7 @@ function usePanelActions(
  */
 function useContinue(setStatusKey: SetStatusKey, saveFailed: SaveFailed): () => void {
   const { modeStore, navigation, clock, logger } = usePorts();
+  const pair = usePairing();
   return useCallback(() => {
     const code = savedStream(modeStore);
     if (code === null) return;
@@ -328,16 +344,17 @@ function useContinue(setStatusKey: SetStatusKey, saveFailed: SaveFailed): () => 
         () => {
           setStatusKey(null);
           navigation.go('stream');
+          pair(code, 'new');
         },
         () => saveFailed('continue'),
       )
       .catch(ignoreUnexpected);
-  }, [modeStore, navigation, clock, logger, setStatusKey, saveFailed]);
+  }, [modeStore, navigation, clock, logger, pair, setStatusKey, saveFailed]);
 }
 
 /**
  * The Forget button: immediate, with no confirmation (spec §4). I1 (final
- * review, owner-visible): the code's session goes with it, armed or ended, so
+ * review, owner-visible): the code's pairing goes with it, paired or ended, so
  * nothing is left to reopen or go live on. On air Home is hidden, so a
  * broadcast never reaches here, and `useDisarm` never touches one anyway. A
  * refused forget keeps the code, and so its session.

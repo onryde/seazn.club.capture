@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import type { SessionSecrets } from '@/domain/credentials/StreamSession';
-import { SCRUBBED, scrubEvent, scrubFields, type LogFields } from '@/services/scrub';
+import {
+  SCRUBBED,
+  scrubEvent,
+  scrubFields,
+  type LogFields,
+  type SessionSecrets,
+} from '@/services/scrub';
 
 const TOKEN = 'fake-token-0001';
 const PASSPHRASE = 'fake-pass-0001';

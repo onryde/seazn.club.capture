@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { descriptorOrigin, seaznHosts } from '@/services/seaznHosts';
+import { seaznEnvironment, seaznHosts, seaznOrigin } from '@/services/seaznHosts';
 
 describe('seaznHosts', () => {
   it('uses production only when the build says production', () => {
@@ -11,13 +11,23 @@ describe('seaznHosts', () => {
   });
 });
 
-describe('descriptorOrigin', () => {
-  it('asks staging for descriptors unless explicitly production', () => {
-    expect(descriptorOrigin(undefined)).toBe('https://stg.seazn.club');
-    expect(descriptorOrigin('production')).toBe('https://seazn.club');
+describe('seaznOrigin', () => {
+  it('asks staging for codes unless explicitly production', () => {
+    expect(seaznOrigin(undefined)).toBe('https://stg.seazn.club');
+    expect(seaznOrigin('production')).toBe('https://seazn.club');
   });
 
   it.each(['', 'staging', 'PRODUCTION '])('asks staging for %j', (env) => {
-    expect(descriptorOrigin(env)).toBe('https://stg.seazn.club');
+    expect(seaznOrigin(env)).toBe('https://stg.seazn.club');
+  });
+});
+
+describe('seaznEnvironment (CD36)', () => {
+  it('names production only when the build says production', () => {
+    expect(seaznEnvironment('production')).toBe('production');
+  });
+
+  it.each([undefined, '', 'staging', 'PRODUCTION '])('names staging for %j', (env) => {
+    expect(seaznEnvironment(env)).toBe('staging');
   });
 });

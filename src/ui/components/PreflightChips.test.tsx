@@ -5,7 +5,7 @@ import { PreflightChips } from '@/ui/components/PreflightChips';
 import { colour } from '@/ui/theme/tokens';
 import { renderWithPorts } from '../../../test/renderWithPorts';
 
-const GREEN = { code: true, camera: true, network: true, sound: true };
+const GREEN = { camera: true, network: true, sound: true };
 
 /** Which token a chip's border took (jsdom's cascade); what a phone draws is a device check. */
 const TOKEN = StyleSheet.create({
@@ -22,41 +22,39 @@ function borderOf(style: ViewStyle): string {
 
 describe('PreflightChips (spec §1)', () => {
   it('names every chip and whether it is ready', () => {
-    renderWithPorts(<PreflightChips preflight={{ ...GREEN, sound: false }} goLiveBy="14:10" />);
+    renderWithPorts(<PreflightChips preflight={{ ...GREEN, sound: false }} />);
     expect(screen.getByLabelText('Camera: ready')).toBeTruthy();
     expect(screen.getByLabelText('Sound: not ready')).toBeTruthy();
     expect(screen.getByLabelText('Network: ready')).toBeTruthy();
-    expect(screen.getByLabelText('Code: ready')).toBeTruthy();
-    expect(screen.getByText('Go live by 14:10')).toBeTruthy();
   });
 
-  it('shows them in the spec’s order: camera, sound, network, code', () => {
-    const view = renderWithPorts(<PreflightChips preflight={GREEN} goLiveBy={null} />);
+  // Amendment §2: the code chip went with the go-live deadline; native's
+  // verdict names three checks.
+  it('shows them in the spec’s order: camera, sound, network, and nothing else', () => {
+    const view = renderWithPorts(<PreflightChips preflight={GREEN} />);
     const labels = [...view.container.querySelectorAll('[aria-label]')].map((chip) =>
       chip.getAttribute('aria-label'),
     );
-    expect(labels).toEqual(['Camera: ready', 'Sound: ready', 'Network: ready', 'Code: ready']);
+    expect(labels).toEqual(['Camera: ready', 'Sound: ready', 'Network: ready']);
   });
 
   it('borders a ready chip lime and a chip that is not ready orange', () => {
-    renderWithPorts(<PreflightChips preflight={{ ...GREEN, network: false }} goLiveBy={null} />);
+    renderWithPorts(<PreflightChips preflight={{ ...GREEN, network: false }} />);
     const border = (label: string) => getComputedStyle(screen.getByLabelText(label)).borderTopColor;
     expect(border('Camera: ready')).toBe(borderOf(TOKEN.ok));
     expect(border('Network: not ready')).toBe(borderOf(TOKEN.off));
   });
 
-  it('says nothing about a deadline it does not have', () => {
-    renderWithPorts(<PreflightChips preflight={GREEN} goLiveBy={null} />);
+  it('says nothing about a deadline: there is none to go live by', () => {
+    renderWithPorts(<PreflightChips preflight={GREEN} />);
     expect(screen.queryByText(/Go live by/)).toBeNull();
   });
 
   it('speaks the operator’s language', () => {
-    renderWithPorts(
-      <PreflightChips preflight={{ ...GREEN, code: false }} goLiveBy="14:10 CEST" />,
-      { deviceLanguages: ['fr'] },
-    );
-    expect(screen.getByLabelText('Code : en attente')).toBeTruthy();
+    renderWithPorts(<PreflightChips preflight={{ ...GREEN, sound: false }} />, {
+      deviceLanguages: ['fr'],
+    });
+    expect(screen.getByLabelText('Son : en attente')).toBeTruthy();
     expect(screen.getByLabelText('Caméra : OK')).toBeTruthy();
-    expect(screen.getByText('Direct à lancer avant 14:10 CEST')).toBeTruthy();
   });
 });

@@ -65,7 +65,7 @@ describe('diagnosticsSections (spec §4)', () => {
       Resent: '—',
       Dropped: '—',
     });
-    expect(rowsFor('armed-ready')).toMatchObject({ Transport: '—', Bitrate: '—', Target: '—' });
+    expect(rowsFor('paired-ready')).toMatchObject({ Transport: '—', Bitrate: '—', Target: '—' });
   });
 
   // Carry 11: a field native has no reading for is a dash, never 0 and never healthy.
@@ -91,9 +91,9 @@ describe('diagnosticsSections (spec §4)', () => {
   });
 
   // Carry 12: the audio row is audio leaving the phone, not the mic's health.
-  // Native reports no rate before air, so armed reads a dash: that is correct.
-  it('sends no audio while armed, whatever the mic hears', () => {
-    expect(rowsFor('armed-ready')).toMatchObject({ 'Sending audio': '—', Video: '—' });
+  // Native reports no rate before air, so paired reads a dash: that is correct.
+  it('sends no audio while paired, whatever the mic hears', () => {
+    expect(rowsFor('paired-ready')).toMatchObject({ 'Sending audio': '—', Video: '—' });
   });
 
   it('says what it does not know about the phone and the heartbeat', () => {

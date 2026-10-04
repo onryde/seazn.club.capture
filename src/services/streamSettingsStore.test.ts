@@ -41,26 +41,35 @@ function heldWrites() {
 }
 
 describe('stream settings (D23)', () => {
-  it('starts with the overlay on and controls on the right', async () => {
+  it('starts with the overlay on, controls on the right and the automatic start on', async () => {
     const { store, events } = build();
     await store.load();
-    expect(store.getSnapshot()).toEqual({ overlay: true, side: 'right' });
+    expect(store.getSnapshot()).toEqual({ overlay: true, side: 'right', automatic: true });
     // Nothing saved is the first launch, not an unreadable record.
     expect(events()).toEqual([]);
   });
 
   it('reads what was saved', async () => {
     const kv = createMemoryKeyValueStore({
-      [SETTINGS_KEY]: '{"v":1,"overlay":false,"side":"left"}',
+      [SETTINGS_KEY]: '{"v":2,"overlay":false,"side":"left","automatic":false}',
     });
     const { store } = build(kv);
     await store.load();
-    expect(store.getSnapshot()).toEqual({ overlay: false, side: 'left' });
+    expect(store.getSnapshot()).toEqual({ overlay: false, side: 'left', automatic: false });
   });
 
+  // A4's upgrade: an operator's overlay and side survive, and the automatic start reads on.
   it.each([
-    ['{"v":1,"overlay":false,"side":"right"}', { overlay: false, side: 'right' }],
-    ['{"v":1,"overlay":true,"side":"left"}', { overlay: true, side: 'left' }],
+    ['{"v":1,"overlay":false,"side":"right"}', { overlay: false, side: 'right', automatic: true }],
+    ['{"v":1,"overlay":true,"side":"left"}', { overlay: true, side: 'left', automatic: true }],
+    [
+      '{"v":2,"overlay":true,"side":"left","automatic":false}',
+      { overlay: true, side: 'left', automatic: false },
+    ],
+    [
+      '{"v":2,"overlay":false,"side":"right","automatic":true}',
+      { overlay: false, side: 'right', automatic: true },
+    ],
   ])('reads %s as saved, not as the defaults', async (text, expected) => {
     const { store, events } = build(createMemoryKeyValueStore({ [SETTINGS_KEY]: text }));
     await store.load();
@@ -87,6 +96,9 @@ describe('stream settings (D23)', () => {
     ['{"v":1,"side":"left"}'],
     ['{"v":1,"overlay":false,"side":"up"}'],
     ['{"v":1,"overlay":false}'],
+    ['{"v":2,"overlay":false,"side":"left"}'],
+    ['{"v":2,"overlay":false,"side":"left","automatic":"on"}'],
+    ['{"v":3,"overlay":false,"side":"left","automatic":true}'],
   ])('reads %s as unreadable, never as a half setting', async (text) => {
     const { store, events } = build(createMemoryKeyValueStore({ [SETTINGS_KEY]: text }));
     await store.load();
@@ -116,7 +128,9 @@ describe('stream settings (D23)', () => {
     expect(store.getSnapshot().side).toBe('left');
     expect(listener).toHaveBeenCalledTimes(1);
     expect(await saved).toBe('saved');
-    expect(kv.entries.get(SETTINGS_KEY)).toBe('{"v":1,"overlay":true,"side":"left"}');
+    expect(kv.entries.get(SETTINGS_KEY)).toBe(
+      '{\"v\":2,"overlay":true,"side":"left",\"automatic\":true}',
+    );
   });
 
   it('keeps the same snapshot until something changes (useSyncExternalStore)', async () => {
@@ -151,10 +165,12 @@ describe('stream settings (D23)', () => {
     await first.load();
     await first.set({ overlay: false, side: 'left' });
     // A literal, not SETTINGS_KEY: renaming the key would reset every operator's settings (m2).
-    expect(kv.entries.get('settings.stream')).toBe('{"v":1,"overlay":false,"side":"left"}');
+    expect(kv.entries.get('settings.stream')).toBe(
+      '{"v":2,"overlay":false,"side":"left","automatic":true}',
+    );
     const { store: second, events } = build(kv);
     await second.load();
-    expect(second.getSnapshot()).toEqual({ overlay: false, side: 'left' });
+    expect(second.getSnapshot()).toEqual({ overlay: false, side: 'left', automatic: true });
     expect(events()).toEqual([]);
   });
 
@@ -208,9 +224,11 @@ describe('a change before the saved settings are read', () => {
     expect(set).not.toHaveBeenCalled();
     answer('{"v":1,"overlay":false,"side":"left"}');
     await loading;
-    expect(store.getSnapshot()).toEqual({ overlay: false, side: 'right' });
+    expect(store.getSnapshot()).toEqual({ overlay: false, side: 'right', automatic: true });
     expect(await saving).toBe('saved');
-    expect(kv.entries.get(SETTINGS_KEY)).toBe('{"v":1,"overlay":false,"side":"right"}');
+    expect(kv.entries.get(SETTINGS_KEY)).toBe(
+      '{\"v\":2,"overlay":false,"side":"right",\"automatic\":true}',
+    );
     expect(events()).toEqual([]);
   });
 
@@ -222,9 +240,11 @@ describe('a change before the saved settings are read', () => {
     const second = store.set({ side: 'left' });
     answer('{"v":1,"overlay":true,"side":"right"}');
     await loading;
-    expect(store.getSnapshot()).toEqual({ overlay: false, side: 'left' });
+    expect(store.getSnapshot()).toEqual({ overlay: false, side: 'left', automatic: true });
     expect([await first, await second]).toEqual(['saved', 'saved']);
-    expect(kv.entries.get(SETTINGS_KEY)).toBe('{"v":1,"overlay":false,"side":"left"}');
+    expect(kv.entries.get(SETTINGS_KEY)).toBe(
+      '{\"v\":2,"overlay":false,"side":"left",\"automatic\":true}',
+    );
   });
 
   it('reads the saved settings first when a change comes before any load', async () => {
@@ -234,10 +254,12 @@ describe('a change before the saved settings are read', () => {
     const get = vi.spyOn(kv, 'get');
     const { store } = build(kv);
     expect(await store.set({ side: 'right' })).toBe('saved');
-    expect(kv.entries.get(SETTINGS_KEY)).toBe('{"v":1,"overlay":false,"side":"right"}');
+    expect(kv.entries.get(SETTINGS_KEY)).toBe(
+      '{\"v\":2,"overlay":false,"side":"right",\"automatic\":true}',
+    );
     await store.load();
     expect(get).toHaveBeenCalledTimes(1);
-    expect(store.getSnapshot()).toEqual({ overlay: false, side: 'right' });
+    expect(store.getSnapshot()).toEqual({ overlay: false, side: 'right', automatic: true });
   });
 
   it('saves the change over the defaults after a refused read, and says the read failed', async () => {
@@ -249,8 +271,10 @@ describe('a change before the saved settings are read', () => {
     };
     const { store, events } = build(refusingRead);
     expect(await store.set({ side: 'left' })).toBe('saved');
-    expect(store.getSnapshot()).toEqual({ overlay: true, side: 'left' });
-    expect(kv.entries.get(SETTINGS_KEY)).toBe('{"v":1,"overlay":true,"side":"left"}');
+    expect(store.getSnapshot()).toEqual({ overlay: true, side: 'left', automatic: true });
+    expect(kv.entries.get(SETTINGS_KEY)).toBe(
+      '{\"v\":2,"overlay":true,"side":"left",\"automatic\":true}',
+    );
     expect(events()).toEqual(['settings.read-refused']);
   });
 });
@@ -272,7 +296,9 @@ describe('two changes in quick succession (a second call)', () => {
     }
     expect(await first).toBe('saved');
     expect(await second).toBe('saved');
-    expect(kv.entries.get(SETTINGS_KEY)).toBe('{"v":1,"overlay":false,"side":"left"}');
+    expect(kv.entries.get(SETTINGS_KEY)).toBe(
+      '{\"v\":2,"overlay":false,"side":"left",\"automatic\":true}',
+    );
   });
 
   it('still saves the next change after a refused write', async () => {
@@ -288,7 +314,9 @@ describe('two changes in quick succession (a second call)', () => {
     await flush();
     expect(await first).toBe('refused');
     expect(await second).toBe('saved');
-    expect(kv.entries.get(SETTINGS_KEY)).toBe('{"v":1,"overlay":false,"side":"left"}');
+    expect(kv.entries.get(SETTINGS_KEY)).toBe(
+      '{\"v\":2,"overlay":false,"side":"left",\"automatic\":true}',
+    );
     expect(events()).toEqual(['settings.write-refused']);
   });
 });

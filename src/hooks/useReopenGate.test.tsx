@@ -55,12 +55,12 @@ describe('useReopenGate', () => {
     expect(fakes.kv.entries.has(STORE_KEYS.code('stream'))).toBe(false);
   });
 
-  // The store says no mode is active; the engine is armed with the kept code.
+  // The store says no mode is active; the engine is paired with the kept code.
   it('follows the engine over the store', async () => {
     const fakes = createFakePorts({
       kvSeed: { [STORE_KEYS.code('stream')]: encodeSavedCode(code) },
     });
-    fakes.engine.forceState({ kind: 'armed' });
+    fakes.engine.forceState({ kind: 'paired' });
     gate(fakes);
     await waitFor(() => expect(fakes.navigation.current()).toBe('stream'));
   });
@@ -140,9 +140,7 @@ describe('useReopenGate: beyond the happy path', () => {
     expect(fakes.kv.entries.get(STORE_KEYS.active)).toBe('stream');
     expect(noticeOf(fakes)).toBeNull();
 
-    act(() =>
-      fakes.engine.forceState({ kind: 'ended', reason: 'hold-window-expired', durationMs: null }),
-    );
+    act(() => fakes.engine.forceState({ kind: 'ended', reason: 'fatal-error', durationMs: null }));
     act(() => fakes.foreground.fire());
     await waitFor(() => expect(fakes.navigation.current()).toBe('home'));
     expect(noticeOf(fakes)).toEqual({
@@ -208,7 +206,7 @@ describe('useReopenGate: an ended session whose code is gone (N4)', () => {
   const kinds = (fakes: ReturnType<typeof createFakePorts>) =>
     fakes.engine.intents.map((intent) => intent.kind);
 
-  it.each(['stopped', 'stopped-by-organiser', 'fatal'] as const)(
+  it.each(['stopped', 'fatal'] as const)(
     'clears a %s session once its code expired while the app was away',
     async (scene) => {
       const fakes = createFakePorts({ kvSeed: inStream });
@@ -250,7 +248,7 @@ describe('useReopenGate: an ended session whose code is gone (N4)', () => {
 
   it.each([
     ['idle', null],
-    ['armed', 'armed-ready'],
+    ['paired', 'paired-ready'],
     ['live', 'live'],
   ] as const)('never clears an engine that is %s', async (_, scene) => {
     const fakes = createFakePorts({ kvSeed: inStream });
@@ -274,7 +272,7 @@ describe('useReopenGate: inside Live Stream already (M22)', () => {
     ['streamSettings', 'a valid code', null],
     ['streamDiagnostics', 'a valid code', null],
     ['streamSettings', 'the engine on air', 'live'],
-    ['streamDiagnostics', 'the engine armed', 'armed-ready'],
+    ['streamDiagnostics', 'the engine paired', 'paired-ready'],
   ] as const)('stays on %s with %s', async (route, _, scene) => {
     const fakes = createFakePorts({ kvSeed: inStream });
     if (scene !== null) fakes.engine.scene(scene);

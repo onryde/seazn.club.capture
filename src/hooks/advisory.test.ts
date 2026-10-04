@@ -7,7 +7,7 @@ import en from '@/i18n/en.json';
 const QUIET = {
   shed: false,
   overlayFailed: false,
-  armed: false,
+  paired: false,
   overlayOn: true,
   charging: true,
 } as const;
@@ -24,7 +24,7 @@ describe('topAdvisory (D17: one caption at a time, most important first)', () =>
   });
 
   it('says the score preview failed, over the rest', () => {
-    expect(topAdvisory({ ...QUIET, overlayFailed: true, armed: true, charging: false })).toBe(
+    expect(topAdvisory({ ...QUIET, overlayFailed: true, paired: true, charging: false })).toBe(
       'overlayFailed',
     );
   });
@@ -34,26 +34,26 @@ describe('topAdvisory (D17: one caption at a time, most important first)', () =>
   });
 
   // Ruling M6 (overrides D17/D18): a device advisory outranks the score note,
-  // which shows while arming only when nothing else is up.
-  it('puts a device advisory before the score note while arming', () => {
-    expect(topAdvisory({ ...QUIET, armed: true, charging: false })).toBe('notCharging');
-    expect(topAdvisory({ ...QUIET, armed: true, shed: true })).toBe('shed');
+  // which shows while paired (framing a shot, before any broadcast) only when nothing else is up.
+  it('puts a device advisory before the score note while paired', () => {
+    expect(topAdvisory({ ...QUIET, paired: true, charging: false })).toBe('notCharging');
+    expect(topAdvisory({ ...QUIET, paired: true, shed: true })).toBe('shed');
   });
 
   it.each([[true], [null]] as const)(
-    'tells the operator, while arming, that the score runs ahead when nothing else is up (charging %s)',
+    'tells the operator, while paired, that the score runs ahead when nothing else is up (charging %s)',
     (charging) => {
-      expect(topAdvisory({ ...QUIET, armed: true, charging })).toBe('scoreAhead');
+      expect(topAdvisory({ ...QUIET, paired: true, charging })).toBe('scoreAhead');
     },
   );
 
-  it('drops the score note once not arming, leaving the charging warning', () => {
-    expect(topAdvisory({ ...QUIET, armed: false })).toBeNull();
-    expect(topAdvisory({ ...QUIET, armed: false, charging: false })).toBe('notCharging');
+  it('drops the score note once not paired, leaving the charging warning', () => {
+    expect(topAdvisory({ ...QUIET, paired: false })).toBeNull();
+    expect(topAdvisory({ ...QUIET, paired: false, charging: false })).toBe('notCharging');
   });
 
   it('does not mention the score with the preview off', () => {
-    expect(topAdvisory({ ...QUIET, armed: true, overlayOn: false })).toBeNull();
+    expect(topAdvisory({ ...QUIET, paired: true, overlayOn: false })).toBeNull();
   });
 
   it('warns when not charging; unknown is not a warning', () => {
@@ -72,9 +72,13 @@ function snapshot(telemetry: Partial<Telemetry>): EngineSnapshot {
   return {
     state: { kind: 'publishing', transport: 'srt', sinceEpochMs: 1 },
     telemetry: { ...IDLE_TELEMETRY, ...telemetry },
-    descriptor: null,
-    slot: null,
-    tokenTag: null,
+    pairing: null,
+    broadcast: null,
+    ready: { camera: true, sound: true, network: true, held: true },
+    refusal: null,
+    lastEnd: null,
+    unpaired: null,
+    codeEndedPending: false,
     camera: 'own',
     reportedAtMs: 1,
     survivesBackground: false,

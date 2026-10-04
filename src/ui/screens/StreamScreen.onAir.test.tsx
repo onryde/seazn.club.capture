@@ -215,14 +215,18 @@ describe('what viewers see (spec §4, carry 13)', () => {
   });
 
   /**
-   * A descriptor always carries a playback URL (parseDescriptor refuses one
-   * without), so no picture means no descriptor: native on air in a session
-   * it reports none for, as the unarmed fake does.
+   * A broadcast always carries a playback URL (BroadcastInfo.playbackUrl is
+   * required), so no picture means no broadcast in the snapshot: native on air
+   * with none reported, forced here on an engine that holds no pairing.
    */
-  const liveWithNoDescriptor = { prepare: (fakes: FakePorts) => fakes.engine.scene('live') };
+  const liveWithNoBroadcast = {
+    engine: 'idle',
+    prepare: (fakes: FakePorts) =>
+      fakes.engine.forceState({ kind: 'publishing', transport: 'srt', sinceEpochMs: 1 }),
+  } as const;
 
   it('is off, and says why, on air with no viewer picture: a press lights nothing', async () => {
-    await renderViewfinder({}, liveWithNoDescriptor);
+    await renderViewfinder({}, liveWithNoBroadcast);
     expect(plate()).toBe('Live');
     expect(peek().getAttribute('aria-disabled')).toBe('true');
     expect(screen.getByText('No viewer picture')).toBeTruthy();
@@ -237,7 +241,7 @@ describe('what viewers see (spec §4, carry 13)', () => {
   });
 
   it('says why in French', async () => {
-    await renderViewfinder({ deviceLanguages: ['fr'] }, liveWithNoDescriptor);
+    await renderViewfinder({ deviceLanguages: ['fr'] }, liveWithNoBroadcast);
     expect(screen.getByText('Image indisponible')).toBeTruthy();
   });
 
@@ -292,16 +296,15 @@ describe('the score preview on air', () => {
     expect(screen.getByTestId('overlay')).toBeTruthy();
   });
 
-  // M1: native re-fetches the descriptor on every reconnect (spec §1); a new
-  // overlay URL is a new showing, tried afresh, with no caption.
+  // M1: native re-asks the code (spec §1), so the pairing's overlay URL can
+  // change; a new URL is a new showing, tried afresh, with no caption. Paired,
+  // since the fake's broadcast keeps the URL it went live with.
   it('tries a new overlay URL afresh, with no caption (carry 13)', async () => {
-    const view = await onAir('live');
+    const view = await renderViewfinder();
     act(() => view.surfaces.failOverlay());
     expect(screen.getByText(OVERLAY_FAILED)).toBeTruthy();
-    const descriptor = view.engine.getSnapshot().descriptor;
-    if (descriptor === null) throw new Error('armed with no descriptor');
     const next = 'https://stg.seazn.club/overlay/fixtures/next-fixture';
-    act(() => view.engine.setDescriptor({ ...descriptor, overlayUrl: next }));
+    act(() => view.engine.setPairing({ overlayUrl: next }));
     expect(screen.queryByText(OVERLAY_FAILED)).toBeNull();
     expect(screen.getByTestId('overlay').dataset.url).toBe(`${next}?delay=0`);
   });

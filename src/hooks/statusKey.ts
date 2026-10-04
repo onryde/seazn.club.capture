@@ -6,13 +6,7 @@ import type {
   SessionState,
 } from '@/domain/session/SessionState';
 import type { CameraState, EngineSnapshot } from '@/engine/CaptureEnginePort';
-import {
-  CODE_READS,
-  selectCameraReady,
-  selectNetworkReachable,
-  selectSoundReady,
-  type CodeCheck,
-} from '@/hooks/preflight';
+import { selectCameraReady, selectNetworkReachable, selectSoundReady } from '@/hooks/preflight';
 import type { MessageKey } from '@/i18n/messages';
 
 export type StatusKey = Extract<MessageKey, `stream.status.${string}`>;
@@ -40,10 +34,9 @@ const RECONNECTING: Readonly<Record<ReconnectCause, StatusKey>> = {
   'not-delivered': 'stream.status.holdingNotDelivered',
 };
 
+/** Native's two end reasons; how a broadcast ended is `lastEnd`'s, which Task 28 reads. */
 const ENDED: Readonly<Record<EndReason, StatusKey>> = {
   'operator-stopped': 'stream.status.endedOperator',
-  'stopped-by-organiser': 'stream.status.endedOrganiser',
-  'hold-window-expired': 'stream.status.endedHoldExpired',
   'fatal-error': 'stream.status.endedFatal',
 };
 
@@ -76,6 +69,9 @@ const ON_AIR: CameraLines = {
  */
 const CAMERA_LINES: Readonly<Record<Kind, CameraLines | null>> = {
   idle: null,
+  pairing: null,
+  paired: BEFORE_AIR,
+  arming: BEFORE_AIR,
   armed: BEFORE_AIR,
   connecting: BEFORE_AIR,
   publishing: ON_AIR,
@@ -98,14 +94,21 @@ export function selectStatusKey(snapshot: EngineSnapshot): StatusKey {
   return camera ?? stateKey(snapshot);
 }
 
-/** Each state's own line. A table, exempt from the line count (AGENTS §12). */
+/**
+ * Each state's own line. A table, exempt from the line count (AGENTS §12).
+ * Today's words on the new states; Task 28 gives Pairing, Paired, Arming and
+ * Armed their own lines.
+ */
 function stateKey(snapshot: EngineSnapshot): StatusKey {
   const { state, telemetry } = snapshot;
   switch (state.kind) {
     case 'idle':
+    case 'pairing':
       return 'stream.status.starting';
+    case 'paired':
+      return pairedKey(snapshot);
+    case 'arming':
     case 'armed':
-      return armedKey(snapshot);
     case 'connecting':
       return 'stream.status.connecting';
     case 'publishing':
@@ -123,32 +126,14 @@ function stateKey(snapshot: EngineSnapshot): StatusKey {
 }
 
 /**
- * The first pre-flight chip that is off, in the blocker's order after the
- * code (Task 13), read through the chips' own selectors so the two agree.
+ * The first pre-flight chip that is off, in the blocker's order, read through
+ * the chips' own selectors so the two agree.
  */
-function armedKey(snapshot: EngineSnapshot): StatusKey {
+function pairedKey(snapshot: EngineSnapshot): StatusKey {
   if (!selectCameraReady(snapshot)) return 'stream.status.noCamera';
   if (!selectNetworkReachable(snapshot)) return 'stream.status.noNetwork';
   if (!selectSoundReady(snapshot)) return 'stream.status.noSound';
   return 'stream.status.ready';
-}
-
-/**
- * Arm-time facts the snapshot cannot know: whether the saved code is usable,
- * whether the clock has passed the warming deadline (spec §5), and whether
- * the session's details are there at all, read from `CODE_READS` as the code
- * chip and Go live's reason are (R3, ruling I3). An unusable code says so from
- * the start, since no wait arms it; the others are facts of an armed session.
- * None overrides an on-air line.
- */
-export function viewfinderStatusKey(
-  engineKey: StatusKey,
-  input: { kind: Kind; code: CodeCheck },
-): StatusKey {
-  const { line } = CODE_READS[input.code];
-  if (line === null) return engineKey;
-  const says = input.kind === 'armed' || (input.kind === 'idle' && input.code === 'unusable');
-  return says ? line : engineKey;
 }
 
 /**

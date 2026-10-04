@@ -1,15 +1,8 @@
 import { useCallback, useMemo } from 'react';
 import type { SessionState } from '@/domain/session/SessionState';
-import {
-  selectPlaybackUrl,
-  selectStateKind,
-  selectVenueZone,
-  selectWarmingDeadlineMs,
-} from '@/hooks/engineSelectors';
+import { selectPlaybackUrl, selectStateKind } from '@/hooks/engineSelectors';
 import {
   blockerReason,
-  CODE_READS,
-  codeCheck,
   goLiveBlocker,
   selectCameraReady,
   selectNetworkReachable,
@@ -17,7 +10,6 @@ import {
   tallyPlateFor,
   type BlockerKey,
   type Chip,
-  type CodeCheck,
   type Preflight,
   type TallyPlate,
 } from '@/hooks/preflight';
@@ -25,14 +17,10 @@ import {
   selectHoldRemaining,
   selectHoldWindow,
   selectStatusKey,
-  viewfinderStatusKey,
   type StatusKey,
 } from '@/hooks/statusKey';
 import { useEngine, useEngineSelector } from '@/hooks/useCaptureEngine';
-import { useDeadlinePassed } from '@/hooks/useDeadlinePassed';
-import { useFormatTime } from '@/hooks/useFormatTime';
 import { usePorts } from '@/hooks/usePorts';
-import { useStreamArm } from '@/hooks/useStreamArm';
 
 type Kind = SessionState['kind'];
 export type ViewfinderAction = 'goLive' | 'stop' | 'ended';
@@ -48,25 +36,24 @@ export type Viewfinder = {
   readonly blocker: Chip | null;
   /** Why Go live is off, at the control (ruling I3); null with nothing blocking. */
   readonly reason: BlockerKey | null;
-  readonly goLiveBy: string | null;
   readonly action: ViewfinderAction;
   readonly onAir: boolean;
   /** On air with a viewer picture to play (carry 13): the peek's one gate. */
   readonly peekable: boolean;
-  /**
-   * N3: on the way from another code's session to this one's arm. The column
-   * reads not ready until it arrives, and the stage shows nothing of the old
-   * session (its label, overlay or Ended screen).
-   */
-  readonly replacing: boolean;
   start(): void;
   stop(): void;
 };
 
-/** Which control the column offers in each state: Go live before air, Stop on it, none after. */
+/**
+ * Which control the column offers in each state: Go live before air, Stop on
+ * it, none after. Arming and Armed hold a broadcast, so they offer Stop.
+ */
 const ACTION: Readonly<Record<Kind, ViewfinderAction>> = {
   idle: 'goLive',
-  armed: 'goLive',
+  pairing: 'goLive',
+  paired: 'goLive',
+  arming: 'stop',
+  armed: 'stop',
   connecting: 'stop',
   publishing: 'stop',
   degraded: 'stop',
@@ -75,87 +62,56 @@ const ACTION: Readonly<Record<Kind, ViewfinderAction>> = {
 };
 
 /**
- * `departed`: the visit has started to leave, so it never arms again (ruling
- * I1). M7: memoised on its inputs, so a re-render that changes none of them
- * hands the column the same object and its React.memo parts skip (AGENTS §8).
+ * M7: memoised on its inputs, so a re-render that changes none of them hands
+ * the column the same object and its React.memo parts skip (AGENTS §8). A
+ * visit never pairs (amendment §2): Home does, so nothing here sends one.
  */
-export function useViewfinder(departed: () => boolean): Viewfinder {
-  const { unusable, replacing } = useStreamArm(departed);
-  // N3: a replace reads as armed with no details yet, whatever the old session is doing.
-  const engineKind = useEngineSelector(selectStateKind);
-  const kind = replacing ? 'armed' : engineKind;
-  const checks = usePreflight(unusable, replacing);
+export function useViewfinder(): Viewfinder {
+  const kind = useEngineSelector(selectStateKind);
+  const preflight = usePreflight();
   const engineKey = useEngineSelector(selectStatusKey);
   const countdown = useHoldCountdown();
   const intents = useIntents();
   const playable = useEngineSelector(selectPlaybackUrl) !== null;
   return useMemo(
-    () => ({
-      ...project({ kind, unusable, checks, engineKey, playable }),
-      ...countdown,
-      ...intents,
-      replacing,
-    }),
-    [kind, unusable, checks, engineKey, playable, countdown, intents, replacing],
+    () => ({ ...project({ kind, preflight, engineKey, playable }), ...countdown, ...intents }),
+    [kind, preflight, engineKey, playable, countdown, intents],
   );
 }
 
 type ProjectInput = {
   readonly kind: Kind;
-  readonly unusable: boolean;
-  readonly checks: PreflightView;
+  readonly preflight: Preflight;
   readonly engineKey: StatusKey;
   readonly playable: boolean;
 };
 
-/** The column's reading of native state and the saved code. Pure: a projection, no state machine. */
+/** The column's reading of native state. Pure: a projection, no state machine. */
 function project(
   input: ProjectInput,
-): Omit<Viewfinder, 'holdRemaining' | 'holdWindow' | 'start' | 'stop' | 'replacing'> {
-  const { kind, checks } = input;
-  const blocker = goLiveBlocker(checks.preflight);
+): Omit<Viewfinder, 'holdRemaining' | 'holdWindow' | 'start' | 'stop'> {
+  const { kind, preflight } = input;
+  const blocker = goLiveBlocker(preflight);
   const action = ACTION[kind];
   return {
     kind,
-    plate: input.unusable && kind === 'idle' ? 'notReady' : tallyPlateFor(kind, blocker === null),
-    statusKey: viewfinderStatusKey(input.engineKey, { kind, code: checks.code }),
-    preflight: checks.preflight,
+    plate: tallyPlateFor(kind, blocker === null),
+    statusKey: input.engineKey,
+    preflight,
     blocker,
-    reason: blockerReason(blocker, checks.code),
-    goLiveBy: action === 'goLive' ? checks.goLiveBy : null,
+    reason: blockerReason(blocker),
     action,
     onAir: action === 'stop',
     peekable: action === 'stop' && input.playable,
   };
 }
 
-type PreflightView = {
-  readonly preflight: Preflight;
-  readonly code: CodeCheck;
-  readonly goLiveBy: string | null;
-};
-
-/**
- * Spec §1's four chips; the code chip is `CODE_READS`', as the status line is
- * (R3). Memoised (M7). While replacing (N3) this code's details are not known
- * yet, whatever the old session's descriptor says.
- */
-function usePreflight(unusable: boolean, replacing: boolean): PreflightView {
+/** Spec §1's three chips, from native's verdict (A11). Memoised (M7). */
+function usePreflight(): Preflight {
   const camera = useEngineSelector(selectCameraReady);
   const network = useEngineSelector(selectNetworkReachable);
   const sound = useEngineSelector(selectSoundReady);
-  const deadlineMs = useEngineSelector(selectWarmingDeadlineMs);
-  const zone = useEngineSelector(selectVenueZone);
-  const passed = useDeadlinePassed(deadlineMs);
-  const format = useFormatTime();
-  const deadlineKnown = deadlineMs !== null && !replacing;
-  const code = codeCheck({ unusable, deadlineKnown, passed });
-  const chip = CODE_READS[code].chip;
-  const goLiveBy = chip && deadlineMs !== null ? format(new Date(deadlineMs), zone) : null;
-  return useMemo(
-    () => ({ preflight: { code: chip, camera, network, sound }, code, goLiveBy }),
-    [chip, camera, network, sound, code, goLiveBy],
-  );
+  return useMemo(() => ({ camera, network, sound }), [camera, network, sound]);
 }
 
 /** The reconnect hold's countdown, for the `holding*` lines; null otherwise. Memoised (M7). */

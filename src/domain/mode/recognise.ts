@@ -1,4 +1,4 @@
-import { parseCaptureQr } from '@/domain/credentials/parseCaptureQr';
+import { parseStreamCode } from '@/domain/credentials/streamCode';
 import type { Recognition } from '@/domain/mode/Mode';
 
 /**
@@ -20,8 +20,8 @@ const SCORE_PATH = /^\/score\/([^/?#\s]+)\/?$/;
 
 /**
  * UI routing only, never a trust decision (spec §2). Recognising a stream code
- * says which panel to show; nothing is trusted until S1's descriptor fetch
- * confirms it with the server.
+ * says which panel to show; nothing is trusted until the code's check
+ * (`GET code`) confirms it with the server.
  */
 export function recognise(raw: string, now: Date, hosts: readonly string[]): Recognition {
   if (raw.length === 0 || raw.length > MAX_RAW_LENGTH) return FOREIGN;
@@ -41,21 +41,23 @@ function recogniseLink(raw: string, text: string, hosts: readonly string[]): Rec
 }
 
 /**
- * capture-qr.v2 only (spec §1, D6): v1 and anything older are foreign; a
- * higher version that still names a sid asks for an update. The full parse
- * runs here, so a code the parser would refuse is never offered as a code.
+ * capture-qr v2 after the stable code (A1): `{v:2, code, slot, tok, exp?}`. A
+ * higher version that still names a code asks for an update. A pre-amendment
+ * v2, with a sid and credentials but no code, is not a code this app reads.
+ * The full parse runs here, so a code the parser would refuse (carry G1) is
+ * never offered as a code, and never saved.
  */
 function recogniseStream(raw: string, text: string, now: Date): Recognition {
   const data = parseJson(text);
-  if (!isRecord(data) || !isNonEmptyString(data.sid)) return FOREIGN;
+  if (!isRecord(data) || !isNonEmptyString(data.code)) return FOREIGN;
   if (isInteger(data.v) && data.v > 2) return { outcome: 'newerVersion', mode: 'stream' };
-  const parsed = parseCaptureQr(data);
+  const parsed = parseStreamCode(data);
   if (!parsed.ok) return FOREIGN;
-  const { sid, slot, token, expiresAt } = parsed.value;
-  if (expiresAt.getTime() <= now.getTime()) {
+  const { expiresAt } = parsed.value;
+  if (expiresAt !== null && expiresAt.getTime() <= now.getTime()) {
     return { outcome: 'expired', mode: 'stream', at: expiresAt };
   }
-  return { outcome: 'code', code: { mode: 'stream', raw, sid, slot, token, expiresAt } };
+  return { outcome: 'code', code: { mode: 'stream', raw, ...parsed.value } };
 }
 
 function parseJson(text: string): unknown {

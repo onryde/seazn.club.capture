@@ -40,7 +40,7 @@ function HudPart(): null {
   return null;
 }
 
-/** The same, re-rendered by the sound level: a crash while armed, with no change of state. */
+/** The same, re-rendered by the sound level: a crash while paired, with no change of state. */
 function MeterPart(): null {
   const level = useEngineSelector(selectAudioLevel);
   if (crash.on) throw new Error(`render failed at ${level}`);
@@ -148,7 +148,7 @@ describe('RootBoundary', () => {
       expect(screen.queryByRole('button', { name: STOP })).toBeNull();
       // Native never heard of the crash: the broadcast goes on.
       expect(app.engine.getSnapshot().state.kind).toBe('degraded');
-      expect(intentKinds(app)).toEqual(['arm', 'start']);
+      expect(intentKinds(app)).toEqual(['pair', 'start']);
       expect(readRecord(app.record).map((entry) => entry.event)).toContain('ui.crash');
 
       crash.on = false;
@@ -156,7 +156,7 @@ describe('RootBoundary', () => {
       await flush();
       expect(app.nav.current()).toBe('stream');
       await hold(STOP);
-      expect(intentKinds(app)).toEqual(['arm', 'start', 'stop']);
+      expect(intentKinds(app)).toEqual(['pair', 'start', 'stop']);
       expect(app.engine.getSnapshot().state).toMatchObject({
         kind: 'ended',
         reason: 'operator-stopped',
@@ -199,14 +199,14 @@ describe('RootBoundary', () => {
     });
   });
 
-  describe('armed', () => {
+  describe('paired', () => {
     beforeEach(() => vi.useFakeTimers());
     afterEach(() => {
       crash.on = false;
       vi.useRealTimers();
     });
 
-    it('a crash before air: Try again returns to Arm, and Home then Continue still opens it', async () => {
+    it('a crash before air: Try again returns to Ready, and Home then Continue still opens it', async () => {
       const app = await launchApp({
         extra: <MeterPart />,
         around: (ui, fakes) => <RootBoundary ports={fakes.ports}>{ui}</RootBoundary>,
@@ -227,8 +227,8 @@ describe('RootBoundary', () => {
       await flush();
       expect(app.nav.current()).toBe('stream');
       expect(screen.getByRole('button', { name: GO_LIVE })).toBeTruthy();
-      // Adopted every time, never re-armed: the same code's session.
-      expect(intentKinds(app)).toEqual(['arm']);
+      // Adopted every time, never paired again: the same code's pairing.
+      expect(intentKinds(app)).toEqual(['pair']);
     });
   });
 });
