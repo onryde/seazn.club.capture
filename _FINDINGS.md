@@ -735,6 +735,25 @@ volunteer is the professional-tool shape N12 already turned down.
 **Not found:** Softvelum's public pages say nothing about a branded or
 white-label build. The SDK page returned 404 on 2026-10-04.
 
+**Second reference: Google Cloud Live Stream best practices**
+(`docs.cloud.google.com/livestream/docs/best-practices`, read 2026-10-04):
+
+- **SRT is preferred over RTMP** for packet-drop recovery, forward error
+  correction, multiple audio streams and higher bandwidth. That agrees with SRT
+  first and RTMPS as the fallback.
+- **Its input bitrates are for a studio contribution feed, not a phone.** Its
+  720p25–30 input is 8 Mbps (H.264) or 7.2 Mbps (H.265); 720p50–60 is 15 Mbps.
+  Those assume a wired uplink feeding a cloud transcoder. Our 720p30 at 3000k
+  is a phone ceiling set by heat and a ground's cellular uplink (N1), so it is a
+  quality trade-off, not a recommended figure. Do not "correct" it towards
+  8 Mbps.
+- **Audio:** it gives stereo AAC at 64 or 160 kbps. Our bitrate regulator
+  budgets audio at 128k (`BitrateRegulator`: target + 128k), above the 64k
+  floor. C8 should confirm the encoder actually sends 128k, which is a device
+  claim.
+- **Silent on** keyframe interval, B-frames, CBR versus VBR, SRT latency and
+  passphrase, reconnects, timestamps and phones.
+
 ---
 
 ## P5 device spike (Android)
