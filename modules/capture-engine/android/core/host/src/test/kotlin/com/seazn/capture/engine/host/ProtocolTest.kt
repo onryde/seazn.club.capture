@@ -258,6 +258,33 @@ class ProtocolTest {
     host.shutdown()
   }
 
+  // Review C4c round 1, minor 4: the check is quiet only with nothing due but itself. Here a core task
+  // posts a zero-delay task behind the check, so one task is due when the check runs: the ack waits for it.
+  @Test
+  fun `a quiet op waits for a zero-delay task posted behind its check, and is acked after it`() {
+    val scheduler = ExecutorScheduler()
+    val events = Events()
+    val host = Host(scheduler, events::add)
+    host.handle("""{"op":"quiet","seq":1}""")
+    events.await("ack:1")
+    val running = CountDownLatch(1)
+    val gate = CountDownLatch(1)
+    scheduler.schedule(0) {
+      running.countDown()
+      gate.await()
+      scheduler.schedule(0) { events.add("""{"ev":"behind"}""") }
+    }
+    running.await()
+    // The check is queued while that task runs, so the task it posts lands behind the check.
+    host.handle("""{"op":"quiet","seq":2}""")
+    gate.countDown()
+    events.await("ack:2")
+    val names = events.names()
+    assertTrue(names.indexOf("behind") in 0 until names.indexOf("ack:2"), "acked before the task due behind its check: $names")
+    host.shutdown()
+    scheduler.shutdown()
+  }
+
   // Review C4c M-2: the quiet check runs on the core's thread and posts itself again while a line waits;
   // a host shut down stops it, so a dying host never writes an ack its kit has stopped reading for.
   @Test

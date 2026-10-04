@@ -33,6 +33,21 @@ const AT_REST: EngineSnapshot = {
   survivesBackground: false,
 };
 
+// Review C4c round 1, minor 2: the D3 and I-3 tests mean something only while the fake delivers as
+// Expo does, on a later macrotask. A fake that delivers inside `emit` would pass them vacuously.
+describe('the fake native module', () => {
+  it('delivers an event on a later macrotask, never inside emit', async () => {
+    const native = new FakeNativeModule();
+    const heard: number[] = [];
+    native.addListener('onAck', ({ seq }) => heard.push(seq));
+    native.emit('onAck', { seq: 1 });
+    native.emit('onAck', { seq: 2 });
+    expect(heard).toEqual([]);
+    await flush();
+    expect(heard).toEqual([1, 2]);
+  });
+});
+
 describe('the native engine (carry 1)', () => {
   it("Review Focus 2 reports native's state from construction, and seeds the record from its tail", () => {
     const native = new FakeNativeModule({
@@ -79,6 +94,29 @@ describe('the native engine (carry 1)', () => {
     await flush();
     await malformed(1_000 + 3 * MALFORMED_LOG_MS);
     expect(native.logged).toEqual([MALFORMED(1), MALFORMED(4), MALFORMED(5)]);
+  });
+
+  // Review C4c round 1, minor 3: between lines the logged count is a floor, so dispose writes the rest.
+  it('I-4 a burst of malformed snapshots then dispose records the full count, once', async () => {
+    const native = new FakeNativeModule({ current: pairedWire });
+    const engine = createNativeCaptureEngine(native, { ...quiet, now: () => 1_000 });
+    for (let i = 0; i < 100; i += 1) native.emit('onSnapshot', { state: { kind: 'exploded' } });
+    await flush();
+    expect(native.logged).toEqual([MALFORMED(1)]);
+    engine.dispose();
+    expect(native.logged).toEqual([MALFORMED(1), MALFORMED(100)]);
+  });
+
+  it.each([
+    ['no snapshot was malformed', 0, []],
+    ['every malformed snapshot is already in a line', 1, [MALFORMED(1)]],
+  ])('I-4 dispose writes no malformed line when %s', async (_why, bursts, logged) => {
+    const native = new FakeNativeModule({ current: pairedWire });
+    const engine = createNativeCaptureEngine(native, { ...quiet, now: () => 1_000 });
+    for (let i = 0; i < bursts; i += 1) native.emit('onSnapshot', { state: { kind: 'exploded' } });
+    await flush();
+    engine.dispose();
+    expect(native.logged).toEqual(logged);
   });
 
   it("I-4 the malformed line's kind and key are on the record's allow-list, so native keeps them", () => {

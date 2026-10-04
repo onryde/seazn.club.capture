@@ -2,8 +2,11 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { describeEngineContract } from '../../../test/engineContract';
 import { startHostEngine, type HostEngine } from '../../../test/hostEngine';
 import { SERVER_END } from '../../../test/serverScript';
-import type { LastEnd } from '@/domain/session/Pairing';
+import type { LastEnd, Readiness } from '@/domain/session/Pairing';
 import { KIT_CODE_A } from './contract/engineScenarios';
+import { toEngineSnapshot } from './snapshotWire';
+import { UNREPORTED } from './unreported';
+import { vectorWire } from './wire/vectorWire';
 
 // Every scenario, server words included: the host's ScriptedServer answers them (Task 21).
 describeEngineContract('the bridge over the real Kotlin core (JVM host)', startHostEngine);
@@ -58,9 +61,13 @@ describe('the host harness', () => {
   });
 
   // Review C4c M-7: a row per check, each on its own host, so no row holds most of the 30 s budget.
-  const checks = ['camera', 'sound', 'network', 'held'] as const;
-  it("sweeps native's 4 readiness checks", () => {
-    expect(checks).toHaveLength(4);
+  // Review C4c round 1, minor 5: the rows are the engine's own ready keys, never a list typed here,
+  // and they are the keys the snapshot wire reads from native's idle vector, with at least one.
+  const checks = Object.keys(UNREPORTED.ready) as (keyof Readiness)[];
+  it('sweeps every readiness check the engine reads from native', () => {
+    const read = toEngineSnapshot(vectorWire('idle'))?.ready;
+    expect(checks.length).toBeGreaterThan(0);
+    expect(checks).toEqual(Object.keys(read ?? {}));
   });
 
   it.each(checks)('sets the %s check both ways, as the snapshot reads it', async (check) => {

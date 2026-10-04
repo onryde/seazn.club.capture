@@ -50,7 +50,7 @@ export function createNativeCaptureEngine(
   const malformed = malformedLines(native, deps.now ?? Date.now);
   const read = (body: unknown): EngineSnapshot | null => {
     const next = toEngineSnapshot(body, cache);
-    if (next === null) malformed();
+    if (next === null) malformed.refused();
     return next;
   };
   // Nothing at all is a native that has not reported yet, not a malformed body.
@@ -83,6 +83,7 @@ export function createNativeCaptureEngine(
     dispose: () => {
       for (const subscription of subscriptions) subscription.remove();
       acks.release();
+      malformed.flush();
     },
   };
 }
@@ -93,9 +94,12 @@ export function createNativeCaptureEngine(
  * written before the tail was read can arrive after it: events come in the
  * order native wrote them, so arriving lines the tail holds are dropped until
  * the first it does not, and every line after that is new. Lines are compared
- * by text: native's carry their own `at`, so two are never equal (Task 33:
- * native stamps a seq, and the seq replaces the text). A line delivered while
- * the tail is still being read waits for it, and passes the same check.
+ * by text, so until Task 33's record seq a genuine new line whose text equals
+ * a tail line, arriving before any line the tail lacks, is dropped too: native's
+ * lines carry their own `at`, to the millisecond, which makes that rare, not
+ * impossible (review C4c round 1, minor 1). Task 33's seq replaces the text. A
+ * line delivered while the tail is still being read waits for it, and passes
+ * the same check.
  */
 function seedRecord(native: CaptureEngineNative, onLine: (line: string) => void): Subscription {
   let early: string[] | null = [];
@@ -123,17 +127,32 @@ function seedRecord(native: CaptureEngineNative, onLine: (line: string) => void)
  * Review C4c I-4: counts every snapshot the wire refused, and records the count
  * so far through native's record, at most one line a [MALFORMED_LOG_MS]: once
  * Task 31's watchdog lands, a wire drift must not read as an engine that has
- * stopped answering.
+ * stopped answering. Between lines the last logged count is a floor, not the
+ * total; `flush` (at dispose) writes the total when drops came since the last
+ * line, so the record ends on the full count.
  */
-function malformedLines(native: CaptureEngineNative, now: () => number): () => void {
+function malformedLines(
+  native: CaptureEngineNative,
+  now: () => number,
+): { refused(): void; flush(): void } {
   let count = 0;
+  let logged = 0;
   let loggedAtMs: number | null = null;
-  return () => {
-    count += 1;
-    const atMs = now();
-    if (loggedAtMs !== null && atMs - loggedAtMs < MALFORMED_LOG_MS) return;
+  const line = (atMs: number | null) => {
     loggedAtMs = atMs;
+    logged = count;
     native.log('warn', 'engine.malformed-snapshot', { count });
+  };
+  return {
+    refused: () => {
+      count += 1;
+      const atMs = now();
+      if (loggedAtMs !== null && atMs - loggedAtMs < MALFORMED_LOG_MS) return;
+      line(atMs);
+    },
+    flush: () => {
+      if (count > logged) line(loggedAtMs);
+    },
   };
 }
 
