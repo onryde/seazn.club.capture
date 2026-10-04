@@ -36,6 +36,12 @@ tasks.test {
     .dir(layout.projectDirectory.dir("../../src/scrub"))
     .withPropertyName("scrubVectors")
     .withPathSensitivity(PathSensitivity.RELATIVE)
+  // The app's dictionaries, which the notification's words must equal (Task 18), under the same rule.
+  systemProperty("capture.i18n", layout.projectDirectory.dir("../../../../src/i18n").asFile.absolutePath)
+  inputs
+    .files(fileTree(layout.projectDirectory.dir("../../../../src/i18n")) { include("*.json") })
+    .withPropertyName("dictionaries")
+    .withPathSensitivity(PathSensitivity.RELATIVE)
   testLogging {
     events("failed")
     exceptionFormat = TestExceptionFormat.FULL
