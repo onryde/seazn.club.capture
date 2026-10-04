@@ -193,6 +193,30 @@ describe('Forget while the code is paired (I1)', () => {
     expect(screen.queryByRole('button', { name: GO_LIVE })).toBeTruthy();
   });
 
+  // C4b-N1: Forget X, then X is scanned again while native has not yet
+  // answered the unpair. The snapshot still shows X paired, but that pairing
+  // is about to go: the scan pairs again rather than adopt it, and native,
+  // applying intents in order, unpairs and then pairs X.
+  it('pairs a code scanned again while Forget’s unpair is unanswered', async () => {
+    const raw = captureRaw({ exp: epochSeconds(IN_TWO_HOURS) });
+    const app = await pairedThenHome();
+    const native = holdIntents(app.engine, ['unpair', 'pair']);
+    forget();
+    await flush();
+    await scanFromHome(app, raw);
+    expect(app.engine.getSnapshot().state.kind).toBe('paired');
+    act(() => native.release());
+    await flush();
+    expect(intentKinds(app).slice(-2)).toEqual(['unpair', 'pair']);
+    expect(app.engine.getSnapshot()).toMatchObject({
+      state: { kind: 'paired' },
+      pairing: { slot: 1 },
+    });
+    expect(app.kv.entries.has(STORE_KEYS.code('stream'))).toBe(true);
+    expect(app.nav.current()).toBe('stream');
+    expect(screen.queryByRole('button', { name: GO_LIVE })).toBeTruthy();
+  });
+
   // After an interruption: the unpair goes first, so a refused forget keeps
   // the code with an Idle engine; Continue pairs it again.
   it('keeps the code, and says so, when the phone refuses to forget it after the unpair', async () => {

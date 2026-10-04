@@ -22,6 +22,9 @@ type Done = (outcome: UnpairOutcome) => void;
  */
 const underWay = new WeakMap<CaptureEnginePort, () => void>();
 
+/** Whether a clearing is under way on this engine: its snapshot shows a pairing about to go (C4b-N1). */
+export const clearingUnderWay = (engine: CaptureEnginePort): boolean => underWay.has(engine);
+
 /**
  * Moves the engine to Idle without touching a broadcast, by native's own path
  * (`clearStep`): `unpair` while paired, `reset` once Ended, one intent per

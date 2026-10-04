@@ -8,6 +8,7 @@ import type { Claim, PairIntent } from '@/engine/CaptureEnginePort';
 import { selectEngineStatus, selectHeldName } from '@/hooks/engineSelectors';
 import { useLanguage } from '@/hooks/useLanguage';
 import { usePorts } from '@/hooks/usePorts';
+import { clearingUnderWay } from '@/hooks/useUnpair';
 
 export type PairFacts = {
   readonly language: string;
@@ -62,6 +63,7 @@ export function usePairing(): (saved: SavedCode, claim: Claim) => void {
         engine: selectEngineStatus(snapshot),
         held: selectHeldName(snapshot),
         code: savedCodeName(saved),
+        clearing: clearingUnderWay(engine),
       });
       logger.info('intent.pair', { action: step, claim, slot: intent.slot });
       if (step === 'adopt' || step === 'none') return;
