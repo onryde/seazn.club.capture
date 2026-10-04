@@ -24,6 +24,7 @@ import type {
   Telemetry,
 } from './CaptureEnginePort';
 import type { ServerSays } from './contract/serverSays';
+import { IDLE_TELEMETRY } from './unreported';
 
 /**
  * The fake is built first, on purpose (AGENTS §10), and it holds no state
@@ -126,34 +127,6 @@ const REOPEN_FIRST_FRAME_MS = 3000;
 const REPORT_MS = 1000;
 /** M5: a three-hour match sends a handful of intents; the cap only bounds a runaway. */
 export const INTENT_LOG_CAP = 100;
-
-export const IDLE_TELEMETRY: Telemetry = {
-  bitrateKbps: null,
-  targetBitrateKbps: null,
-  audioLevel: 0,
-  encodedVideoFps: null,
-  audioPacketsPerSecond: null,
-  srt: null,
-  delivery: 'unknown',
-  deliveredLagMs: null,
-  deliveryCheckedAtMs: null,
-  dataUsedBytes: 0,
-  charging: null,
-  batteryPercent: null,
-  drainPctPerHour: null,
-  thermalStatus: null,
-  thermalHeadroom: null,
-  captureTimestampMs: null,
-  shed: null,
-  heartbeat: { lastSentAtEpochMs: null, lastResult: null, consecutiveFailures: 0, failures: 0 },
-  recordSinkFailures: 0,
-  recordReentrantDropped: 0,
-  taskFailures: 0,
-  reporterFailures: 0,
-  snapshotFailures: 0,
-  commandFailures: 0,
-  stickyFailure: false,
-};
 
 /**
  * Camera up, sound above the floor: the meter sounds. No encoded rates yet:

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { Readiness } from '@/domain/session/Pairing';
 import type { DegradeReason, SessionState } from '@/domain/session/SessionState';
 import type { CameraState, EngineSnapshot, Telemetry } from '@/engine/CaptureEnginePort';
-import { IDLE_TELEMETRY } from '@/engine/FakeCaptureEngine';
+import { IDLE_TELEMETRY } from '@/engine/unreported';
 import {
   columnLineKey,
   selectHoldRemaining,

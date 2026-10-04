@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { EngineSnapshot, Telemetry } from '@/engine/CaptureEnginePort';
-import { IDLE_TELEMETRY } from '@/engine/FakeCaptureEngine';
+import { IDLE_TELEMETRY } from '@/engine/unreported';
 import { ADVISORY_KEY, selectCharging, selectShedding, topAdvisory } from '@/hooks/advisory';
 import en from '@/i18n/en.json';
 

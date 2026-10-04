@@ -1,3 +1,4 @@
+import type { SessionState } from '@/domain/session/SessionState';
 import type { LogFields } from '@/services/scrub';
 
 export type LogLevel = 'debug' | 'info' | 'warn' | 'error';
@@ -67,19 +68,49 @@ export function parseRecordLine(line: string): RecordedEntry {
   };
 }
 
-export function createRingRecord(capacity: number = RECORD_CAPACITY): SessionRecord {
+/** The JS ring, which also takes native's lines as written (Task 26): one view of the record. */
+export type RingRecord = SessionRecord & { appendLine(line: string): void };
+
+export function createRingRecord(capacity: number = RECORD_CAPACITY): RingRecord {
   let lines: readonly string[] = [];
   const listeners = new Set<() => void>();
+  const push = (line: string) => {
+    const kept = lines.length < capacity ? lines : lines.slice(lines.length - capacity + 1);
+    lines = [...kept, line];
+    for (const listener of listeners) listener();
+  };
   return {
-    append: (entry) => {
-      const kept = lines.length < capacity ? lines : lines.slice(lines.length - capacity + 1);
-      lines = [...kept, toRecordLine(entry)];
-      for (const listener of listeners) listener();
-    },
+    append: (entry) => push(toRecordLine(entry)),
+    appendLine: push,
     lines: () => lines,
     subscribe: (onChange) => {
       listeners.add(onChange);
       return () => listeners.delete(onChange);
     },
   };
+}
+
+/**
+ * CD7: JS entries go to native's record while `route.active()`, and to the
+ * ring otherwise. Native's lines come back through `ring.appendLine`, so the
+ * ring stays the one view: `lines` and `subscribe` are the ring's.
+ */
+export function createRoutedRecord(
+  ring: RingRecord,
+  route: { active(): boolean; forward(entry: LogEntry): void },
+): SessionRecord {
+  return {
+    append: (entry) => (route.active() ? route.forward(entry) : ring.append(entry)),
+    lines: ring.lines,
+    subscribe: ring.subscribe,
+  };
+}
+
+/**
+ * M16: JS lines go to native's record only while native holds a pairing. Native
+ * keeps one record per pairing, from `pair` to Idle (amendment, The engine
+ * port), so every kind but idle files under it, Ended included until the reset.
+ */
+export function recordGoesNative(nativeWired: boolean, kind: SessionState['kind']): boolean {
+  return nativeWired && kind !== 'idle';
 }

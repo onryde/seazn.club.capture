@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { SessionState } from '@/domain/session/SessionState';
 import type { Readiness } from '@/domain/session/Pairing';
 import type { EngineSnapshot } from '@/engine/CaptureEnginePort';
-import { IDLE_TELEMETRY } from '@/engine/FakeCaptureEngine';
+import { IDLE_TELEMETRY } from '@/engine/unreported';
 import {
   CHIP_ORDER,
   blockerReason,

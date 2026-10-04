@@ -3,7 +3,8 @@ import type { EngineStatus } from '@/domain/mode/reopen';
 import type { SessionState } from '@/domain/session/SessionState';
 import type { BroadcastInfo, PairingInfo } from '@/domain/session/Pairing';
 import type { EngineSnapshot, Telemetry } from '@/engine/CaptureEnginePort';
-import { FAKE_PAIRING, IDLE_TELEMETRY } from '@/engine/FakeCaptureEngine';
+import { FAKE_PAIRING } from '@/engine/FakeCaptureEngine';
+import { IDLE_TELEMETRY } from '@/engine/unreported';
 import {
   METER_SEGMENTS,
   selectBitrateKbps,

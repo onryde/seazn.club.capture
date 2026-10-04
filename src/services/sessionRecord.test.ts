@@ -1,7 +1,10 @@
 import { describe, expect, it, vi } from 'vitest';
+import type { SessionState } from '@/domain/session/SessionState';
 import {
   createRingRecord,
+  createRoutedRecord,
   parseRecordLine,
+  recordGoesNative,
   toRecordLine,
   type LogEntry,
 } from '@/services/sessionRecord';
@@ -78,4 +81,82 @@ describe('the session record', () => {
     expect(line).toBe('{"at":"1970-01-01T00:00:00.000Z","kind":"probe"}');
     expect(parseRecordLine(line).level).toBe('info');
   });
+});
+
+describe('the routed record (CD7, M16)', () => {
+  it('CD7 sends entries to native while a pairing exists, to the ring otherwise; reads the ring', () => {
+    const ring = createRingRecord();
+    const forwarded: LogEntry[] = [];
+    let active = false;
+    const record = createRoutedRecord(ring, {
+      active: () => active,
+      forward: (entry) => forwarded.push(entry),
+    });
+    record.append(entry('before'));
+    active = true;
+    record.append(entry('during'));
+    ring.appendLine('{"at":"1970-01-01T00:00:00.000Z","kind":"during"}');
+    active = false;
+    record.append(entry('after'));
+    expect(forwarded.map((e) => e.event)).toEqual(['during']);
+    expect(record.lines().map((line) => parseRecordLine(line).event)).toEqual([
+      'before',
+      'during',
+      'after',
+    ]);
+  });
+
+  it("tells the routed record's subscribers about native's lines too, and hands out the ring's array", () => {
+    const ring = createRingRecord();
+    const record = createRoutedRecord(ring, { active: () => true, forward: () => undefined });
+    const listener = vi.fn();
+    const unsubscribe = record.subscribe(listener);
+    ring.appendLine('{"at":"1970-01-01T00:00:00.000Z","kind":"native"}');
+    expect(listener).toHaveBeenCalledTimes(1);
+    expect(record.lines()).toBe(ring.lines());
+    unsubscribe();
+    ring.appendLine('{"at":"1970-01-01T00:00:00.000Z","kind":"later"}');
+    expect(listener).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps native's lines under the ring's capacity, as its own", () => {
+    const ring = createRingRecord(2);
+    ring.append(entry('a'));
+    for (const kind of ['b', 'c'])
+      ring.appendLine(`{"at":"1970-01-01T00:00:00.000Z","kind":"${kind}"}`);
+    expect(ring.lines().map((line) => parseRecordLine(line).event)).toEqual(['b', 'c']);
+  });
+
+  /**
+   * Native keeps one record per pairing, from `pair` to Idle (amendment, The engine port), so every
+   * kind but idle files a JS line under it, Ended included until the reset. Every kind, both ways.
+   */
+  const KINDS: Readonly<Record<SessionState['kind'], boolean>> = {
+    idle: false,
+    pairing: true,
+    paired: true,
+    arming: true,
+    armed: true,
+    connecting: true,
+    publishing: true,
+    degraded: true,
+    reconnecting: true,
+    ended: true,
+  };
+  const rows = Object.entries(KINDS).flatMap(([kind, native]) => [
+    [true, kind as SessionState['kind'], native] as const,
+    [false, kind as SessionState['kind'], false] as const,
+  ]);
+
+  // The table's size, so a kind dropped from it reds here (PV12).
+  it('M16 sweeps all 10 kinds, wired and not', () => {
+    expect(rows).toHaveLength(20);
+  });
+
+  it.each(rows)(
+    'M16 native wired %s, engine %s: JS lines go to native %s',
+    (wired, kind, native) => {
+      expect(recordGoesNative(wired, kind)).toBe(native);
+    },
+  );
 });

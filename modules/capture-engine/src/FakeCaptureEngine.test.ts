@@ -5,11 +5,11 @@ import { KIT_CODE_A, KIT_CODE_B } from './contract/engineScenarios';
 import {
   createFakeCaptureEngine,
   FAKE_SCENES,
-  IDLE_TELEMETRY,
   INTENT_LOG_CAP,
   type FakeCaptureEngine,
   type FakeScene,
 } from './FakeCaptureEngine';
+import { IDLE_TELEMETRY } from './unreported';
 
 const NOW = Date.parse('2026-10-03T13:00:00Z');
 /** 12:34 on air, the fake's scenes' fixed time on air. */
