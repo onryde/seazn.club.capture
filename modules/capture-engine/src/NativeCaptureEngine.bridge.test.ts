@@ -9,6 +9,17 @@ import { KIT_CODE_A } from './contract/engineScenarios';
 describeEngineContract('the bridge over the real Kotlin core (JVM host)', startHostEngine);
 
 /**
+ * Review C4c I-2: the kit's on-air set holds `connecting`, so a platform that never connects passes
+ * it. On the host, the connect lands 100 ms after the start and frames advance every 500 ms, so a
+ * started broadcast reads publishing well within 3 s: one that never does is not on air.
+ */
+const PUBLISHING_MS = 3_000;
+const publishes = (host: HostEngine) =>
+  expect
+    .poll(() => host.engine.getSnapshot().state.kind, { timeout: PUBLISHING_MS, interval: 50 })
+    .toBe('publishing');
+
+/**
  * The script's `endReason` for each last end, read back through the real core (LastEnd.of is
  * native's): a scenario that says one of them is then told the end native would report.
  */
@@ -30,11 +41,11 @@ describe('the server script, read back by the real core', () => {
     await host.settle!();
     host.engine.send({ kind: 'start' });
     await host.settle!();
-    const onAir = ['connecting', 'publishing'].includes(host.engine.getSnapshot().state.kind);
+    await publishes(host);
     await host.say({ word: 'over', lastEnd });
     await host.settle!();
     const { state, lastEnd: seen } = host.engine.getSnapshot();
-    expect([onAir, state.kind, seen]).toEqual([true, 'paired', lastEnd]);
+    expect([state.kind, seen]).toEqual(['paired', lastEnd]);
   });
 });
 
@@ -59,6 +70,17 @@ describe('the host harness', () => {
       }
     }
     expect(seen).toEqual(checks.flatMap((check) => [`${check}:false`, `${check}:true`]));
+  });
+
+  it('I-2 a start settles on air, and reads publishing within 3 s', async () => {
+    const started = await startHostEngine();
+    host = started;
+    started.engine.send(KIT_CODE_A);
+    await started.settle!();
+    started.engine.send({ kind: 'start' });
+    await started.settle!();
+    expect(['connecting', 'publishing']).toContain(started.engine.getSnapshot().state.kind);
+    await publishes(started);
   });
 
   // Review C4c I-1: native publishes an input's own field changes with it, state or not.
