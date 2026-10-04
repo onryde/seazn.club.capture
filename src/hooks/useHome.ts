@@ -18,7 +18,7 @@ import {
   type OpenOrCheck,
   type SetPanel,
 } from '@/hooks/useCodeCheck';
-import { useDisarm } from '@/hooks/useDisarm';
+import { useUnpair } from '@/hooks/useUnpair';
 import { useFormatTime } from '@/hooks/useFormatTime';
 import { useT } from '@/hooks/useLanguage';
 import { usePairing } from '@/hooks/usePairing';
@@ -354,23 +354,33 @@ function useContinue(setStatusKey: SetStatusKey, saveFailed: SaveFailed): () => 
 
 /**
  * The Forget button: immediate, with no confirmation (spec §4). I1 (final
- * review, owner-visible): the code's pairing goes with it, paired or ended, so
- * nothing is left to reopen or go live on. On air Home is hidden, so a
- * broadcast never reaches here, and `useDisarm` never touches one anyway. A
- * refused forget keeps the code, and so its session.
+ * review, owner-visible): the code's pairing goes with it, paired or ended,
+ * so nothing is left to reopen or go live on. The amendment (Identity rules
+ * in JS): unpair first, and forget the code once the engine is Idle. If a
+ * remote Go live raced the tap, the broadcast stands, the code is kept, and
+ * the route rule shows /stream. A give-up (CD26) forgets: the operator asked,
+ * and an engine still paired is then an orphan, unpaired at the next settle.
+ * A refused forget keeps the code, with the engine already Idle.
+ *
+ * I1 (never a viewfinder for a forgotten code): a foreground before native
+ * answers reopens /stream on the still-paired code, which unmounts Home and
+ * ends the unpair as a give-up. The forget then lands Home again.
  */
 function useForget(setStatusKey: SetStatusKey, saveFailed: SaveFailed): () => void {
-  const { modeStore } = usePorts();
-  const disarm = useDisarm();
+  const { modeStore, navigation } = usePorts();
+  const unpair = useUnpair();
   return useCallback(() => {
-    void modeStore.forget('stream').then(
-      () => {
-        setStatusKey(null);
-        disarm('forget');
-      },
-      () => saveFailed('forget'),
-    );
-  }, [modeStore, setStatusKey, saveFailed, disarm]);
+    unpair('forget', (outcome) => {
+      if (outcome === 'held') return;
+      void modeStore.forget('stream').then(
+        () => {
+          setStatusKey(null);
+          navigation.go('home');
+        },
+        () => saveFailed('forget'),
+      );
+    });
+  }, [modeStore, navigation, setStatusKey, saveFailed, unpair]);
 }
 
 /**

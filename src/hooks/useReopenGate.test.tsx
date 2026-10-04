@@ -1,20 +1,20 @@
 import { act, renderHook, waitFor } from '@testing-library/react';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { encodeSavedCode, type SavedCode } from '@/domain/mode/savedCode';
+import type { PairIntent } from '@/engine/CaptureEnginePort';
+import { useEngineFollow } from '@/hooks/useEngineFollow';
 import { useReopenGate } from '@/hooks/useReopenGate';
 import { createMemoryKeyValueStore, type KeyValueStore } from '@/services/KeyValueStore';
 import { createModeStore, STORE_KEYS } from '@/services/modeStore';
-import { createFakePorts, TEST_NOW } from '../../test/fakePorts';
+import { createFakePorts, readRecord, TEST_NOW } from '../../test/fakePorts';
 import { savedStreamCode } from '../../test/fixtures/savedStream';
+import { FIXTURE_CODE } from '../../test/fixtures/wire';
+import { pairCode } from '../../test/pairCode';
 import { wrapperFor } from '../../test/renderWithPorts';
 
 const EXPIRY = new Date(TEST_NOW.getTime() + 3600_000);
-const code: SavedCode = savedStreamCode({
-  raw: '{}',
-  slot: 0,
-  savedAt: TEST_NOW,
-  expiresAt: EXPIRY,
-});
+/** A readable code: the cold-start re-pair needs its name (amendment, Process death and reopen). */
+const code: SavedCode = savedStreamCode({ savedAt: TEST_NOW, expiresAt: EXPIRY });
 const inStream = {
   [STORE_KEYS.active]: 'stream',
   [STORE_KEYS.code('stream')]: encodeSavedCode(code),
@@ -33,11 +33,12 @@ function gate(fakes: ReturnType<typeof createFakePorts>, navigatorReady = true) 
 }
 
 describe('useReopenGate', () => {
-  it('reopens into Live Stream while its code is valid, then hides the splash', async () => {
+  it('reopens into Live Stream while its code is valid, re-paired, then hides the splash', async () => {
     const fakes = createFakePorts({ kvSeed: inStream });
     gate(fakes);
     await waitFor(() => expect(fakes.navigation.current()).toBe('stream'));
     expect(fakes.splash.hides).toBe(1);
+    expect(fakes.engine.getSnapshot().state.kind).toBe('paired');
   });
 
   it('lands on Home with a notice once the code has expired', async () => {
@@ -82,10 +83,12 @@ describe('useReopenGate', () => {
     await waitFor(() => expect(fakes.navigation.current()).toBe('stream'));
   });
 
+  // A paired engine keeps its expired code (R23), so native has let it go here.
   it('checks again on every return to the foreground, against the current clock', async () => {
     const fakes = createFakePorts({ kvSeed: inStream });
     gate(fakes);
     await waitFor(() => expect(fakes.navigation.current()).toBe('stream'));
+    act(() => fakes.engine.forceState({ kind: 'idle' }));
     fakes.setNow(new Date(EXPIRY.getTime() + 60_000));
     act(() => fakes.foreground.fire());
     await waitFor(() => expect(fakes.navigation.current()).toBe('home'));
@@ -206,14 +209,19 @@ describe('useReopenGate: an ended session whose code is gone (N4)', () => {
   const kinds = (fakes: ReturnType<typeof createFakePorts>) =>
     fakes.engine.intents.map((intent) => intent.kind);
 
-  it.each(['stopped', 'fatal'] as const)(
+  // Task 24: a failure keeps its Ended screen; the operator's Stop goes Home (reopenTarget).
+  it.each([
+    ['stopped', 'home'],
+    ['fatal', 'stream'],
+  ] as const)(
     'clears a %s session once its code expired while the app was away',
-    async (scene) => {
+    async (scene, landing) => {
       const fakes = createFakePorts({ kvSeed: inStream });
       fakes.engine.scene(scene);
       gate(fakes);
-      // Its Ended screen while the code is valid: nothing cleared.
-      await waitFor(() => expect(fakes.navigation.current()).toBe('stream'));
+      // While the code is valid: nothing cleared.
+      await waitFor(() => expect(fakes.splash.hides).toBe(1));
+      expect(fakes.navigation.current()).toBe(landing);
       expect(kinds(fakes)).toEqual([]);
       fakes.setNow(new Date(EXPIRY.getTime() + 60_000));
       act(() => fakes.foreground.fire());
@@ -285,10 +293,12 @@ describe('useReopenGate: inside Live Stream already (M22)', () => {
     expect(fakes.navigation.history).toEqual(['stream', route]);
   });
 
+  // A paired engine keeps its expired code (R23), so native has let it go here.
   it('still leaves a sub-screen for Home once the code has expired', async () => {
     const fakes = createFakePorts({ kvSeed: inStream });
     gate(fakes);
     await waitFor(() => expect(fakes.navigation.current()).toBe('stream'));
+    act(() => fakes.engine.forceState({ kind: 'idle' }));
     fakes.navigation.go('streamDiagnostics');
     fakes.setNow(new Date(EXPIRY.getTime() + 60_000));
     act(() => fakes.foreground.fire());
@@ -296,3 +306,119 @@ describe('useReopenGate: inside Live Stream already (M22)', () => {
     expect(noticeOf(fakes)).toMatchObject({ mode: 'stream', expiredAt: EXPIRY });
   });
 });
+
+/**
+ * The amendment's _Process death and reopen_ and _What the operator sees after
+ * a cold-start reopen_: JS re-pairs once, at cold start, with claim `resume`,
+ * when it finds the engine Idle; a foreground never pairs.
+ */
+describe('useReopenGate: the cold-start re-pair', () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  const flush = (ms = 10) => act(() => vi.advanceTimersByTimeAsync(ms));
+  const pairs = (fakes: ReturnType<typeof createFakePorts>) =>
+    fakes.engine.intents.filter((intent): intent is PairIntent => intent.kind === 'pair');
+  /** Shell's two hooks, in its order. */
+  async function shell(fakes: ReturnType<typeof createFakePorts>) {
+    renderHook(
+      () => {
+        useReopenGate(true);
+        useEngineFollow();
+      },
+      { wrapper: wrapperFor(fakes) },
+    );
+    await flush();
+  }
+
+  it('re-pairs an Idle engine once, with claim resume, and opens /stream', async () => {
+    const fakes = createFakePorts({ kvSeed: inStream });
+    await shell(fakes);
+    expect(pairs(fakes)).toEqual([
+      expect.objectContaining({ code: FIXTURE_CODE, slot: 1, claim: 'resume' }),
+    ]);
+    expect(fakes.navigation.current()).toBe('stream');
+    expect(readRecord(fakes.record).filter((entry) => entry.event === 'intent.pair')).toEqual([
+      expect.objectContaining({ fields: { action: 'pair', claim: 'resume', slot: 1 } }),
+    ]);
+  });
+
+  it('goes Home, the code forgotten, when the claim answers replaced; and never pairs again', async () => {
+    const fakes = createFakePorts({ kvSeed: inStream });
+    await shell(fakes);
+    act(() => fakes.engine.hear({ word: 'replaced' }));
+    await flush();
+    expect(fakes.navigation.current()).toBe('home');
+    expect(fakes.kv.entries.has(STORE_KEYS.code('stream'))).toBe(false);
+    act(() => fakes.foreground.fire());
+    await flush(3_000);
+    expect(pairs(fakes)).toHaveLength(1);
+  });
+
+  // The permission dialog closing reads as a foreground: it must never pair.
+  it('sends no pair at a foreground that finds the engine Idle, and goes Home', async () => {
+    const fakes = createFakePorts({ kvSeed: inStream });
+    await shell(fakes);
+    act(() => fakes.engine.forceState({ kind: 'idle' }));
+    act(() => fakes.foreground.fire());
+    await flush();
+    expect(pairs(fakes)).toHaveLength(1);
+    expect(fakes.navigation.current()).toBe('home');
+    expect(fakes.kv.entries.has(STORE_KEYS.code('stream'))).toBe(true);
+  });
+
+  const marked = savedStreamCode({
+    savedAt: TEST_NOW,
+    expiresAt: EXPIRY,
+    stream: { ...(code.stream ?? fail()), tapToPair: true },
+  });
+  it.each<[string, Record<string, string>, (fakes: ReturnType<typeof createFakePorts>) => void]>([
+    [
+      'the code is tapToPair',
+      { [STORE_KEYS.active]: 'stream', [STORE_KEYS.code('stream')]: encodeSavedCode(marked) },
+      () => undefined,
+    ],
+    [
+      'another mode is active',
+      { [STORE_KEYS.active]: 'scoring', [STORE_KEYS.code('stream')]: encodeSavedCode(code) },
+      () => undefined,
+    ],
+    ['the code expired', inStream, (fakes) => fakes.setNow(new Date(EXPIRY.getTime() + 1))],
+    [
+      'the snapshot’s unpaired names it',
+      inStream,
+      (fakes) => {
+        pairCode(fakes.engine, code);
+        fakes.engine.hear({ word: 'taken' });
+      },
+    ],
+    [
+      'the saved code cannot be read',
+      {
+        [STORE_KEYS.active]: 'stream',
+        [STORE_KEYS.code('stream')]: encodeSavedCode({ ...code, raw: '{}' }),
+      },
+      () => undefined,
+    ],
+  ])('sends no pair at cold start when %s, and goes Home', async (_why, kvSeed, prepare) => {
+    const fakes = createFakePorts({ kvSeed });
+    prepare(fakes);
+    const before = pairs(fakes).length;
+    await shell(fakes);
+    expect(pairs(fakes)).toHaveLength(before);
+    expect(fakes.navigation.current()).toBe('home');
+  });
+
+  // A JS reload while native lived: the engine is the authority.
+  it('sends no pair at cold start when the engine is already paired, and opens /stream', async () => {
+    const fakes = createFakePorts({ kvSeed: inStream });
+    pairCode(fakes.engine, code);
+    await shell(fakes);
+    expect(pairs(fakes)).toHaveLength(1);
+    expect(fakes.navigation.current()).toBe('stream');
+  });
+});
+
+function fail(): never {
+  throw new Error('the fixture has a stream part');
+}

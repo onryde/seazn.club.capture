@@ -1,6 +1,6 @@
 import { act, renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { useDisarm } from '@/hooks/useDisarm';
+import { UNPAIR_GIVE_UP_MS, useUnpair, type UnpairOutcome } from '@/hooks/useUnpair';
 import { createFakePorts, readRecord, type FakePorts } from '../../test/fakePorts';
 import { savedStreamCode } from '../../test/fixtures/savedStream';
 import { holdIntents } from '../../test/holdIntents';
@@ -10,19 +10,32 @@ import { wrapperFor } from '../../test/renderWithPorts';
 const pair = (fakes: FakePorts) => pairCode(fakes.engine, savedStreamCode());
 const kinds = (fakes: FakePorts) => fakes.engine.intents.map((intent) => intent.kind);
 
-function disarmer(fakes: FakePorts) {
-  return renderHook(() => useDisarm(), { wrapper: wrapperFor(fakes) });
+function unpairer(fakes: FakePorts) {
+  return renderHook(() => useUnpair(), { wrapper: wrapperFor(fakes) });
 }
 
+/** The hook over fresh fake ports, paired first with the fixture code when `paired`. */
+function renderUnpair({ paired }: { paired: boolean }) {
+  const fakes = createFakePorts();
+  if (paired) pair(fakes);
+  const { result } = unpairer(fakes);
+  return {
+    ...fakes,
+    unpair: (...args: Parameters<ReturnType<typeof useUnpair>>) => result.current(...args),
+  };
+}
+
+const events = (fakes: FakePorts) => readRecord(fakes.record).map((entry) => entry.event);
+
 /** I1 (final review): a pairing no saved code owns is cleared by native's own path. */
-describe('useDisarm', () => {
+describe('useUnpair', () => {
   beforeEach(() => vi.useFakeTimers());
   afterEach(() => vi.useRealTimers());
 
   it('unpairs a paired engine, and sends nothing more once it is idle', () => {
     const fakes = createFakePorts();
     pair(fakes);
-    const { result } = disarmer(fakes);
+    const { result } = unpairer(fakes);
     act(() => result.current('forget'));
     expect(kinds(fakes)).toEqual(['pair', 'unpair']);
     expect(fakes.engine.getSnapshot().state.kind).toBe('idle');
@@ -35,7 +48,7 @@ describe('useDisarm', () => {
   it('unpairs a pairing back from an organiser’s stop', () => {
     const fakes = createFakePorts();
     fakes.engine.scene('paired-after-organiser-stop');
-    const { result } = disarmer(fakes);
+    const { result } = unpairer(fakes);
     act(() => result.current('orphan'));
     expect(kinds(fakes)).toEqual(['unpair']);
     expect(fakes.engine.getSnapshot().state.kind).toBe('idle');
@@ -44,7 +57,7 @@ describe('useDisarm', () => {
   it.each(['stopped', 'fatal'] as const)('resets a %s engine, and never unpairs it', (scene) => {
     const fakes = createFakePorts();
     fakes.engine.scene(scene);
-    const { result } = disarmer(fakes);
+    const { result } = unpairer(fakes);
     act(() => result.current('orphan'));
     expect(kinds(fakes)).toEqual(['reset']);
     expect(fakes.engine.getSnapshot().state.kind).toBe('idle');
@@ -53,7 +66,7 @@ describe('useDisarm', () => {
   it('never touches a broadcast, nor what follows it', () => {
     const fakes = createFakePorts();
     fakes.engine.scene('live');
-    const { result } = disarmer(fakes);
+    const { result } = unpairer(fakes);
     act(() => result.current('orphan'));
     act(() => fakes.engine.scene('stopped'));
     expect(kinds(fakes)).toEqual([]);
@@ -62,7 +75,7 @@ describe('useDisarm', () => {
 
   it('sends nothing at idle, and nothing to the next pairing', () => {
     const fakes = createFakePorts();
-    const { result } = disarmer(fakes);
+    const { result } = unpairer(fakes);
     act(() => result.current('forget'));
     act(() => pair(fakes));
     expect(kinds(fakes)).toEqual(['pair']);
@@ -72,7 +85,7 @@ describe('useDisarm', () => {
     const fakes = createFakePorts();
     pair(fakes);
     const native = holdIntents(fakes.engine, ['unpair']);
-    const { result } = disarmer(fakes);
+    const { result } = unpairer(fakes);
     act(() => result.current('forget'));
     // The fake reports once a second, changed or not, as native does.
     act(() => vi.advanceTimersByTime(2500));
@@ -85,7 +98,7 @@ describe('useDisarm', () => {
     const fakes = createFakePorts();
     pair(fakes);
     const native = holdIntents(fakes.engine, ['unpair']);
-    const { result, unmount } = disarmer(fakes);
+    const { result, unmount } = unpairer(fakes);
     act(() => result.current('forget'));
     unmount();
     act(() => native.release());
@@ -99,7 +112,7 @@ describe('useDisarm', () => {
     const fakes = createFakePorts();
     pair(fakes);
     const native = holdIntents(fakes.engine, ['unpair']);
-    const { result } = disarmer(fakes);
+    const { result } = unpairer(fakes);
     act(() => result.current('forget'));
     act(() => result.current('forget'));
     expect(native.held()).toEqual(['unpair']);
@@ -117,8 +130,8 @@ describe('useDisarm', () => {
       const fakes = createFakePorts();
       pair(fakes);
       const native = holdIntents(fakes.engine, ['unpair']);
-      const forget = disarmer(fakes);
-      const gate = disarmer(fakes);
+      const forget = unpairer(fakes);
+      const gate = unpairer(fakes);
       act(() => forget.result.current('forget'));
       act(() => gate.result.current('orphan'));
       expect(native.held()).toEqual(['unpair']);
@@ -132,8 +145,8 @@ describe('useDisarm', () => {
     it('lets another caller run once it has ended', () => {
       const fakes = createFakePorts();
       pair(fakes);
-      const forget = disarmer(fakes);
-      const gate = disarmer(fakes);
+      const forget = unpairer(fakes);
+      const gate = unpairer(fakes);
       act(() => forget.result.current('forget'));
       act(() => pair(fakes));
       act(() => gate.result.current('orphan'));
@@ -144,8 +157,8 @@ describe('useDisarm', () => {
       const fakes = createFakePorts();
       pair(fakes);
       const native = holdIntents(fakes.engine, ['unpair']);
-      const forget = disarmer(fakes);
-      const gate = disarmer(fakes);
+      const forget = unpairer(fakes);
+      const gate = unpairer(fakes);
       act(() => forget.result.current('forget'));
       gate.unmount();
       act(() => native.release());
@@ -156,8 +169,8 @@ describe('useDisarm', () => {
       const fakes = createFakePorts();
       pair(fakes);
       const native = holdIntents(fakes.engine, ['unpair']);
-      const forget = disarmer(fakes);
-      const gate = disarmer(fakes);
+      const forget = unpairer(fakes);
+      const gate = unpairer(fakes);
       act(() => forget.result.current('forget'));
       forget.unmount();
       act(() => native.release());
@@ -171,9 +184,9 @@ describe('useDisarm', () => {
     it('never frees a later clearing when a caller that already finished unmounts', () => {
       const fakes = createFakePorts();
       pair(fakes);
-      const forget = disarmer(fakes);
-      const gate = disarmer(fakes);
-      const third = disarmer(fakes);
+      const forget = unpairer(fakes);
+      const gate = unpairer(fakes);
+      const third = unpairer(fakes);
       // Forget's clearing ends after it returned: native answers its unpair later.
       const first = holdIntents(fakes.engine, ['unpair']);
       act(() => forget.result.current('forget'));
@@ -192,17 +205,105 @@ describe('useDisarm', () => {
       pair(one);
       pair(two);
       holdIntents(one.engine, ['unpair']);
-      const first = disarmer(one);
-      const second = disarmer(two);
+      const first = unpairer(one);
+      const second = unpairer(two);
       act(() => first.result.current('forget'));
       act(() => second.result.current('forget'));
       expect(kinds(two)).toEqual(['pair', 'unpair']);
     });
   });
 
+  // CD26 and P9: an unpair native never answers is given up, so the engine is never locked for good.
+  describe('the unpair bound (CD26, P9)', () => {
+    it('gives an unpair up after 5 s with no answer, logs it, and frees the engine', () => {
+      const view = renderUnpair({ paired: true });
+      const native = holdIntents(view.engine, ['unpair']);
+      const outcomes: UnpairOutcome[] = [];
+      act(() => view.unpair('forget', (outcome) => outcomes.push(outcome)));
+      expect(native.held()).toEqual(['unpair']);
+      act(() => vi.advanceTimersByTime(UNPAIR_GIVE_UP_MS - 1));
+      act(() => view.unpair('orphan'));
+      // Still under way: the second call is dropped.
+      expect(native.held()).toEqual(['unpair']);
+      expect(outcomes).toEqual([]);
+      act(() => vi.advanceTimersByTime(1));
+      expect(outcomes).toEqual(['gave-up']);
+      expect(readRecord(view.record).filter((entry) => entry.event === 'unpair.gave-up')).toEqual([
+        expect.objectContaining({ level: 'warn', fields: { action: 'forget' } }),
+      ]);
+      act(() => view.unpair('orphan'));
+      // The engine is free for the next caller.
+      expect(native.held()).toEqual(['unpair', 'unpair']);
+    });
+
+    it('ends an unpair answered in time with no give-up line, once', () => {
+      const view = renderUnpair({ paired: true });
+      const native = holdIntents(view.engine, ['unpair']);
+      const outcomes: UnpairOutcome[] = [];
+      act(() => view.unpair('forget', (outcome) => outcomes.push(outcome)));
+      act(() => native.release());
+      act(() => vi.advanceTimersByTime(UNPAIR_GIVE_UP_MS + 1));
+      expect(outcomes).toEqual(['idle']);
+      expect(events(view)).not.toContain('unpair.gave-up');
+    });
+
+    it('reports held when a broadcast became held instead, and sends nothing to end it', () => {
+      const view = renderUnpair({ paired: true });
+      const native = holdIntents(view.engine, ['unpair']);
+      const outcomes: UnpairOutcome[] = [];
+      act(() => view.unpair('forget', (outcome) => outcomes.push(outcome)));
+      act(() => view.engine.hear({ word: 'go-live', cause: 'organiser' }));
+      expect(outcomes).toEqual(['held']);
+      act(() => native.release());
+      act(() => vi.advanceTimersByTime(UNPAIR_GIVE_UP_MS + 1));
+      expect(view.engine.getSnapshot().state.kind).not.toBe('idle');
+      expect(view.engine.intents.filter((intent) => intent.kind === 'stop')).toEqual([]);
+      expect(outcomes).toEqual(['held']);
+      expect(events(view)).not.toContain('unpair.gave-up');
+    });
+
+    it('resets an Ended engine, and answers idle at once for an Idle one', () => {
+      const view = renderUnpair({ paired: true });
+      act(() => view.engine.send({ kind: 'start' }));
+      act(() => view.engine.send({ kind: 'stop' }));
+      expect(view.engine.getSnapshot().state.kind).toBe('ended');
+      const first: UnpairOutcome[] = [];
+      act(() => view.unpair('orphan', (outcome) => first.push(outcome)));
+      expect(view.engine.intents.map((intent) => intent.kind).slice(-1)).toEqual(['reset']);
+      expect(first).toEqual(['idle']);
+      const outcomes: UnpairOutcome[] = [];
+      act(() => view.unpair('orphan', (outcome) => outcomes.push(outcome)));
+      expect(outcomes).toEqual(['idle']);
+      expect(view.engine.intents.map((intent) => intent.kind).slice(-1)).toEqual(['reset']);
+    });
+
+    it('answers held at once for a broadcast already on air, and arms no timer', () => {
+      const view = renderUnpair({ paired: true });
+      act(() => view.engine.scene('live'));
+      const outcomes: UnpairOutcome[] = [];
+      act(() => view.unpair('orphan', (outcome) => outcomes.push(outcome)));
+      expect(outcomes).toEqual(['held']);
+      expect(vi.getTimerCount()).toBe(1); // the fake's 1 s report, nothing of ours
+    });
+
+    it('ends silently on unmount: no give-up line, and the engine is freed', () => {
+      const fakes = createFakePorts();
+      pair(fakes);
+      const native = holdIntents(fakes.engine, ['unpair']);
+      const owner = unpairer(fakes);
+      const next = unpairer(fakes);
+      act(() => owner.result.current('forget'));
+      owner.unmount();
+      act(() => vi.advanceTimersByTime(UNPAIR_GIVE_UP_MS + 1));
+      expect(events(fakes)).not.toContain('unpair.gave-up');
+      act(() => next.result.current('orphan'));
+      expect(native.held()).toEqual(['unpair', 'unpair']);
+    });
+  });
+
   it('runs again after one that found nothing to clear', () => {
     const fakes = createFakePorts();
-    const { result } = disarmer(fakes);
+    const { result } = unpairer(fakes);
     act(() => result.current('orphan'));
     act(() => pair(fakes));
     act(() => result.current('orphan'));

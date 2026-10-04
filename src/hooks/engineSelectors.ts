@@ -128,6 +128,14 @@ export function selectHeldName(snapshot: EngineSnapshot): CodeName {
     : { code: pairing.code, slot: pairing.slot, tokenTag: pairing.tokenTag };
 }
 
+/** The pairing native left without being asked, by name; null when none (one-off reads only). */
+export function selectUnpairedName(snapshot: EngineSnapshot): CodeName | null {
+  const { unpaired } = snapshot;
+  return unpaired === null
+    ? null
+    : { code: unpaired.code, slot: unpaired.slot, tokenTag: unpaired.tokenTag };
+}
+
 /** The transport in use, or null when nothing is connected. */
 export function selectTransport(snapshot: EngineSnapshot): 'srt' | 'rtmps' | null {
   const { state } = snapshot;

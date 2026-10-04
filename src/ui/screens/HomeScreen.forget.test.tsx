@@ -1,5 +1,6 @@
 import { act, fireEvent, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { UNPAIR_GIVE_UP_MS } from '@/hooks/useUnpair';
 import { STORE_KEYS } from '@/services/modeStore';
 import { readRecord, TEST_NOW } from '../../../test/fakePorts';
 import { savedStreamCode } from '../../../test/fixtures/savedStream';
@@ -44,7 +45,9 @@ const intentLines = (app: LaunchedApp) =>
  * I1 (final review, owner-visible): Forget while the code is paired or ended
  * clears it by native's own path, unpair or reset; and a paired or ended
  * engine that no saved code owns is an orphan, cleared on the way Home and
- * never shown as a Ready viewfinder. Task 24 reorders Forget.
+ * never shown as a Ready viewfinder. Task 24 (amendment, Identity rules in
+ * JS): the unpair goes first, and the code is forgotten once the engine is
+ * Idle; a Go live that raced it keeps the code; the unpair is bounded at 5 s.
  */
 describe('Forget while the code is paired (I1)', () => {
   beforeEach(() => vi.useFakeTimers());
@@ -85,17 +88,52 @@ describe('Forget while the code is paired (I1)', () => {
     expect(app.engine.getSnapshot().state.kind).toBe('idle');
   });
 
-  it('waits for native to answer the unpair, and sends nothing more', async () => {
+  it('keeps the code until native answers the unpair, then forgets it and sends nothing more', async () => {
     const app = await pairedThenHome();
     const native = holdIntents(app.engine, ['unpair']);
     forget();
     await flush();
     expect(native.held()).toEqual(['unpair']);
     expect(intentKinds(app)).toEqual(['pair']);
+    expect(app.kv.entries.has(STORE_KEYS.code('stream'))).toBe(true);
     act(() => native.release());
     await flush();
     expect(intentKinds(app)).toEqual(['pair', 'unpair']);
     expect(app.engine.getSnapshot().state.kind).toBe('idle');
+    expect(savedKeys(app)).toEqual([]);
+  });
+
+  // The amendment: a remote Go live that raced the tap stands, and so does its code.
+  it('keeps the code, and shows the broadcast, when a Go live is heard while the unpair is held', async () => {
+    const app = await pairedThenHome();
+    const native = holdIntents(app.engine, ['unpair']);
+    forget();
+    await flush();
+    act(() => app.engine.hear({ word: 'go-live', cause: 'organiser' }));
+    await flush();
+    expect(app.nav.current()).toBe('stream');
+    act(() => native.release());
+    await flush(UNPAIR_GIVE_UP_MS);
+    expect(app.kv.entries.has(STORE_KEYS.code('stream'))).toBe(true);
+    expect(app.engine.getSnapshot().state.kind).not.toBe('idle');
+    expect(app.nav.current()).toBe('stream');
+    expect(intentKinds(app)).not.toContain('stop');
+  });
+
+  // CD26: native never answers. The operator asked, so the code goes; the
+  // engine still paired is then an orphan, unpaired at the next settle.
+  it('forgets the code when native never answers within 5 s, and records the give-up', async () => {
+    const app = await pairedThenHome();
+    const native = holdIntents(app.engine, ['unpair']);
+    forget();
+    await flush(UNPAIR_GIVE_UP_MS - 100);
+    expect(app.kv.entries.has(STORE_KEYS.code('stream'))).toBe(true);
+    await flush(200);
+    expect(savedKeys(app)).toEqual([]);
+    expect(readRecord(app.record).map((entry) => entry.event)).toContain('unpair.gave-up');
+    await backgroundAndBack(app);
+    expect(native.held()).toEqual(['unpair', 'unpair']);
+    expect(app.nav.current()).toBe('home');
   });
 
   // Second call: a double tap before the card goes clears the pairing once.
@@ -130,15 +168,17 @@ describe('Forget while the code is paired (I1)', () => {
     expect(app.nav.current()).toBe('home');
   });
 
-  // After an interruption: a refused forget keeps the code, so its pairing is kept too.
-  it('sends nothing when the phone refuses to forget the code', async () => {
+  // After an interruption: the unpair goes first, so a refused forget keeps
+  // the code with an Idle engine; Continue pairs it again.
+  it('keeps the code, and says so, when the phone refuses to forget it after the unpair', async () => {
     const app = await pairedThenHome();
     vi.spyOn(app.kv, 'delete').mockRejectedValue(new Error('keystore locked'));
     forget();
     await flush();
     expect(screen.getByText("Couldn't save on this phone. Try again.")).toBeTruthy();
-    expect(intentKinds(app)).toEqual(['pair']);
-    expect(app.engine.getSnapshot().state.kind).toBe('paired');
+    expect(intentKinds(app)).toEqual(['pair', 'unpair']);
+    expect(app.engine.getSnapshot().state.kind).toBe('idle');
+    expect(app.kv.entries.has(STORE_KEYS.code('stream'))).toBe(true);
   });
 });
 

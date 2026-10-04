@@ -161,6 +161,68 @@ describe('modeStore', () => {
     expect(memory.entries.has(STORE_KEYS.code('stream'))).toBe(true);
   });
 
+  /** Task 24: the `tapToPair` mark, kept on the saved stream code (amendment, tapToPair). */
+  describe('markTapToPair', () => {
+    const tapOf = (store: ReturnType<typeof createModeStore>) =>
+      ready(store).saved.codes.stream?.stream?.tapToPair;
+    const opened = async (kv: KeyValueStore = createMemoryKeyValueStore()) => {
+      const store = createModeStore(kv);
+      await store.load();
+      await store.open(code);
+      return store;
+    };
+
+    it('marks the saved code, and the mark survives a relaunch; clearing it does too', async () => {
+      const kv = createMemoryKeyValueStore();
+      const store = await opened(kv);
+      expect(tapOf(store)).toBe(false);
+      await store.markTapToPair(true);
+      expect(tapOf(store)).toBe(true);
+      expect((await relaunch(kv)).codes.stream?.stream?.tapToPair).toBe(true);
+      await store.markTapToPair(false);
+      expect(tapOf(store)).toBe(false);
+      expect((await relaunch(kv)).codes.stream?.stream?.tapToPair).toBe(false);
+      // The rest of the record is untouched.
+      expect((await relaunch(kv)).codes.stream).toEqual(code);
+    });
+
+    it('writes nothing for the value it already has, called twice or once', async () => {
+      const kv = createMemoryKeyValueStore();
+      const store = await opened(kv);
+      const set = vi.spyOn(kv, 'set');
+      await store.markTapToPair(false);
+      expect(set).not.toHaveBeenCalled();
+      await Promise.all([store.markTapToPair(true), store.markTapToPair(true)]);
+      expect(set).toHaveBeenCalledTimes(1);
+    });
+
+    it('writes nothing with no stream code saved, or one with no stream part', async () => {
+      const kv = createMemoryKeyValueStore();
+      const store = createModeStore(kv);
+      await store.load();
+      const set = vi.spyOn(kv, 'set');
+      const before = store.getSnapshot();
+      await store.markTapToPair(true);
+      expect(set).not.toHaveBeenCalled();
+      expect(store.getSnapshot()).toBe(before);
+      await store.open({ ...code, stream: null });
+      set.mockClear();
+      await store.markTapToPair(true);
+      expect(set).not.toHaveBeenCalled();
+      expect(ready(store).saved.codes.stream?.stream).toBeNull();
+    });
+
+    it('rejects a refused write and publishes nothing', async () => {
+      const kv = createMemoryKeyValueStore();
+      const store = await opened(kv);
+      vi.spyOn(kv, 'set').mockRejectedValueOnce(new Error('keystore locked'));
+      const before = store.getSnapshot();
+      await expect(store.markTapToPair(true)).rejects.toThrow('keystore locked');
+      expect(store.getSnapshot()).toBe(before);
+      expect(tapOf(store)).toBe(false);
+    });
+  });
+
   describe('one write at a time (I2)', () => {
     /** Every write waits for `release()`, then lands in the order it was asked. */
     function slowKv(seed: Record<string, string>) {

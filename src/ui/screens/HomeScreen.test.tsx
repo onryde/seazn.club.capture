@@ -955,6 +955,31 @@ describe('Home: checking a stream code with the server (spec §1)', () => {
     expect(home.engine.getSnapshot().state.kind).toBe('paired');
   });
 
+  // Task 24 (amendment, Identity rules in JS): a second scan while a pair is in
+  // flight wins. Native applies the intents in order; nothing in JS waits for A.
+  it('lets a second scan win while the first pair is still in flight', async () => {
+    const home = await renderHome();
+    home.engine.setPermissions('hold');
+    await scanStream(home);
+    await waitFor(() => expect(home.engine.intents).toHaveLength(1));
+    expect(home.engine.getSnapshot()).toMatchObject({
+      state: { kind: 'pairing' },
+      pairing: { slot: 1 },
+    });
+    act(() => home.navigation.go('home'));
+    home.scanner.queue({ outcome: 'scanned', raw: streamRaw(IN_TWO_HOURS, 2) });
+    fireEvent.click(liveStreamTile());
+    await waitFor(() => expect(home.engine.intents).toHaveLength(2));
+    expect(home.engine.intents).toEqual([pairedWith(1, 'new'), pairedWith(2, 'new')]);
+    expect(home.engine.getSnapshot()).toMatchObject({
+      state: { kind: 'pairing' },
+      pairing: { slot: 2 },
+    });
+    const saved = decodeSavedCode(home.kv.entries.get(STORE_KEYS.code('stream')) ?? '');
+    expect(saved?.slot).toBe(2);
+    expect(home.navigation.current()).toBe('stream');
+  });
+
   // Mutation 5: the pair waits for the save, so a cold start always finds the code it paired.
   it('pairs only once the code is in the store', async () => {
     const memory = createMemoryKeyValueStore();

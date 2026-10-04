@@ -40,6 +40,8 @@ export type ModeStore = {
   setActive(mode: Mode | null): Promise<void>;
   forget(mode: Mode): Promise<void>;
   expire(modes: readonly Mode[], notice: ExpiryNotice | null): Promise<void>;
+  /** The saved stream code's `tapToPair` mark (amendment); nothing to write when it already holds it. */
+  markTapToPair(on: boolean): Promise<void>;
   dismissNotices(): void;
 };
 
@@ -116,6 +118,15 @@ export function createModeStore(kv: KeyValueStore): ModeStore {
         await removeCodes(kv, gone, clearsActive);
       });
     },
+    markTapToPair: (on) =>
+      serial(async () => {
+        const code = current().saved.codes.stream;
+        if (code === undefined || code.stream === null || code.stream.tapToPair === on) return;
+        const next: SavedCode = { ...code, stream: { ...code.stream, tapToPair: on } };
+        await kv.set(STORE_KEYS.code('stream'), encodeSavedCode(next));
+        const { saved } = current();
+        publish(withSaved({ ...saved, codes: { ...saved.codes, stream: next } }));
+      }),
     dismissNotices: () => {
       const ready = current();
       if (ready.notice !== null || ready.dropped) {

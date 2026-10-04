@@ -1,15 +1,20 @@
 import { describe, expect, it } from 'vitest';
+import { NO_NAME, type CodeName } from '@/domain/mode/codeName';
 import {
   expiredModes,
+  forgetsSaved,
   leaveRule,
   orphanedSession,
   reopenTarget,
+  resumesAtColdStart,
+  tapToPairMark,
   type EngineStatus,
   type SavedState,
 } from '@/domain/mode/reopen';
 import type { SavedCode } from '@/domain/mode/savedCode';
 import { sampleWaiting } from '@/services/fakeCodePort';
 import { savedStreamCode } from '../../../test/fixtures/savedStream';
+import { FIXTURE_CODE, FIXTURE_TOKEN_TAG } from '../../../test/fixtures/wire';
 
 const NOW = new Date('2026-10-03T13:00:00Z');
 const EXPIRY = new Date('2026-10-03T18:40:00Z');
@@ -20,9 +25,63 @@ const streamCode: SavedCode = savedStreamCode({ expiresAt: EXPIRY });
 const inStream: SavedState = { active: 'stream', codes: { stream: streamCode } };
 const nothing: SavedState = { active: null, codes: {} };
 
+/** The fixture QR's name, written out: its code, slot 1, and its token's tag (T22, computed apart). */
+const NAME: CodeName = { code: FIXTURE_CODE, slot: 1, tokenTag: FIXTURE_TOKEN_TAG };
+const OTHER: CodeName = { ...NAME, slot: 2 };
+const marked = savedStreamCode({
+  expiresAt: EXPIRY,
+  stream: { ...(streamCode.stream ?? fail()), tapToPair: true },
+});
+
+function fail(): never {
+  throw new Error('the fixture has a stream part');
+}
+
+/**
+ * The amendment's _Process death and reopen_: the re-pair runs once, at cold
+ * start, on an Idle engine, with the active mode stream, a saved unexpired
+ * code, not tapToPair, and no `unpaired` naming it.
+ */
+describe('the cold-start re-pair (Process death and reopen)', () => {
+  type Facts = Parameters<typeof resumesAtColdStart>[0];
+  const base: Facts = { engine: 'idle', unpaired: null, saved: inStream, now: NOW };
+  it('runs on an Idle engine with the four conditions', () => {
+    expect(resumesAtColdStart(base)).toBe(true);
+  });
+  it.each<[string, Partial<Facts>]>([
+    ['the engine is paired', { engine: 'paired' }],
+    ['the engine holds a broadcast', { engine: 'live' }],
+    ['the engine is stopped', { engine: 'stopped' }],
+    ['the engine failed', { engine: 'failed' }],
+    ['another mode is active', { saved: { ...inStream, active: 'scoring' } }],
+    ['no mode is active', { saved: { ...inStream, active: null } }],
+    ['no code is saved', { saved: { active: 'stream', codes: {} } }],
+    ['the code expired', { now: AFTER_EXPIRY }],
+    ['the code expires this instant', { now: EXPIRY }],
+    ['the code is tapToPair', { saved: { active: 'stream', codes: { stream: marked } } }],
+    [
+      'the code has no stream part',
+      { saved: { active: 'stream', codes: { stream: { ...streamCode, stream: null } } } },
+    ],
+    ['a forget is still landing', { unpaired: NAME }],
+    [
+      'the saved code cannot be read',
+      { saved: { active: 'stream', codes: { stream: { ...streamCode, raw: '{}' } } } },
+    ],
+  ])('does not run when %s', (_why, change) => {
+    expect(resumesAtColdStart({ ...base, ...change })).toBe(false);
+  });
+  it('runs when unpaired names another code, or no code at all', () => {
+    expect(resumesAtColdStart({ ...base, unpaired: OTHER })).toBe(true);
+    expect(resumesAtColdStart({ ...base, unpaired: NO_NAME })).toBe(true);
+  });
+});
+
 describe('reopenTarget', () => {
   it('returns to Live Stream when the engine is live, whatever was saved', () => {
-    expect(reopenTarget({ engine: 'live', saved: nothing, now: AFTER_EXPIRY })).toEqual({
+    expect(
+      reopenTarget({ engine: 'live', saved: nothing, now: AFTER_EXPIRY, resumed: false }),
+    ).toEqual({
       go: 'stream',
     });
   });
@@ -35,23 +94,49 @@ describe('reopenTarget', () => {
   ])(
     'returns to Live Stream when the engine is paired and a code is saved, %s',
     (_, saved, now) => {
-      expect(reopenTarget({ engine: 'paired', saved, now })).toEqual({ go: 'stream' });
+      expect(reopenTarget({ engine: 'paired', saved, now, resumed: false })).toEqual({
+        go: 'stream',
+      });
     },
   );
 
   // I1 (final review): nothing saved owns it, so it is an orphan, cleared on the way Home.
   it('goes Home quietly when the engine is paired and no code is saved', () => {
-    expect(reopenTarget({ engine: 'paired', saved: nothing, now: NOW })).toEqual({ go: 'home' });
+    expect(reopenTarget({ engine: 'paired', saved: nothing, now: NOW, resumed: false })).toEqual({
+      go: 'home',
+    });
     const activeOnly: SavedState = { active: 'stream', codes: {} };
-    expect(reopenTarget({ engine: 'paired', saved: activeOnly, now: NOW })).toEqual({ go: 'home' });
+    expect(reopenTarget({ engine: 'paired', saved: activeOnly, now: NOW, resumed: false })).toEqual(
+      { go: 'home' },
+    );
   });
 
-  it('returns to the last mode while its code is valid', () => {
-    expect(reopenTarget({ engine: 'idle', saved: inStream, now: NOW })).toEqual({ go: 'stream' });
+  // The amendment: a visit never pairs, so only the re-pair puts an Idle engine on /stream.
+  it('reopens an Idle engine into /stream only when the re-pair was sent', () => {
+    expect(reopenTarget({ engine: 'idle', saved: inStream, now: NOW, resumed: true })).toEqual({
+      go: 'stream',
+    });
+    expect(reopenTarget({ engine: 'idle', saved: inStream, now: NOW, resumed: false })).toEqual({
+      go: 'home',
+    });
+  });
+
+  it('keeps a permanent failure on its Ended screen while its code is kept', () => {
+    expect(reopenTarget({ engine: 'failed', saved: inStream, now: NOW, resumed: false })).toEqual({
+      go: 'stream',
+    });
+  });
+
+  it("goes Home after the operator's Stop", () => {
+    expect(reopenTarget({ engine: 'stopped', saved: inStream, now: NOW, resumed: false })).toEqual({
+      go: 'home',
+    });
   });
 
   it('goes Home with a notice once the code has expired', () => {
-    expect(reopenTarget({ engine: 'idle', saved: inStream, now: AFTER_EXPIRY })).toEqual({
+    expect(
+      reopenTarget({ engine: 'idle', saved: inStream, now: AFTER_EXPIRY, resumed: false }),
+    ).toEqual({
       go: 'home',
       notice: { mode: 'stream', expiredAt: EXPIRY, venueTz: 'Europe/London' },
     });
@@ -67,27 +152,37 @@ describe('reopenTarget', () => {
       },
     });
     const inMadrid: SavedState = { active: 'stream', codes: { stream: madrid } };
-    expect(reopenTarget({ engine: 'idle', saved: inMadrid, now: AFTER_EXPIRY })).toMatchObject({
+    expect(
+      reopenTarget({ engine: 'idle', saved: inMadrid, now: AFTER_EXPIRY, resumed: false }),
+    ).toMatchObject({
       notice: { venueTz: 'Europe/Madrid' },
     });
     const bare: SavedState = {
       active: 'stream',
       codes: { stream: { ...madrid, stream: null } },
     };
-    expect(reopenTarget({ engine: 'idle', saved: bare, now: AFTER_EXPIRY })).toMatchObject({
+    expect(
+      reopenTarget({ engine: 'idle', saved: bare, now: AFTER_EXPIRY, resumed: false }),
+    ).toMatchObject({
       notice: { venueTz: null },
     });
   });
 
   it('goes Home quietly when no mode was active', () => {
-    expect(reopenTarget({ engine: 'idle', saved: nothing, now: NOW })).toEqual({ go: 'home' });
+    expect(reopenTarget({ engine: 'idle', saved: nothing, now: NOW, resumed: false })).toEqual({
+      go: 'home',
+    });
     const kept: SavedState = { active: null, codes: { stream: streamCode } };
-    expect(reopenTarget({ engine: 'stopped', saved: kept, now: NOW })).toEqual({ go: 'home' });
+    expect(reopenTarget({ engine: 'stopped', saved: kept, now: NOW, resumed: false })).toEqual({
+      go: 'home',
+    });
   });
 
   it('goes Home when the active mode has no saved code', () => {
     const orphan: SavedState = { active: 'stream', codes: {} };
-    expect(reopenTarget({ engine: 'idle', saved: orphan, now: NOW })).toEqual({ go: 'home' });
+    expect(reopenTarget({ engine: 'idle', saved: orphan, now: NOW, resumed: false })).toEqual({
+      go: 'home',
+    });
   });
 
   it('goes Home when the active mode is not built yet', () => {
@@ -97,7 +192,9 @@ describe('reopenTarget', () => {
         scoring: { ...streamCode, mode: 'scoring', slot: null, expiresAt: null, stream: null },
       },
     };
-    expect(reopenTarget({ engine: 'idle', saved: scoring, now: NOW })).toEqual({ go: 'home' });
+    expect(reopenTarget({ engine: 'idle', saved: scoring, now: NOW, resumed: false })).toEqual({
+      go: 'home',
+    });
   });
 });
 
@@ -147,6 +244,41 @@ describe('orphanedSession', () => {
     ['live, nothing saved', false, 'live', nothing, NOW],
   ])('%s → orphaned: %s', (_, orphaned, engine, saved, now) => {
     expect(orphanedSession({ engine, saved, now })).toBe(orphaned);
+  });
+});
+
+/** The engine port: JS forgets the code native says ended, by identity. */
+describe('the forget rule (The engine port)', () => {
+  it('forgets when unpaired or an operator stop names the saved code', () => {
+    expect(forgetsSaved({ saved: NAME, unpaired: NAME, stopped: null })).toBe(true);
+    expect(forgetsSaved({ saved: NAME, unpaired: null, stopped: NAME })).toBe(true);
+  });
+  it('keeps a code another pairing ended, or when nothing ended', () => {
+    expect(forgetsSaved({ saved: NAME, unpaired: OTHER, stopped: OTHER })).toBe(false);
+    expect(forgetsSaved({ saved: NAME, unpaired: null, stopped: null })).toBe(false);
+    expect(forgetsSaved({ saved: NO_NAME, unpaired: NO_NAME, stopped: NO_NAME })).toBe(false);
+  });
+  it('keeps a code re-issued with a new token: another tag is another code (N2)', () => {
+    const reissued = { ...NAME, tokenTag: 'cd2b4f7d' };
+    expect(forgetsSaved({ saved: NAME, unpaired: reissued, stopped: reissued })).toBe(false);
+  });
+});
+
+describe('tapToPair', () => {
+  it('marks a code whose pairing failed permanently, once', () => {
+    expect(tapToPairMark({ saved: NAME, marked: false, failed: NAME, paired: null })).toBe('mark');
+    expect(tapToPairMark({ saved: NAME, marked: true, failed: NAME, paired: null })).toBeNull();
+  });
+  it('clears the mark once that code is paired, and only that code', () => {
+    expect(tapToPairMark({ saved: NAME, marked: true, failed: null, paired: NAME })).toBe('clear');
+    expect(tapToPairMark({ saved: NAME, marked: true, failed: null, paired: OTHER })).toBeNull();
+    expect(tapToPairMark({ saved: NAME, marked: false, failed: null, paired: NAME })).toBeNull();
+  });
+  it("leaves another code's failure alone, and an unnamed one", () => {
+    expect(tapToPairMark({ saved: NAME, marked: false, failed: OTHER, paired: null })).toBeNull();
+    expect(
+      tapToPairMark({ saved: NO_NAME, marked: false, failed: NO_NAME, paired: null }),
+    ).toBeNull();
   });
 });
 
