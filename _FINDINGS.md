@@ -681,6 +681,60 @@ detection on the device"):
 - Whether other handsets' Do Not Disturb behaves the same (§0: a vendor
   behaviour that carries weight is tested, not read).
 
+### N22 — Larix's SRT surface, read again: one benchmark worth taking, one design to avoid
+
+**Status:** reference · read 2026-10-04 from Softvelum's public pages · nothing here changes plan C
+**Where:** `softvelum.com/srt`, `softvelum.com/larix/grove`, `softvelum.com/larix/faq` · the encode step of the degradation ladder (AGENTS.md §8) · C8 · relates to N12, C1
+
+N12 rejected Larix as a product. This note reads it again as a reference: the
+SRT settings it exposes, how it adapts bitrate, and how it hands settings to a
+phone. All of it is the vendor's documentation, not measured here, so each
+number below is a hypothesis until C8 tests it (§0).
+
+**What Larix exposes.** SRT caller, listener and rendezvous. Per connection:
+`latency`, `maxbw`, `passphrase`, key length (16, 24 or 32 bytes) and
+`streamid`. Up to five outputs at once, H.264 or H.265, local recording, image
+and web-widget overlays drawn into the encode, and configurable reconnect and
+idle timeouts. Android keeps streaming in the background; iOS keeps audio only,
+which is P1 again.
+
+**Adaptive bitrate, as the FAQ describes it:**
+
+| Mode | Steps down when | Recovers |
+|---|---|---|
+| Logarithmic descend | 4 lost packets in 10 s | One step every minute |
+| Ladder ascend | `bitrate / 300000` lost packets in 10 s; drops to 2/3 | After 15 s, 1.5 min, then 5 min |
+| Hybrid | Bitrate set in proportion to the share of packets delivered; floor 25% | +500 kbps every 30 s |
+
+On SRT the hybrid mode reads only the delivery ratio; on TCP protocols it also
+weighs latency. An optional variable frame rate sheds fps as well as bitrate.
+
+**The benchmark worth taking.** The hybrid mode's floor (25% of the ceiling)
+and its recovery (+500 kbps every 30 s) are the first published numbers we have
+for the bottom rung of our ladder. Against our 3000k ceiling that is a 750k
+floor and about two minutes from the floor back to full rate. C8 should measure
+our own encode step against a degraded link with these as the starting
+comparison, not adopt them. The order of the ladder is unchanged: the overlay
+preview sheds first, preview framerate second, the encode last.
+
+**The design to avoid.** Larix Grove puts the whole setup in a `larix://set/v1/`
+link or QR code, credentials included: `conn[][srtpass]`, `conn[][pass]`,
+`conn[][zixiEncKey]` travel in plain text. A photo of the code is a working
+stream key for as long as the key lives. Our v2 code carries only `code`,
+`slot` and `tok`. The phone fetches the credentials natively, and they never
+reach JS, the record or the code (amendment, _Who reads what_). That keeps a
+leaked photo revocable at the server and keeps C1's two shapes out of anything
+a bystander can read.
+
+**Deliberately not taken.** Caller only is all Cloudflare's ingest needs.
+Multiple outputs cost battery and heat for something Cloudflare already fans
+out. Overlays drawn into the encode would be a second render path (AGENTS.md
+§7). Local recording is outside the scope lock. Exposing SRT settings to a
+volunteer is the professional-tool shape N12 already turned down.
+
+**Not found:** Softvelum's public pages say nothing about a branded or
+white-label build. The SDK page returned 404 on 2026-10-04.
+
 ---
 
 ## P5 device spike (Android)
