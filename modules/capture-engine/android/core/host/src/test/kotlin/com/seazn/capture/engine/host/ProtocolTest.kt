@@ -258,6 +258,20 @@ class ProtocolTest {
     host.shutdown()
   }
 
+  // Review C4c M-2: the quiet check runs on the core's thread and posts itself again while a line waits;
+  // a host shut down stops it, so a dying host never writes an ack its kit has stopped reading for.
+  @Test
+  fun `after shutdown a waiting quiet op is never acked, though the host turns quiet`() {
+    val (host, events) = hostWithEvents()
+    val beat = host.server.take(HttpRequest("POST", "${ScriptedServer.ORIGIN}/beats", emptyList(), "{}"))
+    host.handle("""{"op":"quiet","seq":1}""")
+    Thread.sleep(200)
+    host.shutdown()
+    host.server.handed(beat)
+    Thread.sleep(500)
+    assertTrue("ack:1" !in events.names(), "acked after shutdown: ${events.names()}")
+  }
+
   @Test
   fun `an unnumbered script is still acked by nothing, as before`() {
     val (host, events) = hostWithEvents()
@@ -277,7 +291,6 @@ class ProtocolTest {
       gate.await()
     }
     started.await()
-    val before = scheduler.completed()
     scheduler.schedule(0) {}
     scheduler.schedule(60_000) {}
     scheduler.schedule(0) {}.cancel()
@@ -285,7 +298,6 @@ class ProtocolTest {
     gate.countDown()
     scheduler.drain()
     assertEquals(0, scheduler.dueNow())
-    assertEquals(before + 2, scheduler.completed(), "the running task and the one behind it, each once")
     scheduler.shutdown()
   }
 }

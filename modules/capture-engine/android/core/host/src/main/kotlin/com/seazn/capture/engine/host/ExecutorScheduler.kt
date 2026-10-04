@@ -17,7 +17,6 @@ class ExecutorScheduler : Scheduler {
   private val executor = ScheduledThreadPoolExecutor(1) { task -> Thread(task, "capture-engine").apply { isDaemon = true } }
   private val posted = AtomicLong()
   private val running = AtomicInteger()
-  private val completed = AtomicLong()
 
   override fun schedule(delayMs: Long, task: () -> Unit): Cancellable {
     posted.incrementAndGet()
@@ -27,7 +26,6 @@ class ExecutorScheduler : Scheduler {
         task()
       } finally {
         running.decrementAndGet()
-        completed.incrementAndGet()
       }
     }
     val future = executor.schedule(counted, delayMs.coerceAtLeast(0), TimeUnit.MILLISECONDS)
@@ -42,9 +40,6 @@ class ExecutorScheduler : Scheduler {
     val due = executor.queue.count { task -> !(task as Future<*>).isCancelled && (task as Delayed).getDelay(TimeUnit.MILLISECONDS) <= 0 }
     return due + running.get()
   }
-
-  /** How many tasks have finished: a change between two reads is work that ran in between. */
-  fun completed(): Long = completed.get()
 
   /**
    * Waits until the work already due has run: a marker task with no delay, repeated until no task was

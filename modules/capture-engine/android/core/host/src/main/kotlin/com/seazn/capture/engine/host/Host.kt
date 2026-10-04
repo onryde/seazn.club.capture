@@ -7,8 +7,6 @@ import com.seazn.capture.engine.core.Input
 import com.seazn.capture.engine.core.Pose
 import com.seazn.capture.engine.core.Scheduler
 import com.seazn.capture.engine.core.Side
-import java.util.concurrent.Executors
-import java.util.concurrent.TimeUnit
 import org.json.JSONObject
 
 /**
@@ -31,11 +29,11 @@ class Host(private val scheduler: Scheduler, private val write: (String) -> Unit
 
   @Volatile private var level = 0.5
 
-  /** Polls for quiet, off the core's thread, for the numbered lines waiting on it. */
-  private val quiet = Executors.newSingleThreadScheduledExecutor { task -> Thread(task, "host-quiet").apply { isDaemon = true } }
-
-  /** The numbered lines waiting for quiet, in the order they arrived; the quiet thread only. */
+  /** The numbered lines waiting for quiet, in the order they arrived, with when each may be acked. Core thread only. */
   private val waiting = ArrayDeque<Pair<Int, Long>>()
+
+  /** Set by [shutdown]: the quiet check posts itself no more. */
+  @Volatile private var closed = false
 
   init {
     write(Protocol.encode("ready", mapOf("current" to core.current(), "tail" to core.tail())))
@@ -75,7 +73,7 @@ class Host(private val scheduler: Scheduler, private val write: (String) -> Unit
   }
 
   fun shutdown() {
-    quiet.shutdownNow()
+    closed = true
     platform.shutdown()
   }
 
@@ -83,32 +81,34 @@ class Host(private val scheduler: Scheduler, private val write: (String) -> Unit
 
   /**
    * Acks [seq] once the host is quiet, and no sooner than [afterMs] from now: no answer in flight, and
-   * nothing due on the core's scheduler, read so that work running between the two reads is seen (the
-   * scheduler's finished count is read on both sides). A timer not yet due (the next beat) is never
-   * waited for, so quiet always comes. Acks go out in the order their lines arrived.
+   * nothing due on the core's scheduler ([check]). A timer not yet due (the next beat) is never waited
+   * for, so quiet always comes. Acks go out in the order their lines arrived.
    *
-   * The ack is posted to the core's scheduler, behind every snapshot already due: the engine publishes
-   * each input's own field changes with it (review C4c I-1), a refusal or readiness while paired
-   * included, so the kit reads the quiet engine's last word without waiting for a tick.
+   * The ack is written by the check itself, on the core's thread, after every snapshot already written:
+   * the engine publishes each input's own field changes with it (review C4c I-1), a refusal or readiness
+   * while paired included, so the kit reads the quiet engine's last word without waiting for a tick.
    */
   private fun whenQuiet(seq: Int, afterMs: Long = 0) {
     val probe = scheduler as? ExecutorScheduler ?: error("a numbered line needs the ExecutorScheduler")
-    val notBefore = System.nanoTime() / 1_000_000 + afterMs
-    quiet.execute {
+    val notBefore = SystemClock.monotonicMs() + afterMs
+    scheduler.schedule(0) {
       waiting.addLast(seq to notBefore)
-      if (waiting.size == 1) poll(probe)
+      if (waiting.size == 1) check(probe)
     }
   }
 
-  private fun poll(probe: ExecutorScheduler) {
-    val nowMs = System.nanoTime() / 1_000_000
-    val finished = probe.completed()
-    val isQuiet = server.inFlight == 0 && probe.dueNow() == 0 && probe.completed() == finished
-    while (isQuiet && waiting.isNotEmpty() && waiting.first().second <= nowMs) {
-      val seq = waiting.removeFirst().first
-      scheduler.schedule(0) { platform.acked(seq) }
-    }
-    if (waiting.isNotEmpty()) quiet.schedule({ poll(probe) }, QUIET_POLL_MS, TimeUnit.MILLISECONDS)
+  /**
+   * The quiet check, a marker task on the core's own thread, as [ExecutorScheduler.drain]'s is (review
+   * C4c M-2): while it runs no other core task can, so none can be between the queue and running. The
+   * answers in flight are read first: an answer is handed to the core, which posts its input, before it
+   * leaves flight, and a request is taken only on this thread. Then nothing may be due but the check.
+   */
+  private fun check(probe: ExecutorScheduler) {
+    if (closed) return
+    val nowMs = SystemClock.monotonicMs()
+    val isQuiet = server.inFlight == 0 && probe.dueNow() == ONLY_THE_CHECK
+    while (isQuiet && waiting.isNotEmpty() && waiting.first().second <= nowMs) platform.acked(waiting.removeFirst().first)
+    if (waiting.isNotEmpty()) scheduler.schedule(QUIET_POLL_MS) { check(probe) }
   }
 
   private fun meter() {
@@ -141,6 +141,9 @@ class Host(private val scheduler: Scheduler, private val write: (String) -> Unit
     const val METER_SETTLE_MS = 2 * READINESS_MS + 100
 
     private const val QUIET_POLL_MS = 20L
+
+    /** [ExecutorScheduler.dueNow] while the quiet check runs: the check itself. */
+    private const val ONLY_THE_CHECK = 1
   }
 }
 

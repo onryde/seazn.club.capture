@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { parseStreamCodeText } from '@/domain/credentials/streamCode';
+import { decodeSavedCode, encodeSavedCode } from '@/domain/mode/savedCode';
 import type { Claim } from '@/engine/CaptureEnginePort';
 import { intentWire } from '@/engine/intentWire';
 import vectors from '@/engine/wire/pair-intent-vectors.json';
@@ -26,6 +27,11 @@ type Input = {
   /** The server's answer to the scan's `GET code` (capture-descriptor.v1, a waiting code). */
   readonly answer: Record<string, unknown>;
   readonly facts: { readonly language: string; readonly automatic: boolean; readonly claim: Claim };
+  /**
+   * The cold-start re-pair pairs from the code read back from the store, not the one in hand
+   * (review C4c M-5): it goes through the store's own encode and decode first.
+   */
+  readonly fromStore: boolean;
 };
 
 const waiting = (code: string, zone: string, beats: string, start: string) => ({
@@ -52,6 +58,7 @@ const INPUTS: Readonly<Record<string, Input>> = {
       'https://stg.seazn.club/api/v1/capture/codes/fx42hmnp7k2q/start',
     ),
     facts: { language: 'en', automatic: true, claim: 'new' },
+    fromStore: false,
   },
   'production, the cold-start re-pair': {
     env: 'production',
@@ -63,6 +70,7 @@ const INPUTS: Readonly<Record<string, Input>> = {
       'https://seazn.club/api/v1/capture/codes/0123456789ab/start',
     ),
     facts: { language: 'nl', automatic: false, claim: 'resume' },
+    fromStore: true,
   },
 };
 
@@ -73,7 +81,13 @@ const ok = (body: unknown): FetchResponse => ({
 });
 
 /** What Home saves after a 200, then the intent the bridge sends for it. */
-async function wireFor({ env, qr, answer, facts }: Input): Promise<Record<string, unknown>> {
+async function wireFor({
+  env,
+  qr,
+  answer,
+  facts,
+  fromStore,
+}: Input): Promise<Record<string, unknown>> {
   const urls: string[] = [];
   const port = createFetchCodePort({
     origin: seaznOrigin(env),
@@ -93,7 +107,9 @@ async function wireFor({ env, qr, answer, facts }: Input): Promise<Record<string
     slot: qr.slot,
     stream: { waiting: checked.value, codeUrl: port.codeUrl(code.value.code), tapToPair: false },
   });
-  const intent = pairIntentFor(saved, { ...facts, environment: seaznEnvironment(env) });
+  const used = fromStore ? decodeSavedCode(encodeSavedCode(saved)) : saved;
+  if (used === null) throw new Error('the saved fixture must read back from the store');
+  const intent = pairIntentFor(used, { ...facts, environment: seaznEnvironment(env) });
   if (intent === null) throw new Error('the saved fixture must be usable');
   // The scan asked the code's own URL, with only the slot after it.
   expect(urls).toEqual([`${intent.codeUrl}?slot=${qr.slot}`]);

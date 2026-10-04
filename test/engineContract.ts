@@ -36,26 +36,6 @@ export function describeEngineContract(
       subject = await make();
     });
     afterEach(() => subject.dispose());
-    const settled = () => subject.settle?.() ?? settle();
-    const kit: ScenarioKit = {
-      send: async (intent) => {
-        subject.engine.send(intent);
-        await settled();
-      },
-      sendTogether: async (intents) => {
-        for (const intent of intents) subject.engine.send(intent);
-        await settled();
-      },
-      say: async (words) => {
-        await subject.say(words);
-        await settled();
-      },
-      ready: async (ready) => {
-        await subject.ready(ready);
-        await settled();
-      },
-      snapshot: () => subject.engine.getSnapshot(),
-    };
     it(`runs all ${ENGINE_SCENARIO_COUNT} scenarios, each named once`, () => {
       const names = new Set(ENGINE_SCENARIOS.map((scenario) => scenario.name));
       expect([ENGINE_SCENARIOS.length, names.size]).toEqual([
@@ -63,6 +43,34 @@ export function describeEngineContract(
         ENGINE_SCENARIO_COUNT,
       ]);
     });
-    for (const scenario of ENGINE_SCENARIOS) it(scenario.name, () => scenario.run(kit));
+    for (const scenario of ENGINE_SCENARIOS)
+      it(scenario.name, () => scenario.run(scenarioKit(subject, settle)));
   });
+}
+
+/**
+ * The kit a scenario drives [subject] through: each step settles once, by the engine's own settle
+ * when it has one, else by [settle]; `sendTogether` sends every intent before its one settle (PV33).
+ */
+export function scenarioKit(subject: EngineUnderTest, settle: Settle): ScenarioKit {
+  const settled = () => subject.settle?.() ?? settle();
+  return {
+    send: async (intent) => {
+      subject.engine.send(intent);
+      await settled();
+    },
+    sendTogether: async (intents) => {
+      for (const intent of intents) subject.engine.send(intent);
+      await settled();
+    },
+    say: async (words) => {
+      await subject.say(words);
+      await settled();
+    },
+    ready: async (ready) => {
+      await subject.ready(ready);
+      await settled();
+    },
+    snapshot: () => subject.engine.getSnapshot(),
+  };
 }

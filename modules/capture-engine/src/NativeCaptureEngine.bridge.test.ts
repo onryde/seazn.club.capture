@@ -57,19 +57,46 @@ describe('the host harness', () => {
     host = null;
   });
 
-  it("sets each of native's four readiness checks both ways, as the snapshot reads them (4 rows)", async () => {
-    host = await startHostEngine();
-    host.engine.send(KIT_CODE_A);
-    await host.settle!();
-    const checks = ['camera', 'sound', 'network', 'held'] as const;
-    const seen: string[] = [];
-    for (const check of checks) {
-      for (const value of [false, true]) {
-        await host.ready({ [check]: value });
-        seen.push(`${check}:${String(host.engine.getSnapshot().ready[check])}`);
-      }
+  // Review C4c M-7: a row per check, each on its own host, so no row holds most of the 30 s budget.
+  const checks = ['camera', 'sound', 'network', 'held'] as const;
+  it("sweeps native's 4 readiness checks", () => {
+    expect(checks).toHaveLength(4);
+  });
+
+  it.each(checks)('sets the %s check both ways, as the snapshot reads it', async (check) => {
+    const started = await startHostEngine();
+    host = started;
+    started.engine.send(KIT_CODE_A);
+    await started.settle!();
+    const seen: boolean[] = [];
+    for (const value of [false, true]) {
+      await started.ready({ [check]: value });
+      seen.push(started.engine.getSnapshot().ready[check]);
     }
-    expect(seen).toEqual(checks.flatMap((check) => [`${check}:false`, `${check}:true`]));
+    expect(seen).toEqual([false, true]);
+  });
+
+  // Review C4c M-4 and the gap hunt's CD7: a JS entry crosses to native's record and comes back.
+  it("CD7 a JS entry forwarded to native's record comes back as its line, and the claim beat carried the pair", async () => {
+    const started = await startHostEngine();
+    host = started;
+    started.engine.send(KIT_CODE_A);
+    await started.settle!();
+    expect(started.requests.find((request) => request.path === 'beat')?.body).toMatchObject({
+      code: KIT_CODE_A.code,
+      slot: KIT_CODE_A.slot,
+      claim: 'new',
+    });
+    started.engine.forward({ level: 'warn', event: 'intent.stop', fields: { count: 3 } });
+    await expect
+      .poll(
+        () =>
+          started.record
+            .map((line) => JSON.parse(line) as Record<string, unknown>)
+            .find((line) => line.kind === 'intent.stop'),
+        { timeout: 3_000, interval: 50 },
+      )
+      .toMatchObject({ kind: 'intent.stop', level: 'warn', count: 3 });
   });
 
   it('I-2 a start settles on air, and reads publishing within 3 s', async () => {

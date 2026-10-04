@@ -257,7 +257,9 @@ export const ENGINE_SCENARIOS: readonly Scenario[] = [
     },
   },
   {
-    name: 'carry 28: a stop and a pair sent together are taken in order — the pair is ignored, the stop ends A',
+    // Review C4c M-1: the first half cannot see order (a pair for B is ignored while A is held, before
+    // the stop or after it), so only the reset then the pair is named as taken in order.
+    name: 'carry 28: a pair sent with a stop is ignored while A is held, and the stop ends A; a reset then a pair are taken in order',
     needsServer: false,
     run: async (kit) => {
       await kit.send(KIT_CODE_A);

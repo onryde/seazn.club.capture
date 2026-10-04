@@ -36,7 +36,8 @@ const bridge: TestProjectInlineConfiguration = {
   extends: true,
   test: {
     name: 'bridge',
-    include: ['modules/**/*.bridge.test.ts'],
+    // Wherever a bridge test sits: `domain` excludes the same pattern (review C4c M-6).
+    include: ['**/*.bridge.test.ts'],
     environment: 'node',
     // One JVM per test, started cold, and a say waits for the next 5 s beat.
     testTimeout: 30_000,
