@@ -66,4 +66,48 @@ class ScriptedServerTest {
     assertEquals(200, ask("${ScriptedServer.ORIGIN}/start").status)
     assertEquals(200, ask("${ScriptedServer.ORIGIN}?slot=0&phone=p").status)
   }
+
+  @Test
+  fun `any code's URL with a query reads as code, and its answer names that code`() {
+    val url = "https://stg.seazn.club/api/v1/capture/codes/ka0000000001"
+    val answered = ask("$url?slot=1&phone=p")
+    assertEquals(200, answered.status)
+    val body = JSONObject(answered.body)
+    assertEquals(listOf("ka0000000001", "$url/beats", "$url/start"), listOf(body.getString("code"), body.getString("heartbeatUrl"), body.getString("startUrl")))
+    assertEquals("code", server.path(HttpRequest("GET", "$url?slot=1&phone=p", emptyList(), null)))
+    // Not Seazn's code path: another host, or no query, is no path at all.
+    assertEquals(null, server.path(HttpRequest("GET", "https://evil.example/api/v1/capture/codes/ka0000000001?slot=1", emptyList(), null)))
+    assertEquals(null, server.path(HttpRequest("GET", url, emptyList(), null)))
+  }
+
+  @Test
+  fun `onAnswered runs once, after the next answer of the script it follows is handed over, and inFlight counts each`() {
+    val beat = HttpRequest("POST", "${ScriptedServer.ORIGIN}/beats", emptyList(), "{}")
+    val early = server.take(beat)
+    assertEquals(1, server.inFlight)
+    var ran = 0
+    server.script("beat", 200, JSONObject().put("state", "taken"))
+    server.onAnswered("beat") { ran += 1 }
+    server.handed(early)
+    assertEquals(0 to 0, ran to server.inFlight, "an answer taken before the script is not its answer")
+    val next = server.take(beat)
+    assertEquals("taken", JSONObject((next.outcome as HttpOutcome.Answered).body).getString("state"))
+    server.handed(next)
+    server.handed(server.take(beat))
+    assertEquals(1 to 0, ran to server.inFlight, "run once, at the scripted answer")
+  }
+
+  // Task 27's quiet reads inFlight: an answer still counts while the core is being handed it, so the
+  // host is never quiet between the answer and the work the core posts for it.
+  @Test
+  fun `an answer is in flight until the platform has handed it to the core`() {
+    val platform = ScriptedPlatform(server) {}
+    val seen = java.util.concurrent.ArrayBlockingQueue<Int>(1)
+    platform.http(HttpRequest("POST", "${ScriptedServer.ORIGIN}/beats", emptyList(), "{}")) { seen.put(server.inFlight) }
+    assertEquals(1, seen.poll(2, java.util.concurrent.TimeUnit.SECONDS), "in flight inside the hand-over")
+    val until = System.nanoTime() + 2_000_000_000L
+    while (server.inFlight != 0 && System.nanoTime() < until) Thread.sleep(5)
+    assertEquals(0, server.inFlight, "handed over")
+    platform.shutdown()
+  }
 }

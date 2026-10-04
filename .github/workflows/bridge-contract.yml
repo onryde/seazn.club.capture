@@ -1,0 +1,47 @@
+# The engine contract over the real Kotlin core: the JVM host and the JS bridge
+# (plan C, CD8). Separate from kotlin-core, which stays JDK and Gradle only
+# (spec §6); separate from check, which never needs a JVM.
+name: bridge-contract
+
+# The same triggers as kotlin-core.yml. No path filter: a filtered workflow
+# that is a required check never reports on a PR it skips (P8).
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: bridge-contract-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  bridge-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+      # The wrapper jar is a binary in the repo; refuse one Gradle did not publish.
+      - uses: gradle/actions/wrapper-validation@v6
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+          cache-dependency-path: |
+            modules/capture-engine/android/core/**/*.gradle.kts
+            modules/capture-engine/android/core/gradle/wrapper/gradle-wrapper.properties
+      # Reads the pnpm version from package.json `packageManager` (as check.yml).
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: ./gradlew :host:installDist --no-daemon --console=plain
+        working-directory: modules/capture-engine/android/core
+      - run: pnpm vitest run --project bridge
+        env:
+          CAPTURE_BRIDGE: '1'

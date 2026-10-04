@@ -1,8 +1,10 @@
 package com.seazn.capture.engine.host
 
+import com.seazn.capture.engine.adapter.HttpRequest
 import com.seazn.capture.engine.core.Cancellable
 import com.seazn.capture.engine.core.Scheduler
 import java.math.BigDecimal
+import java.util.concurrent.CountDownLatch
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -97,5 +99,153 @@ class ProtocolTest {
     assertEquals("ready", ready.getString("ev"))
     assertEquals("idle", ready.getJSONObject("current").getJSONObject("state").getString("kind"))
     assertTrue(out.drop(1).any { JSONObject(it).getString("ev") == "snapshot" }, "the start published, after it: $out")
+  }
+
+  /** The host's events by name: `ack:n` for an ack, the state kind for a snapshot, `ev` otherwise. */
+  private class Events {
+    private val lines = mutableListOf<JSONObject>()
+
+    fun add(line: String) = synchronized(lines) { lines += JSONObject(line) }
+
+    fun names(): List<String> = synchronized(lines) { lines.map(::nameOf) }
+
+    fun lastSnapshot(): JSONObject = synchronized(lines) { lines.last { it.getString("ev") == "snapshot" } }.getJSONObject("body")
+
+    /** Polls every 20 ms for [name], at most [timeoutMs]; fails with every event seen. */
+    fun await(name: String, timeoutMs: Long = 3_000) = awaitThat("$name", timeoutMs) { name in names() }
+
+    fun awaitThat(what: String, timeoutMs: Long = 3_000, seen: () -> Boolean) {
+      val until = System.nanoTime() + timeoutMs * 1_000_000
+      while (!seen()) {
+        assertTrue(System.nanoTime() < until, "no $what in $timeoutMs ms: ${names()}")
+        Thread.sleep(20)
+      }
+    }
+
+    private fun nameOf(line: JSONObject): String =
+      when (line.getString("ev")) {
+        "ack" -> "ack:${line.getInt("seq")}"
+        "snapshot" -> line.getJSONObject("body").getJSONObject("state").getString("kind")
+        else -> line.getString("ev")
+      }
+  }
+
+  /** A host over a real [ExecutorScheduler], as `Main` builds it, its events collected. */
+  private fun hostWithEvents(): Pair<Host, Events> {
+    val events = Events()
+    return Host(ExecutorScheduler(), events::add) to events
+  }
+
+  /** The made-up go-live beat: the waiting fields, the host's own uuid sid (I3) and a cause. */
+  private val goLive = JSONObject(ScriptedServer.WAITING.toString()).put("state", "go-live").put("sid", ScriptedServer.SID).put("startedBy", "organiser")
+
+  @Test
+  fun `a numbered script is acked after its path's next answer, once the host is quiet`() {
+    val (host, events) = hostWithEvents()
+    host.handle("""{"op":"send","seq":1,"intent":${ScriptedServer.PAIR}}""")
+    events.await("ack:1")
+    host.handle("""{"op":"script","seq":2,"path":"beat","status":200,"body":$goLive}""")
+    events.await("ack:2", timeoutMs = 8_000)
+    val names = events.names()
+    // The whole chain, the beat's answer, the code's, Armed and the connect, ran before the ack.
+    assertTrue(names.indexOf("connecting") in 0 until names.indexOf("ack:2"), "on air before the ack: $names")
+    host.shutdown()
+  }
+
+  @Test
+  fun `a numbered readiness is acked once quiet, and network reaches the core`() {
+    val (host, events) = hostWithEvents()
+    host.handle("""{"op":"send","seq":1,"intent":${ScriptedServer.PAIR}}""")
+    events.await("ack:1")
+    host.handle("""{"op":"readiness","seq":2,"network":false}""")
+    events.await("ack:2")
+    assertEquals(false, events.lastSnapshot().getJSONObject("ready").getBoolean("network"))
+    host.shutdown()
+  }
+
+  // Review C4a N-3: the meter applies a level at its next readings and sound is held for 300 ms, so
+  // a host with nothing due is not yet a host that has judged the level. The ack waits two periods.
+  @Test
+  fun `N-3 a numbered readiness that silences the mic is acked only once sound reads false`() {
+    val (host, events) = hostWithEvents()
+    host.handle("""{"op":"send","seq":1,"intent":${ScriptedServer.PAIR}}""")
+    events.awaitThat("sound held") { events.names().contains("ack:1") && events.lastSnapshot().getJSONObject("ready").getBoolean("sound") }
+    host.handle("""{"op":"readiness","seq":2,"audioPeak":0}""")
+    events.await("ack:2")
+    assertEquals(false, events.lastSnapshot().getJSONObject("ready").getBoolean("sound"))
+    host.shutdown()
+  }
+
+  // PV28: the kit's send reads the engine once it is quiet, not at the intent's own ack.
+  @Test
+  fun `PV28 a quiet op is acked once the start's chain has run, so the start reads on air`() {
+    val (host, events) = hostWithEvents()
+    host.handle("""{"op":"send","seq":1,"intent":${ScriptedServer.PAIR}}""")
+    events.awaitThat("sound held") { events.names().contains("ack:1") && events.lastSnapshot().getJSONObject("ready").getBoolean("sound") }
+    host.handle("""{"op":"send","seq":2,"intent":{"kind":"start"}}""")
+    host.handle("""{"op":"quiet","seq":3}""")
+    events.await("ack:3")
+    val names = events.names()
+    assertTrue(names.indexOf("connecting") in 0 until names.indexOf("ack:3"), "on air before the quiet ack: $names")
+    host.shutdown()
+  }
+
+  // The engine publishes a change that leaves the state as it was (a refusal while paired) on its next
+  // tick only: the quiet ack comes after that tick's snapshot, so the kit reads it.
+  @Test
+  fun `PV28 a quiet ack follows the next tick, so a refusal that leaves the state paired is read`() {
+    val (host, events) = hostWithEvents()
+    host.handle("""{"op":"send","seq":1,"intent":${ScriptedServer.PAIR}}""")
+    events.awaitThat("sound held") { events.names().contains("ack:1") && events.lastSnapshot().getJSONObject("ready").getBoolean("sound") }
+    host.handle("""{"op":"script","path":"start","status":402,"body":{"code":"no_credit","message":"m"}}""")
+    host.handle("""{"op":"send","seq":2,"intent":{"kind":"start"}}""")
+    host.handle("""{"op":"quiet","seq":3}""")
+    events.await("ack:3")
+    val last = events.lastSnapshot()
+    assertEquals("paired" to "no_credit", last.getJSONObject("state").getString("kind") to last.getString("refusal"))
+    host.shutdown()
+  }
+
+  @Test
+  fun `a quiet op waits while an answer is in flight, and is acked once it is handed over`() {
+    val (host, events) = hostWithEvents()
+    val beat = host.server.take(HttpRequest("POST", "${ScriptedServer.ORIGIN}/beats", emptyList(), "{}"))
+    host.handle("""{"op":"quiet","seq":1}""")
+    Thread.sleep(1_000)
+    assertTrue("ack:1" !in events.names(), "acked with an answer in flight: ${events.names()}")
+    host.server.handed(beat)
+    events.await("ack:1")
+    host.shutdown()
+  }
+
+  @Test
+  fun `an unnumbered script is still acked by nothing, as before`() {
+    val (host, events) = hostWithEvents()
+    host.handle("""{"op":"script","path":"start","status":402,"body":{"code":"no_credit","message":"m"}}""")
+    Thread.sleep(200)
+    assertTrue(events.names().none { it.startsWith("ack") }, "${events.names()}")
+    host.shutdown()
+  }
+
+  @Test
+  fun `dueNow counts a task due now and the one running, never a task due later`() {
+    val scheduler = ExecutorScheduler()
+    val started = CountDownLatch(1)
+    val gate = CountDownLatch(1)
+    scheduler.schedule(0) {
+      started.countDown()
+      gate.await()
+    }
+    started.await()
+    val before = scheduler.completed()
+    scheduler.schedule(0) {}
+    scheduler.schedule(60_000) {}
+    scheduler.schedule(0) {}.cancel()
+    assertEquals(2, scheduler.dueNow(), "the running task and the one due behind it")
+    gate.countDown()
+    scheduler.drain()
+    assertEquals(0, scheduler.dueNow())
+    assertEquals(before + 2, scheduler.completed(), "the running task and the one behind it, each once")
+    scheduler.shutdown()
   }
 }

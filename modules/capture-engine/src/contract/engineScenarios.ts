@@ -6,6 +6,8 @@ import type { ServerSays } from './serverSays';
 /** How a scenario drives an engine: the port's own intents, the server's words, native's readiness. */
 export type ScenarioKit = {
   send(intent: EngineIntent): Promise<void>;
+  /** Sends every intent before waiting once: what a fast double tap or a scan racing a Stop does (PV33). */
+  sendTogether(intents: readonly EngineIntent[]): Promise<void>;
   say(words: ServerSays): Promise<void>;
   /**
    * Sets native's readiness and resolves once the engine has judged it. An
@@ -242,6 +244,33 @@ export const ENGINE_SCENARIOS: readonly Scenario[] = [
       same([kind(kit), named(kit.snapshot())], ['idle', null], 'after reset');
       await kit.send(KIT_CODE_B);
       same(named(kit.snapshot()), nameOf(KIT_CODE_B), 'paired again');
+    },
+  },
+  {
+    name: 'carry 27: a stop is answered — the broadcast is ended once the engine has settled',
+    needsServer: false,
+    run: async (kit) => {
+      await kit.send(KIT_CODE_A);
+      await kit.send({ kind: 'start' });
+      await kit.send({ kind: 'stop' });
+      same(kind(kit), 'ended', 'stop answered within one settle');
+    },
+  },
+  {
+    name: 'carry 28: a stop and a pair sent together are taken in order — the pair is ignored, the stop ends A',
+    needsServer: false,
+    run: async (kit) => {
+      await kit.send(KIT_CODE_A);
+      await kit.send({ kind: 'start' });
+      await kit.sendTogether([{ kind: 'stop' }, KIT_CODE_B]);
+      same(kind(kit), 'ended', 'the stop ended the broadcast');
+      same(named(kit.snapshot()), nameOf(KIT_CODE_A), 'still A, named');
+      await kit.sendTogether([{ kind: 'reset' }, KIT_CODE_B]);
+      same(
+        [kind(kit), named(kit.snapshot())],
+        ['paired', nameOf(KIT_CODE_B)],
+        'reset then pair, in order (Identity rules)',
+      );
     },
   },
 ];

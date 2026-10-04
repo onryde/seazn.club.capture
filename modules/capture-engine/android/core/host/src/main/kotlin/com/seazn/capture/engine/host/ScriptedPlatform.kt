@@ -66,8 +66,15 @@ class ScriptedPlatform(private val server: ScriptedServer, private val write: (S
   override fun http(request: HttpRequest, answer: (HttpOutcome) -> Unit) {
     // The body the engine sent, never the URL or the Bearer: the kit asserts the claim, `stopped` and `notReady`.
     server.path(request)?.let { path -> write(Protocol.encode("request", mapOf("path" to path, "body" to request.body?.let(JsonReader::parse)))) }
-    val outcome = server.answer(request)
-    executor.execute { answer(outcome) }
+    val taken = server.take(request)
+    // In flight until the core has been handed it, so the host is never quiet between the two (Task 27).
+    executor.execute {
+      try {
+        answer(taken.outcome)
+      } finally {
+        server.handed(taken)
+      }
+    }
   }
 
   override fun capture(wanted: Boolean, request: PairRequest?) = diagnostic("capture wanted=$wanted")

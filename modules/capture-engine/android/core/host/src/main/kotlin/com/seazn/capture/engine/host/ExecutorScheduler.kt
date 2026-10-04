@@ -2,8 +2,11 @@ package com.seazn.capture.engine.host
 
 import com.seazn.capture.engine.core.Cancellable
 import com.seazn.capture.engine.core.Scheduler
-import java.util.concurrent.Executors
+import java.util.concurrent.Delayed
+import java.util.concurrent.Future
+import java.util.concurrent.ScheduledThreadPoolExecutor
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicLong
 
 /**
@@ -11,14 +14,37 @@ import java.util.concurrent.atomic.AtomicLong
  * the order they were submitted, so an ack posted after an input's own tasks is written after them (CD8).
  */
 class ExecutorScheduler : Scheduler {
-  private val executor = Executors.newSingleThreadScheduledExecutor { task -> Thread(task, "capture-engine").apply { isDaemon = true } }
+  private val executor = ScheduledThreadPoolExecutor(1) { task -> Thread(task, "capture-engine").apply { isDaemon = true } }
   private val posted = AtomicLong()
+  private val running = AtomicInteger()
+  private val completed = AtomicLong()
 
   override fun schedule(delayMs: Long, task: () -> Unit): Cancellable {
     posted.incrementAndGet()
-    val future = executor.schedule(task, delayMs.coerceAtLeast(0), TimeUnit.MILLISECONDS)
+    val counted = {
+      running.incrementAndGet()
+      try {
+        task()
+      } finally {
+        running.decrementAndGet()
+        completed.incrementAndGet()
+      }
+    }
+    val future = executor.schedule(counted, delayMs.coerceAtLeast(0), TimeUnit.MILLISECONDS)
     return Cancellable { future.cancel(false) }
   }
+
+  /**
+   * The engine's work now (Task 27's quiet): the queued tasks already due, cancelled ones aside, and
+   * the one running. A task due later (the next tick, the next beat) is not work now.
+   */
+  fun dueNow(): Int {
+    val due = executor.queue.count { task -> !(task as Future<*>).isCancelled && (task as Delayed).getDelay(TimeUnit.MILLISECONDS) <= 0 }
+    return due + running.get()
+  }
+
+  /** How many tasks have finished: a change between two reads is work that ran in between. */
+  fun completed(): Long = completed.get()
 
   /**
    * Waits until the work already due has run: a marker task with no delay, repeated until no task was

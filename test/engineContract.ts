@@ -10,6 +10,8 @@ export type EngineUnderTest = {
   say(words: ServerSays): void | Promise<void>;
   /** See `ScenarioKit.ready`: an engine with a meter resolves on its readiness line (review C4a N-3). */
   ready(ready: Partial<Readiness>): void | Promise<void>;
+  /** How this engine settles, when it knows better than the kit's default: the bridge waits for a quiet host (PV28). */
+  settle?: Settle;
   dispose(): void | Promise<void>;
 };
 
@@ -21,7 +23,7 @@ export type Settle = () => Promise<void>;
 const NOTHING: Settle = () => Promise.resolve();
 
 /** The kit's size, so a scenario lost from the list reds here rather than passing unseen (PV12). */
-export const ENGINE_SCENARIO_COUNT = 11;
+export const ENGINE_SCENARIO_COUNT = 13;
 
 export function describeEngineContract(
   name: string,
@@ -34,18 +36,23 @@ export function describeEngineContract(
       subject = await make();
     });
     afterEach(() => subject.dispose());
+    const settled = () => subject.settle?.() ?? settle();
     const kit: ScenarioKit = {
       send: async (intent) => {
         subject.engine.send(intent);
-        await settle();
+        await settled();
+      },
+      sendTogether: async (intents) => {
+        for (const intent of intents) subject.engine.send(intent);
+        await settled();
       },
       say: async (words) => {
         await subject.say(words);
-        await settle();
+        await settled();
       },
       ready: async (ready) => {
         await subject.ready(ready);
-        await settle();
+        await settled();
       },
       snapshot: () => subject.engine.getSnapshot(),
     };

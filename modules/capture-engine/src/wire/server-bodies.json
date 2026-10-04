@@ -83,7 +83,7 @@
         "autoAllowed": true,
         "destinationName": "YouTube · Host",
         "overlayUrl": null,
-        "pollSeconds": 10
+        "pollSeconds": 5
       }
     },
     {
@@ -118,7 +118,7 @@
         "autoAllowed": true,
         "destinationName": "YouTube · Host",
         "overlayUrl": null,
-        "pollSeconds": 10,
+        "pollSeconds": 5,
         "venueTimezone": "Europe/London",
         "heartbeatUrl": "https://stg.seazn.club/api/v1/capture/codes/h0stcde7k2qa/beats",
         "startUrl": "https://stg.seazn.club/api/v1/capture/codes/h0stcde7k2qa/start"

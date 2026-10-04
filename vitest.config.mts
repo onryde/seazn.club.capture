@@ -1,5 +1,5 @@
 import { fileURLToPath } from 'node:url';
-import { defineConfig } from 'vitest/config';
+import { configDefaults, defineConfig, type TestProjectInlineConfiguration } from 'vitest/config';
 
 const path = (relative: string) => fileURLToPath(new URL(relative, import.meta.url));
 
@@ -26,7 +26,24 @@ const alias = {
  *
  * `types` runs the `*.test-d.ts` type tests through `tsc`: an `expectTypeOf`
  * in a runtime project is stripped and passes whatever the types say.
+ *
+ * `bridge` (Task 27) runs the engine contract over the real Kotlin core: the
+ * JVM host behind the JS bridge. It needs a JDK and `./gradlew :host:installDist`,
+ * so it is a project only with `CAPTURE_BRIDGE=1` (its own CI workflow), and
+ * `domain` never collects its files: two guards, one per project (I11).
  */
+const bridge: TestProjectInlineConfiguration = {
+  extends: true,
+  test: {
+    name: 'bridge',
+    include: ['modules/**/*.bridge.test.ts'],
+    environment: 'node',
+    // One JVM per test, started cold, and a say waits for the next 5 s beat.
+    testTimeout: 30_000,
+    hookTimeout: 30_000,
+  },
+};
+
 export default defineConfig({
   resolve: { alias },
   test: {
@@ -36,6 +53,7 @@ export default defineConfig({
         test: {
           name: 'domain',
           include: ['src/**/*.test.ts', 'modules/**/*.test.ts', 'test/**/*.test.ts'],
+          exclude: [...configDefaults.exclude, '**/*.bridge.test.ts'],
           environment: 'node',
         },
       },
@@ -69,6 +87,7 @@ export default defineConfig({
           },
         },
       },
+      ...(process.env.CAPTURE_BRIDGE === '1' ? [bridge] : []),
     ],
   },
 });
