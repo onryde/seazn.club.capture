@@ -24,3 +24,15 @@ export function useOwnPairing(saved: SavedCode | null): boolean {
   const code = useMemo(() => (saved === null ? null : savedCodeName(saved)), [saved]);
   return code !== null && sameCode({ code: held, slot, tokenTag: tag }, code);
 }
+
+/**
+ * Whether the store has loaded and holds no stream code. `useSavedStream`'s
+ * null is also "not loaded yet", which is not the same: nothing is known then.
+ */
+export function useNothingSaved(): boolean {
+  const { modeStore } = usePorts();
+  return useSyncExternalStore(modeStore.subscribe, () => {
+    const store = modeStore.getSnapshot();
+    return store.status === 'ready' && store.saved.codes.stream === undefined;
+  });
+}

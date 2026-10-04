@@ -3,7 +3,7 @@ import { leaveRule, type EngineStatus, type LeaveRule } from '@/domain/mode/reop
 import { selectEngineStatus, selectStateKind } from '@/hooks/engineSelectors';
 import { useEngineSelector } from '@/hooks/useCaptureEngine';
 import { usePorts } from '@/hooks/usePorts';
-import { useOwnPairing, useSavedStream } from '@/hooks/useSavedStream';
+import { useNothingSaved, useOwnPairing, useSavedStream } from '@/hooks/useSavedStream';
 import { isStreamSubRoute } from '@/services/devicePorts';
 import type { Logger } from '@/services/logger';
 import type { ModeStore } from '@/services/modeStore';
@@ -35,7 +35,10 @@ export function useStreamLeave(): {
 } {
   const status = useEngineSelector(selectEngineStatus);
   // Fix round 3: a stopped engine spends this code only if its pairing was this code's.
-  const own = useOwnPairing(useSavedStream());
+  const ownPairing = useOwnPairing(useSavedStream());
+  // C4b-I1: or if no code is saved at all, the gate's own orphan rule (see `clearsSession`).
+  const nothingSaved = useNothingSaved();
+  const own = ownPairing || nothingSaved;
   const [blocked, block] = useRefusalLine();
   const left = useRef(false);
   const departed = useCallback(() => left.current, []);
@@ -155,13 +158,16 @@ function useFinishLeave(onBlocked: () => void): FinishLeave {
 }
 
 /**
- * I1: a stopped session is cleared only if this leave forgot its code — a
- * session that moved on meanwhile is not ours to clear. Left `stopped`, the
- * engine would make the next code's first leave a forget too. D11: a failed
- * one is always cleared; its code is kept, so Continue re-arms instead of
- * landing on Ended. Sent however the write went: a refused forget leaves the
- * spent code saved, and it waits on the Continue card until it expires or is
- * forgotten (spec §4).
+ * I1: a stopped session is cleared when it is ours: its pairing is the saved
+ * code's, which this leave forgets, or no code is saved at all (C4b-I1). The
+ * follow forgets the code at the operator's Stop (Task 24), so by the time
+ * they leave Ended nothing owns the session, and it is nobody's, as the gate's
+ * orphan rule reads it. A session another, still saved, code has moved on from
+ * is not ours to clear. Left `stopped`, native would hold Ended until the next
+ * foreground or scan. D11: a failed one is always cleared; its code is kept,
+ * so Continue re-arms instead of landing on Ended. Sent however the write
+ * went: a refused forget leaves the spent code saved, and it waits on the
+ * Continue card until it expires or is forgotten (spec §4).
  */
 function clearsSession(rule: FreeRule, status: EngineStatus): boolean {
   return status === 'failed' || (rule === 'freeAndForget' && status === 'stopped');

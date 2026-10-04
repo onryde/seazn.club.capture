@@ -7,7 +7,8 @@ import {
   screen,
   waitFor,
 } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { encodeSavedCode } from '@/domain/mode/savedCode';
 import { useReopenGate } from '@/hooks/useReopenGate';
 import { STORE_KEYS } from '@/services/modeStore';
 import { StreamScreen } from '@/ui/screens/StreamScreen';
@@ -16,6 +17,7 @@ import { savedStreamCode } from '../../../test/fixtures/savedStream';
 import { captureRaw, epochSeconds } from '../../../test/fixtures/wire';
 import { pairCode } from '../../../test/pairCode';
 import { renderViewfinder } from '../../../test/renderViewfinder';
+import { flush, intentKinds, launchApp } from '../../../test/routedApp';
 import { wrapperFor } from '../../../test/renderWithPorts';
 
 const plate = () => screen.getByTestId('tally-plate').textContent;
@@ -187,5 +189,44 @@ describe('a code that expired on a stopped Ended screen (N4)', () => {
     expect(view.engine.intents.map((intent) => intent.kind)).toEqual(['pair', 'reset', 'pair']);
     expect(plate()).toBe('Ready');
     expect(screen.queryByRole('button', { name: 'Scan another' })).toBeNull();
+  });
+});
+
+/**
+ * C4b-I1 (spec, Ended; amendment, The engine port): the follow forgets the
+ * code at the operator's Stop, so by the time they leave Ended no saved code
+ * owns the session. Nothing saved, it is nobody's, the gate's own orphan rule,
+ * and the leave clears it: native must not hold an Ended session until the
+ * next foreground or scan.
+ */
+describe('leaving Ended after the operator’s Stop, with the code already forgotten (C4b-I1)', () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  const saved = savedStreamCode();
+
+  it.each(['Home', 'Scan another'])('%s sends exactly one reset', async (button) => {
+    const app = await launchApp({
+      kvSeed: {
+        [STORE_KEYS.active]: 'stream',
+        [STORE_KEYS.code('stream')]: encodeSavedCode(saved),
+      },
+      prepare: (fakes) => pairCode(fakes.engine, saved),
+    });
+    act(() => app.engine.send({ kind: 'start' }));
+    await flush(5_000);
+    act(() => app.engine.send({ kind: 'stop' }));
+    await flush();
+    expect(app.engine.getSnapshot().state).toMatchObject({
+      kind: 'ended',
+      reason: 'operator-stopped',
+    });
+    expect(app.kv.entries.has(STORE_KEYS.code('stream'))).toBe(false);
+    const before = app.engine.intents.length;
+    fireEvent.click(screen.getByRole('button', { name: button }));
+    await flush();
+    expect(app.nav.current()).toBe('home');
+    expect(intentKinds(app).slice(before)).toEqual(['reset']);
+    expect(app.engine.getSnapshot().state.kind).toBe('idle');
   });
 });

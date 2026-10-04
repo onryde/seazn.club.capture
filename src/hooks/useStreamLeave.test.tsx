@@ -107,18 +107,39 @@ describe('useStreamLeave', () => {
   });
 
   // Reachable with nothing saved. Paired: the reopen gate sends a paired or live
-  // engine here whatever is saved (reopen.ts). Stopped: a stopped leave that was
-  // cancelled on air had already forgotten the code, and then the broadcast stops.
-  it.each<[string, SessionState]>([
-    ['paired', { kind: 'paired' }],
-    ['stopped', STOPPED],
-  ])('leaves for Home with nothing saved while %s', async (_, state) => {
+  // engine here whatever is saved (reopen.ts); the leave never unpairs it.
+  // Stopped: the follow forgot the code at the operator's Stop, or a stopped
+  // leave cancelled on air had; nothing saved owns the session, so it is
+  // cleared (C4b-I1, the gate's orphan rule).
+  it.each<[string, SessionState, readonly string[]]>([
+    ['paired', { kind: 'paired' }, []],
+    ['stopped', STOPPED, ['intent.reset']],
+  ])('leaves for Home with nothing saved while %s', async (_, state, lines) => {
     const leaving = await leaveHook({ kvSeed: {} });
     act(() => leaving.engine.forceState(state));
+    const before = leaving.engine.intents.length;
     act(() => leaving.hook.result.current.leave());
     await waitFor(() => expect(leaving.navigation.current()).toBe('home'));
     expect(leaving.kv.entries.size).toBe(0);
-    expect(readRecord(leaving.record)).toEqual([]);
+    expect(readRecord(leaving.record).map((entry) => entry.event)).toEqual(lines);
+    expect(leaving.engine.intents.slice(before).map((intent) => intent.kind)).toEqual(
+      lines.map((line) => line.replace('intent.', '')),
+    );
+  });
+
+  // C4b-I1's "nothing saved" is a loaded store's answer. Before it loads, whose
+  // session it is is not known, so a stopped one is left for the gate to judge.
+  it('clears no stopped session before the store has loaded', async () => {
+    const fakes = createFakePorts({ kvSeed: inStream });
+    pairCode(fakes.engine, code);
+    const hook = renderHook(() => useStreamLeave(), { wrapper: wrapperFor(fakes) });
+    fakes.navigation.go('stream');
+    act(() => fakes.engine.forceState(STOPPED));
+    const before = fakes.engine.intents.length;
+    act(() => hook.result.current.leave());
+    await waitFor(() => expect(fakes.navigation.current()).toBe('home'));
+    expect(fakes.engine.intents.slice(before)).toEqual([]);
+    expect(fakes.engine.getSnapshot().state).toEqual(STOPPED);
   });
 
   // Back inside a stream sub-screen (Settings, Diagnostics) is that screen's
