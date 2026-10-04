@@ -224,8 +224,9 @@ class BridgeCoreTest {
    * published by the tick after it. At most six readiness lines a minute, and the first of each later
    * minute carries the count held back since the last one written; every turn still reaches the
    * machine. By hand: minute 1 opens at the pair's line (0 ms) and writes it and the turns at 300 to
-   * 4 300 ms; minute m + 1 opens at turn 60m (60 000m + 300 ms) and writes it and the five after it.
-   * 55 turns are held back before minute 2, and 54 before each minute after it.
+   * 4 300 ms, then holds back the 55 turns from 5 300 to 59 300 ms. Minute m + 1 opens at the tick at
+   * 60 000m ms with the current state and those 55 (N-1's flush), writes the five turns after it and
+   * holds back the next 55; the tick at 600 000 ms flushes the last 55.
    */
   @Test
   fun `I-1 a check that turns past the hold writes at most six readiness lines a minute, and every turn reaches the machine`() {
@@ -243,8 +244,92 @@ class BridgeCoreTest {
     }
     assertEquals(600, heard, "every turn reached the machine, written or not")
     val written = lines().drop(before).filter { it.getString("kind") == "readiness" }
-    val heldBack = List(6) { 0 } + (1..9).flatMap { m -> listOf(if (m == 1) 55 else 54) + List(5) { 0 } }
-    assertEquals(heldBack, written.map { it.getInt("suppressed") }, "60 lines: six a minute for ten minutes")
+    val heldBack = List(6) { 0 } + (1..9).flatMap { listOf(55) + List(5) { 0 } } + listOf(55)
+    assertEquals(heldBack, written.map { it.getInt("suppressed") }, "61 lines: six a minute for ten minutes, and the last minute's flush")
+  }
+
+  private fun checksOf(line: JSONObject) = listOf("camera", "sound", "held").associateWith(line::getBoolean)
+
+  private fun machineChecks() = readyOn(core).filterKeys { it != "network" }
+
+  /** The glue's reading, twice a hold apart and then to the second's end, so a level turns sound once a second. */
+  private fun turnSound(level: Double, camera: Boolean? = null) {
+    core.readiness(cameraFrames = camera, audioPeak = level)
+    scheduler.advanceBy(HOLD_MS)
+    core.readiness(cameraFrames = camera, audioPeak = level)
+    scheduler.advanceBy(1_000 - HOLD_MS)
+  }
+
+  /**
+   * Review C4a N-1 (ruling C4a-N1), the reviewer's first probe: a minute's six lines spent, the sixth
+   * sound change is held back, and the room goes quiet for five minutes. The tick after the minute
+   * runs out writes the state the machine holds, with the one held back; a state that stays, with
+   * nothing held back, writes nothing more.
+   */
+  @Test
+  fun `N-1 a turn held back is written once its minute runs out, and a quiet room writes nothing more`() {
+    core.start()
+    val before = platform.lines.size
+    pair()
+    for (k in 0 until 6) turnSound(if (k % 2 == 0) 0.4 else 0.0)
+    val lastChangeMs = clock.monotonicMs() - 1_000 + HOLD_MS
+    val readiness = { lines().drop(before).filter { it.getString("kind") == "readiness" } }
+    assertEquals(6, readiness().size, "the pair's line and five turns; the sixth is held back")
+    assertEquals(mapOf("camera" to false, "sound" to false, "held" to false), machineChecks(), "the machine heard the sixth")
+    assertEquals(true, readiness().last().getBoolean("sound"), "the record has not, yet")
+    var quiet = 0
+    while (clock.monotonicMs() < lastChangeMs + 60_000) {
+      core.readiness(audioPeak = 0.0)
+      scheduler.advanceBy(Engine.TICK_MS)
+      quiet += 1
+    }
+    val flushed = readiness()
+    assertEquals(7, flushed.size, "one line for the minute that ran out")
+    assertEquals(machineChecks(), checksOf(flushed.last()), "within 60 s, the record's last line is the machine's state")
+    assertEquals(1, flushed.last().getInt("suppressed"))
+    while (clock.monotonicMs() < lastChangeMs + 300_000) {
+      core.readiness(audioPeak = 0.0)
+      scheduler.advanceBy(Engine.TICK_MS)
+      quiet += 1
+    }
+    assertTrue(quiet >= 590, "five minutes of quiet readings: $quiet")
+    assertEquals(7, readiness().size, "a stable state with nothing held back writes no more lines")
+  }
+
+  /**
+   * Review C4a N-1, the reviewer's second probe: the pair's line and five changes (camera, held, and
+   * sound three times) spend the minute, then the camera dies and stays dead. The death is held back,
+   * and written by the tick after the minute runs out; a camera that stays dead writes nothing more.
+   */
+  @Test
+  fun `N-1 a camera that dies after the minute's lines are spent reaches the record within 60 s`() {
+    core.start()
+    val before = platform.lines.size
+    pair()
+    core.readiness(cameraFrames = true)
+    scheduler.advanceBy(1_000)
+    core.readiness(pose = Pose.Held(Side.LEFT))
+    scheduler.advanceBy(1_000)
+    for (k in 0 until 3) turnSound(if (k % 2 == 0) 0.4 else 0.0)
+    core.readiness(cameraFrames = false)
+    val diedMs = clock.monotonicMs()
+    scheduler.advanceBy(Engine.TICK_MS)
+    val readiness = { lines().drop(before).filter { it.getString("kind") == "readiness" } }
+    assertEquals(6, readiness().size, "the pair's line and five changes; the death is held back")
+    assertEquals(mapOf("camera" to true, "sound" to true, "held" to true), checksOf(readiness().last()), "the record's last line has the camera, yet")
+    assertEquals(mapOf("camera" to false, "sound" to true, "held" to true), machineChecks(), "the machine knows it died")
+    while (clock.monotonicMs() < diedMs + 60_000) {
+      core.readiness(cameraFrames = false, audioPeak = 0.4)
+      scheduler.advanceBy(Engine.TICK_MS)
+    }
+    assertEquals(7, readiness().size, "one line for the minute that ran out")
+    assertEquals(machineChecks(), checksOf(readiness().last()), "within 60 s, the record's last line is the machine's state")
+    assertEquals(1, readiness().last().getInt("suppressed"))
+    repeat(480) {
+      core.readiness(cameraFrames = false, audioPeak = 0.4)
+      scheduler.advanceBy(Engine.TICK_MS)
+    }
+    assertEquals(7, readiness().size, "a camera that stays dead, with nothing held back, writes no more lines")
   }
 
   @Test

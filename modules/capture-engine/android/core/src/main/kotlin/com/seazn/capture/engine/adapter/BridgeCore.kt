@@ -232,10 +232,12 @@ class BridgeCore(
    */
   private fun sendReadiness() {
     sent = readiness
-    val fields = listOf("camera" to readiness.cameraFrames, "sound" to readiness.sound, "held" to readiness.held, "side" to readiness.side)
-    readinessLines.line(clock.monotonicMs(), fields)?.let(engine::log)
+    readinessLines.line(clock.monotonicMs(), readinessFields(readiness))?.let(engine::log)
     engine.send(Input.ReadinessChanged(readiness))
   }
+
+  private fun readinessFields(of: Readiness): List<Pair<String, Any?>> =
+    listOf("camera" to of.cameraFrames, "sound" to of.sound, "held" to of.held, "side" to of.side)
 
   /**
    * CD37: on a change of [captureWanted], or of the pairing it is wanted for. PV20: a re-pair over a
@@ -332,6 +334,9 @@ class BridgeCore(
       publishedPhase = phase
       guarded.schedule(0) { noticeCapture() }
     }
+    // Review C4a N-1 (ruling C4a-N1): a minute that held lines back ends with the state the machine
+    // heard, written by the first publish after it runs out, so a state that then stays is on the record.
+    sent?.let { heard -> readinessLines.flush(clock.monotonicMs()) { readinessFields(heard) } }?.let(engine::log)
     platform.snapshot(wire)
   }
 
@@ -448,8 +453,10 @@ internal class ErrorLines {
  * first is [SoundHold]). A pairing settles in about four (the pair's, then camera, sound and held), so
  * six leave room; a check that keeps turning past its hold is held to six a minute, where it wiped the
  * record's tail before. The first line of a minute carries how many were held back since the last one
- * written, and every line the state it was written in, so the next one written is current. Only the
- * line is held back: the machine hears every change. Scheduler thread only.
+ * written, and every line the state it was written in. Only the line is held back: the machine hears
+ * every change. A minute that held lines back is closed by [flush] (review C4a N-1), so the record's
+ * last line is the machine's state within a minute of the last change, even when nothing changes
+ * after it. Scheduler thread only.
  */
 internal class ReadinessLines {
   private var windowStartMs: Long? = null
@@ -470,6 +477,17 @@ internal class ReadinessLines {
     val held = suppressed
     suppressed = 0
     return RecordEntry("readiness", fields + ("suppressed" to held))
+  }
+
+  /**
+   * Review C4a N-1: once the window has run out with lines held back, the state now, as the first line
+   * of the next window, carrying the count; null otherwise, so a state that stays with nothing held
+   * back writes nothing. [fields] is read only when a line is written.
+   */
+  fun flush(monoMs: Long, fields: () -> List<Pair<String, Any?>>): RecordEntry? {
+    val start = windowStartMs ?: return null
+    if (suppressed == 0 || monoMs - start < WINDOW_MS) return null
+    return line(monoMs, fields())
   }
 
   companion object {
