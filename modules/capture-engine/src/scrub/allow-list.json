@@ -126,7 +126,7 @@
     "srtOffered": "native: armed, whether the code offered SRT",
     "stalledMs": "native: not-delivered, how long the playlist stood still",
     "stopped": "native: pair, whether a stopped record was carried in (A17)",
-    "suppressed": "native: engine-error, the lines held back since the last one written (review 14, G3)",
+    "suppressed": "native: engine-error and readiness, the lines held back since the last one written (review 14, G3; review C4a, I-1)",
     "validated": "native: network, connect-failed and dropped, whether the network was validated",
     "videoFps": "native: video-stalled, encoded frames per second, or null",
     "wasLive": "native: ended, unpaired and broadcast-ended, whether the broadcast had gone live"
@@ -178,7 +178,7 @@
     "permissions-late": "native: a permissions answer after the pairing moved on",
     "platform-failed": "native: a platform failure, stale or after the end",
     "previous-session-lost": "native: the previous run held a session and its process died, with the exit reason (F-P5-3, CD22)",
-    "readiness": "native: a readiness check changed, with each check and the side (A11)",
+    "readiness": "native: a readiness check changed, with each check, the side and the lines held back (A11, review C4a I-1)",
     "ready": "native: every readiness check passed, with the side held",
     "reset": "native: the ended session was reset to idle",
     "resumed": "native: the broadcast resumed after an outage",

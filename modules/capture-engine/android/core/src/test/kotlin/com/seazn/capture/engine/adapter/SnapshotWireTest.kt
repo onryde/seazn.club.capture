@@ -162,7 +162,7 @@ class SnapshotWireTest {
       "ended-pair-refused-never-live" to {
         SnapshotWire.of(bare(SnapshotState.Ended(EndReason.FATAL_ERROR, durationMs = null), 1_790_000_000_200), PlatformFacts(), clean)
       },
-      "live-telemetry" to { SnapshotWire.of(live, liveFacts, RecordCounters(2, 1, 4, 3)) },
+      "live-telemetry" to { SnapshotWire.of(live, liveFacts, RecordCounters(2, 1, 4, 3, snapshotFailures = 7, commandFailures = 8, stickyFailure = true)) },
     )
 
   /** `{ ...base, ...overrides }` when the case's value is an object; `null` stays `null`. */
@@ -436,7 +436,7 @@ class SnapshotWireTest {
         language = "fr",
       ),
       liveFacts,
-      RecordCounters(2, 1, 4, 3),
+      RecordCounters(2, 1, 4, 3, snapshotFailures = 7, commandFailures = 8, stickyFailure = true),
     )
 
   /**
@@ -537,6 +537,9 @@ class SnapshotWireTest {
       "record.reentrantDropped" to { s -> s.copy(record = s.record.copy(reentrantDropped = 2)) },
       "record.taskFailures" to { s -> s.copy(record = s.record.copy(taskFailures = 5)) },
       "record.reporterFailures" to { s -> s.copy(record = s.record.copy(reporterFailures = 6)) },
+      "record.snapshotFailures" to { s -> s.copy(record = s.record.copy(snapshotFailures = 9)) },
+      "record.commandFailures" to { s -> s.copy(record = s.record.copy(commandFailures = 10)) },
+      "record.stickyFailure" to { s -> s.copy(record = s.record.copy(stickyFailure = false)) },
     )
 
   /** The fields that stay native, each with why, and a change that must leave the wire as it was. */

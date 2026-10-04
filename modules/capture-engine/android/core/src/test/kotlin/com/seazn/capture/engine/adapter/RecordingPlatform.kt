@@ -29,6 +29,12 @@ class RecordingPlatform : Platform {
   var throwOnConnect: Throwable? = null
   var throwOnFactsOnce: Throwable? = null
 
+  /** Thrown by every facts read: a battery or thermal reader that fails on every read (review C4a I-2). */
+  var throwOnFacts: Throwable? = null
+
+  /** Thrown by the next snapshot hand-up only: the bridge to JS failing once. */
+  var throwOnSnapshotOnce: Throwable? = null
+
   /** Thrown by every command it names; the command is still recorded. */
   var throwOn: (Command) -> Throwable? = { null }
 
@@ -102,10 +108,15 @@ class RecordingPlatform : Platform {
       throwOnFactsOnce = null
       throw it
     }
+    throwOnFacts?.let { throw it }
     return PlatformFacts(audioLevel = 0.5)
   }
 
   override fun snapshot(wire: Map<String, Any?>) {
+    throwOnSnapshotOnce?.let {
+      throwOnSnapshotOnce = null
+      throw it
+    }
     snapshots += wire
     events += "snapshot"
   }

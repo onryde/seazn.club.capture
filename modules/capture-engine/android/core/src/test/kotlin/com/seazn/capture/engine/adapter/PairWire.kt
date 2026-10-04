@@ -8,8 +8,10 @@ import com.seazn.capture.engine.core.JsonObject
  * The pair intent's wire, as Expo hands it over (every number a Double), and the server's made-up
  * answers, built from [Configs]' values with [Json.obj], so no credential is typed twice. Shared by
  * `PairMappingTest` and `BridgeCoreTest`. Every value sits inside the web's schemas (capture-qr.v2,
- * capture-beat.v1, capture-descriptor.v1 at 09e87aabd): the code is 12 characters of the code
- * alphabet, the sid a uuid, the phone id 16 to 64 characters, and the beat path `/beats` (D3).
+ * capture-beat.v1, capture-descriptor.v1 at 5bb72e8a2): the code is 12 characters of the code
+ * alphabet, the sid a uuid, the phone id 16 to 64 characters, and the beat path `/beats` (D3). The
+ * server's bodies are `wire/server-bodies.json`'s, which ajv checks against those schemas
+ * (`serverBodies.test.ts`, review C4a m-4): a beat names no zone, so the engine keeps the code's.
  */
 object PairWire {
   const val CODE = "fx42hmnp7k2q"
@@ -34,20 +36,21 @@ object PairWire {
       "environment" to "staging",
     )
 
+  /** On every 2xx answer, beat or code. A beat's `scheduledStart` is null when there is none; a code's omits it. */
   private val waiting =
     listOf(
       "label" to "Example Town v Sample CC",
-      "venueTimezone" to "Europe/London",
-      "scheduledStart" to null,
       "autoAllowed" to true,
       "destinationName" to "YouTube · Example Town CC",
       "overlayUrl" to null,
       "pollSeconds" to 10,
     )
 
-  /** A beat's answer: [state] with the waiting fields, and [sid] when one is named. */
-  fun beat(state: String = "waiting", sid: String? = null, endReason: String? = null): String =
-    Json.obj(listOf("state" to state, "sid" to sid, "endReason" to endReason) + waiting)
+  /** A beat's answer: [state] with the waiting fields, and [sid] and [endReason] only when named, never null. */
+  fun beat(state: String = "waiting", sid: String? = null, endReason: String? = null): String {
+    val named: List<Pair<String, Any?>> = listOfNotNull(sid?.let { "sid" to it }, endReason?.let { "endReason" to it })
+    return Json.obj(listOf("state" to state) + named + ("scheduledStart" to null) + waiting)
+  }
 
   /** GET code's session shape for [SID], SRT preferred, on the staging ingest host. */
   val SESSION: String =
@@ -69,6 +72,9 @@ object PairWire {
         "maxDurationMinutes" to 300,
         "warmingDeadline" to 1_790_000_600L,
         "scoreUpdates" to "realtime",
+        "venueTimezone" to "Europe/London",
+        "heartbeatUrl" to "$ORIGIN/beats",
+        "startUrl" to "$ORIGIN/start",
       ) + waiting
     )
 

@@ -1,0 +1,135 @@
+{
+  "about": "The made-up server bodies the native tests answer with (PairWire.kt, the host's ScriptedServer.kt), each checked against the web's contract it stands for by serverBodies.test.ts, with ajv, so a fixture that drifts from the contract reds (review C4a m-4). The contracts are test/fixtures/contracts/, copied from the web repo at 5bb72e8a2 and pinned there by sha256. Each Kotlin side asserts its bodies equal these. Change only with both. The credentials are the tests' own made-up values.",
+  "bodies": [
+    {
+      "name": "pair-wire/beat-waiting",
+      "schema": "capture-beat.v1.json#/$defs/answer",
+      "body": {
+        "state": "waiting",
+        "label": "Example Town v Sample CC",
+        "scheduledStart": null,
+        "autoAllowed": true,
+        "destinationName": "YouTube · Example Town CC",
+        "overlayUrl": null,
+        "pollSeconds": 10
+      }
+    },
+    {
+      "name": "pair-wire/beat-live",
+      "schema": "capture-beat.v1.json#/$defs/answer",
+      "body": {
+        "state": "live",
+        "sid": "6f1c2b7a-3d4e-4f50-8a9b-0c1d2e3f4a5b",
+        "label": "Example Town v Sample CC",
+        "scheduledStart": null,
+        "autoAllowed": true,
+        "destinationName": "YouTube · Example Town CC",
+        "overlayUrl": null,
+        "pollSeconds": 10
+      }
+    },
+    {
+      "name": "pair-wire/code-warming",
+      "schema": "capture-descriptor.v1.json",
+      "body": {
+        "state": "warming",
+        "code": "fx42hmnp7k2q",
+        "sid": "6f1c2b7a-3d4e-4f50-8a9b-0c1d2e3f4a5b",
+        "cred": {
+          "srt": {
+            "url": "srt://live.stg.seazn.club:778",
+            "streamId": "a1b2c3d4e5f60718293a4b5c6d7e8f90",
+            "passphrase": "pass+phrase/6d1e8b0c",
+            "latencyMs": 2000
+          },
+          "rtmps": {
+            "url": "rtmps://live.stg.seazn.club:443/live/",
+            "streamKey": "key-4c7a0e2b9d5f1386"
+          }
+        },
+        "preferred": "srt",
+        "playbackUrl": "https://customer-x.cloudflarestream.com/a1b2c3d4e5f60718293a4b5c6d7e8f90/manifest/video.m3u8",
+        "holdWindowSeconds": {
+          "srt": 183,
+          "rtmps": 180
+        },
+        "maxDurationMinutes": 300,
+        "warmingDeadline": 1790000600,
+        "scoreUpdates": "realtime",
+        "label": "Example Town v Sample CC",
+        "autoAllowed": true,
+        "destinationName": "YouTube · Example Town CC",
+        "overlayUrl": null,
+        "pollSeconds": 10,
+        "venueTimezone": "Europe/London",
+        "heartbeatUrl": "https://stg.seazn.club/api/v1/capture/codes/fx42hmnp7k2q/beats",
+        "startUrl": "https://stg.seazn.club/api/v1/capture/codes/fx42hmnp7k2q/start"
+      }
+    },
+    {
+      "name": "pair-wire/start-ok",
+      "schema": "capture-start.v1.json#/$defs/ok",
+      "body": {
+        "sid": "6f1c2b7a-3d4e-4f50-8a9b-0c1d2e3f4a5b"
+      }
+    },
+    {
+      "name": "host/beat-waiting",
+      "schema": "capture-beat.v1.json#/$defs/answer",
+      "body": {
+        "state": "waiting",
+        "label": "Host v Script",
+        "scheduledStart": null,
+        "autoAllowed": true,
+        "destinationName": "YouTube · Host",
+        "overlayUrl": null,
+        "pollSeconds": 10
+      }
+    },
+    {
+      "name": "host/code-warming",
+      "schema": "capture-descriptor.v1.json",
+      "body": {
+        "state": "warming",
+        "code": "h0stcde7k2qa",
+        "sid": "2d7c4b1e-5f3a-4e6b-9c8d-1a2b3c4d5e6f",
+        "preferred": "srt",
+        "cred": {
+          "srt": {
+            "url": "srt://live.stg.seazn.club:778",
+            "streamId": "host-stream-id",
+            "passphrase": "host-passphrase-0",
+            "latencyMs": 2000
+          },
+          "rtmps": {
+            "url": "rtmps://live.stg.seazn.club:443/live/",
+            "streamKey": "host-stream-key"
+          }
+        },
+        "playbackUrl": "https://customer-x.cloudflarestream.com/host-stream-id/manifest/video.m3u8",
+        "holdWindowSeconds": {
+          "srt": 183,
+          "rtmps": 180
+        },
+        "maxDurationMinutes": 300,
+        "warmingDeadline": 1790000600,
+        "scoreUpdates": "realtime",
+        "label": "Host v Script",
+        "autoAllowed": true,
+        "destinationName": "YouTube · Host",
+        "overlayUrl": null,
+        "pollSeconds": 10,
+        "venueTimezone": "Europe/London",
+        "heartbeatUrl": "https://stg.seazn.club/api/v1/capture/codes/h0stcde7k2qa/beats",
+        "startUrl": "https://stg.seazn.club/api/v1/capture/codes/h0stcde7k2qa/start"
+      }
+    },
+    {
+      "name": "host/start-ok",
+      "schema": "capture-start.v1.json#/$defs/ok",
+      "body": {
+        "sid": "2d7c4b1e-5f3a-4e6b-9c8d-1a2b3c4d5e6f"
+      }
+    }
+  ]
+}

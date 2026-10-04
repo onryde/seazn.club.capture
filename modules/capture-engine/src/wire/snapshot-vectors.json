@@ -69,7 +69,10 @@
       "recordSinkFailures",
       "recordReentrantDropped",
       "taskFailures",
-      "reporterFailures"
+      "reporterFailures",
+      "snapshotFailures",
+      "commandFailures",
+      "stickyFailure"
     ],
     "srt": ["sent", "retransmitted", "dropped", "rttMs"],
     "heartbeat": ["lastSentAtEpochMs", "lastResult", "consecutiveFailures", "failures"]
@@ -101,7 +104,10 @@
     "recordSinkFailures": 0,
     "recordReentrantDropped": 0,
     "taskFailures": 0,
-    "reporterFailures": 0
+    "reporterFailures": 0,
+    "snapshotFailures": 0,
+    "commandFailures": 0,
+    "stickyFailure": false
   },
   "pairingBase": {
     "code": "fx42hmnp7k2q",
@@ -425,7 +431,10 @@
           "recordSinkFailures": 2,
           "recordReentrantDropped": 1,
           "taskFailures": 4,
-          "reporterFailures": 3
+          "reporterFailures": 3,
+          "snapshotFailures": 7,
+          "commandFailures": 8,
+          "stickyFailure": true
         }
       }
     }

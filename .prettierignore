@@ -4,3 +4,5 @@ modules/*/android/build/
 modules/*/android/core/build/
 # The JVM host (CD8) is a subproject of the core build, with its own Gradle output.
 modules/*/android/core/host/build/
+# The web's contracts, copied byte for byte and pinned by sha256 (review C4a m-4): never reformatted.
+test/fixtures/contracts/

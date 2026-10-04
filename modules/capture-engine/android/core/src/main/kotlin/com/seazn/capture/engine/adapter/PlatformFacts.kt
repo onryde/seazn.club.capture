@@ -17,8 +17,19 @@ data class PlatformFacts(
 )
 
 /**
- * `SessionRecord`'s own counters, for Diagnostics: lines its sink refused, and echoes it dropped; and
- * the scheduler guard's (review 13, I3): failures that reached the task boundary, and reporters that
- * failed reporting one.
+ * `SessionRecord`'s own counters, for Diagnostics: lines its sink refused, and echoes it dropped; the
+ * scheduler guard's (review 13, I3): failures that reached the task boundary, and reporters that
+ * failed reporting one; and the engine's and the bridge's (review C4a I-2, m-8).
  */
-data class RecordCounters(val sinkFailures: Int, val reentrantDropped: Int, val taskFailures: Int = 0, val reporterFailures: Int = 0)
+data class RecordCounters(
+  val sinkFailures: Int,
+  val reentrantDropped: Int,
+  val taskFailures: Int = 0,
+  val reporterFailures: Int = 0,
+  /** Snapshots the projection or the bridge threw on, and those sent over the last good facts because the platform's facts threw. */
+  val snapshotFailures: Int = 0,
+  /** Commands the platform threw on, each also a `command-failed` line. */
+  val commandFailures: Int = 0,
+  /** A platform failure is held (carry 18): each attempt is refused until the next pair, or for good when permanent. */
+  val stickyFailure: Boolean = false,
+)

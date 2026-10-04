@@ -47,6 +47,8 @@ class BridgeCore(
   private val ticks = TickLateness()
   private val gaps = FrameGaps()
   private val errors = ErrorLines()
+  private val sounds = SoundHold()
+  private val readinessLines = ReadinessLines()
   private val engine: Engine = Engine(clock, guarded, sticky, SnapshotSink(::published), record)
   private val pairings = PairingStore(store, newId) { engine.log(it) }
   private val phone by lazy { pairings.phone(appVersion, model) }
@@ -68,6 +70,13 @@ class BridgeCore(
 
   @Volatile private var checkedAtMs: Long? = null
 
+  /** The last facts the platform read without throwing, and how many reads threw (review C4a I-2). Scheduler thread. */
+  private var lastFacts = PlatformFacts()
+  private var factsFailures = 0
+
+  /** The phase the last snapshot was published in, by name (review C4a m-1). Scheduler thread. */
+  private var publishedPhase: String? = null
+
   /** The last published snapshot's language (P3), for the glue's notification. */
   @Volatile private var language: String? = null
 
@@ -82,9 +91,10 @@ class BridgeCore(
   /**
    * An intent from JS, mapped on the scheduler thread (the phone id and the A17 record are read from
    * storage there). One that maps to nothing is recorded by its kind (review 11). With a `seq`, the ack
-   * is posted after the input's own tasks, so it reaches JS after everything the input caused and
-   * before any later tick's snapshot (CD8), and it is posted whatever the mapping threw: the kit never
-   * waits on a timeout (review 11, gap 1).
+   * is posted after the input's own tasks and its notice, so it reaches JS after the snapshot and the
+   * lines the input caused and before any later tick's snapshot (CD8); work the notice posts in turn,
+   * such as a new pairing's readiness, lands after it (review C4a m-6). The ack is posted whatever the
+   * mapping threw: the kit never waits on a timeout (review 11, gap 1).
    */
   fun send(intent: Map<String, Any?>) {
     guarded.schedule(0) {
@@ -162,10 +172,18 @@ class BridgeCore(
   /** P3: the notification's language, the pairing's until `setLanguage` replaces it; null with no pairing. Any thread. */
   fun language(): String? = language
 
-  /** From any thread (A11): the platform's facts; null leaves a fact as it was. Sent only when a check changes. */
+  /**
+   * From any thread (A11): the platform's facts; null leaves a fact as it was. Sent only when a check
+   * changes. Sound is held ([SoundHold], review C4a I-1): the machine is handed the last peak on the
+   * side held, so its `sound` is the held one, and a peak across the floor that has not held yet is
+   * no change.
+   */
   fun readiness(cameraFrames: Boolean? = null, audioPeak: Double? = null, pose: Pose? = null) {
+    val atMs = clock.monotonicMs()
     guarded.schedule(0) {
-      readiness = readiness.copy(cameraFrames = cameraFrames ?: readiness.cameraFrames, audioPeak = audioPeak ?: readiness.audioPeak, pose = pose ?: readiness.pose)
+      audioPeak?.let { sounds.sample(it, atMs) }
+      val peak = audioPeak?.takeIf { readiness.copy(audioPeak = it).sound == sounds.sound } ?: readiness.audioPeak
+      readiness = readiness.copy(cameraFrames = cameraFrames ?: readiness.cameraFrames, audioPeak = peak, pose = pose ?: readiness.pose)
       val last = sent
       if (last == null || last.cameraFrames != readiness.cameraFrames || last.sound != readiness.sound || last.pose != readiness.pose) sendReadiness()
     }
@@ -208,11 +226,14 @@ class BridgeCore(
     sendReadiness()
   }
 
-  /** Each change is a record line too: the post-match record shows when the phone was ready (AGENTS §11). */
+  /**
+   * Each change is a record line too: the post-match record shows when the phone was ready (AGENTS
+   * §11), at most [ReadinessLines.MAX_LINES] a minute (review C4a I-1). The machine hears every change.
+   */
   private fun sendReadiness() {
     sent = readiness
     val fields = listOf("camera" to readiness.cameraFrames, "sound" to readiness.sound, "held" to readiness.held, "side" to readiness.side)
-    engine.log(RecordEntry("readiness", fields))
+    readinessLines.line(clock.monotonicMs(), fields)?.let(engine::log)
     engine.send(Input.ReadinessChanged(readiness))
   }
 
@@ -236,13 +257,13 @@ class BridgeCore(
     pollers.onCommand(command)
     when (command) {
       is Command.FetchPlaylist ->
-        ask(HttpRequests.playlist(command)) { outcome ->
+        ask({ HttpRequests.playlist(command) }) { outcome ->
           checkedAtMs = clock.wallMs()
           report(HttpAnswers.playlist(command.requestId, outcome))
         }
       is Command.PostHeartbeat -> beat(command)
-      is Command.FetchCode -> ask(HttpRequests.code(command)) { report(HttpAnswers.code(command.requestId, it, command.environment)) }
-      is Command.PostStart -> ask(HttpRequests.start(command)) { report(HttpAnswers.start(command.requestId, it)) }
+      is Command.FetchCode -> ask({ HttpRequests.code(command) }) { report(HttpAnswers.code(command.requestId, it, command.environment)) }
+      is Command.PostStart -> ask({ HttpRequests.start(command) }) { report(HttpAnswers.start(command.requestId, it)) }
       is Command.WriteStopped -> stored("write") { pairings.write(command.record) }
       is Command.DeleteStopped -> stored("delete") { pairings.delete(command.code, command.slot) }
       else -> executed(command)
@@ -252,15 +273,17 @@ class BridgeCore(
   /** The environment is read here, on the scheduler thread, for the answer that comes back on any thread. */
   private fun beat(command: Command.PostHeartbeat) {
     val env = engine.phase.pairing?.request?.environment ?: Environment.STAGING
-    ask(HttpRequests.heartbeat(command)) { report(HttpAnswers.heartbeat(command.beatId, it, env)) }
+    ask({ HttpRequests.heartbeat(command) }) { report(HttpAnswers.heartbeat(command.beatId, it, env)) }
   }
 
   /**
    * C0b: every request is answered exactly once. A throw from the platform's send is its answer, and
    * so is no answer at all by [ANSWER_BACKSTOP_MS]; whichever comes first wins and the rest are
    * dropped. Without it, one lost `POST start` answer would hold every later Go live of the pairing.
+   * The request is built inside the guard too, so one that cannot be built is answered, as a failure
+   * (review C4a m-2). Internal for that test; the scheduler thread only.
    */
-  private fun ask(request: HttpRequest, answer: (HttpOutcome) -> Unit) {
+  internal fun ask(build: () -> HttpRequest, answer: (HttpOutcome) -> Unit) {
     val answered = AtomicBoolean(false)
     lateinit var backstop: com.seazn.capture.engine.core.Cancellable
     val once = { outcome: HttpOutcome ->
@@ -271,7 +294,7 @@ class BridgeCore(
     }
     backstop = guarded.schedule(ANSWER_BACKSTOP_MS) { once(HttpOutcome.Failed(NO_ANSWER)) }
     try {
-      platform.http(request, once)
+      platform.http(build(), once)
     } catch (failure: Exception) {
       once(HttpOutcome.failed(failure))
     }
@@ -299,15 +322,48 @@ class BridgeCore(
   private fun published(snapshot: Snapshot) {
     // PV22: Phase.holdsService is Paired or a broadcast held, the wake lock's span: one definition.
     ticks.observe(clock.monotonicMs(), wakeHeld = engine.phase.holdsService)?.let(engine::log)
-    val wire = wire(snapshot, platform.facts().copy(deliveryCheckedAtMs = checkedAtMs))
+    val wire = wire(snapshot, read().copy(deliveryCheckedAtMs = checkedAtMs))
     language = snapshot.language
     current = wire
+    // Review C4a m-1: a tick can move the phase with no input behind it, such as an outage hold that ran
+    // out; the capture follows the phase. Posted, never run inside the snapshot sink (CD31).
+    val phase = engine.phase.name
+    if (phase != publishedPhase) {
+      publishedPhase = phase
+      guarded.schedule(0) { noticeCapture() }
+    }
     platform.snapshot(wire)
   }
 
-  /** The record's counters and the scheduler guard's (review 13, I3), for Diagnostics. */
+  /**
+   * Review C4a I-2: facts that throw never stop the snapshots. The last good facts stand in, the
+   * snapshot is counted as not whole, and the failure is an `engine-error` line, at most one a minute
+   * ([ErrorLines]). An `Error` is not caught here: it reaches the task boundary (carry 15).
+   */
+  private fun read(): PlatformFacts =
+    try {
+      platform.facts().also { lastFacts = it }
+    } catch (failure: Exception) {
+      factsFailures += 1
+      errors.line(clock.monotonicMs(), "facts: ${Failures.describe(failure)}")?.let(engine::log)
+      lastFacts
+    }
+
+  /** The record's counters, the scheduler guard's (review 13, I3), and the engine's and the bridge's (review C4a I-2, m-8), for Diagnostics. */
   private fun wire(snapshot: Snapshot, facts: PlatformFacts): Map<String, Any?> =
-    SnapshotWire.of(snapshot, facts, RecordCounters(record.sinkFailures, record.reentrantDropped, guarded.caught, guarded.reporterFailures))
+    SnapshotWire.of(
+      snapshot,
+      facts,
+      RecordCounters(
+        record.sinkFailures,
+        record.reentrantDropped,
+        guarded.caught,
+        guarded.reporterFailures,
+        snapshotFailures = engine.snapshotFailures + factsFailures,
+        commandFailures = engine.commandFailures,
+        stickyFailure = sticky.failed,
+      ),
+    )
 
   /** The Frames poller's read, with CD33's gap line. Scheduler thread. */
   private fun frames(attemptId: Int): FrameCount? {
@@ -384,5 +440,40 @@ internal class ErrorLines {
   companion object {
     const val WINDOW_MS = 60_000L
     const val MAX_DISTINCT = 16
+  }
+}
+
+/**
+ * Review C4a I-1: at most [MAX_LINES] `readiness` lines a minute, the second of its two guards (the
+ * first is [SoundHold]). A pairing settles in about four (the pair's, then camera, sound and held), so
+ * six leave room; a check that keeps turning past its hold is held to six a minute, where it wiped the
+ * record's tail before. The first line of a minute carries how many were held back since the last one
+ * written, and every line the state it was written in, so the next one written is current. Only the
+ * line is held back: the machine hears every change. Scheduler thread only.
+ */
+internal class ReadinessLines {
+  private var windowStartMs: Long? = null
+  private var written = 0
+  private var suppressed = 0
+
+  fun line(monoMs: Long, fields: List<Pair<String, Any?>>): RecordEntry? {
+    val start = windowStartMs
+    if (start == null || monoMs - start >= WINDOW_MS) {
+      windowStartMs = monoMs
+      written = 0
+    }
+    if (written >= MAX_LINES) {
+      suppressed += 1
+      return null
+    }
+    written += 1
+    val held = suppressed
+    suppressed = 0
+    return RecordEntry("readiness", fields + ("suppressed" to held))
+  }
+
+  companion object {
+    const val WINDOW_MS = 60_000L
+    const val MAX_LINES = 6
   }
 }

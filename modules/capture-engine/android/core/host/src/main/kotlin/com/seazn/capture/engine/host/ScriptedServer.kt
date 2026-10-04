@@ -8,7 +8,9 @@ import org.json.JSONObject
  * The host's Seazn: made-up answers on the staging hosts, each path replaceable by a script line.
  * Every value sits inside the web's schemas, so the real `Bodies` and `Hosts` rules accept them: the
  * code is 12 characters of the code alphabet, the sid a uuid, and the beat path `/beats` (D3). The
- * stdin protocol names the paths `beat`, `code` and `start`.
+ * bodies are `wire/server-bodies.json`'s `host/` rows, which ajv checks against the schemas at
+ * 5bb72e8a2 (review C4a m-4): a beat names no zone and no null sid, and a code's answer names its
+ * beat and start URLs. The stdin protocol names the paths `beat`, `code` and `start`.
  */
 class ScriptedServer {
   private val answers =
@@ -48,6 +50,10 @@ class ScriptedServer {
     /** A made-up broadcast sid in the schemas' uuid pattern (version 4, variant 9). */
     const val SID = "2d7c4b1e-5f3a-4e6b-9c8d-1a2b3c4d5e6f"
 
+    /** The made-up session secrets the code's answer carries: no line the host writes may carry either. */
+    const val PASSPHRASE = "host-passphrase-0"
+    const val STREAM_KEY = "host-stream-key"
+
     /** The pair intent the kit sends: made-up, staging, slot 0. */
     val PAIR: String =
       JSONObject()
@@ -64,29 +70,33 @@ class ScriptedServer {
         .put("environment", "staging")
         .toString()
 
+    /** On every 2xx answer, beat or code. */
     private fun waiting(state: String) =
       JSONObject()
         .put("state", state)
         .put("label", "Host v Script")
-        .put("venueTimezone", "Europe/London")
-        .put("scheduledStart", JSONObject.NULL)
         .put("autoAllowed", true)
         .put("destinationName", "YouTube · Host")
         .put("overlayUrl", JSONObject.NULL)
         .put("pollSeconds", 10)
 
-    val WAITING: JSONObject = waiting("waiting")
+    /** A beat's `scheduledStart` is null when the fixture has none. */
+    val WAITING: JSONObject = waiting("waiting").put("scheduledStart", JSONObject.NULL)
 
+    /** A code's answer omits `scheduledStart` when there is none, and names the zone and its URLs. */
     val SESSION: JSONObject =
       waiting("warming")
+        .put("venueTimezone", "Europe/London")
+        .put("heartbeatUrl", "$ORIGIN/beats")
+        .put("startUrl", "$ORIGIN/start")
         .put("code", CODE)
         .put("sid", SID)
         .put("preferred", "srt")
         .put(
           "cred",
           JSONObject()
-            .put("srt", JSONObject().put("url", "srt://live.stg.seazn.club:778").put("streamId", "host-stream-id").put("passphrase", "host-passphrase-0").put("latencyMs", 2000))
-            .put("rtmps", JSONObject().put("url", "rtmps://live.stg.seazn.club:443/live/").put("streamKey", "host-stream-key")),
+            .put("srt", JSONObject().put("url", "srt://live.stg.seazn.club:778").put("streamId", "host-stream-id").put("passphrase", PASSPHRASE).put("latencyMs", 2000))
+            .put("rtmps", JSONObject().put("url", "rtmps://live.stg.seazn.club:443/live/").put("streamKey", STREAM_KEY)),
         )
         .put("playbackUrl", "https://customer-x.cloudflarestream.com/host-stream-id/manifest/video.m3u8")
         .put("holdWindowSeconds", JSONObject().put("srt", 183).put("rtmps", 180))

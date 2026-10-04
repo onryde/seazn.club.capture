@@ -13,16 +13,23 @@ import org.json.JSONObject
  * `Main`'s logic without stdin and stdout: the real core over [scheduler], a scripted phone that is
  * on a validated network and ready, held left, and a scripted server. The `ready` line is written
  * first, before any task is posted, so no snapshot can come before it.
+ *
+ * The phone's mic is read every [READINESS_MS], as the glue reads it (Task 33): sound is held (review
+ * C4a I-1) and turns only at a reading 300 ms into its run, so it is ready from the second reading,
+ * about 500 ms after the host starts. A `readiness` line's `audioPeak` sets the level read from then on.
  */
-class Host(scheduler: Scheduler, private val write: (String) -> Unit) {
+class Host(private val scheduler: Scheduler, private val write: (String) -> Unit) {
   val server = ScriptedServer()
   private val platform = ScriptedPlatform(server, write)
   private val core = BridgeCore(SystemClock, scheduler, platform, MemoryStore(), "host", "JVM host", newId = { PHONE_ID }).also { platform.core = it }
 
+  @Volatile private var level = 0.5
+
   init {
     write(Protocol.encode("ready", mapOf("current" to core.current(), "tail" to core.tail())))
     core.report(Input.Network(true))
-    core.readiness(cameraFrames = true, audioPeak = 0.5, pose = Pose.Held(Side.LEFT))
+    core.readiness(cameraFrames = true, audioPeak = level, pose = Pose.Held(Side.LEFT))
+    meter()
     core.start()
   }
 
@@ -34,12 +41,11 @@ class Host(scheduler: Scheduler, private val write: (String) -> Unit) {
         "send" -> core.send(Protocol.toWire(json.getJSONObject("intent")) + ("seq" to json.getNumber("seq").toDouble()))
         "log" -> core.log(json.getString("level"), json.getString("kind"), json.optJSONObject("fields")?.let(Protocol::toWire).orEmpty())
         "script" -> server.script(json.getString("path"), json.getInt("status"), json.getJSONObject("body"))
-        "readiness" ->
-          core.readiness(
-            cameraFrames = json.opt("camera") as? Boolean,
-            audioPeak = (json.opt("audioPeak") as? Number)?.toDouble(),
-            pose = json.optString("pose").takeIf { it.isNotEmpty() }?.let(::pose),
-          )
+        "readiness" -> {
+          val peak = (json.opt("audioPeak") as? Number)?.toDouble()
+          peak?.let { level = it }
+          core.readiness(cameraFrames = json.opt("camera") as? Boolean, audioPeak = peak, pose = json.optString("pose").takeIf { it.isNotEmpty() }?.let(::pose))
+        }
         "exit" -> return false
         else -> System.err.println("host: no op '$op'")
       }
@@ -50,6 +56,13 @@ class Host(scheduler: Scheduler, private val write: (String) -> Unit) {
   }
 
   fun shutdown() = platform.shutdown()
+
+  private fun meter() {
+    scheduler.schedule(READINESS_MS) {
+      core.readiness(audioPeak = level)
+      meter()
+    }
+  }
 
   private fun pose(word: String): Pose =
     when (word) {
@@ -63,6 +76,9 @@ class Host(scheduler: Scheduler, private val write: (String) -> Unit) {
   companion object {
     /** Made-up, within `capture-beat.v1`'s 16 to 64 characters (G2 would make a shorter one again). */
     const val PHONE_ID = "host-phone-0000001"
+
+    /** The glue's cadence for the mic and camera readings (Task 33). */
+    const val READINESS_MS = 500L
   }
 }
 

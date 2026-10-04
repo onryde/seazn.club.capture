@@ -47,18 +47,31 @@ class ProtocolTest {
     executor.shutdown()
   }
 
+  /** Waits, on the host's real clock, for a line [wanted] picks: at most [ms]. */
+  private fun await(out: MutableList<String>, ms: Long = 5_000, wanted: (JSONObject) -> Boolean) {
+    val until = System.nanoTime() + ms * 1_000_000
+    while (synchronized(out) { out.none { wanted(JSONObject(it)) } }) {
+      assertTrue(System.nanoTime() < until, "no such line in $ms ms: ${synchronized(out) { out.toList() }}")
+      Thread.sleep(10)
+    }
+  }
+
   @Test
-  fun `no line the host writes carries the made-up token or a URL`() {
+  fun `no line the host writes carries the made-up token, the session's secrets or a URL`() {
     val out = mutableListOf<String>()
     val executor = ExecutorScheduler()
     val host = Host(executor) { synchronized(out) { out += it } }
     host.handle("""{"op":"send","seq":1,"intent":${ScriptedServer.PAIR}}""")
-    // Paired once the grant is heard, so the start is posted rather than ignored.
+    // Paired once the grant is heard, and ready once sound has held (I-1), so the start is posted rather than refused.
     executor.drain()
+    await(out) { it.getString("ev") == "record" && JSONObject(it.getString("line")).let { line -> line.getString("kind") == "readiness" && line.getBoolean("sound") } }
     host.handle("""{"op":"send","seq":2,"intent":{"kind":"start"}}""")
     executor.drain()
+    // The code's answer, with the session's credentials, came back: the go-live armed on it.
+    await(out) { it.getString("ev") == "snapshot" && it.getJSONObject("body").optJSONObject("broadcast") != null }
     val all = synchronized(out) { out.toList() }
-    assertTrue(all.none { ScriptedServer.TOKEN in it })
+    // Review C4a m-5: the token, and the SRT passphrase and RTMPS key the code's answer carried.
+    for (secret in listOf(ScriptedServer.TOKEN, ScriptedServer.PASSPHRASE, ScriptedServer.STREAM_KEY)) assertTrue(all.none { secret in it }, secret)
     // PV23: the request events alone, each checked, and at least the claim beat and the start's.
     val requests = all.map(::JSONObject).filter { it.getString("ev") == "request" }
     assertEquals(setOf("beat", "start"), requests.map { it.getString("path") }.toSet() - "code", "the requests the pair and the start sent")

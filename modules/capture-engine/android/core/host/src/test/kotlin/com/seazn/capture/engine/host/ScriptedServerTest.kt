@@ -2,9 +2,11 @@ package com.seazn.capture.engine.host
 
 import com.seazn.capture.engine.adapter.HttpOutcome
 import com.seazn.capture.engine.adapter.HttpRequest
+import java.io.File
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertTrue
 import org.json.JSONObject
 
 class ScriptedServerTest {
@@ -31,6 +33,28 @@ class ScriptedServerTest {
   @Test
   fun `a playlist is no evidence`() {
     assertEquals(HttpOutcome.Failed("scripted host: no network"), server.answer(HttpRequest("GET", "https://customer-x.cloudflarestream.com/v.m3u8", emptyList(), null)))
+  }
+
+  /** Review C4a m-4: the host's bodies are `wire/server-bodies.json`'s `host/` rows, which ajv checks against the contracts. */
+  @Test
+  fun `m-4 each body the host answers with is the contract-checked vector of its name`() {
+    val root = System.getProperty("capture.shared") ?: error("capture.shared is not set: run through Gradle")
+    val bodies = JSONObject(File(root, "wire/server-bodies.json").readText(Charsets.UTF_8)).getJSONArray("bodies")
+    val rows = (0 until bodies.length()).map(bodies::getJSONObject).filter { it.getString("name").startsWith("host/") }
+    val ours =
+      mapOf(
+        "host/beat-waiting" to ask("${ScriptedServer.ORIGIN}/beats").body,
+        "host/code-warming" to ask("${ScriptedServer.ORIGIN}?slot=0&phone=p").body,
+        "host/start-ok" to ask("${ScriptedServer.ORIGIN}/start").body,
+      )
+    assertEquals(ours.keys, rows.map { it.getString("name") }.toSet())
+    var checked = 0
+    for (row in rows) {
+      val name = row.getString("name")
+      assertTrue(JSONObject(ours.getValue(name)).similar(row.getJSONObject("body")), "$name: ${ours[name]}")
+      checked += 1
+    }
+    assertEquals(3, checked, "the vectors' own count")
   }
 
   // PV25: a kit typo is refused, never a script that answers nothing.

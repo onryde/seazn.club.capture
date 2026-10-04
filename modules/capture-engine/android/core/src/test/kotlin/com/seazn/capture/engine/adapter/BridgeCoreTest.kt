@@ -34,7 +34,17 @@ class BridgeCoreTest {
 
   private fun kinds(of: RecordingPlatform = platform) = lines(of).map { it.getString("kind") }
 
-  private fun ready(of: BridgeCore = core) = of.readiness(cameraFrames = true, audioPeak = 0.4, pose = Pose.Held(Side.LEFT))
+  private fun readyOn(of: BridgeCore) = (of.current()["ready"] as Map<*, *>).mapKeys { it.key as String }
+
+  /**
+   * Ready on every check. Sound is held (I-1): it turns at a reading at least 300 ms into its run, so
+   * this reads twice, a tick apart, as the glue does (every 500 ms), which keeps the tests on the tick.
+   */
+  private fun ready(of: BridgeCore = core) {
+    of.readiness(cameraFrames = true, audioPeak = 0.4, pose = Pose.Held(Side.LEFT))
+    scheduler.advanceBy(Engine.TICK_MS)
+    of.readiness(audioPeak = 0.4)
+  }
 
   private fun pair(of: BridgeCore = core, wire: Map<String, Any?> = PairWire.valid()) {
     of.send(wire)
@@ -139,18 +149,102 @@ class BridgeCoreTest {
     assertEquals("publishing", state(), "a new PairRequest of the same name is a new pairing")
   }
 
+  /**
+   * Review C4a I-3: each check alone, on a core of its own, paired with nothing ready. Each row turns its
+   * check and repeats it: one line, and the machine hears the turn (the snapshot's check turns, alone).
+   * One line is one send: `sendReadiness` writes the line and sends the input together.
+   */
   @Test
-  fun `A11 readiness reaches the machine only when a check changes`() {
+  fun `A11 I-3 each check alone reaches the machine once, as one line, and a repeat of it reaches nothing`() {
+    val rows: List<Pair<String, (BridgeCore) -> Unit>> =
+      listOf(
+        "camera" to { c ->
+          c.readiness(cameraFrames = true)
+          c.readiness(cameraFrames = true)
+        },
+        "sound" to { c ->
+          c.readiness(audioPeak = 0.40)
+          scheduler.advanceBy(HOLD_MS)
+          c.readiness(audioPeak = 0.41)
+          scheduler.advanceBy(Engine.TICK_MS)
+          c.readiness(audioPeak = 0.42)
+        },
+        "held" to { c ->
+          c.readiness(pose = Pose.Held(Side.RIGHT))
+          c.readiness(pose = Pose.Held(Side.RIGHT))
+        },
+      )
+    var checked = 0
+    for ((check, turn) in rows) {
+      val on = RecordingPlatform()
+      val row = build(on, MemoryStore())
+      row.start()
+      pair(row)
+      val before = on.lines.size
+      val was = readyOn(row)
+      assertEquals(mapOf("camera" to false, "sound" to false, "network" to false, "held" to false), was, check)
+      turn(row)
+      // The readiness is not in the snapshot's state, so the next tick publishes it.
+      scheduler.advanceBy(Engine.TICK_MS)
+      val sent = lines(on).drop(before).filter { it.getString("kind") == "readiness" }
+      assertEquals(1, sent.size, "$check: one line for the turn, none for the repeat")
+      val checks = listOf("camera", "sound", "held")
+      assertEquals(checks.associateWith { it == check }, checks.associateWith(sent.single()::getBoolean), check)
+      assertEquals(was + (check to true), readyOn(row), "$check: the machine heard it, and only it")
+      checked += 1
+    }
+    assertEquals(3, checked, "the table's own count")
+  }
+
+  /** Review C4a I-1: the reviewer's flap, 0.049 and 0.051 a reading apart, every 500 ms for ten minutes. */
+  @Test
+  fun `I-1 a peak hovering at the floor for ten minutes writes no readiness line, and the tail keeps the line before it`() {
     core.start()
+    core.report(Input.Network(true))
+    core.readiness(cameraFrames = true, pose = Pose.Held(Side.LEFT))
     pair()
-    val before = platform.lines.size
-    core.readiness(audioPeak = 0.40)
-    core.readiness(audioPeak = 0.41)
-    core.readiness(audioPeak = 0.42)
+    core.log("info", "probe.before", emptyMap())
     scheduler.advanceBy(0)
-    val sent = lines().drop(before).filter { it.getString("kind") == "readiness" }
-    assertEquals(1, sent.size, "sound turned ready once; the other peaks change no check")
-    assertEquals(listOf(false, true, false), listOf(sent[0].getBoolean("camera"), sent[0].getBoolean("sound"), sent[0].getBoolean("held")))
+    val before = lines().count { it.getString("kind") == "readiness" }
+    var readings = 0
+    repeat(1_200) { n ->
+      core.readiness(audioPeak = if (n % 2 == 0) 0.049 else 0.051)
+      scheduler.advanceBy(Engine.TICK_MS)
+      readings += 1
+    }
+    assertEquals(1_200, readings, "the sweep's own count")
+    assertEquals(0, lines().count { it.getString("kind") == "readiness" } - before, "the flap never turns sound, so it writes nothing")
+    assertTrue(core.tail().any { "probe.before" in it }, "the line before the flap is still in the tail: ${core.tail()}")
+    assertEquals(false, readyOn(core)["sound"])
+  }
+
+  /**
+   * Review C4a I-1, the second guard alone: each level read twice, 300 ms apart, then held to the
+   * second's end, so sound turns past the hold once a second, 600 times in ten minutes, each turn
+   * published by the tick after it. At most six readiness lines a minute, and the first of each later
+   * minute carries the count held back since the last one written; every turn still reaches the
+   * machine. By hand: minute 1 opens at the pair's line (0 ms) and writes it and the turns at 300 to
+   * 4 300 ms; minute m + 1 opens at turn 60m (60 000m + 300 ms) and writes it and the five after it.
+   * 55 turns are held back before minute 2, and 54 before each minute after it.
+   */
+  @Test
+  fun `I-1 a check that turns past the hold writes at most six readiness lines a minute, and every turn reaches the machine`() {
+    core.start()
+    val before = platform.lines.size
+    pair()
+    var heard = 0
+    for (k in 0 until 600) {
+      val level = if (k % 2 == 0) 0.4 else 0.0
+      core.readiness(audioPeak = level)
+      scheduler.advanceBy(HOLD_MS)
+      core.readiness(audioPeak = level)
+      scheduler.advanceBy(1_000 - HOLD_MS)
+      if (readyOn(core)["sound"] == (level == 0.4)) heard += 1
+    }
+    assertEquals(600, heard, "every turn reached the machine, written or not")
+    val written = lines().drop(before).filter { it.getString("kind") == "readiness" }
+    val heldBack = List(6) { 0 } + (1..9).flatMap { m -> listOf(if (m == 1) 55 else 54) + List(5) { 0 } }
+    assertEquals(heldBack, written.map { it.getInt("suppressed") }, "60 lines: six a minute for ten minutes")
   }
 
   @Test
@@ -184,6 +278,29 @@ class BridgeCoreTest {
     assertEquals(listOf(true, true), platform.captures, "wanted throughout, so only the pairing changed")
     assertNotSame(platform.captureRequests[0], platform.captureRequests[1], "the new PairRequest, which a later pairFailed names")
     assertEquals(2, platform.captureRequests[1]!!.slot)
+  }
+
+  /**
+   * Review C4a m-1: a tick can end a broadcast with no input after it. Here the outage hold runs out:
+   * the connects all fail and no request is ever answered, so nothing but the tick moves the phase,
+   * and the end must still close the capture the broadcast held open.
+   */
+  @Test
+  fun `m-1 a tick that ends the broadcast closes the capture, with no input after it`() {
+    live()
+    assertEquals(listOf(true), platform.captures, "the go-live opened it")
+    platform.throwOnConnect = IllegalStateException("no route")
+    platform.unanswered = { true }
+    platform.dropCurrent()
+    scheduler.advanceBy(0)
+    assertTrue(core.current()["broadcast"] != null, "the drop holds the broadcast")
+    var ticks = 0
+    while (core.current()["broadcast"] != null) {
+      scheduler.advanceBy(Engine.TICK_MS)
+      ticks += 1
+      assertTrue(ticks < 2_000, "the hold never ran out: ${state()}")
+    }
+    assertEquals(listOf(true, false), platform.captures, "the tick that ended it closed it: ${state()} after $ticks ticks")
   }
 
   @Test
@@ -322,6 +439,8 @@ class BridgeCoreTest {
     val ended = lines().single { it.getString("kind") == "ended" }
     assertEquals("UnsatisfiedLinkError: libsrt.so not found", ended.getString("message"))
     assertTrue("command-failed" !in kinds(), "classified where the command is routed, never counted as a command's failure")
+    // Review C4a m-8: the failure held crosses to Diagnostics, and no command is counted as failed.
+    assertEquals(listOf(true, 0.0), listOf(telemetry()["stickyFailure"], telemetry()["commandFailures"]))
   }
 
   @Test
@@ -342,9 +461,41 @@ class BridgeCoreTest {
   fun `Task 13 m4 a command's ordinary failure is counted where it ran, and the pairing carries on`() {
     platform.throwOn = { if (it == Command.Hold) IllegalStateException("no service") else null }
     core.start()
+    assertEquals(listOf(0.0, false), listOf(telemetry()["commandFailures"], telemetry()["stickyFailure"]))
     pair()
     assertEquals("paired", state())
     assertTrue(lines().single { it.getString("kind") == "command-failed" }.getString("message").startsWith("Hold: java.lang.IllegalStateException"))
+    // Review C4a m-8: counted where Diagnostics reads it; an ordinary failure holds nothing.
+    assertEquals(listOf(1.0, false), listOf(telemetry()["commandFailures"], telemetry()["stickyFailure"]))
+  }
+
+  @Test
+  fun `I-2 a facts read that throws every time keeps the snapshots going on the last good facts, with one line, and counts each`() {
+    live()
+    assertEquals(listOf(0.5, 0.0), listOf(telemetry()["audioLevel"], telemetry()["snapshotFailures"]), "the good facts, before")
+    platform.throwOnFacts = IllegalStateException("thermal")
+    val before = platform.snapshots.size
+    scheduler.advanceBy(20 * Engine.TICK_MS)
+    val sent = platform.snapshots.size - before
+    assertTrue(sent >= 20, "a snapshot each tick at least, still: $sent")
+    assertEquals(sent.toDouble(), telemetry()["snapshotFailures"], "each one sent over the last good facts is counted")
+    assertEquals(0.5, telemetry()["audioLevel"], "the last good facts, never the defaults")
+    val written = lines().filter { it.getString("kind") == "engine-error" }
+    assertEquals(listOf("facts: IllegalStateException: thermal"), written.map { it.getString("message") }, "one line a minute (G3)")
+    platform.throwOnFacts = null
+    scheduler.advanceBy(Engine.TICK_MS)
+    assertEquals(sent.toDouble(), telemetry()["snapshotFailures"], "a good read again counts nothing")
+  }
+
+  @Test
+  fun `I-2 a snapshot the bridge refused is counted, and the next one says so`() {
+    core.start()
+    platform.throwOnSnapshotOnce = IllegalStateException("bridge")
+    scheduler.advanceBy(Engine.TICK_MS)
+    val before = platform.snapshots.size
+    scheduler.advanceBy(Engine.TICK_MS)
+    assertEquals(before + 1, platform.snapshots.size)
+    assertEquals(1.0, telemetry()["snapshotFailures"])
   }
 
   @Test
@@ -482,6 +633,19 @@ class BridgeCoreTest {
     assertEquals(2.3, line.getDouble("ms"), "a fraction is written to tenths, like every native number")
   }
 
+  /** Review C4a m-7: 2^53 is the last whole Double read as a whole number; 2^53 + 2, the next, stays a Double. */
+  @Test
+  fun `m-7 a whole JS number past 2 to the 53 is not read as a whole number`() {
+    core.start()
+    core.log("info", "probe.big", mapOf("count" to 9_007_199_254_740_992.0, "ms" to 9_007_199_254_740_994.0))
+    scheduler.advanceBy(0)
+    val raw = platform.lines.single { "probe.big" in it }
+    assertTrue("\"count\":9007199254740992," in raw, raw)
+    // Past 2^53 a Double is no longer every whole number: it is written as a native number, never as 9007199254740994.
+    assertFalse("9007199254740994" in raw, raw)
+    assertFalse(JSONObject(raw).get("ms") is Long, raw)
+  }
+
   @Test
   fun `C1 M3 a level outside the logger's four is info, never masked, and each of the four is kept`() {
     core.start()
@@ -528,7 +692,8 @@ class BridgeCoreTest {
     core.send(mapOf("kind" to "start"))
     scheduler.advanceBy(0)
     core.send(mapOf("kind" to "start"))
-    scheduler.advanceBy(BridgeCore.ANSWER_BACKSTOP_MS - 1)
+    // Review C4a I-4: the spec's 16 s, typed here: a backstop of ten minutes would hold every start that long.
+    scheduler.advanceBy(BACKSTOP_MS - 1)
     assertEquals(2, platform.http.count { it.url.endsWith("/start") }, "a start in flight holds the next")
     scheduler.advanceBy(1)
     core.send(mapOf("kind" to "start"))
@@ -544,7 +709,7 @@ class BridgeCoreTest {
     pair()
     platform.unanswered = { it.url.endsWith("/start") }
     core.send(mapOf("kind" to "start"))
-    scheduler.advanceBy(BridgeCore.ANSWER_BACKSTOP_MS)
+    scheduler.advanceBy(BACKSTOP_MS)
     val (request, late) = platform.owed.single()
     late(PairWire.answer(request))
     scheduler.advanceBy(Engine.TICK_MS)
@@ -557,9 +722,22 @@ class BridgeCoreTest {
   @Test
   fun `C0b the backstop sits past the client's timeout and every core give-up, so a real answer comes first`() {
     // HttpRequests.TIMEOUT_MS is the client's; Heartbeat.TIMEOUT_MS and DeliveryWatch's are the core's.
-    assertTrue(BridgeCore.ANSWER_BACKSTOP_MS > HttpRequests.TIMEOUT_MS)
-    assertTrue(BridgeCore.ANSWER_BACKSTOP_MS > Heartbeat.TIMEOUT_MS)
-    assertTrue(BridgeCore.ANSWER_BACKSTOP_MS > DeliveryWatch.REQUEST_TIMEOUT_MS)
+    // Review C4a I-4: twice the client's 8 s, as a literal, so the bound has a top as well as a bottom.
+    assertEquals(BACKSTOP_MS, BridgeCore.ANSWER_BACKSTOP_MS)
+    assertTrue(BACKSTOP_MS > HttpRequests.TIMEOUT_MS)
+    assertTrue(BACKSTOP_MS > Heartbeat.TIMEOUT_MS)
+    assertTrue(BACKSTOP_MS > DeliveryWatch.REQUEST_TIMEOUT_MS)
+  }
+
+  /** Review C4a m-2: the build runs inside the guard, so a request that cannot be built is still answered, once. */
+  @Test
+  fun `m-2 a request whose build throws is answered once, as a failure, and never sent`() {
+    core.start()
+    val answers = mutableListOf<HttpOutcome>()
+    core.ask({ throw IllegalStateException("build") }) { answers += it }
+    scheduler.advanceBy(BACKSTOP_MS)
+    assertEquals(listOf<HttpOutcome>(HttpOutcome.Failed("IllegalStateException")), answers, "the throw is the answer; the backstop's is dropped")
+    assertEquals(emptyList(), platform.http)
   }
 
   @Test
@@ -573,7 +751,7 @@ class BridgeCoreTest {
     scheduler.advanceBy(Engine.TICK_MS)
     assertEquals(1, platform.executed.count { it == Command.Release })
     assertEquals("timeout", lines().single { it.getString("kind") == "final-beat" }.getString("result"))
-    scheduler.advanceBy(BridgeCore.ANSWER_BACKSTOP_MS)
+    scheduler.advanceBy(BACKSTOP_MS)
     assertEquals(1, platform.executed.count { it == Command.Release }, "the backstop's late answer releases nothing twice")
   }
 
@@ -583,6 +761,21 @@ class BridgeCoreTest {
     pair()
     val beat = JSONObject(platform.beats().single().body!!)
     assertTrue(beat.has("battery") && beat.isNull("battery"), "$beat")
+  }
+
+  /**
+   * Review C4a m-4: a beat's answer names no zone (capture-beat.v1), so the zone the code's answer gave
+   * the broadcast is the one every later beat keeps (WaitingFields.over). The pair itself named none.
+   */
+  @Test
+  fun `m-4 the zone the code's answer gave is kept through every zone-less beat`() {
+    live()
+    platform.answer = PairWire::answerLive
+    val beats = platform.beats().size
+    scheduler.advanceBy(60_000)
+    assertTrue(platform.beats().size - beats >= 5, "beats answered with no zone: ${platform.beats().size - beats}")
+    assertTrue("venueTimezone" !in PairWire.beat("live", PairWire.SID), "the beats answered name no zone")
+    assertEquals("Europe/London", (core.current()["pairing"] as Map<*, *>)["venueTimezone"])
   }
 
   @Test
@@ -672,5 +865,13 @@ class BridgeCoreTest {
     val second = BridgeCore.shared { built += 1; core }
     assertSame(first, second)
     assertEquals(1, built)
+  }
+
+  private companion object {
+    /** Ruling C4a-I1: sound's hold, Task 17's 300 ms, typed here rather than read from the code under test. */
+    const val HOLD_MS = 300L
+
+    /** C0b's backstop, twice the client's 8 s timeout (review C4a I-4): a literal, never `BridgeCore`'s constant. */
+    const val BACKSTOP_MS = 16_000L
   }
 }

@@ -17,4 +17,12 @@ dependencies {
 
 application { mainClass.set("com.seazn.capture.engine.host.MainKt") }
 
-tasks.test { useJUnitPlatform() }
+tasks.test {
+  useJUnitPlatform()
+  // The server bodies the core's tests share (review C4a m-4), read as the core's tests read theirs.
+  systemProperty("capture.shared", layout.projectDirectory.dir("../../../src").asFile.absolutePath)
+  inputs
+    .file(layout.projectDirectory.file("../../../src/wire/server-bodies.json"))
+    .withPropertyName("serverBodies")
+    .withPathSensitivity(PathSensitivity.RELATIVE)
+}
