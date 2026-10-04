@@ -13,6 +13,7 @@ import type {
 } from '@/domain/session/Pairing';
 import type { EndReason, SessionState } from '@/domain/session/SessionState';
 import type { CameraState, EngineSnapshot, Telemetry } from './CaptureEnginePort';
+import { IDLE_TELEMETRY } from './unreported';
 
 /** Every wire word native writes (`wire/snapshot-vectors.json`'s vocabulary), checked against that file. */
 export const WIRE_VOCABULARY = {
@@ -93,16 +94,37 @@ function wordOrNull<T extends string>(key: Vocabulary, value: unknown): T | null
   return value === null ? null : word<T>(key, value);
 }
 
+/** Every key native's telemetry carries: IDLE_TELEMETRY's, which `unreported.test.ts` holds to native's. */
+const TELEMETRY_KEYS = Object.keys(IDLE_TELEMETRY);
+
+/**
+ * Review C4c M-9: the selectors read telemetry unguarded, so every key is
+ * there and the heartbeat's fields read. The other values are relayed as sent.
+ */
+function isTelemetry(value: unknown): value is Telemetry {
+  if (!isObject(value) || !TELEMETRY_KEYS.every((key) => key in value)) return false;
+  const beat = value.heartbeat;
+  return (
+    isObject(beat) &&
+    isNumber(beat.consecutiveFailures) &&
+    isNumber(beat.failures) &&
+    (beat.lastSentAtEpochMs === null || isNumber(beat.lastSentAtEpochMs)) &&
+    wordOrNull('heartbeatResult', beat.lastResult) !== undefined
+  );
+}
+
 /**
  * Native's `onSnapshot` body → `EngineSnapshot`. A projection, no state
- * machine (AGENTS §2). Null for anything malformed: the bridge keeps the last
- * good snapshot and records the miss, never invents a state.
+ * machine (AGENTS §2). Null for anything malformed, telemetry's shape
+ * included: the native engine keeps the last good snapshot, counts the miss
+ * and records the count at most once a minute (review C4c I-4), never invents
+ * a state.
  */
 export function toEngineSnapshot(
   wire: unknown,
   cache: WireCache = createWireCache(),
 ): EngineSnapshot | null {
-  if (!isObject(wire) || !isObject(wire.telemetry) || !isNumber(wire.reportedAtMs)) return null;
+  if (!isObject(wire) || !isTelemetry(wire.telemetry) || !isNumber(wire.reportedAtMs)) return null;
   const state = toState(wire.state);
   const ready = toReady(wire.ready);
   const camera = wordOrNull<CameraState>('camera', wire.camera);
@@ -118,7 +140,7 @@ export function toEngineSnapshot(
     return null;
   return {
     state,
-    telemetry: wire.telemetry as Telemetry,
+    telemetry: wire.telemetry,
     pairing,
     broadcast,
     ready,

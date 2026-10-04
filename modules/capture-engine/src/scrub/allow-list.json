@@ -156,6 +156,7 @@
     "dropped": "native: a published attempt dropped",
     "ended": "native: the pairing ended, operator-stopped or fatal-error",
     "engine-error": "native: the engine caught its own failure",
+    "engine.malformed-snapshot": "JS, through native's record: snapshots the bridge could not read and kept out, with how many so far, at most a line a minute (review C4c I-4)",
     "fell-back": "native: the transport fell back",
     "final-beat": "native: A8's one final beat, answered or timed out",
     "frames-gap": "native: video stopped moving for more than 500 ms while publishing, written once with the gap when it moved again (CD33, Open 11)",

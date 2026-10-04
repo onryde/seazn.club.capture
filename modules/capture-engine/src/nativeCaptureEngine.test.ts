@@ -1,15 +1,18 @@
 import { describe, expect, it } from 'vitest';
 import type { EngineSnapshot } from './CaptureEnginePort';
 import { intentWire } from './intentWire';
-import { createNativeCaptureEngine } from './nativeCaptureEngine';
+import { MALFORMED_LOG_MS, createNativeCaptureEngine } from './nativeCaptureEngine';
 import { FakeNativeModule } from './testing/FakeNativeModule';
 import { PAIR } from './testing/pairIntent';
+import allowList from './scrub/allow-list.json';
 import vectors from './wire/snapshot-vectors.json';
 import { vectorWire } from './wire/vectorWire';
 
 const liveWire = vectorWire('live-telemetry');
 const pairedWire = vectorWire('paired-after-organiser-stop');
 const quiet = { onRecordLine: () => undefined };
+/** The line a malformed snapshot is recorded by (review C4c I-4): the allow-list's kind and key. */
+const MALFORMED = (count: number) => ['warn', 'engine.malformed-snapshot', { count }];
 
 /** Lets the fake deliver every event queued so far (a macrotask), and every promise callback run. */
 const flush = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
@@ -42,12 +45,58 @@ describe('the native engine (carry 1)', () => {
     expect(lines).toEqual(['{"at":"…","kind":"paired"}']);
   });
 
+  // Review C4c I-4: a malformed body is counted and recorded; nothing at all is not malformed.
   it.each([
-    ['nothing', null],
-    ['a malformed body', { state: { kind: 'exploded' } }],
-  ])('reads idle at rest when native reports %s at construction', (_why, current) => {
-    const engine = createNativeCaptureEngine(new FakeNativeModule({ current }), quiet);
+    ['nothing', null, []],
+    ['a malformed body', { state: { kind: 'exploded' } }, [MALFORMED(1)]],
+  ])('reads idle at rest when native reports %s at construction', (_why, current, logged) => {
+    const native = new FakeNativeModule({ current });
+    const engine = createNativeCaptureEngine(native, quiet);
     expect(engine.getSnapshot()).toEqual(AT_REST);
+    expect(native.logged).toEqual(logged);
+  });
+
+  it('I-4 counts every malformed snapshot, and records the count at most once a minute', async () => {
+    const native = new FakeNativeModule({ current: pairedWire });
+    let at = 1_000;
+    const engine = createNativeCaptureEngine(native, { ...quiet, now: () => at });
+    const malformed = async (atMs: number) => {
+      at = atMs;
+      native.emit('onSnapshot', { ...liveWire, state: { kind: 'exploded' } });
+      await flush();
+    };
+    await malformed(1_000);
+    expect(native.logged).toEqual([MALFORMED(1)]);
+    await malformed(31_000);
+    await malformed(1_000 + MALFORMED_LOG_MS - 1);
+    expect(native.logged).toEqual([MALFORMED(1)]);
+    await malformed(1_000 + MALFORMED_LOG_MS);
+    expect(native.logged).toEqual([MALFORMED(1), MALFORMED(4)]);
+    // A good body is never counted, and the last good snapshot stood throughout.
+    expect(engine.getSnapshot().state.kind).toBe('paired');
+    at = 1_000 + 3 * MALFORMED_LOG_MS;
+    native.emit('onSnapshot', liveWire);
+    await flush();
+    await malformed(1_000 + 3 * MALFORMED_LOG_MS);
+    expect(native.logged).toEqual([MALFORMED(1), MALFORMED(4), MALFORMED(5)]);
+  });
+
+  it("I-4 the malformed line's kind and key are on the record's allow-list, so native keeps them", () => {
+    const [, kind, fields] = MALFORMED(1) as [string, string, Record<string, unknown>];
+    expect([Object.keys(allowList.kinds).includes(kind), Object.keys(fields)]).toEqual([
+      true,
+      ['count'],
+    ]);
+    expect(allowList.plain).toContain('count');
+  });
+
+  it('M-9 a body whose telemetry has no heartbeat is kept out, into the same count', async () => {
+    const native = new FakeNativeModule({ current: pairedWire });
+    const engine = createNativeCaptureEngine(native, quiet);
+    const { heartbeat: _gone, ...telemetry } = liveWire.telemetry as Record<string, unknown>;
+    native.emit('onSnapshot', { ...liveWire, telemetry });
+    await flush();
+    expect([engine.getSnapshot().state.kind, native.logged]).toEqual(['paired', [MALFORMED(1)]]);
   });
 
   // Review C4c I-3: Expo queues an event to the JS thread, so a line written as the tail is read

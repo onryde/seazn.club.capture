@@ -269,6 +269,15 @@ describe('carries 2-6: the snapshot wire, as native writes it (Task 12)', () => 
 
   const idle = () => vectorWire('idle');
   const live = () => vectorWire('live-telemetry');
+  /** The live vector with its telemetry changed by [patch]. */
+  const withTelemetry = (
+    patch: (telemetry: Record<string, unknown>) => Record<string, unknown>,
+  ) => {
+    const wire = live();
+    return { ...wire, telemetry: patch({ ...(wire.telemetry as Record<string, unknown>) }) };
+  };
+  const beat = (telemetry: Record<string, unknown>) =>
+    telemetry.heartbeat as Record<string, unknown>;
 
   it('reads armed with notReady null: the gate about to open, not a malformed word', () => {
     const wire = { ...idle(), state: { kind: 'armed', cause: 'organiser', notReady: null } };
@@ -338,6 +347,26 @@ describe('carries 2-6: the snapshot wire, as native writes it (Task 12)', () => 
       () => ({ ...idle(), state: { kind: 'ended', reason: 'fatal-error', durationMs: '0' } }),
     ],
     ['not an object', () => 'idle'],
+    // Review C4c M-9: the selectors read telemetry unguarded, so its shape is checked too.
+    ['telemetry with no heartbeat', () => withTelemetry(({ heartbeat: _gone, ...rest }) => rest)],
+    ['a heartbeat that is null', () => withTelemetry((t) => ({ ...t, heartbeat: null }))],
+    [
+      'a heartbeat with its failures in text',
+      () => withTelemetry((t) => ({ ...t, heartbeat: { ...beat(t), failures: '0' } })),
+    ],
+    [
+      'a heartbeat with an unknown last result',
+      () => withTelemetry((t) => ({ ...t, heartbeat: { ...beat(t), lastResult: 'maybe' } })),
+    ],
+    [
+      'a heartbeat with its last send in text',
+      () => withTelemetry((t) => ({ ...t, heartbeat: { ...beat(t), lastSentAtEpochMs: '0' } })),
+    ],
+    [
+      'a heartbeat with no consecutive failures',
+      () => withTelemetry((t) => ({ ...t, heartbeat: { ...beat(t), consecutiveFailures: null } })),
+    ],
+    ['telemetry missing a key', () => withTelemetry(({ dataUsedBytes: _gone, ...rest }) => rest)],
   ])('reads %s as malformed, never as a state', (_why, wire) => {
     expect(toEngineSnapshot(wire())).toBeNull();
   });

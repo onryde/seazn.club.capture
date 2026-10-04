@@ -31,23 +31,35 @@ export type NativeCaptureEngine = CaptureEnginePort & {
   dispose(): void;
 };
 
+/** Review C4c I-4: a malformed snapshot's line goes to the record at most once in this many ms. */
+export const MALFORMED_LOG_MS = 60_000;
+
 /**
  * Carry 1: the port over native's module. Snapshots are projected through the
- * snapshot wire (the last good one is kept through a malformed body), intents
- * go out through the intent wire numbered for CD8, and the record is seeded
- * from native's tail without losing or doubling a line (D3).
+ * snapshot wire (the last good one is kept through a malformed body, which is
+ * counted and recorded), intents go out through the intent wire numbered for
+ * CD8, and the record is seeded from native's tail without losing or doubling
+ * a line (D3).
  */
 export function createNativeCaptureEngine(
   native: CaptureEngineNative,
-  deps: { onRecordLine: (line: string) => void },
+  deps: { onRecordLine: (line: string) => void; now?: () => number },
 ): NativeCaptureEngine {
   const cache = createWireCache();
   const listeners = new Set<() => void>();
-  let snapshot: EngineSnapshot = toEngineSnapshot(native.current(), cache) ?? UNREPORTED;
+  const malformed = malformedLines(native, deps.now ?? Date.now);
+  const read = (body: unknown): EngineSnapshot | null => {
+    const next = toEngineSnapshot(body, cache);
+    if (next === null) malformed();
+    return next;
+  };
+  // Nothing at all is a native that has not reported yet, not a malformed body.
+  const current = native.current();
+  let snapshot: EngineSnapshot = (current == null ? null : read(current)) ?? UNREPORTED;
   const acks = createAcks();
   const subscriptions = [
     native.addListener('onSnapshot', (body) => {
-      const next = toEngineSnapshot(body, cache);
+      const next = read(body);
       if (next === null) return;
       snapshot = next;
       for (const listener of listeners) listener();
@@ -105,6 +117,24 @@ function seedRecord(native: CaptureEngineNative, onLine: (line: string) => void)
   tail.forEach(onLine);
   during.forEach(arrived);
   return subscription;
+}
+
+/**
+ * Review C4c I-4: counts every snapshot the wire refused, and records the count
+ * so far through native's record, at most one line a [MALFORMED_LOG_MS]: once
+ * Task 31's watchdog lands, a wire drift must not read as an engine that has
+ * stopped answering.
+ */
+function malformedLines(native: CaptureEngineNative, now: () => number): () => void {
+  let count = 0;
+  let loggedAtMs: number | null = null;
+  return () => {
+    count += 1;
+    const atMs = now();
+    if (loggedAtMs !== null && atMs - loggedAtMs < MALFORMED_LOG_MS) return;
+    loggedAtMs = atMs;
+    native.log('warn', 'engine.malformed-snapshot', { count });
+  };
 }
 
 /** CD8's sequence numbers: the last sent, the highest acked, and the waiters on it. */

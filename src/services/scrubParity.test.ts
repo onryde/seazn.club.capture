@@ -61,11 +61,11 @@ describe('carry 11: one scrub, pinned by the file native reads too', () => {
     expect(written(c.value).kind).toBe(c.expected);
   });
 
-  // Beyond the brief: the kind rule is one rule on both sides, so each kind the core writes
-  // passes JS's event rule as itself too.
-  it('passes each of the 63 record kinds the core writes as itself', () => {
+  // Beyond the brief: the kind rule is one rule on both sides, so each kind the record holds
+  // passes JS's event rule as itself too: the core's 63, and JS's malformed-snapshot line (C4c I-4).
+  it("passes each of the record's 64 kinds as itself", () => {
     const kinds = Object.keys(list.kinds);
-    expect(kinds).toHaveLength(63);
+    expect(kinds).toHaveLength(64);
     for (const kind of kinds) expect(scrubEvent(kind, vectors.held)).toBe(kind);
   });
 });
