@@ -69,7 +69,7 @@ class NotificationTextTest {
   }
 
   @Test
-  fun `every state kind the wire can carry has its word, and only idle falls back`() {
+  fun `every state kind the wire can carry has its word, and an unknown kind reads starting`() {
     val kinds = Shared.read("wire/snapshot-vectors.json").getJSONObject("vocabulary").getJSONArray("state")
     val expected =
       mapOf(
@@ -116,10 +116,11 @@ class NotificationTextTest {
     assertEquals("STARTING", read(mapOf("kind" to "armed", "cause" to "organiser", "notReady" to null)))
     assertEquals("CONNECTING", read(mapOf("kind" to "connecting", "transport" to "srt")))
     assertEquals("LIVE · 3000k · 47 min", read(mapOf("kind" to "publishing", "transport" to "srt", "sinceEpochMs" to since), 3_000.0))
+    // Review 18 m1: the broadcast runs on through trouble, so its minutes do too (AGENTS §9).
     val degraded = mapOf("kind" to "degraded", "transport" to "srt", "reason" to "poor-uplink", "sinceEpochMs" to since)
-    assertEquals("TROUBLE · 3000k", read(degraded, 3_000.0), "minutes only while live")
-    assertEquals("TROUBLE · 3000k", read(mapOf("kind" to "reconnecting", "cause" to "uplink-lost", "sinceEpochMs" to since), 3_000.0))
-    assertEquals("TROUBLE", read(mapOf("kind" to "reconnecting", "cause" to "uplink-lost", "sinceEpochMs" to since)), "an outage before the first frame: no target yet")
+    assertEquals("TROUBLE · 3000k · 47 min", read(degraded, 3_000.0))
+    assertEquals("TROUBLE · 3000k · 47 min", read(mapOf("kind" to "reconnecting", "cause" to "uplink-lost", "sinceEpochMs" to since), 3_000.0))
+    assertEquals("TROUBLE · 47 min", read(mapOf("kind" to "reconnecting", "cause" to "uplink-lost", "sinceEpochMs" to since)), "an outage before the first frame: no target yet")
     assertEquals("ENDED", read(mapOf("kind" to "ended", "reason" to "operator-stopped", "durationMs" to 60_000.0)))
   }
 
@@ -163,6 +164,11 @@ class NotificationTextTest {
         "state" to mapOf("kind" to "publishing", "transport" to "rtmps", "sinceEpochMs" to 0.0),
         "telemetry" to mapOf("targetBitrateKbps" to 2_500.0),
       )
+    val trouble =
+      mapOf(
+        "state" to mapOf("kind" to "reconnecting", "cause" to "video-stalled", "holdRemainingSeconds" to 40.0, "sinceEpochMs" to 0.0),
+        "telemetry" to mapOf("targetBitrateKbps" to 2_500.0),
+      )
     for (language in languages) {
       val words = dictionary(language)
       val locale = Locale.forLanguageTag(language)
@@ -172,6 +178,7 @@ class NotificationTextTest {
       val held = mapOf("state" to mapOf("kind" to "armed", "cause" to "organiser", "notReady" to "held"))
       assertEquals("${plate("starting")} · ${words.getString("stream.status.notReadyHeld")}", NotificationText.content(held, 0, language), language)
       assertEquals("${plate("live")} · 2500k · 3 min", NotificationText.content(live, 180_000, language), language)
+      assertEquals("${plate("trouble")} · 2500k · 3 min", NotificationText.content(trouble, 180_000, language), language)
       val ended = mapOf("state" to mapOf("kind" to "ended", "reason" to "fatal-error"))
       assertEquals(plate("ended"), NotificationText.content(ended, 0, language), language)
     }

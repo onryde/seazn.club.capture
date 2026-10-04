@@ -100,6 +100,7 @@ data class Session(
   val liveSinceEpochMs: Long? = null,
   val notDelivered: Boolean = false,
   val camera: CameraState = CameraState.OWN,
+  /** Seeded at arm from the last mic fact, which outlives the session before it, as the network's does (review 18 I1). */
   val micSilenced: Boolean = false,
   val device: DeviceSample? = null,
   val dataUsedBytes: Long = 0,
@@ -125,20 +126,26 @@ sealed interface Phase {
   val name: String
 
   /**
-   * Unpaired: before the first pairing, and after a reset or an unpair. [networkValidated] is the last
-   * network fact (final review I-1). [unpaired] says why the engine left a pairing the operator did not end.
+   * Unpaired: before the first pairing, and after a reset or an unpair. [networkValidated] and
+   * [micSilenced] are the last network and mic facts (final review I-1, review 18 I1). [unpaired] says
+   * why the engine left a pairing the operator did not end.
    */
-  data class Idle(val ids: Ids = Ids(), val networkValidated: Boolean = false, val unpaired: Unpaired? = null) : Phase {
+  data class Idle(
+    val ids: Ids = Ids(),
+    val networkValidated: Boolean = false,
+    val micSilenced: Boolean = false,
+    val unpaired: Unpaired? = null,
+  ) : Phase {
     override val name = "idle"
   }
 
   /** `pair` heard; the camera and microphone permissions are being asked. No beat, no service yet. */
-  data class Pairing(val pairing: PairingState, val ids: Ids, val networkValidated: Boolean) : Phase {
+  data class Pairing(val pairing: PairingState, val ids: Ids, val networkValidated: Boolean, val micSilenced: Boolean) : Phase {
     override val name = "pairing"
   }
 
   /** Paired and waiting for a Go live (A5): beating, the service and the wake lock held. */
-  data class Paired(val pairing: PairingState, val ids: Ids, val networkValidated: Boolean) : Phase {
+  data class Paired(val pairing: PairingState, val ids: Ids, val networkValidated: Boolean, val micSilenced: Boolean) : Phase {
     override val name = "paired"
   }
 
@@ -154,6 +161,7 @@ sealed interface Phase {
     val cause: Cause,
     val ids: Ids,
     val networkValidated: Boolean,
+    val micSilenced: Boolean,
     val asks: DescriptorAsks,
     val notBeforeMs: Long = 0,
     val notCurrent: Boolean = false,
@@ -190,15 +198,16 @@ sealed interface Phase {
 
   /**
    * The pairing is over. [durationMs] is how long the broadcast was live, from its first encoded frame
-   * to its end (final review M-3); null if it never was. [networkValidated] is the last network fact,
-   * kept for the next pairing (final review I-1). [pairing] and [sid] are kept for the snapshot and the
-   * final beat.
+   * to its end (final review M-3); null if it never was. [networkValidated] and [micSilenced] are the
+   * last network and mic facts, kept for the next pairing (final review I-1, review 18 I1). [pairing]
+   * and [sid] are kept for the snapshot and the final beat.
    */
   data class Ended(
     val reason: EndReason,
     val ids: Ids,
     val durationMs: Long?,
     val networkValidated: Boolean,
+    val micSilenced: Boolean,
     val pairing: PairingState? = null,
     val sid: String? = null,
     /** A8: the final beat in flight, whose answer (or [Heartbeat.TIMEOUT_MS]) releases the service. */
@@ -328,7 +337,38 @@ fun Phase.withNetwork(validated: Boolean): Phase =
   }
 
 /**
- * The phase a session ends in, from any phase: the ids and the network fact carry on to the next
+ * The last mic fact (`isClientSilenced` for our recording, F-P5-8), in any phase. The watch reports a
+ * change only, and keeps its last word for the process, so the engine keeps the fact between sessions
+ * the way it keeps the network's, and each session is seeded with it at arm (review 18 I1).
+ */
+val Phase.micSilenced: Boolean
+  get() =
+    when (this) {
+      is Phase.Idle -> micSilenced
+      is Phase.Ended -> micSilenced
+      is Phase.Pairing -> micSilenced
+      is Phase.Paired -> micSilenced
+      is Phase.Arming -> micSilenced
+      is Phase.Armed -> session.micSilenced
+      is Phase.Connecting -> session.micSilenced
+      is Phase.OnAir -> session.micSilenced
+    }
+
+/** This phase with [silenced] as the mic fact, in the session or, with none, kept for the next. */
+fun Phase.withMic(silenced: Boolean): Phase =
+  when (this) {
+    is Phase.Idle -> copy(micSilenced = silenced)
+    is Phase.Ended -> copy(micSilenced = silenced)
+    is Phase.Pairing -> copy(micSilenced = silenced)
+    is Phase.Paired -> copy(micSilenced = silenced)
+    is Phase.Arming -> copy(micSilenced = silenced)
+    is Phase.Armed -> copy(session = session.copy(micSilenced = silenced))
+    is Phase.Connecting -> copy(session = session.copy(micSilenced = silenced))
+    is Phase.OnAir -> copy(session = session.copy(micSilenced = silenced))
+  }
+
+/**
+ * The phase a session ends in, from any phase: the ids and the network and mic facts carry on to the next
  * session. The duration counts from the first encoded frame on the wall clock, outages included, as
  * the HUD's elapsed clock does (final review M-3); a wall clock set back past that frame reads 0. An
  * ended session ended again stays as it ended: its reason and duration stand (final review N-2).
@@ -336,7 +376,7 @@ fun Phase.withNetwork(validated: Boolean): Phase =
 fun Phase.ended(reason: EndReason, now: Now): Phase.Ended {
   if (this is Phase.Ended) return this
   val durationMs = session?.liveSinceEpochMs?.let { (now.wallMs - it).coerceAtLeast(0) }
-  return Phase.Ended(reason, ids, durationMs, networkValidated, pairing, heldSid)
+  return Phase.Ended(reason, ids, durationMs, networkValidated, micSilenced, pairing, heldSid)
 }
 
 val Session.ids: Ids

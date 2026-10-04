@@ -42,6 +42,12 @@ class CameraAvailabilityTest {
   }
 
   @Test
+  fun `holding no camera, our old camera taken by another app is contention`() {
+    cameras.held(null, 5_000)
+    assertEquals(Input.CameraContended, cameras.unavailable("0", 6_000), "0 is no longer ours")
+  }
+
+  @Test
   fun `a release nothing was contended for is no report`() {
     // Our old camera freed by our own switch: never in the set, so nothing empties.
     assertEquals(null, cameras.available("0", 5_000))
@@ -67,14 +73,10 @@ class CameraAvailabilityTest {
 
   @Test
   fun `I4 a camera in use, or too many cameras in use, is contention - any other open failure is not`() {
-    // javap -constants, android-36: CameraAccessException 1 disabled, 2 disconnected, 3 error, 4 in use, 5 max in use;
-    // CameraDevice.StateCallback 1 in use, 2 max in use, 3 disabled, 4 device, 5 service. The two number differently.
+    // javap -constants, android-36: CameraAccessException 1 disabled, 2 disconnected, 3 error, 4 in use, 5 max in use.
     assertTrue(CameraAvailability.busy(4))
     assertTrue(CameraAvailability.busy(5))
     for (reason in listOf(1, 2, 3, null)) assertFalse(CameraAvailability.busy(reason), "$reason")
-    assertTrue(CameraAvailability.busyError(1))
-    assertTrue(CameraAvailability.busyError(2))
-    for (error in 3..5) assertFalse(CameraAvailability.busyError(error), "$error")
   }
 
   @Test

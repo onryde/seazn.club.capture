@@ -91,7 +91,7 @@ object SessionMachine {
   /** Back to Idle; a final beat still pending is let go, and the service with it. */
   private fun reset(ended: Phase.Ended): Step {
     val release = if (ended.finalBeatId != null) listOf(Command.Release) else emptyList()
-    return Step(Phase.Idle(ended.ids, ended.networkValidated), release + record("reset"))
+    return Step(Phase.Idle(ended.ids, ended.networkValidated, ended.micSilenced), release + record("reset"))
   }
 
   internal fun ignored(phase: Phase, intent: String): Step =
@@ -494,11 +494,11 @@ internal object Devices {
     return Step(switching, commands)
   }
 
+  /** Recorded when it changes, in any phase: with no session it is kept for the next (review 18 I1). */
   fun mic(phase: Phase, silenced: Boolean): Step {
-    val session = phase.session ?: return Step(phase)
-    if (session.micSilenced == silenced) return Step(phase)
+    if (phase.micSilenced == silenced) return Step(phase)
     val kind = if (silenced) "mic-silenced" else "mic-restored"
-    return Step(phase.withSession(session.copy(micSilenced = silenced)), listOf(record(kind)))
+    return Step(phase.withMic(silenced), listOf(record(kind)))
   }
 
   /** Relayed, and recorded when it changes (AGENTS §11). Never a session state (AGENTS §8). */

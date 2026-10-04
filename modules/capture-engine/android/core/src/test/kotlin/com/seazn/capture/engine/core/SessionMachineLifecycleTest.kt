@@ -185,11 +185,11 @@ class SessionMachineLifecycleTest {
         Input.Link(1, LinkCounters(1, 1, 0, 0, 0, 20, 40, null)),
         Input.Dropped(1, DropReason.ENDPOINT_CLOSED, null),
         Input.ConnectFailed(1, ConnectFailure.OTHER, null),
-        // A network fact is kept for the next session (final review I-1): SessionMachineOutageTest.
+        // A network or mic fact is kept for the next session (final review I-1, review 18 I1):
+        // SessionMachineOutageTest and SessionMachineDeviceTest.
         Input.CameraContended,
         Input.CameraReleased,
         Input.CameraReopened(true),
-        Input.MicSilenced(true),
         Input.Device(DeviceSample(3, null, 50, false, null, null)),
         Input.PlaylistFetched(1, FetchResult.NoContent),
         Input.HeartbeatAnswered(1, HeartbeatResponse.Answered(200, BeatReply("over", "sess_42", null, "stopped", null))),
@@ -774,7 +774,7 @@ class SessionMachineLifecycleTest {
 
   @Test
   fun `final review N-2 an ended session ended again stays as it ended - its reason and duration stand`() {
-    val stopped = Phase.Ended(EndReason.OPERATOR_STOPPED, Ids(attempt = 3), durationMs = 42_000, networkValidated = true)
+    val stopped = Phase.Ended(EndReason.OPERATOR_STOPPED, Ids(attempt = 3), durationMs = 42_000, networkValidated = true, micSilenced = false)
     assertEquals(stopped, stopped.ended(EndReason.FATAL_ERROR, Now(90_000, 1_790_000_090_000)))
   }
 

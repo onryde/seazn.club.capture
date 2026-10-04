@@ -89,27 +89,20 @@ class CameraAvailability(private val selfWindowMs: Long = 1_500) {
 
   companion object {
     // The platform's constants, which the core cannot import. Read with `javap -constants` against
-    // android-36's android.jar: the two classes number the same conditions differently.
+    // android-36's android.jar.
     /** `CameraAccessException.CAMERA_IN_USE`. */
     private const val CAMERA_IN_USE = 4
 
     /** `CameraAccessException.MAX_CAMERAS_IN_USE`. */
     private const val MAX_CAMERAS_IN_USE = 5
 
-    /** `CameraDevice.StateCallback.ERROR_CAMERA_IN_USE`. */
-    private const val ERROR_CAMERA_IN_USE = 1
-
-    /** `CameraDevice.StateCallback.ERROR_MAX_CAMERAS_IN_USE`. */
-    private const val ERROR_MAX_CAMERAS_IN_USE = 2
-
     /**
      * I4: a `CameraAccessException` reason that means another app holds the camera. A disconnect
      * (2) is not: it is also how a camera service restart looks, and F-P5-9's events already
-     * report another app's take.
+     * report another app's take. A busy camera reported through `StateCallback.onError` is not
+     * classified here: StreamPack 3.2.0 turns its code into a message-only `CameraException`, so
+     * Task 36 carries that path (review 18 I2).
      */
     fun busy(reason: Int?): Boolean = reason == CAMERA_IN_USE || reason == MAX_CAMERAS_IN_USE
-
-    /** I4: a `CameraDevice.StateCallback.onError` code that means another app holds the camera. */
-    fun busyError(error: Int): Boolean = error == ERROR_CAMERA_IN_USE || error == ERROR_MAX_CAMERAS_IN_USE
   }
 }

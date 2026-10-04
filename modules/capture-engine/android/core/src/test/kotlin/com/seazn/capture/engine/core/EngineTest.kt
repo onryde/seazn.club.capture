@@ -145,7 +145,7 @@ class EngineTest {
     val engine = engine { _, _, _ -> throw IllegalStateException("bug") }
     engine.send(Input.Start)
     scheduler.advanceBy(0)
-    assertEquals(Phase.Ended(EndReason.FATAL_ERROR, Ids(), durationMs = null, networkValidated = false), engine.phase)
+    assertEquals(Phase.Ended(EndReason.FATAL_ERROR, Ids(), durationMs = null, networkValidated = false, micSilenced = false), engine.phase)
     assertEquals(listOf<Command>(Command.End(EndReason.FATAL_ERROR)), executed, "from Idle no Hold went, so no Release (review C0b M4)")
     assertTrue(lines.any { "engine-error" in it })
   }

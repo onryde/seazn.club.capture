@@ -193,6 +193,134 @@ class SessionMachineDeviceTest {
     assertEquals(1, rig.records("mic-silenced").size)
   }
 
+  // Review 18 I1: the watch reports changes only, so the engine keeps the fact in every phase, as it
+  // keeps the network's (final review I-1), and seeds each broadcast with it at arm.
+  @Test
+  fun `I1 a mic silenced while paired is known to the broadcast from the start, and the snapshot shows it`() {
+    val rig = MachineRig().paired()
+    rig.send(Input.MicSilenced(true))
+    rig.send(Input.MicSilenced(true))
+    assertEquals(1, rig.records("mic-silenced").size, "recorded while paired, once")
+    rig.hear("go-live", sid = "sess_42", startedBy = "organiser")
+    assertTrue(rig.session.micSilenced, "armed knowing")
+    rig.ready()
+    rig.send(Input.Connected(rig.attempt!!))
+    rig.advance(1_000)
+    assertEquals(listOf(DegradeReason.MIC_SILENCED), assertIs<SnapshotState.Degraded>(rig.snapshot.state).reasons)
+    assertEquals(1, rig.records("mic-silenced").size, "no line for the seed at arm")
+  }
+
+  @Test
+  fun `I1 a mic silenced and restored while paired is clear at go-live`() {
+    val rig = MachineRig().paired()
+    rig.send(Input.MicSilenced(true))
+    rig.send(Input.MicSilenced(false))
+    assertEquals(1, rig.records("mic-silenced").size)
+    assertEquals(1, rig.records("mic-restored").size)
+    rig.hear("go-live", sid = "sess_42", startedBy = "organiser")
+    rig.ready()
+    rig.send(Input.Connected(rig.attempt!!))
+    rig.advance(1_000)
+    assertIs<SnapshotState.Publishing>(rig.snapshot.state)
+  }
+
+  @Test
+  fun `I1 a mic silenced before the first pairing reaches the broadcast`() {
+    val rig = MachineRig()
+    rig.send(Input.MicSilenced(true))
+    rig.live()
+    assertEquals(listOf(DegradeReason.MIC_SILENCED), assertIs<SnapshotState.Degraded>(rig.state).reasons)
+  }
+
+  @Test
+  fun `I1 the mic fact outlives an ended pairing and a reset`() {
+    val rig = MachineRig().live()
+    rig.send(Input.MicSilenced(true))
+    rig.send(Input.Stop)
+    rig.send(Input.Reset)
+    assertIs<Phase.Idle>(rig.phase)
+    rig.live()
+    assertEquals(listOf(DegradeReason.MIC_SILENCED), assertIs<SnapshotState.Degraded>(rig.state).reasons)
+    assertEquals(1, rig.records("mic-silenced").size)
+  }
+
+  @Test
+  fun `I1 a mic fact that lands after the end is recorded and kept for the next pairing, and the end stands`() {
+    val rig = MachineRig().live()
+    rig.send(Input.Stop)
+    val ended = assertIs<Phase.Ended>(rig.phase)
+    rig.send(Input.MicSilenced(true))
+    assertEquals(ended.copy(micSilenced = true), rig.phase, "only the mic fact changed")
+    assertEquals(1, rig.records("mic-silenced").size)
+    rig.send(Input.Reset)
+    assertTrue(assertIs<Phase.Idle>(rig.phase).micSilenced)
+  }
+
+  @Test
+  fun `I1 the mic fact outlives a broadcast the organiser stopped, into the next one`() {
+    val rig = MachineRig().live()
+    rig.send(Input.MicSilenced(true))
+    rig.hear("over", sid = "sess_42", endReason = "stopped")
+    assertIs<Phase.Paired>(rig.phase)
+    rig.codes = { if (rig.phase is Phase.Arming) Configs.open(sid = "sess_43") else null }
+    rig.hear("go-live", sid = "sess_43", startedBy = "organiser")
+    assertTrue(rig.session.micSilenced, "the next broadcast is armed knowing")
+  }
+
+  @Test
+  fun `I1 a mic fact that lands in any phase is kept there, recorded once each way, and the phase stands`() {
+    val phases: List<Pair<String, () -> MachineRig>> =
+      listOf(
+        "idle" to { MachineRig() },
+        "pairing" to { MachineRig().apply { permissions = null; send(Input.Pair(request, Configs.PHONE, stopped = null)) } },
+        "paired" to { MachineRig().paired() },
+        "arming" to { MachineRig().apply { codes = null; paired(); hear("go-live", sid = "sess_42", startedBy = "organiser") } },
+        "armed" to { MachineRig().armed() },
+        "connecting" to { MachineRig().armed().apply { ready() } },
+        "on-air" to { MachineRig().live() },
+        "ended" to { MachineRig().live().apply { send(Input.Stop) } },
+      )
+    for ((name, reach) in phases) {
+      val rig = reach()
+      assertEquals(name, rig.phase.name)
+      rig.send(Input.MicSilenced(true))
+      rig.send(Input.MicSilenced(true))
+      assertTrue(rig.phase.micSilenced, name)
+      assertEquals(1, rig.records("mic-silenced").size, name)
+      rig.send(Input.MicSilenced(false))
+      assertEquals(false, rig.phase.micSilenced, name)
+      assertEquals(1, rig.records("mic-restored").size, name)
+      assertEquals(name, rig.phase.name, "$name stands")
+    }
+  }
+
+  @Test
+  fun `I1 the mic fact survives every other way back to Paired or Idle`() {
+    val rig = MachineRig()
+    rig.send(Input.MicSilenced(true))
+    rig.permissions = false
+    rig.send(Input.Pair(rig.request, Configs.PHONE, stopped = null))
+    assertTrue(assertIs<Phase.Idle>(rig.phase).micSilenced, "permissions refused")
+    rig.permissions = null
+    rig.send(Input.Pair(rig.request, Configs.PHONE, stopped = null))
+    assertTrue(assertIs<Phase.Pairing>(rig.phase).micSilenced, "pairing")
+    rig.send(Input.Unpair)
+    assertTrue(assertIs<Phase.Idle>(rig.phase).micSilenced, "unpaired while pairing")
+    rig.permissions = true
+    rig.paired()
+    rig.codes = { CodeAnswer.Status(404, null, null) }
+    rig.hear("go-live", sid = "sess_42", startedBy = "organiser")
+    assertTrue(assertIs<Phase.Paired>(rig.phase).micSilenced, "a start that failed at Arming")
+    rig.send(Input.Unpair)
+    assertTrue(assertIs<Phase.Idle>(rig.phase).micSilenced, "unpaired while paired")
+    rig.paired()
+    rig.codes = { CodeAnswer.Status(401, null, null) }
+    rig.hear("go-live", sid = "sess_43", startedBy = "organiser")
+    assertTrue(assertIs<Phase.Idle>(rig.phase).micSilenced, "the code ended at Arming")
+    assertEquals(1, rig.records("mic-silenced").size)
+    assertTrue(rig.records("mic-restored").isEmpty())
+  }
+
   @Test
   fun `F-P5-10 between the reopen and its first frame the state holds degraded camera-taken, never connecting`() {
     // Carry 6: our own reopen is not a frame (the gate stays shut), and the camera is not back until one arrives.

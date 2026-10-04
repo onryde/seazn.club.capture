@@ -6,7 +6,8 @@ import java.util.Locale
  * The foreground service's notification, for the whole pairing (amendment §2, _Android
  * notification_; CD16): "Paired · waiting for Go live" while paired; the STARTING tally word in
  * Pairing, Arming and Armed, with the not-ready line after it; and `LIVE · 3000k · 47 min` from
- * Connecting on. Its language is the pairing's, then the phone's, then English (P3, M5).
+ * Connecting on, the minutes running through trouble as the broadcast does (AGENTS §9; review 18
+ * m1). Its language is the pairing's, then the phone's, then English (P3, M5).
  *
  * The words are the app's own dictionary words, copied from `src/i18n/` because the native side
  * cannot read the JS bundle; `NotificationTextTest` holds them equal, key for key. Pure: the glue
@@ -67,10 +68,10 @@ object NotificationText {
           "stream.tally.trouble" to "Problème",
           "stream.tally.ended" to "Terminé",
           "stream.notification.paired" to "Associé · en attente du direct",
-          "stream.status.notReadyCamera" to "Pas encore de direct\u00a0: caméra pas prête",
+          "stream.status.notReadyCamera" to "Pas encore de direct\u00a0: caméra non prête",
           "stream.status.notReadySound" to "Pas encore de direct\u00a0: aucun son du micro",
           "stream.status.notReadyNetwork" to "Pas encore de direct\u00a0: pas de réseau",
-          "stream.status.notReadyHeld" to "Pas encore de direct\u00a0: téléphone à l'horizontale",
+          "stream.status.notReadyHeld" to "Pas encore de direct\u00a0: tournez à l'horizontale",
         ),
       "nl" to
         mapOf(
@@ -134,6 +135,7 @@ object NotificationText {
    * What the service shows, read from the snapshot [wire] the bridge publishes (numbers are Doubles
    * there). [language] is already resolved by [language]; anything [WORDS] does not hold reads as
    * English, so no raw key ever shows. The paired line is a sentence, as written, never a plate.
+   * Minutes show once the broadcast is on air, live or in trouble, never before.
    */
   fun content(wire: Map<String, Any?>, nowEpochMs: Long, language: String): String {
     val resolved = language.takeIf { it in WORDS } ?: "en"
@@ -141,7 +143,7 @@ object NotificationText {
     val state = wire["state"] as? Map<*, *>
     val key = tallyKey(state?.get("kind") as? String)
     if (key == "paired") return words.getValue("stream.notification.paired")
-    val since = if (key == "live") (state?.get("sinceEpochMs") as? Number)?.toLong() else null
+    val since = if (key == "live" || key == "trouble") (state?.get("sinceEpochMs") as? Number)?.toLong() else null
     val kbps = ((wire["telemetry"] as? Map<*, *>)?.get("targetBitrateKbps") as? Number)?.toInt()
     val tally = line(words.getValue("stream.tally.$key"), kbps, since, nowEpochMs, Locale.forLanguageTag(resolved))
     val notReady = NOT_READY[state?.get("notReady")]?.let(words::getValue) ?: return tally
