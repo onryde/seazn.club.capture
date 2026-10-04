@@ -15,7 +15,9 @@ class EncoderKeysTest {
   }
 
   @Test
-  fun `F-P5-6 A11 the encoded rotation is the side the accelerometer read, fixed for the broadcast`() {
+  fun `F-P5-6 A11 the encoded rotation is the side the accelerometer read`() {
+    // Fixed for the broadcast is held elsewhere: the machine orients only as Armed turns to Connecting
+    // (Command.Orient, Task 5), and the glue never calls setTargetRotation (GlueRulesTest).
     // Surface.ROTATION_90 = 1, ROTATION_270 = 3 (javap, android-36). Live Stream is landscape either way (ruling 4).
     assertEquals(1, EncoderKeys.surfaceRotation(Side.LEFT))
     assertEquals(3, EncoderKeys.surfaceRotation(Side.RIGHT))

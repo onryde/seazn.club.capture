@@ -8,6 +8,7 @@ import java.net.ConnectException
 import java.net.SocketException
 import java.net.URLEncoder
 import java.net.UnknownHostException
+import java.nio.channels.UnresolvedAddressException
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -51,19 +52,21 @@ class SrtOptionsTest {
 
   @Test
   fun `the options set before connect, in full`() {
-    // CD14, written out from the brief: live mode, the secrets, the latency, INPUTBW 0, libsrt's default
-    // overhead (25 %) named, and a 6 s connect timeout.
+    // CD14, written out from the brief: live mode, the secrets, the server's latency (not the fixtures'
+    // usual 2 000, so it is read, never assumed), INPUTBW 0, libsrt's default overhead (25 %) named, and
+    // a 6 s connect timeout.
     val expected =
       listOf(
         SrtOpt.TRANSTYPE_LIVE to true,
         SrtOpt.STREAMID to Configs.STREAM_ID,
         SrtOpt.PASSPHRASE to Configs.PASSPHRASE,
-        SrtOpt.LATENCY to 2_000,
+        SrtOpt.LATENCY to 1_234,
         SrtOpt.INPUTBW to 0L,
         SrtOpt.OHEADBW to 25,
         SrtOpt.CONNTIMEO to 6_000,
       )
-    assertEquals(expected, SrtOptions.plan(cloudflare, 375_000)!!.before)
+    val target = SrtTarget("srt://live.cloudflare.com:778", Configs.STREAM_ID, Configs.PASSPHRASE, latencyMs = 1_234)
+    assertEquals(expected, SrtOptions.plan(target, 375_000)!!.before)
   }
 
   @Test
@@ -91,8 +94,29 @@ class SrtOptionsTest {
   }
 
   @Test
+  fun `I2 F-P5-1 a dead DNS is unresolved on either transport, bare or wrapped`() {
+    // SRT: our sink resolves first (srtdroid would hand libsrt an unresolved address, which it reports as
+    // "Bad parameters": F-P5-1), so its dead DNS is an UnknownHostException.
+    assertEquals(ConnectFailure.UNRESOLVED, SrtOptions.failure(UnknownHostException("live.cloudflare.com")))
+    assertEquals(ConnectFailure.UNRESOLVED, SrtOptions.failure(IOException("connect failed", UnknownHostException("live.cloudflare.com"))))
+    // RTMPS: Ktor 3.3.3 builds java.net.InetSocketAddress(host, port), which leaves a failed lookup unresolved;
+    // SocketChannel.connect then throws UnresolvedAddressException, with no message.
+    assertEquals(ConnectFailure.UNRESOLVED, SrtOptions.failure(UnresolvedAddressException()))
+    assertEquals(ConnectFailure.UNRESOLVED, SrtOptions.failure(IOException("connect failed", UnresolvedAddressException())))
+    assertEquals(ConnectFailure.UNRESOLVED, SrtOptions.failure(RuntimeException(IOException(UnresolvedAddressException()))))
+  }
+
+  @Test
+  fun `a failure's words are read in any case, and a bare timeout is a timeout`() {
+    // Ktor's connect timeout says "timeout", not "timed out".
+    assertEquals(ConnectFailure.TIMEOUT, SrtOptions.failure(IOException("Connect timeout has expired")))
+    assertEquals(ConnectFailure.REFUSED, SrtOptions.failure(ConnectException("CONNECTION REFUSED")))
+    assertEquals(ConnectFailure.TIMEOUT, SrtOptions.failure(ConnectException("Connection setup failure: Connection Timed Out")))
+  }
+
+  @Test
   fun `a failure is read through its causes, and one with no message is other`() {
-    // srtdroid 1.9.5's connect throws java.net.ConnectException (a SocketException) with libsrt's last error.
+    // srtdroid's connect (1.9.5, javap) throws java.net.ConnectException (a SocketException) with libsrt's last error.
     assertEquals(ConnectFailure.TIMEOUT, SrtOptions.failure(ConnectException("Connection setup failure: connection timed out")))
     // A wrapped lookup failure is still unresolved: F-P5-1's rule never counts it towards the fallback.
     assertEquals(ConnectFailure.UNRESOLVED, SrtOptions.failure(IOException("publish failed", UnknownHostException("h"))))
@@ -156,6 +180,7 @@ class SrtOptionsTest {
         "srt://live.cloudflare.com:0",
         "srt://live.cloudflare.com:65536",
         "srt://live.cloudflare.com:778778",
+        "srt://live.cloudflare.com:000778", // six digits, though its value is in range
         "srt://live.cloudflare.com:१०", // Devanagari digits, which Kotlin's toInt would read
         "srt://live.cloudflare.com:778/live",
         "srt://live.cloudflare.com:778?streamid=x",

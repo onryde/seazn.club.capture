@@ -62,12 +62,67 @@ class GlueRulesTest {
     }
   }
 
+  /**
+   * StreamPack 3.2.0's own display readers (javap): `ContextExtensionsKt.getDisplayRotation`, which Kotlin
+   * reads as `context.displayRotation`, is `ContextCompat.getDisplayOrDefault(context).getRotation()`; its
+   * rotation providers follow the display or the sensor, moving the encode mid-broadcast (F-P5-6).
+   */
+  private val displayReaders =
+    listOf(
+      "defaultDisplay",
+      "display.rotation",
+      "display?.rotation",
+      "getRotation()",
+      "displayRotation",
+      "DisplayRotation",
+      "getDisplayOrDefault",
+      "RotationProvider",
+    )
+
+  /**
+   * Every StreamPack 3.2.0 streamer factory and constructor (`cameraSingleStreamer`, `SingleStreamer`,
+   * the video-only, media-projection and dual ones, the `Impl`s) and `StreamerPipeline.createEncodingOutput`
+   * default `defaultRotation` to `getDisplayRotation(context)` (javap of each `$default`). A call that
+   * leaves it out encodes from the display.
+   */
+  private val streamerCall = Regex("""\b(?:\w*(?:Single|Dual)Streamer(?:Impl)?|createEncodingOutput)\(""")
+
+  /** The call's argument text, from its `(` at [open] to the matching `)`; the rest of the file if unbalanced. */
+  private fun arguments(text: String, open: Int): String {
+    var depth = 0
+    for (i in open until text.length) {
+      when (text[i]) {
+        '(' -> depth++
+        ')' -> if (--depth == 0) return text.substring(open, i + 1)
+      }
+    }
+    return text.substring(open)
+  }
+
   @Test
-  fun `A11 the encode's rotation never reads the display`() {
+  fun `A11 the encode's rotation never reads the display, StreamPack's default included`() {
+    val problems = mutableListOf<String>()
     for (file in sources()) {
       val text = file.readText()
-      for (banned in listOf("defaultDisplay", "display.rotation", "display?.rotation", "getRotation()")) assertFalse(banned in text, "${file.path}: $banned")
+      for (banned in displayReaders) if (banned in text) problems += "${file.name}: $banned"
+      for (call in streamerCall.findAll(text)) {
+        val args = arguments(text, call.range.last)
+        if (!Regex("""\bdefaultRotation\s*=""").containsMatchIn(args)) problems += "${file.name}: ${call.value} with no defaultRotation ="
+      }
     }
+    assertEquals(emptyList(), problems)
+  }
+
+  /**
+   * Security: `cred` is read in `Bodies` and nowhere else, onto the ingest host only (amendment, _Who reads
+   * what_), and `SrtOptions.plan`'s all-environment host list rests on Bodies being the only producer of a
+   * target (review 19, m8). The glue receives targets; it never builds one.
+   */
+  @Test
+  fun `the glue never builds an ingest target - Bodies alone reads cred`() {
+    val built = Regex("""\b(?:SrtTarget|RtmpsTarget)\(""")
+    val problems = sources().flatMap { file -> built.findAll(file.readText()).map { "${file.name}: ${it.value}" }.toList() }
+    assertEquals(emptyList(), problems)
   }
 
   /**

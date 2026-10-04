@@ -21,6 +21,8 @@ class TlsCloserGuardTest {
     assertFalse(TlsCloserGuard.swallows(IOException("other"), false), "not Ktor's")
     val error = OutOfMemoryError().apply { stackTrace = ktorIo().stackTrace }
     assertFalse(TlsCloserGuard.swallows(error, false), "never an Error")
+    val errorOverKtor = Error("closer", ktorIo()).apply { stackTrace = ktorIo().stackTrace }
+    assertFalse(TlsCloserGuard.swallows(errorOverKtor, false), "never an Error, even over Ktor's IOException")
     assertTrue(TlsCloserGuard.swallows(RuntimeException(ktorIo()), false), "found in the cause chain")
   }
 

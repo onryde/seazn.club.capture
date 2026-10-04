@@ -7,10 +7,13 @@ import com.seazn.capture.engine.core.Hosts
 import com.seazn.capture.engine.core.SrtBandwidth
 import com.seazn.capture.engine.core.SrtTarget
 import java.net.UnknownHostException
+import java.nio.channels.UnresolvedAddressException
 
 /**
- * The socket options our own SRT sink (Task 35) sets before connect. The glue maps each to srtdroid
- * 1.9.5's `SockOpt` by name, except [TRANSTYPE_LIVE], which is `SockOpt.TRANSTYPE` set to `Transtype.LIVE`.
+ * The socket options our own SRT sink (Task 35) sets before connect. The glue maps each to srtdroid's
+ * `SockOpt` by name, except [TRANSTYPE_LIVE], which is `SockOpt.TRANSTYPE` set to `Transtype.LIVE`.
+ * CD35 pins srtdroid 1.10.1; these names were read with javap from 1.9.5, the copy in the Gradle cache,
+ * and Task 35's javap of 1.10.1 settles them.
  */
 enum class SrtOpt { TRANSTYPE_LIVE, STREAMID, PASSPHRASE, LATENCY, INPUTBW, OHEADBW, MAXBW, CONNTIMEO }
 
@@ -64,15 +67,18 @@ object SrtOptions {
   }
 
   /**
-   * F-P5-1: the sink resolves first, so a dead DNS is UNRESOLVED and never libsrt's "bad parameters".
-   * Read through the causes, since a library may wrap what it caught. The text is read, never kept:
-   * the result is a closed word, so no secret a library quotes can ride out on it.
+   * F-P5-1: a dead DNS is UNRESOLVED on either transport, which the fallback policy never counts. SRT
+   * resolves first, so it is an [UnknownHostException] and never libsrt's "bad parameters". RTMPS reports
+   * an unresolved address: Ktor builds `java.net.InetSocketAddress(host, port)`, which leaves a failed
+   * lookup unresolved, and the channel's connect throws [UnresolvedAddressException], with no message.
+   * Read through the causes, since a library may wrap what it caught. The text is read, never kept: the
+   * result is a closed word, so no secret a library quotes can ride out on it.
    */
   fun failure(t: Throwable): ConnectFailure {
     val chain = generateSequence(t) { it.cause }.take(MAX_CAUSES).toList()
     val text = chain.joinToString(" ") { it.message.orEmpty() }.lowercase()
     return when {
-      chain.any { it is UnknownHostException } -> ConnectFailure.UNRESOLVED
+      chain.any { it is UnknownHostException || it is UnresolvedAddressException } -> ConnectFailure.UNRESOLVED
       "timed out" in text || "timeout" in text -> ConnectFailure.TIMEOUT
       "rejected" in text || "refused" in text -> ConnectFailure.REFUSED
       else -> ConnectFailure.OTHER
