@@ -22,6 +22,9 @@ const BUDGETS: readonly (readonly [keys: RegExp, max: number])[] = [
   // Replaces stream.goLiveBy's row: the same line, under the chips.
   [/^stream\.startsAt$/, 32],
   [/^stream\.advisory\./, 56],
+  // Task 31's copy for Task 39's preview: its line under the stage, and its button.
+  [/^stream\.preview\.stopped$/, 56],
+  [/^stream\.preview\.show$/, 16],
   [/^stream\.peek\.label$/, 28],
   [/^stream\.peek\.unavailable$/, 24],
   [/^stream\.ended\.scanAnother$/, 16],

@@ -677,3 +677,56 @@ describe('reports that change one thing', () => {
     expect(heard).toHaveBeenCalledTimes(2);
   });
 });
+
+/**
+ * CD18: Android runs the service from the pair on (amendment §2, the paired
+ * notification), so the fake survives the background from Pairing until Idle
+ * or Ended. `setSurvivesBackground` is the service failing to start.
+ */
+describe('surviving the background (CD18)', () => {
+  it('survives from Pairing through the broadcast, and not at rest or once ended', () => {
+    const seen: [string, boolean][] = [];
+    const look = () => seen.push([state().kind, snapshot().survivesBackground]);
+    look();
+    engine.setPermissions('hold');
+    pair();
+    look();
+    engine.setPermissions('grant');
+    look();
+    engine.send({ kind: 'start' });
+    look();
+    wait(1_000);
+    look();
+    engine.send({ kind: 'stop' });
+    look();
+    engine.send({ kind: 'reset' });
+    look();
+    expect(seen).toEqual([
+      ['idle', false],
+      ['pairing', true],
+      ['paired', true],
+      ['connecting', true],
+      ['publishing', true],
+      ['ended', false],
+      ['idle', false],
+    ]);
+  });
+
+  it('follows a scene: on air survives, a stop does not', () => {
+    engine.scene('live');
+    expect(snapshot().survivesBackground).toBe(true);
+    engine.scene('stopped');
+    expect(snapshot().survivesBackground).toBe(false);
+  });
+
+  it('publishes a service that failed to start, and reports it again', () => {
+    pair();
+    const heard = vi.fn();
+    engine.subscribe(heard);
+    engine.setSurvivesBackground(false);
+    expect(heard).toHaveBeenCalledTimes(1);
+    expect(snapshot().survivesBackground).toBe(false);
+    wait(1_000);
+    expect(snapshot().survivesBackground).toBe(false);
+  });
+});

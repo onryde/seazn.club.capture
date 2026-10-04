@@ -8,6 +8,7 @@ import {
   selectStateKind,
   selectVenueZone,
 } from '@/hooks/engineSelectors';
+import { useEngineSilent } from '@/hooks/engineSilence';
 import {
   blockerReason,
   selectBlocker,
@@ -93,13 +94,14 @@ export function useViewfinder(): Viewfinder {
   const waiting = useWaitingFields();
   const intents = useIntents();
   const playable = useEngineSelector(selectPlaybackUrl) !== null;
+  const engineSilent = useEngineSilent();
   return useMemo(
     () => ({
-      ...project({ kind, preflight, blocker, engineKey, playable, waiting }),
+      ...project({ kind, preflight, blocker, engineKey, playable, waiting, engineSilent }),
       ...countdown,
       ...intents,
     }),
-    [kind, preflight, blocker, engineKey, playable, waiting, countdown, intents],
+    [kind, preflight, blocker, engineKey, playable, waiting, engineSilent, countdown, intents],
   );
 }
 
@@ -110,18 +112,25 @@ type ProjectInput = {
   readonly engineKey: StatusKey;
   readonly playable: boolean;
   readonly waiting: WaitingFields;
+  /** CD17: no report for three seconds while native holds a pairing. */
+  readonly engineSilent: boolean;
 };
 
-/** The column's reading of native state. Pure: a projection, no state machine. */
+/**
+ * The column's reading of native state. Pure: a projection, no state machine.
+ * A silent engine reads TROUBLE with its own line (CD17, P2): TROUBLE is then
+ * "broadcast degraded" or "engine silent", and the line tells them apart. A
+ * display rule over the tables, applied last; native's state is untouched.
+ */
 function project(
   input: ProjectInput,
 ): Omit<Viewfinder, 'holdRemaining' | 'holdWindow' | 'start' | 'stop'> {
-  const { kind, blocker, waiting } = input;
+  const { kind, blocker, waiting, engineSilent } = input;
   const action = ACTION[kind];
   return {
     kind,
-    plate: tallyPlateFor(kind, blocker === null),
-    statusKey: input.engineKey,
+    plate: engineSilent ? 'trouble' : tallyPlateFor(kind, blocker === null),
+    statusKey: engineSilent ? 'stream.status.engineSilent' : input.engineKey,
     preflight: input.preflight,
     blocker,
     reason: blockerReason(blocker),

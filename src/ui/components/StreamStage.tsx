@@ -1,6 +1,6 @@
 import { memo } from 'react';
 import { StyleSheet, View } from 'react-native';
-import { ADVISORY_KEY, selectCharging, topAdvisory } from '@/hooks/advisory';
+import { ADVISORY_KEY, selectCharging, selectKeepOpen, topAdvisory } from '@/hooks/advisory';
 import { selectLabel, selectPlaybackUrl } from '@/hooks/engineSelectors';
 import { useEngineSelector } from '@/hooks/useCaptureEngine';
 import { useT } from '@/hooks/useLanguage';
@@ -70,7 +70,8 @@ type TopStripProps = {
 const TopStrip = memo(function TopStrip(props: TopStripProps) {
   const { t } = useT();
   const charging = useEngineSelector(selectCharging);
-  const advisory = topAdvisory({ ...props, charging });
+  const keepOpen = useEngineSelector(selectKeepOpen);
+  const advisory = topAdvisory({ ...props, charging, keepOpen });
   if (advisory === null) return null;
   return (
     <EdgeStrip edge="top">

@@ -47,7 +47,8 @@ export function createNativeCaptureEngine(
 ): NativeCaptureEngine {
   const cache = createWireCache();
   const listeners = new Set<() => void>();
-  const malformed = malformedLines(native, deps.now ?? Date.now);
+  const now = deps.now ?? Date.now;
+  const malformed = malformedLines(native, now);
   const read = (body: unknown): EngineSnapshot | null => {
     const next = toEngineSnapshot(body, cache);
     if (next === null) malformed.refused();
@@ -59,9 +60,10 @@ export function createNativeCaptureEngine(
   const acks = createAcks();
   const subscriptions = [
     native.addListener('onSnapshot', (body) => {
-      const next = read(body);
-      if (next === null) return;
-      snapshot = next;
+      // Review C4c I-4 and CD17: a refused body still proves native is reporting, so the last good
+      // facts stand with the time it arrived. Silence is native saying nothing at all; a drift the
+      // record counts must never read as "Engine not responding".
+      snapshot = read(body) ?? { ...snapshot, reportedAtMs: now() };
       for (const listener of listeners) listener();
     }),
     native.addListener('onAck', ({ seq }) => acks.acked(seq)),

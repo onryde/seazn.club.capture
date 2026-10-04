@@ -1,7 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import type { EngineSnapshot, Telemetry } from '@/engine/CaptureEnginePort';
 import { IDLE_TELEMETRY } from '@/engine/unreported';
-import { ADVISORY_KEY, selectCharging, selectShedding, topAdvisory } from '@/hooks/advisory';
+import type { SessionState } from '@/domain/session/SessionState';
+import {
+  ADVISORY_KEY,
+  selectCharging,
+  selectKeepOpen,
+  selectShedding,
+  topAdvisory,
+} from '@/hooks/advisory';
 import en from '@/i18n/en.json';
 
 const QUIET = {
@@ -10,6 +17,7 @@ const QUIET = {
   paired: false,
   overlayOn: true,
   charging: true,
+  keepOpen: false,
 } as const;
 
 describe('topAdvisory (D17: one caption at a time, most important first)', () => {
@@ -65,6 +73,80 @@ describe('topAdvisory (D17: one caption at a time, most important first)', () =>
 describe('the advisory copy', () => {
   it('is the spec’s shed sentence, with no prefix (carry 7, spec §4)', () => {
     expect(en[ADVISORY_KEY.shed]).toBe('Preview paused — still live');
+  });
+});
+
+// CD18: a phone that would not survive the background must say so before
+// anything else, since leaving the app is what would end the capture.
+describe('topAdvisory: keep the app open (CD18)', () => {
+  it('outranks every other caption', () => {
+    const base = {
+      shed: true,
+      overlayFailed: true,
+      paired: true,
+      overlayOn: true,
+      charging: false,
+    };
+    expect(topAdvisory({ ...base, keepOpen: true })).toBe('keepOpen');
+    expect(
+      topAdvisory({
+        shed: false,
+        overlayFailed: false,
+        paired: true,
+        overlayOn: true,
+        charging: null,
+        keepOpen: false,
+      }),
+    ).toBe('scoreAhead');
+  });
+
+  it('says it alone when nothing else is up', () => {
+    expect(topAdvisory({ ...QUIET, keepOpen: true })).toBe('keepOpen');
+  });
+
+  it('reads its line from the dictionary', () => {
+    expect(en[ADVISORY_KEY.keepOpen]).toBe('Keep the app open — capture stops in the background');
+  });
+});
+
+/**
+ * CD18 from Pairing on: native's service runs from the pair (amendment §2),
+ * so any held pairing that would not survive the background asks. Every kind,
+ * written out; idle and ended hold nothing.
+ */
+const KEEP_OPEN: readonly (readonly [SessionState, boolean])[] = [
+  [{ kind: 'idle' }, false],
+  [{ kind: 'pairing' }, true],
+  [{ kind: 'paired' }, true],
+  [{ kind: 'arming', cause: 'operator', retrying: false }, true],
+  [{ kind: 'armed', cause: 'operator', notReady: 'camera' }, true],
+  [{ kind: 'connecting', transport: 'srt' }, true],
+  [{ kind: 'publishing', transport: 'srt', sinceEpochMs: 1 }, true],
+  [{ kind: 'degraded', transport: 'srt', reason: 'poor-uplink', sinceEpochMs: 1 }, true],
+  [
+    {
+      kind: 'reconnecting',
+      cause: 'uplink-lost',
+      holdRemainingSeconds: 10,
+      holdWindowSeconds: 30,
+      sinceEpochMs: 1,
+    },
+    true,
+  ],
+  [{ kind: 'ended', reason: 'operator-stopped', durationMs: null }, false],
+];
+
+describe('selectKeepOpen (CD18)', () => {
+  it('checks all ten kinds (PV12: zero is a failure)', () => {
+    expect(new Set(KEEP_OPEN.map(([state]) => state.kind)).size).toBe(10);
+  });
+
+  it.each(KEEP_OPEN)('%o, not surviving the background: %s', (state, asks) => {
+    expect(selectKeepOpen({ ...snapshot({}), state, survivesBackground: false })).toBe(asks);
+  });
+
+  it.each(KEEP_OPEN)('%o, surviving the background: never', (state) => {
+    expect(selectKeepOpen({ ...snapshot({}), state, survivesBackground: true })).toBe(false);
   });
 });
 

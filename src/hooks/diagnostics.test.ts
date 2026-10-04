@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import type { CameraState, Telemetry } from '@/engine/CaptureEnginePort';
 import { createFakeCaptureEngine, type FakeScene } from '@/engine/FakeCaptureEngine';
+import { PAIR } from '@/engine/testing/pairIntent';
+import { UNREPORTED } from '@/engine/unreported';
 import { diagnosticsSections } from '@/hooks/diagnostics';
+import en from '@/i18n/en.json';
 import type { Lang } from '@/i18n/language';
 import { createTranslator } from '@/i18n/translate';
 
@@ -46,16 +49,19 @@ describe('diagnosticsSections (spec §4)', () => {
       'Last sent': '4 s ago',
       'Last result': 'Accepted',
       Failures: '0',
+      'Last report': '0 s ago',
+      'Record lines refused': '0',
+      'Record lines dropped': '0',
     });
   });
 
-  it('names its four sections', () => {
+  it('names its five sections, the engine last', () => {
     const engine = createFakeCaptureEngine(() => NOW);
     const titles = diagnosticsSections(engine.getSnapshot(), NOW, createTranslator('en')).map(
       (section) => section.title,
     );
     engine.dispose();
-    expect(titles).toEqual(['Link', 'Delivery', 'Phone', 'Heartbeat']);
+    expect(titles).toEqual(['Link', 'Delivery', 'Phone', 'Heartbeat', 'Engine']);
   });
 
   it('says what is unknown rather than inventing a number', () => {
@@ -212,8 +218,72 @@ describe('diagnosticsSections (spec §4)', () => {
       Vidéo: '30 i/s',
       'Données utilisées': '312 Mo',
       'Dernier envoi': 'il y a 4 s',
+      'Dernier rapport': 'il y a 0 s',
+      'Lignes du journal refusées': '0',
       Batterie: '74 %',
       Température: 'Normale',
     });
+  });
+
+  it('carry 12 shows when native last reported, and the record lines it refused and dropped', () => {
+    const engine = createFakeCaptureEngine(() => NOW);
+    engine.patch({ recordSinkFailures: 2, recordReentrantDropped: 1 });
+    const snapshot = { ...engine.getSnapshot(), reportedAtMs: NOW - 4_000 };
+    const sections = diagnosticsSections(snapshot, NOW, createTranslator('en'));
+    const section = sections.find((s) => s.title === en['diag.section.engine']);
+    expect(section?.rows).toEqual([
+      { label: en['diag.lastReport'], value: '4 s ago' },
+      { label: en['diag.recordRefused'], value: '2' },
+      { label: en['diag.recordDropped'], value: '1' },
+    ]);
+    engine.dispose();
+  });
+
+  // Question 2: `UNREPORTED`'s 0 is "native has said nothing yet", never a report 56 years ago.
+  it('says it does not know when native has not reported yet', () => {
+    const sections = diagnosticsSections(UNREPORTED, NOW, createTranslator('en'));
+    const section = sections.find((s) => s.title === 'Engine');
+    expect(section?.rows[0]).toEqual({ label: 'Last report', value: '—' });
+  });
+
+  // C4c-I4: silence reads as a climbing age; drift keeps it current (nativeCaptureEngine).
+  it('reads a silent engine as a report long ago', () => {
+    const snapshot = { ...UNREPORTED, reportedAtMs: NOW - 12_000 };
+    const section = diagnosticsSections(snapshot, NOW, createTranslator('en')).at(-1);
+    expect(section?.rows[0]).toEqual({ label: 'Last report', value: '12 s ago' });
+  });
+});
+
+describe('A18: SRT not offered (Diagnostics)', () => {
+  /** A broadcast the fake held, on RTMPS, with SRT offered or not. */
+  function linkRows(srtOffered: boolean | null) {
+    const engine = createFakeCaptureEngine(() => NOW);
+    engine.send(PAIR);
+    engine.send({ kind: 'start' });
+    const live = engine.getSnapshot();
+    engine.dispose();
+    if (live.broadcast === null) throw new Error('the fake holds no broadcast after a start');
+    const rtmpsOnly = {
+      ...live,
+      state: { kind: 'publishing' as const, transport: 'rtmps' as const, sinceEpochMs: NOW },
+      broadcast: srtOffered === null ? null : { ...live.broadcast, srtOffered },
+    };
+    return diagnosticsSections(rtmpsOnly, NOW, createTranslator('en'))[0];
+  }
+
+  it('A18 a broadcast with no SRT offered says so beside its transport', () => {
+    expect(linkRows(false)?.rows[0]).toEqual({
+      label: en['diag.transport'],
+      value: 'RTMPS · SRT not offered',
+    });
+  });
+
+  it('a fallback to RTMPS with SRT offered shows RTMPS alone', () => {
+    expect(linkRows(true)?.rows[0]).toEqual({ label: en['diag.transport'], value: 'RTMPS' });
+  });
+
+  // Question 2: no broadcast, no SRT line.
+  it('says nothing of SRT with no broadcast', () => {
+    expect(linkRows(null)?.rows[0]).toEqual({ label: 'Transport', value: 'RTMPS' });
   });
 });

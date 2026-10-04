@@ -96,6 +96,27 @@ describe('the native engine (carry 1)', () => {
     expect(native.logged).toEqual([MALFORMED(1), MALFORMED(4), MALFORMED(5)]);
   });
 
+  // Review C4c I-4 and Task 31's CD17: a refused body still proves native is reporting. The last
+  // good facts stand, with the time it arrived; silence is native saying nothing at all.
+  it('I-4 keeps a counted drop from reading as silence, and leaves real silence alone', async () => {
+    const native = new FakeNativeModule({ current: pairedWire });
+    let at = 1_000;
+    const engine = createNativeCaptureEngine(native, { ...quiet, now: () => at });
+    const heard: number[] = [];
+    engine.subscribe(() => heard.push(engine.getSnapshot().reportedAtMs));
+    at = 9_000;
+    native.emit('onSnapshot', { ...liveWire, state: { kind: 'exploded' } });
+    await flush();
+    expect(heard).toEqual([9_000]);
+    expect(engine.getSnapshot().state.kind).toBe('paired');
+    expect(native.logged).toEqual([MALFORMED(1)]);
+    // Nothing at all arrives: the time stands, so the age climbs.
+    at = 20_000;
+    await flush();
+    expect(heard).toEqual([9_000]);
+    expect(engine.getSnapshot().reportedAtMs).toBe(9_000);
+  });
+
   // Review C4c round 1, minor 3: between lines the logged count is a floor, so dispose writes the rest.
   it('I-4 a burst of malformed snapshots then dispose records the full count, once', async () => {
     const native = new FakeNativeModule({ current: pairedWire });
@@ -269,16 +290,22 @@ describe('the native engine (carry 1)', () => {
     expect(done).toBe(true);
   });
 
+  // Task 31 (review C4c I-4): a malformed body notifies too, with the last good facts and its own
+  // arrival time, so CD17 never reads a counted drift as silence.
   it('notifies subscribers on each snapshot, and keeps the last good one through a malformed body', async () => {
     const native = new FakeNativeModule();
-    const engine = createNativeCaptureEngine(native, quiet);
+    let at = 5_000;
+    const engine = createNativeCaptureEngine(native, { ...quiet, now: () => at });
     const seen: string[] = [];
     engine.subscribe(() => seen.push(engine.getSnapshot().state.kind));
     native.emit('onSnapshot', pairedWire);
+    await flush();
+    const good = engine.getSnapshot();
+    at = 6_000;
     native.emit('onSnapshot', { state: { kind: 'exploded' } });
     await flush();
-    expect(seen).toEqual(['paired']);
-    expect(engine.getSnapshot().state.kind).toBe('paired');
+    expect(seen).toEqual(['paired', 'paired']);
+    expect(engine.getSnapshot()).toEqual({ ...good, reportedAtMs: 6_000 });
   });
 
   it('stops notifying a subscriber once it unsubscribes', async () => {

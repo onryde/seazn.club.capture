@@ -111,6 +111,12 @@ export type FakeCaptureEngine = CaptureEnginePort & {
   readonly intentKinds: readonly EngineIntent['kind'][];
   /** Stop reporting: what a suspended process looks like from JS. */
   suspend(): void;
+  /**
+   * CD18: whether capture would survive the background, as native reports it:
+   * false is Android's foreground service failing to start. The next state
+   * the fake reports sets it again from its kind.
+   */
+  setSurvivesBackground(on: boolean): void;
   /** Stop every timer. Always call this in test teardown. */
   dispose(): void;
 };
@@ -426,6 +432,14 @@ function telemetryFor(state: SessionState, now: number): Telemetry {
 const cameraFor = (state: SessionState): CameraState | null =>
   state.kind === 'idle' || state.kind === 'ended' ? null : 'own';
 
+/**
+ * CD18: Android runs the foreground service from the pair on (amendment §2, the
+ * paired notification), so capture survives the background from Pairing until
+ * Idle or Ended.
+ */
+const survivesFor = (state: SessionState): boolean =>
+  state.kind !== 'idle' && state.kind !== 'ended';
+
 const sinceOf = (state: SessionState): number | null =>
   'sinceEpochMs' in state ? state.sinceEpochMs : null;
 
@@ -467,7 +481,13 @@ export function createFakeCaptureEngine(now: () => number = Date.now): FakeCaptu
     for (const listener of listeners) listener();
   };
   const show = (state: SessionState, extra: Partial<EngineSnapshot> = {}): void =>
-    publish({ state, telemetry: telemetryFor(state, now()), camera: cameraFor(state), ...extra });
+    publish({
+      state,
+      telemetry: telemetryFor(state, now()),
+      camera: cameraFor(state),
+      survivesBackground: survivesFor(state),
+      ...extra,
+    });
   const cancelPending = (): void => {
     if (pending !== null) clearTimeout(pending);
     pending = null;
@@ -629,6 +649,7 @@ export function createFakeCaptureEngine(now: () => number = Date.now): FakeCaptu
       state: scene.state,
       telemetry: scene.telemetry,
       camera: scene.camera ?? cameraFor(scene.state),
+      survivesBackground: survivesFor(scene.state),
       ready: scene.ready ?? READY,
       pairing: resting ? null : held,
       broadcast: BROADCAST.has(scene.state.kind)
@@ -695,6 +716,7 @@ export function createFakeCaptureEngine(now: () => number = Date.now): FakeCaptu
     },
     patch: (telemetry) => publish({ telemetry: { ...snapshot.telemetry, ...telemetry } }),
     setCamera: (camera) => publish({ camera }),
+    setSurvivesBackground: (on) => publish({ survivesBackground: on }),
     // A suspended process reports nothing at all, a pending connect included.
     suspend: () => {
       cancelPending();
