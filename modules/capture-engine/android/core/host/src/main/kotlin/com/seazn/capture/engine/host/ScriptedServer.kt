@@ -45,7 +45,8 @@ class ScriptedServer {
   companion object {
     const val CODE = "h0stcde7k2qa"
     const val ORIGIN = "https://stg.seazn.club/api/v1/capture/codes/$CODE"
-    const val TOKEN = "tok-host-0000000000000000"
+    /** 22 characters of base64url, inside capture-qr.v2's `tok`: native refuses any other (T11 gap 3). */
+    const val TOKEN = "tok-host-0000000000000"
 
     /** A made-up broadcast sid in the schemas' uuid pattern (version 4, variant 9). */
     const val SID = "2d7c4b1e-5f3a-4e6b-9c8d-1a2b3c4d5e6f"

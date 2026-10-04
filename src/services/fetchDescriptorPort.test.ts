@@ -3,10 +3,8 @@ import {
   createFetchDescriptorPort,
   DESCRIPTOR_TIMEOUT_MS,
   descriptorUrl,
-  parseRetryAfter,
-  type FetchLike,
-  type FetchResponse,
 } from '@/services/fetchDescriptorPort';
+import type { FetchLike, FetchResponse } from '@/services/httpAsk';
 import { createLogger } from '@/services/logger';
 import { createRingRecord } from '@/services/sessionRecord';
 import {
@@ -393,27 +391,5 @@ describe('descriptorUrl', () => {
     expect(descriptorUrl('https://stg.seazn.club', 'a/../b?x=1#y')).toBe(
       'https://stg.seazn.club/api/capture/sessions/a%2F..%2Fb%3Fx%3D1%23y/descriptor',
     );
-  });
-});
-
-describe('parseRetryAfter (D5)', () => {
-  const now = FIXTURE_NOW.getTime();
-  it.each([
-    [null, 5],
-    ['30', 30],
-    [' 30 ', 30],
-    ['0', 1],
-    ['600', 120],
-    ['soon', 5],
-    ['-5', 5],
-    ['1.5', 5],
-    ['', 5],
-    ['Sat, 03 Oct 2026 13:00:42 GMT', 42],
-    ['Sat, 03 Oct 2026 12:00:00 GMT', 1],
-    ['Sun, 04 Oct 2026 13:00:00 GMT', 120],
-    // The shape of a date that is not one: never NaN, which would retry at once.
-    ['Sat, 99 Oct 2026 13:00:00 GMT', 5],
-  ])('reads %j as %i s', (value, seconds) => {
-    expect(parseRetryAfter(value, now)).toBe(seconds);
   });
 });

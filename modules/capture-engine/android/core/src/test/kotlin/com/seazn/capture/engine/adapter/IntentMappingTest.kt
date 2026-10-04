@@ -39,7 +39,7 @@ class IntentMappingTest {
       "code" to "fx42hmnp7k2q",
       "slot" to 1.0,
       "token" to Configs.TOKEN,
-      "codeUrl" to "https://seazn.club/api/capture/codes/fx42hmnp7k2q",
+      "codeUrl" to "https://seazn.club/api/v1/capture/codes/fx42hmnp7k2q",
       "heartbeatUrl" to "https://seazn.club/api/capture/codes/fx42hmnp7k2q/beat",
       "startUrl" to "https://seazn.club/api/capture/codes/fx42hmnp7k2q/start",
       "language" to "fr",
@@ -57,7 +57,7 @@ class IntentMappingTest {
     assertEquals("fx42hmnp7k2q", request.code)
     assertEquals(1, request.slot)
     assertEquals(Configs.TOKEN, request.token)
-    assertEquals("https://seazn.club/api/capture/codes/fx42hmnp7k2q", request.codeUrl)
+    assertEquals("https://seazn.club/api/v1/capture/codes/fx42hmnp7k2q", request.codeUrl)
     assertEquals("https://seazn.club/api/capture/codes/fx42hmnp7k2q/beat", request.heartbeatUrl)
     assertEquals("https://seazn.club/api/capture/codes/fx42hmnp7k2q/start", request.startUrl)
     assertEquals("fr", request.language)

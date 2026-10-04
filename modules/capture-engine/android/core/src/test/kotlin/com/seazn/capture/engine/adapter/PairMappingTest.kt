@@ -47,7 +47,7 @@ class PairMappingTest {
   @Test
   fun `an empty pair is never thrown, it is refused by name`() {
     val problems = PairMapping.request(mapOf("kind" to "pair")).problems()
-    for (named in listOf("code is blank", "token is blank", "slot is below 0", "codeUrl is not on stg.seazn.club")) {
+    for (named in listOf("code is blank", "token is blank", "slot is below 0", "codeUrl is not the code's URL on stg.seazn.club")) {
       assertTrue(named in problems, "missing '$named' in $problems")
     }
   }
@@ -75,7 +75,7 @@ class PairMappingTest {
         "code is blank",
         "token is blank",
         "slot is below 0",
-        "codeUrl is not on stg.seazn.club",
+        "codeUrl is not the code's URL on stg.seazn.club",
         "heartbeatUrl is not on stg.seazn.club",
         "startUrl is not on stg.seazn.club",
       )
@@ -150,7 +150,7 @@ class PairMappingTest {
     val prod =
       wire().apply {
         put("environment", "production")
-        put("codeUrl", "https://seazn.club/api/capture/codes/fx42hmnp7k2q")
+        put("codeUrl", "https://seazn.club/api/v1/capture/codes/fx42hmnp7k2q")
         put("heartbeatUrl", "https://seazn.club/api/capture/codes/fx42hmnp7k2q/beat")
         put("startUrl", "https://seazn.club/api/capture/codes/fx42hmnp7k2q/start")
       }

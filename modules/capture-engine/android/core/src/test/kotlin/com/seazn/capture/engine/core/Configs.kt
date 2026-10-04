@@ -2,7 +2,9 @@ package com.seazn.capture.engine.core
 
 /** Test sessions. The secrets are made up and distinctive, so a leak is easy to search for. */
 object Configs {
-  const val TOKEN = "tok-9f3c2a7e5b1d4680"
+  // 22 characters of base64url, inside capture-qr.v2's `tok` (T11 gap 3). Its tag is b24bb97b
+  // (token-tag-vectors.json).
+  const val TOKEN = "tok-9f3c2a7e5b1d4680ab"
   const val PASSPHRASE = "pass+phrase/6d1e8b0c"
   const val STREAM_ID = "a1b2c3d4e5f60718293a4b5c6d7e8f90"
   const val STREAM_KEY = "key-4c7a0e2b9d5f1386"
@@ -57,12 +59,14 @@ object Configs {
     heartbeatUrl: String = "https://stg.seazn.club/api/capture/codes/fx42hmnp7k2q/beat",
     claim: Claim = Claim.NEW,
     automatic: Boolean = true,
+    // The code's own URL on the staging host (D3), as JS builds it: native refuses any other (T16 m1).
+    codeUrl: String = "https://stg.seazn.club/api/v1/capture/codes/$code",
   ) =
     PairRequest(
       code = code,
       slot = slot,
       token = token,
-      codeUrl = "https://stg.seazn.club/api/capture/codes/fx42hmnp7k2q",
+      codeUrl = codeUrl,
       heartbeatUrl = heartbeatUrl,
       startUrl = "https://stg.seazn.club/api/capture/codes/fx42hmnp7k2q/start",
       language = "en",

@@ -153,12 +153,18 @@ class PairRequest(
   val name: PairingName
     get() = PairingName(code, slot, TokenTag.of(token))
 
-  /** Every reason this request cannot pair; empty when it can. JS checked the hosts already; native checks again. */
+  /**
+   * Every reason this request cannot pair; empty when it can. JS checked the code, the token and the
+   * hosts already; native checks again, on the rows JS is held to (`wire/code-vectors.json`, carry G1).
+   * The code's URL is exactly its own on the build's host (T16 m1): the adapter's `HttpRequests.code` appends `?slot=` to it as
+   * given and sends the Bearer there, so a `#`, a query or another code's path is refused, not read.
+   */
   fun problems(): List<String> = buildList {
     if (code.isBlank()) add("code is blank") else if (!CODE.matches(code)) add("code is not 12 characters of the code alphabet")
-    if (token.isBlank()) add("token is blank")
+    if (token.isBlank()) add("token is blank") else if (!TOKEN.matches(token)) add("token is not 22 characters of base64url")
     if (slot < 0) add("slot is below 0")
-    for ((key, url) in listOf("codeUrl" to codeUrl, "heartbeatUrl" to heartbeatUrl, "startUrl" to startUrl)) {
+    if (codeUrl != "https://${environment.seaznHost}$CODE_PATH$code") add("codeUrl is not the code's URL on ${environment.seaznHost}")
+    for ((key, url) in listOf("heartbeatUrl" to heartbeatUrl, "startUrl" to startUrl)) {
       if (!Hosts.onSeazn(url, environment)) add("$key is not on ${environment.seaznHost}")
     }
   }
@@ -178,6 +184,12 @@ class PairRequest(
   private companion object {
     /** `capture-beat.v1`'s `code`: 12 characters of the code alphabet, which has no i, l, o or u. */
     val CODE = Regex("[0-9a-hjkmnp-tv-z]{12}")
+
+    /** `capture-qr.v2`'s `tok`: 16 bytes as base64url, 22 characters. ASCII classes, matched whole. */
+    val TOKEN = Regex("[A-Za-z0-9_-]{22}")
+
+    /** The phone API's code path (D3), between the build's Seazn host and the code. */
+    const val CODE_PATH = "/api/v1/capture/codes/"
   }
 }
 

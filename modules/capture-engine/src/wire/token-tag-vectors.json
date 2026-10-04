@@ -6,6 +6,7 @@
     { "token": "foobar", "tag": "bf9cf968" },
     { "token": "cfx", "tag": "0076912c" },
     { "token": "tok-9f3c2a7e5b1d4680", "tag": "c980ff38" },
+    { "token": "tok-9f3c2a7e5b1d4680ab", "tag": "b24bb97b" },
     { "token": "fake-token-b0000000000000000000", "tag": "2cc4e08d" },
     { "token": "tök-ñ-日本", "tag": "fca8f070" },
     { "token": "🏏-tok", "tag": "a44d061f" }

@@ -4,18 +4,13 @@ import { parseDescriptor, parseEndReason } from '@/domain/credentials/parseDescr
 import type { DescriptorError, SessionDescriptor } from '@/domain/credentials/SessionDescriptor';
 import { httpsHost, isRecord } from '@/domain/credentials/wire';
 import type { DescriptorPort } from '@/services/descriptorPort';
+import {
+  parseRetryAfter,
+  withDeadline,
+  type FetchLike,
+  type FetchResponse,
+} from '@/services/httpAsk';
 import type { Logger } from '@/services/logger';
-
-/** The slice of `fetch` this port uses, so tests stub it without a DOM. */
-export type FetchResponse = {
-  readonly status: number;
-  readonly headers: { get(name: string): string | null };
-  json(): Promise<unknown>;
-};
-export type FetchLike = (
-  url: string,
-  init: { method: 'GET'; headers: Readonly<Record<string, string>>; signal?: AbortSignal },
-) => Promise<FetchResponse>;
 
 /** Bounds a captive portal or a dead cell: after this, "no connection" (spec §1). */
 export const DESCRIPTOR_TIMEOUT_MS = 8000;
@@ -41,8 +36,6 @@ type Deps = {
   now?: () => number;
 };
 
-const HTTP_DATE = /^[A-Z][a-z]{2}, \d{2} [A-Z][a-z]{2} \d{4} \d{2}:\d{2}:\d{2} GMT$/;
-const DEFAULT_RETRY_S = 5;
 const OFFLINE: DescriptorError = { kind: 'offline' };
 const INVALID: DescriptorError = { kind: 'invalid' };
 
@@ -50,18 +43,6 @@ const INVALID: DescriptorError = { kind: 'invalid' };
 export function descriptorUrl(origin: string, sid: string): string {
   return `${origin}/api/capture/sessions/${encodeURIComponent(sid)}/descriptor`;
 }
-
-/** Seconds or an HTTP-date, clamped to 1–120; anything else is 5 (D5). */
-export function parseRetryAfter(value: string | null, nowMs: number): number {
-  const text = value?.trim() ?? '';
-  if (/^\d+$/.test(text)) return clamp(Number(text));
-  if (HTTP_DATE.test(text)) return clamp(Math.ceil((Date.parse(text) - nowMs) / 1000));
-  return DEFAULT_RETRY_S;
-}
-
-/** A date-shaped string that is no date parses to NaN: that is the default, never a retry at once. */
-const clamp = (seconds: number) =>
-  Number.isNaN(seconds) ? DEFAULT_RETRY_S : Math.min(120, Math.max(1, seconds));
 
 const refusal = (error: DescriptorError, status: number, problem?: string): Verdict =>
   err({ error, status, ...(problem ? { problem } : {}) });
@@ -71,32 +52,15 @@ export function createFetchDescriptorPort(deps: Deps): DescriptorPort {
   const host = httpsHost(deps.origin) ?? '';
   return {
     fetch: async (sid, token) => {
-      const verdict = await withDeadline((signal) => ask(deps, sid, token, signal), ms);
+      const verdict = await withDeadline(
+        (signal) => ask(deps, sid, token, signal),
+        ms,
+        () => refusal(OFFLINE, 0, 'timeout'),
+        () => refusal(OFFLINE, 0, 'unexpected'),
+      );
       return settle(verdict.ok ? onHost(verdict.value, host, deps.logger) : verdict, deps.logger);
     },
   };
-}
-
-/**
- * Races the whole exchange — headers and body — against the clock, so a
- * portal that answers 200 and then trickles nothing is still bounded. The
- * loser is dropped unlogged: a fetch rejecting on the abort is not a second
- * error. Anything the exchange throws is no connection, so this never rejects.
- */
-function withDeadline(
-  work: (signal?: AbortSignal) => Promise<Verdict>,
-  ms: number,
-): Promise<Verdict> {
-  const controller = typeof AbortController === 'function' ? new AbortController() : null;
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  const late = new Promise<Verdict>((resolve) => {
-    timer = setTimeout(() => {
-      controller?.abort();
-      resolve(refusal(OFFLINE, 0, 'timeout'));
-    }, ms);
-  });
-  const answered = work(controller?.signal).catch(() => refusal(OFFLINE, 0, 'unexpected'));
-  return Promise.race([answered, late]).finally(() => clearTimeout(timer));
 }
 
 async function ask(deps: Deps, sid: string, token: string, signal?: AbortSignal): Promise<Verdict> {

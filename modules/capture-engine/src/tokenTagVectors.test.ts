@@ -4,8 +4,8 @@ import vectors from './wire/token-tag-vectors.json';
 
 describe('carry 2: one token tag in two languages', () => {
   // The file's row count, so an emptied or truncated file cannot pass by sweeping nothing (PV12).
-  it('sweeps all 8 shared vectors', () => {
-    expect(vectors.vectors).toHaveLength(8);
+  it('sweeps all 9 shared vectors', () => {
+    expect(vectors.vectors).toHaveLength(9);
   });
 
   it.each(vectors.vectors.map((row) => [row.token, row.tag] as const))(

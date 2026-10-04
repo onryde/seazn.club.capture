@@ -299,7 +299,7 @@ class PairingTest {
     val lines = rig.sent<Command.Record>().joinToString("\n") { it.entry.toString() }
     assertTrue(Configs.TOKEN !in lines)
     assertTrue(rig.request.name.code !in lines)
-    assertTrue(rig.records("pair").single().field("tokenTag") == "c980ff38")
+    assertTrue(rig.records("pair").single().field("tokenTag") == "b24bb97b")
   }
 
   @Test
