@@ -42,6 +42,14 @@ tasks.test {
     .files(fileTree(layout.projectDirectory.dir("../../../../src/i18n")) { include("*.json") })
     .withPropertyName("dictionaries")
     .withPathSensitivity(PathSensitivity.RELATIVE)
+  // The glue module's whole `src` (Task 19), so GlueRulesTest sees `main`, `debug` and any `release`
+  // source set. It does not exist until Task 33: an empty tree, and the rules skip. Its files are
+  // inputs under the same rule as the vectors, so a glue-only edit reruns the rules.
+  systemProperty("capture.glue", layout.projectDirectory.dir("../src").asFile.absolutePath)
+  inputs
+    .files(fileTree(layout.projectDirectory.dir("../src")))
+    .withPropertyName("glueSources")
+    .withPathSensitivity(PathSensitivity.RELATIVE)
   testLogging {
     events("failed")
     exceptionFormat = TestExceptionFormat.FULL
