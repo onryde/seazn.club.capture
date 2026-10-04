@@ -1,5 +1,6 @@
 import { memo } from 'react';
 import { StyleSheet, View } from 'react-native';
+import { cutDestination } from '@/domain/session/destination';
 import { columnLineKey } from '@/hooks/statusKey';
 import { useT } from '@/hooks/useLanguage';
 import type { Peek } from '@/hooks/usePeek';
@@ -36,7 +37,9 @@ export const StreamColumn = memo(function StreamColumn(props: ColumnProps) {
       <Elapsed />
       <AudioMeter />
       <StatusLine>{line}</StatusLine>
-      {view.action === 'goLive' ? <PreflightChips preflight={view.preflight} /> : null}
+      {view.action === 'goLive' ? (
+        <PreflightChips preflight={view.preflight} auto={view.auto} startsAt={view.startsAt} />
+      ) : null}
       <ColumnPeek onAir={view.onAir} peekable={view.peekable} peek={peek} />
       <ColumnAction
         action={view.action}
@@ -50,10 +53,17 @@ export const StreamColumn = memo(function StreamColumn(props: ColumnProps) {
   );
 });
 
-/** The one true sentence: the status line, or Back's refusal over a calm one (ruling I2). */
+/**
+ * The one true sentence: the status line, or Back's refusal over a calm one
+ * (ruling I2). `{destination}` is cut at 24, the width every budget counts.
+ */
 function useColumnLine(view: Viewfinder, blocked: boolean): string {
   const { t } = useT();
-  const vars = { remaining: view.holdRemaining ?? '', window: view.holdWindow ?? '' };
+  const vars = {
+    remaining: view.holdRemaining ?? '',
+    window: view.holdWindow ?? '',
+    destination: view.destination === null ? '' : cutDestination(view.destination),
+  };
   return t(columnLineKey(view.statusKey, blocked), vars);
 }
 
@@ -104,6 +114,8 @@ const ColumnAction = memo(function ColumnAction(props: ActionProps) {
     <HoldAction
       key={props.action}
       label={t(stop ? 'stream.action.stop' : 'stream.action.goLive')}
+      // A3: Stop ends the broadcast and the pairing, and says so to a screen reader.
+      a11yLabel={stop ? t('stream.action.stopUnpairLabel') : undefined}
       tone={stop ? 'stop' : 'go'}
       disabled={!stop && props.goLiveOff}
       reason={props.reason === null ? null : t(props.reason)}

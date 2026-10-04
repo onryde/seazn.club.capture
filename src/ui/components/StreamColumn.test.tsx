@@ -14,7 +14,7 @@ const GREEN = { camera: true, network: true, sound: true };
 const viewOf = (overrides: Partial<Viewfinder>): Viewfinder => ({
   kind: 'paired',
   plate: 'ready',
-  statusKey: 'stream.status.ready',
+  statusKey: 'stream.status.waitingGoLive',
   holdRemaining: null,
   holdWindow: null,
   preflight: GREEN,
@@ -23,6 +23,9 @@ const viewOf = (overrides: Partial<Viewfinder>): Viewfinder => ({
   action: 'goLive',
   onAir: false,
   peekable: false,
+  startsAt: null,
+  auto: false,
+  destination: 'YouTube · Fake CC',
   start: vi.fn(),
   stop: vi.fn(),
   ...overrides,
@@ -59,6 +62,37 @@ describe('StreamColumn’s Go live', () => {
       expect(view.start).not.toHaveBeenCalled();
     },
   );
+
+  it('fills the waiting line with the destination it is given, cut at 24', () => {
+    renderWithPorts(
+      <StreamColumn
+        view={viewOf({ destination: 'YouTube · A Very Long Club Name CC' })}
+        blocked={false}
+        peek={PEEK}
+        onScanAnother={vi.fn()}
+      />,
+    );
+    // en['stream.status.waitingGoLive'] with PV29's cut name written out by hand.
+    expect(screen.getByText('Waiting for Go live · YouTube · A Very Long C…')).toBeTruthy();
+  });
+
+  // A3: Stop ends the broadcast and the pairing, and its label says so.
+  it('labels Stop for a screen reader as stopping and unpairing; Go live keeps its own', () => {
+    const { rerender } = renderWithPorts(
+      <StreamColumn view={viewOf({})} blocked={false} peek={PEEK} onScanAnother={vi.fn()} />,
+    );
+    expect(goLive()).toBeTruthy();
+    rerender(
+      <StreamColumn
+        view={viewOf({ kind: 'publishing', action: 'stop', onAir: true, plate: 'live' })}
+        blocked={false}
+        peek={PEEK}
+        onScanAnother={vi.fn()}
+      />,
+    );
+    expect(screen.getByRole('button', { name: 'Hold to stop and unpair' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /^Stop\. Press and hold/ })).toBeNull();
+  });
 
   it('says the reason it is given, and only once paired', () => {
     const reason = 'stream.blocker.sound' as const;

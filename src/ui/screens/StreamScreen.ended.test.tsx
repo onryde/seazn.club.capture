@@ -38,6 +38,28 @@ describe('Ended (spec §4)', () => {
     expect(screen.getByRole('button', { name: 'Home' })).toBeTruthy();
   });
 
+  // Amendment §2, The operator's Stop: the code is forgotten, so the next
+  // broadcast needs a rescan. A permanent failure keeps the code, and says so.
+  it.each([
+    ['stopped', 'You stopped the broadcast.', true],
+    ['fatal', 'Something failed. Your code is kept.', false],
+  ] as const)('%s says to scan the code again: %s', async (scene, line, again) => {
+    const view = await renderViewfinder();
+    act(() => view.engine.scene(scene));
+    expect(screen.getByText(line)).toBeTruthy();
+    const scanAgain = screen.queryByText('Scan the code again for the next broadcast');
+    expect(scanAgain !== null).toBe(again);
+  });
+
+  it('says to scan again after a Stop that never went live too', async () => {
+    const view = await renderViewfinder();
+    act(() =>
+      view.engine.forceState({ kind: 'ended', reason: 'operator-stopped', durationMs: null }),
+    );
+    expect(screen.getByText('Never went live')).toBeTruthy();
+    expect(screen.getByText('Scan the code again for the next broadcast')).toBeTruthy();
+  });
+
   // Carry 16: plan B's `durationMs` is null only when the session never went live.
   it('says it never went live when it ended before the first frame, with no time on air', async () => {
     const view = await renderViewfinder();
@@ -138,9 +160,7 @@ describe('reopening while live (spec §1: the engine wins)', () => {
     // The one pair is the scan's, before the visit (renderViewfinder's default).
     expect(pairs(view)).toHaveLength(1);
     expect(screen.queryByRole('button', { name: 'Home' })).toBeNull();
-    expect(
-      screen.getByRole('button', { name: 'Stop. Press and hold for 3 seconds.' }),
-    ).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Hold to stop and unpair' })).toBeTruthy();
   });
 
   it('never pairs after that live session ends: Ended waits for the operator', async () => {

@@ -14,14 +14,15 @@ import {
   selectHeldName,
   selectHeldSlot,
   selectHeldTokenTag,
+  selectAutomaticOn,
+  selectDestination,
+  selectEndReason,
   selectHoldsOrientation,
-  selectIsOnAir,
   selectLabel,
   selectMeterSegments,
   selectOverlayUrl,
   selectPlaybackUrl,
-  selectScoreUpdates,
-  selectOnAirPhase,
+  selectScheduledStartMs,
   selectVenueZone,
 } from '@/hooks/engineSelectors';
 import { NO_NAME } from '@/domain/mode/codeName';
@@ -55,67 +56,6 @@ const PAIRING: SessionState = { kind: 'pairing' };
 const PAIRED: SessionState = { kind: 'paired' };
 const ARMING: SessionState = { kind: 'arming', cause: 'organiser', retrying: false };
 const ARMED: SessionState = { kind: 'armed', cause: 'operator', notReady: 'sound' };
-
-describe('selectOnAirPhase (a phase, not a colour: connecting is on air, its plate is not red)', () => {
-  it.each([
-    [{ kind: 'idle' } as SessionState, 'idle'],
-    [{ kind: 'ended', reason: 'operator-stopped', durationMs: null } as SessionState, 'idle'],
-    // The amendment: Pairing is not ready yet; Paired is framing a shot; Arming and Armed hold a broadcast.
-    [PAIRING, 'idle'],
-    [PAIRED, 'ready'],
-    [ARMING, 'live'],
-    [ARMED, 'live'],
-    [{ kind: 'connecting', transport: 'srt' } as SessionState, 'live'],
-    [LIVE, 'live'],
-    [
-      {
-        kind: 'degraded',
-        transport: 'srt',
-        reason: 'poor-uplink',
-        sinceEpochMs: NOW,
-      } as SessionState,
-      'trouble',
-    ],
-    [
-      {
-        kind: 'reconnecting',
-        cause: 'uplink-lost',
-        holdRemainingSeconds: 9,
-        holdWindowSeconds: 183,
-        sinceEpochMs: NOW,
-      } as SessionState,
-      'trouble',
-    ],
-  ])('maps %o to %s', (state, expected) => {
-    expect(selectOnAirPhase(snapshot(state))).toBe(expected);
-  });
-});
-
-describe('selectIsOnAir (something is going out, or the app is fighting to keep it going)', () => {
-  it.each<[SessionState, boolean]>([
-    [{ kind: 'idle' }, false],
-    [PAIRING, false],
-    [PAIRED, false],
-    [ARMING, true],
-    [ARMED, true],
-    [{ kind: 'connecting', transport: 'srt' }, true],
-    [LIVE, true],
-    [{ kind: 'degraded', transport: 'rtmps', reason: 'poor-uplink', sinceEpochMs: 1 }, true],
-    [
-      {
-        kind: 'reconnecting',
-        cause: 'uplink-lost',
-        holdRemainingSeconds: 30,
-        holdWindowSeconds: 183,
-        sinceEpochMs: 1,
-      },
-      true,
-    ],
-    [{ kind: 'ended', reason: 'operator-stopped', durationMs: null }, false],
-  ])('%j is on air: %s', (state, onAir) => {
-    expect(selectIsOnAir(snapshot(state))).toBe(onAir);
-  });
-});
 
 describe('selectEngineStatus', () => {
   it.each<[SessionState, EngineStatus]>([
@@ -192,14 +132,12 @@ describe('the pairing and broadcast selectors (D8: the snapshot carries no secre
     expect({
       overlay: selectOverlayUrl(paired),
       playback: selectPlaybackUrl(paired),
-      scoreUpdates: selectScoreUpdates(paired),
       label: selectLabel(paired),
       zone: selectVenueZone(paired),
       has: selectHasPairing(paired),
     }).toEqual({
       overlay: 'https://stg.seazn.club/overlay/fixtures/fx42hmnp7k2q',
       playback: null,
-      scoreUpdates: null,
       label: 'Seazn XI v Fake CC',
       zone: 'Europe/London',
       has: true,
@@ -211,12 +149,10 @@ describe('the pairing and broadcast selectors (D8: the snapshot carries no secre
     expect({
       overlay: selectOverlayUrl(live),
       playback: selectPlaybackUrl(live),
-      scoreUpdates: selectScoreUpdates(live),
       label: selectLabel(live),
     }).toEqual({
       overlay: 'https://stg.seazn.club/overlay/fixtures/broadcast',
       playback: 'https://video.example/fake/manifest/video.m3u8',
-      scoreUpdates: 'polled',
       label: 'Seazn XI v Fake CC (broadcast)',
     });
   });
@@ -226,11 +162,10 @@ describe('the pairing and broadcast selectors (D8: the snapshot carries no secre
     expect([
       selectOverlayUrl(idle),
       selectPlaybackUrl(idle),
-      selectScoreUpdates(idle),
       selectLabel(idle),
       selectVenueZone(idle),
       selectHasPairing(idle),
-    ]).toEqual([null, null, null, null, null, false]);
+    ]).toEqual([null, null, null, null, false]);
   });
 
   it('read an empty label or zone (a claim not yet answered) as none', () => {
@@ -268,6 +203,51 @@ describe('the held name (amendment, Identity rules)', () => {
       null,
     ]);
     expect(selectHeldName(idle)).toBe(NO_NAME);
+  });
+});
+
+/** Amendment §2, Viewfinder paired: what the column shows beside the chips. */
+describe('the waiting fields the viewfinder shows (Task 28)', () => {
+  const withPairing = (change: Partial<PairingInfo>) =>
+    snapshot(PAIRED, {}, { pairing: { ...FAKE_PAIRING, ...change } });
+
+  it('reads the scheduled start as epoch ms, a primitive, or null with none', () => {
+    const at = new Date('2026-10-03T13:30:00Z');
+    expect(selectScheduledStartMs(withPairing({ scheduledStart: at }))).toBe(1_791_034_200_000);
+    expect(selectScheduledStartMs(withPairing({ scheduledStart: null }))).toBeNull();
+    expect(selectScheduledStartMs(snapshot({ kind: 'idle' }))).toBeNull();
+  });
+
+  // A4: AUTO shows only when automatic mode is on at both ends.
+  it.each<[boolean, boolean, boolean]>([
+    [true, true, true],
+    [true, false, false],
+    [false, true, false],
+    [false, false, false],
+  ])('AUTO with the organiser’s %s and the phone’s %s: %s', (autoAllowed, automatic, on) => {
+    expect(selectAutomaticOn(withPairing({ autoAllowed, automatic }))).toBe(on);
+  });
+
+  it('shows no AUTO with no pairing', () => {
+    expect(selectAutomaticOn(snapshot({ kind: 'idle' }))).toBe(false);
+  });
+
+  it('reads the destination’s name, an empty one as none, and none with no pairing', () => {
+    expect(selectDestination(withPairing({ destinationName: 'YouTube · Fake CC' }))).toBe(
+      'YouTube · Fake CC',
+    );
+    expect(selectDestination(withPairing({ destinationName: null }))).toBeNull();
+    expect(selectDestination(withPairing({ destinationName: '' }))).toBeNull();
+    expect(selectDestination(snapshot({ kind: 'idle' }))).toBeNull();
+  });
+
+  it('reads how a session ended only once it has', () => {
+    expect([
+      selectEndReason(snapshot({ kind: 'ended', reason: 'operator-stopped', durationMs: 1 })),
+      selectEndReason(snapshot({ kind: 'ended', reason: 'fatal-error', durationMs: null })),
+      selectEndReason(snapshot(LIVE)),
+      selectEndReason(snapshot(PAIRED)),
+    ]).toEqual(['operator-stopped', 'fatal-error', null, null]);
   });
 });
 

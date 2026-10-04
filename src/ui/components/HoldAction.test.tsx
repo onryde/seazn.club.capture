@@ -254,6 +254,23 @@ describe('HoldAction (AGENTS §6: a 3 s hold, both ways)', () => {
       screen.getByRole('button', { name: 'Passer en direct. Maintenez appuyé 3 secondes.' }),
     ).toBeTruthy();
   });
+
+  // A3: Stop's own label says it unpairs; the visible word stays the label.
+  it('reads the screen-reader label it is given in place of the hold instruction', () => {
+    renderWithPorts(
+      <HoldAction
+        label="Stop"
+        a11yLabel="Hold to stop and unpair"
+        tone="stop"
+        disabled={false}
+        reason={null}
+        onHeld={vi.fn()}
+      />,
+    );
+    expect(screen.getByRole('button', { name: 'Hold to stop and unpair' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /Press and hold/ })).toBeNull();
+    expect(screen.getByText('Stop')).toBeTruthy();
+  });
 });
 
 describe('HoldAction under the turn card (ruling N4)', () => {

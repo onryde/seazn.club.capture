@@ -12,49 +12,6 @@ import type { EngineSnapshot } from '@/engine/CaptureEnginePort';
  */
 
 /**
- * Where the session stands relative to going out: nothing yet, paired, on air,
- * or on air and fighting. A phase, NOT a colour: `connecting` is phase `live`
- * here, yet its plate is inert, never red, because LIVE waits for frames to
- * advance (F-P5-6). A plate's colour comes only from `tallyPlateFor` and
- * `tallyTone` in preflight.ts; lint bars src/ui from importing this. Arming
- * and Armed hold a broadcast, so they are `live` (amendment, Identity rules).
- */
-export type OnAirPhase = 'idle' | 'ready' | 'live' | 'trouble';
-
-export function selectOnAirPhase(snapshot: EngineSnapshot): OnAirPhase {
-  switch (snapshot.state.kind) {
-    case 'idle':
-    case 'pairing':
-    case 'ended':
-      return 'idle';
-    case 'paired':
-      return 'ready';
-    case 'arming':
-    case 'armed':
-    case 'connecting':
-    case 'publishing':
-      return 'live';
-    case 'degraded':
-    case 'reconnecting':
-      return 'trouble';
-  }
-}
-
-/**
- * On air in the only sense the operator cares about: something is going out, or
- * the app is fighting to keep it going out. One definition, because three
- * screens now ask the question — the viewfinder to choose its action, Settings
- * and Diagnostics to show that the broadcast is still running behind them.
- *
- * Broader than `selectIsPublishing`, which excludes connecting and
- * reconnecting. Those are exactly the moments when stopping costs the match.
- */
-export function selectIsOnAir(snapshot: EngineSnapshot): boolean {
-  const phase = selectOnAirPhase(snapshot);
-  return phase === 'live' || phase === 'trouble';
-}
-
-/**
  * The engine as the shell's reopen and leave rules see it. Module scope and
  * primitive-returning, like every selector here, so a 1 Hz tick re-renders
  * nothing unless the status itself changes. The `default` is safe because
@@ -102,14 +59,28 @@ export const selectOverlayUrl = (snapshot: EngineSnapshot) =>
   snapshot.broadcast?.overlayUrl ?? snapshot.pairing?.overlayUrl ?? null;
 export const selectPlaybackUrl = (snapshot: EngineSnapshot) =>
   snapshot.broadcast?.playbackUrl ?? null;
-export const selectScoreUpdates = (snapshot: EngineSnapshot) =>
-  snapshot.broadcast?.scoreUpdates ?? null;
 /** Pairing's label is empty until the claim is answered: read as none. */
 export const selectLabel = (snapshot: EngineSnapshot) =>
   snapshot.broadcast?.label || snapshot.pairing?.label || null;
 /** The venue's zone from the pairing: every time the operator reads is in it (spec §2). */
 export const selectVenueZone = (snapshot: EngineSnapshot) =>
   snapshot.pairing?.venueTimezone || null;
+/** When the match is scheduled to start, as epoch ms (a primitive); null with none. */
+export const selectScheduledStartMs = (snapshot: EngineSnapshot) =>
+  snapshot.pairing?.scheduledStart?.getTime() ?? null;
+/** AUTO shows only when automatic mode is on at both ends (A4): the organiser's and the phone's. */
+export const selectAutomaticOn = (snapshot: EngineSnapshot) =>
+  snapshot.pairing !== null && snapshot.pairing.autoAllowed && snapshot.pairing.automatic;
+/**
+ * The pre-picked destination's name; none when the organiser picked none. The
+ * wire never sends an empty one (minLength 1), so an empty one reads as none,
+ * as `selectLabel` reads an empty label.
+ */
+export const selectDestination = (snapshot: EngineSnapshot) =>
+  snapshot.pairing?.destinationName || null;
+/** How the session ended, once it has (Ended's own two reasons); null before. */
+export const selectEndReason = (snapshot: EngineSnapshot) =>
+  snapshot.state.kind === 'ended' ? snapshot.state.reason : null;
 /** Time on air when it ended (plan B's `durationMs`); null for a session that never went live. */
 export const selectEndedDurationMs = (snapshot: EngineSnapshot) =>
   snapshot.state.kind === 'ended' ? snapshot.state.durationMs : null;
@@ -134,12 +105,6 @@ export function selectUnpairedName(snapshot: EngineSnapshot): CodeName | null {
   return unpaired === null
     ? null
     : { code: unpaired.code, slot: unpaired.slot, tokenTag: unpaired.tokenTag };
-}
-
-/** The transport in use, or null when nothing is connected. */
-export function selectTransport(snapshot: EngineSnapshot): 'srt' | 'rtmps' | null {
-  const { state } = snapshot;
-  return 'transport' in state ? state.transport : null;
 }
 
 /** True whenever bytes are reaching the front door. */

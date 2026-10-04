@@ -1,15 +1,17 @@
+import { firstNotReady, type NotReady } from '@/domain/session/Pairing';
 import type { SessionState } from '@/domain/session/SessionState';
 import type { EngineSnapshot } from '@/engine/CaptureEnginePort';
 import type { MessageKey } from '@/i18n/messages';
 
-export type Chip = 'camera' | 'network' | 'sound';
+/** The pre-flight chips (amendment §2): camera, sound and network. Held has no chip; it blocks. */
+export type Chip = 'camera' | 'sound' | 'network';
 export type Preflight = Readonly<Record<Chip, boolean>>;
 
 /** Spec §1's order on screen: camera, sound, network. */
 export const CHIP_ORDER: readonly Chip[] = ['camera', 'sound', 'network'];
 
-/** The reason shown at the control: the same order the status line names them in (`pairedKey`). */
-const BLOCKER_ORDER: readonly Chip[] = ['camera', 'network', 'sound'];
+/** What keeps Go live off: one of native's readiness checks (A11). */
+export type Blocker = NotReady;
 
 /**
  * M2: ready only when native says the camera is ready AND it is ours. Another
@@ -24,20 +26,26 @@ export const selectSoundReady = (snapshot: EngineSnapshot) => snapshot.ready.sou
 
 export type BlockerKey = Extract<MessageKey, `stream.blocker.${string}`>;
 
-const CHIP_REASON: Readonly<Record<Chip, BlockerKey>> = {
+const BLOCKER_REASON: Readonly<Record<Blocker, BlockerKey>> = {
   camera: 'stream.blocker.camera',
-  network: 'stream.blocker.network',
   sound: 'stream.blocker.sound',
+  network: 'stream.blocker.network',
+  held: 'stream.blocker.held',
 };
 
-/** Why Go live is off, at the control. */
-export function blockerReason(blocker: Chip | null): BlockerKey | null {
-  return blocker === null ? null : CHIP_REASON[blocker];
-}
+/**
+ * Native's verdict (A11), in native's order (`firstNotReady`), so the blocker
+ * and native's `notReady` never disagree. A camera that is not ours blocks as
+ * the camera even when native's check has not caught up (M2).
+ */
+export const selectBlocker = (snapshot: EngineSnapshot): Blocker | null => {
+  const blocker = firstNotReady(snapshot.ready);
+  return blocker === null && snapshot.camera !== 'own' ? 'camera' : blocker;
+};
 
-/** Go live enables only when every chip is green (spec §1; AGENTS §6: the pre-flight is the safety). */
-export function goLiveBlocker(preflight: Preflight): Chip | null {
-  return BLOCKER_ORDER.find((chip) => !preflight[chip]) ?? null;
+/** Why Go live is off, at the control (ruling I3). */
+export function blockerReason(blocker: Blocker | null): BlockerKey | null {
+  return blocker === null ? null : BLOCKER_REASON[blocker];
 }
 
 export type TallyPlate =
@@ -48,7 +56,8 @@ export type TallyTone = 'live' | 'healthy' | 'degraded' | 'inert';
 /**
  * Spec §4's state plate (D14). The LIVE gate: LIVE only while publishing —
  * connecting is native saying frames are not yet advancing (F-P5-6). Arming
- * and Armed read as connecting until Task 28 gives them their own plates.
+ * and Armed read as connecting: the amendment names no plate of their own, and
+ * their line says who started it or what it waits for (Task 28).
  */
 export function tallyPlateFor(kind: SessionState['kind'], ready: boolean): TallyPlate {
   switch (kind) {

@@ -21,7 +21,7 @@ function Boom(): ReactElement {
 
 const MAY_BE_LIVE = 'The broadcast may still be live. Try again to get back to Stop.';
 const GO_LIVE = 'Go live. Press and hold for 3 seconds.';
-const STOP = 'Stop. Press and hold for 3 seconds.';
+const STOP = 'Hold to stop and unpair';
 
 /** Holds an action for its 3 s, as the operator does. */
 async function hold(name: string) {

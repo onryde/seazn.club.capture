@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import type { Readiness } from '@/domain/session/Pairing';
+import type { Cause, LastEnd, NotReady, Readiness, Refusal } from '@/domain/session/Pairing';
 import type { DegradeReason, SessionState } from '@/domain/session/SessionState';
 import type { CameraState, EngineSnapshot, Telemetry } from '@/engine/CaptureEnginePort';
+import { createFakeCaptureEngine } from '@/engine/FakeCaptureEngine';
 import { IDLE_TELEMETRY } from '@/engine/unreported';
 import {
   columnLineKey,
@@ -9,6 +10,7 @@ import {
   selectHoldWindow,
   selectStatusKey,
   STATUS_LINE_BUDGET,
+  type StatusKey,
 } from '@/hooks/statusKey';
 import en from '@/i18n/en.json';
 import es from '@/i18n/es.json';
@@ -40,6 +42,19 @@ const snap = (
   camera,
   reportedAtMs: 0,
   survivesBackground: true,
+});
+/** What the engine really reports paired and ready: the fake's `paired-ready` scene. */
+const PAIRED_READY: EngineSnapshot = (() => {
+  const engine = createFakeCaptureEngine(() => 1_790_000_000_000);
+  engine.scene('paired-ready');
+  const reported = engine.getSnapshot();
+  engine.dispose();
+  return reported;
+})();
+/** A row of the amendment's table: `change` spread over the paired-ready snapshot. */
+const paired = (change: Partial<EngineSnapshot>): EngineSnapshot => ({
+  ...PAIRED_READY,
+  ...change,
 });
 const PAIRED: SessionState = { kind: 'paired' };
 const ARMING: SessionState = { kind: 'arming', cause: 'organiser', retrying: false };
@@ -91,10 +106,9 @@ describe('the status line (spec §4 and §5)', () => {
       'Mic silenced by a call',
     ],
     ['idle', { kind: 'idle' }, 'Starting the camera…'],
-    // Today's words on the new states; Task 28 gives them their own lines.
-    ['pairing', { kind: 'pairing' }, 'Starting the camera…'],
-    ['arming', ARMING, 'Opening the link.'],
-    ['armed', ARMED, 'Opening the link.'],
+    ['pairing', { kind: 'pairing' }, 'Pairing this phone…'],
+    ['arming', ARMING, 'Going live — started by the organiser'],
+    ['armed', ARMED, "Can't go live yet — no sound from the mic"],
     ['connecting', { kind: 'connecting', transport: 'srt' }, 'Opening the link.'],
     [
       'the operator stopped',
@@ -110,31 +124,10 @@ describe('the status line (spec §4 and §5)', () => {
     expect(line(snap(state))).toBe(sentence);
   });
 
-  it.each<[string, Partial<Readiness>, string]>([
-    ['no camera', { camera: false }, 'stream.status.noCamera'],
-    ['no network', { network: false }, 'stream.status.noNetwork'],
-    ['no sound', { sound: false }, 'stream.status.noSound'],
-    ['everything ready', {}, 'stream.status.ready'],
-    [
-      'nothing ready, camera first',
-      { camera: false, sound: false, network: false },
-      'stream.status.noCamera',
-    ],
-    [
-      'no network and no sound, network first',
-      { network: false, sound: false },
-      'stream.status.noNetwork',
-    ],
-  ])('names the first pre-flight problem when paired: %s', (_name, ready, key) => {
-    expect(selectStatusKey(snap(PAIRED, ARMED_OK, 'own', ready))).toBe(key);
-  });
-
-  // A11: native's verdict, not the meter, says whether there is sound before air.
-  it('reads sound from native while paired, whatever the level', () => {
-    expect(selectStatusKey(snap(PAIRED, { audioLevel: 0 }))).toBe('stream.status.ready');
-    expect(selectStatusKey(snap(PAIRED, { audioLevel: 0.9 }, 'own', { sound: false }))).toBe(
-      'stream.status.noSound',
-    );
+  // A11: readiness is the chips' and the blocker's; the paired line says what it waits for.
+  it('never names a pre-flight problem while paired: the chips and the blocker do', () => {
+    const none: Readiness = { camera: false, sound: false, network: false, held: false };
+    expect(selectStatusKey(paired({ ready: none }))).toBe('stream.status.waitingGoLive');
   });
 
   it('says live with no sound when the level is under the floor on air (a display rule, D39)', () => {
@@ -164,7 +157,13 @@ describe('the status line (spec §4 and §5)', () => {
     };
     const failing = { ...ARMED_OK, heartbeat };
     expect(selectStatusKey(snap(LIVE, failing))).toBe('stream.status.live');
-    expect(selectStatusKey(snap(PAIRED, failing))).toBe('stream.status.ready');
+    const pairedFailing = paired({});
+    expect(
+      selectStatusKey({
+        ...pairedFailing,
+        telemetry: { ...pairedFailing.telemetry, heartbeat },
+      }),
+    ).toBe('stream.status.waitingGoLive');
   });
 
   it('never mentions heat, which the top strip owns (AGENTS §8)', () => {
@@ -182,6 +181,135 @@ describe('the status line (spec §4 and §5)', () => {
       delivery: 'unknown',
     };
     expect(selectStatusKey(snap(LIVE, noReadings))).toBe('stream.status.live');
+  });
+});
+
+/**
+ * Amendment §2's lines, first match wins. Every row starts from what the fake
+ * reports paired and ready (`paired`), and each key is written out by hand.
+ */
+describe('the paired and starting lines (amendment §2)', () => {
+  const destination = (destinationName: string | null): Partial<EngineSnapshot> => ({
+    pairing: PAIRED_READY.pairing === null ? null : { ...PAIRED_READY.pairing, destinationName },
+  });
+  const arming = (cause: Cause, retrying: boolean): Partial<EngineSnapshot> => ({
+    state: { kind: 'arming', cause, retrying },
+  });
+  const armed = (cause: Cause, notReady: NotReady | null): Partial<EngineSnapshot> => ({
+    state: { kind: 'armed', cause, notReady },
+  });
+  const REFUSED: readonly (readonly [Refusal, StatusKey])[] = [
+    ['no_destination', 'stream.status.refusedDestination'],
+    ['no_credit', 'stream.status.refusedCredit'],
+    ['not_entitled', 'stream.status.refusedEntitlement'],
+    ['unknown', 'stream.status.refusedUnknown'],
+    ['start-failed', 'stream.status.startFailed'],
+  ];
+  const LAST_END: readonly (readonly [LastEnd, StatusKey])[] = [
+    ['stopped-by-organiser', 'stream.status.stoppedOrganiser'],
+    ['stopped-automatically', 'stream.status.stoppedMatch'],
+    ['no-signal', 'stream.status.stoppedNoSignal'],
+    ['destination-refused', 'stream.status.stoppedRefused'],
+    ['max-duration', 'stream.status.stoppedMaxDuration'],
+    ['phone-lost', 'stream.status.stoppedPhoneLost'],
+    ['ended-by-seazn', 'stream.status.stoppedBySeazn'],
+    ['hold-window-expired', 'stream.status.stoppedHoldWindow'],
+    ['stopped', 'stream.status.stopped'],
+  ];
+  const GOING_LIVE: readonly (readonly [Cause, StatusKey])[] = [
+    ['organiser', 'stream.status.goingLiveOrganiser'],
+    ['automatic', 'stream.status.goingLiveMatch'],
+    ['rejoin', 'stream.status.rejoining'],
+    ['operator', 'stream.status.connecting'],
+  ];
+  const NOT_READY: readonly (readonly [NotReady, StatusKey])[] = [
+    ['camera', 'stream.status.notReadyCamera'],
+    ['sound', 'stream.status.notReadySound'],
+    ['network', 'stream.status.notReadyNetwork'],
+    ['held', 'stream.status.notReadyHeld'],
+  ];
+  const ROWS: readonly (readonly [string, Partial<EngineSnapshot>, StatusKey])[] = [
+    ['pairing', { state: { kind: 'pairing' } }, 'stream.status.pairing'],
+    ['paired, another app’s camera', { camera: 'taken' }, 'stream.status.cameraInUse'],
+    [
+      'paired, another app’s camera over a refusal',
+      { camera: 'taken', refusal: 'no_credit' },
+      'stream.status.cameraInUse',
+    ],
+    ...REFUSED.map(([refusal, key]) => [`paired, refused ${refusal}`, { refusal }, key] as const),
+    ...LAST_END.map(([lastEnd, key]) => [`paired, last end ${lastEnd}`, { lastEnd }, key] as const),
+    // A refused restart is the newer fact: native clears both at the next start.
+    [
+      'paired, a refusal over a last end',
+      { refusal: 'no_credit', lastEnd: 'stopped-by-organiser' },
+      'stream.status.refusedCredit',
+    ],
+    [
+      'paired, a last end over a missing destination',
+      { lastEnd: 'max-duration', ...destination(null) },
+      'stream.status.stoppedMaxDuration',
+    ],
+    ['paired, no destination', destination(null), 'stream.status.waitingDestination'],
+    // The wire forbids an empty name (minLength 1): read as none, as selectLabel reads an empty label.
+    ['paired, an empty destination', destination(''), 'stream.status.waitingDestination'],
+    ['paired, a destination', {}, 'stream.status.waitingGoLive'],
+    ['arming, retrying', arming('organiser', true), 'stream.status.startRetrying'],
+    ['arming, retrying an operator start', arming('operator', true), 'stream.status.startRetrying'],
+    ...GOING_LIVE.map(([cause, key]) => [`arming, ${cause}`, arming(cause, false), key] as const),
+    ...GOING_LIVE.map(
+      ([cause, key]) => [`armed ready, ${cause}`, armed(cause, null), key] as const,
+    ),
+    ...NOT_READY.map(
+      ([notReady, key]) =>
+        [`armed, not ready ${notReady}`, armed('organiser', notReady), key] as const,
+    ),
+    // Starting names who started it, or what it waits for, over whose camera it is.
+    [
+      'arming, another app’s camera',
+      { ...arming('automatic', false), camera: 'taken' },
+      'stream.status.goingLiveMatch',
+    ],
+    [
+      'armed, another app’s camera',
+      { ...armed('organiser', 'camera'), camera: 'taken' },
+      'stream.status.notReadyCamera',
+    ],
+    [
+      'ended, the operator’s Stop',
+      { state: { kind: 'ended', reason: 'operator-stopped', durationMs: 1 }, camera: null },
+      'stream.status.endedOperator',
+    ],
+    [
+      'ended, a permanent failure',
+      { state: { kind: 'ended', reason: 'fatal-error', durationMs: null }, camera: null },
+      'stream.status.endedFatal',
+    ],
+  ];
+
+  it('sweeps every row of the table (PV12: zero rows is a failure)', () => {
+    expect(ROWS).toHaveLength(40);
+  });
+
+  it.each(ROWS)('%s says %s', (_name, change, key) => {
+    expect(selectStatusKey(paired(change))).toBe(key);
+  });
+
+  it('starts from a snapshot that is paired, ready, ours and named', () => {
+    expect([
+      PAIRED_READY.state.kind,
+      PAIRED_READY.camera,
+      PAIRED_READY.refusal,
+      PAIRED_READY.lastEnd,
+      PAIRED_READY.pairing?.destinationName,
+    ]).toEqual(['paired', 'own', null, null, 'YouTube · Fake CC']);
+  });
+
+  it('says the same line for the same snapshot, report after report', () => {
+    const snapshot = paired({ refusal: 'unknown' });
+    expect([selectStatusKey(snapshot), selectStatusKey({ ...snapshot })]).toEqual([
+      'stream.status.refusedUnknown',
+      'stream.status.refusedUnknown',
+    ]);
   });
 });
 
@@ -207,6 +335,34 @@ describe('every native reason has a line', () => {
   it.each(['uplink-lost', 'video-stalled', 'not-delivered'])('reconnecting %s', (cause) => {
     const state = { ...holding('uplink-lost'), cause };
     expect(KEYS.has(selectStatusKey(snap(state as SessionState)))).toBe(true);
+  });
+  // The amendment's wire strings (Vocabulary.kt), copied by hand.
+  it.each(['no_destination', 'no_credit', 'not_entitled', 'unknown', 'start-failed'])(
+    'refused %s',
+    (refusal) => {
+      expect(KEYS.has(selectStatusKey(paired({ refusal: refusal as Refusal })))).toBe(true);
+    },
+  );
+  it.each([
+    'stopped-by-organiser',
+    'stopped-automatically',
+    'no-signal',
+    'destination-refused',
+    'max-duration',
+    'phone-lost',
+    'ended-by-seazn',
+    'hold-window-expired',
+    'stopped',
+  ])('last end %s', (lastEnd) => {
+    expect(KEYS.has(selectStatusKey(paired({ lastEnd: lastEnd as LastEnd })))).toBe(true);
+  });
+  it.each(['organiser', 'automatic', 'operator', 'rejoin'])('starting, cause %s', (cause) => {
+    const state = { kind: 'armed', cause, notReady: null };
+    expect(KEYS.has(selectStatusKey(paired({ state: state as SessionState })))).toBe(true);
+  });
+  it.each(['camera', 'sound', 'network', 'held'])('armed, not ready %s', (notReady) => {
+    const state = { kind: 'armed', cause: 'operator', notReady };
+    expect(KEYS.has(selectStatusKey(paired({ state: state as SessionState })))).toBe(true);
   });
 });
 
@@ -261,13 +417,20 @@ describe('whose camera it is, by state (camera ruling)', () => {
 
   it.each<[string, SessionState]>([
     ['paired', PAIRED],
-    ['arming', ARMING],
-    ['armed', ARMED],
     ['connecting', CONNECTING],
   ])('another app’s take before air reads “in use”, with no slate claim, while %s', (_, state) => {
     const said = line(snap(state, ARMED_OK, 'taken'));
     expect(said).toBe(IN_USE);
     expect(said).not.toMatch(/slate/i);
+  });
+
+  // Amendment §2, Starting: who started it, or what it still needs. A camera
+  // taken while Armed blocks as notReady camera, which says so (Task 28).
+  it.each<[string, SessionState, string]>([
+    ['arming', ARMING, 'Going live — started by the organiser'],
+    ['armed', ARMED, "Can't go live yet — no sound from the mic"],
+  ])('another app’s take while Starting keeps the %s line', (_, state, said) => {
+    expect(line(snap(state, ARMED_OK, 'taken'))).toBe(said);
   });
 
   it.each(cells(OURS, ON_AIR))(
@@ -280,9 +443,9 @@ describe('whose camera it is, by state (camera ruling)', () => {
   );
 
   it.each(OURS)(
-    'our own %s before air says no reopening: paired reads the camera chip',
+    'our own %s before air says no reopening: paired says what it waits for',
     (camera) => {
-      expect(line(snap(PAIRED, ARMED_OK, camera))).toBe('Camera not ready yet.');
+      expect(selectStatusKey(paired({ camera }))).toBe('stream.status.waitingGoLive');
     },
   );
 
@@ -317,7 +480,7 @@ describe('whose camera it is, by state (camera ruling)', () => {
 
   // Pairing has no camera line: the dialog or the claim is what it waits on.
   it.each(NOT_OWN)('names no %s camera while pairing', (camera) => {
-    expect(line(snap({ kind: 'pairing' }, ARMED_OK, camera))).toBe('Starting the camera…');
+    expect(line(snap({ kind: 'pairing' }, ARMED_OK, camera))).toBe('Pairing this phone…');
   });
 
   it('leaves every line alone while the camera is our own', () => {
@@ -359,12 +522,17 @@ describe('the hold countdown', () => {
  * outage or fault line outranks it, so it can never hide one.
  */
 describe('Back’s line on air (ruling I2)', () => {
-  it.each(['stream.status.connecting', 'stream.status.live'] as const)(
-    'stands in for the calm line %s',
-    (key) => {
-      expect(columnLineKey(key, true)).toBe('stream.leaveOnAir');
-    },
-  );
+  // Task 28: the three Starting lines that name who started it stand in, as
+  // "Opening the link." does; a not-ready or retrying line outranks Back's.
+  it.each([
+    'stream.status.connecting',
+    'stream.status.live',
+    'stream.status.goingLiveOrganiser',
+    'stream.status.goingLiveMatch',
+    'stream.status.rejoining',
+  ] as const)('stands in for the calm line %s', (key) => {
+    expect(columnLineKey(key, true)).toBe('stream.leaveOnAir');
+  });
 
   it.each([
     'stream.status.liveNoSound',
@@ -379,14 +547,22 @@ describe('Back’s line on air (ruling I2)', () => {
     'stream.status.holding',
     'stream.status.holdingStalled',
     'stream.status.holdingNotDelivered',
+    'stream.status.startRetrying',
+    'stream.status.notReadyHeld',
   ] as const)('is outranked by the fault line %s', (key) => {
     expect(columnLineKey(key, true)).toBe(key);
   });
 
   // N2: built from the dictionary, so a status line added later is covered
-  // without anyone remembering this list. Only the two calm lines yield.
+  // without anyone remembering this list. Only the five calm lines yield.
   it('is outranked by every other status line in the dictionary', () => {
-    const calm = ['stream.status.connecting', 'stream.status.live'];
+    const calm = [
+      'stream.status.connecting',
+      'stream.status.live',
+      'stream.status.goingLiveOrganiser',
+      'stream.status.goingLiveMatch',
+      'stream.status.rejoining',
+    ];
     const others = Object.keys(en).filter(
       (key) => key.startsWith('stream.status.') && !calm.includes(key),
     ) as Parameters<typeof columnLineKey>[0][];

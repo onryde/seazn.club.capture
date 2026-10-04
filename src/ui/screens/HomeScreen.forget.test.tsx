@@ -280,9 +280,7 @@ describe('a pairing no saved code owns (I1)', () => {
     await backgroundAndBack(app);
     expect(app.nav.current()).toBe('stream');
     expect(intentKinds(app)).toEqual(['pair']);
-    expect(
-      screen.getByRole('button', { name: 'Stop. Press and hold for 3 seconds.' }),
-    ).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Hold to stop and unpair' })).toBeTruthy();
   });
 
   // The rest of probe P2: nothing reachable goes live on the forgotten code.

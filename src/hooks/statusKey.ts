@@ -1,4 +1,5 @@
 import { AUDIO_FLOOR } from '@/domain/policy/audioFloor';
+import type { Cause, LastEnd, NotReady, Refusal } from '@/domain/session/Pairing';
 import type {
   DegradeReason,
   EndReason,
@@ -6,7 +7,7 @@ import type {
   SessionState,
 } from '@/domain/session/SessionState';
 import type { CameraState, EngineSnapshot } from '@/engine/CaptureEnginePort';
-import { selectCameraReady, selectNetworkReachable, selectSoundReady } from '@/hooks/preflight';
+import { selectDestination } from '@/hooks/engineSelectors';
 import type { MessageKey } from '@/i18n/messages';
 
 export type StatusKey = Extract<MessageKey, `stream.status.${string}`>;
@@ -34,10 +35,48 @@ const RECONNECTING: Readonly<Record<ReconnectCause, StatusKey>> = {
   'not-delivered': 'stream.status.holdingNotDelivered',
 };
 
-/** Native's two end reasons; how a broadcast ended is `lastEnd`'s, which Task 28 reads. */
+/** Native's two end reasons; how a broadcast ended without the operator is `lastEnd`'s. */
 const ENDED: Readonly<Record<EndReason, StatusKey>> = {
   'operator-stopped': 'stream.status.endedOperator',
   'fatal-error': 'stream.status.endedFatal',
+};
+
+/** Amendment §2, Start refused: the line is chosen by the refusal, never the status alone. */
+const REFUSED: Readonly<Record<Refusal, StatusKey>> = {
+  no_destination: 'stream.status.refusedDestination',
+  no_credit: 'stream.status.refusedCredit',
+  not_entitled: 'stream.status.refusedEntitlement',
+  unknown: 'stream.status.refusedUnknown',
+  'start-failed': 'stream.status.startFailed',
+};
+
+/** Amendment §2, After a broadcast ends without the operator: back in Paired, saying how. */
+const LAST_END: Readonly<Record<LastEnd, StatusKey>> = {
+  'stopped-by-organiser': 'stream.status.stoppedOrganiser',
+  'stopped-automatically': 'stream.status.stoppedMatch',
+  'no-signal': 'stream.status.stoppedNoSignal',
+  'destination-refused': 'stream.status.stoppedRefused',
+  'max-duration': 'stream.status.stoppedMaxDuration',
+  'phone-lost': 'stream.status.stoppedPhoneLost',
+  'ended-by-seazn': 'stream.status.stoppedBySeazn',
+  'hold-window-expired': 'stream.status.stoppedHoldWindow',
+  stopped: 'stream.status.stopped',
+};
+
+/** Amendment §2, Starting: who started it; the operator's own hold is plan A's "Opening the link." */
+const GOING_LIVE: Readonly<Record<Cause, StatusKey>> = {
+  organiser: 'stream.status.goingLiveOrganiser',
+  automatic: 'stream.status.goingLiveMatch',
+  rejoin: 'stream.status.rejoining',
+  operator: 'stream.status.connecting',
+};
+
+/** Amendment §2, Starting, not ready: native's first failing check (A11). */
+const NOT_READY_LINE: Readonly<Record<NotReady, StatusKey>> = {
+  camera: 'stream.status.notReadyCamera',
+  sound: 'stream.status.notReadySound',
+  network: 'stream.status.notReadyNetwork',
+  held: 'stream.status.notReadyHeld',
 };
 
 type Kind = SessionState['kind'];
@@ -66,13 +105,15 @@ const ON_AIR: CameraLines = {
  * the state"): whose camera it is says itself before the state's own line,
  * but only before and on air. A hold's countdown outranks the camera, an
  * ending says how it ended, and with no session there is no camera to name.
+ * Starting (Arming, Armed) names who started it: a camera taken there blocks
+ * as native's `notReady: camera`, whose line says so (Task 28).
  */
 const CAMERA_LINES: Readonly<Record<Kind, CameraLines | null>> = {
   idle: null,
   pairing: null,
   paired: BEFORE_AIR,
-  arming: BEFORE_AIR,
-  armed: BEFORE_AIR,
+  arming: null,
+  armed: null,
   connecting: BEFORE_AIR,
   publishing: ON_AIR,
   degraded: ON_AIR,
@@ -82,7 +123,9 @@ const CAMERA_LINES: Readonly<Record<Kind, CameraLines | null>> = {
 
 /**
  * The one true sentence (AGENTS §6), as a key (spec §4). Reads the camera,
- * state and pre-flight only. It never reads the heartbeat: a failing heartbeat never
+ * the state, and while paired the refusal, the last end and the destination
+ * (amendment §2); never readiness, which the chips and the blocker say. It
+ * never reads the heartbeat: a failing heartbeat never
  * blocks or degrades the stream (ruling 5), so it never changes what the
  * operator is told. Heat is the top strip's, never this line's (AGENTS §8).
  * Nor does it read the encoded rates or the delivered lag: native's state
@@ -94,21 +137,19 @@ export function selectStatusKey(snapshot: EngineSnapshot): StatusKey {
   return camera ?? stateKey(snapshot);
 }
 
-/**
- * Each state's own line. A table, exempt from the line count (AGENTS §12).
- * Today's words on the new states; Task 28 gives Pairing, Paired, Arming and
- * Armed their own lines.
- */
+/** Each state's own line. A table, exempt from the line count (AGENTS §12). */
 function stateKey(snapshot: EngineSnapshot): StatusKey {
   const { state, telemetry } = snapshot;
   switch (state.kind) {
     case 'idle':
-    case 'pairing':
       return 'stream.status.starting';
+    case 'pairing':
+      return 'stream.status.pairing';
     case 'paired':
       return pairedKey(snapshot);
     case 'arming':
     case 'armed':
+      return startingKey(state);
     case 'connecting':
       return 'stream.status.connecting';
     case 'publishing':
@@ -126,22 +167,36 @@ function stateKey(snapshot: EngineSnapshot): StatusKey {
 }
 
 /**
- * The first pre-flight chip that is off, in the blocker's order, read through
- * the chips' own selectors so the two agree.
+ * Amendment §2, the paired status line: a refusal, the last end, then what it
+ * waits for. A refusal outranks a last end: a refused restart is the newer
+ * fact (native clears both at the next start). Readiness is never named here:
+ * the chips and the blocker at Go live say it.
  */
 function pairedKey(snapshot: EngineSnapshot): StatusKey {
-  if (!selectCameraReady(snapshot)) return 'stream.status.noCamera';
-  if (!selectNetworkReachable(snapshot)) return 'stream.status.noNetwork';
-  if (!selectSoundReady(snapshot)) return 'stream.status.noSound';
-  return 'stream.status.ready';
+  if (snapshot.refusal !== null) return REFUSED[snapshot.refusal];
+  if (snapshot.lastEnd !== null) return LAST_END[snapshot.lastEnd];
+  return selectDestination(snapshot) === null
+    ? 'stream.status.waitingDestination'
+    : 'stream.status.waitingGoLive';
+}
+
+/** Amendment §2, Starting: retrying, then what the phone still needs, then who started it. */
+function startingKey(state: Extract<SessionState, { kind: 'arming' | 'armed' }>): StatusKey {
+  if (state.kind === 'arming' && state.retrying) return 'stream.status.startRetrying';
+  if (state.kind === 'armed' && state.notReady !== null) return NOT_READY_LINE[state.notReady];
+  return GOING_LIVE[state.cause];
 }
 
 /**
  * Ruling I2: the on-air lines that Back's "stop the broadcast first" may stand
- * in for. Every other line is an outage or a fault, and outranks it.
+ * in for. Every other line is an outage or a fault, and outranks it. The
+ * Starting lines that name who started it are calm as "Opening the link." is.
  */
 const CALM_ON_AIR: ReadonlySet<StatusKey> = new Set<StatusKey>([
   'stream.status.connecting',
+  'stream.status.goingLiveOrganiser',
+  'stream.status.goingLiveMatch',
+  'stream.status.rejoining',
   'stream.status.live',
 ]);
 

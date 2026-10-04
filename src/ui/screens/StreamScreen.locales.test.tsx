@@ -117,6 +117,34 @@ const SUB_STATE_CASES = LANGS.flatMap((lang) =>
   Object.keys(SUB_STATES).map((name) => [lang, name] as const),
 );
 
+/**
+ * Task 28, question 4: the paired waiting line and the armed held line in each
+ * language, the destination filled at its 24-character cap. The expected text
+ * is each dictionary's own, with the cut name written out by hand (PV29).
+ */
+describe('the paired and starting lines read in every language', () => {
+  const LONG = 'YouTube · A Very Long Club Name CC';
+  const CUT = 'YouTube · A Very Long C…';
+
+  it.each(['es', 'fr', 'nl'] as const)(
+    '%s says its waiting line with the destination cut',
+    async (lang) => {
+      const view = await renderViewfinder({ deviceLanguages: [lang] });
+      act(() => view.engine.setPairing({ destinationName: LONG }));
+      act(() => view.engine.scene('paired-ready'));
+      const said = DICTIONARIES[lang]['stream.status.waitingGoLive']?.replace('{destination}', CUT);
+      expect(said).toBeDefined();
+      expect(visibleCopy()).toContain(said);
+    },
+  );
+
+  it.each(['es', 'fr', 'nl'] as const)('%s says its held line while Armed', async (lang) => {
+    const view = await renderViewfinder({ deviceLanguages: [lang] });
+    act(() => view.engine.scene('armed-not-ready'));
+    expect(visibleCopy()).toContain(DICTIONARIES[lang]['stream.status.notReadyHeld']);
+  });
+});
+
 describe('no screen in any state shows a raw key (AGENTS §10, question 4)', () => {
   // Review M3: an empty table registers no case and passes. Update the counts
   // when a scene or a sub-state is added: 4 languages × 23 scenes, × 8 sub-states.

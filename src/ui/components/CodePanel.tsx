@@ -79,7 +79,7 @@ function codeCopy(error: CodeError, t: Translator['t']): Copy {
     case 'invalid':
     case 'not-found':
     case 'ended':
-      return plain('panel.descriptor.invalid.title', 'panel.descriptor.invalid.body');
+      return plain('panel.codeInvalid.title', 'panel.codeInvalid.body');
     case 'offline':
       return {
         ...plain('panel.descriptor.offline.title', 'panel.descriptor.offline.body'),

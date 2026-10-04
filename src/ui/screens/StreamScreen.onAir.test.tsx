@@ -7,7 +7,7 @@ import { pressIn } from '../../../test/press';
 import { renderViewfinder } from '../../../test/renderViewfinder';
 
 const plate = () => screen.getByTestId('tally-plate').textContent;
-const stop = () => screen.getByRole('button', { name: 'Stop. Press and hold for 3 seconds.' });
+const stop = () => screen.getByRole('button', { name: 'Hold to stop and unpair' });
 const goLive = () => screen.getByRole('button', { name: 'Go live. Press and hold for 3 seconds.' });
 const peek = () => screen.getByRole('button', { name: 'What viewers see' });
 const fill = () => screen.getByTestId('hold-fill').dataset.holding;

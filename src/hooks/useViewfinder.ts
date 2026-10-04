@@ -1,15 +1,22 @@
 import { useCallback, useMemo } from 'react';
 import type { SessionState } from '@/domain/session/SessionState';
-import { selectPlaybackUrl, selectStateKind } from '@/hooks/engineSelectors';
+import {
+  selectAutomaticOn,
+  selectDestination,
+  selectPlaybackUrl,
+  selectScheduledStartMs,
+  selectStateKind,
+  selectVenueZone,
+} from '@/hooks/engineSelectors';
 import {
   blockerReason,
-  goLiveBlocker,
+  selectBlocker,
   selectCameraReady,
   selectNetworkReachable,
   selectSoundReady,
   tallyPlateFor,
+  type Blocker,
   type BlockerKey,
-  type Chip,
   type Preflight,
   type TallyPlate,
 } from '@/hooks/preflight';
@@ -20,6 +27,7 @@ import {
   type StatusKey,
 } from '@/hooks/statusKey';
 import { useEngine, useEngineSelector } from '@/hooks/useCaptureEngine';
+import { useFormatTime } from '@/hooks/useFormatTime';
 import { usePorts } from '@/hooks/usePorts';
 
 type Kind = SessionState['kind'];
@@ -33,13 +41,23 @@ export type Viewfinder = {
   readonly holdRemaining: number | null;
   readonly holdWindow: number | null;
   readonly preflight: Preflight;
-  readonly blocker: Chip | null;
+  /** Native's first failing check, in native's order (A11); held has no chip but blocks. */
+  readonly blocker: Blocker | null;
   /** Why Go live is off, at the control (ruling I3); null with nothing blocking. */
   readonly reason: BlockerKey | null;
   readonly action: ViewfinderAction;
   readonly onAir: boolean;
   /** On air with a viewer picture to play (carry 13): the peek's one gate. */
   readonly peekable: boolean;
+  /**
+   * "Starts {time}" in the venue's zone; null with no scheduled start. The
+   * column shows it, and AUTO, only beside Go live (its one gate).
+   */
+  readonly startsAt: string | null;
+  /** AUTO beside the chips (A4: on at both ends). */
+  readonly auto: boolean;
+  /** The pre-picked destination, uncut; the column cuts it for the line. Null with none. */
+  readonly destination: string | null;
   start(): void;
   stop(): void;
 };
@@ -69,41 +87,76 @@ const ACTION: Readonly<Record<Kind, ViewfinderAction>> = {
 export function useViewfinder(): Viewfinder {
   const kind = useEngineSelector(selectStateKind);
   const preflight = usePreflight();
+  const blocker = useEngineSelector(selectBlocker);
   const engineKey = useEngineSelector(selectStatusKey);
   const countdown = useHoldCountdown();
+  const waiting = useWaitingFields();
   const intents = useIntents();
   const playable = useEngineSelector(selectPlaybackUrl) !== null;
   return useMemo(
-    () => ({ ...project({ kind, preflight, engineKey, playable }), ...countdown, ...intents }),
-    [kind, preflight, engineKey, playable, countdown, intents],
+    () => ({
+      ...project({ kind, preflight, blocker, engineKey, playable, waiting }),
+      ...countdown,
+      ...intents,
+    }),
+    [kind, preflight, blocker, engineKey, playable, waiting, countdown, intents],
   );
 }
 
 type ProjectInput = {
   readonly kind: Kind;
   readonly preflight: Preflight;
+  readonly blocker: Blocker | null;
   readonly engineKey: StatusKey;
   readonly playable: boolean;
+  readonly waiting: WaitingFields;
 };
 
 /** The column's reading of native state. Pure: a projection, no state machine. */
 function project(
   input: ProjectInput,
 ): Omit<Viewfinder, 'holdRemaining' | 'holdWindow' | 'start' | 'stop'> {
-  const { kind, preflight } = input;
-  const blocker = goLiveBlocker(preflight);
+  const { kind, blocker, waiting } = input;
   const action = ACTION[kind];
   return {
     kind,
     plate: tallyPlateFor(kind, blocker === null),
     statusKey: input.engineKey,
-    preflight,
+    preflight: input.preflight,
     blocker,
     reason: blockerReason(blocker),
     action,
     onAir: action === 'stop',
     peekable: action === 'stop' && input.playable,
+    ...waiting,
   };
+}
+
+type WaitingFields = {
+  readonly startsAt: string | null;
+  readonly auto: boolean;
+  readonly destination: string | null;
+};
+
+/**
+ * Amendment §2, Viewfinder paired: "Starts {time}" in the venue's zone, AUTO,
+ * and the destination. Primitives from the snapshot, formatted here, memoised
+ * on them (M7): a 1 Hz tick that changes none of them changes nothing.
+ */
+function useWaitingFields(): WaitingFields {
+  const startMs = useEngineSelector(selectScheduledStartMs);
+  const zone = useEngineSelector(selectVenueZone);
+  const auto = useEngineSelector(selectAutomaticOn);
+  const destination = useEngineSelector(selectDestination);
+  const formatTime = useFormatTime();
+  return useMemo(
+    () => ({
+      startsAt: startMs === null ? null : formatTime(new Date(startMs), zone),
+      auto,
+      destination,
+    }),
+    [startMs, zone, auto, destination, formatTime],
+  );
 }
 
 /** Spec §1's three chips, from native's verdict (A11). Memoised (M7). */
