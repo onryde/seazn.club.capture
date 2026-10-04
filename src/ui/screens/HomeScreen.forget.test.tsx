@@ -1,5 +1,6 @@
 import { act, fireEvent, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { decodeSavedCode } from '@/domain/mode/savedCode';
 import { UNPAIR_GIVE_UP_MS } from '@/hooks/useUnpair';
 import { STORE_KEYS } from '@/services/modeStore';
 import { readRecord, TEST_NOW } from '../../../test/fakePorts';
@@ -166,6 +167,30 @@ describe('Forget while the code is paired (I1)', () => {
       { event: 'intent.unpair', fields: { action: 'forget' } },
     ]);
     expect(app.nav.current()).toBe('home');
+  });
+
+  // C4b-I2, the reviewer's probe P4: Forget X, then Y is scanned before the
+  // unpair's 5 s are up. Home goes to /stream for Y, which ends X's unpair as
+  // a give-up; the forget it then asks for is about X, and Y stays.
+  it('keeps a code scanned while Forget’s unpair is unanswered', async () => {
+    const app = await pairedThenHome();
+    holdIntents(app.engine, ['unpair']);
+    forget();
+    await flush();
+    expect(app.kv.entries.has(STORE_KEYS.code('stream'))).toBe(true);
+    await scanFromHome(
+      app,
+      captureRaw({ exp: epochSeconds(IN_TWO_HOURS), slot: 2, tok: 'tok-other-000000000000' }),
+    );
+    await flush(UNPAIR_GIVE_UP_MS + 1_000);
+    const saved = app.kv.entries.get(STORE_KEYS.code('stream'));
+    expect(saved === undefined ? null : decodeSavedCode(saved)?.slot).toBe(2);
+    expect(app.nav.current()).toBe('stream');
+    expect(app.engine.getSnapshot()).toMatchObject({
+      state: { kind: 'paired' },
+      pairing: { slot: 2 },
+    });
+    expect(screen.queryByRole('button', { name: GO_LIVE })).toBeTruthy();
   });
 
   // After an interruption: the unpair goes first, so a refused forget keeps

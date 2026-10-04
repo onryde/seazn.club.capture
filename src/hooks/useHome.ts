@@ -370,10 +370,16 @@ function useForget(setStatusKey: SetStatusKey, saveFailed: SaveFailed): () => vo
   const { modeStore, navigation } = usePorts();
   const unpair = useUnpair();
   return useCallback(() => {
+    // C4b-I2: the code on the card when Forget was pressed. A code scanned
+    // before the unpair ends is a new scan, which the forget leaves, and Home
+    // does not follow it Home.
+    const code = savedStream(modeStore);
+    if (code === null) return;
     unpair('forget', (outcome) => {
       if (outcome === 'held') return;
-      void modeStore.forget('stream').then(
-        () => {
+      void modeStore.forget(code).then(
+        (forgot) => {
+          if (!forgot) return;
           setStatusKey(null);
           navigation.go('home');
         },

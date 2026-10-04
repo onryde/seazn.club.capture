@@ -77,8 +77,8 @@ describe('Ended (spec §4)', () => {
     const view = await renderViewfinder();
     act(() => view.engine.scene('stopped'));
     let release = () => undefined as void;
-    const written = new Promise<void>((resolve) => {
-      release = resolve;
+    const written = new Promise<boolean>((resolve) => {
+      release = () => resolve(true);
     });
     vi.spyOn(view.ports.modeStore, 'forget').mockImplementation(() => written);
     fireEvent.click(scanAnother());

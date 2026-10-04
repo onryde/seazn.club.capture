@@ -23,6 +23,7 @@ import { HomeScreen } from '@/ui/screens/HomeScreen';
 import { createFakePorts, readRecord, TEST_NOW } from '../../../test/fakePorts';
 import { renderWithPorts, wrapperFor } from '../../../test/renderWithPorts';
 import { savedStreamCode } from '../../../test/fixtures/savedStream';
+import { pairCode } from '../../../test/pairCode';
 import { captureRaw, epochSeconds, FIXTURE_CODE } from '../../../test/fixtures/wire';
 
 const IN_TWO_HOURS = new Date(TEST_NOW.getTime() + 2 * 3600_000);
@@ -311,6 +312,23 @@ describe('useHome: the paste is development-only', () => {
     await act(async () => undefined);
     expect(fakes.navigation.current()).toBe('home');
     expect(fakes.kv.entries.size).toBe(0);
+  });
+});
+
+describe('useHome: Forget with nothing saved (C4b-I2)', () => {
+  // Forget forgets the code on the card. Pressed with none, a press that
+  // outlived its card, there is nothing to unpair and nothing to forget, even
+  // with native still paired: that pairing is the reopen gate's orphan.
+  it('sends nothing, writes nothing and records nothing', async () => {
+    const fakes = createFakePorts();
+    await fakes.ports.modeStore.load();
+    pairCode(fakes.engine, savedStreamCode());
+    const { result } = renderHook(() => useHome(), { wrapper: wrapperFor(fakes) });
+    act(() => result.current.actions.forgetStream());
+    await act(async () => undefined);
+    expect(fakes.engine.intents.map((intent) => intent.kind)).toEqual(['pair']);
+    expect(fakes.engine.getSnapshot().state.kind).toBe('paired');
+    expect(readRecord(fakes.record)).toEqual([]);
   });
 });
 

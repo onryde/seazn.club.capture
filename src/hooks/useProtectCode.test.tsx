@@ -49,7 +49,10 @@ describe('useProtectCode (CD6, N7)', () => {
   it('keeps free text while the code is saved, and masks it whole once it is forgotten', async () => {
     const fakes = await withSavedCode();
     fakes.ports.logger.warn('held', { message: FREE_TEXT });
-    await act(() => fakes.ports.modeStore.forget('stream'));
+    const store = fakes.ports.modeStore.getSnapshot();
+    const saved = store.status === 'ready' ? store.saved.codes.stream : undefined;
+    if (saved === undefined) throw new Error('the seeded code did not load');
+    await act(() => fakes.ports.modeStore.forget(saved));
     fakes.ports.logger.warn('forgotten', { message: FREE_TEXT });
     fakes.ports.logger.warn('forgotten', { problem: FIXTURE_TOKEN });
     expect(said(fakes, 'held')).toEqual([{ message: FREE_TEXT }]);

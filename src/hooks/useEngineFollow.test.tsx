@@ -234,3 +234,47 @@ describe('useEngineFollow: the same code scanned again', () => {
     expect(app.engine.intents.map((intent) => intent.kind).slice(-2)).toEqual(['reset', 'pair']);
   });
 });
+
+/**
+ * C4b-I2, the reviewer's probe P3: X is paired, Y is scanned from Home, and
+ * the phone is slow to save Y. Native's `replaced` for X lands while Y's save
+ * is still out, so the follow asks to forget X behind it. By the time that
+ * write runs Y is saved: Y stays, and the app follows Y to /stream.
+ */
+describe('useEngineFollow: an ending that lands while another code is saved (C4b-I2)', () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  it('keeps the code saved behind it, and does not go Home', async () => {
+    const app = await launchApp({
+      kvSeed: inStream(),
+      prepare: (fakes) => pairCode(fakes.engine, code),
+    });
+    act(() => screen.getByRole('button', { name: 'Home' }).click());
+    await flushApp();
+    expect(app.nav.current()).toBe('home');
+    const store = app.kv.set;
+    let release = () => undefined as void;
+    const slow = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    vi.spyOn(app.kv, 'set').mockImplementation(async (key, value) => {
+      await slow;
+      return store(key, value);
+    });
+    await scanFromHome(app, other.raw);
+    expect(app.code.calls).toHaveLength(1);
+    act(() => app.engine.hear({ word: 'replaced' }));
+    await flushApp();
+    act(() => release());
+    await flushApp(3_000);
+    const saved = app.ports.modeStore.getSnapshot();
+    expect(saved.status === 'ready' && saved.saved.codes.stream?.slot).toBe(2);
+    expect(app.kv.entries.has(STORE_KEYS.code('stream'))).toBe(true);
+    expect(app.nav.current()).toBe('stream');
+    expect(app.engine.getSnapshot()).toMatchObject({
+      state: { kind: 'paired' },
+      pairing: { slot: 2 },
+    });
+  });
+});

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { leaveRule, type EngineStatus, type LeaveRule } from '@/domain/mode/reopen';
+import type { SavedCode } from '@/domain/mode/savedCode';
 import { selectEngineStatus, selectStateKind } from '@/hooks/engineSelectors';
 import { useEngineSelector } from '@/hooks/useCaptureEngine';
 import { usePorts } from '@/hooks/usePorts';
@@ -34,8 +35,9 @@ export function useStreamLeave(): {
   departed(): boolean;
 } {
   const status = useEngineSelector(selectEngineStatus);
+  const saved = useSavedStream();
   // Fix round 3: a stopped engine spends this code only if its pairing was this code's.
-  const ownPairing = useOwnPairing(useSavedStream());
+  const ownPairing = useOwnPairing(saved);
   // C4b-I1: or if no code is saved at all, the gate's own orphan rule (see `clearsSession`).
   const nothingSaved = useNothingSaved();
   const own = ownPairing || nothingSaved;
@@ -48,9 +50,9 @@ export function useStreamLeave(): {
     (beforeHome: () => void) => {
       const rule = leaveRule('stream', status, own);
       if (rule === 'blockedOnAir') return block();
-      leaveOnce(rule, beforeHome);
+      leaveOnce(rule, saved, beforeHome);
     },
-    [status, own, leaveOnce, block],
+    [status, own, saved, leaveOnce, block],
   );
   const leave = useCallback(() => leaveWith(NOTHING), [leaveWith]);
   useBackLeaves(leave);
@@ -114,16 +116,19 @@ function useRefusalLine(): [boolean, () => void] {
  * leave-on-air line; the engine is the authority, so nothing is written back
  * — a reopen goes to the stream whatever is saved (spec §1).
  */
-function useLeaveOnce(onBlocked: () => void, left: { current: boolean }): FinishLeave {
+function useLeaveOnce(
+  onBlocked: () => void,
+  left: { current: boolean },
+): (rule: FreeRule, saved: SavedCode | null, beforeHome: () => void) => void {
   const { modeStore, logger } = usePorts();
   const finish = useFinishLeave(onBlocked);
   const pending = useRef(false);
   return useCallback(
-    (rule: FreeRule, beforeHome: () => void) => {
+    (rule: FreeRule, saved: SavedCode | null, beforeHome: () => void) => {
       if (pending.current) return;
       pending.current = true;
       left.current = true;
-      void saveLeave(modeStore, rule, logger).then(() => {
+      void saveLeave(modeStore, rule, saved, logger).then(() => {
         pending.current = false;
         finish(rule, beforeHome);
       });
@@ -178,11 +183,18 @@ function clearsSession(rule: FreeRule, status: EngineStatus): boolean {
  * leaves — the operator asked to go — and is recorded (spec §5). A stale
  * active mode only means the next foreground reopens Stream, which is one
  * more leave. Async, so a write that throws before returning a promise lands
- * here too.
+ * here too. The forget is of the code the screen showed (C4b-I2); with
+ * nothing saved (C4b-I1) there is nothing to write.
  */
-async function saveLeave(modeStore: ModeStore, rule: FreeRule, logger: Logger): Promise<void> {
+async function saveLeave(
+  modeStore: ModeStore,
+  rule: FreeRule,
+  saved: SavedCode | null,
+  logger: Logger,
+): Promise<void> {
   try {
-    await (rule === 'freeAndForget' ? modeStore.forget('stream') : modeStore.setActive(null));
+    if (rule !== 'freeAndForget') await modeStore.setActive(null);
+    else if (saved !== null) await modeStore.forget(saved);
   } catch {
     logger.warn('store.write-refused', { action: 'leave' });
   }

@@ -53,7 +53,7 @@ export function useEngineFollow(): void {
     code: undefined,
   });
   useEffect(() => {
-    const once = (code: SavedCode, did: string, write: () => Promise<void>) => {
+    const once = (code: SavedCode, did: string, write: () => Promise<unknown>) => {
       if (acted.current?.code === code && acted.current.did === did) return;
       acted.current = { code, did };
       write().catch(() => logger.warn('store.write-refused', { action: did }));
@@ -75,13 +75,16 @@ export function useEngineFollow(): void {
       if (name === NO_NAME) return;
       if (heard.current.code === code && forgetsSaved({ saved: name, ...facts })) {
         // An unpair the operator did not ask for goes Home, to its panel (Task 29); their Stop stays on Ended.
+        // Only if this code went: one saved behind the write is a new scan, and the app follows it (C4b-I2).
         const home = facts.unpaired !== null;
         return once(code, 'forget', () =>
-          modeStore.forget('stream').then(() => (home ? navigation.go('home') : undefined)),
+          modeStore
+            .forget(code)
+            .then((forgot) => (forgot && home ? navigation.go('home') : undefined)),
         );
       }
       const mark = tapToPairMark({ saved: name, marked: code.stream.tapToPair, ...facts });
-      if (mark !== null) once(code, mark, () => modeStore.markTapToPair(mark === 'mark'));
+      if (mark !== null) once(code, mark, () => modeStore.markTapToPair(mark === 'mark', code));
     };
     const offEngine = engine.subscribe(follow);
     const offStore = modeStore.subscribe(follow);
