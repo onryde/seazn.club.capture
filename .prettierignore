@@ -2,3 +2,5 @@
 # the Gradle output of a local module compile would otherwise be checked.
 modules/*/android/build/
 modules/*/android/core/build/
+# The JVM host (CD8) is a subproject of the core build, with its own Gradle output.
+modules/*/android/core/host/build/
