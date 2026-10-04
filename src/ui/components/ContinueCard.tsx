@@ -1,31 +1,33 @@
 import { memo } from 'react';
 import { StyleSheet, View } from 'react-native';
+import type { ContinueCopy } from '@/domain/mode/continueCard';
 import type { Mode } from '@/domain/mode/Mode';
 import { useT } from '@/hooks/useLanguage';
 import { MODE_NAME } from '@/i18n/modeNames';
+import type { Translator } from '@/i18n/translate';
 import { Button } from '@/ui/components/Button';
 import { GhostButton } from '@/ui/components/GhostButton';
 import { Text } from '@/ui/components/Text';
 import { colour, radius, space } from '@/ui/theme/tokens';
 
-/** Shown only when a mode that was left still holds a valid code (decision 2). */
+/**
+ * Shown only when a mode that was left still holds a valid code (decision 2).
+ * What it says is `continueCard`'s (amendment §2, Home).
+ */
 export const ContinueCard = memo(function ContinueCard(props: {
   mode: Mode;
-  slot: number | null;
-  validTill: string;
+  copy: ContinueCopy;
   onContinue: () => void;
   onForget: () => void;
 }) {
   const { t } = useT();
-  const mode = t(MODE_NAME[props.mode]);
+  const { title, detail } = cardText(props.mode, props.copy, t);
   return (
     <View style={styles.card}>
       <Text variant="state" style={styles.title}>
-        {t('home.continue.title', { mode })}
+        {title}
       </Text>
-      <Text variant="control">
-        {t('home.continue.detail', { slot: props.slot ?? '–', time: props.validTill })}
-      </Text>
+      <Text variant="control">{detail}</Text>
       <View style={styles.actions}>
         <Button label={t('home.continue.open')} onPress={props.onContinue} />
         <GhostButton label={t('home.continue.forget')} onPress={props.onForget} />
@@ -33,6 +35,28 @@ export const ContinueCard = memo(function ContinueCard(props: {
     </View>
   );
 });
+
+/** CD39: a code with no `exp` says its slot alone, never "code valid till ." */
+function cardText(
+  mode: Mode,
+  copy: ContinueCopy,
+  t: Translator['t'],
+): { title: string; detail: string } {
+  if (copy.kind === 'paired') {
+    return {
+      title: t('home.continue.paired', { label: copy.label }),
+      detail: t('home.continue.waiting'),
+    };
+  }
+  const slot = copy.slot ?? '–';
+  return {
+    title: t('home.continue.title', { mode: t(MODE_NAME[mode]) }),
+    detail:
+      copy.validTill === null
+        ? t('home.continue.slot', { slot })
+        : t('home.continue.detail', { slot, time: copy.validTill }),
+  };
+}
 
 const styles = StyleSheet.create({
   card: {

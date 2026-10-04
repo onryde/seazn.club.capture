@@ -1,6 +1,7 @@
 import { fireEvent, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import type { ModeCode } from '@/domain/mode/Mode';
+import type { UnpairReason } from '@/domain/session/Pairing';
 import type { PanelOutcome } from '@/hooks/useHome';
 import { CodePanel } from '@/ui/components/CodePanel';
 import { renderWithPorts } from '../../../test/renderWithPorts';
@@ -117,6 +118,8 @@ describe('CodePanel', () => {
       code: streamCode,
     } as const;
     renderWithPorts(<CodePanel outcome={offline} time={null} {...h} />);
+    expect(screen.getByText('No connection')).toBeTruthy();
+    expect(screen.getByText("Can't check this code — no connection. Try again.")).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
     expect(h.onTryAgain).toHaveBeenCalledTimes(1);
     fireEvent.click(screen.getByRole('button', { name: 'Scan again' }));
@@ -125,12 +128,13 @@ describe('CodePanel', () => {
 
   // Amendment §2: the code answer names no end reason ("the two 410 lines go"),
   // so a code the server no longer knows, or has ended, reads as not valid.
+  // The outcome table: 401 and 410 are `invalid` and `ended`, 404 `not-found`, 429 `rate-limited`.
   it.each([
-    [{ kind: 'invalid' }, 'Not valid for streaming'],
-    [{ kind: 'not-found' }, 'Not valid for streaming'],
-    [{ kind: 'ended' }, 'Not valid for streaming'],
-    [{ kind: 'rate-limited', retryAfterS: 7 }, 'Server busy'],
-  ] as const)('has no Try again for %j, and closes on the dim', (error, title) => {
+    [{ kind: 'invalid' }, 'Not valid for streaming', "This code isn't valid for streaming."],
+    [{ kind: 'not-found' }, 'Not valid for streaming', "This code isn't valid for streaming."],
+    [{ kind: 'ended' }, 'Not valid for streaming', "This code isn't valid for streaming."],
+    [{ kind: 'rate-limited', retryAfterS: 12 }, 'Server busy', 'Busy — trying again in 12s'],
+  ] as const)('has no Try again for %j, and closes on the dim', (error, title, body) => {
     const h = handlers();
     renderWithPorts(
       <CodePanel
@@ -140,9 +144,37 @@ describe('CodePanel', () => {
       />,
     );
     expect(screen.getByText(title)).toBeTruthy();
+    expect(screen.getByText(body)).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull();
     expect(screen.getByRole('button', { name: 'Scan again' })).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Close' }));
     expect(h.onClose).toHaveBeenCalledTimes(1);
+  });
+
+  /** Amendment §2, Unpaired without asking: why, in the operator's words, then Scan again or Close. */
+  it.each<[UnpairReason, string, string]>([
+    ['code-ended', 'Code ended', 'This code has ended. Scan the new one.'],
+    [
+      'replaced',
+      'Paired on another phone',
+      'This code is now paired on another phone. Scan it again to use this one.',
+    ],
+    ['taken', 'Already live', 'This camera is live on another phone.'],
+    [
+      'permissions',
+      'Camera and microphone needed',
+      'Allow the camera and microphone in Android Settings, then try again',
+    ],
+  ])('says why native unpaired (%s), with Scan again and Close', (reason, title, body) => {
+    const h = handlers();
+    renderWithPorts(
+      <CodePanel outcome={{ kind: 'unpaired', tapped: 'stream', reason }} time={null} {...h} />,
+    );
+    expect(screen.getByText(title)).toBeTruthy();
+    expect(screen.getByText(body)).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Scan again' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+    expect([h.onScanAgain.mock.calls.length, h.onClose.mock.calls.length]).toEqual([1, 1]);
   });
 });

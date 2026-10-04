@@ -2,6 +2,7 @@ import { memo, useCallback } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import type { CodeError } from '@/domain/credentials/waitingFields';
 import type { ModeCode } from '@/domain/mode/Mode';
+import type { UnpairReason } from '@/domain/session/Pairing';
 import type { HomePanel } from '@/hooks/useHome';
 import { useT } from '@/hooks/useLanguage';
 import type { MessageKey } from '@/i18n/messages';
@@ -65,8 +66,18 @@ function panelCopy(outcome: HomePanel, t: Translator['t'], time: string | null):
       };
     case 'codeError':
       return codeCopy(outcome.error, t);
+    case 'unpaired':
+      return settled(t(UNPAIRED[outcome.reason].title), t(UNPAIRED[outcome.reason].body));
   }
 }
+
+/** Amendment §2, Unpaired without asking: why native left the pairing. */
+const UNPAIRED: Readonly<Record<UnpairReason, { title: MessageKey; body: MessageKey }>> = {
+  'code-ended': { title: 'panel.codeEnded.title', body: 'panel.codeEnded.body' },
+  replaced: { title: 'panel.replaced.title', body: 'panel.replaced.body' },
+  taken: { title: 'panel.taken.title', body: 'panel.taken.body' },
+  permissions: { title: 'panel.permissions.title', body: 'panel.permissions.body' },
+};
 
 /**
  * Spec §1's table, with a short title over the spec's sentence (D27). The code

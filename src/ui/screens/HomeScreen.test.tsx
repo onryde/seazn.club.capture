@@ -101,6 +101,33 @@ describe('Home', () => {
     expect(home.kv.entries.get(STORE_KEYS.active)).toBe('stream');
   });
 
+  // Amendment §2, The Home outcome table: saved, then /stream, then pair — on one scan.
+  it('saves the code, then shows /stream, then pairs, in the outcome table’s order', async () => {
+    const home = await renderHome();
+    const order: string[] = [];
+    const set = home.kv.set;
+    vi.spyOn(home.kv, 'set').mockImplementation(async (key, value) => {
+      await set(key, value);
+      if (key === STORE_KEYS.code('stream')) order.push('saved');
+    });
+    const go = home.navigation.go;
+    vi.spyOn(home.navigation, 'go').mockImplementation((route) => {
+      order.push(`route ${route}`);
+      go(route);
+    });
+    const send = home.engine.send;
+    vi.spyOn(home.engine, 'send').mockImplementation((intent) => {
+      order.push(intent.kind);
+      send(intent);
+    });
+    home.scanner.queue({ outcome: 'scanned', raw: streamRaw(IN_TWO_HOURS) });
+    fireEvent.click(liveStreamTile());
+    await waitFor(() => expect(order).toEqual(['saved', 'route stream', 'pair']));
+    expect(home.kv.entries.has(STORE_KEYS.code('stream'))).toBe(true);
+    expect(home.navigation.current()).toBe('stream');
+    expect(home.engine.intents.at(-1)?.kind).toBe('pair');
+  });
+
   it('names a scoring code and says it is coming soon, then scans again', async () => {
     const home = await renderHome();
     home.scanner.queue({ outcome: 'scanned', raw: 'https://stg.seazn.club/score/abc123' });

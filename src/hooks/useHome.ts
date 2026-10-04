@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useState, useSyncExternalStore } from 'react';
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import type { CodeError } from '@/domain/credentials/waitingFields';
+import { continueCard, type ContinueCopy } from '@/domain/mode/continueCard';
 import type { Mode, ModeCode } from '@/domain/mode/Mode';
 import { recognise } from '@/domain/mode/recognise';
 import {
@@ -10,6 +11,17 @@ import {
   type SavedStream,
 } from '@/domain/mode/savedCode';
 import { scanOutcome, type ScanOutcome } from '@/domain/mode/scanOutcome';
+import type { UnpairReason } from '@/domain/session/Pairing';
+import {
+  selectEngineStatus,
+  selectHeldCode,
+  selectHeldSlot,
+  selectHeldTokenTag,
+  selectLabel,
+  selectUnpairedKey,
+  selectUnpairedReason,
+} from '@/hooks/engineSelectors';
+import { useEngineSelector } from '@/hooks/useCaptureEngine';
 import {
   ignoreUnexpected,
   isReady,
@@ -33,7 +45,10 @@ import type { ModeStore, ModeStoreSnapshot } from '@/services/modeStore';
 export type PanelOutcome = Exclude<ScanOutcome, { kind: 'open' }>;
 export type StreamCode = Extract<ModeCode, { mode: 'stream' }>;
 
-/** What the panel shows: a scan's outcome, the check in flight, or the server's refusal. */
+/**
+ * What the panel shows: a scan's outcome, the check in flight, the server's
+ * refusal, or why native left a pairing the operator did not end.
+ */
 export type HomePanel =
   | PanelOutcome
   | { readonly kind: 'checking'; readonly tapped: Mode }
@@ -42,14 +57,16 @@ export type HomePanel =
       readonly tapped: Mode;
       readonly error: CodeError;
       readonly code: StreamCode;
-    };
+    }
+  | { readonly kind: 'unpaired'; readonly tapped: 'stream'; readonly reason: UnpairReason };
 
 export type HomeView = {
   readonly statusText: string;
   readonly panel: HomePanel | null;
   readonly panelTime: string | null;
   readonly continueCode: SavedCode | null;
-  readonly continueTill: string | null;
+  /** What the Continue card says (amendment §2, Home); null with no card. */
+  readonly continueCopy: ContinueCopy | null;
 };
 
 export type HomeActions = {
@@ -93,6 +110,7 @@ export function useHome(): { view: HomeView; actions: HomeActions } {
   const { modeStore } = usePorts();
   const snapshot = useSyncExternalStore(modeStore.subscribe, modeStore.getSnapshot);
   const [panel, setPanel] = useState<HomePanel | null>(null);
+  useUnpairedPanel(panel, setPanel);
   const [statusKey, setStatusKey] = useState<MessageKey | null>(null);
   const saveFailed = useSaveFailed(setStatusKey);
   const openCode = useOpenCode(setStatusKey, saveFailed);
@@ -249,15 +267,56 @@ function useHomeView(
   const continueCode = stream !== null && !isExpired(stream, clock()) ? stream : null;
   // Never null for an expired panel, which would read "expired at ." (Task 10 carry).
   const panelTime = panel?.kind === 'expired' ? format(panel.at, null) : null;
+  const continueCopy = useContinueCopy(continueCode);
   return {
     statusText: statusText(ready, statusKey, t, format),
     panel,
     panelTime,
     continueCode,
-    continueTill: continueCode?.expiresAt
-      ? format(continueCode.expiresAt, venueZone(continueCode))
-      : null,
+    continueCopy,
   };
+}
+
+/**
+ * The Continue card's words (amendment §2, Home), from the engine's status
+ * and the held name as primitives (Task 23's selectors), so a 1 Hz snapshot
+ * that changes none of them changes nothing.
+ */
+function useContinueCopy(code: SavedCode | null): ContinueCopy | null {
+  const format = useFormatTime();
+  const engine = useEngineSelector(selectEngineStatus);
+  const heldCode = useEngineSelector(selectHeldCode);
+  const heldSlot = useEngineSelector(selectHeldSlot);
+  const heldTag = useEngineSelector(selectHeldTokenTag);
+  const heldLabel = useEngineSelector(selectLabel);
+  if (code === null) return null;
+  const held = { code: heldCode, slot: heldSlot, tokenTag: heldTag };
+  const validTill = code.expiresAt === null ? null : format(code.expiresAt, venueZone(code));
+  return continueCard({ saved: code, engine, held, heldLabel, validTill });
+}
+
+/**
+ * Amendment §2, Unpaired without asking: Home names why, once per unpair.
+ * `unpaired` is a new object on every snapshot, so it is compared by value
+ * (`selectUnpairedKey`); Close remembers the one dismissed. PV31: native's next
+ * pair clears the unpair, and so does this memory, so the same code unpaired
+ * again says so again. A scan in flight keeps its "Checking code…" panel; the
+ * unpair panel follows it on the next change.
+ */
+function useUnpairedPanel(panel: HomePanel | null, setPanel: SetPanel): void {
+  const key = useEngineSelector(selectUnpairedKey);
+  // The same snapshot's reason, as its own primitive: no parse of the key, no cast.
+  const reason = useEngineSelector(selectUnpairedReason);
+  const shown = useRef<string | null>(null);
+  useEffect(() => {
+    if (key === null || reason === null) {
+      shown.current = null;
+      return;
+    }
+    if (key === shown.current || panel?.kind === 'checking') return;
+    shown.current = key;
+    setPanel({ kind: 'unpaired', tapped: 'stream', reason });
+  }, [key, reason, panel, setPanel]);
 }
 
 /**

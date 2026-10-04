@@ -107,6 +107,19 @@ export function selectUnpairedName(snapshot: EngineSnapshot): CodeName | null {
     : { code: unpaired.code, slot: unpaired.slot, tokenTag: unpaired.tokenTag };
 }
 
+/**
+ * The unpair native names, as one primitive, so `useEngineSelector` compares it
+ * with Object.is: one change per unpair, not per snapshot. Null with none.
+ */
+export const selectUnpairedKey = (snapshot: EngineSnapshot): string | null => {
+  const { unpaired } = snapshot;
+  return unpaired === null
+    ? null
+    : `${unpaired.reason}|${unpaired.code}|${unpaired.slot}|${unpaired.tokenTag}`;
+};
+/** Why native left the pairing, a primitive beside the key; null with no unpair. */
+export const selectUnpairedReason = (snapshot: EngineSnapshot) => snapshot.unpaired?.reason ?? null;
+
 /** True whenever bytes are reaching the front door. */
 export function selectIsPublishing(snapshot: EngineSnapshot): boolean {
   const { kind } = snapshot.state;

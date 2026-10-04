@@ -229,6 +229,8 @@ describe('useEngineFollow: the same code scanned again', () => {
     await flushApp();
     expect(app.nav.current()).toBe('home');
     expect(app.kv.entries.has(STORE_KEYS.code('stream'))).toBe(false);
+    // Task 29: Home says why first; the operator closes it to reach the tiles.
+    act(() => screen.getByRole('button', { name: 'Close' }).click());
     await scanFromHome(app, code.raw);
     await flushApp(3_000);
     expectPairedOnStream(app);

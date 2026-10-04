@@ -71,12 +71,11 @@ function HomeContent({ view, actions }: { view: HomeView; actions: HomeActions }
 /** The Continue card, only when a left mode still holds a valid code. */
 function ContinueSlot({ view, actions }: { view: HomeView; actions: HomeActions }) {
   const code = view.continueCode;
-  if (code === null) return null;
+  if (code === null || view.continueCopy === null) return null;
   return (
     <ContinueCard
       mode={code.mode}
-      slot={code.slot}
-      validTill={view.continueTill ?? ''}
+      copy={view.continueCopy}
       onContinue={actions.continueStream}
       onForget={actions.forgetStream}
     />

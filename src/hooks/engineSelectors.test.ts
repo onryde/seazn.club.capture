@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { EngineStatus } from '@/domain/mode/reopen';
 import type { SessionState } from '@/domain/session/SessionState';
-import type { BroadcastInfo, PairingInfo } from '@/domain/session/Pairing';
+import type { BroadcastInfo, PairingInfo, Unpaired } from '@/domain/session/Pairing';
 import type { EngineSnapshot, Telemetry } from '@/engine/CaptureEnginePort';
 import { FAKE_PAIRING } from '@/engine/FakeCaptureEngine';
 import { IDLE_TELEMETRY } from '@/engine/unreported';
@@ -23,6 +23,8 @@ import {
   selectOverlayUrl,
   selectPlaybackUrl,
   selectScheduledStartMs,
+  selectUnpairedKey,
+  selectUnpairedReason,
   selectVenueZone,
 } from '@/hooks/engineSelectors';
 import { NO_NAME } from '@/domain/mode/codeName';
@@ -248,6 +250,41 @@ describe('the waiting fields the viewfinder shows (Task 28)', () => {
       selectEndReason(snapshot(LIVE)),
       selectEndReason(snapshot(PAIRED)),
     ]).toEqual(['operator-stopped', 'fatal-error', null, null]);
+  });
+});
+
+/** Amendment §2, Unpaired without asking: one primitive per unpair, each field in it (Task 29). */
+describe('the unpair Home names', () => {
+  const UNPAIRED: Unpaired = {
+    reason: 'replaced',
+    code: 'fx42hmnp7k2q',
+    slot: 1,
+    tokenTag: 'b24bb97b',
+  };
+  const idleWith = (unpaired: Unpaired | null) => ({ ...snapshot({ kind: 'idle' }), unpaired });
+
+  it('keys an unpair by its reason, code, slot and tag, and reads its reason', () => {
+    expect(selectUnpairedKey(idleWith(UNPAIRED))).toBe('replaced|fx42hmnp7k2q|1|b24bb97b');
+    expect(selectUnpairedReason(idleWith(UNPAIRED))).toBe('replaced');
+  });
+
+  it('keys nothing with no unpair', () => {
+    expect([selectUnpairedKey(idleWith(null)), selectUnpairedReason(idleWith(null))]).toEqual([
+      null,
+      null,
+    ]);
+  });
+
+  // Each field alone moves the key, so a second unpair differing in one is a new panel.
+  it.each<[string, Partial<Unpaired>]>([
+    ['reason', { reason: 'taken' }],
+    ['code', { code: 'fx42hmnp7k2r' }],
+    ['slot', { slot: 2 }],
+    ['tag', { tokenTag: 'b24bb97c' }],
+  ])('gives another key for another %s', (_field, change) => {
+    const key = selectUnpairedKey(idleWith({ ...UNPAIRED, ...change }));
+    expect(key).not.toBeNull();
+    expect(key).not.toBe('replaced|fx42hmnp7k2q|1|b24bb97b');
   });
 });
 
