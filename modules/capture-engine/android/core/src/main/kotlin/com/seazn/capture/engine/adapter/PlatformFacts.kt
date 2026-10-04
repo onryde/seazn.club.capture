@@ -16,5 +16,9 @@ data class PlatformFacts(
   val survivesBackground: Boolean = false,
 )
 
-/** `SessionRecord`'s own counters, for Diagnostics: lines its sink refused, and echoes it dropped. */
-data class RecordCounters(val sinkFailures: Int, val reentrantDropped: Int)
+/**
+ * `SessionRecord`'s own counters, for Diagnostics: lines its sink refused, and echoes it dropped; and
+ * the scheduler guard's (review 13, I3): failures that reached the task boundary, and reporters that
+ * failed reporting one.
+ */
+data class RecordCounters(val sinkFailures: Int, val reentrantDropped: Int, val taskFailures: Int = 0, val reporterFailures: Int = 0)

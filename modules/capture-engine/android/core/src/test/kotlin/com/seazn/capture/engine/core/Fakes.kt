@@ -34,16 +34,25 @@ class FakeScheduler(private val clock: FakeClock) : Scheduler {
   fun advanceBy(ms: Long) {
     require(ms >= 0) { "advanceBy($ms): time never runs backwards" }
     val end = clock.mono + ms
+    var ran = 0
     while (true) {
       val next =
         jobs
           .filter { !it.cancelled && it.dueAt <= end }
           .minWithOrNull(compareBy<Job>({ it.dueAt }, { it.order })) ?: break
+      // Review 14 m2: a task that posts itself again with no delay never lets time move; fail, never hang.
+      check(ran < MAX_TASKS) { "advanceBy ran $MAX_TASKS tasks: one posts itself again with no delay" }
+      ran += 1
       jobs.remove(next)
       clock.advance(next.dueAt - clock.mono)
       next.task()
     }
     clock.advance(end - clock.mono)
     jobs.removeAll { it.cancelled }
+  }
+
+  companion object {
+    /** Far above any test's real run: ten minutes live is about 6 000 tasks. */
+    const val MAX_TASKS = 200_000
   }
 }

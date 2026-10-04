@@ -80,4 +80,28 @@ class FakeSchedulerTest {
     assertEquals(true, ran)
     assertEquals(0L, clock.mono)
   }
+
+  // Review 14 m2: a task that posts itself again with no delay would hang the suite. The cap ends the
+  // advance as a failure that names it, and a long but finite run below the cap still completes.
+  @Test
+  fun `a task that posts itself again with no delay fails the advance instead of hanging it`() {
+    var runs = 0
+    fun again() {
+      runs += 1
+      scheduler.schedule(0) { again() }
+    }
+    scheduler.schedule(0) { again() }
+    val error = assertFailsWith<IllegalStateException> { scheduler.advanceBy(0) }
+    assertEquals("advanceBy ran ${FakeScheduler.MAX_TASKS} tasks: one posts itself again with no delay", error.message)
+    assertEquals(FakeScheduler.MAX_TASKS, runs)
+    val fresh = FakeScheduler(clock)
+    var finite = 0
+    fun count(left: Int) {
+      finite += 1
+      if (left > 0) fresh.schedule(0) { count(left - 1) }
+    }
+    fresh.schedule(0) { count(FakeScheduler.MAX_TASKS - 2) }
+    fresh.advanceBy(0)
+    assertEquals(FakeScheduler.MAX_TASKS - 1, finite)
+  }
 }

@@ -49,9 +49,15 @@ sealed interface Input {
   /** Every fact about an attempt names it. A fact about an attempt that is over is stale, and ignored. */
   data class Connected(val attemptId: Int) : Input
 
-  data class ConnectFailed(val attemptId: Int, val failure: ConnectFailure, val message: String?) : Input
+  /** [message] is the platform's own and may hold the stream URL and its key: it prints as its length only (m7). */
+  data class ConnectFailed(val attemptId: Int, val failure: ConnectFailure, val message: String?) : Input {
+    override fun toString() = "ConnectFailed(attemptId=$attemptId, failure=$failure, message=${masked(message)})"
+  }
 
-  data class Dropped(val attemptId: Int, val reason: DropReason, val message: String?) : Input
+  /** As [ConnectFailed]: [message] prints as its length only (m7). */
+  data class Dropped(val attemptId: Int, val reason: DropReason, val message: String?) : Input {
+    override fun toString() = "Dropped(attemptId=$attemptId, reason=$reason, message=${masked(message)})"
+  }
 
   /** Encoded frames that reached the endpoint, cumulative for the attempt (F-P5-4). At least twice a second. */
   data class Frames(val attemptId: Int, val videoFrames: Long, val audioFrames: Long) : Input
@@ -99,5 +105,14 @@ sealed interface Input {
    * is stale. A hold that has run out is judged first, so in the gap before the tick it reads
    * hold-window-expired ([SessionMachine.reduce]).
    */
-  data class PlatformFailed(val attemptId: Int, val message: String) : Input
+  data class PlatformFailed(val attemptId: Int, val message: String) : Input {
+    override fun toString() = "PlatformFailed(attemptId=$attemptId, message=${masked(message)})"
+  }
 }
+
+/**
+ * m7: a platform message prints as its length, never its text. A data class's own `toString` would
+ * print a stream key held in a URL into any log, exception or assertion that prints the input; the
+ * record line, which carries the text, masks it on the way out (Task 10).
+ */
+private fun masked(message: String?): String = if (message == null) "null" else "<${message.length} chars>"

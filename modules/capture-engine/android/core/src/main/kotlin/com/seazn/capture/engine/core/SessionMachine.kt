@@ -202,7 +202,11 @@ internal object Transports {
 
   fun connectFailed(phase: Phase, input: Input.ConnectFailed, now: Now): Step {
     val step = (phase as? Phase.Connecting)?.step
-    if (phase !is Phase.Connecting || step !is ConnectStep.Requested || step.attemptId != input.attemptId) return Step(phase)
+    // G4: ignored, but recorded: a connect failure no one hears is a failure the record never shows.
+    if (phase !is Phase.Connecting || step !is ConnectStep.Requested || step.attemptId != input.attemptId) {
+      val fields = arrayOf("attempt" to input.attemptId, "failure" to input.failure, "phase" to phase.name, "message" to input.message)
+      return Step(phase, listOf(record("connect-failed-ignored", *fields)))
+    }
     return failed(phase, input.failure, input.message, now)
   }
 

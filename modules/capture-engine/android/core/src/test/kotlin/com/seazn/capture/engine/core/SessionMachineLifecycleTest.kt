@@ -184,8 +184,7 @@ class SessionMachineLifecycleTest {
         Input.Frames(1, 99, 99),
         Input.Link(1, LinkCounters(1, 1, 0, 0, 0, 20, 40, null)),
         Input.Dropped(1, DropReason.ENDPOINT_CLOSED, null),
-        Input.ConnectFailed(1, ConnectFailure.OTHER, null),
-        // A network or mic fact is kept for the next session (final review I-1, review 18 I1):
+        // A connect failure is recorded as ignored (G4), below. A network or mic fact is kept for the next session (final review I-1, review 18 I1):
         // SessionMachineOutageTest and SessionMachineDeviceTest.
         Input.CameraContended,
         Input.CameraReleased,
@@ -197,9 +196,15 @@ class SessionMachineLifecycleTest {
         Input.Tick,
       )
     for (fact in facts) assertEquals(emptyList(), rig.send(fact), "$fact")
+    // Review 14 G4: a record line, and nothing asked.
+    assertEquals(listOf(connectFailedIgnored("ended")), rig.send(Input.ConnectFailed(1, ConnectFailure.OTHER, null)))
     assertEquals(EndReason.OPERATOR_STOPPED, assertIs<Phase.Ended>(ended).reason)
     assertEquals(ended, rig.phase)
   }
+
+  /** G4's line for attempt 1's `OTHER` failure with no message, as the carry words it. */
+  private fun connectFailedIgnored(phase: String): Command =
+    Command.Record(RecordEntry("connect-failed-ignored", listOf("attempt" to 1, "failure" to ConnectFailure.OTHER, "phase" to phase, "message" to null)))
 
   @Test
   fun `ruling 14 a camera switch asks the platform, and its paused picture is not rebuilt`() {
@@ -301,7 +306,7 @@ class SessionMachineLifecycleTest {
     rig.send(Input.Dropped(1, DropReason.ENDPOINT_CLOSED, null))
     rig.advance(2_000)
     val requested = rig.phase
-    assertEquals(emptyList(), rig.send(Input.ConnectFailed(1, ConnectFailure.OTHER, null)))
+    assertEquals(listOf(connectFailedIgnored("connecting")), rig.send(Input.ConnectFailed(1, ConnectFailure.OTHER, null)), "recorded, never judged (G4)")
     assertEquals(requested, rig.phase, "attempt 2 is still asked for")
     rig.send(Input.Connected(2))
     val onAir = rig.phase

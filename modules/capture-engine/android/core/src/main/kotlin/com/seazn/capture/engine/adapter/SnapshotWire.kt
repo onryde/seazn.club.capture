@@ -135,6 +135,8 @@ object SnapshotWire {
         },
       "recordSinkFailures" to num(record.sinkFailures),
       "recordReentrantDropped" to num(record.reentrantDropped),
+      "taskFailures" to num(record.taskFailures),
+      "reporterFailures" to num(record.reporterFailures),
     )
 
   private fun num(value: Number): Double = value.toDouble()

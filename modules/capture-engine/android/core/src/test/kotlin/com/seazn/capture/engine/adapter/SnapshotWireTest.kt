@@ -15,7 +15,7 @@ import org.json.JSONObject
 class SnapshotWireTest {
   private val file = Shared.read("wire/snapshot-vectors.json")
   private val noBeat = HeartbeatStatus(null, null, 0, 0)
-  private val clean = RecordCounters(0, 0)
+  private val clean = RecordCounters(0, 0, 0, 0)
 
   // Made up, within capture-beat.v1: the code is 12 characters of the code alphabet, the tag is
   // Configs.TOKEN's (token-tag-vectors.json). The overlay sits on the staging Seazn host.
@@ -162,7 +162,7 @@ class SnapshotWireTest {
       "ended-pair-refused-never-live" to {
         SnapshotWire.of(bare(SnapshotState.Ended(EndReason.FATAL_ERROR, durationMs = null), 1_790_000_000_200), PlatformFacts(), clean)
       },
-      "live-telemetry" to { SnapshotWire.of(live, liveFacts, RecordCounters(2, 1)) },
+      "live-telemetry" to { SnapshotWire.of(live, liveFacts, RecordCounters(2, 1, 4, 3)) },
     )
 
   /** `{ ...base, ...overrides }` when the case's value is an object; `null` stays `null`. */
@@ -436,7 +436,7 @@ class SnapshotWireTest {
         language = "fr",
       ),
       liveFacts,
-      RecordCounters(2, 1),
+      RecordCounters(2, 1, 4, 3),
     )
 
   /**
@@ -535,6 +535,8 @@ class SnapshotWireTest {
       "facts.survivesBackground" to { s -> s.copy(facts = s.facts.copy(survivesBackground = false)) },
       "record.sinkFailures" to { s -> s.copy(record = s.record.copy(sinkFailures = 3)) },
       "record.reentrantDropped" to { s -> s.copy(record = s.record.copy(reentrantDropped = 2)) },
+      "record.taskFailures" to { s -> s.copy(record = s.record.copy(taskFailures = 5)) },
+      "record.reporterFailures" to { s -> s.copy(record = s.record.copy(reporterFailures = 6)) },
     )
 
   /** The fields that stay native, each with why, and a change that must leave the wire as it was. */

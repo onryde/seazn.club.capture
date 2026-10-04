@@ -67,7 +67,9 @@
       "shed",
       "heartbeat",
       "recordSinkFailures",
-      "recordReentrantDropped"
+      "recordReentrantDropped",
+      "taskFailures",
+      "reporterFailures"
     ],
     "srt": ["sent", "retransmitted", "dropped", "rttMs"],
     "heartbeat": ["lastSentAtEpochMs", "lastResult", "consecutiveFailures", "failures"]
@@ -97,7 +99,9 @@
       "failures": 0
     },
     "recordSinkFailures": 0,
-    "recordReentrantDropped": 0
+    "recordReentrantDropped": 0,
+    "taskFailures": 0,
+    "reporterFailures": 0
   },
   "pairingBase": {
     "code": "fx42hmnp7k2q",
@@ -419,7 +423,9 @@
             "failures": 1
           },
           "recordSinkFailures": 2,
-          "recordReentrantDropped": 1
+          "recordReentrantDropped": 1,
+          "taskFailures": 4,
+          "reporterFailures": 3
         }
       }
     }

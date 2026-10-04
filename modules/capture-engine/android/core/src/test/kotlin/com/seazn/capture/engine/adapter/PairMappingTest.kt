@@ -10,23 +10,10 @@ import kotlin.test.assertTrue
 class PairMappingTest {
   /**
    * As Expo hands it over: every number a Double (expo-modules-core 57.0.20, `FrontendConverter.cpp`'s
-   * `AnyFrontendConvert`). The values are made up: the code, slot and phone within `capture-beat.v1`,
-   * the token Configs' own, which no rule shapes yet.
+   * `AnyFrontendConvert`). [PairWire]'s, shared with `BridgeCoreTest`: made up, the code and slot within
+   * `capture-beat.v1`, the beat path D3's `/beats`, the token Configs' own, which no rule shapes yet.
    */
-  private fun wire(): MutableMap<String, Any?> =
-    mutableMapOf(
-      "kind" to "pair",
-      "code" to "fx42hmnp7k2q",
-      "slot" to 1.0,
-      "token" to Configs.TOKEN,
-      "codeUrl" to "https://stg.seazn.club/api/capture/codes/fx42hmnp7k2q",
-      "heartbeatUrl" to "https://stg.seazn.club/api/capture/codes/fx42hmnp7k2q/beat",
-      "startUrl" to "https://stg.seazn.club/api/capture/codes/fx42hmnp7k2q/start",
-      "language" to "fr",
-      "automatic" to false,
-      "claim" to "resume",
-      "environment" to "staging",
-    )
+  private fun wire(): MutableMap<String, Any?> = PairWire.valid().toMutableMap()
 
   @Test
   fun `a whole pair maps to a request with no problems`() {
@@ -36,12 +23,12 @@ class PairMappingTest {
     assertEquals(1, request.slot)
     assertEquals(Configs.TOKEN, request.token)
     // Each URL from its own key: three of one host, so only the field says which went where.
-    assertEquals("https://stg.seazn.club/api/capture/codes/fx42hmnp7k2q", request.codeUrl)
-    assertEquals("https://stg.seazn.club/api/capture/codes/fx42hmnp7k2q/beat", request.heartbeatUrl)
-    assertEquals("https://stg.seazn.club/api/capture/codes/fx42hmnp7k2q/start", request.startUrl)
+    assertEquals("https://stg.seazn.club/api/v1/capture/codes/fx42hmnp7k2q", request.codeUrl)
+    assertEquals("https://stg.seazn.club/api/v1/capture/codes/fx42hmnp7k2q/beats", request.heartbeatUrl)
+    assertEquals("https://stg.seazn.club/api/v1/capture/codes/fx42hmnp7k2q/start", request.startUrl)
     assertEquals("fr", request.language, "(P3) the notification's language")
     assertEquals(false, request.automatic)
-    assertEquals(Claim.RESUME, request.claim)
+    assertEquals(Claim.NEW, request.claim, "the scan's own word, which no default gives")
     assertEquals(Environment.STAGING, request.environment)
   }
 
