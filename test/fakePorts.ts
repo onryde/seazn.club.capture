@@ -85,6 +85,7 @@ export function createFakePorts(
   const ports: Ports = {
     ...fakes,
     devEngine: engine,
+    nativeEngine: null,
     modeStore: createModeStore(kv),
     scanFlight: createScanFlight(),
     homeIntent: createHomeIntent(),

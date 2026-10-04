@@ -23,7 +23,7 @@ export type Settle = () => Promise<void>;
 const NOTHING: Settle = () => Promise.resolve();
 
 /** The kit's size, so a scenario lost from the list reds here rather than passing unseen (PV12). */
-export const ENGINE_SCENARIO_COUNT = 13;
+export const ENGINE_SCENARIO_COUNT = 14;
 
 export function describeEngineContract(
   name: string,

@@ -1,6 +1,7 @@
-import { useCallback, useMemo, type ReactNode } from 'react';
+import { useCallback, useMemo, useState, type ReactNode } from 'react';
+import { lastLanguage } from '@/hooks/lastLanguage';
 import type { Ports } from '@/hooks/usePorts';
-import { pickLanguage } from '@/i18n/language';
+import { pickLanguage, type Lang } from '@/i18n/language';
 import { createTranslator } from '@/i18n/translate';
 import { ErrorBoundary } from '@/ui/components/ErrorBoundary';
 
@@ -17,18 +18,23 @@ import { ErrorBoundary } from '@/ui/components/ErrorBoundary';
  * `go('stream')` would see a cached `stream` and do nothing.
  *
  * It sits outside the language provider, which may be what crashed, so it
- * reads in the phone's language, not the operator's pick.
+ * reads the language the provider last resolved (P1), falling back to the
+ * phone's, with no storage read on the crash path.
  */
 export function RootBoundary({ ports, children }: { ports: Ports; children: ReactNode }) {
-  const { t } = useMemo(
-    () => createTranslator(pickLanguage(null, ports.deviceLanguages)),
+  const phone = useCallback(
+    () => pickLanguage(null, ports.deviceLanguages),
     [ports.deviceLanguages],
   );
+  const [lang, setLang] = useState<Lang>(phone);
+  const { t } = useMemo(() => createTranslator(lang), [lang]);
   // The splash first (R15); the message never reaches the record: it may carry anything.
   const onCatch = useCallback(() => {
     ports.splash.hide();
     ports.logger.error('ui.crash');
-  }, [ports]);
+    // P1: the operator's language, else the phone's. Read now, not at mount: it may have changed since.
+    setLang(lastLanguage() ?? phone());
+  }, [ports, phone]);
   const onRetry = useCallback(() => ports.navigation.restart(), [ports]);
   return (
     <ErrorBoundary

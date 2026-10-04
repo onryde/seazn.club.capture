@@ -9,6 +9,7 @@ import { usePorts } from '@/hooks/usePorts';
 import { CodePanel } from '@/ui/components/CodePanel';
 import { ContinueCard } from '@/ui/components/ContinueCard';
 import { DevPaste } from '@/ui/components/DevPaste';
+import { DevProbe } from '@/ui/components/DevProbe';
 import { HomeFooter } from '@/ui/components/HomeFooter';
 import { StatusLine } from '@/ui/components/StatusLine';
 import { Text } from '@/ui/components/Text';
@@ -65,6 +66,7 @@ function HomeContent({ view, actions }: { view: HomeView; actions: HomeActions }
       <ContinueSlot view={view} actions={actions} />
       <ModeTiles onPress={actions.tapTile} />
       {devTools ? <DevPaste onUse={actions.useRaw} /> : null}
+      {devTools ? <DevProbe /> : null}
       <HomeFooter version={appVersion} />
     </View>
   );

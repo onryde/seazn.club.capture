@@ -1,3 +1,4 @@
+import type { SessionState } from '@/domain/session/SessionState';
 import type { CaptureEnginePort, EngineSnapshot } from './CaptureEnginePort';
 import { intentWire } from './intentWire';
 import type { CaptureEngineNative, Subscription } from './nativeModule';
@@ -26,8 +27,18 @@ export type NativeCaptureEngine = CaptureEnginePort & {
    * (AGENTS §2).
    */
   settled(): Promise<void>;
-  /** Numbers and sends a non-intent op that native acks (Task 27's host `script` and `readiness`). */
+  /**
+   * Numbers and sends a non-intent op that native acks (Task 27's host `script` and `readiness`).
+   * Resolves once native has acked the last seq sent, which may be a later one than this op's own
+   * (review C4c): it waits for everything outstanding, never for its own ack alone.
+   */
   sendNumbered(op: (seq: number) => void): Promise<void>;
+  /**
+   * C4c carry (b): the kind native reports now, read at once from `current()`, ahead of the
+   * snapshot event Expo has queued for JS. The JS snapshot's kind when native has written nothing
+   * readable. Read by M16's record routing only, once per JS line.
+   */
+  currentKind(): SessionState['kind'];
   dispose(): void;
 };
 
@@ -80,6 +91,11 @@ export function createNativeCaptureEngine(
       return () => listeners.delete(onChange);
     },
     getSnapshot: () => snapshot,
+    currentKind: () => {
+      const body = native.current();
+      const now = body == null ? null : toEngineSnapshot(body, cache);
+      return (now ?? snapshot).state.kind;
+    },
     forward: (entry) => native.log(entry.level, entry.event, { ...entry.fields }),
     settled: acks.settled,
     dispose: () => {

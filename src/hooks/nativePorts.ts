@@ -1,7 +1,8 @@
 import Constants from 'expo-constants';
 import { getLocales } from 'expo-localization';
 import { router } from 'expo-router';
-import { createFakeCaptureEngine } from '@/engine/FakeCaptureEngine';
+import { loadCaptureEngineNative } from '@/engine/nativeModule';
+import { chooseEngine, routedRecordFor } from '@/hooks/engineWiring';
 import type { Ports } from '@/hooks/usePorts';
 import { createNativeCodeScanner } from '@/scanner/nativeCodeScanner';
 import type { CodePort } from '@/services/codePort';
@@ -26,14 +27,25 @@ import { createRingRecord } from '@/services/sessionRecord';
 import { createStreamSettingsStore } from '@/services/streamSettingsStore';
 
 /**
- * The composition root's parts. The engine is the fake in S0 — main has no
- * native engine yet; S1 brings StreamPack from spike/p5-android and changes
- * this one line (spec §8).
+ * The composition root's parts (AGENTS §3). The engine is chosen by
+ * `chooseEngine` (CD24): native in every release build that has the module.
+ *
+ * C4c carry (c): until Task 33 builds the native module, an Android build
+ * wires the absent engine, which ends every pair fatal-error. No device build
+ * between Task 32 and Task 33 without `EXPO_PUBLIC_FAKE_ENGINE=1`.
  */
 export function createNativePorts(): Ports {
-  const record = createRingRecord();
+  const ring = createRingRecord();
+  const wired = chooseEngine({
+    dev: __DEV__,
+    fakeFlag: process.env.EXPO_PUBLIC_FAKE_ENGINE,
+    native: loadCaptureEngineNative(),
+    now: Date.now,
+    onRecordLine: ring.appendLine,
+  });
+  // M16: the rule is pure and tested in Task 26; its wiring in `routedRecordFor`.
+  const record = routedRecordFor(ring, wired);
   const logger = createLogger({ record, now: Date.now, minLevel: __DEV__ ? 'debug' : 'info' });
-  const engine = createFakeCaptureEngine();
   const kv = withTimeout(createSecureKeyValueStore(), { logger });
   const scanner = createNativeCodeScanner();
   scanner.prepare();
@@ -42,8 +54,9 @@ export function createNativePorts(): Ports {
   const hosts = seaznHosts(env);
   const code = createCodePort({ env, logger });
   return {
-    engine,
-    devEngine: __DEV__ ? engine : null,
+    engine: wired.engine,
+    devEngine: wired.devEngine,
+    nativeEngine: wired.native,
     scanner,
     code,
     environment: seaznEnvironment(env),

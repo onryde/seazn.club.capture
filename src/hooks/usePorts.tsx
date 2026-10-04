@@ -1,6 +1,7 @@
 import { createContext, useContext, type ReactNode } from 'react';
 import type { CaptureEnginePort } from '@/engine/CaptureEnginePort';
 import type { FakeCaptureEngine } from '@/engine/FakeCaptureEngine';
+import type { NativeCaptureEngine } from '@/engine/nativeCaptureEngine';
 import { EngineProvider } from '@/hooks/useCaptureEngine';
 import type { CodeScannerPort } from '@/scanner/CodeScannerPort';
 import type { Environment } from '@/domain/session/Pairing';
@@ -32,6 +33,8 @@ export type Ports = {
   readonly engine: CaptureEnginePort;
   /** The fake engine's extra controls, for the development-only buttons. Null in release. */
   readonly devEngine: FakeCaptureEngine | null;
+  /** The bridge, when native is wired: read only by the dev probe (`settled()`). Null otherwise. */
+  readonly nativeEngine: NativeCaptureEngine | null;
   readonly scanner: CodeScannerPort;
   /** The server's word on a scanned stream code (amendment §2, `GET code`). */
   readonly code: CodePort;

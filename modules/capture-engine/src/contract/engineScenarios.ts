@@ -24,6 +24,13 @@ export type Scenario = {
   readonly name: string;
   /** Needs the server's words: run on the fake and the JVM host, and on a phone only with Task 34's scripted server. */
   readonly needsServer: boolean;
+  /**
+   * Runs in the device probe (Task 32): sends no `start` and needs no server
+   * word, so a phone answers it the same in any room and any hand. The probe
+   * still needs the scripted code server's `waiting` script (Task 34), or the
+   * phone's first beat reaches staging with a made-up token.
+   */
+  readonly onPhone: boolean;
   run(kit: ScenarioKit): Promise<void>;
 };
 
@@ -107,6 +114,7 @@ export const ENGINE_SCENARIOS: readonly Scenario[] = [
   {
     name: 'pairs from idle, named by code, slot and token tag; a second pair for it changes nothing',
     needsServer: false,
+    onPhone: true,
     run: async (kit) => {
       same(kind(kit), 'idle', 'before');
       await kit.send(KIT_CODE_A);
@@ -120,6 +128,7 @@ export const ENGINE_SCENARIOS: readonly Scenario[] = [
   {
     name: 'pairs another code over a pairing, and holds the new name',
     needsServer: false,
+    onPhone: true,
     run: async (kit) => {
       await kit.send(KIT_CODE_A);
       await kit.send(KIT_CODE_B);
@@ -130,6 +139,7 @@ export const ENGINE_SCENARIOS: readonly Scenario[] = [
   {
     name: "goes on air from paired on the operator's start; a start from idle does nothing",
     needsServer: false,
+    onPhone: false,
     run: async (kit) => {
       await kit.send({ kind: 'start' });
       same(kind(kit), 'idle', 'a start from idle');
@@ -142,6 +152,7 @@ export const ENGINE_SCENARIOS: readonly Scenario[] = [
   {
     name: "goes on air on the organiser's Go live, with no intent",
     needsServer: true,
+    onPhone: false,
     run: async (kit) => {
       await kit.send(KIT_CODE_A);
       await kit.say({ word: 'go-live', cause: 'organiser' });
@@ -152,6 +163,7 @@ export const ENGINE_SCENARIOS: readonly Scenario[] = [
   {
     name: 'holds a Go live in armed until the phone is ready, then goes on air',
     needsServer: true,
+    onPhone: false,
     run: async (kit) => {
       await kit.send(KIT_CODE_A);
       await kit.ready({ held: false });
@@ -169,6 +181,7 @@ export const ENGINE_SCENARIOS: readonly Scenario[] = [
   {
     name: 'stops a broadcast operator-stopped, still naming the pairing; a stop while paired does nothing',
     needsServer: false,
+    onPhone: false,
     run: async (kit) => {
       await kit.send(KIT_CODE_A);
       await kit.send({ kind: 'stop' });
@@ -183,6 +196,7 @@ export const ENGINE_SCENARIOS: readonly Scenario[] = [
   {
     name: 'unpairs from paired to idle, naming nothing; an unpair while a broadcast is held does nothing',
     needsServer: false,
+    onPhone: false,
     run: async (kit) => {
       await kit.send(KIT_CODE_A);
       await kit.send({ kind: 'start' });
@@ -200,6 +214,7 @@ export const ENGINE_SCENARIOS: readonly Scenario[] = [
   {
     name: 'takeover: a replaced answer unpairs to idle, naming the code and the reason',
     needsServer: true,
+    onPhone: false,
     run: async (kit) => {
       await kit.send(KIT_CODE_A);
       await kit.say({ word: 'replaced' });
@@ -210,6 +225,7 @@ export const ENGINE_SCENARIOS: readonly Scenario[] = [
   {
     name: 'rejoin: a live answer while paired goes on air, caused by the rejoin',
     needsServer: true,
+    onPhone: false,
     run: async (kit) => {
       await kit.send(KIT_CODE_A);
       await kit.say({ word: 'live' });
@@ -220,6 +236,7 @@ export const ENGINE_SCENARIOS: readonly Scenario[] = [
   {
     name: "an organiser's stop returns to paired with its last end, and Ended is never shown",
     needsServer: true,
+    onPhone: false,
     run: async (kit) => {
       await kit.send(KIT_CODE_A);
       await kit.say({ word: 'go-live', cause: 'organiser' });
@@ -232,6 +249,7 @@ export const ENGINE_SCENARIOS: readonly Scenario[] = [
   {
     name: 'resets only from ended; a pair in ended is ignored; reset then pair pairs',
     needsServer: false,
+    onPhone: false,
     run: async (kit) => {
       await kit.send(KIT_CODE_A);
       await kit.send({ kind: 'reset' });
@@ -249,6 +267,7 @@ export const ENGINE_SCENARIOS: readonly Scenario[] = [
   {
     name: 'carry 27: a stop is answered — the broadcast is ended once the engine has settled',
     needsServer: false,
+    onPhone: false,
     run: async (kit) => {
       await kit.send(KIT_CODE_A);
       await kit.send({ kind: 'start' });
@@ -261,6 +280,7 @@ export const ENGINE_SCENARIOS: readonly Scenario[] = [
     // the stop or after it), so only the reset then the pair is named as taken in order.
     name: 'carry 28: a pair sent with a stop is ignored while A is held, and the stop ends A; a reset then a pair are taken in order',
     needsServer: false,
+    onPhone: false,
     run: async (kit) => {
       await kit.send(KIT_CODE_A);
       await kit.send({ kind: 'start' });
@@ -273,6 +293,23 @@ export const ENGINE_SCENARIOS: readonly Scenario[] = [
         ['paired', nameOf(KIT_CODE_B)],
         'reset then pair, in order (Identity rules)',
       );
+    },
+  },
+  {
+    name: 'pairs, then unpairs to idle naming nothing; a second unpair changes nothing',
+    needsServer: false,
+    onPhone: true,
+    run: async (kit) => {
+      await kit.send(KIT_CODE_A);
+      same(kind(kit), 'paired', 'after pair');
+      await kit.send({ kind: 'unpair' });
+      same(
+        [kind(kit), named(kit.snapshot()), kit.snapshot().unpaired],
+        ['idle', null, null],
+        'after unpair',
+      );
+      await kit.send({ kind: 'unpair' });
+      same(kind(kit), 'idle', 'after a second unpair');
     },
   },
 ];

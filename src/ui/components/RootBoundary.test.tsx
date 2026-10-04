@@ -3,6 +3,8 @@ import type { ReactElement } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { selectAudioLevel, selectStateKind } from '@/hooks/engineSelectors';
 import { useEngineSelector } from '@/hooks/useCaptureEngine';
+import { noteLanguage, resetLastLanguage } from '@/hooks/lastLanguage';
+import { STORE_KEYS } from '@/services/modeStore';
 import { RootBoundary } from '@/ui/components/RootBoundary';
 import { createFakePorts, readRecord, TEST_NOW } from '../../../test/fakePorts';
 import { captureRaw, epochSeconds } from '../../../test/fixtures/wire';
@@ -56,6 +58,8 @@ describe('RootBoundary', () => {
   // React reports every caught render error on console.error; keep the run quiet.
   beforeEach(() => {
     vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    // Each test starts as a cold launch: no language resolved yet (P1).
+    resetLastLanguage();
   });
   afterEach(() => {
     vi.restoreAllMocks();
@@ -120,6 +124,51 @@ describe('RootBoundary', () => {
     expect(screen.getByText(title)).toBeTruthy();
     expect(screen.getByText(note)).toBeTruthy();
     expect(screen.getByRole('button', { name: retry })).toBeTruthy();
+  });
+
+  it('P1 a crash after the operator picked French reads in French, though the phone is English', () => {
+    noteLanguage('fr');
+    const fakes = createFakePorts({ deviceLanguages: ['en'] });
+    render(
+      <RootBoundary ports={fakes.ports}>
+        <Boom />
+      </RootBoundary>,
+    );
+    expect(screen.getByText('Un problème est survenu')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Réessayer' })).toBeTruthy();
+  });
+
+  it('P1 a crash before any language resolved reads in the phone language', () => {
+    const fakes = createFakePorts({ deviceLanguages: ['nl'] });
+    render(
+      <RootBoundary ports={fakes.ports}>
+        <Boom />
+      </RootBoundary>,
+    );
+    expect(screen.getByText('Er ging iets mis')).toBeTruthy();
+  });
+
+  // The seam through its real producer: the language provider notes the operator's saved pick.
+  it('P1 a crash in the app reads the pick the language provider resolved', async () => {
+    vi.useFakeTimers();
+    try {
+      const app = await launchApp({
+        kvSeed: { [STORE_KEYS.lang]: 'nl' },
+        extra: <HudPart />,
+        around: (ui, fakes) => <RootBoundary ports={fakes.ports}>{ui}</RootBoundary>,
+      });
+      // The phone is English; the operator's saved pick is Dutch, and the app reads it.
+      expect(app.ports.deviceLanguages).toEqual(['en']);
+      expect(screen.getByRole('button', { name: /Livestream/ })).toBeTruthy();
+      crash.on = true;
+      act(() => app.engine.forceState({ kind: 'pairing' }));
+      await flush();
+      expect(screen.getByText('Er ging iets mis')).toBeTruthy();
+      expect(screen.queryByText('Something broke')).toBeNull();
+    } finally {
+      crash.on = false;
+      vi.useRealTimers();
+    }
   });
 
   describe('on air', () => {

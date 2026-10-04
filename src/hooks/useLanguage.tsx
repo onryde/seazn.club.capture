@@ -9,6 +9,7 @@ import {
 } from 'react';
 import { parseLang, pickLanguage, type Lang } from '@/i18n/language';
 import { createTranslator, type Translator } from '@/i18n/translate';
+import { noteLanguage } from '@/hooks/lastLanguage';
 import { usePorts } from '@/hooks/usePorts';
 import type { KeyValueStore } from '@/services/KeyValueStore';
 import type { Logger } from '@/services/logger';
@@ -30,10 +31,11 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
   const { kv, logger, deviceLanguages } = usePorts();
   const [stored, setLang] = useStoredLang(kv, logger);
   const lang = pickLanguage(stored, deviceLanguages);
-  const value = useMemo(
-    () => ({ translator: createTranslator(lang), lang, setLang }),
-    [lang, setLang],
-  );
+  const value = useMemo(() => {
+    // P1: the crash screen's language, set before any child renders.
+    noteLanguage(lang);
+    return { translator: createTranslator(lang), lang, setLang };
+  }, [lang, setLang]);
   return <LanguageContext.Provider value={value}>{children}</LanguageContext.Provider>;
 }
 

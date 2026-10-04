@@ -117,6 +117,21 @@ describe('the native engine (carry 1)', () => {
     expect(engine.getSnapshot().reportedAtMs).toBe(9_000);
   });
 
+  // C4c carry (b): M16 routes a JS line by the kind native reports when it is written, read at once
+  // from `current()`, ahead of the snapshot event Expo has queued; the JS snapshot's when unreadable.
+  it.each([
+    ['paired', pairedWire, 'paired'],
+    ['nothing yet', null, 'idle'],
+    ['a malformed body', { state: { kind: 'exploded' } }, 'idle'],
+  ])('reads the kind native reports now: %s', (_why, current, kind) => {
+    const shared: { current?: unknown } = { current: null };
+    const native = new FakeNativeModule(shared);
+    const engine = createNativeCaptureEngine(native, quiet);
+    shared.current = current;
+    expect(engine.getSnapshot().state.kind).toBe('idle');
+    expect(engine.currentKind()).toBe(kind);
+  });
+
   // Review C4c round 1, minor 3: between lines the logged count is a floor, so dispose writes the rest.
   it('I-4 a burst of malformed snapshots then dispose records the full count, once', async () => {
     const native = new FakeNativeModule({ current: pairedWire });
