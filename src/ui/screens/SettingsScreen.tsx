@@ -26,6 +26,9 @@ const LIBSRT_SOURCE = 'https://github.com/Haivision/srt';
  * Neither choice disturbs a live broadcast — the score preview is this phone's
  * only, and the side moves only the controls — so nothing here is disabled on
  * air. The encode profile, when it comes, is the first that will be.
+ * Start and stop automatically stays usable on air, the one named exception
+ * to AGENTS §6's rule: it only affects the automatic stop (amendment §2).
+ * `useEngineSync` (in the shell) tells native when it changes.
  */
 export function SettingsScreen() {
   const { t } = useT();
@@ -34,6 +37,10 @@ export function SettingsScreen() {
   const toggleOverlay = useCallback(
     () => change({ overlay: !settings.overlay }),
     [change, settings.overlay],
+  );
+  const toggleAutomatic = useCallback(
+    () => change({ automatic: !settings.automatic }),
+    [change, settings.automatic],
   );
   return (
     <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
@@ -45,6 +52,13 @@ export function SettingsScreen() {
         onPress={toggleOverlay}
       />
       <Text variant="metricUnit">{t('settings.overlay.hint')}</Text>
+      <ChoiceRow
+        label={t('settings.automatic.label')}
+        role="switch"
+        checked={settings.automatic}
+        onPress={toggleAutomatic}
+      />
+      <Text variant="metricUnit">{t('settings.automatic.hint')}</Text>
       <SideChoice side={settings.side} change={change} />
       <Text variant="control">{t('settings.power.label')}</Text>
       <Text variant="body">{t('settings.power.advice')}</Text>

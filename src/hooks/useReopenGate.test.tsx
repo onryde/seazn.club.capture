@@ -6,9 +6,11 @@ import { useEngineFollow } from '@/hooks/useEngineFollow';
 import { useReopenGate } from '@/hooks/useReopenGate';
 import { createMemoryKeyValueStore, type KeyValueStore } from '@/services/KeyValueStore';
 import { createModeStore, STORE_KEYS } from '@/services/modeStore';
+import { createStreamSettingsStore, SETTINGS_KEY } from '@/services/streamSettingsStore';
 import { createFakePorts, readRecord, TEST_NOW } from '../../test/fakePorts';
 import { savedStreamCode } from '../../test/fixtures/savedStream';
 import { FIXTURE_CODE } from '../../test/fixtures/wire';
+import { heldReads } from '../../test/heldReads';
 import { pairCode } from '../../test/pairCode';
 import { wrapperFor } from '../../test/renderWithPorts';
 
@@ -427,7 +429,31 @@ describe('useReopenGate: the cold-start re-pair', () => {
     expect(pairs(fakes)).toHaveLength(1);
     expect(fakes.navigation.current()).toBe('stream');
   });
+
+  // Task 30 (review M12): the cold-start `pair` carries the saved switch, not the default.
+  it('waits for the saved switch before the cold-start pair, then carries it', async () => {
+    const fakes = createFakePorts({ kvSeed: inStream });
+    const held = heldReads(createMemoryKeyValueStore({ [SETTINGS_KEY]: SWITCH_OFF }));
+    const ports = {
+      ...fakes,
+      ports: {
+        ...fakes.ports,
+        streamSettings: createStreamSettingsStore(held.store, fakes.ports.logger),
+      },
+    };
+    await shell(ports);
+    await flush(1_000);
+    expect(pairs(fakes)).toEqual([]);
+    expect(fakes.splash.hides).toBe(0);
+    await act(async () => held.release());
+    await flush();
+    expect(pairs(fakes)).toEqual([expect.objectContaining({ claim: 'resume', automatic: false })]);
+    expect(fakes.splash.hides).toBe(1);
+  });
 });
+
+/** The switch saved off, as Settings writes it (v2, A4). */
+const SWITCH_OFF = '{"v":2,"overlay":true,"side":"right","automatic":false}';
 
 function fail(): never {
   throw new Error('the fixture has a stream part');

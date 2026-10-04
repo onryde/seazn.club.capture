@@ -22,6 +22,8 @@ type Copy = {
   readonly retry: boolean;
   /** False only while checking: no Scan again, and neither the dim nor Back closes it. */
   readonly closable: boolean;
+  /** A7's sheet only: the button that keeps the pairing. */
+  readonly cancel: string | null;
 };
 
 /** A panel that has said its piece: Scan again, and the dim closes it. */
@@ -31,6 +33,7 @@ const settled = (title: string, body: string | null, open: string | null = null)
   open,
   retry: false,
   closable: true,
+  cancel: null,
 });
 
 /** Every outcome, in the operator's words (decisions 3 and 10). Never "Invalid code". */
@@ -63,11 +66,19 @@ function panelCopy(outcome: HomePanel, t: Translator['t'], time: string | null):
         open: null,
         retry: false,
         closable: false,
+        cancel: null,
       };
     case 'codeError':
       return codeCopy(outcome.error, t);
     case 'unpaired':
       return settled(t(UNPAIRED[outcome.reason].title), t(UNPAIRED[outcome.reason].body));
+    case 'unpairConfirm': {
+      const mode = t(MODE_NAME[outcome.code.mode]);
+      return {
+        ...settled(t('sheet.unpair.body', { mode }), null, t('sheet.unpair.confirm')),
+        cancel: t('sheet.unpair.cancel'),
+      };
+    }
   }
 }
 
@@ -111,6 +122,10 @@ type CodePanelProps = {
   onScanAgain: () => void;
   onClose: () => void;
   onTryAgain: () => void;
+  /** A7's sheet: Unpair & open. */
+  onConfirmUnpair: () => void;
+  /** A7's sheet: Cancel. */
+  onCancelUnpair: () => void;
 };
 
 /**
@@ -122,11 +137,12 @@ type CodePanelProps = {
  */
 export const CodePanel = memo(function CodePanel(props: CodePanelProps) {
   const { t } = useT();
-  const { outcome, onOpen } = props;
+  const { outcome, onOpen, onConfirmUnpair } = props;
   const copy = panelCopy(outcome, t, props.time);
   const open = useCallback(() => {
     if (outcome.kind === 'otherMode') onOpen(outcome.code);
-  }, [outcome, onOpen]);
+    if (outcome.kind === 'unpairConfirm') onConfirmUnpair();
+  }, [outcome, onOpen, onConfirmUnpair]);
   return (
     <View style={styles.overlay}>
       <Pressable
@@ -143,6 +159,9 @@ export const CodePanel = memo(function CodePanel(props: CodePanelProps) {
         <Text variant="title">{copy.title}</Text>
         {copy.body === null ? null : <Text variant="body">{copy.body}</Text>}
         {copy.open === null ? null : <Button label={copy.open} onPress={open} />}
+        {copy.cancel === null ? null : (
+          <GhostButton label={copy.cancel} onPress={props.onCancelUnpair} />
+        )}
         {copy.retry ? <Button label={t('panel.tryAgain')} onPress={props.onTryAgain} /> : null}
         {copy.closable ? (
           <GhostButton label={t('panel.scanAgain')} onPress={props.onScanAgain} />

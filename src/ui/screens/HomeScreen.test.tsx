@@ -25,6 +25,7 @@ import { createFakePorts, readRecord, TEST_NOW } from '../../../test/fakePorts';
 import { renderWithPorts, wrapperFor } from '../../../test/renderWithPorts';
 import { savedStreamCode } from '../../../test/fixtures/savedStream';
 import { pairCode } from '../../../test/pairCode';
+import { refusingStore } from '../../../test/refusingStore';
 import { captureRaw, epochSeconds, FIXTURE_CODE, FIXTURE_TOKEN } from '../../../test/fixtures/wire';
 
 const IN_TWO_HOURS = new Date(TEST_NOW.getTime() + 2 * 3600_000);
@@ -461,17 +462,6 @@ describe('Home: a refused save is never silent (R19)', () => {
     process.off('unhandledRejection', onRejection);
   });
 
-  /** Reads always work; a write to a key `refuses` names throws, as a locked Keystore does. */
-  function refusingStore(seed: Record<string, string>, refuses: (key: string) => boolean) {
-    const memory = createMemoryKeyValueStore(seed);
-    const refuse = () => Promise.reject(new Error('keystore locked'));
-    const kv: KeyValueStore = {
-      get: memory.get,
-      set: (key, value) => (refuses(key) ? refuse() : memory.set(key, value)),
-      delete: (key) => (refuses(key) ? refuse() : memory.delete(key)),
-    };
-    return createModeStore(kv);
-  }
   const every = () => true;
   const activeOnly = (key: string) => key === STORE_KEYS.active;
   const leftStream = { [STORE_KEYS.code('stream')]: savedStream(AT_1840) };

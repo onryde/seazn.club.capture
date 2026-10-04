@@ -34,6 +34,8 @@ export function HomeScreen() {
           onScanAgain={actions.scanAgain}
           onClose={actions.closePanel}
           onTryAgain={actions.retryCheck}
+          onConfirmUnpair={actions.confirmUnpair}
+          onCancelUnpair={actions.cancelUnpair}
         />
       )}
     </View>

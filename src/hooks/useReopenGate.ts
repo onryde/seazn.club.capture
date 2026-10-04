@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useSyncExternalStore } from 'react';
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import {
   expiredModes,
   orphanedSession,
@@ -25,6 +25,7 @@ export function useReopenGate(navigatorReady: boolean): void {
   const { modeStore, foreground, splash, scanFlight } = usePorts();
   // Only the status: Shell must not re-render on every store publish.
   const status = useSyncExternalStore(modeStore.subscribe, () => modeStore.getSnapshot().status);
+  const settingsLoaded = useSettingsLoaded();
   const decided = useRef(false);
   const settle = useSettle();
 
@@ -32,12 +33,14 @@ export function useReopenGate(navigatorReady: boolean): void {
     void modeStore.load();
   }, [modeStore]);
 
+  // Task 30 (review M12): the cold-start `pair` carries the saved switch, so
+  // the first decision waits for the settings too. `load()` never rejects.
   useEffect(() => {
-    if (!navigatorReady || status !== 'ready' || decided.current) return;
+    if (!navigatorReady || status !== 'ready' || !settingsLoaded || decided.current) return;
     decided.current = true;
     settle(true);
     splash.hide();
-  }, [navigatorReady, status, settle, splash]);
+  }, [navigatorReady, status, settingsLoaded, settle, splash]);
 
   // Not before the first decision: Expo Router refuses a move before its
   // navigator mounts. Not on the way back from Home's scanner either (I2, R36):
@@ -51,6 +54,20 @@ export function useReopenGate(navigatorReady: boolean): void {
     [foreground, settle, scanFlight],
   );
   useEffect(() => foreground.subscribeBackground(scanFlight.appLeft), [foreground, scanFlight]);
+}
+
+/** True once the stream settings have been read (`load()` never rejects, so it always arrives). */
+function useSettingsLoaded(): boolean {
+  const { streamSettings } = usePorts();
+  const [loaded, setLoaded] = useState(false);
+  useEffect(() => {
+    let alive = true;
+    void streamSettings.load().then(() => alive && setLoaded(true));
+    return () => {
+      alive = false;
+    };
+  }, [streamSettings]);
+  return loaded;
 }
 
 /**

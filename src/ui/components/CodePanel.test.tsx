@@ -19,6 +19,8 @@ const handlers = () => ({
   onScanAgain: vi.fn(),
   onClose: vi.fn(),
   onTryAgain: vi.fn(),
+  onConfirmUnpair: vi.fn(),
+  onCancelUnpair: vi.fn(),
 });
 
 describe('CodePanel', () => {

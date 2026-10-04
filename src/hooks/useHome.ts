@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from '
 import type { CodeError } from '@/domain/credentials/waitingFields';
 import { continueCard, type ContinueCopy } from '@/domain/mode/continueCard';
 import type { Mode, ModeCode } from '@/domain/mode/Mode';
+import { asksBeforeOpening } from '@/domain/mode/otherMode';
 import { recognise } from '@/domain/mode/recognise';
 import {
   isExpired,
@@ -58,7 +59,9 @@ export type HomePanel =
       readonly error: CodeError;
       readonly code: StreamCode;
     }
-  | { readonly kind: 'unpaired'; readonly tapped: 'stream'; readonly reason: UnpairReason };
+  | { readonly kind: 'unpaired'; readonly tapped: 'stream'; readonly reason: UnpairReason }
+  /** A7: another mode while paired asks first; its confirm unpairs, forgets, then opens. */
+  | { readonly kind: 'unpairConfirm'; readonly tapped: Mode; readonly code: ModeCode };
 
 export type HomeView = {
   readonly statusText: string;
@@ -80,6 +83,10 @@ export type HomeActions = {
   forgetStream(): void;
   /** Development builds only: a pasted code, handled as if scanned from Live Stream. */
   useRaw(raw: string): void;
+  /** A7's sheet: unpair, forget the stream code, then open the other mode. */
+  confirmUnpair(): void;
+  /** A7's sheet: keep the pairing; nothing is sent. */
+  cancelUnpair(): void;
 };
 
 /** Home's own line of news: a scanner reason, or a refused save. Cleared by the next tap. */
@@ -113,7 +120,13 @@ export function useHome(): { view: HomeView; actions: HomeActions } {
   useUnpairedPanel(panel, setPanel);
   const [statusKey, setStatusKey] = useState<MessageKey | null>(null);
   const saveFailed = useSaveFailed(setStatusKey);
-  const openCode = useOpenCode(setStatusKey, saveFailed);
+  const openCode = useOpenCode(setStatusKey, saveFailed, setPanel);
+  const { confirm: confirmUnpair, cancel: cancelUnpair } = useUnpairConfirm(
+    panel,
+    setPanel,
+    openCode,
+    saveFailed,
+  );
   const { openOrCheck, retryCheck } = useCodeCheck(openCode, panel, setPanel);
   const handle = useHandleScan(openOrCheck, setPanel, setStatusKey);
   const tapTile = useTapTile(handle, setPanel, setStatusKey);
@@ -130,6 +143,8 @@ export function useHome(): { view: HomeView; actions: HomeActions } {
     continueStream,
     forgetStream,
     useRaw: pasteRaw,
+    confirmUnpair,
+    cancelUnpair,
   };
   return { view, actions };
 }
@@ -157,12 +172,20 @@ function useSaveFailed(setStatusKey: SetStatusKey): SaveFailed {
  * stream code is paired once it is saved, never before (amendment §2's
  * outcome table: saved, then /stream, then pair).
  */
-function useOpenCode(setStatusKey: SetStatusKey, saveFailed: SaveFailed): OpenCode {
-  const { modeStore, clock, navigation } = usePorts();
+function useOpenCode(
+  setStatusKey: SetStatusKey,
+  saveFailed: SaveFailed,
+  setPanel: SetPanel,
+): OpenCode {
+  const { modeStore, clock, navigation, engine } = usePorts();
   const pair = usePairing();
   return useCallback(
     async (code: ModeCode, stream: SavedStream | null) => {
       if (!isReady(modeStore)) return;
+      // A7: another mode while paired asks first; the sheet's confirm opens it.
+      if (asksBeforeOpening(code.mode, selectEngineStatus(engine.getSnapshot()))) {
+        return setPanel({ kind: 'unpairConfirm', tapped: code.mode, code });
+      }
       const saved = savedCodeFrom(code, clock(), stream);
       try {
         await modeStore.open(saved);
@@ -174,9 +197,54 @@ function useOpenCode(setStatusKey: SetStatusKey, saveFailed: SaveFailed): OpenCo
       navigation.go('stream');
       pair(saved, 'new');
     },
-    [modeStore, clock, navigation, pair, setStatusKey, saveFailed],
+    [modeStore, clock, navigation, engine, pair, setStatusKey, saveFailed, setPanel],
   );
 }
+
+/**
+ * A7's sheet. Confirm unpairs (`useUnpair('otherMode')`), forgets the stream
+ * code once the engine is Idle, as the operator's Stop does (Process death and
+ * reopen), then opens the other mode. A Go live that raced it holds the
+ * broadcast: the code is kept and nothing opens. A refused forget is never
+ * silent (R19): the line says so, and the other mode does not open. The sheet
+ * closes as Cancel when the engine leaves Paired under it; a panel that
+ * replaced it in the same moment (Task 29's unpair) is left standing.
+ */
+function useUnpairConfirm(
+  panel: HomePanel | null,
+  setPanel: SetPanel,
+  openCode: OpenCode,
+  saveFailed: SaveFailed,
+): { confirm: () => void; cancel: () => void } {
+  const { modeStore } = usePorts();
+  const unpair = useUnpair();
+  const status = useEngineSelector(selectEngineStatus);
+  const open = panel?.kind === 'unpairConfirm' ? panel : null;
+  useEffect(() => {
+    if (open !== null && status !== 'paired') setPanel(closeSheet);
+  }, [open, status, setPanel]);
+  const confirm = useCallback(() => {
+    if (open === null) return;
+    setPanel(closeSheet);
+    unpair('otherMode', (outcome) => {
+      if (outcome === 'held') return;
+      const code = savedStream(modeStore);
+      const forgot = code === null ? Promise.resolve(true) : modeStore.forget(code);
+      forgot
+        .then(
+          () => openCode(open.code, null),
+          () => saveFailed('forget'),
+        )
+        .catch(ignoreUnexpected);
+    });
+  }, [open, setPanel, unpair, modeStore, openCode, saveFailed]);
+  const cancel = useCallback(() => setPanel(null), [setPanel]);
+  return { confirm, cancel };
+}
+
+/** Closes the sheet, and only the sheet: a panel that replaced it stays. */
+const closeSheet = (open: HomePanel | null): HomePanel | null =>
+  open?.kind === 'unpairConfirm' ? null : open;
 
 /**
  * One scan's result: nothing, a reason on the status line, an open, or a

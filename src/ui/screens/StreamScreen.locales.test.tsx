@@ -76,7 +76,8 @@ const SUB_STATES: Readonly<Record<string, (lang: Lang) => Promise<void>>> = {
     view.rerender(<SettingsScreen />);
     const refusing: Partial<KeyValueStore> = { set: () => Promise.reject(new Error('locked')) };
     Object.assign(view.kv, refusing);
-    fireEvent.click(screen.getByRole('switch'));
+    // Two switches since Task 30: the score preview's is the one pressed.
+    fireEvent.click(screen.getByRole('switch', { name: shown(lang, 'settings.overlay.label') }));
     expect(await screen.findByText(shown(lang, 'settings.saveFailed'))).toBeTruthy();
   },
   'a share refused': async (lang) => {

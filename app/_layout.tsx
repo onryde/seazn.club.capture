@@ -5,6 +5,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { createNativePorts } from '@/hooks/nativePorts';
 import { useAppFonts } from '@/hooks/useAppFonts';
 import { useEngineFollow } from '@/hooks/useEngineFollow';
+import { useEngineSync } from '@/hooks/useEngineSync';
 import { LanguageProvider } from '@/hooks/useLanguage';
 import { routeTarget, useOrientationGate } from '@/hooks/useOrientationGate';
 import { PortsProvider, usePorts, type Ports } from '@/hooks/usePorts';
@@ -50,6 +51,8 @@ function Shell() {
   useReopenGate(navigatorReady);
   // Native's word on the saved code, and the route rule (amendment, Process death and reopen).
   useEngineFollow();
+  // Native's copy of the automatic switch and the language (amendment §2, P3).
+  useEngineSync();
   useProtectCode();
   // The one orientation controller (spec §5); its card covers the stack (R25).
   const { card } = useOrientationGate(routeTarget(usePathname()));
