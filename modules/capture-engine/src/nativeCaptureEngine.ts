@@ -76,22 +76,34 @@ export function createNativeCaptureEngine(
 }
 
 /**
- * D3: listen first, buffer what arrives, read the tail, then hand on the tail
- * and every buffered line the tail does not already hold. A line written while
- * the tail was read is in one or the other, never both, never neither. Lines
- * are compared by text: native's carry their own `at`, so two are never equal.
+ * D3: listen first, read the tail, hand it on, then hand on what arrives. Expo
+ * queues an event to the JS thread (review C4c I-3), so the event for a line
+ * written before the tail was read can arrive after it: events come in the
+ * order native wrote them, so arriving lines the tail holds are dropped until
+ * the first it does not, and every line after that is new. Lines are compared
+ * by text: native's carry their own `at`, so two are never equal (Task 33:
+ * native stamps a seq, and the seq replaces the text). A line delivered while
+ * the tail is still being read waits for it, and passes the same check.
  */
 function seedRecord(native: CaptureEngineNative, onLine: (line: string) => void): Subscription {
-  let buffer: string[] | null = [];
+  let early: string[] | null = [];
+  /** The tail's lines, while arriving lines may still repeat them; null once one has not. */
+  let seeded: ReadonlySet<string> | null = null;
+  const arrived = (line: string) => {
+    if (seeded !== null && seeded.has(line)) return;
+    seeded = null;
+    onLine(line);
+  };
   const subscription = native.addListener('onRecord', ({ line }) => {
-    if (buffer === null) onLine(line);
-    else buffer.push(line);
+    if (early === null) arrived(line);
+    else early.push(line);
   });
   const tail = native.tail();
-  const early = buffer;
-  buffer = null;
+  const during = early;
+  early = null;
+  seeded = new Set(tail);
   tail.forEach(onLine);
-  for (const line of early) if (!tail.includes(line)) onLine(line);
+  during.forEach(arrived);
   return subscription;
 }
 
