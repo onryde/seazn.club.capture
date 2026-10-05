@@ -9,12 +9,15 @@ import com.seazn.capture.engine.core.ConnectFailure
 import com.seazn.capture.engine.core.Input
 import com.seazn.capture.engine.core.PairRequest
 import com.seazn.capture.engine.core.RecordEntry
+import com.seazn.capture.engine.core.SessionMachine
 import com.seazn.capture.engine.core.Side
 import java.io.IOException
+import java.util.concurrent.TimeoutException
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 
 /**
  * The capture's rules (Task 36, CD37, CD42), apart from StreamPack so core's tests run them: which call
@@ -144,7 +147,12 @@ class CaptureRun(
     build(asked, wanted)
   }
 
-  /** One endpoint: a connect replaces whatever attempt it still holds, as a stop asked for. */
+  /**
+   * One endpoint: a connect replaces whatever attempt it still holds, as a stop asked for. The start is
+   * bounded by [START_BOUND_MS] (C6 I-1): every later command waits behind it on the one queue, and
+   * komuxer's connect has no timeout of its own, so a hung start would hold an unpair's release, and the
+   * camera, for as long as it hung.
+   */
   private suspend fun connect(command: Command.Connect) {
     val id = command.attemptId
     attempt?.let { if (it != id) stopHeld(it) }
@@ -152,17 +160,27 @@ class CaptureRun(
     attempt = id
     val started =
       try {
-        parts.start(command)
+        withTimeoutOrNull(START_BOUND_MS) { parts.start(command) }
       } catch (e: CancellationException) {
         throw e
       } catch (e: Exception) {
         signals.connectFailed(id, e)?.let(calls.report)
         return
       }
+    if (started == null) return timedOut(id)
     if (!started) return calls.report(Input.ConnectFailed(id, ConnectFailure.OTHER, "srt url does not parse"))
     signals.connected(id)?.let(calls.report)
     noteMicSession()
     watchClose(id)
+  }
+
+  /**
+   * C6 I-1: the start did not end within its bound, a TIMEOUT (the text is what `SrtOptions.failure`
+   * reads). The cancelled start may have left the endpoint half open: it is closed as a stop asked for.
+   */
+  private suspend fun timedOut(id: Int) {
+    signals.connectFailed(id, TimeoutException("start timed out after $START_BOUND_MS ms"))?.let(calls.report)
+    stopHeld(id)
   }
 
   /** N8: checked once per opening, at its first connect, when StreamPack's AudioRecord is recording. */
@@ -213,5 +231,14 @@ class CaptureRun(
   private suspend fun stopBroadcast() {
     attempt?.let { stopHeld(it) }
     parts.afterBroadcast()
+  }
+
+  companion object {
+    /**
+     * A second under the machine's own connect timeout ([SessionMachine.CONNECT_TIMEOUT_MS]): the capture
+     * names the failure while the machine still waits for that attempt, and the queue is free before the
+     * machine gives up on it. SRT's own connect gives up at `SrtOptions`' CONNTIMEO, well inside it.
+     */
+    const val START_BOUND_MS = SessionMachine.CONNECT_TIMEOUT_MS - 1_000
   }
 }

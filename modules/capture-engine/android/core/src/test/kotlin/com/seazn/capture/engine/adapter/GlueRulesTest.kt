@@ -43,7 +43,7 @@ class GlueRulesTest {
     for (file in sources()) {
       val text = file.readText()
       assertFalse("runBlocking" in text, "${file.path}: runBlocking")
-      if (!file.path.endsWith("srt/SeaznSrtSink.kt")) assertFalse("InetAddress" in text, "${file.path}: a DNS lookup outside the sink's IO dispatcher")
+      if (!file.path.endsWith("srt/connect/SrtConnection.kt")) assertFalse("InetAddress" in text, "${file.path}: a DNS lookup outside the SRT connection's bounded IO lookup")
     }
   }
 

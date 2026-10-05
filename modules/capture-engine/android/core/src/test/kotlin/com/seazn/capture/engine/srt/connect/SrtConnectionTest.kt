@@ -2,6 +2,7 @@ package com.seazn.capture.engine.srt.connect
 
 import com.seazn.capture.engine.adapter.AttemptSignals
 import com.seazn.capture.engine.adapter.CameraAvailability
+import com.seazn.capture.engine.adapter.SrtOptions
 import com.seazn.capture.engine.capture.run.CaptureParts
 import com.seazn.capture.engine.capture.run.CaptureRun
 import com.seazn.capture.engine.capture.run.FakeParts
@@ -13,18 +14,29 @@ import com.seazn.capture.engine.core.ConnectFailure
 import com.seazn.capture.engine.core.DropReason
 import com.seazn.capture.engine.core.Input
 import com.seazn.capture.engine.core.Side
+import java.net.InetAddress
 import java.net.InetSocketAddress
 import java.net.SocketException
+import java.net.UnknownHostException
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.locks.LockSupport
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
+import kotlin.test.assertNull
+import kotlin.test.assertSame
+import kotlin.test.assertTrue
 
 /**
  * Our SRT sink's connect and end (C6 I-2) on the JVM, driven by the capture's own rules ([CaptureRun])
@@ -160,6 +172,65 @@ class SrtConnectionTest {
       assertFalse(s.connection.isOpen.value, "the endpoint was marked open before the listener, never after it")
     }
 
+  // --- C6 I-1: the host's lookup is inside the start's bound (CaptureRun.START_BOUND_MS) ---
+
+  /** Real threads: the lookup blocks one, as the platform's does, and the bound is CaptureRun's `withTimeoutOrNull`. */
+  private fun bounded(connection: SrtConnection): Pair<InetAddress?, Long> =
+    runBlocking {
+      val began = System.nanoTime()
+      val resolved = withTimeoutOrNull(BOUND_MS) { connection.resolve("ingest.example") }
+      resolved to (System.nanoTime() - began) / 1_000_000
+    }
+
+  @Test
+  fun `C6 I-1 a lookup that ignores an interrupt never holds the connect past its bound`() {
+    val answered = CountDownLatch(1)
+    // Android's resolver (getaddrinfo) ignores an interrupt: this one waits it out, until answered or 3 s.
+    val connection =
+      SrtConnection(AttemptSignals(), {}) {
+        val until = System.nanoTime() + TimeUnit.SECONDS.toNanos(3)
+        while (answered.count > 0 && System.nanoTime() < until) LockSupport.parkNanos(TimeUnit.MILLISECONDS.toNanos(10))
+        InetAddress.getLoopbackAddress()
+      }
+    val (resolved, tookMs) = bounded(connection)
+    answered.countDown()
+    assertNull(resolved, "the bound ended the connect")
+    assertTrue(tookMs < 1_000, "the bound ended the wait at $tookMs ms, not the lookup's own end")
+  }
+
+  @Test
+  fun `C6 I-1 a lookup that honours an interrupt is interrupted once the bound ends`() {
+    val interrupted = CountDownLatch(1)
+    val connection =
+      SrtConnection(AttemptSignals(), {}) {
+        try {
+          Thread.sleep(10_000)
+        } catch (e: InterruptedException) {
+          interrupted.countDown()
+          throw e
+        }
+        InetAddress.getLoopbackAddress()
+      }
+    assertNull(bounded(connection).first)
+    assertTrue(interrupted.await(2, TimeUnit.SECONDS), "the lookup's thread was interrupted")
+  }
+
+  /** The second call, and the empty case's sibling: a lookup that answers, then one that fails, each the connect's own. */
+  @Test
+  fun `C6 I-1 a lookup's answer is the connect's, and an unknown host stays UNRESOLVED`() {
+    val asked = mutableListOf<String>()
+    val loopback = InetAddress.getLoopbackAddress()
+    val connection =
+      SrtConnection(AttemptSignals(), {}) { host ->
+        synchronized(asked) { asked += host }
+        if (host == "nowhere.example") throw UnknownHostException(host) else loopback
+      }
+    assertSame(loopback, bounded(connection).first)
+    val failed = assertFailsWith<UnknownHostException> { runBlocking { connection.resolve("nowhere.example") } }
+    assertEquals(ConnectFailure.UNRESOLVED, SrtOptions.failure(failed), "F-P5-1: an unresolved host never counts toward the fallback")
+    assertEquals(listOf("ingest.example", "nowhere.example"), synchronized(asked) { asked.toList() })
+  }
+
   private fun named(input: Input): String =
     when (input) {
       is Input.ConnectFailed -> "ConnectFailed ${input.attemptId} ${input.failure}"
@@ -167,4 +238,9 @@ class SrtConnectionTest {
       is Input.Dropped -> "Dropped ${input.attemptId} ${input.reason}"
       else -> "$input"
     }
+
+  private companion object {
+    /** Far under the 3 s the stuck lookup holds out for, and over a quick lookup's few milliseconds. */
+    const val BOUND_MS = 200L
+  }
 }

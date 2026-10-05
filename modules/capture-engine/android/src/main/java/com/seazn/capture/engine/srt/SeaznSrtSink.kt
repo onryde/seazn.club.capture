@@ -36,7 +36,6 @@ import io.github.thibaultbee.streampack.core.elements.endpoints.composites.data.
 import io.github.thibaultbee.streampack.core.elements.endpoints.composites.data.SrtPacket
 import io.github.thibaultbee.streampack.core.elements.endpoints.composites.sinks.AbstractSink
 import io.github.thibaultbee.streampack.core.elements.endpoints.composites.sinks.SinkConfiguration
-import java.net.InetAddress
 import java.net.InetSocketAddress
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.withContext
@@ -76,7 +75,7 @@ class SeaznSrtSink(
   override suspend fun openImpl(mediaDescriptor: MediaDescriptor) =
     withContext(dispatcher) {
       val (plan, id) = pending ?: throw IllegalStateException("no SRT plan for this connect")
-      val address = InetAddress.getByName(plan.host) // F-P5-1: UnknownHostException → UNRESOLVED, on IO
+      val address = connection.resolve(plan.host) // F-P5-1: UnknownHostException → UNRESOLVED
       val opened = CoroutineSrtSocket(dispatcher) // 1.10.0: CoroutineSrtSocket(CoroutineDispatcher)
       opened.setSockFlag(SockOpt.PAYLOADSIZE, PAYLOAD_SIZE)
       for ((option, value) in plan.before) opened.setSockFlag(sockOpt(option), flagValue(option, value)) // 1.10.0: setSockFlag(SockOpt, Any)

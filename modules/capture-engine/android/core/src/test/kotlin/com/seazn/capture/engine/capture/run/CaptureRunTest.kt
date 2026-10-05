@@ -10,16 +10,21 @@ import com.seazn.capture.engine.core.ConnectFailure
 import com.seazn.capture.engine.core.DropReason
 import com.seazn.capture.engine.core.EndReason
 import com.seazn.capture.engine.core.Input
+import com.seazn.capture.engine.core.SessionMachine
 import com.seazn.capture.engine.core.Side
 import java.net.ConnectException
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.test.TestScope
+import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.advanceUntilIdle
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertIs
+import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertSame
 import kotlin.test.assertTrue
@@ -141,6 +146,47 @@ class CaptureRunTest {
       does(s, connect(2))
       assertEquals(Input.ConnectFailed(2, ConnectFailure.OTHER, "srt url does not parse"), s.told.reports.last())
       assertEquals(emptyList(), s.told.reports.filterIsInstance<Input.Connected>())
+    }
+
+  // --- C6 I-1: a start is bounded, under the machine's own connect timeout ---
+
+  @Test
+  fun `C6 I-1 a start that never returns fails TIMEOUT, and a close queued behind it releases the camera within the machine's connect timeout`() =
+    runTest {
+      val s = opened()
+      s.parts.gates[1] = CompletableDeferred() // never answered: a connect hung in the vendor's code
+      var releasedAt: Long? = null
+      s.parts.stopped = { if (s.parts.log.lastOrNull() == "release done") releasedAt = testScheduler.currentTime }
+      s.run.execute(connect(1))
+      s.run.close()
+      advanceTimeBy(SessionMachine.CONNECT_TIMEOUT_MS / 2)
+      runCurrent()
+      assertFalse("release" in s.parts.log, "the hung start holds the one queue, and the close waits behind it")
+      advanceUntilIdle()
+      assertTrue("release done" in s.parts.log, "the close queued behind the hung start ran: ${s.parts.log}")
+      assertFalse(s.parts.held, "the camera is released")
+      val at = assertNotNull(releasedAt)
+      assertTrue(at <= SessionMachine.CONNECT_TIMEOUT_MS, "released at $at ms, past the machine's ${SessionMachine.CONNECT_TIMEOUT_MS} ms")
+      val failed = s.told.reports.single()
+      assertIs<Input.ConnectFailed>(failed)
+      assertEquals(1, failed.attemptId)
+      assertEquals(ConnectFailure.TIMEOUT, failed.failure)
+    }
+
+  /** The sequence after it: the half-open endpoint is closed, the machine's own late Disconnect stops nothing, and the next attempt connects. */
+  @Test
+  fun `C6 I-1 after a start timed out its endpoint is closed, and the next attempt connects`() =
+    runTest {
+      val s = opened()
+      s.parts.gates[1] = CompletableDeferred()
+      does(s, connect(1))
+      assertEquals(listOf("before 1", "start 1", "stop -", "stop done"), s.parts.log, "the cancelled start's endpoint is closed as a stop asked for")
+      s.parts.log.clear()
+      does(s, Command.Disconnect(1), connect(2))
+      assertEquals(listOf("before 2", "start 2", "start done"), s.parts.log)
+      assertEquals(2, s.parts.publishing)
+      assertEquals(listOf(ConnectFailure.TIMEOUT), s.told.reports.filterIsInstance<Input.ConnectFailed>().map { it.failure })
+      assertEquals(listOf<Input>(Input.Connected(2)), s.told.reports.filter { it !is Input.ConnectFailed })
     }
 
   // --- N2, I4, P11, P12 and the ledger advisory ---

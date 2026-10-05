@@ -2,17 +2,26 @@ package com.seazn.capture.engine.srt.connect
 
 import com.seazn.capture.engine.adapter.AttemptSignals
 import com.seazn.capture.engine.core.Input
+import java.net.InetAddress
 import java.net.InetSocketAddress
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.runInterruptible
 
 /**
- * Our SRT sink's connect and end (Task 35, C6 I-2), apart from StreamPack and srtdroid so core's tests
- * run them: whether the endpoint is open, how the socket held ended, and the one drop an attempt reports
- * from the socket's end (R3). Imports nothing Android.
+ * Our SRT sink's lookup, connect and end (Task 35, C6 I-1 and I-2), apart from StreamPack and srtdroid so
+ * core's tests run them: the host's address, whether the endpoint is open, how the socket held ended, and
+ * the one drop an attempt reports from the socket's end (R3). Imports nothing Android.
  */
-class SrtConnection(private val signals: AttemptSignals, private val report: (Input) -> Unit) {
+class SrtConnection(
+  private val signals: AttemptSignals,
+  private val report: (Input) -> Unit,
+  private val lookup: (String) -> InetAddress = InetAddress::getByName,
+) {
   private val open = MutableStateFlow(false)
 
   /** The sink's `isOpenFlow`. */
@@ -22,6 +31,23 @@ class SrtConnection(private val signals: AttemptSignals, private val report: (In
   @Volatile
   var ended: Throwable? = null
     private set
+
+  /**
+   * F-P5-1: the host's address, looked up on IO; an unknown host throws [java.net.UnknownHostException],
+   * which `SrtOptions.failure` reads as UNRESOLVED. C6 I-1: the lookup is inside the start's bound
+   * (`CaptureRun.START_BOUND_MS`), so the connect waits for it cancellably. It runs in a job of its own,
+   * never the caller's child, so a bound that ends the connect returns at once: the lookup is interrupted,
+   * or, where the platform's resolver ignores an interrupt (Android's getaddrinfo), left to end on its own
+   * IO thread. Never on the sink's own two threads, which a lookup left running would hold.
+   */
+  suspend fun resolve(host: String): InetAddress {
+    val looking = CoroutineScope(Dispatchers.IO).async { runInterruptible { lookup(host) } }
+    try {
+      return looking.await()
+    } finally {
+      looking.cancel() // the bound ended the wait: interrupt the lookup, which ends with it
+    }
+  }
 
   /**
    * Connects [socket] for [attemptId], and only then listens for its end (C6 I-2). srtdroid's failed

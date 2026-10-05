@@ -14,7 +14,9 @@ import com.seazn.capture.engine.core.Side
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.test.TestScope
+import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.advanceUntilIdle
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -57,7 +59,11 @@ class CaptureRunMachineTest {
       rig.parts.gates[1] = CompletableDeferred() // attempt 1's open answers late
       Configs.pairInputs().forEach(rig.engine::send)
       rig.scheduler.advanceBy(0)
-      advanceUntilIdle()
+      // A second of the capture's own clock: the build, and attempt 1's start, which waits at its gate. Not
+      // until idle, which would run the start's bound out (C6 I-1): the machine's clock and the capture's are
+      // apart here, and the late open lands inside the bound, as a queue's own delay can put it in a phone.
+      advanceTimeBy(1_000)
+      runCurrent()
       assertEquals(listOf(1), rig.connects.map { it.attemptId }, "armed and ready: the machine connects attempt 1")
       // No answer within the machine's connect timeout: it closes attempt 1 and, after its retry wait, connects attempt 2.
       rig.scheduler.advanceBy(SessionMachine.CONNECT_TIMEOUT_MS + Engine.TICK_MS)
