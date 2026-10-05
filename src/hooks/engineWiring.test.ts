@@ -75,7 +75,7 @@ describe('CD24: which engine the composition root wires', () => {
     wire({
       dev: false,
       fakeFlag: undefined,
-      native: new FakeNativeModule({ tail: ['{"kind":"paired"}'] }),
+      native: new FakeNativeModule({ tail: [{ seq: 1, line: '{"kind":"paired"}' }] }),
       now: () => NOW,
       onRecordLine: ring.appendLine,
     });

@@ -214,7 +214,7 @@ class BridgeCoreTest {
     }
     assertEquals(1_200, readings, "the sweep's own count")
     assertEquals(0, lines().count { it.getString("kind") == "readiness" } - before, "the flap never turns sound, so it writes nothing")
-    assertTrue(core.tail().any { "probe.before" in it }, "the line before the flap is still in the tail: ${core.tail()}")
+    assertTrue(core.tail().any { "probe.before" in it["line"] as String }, "the line before the flap is still in the tail: ${core.tail()}")
     assertEquals(false, readyOn(core)["sound"])
   }
 
@@ -345,6 +345,8 @@ class BridgeCoreTest {
     core.viewfinder(false)
     scheduler.advanceBy(0)
     assertEquals(listOf(true, false), platform.captures)
+    // The close silenced sound (C4a carry, Task 33): the meter reads again before the go-live.
+    ready()
     core.send(mapOf("kind" to "start"))
     scheduler.advanceBy(0)
     assertEquals(listOf(true, false, true), platform.captures, "a go-live opens them from the service")
@@ -511,6 +513,9 @@ class BridgeCoreTest {
     core.send(mapOf("kind" to "reset"))
     scheduler.advanceBy(0)
     pair()
+    // The failed pairing's end closed the capture and silenced sound (C4a carry, Task 33); the re-pair
+    // over the shown viewfinder opens it again, and its meter reads before the hold.
+    ready()
     core.send(mapOf("kind" to "start"))
     scheduler.advanceBy(1_500)
     assertEquals("publishing", state())
@@ -940,6 +945,87 @@ class BridgeCoreTest {
     // Last moved at 1 500, moved again at 3 500: 2 000 ms.
     val gap = lines().single { it.getString("kind") == "frames-gap" }
     assertEquals(2_000L, gap.getLong("gapMs"))
+  }
+
+  /**
+   * Carry C4c-I3 (Task 33): every line reaches the platform with the next seq, and the tail names the
+   * same lines by the same seqs, so JS tells a new line from a tail line by number, never by text. The
+   * fake clock stands still, so the thirty probe lines are equal, character for character.
+   */
+  @Test
+  fun `C4c-I3 each record line reaches the platform with the next seq, and the tail carries the same seq for the same line`() {
+    core.start()
+    pair()
+    repeat(30) { core.log("info", "probe.line", mapOf("n" to 1.0)) }
+    scheduler.advanceBy(0)
+    val n = platform.lines.size.toLong()
+    assertTrue(n >= 30, "the probe lines reached the platform: $n")
+    assertEquals((1L..n).toList(), platform.seqs, "numbered from 1, with no gap and no repeat")
+    assertEquals(1, platform.lines.takeLast(30).toSet().size, "thirty equal lines")
+    val expected = platform.seqs.zip(platform.lines).takeLast(20).map { (seq, line) -> mapOf("seq" to seq.toDouble(), "line" to line) }
+    assertEquals(expected, core.tail())
+  }
+
+  @Test
+  fun `C4c-I3 the tail before any line is empty, and its first line is seq 1`() {
+    val fresh = RecordingPlatform()
+    val idle = build(fresh, MemoryStore())
+    assertEquals(emptyList(), idle.tail())
+    idle.log("info", "probe.first", emptyMap())
+    scheduler.advanceBy(0)
+    assertEquals(listOf(1L), fresh.seqs)
+    assertEquals(listOf(mapOf("seq" to 1.0, "line" to fresh.lines.single())), idle.tail())
+  }
+
+  /**
+   * C4a carry (Task 33): the capture's close turns sound off at once. Sound is held both ways (I-1), so
+   * the one silent reading the glue sends at the close could never turn it alone, and with the capture
+   * closed nothing reads again: the chip would show sound while nothing records.
+   */
+  @Test
+  fun `C4a carry sound turns off the moment the capture closes, past its hold, and the next open starts silent`() {
+    core.start()
+    core.report(Input.Network(true))
+    pair()
+    core.viewfinder(true)
+    scheduler.advanceBy(0)
+    assertEquals(listOf(true), platform.captures)
+    core.readiness(audioPeak = 0.4)
+    scheduler.advanceBy(HOLD_MS)
+    core.readiness(audioPeak = 0.4)
+    scheduler.advanceBy(0)
+    assertEquals(true, readyOn(core)["sound"], "sound held, before the close")
+    core.viewfinder(false)
+    scheduler.advanceBy(0)
+    assertEquals(listOf(true, false), platform.captures)
+    assertEquals(false, readyOn(core)["sound"], "off at the close, with no reading after it")
+    assertFalse(lines().last { it.getString("kind") == "readiness" }.getBoolean("sound"), "and on the record")
+    // The next open: one loud reading is not sound yet; it turns at its hold, as at any start.
+    core.viewfinder(true)
+    scheduler.advanceBy(0)
+    core.readiness(audioPeak = 0.4)
+    scheduler.advanceBy(0)
+    assertEquals(false, readyOn(core)["sound"], "the run starts afresh at the open")
+    scheduler.advanceBy(HOLD_MS)
+    core.readiness(audioPeak = 0.4)
+    scheduler.advanceBy(0)
+    assertEquals(true, readyOn(core)["sound"], "and turns at its hold")
+  }
+
+  /** The other direction (AGENTS §13, class 7): a capture that stays open keeps its held sound through a silent reading. */
+  @Test
+  fun `C4a carry a silent reading while the capture stays open is still held, not reset`() {
+    core.start()
+    pair()
+    core.viewfinder(true)
+    scheduler.advanceBy(0)
+    core.readiness(audioPeak = 0.4)
+    scheduler.advanceBy(HOLD_MS)
+    core.readiness(audioPeak = 0.4)
+    scheduler.advanceBy(0)
+    core.readiness(audioPeak = 0.0)
+    scheduler.advanceBy(0)
+    assertEquals(true, readyOn(core)["sound"], "one silent reading does not turn a held sound")
   }
 
   @Test

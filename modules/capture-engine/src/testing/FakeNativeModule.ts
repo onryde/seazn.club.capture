@@ -1,6 +1,6 @@
-import type { CaptureEngineNative, Subscription } from '../nativeModule';
+import type { CaptureEngineNative, RecordLine, Subscription } from '../nativeModule';
 
-type Events = { onSnapshot: unknown; onRecord: { line: string }; onAck: { seq: number } };
+type Events = { onSnapshot: unknown; onRecord: RecordLine; onAck: { seq: number } };
 type Listener = (body: never) => void;
 
 /**
@@ -16,7 +16,7 @@ export class FakeNativeModule implements CaptureEngineNative {
   /** Runs inside `tail()`, before it returns: D3's race, made deterministic. */
   duringTail: (() => void) | null = null;
 
-  constructor(private readonly state: { current?: unknown; tail?: readonly string[] } = {}) {}
+  constructor(private readonly state: { current?: unknown; tail?: readonly RecordLine[] } = {}) {}
 
   send(intent: Record<string, unknown>): void {
     this.sent.push(intent);
@@ -27,7 +27,7 @@ export class FakeNativeModule implements CaptureEngineNative {
   current(): unknown {
     return this.state.current ?? null;
   }
-  tail(): readonly string[] {
+  tail(): readonly RecordLine[] {
     this.duringTail?.();
     return this.state.tail ?? [];
   }

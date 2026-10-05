@@ -54,7 +54,8 @@
         {
           "initialOrientation": "PORTRAIT_UP"
         }
-      ]
+      ],
+      ["expo-build-properties", { "android": { "minSdkVersion": 31 } }]
     ]
   }
 }

@@ -1,0 +1,41 @@
+plugins {
+  id 'com.android.library'
+  id 'expo-module-gradle-plugin'
+}
+
+group = 'com.seazn.capture.engine'
+version = '0.1.0'
+
+android {
+  namespace "com.seazn.capture.engine"
+  defaultConfig {
+    versionCode 1
+    versionName "0.1.0"
+  }
+  // CD2: the pure core and adapters compile into this library, so no settings.gradle edit and no
+  // composite build. Their own Gradle build (core/) still runs every JVM test in CI.
+  sourceSets {
+    main.java.srcDirs += ['core/src/main/kotlin']
+  }
+  lintOptions {
+    abortOnError false
+  }
+}
+
+// Strict pins (Global Constraints). Kotlin 2.1.20 cannot read 2.3+ metadata: nothing newer without a real build.
+dependencies {
+  ['core', 'ui', 'srt', 'rtmp'].each { part ->
+    implementation("io.github.thibaultbee.streampack:streampack-$part") { version { strictly '3.2.0' } }
+  }
+  // 1.10.0, not the newest (1.10.1): 1.10.1's AAR metadata demands compileSdk 37, and this Expo SDK's
+  // AGP 8.12 compiles the app against android-36 (checkDebugAarMetadata refuses it). javap: 1.10.1 only
+  // adds `trySend`, and 1.10.0 keeps every public member of 1.9.5, the version StreamPack 3.2.0 names.
+  implementation('io.github.thibaultbee.srtdroid:srtdroid-ktx') { version { strictly '1.10.0' } }
+  // streampack-rtmp's RTMP client, and the Ktor network stack whose TLS closer F-P5-12 is about.
+  implementation('io.github.komedia.komuxer:rtmp') { version { strictly '0.4.0' } }
+  implementation('io.ktor:ktor-network-tls') { version { strictly '3.3.3' } }
+  // M14: compiled against, never shipped by us, so the app has exactly one OkHttp. react-android 0.86.3
+  // asks for 4.9.2, and the app resolves 4.12.0 (fresco's and media3's OkHttp lift it); 4.9.2 is the
+  // floor this compiles against, and core's JVM tests run the adapter on 4.12.0.
+  compileOnly 'com.squareup.okhttp3:okhttp:4.9.2'
+}

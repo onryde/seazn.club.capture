@@ -10,6 +10,14 @@ import java.net.URLEncoder
 data class RecordEntry(val kind: String, val fields: List<Pair<String, Any?>> = emptyList(), val level: String = "info")
 
 /**
+ * The record's last lines, oldest first, and the seq of the first of them (carry C4c-I3). The n-th line
+ * the process wrote is seq n, so a reader holding the tail tells a later line from one of the tail's by
+ * number: two lines can be equal, character for character, but never their seqs. One value, so a reader
+ * on another thread never pairs one append's seq with another's lines.
+ */
+data class RecordTail(val firstSeq: Long, val lines: List<String>)
+
+/**
  * The post-match session record (AGENTS §11): timestamped transitions, fallbacks, reconnects,
  * thermal readings and heartbeat results, one flat JSON object per line, `{at, kind, [level], …}`.
  *
@@ -47,7 +55,17 @@ class SessionRecord(private val sink: (String) -> Unit) {
   /** The line the sink is handling, or null outside the sink. */
   private var delivering: Pending? = null
 
-  @Volatile private var snapshot: List<String> = emptyList()
+  @Volatile private var tail = RecordTail(1, emptyList())
+
+  /**
+   * The seq of the newest line, 0 before the first (carry C4c-I3). Inside the sink it is the seq of the
+   * line being handed over: an append made from the sink waits for the sink to return, so it never moves
+   * under the sink. Each line handed to the sink takes one, a line the sink refuses too; an echo dropped
+   * as [reentrantDropped] takes none, since it is never written.
+   */
+  @Volatile
+  var lastSeq: Long = 0
+    private set
 
   /** How many lines the sink refused. Surfaced in Diagnostics by plan C; never thrown. */
   @Volatile
@@ -103,7 +121,10 @@ class SessionRecord(private val sink: (String) -> Unit) {
   }
 
   /** The last [LAST_LINES] lines, oldest first, for Diagnostics (spec §4). Safe from any thread. */
-  fun lastLines(): List<String> = snapshot
+  fun lastLines(): List<String> = tail.lines
+
+  /** The same lines with the seq of the first, as one value (carry C4c-I3). Safe from any thread. */
+  fun numberedTail(): RecordTail = tail
 
   private fun flush() {
     try {
@@ -120,7 +141,9 @@ class SessionRecord(private val sink: (String) -> Unit) {
   private fun deliver(line: String) {
     recent.addLast(line)
     while (recent.size > LAST_LINES) recent.removeFirst()
-    snapshot = recent.toList()
+    val seq = lastSeq + 1
+    tail = RecordTail(seq - recent.size + 1, recent.toList())
+    lastSeq = seq
     try {
       sink(line)
     } catch (_: Exception) {

@@ -20,6 +20,16 @@ class SoundHold {
   private var runAbove = false
   private var runSinceMs = 0L
 
+  /**
+   * The capture closed (C4a carry, Task 33): silent at once, past the hold, and the next run starts
+   * afresh. Nothing reads while the capture is closed, so a held sound would otherwise outlast it.
+   */
+  fun reset() {
+    sound = false
+    runAbove = false
+    runSinceMs = 0L
+  }
+
   /** The new [sound] when this reading turns it, or null. */
   fun sample(peak: Double, monoMs: Long): Boolean? {
     val above = Readiness.UNKNOWN.copy(audioPeak = peak).sound

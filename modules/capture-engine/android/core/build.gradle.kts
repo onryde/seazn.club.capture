@@ -19,7 +19,15 @@ dependencies {
   testImplementation(kotlin("test"))
   // Reads the vector files shared with the JS side (CD4). Tests only: `main` stays dependency-free.
   testImplementation("org.json:json:20240303")
+  // Task 33: the glue's HTTP adapter, run on the JVM against a local server, on the OkHttp the app
+  // resolves at runtime (`:app:dependencies`: 4.9.2 -> 4.12.0). The library compiles against 4.9.2.
+  testImplementation("com.squareup.okhttp3:okhttp:4.12.0")
+  testImplementation("com.squareup.okhttp3:mockwebserver:4.12.0")
 }
+
+// Task 33: the glue's HTTP adapter imports nothing Android, so its folder compiles into core's tests too.
+// It ships in the Android library alone: `main` here stays dependency-free.
+kotlin.sourceSets["test"].kotlin.srcDir("../src/main/java/com/seazn/capture/engine/http")
 
 tasks.test {
   useJUnitPlatform()

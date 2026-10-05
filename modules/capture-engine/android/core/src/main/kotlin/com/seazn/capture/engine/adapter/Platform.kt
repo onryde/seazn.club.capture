@@ -32,7 +32,8 @@ interface Platform {
 
   fun snapshot(wire: Map<String, Any?>)
 
-  fun recordLine(line: String)
+  /** One record line, and its seq (carry C4c-I3): the n-th line of the process is seq n, as [BridgeCore.tail] numbers it. */
+  fun recordLine(line: String, seq: Long)
 
   /** CD8: the intent numbered [seq] has run, with every snapshot and line it caused. Emitted as an event. */
   fun acked(seq: Int)

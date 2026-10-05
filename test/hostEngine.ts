@@ -4,7 +4,7 @@ import { createInterface } from 'node:readline';
 import { fileURLToPath } from 'node:url';
 import type { Readiness } from '@/domain/session/Pairing';
 import { createNativeCaptureEngine, type NativeCaptureEngine } from '@/engine/nativeCaptureEngine';
-import type { CaptureEngineNative, Subscription } from '@/engine/nativeModule';
+import type { CaptureEngineNative, RecordLine, Subscription } from '@/engine/nativeModule';
 import type { EngineUnderTest } from './engineContract';
 import { scriptFor } from './serverScript';
 
@@ -25,14 +25,14 @@ const READY_MS = 5_000;
 /** `dispose`: how long a host has to leave after `exit` before it is killed. */
 const EXIT_MS = 2_000;
 
-type Events = { onSnapshot: unknown; onRecord: { line: string }; onAck: { seq: number } };
+type Events = { onSnapshot: unknown; onRecord: RecordLine; onAck: { seq: number } };
 type Listener = (body: never) => void;
 
 /** One line the host writes (Task 21's protocol). */
 type HostLine =
-  | { ev: 'ready'; current: unknown; tail: string[] }
+  | { ev: 'ready'; current: unknown; tail: RecordLine[] }
   | { ev: 'snapshot'; body: unknown }
-  | { ev: 'record'; line: string }
+  | { ev: 'record'; line: string; seq: number }
   | { ev: 'ack'; seq: number }
   | { ev: 'request'; path: string; body: unknown };
 
@@ -53,7 +53,7 @@ class HostModule implements CaptureEngineNative {
 
   constructor(
     private readonly write: (op: Record<string, unknown>) => void,
-    private readonly state: { current: unknown; tail: readonly string[] },
+    private readonly state: { current: unknown; tail: readonly RecordLine[] },
   ) {}
 
   send(intent: Record<string, unknown>): void {
@@ -66,7 +66,7 @@ class HostModule implements CaptureEngineNative {
   current(): unknown {
     return this.state.current;
   }
-  tail(): readonly string[] {
+  tail(): readonly RecordLine[] {
     return this.state.tail;
   }
   addListener<E extends keyof Events>(event: E, listener: (body: Events[E]) => void): Subscription {
@@ -135,7 +135,7 @@ export async function startHostEngine(binary: string = HOST_BINARY): Promise<Hos
     }
   };
 
-  const state: { current: unknown; tail: readonly string[] } = { current: null, tail: [] };
+  const state: { current: unknown; tail: readonly RecordLine[] } = { current: null, tail: [] };
   const native = new HostModule(write, state);
   const requests: { path: string; body: unknown }[] = [];
   let started: () => void = () => undefined;
@@ -161,7 +161,7 @@ export async function startHostEngine(binary: string = HOST_BINARY): Promise<Hos
         native.emit('onSnapshot', line.body);
         return;
       case 'record':
-        native.emit('onRecord', { line: line.line });
+        native.emit('onRecord', { seq: line.seq, line: line.line });
         return;
       case 'ack':
         native.emit('onAck', { seq: line.seq });

@@ -468,4 +468,81 @@ class SessionRecordTest {
     assertEquals(2_500, shared.sinkFailures)
     assertTrue(shared.lastLines().last().endsWith(""""attempt":4999}"""))
   }
+
+  // Carry C4c-I3 (Task 33): native numbers every line, so JS tells a new line from a tail line by its
+  // seq, whatever the two lines' text. The seq is the line's place in the process's record: the first
+  // line is 1. Expected seqs are counted by hand from the appends, never read back from the record.
+
+  @Test
+  fun `C4c-I3 each line takes the next seq - a refused one too - and two equal lines never share one`() {
+    val seen = mutableListOf<Pair<Long, String>>()
+    lateinit var numbered: SessionRecord
+    numbered = SessionRecord { line ->
+      seen += numbered.lastSeq to line
+      if ("refuse" in line) throw IOException("disk full")
+    }
+    assertEquals(0L, numbered.lastSeq, "no line yet")
+    assertEquals(RecordTail(1, emptyList()), numbered.numberedTail(), "an empty tail names the seq its first line will take")
+    numbered.append(0, RecordEntry("armed"))
+    numbered.append(0, RecordEntry("refuse"))
+    numbered.append(0, RecordEntry("armed"))
+    assertEquals(listOf(1L, 2L, 3L), seen.map { it.first })
+    assertEquals(seen[0].second, seen[2].second, "the same text twice")
+    assertEquals(RecordTail(1, seen.map { it.second }), numbered.numberedTail())
+    assertEquals(1, numbered.sinkFailures, "the refused line kept its seq: the tail still holds it")
+  }
+
+  @Test
+  fun `C4c-I3 past the ring the tail's first seq is the oldest line it still holds`() {
+    val seqs = mutableListOf<Long>()
+    lateinit var numbered: SessionRecord
+    numbered = SessionRecord { seqs += numbered.lastSeq }
+    repeat(25) { numbered.append(0, RecordEntry("test", listOf("attempt" to it))) }
+    assertEquals((1L..25L).toList(), seqs)
+    val tail = numbered.numberedTail()
+    assertEquals(6L, tail.firstSeq, "lines 6 to 25 of 25")
+    assertEquals(20, tail.lines.size)
+    assertTrue(tail.lines.first().endsWith(""""attempt":5}"""), "seq 6 is the sixth append, attempt 5")
+    assertEquals(tail.lines, numbered.lastLines())
+  }
+
+  @Test
+  fun `C4c-I3 an echo takes the seq after the line it came from, and a dropped echo takes none`() {
+    val seqs = mutableListOf<Long>()
+    lateinit var echoing: SessionRecord
+    echoing = SessionRecord { line ->
+      seqs += echoing.lastSeq
+      // The levelled logger's loop (AGENTS §11): the first echo is written, its own echo is dropped.
+      if ("echo" !in line || """"kind":"echo","n":1""" in line) echoing.append(0, RecordEntry("echo", listOf("n" to seqs.size)))
+    }
+    echoing.append(0, RecordEntry("armed"))
+    assertEquals(listOf(1L, 2L), seqs, "the line, then its echo")
+    assertEquals(1, echoing.reentrantDropped, "the echo's echo is dropped and numbered nothing")
+    echoing.append(0, RecordEntry("connecting"))
+    assertEquals(listOf(1L, 2L, 3L, 4L), seqs, "the next line follows the echo, with no gap")
+  }
+
+  /** The tail is read from Diagnostics' and the bridge's threads while the scheduler appends: one value. */
+  @Test
+  fun `C4c-I3 a tail read on another thread while appends run names each line's own seq`() {
+    val shared = SessionRecord {}
+    val writer = Thread { repeat(5_000) { shared.append(0, RecordEntry("keep", listOf("attempt" to it))) } }
+    var wrong = 0
+    var checked = 0
+    var reads = 0
+    writer.start()
+    while (writer.isAlive || reads < 1_000) {
+      val tail = shared.numberedTail()
+      tail.lines.forEachIndexed { index, line ->
+        val attempt = Regex(""""attempt":(\d+)""").find(line)!!.groupValues[1].toLong()
+        if (attempt + 1 != tail.firstSeq + index) wrong += 1
+        checked += 1
+      }
+      reads += 1
+    }
+    writer.join()
+    assertTrue(checked > 0, "no line was checked")
+    assertEquals(0, wrong, "of $checked lines checked")
+    assertEquals(5_000L, shared.lastSeq)
+  }
 }

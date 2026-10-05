@@ -41,7 +41,8 @@ class BridgeCore(
   newId: () -> String = { java.util.UUID.randomUUID().toString() },
 ) {
   private val guarded = GuardedScheduler(scheduler, ::failed)
-  private val record = SessionRecord { line -> platform.recordLine(line) }
+  /** Carry C4c-I3: inside the sink, the record's newest seq is the line's own. */
+  private val record: SessionRecord = SessionRecord { line -> platform.recordLine(line, record.lastSeq) }
   private val sticky: StickyFailure = StickyFailure(CommandSink(::route), { engine.phase.attemptInHand }, ::report)
   private val pollers = AttemptPollers(guarded, ::frames, platform::link, ::report)
   private val ticks = TickLateness()
@@ -207,7 +208,15 @@ class BridgeCore(
 
   fun current(): Map<String, Any?> = current
 
-  fun tail(): List<String> = record.lastLines()
+  /**
+   * The record's last lines, oldest first, each with its seq (carry C4c-I3), as the bridge carries them:
+   * `{seq, line}`, the seq a Double like every number JS reads. The platform hands each new line on with
+   * the same seq, so JS drops an arriving line the tail already holds by number, never by its text.
+   */
+  fun tail(): List<Map<String, Any?>> {
+    val held = record.numberedTail()
+    return held.lines.mapIndexed { index, line -> mapOf("seq" to (held.firstSeq + index).toDouble(), "line" to line) }
+  }
 
   /** [request] is the pairing held, by identity, and the pairing is not over. */
   private fun holds(request: PairRequest): Boolean = engine.phase.pairing?.request === request && engine.phase !is Phase.Ended
@@ -253,6 +262,18 @@ class BridgeCore(
     captureWanted = wanted
     capturedFor = request
     platform.capture(wanted, phase.pairing?.request)
+    if (!wanted) silenced()
+  }
+
+  /**
+   * C4a carry (Task 33): the capture closed, so sound is off at once, past its hold. The glue's one
+   * silent reading at the close could never turn a held sound alone, and nothing reads after it: the
+   * chip would show sound while nothing records. The next opening's readings start a run afresh.
+   */
+  private fun silenced() {
+    sounds.reset()
+    readiness = readiness.copy(audioPeak = 0.0)
+    if (sent?.sound == true) sendReadiness()
   }
 
   private fun route(command: Command) {

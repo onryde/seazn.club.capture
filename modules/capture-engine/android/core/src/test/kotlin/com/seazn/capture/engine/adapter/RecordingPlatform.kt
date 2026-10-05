@@ -121,9 +121,13 @@ class RecordingPlatform : Platform {
     events += "snapshot"
   }
 
-  override fun recordLine(line: String) {
+  /** Each line's seq (carry C4c-I3), beside [lines]: the platform hears both, and the tail must agree. */
+  val seqs = mutableListOf<Long>()
+
+  override fun recordLine(line: String, seq: Long) {
     throwOnLine?.let { throw it }
     lines += line
+    seqs += seq
     events += "line:" + JSONObject(line).getString("kind")
   }
 

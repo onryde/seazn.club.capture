@@ -14,6 +14,10 @@ const quiet = { onRecordLine: () => undefined };
 /** The line a malformed snapshot is recorded by (review C4c I-4): the allow-list's kind and key. */
 const MALFORMED = (count: number) => ['warn', 'engine.malformed-snapshot', { count }];
 
+/** Record lines numbered from [first], as native's tail carries them (carry C4c-I3). */
+const numbered = (first: number, ...lines: string[]) =>
+  lines.map((line, index) => ({ seq: first + index, line }));
+
 /** Lets the fake deliver every event queued so far (a macrotask), and every promise callback run. */
 const flush = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
 
@@ -52,7 +56,7 @@ describe('the native engine (carry 1)', () => {
   it("Review Focus 2 reports native's state from construction, and seeds the record from its tail", () => {
     const native = new FakeNativeModule({
       current: liveWire,
-      tail: ['{"at":"…","kind":"paired"}'],
+      tail: [{ seq: 1, line: '{"at":"…","kind":"paired"}' }],
     });
     const lines: string[] = [];
     const engine = createNativeCaptureEngine(native, { onRecordLine: (line) => lines.push(line) });
@@ -186,10 +190,11 @@ describe('the native engine (carry 1)', () => {
   });
 
   // Review C4c I-3: Expo queues an event to the JS thread, so a line written as the tail is read
-  // reaches the listener after the engine is built, while it is already in the tail it seeded.
+  // reaches the listener after the engine is built, while it is already in the tail it seeded. Carry
+  // C4c-I3 (Task 33): native numbers each line, so the repeat is known by its seq, never by its text.
   it('D3 I-3 a tail line whose event arrives after construction appears once, after the tail', async () => {
-    const native = new FakeNativeModule({ tail: ['{"kind":"a"}', '{"kind":"b"}'] });
-    native.duringTail = () => native.emit('onRecord', { line: '{"kind":"b"}' });
+    const native = new FakeNativeModule({ tail: numbered(1, '{"kind":"a"}', '{"kind":"b"}') });
+    native.duringTail = () => native.emit('onRecord', { seq: 2, line: '{"kind":"b"}' });
     const lines: string[] = [];
     createNativeCaptureEngine(native, { onRecordLine: (line) => lines.push(line) });
     expect(lines).toEqual(['{"kind":"a"}', '{"kind":"b"}']);
@@ -197,25 +202,48 @@ describe('the native engine (carry 1)', () => {
     expect(lines).toEqual(['{"kind":"a"}', '{"kind":"b"}']);
   });
 
-  it('D3 I-3 drops only the tail lines that arrive first: the first new line, and every line after it, is kept', async () => {
-    const native = new FakeNativeModule({ tail: ['{"kind":"a"}', '{"kind":"b"}'] });
+  it('C4c-I3 drops the lines the tail holds, by seq, and keeps every later one, equal text included', async () => {
+    const native = new FakeNativeModule({ tail: numbered(1, '{"kind":"a"}', '{"kind":"b"}') });
     native.duringTail = () => {
-      native.emit('onRecord', { line: '{"kind":"a"}' });
-      native.emit('onRecord', { line: '{"kind":"b"}' });
-      native.emit('onRecord', { line: '{"kind":"c"}' });
+      native.emit('onRecord', { seq: 1, line: '{"kind":"a"}' });
+      native.emit('onRecord', { seq: 2, line: '{"kind":"b"}' });
+      native.emit('onRecord', { seq: 3, line: '{"kind":"c"}' });
     };
     const lines: string[] = [];
     createNativeCaptureEngine(native, { onRecordLine: (line) => lines.push(line) });
     await flush();
-    // Past the tail every line is new: one equal to a tail line is a new line written the same way.
-    native.emit('onRecord', { line: '{"kind":"b"}' });
+    native.emit('onRecord', { seq: 4, line: '{"kind":"b"}' });
     await flush();
     expect(lines).toEqual(['{"kind":"a"}', '{"kind":"b"}', '{"kind":"c"}', '{"kind":"b"}']);
   });
 
+  // The case the text match dropped (review C4c round 1, minor 1): a genuine new line whose text equals a
+  // tail line, arriving before any line the tail lacks. Its seq is new, so it appears.
+  it('C4c-I3 a new line whose text equals a tail line appears, arriving first or after a repeat', async () => {
+    const native = new FakeNativeModule({ tail: numbered(1, '{"kind":"a"}', '{"kind":"b"}') });
+    native.duringTail = () => {
+      native.emit('onRecord', { seq: 2, line: '{"kind":"b"}' });
+      native.emit('onRecord', { seq: 3, line: '{"kind":"b"}' });
+      native.emit('onRecord', { seq: 4, line: '{"kind":"a"}' });
+    };
+    const lines: string[] = [];
+    createNativeCaptureEngine(native, { onRecordLine: (line) => lines.push(line) });
+    await flush();
+    expect(lines).toEqual(['{"kind":"a"}', '{"kind":"b"}', '{"kind":"b"}', '{"kind":"a"}']);
+  });
+
+  it('C4c-I3 a new line equal to the only tail line appears with no repeat before it', async () => {
+    const native = new FakeNativeModule({ tail: numbered(7, '{"kind":"a"}') });
+    native.duringTail = () => native.emit('onRecord', { seq: 8, line: '{"kind":"a"}' });
+    const lines: string[] = [];
+    createNativeCaptureEngine(native, { onRecordLine: (line) => lines.push(line) });
+    await flush();
+    expect(lines).toEqual(['{"kind":"a"}', '{"kind":"a"}']);
+  });
+
   it('D3 a new line written during the tail read, not yet in it, is kept after the tail', async () => {
-    const native = new FakeNativeModule({ tail: ['{"kind":"a"}'] });
-    native.duringTail = () => native.emit('onRecord', { line: '{"kind":"c"}' });
+    const native = new FakeNativeModule({ tail: numbered(1, '{"kind":"a"}') });
+    native.duringTail = () => native.emit('onRecord', { seq: 2, line: '{"kind":"c"}' });
     const lines: string[] = [];
     createNativeCaptureEngine(native, { onRecordLine: (line) => lines.push(line) });
     await flush();
@@ -224,19 +252,19 @@ describe('the native engine (carry 1)', () => {
 
   it('D3 with an empty tail, a line written during the read is kept once', async () => {
     const native = new FakeNativeModule();
-    native.duringTail = () => native.emit('onRecord', { line: '{"kind":"first"}' });
+    native.duringTail = () => native.emit('onRecord', { seq: 1, line: '{"kind":"first"}' });
     const lines: string[] = [];
     createNativeCaptureEngine(native, { onRecordLine: (line) => lines.push(line) });
-    native.emit('onRecord', { line: '{"kind":"after"}' });
+    native.emit('onRecord', { seq: 2, line: '{"kind":"after"}' });
     await flush();
     expect(lines).toEqual(['{"kind":"first"}', '{"kind":"after"}']);
   });
 
   it('D3 a line native delivers while the tail is still being read waits for the tail, and is kept once', () => {
-    const native = new FakeNativeModule({ tail: ['{"kind":"a"}', '{"kind":"b"}'] });
+    const native = new FakeNativeModule({ tail: numbered(1, '{"kind":"a"}', '{"kind":"b"}') });
     native.duringTail = () => {
-      native.emit('onRecord', { line: '{"kind":"b"}' });
-      native.emit('onRecord', { line: '{"kind":"c"}' });
+      native.emit('onRecord', { seq: 2, line: '{"kind":"b"}' });
+      native.emit('onRecord', { seq: 3, line: '{"kind":"c"}' });
       native.deliver();
     };
     const lines: string[] = [];
@@ -352,7 +380,7 @@ describe('the native engine (carry 1)', () => {
     const native = new FakeNativeModule();
     const lines: string[] = [];
     const engine = createNativeCaptureEngine(native, { onRecordLine: (line) => lines.push(line) });
-    native.emit('onRecord', { line: 'x' });
+    native.emit('onRecord', { seq: 1, line: 'x' });
     await flush();
     engine.forward({ level: 'warn', event: 'intent.stop', fields: { count: 3 } });
     expect(lines).toEqual(['x']);
@@ -376,7 +404,7 @@ describe('the native engine (carry 1)', () => {
     const onRecordLine = (line: string) => lines.push(line);
     createNativeCaptureEngine(native, { onRecordLine }).dispose();
     createNativeCaptureEngine(native, { onRecordLine });
-    native.emit('onRecord', { line: 'x' });
+    native.emit('onRecord', { seq: 1, line: 'x' });
     await flush();
     expect(lines).toEqual(['x']);
   });

@@ -1,0 +1,42 @@
+# The Android library and app compile (S1 plan C, spec §6, CD25). Gradle, never EAS.
+# Path-filtered, so it is not a required check: a filtered workflow never reports on a PR it skips.
+name: android-compile
+
+on:
+  pull_request:
+    paths:
+      - 'modules/**'
+      - 'app.json'
+      - 'plugins/**'
+      - 'pnpm-lock.yaml'
+
+concurrency:
+  group: android-compile-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  assemble-debug:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '17'
+      # Reads the pnpm version from package.json `packageManager` (as check.yml).
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm expo prebuild -p android --no-install
+      - run: ./gradlew assembleDebug --no-daemon --console=plain
+        working-directory: android
+      # CD34, the owner's Android 12+ ruling: the app's merged manifest must say minSdk 31.
+      - run: grep -q 'android:minSdkVersion="31"' app/build/intermediates/merged_manifests/debug/processDebugManifest/AndroidManifest.xml
+        working-directory: android

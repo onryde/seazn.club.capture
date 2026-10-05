@@ -93,7 +93,8 @@ class ScriptedPlatform(private val server: ScriptedServer, private val write: (S
 
   override fun snapshot(wire: Map<String, Any?>) = write(Protocol.encode("snapshot", mapOf("body" to wire)))
 
-  override fun recordLine(line: String) = write(Protocol.encode("record", mapOf("line" to line)))
+  /** Carry C4c-I3: the line and its seq, as the Expo module emits them. */
+  override fun recordLine(line: String, seq: Long) = write(Protocol.encode("record", mapOf("line" to line, "seq" to seq.toDouble())))
 
   override fun acked(seq: Int) = write(Protocol.encode("ack", mapOf("seq" to seq.toDouble())))
 

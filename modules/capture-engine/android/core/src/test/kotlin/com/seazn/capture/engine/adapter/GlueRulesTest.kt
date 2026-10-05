@@ -10,22 +10,15 @@ import org.junit.jupiter.api.Assumptions.assumeTrue
 /**
  * The rules the endpoint and streamer glue would otherwise hold, read from the glue's own source: the
  * calls this programme has paid to learn are wrong. The glue module (`modules/capture-engine/android`)
- * arrives in Tasks 33–36, batch C6. Until then its rules report SKIPPED, never a vacuous pass, and come
- * live in C6, when Task 33 and Task 34 each delete their assumption.
+ * arrived in Task 33 (batch C6), which made these rules live.
  */
 class GlueRulesTest {
   private val src = File(System.getProperty("capture.glue") ?: error("capture.glue is not set: run through Gradle"))
   private val root = File(src, "main/java")
 
-  /**
-   * The glue's main Kotlin files. Until Task 33 the folder does not exist, and every rule here reports
-   * SKIPPED, never a vacuous pass; Task 33 deletes the assumption. A folder that exists but holds no
-   * Kotlin is a wrong path, and fails.
-   */
-  private fun sources(): List<File> {
-    assumeTrue(root.exists(), "the glue arrives in Task 33 (batch C6)") // Task 33 deletes this line.
-    return root.walkTopDown().filter { it.extension == "kt" }.toList().also { assertTrue(it.isNotEmpty(), "no Kotlin under ${root.path}") }
-  }
+  /** The glue's main Kotlin files. A folder that holds no Kotlin, or none at all, is a wrong path, and fails. */
+  private fun sources(): List<File> =
+    root.walkTopDown().filter { it.extension == "kt" }.toList().also { assertTrue(it.isNotEmpty(), "no Kotlin under ${root.path}") }
 
   /** Never skipped: the skips below are honest only while this path is the glue module's own `src`. */
   @Test

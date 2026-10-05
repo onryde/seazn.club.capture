@@ -195,6 +195,7 @@
     "thermal": "native: the thermal status changed",
     "tick-late": "native: two snapshot ticks more than 1000 ms apart while Paired or a broadcast was held, with the gap (CD33, carry 14)",
     "unpaired": "native: the pairing ended without a broadcast end",
+    "vendor-log": "native: StreamPack logged a warning or an error (CD30): its tag, its message as text, and the throwable's class name",
     "video-stalled": "native: the watchdog saw no frames and rebuilt the encoder"
   }
 }

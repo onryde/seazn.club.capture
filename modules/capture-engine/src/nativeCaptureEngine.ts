@@ -1,7 +1,7 @@
 import type { SessionState } from '@/domain/session/SessionState';
 import type { CaptureEnginePort, EngineSnapshot } from './CaptureEnginePort';
 import { intentWire } from './intentWire';
-import type { CaptureEngineNative, Subscription } from './nativeModule';
+import type { CaptureEngineNative, RecordLine, Subscription } from './nativeModule';
 import { createWireCache, toEngineSnapshot } from './snapshotWire';
 import { UNREPORTED } from './unreported';
 
@@ -115,34 +115,30 @@ export function createNativeCaptureEngine(
 /**
  * D3: listen first, read the tail, hand it on, then hand on what arrives. Expo
  * queues an event to the JS thread (review C4c I-3), so the event for a line
- * written before the tail was read can arrive after it: events come in the
- * order native wrote them, so arriving lines the tail holds are dropped until
- * the first it does not, and every line after that is new. Lines are compared
- * by text, so until Task 33's record seq a genuine new line whose text equals
- * a tail line, arriving before any line the tail lacks, is dropped too: native's
- * lines carry their own `at`, to the millisecond, which makes that rare, not
- * impossible (review C4c round 1, minor 1). Task 33's seq replaces the text. A
+ * written before the tail was read can arrive after it. Native numbers every
+ * line (carry C4c-I3, Task 33): a line is handed on only when its seq is past
+ * the last one handed on, so a tail line that arrives again is dropped, and a
+ * new line is kept whatever its text, one equal to a tail line included. A
  * line delivered while the tail is still being read waits for it, and passes
  * the same check.
  */
 function seedRecord(native: CaptureEngineNative, onLine: (line: string) => void): Subscription {
-  let early: string[] | null = [];
-  /** The tail's lines, while arriving lines may still repeat them; null once one has not. */
-  let seeded: ReadonlySet<string> | null = null;
-  const arrived = (line: string) => {
-    if (seeded !== null && seeded.has(line)) return;
-    seeded = null;
+  let early: RecordLine[] | null = [];
+  /** The seq of the last line handed on: native's first line is 1. */
+  let last = 0;
+  const arrived = ({ seq, line }: RecordLine) => {
+    if (seq <= last) return;
+    last = seq;
     onLine(line);
   };
-  const subscription = native.addListener('onRecord', ({ line }) => {
-    if (early === null) arrived(line);
-    else early.push(line);
+  const subscription = native.addListener('onRecord', (body) => {
+    if (early === null) arrived(body);
+    else early.push(body);
   });
   const tail = native.tail();
   const during = early;
   early = null;
-  seeded = new Set(tail);
-  tail.forEach(onLine);
+  tail.forEach(arrived);
   during.forEach(arrived);
   return subscription;
 }
