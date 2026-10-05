@@ -8,15 +8,30 @@ import com.seazn.capture.engine.capture.Capture
 import com.seazn.capture.engine.core.Command
 import com.seazn.capture.engine.core.PairRequest
 import com.seazn.capture.engine.http.HttpPort
+import com.seazn.capture.engine.watch.DeviceSampler
+import com.seazn.capture.engine.watch.PoseWatch
 
 /** The Android `Platform` (CD3): every call passes through to a part. */
 class AndroidPlatform(
   private val capture: Capture,
   private val http: HttpPort,
   private val file: RecordFile,
+  private val pose: PoseWatch,
+  private val device: DeviceSampler,
   private val emit: (String, Map<String, Any?>) -> Unit,
 ) : Platform {
-  override fun execute(command: Command) = capture.execute(command)
+  /** `Hold` to `Release` is the span the pairing holds the service (Task 17): the pose watch runs across it, and drain counts from it. */
+  override fun execute(command: Command) {
+    when (command) {
+      Command.Hold -> {
+        device.paired()
+        pose.start()
+      }
+      Command.Release -> pose.stop()
+      else -> Unit
+    }
+    capture.execute(command)
+  }
 
   override fun http(request: HttpRequest, answer: (HttpOutcome) -> Unit) = http.send(request, answer)
 

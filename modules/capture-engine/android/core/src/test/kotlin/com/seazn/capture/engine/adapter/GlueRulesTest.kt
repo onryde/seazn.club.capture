@@ -118,6 +118,52 @@ class GlueRulesTest {
     assertEquals(emptyList(), problems)
   }
 
+  /** The glue file named [name], read whole: exactly one, or the rule below reads the wrong path. */
+  private fun glue(name: String): String = sources().filter { it.name == name }.also { assertEquals(1, it.size, name) }.single().readText()
+
+  /** EngineHost's `build`, from its signature to the next function's. */
+  private fun hostBuild(): String {
+    val host = glue("EngineHost.kt")
+    val start = host.indexOf("private fun build(")
+    assertTrue(start >= 0, "EngineHost has no build")
+    return host.substring(start, host.indexOf("\n  private fun ", start + 1).takeIf { it > start } ?: host.length)
+  }
+
+  /** C6 carry (Task 37): the build encodes the side held, the pose watch's, never a constant side (EngineHost's placeholder). */
+  @Test
+  fun `C6 the capture's side is the pose watch's, never a constant`() {
+    val build = hostBuild()
+    val calls = Regex("""\bStreamerAdapter\(""").findAll(build).toList()
+    assertEquals(1, calls.size, "one capture built")
+    val args = arguments(build, calls.single().range.last)
+    assertTrue(args.trimEnd().endsWith("pose::side)"), "the side supplier is the pose watch's: $args")
+    for (side in listOf("Side.LEFT", "Side.RIGHT")) assertFalse(side in glue("EngineHost.kt"), "EngineHost names $side")
+  }
+
+  /**
+   * C6 carry (Task 37): CameraWatch feeds the capture's own CameraAvailability, so a busy camera waits, and
+   * it starts inside the first build, after `core.start()` and before the build returns: no capture opens
+   * before it, as the capture opens only on the engine's word. One instance, or the watch's word is inert.
+   */
+  @Test
+  fun `C6 CameraWatch feeds the capture's own CameraAvailability, started inside the first build`() {
+    val build = hostBuild()
+    assertEquals(1, Regex("""\bCameraAvailability\(\)""").findAll(glue("EngineHost.kt")).count(), "one CameraAvailability in EngineHost")
+    assertTrue(Regex("""val cameras = CameraAvailability\(\)""").containsMatchIn(build), "the build makes it")
+    val capture = arguments(build, Regex("""\bStreamerAdapter\(""").find(build)!!.range.last)
+    assertTrue(Regex("""\bcameras\b""").containsMatchIn(capture), "the capture reads it: $capture")
+    val started = build.indexOf("startWatchers(app, cameras,")
+    assertTrue(started > build.indexOf("core.start()") && started < build.indexOf("return Parts("), "the watchers start after core.start() and before the build returns")
+    val watchers = glue("EngineHost.kt").substringAfter("private fun startWatchers(")
+    assertTrue("CameraWatch(app, cameras, report, ::line).start()" in watchers, "CameraWatch is fed the same instance and started")
+  }
+
+  /** PV40: the pose tracker is replaced by `start` on the scheduler thread and read on the sensor thread. */
+  @Test
+  fun `PV40 the pose watch's tracker, swapped on one thread and read on another, is volatile`() {
+    assertTrue(Regex("""@Volatile\s+private var tracker\b""").containsMatchIn(glue("PoseWatch.kt")), "PoseWatch.tracker is not @Volatile")
+  }
+
   /**
    * Security: `cred` is read in `Bodies` and nowhere else, onto the ingest host only (amendment, _Who reads
    * what_), and `SrtOptions.plan`'s all-environment host list rests on Bodies being the only producer of a

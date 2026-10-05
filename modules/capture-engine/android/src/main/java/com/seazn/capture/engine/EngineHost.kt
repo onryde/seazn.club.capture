@@ -8,15 +8,21 @@ import com.seazn.capture.engine.adapter.AttemptSignals
 import com.seazn.capture.engine.adapter.BridgeCore
 import com.seazn.capture.engine.adapter.CameraAvailability
 import com.seazn.capture.engine.adapter.FrameTally
+import com.seazn.capture.engine.adapter.MicSilenceWatch
 import com.seazn.capture.engine.adapter.OwnedSlot
 import com.seazn.capture.engine.capture.Capture
 import com.seazn.capture.engine.capture.StreamerAdapter
 import com.seazn.capture.engine.capture.run.CoreCalls
+import com.seazn.capture.engine.core.Input
 import com.seazn.capture.engine.core.RecordEntry
-import com.seazn.capture.engine.core.Side
 import com.seazn.capture.engine.endpoints.TlsGuard
 import com.seazn.capture.engine.http.HttpAdapter
 import com.seazn.capture.engine.vendor.VendorLines
+import com.seazn.capture.engine.watch.CameraWatch
+import com.seazn.capture.engine.watch.DeviceSampler
+import com.seazn.capture.engine.watch.MicWatch
+import com.seazn.capture.engine.watch.NetworkWatch
+import com.seazn.capture.engine.watch.PoseWatch
 import expo.modules.kotlin.AppContext
 import io.github.komedia.komuxer.logger.KomuxerLogger
 import io.github.thibaultbee.streampack.core.logger.Logger
@@ -55,14 +61,32 @@ object EngineHost {
     TlsGuard.install(TlsGuard.MODE)
     val thread = HandlerThread("capture-engine").apply { start() }
     lateinit var core: BridgeCore
-    // `{ Side.LEFT }` until Task 37's tracker supplies the side held (A11's default with no reading).
-    val capture = StreamerAdapter(app, FrameTally(), AttemptSignals(), CameraAvailability(), coreCalls { core }) { Side.LEFT }
+    val report: (Input) -> Unit = { core.report(it) }
+    val cameras = CameraAvailability()
+    val pose = PoseWatch(app, { core.readiness(pose = it) }, ::line)
+    // C6 carry: the build encodes the side held (CD42), the pose watch's, never a constant.
+    val capture = StreamerAdapter(app, FrameTally(), AttemptSignals(), cameras, coreCalls { core }, pose::side)
+    val device = DeviceSampler(app, report, ::line)
     // Task 34: a debug build's seam may hold another HTTP path; a release build's never does.
     val http = HttpSeam.override?.invoke(app) ?: HttpAdapter()
-    val platform = AndroidPlatform(capture, http, RecordFile(File(app.filesDir, "record")), ::emit)
+    val platform = AndroidPlatform(capture, http, RecordFile(File(app.filesDir, "record")), pose, device, ::emit)
     core = BridgeCore.shared { core(app, thread, platform) }
     core.start()
+    startWatchers(app, cameras, capture, device, report)
     return Parts(core, capture)
+  }
+
+  /**
+   * After `core.start()`, so their first reports are posted to a running engine. Inside the first build,
+   * so CameraWatch feeds the capture's own [CameraAvailability] before any open (C6 carry): the capture
+   * opens only on the engine's word, which needs this build to have returned. The four live for the
+   * process: the contended set and the network must be true before the first pairing.
+   */
+  private fun startWatchers(app: Context, cameras: CameraAvailability, capture: StreamerAdapter, device: DeviceSampler, report: (Input) -> Unit) {
+    CameraWatch(app, cameras, report, ::line).start()
+    MicWatch(app, capture::audioSessionId, MicSilenceWatch(), report, ::line).start()
+    NetworkWatch(app, report).start()
+    device.start()
   }
 
   /**

@@ -7,10 +7,13 @@ import com.seazn.capture.engine.core.Configs
 import com.seazn.capture.engine.core.Engine
 import com.seazn.capture.engine.core.FakeClock
 import com.seazn.capture.engine.core.FakeScheduler
+import com.seazn.capture.engine.core.Input
+import com.seazn.capture.engine.core.PairRequest
 import com.seazn.capture.engine.core.Phase
 import com.seazn.capture.engine.core.SessionMachine
 import com.seazn.capture.engine.core.SessionRecord
 import com.seazn.capture.engine.core.Side
+import com.seazn.capture.engine.core.SrtTarget
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.test.TestScope
@@ -42,7 +45,9 @@ class CaptureRunMachineTest {
       Engine(clock, scheduler, commands = { executed += it; run.execute(it) }, snapshots = {}, record = SessionRecord { lines += it })
 
     init {
-      val calls = told.calls(report = { told.reports += it; engine.send(it); scheduler.advanceBy(0) })
+      // BridgeCore's cameraBusy: the camera is taken (its `holds` check is BridgeCoreTest's).
+      val busy = { request: PairRequest -> told.busy += request; engine.send(Input.CameraContended); scheduler.advanceBy(0) }
+      val calls = told.calls(report = { told.reports += it; engine.send(it); scheduler.advanceBy(0) }, cameraBusy = busy)
       run = CaptureRun(parts, AttemptSignals(), CameraAvailability(), calls, { Side.LEFT }, scope.queueScope())
       engine.start()
       run.open(Configs.pairRequest())
@@ -84,5 +89,33 @@ class CaptureRunMachineTest {
       assertEquals(2, (rig.engine.phase as? Phase.OnAir)?.attemptId, "attempt 2 is on air")
       assertFalse(Command.Disconnect(2) in rig.executed)
       assertFalse(rig.lines.any { """"kind":"dropped"""" in it }, "no drop was heard: ${rig.lines.joinToString("\n")}")
+    }
+
+  /**
+   * C7 carry, through the real machine: StreamPack 3.2.0 opens the camera lazily, so another app's hold
+   * can surface first at the start. The attempt is UNHELD, never counted towards the SRT to RTMPS
+   * fallback; the camera is taken, so the retry goes out on the slate, over SRT still.
+   */
+  @Test
+  fun `C7 a camera busy at the start is taken, never a counted failure, and the retry goes out on the slate`() =
+    runTest {
+      val rig = Rig(this)
+      val busy = RuntimeException("Camera already in use")
+      rig.parts.failing[1] = busy
+      rig.parts.busyFailures[busy] = "0"
+      Configs.pairInputs().forEach(rig.engine::send)
+      rig.scheduler.advanceBy(0)
+      advanceUntilIdle()
+      assertEquals(listOf(1), rig.connects.map { it.attemptId })
+      val failed = rig.lines.single { """"kind":"connect-failed"""" in it }
+      assertTrue(""""failure":"unheld"""" in failed && """"counted":false""" in failed, failed)
+      assertEquals(1, rig.lines.count { """"kind":"camera-taken"""" in it }, rig.lines.joinToString("\n"))
+      assertTrue(Command.Slate(on = true) in rig.executed, "the camera is taken while sending: ${rig.executed}")
+      rig.scheduler.advanceBy(SessionMachine.RETRY_MS + Engine.TICK_MS)
+      advanceUntilIdle()
+      assertEquals(listOf(1, 2), rig.connects.map { it.attemptId })
+      assertTrue(rig.connects.all { it.target is SrtTarget }, "never fell back: ${rig.connects}")
+      assertEquals(2, (rig.engine.phase as? Phase.OnAir)?.attemptId, "attempt 2 is on air, on the slate")
+      assertEquals(listOf("slate true"), rig.parts.log.filter { it.startsWith("slate") })
     }
 }

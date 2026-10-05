@@ -12,6 +12,7 @@ import com.seazn.capture.engine.core.EndReason
 import com.seazn.capture.engine.core.Input
 import com.seazn.capture.engine.core.SessionMachine
 import com.seazn.capture.engine.core.Side
+import java.io.IOException
 import java.net.ConnectException
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.CompletableDeferred
@@ -47,10 +48,14 @@ class CaptureRunTest {
 
   private class Scene(val parts: FakeParts, val told: Told, val cameras: CameraAvailability, val run: CaptureRun)
 
-  private fun TestScope.scene(cameras: CameraAvailability = CameraAvailability(), side: () -> Side = { Side.LEFT }): Scene {
+  private fun TestScope.scene(
+    cameras: CameraAvailability = CameraAvailability(),
+    side: () -> Side = { Side.LEFT },
+    signals: AttemptSignals = AttemptSignals(),
+  ): Scene {
     val parts = FakeParts()
     val told = Told()
-    return Scene(parts, told, cameras, CaptureRun(parts, AttemptSignals(), cameras, told.calls(), side, queueScope()))
+    return Scene(parts, told, cameras, CaptureRun(parts, signals, cameras, told.calls(), side, queueScope()))
   }
 
   private fun TestScope.opened(): Scene =
@@ -146,6 +151,63 @@ class CaptureRunTest {
       does(s, connect(2))
       assertEquals(Input.ConnectFailed(2, ConnectFailure.OTHER, "srt url does not parse"), s.told.reports.last())
       assertEquals(emptyList(), s.told.reports.filterIsInstance<Input.Connected>())
+    }
+
+  // --- C7 carry: StreamPack opens the camera lazily, so another app's hold can surface first at the start ---
+
+  @Test
+  fun `C7 a camera found busy at the start is taken and the attempt UNHELD, and a transport's failure classifies as before`() =
+    runTest {
+      val s = opened()
+      val busy = RuntimeException("Camera already in use")
+      s.parts.failing[1] = busy
+      s.parts.busyFailures[busy] = "0"
+      does(s, connect(1))
+      assertEquals(listOf(request), s.told.busy, "the camera is taken: the pairing waits for it")
+      assertEquals(listOf<Input>(Input.ConnectFailed(1, ConnectFailure.UNHELD, "camera busy")), s.told.reports, "one report, never counted")
+      assertTrue(s.cameras.contended("0"), "its release is waited for")
+      assertEquals(emptyList(), s.told.pairFailed, "never an end")
+      // The pair: the next attempt's transport failure is the signals' word, and no camera.
+      s.parts.failing[2] = ConnectException("Connection setup failure: connection timed out")
+      does(s, connect(2))
+      val failed = s.told.reports.last()
+      assertIs<Input.ConnectFailed>(failed)
+      assertEquals(2 to ConnectFailure.TIMEOUT, failed.attemptId to failed.failure)
+      assertEquals(listOf(request), s.told.busy, "a transport's failure is no busy camera")
+    }
+
+  @Test
+  fun `C7 after a busy start the release reopens the camera, and the next attempt closes the first's endpoint and connects`() =
+    runTest {
+      val s = opened()
+      val busy = RuntimeException("Max cameras in use")
+      s.parts.failing[1] = busy
+      s.parts.busyFailures[busy] = "0"
+      does(s, connect(1))
+      s.parts.log.clear()
+      assertEquals(Input.CameraReleased, s.cameras.available("0", 5_000), "the device's release is told")
+      does(s, Command.ReopenCamera, connect(2))
+      assertEquals(listOf("reopen", "stop -", "stop done", "before 2", "start 2", "start done"), s.parts.log)
+      assertEquals(listOf<Input>(Input.CameraReopened(true), Input.Connected(2)), s.told.reports.drop(1))
+      assertEquals(2, s.parts.publishing)
+    }
+
+  /** R3: the sink's completion can end the attempt first; the busy start is then no second report, and still the camera's. */
+  @Test
+  fun `C7 a busy start whose attempt already dropped is no second report, and still takes the camera`() =
+    runTest {
+      val signals = AttemptSignals()
+      val s = scene(signals = signals)
+      s.run.open(request)
+      advanceUntilIdle()
+      val busy = RuntimeException("Camera already in use")
+      s.parts.failing[1] = busy
+      s.parts.busyFailures[busy] = "0"
+      s.parts.starting = { id -> signals.dropped(id, IOException("endpoint closed"))?.let { s.told.reports += it } }
+      does(s, connect(1))
+      assertEquals(listOf(DropReason.ENDPOINT_CLOSED), s.told.reports.map { (it as Input.Dropped).reason }, "the drop alone: ${s.told.reports}")
+      assertEquals(listOf(request), s.told.busy)
+      assertTrue(s.cameras.contended("0"))
     }
 
   // --- C6 I-1: a start is bounded, under the machine's own connect timeout ---

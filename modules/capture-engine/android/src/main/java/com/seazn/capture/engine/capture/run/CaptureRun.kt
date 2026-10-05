@@ -180,6 +180,7 @@ class CaptureRun(
       } catch (e: CancellationException) {
         throw e
       } catch (e: Exception) {
+        parts.busyCamera(e)?.let { camera -> return busyAtStart(id, camera, e) }
         signals.connectFailed(id, e)?.let(calls.report)
         return
       }
@@ -197,6 +198,18 @@ class CaptureRun(
   private suspend fun timedOut(id: Int) {
     signals.connectFailed(id, TimeoutException("start timed out after $START_BOUND_MS ms"))?.let(calls.report)
     stopHeld(id)
+  }
+
+  /**
+   * C7 carry: another app holds our camera, found at the start (StreamPack 3.2.0 opens it lazily). It
+   * reads as a busy build does (I4): the camera is taken and its release is waited for, never an end.
+   * The attempt is UNHELD (C6 I-3), never counted towards the fallback and never an ask; the signals
+   * still end it, so a late drop of it is no second report (R3).
+   */
+  private fun busyAtStart(id: Int, camera: String, failure: Exception) {
+    cameras.waiting(camera)
+    request?.let(calls.cameraBusy)
+    if (signals.connectFailed(id, failure) != null) calls.report(Input.ConnectFailed(id, ConnectFailure.UNHELD, "camera busy"))
   }
 
   /** N8: checked once per opening, at its first connect, when StreamPack's AudioRecord is recording. */

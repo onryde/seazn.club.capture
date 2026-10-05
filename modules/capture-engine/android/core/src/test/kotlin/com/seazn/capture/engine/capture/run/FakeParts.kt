@@ -35,6 +35,9 @@ class FakeParts : CaptureParts {
   /** An attempt whose start throws this: its connect failed. */
   val failing = mutableMapOf<Int, Exception>()
 
+  /** A start failure that is Camera2 saying the camera is busy, with the camera's id: the adapter's reading of it. */
+  val busyFailures = mutableMapOf<Throwable, String>()
+
   var micKnown = true
 
   /** Runs on the drop watch's own thread once it has seen the endpoint close, before the run reads why. */
@@ -139,6 +142,9 @@ class FakeParts : CaptureParts {
 
   override fun micSessionKnown() = micKnown
 
+  /** Through the cause chain, as the adapter reads: coroutines' stack-trace recovery may hand the run a copy that wraps the throw. */
+  override fun busyCamera(failure: Throwable): String? = generateSequence(failure) { it.cause }.take(8).firstNotNullOfOrNull { busyFailures[it] }
+
   companion object {
     const val STEP_MS = 10L
   }
@@ -159,12 +165,12 @@ class Told {
   val busy = mutableListOf<PairRequest>()
   val lines = mutableListOf<RecordEntry>()
 
-  fun calls(report: (Input) -> Unit = { reports += it }) =
+  fun calls(report: (Input) -> Unit = { reports += it }, cameraBusy: (PairRequest) -> Unit = { busy += it }) =
     CoreCalls(
       report = report,
       failure = { failures += it },
       pairFailed = { request, t -> pairFailed += request to t },
-      cameraBusy = { busy += it },
+      cameraBusy = cameraBusy,
       readiness = { _, _ -> },
       line = { lines += it },
     )

@@ -44,6 +44,13 @@ interface CaptureParts {
 
   /** Whether StreamPack's AudioRecord session id can be read (N8). */
   fun micSessionKnown(): Boolean
+
+  /**
+   * C7 carry: the id of the camera another app holds, when [failure], a start's, is Camera2 saying ours
+   * is busy. StreamPack 3.2.0 opens the camera lazily, at the first preview or the start, so a camera
+   * taken before then shows only there. Null for any other failure, the transport's included.
+   */
+  fun busyCamera(failure: Throwable): String?
 }
 
 /** What a build made: a streamer, or why none. */

@@ -32,6 +32,7 @@ import com.seazn.capture.engine.srt.SeaznSrtSink
 import io.github.thibaultbee.streampack.core.elements.encoders.AudioCodecConfig
 import io.github.thibaultbee.streampack.core.elements.encoders.VideoCodecConfig
 import io.github.thibaultbee.streampack.core.elements.endpoints.composites.muxers.ts.data.TSServiceInfo
+import io.github.thibaultbee.streampack.core.elements.sources.video.camera.CameraException
 import io.github.thibaultbee.streampack.core.elements.sources.video.camera.CameraSourceFactory
 import io.github.thibaultbee.streampack.core.elements.sources.video.camera.ICameraSource
 import io.github.thibaultbee.streampack.core.elements.sources.video.camera.extensions.backCameras
@@ -265,6 +266,20 @@ class StreamerAdapter(
     }
 
     override fun micSessionKnown(): Boolean = audioSessionId() != null
+
+    /**
+     * C7 carry: Camera2's busy word for our camera, anywhere in the start failure's cause chain. An open
+     * that throws keeps Camera2's own reason; one that fails in `StateCallback.onError` reaches us as a
+     * message-only `CameraException`, whose busy messages are [BUSY_WORDS].
+     */
+    override fun busyCamera(failure: Throwable): String? {
+      val id = cameraId ?: return null
+      val busy =
+        generateSequence(failure) { it.cause }.take(8).any { cause ->
+          (cause is CameraException && cause.message in BUSY_WORDS) || (cause is CameraAccessException && CameraAvailability.busy(cause.reason))
+        }
+      return id.takeIf { busy }
+    }
   }
 
   private fun video() =
@@ -279,6 +294,13 @@ class StreamerAdapter(
 
   private companion object {
     const val READINESS_MS = 500L
+
+    /**
+     * StreamPack 3.2.0's `CameraException` messages for `StateCallback.onError`'s ERROR_CAMERA_IN_USE (1) and
+     * ERROR_MAX_CAMERAS_IN_USE (2), read with javap from `CameraUtils$openCamera$2$callbacks$1`. Its other
+     * codes (disabled, device, service, unknown) are no other app's hold.
+     */
+    val BUSY_WORDS = setOf("Camera already in use", "Max cameras in use")
 
     // StreamPack 3.2.0's TSServiceInfo declares `id: Short` (its source, TSServiceInfo.kt:20).
     val SERVICE = TSServiceInfo(TSServiceInfo.ServiceType.DIGITAL_TV, 0x4698.toShort(), "Seazn", "Seazn Capture")
