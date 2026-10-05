@@ -5,6 +5,8 @@ import com.seazn.capture.engine.core.Input
 import com.seazn.capture.engine.core.PairRequest
 import com.seazn.capture.engine.core.RecordEntry
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
@@ -19,7 +21,7 @@ import kotlinx.coroutines.test.TestScope
 class FakeParts : CaptureParts {
   val log = mutableListOf<String>()
 
-  /** What each build answers, in turn; [Built.Ready] once these run out. */
+  /** What each build answers, in turn; a build of camera "0" once these run out. */
   val builds = ArrayDeque<Built>()
 
   /** The attempt whose endpoint is open and publishing. */
@@ -61,8 +63,8 @@ class FakeParts : CaptureParts {
     log += "build $rotation"
     delay(STEP_MS)
     log += "build done"
-    val built = builds.removeFirstOrNull() ?: Built.Ready
-    held = built == Built.Ready
+    val built = builds.removeFirstOrNull() ?: Built.Ready("0")
+    held = built is Built.Ready
     return built
   }
 
@@ -141,6 +143,20 @@ class FakeParts : CaptureParts {
   }
 
   override fun micSessionKnown() = micKnown
+
+  /** I-2: StreamPack's open of each camera source, as the test says it happened. Unwatched, an open is nothing. */
+  private val opens = MutableSharedFlow<String>(extraBufferCapacity = 8)
+
+  /** How many watch the opens now. */
+  val watching: Int
+    get() = opens.subscriptionCount.value
+
+  /** I-2: StreamPack reports camera [id]'s source open, previewing or streaming. */
+  fun opened(id: String) {
+    check(opens.tryEmit(id)) { "an open with no room" }
+  }
+
+  override fun cameraOpens(): Flow<String> = opens
 
   /** Through the cause chain, as the adapter reads: coroutines' stack-trace recovery may hand the run a copy that wraps the throw. */
   override fun busyCamera(failure: Throwable): String? = generateSequence(failure) { it.cause }.take(8).firstNotNullOfOrNull { busyFailures[it] }

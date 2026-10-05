@@ -60,6 +60,9 @@ class CaptureRun(
   private var micNoted = false
   private var closeWatch: Job? = null
 
+  /** I-2: the opening's watch of StreamPack's camera opens, from the build to the release. */
+  private var openWatch: Job? = null
+
   fun open(asked: PairRequest) = serial.submit { opened(asked) }
 
   fun close() = serial.submit { closed() }
@@ -75,12 +78,26 @@ class CaptureRun(
 
   private suspend fun build(asked: PairRequest, wanted: Int) {
     when (val built = parts.build(wanted)) {
-      Built.Ready -> {
+      is Built.Ready -> {
         rotation = wanted
         micNoted = false
+        watchOpens(built.cameraId)
       }
       is Built.Failed -> failed(asked, built)
     }
+  }
+
+  /**
+   * Review C7 I-2: StreamPack (3.2.0 and 3.2.1) opens the camera lazily, at the first preview or the start,
+   * so the build holds nothing yet: a take heard before it stands, and the opening tells it. The camera is
+   * ours, and the take told over, once StreamPack reports its source open. The watch starts after
+   * [CameraAvailability.opening]: the sources' flows keep their state, so an open that came first is seen.
+   * Every build follows a release, or none, so no watch is running here; [closed] ends this one.
+   */
+  private fun watchOpens(camera: String) {
+    cameras.opening(camera)
+    cameras.sessionStarted()?.let(calls.report)
+    openWatch = scope.launch { parts.cameraOpens().collect { id -> cameras.opened(id)?.let(calls.report) } }
   }
 
   /**
@@ -105,6 +122,8 @@ class CaptureRun(
     attempt?.let(::asked)
     closeWatch?.cancel() // cleanup: the mark, not the cancel, decides the drop
     closeWatch = null
+    openWatch?.cancel()
+    openWatch = null
     attempt = null
     rotation = null
     parts.release()

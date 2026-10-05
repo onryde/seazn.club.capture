@@ -33,4 +33,7 @@ interface Capture {
 
   /** Volatile reads only: called on the scheduler thread at every publish. */
   fun facts(): CaptureFacts
+
+  /** Review C7 I-2: the preview's open of the camera failed. From the main thread; never throws for a busy camera. */
+  fun previewFailed(failure: Throwable)
 }

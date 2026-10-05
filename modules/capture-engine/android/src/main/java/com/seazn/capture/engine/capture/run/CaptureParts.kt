@@ -1,6 +1,7 @@
 package com.seazn.capture.engine.capture.run
 
 import com.seazn.capture.engine.core.Command
+import kotlinx.coroutines.flow.Flow
 
 /**
  * What [CaptureRun]'s rules ask of StreamPack (Task 36). `StreamerAdapter` is the real one; core's tests
@@ -51,11 +52,19 @@ interface CaptureParts {
    * taken before then shows only there. Null for any other failure, the transport's included.
    */
   fun busyCamera(failure: Throwable): String?
+
+  /**
+   * Review C7 I-2: the id of each camera source the held streamer is given, once StreamPack reports it open,
+   * previewing or streaming (3.2.1, javap: `isPreviewingFlow` and `isStreamingFlow` turn true only after the
+   * lazy open succeeds). Nothing while nothing is held.
+   */
+  fun cameraOpens(): Flow<String>
 }
 
 /** What a build made: a streamer, or why none. */
 sealed interface Built {
-  data object Ready : Built
+  /** A streamer, on [cameraId]: asked for, not yet opened (StreamPack opens it lazily, review C7 I-2). */
+  data class Ready(val cameraId: String) : Built
 
   /**
    * Nothing built. [reason] is Camera2's `CameraAccessException` reason, when one is in the cause chain;

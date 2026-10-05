@@ -51,7 +51,11 @@ class CaptureRunThreadsTest {
       }
       val calls = Told().calls(report = { reports += it; if (it == Input.Connected(1)) connected.countDown() })
       val run = CaptureRun(parts, AttemptSignals(), CameraAvailability(), calls, { Side.LEFT }, scope)
+      val consumer = scope.coroutineContext.job.children.single()
       run.open(Configs.pairRequest())
+      // Review C7 I-2: the opening watches the camera's opens until its release; it is no drop watch.
+      assertTrue(waitFor { parts.watching == 1 }, "the opening watches its camera")
+      val opening = scope.coroutineContext.job.children.filter { it !== consumer }.toSet()
       run.execute(connect(1))
       assertTrue(connected.await(5, TimeUnit.SECONDS), "attempt 1 connected")
       parts.farEndCloses()
@@ -59,8 +63,7 @@ class CaptureRunThreadsTest {
       stop(run, parts, reached)
       assertTrue(reached.await(5, TimeUnit.SECONDS), "the stop ran on the other thread")
       go.countDown()
-      val consumer = scope.coroutineContext.job.children.first()
-      runBlocking { withTimeout(5_000) { scope.coroutineContext.job.children.filter { it !== consumer }.forEach { it.join() } } }
+      runBlocking { withTimeout(5_000) { scope.coroutineContext.job.children.filter { it !== consumer && it !in opening }.forEach { it.join() } } }
       parts.gates.values.forEach { it.complete(true) }
       return reports.toList()
     } finally {
@@ -72,7 +75,8 @@ class CaptureRunThreadsTest {
   /**
    * C6 m-2: a stop or a close cancels the drop watch, never leaving it waiting on an endpoint whose close
    * does not show (a vendor close that failed quietly): one watch an attempt would outlive it, holding the
-   * old streamer. The scope's children are the consumer and the watches.
+   * old streamer. The scope's children are the consumer, the opening's watch of its camera (review C7 I-2),
+   * which only the close ends, and the drop watches.
    */
   @Test
   fun `C6 m-2 a Disconnect or a close leaves no drop watch running, though the endpoint's close never shows`() {
@@ -86,13 +90,18 @@ class CaptureRunThreadsTest {
         parts.stopped = { stopped.countDown() }
         val run = CaptureRun(parts, AttemptSignals(), CameraAvailability(), Told().calls(report = {}), { Side.LEFT }, scope)
         val consumer = scope.coroutineContext.job.children.single()
-        fun watches() = scope.coroutineContext.job.children.filter { it !== consumer && it.isActive }.toList()
         run.open(Configs.pairRequest())
+        assertTrue(waitFor { parts.watching == 1 }, "$label: the opening watches its camera")
+        val opening = scope.coroutineContext.job.children.filter { it !== consumer }.toSet()
+        assertEquals(1, opening.size, "$label: one opening watch")
+        fun watches() = scope.coroutineContext.job.children.filter { it !== consumer && it !in opening && it.isActive }.toList()
         run.execute(connect(1))
         assertTrue(waitFor { watches().size == 1 }, "$label: attempt 1's drop watch runs")
         stop(run)
         assertTrue(stopped.await(5, TimeUnit.SECONDS), "$label: the stop ran")
         assertTrue(waitFor { watches().isEmpty() }, "$label: a drop watch is left running: ${watches()}")
+        val ends = label == "close" // only the release ends the opening's watch
+        assertTrue(waitFor { opening.all { it.isActive != ends } }, "$label: the opening's watch: $opening")
         assertTrue(parts.log.last().endsWith("done"), "$label: ${parts.log}")
         checked += 1
       } finally {

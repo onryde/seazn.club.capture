@@ -32,6 +32,7 @@ import com.seazn.capture.engine.srt.SeaznSrtSink
 import io.github.thibaultbee.streampack.core.elements.encoders.AudioCodecConfig
 import io.github.thibaultbee.streampack.core.elements.encoders.VideoCodecConfig
 import io.github.thibaultbee.streampack.core.elements.endpoints.composites.muxers.ts.data.TSServiceInfo
+import io.github.thibaultbee.streampack.core.elements.sources.video.IVideoSourceInternal
 import io.github.thibaultbee.streampack.core.elements.sources.video.camera.CameraException
 import io.github.thibaultbee.streampack.core.elements.sources.video.camera.CameraSourceFactory
 import io.github.thibaultbee.streampack.core.elements.sources.video.camera.ICameraSource
@@ -49,13 +50,18 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.transformLatest
 import kotlinx.coroutines.launch
 
 /**
@@ -100,6 +106,26 @@ class StreamerAdapter(
 
   override fun facts() = CaptureFacts(shown.take(), clock.lastVideoEpochMs)
 
+  /**
+   * Review C7 I-2: the preview's open of the camera source failed (StreamPack 3.2.1's `PreviewView` catches it
+   * and hands it to its `PreviewListener`, javap). The camera is not ready, and another app's hold of it is
+   * contention, whose release has the machine reopen it.
+   */
+  override fun previewFailed(failure: Throwable) {
+    val camera = current.value?.videoInput?.sourceFlow?.value as? ICameraSource ?: return
+    cameras.openFailed(camera.cameraId, busy(failure))?.let(calls.report)
+  }
+
+  /**
+   * C7 carry: Camera2's busy word anywhere in [failure]'s cause chain. An open that throws keeps Camera2's own
+   * reason; one that fails in `StateCallback.onError` reaches us as a message-only `CameraException`, whose
+   * busy messages are [BUSY_WORDS].
+   */
+  private fun busy(failure: Throwable): Boolean =
+    generateSequence(failure) { it.cause }.take(8).any { cause ->
+      (cause is CameraException && cause.message in BUSY_WORDS) || (cause is CameraAccessException && CameraAvailability.busy(cause.reason))
+    }
+
   /** Task 37's MicWatch: our AudioRecord's session id, by reflection (StreamPack keeps it private). */
   fun audioSessionId(): Int? = current.value?.audioInput?.sourceFlow?.value?.let(AudioSessionIds::of)
 
@@ -116,8 +142,11 @@ class StreamerAdapter(
     }
   }
 
-  /** CD42: before the connect, our camera is the video source; contention is the engine's `camera` field. */
-  private fun cameraOurs(held: SingleStreamer): Boolean = held.videoInput.sourceFlow.value is ICameraSource
+  /**
+   * CD42: before the connect, our camera is the video source and its open has not failed (review C7 I-2);
+   * contention is the engine's `camera` field.
+   */
+  private fun cameraOurs(held: SingleStreamer): Boolean = cameras.ready(held.videoInput.sourceFlow.value is ICameraSource)
 
   /** A teardown call whose failure is recorded and does not stop the next one. Never swallows cancellation. */
   private suspend fun quietly(action: String, block: suspend () -> Unit): Boolean =
@@ -150,12 +179,10 @@ class StreamerAdapter(
         }
       configured(made)?.let { return Built.Failed(id, accessReason(it), encoder = true, error = it) }
       cameraId = id
-      cameras.held(id, SystemClock.elapsedRealtime())
-      cameras.sessionStarted()?.let(calls.report)
       current.value = made
       sound.start()
       readinessJob = scope.launch { reportReadiness() }
-      return Built.Ready
+      return Built.Ready(id) // I-2: asked for, not opened: StreamPack opens it at the first preview or the start
     }
 
     /** I4: the Camera2 reason anywhere in the cause chain, so a wrapper of StreamPack's does not hide it. */
@@ -187,7 +214,7 @@ class StreamerAdapter(
         quietly("close") { held.close() }
         quietly("release") { held.release() }
       }
-      cameras.held(null, SystemClock.elapsedRealtime()) // C6: another app's take of our old camera is heard again
+      cameras.held(null) // C6: another app's take of our old camera is heard again
       cameras.sessionEnded()
       tally.begin(-1)
       calls.readiness(false, 0.0)
@@ -245,15 +272,16 @@ class StreamerAdapter(
       val onBack = cameraId?.let(manager::isBackCamera) ?: true
       val other = (if (onBack) manager.frontCameras else manager.backCameras).firstOrNull() ?: return
       cameras.selfChange(SystemClock.elapsedRealtime())
+      cameras.opening(other) // I-2: before the source, so its open is ours; held once StreamPack reports it open
       held.setVideoSource(CameraSourceFactory(other))
       cameraId = other
-      cameras.held(other, SystemClock.elapsedRealtime())
     }
 
     override suspend fun reopenCamera(): Boolean {
       val held = current.value ?: return false
       val id = cameraId ?: return false
       cameras.selfChange(SystemClock.elapsedRealtime())
+      cameras.opening(id) // I-2, review C7 M-4: held once StreamPack reports the new source open
       return quietly("reopen") { held.setVideoSource(CameraSourceFactory(id)) }
     }
 
@@ -261,24 +289,36 @@ class StreamerAdapter(
       val held = current.value ?: return
       val onSlate = held.videoInput.sourceFlow.value !is ICameraSource
       if (on == onSlate) return
-      if (on) held.setVideoSource(SlateSource.factory(context)) else cameraId?.let { held.setVideoSource(CameraSourceFactory(it)) }
+      if (on) {
+        held.setVideoSource(SlateSource.factory(context))
+      } else {
+        cameraId?.let {
+          cameras.opening(it) // I-2: a new camera source, opened afresh
+          held.setVideoSource(CameraSourceFactory(it))
+        }
+      }
       held.audioInput.isMuted = on
     }
 
     override fun micSessionKnown(): Boolean = audioSessionId() != null
 
+    /** C7 carry: our camera's id when the start failed on Camera2's busy word ([busy]). */
+    override fun busyCamera(failure: Throwable): String? = cameraId?.takeIf { busy(failure) }
+
     /**
-     * C7 carry: Camera2's busy word for our camera, anywhere in the start failure's cause chain. An open
-     * that throws keeps Camera2's own reason; one that fails in `StateCallback.onError` reaches us as a
-     * message-only `CameraException`, whose busy messages are [BUSY_WORDS].
+     * Review C7 I-2: each camera source's id once StreamPack 3.2.1 reports it open, previewing or streaming
+     * (javap: `CameraSource.startPreview` and `startStream` emit true after `CameraController.addTarget`, the
+     * lazy open). One per source: a new source, a switch's or a reopen's, is watched afresh.
      */
-    override fun busyCamera(failure: Throwable): String? {
-      val id = cameraId ?: return null
-      val busy =
-        generateSequence(failure) { it.cause }.take(8).any { cause ->
-          (cause is CameraException && cause.message in BUSY_WORDS) || (cause is CameraAccessException && CameraAvailability.busy(cause.reason))
-        }
-      return id.takeIf { busy }
+    @OptIn(ExperimentalCoroutinesApi::class) // transformLatest
+    override fun cameraOpens(): Flow<String> {
+      val held = current.value ?: return emptyFlow()
+      return held.videoInput.sourceFlow.transformLatest { source ->
+        val camera = source as? ICameraSource ?: return@transformLatest
+        val streaming = (camera as? IVideoSourceInternal)?.isStreamingFlow ?: MutableStateFlow(false)
+        combine(camera.isPreviewingFlow, streaming) { previewing, streams -> previewing || streams }.first { it }
+        emit(camera.cameraId)
+      }
     }
   }
 

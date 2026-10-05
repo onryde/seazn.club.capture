@@ -39,6 +39,15 @@ class CapturePreviewView(context: Context, appContext: AppContext) : ExpoView(co
       scaleMode = PreviewView.ScaleMode.FIT
       enableZoomOnPinch = false
       enableTapToFocus = false
+      // Review C7 I-2: StreamPack opens the camera lazily, here at the preview's start, and 3.2.1's PreviewView
+      // catches that open's failure and hands it to its listener (javap): the capture hears it.
+      listener =
+        object : PreviewView.PreviewListener {
+          override fun onPreviewFailed(t: Throwable) {
+            failed("open", t)
+            guarded("open") { EngineHost.capture(context).previewFailed(t) }
+          }
+        }
     }
 
   init {

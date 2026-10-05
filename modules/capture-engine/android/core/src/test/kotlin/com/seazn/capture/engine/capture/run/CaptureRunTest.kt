@@ -70,6 +70,73 @@ class CaptureRunTest {
     advanceUntilIdle()
   }
 
+  // --- Review C7 I-2: StreamPack opens the camera lazily, so the build holds nothing until the open is seen ---
+
+  @Test
+  fun `I-2 a camera taken before the build is told at it, and stays taken until StreamPack reports our open`() =
+    runTest {
+      val cameras = CameraAvailability().apply { unavailable("0", 1_000) } // CameraWatch heard it before the build
+      val s = scene(cameras)
+      s.run.open(request)
+      advanceUntilIdle()
+      assertEquals(listOf<Input>(Input.CameraContended), s.told.reports, "the build holds nothing yet: the take stands")
+      assertTrue(cameras.contended("0"))
+      s.parts.opened("1")
+      advanceUntilIdle()
+      assertEquals(listOf<Input>(Input.CameraContended), s.told.reports, "another camera's open is not ours")
+      s.parts.opened("0")
+      advanceUntilIdle()
+      assertEquals(listOf(Input.CameraContended, Input.CameraReleased), s.told.reports, "ours once open, and told over")
+      assertFalse(cameras.contended("0"))
+    }
+
+  @Test
+  fun `I-2 a build with nothing taken tells nothing, and its open tells nothing either`() =
+    runTest {
+      val s = opened()
+      s.parts.opened("0")
+      advanceUntilIdle()
+      assertEquals(emptyList(), s.told.reports)
+      assertTrue(s.cameras.ready(camera = true))
+    }
+
+  @Test
+  fun `I-2 each opening watches its own camera's opens, the release ends the watch, and a rebuild keeps one`() =
+    runTest {
+      val s = scene()
+      assertEquals(0, s.parts.watching, "nothing built, nothing watched")
+      s.run.open(request)
+      advanceUntilIdle()
+      assertEquals(1, s.parts.watching)
+      s.parts.log.clear()
+      does(s, Command.Orient(Side.RIGHT)) // CD42: another side rebuilds
+      assertEquals(listOf("release", "release done", "build ${EncoderKeys.surfaceRotation(Side.RIGHT)}", "build done"), s.parts.log.filter { it.startsWith("build") || it.startsWith("release") })
+      assertEquals(1, s.parts.watching, "the old opening's watch ended with its release")
+      s.run.close()
+      advanceUntilIdle()
+      assertEquals(0, s.parts.watching, "the release ends the watch")
+      s.run.open(request)
+      advanceUntilIdle()
+      assertEquals(1, s.parts.watching, "the next opening watches again")
+    }
+
+  @Test
+  fun `I-2 a busy build's release then the reopen's build is told nothing taken, and its open nothing more`() =
+    runTest {
+      val cameras = CameraAvailability()
+      val s = scene(cameras)
+      s.parts.builds += Built.Failed("0", cameraInUse, encoder = false, error = RuntimeException("Camera already in use"))
+      s.run.open(request)
+      advanceUntilIdle()
+      assertEquals(listOf(request), s.told.busy)
+      assertEquals(Input.CameraReleased, cameras.available("0", 3_000), "CameraWatch: the holder let go")
+      does(s, Command.ReopenCamera)
+      assertEquals(listOf<Input>(Input.CameraReopened(true)), s.told.reports, "nothing taken at the reopen's build")
+      s.parts.opened("0")
+      advanceUntilIdle()
+      assertEquals(listOf<Input>(Input.CameraReopened(true)), s.told.reports)
+    }
+
   // --- C6 CRITICAL: Disconnect(n) closes attempt n's endpoint only ---
 
   @Test
@@ -277,7 +344,9 @@ class CaptureRunTest {
         assertEquals(listOf(request), s.told.busy, label)
         assertEquals(emptyList(), s.told.pairFailed, label)
         assertTrue(cameras.contended("0"), "$label: the release is waited for")
-        // The release asks for the reopen, with nothing open: the pairing's request is built.
+        // The release asks for the reopen, with nothing open: the pairing's request is built. Review C7 I-2:
+        // the release is heard first, as CameraWatch hears it; the reopen's build erases no take of its own.
+        assertEquals(Input.CameraReleased, cameras.available("0", 3_000), "$label: the holder let go")
         s.parts.log.clear()
         does(s, Command.ReopenCamera)
         assertEquals(listOf("build $left", "build done"), s.parts.log, label)

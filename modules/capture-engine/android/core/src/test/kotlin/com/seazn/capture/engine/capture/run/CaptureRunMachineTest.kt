@@ -8,6 +8,7 @@ import com.seazn.capture.engine.core.Engine
 import com.seazn.capture.engine.core.FakeClock
 import com.seazn.capture.engine.core.FakeScheduler
 import com.seazn.capture.engine.core.Input
+import com.seazn.capture.engine.core.NotReady
 import com.seazn.capture.engine.core.PairRequest
 import com.seazn.capture.engine.core.Phase
 import com.seazn.capture.engine.core.SessionMachine
@@ -33,7 +34,7 @@ import kotlin.test.assertTrue
  */
 @OptIn(ExperimentalCoroutinesApi::class) // advanceUntilIdle and runCurrent
 class CaptureRunMachineTest {
-  private class Rig(scope: TestScope) {
+  private class Rig(scope: TestScope, cameras: CameraAvailability = CameraAvailability()) {
     val clock = FakeClock()
     val scheduler = FakeScheduler(clock)
     val lines = mutableListOf<String>()
@@ -48,7 +49,7 @@ class CaptureRunMachineTest {
       // BridgeCore's cameraBusy: the camera is taken (its `holds` check is BridgeCoreTest's).
       val busy = { request: PairRequest -> told.busy += request; engine.send(Input.CameraContended); scheduler.advanceBy(0) }
       val calls = told.calls(report = { told.reports += it; engine.send(it); scheduler.advanceBy(0) }, cameraBusy = busy)
-      run = CaptureRun(parts, AttemptSignals(), CameraAvailability(), calls, { Side.LEFT }, scope.queueScope())
+      run = CaptureRun(parts, AttemptSignals(), cameras, calls, { Side.LEFT }, scope.queueScope())
       engine.start()
       run.open(Configs.pairRequest())
     }
@@ -117,5 +118,33 @@ class CaptureRunMachineTest {
       assertTrue(rig.connects.all { it.target is SrtTarget }, "never fell back: ${rig.connects}")
       assertEquals(2, (rig.engine.phase as? Phase.OnAir)?.attemptId, "attempt 2 is on air, on the slate")
       assertEquals(listOf("slate true"), rig.parts.log.filter { it.startsWith("slate") })
+    }
+
+  /**
+   * Review C7 I-2, through the real machine: another app took the camera before the build. StreamPack opens
+   * it lazily, so the build holds nothing, and the take stands: Armed waits, not ready on the camera, until
+   * StreamPack reports our open. Then the take is told over, the machine reopens, and the broadcast connects.
+   */
+  @Test
+  fun `I-2 a camera taken before the build keeps Armed not ready on the camera until our open is seen`() =
+    runTest {
+      val rig = Rig(this, CameraAvailability().apply { unavailable("0", 0) })
+      Configs.pairInputs(ready = false).forEach(rig.engine::send)
+      rig.scheduler.advanceBy(0)
+      advanceUntilIdle() // the build, after the go-live armed the broadcast
+      rig.engine.send(Input.ReadinessChanged(Configs.READY))
+      rig.scheduler.advanceBy(0)
+      advanceUntilIdle()
+      val armed = rig.engine.phase as? Phase.Armed
+      assertEquals(NotReady.CAMERA, armed?.session?.let { it.pairing.readiness.notReady(it.camera, it.networkValidated) }, "${rig.engine.phase}")
+      assertEquals(emptyList(), rig.connects, "Armed connects nothing over a taken camera")
+      assertEquals(1, rig.lines.count { """"kind":"camera-taken"""" in it }, rig.lines.joinToString("\n"))
+
+      rig.parts.opened("0") // StreamPack: our preview opened it after all
+      advanceUntilIdle()
+      rig.scheduler.advanceBy(0)
+      advanceUntilIdle()
+      assertEquals(listOf(Input.CameraContended, Input.CameraReleased, Input.CameraReopened(true)), rig.told.reports.filter { it !is Input.ConnectFailed && it !is Input.Connected })
+      assertEquals(listOf(1), rig.connects.map { it.attemptId }, "the take told over: Armed connects")
     }
 }

@@ -259,6 +259,37 @@ class GlueRulesTest {
   }
 
   /**
+   * Review C7 I-2 and M-4: StreamPack opens the camera lazily, at the first preview or the start, so the glue calls
+   * no camera held; the run does, once StreamPack reports the source open (CaptureRunTest, CaptureRunMachineTest).
+   * Every camera source the glue sets is announced first (`cameras.opening`), so its own open is ours; the open
+   * signal is the source's previewing or streaming flow (3.2.1, javap); the readiness reads the open's outcome;
+   * and the preview's open failure, which 3.2.1's PreviewView hands its listener, reaches the capture.
+   */
+  @Test
+  fun `I-2 M-4 the glue holds no camera before StreamPack opens it, announces each camera source, and reads its open`() {
+    val adapter = glue("StreamerAdapter.kt")
+    assertEquals(listOf("cameras.held(null)"), Regex("""cameras\.held\([^)]*\)""").findAll(adapter).map { it.value }.toList(), "only the release sets what is held")
+    assertFalse("sessionStarted" in adapter, "the run starts the camera's session, at the build")
+    assertEquals(1, Regex("""return Built\.Ready\(id\)""").findAll(adapter).count(), "the build names the camera it asked for")
+    val sources = Regex("""setVideoSource\(CameraSourceFactory\((\w+)\)\)""").findAll(adapter).toList()
+    assertEquals(3, sources.size, "the switch, the reopen and the slate's end")
+    for (source in sources) {
+      val before = adapter.substring(0, source.range.first)
+      val announced = Regex("""cameras\.opening\((\w+)\)""").findAll(before).lastOrNull()
+      assertEquals(source.groupValues[1], announced?.groupValues?.get(1), "announced before it is set: ${source.value}")
+      assertFalse("setVideoSource(" in before.substring(announced!!.range.last), "nothing set between: ${source.value}")
+    }
+    assertTrue("(camera as? IVideoSourceInternal)?.isStreamingFlow" in adapter, "the start's open is an open too")
+    assertTrue("combine(camera.isPreviewingFlow, streaming) { previewing, streams -> previewing || streams }.first { it }" in adapter, "previewing or streaming")
+    assertTrue(Regex("""\.first \{ it \}\s+emit\(camera\.cameraId\)""").containsMatchIn(adapter), "the source's id, once open")
+    assertTrue("cameras.ready(held.videoInput.sourceFlow.value is ICameraSource)" in adapter, "the readiness reads the open's outcome")
+    assertTrue("cameras.openFailed(camera.cameraId, busy(failure))?.let(calls.report)" in adapter, "a failed open is heard, a busy one told")
+    val view = glue("CapturePreviewView.kt")
+    val failed = Regex("""override fun onPreviewFailed\(t: Throwable\) \{\s+failed\("open", t\)\s+guarded\("open"\) \{ EngineHost\.capture\(context\)\.previewFailed\(t\) \}""")
+    assertEquals(1, failed.findAll(view).count(), "the preview's open failure is recorded and reaches the capture, guarded")
+  }
+
+  /**
    * C7u, StreamPack#302: our SRT sink sends as StreamPack 3.2.1's SrtSink does, with srtdroid's
    * non-blocking `trySend` through [com.seazn.capture.engine.srt.connect.SrtConnection.send], whose rules
    * core's tests run; a blocking `send` would stall the encoder again under backpressure. Its drops reach
