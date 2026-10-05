@@ -229,6 +229,44 @@ describe('Home’s Continue card', () => {
     expect(screen.queryByText('Continue Live Stream')).toBeNull();
   });
 
+  // Review C5 I-4: backed out of /stream mid-pair, then the pair fails. Never "Paired".
+  it('says Pairing, never Paired, for a pair that then fails', async () => {
+    const app = await launchApp({
+      kvSeed: inStream(),
+      prepare: (fakes) => fakes.engine.setPermissions('hold'),
+    });
+    await flush();
+    expect(app.engine.getSnapshot().state.kind).toBe('pairing');
+    home();
+    await flush();
+    expect(app.nav.current()).toBe('home');
+    expect(screen.getByText('Continue Live Stream')).toBeTruthy();
+    expect(screen.getByText('Pairing this phone…')).toBeTruthy();
+    expect(screen.queryByText(/Paired/)).toBeNull();
+    act(() => app.engine.setPermissions('refuse'));
+    await flush();
+    showsPanel('permissions');
+    expect(screen.queryByText(/Paired/)).toBeNull();
+    expect(screen.queryByText('Pairing this phone…')).toBeNull();
+  });
+
+  // The same pair granted: the card moves on to Paired once native has.
+  it('says Paired once a pairing it showed is granted', async () => {
+    const app = await launchApp({
+      kvSeed: inStream(),
+      prepare: (fakes) => fakes.engine.setPermissions('hold'),
+    });
+    await flush();
+    home();
+    await flush();
+    expect(screen.getByText('Pairing this phone…')).toBeTruthy();
+    act(() => app.engine.setPermissions('grant'));
+    await flush();
+    expect(app.engine.getSnapshot().state.kind).toBe('paired');
+    expect(screen.getByText('Paired · Seazn XI v Fake CC')).toBeTruthy();
+    expect(screen.queryByText('Pairing this phone…')).toBeNull();
+  });
+
   // CD39 (A1): a stable code has no `exp`; the card says its slot alone, never "valid till .".
   it('says the slot alone for a saved code with no expiry', async () => {
     const stable = savedStreamCode({ expiresAt: null });

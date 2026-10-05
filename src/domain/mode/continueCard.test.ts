@@ -16,6 +16,7 @@ describe('continueCard', () => {
   it('says a paired code is paired, with the pairing’s label', () => {
     expect(
       continueCard({
+        pairing: false,
         saved,
         engine: 'paired',
         held: SAVED_NAME,
@@ -29,6 +30,7 @@ describe('continueCard', () => {
   it.each([null, ''])('falls back to the saved waiting label when the pairing’s is %j', (label) => {
     expect(
       continueCard({
+        pairing: false,
         saved,
         engine: 'paired',
         held: SAVED_NAME,
@@ -40,7 +42,14 @@ describe('continueCard', () => {
 
   it('says a code with an expiry is saved, with its slot and the time', () => {
     expect(
-      continueCard({ saved, engine: 'idle', held: NO_NAME, heldLabel: null, validTill: '18:40' }),
+      continueCard({
+        pairing: false,
+        saved,
+        engine: 'idle',
+        held: NO_NAME,
+        heldLabel: null,
+        validTill: '18:40',
+      }),
     ).toEqual({ kind: 'saved', slot: 1, validTill: '18:40' });
   });
 
@@ -49,6 +58,7 @@ describe('continueCard', () => {
     const noExp = savedStreamCode({ expiresAt: null, slot: 3 });
     expect(
       continueCard({
+        pairing: false,
         saved: noExp,
         engine: 'idle',
         held: NO_NAME,
@@ -61,10 +71,38 @@ describe('continueCard', () => {
   it('reads a pairing of another code as saved: the card is about the saved one', () => {
     expect(
       continueCard({
+        pairing: false,
         saved,
         engine: 'paired',
         held: OTHER_SLOT,
         heldLabel: 'Seazn XI v Real CC',
+        validTill: '18:40',
+      }),
+    ).toEqual({ kind: 'saved', slot: 1, validTill: '18:40' });
+  });
+
+  // Review C5 I-4: Pairing is not Paired. The card says Pairing until native has paired.
+  it('says a pairing of the saved code is pairing, never paired', () => {
+    expect(
+      continueCard({
+        pairing: true,
+        saved,
+        engine: 'paired',
+        held: SAVED_NAME,
+        heldLabel: 'Seazn XI v Real CC',
+        validTill: '18:40',
+      }),
+    ).toEqual({ kind: 'pairing' });
+  });
+
+  it('reads a pairing of another code as saved', () => {
+    expect(
+      continueCard({
+        pairing: true,
+        saved,
+        engine: 'paired',
+        held: OTHER_SLOT,
+        heldLabel: null,
         validTill: '18:40',
       }),
     ).toEqual({ kind: 'saved', slot: 1, validTill: '18:40' });
@@ -77,7 +115,14 @@ describe('continueCard', () => {
   });
   it.each(NOT_PAIRED)('reads %s on the saved code as saved', (engine) => {
     expect(
-      continueCard({ saved, engine, held: SAVED_NAME, heldLabel: 'X', validTill: '18:40' }),
+      continueCard({
+        pairing: false,
+        saved,
+        engine,
+        held: SAVED_NAME,
+        heldLabel: 'X',
+        validTill: '18:40',
+      }),
     ).toEqual({ kind: 'saved', slot: 1, validTill: '18:40' });
   });
 });

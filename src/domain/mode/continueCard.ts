@@ -3,6 +3,7 @@ import type { EngineStatus } from '@/domain/mode/reopen';
 import type { SavedCode } from '@/domain/mode/savedCode';
 
 export type ContinueCopy =
+  | { readonly kind: 'pairing' }
   | { readonly kind: 'paired'; readonly label: string }
   | { readonly kind: 'saved'; readonly slot: number | null; readonly validTill: string | null };
 
@@ -14,6 +15,8 @@ export type ContinueCopy =
  * there is no live row.
  */
 export function continueCard(input: {
+  /** The engine is still Pairing: `engine` reads it as paired, as the reopen rules need. */
+  pairing: boolean;
   saved: SavedCode;
   engine: EngineStatus;
   held: CodeName;
@@ -22,7 +25,9 @@ export function continueCard(input: {
 }): ContinueCopy {
   const { saved, engine, held } = input;
   if (engine === 'paired' && sameCode(held, savedCodeName(saved))) {
-    // While Pairing, native's label is not answered yet: the saved waiting fields name it.
+    // Review C5 I-4: never "Paired" before native has paired; a pair can still fail.
+    if (input.pairing) return { kind: 'pairing' };
+    // A pairing that names no label of its own: the saved waiting fields name it.
     return { kind: 'paired', label: input.heldLabel || saved.stream?.waiting.label || '' };
   }
   return { kind: 'saved', slot: saved.slot, validTill: input.validTill };

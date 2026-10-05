@@ -19,6 +19,7 @@ import {
   selectHeldSlot,
   selectHeldTokenTag,
   selectLabel,
+  selectStateKind,
   selectUnpairedKey,
   selectUnpairedReason,
 } from '@/hooks/engineSelectors';
@@ -353,6 +354,7 @@ function useHomeView(
 function useContinueCopy(code: SavedCode | null): ContinueCopy | null {
   const format = useFormatTime();
   const engine = useEngineSelector(selectEngineStatus);
+  const pairing = useEngineSelector(selectStateKind) === 'pairing';
   const heldCode = useEngineSelector(selectHeldCode);
   const heldSlot = useEngineSelector(selectHeldSlot);
   const heldTag = useEngineSelector(selectHeldTokenTag);
@@ -360,7 +362,7 @@ function useContinueCopy(code: SavedCode | null): ContinueCopy | null {
   if (code === null) return null;
   const held = { code: heldCode, slot: heldSlot, tokenTag: heldTag };
   const validTill = code.expiresAt === null ? null : format(code.expiresAt, venueZone(code));
-  return continueCard({ saved: code, engine, held, heldLabel, validTill });
+  return continueCard({ pairing, saved: code, engine, held, heldLabel, validTill });
 }
 
 /**

@@ -42,6 +42,9 @@ function cardText(
   copy: ContinueCopy,
   t: Translator['t'],
 ): { title: string; detail: string } {
+  const title = t('home.continue.title', { mode: t(MODE_NAME[mode]) });
+  // Review C5 I-4: in the stream screen's own words for Pairing.
+  if (copy.kind === 'pairing') return { title, detail: t('stream.status.pairing') };
   if (copy.kind === 'paired') {
     return {
       title: t('home.continue.paired', { label: copy.label }),
@@ -50,7 +53,7 @@ function cardText(
   }
   const slot = copy.slot ?? '–';
   return {
-    title: t('home.continue.title', { mode: t(MODE_NAME[mode]) }),
+    title,
     detail:
       copy.validTill === null
         ? t('home.continue.slot', { slot })

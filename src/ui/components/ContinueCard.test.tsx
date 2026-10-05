@@ -46,6 +46,8 @@ describe('ContinueCard', () => {
       'Continue Live Stream',
       'Slot 2 · code valid till 18:40',
     ],
+    // Review C5 I-4: while Pairing, the card says so, in Pairing's own words.
+    [{ kind: 'pairing' }, 'Continue Live Stream', 'Pairing this phone…'],
     // CD39: no `exp`, so no "code valid till ." either.
     [{ kind: 'saved', slot: 2, validTill: null }, 'Continue Live Stream', 'Slot 2'],
     [{ kind: 'saved', slot: null, validTill: null }, 'Continue Live Stream', 'Slot –'],
