@@ -14,14 +14,25 @@ import androidx.core.app.ServiceCompat
 class CaptureForegroundService : Service() {
   override fun onBind(intent: Intent?): IBinder? = null
 
+  /**
+   * Review C7 I-3: `startForeground` first, whatever comes after. A service started with
+   * `startForegroundService` and stopped before it calls `startForeground` crashes the app (AOSP 14
+   * `ActiveServices`: "did not then call startForeground"), so the keeper stops only a foreground one, and
+   * one a Release came before stops itself here, once foreground.
+   */
   override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
     val keeper = EngineHost.keeper(this)
-    try {
-      ServiceCompat.startForeground(this, CaptureNotification.ID, keeper.notification(), TYPES)
-    } catch (e: RuntimeException) { // SecurityException, ForegroundServiceStartNotAllowedException
-      keeper.fgsRefused(e)
-      stopSelf() // N10: whether this itself raises "did not then call startForeground" is unproved (Task 40)
-    }
+    val held =
+      try {
+        ServiceCompat.startForeground(this, CaptureNotification.ID, keeper.notification(), TYPES)
+        keeper.foregrounded()
+      } catch (e: RuntimeException) { // SecurityException, ForegroundServiceStartNotAllowedException
+        keeper.fgsRefused(e)
+        false
+      }
+    // A refused start (N10: whether this stop itself raises "did not then call startForeground" is unproved,
+    // Task 40), or a Release that came before this start and could not stop it (I-3).
+    if (!held) stopSelf()
     return START_NOT_STICKY
   }
 

@@ -46,6 +46,12 @@ class PairingKeeper(
   var survivesBackground = false
     private set
 
+  /**
+   * Review C7 I-3: the service went foreground, so the keeper may stop it. Main looper only: the service's
+   * callbacks and [finish] both run there.
+   */
+  private var foreground = false
+
   /** `Command.AskPermissions`, on the scheduler thread; returns at once. */
   fun ask() {
     main.post { asking() }
@@ -73,13 +79,34 @@ class PairingKeeper(
   /** The service could not go foreground (C3's catch): the pairing carries on, and says to keep the app open. */
   fun fgsRefused(e: Throwable) {
     survivesBackground = false
+    foreground = false
     line(RecordEntry("fgs-refused", listOf("error" to e.javaClass.simpleName)))
   }
 
   /** Main looper. A throw here would end the process, so it costs a line instead (N1). */
   fun notify(wire: Map<String, Any?>) = recordOnly("notify") { notes.update(wire) }
 
-  fun notification(): Notification = notes.current()
+  /**
+   * Review C7 I-3: the service went foreground. True while the pairing still holds it; false when a Release
+   * came first and could stop nothing, so the service stops itself, which can no longer crash. Main looper.
+   */
+  fun foregrounded(): Boolean {
+    foreground = survivesBackground
+    return foreground
+  }
+
+  /**
+   * The notification the service goes foreground with: the pairing's, or, when that cannot be built, a plain
+   * one (review C7 I-3). The service must call `startForeground` whatever failed before it.
+   */
+  fun notification(): Notification =
+    try {
+      notes.current()
+    } catch (e: Exception) {
+      line(RecordEntry("keeper-failed", listOf("action" to "notification", "error" to e.javaClass.simpleName)))
+      recordOnly("channel") { notes.channel() } // the failure may have been the channel's
+      notes.plain()
+    }
 
   /** CD21: a grant or a refusal is the engine's to read; a request that could not be made ends the pairing. */
   private fun asking() {
@@ -114,7 +141,11 @@ class PairingKeeper(
   }
 
   private fun finish() {
-    context.stopService(Intent(context, CaptureForegroundService::class.java))
+    // I-3: a service still starting stops itself once foreground (CaptureForegroundService.onStartCommand).
+    if (foreground) {
+      foreground = false
+      context.stopService(Intent(context, CaptureForegroundService::class.java))
+    }
     if (wakeLock.isHeld) {
       wakeLock.release()
       line(RecordEntry("wake-lock", listOf("state" to "released")))
@@ -179,8 +210,11 @@ class CaptureNotification(private val context: Context, private val language: ()
       .build()
   }
 
+  /** Review C7 I-3: what `startForeground` takes when [current] could not be built: no text and no tap. */
+  fun plain(): Notification = NotificationCompat.Builder(context, CHANNEL_ID).setSmallIcon(R.drawable.slate).setOngoing(true).build()
+
   /** M18: the name is fixed at the channel's first creation; a later call with the same id changes only the name, which Android allows. */
-  private fun channel() {
+  fun channel() {
     val name = NotificationText.CHANNEL[lang] ?: NotificationText.CHANNEL.getValue("en")
     context.getSystemService(NotificationManager::class.java)
       ?.createNotificationChannel(NotificationChannel(CHANNEL_ID, name, NotificationManager.IMPORTANCE_LOW))

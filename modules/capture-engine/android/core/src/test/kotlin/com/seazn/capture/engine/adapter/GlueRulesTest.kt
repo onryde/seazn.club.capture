@@ -167,7 +167,7 @@ class GlueRulesTest {
   /**
    * C0b and C4a (Task 38): the service, the wake lock and the marker go at `Release` alone, an unpair,
    * Ended, or A8's final beat answered; the tick runs until then. One release in the glue, in that branch,
-   * and one `stopService`, the keeper's; the service stops itself only when it could not go foreground.
+   * and one `stopService`, the keeper's; the service stops itself only when it is not held (review C7 I-3).
    */
   @Test
   fun `C0b the keeper releases at Release alone, and nothing else stops the service`() {
@@ -178,7 +178,30 @@ class GlueRulesTest {
     assertTrue("stopService(" in glue("PairingKeeper.kt"), "the keeper's")
     val service = glue("CaptureForegroundService.kt")
     assertEquals(1, Regex("""\bstopSelf\(""").findAll(service).count(), "one stopSelf")
-    assertTrue(Regex("""catch \(e: RuntimeException\) \{[^}]*stopSelf\(\)""").containsMatchIn(service), "stopSelf only in the refused start's catch")
+    assertTrue(Regex("""if \(!held\) stopSelf\(\)""").containsMatchIn(service), "stopSelf only when the service is not held")
+  }
+
+  /**
+   * Review C7 I-3: a service started with `startForegroundService` and stopped before it calls `startForeground`
+   * crashes the app (AOSP 14 `ActiveServices`: "did not then call startForeground"). So the service calls it first,
+   * whatever failed before, with a plain notification when the pairing's cannot be built; the keeper stops only
+   * a service that went foreground; and one a Release came before stops itself, once foreground.
+   */
+  @Test
+  fun `I-3 the service goes foreground before anything stops it, and the keeper stops only a foreground one`() {
+    val service = glue("CaptureForegroundService.kt")
+    val start = body(service, "override fun onStartCommand(")
+    val foreground = start.indexOf("ServiceCompat.startForeground(this, CaptureNotification.ID, keeper.notification(), TYPES)")
+    assertTrue(foreground >= 0, "the pairing's notification, or its plain fallback: $start")
+    assertTrue(Regex("""TYPES\)\s+keeper\.foregrounded\(\)\s+\} catch \(e: RuntimeException\) \{[^\n]*\s+keeper\.fgsRefused\(e\)\s+false\s+\}""").containsMatchIn(start), "held once foreground and still wanted: $start")
+    assertTrue(start.indexOf("stopSelf(") > foreground, "nothing stops the service before startForeground")
+    val keeper = glue("PairingKeeper.kt")
+    val notification = Regex("""fun notification\(\): Notification =\s+try \{\s+notes\.current\(\)\s+\} catch \(e: Exception\) \{\s+line\([^\n]*"notification"[^\n]*\s+recordOnly\("channel"\) \{ notes\.channel\(\) \}[^\n]*\s+notes\.plain\(\)\s+\}""")
+    assertEquals(1, notification.findAll(keeper).count(), "a notification the start can always take, its failure recorded")
+    assertTrue(Regex("""fun foregrounded\(\): Boolean \{\s+foreground = survivesBackground\s+return foreground""").containsMatchIn(keeper), "foreground while the pairing holds it")
+    assertTrue(Regex("""fun fgsRefused\(e: Throwable\) \{\s+survivesBackground = false\s+foreground = false""").containsMatchIn(keeper), "a refused start is not foreground")
+    val finish = body(keeper, "private fun finish()")
+    assertTrue(Regex("""^\{\s+(//[^\n]*\s+)*if \(foreground\) \{\s+foreground = false\s+context\.stopService\(""").containsMatchIn(finish), "only a foreground service is stopped: $finish")
   }
 
   /**
