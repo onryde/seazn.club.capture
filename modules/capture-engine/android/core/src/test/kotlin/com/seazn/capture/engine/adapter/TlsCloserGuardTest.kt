@@ -11,7 +11,7 @@ class TlsCloserGuardTest {
   private fun ktorIo(): IOException =
     IOException("Broken pipe").apply { stackTrace = arrayOf(frame("io.ktor.network.tls.TLSClientSessionJvmKt")) }
 
-  /** Stands in for Ktor 3.3.3's `ClosedWriteChannelException`, which extends `IOException` (javap). */
+  /** Stands in for Ktor's `ClosedWriteChannelException`, which extends `IOException` (javap, 3.3.3 and 3.5.1). */
   private class ClosedWrite(cause: Throwable) : IOException(cause.message, cause)
 
   @Test

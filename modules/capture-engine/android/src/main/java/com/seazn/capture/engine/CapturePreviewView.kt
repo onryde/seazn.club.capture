@@ -43,7 +43,7 @@ class CapturePreviewView(context: Context, appContext: AppContext) : ExpoView(co
     super.onAttachedToWindow()
     guarded("attach") { EngineHost.core(context).viewfinder(true) } // CD37: the capture is wanted on the viewfinder while Paired
     following?.cancel()
-    // A null streamer unbinds: `setVideoSourceProvider(null)` (StreamPack 3.2.0, a suspend function).
+    // A null streamer unbinds: `setVideoSourceProvider(null)` (StreamPack 3.2.1, as 3.2.0, a suspend function).
     following = scope.launch { EngineHost.capture(context).streamer.collect { streamer -> preview.setVideoSourceProvider(streamer) } }
   }
 

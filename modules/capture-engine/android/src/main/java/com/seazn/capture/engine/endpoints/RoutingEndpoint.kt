@@ -5,6 +5,7 @@ import io.github.thibaultbee.streampack.core.elements.data.Frame
 import io.github.thibaultbee.streampack.core.elements.encoders.CodecConfig
 import io.github.thibaultbee.streampack.core.elements.endpoints.IEndpointInternal
 import io.github.thibaultbee.streampack.core.elements.endpoints.MediaSinkType
+import io.github.thibaultbee.streampack.core.utils.InternalStreamPackApi
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -17,7 +18,9 @@ import kotlinx.coroutines.launch
 /**
  * SRT or RTMPS, chosen at each open by the descriptor's sink type. The open state is copied
  * synchronously after open and close, so StreamPack never reads a stale value, and mirrored after.
+ * Implements StreamPack 3.2.1's opt-in `IEndpointInternal` on purpose, as [CountingEndpoint] does.
  */
+@OptIn(InternalStreamPackApi::class)
 class RoutingEndpoint(private val srt: IEndpointInternal, private val rtmp: IEndpointInternal) : IEndpointInternal {
   @Volatile private var chosen: IEndpointInternal = srt
   private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)

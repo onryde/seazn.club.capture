@@ -29,6 +29,9 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
+      # C7u: StreamPack 3.2.1 and srtdroid 1.10.1 declare minCompileSdk 37, and app.json compiles against
+      # it, so the runner's SDK must hold android-37.0, whatever its image ships. Licences accepted.
+      - run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" 'platforms;android-37.0' > /dev/null
       # Reads the pnpm version from package.json `packageManager` (as check.yml).
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v5

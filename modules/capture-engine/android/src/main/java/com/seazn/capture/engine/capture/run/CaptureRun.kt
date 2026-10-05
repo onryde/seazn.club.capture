@@ -85,7 +85,7 @@ class CaptureRun(
 
   /**
    * P11, P12, I4: reported against [asked], never thrown. Another app holding the camera is no failure:
-   * Camera2's reason says so, or, since StreamPack 3.2.0 keeps no code from `onError`, the device's own
+   * Camera2's reason says so, or, since StreamPack (3.2.0 and 3.2.1) keeps no code from `onError`, the device's own
    * availability does (C6); the pairing waits for the release. The camera's own failure passes as it
    * is, so only `Failures.permanent` makes it permanent; the encoder's configuration failure is (CD11).
    */
@@ -201,7 +201,7 @@ class CaptureRun(
   }
 
   /**
-   * C7 carry: another app holds our camera, found at the start (StreamPack 3.2.0 opens it lazily). It
+   * C7 carry: another app holds our camera, found at the start (StreamPack 3.2.1, as 3.2.0, opens it lazily). It
    * reads as a busy build does (I4): the camera is taken and its release is waited for, never an end.
    * The attempt is UNHELD (C6 I-3), never counted towards the fallback and never an ask; the signals
    * still end it, so a late drop of it is no second report (R3).

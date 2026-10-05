@@ -4,7 +4,7 @@ import com.seazn.capture.engine.core.DropReason
 import com.seazn.capture.engine.core.Input
 
 /**
- * R3: one report per attempt, whatever the platform repeats. StreamPack 3.2.0's `IEndpoint.isOpenFlow`
+ * R3: one report per attempt, whatever the platform repeats. StreamPack's `IEndpoint.isOpenFlow` (3.2.0 and 3.2.1, javap)
  * is a StateFlow, which replays, and its streamers' `throwableFlow` is constant null (research R3), so
  * that is never the source: an attempt's drop comes from the sink's completion. Used by the RTMPS path,
  * the frame path and our own SRT sink (Task 35).

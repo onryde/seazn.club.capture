@@ -75,7 +75,7 @@ class StreamerAdapter(
   private val shown = PeakMeter()
   private val ready = PeakMeter()
   private val sound = SoundMeter(::level, calls.line)
-  private val sink = SeaznSrtSink(Dispatchers.IO.limitedParallelism(2), signals, calls.report)
+  private val sink = SeaznSrtSink(Dispatchers.IO.limitedParallelism(2), signals, calls.report, calls.line)
   private val lookup = HostLookup()
   private val clock = CaptureClockLine(calls.line)
   private val endpoints = CaptureEndpointFactory(tally, sink, RtmpDispatcher.create(), clock)
@@ -296,13 +296,13 @@ class StreamerAdapter(
     const val READINESS_MS = 500L
 
     /**
-     * StreamPack 3.2.0's `CameraException` messages for `StateCallback.onError`'s ERROR_CAMERA_IN_USE (1) and
+     * StreamPack's `CameraException` messages (3.2.0 and 3.2.1) for `StateCallback.onError`'s ERROR_CAMERA_IN_USE (1) and
      * ERROR_MAX_CAMERAS_IN_USE (2), read with javap from `CameraUtils$openCamera$2$callbacks$1`. Its other
      * codes (disabled, device, service, unknown) are no other app's hold.
      */
     val BUSY_WORDS = setOf("Camera already in use", "Max cameras in use")
 
-    // StreamPack 3.2.0's TSServiceInfo declares `id: Short` (its source, TSServiceInfo.kt:20).
+    // StreamPack's TSServiceInfo declares `id: Short` (3.2.0's source, TSServiceInfo.kt:20; 3.2.1 javap).
     val SERVICE = TSServiceInfo(TSServiceInfo.ServiceType.DIGITAL_TV, 0x4698.toShort(), "Seazn", "Seazn Capture")
 
     /** M10: PcmPeak reads 16-bit samples, so the byte format is set, never left to a default. */

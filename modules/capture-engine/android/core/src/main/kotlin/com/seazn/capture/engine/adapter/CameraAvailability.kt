@@ -78,8 +78,8 @@ class CameraAvailability(private val selfWindowMs: Long = 1_500) {
   }
 
   /**
-   * Whether the device reports [id] held by another app (C6, T36). StreamPack 3.2.0 turns
-   * `StateCallback.onError`'s busy codes into a message-only `CameraException`, so the capture asks
+   * Whether the device reports [id] held by another app (C6, T36). StreamPack (3.2.0 and 3.2.1,
+   * javap) turns `StateCallback.onError`'s busy codes into a message-only `CameraException`, so the capture asks
    * this when an open fails with no Camera2 reason that [busy] reads.
    */
   @Synchronized
@@ -108,7 +108,7 @@ class CameraAvailability(private val selfWindowMs: Long = 1_500) {
      * I4: a `CameraAccessException` reason that means another app holds the camera. A disconnect
      * (2) is not: it is also how a camera service restart looks, and F-P5-9's events already
      * report another app's take. A busy camera reported through `StateCallback.onError` is not
-     * classified here: StreamPack 3.2.0 turns its code into a message-only `CameraException`, so
+     * classified here: StreamPack 3.2.1 turns its code into a message-only `CameraException`, so
      * Task 36 carries that path (review 18 I2).
      */
     fun busy(reason: Int?): Boolean = reason == CAMERA_IN_USE || reason == MAX_CAMERAS_IN_USE

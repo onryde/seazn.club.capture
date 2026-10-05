@@ -55,7 +55,11 @@
           "initialOrientation": "PORTRAIT_UP"
         }
       ],
-      ["expo-build-properties", { "android": { "minSdkVersion": 31 } }]
+      [
+        "expo-build-properties",
+        { "android": { "minSdkVersion": 31, "compileSdkVersion": 37, "kotlinVersion": "2.3.0" } }
+      ],
+      "./modules/capture-engine/app.plugin.ts"
     ]
   }
 }

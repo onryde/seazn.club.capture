@@ -68,7 +68,7 @@ class GlueRulesTest {
   }
 
   /**
-   * StreamPack 3.2.0's own display readers (javap): `ContextExtensionsKt.getDisplayRotation`, which Kotlin
+   * StreamPack's own display readers (javap, 3.2.0 and 3.2.1): `ContextExtensionsKt.getDisplayRotation`, which Kotlin
    * reads as `context.displayRotation`, is `ContextCompat.getDisplayOrDefault(context).getRotation()`; its
    * rotation providers follow the display or the sensor, moving the encode mid-broadcast (F-P5-6).
    */
@@ -85,7 +85,7 @@ class GlueRulesTest {
     )
 
   /**
-   * Every StreamPack 3.2.0 streamer factory and constructor (`cameraSingleStreamer`, `SingleStreamer`,
+   * Every StreamPack 3.2.0 and 3.2.1 streamer factory and constructor (`cameraSingleStreamer`, `SingleStreamer`,
    * the video-only, media-projection and dual ones, the `Impl`s) and `StreamerPipeline.createEncodingOutput`
    * default `defaultRotation` to `getDisplayRotation(context)` (javap of each `$default`). A call that
    * leaves it out encodes from the display.
@@ -229,6 +229,27 @@ class GlueRulesTest {
       assertTrue(Regex("""^\s*guarded\("(attach|detach)"\) \{ EngineHost\.core\(context\)\.viewfinder\(""").containsMatchIn(line), "unguarded: $line")
     }
     assertTrue(Regex("""CoroutineScope\(SupervisorJob\(\) \+ Dispatchers\.Main \+ failed\)""").containsMatchIn(view), "the follow's scope has its handler")
+  }
+
+  /**
+   * C7u, StreamPack#302: our SRT sink sends as StreamPack 3.2.1's SrtSink does, with srtdroid's
+   * non-blocking `trySend` through [com.seazn.capture.engine.srt.connect.SrtConnection.send], whose rules
+   * core's tests run; a blocking `send` would stall the encoder again under backpressure. Its drops reach
+   * the link's sender drops, and its lines the record, from the adapter's own `calls.line`.
+   */
+  @Test
+  fun `302 the SRT sink sends with trySend through the connection, never the blocking send, and its drops are wired`() {
+    val sink = glue("SeaznSrtSink.kt")
+    assertEquals(1, Regex("""connection\.send \{ held\.trySend\(packet\.buffer, msgCtrl\(packet\)\) \}""").findAll(sink).count(), "one send, through the connection")
+    assertEquals(1, Regex("""\.trySend\(""").findAll(sink).count(), "no other trySend call")
+    assertEquals(emptyList(), Regex("""\.send\(""").findAll(sink).map { it.value }.toList(), "srtdroid's suspend send blocks the encoder (#302)")
+    assertTrue("stats.pktSndDropTotal.toLong() + connection.sendDropped" in sink, "the full-buffer drops reach the link's sender drops")
+    assertTrue("SrtConnection(signals, report, line, SystemClock::elapsedRealtime)" in sink, "the connection's lines and monotonic clock")
+    assertTrue("connection.closed { socket?.close() }" in sink, "the sink's close is marked, so a send failing on it is no cut")
+    assertTrue(
+      "SeaznSrtSink(Dispatchers.IO.limitedParallelism(2), signals, calls.report, calls.line)" in glue("StreamerAdapter.kt"),
+      "the adapter hands the sink the record's line",
+    )
   }
 
   /**

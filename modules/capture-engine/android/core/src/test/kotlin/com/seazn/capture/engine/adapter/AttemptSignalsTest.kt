@@ -154,7 +154,7 @@ class AttemptSignalsTest {
     repeat(FallbackPolicy.FAILURES_TO_FALL_BACK + 1) { n ->
       val connect = rig.connects.last()
       assertIs<RtmpsTarget>(connect.target, "attempt ${connect.attemptId}")
-      // Ktor 3.3.3 leaves a failed lookup unresolved, and SocketChannel.connect throws this, with no message.
+      // Ktor (3.3.3 and 3.5.1, javap) leaves a failed lookup unresolved, and SocketChannel.connect throws this, with no message.
       val dead = if (n % 2 == 0) UnresolvedAddressException() else IOException("connect failed", UnresolvedAddressException())
       rig.send(signals.connectFailed(connect.attemptId, dead))
       rig.retry()

@@ -99,7 +99,7 @@ class SrtOptionsTest {
     // "Bad parameters": F-P5-1), so its dead DNS is an UnknownHostException.
     assertEquals(ConnectFailure.UNRESOLVED, SrtOptions.failure(UnknownHostException("live.cloudflare.com")))
     assertEquals(ConnectFailure.UNRESOLVED, SrtOptions.failure(IOException("connect failed", UnknownHostException("live.cloudflare.com"))))
-    // RTMPS: Ktor 3.3.3 builds java.net.InetSocketAddress(host, port), which leaves a failed lookup unresolved;
+    // RTMPS: Ktor 3.5.1 (as 3.3.3, javap) builds java.net.InetSocketAddress(host, port), which leaves a failed lookup unresolved;
     // SocketChannel.connect then throws UnresolvedAddressException, with no message.
     assertEquals(ConnectFailure.UNRESOLVED, SrtOptions.failure(UnresolvedAddressException()))
     assertEquals(ConnectFailure.UNRESOLVED, SrtOptions.failure(IOException("connect failed", UnresolvedAddressException())))

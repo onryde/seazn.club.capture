@@ -47,7 +47,7 @@ interface CaptureParts {
 
   /**
    * C7 carry: the id of the camera another app holds, when [failure], a start's, is Camera2 saying ours
-   * is busy. StreamPack 3.2.0 opens the camera lazily, at the first preview or the start, so a camera
+   * is busy. StreamPack (3.2.0 and 3.2.1, javap) opens the camera lazily, at the first preview or the start, so a camera
    * taken before then shows only there. Null for any other failure, the transport's included.
    */
   fun busyCamera(failure: Throwable): String?

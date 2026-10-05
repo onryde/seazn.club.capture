@@ -22,18 +22,30 @@ android {
   }
 }
 
-// Strict pins (Global Constraints). Kotlin 2.1.20 cannot read 2.3+ metadata: nothing newer without a real build.
+// Strict pins (Global Constraints). StreamPack 3.2.1 (C7u, owner 2026-10-05, for StreamPack#302) carries Kotlin
+// metadata 2.4 and needs compileSdk 37: the app compiles with Kotlin 2.3.0 (app.json's kotlinVersion, which this
+// module's config plugin, app.plugin.ts, takes to the Kotlin Gradle plugin) against android-37.
 dependencies {
   ['core', 'ui', 'srt', 'rtmp'].each { part ->
-    implementation("io.github.thibaultbee.streampack:streampack-$part") { version { strictly '3.2.0' } }
+    implementation("io.github.thibaultbee.streampack:streampack-$part") { version { strictly '3.2.1' } }
   }
-  // 1.10.0, not the newest (1.10.1): 1.10.1's AAR metadata demands compileSdk 37, and this Expo SDK's
-  // AGP 8.12 compiles the app against android-36 (checkDebugAarMetadata refuses it). javap: 1.10.1 only
-  // adds `trySend`, and 1.10.0 keeps every public member of 1.9.5, the version StreamPack 3.2.0 names.
-  implementation('io.github.thibaultbee.srtdroid:srtdroid-ktx') { version { strictly '1.10.0' } }
-  // streampack-rtmp's RTMP client, and the Ktor network stack whose TLS closer F-P5-12 is about.
-  implementation('io.github.komedia.komuxer:rtmp') { version { strictly '0.4.0' } }
-  implementation('io.ktor:ktor-network-tls') { version { strictly '3.3.3' } }
+  // 1.10.1, the version streampack-srt 3.2.1 names. javap against 1.10.0: it adds only `trySend`, which our
+  // sink now calls (StreamPack#302); `connect`, `close` and the socket's completion are unchanged (C6 I-2).
+  implementation('io.github.thibaultbee.srtdroid:srtdroid-ktx') { version { strictly '1.10.1' } }
+  // streampack-rtmp's RTMP client, and the Ktor network stack whose TLS closer F-P5-12 is about. komuxer 0.5.0
+  // runs on Ktor 3.5.1 (its Gradle module), so the TLS pin moves with it: 3.3.3 under 3.5.1's network would mix.
+  implementation('io.github.komedia.komuxer:rtmp') { version { strictly '0.5.0' } }
+  implementation('io.ktor:ktor-network-tls') { version { strictly '3.5.1' } }
+  // C7u: StreamPack 3.2.1 asks for androidx.core 1.19.0 and lifecycle 2.11.0, whose AARs (core 1.19.0, and the
+  // lifecycle compose artifacts it lifts to 2.11.0) demand AGP 9.1; this Expo SDK's AGP is 8.12, so the app's
+  // checkDebugAarMetadata refuses them. Held at what the rest of the app asks for. javap: each of the 14
+  // androidx.core and androidx.lifecycle members StreamPack 3.2.1 references exists in 1.18.0 and 2.10.0.
+  // Remove when the app's AGP reaches 9.1.
+  constraints {
+    implementation('androidx.core:core') { version { strictly '1.18.0' } }
+    implementation('androidx.core:core-ktx') { version { strictly '1.18.0' } }
+    implementation('androidx.lifecycle:lifecycle-runtime') { version { strictly '2.10.0' } }
+  }
   // M14: compiled against, never shipped by us, so the app has exactly one OkHttp. react-android 0.86.3
   // asks for 4.9.2, and the app resolves 4.12.0 (fresco's and media3's OkHttp lift it); 4.9.2 is the
   // floor this compiles against, and core's JVM tests run the adapter on 4.12.0.

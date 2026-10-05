@@ -115,7 +115,7 @@ class CameraAvailabilityTest {
   }
 
   /**
-   * C6 (T36): StreamPack 3.2.0 turns `StateCallback.onError`'s busy codes into a message-only
+   * C6 (T36): StreamPack 3.2.1 (as 3.2.0, javap) turns `StateCallback.onError`'s busy codes into a message-only
    * `CameraException`, so a failed open asks the device's own availability whether another app holds it.
    */
   @Test

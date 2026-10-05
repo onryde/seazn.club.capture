@@ -92,7 +92,7 @@ class CaptureRunMachineTest {
     }
 
   /**
-   * C7 carry, through the real machine: StreamPack 3.2.0 opens the camera lazily, so another app's hold
+   * C7 carry, through the real machine: StreamPack (3.2.0 and 3.2.1, javap) opens the camera lazily, so another app's hold
    * can surface first at the start. The attempt is UNHELD, never counted towards the SRT to RTMPS
    * fallback; the camera is taken, so the retry goes out on the slate, over SRT still.
    */
