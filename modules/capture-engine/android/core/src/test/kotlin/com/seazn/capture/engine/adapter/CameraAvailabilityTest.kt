@@ -113,4 +113,26 @@ class CameraAvailabilityTest {
     assertEquals(Input.CameraReleased, cameras.sessionStarted())
     assertEquals(null, cameras.sessionStarted(), "told once")
   }
+
+  /**
+   * C6 (T36): StreamPack 3.2.0 turns `StateCallback.onError`'s busy codes into a message-only
+   * `CameraException`, so a failed open asks the device's own availability whether another app holds it.
+   */
+  @Test
+  fun `C6 a camera is contended while another app holds it, never while it is ours, and not after its release`() {
+    val fresh = CameraAvailability()
+    assertFalse(fresh.contended("1"), "nothing heard: not contended")
+    fresh.unavailable("1", 1_000) // another app opened camera 1 while ours was closed
+    assertTrue(fresh.contended("1"))
+    assertFalse(fresh.contended("0"), "another camera is not contended")
+    fresh.available("1", 2_000)
+    assertFalse(fresh.contended("1"), "released")
+    fresh.unavailable("1", 3_000)
+    fresh.held("1", 3_100) // and then our own open of it succeeded
+    assertFalse(fresh.contended("1"), "ours is never contended")
+    fresh.held(null, 4_000)
+    fresh.selfChange(4_000)
+    fresh.unavailable("1", 4_500) // our own reopen's event, inside the window
+    assertFalse(fresh.contended("1"), "our own change is never another app's take")
+  }
 }

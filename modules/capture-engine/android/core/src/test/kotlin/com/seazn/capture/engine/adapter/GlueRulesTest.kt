@@ -1,5 +1,6 @@
 package com.seazn.capture.engine.adapter
 
+import com.seazn.capture.engine.core.Shared
 import java.io.File
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -135,5 +136,28 @@ class GlueRulesTest {
     val manifest = File(src, "main/AndroidManifest.xml").readText()
     assertFalse("scripted" in manifest.lowercase(), "the main manifest names the scripted server")
     assertTrue(File(src, "debug/AndroidManifest.xml").readText().contains("ScriptedServerInstaller"), "the installer is declared in the debug manifest")
+  }
+
+  /**
+   * C1 (standing): every record line the glue writes, in `main` and `debug`, names a kind the allow-list
+   * holds, and each key it names is plain or a scalar. Read from each `RecordEntry(` call's own argument text.
+   */
+  @Test
+  fun `C1 every record kind and key the glue writes is in the allow-list`() {
+    val list = Shared.read("scrub/allow-list.json")
+    val kinds = list.getJSONObject("kinds").keySet()
+    val plain = list.getJSONArray("plain").let { a -> (0 until a.length()).map { a.getString(it) }.toSet() }
+    val scalars = list.getJSONObject("scalars").keySet()
+    val call = Regex("""\bRecordEntry\(""")
+    val files = src.walkTopDown().filter { it.extension == "kt" }.toList()
+    val lines = files.flatMap { file -> call.findAll(file.readText()).map { file.name to arguments(file.readText(), it.range.last) }.toList() }
+    assertTrue(lines.size >= 7, "a sweep of ${lines.size} record lines: the glue writes at least seven")
+    val undecided =
+      lines.flatMap { (name, args) ->
+        val kind = Regex("""^\(\s*"([^"]+)"""").find(args)?.groupValues?.get(1) ?: return@flatMap listOf("$name: no literal kind in $args")
+        val keys = Regex(""""(\w+)"\s+to\b""").findAll(args).map { it.groupValues[1] }.toList()
+        listOfNotNull(kind.takeUnless { it in kinds }?.let { "$name: kind $it" }) + keys.filterNot { it in plain || it in scalars }.map { "$name: $kind.$it" }
+      }
+    assertEquals(emptyList(), undecided)
   }
 }

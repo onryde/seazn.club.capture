@@ -144,7 +144,9 @@
     "camera-resumed": "native: frames came back after the camera returned",
     "camera-switched": "native: the operator switched cameras",
     "camera-taken": "native: another app took the camera",
+    "capture-call-failed": "native: a StreamPack teardown or reopen call threw, with the call and the throwable's class name; the next call still ran (Task 36)",
     "capture-clock": "native: the first video frame of an attempt reached the endpoint, with its capture lag behind the wall clock (carry 5)",
+    "capture-rebuilt": "native: the capture was released and built again, with why: an Orient for the other side (CD42)",
     "code": "native: an answer to a code fetch that decided nothing yet",
     "code-ended-pending": "native: the code ended while a broadcast was held",
     "code-unreadable": "native: the code's answer could not be read",
@@ -200,6 +202,7 @@
     "tls-closer-swallowed": "native: the TLS guard swallowed Ktor's closer throw on an RTMP IO thread (F-P5-12), with its class name",
     "unpaired": "native: the pairing ended without a broadcast end",
     "vendor-log": "native: StreamPack logged a warning or an error (CD30): its tag, its message as text, and the throwable's class name",
-    "video-stalled": "native: the watchdog saw no frames and rebuilt the encoder"
+    "video-stalled": "native: the watchdog saw no frames and rebuilt the encoder",
+    "watch-failed": "native: a device reading could not start, with which (the sound check's recording, or the microphone's session id, N8) and the throwable's class name"
   }
 }

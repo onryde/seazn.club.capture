@@ -77,6 +77,14 @@ class CameraAvailability(private val selfWindowMs: Long = 1_500) {
     told = true
   }
 
+  /**
+   * Whether the device reports [id] held by another app (C6, T36). StreamPack 3.2.0 turns
+   * `StateCallback.onError`'s busy codes into a message-only `CameraException`, so the capture asks
+   * this when an open fails with no Camera2 reason that [busy] reads.
+   */
+  @Synchronized
+  fun contended(id: String): Boolean = id in contended
+
   private fun contendedTold(): Input {
     told = true
     return Input.CameraContended

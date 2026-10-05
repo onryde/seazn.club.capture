@@ -23,6 +23,10 @@ dependencies {
   // resolves at runtime (`:app:dependencies`: 4.9.2 -> 4.12.0). The library compiles against 4.9.2.
   testImplementation("com.squareup.okhttp3:okhttp:4.12.0")
   testImplementation("com.squareup.okhttp3:mockwebserver:4.12.0")
+  // Task 36: the capture's rules run on one coroutine consumer (PV38); their order is tested on a test
+  // dispatcher. 1.10.2 is the coroutines the app resolves (`:app:dependencies`).
+  testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.10.2")
+  testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.10.2")
 }
 
 // Task 33: the glue's HTTP adapter imports nothing Android, so its folder compiles into core's tests too.
@@ -32,6 +36,10 @@ kotlin.sourceSets["test"].kotlin.srcDir("../src/main/java/com/seazn/capture/engi
 // Task 34: the scripted server's pure rules and server live in the glue's debug source set, so a release
 // never compiles them; core's tests compile that one folder to test them on the JVM.
 kotlin.sourceSets["test"].kotlin.srcDir("../src/debug/java/com/seazn/capture/engine/debug/script")
+
+// Task 36: the capture's rules (which call comes when, which attempt the endpoint holds, what is reported)
+// import nothing Android, so core's tests run them against a fake of StreamPack's parts.
+kotlin.sourceSets["test"].kotlin.srcDir("../src/main/java/com/seazn/capture/engine/capture/run")
 
 tasks.test {
   useJUnitPlatform()
@@ -53,6 +61,12 @@ tasks.test {
   inputs
     .files(fileTree(layout.projectDirectory.dir("../../../../src/i18n")) { include("*.json") })
     .withPropertyName("dictionaries")
+    .withPathSensitivity(PathSensitivity.RELATIVE)
+  // The app's theme tokens, which the slate's colours must equal (Task 36, M11), under the same rule.
+  systemProperty("capture.tokens", layout.projectDirectory.file("../../../../src/ui/theme/tokens.ts").asFile.absolutePath)
+  inputs
+    .file(layout.projectDirectory.file("../../../../src/ui/theme/tokens.ts"))
+    .withPropertyName("themeTokens")
     .withPathSensitivity(PathSensitivity.RELATIVE)
   // The glue module's whole `src` (Task 19), so GlueRulesTest sees `main`, `debug` and any `release`
   // source set. Its files are inputs under the same rule as the vectors, so a glue-only edit reruns

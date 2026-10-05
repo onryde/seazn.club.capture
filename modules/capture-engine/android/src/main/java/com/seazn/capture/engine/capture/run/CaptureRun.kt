@@ -1,0 +1,217 @@
+package com.seazn.capture.engine.capture.run
+
+import com.seazn.capture.engine.adapter.AttemptSignals
+import com.seazn.capture.engine.adapter.CameraAvailability
+import com.seazn.capture.engine.adapter.EncoderKeys
+import com.seazn.capture.engine.adapter.PermanentPlatformFailure
+import com.seazn.capture.engine.core.Command
+import com.seazn.capture.engine.core.ConnectFailure
+import com.seazn.capture.engine.core.Input
+import com.seazn.capture.engine.core.PairRequest
+import com.seazn.capture.engine.core.RecordEntry
+import com.seazn.capture.engine.core.Side
+import java.io.IOException
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.launch
+
+/**
+ * The capture's rules (Task 36, CD37, CD42), apart from StreamPack so core's tests run them: which call
+ * comes when, which attempt the endpoint holds, and what is reported. [CaptureParts] makes the calls.
+ * Everything runs on [CaptureSerial]'s one consumer, so `open`, `close` and `execute` return at once.
+ *
+ * One streamer at a time (N2), and one endpoint, held for one attempt. `Disconnect(n)` closes attempt
+ * n's endpoint only while the streamer holds it (C6, CRITICAL): the machine also answers a late open of
+ * an attempt it gave up on with `Disconnect(n)`, by which time a newer attempt may be on air.
+ */
+class CaptureRun(
+  private val parts: CaptureParts,
+  private val signals: AttemptSignals,
+  private val cameras: CameraAvailability,
+  private val calls: CoreCalls,
+  private val side: () -> Side,
+  private val scope: CoroutineScope,
+) {
+  private val serial = CaptureSerial(scope, calls.failure)
+
+  /** The pairing the capture serves. Null while closed (ledger advisory): a later reopen serves no ended pairing. */
+  @Volatile
+  var request: PairRequest? = null
+    private set
+
+  /** The rotation the held streamer encodes at (CD42); null while none is held. */
+  private var rotation: Int? = null
+
+  /** The attempt whose endpoint the streamer holds, if any: the only one a `Disconnect` may close. */
+  @Volatile private var attempt: Int? = null
+
+  /**
+   * Every attempt up to this one had its stop asked for, so its endpoint's close is no drop. A mark that
+   * only grows, never reset by the next connect: a drop watch can be past its endpoint's close on another
+   * thread when that attempt is stopped, and read the mark only after a newer attempt began. Attempt ids
+   * start at 1 and only grow (Task 19).
+   */
+  @Volatile private var stoppedThrough = 0
+
+  private var micNoted = false
+  private var closeWatch: Job? = null
+
+  fun open(asked: PairRequest) = serial.submit { opened(asked) }
+
+  fun close() = serial.submit { closed() }
+
+  fun execute(command: Command) = serial.submit { run(command) }
+
+  /** N2: never two streamers. One already held serves the new pairing, which its failures now name. */
+  private suspend fun opened(asked: PairRequest) {
+    request = asked
+    if (parts.held) return
+    build(asked, EncoderKeys.surfaceRotation(side()))
+  }
+
+  private suspend fun build(asked: PairRequest, wanted: Int) {
+    when (val built = parts.build(wanted)) {
+      Built.Ready -> {
+        rotation = wanted
+        micNoted = false
+      }
+      is Built.Failed -> failed(asked, built)
+    }
+  }
+
+  /**
+   * P11, P12, I4: reported against [asked], never thrown. Another app holding the camera is no failure:
+   * Camera2's reason says so, or, since StreamPack 3.2.0 keeps no code from `onError`, the device's own
+   * availability does (C6); the pairing waits for the release. The camera's own failure passes as it
+   * is, so only `Failures.permanent` makes it permanent; the encoder's configuration failure is (CD11).
+   */
+  private fun failed(asked: PairRequest, built: Built.Failed) {
+    when {
+      CameraAvailability.busy(built.reason) || cameras.contended(built.cameraId) -> {
+        cameras.waiting(built.cameraId)
+        calls.cameraBusy(asked)
+      }
+      built.encoder -> calls.pairFailed(asked, PermanentPlatformFailure("encoder: ${built.error.javaClass.simpleName}", built.error))
+      else -> calls.pairFailed(asked, built.error)
+    }
+  }
+
+  private suspend fun closed() {
+    request = null
+    attempt?.let(::asked)
+    closeWatch?.cancel() // cleanup: the mark, not the cancel, decides the drop
+    closeWatch = null
+    attempt = null
+    rotation = null
+    parts.release()
+  }
+
+  private suspend fun run(command: Command) {
+    if (!parts.held) return unheld(command)
+    when (command) {
+      is Command.Orient -> orient(command.side)
+      is Command.Connect -> connect(command)
+      is Command.Disconnect -> disconnect(command.attemptId)
+      is Command.Rebuild -> reconnect(command.previousAttemptId, command.next)
+      is Command.StartNewSession -> reconnect(command.previousAttemptId, command.next)
+      is Command.SetBitrate -> parts.bitrate(command.bps)
+      is Command.SetMaxBw -> parts.maxBw(command.attemptId, command.bytesPerSecond)
+      Command.SwitchCamera -> parts.switchCamera()
+      Command.ReopenCamera -> calls.report(Input.CameraReopened(parts.reopenCamera()))
+      is Command.Slate -> parts.slate(command.on)
+      Command.StopBroadcast, is Command.End -> stopBroadcast()
+      else -> Unit // HTTP, the store, permissions, the service and record lines are BridgeCore's or the keeper's
+    }
+  }
+
+  /** Nothing open: nothing to carry out, except the reopen a busy camera's release asked for (I4). */
+  private suspend fun unheld(command: Command) {
+    if (command != Command.ReopenCamera) return
+    val asked = request ?: return calls.report(Input.CameraReopened(false))
+    build(asked, EncoderKeys.surfaceRotation(side()))
+    if (parts.held) calls.report(Input.CameraReopened(true))
+  }
+
+  /** CD42: the build's rotation is the broadcast's; another side rebuilds before the connect, never setTargetRotation. */
+  private suspend fun orient(turned: Side) {
+    val wanted = EncoderKeys.surfaceRotation(turned)
+    val asked = request ?: return
+    if (wanted == rotation) return
+    calls.line(RecordEntry("capture-rebuilt", listOf("action" to "orient")))
+    closed()
+    request = asked
+    build(asked, wanted)
+  }
+
+  /** One endpoint: a connect replaces whatever attempt it still holds, as a stop asked for. */
+  private suspend fun connect(command: Command.Connect) {
+    val id = command.attemptId
+    attempt?.let { if (it != id) stopHeld(it) }
+    parts.beforeConnect(id, command.startBitrateBps)
+    attempt = id
+    val started =
+      try {
+        parts.start(command)
+      } catch (e: CancellationException) {
+        throw e
+      } catch (e: Exception) {
+        signals.connectFailed(id, e)?.let(calls.report)
+        return
+      }
+    if (!started) return calls.report(Input.ConnectFailed(id, ConnectFailure.OTHER, "srt url does not parse"))
+    signals.connected(id)?.let(calls.report)
+    noteMicSession()
+    watchClose(id)
+  }
+
+  /** N8: checked once per opening, at its first connect, when StreamPack's AudioRecord is recording. */
+  private fun noteMicSession() {
+    if (micNoted) return
+    micNoted = true
+    if (!parts.micSessionKnown()) calls.line(RecordEntry("watch-failed", listOf("action" to "mic-session")))
+  }
+
+  /** An endpoint that closes without our asking is a drop (R3: the sink's completion may say so first). */
+  private fun watchClose(id: Int) {
+    closeWatch?.cancel()
+    closeWatch =
+      scope.launch {
+        parts.endpointClosed()
+        if (id > stoppedThrough) signals.dropped(id, IOException("endpoint closed"))?.let(calls.report)
+      }
+  }
+
+  /**
+   * C6 CRITICAL: closes attempt [id]'s endpoint, and only while the streamer holds it. The machine answers
+   * a late open of an attempt it gave up on with `Disconnect(n)` (AttemptSignals passes the open through,
+   * Task 19 I1); by then that endpoint was replaced, and the one held is a newer attempt's, on air.
+   */
+  private suspend fun disconnect(id: Int) {
+    if (attempt != id) return
+    stopHeld(id)
+  }
+
+  private suspend fun stopHeld(id: Int) {
+    asked(id)
+    closeWatch?.cancel() // cleanup: the mark, not the cancel, decides the drop
+    closeWatch = null
+    attempt = null
+    parts.stop()
+  }
+
+  private fun asked(id: Int) {
+    stoppedThrough = maxOf(stoppedThrough, id)
+  }
+
+  private suspend fun reconnect(previous: Int, next: Command.Connect) {
+    disconnect(previous)
+    connect(next)
+  }
+
+  /** The broadcast ends; the pairing, the camera and the viewfinder stay (amendment, _States_). */
+  private suspend fun stopBroadcast() {
+    attempt?.let { stopHeld(it) }
+    parts.afterBroadcast()
+  }
+}

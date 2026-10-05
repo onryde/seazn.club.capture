@@ -4,11 +4,17 @@ import android.content.Context
 import android.os.Build
 import android.os.Handler
 import android.os.HandlerThread
+import com.seazn.capture.engine.adapter.AttemptSignals
 import com.seazn.capture.engine.adapter.BridgeCore
+import com.seazn.capture.engine.adapter.CameraAvailability
+import com.seazn.capture.engine.adapter.FrameTally
 import com.seazn.capture.engine.adapter.OwnedSlot
 import com.seazn.capture.engine.capture.Capture
-import com.seazn.capture.engine.capture.NoCapture
+import com.seazn.capture.engine.capture.StreamerAdapter
+import com.seazn.capture.engine.capture.run.CoreCalls
 import com.seazn.capture.engine.core.RecordEntry
+import com.seazn.capture.engine.core.Side
+import com.seazn.capture.engine.endpoints.TlsGuard
 import com.seazn.capture.engine.http.HttpAdapter
 import expo.modules.kotlin.AppContext
 import io.github.thibaultbee.streampack.core.logger.Logger
@@ -41,9 +47,12 @@ object EngineHost {
 
   private fun build(app: Context): Parts {
     Logger.logger = VendorLogger { level, fields -> parts?.core?.log(level, "vendor-log", fields) }
+    TlsGuard.record = ::line
+    TlsGuard.install(TlsGuard.MODE)
     val thread = HandlerThread("capture-engine").apply { start() }
     lateinit var core: BridgeCore
-    val capture = NoCapture { request, t -> core.pairFailed(request, t) }
+    // `{ Side.LEFT }` until Task 37's tracker supplies the side held (A11's default with no reading).
+    val capture = StreamerAdapter(app, FrameTally(), AttemptSignals(), CameraAvailability(), coreCalls { core }) { Side.LEFT }
     // Task 34: a debug build's seam may hold another HTTP path; a release build's never does.
     val http = HttpSeam.override?.invoke(app) ?: HttpAdapter()
     val platform = AndroidPlatform(capture, http, RecordFile(File(app.filesDir, "record")), ::emit)
@@ -51,6 +60,20 @@ object EngineHost {
     core.start()
     return Parts(core, capture)
   }
+
+  /**
+   * Each call reads the core when it runs, after `build` has assigned it: nothing reaches the capture
+   * until `core.start()` has run and an intent arrives.
+   */
+  private fun coreCalls(core: () -> BridgeCore) =
+    CoreCalls(
+      report = { core().report(it) },
+      failure = { core().failure(it) },
+      pairFailed = { request, t -> core().pairFailed(request, t) },
+      cameraBusy = { request -> core().cameraBusy(request) },
+      readiness = { frames, peak -> core().readiness(cameraFrames = frames, audioPeak = peak) },
+      line = ::line,
+    )
 
   /**
    * The phone's facts for the claim (G0-e): the app's version and the model, never a hardware id. D15:

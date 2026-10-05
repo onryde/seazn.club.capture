@@ -1,0 +1,19 @@
+<!--
+  The slate card's glyph (spec §3): a video camera, drawn for this card, in the theme's ink. It carries
+  no words, so no language. It does not carry the Seazn mark: this repo holds no copy of the mark's
+  path, and the web repo was read-only to Task 36.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+  android:width="240dp"
+  android:height="240dp"
+  android:viewportWidth="24"
+  android:viewportHeight="24">
+  <path
+    android:strokeColor="@color/seazn_ink"
+    android:strokeWidth="1.5"
+    android:strokeLineJoin="round"
+    android:pathData="M2.75,6.75H15.25V17.25H2.75Z" />
+  <path
+    android:fillColor="@color/seazn_ink"
+    android:pathData="M16.5,10.25L21.25,7.5V16.5L16.5,13.75Z" />
+</vector>
