@@ -208,6 +208,23 @@ class GlueRulesTest {
   }
 
   /**
+   * Re-review 3 m1: VendorLines reads StreamPack's camera-loss lines by their text, which StreamPack can reword in
+   * any release, and its test retypes them. So the regexes name the StreamPack they were read from, beside them,
+   * and that is the one build.gradle pins strictly: a bump that does not re-read `CameraUtils.openCamera` and move
+   * the pin reds here.
+   */
+  @Test
+  fun `re-review 3 m1 the camera-loss regexes name the StreamPack they read, and it is the one build_gradle pins`() {
+    val gradle = File(src.parentFile, "build.gradle").readText()
+    val pinned = Regex("""streampack[^\n]*strictly '([^']+)'""").findAll(gradle).map { it.groupValues[1] }.toList()
+    assertEquals(1, pinned.size, "one strict StreamPack pin: $pinned")
+    val companion = glue("VendorLines.kt").substringAfter("private companion object {")
+    val read = Regex("""const val STREAMPACK = "([^"]+)"""").findAll(companion).map { it.groupValues[1] }.toList()
+    assertEquals(pinned, read, "VendorLines.STREAMPACK, beside the regexes, is build.gradle's StreamPack")
+    for (regex in listOf("val DISCONNECTED = Regex(", "val IN_ERROR = Regex(")) assertTrue(regex in companion, "beside $regex")
+  }
+
+  /**
    * C6 carry (Task 37): CameraWatch feeds the capture's own CameraAvailability, so a busy camera waits, and
    * it starts inside the first build, after `core.start()` and before the build returns: no capture opens
    * before it, as the capture opens only on the engine's word. One instance, or the watch's word is inert.

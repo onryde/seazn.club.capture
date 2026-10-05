@@ -35,6 +35,11 @@ class VendorLines(
   }
 
   private companion object {
+    /**
+     * The StreamPack whose `CameraUtils.openCamera` lines [DISCONNECTED] and [IN_ERROR] were read from (re-review 3
+     * m1). A bump re-reads them and moves this; GlueRulesTest holds it to build.gradle's strict pin.
+     */
+    const val STREAMPACK = "3.2.1"
     const val CAMERA_UTILS = "CameraUtils"
     val DISCONNECTED = Regex("Camera (\\S+) has been disconnected")
     val IN_ERROR = Regex("Camera (\\S+) is in error (\\d+)")
