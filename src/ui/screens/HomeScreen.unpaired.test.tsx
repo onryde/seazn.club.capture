@@ -1,4 +1,5 @@
 import { act, fireEvent, screen } from '@testing-library/react';
+import { Profiler, type ReactElement, type ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { encodeSavedCode, type SavedCode } from '@/domain/mode/savedCode';
 import type { UnpairReason } from '@/domain/session/Pairing';
@@ -15,6 +16,29 @@ import {
   scanFromHome,
   type LaunchedApp,
 } from '../../../test/routedApp';
+
+/**
+ * Re-review round 1: a render loop inside `act` never returns, so it would hang
+ * the file rather than fail it. Every mount here (Home, or the routed app
+ * around it) is under a commit bound, so a loop fails in a bounded time. The
+ * most a healthy test here commits is 17 (measured 2026-10-05); the bound is
+ * far above it.
+ */
+const LOOP_BOUND = 200;
+function underBound(ui: ReactNode): ReactElement {
+  let commits = 0;
+  const counted = () => {
+    commits += 1;
+    if (commits > LOOP_BOUND) throw new Error(`committed ${commits} times: a render loop`);
+  };
+  return (
+    <Profiler id="bounded" onRender={counted}>
+      {ui}
+    </Profiler>
+  );
+}
+const launch = (options: Parameters<typeof launchApp>[0]) =>
+  launchApp({ around: underBound, ...options });
 
 const code = savedStreamCode();
 /** Another camera position of the same match: another code to the identity rules (C7). */
@@ -54,7 +78,7 @@ const hasSaved = (app: LaunchedApp) => app.kv.entries.has(STORE_KEYS.code('strea
 
 /** A saved code, paired by native, on /stream: as a scan leaves it. */
 async function pairedOnStream(saved: SavedCode = code): Promise<LaunchedApp> {
-  const app = await launchApp({
+  const app = await launch({
     kvSeed: inStream(saved),
     prepare: (fakes) => pairCode(fakes.engine, saved),
   });
@@ -106,7 +130,7 @@ describe('Home after an unpair the operator did not ask for', () => {
 
   // Task 24's resume at a cold start, refused by the phone's permissions.
   it('names the permissions when a cold start’s re-pair is refused', async () => {
-    const app = await launchApp({
+    const app = await launch({
       kvSeed: inStream(),
       prepare: (fakes) => fakes.engine.setPermissions('refuse'),
     });
@@ -115,6 +139,48 @@ describe('Home after an unpair the operator did not ask for', () => {
     expect(app.nav.current()).toBe('home');
     showsPanel('permissions');
     expect(hasSaved(app)).toBe(false);
+  });
+
+  // Fake parity (re-review round 1): the same code refused twice names it twice, because
+  // each pair passes through Pairing, which names no unpair.
+  it('names the permissions again when the same code is refused again', async () => {
+    const app = await launch({
+      kvSeed: inStream(),
+      prepare: (fakes) => fakes.engine.setPermissions('refuse'),
+    });
+    await flush();
+    showsPanel('permissions');
+    close();
+    await flush();
+    noPanel();
+    await scanFromHome(app, code.raw);
+    await flush(3_000);
+    expect(intentKinds(app)).toEqual(['pair', 'pair']);
+    expect(app.nav.current()).toBe('home');
+    showsPanel('permissions');
+  });
+
+  // m-11's memory clears on any pairing, not only on Paired: a held dialog refused twice says so twice.
+  it('names the permissions again after a held dialog is refused twice', async () => {
+    const app = await launch({
+      kvSeed: inStream(),
+      prepare: (fakes) => fakes.engine.setPermissions('hold'),
+    });
+    await flush();
+    expect(app.engine.getSnapshot().state.kind).toBe('pairing');
+    act(() => app.engine.setPermissions('refuse'));
+    await flush();
+    showsPanel('permissions');
+    close();
+    await flush();
+    act(() => app.engine.setPermissions('hold'));
+    await scanFromHome(app, code.raw);
+    await flush(3_000);
+    expect(app.engine.getSnapshot().state.kind).toBe('pairing');
+    act(() => app.engine.setPermissions('refuse'));
+    await flush();
+    expect(app.nav.current()).toBe('home');
+    showsPanel('permissions');
   });
 
   it('scans again from the Live Stream tile', async () => {
@@ -144,10 +210,32 @@ describe('Home after an unpair the operator did not ask for', () => {
     noPanel();
   });
 
+  // Re-review round 1: a memory that never matches re-sets the panel on every commit, a loop
+  // inside `act`. Counted commits make that a failure in a bounded time, never a hang.
+  it('names an unpair in a bounded number of commits', async () => {
+    let commits = 0;
+    const counted = () => {
+      commits += 1;
+      if (commits > 25) throw new Error(`Home committed ${commits} times: a render loop`);
+    };
+    const view = renderWithPorts(
+      <Profiler id="home" onRender={counted}>
+        <HomeScreen />
+      </Profiler>,
+    );
+    await act(() => view.ports.modeStore.load());
+    act(() => pairCode(view.engine, code));
+    const before = commits;
+    act(() => view.engine.hear({ word: 'replaced' }));
+    await flush();
+    showsPanel('replaced');
+    expect(commits - before).toBe(2);
+  });
+
   // Review C5 m-11: Home mounts again (the crash screen's Try again remounts the tree, Home
   // included): a panel already closed stays closed, and the next unpair still says so.
   it('keeps a closed panel closed when Home mounts again', async () => {
-    const view = renderWithPorts(<HomeScreen />);
+    const view = renderWithPorts(underBound(<HomeScreen />));
     await act(() => view.ports.modeStore.load());
     act(() => pairCode(view.engine, code));
     act(() => view.engine.hear({ word: 'replaced' }));
@@ -156,7 +244,7 @@ describe('Home after an unpair the operator did not ask for', () => {
     close();
     await flush();
     noPanel();
-    view.rerender(<HomeScreen key="mounted-again" />);
+    view.rerender(underBound(<HomeScreen key="mounted-again" />));
     await flush();
     expect(view.engine.getSnapshot().unpaired).toMatchObject({ reason: 'replaced' });
     noPanel();
@@ -168,7 +256,7 @@ describe('Home after an unpair the operator did not ask for', () => {
 
   // m-11's memory listens for the next pair, then lets go: no listener is left behind.
   it('leaves no engine listener behind once the next pair clears the unpair', async () => {
-    const view = renderWithPorts(<HomeScreen />);
+    const view = renderWithPorts(underBound(<HomeScreen />));
     await act(() => view.ports.modeStore.load());
     const subscribe = view.engine.subscribe;
     let open = 0;
@@ -228,7 +316,7 @@ describe('Home after an unpair the operator did not ask for', () => {
     act(() => app.engine.hear({ word: 'replaced' }));
     await flush();
     close();
-    // The fake's scene names its own pairing (slot 1), so the key moves without passing null.
+    // The fake's scene names its own pairing (slot 1), reached through Pairing as native does.
     act(() => app.engine.scene('unpaired-replaced'));
     await flush();
     expect(app.engine.getSnapshot().unpaired).toMatchObject({ reason: 'replaced', slot: 1 });
@@ -267,7 +355,7 @@ describe('Home after an unpair the operator did not ask for', () => {
 /** Question 4: the replaced panel in French, from the copy table. */
 describe('Home’s unpaired panel in another language', () => {
   it('names a replaced code in French', async () => {
-    const home = renderWithPorts(<HomeScreen />, { deviceLanguages: ['fr'] });
+    const home = renderWithPorts(underBound(<HomeScreen />), { deviceLanguages: ['fr'] });
     await act(() => home.ports.modeStore.load());
     act(() => pairCode(home.engine, code));
     act(() => home.engine.hear({ word: 'replaced' }));
@@ -298,7 +386,7 @@ describe('Home’s Continue card', () => {
 
   // Review C5 I-4: backed out of /stream mid-pair, then the pair fails. Never "Paired".
   it('says Pairing, never Paired, for a pair that then fails', async () => {
-    const app = await launchApp({
+    const app = await launch({
       kvSeed: inStream(),
       prepare: (fakes) => fakes.engine.setPermissions('hold'),
     });
@@ -319,7 +407,7 @@ describe('Home’s Continue card', () => {
 
   // The same pair granted: the card moves on to Paired once native has.
   it('says Paired once a pairing it showed is granted', async () => {
-    const app = await launchApp({
+    const app = await launch({
       kvSeed: inStream(),
       prepare: (fakes) => fakes.engine.setPermissions('hold'),
     });
@@ -337,7 +425,7 @@ describe('Home’s Continue card', () => {
   // CD39 (A1): a stable code has no `exp`; the card says its slot alone, never "valid till .".
   it('says the slot alone for a saved code with no expiry', async () => {
     const stable = savedStreamCode({ expiresAt: null });
-    await launchApp({ kvSeed: { [STORE_KEYS.code('stream')]: encodeSavedCode(stable) } });
+    await launch({ kvSeed: { [STORE_KEYS.code('stream')]: encodeSavedCode(stable) } });
     expect(screen.getByText('Continue Live Stream')).toBeTruthy();
     expect(screen.getByText('Slot 1')).toBeTruthy();
     expect(screen.queryByText(/valid till/)).toBeNull();

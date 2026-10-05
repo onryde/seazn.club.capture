@@ -537,9 +537,13 @@ export function createFakeCaptureEngine(now: () => number = Date.now): FakeCaptu
       venueTimezone: intent.venueTimezone,
       automatic: intent.automatic,
     };
-    if (permissions === 'refuse') return atRest({ unpaired: { reason: 'permissions', ...name } });
     if (permissions === 'hold') {
       return show({ kind: 'pairing' }, { ...AT_REST, pairing, ready: NOT_READY });
+    }
+    if (permissions === 'refuse') {
+      // Native's order (review C5, re-review round 1): Pairing, naming no unpair, then the answer.
+      show({ kind: 'pairing' }, { ...AT_REST, pairing, ready: NOT_READY });
+      return atRest({ unpaired: { reason: 'permissions', ...name } });
     }
     paired(pairing);
   };
@@ -644,6 +648,9 @@ export function createFakeCaptureEngine(now: () => number = Date.now): FakeCaptu
     cancelPending();
     const held = snapshot.pairing ?? { ...FAKE_PAIRING, ...waiting };
     const resting = scene.state.kind === 'idle';
+    // A pairing native left was paired first: on native an unpair is always reached through
+    // Pairing, which names none (review C5, re-review round 1).
+    if (resting) show({ kind: 'pairing' }, { ...AT_REST, pairing: held, ready: NOT_READY });
     publish({
       ...AT_REST,
       state: scene.state,

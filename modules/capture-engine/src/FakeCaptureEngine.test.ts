@@ -299,6 +299,36 @@ describe('the paired phase', () => {
     });
   });
 
+  // Review C5 re-review, fake parity: native publishes Pairing, naming no unpair, before the
+  // dialog's answer; the same code refused again goes through Pairing again.
+  it('publishes Pairing before a refusal, each time, naming no unpair there', () => {
+    const seen: [string, string | null][] = [];
+    engine.subscribe(() => seen.push([state().kind, snapshot().unpaired?.reason ?? null]));
+    engine.setPermissions('refuse');
+    pair();
+    pair();
+    expect(seen).toEqual([
+      ['pairing', null],
+      ['idle', 'permissions'],
+      ['pairing', null],
+      ['idle', 'permissions'],
+    ]);
+  });
+
+  // The scene stands for a pairing native left: it reaches Idle through Pairing, as one does.
+  it('plays unpaired-replaced through Pairing', () => {
+    const seen: [string, string | null][] = [];
+    engine.subscribe(() => seen.push([state().kind, snapshot().unpaired?.reason ?? null]));
+    engine.scene('unpaired-replaced');
+    engine.scene('unpaired-replaced');
+    expect(seen).toEqual([
+      ['pairing', null],
+      ['idle', 'replaced'],
+      ['pairing', null],
+      ['idle', 'replaced'],
+    ]);
+  });
+
   it('refuses a held dialog later, naming the code', () => {
     engine.setPermissions('hold');
     pair();
