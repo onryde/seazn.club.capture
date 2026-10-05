@@ -549,6 +549,53 @@ class CaptureRunTest {
       assertEquals(4, s.parts.log.size, "and nothing owed after it")
     }
 
+  /** Re-review 4 m2: a loss rebuilt at once, and a second loss inside the spacing, owed. */
+  private fun TestScope.owedLoss(): Scene {
+    val s = opened()
+    s.parts.opened("0")
+    advanceTimeBy(100)
+    s.parts.lose("0")
+    advanceTimeBy(100)
+    runCurrent()
+    s.parts.lose("0")
+    runCurrent()
+    assertEquals(1, s.told.lines.count { it.kind == "capture-rebuilt" }, "the first loss, at once")
+    assertFalse(s.cameras.ready(camera = true), "owed: lost")
+    return s
+  }
+
+  /** Re-review 4 m2, guard (a): an attempt started inside the spacing owns the camera; the owed rebuild would cut it. */
+  @Test
+  fun `re-review 4 m2 an owed rebuild does not run once a connect started inside the spacing, and the attempt is not closed`() =
+    runTest {
+      val s = owedLoss()
+      s.run.execute(connect(1))
+      advanceTimeBy(100)
+      runCurrent()
+      assertEquals(Input.Connected(1), s.told.reports.last())
+      s.parts.log.clear()
+      advanceTimeBy(SessionMachine.RETRY_MS + 200)
+      runCurrent()
+      assertEquals(emptyList(), s.parts.log, "no release, no build")
+      assertEquals(1, s.parts.publishing, "still on air")
+      assertEquals(1, s.told.lines.count { it.kind == "capture-rebuilt" })
+    }
+
+  /** Re-review 4 m2, guard (b): an open seen inside the spacing answers the loss; nothing is rebuilt. */
+  @Test
+  fun `re-review 4 m2 an owed rebuild does not run once an open was seen inside the spacing`() =
+    runTest {
+      val s = owedLoss()
+      s.parts.opened("0")
+      runCurrent()
+      assertTrue(s.cameras.ready(camera = true), "the open seen")
+      s.parts.log.clear()
+      advanceTimeBy(SessionMachine.RETRY_MS + 200)
+      runCurrent()
+      assertEquals(emptyList(), s.parts.log, "no release, no build")
+      assertEquals(1, s.told.lines.count { it.kind == "capture-rebuilt" })
+    }
+
   /**
    * Re-review 4 m2: on a dispatcher that resumes at once (as Dispatchers.Default can), the spacing's queued block
    * runs while the spacing's own job is still active. Read as "inside the spacing", the owed rebuild owed itself
