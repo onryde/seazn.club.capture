@@ -53,8 +53,10 @@ class GlueRulesTest {
     for (file in sources()) {
       val text = file.readText()
       assertFalse("runBlocking" in text, "${file.path}: runBlocking")
-      if (!file.path.endsWith("srt/connect/SrtConnection.kt")) assertFalse("InetAddress" in text, "${file.path}: a DNS lookup outside the SRT connection's bounded IO lookup")
+      if (!file.path.endsWith("net/HostLookup.kt")) assertFalse("InetAddress" in text, "${file.path}: a DNS lookup outside HostLookup's bounded IO lookup")
     }
+    // The positive pair: the one lookup is where the rule says, so the exemption is not a stale path.
+    assertTrue(sources().any { it.path.endsWith("net/HostLookup.kt") && "InetAddress" in it.readText() }, "HostLookup holds the glue's lookup")
   }
 
   @Test

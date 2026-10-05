@@ -2,7 +2,6 @@ package com.seazn.capture.engine.srt.connect
 
 import com.seazn.capture.engine.adapter.AttemptSignals
 import com.seazn.capture.engine.adapter.CameraAvailability
-import com.seazn.capture.engine.adapter.SrtOptions
 import com.seazn.capture.engine.capture.run.CaptureParts
 import com.seazn.capture.engine.capture.run.CaptureRun
 import com.seazn.capture.engine.capture.run.FakeParts
@@ -14,28 +13,18 @@ import com.seazn.capture.engine.core.ConnectFailure
 import com.seazn.capture.engine.core.DropReason
 import com.seazn.capture.engine.core.Input
 import com.seazn.capture.engine.core.Side
-import java.net.InetAddress
 import java.net.InetSocketAddress
 import java.net.SocketException
-import java.net.UnknownHostException
-import java.util.concurrent.CountDownLatch
-import java.util.concurrent.TimeUnit
-import java.util.concurrent.locks.LockSupport
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
-import kotlinx.coroutines.withTimeoutOrNull
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
-import kotlin.test.assertNull
-import kotlin.test.assertSame
 import kotlin.test.assertTrue
 
 /**
@@ -74,7 +63,12 @@ class SrtConnectionTest {
 
     fun farEndCloses(cause: Throwable) = context.completeExceptionally(cause)
 
-    fun close() = context.complete()
+    var closes = 0
+
+    override fun close() {
+      closes += 1
+      context.complete() // srtdroid 1.10.0: close() completes the socket's context
+    }
   }
 
   /** StreamPack's parts with our sink as the endpoint: each start connects the next socket through [connection]. */
@@ -82,9 +76,15 @@ class SrtConnectionTest {
     CaptureParts by fake {
     private var socket: FakeSocket? = null
 
+    /** What the sink's MAXBW `setSockFlag` throws once connected, if anything (C6 re-review). */
+    var maxBwFails: Exception? = null
+
     override suspend fun start(connect: Command.Connect): Boolean {
       val next = sockets.removeFirst()
-      connection.connect(next, connect.attemptId, InetSocketAddress.createUnresolved("ingest.example", 7000)) { socket = next }
+      connection.connect(next, connect.attemptId, InetSocketAddress.createUnresolved("ingest.example", 7000)) {
+        maxBwFails?.let { throw it }
+        socket = next
+      }
       return true
     }
 
@@ -100,7 +100,7 @@ class SrtConnectionTest {
     }
   }
 
-  private class Scene(val run: CaptureRun, val told: Told, val connection: SrtConnection)
+  private class Scene(val run: CaptureRun, val told: Told, val connection: SrtConnection, val parts: SinkParts)
 
   private fun TestScope.scene(vararg sockets: FakeSocket): Scene {
     val signals = AttemptSignals()
@@ -111,7 +111,7 @@ class SrtConnectionTest {
     val run = CaptureRun(parts, signals, CameraAvailability(), calls, { Side.LEFT }, queueScope())
     run.open(Configs.pairRequest())
     advanceUntilIdle()
-    return Scene(run, told, connection)
+    return Scene(run, told, connection, parts)
   }
 
   private fun TestScope.does(scene: Scene, vararg commands: Command) {
@@ -172,64 +172,27 @@ class SrtConnectionTest {
       assertFalse(s.connection.isOpen.value, "the endpoint was marked open before the listener, never after it")
     }
 
-  // --- C6 I-1: the host's lookup is inside the start's bound (CaptureRun.START_BOUND_MS) ---
+  // --- C6 re-review: a socket connected and then refused by the sink's own MAXBW is closed, not left open ---
 
-  /** Real threads: the lookup blocks one, as the platform's does, and the bound is CaptureRun's `withTimeoutOrNull`. */
-  private fun bounded(connection: SrtConnection): Pair<InetAddress?, Long> =
-    runBlocking {
-      val began = System.nanoTime()
-      val resolved = withTimeoutOrNull(BOUND_MS) { connection.resolve("ingest.example") }
-      resolved to (System.nanoTime() - began) / 1_000_000
+  /** srtdroid's `setSockFlag` failing once connected; made-up text. Closed by the connect, it never reaches the run's stop. */
+  @Test
+  fun `C6 re-review a held() that throws closes the socket it connected, fails that attempt once, and the next one connects`() =
+    runTest {
+      val first = FakeSocket()
+      val second = FakeSocket()
+      val s = scene(first, second)
+      s.parts.maxBwFails = SocketException("Operation not supported: Bad parameters")
+      does(s, connect(1))
+      assertEquals(1, first.connects)
+      assertEquals(1, first.closes, "nothing else holds a socket whose held() threw: the connect closes it")
+      assertEquals(listOf("ConnectFailed 1 OTHER"), s.told.reports.map(::named), "one failure, and the close is no drop")
+      assertFalse(s.connection.isOpen.value)
+      s.parts.maxBwFails = null
+      does(s, Command.Disconnect(1), connect(2))
+      assertEquals(listOf("ConnectFailed 1 OTHER", "Connected 2"), s.told.reports.map(::named))
+      assertEquals(0, second.closes)
+      assertEquals(1, first.closes, "closed once, not again by the next attempt")
     }
-
-  @Test
-  fun `C6 I-1 a lookup that ignores an interrupt never holds the connect past its bound`() {
-    val answered = CountDownLatch(1)
-    // Android's resolver (getaddrinfo) ignores an interrupt: this one waits it out, until answered or 3 s.
-    val connection =
-      SrtConnection(AttemptSignals(), {}) {
-        val until = System.nanoTime() + TimeUnit.SECONDS.toNanos(3)
-        while (answered.count > 0 && System.nanoTime() < until) LockSupport.parkNanos(TimeUnit.MILLISECONDS.toNanos(10))
-        InetAddress.getLoopbackAddress()
-      }
-    val (resolved, tookMs) = bounded(connection)
-    answered.countDown()
-    assertNull(resolved, "the bound ended the connect")
-    assertTrue(tookMs < 1_000, "the bound ended the wait at $tookMs ms, not the lookup's own end")
-  }
-
-  @Test
-  fun `C6 I-1 a lookup that honours an interrupt is interrupted once the bound ends`() {
-    val interrupted = CountDownLatch(1)
-    val connection =
-      SrtConnection(AttemptSignals(), {}) {
-        try {
-          Thread.sleep(10_000)
-        } catch (e: InterruptedException) {
-          interrupted.countDown()
-          throw e
-        }
-        InetAddress.getLoopbackAddress()
-      }
-    assertNull(bounded(connection).first)
-    assertTrue(interrupted.await(2, TimeUnit.SECONDS), "the lookup's thread was interrupted")
-  }
-
-  /** The second call, and the empty case's sibling: a lookup that answers, then one that fails, each the connect's own. */
-  @Test
-  fun `C6 I-1 a lookup's answer is the connect's, and an unknown host stays UNRESOLVED`() {
-    val asked = mutableListOf<String>()
-    val loopback = InetAddress.getLoopbackAddress()
-    val connection =
-      SrtConnection(AttemptSignals(), {}) { host ->
-        synchronized(asked) { asked += host }
-        if (host == "nowhere.example") throw UnknownHostException(host) else loopback
-      }
-    assertSame(loopback, bounded(connection).first)
-    val failed = assertFailsWith<UnknownHostException> { runBlocking { connection.resolve("nowhere.example") } }
-    assertEquals(ConnectFailure.UNRESOLVED, SrtOptions.failure(failed), "F-P5-1: an unresolved host never counts toward the fallback")
-    assertEquals(listOf("ingest.example", "nowhere.example"), synchronized(asked) { asked.toList() })
-  }
 
   private fun named(input: Input): String =
     when (input) {
@@ -238,9 +201,4 @@ class SrtConnectionTest {
       is Input.Dropped -> "Dropped ${input.attemptId} ${input.reason}"
       else -> "$input"
     }
-
-  private companion object {
-    /** Far under the 3 s the stuck lookup holds out for, and over a quick lookup's few milliseconds. */
-    const val BOUND_MS = 200L
-  }
 }

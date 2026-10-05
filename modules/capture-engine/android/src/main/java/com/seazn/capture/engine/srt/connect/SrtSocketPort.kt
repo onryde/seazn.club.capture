@@ -17,4 +17,7 @@ interface SrtSocketPort {
 
   /** srtdroid's `socketContext.invokeOnCompletion`: [handler] runs once the socket ends, at once if it already has. */
   fun onEnd(handler: (Throwable?) -> Unit)
+
+  /** srtdroid 1.10.0's `close()`, which completes the socket's context. */
+  fun close()
 }

@@ -22,6 +22,7 @@ import com.seazn.capture.engine.adapter.SrtOpt
 import com.seazn.capture.engine.adapter.SrtPlan
 import com.seazn.capture.engine.core.Input
 import com.seazn.capture.engine.core.LinkCounters
+import com.seazn.capture.engine.net.HostLookup
 import com.seazn.capture.engine.srt.connect.SrtConnection
 import com.seazn.capture.engine.srt.connect.SrtSocketPort
 import io.github.thibaultbee.srtdroid.core.enums.Boundary
@@ -56,6 +57,7 @@ class SeaznSrtSink(
   override val supportedSinkTypes: List<MediaSinkType> = listOf(MediaSinkType.SRT)
 
   private val connection = SrtConnection(signals, report)
+  private val lookup = HostLookup()
   override val isOpenFlow = connection.isOpen
 
   @Volatile private var socket: CoroutineSrtSocket? = null
@@ -75,7 +77,7 @@ class SeaznSrtSink(
   override suspend fun openImpl(mediaDescriptor: MediaDescriptor) =
     withContext(dispatcher) {
       val (plan, id) = pending ?: throw IllegalStateException("no SRT plan for this connect")
-      val address = connection.resolve(plan.host) // F-P5-1: UnknownHostException → UNRESOLVED
+      val address = lookup.resolve(plan.host) // F-P5-1: UnknownHostException → UNRESOLVED; inside the start's bound (C6 I-1)
       val opened = CoroutineSrtSocket(dispatcher) // 1.10.0: CoroutineSrtSocket(CoroutineDispatcher)
       opened.setSockFlag(SockOpt.PAYLOADSIZE, PAYLOAD_SIZE)
       for ((option, value) in plan.before) opened.setSockFlag(sockOpt(option), flagValue(option, value)) // 1.10.0: setSockFlag(SockOpt, Any)
@@ -159,6 +161,8 @@ class SeaznSrtSink(
     override fun onEnd(handler: (Throwable?) -> Unit) {
       socket.socketContext.invokeOnCompletion(handler) // 1.10.0: socketContext: CompletableJob; close() completes it synchronously
     }
+
+    override fun close() = socket.close() // 1.10.0: close()
   }
 
   companion object {

@@ -25,6 +25,7 @@ import com.seazn.capture.engine.core.RtmpsTarget
 import com.seazn.capture.engine.core.Side
 import com.seazn.capture.engine.core.SrtTarget
 import com.seazn.capture.engine.endpoints.CaptureClockLine
+import com.seazn.capture.engine.net.HostLookup
 import com.seazn.capture.engine.endpoints.CaptureEndpointFactory
 import com.seazn.capture.engine.endpoints.RtmpDispatcher
 import com.seazn.capture.engine.srt.SeaznSrtSink
@@ -74,6 +75,7 @@ class StreamerAdapter(
   private val ready = PeakMeter()
   private val sound = SoundMeter(::level, calls.line)
   private val sink = SeaznSrtSink(Dispatchers.IO.limitedParallelism(2), signals, calls.report)
+  private val lookup = HostLookup()
   private val clock = CaptureClockLine(calls.line)
   private val endpoints = CaptureEndpointFactory(tally, sink, RtmpDispatcher.create(), clock)
   private val current = MutableStateFlow<SingleStreamer?>(null)
@@ -205,7 +207,10 @@ class StreamerAdapter(
           sink.next(plan, connect.attemptId)
           held.startStream(SrtMediaDescriptor(plan.host, plan.port, serviceInfo = SERVICE))
         }
-        is RtmpsTarget -> held.startStream(target.url.trimEnd('/') + "/" + URLEncoder.encode(target.streamKey, "UTF-8"))
+        is RtmpsTarget -> {
+          lookup.warm(target.url) // C6 re-review: komuxer's own lookup is blocking; this one is inside the start's bound
+          held.startStream(target.url.trimEnd('/') + "/" + URLEncoder.encode(target.streamKey, "UTF-8"))
+        }
       }
       return true
     }
