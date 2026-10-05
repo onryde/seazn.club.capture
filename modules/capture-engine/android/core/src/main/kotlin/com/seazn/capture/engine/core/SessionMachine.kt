@@ -323,7 +323,8 @@ internal object Transports {
   fun frames(phase: Phase, input: Input.Frames, now: Now): Step {
     if (phase !is Phase.OnAir || phase.attemptId != input.attemptId) return Step(phase)
     val session = phase.session
-    val (watchdog, verdict) = phase.watchdog.frames(input.videoFrames, input.audioFrames, now.monoMs, session.camera.slateOnAir, session.micSilenced)
+    val (watchdog, verdict) =
+      phase.watchdog.frames(input.videoFrames, input.audioFrames, now.monoMs, session.camera.slateOnAir, session.micSilenced, session.device?.shed)
     var next = phase.copy(watchdog = watchdog)
     val commands = mutableListOf<Command>()
     if (watchdog.advancing(now.monoMs)) {

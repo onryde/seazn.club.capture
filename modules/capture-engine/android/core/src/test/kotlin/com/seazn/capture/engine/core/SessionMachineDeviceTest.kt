@@ -1,5 +1,6 @@
 package com.seazn.capture.engine.core
 
+import com.seazn.capture.engine.adapter.Thermal
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
@@ -161,6 +162,52 @@ class SessionMachineDeviceTest {
     assertEquals(9.7, rig.snapshot.encodedVideoFps)
     assertEquals(15.2, rig.snapshot.audioPacketsPerSecond)
     assertEquals(listOf(DegradeReason.MIC_SILENCED), assertIs<SnapshotState.Degraded>(rig.state).reasons)
+  }
+
+  /**
+   * Session 8, item 7: on RTMPS at thermal 3 then 4 (shed preview-framerate, then encode), 20 `video-stalled
+   * {below-floor, msSinceAdvance 0}` in 9 min, each a reconnect: video 11.8 to 24.7 fps (over its floor), audio 3.8 to
+   * 19.8 (under its floor). The phone throttles its own encoders for heat, which no reconnect cools, and our shed
+   * lowers no rate of its own. Under any shed step no rate floor is judged, as for a silenced mic (F-P5-8); the rates
+   * are still Diagnostics', and a picture that truly stops is still rebuilt by the zero test. Swept over every
+   * thermal status through the engine's own [Thermal.shed]: with no shed, the same rate is a rate-floor rebuild.
+   */
+  @Test
+  fun `item 7 under a thermal shed a steady rate under the audio floor never reconnects, and a real freeze still does`() {
+    val perStep = ((StallWatchdog.AUDIO_FLOOR_FPS - 2) / 2).toLong() // 18 a second, on 500 ms steps
+    val fps = perStep * 2.0
+    assertTrue(fps < StallWatchdog.AUDIO_FLOOR_FPS && fps >= StallWatchdog.VIDEO_FLOOR_FPS, "under audio's floor alone, as on the device")
+    val statuses = 0..6
+    var shed = 0
+    var judged = 0
+    for (status in statuses) {
+      val step = Thermal.shed(status)
+      val rig = MachineRig().live()
+      rig.send(Input.Device(DeviceSample(status, null, 50, false, null, step)))
+      val attempt = rig.attempt
+      rig.advance(60_000, videoPerStep = perStep, audioPerStep = perStep)
+      if (step != null) {
+        assertEquals(emptyList(), rig.sent<Command.Rebuild>(), "status $status, shed ${step.wire}: no reconnect")
+        assertEquals(emptyList(), rig.records("video-stalled"), "status $status")
+        assertEquals(attempt, rig.attempt, "the same attempt on air")
+        assertEquals(fps to fps, rig.snapshot.encodedVideoFps to rig.snapshot.audioPacketsPerSecond, "Diagnostics still shows the rates")
+        // A real freeze: video stops dead, and the zero test rebuilds it, as it always did.
+        rig.advance(StallWatchdog.STALL_MS + 500, videoPerStep = 0, audioPerStep = perStep)
+        val stalled = rig.records("video-stalled").single()
+        assertEquals(StallCause.NO_VIDEO, stalled.field("cause"), "status $status")
+        assertTrue((stalled.field("msSinceAdvance") as Long) >= StallWatchdog.STALL_MS, "frames truly stopped: $stalled")
+        assertEquals(1, rig.sent<Command.Rebuild>().size)
+        shed += 1
+      } else {
+        val stalled = rig.records("video-stalled").first()
+        assertEquals(StallCause.BELOW_FLOOR, stalled.field("cause"), "status $status, no shed: the floor holds")
+        assertEquals(0L, stalled.field("msSinceAdvance"))
+        assertTrue(rig.sent<Command.Rebuild>().isNotEmpty())
+        judged += 1
+      }
+    }
+    assertEquals(statuses.count { Thermal.shed(it) != null } to statuses.count { Thermal.shed(it) == null }, shed to judged)
+    assertTrue(shed > 0 && judged > 0, "both sides checked")
   }
 
   @Test
