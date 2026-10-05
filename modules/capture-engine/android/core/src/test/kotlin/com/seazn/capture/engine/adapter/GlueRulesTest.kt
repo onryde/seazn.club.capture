@@ -104,6 +104,52 @@ class GlueRulesTest {
     return text.substring(open)
   }
 
+  /** The top-level items of [args], `arguments`' parenthesised text: split at commas outside any bracket or lambda. */
+  private fun topLevel(args: String): List<String> {
+    val inner = args.removePrefix("(").removeSuffix(")").replace(Regex("""/\*.*?\*/""", RegexOption.DOT_MATCHES_ALL), "")
+    val items = mutableListOf<String>()
+    var depth = 0
+    var from = 0
+    for ((i, c) in inner.withIndex()) {
+      when (c) {
+        '(', '{', '<', '[' -> depth++
+        ')', '}', ']' -> depth--
+        '>' -> if (i > 0 && inner[i - 1] != '-') depth--
+        ',' -> if (depth == 0) items += inner.substring(from, i).also { from = i + 1 }
+      }
+    }
+    items += inner.substring(from)
+    return items.map { it.trim() }.filter { it.isNotEmpty() }
+  }
+
+  /**
+   * Final review round 2, minor 3: the core's readiness timing is the phone's own (owner, 2026-10-05: sound's
+   * 15 s silence window). Only the JVM host shortens it, through a defaulted `BridgeCore` parameter, so the
+   * glue must never pass one. The timing parameters are read from BridgeCore's constructor (every one whose
+   * name ends `Ms`), never listed here; the glue's calls pass none by name, and their positional arguments end
+   * before the first of them.
+   */
+  @Test
+  fun `final r2 the glue never passes the core a readiness timing override`() {
+    val core = File(src.parentFile, "core/src/main/kotlin/com/seazn/capture/engine/adapter/BridgeCore.kt").readText()
+    val declared = core.indexOf("class BridgeCore(").also { assertTrue(it >= 0, "BridgeCore's constructor") }
+    val params = topLevel(arguments(core, core.indexOf('(', declared))).map { Regex("""^(?:(?:private|internal)\s+)?(?:va[lr]\s+)?(\w+)\s*:""").find(it)!!.groupValues[1] }
+    val timing = params.filter { it.endsWith("Ms") }
+    assertTrue("silenceMs" in timing, "the timing parameters read from the constructor: $params")
+    val firstTiming = params.indexOf(timing.first())
+    val calls =
+      sources().flatMap { file ->
+        val text = file.readText()
+        Regex("""\bBridgeCore\(""").findAll(text).map { file.name to topLevel(arguments(text, it.range.last)) }.toList()
+      }
+    assertEquals(listOf("EngineHost.kt"), calls.map { it.first }, "the glue builds its one core in EngineHost")
+    for ((name, args) in calls) {
+      val named = args.mapNotNull { Regex("""^(\w+)\s*=[^=]""").find(it)?.groupValues?.get(1) }
+      assertEquals(emptyList(), named.filter { it in timing }, "$name passes a timing parameter by name")
+      assertTrue(args.count { Regex("""^\w+\s*=[^=]""").find(it) == null } <= firstTiming, "$name passes ${args.size} arguments, reaching ${timing.first()}: $args")
+    }
+  }
+
   @Test
   fun `A11 the encode's rotation never reads the display, StreamPack's default included`() {
     val problems = mutableListOf<String>()
