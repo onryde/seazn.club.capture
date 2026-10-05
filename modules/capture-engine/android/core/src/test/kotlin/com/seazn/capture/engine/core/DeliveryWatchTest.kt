@@ -2,6 +2,7 @@ package com.seazn.capture.engine.core
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -707,6 +708,9 @@ class DeliveryWatchTest {
       harness.run(0, 4_000) { _, url -> if (url == polled) FetchResult.Body(masterText(uri)) else FetchResult.Body(mediaText(100)) }
       assertEquals(listOf(polled), harness.requests.map { it.second.url }.distinct(), uri)
       assertEquals(Delivery.UNKNOWN, harness.watch.delivery, uri)
+      // Re-review 6: the refusal is kept for the record, through a forced new ingest session (the same broadcast).
+      assertTrue(harness.watch.refusedOffHost, uri)
+      assertTrue(harness.watch.newSession().refusedOffHost, uri)
     }
     // The positive pair: the same master naming an absolute URI on the playback host is followed, its host in
     // any case and its port the scheme's whether written or not.
@@ -714,7 +718,9 @@ class DeliveryWatchTest {
       val harness = Harness(DeliveryWatch(master))
       harness.run(0, 0) { _, url -> if (url == polled) FetchResult.Body(masterText(same)) else FetchResult.Body(mediaText(100)) }
       assertEquals(listOf(polled, same), harness.requests.map { it.second.url }, same)
+      assertFalse(harness.watch.refusedOffHost, same)
     }
+    assertFalse(DeliveryWatch(master).refusedOffHost, "a new broadcast session's watch starts with none")
   }
 
   @Test

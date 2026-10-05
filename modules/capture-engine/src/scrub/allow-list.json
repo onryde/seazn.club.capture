@@ -203,6 +203,7 @@
     "previous-session-lost": "native: the previous run held a session and its process died, with the exit reason (F-P5-3, CD22)",
     "readiness": "native: a readiness check changed, with each check, the side and the lines held back (A11, review C4a I-1)",
     "ready": "native: every readiness check passed, with the side held",
+    "rendition-refused": "native: the master placed its rendition off the playback host, once a session, with a fixed reason word (re-review 6)",
     "reset": "native: the ended session was reset to idle",
     "resumed": "native: the broadcast resumed after an outage",
     "scripted": "native, debug builds only: the scripted code server answered a request (Task 34), naming its route and status, never its body",

@@ -83,6 +83,11 @@ data class DeliveryWatch(
   val minLagMs: Long? = null,
   val delivery: Delivery = Delivery.UNKNOWN,
   val deliveredLagMs: Long? = null,
+  /**
+   * Re-review 6: a master placed its rendition off the playback host at least once in this broadcast session
+   * ([onPlaybackHost] refused it). Never cleared, by [newSession] either: the machine records it once a session.
+   */
+  val refusedOffHost: Boolean = false,
 ) {
   /** What is polled: the master, restricted to one rendition. */
   val pollUrl: String = hinted(playbackUrl)
@@ -136,8 +141,8 @@ data class DeliveryWatch(
     )
 
   private fun fetchVariant(master: Playlist.Master, nowMs: Long): Triple<DeliveryWatch, List<PlaylistRequest>, NotDelivered?> {
-    val url = PlaylistParser.resolve(pollUrl, master.variants.first())?.takeIf(::onPlaybackHost)
-      ?: return Triple(withoutEvidence(), emptyList(), null)
+    val resolved = PlaylistParser.resolve(pollUrl, master.variants.first()) ?: return Triple(withoutEvidence(), emptyList(), null)
+    val url = resolved.takeIf(::onPlaybackHost) ?: return Triple(copy(refusedOffHost = true).withoutEvidence(), emptyList(), null)
     val request = PlaylistRequest(nextRequestId, url)
     val next = copy(pending = request, pendingIsMaster = false, pendingSinceMs = nowMs, nextRequestId = nextRequestId + 1)
     return Triple(next, listOf(request), null)
@@ -225,6 +230,9 @@ data class DeliveryWatch(
   private fun stalledOr(otherwise: Delivery): Delivery = if (sinceAdvanceMs >= STALLED_AFTER_MS) Delivery.STALLED else otherwise
 
   companion object {
+    /** Re-review 6: the `rendition-refused` line's reason, a fixed word: never the URL or the host refused. */
+    const val OFF_HOST = "off-host"
+
     /** "Polls the variant playlist every ~2 s" (spec §3). */
     const val POLL_MS = 2_000L
 

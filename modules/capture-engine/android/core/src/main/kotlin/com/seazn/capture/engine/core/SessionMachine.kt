@@ -564,6 +564,8 @@ internal object Deliveries {
     val session = phase.session
     val (watch, requests, verdict) = session.delivery.fetched(input.requestId, input.result, now.monoMs)
     val commands = requests.map<PlaylistRequest, Command> { Command.FetchPlaylist(it.id, it.url) }.toMutableList()
+    // Re-review 6: a rendition refused off the playback host leaves delivery unknown; the record says why, once.
+    if (watch.refusedOffHost && !session.delivery.refusedOffHost) commands += record("rendition-refused", "reason" to DeliveryWatch.OFF_HOST)
     var next = session.copy(delivery = watch)
     if (next.notDelivered && watch.delivery == Delivery.OK) {
       next = next.copy(notDelivered = false)

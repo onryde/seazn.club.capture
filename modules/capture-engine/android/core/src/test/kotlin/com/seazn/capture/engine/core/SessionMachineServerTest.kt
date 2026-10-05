@@ -2,6 +2,7 @@ package com.seazn.capture.engine.core
 
 import com.seazn.capture.engine.adapter.RtmpsLink
 import com.seazn.capture.engine.adapter.RtmpsMetrics
+import java.net.URI
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -111,6 +112,54 @@ class SessionMachineServerTest {
     assertEquals(Delivery.OK, rig.snapshot.delivery)
     val beat = Configs.body(rig.sent<Command.PostHeartbeat>().last())
     assertEquals(listOf("ok", "publishing"), listOf(beat.getString("delivery"), beat.getString("state")))
+  }
+
+  /**
+   * Re-review 6: F-S7-2's guard refuses a rendition the master places off the playback host, and the refusal was
+   * silent, so delivery read unknown for ever with nothing in the record. It is one line per broadcast session,
+   * a fixed reason word with no URL or host, however many polls refuse it, through a reconnect too. The positive
+   * pair: the same master naming its rendition on the playback host writes none.
+   */
+  @Test
+  fun `re-review 6 a rendition refused off the playback host is one record line per session, in plain words`() {
+    val host = URI(Configs.PLAYBACK_URL).host
+    val manifest = Configs.PLAYBACK_URL.substringBeforeLast('/') + "/"
+    val onHost = CloudflarePlayback.RENDITIONS.first()
+    val offHost = "https://$host.evil.example/$onHost"
+    var checked = 0
+    for ((rendition, lines) in listOf(offHost to 1, onHost to 0)) {
+      var masters = 0
+      val rig = MachineRig()
+      rig.playlists = { url ->
+        when (CloudflarePlayback.path(url)) {
+          Configs.PLAYBACK_URL -> FetchResult.Body(CloudflarePlayback.master(++masters, listOf(rendition)))
+          manifest + onHost -> FetchResult.Body(CloudflarePlayback.rendition(97 + rig.mono / 1_700))
+          else -> FetchResult.HttpError(404)
+        }
+      }
+      rig.live()
+      rig.advance(30_000)
+      val first = rig.attempt!!
+      rig.send(Input.Dropped(first, DropReason.ENDPOINT_CLOSED, "Connection was broken"))
+      rig.advance(2_000)
+      rig.send(Input.Connected(rig.attempt!!))
+      rig.advance(30_000)
+      assertTrue(rig.attempt!! > first && masters >= 20, "reconnected, $masters masters")
+      val refused = rig.records("rendition-refused")
+      assertEquals(lines, refused.size, rendition)
+      if (lines == 1) {
+        assertEquals(listOf<Pair<String, Any?>>("reason" to DeliveryWatch.OFF_HOST), refused.single().fields)
+        val written = mutableListOf<String>()
+        SessionRecord { written += it }.append(0L, refused.single())
+        assertTrue("\"reason\":\"${DeliveryWatch.OFF_HOST}\"" in written.single(), "kept plain: ${written.single()}")
+        assertFalse(host in written.single(), "no host")
+        assertEquals(Delivery.UNKNOWN, rig.snapshot.delivery)
+      } else {
+        assertEquals(Delivery.OK, rig.snapshot.delivery)
+      }
+      checked += 1
+    }
+    assertEquals(2, checked)
   }
 
   /**
