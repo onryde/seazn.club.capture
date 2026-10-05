@@ -179,13 +179,22 @@ class ConnectingSignatureTest {
   }
 
   /**
-   * Item 4's sweep: six ways a start fails, each for [WINDOW_MS] on both clocks. In all five the beat keeps its
+   * Item 4's sweep: six ways a start fails, each for [WINDOW_MS] on both clocks. In all six the beat keeps its
    * cadence. The three counted ones are on RTMPS by the fourth attempt, which the beats then name; the three that
    * never count stay `connecting` on SRT the whole window, as staging's did. A hung start fails TIMEOUT at
    * exactly [CaptureRun.START_BOUND_MS] after it began.
+   *
+   * CHARACTERISING, not a requirement (re-review 2 §3, AGENTS #4): the uncounted branch (never off SRT, still
+   * `connecting` past 60 s) pins plan B's adopted fallback rules as they stand, not a ruled behaviour. The
+   * amendment (`docs/specs/2026-10-01-s1-amendment-stable-code-design.md:120`) leaves a never-live broadcast's
+   * bound to the server's 10-minute `no_inbound_timeout`, and no phone-side bound on the whole start exists. Its
+   * principle at `:275` (cited as `:276` in the review), "A start that fails never loops all day, and never
+   * leaves the screen silent", is the owner's lever. If an owner ruling adds a whole-start bound, or counts a
+   * failure that does not count now, and that flips this branch, the change is intended: update the branch with
+   * the ruling, never read it as a regression. The cadence, the start bound and the counted branch are rules.
    */
   @Test
-  fun `final r2 item 4 whatever the start does the beat keeps its cadence, and only uncounted failures stay connecting on SRT`() =
+  fun `final r2 item 4 whatever the start does the beat keeps its cadence, and (characterising plan B, pending an owner ruling) only uncounted failures stay connecting on SRT`() =
     runTest {
       var beatGaps = 0
       var bounded = 0
@@ -212,6 +221,7 @@ class ConnectingSignatureTest {
           assertEquals(1, rig.kinds("fell-back").size, label)
           assertTrue(held.any { it.transport == "rtmps" }, "$label: the beats name RTMPS: ${held.map { it.transport }}")
         } else {
+          // Characterising plan B's rules today, pending an owner ruling on a whole-start bound (see the KDoc).
           assertTrue(rig.connects.size > FallbackPolicy.FAILURES_TO_FALL_BACK, "$label: ${rig.connects.size} attempts, past the fallback's count")
           assertTrue(rig.connects.all { it.target is SrtTarget }, "$label: never off SRT")
           assertEquals(emptyList(), rig.kinds("fell-back"), label)
