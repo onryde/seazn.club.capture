@@ -5,8 +5,9 @@ import { HomeScreen } from '@/ui/screens/HomeScreen';
 import { renderWithPorts } from '../../../test/renderWithPorts';
 
 const RUN = 'Run engine contract';
+// The probe writes its lines to native's record (F-S4-2); this screen reads only the readout.
 const settlesAtOnce = () =>
-  ({ settled: vi.fn(() => Promise.resolve()) }) as unknown as NativeCaptureEngine;
+  ({ settled: vi.fn(() => Promise.resolve()), forward: vi.fn() }) as unknown as NativeCaptureEngine;
 const flush = () => act(() => vi.advanceTimersByTimeAsync(10));
 
 /** CD24: Home offers the probe beside the paste field, in a development build with native wired. */

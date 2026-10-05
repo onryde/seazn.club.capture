@@ -6,6 +6,14 @@ import type { NativeCaptureEngine } from '@/engine/nativeCaptureEngine';
 import { UNREPORTED } from '@/engine/unreported';
 import { PROBE_WAIT_MS, probeKit, useEngineProbe } from '@/hooks/useEngineProbe';
 import type { Ports } from '@/hooks/usePorts';
+import { createLogger } from '@/services/logger';
+import {
+  createRingRecord,
+  createRoutedRecord,
+  recordGoesNative,
+  type LogEntry,
+  type SessionRecord,
+} from '@/services/sessionRecord';
 import { createFakePorts, readRecord, type FakePorts } from '../../test/fakePorts';
 import { savedStreamCode } from '../../test/fixtures/savedStream';
 import { holdIntents } from '../../test/holdIntents';
@@ -18,6 +26,21 @@ const settlesAtOnce = () =>
 /** An ack that never comes. */
 const neverSettles = () =>
   ({ settled: vi.fn(() => new Promise<void>(() => undefined)) }) as unknown as NativeCaptureEngine;
+
+/**
+ * F-S4-2: native's record hands each line forwarded to it back to the ring (`onRecordLine`), where the
+ * readout reads it; the ports' record stands in for that ring. A stub with its own `forward` keeps it.
+ */
+function echoing(
+  native: NativeCaptureEngine | null,
+  ring: SessionRecord,
+): NativeCaptureEngine | null {
+  if (native === null) return null;
+  // The stubs here are partial: the type gives every engine a `forward`, a stub may have none.
+  const stub: Partial<NativeCaptureEngine> = native;
+  if (stub.forward !== undefined) return native;
+  return { ...stub, forward: (entry: LogEntry) => ring.append(entry) } as NativeCaptureEngine;
+}
 
 /** The engine as JS reads it, changed by `view`; cached per snapshot, as `useSyncExternalStore` needs. */
 function seenAs(
@@ -55,8 +78,13 @@ function probeOn(setup: Setup = {}) {
     ...base.ports,
     engine: setup.engine?.(base) ?? base.engine,
     devEngine: null,
-    nativeEngine: settlesAtOnce(),
     ...setup.ports,
+    nativeEngine: echoing(
+      setup.ports && 'nativeEngine' in setup.ports
+        ? (setup.ports.nativeEngine ?? null)
+        : settlesAtOnce(),
+      base.record,
+    ),
   };
   const fakes: FakePorts = { ...base, ports };
   const hook = renderHook(() => useEngineProbe(), { wrapper: wrapperFor(fakes) });
@@ -304,6 +332,63 @@ describe('the device probe', () => {
       // Reads: Paired after the pair (1); Idle, its name and its unpair (2, 3, 4).
       ['probe.fail', { scene: 13, check: 4, reason: 'mismatch' }],
     ]);
+  });
+
+  /**
+   * Device session 4, F-S4-2: the run's `probe.fail` never reached the shared record. The probe starts at idle,
+   * and a scene that finds the engine idle after its pair (the reopen gate's orphan unpair, there) fails at
+   * idle, where M16 files a JS line in the ring only, which the record a phone shares never holds. The probe's
+   * lines go to native's record whatever the engine's state: numbers and a reason word only.
+   */
+  it('F-S4-2 writes every line to native’s record, though the engine reads idle, where M16 keeps a JS line in the ring', async () => {
+    const ring = createRingRecord();
+    const forwarded: LogEntry[] = [];
+    const native = {
+      ...settlesAtOnce(),
+      forward: vi.fn((entry: LogEntry) => {
+        forwarded.push(entry);
+        ring.append(entry); // native's line, back in the ring
+      }),
+    } as unknown as NativeCaptureEngine;
+    const view: { seen: CaptureEnginePort | null } = { seen: null };
+    // As the app wires it (`routedRecordFor`): native's record while native holds a pairing, the ring otherwise.
+    const record = createRoutedRecord(ring, {
+      active: () => recordGoesNative(true, view.seen?.getSnapshot().state.kind ?? 'idle'),
+      forward: (entry) => native.forward(entry),
+    });
+    const logger = createLogger({ record, now: () => 0 });
+    const { fakes, hook } = probeOn({
+      engine: (base) => {
+        const idle = base.engine.getSnapshot();
+        // Session 4: the pair is answered, then the engine reads idle again.
+        view.seen = seenAs(base.engine, (snapshot) =>
+          snapshot.state.kind === 'paired' ? idle : snapshot,
+        );
+        return view.seen;
+      },
+      ports: { nativeEngine: native, record, logger },
+    });
+    run(hook);
+    await flush();
+    expect(hook.result.current?.state).toBe('failed');
+    expect(view.seen?.getSnapshot().state.kind).toBe('idle');
+    const first = ENGINE_SCENARIOS.findIndex((scenario) => scenario.onPhone);
+    const written = forwarded.map((entry) => [entry.event, entry.fields]);
+    expect(written).toHaveLength(2);
+    expect(written[0]).toEqual(['probe.skip', { count: 11 }]);
+    expect(written[1]?.[0]).toBe('probe.fail');
+    const failed = written[1]?.[1] as Record<string, unknown>;
+    expect(Object.keys(failed)).toEqual(['scene', 'check', 'reason']);
+    expect([failed.scene, failed.reason, Number.isInteger(failed.check)]).toEqual([
+      first,
+      'mismatch',
+      true,
+    ]);
+    expect(failed.check as number).toBeGreaterThan(0);
+    // The positive pair: the app's own JS line at idle still files in the ring only (M16 stands).
+    fakes.ports.logger.info('probe.control');
+    expect(forwarded.map((entry) => entry.event)).not.toContain('probe.control');
+    expect(readRecord(ring).map((entry) => entry.event)).toContain('probe.control');
   });
 
   // Review C5 m-2: Dismiss clears a readout, never a run.

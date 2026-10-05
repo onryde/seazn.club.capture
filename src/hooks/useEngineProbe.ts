@@ -9,7 +9,8 @@ import type { NativeCaptureEngine } from '@/engine/nativeCaptureEngine';
 import { selectStateKind } from '@/hooks/engineSelectors';
 import { useEngineSelector } from '@/hooks/useCaptureEngine';
 import { usePorts } from '@/hooks/usePorts';
-import type { Logger } from '@/services/logger';
+import { createLogger, type Logger } from '@/services/logger';
+import type { SessionRecord } from '@/services/sessionRecord';
 
 export type ProbeState = 'idle' | 'running' | 'passed' | 'failed';
 
@@ -55,7 +56,8 @@ export function useEngineProbe(): {
     if (ports.engine.getSnapshot().state.kind !== 'idle') return;
     running.current = true;
     setState('running');
-    void probe(ports.engine, native, ports.logger).then((passed) => {
+    const logger = probeLogger(ports.record, native, () => ports.clock().getTime());
+    void probe(ports.engine, native, logger).then((passed) => {
       running.current = false;
       setState(passed ? 'passed' : 'failed');
     });
@@ -67,6 +69,20 @@ export function useEngineProbe(): {
   if (!offered) return null;
   if (kind !== 'idle' && state !== 'running' && state !== 'failed') return null;
   return { run, dismiss, state };
+}
+
+/**
+ * Device session 4, F-S4-2: the probe's lines, written to native's record whatever the engine's state. The
+ * probe starts at idle and each scene ends there, and a scene can fail there, where M16 files a JS line in
+ * the ring only, which the record a phone shares never holds: session 4's run lost its `probe.fail`. Native
+ * hands its lines back to the ring, so the readout's view still has them. Exported for its tests.
+ */
+export function probeLogger(
+  record: SessionRecord,
+  native: Pick<NativeCaptureEngine, 'forward'>,
+  now: () => number,
+): Logger {
+  return createLogger({ record: { ...record, append: (entry) => native.forward(entry) }, now });
 }
 
 async function probe(
