@@ -75,7 +75,7 @@ class ScrubParityTest {
   @Test
   fun `every record kind the core writes passes the kind rule as itself, while a session is held`() {
     val kinds = list.getJSONObject("kinds").keySet()
-    assertEquals(79, kinds.size)
+    assertEquals(80, kinds.size)
     for (kind in kinds) assertEquals(kind, JSONObject(written(RecordEntry(kind))).getString("kind"), kind)
   }
 

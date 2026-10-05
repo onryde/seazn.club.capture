@@ -3,6 +3,7 @@ package com.seazn.capture.engine.capture.run
 import com.seazn.capture.engine.adapter.AttemptSignals
 import com.seazn.capture.engine.adapter.CameraAvailability
 import com.seazn.capture.engine.adapter.EncoderKeys
+import com.seazn.capture.engine.adapter.Failures
 import com.seazn.capture.engine.adapter.PermanentPlatformFailure
 import com.seazn.capture.engine.core.Command
 import com.seazn.capture.engine.core.Configs
@@ -11,6 +12,8 @@ import com.seazn.capture.engine.core.DropReason
 import com.seazn.capture.engine.core.EndReason
 import com.seazn.capture.engine.core.Input
 import com.seazn.capture.engine.core.SessionMachine
+import com.seazn.capture.engine.core.SessionRecord
+import com.seazn.capture.engine.core.Shared
 import com.seazn.capture.engine.core.Side
 import java.io.IOException
 import java.net.ConnectException
@@ -44,6 +47,10 @@ class CaptureRunTest {
   private val cameraInUse = 4
   private val maxCamerasInUse = 5
   private val cameraDisconnected = 2
+
+  // StreamPack 3.2.1's packages (its sources): where the throws the device may name are made.
+  private val pipelineOutput = "io.github.thibaultbee.streampack.core.pipelines.outputs.encoding.EncodingPipelineOutput"
+  private val cameraSources = "io.github.thibaultbee.streampack.core.elements.sources.video.camera"
 
   private fun connect(id: Int) = Command.Connect(id, Configs.srt, startBitrateBps = 3_000_000, maxBwBytesPerSecond = 1_000_000)
 
@@ -321,6 +328,83 @@ class CaptureRunTest {
         checked += 1
       }
       assertEquals(2, checked, "the sweep's own count")
+    }
+
+  /**
+   * Device session 4, F-S4-1, through the real run and the real signals. The SRT socket connected, then StreamPack
+   * 3.2.1's start failed later on, and its own catch closed the endpoint it had opened (`EncodingPipelineOutput
+   * .startStream`, the 3.2.1 sources): our sink's close is a drop with no cause, held while the start was in flight.
+   * The start's failure is what the machine hears, never that close; the record names the throw by class only.
+   */
+  @Test
+  fun `F-S4-1 a start that fails after its endpoint opened reports its own failure, never the close its cleanup made`() =
+    runTest {
+      val quoted = "srt://live.cloudflare.com:778?streamid=${Configs.STREAM_ID}"
+      val pipeline = thrownAt(IllegalStateException("Endpoint must be opened before starting stream: $quoted"), pipelineOutput, "startStreamUnsafe")
+      val refused = thrownAt(ConnectException("Connection setup failure: connection rejected"), "com.seazn.capture.engine.srt.SeaznSrtSink", "startStream")
+      val wrapped = RuntimeException("start failed", thrownAt(IllegalArgumentException("Output STREAM not found in outputs PREVIEW"), "$cameraSources.controllers.CameraController", "addTarget"))
+      val rows =
+        listOf(
+          Triple(pipeline, ConnectFailure.OTHER, listOf("error" to "IllegalStateException", "site" to "EncodingPipelineOutput.startStreamUnsafe")),
+          Triple(refused, ConnectFailure.REFUSED, listOf("error" to "ConnectException", "site" to "SeaznSrtSink.startStream")),
+          Triple(wrapped, ConnectFailure.OTHER, listOf("error" to "RuntimeException", "site" to "CameraController.addTarget", "rootError" to "IllegalArgumentException")),
+        )
+      var checked = 0
+      for ((thrown, expected, named) in rows) {
+        val signals = AttemptSignals()
+        val s = scene(signals = signals)
+        s.run.open(request)
+        advanceUntilIdle()
+        s.parts.failing[1] = thrown
+        s.parts.starting = { id -> signals.dropped(id, null)?.let { s.told.reports += it } } // the cleanup's close, while the start is in flight
+        does(s, connect(1))
+        assertEquals(listOf<Input>(Input.ConnectFailed(1, expected, Failures.describe(thrown))), s.told.reports, "${thrown.javaClass.simpleName}: the start's own failure")
+        val line = s.told.lines.single { it.kind == "capture-start-failed" }
+        assertEquals(listOf<Pair<String, Any?>>("attempt" to 1) + named, line.fields, "class names only")
+        assertFalse(line.fields.any { (_, value) -> value.toString().contains("srt://") || value.toString().contains(" ") }, "never a message: ${line.fields}")
+        checked += 1
+      }
+      assertEquals(3, checked, "the sweep's own count")
+    }
+
+  /** F-S4-1: the line is the allow-list's (kind and keys), and the record keeps its class names whole, never masked. */
+  @Test
+  fun `F-S4-1 the start-failed line is the allow-list's, and the record keeps its names`() =
+    runTest {
+      val signals = AttemptSignals()
+      val s = scene(signals = signals)
+      s.run.open(request)
+      advanceUntilIdle()
+      s.parts.failing[1] = RuntimeException("start failed", thrownAt(IllegalArgumentException("Output STREAM not found"), "$cameraSources.controllers.CameraController", "addTarget"))
+      does(s, connect(1))
+      val line = s.told.lines.single { it.kind == "capture-start-failed" }
+      val list = Shared.read("scrub/allow-list.json")
+      val plain = list.getJSONArray("plain").let { a -> (0 until a.length()).map { a.getString(it) }.toSet() }
+      assertTrue(line.kind in list.getJSONObject("kinds").keySet(), "the kind is listed")
+      assertEquals(emptyList(), line.fields.map { it.first }.filterNot { it in plain || it == "attempt" }, "each key plain")
+      val written = mutableListOf<String>()
+      SessionRecord { written += it }.append(0L, line)
+      val record = written.single()
+      for (name in listOf("RuntimeException", "CameraController.addTarget", "IllegalArgumentException")) assertTrue("\"$name\"" in record, "$name kept: $record")
+      assertFalse(SessionRecord.MASK in record, record)
+    }
+
+  /** A throwable as StreamPack's code makes it: its stack starts at [method] of [type], where it was thrown. */
+  private fun <T : Throwable> thrownAt(error: T, type: String, method: String): T =
+    error.apply { stackTrace = arrayOf(StackTraceElement(type, method, "${type.substringAfterLast('.')}.kt", 1)) + stackTrace }
+
+  /** F-S4-1: a start that runs out its bound is TIMEOUT, though its cancelled cleanup closed the endpoint it opened. */
+  @Test
+  fun `F-S4-1 a start that times out after its endpoint opened is TIMEOUT, never the close its cleanup made`() =
+    runTest {
+      val signals = AttemptSignals()
+      val s = scene(signals = signals)
+      s.run.open(request)
+      advanceUntilIdle()
+      s.parts.gates[1] = CompletableDeferred() // never answered: the start ends by its bound
+      s.parts.starting = { id -> signals.dropped(id, null)?.let { s.told.reports += it } }
+      does(s, connect(1))
+      assertEquals(ConnectFailure.TIMEOUT, (s.told.reports.single() as? Input.ConnectFailed)?.failure, "${s.told.reports}")
     }
 
   // --- C6 I-1: a start is bounded, under the machine's own connect timeout ---

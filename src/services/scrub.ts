@@ -61,11 +61,14 @@ export const PLAIN_KEYS: ReadonlySet<string> = new Set([
   'refusal',
   'result',
   'retryAfterS',
+  // F-S4-1: class names of a failed start's throw, never a message.
+  'rootError',
   'route',
   'scene',
   'shed',
   'side',
   'sid',
+  'site',
   // A camera position on the match, not a secret; scrubbing it hides context.
   'slot',
   'source',

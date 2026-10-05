@@ -191,7 +191,7 @@ class AttemptSignalsTest {
     val signals = AttemptSignals()
     signals.starting(1)
     assertNull(signals.dropped(1, IOException("endpoint closed")), "held while the start is in flight")
-    assertNull(signals.startEnded(1, busy = true), "the camera was another app's: the drop was the start's own failure")
+    assertNull(signals.startEnded(1, StartEnd.CAMERA), "the camera was another app's: the drop was the start's own failure")
     assertIs<Input.ConnectFailed>(signals.connectFailed(1, RuntimeException("Camera already in use")))
     assertNull(signals.connectFailed(1, RuntimeException("Camera already in use")), "once")
     assertNull(signals.dropped(1, IOException("endpoint closed")), "ended: a late drop is no second report")
@@ -201,28 +201,52 @@ class AttemptSignalsTest {
   fun `M-3 a drop during a start that ends otherwise passes at the start's end, as it always did`() {
     var checked = 0
     for ((label, cause, reason) in listOf(Triple("the far end's", IOException("endpoint closed"), DropReason.ENDPOINT_CLOSED), Triple("asked for", null, DropReason.REQUESTED))) {
-      val failing = AttemptSignals()
-      failing.starting(1)
-      assertNull(failing.dropped(1, cause), label)
-      assertEquals(reason, failing.startEnded(1, busy = false)?.reason, "$label: the drop passes once the start failed")
-      assertNull(failing.connectFailed(1, ConnectException("refused")), "$label: and the failure after it does not")
-      assertNull(failing.startEnded(1, busy = false), "$label: once")
+      if (cause != null) {
+        val failing = AttemptSignals()
+        failing.starting(1)
+        assertNull(failing.dropped(1, cause), label)
+        assertEquals(reason, failing.startEnded(1, StartEnd.FAILED)?.reason, "$label: the far end's drop passes once the start failed")
+        assertNull(failing.connectFailed(1, ConnectException("refused")), "$label: and the failure after it does not")
+        assertNull(failing.startEnded(1, StartEnd.FAILED), "$label: once")
+      }
       val opening = AttemptSignals()
       opening.starting(1)
       assertNull(opening.dropped(1, cause), label)
-      assertEquals(reason, opening.startEnded(1, busy = false)?.reason, "$label: the drop passes before the open")
+      assertEquals(reason, opening.startEnded(1, StartEnd.RETURNED)?.reason, "$label: the drop passes before the open")
       assertEquals(Input.Connected(1), opening.connected(1), "$label: an open passes once, as it did after a drop")
       checked += 1
     }
     assertEquals(2, checked, "the sweep's own count")
   }
 
+  /**
+   * Device session 4, F-S4-1. StreamPack 3.2.1's `startStream(descriptor)` closes the endpoint it opened when the start
+   * fails (`EncodingPipelineOutput.startStream`: its catch runs `closeUnsafe`, the 3.2.1 sources), and our sink's own
+   * close ends the socket with no cause. That drop is the failed start's own close, so no drop: the start's failure ends
+   * the attempt, as what it is. The phone read it as `other`, `requested`, never counted and with no message, 42
+   * times in two minutes, and never fell back. A start that ran out its bound ends the same way.
+   */
+  @Test
+  fun `F-S4-1 a failed start's own close is no drop - the start's failure ends the attempt, once`() {
+    val signals = AttemptSignals()
+    signals.starting(1)
+    assertNull(signals.dropped(1, null), "held while the start is in flight")
+    assertNull(signals.startEnded(1, StartEnd.FAILED), "the failed start's own close: no drop")
+    assertEquals(ConnectFailure.REFUSED, signals.connectFailed(1, ConnectException("Connection setup failure: connection rejected"))?.failure, "the start's failure ends it")
+    assertNull(signals.connectFailed(1, ConnectException("Connection setup failure: connection rejected")), "once")
+    assertNull(signals.dropped(1, null), "ended: a late close is no second report")
+    signals.starting(2)
+    assertNull(signals.dropped(2, null))
+    assertNull(signals.startEnded(2, StartEnd.FAILED), "the next attempt's own close is no drop either")
+    assertEquals(ConnectFailure.TIMEOUT, signals.connectFailed(2, java.util.concurrent.TimeoutException("start timed out after 14000 ms"))?.failure)
+  }
+
   @Test
   fun `M-3 with no drop in flight the start's end passes nothing, and a drop after it passes at once`() {
     val signals = AttemptSignals()
-    assertNull(signals.startEnded(1, busy = false), "no start in flight")
+    assertNull(signals.startEnded(1, StartEnd.RETURNED), "no start in flight")
     signals.starting(1)
-    assertNull(signals.startEnded(1, busy = true), "no drop held")
+    assertNull(signals.startEnded(1, StartEnd.CAMERA), "no drop held")
     assertEquals(DropReason.ENDPOINT_CLOSED, signals.dropped(1, IOException("endpoint closed"))?.reason, "the start is over: no hold")
   }
 
@@ -232,9 +256,9 @@ class AttemptSignalsTest {
     assertEquals(Input.Connected(1), signals.connected(1))
     signals.starting(2)
     assertEquals(DropReason.ENDPOINT_CLOSED, signals.dropped(1, IOException("endpoint closed"))?.reason, "attempt 1 is not the start in flight")
-    assertNull(signals.startEnded(1, busy = true), "not the start in flight: nothing")
+    assertNull(signals.startEnded(1, StartEnd.CAMERA), "not the start in flight: nothing")
     assertNull(signals.dropped(2, IOException("endpoint closed")), "attempt 2's is held")
-    assertEquals(DropReason.ENDPOINT_CLOSED, signals.startEnded(2, busy = false)?.reason)
+    assertEquals(DropReason.ENDPOINT_CLOSED, signals.startEnded(2, StartEnd.RETURNED)?.reason)
   }
 
   @Test

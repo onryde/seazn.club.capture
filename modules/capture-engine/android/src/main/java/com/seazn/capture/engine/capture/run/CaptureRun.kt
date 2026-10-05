@@ -4,6 +4,7 @@ import com.seazn.capture.engine.adapter.AttemptSignals
 import com.seazn.capture.engine.adapter.CameraAvailability
 import com.seazn.capture.engine.adapter.EncoderKeys
 import com.seazn.capture.engine.adapter.PermanentPlatformFailure
+import com.seazn.capture.engine.adapter.StartEnd
 import com.seazn.capture.engine.core.Command
 import com.seazn.capture.engine.core.ConnectFailure
 import com.seazn.capture.engine.core.Input
@@ -198,22 +199,44 @@ class CaptureRun(
       try {
         withTimeoutOrNull(START_BOUND_MS) { parts.start(command) }
       } catch (e: CancellationException) {
-        signals.startEnded(id, busy = false)?.let(calls.report)
+        signals.startEnded(id, StartEnd.RETURNED)?.let(calls.report)
         throw e
       } catch (e: Exception) {
+        calls.line(startFailed(id, e))
         val camera = parts.busyCamera(e)
-        signals.startEnded(id, busy = camera != null)?.let(calls.report)
+        signals.startEnded(id, if (camera != null) StartEnd.CAMERA else StartEnd.FAILED)?.let(calls.report)
         if (camera != null) return busyAtStart(id, camera, e)
         signals.connectFailed(id, e)?.let(calls.report)
         return
       }
-    signals.startEnded(id, busy = false)?.let(calls.report)
+    signals.startEnded(id, if (started == null) StartEnd.FAILED else StartEnd.RETURNED)?.let(calls.report)
     if (started == null) return timedOut(id)
     if (!started) return calls.report(Input.ConnectFailed(id, ConnectFailure.OTHER, "srt url does not parse"))
     signals.connected(id)?.let(calls.report)
     noteMicSession()
     watchClose(id)
   }
+
+  /**
+   * F-S4-1: which call failed a start, by class only (CD30): the throwable's class, where the first throw of its cause
+   * chain was made (`Type.method`, the type's simple name without its inner parts), and that throw's class when one of
+   * another class wraps it. Never a message: a vendor's can quote the SRT URL. StreamPack logs nothing on that path,
+   * so this line is what names it (device session 4 could not).
+   */
+  private fun startFailed(id: Int, failure: Throwable): RecordEntry {
+    val root = generateSequence(failure) { it.cause }.take(MAX_CAUSES).last()
+    val fields = mutableListOf<Pair<String, Any?>>("attempt" to id, "error" to failure.javaClass.simpleName, "site" to site(root))
+    // Coroutines' stack-trace recovery may hand the run a copy that wraps the throw: the same class is no second name.
+    if (root.javaClass != failure.javaClass) fields += "rootError" to root.javaClass.simpleName
+    return RecordEntry("capture-start-failed", fields)
+  }
+
+  /** Where [thrown] was made, as `Type.method`: names only, each cut at its first `$` so a lambda's stays a plain word. */
+  private fun site(thrown: Throwable): String? =
+    thrown.stackTrace.firstOrNull()?.let { frame ->
+      val type = frame.className.substringAfterLast('.').substringBefore('$')
+      "$type.${frame.methodName.substringBefore('$')}".take(SITE_MAX)
+    }
 
   /**
    * C6 I-1: the start did not end within its bound, a TIMEOUT (the text is what `SrtOptions.failure`
@@ -294,5 +317,11 @@ class CaptureRun(
      * machine gives up on it. SRT's own connect gives up at `SrtOptions`' CONNTIMEO, well inside it.
      */
     const val START_BOUND_MS = SessionMachine.CONNECT_TIMEOUT_MS - 1_000
+
+    /** The cause chain read for a start's failure, as `SrtOptions` and the adapter read it. */
+    private const val MAX_CAUSES = 8
+
+    /** The record's plain word is at most 64 characters (CD6): a longer site is cut, never masked whole. */
+    private const val SITE_MAX = 64
   }
 }

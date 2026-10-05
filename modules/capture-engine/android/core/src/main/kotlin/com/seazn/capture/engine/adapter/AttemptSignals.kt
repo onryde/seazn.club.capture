@@ -23,7 +23,12 @@ import com.seazn.capture.engine.core.Input
  *   part of a secret that no mask matches.
  * - Review C7 M-3: a drop of the attempt whose start is in flight ([starting]) is held until the start
  *   ends ([startEnded]). A start that found the camera busy makes it no drop: the start's failure ends the
- *   attempt, UNHELD and never counted. Any other end passes it then, as it always passed.
+ *   attempt, UNHELD and never counted. Device session 4 (F-S4-1): a start that failed makes a drop with no
+ *   cause no drop either. StreamPack 3.2.1's `startStream(descriptor)` closes the endpoint it opened when it
+ *   fails (`EncodingPipelineOutput.startStream`'s catch runs `closeUnsafe`, the 3.2.1 sources), so that close
+ *   is the failed start's own, and passing it hid the failure: the phone read `other`, `requested`, never
+ *   counted, with no message, every 2.5 s for two minutes. The far end's drop (a cause) still passes. Any
+ *   other end passes the drop held, as it always passed.
  *
  * It holds the newest attempt, whether that one ended, and the ids that opened: one Int an attempt that
  * opened, a few hundred in a long day. Called from the endpoint's coroutines, so every method is
@@ -46,19 +51,23 @@ class AttemptSignals {
   }
 
   /**
-   * M-3: attempt [id]'s start ended. When the camera was [busy], a drop held is no drop and the attempt is not
-   * ended, so the start's failure ends it; otherwise the drop held passes now. Null for an attempt not starting.
+   * M-3: attempt [id]'s start ended, as [end] says. A drop held that was the start's own ([own]) is no drop and the
+   * attempt is not ended, so the start's failure ends it; any other passes now. Null for an attempt not starting.
    */
   @Synchronized
-  fun startEnded(id: Int, busy: Boolean): Input.Dropped? {
+  fun startEnded(id: Int, end: StartEnd): Input.Dropped? {
     if (inFlight != id) return null
     inFlight = null
     val drop = held ?: return null
     held = null
-    if (!busy) return drop
+    if (!own(drop, end)) return drop
     if (newest == id) ended = false
     return null
   }
+
+  /** The camera's failure owns any drop of its start; a failed start owns the close it made, the drop with no cause (F-S4-1). */
+  private fun own(drop: Input.Dropped, end: StartEnd): Boolean =
+    end == StartEnd.CAMERA || (end == StartEnd.FAILED && drop.reason == DropReason.REQUESTED)
 
   @Synchronized
   fun connected(id: Int): Input.Connected? {
@@ -98,4 +107,16 @@ class AttemptSignals {
     newest = id
     ended = false
   }
+}
+
+/** How a start in flight ended ([AttemptSignals.startEnded]). */
+enum class StartEnd {
+  /** It returned, or was cancelled. */
+  RETURNED,
+
+  /** It threw, or ran out its bound; its failure is reported next, and the close it made is no drop (F-S4-1). */
+  FAILED,
+
+  /** The camera failed it (C7 carry: another app holds it); its failure is reported next, and no drop held is one. */
+  CAMERA,
 }

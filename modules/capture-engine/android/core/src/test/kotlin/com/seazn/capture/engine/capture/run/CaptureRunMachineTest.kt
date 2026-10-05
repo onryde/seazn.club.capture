@@ -7,9 +7,11 @@ import com.seazn.capture.engine.core.Configs
 import com.seazn.capture.engine.core.Engine
 import com.seazn.capture.engine.core.FakeClock
 import com.seazn.capture.engine.core.FakeScheduler
+import com.seazn.capture.engine.core.FallbackPolicy
 import com.seazn.capture.engine.core.Input
 import com.seazn.capture.engine.core.NotReady
 import com.seazn.capture.engine.core.PairRequest
+import com.seazn.capture.engine.core.RtmpsTarget
 import com.seazn.capture.engine.core.Phase
 import com.seazn.capture.engine.core.SessionMachine
 import com.seazn.capture.engine.core.SessionRecord
@@ -142,6 +144,36 @@ class CaptureRunMachineTest {
       assertTrue(""""failure":"unheld"""" in failed && """"counted":false""" in failed, failed)
       assertFalse(rig.lines.any { """"kind":"dropped"""" in it }, "no drop: ${rig.lines.joinToString("\n")}")
       assertEquals(1, rig.lines.count { """"kind":"camera-taken"""" in it }, rig.lines.joinToString("\n"))
+    }
+
+  /**
+   * Device session 4, F-S4-1, through the real machine: the phone's loop. A start that failed after its SRT socket
+   * connected, StreamPack's cleanup closing it, read as a requested drop: `other`, never counted, with no message,
+   * so the broadcast retried SRT every 2.5 s for good. The start's own failure now counts, and the third moves the
+   * session to RTMPS, as plan B's fallback rules say (C1).
+   */
+  @Test
+  fun `F-S4-1 a start that keeps failing after its endpoint opened counts, and the third falls back to RTMPS`() =
+    runTest {
+      val rig = Rig(this)
+      for (id in 1..FallbackPolicy.FAILURES_TO_FALL_BACK) rig.parts.failing[id] = IllegalStateException("Output is released")
+      // The failing starts' cleanup closes their endpoints; the RTMPS start after the fallback opens.
+      rig.parts.starting = { id -> if (id in rig.parts.failing) rig.signals.dropped(id, null)?.let { rig.engine.send(it); rig.scheduler.advanceBy(0) } }
+      Configs.pairInputs().forEach(rig.engine::send)
+      rig.scheduler.advanceBy(0)
+      advanceUntilIdle()
+      repeat(FallbackPolicy.FAILURES_TO_FALL_BACK) {
+        rig.scheduler.advanceBy(SessionMachine.RETRY_MS + Engine.TICK_MS)
+        advanceUntilIdle()
+      }
+      val failed = rig.lines.filter { """"kind":"connect-failed"""" in it }
+      assertEquals(FallbackPolicy.FAILURES_TO_FALL_BACK, failed.size, rig.lines.joinToString("\n"))
+      for (line in failed) assertTrue(""""failure":"other"""" in line && """"counted":true""" in line && "reason" !in line, line)
+      assertEquals(1, rig.lines.count { """"kind":"fell-back"""" in it }, rig.lines.joinToString("\n"))
+      val targets = rig.connects.map { it.target }
+      assertTrue(targets.take(FallbackPolicy.FAILURES_TO_FALL_BACK).all { it is SrtTarget } && targets.last() is RtmpsTarget, "$targets")
+      assertEquals(FallbackPolicy.FAILURES_TO_FALL_BACK, rig.told.lines.count { it.kind == "capture-start-failed" }, "each failed start named")
+      assertEquals(FallbackPolicy.FAILURES_TO_FALL_BACK + 1, (rig.engine.phase as? Phase.OnAir)?.attemptId, "the RTMPS attempt is on air: ${rig.engine.phase}")
     }
 
   /**
