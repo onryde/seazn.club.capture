@@ -45,6 +45,9 @@ class FakeParts : CaptureParts {
 
   /** Runs as a start begins, with its attempt. */
   var starting: ((Int) -> Unit)? = null
+
+  /** Whether a stop or a release shows as the endpoint's close. False: a vendor close that failed quietly, which no watch sees. */
+  var closeShows = true
   var reopens = true
   private var closing = CompletableDeferred<Unit>()
 
@@ -96,12 +99,12 @@ class FakeParts : CaptureParts {
   }
 
   /** The far end closed the endpoint: a drop nobody asked for. */
-  fun farEndCloses() = close()
+  fun farEndCloses() = close(shows = true)
 
-  private fun close() {
+  private fun close(shows: Boolean = closeShows) {
     publishing?.let { closed += it }
     publishing = null
-    closing.complete(Unit)
+    if (shows) closing.complete(Unit)
   }
 
   override suspend fun endpointClosed() {

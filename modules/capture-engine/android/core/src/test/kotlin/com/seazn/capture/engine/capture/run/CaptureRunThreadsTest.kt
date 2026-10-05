@@ -69,6 +69,50 @@ class CaptureRunThreadsTest {
     }
   }
 
+  /**
+   * C6 m-2: a stop or a close cancels the drop watch, never leaving it waiting on an endpoint whose close
+   * does not show (a vendor close that failed quietly): one watch an attempt would outlive it, holding the
+   * old streamer. The scope's children are the consumer and the watches.
+   */
+  @Test
+  fun `C6 m-2 a Disconnect or a close leaves no drop watch running, though the endpoint's close never shows`() {
+    var checked = 0
+    for ((label, stop) in listOf<Pair<String, (CaptureRun) -> Unit>>("Disconnect" to { it.execute(Command.Disconnect(1)) }, "close" to { it.close() })) {
+      val pool = Executors.newFixedThreadPool(2)
+      val scope = CoroutineScope(pool.asCoroutineDispatcher() + SupervisorJob())
+      try {
+        val parts = FakeParts().apply { closeShows = false }
+        val stopped = CountDownLatch(1)
+        parts.stopped = { stopped.countDown() }
+        val run = CaptureRun(parts, AttemptSignals(), CameraAvailability(), Told().calls(report = {}), { Side.LEFT }, scope)
+        val consumer = scope.coroutineContext.job.children.single()
+        fun watches() = scope.coroutineContext.job.children.filter { it !== consumer && it.isActive }.toList()
+        run.open(Configs.pairRequest())
+        run.execute(connect(1))
+        assertTrue(waitFor { watches().size == 1 }, "$label: attempt 1's drop watch runs")
+        stop(run)
+        assertTrue(stopped.await(5, TimeUnit.SECONDS), "$label: the stop ran")
+        assertTrue(waitFor { watches().isEmpty() }, "$label: a drop watch is left running: ${watches()}")
+        assertTrue(parts.log.last().endsWith("done"), "$label: ${parts.log}")
+        checked += 1
+      } finally {
+        scope.cancel()
+        pool.shutdownNow()
+      }
+    }
+    assertEquals(2, checked, "the sweep's own count")
+  }
+
+  /** Polls [done] for up to 2 s: a cancelled coroutine ends on its pool thread, a moment after the cancel. */
+  private fun waitFor(done: () -> Boolean): Boolean {
+    val until = System.nanoTime() + TimeUnit.SECONDS.toNanos(2)
+    while (System.nanoTime() < until) {
+      if (done()) return true
+      Thread.sleep(5)
+    }
+    return done()
+  }
+
   @Test
   fun `R3 a Disconnect asked while the drop watch is already past the close is no drop`() {
     val reports = raced { run, parts, reached ->

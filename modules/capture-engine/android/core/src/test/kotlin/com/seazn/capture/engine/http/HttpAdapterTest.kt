@@ -3,6 +3,14 @@ package com.seazn.capture.engine.http
 import com.seazn.capture.engine.adapter.HttpOutcome
 import com.seazn.capture.engine.adapter.HttpRequest
 import java.util.concurrent.LinkedBlockingQueue
+import okhttp3.Call
+import okhttp3.MediaType
+import okhttp3.OkHttpClient
+import okhttp3.Protocol
+import okhttp3.Request
+import okhttp3.Response
+import okhttp3.ResponseBody
+import okio.BufferedSource
 import java.util.concurrent.TimeUnit
 import kotlin.test.AfterTest
 import kotlin.test.Test
@@ -91,6 +99,61 @@ class HttpAdapterTest {
       )
     for (request in cannot) assertEquals(HttpOutcome.Failed("IllegalArgumentException"), send(request), request.toString())
     assertEquals(0, server.requestCount, "nothing was sent")
+  }
+
+  /** C6 m-1, K12: any throw while the call is made is its answer, not only the URL's IllegalArgumentException. */
+  @Test
+  fun `a call that throws other than IllegalArgumentException while it is made is answered once, by its class`() {
+    val throwing =
+      object : OkHttpClient() {
+        override fun newCall(request: Request): Call = throw IllegalStateException("the dispatcher has shut down")
+      }
+    assertEquals(HttpOutcome.Failed("IllegalStateException"), send(get(), HttpAdapter(throwing)))
+  }
+
+  /** C6 m-1, K13: a read that throws other than an IOException is a failure, never a throw lost on OkHttp's thread. */
+  @Test
+  fun `a body whose read throws other than IOException is a failure by its class`() {
+    val unreadable =
+      object : ResponseBody() {
+        override fun contentType(): MediaType? = null
+
+        override fun contentLength() = -1L
+
+        override fun source(): BufferedSource = throw IllegalStateException("the body was handed on")
+      }
+    val response = Response.Builder().request(Request.Builder().url(server.url("/code")).build()).protocol(Protocol.HTTP_1_1).code(200).message("OK").body(unreadable).build()
+    assertEquals(HttpOutcome.Failed("IllegalStateException"), HttpAdapter.read(response))
+  }
+
+  /**
+   * C6 m-1, K14: a body that drips, a byte well inside each read timeout, is ended by the call timeout
+   * alone: the whole call, the body's read included, has [HttpAdapter.client]'s one bound.
+   */
+  @Test
+  fun `a body that drips forever is ended by the call timeout, never read whole`() {
+    server.enqueue(MockResponse().setBody("a".repeat(10_000)).throttleBody(1, 50, TimeUnit.MILLISECONDS))
+    val began = System.nanoTime()
+    val outcome = send(get(), HttpAdapter(HttpAdapter.client(timeoutMs = 400)))
+    val tookMs = (System.nanoTime() - began) / 1_000_000
+    assertIs<HttpOutcome.Failed>(outcome)
+    assertTrue(tookMs < 5_000, "ended at $tookMs ms; read whole it takes 500 s")
+  }
+
+  /**
+   * C6 m-1, K15: a server that accepts and never sends a header is ended by the read timeout, on a client
+   * whose call timeout is off, so the call timeout cannot stand in for it (each masked the other in the
+   * test below).
+   */
+  @Test
+  fun `a server that never sends a header is ended by the read timeout alone`() {
+    server.enqueue(MockResponse().setSocketPolicy(SocketPolicy.NO_RESPONSE))
+    val readOnly = HttpAdapter.client(timeoutMs = 300).newBuilder().callTimeout(0, TimeUnit.MILLISECONDS).build()
+    val began = System.nanoTime()
+    val outcome = send(get(), HttpAdapter(readOnly))
+    val tookMs = (System.nanoTime() - began) / 1_000_000
+    assertEquals(HttpOutcome.Failed("SocketTimeoutException"), outcome)
+    assertTrue(tookMs < 5_000, "ended at $tookMs ms, by the 300 ms read timeout")
   }
 
   @Test

@@ -12,8 +12,9 @@ import java.nio.channels.UnresolvedAddressException
 /**
  * The socket options our own SRT sink (Task 35) sets before connect. The glue maps each to srtdroid's
  * `SockOpt` by name, except [TRANSTYPE_LIVE], which is `SockOpt.TRANSTYPE` set to `Transtype.LIVE`.
- * CD35 pins srtdroid 1.10.1; these names were read with javap from 1.9.5, the copy in the Gradle cache,
- * and Task 35's javap of 1.10.1 settles them.
+ * The glue pins srtdroid 1.10.0 (ruling C6-srtdroid: 1.10.1 needs compileSdk 37, and adds only `trySend`);
+ * these names were read with javap from 1.9.5, the copy in the Gradle cache, and Task 35's javap of
+ * 1.10.0 settles them.
  */
 enum class SrtOpt { TRANSTYPE_LIVE, STREAMID, PASSPHRASE, LATENCY, INPUTBW, OHEADBW, MAXBW, CONNTIMEO }
 

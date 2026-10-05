@@ -38,6 +38,16 @@ class GlueRulesTest {
     assertEquals(listOf("EngineHost.kt"), assigned.map { it.name }, "one assignment, in EngineHost's first use")
   }
 
+  /** C6 m-4: komuxer's logger, RTMPS's, is replaced beside StreamPack's, before the first streamer, in the same build. */
+  @Test
+  fun `C6 m-4 komuxer's logger is replaced beside StreamPack's`() {
+    val assigned = sources().filter { "KomuxerLogger.logger = KomuxerVendorLogger" in it.readText() }
+    assertEquals(listOf("EngineHost.kt"), assigned.map { it.name }, "one assignment, in EngineHost")
+    val host = assigned.single().readText()
+    val build = host.substring(host.indexOf("private fun build("))
+    assertTrue(build.indexOf("KomuxerLogger.logger = KomuxerVendorLogger") in 0 until build.indexOf("StreamerAdapter("), "set before the first streamer is built")
+  }
+
   @Test
   fun `Review Focus 1 nothing in the glue blocks the scheduler thread`() {
     for (file in sources()) {

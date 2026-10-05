@@ -128,12 +128,28 @@ class CaptureRun(
     }
   }
 
-  /** Nothing open: nothing to carry out, except the reopen a busy camera's release asked for (I4). */
+  /**
+   * Nothing open: nothing to carry out, except the reopen a busy camera's release asked for (I4). A
+   * connect, a Rebuild's or a new session's next one too, is answered at once with a line (C6 m-3): the
+   * machine would otherwise wait out its connect timeout on an attempt nothing can open, with no word why.
+   */
   private suspend fun unheld(command: Command) {
-    if (command != Command.ReopenCamera) return
-    val asked = request ?: return calls.report(Input.CameraReopened(false))
-    build(asked, EncoderKeys.surfaceRotation(side()))
-    if (parts.held) calls.report(Input.CameraReopened(true))
+    when (command) {
+      is Command.Connect -> nothingHeld(command)
+      is Command.Rebuild -> nothingHeld(command.next)
+      is Command.StartNewSession -> nothingHeld(command.next)
+      Command.ReopenCamera -> {
+        val asked = request ?: return calls.report(Input.CameraReopened(false))
+        build(asked, EncoderKeys.surfaceRotation(side()))
+        if (parts.held) calls.report(Input.CameraReopened(true))
+      }
+      else -> Unit
+    }
+  }
+
+  private fun nothingHeld(connect: Command.Connect) {
+    calls.line(RecordEntry("capture-unheld", listOf("action" to "connect", "attempt" to connect.attemptId)))
+    calls.report(Input.ConnectFailed(connect.attemptId, ConnectFailure.OTHER, "no capture held"))
   }
 
   /** CD42: the build's rotation is the broadcast's; another side rebuilds before the connect, never setTargetRotation. */

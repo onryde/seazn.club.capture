@@ -16,7 +16,9 @@ import com.seazn.capture.engine.core.RecordEntry
 import com.seazn.capture.engine.core.Side
 import com.seazn.capture.engine.endpoints.TlsGuard
 import com.seazn.capture.engine.http.HttpAdapter
+import com.seazn.capture.engine.vendor.VendorLines
 import expo.modules.kotlin.AppContext
+import io.github.komedia.komuxer.logger.KomuxerLogger
 import io.github.thibaultbee.streampack.core.logger.Logger
 import java.io.File
 
@@ -46,7 +48,9 @@ object EngineHost {
   private fun parts(context: Context): Parts = parts ?: build(context.applicationContext).also { parts = it }
 
   private fun build(app: Context): Parts {
-    Logger.logger = VendorLogger { level, fields -> parts?.core?.log(level, "vendor-log", fields) }
+    val vendor = VendorLines { level, fields -> parts?.core?.log(level, "vendor-log", fields) }
+    Logger.logger = VendorLogger(vendor)
+    KomuxerLogger.logger = KomuxerVendorLogger(vendor) // C6 m-4: RTMPS's own
     TlsGuard.record = ::line
     TlsGuard.install(TlsGuard.MODE)
     val thread = HandlerThread("capture-engine").apply { start() }

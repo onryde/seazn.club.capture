@@ -46,8 +46,8 @@ class ScriptedCodeServerTest {
     dir.deleteRecursively()
   }
 
-  private fun ask(method: String, url: String): HttpOutcome {
-    server.send(HttpRequest(method, url, emptyList(), null)) { answers.put(it to Thread.currentThread().name) }
+  private fun ask(method: String, url: String, through: ScriptedCodeServer = server): HttpOutcome {
+    through.send(HttpRequest(method, url, emptyList(), null)) { answers.put(it to Thread.currentThread().name) }
     val (outcome, thread) = answers.poll(10, TimeUnit.SECONDS) ?: error("no answer in 10 s")
     assertNull(answers.poll(100, TimeUnit.MILLISECONDS), "a request is answered once")
     assertEquals("scripted-http", thread, "answered on the server's own thread, never the caller's")
@@ -114,6 +114,41 @@ class ScriptedCodeServerTest {
     assertTrue(file.mkdir())
     assertEquals(HttpOutcome.Failed("ScriptUnreadable"), ask("POST", "$codes/beats"))
     assertEquals(listOf("unreadable"), lines.map { it.fields.first().second })
+  }
+
+  /** C6 m-5: whatever a request's handling throws, it is answered once by the failure's class, with a line, and the server keeps serving. */
+  @Test
+  fun `C6 m-5 a request whose handling throws is answered once, and the next one is still served`() {
+    var throwing = true
+    val flaky =
+      object : HttpPort {
+        override fun send(request: HttpRequest, answer: (HttpOutcome) -> Unit) {
+          sent += request
+          if (throwing) throw IllegalStateException("the network port broke")
+          answer(HttpOutcome.Answered(200, "from the network", null))
+        }
+      }
+    val through = ScriptedCodeServer(file, flaky) { lines += it }
+    assertEquals(HttpOutcome.Failed("IllegalStateException"), ask("POST", "$codes/beats", through))
+    assertEquals(listOf(RecordEntry("scripted", listOf("action" to "failed", "status" to null))), lines)
+    throwing = false
+    assertEquals(HttpOutcome.Answered(200, "from the network", null), ask("POST", "$codes/beats", through))
+    assertEquals(2, sent.size)
+  }
+
+  /** The guard behind "once": a port that answers and then throws is answered by its answer alone, and the throw is still a line. */
+  @Test
+  fun `C6 m-5 a port that answers and then throws is answered once, by its answer`() {
+    val late =
+      object : HttpPort {
+        override fun send(request: HttpRequest, answer: (HttpOutcome) -> Unit) {
+          answer(HttpOutcome.Answered(204, "", null))
+          throw IllegalStateException("after the answer")
+        }
+      }
+    val through = ScriptedCodeServer(file, late) { lines += it }
+    assertEquals(HttpOutcome.Answered(204, "", null), ask("POST", "$codes/beats", through))
+    assertEquals(listOf<Any?>("failed"), lines.map { it.fields.first().second })
   }
 
   @Test

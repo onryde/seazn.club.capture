@@ -23,6 +23,8 @@ jobs:
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v5
+      # The wrapper jar is a binary in the repo; refuse one Gradle did not publish.
+      - uses: gradle/actions/wrapper-validation@v6
       - uses: actions/setup-java@v6
         with:
           distribution: temurin

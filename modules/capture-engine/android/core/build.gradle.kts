@@ -45,6 +45,10 @@ kotlin.sourceSets["test"].kotlin.srcDir("../src/main/java/com/seazn/capture/engi
 // core's tests run the sink's own order against a fake of srtdroid's socket.
 kotlin.sourceSets["test"].kotlin.srcDir("../src/main/java/com/seazn/capture/engine/srt/connect")
 
+// C6 m-4: the vendor loggers' one rule (StreamPack's and komuxer's) imports nothing, so core's tests run it into
+// a real record. komuxer's JVM variant is Java 21 bytecode, which core's 17 cannot load, so the adapters stay out.
+kotlin.sourceSets["test"].kotlin.srcDir("../src/main/java/com/seazn/capture/engine/vendor")
+
 tasks.test {
   useJUnitPlatform()
   // The vector files both languages read (CD5, CD6), relative to this build.
