@@ -2,6 +2,7 @@ package com.seazn.capture.engine.endpoints
 
 import android.content.Context
 import com.seazn.capture.engine.adapter.FrameTally
+import com.seazn.capture.engine.adapter.RtmpsMetrics
 import com.seazn.capture.engine.srt.SeaznSrtSink
 import io.github.thibaultbee.streampack.core.elements.endpoints.IEndpoint
 import io.github.thibaultbee.streampack.core.elements.endpoints.IEndpointInternal
@@ -9,6 +10,7 @@ import io.github.thibaultbee.streampack.core.elements.endpoints.composites.Compo
 import io.github.thibaultbee.streampack.core.elements.endpoints.composites.muxers.ts.TsMuxer
 import io.github.thibaultbee.streampack.core.pipelines.IDispatcherProvider
 import io.github.thibaultbee.streampack.core.utils.InternalStreamPackApi
+import io.github.thibaultbee.streampack.ext.rtmp.elements.endpoints.RtmpEndpoint
 import io.github.thibaultbee.streampack.ext.rtmp.elements.endpoints.RtmpEndpointFactory
 import kotlinx.coroutines.CoroutineDispatcher
 
@@ -20,9 +22,17 @@ class CaptureEndpointFactory(
   private val rtmpIo: CoroutineDispatcher,
   private val clock: CaptureClockLine,
 ) : IEndpoint.Factory { // StreamPack 3.2.1 (javap): `IEndpointInternal.Factory` became `IEndpoint.Factory`, same `create`
+  /** The RTMP endpoint of the streamer built last: its counters are RTMPS's link reading (session 7, item 2). */
+  @Volatile private var rtmp: RtmpEndpoint? = null
+
   override fun create(context: Context, dispatcherProvider: IDispatcherProvider): IEndpointInternal {
     val srt = CompositeEndpoint(TsMuxer(), sink)
-    val rtmp = RtmpEndpointFactory().create(context, RtmpDispatcherProvider(dispatcherProvider, rtmpIo))
-    return CountingEndpoint(RoutingEndpoint(srt, rtmp), tally, clock)
+    val rtmpEndpoint = RtmpEndpointFactory().create(context, RtmpDispatcherProvider(dispatcherProvider, rtmpIo))
+    rtmp = rtmpEndpoint as? RtmpEndpoint
+    return CountingEndpoint(RoutingEndpoint(srt, rtmpEndpoint), tally, clock)
   }
+
+  /** 3.2.1 (javap): `RtmpEndpoint.getMetrics()` reads komuxer's counters synchronously, zero with no client. */
+  fun rtmpMetrics(): RtmpsMetrics? =
+    rtmp?.metrics?.let { RtmpsMetrics(it.bytesWritten, it.packetsWritten, it.packetsWriteDropped, it.packetsWriteLost) }
 }

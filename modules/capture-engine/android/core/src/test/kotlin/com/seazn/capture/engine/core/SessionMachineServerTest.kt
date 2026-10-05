@@ -1,5 +1,7 @@
 package com.seazn.capture.engine.core
 
+import com.seazn.capture.engine.adapter.RtmpsLink
+import com.seazn.capture.engine.adapter.RtmpsMetrics
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -109,6 +111,61 @@ class SessionMachineServerTest {
     assertEquals(Delivery.OK, rig.snapshot.delivery)
     val beat = Configs.body(rig.sent<Command.PostHeartbeat>().last())
     assertEquals(listOf("ok", "publishing"), listOf(beat.getString("delivery"), beat.getString("state")))
+  }
+
+  /**
+   * Session 7, item 2: the server recorded `bitrate_kbps` null throughout, and `phone_state` degraded. Through the
+   * beat: an RTMPS session live and delivered, its link read as the glue now reads it ([RtmpsLink]), beats
+   * publishing with the bitrate the bytes give. On SRT fallen back to RTMPS, as on stg, it beats degraded for the
+   * fallback alone (a declared reason, F-S7-1's consequence), with the bitrate too.
+   */
+  @Test
+  fun `item 2 a live, delivered RTMPS session beats publishing with its bitrate, and fallen back beats degraded for that alone`() {
+    val bytesPerSecond = 200_000L
+    val expectedKbps = bytesPerSecond * 8 / 1_000
+    val manifest = Configs.PLAYBACK_URL.substringBeforeLast('/') + "/"
+    fun cloudflare(rig: MachineRig): (String) -> FetchResult = { url ->
+      when (CloudflarePlayback.path(url)) {
+        Configs.PLAYBACK_URL -> FetchResult.Body(CloudflarePlayback.master(rig.mono.toInt()))
+        manifest + CloudflarePlayback.RENDITIONS.first() -> FetchResult.Body(CloudflarePlayback.rendition(97 + rig.mono / 1_700))
+        else -> FetchResult.HttpError(404)
+      }
+    }
+    fun reading(rig: MachineRig, link: RtmpsLink): (Long) -> LinkCounters = { ms ->
+      link.counters(rig.attempt!!) { RtmpsMetrics(bytesPerSecond * ms / 1_000, ms / 10, 0, 0) }!!
+    }
+    val beats = mutableListOf<org.json.JSONObject>()
+    for (fellBack in listOf(false, true)) {
+      val rig = MachineRig(descriptor = if (fellBack) Configs.descriptor() else Configs.descriptor(primary = Configs.rtmps, fallback = null))
+      val link = RtmpsLink()
+      rig.playlists = cloudflare(rig)
+      rig.beats = { HeartbeatResponse.Answered(200, BeatReply("live", null, null, null, null)) }
+      rig.live()
+      if (fellBack) {
+        repeat(3) {
+          rig.advance(6_000)
+          rig.send(Input.Dropped(rig.attempt!!, DropReason.ENDPOINT_CLOSED, "Connection was broken"))
+          rig.advance(2_000)
+          rig.send(Input.Connected(rig.attempt!!))
+        }
+      }
+      assertEquals(Transport.RTMPS, (rig.phase as Phase.OnAir).transport)
+      link.begin(rig.attempt!!) // the glue's start of the RTMPS attempt
+      rig.link = reading(rig, link)
+      rig.advance(30_000)
+      val beat = Configs.body(rig.sent<Command.PostHeartbeat>().last())
+      assertEquals(listOf("rtmps", "ok"), listOf(beat.getString("transport"), beat.getString("delivery")), "$beat")
+      assertEquals(expectedKbps, beat.getLong("bitrateKbps"), "$beat")
+      assertTrue(beat.getDouble("dataUsedMB") > 0, "$beat")
+      if (fellBack) {
+        assertEquals("degraded", beat.getString("state"))
+        assertEquals(listOf(DegradeReason.FELL_BACK_TO_RTMPS), assertIs<SnapshotState.Degraded>(rig.state).reasons)
+      } else {
+        assertEquals("publishing", beat.getString("state"))
+      }
+      beats += beat
+    }
+    assertEquals(2, beats.size)
   }
 
   @Test

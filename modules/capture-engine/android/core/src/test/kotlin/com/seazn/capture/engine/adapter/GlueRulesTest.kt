@@ -558,6 +558,30 @@ class GlueRulesTest {
   }
 
   /**
+   * Session 7, item 2: the Link poller asked the SRT sink alone, so RTMPS had no reading and every beat's
+   * `bitrateKbps` was null. An RTMPS attempt is begun at its start and ended at a stop, a release or an SRT start
+   * ([RtmpsLink], whose gating core's tests run), and read from the RTMP endpoint the factory built last.
+   */
+  @Test
+  fun `item 2 the link is read on RTMPS too, from the RTMP endpoint, for the RTMPS attempt only`() {
+    val adapter = glue("StreamerAdapter.kt")
+    assertTrue("override fun link(attemptId: Int) = sink.counters(attemptId) ?: rtmps.counters(attemptId, endpoints::rtmpMetrics)" in adapter, "both transports")
+    val start = body(adapter, "override suspend fun start(connect: Command.Connect)")
+    val srt = start.indexOf("is SrtTarget ->")
+    val rtmp = start.indexOf("is RtmpsTarget ->")
+    assertTrue(srt in 0 until rtmp, start)
+    assertTrue(start.indexOf("rtmps.end()") in srt until rtmp, "an SRT start ends any RTMPS reading: $start")
+    val begun = start.indexOf("rtmps.begin(connect.attemptId)")
+    assertTrue(begun > rtmp && begun < start.indexOf("held.startStream(target.url"), "begun before the RTMPS start: $start")
+    for (signature in listOf("override suspend fun stop()", "override suspend fun release()")) {
+      assertTrue("rtmps.end()" in body(adapter, signature), "$signature ends it")
+    }
+    val factory = glue("CaptureEndpointFactory.kt")
+    assertTrue("rtmp = rtmpEndpoint as? RtmpEndpoint" in factory, "the factory keeps the RTMP endpoint it built")
+    assertTrue("RtmpsMetrics(it.bytesWritten, it.packetsWritten, it.packetsWriteDropped, it.packetsWriteLost)" in factory, "its counters, field for field")
+  }
+
+  /**
    * C7u, StreamPack#302: our SRT sink sends as StreamPack 3.2.1's SrtSink does, with srtdroid's
    * non-blocking `trySend` through [com.seazn.capture.engine.srt.connect.SrtConnection.send], whose rules
    * core's tests run; a blocking `send` would stall the encoder again under backpressure. Its drops reach

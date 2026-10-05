@@ -13,6 +13,7 @@ import com.seazn.capture.engine.adapter.CameraFailures
 import com.seazn.capture.engine.adapter.EncoderKeys
 import com.seazn.capture.engine.adapter.FrameTally
 import com.seazn.capture.engine.adapter.PeakMeter
+import com.seazn.capture.engine.adapter.RtmpsLink
 import com.seazn.capture.engine.adapter.SrtOptions
 import com.seazn.capture.engine.capture.run.Built
 import com.seazn.capture.engine.capture.run.CaptureParts
@@ -90,6 +91,9 @@ class StreamerAdapter(
   private val lookup = HostLookup()
   private val clock = CaptureClockLine(calls.line)
   private val endpoints = CaptureEndpointFactory(tally, sink, RtmpDispatcher.create(), clock)
+
+  /** Session 7, item 2: RTMPS's link reading, for the RTMPS attempt begun at its start. */
+  private val rtmps = RtmpsLink()
   private val current = MutableStateFlow<SingleStreamer?>(null)
   override val streamer: StateFlow<SingleStreamer?> = current
 
@@ -109,7 +113,7 @@ class StreamerAdapter(
 
   override fun frames(attemptId: Int) = tally.read(attemptId)
 
-  override fun link(attemptId: Int) = sink.counters(attemptId)
+  override fun link(attemptId: Int) = sink.counters(attemptId) ?: rtmps.counters(attemptId, endpoints::rtmpMetrics)
 
   override fun facts() = CaptureFacts(shown.take(), clock.lastVideoEpochMs)
 
@@ -211,6 +215,7 @@ class StreamerAdapter(
       }
 
     override suspend fun release() {
+      rtmps.end()
       sound.stop()
       readinessJob?.cancel()
       readinessJob = null
@@ -238,12 +243,14 @@ class StreamerAdapter(
       val held = checkNotNull(current.value) { "no streamer held" }
       when (val target = connect.target) {
         is SrtTarget -> {
+          rtmps.end()
           val plan = SrtOptions.plan(target, connect.maxBwBytesPerSecond) ?: return false
           sink.next(plan, connect.attemptId)
           held.startStream(SrtMediaDescriptor(plan.host, plan.port, serviceInfo = SERVICE))
         }
         is RtmpsTarget -> {
           lookup.warm(target.url) // C6 re-review: komuxer's own lookup is blocking; this one is inside the start's bound
+          rtmps.begin(connect.attemptId)
           held.startStream(target.url.trimEnd('/') + "/" + URLEncoder.encode(target.streamKey, "UTF-8"))
         }
       }
@@ -251,6 +258,7 @@ class StreamerAdapter(
     }
 
     override suspend fun stop() {
+      rtmps.end()
       val held = current.value ?: return
       quietly("stop") { held.stopStream() }
       quietly("close") { held.close() }
