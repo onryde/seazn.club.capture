@@ -86,6 +86,7 @@ async function probe(
         'probe.fail',
         reason === 'mismatch' ? { scene, check: checks.count, reason } : { scene, reason },
       );
+      await giveBack(engine, native);
       return false;
     }
   }
@@ -133,10 +134,16 @@ async function settle(engine: CaptureEnginePort, native: NativeCaptureEngine): P
 function bounded(work: Promise<void>, reason: StopReason): Promise<void> {
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => reject(new ProbeStop(reason)), PROBE_WAIT_MS);
-    void work.then(() => {
-      clearTimeout(timer);
-      resolve();
-    });
+    work.then(
+      () => {
+        clearTimeout(timer);
+        resolve();
+      },
+      () => {
+        clearTimeout(timer);
+        reject(new ProbeStop(reason));
+      },
+    );
   });
 }
 
@@ -165,11 +172,35 @@ function eventually(
   });
 }
 
-/** Between scenarios, as the kit starts each: unpair, stop, reset, each acked, then idle (PV35). */
-async function leaveClean(engine: CaptureEnginePort, native: NativeCaptureEngine): Promise<void> {
+/**
+ * Between scenarios, as the kit starts each: unpair, stop, reset, each acked,
+ * then idle (PV35). `live` turns false once a caller has given up on it, so an
+ * ack that lands later sends nothing more.
+ */
+async function leaveClean(
+  engine: CaptureEnginePort,
+  native: NativeCaptureEngine,
+  live: () => boolean = () => true,
+): Promise<void> {
   for (const kind of ['unpair', 'stop', 'reset'] as const) {
+    if (!live()) return;
     engine.send({ kind });
     await bounded(native.settled(), 'no-ack');
   }
   await eventually(engine, (snapshot) => snapshot.state.kind === 'idle', 'not-idle');
+}
+
+/**
+ * Review C5 I-1: after a failure, the same clean-up, best effort, so a failed
+ * scene does not leave the phone paired to a made-up code. One bound for all
+ * of it, and its own stop is swallowed: the readout names the scene's failure,
+ * and the reopen gate's orphan rule is the backstop for an engine still paired.
+ */
+async function giveBack(engine: CaptureEnginePort, native: NativeCaptureEngine): Promise<void> {
+  let live = true;
+  await bounded(
+    leaveClean(engine, native, () => live),
+    'not-idle',
+  ).catch(() => undefined);
+  live = false;
 }

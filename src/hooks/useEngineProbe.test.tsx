@@ -117,17 +117,93 @@ describe('the device probe', () => {
       ['probe.skip', { count: 11 }],
       ['probe.fail', { scene: 0, check: 3, reason: 'mismatch' }],
     ]);
-    // The engine is left paired by the failed scene: the readout stays all the same.
-    expect(fakes.engine.getSnapshot().state.kind).toBe('paired');
+    // Review C5 I-1: the failed scene's pairing is given back, so no made-up code stays paired.
+    expect(fakes.engine.getSnapshot().state.kind).toBe('idle');
+    expect(fakes.engine.intents.map((intent) => intent.kind)).toEqual([
+      'pair',
+      'unpair',
+      'stop',
+      'reset',
+    ]);
     expect(hook.result.current?.state).toBe('failed');
     await flush(60_000);
     expect(hook.result.current?.state).toBe('failed');
+    act(() => hook.result.current?.dismiss());
+    expect(hook.result.current?.state).toBe('idle');
+  });
+
+  // I-1: the cleanup is best effort, inside one more bound; the readout names the scene's failure.
+  it('a cleanup that stalls keeps the failure, inside its own bound, and runs nothing while paired', async () => {
+    const { fakes, hook } = probeOn({
+      engine: (base) =>
+        seenAs(
+          base.engine,
+          (snapshot) =>
+            snapshot.state.kind === 'paired' ? { ...snapshot, pairing: null } : snapshot,
+          'unpair',
+        ),
+    });
+    run(hook);
+    await flush(PROBE_WAIT_MS - 20);
+    expect(hook.result.current?.state).toBe('running');
+    await flush(40);
+    expect(hook.result.current?.state).toBe('failed');
+    expect(probeLines(fakes)).toEqual([
+      ['probe.skip', { count: 11 }],
+      ['probe.fail', { scene: 0, check: 3, reason: 'mismatch' }],
+    ]);
+    expect(fakes.engine.getSnapshot().state.kind).toBe('paired');
     // No second run while the engine is not idle.
     run(hook);
-    await flush();
+    await flush(PROBE_WAIT_MS * 3);
     expect(probeLines(fakes)).toHaveLength(2);
-    act(() => hook.result.current?.dismiss());
-    expect(hook.result.current).toBeNull();
+    expect(hook.result.current?.state).toBe('failed');
+  });
+
+  // A refused ack is a stop, at once: the run neither waits out its bound nor leaves a rejection unheard.
+  it('a refused ack in the cleanup ends the run at once', async () => {
+    const native = {
+      settled: vi
+        .fn((): Promise<void> => Promise.reject(new Error('the bridge was disposed')))
+        .mockImplementationOnce(() => Promise.resolve()),
+    } as unknown as NativeCaptureEngine;
+    const { fakes, hook } = probeOn({
+      ports: { nativeEngine: native },
+      engine: (base) =>
+        seenAs(base.engine, (snapshot) =>
+          snapshot.state.kind === 'paired' ? { ...snapshot, pairing: null } : snapshot,
+        ),
+    });
+    run(hook);
+    await flush();
+    expect(hook.result.current?.state).toBe('failed');
+    expect(fakes.engine.intents.map((intent) => intent.kind)).toEqual(['pair', 'unpair']);
+  });
+
+  // I-1: once the bound has given up on the cleanup, it sends nothing more.
+  it('a cleanup given up on sends nothing after the readout', async () => {
+    // Acks by call: the scene's pair at once, the cleanup's unpair and stop 3 s each, then at once.
+    const delays = [0, 3_000, 3_000];
+    const native = {
+      settled: vi.fn(
+        () => new Promise<void>((resolve) => setTimeout(resolve, delays.shift() ?? 0)),
+      ),
+    } as unknown as NativeCaptureEngine;
+    const { fakes, hook } = probeOn({
+      ports: { nativeEngine: native },
+      engine: (base) =>
+        seenAs(
+          base.engine,
+          (snapshot) =>
+            snapshot.state.kind === 'paired' ? { ...snapshot, pairing: null } : snapshot,
+          'unpair',
+        ),
+    });
+    run(hook);
+    await flush(PROBE_WAIT_MS + 10);
+    expect(hook.result.current?.state).toBe('failed');
+    await flush(PROBE_WAIT_MS * 3);
+    expect(fakes.engine.intents.map((intent) => intent.kind)).toEqual(['pair', 'stop']);
   });
 
   it('a dismissed readout on an idle engine offers the probe again', async () => {
@@ -139,11 +215,15 @@ describe('the device probe', () => {
     });
     run(hook);
     await flush();
-    act(() => fakes.engine.send({ kind: 'unpair' }));
+    expect(fakes.engine.getSnapshot().state.kind).toBe('idle');
     act(() => hook.result.current?.dismiss());
     expect(hook.result.current?.state).toBe('idle');
+    run(hook);
+    await flush();
+    expect(probeLines(fakes).filter(([event]) => event === 'probe.fail')).toHaveLength(2);
   });
 
+  // The scene's bound, then the cleanup's (I-1): neither ack comes, so two bounds in all.
   it('no ack stops the run, inside its bound', async () => {
     const { fakes, hook } = probeOn({ ports: { nativeEngine: neverSettles() } });
     run(hook);
@@ -155,6 +235,9 @@ describe('the device probe', () => {
       ['probe.skip', { count: 11 }],
       ['probe.fail', { scene: 0, reason: 'no-ack' }],
     ]);
+    await flush(PROBE_WAIT_MS - 40);
+    expect(hook.result.current?.state).toBe('running');
+    await flush(40);
     expect(hook.result.current?.state).toBe('failed');
   });
 
@@ -163,7 +246,8 @@ describe('the device probe', () => {
     const { fakes, hook } = probeOn({ prepare: (base) => base.engine.setPermissions('hold') });
     run(hook);
     await flush(PROBE_WAIT_MS + 100);
-    expect(fakes.engine.getSnapshot().state.kind).toBe('pairing');
+    // I-1: the cleanup's unpair ends the pairing the permission dialog held.
+    expect(fakes.engine.getSnapshot().state.kind).toBe('idle');
     expect(probeLines(fakes)).toEqual([
       ['probe.skip', { count: 11 }],
       ['probe.fail', { scene: 0, reason: 'stuck-pairing' }],
