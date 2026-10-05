@@ -70,6 +70,13 @@ class BridgeCore(
 
   @Volatile private var viewfinder = false
 
+  /**
+   * Final review round 2: between a Release and the next Hold no pose watch is the pairing's, so a pose report
+   * then is one the watch posted before its Release unregistered it, and is dropped. False before the first
+   * Hold: a report then is A11's replay into the first pair. Scheduler thread only.
+   */
+  private var poseReleased = false
+
   /** The platform's latest readiness, and the last one sent to the machine. Scheduler thread only. */
   private var readiness = Readiness.UNKNOWN
   private var sent: Readiness? = null
@@ -188,9 +195,10 @@ class BridgeCore(
   fun readiness(cameraFrames: Boolean? = null, audioPeak: Double? = null, pose: Pose? = null) {
     val atMs = clock.monotonicMs()
     guarded.schedule(0) {
+      val ours = pose?.takeUnless { poseReleased }
       audioPeak?.let { sounds.sample(it, atMs) }
       val peak = audioPeak?.takeIf { readiness.copy(audioPeak = it).sound == sounds.sound } ?: readiness.audioPeak
-      readiness = readiness.copy(cameraFrames = cameraFrames ?: readiness.cameraFrames, audioPeak = peak, pose = pose ?: readiness.pose)
+      readiness = readiness.copy(cameraFrames = cameraFrames ?: readiness.cameraFrames, audioPeak = peak, pose = ours ?: readiness.pose)
       val last = sent
       if (last == null || last.cameraFrames != readiness.cameraFrames || last.sound != readiness.sound || last.pose != readiness.pose) sendReadiness()
     }
@@ -320,8 +328,13 @@ class BridgeCore(
       is Command.PostStart -> ask({ HttpRequests.start(command) }) { report(HttpAnswers.start(command.requestId, it)) }
       is Command.WriteStopped -> stored("write") { pairings.write(command.record) }
       is Command.DeleteStopped -> stored("delete") { pairings.delete(command.code, command.slot) }
+      Command.Hold -> {
+        poseReleased = false
+        executed(command)
+      }
       Command.Release -> {
         forgetPose()
+        poseReleased = true
         executed(command)
       }
       else -> executed(command)

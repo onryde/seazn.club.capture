@@ -274,6 +274,33 @@ class BridgeCoreTest {
   }
 
   /**
+   * Final review round 2, minor 2: the pose watch's sensor callback runs on its own thread, so a report already
+   * posted when Release unregisters it lands after `forgetPose`. Between a Release and the next Hold no watch is
+   * the pairing's, so such a report is dropped; the next pairing hears only its own. (Before the first Hold, a
+   * report is A11's replay into the first pair, kept.)
+   */
+  @Test
+  fun `final r2 a pose report that lands after Release is dropped, and the next Hold hears its own`() {
+    core.start()
+    core.report(Input.Network(true))
+    ready()
+    pair()
+    assertEquals(true, readyOn(core)["held"], "pairing 1, held from the replay before its Hold")
+    core.send(mapOf("kind" to "unpair"))
+    scheduler.advanceBy(0)
+    assertTrue(Command.Release in platform.executed, "the Release ran")
+    core.readiness(pose = Pose.Held(Side.LEFT))
+    scheduler.advanceBy(0)
+    pair()
+    scheduler.advanceBy(Engine.TICK_MS)
+    assertEquals("paired", state())
+    assertEquals(false, readyOn(core)["held"], "pairing 2 never hears pairing 1's late report")
+    core.readiness(pose = Pose.Held(Side.RIGHT))
+    scheduler.advanceBy(Engine.TICK_MS)
+    assertEquals(true, readyOn(core)["held"], "its own watch's report, after its Hold")
+  }
+
+  /**
    * Final review I-2b: staging's captured waiting beat ([StgBeat]) through the real Bodies.beat and the machine:
    * the pairing's label, start, destination, overlay and poll are the server's, the overlay's query and key whole.
    */
