@@ -23,6 +23,16 @@ jobs:
     # The debug build and (M5) an arm64 release: a release took 12.5 min locally, beside ~9 for a debug.
     timeout-minutes: 75
     steps:
+      # Disk: the debug build compiles every ABI's native code, then M5 builds a release, and 0ebcd4d's run ran
+      # out of space in clang. The image's preinstalls we never use go first, inline (no third-party action).
+      # The NDKs wait below until the build's own version can be read; nothing else under $ANDROID_HOME goes.
+      - name: Free disk space (unused preinstalls)
+        run: |
+          set -euo pipefail
+          df -h /
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/.ghcup /opt/hostedtoolcache/CodeQL /usr/local/share/boost
+          docker image prune -af > /dev/null
+          df -h /
       - uses: actions/checkout@v5
       # The wrapper jar is a binary in the repo; refuse one Gradle did not publish.
       - uses: gradle/actions/wrapper-validation@v6
@@ -40,11 +50,40 @@ jobs:
           node-version-file: .nvmrc
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      # Disk: every NDK on the image but the build's own. The build's is react-native's version catalog's
+      # `ndkVersion`: expo's root plugin reads it from the expoLibs catalog, which is built on that file, and
+      # no gradle.properties key overrides it. Read here, never assumed; a catalog with none fails the job.
+      - name: Free disk space (NDKs the build does not use)
+        run: |
+          set -euo pipefail
+          catalog="$(dirname "$(node --print "require.resolve('react-native/package.json')")")/gradle/libs.versions.toml"
+          ndk="$(sed -n 's/^ndkVersion *= *"\([^"]*\)".*/\1/p' "$catalog")"
+          if [ -z "$ndk" ]; then
+            echo "no ndkVersion in $catalog: refusing to prune the NDKs"
+            exit 1
+          fi
+          echo "the build's NDK: $ndk"
+          df -h /
+          for dir in "$ANDROID_HOME"/ndk/*; do
+            if [ "$(basename "$dir")" != "$ndk" ]; then sudo rm -rf "$dir"; fi
+          done
+          ls "$ANDROID_HOME/ndk" || true
+          df -h /
       - run: pnpm expo prebuild -p android --no-install
       - run: ./gradlew assembleDebug --no-daemon --console=plain
         working-directory: android
       # CD34, the owner's Android 12+ ruling: the app's merged manifest must say minSdk 31.
       - run: grep -q 'android:minSdkVersion="31"' app/build/intermediates/merged_manifests/debug/processDebugManifest/AndroidManifest.xml
+        working-directory: android
+      # Disk: the debug build's native intermediates, all four ABIs, go before the release builds its own. The
+      # merged manifests stay: the D-15 step below reads the debug one as its control.
+      - name: Free disk space (debug native intermediates)
+        run: |
+          set -euo pipefail
+          df -h /
+          rm -rf app/.cxx app/build/intermediates/cxx
+          test -f app/build/intermediates/merged_manifests/debug/processDebugManifest/AndroidManifest.xml
+          df -h /
         working-directory: android
       # Final review M5: the release build too, arm64 only (the handset's ABI) to bound the job.
       - run: ./gradlew assembleRelease --no-daemon --console=plain -PreactNativeArchitectures=arm64-v8a
