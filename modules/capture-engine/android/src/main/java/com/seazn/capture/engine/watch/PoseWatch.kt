@@ -34,6 +34,7 @@ class PoseWatch(private val context: Context, private val pose: (Pose) -> Unit, 
 
   /** `Hold`, on the scheduler thread: the register is posted to the pose thread (I-4); returns at once. */
   fun start() {
+    held = Side.LEFT // review C7 M-10: a new pairing's build never encodes the last pairing's side
     handler.post { guarded("pose-start") { register() } }
   }
 
@@ -68,8 +69,11 @@ class PoseWatch(private val context: Context, private val pose: (Pose) -> Unit, 
     }
   }
 
+  /** Review C7 M-8: the sensor's callback, guarded like the posted steps. */
+  override fun onSensorChanged(event: SensorEvent) = guarded("pose") { sensed(event) }
+
   /** In g, as the vector file is: Android reports m/s², as Float, and the rule reads Double (Task 17). */
-  override fun onSensorChanged(event: SensorEvent) {
+  private fun sensed(event: SensorEvent) {
     val g = SensorManager.GRAVITY_EARTH.toDouble()
     val (x, y, z) = Triple(event.values[0] / g, event.values[1] / g, event.values[2] / g)
     val changed = tracker.sample(x, y, z, SystemClock.elapsedRealtime()) ?: return

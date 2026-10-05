@@ -21,6 +21,9 @@ import com.seazn.capture.engine.core.Input
  * - A drop with no cause is the requested close; any other is the far end's, named for the record,
  *   which masks the secrets in it where they stand (CD6). The text passes whole: a cut one could leave
  *   part of a secret that no mask matches.
+ * - Review C7 M-3: a drop of the attempt whose start is in flight ([starting]) is held until the start
+ *   ends ([startEnded]). A start that found the camera busy makes it no drop: the start's failure ends the
+ *   attempt, UNHELD and never counted. Any other end passes it then, as it always passed.
  *
  * It holds the newest attempt, whether that one ended, and the ids that opened: one Int an attempt that
  * opened, a few hundred in a long day. Called from the endpoint's coroutines, so every method is
@@ -30,6 +33,32 @@ class AttemptSignals {
   private var newest: Int? = null
   private var ended = false
   private val opened = mutableSetOf<Int>()
+
+  /** M-3: the attempt whose start is in flight, and a drop of it held until that start ends. */
+  private var inFlight: Int? = null
+  private var held: Input.Dropped? = null
+
+  /** M-3: attempt [id]'s start begins. */
+  @Synchronized
+  fun starting(id: Int) {
+    inFlight = id
+    held = null
+  }
+
+  /**
+   * M-3: attempt [id]'s start ended. When the camera was [busy], a drop held is no drop and the attempt is not
+   * ended, so the start's failure ends it; otherwise the drop held passes now. Null for an attempt not starting.
+   */
+  @Synchronized
+  fun startEnded(id: Int, busy: Boolean): Input.Dropped? {
+    if (inFlight != id) return null
+    inFlight = null
+    val drop = held ?: return null
+    held = null
+    if (!busy) return drop
+    if (newest == id) ended = false
+    return null
+  }
 
   @Synchronized
   fun connected(id: Int): Input.Connected? {
@@ -45,8 +74,10 @@ class AttemptSignals {
     advance(id)
     if (ended) return null
     ended = true
-    if (cause == null) return Input.Dropped(id, DropReason.REQUESTED, null)
-    return Input.Dropped(id, DropReason.ENDPOINT_CLOSED, Failures.describe(cause))
+    val drop = if (cause == null) Input.Dropped(id, DropReason.REQUESTED, null) else Input.Dropped(id, DropReason.ENDPOINT_CLOSED, Failures.describe(cause))
+    if (id != inFlight) return drop
+    held = drop
+    return null
   }
 
   @Synchronized

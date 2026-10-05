@@ -20,6 +20,11 @@ export function crashPreviewUntilShown(): void {
   devCrash.listeners.forEach((listener) => listener());
 }
 
+/** Dev only: disarms the crash as Show preview does; tests reset it between cases (review C7 M-11). */
+export function disarmPreviewCrash(): void {
+  devCrash.armed = false;
+}
+
 function DevCrash(): null {
   const [, bump] = useReducer((n: number) => n + 1, 0);
   useEffect(() => {
@@ -51,7 +56,7 @@ export const PreviewBoundary = memo(function PreviewBoundary({
     logger.warn('preview.crashed', { count: crashes.current });
   }, [logger]);
   const show = useCallback(() => {
-    devCrash.armed = false;
+    disarmPreviewCrash();
     setGeneration((n) => n + 1);
   }, []);
   const fallback = (

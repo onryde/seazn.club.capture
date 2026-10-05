@@ -41,6 +41,7 @@ class CaptureRunMachineTest {
     val executed = mutableListOf<Command>()
     val parts = FakeParts()
     val told = Told()
+    val signals = AttemptSignals()
     lateinit var run: CaptureRun
     val engine =
       Engine(clock, scheduler, commands = { executed += it; run.execute(it) }, snapshots = {}, record = SessionRecord { lines += it })
@@ -49,7 +50,7 @@ class CaptureRunMachineTest {
       // BridgeCore's cameraBusy: the camera is taken (its `holds` check is BridgeCoreTest's).
       val busy = { request: PairRequest -> told.busy += request; engine.send(Input.CameraContended); scheduler.advanceBy(0) }
       val calls = told.calls(report = { told.reports += it; engine.send(it); scheduler.advanceBy(0) }, cameraBusy = busy)
-      run = CaptureRun(parts, AttemptSignals(), cameras, calls, { Side.LEFT }, scope.queueScope())
+      run = CaptureRun(parts, signals, cameras, calls, { Side.LEFT }, scope.queueScope())
       engine.start()
       run.open(Configs.pairRequest())
     }
@@ -118,6 +119,29 @@ class CaptureRunMachineTest {
       assertTrue(rig.connects.all { it.target is SrtTarget }, "never fell back: ${rig.connects}")
       assertEquals(2, (rig.engine.phase as? Phase.OnAir)?.attemptId, "attempt 2 is on air, on the slate")
       assertEquals(listOf("slate true"), rig.parts.log.filter { it.startsWith("slate") })
+    }
+
+  /**
+   * Review C7 M-3, through the real machine: the endpoint's drop arrives while the start is still in flight,
+   * and the start then fails on a busy camera. The drop was the busy start's own: the attempt is UNHELD, never
+   * counted towards the fallback, and never a drop.
+   */
+  @Test
+  fun `M-3 a drop during a busy start is UNHELD and uncounted, never a drop`() =
+    runTest {
+      val rig = Rig(this)
+      val busy = RuntimeException("Camera already in use")
+      rig.parts.failing[1] = busy
+      rig.parts.busyFailures[busy] = "0"
+      rig.parts.starting = { id -> rig.signals.dropped(id, java.io.IOException("endpoint closed"))?.let { rig.engine.send(it); rig.scheduler.advanceBy(0) } }
+      Configs.pairInputs().forEach(rig.engine::send)
+      rig.scheduler.advanceBy(0)
+      advanceUntilIdle()
+      assertEquals(listOf(1), rig.connects.map { it.attemptId })
+      val failed = rig.lines.single { """"kind":"connect-failed"""" in it }
+      assertTrue(""""failure":"unheld"""" in failed && """"counted":false""" in failed, failed)
+      assertFalse(rig.lines.any { """"kind":"dropped"""" in it }, "no drop: ${rig.lines.joinToString("\n")}")
+      assertEquals(1, rig.lines.count { """"kind":"camera-taken"""" in it }, rig.lines.joinToString("\n"))
     }
 
   /**

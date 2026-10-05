@@ -3,6 +3,7 @@ package com.seazn.capture.engine
 import android.Manifest
 import android.app.Activity
 import android.os.Build
+import com.facebook.react.modules.core.PermissionAwareActivity
 import expo.modules.interfaces.permissions.PermissionsStatus
 import expo.modules.kotlin.AppContext
 
@@ -30,20 +31,10 @@ class Permissions(private val appContext: () -> AppContext?) {
   }
 
   /**
-   * React's `PermissionAwareActivity`, by name: react-android is on the app's classpath but not on this
-   * module's compile path (expo-modules-core keeps it `implementation`). Should the name not resolve, as
-   * a minified build that renames it would, the activity is asked as before, never refused outright.
+   * React's `PermissionAwareActivity`, by type (review C7 M-5): react-android is this module's own dependency,
+   * unversioned, as every Expo module here has it, so a minified build renames the check with the class.
    */
-  private fun permissionAware(activity: Activity?): Boolean {
-    if (activity == null) return false
-    val aware =
-      try {
-        Class.forName(PERMISSION_AWARE, false, activity.javaClass.classLoader)
-      } catch (e: ClassNotFoundException) {
-        return true
-      }
-    return aware.isInstance(activity)
-  }
+  private fun permissionAware(activity: Activity?): Boolean = activity is PermissionAwareActivity
 
   /** POST_NOTIFICATIONS is asked with them on API 33+, and blocks nothing: a refusal only hides the notification. API 31–32 allow notifications by default (CD34). */
   private fun optional(): Array<String> =
@@ -51,6 +42,5 @@ class Permissions(private val appContext: () -> AppContext?) {
 
   companion object {
     private val NEEDED = arrayOf(Manifest.permission.CAMERA, Manifest.permission.RECORD_AUDIO)
-    private const val PERMISSION_AWARE = "com.facebook.react.modules.core.PermissionAwareActivity"
   }
 }

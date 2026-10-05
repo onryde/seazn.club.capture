@@ -16,6 +16,7 @@ import java.io.IOException
 import java.net.ConnectException
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.advanceUntilIdle
@@ -261,7 +262,7 @@ class CaptureRunTest {
 
   /** R3: the sink's completion can end the attempt first; the busy start is then no second report, and still the camera's. */
   @Test
-  fun `C7 a busy start whose attempt already dropped is no second report, and still takes the camera`() =
+  fun `C7 M-3 a busy start whose attempt dropped while it started is UNHELD, never a drop, and takes the camera`() =
     runTest {
       val signals = AttemptSignals()
       val s = scene(signals = signals)
@@ -272,9 +273,54 @@ class CaptureRunTest {
       s.parts.busyFailures[busy] = "0"
       s.parts.starting = { id -> signals.dropped(id, IOException("endpoint closed"))?.let { s.told.reports += it } }
       does(s, connect(1))
-      assertEquals(listOf(DropReason.ENDPOINT_CLOSED), s.told.reports.map { (it as Input.Dropped).reason }, "the drop alone: ${s.told.reports}")
+      assertEquals(listOf<Input>(Input.ConnectFailed(1, ConnectFailure.UNHELD, "camera busy")), s.told.reports, "the drop was the busy start's own")
       assertEquals(listOf(request), s.told.busy)
       assertTrue(s.cameras.contended("0"))
+    }
+
+  @Test
+  fun `M-3 a drop while a start is in flight passes at its end when the camera was not busy, as before`() =
+    runTest {
+      var checked = 0
+      for ((label, fails) in listOf("a transport failure" to true, "an open" to false)) {
+        val signals = AttemptSignals()
+        val s = scene(signals = signals)
+        s.run.open(request)
+        advanceUntilIdle()
+        if (fails) s.parts.failing[1] = ConnectException("refused")
+        s.parts.starting = { id -> signals.dropped(id, IOException("endpoint closed"))?.let { s.told.reports += it } }
+        does(s, connect(1))
+        val expected = listOf<Input>(Input.Dropped(1, DropReason.ENDPOINT_CLOSED, "IOException: endpoint closed")) + if (fails) emptyList() else listOf(Input.Connected(1))
+        assertEquals(expected, s.told.reports, label)
+        checked += 1
+      }
+      assertEquals(2, checked, "the sweep's own count")
+    }
+
+  @Test
+  fun `M-3 a drop held while a start is in flight passes when the start times out or is cancelled`() =
+    runTest {
+      var checked = 0
+      for (cancelled in listOf(false, true)) {
+        val signals = AttemptSignals()
+        val parts = FakeParts()
+        val told = Told()
+        val scope = queueScope()
+        val run = CaptureRun(parts, signals, CameraAvailability(), told.calls(), { Side.LEFT }, scope)
+        run.open(request)
+        advanceUntilIdle()
+        parts.gates[1] = CompletableDeferred() // never answered: the start ends by its bound, or by the cancel
+        parts.starting = { id -> signals.dropped(id, IOException("endpoint closed"))?.let { told.reports += it } }
+        run.execute(connect(1))
+        runCurrent()
+        assertEquals(emptyList(), told.reports, "held while the start is in flight")
+        if (cancelled) scope.cancel()
+        advanceUntilIdle()
+        val label = if (cancelled) "cancelled" else "timed out"
+        assertEquals(listOf<Input>(Input.Dropped(1, DropReason.ENDPOINT_CLOSED, "IOException: endpoint closed")), told.reports, label)
+        checked += 1
+      }
+      assertEquals(2, checked, "the sweep's own count")
     }
 
   // --- C6 I-1: a start is bounded, under the machine's own connect timeout ---

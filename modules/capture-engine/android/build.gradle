@@ -46,6 +46,9 @@ dependencies {
     implementation('androidx.core:core-ktx') { version { strictly '1.18.0' } }
     implementation('androidx.lifecycle:lifecycle-runtime') { version { strictly '2.10.0' } }
   }
+  // Review C7 M-5: React's PermissionAwareActivity, checked by type (Permissions.kt). Unversioned, the pattern
+  // every Expo module in this app uses: React Native's Gradle plugin pins the version.
+  implementation 'com.facebook.react:react-android'
   // M14: compiled against, never shipped by us, so the app has exactly one OkHttp. react-android 0.86.3
   // asks for 4.9.2, and the app resolves 4.12.0 (fresco's and media3's OkHttp lift it); 4.9.2 is the
   // floor this compiles against, and core's JVM tests run the adapter on 4.12.0.

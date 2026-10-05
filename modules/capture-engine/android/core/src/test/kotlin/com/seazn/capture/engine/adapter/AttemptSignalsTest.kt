@@ -184,6 +184,59 @@ class AttemptSignalsTest {
    * a cut message could leave part of a secret that no mask matches. Read whole and in part, 8 characters
    * at a time, on the lines that carry the platform's text.
    */
+  // --- Review C7 M-3: a drop while the start is in flight waits for the start's end ---
+
+  @Test
+  fun `M-3 a drop during a start that finds the camera busy is no drop, and the start's failure ends the attempt, once`() {
+    val signals = AttemptSignals()
+    signals.starting(1)
+    assertNull(signals.dropped(1, IOException("endpoint closed")), "held while the start is in flight")
+    assertNull(signals.startEnded(1, busy = true), "the camera was another app's: the drop was the start's own failure")
+    assertIs<Input.ConnectFailed>(signals.connectFailed(1, RuntimeException("Camera already in use")))
+    assertNull(signals.connectFailed(1, RuntimeException("Camera already in use")), "once")
+    assertNull(signals.dropped(1, IOException("endpoint closed")), "ended: a late drop is no second report")
+  }
+
+  @Test
+  fun `M-3 a drop during a start that ends otherwise passes at the start's end, as it always did`() {
+    var checked = 0
+    for ((label, cause, reason) in listOf(Triple("the far end's", IOException("endpoint closed"), DropReason.ENDPOINT_CLOSED), Triple("asked for", null, DropReason.REQUESTED))) {
+      val failing = AttemptSignals()
+      failing.starting(1)
+      assertNull(failing.dropped(1, cause), label)
+      assertEquals(reason, failing.startEnded(1, busy = false)?.reason, "$label: the drop passes once the start failed")
+      assertNull(failing.connectFailed(1, ConnectException("refused")), "$label: and the failure after it does not")
+      assertNull(failing.startEnded(1, busy = false), "$label: once")
+      val opening = AttemptSignals()
+      opening.starting(1)
+      assertNull(opening.dropped(1, cause), label)
+      assertEquals(reason, opening.startEnded(1, busy = false)?.reason, "$label: the drop passes before the open")
+      assertEquals(Input.Connected(1), opening.connected(1), "$label: an open passes once, as it did after a drop")
+      checked += 1
+    }
+    assertEquals(2, checked, "the sweep's own count")
+  }
+
+  @Test
+  fun `M-3 with no drop in flight the start's end passes nothing, and a drop after it passes at once`() {
+    val signals = AttemptSignals()
+    assertNull(signals.startEnded(1, busy = false), "no start in flight")
+    signals.starting(1)
+    assertNull(signals.startEnded(1, busy = true), "no drop held")
+    assertEquals(DropReason.ENDPOINT_CLOSED, signals.dropped(1, IOException("endpoint closed"))?.reason, "the start is over: no hold")
+  }
+
+  @Test
+  fun `M-3 only the attempt starting is held - an older one's drop passes as before`() {
+    val signals = AttemptSignals()
+    assertEquals(Input.Connected(1), signals.connected(1))
+    signals.starting(2)
+    assertEquals(DropReason.ENDPOINT_CLOSED, signals.dropped(1, IOException("endpoint closed"))?.reason, "attempt 1 is not the start in flight")
+    assertNull(signals.startEnded(1, busy = true), "not the start in flight: nothing")
+    assertNull(signals.dropped(2, IOException("endpoint closed")), "attempt 2's is held")
+    assertEquals(DropReason.ENDPOINT_CLOSED, signals.startEnded(2, busy = false)?.reason)
+  }
+
   @Test
   fun `a secret the platform quotes in a failure or a drop never reaches the record, whole or in part`() {
     val rig = Rig()

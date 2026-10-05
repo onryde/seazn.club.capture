@@ -76,7 +76,13 @@ object EngineHost {
     val platform = AndroidPlatform(capture, http, RecordFile(File(app.filesDir, "record")), pose, device, keeper, ::emit)
     core = BridgeCore.shared { core(app, thread, platform) }
     core.start()
-    ExitReader.previousLoss(app)?.let { core.log("warn", it.kind, it.fields.toMap()) }
+    // Review C7 M-9: the core runs from here, so a throw must not end this build half done; core.log, as
+    // EngineHost.line drops lines until the build returns.
+    try {
+      ExitReader.previousLoss(app)?.let { core.log("warn", it.kind, it.fields.toMap()) }
+    } catch (e: Exception) {
+      core.log("warn", "watch-failed", mapOf("action" to "exit-read", "error" to e.javaClass.simpleName))
+    }
     startWatchers(app, cameras, capture, device, report)
     return Parts(core, capture, keeper)
   }
@@ -101,7 +107,7 @@ object EngineHost {
   private fun startWatchers(app: Context, cameras: CameraAvailability, capture: StreamerAdapter, device: DeviceSampler, report: (Input) -> Unit) {
     CameraWatch(app, cameras, report, ::line).start()
     MicWatch(app, capture::audioSessionId, MicSilenceWatch(), report, ::line).start()
-    NetworkWatch(app, report).start()
+    NetworkWatch(app, report, ::line).start()
     device.start()
   }
 

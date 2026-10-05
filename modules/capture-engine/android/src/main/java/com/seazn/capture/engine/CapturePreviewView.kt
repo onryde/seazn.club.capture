@@ -5,6 +5,7 @@ import com.seazn.capture.engine.core.RecordEntry
 import expo.modules.kotlin.AppContext
 import expo.modules.kotlin.views.ExpoView
 import io.github.thibaultbee.streampack.ui.views.PreviewView
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -60,7 +61,18 @@ class CapturePreviewView(context: Context, appContext: AppContext) : ExpoView(co
     report("attach") // CD37: the capture is wanted on the viewfinder while Paired
     following?.cancel()
     // A null streamer unbinds: `setVideoSourceProvider(null)` (StreamPack 3.2.1, as 3.2.0, a suspend function).
-    following = scope.launch { EngineHost.capture(context).streamer.collect { streamer -> preview.setVideoSourceProvider(streamer) } }
+    following =
+      scope.launch {
+        EngineHost.capture(context).streamer.collect { streamer ->
+          try {
+            preview.setVideoSourceProvider(streamer)
+          } catch (e: CancellationException) {
+            throw e
+          } catch (e: Exception) {
+            failed("follow", e) // review C7 M-7: one streamer's bind failed; the follow carries on to the next
+          }
+        }
+      }
   }
 
   /** I-1: a lock or Background turns the window invisible and leaves the view attached. */

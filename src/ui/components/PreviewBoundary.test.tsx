@@ -4,7 +4,7 @@ import en from '@/i18n/en.json';
 import es from '@/i18n/es.json';
 import fr from '@/i18n/fr.json';
 import nl from '@/i18n/nl.json';
-import { crashPreviewUntilShown } from '@/ui/components/PreviewBoundary';
+import { crashPreviewUntilShown, disarmPreviewCrash } from '@/ui/components/PreviewBoundary';
 import { readRecord } from '../../../test/fakePorts';
 import { renderViewfinder } from '../../../test/renderViewfinder';
 
@@ -13,7 +13,10 @@ let errors: ReturnType<typeof vi.spyOn>;
 beforeEach(() => {
   errors = vi.spyOn(console, 'error').mockImplementation(() => undefined);
 });
-afterEach(() => errors.mockRestore());
+afterEach(() => {
+  errors.mockRestore();
+  disarmPreviewCrash(); // review C7 M-11: the dev crash is module state; a case that arms it never leaks it
+});
 
 const live = (lang?: 'es' | 'fr' | 'nl') =>
   renderViewfinder(lang ? { deviceLanguages: [lang] } : {}, {
@@ -99,4 +102,28 @@ it('PV41 with dev tools off the dev crash is not mounted, and stays armed until 
   expect(crashes(next).map((entry) => entry.fields)).toEqual([{ count: 1 }]);
   fireEvent.click(screen.getByText(en['stream.preview.show']));
   expect(screen.getByTestId('preview')).toBeTruthy();
+});
+
+// Review C7 M-11: the dev crash is module state, so a case that arms it and ends must not leak it into the
+// next. These two run in this order (vitest runs a file's cases in sequence): the first arms it and ends
+// armed; the second starts with the preview showing, which it would not if the first's crash leaked.
+it('M-11 (1 of 2) a case may end with the dev crash armed', async () => {
+  await renderViewfinder({ devTools: false });
+  act(() => crashPreviewUntilShown());
+  expect(screen.getByTestId('preview')).toBeTruthy();
+});
+
+it('M-11 (2 of 2) the next case starts with the dev crash disarmed', async () => {
+  const view = await renderViewfinder();
+  expect(screen.getByTestId('preview')).toBeTruthy();
+  expect(screen.queryByText(en['stream.preview.stopped'])).toBeNull();
+  expect(crashes(view)).toEqual([]);
+});
+
+it('M-11 disarming leaves the next viewfinder with dev tools uncrashed', async () => {
+  act(() => crashPreviewUntilShown());
+  disarmPreviewCrash();
+  const view = await renderViewfinder();
+  expect(screen.getByTestId('preview')).toBeTruthy();
+  expect(crashes(view)).toEqual([]);
 });

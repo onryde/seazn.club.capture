@@ -167,7 +167,7 @@ class GlueRulesTest {
   fun `I-4 the pose watch registers and unregisters on its own thread, guarded`() {
     val pose = glue("PoseWatch.kt")
     assertTrue(Regex("""private val handler = Handler\(thread\.looper\)""").containsMatchIn(pose), "the pose thread's handler")
-    assertTrue(Regex("""fun start\(\) \{\s+handler\.post \{ guarded\("pose-start"\) \{ register\(\) \} \}\s+\}""").containsMatchIn(pose), "start posts: ${body(pose, "fun start()")}")
+    assertTrue(Regex("""fun start\(\) \{\s+held = Side\.LEFT[^\n]*\s+handler\.post \{ guarded\("pose-start"\) \{ register\(\) \} \}\s+\}""").containsMatchIn(pose), "start resets the side (M-10), then posts: ${body(pose, "fun start()")}")
     assertTrue(Regex("""fun stop\(\) \{\s+handler\.post \{ guarded\("pose-stop"\) \{ unregister\(\) \} \}\s+\}""").containsMatchIn(pose), "stop posts: ${body(pose, "fun stop()")}")
     assertEquals(1, Regex("""\bregisterListener\(""").findAll(pose).count(), "one register")
     assertTrue(Regex("""\bregisterListener\(""").containsMatchIn(body(pose, "private fun register()")), "inside the posted step")
@@ -177,6 +177,39 @@ class GlueRulesTest {
     for (step in listOf("register", "unregister")) assertEquals(1, Regex("""\b$step\(\)""").findAll(pose).count() - 1, "$step is called from its post alone")
     val guarded = body(pose, "private fun guarded(")
     assertTrue(Regex("""catch \(e: Exception\) \{\s+line\(RecordEntry\("watch-failed", listOf\("action" to action, "error" to e\.javaClass\.simpleName\)\)\)""").containsMatchIn(guarded), "a watch-failed line: $guarded")
+  }
+
+  /**
+   * Review C7 M-1: the keeper's release guards each step alone, so a stop that throws still releases the wake lock
+   * and deletes the marker (a marker left behind reads as a lost session at the next launch).
+   */
+  @Test
+  fun `M-1 the keeper's release guards each step alone`() {
+    val keeper = glue("PairingKeeper.kt")
+    assertTrue(Regex("""fun release\(\) \{\s+survivesBackground = false\s+main\.post \{ finish\(\) \}\s+\}""").containsMatchIn(keeper), "no guard around the whole release")
+    val finish = body(keeper, "private fun finish()")
+    assertEquals(listOf("stop-service", "wake-lock", "marker"), Regex("""recordOnly\("([\w-]+)"\)""").findAll(finish).map { it.groupValues[1] }.toList(), finish)
+    assertTrue(Regex("""recordOnly\("wake-lock"\) \{\s+if \(wakeLock\.isHeld\) \{\s+wakeLock\.release\(\)""").containsMatchIn(finish), "the wake lock's own guard")
+    assertTrue("""recordOnly("marker") { marker.delete() }""" in finish, "the marker's own guard")
+  }
+
+  /**
+   * Review C7 M-8 and M-9: a throw on a watcher's callback thread, or from the previous run's exit read inside
+   * the engine's build, would end the process or leave the build half done. Each costs a `watch-failed` line.
+   */
+  @Test
+  fun `M-8 M-9 the network and pose callbacks and the exit read are guarded`() {
+    val network = glue("NetworkWatch.kt")
+    assertTrue(Regex("""override fun onCapabilitiesChanged\(network: Network, caps: NetworkCapabilities\) = guarded \{ changed\(""").containsMatchIn(network), "onCapabilitiesChanged")
+    assertTrue(Regex("""override fun onLost\(network: Network\) = guarded \{ changed\(false\) \}""").containsMatchIn(network), "onLost")
+    assertTrue(Regex("""catch \(e: Exception\) \{\s+line\(RecordEntry\("watch-failed", listOf\("action" to "network", "error" to e\.javaClass\.simpleName\)\)\)""").containsMatchIn(body(network, "private fun guarded(")), "network's line")
+    assertTrue(Regex("""\bNetworkWatch\(app, report, ::line\)""").containsMatchIn(glue("EngineHost.kt")), "the network watch writes lines")
+    val pose = glue("PoseWatch.kt")
+    assertTrue(Regex("""override fun onSensorChanged\(event: SensorEvent\) = guarded\("pose"\) \{ sensed\(event\) \}""").containsMatchIn(pose), "onSensorChanged")
+    val build = hostBuild()
+    val read = Regex("""try \{\s+ExitReader\.previousLoss\(app\)\?\.let \{ core\.log\("warn", it\.kind, it\.fields\.toMap\(\)\) \}\s+\} catch \(e: Exception\) \{\s+core\.log\("warn", "watch-failed", mapOf\("action" to "exit-read", "error" to e\.javaClass\.simpleName\)\)\s+\}""")
+    assertEquals(1, read.findAll(build).count(), "the exit read, guarded: $build")
+    assertEquals(1, Regex("""ExitReader\.previousLoss\(""").findAll(build).count(), "one exit read")
   }
 
   /** PV40: the pose tracker is replaced by `start` on the scheduler thread and read on the sensor thread. */
@@ -222,7 +255,7 @@ class GlueRulesTest {
     assertTrue(Regex("""fun foregrounded\(\): Boolean \{\s+foreground = survivesBackground\s+return foreground""").containsMatchIn(keeper), "foreground while the pairing holds it")
     assertTrue(Regex("""fun fgsRefused\(e: Throwable\) \{\s+survivesBackground = false\s+foreground = false""").containsMatchIn(keeper), "a refused start is not foreground")
     val finish = body(keeper, "private fun finish()")
-    assertTrue(Regex("""^\{\s+(//[^\n]*\s+)*if \(foreground\) \{\s+foreground = false\s+context\.stopService\(""").containsMatchIn(finish), "only a foreground service is stopped: $finish")
+    assertTrue(Regex("""recordOnly\("stop-service"\) \{\s+if \(foreground\) \{\s+context\.stopService\([^\n]*\)\s+foreground = false""").containsMatchIn(finish), "only a foreground service is stopped: $finish")
   }
 
   /**
@@ -236,8 +269,11 @@ class GlueRulesTest {
     val guard = Regex("""if \(!permissionAware\(context\.currentActivity\)\) return onResult\(Grant\.UNAVAILABLE\)""").find(text)
     assertTrue(guard != null, "the activity check answers UNAVAILABLE")
     assertTrue(guard!!.range.first < text.indexOf("askForPermissions("), "the check comes before the ask")
-    assertTrue(""""com.facebook.react.modules.core.PermissionAwareActivity"""" in text, "Expo's own test: React's PermissionAwareActivity")
-    assertTrue(Regex("""return aware\.isInstance\(activity\)""").containsMatchIn(text), "the activity is checked against it")
+    assertTrue("import com.facebook.react.modules.core.PermissionAwareActivity\n" in text, "Expo's own test: React's PermissionAwareActivity")
+    assertTrue(Regex("""private fun permissionAware\(activity: Activity\?\): Boolean = activity is PermissionAwareActivity\n""").containsMatchIn(text), "review C7 M-5: by type, never by name")
+    assertFalse("Class.forName" in text, "no lookup by name")
+    val gradle = File(src.parentFile, "build.gradle").readText()
+    assertEquals(listOf("implementation 'com.facebook.react:react-android'"), Regex("""\S+ ['"]com\.facebook\.react:react-android[^'"]*['"]""").findAll(gradle).map { it.value }.toList(), "react-android, unversioned, as every Expo module here has it")
   }
 
   /**
@@ -292,6 +328,8 @@ class GlueRulesTest {
     assertTrue(Regex("""attached = true\s+report\("attach"\)""").containsMatchIn(attach), "attach marks attached, then reports: $attach")
     assertTrue(Regex("""EngineHost\.capture\(context\)\.streamer\.collect \{ streamer ->""").containsMatchIn(attach), "the follow starts on attach")
     assertTrue("preview.setVideoSourceProvider(streamer)" in attach, "the follow binds each streamer, a null one unbinding")
+    val perEmission = Regex("""streamer\.collect \{ streamer ->\s+try \{\s+preview\.setVideoSourceProvider\(streamer\)\s+\} catch \(e: CancellationException\) \{\s+throw e\s+\} catch \(e: Exception\) \{\s+failed\("follow", e\)""")
+    assertTrue(perEmission.containsMatchIn(attach), "review C7 M-7: one streamer's failed bind is a line, and the follow carries on: $attach")
     val visibility = body(view, "override fun onWindowVisibilityChanged(visibility: Int)")
     assertTrue(Regex("""super\.onWindowVisibilityChanged\(visibility\)\s+report\("visibility", visibility\)""").containsMatchIn(visibility), "visibility reports its own value: $visibility")
     val detach = body(view, "override fun onDetachedFromWindow()")

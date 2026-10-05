@@ -73,7 +73,7 @@ class PairingKeeper(
    */
   fun release() {
     survivesBackground = false
-    main.post { recordOnly("release") { finish() } }
+    main.post { finish() }
   }
 
   /** The service could not go foreground (C3's catch): the pairing carries on, and says to keep the app open. */
@@ -140,17 +140,26 @@ class PairingKeeper(
     }
   }
 
+  /**
+   * Review C7 M-1: each step has its own guard, so a stop that throws still releases the wake lock and deletes
+   * the marker, which would otherwise read as a lost session at the next launch.
+   */
   private fun finish() {
     // I-3: a service still starting stops itself once foreground (CaptureForegroundService.onStartCommand).
-    if (foreground) {
-      foreground = false
-      context.stopService(Intent(context, CaptureForegroundService::class.java))
+    // The flag clears after the stop: one that threw leaves the service marked, for the next Release to stop.
+    recordOnly("stop-service") {
+      if (foreground) {
+        context.stopService(Intent(context, CaptureForegroundService::class.java))
+        foreground = false
+      }
     }
-    if (wakeLock.isHeld) {
-      wakeLock.release()
-      line(RecordEntry("wake-lock", listOf("state" to "released")))
+    recordOnly("wake-lock") {
+      if (wakeLock.isHeld) {
+        wakeLock.release()
+        line(RecordEntry("wake-lock", listOf("state" to "released")))
+      }
     }
-    marker.delete()
+    recordOnly("marker") { marker.delete() }
   }
 
   /** N1: the marker, the wake lock, the notification and the teardown cost a line when they fail, never the pairing. */
@@ -213,7 +222,10 @@ class CaptureNotification(private val context: Context, private val language: ()
   /** Review C7 I-3: what `startForeground` takes when [current] could not be built: no text and no tap. */
   fun plain(): Notification = NotificationCompat.Builder(context, CHANNEL_ID).setSmallIcon(R.drawable.slate).setOngoing(true).build()
 
-  /** M18: the name is fixed at the channel's first creation; a later call with the same id changes only the name, which Android allows. */
+  /**
+   * M18, review C7 M-2: made again before every post, with the current language's name. Android keeps the
+   * channel and its importance as first made and renames it, so the channel's name follows the language.
+   */
   fun channel() {
     val name = NotificationText.CHANNEL[lang] ?: NotificationText.CHANNEL.getValue("en")
     context.getSystemService(NotificationManager::class.java)

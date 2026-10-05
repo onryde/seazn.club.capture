@@ -193,16 +193,21 @@ class CaptureRun(
     attempt?.let { if (it != id) stopHeld(it) }
     parts.beforeConnect(id, command.startBitrateBps)
     attempt = id
+    signals.starting(id) // M-3: a drop while the start is in flight waits for its end
     val started =
       try {
         withTimeoutOrNull(START_BOUND_MS) { parts.start(command) }
       } catch (e: CancellationException) {
+        signals.startEnded(id, busy = false)?.let(calls.report)
         throw e
       } catch (e: Exception) {
-        parts.busyCamera(e)?.let { camera -> return busyAtStart(id, camera, e) }
+        val camera = parts.busyCamera(e)
+        signals.startEnded(id, busy = camera != null)?.let(calls.report)
+        if (camera != null) return busyAtStart(id, camera, e)
         signals.connectFailed(id, e)?.let(calls.report)
         return
       }
+    signals.startEnded(id, busy = false)?.let(calls.report)
     if (started == null) return timedOut(id)
     if (!started) return calls.report(Input.ConnectFailed(id, ConnectFailure.OTHER, "srt url does not parse"))
     signals.connected(id)?.let(calls.report)
@@ -222,8 +227,9 @@ class CaptureRun(
   /**
    * C7 carry: another app holds our camera, found at the start (StreamPack 3.2.1, as 3.2.0, opens it lazily). It
    * reads as a busy build does (I4): the camera is taken and its release is waited for, never an end.
-   * The attempt is UNHELD (C6 I-3), never counted towards the fallback and never an ask; the signals
-   * still end it, so a late drop of it is no second report (R3).
+   * The attempt is UNHELD (C6 I-3), never counted towards the fallback and never an ask, even when its
+   * endpoint's drop came first, while the start was in flight (review C7 M-3); the signals still end it,
+   * so a late drop of it is no second report (R3).
    */
   private fun busyAtStart(id: Int, camera: String, failure: Exception) {
     cameras.waiting(camera)
