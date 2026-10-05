@@ -80,6 +80,37 @@ class SessionMachineServerTest {
     assertEquals(1, rig.records("delivered").size)
   }
 
+  /**
+   * F-S7-2 (session 7, the first live on stg): Cloudflare names its rendition with `lps` and `rcu` values new on
+   * every master fetch, and the watch took each for a new variant. A live, advancing stream was called
+   * not-delivered every ~24 s, each time forcing a new session (outages of 1.9 to 4.5 s). Through the machine:
+   * Cloudflare's shapes, advancing as on stg, for two minutes on air.
+   */
+  @Test
+  fun `F-S7-2 a live Cloudflare rendition whose query changes on every fetch stays publishing and never forces a new session`() {
+    val manifest = Configs.PLAYBACK_URL.substringBeforeLast('/') + "/"
+    var masters = 0
+    var renditions = 0
+    val rig = MachineRig()
+    rig.playlists = { url ->
+      when (CloudflarePlayback.path(url)) {
+        Configs.PLAYBACK_URL -> FetchResult.Body(CloudflarePlayback.master(++masters))
+        manifest + CloudflarePlayback.RENDITIONS.first() -> FetchResult.Body(CloudflarePlayback.rendition(97 + rig.mono / 1_700)).also { renditions++ }
+        else -> FetchResult.HttpError(404)
+      }
+    }
+    rig.beats = { HeartbeatResponse.Answered(200, BeatReply("live", null, null, null, null)) }
+    rig.live()
+    rig.advance(120_000)
+    assertEquals(emptyList(), rig.records("not-delivered"))
+    assertEquals(emptyList(), rig.sent<Command.StartNewSession>())
+    assertTrue(masters >= 60 && renditions == masters, "$masters masters, $renditions renditions")
+    assertIs<SnapshotState.Publishing>(rig.state)
+    assertEquals(Delivery.OK, rig.snapshot.delivery)
+    val beat = Configs.body(rig.sent<Command.PostHeartbeat>().last())
+    assertEquals(listOf("ok", "publishing"), listOf(beat.getString("delivery"), beat.getString("state")))
+  }
+
   @Test
   fun `B7 spec 1 - a forced new session reconnects the link, so it asks the descriptor again`() {
     val rig = MachineRig()
