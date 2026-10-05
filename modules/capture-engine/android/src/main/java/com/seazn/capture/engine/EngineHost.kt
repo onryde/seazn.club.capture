@@ -65,11 +65,16 @@ object EngineHost {
     val thread = HandlerThread("capture-engine").apply { start() }
     lateinit var core: BridgeCore
     val report: (Input) -> Unit = { core.report(it) }
+    // Review C7 fix rounds 2 and 3: EngineHost.line drops lines until this build returns, and every watcher started
+    // here can write before that (the device sampler samples at once; a callback can answer at registration). Their
+    // lines go to the core: the one line of every watcher the build starts. None writes before core.start(), after
+    // which startWatchers starts them.
+    val toCore: (RecordEntry) -> Unit = { core.log(it.level, it.kind, it.fields.toMap()) }
     val cameras = CameraAvailability()
     val pose = PoseWatch(app, { core.readiness(pose = it) }, ::line)
     // C6 carry: the build encodes the side held (CD42), the pose watch's, never a constant.
     val capture = StreamerAdapter(app, FrameTally(), AttemptSignals(), cameras, coreCalls { core }, pose::side)
-    val device = DeviceSampler(app, report, ::line)
+    val device = DeviceSampler(app, report, toCore)
     val keeper = keeper(app) { core }
     // Task 34: a debug build's seam may hold another HTTP path; a release build's never does.
     val http = HttpSeam.override?.invoke(app) ?: HttpAdapter()
@@ -83,9 +88,6 @@ object EngineHost {
     } catch (e: Exception) {
       core.log("warn", "watch-failed", mapOf("action" to "exit-read", "error" to e.javaClass.simpleName))
     }
-    // Fix round 2 (review C7 re-review): EngineHost.line drops lines until this build returns, and the network
-    // watch's first callback can come before that. The core runs from here, so its lines go to the core.
-    val toCore: (RecordEntry) -> Unit = { core.log(it.level, it.kind, it.fields.toMap()) }
     startWatchers(app, cameras, capture, device, report, toCore)
     return Parts(core, capture, keeper)
   }
@@ -108,8 +110,8 @@ object EngineHost {
    * process: the contended set and the network must be true before the first pairing.
    */
   private fun startWatchers(app: Context, cameras: CameraAvailability, capture: StreamerAdapter, device: DeviceSampler, report: (Input) -> Unit, toCore: (RecordEntry) -> Unit) {
-    CameraWatch(app, cameras, report, ::line).start()
-    MicWatch(app, capture::audioSessionId, MicSilenceWatch(), report, ::line).start()
+    CameraWatch(app, cameras, report, toCore).start()
+    MicWatch(app, capture::audioSessionId, MicSilenceWatch(), report, toCore).start()
     NetworkWatch(app, report, toCore).start()
     device.start()
   }

@@ -155,7 +155,49 @@ class GlueRulesTest {
     val started = build.indexOf("startWatchers(app, cameras,")
     assertTrue(started > build.indexOf("core.start()") && started < build.indexOf("return Parts("), "the watchers start after core.start() and before the build returns")
     val watchers = glue("EngineHost.kt").substringAfter("private fun startWatchers(")
-    assertTrue("CameraWatch(app, cameras, report, ::line).start()" in watchers, "CameraWatch is fed the same instance and started")
+    assertTrue("CameraWatch(app, cameras, report, toCore).start()" in watchers, "CameraWatch is fed the same instance and started")
+  }
+
+  /**
+   * Review C7 fix rounds 2 and 3: `EngineHost.line` drops lines until the build returns, and every watcher the
+   * build starts can write before then (the device sampler samples at once; a callback can answer at its
+   * registration). One `toCore`, made once in the build, is the line of each. The watchers are read from the
+   * code, not listed here: each class in `watch/` that takes a line, and each thing `startWatchers` starts.
+   * A fifth watcher is held to the rule with no edit here.
+   */
+  @Test
+  fun `every watcher the build starts writes its lines to the core, through one toCore`() {
+    val host = glue("EngineHost.kt")
+    val build = hostBuild()
+    val starts = body(host, "private fun startWatchers(")
+    val made = Regex("""val toCore: \(RecordEntry\) -> Unit = \{ core\.log\(it\.level, it\.kind, it\.fields\.toMap\(\)\) \}""").findAll(host).toList()
+    assertEquals(1, made.size, "one toCore in EngineHost, the core's own log")
+    assertTrue(build.indexOf(made.single().value) >= 0, "made in the build")
+    assertTrue("startWatchers(app, cameras, capture, device, report, toCore)" in build, "and handed to startWatchers")
+    // What each started watcher is made with: `Ctor(args).start()` in startWatchers, or `name.start()` for a `val name = Ctor(args)` of the build.
+    val started = mutableMapOf<String, String>()
+    for (call in Regex("""(?m)^\s*(?:([A-Z]\w*)\(|([a-z]\w*)\.start\(\))""").findAll(starts)) {
+      val (ctor, name) = call.destructured
+      if (ctor.isNotEmpty()) {
+        val args = arguments(starts, call.range.last)
+        assertTrue(starts.startsWith(".start()", starts.indexOf(args, call.range.first) + args.length), "$ctor is started")
+        started[ctor] = args
+      } else {
+        val decl = Regex("""val $name = ([A-Z]\w*)\(""").find(build) ?: error("startWatchers starts $name, which the build does not make")
+        started[decl.groupValues[1]] = arguments(build, decl.range.last)
+      }
+    }
+    val watchDir = File(root, "com/seazn/capture/engine/watch")
+    val takers = watchDir.listFiles()!!.filter { it.extension == "kt" && "line: (RecordEntry) -> Unit" in it.readText() }.map { it.nameWithoutExtension }
+    // PoseWatch registers at Hold, after the build has returned (I-4), so its `::line` writes; it starts nowhere in the build.
+    val afterBuild = setOf("PoseWatch")
+    assertFalse(Regex("""\bpose\.start\(\)""").containsMatchIn(build + starts), "PoseWatch starts in the build")
+    val inBuild = (takers - afterBuild).associateWith { name -> Regex("""\b$name\(""").find(host)?.let { arguments(host, it.range.last) } ?: error("$name is never made") } + started
+    for ((name, args) in inBuild) {
+      assertTrue(Regex("""\btoCore\b""").containsMatchIn(args), "$name writes to the core: $args")
+      assertFalse("::line" in args, "$name never writes through EngineHost.line: $args")
+    }
+    assertEquals(setOf("CameraWatch", "MicWatch", "NetworkWatch", "DeviceSampler"), inBuild.keys, "the watchers checked (${inBuild.size})")
   }
 
   /**
