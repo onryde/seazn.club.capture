@@ -11,8 +11,13 @@ import com.seazn.capture.engine.core.Engine
 import com.seazn.capture.engine.core.FakeClock
 import com.seazn.capture.engine.core.FakeScheduler
 import com.seazn.capture.engine.core.FallbackPolicy
+import com.seazn.capture.engine.core.EndReason
 import com.seazn.capture.engine.core.HeartbeatResponse
 import com.seazn.capture.engine.core.Input
+import com.seazn.capture.engine.core.LastEnd
+import com.seazn.capture.engine.core.Phase
+import com.seazn.capture.engine.core.holdsBroadcast
+import com.seazn.capture.engine.core.session
 import com.seazn.capture.engine.core.RtmpsTarget
 import com.seazn.capture.engine.core.SessionMachine
 import com.seazn.capture.engine.core.SessionRecord
@@ -37,6 +42,7 @@ import kotlinx.coroutines.test.runTest
 import org.json.JSONObject
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertIs
 import kotlin.test.assertTrue
 
 /**
@@ -50,8 +56,9 @@ import kotlin.test.assertTrue
  * - The start bound (C6 I-1) and the connect timeout bound one attempt each, never the session: a session
  *   whose every attempt fails retries every [SessionMachine.RETRY_MS]. Only a counted failure moves it to
  *   RTMPS, so a session in `connecting` on SRT past three attempts is one whose failures did not count.
- * - A Stop while never live ends the pairing with no final beat (A8), and Ended beats nothing, so the
- *   server hears nothing until the next pairing's first beat carries the stopped sid (A17).
+ * - A Stop while never live used to end the pairing with no final beat (A8), and Ended beats nothing, so the
+ *   server heard nothing until the next pairing's first beat carried the stopped sid (A17). Owner decision 1
+ *   (2026-10-05) supersedes that: the pairing stays Paired, and the stopped sid goes on a beat at once.
  */
 @OptIn(ExperimentalCoroutinesApi::class) // advanceTimeBy and runCurrent
 class ConnectingSignatureTest {
@@ -75,6 +82,9 @@ class ConnectingSignatureTest {
 
     /** Beats are answered 2xx from the second on; the first is the pairing's, answered by [Configs.pairInputs]. */
     var answering = false
+
+    /** The answers the next beats get instead of [ANSWER], in order. */
+    val failing = ArrayDeque<HeartbeatResponse>()
     lateinit var run: CaptureRun
     val engine =
       Engine(
@@ -109,7 +119,7 @@ class ConnectingSignatureTest {
       val body = JSONObject(beat.body)
       fun text(key: String) = if (body.isNull(key)) null else body.getString(key)
       beats += Beat(clock.mono, body.getString("state"), text("transport"), text("sid"), text("stopped"), text("notReady"))
-      if (answering) engine.send(Input.HeartbeatAnswered(beat.beatId, ANSWER))
+      if (answering) engine.send(Input.HeartbeatAnswered(beat.beatId, failing.removeFirstOrNull() ?: ANSWER))
     }
 
     fun kinds(kind: String): List<JSONObject> = lines.map(::JSONObject).filter { it.getString("kind") == kind }
@@ -247,39 +257,88 @@ class ConnectingSignatureTest {
     }
 
   /**
-   * Item 4, the silence: a Stop while connecting, never live, ends the pairing with A17's record and no final beat
-   * (A8), and Ended beats nothing (`Phase.beating`). The server hears nothing until the next pairing, whose first
-   * beat goes at once, `paired`, holding no sid, carrying the stopped one: staging's 13:43:03 to 13:44:55.
+   * Item 4's silence, and owner decision 1 (2026-10-05), which supersedes A8's "no final beat when never live":
+   * staging's session was stopped in `connecting` and the server heard nothing for about 112 s, until the next
+   * pairing's first beat. Now a Stop while connecting, never live, keeps the pairing Paired with its service, writes
+   * A17's record, and sends one beat at once, within a tick and never at the cadence: `paired`, holding no sid,
+   * carrying the stopped one. Its 2xx delivers the record, so no later beat carries it, and a second Stop sends nothing.
    */
   @Test
-  fun `final r2 item 4 a Stop while never live is silent until the next pairing's first beat carries the stopped sid`() =
+  fun `owner decision 1 a Stop while connecting, never live, beats the stopped sid at once and stays Paired`() =
     runTest {
       val rig = Rig(this)
       rig.fail(Failing.NO_FIRST_FRAME)
       armed(rig)
       both(rig, WINDOW_MS)
+      val held = rig.engine.phase
+      assertTrue(held.holdsBroadcast && held.session?.liveSinceEpochMs == null, "held, never live: $held")
       val before = rig.beats.size
       val sent = rig.executed.size
+      val stoppedAt = rig.clock.mono
       rig.engine.send(Input.Stop)
       rig.scheduler.advanceBy(0)
       runCurrent()
       val atStop = rig.executed.drop(sent)
-      val stored = atStop.filterIsInstance<Command.WriteStopped>().single().record
-      assertEquals("sess_42", stored.sid)
-      assertTrue(Command.Release in atStop, "the service is let go: $atStop")
-      assertEquals(emptyList(), atStop.filterIsInstance<Command.PostHeartbeat>(), "never live: no final beat")
-      assertEquals(false, rig.kinds("ended").single().getBoolean("wasLive"))
+      assertEquals("sess_42", atStop.filterIsInstance<Command.WriteStopped>().single().record.sid)
+      assertTrue(atStop.none { it is Command.End || it == Command.Release }, "the pairing and its service stay: $atStop")
+      val first = rig.beats.drop(before).first()
+      assertTrue(first.atMs - stoppedAt <= Engine.TICK_MS, "at once, within a tick: ${first.atMs - stoppedAt} ms")
+      assertEquals(Beat(first.atMs, "paired", null, null, "sess_42", first.notReady), first)
+      assertEquals(LastEnd.STOPPED, assertIs<Phase.Paired>(rig.engine.phase).pairing.lastEnd)
+      assertEquals(1, rig.kinds("stopped-delivered").size, "its 2xx delivered it")
+      assertTrue(Command.DeleteStopped("fx42hmnp7k2q", 1) in rig.executed)
 
-      both(rig, SILENT_MS)
-      assertEquals(before, rig.beats.size, "Ended beats nothing: ${rig.beats.drop(before)}")
-
-      rig.engine.send(Input.Reset)
-      rig.engine.send(Input.Pair(Configs.pairRequest(), Configs.PHONE, stopped = stored))
-      rig.engine.send(Input.PermissionsAnswered(granted = true))
-      val pairedAt = rig.clock.mono
+      rig.engine.send(Input.Stop)
       rig.scheduler.advanceBy(0)
-      val first = rig.beats.drop(before).single()
-      assertEquals(Beat(pairedAt, "paired", null, null, "sess_42", first.notReady), first)
+      both(rig, 30_000)
+      val after = rig.beats.drop(before + 1)
+      assertTrue(after.isNotEmpty() && after.all { it.stopped == null && it.state == "paired" }, "never carried twice: $after")
+      assertEquals(1, rig.kinds("intent-ignored").count { it.getString("intent") == "stop" }, "the second Stop holds nothing")
+      assertIs<Phase.Paired>(rig.engine.phase, "the old sid's go-live answers are refused")
+    }
+
+  /** Owner decision 1, through the real machine: the stopped beat's send fails, so the next beat carries it and delivers it. */
+  @Test
+  fun `owner decision 1 a stopped beat that fails is delivered by the next beat`() =
+    runTest {
+      val rig = Rig(this)
+      rig.fail(Failing.NO_FIRST_FRAME)
+      armed(rig)
+      both(rig, 5_000)
+      val before = rig.beats.size
+      rig.failing += HeartbeatResponse.Failed("timeout")
+      rig.engine.send(Input.Stop)
+      rig.scheduler.advanceBy(0)
+      runCurrent()
+      assertEquals(listOf("sess_42"), rig.beats.drop(before).map { it.stopped }, "the stopped beat, which failed")
+      assertTrue(rig.kinds("stopped-delivered").isEmpty())
+      both(rig, BeatCadence.HELD_MAX_MS * 2)
+      val next = rig.beats.drop(before + 1)
+      assertEquals("sess_42", next.first().stopped, "the next beat carries it: $next")
+      assertEquals(1, rig.kinds("stopped-delivered").size, "and delivers it")
+      assertTrue(next.drop(1).all { it.stopped == null }, "once: $next")
+    }
+
+  /** Owner decision 1 leaves a live Stop as A8 has it, through the real machine: Ended, and one final beat, ended with the sid. */
+  @Test
+  fun `owner decision 1 leaves a live Stop as A8 has it - Ended, with one final beat that holds the sid`() =
+    runTest {
+      val rig = Rig(this)
+      armed(rig)
+      both(rig, 1_000)
+      val attempt = (rig.engine.phase as? Phase.OnAir)?.attemptId ?: error("on air: ${rig.engine.phase}")
+      rig.engine.send(Input.Frames(attempt, 15, 23))
+      both(rig, 500)
+      rig.engine.send(Input.Frames(attempt, 30, 46))
+      both(rig, 500)
+      assertTrue(rig.engine.phase.session?.liveSinceEpochMs != null, "live: ${rig.engine.phase}")
+      val before = rig.beats.size
+      rig.engine.send(Input.Stop)
+      rig.scheduler.advanceBy(0)
+      runCurrent()
+      assertEquals(EndReason.OPERATOR_STOPPED, assertIs<Phase.Ended>(rig.engine.phase).reason)
+      val last = rig.beats.drop(before).single()
+      assertEquals(listOf("ended", "sess_42", null), listOf(last.state, last.sid, last.stopped))
     }
 
   /**

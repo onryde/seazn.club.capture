@@ -139,6 +139,17 @@ class MachineRig(val request: PairRequest = Configs.pairRequest(), val descripto
 
   fun ready(readiness: Readiness = Configs.READY): List<Command> = send(Input.ReadinessChanged(readiness))
 
+  /**
+   * Owner decision 1 (2026-10-05): after a Stop never live the pairing stays Paired, refusing the stopped sid. The
+   * organiser's next Go live names a new one, on the answer to the beat in flight (the stopped one's), and the code
+   * answers open for it.
+   */
+  fun armedAgain(sid: String = "sess_43"): MachineRig {
+    codes = { if (phase is Phase.Arming) Configs.open(sid = sid, descriptor = descriptor) else null }
+    hear("go-live", sid = sid, startedBy = "organiser")
+    return this
+  }
+
   /** Armed, ready, connected, and a second of encoded frames: LIVE. */
   fun live(): MachineRig {
     armed()

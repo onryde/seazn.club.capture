@@ -127,6 +127,7 @@
   "stream.action.goLive": "Emitir",
   "stream.action.stop": "Detener",
   "stream.action.holdLabel": "{label}. Mantén pulsado 3 segundos.",
+  "stream.action.stopLabel": "Mantén pulsado para detener",
   "stream.action.stopUnpairLabel": "Mantén pulsado para detener y desvincular",
   "stream.chip.camera": "Cámara",
   "stream.chip.sound": "Sonido",

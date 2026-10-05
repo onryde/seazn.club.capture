@@ -140,21 +140,27 @@ class SessionMachineOutageTest {
 
   @Test
   fun `final review I-1 one network fact spans two sessions, however the first one ended`() {
-    // The first session is stopped while armed, while connecting, and once it has been live.
-    val firstSessions: List<Pair<String, (MachineRig) -> Unit>> =
+    // The first session is stopped while armed, while connecting, and once it has been live. Owner decision 1
+    // (2026-10-05): a stop never live keeps the pairing, so the next session is the organiser's next Go live on it;
+    // a live stop ends the pairing, and the next is a fresh pair with no network fact of its own.
+    val again: (MachineRig) -> Unit = { rig -> rig.armedAgain() }
+    val afresh: (MachineRig) -> Unit = { rig ->
+      rig.send(Input.Reset)
+      rig.pairedWithoutANetworkFact()
+      rig.hear("go-live", sid = "sess_42")
+    }
+    val firstSessions: List<Triple<String, (MachineRig) -> Unit, (MachineRig) -> Unit>> =
       listOf(
-        "armed" to { rig -> rig.armed(validated = true) },
-        "connecting" to { rig -> rig.armed(validated = true).ready() },
-        "live" to { rig -> rig.live() },
+        Triple("armed", { rig -> rig.armed(validated = true) }, again),
+        Triple("connecting", { rig -> rig.armed(validated = true).ready() }, again),
+        Triple("live", { rig -> rig.live() }, afresh),
       )
-    for ((name, first) in firstSessions) {
+    for ((name, first, next) in firstSessions) {
       val rig = MachineRig()
       first(rig)
       rig.send(Input.Stop)
-      rig.send(Input.Reset)
       val before = rig.connects().size
-      rig.pairedWithoutANetworkFact()
-      rig.hear("go-live", sid = "sess_42")
+      next(rig)
       rig.ready()
       rig.failingConnects(6_500, ConnectFailure.TIMEOUT)
       assertEquals(srtThreeTimesThenRtmps, rig.connects().drop(before).map { it.target.transport }, name)
@@ -183,11 +189,13 @@ class SessionMachineOutageTest {
 
   @Test
   fun `final review I-1 a network fact that lands after the end is the next session's, and asks nothing`() {
-    val rig = MachineRig().armed(validated = true)
+    // Live, so the stop ends the pairing (owner decision 1 keeps it for a stop never live).
+    val rig = MachineRig().live()
     rig.send(Input.Stop)
     val lost = rig.send(Input.Network(validated = false))
     assertEquals(listOf<Any?>(false), lost.map { (it as Command.Record).entry.field("validated") }, "recorded, nothing asked")
     assertEquals(EndReason.OPERATOR_STOPPED, rig.state.endReason)
+    val before = rig.connects().size
     rig.send(Input.Reset)
     rig.pairedWithoutANetworkFact()
     rig.hear("go-live", sid = "sess_42")
@@ -195,7 +203,7 @@ class SessionMachineOutageTest {
     rig.failingConnects(40_000, ConnectFailure.TIMEOUT)
     // A11: the next broadcast holds in Armed on the dead network it inherited, and never connects.
     assertIs<Phase.Armed>(rig.phase)
-    assertTrue(rig.connects().isEmpty(), "a dead network is not ready (A11)")
+    assertTrue(rig.connects().drop(before).isEmpty(), "a dead network is not ready (A11)")
   }
 
   @Test

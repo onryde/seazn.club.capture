@@ -265,6 +265,9 @@ describe('useUnpair', () => {
     it('resets an Ended engine, and answers idle at once for an Idle one', () => {
       const view = renderUnpair({ paired: true });
       act(() => view.engine.send({ kind: 'start' }));
+      // Live first: only a stop once live ends the pairing (owner decision 1); the fake publishes a second on.
+      act(() => vi.advanceTimersByTime(1_000));
+      expect(view.engine.getSnapshot().state.kind).toBe('publishing');
       act(() => view.engine.send({ kind: 'stop' }));
       expect(view.engine.getSnapshot().state.kind).toBe('ended');
       const first: UnpairOutcome[] = [];

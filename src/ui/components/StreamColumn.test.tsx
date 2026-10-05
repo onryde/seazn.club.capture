@@ -21,6 +21,7 @@ const viewOf = (overrides: Partial<Viewfinder>): Viewfinder => ({
   blocker: null,
   reason: null,
   action: 'goLive',
+  stopUnpairs: false,
   onAir: false,
   peekable: false,
   startsAt: null,
@@ -77,20 +78,38 @@ describe('StreamColumn’s Go live', () => {
   });
 
   // A3: Stop ends the broadcast and the pairing, and its label says so.
-  it('labels Stop for a screen reader as stopping and unpairing; Go live keeps its own', () => {
+  // Owner decision 1 (2026-10-05): Stop unpairs only once live; before, it says it stops, and nothing more.
+  it('labels Stop for a screen reader as stopping and unpairing once live, as stopping before; Go live keeps its own', () => {
     const { rerender } = renderWithPorts(
       <StreamColumn view={viewOf({})} blocked={false} peek={PEEK} onScanAnother={vi.fn()} />,
     );
     expect(goLive()).toBeTruthy();
     rerender(
       <StreamColumn
-        view={viewOf({ kind: 'publishing', action: 'stop', onAir: true, plate: 'live' })}
+        view={viewOf({ kind: 'connecting', action: 'stop', onAir: true, plate: 'connecting' })}
+        blocked={false}
+        peek={PEEK}
+        onScanAnother={vi.fn()}
+      />,
+    );
+    expect(screen.getByRole('button', { name: 'Hold to stop' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Hold to stop and unpair' })).toBeNull();
+    rerender(
+      <StreamColumn
+        view={viewOf({
+          kind: 'publishing',
+          action: 'stop',
+          stopUnpairs: true,
+          onAir: true,
+          plate: 'live',
+        })}
         blocked={false}
         peek={PEEK}
         onScanAnother={vi.fn()}
       />,
     );
     expect(screen.getByRole('button', { name: 'Hold to stop and unpair' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Hold to stop' })).toBeNull();
     expect(screen.queryByRole('button', { name: /^Stop\. Press and hold/ })).toBeNull();
   });
 

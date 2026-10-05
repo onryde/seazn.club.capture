@@ -1,5 +1,6 @@
 import { act, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { SessionState } from '@/domain/session/SessionState';
 import type { FakeScene } from '@/engine/FakeCaptureEngine';
 import { HOLD_MS } from '@/hooks/useHold';
 import type { FakePorts } from '../../../test/fakePorts';
@@ -8,6 +9,8 @@ import { renderViewfinder } from '../../../test/renderViewfinder';
 
 const plate = () => screen.getByTestId('tally-plate').textContent;
 const stop = () => screen.getByRole('button', { name: 'Hold to stop and unpair' });
+/** Stop before the first frame ends the broadcast, not the pairing (owner decision 1, 2026-10-05). */
+const stopNeverLive = () => screen.getByRole('button', { name: 'Hold to stop' });
 const goLive = () => screen.getByRole('button', { name: 'Go live. Press and hold for 3 seconds.' });
 const peek = () => screen.getByRole('button', { name: 'What viewers see' });
 const fill = () => screen.getByTestId('hold-fill').dataset.holding;
@@ -41,7 +44,40 @@ describe('on air (spec §6, through the fake)', () => {
     expect(plate()).toBe('Connecting');
     expect(screen.queryByText('Live')).toBeNull();
     expect(screen.getByText('Opening the link.')).toBeTruthy();
-    expect(stop()).toBeTruthy();
+    expect(stopNeverLive()).toBeTruthy();
+  });
+
+  /**
+   * Owner decision 1 (2026-10-05): a Stop unpairs only once the broadcast went live. Native says which states went
+   * live: those it reports with `sinceEpochMs` (SessionState). Every state that offers Stop is swept, and each label
+   * is read off the state's own shape, not a list of ours.
+   */
+  it('says Stop unpairs in every state that went live, and only those', async () => {
+    const view = await renderViewfinder();
+    const offeringStop: readonly SessionState[] = [
+      { kind: 'arming', cause: 'operator', retrying: false },
+      { kind: 'armed', cause: 'organiser', notReady: 'camera' },
+      { kind: 'connecting', transport: 'srt' },
+      { kind: 'publishing', transport: 'srt', sinceEpochMs: 1 },
+      { kind: 'degraded', transport: 'srt', reason: 'poor-uplink', sinceEpochMs: 1 },
+      {
+        kind: 'reconnecting',
+        cause: 'uplink-lost',
+        holdRemainingSeconds: 30,
+        holdWindowSeconds: 60,
+        sinceEpochMs: 1,
+      },
+    ];
+    const said: string[] = [];
+    for (const state of offeringStop) {
+      act(() => view.engine.forceState(state));
+      const name = 'sinceEpochMs' in state ? 'Hold to stop and unpair' : 'Hold to stop';
+      if (screen.queryByRole('button', { name }) !== null) said.push(state.kind);
+    }
+    expect(said).toEqual(offeringStop.map((state) => state.kind));
+    expect(
+      said.filter((kind) => ['publishing', 'degraded', 'reconnecting'].includes(kind)),
+    ).toHaveLength(3);
   });
 
   it('says live with no sound when the level drops under the floor on air (D39)', async () => {

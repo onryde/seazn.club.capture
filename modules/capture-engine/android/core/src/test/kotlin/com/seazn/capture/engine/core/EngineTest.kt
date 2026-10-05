@@ -50,6 +50,20 @@ class EngineTest {
   /** Plan B's arm, re-stated (Task 5): the platform's way from a pair to a broadcast, in order. */
   private fun Engine.sendAll(inputs: List<Input>) = inputs.forEach(::send)
 
+  /**
+   * Paired, armed, connected and live: the first frame that advances, half a second after the baseline. Owner decision
+   * 1 (2026-10-05): only a Stop from a broadcast that went live ends the pairing, so a test of what an end does starts here.
+   */
+  private fun Engine.live() {
+    sendAll(Configs.pairInputs())
+    send(Input.Connected(1))
+    send(Input.Frames(1, 15, 23))
+    scheduler.advanceBy(500)
+    send(Input.Frames(1, 30, 46))
+    scheduler.advanceBy(0)
+    assertTrue((phase as? Phase.OnAir)?.session?.liveSinceEpochMs != null, "live: $phase")
+  }
+
   @Test
   fun `the tick drives time-based rules with no platform answer - a connect times out`() {
     val engine = engine().apply { start() }
@@ -115,7 +129,8 @@ class EngineTest {
     scheduler.advanceBy(0)
     assertEquals(1, engine.commandFailures)
     assertTrue(lines.any { "command-failed" in it && "camera busy" in it })
-    assertEquals(EndReason.OPERATOR_STOPPED, assertIs<Phase.Ended>(engine.phase).reason)
+    // The Stop still takes: never live, so the broadcast ends and the pairing stays (owner decision 1).
+    assertEquals(LastEnd.STOPPED, assertIs<Phase.Paired>(engine.phase).pairing.lastEnd)
   }
 
   @Test
@@ -464,7 +479,10 @@ class EngineTest {
     onCommand = { e, command -> if (command is Command.Connect) e.send(Input.Connected(command.attemptId)) }
     val engine = engine()
     engine.sendAll(Configs.pairInputs(ready = false))
-    for (input in setup) engine.send(input)
+    for (input in setup) {
+      engine.send(input)
+      scheduler.advanceBy(if (input is Input.Frames) 500 else 0)
+    }
     scheduler.advanceBy(0)
     val before = engine.phase
     executed.clear()
@@ -476,10 +494,13 @@ class EngineTest {
 
   @Test
   fun `B7 E1 a malformed pair while a broadcast is held is ignored and recorded, as the machine does - never fatal-error`() {
-    // Armed, on air, and ended by the operator: the machine ignores a pair in each, so its request never runs.
+    // Armed, on air, and ended by the operator once live (owner decision 1): the machine ignores a pair in each, so
+    // its request never runs. The frames advance half a second apart, as an encoder's do.
     val ready = Input.ReadinessChanged(Configs.READY)
-    for (setup in listOf(emptyList(), listOf(ready), listOf(ready, Input.Stop))) {
+    val live = listOf(ready, Input.Frames(1, 15, 23), Input.Frames(1, 30, 46))
+    for (setup in listOf(emptyList(), listOf(ready), live + Input.Stop)) {
       val (before, after) = malformedPairAfter(setup)
+      if (Input.Stop in setup) assertIs<Phase.Ended>(before, "the live stop ended it")
       assertEquals(before, after, "after $setup")
       assertTrue(executed.isEmpty(), "after $setup, asked of the platform: $executed")
       assertEquals(1, lines.count { """"kind":"engine-error"""" in it }, "after $setup")
@@ -530,15 +551,15 @@ class EngineTest {
       }
     }
     val engine = engine()
-    engine.sendAll(Configs.pairInputs())
+    engine.live()
     engine.send(Input.Stop)
     // The Error still reaches the scheduler's thread, as the platform's own would.
     assertFailsWith<SinkCrash> { scheduler.advanceBy(0) }
-    // Connecting, never live: A17's record, the End, and the service released at once (A8).
-    assertEquals(listOf(Command.WriteStopped::class, Command.End::class, Command.Release::class), executed.takeLast(3).map { it::class })
+    // Live: A17's record, the End, and A8's final beat, which holds the service.
+    assertEquals(listOf(Command.WriteStopped::class, Command.End::class, Command.PostHeartbeat::class), executed.takeLast(3).map { it::class })
     assertEquals(Command.End(EndReason.OPERATOR_STOPPED), executed[executed.size - 2])
     assertTrue(endedFirst, "the platform had the End before the record had the ended line")
-    assertEquals(SnapshotState.Ended(EndReason.OPERATOR_STOPPED, durationMs = null), published.last().second.state)
+    assertEquals(EndReason.OPERATOR_STOPPED, (published.last().second.state as? SnapshotState.Ended)?.reason)
     assertEquals(EndReason.OPERATOR_STOPPED, assertIs<Phase.Ended>(engine.phase).reason)
   }
 
@@ -548,8 +569,7 @@ class EngineTest {
     onLine = { line -> if (""""kind":"ended"""" in line) throw SinkCrash() }
     onSnapshot = { snapshot -> if (snapshot.state is SnapshotState.Ended) throw BridgeCrash() }
     val engine = engine()
-    engine.sendAll(Configs.pairInputs())
-    scheduler.advanceBy(0)
+    engine.live()
     engine.send(Input.Stop)
     // The End threw first, then the ended line, then the ended snapshot: each still ran.
     val thrown = assertFailsWith<LinkCrash> { scheduler.advanceBy(0) }
@@ -568,7 +588,7 @@ class EngineTest {
     onLine = { line -> if (""""kind":"ended"""" in line) throw crash }
     onSnapshot = { snapshot -> if (snapshot.state is SnapshotState.Ended) throw crash }
     val engine = engine()
-    engine.sendAll(Configs.pairInputs(ready = false))
+    engine.live()
     engine.send(Input.Stop)
     val thrown = assertFailsWith<SinkCrash> { scheduler.advanceBy(0) }
     assertTrue(thrown === crash)
@@ -605,7 +625,7 @@ class EngineTest {
   fun `final review N-2 a fatal error after an operator stop is only recorded - the stop stands and one End goes out`() {
     // Owner-visible (final review N-2): plan A keeps a failed session's code for Continue, never a stopped one's.
     val engine = engine { phase, input, now -> if (input == Input.SwitchCamera) error("bug") else SessionMachine.reduce(phase, input, now) }
-    engine.sendAll(Configs.pairInputs())
+    engine.live()
     engine.send(Input.Stop)
     scheduler.advanceBy(0)
     val stopped = assertIs<Phase.Ended>(engine.phase)
@@ -616,7 +636,7 @@ class EngineTest {
     assertEquals(stopped, engine.phase)
     assertEquals(listOf(Command.End(EndReason.OPERATOR_STOPPED)), executed.filterIsInstance<Command.End>())
     assertEquals(snapshots, published.size, "nothing changed, so nothing new goes up")
-    assertEquals(SnapshotState.Ended(EndReason.OPERATOR_STOPPED, durationMs = null), published.last().second.state)
+    assertEquals(SnapshotState.Ended(EndReason.OPERATOR_STOPPED, durationMs = 0), published.last().second.state, "live from the first frame that advanced, stopped at once")
     assertTrue(""""kind":"engine-error"""" in lines.last() && "bug" in lines.last(), lines.last())
   }
 

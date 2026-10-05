@@ -71,6 +71,27 @@ export function scenarioKit(subject: EngineUnderTest, settle: Settle): ScenarioK
       await subject.ready(ready);
       await settled();
     },
+    live: () => publishing(subject.engine),
     snapshot: () => subject.engine.getSnapshot(),
   };
+}
+
+/** The fake publishes a second after its connect; the JVM host after its first frames, well inside this. */
+export const LIVE_WAIT_MS = 3_000;
+const LIVE_POLL_MS = 20;
+
+/** Polls until [engine] reads publishing, or rejects at [LIVE_WAIT_MS] naming what it read. */
+function publishing(engine: CaptureEnginePort): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const started = Date.now();
+    const poll = (): void => {
+      const { kind } = engine.getSnapshot().state;
+      if (kind === 'publishing') return resolve();
+      if (Date.now() - started >= LIVE_WAIT_MS) {
+        return reject(new Error(`live: saw ${kind} after ${LIVE_WAIT_MS} ms, wanted publishing`));
+      }
+      setTimeout(poll, LIVE_POLL_MS);
+    };
+    poll();
+  });
 }

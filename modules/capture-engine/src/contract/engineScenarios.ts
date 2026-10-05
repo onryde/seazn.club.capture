@@ -17,6 +17,11 @@ export type ScenarioKit = {
    * 300–800 ms later and the sound debounce needs two readings (review C4a N-3).
    */
   ready(ready: Partial<Readiness>): Promise<void>;
+  /**
+   * Resolves once the broadcast reads publishing, its first frame encoded, within a bound: only a Stop from a
+   * broadcast that went live ends the pairing (owner decision 1, 2026-10-05). Rejects at the bound.
+   */
+  live(): Promise<void>;
   snapshot(): EngineSnapshot;
 };
 
@@ -179,18 +184,34 @@ export const ENGINE_SCENARIOS: readonly Scenario[] = [
     },
   },
   {
-    name: 'stops a broadcast operator-stopped, still naming the pairing; a stop while paired does nothing',
-    needsServer: false,
+    // Owner decision 1 (2026-10-05): only a stop from a broadcast that went live ends the pairing. B takes the
+    // second half: the JVM host's script answers one sid, which A's stop leaves refused for A.
+    name: 'stops a live broadcast operator-stopped, still naming the pairing; one never live returns to paired, stopped; a stop while paired does nothing',
+    needsServer: true,
     onPhone: false,
     run: async (kit) => {
       await kit.send(KIT_CODE_A);
       await kit.send({ kind: 'stop' });
       same(kind(kit), 'paired', 'a stop while paired');
       await kit.send({ kind: 'start' });
+      await kit.live();
       await kit.send({ kind: 'stop' });
       const { state } = kit.snapshot();
       same(state.kind === 'ended' ? state.reason : state.kind, 'operator-stopped', 'ended');
       same(named(kit.snapshot()), nameOf(KIT_CODE_A), 'still named');
+      await kit.send({ kind: 'reset' });
+      await kit.send(KIT_CODE_B);
+      await kit.ready({ camera: false });
+      await kit.say({ word: 'go-live', cause: 'organiser' });
+      same(kind(kit), 'armed', 'held, not ready: never live');
+      await kit.send({ kind: 'stop' });
+      const after = kit.snapshot();
+      same(
+        [after.state.kind, after.lastEnd, after.broadcast],
+        ['paired', 'stopped', null],
+        'a stop never live',
+      );
+      same(named(after), nameOf(KIT_CODE_B), 'still named');
     },
   },
   {
@@ -200,6 +221,7 @@ export const ENGINE_SCENARIOS: readonly Scenario[] = [
     run: async (kit) => {
       await kit.send(KIT_CODE_A);
       await kit.send({ kind: 'start' });
+      await kit.live();
       await kit.send({ kind: 'unpair' });
       onAir(kit, 'an unpair on air');
       await kit.send({ kind: 'stop' });
@@ -255,6 +277,7 @@ export const ENGINE_SCENARIOS: readonly Scenario[] = [
       await kit.send({ kind: 'reset' });
       same(kind(kit), 'paired', 'a reset while paired');
       await kit.send({ kind: 'start' });
+      await kit.live();
       await kit.send({ kind: 'stop' });
       await kit.send(KIT_CODE_B);
       same(kind(kit), 'ended', 'a pair in ended');
@@ -271,6 +294,7 @@ export const ENGINE_SCENARIOS: readonly Scenario[] = [
     run: async (kit) => {
       await kit.send(KIT_CODE_A);
       await kit.send({ kind: 'start' });
+      await kit.live();
       await kit.send({ kind: 'stop' });
       same(kind(kit), 'ended', 'stop answered within one settle');
     },
@@ -284,6 +308,7 @@ export const ENGINE_SCENARIOS: readonly Scenario[] = [
     run: async (kit) => {
       await kit.send(KIT_CODE_A);
       await kit.send({ kind: 'start' });
+      await kit.live();
       await kit.sendTogether([{ kind: 'stop' }, KIT_CODE_B]);
       same(kind(kit), 'ended', 'the stop ended the broadcast');
       same(named(kit.snapshot()), nameOf(KIT_CODE_A), 'still A, named');

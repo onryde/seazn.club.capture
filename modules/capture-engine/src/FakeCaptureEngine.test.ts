@@ -45,6 +45,12 @@ const goLive = () => {
   pair();
   engine.send({ kind: 'start' });
 };
+/** Owner decision 1 (2026-10-05): only a stop once live ends the pairing; the fake publishes a second after its connect. */
+const onAirLive = () => {
+  goLive();
+  wait(1_000);
+  expect(state().kind).toBe('publishing');
+};
 
 describe('the fake engine (spec §2: scripted snapshots, no state machine of its own)', () => {
   it('starts idle, knowing no pairing, broadcast or readiness', () => {
@@ -142,30 +148,40 @@ describe('the fake engine (spec §2: scripted snapshots, no state machine of its
     expect(state()).toEqual({ kind: 'ended', reason: 'operator-stopped', durationMs: ON_AIR_MS });
   });
 
-  it('ends with no time on air when stopped while connecting, and never publishes after', () => {
+  // Owner decision 1 (2026-10-05), as native: never live, the broadcast ends and the pairing stays.
+  it('returns to paired, stopped, when stopped while connecting, and never publishes after', () => {
     goLive();
     engine.send({ kind: 'stop' });
     wait(5000);
+    expect(state()).toEqual({ kind: 'paired' });
+    expect([snapshot().lastEnd, snapshot().broadcast]).toEqual(['stopped', null]);
+  });
+
+  it('ends a broadcast held past a 401 when stopped never live, as native does (the 401 deferral)', () => {
+    goLive();
+    engine.hear({ word: 'code-ended' });
+    expect(snapshot().codeEndedPending).toBe(true);
+    engine.send({ kind: 'stop' });
     expect(state()).toEqual({ kind: 'ended', reason: 'operator-stopped', durationMs: null });
   });
 
   // N2: the token's tag, never the token (D8); the kit pins it too.
   it('names the pairing by the tag of its token, keeps it once ended, and forgets it on reset', () => {
-    goLive();
+    onAirLive();
     engine.send({ kind: 'stop' });
     expect(snapshot().pairing?.tokenTag).toBe(TAG_A);
     engine.send({ kind: 'reset' });
     expect(snapshot().pairing).toBeNull();
   });
 
-  it('ignores a reset while connecting; stopped and reset, no pending connect revives it', () => {
+  it('ignores a reset while connecting; stopped (never live, so paired) and reset, no pending connect revives it', () => {
     goLive();
     engine.send({ kind: 'reset' });
     expect(state()).toEqual({ kind: 'connecting', transport: 'srt' });
     engine.send({ kind: 'stop' });
     engine.send({ kind: 'reset' });
     wait(5000);
-    expect(state()).toEqual({ kind: 'idle' });
+    expect(state()).toEqual({ kind: 'paired' });
   });
 
   // M5 (final review): the intent log must never hold a pair's token.
@@ -371,7 +387,7 @@ describe('the paired phase', () => {
   });
 
   it('hears nothing once ended: no word moves an Ended engine', () => {
-    goLive();
+    onAirLive();
     engine.send({ kind: 'stop' });
     const ended = state();
     for (const word of ['replaced', 'taken', 'code-ended', 'live'] as const) engine.hear({ word });
@@ -579,20 +595,22 @@ describe('after our own camera reopen (F-P5-10; plan B holds it degraded)', () =
  * reaches the next ending.
  */
 describe('no stale time on air (M4)', () => {
-  it('forgets it across a reset: the next broadcast, stopped while connecting, has none', () => {
+  it('forgets it across a reset: the next broadcast, stopped once live, has its own', () => {
     engine.scene('camera-reopened');
     engine.send({ kind: 'stop' });
     engine.send({ kind: 'reset' });
-    goLive();
+    onAirLive();
+    wait(2_000);
     engine.send({ kind: 'stop' });
-    expect(state()).toEqual({ kind: 'ended', reason: 'operator-stopped', durationMs: null });
+    expect(state()).toEqual({ kind: 'ended', reason: 'operator-stopped', durationMs: 2_000 });
   });
 
-  it('forgets it when a state is forced: a forced connect then stopped ends with none', () => {
+  // A stale start would read live, and end the pairing: never live, the stop keeps it (owner decision 1).
+  it('forgets it when a state is forced: a forced connect then stopped is never live', () => {
     engine.scene('camera-reopened');
     engine.forceState({ kind: 'connecting', transport: 'srt' });
     engine.send({ kind: 'stop' });
-    expect(state()).toEqual({ kind: 'ended', reason: 'operator-stopped', durationMs: null });
+    expect(state()).toEqual({ kind: 'paired' });
   });
 });
 

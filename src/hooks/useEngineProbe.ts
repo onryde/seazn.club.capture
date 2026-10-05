@@ -138,6 +138,7 @@ export function probeKit(
     sendTogether: sendAll,
     say: unsupported,
     ready: unsupported,
+    live: unsupported,
     snapshot: () => {
       checks.count += 1;
       return engine.getSnapshot();

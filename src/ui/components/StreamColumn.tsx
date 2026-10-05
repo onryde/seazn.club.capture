@@ -43,6 +43,7 @@ export const StreamColumn = memo(function StreamColumn(props: ColumnProps) {
       <ColumnPeek onAir={view.onAir} peekable={view.peekable} peek={peek} />
       <ColumnAction
         action={view.action}
+        stopUnpairs={view.stopUnpairs}
         goLiveOff={view.kind !== 'paired' || view.blocker !== null}
         reason={view.kind === 'paired' ? view.reason : null}
         start={view.start}
@@ -88,6 +89,8 @@ const ColumnPeek = memo(function ColumnPeek({ onAir, peekable, peek }: PeekProps
 
 type ActionProps = {
   readonly action: ViewfinderAction;
+  /** Stop ends the pairing too (live); before the first frame it ends the broadcast only (owner decision 1). */
+  readonly stopUnpairs: boolean;
   /** Go live is off: before the engine is armed, or with a chip off. */
   readonly goLiveOff: boolean;
   /**
@@ -114,8 +117,12 @@ const ColumnAction = memo(function ColumnAction(props: ActionProps) {
     <HoldAction
       key={props.action}
       label={t(stop ? 'stream.action.stop' : 'stream.action.goLive')}
-      // A3: Stop ends the broadcast and the pairing, and says so to a screen reader.
-      a11yLabel={stop ? t('stream.action.stopUnpairLabel') : undefined}
+      // A3: Stop ends the broadcast and, once live, the pairing, and says which to a screen reader (owner decision 1).
+      a11yLabel={
+        stop
+          ? t(props.stopUnpairs ? 'stream.action.stopUnpairLabel' : 'stream.action.stopLabel')
+          : undefined
+      }
       tone={stop ? 'stop' : 'go'}
       disabled={!stop && props.goLiveOff}
       reason={props.reason === null ? null : t(props.reason)}

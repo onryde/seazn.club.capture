@@ -127,6 +127,7 @@
   "stream.action.goLive": "Live gaan",
   "stream.action.stop": "Stoppen",
   "stream.action.holdLabel": "{label}. Houd 3 seconden ingedrukt.",
+  "stream.action.stopLabel": "Houd ingedrukt om te stoppen",
   "stream.action.stopUnpairLabel": "Houd ingedrukt om te stoppen en te ontkoppelen",
   "stream.chip.camera": "Camera",
   "stream.chip.sound": "Geluid",

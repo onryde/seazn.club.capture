@@ -569,10 +569,18 @@ export function createFakeCaptureEngine(now: () => number = Date.now): FakeCaptu
     goLive('operator');
   };
 
+  /**
+   * Owner decision 1 (2026-10-05), as native's `SessionMachine.stop`: a broadcast that never went live ends and the
+   * pairing stays, Paired with the last end `stopped`, so Go live can be tried again (native beats the stopped sid
+   * at once); one that went live, or one held past a 401, ends the pairing.
+   */
   const stop = (): void => {
     if (!BROADCAST.has(snapshot.state.kind)) return;
     cancelPending();
     const since = sinceOf(snapshot.state);
+    if (since === null && !snapshot.codeEndedPending) {
+      return show({ kind: 'paired' }, { broadcast: null, lastEnd: 'stopped' });
+    }
     show(ended('operator-stopped', since === null ? null : now() - since), {
       broadcast: null,
       ready: { ...snapshot.ready, camera: false },

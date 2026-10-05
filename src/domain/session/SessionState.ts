@@ -86,6 +86,9 @@ export type DegradeReason =
 /**
  * Ended is only the operator's Stop and a permanent failure (amendment, What
  * this changes in S1): every other end returns to Paired with a `lastEnd`.
+ * Owner decision 1 (2026-10-05): the operator's Stop ends the pairing only
+ * once the broadcast went live; one before the first frame returns to Paired
+ * with the last end `stopped`.
  */
 export type EndReason = 'operator-stopped' | 'fatal-error';
 

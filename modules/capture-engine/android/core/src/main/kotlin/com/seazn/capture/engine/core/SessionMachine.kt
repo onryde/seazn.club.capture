@@ -53,7 +53,7 @@ object SessionMachine {
       is Input.SetLanguage -> Pairings.language(phase, input.language)
       is Input.ReadinessChanged -> Pairings.readiness(phase, input.readiness)
       Input.Start -> Verdicts.postStart(phase, now)
-      Input.Stop -> if (!phase.holdsBroadcast) ignored(phase, "stop") else end(phase, EndReason.OPERATOR_STOPPED, now)
+      Input.Stop -> stop(phase, now)
       Input.Reset -> if (phase is Phase.Ended) reset(phase) else ignored(phase, "reset")
       Input.SwitchCamera -> Devices.switched(phase, now)
       Input.Tick -> Heartbeats.tick(Timers.tick(phase, now), now)
@@ -98,8 +98,41 @@ object SessionMachine {
     Step(phase, listOf(record("intent-ignored", "intent" to intent, "phase" to phase.name)))
 
   /**
-   * The pairing is over: the operator's Stop (A3) or a fatal error. A Stop writes A17's record before
-   * End; from a broadcast that went live it sends A8's one final beat and holds the service for it.
+   * The operator's Stop (A3), only while a broadcast is held. From a broadcast that went live it ends the pairing
+   * ([end], A8's final beat). Owner decision 1 (2026-10-05) supersedes A8's silence for one that never went live
+   * (Arming, Armed, or Connecting before its first frame): the broadcast ends and the pairing stays Paired, so Go
+   * live can be tried again, and A17's record goes out on a beat at once ([neverLive]). A 401 heard while it was
+   * held ends the pairing with it, as before (the 401 deferral): its code is dead, so no beat could deliver.
+   */
+  private fun stop(phase: Phase, now: Now): Step {
+    val pairing = phase.pairing
+    val sid = phase.heldSid
+    if (pairing == null || sid == null) return ignored(phase, "stop")
+    if (phase.session?.liveSinceEpochMs != null || pairing.codeEndedPending) return end(phase, EndReason.OPERATOR_STOPPED, now)
+    return neverLive(phase, pairing, sid, now)
+  }
+
+  /**
+   * Owner decision 1: A17's record is written, as [end] writes it, and the Paired pairing holds it and refuses its
+   * sid, so a late start answer or a server word naming it never starts it again. The beat that goes now, not at
+   * the cadence, holds no sid, so it carries `stopped: <sid>` (RR3), which the server takes as the operator's stop
+   * of a session not yet live, ending it `operator_stopped` and keeping the pairing (web lane, stg da3297a33).
+   * Never `state: ended` with the sid (T21): that ends the server's pairing. It is the late path's beat, early:
+   * its 2xx delivers the record (`stopped-delivered`, and no later beat carries it), and one that fails leaves it
+   * for the next beat, or the next pair. A beat already in flight, or a 429's wait, goes first.
+   */
+  private fun neverLive(phase: Phase, pairing: PairingState, sid: String, now: Now): Step {
+    val stopped = StoppedRecord.of(pairing.name, sid, now.wallMs, phase.session?.broadcast?.maxDurationMinutes)
+    val over = Verdicts.over(phase, LastEnd.STOPPED, now)
+    val paired = over.phase as? Phase.Paired ?: return over
+    val held = paired.pairing.copy(stopped = stopped, refused = paired.pairing.refused + sid, heartbeat = paired.pairing.heartbeat.copy(lastSentAtMonoMs = null))
+    val step = Step(paired.copy(pairing = held), over.commands + Command.WriteStopped(stopped))
+    return Heartbeats.tick(step, now)
+  }
+
+  /**
+   * The pairing is over: the operator's Stop from a broadcast that went live (A3), or a fatal error. A Stop writes
+   * A17's record before End, sends A8's one final beat, and holds the service for it.
    */
   internal fun end(phase: Phase, reason: EndReason, now: Now, vararg fields: Pair<String, Any?>): Step {
     val pairing = phase.pairing

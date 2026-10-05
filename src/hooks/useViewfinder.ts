@@ -47,6 +47,11 @@ export type Viewfinder = {
   /** Why Go live is off, at the control (ruling I3); null with nothing blocking. */
   readonly reason: BlockerKey | null;
   readonly action: ViewfinderAction;
+  /**
+   * Stop ends the pairing too: the broadcast went live. Owner decision 1 (2026-10-05): a Stop before the first
+   * frame (Arming, Armed, Connecting) ends the broadcast only, and the pairing stays Paired.
+   */
+  readonly stopUnpairs: boolean;
   readonly onAir: boolean;
   /** On air with a viewer picture to play (carry 13): the peek's one gate. */
   readonly peekable: boolean;
@@ -67,6 +72,9 @@ export type Viewfinder = {
  * Which control the column offers in each state: Go live before air, Stop on
  * it, none after. Arming and Armed hold a broadcast, so they offer Stop.
  */
+/** The states that went live: the ones native reports with `sinceEpochMs`, which a Stop ends with the pairing. */
+const LIVE: ReadonlySet<Kind> = new Set(['publishing', 'degraded', 'reconnecting']);
+
 const ACTION: Readonly<Record<Kind, ViewfinderAction>> = {
   idle: 'goLive',
   pairing: 'goLive',
@@ -135,6 +143,7 @@ function project(
     blocker,
     reason: blockerReason(blocker),
     action,
+    stopUnpairs: LIVE.has(kind),
     onAir: action === 'stop',
     peekable: action === 'stop' && input.playable,
     ...waiting,

@@ -73,15 +73,24 @@ class SessionMachineLifecycleTest {
     assertEquals(listOf(Command.End(EndReason.OPERATOR_STOPPED)), rig.sent<Command.End>())
   }
 
+  /** Owner decision 1 (2026-10-05): a stop never live keeps the pairing; only a live one ends it, for a reset. */
   @Test
-  fun `stop from armed ends, reset returns to idle, and a new arm works`() {
+  fun `stop from armed stays Paired and the next go-live arms there - a live stop ends, reset returns to idle, and a new arm works`() {
     val rig = MachineRig().armed()
     rig.send(Input.Stop)
-    assertIs<Phase.Ended>(rig.phase)
+    assertIs<Phase.Paired>(rig.phase)
     rig.send(Input.Reset)
-    assertIs<Phase.Idle>(rig.phase)
-    rig.armed()
-    assertIs<Phase.Armed>(rig.phase)
+    assertIs<Phase.Paired>(rig.phase, "nothing to reset")
+    rig.armedAgain()
+    assertEquals("sess_43", assertIs<Phase.Armed>(rig.phase).session.sid)
+
+    val live = MachineRig().live()
+    live.send(Input.Stop)
+    assertIs<Phase.Ended>(live.phase)
+    live.send(Input.Reset)
+    assertIs<Phase.Idle>(live.phase)
+    live.armed()
+    assertIs<Phase.Armed>(live.phase)
   }
 
   @Test
@@ -653,9 +662,9 @@ class SessionMachineLifecycleTest {
   fun `B6 review m3 attempt ids never repeat across sessions, so a late connect from the last one is closed`() {
     val rig = MachineRig().armed()
     rig.ready()
+    // Never live: the pairing stays (owner decision 1), and the next session is the organiser's next Go live on it.
     rig.send(Input.Stop)
-    rig.send(Input.Reset)
-    rig.armed()
+    rig.armedAgain()
     rig.ready()
     assertEquals(listOf(1, 2), rig.connects().map { it.attemptId })
     rig.send(Input.Connected(1))
@@ -684,11 +693,11 @@ class SessionMachineLifecycleTest {
   fun `B6 review m3 a late heartbeat answer from the last session changes nothing in the next`() {
     val rig = MachineRig().armed()
     rig.advance(500)
+    // Never live: the pairing stays (owner decision 1), and the next session is the organiser's next Go live on it.
     rig.send(Input.Stop)
-    rig.send(Input.Reset)
-    rig.armed()
+    rig.armedAgain()
     rig.advance(10_000)
-    // Beat 1 was the first pairing's claim, beat 2 the second's (each answered by its go-live), beat 3 is in flight.
+    // Beat 1 was the claim, beat 2 the stopped one's at the stop (each answered by a go-live), beat 3 is in flight.
     assertEquals(listOf(1, 2, 3), rig.sent<Command.PostHeartbeat>().map { it.beatId })
     assertEquals(emptyList(), rig.send(Input.HeartbeatAnswered(1, HeartbeatResponse.Answered(410))))
     assertIs<Phase.Armed>(rig.phase)
@@ -755,12 +764,15 @@ class SessionMachineLifecycleTest {
 
   @Test
   fun `final review M-3 a session that never went live has no duration`() {
+    // A stop never live ends the pairing only after a 401 held it (owner decision 1 keeps it otherwise).
     val armed = MachineRig().armed()
+    armed.hear(null, status = 401)
     armed.send(Input.Stop)
     assertEquals(SnapshotState.Ended(EndReason.OPERATOR_STOPPED, durationMs = null), armed.state)
 
-    // Connected, with frames that never advance.
+    // Connected, with frames that never advance. The 401 first: the rig's wait for a beat would feed frames on air.
     val connected = MachineRig().armed()
+    connected.hear(null, status = 401)
     connected.ready()
     connected.send(Input.Connected(1))
     connected.advance(2_000, videoPerStep = 0)

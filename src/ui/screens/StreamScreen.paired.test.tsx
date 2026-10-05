@@ -8,7 +8,8 @@ import { renderViewfinder } from '../../../test/renderViewfinder';
 
 const goLive = () => screen.getByRole('button', { name: 'Go live. Press and hold for 3 seconds.' });
 /** A3: Stop ends the broadcast and the pairing, and its screen-reader label says so. */
-const stop = () => screen.getByRole('button', { name: 'Hold to stop and unpair' });
+/** Stop before the first frame: it ends the broadcast, not the pairing (owner decision 1, 2026-10-05). */
+const stop = () => screen.getByRole('button', { name: 'Hold to stop' });
 /** en['stream.status.waitingGoLive'] with FAKE_PAIRING's destination, written out. */
 const WAITING = 'Waiting for Go live · YouTube · Fake CC';
 const plate = () => screen.getByTestId('tally-plate').textContent;
@@ -69,7 +70,7 @@ describe('the paired viewfinder (spec §1)', () => {
     pressIn(goLive());
     act(() => vi.advanceTimersByTime(HOLD_MS));
     expect(view.engine.intents.filter((intent) => intent.kind === 'start')).toHaveLength(1);
-    // Connecting now: Stop has taken Go live's place, and says it unpairs (A3).
+    // Connecting now: Stop has taken Go live's place (A3); never live, it does not say it unpairs (owner decision 1).
     expect(stop()).toBeTruthy();
   });
 
@@ -171,6 +172,7 @@ describe('the paired viewfinder (spec §1)', () => {
     act(() => vi.advanceTimersByTime(1000));
     expect(plate()).toBe('Live');
     expect(screen.getByText(en['stream.status.live'])).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Hold to stop and unpair' })).toBeTruthy();
   });
 
   it('says it is retrying a start it cannot fetch, with Stop offered', async () => {

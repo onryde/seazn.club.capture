@@ -40,23 +40,113 @@ class StopTest {
     assertEquals(beats, rig.sent<Command.PostHeartbeat>().size)
   }
 
-  @Test fun `A8 a stop before the first frame sends no beat, and releases at once`() {
-    val rig = MachineRig().armed()
-    val commands = rig.send(Input.Stop)
-    assertTrue(commands.none { it is Command.PostHeartbeat })
-    assertTrue(Command.Release in commands)
+  /** The broadcasts held but never live, by phase: Arming (the code unanswered), Armed (not ready) and Connecting. */
+  private val neverLive: List<Pair<String, () -> MachineRig>> =
+    listOf(
+      "arming" to { MachineRig().paired().apply { codes = null; hear("go-live", sid = "sess_42") } },
+      "armed" to { MachineRig().armed() },
+      "connecting" to { MachineRig().armed().apply { ready() } },
+    )
+
+  /**
+   * Owner decision 1 (2026-10-05), superseding A8's "no final beat when never live": a Stop before the first frame
+   * ends the broadcast, not the pairing. The phone is Paired, with the service still held and Go live offered, and
+   * in the Stop's own step one beat goes, holding no sid and carrying the stopped one (RR3); never `state: ended`
+   * with the sid (T21), which would end the server's pairing. No End.
+   */
+  @Test fun `owner decision 1 a stop before the first frame stays Paired and sends the stopped sid on a beat in its own step`() {
+    var checked = 0
+    for ((name, held) in neverLive) {
+      val rig = held()
+      assertEquals(name, rig.state.wire, "the rig is $name")
+      assertEquals(null, rig.phase.beating?.heartbeat?.inFlightId, "$name: no beat in flight before the stop")
+      val commands = rig.send(Input.Stop)
+      val paired = assertIs<Phase.Paired>(rig.phase, name)
+      assertEquals(LastEnd.STOPPED, paired.pairing.lastEnd, name)
+      assertTrue(commands.none { it is Command.End || it == Command.Release }, "$name: the pairing and its service stay: $commands")
+      assertEquals(name == "connecting", Command.StopBroadcast in commands, "$name: the capture stops only what it publishes")
+      val beat = Configs.body(commands.filterIsInstance<Command.PostHeartbeat>().single())
+      assertEquals("paired", beat.getString("state"), name)
+      assertTrue(beat.isNull("sid"), name)
+      assertEquals("sess_42", beat.getString("stopped"), name)
+      assertTrue(!beat.has("endReason") || beat.isNull("endReason"), "$name: never the ended beat (T21)")
+      assertEquals(listOf("sess_42"), rig.sent<Command.WriteStopped>().map { it.record.sid }, name)
+      assertTrue("sess_42" in paired.pairing.refused, "$name: never started or rejoined again")
+      checked++
+    }
+    assertEquals(3, checked, "the never-live phases swept")
   }
 
-  @Test fun `A17 every stop from Arming on writes the record before End`() {
+  @Test fun `A17 every stop from Arming on writes the record - beside the stopped beat when never live, before End when live`() {
     val rig = MachineRig().paired()
     rig.codes = null
     rig.hear("go-live", sid = "sess_42")
     val commands = rig.send(Input.Stop).filter { it !is Command.Record }
-    val written = assertIs<Command.WriteStopped>(commands[0]).record
+    val written = commands.filterIsInstance<Command.WriteStopped>().single().record
     assertEquals("sess_42", written.sid)
     // No descriptor answered: twelve hours (RR2).
     assertEquals(written.stoppedAtEpochMs + StoppedRecord.DEFAULT_KEEP_MS, written.keepUntilEpochMs)
-    assertEquals(Command.End(EndReason.OPERATOR_STOPPED), commands[1])
+    assertTrue(commands.indexOf(commands.single { it is Command.WriteStopped }) < commands.indexOf(commands.single { it is Command.PostHeartbeat }), "written before the beat that carries it: $commands")
+    val live = MachineRig().live().send(Input.Stop).filter { it !is Command.Record }
+    assertIs<Command.WriteStopped>(live[0])
+    assertEquals(Command.End(EndReason.OPERATOR_STOPPED), live[1])
+  }
+
+  /** Owner decision 1: the beat's 2xx delivers the record, once; no later beat carries it, and a second Stop sends nothing. */
+  @Test fun `owner decision 1 the stopped beat's 2xx delivers it once - no later beat carries it, and a second stop sends nothing`() {
+    val rig = MachineRig().armed()
+    rig.send(Input.Stop)
+    val answered = rig.hear("waiting")
+    assertEquals(listOf(Command.DeleteStopped("fx42hmnp7k2q", 1)), answered.filterIsInstance<Command.DeleteStopped>())
+    assertEquals(listOf<Any?>(200), rig.records("stopped-delivered").map { it.field("status") })
+    assertNull(rig.phase.pairing!!.stopped)
+    val beats = rig.sent<Command.PostHeartbeat>().size
+    assertTrue(rig.send(Input.Stop).none { it is Command.PostHeartbeat }, "Paired holds no broadcast: the second stop is ignored")
+    assertEquals(listOf<Any?>("stop"), rig.records("intent-ignored").map { it.field("intent") })
+    rig.advance(60_000)
+    val later = rig.sent<Command.PostHeartbeat>().drop(beats)
+    assertTrue(later.isNotEmpty(), "Paired beats on")
+    assertTrue(later.all { Configs.body(it).isNull("stopped") }, "never carried twice once delivered")
+    assertEquals(1, rig.records("stopped-delivered").size)
+  }
+
+  /** Owner decision 1: a stopped beat that fails leaves the record held, so the next beat carries it, and delivers it. */
+  @Test fun `owner decision 1 a stopped beat that fails is carried by the next beat, which delivers it`() {
+    for (failure in listOf<HeartbeatResponse>(HeartbeatResponse.Failed("timeout"), HeartbeatResponse.Answered(503))) {
+      val rig = MachineRig().armed()
+      rig.send(Input.Stop)
+      val first = rig.phase.beating!!.heartbeat.inFlightId!!
+      rig.send(Input.HeartbeatAnswered(first, failure))
+      assertTrue(rig.sent<Command.DeleteStopped>().isEmpty(), "$failure: kept")
+      assertEquals("sess_42", rig.phase.pairing!!.stopped?.sid, "$failure")
+      rig.hear("waiting")
+      val beats = rig.sent<Command.PostHeartbeat>()
+      assertEquals(listOf("sess_42", "sess_42"), beats.takeLast(2).map { Configs.body(it).getString("stopped") }, "$failure: the next beat carries it")
+      assertEquals(1, rig.sent<Command.DeleteStopped>().size, "$failure: then delivered")
+    }
+  }
+
+  /** Owner decision 1: a beat already in flight at the stop goes first; the stopped one follows its answer, not the cadence. */
+  @Test fun `owner decision 1 a beat in flight at the stop is answered first, and the stopped beat follows at once`() {
+    val rig = MachineRig().armed()
+    rig.advance(BeatCadence.HELD_MAX_MS)
+    val inFlight = rig.phase.beating!!.heartbeat.inFlightId!!
+    assertTrue(rig.send(Input.Stop).none { it is Command.PostHeartbeat }, "one beat in flight at a time")
+    rig.send(Input.HeartbeatAnswered(inFlight, HeartbeatResponse.Answered(200, BeatReply("go-live", "sess_42", "organiser", null, Configs.waiting()))))
+    assertIs<Phase.Paired>(rig.phase, "the old beat's go-live names the stopped sid: refused")
+    val beats = rig.sent<Command.PostHeartbeat>().size
+    rig.advance(Engine.TICK_MS)
+    val next = rig.sent<Command.PostHeartbeat>().drop(beats).single()
+    assertEquals("sess_42", Configs.body(next).getString("stopped"))
+  }
+
+  /** The 401 deferral stands: a code that ended while the broadcast was held ends the pairing with it, as before. */
+  @Test fun `owner decision 1 leaves the 401 deferral - a stop never live after a 401 ends the pairing`() {
+    val rig = MachineRig().armed()
+    rig.hear(null, status = 401)
+    assertTrue(rig.phase.pairing!!.codeEndedPending)
+    rig.send(Input.Stop)
+    assertEquals(EndReason.OPERATOR_STOPPED, assertIs<Phase.Ended>(rig.phase).reason)
   }
 
   @Test fun `A17 a stop after the descriptor keeps the record for its maximum duration`() {

@@ -127,6 +127,7 @@
   "stream.action.goLive": "Passer en direct",
   "stream.action.stop": "Arrêter",
   "stream.action.holdLabel": "{label}. Maintenez appuyé 3 secondes.",
+  "stream.action.stopLabel": "Maintenez appuyé pour arrêter",
   "stream.action.stopUnpairLabel": "Maintenez appuyé pour arrêter et dissocier",
   "stream.chip.camera": "Caméra",
   "stream.chip.sound": "Son",

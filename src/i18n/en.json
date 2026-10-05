@@ -127,6 +127,7 @@
   "stream.action.goLive": "Go live",
   "stream.action.stop": "Stop",
   "stream.action.holdLabel": "{label}. Press and hold for 3 seconds.",
+  "stream.action.stopLabel": "Hold to stop",
   "stream.action.stopUnpairLabel": "Hold to stop and unpair",
   "stream.chip.camera": "Camera",
   "stream.chip.sound": "Sound",

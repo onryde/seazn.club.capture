@@ -9,6 +9,7 @@ import {
 } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { encodeSavedCode } from '@/domain/mode/savedCode';
+import { HOLD_MS } from '@/hooks/useHold';
 import { useReopenGate } from '@/hooks/useReopenGate';
 import { STORE_KEYS } from '@/services/modeStore';
 import { StreamScreen } from '@/ui/screens/StreamScreen';
@@ -16,8 +17,9 @@ import { font } from '@/ui/theme/tokens';
 import { savedStreamCode } from '../../../test/fixtures/savedStream';
 import { captureRaw, epochSeconds } from '../../../test/fixtures/wire';
 import { pairCode } from '../../../test/pairCode';
+import { pressIn } from '../../../test/press';
 import { renderViewfinder } from '../../../test/renderViewfinder';
-import { flush, intentKinds, launchApp } from '../../../test/routedApp';
+import { flush, intentKinds, launchApp, scanFromHome } from '../../../test/routedApp';
 import { wrapperFor } from '../../../test/renderWithPorts';
 
 const plate = () => screen.getByTestId('tally-plate').textContent;
@@ -248,5 +250,61 @@ describe('leaving Ended after the operator’s Stop, with the code already forgo
     expect(app.nav.current()).toBe('home');
     expect(intentKinds(app).slice(before)).toEqual(['reset']);
     expect(app.engine.getSnapshot().state.kind).toBe('idle');
+  });
+});
+
+/**
+ * Owner decision 1 (2026-10-05): the operator's Stop before the first frame ends the broadcast, not the pairing.
+ * Through the whole app, with the engine follow and the reopen gate: the code stays saved, /stream stays on Ready
+ * with Go live offered again, and the line says the stream stopped. Stop says which it does to a screen reader: no
+ * "and unpair" until the broadcast is live, when a Stop still ends the pairing and Ended asks for a rescan.
+ */
+describe('a Stop before live (owner decision 1)', () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  const IN_TWO_HOURS = new Date(Date.now() + 2 * 3600_000);
+  const GO_LIVE = 'Go live. Press and hold for 3 seconds.';
+  const hold = async (name: string) => {
+    pressIn(screen.getByRole('button', { name }));
+    await flush(HOLD_MS);
+    await flush();
+  };
+
+  it('keeps the pairing and the code: back on Ready, Go live offered again, the stream said stopped', async () => {
+    const app = await launchApp();
+    await scanFromHome(app, captureRaw({ exp: epochSeconds(IN_TWO_HOURS) }));
+    expect(app.nav.current()).toBe('stream');
+    // The organiser's Go live with the camera not ready: Armed, held and never live, for as long as the hold takes
+    // (a start of the operator's own goes live a second on, before a 3 s hold ends).
+    act(() => app.engine.setReady({ camera: false }));
+    act(() => app.engine.hear({ word: 'go-live', cause: 'organiser' }));
+    await flush();
+    expect(app.engine.getSnapshot().state.kind).toBe('armed');
+    expect(screen.queryByRole('button', { name: 'Hold to stop and unpair' })).toBeNull();
+    await hold('Hold to stop');
+    expect(intentKinds(app).slice(-1)).toEqual(['stop']);
+    expect(app.engine.getSnapshot().state.kind).toBe('paired');
+    expect(app.nav.current()).toBe('stream');
+    expect(screen.getByText('Stream stopped — waiting for Go live')).toBeTruthy();
+    expect(screen.getByRole('button', { name: GO_LIVE })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Scan another' })).toBeNull();
+    expect(app.kv.entries.has(STORE_KEYS.code('stream'))).toBe(true);
+    expect(intentKinds(app)).not.toContain('unpair');
+  });
+
+  it('once live, Stop says it unpairs, and ends the pairing with a rescan asked', async () => {
+    const app = await launchApp();
+    await scanFromHome(app, captureRaw({ exp: epochSeconds(IN_TWO_HOURS) }));
+    await hold(GO_LIVE);
+    await flush(1_000);
+    expect(app.engine.getSnapshot().state.kind).toBe('publishing');
+    expect(screen.queryByRole('button', { name: 'Hold to stop' })).toBeNull();
+    await hold('Hold to stop and unpair');
+    expect(app.engine.getSnapshot().state).toMatchObject({
+      kind: 'ended',
+      reason: 'operator-stopped',
+    });
+    expect(screen.getByText('Scan the code again for the next broadcast')).toBeTruthy();
   });
 });
