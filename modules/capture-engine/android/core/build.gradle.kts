@@ -1,9 +1,10 @@
 import org.gradle.api.tasks.testing.logging.TestExceptionFormat
 
 plugins {
-  // The Kotlin that React Native 0.86.3's version catalog pins (`kotlin = "2.1.20"`), which
-  // Expo 57's root-project plugin hands every module as `kotlinVersion`. The app and the core
-  // are compiled by the same Kotlin, so the library that consumes this jar reads its metadata.
+  // The Kotlin that React Native 0.86.3's version catalog pins (`kotlin = "2.1.20"`). The app is
+  // compiled by a newer one, 2.3.0 (app.json's `kotlinVersion`, which the module's app.plugin.ts
+  // pins on the root classpath for StreamPack 3.2.1, C7u), and a newer compiler reads an older
+  // jar's metadata. So the core may stay at or below the app's Kotlin, never above it.
   kotlin("jvm") version "2.1.20"
 }
 
@@ -87,6 +88,12 @@ tasks.test {
   inputs
     .files(fileTree(layout.projectDirectory.dir("../src")))
     .withPropertyName("glueSources")
+    .withPathSensitivity(PathSensitivity.RELATIVE)
+  // GlueRulesTest also reads the module's build.gradle and the keep rules it hands the app, beside `src`
+  // (review C7 M-5, final review M6): inputs under the same rule, so an edit to either reruns the rules.
+  inputs
+    .files(layout.projectDirectory.file("../build.gradle"), layout.projectDirectory.file("../consumer-rules.pro"))
+    .withPropertyName("glueBuild")
     .withPathSensitivity(PathSensitivity.RELATIVE)
   testLogging {
     events("failed")

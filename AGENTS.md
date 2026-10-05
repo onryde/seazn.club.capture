@@ -115,7 +115,7 @@ src/
                    # useReopenGate, useOrientationGate, useCaptureEngine, …
   services/        # ports (key-value store, device ports) + implementations
 modules/
-  capture-engine/  # port + fake today; the native Expo module (StreamPack) arrives in S1
+  capture-engine/  # the engine port, the fake, and the native Expo module (StreamPack, Android)
   code-scanner/    # Expo Module. Google's code scanner (Android), iOS stub, fake.
 contracts/         # capture-qr.v2.json, once vendored (see its README)
 ```

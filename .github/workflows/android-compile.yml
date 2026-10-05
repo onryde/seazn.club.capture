@@ -20,7 +20,8 @@ permissions:
 jobs:
   assemble-debug:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    # The debug build and (M5) an arm64 release: a release took 12.5 min locally, beside ~9 for a debug.
+    timeout-minutes: 75
     steps:
       - uses: actions/checkout@v5
       # The wrapper jar is a binary in the repo; refuse one Gradle did not publish.
@@ -44,4 +45,20 @@ jobs:
         working-directory: android
       # CD34, the owner's Android 12+ ruling: the app's merged manifest must say minSdk 31.
       - run: grep -q 'android:minSdkVersion="31"' app/build/intermediates/merged_manifests/debug/processDebugManifest/AndroidManifest.xml
+        working-directory: android
+      # Final review M5: the release build too, arm64 only (the handset's ABI) to bound the job.
+      - run: ./gradlew assembleRelease --no-daemon --console=plain -PreactNativeArchitectures=arm64-v8a
+        working-directory: android
+      # D-15: the scripted code server is the debug source set's alone. The release's merged manifest is
+      # read (minSdk 31 says it is the app's) and must not name its installer; the debug one, which does,
+      # is the control that the name is spelled as the manifest writes it.
+      - run: |
+          release=app/build/intermediates/merged_manifests/release/processReleaseManifest/AndroidManifest.xml
+          debug=app/build/intermediates/merged_manifests/debug/processDebugManifest/AndroidManifest.xml
+          grep -q 'android:minSdkVersion="31"' "$release"
+          grep -q ScriptedServerInstaller "$debug"
+          if grep -q ScriptedServerInstaller "$release"; then
+            echo "the release manifest names the scripted server's installer (D-15)"
+            exit 1
+          fi
         working-directory: android

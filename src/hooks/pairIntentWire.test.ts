@@ -77,7 +77,7 @@ const INPUTS: Readonly<Record<string, Input>> = {
 const ok = (body: unknown): FetchResponse => ({
   status: 200,
   headers: { get: () => null },
-  json: async () => body,
+  text: async () => JSON.stringify(body),
 });
 
 /** What Home saves after a 200, then the intent the bridge sends for it. */

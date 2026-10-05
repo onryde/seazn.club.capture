@@ -329,6 +329,24 @@ class GlueRulesTest {
   }
 
   /**
+   * Final review M6: AudioSessionIds reads StreamPack's `audioRecord` by name, so an app that minifies must keep
+   * that name. The module hands its keep rule to the app (`consumerProguardFiles`), and the rule keeps the very
+   * field the reflection reads, on the class that declares it (StreamPack 3.2.1, javap).
+   */
+  @Test
+  fun `M6 the field AudioSessionIds reads by name is kept for an app that minifies`() {
+    val read = Regex("""\bit\.name == "(\w+)"""").findAll(glue("AudioSessionIds.kt")).map { it.groupValues[1] }.toList()
+    assertEquals(listOf("audioRecord"), read, "the one field read by name")
+    val gradle = File(src.parentFile, "build.gradle").readText()
+    val named = Regex("""consumerProguardFiles\s+'([^']+)'""").findAll(gradle).map { it.groupValues[1] }.toList()
+    assertEquals(listOf("consumer-rules.pro"), named, "the module hands one rule file to the app")
+    val rules = File(src.parentFile, named.single()).readText()
+    val rule = Regex("""-keepclassmembers class ([\w.]+) \{\s*private android\.media\.AudioRecord (\w+);\s*\}""")
+    val kept = rule.findAll(rules).map { it.groupValues[1] to it.groupValues[2] }.toList()
+    assertEquals(listOf("io.github.thibaultbee.streampack.core.elements.sources.audio.audiorecord.AudioRecordSource" to read.single()), kept)
+  }
+
+  /**
    * CD16 and N1 (Task 38): the notification follows the snapshot only while the service is held, so an
    * idle phone posts nothing; its work on the main looper costs a line when it fails, never the process.
    */
@@ -478,7 +496,9 @@ class GlueRulesTest {
 
   /**
    * C1 (standing): every record line the glue writes, in `main` and `debug`, names a kind the allow-list
-   * holds, and each key it names is plain or a scalar. Read from each `RecordEntry(` call's own argument text.
+   * holds, and each key it names is plain or a scalar. Read from each `RecordEntry(` call's own argument text,
+   * and (final review M3) from each `.log(level, "kind", …)` call's, the core's own entry point
+   * (`BridgeCore.log`): one whose kind is no literal passes a line through, so names none of its own.
    */
   @Test
   fun `C1 every record kind and key the glue writes is in the allow-list`() {
@@ -490,8 +510,18 @@ class GlueRulesTest {
     val files = src.walkTopDown().filter { it.extension == "kt" }.toList()
     val lines = files.flatMap { file -> call.findAll(file.readText()).map { file.name to arguments(file.readText(), it.range.last) }.toList() }
     assertTrue(lines.size >= 7, "a sweep of ${lines.size} record lines: the glue writes at least seven")
+    val logCall = Regex("""\.log\(""")
+    val logged =
+      files.flatMap { file ->
+        val text = file.readText()
+        logCall.findAll(text).map { arguments(text, it.range.last) }.mapNotNull { args ->
+          Regex("""^\(\s*(?:"[^"]*"|[^,()"]+),\s*"([^"]+)"""").find(args)?.let { file.name to "(" + args.substring(it.groups[1]!!.range.first - 1) }
+        }.toList()
+      }
+    // EngineHost's vendor-log and exit-read watch-failed lines, at least.
+    assertTrue(logged.size >= 2, "a sweep of ${logged.size} `.log(` lines with a literal kind: the glue writes at least two")
     val undecided =
-      lines.flatMap { (name, args) ->
+      (lines + logged).flatMap { (name, args) ->
         val kind = Regex("""^\(\s*"([^"]+)"""").find(args)?.groupValues?.get(1) ?: return@flatMap listOf("$name: no literal kind in $args")
         val keys = Regex(""""(\w+)"\s+to\b""").findAll(args).map { it.groupValues[1] }.toList()
         listOfNotNull(kind.takeUnless { it in kinds }?.let { "$name: kind $it" }) + keys.filterNot { it in plain || it in scalars }.map { "$name: $kind.$it" }

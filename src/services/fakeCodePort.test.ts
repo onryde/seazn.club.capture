@@ -42,4 +42,21 @@ describe('the fake code port', () => {
       `https://stg.seazn.club/api/v1/capture/codes/${SAMPLE_CODE}`,
     );
   });
+
+  // Final review M2: the fake answers on the origin it was built for, so a
+  // production development build's fake names the production host throughout.
+  it('answers on its own origin, which the real reader accepts for that host', async () => {
+    const port = createFakeCodePort('https://seazn.club');
+    const answer = await port.check(CODE);
+    if (!answer.ok) throw new Error('the fake answered an error');
+    expect(answer.value).toMatchObject({
+      overlayUrl: 'https://seazn.club/overlay/fixtures/fake-fixture',
+      heartbeatUrl: `https://seazn.club/api/v1/capture/codes/${SAMPLE_CODE}/beats`,
+      startUrl: `https://seazn.club/api/v1/capture/codes/${SAMPLE_CODE}/start`,
+    });
+    expect(parseWaitingFields(waitingToWire(answer.value), 'seazn.club')).toEqual(answer.value);
+    expect(port.codeUrl(SAMPLE_CODE)).toBe(
+      `https://seazn.club/api/v1/capture/codes/${SAMPLE_CODE}`,
+    );
+  });
 });

@@ -33,16 +33,22 @@ const respond = (
 ): FetchResponse => ({
   status,
   headers: { get: (name) => headers[name] ?? null },
-  json: async () => body,
+  text: async () => JSON.stringify(body),
+});
+
+/** A body as the wire carries it, and the URL the platform says it answered from. */
+const raw = (status: number, text: string, url?: string): FetchResponse => ({
+  status,
+  headers: { get: () => null },
+  text: async () => text,
+  ...(url === undefined ? {} : { url }),
 });
 
 /** A captive portal's page, or an edge's: no JSON at all. */
 const html = (status: number): FetchResponse => ({
   status,
   headers: { get: () => null },
-  json: async () => {
-    throw new SyntaxError('Unexpected token <');
-  },
+  text: async () => '<!doctype html><title>Sign in to the venue Wi-Fi</title>',
 });
 
 function portOver(fetch: FetchLike, origin = 'https://stg.seazn.club') {
@@ -232,6 +238,78 @@ describe('the code port (amendment §2, the Home outcome table)', () => {
     await view.ask();
     await view.ask();
     expect(view.calls).toHaveLength(2);
+  });
+
+  // Final review M7: native never follows a redirect and reads at most 64 KiB
+  // (HttpAdapter.MAX_BODY_BYTES); the scan's check holds to the same two rules.
+  it('asks never to follow a redirect, and refuses an answer reached by one anyway', async () => {
+    const asked = 'https://stg.seazn.club/api/v1/capture/codes/fx42hmnp7k2q?slot=1';
+    const view = portOver(answering(raw(200, JSON.stringify(waiting()), asked)));
+    expect(await view.ask()).toMatchObject({ ok: true });
+    expect(view.calls[0]?.[1]).toMatchObject({ redirect: 'error' });
+    // React Native's fetch (whatwg-fetch 3.6.20) ignores `redirect` and follows:
+    // the URL it answered from is then not the one asked.
+    const portal = portOver(
+      answering(raw(200, JSON.stringify(waiting()), 'https://portal.example/login')),
+    );
+    expect(await portal.ask()).toEqual({ ok: false, error: { kind: 'offline' } });
+    expect(portal.entries()).toEqual([
+      expect.objectContaining({
+        event: 'code.error',
+        fields: { kind: 'offline', status: 200, problem: 'redirected' },
+      }),
+    ]);
+    const sameHost = portOver(
+      answering(raw(200, JSON.stringify(waiting()), 'https://stg.seazn.club/login')),
+    );
+    expect(await sameHost.ask()).toEqual({ ok: false, error: { kind: 'offline' } });
+    expect(await portOver(answering(raw(200, JSON.stringify(waiting()), ''))).ask()).toMatchObject({
+      ok: true,
+    });
+  });
+
+  it('reads a body of exactly 64 KiB, and calls one byte more offline, never a body cut short', async () => {
+    const CAP = 64 * 1024;
+    // Padded to an exact UTF-8 length, counted by Node, not by the code under test.
+    const padded = (bytes: number, unit: string) => {
+      const base = JSON.stringify({ ...waiting(), pad: '' });
+      const fill = bytes - Buffer.byteLength(base);
+      const units = Math.floor(fill / Buffer.byteLength(unit));
+      const text = JSON.stringify({
+        ...waiting(),
+        pad: unit.repeat(units) + 'a'.repeat(fill - units * Buffer.byteLength(unit)),
+      });
+      expect(Buffer.byteLength(text)).toBe(bytes);
+      return text;
+    };
+    expect(await portOver(answering(raw(200, padded(CAP, 'a')))).ask()).toMatchObject({ ok: true });
+    const over = portOver(answering(raw(200, padded(CAP + 1, 'a'))));
+    expect(await over.ask()).toEqual({ ok: false, error: { kind: 'offline' } });
+    expect(over.entries()[0]?.fields).toEqual({
+      kind: 'offline',
+      status: 200,
+      problem: 'too-large',
+    });
+    // Two bytes a character: fewer characters than the cap, more bytes.
+    const wide = padded(CAP + 1, 'é');
+    expect(wide.length).toBeLessThan(CAP);
+    expect(await portOver(answering(raw(200, wide))).ask()).toEqual({
+      ok: false,
+      error: { kind: 'offline' },
+    });
+    expect(await portOver(answering(raw(200, padded(CAP, 'é')))).ask()).toMatchObject({ ok: true });
+    // A refusal's body is held to the cap too: one too long is no refusal.
+    const long = portOver(
+      answering(
+        raw(404, JSON.stringify({ ...refusalBody('not_a_stream_code'), pad: 'a'.repeat(CAP) })),
+      ),
+    );
+    expect(await long.ask()).toEqual({ ok: false, error: { kind: 'offline' } });
+    expect(long.entries()[0]?.fields).toEqual({
+      kind: 'offline',
+      status: 404,
+      problem: 'too-large',
+    });
   });
 
   it("builds the code's URL for the saved code (D3), encoding the code", () => {

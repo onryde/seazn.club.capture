@@ -8,8 +8,15 @@ type Answer = Result<WaitingFields, CodeError>;
 /** Made up, 12 characters of the code alphabet (capture-qr.v2). */
 export const SAMPLE_CODE = 'fx42hmnp7k2q';
 
-/** Made-up waiting fields on the staging host and the code's D3 paths, for the fake and for tests. */
-export function sampleWaiting(overrides: Partial<WaitingFields> = {}): WaitingFields {
+/**
+ * Made-up waiting fields on [origin]'s host (staging unless named) and the
+ * code's D3 paths, for the fake and for tests. Final review M2: every URL is
+ * the origin's, so the fake answers as the build's own server would.
+ */
+export function sampleWaiting(
+  overrides: Partial<WaitingFields> = {},
+  origin = 'https://stg.seazn.club',
+): WaitingFields {
   const code = overrides.code ?? SAMPLE_CODE;
   return {
     code,
@@ -18,10 +25,10 @@ export function sampleWaiting(overrides: Partial<WaitingFields> = {}): WaitingFi
     scheduledStart: null,
     autoAllowed: true,
     destinationName: 'YouTube · Fake CC',
-    overlayUrl: 'https://stg.seazn.club/overlay/fixtures/fake-fixture',
+    overlayUrl: `${origin}/overlay/fixtures/fake-fixture`,
     pollSeconds: 60,
-    heartbeatUrl: `${codeUrl('https://stg.seazn.club', code)}/beats`,
-    startUrl: `${codeUrl('https://stg.seazn.club', code)}/start`,
+    heartbeatUrl: `${codeUrl(origin, code)}/beats`,
+    startUrl: `${codeUrl(origin, code)}/start`,
     ...overrides,
   };
 }
@@ -57,7 +64,7 @@ export function createFakeCodePort(origin = 'https://stg.seazn.club'): FakeCodeP
       const waiting = gate;
       gate = null;
       if (waiting !== null) await waiting;
-      return queue.shift() ?? ok(sampleWaiting({ code }));
+      return queue.shift() ?? ok(sampleWaiting({ code }, origin));
     },
     codeUrl: (code) => codeUrl(origin, code),
   };

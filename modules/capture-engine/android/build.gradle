@@ -11,6 +11,8 @@ android {
   defaultConfig {
     versionCode 1
     versionName "0.1.0"
+    // Final review M6: what an app that minifies must keep for this module's reflection (AudioSessionIds).
+    consumerProguardFiles 'consumer-rules.pro'
   }
   // CD2: the pure core and adapters compile into this library, so no settings.gradle edit and no
   // composite build. Their own Gradle build (core/) still runs every JVM test in CI.

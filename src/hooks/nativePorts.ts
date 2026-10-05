@@ -2,14 +2,12 @@ import Constants from 'expo-constants';
 import { getLocales } from 'expo-localization';
 import { router } from 'expo-router';
 import { loadCaptureEngineNative } from '@/engine/nativeModule';
+import { chooseCodePort } from '@/hooks/codePortWiring';
 import { chooseEngine, routedRecordFor } from '@/hooks/engineWiring';
 import type { Ports } from '@/hooks/usePorts';
 import { createNativeCodeScanner } from '@/scanner/nativeCodeScanner';
-import type { CodePort } from '@/services/codePort';
-import { createFakeCodePort } from '@/services/fakeCodePort';
-import { createFetchCodePort } from '@/services/fetchCodePort';
 import { withTimeout } from '@/services/kvTimeout';
-import { createLogger, type Logger } from '@/services/logger';
+import { createLogger } from '@/services/logger';
 import { createModeStore } from '@/services/modeStore';
 import { createHomeIntent } from '@/services/homeIntent';
 import { createScanFlight } from '@/services/scanFlight';
@@ -52,7 +50,13 @@ export function createNativePorts(): Ports {
   const clock = () => new Date();
   const env = process.env.EXPO_PUBLIC_SEAZN_ENV;
   const hosts = seaznHosts(env);
-  const code = createCodePort({ env, logger });
+  const code = chooseCodePort({
+    dev: __DEV__,
+    fakeFlag: process.env.EXPO_PUBLIC_FAKE_CODE,
+    origin: seaznOrigin(env),
+    fetch: (url, init) => fetch(url, init),
+    logger,
+  });
   return {
     engine: wired.engine,
     devEngine: wired.devEngine,
@@ -82,19 +86,4 @@ export function createNativePorts(): Ports {
     appVersion: Constants.expoConfig?.version ?? '0.0.0',
     devTools: __DEV__,
   };
-}
-
-/**
- * D25: the web endpoint may not exist yet, so a development build can opt into
- * the fake with `EXPO_PUBLIC_FAKE_CODE=1`. A release never can.
- */
-function createCodePort(deps: { env: string | undefined; logger: Logger }): CodePort {
-  if (__DEV__ && process.env.EXPO_PUBLIC_FAKE_CODE === '1') {
-    return createFakeCodePort(seaznOrigin(deps.env));
-  }
-  return createFetchCodePort({
-    origin: seaznOrigin(deps.env),
-    fetch: (url, init) => fetch(url, init),
-    logger: deps.logger,
-  });
 }

@@ -9,7 +9,9 @@ import {
 import { httpsHost, isRecord } from '@/domain/credentials/wire';
 import type { CodePort } from '@/services/codePort';
 import {
+  MAX_BODY_BYTES,
   parseRetryAfter,
+  utf8Length,
   withDeadline,
   type FetchLike,
   type FetchResponse,
@@ -93,9 +95,15 @@ async function ask(
   };
   let response: FetchResponse;
   try {
-    response = await deps.fetch(url, { method: 'GET', headers, signal });
+    response = await deps.fetch(url, { method: 'GET', headers, redirect: 'error', signal });
   } catch {
     return refusal(OFFLINE, 0, 'network');
+  }
+  // Final review M7: React Native's fetch (whatwg-fetch 3.6.20) ignores
+  // `redirect` and follows one; native never does. An answer from anywhere
+  // but the URL asked is a portal's or an edge's, so no answer.
+  if (response.url !== undefined && response.url !== '' && response.url !== url) {
+    return refusal(OFFLINE, response.status, 'redirected');
   }
   return read(response, code.code, host, deps);
 }
@@ -108,7 +116,12 @@ async function read(
   deps: Deps,
 ): Promise<Verdict> {
   const { status } = response;
-  if (status === 200) return readFields(await body(response), asked, host);
+  if (status === 200) {
+    const data = await body(response);
+    return data === TOO_LARGE
+      ? refusal(OFFLINE, status, 'too-large')
+      : readFields(data, asked, host);
+  }
   if (status === 429) {
     const retryAfterS = parseRetryAfter(
       response.headers.get('Retry-After'),
@@ -119,6 +132,7 @@ async function read(
   const named = REFUSALS.get(status);
   if (named === undefined) return refusal(OFFLINE, status);
   const data = await body(response);
+  if (data === TOO_LARGE) return refusal(OFFLINE, status, 'too-large');
   const word = isRecord(data) && typeof data.code === 'string' ? data.code : null;
   if (word === null || (named.word !== null && word !== named.word)) {
     return refusal(OFFLINE, status, 'not-refusal');
@@ -151,4 +165,23 @@ function settle(verdict: Verdict, logger: Logger): Result<WaitingFields, CodeErr
   return err(error);
 }
 
-const body = (response: FetchResponse): Promise<unknown> => response.json().catch(() => null);
+const TOO_LARGE = Symbol('too-large');
+
+/**
+ * The body as JSON, or null when it is none. Final review M7: over native's
+ * 64 KiB it is `TOO_LARGE`, never a body cut short (`HttpAdapter`).
+ */
+async function body(response: FetchResponse): Promise<unknown> {
+  let text: string;
+  try {
+    text = await response.text();
+  } catch {
+    return null;
+  }
+  if (utf8Length(text) > MAX_BODY_BYTES) return TOO_LARGE;
+  try {
+    return JSON.parse(text) as unknown;
+  } catch {
+    return null;
+  }
+}
