@@ -345,6 +345,43 @@ class DeliveryWatchTest {
     assertEquals(Delivery.UNKNOWN, renewed.watch.delivery, "the new session has not advanced yet")
   }
 
+  /**
+   * Re-review 7: a rebaseline after the session's first advance (a variant change, or the head going back) is no
+   * progress and keeps the stall clock (F-P5-2), and the session HAS advanced: stalled still shows
+   * [DeliveryWatch.STALLED_AFTER_MS] after the last advance, never waiting for [DeliveryWatch.NOT_DELIVERED_MS] as
+   * before a first advance (F-S9-1).
+   */
+  @Test
+  fun `re-review 7 a rebaseline after the first advance still shows stalled at STALLED_AFTER_MS`() {
+    val lastAdvance = 10_000L // the advancing run below moves the head every configured segment up to here
+    val stalledAt = lastAdvance + DeliveryWatch.STALLED_AFTER_MS
+    assertTrue(stalledAt - lastAdvance < DeliveryWatch.NOT_DELIVERED_MS)
+    val previousHead = 100 + lastAdvance / DeliveryWatch.CONFIGURED_SEGMENT_MS
+    val rebaselines = listOf<Pair<String, (Long, String) -> FetchResult>>(
+      "a variant change" to { _, url ->
+        if (url == polled) FetchResult.Body(masterText("stream_1080/video.m3u8")) else FetchResult.Body(mediaText(500))
+      },
+      "the head going back" to respond { mediaText(previousHead - 1) },
+    )
+    var checked = 0
+    for ((name, frozen) in rebaselines) {
+      val harness = Harness(DeliveryWatch(master))
+      harness.run(0, lastAdvance, answer = respond { t -> mediaText(100 + t / DeliveryWatch.CONFIGURED_SEGMENT_MS) })
+      assertEquals(Delivery.OK, harness.watch.delivery, name)
+      val head = harness.watch.head
+      val variantBefore = harness.watch.variantUrl
+      harness.run(lastAdvance + 500, stalledAt - DeliveryWatch.POLL_MS, answer = frozen)
+      assertTrue(harness.watch.variantUrl != variantBefore || harness.watch.head!! < head!!, "$name: rebaselined")
+      assertFalse(harness.watch.advancedInVariant, "$name: rebaselined")
+      assertTrue(harness.watch.delivery != Delivery.STALLED, "$name: inside the margin")
+      harness.run(stalledAt - DeliveryWatch.POLL_MS + 500, stalledAt, answer = frozen)
+      assertEquals(Delivery.STALLED, harness.watch.delivery, "$name: STALLED_AFTER_MS after the last advance")
+      assertNull(harness.verdict, "$name: long before not-delivered")
+      checked += 1
+    }
+    assertEquals(rebaselines.size, checked)
+  }
+
   @Test
   fun `F-P5-4 stalled shows at exactly three configured segments without an advance`() {
     val harness = Harness(DeliveryWatch(master))
