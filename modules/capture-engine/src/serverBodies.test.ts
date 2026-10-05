@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import Ajv2020 from 'ajv/dist/2020';
 import addFormats from 'ajv-formats';
 import { describe, expect, it } from 'vitest';
+import probe from './wire/scripted-probe.json';
 import vectors from './wire/server-bodies.json';
 
 /**
@@ -95,5 +96,60 @@ describe('the native tests answer with the web contract shapes', () => {
     const body: Record<string, unknown> = { ...row.body, ...change };
     for (const [key, value] of Object.entries(change)) if (value === undefined) delete body[key];
     expect(verdict(row.schema, body)).not.toEqual([]);
+  });
+});
+
+/**
+ * C6 carry (Task 34): the debug build's scripted server answers the phone from a script, so the probe
+ * script's bodies are the server's, checked here against the same contracts. A route's schema is the
+ * status's: a 2xx is the route's answer, any other status its refusal.
+ */
+const ROUTE_SCHEMAS = {
+  code: { ok: 'capture-descriptor.v1.json', refusal: 'capture-descriptor.v1.json#/$defs/refusal' },
+  beat: { ok: 'capture-beat.v1.json#/$defs/answer', refusal: null },
+  start: { ok: 'capture-start.v1.json#/$defs/ok', refusal: 'capture-start.v1.json#/$defs/refusal' },
+} as const;
+
+type ScriptedAnswer = { status?: number; body?: unknown; fail?: boolean };
+
+const scripted = (Object.keys(ROUTE_SCHEMAS) as (keyof typeof ROUTE_SCHEMAS)[]).flatMap((route) =>
+  ((probe as Record<string, unknown>)[route] as ScriptedAnswer[]).map(
+    (answer, index) => [`${route}[${index}]`, route, answer] as const,
+  ),
+);
+
+describe('the probe script answers with the web contract shapes', () => {
+  // Its own count: one code, one beat, one start (PV12), so an emptied route cannot pass by sweeping nothing.
+  it('sweeps the probe script, one answer per route', () => {
+    expect(scripted.map(([name]) => name)).toEqual(['code[0]', 'beat[0]', 'start[0]']);
+  });
+
+  it.each(scripted)('%s is a valid answer for its status', (_name, route, answer) => {
+    expect(answer.fail).toBeUndefined();
+    const status = answer.status ?? 0;
+    const schema =
+      status >= 200 && status < 300 ? ROUTE_SCHEMAS[route].ok : ROUTE_SCHEMAS[route].refusal;
+    expect(schema).not.toBeNull();
+    expect(verdict(schema ?? '', answer.body)).toEqual([]);
+  });
+
+  // The waiting code's own URLs are where the phone beats and asks: the scripted server's routes.
+  it('names the beats and start URLs of its own code, on the D3 path', () => {
+    const body = probe.code[0]?.body;
+    expect(body?.heartbeatUrl).toBe(
+      `https://stg.seazn.club/api/v1/capture/codes/${body?.code}/beats`,
+    );
+    expect(body?.startUrl).toBe(`https://stg.seazn.club/api/v1/capture/codes/${body?.code}/start`);
+  });
+
+  // The brief's draft bodies, each refused: a check that passes them is no check.
+  it.each([
+    ['a waiting code with scheduledStart null', 'code', { scheduledStart: null }],
+    ['a waiting code with sid and cred null', 'code', { sid: null, cred: null }],
+    ['a waiting beat with a venueTimezone', 'beat', { venueTimezone: 'Europe/London' }],
+  ] as const)('%s is refused', (_why, route, change) => {
+    const answer = (probe as unknown as Record<string, ScriptedAnswer[]>)[route]?.[0];
+    const body = { ...(answer?.body as Record<string, unknown>), ...change };
+    expect(verdict(ROUTE_SCHEMAS[route].ok, body)).not.toEqual([]);
   });
 });

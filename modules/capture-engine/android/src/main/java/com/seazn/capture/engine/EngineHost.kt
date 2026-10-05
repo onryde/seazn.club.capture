@@ -44,7 +44,9 @@ object EngineHost {
     val thread = HandlerThread("capture-engine").apply { start() }
     lateinit var core: BridgeCore
     val capture = NoCapture { request, t -> core.pairFailed(request, t) }
-    val platform = AndroidPlatform(capture, HttpAdapter(), RecordFile(File(app.filesDir, "record")), ::emit)
+    // Task 34: a debug build's seam may hold another HTTP path; a release build's never does.
+    val http = HttpSeam.override?.invoke(app) ?: HttpAdapter()
+    val platform = AndroidPlatform(capture, http, RecordFile(File(app.filesDir, "record")), ::emit)
     core = BridgeCore.shared { core(app, thread, platform) }
     core.start()
     return Parts(core, capture)

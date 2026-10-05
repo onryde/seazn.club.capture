@@ -5,7 +5,6 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
-import org.junit.jupiter.api.Assumptions.assumeTrue
 
 /**
  * The rules the endpoint and streamer glue would otherwise hold, read from the glue's own source: the
@@ -20,7 +19,7 @@ class GlueRulesTest {
   private fun sources(): List<File> =
     root.walkTopDown().filter { it.extension == "kt" }.toList().also { assertTrue(it.isNotEmpty(), "no Kotlin under ${root.path}") }
 
-  /** Never skipped: the skips below are honest only while this path is the glue module's own `src`. */
+  /** The rules below are honest only while this path is the glue module's own `src`. */
   @Test
   fun `the rules read the glue module's src, beside this core build`() {
     assertEquals("src", src.name, src.path)
@@ -120,12 +119,12 @@ class GlueRulesTest {
 
   /**
    * Security: the scripted code server (Task 34) and its file are debug-only. A release build carries
-   * none of it. Until Task 34 its folder does not exist, and the rule reports SKIPPED.
+   * none of it: nothing in main names it, the main manifest declares no part of it, and the debug
+   * manifest declares its installer.
    */
   @Test
   fun `the scripted code server lives in the debug source set only, and nothing else names it`() {
     val debug = File(src, "debug/java")
-    assumeTrue(debug.exists(), "the scripted server arrives in Task 34 (batch C6)") // Task 34 deletes this line.
     val scripted = debug.walkTopDown().filter { it.extension == "kt" && "ScriptedCodeServer" in it.readText() }.toList()
     assertTrue(scripted.isNotEmpty(), "no ScriptedCodeServer under ${debug.path}: wrong path")
     for (file in sources()) {
@@ -133,5 +132,8 @@ class GlueRulesTest {
       for (banned in listOf("ScriptedCodeServer", "scripted-code.json")) assertFalse(banned in text, "${file.path}: $banned")
     }
     assertFalse(File(src, "release").exists(), "a release source set must not exist beside the debug one")
+    val manifest = File(src, "main/AndroidManifest.xml").readText()
+    assertFalse("scripted" in manifest.lowercase(), "the main manifest names the scripted server")
+    assertTrue(File(src, "debug/AndroidManifest.xml").readText().contains("ScriptedServerInstaller"), "the installer is declared in the debug manifest")
   }
 }

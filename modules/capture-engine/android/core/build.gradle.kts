@@ -29,6 +29,10 @@ dependencies {
 // It ships in the Android library alone: `main` here stays dependency-free.
 kotlin.sourceSets["test"].kotlin.srcDir("../src/main/java/com/seazn/capture/engine/http")
 
+// Task 34: the scripted server's pure rules and server live in the glue's debug source set, so a release
+// never compiles them; core's tests compile that one folder to test them on the JVM.
+kotlin.sourceSets["test"].kotlin.srcDir("../src/debug/java/com/seazn/capture/engine/debug/script")
+
 tasks.test {
   useJUnitPlatform()
   // The vector files both languages read (CD5, CD6), relative to this build.
@@ -51,8 +55,8 @@ tasks.test {
     .withPropertyName("dictionaries")
     .withPathSensitivity(PathSensitivity.RELATIVE)
   // The glue module's whole `src` (Task 19), so GlueRulesTest sees `main`, `debug` and any `release`
-  // source set. It does not exist until Task 33: an empty tree, and the rules skip. Its files are
-  // inputs under the same rule as the vectors, so a glue-only edit reruns the rules.
+  // source set. Its files are inputs under the same rule as the vectors, so a glue-only edit reruns
+  // the rules.
   systemProperty("capture.glue", layout.projectDirectory.dir("../src").asFile.absolutePath)
   inputs
     .files(fileTree(layout.projectDirectory.dir("../src")))

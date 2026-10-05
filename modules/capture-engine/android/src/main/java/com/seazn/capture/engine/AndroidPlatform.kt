@@ -7,12 +7,12 @@ import com.seazn.capture.engine.adapter.PlatformFacts
 import com.seazn.capture.engine.capture.Capture
 import com.seazn.capture.engine.core.Command
 import com.seazn.capture.engine.core.PairRequest
-import com.seazn.capture.engine.http.HttpAdapter
+import com.seazn.capture.engine.http.HttpPort
 
 /** The Android `Platform` (CD3): every call passes through to a part. */
 class AndroidPlatform(
   private val capture: Capture,
-  private val http: HttpAdapter,
+  private val http: HttpPort,
   private val file: RecordFile,
   private val emit: (String, Map<String, Any?>) -> Unit,
 ) : Platform {

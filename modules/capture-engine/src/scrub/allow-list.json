@@ -183,6 +183,7 @@
     "ready": "native: every readiness check passed, with the side held",
     "reset": "native: the ended session was reset to idle",
     "resumed": "native: the broadcast resumed after an outage",
+    "scripted": "native, debug builds only: the scripted code server answered a request (Task 34), naming its route and status, never its body",
     "shed": "native: the degradation ladder moved",
     "stale-connected": "native: a connect for an attempt no longer in hand",
     "start-answered": "native: the answer to a POST start, late or not",

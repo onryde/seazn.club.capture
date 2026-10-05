@@ -26,8 +26,8 @@ import okhttp3.Response
  *
  * In the glue's own folder, beside nothing Android, so core's tests run it on the JVM (Task 33).
  */
-class HttpAdapter(private val client: OkHttpClient = client(HttpRequests.TIMEOUT_MS)) {
-  fun send(request: HttpRequest, answer: (HttpOutcome) -> Unit) {
+class HttpAdapter(private val client: OkHttpClient = client(HttpRequests.TIMEOUT_MS)) : HttpPort {
+  override fun send(request: HttpRequest, answer: (HttpOutcome) -> Unit) {
     val once = Once(answer)
     try {
       client.newCall(build(request)).enqueue(once)

@@ -1,0 +1,37 @@
+{
+  "about": "The probe script for the device gate (Task 34; the C5 probe runs under it): a made-up waiting code whose beats wait and whose Go live is refused, so nothing reaches staging. Copy the file whole, as files/scripted-code.json, into a debug build's private storage with adb shell run-as; the scripted server reads only code, beat and start, so this note travels harmlessly. A route's answers go in order and the last repeats; {\"fail\": true} is no answer at all. Every value is made up: no token, no credential. serverBodies.test.ts checks each body against the web's contracts, and ScriptAnswersTest answers this file at the descriptor's own URLs.",
+  "code": [
+    {
+      "status": 200,
+      "body": {
+        "state": "waiting",
+        "code": "pr0bec0de7k2",
+        "label": "Example Town v Sample CC",
+        "venueTimezone": "Europe/London",
+        "pollSeconds": 60,
+        "autoAllowed": false,
+        "destinationName": null,
+        "overlayUrl": null,
+        "heartbeatUrl": "https://stg.seazn.club/api/v1/capture/codes/pr0bec0de7k2/beats",
+        "startUrl": "https://stg.seazn.club/api/v1/capture/codes/pr0bec0de7k2/start"
+      }
+    }
+  ],
+  "beat": [
+    {
+      "status": 200,
+      "body": {
+        "state": "waiting",
+        "label": "Example Town v Sample CC",
+        "scheduledStart": null,
+        "autoAllowed": false,
+        "destinationName": null,
+        "overlayUrl": null,
+        "pollSeconds": 60
+      }
+    }
+  ],
+  "start": [
+    { "status": 409, "body": { "code": "no_destination", "message": "Pick a destination" } }
+  ]
+}
