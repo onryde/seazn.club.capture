@@ -112,6 +112,8 @@
   "stream.dev.title": "Moteur simulé (développement uniquement)",
   "stream.dev.scene": "Scène\u00a0: {scene}",
   "stream.dev.probe": "Lancer le contrat du moteur",
+  "stream.dev.crashPreview": "Planter l'aperçu",
+  "stream.dev.pauseReports": "Suspendre les rapports du moteur",
   "stream.tally.starting": "Démarrage",
   "stream.tally.notReady": "Pas prêt",
   "stream.tally.ready": "Prêt",

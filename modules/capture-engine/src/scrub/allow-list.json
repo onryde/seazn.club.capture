@@ -185,6 +185,7 @@
     "paired": "native: the pairing was accepted",
     "permissions-late": "native: a permissions answer after the pairing moved on",
     "platform-failed": "native: a platform failure, stale or after the end",
+    "preview-failed": "native: the viewfinder's native preview could not report itself or follow the streamer, with which (attach, detach, follow) and the throwable's class name; it never crashes the app (Task 39, I5)",
     "previous-session-lost": "native: the previous run held a session and its process died, with the exit reason (F-P5-3, CD22)",
     "readiness": "native: a readiness check changed, with each check, the side and the lines held back (A11, review C4a I-1)",
     "ready": "native: every readiness check passed, with the side held",

@@ -112,6 +112,8 @@
   "stream.dev.title": "Nep-engine (alleen ontwikkeling)",
   "stream.dev.scene": "Scène: {scene}",
   "stream.dev.probe": "Enginecontract uitvoeren",
+  "stream.dev.crashPreview": "Voorbeeld laten crashen",
+  "stream.dev.pauseReports": "Engine-meldingen pauzeren",
   "stream.tally.starting": "Starten",
   "stream.tally.notReady": "Niet klaar",
   "stream.tally.ready": "Klaar",

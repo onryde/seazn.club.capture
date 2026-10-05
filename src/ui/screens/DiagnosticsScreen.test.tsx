@@ -1,5 +1,6 @@
-import { act, fireEvent, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, screen, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
+import type { NativeCaptureEngine } from '@/engine/nativeCaptureEngine';
 import { HOLD_MS } from '@/hooks/useHold';
 import { font } from '@/ui/theme/tokens';
 import { DiagnosticsScreen } from '@/ui/screens/DiagnosticsScreen';
@@ -149,6 +150,47 @@ describe('Diagnostics (spec §4)', () => {
   it('shows no scenes without the fake engine, even in a development build', () => {
     renderWithPorts(<DiagnosticsScreen />, { devEngine: null });
     expect(screen.queryByRole('button', { name: /^Scene:/ })).toBeNull();
+  });
+
+  // Task 39: the dev controls for the preview's boundary and CD17's silence. They matter most with
+  // native wired, where the fake engine's scenes are hidden, so the scenes' gate never hides them.
+  it('offers Crash preview and Pause engine reports with native wired, and pauses native for 5 s', () => {
+    const pauseReports = vi.fn();
+    const nativeEngine = { pauseReports } as unknown as NativeCaptureEngine;
+    renderWithPorts(<DiagnosticsScreen />, { devEngine: null, nativeEngine });
+    expect(screen.queryByRole('button', { name: /^Scene:/ })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Pause engine reports' }));
+    expect(pauseReports.mock.calls).toEqual([[5_000]]);
+    expect(screen.getByRole('button', { name: 'Crash preview' })).toBeTruthy();
+  });
+
+  it('offers no Pause engine reports without native, and neither control with development tools off', () => {
+    renderWithPorts(<DiagnosticsScreen />);
+    expect(screen.getByRole('button', { name: 'Crash preview' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Pause engine reports' })).toBeNull();
+    cleanup();
+    const nativeEngine = { pauseReports: vi.fn() } as unknown as NativeCaptureEngine;
+    renderWithPorts(<DiagnosticsScreen />, { devTools: false, nativeEngine });
+    expect(screen.queryByRole('button', { name: 'Crash preview' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Pause engine reports' })).toBeNull();
+  });
+
+  it("Crash preview arms the viewfinder's preview to crash, until Show preview", async () => {
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    try {
+      renderWithPorts(<DiagnosticsScreen />);
+      fireEvent.click(screen.getByRole('button', { name: 'Crash preview' }));
+      cleanup();
+      const view = await renderViewfinder();
+      expect(screen.getByText('Camera preview stopped — the session carries on')).toBeTruthy();
+      expect(
+        readRecord(view.record).filter((entry) => entry.event === 'preview.crashed'),
+      ).toHaveLength(1);
+      fireEvent.click(screen.getByRole('button', { name: 'Show preview' }));
+      expect(screen.getByTestId('preview')).toBeTruthy();
+    } finally {
+      errors.mockRestore();
+    }
   });
 
   it('goes back to the camera, by its button and by Back', () => {

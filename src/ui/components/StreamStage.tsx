@@ -10,6 +10,7 @@ import { useStageOverlay } from '@/hooks/useStageOverlay';
 import { EdgeStrip } from '@/ui/components/EdgeStrip';
 import { GhostButton } from '@/ui/components/GhostButton';
 import { OverlayPreview } from '@/ui/components/OverlayPreview';
+import { PreviewBoundary } from '@/ui/components/PreviewBoundary';
 import { StageVideo } from '@/ui/components/StageVideo';
 import { Text } from '@/ui/components/Text';
 import { colour } from '@/ui/theme/tokens';
@@ -38,7 +39,10 @@ export const StreamStage = memo(function StreamStage(props: StageProps) {
   const { Preview } = surfaces;
   return (
     <View style={styles.stage}>
-      <Preview />
+      {/* CD19: the preview alone; the overlay keeps its own boundary (AGENTS §7). */}
+      <PreviewBoundary>
+        <Preview />
+      </PreviewBoundary>
       <OverlayPreview url={overlay.url} visible={overlay.visible} onFailed={overlay.onFailed} />
       {props.peek.mounted && playbackUrl !== null ? (
         <StageVideo url={playbackUrl} showing={props.peek.showing} />

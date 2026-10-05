@@ -6,13 +6,19 @@ export type FakeSurfaces = Surfaces & {
   failOverlay(): void;
   /** The overlay throwing while it renders, to reach its error boundary. Set before rendering. */
   crashOverlay(): void;
+  /** The preview throwing on every render until `restorePreview`, to reach its own boundary (CD19). */
+  crashPreview(): void;
+  /** The preview renders again; Show preview then brings it back (I4). */
+  restorePreview(): void;
 };
 
 /** Plain elements tests can find; `react` only, so node tests can build ports too. Render them to use them. */
 export function createFakeSurfaces(): FakeSurfaces {
   let reportFailure: (() => void) | null = null;
   let crashing = false;
+  let previewCrashing = false;
   function Preview() {
+    if (previewCrashing) throw new Error('preview crashed');
     return createElement('div', { 'data-testid': 'preview' });
   }
   function Overlay({ url, onFailed }: OverlayProps) {
@@ -40,6 +46,12 @@ export function createFakeSurfaces(): FakeSurfaces {
     failOverlay: () => reportFailure?.(),
     crashOverlay: () => {
       crashing = true;
+    },
+    crashPreview: () => {
+      previewCrashing = true;
+    },
+    restorePreview: () => {
+      previewCrashing = false;
     },
   };
 }

@@ -214,6 +214,24 @@ class GlueRulesTest {
   }
 
   /**
+   * Task 39 (I5, CD37): the module registers the preview, or JS's `requireNativeView` finds no view and the
+   * viewfinder report is inert; and the view's reports and its streamer follow cannot crash the app, so
+   * each `viewfinder` call is guarded and the follow's scope has its handler.
+   */
+  @Test
+  fun `I5 the module registers the preview, whose reports and follow never crash the app`() {
+    assertEquals(1, Regex("""\bView\(CapturePreviewView::class\)""").findAll(glue("CaptureEngineModule.kt")).count(), "the module's default view")
+    val view = glue("CapturePreviewView.kt")
+    val reports = Regex("""viewfinder\((true|false)\)""").findAll(view).toList()
+    assertEquals(2, reports.size, "attach and detach")
+    for (report in reports) {
+      val line = view.substring(view.lastIndexOf('\n', report.range.first) + 1, view.indexOf('\n', report.range.last))
+      assertTrue(Regex("""^\s*guarded\("(attach|detach)"\) \{ EngineHost\.core\(context\)\.viewfinder\(""").containsMatchIn(line), "unguarded: $line")
+    }
+    assertTrue(Regex("""CoroutineScope\(SupervisorJob\(\) \+ Dispatchers\.Main \+ failed\)""").containsMatchIn(view), "the follow's scope has its handler")
+  }
+
+  /**
    * Security: `cred` is read in `Bodies` and nowhere else, onto the ingest host only (amendment, _Who reads
    * what_), and `SrtOptions.plan`'s all-environment host list rests on Bodies being the only producer of a
    * target (review 19, m8). The glue receives targets; it never builds one.

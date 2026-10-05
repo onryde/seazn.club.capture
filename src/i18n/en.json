@@ -112,6 +112,8 @@
   "stream.dev.title": "Fake engine (development only)",
   "stream.dev.scene": "Scene: {scene}",
   "stream.dev.probe": "Run engine contract",
+  "stream.dev.crashPreview": "Crash preview",
+  "stream.dev.pauseReports": "Pause engine reports",
   "stream.tally.starting": "Starting",
   "stream.tally.notReady": "Not ready",
   "stream.tally.ready": "Ready",

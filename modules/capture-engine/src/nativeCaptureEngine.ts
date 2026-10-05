@@ -39,6 +39,13 @@ export type NativeCaptureEngine = CaptureEnginePort & {
    * readable. Read by M16's record routing only, once per JS line.
    */
   currentKind(): SessionState['kind'];
+  /**
+   * Dev only (Task 39): every snapshot native sends in the next [ms] is ignored, state and time
+   * alike, so CD17's silence (TROUBLE, the silent line) can be seen on a phone. The first one after
+   * the pause is heard. A later call replaces an earlier one; 0 ignores nothing. Reached only through
+   * `ports.nativeEngine`, from Diagnostics' dev controls in a development build.
+   */
+  pauseReports(ms: number): void;
   dispose(): void;
 };
 
@@ -69,8 +76,10 @@ export function createNativeCaptureEngine(
   const current = native.current();
   let snapshot: EngineSnapshot = (current == null ? null : read(current)) ?? UNREPORTED;
   const acks = createAcks();
+  let pausedUntilMs = Number.NEGATIVE_INFINITY;
   const subscriptions = [
     native.addListener('onSnapshot', (body) => {
+      if (now() < pausedUntilMs) return;
       // Review C4c I-4 and CD17: a refused body still proves native is reporting, so the last good
       // facts stand with the time it arrived. Silence is native saying nothing at all; a drift the
       // record counts must never read as "Engine not responding".
@@ -101,6 +110,9 @@ export function createNativeCaptureEngine(
       }
       const now = body == null ? null : toEngineSnapshot(body, cache);
       return (now ?? snapshot).state.kind;
+    },
+    pauseReports: (ms) => {
+      pausedUntilMs = now() + ms;
     },
     forward: (entry) => native.log(entry.level, entry.event, { ...entry.fields }),
     settled: acks.settled,

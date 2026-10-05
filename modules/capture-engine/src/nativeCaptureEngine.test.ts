@@ -121,6 +121,48 @@ describe('the native engine (carry 1)', () => {
     expect(engine.getSnapshot().reportedAtMs).toBe(9_000);
   });
 
+  // Task 39, dev only: CD17's silence on a phone. Snapshots are ignored for the pause, state and
+  // time alike, so the age climbs as if native had said nothing; the first one after it is heard.
+  it('pauseReports ignores every snapshot for its span, then hears the next one', async () => {
+    const native = new FakeNativeModule({ current: pairedWire });
+    let at = 1_000;
+    const engine = createNativeCaptureEngine(native, { ...quiet, now: () => at });
+    const heard: number[] = [];
+    engine.subscribe(() => heard.push(engine.getSnapshot().reportedAtMs));
+    engine.pauseReports(5_000);
+    at = 3_000;
+    native.emit('onSnapshot', liveWire);
+    at = 5_999;
+    native.emit('onSnapshot', { ...liveWire, state: { kind: 'exploded' } });
+    await flush();
+    expect(heard).toEqual([]);
+    expect(engine.getSnapshot().state.kind).toBe('paired');
+    expect(native.logged).toEqual([]); // a paused body is not read, so not counted malformed either
+    at = 6_000;
+    native.emit('onSnapshot', liveWire);
+    await flush();
+    expect(heard).toHaveLength(1);
+    expect(engine.getSnapshot().state.kind).toBe('publishing');
+  });
+
+  it('pauseReports(0) ignores nothing, and a second pause replaces the first', async () => {
+    const native = new FakeNativeModule({ current: pairedWire });
+    let at = 1_000;
+    const engine = createNativeCaptureEngine(native, { ...quiet, now: () => at });
+    let heard = 0;
+    engine.subscribe(() => (heard += 1));
+    engine.pauseReports(0);
+    native.emit('onSnapshot', liveWire);
+    await flush();
+    expect(heard).toBe(1);
+    engine.pauseReports(10_000);
+    engine.pauseReports(1_000); // ends at 2_000, not 11_000
+    at = 2_000;
+    native.emit('onSnapshot', liveWire);
+    await flush();
+    expect(heard).toBe(2);
+  });
+
   // C4c carry (b): M16 routes a JS line by the kind native reports when it is written, read at once
   // from `current()`, ahead of the snapshot event Expo has queued; the JS snapshot's when unreadable.
   it.each([
