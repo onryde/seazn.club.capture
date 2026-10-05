@@ -62,13 +62,21 @@ object HeldPose {
 
 /**
  * JS's `track`: the dead band makes no progress, and a new reading must hold [HeldPose.HOLD_MS]. A
- * change of side is a new reading here, where JS's one `landscape` is not. One thread.
+ * change of side is a new reading here, where JS's one `landscape` is not. [settled] is JS's, hysteresis
+ * and all, so it stays at parity with the turn card (the shared tracks). One thread.
  *
- * The settled reading is JS's, hysteresis and all, so it stays at parity with the turn card. Held is
- * not only that: A11 reads the dead band as not ready. [pose] drops to not held only after the dead
- * band has lasted [HeldPose.HOLD_MS] without a break, and comes back only after the phone has been out
- * of it that long, settled sideways. Without that hold a phone parked on an edge flipped held at
- * sensor rate, about 8 times a second, each a record line (task 17's review, N1).
+ * Held is native's own, with hysteresis (owner, 2026-10-05, superseding the 300 ms both ways of task
+ * 17's review N1): on a staging viewfinder it flipped 11 times in ten minutes. Its edges are
+ * [HeldPose.classify]'s, read two ways:
+ * - **in**, at once: a reading sideways, more than 60 degrees from upright (`LANDSCAPE_FROM_DEG`) with
+ *   under 0.87 of gravity through the screen (`HELD_BELOW_Z_SHARE`), on either side;
+ * - **out**: a reading under 30 degrees from upright (`PORTRAIT_UNDER_DEG`), flat with more than 0.94 of
+ *   gravity through the screen (`FLAT_ABOVE_Z_SHARE`), or under 0.3 g. Held drops only once readings
+ *   have been out for [OUT_MS] without a break; a reading in, or in the dead band, starts that again.
+ *
+ * Between the two edges is the dead band (30 to 60 degrees, 0.87 to 0.94): it keeps what was, so it
+ * never makes held and never ends it. A reading that is not finite is the dead band, as ever. Release
+ * forgets the pose (final review I-1), and the next Hold's watch starts a new tracker.
  */
 class PoseTracker {
   /** Nothing settled yet is `unknown`, as JS's `INITIAL_TRACKER` starts. */
@@ -78,18 +86,10 @@ class PoseTracker {
   private var candidate = settled
   private var sinceMs = 0L
 
-  /**
-   * The current run is in the dead band (or not finite), and when it began. Before any reading the run
-   * is out of it, from 0: nothing is settled then, and a settle needs a hold of its own out of the dead
-   * band, so that run is never what holds a pose.
-   */
-  private var inDeadBand = false
-  private var runSinceMs = 0L
+  /** While held, when the current run of readings out of position began; null when there is none. */
+  private var outSinceMs: Long? = null
 
-  /**
-   * Held only on a settled side, out of the dead band for a hold. Flat, upright, unknown, not yet
-   * settled and a dead band that has lasted a hold are not held.
-   */
+  /** Held on the side of the last reading in, until a run out lasts [OUT_MS]. Not held before any. */
   var pose: Pose = Pose.NotHeld
     private set
 
@@ -97,10 +97,13 @@ class PoseTracker {
   fun sample(x: Double, y: Double, z: Double, monoMs: Long): Pose? {
     val before = pose
     val reading = HeldPose.classify(x, y, z)
-    if ((reading == null) != inDeadBand) {
-      inDeadBand = reading == null
-      runSinceMs = monoMs
-    }
+    settle(reading, monoMs)
+    pose = held(reading, monoMs)
+    return pose.takeIf { it != before }
+  }
+
+  /** JS's `track`, line for line. */
+  private fun settle(reading: PoseReading?, monoMs: Long) {
     when {
       reading == null -> {
         candidate = settled
@@ -116,11 +119,27 @@ class PoseTracker {
       // which changes nothing (mutant R6).
       reading != settled && monoMs - sinceMs >= HeldPose.HOLD_MS -> settled = reading
     }
-    // A run shorter than a hold leaves the pose as it was. A settle always comes with a run out of the
-    // dead band at least a hold long, as the candidate's hold starts inside it.
-    if (monoMs - runSinceMs >= HeldPose.HOLD_MS) {
-      pose = if (inDeadBand) Pose.NotHeld else settled.side?.let { Pose.Held(it) } ?: Pose.NotHeld
+  }
+
+  private fun held(reading: PoseReading?, monoMs: Long): Pose {
+    val side = reading?.side
+    if (side != null) {
+      outSinceMs = null
+      return Pose.Held(side)
     }
-    return pose.takeIf { it != before }
+    val current = pose as? Pose.Held ?: return Pose.NotHeld
+    if (reading == null) {
+      outSinceMs = null
+      return current
+    }
+    val since = outSinceMs ?: monoMs.also { outSinceMs = it }
+    if (monoMs - since < OUT_MS) return current
+    outSinceMs = null
+    return Pose.NotHeld
+  }
+
+  companion object {
+    /** Owner, 2026-10-05 (readiness hysteresis): held drops only after this long out of position. */
+    const val OUT_MS = 1_000L
   }
 }

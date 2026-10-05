@@ -201,11 +201,11 @@ export async function startHostEngine(binary: string = HOST_BINARY): Promise<Hos
       ms,
       () => `no ack for seq ${lastSeq} in ${ms} ms (${String(op.op)})`,
     );
-  // The host's phone is ready once its sound has held, two meter readings in: the fake's is at once.
-  // A host that never acks it is let go here, as one with no ready line is (review C4c M-3).
-  // Review C4c M-8: while the quiet ack waited a tick (Host.kt before I-1), sound had held by the
-  // first settle anyway, so dropping this wait (mutant J2) passed. With that tick gone, dropping it
-  // reds 16 of 34 bridge tests: a start sent before sound holds leaves the engine paired.
+  // The host's phone is ready once the meter has read it. A host that never acks it is let go here,
+  // as one with no ready line is (review C4c M-3). Review C4c M-8 found this wait was what held a start
+  // back until sound had held (dropping it, mutant J2, red 16 of 34). Since the owner's hysteresis
+  // (2026-10-05) sound is ready at the host's first reading, before this ack, so J2 passes again (35 of
+  // 35, rerun that day): the wait is the host-alive check now, not a readiness one.
   try {
     await numbered({ op: 'readiness' }, READY_MS);
   } catch (error) {

@@ -39,6 +39,8 @@ class BridgeCore(
   private val appVersion: String,
   private val model: String,
   newId: () -> String = { java.util.UUID.randomUUID().toString() },
+  /** Sound's silence window: [SoundHold.SILENCE_MS] on the phone; only the JVM host passes another. */
+  silenceMs: Long = SoundHold.SILENCE_MS,
 ) {
   private val guarded = GuardedScheduler(scheduler, ::failed)
   /** Carry C4c-I3: inside the sink, the record's newest seq is the line's own. */
@@ -48,7 +50,7 @@ class BridgeCore(
   private val ticks = TickLateness()
   private val gaps = FrameGaps()
   private val errors = ErrorLines()
-  private val sounds = SoundHold()
+  private val sounds = SoundHold(silenceMs)
   private val readinessLines = ReadinessLines()
   private val engine: Engine = Engine(clock, guarded, sticky, SnapshotSink(::published), record)
   private val pairings = PairingStore(store, newId) { engine.log(it) }
@@ -114,6 +116,7 @@ class BridgeCore(
   /** From any thread. The notices run after the machine has run the input, never inside the snapshot sink (CD31). */
   fun report(input: Input) {
     guarded.schedule(0) { pollers.onInput(input) }
+    if (input is Input.MicSilenced) guarded.schedule(0) { micSilenced(input.silenced) }
     engine.send(input)
     guarded.schedule(0) { notice() }
   }
@@ -178,9 +181,9 @@ class BridgeCore(
 
   /**
    * From any thread (A11): the platform's facts; null leaves a fact as it was. Sent only when a check
-   * changes. Sound is held ([SoundHold], review C4a I-1): the machine is handed the last peak on the
-   * side held, so its `sound` is the held one, and a peak across the floor that has not held yet is
-   * no change.
+   * changes. Sound has hysteresis ([SoundHold], owner 2026-10-05): the machine is handed the last peak on
+   * the side held, so its `sound` is the held one, and a quiet peak inside the silence window is no
+   * change. The pose comes held already, from the glue's [PoseTracker].
    */
   fun readiness(cameraFrames: Boolean? = null, audioPeak: Double? = null, pose: Pose? = null) {
     val atMs = clock.monotonicMs()
@@ -270,12 +273,22 @@ class BridgeCore(
   }
 
   /**
-   * C4a carry (Task 33): the capture closed, so sound is off at once, past its hold. The glue's one
-   * silent reading at the close could never turn a held sound alone, and nothing reads after it: the
-   * chip would show sound while nothing records. The next opening's readings start a run afresh.
+   * C4a carry (Task 33): the capture closed, so sound is off at once, past its silence window. The glue's
+   * one silent reading at the close could never turn a sound alone, and nothing reads after it: the chip
+   * would show sound while nothing records. The next opening's first loud reading is sound again.
    */
   private fun silenced() {
     sounds.reset()
+    readiness = readiness.copy(audioPeak = 0.0)
+    if (sent?.sound == true) sendReadiness()
+  }
+
+  /**
+   * Owner, 2026-10-05: the system silenced our recording (F-P5-8), the machine's fact as ever, and sound is
+   * silent at once, past its silence window ([SoundHold.micSilenced]). Restored, sound waits for a loud reading.
+   */
+  private fun micSilenced(silenced: Boolean) {
+    if (sounds.micSilenced(silenced) == null) return
     readiness = readiness.copy(audioPeak = 0.0)
     if (sent?.sound == true) sendReadiness()
   }
@@ -510,9 +523,9 @@ internal class ErrorLines {
 }
 
 /**
- * Review C4a I-1: at most [MAX_LINES] `readiness` lines a minute, the second of its two guards (the
- * first is [SoundHold]). A pairing settles in about four (the pair's, then camera, sound and held), so
- * six leave room; a check that keeps turning past its hold is held to six a minute, where it wiped the
+ * Review C4a I-1: at most [MAX_LINES] `readiness` lines a minute, the second of its guards (the first are
+ * [SoundHold] and [PoseTracker], owner 2026-10-05). A pairing settles in about four (the pair's, then
+ * camera, sound and held), so six leave room; a check that keeps turning is held to six a minute, where it wiped the
  * record's tail before. The first line of a minute carries how many were held back since the last one
  * written, and every line the state it was written in. Only the line is held back: the machine hears
  * every change. A minute that held lines back is closed by [flush] (review C4a N-1), so the record's

@@ -171,8 +171,9 @@ class ProtocolTest {
     host.shutdown()
   }
 
-  // Review C4a N-3: the meter applies a level at its next readings and sound is held for 300 ms, so
-  // a host with nothing due is not yet a host that has judged the level. The ack waits two periods.
+  // Review C4a N-3: the meter applies a level at its next readings, and a quiet one turns sound only once
+  // the host's silence window has passed (owner, 2026-10-05), so a host with nothing due is not yet a host
+  // that has judged the level. The ack waits the window and two periods.
   @Test
   fun `N-3 a numbered readiness that silences the mic is acked only once sound reads false`() {
     val (host, events) = hostWithEvents()
@@ -219,7 +220,7 @@ class ProtocolTest {
   @Test
   fun `I-1 a quiet ack after a pair follows the snapshot that shows its readiness, all four checks`() {
     val (host, events) = hostWithEvents()
-    // Sound has held (review C4a I-1), so the pair hears all four checks passing at once.
+    // Sound is ready from the meter's first reading, so the pair hears all four checks passing at once.
     host.handle("""{"op":"readiness","seq":1}""")
     events.await("ack:1")
     host.handle("""{"op":"send","seq":2,"intent":${ScriptedServer.PAIR}}""")

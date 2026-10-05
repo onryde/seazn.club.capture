@@ -9,6 +9,7 @@ import kotlin.math.sin
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -53,32 +54,6 @@ class HeldPoseTest {
     }
   }
 
-  @Test
-  fun `a reading settles after 300 ms, and a brief swing through the dead band does not flip it`() {
-    val tracker = PoseTracker()
-    assertEquals(Pose.NotHeld, tracker.pose, "nothing settled yet reads not held (A11's unknown)")
-    assertNull(tracker.sample(1.0, 0.0, 0.0, 0))
-    assertNull(tracker.sample(1.0, 0.0, 0.0, 299), "299 ms is not yet settled")
-    assertEquals(Pose.Held(Side.LEFT), tracker.sample(1.0, 0.0, 0.0, 300))
-    assertNull(tracker.sample(1.0, 0.0, 0.0, 400), "no change, no report")
-    assertNull(tracker.sample(0.707, 0.707, 0.0, 500), "the dead band, for less than 300 ms: still held")
-    assertNull(tracker.sample(0.0, 1.0, 0.0, 600), "upright, not yet settled: the settled side stands")
-    assertNull(tracker.sample(0.0, 1.0, 0.0, 899), "the dead band restarted the hold")
-    assertEquals(Pose.NotHeld, tracker.sample(0.0, 1.0, 0.0, 900))
-  }
-
-  @Test
-  fun `PV17 a dip into the dead band restarts the hold, so returning to the same reading waits a full hold again`() {
-    val tracker = PoseTracker()
-    assertNull(tracker.sample(1.0, 0.0, 0.0, 0))
-    assertNull(tracker.sample(0.707, 0.707, 0.0, 200), "45 degrees: the dead band")
-    // Without the restart, 300 ms after the first reading would settle here.
-    assertNull(tracker.sample(1.0, 0.0, 0.0, 300), "the hold runs from 300 now, not from 0")
-    // Without the candidate's reset, the hold would run from the dip: 399 ms would settle here.
-    assertNull(tracker.sample(1.0, 0.0, 0.0, 599), "299 ms of the new hold")
-    assertEquals(Pose.Held(Side.LEFT), tracker.sample(1.0, 0.0, 0.0, 600))
-  }
-
   private fun held(pose: Pose) = Readiness(cameraFrames = true, audioPeak = 1.0, pose = pose).held
 
   /** Gravity for a phone turned [deg] from upright in the screen's plane, as JS's orientation test builds it. */
@@ -88,73 +63,153 @@ class HeldPoseTest {
 
   private val sideways = tilted(90.0)
   private val deadBand = tilted(45.0)
+  private val upright = Triple(0.0, 1.0, 0.0)
+  private val flat = Triple(0.0, 0.0, 1.0)
 
-  /** Settled on its left side at 300 ms. */
-  private fun settledLeft() = PoseTracker().apply {
-    at(sideways, 0)
-    assertEquals(Pose.Held(Side.LEFT), at(sideways, 300))
+  /** One sample every 60 ms (SENSOR_DELAY_UI). */
+  private val sensorMs = 60L
+
+  /** Held on its left side at 0 ms. */
+  private fun heldLeft() = PoseTracker().apply { assertEquals(Pose.Held(Side.LEFT), at(sideways, 0)) }
+
+  @Test
+  fun `the out-of-position window is the owner's 1 s (2026-10-05)`() {
+    assertEquals(1_000L, PoseTracker.OUT_MS)
+  }
+
+  // JS's settle is the turn card's, unchanged (the shared tracks above); held no longer waits on it.
+  @Test
+  fun `JS's reading settles after 300 ms, and held is at the first sideways reading`() {
+    val tracker = PoseTracker()
+    assertEquals(Pose.NotHeld, tracker.pose, "nothing read yet is not held (A11's unknown)")
+    assertEquals(Pose.Held(Side.LEFT), tracker.sample(1.0, 0.0, 0.0, 0), "held at once (owner, 2026-10-05)")
+    assertEquals(Physical.UNKNOWN, tracker.settled.physical, "JS's reading has not settled yet")
+    assertNull(tracker.sample(1.0, 0.0, 0.0, 299))
+    assertEquals(Physical.UNKNOWN, tracker.settled.physical, "299 ms is not yet settled")
+    assertNull(tracker.sample(1.0, 0.0, 0.0, 300), "settling changes no pose")
+    assertEquals(PoseReading(Physical.LANDSCAPE, Side.LEFT), tracker.settled)
   }
 
   @Test
-  fun `A11 knocked into the dead band, held drops only after 300 ms there`() {
-    val tracker = settledLeft()
-    assertNull(tracker.at(deadBand, 400), "knocked to 45 degrees in the screen's plane")
-    assertNull(tracker.at(deadBand, 699), "299 ms in the dead band: still held")
+  fun `PV17 a dip into the dead band restarts JS's settle, so returning to the same reading waits a full hold again`() {
+    val tracker = PoseTracker()
+    tracker.sample(1.0, 0.0, 0.0, 0)
+    tracker.sample(0.707, 0.707, 0.0, 200)
+    // Without the restart, 300 ms after the first reading would settle here.
+    tracker.sample(1.0, 0.0, 0.0, 300)
+    assertEquals(Physical.UNKNOWN, tracker.settled.physical, "the hold runs from 300 now, not from 0")
+    // Without the candidate's reset, the hold would run from the dip: 399 ms would settle here.
+    tracker.sample(1.0, 0.0, 0.0, 599)
+    assertEquals(Physical.UNKNOWN, tracker.settled.physical, "299 ms of the new hold")
+    tracker.sample(1.0, 0.0, 0.0, 600)
+    assertEquals(PoseReading(Physical.LANDSCAPE, Side.LEFT), tracker.settled)
+    assertEquals(Pose.Held(Side.LEFT), tracker.pose, "held throughout: the dip was in the dead band")
+  }
+
+  @Test
+  fun `out of position, held drops only once a full window has passed out`() {
+    val tracker = heldLeft()
+    val outFrom = 400L
+    assertNull(tracker.at(upright, outFrom), "stood upright: out of position, the window starts")
+    assertNull(tracker.at(upright, outFrom + PoseTracker.OUT_MS - 1), "a moment short of the window: still held")
     assertEquals(true, held(tracker.pose))
-    assertEquals(Pose.NotHeld, tracker.at(deadBand, 700), "300 ms in the dead band: not held (A11)")
-    assertEquals(false, held(tracker.pose))
-    assertEquals(PoseReading(Physical.LANDSCAPE, Side.LEFT), tracker.settled, "the settled reading is JS's, and stands")
+    assertEquals(Pose.NotHeld, tracker.at(upright, outFrom + PoseTracker.OUT_MS), "a full window out: not held")
+    assertNull(tracker.at(upright, outFrom + PoseTracker.OUT_MS + sensorMs), "and it stays so, with nothing to report")
   }
 
   @Test
-  fun `A11 back out of the dead band, held returns only after 300 ms out, settled sideways`() {
-    val tracker = settledLeft()
-    tracker.at(deadBand, 400)
-    assertEquals(Pose.NotHeld, tracker.at(deadBand, 700))
-    assertNull(tracker.at(sideways, 750), "back on its side")
-    assertNull(tracker.at(sideways, 1_049), "299 ms out: still not held")
-    assertEquals(false, held(tracker.pose))
-    assertEquals(Pose.Held(Side.LEFT), tracker.at(sideways, 1_050), "300 ms out, still settled left: held")
-    assertEquals(true, held(tracker.pose))
-    // Reclined on the tripod into the flat dead band (0.9 / |(0.4, 0, 0.9)| = 0.914 of gravity through
-    // the screen) for 300 ms, then out upright: out, but settled upright, so never held again.
-    tracker.sample(0.4, 0.0, 0.9, 1_100)
-    assertEquals(Pose.NotHeld, tracker.sample(0.4, 0.0, 0.9, 1_400))
-    assertNull(tracker.sample(0.0, 1.0, 0.0, 1_450))
-    assertNull(tracker.sample(0.0, 1.0, 0.0, 1_750), "300 ms out and upright settled: not held, nothing to report")
-    assertEquals(Physical.PORTRAIT, tracker.settled.physical)
+  fun `back in position after a drop, held at once`() {
+    val tracker = heldLeft()
+    tracker.at(upright, 100)
+    assertEquals(Pose.NotHeld, tracker.at(upright, 100 + PoseTracker.OUT_MS))
+    assertEquals(Pose.Held(Side.LEFT), tracker.at(sideways, 100 + PoseTracker.OUT_MS + sensorMs), "re-entry: held at once")
   }
 
   @Test
-  fun `N1 a wobble across the 60 degree edge flips held only on runs of 300 ms`() {
-    val tracker = settledLeft()
-    // 59.9 degrees from upright is the dead band; 60.1 is sideways, the left side. One sample every
-    // 60 ms (SENSOR_DELAY_UI). A run of n samples spans (n - 1) × 60 ms, so it takes 6 to reach 300 ms.
-    val inBand = tilted(59.9)
-    val out = tilted(60.1)
-    var t = 300L
+  fun `one reading back in position starts the window again`() {
+    val tracker = heldLeft()
+    tracker.at(upright, 100)
+    assertNull(tracker.at(sideways, 100 + PoseTracker.OUT_MS - sensorMs), "back on its side near the window's end")
+    assertNull(tracker.at(upright, 100 + PoseTracker.OUT_MS), "out again: the window runs from here")
+    assertNull(tracker.at(upright, 100 + 2 * PoseTracker.OUT_MS - 1))
+    assertEquals(Pose.NotHeld, tracker.at(upright, 100 + 2 * PoseTracker.OUT_MS))
+  }
+
+  /**
+   * The edges are HeldPose's own: in at more than 60 degrees from upright, out at under 30 (or flat
+   * past 0.94 of gravity through the screen). Between, the dead band keeps what was. 60.1 and 59.9
+   * sit either side of the way in; 30.1 and 29.9 either side of the way out.
+   */
+  @Test
+  fun `hysteresis - the dead band never makes held, and never ends it`() {
+    val notYet = PoseTracker()
+    var t = 0L
+    var samples = 0
+    for (deg in listOf(59.9, 45.0, 30.1)) {
+      repeat(100) {
+        assertNull(notYet.at(tilted(deg), t), "$deg degrees from not held: still not held")
+        t += sensorMs
+        samples += 1
+      }
+    }
+    assertEquals(Pose.Held(Side.LEFT), notYet.at(tilted(60.1), t), "past 60 degrees: in")
+    for (deg in listOf(59.9, 45.0, 30.1)) {
+      repeat(100) {
+        t += sensorMs
+        assertNull(notYet.at(tilted(deg), t), "$deg degrees from held: still held")
+        samples += 1
+      }
+    }
+    assertEquals(600, samples, "the sweep's own count, each band 6 s long, past the window")
+    t += sensorMs
+    assertNull(notYet.at(tilted(29.9), t), "under 30 degrees: out, and the window starts")
+    assertEquals(Pose.NotHeld, notYet.at(tilted(29.9), t + PoseTracker.OUT_MS))
+  }
+
+  @Test
+  fun `a jitter across the way out for less than the window flips nothing, and one run of a window flips it once`() {
+    val tracker = heldLeft()
+    val out = tilted(29.9)
+    val inBand = tilted(30.1)
+    var t = 0L
     val reports = mutableListOf<Pose>()
     fun run(g: Triple<Double, Double, Double>, samples: Int) = repeat(samples) {
-      t += 60
+      t += sensorMs
       tracker.at(g, t)?.let(reports::add)
     }
-    // 60 s alternating every sample, the reviewer's mount: 1000 samples, no run longer than 1.
-    repeat(500) { run(inBand, 1); run(out, 1) }
-    assertEquals(0, reports.size, "60 s of one-sample wobble flips nothing")
-    // Ten runs of 5 each way: 240 ms each, short of 300.
-    repeat(10) { run(inBand, 5); run(out, 5) }
-    assertEquals(0, reports.size, "runs of 240 ms flip nothing")
-    // Ten runs of 6 each way: each reaches 300 ms on its sixth sample, so each flips once: 20 reports.
-    repeat(10) { run(inBand, 6); run(out, 6) }
-    assertEquals(List(10) { listOf(Pose.NotHeld, Pose.Held(Side.LEFT)) }.flatten(), reports)
-    assertEquals(PoseReading(Physical.LANDSCAPE, Side.LEFT), tracker.settled)
+    // A run of n samples spans (n - 1) x 60 ms; the longest run short of the window.
+    val shortRun = ((PoseTracker.OUT_MS - 1) / sensorMs + 1).toInt()
+    assertTrue((shortRun - 1) * sensorMs < PoseTracker.OUT_MS && shortRun * sensorMs >= PoseTracker.OUT_MS, "the run is the longest short of a window")
+    repeat(500) { run(out, 1); run(inBand, 1) }
+    assertEquals(0, reports.size, "60 s of one-sample jitter flips nothing")
+    repeat(20) { run(out, shortRun); run(inBand, 1) }
+    assertEquals(0, reports.size, "runs a sample short of the window flip nothing")
+    run(out, shortRun + 1)
+    assertEquals(listOf<Pose>(Pose.NotHeld), reports, "a run of a full window drops it")
+    repeat(20) { run(inBand, 3); run(out, 3) }
+    assertEquals(listOf<Pose>(Pose.NotHeld), reports, "and the dead band never brings it back")
+  }
+
+  @Test
+  fun `N1 a wobble across the 60 degree edge while held flips nothing`() {
+    val tracker = heldLeft()
+    val inBand = tilted(59.9)
+    val out = tilted(60.1)
+    var t = 0L
+    var samples = 0
+    repeat(1_000) { n ->
+      t += sensorMs
+      assertNull(tracker.at(if (n % 2 == 0) inBand else out, t))
+      samples += 1
+    }
+    assertEquals(1_000, samples, "the reviewer's mount, 60 s of it")
+    assertEquals(Pose.Held(Side.LEFT), tracker.pose)
   }
 
   @Test
   fun `settled sideways and still sideways stays held, with nothing to report`() {
     val tracker = PoseTracker()
-    tracker.sample(-1.0, 0.0, 0.0, 0)
-    assertEquals(Pose.Held(Side.RIGHT), tracker.sample(-1.0, 0.0, 0.0, 300))
+    assertEquals(Pose.Held(Side.RIGHT), tracker.sample(-1.0, 0.0, 0.0, 0))
     assertNull(tracker.sample(-1.0, 0.0, 0.0, 400))
     assertNull(tracker.sample(-0.9, 0.1, 0.4, 5_000), "still sideways, tilted back on the tripod")
     assertEquals(Pose.Held(Side.RIGHT), tracker.pose)
@@ -162,39 +217,41 @@ class HeldPoseTest {
   }
 
   @Test
-  fun `no sensor never blocks, and nothing settled yet does`() {
+  fun `no sensor never blocks, and nothing read yet does`() {
     assertEquals(true, held(Pose.NoSensor))
     assertEquals(false, held(PoseTracker().pose))
   }
 
   @Test
-  fun `turning from one side to the other is a new pose`() {
-    val tracker = PoseTracker()
-    tracker.sample(1.0, 0.0, 0.0, 0)
-    tracker.sample(1.0, 0.0, 0.0, 300)
-    tracker.sample(-1.0, 0.0, 0.0, 400)
-    assertEquals(Pose.Held(Side.RIGHT), tracker.sample(-1.0, 0.0, 0.0, 700))
+  fun `turning from one side to the other is the new side at once`() {
+    val tracker = heldLeft()
+    assertEquals(Pose.Held(Side.RIGHT), tracker.sample(-1.0, 0.0, 0.0, 400))
   }
 
   @Test
-  fun `flat is not held, so the blocker shows`() {
-    val tracker = PoseTracker()
-    tracker.sample(1.0, 0.0, 0.0, 0)
-    assertEquals(Pose.Held(Side.LEFT), tracker.sample(1.0, 0.0, 0.0, 300), "held sideways first")
-    assertNull(tracker.sample(0.0, 0.0, 1.0, 400), "laid on the table: not yet settled")
-    assertEquals(Pose.NotHeld, tracker.sample(0.0, 0.0, 1.0, 700), "flat, settled: a change from held, reported")
-    assertEquals(Pose.NotHeld, tracker.pose)
+  fun `flat is out of position, so the blocker shows once it has lasted the window`() {
+    val tracker = heldLeft()
+    assertNull(tracker.at(flat, 400), "laid on the table: the window starts")
+    assertNull(tracker.at(flat, 400 + PoseTracker.OUT_MS - 1))
+    assertEquals(Pose.NotHeld, tracker.at(flat, 400 + PoseTracker.OUT_MS), "flat for the window: not held, reported")
     assertEquals(Physical.FLAT, tracker.settled.physical)
   }
 
   @Test
-  fun `a settled reading that leaves the pose as it was reports nothing`() {
+  fun `a phone with no weight on it, under 0_3 g, is out of position`() {
+    val tracker = heldLeft()
+    assertNull(tracker.sample(0.1, 0.0, 0.0, 400))
+    assertEquals(Pose.NotHeld, tracker.sample(0.1, 0.0, 0.0, 400 + PoseTracker.OUT_MS))
+  }
+
+  @Test
+  fun `a reading that leaves the pose as it was reports nothing`() {
     val tracker = PoseTracker()
     tracker.sample(0.0, 1.0, 0.0, 0)
     assertNull(tracker.sample(0.0, 1.0, 0.0, 300), "upright settles, but not held before is not held after")
     assertEquals(Physical.PORTRAIT, tracker.settled.physical)
     tracker.sample(0.0, 0.0, 1.0, 400)
-    assertNull(tracker.sample(0.0, 0.0, 1.0, 700), "upright to flat: still not held")
+    assertNull(tracker.sample(0.0, 0.0, 1.0, 400 + PoseTracker.OUT_MS), "upright to flat: still not held")
     assertEquals(Physical.FLAT, tracker.settled.physical)
   }
 
@@ -209,12 +266,15 @@ class HeldPoseTest {
         Triple(inf, 0.0, 0.0), Triple(-inf, 0.0, 0.0), Triple(0.0, inf, 0.0), Triple(0.0, 0.0, inf),
       )
     for ((x, y, z) in readings) assertNull(HeldPose.classify(x, y, z), "($x, $y, $z)")
-    // As the dead band, it restarts a hold in progress: settled 300 ms after the next real reading.
+    assertEquals(null, PoseTracker().sample(inf, 0.0, 0.0, 0), "never held by a reading that is not finite")
+    // As the dead band, it restarts JS's settle in progress: settled 300 ms after the next real reading.
     val tracker = PoseTracker()
     tracker.sample(1.0, 0.0, 0.0, 0)
     tracker.sample(inf, 0.0, 0.0, 100)
-    assertNull(tracker.sample(1.0, 0.0, 0.0, 300))
-    assertEquals(Pose.Held(Side.LEFT), tracker.sample(1.0, 0.0, 0.0, 600))
+    tracker.sample(1.0, 0.0, 0.0, 300)
+    assertEquals(Physical.UNKNOWN, tracker.settled.physical)
+    tracker.sample(1.0, 0.0, 0.0, 600)
+    assertEquals(PoseReading(Physical.LANDSCAPE, Side.LEFT), tracker.settled)
   }
 
   @Test
