@@ -722,6 +722,38 @@ class CaptureRunTest {
       assertEquals(emptyList(), s.parts.log, "a foreground with the camera ready rebuilds nothing")
     }
 
+  /**
+   * Re-review 5 C2: the re-arm builds at once only a camera GIVEN UP on. A camera lost on air is marked only (the
+   * attempt's own paths decide), so once that attempt ends it reads lost, given up on by no one, with nothing on
+   * air: a foreground then re-arms the count and builds nothing. The sequence goes on to the positive pair: the
+   * same camera, opened, then given up on, is built at the next foreground.
+   */
+  @Test
+  fun `re-review 5 C2 a foreground builds only a camera given up on, never one lost on air and left for its attempt`() =
+    runTest {
+      val max = CaptureRun.MAX_LOSS_REBUILDS
+      val s = seenOpen()
+      does(s, connect(1))
+      s.parts.lose("0")
+      advanceUntilIdle()
+      does(s, Command.Disconnect(1))
+      assertFalse(s.cameras.ready(camera = true), "lost on air, and still lost after its attempt")
+      assertEquals(emptyList(), gaveUp(s), "given up on by no one")
+      s.run.foreground()
+      advanceTimeBy(SessionMachine.RETRY_MS + 100)
+      runCurrent()
+      assertEquals(0, rebuilds(s), "not given up on: the foreground builds nothing")
+      s.parts.opened("0")
+      advanceTimeBy(100)
+      runCurrent()
+      failOpens(s, max + 1)
+      assertEquals(max to 1, rebuilds(s) to gaveUp(s).size, "then given up on")
+      s.run.foreground()
+      advanceTimeBy(100)
+      runCurrent()
+      assertEquals(max + 1, rebuilds(s), "given up on: built at once")
+    }
+
   @Test
   fun `re-review 4 cap a re-pair re-arms a camera given up on`() =
     runTest {
