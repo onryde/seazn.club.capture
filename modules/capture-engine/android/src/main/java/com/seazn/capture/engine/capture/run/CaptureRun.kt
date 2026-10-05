@@ -17,6 +17,7 @@ import java.util.concurrent.TimeoutException
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 
@@ -63,6 +64,10 @@ class CaptureRun(
 
   /** I-2: the opening's watch of StreamPack's camera opens, and of its losses (F-S4-1), from the build to the release. */
   private var openWatch: Job? = null
+
+  /** Re-review 3 m2: the spacing after a loss rebuild ([rebuildLost]), and whether a loss inside it is owed one. */
+  private var lossSpacing: Job? = null
+  private var lossOwed = false
 
   fun open(asked: PairRequest) = serial.submit { opened(asked) }
 
@@ -116,7 +121,32 @@ class CaptureRun(
   private suspend fun lostByDevice(camera: String) {
     if (!cameras.lost(camera)) return
     calls.line(RecordEntry("camera-lost", listOf("from" to "device", "attempt" to attempt)))
-    if (attempt == null) rebuild("camera")
+    if (attempt == null) rebuildLost()
+  }
+
+  /**
+   * Re-review 3 m2: a camera that fails as it opens is lost again as soon as its rebuild opens it, so loss rebuilds
+   * are spaced by the machine's own retry rhythm ([SessionMachine.RETRY_MS], which retries a start forever before
+   * live): the first at once, and a loss inside the spacing is owed, however many come, and built when it ends if
+   * the camera still reads lost and nothing is on air. Spaced, not stopped: a camera service that restarts comes
+   * back, where waiting for an open that never comes would leave it not ready with nothing to retry it.
+   */
+  private suspend fun rebuildLost() {
+    if (lossSpacing?.isActive == true) {
+      lossOwed = true
+      return
+    }
+    rebuild("camera")
+    lossSpacing =
+      scope.launch {
+        delay(SessionMachine.RETRY_MS)
+        serial.submit {
+          if (lossOwed) {
+            lossOwed = false
+            if (attempt == null && !cameras.ready(camera = true)) rebuildLost()
+          }
+        }
+      }
   }
 
   /**

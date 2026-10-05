@@ -502,6 +502,49 @@ class CaptureRunTest {
       assertTrue(s.cameras.ready(camera = true), "an open seen clears the loss")
     }
 
+  /**
+   * Re-review 3 m2: a camera that fails as it opens is lost again as soon as its rebuild opens it, so a loss rebuild
+   * at once would loop at open speed. Loss rebuilds are spaced by the machine's own retry rhythm (RETRY_MS): a second
+   * loss straight after one is marked (not ready) and owed, and however many come inside the spacing, one rebuild
+   * follows when it ends. A loss after it is built at once again.
+   */
+  @Test
+  fun `re-review 3 m2 a second loss straight after a loss rebuild waits RETRY_MS, then builds once`() =
+    runTest {
+      val s = opened()
+      s.parts.opened("0")
+      advanceUntilIdle()
+      s.parts.lose("0")
+      advanceTimeBy(100)
+      runCurrent()
+      assertEquals(listOf("release", "release done", "build $left", "build done"), s.parts.log, "the first loss, at once")
+      s.parts.log.clear()
+      s.parts.lose("0") // the rebuild's own open failed, 100 ms after the first loss: inside the spacing
+      s.parts.lose("0")
+      advanceTimeBy(SessionMachine.RETRY_MS - 200)
+      runCurrent()
+      assertEquals(emptyList(), s.parts.log, "no rebuild inside the spacing")
+      assertFalse(s.cameras.ready(camera = true), "lost meanwhile: not ready")
+      advanceTimeBy(400)
+      runCurrent()
+      assertEquals(listOf("release", "release done", "build $left", "build done"), s.parts.log, "one rebuild, owed, when it ends")
+      assertTrue(s.cameras.ready(camera = true), "a new open asked")
+      assertEquals(
+        listOf("camera-lost", "capture-rebuilt", "camera-lost", "camera-lost", "capture-rebuilt"),
+        s.told.lines.map { it.kind }.filter { it in setOf("camera-lost", "capture-rebuilt") },
+      )
+      s.parts.log.clear()
+      s.parts.opened("0")
+      advanceTimeBy(SessionMachine.RETRY_MS + 100)
+      runCurrent()
+      s.parts.lose("0")
+      advanceTimeBy(100)
+      runCurrent()
+      assertEquals(listOf("release", "release done", "build $left", "build done"), s.parts.log, "past the spacing, at once again")
+      advanceUntilIdle()
+      assertEquals(4, s.parts.log.size, "and nothing owed after it")
+    }
+
   // --- C6 I-1: a start is bounded, under the machine's own connect timeout ---
 
   @Test
