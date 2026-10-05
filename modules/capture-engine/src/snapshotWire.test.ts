@@ -256,6 +256,25 @@ describe('carries 2-6: the snapshot wire, as native writes it (Task 12)', () => 
     expect(relabelled.broadcast).toBe(first.broadcast);
   });
 
+  // Final review I-2, staging evidence (2026-10-05): native's pairing names no
+  // overlay, and no label, until the first answer; then staging's overlay, a
+  // query string with a key, reads whole.
+  it('reads a pairing before its first answer, then staging’s overlay with its query whole', () => {
+    const cache = createWireCache();
+    const paired = vectorWire('paired-after-organiser-stop');
+    const before = toEngineSnapshot(
+      { ...paired, pairing: { ...paired.pairing, label: '', overlayUrl: null } },
+      cache,
+    ) as EngineSnapshot;
+    expect(before.pairing).toMatchObject({ label: '', overlayUrl: null });
+    const url = 'https://stg.seazn.club/overlay/fixtures/fx42hmnp7k2q?style=bug&key=k3y-0123';
+    const after = toEngineSnapshot(
+      { ...paired, pairing: { ...paired.pairing, overlayUrl: url } },
+      cache,
+    ) as EngineSnapshot;
+    expect(after.pairing?.overlayUrl).toBe(url);
+  });
+
   it('never caches a malformed pairing: the next good one is read, not the last good one', () => {
     const cache = createWireCache();
     const live = vectorWire('live-telemetry');

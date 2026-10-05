@@ -56,6 +56,14 @@ export const selectShed = (snapshot: EngineSnapshot) => snapshot.telemetry.shed;
 /** The broadcast's overlay, else the pairing's; null when the server sent no usable one. */
 export const selectOverlayUrl = (snapshot: EngineSnapshot) =>
   snapshot.broadcast?.overlayUrl ?? snapshot.pairing?.overlayUrl ?? null;
+/**
+ * Final review I-2: whether the overlay URL is the server's word yet. The pair
+ * intent carries none, so a pairing's waiting fields, its overlay among them,
+ * come with its first 2xx answer, and its label is empty until then (the
+ * contract's label is never empty). A broadcast's descriptor carries its own.
+ */
+export const selectOverlayKnown = (snapshot: EngineSnapshot) =>
+  snapshot.broadcast !== null || (snapshot.pairing !== null && snapshot.pairing.label !== '');
 export const selectPlaybackUrl = (snapshot: EngineSnapshot) =>
   snapshot.broadcast?.playbackUrl ?? null;
 /** Pairing's label is empty until the claim is answered: read as none. */

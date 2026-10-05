@@ -20,6 +20,7 @@ import {
   selectHoldsOrientation,
   selectLabel,
   selectMeterSegments,
+  selectOverlayKnown,
   selectOverlayUrl,
   selectPlaybackUrl,
   selectScheduledStartMs,
@@ -168,6 +169,29 @@ describe('the pairing and broadcast selectors (D8: the snapshot carries no secre
       selectVenueZone(idle),
       selectHasPairing(idle),
     ]).toEqual([null, null, null, null, false]);
+  });
+
+  // Final review I-2: the pair intent carries no overlay, so a pairing's null
+  // is the server's word only once an answer has brought its label too.
+  it('know the overlay once an answer is in, or a broadcast is held', () => {
+    const early = snapshot(
+      PAIRING,
+      {},
+      { pairing: { ...FAKE_PAIRING, label: '', overlayUrl: null } },
+    );
+    const none = snapshot(PAIRED, {}, { pairing: { ...FAKE_PAIRING, overlayUrl: null } });
+    const live = snapshot(
+      LIVE,
+      {},
+      { pairing: { ...FAKE_PAIRING, label: '' }, broadcast: BROADCAST },
+    );
+    expect({
+      idle: selectOverlayKnown(snapshot({ kind: 'idle' })),
+      early: selectOverlayKnown(early),
+      none: selectOverlayKnown(none),
+      paired: selectOverlayKnown(snapshot(PAIRED, {}, { pairing: FAKE_PAIRING })),
+      live: selectOverlayKnown(live),
+    }).toEqual({ idle: false, early: false, none: true, paired: true, live: true });
   });
 
   it('read an empty label or zone (a claim not yet answered) as none', () => {

@@ -20,8 +20,8 @@ class BodiesTest {
   @Test
   fun `the waiting fields, every shared case`() {
     val cases = waiting.getJSONArray("cases")
-    // The file's rows: 28, of which 3 are JS's alone (PV12: a truncated file cannot pass).
-    assertEquals(28, cases.length())
+    // The file's rows: 29, of which 3 are JS's alone (PV12: a truncated file cannot pass).
+    assertEquals(29, cases.length())
     var read = 0
     var beats = 0
     for (i in 0 until cases.length()) {
@@ -48,7 +48,7 @@ class BodiesTest {
         )
       assertEquals(expected, got, why)
     }
-    assertEquals(25, read)
+    assertEquals(26, read)
     assertEquals(2, beats)
   }
 

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { usePorts } from '@/hooks/usePorts';
 import { useStableCallback } from '@/hooks/useStableCallback';
 
@@ -16,17 +16,17 @@ export type OverlayAttempt = {
 /**
  * One attempt at drawing the overlay, for one URL and one showing. However
  * many ways it goes wrong — a load error, a refused top frame, a crash — it is
- * logged once and told to the stage once. No URL at all is no failure (final
- * review I-2): it is the server's answer for an org not entitled to the
- * overlay (spec :61, :400), so the stage is told nothing and shows no caption,
- * and the record holds one info line. Native records its own drop of an
+ * logged once and told to the stage once, and holds for that URL alone (the
+ * preview keys each attempt by it). No URL at all is no failure (final review
+ * I-2): not yet known, or the server's answer for an org not entitled to the
+ * overlay, so nothing is drawn, told or logged here; the stage, which knows
+ * which null it is, writes `overlay.none`. Native records its own drop of an
  * overlay off the Seazn host (`overlay-refused`), which reaches here as none.
  */
-export function useOverlayAttempt(url: string | null, onFailed: () => void): OverlayAttempt {
+export function useOverlayAttempt(onFailed: () => void): OverlayAttempt {
   const { logger } = usePorts();
   const tell = useStableCallback(onFailed);
   const reported = useRef(false);
-  const noted = useRef(false);
   const [failed, setFailed] = useState(false);
   const report = useCallback(
     (trouble: Trouble) => {
@@ -41,10 +41,5 @@ export function useOverlayAttempt(url: string | null, onFailed: () => void): Ove
   );
   const fail = useCallback(() => report('overlay.failed'), [report]);
   const crash = useCallback(() => report('overlay.crashed'), [report]);
-  useEffect(() => {
-    if (url !== null || noted.current) return;
-    noted.current = true;
-    logger.info('overlay.none');
-  }, [url, logger]);
   return { failed, fail, crash };
 }

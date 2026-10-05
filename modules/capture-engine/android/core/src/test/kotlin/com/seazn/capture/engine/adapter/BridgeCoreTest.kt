@@ -225,6 +225,34 @@ class BridgeCoreTest {
     assertEquals(listOf("overlay-refused"), kinds().filter { it == "overlay-refused" }, "beats named none; the code's answer did")
   }
 
+  /**
+   * Final review I-2, staging evidence (2026-10-05): the pair intent carries no overlay, so a pairing's overlay is
+   * null, and its label empty, until the first 2xx answer names them. Staging's own shape, a query string with a
+   * key, then crosses the beat's answer, the pairing and the snapshot wire whole, and is no refusal.
+   */
+  @Test
+  fun `final I-2 a staging overlay with a query string crosses pair, paired and the first beat whole`() {
+    val url = "https://stg.seazn.club/overlay/fixtures/fx42hmnp7k2q?style=bug&key=k3y-0123"
+    platform.unanswered = { it.url.endsWith("/beats") }
+    core.start()
+    core.report(Input.Network(true))
+    ready()
+    pair()
+    assertEquals("paired", state())
+    assertTrue("overlayUrl" !in PairWire.valid(), "the pair intent names no overlay")
+    val waiting = platform.snapshots.last()["pairing"] as Map<*, *>
+    assertNull(waiting["overlayUrl"], "none known before the first answer")
+    assertEquals("", waiting["label"], "nor anything else the answer brings")
+    val (beat, answer) = platform.owed.first()
+    assertTrue(beat.url.endsWith("/beats"), "the first beat is owed")
+    answer(HttpOutcome.Answered(200, JSONObject(PairWire.beat()).put("overlayUrl", url).toString()))
+    scheduler.advanceBy(0)
+    val known = platform.snapshots.last()["pairing"] as Map<*, *>
+    assertEquals(url, known["overlayUrl"], "the snapshot JS reads")
+    assertEquals("Example Town v Sample CC", known["label"])
+    assertEquals(emptyList(), kinds().filter { it == "overlay-refused" })
+  }
+
   @Test
   fun `final I-2 no overlay, or Seazn's own, writes no overlay-refused line`() {
     val own = "https://stg.seazn.club/overlay/fixtures/f1"

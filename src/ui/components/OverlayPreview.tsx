@@ -41,7 +41,7 @@ const OverlayAttempt = memo(function OverlayAttempt({
   onFailed: () => void;
 }) {
   const { surfaces } = usePorts();
-  const attempt = useOverlayAttempt(url, onFailed);
+  const attempt = useOverlayAttempt(onFailed);
   if (url === null || attempt.failed) return null;
   const { Overlay } = surfaces;
   return (

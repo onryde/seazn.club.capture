@@ -275,6 +275,14 @@ describe('the score preview while paired', () => {
     expect(plate()).toBe('Ready');
   });
 
+  it('writes the not-entitled line once when effects run twice (StrictMode)', async () => {
+    const view = await renderViewfinder(
+      {},
+      { prepare: (fakes) => fakes.engine.setPairing({ overlayUrl: null }), strict: true },
+    );
+    expect(events(view).filter((event) => event.startsWith('overlay.'))).toEqual(['overlay.none']);
+  });
+
   it('tells no overlay apart from one that failed to load', async () => {
     const view = await renderViewfinder(
       {},
@@ -291,6 +299,52 @@ describe('the score preview while paired', () => {
     expect(events(view).filter((event) => event.startsWith('overlay.'))).toEqual([
       'overlay.none',
       'overlay.failed',
+    ]);
+  });
+
+  // Final review I-2, staging evidence (2026-10-05): the pair intent carries no
+  // overlay, so native's pairing names none, and no label, until the first beat
+  // answers, about half a second after paired. That null is not yet known, never
+  // "none": nothing is said of it, and the overlay loads when it comes. A failure
+  // belongs to its URL; a URL taken away takes the overlay with it.
+  it('loads an overlay that arrives after the pair, and follows it through a failure and its removal', async () => {
+    const STAGING = 'https://stg.seazn.club/overlay/fixtures/fx42hmnp7k2q?style=bug&key=k3y-0123';
+    const OTHER = 'https://stg.seazn.club/overlay/fixtures/other-fixture';
+    const view = await renderViewfinder(
+      {},
+      { prepare: (fakes) => fakes.engine.setPairing({ label: '', overlayUrl: null }) },
+    );
+    act(() => view.engine.patch({ charging: true }));
+    const overlayLines = () =>
+      readRecord(view.record)
+        .filter((entry) => entry.event.startsWith('overlay.'))
+        .map((entry) => `${entry.level} ${entry.event}`);
+    expect(screen.queryByTestId('overlay')).toBeNull();
+    expect(screen.queryByText(OVERLAY_FAILED)).toBeNull();
+    expect(overlayLines()).toEqual([]);
+    act(() => view.engine.setPairing({ label: 'Seazn XI v Fake CC', overlayUrl: STAGING }));
+    expect(screen.getByTestId('overlay').dataset.url).toBe(`${STAGING}&delay=0`);
+    expect(screen.queryByText(OVERLAY_FAILED)).toBeNull();
+    expect(screen.getByText(SCORE_AHEAD)).toBeTruthy();
+    expect(overlayLines()).toEqual([]);
+    act(() => view.surfaces.failOverlay());
+    expect(screen.getByText(OVERLAY_FAILED)).toBeTruthy();
+    act(() => view.engine.setPairing({ overlayUrl: OTHER }));
+    expect(screen.queryByText(OVERLAY_FAILED)).toBeNull();
+    expect(screen.getByTestId('overlay').dataset.url).toBe(`${OTHER}?delay=0`);
+    act(() => view.engine.setPairing({ overlayUrl: null }));
+    expect(screen.queryByTestId('overlay')).toBeNull();
+    expect(screen.queryByText(OVERLAY_FAILED)).toBeNull();
+    expect(screen.queryByText(SCORE_AHEAD)).toBeNull();
+    expect(overlayLines()).toEqual(['warn overlay.failed', 'info overlay.none']);
+    // One line each time a showing begins with none, never one per render.
+    act(() => view.engine.setPairing({ overlayUrl: OTHER }));
+    act(() => vi.advanceTimersByTime(5000));
+    act(() => view.engine.setPairing({ overlayUrl: null }));
+    expect(overlayLines()).toEqual([
+      'warn overlay.failed',
+      'info overlay.none',
+      'info overlay.none',
     ]);
   });
 });

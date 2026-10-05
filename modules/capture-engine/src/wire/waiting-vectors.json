@@ -30,6 +30,34 @@
       }
     },
     {
+      "why": "staging's overlay shape, a query string with a key (final review I-2, 2026-10-05): kept whole",
+      "env": "staging",
+      "fields": {
+        "code": "fx42hmnp7k2q",
+        "label": "Example Town v Sample CC",
+        "venueTimezone": "Europe/London",
+        "scheduledStart": 1790003600,
+        "autoAllowed": true,
+        "destinationName": "YouTube · Example Town CC",
+        "overlayUrl": "https://stg.seazn.club/overlay/fixtures/fx42hmnp7k2q?style=bug&key=k3y-0123",
+        "pollSeconds": 60,
+        "heartbeatUrl": "https://stg.seazn.club/api/v1/capture/codes/fx42hmnp7k2q/beats",
+        "startUrl": "https://stg.seazn.club/api/v1/capture/codes/fx42hmnp7k2q/start"
+      },
+      "expected": {
+        "code": "fx42hmnp7k2q",
+        "label": "Example Town v Sample CC",
+        "venueTimezone": "Europe/London",
+        "scheduledStart": 1790003600,
+        "autoAllowed": true,
+        "destinationName": "YouTube · Example Town CC",
+        "overlayUrl": "https://stg.seazn.club/overlay/fixtures/fx42hmnp7k2q?style=bug&key=k3y-0123",
+        "pollSeconds": 60,
+        "heartbeatUrl": "https://stg.seazn.club/api/v1/capture/codes/fx42hmnp7k2q/beats",
+        "startUrl": "https://stg.seazn.club/api/v1/capture/codes/fx42hmnp7k2q/start"
+      }
+    },
+    {
       "why": "the nullable fields null, and scheduledStart omitted, as the descriptor omits it",
       "env": "staging",
       "fields": {
