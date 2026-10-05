@@ -128,6 +128,16 @@ object Bodies {
     return WaitingFields(label, zone.orNull() ?: "", start.orNull(), auto, destination.orNull(), seazn, poll)
   }
 
+  /**
+   * Final review I-2: whether [body] names an `overlayUrl` off the build's Seazn host, which [waiting] and [code]
+   * drop. The drop reaches JS as no overlay, the server's answer for an org not entitled to one, so this is how
+   * the record tells the two apart (`overlay-refused`). Not JSON, or no overlay named: false.
+   */
+  fun foreignOverlay(body: String, env: Environment): Boolean {
+    val named = obj(body)?.get("overlayUrl") as? String ?: return false
+    return !Hosts.onSeazn(named, env)
+  }
+
   fun code(status: Int, body: String, retryAfterS: Int?, env: Environment): CodeAnswer {
     if (status !in 200..299) {
       val fields = obj(body)

@@ -96,18 +96,23 @@ describe('OverlayPreview (AGENTS §7)', () => {
   });
 });
 
-describe('an overlay the server did not send (carry 8)', () => {
-  it('shows the failed caption and logs overlay.absent once', () => {
+/**
+ * Final review I-2: no URL is the server's answer for an org not entitled to
+ * the overlay (spec :61, :400), never a failure. Nothing is drawn, the stage
+ * is told nothing, so no caption shows, and the record holds one info line.
+ */
+describe('no overlay URL: the org is not entitled (final review I-2)', () => {
+  it('draws nothing, tells the stage nothing, and records one info line', () => {
     const view = renderPreview({ url: null, visible: true });
     view.rerender(<OverlayPreview url={null} visible onFailed={view.onFailed} />);
     expect(overlay()).toBeNull();
-    expect(view.onFailed).toHaveBeenCalledTimes(1);
-    expect(view.events()).toEqual(['warn overlay.absent']);
+    expect(view.onFailed).not.toHaveBeenCalled();
+    expect(view.events()).toEqual(['info overlay.none']);
   });
 
   // RTL's option puts StrictMode at the root; a <StrictMode> nested inside the
   // ports' providers did not run this effect twice under React 19.2.3.
-  it('logs it once when an effect runs twice (StrictMode)', () => {
+  it('records it once when an effect runs twice (StrictMode)', () => {
     const { surfaces } = recordingSurfaces();
     const fakes = createFakePorts({ surfaces });
     const onFailed = vi.fn();
@@ -115,8 +120,8 @@ describe('an overlay the server did not send (carry 8)', () => {
       wrapper: wrapperFor(fakes),
       reactStrictMode: true,
     });
-    expect(onFailed).toHaveBeenCalledTimes(1);
-    expect(readRecord(fakes.record).map((entry) => entry.event)).toEqual(['overlay.absent']);
+    expect(onFailed).not.toHaveBeenCalled();
+    expect(readRecord(fakes.record).map((entry) => entry.event)).toEqual(['overlay.none']);
   });
 
   it('says nothing while the preview is hidden', () => {
@@ -129,6 +134,15 @@ describe('an overlay the server did not send (carry 8)', () => {
     const view = renderPreview({ url: null, visible: true });
     view.rerender(<OverlayPreview url={URL} visible onFailed={view.onFailed} />);
     expect(overlay()?.dataset.url).toBe(`${URL}?delay=0`);
+  });
+
+  it('tells no overlay apart from a page that failed to load', () => {
+    const view = renderPreview({ url: null, visible: true });
+    expect(view.onFailed).not.toHaveBeenCalled();
+    view.rerender(<OverlayPreview url={URL} visible onFailed={view.onFailed} />);
+    act(() => view.fake.failOverlay());
+    expect(view.onFailed).toHaveBeenCalledTimes(1);
+    expect(view.events()).toEqual(['info overlay.none', 'warn overlay.failed']);
   });
 });
 

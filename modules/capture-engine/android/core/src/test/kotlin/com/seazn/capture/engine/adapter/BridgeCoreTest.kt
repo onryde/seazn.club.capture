@@ -187,6 +187,65 @@ class BridgeCoreTest {
   }
 
   /**
+   * Final review I-2: native drops an overlay off the build's Seazn host, so JS sees no overlay, which is the
+   * not-entitled answer and shows nothing. The record tells them apart: one warn line a pairing, however many
+   * answers repeat it, and the next pairing says it again.
+   */
+  @Test
+  fun `final I-2 an overlay off the Seazn host is one warn line a pairing, however many beats name it`() {
+    val foreign = JSONObject(PairWire.beat()).put("overlayUrl", "https://evil.example/overlay").toString()
+    platform.answer = { request -> if (request.url.endsWith("/beats")) HttpOutcome.Answered(200, foreign) else PairWire.answer(request) }
+    val refused = { lines().filter { it.getString("kind") == "overlay-refused" } }
+    core.start()
+    core.report(Input.Network(true))
+    ready()
+    pair()
+    scheduler.advanceBy(60_000)
+    val beats = platform.beats().size
+    assertTrue(beats >= 3, "beats answered: $beats")
+    assertEquals(1, refused().size, "one line over $beats beats")
+    assertEquals("warn", refused().single().getString("level"))
+    assertNull((core.current()["pairing"] as Map<*, *>)["overlayUrl"], "dropped")
+    core.send(mapOf("kind" to "unpair"))
+    scheduler.advanceBy(0)
+    pair()
+    scheduler.advanceBy(60_000)
+    assertTrue(platform.beats().size >= beats + 3, "pairing 2 beat too")
+    assertEquals(2, refused().size, "pairing 2 says it once more")
+  }
+
+  @Test
+  fun `final I-2 the code's answer naming a foreign overlay writes the line too, at arming`() {
+    val session = JSONObject(PairWire.SESSION).put("overlayUrl", "https://evil.example/overlay").toString()
+    platform.answer = { request -> if (request.url.startsWith("${PairWire.ORIGIN}?")) HttpOutcome.Answered(200, session) else PairWire.answer(request) }
+    live()
+    assertEquals("publishing", state())
+    val asked = platform.http.count { it.url.startsWith("${PairWire.ORIGIN}?") }
+    assertTrue(asked >= 1, "the code was asked: $asked")
+    assertEquals(listOf("overlay-refused"), kinds().filter { it == "overlay-refused" }, "beats named none; the code's answer did")
+  }
+
+  @Test
+  fun `final I-2 no overlay, or Seazn's own, writes no overlay-refused line`() {
+    val own = "https://stg.seazn.club/overlay/fixtures/f1"
+    var body = PairWire.beat()
+    platform.answer = { request -> if (request.url.endsWith("/beats")) HttpOutcome.Answered(200, body) else PairWire.answer(request) }
+    core.start()
+    core.report(Input.Network(true))
+    ready()
+    pair()
+    scheduler.advanceBy(30_000)
+    val none = platform.beats().size
+    assertTrue(none >= 2, "beats with no overlay: $none")
+    assertNull((core.current()["pairing"] as Map<*, *>)["overlayUrl"])
+    body = JSONObject(PairWire.beat()).put("overlayUrl", own).toString()
+    scheduler.advanceBy(30_000)
+    assertTrue(platform.beats().size >= none + 2, "beats with Seazn's own")
+    assertEquals(own, (core.current()["pairing"] as Map<*, *>)["overlayUrl"], "Seazn's own crossed")
+    assertEquals(emptyList(), kinds().filter { it == "overlay-refused" })
+  }
+
+  /**
    * Review C4a I-3: each check alone, on a core of its own, paired with nothing ready. Each row turns its
    * check and repeats it: one line, and the machine hears the turn (the snapshot's check turns, alone).
    * One line is one send: `sendReadiness` writes the line and sends the input together.

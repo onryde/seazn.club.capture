@@ -51,7 +51,9 @@ export const StreamStage = memo(function StreamStage(props: StageProps) {
         shed={overlay.shed}
         overlayFailed={overlay.failed}
         paired={props.paired}
-        overlayOn={props.overlayOn}
+        // Final review I-2: with no overlay URL there is no score preview to be
+        // ahead of viewers or to fail, so the strip says nothing of one.
+        overlayOn={props.overlayOn && overlay.url !== null}
       />
       <BottomStrip
         canLeave={props.canLeave}

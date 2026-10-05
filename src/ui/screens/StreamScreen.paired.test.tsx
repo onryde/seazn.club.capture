@@ -18,6 +18,7 @@ const events = (view: Awaited<ReturnType<typeof renderViewfinder>>) =>
   readRecord(view.record).map((entry) => entry.event);
 
 const OVERLAY_FAILED = 'Score preview failed — the broadcast is not affected';
+const SCORE_AHEAD = 'You see the score slightly ahead of viewers';
 
 /**
  * The amendment §2: Home pairs, a visit never does. The viewfinder reads the
@@ -240,7 +241,7 @@ describe('the paired viewfinder (spec §1)', () => {
   });
 });
 
-/** Carry 8: no overlay to show is said on the top strip, and recorded once. */
+/** Carry 8, final review I-2: no overlay to show is no failure; a failed load is. */
 describe('the score preview while paired', () => {
   beforeEach(() => vi.useFakeTimers());
   afterEach(() => vi.useRealTimers());
@@ -253,14 +254,43 @@ describe('the score preview while paired', () => {
     expect(events(view).filter((event) => event.startsWith('overlay.'))).toEqual([]);
   });
 
-  it('says the preview failed when the pairing has no overlay, and records it once', async () => {
+  // Final review I-2: no overlay URL is the server's "not entitled" (spec :61,
+  // :400), not a failure: no caption at all, no warn, one info line.
+  it('says nothing on the top strip when the org is not entitled to an overlay', async () => {
     const view = await renderViewfinder(
       {},
       { prepare: (fakes) => fakes.engine.setPairing({ overlayUrl: null }) },
     );
-    expect(screen.getByText(OVERLAY_FAILED)).toBeTruthy();
+    act(() => view.engine.patch({ charging: true }));
     act(() => vi.advanceTimersByTime(5000));
-    expect(events(view).filter((event) => event === 'overlay.absent')).toHaveLength(1);
+    expect(screen.queryByTestId('overlay')).toBeNull();
+    expect(screen.queryByText(OVERLAY_FAILED)).toBeNull();
+    expect(screen.queryByText(SCORE_AHEAD)).toBeNull();
+    const overlayLines = readRecord(view.record).filter((entry) =>
+      entry.event.startsWith('overlay.'),
+    );
+    expect(overlayLines.map((entry) => `${entry.level} ${entry.event}`)).toEqual([
+      'info overlay.none',
+    ]);
     expect(plate()).toBe('Ready');
+  });
+
+  it('tells no overlay apart from one that failed to load', async () => {
+    const view = await renderViewfinder(
+      {},
+      { prepare: (fakes) => fakes.engine.setPairing({ overlayUrl: null }) },
+    );
+    expect(screen.queryByText(OVERLAY_FAILED)).toBeNull();
+    act(() =>
+      view.engine.setPairing({
+        overlayUrl: 'https://stg.seazn.club/overlay/fixtures/fx42hmnp7k2q',
+      }),
+    );
+    act(() => view.surfaces.failOverlay());
+    expect(screen.getByText(OVERLAY_FAILED)).toBeTruthy();
+    expect(events(view).filter((event) => event.startsWith('overlay.'))).toEqual([
+      'overlay.none',
+      'overlay.failed',
+    ]);
   });
 });

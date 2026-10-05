@@ -136,6 +136,26 @@ class BodiesTest {
     assertEquals("https://stg.seazn.club/overlay/fixtures/f1", assertIs<CodeAnswer.Open>(Bodies.code(200, base, null, Environment.STAGING)).descriptor.overlayUrl)
   }
 
+  /**
+   * Final review I-2: the drop above reaches JS as no overlay, which is the server's answer for an org not
+   * entitled to one. [Bodies.foreignOverlay] is how native tells them apart, for its own record line.
+   */
+  @Test
+  fun `final I-2 an overlay off the build's Seazn host is foreign, and no overlay or Seazn's own is not`() {
+    val foreign = JSONObject(base).put("overlayUrl", "https://evil.example/overlay").toString()
+    assertTrue(Bodies.foreignOverlay(foreign, Environment.STAGING))
+    assertNull(assertIs<CodeAnswer.Open>(Bodies.code(200, foreign, null, Environment.STAGING)).descriptor.overlayUrl, "and it is the one dropped")
+    // Staging's own overlay host is foreign to a production build.
+    assertFalse(Bodies.foreignOverlay(base, Environment.STAGING))
+    assertTrue(Bodies.foreignOverlay(base, Environment.PRODUCTION))
+    assertTrue(Bodies.foreignOverlay(JSONObject(base).put("overlayUrl", "http://stg.seazn.club/overlay/fixtures/f1").toString(), Environment.STAGING), "not https")
+    assertFalse(Bodies.foreignOverlay(JSONObject(base).put("overlayUrl", JSONObject.NULL).toString(), Environment.STAGING), "null is not entitled")
+    assertFalse(Bodies.foreignOverlay(JSONObject(base).apply { remove("overlayUrl") }.toString(), Environment.STAGING), "absent")
+    assertFalse(Bodies.foreignOverlay(PairWire.beat(), Environment.STAGING), "a beat with none")
+    assertTrue(Bodies.foreignOverlay(JSONObject(PairWire.beat()).put("overlayUrl", "https://evil.example/o").toString(), Environment.STAGING), "a beat")
+    assertFalse(Bodies.foreignOverlay("not json", Environment.STAGING))
+  }
+
   @Test
   fun `non-2xx code answers keep their status, only a 429 its Retry-After, only a 410 its endReason`() {
     assertEquals(CodeAnswer.Status(401, null, null), Bodies.code(401, refusal("code_ended"), null, Environment.STAGING))
