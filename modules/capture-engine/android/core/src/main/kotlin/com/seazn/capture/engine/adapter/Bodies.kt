@@ -245,7 +245,8 @@ object Bodies {
         startedBy = word(fields?.get("startedBy"), STARTED_BY),
         endReason = word(fields?.get("endReason"), END_REASONS),
         waiting = waiting?.fields,
-        waitingUnreadable = waiting?.unreadable,
+        // Only a 2xx's waiting fields land (the machine's rule), so only a 2xx's refused one is named.
+        waitingUnreadable = waiting?.unreadable?.takeIf { status in 200..299 },
       )
     return HeartbeatResponse.Answered(status, reply, retryAfterS.takeIf { status == 429 })
   }

@@ -668,6 +668,14 @@ class BodiesTest {
     }
     // A refusal's body is no waiting answer.
     assertNull(answeredBeat(401, refusal("code_ended")).reply?.waitingUnreadable)
+    // Nor is any answer outside 2xx, a body shaped as the server's included: its fields never land (the machine's rule).
+    var outside = 0
+    for (status in listOf(301, 307, 410, 429, 503)) {
+      val answered = Bodies.beat(status, """{"state":"over","sid":"$SID"}""", null, Environment.STAGING) as? HeartbeatResponse.Answered ?: continue
+      assertNull(answered.reply?.waitingUnreadable, "$status")
+      outside += 1
+    }
+    assertTrue(outside >= 3, "$outside answers outside 2xx checked")
   }
 
   @Test

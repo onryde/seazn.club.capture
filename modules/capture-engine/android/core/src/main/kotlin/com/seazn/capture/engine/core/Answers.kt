@@ -5,9 +5,9 @@ package com.seazn.capture.engine.core
  * endReason?, …waiting fields}`. A field that is absent or unreadable is null. [waiting] is null
  * when the body did not carry every waiting field the parser requires.
  *
- * Final review I-2b: [waitingUnreadable] names the first waiting field the parser refused, when the
+ * Final review I-2b: [waitingUnreadable] names the first waiting field the parser refused, when a 2xx
  * body owes them (its state requires them, or it sent any): a field name, never its value. Null when
- * they were read, or owed none.
+ * they were read, or owed none, and on any answer outside 2xx, whose fields never land.
  */
 data class BeatReply(
   val state: String?,
