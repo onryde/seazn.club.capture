@@ -276,6 +276,16 @@ class BridgeCore(
     if (sent?.sound == true) sendReadiness()
   }
 
+  /**
+   * Final review I-1: the pose is the pairing's. The glue's pose watch stops at Release and starts at the next Hold
+   * with a tracker that reports only changes, so the core forgets the last pose at Release: the next pairing hears
+   * not held when it begins (`noticePair`), until its own tracker reports. Not at Hold: readiness reported before a
+   * pair is replayed into it (A11), and the machine is told nothing here, as no pairing holds after a Release.
+   */
+  private fun forgetPose() {
+    readiness = readiness.copy(pose = Pose.NotHeld)
+  }
+
   private fun route(command: Command) {
     pollers.onCommand(command)
     when (command) {
@@ -289,6 +299,10 @@ class BridgeCore(
       is Command.PostStart -> ask({ HttpRequests.start(command) }) { report(HttpAnswers.start(command.requestId, it)) }
       is Command.WriteStopped -> stored("write") { pairings.write(command.record) }
       is Command.DeleteStopped -> stored("delete") { pairings.delete(command.code, command.slot) }
+      Command.Release -> {
+        forgetPose()
+        executed(command)
+      }
       else -> executed(command)
     }
   }

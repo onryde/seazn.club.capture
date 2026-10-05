@@ -144,9 +144,46 @@ class BridgeCoreTest {
     core.send(mapOf("kind" to "unpair"))
     scheduler.advanceBy(0)
     pair()
+    // Final review I-1: the pose is the pairing's; the new pairing's tracker reports the phone held sideways.
+    core.readiness(pose = Pose.Held(Side.LEFT))
     core.send(mapOf("kind" to "start"))
     scheduler.advanceBy(1_500)
     assertEquals("publishing", state(), "a new PairRequest of the same name is a new pairing")
+  }
+
+  /**
+   * Final review I-1: the pose is the pairing's. The glue's pose watch stops at Release and starts at Hold with a
+   * tracker that reports only changes, so a second pairing in one process hears no pose until the phone moves.
+   * It must start not held: match 2's phone laid flat is never read as held, and Go live waits for a held report.
+   */
+  @Test
+  fun `final I-1 a second pairing starts not held, and Go live waits for a held report of its own`() {
+    core.start()
+    core.report(Input.Network(true))
+    ready()
+    pair()
+    assertEquals("paired", state())
+    assertEquals(true, readyOn(core)["held"], "pairing 1 is held")
+    core.send(mapOf("kind" to "unpair"))
+    scheduler.advanceBy(0)
+    val after = lines().size
+    pair()
+    scheduler.advanceBy(Engine.TICK_MS)
+    assertEquals("paired", state())
+    assertEquals(mapOf("camera" to true, "sound" to true, "network" to true, "held" to false), readyOn(core), "pairing 2: held alone is not ready")
+    val heard = lines().drop(after).filter { it.getString("kind") == "readiness" }
+    assertTrue(heard.isNotEmpty(), "pairing 2 heard its readiness")
+    assertTrue(heard.none { it.getBoolean("held") }, "pairing 2 never heard pairing 1's pose: $heard")
+    core.send(mapOf("kind" to "start"))
+    scheduler.advanceBy(1_500)
+    assertEquals("paired", state(), "Go live refused on held")
+    // The positive pair: a held report of pairing 2's own opens it.
+    core.readiness(pose = Pose.Held(Side.RIGHT))
+    scheduler.advanceBy(Engine.TICK_MS)
+    assertEquals(true, readyOn(core)["held"], "held once pairing 2's tracker says so")
+    core.send(mapOf("kind" to "start"))
+    scheduler.advanceBy(1_500)
+    assertEquals("publishing", state())
   }
 
   /**
