@@ -163,12 +163,14 @@
     "engine-error": "native: the engine caught its own failure",
     "engine.malformed-snapshot": "JS, through native's record: snapshots the bridge could not read and kept out, with how many so far, at most a line a minute (review C4c I-4)",
     "fell-back": "native: the transport fell back",
+    "fgs-refused": "native: the pairing's foreground service could not go foreground (C3), with the throwable's class name; the pairing carries on and says to keep the app open (Task 38)",
     "final-beat": "native: A8's one final beat, answered or timed out",
     "frames-gap": "native: video stopped moving for more than 500 ms while publishing, written once with the gap when it moved again (CD33, Open 11)",
     "heartbeat": "native: a beat's answer, written when it changes",
     "hold-expired": "native: an outage outlasted its hold window",
     "intent-ignored": "native: an intent that did not fit the phase",
     "intent-unreadable": "native: an intent that mapped to nothing, by its kind (review 11)",
+    "keeper-failed": "native: the keeper's marker, wake lock, notification, release or permission request failed, with which and the throwable's class name; it costs a line, never the pairing (Task 38, N1)",
     "live": "native: the broadcast went live",
     "mic-restored": "native: the microphone came back",
     "mic-silenced": "native: the microphone went silent",
@@ -204,6 +206,7 @@
     "unpaired": "native: the pairing ended without a broadcast end",
     "vendor-log": "native: StreamPack, or komuxer under its RTMPS (C6 m-4), logged a warning or an error (CD30): its tag, its message as text, and the throwable's class name",
     "video-stalled": "native: the watchdog saw no frames and rebuilt the encoder",
-    "watch-failed": "native: a device reading could not start, with which (the sound check's recording, or the microphone's session id, N8) and the throwable's class name"
+    "wake-lock": "native: the pairing's partial wake lock was held at Hold or released at Release (CD10, Task 38)",
+    "watch-failed": "native: a device reading could not start, with which (the sound check's recording, the microphone's session id (N8), or a watcher: camera, mic or device, Task 37) and the throwable's class name"
   }
 }

@@ -165,6 +165,55 @@ class GlueRulesTest {
   }
 
   /**
+   * C0b and C4a (Task 38): the service, the wake lock and the marker go at `Release` alone, an unpair,
+   * Ended, or A8's final beat answered; the tick runs until then. One release in the glue, in that branch,
+   * and one `stopService`, the keeper's; the service stops itself only when it could not go foreground.
+   */
+  @Test
+  fun `C0b the keeper releases at Release alone, and nothing else stops the service`() {
+    val all = sources().joinToString("\n") { it.readText() }
+    assertEquals(1, Regex("""\bkeeper\.release\(\)""").findAll(all).count(), "one keeper release in the glue")
+    assertTrue(Regex("""Command\.Release -> \{\s*keeper\.release\(\)""").containsMatchIn(glue("AndroidPlatform.kt")), "the release is the Release branch's")
+    assertEquals(1, Regex("""\bstopService\(""").findAll(all).count(), "one stopService in the glue")
+    assertTrue("stopService(" in glue("PairingKeeper.kt"), "the keeper's")
+    val service = glue("CaptureForegroundService.kt")
+    assertEquals(1, Regex("""\bstopSelf\(""").findAll(service).count(), "one stopSelf")
+    assertTrue(Regex("""catch \(e: RuntimeException\) \{[^}]*stopSelf\(\)""").containsMatchIn(service), "stopSelf only in the refused start's catch")
+  }
+
+  /**
+   * CD21 (Task 38): Expo 57.0.20 answers DENIED for every permission when the current activity is not a
+   * `PermissionAwareActivity` (`PermissionsService.delegateRequestToActivity`), a refusal no operator
+   * saw. That reads as UNAVAILABLE, before Expo is asked.
+   */
+  @Test
+  fun `CD21 a permission request with no activity to ask from is unavailable, never a refusal`() {
+    val text = glue("Permissions.kt")
+    val guard = Regex("""if \(!permissionAware\(context\.currentActivity\)\) return onResult\(Grant\.UNAVAILABLE\)""").find(text)
+    assertTrue(guard != null, "the activity check answers UNAVAILABLE")
+    assertTrue(guard!!.range.first < text.indexOf("askForPermissions("), "the check comes before the ask")
+    assertTrue(""""com.facebook.react.modules.core.PermissionAwareActivity"""" in text, "Expo's own test: React's PermissionAwareActivity")
+    assertTrue(Regex("""return aware\.isInstance\(activity\)""").containsMatchIn(text), "the activity is checked against it")
+  }
+
+  /**
+   * CD16 and N1 (Task 38): the notification follows the snapshot only while the service is held, so an
+   * idle phone posts nothing; its work on the main looper costs a line when it fails, never the process.
+   */
+  @Test
+  fun `CD16 the notification is posted only while held, and its main-looper work never throws`() {
+    assertTrue(Regex("""if \(keeper\.survivesBackground\) main\.post \{ keeper\.notify\(wire\) \}""").containsMatchIn(glue("AndroidPlatform.kt")), "AndroidPlatform.snapshot")
+    assertEquals(1, Regex("""\.notify\(wire\)""").findAll(glue("AndroidPlatform.kt")).count(), "one notify, the guarded one")
+    assertTrue(Regex("""fun notify\(wire: Map<String, Any\?>\) = recordOnly\("notify"\)""").containsMatchIn(glue("PairingKeeper.kt")), "PairingKeeper.notify goes through recordOnly")
+  }
+
+  /** T18 m2: the composed line runs to about 60 characters (fr), past one collapsed row; the expanded notification shows it whole. */
+  @Test
+  fun `T18 m2 the notification's text is its big text too`() {
+    assertTrue(".setStyle(NotificationCompat.BigTextStyle().bigText(text))" in glue("PairingKeeper.kt"))
+  }
+
+  /**
    * Security: `cred` is read in `Bodies` and nowhere else, onto the ingest host only (amendment, _Who reads
    * what_), and `SrtOptions.plan`'s all-environment host list rests on Bodies being the only producer of a
    * target (review 19, m8). The glue receives targets; it never builds one.

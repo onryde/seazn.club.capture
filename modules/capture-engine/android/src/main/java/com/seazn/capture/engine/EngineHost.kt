@@ -37,13 +37,16 @@ object EngineHost {
   val listener = OwnedSlot<(String, Map<String, Any?>) -> Unit>()
   val appContext = OwnedSlot<AppContext>()
 
-  private class Parts(val core: BridgeCore, val capture: Capture)
+  private class Parts(val core: BridgeCore, val capture: Capture, val keeper: PairingKeeper)
 
   @Volatile private var parts: Parts? = null
 
   fun core(context: Context): BridgeCore = parts(context).core
 
   fun capture(context: Context): Capture = parts(context).capture
+
+  /** The pairing's keeper, for the foreground service (Task 38). */
+  fun keeper(context: Context): PairingKeeper = parts(context).keeper
 
   /** A glue line into the record, from any thread; dropped before the core exists. */
   fun line(entry: RecordEntry) {
@@ -67,14 +70,27 @@ object EngineHost {
     // C6 carry: the build encodes the side held (CD42), the pose watch's, never a constant.
     val capture = StreamerAdapter(app, FrameTally(), AttemptSignals(), cameras, coreCalls { core }, pose::side)
     val device = DeviceSampler(app, report, ::line)
+    val keeper = keeper(app) { core }
     // Task 34: a debug build's seam may hold another HTTP path; a release build's never does.
     val http = HttpSeam.override?.invoke(app) ?: HttpAdapter()
-    val platform = AndroidPlatform(capture, http, RecordFile(File(app.filesDir, "record")), pose, device, ::emit)
+    val platform = AndroidPlatform(capture, http, RecordFile(File(app.filesDir, "record")), pose, device, keeper, ::emit)
     core = BridgeCore.shared { core(app, thread, platform) }
     core.start()
+    ExitReader.previousLoss(app)?.let { core.log("warn", it.kind, it.fields.toMap()) }
     startWatchers(app, cameras, capture, device, report)
-    return Parts(core, capture)
+    return Parts(core, capture, keeper)
   }
+
+  /** CD32, I2: the AppContext is read at request time, so a JS reload's new module is the one asked. */
+  private fun keeper(app: Context, core: () -> BridgeCore) =
+    PairingKeeper(
+      app,
+      Permissions { appContext.value },
+      ::line,
+      answered = { granted -> core().report(Input.PermissionsAnswered(granted)) },
+      askFailed = { t -> core().askFailed(t) },
+      language = { core().language() },
+    )
 
   /**
    * After `core.start()`, so their first reports are posted to a running engine. Inside the first build,
