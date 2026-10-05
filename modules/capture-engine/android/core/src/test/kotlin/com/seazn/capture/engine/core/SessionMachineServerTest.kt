@@ -100,19 +100,41 @@ class SessionMachineServerTest {
         }
       var posted = rig.sent<Command.PostHeartbeat>().size
       val beats = mutableListOf<Pair<Long, String>>()
+      // Re-review 7: the verdict's forced reconnect is held until a beat goes, then connects as the platform would,
+      // so the snapshot and a beat are read while the phase is Connecting, not only after the new ingest is up.
+      var heldFrom: Long? = null
+      var reconnectingSnapshots = 0
+      var reconnectingBeats = 0
       rig.advance(notDelivered + 20_000) {
-        // A not-delivered verdict forces a new ingest session: it connects, as the platform would.
-        rig.sent<Command.StartNewSession>().lastOrNull()?.let { restart -> if (rig.phase is Phase.Connecting) rig.send(Input.Connected(restart.next.attemptId)) }
         val since = assertNotNull(sinceLive(), case.name)
+        val forced = rig.phase is Phase.Connecting && rig.sent<Command.StartNewSession>().isNotEmpty()
+        if (forced) {
+          val from = heldFrom ?: rig.mono.also { heldFrom = it }
+          assertTrue(rig.mono - from < SessionMachine.CONNECT_TIMEOUT_MS, "${case.name}: a beat goes before the connect times out")
+          assertEquals(Delivery.STALLED, rig.snapshot.delivery, "${case.name}: the snapshot in the forced reconnect, $since ms after live")
+          reconnectingSnapshots += 1
+        }
         expected(since)?.let { want ->
           assertEquals(want, rig.snapshot.delivery, "${case.name}: the snapshot $since ms after live")
           steps += 1
         }
         val sent = rig.sent<Command.PostHeartbeat>()
         if (sent.size > posted) {
-          beats += since to Configs.body(sent.last()).getString("delivery")
+          val word = Configs.body(sent.last()).getString("delivery")
+          beats += since to word
           posted = sent.size
+          if (forced) {
+            assertEquals(Delivery.STALLED.wire, word, "${case.name}: the beat in the forced reconnect, $since ms after live")
+            reconnectingBeats += 1
+            rig.send(Input.Connected(rig.attempt!!))
+            heldFrom = null
+          }
         }
+      }
+      if (case.advanceAt == null) {
+        assertTrue(reconnectingSnapshots >= 1 && reconnectingBeats >= 1, "${case.name}: $reconnectingSnapshots snapshots and $reconnectingBeats beats checked in the forced reconnect")
+      } else {
+        assertEquals(0, reconnectingSnapshots + reconnectingBeats, "${case.name}: delivered, never forced")
       }
       val judged = beats.mapNotNull { (since, word) -> expected(since)?.let { Triple(since, word, it.wire) } }
       for ((since, word, want) in judged) assertEquals(want, word, "${case.name}: the beat $since ms after live")
