@@ -3,6 +3,7 @@ package com.seazn.capture.engine.core
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
+import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -266,6 +267,96 @@ class StartTest {
       assertEquals(Refusal.START_FAILED, pairing.refusal)
       assertTrue("sess_42" in pairing.refused)
     }
+  }
+
+  /**
+   * Item 4 ruling (2026-10-05, server facts at stg da3297a33): a beat carrying `startFailed` is only recorded by the
+   * server, which keeps S warming for up to 10 minutes and answers every Go live 409 already_live with it. So the
+   * beat that carries `startFailed` for S also carries `stopped: S`, with sid and cause null (capture-beat.v1:
+   * `stopped` "only while sid is null", `cause` null while sid is null), and the server ends S as operator_stopped
+   * (T23), keeping the pairing. The stopped record's own path delivers it: written, carried, deleted on a 2xx.
+   */
+  /** The sid a start fails for: the session config's own. */
+  private val failedSid = Configs.valid().sid
+
+  /** Arms [sid] by the organiser's Go live, with the code fetch answered [code] (null leaves it unanswered). */
+  private fun MachineRig.armWith(code: CodeAnswer?, sid: String = failedSid) {
+    codes = { code }
+    hear("go-live", sid = sid)
+  }
+
+  /** Each local start failure, as the rig reaches it: each row carries its own trigger. */
+  private val startFailures: List<Pair<String, MachineRig.() -> Unit>> =
+    listOf(
+      "not-found (code 404)" to { armWith(CodeAnswer.Status(404, null, null)) },
+      "cred-host" to { armWith(CodeAnswer.ForeignIngest(failedSid)) },
+      "config (descriptor)" to { armWith(Configs.open(descriptor = Configs.descriptor(primary = SrtTarget(Configs.srt.url, "", Configs.PASSPHRASE, 2_000)))) },
+      "config (unreadable)" to { armWith(CodeAnswer.Unreadable("cred.rtmps")) },
+      "not-found (beat 404)" to {
+        armWith(null)
+        hear(null, status = 404)
+      },
+    )
+
+  @Test fun `item 4 a local start failure beats startFailed and the stopped sid together, sid and cause null, at once`() {
+    val seen = mutableSetOf<StartFailure>()
+    for ((name, setup) in startFailures) {
+      val rig = MachineRig().paired()
+      rig.setup()
+      val pairing = paired(rig)
+      seen += assertNotNull(pairing.startFailed, name)
+      val beat = Configs.body(rig.sent<Command.PostHeartbeat>().last())
+      assertEquals("paired", beat.getString("state"), name)
+      assertTrue(beat.isNull("sid") && beat.isNull("cause"), "$name: $beat")
+      assertEquals(pairing.startFailed!!.wire, beat.getString("startFailed"), name)
+      assertEquals(failedSid, beat.getString("stopped"), name)
+      assertEquals(listOf(failedSid), rig.sent<Command.WriteStopped>().map { it.record.sid }, name)
+      assertTrue(rig.phase.beating!!.heartbeat.inFlightId != null, "$name: the beat went, in flight")
+    }
+    // Every failure a held sid can meet, from the enum: START_ERROR is the server refusing the start, no sid minted.
+    assertEquals(StartFailure.entries.toSet() - StartFailure.START_ERROR, seen, "${startFailures.size} rows")
+  }
+
+  @Test fun `item 4 the stopped sid of a start failure is delivered once, redelivered after a failed beat, and the next Go live arms a new sid`() {
+    val rig = MachineRig().paired()
+    rig.armWith(CodeAnswer.ForeignIngest(failedSid))
+    rig.beats = null
+    val first = rig.phase.beating!!.heartbeat.inFlightId!!
+    rig.send(Input.HeartbeatAnswered(first, HeartbeatResponse.Failed("timeout")))
+    rig.advance(30_000)
+    val again = Configs.body(rig.sent<Command.PostHeartbeat>().last())
+    assertEquals(failedSid, again.getString("stopped"), "carried again after the failed beat")
+    assertTrue(rig.sent<Command.DeleteStopped>().isEmpty())
+    rig.hear("waiting")
+    assertEquals(1, rig.sent<Command.DeleteStopped>().size, "delivered")
+    assertEquals(1, rig.records("stopped-delivered").size)
+    val before = rig.sent<Command.PostHeartbeat>().size
+    rig.advance(30_000)
+    rig.hear("waiting")
+    val later = rig.sent<Command.PostHeartbeat>().drop(before).map(Configs::body)
+    assertTrue(later.isNotEmpty() && later.all { it.isNull("stopped") }, "never sent twice: $later")
+    rig.ready()
+    val fresh = "$failedSid-fresh"
+    rig.codes = { if (rig.phase is Phase.Arming) Configs.open(sid = fresh, descriptor = rig.descriptor) else null }
+    rig.starts = { StartAnswer.Started(fresh) }
+    rig.send(Input.Start)
+    assertEquals(fresh, rig.phase.heldSid, "the next Go live arms the new sid")
+    assertNull(rig.snapshot.refusal)
+  }
+
+  /**
+   * Item 4: the start-failure beat, from the real machine with a uuid sid, is the shared vector `wire/beat-bodies.json`
+   * names; serverBodies.test.ts validates that vector against the vendored capture-beat.v1 with ajv.
+   */
+  @Test fun `item 4 the start-failure beat is the shared vector the contract check validates`() {
+    // The vector names its sid once (a uuid, as the schema wants); the machine is driven with it.
+    val vector = Shared.read("wire/beat-bodies.json").getJSONObject("startFailedStopped")
+    val rig = MachineRig().paired()
+    rig.armWith(CodeAnswer.Status(404, null, null), sid = vector.getString("stopped"))
+    val beat = Configs.body(rig.sent<Command.PostHeartbeat>().last())
+    // As JSON values: a number is the same number whether it reads 0 or 0.0.
+    assertTrue(vector.similar(beat), "the machine's beat ${rig.sent<Command.PostHeartbeat>().last().body} is the vector $vector")
+    assertEquals(vector.keySet(), beat.keySet())
   }
 
   @Test fun `a foreign cred host writes a cred-host-refused line`() {

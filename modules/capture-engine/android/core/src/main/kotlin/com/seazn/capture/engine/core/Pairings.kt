@@ -157,17 +157,17 @@ internal object Starts {
     return when (val answer = input.answer) {
       is CodeAnswer.Open ->
         if (answer.sid != sid) Verdicts.over(answered, LastEnd.STOPPED, now)
-        else if (answer.descriptor.config(sid, arming.pairing).problems().isNotEmpty()) failed(answered, StartFailure.CONFIG)
+        else if (answer.descriptor.config(sid, arming.pairing).problems().isNotEmpty()) failed(answered, StartFailure.CONFIG, now)
         else opened(answered, answer)
       is CodeAnswer.Over -> if (answer.sid == sid) Verdicts.over(answered, LastEnd.of(answer.endReason), now) else Step(answered)
       is CodeAnswer.Waiting -> Verdicts.over(answered, LastEnd.STOPPED, now)
       is CodeAnswer.NotCurrent -> if (answer.sid != sid) Verdicts.over(answered, LastEnd.STOPPED, now) else notCurrent(answered, now)
-      is CodeAnswer.ForeignIngest -> failed(answered, StartFailure.CRED_HOST, line("cred-host-refused", "sid" to sid))
-      is CodeAnswer.Unreadable -> failed(answered, StartFailure.CONFIG, line("code-unreadable", "problem" to answer.problem))
+      is CodeAnswer.ForeignIngest -> failed(answered, StartFailure.CRED_HOST, now, line("cred-host-refused", "sid" to sid))
+      is CodeAnswer.Unreadable -> failed(answered, StartFailure.CONFIG, now, line("code-unreadable", "problem" to answer.problem))
       is CodeAnswer.Status ->
         when (answer.status) {
           401 -> Pairings.unpaired(answered, UnpairReason.CODE_ENDED, now)
-          404 -> failed(answered, StartFailure.NOT_FOUND)
+          404 -> failed(answered, StartFailure.NOT_FOUND, now)
           410 -> Verdicts.over(answered, LastEnd.of(answer.endReason), now)
           429 -> Step(answered.copy(notBeforeMs = now.monoMs + BeatCadence.retryAfterMs(answer.retryAfterS ?: 0), retrying = true), listOf(line("code", "status" to 429)))
           else -> Step(answered.copy(retrying = true), listOf(line("code", "status" to answer.status)))
@@ -176,11 +176,30 @@ internal object Starts {
     }
   }
 
-  /** A start that failed for S: back to Paired, S refused for this pairing, the line until the next start. */
-  fun failed(arming: Phase.Arming, failure: StartFailure, vararg extra: Command): Step {
-    val pairing = arming.pairing.copy(refused = arming.pairing.refused + arming.sid, startFailed = failure, refusal = Refusal.START_FAILED)
+  /**
+   * A start that failed for S: back to Paired, S refused for this pairing, the line until the next start.
+   *
+   * Item 4 ruling (2026-10-05, server facts at stg da3297a33): the server only records a beat's `startFailed`, so S
+   * stayed warming and every Go live was answered 409 already_live with it. S is now stopped as a never-live Stop
+   * is (owner decision 1): its record written, and one beat at once carrying `startFailed` and `stopped: S`, with sid
+   * and cause null (capture-beat.v1 allows it: `stopped` only while sid is null, `cause` null while sid is null). The
+   * server ends S as operator_stopped (T23) and keeps the pairing. The record's own path delivers it: carried until a
+   * 2xx deletes it, never twice. The store holds one record a pairing: one undelivered from before is replaced, and
+   * the server, which answered S since, ended it.
+   */
+  fun failed(arming: Phase.Arming, failure: StartFailure, now: Now, vararg extra: Command): Step {
+    val stopped = StoppedRecord.of(arming.pairing.name, arming.sid, now.wallMs, null)
+    val pairing =
+      arming.pairing.copy(
+        refused = arming.pairing.refused + arming.sid,
+        startFailed = failure,
+        refusal = Refusal.START_FAILED,
+        stopped = stopped,
+        heartbeat = arming.pairing.heartbeat.copy(lastSentAtMonoMs = null),
+      )
     val noted = line("start-failed", "sid" to arming.sid, "failure" to failure)
-    return Step(Phase.Paired(pairing, arming.ids, arming.networkValidated, arming.micSilenced), extra.toList() + noted)
+    val step = Step(Phase.Paired(pairing, arming.ids, arming.networkValidated, arming.micSilenced), extra.toList() + noted + Command.WriteStopped(stopped))
+    return Heartbeats.tick(step, now)
   }
 
   /** G0-d: not the current phone yet. A `resume` claim at once, so it can never take the slot. */
@@ -230,7 +249,7 @@ internal object Verdicts {
       word == ServerWord.Replaced -> Pairings.unpaired(phase, UnpairReason.REPLACED, now)
       word == ServerWord.CodeEnded && phase is Phase.Arming -> Pairings.unpaired(phase, UnpairReason.CODE_ENDED, now)
       word == ServerWord.CodeEnded -> codeEndedPending(phase, pairing)
-      word == ServerWord.NotFound && phase is Phase.Arming -> Starts.failed(phase, StartFailure.NOT_FOUND)
+      word == ServerWord.NotFound && phase is Phase.Arming -> Starts.failed(phase, StartFailure.NOT_FOUND, now)
       word is ServerWord.Open && word.sid == held -> if (phase is Phase.Arming && phase.notCurrent) Starts.claimed(phase, now) else Step(phase)
       word is ServerWord.Open -> {
         val over = over(phase, LastEnd.STOPPED, now)

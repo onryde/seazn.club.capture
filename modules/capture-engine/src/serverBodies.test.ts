@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import Ajv2020 from 'ajv/dist/2020';
 import addFormats from 'ajv-formats';
 import { describe, expect, it } from 'vitest';
+import beats from './wire/beat-bodies.json';
 import probe from './wire/scripted-probe.json';
 import vectors from './wire/server-bodies.json';
 
@@ -151,5 +152,27 @@ describe('the probe script answers with the web contract shapes', () => {
     const answer = (probe as unknown as Record<string, ScriptedAnswer[]>)[route]?.[0];
     const body = { ...(answer?.body as Record<string, unknown>), ...change };
     expect(verdict(ROUTE_SCHEMAS[route].ok, body)).not.toEqual([]);
+  });
+});
+
+/**
+ * Item 4 (2026-10-05): the phone's own beat after a start failed locally for S carries `startFailed` and
+ * `stopped: S` with sid and cause null, so the server ends S (T23) and the next start gets a fresh sid. The
+ * body is the real machine's (StartTest.kt pins it field for field); here it meets the vendored contract.
+ */
+describe("the phone's start-failure beat is a capture-beat.v1 body", () => {
+  const body = beats.startFailedStopped;
+
+  it('validates, with startFailed and stopped together and sid and cause null', () => {
+    expect(verdict('capture-beat.v1.json', body)).toEqual([]);
+    expect([body.sid, body.cause]).toEqual([null, null]);
+    expect([typeof body.startFailed, typeof body.stopped]).toEqual(['string', 'string']);
+  });
+
+  // The positive pair: the same check refuses a stopped that is not a session id, and a body missing stopped.
+  it('is checked: a stopped that is not a uuid, or no stopped at all, is refused', () => {
+    expect(verdict('capture-beat.v1.json', { ...body, stopped: 'sess_42' })).not.toEqual([]);
+    const { stopped: _dropped, ...without } = body;
+    expect(verdict('capture-beat.v1.json', without)).not.toEqual([]);
   });
 });
