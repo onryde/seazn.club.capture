@@ -72,7 +72,7 @@
     "endReason": "both: EndReason wire, or the server's reason word",
     "error": "plan C: a throwable's class name only, never its message (CD30); or pair-step-late's camera-busy word",
     "exit": "plan C: ApplicationExitInfo reason wire (CD22)",
-    "failure": "native: ConnectFailure wire (connect-failed), or StartFailure wire (start-failed)",
+    "failure": "native: ConnectFailure wire (connect-failed: unresolved, refused, timeout, other, unheld), or StartFailure wire (start-failed)",
     "from": "native: a transport (fell-back), a bitrate in bits per second (bitrate), or a state or phase name",
     "host": "both: a bare host, never a path or query (plan A I1)",
     "intent": "native: an intent name",

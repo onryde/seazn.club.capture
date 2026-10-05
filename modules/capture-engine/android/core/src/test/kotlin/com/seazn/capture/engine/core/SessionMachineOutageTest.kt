@@ -629,6 +629,24 @@ class SessionMachineOutageTest {
     assertEquals(Transport.RTMPS, fell.field("to"))
   }
 
+  /**
+   * C6 I-3: mid-session, an Orient rebuild that found the camera busy, or a reopen that failed, leaves
+   * nothing held, and the capture answers each connect UNHELD. Through the machine: no fallback, nothing
+   * counted, and no ask, past C1's 10 s.
+   */
+  @Test
+  fun `C6 I-3 connects answered UNHELD keep SRT, count nothing, and never ask the descriptor`() {
+    val rig = MachineRig().armed(validated = true)
+    rig.ready()
+    rig.failingConnects(16_500, ConnectFailure.UNHELD)
+    val failed = rig.records("connect-failed")
+    assertTrue(failed.size >= 3, "past three: counted, they would have fallen back (${failed.size} failed)")
+    assertTrue(failed.all { it.field("failure") == ConnectFailure.UNHELD && it.field("counted") == false && it.field("validated") == true }, "$failed")
+    assertEquals(emptyList(), rig.records("fell-back"))
+    assertTrue(rig.connects().all { it.target is SrtTarget }, "${rig.connects()}")
+    assertEquals(listOf(1), rig.sent<Command.FetchCode>().map { it.requestId }, "an unheld connect says nothing about the session")
+  }
+
   @Test
   fun `only a refused connect asks the descriptor`() {
     val rig = MachineRig().armed()

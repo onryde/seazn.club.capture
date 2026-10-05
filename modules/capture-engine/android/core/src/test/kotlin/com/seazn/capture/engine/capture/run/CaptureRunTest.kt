@@ -339,7 +339,7 @@ class CaptureRunTest {
       val s = scene()
       does(s, connect(1), Command.Disconnect(1), Command.SetBitrate(1, 2_000_000), Command.Slate(true), Command.SwitchCamera, Command.ReopenCamera)
       assertEquals(emptyList(), s.parts.log)
-      assertEquals(listOf<Input>(Input.ConnectFailed(1, ConnectFailure.OTHER, "no capture held"), Input.CameraReopened(false)), s.told.reports)
+      assertEquals(listOf<Input>(Input.ConnectFailed(1, ConnectFailure.UNHELD, "no capture held"), Input.CameraReopened(false)), s.told.reports)
     }
 
   /**
@@ -348,7 +348,7 @@ class CaptureRunTest {
    * again for the next attempt.
    */
   @Test
-  fun `C6 m-3 a connect with nothing held writes a line and fails OTHER at once, each time`() =
+  fun `C6 m-3 and I-3 a connect with nothing held writes a line and fails UNHELD at once, each time`() =
     runTest {
       val s = opened()
       s.run.close()
@@ -356,7 +356,7 @@ class CaptureRunTest {
       s.parts.log.clear()
       does(s, connect(1), Command.Rebuild(1, connect(2)), Command.StartNewSession(2, connect(3)))
       assertEquals(emptyList(), s.parts.log, "nothing reached StreamPack")
-      assertEquals((1..3).map<Int, Input> { Input.ConnectFailed(it, ConnectFailure.OTHER, "no capture held") }, s.told.reports)
+      assertEquals((1..3).map<Int, Input> { Input.ConnectFailed(it, ConnectFailure.UNHELD, "no capture held") }, s.told.reports)
       assertEquals(List(3) { "capture-unheld" }, s.told.lines.map { it.kind })
       assertEquals((1..3).map { listOf<Pair<String, Any?>>("action" to "connect", "attempt" to it) }, s.told.lines.map { it.fields })
     }

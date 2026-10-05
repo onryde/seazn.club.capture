@@ -41,7 +41,7 @@
     "delivery": ["ok", "stalled", "unknown"],
     "shed": ["overlay-preview", "preview-framerate", "encode"],
     "heartbeatResult": ["ok", "failed", "session-over"],
-    "connectFailure": ["unresolved", "refused", "timeout", "other"],
+    "connectFailure": ["unresolved", "refused", "timeout", "other", "unheld"],
     "camera": ["own", "taken", "reopening", "resuming", "switching"],
     "thermal": ["none", "light", "moderate", "severe", "critical", "emergency", "shutdown"],
     "scoreUpdates": ["realtime", "polled"]

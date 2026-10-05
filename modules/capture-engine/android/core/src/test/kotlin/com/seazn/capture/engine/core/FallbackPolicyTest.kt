@@ -38,6 +38,17 @@ class FallbackPolicyTest {
     assertEquals(0, policy.count)
   }
 
+  /** C6 I-3: the capture had no camera to connect, which says nothing about the path to the ingest. */
+  @Test
+  fun `C6 I-3 a connect with no capture held never counts, even on a validated network`() {
+    assertFalse(start.connectFailed(ConnectFailure.UNHELD, networkValidated = true).counted)
+    val policy = start.failConnect(3, ConnectFailure.UNHELD, validated = true)
+    assertEquals(Transport.SRT, policy.current)
+    assertEquals(0, policy.count)
+    // The positive pair: three failures that do count, on the same network, fall back.
+    assertEquals(Transport.RTMPS, start.failConnect(3, ConnectFailure.OTHER, validated = true).current)
+  }
+
   @Test
   fun `F-P5-2 mid-session drops count toward fallback`() {
     // Redmi on weak wifi: 18 drops every 6–22 s, always endpoint-closed.

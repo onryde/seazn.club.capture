@@ -149,7 +149,7 @@ class CaptureRun(
 
   private fun nothingHeld(connect: Command.Connect) {
     calls.line(RecordEntry("capture-unheld", listOf("action" to "connect", "attempt" to connect.attemptId)))
-    calls.report(Input.ConnectFailed(connect.attemptId, ConnectFailure.OTHER, "no capture held"))
+    calls.report(Input.ConnectFailed(connect.attemptId, ConnectFailure.UNHELD, "no capture held")) // C6 I-3: never counted, never an ask
   }
 
   /** CD42: the build's rotation is the broadcast's; another side rebuilds before the connect, never setTargetRotation. */

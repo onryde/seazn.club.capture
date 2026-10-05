@@ -57,7 +57,7 @@ export const WIRE_VOCABULARY = {
   delivery: new Set(['ok', 'stalled', 'unknown']),
   shed: new Set(['overlay-preview', 'preview-framerate', 'encode']),
   heartbeatResult: new Set(['ok', 'failed', 'session-over']),
-  connectFailure: new Set(['unresolved', 'refused', 'timeout', 'other']),
+  connectFailure: new Set(['unresolved', 'refused', 'timeout', 'other', 'unheld']),
   camera: new Set(['own', 'taken', 'reopening', 'resuming', 'switching']),
   thermal: new Set(['none', 'light', 'moderate', 'severe', 'critical', 'emergency', 'shutdown']),
   scoreUpdates: new Set(['realtime', 'polled']),

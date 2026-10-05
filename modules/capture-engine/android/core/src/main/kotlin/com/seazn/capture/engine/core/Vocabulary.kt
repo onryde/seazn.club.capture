@@ -65,6 +65,13 @@ enum class ConnectFailure(override val wire: String) : Wire {
   REFUSED("refused"),
   TIMEOUT("timeout"),
   OTHER("other"),
+
+  /**
+   * C6 I-3: the capture held no camera to connect (an Orient rebuild that found it busy, a reopen that
+   * failed). It says nothing about the path to the ingest or the session: never counted towards the
+   * fallback, and never an ask for the code.
+   */
+  UNHELD("unheld"),
 }
 
 enum class HeartbeatResult(override val wire: String) : Wire {
