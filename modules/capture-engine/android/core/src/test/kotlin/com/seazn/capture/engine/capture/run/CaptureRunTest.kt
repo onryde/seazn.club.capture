@@ -22,8 +22,11 @@ import java.io.IOException
 import java.net.ConnectException
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.test.TestScope
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runCurrent
@@ -59,14 +62,15 @@ class CaptureRunTest {
     cameras: CameraAvailability = CameraAvailability(),
     side: () -> Side = { Side.LEFT },
     signals: AttemptSignals = AttemptSignals(),
+    scope: CoroutineScope = queueScope(),
   ): Scene {
     val parts = FakeParts()
     val told = Told()
-    return Scene(parts, told, cameras, CaptureRun(parts, signals, cameras, told.calls(), side, queueScope()))
+    return Scene(parts, told, cameras, CaptureRun(parts, signals, cameras, told.calls(), side, scope))
   }
 
-  private fun TestScope.opened(): Scene =
-    scene().also {
+  private fun TestScope.opened(scope: CoroutineScope = queueScope()): Scene =
+    scene(scope = scope).also {
       it.run.open(request)
       advanceUntilIdle()
       it.parts.log.clear()
@@ -543,6 +547,29 @@ class CaptureRunTest {
       assertEquals(listOf("release", "release done", "build $left", "build done"), s.parts.log, "past the spacing, at once again")
       advanceUntilIdle()
       assertEquals(4, s.parts.log.size, "and nothing owed after it")
+    }
+
+  /**
+   * Re-review 4 m2: on a dispatcher that resumes at once (as Dispatchers.Default can), the spacing's queued block
+   * runs while the spacing's own job is still active. Read as "inside the spacing", the owed rebuild owed itself
+   * and never ran: the camera stayed lost. The block clears the spacing first.
+   */
+  @Test
+  fun `re-review 4 m2 the owed rebuild runs when the spacing's block runs inside its own job`() =
+    runTest {
+      val s = opened(CoroutineScope(UnconfinedTestDispatcher(testScheduler) + SupervisorJob()))
+      s.parts.opened("0")
+      advanceTimeBy(100)
+      s.parts.lose("0")
+      advanceTimeBy(100)
+      runCurrent()
+      s.parts.lose("0") // owed
+      assertFalse(s.cameras.ready(camera = true))
+      advanceTimeBy(SessionMachine.RETRY_MS + 200)
+      runCurrent()
+      val rebuilds = s.told.lines.count { it.kind == "capture-rebuilt" }
+      assertEquals(2, rebuilds, "the loss at once, then the owed one: ${s.parts.log}")
+      assertTrue(s.cameras.ready(camera = true), "a new open asked")
     }
 
   // --- C6 I-1: a start is bounded, under the machine's own connect timeout ---

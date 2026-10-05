@@ -141,6 +141,9 @@ class CaptureRun(
       scope.launch {
         delay(SessionMachine.RETRY_MS)
         serial.submit {
+          // Re-review 4: this block can run while its own job is still active (a dispatcher that resumes at
+          // once), and read that as "inside the spacing", owing the rebuild to itself. The spacing is over here.
+          lossSpacing = null
           if (lossOwed) {
             lossOwed = false
             if (attempt == null && !cameras.ready(camera = true)) rebuildLost()
