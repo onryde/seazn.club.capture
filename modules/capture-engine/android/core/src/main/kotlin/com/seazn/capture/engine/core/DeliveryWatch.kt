@@ -77,6 +77,8 @@ data class DeliveryWatch(
   /** LL-HLS parts past [head] at the last observation; 0 for plain HLS. */
   val partsMs: Long = 0,
   val advancedInVariant: Boolean = false,
+  /** F-S9-1: the head has advanced at least once in this ingest session; [newSession] forgets it. */
+  val advancedInSession: Boolean = false,
   val mediaMs: Long = 0,
   val baselineOnAirMs: Long = 0,
   val lags: List<LagPoint> = emptyList(),
@@ -133,6 +135,7 @@ data class DeliveryWatch(
       head = null,
       partsMs = 0,
       advancedInVariant = false,
+      advancedInSession = false,
       mediaMs = 0,
       lags = emptyList(),
       minLagMs = null,
@@ -196,7 +199,14 @@ data class DeliveryWatch(
     val firstNew = (previous + 1 - media.mediaSequence).coerceAtLeast(0).toInt()
     val listedMs = media.segmentDurationsMs.drop(firstNew).sum()
     val added = (unlistedMs(previous, media.mediaSequence) + listedMs - partsMs + media.partsMs).coerceAtLeast(0)
-    return copy(head = media.head, partsMs = media.partsMs, mediaMs = mediaMs + added, sinceAdvanceMs = 0, advancedInVariant = true)
+    return copy(
+      head = media.head,
+      partsMs = media.partsMs,
+      mediaMs = mediaMs + added,
+      sinceAdvanceMs = 0,
+      advancedInVariant = true,
+      advancedInSession = true,
+    )
   }
 
   /**
@@ -227,7 +237,15 @@ data class DeliveryWatch(
   /** No evidence either way: delivery claims nothing, and shows no lag. */
   private fun withoutEvidence(): DeliveryWatch = copy(delivery = Delivery.UNKNOWN, deliveredLagMs = null)
 
-  private fun stalledOr(otherwise: Delivery): Delivery = if (sinceAdvanceMs >= STALLED_AFTER_MS) Delivery.STALLED else otherwise
+  /**
+   * Stalled [STALLED_AFTER_MS] of publishing after the last advance. F-S9-1: before this session's first advance,
+   * [sinceAdvanceMs] counts from live while Cloudflare's first window has not moved yet, so stalled waits for
+   * [NOT_DELIVERED_MS] there (coordinator ruling, session 9): the beat said stalled ~10 s after live, then ok.
+   */
+  private fun stalledOr(otherwise: Delivery): Delivery {
+    val after = if (advancedInSession) STALLED_AFTER_MS else NOT_DELIVERED_MS
+    return if (sinceAdvanceMs >= after) Delivery.STALLED else otherwise
+  }
 
   companion object {
     /** Re-review 6: the `rendition-refused` line's reason, a fixed word: never the URL or the host refused. */

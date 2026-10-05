@@ -322,6 +322,29 @@ class DeliveryWatchTest {
     assertNull(harness.watch.deliveredLagMs)
   }
 
+  /**
+   * F-S9-1 (coordinator ruling, session 9): before an ingest session's first advance the word is unknown until
+   * [DeliveryWatch.NOT_DELIVERED_MS] of publishing, never stalled at [DeliveryWatch.STALLED_AFTER_MS]; a forced new
+   * session starts that over, though the session before it advanced.
+   */
+  @Test
+  fun `F-S9-1 before a session's first advance stalled waits for NOT_DELIVERED_MS, a forced new session too`() {
+    val shortOf = DeliveryWatch.NOT_DELIVERED_MS - DeliveryWatch.POLL_MS
+    assertTrue(shortOf > DeliveryWatch.STALLED_AFTER_MS)
+    val fresh = Harness(DeliveryWatch(master))
+    fresh.run(0, shortOf, answer = respond { mediaText(100) })
+    assertEquals(Delivery.UNKNOWN, fresh.watch.delivery, "never moved: unknown at $shortOf ms")
+    fresh.run(shortOf + 500, DeliveryWatch.NOT_DELIVERED_MS, answer = respond { mediaText(100) })
+    assertEquals(Delivery.STALLED, fresh.watch.delivery)
+    assertEquals(DeliveryWatch.NOT_DELIVERED_MS, fresh.verdict!!.first)
+    val renewed = Harness(DeliveryWatch(master))
+    renewed.run(0, 10_000, answer = respond { t -> mediaText(100 + t / 2_000) })
+    assertEquals(Delivery.OK, renewed.watch.delivery, "the session before it advanced")
+    renewed.watch = renewed.watch.newSession()
+    renewed.run(10_500, 10_000 + shortOf, answer = respond { mediaText(500) })
+    assertEquals(Delivery.UNKNOWN, renewed.watch.delivery, "the new session has not advanced yet")
+  }
+
   @Test
   fun `F-P5-4 stalled shows at exactly three configured segments without an advance`() {
     val harness = Harness(DeliveryWatch(master))

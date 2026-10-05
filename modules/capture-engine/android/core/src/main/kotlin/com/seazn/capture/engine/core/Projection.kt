@@ -2,13 +2,21 @@ package com.seazn.capture.engine.core
 
 /** The phase as the snapshot and the heartbeat see it. Pure; runs after every input. */
 object Projection {
+  /**
+   * F-S9-1: a session found not delivered reads stalled until delivery is seen again (the `delivered` line clears
+   * it in the step the watch reads ok), through its new ingest session and its reconnect; otherwise the watch's
+   * word while on air, and unknown off air.
+   */
+  private fun delivery(session: Session?, onAir: Phase.OnAir?): Delivery =
+    if (session?.notDelivered == true) Delivery.STALLED else onAir?.session?.delivery?.delivery ?: Delivery.UNKNOWN
+
   fun snapshot(phase: Phase, now: Now): Snapshot {
     val session = phase.session
     val onAir = phase as? Phase.OnAir
     return Snapshot(
       state = state(phase, now),
       reportedAtMs = now.wallMs,
-      delivery = onAir?.session?.delivery?.delivery ?: Delivery.UNKNOWN,
+      delivery = delivery(session, onAir),
       deliveredLagMs = onAir?.session?.delivery?.deliveredLagMs,
       encodedVideoFps = onAir?.watchdog?.videoFps,
       audioPacketsPerSecond = onAir?.watchdog?.audioFps,

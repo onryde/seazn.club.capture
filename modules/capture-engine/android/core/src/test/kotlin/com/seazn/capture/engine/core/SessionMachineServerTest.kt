@@ -7,6 +7,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
+import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
 class SessionMachineServerTest {
@@ -36,17 +37,92 @@ class SessionMachineServerTest {
     assertTrue(""""delivery":"ok","deliveredLagS":2.0,""" in beat.body, beat.body)
   }
 
+  /**
+   * Final review I-2, as F-S9-1 left it: a playlist that MOVED and then stops reads stalled
+   * [DeliveryWatch.STALLED_AFTER_MS] of publishing after its last advance, long before not-delivered.
+   */
   @Test
-  fun `final review I-2 a playlist that stops moving reads delivery stalled after 6 s of publishing`() {
+  fun `final review I-2 a playlist that stops moving after it moved reads delivery stalled after 6 s of publishing`() {
     val rig = MachineRig()
-    rig.playlists = { url -> FetchResult.Body(if (url == masterUrl) masterText else media(100)) }
+    var frozenAt: Long? = null
+    rig.playlists = { url -> FetchResult.Body(if (url == masterUrl) masterText else media(100 + (frozenAt ?: rig.mono) / 2_000)) }
     rig.live()
-    // The look at 1 s is the baseline. At the poll at 5 s the head has not moved for 4 s of publishing.
-    rig.advance(4_000)
-    assertEquals(Delivery.UNKNOWN, rig.snapshot.delivery)
-    // At 7 s, 6 s: three configured segments.
-    rig.advance(2_000)
+    rig.advance(10_000)
+    assertEquals(Delivery.OK, rig.snapshot.delivery)
+    frozenAt = rig.mono
+    rig.advance(DeliveryWatch.STALLED_AFTER_MS - DeliveryWatch.POLL_MS)
+    assertEquals(Delivery.OK, rig.snapshot.delivery, "inside the margin")
+    rig.advance(2 * DeliveryWatch.POLL_MS)
     assertEquals(Delivery.STALLED, rig.snapshot.delivery)
+    assertEquals(emptyList(), rig.records("not-delivered"), "stalled shows long before not-delivered")
+  }
+
+  /**
+   * F-S9-1 (stg, session 9, build 6f1b5c5): in 3 of 4 live sessions the first beat after publishing, ~10 s after
+   * live, said `delivery: stalled` once with no not-delivered line, and the first `ok` came 10 s later. The watch
+   * said stalled [DeliveryWatch.STALLED_AFTER_MS] after the last advance, and before any advance it counted from
+   * live, though Cloudflare's first window had simply not moved yet. The coordinator's ruling: the word is unknown
+   * until the first advance (ok) or [DeliveryWatch.NOT_DELIVERED_MS] of publishing with none (stalled), never
+   * stalled earlier; and a session found not delivered reads stalled until it is delivered again, through its new
+   * ingest session. Checked on the snapshot at every step and on every beat the machine posts.
+   */
+  @Test
+  fun `F-S9-1 delivery is unknown until the first advance, or NOT_DELIVERED_MS of publishing with none, then stalled`() {
+    val notDelivered = DeliveryWatch.NOT_DELIVERED_MS
+    val settle = 2 * DeliveryWatch.POLL_MS
+    val firstAdvance = BeatCadence.HELD_MAX_MS + DeliveryWatch.POLL_MS // after the first beat, before the threshold
+    assertTrue(firstAdvance + settle < notDelivered)
+    val manifest = Configs.PLAYBACK_URL.substringBeforeLast('/') + "/"
+    data class Case(val name: String, val advanceAt: Long?, val nothingLive: Boolean = false)
+    val cases = listOf(Case("a first window that never moves", null), Case("a master with nothing live", null, nothingLive = true), Case("a first advance", firstAdvance))
+    var steps = 0
+    for (case in cases) {
+      val rig = MachineRig()
+      fun sinceLive(): Long? = rig.phase.session?.liveSinceEpochMs?.let { rig.wall - it }
+      rig.playlists = { url ->
+        when (CloudflarePlayback.path(url)) {
+          Configs.PLAYBACK_URL -> if (case.nothingLive) FetchResult.NoContent else FetchResult.Body(CloudflarePlayback.master(rig.mono.toInt()))
+          manifest + CloudflarePlayback.RENDITIONS.first() -> {
+            val moved = case.advanceAt?.let { at -> sinceLive()?.let { (it - at).coerceAtLeast(0) } } ?: 0
+            FetchResult.Body(CloudflarePlayback.rendition(97 + moved / DeliveryWatch.CONFIGURED_SEGMENT_MS))
+          }
+          else -> FetchResult.HttpError(404)
+        }
+      }
+      rig.beats = { HeartbeatResponse.Answered(200, BeatReply("live", null, null, null, null)) }
+      rig.live()
+      fun expected(since: Long): Delivery? =
+        when {
+          case.advanceAt != null && since >= case.advanceAt + settle -> Delivery.OK
+          case.advanceAt == null && since >= notDelivered + settle -> Delivery.STALLED
+          since < (case.advanceAt ?: notDelivered) -> Delivery.UNKNOWN
+          else -> null // the poll that turns it
+        }
+      var posted = rig.sent<Command.PostHeartbeat>().size
+      val beats = mutableListOf<Pair<Long, String>>()
+      rig.advance(notDelivered + 20_000) {
+        // A not-delivered verdict forces a new ingest session: it connects, as the platform would.
+        rig.sent<Command.StartNewSession>().lastOrNull()?.let { restart -> if (rig.phase is Phase.Connecting) rig.send(Input.Connected(restart.next.attemptId)) }
+        val since = assertNotNull(sinceLive(), case.name)
+        expected(since)?.let { want ->
+          assertEquals(want, rig.snapshot.delivery, "${case.name}: the snapshot $since ms after live")
+          steps += 1
+        }
+        val sent = rig.sent<Command.PostHeartbeat>()
+        if (sent.size > posted) {
+          beats += since to Configs.body(sent.last()).getString("delivery")
+          posted = sent.size
+        }
+      }
+      val judged = beats.mapNotNull { (since, word) -> expected(since)?.let { Triple(since, word, it.wire) } }
+      for ((since, word, want) in judged) assertEquals(want, word, "${case.name}: the beat $since ms after live")
+      val first = beats.first()
+      assertTrue(first.first in BeatCadence.HELD_MAX_MS / 2 until firstAdvance && first.second == Delivery.UNKNOWN.wire, "${case.name}: session 9's beat, ~10 s after live: $first")
+      val last = if (case.advanceAt == null) Delivery.STALLED else Delivery.OK
+      assertTrue(judged.any { it.second == last.wire }, "${case.name}: a beat says ${last.wire}: $beats")
+      assertEquals(case.advanceAt == null, rig.records("not-delivered").isNotEmpty(), case.name)
+    }
+    assertTrue(steps > 3 * 60, "$steps snapshots checked")
   }
 
   @Test
