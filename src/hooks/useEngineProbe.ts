@@ -58,10 +58,13 @@ export function useEngineProbe(): {
     flight.begin();
     setState('running');
     const logger = probeLogger(ports.record, native, () => ports.clock().getTime());
-    void probe(ports.engine, native, logger).then((passed) => {
-      flight.end();
-      setState(passed ? 'passed' : 'failed');
-    });
+    // Re-review 3 m3: lowered however the run ends, a rejection included, which reads as a failed run.
+    void probe(ports.engine, native, logger)
+      .finally(() => flight.end())
+      .then(
+        (passed) => setState(passed ? 'passed' : 'failed'),
+        () => setState('failed'),
+      );
   }, [ports]);
   const dismiss = useCallback(() => {
     if (!ports.probeFlight.active()) setState('idle');

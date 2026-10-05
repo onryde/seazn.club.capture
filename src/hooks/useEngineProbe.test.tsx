@@ -456,12 +456,15 @@ describe('the reopen gate during a probe', () => {
   afterEach(() => vi.useRealTimers());
 
   /** The gate and the probe in one tree, as Shell and the dev panel are, over a native that never acks. */
-  function probeAndGate() {
+  function probeAndGate(
+    native: (base: FakePorts) => NativeCaptureEngine | null = (base) =>
+      echoing(neverSettles(), base.record),
+  ) {
     const base = createFakePorts();
     const ports: Ports = {
       ...base.ports,
       devEngine: null,
-      nativeEngine: echoing(neverSettles(), base.record),
+      nativeEngine: native(base),
     };
     const fakes: FakePorts = { ...base, ports };
     const hook = renderHook(
@@ -499,6 +502,27 @@ describe('the reopen gate during a probe', () => {
     // The positive pair: the same gate, the probe over, unpairs a pairing no saved code owns.
     act(() => pairCode(fakes.engine, savedStreamCode()));
     expect(fakes.engine.getSnapshot().state.kind).toBe('paired');
+    returned(fakes);
+    await flush();
+    expect(orphanUnpairs(fakes)).toBe(1);
+  });
+
+  // Re-review 3 m3: a run that rejects (here native's record refuses the probe's first line) still lowers the flag.
+  it('lowers the flag when the run itself rejects: failed, and the gate unpairs an orphan again', async () => {
+    const refusing = () =>
+      ({
+        ...neverSettles(),
+        forward: () => {
+          throw new Error('the bridge is gone');
+        },
+      }) as unknown as NativeCaptureEngine;
+    const { fakes, hook } = probeAndGate(refusing);
+    await flush();
+    run(hook);
+    await flush();
+    expect(hook.result.current?.state).toBe('failed');
+    expect(fakes.ports.probeFlight.active()).toBe(false);
+    act(() => pairCode(fakes.engine, savedStreamCode()));
     returned(fakes);
     await flush();
     expect(orphanUnpairs(fakes)).toBe(1);
