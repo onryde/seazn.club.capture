@@ -41,6 +41,10 @@ kotlin.sourceSets["test"].kotlin.srcDir("../src/debug/java/com/seazn/capture/eng
 // import nothing Android, so core's tests run them against a fake of StreamPack's parts.
 kotlin.sourceSets["test"].kotlin.srcDir("../src/main/java/com/seazn/capture/engine/capture/run")
 
+// C6 I-2: our SRT sink's connect and end sit behind a socket port, apart from StreamPack and srtdroid, so
+// core's tests run the sink's own order against a fake of srtdroid's socket.
+kotlin.sourceSets["test"].kotlin.srcDir("../src/main/java/com/seazn/capture/engine/srt/connect")
+
 tasks.test {
   useJUnitPlatform()
   // The vector files both languages read (CD5, CD6), relative to this build.

@@ -22,6 +22,8 @@ import com.seazn.capture.engine.adapter.SrtOpt
 import com.seazn.capture.engine.adapter.SrtPlan
 import com.seazn.capture.engine.core.Input
 import com.seazn.capture.engine.core.LinkCounters
+import com.seazn.capture.engine.srt.connect.SrtConnection
+import com.seazn.capture.engine.srt.connect.SrtSocketPort
 import io.github.thibaultbee.srtdroid.core.enums.Boundary
 import io.github.thibaultbee.srtdroid.core.enums.SockOpt
 import io.github.thibaultbee.srtdroid.core.enums.Transtype
@@ -37,35 +39,31 @@ import io.github.thibaultbee.streampack.core.elements.endpoints.composites.sinks
 import java.net.InetAddress
 import java.net.InetSocketAddress
 import kotlinx.coroutines.CoroutineDispatcher
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.withContext
 
 /**
  * Our SRT sink (CD14). StreamPack's SrtSink sets MAXBW 0 and INPUTBW in bits, where libsrt reads
  * bytes (F-P5-11). This one sets every option from [SrtPlan] (`SrtOptions.plan`), resolves the host
  * first on its IO dispatcher (F-P5-1), takes its secrets as socket options and never in a URL, and
- * reports one drop per attempt from the socket's completion (R3). It logs nothing: a failure leaves as
- * an [Input] through [AttemptSignals], whose `toString` masks the platform's text (m7), and the record
- * masks the secrets in it (CD6).
+ * reports one drop per attempt from the socket's completion (R3), through [SrtConnection], which core's
+ * tests run (C6 I-2). It logs nothing: a failure leaves as an [Input] through [AttemptSignals], whose
+ * `toString` masks the platform's text (m7), and the record masks the secrets in it (CD6).
  */
 class SeaznSrtSink(
   private val dispatcher: CoroutineDispatcher,
-  private val signals: AttemptSignals,
-  private val report: (Input) -> Unit,
+  signals: AttemptSignals,
+  report: (Input) -> Unit,
 ) : AbstractSink() {
   override val supportedSinkTypes: List<MediaSinkType> = listOf(MediaSinkType.SRT)
 
-  private val open = MutableStateFlow(false)
-  override val isOpenFlow = open.asStateFlow()
+  private val connection = SrtConnection(signals, report)
+  override val isOpenFlow = connection.isOpen
 
   @Volatile private var socket: CoroutineSrtSocket? = null
 
   @Volatile private var pending: Pair<SrtPlan, Int>? = null
 
   @Volatile private var attemptId: Int? = null
-
-  @Volatile private var completion: Throwable? = null
 
   /** Set by the streamer adapter before `startStream`; the descriptor it passes carries host and port only. */
   fun next(plan: SrtPlan, attemptId: Int) {
@@ -82,13 +80,11 @@ class SeaznSrtSink(
       val opened = CoroutineSrtSocket(dispatcher) // 1.10.0: CoroutineSrtSocket(CoroutineDispatcher)
       opened.setSockFlag(SockOpt.PAYLOADSIZE, PAYLOAD_SIZE)
       for ((option, value) in plan.before) opened.setSockFlag(sockOpt(option), flagValue(option, value)) // 1.10.0: setSockFlag(SockOpt, Any)
-      completion = null
-      opened.socketContext.invokeOnCompletion { cause -> closed(id, cause) } // 1.10.0: socketContext: CompletableJob; close() completes it synchronously
-      opened.connect(InetSocketAddress(address, plan.port)) // 1.10.0: suspend connect(InetSocketAddress)
-      opened.setSockFlag(SockOpt.MAXBW, plan.maxBwBytesPerSecond) // F-P5-11: after connect, in bytes per second
-      socket = opened
-      attemptId = id
-      open.value = true
+      connection.connect(Port(opened), id, InetSocketAddress(address, plan.port)) {
+        opened.setSockFlag(SockOpt.MAXBW, plan.maxBwBytesPerSecond) // F-P5-11: after connect, in bytes per second
+        socket = opened
+        attemptId = id
+      }
     }
 
   override suspend fun startStream() {
@@ -97,7 +93,7 @@ class SeaznSrtSink(
   }
 
   override suspend fun write(packet: Packet): Int {
-    completion?.let { throw ClosedException(it) }
+    connection.ended?.let { throw ClosedException(it) }
     val held = socket ?: throw ClosedException("SRT socket not open")
     if (packet.ts != 0L && held.connectionTime > packet.ts) return -1 // as SrtSink: older than the connection
     return held.send(packet.buffer, msgCtrl(packet)) // 1.10.0: suspend send(ByteBuffer, MsgCtrl): Int
@@ -109,7 +105,7 @@ class SeaznSrtSink(
     socket?.close()
     socket = null
     attemptId = null
-    open.value = false
+    connection.closed()
   }
 
   fun setMaxBw(forAttempt: Int, bytesPerSecond: Long) {
@@ -133,12 +129,6 @@ class SeaznSrtSink(
     )
   }
 
-  private fun closed(id: Int, cause: Throwable?) {
-    completion = cause
-    open.value = false
-    signals.dropped(id, cause)?.let(report)
-  }
-
   /** srtdroid has no `TRANSTYPE_LIVE` (javap, 1.9.5 and 1.10.0): it is `TRANSTYPE` set to `Transtype.LIVE`. */
   private fun sockOpt(option: SrtOpt): SockOpt = if (option == SrtOpt.TRANSTYPE_LIVE) SockOpt.TRANSTYPE else SockOpt.valueOf(option.name)
 
@@ -160,6 +150,15 @@ class SeaznSrtSink(
       packet.ts == 0L -> MsgCtrl(boundary = boundary!!)
       boundary == null -> MsgCtrl(srcTime = packet.ts)
       else -> MsgCtrl(srcTime = packet.ts, boundary = boundary)
+    }
+  }
+
+  /** srtdroid 1.10.0's socket, as the connection's port. */
+  private class Port(private val socket: CoroutineSrtSocket) : SrtSocketPort {
+    override suspend fun connect(address: InetSocketAddress) = socket.connect(address) // 1.10.0: suspend connect(InetSocketAddress)
+
+    override fun onEnd(handler: (Throwable?) -> Unit) {
+      socket.socketContext.invokeOnCompletion(handler) // 1.10.0: socketContext: CompletableJob; close() completes it synchronously
     }
   }
 
