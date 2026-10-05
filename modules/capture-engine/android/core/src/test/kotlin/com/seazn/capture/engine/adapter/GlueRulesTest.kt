@@ -213,21 +213,48 @@ class GlueRulesTest {
     assertTrue(".setStyle(NotificationCompat.BigTextStyle().bigText(text))" in glue("PairingKeeper.kt"))
   }
 
+  /** The body of the function whose declaration starts with [signature] in [text], braces included. */
+  private fun body(text: String, signature: String): String {
+    val start = text.indexOf(signature)
+    assertTrue(start >= 0, "no $signature")
+    val open = text.indexOf('{', start)
+    var depth = 0
+    for (i in open until text.length) {
+      when (text[i]) {
+        '{' -> depth++
+        '}' -> if (--depth == 0) return text.substring(open, i + 1)
+      }
+    }
+    return text.substring(open)
+  }
+
   /**
-   * Task 39 (I5, CD37): the module registers the preview, or JS's `requireNativeView` finds no view and the
-   * viewfinder report is inert; and the view's reports and its streamer follow cannot crash the app, so
-   * each `viewfinder` call is guarded and the follow's scope has its handler.
+   * Task 39 (I5, CD37) and review C7 I-1: the module registers the preview, or JS's `requireNativeView` finds no
+   * view and the viewfinder report is inert. The viewfinder is shown while the view is attached to a window that
+   * is visible: Android keeps a view attached when the activity stops (lock, Background) and only its window
+   * turns invisible, which is how StreamPack 3.2.1's own PreviewView reads it (javap: `onWindowVisibilityChanged`
+   * stops its preview on anything but VISIBLE). Each hook's direction, the one report, and the streamer follow
+   * are pinned; nothing here may crash the app, so the report is guarded and the follow's scope has its handler.
    */
   @Test
-  fun `I5 the module registers the preview, whose reports and follow never crash the app`() {
+  fun `I5 I-1 the preview reports the viewfinder from attach, visibility and detach, and follows the streamer`() {
     assertEquals(1, Regex("""\bView\(CapturePreviewView::class\)""").findAll(glue("CaptureEngineModule.kt")).count(), "the module's default view")
     val view = glue("CapturePreviewView.kt")
-    val reports = Regex("""viewfinder\((true|false)\)""").findAll(view).toList()
-    assertEquals(2, reports.size, "attach and detach")
-    for (report in reports) {
-      val line = view.substring(view.lastIndexOf('\n', report.range.first) + 1, view.indexOf('\n', report.range.last))
-      assertTrue(Regex("""^\s*guarded\("(attach|detach)"\) \{ EngineHost\.core\(context\)\.viewfinder\(""").containsMatchIn(line), "unguarded: $line")
-    }
+    val reports = Regex("""viewfinder\(""").findAll(view).toList()
+    assertEquals(1, reports.size, "one report, which reads the view's state")
+    val report = body(view, "private fun report(")
+    assertTrue(Regex("""guarded\(action\) \{ EngineHost\.core\(context\)\.viewfinder\(attached && visibility == VISIBLE\) \}""").containsMatchIn(report), "the report: $report")
+    val attach = body(view, "override fun onAttachedToWindow()")
+    assertTrue(Regex("""attached = true\s+report\("attach"\)""").containsMatchIn(attach), "attach marks attached, then reports: $attach")
+    assertTrue(Regex("""EngineHost\.capture\(context\)\.streamer\.collect \{ streamer ->""").containsMatchIn(attach), "the follow starts on attach")
+    assertTrue("preview.setVideoSourceProvider(streamer)" in attach, "the follow binds each streamer, a null one unbinding")
+    val visibility = body(view, "override fun onWindowVisibilityChanged(visibility: Int)")
+    assertTrue(Regex("""super\.onWindowVisibilityChanged\(visibility\)\s+report\("visibility", visibility\)""").containsMatchIn(visibility), "visibility reports its own value: $visibility")
+    val detach = body(view, "override fun onDetachedFromWindow()")
+    assertTrue(Regex("""attached = false\s+report\("detach"\)""").containsMatchIn(detach), "detach clears attached, then reports: $detach")
+    assertTrue("following?.cancel()" in detach, "the follow stops on detach")
+    assertTrue("private var attached = false" in view, "not attached until attach")
+    assertEquals(2, Regex("""(?<!var )\battached = (true|false)""").findAll(view).count(), "attached is set by attach and detach only")
     assertTrue(Regex("""CoroutineScope\(SupervisorJob\(\) \+ Dispatchers\.Main \+ failed\)""").containsMatchIn(view), "the follow's scope has its handler")
   }
 
