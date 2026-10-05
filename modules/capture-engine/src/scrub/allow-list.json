@@ -115,6 +115,7 @@
     "headroom": "native: thermal, the platform's thermal headroom, or null",
     "held": "native: readiness, whether the phone is held level",
     "lagGrowthMs": "native: not-delivered, how far the playlist fell behind, or null",
+    "lagMs": "native: capture-clock, how far the first video frame's capture time trails the wall clock",
     "late": "native: start-answered, true when the answer came after its hold was retired (C0b I1)",
     "msSinceAdvance": "native: video-stalled, the time since the last frame",
     "ok": "native: camera-reopened, whether the camera came back",
@@ -143,6 +144,7 @@
     "camera-resumed": "native: frames came back after the camera returned",
     "camera-switched": "native: the operator switched cameras",
     "camera-taken": "native: another app took the camera",
+    "capture-clock": "native: the first video frame of an attempt reached the endpoint, with its capture lag behind the wall clock (carry 5)",
     "code": "native: an answer to a code fetch that decided nothing yet",
     "code-ended-pending": "native: the code ended while a broadcast was held",
     "code-unreadable": "native: the code's answer could not be read",
@@ -195,6 +197,7 @@
     "store-unreadable": "native: a private store file held a value no rule reads (G2)",
     "thermal": "native: the thermal status changed",
     "tick-late": "native: two snapshot ticks more than 1000 ms apart while Paired or a broadcast was held, with the gap (CD33, carry 14)",
+    "tls-closer-swallowed": "native: the TLS guard swallowed Ktor's closer throw on an RTMP IO thread (F-P5-12), with its class name",
     "unpaired": "native: the pairing ended without a broadcast end",
     "vendor-log": "native: StreamPack logged a warning or an error (CD30): its tag, its message as text, and the throwable's class name",
     "video-stalled": "native: the watchdog saw no frames and rebuilt the encoder"
