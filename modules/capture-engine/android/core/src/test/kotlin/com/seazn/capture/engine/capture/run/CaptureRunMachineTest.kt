@@ -3,6 +3,7 @@ package com.seazn.capture.engine.capture.run
 import com.seazn.capture.engine.StreamPack
 import com.seazn.capture.engine.adapter.AttemptSignals
 import com.seazn.capture.engine.adapter.CameraAvailability
+import com.seazn.capture.engine.adapter.EncoderKeys
 import com.seazn.capture.engine.core.Command
 import com.seazn.capture.engine.core.Configs
 import com.seazn.capture.engine.core.Engine
@@ -12,6 +13,7 @@ import com.seazn.capture.engine.core.FallbackPolicy
 import com.seazn.capture.engine.core.Input
 import com.seazn.capture.engine.core.NotReady
 import com.seazn.capture.engine.core.PairRequest
+import com.seazn.capture.engine.core.RecordEntry
 import com.seazn.capture.engine.core.RtmpsTarget
 import com.seazn.capture.engine.core.Phase
 import com.seazn.capture.engine.core.SessionMachine
@@ -229,5 +231,38 @@ class CaptureRunMachineTest {
       advanceUntilIdle()
       assertEquals(listOf(Input.CameraContended, Input.CameraReleased, Input.CameraReopened(true)), rig.told.reports.filter { it !is Input.ConnectFailed && it !is Input.Connected })
       assertEquals(listOf(1), rig.connects.map { it.attemptId }, "the take told over: Armed connects")
+    }
+
+  /**
+   * Device fix round, item (c), through the real machine: another app takes the camera while Armed, after our open,
+   * and lets it go. Nothing is on air, so no slate is up and the source held is our camera, which StreamPack's
+   * same-camera swap would not open again: the machine's ReopenCamera builds it afresh, once, and only then is the
+   * camera ours and the broadcast connects.
+   */
+  @Test
+  fun `(c) a camera taken and released while Armed is built afresh by the reopen, and then the broadcast connects`() =
+    runTest {
+      val rig = Rig(this)
+      Configs.pairInputs(ready = false).forEach(rig.engine::send)
+      rig.scheduler.advanceBy(0)
+      advanceUntilIdle()
+      rig.parts.opened("0") // our preview opened it
+      advanceUntilIdle()
+      val left = EncoderKeys.surfaceRotation(Side.LEFT)
+      assertEquals(listOf("build $left", "build done"), rig.parts.log, "built once, at the pair")
+      rig.engine.send(Input.CameraContended) // CameraWatch: another app holds it
+      rig.scheduler.advanceBy(0)
+      rig.engine.send(Input.CameraReleased)
+      rig.scheduler.advanceBy(0)
+      advanceUntilIdle()
+      assertEquals(1, rig.executed.count { it == Command.ReopenCamera }, "${rig.executed}")
+      assertEquals(listOf("build $left", "build done", "release", "release done", "build $left", "build done"), rig.parts.log)
+      assertEquals(listOf(RecordEntry("capture-rebuilt", listOf("action" to "reopen"))), rig.told.lines.filter { it.kind == "capture-rebuilt" })
+      assertTrue(Input.CameraReopened(true) in rig.told.reports, "${rig.told.reports}")
+      assertFalse(Command.Slate(on = true) in rig.executed, "Armed sends nothing, so no slate: ${rig.executed}")
+      rig.engine.send(Input.ReadinessChanged(Configs.READY))
+      rig.scheduler.advanceBy(0)
+      advanceUntilIdle()
+      assertEquals(listOf(1), rig.connects.map { it.attemptId }, "the camera ours again: Armed connects")
     }
 }

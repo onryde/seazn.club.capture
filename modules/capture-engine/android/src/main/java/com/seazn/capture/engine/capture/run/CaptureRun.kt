@@ -116,18 +116,19 @@ class CaptureRun(
   private suspend fun lostByDevice(camera: String) {
     if (!cameras.lost(camera)) return
     calls.line(RecordEntry("camera-lost", listOf("from" to "device", "attempt" to attempt)))
-    if (attempt == null) rebuild()
+    if (attempt == null) rebuild("camera")
   }
 
   /**
    * F-S4-1: the camera built afresh, at the rotation held (CD42), a real open: StreamPack 3.2.1's
    * `VideoInput.setSource` skips a camera source of the same id (its sources), so a reopen of the same camera
    * opens nothing, and only a new build opens it again. The release closes the attempt held, as a stop asked for.
+   * [action] names why: `camera` for a loss, `reopen` for a release with nothing on air ([reopen]).
    */
-  private suspend fun rebuild() {
+  private suspend fun rebuild(action: String) {
     val asked = request ?: return
     val wanted = rotation ?: EncoderKeys.surfaceRotation(side())
-    calls.line(RecordEntry("capture-rebuilt", listOf("action" to "camera")))
+    calls.line(RecordEntry("capture-rebuilt", listOf("action" to action)))
     closed()
     request = asked
     build(asked, wanted)
@@ -173,7 +174,7 @@ class CaptureRun(
       is Command.SetBitrate -> parts.bitrate(command.bps)
       is Command.SetMaxBw -> parts.maxBw(command.attemptId, command.bytesPerSecond)
       Command.SwitchCamera -> parts.switchCamera()
-      Command.ReopenCamera -> calls.report(Input.CameraReopened(parts.reopenCamera()))
+      Command.ReopenCamera -> reopen()
       is Command.Slate -> parts.slate(command.on)
       Command.StopBroadcast, is Command.End -> stopBroadcast()
       else -> Unit // HTTP, the store, permissions, the service and record lines are BridgeCore's or the keeper's
@@ -181,7 +182,7 @@ class CaptureRun(
   }
 
   /**
-   * Nothing open: nothing to carry out, except the reopen a busy camera's release asked for (I4). A
+   * Nothing open: nothing to carry out, except the reopen a busy camera's release asked for (I4, [reopen]). A
    * connect, a Rebuild's or a new session's next one too, is answered at once with a line (C6 m-3): the
    * machine would otherwise wait out its connect timeout on an attempt nothing can open, with no word why.
    */
@@ -190,13 +191,27 @@ class CaptureRun(
       is Command.Connect -> nothingHeld(command)
       is Command.Rebuild -> nothingHeld(command.next)
       is Command.StartNewSession -> nothingHeld(command.next)
-      Command.ReopenCamera -> {
-        val asked = request ?: return calls.report(Input.CameraReopened(false))
-        build(asked, EncoderKeys.surfaceRotation(side()))
-        if (parts.held) calls.report(Input.CameraReopened(true))
-      }
+      Command.ReopenCamera -> reopen()
       else -> Unit
     }
+  }
+
+  /**
+   * The camera opened again for real once its holder let it go. Nothing held: the busy build's release (I4) builds
+   * the pairing's request. An attempt held: the slate is up (I2, it goes up only while sending), and the swap back
+   * to our camera is a real open, since the slate is no camera source. Otherwise (device fix round, item (c)) no
+   * slate is up and the source held is our camera, which StreamPack 3.2.1's `VideoInput.setSource` skips as the
+   * same source (`CameraSourceFactory.isSourceEquals`, javap): a swap opens nothing, so the camera is built afresh.
+   * The reopen is claimed only once something holds it; a build that finds it taken again is the busy build's.
+   */
+  private suspend fun reopen() {
+    val asked = request ?: return calls.report(Input.CameraReopened(false))
+    when {
+      !parts.held -> build(asked, EncoderKeys.surfaceRotation(side()))
+      attempt != null -> return calls.report(Input.CameraReopened(parts.reopenCamera()))
+      else -> rebuild("reopen")
+    }
+    if (parts.held) calls.report(Input.CameraReopened(true))
   }
 
   private fun nothingHeld(connect: Command.Connect) {
@@ -306,7 +321,7 @@ class CaptureRun(
     }
     cameras.lost(camera)
     calls.line(RecordEntry("camera-lost", listOf("from" to "start", "attempt" to id)))
-    rebuild()
+    rebuild("camera")
   }
 
   /** N8: checked once per opening, at its first connect, when StreamPack's AudioRecord is recording. */

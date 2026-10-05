@@ -38,7 +38,10 @@ interface CaptureParts {
 
   suspend fun switchCamera()
 
-  /** True when the camera opened again. */
+  /**
+   * The slate's swap back to our camera: true when that opened it again. False over a camera source, which
+   * StreamPack would skip as the same source (item (c)); the run builds the camera afresh when nothing is on air.
+   */
   suspend fun reopenCamera(): Boolean
 
   suspend fun slate(on: Boolean)

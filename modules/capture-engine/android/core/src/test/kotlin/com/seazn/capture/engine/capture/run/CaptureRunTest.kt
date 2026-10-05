@@ -717,13 +717,56 @@ class CaptureRunTest {
       assertEquals((1..3).map { listOf<Pair<String, Any?>>("action" to "connect", "attempt" to it) }, s.told.lines.map { it.fields })
     }
 
+  /** With an attempt held the reopen is the source's swap back from the slate, its answer passed as it is. */
   @Test
   fun `held - the encoder, the link, the camera and the slate commands reach StreamPack`() =
     runTest {
       val s = opened()
+      does(s, connect(1))
+      s.parts.log.clear()
       s.parts.reopens = false
       does(s, Command.SetBitrate(1, 2_000_000), Command.SetMaxBw(1, 250_000), Command.SwitchCamera, Command.ReopenCamera, Command.Slate(true))
       assertEquals(listOf("bitrate 2000000", "maxbw 1 250000", "switch", "reopen", "slate true"), s.parts.log)
-      assertEquals(listOf<Input>(Input.CameraReopened(false)), s.told.reports)
+      assertEquals(listOf<Input>(Input.Connected(1), Input.CameraReopened(false)), s.told.reports)
+    }
+
+  /**
+   * Device fix round, item (c): with nothing on air no slate is up (I2), so the source held is our camera, and
+   * StreamPack 3.2.1's `VideoInput.setSource` skips a camera source of the same id (`CameraSourceFactory.isSourceEquals`,
+   * javap): the swap opened nothing and answered true. The reopen is a build afresh, a real open, at the rotation
+   * the broadcast holds (CD42), never the side the phone turned to since; the new opening's open is watched.
+   */
+  @Test
+  fun `(c) with nothing on air the release's reopen builds the camera afresh, at the rotation held, and watches its open`() =
+    runTest {
+      var side = Side.LEFT
+      val s = scene(side = { side })
+      s.run.open(request)
+      advanceUntilIdle()
+      s.parts.log.clear()
+      side = Side.RIGHT // turned, with no Orient yet: the build keeps the rotation held
+      does(s, Command.ReopenCamera)
+      assertEquals(listOf("release", "release done", "build $left", "build done"), s.parts.log)
+      assertEquals(listOf<Input>(Input.CameraReopened(true)), s.told.reports)
+      assertEquals(listOf(RecordEntry("capture-rebuilt", listOf("action" to "reopen"))), s.told.lines)
+      assertEquals(1, s.parts.watching, "the new opening watches its camera")
+    }
+
+  /** The sequence: a reopen whose build finds the camera taken again is the busy build's (I4), and the next release opens it. */
+  @Test
+  fun `(c) a reopen whose build finds the camera taken again claims no reopen, and the next release builds it`() =
+    runTest {
+      val s = opened()
+      s.parts.builds += Built.Failed("0", cameraInUse, encoder = false, error = RuntimeException("Camera already in use"))
+      does(s, Command.ReopenCamera)
+      assertEquals(listOf(request), s.told.busy, "taken again: the pairing waits for the release")
+      assertEquals(emptyList(), s.told.reports, "no reopen claimed")
+      assertFalse(s.parts.held)
+      s.parts.log.clear()
+      assertEquals(Input.CameraReleased, s.cameras.available("0", 3_000), "CameraWatch: the holder let go again")
+      does(s, Command.ReopenCamera)
+      assertEquals(listOf("build $left", "build done"), s.parts.log, "nothing held: a build, no release")
+      assertEquals(listOf<Input>(Input.CameraReopened(true)), s.told.reports)
+      assertEquals(1, s.told.lines.count { it.kind == "capture-rebuilt" }, "the release once, the first reopen's")
     }
 }

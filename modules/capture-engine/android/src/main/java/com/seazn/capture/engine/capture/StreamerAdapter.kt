@@ -285,6 +285,8 @@ class StreamerAdapter(
     override suspend fun reopenCamera(): Boolean {
       val held = current.value ?: return false
       val id = cameraId ?: return false
+      // Item (c): StreamPack skips a camera source of the same id (isSourceEquals), so only the slate's swap opens one.
+      if (held.videoInput.sourceFlow.value is ICameraSource) return false
       cameras.selfChange(SystemClock.elapsedRealtime())
       cameras.opening(id) // I-2, review C7 M-4: held once StreamPack reports the new source open
       return quietly("reopen") { held.setVideoSource(CameraSourceFactory(id)) }

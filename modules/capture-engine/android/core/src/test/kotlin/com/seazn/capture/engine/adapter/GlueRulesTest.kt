@@ -5,6 +5,7 @@ import java.io.File
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
 /**
@@ -507,6 +508,22 @@ class GlueRulesTest {
     val view = glue("CapturePreviewView.kt")
     val failed = Regex("""override fun onPreviewFailed\(t: Throwable\) \{\s+failed\("open", t\)\s+guarded\("open"\) \{ EngineHost\.capture\(context\)\.previewFailed\(t\) \}""")
     assertEquals(1, failed.findAll(view).count(), "the preview's open failure is recorded and reaches the capture, guarded")
+  }
+
+  /**
+   * Device fix round, item (c): StreamPack 3.2.1's `VideoInput.setSource` skips a camera source of the same id
+   * (`CameraSourceFactory.isSourceEquals`, javap), so the reopen's swap opens a camera only from the slate. Over a
+   * camera source it answers false before announcing or setting anything, never a silent true; with nothing on air
+   * the run builds the camera afresh instead (CaptureRunTest, CaptureRunMachineTest).
+   */
+  @Test
+  fun `(c) the reopen's swap opens only from the slate, and answers false over a camera source`() {
+    val reopen = body(glue("StreamerAdapter.kt"), "override suspend fun reopenCamera()")
+    val refusal = Regex("""if \(held\.videoInput\.sourceFlow\.value is ICameraSource\) return false""").find(reopen)
+    assertNotNull(refusal, "a camera source held is no swap: $reopen")
+    val announced = reopen.indexOf("cameras.opening(id)")
+    val set = reopen.indexOf("held.setVideoSource(CameraSourceFactory(id))")
+    assertTrue(refusal.range.last < reopen.indexOf("cameras.selfChange(") && refusal.range.last < announced && announced < set, "refused before anything is announced or set: $reopen")
   }
 
   /**
