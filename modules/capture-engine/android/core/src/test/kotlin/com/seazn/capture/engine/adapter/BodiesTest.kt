@@ -67,7 +67,7 @@ class BodiesTest {
   fun `the session shape, every shared case`() {
     val cases = sessions.getJSONArray("cases")
     // The file's rows (PV12).
-    assertEquals(39, cases.length())
+    assertEquals(45, cases.length())
     val seen = mutableMapOf<String, Int>()
     for (i in 0 until cases.length()) {
       val case = cases.getJSONObject(i)
@@ -79,21 +79,22 @@ class BodiesTest {
       // The whole expected object against the answer read the same way: no key unchecked, none extra.
       assertEquals(e.toMap(), decisive(answer), why)
     }
-    assertEquals(mapOf("open" to 8, "unreadable" to 22, "not-current" to 1, "foreign-ingest" to 4, "over" to 3, "waiting" to 1), seen)
+    assertEquals(mapOf("open" to 8, "unreadable" to 22, "not-current" to 1, "foreign-ingest" to 10, "over" to 3, "waiting" to 1), seen)
   }
 
   @Test
   fun `the session shape's bounds, edge for edge`() {
     fun srt(url: String) = JSONObject(base).also { it.getJSONObject("cred").getJSONObject("srt").put("url", url) }.toString()
     // The ingest-host rule reads the scheme and host in either case; the shape is srt://host:port and nothing after.
-    for (url in listOf("SRT://LIVE.STG.SEAZN.CLUB:778", "srt://live.stg.seazn.club:1", "srt://live.stg.seazn.club:65535")) {
+    val host = Configs.INGEST_HOST
+    for (url in listOf("SRT://${host.uppercase()}:778", "srt://$host:1", "srt://$host:65535")) {
       assertIs<CodeAnswer.Open>(Bodies.code(200, srt(url), null, Environment.STAGING), url)
     }
-    for (url in listOf("srt://live.stg.seazn.club:65536", "srt://live.stg.seazn.club:778#x", "srt://live.stg.seazn.club:778?latency=2000")) {
+    for (url in listOf("srt://$host:65536", "srt://$host:778#x", "srt://$host:778?latency=2000")) {
       assertEquals(CodeAnswer.Unreadable("cred.srt"), Bodies.code(200, srt(url), null, Environment.STAGING), url)
     }
     // A host the host rule cannot read at all is refused there first, as any foreign host is.
-    for (url in listOf("srt://live.stg.seazn.club:778 ", "srt://live.stg.seazn.club:")) {
+    for (url in listOf("srt://$host:778 ", "srt://$host:")) {
       assertEquals(CodeAnswer.ForeignIngest(SID), Bodies.code(200, srt(url), null, Environment.STAGING), url)
     }
     // The upper and lower edges the schema allows are read.
@@ -121,11 +122,11 @@ class BodiesTest {
     assertEquals(300, d.maxDurationMinutes)
     assertEquals(1_790_000_600L, d.warmingDeadlineEpochS)
     val srt = assertIs<SrtTarget>(d.primary)
-    assertEquals(listOf("srt://live.stg.seazn.club:778", Configs.STREAM_ID, Configs.PASSPHRASE, 2_000), listOf(srt.url, srt.streamId, srt.passphrase, srt.latencyMs))
+    assertEquals(listOf(Configs.srt.url, Configs.STREAM_ID, Configs.PASSPHRASE, 2_000), listOf(srt.url, srt.streamId, srt.passphrase, srt.latencyMs))
     val rtmps = assertIs<RtmpsTarget>(d.fallback)
-    assertEquals(listOf("rtmps://live.stg.seazn.club:443/live/", Configs.STREAM_KEY), listOf(rtmps.url, rtmps.streamKey))
-    // A production build refuses the staging ingest hosts.
-    assertEquals(CodeAnswer.ForeignIngest(SID), Bodies.code(200, base, null, Environment.PRODUCTION))
+    assertEquals(listOf(Configs.rtmps.url, Configs.STREAM_KEY), listOf(rtmps.url, rtmps.streamKey))
+    // One ingest host for both environments (owner ruling A, 2026-10-05): a production build opens it too.
+    assertIs<CodeAnswer.Open>(Bodies.code(200, base, null, Environment.PRODUCTION))
   }
 
   @Test
@@ -500,9 +501,43 @@ class BodiesTest {
   fun `no answer prints a secret`() {
     val cases = sessions.getJSONArray("cases")
     val answers = (0 until cases.length()).map { Bodies.code(200, body(cases.getJSONObject(it)), null, Environment.STAGING) } + Bodies.code(200, base, null, Environment.STAGING)
-    assertEquals(40, answers.size)
+    assertEquals(46, answers.size)
     assertTrue(answers.any { it is CodeAnswer.Open }, "an open answer, whose descriptor holds every secret")
     for (answer in answers) for (secret in SECRETS + Configs.STREAM_ID) assertFalse(secret in answer.toString(), "$secret in $answer")
+  }
+
+  /**
+   * Item 5 (owner ruling A, 2026-10-05): stg dropped its custom ingest host and prd never had one, so a cred on
+   * live.cloudflare.com, both transports, arms through the real machine on either environment, where the device
+   * logged cred-host-refused on every start. The retired custom hosts are refused the same way, the positive pair.
+   */
+  @Test
+  fun `item 5 an srt and rtmps cred on Cloudflare's host arms through the machine on both environments, a custom host is refused`() {
+    fun armed(env: Environment, srt: String, rtmps: String): MachineRig {
+      val body = JSONObject(base)
+      body.getJSONObject("cred").getJSONObject("srt").put("url", srt)
+      body.getJSONObject("cred").getJSONObject("rtmps").put("url", rtmps)
+      val rig = MachineRig()
+      rig.codes = { if (rig.phase is Phase.Arming) Bodies.code(200, body.toString(), null, env) else null }
+      rig.paired()
+      rig.answerBeat(Bodies.beat(200, beat("go-live", "sid" to SID, "startedBy" to "organiser"), null, env))
+      return rig
+    }
+    val retired = mapOf(Environment.STAGING to "live.stg.seazn.club", Environment.PRODUCTION to "live.seazn.club")
+    var checked = 0
+    for (env in Environment.entries) {
+      val rig = armed(env, Configs.srt.url, Configs.rtmps.url)
+      assertEquals(SID, rig.phase.heldSid, "$env: armed")
+      assertTrue(rig.records("armed").isNotEmpty() && rig.records("cred-host-refused").isEmpty(), "$env: ${rig.sent<Command.Record>().map { it.entry.kind }}")
+      val custom = retired.getValue(env)
+      for ((srt, rtmps) in listOf("srt://$custom:778" to Configs.rtmps.url, Configs.srt.url to "rtmps://$custom:443/live/")) {
+        val refused = armed(env, srt, rtmps)
+        assertNull(refused.phase.heldSid, "$env $srt $rtmps")
+        assertEquals(listOf(SID), refused.records("cred-host-refused").map { it.field("sid") }, "$env $srt $rtmps")
+      }
+      checked++
+    }
+    assertEquals(Environment.entries.size, checked)
   }
 
   @Test
@@ -531,7 +566,7 @@ class BodiesTest {
     // And a session shape with no cred: not the current phone, a claim and a second fetch.
     val foreign = JSONObject(base).also { it.getJSONObject("cred").getJSONObject("srt").put("url", "srt://live.cloudflare.com.evil.example:778") }
     val unread = JSONObject(base).also { it.getJSONObject("cred").getJSONObject("srt").remove("latencyMs") }
-    val query = JSONObject(base).also { it.getJSONObject("cred").getJSONObject("srt").put("url", "srt://live.stg.seazn.club:778?passphrase=${Configs.PASSPHRASE}") }
+    val query = JSONObject(base).also { it.getJSONObject("cred").getJSONObject("srt").put("url", "${Configs.srt.url}?passphrase=${Configs.PASSPHRASE}") }
     val short = JSONObject(base).also { it.getJSONObject("cred").getJSONObject("srt").put("passphrase", SHORT) }
     val notCurrent = JSONObject(base).also { it.remove("cred") }
     for (body in listOf(foreign, unread, query, short, notCurrent)) {
@@ -707,8 +742,8 @@ class BodiesTest {
         Configs.PASSPHRASE,
         URLEncoder.encode(Configs.PASSPHRASE, "UTF-8"),
         Configs.STREAM_KEY,
-        "rtmps://live.stg.seazn.club:443/live/${Configs.STREAM_KEY}",
-        "srt://live.stg.seazn.club:778?streamid=${Configs.STREAM_ID}",
+        Configs.rtmps.url + Configs.STREAM_KEY,
+        "${Configs.srt.url}?streamid=${Configs.STREAM_ID}",
       )
 
     /** A beat's 200, shaped as capture-beat.v1's answer: [fields] and the common fields. */

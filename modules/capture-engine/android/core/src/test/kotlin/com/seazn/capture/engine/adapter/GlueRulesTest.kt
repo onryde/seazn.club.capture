@@ -580,7 +580,8 @@ class GlueRulesTest {
 
   /**
    * Security: `cred` is read in `Bodies` and nowhere else, onto the ingest host only (amendment, _Who reads
-   * what_), and `SrtOptions.plan`'s all-environment host list rests on Bodies being the only producer of a
+   * what_; the host is `Hosts.INGEST`, live.cloudflare.com, for both transports in both environments, owner
+   * ruling A, 2026-10-05), and `SrtOptions.plan`'s own host check rests on Bodies being the only producer of a
    * target (review 19, m8). The glue receives targets; it never builds one.
    */
   @Test

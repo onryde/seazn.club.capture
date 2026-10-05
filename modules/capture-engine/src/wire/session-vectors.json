@@ -7,13 +7,13 @@
     "sid": "3f9a2c7e-8b14-4d5e-a6f7-0c1d2e3f4a5b",
     "cred": {
       "srt": {
-        "url": "srt://live.stg.seazn.club:778",
+        "url": "srt://live.cloudflare.com:778",
         "streamId": "a1b2c3d4e5f60718293a4b5c6d7e8f90",
         "passphrase": "pass+phrase/6d1e8b0c",
         "latencyMs": 2000
       },
       "rtmps": {
-        "url": "rtmps://live.stg.seazn.club:443/live/",
+        "url": "rtmps://live.cloudflare.com:443/live/",
         "streamKey": "key-4c7a0e2b9d5f1386"
       }
     },
@@ -72,7 +72,7 @@
         "cred": {
           "srt": null,
           "rtmps": {
-            "url": "rtmps://live.stg.seazn.club:443/live/",
+            "url": "rtmps://live.cloudflare.com:443/live/",
             "streamKey": "key-4c7a0e2b9d5f1386"
           }
         }
@@ -93,7 +93,7 @@
         "cred": {
           "srt": null,
           "rtmps": {
-            "url": "rtmps://live.stg.seazn.club:443/live/",
+            "url": "rtmps://live.cloudflare.com:443/live/",
             "streamKey": "key-4c7a0e2b9d5f1386"
           }
         }
@@ -113,7 +113,7 @@
       }
     },
     {
-      "why": "SRT on Cloudflare's own host is allowed (owner, 2026-10-01)",
+      "why": "Both transports on Cloudflare's own host, the one ingest host in every environment (owner ruling A, 2026-10-05)",
       "override": {
         "cred": {
           "srt": {
@@ -123,7 +123,7 @@
             "latencyMs": 2000
           },
           "rtmps": {
-            "url": "rtmps://live.stg.seazn.club:443/live/",
+            "url": "rtmps://live.cloudflare.com:443/live/",
             "streamKey": "key-4c7a0e2b9d5f1386"
           }
         }
@@ -149,7 +149,7 @@
             "latencyMs": 2000
           },
           "rtmps": {
-            "url": "rtmps://live.stg.seazn.club:443/live/",
+            "url": "rtmps://live.cloudflare.com:443/live/",
             "streamKey": "key-4c7a0e2b9d5f1386"
           }
         }
@@ -160,7 +160,7 @@
       }
     },
     {
-      "why": "RTMPS on Cloudflare's host is refused: RTMPS stays on live.*",
+      "why": "SRT on the retired staging custom host is refused: Cloudflare's host is the only ingest host (owner ruling A, 2026-10-05)",
       "override": {
         "cred": {
           "srt": {
@@ -181,7 +181,7 @@
       }
     },
     {
-      "why": "RTMPS on the production ingest host for a staging build",
+      "why": "RTMPS on the retired production custom host, for a staging build (owner ruling A, 2026-10-05)",
       "override": {
         "cred": {
           "srt": null,
@@ -198,18 +198,18 @@
       }
     },
     {
-      "why": "a production build: both transports on the production ingest host",
+      "why": "a production build: both transports on Cloudflare's host (owner ruling A, 2026-10-05)",
       "env": "production",
       "override": {
         "cred": {
           "srt": {
-            "url": "srt://live.seazn.club:778",
+            "url": "srt://live.cloudflare.com:778",
             "streamId": "a1b2c3d4e5f60718293a4b5c6d7e8f90",
             "passphrase": "pass+phrase/6d1e8b0c",
             "latencyMs": 2000
           },
           "rtmps": {
-            "url": "rtmps://live.seazn.club:443/live/",
+            "url": "rtmps://live.cloudflare.com:443/live/",
             "streamKey": "key-4c7a0e2b9d5f1386"
           }
         }
@@ -225,7 +225,7 @@
       }
     },
     {
-      "why": "a production build: SRT on the staging ingest host",
+      "why": "a production build: SRT on the retired staging custom host (owner ruling A, 2026-10-05)",
       "env": "production",
       "override": {
         "cred": {
@@ -236,7 +236,135 @@
             "latencyMs": 2000
           },
           "rtmps": {
+            "url": "rtmps://live.cloudflare.com:443/live/",
+            "streamKey": "key-4c7a0e2b9d5f1386"
+          }
+        }
+      },
+      "expected": {
+        "answer": "foreign-ingest",
+        "sid": "3f9a2c7e-8b14-4d5e-a6f7-0c1d2e3f4a5b"
+      }
+    },
+    {
+      "why": "RTMPS on the retired staging custom host, the host stg dropped on 2026-10-05 (owner ruling A, 2026-10-05)",
+      "override": {
+        "cred": {
+          "srt": {
+            "url": "srt://live.cloudflare.com:778",
+            "streamId": "a1b2c3d4e5f60718293a4b5c6d7e8f90",
+            "passphrase": "pass+phrase/6d1e8b0c",
+            "latencyMs": 2000
+          },
+          "rtmps": {
+            "url": "rtmps://live.stg.seazn.club:443/live/",
+            "streamKey": "key-4c7a0e2b9d5f1386"
+          }
+        }
+      },
+      "expected": {
+        "answer": "foreign-ingest",
+        "sid": "3f9a2c7e-8b14-4d5e-a6f7-0c1d2e3f4a5b"
+      }
+    },
+    {
+      "why": "a production build: RTMPS on the retired production custom host (owner ruling A, 2026-10-05)",
+      "env": "production",
+      "override": {
+        "cred": {
+          "srt": {
+            "url": "srt://live.cloudflare.com:778",
+            "streamId": "a1b2c3d4e5f60718293a4b5c6d7e8f90",
+            "passphrase": "pass+phrase/6d1e8b0c",
+            "latencyMs": 2000
+          },
+          "rtmps": {
             "url": "rtmps://live.seazn.club:443/live/",
+            "streamKey": "key-4c7a0e2b9d5f1386"
+          }
+        }
+      },
+      "expected": {
+        "answer": "foreign-ingest",
+        "sid": "3f9a2c7e-8b14-4d5e-a6f7-0c1d2e3f4a5b"
+      }
+    },
+    {
+      "why": "a production build: SRT on the retired production custom host (owner ruling A, 2026-10-05)",
+      "env": "production",
+      "override": {
+        "cred": {
+          "srt": {
+            "url": "srt://live.seazn.club:778",
+            "streamId": "a1b2c3d4e5f60718293a4b5c6d7e8f90",
+            "passphrase": "pass+phrase/6d1e8b0c",
+            "latencyMs": 2000
+          },
+          "rtmps": {
+            "url": "rtmps://live.cloudflare.com:443/live/",
+            "streamKey": "key-4c7a0e2b9d5f1386"
+          }
+        }
+      },
+      "expected": {
+        "answer": "foreign-ingest",
+        "sid": "3f9a2c7e-8b14-4d5e-a6f7-0c1d2e3f4a5b"
+      }
+    },
+    {
+      "why": "RTMPS on a lookalike that ends in Cloudflare's host and goes on",
+      "override": {
+        "cred": {
+          "srt": {
+            "url": "srt://live.cloudflare.com:778",
+            "streamId": "a1b2c3d4e5f60718293a4b5c6d7e8f90",
+            "passphrase": "pass+phrase/6d1e8b0c",
+            "latencyMs": 2000
+          },
+          "rtmps": {
+            "url": "rtmps://live.cloudflare.com.evil:443/live/",
+            "streamKey": "key-4c7a0e2b9d5f1386"
+          }
+        }
+      },
+      "expected": {
+        "answer": "foreign-ingest",
+        "sid": "3f9a2c7e-8b14-4d5e-a6f7-0c1d2e3f4a5b"
+      }
+    },
+    {
+      "why": "RTMPS on a lookalike that only ends in Cloudflare's host",
+      "override": {
+        "cred": {
+          "srt": {
+            "url": "srt://live.cloudflare.com:778",
+            "streamId": "a1b2c3d4e5f60718293a4b5c6d7e8f90",
+            "passphrase": "pass+phrase/6d1e8b0c",
+            "latencyMs": 2000
+          },
+          "rtmps": {
+            "url": "rtmps://evil-live.cloudflare.com:443/live/",
+            "streamKey": "key-4c7a0e2b9d5f1386"
+          }
+        }
+      },
+      "expected": {
+        "answer": "foreign-ingest",
+        "sid": "3f9a2c7e-8b14-4d5e-a6f7-0c1d2e3f4a5b"
+      }
+    },
+    {
+      "why": "RTMPS whose Cloudflare host is userinfo in front of another",
+      "override": {
+        "cred": {
+          "srt": {
+            "url": "srt://live.cloudflare.com:778",
+            "streamId": "a1b2c3d4e5f60718293a4b5c6d7e8f90",
+            "passphrase": "pass+phrase/6d1e8b0c",
+            "latencyMs": 2000
+          },
+          "rtmps": {
+            "url": "rtmps://live.cloudflare.com@evil:443/live/",
             "streamKey": "key-4c7a0e2b9d5f1386"
           }
         }
@@ -372,7 +500,7 @@
     {
       "why": "cred not an object",
       "override": {
-        "cred": "srt://live.stg.seazn.club:778"
+        "cred": "srt://live.cloudflare.com:778"
       },
       "expected": {
         "answer": "unreadable",
@@ -384,12 +512,12 @@
       "override": {
         "cred": {
           "srt": {
-            "url": "srt://live.stg.seazn.club:778",
+            "url": "srt://live.cloudflare.com:778",
             "streamId": "a1b2c3d4e5f60718293a4b5c6d7e8f90",
             "latencyMs": 2000
           },
           "rtmps": {
-            "url": "rtmps://live.stg.seazn.club:443/live/",
+            "url": "rtmps://live.cloudflare.com:443/live/",
             "streamKey": "key-4c7a0e2b9d5f1386"
           }
         }
@@ -404,13 +532,13 @@
       "override": {
         "cred": {
           "srt": {
-            "url": "srt://live.stg.seazn.club:778",
+            "url": "srt://live.cloudflare.com:778",
             "streamId": "a1b2c3d4e5f60718293a4b5c6d7e8f90",
             "passphrase": "pass+phrase/6d1e8b0c",
             "latencyMs": 2000
           },
           "rtmps": {
-            "url": "rtmps://live.stg.seazn.club:443/live/"
+            "url": "rtmps://live.cloudflare.com:443/live/"
           }
         }
       },
@@ -455,13 +583,13 @@
       "override": {
         "cred": {
           "srt": {
-            "url": "srt://live.stg.seazn.club:778",
+            "url": "srt://live.cloudflare.com:778",
             "streamId": "a1b2c3d4e5f60718293a4b5c6d7e8f90",
             "passphrase": "pass+phrase/6d1e8b0c",
             "latencyMs": 2000
           },
           "rtmps": {
-            "url": "rtmps://live.stg.seazn.club:443/live/key-4c7a0e2b9d5f1386",
+            "url": "rtmps://live.cloudflare.com:443/live/key-4c7a0e2b9d5f1386",
             "streamKey": "key-4c7a0e2b9d5f1386"
           }
         }
@@ -483,13 +611,13 @@
         "overlayUrl": "https://seazn.club/overlay/fixtures/f1",
         "cred": {
           "srt": {
-            "url": "srt://live.seazn.club:778",
+            "url": "srt://live.cloudflare.com:778",
             "streamId": "a1b2c3d4e5f60718293a4b5c6d7e8f90",
             "passphrase": "pass+phrase/6d1e8b0c",
             "latencyMs": 2000
           },
           "rtmps": {
-            "url": "rtmps://live.seazn.club:443/live/",
+            "url": "rtmps://live.cloudflare.com:443/live/",
             "streamKey": "key-4c7a0e2b9d5f1386"
           }
         }
@@ -509,13 +637,13 @@
       "override": {
         "cred": {
           "srt": {
-            "url": "srt://live.stg.seazn.club",
+            "url": "srt://live.cloudflare.com",
             "streamId": "a1b2c3d4e5f60718293a4b5c6d7e8f90",
             "passphrase": "pass+phrase/6d1e8b0c",
             "latencyMs": 2000
           },
           "rtmps": {
-            "url": "rtmps://live.stg.seazn.club:443/live/",
+            "url": "rtmps://live.cloudflare.com:443/live/",
             "streamKey": "key-4c7a0e2b9d5f1386"
           }
         }
@@ -530,13 +658,13 @@
       "override": {
         "cred": {
           "srt": {
-            "url": "srt://live.stg.seazn.club:778?passphrase=pass+phrase/6d1e8b0c",
+            "url": "srt://live.cloudflare.com:778?passphrase=pass+phrase/6d1e8b0c",
             "streamId": "a1b2c3d4e5f60718293a4b5c6d7e8f90",
             "passphrase": "pass+phrase/6d1e8b0c",
             "latencyMs": 2000
           },
           "rtmps": {
-            "url": "rtmps://live.stg.seazn.club:443/live/",
+            "url": "rtmps://live.cloudflare.com:443/live/",
             "streamKey": "key-4c7a0e2b9d5f1386"
           }
         }
@@ -551,13 +679,13 @@
       "override": {
         "cred": {
           "srt": {
-            "url": "srt://live.stg.seazn.club:778/live",
+            "url": "srt://live.cloudflare.com:778/live",
             "streamId": "a1b2c3d4e5f60718293a4b5c6d7e8f90",
             "passphrase": "pass+phrase/6d1e8b0c",
             "latencyMs": 2000
           },
           "rtmps": {
-            "url": "rtmps://live.stg.seazn.club:443/live/",
+            "url": "rtmps://live.cloudflare.com:443/live/",
             "streamKey": "key-4c7a0e2b9d5f1386"
           }
         }
@@ -572,13 +700,13 @@
       "override": {
         "cred": {
           "srt": {
-            "url": "srt://live.stg.seazn.club:0",
+            "url": "srt://live.cloudflare.com:0",
             "streamId": "a1b2c3d4e5f60718293a4b5c6d7e8f90",
             "passphrase": "pass+phrase/6d1e8b0c",
             "latencyMs": 2000
           },
           "rtmps": {
-            "url": "rtmps://live.stg.seazn.club:443/live/",
+            "url": "rtmps://live.cloudflare.com:443/live/",
             "streamKey": "key-4c7a0e2b9d5f1386"
           }
         }
@@ -593,13 +721,13 @@
       "override": {
         "cred": {
           "srt": {
-            "url": "srt://live.stg.seazn.club:778",
+            "url": "srt://live.cloudflare.com:778",
             "streamId": "a1b2c3d4e5f60718293a4b5c6d7e8f90",
             "passphrase": "pass+phrase/6d1e8b0c",
             "latencyMs": 0
           },
           "rtmps": {
-            "url": "rtmps://live.stg.seazn.club:443/live/",
+            "url": "rtmps://live.cloudflare.com:443/live/",
             "streamKey": "key-4c7a0e2b9d5f1386"
           }
         }
@@ -614,13 +742,13 @@
       "override": {
         "cred": {
           "srt": {
-            "url": "srt://live.stg.seazn.club:778",
+            "url": "srt://live.cloudflare.com:778",
             "streamId": "a1b2c3d4e5f60718293a4b5c6d7e8f90",
             "passphrase": "",
             "latencyMs": 2000
           },
           "rtmps": {
-            "url": "rtmps://live.stg.seazn.club:443/live/",
+            "url": "rtmps://live.cloudflare.com:443/live/",
             "streamKey": "key-4c7a0e2b9d5f1386"
           }
         }
@@ -635,13 +763,13 @@
       "override": {
         "cred": {
           "srt": {
-            "url": "srt://live.stg.seazn.club:778",
+            "url": "srt://live.cloudflare.com:778",
             "streamId": "a1b2c3d4e5f60718293a4b5c6d7e8f90",
             "passphrase": "pass+phrase/6d1e8b0c",
             "latencyMs": 2000
           },
           "rtmps": {
-            "url": "rtmps://live.stg.seazn.club:443/live/",
+            "url": "rtmps://live.cloudflare.com:443/live/",
             "streamKey": ""
           }
         }

@@ -255,7 +255,7 @@ class StartTest {
       listOf(
         CodeAnswer.Status(404, null, null) to StartFailure.NOT_FOUND,
         CodeAnswer.ForeignIngest("sess_42") to StartFailure.CRED_HOST,
-        Configs.open(descriptor = Configs.descriptor(primary = SrtTarget("srt://live.stg.seazn.club:778", "", Configs.PASSPHRASE, 2_000))) to StartFailure.CONFIG,
+        Configs.open(descriptor = Configs.descriptor(primary = SrtTarget(Configs.srt.url, "", Configs.PASSPHRASE, 2_000))) to StartFailure.CONFIG,
         CodeAnswer.Unreadable("cred.rtmps") to StartFailure.CONFIG,
       )
     for ((answer, failure) in rows) {

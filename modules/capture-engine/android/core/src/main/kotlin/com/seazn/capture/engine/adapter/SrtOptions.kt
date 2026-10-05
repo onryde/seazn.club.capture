@@ -2,7 +2,6 @@ package com.seazn.capture.engine.adapter
 
 import com.seazn.capture.engine.core.ConnectFailure
 import com.seazn.capture.engine.core.Encode
-import com.seazn.capture.engine.core.Environment
 import com.seazn.capture.engine.core.Hosts
 import com.seazn.capture.engine.core.SrtBandwidth
 import com.seazn.capture.engine.core.SrtTarget
@@ -42,17 +41,14 @@ object SrtOptions {
    */
   private val SHAPE = Regex("[Ss][Rr][Tt]://([A-Za-z0-9.-]+):([0-9]{1,5})")
 
-  /**
-   * A18: every host the ingest-host rule admits for SRT, in some environment, matched exactly. `Bodies`
-   * has already held the URL to this build's environment ([Hosts.onIngest]); the plan refuses what no
-   * environment admits, so a lookalike that slipped past would still never reach a socket.
-   */
-  private val HOSTS = Environment.entries.map { it.ingestHost }.toSet() + Hosts.CLOUDFLARE_SRT
 
   /** Null when the URL is not exactly `srt://<an SRT ingest host>:<1–65535>`. */
   fun plan(target: SrtTarget, maxBw: Long?): SrtPlan? {
     val match = SHAPE.matchEntire(target.url) ?: return null
-    val host = match.groupValues[1].lowercase().takeIf { it in HOSTS } ?: return null
+    // A18: the one ingest host, matched exactly ([Hosts.INGEST], owner ruling A, 2026-10-05). `Bodies` has
+    // already held the URL to it ([Hosts.onIngest]); the plan refuses anything else as well, so a lookalike that
+    // slipped past would still never reach a socket.
+    val host = match.groupValues[1].lowercase().takeIf { it == Hosts.INGEST } ?: return null
     val port = match.groupValues[2].toInt().takeIf { it in 1..65_535 } ?: return null
     val before =
       listOf(

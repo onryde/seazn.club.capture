@@ -40,9 +40,9 @@ class SrtOptionsTest {
 
   @Test
   fun `the secrets go in as socket options, never in a URL`() {
-    for ((t, host) in listOf(cloudflare to "live.cloudflare.com", Configs.srt to "live.stg.seazn.club")) {
+    for (t in listOf(cloudflare, Configs.srt)) {
       val plan = SrtOptions.plan(t, 375_000)!!
-      assertEquals(host, plan.host)
+      assertEquals(Configs.INGEST_HOST, plan.host)
       assertEquals(778, plan.port)
       assertTrue(SrtOpt.STREAMID to Configs.STREAM_ID in plan.before)
       assertTrue(SrtOpt.PASSPHRASE to Configs.PASSPHRASE in plan.before)
@@ -136,16 +136,14 @@ class SrtOptionsTest {
       assertEquals("live.cloudflare.com" to 778, SrtOptions.plan(target(url), 375_000)?.let { it.host to it.port }, url)
     }
     // Bodies admits the host in either case too (BodiesTest's edge row); the plan names it lower-cased.
-    assertEquals("live.stg.seazn.club" to 778, SrtOptions.plan(target("SRT://LIVE.STG.SEAZN.CLUB:778"), 1)?.let { it.host to it.port })
+    assertEquals("live.cloudflare.com" to 778, SrtOptions.plan(target("SRT://LIVE.CLOUDFLARE.COM:778"), 1)?.let { it.host to it.port })
   }
 
   @Test
-  fun `A18 SRT plans on exactly Cloudflare's host or a live host, with a port from 1 to 65535`() {
+  fun `A18 SRT plans on exactly Cloudflare's host, with a port from 1 to 65535`() {
     val planned =
       listOf(
         "srt://live.cloudflare.com:778" to ("live.cloudflare.com" to 778),
-        "srt://live.stg.seazn.club:778" to ("live.stg.seazn.club" to 778),
-        "srt://live.seazn.club:778" to ("live.seazn.club" to 778),
         "srt://live.cloudflare.com:1" to ("live.cloudflare.com" to 1),
         "srt://live.cloudflare.com:65535" to ("live.cloudflare.com" to 65_535),
         // Bodies admits one to five digits, so a leading zero plans as the port it names.
@@ -165,6 +163,9 @@ class SrtOptionsTest {
         "srt://live-cloudflare.com:778",
         "srt://live.cloudflare.com.:778",
         "srt://live.stg.seazn.club.evil.example:778",
+        // The retired custom hosts (owner ruling A, 2026-10-05): no environment's ingest host any more.
+        "srt://live.stg.seazn.club:778",
+        "srt://live.seazn.club:778",
         "srt://evil.example:778",
         "srt://127.0.0.1:778",
         "srt://[::1]:778",

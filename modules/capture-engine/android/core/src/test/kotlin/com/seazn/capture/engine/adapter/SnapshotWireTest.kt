@@ -365,7 +365,7 @@ class SnapshotWireTest {
       Configs.rtmps.url,
       Configs.rtmps.url + Configs.STREAM_KEY,
       // The ingest host itself: no wire field names it.
-      "live.stg.seazn.club",
+      Configs.INGEST_HOST,
     )
 
   private fun assertNoCredential(text: String, where: String) {

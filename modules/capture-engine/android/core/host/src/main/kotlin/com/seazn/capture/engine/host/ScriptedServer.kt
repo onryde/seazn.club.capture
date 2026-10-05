@@ -96,6 +96,12 @@ class ScriptedServer {
   companion object {
     const val CODE = "h0stcde7k2qa"
     private const val CODES = "https://stg.seazn.club/api/v1/capture/codes/"
+
+    /**
+     * The ingest host the server issues creds on, both transports (owner ruling A, 2026-10-05). The server's own
+     * value, typed here and not read from `Hosts.INGEST`: this stands for the web, so a wrong pin cannot move it.
+     */
+    private const val INGEST = "live.cloudflare.com"
     const val ORIGIN = "$CODES$CODE"
 
     /** The protocol's paths (PV25). */
@@ -159,8 +165,8 @@ class ScriptedServer {
         .put(
           "cred",
           JSONObject()
-            .put("srt", JSONObject().put("url", "srt://live.stg.seazn.club:778").put("streamId", "host-stream-id").put("passphrase", PASSPHRASE).put("latencyMs", 2000))
-            .put("rtmps", JSONObject().put("url", "rtmps://live.stg.seazn.club:443/live/").put("streamKey", STREAM_KEY)),
+            .put("srt", JSONObject().put("url", "srt://$INGEST:778").put("streamId", "host-stream-id").put("passphrase", PASSPHRASE).put("latencyMs", 2000))
+            .put("rtmps", JSONObject().put("url", "rtmps://$INGEST:443/live/").put("streamKey", STREAM_KEY)),
         )
         .put("playbackUrl", "https://customer-x.cloudflarestream.com/host-stream-id/manifest/video.m3u8")
         .put("holdWindowSeconds", JSONObject().put("srt", 183).put("rtmps", 180))

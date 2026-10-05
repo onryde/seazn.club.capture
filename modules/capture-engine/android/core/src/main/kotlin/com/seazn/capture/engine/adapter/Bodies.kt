@@ -192,7 +192,7 @@ object Bodies {
         fields["preferred"] == "srt" && srt != null -> srt to rtmps
         else -> return CodeAnswer.Unreadable("preferred")
       }
-    if (!Hosts.onIngest(rtmps.url, "rtmps", env) || (srt != null && !Hosts.onIngest(srt.url, "srt", env))) return CodeAnswer.ForeignIngest(sid)
+    if (!Hosts.onIngest(rtmps.url, "rtmps") || (srt != null && !Hosts.onIngest(srt.url, "srt"))) return CodeAnswer.ForeignIngest(sid)
     if (srt != null && !srtShaped(srt.url)) return CodeAnswer.Unreadable("cred.srt")
     val holds = holds(fields["holdWindowSeconds"])
     if (listOfNotNull(primary, fallback).any { it.transport !in holds }) return CodeAnswer.Unreadable("holdWindowSeconds")

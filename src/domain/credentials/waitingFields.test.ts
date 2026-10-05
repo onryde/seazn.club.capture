@@ -25,7 +25,7 @@ describe('the waiting fields at the scan', () => {
       sid: '6f1c2b7a-3d4e-4f50-8a9b-0c1d2e3f4a5b',
       cred: {
         srt: null,
-        rtmps: { url: 'rtmps://live.stg.seazn.club:443/live/', streamKey: 'fake-key-0000' },
+        rtmps: { url: 'rtmps://live.cloudflare.com:443/live/', streamKey: 'fake-key-0000' },
       },
     });
     const read = parseWaitingFields(session, HOST);

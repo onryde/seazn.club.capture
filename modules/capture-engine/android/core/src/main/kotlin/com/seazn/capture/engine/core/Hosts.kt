@@ -5,9 +5,9 @@ package com.seazn.capture.engine.core
  * staging: the JS side's `seaznHosts` fails safe the same way, so a build that forgets the variable
  * refuses a club's real codes rather than trusting a staging one.
  */
-enum class Environment(override val wire: String, val seaznHost: String, val ingestHost: String) : Wire {
-  PRODUCTION("production", "seazn.club", "live.seazn.club"),
-  STAGING("staging", "stg.seazn.club", "live.stg.seazn.club");
+enum class Environment(override val wire: String, val seaznHost: String) : Wire {
+  PRODUCTION("production", "seazn.club"),
+  STAGING("staging", "stg.seazn.club");
 
   companion object {
     fun of(wire: String?): Environment = if (wire == PRODUCTION.wire) PRODUCTION else STAGING
@@ -45,14 +45,13 @@ object Hosts {
   fun onSeazn(url: String, env: Environment): Boolean = hostOf(url, "https") == env.seaznHost
 
   /**
-   * A `cred` URL: [scheme] on the environment's ingest host (amendment, Web-side rulings). SRT may also
-   * sit on exactly [CLOUDFLARE_SRT] (owner, 2026-10-01: SRT is on from launch); RTMPS never.
+   * A `cred` URL: [scheme] on exactly [INGEST], whatever the environment. Owner ruling A, 2026-10-05: stg
+   * dropped its custom ingest host (live.stg.seazn.club) and prd never had one (live.seazn.club), so the pin
+   * trusts Cloudflare's host alone, for srt and rtmps both. The scheme stays each transport's own; the port is
+   * not part of the pin.
    */
-  fun onIngest(url: String, scheme: String, env: Environment): Boolean {
-    val host = hostOf(url, scheme) ?: return false
-    return host == env.ingestHost || (scheme.equals("srt", ignoreCase = true) && host == CLOUDFLARE_SRT)
-  }
+  fun onIngest(url: String, scheme: String): Boolean = hostOf(url, scheme) == INGEST
 
-  /** Cloudflare's own SRT ingest host, matched exactly: never a suffix (`live.cloudflare.com.evil.example`). */
-  const val CLOUDFLARE_SRT = "live.cloudflare.com"
+  /** Cloudflare's own ingest host, both transports, matched exactly: never a suffix (`live.cloudflare.com.evil`). */
+  const val INGEST = "live.cloudflare.com"
 }

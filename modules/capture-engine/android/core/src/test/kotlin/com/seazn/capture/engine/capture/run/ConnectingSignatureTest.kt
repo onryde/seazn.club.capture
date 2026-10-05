@@ -183,7 +183,7 @@ class ConnectingSignatureTest {
     when (how) {
       Failing.HANGS, Failing.HANGS_UNVALIDATED -> ids.forEach { parts.gates[it] = CompletableDeferred() }
       Failing.REFUSED -> ids.forEach { parts.failing[it] = ConnectException("Connection setup failure: connection rejected") }
-      Failing.UNRESOLVED -> ids.forEach { parts.failing[it] = UnknownHostException("live.stg.seazn.club") }
+      Failing.UNRESOLVED -> ids.forEach { parts.failing[it] = UnknownHostException(Configs.INGEST_HOST) }
       Failing.CLOSED_BY_FAR_END, Failing.NO_FIRST_FRAME -> Unit
     }
   }

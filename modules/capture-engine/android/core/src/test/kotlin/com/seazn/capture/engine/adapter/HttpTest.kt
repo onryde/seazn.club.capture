@@ -147,11 +147,17 @@ class HttpTest {
     // N1: an endReason alone is not the server's refusal, so it ends nothing.
     assertEquals(Input.CodeAnswered(11, CodeAnswer.Unreachable("410-not-refusal")), HttpAnswers.code(11, HttpOutcome.Answered(410, """{"endReason":"stopped"}"""), Environment.STAGING))
     assertEquals(Input.CodeAnswered(13, CodeAnswer.Unreachable("dns")), HttpAnswers.code(13, HttpOutcome.Failed("dns"), Environment.STAGING))
-    // The environment decides the ingest host: staging's `cred` is foreign to a production pairing.
+    // The pairing's environment reaches Bodies. Not through the ingest host, one for both environments since owner
+    // ruling A (2026-10-05), but through the Seazn host: staging's overlay is foreign to a production pairing, dropped.
     val open = HttpAnswers.code(14, HttpOutcome.Answered(200, session), Environment.STAGING)
     assertEquals(14, open.requestId)
     assertEquals(SID, assertIs<CodeAnswer.Open>(open.answer).sid)
-    assertEquals(Input.CodeAnswered(15, CodeAnswer.ForeignIngest(SID)), HttpAnswers.code(15, HttpOutcome.Answered(200, session), Environment.PRODUCTION))
+    assertTrue(assertIs<CodeAnswer.Open>(open.answer).waiting?.overlayUrl != null, "the positive pair: staging keeps its overlay")
+    val production = HttpAnswers.code(15, HttpOutcome.Answered(200, session), Environment.PRODUCTION)
+    assertEquals(15, production.requestId)
+    val opened = assertIs<CodeAnswer.Open>(production.answer)
+    assertEquals(SID, opened.sid)
+    assertNull(opened.waiting?.overlayUrl)
   }
 
   @Test

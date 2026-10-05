@@ -7,19 +7,22 @@ class HostsTest {
   @Test
   fun `every shared host row is judged as the file says, both roles`() {
     val rows = Shared.read("wire/host-vectors.json").getJSONArray("rows")
-    // The file's row count, 13 seazn and 11 ingest, so a truncated file cannot pass (PV12).
-    assertEquals(24, rows.length())
+    val judged = mutableMapOf<String, Int>()
     for (i in 0 until rows.length()) {
       val row = rows.getJSONObject(i)
-      val env = Environment.of(row.getString("env"))
       val url = row.getString("url")
-      val judged =
-        when (row.getString("role")) {
-          "seazn" -> Hosts.onSeazn(url, env)
-          else -> Hosts.onIngest(url, row.getString("scheme"), env)
+      val role = row.getString("role")
+      val verdict =
+        when (role) {
+          "seazn" -> Hosts.onSeazn(url, Environment.of(row.getString("env")))
+          // One ingest host for every environment (owner ruling A, 2026-10-05): an ingest row names none.
+          else -> Hosts.onIngest(url, row.getString("scheme"))
         }
-      assertEquals(row.getBoolean("ok"), judged, url)
+      assertEquals(row.getBoolean("ok"), verdict, url)
+      judged.merge("$role ${row.getBoolean("ok")}", 1, Int::plus)
     }
+    // The file's rows by role and verdict, so a truncated file or a one-sided table cannot pass (PV12).
+    assertEquals(mapOf("seazn true" to 5, "seazn false" to 8, "ingest true" to 4, "ingest false" to 25), judged)
   }
 
   @Test

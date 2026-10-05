@@ -1100,7 +1100,7 @@ class BridgeCoreTest {
 
   @Test
   fun `m7 an input's message never prints, and reaches a line only masked`() {
-    val url = "rtmps://live.stg.seazn.club:443/live/${Configs.STREAM_KEY}"
+    val url = Configs.rtmps.url + Configs.STREAM_KEY
     val inputs = listOf(Input.ConnectFailed(3, ConnectFailure.OTHER, url), Input.Dropped(3, DropReason.ENDPOINT_CLOSED, url), Input.PlatformFailed(3, url))
     for (input in inputs) {
       assertFalse(Configs.STREAM_KEY in input.toString(), "$input")
@@ -1110,7 +1110,7 @@ class BridgeCoreTest {
     core.report(Input.Dropped(platform.attempt, DropReason.ENDPOINT_CLOSED, url))
     scheduler.advanceBy(0)
     assertTrue(platform.lines.none { Configs.STREAM_KEY in it })
-    assertEquals("rtmps://live.stg.seazn.club:443/live/***", lines().single { it.getString("kind") == "dropped" }.getString("message"))
+    assertEquals(Configs.rtmps.url + "***", lines().single { it.getString("kind") == "dropped" }.getString("message"))
   }
 
   @Test

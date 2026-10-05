@@ -47,7 +47,7 @@ class HostLookupTest {
   private val loopback = InetAddress.getLoopbackAddress()
 
   /** The fixture's RTMPS ingest host, as `Configs.rtmps` spells it. */
-  private val rtmpsHost = "live.stg.seazn.club"
+  private val rtmpsHost = Configs.INGEST_HOST
 
   private fun bounded(lookup: HostLookup): Pair<InetAddress?, Long> =
     runBlocking {

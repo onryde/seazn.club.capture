@@ -60,7 +60,7 @@ class SessionConfigTest {
 
   @Test
   fun `an RTMPS url that carries its key never prints it - the url is masked`() {
-    val keyed = RtmpsTarget("rtmps://live.stg.seazn.club:443/live/${Configs.STREAM_KEY}", Configs.STREAM_KEY)
+    val keyed = RtmpsTarget(Configs.rtmps.url + Configs.STREAM_KEY, Configs.STREAM_KEY)
     val printed = listOf(keyed.toString(), Configs.valid(fallback = keyed).toString(), Configs.descriptor(fallback = keyed).toString())
     for (text in printed) assertFalse(Configs.STREAM_KEY in text, text)
   }

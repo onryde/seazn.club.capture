@@ -10,8 +10,15 @@ object Configs {
   const val STREAM_KEY = "key-4c7a0e2b9d5f1386"
   const val PLAYBACK_URL = "https://customer-x.cloudflarestream.com/$STREAM_ID/manifest/video.m3u8"
 
-  val srt = SrtTarget("srt://live.stg.seazn.club:778", STREAM_ID, PASSPHRASE, latencyMs = 2_000)
-  val rtmps = RtmpsTarget("rtmps://live.stg.seazn.club:443/live/", STREAM_KEY)
+  /**
+   * The ingest host Cloudflare issues, for both transports and both environments (owner ruling A, 2026-10-05:
+   * stg dropped its custom host, prd never had one). The tests' own literal, never `Hosts.INGEST`: it stands for
+   * the server's answer, so a wrong pin cannot carry the fixtures with it. Every fixture cred URL is built here.
+   */
+  const val INGEST_HOST = "live.cloudflare.com"
+
+  val srt = SrtTarget("srt://$INGEST_HOST:778", STREAM_ID, PASSPHRASE, latencyMs = 2_000)
+  val rtmps = RtmpsTarget("rtmps://$INGEST_HOST:443/live/", STREAM_KEY)
 
   fun valid(
     primary: IngestTarget = srt,

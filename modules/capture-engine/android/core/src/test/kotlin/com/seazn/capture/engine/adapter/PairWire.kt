@@ -62,8 +62,8 @@ object PairWire {
         "cred" to
           JsonObject(
             listOf(
-              "srt" to JsonObject(listOf("url" to "srt://live.stg.seazn.club:778", "streamId" to Configs.STREAM_ID, "passphrase" to Configs.PASSPHRASE, "latencyMs" to 2_000)),
-              "rtmps" to JsonObject(listOf("url" to "rtmps://live.stg.seazn.club:443/live/", "streamKey" to Configs.STREAM_KEY)),
+              "srt" to JsonObject(listOf("url" to Configs.srt.url, "streamId" to Configs.STREAM_ID, "passphrase" to Configs.PASSPHRASE, "latencyMs" to 2_000)),
+              "rtmps" to JsonObject(listOf("url" to Configs.rtmps.url, "streamKey" to Configs.STREAM_KEY)),
             )
           ),
         "preferred" to "srt",
