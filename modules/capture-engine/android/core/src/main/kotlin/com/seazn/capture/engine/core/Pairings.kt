@@ -115,7 +115,10 @@ internal object Starts {
 
   /** An open session shape for the sid in hand: the broadcast's plan, then Armed. */
   fun opened(arming: Phase.Arming, answer: CodeAnswer.Open): Step {
-    val pairing = answer.waiting?.let { arming.pairing.copy(waiting = it.over(arming.pairing.waiting)) } ?: arming.pairing
+    // Final review I-2b: unreadable waiting fields keep the pairing's, and are said once a pairing; the broadcast opens.
+    val unreadable = WaitingUnread.line(arming.pairing, answer.waitingUnreadable, "descriptor")
+    val landed = answer.waiting?.let { arming.pairing.copy(waiting = it.over(arming.pairing.waiting)) } ?: arming.pairing
+    val pairing = if (unreadable != null) landed.copy(waitingUnreadableSaid = true) else landed
     val descriptor = answer.descriptor
     val config = descriptor.config(arming.sid, pairing)
     val ids = arming.ids
@@ -136,7 +139,7 @@ internal object Starts {
         micSilenced = arming.micSilenced,
       )
     val armed = line("armed", "sid" to arming.sid, "transport" to config.primary.transport, "srtOffered" to descriptor.srtOffered, "playbackUrl" to config.playbackUrl)
-    return Step(Phase.Armed(session), listOf(armed))
+    return Step(Phase.Armed(session), listOfNotNull(unreadable, armed))
   }
 
   /** The tick in Arming: fetch again once the asks' spacing and any Retry-After allow, unless a claim is awaited. */
@@ -333,5 +336,18 @@ internal object Verdicts {
     val answered = if (late) pairing else pairing.copy(starts = pairing.starts.copy(inFlightId = null))
     val decided = beat(phase.withPairing(answered), ServerWord.CodeEnded, now)
     return decided.copy(commands = listOf(noted) + decided.commands)
+  }
+}
+
+/**
+ * Final review I-2b: a 2xx answer, beat or session shape, owed the waiting fields and one could not be read
+ * (`Bodies`), so the pairing kept its own: its label never came, its overlay was never known, and nothing said
+ * why. One `waiting-unreadable` warn a pairing names the [source] and the field, never its value.
+ */
+internal object WaitingUnread {
+  /** The line for [field] refused on [source]'s answer, or null when none was or [pairing] has had its line. */
+  fun line(pairing: PairingState, field: String?, source: String): Command? {
+    if (field == null || pairing.waitingUnreadableSaid) return null
+    return Command.Record(RecordEntry("waiting-unreadable", listOf("source" to source, "field" to field), level = "warn"))
   }
 }

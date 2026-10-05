@@ -99,6 +99,18 @@ object Bodies {
   /** HTTP's delay-seconds: ASCII digits. Kotlin's `toIntOrNull` alone also reads a sign and fullwidth digits. */
   private val DIGITS = Regex("[0-9]+")
 
+  /**
+   * capture-beat.v1 `$defs.answer`: the states the waiting fields are required on. On `replaced` and `taken`
+   * they are optional, so a body that sends none of [WAITING_KEYS] owes none.
+   */
+  private val WAITING_OWED = setOf("waiting", "go-live", "live", "over")
+
+  /** The waiting fields' keys, in the order [read] judges them: the first refused is the one named. */
+  private val WAITING_KEYS = listOf("label", "autoAllowed", "pollSeconds", "venueTimezone", "scheduledStart", "destinationName", "overlayUrl")
+
+  /** Final review I-2b: the waiting fields, or the first one refused: a field name, never its value. */
+  private data class WaitingRead(val fields: WaitingFields?, val unreadable: String?)
+
   /** A field the schema lets be absent or null: [Absent], its [Value], or [Bad] (the wrong type, or out of bounds). */
   private sealed interface Field<out T> {
     data object Absent : Field<Nothing>
@@ -115,17 +127,29 @@ object Bodies {
    * not required, and absent is "" (the engine keeps the zone it holds). `scheduledStart` is omitted by
    * the descriptor and null on a beat: both are null.
    */
-  fun waiting(fields: Map<String, Any?>, env: Environment): WaitingFields? {
-    val label = text(fields["label"], LABEL) ?: return null
-    val auto = fields["autoAllowed"] as? Boolean ?: return null
-    val poll = WireValues.int(fields["pollSeconds"])?.takeIf { it in POLL } ?: return null
+  fun waiting(fields: Map<String, Any?>, env: Environment): WaitingFields? = read(fields, env).fields
+
+  /** [waiting], naming the first field refused (final review I-2b). Each field is judged in [WAITING_KEYS]' order. */
+  private fun read(fields: Map<String, Any?>, env: Environment): WaitingRead {
+    fun unreadable(field: String) = WaitingRead(null, field)
+    val label = text(fields["label"], LABEL) ?: return unreadable("label")
+    val auto = fields["autoAllowed"] as? Boolean ?: return unreadable("autoAllowed")
+    val poll = WireValues.int(fields["pollSeconds"])?.takeIf { it in POLL } ?: return unreadable("pollSeconds")
     val zone = optional(fields["venueTimezone"]) { text(it, ZONE) }
     val start = optional(fields["scheduledStart"]) { epoch -> whole(epoch)?.takeIf { it in 1..MAX_SAFE } }
     val destination = optional(fields["destinationName"]) { text(it, DESTINATION) }
     val overlay = optional(fields["overlayUrl"]) { it as? String }
-    if (listOf(zone, start, destination, overlay).any { it is Field.Bad }) return null
+    val optionals = listOf("venueTimezone" to zone, "scheduledStart" to start, "destinationName" to destination, "overlayUrl" to overlay)
+    optionals.firstOrNull { it.second is Field.Bad }?.let { return unreadable(it.first) }
     val seazn = overlay.orNull()?.takeIf { Hosts.onSeazn(it, env) }
-    return WaitingFields(label, zone.orNull() ?: "", start.orNull(), auto, destination.orNull(), seazn, poll)
+    return WaitingRead(WaitingFields(label, zone.orNull() ?: "", start.orNull(), auto, destination.orNull(), seazn, poll), null)
+  }
+
+  /** A beat's waiting fields, and the field refused when the body owed them ([WAITING_OWED], or any sent). */
+  private fun beatWaiting(fields: Map<String, Any?>, state: String?, env: Environment): WaitingRead {
+    val read = read(fields, env)
+    val owed = state in WAITING_OWED || WAITING_KEYS.any(fields::containsKey)
+    return if (owed) read else read.copy(unreadable = null)
   }
 
   /**
@@ -198,7 +222,8 @@ object Bodies {
         scoreUpdates = ScoreUpdates.of(fields["scoreUpdates"] as? String)?.wire ?: "",
         warmingDeadlineEpochS = whole(fields["warmingDeadline"]) ?: 0,
       )
-    return CodeAnswer.Open(sid, state, descriptor, waiting(fields, env))
+    val waiting = read(fields, env)
+    return CodeAnswer.Open(sid, state, descriptor, waiting.fields, waiting.unreadable)
   }
 
   /**
@@ -211,13 +236,16 @@ object Bodies {
     val fields = obj(body)
     if (fields == null && status in 200..299) return HeartbeatResponse.Failed(NOT_JSON)
     if (unconfirmed(status, fields)) return HeartbeatResponse.Failed(notRefusal(status))
+    val state = word(fields?.get("state"), BEAT_STATES)
+    val waiting = fields?.let { beatWaiting(it, state, env) }
     val reply =
       BeatReply(
-        state = word(fields?.get("state"), BEAT_STATES),
+        state = state,
         sid = uuid(fields?.get("sid")),
         startedBy = word(fields?.get("startedBy"), STARTED_BY),
         endReason = word(fields?.get("endReason"), END_REASONS),
-        waiting = fields?.let { waiting(it, env) },
+        waiting = waiting?.fields,
+        waitingUnreadable = waiting?.unreadable,
       )
     return HeartbeatResponse.Answered(status, reply, retryAfterS.takeIf { status == 429 })
   }

@@ -4,6 +4,10 @@ package com.seazn.capture.engine.core
  * A beat's 2xx body (or a 410's), as the adapter read it (Task 15): `{state, sid?, startedBy?,
  * endReason?, …waiting fields}`. A field that is absent or unreadable is null. [waiting] is null
  * when the body did not carry every waiting field the parser requires.
+ *
+ * Final review I-2b: [waitingUnreadable] names the first waiting field the parser refused, when the
+ * body owes them (its state requires them, or it sent any): a field name, never its value. Null when
+ * they were read, or owed none.
  */
 data class BeatReply(
   val state: String?,
@@ -11,6 +15,7 @@ data class BeatReply(
   val startedBy: String?,
   val endReason: String?,
   val waiting: WaitingFields?,
+  val waitingUnreadable: String? = null,
 )
 
 /**
@@ -57,7 +62,14 @@ class BroadcastDescriptor(
 /** The code's `GET` (the descriptor), as the adapter's parser read it (Task 15). */
 sealed interface CodeAnswer {
   /** 2xx session shape, `warming` or `live`, with `cred` on the ingest host. */
-  data class Open(val sid: String, val state: String, val descriptor: BroadcastDescriptor, val waiting: WaitingFields?) : CodeAnswer
+  data class Open(
+    val sid: String,
+    val state: String,
+    val descriptor: BroadcastDescriptor,
+    val waiting: WaitingFields?,
+    /** Final review I-2b: the first waiting field the parser refused, as [BeatReply.waitingUnreadable]; the broadcast still opens. */
+    val waitingUnreadable: String? = null,
+  ) : CodeAnswer
 
   /** 2xx session shape in `ending`, `completed` or `failed`. */
   data class Over(val sid: String, val endReason: String?) : CodeAnswer

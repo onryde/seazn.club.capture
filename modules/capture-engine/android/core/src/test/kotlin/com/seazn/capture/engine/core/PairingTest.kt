@@ -57,6 +57,40 @@ class PairingTest {
       assertEquals(30, rig.phase.pairing!!.waiting.pollSeconds, sent)
     }
   }
+  /**
+   * Final review I-2b: the session shape's waiting fields unreadable at Arming. The broadcast still opens on
+   * the pairing's fields, and the record names the field, once a pairing whichever answer brought it.
+   */
+  @Test
+  fun `I-2b an unreadable waiting field on the descriptor is one line, shared with the beat's, once a pairing`() {
+    val rig = MachineRig()
+    rig.codes = { if (rig.phase is Phase.Arming) CodeAnswer.Open("sess_42", "warming", Configs.descriptor(), null, waitingUnreadable = "destinationName") else null }
+    rig.paired()
+    rig.heard(Configs.waiting(pollSeconds = 30), "go-live", "sess_42")
+    assertIs<Phase.Armed>(rig.phase, "it still opens")
+    assertEquals(30, rig.phase.pairing!!.waiting.pollSeconds, "on the fields the beat brought, the descriptor's unread")
+    val line = rig.records("waiting-unreadable").single()
+    assertEquals(listOf("source" to "descriptor", "field" to "destinationName"), line.fields)
+    assertEquals("warn", line.level)
+    // The same pairing's unreadable beat after it writes no second line.
+    val reply = BeatReply("live", null, null, null, null, waitingUnreadable = "label")
+    repeat(240) { if (rig.phase.beating?.heartbeat?.inFlightId == null) rig.advance(500) }
+    rig.send(Input.HeartbeatAnswered(rig.phase.beating!!.heartbeat.inFlightId!!, HeartbeatResponse.Answered(200, reply)))
+    assertEquals(1, rig.records("waiting-unreadable").size, "the same pairing, a second unreadable answer")
+  }
+
+  @Test
+  fun `I-2b an unreadable beat writes its line only on a 2xx, the answer whose fields land`() {
+    val rig = MachineRig().paired()
+    repeat(240) { if (rig.phase.beating?.heartbeat?.inFlightId == null) rig.advance(500) }
+    val reply = BeatReply("waiting", null, null, null, null, waitingUnreadable = "label")
+    rig.send(Input.HeartbeatAnswered(rig.phase.beating!!.heartbeat.inFlightId!!, HeartbeatResponse.Answered(503, reply)))
+    assertEquals(0, rig.records("waiting-unreadable").size, "a 503's body lands nothing")
+    repeat(240) { if (rig.phase.beating?.heartbeat?.inFlightId == null) rig.advance(500) }
+    rig.send(Input.HeartbeatAnswered(rig.phase.beating!!.heartbeat.inFlightId!!, HeartbeatResponse.Answered(200, reply)))
+    assertEquals(listOf("source" to "beat", "field" to "label"), rig.records("waiting-unreadable").single().fields)
+  }
+
   @Test
   fun `A5 pair asks for permissions, then holds the service and sends the claim at once`() {
     val rig = MachineRig()

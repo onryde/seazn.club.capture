@@ -226,9 +226,9 @@ class SessionRecord(private val sink: (String) -> Unit) {
     val PLAIN_KEYS =
       setOf(
         "action", "answer", "appVersion", "attempt", "cause", "claim", "count", "delivery", "endReason", "error", "exit",
-        "failure", "from", "host", "intent", "key", "kind", "lastEnd", "lock", "mode", "ms", "notReady", "op", "phase",
-        "problem", "reason", "refusal", "result", "retryAfterS", "route", "scene", "shed", "side", "sid", "slot",
-        "startFailed", "state", "status", "tag", "to", "tokenTag", "transport", "word",
+        "failure", "field", "from", "host", "intent", "key", "kind", "lastEnd", "lock", "mode", "ms", "notReady", "op",
+        "phase", "problem", "reason", "refusal", "result", "retryAfterS", "route", "scene", "shed", "side", "sid", "slot",
+        "source", "startFailed", "state", "status", "tag", "to", "tokenTag", "transport", "word",
       )
 
     /** Never written, whatever the value, and never allowed onto the lists above. A line never carries a code. */

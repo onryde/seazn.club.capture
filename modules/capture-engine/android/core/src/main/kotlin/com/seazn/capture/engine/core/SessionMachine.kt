@@ -578,12 +578,15 @@ internal object Heartbeats {
     val response = input.response as? HeartbeatResponse.Answered
     val word = ServerWord.ofBeat(input.response, named = phase.heldSid ?: pairing.stoppedInFlight)
     val ok = response != null && response.status in 200..299
+    // Final review I-2b: a 2xx whose waiting fields cannot be read leaves the pairing's as they were, and says so.
+    val unreadable = WaitingUnread.line(pairing, response?.reply?.waitingUnreadable?.takeIf { ok }, "beat")
     val refreshed =
       pairing.copy(
         heartbeat = heartbeat,
         claim = if (ok) null else pairing.claim,
         waiting = response?.reply?.waiting?.takeIf { ok }?.over(pairing.waiting) ?: pairing.waiting,
         stoppedInFlight = null,
+        waitingUnreadableSaid = pairing.waitingUnreadableSaid || unreadable != null,
       )
     // The beat line. Its claim is the one the answered beat carried, before this answer cleared it
     // (PV11). Paired, it is written only when it changes, message aside, so hours of waiting cost a
@@ -607,6 +610,6 @@ internal object Heartbeats {
     // The refused set keeps the sid for the pairing's life (A17): a server that names it later is still ignored.
     val kept = (if (delivered || codeDead) refreshed.copy(stopped = null) else refreshed).copy(lastBeatLine = compared)
     val decided = Verdicts.beat(phase.withPairing(kept), word, now)
-    return decided.copy(commands = noted + deletes + decided.commands)
+    return decided.copy(commands = noted + listOfNotNull(unreadable) + deletes + decided.commands)
   }
 }

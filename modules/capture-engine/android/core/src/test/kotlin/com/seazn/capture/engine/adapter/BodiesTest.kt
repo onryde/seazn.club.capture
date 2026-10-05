@@ -6,6 +6,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
+import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import org.json.JSONObject
@@ -598,6 +599,85 @@ class BodiesTest {
   }
 
   /** A beat's answer that [Bodies.beat] read as an answer (any status but a 2xx that is no JSON object). */
+  /** Final review I-2b: staging's captured waiting beat ([StgBeat]). */
+  private val stg = StgBeat.body
+
+  private fun stgWith(field: String, value: Any?): String = StgBeat.with(field, value)
+
+  @Test
+  fun `I-2b staging's real waiting beat parses whole - its label, start in seconds, destination, overlay and poll`() {
+    assertEquals(setOf("state", "label", "scheduledStart", "autoAllowed", "destinationName", "overlayUrl", "pollSeconds"), stg.keySet(), "the captured body's seven keys")
+    val reply = assertNotNull(answeredBeat(200, stg.toString()).reply)
+    assertEquals("waiting", reply.state)
+    assertNull(reply.waitingUnreadable, "nothing unreadable")
+    val read = assertNotNull(reply.waiting, "the real body parses")
+    // Each expected value is the server's, read from the captured body; none is typed here.
+    assertEquals(stg.getString("label"), read.label)
+    assertEquals(stg.getLong("scheduledStart"), read.scheduledStartEpochS, "epoch seconds, as sent: the wire crosses seconds and JS multiplies by 1000")
+    assertEquals(stg.getBoolean("autoAllowed"), read.autoAllowed)
+    assertEquals(stg.getString("destinationName"), read.destinationName)
+    assertEquals(stg.getString("overlayUrl"), read.overlayUrl, "the staging overlay, its query and key whole")
+    assertEquals(stg.getInt("pollSeconds"), read.pollSeconds)
+    assertEquals("", read.venueTimezone, "a beat carries no zone (D4): the engine keeps the one it holds")
+    assertEquals(read, Bodies.waiting(stg.plain(), Environment.STAGING), "Bodies.waiting reads it alike")
+  }
+
+  /** I-2b: one waiting field the schema refuses, in a body otherwise staging's own: that field is named, never its value. */
+  @Test
+  fun `I-2b one unreadable waiting field leaves the fields unread and names that field`() {
+    val bad: List<Pair<String, Any?>> =
+      listOf(
+        "label" to JSONObject(), "label" to "", "label" to "L".repeat(201),
+        "autoAllowed" to "false", "autoAllowed" to null,
+        "pollSeconds" to "10", "pollSeconds" to 4, "pollSeconds" to 301, "pollSeconds" to 10.5,
+        "venueTimezone" to 7, "venueTimezone" to "",
+        "scheduledStart" to "1790222700", "scheduledStart" to 0, "scheduledStart" to 1.5,
+        "destinationName" to false, "destinationName" to "", "destinationName" to "D".repeat(81),
+        "overlayUrl" to 42,
+      )
+    var checked = 0
+    for ((field, value) in bad) {
+      val reply = assertNotNull(answeredBeat(200, stgWith(field, value)).reply)
+      assertNull(reply.waiting, "$field = $value")
+      assertEquals(field, reply.waitingUnreadable, "$field = $value")
+      checked += 1
+    }
+    for (field in listOf("label", "autoAllowed", "pollSeconds")) {
+      val absent = JSONObject(stg.toString()).also { it.remove(field) }.toString()
+      assertEquals(field, answeredBeat(200, absent).reply?.waitingUnreadable, "$field absent")
+      checked += 1
+    }
+    assertEquals(bad.size + 3, checked, "the sweep's own count")
+    assertEquals(7, bad.map { it.first }.toSet().size, "every waiting field")
+    // An overlay off the Seazn host is dropped alone (overlay-refused), never unreadable.
+    val foreign = assertNotNull(answeredBeat(200, stgWith("overlayUrl", "https://evil.example/o")).reply)
+    assertEquals(null to stg.getString("label"), foreign.waitingUnreadable to foreign.waiting?.label)
+  }
+
+  @Test
+  fun `I-2b an answer the waiting fields are optional on names none when it sends none, and one it sends wrong`() {
+    for (state in listOf("taken", "replaced")) {
+      val bare = assertNotNull(answeredBeat(200, """{"state":"$state"}""").reply)
+      assertNull(bare.waitingUnreadable, "$state with none")
+      assertEquals(BeatReply(state, null, null, null, null), bare)
+    }
+    assertEquals("pollSeconds", answeredBeat(200, JSONObject(stgWith("pollSeconds", "10")).put("state", "taken").toString()).reply?.waitingUnreadable)
+    // Where the contract requires them (waiting, go-live, live, over), none sent is the first required one missing.
+    for (state in listOf("waiting", "go-live", "live", "over")) {
+      assertEquals("label", answeredBeat(200, """{"state":"$state"}""").reply?.waitingUnreadable, state)
+    }
+    // A refusal's body is no waiting answer.
+    assertNull(answeredBeat(401, refusal("code_ended")).reply?.waitingUnreadable)
+  }
+
+  @Test
+  fun `I-2b a session shape's unreadable waiting field is named, and the broadcast still opens`() {
+    val open = assertIs<CodeAnswer.Open>(Bodies.code(200, JSONObject(base).put("pollSeconds", "10").toString(), null, Environment.STAGING))
+    assertNull(open.waiting)
+    assertEquals("pollSeconds", open.waitingUnreadable)
+    assertNull(assertIs<CodeAnswer.Open>(Bodies.code(200, base, null, Environment.STAGING)).waitingUnreadable, "the shared shape names none")
+  }
+
   private fun answeredBeat(status: Int, body: String): HeartbeatResponse.Answered = assertIs<HeartbeatResponse.Answered>(Bodies.beat(status, body, null, Environment.STAGING))
 
   private fun wire(rig: MachineRig): String = WireJson.encode(SnapshotWire.of(rig.snapshot, PlatformFacts(), RecordCounters(0, 0)))

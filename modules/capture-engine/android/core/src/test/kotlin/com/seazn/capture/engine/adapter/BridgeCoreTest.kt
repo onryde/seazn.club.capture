@@ -274,6 +274,68 @@ class BridgeCoreTest {
   }
 
   /**
+   * Final review I-2b: staging's captured waiting beat ([StgBeat]) through the real Bodies.beat and the machine:
+   * the pairing's label, start, destination, overlay and poll are the server's, the overlay's query and key whole.
+   */
+  @Test
+  fun `final I-2b staging's real waiting beat fills the pairing, and nothing is unreadable`() {
+    val stg = StgBeat.body
+    platform.unanswered = { it.url.endsWith("/beats") }
+    core.start()
+    core.report(Input.Network(true))
+    ready()
+    pair()
+    assertEquals("", (platform.snapshots.last()["pairing"] as Map<*, *>)["label"], "not yet known")
+    val (beat, answer) = platform.owed.first()
+    assertTrue(beat.url.endsWith("/beats"))
+    answer(HttpOutcome.Answered(200, stg.toString()))
+    scheduler.advanceBy(0)
+    val known = platform.snapshots.last()["pairing"] as Map<*, *>
+    assertEquals(stg.getString("label"), known["label"])
+    assertEquals(stg.getLong("scheduledStart").toDouble(), known["scheduledStart"], "epoch seconds across the bridge")
+    assertEquals(stg.getString("destinationName"), known["destinationName"])
+    assertEquals(stg.getString("overlayUrl"), known["overlayUrl"])
+    assertEquals(stg.getInt("pollSeconds").toDouble(), known["pollSeconds"])
+    assertEquals(emptyList(), kinds().filter { it == "waiting-unreadable" || it == "overlay-refused" })
+  }
+
+  /**
+   * Final review I-2b: a 2xx whose waiting fields the parser refuses leaves the pairing's as they were, as it
+   * must; it was silent, so a label that never came and an overlay never known looked like a slow server. One
+   * `waiting-unreadable` warn a pairing names the field, never its value; a re-pair is a new pairing.
+   */
+  @Test
+  fun `final I-2b a beat with one unreadable waiting field writes one line naming it, once a pairing`() {
+    var body = StgBeat.with("pollSeconds", "10")
+    platform.answer = { request -> if (request.url.endsWith("/beats")) HttpOutcome.Answered(200, body) else PairWire.answer(request) }
+    val unreadable = { lines().filter { it.getString("kind") == "waiting-unreadable" } }
+    core.start()
+    core.report(Input.Network(true))
+    ready()
+    pair()
+    scheduler.advanceBy(60_000)
+    val beats = platform.beats().size
+    assertTrue(beats >= 3, "beats answered unreadable: $beats")
+    val line = unreadable().single()
+    assertEquals(listOf("beat", "pollSeconds", "warn"), listOf(line.getString("source"), line.getString("field"), line.getString("level")))
+    assertEquals(setOf("at", "kind", "level", "source", "field"), line.keySet(), "the field's name, never its value: $line")
+    assertEquals("", (core.current()["pairing"] as Map<*, *>)["label"], "the pairing's fields are not the bad body's")
+    // The server's next readable answer fills them, with no more lines.
+    body = StgBeat.body.toString()
+    scheduler.advanceBy(30_000)
+    assertEquals(StgBeat.body.getString("label"), (core.current()["pairing"] as Map<*, *>)["label"])
+    body = StgBeat.with("label", "")
+    scheduler.advanceBy(60_000)
+    assertEquals(1, unreadable().size, "once a pairing, whichever field")
+    // A re-pair is a new pairing: its first unreadable answer is written again.
+    core.send(mapOf("kind" to "unpair"))
+    scheduler.advanceBy(0)
+    pair()
+    scheduler.advanceBy(30_000)
+    assertEquals(listOf("pollSeconds", "label"), unreadable().map { it.getString("field") })
+  }
+
+  /**
    * Review C4a I-3: each check alone, on a core of its own, paired with nothing ready. Each row turns its
    * check and repeats it: one line, and the machine hears the turn (the snapshot's check turns, alone).
    * One line is one send: `sendReadiness` writes the line and sends the input together.

@@ -6,3 +6,5 @@ modules/*/android/core/build/
 modules/*/android/core/host/build/
 # The web's contracts, copied byte for byte and pinned by sha256 (review C4a m-4): never reformatted.
 test/fixtures/contracts/
+# The staging beat body the web lane captured (2026-10-05), its key redacted: kept byte for byte, as captured.
+modules/capture-engine/android/core/src/test/resources/stg-beat-waiting.redacted.json

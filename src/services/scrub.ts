@@ -42,6 +42,7 @@ export const PLAIN_KEYS: ReadonlySet<string> = new Set([
   'error',
   'exit',
   'failure',
+  'field',
   'from',
   // I1: where a refused overlay navigation aimed; a bare host, never a path or query.
   'host',
@@ -67,6 +68,7 @@ export const PLAIN_KEYS: ReadonlySet<string> = new Set([
   'sid',
   // A camera position on the match, not a secret; scrubbing it hides context.
   'slot',
+  'source',
   'startFailed',
   'state',
   'status',
