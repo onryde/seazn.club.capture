@@ -20,9 +20,11 @@ type Copy = {
   readonly open: string | null;
   /** Try again: only when there was no connection (D27). */
   readonly retry: boolean;
-  /** False only while checking: no Scan again, and neither the dim nor Back closes it. */
+  /** False only while checking: neither the dim nor Back closes it. */
   readonly closable: boolean;
-  /** A7's sheet only: the button that keeps the pairing. */
+  /** Scan again from the same tile: every settled panel, never while checking or on A7's sheet. */
+  readonly scanAgain: boolean;
+  /** A7's sheet only: the button that keeps the pairing. The dim means it too, under its name. */
   readonly cancel: string | null;
 };
 
@@ -33,6 +35,7 @@ const settled = (title: string, body: string | null, open: string | null = null)
   open,
   retry: false,
   closable: true,
+  scanAgain: true,
   cancel: null,
 });
 
@@ -66,16 +69,24 @@ function panelCopy(outcome: HomePanel, t: Translator['t'], time: string | null):
         open: null,
         retry: false,
         closable: false,
+        scanAgain: false,
         cancel: null,
       };
     case 'codeError':
       return codeCopy(outcome.error, t);
     case 'unpaired':
       return settled(t(UNPAIRED[outcome.reason].title), t(UNPAIRED[outcome.reason].body));
+    // A7's sheet has the spec's two answers and no others (review C5 I-3): no
+    // Scan again, and the dim (and Back) mean Cancel, which sends nothing.
     case 'unpairConfirm': {
       const mode = t(MODE_NAME[outcome.code.mode]);
       return {
-        ...settled(t('sheet.unpair.body', { mode }), null, t('sheet.unpair.confirm')),
+        title: t('sheet.unpair.body', { mode }),
+        body: null,
+        open: t('sheet.unpair.confirm'),
+        retry: false,
+        closable: true,
+        scanAgain: false,
         cancel: t('sheet.unpair.cancel'),
       };
     }
@@ -147,8 +158,8 @@ export const CodePanel = memo(function CodePanel(props: CodePanelProps) {
     <View style={styles.overlay}>
       <Pressable
         accessibilityRole="button"
-        accessibilityLabel={t('panel.close')}
-        onPress={props.onClose}
+        accessibilityLabel={copy.cancel ?? t('panel.close')}
+        onPress={copy.cancel === null ? props.onClose : props.onCancelUnpair}
         disabled={!copy.closable}
         style={styles.dim}
       />
@@ -163,7 +174,7 @@ export const CodePanel = memo(function CodePanel(props: CodePanelProps) {
           <GhostButton label={copy.cancel} onPress={props.onCancelUnpair} />
         )}
         {copy.retry ? <Button label={t('panel.tryAgain')} onPress={props.onTryAgain} /> : null}
-        {copy.closable ? (
+        {copy.scanAgain ? (
           <GhostButton label={t('panel.scanAgain')} onPress={props.onScanAgain} />
         ) : null}
       </SlideUpSheet>

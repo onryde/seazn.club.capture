@@ -128,6 +128,18 @@ describe('Home: another mode while paired (A7)', () => {
     expect(saved(h)?.codes.scoring).toBeUndefined();
   });
 
+  // Android Back closes a panel (`useBackCloses`); on the sheet that is Cancel (review C5 I-3).
+  it('sends nothing on Back, and keeps the stream code', async () => {
+    const h = await home({ paired: true });
+    await openScoring(h);
+    act(() => actions(h).closePanel());
+    await flush();
+    expect(view(h).panel).toBeNull();
+    expect(kinds(h)).toEqual(['pair']);
+    expect(saved(h)?.codes.stream).toBeDefined();
+    expect(saved(h)?.codes.scoring).toBeUndefined();
+  });
+
   // The engine leaves Paired under the sheet: it closes as Cancel, and Task 29's panel says why.
   it('closes as Cancel when native unpairs under it, and says why', async () => {
     const h = await home({ paired: true });
@@ -227,8 +239,54 @@ describe('the unpair sheet', () => {
     expect(screen.getByText(body)).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: confirm }));
     expect([h.onConfirmUnpair.mock.calls.length, h.onOpen.mock.calls.length]).toEqual([1, 0]);
-    fireEvent.click(screen.getByRole('button', { name: cancel }));
+    const answers = screen.getAllByRole('button', { name: cancel });
+    expect(answers).toHaveLength(2);
+    for (const answer of answers) fireEvent.click(answer);
+    expect(h.onCancelUnpair).toHaveBeenCalledTimes(2);
+    expect(h.onClose).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * Review C5 I-3: the sheet has the spec's two answers and no others: no Scan
+ * again and no Close. The dim means Cancel, under Cancel's own name.
+ */
+describe('the unpair sheet’s answers', () => {
+  it('offers Unpair & open and Cancel only, the dim first', () => {
+    renderWithPorts(<CodePanel outcome={SHEET} time={null} {...panelHandlers()} />);
+    const names = screen
+      .getAllByRole('button')
+      .map((button) => button.getAttribute('aria-label') ?? button.textContent);
+    expect(names).toEqual(['Cancel', 'Unpair & open', 'Cancel']);
+    expect(screen.queryByRole('button', { name: 'Scan again' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Close' })).toBeNull();
+  });
+
+  it('cancels on the dim, and closes nothing', () => {
+    const h = panelHandlers();
+    renderWithPorts(<CodePanel outcome={SHEET} time={null} {...h} />);
+    // The dim and the sheet's own Cancel, in that order (the dim is drawn first, under the sheet).
+    const cancels = screen.getAllByRole('button', { name: 'Cancel' });
+    expect(cancels).toHaveLength(2);
+    const [dim] = cancels;
+    if (dim === undefined) throw new Error('the dim is a button');
+    fireEvent.click(dim);
     expect(h.onCancelUnpair).toHaveBeenCalledTimes(1);
+    expect([h.onClose, h.onScanAgain, h.onConfirmUnpair].map((f) => f.mock.calls.length)).toEqual([
+      0, 0, 0,
+    ]);
+  });
+
+  // The other panels keep theirs: the dim closes, and Scan again scans.
+  it('leaves a settled panel its Close and Scan again', () => {
+    const h = panelHandlers();
+    const panel: HomePanel = { kind: 'unpaired', tapped: 'stream', reason: 'replaced' };
+    renderWithPorts(<CodePanel outcome={panel} time={null} {...h} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Scan again' }));
+    expect([h.onClose, h.onScanAgain, h.onCancelUnpair].map((f) => f.mock.calls.length)).toEqual([
+      1, 1, 0,
+    ]);
   });
 });
 
@@ -263,8 +321,12 @@ describe('HomeScreen’s unpair sheet', () => {
       renderWithPorts(<HomeScreen />);
       fireEvent.click(screen.getByRole('button', { name: 'Unpair & open' }));
       expect(stubbed.actions.confirmUnpair).toHaveBeenCalledTimes(1);
-      fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
-      expect(stubbed.actions.cancelUnpair).toHaveBeenCalledTimes(1);
+      const [dim, cancel] = screen.getAllByRole('button', { name: 'Cancel' });
+      if (dim === undefined || cancel === undefined) throw new Error('the dim and Cancel');
+      fireEvent.click(cancel);
+      fireEvent.click(dim);
+      expect(stubbed.actions.cancelUnpair).toHaveBeenCalledTimes(2);
+      expect(stubbed.actions.closePanel).not.toHaveBeenCalled();
       expect(stubbed.actions.openFromPanel).not.toHaveBeenCalled();
     } finally {
       vi.mocked(useHome).mockImplementation(real);
