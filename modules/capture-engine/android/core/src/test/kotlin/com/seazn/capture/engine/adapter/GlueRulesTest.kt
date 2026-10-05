@@ -158,6 +158,27 @@ class GlueRulesTest {
     assertTrue("CameraWatch(app, cameras, report, ::line).start()" in watchers, "CameraWatch is fed the same instance and started")
   }
 
+  /**
+   * Review C7 I-4 (CD9): registering and unregistering the accelerometer are binder calls, so `start` and `stop`
+   * (called on the scheduler thread, from Hold and Release) post them to the pose thread, in order. A throw there
+   * would end the process, so each posted step is guarded, a `watch-failed` line.
+   */
+  @Test
+  fun `I-4 the pose watch registers and unregisters on its own thread, guarded`() {
+    val pose = glue("PoseWatch.kt")
+    assertTrue(Regex("""private val handler = Handler\(thread\.looper\)""").containsMatchIn(pose), "the pose thread's handler")
+    assertTrue(Regex("""fun start\(\) \{\s+handler\.post \{ guarded\("pose-start"\) \{ register\(\) \} \}\s+\}""").containsMatchIn(pose), "start posts: ${body(pose, "fun start()")}")
+    assertTrue(Regex("""fun stop\(\) \{\s+handler\.post \{ guarded\("pose-stop"\) \{ unregister\(\) \} \}\s+\}""").containsMatchIn(pose), "stop posts: ${body(pose, "fun stop()")}")
+    assertEquals(1, Regex("""\bregisterListener\(""").findAll(pose).count(), "one register")
+    assertTrue(Regex("""\bregisterListener\(""").containsMatchIn(body(pose, "private fun register()")), "inside the posted step")
+    assertTrue("registerListener(this, sensor, SensorManager.SENSOR_DELAY_UI, handler)" in pose, "its callbacks on the same thread")
+    assertEquals(1, Regex("""\bunregisterListener\(""").findAll(pose).count(), "one unregister")
+    assertTrue("unregisterListener(" in body(pose, "private fun unregister()"), "inside the posted step")
+    for (step in listOf("register", "unregister")) assertEquals(1, Regex("""\b$step\(\)""").findAll(pose).count() - 1, "$step is called from its post alone")
+    val guarded = body(pose, "private fun guarded(")
+    assertTrue(Regex("""catch \(e: Exception\) \{\s+line\(RecordEntry\("watch-failed", listOf\("action" to action, "error" to e\.javaClass\.simpleName\)\)\)""").containsMatchIn(guarded), "a watch-failed line: $guarded")
+  }
+
   /** PV40: the pose tracker is replaced by `start` on the scheduler thread and read on the sensor thread. */
   @Test
   fun `PV40 the pose watch's tracker, swapped on one thread and read on another, is volatile`() {

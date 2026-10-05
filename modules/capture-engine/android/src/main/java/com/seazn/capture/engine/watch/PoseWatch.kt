@@ -16,13 +16,15 @@ import com.seazn.capture.engine.core.Side
 
 /**
  * A11: how the phone is held, with JS's rule (Task 17's `HeldPose`, one vector file), from `Hold` to
- * `Release`. The accelerometer alone, never the screen. Its own thread: sensor callbacks never run on the
- * scheduler thread or the main looper. No accelerometer never blocks: `NoSensor`, and the record says so.
+ * `Release`. The accelerometer alone, never the screen. Its own thread: sensor callbacks, and the register
+ * and unregister binder calls (review C7 I-4, CD9), never run on the scheduler thread or the main looper.
+ * No accelerometer never blocks: `NoSensor`, and the record says so.
  */
 class PoseWatch(private val context: Context, private val pose: (Pose) -> Unit, private val line: (RecordEntry) -> Unit) : SensorEventListener {
   private val thread = HandlerThread("capture-pose").apply { start() }
+  private val handler = Handler(thread.looper)
 
-  /** PV40: replaced by `start` on the scheduler thread, read on the pose thread. */
+  /** PV40: replaced by [register] and read by the callbacks, both on the pose thread since review C7 I-4; kept volatile. */
   @Volatile private var tracker = PoseTracker()
 
   @Volatile private var held: Side = Side.LEFT
@@ -30,9 +32,18 @@ class PoseWatch(private val context: Context, private val pose: (Pose) -> Unit, 
   /** The side the build rotates to (CD42): the last side held, `LEFT` before any (A11's default). */
   fun side(): Side = held
 
-  /** A second `Hold` replaces the tracker, a fresh hold, and registers nothing twice (Android keeps one). */
-  @Synchronized
+  /** `Hold`, on the scheduler thread: the register is posted to the pose thread (I-4); returns at once. */
   fun start() {
+    handler.post { guarded("pose-start") { register() } }
+  }
+
+  /** `Release`, on the scheduler thread: posted behind any start, so it unregisters what that registered (I-4). */
+  fun stop() {
+    handler.post { guarded("pose-stop") { unregister() } }
+  }
+
+  /** A second `Hold` replaces the tracker, a fresh hold, and registers nothing twice (Android keeps one). Pose thread. */
+  private fun register() {
     val manager = context.getSystemService(SensorManager::class.java)
     val sensor = manager?.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
     if (manager == null || sensor == null) {
@@ -40,13 +51,21 @@ class PoseWatch(private val context: Context, private val pose: (Pose) -> Unit, 
       return pose(Pose.NoSensor)
     }
     tracker = PoseTracker()
-    manager.registerListener(this, sensor, SensorManager.SENSOR_DELAY_UI, Handler(thread.looper))
+    manager.registerListener(this, sensor, SensorManager.SENSOR_DELAY_UI, handler)
   }
 
-  /** Unregisters this listener, if it is registered; with none, nothing. */
-  @Synchronized
-  fun stop() {
+  /** Unregisters this listener, if it is registered; with none, nothing. Pose thread. */
+  private fun unregister() {
     context.getSystemService(SensorManager::class.java)?.unregisterListener(this)
+  }
+
+  /** A throw on the pose thread would end the process: it costs a line instead. */
+  private fun guarded(action: String, block: () -> Unit) {
+    try {
+      block()
+    } catch (e: Exception) {
+      line(RecordEntry("watch-failed", listOf("action" to action, "error" to e.javaClass.simpleName)))
+    }
   }
 
   /** In g, as the vector file is: Android reports m/s², as Float, and the rule reads Double (Task 17). */
