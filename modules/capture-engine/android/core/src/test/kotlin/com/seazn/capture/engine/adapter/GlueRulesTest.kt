@@ -558,6 +558,25 @@ class GlueRulesTest {
   }
 
   /**
+   * Session 7, F-S7-1: every SRT start failed `IndexOutOfBoundsException: Index 0 out of bounds for length 0`.
+   * StreamPack 3.2.1's `TsMuxer.addStreams(configs)` is `addStreams(services[0], configs)` (javap), and only
+   * StreamPack's own factories add a service: `SrtEndpointFactory` at creation, `DynamicEndpoint` at open from the
+   * descriptor's `TSServiceInfo`. Ours built a bare `TsMuxer()`, so the descriptor's `serviceInfo` was read by
+   * nothing. Reproduced and cleared on the JVM against 3.2.1's bytecode (task-C7-report.md). The muxer holds the
+   * service from its creation; `CompositeEndpoint` never releases it (only its streams, at a stop), so every attempt
+   * finds it. The descriptor names the same service.
+   */
+  @Test
+  fun `F-S7-1 the SRT endpoint's TS muxer holds the service before any stream is added`() {
+    val factory = glue("CaptureEndpointFactory.kt")
+    assertTrue("private val service: TSServiceInfo," in factory, "the factory is given the service")
+    assertEquals(listOf("CompositeEndpoint(TsMuxer().apply { addService(service) }, sink)"), Regex("""CompositeEndpoint\([^\n]*""").findAll(factory).map { it.value }.toList())
+    val adapter = glue("StreamerAdapter.kt")
+    assertTrue("CaptureEndpointFactory(tally, sink, RtmpDispatcher.create(), clock, SERVICE)" in adapter, "the adapter's one service")
+    assertEquals(listOf("serviceInfo = SERVICE"), Regex("""serviceInfo = \w+""").findAll(adapter).map { it.value }.toList(), "the descriptor names the same")
+  }
+
+  /**
    * Session 7, item 2: the Link poller asked the SRT sink alone, so RTMPS had no reading and every beat's
    * `bitrateKbps` was null. An RTMPS attempt is begun at its start and ended at a stop, a release or an SRT start
    * ([RtmpsLink], whose gating core's tests run), and read from the RTMP endpoint the factory built last.

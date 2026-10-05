@@ -90,7 +90,7 @@ class StreamerAdapter(
   private val sink = SeaznSrtSink(Dispatchers.IO.limitedParallelism(2), signals, calls.report, calls.line)
   private val lookup = HostLookup()
   private val clock = CaptureClockLine(calls.line)
-  private val endpoints = CaptureEndpointFactory(tally, sink, RtmpDispatcher.create(), clock)
+  private val endpoints = CaptureEndpointFactory(tally, sink, RtmpDispatcher.create(), clock, SERVICE)
 
   /** Session 7, item 2: RTMPS's link reading, for the RTMPS attempt begun at its start. */
   private val rtmps = RtmpsLink()

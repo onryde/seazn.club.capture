@@ -342,8 +342,9 @@ class CaptureRun(
 
   /**
    * F-S4-1: which call failed a start, by class only (CD30): the throwable's class, where the first throw of its cause
-   * chain was made (`Type.method`, the type's simple name without its inner parts), and that throw's class when one of
-   * another class wraps it. Never a message: a vendor's can quote the SRT URL. StreamPack logs nothing on that path,
+   * chain was made (`Type.method`, the type's simple name without its inner parts; F-S7-1, the first frame outside the
+   * Java and Kotlin runtimes, whose bounds checks name no caller), and that throw's class when one of another class
+   * wraps it. Never a message: a vendor's can quote the SRT URL. StreamPack logs nothing on that path,
    * so this line is what names it (device session 4 could not).
    */
   private fun startFailed(id: Int, failure: Throwable): RecordEntry {
@@ -354,9 +355,12 @@ class CaptureRun(
     return RecordEntry("capture-start-failed", fields)
   }
 
-  /** Where [thrown] was made, as `Type.method`: names only, each cut at its first `$` so a lambda's stays a plain word. */
+  /**
+   * Where [thrown] was made, as `Type.method`: names only, each cut at its first `$` so a lambda's stays a plain word.
+   * The first frame outside [RUNTIME]; a stack of runtime frames alone keeps its first.
+   */
   private fun site(thrown: Throwable): String? =
-    thrown.stackTrace.firstOrNull()?.let { frame ->
+    (thrown.stackTrace.firstOrNull { frame -> RUNTIME.none(frame.className::startsWith) } ?: thrown.stackTrace.firstOrNull())?.let { frame ->
       val type = frame.className.substringAfterLast('.').substringBefore('$')
       "$type.${frame.methodName.substringBefore('$')}".take(SITE_MAX)
     }
@@ -468,5 +472,8 @@ class CaptureRun(
 
     /** The record's plain word is at most 64 characters (CD6): a longer site is cut, never masked whole. */
     private const val SITE_MAX = 64
+
+    /** F-S7-1: the Java and Kotlin runtimes' packages, whose frames (a bounds check, a `first()`) name no caller. */
+    private val RUNTIME = listOf("java.", "javax.", "jdk.", "sun.", "kotlin.")
   }
 }

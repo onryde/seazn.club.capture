@@ -9,4 +9,5 @@ object StreamPack {
   const val PIPELINE_OUTPUT = "io.github.thibaultbee.streampack.core.pipelines.outputs.encoding.EncodingPipelineOutput"
   const val CAMERA = "io.github.thibaultbee.streampack.core.elements.sources.video.camera"
   const val ENCODER = "io.github.thibaultbee.streampack.core.elements.encoders.mediacodec.MediaCodecEncoder"
+  const val TS_MUXER = "io.github.thibaultbee.streampack.core.elements.endpoints.composites.muxers.ts.TsMuxer"
 }

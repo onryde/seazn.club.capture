@@ -392,6 +392,38 @@ class CaptureRunTest {
       assertFalse(SessionRecord.MASK in record, record)
     }
 
+  /**
+   * Session 7, F-S7-1: every SRT start failed with `site: Preconditions.outOfBounds`, the JDK's bounds check, which
+   * names no call of ours or StreamPack's. The stack below is the one a list's `get(0)` makes in StreamPack 3.2.1's
+   * `TsMuxer.addStreams` (reproduced on the JVM against its bytecode): the site is the first frame outside the Java
+   * and Kotlin runtimes. A stack made of runtime frames alone keeps its first, rather than naming nothing.
+   */
+  @Test
+  fun `F-S7-1 the site skips the Java and Kotlin runtimes' frames, to the call that reached them`() =
+    runTest {
+      val runtime = listOf("jdk.internal.util.Preconditions" to "outOfBounds", "java.util.Objects" to "checkIndex", "java.util.ArrayList" to "get", "kotlin.collections.CollectionsKt" to "first")
+      val reached = runtime.foldRight(thrownAt(IndexOutOfBoundsException("Index 0 out of bounds for length 0"), StreamPack.TS_MUXER, "addStreams")) { (type, method), thrown -> thrownAt(thrown, type, method) }
+      val bare = IndexOutOfBoundsException("Index 0 out of bounds for length 0").apply { stackTrace = runtime.map { (type, method) -> StackTraceElement(type, method, null, 1) }.toTypedArray() }
+      val rows =
+        listOf(
+          reached to "${StreamPack.TS_MUXER.substringAfterLast('.')}.addStreams",
+          bare to runtime.first().let { (type, method) -> "${type.substringAfterLast('.')}.$method" },
+        )
+      var checked = 0
+      for ((thrown, site) in rows) {
+        assertEquals(runtime.first().first, thrown.stackTrace.first().className, "the stack starts in the runtime")
+        val s = scene(signals = AttemptSignals())
+        s.run.open(request)
+        advanceUntilIdle()
+        s.parts.failing[1] = thrown
+        does(s, connect(1))
+        val line = s.told.lines.single { it.kind == "capture-start-failed" }
+        assertEquals(listOf<Pair<String, Any?>>("attempt" to 1, "error" to "IndexOutOfBoundsException", "site" to site), line.fields)
+        checked += 1
+      }
+      assertEquals(2, checked, "the sweep's own count")
+    }
+
   /** F-S4-1: a start that runs out its bound is TIMEOUT, though its cancelled cleanup closed the endpoint it opened. */
   @Test
   fun `F-S4-1 a start that times out after its endpoint opened is TIMEOUT, never the close its cleanup made`() =
