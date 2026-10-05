@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ModeCode } from '@/domain/mode/Mode';
 import { encodeSavedCode } from '@/domain/mode/savedCode';
 import { useHome, type HomePanel } from '@/hooks/useHome';
+import { UNPAIR_GIVE_UP_MS } from '@/hooks/useUnpair';
 import type { Lang } from '@/i18n/language';
 import { STORE_KEYS } from '@/services/modeStore';
 import { CodePanel } from '@/ui/components/CodePanel';
@@ -176,6 +177,24 @@ describe('Home: another mode while paired (A7)', () => {
     expect(saved(h)?.codes.stream).toBeDefined();
     expect(saved(h)?.codes.scoring).toBeUndefined();
     expect(saved(h)?.active).toBe('stream');
+  });
+
+  // Review C5 m-1, CD26: native never answers, so the unpair is given up. The operator asked, so
+  // the stream code is forgotten (an engine still paired is then an orphan, cleared at the next
+  // settle); the other mode is asked for again, since the phone is still paired.
+  it('forgets the stream code when native never answers the unpair', async () => {
+    const h = await home({ paired: true });
+    await openScoring(h);
+    const held = holdIntents(h.engine, ['unpair']);
+    act(() => actions(h).confirmUnpair());
+    await flush(UNPAIR_GIVE_UP_MS - 20);
+    expect(saved(h)?.codes.stream).toBeDefined();
+    await flush(40);
+    expect(held.held()).toEqual(['unpair']);
+    expect(h.engine.getSnapshot().state.kind).toBe('paired');
+    expect(saved(h)?.codes.stream).toBeUndefined();
+    expect(saved(h)?.codes.scoring).toBeUndefined();
+    expect(view(h).panel).toEqual({ kind: 'unpairConfirm', tapped: 'scoring', code: scoring });
   });
 
   it('opens the other mode at once with nothing paired', async () => {

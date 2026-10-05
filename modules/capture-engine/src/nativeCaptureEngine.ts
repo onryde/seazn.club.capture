@@ -92,7 +92,13 @@ export function createNativeCaptureEngine(
     },
     getSnapshot: () => snapshot,
     currentKind: () => {
-      const body = native.current();
+      let body: unknown;
+      try {
+        body = native.current();
+      } catch {
+        // Review C5 m-5: this runs inside every log call; a throw must not reach the logger.
+        return snapshot.state.kind;
+      }
       const now = body == null ? null : toEngineSnapshot(body, cache);
       return (now ?? snapshot).state.kind;
     },

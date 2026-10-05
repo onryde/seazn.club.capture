@@ -132,6 +132,18 @@ describe('the native engine (carry 1)', () => {
     expect(engine.currentKind()).toBe(kind);
   });
 
+  // Review C5 m-5: the routing read runs inside every log call, so a bridge that throws reads as
+  // the JS snapshot's kind, never as a throw out of the logger.
+  it('reads the JS snapshot’s kind when native’s current() throws', () => {
+    const native = new FakeNativeModule({ current: pairedWire });
+    const engine = createNativeCaptureEngine(native, quiet);
+    expect(engine.getSnapshot().state.kind).toBe('paired');
+    native.current = () => {
+      throw new Error('the module is gone');
+    };
+    expect(engine.currentKind()).toBe('paired');
+  });
+
   // Review C4c round 1, minor 3: between lines the logged count is a floor, so dispose writes the rest.
   it('I-4 a burst of malformed snapshots then dispose records the full count, once', async () => {
     const native = new FakeNativeModule({ current: pairedWire });

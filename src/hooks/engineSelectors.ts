@@ -53,7 +53,6 @@ export const selectStateKind = (snapshot: EngineSnapshot) => snapshot.state.kind
 export const selectBitrateKbps = (snapshot: EngineSnapshot) => snapshot.telemetry.bitrateKbps;
 export const selectAudioLevel = (snapshot: EngineSnapshot) => snapshot.telemetry.audioLevel;
 export const selectShed = (snapshot: EngineSnapshot) => snapshot.telemetry.shed;
-export const selectSurvivesBackground = (snapshot: EngineSnapshot) => snapshot.survivesBackground;
 /** The broadcast's overlay, else the pairing's; null when the server sent no usable one. */
 export const selectOverlayUrl = (snapshot: EngineSnapshot) =>
   snapshot.broadcast?.overlayUrl ?? snapshot.pairing?.overlayUrl ?? null;
@@ -119,12 +118,6 @@ export const selectUnpairedKey = (snapshot: EngineSnapshot): string | null => {
 };
 /** Why native left the pairing, a primitive beside the key; null with no unpair. */
 export const selectUnpairedReason = (snapshot: EngineSnapshot) => snapshot.unpaired?.reason ?? null;
-
-/** True whenever bytes are reaching the front door. */
-export function selectIsPublishing(snapshot: EngineSnapshot): boolean {
-  const { kind } = snapshot.state;
-  return kind === 'publishing' || kind === 'degraded';
-}
 
 /**
  * When the current broadcast began, or null when nothing is running.

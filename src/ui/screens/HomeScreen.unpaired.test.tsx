@@ -85,6 +85,25 @@ describe('Home after an unpair the operator did not ask for', () => {
     },
   );
 
+  // Review C5 m-7: `replaced` ends a held broadcast too (native's answer table, Pairings.kt).
+  it('names why when the code is paired elsewhere while on air', async () => {
+    const app = await pairedOnStream();
+    act(() => app.engine.hear({ word: 'go-live', cause: 'organiser' }));
+    await flush(3_000);
+    expect(app.engine.getSnapshot().state.kind).toBe('publishing');
+    expect(app.nav.current()).toBe('stream');
+    act(() => app.engine.hear({ word: 'replaced' }));
+    await flush();
+    expect(app.engine.getSnapshot()).toMatchObject({
+      state: { kind: 'idle' },
+      unpaired: { reason: 'replaced' },
+    });
+    expect(app.nav.current()).toBe('home');
+    showsPanel('replaced');
+    expect(hasSaved(app)).toBe(false);
+    expect(screen.queryByText(/^Paired ·/)).toBeNull();
+  });
+
   // Task 24's resume at a cold start, refused by the phone's permissions.
   it('names the permissions when a cold start’s re-pair is refused', async () => {
     const app = await launchApp({
@@ -123,6 +142,54 @@ describe('Home after an unpair the operator did not ask for', () => {
     await flush();
     expect(app.engine.getSnapshot().unpaired).toMatchObject({ reason: 'replaced', slot: 1 });
     noPanel();
+  });
+
+  // Review C5 m-11: Home mounts again (the crash screen's Try again remounts the tree, Home
+  // included): a panel already closed stays closed, and the next unpair still says so.
+  it('keeps a closed panel closed when Home mounts again', async () => {
+    const view = renderWithPorts(<HomeScreen />);
+    await act(() => view.ports.modeStore.load());
+    act(() => pairCode(view.engine, code));
+    act(() => view.engine.hear({ word: 'replaced' }));
+    await flush();
+    showsPanel('replaced');
+    close();
+    await flush();
+    noPanel();
+    view.rerender(<HomeScreen key="mounted-again" />);
+    await flush();
+    expect(view.engine.getSnapshot().unpaired).toMatchObject({ reason: 'replaced' });
+    noPanel();
+    act(() => pairCode(view.engine, code));
+    act(() => view.engine.hear({ word: 'taken' }));
+    await flush();
+    showsPanel('taken');
+  });
+
+  // m-11's memory listens for the next pair, then lets go: no listener is left behind.
+  it('leaves no engine listener behind once the next pair clears the unpair', async () => {
+    const view = renderWithPorts(<HomeScreen />);
+    await act(() => view.ports.modeStore.load());
+    const subscribe = view.engine.subscribe;
+    let open = 0;
+    view.engine.subscribe = (listener) => {
+      open += 1;
+      const off = subscribe(listener);
+      return () => {
+        open -= 1;
+        off();
+      };
+    };
+    act(() => pairCode(view.engine, code));
+    await flush();
+    const before = open;
+    act(() => view.engine.hear({ word: 'replaced' }));
+    await flush();
+    showsPanel('replaced');
+    expect(open).toBe(before + 1);
+    act(() => pairCode(view.engine, code));
+    await flush();
+    expect(open).toBe(before);
   });
 
   // PV31: the same code, unpaired twice.

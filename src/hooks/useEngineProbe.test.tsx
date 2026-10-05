@@ -86,6 +86,10 @@ describe('the device probe', () => {
   it('counts the scenarios it runs and skips (PV12: zero is a failure)', () => {
     const onPhone = ENGINE_SCENARIOS.filter((scenario) => scenario.onPhone);
     expect([ENGINE_SCENARIOS.length, onPhone.length]).toEqual([14, 3]);
+    // Their places in the tree, which each line names: the two pairs first, the unpair last.
+    expect(ENGINE_SCENARIOS.flatMap((scenario, at) => (scenario.onPhone ? [at] : []))).toEqual([
+      0, 1, 13,
+    ]);
   });
 
   it('passes on a sound engine, scene by scene, and leaves it idle', async () => {
@@ -98,7 +102,7 @@ describe('the device probe', () => {
       ['probe.skip', { count: 11 }],
       ['probe.pass', { scene: 0 }],
       ['probe.pass', { scene: 1 }],
-      ['probe.pass', { scene: 2 }],
+      ['probe.pass', { scene: 13 }],
     ]);
     expect(fakes.engine.getSnapshot().state.kind).toBe('idle');
     expect(fakes.engine.intents.map((intent) => intent.kind)).not.toContain('start');
@@ -262,9 +266,9 @@ describe('the device probe', () => {
     });
     run(hook);
     await flush(PROBE_WAIT_MS + 100);
+    // Review C5 m-3: a scene that cannot leave clean has not passed.
     expect(probeLines(fakes)).toEqual([
       ['probe.skip', { count: 11 }],
-      ['probe.pass', { scene: 0 }],
       ['probe.fail', { scene: 0, reason: 'not-idle' }],
     ]);
   });
@@ -278,6 +282,39 @@ describe('the device probe', () => {
     await flush();
     expect(probeLines(fakes).filter(([event]) => event === 'probe.pass')).toHaveLength(3);
     expect(probeLines(fakes).filter(([event]) => event === 'probe.skip')).toHaveLength(1);
+  });
+
+  // Review C5 m-4: a scene names its place in the whole tree, not among the phone's three.
+  it('names a failed scene by its place in the tree', async () => {
+    const { fakes, hook } = probeOn({
+      // An Idle engine that still names an unpair: only the unpair scenario reads it.
+      engine: (base) =>
+        seenAs(base.engine, (snapshot) =>
+          snapshot.state.kind === 'idle'
+            ? { ...snapshot, unpaired: { reason: 'replaced', code: 'x', slot: 1, tokenTag: 't' } }
+            : snapshot,
+        ),
+    });
+    run(hook);
+    await flush();
+    expect(probeLines(fakes)).toEqual([
+      ['probe.skip', { count: 11 }],
+      ['probe.pass', { scene: 0 }],
+      ['probe.pass', { scene: 1 }],
+      // Reads: Paired after the pair (1); Idle, its name and its unpair (2, 3, 4).
+      ['probe.fail', { scene: 13, check: 4, reason: 'mismatch' }],
+    ]);
+  });
+
+  // Review C5 m-2: Dismiss clears a readout, never a run.
+  it('dismiss while running leaves the run running', async () => {
+    const { hook } = probeOn({ ports: { nativeEngine: neverSettles() } });
+    run(hook);
+    await flush();
+    act(() => hook.result.current?.dismiss());
+    expect(hook.result.current?.state).toBe('running');
+    await flush(PROBE_WAIT_MS * 2);
+    expect(hook.result.current?.state).toBe('failed');
   });
 
   // The idle guard cannot see this one: native has not yet answered the first run's pair.

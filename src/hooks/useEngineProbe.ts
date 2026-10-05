@@ -18,9 +18,10 @@ export const PROBE_WAIT_MS = 5_000;
 /** How often a bounded wait reads the engine again (C4c carry (a)). */
 const POLL_MS = 50;
 
-const PHONE_SCENARIOS: readonly Scenario[] = ENGINE_SCENARIOS.filter(
-  (scenario) => scenario.onPhone,
-);
+/** The scenarios a phone runs, each with its index in the whole tree: the `scene` a line names (review C5 m-4). */
+const PHONE_SCENES: readonly (readonly [scene: number, scenario: Scenario])[] = [
+  ...ENGINE_SCENARIOS.entries(),
+].filter(([, scenario]) => scenario.onPhone);
 
 type StopReason = 'no-ack' | 'stuck-pairing' | 'not-idle' | 'unsupported';
 
@@ -73,13 +74,14 @@ async function probe(
   native: NativeCaptureEngine,
   logger: Logger,
 ): Promise<boolean> {
-  logger.info('probe.skip', { count: ENGINE_SCENARIOS.length - PHONE_SCENARIOS.length });
-  for (const [scene, scenario] of PHONE_SCENARIOS.entries()) {
+  logger.info('probe.skip', { count: ENGINE_SCENARIOS.length - PHONE_SCENES.length });
+  for (const [scene, scenario] of PHONE_SCENES) {
     const checks = { count: 0 };
     try {
       await scenario.run(probeKit(engine, native, checks));
-      logger.info('probe.pass', { scene });
+      // A scene passes once the engine is back at idle (review C5 m-3): never a pass and a fail.
       await leaveClean(engine, native);
+      logger.info('probe.pass', { scene });
     } catch (error) {
       const reason = error instanceof ProbeStop ? error.reason : 'mismatch';
       logger.warn(
@@ -98,9 +100,10 @@ async function probe(
  * settle; `sendTogether` sends every intent before its one settle (PV33). A
  * start, a server word and readiness are refused before anything is sent: on a
  * phone a start goes on air for real, and there is no scripted server.
- * `checks` counts snapshot reads, each `same`'s first argument in order, so a
- * failure names its expectation's ordinal from 1 without parsing the phrase.
- * Exported for its tests.
+ * `checks` counts the scenario's snapshot reads, up to and including the one
+ * that failed: where in the scenario it failed, without the phrase (which may
+ * not reach the record). One `same` can read more than once, so it is not that
+ * `same`'s ordinal (review C5 m-12). Exported for its tests.
  */
 export function probeKit(
   engine: CaptureEnginePort,

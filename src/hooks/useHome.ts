@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
+import { useCallback, useEffect, useState, useSyncExternalStore } from 'react';
 import type { CodeError } from '@/domain/credentials/waitingFields';
 import { continueCard, type ContinueCopy } from '@/domain/mode/continueCard';
 import type { Mode, ModeCode } from '@/domain/mode/Mode';
@@ -12,6 +12,7 @@ import {
   type SavedStream,
 } from '@/domain/mode/savedCode';
 import { scanOutcome, type ScanOutcome } from '@/domain/mode/scanOutcome';
+import type { CaptureEnginePort } from '@/engine/CaptureEnginePort';
 import type { UnpairReason } from '@/domain/session/Pairing';
 import {
   selectEngineStatus,
@@ -366,27 +367,44 @@ function useContinueCopy(code: SavedCode | null): ContinueCopy | null {
 }
 
 /**
+ * The unpair Home last named, per engine (review C5 m-11): kept across Home's
+ * own remounts, as `useUnpair`'s clearings are, so a panel already shown or
+ * closed does not come back when Home mounts again. Keyed by the engine, which
+ * is built once with the ports, so a test's engine never meets another's.
+ */
+const named = new WeakMap<CaptureEnginePort, string>();
+
+/**
+ * PV31: native's next pair clears the unpair, and the memory with it, whether
+ * Home is mounted or not (a scan pairs from /stream, with Home gone).
+ */
+function rememberNamed(engine: CaptureEnginePort, key: string): void {
+  named.set(engine, key);
+  const unsubscribe = engine.subscribe(() => {
+    if (engine.getSnapshot().unpaired !== null) return;
+    named.delete(engine);
+    unsubscribe();
+  });
+}
+
+/**
  * Amendment §2, Unpaired without asking: Home names why, once per unpair.
  * `unpaired` is a new object on every snapshot, so it is compared by value
- * (`selectUnpairedKey`); Close remembers the one dismissed. PV31: native's next
- * pair clears the unpair, and so does this memory, so the same code unpaired
- * again says so again. A scan in flight keeps its "Checking code…" panel; the
- * unpair panel follows it on the next change.
+ * (`selectUnpairedKey`); the one named is remembered (`rememberNamed`), so the
+ * same code unpaired again after a pair says so again. A scan in flight keeps its "Checking code…" panel; the unpair
+ * panel follows it on the next change.
  */
 function useUnpairedPanel(panel: HomePanel | null, setPanel: SetPanel): void {
+  const { engine } = usePorts();
   const key = useEngineSelector(selectUnpairedKey);
   // The same snapshot's reason, as its own primitive: no parse of the key, no cast.
   const reason = useEngineSelector(selectUnpairedReason);
-  const shown = useRef<string | null>(null);
   useEffect(() => {
-    if (key === null || reason === null) {
-      shown.current = null;
-      return;
-    }
-    if (key === shown.current || panel?.kind === 'checking') return;
-    shown.current = key;
+    if (key === null || reason === null) return;
+    if (key === named.get(engine) || panel?.kind === 'checking') return;
+    rememberNamed(engine, key);
     setPanel({ kind: 'unpaired', tapped: 'stream', reason });
-  }, [key, reason, panel, setPanel]);
+  }, [engine, key, reason, panel, setPanel]);
 }
 
 /**
