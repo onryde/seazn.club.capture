@@ -9,6 +9,7 @@ import android.os.SystemClock
 import android.util.Size
 import com.seazn.capture.engine.adapter.AttemptSignals
 import com.seazn.capture.engine.adapter.CameraAvailability
+import com.seazn.capture.engine.adapter.CameraFailures
 import com.seazn.capture.engine.adapter.EncoderKeys
 import com.seazn.capture.engine.adapter.FrameTally
 import com.seazn.capture.engine.adapter.PeakMeter
@@ -59,7 +60,9 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.emptyFlow
+import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.transformLatest
 import kotlinx.coroutines.launch
@@ -76,6 +79,8 @@ class StreamerAdapter(
   private val cameras: CameraAvailability,
   private val calls: CoreCalls,
   side: () -> Side,
+  /** F-S4-1: StreamPack's word that a camera was lost, from its own log lines (EngineHost's `VendorLines`). */
+  private val losses: Flow<String>,
 ) : Capture {
   private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default + CoroutineExceptionHandler { _, t -> calls.failure(t) })
   private val shown = PeakMeter()
@@ -305,10 +310,17 @@ class StreamerAdapter(
     /** C7 carry: our camera's id when the start failed on Camera2's busy word ([busy]). */
     override fun busyCamera(failure: Throwable): String? = cameraId?.takeIf { busy(failure) }
 
+    /** F-S4-1: our camera's id when the start failed on the camera's own failure, by the core's reading of it. */
+    override fun cameraFailed(failure: Throwable): String? = cameraId?.takeIf { CameraFailures.camera(failure) }
+
+    override fun cameraLosses(): Flow<String> = losses
+
     /**
-     * Review C7 I-2: each camera source's id once StreamPack 3.2.1 reports it open, previewing or streaming
+     * Review C7 I-2: each camera source's id when StreamPack 3.2.1 reports it open, previewing or streaming
      * (javap: `CameraSource.startPreview` and `startStream` emit true after `CameraController.addTarget`, the
-     * lazy open). One per source: a new source, a switch's or a reopen's, is watched afresh.
+     * lazy open). A new source, a switch's or a reopen's, is watched afresh. F-S4-1: each time it turns open,
+     * not once: a camera lost on air reads not ready until StreamPack's next start opens it again, and only
+     * that open says so (CameraSource turns both false when its device closes, the 3.2.1 sources).
      */
     @OptIn(ExperimentalCoroutinesApi::class) // transformLatest
     override fun cameraOpens(): Flow<String> {
@@ -316,8 +328,10 @@ class StreamerAdapter(
       return held.videoInput.sourceFlow.transformLatest { source ->
         val camera = source as? ICameraSource ?: return@transformLatest
         val streaming = (camera as? IVideoSourceInternal)?.isStreamingFlow ?: MutableStateFlow(false)
-        combine(camera.isPreviewingFlow, streaming) { previewing, streams -> previewing || streams }.first { it }
-        emit(camera.cameraId)
+        combine(camera.isPreviewingFlow, streaming) { previewing, streams -> previewing || streams }
+          .distinctUntilChanged()
+          .filter { it }
+          .collect { emit(camera.cameraId) }
       }
     }
   }

@@ -54,11 +54,23 @@ interface CaptureParts {
   fun busyCamera(failure: Throwable): String?
 
   /**
-   * Review C7 I-2: the id of each camera source the held streamer is given, once StreamPack reports it open,
+   * Review C7 I-2: the id of each camera source the held streamer is given, each time StreamPack reports it open,
    * previewing or streaming (3.2.1, javap: `isPreviewingFlow` and `isStreamingFlow` turn true only after the
-   * lazy open succeeds). Nothing while nothing is held.
+   * lazy open succeeds; F-S4-1: each time, so an open after a loss is seen). Nothing while nothing is held.
    */
   fun cameraOpens(): Flow<String>
+
+  /**
+   * Device session 4, F-S4-1: the id of each camera StreamPack reports lost (Camera2 disconnected it, or put it in a
+   * device error), from its own log lines (`VendorLines`): 3.2.1 has no other word for it.
+   */
+  fun cameraLosses(): Flow<String>
+
+  /**
+   * F-S4-1: the id of our camera when [failure], a start's, is the camera's own (`CameraFailures`), not the
+   * transport's. Asked after [busyCamera]: another app's take is that one. Null for any other failure.
+   */
+  fun cameraFailed(failure: Throwable): String?
 }
 
 /** What a build made: a streamer, or why none. */

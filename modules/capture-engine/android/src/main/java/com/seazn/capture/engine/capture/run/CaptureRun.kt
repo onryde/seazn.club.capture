@@ -61,7 +61,7 @@ class CaptureRun(
   private var micNoted = false
   private var closeWatch: Job? = null
 
-  /** I-2: the opening's watch of StreamPack's camera opens, from the build to the release. */
+  /** I-2: the opening's watch of StreamPack's camera opens, and of its losses (F-S4-1), from the build to the release. */
   private var openWatch: Job? = null
 
   fun open(asked: PairRequest) = serial.submit { opened(asked) }
@@ -93,12 +93,44 @@ class CaptureRun(
    * so the build holds nothing yet: a take heard before it stands, and the opening tells it. The camera is
    * ours, and the take told over, once StreamPack reports its source open. The watch starts after
    * [CameraAvailability.opening]: the sources' flows keep their state, so an open that came first is seen.
-   * Every build follows a release, or none, so no watch is running here; [closed] ends this one.
+   * Every build follows a release, or none, so no watch is running here; [closed] ends this one. F-S4-1: the
+   * same watch hears StreamPack's word that the camera was lost, and hands it to the queue ([lostByDevice]).
    */
   private fun watchOpens(camera: String) {
     cameras.opening(camera)
     cameras.sessionStarted()?.let(calls.report)
-    openWatch = scope.launch { parts.cameraOpens().collect { id -> cameras.opened(id)?.let(calls.report) } }
+    openWatch =
+      scope.launch {
+        launch { parts.cameraOpens().collect { id -> cameras.opened(id)?.let(calls.report) } }
+        parts.cameraLosses().collect { id -> serial.submit { lostByDevice(id) } }
+      }
+  }
+
+  /**
+   * Device session 4, F-S4-1: StreamPack lost our camera (Camera2 disconnected it, or put it in a device error). It
+   * reads not ready ([CameraAvailability.lost]), so the Armed gate holds the go-live, and, with nothing on air, it is
+   * built afresh. With an attempt held the loss is marked only: the attempt's own paths decide (StreamPack opens
+   * the camera again at a start, and a start the camera fails builds it afresh), so the capture never cuts a
+   * broadcast on its own guess. Another camera's loss, or one after the release, is nothing.
+   */
+  private suspend fun lostByDevice(camera: String) {
+    if (!cameras.lost(camera)) return
+    calls.line(RecordEntry("camera-lost", listOf("from" to "device", "attempt" to attempt)))
+    if (attempt == null) rebuild()
+  }
+
+  /**
+   * F-S4-1: the camera built afresh, at the rotation held (CD42), a real open: StreamPack 3.2.1's
+   * `VideoInput.setSource` skips a camera source of the same id (its sources), so a reopen of the same camera
+   * opens nothing, and only a new build opens it again. The release closes the attempt held, as a stop asked for.
+   */
+  private suspend fun rebuild() {
+    val asked = request ?: return
+    val wanted = rotation ?: EncoderKeys.surfaceRotation(side())
+    calls.line(RecordEntry("capture-rebuilt", listOf("action" to "camera")))
+    closed()
+    request = asked
+    build(asked, wanted)
   }
 
   /**
@@ -203,9 +235,11 @@ class CaptureRun(
         throw e
       } catch (e: Exception) {
         calls.line(startFailed(id, e))
-        val camera = parts.busyCamera(e)
-        signals.startEnded(id, if (camera != null) StartEnd.CAMERA else StartEnd.FAILED)?.let(calls.report)
-        if (camera != null) return busyAtStart(id, camera, e)
+        val busy = parts.busyCamera(e)
+        val lost = if (busy == null) parts.cameraFailed(e) else null
+        signals.startEnded(id, if (busy != null || lost != null) StartEnd.CAMERA else StartEnd.FAILED)?.let(calls.report)
+        if (busy != null) return busyAtStart(id, busy, e)
+        if (lost != null) return cameraAtStart(id, lost, e)
         signals.connectFailed(id, e)?.let(calls.report)
         return
       }
@@ -258,6 +292,21 @@ class CaptureRun(
     cameras.waiting(camera)
     request?.let(calls.cameraBusy)
     if (signals.connectFailed(id, failure) != null) calls.report(Input.ConnectFailed(id, ConnectFailure.UNHELD, "camera busy"))
+  }
+
+  /**
+   * Device session 4, F-S4-1: the camera failed the start ([CaptureParts.cameraFailed]). The attempt is CAMERA,
+   * never counted towards the fallback, which could not help, and never an ask, even when its endpoint's drop came
+   * first, while the start was in flight (the cleanup's close, review C7 M-3); the signals still end it (R3). The
+   * camera reads not ready, and is built afresh, so the next attempt has a camera that can stream.
+   */
+  private suspend fun cameraAtStart(id: Int, camera: String, failure: Exception) {
+    if (signals.connectFailed(id, failure) != null) {
+      calls.report(Input.ConnectFailed(id, ConnectFailure.CAMERA, "camera: ${failure.javaClass.simpleName}"))
+    }
+    cameras.lost(camera)
+    calls.line(RecordEntry("camera-lost", listOf("from" to "start", "attempt" to id)))
+    rebuild()
   }
 
   /** N8: checked once per opening, at its first connect, when StreamPack's AudioRecord is recording. */

@@ -182,8 +182,28 @@ class GlueRulesTest {
     val calls = Regex("""\bStreamerAdapter\(""").findAll(build).toList()
     assertEquals(1, calls.size, "one capture built")
     val args = arguments(build, calls.single().range.last)
-    assertTrue(args.trimEnd().endsWith("pose::side)"), "the side supplier is the pose watch's: $args")
+    assertTrue(args.trimEnd().endsWith("pose::side, cameraLosses)"), "the side supplier is the pose watch's: $args")
     for (side in listOf("Side.LEFT", "Side.RIGHT")) assertFalse(side in glue("EngineHost.kt"), "EngineHost names $side")
+  }
+
+  /**
+   * Device session 4, F-S4-1: StreamPack's camera-loss lines reach the capture's watch, through the one flow the
+   * build makes: StreamPack's logger is the build's `VendorLines`, which tells the flow each loss, and the capture
+   * is given that flow and hands it to the run; a start's failure is read by the core's `CameraFailures`. The run's
+   * side is CaptureRunTest's; this is the wiring no JVM test reaches.
+   */
+  @Test
+  fun `F-S4-1 StreamPack's camera-loss lines reach the capture's watch, and a start's failure is the core's reading`() {
+    val build = hostBuild()
+    assertTrue(Regex("""val cameraLosses = MutableSharedFlow<String>\(""").containsMatchIn(build), "the build makes the flow")
+    assertTrue("val vendor = VendorLines({ id -> cameraLosses.tryEmit(id) })" in build, "each loss is told to it")
+    assertTrue("Logger.logger = VendorLogger(vendor)" in build, "StreamPack's logger is that VendorLines")
+    val capture = Regex("""\bStreamerAdapter\(""").findAll(build).single()
+    assertTrue(arguments(build, capture.range.last).trimEnd().endsWith(", cameraLosses)"), "the capture is given it")
+    val adapter = glue("StreamerAdapter.kt")
+    assertTrue("private val losses: Flow<String>," in adapter, "the adapter takes it")
+    assertTrue("override fun cameraLosses(): Flow<String> = losses" in adapter, "and hands it to the run")
+    assertTrue("override fun cameraFailed(failure: Throwable): String? = cameraId?.takeIf { CameraFailures.camera(failure) }" in adapter, "the core's reading")
   }
 
   /**
@@ -478,8 +498,10 @@ class GlueRulesTest {
       assertFalse("setVideoSource(" in before.substring(announced!!.range.last), "nothing set between: ${source.value}")
     }
     assertTrue("(camera as? IVideoSourceInternal)?.isStreamingFlow" in adapter, "the start's open is an open too")
-    assertTrue("combine(camera.isPreviewingFlow, streaming) { previewing, streams -> previewing || streams }.first { it }" in adapter, "previewing or streaming")
-    assertTrue(Regex("""\.first \{ it \}\s+emit\(camera\.cameraId\)""").containsMatchIn(adapter), "the source's id, once open")
+    assertTrue("combine(camera.isPreviewingFlow, streaming) { previewing, streams -> previewing || streams }" in adapter, "previewing or streaming")
+    // F-S4-1: each time it turns open, so a camera lost on air reads ready again once StreamPack's start reopens it.
+    val eachOpen = Regex("""previewing \|\| streams \}\s+\.distinctUntilChanged\(\)\s+\.filter \{ it \}\s+\.collect \{ emit\(camera\.cameraId\) \}""")
+    assertTrue(eachOpen.containsMatchIn(adapter), "the source's id, each time it turns open")
     assertTrue("cameras.ready(held.videoInput.sourceFlow.value is ICameraSource)" in adapter, "the readiness reads the open's outcome")
     assertTrue("cameras.openFailed(camera.cameraId, busy(failure))?.let(calls.report)" in adapter, "a failed open is heard, a busy one told")
     val view = glue("CapturePreviewView.kt")

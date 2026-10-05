@@ -49,6 +49,16 @@ class FallbackPolicyTest {
     assertEquals(Transport.RTMPS, start.failConnect(3, ConnectFailure.OTHER, validated = true).current)
   }
 
+  /** F-S4-1: the camera could not stream for the start, which says nothing about the path to the ingest either. */
+  @Test
+  fun `F-S4-1 a start the camera failed never counts, even on a validated network`() {
+    assertFalse(start.connectFailed(ConnectFailure.CAMERA, networkValidated = true).counted)
+    val policy = start.failConnect(FallbackPolicy.FAILURES_TO_FALL_BACK * 3, ConnectFailure.CAMERA, validated = true)
+    assertEquals(Transport.SRT, policy.current)
+    assertEquals(0, policy.count)
+    assertEquals(Transport.RTMPS, start.failConnect(FallbackPolicy.FAILURES_TO_FALL_BACK, ConnectFailure.OTHER, validated = true).current)
+  }
+
   @Test
   fun `F-P5-2 mid-session drops count toward fallback`() {
     // Redmi on weak wifi: 18 drops every 6–22 s, always endpoint-closed.

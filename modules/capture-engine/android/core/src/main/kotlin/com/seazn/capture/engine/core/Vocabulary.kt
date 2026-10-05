@@ -72,6 +72,13 @@ enum class ConnectFailure(override val wire: String) : Wire {
    * fallback, and never an ask for the code.
    */
   UNHELD("unheld"),
+
+  /**
+   * Device session 4, F-S4-1: the camera failed the start (StreamPack lost it, or a throw from its camera source).
+   * It says nothing about the path to the ingest either: never counted towards the fallback, which could not help,
+   * and never an ask. The capture builds the camera afresh, and its `camera` readiness is false while it is lost.
+   */
+  CAMERA("camera"),
 }
 
 enum class HeartbeatResult(override val wire: String) : Wire {

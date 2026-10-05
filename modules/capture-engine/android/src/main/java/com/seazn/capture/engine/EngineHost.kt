@@ -27,6 +27,7 @@ import expo.modules.kotlin.AppContext
 import io.github.komedia.komuxer.logger.KomuxerLogger
 import io.github.thibaultbee.streampack.core.logger.Logger
 import java.io.File
+import kotlinx.coroutines.flow.MutableSharedFlow
 
 /**
  * One engine per process (carry 18), built on the application context so a JS reload never leaves
@@ -40,6 +41,9 @@ object EngineHost {
   private class Parts(val core: BridgeCore, val capture: Capture, val keeper: PairingKeeper)
 
   @Volatile private var parts: Parts? = null
+
+  /** F-S4-1: camera losses held for the capture's watch; one loss per device event, so a few are plenty. */
+  private const val LOSSES_HELD = 8
 
   fun core(context: Context): BridgeCore = parts(context).core
 
@@ -57,7 +61,9 @@ object EngineHost {
   private fun parts(context: Context): Parts = parts ?: build(context.applicationContext).also { parts = it }
 
   private fun build(app: Context): Parts {
-    val vendor = VendorLines { level, fields -> parts?.core?.log(level, "vendor-log", fields) }
+    // F-S4-1: StreamPack's own lines are its only word that a camera was lost; the capture hears them here.
+    val cameraLosses = MutableSharedFlow<String>(extraBufferCapacity = LOSSES_HELD)
+    val vendor = VendorLines({ id -> cameraLosses.tryEmit(id) }) { level, fields -> parts?.core?.log(level, "vendor-log", fields) }
     Logger.logger = VendorLogger(vendor)
     KomuxerLogger.logger = KomuxerVendorLogger(vendor) // C6 m-4: RTMPS's own
     TlsGuard.record = ::line
@@ -73,7 +79,7 @@ object EngineHost {
     val cameras = CameraAvailability()
     val pose = PoseWatch(app, { core.readiness(pose = it) }, ::line)
     // C6 carry: the build encodes the side held (CD42), the pose watch's, never a constant.
-    val capture = StreamerAdapter(app, FrameTally(), AttemptSignals(), cameras, coreCalls { core }, pose::side)
+    val capture = StreamerAdapter(app, FrameTally(), AttemptSignals(), cameras, coreCalls { core }, pose::side, cameraLosses)
     val device = DeviceSampler(app, report, toCore)
     val keeper = keeper(app) { core }
     // Task 34: a debug build's seam may hold another HTTP path; a release build's never does.

@@ -196,6 +196,31 @@ class CameraAvailabilityTest {
     assertTrue(fresh.ready(camera = true), "an open seen clears the failure")
   }
 
+  /**
+   * F-S4-1: StreamPack's own word that our camera was lost (disconnected, or a device error). The camera reads
+   * not ready until a new open is asked (the capture's rebuild) or one is seen; another camera's loss is nothing.
+   */
+  @Test
+  fun `F-S4-1 a lost camera reads not ready until a new open is asked or seen, and another's loss is nothing`() {
+    val fresh = CameraAvailability()
+    fresh.opening("0")
+    fresh.sessionStarted()
+    assertEquals(null, fresh.opened("0"))
+    assertTrue(fresh.ready(camera = true), "ours, open")
+    assertFalse(fresh.lost("1"), "another camera's loss is not ours")
+    assertTrue(fresh.ready(camera = true))
+    assertTrue(fresh.lost("0"), "ours")
+    assertFalse(fresh.ready(camera = true), "lost: not ready")
+    assertFalse(fresh.contended("0"), "a loss is no other app's take: its busy open says so, if it is one")
+    fresh.opening("0") // the rebuild's new open
+    assertTrue(fresh.ready(camera = true), "a new open is asked")
+    assertTrue(fresh.lost("0"))
+    assertEquals(null, fresh.opened("0"), "an open seen tells nothing")
+    assertTrue(fresh.ready(camera = true), "an open seen clears the loss")
+    fresh.held(null) // released
+    assertFalse(fresh.lost("0"), "nothing held: no loss of ours")
+  }
+
   @Test
   fun `I-2 an open failed on a busy camera is contention, once, and its release is told`() {
     val fresh = CameraAvailability()

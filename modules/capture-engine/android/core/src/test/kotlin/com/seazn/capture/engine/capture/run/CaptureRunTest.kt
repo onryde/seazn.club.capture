@@ -1,5 +1,6 @@
 package com.seazn.capture.engine.capture.run
 
+import com.seazn.capture.engine.StreamPack
 import com.seazn.capture.engine.adapter.AttemptSignals
 import com.seazn.capture.engine.adapter.CameraAvailability
 import com.seazn.capture.engine.adapter.EncoderKeys
@@ -11,10 +12,12 @@ import com.seazn.capture.engine.core.ConnectFailure
 import com.seazn.capture.engine.core.DropReason
 import com.seazn.capture.engine.core.EndReason
 import com.seazn.capture.engine.core.Input
+import com.seazn.capture.engine.core.RecordEntry
 import com.seazn.capture.engine.core.SessionMachine
 import com.seazn.capture.engine.core.SessionRecord
 import com.seazn.capture.engine.core.Shared
 import com.seazn.capture.engine.core.Side
+import com.seazn.capture.engine.thrownAt
 import java.io.IOException
 import java.net.ConnectException
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -47,10 +50,6 @@ class CaptureRunTest {
   private val cameraInUse = 4
   private val maxCamerasInUse = 5
   private val cameraDisconnected = 2
-
-  // StreamPack 3.2.1's packages (its sources): where the throws the device may name are made.
-  private val pipelineOutput = "io.github.thibaultbee.streampack.core.pipelines.outputs.encoding.EncodingPipelineOutput"
-  private val cameraSources = "io.github.thibaultbee.streampack.core.elements.sources.video.camera"
 
   private fun connect(id: Int) = Command.Connect(id, Configs.srt, startBitrateBps = 3_000_000, maxBwBytesPerSecond = 1_000_000)
 
@@ -340,14 +339,14 @@ class CaptureRunTest {
   fun `F-S4-1 a start that fails after its endpoint opened reports its own failure, never the close its cleanup made`() =
     runTest {
       val quoted = "srt://live.cloudflare.com:778?streamid=${Configs.STREAM_ID}"
-      val pipeline = thrownAt(IllegalStateException("Endpoint must be opened before starting stream: $quoted"), pipelineOutput, "startStreamUnsafe")
+      val pipeline = thrownAt(IllegalArgumentException("Endpoint must be opened before starting stream: $quoted"), StreamPack.PIPELINE_OUTPUT, "startStreamUnsafe")
       val refused = thrownAt(ConnectException("Connection setup failure: connection rejected"), "com.seazn.capture.engine.srt.SeaznSrtSink", "startStream")
-      val wrapped = RuntimeException("start failed", thrownAt(IllegalArgumentException("Output STREAM not found in outputs PREVIEW"), "$cameraSources.controllers.CameraController", "addTarget"))
+      val wrapped = RuntimeException("start failed", thrownAt(IllegalStateException("Codec is released"), "${StreamPack.ENCODER}\$startStream\$1", "invokeSuspend"))
       val rows =
         listOf(
-          Triple(pipeline, ConnectFailure.OTHER, listOf("error" to "IllegalStateException", "site" to "EncodingPipelineOutput.startStreamUnsafe")),
+          Triple(pipeline, ConnectFailure.OTHER, listOf("error" to "IllegalArgumentException", "site" to "EncodingPipelineOutput.startStreamUnsafe")),
           Triple(refused, ConnectFailure.REFUSED, listOf("error" to "ConnectException", "site" to "SeaznSrtSink.startStream")),
-          Triple(wrapped, ConnectFailure.OTHER, listOf("error" to "RuntimeException", "site" to "CameraController.addTarget", "rootError" to "IllegalArgumentException")),
+          Triple(wrapped, ConnectFailure.OTHER, listOf("error" to "RuntimeException", "site" to "MediaCodecEncoder.invokeSuspend", "rootError" to "IllegalStateException")),
         )
       var checked = 0
       for ((thrown, expected, named) in rows) {
@@ -375,7 +374,7 @@ class CaptureRunTest {
       val s = scene(signals = signals)
       s.run.open(request)
       advanceUntilIdle()
-      s.parts.failing[1] = RuntimeException("start failed", thrownAt(IllegalArgumentException("Output STREAM not found"), "$cameraSources.controllers.CameraController", "addTarget"))
+      s.parts.failing[1] = RuntimeException("start failed", thrownAt(IllegalStateException("Codec is released"), StreamPack.ENCODER, "startStream"))
       does(s, connect(1))
       val line = s.told.lines.single { it.kind == "capture-start-failed" }
       val list = Shared.read("scrub/allow-list.json")
@@ -385,13 +384,9 @@ class CaptureRunTest {
       val written = mutableListOf<String>()
       SessionRecord { written += it }.append(0L, line)
       val record = written.single()
-      for (name in listOf("RuntimeException", "CameraController.addTarget", "IllegalArgumentException")) assertTrue("\"$name\"" in record, "$name kept: $record")
+      for (name in listOf("RuntimeException", "MediaCodecEncoder.startStream", "IllegalStateException")) assertTrue("\"$name\"" in record, "$name kept: $record")
       assertFalse(SessionRecord.MASK in record, record)
     }
-
-  /** A throwable as StreamPack's code makes it: its stack starts at [method] of [type], where it was thrown. */
-  private fun <T : Throwable> thrownAt(error: T, type: String, method: String): T =
-    error.apply { stackTrace = arrayOf(StackTraceElement(type, method, "${type.substringAfterLast('.')}.kt", 1)) + stackTrace }
 
   /** F-S4-1: a start that runs out its bound is TIMEOUT, though its cancelled cleanup closed the endpoint it opened. */
   @Test
@@ -405,6 +400,106 @@ class CaptureRunTest {
       s.parts.starting = { id -> signals.dropped(id, null)?.let { s.told.reports += it } }
       does(s, connect(1))
       assertEquals(ConnectFailure.TIMEOUT, (s.told.reports.single() as? Input.ConnectFailed)?.failure, "${s.told.reports}")
+    }
+
+  // --- F-S4-1: a camera StreamPack lost, or one that failed the start, is the camera's: not ready, and built afresh ---
+
+  /**
+   * F-S4-1: a start the camera failed says nothing of the path. It is CAMERA, never counted (FallbackPolicy), the
+   * camera reads not ready while it is lost, and the capture builds it afresh, a real open: StreamPack 3.2.1's
+   * `VideoInput.setSource` skips a camera source of the same id (its sources), so only a new build opens it again.
+   * The cleanup's close while the start was in flight is the camera's failure's own, never a drop.
+   */
+  @Test
+  fun `F-S4-1 a start the camera failed is CAMERA, marks it lost until it is built afresh, and the next attempt connects`() =
+    runTest {
+      // Each with the drop its start made meanwhile: the cleanup's close (no cause), or the far end's (a cause).
+      val rows =
+        listOf(
+          RuntimeException("Camera has been disconnected") to null,
+          thrownAt(IllegalArgumentException("Output STREAM not found"), "${StreamPack.CAMERA}.controllers.CameraController", "addTarget") to
+            IOException("endpoint closed"),
+        )
+      var checked = 0
+      for ((failure, cause) in rows) {
+        val signals = AttemptSignals()
+        val s = scene(signals = signals)
+        s.run.open(request)
+        advanceUntilIdle()
+        s.parts.opened("0")
+        advanceUntilIdle()
+        assertTrue(s.cameras.ready(camera = true), "open, before")
+        s.parts.log.clear()
+        s.parts.failing[1] = failure
+        s.parts.starting = { id -> signals.dropped(id, cause)?.let { s.told.reports += it } }
+        s.run.execute(connect(1))
+        runCurrent() // to the rebuild's release, which waits STEP_MS
+        val name = failure.javaClass.simpleName
+        assertEquals(listOf<Input>(Input.ConnectFailed(1, ConnectFailure.CAMERA, "camera: $name")), s.told.reports, name)
+        assertFalse(s.cameras.ready(camera = true), "$name: lost, not ready")
+        advanceUntilIdle()
+        assertEquals(listOf("before 1", "start 1", "release", "release done", "build $left", "build done"), s.parts.log, name)
+        assertTrue(s.cameras.ready(camera = true), "$name: a new open asked")
+        assertEquals(1, s.parts.watchingLosses, "the new build's losses are watched, once")
+        val lines = s.told.lines.filter { it.kind in setOf("camera-lost", "capture-rebuilt") }
+        assertEquals(
+          listOf(
+            RecordEntry("camera-lost", listOf("from" to "start", "attempt" to 1)),
+            RecordEntry("capture-rebuilt", listOf("action" to "camera")),
+          ),
+          lines,
+          name,
+        )
+        does(s, connect(2))
+        assertEquals(Input.Connected(2), s.told.reports.last(), name)
+        assertEquals(emptyList(), s.told.busy + s.told.pairFailed.map { it.first }, "$name: no take, no end")
+        checked += 1
+      }
+      assertEquals(rows.size, checked, "the sweep's own count")
+    }
+
+  /**
+   * F-S4-1: StreamPack's word that our camera was lost, with nothing on air, reads not ready and builds it afresh;
+   * another camera's loss is nothing; with an attempt held the loss is marked, and the attempt's own paths decide
+   * (a start the camera fails builds it afresh), so a broadcast is never cut by the capture's guess.
+   */
+  @Test
+  fun `F-S4-1 a camera lost with nothing on air is built afresh, and with an attempt held it is only marked`() =
+    runTest {
+      val s = opened()
+      s.parts.opened("0")
+      advanceUntilIdle()
+      s.parts.lose("1")
+      advanceUntilIdle()
+      assertEquals(emptyList(), s.parts.log, "another camera's loss is nothing")
+      assertTrue(s.cameras.ready(camera = true))
+
+      s.parts.lose("0")
+      runCurrent()
+      assertFalse(s.cameras.ready(camera = true), "lost: not ready")
+      advanceUntilIdle()
+      assertEquals(listOf("release", "release done", "build $left", "build done"), s.parts.log)
+      assertTrue(s.cameras.ready(camera = true), "a new open asked")
+      s.parts.opened("0")
+      advanceUntilIdle()
+      assertTrue(s.cameras.ready(camera = true), "and seen")
+      assertEquals(
+        listOf(RecordEntry("camera-lost", listOf("from" to "device", "attempt" to null)), RecordEntry("capture-rebuilt", listOf("action" to "camera"))),
+        s.told.lines.filter { it.kind in setOf("camera-lost", "capture-rebuilt") },
+      )
+
+      does(s, connect(1))
+      assertEquals(listOf<Input>(Input.Connected(1)), s.told.reports)
+      s.parts.log.clear()
+      s.parts.lose("0")
+      advanceUntilIdle()
+      assertFalse(s.cameras.ready(camera = true), "lost on air: not ready")
+      assertEquals(emptyList(), s.parts.log, "never a rebuild under an attempt held")
+      assertEquals(1, s.parts.publishing, "still on air")
+      assertEquals(RecordEntry("camera-lost", listOf("from" to "device", "attempt" to 1)), s.told.lines.last { it.kind == "camera-lost" })
+      s.parts.opened("0") // StreamPack's start opened it again
+      advanceUntilIdle()
+      assertTrue(s.cameras.ready(camera = true), "an open seen clears the loss")
     }
 
   // --- C6 I-1: a start is bounded, under the machine's own connect timeout ---

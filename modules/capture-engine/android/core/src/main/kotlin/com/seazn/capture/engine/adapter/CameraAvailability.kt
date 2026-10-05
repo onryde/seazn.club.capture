@@ -17,6 +17,8 @@ import com.seazn.capture.engine.core.Input
  *   the start, so a build holds nothing yet ([opening]). A take heard before it stands, and is told at
  *   the session's start; the camera is ours, and no longer contended, once StreamPack reports its source
  *   open ([opened]). The camera reads ready ([ready]) unless that open failed ([openFailed]).
+ * - Device session 4, F-S4-1: StreamPack's word that ours was lost ([lost]) reads as a failed open does: not
+ *   ready until a new open is asked (the capture builds it afresh) or one is seen.
  *
  * The camera callback (main looper, Task 37) and the capture scope (Task 36) both call it.
  */
@@ -29,7 +31,7 @@ class CameraAvailability(private val selfWindowMs: Long = 1_500) {
   /** The last report was [Input.CameraContended], or an open is [waiting]: the engine holds the camera taken. */
   private var told = false
 
-  /** I-2: the open of [ours] failed since it was asked; a new open asked, or one seen, clears it. */
+  /** I-2: the open of [ours] failed, or it was [lost], since it was asked; a new open asked, or one seen, clears it. */
   private var failed = false
 
   /** The camera we hold now, or null. Ours is never contended. */
@@ -73,6 +75,18 @@ class CameraAvailability(private val selfWindowMs: Long = 1_500) {
     val first = contended.isEmpty()
     contended += id
     return if (first && inSession) contendedTold() else null
+  }
+
+  /**
+   * F-S4-1: StreamPack reports [id] lost: Camera2 disconnected it, or put it in a device error (`CameraUtils`' own
+   * lines, read by `VendorLines`), or a start failed on it. Ours reads not ready until a new open is asked or one
+   * is seen. True when it was ours. No other app's take: its busy open says so, if it is one.
+   */
+  @Synchronized
+  fun lost(id: String): Boolean {
+    if (id != ours) return false
+    failed = true
+    return true
   }
 
   /**

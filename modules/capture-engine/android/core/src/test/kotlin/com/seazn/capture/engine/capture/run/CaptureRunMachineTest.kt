@@ -1,5 +1,6 @@
 package com.seazn.capture.engine.capture.run
 
+import com.seazn.capture.engine.StreamPack
 import com.seazn.capture.engine.adapter.AttemptSignals
 import com.seazn.capture.engine.adapter.CameraAvailability
 import com.seazn.capture.engine.core.Command
@@ -17,6 +18,7 @@ import com.seazn.capture.engine.core.SessionMachine
 import com.seazn.capture.engine.core.SessionRecord
 import com.seazn.capture.engine.core.Side
 import com.seazn.capture.engine.core.SrtTarget
+import com.seazn.capture.engine.thrownAt
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.test.TestScope
@@ -174,6 +176,31 @@ class CaptureRunMachineTest {
       assertTrue(targets.take(FallbackPolicy.FAILURES_TO_FALL_BACK).all { it is SrtTarget } && targets.last() is RtmpsTarget, "$targets")
       assertEquals(FallbackPolicy.FAILURES_TO_FALL_BACK, rig.told.lines.count { it.kind == "capture-start-failed" }, "each failed start named")
       assertEquals(FallbackPolicy.FAILURES_TO_FALL_BACK + 1, (rig.engine.phase as? Phase.OnAir)?.attemptId, "the RTMPS attempt is on air: ${rig.engine.phase}")
+    }
+
+  /**
+   * F-S4-1, through the real machine: a start the camera failed, its cleanup closing the endpoint while it
+   * started. The failure is CAMERA, never counted and never a drop; the capture builds the camera afresh, and
+   * the next attempt goes on air on SRT, with no fallback.
+   */
+  @Test
+  fun `F-S4-1 a start the camera failed is never counted - the camera is built afresh and the next attempt is on air on SRT`() =
+    runTest {
+      val rig = Rig(this)
+      rig.parts.failing[1] = thrownAt(IllegalArgumentException("Output STREAM not found"), "${StreamPack.CAMERA}.controllers.CameraController", "addTarget")
+      rig.parts.starting = { id -> if (id in rig.parts.failing) rig.signals.dropped(id, null)?.let { rig.engine.send(it); rig.scheduler.advanceBy(0) } }
+      Configs.pairInputs().forEach(rig.engine::send)
+      rig.scheduler.advanceBy(0)
+      advanceUntilIdle()
+      rig.scheduler.advanceBy(SessionMachine.RETRY_MS + Engine.TICK_MS)
+      advanceUntilIdle()
+      val failed = rig.lines.single { """"kind":"connect-failed"""" in it }
+      assertTrue(""""failure":"camera"""" in failed && """"counted":false""" in failed && "reason" !in failed, failed)
+      assertFalse(rig.lines.any { """"kind":"dropped"""" in it || """"kind":"fell-back"""" in it }, rig.lines.joinToString("\n"))
+      assertEquals(2, (rig.engine.phase as? Phase.OnAir)?.attemptId, "on air: ${rig.engine.phase}")
+      assertEquals(listOf(1, 2), rig.connects.map { it.attemptId })
+      assertTrue(rig.connects.all { it.target is SrtTarget }, "never a fallback")
+      assertEquals(1, rig.told.lines.count { it.kind == "capture-rebuilt" }, "built afresh, once")
     }
 
   /**

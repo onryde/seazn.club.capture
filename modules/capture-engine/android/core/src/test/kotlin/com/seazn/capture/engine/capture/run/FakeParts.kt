@@ -1,5 +1,6 @@
 package com.seazn.capture.engine.capture.run
 
+import com.seazn.capture.engine.adapter.CameraFailures
 import com.seazn.capture.engine.core.Command
 import com.seazn.capture.engine.core.Input
 import com.seazn.capture.engine.core.PairRequest
@@ -59,12 +60,16 @@ class FakeParts : CaptureParts {
   override var held = false
     private set
 
+  /** The held build's camera, as the adapter keeps its `cameraId`. */
+  private var camera: String? = null
+
   override suspend fun build(rotation: Int): Built {
     log += "build $rotation"
     delay(STEP_MS)
     log += "build done"
     val built = builds.removeFirstOrNull() ?: Built.Ready("0")
     held = built is Built.Ready
+    camera = (built as? Built.Ready)?.cameraId
     return built
   }
 
@@ -157,6 +162,23 @@ class FakeParts : CaptureParts {
   }
 
   override fun cameraOpens(): Flow<String> = opens
+
+  /** F-S4-1: StreamPack's word that a camera was lost, as the test says it came. Unwatched, a loss is nothing. */
+  private val losses = MutableSharedFlow<String>(extraBufferCapacity = 8)
+
+  /** How many watch the losses now. */
+  val watchingLosses: Int
+    get() = losses.subscriptionCount.value
+
+  /** F-S4-1: StreamPack logs camera [id] disconnected, or in a device error. */
+  fun lose(id: String) {
+    check(losses.tryEmit(id)) { "a loss with no room" }
+  }
+
+  override fun cameraLosses(): Flow<String> = losses
+
+  /** F-S4-1: the held camera when the failure is the camera's, by the core's own reading of it, as the adapter reads it. */
+  override fun cameraFailed(failure: Throwable): String? = camera?.takeIf { CameraFailures.camera(failure) }
 
   /** Through the cause chain, as the adapter reads: coroutines' stack-trace recovery may hand the run a copy that wraps the throw. */
   override fun busyCamera(failure: Throwable): String? = generateSequence(failure) { it.cause }.take(8).firstNotNullOfOrNull { busyFailures[it] }
