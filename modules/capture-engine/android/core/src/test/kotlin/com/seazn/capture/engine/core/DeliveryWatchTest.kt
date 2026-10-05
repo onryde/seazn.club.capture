@@ -2,6 +2,7 @@ package com.seazn.capture.engine.core
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -651,6 +652,41 @@ class DeliveryWatchTest {
     assertEquals(manifest + moved, CloudflarePlayback.path(asked.last().second))
     assertEquals(Delivery.OK, harness.watch.delivery)
     assertNull(harness.verdict)
+  }
+
+  /**
+   * Re-review 6 D3: Cloudflare's renditions differ by their FILE name within one `…/manifest/` directory, where
+   * F-P5-2's variants differ by directory. A master that names another token file is a variant change: never
+   * progress, and the watch then knows the variant by that file. Each poll here names the next rendition while
+   * every rendition's head keeps rising, so only the identity tells a switch from an advance.
+   */
+  @Test
+  fun `F-S7-2 D3 another rendition file in the same directory is a variant change, never progress`() {
+    val renditions = CloudflarePlayback.RENDITIONS
+    var masters = 0
+    val asked = mutableListOf<String>()
+    val answer = { t: Long, url: String ->
+      when {
+        url == polled -> {
+          val first = masters % renditions.size
+          FetchResult.Body(CloudflarePlayback.master(++masters, renditions.drop(first) + renditions.take(first)))
+        }
+        CloudflarePlayback.path(url) in renditions.map { manifest + it } -> {
+          asked += CloudflarePlayback.path(url)
+          FetchResult.Body(CloudflarePlayback.rendition(500 + t / 1_000))
+        }
+        else -> FetchResult.HttpError(404)
+      }
+    }
+    val harness = Harness(DeliveryWatch(master))
+    harness.run(0, 30_000, answer = answer)
+    assertEquals(setOf(manifest), asked.map { it.substringBeforeLast('/') + "/" }.toSet(), "one directory")
+    assertEquals(renditions.size, asked.toSet().size, "every rendition's file was asked")
+    assertTrue(asked.zipWithNext().all { (a, b) -> a != b }, "a new file at every poll")
+    assertEquals(asked.last(), harness.watch.variantUrl, "the variant is the file the master named last")
+    val (at, verdict) = assertNotNull(harness.verdict, "a switch at every poll is no delivery")
+    assertEquals(DeliveryWatch.NOT_DELIVERED_MS, at)
+    assertEquals(NotDeliveredCause.STALLED, verdict.cause)
   }
 
   @Test
