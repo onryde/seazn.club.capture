@@ -203,7 +203,10 @@ export type Telemetry = {
    * one; snapshots the projection or the bridge threw on, or sent over the last
    * good facts; commands the platform threw on; and `stickyFailure` while a
    * platform failure is held, each attempt refused until the next pair (carry
-   * 18). Diagnostics shows them; nothing else reads them.
+   * 18). No UI row reads them, and nothing in JS does: the spec names no
+   * Diagnostics row for them (review C5 I-2). They travel only on the snapshot,
+   * as telemetry; the shared record carries native's own lines (a
+   * `command-failed` line per command the platform threw on), not these counts.
    */
   readonly taskFailures: number;
   readonly reporterFailures: number;
