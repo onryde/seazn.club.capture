@@ -69,15 +69,23 @@ class CaptureRun(
   private var lossSpacing: Job? = null
   private var lossOwed = false
 
+  /** Re-review 4 cap: loss rebuilds since an open was last seen, and whether they stopped at [MAX_LOSS_REBUILDS]. */
+  private var lossRebuilds = 0
+  private var lossGaveUp = false
+
   fun open(asked: PairRequest) = serial.submit { opened(asked) }
 
   fun close() = serial.submit { closed() }
 
   fun execute(command: Command) = serial.submit { run(command) }
 
+  /** Re-review 4 cap: the app came back to the foreground, which re-arms the camera's loss rebuilds ([rearm]). */
+  fun foreground() = serial.submit { rearm() }
+
   /** N2: never two streamers. One already held serves the new pairing, which its failures now name. */
   private suspend fun opened(asked: PairRequest) {
     request = asked
+    rearm() // re-review 4 cap: a re-pair re-arms
     if (parts.held) return
     build(asked, EncoderKeys.surfaceRotation(side()))
   }
@@ -106,7 +114,12 @@ class CaptureRun(
     cameras.sessionStarted()?.let(calls.report)
     openWatch =
       scope.launch {
-        launch { parts.cameraOpens().collect { id -> cameras.opened(id)?.let(calls.report) } }
+        launch {
+          parts.cameraOpens().collect { id ->
+            cameras.opened(id)?.let(calls.report)
+            serial.submit(::openSeen)
+          }
+        }
         parts.cameraLosses().collect { id -> serial.submit { lostByDevice(id) } }
       }
   }
@@ -136,6 +149,8 @@ class CaptureRun(
       lossOwed = true
       return
     }
+    if (lossRebuilds >= MAX_LOSS_REBUILDS) return giveUp()
+    lossRebuilds += 1
     rebuild("camera")
     lossSpacing =
       scope.launch {
@@ -150,6 +165,32 @@ class CaptureRun(
           }
         }
       }
+  }
+
+  /**
+   * Re-review 4 cap: [MAX_LOSS_REBUILDS] loss rebuilds with no open seen between them stop. The camera stays not
+   * ready (the chip says so; no new copy), and one line says so, once, until [rearm].
+   */
+  private fun giveUp() {
+    if (lossGaveUp) return
+    lossGaveUp = true
+    calls.line(RecordEntry("camera-gave-up", listOf("rebuilds" to lossRebuilds)))
+  }
+
+  /** Re-review 4 cap: an open StreamPack reported proves the camera opens; the count of loss rebuilds starts again. */
+  private fun openSeen() {
+    lossRebuilds = 0
+    lossGaveUp = false
+  }
+
+  /**
+   * Re-review 4 cap: the next foreground or a re-pair re-arms the loss rebuilds. A camera given up on, still lost
+   * with nothing on air, is built at once, and the count starts again; otherwise only the count does.
+   */
+  private suspend fun rearm() {
+    val stuck = lossGaveUp
+    openSeen()
+    if (stuck && attempt == null && !cameras.ready(camera = true)) rebuildLost()
   }
 
   /**
@@ -414,6 +455,13 @@ class CaptureRun(
      * machine gives up on it. SRT's own connect gives up at `SrtOptions`' CONNTIMEO, well inside it.
      */
     const val START_BOUND_MS = SessionMachine.CONNECT_TIMEOUT_MS - 1_000
+
+    /**
+     * Re-review 4, controller ruling 2026-10-05 (progress.md): consecutive camera-loss rebuilds with no open seen
+     * between them stop at this many. Unbounded, a camera that fails every open (disabled by policy, say) churned a
+     * rebuild and two lines every RETRY_MS while Paired, draining battery and record space.
+     */
+    const val MAX_LOSS_REBUILDS = 5
 
     /** The cause chain read for a start's failure, as `SrtOptions` and the adapter read it. */
     private const val MAX_CAUSES = 8

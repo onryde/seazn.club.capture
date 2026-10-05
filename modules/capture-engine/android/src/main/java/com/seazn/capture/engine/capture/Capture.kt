@@ -36,4 +36,7 @@ interface Capture {
 
   /** Review C7 I-2: the preview's open of the camera failed. From the main thread; never throws for a busy camera. */
   fun previewFailed(failure: Throwable)
+
+  /** Re-review 4 cap: the app came back to the foreground, which re-arms the camera's loss rebuilds. Returns at once. */
+  fun foreground()
 }

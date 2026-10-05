@@ -23,6 +23,8 @@ class CaptureEngineModule : Module() {
       EngineHost.listener.release(this@CaptureEngineModule)
       EngineHost.appContext.release(this@CaptureEngineModule)
     }
+    // Re-review 4 cap: the app's return re-arms the capture's camera rebuilds; nothing is built for it.
+    OnActivityEntersForeground { EngineHost.foreground() }
 
     // Intents, not RPC (AGENTS §2): every one returns nothing.
     Function("send") { intent: Map<String, Any?> -> core.send(intent) }

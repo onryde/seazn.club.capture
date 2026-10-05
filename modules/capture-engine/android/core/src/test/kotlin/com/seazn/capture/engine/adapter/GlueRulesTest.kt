@@ -208,6 +208,20 @@ class GlueRulesTest {
   }
 
   /**
+   * Re-review 4 cap (controller ruling 2026-10-05): the app's return to the foreground re-arms the capture's camera
+   * rebuilds. No native foreground watcher existed: Expo's module lifecycle is the one, and the host hands it to
+   * the capture it holds, building nothing for it. CaptureRunTest drives the run's side.
+   */
+  @Test
+  fun `re-review 4 the app's return to the foreground reaches the capture's run, building nothing`() {
+    assertTrue("OnActivityEntersForeground { EngineHost.foreground() }" in glue("CaptureEngineModule.kt"), "the module hears it")
+    val host = glue("EngineHost.kt")
+    assertTrue(Regex("""fun foreground\(\) \{\s*parts\?\.capture\?\.foreground\(\)\s*\}""").containsMatchIn(host), "the host passes it on, to a capture already built")
+    assertTrue(Regex("""\n  fun foreground\(\)\n""").containsMatchIn(glue("Capture.kt")), "the capture takes it")
+    assertTrue("override fun foreground() = run.foreground()" in glue("StreamerAdapter.kt"), "and hands it to the run")
+  }
+
+  /**
    * Re-review 3 m1: VendorLines reads StreamPack's camera-loss lines by their text, which StreamPack can reword in
    * any release, and its test retypes them. So the regexes name the StreamPack they were read from, beside them,
    * and that is the one build.gradle pins strictly: a bump that does not re-read `CameraUtils.openCamera` and move

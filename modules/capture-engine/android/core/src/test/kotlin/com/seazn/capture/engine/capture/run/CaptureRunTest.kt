@@ -619,6 +619,109 @@ class CaptureRunTest {
       assertTrue(s.cameras.ready(camera = true), "a new open asked")
     }
 
+  // --- Re-review 4 m2 cap (controller ruling 2026-10-05): consecutive loss rebuilds with no open seen stop ---
+
+  /** The camera fails the open each rebuild asks for: [times] losses, each followed by its spacing. */
+  private fun TestScope.failOpens(s: Scene, times: Int) =
+    repeat(times) {
+      s.parts.lose("0")
+      advanceTimeBy(SessionMachine.RETRY_MS + 100)
+      runCurrent()
+    }
+
+  private fun rebuilds(s: Scene) = s.told.lines.count { it.kind == "capture-rebuilt" }
+
+  private fun gaveUp(s: Scene) = s.told.lines.filter { it.kind == "camera-gave-up" }
+
+  private fun TestScope.seenOpen(): Scene =
+    opened().also {
+      it.parts.opened("0")
+      advanceTimeBy(100)
+      runCurrent()
+    }
+
+  @Test
+  fun `re-review 4 cap a camera that fails every open is rebuilt MAX_LOSS_REBUILDS times, then one camera-gave-up line, then nothing`() =
+    runTest {
+      val max = CaptureRun.MAX_LOSS_REBUILDS
+      val s = seenOpen()
+      failOpens(s, max)
+      assertEquals(max, rebuilds(s), "each loss rebuilt, up to the cap")
+      assertEquals(emptyList(), gaveUp(s), "not yet")
+      failOpens(s, 1)
+      assertEquals(max, rebuilds(s), "no rebuild past the cap")
+      assertEquals(listOf(RecordEntry("camera-gave-up", listOf("rebuilds" to max))), gaveUp(s))
+      assertFalse(s.cameras.ready(camera = true), "it stays not ready")
+      val lines = s.told.lines.size
+      val log = s.parts.log.size
+      advanceTimeBy(10 * SessionMachine.RETRY_MS)
+      runCurrent()
+      assertEquals(lines to log, s.told.lines.size to s.parts.log.size, "silence")
+      failOpens(s, 2)
+      assertEquals(max, rebuilds(s), "a later loss rebuilds nothing")
+      assertEquals(1, gaveUp(s).size, "and is not said twice")
+    }
+
+  @Test
+  fun `re-review 4 cap the next foreground re-arms - one rebuild at once, and the count starts again`() =
+    runTest {
+      val max = CaptureRun.MAX_LOSS_REBUILDS
+      val s = seenOpen()
+      failOpens(s, max + 1)
+      assertEquals(1, gaveUp(s).size)
+      s.run.foreground()
+      advanceTimeBy(100)
+      runCurrent()
+      assertEquals(max + 1, rebuilds(s), "re-armed: built at once")
+      assertTrue(s.cameras.ready(camera = true), "a new open asked")
+      failOpens(s, max)
+      assertEquals(2 * max, rebuilds(s), "the count started again: ${max - 1} more")
+      assertEquals(2, gaveUp(s).size, "a new give-up, said once")
+      s.run.foreground() // given up again: re-armed again
+      advanceTimeBy(100)
+      runCurrent()
+      assertEquals(2 * max + 1, rebuilds(s))
+      s.parts.opened("0")
+      runCurrent()
+      s.parts.log.clear()
+      s.run.foreground()
+      advanceTimeBy(SessionMachine.RETRY_MS + 100)
+      runCurrent()
+      assertEquals(emptyList(), s.parts.log, "a foreground with the camera ready rebuilds nothing")
+    }
+
+  @Test
+  fun `re-review 4 cap a re-pair re-arms a camera given up on`() =
+    runTest {
+      val max = CaptureRun.MAX_LOSS_REBUILDS
+      val s = seenOpen()
+      failOpens(s, max + 1)
+      assertEquals(1, gaveUp(s).size)
+      s.run.open(request)
+      advanceTimeBy(100)
+      runCurrent()
+      assertEquals(max + 1, rebuilds(s), "re-armed: built at once")
+      failOpens(s, max)
+      assertEquals(2, gaveUp(s).size, "the count started again")
+    }
+
+  @Test
+  fun `re-review 4 cap an open seen between losses resets the count`() =
+    runTest {
+      val max = CaptureRun.MAX_LOSS_REBUILDS
+      val s = seenOpen()
+      val before = max - 1
+      failOpens(s, before)
+      s.parts.opened("0")
+      advanceTimeBy(100)
+      runCurrent()
+      failOpens(s, max)
+      assertEquals(before + max, rebuilds(s), "the open reset the count")
+      assertEquals(emptyList(), gaveUp(s))
+      failOpens(s, 1)
+      assertEquals(listOf(RecordEntry("camera-gave-up", listOf("rebuilds" to max))), gaveUp(s))
+    }
+
   // --- C6 I-1: a start is bounded, under the machine's own connect timeout ---
 
   @Test

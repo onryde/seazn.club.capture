@@ -105,6 +105,8 @@ class StreamerAdapter(
 
   override fun execute(command: Command) = run.execute(command)
 
+  override fun foreground() = run.foreground()
+
   override fun frames(attemptId: Int) = tally.read(attemptId)
 
   override fun link(attemptId: Int) = sink.counters(attemptId)

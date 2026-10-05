@@ -52,6 +52,14 @@ object EngineHost {
   /** The pairing's keeper, for the foreground service (Task 38). */
   fun keeper(context: Context): PairingKeeper = parts(context).keeper
 
+  /**
+   * Re-review 4 cap: the app's return to the foreground (the module's lifecycle), for the capture's camera
+   * rebuilds. Only a capture already built hears it: a foreground builds nothing.
+   */
+  fun foreground() {
+    parts?.capture?.foreground()
+  }
+
   /** A glue line into the record, from any thread; dropped before the core exists. */
   fun line(entry: RecordEntry) {
     parts?.core?.log(entry.level, entry.kind, entry.fields.toMap())
