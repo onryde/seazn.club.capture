@@ -322,8 +322,16 @@ class StartTest {
     assertEquals(2, rig.sent<Command.FetchCode>().size, "a confirmation, not a second claim")
   }
 
-  @Test fun `a POST start answer naming a refused sid starts nothing`() {
+  /**
+   * Re-review 3 I: the hold's ask clears the last end and any refusal, so an answer naming a refused sid that only
+   * started nothing left the screen blank: "Stream stopped" wiped, nothing in its place. It starts nothing, and says
+   * the start failed, the try-again line a 5xx gives (amendment, the answer table). No retry of its own: a retry is
+   * the operator's next hold. The line says why, never which sid; nothing rides a beat (`startFailed` is the
+   * server's start failing, and this one answered).
+   */
+  @Test fun `a POST start answer naming a refused sid starts nothing, shows the try-again refusal, and records refusedSid`() {
     val answers = listOf(StartAnswer.Started("sess_42"), StartAnswer.AlreadyLive("sess_42", "organiser"))
+    var checked = 0
     for (answer in answers) {
       val rig = MachineRig().paired()
       rig.codes = { CodeAnswer.Status(404, null, null) }
@@ -335,7 +343,24 @@ class StartTest {
       assertEquals(1, rig.sent<Command.PostStart>().size, "$answer")
       assertIs<Phase.Paired>(rig.phase, "$answer")
       assertEquals(1, rig.sent<Command.FetchCode>().size, "$answer")
+      assertEquals(Refusal.START_FAILED, rig.snapshot.refusal, "$answer")
+      assertNull(paired(rig).startFailed, "$answer: no start-error rides a beat")
+      val line = rig.records("start-answered").single()
+      assertEquals(listOf("answer" to answer::class.simpleName, "refusedSid" to true), line.fields, "$answer")
+      rig.advance(60_000)
+      assertEquals(1, rig.sent<Command.PostStart>().size, "$answer: never retried on its own")
+      checked++
     }
+    assertEquals(2, checked)
+  }
+
+  /** The positive pair: an answer naming a sid not refused records no refusedSid at all. */
+  @Test fun `a POST start answer naming a sid not refused records no refusedSid`() {
+    val rig = ready()
+    rig.starts = { StartAnswer.Started("sess_42") }
+    rig.send(Input.Start)
+    assertEquals(listOf("answer" to "Started"), rig.records("start-answered").single().fields)
+    assertNull(rig.snapshot.refusal)
   }
 
   @Test fun `I3 in Paired a release or reopen with no take does nothing, and a second take is one`() {

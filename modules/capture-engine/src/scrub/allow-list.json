@@ -131,6 +131,7 @@
     "outageMs": "native: resumed, the outage's length",
     "publishedMs": "native: dropped, how long the attempt published",
     "rebaselined": "native: video-stalled, whether the watchdog had re-based its clock",
+    "refusedSid": "native: start-answered, true when the answer named a sid this pairing refused (re-review 3 I)",
     "sound": "native: readiness, whether the microphone heard enough",
     "srtOffered": "native: armed, whether the code offered SRT",
     "stalledMs": "native: not-delivered, how long the playlist stood still",

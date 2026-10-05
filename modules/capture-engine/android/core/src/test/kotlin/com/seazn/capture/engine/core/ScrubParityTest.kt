@@ -82,7 +82,7 @@ class ScrubParityTest {
   @Test
   fun `a scalar key sits on no list, so its numbers and booleans pass and a string under it is masked`() {
     val scalars = list.getJSONObject("scalars").keySet()
-    assertEquals(25, scalars.size)
+    assertEquals(26, scalars.size)
     val listed = SessionRecord.PLAIN_KEYS + SessionRecord.PUBLIC_URL_KEYS + SessionRecord.TEXT_KEYS + SessionRecord.NEVER + SessionRecord.RESERVED_KEYS
     assertTrue(scalars.intersect(listed).isEmpty(), "on a list: ${scalars.intersect(listed)}")
     for (key in scalars) {

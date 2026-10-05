@@ -309,10 +309,12 @@ internal object Verdicts {
     val noted = line("start-answered", "answer" to input.answer::class.simpleName)
     if (answered !is Phase.Paired) return Step(answered, listOf(noted))
     val p = answered.pairing
+    val named = (input.answer as? StartAnswer.Started)?.sid ?: (input.answer as? StartAnswer.AlreadyLive)?.sid
+    if (named != null && named in p.refused) return refusedSid(answered, input.answer)
     val step =
       when (val answer = input.answer) {
-        is StartAnswer.Started -> if (answer.sid in p.refused) Step(answered) else Starts.arm(answered, p, answer.sid, Cause.OPERATOR, now)
-        is StartAnswer.AlreadyLive -> if (answer.sid in p.refused) Step(answered) else Starts.arm(answered, p, answer.sid, Cause.startedBy(answer.startedBy), now)
+        is StartAnswer.Started -> Starts.arm(answered, p, answer.sid, Cause.OPERATOR, now)
+        is StartAnswer.AlreadyLive -> Starts.arm(answered, p, answer.sid, Cause.startedBy(answer.startedBy), now)
         StartAnswer.Replaced -> Pairings.unpaired(answered, UnpairReason.REPLACED, now)
         is StartAnswer.Refused -> Step(answered.withPairing(p.copy(refusal = answer.refusal)), listOf(line("start-refused", "refusal" to answer.refusal, "message" to answer.message)))
         is StartAnswer.Failed -> Step(answered.withPairing(p.copy(refusal = Refusal.START_FAILED, startFailed = StartFailure.START_ERROR)))
@@ -321,6 +323,19 @@ internal object Verdicts {
       }
     return step.copy(commands = listOf(noted) + step.commands)
   }
+
+  /**
+   * Re-review 3 I: a start answered with a sid this pairing refused (a Stop never live, its end not yet done on the
+   * server: the stop beat raced, or is not yet delivered). It starts nothing, and since the hold's ask cleared the
+   * last end, it says the start failed, the try-again line a 5xx gives, or the tap shows nothing. No retry of its own
+   * (the amendment retries no start): the operator's next hold is the retry. The line says why, never the sid, and
+   * no `startFailed` rides a beat: the server's start answered.
+   */
+  private fun refusedSid(answered: Phase.Paired, answer: StartAnswer): Step =
+    Step(
+      answered.withPairing(answered.pairing.copy(refusal = Refusal.START_FAILED)),
+      listOf(line("start-answered", "answer" to answer::class.simpleName, "refusedSid" to true)),
+    )
 
   /**
    * A 401 to `POST start` is the code's end, not this start's (amendment:41, D5), so it holds whenever it

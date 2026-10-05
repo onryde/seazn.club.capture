@@ -77,6 +77,40 @@ class StopTest {
     assertEquals(3, checked, "the never-live phases swept")
   }
 
+  /**
+   * Re-review 3 I, the operator's sequence: a Stop never live, then Go live, answered 409 already_live naming the
+   * stopped sid (the server not yet done ending it: the stop beat raced, or not yet delivered). The phone refuses
+   * it and says the start failed, where the hold had wiped "Stream stopped". The next hold, answered with a new
+   * sid, arms it. A 5xx says the same try-again line.
+   */
+  @Test fun `owner decision 1 Go live after a never-live stop, answered already live with the stopped sid, says try again, and the next hold arms the new sid`() {
+    val rig = MachineRig().paired()
+    rig.ready()
+    rig.starts = { StartAnswer.Started("sess_42") }
+    rig.send(Input.Start)
+    assertEquals("connecting", rig.state.wire)
+    rig.send(Input.Stop)
+    assertEquals(LastEnd.STOPPED, rig.snapshot.lastEnd)
+    rig.starts = { StartAnswer.AlreadyLive("sess_42", "operator") }
+    rig.send(Input.Start)
+    assertIs<Phase.Paired>(rig.phase)
+    assertEquals(Refusal.START_FAILED, rig.snapshot.refusal, "said, not silent")
+    assertNull(rig.snapshot.lastEnd, "the hold's ask cleared Stream stopped")
+    assertEquals(true, rig.records("start-answered").last().field("refusedSid"))
+    rig.codes = { if (rig.phase is Phase.Arming) Configs.open(sid = "sess_43", descriptor = rig.descriptor) else null }
+    rig.starts = { StartAnswer.Started("sess_43") }
+    rig.send(Input.Start)
+    assertEquals("sess_43", rig.phase.heldSid)
+    assertEquals("connecting", rig.state.wire, "armed, and ready: connecting")
+    assertNull(rig.snapshot.refusal)
+    assertEquals(3, rig.sent<Command.PostStart>().size)
+    val failed = MachineRig().paired()
+    failed.ready()
+    failed.starts = { StartAnswer.Failed("503") }
+    failed.send(Input.Start)
+    assertEquals(Refusal.START_FAILED, failed.snapshot.refusal, "a 5xx gives the same try-again line")
+  }
+
   @Test fun `A17 every stop from Arming on writes the record - beside the stopped beat when never live, before End when live`() {
     val rig = MachineRig().paired()
     rig.codes = null
