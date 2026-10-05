@@ -52,9 +52,10 @@ data class StallWatchdog(
    *   end the call. The rates are still taken, for Diagnostics, and a picture that stops dead is
    *   still rebuilt by the zero test in [tick].
    * @param shed the phone's thermal shed step (CD20), any step. No rate floor is judged then either:
-   *   session 8 rebuilt 20 times in 9 min at thermal 3 and 4, video 11.8 to 24.7 a second and audio
-   *   3.8 to 19.8, because the phone throttles its own encoders for heat, which no rebuild cools (our
-   *   shed lowers no rate of its own). As for the mic: the rates are still taken, and the zero test
+   *   session 8 rebuilt 54 times in 19 min at thermal 3 and 4 (20:13:50 to 20:33:09), audio under its
+   *   floor in all 54 (3.8 to 19.8 a second) and video under its own once (9.8; up to 24.7), because
+   *   the phone throttles its own encoders for heat, which no rebuild cools (our shed lowers no rate
+   *   of its own). As for the mic: the rates are still taken, and the zero test
    *   still rebuilds a picture that truly stops.
    */
   fun frames(

@@ -165,9 +165,9 @@ class SessionMachineDeviceTest {
   }
 
   /**
-   * Session 8, item 7: on RTMPS at thermal 3 then 4 (shed preview-framerate, then encode), 20 `video-stalled
-   * {below-floor, msSinceAdvance 0}` in 9 min, each a reconnect: video 11.8 to 24.7 fps (over its floor), audio 3.8 to
-   * 19.8 (under its floor). The phone throttles its own encoders for heat, which no reconnect cools, and our shed
+   * Session 8, item 7: on RTMPS at thermal 3 then 4 (shed preview-framerate, then encode), 54 `video-stalled
+   * {below-floor, msSinceAdvance 0}` in 19 min (20:13:50 to 20:33:09), each a reconnect: audio under its floor in all
+   * 54 (3.8 to 19.8 a second), video under its own once (9.8; up to 24.7). The phone throttles its own encoders for heat, which no reconnect cools, and our shed
    * lowers no rate of its own. Under any shed step no rate floor is judged, as for a silenced mic (F-P5-8); the rates
    * are still Diagnostics', and a picture that truly stops is still rebuilt by the zero test. Swept over every
    * thermal status through the engine's own [Thermal.shed]: with no shed, the same rate is a rate-floor rebuild.
