@@ -30,8 +30,8 @@ class CaptureForegroundService : Service() {
         keeper.fgsRefused(e)
         false
       }
-    // A refused start (N10: whether this stop itself raises "did not then call startForeground" is unproved,
-    // Task 40), or a Release that came before this start and could not stop it (I-3).
+    // A refused start, or a Release that came before this start and could not stop it (I-3). Whether this stop
+    // itself raises "did not then call startForeground": N10: proved by AOSP 14 source; device-unproved on 15/16.
     if (!held) stopSelf()
     return START_NOT_STICKY
   }

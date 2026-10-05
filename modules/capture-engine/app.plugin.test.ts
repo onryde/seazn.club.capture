@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { gunzipSync } from 'node:zlib';
 import { describe, expect, it } from 'vitest';
 import appJson from '../../app.json';
 import {
@@ -14,25 +16,45 @@ import {
  * names the Kotlin Gradle plugin with no version, so React Native's Gradle plugin brings 2.1.20 (C7u
  * report, `buildEnvironment`). This plugin gives that classpath the version app.json asks for.
  */
-const UNVERSIONED = "    classpath('org.jetbrains.kotlin:kotlin-gradle-plugin')\n";
-const TEMPLATE = [
-  'buildscript {',
-  '  dependencies {',
-  "    classpath('com.android.tools.build:gradle')",
-  "    classpath('com.facebook.react:react-native-gradle-plugin')",
-  UNVERSIONED.trimEnd(),
-  '  }',
-  '}',
-  '',
-].join('\n');
+const UNVERSIONED = "classpath('org.jetbrains.kotlin:kotlin-gradle-plugin')";
+
+/**
+ * One file of a ustar archive, by its path: Expo's prebuild template ships as `expo/template.tgz`, and the
+ * root `android/build.gradle` in it is what prebuild hands this plugin (review C7 re-review, Minor 1).
+ */
+function fromTarGz(archive: string, path: string): string {
+  const tar = gunzipSync(readFileSync(new URL(archive, import.meta.url)));
+  for (let at = 0; at + 512 <= tar.length;) {
+    const field = (from: number, length: number) =>
+      tar.toString('utf8', at + from, at + from + length).replace(/\0.*$/s, '');
+    const name = field(0, 100);
+    if (name === '') break;
+    const prefix = field(345, 155);
+    const size = parseInt(field(124, 12).trim(), 8);
+    const start = at + 512;
+    if ((prefix ? `${prefix}/${name}` : name) === path)
+      return tar.toString('utf8', start, start + size);
+    at = start + Math.ceil(size / 512) * 512;
+  }
+  throw new Error(`${path} is not in ${archive}`);
+}
+
+/** The root build.gradle Expo 57's prebuild writes, read from the installed template, never typed here. */
+const TEMPLATE = fromTarGz('../../node_modules/expo/template.tgz', 'package/android/build.gradle');
 
 const versioned = (version: string) =>
   `classpath('org.jetbrains.kotlin:kotlin-gradle-plugin:${version}')`;
 
 describe('pinKotlinGradlePlugin', () => {
+  it("reads Expo's real template, which names the Kotlin Gradle plugin once, unversioned", () => {
+    expect(TEMPLATE).toContain('buildscript {');
+    expect(TEMPLATE.split(UNVERSIONED).length - 1).toBe(1);
+    expect(TEMPLATE.split('kotlin-gradle-plugin').length - 1).toBe(1);
+  });
+
   it('versions the one unversioned Kotlin Gradle plugin, and nothing else', () => {
     const pinned = pinKotlinGradlePlugin(TEMPLATE, '2.3.0');
-    expect(pinned).toBe(TEMPLATE.replace(UNVERSIONED.trim(), versioned('2.3.0')));
+    expect(pinned).toBe(TEMPLATE.replace(UNVERSIONED, versioned('2.3.0')));
     expect(pinned.split('kotlin-gradle-plugin').length - 1).toBe(1);
   });
 
@@ -46,10 +68,15 @@ describe('pinKotlinGradlePlugin', () => {
     expect(pinKotlinGradlePlugin(once, '2.3.21')).toBe(pinKotlinGradlePlugin(TEMPLATE, '2.3.21'));
   });
 
+  // The one synthetic input: a template with no plugin at all. The others are the real one, changed.
   it('refuses a template that names the plugin nowhere, or twice: the Expo template changed', () => {
     expect(() => pinKotlinGradlePlugin('buildscript {}\n', '2.3.0')).toThrow(/0 times/);
-    expect(() => pinKotlinGradlePlugin(TEMPLATE + UNVERSIONED, '2.3.0')).toThrow(/2 times/);
-    expect(() => pinKotlinGradlePlugin('', '2.3.0')).toThrow(/0 times/);
+    expect(() => pinKotlinGradlePlugin(TEMPLATE.replace(UNVERSIONED, ''), '2.3.0')).toThrow(
+      /0 times/,
+    );
+    expect(() => pinKotlinGradlePlugin(`${TEMPLATE}\n${UNVERSIONED}\n`, '2.3.0')).toThrow(
+      /2 times/,
+    );
   });
 
   // From the rule, not the code: metadata 2.4.0 needs a compiler of 2.3.0 or newer.

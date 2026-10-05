@@ -203,7 +203,17 @@ class GlueRulesTest {
     assertTrue(Regex("""override fun onCapabilitiesChanged\(network: Network, caps: NetworkCapabilities\) = guarded \{ changed\(""").containsMatchIn(network), "onCapabilitiesChanged")
     assertTrue(Regex("""override fun onLost\(network: Network\) = guarded \{ changed\(false\) \}""").containsMatchIn(network), "onLost")
     assertTrue(Regex("""catch \(e: Exception\) \{\s+line\(RecordEntry\("watch-failed", listOf\("action" to "network", "error" to e\.javaClass\.simpleName\)\)\)""").containsMatchIn(body(network, "private fun guarded(")), "network's line")
-    assertTrue(Regex("""\bNetworkWatch\(app, report, ::line\)""").containsMatchIn(glue("EngineHost.kt")), "the network watch writes lines")
+    // Fix round 2: the network watch starts inside the build, where EngineHost.line drops every line, and its
+    // first callback can come before the build returns; its lines go to the running core directly.
+    val host = glue("EngineHost.kt")
+    assertFalse(Regex("""\bNetworkWatch\([^)]*::line""").containsMatchIn(host), "never through EngineHost.line")
+    assertTrue(Regex("""\bNetworkWatch\(app, report, toCore\)""").containsMatchIn(body(host, "private fun startWatchers(")), "the network watch writes to the core")
+    val toCore = Regex("""val toCore: \(RecordEntry\) -> Unit = \{ core\.log\(it\.level, it\.kind, it\.fields\.toMap\(\)\) \}""").find(hostBuild())
+    assertTrue(toCore != null, "toCore is the core's own log, made in the build")
+    assertTrue(Regex("""startWatchers\(app, cameras, capture, device, report, toCore\)""").containsMatchIn(hostBuild()), "and handed to the watchers")
+    val n10 = glue("CaptureForegroundService.kt")
+    assertTrue("N10: proved by AOSP 14 source; device-unproved on 15/16" in n10, "the N10 comment says what is proved")
+    assertFalse("is unproved" in n10, "and no longer that it is unproved")
     val pose = glue("PoseWatch.kt")
     assertTrue(Regex("""override fun onSensorChanged\(event: SensorEvent\) = guarded\("pose"\) \{ sensed\(event\) \}""").containsMatchIn(pose), "onSensorChanged")
     val build = hostBuild()
