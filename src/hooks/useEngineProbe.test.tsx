@@ -5,6 +5,7 @@ import { ENGINE_SCENARIOS } from '@/engine/contract/engineScenarios';
 import type { NativeCaptureEngine } from '@/engine/nativeCaptureEngine';
 import { UNREPORTED } from '@/engine/unreported';
 import { PROBE_WAIT_MS, probeKit, useEngineProbe } from '@/hooks/useEngineProbe';
+import { useReopenGate } from '@/hooks/useReopenGate';
 import type { Ports } from '@/hooks/usePorts';
 import { createLogger } from '@/services/logger';
 import {
@@ -442,6 +443,65 @@ describe('the device probe', () => {
     expect(probeLines(fakes)).toHaveLength(4);
     expect(text).not.toContain('tok-kit');
     for (const scenario of ENGINE_SCENARIOS) expect(text).not.toContain(scenario.name);
+  });
+});
+
+/**
+ * Device session 4, F-S4-2: the probe pairs a made-up code no saved code owns, which the reopen gate's
+ * orphan rule unpairs at the next return to the foreground (the permission dialog closing is one), so
+ * the scene read idle. While the probe runs, the gate leaves its pairing alone; after it, the rule holds.
+ */
+describe('the reopen gate during a probe', () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  /** The gate and the probe in one tree, as Shell and the dev panel are, over a native that never acks. */
+  function probeAndGate() {
+    const base = createFakePorts();
+    const ports: Ports = {
+      ...base.ports,
+      devEngine: null,
+      nativeEngine: echoing(neverSettles(), base.record),
+    };
+    const fakes: FakePorts = { ...base, ports };
+    const hook = renderHook(
+      () => {
+        useReopenGate(true);
+        return useEngineProbe();
+      },
+      { wrapper: wrapperFor(fakes) },
+    );
+    return { fakes, hook };
+  }
+  const returned = (fakes: FakePorts) => {
+    act(() => fakes.foreground.leave());
+    act(() => fakes.foreground.fire());
+  };
+  const orphanUnpairs = (fakes: FakePorts) =>
+    readRecord(fakes.record).filter(
+      (entry) => entry.event === 'intent.unpair' && entry.fields.action === 'orphan',
+    ).length;
+
+  it('leaves the probe’s pairing alone at a return to the foreground, and unpairs an orphan once it ends', async () => {
+    const { fakes, hook } = probeAndGate();
+    await flush();
+    run(hook);
+    await flush();
+    expect(hook.result.current?.state).toBe('running');
+    expect(fakes.engine.getSnapshot().state.kind).toBe('paired');
+    returned(fakes);
+    await flush();
+    expect(orphanUnpairs(fakes)).toBe(0);
+    expect(fakes.engine.getSnapshot().state.kind).toBe('paired');
+    // No ack: the scene stops at its bound, and its clean-up gives up at its own.
+    await flush(PROBE_WAIT_MS * 2);
+    expect(hook.result.current?.state).toBe('failed');
+    // The positive pair: the same gate, the probe over, unpairs a pairing no saved code owns.
+    act(() => pairCode(fakes.engine, savedStreamCode()));
+    expect(fakes.engine.getSnapshot().state.kind).toBe('paired');
+    returned(fakes);
+    await flush();
+    expect(orphanUnpairs(fakes)).toBe(1);
   });
 });
 

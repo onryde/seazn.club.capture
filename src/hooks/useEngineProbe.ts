@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useState } from 'react';
 import type { CaptureEnginePort, EngineIntent, EngineSnapshot } from '@/engine/CaptureEnginePort';
 import {
   ENGINE_SCENARIOS,
@@ -49,22 +49,23 @@ export function useEngineProbe(): {
   const ports = usePorts();
   const kind = useEngineSelector(selectStateKind);
   const [state, setState] = useState<ProbeState>('idle');
-  const running = useRef(false);
   const run = useCallback(() => {
     const native = ports.nativeEngine;
-    if (running.current || native === null) return;
+    const flight = ports.probeFlight;
+    if (flight.active() || native === null) return;
     if (ports.engine.getSnapshot().state.kind !== 'idle') return;
-    running.current = true;
+    // F-S4-2: up for the whole run, clean-up included, so the reopen gate leaves the pairing alone.
+    flight.begin();
     setState('running');
     const logger = probeLogger(ports.record, native, () => ports.clock().getTime());
     void probe(ports.engine, native, logger).then((passed) => {
-      running.current = false;
+      flight.end();
       setState(passed ? 'passed' : 'failed');
     });
   }, [ports]);
   const dismiss = useCallback(() => {
-    if (!running.current) setState('idle');
-  }, []);
+    if (!ports.probeFlight.active()) setState('idle');
+  }, [ports]);
   const offered = ports.devTools && ports.devEngine === null && ports.nativeEngine !== null;
   if (!offered) return null;
   if (kind !== 'idle' && state !== 'running' && state !== 'failed') return null;

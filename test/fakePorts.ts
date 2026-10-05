@@ -18,6 +18,7 @@ import { createMemoryKeyValueStore, type MemoryKeyValueStore } from '@/services/
 import { createLogger } from '@/services/logger';
 import { createModeStore } from '@/services/modeStore';
 import { createHomeIntent } from '@/services/homeIntent';
+import { createProbeFlight } from '@/services/probeFlight';
 import { createScanFlight } from '@/services/scanFlight';
 import { createRingRecord, parseRecordLine, type SessionRecord } from '@/services/sessionRecord';
 import { createStreamSettingsStore } from '@/services/streamSettingsStore';
@@ -88,6 +89,7 @@ export function createFakePorts(
     nativeEngine: null,
     modeStore: createModeStore(kv),
     scanFlight: createScanFlight(),
+    probeFlight: createProbeFlight(),
     homeIntent: createHomeIntent(),
     streamSettings: createStreamSettingsStore(kv, logger),
     clock: () => now,

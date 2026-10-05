@@ -19,6 +19,7 @@ import type { KeyValueStore } from '@/services/KeyValueStore';
 import type { Logger } from '@/services/logger';
 import type { ModeStore } from '@/services/modeStore';
 import type { HomeIntent } from '@/services/homeIntent';
+import type { ProbeFlight } from '@/services/probeFlight';
 import type { ScanFlight } from '@/services/scanFlight';
 import type { SessionRecord } from '@/services/sessionRecord';
 import type { StreamSettingsStore } from '@/services/streamSettingsStore';
@@ -44,6 +45,8 @@ export type Ports = {
   readonly modeStore: ModeStore;
   /** Home's scan in flight, which the reopen gate leaves alone (I2). */
   readonly scanFlight: ScanFlight;
+  /** The dev engine probe running, whose pairing the reopen gate leaves alone (F-S4-2). */
+  readonly probeFlight: ProbeFlight;
   /** Ended's "Scan another", taken by Home once it is ready (D24). */
   readonly homeIntent: HomeIntent;
   /** Score preview on or off, controls left or right (spec §4 Settings, D23). */
