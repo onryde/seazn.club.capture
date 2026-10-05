@@ -19,6 +19,7 @@ class RecordLinesTest {
     }
     val gap = FrameGaps().run {
       read(1, 0, 0, publishing = true)
+      read(1, 0, 1_000, publishing = true) // unmoved: F-S7-3's gap is a read that saw the count where it was
       read(1, 1, 2_000, publishing = true)
     }
     return listOfNotNull(late, gap, PreviousExit.entry(true, 10, 1L), HeldPose.NO_SENSOR)

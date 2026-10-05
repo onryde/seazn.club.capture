@@ -178,7 +178,7 @@
     "fell-back": "native: the transport fell back",
     "fgs-refused": "native: the pairing's foreground service could not go foreground (C3), with the throwable's class name; the pairing carries on and says to keep the app open (Task 38)",
     "final-beat": "native: A8's one final beat, answered or timed out",
-    "frames-gap": "native: video stopped moving for more than 500 ms while publishing, written once with the gap when it moved again (CD33, Open 11)",
+    "frames-gap": "native: a Frames read saw video unmoved while publishing, written once with the gap when it moved again, at most 6 a minute with the lines held back (CD33, Open 11, F-S7-3)",
     "heartbeat": "native: a beat's answer, written when it changes",
     "hold-expired": "native: an outage outlasted its hold window",
     "intent-ignored": "native: an intent that did not fit the phase",

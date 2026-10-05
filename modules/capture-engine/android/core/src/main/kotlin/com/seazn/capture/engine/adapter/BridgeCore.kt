@@ -51,7 +51,7 @@ class BridgeCore(
   private val gaps = FrameGaps()
   private val errors = ErrorLines()
   private val sounds = SoundHold(silenceMs)
-  private val readinessLines = ReadinessLines()
+  private val readinessLines = CappedLines("readiness")
   private val engine: Engine = Engine(clock, guarded, sticky, SnapshotSink(::published), record)
   private val pairings = PairingStore(store, newId) { engine.log(it) }
   private val phone by lazy { pairings.phone(appVersion, model) }
@@ -252,7 +252,7 @@ class BridgeCore(
 
   /**
    * Each change is a record line too: the post-match record shows when the phone was ready (AGENTS
-   * §11), at most [ReadinessLines.MAX_LINES] a minute (review C4a I-1). The machine hears every change.
+   * §11), at most [CappedLines.MAX_LINES] a minute (review C4a I-1). The machine hears every change.
    */
   private fun sendReadiness() {
     sent = readiness
@@ -536,16 +536,16 @@ internal class ErrorLines {
 }
 
 /**
- * Review C4a I-1: at most [MAX_LINES] `readiness` lines a minute, the second of its guards (the first are
+ * Review C4a I-1: at most [MAX_LINES] lines of one [kind] a minute; `readiness` first, the second of its guards (the first are
  * [SoundHold] and [PoseTracker], owner 2026-10-05). A pairing settles in about four (the pair's, then
  * camera, sound and held), so six leave room; a check that keeps turning is held to six a minute, where it wiped the
  * record's tail before. The first line of a minute carries how many were held back since the last one
  * written, and every line the state it was written in. Only the line is held back: the machine hears
  * every change. A minute that held lines back is closed by [flush] (review C4a N-1), so the record's
  * last line is the machine's state within a minute of the last change, even when nothing changes
- * after it. Scheduler thread only.
+ * after it. Session 7, F-S7-3: `frames-gap` too ([FrameGaps]). Scheduler thread only.
  */
-internal class ReadinessLines {
+internal class CappedLines(private val kind: String) {
   private var windowStartMs: Long? = null
   private var written = 0
   private var suppressed = 0
@@ -563,7 +563,7 @@ internal class ReadinessLines {
     written += 1
     val held = suppressed
     suppressed = 0
-    return RecordEntry("readiness", fields + ("suppressed" to held))
+    return RecordEntry(kind, fields + ("suppressed" to held))
   }
 
   /**
