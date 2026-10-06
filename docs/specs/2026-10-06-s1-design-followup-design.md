@@ -1,6 +1,6 @@
 # S1 design follow-up — the owner's canvas, in the app
 
-**Status:** draft for owner review, 2026-10-06.
+**Status:** owner-approved, 2026-10-06 ("yes to all" on the review points below).
 **Design of record:** the owner's Design canvas "Seazn Capture — current screens", version 23
 (https://claude.ai/artifact/EfaxpYmC7ReNAmUQZtkQ8F, private to the owner). The boards are the
 picture; this spec is everything the picture cannot say. Where they disagree, ask — do not pick.
@@ -63,6 +63,11 @@ Three pull requests, in order. Each is reviewed and merged on its own.
 - Type: Barlow Condensed 600, 20 sp; 17 sp when the longest line is over 26 chars.
 - **Tests owe:** short singles, long singles, doubles, long doubles, `Match {n}`, a label with two
   `" v "`, and the 200-char maximum — each at 640 × 360 without clipping.
+- **Round line (not PR A; owner-approved 2026-10-06):** a small grey line above the label —
+  _Quarter-final_, _Round 3_, _Group A · Round 2_. It needs a descriptor addition from the web,
+  sent as structured data (stage kind and number) so the app translates it into the 4 locales;
+  organiser-typed names such as a group name are shown as typed. Absent → no line. It ships with
+  PR C or in a small PR once the web sends it — never as an empty slot.
 
 ## §3 Icons
 
@@ -86,7 +91,7 @@ allow to go live".
 - The blocker copy changes from _No sound_ to **Mic not available** (4 locales).
 - **On air:** the `audio-below-floor` degrade reason and the JS display rule that shows
   _Live with no sound. Check the mic now._ are both removed. The mic-silenced warning stays.
-  _Recommendation for review — the owner ruled on going live, not on this warning._
+  Owner-approved 2026-10-06.
 - The sound meter still shows the level, lime whenever sound is ready.
 - **Tests owe (JVM core):** silent from the start → ready; silent for 60 s → still ready; mic
   silenced by a call → not ready, then ready when the call ends; on air with silence → no degrade.
@@ -157,12 +162,23 @@ Owner rulings, 2026-10-06:
   after 10 s, or on _Hide_. No screenshot block.
 - **One QR format:** when the app's own Remote Scoring mode (S2) is built, its scanner accepts this
   same link, including the one on the desktop fixture page.
-- Needs a web change first (the paired phone receives, or asks for, the link). That change is put to
-  the owner by the web session; this spec does not carry an approval there.
+- **Contract (proposed by the web lane 2026-10-06; this owner agreed the shape the same day; the web
+  lane fixes it in the contract with its own owner's sign-off):**
+  `POST /api/v1/capture/codes/{code}/scoring-link`, the same auth and body as `…/start`
+  (`Bearer <tok>`, `{ "phone": … }`), current holder of the code only — before, during and after
+  live. 200 `{ "url": "https://<host>/score/<secret>" }` — the fixture's existing link, or a new
+  one if none; **never revokes or replaces a link** (organisers may have printed it). Host
+  `seazn.club` / `stg.seazn.club`; secret `^dl_[A-Za-z0-9_-]{43}$`. Refusals use `/start`'s body
+  `{ code, message }`: 409 `replaced`, `code_ended` (as `/start`), 409 `match_finished` (new),
+  402 `not_entitled` (shown as _Not on your plan_, 4 locales), 429 `rate_limited` with
+  `Retry-After`, 503 `unavailable`. `Cache-Control: private, no-store`. Called only on a tap.
+- The URL is a scoring credential for that one fixture: never logged, never in the session record,
+  never in a beat. Links do not expire; an organiser's _Revoke & reissue_ changes it, and the next
+  tap fetches the new one.
 
 ## Out of scope
 
-- Any change to the descriptor contract (PR A uses only today's label string).
+- Any change to the descriptor contract in PR A (PR A uses only today's label string).
 - The release heat run and Plan D.
 
 ## Verification (PR A)
