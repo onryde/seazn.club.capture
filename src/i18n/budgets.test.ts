@@ -3,6 +3,7 @@ import en from '@/i18n/en.json';
 import es from '@/i18n/es.json';
 import fr from '@/i18n/fr.json';
 import nl from '@/i18n/nl.json';
+import { DESTINATION_CAP } from '@/domain/session/destination';
 
 /**
  * Copy budgets for the HUD column (S0 R-budget; spec §6 "the longest one on
@@ -16,10 +17,14 @@ const BUDGETS: readonly (readonly [keys: RegExp, max: number])[] = [
   [/^stream\.leaveOnAir$/, 48],
   [/^stream\.tally\./, 12],
   [/^stream\.action\.(goLive|stop)$/, 16],
-  [/^stream\.chip\.(camera|sound|network|code)$/, 10],
+  [/^stream\.chip\.(camera|sound|network|auto)$/, 10],
   [/^stream\.blocker\./, 24],
-  [/^stream\.goLiveBy$/, 32],
+  // Replaces stream.goLiveBy's row: the same line, under the chips.
+  [/^stream\.startsAt$/, 32],
   [/^stream\.advisory\./, 56],
+  // Task 31's copy for Task 39's preview: its line under the stage, and its button.
+  [/^stream\.preview\.stopped$/, 56],
+  [/^stream\.preview\.show$/, 16],
   [/^stream\.peek\.label$/, 28],
   [/^stream\.peek\.unavailable$/, 24],
   [/^stream\.ended\.scanAnother$/, 16],
@@ -34,6 +39,8 @@ const WIDEST: Readonly<Record<string, string>> = {
   window: '183',
   time: '14:32 CEST',
   duration: '10:00:00',
+  // Amendment §2, footnote 1: `cutDestination` never lets the name past 24.
+  destination: 'X'.repeat(DESTINATION_CAP),
 };
 
 const fill = (text: string) =>

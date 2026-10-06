@@ -8,6 +8,8 @@ import { colour, space } from '@/ui/theme/tokens';
 
 type HoldActionProps = {
   readonly label: string;
+  /** What a screen reader says, when it is not "{label}. Press and hold…" (Stop's, A3). */
+  readonly a11yLabel?: string;
   readonly tone: 'go' | 'stop';
   readonly disabled: boolean;
   /** Why it is disabled, said at the control (spec §1). */
@@ -31,7 +33,7 @@ export const HoldAction = memo(function HoldAction(props: HoldActionProps) {
     <View style={styles.zone}>
       <Pressable
         accessibilityRole="button"
-        accessibilityLabel={t('stream.action.holdLabel', { label })}
+        accessibilityLabel={props.a11yLabel ?? t('stream.action.holdLabel', { label })}
         disabled={disabled}
         onPressIn={hold.pressIn}
         onPressOut={hold.pressOut}

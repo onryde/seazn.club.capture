@@ -6,7 +6,8 @@ data class FallbackDecision(val policy: FallbackPolicy, val counted: Boolean, va
 /**
  * C1: primary → fallback (SRT → RTMPS when SRT is preferred). Connect failures **and** repeated
  * mid-session drops count (F-P5-2); a network that is not validated counts nothing, and neither does
- * a host that did not resolve (F-P5-1). The fallback is final for the session.
+ * a host that did not resolve (F-P5-1), a connect with no capture held (C6 I-3), nor a start the camera
+ * failed (F-S4-1). The fallback is final for the session.
  */
 data class FallbackPolicy(
   val primary: Transport,
@@ -18,7 +19,7 @@ data class FallbackPolicy(
     get() = current != primary
 
   fun connectFailed(failure: ConnectFailure, networkValidated: Boolean): FallbackDecision =
-    counted(countable && networkValidated && failure != ConnectFailure.UNRESOLVED)
+    counted(countable && networkValidated && failure !in NOT_THE_PATH)
 
   /**
    * A drop counts when the far end closed an attempt that published for less than
@@ -43,6 +44,12 @@ data class FallbackPolicy(
   }
 
   companion object {
+    /**
+     * Failures that say nothing about the path to the ingest: a host that did not resolve (F-P5-1), no capture held
+     * (C6 I-3), the camera's own (F-S4-1).
+     */
+    private val NOT_THE_PATH = setOf(ConnectFailure.UNRESOLVED, ConnectFailure.UNHELD, ConnectFailure.CAMERA)
+
     /** C1's three failures. */
     const val FAILURES_TO_FALL_BACK = 3
 

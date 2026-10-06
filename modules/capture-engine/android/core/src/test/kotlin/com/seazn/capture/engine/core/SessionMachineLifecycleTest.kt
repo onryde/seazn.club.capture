@@ -19,7 +19,7 @@ class SessionMachineLifecycleTest {
   fun `F-P5-6 connected without an encoded frame is not LIVE, whatever egress says`() {
     // F-P5-3: the spike's sampler said streaming=true, 4.4 Mbps, while nothing was delivered.
     val rig = MachineRig().armed()
-    rig.send(Input.Start)
+    rig.ready()
     val attempt = rig.attempt!!
     rig.send(Input.Connected(attempt))
     rig.send(Input.Link(attempt, LinkCounters(0, 0, 0, 0, 0, 20, 50, null)))
@@ -32,7 +32,7 @@ class SessionMachineLifecycleTest {
   @Test
   fun `F-P5-4 audio with video flat is never LIVE, and the first-frame grace ends in a rebuild`() {
     val rig = MachineRig().armed()
-    rig.send(Input.Start)
+    rig.ready()
     rig.send(Input.Connected(rig.attempt!!))
     val states = mutableListOf<SnapshotState>()
     rig.advance(5_000, videoPerStep = 0) { states += rig.state }
@@ -58,7 +58,7 @@ class SessionMachineLifecycleTest {
   @Test
   fun `a double start is one attempt`() {
     val rig = MachineRig().armed()
-    rig.send(Input.Start)
+    rig.ready()
     rig.send(Input.Start)
     assertEquals(1, rig.connects().size)
     assertEquals(listOf("start" to "connecting"), rig.records("intent-ignored").map { it.fields[0].second to it.fields[1].second })
@@ -73,24 +73,33 @@ class SessionMachineLifecycleTest {
     assertEquals(listOf(Command.End(EndReason.OPERATOR_STOPPED)), rig.sent<Command.End>())
   }
 
+  /** Owner decision 1 (2026-10-05): a stop never live keeps the pairing; only a live one ends it, for a reset. */
   @Test
-  fun `stop from armed ends, reset returns to idle, and a new arm works`() {
+  fun `stop from armed stays Paired and the next go-live arms there - a live stop ends, reset returns to idle, and a new arm works`() {
     val rig = MachineRig().armed()
     rig.send(Input.Stop)
-    assertIs<Phase.Ended>(rig.phase)
+    assertIs<Phase.Paired>(rig.phase)
     rig.send(Input.Reset)
-    assertIs<Phase.Idle>(rig.phase)
-    rig.send(Input.Arm(Configs.valid()))
-    assertIs<Phase.Armed>(rig.phase)
+    assertIs<Phase.Paired>(rig.phase, "nothing to reset")
+    rig.armedAgain()
+    assertEquals("sess_43", assertIs<Phase.Armed>(rig.phase).session.sid)
+
+    val live = MachineRig().live()
+    live.send(Input.Stop)
+    assertIs<Phase.Ended>(live.phase)
+    live.send(Input.Reset)
+    assertIs<Phase.Idle>(live.phase)
+    live.armed()
+    assertIs<Phase.Armed>(live.phase)
   }
 
   @Test
   fun `an arm while live is ignored - the engine is the authority`() {
     val rig = MachineRig().live()
     val before = rig.phase
-    rig.send(Input.Arm(Configs.valid(primary = Configs.rtmps, fallback = Configs.srt)))
+    rig.send(Input.Pair(Configs.pairRequest(slot = 2), Configs.PHONE, null))
     assertEquals(before, rig.phase)
-    assertEquals(1, rig.records("intent-ignored").size)
+    assertEquals(listOf<Any?>("pair"), rig.records("intent-ignored").map { it.field("intent") })
   }
 
   @Test
@@ -98,16 +107,6 @@ class SessionMachineLifecycleTest {
     val rig = MachineRig().live()
     rig.send(Input.Reset)
     assertIs<Phase.OnAir>(rig.phase)
-  }
-
-  @Test
-  fun `an arm with an empty descriptor field ends fatal-error and says why`() {
-    val empty =
-      SessionConfig("sess_42", Configs.TOKEN, Configs.srt, Configs.rtmps, mapOf(Transport.SRT to 183, Transport.RTMPS to 180), "", "https://h/", "1.0.0")
-    val rig = MachineRig(empty)
-    rig.send(Input.Arm(empty))
-    assertEquals(EndReason.FATAL_ERROR, rig.state.endReason)
-    assertEquals("playbackUrl is not https", rig.records("arm-refused").single().fields.single().second)
   }
 
   @Test
@@ -127,7 +126,7 @@ class SessionMachineLifecycleTest {
   @Test
   fun `a drop mid-connect is a failed connect, retried 2 s later`() {
     val rig = MachineRig().armed()
-    rig.send(Input.Start)
+    rig.ready()
     rig.send(Input.Dropped(1, DropReason.ENDPOINT_CLOSED, "Connection was broken"))
     assertEquals(1, rig.records("connect-failed").size)
     rig.advance(1_500)
@@ -139,7 +138,7 @@ class SessionMachineLifecycleTest {
   @Test
   fun `a connect that never answers fails at 15 s`() {
     val rig = MachineRig().armed()
-    rig.send(Input.Start)
+    rig.ready()
     rig.advance(14_500)
     assertTrue(rig.sent<Command.Disconnect>().isEmpty())
     rig.advance(500)
@@ -147,15 +146,6 @@ class SessionMachineLifecycleTest {
     assertEquals(ConnectFailure.TIMEOUT, rig.records("connect-failed").single().fields.first { it.first == "failure" }.second)
     rig.advance(2_000)
     assertEquals(2, rig.connects().size)
-  }
-
-  @Test
-  fun `a double arm is one session, and the second is recorded as ignored`() {
-    val rig = MachineRig().armed()
-    val first = rig.phase
-    rig.send(Input.Arm(Configs.valid(primary = Configs.rtmps, fallback = Configs.srt)))
-    assertEquals(first, rig.phase)
-    assertEquals(listOf("arm" to "armed"), rig.records("intent-ignored").map { it.field("intent") to it.field("phase") })
   }
 
   @Test
@@ -178,7 +168,7 @@ class SessionMachineLifecycleTest {
     val rig = MachineRig()
     rig.send(Input.Network(true))
     rig.send(Input.Network(true))
-    rig.send(Input.Arm(rig.config))
+    rig.armed()
     rig.send(Input.Stop)
     rig.send(Input.Network(true))
     assertEquals(listOf<Any?>(true), rig.records("network").map { it.field("validated") })
@@ -203,22 +193,27 @@ class SessionMachineLifecycleTest {
         Input.Frames(1, 99, 99),
         Input.Link(1, LinkCounters(1, 1, 0, 0, 0, 20, 40, null)),
         Input.Dropped(1, DropReason.ENDPOINT_CLOSED, null),
-        Input.ConnectFailed(1, ConnectFailure.OTHER, null),
-        // A network fact is kept for the next session (final review I-1): SessionMachineOutageTest.
+        // A connect failure is recorded as ignored (G4), below. A network or mic fact is kept for the next session (final review I-1, review 18 I1):
+        // SessionMachineOutageTest and SessionMachineDeviceTest.
         Input.CameraContended,
         Input.CameraReleased,
         Input.CameraReopened(true),
-        Input.MicSilenced(true),
         Input.Device(DeviceSample(3, null, 50, false, null, null)),
         Input.PlaylistFetched(1, FetchResult.NoContent),
-        Input.HeartbeatAnswered(1, HeartbeatResponse.Answered(200, "ending", "stopped")),
-        Input.DescriptorChecked(1, DescriptorCheck.Over("stopped")),
+        Input.HeartbeatAnswered(1, HeartbeatResponse.Answered(200, BeatReply("over", "sess_42", null, "stopped", null))),
+        Input.CodeAnswered(1, CodeAnswer.Over("sess_42", "stopped")),
         Input.Tick,
       )
     for (fact in facts) assertEquals(emptyList(), rig.send(fact), "$fact")
+    // Review 14 G4: a record line, and nothing asked.
+    assertEquals(listOf(connectFailedIgnored("ended")), rig.send(Input.ConnectFailed(1, ConnectFailure.OTHER, null)))
     assertEquals(EndReason.OPERATOR_STOPPED, assertIs<Phase.Ended>(ended).reason)
     assertEquals(ended, rig.phase)
   }
+
+  /** G4's line for attempt 1's `OTHER` failure with no message, as the carry words it. */
+  private fun connectFailedIgnored(phase: String): Command =
+    Command.Record(RecordEntry("connect-failed-ignored", listOf("attempt" to 1, "failure" to ConnectFailure.OTHER, "phase" to phase, "message" to null)))
 
   @Test
   fun `ruling 14 a camera switch asks the platform, and its paused picture is not rebuilt`() {
@@ -271,7 +266,7 @@ class SessionMachineLifecycleTest {
   @Test
   fun `ruling 14 a switch before the first frame leaves the first-frame grace alone`() {
     val rig = MachineRig().armed()
-    rig.send(Input.Start)
+    rig.ready()
     rig.send(Input.Connected(1))
     rig.send(Input.SwitchCamera)
     assertEquals(listOf(Command.SwitchCamera), rig.sent<Command.SwitchCamera>())
@@ -320,7 +315,7 @@ class SessionMachineLifecycleTest {
     rig.send(Input.Dropped(1, DropReason.ENDPOINT_CLOSED, null))
     rig.advance(2_000)
     val requested = rig.phase
-    assertEquals(emptyList(), rig.send(Input.ConnectFailed(1, ConnectFailure.OTHER, null)))
+    assertEquals(listOf(connectFailedIgnored("connecting")), rig.send(Input.ConnectFailed(1, ConnectFailure.OTHER, null)), "recorded, never judged (G4)")
     assertEquals(requested, rig.phase, "attempt 2 is still asked for")
     rig.send(Input.Connected(2))
     val onAir = rig.phase
@@ -352,7 +347,7 @@ class SessionMachineLifecycleTest {
         Input.Device(DeviceSample(1, null, 50, false, null, null)),
         Input.PlaylistFetched(1, FetchResult.NoContent),
         Input.HeartbeatAnswered(1, HeartbeatResponse.Failed("timeout")),
-        Input.DescriptorChecked(1, DescriptorCheck.Live),
+        Input.CodeAnswered(1, Configs.open()),
         Input.CameraContended,
         Input.Start,
         Input.Reset,
@@ -371,7 +366,7 @@ class SessionMachineLifecycleTest {
 
   @Test
   fun `B6 ruling C2 the tick keeps its own order - a hold that ends as a rebuild falls due ends without it`() {
-    val rig = MachineRig(Configs.valid(holdWindowSeconds = mapOf(Transport.SRT to 7, Transport.RTMPS to 7))).live()
+    val rig = MachineRig(descriptor = Configs.descriptor(holdWindowSeconds = mapOf(Transport.SRT to 7, Transport.RTMPS to 7))).live()
     rig.send(Input.Dropped(1, DropReason.ENDPOINT_CLOSED, null))
     rig.advance(2_000)
     // 3 s: the first-frame grace runs out at 8 s, the moment the 7 s hold from the drop at 1 s does.
@@ -379,18 +374,24 @@ class SessionMachineLifecycleTest {
     rig.advance(4_500, feeding = false)
     assertIs<SnapshotState.Reconnecting>(rig.state)
     rig.advance(500, feeding = false)
-    assertEquals(EndReason.HOLD_WINDOW_EXPIRED, rig.state.endReason)
+    assertEquals(LastEnd.HOLD_WINDOW_EXPIRED, assertIs<Phase.Paired>(rig.phase).pairing.lastEnd)
     assertTrue(rig.sent<Command.Rebuild>().isEmpty(), "the session is over: nothing to rebuild")
   }
 
-  private val sevenSecondHolds = Configs.valid(holdWindowSeconds = mapOf(Transport.SRT to 7, Transport.RTMPS to 7))
+  private val sevenSecondHolds = Configs.descriptor(holdWindowSeconds = mapOf(Transport.SRT to 7, Transport.RTMPS to 7))
 
   /**
    * 7 s holds. Live, dropped at 1 s and connected again at 3 s with no frame since: at 8 s the hold
    * from the drop runs out as the new attempt's first-frame grace does. Time moved to 8 s with no input.
+   * The Go live and the code's answer set the server's [pollSeconds]: the rig's live, with that cadence.
    */
-  private fun holdRunsOutOnAir(): MachineRig {
-    val rig = MachineRig(sevenSecondHolds).live()
+  private fun holdRunsOutOnAir(pollSeconds: Int = 10): MachineRig {
+    val rig = MachineRig(descriptor = sevenSecondHolds).paired()
+    rig.codes = { if (rig.phase is Phase.Arming) Configs.open(descriptor = sevenSecondHolds).copy(waiting = Configs.waiting(pollSeconds)) else null }
+    rig.hear("go-live", sid = "sess_42", startedBy = "organiser", pollSeconds = pollSeconds)
+    rig.ready()
+    rig.send(Input.Connected(rig.attempt!!))
+    rig.advance(1_000)
     rig.send(Input.Dropped(1, DropReason.ENDPOINT_CLOSED, null))
     rig.advance(2_000)
     rig.send(Input.Connected(2))
@@ -410,7 +411,7 @@ class SessionMachineLifecycleTest {
         Input.Device(DeviceSample(1, null, 50, false, null, null)),
         Input.PlaylistFetched(1, FetchResult.NoContent),
         Input.HeartbeatAnswered(1, HeartbeatResponse.Failed("timeout")),
-        Input.DescriptorChecked(1, DescriptorCheck.Live),
+        Input.CodeAnswered(1, Configs.open()),
         Input.CameraContended,
         Input.SwitchCamera,
         Input.Start,
@@ -419,10 +420,14 @@ class SessionMachineLifecycleTest {
       val rig = holdRunsOutOnAir()
       assertIs<SnapshotState.Reconnecting>(rig.state, "8 s, projected with no input")
       val commands = rig.send(input)
-      assertEquals(listOf(Command.End(EndReason.HOLD_WINDOW_EXPIRED)), commands.filterNot { it is Command.Record }, "$input")
-      assertEquals(EndReason.HOLD_WINDOW_EXPIRED, rig.state.endReason, "$input")
+      // Back in Paired and ready, the operator's hold is a fresh Go live (Task 7): it posts start, and connects nothing.
+      val expected = if (input == Input.Start) listOf(Command.StopBroadcast::class, Command.PostStart::class) else listOf(Command.StopBroadcast::class)
+      assertEquals(expected, commands.filterNot { it is Command.Record }.map { it::class }, "$input")
+      // Read from the end's line: a start clears lastEnd (amendment, "until the next start").
+      assertIs<Phase.Paired>(rig.phase, "$input")
+      assertEquals(LastEnd.HOLD_WINDOW_EXPIRED, rig.records("broadcast-ended").single().field("lastEnd"), "$input")
       assertTrue(rig.records("video-stalled").isEmpty(), "$input")
-      assertEquals(ReconnectCause.UPLINK_LOST, rig.records("ended").single().field("cause"), "$input")
+      assertEquals(ReconnectCause.UPLINK_LOST, rig.records("hold-expired").single().field("cause"), "$input")
       assertEquals(emptyList(), rig.send(Input.Tick), "the tick after it: $input")
     }
   }
@@ -439,15 +444,15 @@ class SessionMachineLifecycleTest {
       )
     for (input in inputs) {
       // Attempt 2 was asked for at 3 s and has not answered by 8 s, when the hold from the drop at 1 s runs out.
-      val rig = MachineRig(sevenSecondHolds).live()
+      val rig = MachineRig(descriptor = sevenSecondHolds).live()
       rig.send(Input.Dropped(1, DropReason.ENDPOINT_CLOSED, null))
       rig.advance(6_500)
       rig.at(8_000)
       assertIs<SnapshotState.Reconnecting>(rig.state, "8 s, projected with no input")
       val commands = rig.send(input)
-      assertEquals(Command.End(EndReason.HOLD_WINDOW_EXPIRED), commands.filterNot { it is Command.Record }.first(), "$input")
-      assertTrue(commands.none { it is Command.Connect || it is Command.FetchDescriptor || it is Command.Rebuild }, "$input: $commands")
-      assertEquals(EndReason.HOLD_WINDOW_EXPIRED, rig.state.endReason, "$input")
+      assertEquals(Command.StopBroadcast, commands.filterNot { it is Command.Record }.first(), "$input")
+      assertTrue(commands.none { it is Command.Connect || it is Command.FetchCode || it is Command.Rebuild }, "$input: $commands")
+      assertEquals(LastEnd.HOLD_WINDOW_EXPIRED, assertIs<Phase.Paired>(rig.phase).pairing.lastEnd, "$input")
     }
   }
 
@@ -458,7 +463,7 @@ class SessionMachineLifecycleTest {
    * Returns the commands that frame produced.
    */
   private fun pictureReturnsAt(ms: Long): Pair<MachineRig, List<Command>> {
-    val rig = MachineRig(sevenSecondHolds).live()
+    val rig = MachineRig(descriptor = sevenSecondHolds).live()
     rig.send(Input.Dropped(1, DropReason.ENDPOINT_CLOSED, null))
     rig.advance(2_500)
     rig.send(Input.Connected(2))
@@ -473,8 +478,8 @@ class SessionMachineLifecycleTest {
     // out and before the 8.5 s tick, ends the session. Nothing else would have: the first-frame grace
     // runs to 8.5 s. The hold is the published limit, and the tick would end it the same way.
     val (rig, commands) = pictureReturnsAt(8_200)
-    assertEquals(listOf(Command.End(EndReason.HOLD_WINDOW_EXPIRED)), commands.filterNot { it is Command.Record })
-    assertEquals(EndReason.HOLD_WINDOW_EXPIRED, rig.state.endReason)
+    assertEquals(listOf(Command.StopBroadcast), commands.filterNot { it is Command.Record })
+    assertEquals(LastEnd.HOLD_WINDOW_EXPIRED, assertIs<Phase.Paired>(rig.phase).pairing.lastEnd)
     assertTrue(rig.records("resumed").isEmpty())
   }
 
@@ -488,19 +493,20 @@ class SessionMachineLifecycleTest {
 
   @Test
   fun `B7 m2 an organiser stop that lands after the hold ran out, before the tick, reads hold-window-expired`() {
-    // The heartbeat in flight since 0.5 s and the drop's descriptor ask both answer that the session
-    // is over, at 8 s. The hold ended it first (B7 ruling m2).
+    // The beat in flight since 5 s (the Go live asked a 5 s poll; the claim at the pair was answered)
+    // and the drop's code ask both answer that the broadcast is over, at 8 s. The hold ended it first
+    // (B7 ruling m2).
     val answers: List<(MachineRig) -> Input> =
       listOf(
-        { rig -> Input.HeartbeatAnswered(rig.sent<Command.PostHeartbeat>().last().beatId, HeartbeatResponse.Answered(200, "ending", "organiser")) },
-        { rig -> Input.DescriptorChecked(rig.sent<Command.FetchDescriptor>().last().requestId, DescriptorCheck.Over("stopped")) },
+        { rig -> Input.HeartbeatAnswered(rig.phase.pairing!!.heartbeat.inFlightId!!, HeartbeatResponse.Answered(200, BeatReply("over", "sess_42", null, "stopped", null))) },
+        { rig -> Input.CodeAnswered(rig.sent<Command.FetchCode>().last().requestId, CodeAnswer.Over("sess_42", "stopped")) },
       )
     for (answer in answers) {
-      val rig = holdRunsOutOnAir()
+      val rig = holdRunsOutOnAir(pollSeconds = 5)
       val input = answer(rig)
       val commands = rig.send(input)
-      assertEquals(listOf(Command.End(EndReason.HOLD_WINDOW_EXPIRED)), commands.filterNot { it is Command.Record }, "$input")
-      assertEquals(EndReason.HOLD_WINDOW_EXPIRED, rig.state.endReason, "$input")
+      assertEquals(listOf(Command.StopBroadcast), commands.filterNot { it is Command.Record }, "$input")
+      assertEquals(LastEnd.HOLD_WINDOW_EXPIRED, assertIs<Phase.Paired>(rig.phase).pairing.lastEnd, "$input")
     }
   }
 
@@ -643,7 +649,10 @@ class SessionMachineLifecycleTest {
   fun `B6 fix 2 a stop in the C2 gap ends the session and sends no rebuild first`() {
     val rig = gateJustClosed()
     val commands = rig.send(Input.Stop)
-    assertEquals(listOf(Command.End(EndReason.OPERATOR_STOPPED)), commands.filterNot { it is Command.Record })
+    // A17's record before End, and A8's final beat from a broadcast that was live: no rebuild among them.
+    val acted = commands.filterNot { it is Command.Record }
+    assertEquals(listOf(Command.WriteStopped::class, Command.End::class, Command.PostHeartbeat::class), acted.map { it::class })
+    assertEquals(Command.End(EndReason.OPERATOR_STOPPED), acted[1])
     assertTrue(rig.records("video-stalled").isEmpty())
     assertEquals(EndReason.OPERATOR_STOPPED, rig.state.endReason)
     assertEquals(true, rig.records("ended").single().field("wasLive"))
@@ -652,11 +661,11 @@ class SessionMachineLifecycleTest {
   @Test
   fun `B6 review m3 attempt ids never repeat across sessions, so a late connect from the last one is closed`() {
     val rig = MachineRig().armed()
-    rig.send(Input.Start)
+    rig.ready()
+    // Never live: the pairing stays (owner decision 1), and the next session is the organiser's next Go live on it.
     rig.send(Input.Stop)
-    rig.send(Input.Reset)
-    rig.armed()
-    rig.send(Input.Start)
+    rig.armedAgain()
+    rig.ready()
     assertEquals(listOf(1, 2), rig.connects().map { it.attemptId })
     rig.send(Input.Connected(1))
     assertEquals(listOf(Command.Disconnect(1)), rig.sent<Command.Disconnect>(), "the first session's late answer")
@@ -666,18 +675,17 @@ class SessionMachineLifecycleTest {
   }
 
   @Test
-  fun `B6 review m3 ids outlive a refused arm too`() {
+  fun `B6 review m3 ids outlive a refused pair too`() {
     val rig = MachineRig().armed()
-    rig.send(Input.Start)
+    rig.ready()
     rig.send(Input.Stop)
     rig.send(Input.Reset)
-    val refused =
-      SessionConfig("sess_42", Configs.TOKEN, Configs.srt, Configs.rtmps, mapOf(Transport.SRT to 183, Transport.RTMPS to 180), "", "https://h/", "1.0.0")
-    rig.send(Input.Arm(refused))
+    // The refused arm's place: a pair request with a problem (an arm's empty field is Task 7's start failure).
+    rig.send(Input.Pair(Configs.pairRequest(token = ""), Configs.PHONE, null))
     assertEquals(EndReason.FATAL_ERROR, rig.state.endReason, "refused")
     rig.send(Input.Reset)
     rig.armed()
-    rig.send(Input.Start)
+    rig.ready()
     assertEquals(listOf(1, 2), rig.connects().map { it.attemptId })
   }
 
@@ -685,15 +693,17 @@ class SessionMachineLifecycleTest {
   fun `B6 review m3 a late heartbeat answer from the last session changes nothing in the next`() {
     val rig = MachineRig().armed()
     rig.advance(500)
+    // Never live: the pairing stays (owner decision 1), and the next session is the organiser's next Go live on it.
     rig.send(Input.Stop)
-    rig.send(Input.Reset)
-    rig.armed()
-    rig.advance(500)
-    assertEquals(listOf(1, 2), rig.sent<Command.PostHeartbeat>().map { it.beatId })
-    assertEquals(emptyList(), rig.send(Input.HeartbeatAnswered(1, HeartbeatResponse.Answered(410, null, null))))
+    rig.armedAgain()
+    rig.advance(10_000)
+    // Beat 1 was the claim, beat 2 the stopped one's at the stop (each answered by a go-live), beat 3 is in flight.
+    assertEquals(listOf(1, 2, 3), rig.sent<Command.PostHeartbeat>().map { it.beatId })
+    assertEquals(emptyList(), rig.send(Input.HeartbeatAnswered(1, HeartbeatResponse.Answered(410))))
     assertIs<Phase.Armed>(rig.phase)
-    rig.send(Input.HeartbeatAnswered(2, HeartbeatResponse.Answered(410, null, null)))
-    assertEquals(EndReason.STOPPED_BY_ORGANISER, rig.state.endReason)
+    rig.send(Input.HeartbeatAnswered(3, HeartbeatResponse.Answered(410)))
+    // The answer table: a beat's 410 naming S, with no endReason, is stopped.
+    assertEquals(LastEnd.STOPPED, assertIs<Phase.Paired>(rig.phase).pairing.lastEnd)
   }
 
   @Test
@@ -737,22 +747,33 @@ class SessionMachineLifecycleTest {
 
   @Test
   fun `final review M-3 an outage counts in the duration, as it does on the HUD's clock`() {
-    // Live at 1 s and dropped at once; the 7 s hold runs out at 8 s with nothing published since.
-    val rig = MachineRig(sevenSecondHolds).live()
+    // Live at 1 s and dropped at once; the 7 s hold runs out at 8 s with nothing published since. The
+    // broadcast returns to Paired, and its line says it was live.
+    val rig = MachineRig(descriptor = sevenSecondHolds).live()
     rig.send(Input.Dropped(1, DropReason.ENDPOINT_CLOSED, null))
     rig.advance(7_000, feeding = false)
-    assertEquals(SnapshotState.Ended(EndReason.HOLD_WINDOW_EXPIRED, durationMs = 7_000), rig.state)
+    assertEquals(SnapshotState.Paired, rig.state)
+    assertEquals(true, rig.records("broadcast-ended").single().field("wasLive"))
+    // The duration moves to an operator stop: stopped at 7.5 s, in the outage, it counts from 1 s.
+    val stopped = MachineRig(descriptor = sevenSecondHolds).live()
+    stopped.send(Input.Dropped(1, DropReason.ENDPOINT_CLOSED, null))
+    stopped.advance(6_500, feeding = false)
+    stopped.send(Input.Stop)
+    assertEquals(SnapshotState.Ended(EndReason.OPERATOR_STOPPED, durationMs = 6_500), stopped.state)
   }
 
   @Test
   fun `final review M-3 a session that never went live has no duration`() {
+    // A stop never live ends the pairing only after a 401 held it (owner decision 1 keeps it otherwise).
     val armed = MachineRig().armed()
+    armed.hear(null, status = 401)
     armed.send(Input.Stop)
     assertEquals(SnapshotState.Ended(EndReason.OPERATOR_STOPPED, durationMs = null), armed.state)
 
-    // Connected, with frames that never advance.
+    // Connected, with frames that never advance. The 401 first: the rig's wait for a beat would feed frames on air.
     val connected = MachineRig().armed()
-    connected.send(Input.Start)
+    connected.hear(null, status = 401)
+    connected.ready()
     connected.send(Input.Connected(1))
     connected.advance(2_000, videoPerStep = 0)
     connected.send(Input.Stop)
@@ -770,7 +791,7 @@ class SessionMachineLifecycleTest {
 
   @Test
   fun `final review N-2 an ended session ended again stays as it ended - its reason and duration stand`() {
-    val stopped = Phase.Ended(EndReason.OPERATOR_STOPPED, Ids(attempt = 3), durationMs = 42_000, networkValidated = true)
+    val stopped = Phase.Ended(EndReason.OPERATOR_STOPPED, Ids(attempt = 3), durationMs = 42_000, networkValidated = true, micSilenced = false)
     assertEquals(stopped, stopped.ended(EndReason.FATAL_ERROR, Now(90_000, 1_790_000_090_000)))
   }
 
@@ -779,7 +800,7 @@ class SessionMachineLifecycleTest {
     val rig = MachineRig().live()
     rig.advance(9_000)
     val commands = rig.send(Input.PlatformFailed(1, "encoder cannot start"))
-    assertEquals(listOf(Command.End(EndReason.FATAL_ERROR)), commands.filterNot { it is Command.Record })
+    assertEquals(listOf(Command.End(EndReason.FATAL_ERROR), Command.Release), commands.filterNot { it is Command.Record })
     assertEquals(SnapshotState.Ended(EndReason.FATAL_ERROR, durationMs = 9_000), rig.state)
     val ended = rig.records("ended").single()
     assertEquals(EndReason.FATAL_ERROR, ended.field("reason"))
@@ -788,22 +809,37 @@ class SessionMachineLifecycleTest {
   }
 
   @Test
-  fun `final review N-4 a permanent failure from the attempt in hand ends idle, armed and connecting too`() {
-    // Before the first connect, the attempt in hand is the next one: attempt 1 here.
-    val setups: List<Pair<String, (MachineRig) -> Unit>> =
+  fun `final review N-4 a permanent failure from the attempt in hand ends pairing, armed and connecting too`() {
+    // Before the first connect, the attempt in hand is the next one: attempt 1 here. Pairing has asked
+    // for permissions, so no Hold went yet, and no Release goes with its End (review C0b M4).
+    val setups: List<Triple<String, (MachineRig) -> Unit, Boolean>> =
       listOf(
-        "idle" to { _ -> },
-        "armed" to { rig -> rig.armed() },
-        "connecting" to { rig -> rig.armed().send(Input.Start) },
+        Triple("pairing", { rig -> rig.permissions = null; rig.send(Input.Pair(Configs.pairRequest(), Configs.PHONE, null)) }, false),
+        Triple("armed", { rig -> rig.armed() }, true),
+        Triple("connecting", { rig -> rig.armed().ready() }, true),
       )
-    for ((name, setup) in setups) {
+    for ((name, setup, held) in setups) {
       val rig = MachineRig()
       setup(rig)
+      assertEquals(name, rig.phase.name, "set-up")
       rig.send(Input.PlatformFailed(1, "no camera"))
       assertEquals(SnapshotState.Ended(EndReason.FATAL_ERROR, durationMs = null), rig.state, name)
       assertEquals(listOf(Command.End(EndReason.FATAL_ERROR)), rig.sent<Command.End>(), name)
+      assertEquals(if (held) listOf(Command.Release) else emptyList(), rig.sent<Command.Release>(), name)
       assertEquals("no camera", rig.records("ended").single().field("message"), name)
     }
+  }
+
+  @Test
+  fun `a permanent failure while Idle is only recorded - there is no pairing to end`() {
+    // Ruling (review C0b M3): the amendment's diagram says "from any phase but Idle", its _Permanent
+    // failures_ section "from any phase"; "ignored in Idle, nothing to fail" was picked, and recorded.
+    val rig = MachineRig()
+    val commands = rig.send(Input.PlatformFailed(1, "no camera"))
+    assertEquals(Phase.Idle(), rig.phase)
+    val line = commands.map { (it as Command.Record).entry }.single()
+    assertEquals("platform-failed", line.kind)
+    assertEquals("no camera", line.field("message"))
   }
 
   @Test
@@ -875,7 +911,7 @@ class SessionMachineLifecycleTest {
   fun `final review M-5 a permanent failure is not judged by the watchdog - nothing is rebuilt on its way to the end`() {
     val rig = gateJustClosed()
     val commands = rig.send(Input.PlatformFailed(1, "encoder cannot start"))
-    assertEquals(listOf(Command.End(EndReason.FATAL_ERROR)), commands.filterNot { it is Command.Record })
+    assertEquals(listOf(Command.End(EndReason.FATAL_ERROR), Command.Release), commands.filterNot { it is Command.Record })
     assertTrue(rig.records("video-stalled").isEmpty())
     assertEquals(EndReason.FATAL_ERROR, rig.state.endReason)
   }
@@ -889,7 +925,7 @@ class SessionMachineLifecycleTest {
       listOf(
         "on air" to { holdRunsOutOnAir() },
         "connecting" to {
-          MachineRig(sevenSecondHolds).live().apply {
+          MachineRig(descriptor = sevenSecondHolds).live().apply {
             send(Input.Dropped(1, DropReason.ENDPOINT_CLOSED, null))
             advance(6_500)
             at(8_000)
@@ -901,16 +937,16 @@ class SessionMachineLifecycleTest {
       assertEquals(2, rig.attempt, name)
       rig.at(8_200)
       val commands = rig.send(Input.PlatformFailed(2, "encoder cannot start"))
-      assertEquals(listOf(Command.End(EndReason.HOLD_WINDOW_EXPIRED)), commands.filterNot { it is Command.Record }, name)
-      assertEquals(EndReason.HOLD_WINDOW_EXPIRED, rig.state.endReason, name)
-      assertEquals(listOf("ended", "platform-failed"), commands.filterIsInstance<Command.Record>().map { it.entry.kind }, name)
+      assertEquals(listOf(Command.StopBroadcast), commands.filterNot { it is Command.Record }, name)
+      assertEquals(LastEnd.HOLD_WINDOW_EXPIRED, assertIs<Phase.Paired>(rig.phase).pairing.lastEnd, name)
+      assertEquals(listOf("hold-expired", "broadcast-ended", "platform-failed"), commands.filterIsInstance<Command.Record>().map { it.entry.kind }, name)
     }
   }
 
   @Test
   fun `F-P5-4 a no-first-frame rebuild counts from the connect, and is not re-baselined`() {
     val rig = MachineRig().armed()
-    rig.send(Input.Start)
+    rig.ready()
     rig.send(Input.Connected(1))
     rig.advance(5_000, videoPerStep = 0)
     val stalled = rig.records("video-stalled").single()

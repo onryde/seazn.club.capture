@@ -1,6 +1,6 @@
 import { memo } from 'react';
 import { StyleSheet, View } from 'react-native';
-import { ADVISORY_KEY, selectCharging, topAdvisory } from '@/hooks/advisory';
+import { ADVISORY_KEY, selectCharging, selectKeepOpen, topAdvisory } from '@/hooks/advisory';
 import { selectLabel, selectPlaybackUrl } from '@/hooks/engineSelectors';
 import { useEngineSelector } from '@/hooks/useCaptureEngine';
 import { useT } from '@/hooks/useLanguage';
@@ -10,14 +10,14 @@ import { useStageOverlay } from '@/hooks/useStageOverlay';
 import { EdgeStrip } from '@/ui/components/EdgeStrip';
 import { GhostButton } from '@/ui/components/GhostButton';
 import { OverlayPreview } from '@/ui/components/OverlayPreview';
+import { PreviewBoundary } from '@/ui/components/PreviewBoundary';
 import { StageVideo } from '@/ui/components/StageVideo';
 import { Text } from '@/ui/components/Text';
 import { colour } from '@/ui/theme/tokens';
 
 type StageProps = {
-  readonly armed: boolean;
-  /** N3: replacing another code's session, so nothing of it is shown: no label, no overlay. */
-  readonly replacing: boolean;
+  /** Framing a shot, before any broadcast. */
+  readonly paired: boolean;
   readonly overlayOn: boolean;
   readonly peek: Peek;
   readonly canLeave: boolean;
@@ -34,13 +34,15 @@ type StageProps = {
  */
 export const StreamStage = memo(function StreamStage(props: StageProps) {
   const { surfaces } = usePorts();
-  const overlayOn = props.overlayOn && !props.replacing;
-  const overlay = useStageOverlay(overlayOn);
+  const overlay = useStageOverlay(props.overlayOn);
   const playbackUrl = useEngineSelector(selectPlaybackUrl);
   const { Preview } = surfaces;
   return (
     <View style={styles.stage}>
-      <Preview />
+      {/* CD19: the preview alone; the overlay keeps its own boundary (AGENTS §7). */}
+      <PreviewBoundary>
+        <Preview />
+      </PreviewBoundary>
       <OverlayPreview url={overlay.url} visible={overlay.visible} onFailed={overlay.onFailed} />
       {props.peek.mounted && playbackUrl !== null ? (
         <StageVideo url={playbackUrl} showing={props.peek.showing} />
@@ -48,11 +50,12 @@ export const StreamStage = memo(function StreamStage(props: StageProps) {
       <TopStrip
         shed={overlay.shed}
         overlayFailed={overlay.failed}
-        armed={props.armed}
-        overlayOn={overlayOn}
+        paired={props.paired}
+        // Final review I-2: with no overlay URL there is no score preview to be
+        // ahead of viewers or to fail, so the strip says nothing of one.
+        overlayOn={props.overlayOn && overlay.url !== null}
       />
       <BottomStrip
-        labelled={!props.replacing}
         canLeave={props.canLeave}
         onHome={props.onHome}
         onSettings={props.onSettings}
@@ -65,7 +68,7 @@ export const StreamStage = memo(function StreamStage(props: StageProps) {
 type TopStripProps = {
   readonly shed: boolean;
   readonly overlayFailed: boolean;
-  readonly armed: boolean;
+  readonly paired: boolean;
   readonly overlayOn: boolean;
 };
 
@@ -73,7 +76,8 @@ type TopStripProps = {
 const TopStrip = memo(function TopStrip(props: TopStripProps) {
   const { t } = useT();
   const charging = useEngineSelector(selectCharging);
-  const advisory = topAdvisory({ ...props, charging });
+  const keepOpen = useEngineSelector(selectKeepOpen);
+  const advisory = topAdvisory({ ...props, charging, keepOpen });
   if (advisory === null) return null;
   return (
     <EdgeStrip edge="top">
@@ -83,8 +87,6 @@ const TopStrip = memo(function TopStrip(props: TopStripProps) {
 });
 
 type BottomStripProps = {
-  /** False while replacing (N3): the label native holds is the old session's. */
-  readonly labelled: boolean;
   readonly canLeave: boolean;
   readonly onHome: () => void;
   readonly onSettings: () => void;
@@ -96,7 +98,6 @@ type BottomStripProps = {
  * included (AGENTS §6); and Home whenever leaving is allowed (never on air).
  */
 const BottomStrip = memo(function BottomStrip({
-  labelled,
   canLeave,
   onHome,
   onSettings,
@@ -107,7 +108,7 @@ const BottomStrip = memo(function BottomStrip({
   return (
     <EdgeStrip edge="bottom">
       <Text variant="metricUnit" numberOfLines={1} style={styles.label}>
-        {labelled ? (label ?? '') : ''}
+        {label ?? ''}
       </Text>
       <GhostButton label={t('stream.link.settings')} onPress={onSettings} />
       <GhostButton label={t('stream.link.diagnostics')} onPress={onDiagnostics} />

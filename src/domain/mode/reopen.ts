@@ -1,14 +1,15 @@
+import { sameCode, savedCodeName, type CodeName } from '@/domain/mode/codeName';
 import type { Mode } from '@/domain/mode/Mode';
-import { sameCode, type CodeName } from '@/domain/mode/codeName';
 import { isExpired, venueZone, type SavedCode } from '@/domain/mode/savedCode';
 
 /**
- * The engine as the shell sees it. `live` covers connecting, publishing,
- * degraded and reconnecting alike: each is a broadcast the operator must not
- * walk away from. `ended` splits by reason, because a failure keeps its code
- * so the operator can go straight back in.
+ * The engine as the shell sees it. `live` covers every phase that holds a
+ * broadcast, Arming and Armed included: each is a broadcast the operator must
+ * not walk away from. `paired` covers Pairing and Paired. `ended` splits by
+ * reason, because a failure keeps its code so the operator can go straight
+ * back in.
  */
-export type EngineStatus = 'idle' | 'armed' | 'live' | 'stopped' | 'failed';
+export type EngineStatus = 'idle' | 'paired' | 'live' | 'stopped' | 'failed';
 
 export type SavedState = {
   readonly active: Mode | null;
@@ -19,7 +20,7 @@ export type ReopenTarget =
   | { readonly go: 'stream' }
   | {
       readonly go: 'home';
-      /** `venueTz` is the saved descriptor's zone, so the notice reads in venue time (spec §2). */
+      /** `venueTz` is the saved waiting fields' zone, so the notice reads in venue time (spec §2). */
       readonly notice?: {
         readonly mode: Mode;
         readonly expiredAt: Date;
@@ -28,32 +29,35 @@ export type ReopenTarget =
     };
 
 /**
- * Where the app lands on launch and on every return to the foreground
- * (spec §4). The engine wins: under the Android foreground service a
- * broadcast can outlive the UI, and hiding it would be the worst lie the app
- * could tell. An armed session wins only while a saved code owns it (I1,
- * final review): one whose code was forgotten is an orphan (`orphanedSession`),
- * cleared on the way Home, never a Ready viewfinder. S0 builds only Live
- * Stream; S2 and S4 widen the union.
+ * Where the app lands on launch and on every return to the foreground. The
+ * engine wins while its process lives (amendment, Process death and reopen):
+ * a held broadcast always reopens into /stream, and a paired engine does
+ * while its code is saved (R23: an expired one too; I1: none saved is an
+ * orphan, cleared on the way Home). An Idle engine reopens into /stream only
+ * when the cold-start re-pair was sent (`resumed`); any other Idle engine with
+ * a saved code goes Home, to the Continue card. A permanent failure keeps its
+ * code and its Ended screen ("Your code is kept"); the operator's Stop goes
+ * Home. S0 builds only Live Stream; S2 and S4 widen the union.
  */
 export function reopenTarget(input: {
   engine: EngineStatus;
   saved: SavedState;
   now: Date;
+  resumed: boolean;
 }): ReopenTarget {
   const { engine, saved, now } = input;
-  if (engine === 'live') return { go: 'stream' };
-  if (engine === 'armed' && saved.codes.stream !== undefined) return { go: 'stream' };
-  if (saved.active !== 'stream') return { go: 'home' };
   const code = saved.codes.stream;
-  if (code === undefined) return { go: 'home' };
+  if (engine === 'live') return { go: 'stream' };
+  if (engine === 'paired') return { go: code === undefined ? 'home' : 'stream' };
+  if (input.resumed) return { go: 'stream' };
+  if (saved.active !== 'stream' || code === undefined) return { go: 'home' };
   if (code.expiresAt !== null && isExpired(code, now)) {
     return {
       go: 'home',
       notice: { mode: 'stream', expiredAt: code.expiresAt, venueTz: venueZone(code) },
     };
   }
-  return { go: 'stream' };
+  return { go: engine === 'failed' ? 'stream' : 'home' };
 }
 
 /**
@@ -63,10 +67,11 @@ export function reopenTarget(input: {
  * screen instead of arming. The reopen gate clears it on the way Home. A code
  * still saved, active or not, keeps its session: Continue opens it, truthfully.
  *
- * I1 (final review, owner-visible): an armed session with no code saved is an
- * orphan too, or every foreground would reopen a Ready viewfinder for a code
- * the operator forgot. An armed session's expired code still owns it (R23).
- * Never a broadcast: on air nothing is an orphan.
+ * I1 (final review, owner-visible): a pairing with no code saved is an orphan
+ * too, or every foreground would reopen a Ready viewfinder for a code the
+ * operator forgot. A pairing's expired code still owns it (R23). Never a
+ * broadcast: on air nothing is an orphan; the route rule shows it, and only
+ * the operator's Stop ends it.
  */
 export function orphanedSession(input: {
   engine: EngineStatus;
@@ -75,76 +80,58 @@ export function orphanedSession(input: {
 }): boolean {
   const { engine, saved, now } = input;
   const code = saved.codes.stream;
-  if (engine === 'armed') return code === undefined;
+  if (engine === 'paired') return code === undefined;
   if (engine !== 'stopped' && engine !== 'failed') return false;
   return code === undefined || isExpired(code, now);
 }
 
-/** What a viewfinder visit does with the engine it finds (I1). */
-export type VisitArm = 'arm' | 'adopt' | 'replace';
-
-/**
- * I1 (owner-visible): a visit adopts native's session only when it is this
- * code's (`sameCode`): the same match, the same slot (C7: another camera
- * position with its own credential) and the same issue (N2: a re-issued code
- * carries a new token and credentials). Any other armed or ended session, or
- * one native cannot name, is `replace`d (`replaceStep`), then this code armed.
- * Adopting it would show the old session's label and Ended screen, and Go live
- * would publish on the old credentials. Live is always adopted: it cannot
- * reach Home, and replacing it would end a broadcast.
- */
-export function visitArm(input: {
+/** The cold-start re-pair's conditions, on an Idle engine (amendment, Process death and reopen). */
+export function resumesAtColdStart(input: {
   engine: EngineStatus;
-  held: CodeName;
-  code: CodeName;
-}): VisitArm {
-  const { engine, held, code } = input;
-  if (engine === 'idle') return 'arm';
-  if (engine === 'live') return 'adopt';
-  return sameCode(held, code) ? 'adopt' : 'replace';
-}
-
-/** The one intent that moves another code's session toward this code's arm. */
-export type ReplaceStep = 'stop' | 'reset' | 'arm' | null;
-
-/**
- * N1 (plan B's contract, SessionMachine.kt): native resets only from Ended and
- * arms only from Idle. So a replace takes the documented path, one intent per
- * snapshot, each reconciled against the next (intents, not RPC): an armed
- * session is stopped, an ended one reset, and idle is armed. Nothing on air:
- * a replace never ends a broadcast.
- */
-export function replaceStep(engine: EngineStatus): ReplaceStep {
-  switch (engine) {
-    case 'armed':
-      return 'stop';
-    case 'stopped':
-    case 'failed':
-      return 'reset';
-    case 'idle':
-      return 'arm';
-    case 'live':
-      return null;
-  }
-}
-
-/**
- * N3 (owner-visible): whether a replacing visit is still on its way to this
- * code's arm. Until it arrives the viewfinder shows not ready ("Waiting for
- * the session details."), never the session it is replacing: not its label,
- * overlay or Ended screen. It arrives when native holds this code's session
- * (`own`) or, for a code the phone cannot use, once the old session is cleared
- * to idle. Never over a broadcast: on air, Stop is always shown.
- */
-export function stillReplacing(input: {
-  plan: VisitArm;
-  own: boolean;
-  unusable: boolean;
-  engine: EngineStatus;
+  unpaired: CodeName | null;
+  saved: SavedState;
+  now: Date;
 }): boolean {
-  const { plan, own, unusable, engine } = input;
-  if (plan !== 'replace' || own || engine === 'live') return false;
-  return !(unusable && engine === 'idle');
+  const code = input.saved.codes.stream;
+  if (input.engine !== 'idle' || input.saved.active !== 'stream' || code === undefined)
+    return false;
+  if (isExpired(code, input.now) || code.stream === null || code.stream.tapToPair) return false;
+  // A raw that no longer parses has no pair to send: Home and its Continue card say so.
+  const name = savedCodeName(code);
+  if (name.code === null) return false;
+  return input.unpaired === null || !sameCode(input.unpaired, name);
+}
+
+/**
+ * JS forgets the saved code when native says its pairing ended (amendment, The
+ * engine port): `unpaired` names it, or Ended `operator-stopped` does. Identity,
+ * not a comparison of two snapshots, so it is idempotent.
+ */
+export function forgetsSaved(input: {
+  saved: CodeName;
+  unpaired: CodeName | null;
+  stopped: CodeName | null;
+}): boolean {
+  const names = (other: CodeName | null) => other !== null && sameCode(other, input.saved);
+  return names(input.unpaired) || names(input.stopped);
+}
+
+export type TapMark = 'mark' | 'clear' | null;
+
+/**
+ * `tapToPair` (amendment): set when the snapshot shows Ended `fatal-error` for
+ * the saved code, so the cold-start re-pair skips it and only Continue re-pairs
+ * it; cleared once the snapshot shows that code Paired.
+ */
+export function tapToPairMark(input: {
+  saved: CodeName;
+  marked: boolean;
+  failed: CodeName | null;
+  paired: CodeName | null;
+}): TapMark {
+  if (!input.marked && input.failed !== null && sameCode(input.failed, input.saved)) return 'mark';
+  if (input.marked && input.paired !== null && sameCode(input.paired, input.saved)) return 'clear';
+  return null;
 }
 
 /** Modes whose saved code has expired. The caller deletes them after reading the target. */
@@ -161,8 +148,7 @@ export type LeaveRule = 'free' | 'freeAndForget' | 'blockedOnAir';
  * Decision 5. Only Live Stream exists in S0; Scoring's "N scores haven't
  * sent yet" and the Dashboard's rule arrive with their modes. A stopped
  * session spends the code only when it is this code's (`ownSession`): one
- * left by another code, as a replace finds it on its way through Ended, spends
- * nothing (fix round 3).
+ * left by another code spends nothing (fix round 3).
  */
 export function leaveRule(mode: 'stream', engine: EngineStatus, ownSession: boolean): LeaveRule {
   void mode;
@@ -172,7 +158,7 @@ export function leaveRule(mode: 'stream', engine: EngineStatus, ownSession: bool
     case 'stopped':
       return ownSession ? 'freeAndForget' : 'free';
     case 'idle':
-    case 'armed':
+    case 'paired':
     case 'failed':
       return 'free';
   }

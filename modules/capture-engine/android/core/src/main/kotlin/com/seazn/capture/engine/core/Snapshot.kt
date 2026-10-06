@@ -9,7 +9,23 @@ sealed interface SnapshotState : Wire {
     override val wire = "idle"
   }
 
-  data object Armed : SnapshotState {
+  /** `pair` heard; the permissions are being asked. */
+  data object Pairing : SnapshotState {
+    override val wire = "pairing"
+  }
+
+  /** Paired with a code and slot, beating, no broadcast held. */
+  data object Paired : SnapshotState {
+    override val wire = "paired"
+  }
+
+  /** [retrying]: the code's last answer was no answer, so the line reads "Starting — can't reach Seazn, retrying". */
+  data class Arming(val cause: Cause, val retrying: Boolean) : SnapshotState {
+    override val wire = "arming"
+  }
+
+  /** [notReady]: the first check that fails (A11), or null when the gate is about to open. */
+  data class Armed(val cause: Cause, val notReady: NotReady?) : SnapshotState {
     override val wire = "armed"
   }
 
@@ -82,6 +98,70 @@ data class Snapshot(
   val heartbeat: HeartbeatStatus,
   val shed: ShedStep?,
   val device: DeviceSample?,
-  /** Whose camera is on air; null with no session. Our own reopen or switch reads apart from a take. */
+  /** Whose camera it is; null with no pairing, and in Ended. Our own reopen or switch reads apart from a take. */
   val camera: CameraState?,
+  /** The pairing, in every phase that has one, Ended included, so JS can forget the code it names. Never the token. */
+  val pairing: PairingView? = null,
+  /** The broadcast held, from Armed on: its non-secret fields only. */
+  val broadcast: BroadcastView? = null,
+  /** A11's checks as four booleans, false when unknown or with no pairing. */
+  val ready: ReadyView = ReadyView.NONE,
+  /** The last start's refusal, until the next start. */
+  val refusal: Refusal? = null,
+  /** Why the last broadcast ended, in Paired, until the next start. */
+  val lastEnd: LastEnd? = null,
+  /** Why the engine left the pairing on its own, in Idle, until the next pair. */
+  val unpaired: Unpaired? = null,
+  /** A 401 heard while a broadcast is held: the pairing ends with it. */
+  val codeEndedPending: Boolean = false,
+  /** The pairing's language, for the notification. */
+  val language: String? = null,
 )
+
+/**
+ * The snapshot with its clock and telemetry (what SnapshotWire sends under `telemetry`) set to one
+ * value: what the operator sees. The engine publishes an input's snapshot when this changes (review
+ * C4c I-1). A field added to [Snapshot] is compared unless it is cleared here, so a new one errs
+ * towards one more snapshot, never towards a change that waits for the tick.
+ */
+fun Snapshot.shown(): Snapshot =
+  copy(
+    reportedAtMs = 0,
+    delivery = Delivery.UNKNOWN,
+    deliveredLagMs = null,
+    encodedVideoFps = null,
+    audioPacketsPerSecond = null,
+    srt = null,
+    bitrateKbps = null,
+    targetBitrateKbps = null,
+    dataUsedBytes = 0,
+    charging = null,
+    heartbeat = NO_BEAT,
+    shed = null,
+    device = null,
+  )
+
+private val NO_BEAT = HeartbeatStatus(lastSentAtEpochMs = null, lastResult = null, consecutiveFailures = 0, failures = 0)
+
+/** The pairing as the snapshot carries it: its name (code, slot and token tag), never the token. */
+data class PairingView(val name: PairingName, val automatic: Boolean, val waiting: WaitingFields)
+
+/** The broadcast's non-secret fields: no ingest URL, stream id, key or passphrase. */
+data class BroadcastView(
+  val sid: String,
+  val cause: Cause,
+  val playbackUrl: String,
+  val overlayUrl: String?,
+  val label: String,
+  val holdWindowSeconds: Map<Transport, Int>,
+  val maxDurationMinutes: Int,
+  val scoreUpdates: String,
+  /** A18: false when the server offered RTMPS alone; Diagnostics shows "SRT not offered". */
+  val srtOffered: Boolean,
+)
+
+data class ReadyView(val camera: Boolean, val sound: Boolean, val network: Boolean, val held: Boolean) {
+  companion object {
+    val NONE = ReadyView(camera = false, sound = false, network = false, held = false)
+  }
+}

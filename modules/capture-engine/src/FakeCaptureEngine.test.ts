@@ -1,22 +1,23 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AUDIO_FLOOR } from '@/domain/policy/audioFloor';
-import type { CameraState } from './CaptureEnginePort';
+import type { CameraState, PairIntent } from './CaptureEnginePort';
+import { KIT_CODE_A, KIT_CODE_B } from './contract/engineScenarios';
 import {
   createFakeCaptureEngine,
   FAKE_SCENES,
-  IDLE_TELEMETRY,
   INTENT_LOG_CAP,
   type FakeCaptureEngine,
   type FakeScene,
 } from './FakeCaptureEngine';
-import { streamSession } from '../../../test/fixtures/session';
-import { FIXTURE_SECRETS } from '../../../test/fixtures/wire';
+import { IDLE_TELEMETRY } from './unreported';
 
 const NOW = Date.parse('2026-10-03T13:00:00Z');
 /** 12:34 on air, the fake's scenes' fixed time on air. */
 const ON_AIR_MS = 754_000;
-const session = streamSession();
-const heartbeat = { url: session.descriptor.heartbeatUrl, token: session.token };
+/** The kit's tokens: the only secrets a pair carries now (A1). */
+const SECRETS = [KIT_CODE_A.token, KIT_CODE_B.token];
+/** FNV-1a 32 of KIT_CODE_A's token, from an independent FNV-1a outside the code under test. */
+const TAG_A = 'd2e14499';
 
 let clock = NOW;
 let engine: FakeCaptureEngine;
@@ -31,77 +32,81 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-const state = () => engine.getSnapshot().state;
-const telemetry = () => engine.getSnapshot().telemetry;
+const snapshot = () => engine.getSnapshot();
+const state = () => snapshot().state;
+const telemetry = () => snapshot().telemetry;
 /** Moves the fake's clock and its timers together, as the phone's would. */
 const wait = (ms: number) => {
   clock += ms;
   vi.advanceTimersByTime(ms);
 };
+const pair = (intent: PairIntent = KIT_CODE_A) => engine.send(intent);
+const goLive = () => {
+  pair();
+  engine.send({ kind: 'start' });
+};
+/** Owner decision 1 (2026-10-05): only a stop once live ends the pairing; the fake publishes a second after its connect. */
+const onAirLive = () => {
+  goLive();
+  wait(1_000);
+  expect(state().kind).toBe('publishing');
+};
 
 describe('the fake engine (spec §2: scripted snapshots, no state machine of its own)', () => {
-  it('starts idle, knowing no session', () => {
+  it('starts idle, knowing no pairing, broadcast or readiness', () => {
     expect(state()).toEqual({ kind: 'idle' });
-    expect(engine.getSnapshot().descriptor).toBeNull();
-  });
-
-  it('arms with the session’s descriptor and a ready pre-flight', () => {
-    engine.send({ kind: 'arm', session, heartbeat });
-    expect(state()).toEqual({ kind: 'armed' });
-    expect(engine.getSnapshot().descriptor).toBe(session.descriptor);
-    const { cameraReady, networkReachable, audioLevel } = telemetry();
-    expect({ cameraReady, networkReachable, floor: audioLevel >= AUDIO_FLOOR }).toEqual({
-      cameraReady: true,
-      networkReachable: true,
-      floor: true,
+    const { pairing, broadcast, ready, unpaired, refusal, lastEnd, codeEndedPending } = snapshot();
+    expect({ pairing, broadcast, ready, unpaired, refusal, lastEnd, codeEndedPending }).toEqual({
+      pairing: null,
+      broadcast: null,
+      ready: { camera: false, sound: false, network: false, held: false },
+      unpaired: null,
+      refusal: null,
+      lastEnd: null,
+      codeEndedPending: false,
     });
   });
 
-  it('ignores a second arm while armed: the first session stays (a double scan)', () => {
-    engine.send({ kind: 'arm', session, heartbeat });
-    engine.send({
-      kind: 'arm',
-      session: streamSession({ label: 'Other XI v Else CC' }),
-      heartbeat,
+  it('pairs with the intent’s name, zone and automatic choice, ready on every check', () => {
+    pair({ ...KIT_CODE_A, venueTimezone: 'Asia/Kolkata', automatic: false });
+    expect(state()).toEqual({ kind: 'paired' });
+    const { pairing, ready } = snapshot();
+    expect(pairing).toMatchObject({
+      code: 'ka0000000001',
+      slot: 1,
+      tokenTag: TAG_A,
+      venueTimezone: 'Asia/Kolkata',
+      automatic: false,
     });
-    expect(engine.getSnapshot().descriptor).toBe(session.descriptor);
+    expect(ready).toEqual({ camera: true, sound: true, network: true, held: true });
   });
 
-  it('never reports a secret back up, armed or on air (D8)', () => {
-    engine.send({ kind: 'arm', session, heartbeat });
-    const armed = JSON.stringify(engine.getSnapshot());
+  it('never reports a secret back up, paired or on air (D8)', () => {
+    pair();
+    const paired = JSON.stringify(snapshot());
     engine.send({ kind: 'start' });
     wait(1000);
-    const onAir = JSON.stringify(engine.getSnapshot());
-    for (const secret of FIXTURE_SECRETS) {
-      expect({ secret, armed: armed.includes(secret), onAir: onAir.includes(secret) }).toEqual({
+    const onAir = JSON.stringify(snapshot());
+    for (const secret of SECRETS) {
+      expect({ secret, paired: paired.includes(secret), onAir: onAir.includes(secret) }).toEqual({
         secret,
-        armed: false,
+        paired: false,
         onAir: false,
       });
     }
   });
 
   it('connects on start, then publishes a second later on the primary transport', () => {
-    engine.send({ kind: 'arm', session, heartbeat });
-    engine.send({ kind: 'start' });
+    goLive();
     expect(state()).toEqual({ kind: 'connecting', transport: 'srt' });
     wait(1000);
     expect(state()).toEqual({ kind: 'publishing', transport: 'srt', sinceEpochMs: NOW + 1000 });
   });
 
-  it('connects on the code’s preferred transport when that is RTMPS', () => {
-    const rtmpsFirst = streamSession({}, { preferred: 'rtmps' });
-    engine.send({ kind: 'arm', session: rtmpsFirst, heartbeat });
-    engine.send({ kind: 'start' });
-    expect(state()).toEqual({ kind: 'connecting', transport: 'rtmps' });
-  });
-
-  it('ignores start unless armed, and a second start while connecting', () => {
+  it('ignores start unless paired, and a second start while connecting', () => {
     engine.send({ kind: 'start' });
     expect(state()).toEqual({ kind: 'idle' });
-    engine.send({ kind: 'arm', session, heartbeat });
-    engine.send({ kind: 'start' });
+    goLive();
     wait(500);
     engine.send({ kind: 'start' });
     wait(500);
@@ -114,10 +119,11 @@ describe('the fake engine (spec §2: scripted snapshots, no state machine of its
     engine.scene('live');
     engine.send({ kind: 'stop' });
     expect(state()).toEqual({ kind: 'ended', reason: 'operator-stopped', durationMs: ON_AIR_MS });
-    // An ended session reads nothing: no ready camera, no moving meter.
+    // An ended session reads nothing: no moving meter, no broadcast.
     expect(telemetry()).toEqual(IDLE_TELEMETRY);
     // A literal, not the fake's own constant: a sounding meter on Ended is a lie (N2).
     expect(telemetry().audioLevel).toBe(0);
+    expect(snapshot().broadcast).toBeNull();
   });
 
   it.each<FakeScene>(['holding', 'stalled', 'restarting'])(
@@ -142,119 +148,92 @@ describe('the fake engine (spec §2: scripted snapshots, no state machine of its
     expect(state()).toEqual({ kind: 'ended', reason: 'operator-stopped', durationMs: ON_AIR_MS });
   });
 
-  it('ends with no time on air when stopped while connecting, and never publishes after', () => {
-    engine.send({ kind: 'arm', session, heartbeat });
-    engine.send({ kind: 'start' });
+  // Owner decision 1 (2026-10-05), as native: never live, the broadcast ends and the pairing stays.
+  it('returns to paired, stopped, when stopped while connecting, and never publishes after', () => {
+    goLive();
     engine.send({ kind: 'stop' });
     wait(5000);
+    expect(state()).toEqual({ kind: 'paired' });
+    expect([snapshot().lastEnd, snapshot().broadcast]).toEqual(['stopped', null]);
+  });
+
+  it('ends a broadcast held past a 401 when stopped never live, as native does (the 401 deferral)', () => {
+    goLive();
+    engine.hear({ word: 'code-ended' });
+    expect(snapshot().codeEndedPending).toBe(true);
+    engine.send({ kind: 'stop' });
     expect(state()).toEqual({ kind: 'ended', reason: 'operator-stopped', durationMs: null });
   });
 
-  // Fix round 2 (C7): the slot is what tells one camera of a session from another.
-  it('reports the slot it was armed with, keeps the first on a second arm and once ended, and forgets it on reset', () => {
-    expect(engine.getSnapshot().slot).toBeNull();
-    engine.send({ kind: 'arm', session: streamSession({}, { slot: 2 }), heartbeat });
-    expect(engine.getSnapshot().slot).toBe(2);
-    engine.send({ kind: 'arm', session: streamSession({}, { slot: 3 }), heartbeat });
-    expect(engine.getSnapshot().slot).toBe(2);
-    engine.send({ kind: 'start' });
-    expect(engine.getSnapshot().slot).toBe(2);
+  // N2: the token's tag, never the token (D8); the kit pins it too.
+  it('names the pairing by the tag of its token, keeps it once ended, and forgets it on reset', () => {
+    onAirLive();
     engine.send({ kind: 'stop' });
-    expect(engine.getSnapshot().slot).toBe(2);
+    expect(snapshot().pairing?.tokenTag).toBe(TAG_A);
     engine.send({ kind: 'reset' });
-    expect(engine.getSnapshot().slot).toBeNull();
+    expect(snapshot().pairing).toBeNull();
   });
 
-  // N2: the token's tag, never the token (D8); the kit pins it too (test/engineContract.ts).
-  it('reports the tag of the token it was armed with, and forgets it on reset', () => {
-    expect(engine.getSnapshot().tokenTag).toBeNull();
-    engine.send({ kind: 'arm', session, heartbeat });
-    // FNV-1a 32 of the fixture token, from an independent Python FNV-1a.
-    expect(engine.getSnapshot().tokenTag).toBe('e5da86ff');
-    engine.send({ kind: 'stop' });
-    expect(engine.getSnapshot().tokenTag).toBe('e5da86ff');
-    engine.send({ kind: 'reset' });
-    expect(engine.getSnapshot().tokenTag).toBeNull();
-  });
-
-  // N1: reset is Ended-only, as plan B's core's is; an armed session is stopped first.
-  it('ignores a reset while armed, and resets to idle and forgets the descriptor once ended', () => {
-    engine.send({ kind: 'arm', session, heartbeat });
-    engine.send({ kind: 'reset' });
-    expect(state()).toEqual({ kind: 'armed' });
-    expect(engine.getSnapshot().descriptor).toBe(session.descriptor);
-    engine.send({ kind: 'stop' });
-    engine.send({ kind: 'reset' });
-    expect(state()).toEqual({ kind: 'idle' });
-    expect(engine.getSnapshot().descriptor).toBeNull();
-  });
-
-  it('ignores a reset while connecting; stopped and reset, no pending connect revives it', () => {
-    engine.send({ kind: 'arm', session, heartbeat });
-    engine.send({ kind: 'start' });
+  it('ignores a reset while connecting; stopped (never live, so paired) and reset, no pending connect revives it', () => {
+    goLive();
     engine.send({ kind: 'reset' });
     expect(state()).toEqual({ kind: 'connecting', transport: 'srt' });
     engine.send({ kind: 'stop' });
     engine.send({ kind: 'reset' });
     wait(5000);
-    expect(state()).toEqual({ kind: 'idle' });
+    expect(state()).toEqual({ kind: 'paired' });
   });
 
-  // M5 (final review): the fake is the production engine until plan C (D25),
-  // so its log must never hold an arm's token, passphrase or stream key.
-  it('keeps the kind of each intent, in order, and never a credential', () => {
-    engine.send({ kind: 'arm', session, heartbeat });
+  // M5 (final review): the intent log must never hold a pair's token.
+  it('keeps the kind of each intent, in order, and never a token', () => {
+    pair();
     engine.send({ kind: 'switchCamera' });
-    expect(engine.intentKinds).toEqual(['arm', 'switchCamera']);
+    engine.send({ kind: 'setLanguage', language: 'fr' });
+    expect(engine.intentKinds).toEqual(['pair', 'switchCamera', 'setLanguage']);
     const kept = JSON.stringify(engine);
-    for (const secret of FIXTURE_SECRETS) expect(kept).not.toContain(secret);
-    // Final fix round 2 (nit): what it reports holds none either — the session
-    // is named by its descriptor, slot and tag, never its token or keys.
-    const reported = JSON.stringify(engine.getSnapshot());
+    for (const secret of SECRETS) expect(kept).not.toContain(secret);
+    const reported = JSON.stringify(snapshot());
     expect(reported).toContain('"tokenTag"');
-    for (const secret of FIXTURE_SECRETS) expect(reported).not.toContain(secret);
+    for (const secret of SECRETS) expect(reported).not.toContain(secret);
   });
 
   it('keeps only the latest 100 kinds over a long match', () => {
     expect(INTENT_LOG_CAP).toBe(100);
-    engine.send({ kind: 'arm', session, heartbeat });
+    pair();
     for (let n = 0; n < 150; n += 1) engine.send({ kind: 'switchCamera' });
     engine.send({ kind: 'start' });
     expect(engine.intentKinds).toHaveLength(100);
     expect(engine.intentKinds.at(0)).toBe('switchCamera');
     expect(engine.intentKinds.at(-1)).toBe('start');
-    expect(engine.intentKinds).not.toContain('arm');
+    expect(engine.intentKinds).not.toContain('pair');
   });
 
   it('reports at least once a second, and stops when suspended', () => {
-    const first = engine.getSnapshot().reportedAtMs;
+    const first = snapshot().reportedAtMs;
     wait(1000);
-    expect(engine.getSnapshot().reportedAtMs).toBe(first + 1000);
+    expect(snapshot().reportedAtMs).toBe(first + 1000);
     engine.suspend();
     wait(5000);
-    expect(engine.getSnapshot().reportedAtMs).toBe(first + 1000);
+    expect(snapshot().reportedAtMs).toBe(first + 1000);
   });
 
   it('reports nothing at all once suspended, not even a pending connect', () => {
-    engine.send({ kind: 'arm', session, heartbeat });
-    engine.send({ kind: 'start' });
+    goLive();
     engine.suspend();
     wait(5000);
     expect(state()).toEqual({ kind: 'connecting', transport: 'srt' });
-    expect(engine.getSnapshot().reportedAtMs).toBe(NOW);
+    expect(snapshot().reportedAtMs).toBe(NOW);
   });
 
   it('lets a forced state win over a pending connect (the dev panel’s Fail)', () => {
-    engine.send({ kind: 'arm', session, heartbeat });
-    engine.send({ kind: 'start' });
+    goLive();
     engine.forceState({ kind: 'ended', reason: 'fatal-error', durationMs: null });
     wait(5000);
     expect(state()).toEqual({ kind: 'ended', reason: 'fatal-error', durationMs: null });
   });
 
   it('lets a scene win over a pending connect', () => {
-    engine.send({ kind: 'arm', session, heartbeat });
-    engine.send({ kind: 'start' });
+    goLive();
     engine.scene('fell-back');
     wait(5000);
     expect(state()).toMatchObject({ kind: 'degraded', reason: 'fell-back-to-rtmps' });
@@ -265,7 +244,7 @@ describe('the fake engine (spec §2: scripted snapshots, no state machine of its
     const unsubscribe = engine.subscribe(() => {
       calls += 1;
     });
-    engine.send({ kind: 'arm', session, heartbeat });
+    pair();
     expect(calls).toBe(1);
     unsubscribe();
     engine.send({ kind: 'start' });
@@ -290,11 +269,156 @@ describe('the fake engine (spec §2: scripted snapshots, no state machine of its
   });
 });
 
-describe('scenes: every state spec §6 lists', () => {
+/** The rules the kit does not reach, each driven on its own (Task 23, Step 6). */
+describe('the paired phase', () => {
+  it('keeps a refusal across a second pair for the held code: the re-pair is ignored', () => {
+    pair();
+    engine.hear({ word: 'refused', refusal: 'no_credit' });
+    expect(snapshot().refusal).toBe('no_credit');
+    pair();
+    expect(snapshot().refusal).toBe('no_credit');
+  });
+
+  it('clears the refusal when another code pairs over it', () => {
+    pair();
+    engine.hear({ word: 'refused', refusal: 'no_credit' });
+    pair(KIT_CODE_B);
+    expect(snapshot().refusal).toBeNull();
+  });
+
+  it('stays paired on a start while the sound check fails', () => {
+    pair();
+    engine.setReady({ sound: false });
+    engine.send({ kind: 'start' });
+    expect(state()).toEqual({ kind: 'paired' });
+    expect(snapshot().broadcast).toBeNull();
+  });
+
+  it('holds Pairing while the permission dialog is up, and pairs once granted', () => {
+    engine.setPermissions('hold');
+    pair();
+    expect(state()).toEqual({ kind: 'pairing' });
+    expect(snapshot().pairing?.code).toBe('ka0000000001');
+    engine.setPermissions('grant');
+    expect(state()).toEqual({ kind: 'paired' });
+  });
+
+  it('leaves for Idle on a refused permission, naming the code and `permissions`', () => {
+    engine.setPermissions('refuse');
+    pair();
+    expect(state()).toEqual({ kind: 'idle' });
+    expect(snapshot().unpaired).toEqual({
+      reason: 'permissions',
+      code: 'ka0000000001',
+      slot: 1,
+      tokenTag: TAG_A,
+    });
+  });
+
+  // Review C5 re-review, fake parity: native publishes Pairing, naming no unpair, before the
+  // dialog's answer; the same code refused again goes through Pairing again.
+  it('publishes Pairing before a refusal, each time, naming no unpair there', () => {
+    const seen: [string, string | null][] = [];
+    engine.subscribe(() => seen.push([state().kind, snapshot().unpaired?.reason ?? null]));
+    engine.setPermissions('refuse');
+    pair();
+    pair();
+    expect(seen).toEqual([
+      ['pairing', null],
+      ['idle', 'permissions'],
+      ['pairing', null],
+      ['idle', 'permissions'],
+    ]);
+  });
+
+  // The scene stands for a pairing native left: it reaches Idle through Pairing, as one does.
+  it('plays unpaired-replaced through Pairing', () => {
+    const seen: [string, string | null][] = [];
+    engine.subscribe(() => seen.push([state().kind, snapshot().unpaired?.reason ?? null]));
+    engine.scene('unpaired-replaced');
+    engine.scene('unpaired-replaced');
+    expect(seen).toEqual([
+      ['pairing', null],
+      ['idle', 'replaced'],
+      ['pairing', null],
+      ['idle', 'replaced'],
+    ]);
+  });
+
+  it('refuses a held dialog later, naming the code', () => {
+    engine.setPermissions('hold');
+    pair();
+    engine.setPermissions('refuse');
+    expect(state()).toEqual({ kind: 'idle' });
+    expect(snapshot().unpaired?.reason).toBe('permissions');
+  });
+
+  it('holds a 401 while live as pending, and the next end unpairs with code-ended', () => {
+    goLive();
+    wait(1000);
+    engine.hear({ word: 'code-ended' });
+    expect(state().kind).toBe('publishing');
+    expect(snapshot().codeEndedPending).toBe(true);
+    engine.hear({ word: 'over', lastEnd: 'stopped-by-organiser' });
+    expect(state()).toEqual({ kind: 'idle' });
+    expect(snapshot().unpaired).toEqual({
+      reason: 'code-ended',
+      code: 'ka0000000001',
+      slot: 1,
+      tokenTag: TAG_A,
+    });
+  });
+
+  it('unpairs at once on a 401 while paired', () => {
+    pair();
+    engine.hear({ word: 'code-ended' });
+    expect(state()).toEqual({ kind: 'idle' });
+    expect(snapshot().unpaired?.reason).toBe('code-ended');
+  });
+
+  it('echoes setAutomatic in the pairing, and ignores it with none', () => {
+    engine.send({ kind: 'setAutomatic', on: false });
+    expect(snapshot().pairing).toBeNull();
+    pair();
+    engine.send({ kind: 'setAutomatic', on: false });
+    expect(snapshot().pairing?.automatic).toBe(false);
+    engine.send({ kind: 'setAutomatic', on: true });
+    expect(snapshot().pairing?.automatic).toBe(true);
+  });
+
+  it('hears nothing once ended: no word moves an Ended engine', () => {
+    onAirLive();
+    engine.send({ kind: 'stop' });
+    const ended = state();
+    for (const word of ['replaced', 'taken', 'code-ended', 'live'] as const) engine.hear({ word });
+    engine.hear({ word: 'go-live', cause: 'organiser' });
+    expect(state()).toEqual(ended);
+    expect(snapshot().unpaired).toBeNull();
+  });
+
+  it('reports the waiting fields set for this and every later pairing', () => {
+    engine.setPairing({ label: 'Example Town v Sample CC', pollSeconds: 15 });
+    pair();
+    expect(snapshot().pairing).toMatchObject({
+      label: 'Example Town v Sample CC',
+      pollSeconds: 15,
+    });
+    engine.setPairing({ label: 'Changed' });
+    expect(snapshot().pairing?.label).toBe('Changed');
+  });
+});
+
+describe('scenes: every state spec §6 and the amendment list', () => {
   /** A row per scene: the compiler refuses a scene without one. */
   const EXPECTED: Readonly<Record<FakeScene, object>> = {
-    'armed-not-ready': { kind: 'armed' },
-    'armed-ready': { kind: 'armed' },
+    pairing: { kind: 'pairing' },
+    'paired-ready': { kind: 'paired' },
+    'paired-not-ready': { kind: 'paired' },
+    'paired-not-held': { kind: 'paired' },
+    'paired-refused': { kind: 'paired' },
+    'paired-after-organiser-stop': { kind: 'paired' },
+    'arming-retrying': { kind: 'arming', cause: 'automatic', retrying: true },
+    'armed-not-ready': { kind: 'armed', cause: 'organiser', notReady: 'held' },
     connecting: { kind: 'connecting', transport: 'srt' },
     live: { kind: 'publishing', transport: 'srt', sinceEpochMs: NOW - ON_AIR_MS },
     'fell-back': { kind: 'degraded', transport: 'rtmps', reason: 'fell-back-to-rtmps' },
@@ -317,35 +441,57 @@ describe('scenes: every state spec §6 lists', () => {
     'camera-switching': { kind: 'publishing', transport: 'srt', sinceEpochMs: NOW - ON_AIR_MS },
     'mic-silenced': { kind: 'degraded', reason: 'mic-silenced' },
     stopped: { kind: 'ended', reason: 'operator-stopped', durationMs: ON_AIR_MS },
-    'stopped-by-organiser': {
-      kind: 'ended',
-      reason: 'stopped-by-organiser',
-      durationMs: ON_AIR_MS,
-    },
     fatal: { kind: 'ended', reason: 'fatal-error' },
     shed: { kind: 'publishing' },
+    'unpaired-replaced': { kind: 'idle' },
   };
 
   it('lists every scene once, for the dev controls', () => {
+    expect(FAKE_SCENES).toHaveLength(23);
     expect([...FAKE_SCENES].sort()).toEqual(Object.keys(EXPECTED).sort());
   });
 
-  it.each(FAKE_SCENES)('%s', (scene) => {
+  it.each(FAKE_SCENES)('%s plays without throwing', (scene) => {
     engine.scene(scene);
     expect(state()).toMatchObject(EXPECTED[scene]);
   });
 
-  it('puts armed-not-ready below the audio floor, and shed on the first ladder step', () => {
-    engine.scene('armed-not-ready');
+  it('puts paired-not-ready below the audio floor with sound failing, and shed on the first ladder step', () => {
+    engine.scene('paired-not-ready');
     expect(telemetry().audioLevel).toBeLessThan(AUDIO_FLOOR);
+    expect(snapshot().ready.sound).toBe(false);
     engine.scene('shed');
     expect(telemetry().shed).toBe('overlay-preview');
   });
 
-  it('keeps the descriptor across scenes', () => {
-    engine.send({ kind: 'arm', session, heartbeat });
+  it('carries each paired scene’s own fact: not held, a refusal, a last end', () => {
+    engine.scene('paired-not-held');
+    expect(snapshot().ready.held).toBe(false);
+    engine.scene('paired-refused');
+    expect(snapshot().refusal).toBe('no_credit');
+    engine.scene('paired-after-organiser-stop');
+    expect([snapshot().lastEnd, snapshot().broadcast]).toEqual(['stopped-by-organiser', null]);
+  });
+
+  it('names the held code in unpaired-replaced, and holds no pairing', () => {
+    pair();
+    engine.scene('unpaired-replaced');
+    expect(snapshot().pairing).toBeNull();
+    expect(snapshot().unpaired).toEqual({
+      reason: 'replaced',
+      code: 'ka0000000001',
+      slot: 1,
+      tokenTag: TAG_A,
+    });
+  });
+
+  it('keeps the pairing across scenes, and holds a broadcast only on air', () => {
+    pair();
     engine.scene('live');
-    expect(engine.getSnapshot().descriptor).toBe(session.descriptor);
+    expect(snapshot().pairing?.tokenTag).toBe(TAG_A);
+    expect(snapshot().broadcast).not.toBeNull();
+    engine.scene('paired-ready');
+    expect(snapshot().broadcast).toBeNull();
   });
 });
 
@@ -366,7 +512,7 @@ describe('no reading is null, as the Kotlin engine reports it', () => {
   });
 
   it('has no encoded-frame readings before going on air', () => {
-    engine.send({ kind: 'arm', session, heartbeat });
+    pair();
     expect([telemetry().encodedVideoFps, telemetry().audioPacketsPerSecond]).toEqual([null, null]);
   });
 
@@ -421,13 +567,13 @@ describe('after our own camera reopen (F-P5-10; plan B holds it degraded)', () =
     expect(kinds).not.toContain('connecting');
   });
 
-  it('reports no ready camera until the reopened camera’s first frame (cameraReady’s own doc)', () => {
+  it('fails native’s camera check until the reopened camera’s first frame (Readiness.kt)', () => {
     engine.scene('camera-reopened');
-    expect(telemetry().cameraReady).toBe(false);
+    expect(snapshot().ready.camera).toBe(false);
     wait(2999);
-    expect(telemetry().cameraReady).toBe(false);
+    expect(snapshot().ready.camera).toBe(false);
     wait(1);
-    expect(telemetry().cameraReady).toBe(true);
+    expect(snapshot().ready.camera).toBe(true);
   });
 
   it('counts the time on air when stopped before the first frame', () => {
@@ -449,21 +595,22 @@ describe('after our own camera reopen (F-P5-10; plan B holds it degraded)', () =
  * reaches the next ending.
  */
 describe('no stale time on air (M4)', () => {
-  it('forgets it across a reset: the next session, stopped while connecting, has none', () => {
+  it('forgets it across a reset: the next broadcast, stopped once live, has its own', () => {
     engine.scene('camera-reopened');
     engine.send({ kind: 'stop' });
     engine.send({ kind: 'reset' });
-    engine.send({ kind: 'arm', session, heartbeat });
-    engine.send({ kind: 'start' });
+    onAirLive();
+    wait(2_000);
     engine.send({ kind: 'stop' });
-    expect(state()).toEqual({ kind: 'ended', reason: 'operator-stopped', durationMs: null });
+    expect(state()).toEqual({ kind: 'ended', reason: 'operator-stopped', durationMs: 2_000 });
   });
 
-  it('forgets it when a state is forced: a forced connect then stopped ends with none', () => {
+  // A stale start would read live, and end the pairing: never live, the stop keeps it (owner decision 1).
+  it('forgets it when a state is forced: a forced connect then stopped is never live', () => {
     engine.scene('camera-reopened');
     engine.forceState({ kind: 'connecting', transport: 'srt' });
     engine.send({ kind: 'stop' });
-    expect(state()).toEqual({ kind: 'ended', reason: 'operator-stopped', durationMs: null });
+    expect(state()).toEqual({ kind: 'paired' });
   });
 });
 
@@ -472,12 +619,18 @@ describe('no stale time on air (M4)', () => {
  * session. Our own reopen or switch reads apart from another app's take.
  */
 describe('whose camera is on air (carry 10)', () => {
-  const camera = () => engine.getSnapshot().camera;
+  const camera = () => snapshot().camera;
 
   /** Plan B's wire strings, a row per scene: the compiler refuses a scene without one. */
   const CAMERA: Readonly<Record<FakeScene, CameraState | null>> = {
+    pairing: 'own',
+    'paired-ready': 'own',
+    'paired-not-ready': 'own',
+    'paired-not-held': 'own',
+    'paired-refused': 'own',
+    'paired-after-organiser-stop': 'own',
+    'arming-retrying': 'own',
     'armed-not-ready': 'own',
-    'armed-ready': 'own',
     connecting: 'own',
     live: 'own',
     'fell-back': 'own',
@@ -490,9 +643,9 @@ describe('whose camera is on air (carry 10)', () => {
     'camera-switching': 'switching',
     'mic-silenced': 'own',
     stopped: null,
-    'stopped-by-organiser': null,
     fatal: null,
     shed: 'own',
+    'unpaired-replaced': null,
   };
 
   it.each(FAKE_SCENES)('%s', (scene) => {
@@ -500,9 +653,9 @@ describe('whose camera is on air (carry 10)', () => {
     expect(camera()).toBe(CAMERA[scene]);
   });
 
-  it('has none before a session, its own once armed and on air, and none after', () => {
+  it('has none before a pairing, its own once paired and on air, and none after', () => {
     expect(camera()).toBeNull();
-    engine.send({ kind: 'arm', session, heartbeat });
+    pair();
     expect(camera()).toBe('own');
     engine.send({ kind: 'start' });
     expect(camera()).toBe('own');
@@ -539,41 +692,89 @@ describe('whose camera is on air (carry 10)', () => {
     engine.scene('camera-switching');
     const live = { kind: 'publishing', transport: 'srt', sinceEpochMs: NOW - ON_AIR_MS };
     expect(state()).toEqual(live);
-    expect([telemetry().encodedVideoFps, telemetry().cameraReady]).toEqual([null, false]);
+    expect([telemetry().encodedVideoFps, snapshot().ready.camera]).toEqual([null, false]);
     wait(2999);
     expect(camera()).toBe('switching');
     wait(1);
     expect(camera()).toBe('own');
     expect(state()).toEqual(live);
-    expect([telemetry().encodedVideoFps, telemetry().cameraReady]).toEqual([30, true]);
+    expect([telemetry().encodedVideoFps, snapshot().ready.camera]).toEqual([30, true]);
   });
 });
 
-/**
- * Two of native's own reports, alone: whose camera it is (a take or a reopen
- * under any state) and a re-fetched descriptor (spec §1, every reconnect).
- */
 describe('reports that change one thing', () => {
   it('changes whose camera it is and nothing else', () => {
-    engine.send({ kind: 'arm', session, heartbeat });
-    const before = engine.getSnapshot();
+    pair();
+    const before = snapshot();
     engine.setCamera('taken');
-    expect(engine.getSnapshot()).toEqual({ ...before, camera: 'taken' });
+    expect(snapshot()).toEqual({ ...before, camera: 'taken' });
   });
 
-  it('changes the descriptor and nothing else', () => {
-    engine.scene('live');
-    const before = engine.getSnapshot();
-    const next = { ...session.descriptor, overlayUrl: 'https://seazn.example/overlay/next' };
-    engine.setDescriptor(next);
-    expect(engine.getSnapshot()).toEqual({ ...before, descriptor: next });
+  it('changes readiness and nothing else outside Armed', () => {
+    pair();
+    const before = snapshot();
+    engine.setReady({ network: false });
+    expect(snapshot()).toEqual({ ...before, ready: { ...before.ready, network: false } });
   });
 
   it('tells its listeners', () => {
     const heard = vi.fn();
     engine.subscribe(heard);
     engine.setCamera('reopening');
-    engine.setDescriptor(null);
+    engine.setReady({ held: false });
     expect(heard).toHaveBeenCalledTimes(2);
+  });
+});
+
+/**
+ * CD18: Android runs the service from the pair on (amendment §2, the paired
+ * notification), so the fake survives the background from Pairing until Idle
+ * or Ended. `setSurvivesBackground` is the service failing to start.
+ */
+describe('surviving the background (CD18)', () => {
+  it('survives from Pairing through the broadcast, and not at rest or once ended', () => {
+    const seen: [string, boolean][] = [];
+    const look = () => seen.push([state().kind, snapshot().survivesBackground]);
+    look();
+    engine.setPermissions('hold');
+    pair();
+    look();
+    engine.setPermissions('grant');
+    look();
+    engine.send({ kind: 'start' });
+    look();
+    wait(1_000);
+    look();
+    engine.send({ kind: 'stop' });
+    look();
+    engine.send({ kind: 'reset' });
+    look();
+    expect(seen).toEqual([
+      ['idle', false],
+      ['pairing', true],
+      ['paired', true],
+      ['connecting', true],
+      ['publishing', true],
+      ['ended', false],
+      ['idle', false],
+    ]);
+  });
+
+  it('follows a scene: on air survives, a stop does not', () => {
+    engine.scene('live');
+    expect(snapshot().survivesBackground).toBe(true);
+    engine.scene('stopped');
+    expect(snapshot().survivesBackground).toBe(false);
+  });
+
+  it('publishes a service that failed to start, and reports it again', () => {
+    pair();
+    const heard = vi.fn();
+    engine.subscribe(heard);
+    engine.setSurvivesBackground(false);
+    expect(heard).toHaveBeenCalledTimes(1);
+    expect(snapshot().survivesBackground).toBe(false);
+    wait(1_000);
+    expect(snapshot().survivesBackground).toBe(false);
   });
 });

@@ -1,0 +1,27 @@
+{
+  "about": "Item 4 (2026-10-05): a beat the real machine sends, pinned field for field by StartTest.kt and validated against the vendored capture-beat.v1 by serverBodies.test.ts. A start that failed locally for S (here a code 404): startFailed and stopped S together, sid and cause null. Every value is made up.",
+  "startFailedStopped": {
+    "code": "fx42hmnp7k2q",
+    "slot": 1,
+    "phone": "phone-7f1e0c2a9b3d",
+    "claim": null,
+    "device": null,
+    "sid": null,
+    "at": "2026-09-21T14:13:20.000Z",
+    "state": "paired",
+    "cause": null,
+    "notReady": "camera",
+    "startFailed": "not-found",
+    "stopped": "2d7c4b1e-5f3a-4e6b-9c8d-1a2b3c4d5e6f",
+    "mode": "automatic",
+    "transport": null,
+    "bitrateKbps": null,
+    "delivery": "unknown",
+    "deliveredLagS": null,
+    "audioOk": null,
+    "battery": null,
+    "thermal": null,
+    "dataUsedMB": 0,
+    "appVersion": "1.0.0"
+  }
+}

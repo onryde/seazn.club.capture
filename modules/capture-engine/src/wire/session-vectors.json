@@ -1,0 +1,829 @@
+{
+  "about": "GET code's 2xx bodies, read by Bodies.code (Kotlin only: JS never reads cred). Each case is base, with override's keys set and remove's keys deleted, read with env (the file's env unless the case names one). expected names the CodeAnswer and its decisive fields. Made-up values; base is a schema-valid capture-descriptor.v1 warming body. Change only with Bodies.kt.",
+  "env": "staging",
+  "base": {
+    "state": "warming",
+    "code": "fx42hmnp7k2q",
+    "sid": "3f9a2c7e-8b14-4d5e-a6f7-0c1d2e3f4a5b",
+    "cred": {
+      "srt": {
+        "url": "srt://live.cloudflare.com:778",
+        "streamId": "a1b2c3d4e5f60718293a4b5c6d7e8f90",
+        "passphrase": "pass+phrase/6d1e8b0c",
+        "latencyMs": 2000
+      },
+      "rtmps": {
+        "url": "rtmps://live.cloudflare.com:443/live/",
+        "streamKey": "key-4c7a0e2b9d5f1386"
+      }
+    },
+    "preferred": "srt",
+    "playbackUrl": "https://customer-x.cloudflarestream.com/a1b2c3d4e5f60718293a4b5c6d7e8f90/manifest/video.m3u8",
+    "overlayUrl": "https://stg.seazn.club/overlay/fixtures/f1",
+    "holdWindowSeconds": {
+      "srt": 183,
+      "rtmps": 180
+    },
+    "maxDurationMinutes": 300,
+    "warmingDeadline": 1790000600,
+    "label": "Example Town v Sample CC",
+    "venueTimezone": "Europe/London",
+    "scheduledStart": 1790003600,
+    "destinationName": "YouTube · Example Town CC",
+    "scoreUpdates": "realtime",
+    "autoAllowed": true,
+    "pollSeconds": 10,
+    "heartbeatUrl": "https://stg.seazn.club/api/v1/capture/codes/fx42hmnp7k2q/beats",
+    "startUrl": "https://stg.seazn.club/api/v1/capture/codes/fx42hmnp7k2q/start"
+  },
+  "cases": [
+    {
+      "why": "an open broadcast, SRT preferred",
+      "override": {},
+      "expected": {
+        "answer": "open",
+        "sid": "3f9a2c7e-8b14-4d5e-a6f7-0c1d2e3f4a5b",
+        "primary": "srt",
+        "fallback": "rtmps",
+        "srtOffered": true,
+        "scoreUpdates": "realtime",
+        "overlayUrl": "https://stg.seazn.club/overlay/fixtures/f1"
+      }
+    },
+    {
+      "why": "RTMPS preferred, SRT the fallback",
+      "override": {
+        "preferred": "rtmps"
+      },
+      "expected": {
+        "answer": "open",
+        "sid": "3f9a2c7e-8b14-4d5e-a6f7-0c1d2e3f4a5b",
+        "primary": "rtmps",
+        "fallback": "srt",
+        "srtOffered": true,
+        "scoreUpdates": "realtime",
+        "overlayUrl": "https://stg.seazn.club/overlay/fixtures/f1"
+      }
+    },
+    {
+      "why": "A18 SRT absent with RTMPS preferred: RTMPS alone",
+      "override": {
+        "preferred": "rtmps",
+        "cred": {
+          "srt": null,
+          "rtmps": {
+            "url": "rtmps://live.cloudflare.com:443/live/",
+            "streamKey": "key-4c7a0e2b9d5f1386"
+          }
+        }
+      },
+      "expected": {
+        "answer": "open",
+        "sid": "3f9a2c7e-8b14-4d5e-a6f7-0c1d2e3f4a5b",
+        "primary": "rtmps",
+        "fallback": null,
+        "srtOffered": false,
+        "scoreUpdates": "realtime",
+        "overlayUrl": "https://stg.seazn.club/overlay/fixtures/f1"
+      }
+    },
+    {
+      "why": "A18 SRT absent with SRT preferred: a bad config (a server-side refine the schema states in prose)",
+      "override": {
+        "cred": {
+          "srt": null,
+          "rtmps": {
+            "url": "rtmps://live.cloudflare.com:443/live/",
+            "streamKey": "key-4c7a0e2b9d5f1386"
+          }
+        }
+      },
+      "expected": {
+        "answer": "unreadable",
+        "problem": "preferred"
+      }
+    },
+    {
+      "why": "G0-d no cred: not the current phone",
+      "override": {},
+      "remove": ["cred"],
+      "expected": {
+        "answer": "not-current",
+        "sid": "3f9a2c7e-8b14-4d5e-a6f7-0c1d2e3f4a5b"
+      }
+    },
+    {
+      "why": "Both transports on Cloudflare's own host, the one ingest host in every environment (owner ruling A, 2026-10-05)",
+      "override": {
+        "cred": {
+          "srt": {
+            "url": "srt://live.cloudflare.com:778",
+            "streamId": "a1b2c3d4e5f60718293a4b5c6d7e8f90",
+            "passphrase": "pass+phrase/6d1e8b0c",
+            "latencyMs": 2000
+          },
+          "rtmps": {
+            "url": "rtmps://live.cloudflare.com:443/live/",
+            "streamKey": "key-4c7a0e2b9d5f1386"
+          }
+        }
+      },
+      "expected": {
+        "answer": "open",
+        "sid": "3f9a2c7e-8b14-4d5e-a6f7-0c1d2e3f4a5b",
+        "primary": "srt",
+        "fallback": "rtmps",
+        "srtOffered": true,
+        "scoreUpdates": "realtime",
+        "overlayUrl": "https://stg.seazn.club/overlay/fixtures/f1"
+      }
+    },
+    {
+      "why": "SRT on a lookalike of Cloudflare's host",
+      "override": {
+        "cred": {
+          "srt": {
+            "url": "srt://live.cloudflare.com.evil.example:778",
+            "streamId": "a1b2c3d4e5f60718293a4b5c6d7e8f90",
+            "passphrase": "pass+phrase/6d1e8b0c",
+            "latencyMs": 2000
+          },
+          "rtmps": {
+            "url": "rtmps://live.cloudflare.com:443/live/",
+            "streamKey": "key-4c7a0e2b9d5f1386"
+          }
+        }
+      },
+      "expected": {
+        "answer": "foreign-ingest",
+        "sid": "3f9a2c7e-8b14-4d5e-a6f7-0c1d2e3f4a5b"
+      }
+    },
+    {
+      "why": "SRT on the retired staging custom host is refused: Cloudflare's host is the only ingest host (owner ruling A, 2026-10-05)",
+      "override": {
+        "cred": {
+          "srt": {
+            "url": "srt://live.stg.seazn.club:778",
+            "streamId": "a1b2c3d4e5f60718293a4b5c6d7e8f90",
+            "passphrase": "pass+phrase/6d1e8b0c",
+            "latencyMs": 2000
+          },
+          "rtmps": {
+            "url": "rtmps://live.cloudflare.com:443/live/",
+            "streamKey": "key-4c7a0e2b9d5f1386"
+          }
+        }
+      },
+      "expected": {
+        "answer": "foreign-ingest",
+        "sid": "3f9a2c7e-8b14-4d5e-a6f7-0c1d2e3f4a5b"
+      }
+    },
+    {
+      "why": "RTMPS on the retired production custom host, for a staging build (owner ruling A, 2026-10-05)",
+      "override": {
+        "cred": {
+          "srt": null,
+          "rtmps": {
+            "url": "rtmps://live.seazn.club:443/live/",
+            "streamKey": "key-4c7a0e2b9d5f1386"
+          }
+        },
+        "preferred": "rtmps"
+      },
+      "expected": {
+        "answer": "foreign-ingest",
+        "sid": "3f9a2c7e-8b14-4d5e-a6f7-0c1d2e3f4a5b"
+      }
+    },
+    {
+      "why": "a production build: both transports on Cloudflare's host (owner ruling A, 2026-10-05)",
+      "env": "production",
+      "override": {
+        "cred": {
+          "srt": {
+            "url": "srt://live.cloudflare.com:778",
+            "streamId": "a1b2c3d4e5f60718293a4b5c6d7e8f90",
+            "passphrase": "pass+phrase/6d1e8b0c",
+            "latencyMs": 2000
+          },
+          "rtmps": {
+            "url": "rtmps://live.cloudflare.com:443/live/",
+            "streamKey": "key-4c7a0e2b9d5f1386"
+          }
+        }
+      },
+      "expected": {
+        "answer": "open",
+        "sid": "3f9a2c7e-8b14-4d5e-a6f7-0c1d2e3f4a5b",
+        "primary": "srt",
+        "fallback": "rtmps",
+        "srtOffered": true,
+        "scoreUpdates": "realtime",
+        "overlayUrl": null
+      }
+    },
+    {
+      "why": "a production build: SRT on the retired staging custom host (owner ruling A, 2026-10-05)",
+      "env": "production",
+      "override": {
+        "cred": {
+          "srt": {
+            "url": "srt://live.stg.seazn.club:778",
+            "streamId": "a1b2c3d4e5f60718293a4b5c6d7e8f90",
+            "passphrase": "pass+phrase/6d1e8b0c",
+            "latencyMs": 2000
+          },
+          "rtmps": {
+            "url": "rtmps://live.cloudflare.com:443/live/",
+            "streamKey": "key-4c7a0e2b9d5f1386"
+          }
+        }
+      },
+      "expected": {
+        "answer": "foreign-ingest",
+        "sid": "3f9a2c7e-8b14-4d5e-a6f7-0c1d2e3f4a5b"
+      }
+    },
+    {
+      "why": "RTMPS on the retired staging custom host, the host stg dropped on 2026-10-05 (owner ruling A, 2026-10-05)",
+      "override": {
+        "cred": {
+          "srt": {
+            "url": "srt://live.cloudflare.com:778",
+            "streamId": "a1b2c3d4e5f60718293a4b5c6d7e8f90",
+            "passphrase": "pass+phrase/6d1e8b0c",
+            "latencyMs": 2000
+          },
+          "rtmps": {
+            "url": "rtmps://live.stg.seazn.club:443/live/",
+            "streamKey": "key-4c7a0e2b9d5f1386"
+          }
+        }
+      },
+      "expected": {
+        "answer": "foreign-ingest",
+        "sid": "3f9a2c7e-8b14-4d5e-a6f7-0c1d2e3f4a5b"
+      }
+    },
+    {
+      "why": "a production build: RTMPS on the retired production custom host (owner ruling A, 2026-10-05)",
+      "env": "production",
+      "override": {
+        "cred": {
+          "srt": {
+            "url": "srt://live.cloudflare.com:778",
+            "streamId": "a1b2c3d4e5f60718293a4b5c6d7e8f90",
+            "passphrase": "pass+phrase/6d1e8b0c",
+            "latencyMs": 2000
+          },
+          "rtmps": {
+            "url": "rtmps://live.seazn.club:443/live/",
+            "streamKey": "key-4c7a0e2b9d5f1386"
+          }
+        }
+      },
+      "expected": {
+        "answer": "foreign-ingest",
+        "sid": "3f9a2c7e-8b14-4d5e-a6f7-0c1d2e3f4a5b"
+      }
+    },
+    {
+      "why": "a production build: SRT on the retired production custom host (owner ruling A, 2026-10-05)",
+      "env": "production",
+      "override": {
+        "cred": {
+          "srt": {
+            "url": "srt://live.seazn.club:778",
+            "streamId": "a1b2c3d4e5f60718293a4b5c6d7e8f90",
+            "passphrase": "pass+phrase/6d1e8b0c",
+            "latencyMs": 2000
+          },
+          "rtmps": {
+            "url": "rtmps://live.cloudflare.com:443/live/",
+            "streamKey": "key-4c7a0e2b9d5f1386"
+          }
+        }
+      },
+      "expected": {
+        "answer": "foreign-ingest",
+        "sid": "3f9a2c7e-8b14-4d5e-a6f7-0c1d2e3f4a5b"
+      }
+    },
+    {
+      "why": "RTMPS on a lookalike that ends in Cloudflare's host and goes on",
+      "override": {
+        "cred": {
+          "srt": {
+            "url": "srt://live.cloudflare.com:778",
+            "streamId": "a1b2c3d4e5f60718293a4b5c6d7e8f90",
+            "passphrase": "pass+phrase/6d1e8b0c",
+            "latencyMs": 2000
+          },
+          "rtmps": {
+            "url": "rtmps://live.cloudflare.com.evil:443/live/",
+            "streamKey": "key-4c7a0e2b9d5f1386"
+          }
+        }
+      },
+      "expected": {
+        "answer": "foreign-ingest",
+        "sid": "3f9a2c7e-8b14-4d5e-a6f7-0c1d2e3f4a5b"
+      }
+    },
+    {
+      "why": "RTMPS on a lookalike that only ends in Cloudflare's host",
+      "override": {
+        "cred": {
+          "srt": {
+            "url": "srt://live.cloudflare.com:778",
+            "streamId": "a1b2c3d4e5f60718293a4b5c6d7e8f90",
+            "passphrase": "pass+phrase/6d1e8b0c",
+            "latencyMs": 2000
+          },
+          "rtmps": {
+            "url": "rtmps://evil-live.cloudflare.com:443/live/",
+            "streamKey": "key-4c7a0e2b9d5f1386"
+          }
+        }
+      },
+      "expected": {
+        "answer": "foreign-ingest",
+        "sid": "3f9a2c7e-8b14-4d5e-a6f7-0c1d2e3f4a5b"
+      }
+    },
+    {
+      "why": "RTMPS whose Cloudflare host is userinfo in front of another",
+      "override": {
+        "cred": {
+          "srt": {
+            "url": "srt://live.cloudflare.com:778",
+            "streamId": "a1b2c3d4e5f60718293a4b5c6d7e8f90",
+            "passphrase": "pass+phrase/6d1e8b0c",
+            "latencyMs": 2000
+          },
+          "rtmps": {
+            "url": "rtmps://live.cloudflare.com@evil:443/live/",
+            "streamKey": "key-4c7a0e2b9d5f1386"
+          }
+        }
+      },
+      "expected": {
+        "answer": "foreign-ingest",
+        "sid": "3f9a2c7e-8b14-4d5e-a6f7-0c1d2e3f4a5b"
+      }
+    },
+    {
+      "why": "the live state reads open too, its score polled",
+      "override": {
+        "state": "live",
+        "scoreUpdates": "polled"
+      },
+      "expected": {
+        "answer": "open",
+        "sid": "3f9a2c7e-8b14-4d5e-a6f7-0c1d2e3f4a5b",
+        "primary": "srt",
+        "fallback": "rtmps",
+        "srtOffered": true,
+        "scoreUpdates": "polled",
+        "overlayUrl": "https://stg.seazn.club/overlay/fixtures/f1"
+      }
+    },
+    {
+      "why": "a completed broadcast, which carries no cred",
+      "override": {
+        "state": "completed",
+        "endReason": "max_duration"
+      },
+      "remove": ["cred"],
+      "expected": {
+        "answer": "over",
+        "sid": "3f9a2c7e-8b14-4d5e-a6f7-0c1d2e3f4a5b",
+        "endReason": "max_duration"
+      }
+    },
+    {
+      "why": "an ending broadcast is over, its cred never read",
+      "override": {
+        "state": "ending",
+        "endReason": "auto_stopped"
+      },
+      "expected": {
+        "answer": "over",
+        "sid": "3f9a2c7e-8b14-4d5e-a6f7-0c1d2e3f4a5b",
+        "endReason": "auto_stopped"
+      }
+    },
+    {
+      "why": "a failed broadcast",
+      "override": {
+        "state": "failed",
+        "endReason": "failed"
+      },
+      "remove": ["cred"],
+      "expected": {
+        "answer": "over",
+        "sid": "3f9a2c7e-8b14-4d5e-a6f7-0c1d2e3f4a5b",
+        "endReason": "failed"
+      }
+    },
+    {
+      "why": "the waiting shape",
+      "override": {
+        "state": "waiting"
+      },
+      "remove": [
+        "sid",
+        "cred",
+        "preferred",
+        "playbackUrl",
+        "holdWindowSeconds",
+        "maxDurationMinutes",
+        "warmingDeadline",
+        "scoreUpdates"
+      ],
+      "expected": {
+        "answer": "waiting"
+      }
+    },
+    {
+      "why": "the waiting shape with no label",
+      "override": {
+        "state": "waiting"
+      },
+      "remove": [
+        "sid",
+        "cred",
+        "preferred",
+        "playbackUrl",
+        "holdWindowSeconds",
+        "maxDurationMinutes",
+        "warmingDeadline",
+        "scoreUpdates",
+        "label"
+      ],
+      "expected": {
+        "answer": "unreadable",
+        "problem": "waiting"
+      }
+    },
+    {
+      "why": "no sid on a session shape",
+      "override": {},
+      "remove": ["sid"],
+      "expected": {
+        "answer": "unreadable",
+        "problem": "sid"
+      }
+    },
+    {
+      "why": "a sid outside the schema's uuid pattern is refused: the core would echo it on every beat",
+      "override": {
+        "sid": "sess_42"
+      },
+      "expected": {
+        "answer": "unreadable",
+        "problem": "sid"
+      }
+    },
+    {
+      "why": "an unknown state",
+      "override": {
+        "state": "paused"
+      },
+      "expected": {
+        "answer": "unreadable",
+        "problem": "state"
+      }
+    },
+    {
+      "why": "cred not an object",
+      "override": {
+        "cred": "srt://live.cloudflare.com:778"
+      },
+      "expected": {
+        "answer": "unreadable",
+        "problem": "cred"
+      }
+    },
+    {
+      "why": "cred.srt without its passphrase",
+      "override": {
+        "cred": {
+          "srt": {
+            "url": "srt://live.cloudflare.com:778",
+            "streamId": "a1b2c3d4e5f60718293a4b5c6d7e8f90",
+            "latencyMs": 2000
+          },
+          "rtmps": {
+            "url": "rtmps://live.cloudflare.com:443/live/",
+            "streamKey": "key-4c7a0e2b9d5f1386"
+          }
+        }
+      },
+      "expected": {
+        "answer": "unreadable",
+        "problem": "cred.srt"
+      }
+    },
+    {
+      "why": "cred.rtmps without its key",
+      "override": {
+        "cred": {
+          "srt": {
+            "url": "srt://live.cloudflare.com:778",
+            "streamId": "a1b2c3d4e5f60718293a4b5c6d7e8f90",
+            "passphrase": "pass+phrase/6d1e8b0c",
+            "latencyMs": 2000
+          },
+          "rtmps": {
+            "url": "rtmps://live.cloudflare.com:443/live/"
+          }
+        }
+      },
+      "expected": {
+        "answer": "unreadable",
+        "problem": "cred.rtmps"
+      }
+    },
+    {
+      "why": "no hold window for a transport offered",
+      "override": {
+        "holdWindowSeconds": {
+          "srt": 183
+        }
+      },
+      "expected": {
+        "answer": "unreadable",
+        "problem": "holdWindowSeconds"
+      }
+    },
+    {
+      "why": "no playbackUrl",
+      "override": {},
+      "remove": ["playbackUrl"],
+      "expected": {
+        "answer": "unreadable",
+        "problem": "playbackUrl"
+      }
+    },
+    {
+      "why": "maxDurationMinutes not a whole number",
+      "override": {
+        "maxDurationMinutes": 90.5
+      },
+      "expected": {
+        "answer": "unreadable",
+        "problem": "maxDurationMinutes"
+      }
+    },
+    {
+      "why": "an RTMPS url that carries its key still reads open: RtmpsTarget masks its url, so no toString prints the key",
+      "override": {
+        "cred": {
+          "srt": {
+            "url": "srt://live.cloudflare.com:778",
+            "streamId": "a1b2c3d4e5f60718293a4b5c6d7e8f90",
+            "passphrase": "pass+phrase/6d1e8b0c",
+            "latencyMs": 2000
+          },
+          "rtmps": {
+            "url": "rtmps://live.cloudflare.com:443/live/key-4c7a0e2b9d5f1386",
+            "streamKey": "key-4c7a0e2b9d5f1386"
+          }
+        }
+      },
+      "expected": {
+        "answer": "open",
+        "sid": "3f9a2c7e-8b14-4d5e-a6f7-0c1d2e3f4a5b",
+        "primary": "srt",
+        "fallback": "rtmps",
+        "srtOffered": true,
+        "scoreUpdates": "realtime",
+        "overlayUrl": "https://stg.seazn.club/overlay/fixtures/f1"
+      }
+    },
+    {
+      "why": "a production build keeps an overlay on the production Seazn host",
+      "env": "production",
+      "override": {
+        "overlayUrl": "https://seazn.club/overlay/fixtures/f1",
+        "cred": {
+          "srt": {
+            "url": "srt://live.cloudflare.com:778",
+            "streamId": "a1b2c3d4e5f60718293a4b5c6d7e8f90",
+            "passphrase": "pass+phrase/6d1e8b0c",
+            "latencyMs": 2000
+          },
+          "rtmps": {
+            "url": "rtmps://live.cloudflare.com:443/live/",
+            "streamKey": "key-4c7a0e2b9d5f1386"
+          }
+        }
+      },
+      "expected": {
+        "answer": "open",
+        "sid": "3f9a2c7e-8b14-4d5e-a6f7-0c1d2e3f4a5b",
+        "primary": "srt",
+        "fallback": "rtmps",
+        "srtOffered": true,
+        "scoreUpdates": "realtime",
+        "overlayUrl": "https://seazn.club/overlay/fixtures/f1"
+      }
+    },
+    {
+      "why": "an SRT url with no port: the platform could not connect it",
+      "override": {
+        "cred": {
+          "srt": {
+            "url": "srt://live.cloudflare.com",
+            "streamId": "a1b2c3d4e5f60718293a4b5c6d7e8f90",
+            "passphrase": "pass+phrase/6d1e8b0c",
+            "latencyMs": 2000
+          },
+          "rtmps": {
+            "url": "rtmps://live.cloudflare.com:443/live/",
+            "streamKey": "key-4c7a0e2b9d5f1386"
+          }
+        }
+      },
+      "expected": {
+        "answer": "unreadable",
+        "problem": "cred.srt"
+      }
+    },
+    {
+      "why": "an SRT url with a query: the platform composes the query, and a passphrase in the url would print",
+      "override": {
+        "cred": {
+          "srt": {
+            "url": "srt://live.cloudflare.com:778?passphrase=pass+phrase/6d1e8b0c",
+            "streamId": "a1b2c3d4e5f60718293a4b5c6d7e8f90",
+            "passphrase": "pass+phrase/6d1e8b0c",
+            "latencyMs": 2000
+          },
+          "rtmps": {
+            "url": "rtmps://live.cloudflare.com:443/live/",
+            "streamKey": "key-4c7a0e2b9d5f1386"
+          }
+        }
+      },
+      "expected": {
+        "answer": "unreadable",
+        "problem": "cred.srt"
+      }
+    },
+    {
+      "why": "an SRT url with a path",
+      "override": {
+        "cred": {
+          "srt": {
+            "url": "srt://live.cloudflare.com:778/live",
+            "streamId": "a1b2c3d4e5f60718293a4b5c6d7e8f90",
+            "passphrase": "pass+phrase/6d1e8b0c",
+            "latencyMs": 2000
+          },
+          "rtmps": {
+            "url": "rtmps://live.cloudflare.com:443/live/",
+            "streamKey": "key-4c7a0e2b9d5f1386"
+          }
+        }
+      },
+      "expected": {
+        "answer": "unreadable",
+        "problem": "cred.srt"
+      }
+    },
+    {
+      "why": "an SRT port outside 1 to 65535",
+      "override": {
+        "cred": {
+          "srt": {
+            "url": "srt://live.cloudflare.com:0",
+            "streamId": "a1b2c3d4e5f60718293a4b5c6d7e8f90",
+            "passphrase": "pass+phrase/6d1e8b0c",
+            "latencyMs": 2000
+          },
+          "rtmps": {
+            "url": "rtmps://live.cloudflare.com:443/live/",
+            "streamKey": "key-4c7a0e2b9d5f1386"
+          }
+        }
+      },
+      "expected": {
+        "answer": "unreadable",
+        "problem": "cred.srt"
+      }
+    },
+    {
+      "why": "an SRT latency below the schema's 1",
+      "override": {
+        "cred": {
+          "srt": {
+            "url": "srt://live.cloudflare.com:778",
+            "streamId": "a1b2c3d4e5f60718293a4b5c6d7e8f90",
+            "passphrase": "pass+phrase/6d1e8b0c",
+            "latencyMs": 0
+          },
+          "rtmps": {
+            "url": "rtmps://live.cloudflare.com:443/live/",
+            "streamKey": "key-4c7a0e2b9d5f1386"
+          }
+        }
+      },
+      "expected": {
+        "answer": "unreadable",
+        "problem": "cred.srt"
+      }
+    },
+    {
+      "why": "an empty passphrase (the schema's minLength 1)",
+      "override": {
+        "cred": {
+          "srt": {
+            "url": "srt://live.cloudflare.com:778",
+            "streamId": "a1b2c3d4e5f60718293a4b5c6d7e8f90",
+            "passphrase": "",
+            "latencyMs": 2000
+          },
+          "rtmps": {
+            "url": "rtmps://live.cloudflare.com:443/live/",
+            "streamKey": "key-4c7a0e2b9d5f1386"
+          }
+        }
+      },
+      "expected": {
+        "answer": "unreadable",
+        "problem": "cred.srt"
+      }
+    },
+    {
+      "why": "an empty stream key (the schema's minLength 1)",
+      "override": {
+        "cred": {
+          "srt": {
+            "url": "srt://live.cloudflare.com:778",
+            "streamId": "a1b2c3d4e5f60718293a4b5c6d7e8f90",
+            "passphrase": "pass+phrase/6d1e8b0c",
+            "latencyMs": 2000
+          },
+          "rtmps": {
+            "url": "rtmps://live.cloudflare.com:443/live/",
+            "streamKey": ""
+          }
+        }
+      },
+      "expected": {
+        "answer": "unreadable",
+        "problem": "cred.rtmps"
+      }
+    },
+    {
+      "why": "a hold window above the schema's 999",
+      "override": {
+        "holdWindowSeconds": {
+          "srt": 1000,
+          "rtmps": 180
+        }
+      },
+      "expected": {
+        "answer": "unreadable",
+        "problem": "holdWindowSeconds"
+      }
+    },
+    {
+      "why": "a hold window of 0 for a transport offered",
+      "override": {
+        "holdWindowSeconds": {
+          "srt": 183,
+          "rtmps": 0
+        }
+      },
+      "expected": {
+        "answer": "unreadable",
+        "problem": "holdWindowSeconds"
+      }
+    },
+    {
+      "why": "maxDurationMinutes below the schema's 1",
+      "override": {
+        "maxDurationMinutes": 0
+      },
+      "expected": {
+        "answer": "unreadable",
+        "problem": "maxDurationMinutes"
+      }
+    },
+    {
+      "why": "an empty playbackUrl",
+      "override": {
+        "playbackUrl": ""
+      },
+      "expected": {
+        "answer": "unreadable",
+        "problem": "playbackUrl"
+      }
+    }
+  ]
+}

@@ -1,15 +1,34 @@
-import { act, fireEvent, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, screen, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
+import type { NativeCaptureEngine } from '@/engine/nativeCaptureEngine';
+import { HOLD_MS } from '@/hooks/useHold';
 import { font } from '@/ui/theme/tokens';
 import { DiagnosticsScreen } from '@/ui/screens/DiagnosticsScreen';
 import { describeBackFromSubScreen } from '../../../test/backFromSubScreen';
 import { readRecord } from '../../../test/fakePorts';
-import { captureWire } from '../../../test/fixtures/wire';
+import { FIXTURE_SECRETS } from '../../../test/fixtures/wire';
+import { pressIn } from '../../../test/press';
 import { renderViewfinder } from '../../../test/renderViewfinder';
 import { renderWithPorts } from '../../../test/renderWithPorts';
 
 const shareButton = () => screen.getByRole('button', { name: 'Share record' });
 const faceOf = (text: string) => getComputedStyle(screen.getByText(text)).fontFamily;
+
+/**
+ * The viewfinder, after the operator held Go live: a visit sends nothing until
+ * then (amendment §2), so the hold is what puts a line in the record.
+ */
+async function startedViewfinder() {
+  vi.useFakeTimers();
+  try {
+    const view = await renderViewfinder();
+    pressIn(screen.getByRole('button', { name: 'Go live. Press and hold for 3 seconds.' }));
+    act(() => vi.advanceTimersByTime(HOLD_MS));
+    return view;
+  } finally {
+    vi.useRealTimers();
+  }
+}
 
 describe('Diagnostics (spec §4)', () => {
   it('shows live values and follows the 1 Hz report (D32)', () => {
@@ -38,30 +57,26 @@ describe('Diagnostics (spec §4)', () => {
 
   // AGENTS §5 and M25: Geist Mono carries the values, never the labels or the record's prose.
   it('sets the values in Geist Mono, and the labels and record lines in Geist', async () => {
-    const view = await renderViewfinder();
+    const view = await startedViewfinder();
     view.rerender(<DiagnosticsScreen />);
     act(() => view.engine.scene('live'));
     expect(faceOf('2840 kbps')).toBe(font.numeric);
     // M6: Geist Medium, the `metricUnit` face, named rather than "not mono".
     expect(faceOf('Bitrate')).toBe(font.bodyMedium);
-    expect(getComputedStyle(screen.getByText(/intent\.arm/)).fontFamily).toBe(font.bodyMedium);
+    expect(getComputedStyle(screen.getByText(/intent\.start/)).fontFamily).toBe(font.bodyMedium);
   });
 
   it('shows the latest session record lines and shares them, with no secret in them', async () => {
-    const view = await renderViewfinder();
+    const view = await startedViewfinder();
     view.rerender(<DiagnosticsScreen />);
-    expect(screen.getByText(/intent\.arm/)).toBeTruthy();
+    expect(screen.getByText(/intent\.start/)).toBeTruthy();
     fireEvent.click(shareButton());
     await waitFor(() => expect(view.share.shared).toHaveLength(1));
     const shared = view.share.shared[0] ?? '';
-    expect(shared).toContain('intent.arm');
-    // M16: the token is the wire's top-level `tok`; every secret is checked.
-    const wire = captureWire() as {
-      tok: string;
-      cred: { srt: { passphrase: string; streamId: string }; rtmps: { streamKey: string } };
-    };
-    const secrets = [wire.tok, wire.cred.srt.passphrase, wire.cred.srt.streamId];
-    for (const secret of [...secrets, wire.cred.rtmps.streamKey]) {
+    expect(shared).toContain('intent.start');
+    // M16: the QR's token is the only secret it carries now; every one is checked.
+    expect(FIXTURE_SECRETS).toHaveLength(1);
+    for (const secret of FIXTURE_SECRETS) {
       expect(secret.length).toBeGreaterThan(0);
       expect({ secret, leaked: shared.includes(secret) }).toEqual({ secret, leaked: false });
     }
@@ -135,6 +150,47 @@ describe('Diagnostics (spec §4)', () => {
   it('shows no scenes without the fake engine, even in a development build', () => {
     renderWithPorts(<DiagnosticsScreen />, { devEngine: null });
     expect(screen.queryByRole('button', { name: /^Scene:/ })).toBeNull();
+  });
+
+  // Task 39: the dev controls for the preview's boundary and CD17's silence. They matter most with
+  // native wired, where the fake engine's scenes are hidden, so the scenes' gate never hides them.
+  it('offers Crash preview and Pause engine reports with native wired, and pauses native for 5 s', () => {
+    const pauseReports = vi.fn();
+    const nativeEngine = { pauseReports } as unknown as NativeCaptureEngine;
+    renderWithPorts(<DiagnosticsScreen />, { devEngine: null, nativeEngine });
+    expect(screen.queryByRole('button', { name: /^Scene:/ })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Pause engine reports' }));
+    expect(pauseReports.mock.calls).toEqual([[5_000]]);
+    expect(screen.getByRole('button', { name: 'Crash preview' })).toBeTruthy();
+  });
+
+  it('offers no Pause engine reports without native, and neither control with development tools off', () => {
+    renderWithPorts(<DiagnosticsScreen />);
+    expect(screen.getByRole('button', { name: 'Crash preview' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Pause engine reports' })).toBeNull();
+    cleanup();
+    const nativeEngine = { pauseReports: vi.fn() } as unknown as NativeCaptureEngine;
+    renderWithPorts(<DiagnosticsScreen />, { devTools: false, nativeEngine });
+    expect(screen.queryByRole('button', { name: 'Crash preview' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Pause engine reports' })).toBeNull();
+  });
+
+  it("Crash preview arms the viewfinder's preview to crash, until Show preview", async () => {
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    try {
+      renderWithPorts(<DiagnosticsScreen />);
+      fireEvent.click(screen.getByRole('button', { name: 'Crash preview' }));
+      cleanup();
+      const view = await renderViewfinder();
+      expect(screen.getByText('Camera preview stopped — the session carries on')).toBeTruthy();
+      expect(
+        readRecord(view.record).filter((entry) => entry.event === 'preview.crashed'),
+      ).toHaveLength(1);
+      fireEvent.click(screen.getByRole('button', { name: 'Show preview' }));
+      expect(screen.getByTestId('preview')).toBeTruthy();
+    } finally {
+      errors.mockRestore();
+    }
   });
 
   it('goes back to the camera, by its button and by Back', () => {

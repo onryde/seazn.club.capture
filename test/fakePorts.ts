@@ -13,13 +13,14 @@ import type {
   SharePort,
   SplashPort,
 } from '@/services/devicePorts';
-import { createFakeDescriptorPort, type FakeDescriptorPort } from '@/services/fakeDescriptorPort';
+import { createFakeCodePort, type FakeCodePort } from '@/services/fakeCodePort';
 import { createMemoryKeyValueStore, type MemoryKeyValueStore } from '@/services/KeyValueStore';
 import { createLogger } from '@/services/logger';
 import { createModeStore } from '@/services/modeStore';
 import { createHomeIntent } from '@/services/homeIntent';
+import { createProbeFlight } from '@/services/probeFlight';
 import { createScanFlight } from '@/services/scanFlight';
-import { createRingRecord, type SessionRecord } from '@/services/sessionRecord';
+import { createRingRecord, parseRecordLine, type SessionRecord } from '@/services/sessionRecord';
 import { createStreamSettingsStore } from '@/services/streamSettingsStore';
 import { createFakeSurfaces, type FakeSurfaces } from './fakeSurfaces';
 
@@ -34,7 +35,7 @@ export type FakePorts = {
   readonly ports: Ports;
   readonly engine: TestEngine;
   readonly scanner: FakeCodeScanner;
-  readonly descriptor: FakeDescriptorPort;
+  readonly code: FakeCodePort;
   readonly kv: MemoryKeyValueStore;
   readonly motion: FakeMotion;
   readonly orientationLock: OrientationLockPort & { readonly locks: readonly Target[] };
@@ -70,7 +71,7 @@ export function createFakePorts(
   const fakes = {
     engine,
     scanner: createFakeCodeScanner(),
-    descriptor: createFakeDescriptorPort(() => now),
+    code: createFakeCodePort(),
     kv,
     motion: fakeMotion(),
     orientationLock: fakeLock(),
@@ -85,12 +86,15 @@ export function createFakePorts(
   const ports: Ports = {
     ...fakes,
     devEngine: engine,
+    nativeEngine: null,
     modeStore: createModeStore(kv),
     scanFlight: createScanFlight(),
+    probeFlight: createProbeFlight(),
     homeIntent: createHomeIntent(),
     streamSettings: createStreamSettingsStore(kv, logger),
     clock: () => now,
     hosts: ['stg.seazn.club'],
+    environment: 'staging',
     deviceLanguages: ['en'],
     phoneZone: 'Europe/London',
     appVersion: '0.0.0-test',
@@ -113,9 +117,15 @@ export type RecordedEntry = {
   readonly fields: Readonly<Record<string, unknown>>;
 };
 
-/** The record's lines, parsed, for assertions. */
+/**
+ * The record's lines, parsed, for assertions: `{ level, event, fields }`, with
+ * `fields.kind` restored from the line's `field_kind` (CD7).
+ */
 export function readRecord(record: SessionRecord): RecordedEntry[] {
-  return record.lines().map((line) => JSON.parse(line) as RecordedEntry);
+  return record.lines().map((line) => {
+    const { level, event, fields } = parseRecordLine(line);
+    return { level, event, fields };
+  });
 }
 
 /**

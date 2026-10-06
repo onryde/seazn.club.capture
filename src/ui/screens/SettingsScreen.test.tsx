@@ -1,9 +1,12 @@
 import { act, fireEvent, screen, waitFor } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import type { KeyValueStore } from '@/services/KeyValueStore';
+import { useEngineSync } from '@/hooks/useEngineSync';
 import { SETTINGS_KEY } from '@/services/streamSettingsStore';
 import { SettingsScreen } from '@/ui/screens/SettingsScreen';
 import { describeBackFromSubScreen } from '../../../test/backFromSubScreen';
+import { savedStreamCode } from '../../../test/fixtures/savedStream';
+import { pairCode } from '../../../test/pairCode';
 import { renderViewfinder } from '../../../test/renderViewfinder';
 import { renderWithPorts } from '../../../test/renderWithPorts';
 
@@ -15,6 +18,13 @@ function renderSettings(options: Parameters<typeof renderWithPorts>[1] = {}) {
 }
 
 const overlaySwitch = () => screen.getByRole('switch', { name: 'Score preview' });
+const automaticSwitch = () => screen.getByRole('switch', { name: 'Start and stop automatically' });
+
+/** Settings with the shell's sync mounted, as the app has it. */
+function SyncedSettings() {
+  useEngineSync();
+  return <SettingsScreen />;
+}
 
 describe('Settings (spec §4)', () => {
   it('turns the score preview off, and saves it', async () => {
@@ -23,7 +33,9 @@ describe('Settings (spec §4)', () => {
     fireEvent.click(overlaySwitch());
     expect(overlaySwitch().getAttribute('aria-checked')).toBe('false');
     await waitFor(() =>
-      expect(view.kv.entries.get(SETTINGS_KEY)).toBe('{"v":1,"overlay":false,"side":"right"}'),
+      expect(view.kv.entries.get(SETTINGS_KEY)).toBe(
+        '{\"v\":2,"overlay":false,"side":"right",\"automatic\":true}',
+      ),
     );
   });
 
@@ -33,7 +45,9 @@ describe('Settings (spec §4)', () => {
     fireEvent.click(overlaySwitch());
     expect(overlaySwitch().getAttribute('aria-checked')).toBe('true');
     await waitFor(() =>
-      expect(view.kv.entries.get(SETTINGS_KEY)).toBe('{"v":1,"overlay":true,"side":"right"}'),
+      expect(view.kv.entries.get(SETTINGS_KEY)).toBe(
+        '{\"v\":2,"overlay":true,"side":"right",\"automatic\":true}',
+      ),
     );
   });
 
@@ -129,8 +143,58 @@ describe('Settings (spec §4)', () => {
     fireEvent.click(screen.getByRole('radio', { name: 'Left' }));
     expect(overlaySwitch().getAttribute('aria-checked')).toBe('false');
     await waitFor(() =>
-      expect(view.kv.entries.get(SETTINGS_KEY)).toBe('{"v":1,"overlay":false,"side":"left"}'),
+      expect(view.kv.entries.get(SETTINGS_KEY)).toBe(
+        '{\"v\":2,"overlay":false,"side":"left",\"automatic\":true}',
+      ),
     );
+  });
+
+  // Amendment §2, Settings: A4's switch, on by default, sent to native at once.
+  it('turns the automatic start and stop off, and saves it', async () => {
+    const view = renderSettings();
+    expect(automaticSwitch().getAttribute('aria-checked')).toBe('true');
+    expect(screen.getByText('Only when the organiser turns it on for the match')).toBeTruthy();
+    fireEvent.click(automaticSwitch());
+    expect(automaticSwitch().getAttribute('aria-checked')).toBe('false');
+    await waitFor(() =>
+      expect(view.kv.entries.get(SETTINGS_KEY)).toBe(
+        '{"v":2,"overlay":true,"side":"right","automatic":false}',
+      ),
+    );
+  });
+
+  // The one named exception to AGENTS §6: it only affects the automatic stop (amendment §2).
+  it('keeps the automatic switch usable on air', async () => {
+    const view = renderSettings();
+    act(() => view.engine.scene('live'));
+    expect(automaticSwitch().getAttribute('aria-disabled')).not.toBe('true');
+    fireEvent.click(automaticSwitch());
+    expect(automaticSwitch().getAttribute('aria-checked')).toBe('false');
+    await waitFor(() => expect(view.kv.entries.get(SETTINGS_KEY)).toContain('"automatic":false'));
+  });
+
+  it('keeps the automatic switch’s new value for the session when the save is refused (D23)', async () => {
+    const refusing: Partial<KeyValueStore> = { set: () => Promise.reject(new Error('locked')) };
+    const view = renderSettings();
+    Object.assign(view.kv, refusing);
+    fireEvent.click(automaticSwitch());
+    expect(
+      await screen.findByText("Couldn't save that. It applies until the app closes."),
+    ).toBeTruthy();
+    expect(automaticSwitch().getAttribute('aria-checked')).toBe('false');
+  });
+
+  // C4c-I1: native echoes the switch before its ack, so the screen and native agree at once.
+  it('shows the switch’s new value as soon as native has it, paired', async () => {
+    const view = renderWithPorts(<SyncedSettings />);
+    act(() => pairCode(view.engine, savedStreamCode()));
+    await act(() => view.ports.streamSettings.load());
+    fireEvent.click(automaticSwitch());
+    expect(view.engine.getSnapshot().pairing?.automatic).toBe(false);
+    expect(automaticSwitch().getAttribute('aria-checked')).toBe('false');
+    fireEvent.click(automaticSwitch());
+    expect(view.engine.getSnapshot().pairing?.automatic).toBe(true);
+    expect(automaticSwitch().getAttribute('aria-checked')).toBe('true');
   });
 
   it('is reachable from the viewfinder on air', async () => {
@@ -143,13 +207,14 @@ describe('Settings (spec §4)', () => {
   it('reads in Dutch', () => {
     renderSettings({ deviceLanguages: ['nl'] });
     expect(screen.getByRole('switch', { name: 'Scorevoorbeeld' })).toBeTruthy();
+    expect(screen.getByRole('switch', { name: 'Automatisch starten en stoppen' })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Terug naar de camera' })).toBeTruthy();
     expect(screen.getByRole('radio', { name: 'Linkerkant' })).toBeTruthy();
   });
 });
 
 describe('the viewfinder’s ways into Settings and Diagnostics (AGENTS §6)', () => {
-  it.each(['armed-ready', 'connecting', 'live', 'holding', 'stopped', 'fatal'] as const)(
+  it.each(['paired-ready', 'connecting', 'live', 'holding', 'stopped', 'fatal'] as const)(
     'are both there while %s',
     async (scene) => {
       const view = await renderViewfinder();

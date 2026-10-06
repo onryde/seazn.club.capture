@@ -2,6 +2,8 @@ package com.seazn.capture.engine.core
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -320,6 +322,66 @@ class DeliveryWatchTest {
     assertNull(harness.watch.deliveredLagMs)
   }
 
+  /**
+   * F-S9-1 (coordinator ruling, session 9): before an ingest session's first advance the word is unknown until
+   * [DeliveryWatch.NOT_DELIVERED_MS] of publishing, never stalled at [DeliveryWatch.STALLED_AFTER_MS]; a forced new
+   * session starts that over, though the session before it advanced.
+   */
+  @Test
+  fun `F-S9-1 before a session's first advance stalled waits for NOT_DELIVERED_MS, a forced new session too`() {
+    val shortOf = DeliveryWatch.NOT_DELIVERED_MS - DeliveryWatch.POLL_MS
+    assertTrue(shortOf > DeliveryWatch.STALLED_AFTER_MS)
+    val fresh = Harness(DeliveryWatch(master))
+    fresh.run(0, shortOf, answer = respond { mediaText(100) })
+    assertEquals(Delivery.UNKNOWN, fresh.watch.delivery, "never moved: unknown at $shortOf ms")
+    fresh.run(shortOf + 500, DeliveryWatch.NOT_DELIVERED_MS, answer = respond { mediaText(100) })
+    assertEquals(Delivery.STALLED, fresh.watch.delivery)
+    assertEquals(DeliveryWatch.NOT_DELIVERED_MS, fresh.verdict!!.first)
+    val renewed = Harness(DeliveryWatch(master))
+    renewed.run(0, 10_000, answer = respond { t -> mediaText(100 + t / 2_000) })
+    assertEquals(Delivery.OK, renewed.watch.delivery, "the session before it advanced")
+    renewed.watch = renewed.watch.newSession()
+    renewed.run(10_500, 10_000 + shortOf, answer = respond { mediaText(500) })
+    assertEquals(Delivery.UNKNOWN, renewed.watch.delivery, "the new session has not advanced yet")
+  }
+
+  /**
+   * Re-review 7: a rebaseline after the session's first advance (a variant change, or the head going back) is no
+   * progress and keeps the stall clock (F-P5-2), and the session HAS advanced: stalled still shows
+   * [DeliveryWatch.STALLED_AFTER_MS] after the last advance, never waiting for [DeliveryWatch.NOT_DELIVERED_MS] as
+   * before a first advance (F-S9-1).
+   */
+  @Test
+  fun `re-review 7 a rebaseline after the first advance still shows stalled at STALLED_AFTER_MS`() {
+    val lastAdvance = 10_000L // the advancing run below moves the head every configured segment up to here
+    val stalledAt = lastAdvance + DeliveryWatch.STALLED_AFTER_MS
+    assertTrue(stalledAt - lastAdvance < DeliveryWatch.NOT_DELIVERED_MS)
+    val previousHead = 100 + lastAdvance / DeliveryWatch.CONFIGURED_SEGMENT_MS
+    val rebaselines = listOf<Pair<String, (Long, String) -> FetchResult>>(
+      "a variant change" to { _, url ->
+        if (url == polled) FetchResult.Body(masterText("stream_1080/video.m3u8")) else FetchResult.Body(mediaText(500))
+      },
+      "the head going back" to respond { mediaText(previousHead - 1) },
+    )
+    var checked = 0
+    for ((name, frozen) in rebaselines) {
+      val harness = Harness(DeliveryWatch(master))
+      harness.run(0, lastAdvance, answer = respond { t -> mediaText(100 + t / DeliveryWatch.CONFIGURED_SEGMENT_MS) })
+      assertEquals(Delivery.OK, harness.watch.delivery, name)
+      val head = harness.watch.head
+      val variantBefore = harness.watch.variantUrl
+      harness.run(lastAdvance + 500, stalledAt - DeliveryWatch.POLL_MS, answer = frozen)
+      assertTrue(harness.watch.variantUrl != variantBefore || harness.watch.head!! < head!!, "$name: rebaselined")
+      assertFalse(harness.watch.advancedInVariant, "$name: rebaselined")
+      assertTrue(harness.watch.delivery != Delivery.STALLED, "$name: inside the margin")
+      harness.run(stalledAt - DeliveryWatch.POLL_MS + 500, stalledAt, answer = frozen)
+      assertEquals(Delivery.STALLED, harness.watch.delivery, "$name: STALLED_AFTER_MS after the last advance")
+      assertNull(harness.verdict, "$name: long before not-delivered")
+      checked += 1
+    }
+    assertEquals(rebaselines.size, checked)
+  }
+
   @Test
   fun `F-P5-4 stalled shows at exactly three configured segments without an advance`() {
     val harness = Harness(DeliveryWatch(master))
@@ -541,6 +603,184 @@ class DeliveryWatchTest {
     harness.run(10_500, 22_000) { _, _ -> null }
     assertEquals(Delivery.UNKNOWN, harness.watch.delivery, "the 12 s poll was given up at 22 s")
     assertNull(harness.watch.deliveredLagMs)
+  }
+
+  // ---- F-S7-2 (session 7, the first live on stg): Cloudflare's real master and rendition shapes. ----
+
+  private val manifest = master.substringBeforeLast('/') + "/"
+  private val watched = manifest + CloudflarePlayback.RENDITIONS.first()
+
+  /**
+   * Answers as Cloudflare did: the master new on every fetch ([CloudflarePlayback.master]), the first rendition
+   * at the head [headAt] gives for the time asked, any other path a 404. Counts what it answered.
+   */
+  private class Cloudflare(private val watched: String, private val polled: String, val headAt: (Long) -> Long?) {
+    var masters = 0
+    val renditionFetches = mutableListOf<String>()
+    val others = mutableListOf<String>()
+
+    fun answer(t: Long, url: String): FetchResult =
+      when {
+        url == polled -> FetchResult.Body(CloudflarePlayback.master(++masters))
+        CloudflarePlayback.path(url) == watched -> {
+          renditionFetches += url
+          headAt(t)?.let { FetchResult.Body(CloudflarePlayback.rendition(it)) } ?: FetchResult.HttpError(404)
+        }
+        else -> {
+          others += url
+          FetchResult.HttpError(404)
+        }
+      }
+  }
+
+  @Test
+  fun `F-S7-2 a rendition whose query changes on every fetch and whose sequence advances is delivered, never stalled`() {
+    // Session 7: 97 to 106 in 15 s, one 2 s segment every ~1.7 s. The old watch took each poll's new `lps`
+    // and `rcu` for a new variant, rebaselined every poll, and called it not-delivered 20 s in (stalledMs ~21 s).
+    val cf = Cloudflare(watched, polled) { t -> 97 + t / 1_700 }
+    val harness = Harness(DeliveryWatch(master))
+    var ok = 0
+    var t = 0L
+    while (t <= 120_000) {
+      harness.run(t, t, answer = cf::answer)
+      if (harness.watch.delivery == Delivery.OK) ok++
+      t += 500
+    }
+    assertNull(harness.verdict, "never not-delivered")
+    assertEquals(Delivery.OK, harness.watch.delivery)
+    // Every fetch after the master's is the first rendition, by its path, each with that master's query: the
+    // audio group's URI is an attribute, never a rendition, and nothing else was asked.
+    assertEquals(cf.masters, cf.renditionFetches.size)
+    assertEquals(cf.masters, cf.renditionFetches.toSet().size, "a new query on every fetch, as Cloudflare's")
+    assertEquals(emptyList(), cf.others)
+    assertTrue(cf.masters >= 60 && ok > 200, "${cf.masters} polls, OK at $ok of 241 ticks")
+    assertEquals(0L, harness.watch.deliveredLagMs)
+  }
+
+  @Test
+  fun `F-S7-2 a Cloudflare sequence that freezes is not-delivered exactly the threshold after its last advance`() {
+    // Advancing until 30 s, then frozen: the query churn of every later fetch is no progress.
+    val lastAdvanceMs = 30_000L
+    val cf = Cloudflare(watched, polled) { t -> 97 + minOf(t, lastAdvanceMs) / 2_000 }
+    val harness = Harness(DeliveryWatch(master))
+    harness.run(0, 90_000, answer = cf::answer)
+    val (at, verdict) = harness.verdict!!
+    assertEquals(lastAdvanceMs + DeliveryWatch.NOT_DELIVERED_MS, at)
+    assertEquals(NotDeliveredCause.STALLED, verdict.cause)
+    assertEquals(DeliveryWatch.NOT_DELIVERED_MS, verdict.stalledMs)
+  }
+
+  @Test
+  fun `F-S7-2 master bytes are never delivery, however their text changes`() {
+    // Every request answered with the master, which differs on every fetch: no media sequence, no delivery.
+    var fetch = 0
+    val harness = Harness(DeliveryWatch(master))
+    var looked = 0
+    var t = 0L
+    while (t <= 60_000) {
+      harness.run(t, t) { _, _ -> FetchResult.Body(CloudflarePlayback.master(++fetch)) }
+      assertTrue(harness.watch.delivery != Delivery.OK, "OK from master bytes at $t")
+      looked++
+      t += 500
+    }
+    assertEquals(121, looked)
+    assertTrue(fetch >= 60, "$fetch masters answered")
+    assertNull(harness.watch.head, "no head was ever read")
+    assertEquals(0L, harness.watch.mediaMs)
+    assertNull(harness.verdict, "no evidence is never not-delivered")
+  }
+
+  @Test
+  fun `F-S7-2 a rendition that 404s is no evidence, and the next poll re-resolves the master and follows the rendition it names`() {
+    // The first rendition 404s from 10 s to 20 s; from 20 s the master lists another first, which advances.
+    val moved = CloudflarePlayback.RENDITIONS.last()
+    var masters = 0
+    val asked = mutableListOf<Pair<Long, String>>()
+    val answer = { t: Long, url: String ->
+      asked += t to url
+      when {
+        url == polled -> FetchResult.Body(CloudflarePlayback.master(++masters, if (t >= 20_000) CloudflarePlayback.RENDITIONS.reversed() else CloudflarePlayback.RENDITIONS))
+        CloudflarePlayback.path(url) == watched && t < 10_000 -> FetchResult.Body(CloudflarePlayback.rendition(97 + t / 2_000))
+        CloudflarePlayback.path(url) == manifest + moved -> FetchResult.Body(CloudflarePlayback.rendition(500 + t / 2_000))
+        else -> FetchResult.HttpError(404)
+      }
+    }
+    val harness = Harness(DeliveryWatch(master))
+    harness.run(0, 19_500, answer = answer)
+    assertEquals(Delivery.UNKNOWN, harness.watch.delivery, "a 404 withdraws the claim")
+    assertTrue(asked.count { it.first in 10_000..19_500 && it.second == polled } == 5, "the master is asked again on every poll while the rendition 404s")
+    harness.run(20_000, 40_000, answer = answer)
+    assertEquals(manifest + moved, CloudflarePlayback.path(asked.last().second))
+    assertEquals(Delivery.OK, harness.watch.delivery)
+    assertNull(harness.verdict)
+  }
+
+  /**
+   * Re-review 6 D3: Cloudflare's renditions differ by their FILE name within one `…/manifest/` directory, where
+   * F-P5-2's variants differ by directory. A master that names another token file is a variant change: never
+   * progress, and the watch then knows the variant by that file. Each poll here names the next rendition while
+   * every rendition's head keeps rising, so only the identity tells a switch from an advance.
+   */
+  @Test
+  fun `F-S7-2 D3 another rendition file in the same directory is a variant change, never progress`() {
+    val renditions = CloudflarePlayback.RENDITIONS
+    var masters = 0
+    val asked = mutableListOf<String>()
+    val answer = { t: Long, url: String ->
+      when {
+        url == polled -> {
+          val first = masters % renditions.size
+          FetchResult.Body(CloudflarePlayback.master(++masters, renditions.drop(first) + renditions.take(first)))
+        }
+        CloudflarePlayback.path(url) in renditions.map { manifest + it } -> {
+          asked += CloudflarePlayback.path(url)
+          FetchResult.Body(CloudflarePlayback.rendition(500 + t / 1_000))
+        }
+        else -> FetchResult.HttpError(404)
+      }
+    }
+    val harness = Harness(DeliveryWatch(master))
+    harness.run(0, 30_000, answer = answer)
+    assertEquals(setOf(manifest), asked.map { it.substringBeforeLast('/') + "/" }.toSet(), "one directory")
+    assertEquals(renditions.size, asked.toSet().size, "every rendition's file was asked")
+    assertTrue(asked.zipWithNext().all { (a, b) -> a != b }, "a new file at every poll")
+    assertEquals(asked.last(), harness.watch.variantUrl, "the variant is the file the master named last")
+    val (at, verdict) = assertNotNull(harness.verdict, "a switch at every poll is no delivery")
+    assertEquals(DeliveryWatch.NOT_DELIVERED_MS, at)
+    assertEquals(NotDeliveredCause.STALLED, verdict.cause)
+  }
+
+  @Test
+  fun `F-S7-2 a rendition the master places off the playback host is never fetched`() {
+    // The rendition stays on the playback URL's scheme and host. A master naming another is no evidence.
+    val elsewhere = listOf(
+      "https://evil.example/abc/manifest/x.m3u8",
+      "http://customer-x.cloudflarestream.com/abc/manifest/x.m3u8",
+      // The playback port with another scheme: the scheme alone refuses it.
+      "http://customer-x.cloudflarestream.com:443/abc/manifest/x.m3u8",
+      "https://customer-x.cloudflarestream.com.evil.example/abc/manifest/x.m3u8",
+      "//evil.example/abc/manifest/x.m3u8",
+      "https://user@customer-x.cloudflarestream.com/abc/manifest/x.m3u8",
+      "https://customer-x.cloudflarestream.com:8443/abc/manifest/x.m3u8",
+    )
+    for (uri in elsewhere) {
+      val harness = Harness(DeliveryWatch(master))
+      harness.run(0, 4_000) { _, url -> if (url == polled) FetchResult.Body(masterText(uri)) else FetchResult.Body(mediaText(100)) }
+      assertEquals(listOf(polled), harness.requests.map { it.second.url }.distinct(), uri)
+      assertEquals(Delivery.UNKNOWN, harness.watch.delivery, uri)
+      // Re-review 6: the refusal is kept for the record, through a forced new ingest session (the same broadcast).
+      assertTrue(harness.watch.refusedOffHost, uri)
+      assertTrue(harness.watch.newSession().refusedOffHost, uri)
+    }
+    // The positive pair: the same master naming an absolute URI on the playback host is followed, its host in
+    // any case and its port the scheme's whether written or not.
+    for (same in listOf("https://CUSTOMER-X.cloudflarestream.com/abc/manifest/x.m3u8", "https://customer-x.cloudflarestream.com:443/abc/manifest/x.m3u8")) {
+      val harness = Harness(DeliveryWatch(master))
+      harness.run(0, 0) { _, url -> if (url == polled) FetchResult.Body(masterText(same)) else FetchResult.Body(mediaText(100)) }
+      assertEquals(listOf(polled, same), harness.requests.map { it.second.url }, same)
+      assertFalse(harness.watch.refusedOffHost, same)
+    }
+    assertFalse(DeliveryWatch(master).refusedOffHost, "a new broadcast session's watch starts with none")
   }
 
   @Test

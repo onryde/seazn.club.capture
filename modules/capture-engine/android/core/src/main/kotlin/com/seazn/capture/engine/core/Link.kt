@@ -24,7 +24,7 @@ data class LinkCounters(
   val bytesSent: Long,
   val packetsSent: Long,
   val packetsRetransmitted: Long,
-  /** Sender drops: SRT's too-late packets, or StreamPack's RTMP queue overflowing. */
+  /** Sender drops: SRT's too-late packets and its full send buffer's (C7u, StreamPack#302), or StreamPack's RTMP queue overflowing. */
   val packetsDropped: Long,
   /** SRT's `pktSndLoss`. RTMPS reports none. */
   val packetsLost: Long,

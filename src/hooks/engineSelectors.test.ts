@@ -1,38 +1,53 @@
 import { describe, expect, it } from 'vitest';
 import type { EngineStatus } from '@/domain/mode/reopen';
 import type { SessionState } from '@/domain/session/SessionState';
+import type { BroadcastInfo, PairingInfo, Unpaired } from '@/domain/session/Pairing';
 import type { EngineSnapshot, Telemetry } from '@/engine/CaptureEnginePort';
-import { IDLE_TELEMETRY } from '@/engine/FakeCaptureEngine';
+import { FAKE_PAIRING } from '@/engine/FakeCaptureEngine';
+import { IDLE_TELEMETRY } from '@/engine/unreported';
 import {
   METER_SEGMENTS,
   selectBitrateKbps,
   selectEngineStatus,
+  selectHasPairing,
+  selectHeldCode,
+  selectHeldName,
+  selectHeldSlot,
+  selectHeldTokenTag,
+  selectAutomaticOn,
+  selectDestination,
+  selectEndReason,
   selectHoldsOrientation,
-  selectIsOnAir,
   selectLabel,
   selectMeterSegments,
+  selectOverlayKnown,
   selectOverlayUrl,
   selectPlaybackUrl,
-  selectScoreUpdates,
-  selectOnAirPhase,
-  selectWarmingDeadlineMs,
+  selectScheduledStartMs,
+  selectUnpairedKey,
+  selectUnpairedReason,
+  selectVenueZone,
 } from '@/hooks/engineSelectors';
-import { streamSession } from '../../test/fixtures/session';
+import { NO_NAME } from '@/domain/mode/codeName';
 
 const NOW = 1_700_000_000_000;
 
 function snapshot(
   state: SessionState,
   overrides: Partial<Telemetry> = {},
-  descriptor: EngineSnapshot['descriptor'] = null,
+  held: { pairing?: PairingInfo | null; broadcast?: BroadcastInfo | null } = {},
 ): EngineSnapshot {
   return {
     state,
     telemetry: { ...IDLE_TELEMETRY, ...overrides },
-    descriptor,
-    slot: null,
-    tokenTag: null,
-    // Plan B's `Snapshot.camera`: our own with a session, none without one.
+    pairing: held.pairing ?? null,
+    broadcast: held.broadcast ?? null,
+    ready: { camera: true, sound: true, network: true, held: true },
+    refusal: null,
+    lastEnd: null,
+    unpaired: null,
+    codeEndedPending: false,
+    // Plan B's `Snapshot.camera`: our own with a pairing, none without one.
     camera: state.kind === 'idle' || state.kind === 'ended' ? null : 'own',
     reportedAtMs: NOW,
     survivesBackground: false,
@@ -40,65 +55,19 @@ function snapshot(
 }
 
 const LIVE: SessionState = { kind: 'publishing', transport: 'srt', sinceEpochMs: NOW };
-
-describe('selectOnAirPhase (a phase, not a colour: connecting is on air, its plate is not red)', () => {
-  it.each([
-    [{ kind: 'idle' } as SessionState, 'idle'],
-    [{ kind: 'ended', reason: 'operator-stopped', durationMs: null } as SessionState, 'idle'],
-    [{ kind: 'armed' } as SessionState, 'ready'],
-    [{ kind: 'connecting', transport: 'srt' } as SessionState, 'live'],
-    [LIVE, 'live'],
-    [
-      {
-        kind: 'degraded',
-        transport: 'srt',
-        reason: 'poor-uplink',
-        sinceEpochMs: NOW,
-      } as SessionState,
-      'trouble',
-    ],
-    [
-      {
-        kind: 'reconnecting',
-        cause: 'uplink-lost',
-        holdRemainingSeconds: 9,
-        holdWindowSeconds: 183,
-        sinceEpochMs: NOW,
-      } as SessionState,
-      'trouble',
-    ],
-  ])('maps %o to %s', (state, expected) => {
-    expect(selectOnAirPhase(snapshot(state))).toBe(expected);
-  });
-});
-
-describe('selectIsOnAir (something is going out, or the app is fighting to keep it going)', () => {
-  it.each<[SessionState, boolean]>([
-    [{ kind: 'idle' }, false],
-    [{ kind: 'armed' }, false],
-    [{ kind: 'connecting', transport: 'srt' }, true],
-    [LIVE, true],
-    [{ kind: 'degraded', transport: 'rtmps', reason: 'poor-uplink', sinceEpochMs: 1 }, true],
-    [
-      {
-        kind: 'reconnecting',
-        cause: 'uplink-lost',
-        holdRemainingSeconds: 30,
-        holdWindowSeconds: 183,
-        sinceEpochMs: 1,
-      },
-      true,
-    ],
-    [{ kind: 'ended', reason: 'operator-stopped', durationMs: null }, false],
-  ])('%j is on air: %s', (state, onAir) => {
-    expect(selectIsOnAir(snapshot(state))).toBe(onAir);
-  });
-});
+const PAIRING: SessionState = { kind: 'pairing' };
+const PAIRED: SessionState = { kind: 'paired' };
+const ARMING: SessionState = { kind: 'arming', cause: 'organiser', retrying: false };
+const ARMED: SessionState = { kind: 'armed', cause: 'operator', notReady: 'sound' };
 
 describe('selectEngineStatus', () => {
   it.each<[SessionState, EngineStatus]>([
     [{ kind: 'idle' }, 'idle'],
-    [{ kind: 'armed' }, 'armed'],
+    [PAIRING, 'paired'],
+    [PAIRED, 'paired'],
+    // A broadcast held, never a pairing to unpair or a code to adopt.
+    [ARMING, 'live'],
+    [ARMED, 'live'],
     [{ kind: 'connecting', transport: 'srt' }, 'live'],
     [{ kind: 'publishing', transport: 'srt', sinceEpochMs: 1 }, 'live'],
     [{ kind: 'degraded', transport: 'rtmps', reason: 'poor-uplink', sinceEpochMs: 1 }, 'live'],
@@ -113,8 +82,7 @@ describe('selectEngineStatus', () => {
       'live',
     ],
     [{ kind: 'ended', reason: 'operator-stopped', durationMs: null }, 'stopped'],
-    [{ kind: 'ended', reason: 'stopped-by-organiser', durationMs: 1 }, 'stopped'],
-    [{ kind: 'ended', reason: 'hold-window-expired', durationMs: null }, 'failed'],
+    [{ kind: 'ended', reason: 'operator-stopped', durationMs: 1 }, 'stopped'],
     [{ kind: 'ended', reason: 'fatal-error', durationMs: null }, 'failed'],
   ])('%j is %s', (state, status) => {
     expect(selectEngineStatus(snapshot(state))).toBe(status);
@@ -124,7 +92,11 @@ describe('selectEngineStatus', () => {
 describe('selectHoldsOrientation', () => {
   it.each<[SessionState, boolean]>([
     [{ kind: 'idle' }, false],
-    [{ kind: 'armed' }, true],
+    // CD37: the camera is open while paired, so the lock holds from Pairing on.
+    [PAIRING, true],
+    [PAIRED, true],
+    [ARMING, true],
+    [ARMED, true],
     [{ kind: 'connecting', transport: 'srt' }, true],
     [{ kind: 'publishing', transport: 'srt', sinceEpochMs: 1 }, true],
     [{ kind: 'degraded', transport: 'rtmps', reason: 'poor-uplink', sinceEpochMs: 1 }, true],
@@ -145,48 +117,198 @@ describe('selectHoldsOrientation', () => {
   });
 });
 
-describe('the descriptor selectors (D8: the snapshot carries the descriptor, never a secret)', () => {
-  const session = streamSession();
-  const armed = snapshot({ kind: 'armed' }, {}, session.descriptor);
+const BROADCAST: BroadcastInfo = {
+  sid: 'fake-sid-1',
+  cause: 'operator',
+  playbackUrl: 'https://video.example/fake/manifest/video.m3u8',
+  overlayUrl: 'https://stg.seazn.club/overlay/fixtures/broadcast',
+  label: 'Seazn XI v Fake CC (broadcast)',
+  holdWindowSeconds: { srt: 183, rtmps: 183 },
+  maxDurationMinutes: 300,
+  scoreUpdates: 'polled',
+  srtOffered: true,
+};
 
-  it('read what the session was armed with', () => {
+describe('the pairing and broadcast selectors (D8: the snapshot carries no secret)', () => {
+  it('read the pairing alone while paired', () => {
+    const paired = snapshot(PAIRED, {}, { pairing: FAKE_PAIRING });
     expect({
-      overlay: selectOverlayUrl(armed),
-      playback: selectPlaybackUrl(armed),
-      scoreUpdates: selectScoreUpdates(armed),
-      label: selectLabel(armed),
-      deadline: selectWarmingDeadlineMs(armed),
+      overlay: selectOverlayUrl(paired),
+      playback: selectPlaybackUrl(paired),
+      label: selectLabel(paired),
+      zone: selectVenueZone(paired),
+      has: selectHasPairing(paired),
     }).toEqual({
-      overlay: 'https://stg.seazn.club/overlay/fixtures/fake-fixture',
-      playback: 'https://video.example/fake/manifest/video.m3u8',
-      scoreUpdates: 'realtime',
+      overlay: 'https://stg.seazn.club/overlay/fixtures/fx42hmnp7k2q',
+      playback: null,
       label: 'Seazn XI v Fake CC',
-      deadline: Date.parse('2026-10-03T13:10:00Z'),
+      zone: 'Europe/London',
+      has: true,
     });
   });
 
-  it('read null before an arm', () => {
+  it('read the broadcast over the pairing while one is held', () => {
+    const live = snapshot(LIVE, {}, { pairing: FAKE_PAIRING, broadcast: BROADCAST });
+    expect({
+      overlay: selectOverlayUrl(live),
+      playback: selectPlaybackUrl(live),
+      label: selectLabel(live),
+    }).toEqual({
+      overlay: 'https://stg.seazn.club/overlay/fixtures/broadcast',
+      playback: 'https://video.example/fake/manifest/video.m3u8',
+      label: 'Seazn XI v Fake CC (broadcast)',
+    });
+  });
+
+  it('read null with nothing held', () => {
     const idle = snapshot({ kind: 'idle' });
     expect([
       selectOverlayUrl(idle),
       selectPlaybackUrl(idle),
-      selectScoreUpdates(idle),
       selectLabel(idle),
-      selectWarmingDeadlineMs(idle),
-    ]).toEqual([null, null, null, null, null]);
+      selectVenueZone(idle),
+      selectHasPairing(idle),
+    ]).toEqual([null, null, null, null, false]);
   });
 
-  it('read no overlay when the server sent a /relay one (carried as null)', () => {
-    const relay = streamSession({
-      overlayUrl: 'https://stg.seazn.club/overlay/fixtures/fake-fixture/relay',
-    });
-    expect(relay.descriptor.overlayUrl).toBeNull();
-    expect(selectOverlayUrl(snapshot({ kind: 'armed' }, {}, relay.descriptor))).toBeNull();
+  // Final review I-2: the pair intent carries no overlay, so a pairing's null
+  // is the server's word only once an answer has brought its label too.
+  it('know the overlay once an answer is in, or a broadcast is held', () => {
+    const early = snapshot(
+      PAIRING,
+      {},
+      { pairing: { ...FAKE_PAIRING, label: '', overlayUrl: null } },
+    );
+    const none = snapshot(PAIRED, {}, { pairing: { ...FAKE_PAIRING, overlayUrl: null } });
+    const live = snapshot(
+      LIVE,
+      {},
+      { pairing: { ...FAKE_PAIRING, label: '' }, broadcast: BROADCAST },
+    );
+    expect({
+      idle: selectOverlayKnown(snapshot({ kind: 'idle' })),
+      early: selectOverlayKnown(early),
+      none: selectOverlayKnown(none),
+      paired: selectOverlayKnown(snapshot(PAIRED, {}, { pairing: FAKE_PAIRING })),
+      live: selectOverlayKnown(live),
+    }).toEqual({ idle: false, early: false, none: true, paired: true, live: true });
   });
 
-  it('give the same deadline number on every tick, so a 1 Hz report re-renders nothing', () => {
-    const later = { ...armed, reportedAtMs: NOW + 1000 };
-    expect(Object.is(selectWarmingDeadlineMs(armed), selectWarmingDeadlineMs(later))).toBe(true);
+  it('read an empty label or zone (a claim not yet answered) as none', () => {
+    const pairing = { ...FAKE_PAIRING, label: '', venueTimezone: '' };
+    const early = snapshot(PAIRING, {}, { pairing });
+    expect([selectLabel(early), selectVenueZone(early)]).toEqual([null, null]);
+  });
+
+  it('fall back to the pairing overlay when the broadcast sent none', () => {
+    const live = snapshot(
+      LIVE,
+      {},
+      { pairing: FAKE_PAIRING, broadcast: { ...BROADCAST, overlayUrl: null } },
+    );
+    expect(selectOverlayUrl(live)).toBe('https://stg.seazn.club/overlay/fixtures/fx42hmnp7k2q');
+  });
+});
+
+describe('the held name (amendment, Identity rules)', () => {
+  it('reads the pairing three ways, each a stable scalar, and once whole', () => {
+    const paired = snapshot(PAIRED, {}, { pairing: FAKE_PAIRING });
+    expect([selectHeldCode(paired), selectHeldSlot(paired), selectHeldTokenTag(paired)]).toEqual([
+      'fx42hmnp7k2q',
+      1,
+      'b24bb97b',
+    ]);
+    expect(selectHeldName(paired)).toEqual({ code: 'fx42hmnp7k2q', slot: 1, tokenTag: 'b24bb97b' });
+  });
+
+  it('names nothing with no pairing', () => {
+    const idle = snapshot({ kind: 'idle' });
+    expect([selectHeldCode(idle), selectHeldSlot(idle), selectHeldTokenTag(idle)]).toEqual([
+      null,
+      null,
+      null,
+    ]);
+    expect(selectHeldName(idle)).toBe(NO_NAME);
+  });
+});
+
+/** Amendment §2, Viewfinder paired: what the column shows beside the chips. */
+describe('the waiting fields the viewfinder shows (Task 28)', () => {
+  const withPairing = (change: Partial<PairingInfo>) =>
+    snapshot(PAIRED, {}, { pairing: { ...FAKE_PAIRING, ...change } });
+
+  it('reads the scheduled start as epoch ms, a primitive, or null with none', () => {
+    const at = new Date('2026-10-03T13:30:00Z');
+    expect(selectScheduledStartMs(withPairing({ scheduledStart: at }))).toBe(1_791_034_200_000);
+    expect(selectScheduledStartMs(withPairing({ scheduledStart: null }))).toBeNull();
+    expect(selectScheduledStartMs(snapshot({ kind: 'idle' }))).toBeNull();
+  });
+
+  // A4: AUTO shows only when automatic mode is on at both ends.
+  it.each<[boolean, boolean, boolean]>([
+    [true, true, true],
+    [true, false, false],
+    [false, true, false],
+    [false, false, false],
+  ])('AUTO with the organiser’s %s and the phone’s %s: %s', (autoAllowed, automatic, on) => {
+    expect(selectAutomaticOn(withPairing({ autoAllowed, automatic }))).toBe(on);
+  });
+
+  it('shows no AUTO with no pairing', () => {
+    expect(selectAutomaticOn(snapshot({ kind: 'idle' }))).toBe(false);
+  });
+
+  it('reads the destination’s name, an empty one as none, and none with no pairing', () => {
+    expect(selectDestination(withPairing({ destinationName: 'YouTube · Fake CC' }))).toBe(
+      'YouTube · Fake CC',
+    );
+    expect(selectDestination(withPairing({ destinationName: null }))).toBeNull();
+    expect(selectDestination(withPairing({ destinationName: '' }))).toBeNull();
+    expect(selectDestination(snapshot({ kind: 'idle' }))).toBeNull();
+  });
+
+  it('reads how a session ended only once it has', () => {
+    expect([
+      selectEndReason(snapshot({ kind: 'ended', reason: 'operator-stopped', durationMs: 1 })),
+      selectEndReason(snapshot({ kind: 'ended', reason: 'fatal-error', durationMs: null })),
+      selectEndReason(snapshot(LIVE)),
+      selectEndReason(snapshot(PAIRED)),
+    ]).toEqual(['operator-stopped', 'fatal-error', null, null]);
+  });
+});
+
+/** Amendment §2, Unpaired without asking: one primitive per unpair, each field in it (Task 29). */
+describe('the unpair Home names', () => {
+  const UNPAIRED: Unpaired = {
+    reason: 'replaced',
+    code: 'fx42hmnp7k2q',
+    slot: 1,
+    tokenTag: 'b24bb97b',
+  };
+  const idleWith = (unpaired: Unpaired | null) => ({ ...snapshot({ kind: 'idle' }), unpaired });
+
+  it('keys an unpair by its reason, code, slot and tag, and reads its reason', () => {
+    expect(selectUnpairedKey(idleWith(UNPAIRED))).toBe('replaced|fx42hmnp7k2q|1|b24bb97b');
+    expect(selectUnpairedReason(idleWith(UNPAIRED))).toBe('replaced');
+  });
+
+  it('keys nothing with no unpair', () => {
+    expect([selectUnpairedKey(idleWith(null)), selectUnpairedReason(idleWith(null))]).toEqual([
+      null,
+      null,
+    ]);
+  });
+
+  // Each field alone moves the key, so a second unpair differing in one is a new panel.
+  it.each<[string, Partial<Unpaired>]>([
+    ['reason', { reason: 'taken' }],
+    ['code', { code: 'fx42hmnp7k2r' }],
+    ['slot', { slot: 2 }],
+    ['tag', { tokenTag: 'b24bb97c' }],
+  ])('gives another key for another %s', (_field, change) => {
+    const key = selectUnpairedKey(idleWith({ ...UNPAIRED, ...change }));
+    expect(key).not.toBeNull();
+    expect(key).not.toBe('replaced|fx42hmnp7k2q|1|b24bb97b');
   });
 });
 

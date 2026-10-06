@@ -1,5 +1,6 @@
 import { memo } from 'react';
 import { StyleSheet, View } from 'react-native';
+import { cutDestination } from '@/domain/session/destination';
 import { columnLineKey } from '@/hooks/statusKey';
 import { useT } from '@/hooks/useLanguage';
 import type { Peek } from '@/hooks/usePeek';
@@ -37,13 +38,14 @@ export const StreamColumn = memo(function StreamColumn(props: ColumnProps) {
       <AudioMeter />
       <StatusLine>{line}</StatusLine>
       {view.action === 'goLive' ? (
-        <PreflightChips preflight={view.preflight} goLiveBy={view.goLiveBy} />
+        <PreflightChips preflight={view.preflight} auto={view.auto} startsAt={view.startsAt} />
       ) : null}
       <ColumnPeek onAir={view.onAir} peekable={view.peekable} peek={peek} />
       <ColumnAction
         action={view.action}
-        goLiveOff={view.kind !== 'armed' || view.blocker !== null}
-        reason={view.kind === 'armed' ? view.reason : null}
+        stopUnpairs={view.stopUnpairs}
+        goLiveOff={view.kind !== 'paired' || view.blocker !== null}
+        reason={view.kind === 'paired' ? view.reason : null}
         start={view.start}
         stop={view.stop}
         onScanAnother={props.onScanAnother}
@@ -52,10 +54,17 @@ export const StreamColumn = memo(function StreamColumn(props: ColumnProps) {
   );
 });
 
-/** The one true sentence: the status line, or Back's refusal over a calm one (ruling I2). */
+/**
+ * The one true sentence: the status line, or Back's refusal over a calm one
+ * (ruling I2). `{destination}` is cut at 24, the width every budget counts.
+ */
 function useColumnLine(view: Viewfinder, blocked: boolean): string {
   const { t } = useT();
-  const vars = { remaining: view.holdRemaining ?? '', window: view.holdWindow ?? '' };
+  const vars = {
+    remaining: view.holdRemaining ?? '',
+    window: view.holdWindow ?? '',
+    destination: view.destination === null ? '' : cutDestination(view.destination),
+  };
   return t(columnLineKey(view.statusKey, blocked), vars);
 }
 
@@ -80,6 +89,8 @@ const ColumnPeek = memo(function ColumnPeek({ onAir, peekable, peek }: PeekProps
 
 type ActionProps = {
   readonly action: ViewfinderAction;
+  /** Stop ends the pairing too (live); before the first frame it ends the broadcast only (owner decision 1). */
+  readonly stopUnpairs: boolean;
   /** Go live is off: before the engine is armed, or with a chip off. */
   readonly goLiveOff: boolean;
   /**
@@ -106,6 +117,12 @@ const ColumnAction = memo(function ColumnAction(props: ActionProps) {
     <HoldAction
       key={props.action}
       label={t(stop ? 'stream.action.stop' : 'stream.action.goLive')}
+      // A3: Stop ends the broadcast and, once live, the pairing, and says which to a screen reader (owner decision 1).
+      a11yLabel={
+        stop
+          ? t(props.stopUnpairs ? 'stream.action.stopUnpairLabel' : 'stream.action.stopLabel')
+          : undefined
+      }
       tone={stop ? 'stop' : 'go'}
       disabled={!stop && props.goLiveOff}
       reason={props.reason === null ? null : t(props.reason)}

@@ -100,6 +100,47 @@ class StallWatchdogTest {
     assertEquals(listOf<Pair<Long, StallVerdict>>(8_000L to rebuild), frozen.verdicts)
   }
 
+  /**
+   * Session 8, item 7: under a thermal shed no rate floor is judged, as for a silenced mic, for every shed step;
+   * the rates are still taken, and the zero test still rebuilds a picture that stops dead. The device's own line:
+   * video 18.7, audio 19.6 a second, under audio's floor alone.
+   */
+  @Test
+  fun `item 7 under any thermal shed no rate floor is judged, and a frozen picture still rebuilds`() {
+    // Readings 1 s apart over a 3 s window: 56 video and 59 audio frames are 18.67 and 19.67 a second, shown 18.6 and 19.6.
+    fun throttled(shed: ShedStep?): Pair<StallWatchdog, StallVerdict> {
+      var dog = StallWatchdog(startedAtMs = 0).frames(0, 0, 0, false, false, shed).first
+      dog = dog.frames(15, 23, 500, false, false, shed).first
+      dog = dog.frames(34, 43, 1_500, false, false, shed).first
+      dog = dog.frames(52, 62, 2_500, false, false, shed).first
+      return dog.frames(15 + 56, 23 + 59, 3_500, false, false, shed)
+    }
+    val starved = StallVerdict.Rebuild(StallCause.BELOW_FLOOR, 0, 18.6, 19.6)
+    assertTrue(starved.audioFps!! < StallWatchdog.AUDIO_FLOOR_FPS && starved.videoFps!! >= StallWatchdog.VIDEO_FLOOR_FPS)
+    assertEquals(starved, throttled(shed = null).second, "no shed: the floor holds")
+    var checked = 0
+    for (step in ShedStep.entries) {
+      val (dog, verdict) = throttled(step)
+      assertEquals(StallVerdict.None, verdict, step.wire)
+      assertEquals(starved.videoFps to starved.audioFps, dog.videoFps to dog.audioFps, "Diagnostics still shows the rates")
+      // The zero test is not a rate floor: a picture that stops dead is rebuilt, shed or no shed.
+      var frozen = dog
+      var at = 3_500L
+      val verdicts = mutableListOf<StallVerdict>()
+      repeat(6) {
+        at += 500
+        val (afterFrames, frameVerdict) = frozen.frames(15 + 56, 23 + 59 + 23L * (it + 1), at, false, false, step)
+        val (afterTick, tickVerdict) = afterFrames.tick(at, false)
+        frozen = afterTick
+        verdicts += listOf(frameVerdict, tickVerdict).filter { v -> v != StallVerdict.None }
+      }
+      assertEquals(listOf<StallVerdict>(StallVerdict.Rebuild(StallCause.NO_VIDEO, StallWatchdog.STALL_MS, 18.6, 19.6)), verdicts, step.wire)
+      checked += 1
+    }
+    assertEquals(ShedStep.entries.size, checked)
+    assertTrue(checked > 0)
+  }
+
   @Test
   fun `F-P5-9 a short dip that averages above the floors is not a rebuild`() {
     // Video: P5's browser run, "30 fps apart from one second at 12 fps". Audio: a dip to 15 and 18

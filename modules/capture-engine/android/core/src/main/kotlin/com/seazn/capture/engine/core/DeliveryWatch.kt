@@ -1,5 +1,7 @@
 package com.seazn.capture.engine.core
 
+import java.net.URI
+
 /** What the platform's HTTP client got for one playlist request. */
 sealed interface FetchResult {
   data class Body(val text: String) : FetchResult
@@ -43,7 +45,12 @@ data class LagPoint(val onAirMs: Long, val lagMs: Long)
  *   and went unlisted between two polls (a fetch outage, a late tick) are credited at the configured segment.
  *
  * - Only publishing time counts: an outage is the hold clock's, not a delivery stall.
- * - A variant change is not progress, and does not reset the stall clock (F-P5-2).
+ * - A variant change is not progress, and does not reset the stall clock (F-P5-2). A variant is its URL
+ *   without the query: Cloudflare names its renditions with `lps` and `rcu` values new on every fetch of the
+ *   master, and the watch that took those for a new variant rebaselined on every poll and called a live,
+ *   advancing stream not-delivered 20 s in (F-S7-2, session 7).
+ * - The variant stays on the playback URL's scheme, host and port: a master that names another is no evidence,
+ *   and nothing is fetched from it (F-S7-2).
  * - The thresholds come from the segment we configure, never the playlist's `targetDuration`,
  *   which only grows as a stream goes wrong (F-P5-4).
  * - `EXT-X-ENDLIST` never means ended (H-P5-1).
@@ -64,17 +71,25 @@ data class DeliveryWatch(
   val onAirMs: Long = 0,
   /** Publishing time since the head last moved. */
   val sinceAdvanceMs: Long = 0,
+  /** The variant positions are compared within: its URL without the query ([variantOf]). */
   val variantUrl: String? = null,
   val head: Long? = null,
   /** LL-HLS parts past [head] at the last observation; 0 for plain HLS. */
   val partsMs: Long = 0,
   val advancedInVariant: Boolean = false,
+  /** F-S9-1: the head has advanced at least once in this ingest session; [newSession] forgets it. */
+  val advancedInSession: Boolean = false,
   val mediaMs: Long = 0,
   val baselineOnAirMs: Long = 0,
   val lags: List<LagPoint> = emptyList(),
   val minLagMs: Long? = null,
   val delivery: Delivery = Delivery.UNKNOWN,
   val deliveredLagMs: Long? = null,
+  /**
+   * Re-review 6: a master placed its rendition off the playback host at least once in this broadcast session
+   * ([onPlaybackHost] refused it). Never cleared, by [newSession] either: the machine records it once a session.
+   */
+  val refusedOffHost: Boolean = false,
 ) {
   /** What is polled: the master, restricted to one rendition. */
   val pollUrl: String = hinted(playbackUrl)
@@ -120,6 +135,7 @@ data class DeliveryWatch(
       head = null,
       partsMs = 0,
       advancedInVariant = false,
+      advancedInSession = false,
       mediaMs = 0,
       lags = emptyList(),
       minLagMs = null,
@@ -128,8 +144,8 @@ data class DeliveryWatch(
     )
 
   private fun fetchVariant(master: Playlist.Master, nowMs: Long): Triple<DeliveryWatch, List<PlaylistRequest>, NotDelivered?> {
-    val url = PlaylistParser.resolve(pollUrl, master.variants.first())
-      ?: return Triple(withoutEvidence(), emptyList(), null)
+    val resolved = PlaylistParser.resolve(pollUrl, master.variants.first()) ?: return Triple(withoutEvidence(), emptyList(), null)
+    val url = resolved.takeIf(::onPlaybackHost) ?: return Triple(copy(refusedOffHost = true).withoutEvidence(), emptyList(), null)
     val request = PlaylistRequest(nextRequestId, url)
     val next = copy(pending = request, pendingIsMaster = false, pendingSinceMs = nowMs, nextRequestId = nextRequestId + 1)
     return Triple(next, listOf(request), null)
@@ -166,9 +182,10 @@ data class DeliveryWatch(
    */
   private fun advancedBy(url: String, media: Playlist.Media): DeliveryWatch {
     val previous = head
-    if (url != variantUrl || previous == null || media.head < previous) {
+    val variant = variantOf(url)
+    if (variant != variantUrl || previous == null || media.head < previous) {
       return copy(
-        variantUrl = url,
+        variantUrl = variant,
         head = media.head,
         partsMs = media.partsMs,
         advancedInVariant = false,
@@ -182,7 +199,14 @@ data class DeliveryWatch(
     val firstNew = (previous + 1 - media.mediaSequence).coerceAtLeast(0).toInt()
     val listedMs = media.segmentDurationsMs.drop(firstNew).sum()
     val added = (unlistedMs(previous, media.mediaSequence) + listedMs - partsMs + media.partsMs).coerceAtLeast(0)
-    return copy(head = media.head, partsMs = media.partsMs, mediaMs = mediaMs + added, sinceAdvanceMs = 0, advancedInVariant = true)
+    return copy(
+      head = media.head,
+      partsMs = media.partsMs,
+      mediaMs = mediaMs + added,
+      sinceAdvanceMs = 0,
+      advancedInVariant = true,
+      advancedInSession = true,
+    )
   }
 
   /**
@@ -197,12 +221,36 @@ data class DeliveryWatch(
     return minOf(count * CONFIGURED_SEGMENT_MS, onAirMs - (lags.lastOrNull()?.onAirMs ?: baselineOnAirMs))
   }
 
+  /** Same scheme, host and port as the master polled, and no userinfo (F-S7-2). A port left out is the scheme's. */
+  private fun onPlaybackHost(url: String): Boolean {
+    val base = runCatching { URI(pollUrl) }.getOrNull() ?: return false
+    val target = runCatching { URI(url) }.getOrNull() ?: return false
+    return target.userInfo == null &&
+      target.scheme.equals(base.scheme, ignoreCase = true) &&
+      target.host != null &&
+      target.host.equals(base.host, ignoreCase = true) &&
+      port(target) == port(base)
+  }
+
+  private fun port(uri: URI): Int = if (uri.port != -1) uri.port else if (uri.scheme.equals("https", ignoreCase = true)) 443 else 80
+
   /** No evidence either way: delivery claims nothing, and shows no lag. */
   private fun withoutEvidence(): DeliveryWatch = copy(delivery = Delivery.UNKNOWN, deliveredLagMs = null)
 
-  private fun stalledOr(otherwise: Delivery): Delivery = if (sinceAdvanceMs >= STALLED_AFTER_MS) Delivery.STALLED else otherwise
+  /**
+   * Stalled [STALLED_AFTER_MS] of publishing after the last advance. F-S9-1: before this session's first advance,
+   * [sinceAdvanceMs] counts from live while Cloudflare's first window has not moved yet, so stalled waits for
+   * [NOT_DELIVERED_MS] there (coordinator ruling, session 9): the beat said stalled ~10 s after live, then ok.
+   */
+  private fun stalledOr(otherwise: Delivery): Delivery {
+    val after = if (advancedInSession) STALLED_AFTER_MS else NOT_DELIVERED_MS
+    return if (sinceAdvanceMs >= after) Delivery.STALLED else otherwise
+  }
 
   companion object {
+    /** Re-review 6: the `rendition-refused` line's reason, a fixed word: never the URL or the host refused. */
+    const val OFF_HOST = "off-host"
+
     /** "Polls the variant playlist every ~2 s" (spec §3). */
     const val POLL_MS = 2_000L
 
@@ -227,6 +275,9 @@ data class DeliveryWatch(
 
     /** Mbps. Low, so Cloudflare answers with its lowest rendition, the one every ladder has. */
     const val BANDWIDTH_HINT_MBPS = "0.1"
+
+    /** A variant: its URL without the query and fragment, which Cloudflare renews on every fetch (F-S7-2). */
+    fun variantOf(url: String): String = url.substringBefore('#').substringBefore('?')
 
     /** [url] with `clientBandwidthHint` added to whatever query it already has. */
     fun hinted(url: String): String {

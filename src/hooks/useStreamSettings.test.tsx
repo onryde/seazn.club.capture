@@ -29,8 +29,10 @@ describe('useStreamSettings (D23)', () => {
       kvSeed: { [SETTINGS_KEY]: '{"v":1,"overlay":false,"side":"left"}' },
     });
     const { result } = renderHook(() => useStreamSettings(), { wrapper: wrapperFor(fakes) });
-    expect(result.current.settings).toEqual({ overlay: true, side: 'right' });
-    await waitFor(() => expect(result.current.settings).toEqual({ overlay: false, side: 'left' }));
+    expect(result.current.settings).toEqual({ overlay: true, side: 'right', automatic: true });
+    await waitFor(() =>
+      expect(result.current.settings).toEqual({ overlay: false, side: 'left', automatic: true }),
+    );
     expect(result.current.saveFailed).toBe(false);
   });
 
@@ -40,7 +42,9 @@ describe('useStreamSettings (D23)', () => {
     act(() => result.current.change({ side: 'left' }));
     expect(result.current.settings.side).toBe('left');
     await waitFor(() =>
-      expect(fakes.kv.entries.get(SETTINGS_KEY)).toBe('{"v":1,"overlay":true,"side":"left"}'),
+      expect(fakes.kv.entries.get(SETTINGS_KEY)).toBe(
+        '{\"v\":2,"overlay":true,"side":"left",\"automatic\":true}',
+      ),
     );
     expect(result.current.saveFailed).toBe(false);
   });

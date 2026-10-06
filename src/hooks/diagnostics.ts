@@ -5,6 +5,7 @@ import type {
   Telemetry,
   ThermalStatus,
 } from '@/engine/CaptureEnginePort';
+import { UNREPORTED } from '@/engine/unreported';
 import { formatNumber } from '@/i18n/formatNumber';
 import type { MessageKey } from '@/i18n/messages';
 import type { Translator } from '@/i18n/translate';
@@ -45,6 +46,7 @@ export function diagnosticsSections(
     section('diag.section.delivery', deliveryRows(tel, nowMs, say)),
     section('diag.section.device', deviceRows(snapshot, say)),
     section('diag.section.heartbeat', heartbeatRows(tel, nowMs, say)),
+    section('diag.section.engine', engineRows(snapshot, nowMs, say)),
   ];
 }
 
@@ -66,7 +68,10 @@ const secondsAgo = (say: Say, nowMs: number, atMs: number | null): string =>
 function linkRows(snapshot: EngineSnapshot, say: Say): Pair[] {
   const { t, num } = say;
   const { state, telemetry: tel } = snapshot;
-  const transport = 'transport' in state ? state.transport.toUpperCase() : t('diag.none');
+  const named = 'transport' in state ? state.transport.toUpperCase() : t('diag.none');
+  // A18: a broadcast planned RTMPS-only says so beside its transport; a fallback does not.
+  const transport =
+    snapshot.broadcast?.srtOffered === false ? `${named} · ${t('diag.srtNotOffered')}` : named;
   const { srt } = tel;
   return [
     ['diag.transport', transport],
@@ -151,5 +156,24 @@ function heartbeatRows(tel: Telemetry, nowMs: number, say: Say): Pair[] {
     ['diag.hbSent', secondsAgo(say, nowMs, lastSentAtEpochMs)],
     ['diag.hbResult', result],
     ['diag.hbFailures', num(failures)],
+  ];
+}
+
+/**
+ * Carry 12 and CD17: when native last reported, and the record lines its sink
+ * refused or its re-entrancy guard dropped. `UNREPORTED`'s 0 is "nothing yet",
+ * never a report decades ago. Drift is not silence (review C4c I-4): a refused
+ * snapshot keeps this current and leaves `engine.malformed-snapshot` in the
+ * record below; silence lets it climb.
+ */
+function engineRows(snapshot: EngineSnapshot, nowMs: number, say: Say): Pair[] {
+  const { reportedAtMs, telemetry: tel } = snapshot;
+  return [
+    [
+      'diag.lastReport',
+      secondsAgo(say, nowMs, reportedAtMs === UNREPORTED.reportedAtMs ? null : reportedAtMs),
+    ],
+    ['diag.recordRefused', say.num(tel.recordSinkFailures)],
+    ['diag.recordDropped', say.num(tel.recordReentrantDropped)],
   ];
 }

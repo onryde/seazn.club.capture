@@ -1,7 +1,14 @@
-import type { SessionDescriptor } from '@/domain/credentials/SessionDescriptor';
-import type { Transport } from '@/domain/credentials/StreamCredentials';
-import type { StreamSession } from '@/domain/credentials/StreamSession';
 import { tokenTag } from '@/domain/credentials/tokenTag';
+import {
+  firstNotReady,
+  type BroadcastInfo,
+  type Cause,
+  type LastEnd,
+  type PairingInfo,
+  type Readiness,
+  type Transport,
+  type UnpairReason,
+} from '@/domain/session/Pairing';
 import type {
   DegradeReason,
   EndReason,
@@ -13,18 +20,27 @@ import type {
   CaptureEnginePort,
   EngineIntent,
   EngineSnapshot,
+  PairIntent,
   Telemetry,
 } from './CaptureEnginePort';
+import type { ServerSays } from './contract/serverSays';
+import { IDLE_TELEMETRY } from './unreported';
 
 /**
  * The fake is built first, on purpose (AGENTS §10), and it holds no state
- * machine (spec §2, "One authority"): it plays named snapshots. Intents move
- * it only the few steps a laptop needs — arm, start, stop, reset — and every
- * other state is one `scene()` away.
+ * machine of its own beyond the engine contract's (`test/engineContract.ts`):
+ * it plays named snapshots, and intents and the server's words move it only
+ * the steps a laptop needs. Every other state is one `scene()` away.
  */
 export type FakeScene =
+  | 'pairing'
+  | 'paired-ready'
+  | 'paired-not-ready'
+  | 'paired-not-held'
+  | 'paired-refused'
+  | 'paired-after-organiser-stop'
+  | 'arming-retrying'
   | 'armed-not-ready'
-  | 'armed-ready'
   | 'connecting'
   | 'live'
   | 'fell-back'
@@ -37,13 +53,19 @@ export type FakeScene =
   | 'camera-switching'
   | 'mic-silenced'
   | 'stopped'
-  | 'stopped-by-organiser'
   | 'fatal'
-  | 'shed';
+  | 'shed'
+  | 'unpaired-replaced';
 
 export const FAKE_SCENES: readonly FakeScene[] = [
+  'pairing',
+  'paired-ready',
+  'paired-not-ready',
+  'paired-not-held',
+  'paired-refused',
+  'paired-after-organiser-stop',
+  'arming-retrying',
   'armed-not-ready',
-  'armed-ready',
   'connecting',
   'live',
   'fell-back',
@@ -56,13 +78,16 @@ export const FAKE_SCENES: readonly FakeScene[] = [
   'camera-switching',
   'mic-silenced',
   'stopped',
-  'stopped-by-organiser',
   'fatal',
   'shed',
+  'unpaired-replaced',
 ];
 
+/** How the permission dialog answers a `pair`. */
+export type PermissionAnswer = 'grant' | 'hold' | 'refuse';
+
 export type FakeCaptureEngine = CaptureEnginePort & {
-  /** Jump to a named state from spec §6's list, with telemetry to match. */
+  /** Jump to a named state from spec §6's list, with telemetry and readiness to match. */
   scene(name: FakeScene): void;
   /** Jump to any state; telemetry follows its kind. */
   forceState(state: SessionState): void;
@@ -70,21 +95,28 @@ export type FakeCaptureEngine = CaptureEnginePort & {
   patch(telemetry: Partial<Telemetry>): void;
   /** Change whose camera it is alone, as native reports a take or a reopen under any state. */
   setCamera(camera: CameraState | null): void;
-  /** Replace the descriptor alone, as native's re-fetch on a reconnect does (spec §1). */
-  setDescriptor(descriptor: SessionDescriptor | null): void;
-  /** Replace the armed slot alone: a session native holds from before this visit. */
-  setSlot(slot: number | null): void;
-  /** Replace the armed token's tag alone, likewise (N2). */
-  setTokenTag(tag: string | null): void;
+  /** The server's next word, applied at once: the fake has no beat cadence. */
+  hear(says: ServerSays): void;
+  /** Native's readiness (A11). A Go live waiting in Armed goes on air once every check passes. */
+  setReady(ready: Partial<Readiness>): void;
+  /** How the permission dialog answers the next `pair`, or the one held open now. */
+  setPermissions(answer: PermissionAnswer): void;
+  /** The waiting fields this pairing, and every later one, reports. */
+  setPairing(pairing: Partial<PairingInfo>): void;
   /**
    * The kind of each intent received, oldest first, at most INTENT_LOG_CAP.
-   * Only the kind (M5): until plan C this fake is the production engine
-   * (D25), and an arm carries the token, passphrase and stream key. Tests that
-   * need whole intents record them in the test factory (test/fakePorts.ts).
+   * Only the kind (M5): a `pair` carries the code's token. Tests that need
+   * whole intents record them in the test factory (test/fakePorts.ts).
    */
   readonly intentKinds: readonly EngineIntent['kind'][];
   /** Stop reporting: what a suspended process looks like from JS. */
   suspend(): void;
+  /**
+   * CD18: whether capture would survive the background, as native reports it:
+   * false is Android's foreground service failing to start. The next state
+   * the fake reports sets it again from its kind.
+   */
+  setSurvivesBackground(on: boolean): void;
   /** Stop every timer. Always call this in test teardown. */
   dispose(): void;
 };
@@ -102,39 +134,14 @@ const REPORT_MS = 1000;
 /** M5: a three-hour match sends a handful of intents; the cap only bounds a runaway. */
 export const INTENT_LOG_CAP = 100;
 
-export const IDLE_TELEMETRY: Telemetry = {
-  bitrateKbps: null,
-  targetBitrateKbps: null,
-  audioLevel: 0,
-  cameraReady: false,
-  networkReachable: false,
-  encodedVideoFps: null,
-  audioPacketsPerSecond: null,
-  srt: null,
-  delivery: 'unknown',
-  deliveredLagMs: null,
-  deliveryCheckedAtMs: null,
-  dataUsedBytes: 0,
-  charging: null,
-  batteryPercent: null,
-  drainPctPerHour: null,
-  thermalStatus: null,
-  thermalHeadroom: null,
-  captureTimestampMs: null,
-  shed: null,
-  heartbeat: { lastSentAtEpochMs: null, lastResult: null, consecutiveFailures: 0, failures: 0 },
-};
-
 /**
- * Camera up, sound above the floor, network validated: every chip green.
- * No encoded rates yet: plan B reads them from the on-air stall watchdog, so
- * native reports null until the session is on air.
+ * Camera up, sound above the floor: the meter sounds. No encoded rates yet:
+ * plan B reads them from the on-air stall watchdog, so native reports null
+ * until the session is on air. Readiness is native's `ready`, not telemetry.
  */
 const ARMED: Telemetry = {
   ...IDLE_TELEMETRY,
   audioLevel: 0.42,
-  cameraReady: true,
-  networkReachable: true,
   charging: false,
   batteryPercent: 74,
   thermalStatus: 'none',
@@ -190,12 +197,71 @@ const noEncodedRates = (telemetry: Telemetry): Telemetry => ({
   audioPacketsPerSecond: null,
 });
 
+const NOT_READY: Readiness = { camera: false, sound: false, network: false, held: false };
+const READY: Readiness = { camera: true, sound: true, network: true, held: true };
+/** Native's camera check fails while the camera is not our own (Readiness.kt). */
+const CAMERA_NOT_OURS: Readiness = { ...READY, camera: false };
+
+/**
+ * Made-up waiting fields, the fake's stand-in for the claim's answer. Schema-valid
+ * (capture-descriptor.v1); the tag is the fixture token's (`token-tag-vectors.json`).
+ */
+export const FAKE_PAIRING: PairingInfo = {
+  code: 'fx42hmnp7k2q',
+  slot: 1,
+  tokenTag: 'b24bb97b',
+  automatic: true,
+  label: 'Seazn XI v Fake CC',
+  venueTimezone: 'Europe/London',
+  scheduledStart: null,
+  autoAllowed: true,
+  destinationName: 'YouTube · Fake CC',
+  overlayUrl: 'https://stg.seazn.club/overlay/fixtures/fx42hmnp7k2q',
+  pollSeconds: 60,
+};
+
+const broadcastFor = (pairing: PairingInfo, cause: Cause): BroadcastInfo => ({
+  sid: 'fake-sid-1',
+  cause,
+  playbackUrl: 'https://video.example/fake/manifest/video.m3u8',
+  overlayUrl: pairing.overlayUrl,
+  label: pairing.label,
+  holdWindowSeconds: { srt: 183, rtmps: 183 },
+  maxDurationMinutes: 300,
+  scoreUpdates: 'realtime',
+  srtOffered: true,
+});
+
+/** The phases that hold a broadcast: `stop` ends them, and `pair` and `unpair` leave them alone. */
+const BROADCAST: ReadonlySet<SessionState['kind']> = new Set([
+  'arming',
+  'armed',
+  'connecting',
+  'publishing',
+  'degraded',
+  'reconnecting',
+]);
+
+const AT_REST = {
+  pairing: null,
+  broadcast: null,
+  refusal: null,
+  lastEnd: null,
+  unpaired: null,
+  codeEndedPending: false,
+} as const;
+
+const IDLE: SessionState = { kind: 'idle' };
+
 type Scene = {
   readonly state: SessionState;
   readonly telemetry: Telemetry;
   /** Whose camera, when not what the state's kind implies (`cameraFor`). */
   readonly camera?: CameraState;
-  /** A snapshot native reports by itself a moment later. */
+  /** Native's readiness; every check passes when absent. */
+  readonly ready?: Readiness;
+  readonly extra?: Partial<Pick<EngineSnapshot, 'refusal' | 'lastEnd'>>;
+  /** A snapshot native reports by itself a moment later: our camera's first frame, ready again. */
   readonly then?: { readonly afterMs: number; readonly state: SessionState };
 };
 
@@ -228,10 +294,40 @@ function sceneOf(name: FakeScene, now: number): Scene {
   const since = now - ON_AIR_MS;
   const live = onAir(now);
   switch (name) {
+    case 'pairing':
+      return {
+        state: { kind: 'pairing' },
+        telemetry: IDLE_TELEMETRY,
+        ready: { ...NOT_READY, network: true },
+      };
+    case 'paired-ready':
+      return { state: { kind: 'paired' }, telemetry: ARMED };
+    case 'paired-not-ready':
+      return {
+        state: { kind: 'paired' },
+        telemetry: { ...ARMED, audioLevel: 0.01 },
+        ready: { ...READY, sound: false },
+      };
+    case 'paired-not-held':
+      return { state: { kind: 'paired' }, telemetry: ARMED, ready: { ...READY, held: false } };
+    case 'paired-refused':
+      return { state: { kind: 'paired' }, telemetry: ARMED, extra: { refusal: 'no_credit' } };
+    case 'paired-after-organiser-stop':
+      return {
+        state: { kind: 'paired' },
+        telemetry: ARMED,
+        extra: { lastEnd: 'stopped-by-organiser' },
+      };
+    case 'arming-retrying':
+      return { state: { kind: 'arming', cause: 'automatic', retrying: true }, telemetry: ARMED };
     case 'armed-not-ready':
-      return { state: { kind: 'armed' }, telemetry: { ...ARMED, audioLevel: 0.01 } };
-    case 'armed-ready':
-      return { state: { kind: 'armed' }, telemetry: ARMED };
+      return {
+        state: { kind: 'armed', cause: 'organiser', notReady: 'held' },
+        telemetry: ARMED,
+        ready: { ...READY, held: false },
+      };
+    case 'unpaired-replaced':
+      return { state: IDLE, telemetry: IDLE_TELEMETRY, ready: NOT_READY };
     case 'connecting':
       return { state: { kind: 'connecting', transport: 'srt' }, telemetry: ARMED };
     case 'live':
@@ -255,18 +351,20 @@ function sceneOf(name: FakeScene, now: number): Scene {
     case 'camera-taken':
       return {
         state: degraded('srt', 'camera-taken', since),
-        telemetry: noEncodedRates({ ...live, cameraReady: false }),
+        telemetry: noEncodedRates(live),
         camera: 'taken',
+        ready: CAMERA_NOT_OURS,
       };
     case 'camera-reopened':
       // Plan B holds the session until our reopened camera's first frame: it
       // reads degraded camera-taken with its time on air, never connecting
       // (Projection.onAir). Until that frame the camera is producing none, so
-      // `cameraReady` is false by its own doc. Clean again once a frame advances.
+      // native's camera check fails. Clean again once a frame advances.
       return {
         state: degraded('srt', 'camera-taken', since),
-        telemetry: noEncodedRates({ ...live, cameraReady: false }),
+        telemetry: noEncodedRates(live),
         camera: 'reopening',
+        ready: CAMERA_NOT_OURS,
         then: { afterMs: REOPEN_FIRST_FRAME_MS, state: publishing('srt', since) },
       };
     case 'camera-switching':
@@ -274,8 +372,9 @@ function sceneOf(name: FakeScene, now: number): Scene {
       // camera's first frame (`SWITCHING`: not shown taken, so no degrade).
       return {
         state: publishing('srt', since),
-        telemetry: noEncodedRates({ ...live, cameraReady: false }),
+        telemetry: noEncodedRates(live),
         camera: 'switching',
+        ready: CAMERA_NOT_OURS,
         then: { afterMs: REOPEN_FIRST_FRAME_MS, state: publishing('srt', since) },
       };
     case 'mic-silenced':
@@ -284,11 +383,17 @@ function sceneOf(name: FakeScene, now: number): Scene {
         telemetry: { ...live, audioLevel: 0 },
       };
     case 'stopped':
-      return { state: ended('operator-stopped', ON_AIR_MS), telemetry: IDLE_TELEMETRY };
-    case 'stopped-by-organiser':
-      return { state: ended('stopped-by-organiser', ON_AIR_MS), telemetry: IDLE_TELEMETRY };
+      return {
+        state: ended('operator-stopped', ON_AIR_MS),
+        telemetry: IDLE_TELEMETRY,
+        ready: CAMERA_NOT_OURS,
+      };
     case 'fatal':
-      return { state: ended('fatal-error', ON_AIR_MS), telemetry: IDLE_TELEMETRY };
+      return {
+        state: ended('fatal-error', ON_AIR_MS),
+        telemetry: IDLE_TELEMETRY,
+        ready: CAMERA_NOT_OURS,
+      };
     case 'shed':
       return {
         state: publishing('srt', since),
@@ -305,8 +410,11 @@ function sceneOf(name: FakeScene, now: number): Scene {
 function telemetryFor(state: SessionState, now: number): Telemetry {
   switch (state.kind) {
     case 'idle':
+    case 'pairing':
     case 'ended':
       return IDLE_TELEMETRY;
+    case 'paired':
+    case 'arming':
     case 'armed':
     case 'connecting':
       return ARMED;
@@ -317,25 +425,52 @@ function telemetryFor(state: SessionState, now: number): Telemetry {
   }
 }
 
-/** Plan B's `Snapshot.camera`: ours whenever there is a session, none without one. */
+/**
+ * Plan B's `Snapshot.camera`: ours from the pair on (the permission dialog's
+ * Pairing included, as native reports it), none at rest or once ended.
+ */
 const cameraFor = (state: SessionState): CameraState | null =>
   state.kind === 'idle' || state.kind === 'ended' ? null : 'own';
+
+/**
+ * CD18: Android runs the foreground service from the pair on (amendment §2, the
+ * paired notification), so capture survives the background from Pairing until
+ * Idle or Ended.
+ */
+const survivesFor = (state: SessionState): boolean =>
+  state.kind !== 'idle' && state.kind !== 'ended';
 
 const sinceOf = (state: SessionState): number | null =>
   'sinceEpochMs' in state ? state.sinceEpochMs : null;
 
+type Name = Pick<PairingInfo, 'code' | 'slot' | 'tokenTag'>;
+
+const sameName = (pairing: PairingInfo | null, name: Name) =>
+  pairing !== null &&
+  pairing.code === name.code &&
+  pairing.slot === name.slot &&
+  pairing.tokenTag === name.tokenTag;
+
+/**
+ * The fake's state table, written as one closure so its timers and listeners
+ * have one owner (AGENTS §12's exemption for transition tables). It keeps the
+ * engine contract (`test/engineContract.ts`) and native's answer table where a
+ * laptop needs it (Pairings.kt's `Verdicts`): a word that does not fit the
+ * phase does nothing.
+ */
 export function createFakeCaptureEngine(now: () => number = Date.now): FakeCaptureEngine {
   let snapshot: EngineSnapshot = {
-    state: { kind: 'idle' },
+    ...AT_REST,
+    state: IDLE,
     telemetry: IDLE_TELEMETRY,
-    descriptor: null,
-    slot: null,
-    tokenTag: null,
+    ready: NOT_READY,
     camera: null,
     reportedAtMs: now(),
     survivesBackground: false,
   };
-  let primary: Transport = 'srt';
+  const primary: Transport = 'srt';
+  let permissions: PermissionAnswer = 'grant';
+  let waiting: Partial<PairingInfo> = {};
   const intentKinds: EngineIntent['kind'][] = [];
   const listeners = new Set<() => void>();
   let pending: ReturnType<typeof setTimeout> | null = null;
@@ -345,11 +480,14 @@ export function createFakeCaptureEngine(now: () => number = Date.now): FakeCaptu
     snapshot = { ...snapshot, ...next, reportedAtMs: now() };
     for (const listener of listeners) listener();
   };
-  const show = (
-    state: SessionState,
-    telemetry: Telemetry = telemetryFor(state, now()),
-    camera: CameraState | null = cameraFor(state),
-  ) => publish({ state, telemetry, camera });
+  const show = (state: SessionState, extra: Partial<EngineSnapshot> = {}): void =>
+    publish({
+      state,
+      telemetry: telemetryFor(state, now()),
+      camera: cameraFor(state),
+      survivesBackground: survivesFor(state),
+      ...extra,
+    });
   const cancelPending = (): void => {
     if (pending !== null) clearTimeout(pending);
     pending = null;
@@ -357,67 +495,207 @@ export function createFakeCaptureEngine(now: () => number = Date.now): FakeCaptu
   /**
    * Native reporting a new state by itself, `afterMs` from now. It overwrites
    * `pending` without cancelling it, which is safe only because nothing is ever
-   * pending when it runs: `play` cancels first, and `start` runs only while
-   * armed, which every path reaches with nothing pending (`reset`, `forceState`
-   * and `play` cancel; `arm` runs only from idle).
+   * pending when it runs: `play` and `connect`'s callers cancel or reach it
+   * with nothing pending.
    */
-  const later = (afterMs: number, next: () => SessionState): void => {
+  const later = (
+    afterMs: number,
+    next: () => SessionState,
+    extra: Partial<EngineSnapshot> = {},
+  ) => {
     pending = setTimeout(() => {
       pending = null;
-      show(next());
+      show(next(), extra);
     }, afterMs);
   };
-
-  const arm = ({ descriptor, slot, token, primary: credential }: StreamSession): void => {
-    if (snapshot.state.kind !== 'idle') return;
-    primary = credential.transport;
-    const named = { descriptor, slot, tokenTag: tokenTag(token) };
-    publish({ state: { kind: 'armed' }, telemetry: ARMED, ...named, camera: 'own' });
+  const atRest = (extra: Partial<EngineSnapshot> = {}): void => {
+    cancelPending();
+    show(IDLE, { ...AT_REST, ready: NOT_READY, ...extra });
   };
-  const start = (): void => {
-    if (snapshot.state.kind !== 'armed') return;
-    show({ kind: 'connecting', transport: primary });
+
+  const paired = (pairing: PairingInfo): void =>
+    show({ kind: 'paired' }, { ...AT_REST, pairing, ready: READY });
+
+  /** Native leaves a pairing the operator did not end, and says which and why. */
+  const unpaired = (reason: UnpairReason): void => {
+    const { pairing } = snapshot;
+    if (pairing === null) return;
+    const { code, slot, tokenTag: tag } = pairing;
+    atRest({ unpaired: { reason, code, slot, tokenTag: tag } });
+  };
+
+  /** Another code over a pairing pairs it (native unpairs first); the same code changes nothing. */
+  const pair = (intent: PairIntent): void => {
+    const { kind } = snapshot.state;
+    if (BROADCAST.has(kind) || kind === 'ended') return;
+    const name = { code: intent.code, slot: intent.slot, tokenTag: tokenTag(intent.token) };
+    if ((kind === 'pairing' || kind === 'paired') && sameName(snapshot.pairing, name)) return;
+    const pairing: PairingInfo = {
+      ...FAKE_PAIRING,
+      ...waiting,
+      ...name,
+      venueTimezone: intent.venueTimezone,
+      automatic: intent.automatic,
+    };
+    if (permissions === 'hold') {
+      return show({ kind: 'pairing' }, { ...AT_REST, pairing, ready: NOT_READY });
+    }
+    if (permissions === 'refuse') {
+      // Native's order (review C5, re-review round 1): Pairing, naming no unpair, then the answer.
+      show({ kind: 'pairing' }, { ...AT_REST, pairing, ready: NOT_READY });
+      return atRest({ unpaired: { reason: 'permissions', ...name } });
+    }
+    paired(pairing);
+  };
+
+  const connect = (broadcast: BroadcastInfo): void => {
+    show({ kind: 'connecting', transport: primary }, { broadcast, refusal: null, lastEnd: null });
     later(CONNECT_MS, () => publishing(primary, now()));
   };
+
+  /** A start, remote or held: Armed waits for readiness, as native's gate does (A11). */
+  const goLive = (cause: Cause): void => {
+    const broadcast = snapshot.broadcast ?? broadcastFor(snapshot.pairing ?? FAKE_PAIRING, cause);
+    const notReady = firstNotReady(snapshot.ready);
+    if (notReady !== null) {
+      return show({ kind: 'armed', cause, notReady }, { broadcast, refusal: null, lastEnd: null });
+    }
+    connect(broadcast);
+  };
+
+  /** The operator's hold: only from Paired, and only when ready (Go live is off otherwise). */
+  const start = (): void => {
+    if (snapshot.state.kind !== 'paired' || firstNotReady(snapshot.ready) !== null) return;
+    goLive('operator');
+  };
+
+  /**
+   * Owner decision 1 (2026-10-05), as native's `SessionMachine.stop`: a broadcast that never went live ends and the
+   * pairing stays, Paired with the last end `stopped`, so Go live can be tried again (native beats the stopped sid
+   * at once); one that went live, or one held past a 401, ends the pairing.
+   */
   const stop = (): void => {
-    const { kind } = snapshot.state;
-    if (kind === 'idle' || kind === 'ended') return;
+    if (!BROADCAST.has(snapshot.state.kind)) return;
     cancelPending();
     const since = sinceOf(snapshot.state);
-    show(ended('operator-stopped', since === null ? null : now() - since));
-  };
-  // N1: native resets only from Ended (plan B's SessionMachine.kt); so does the fake.
-  const reset = (): void => {
-    if (snapshot.state.kind !== 'ended') return;
-    cancelPending();
-    publish({
-      state: { kind: 'idle' },
-      telemetry: IDLE_TELEMETRY,
-      descriptor: null,
-      slot: null,
-      tokenTag: null,
-      camera: null,
+    if (since === null && !snapshot.codeEndedPending) {
+      return show({ kind: 'paired' }, { broadcast: null, lastEnd: 'stopped' });
+    }
+    show(ended('operator-stopped', since === null ? null : now() - since), {
+      broadcast: null,
+      ready: { ...snapshot.ready, camera: false },
     });
   };
+
+  const unpair = (): void => {
+    const { kind } = snapshot.state;
+    if (kind === 'pairing' || kind === 'paired') atRest();
+  };
+
+  // N1: native resets only from Ended (plan B's SessionMachine.kt); so does the fake.
+  const reset = (): void => {
+    if (snapshot.state.kind === 'ended') atRest();
+  };
+
+  /** The broadcast ends without the operator: back to Paired with why, or out on a pending 401. */
+  const over = (lastEnd: LastEnd): void => {
+    if (!BROADCAST.has(snapshot.state.kind)) return;
+    cancelPending();
+    if (snapshot.codeEndedPending) return unpaired('code-ended');
+    show({ kind: 'paired' }, { broadcast: null, lastEnd });
+  };
+
+  /** Native's answer table by phase (Pairings.kt `Verdicts`); Ended and Idle hear nothing. */
+  const hear = (says: ServerSays): void => {
+    const { kind } = snapshot.state;
+    const isPaired = kind === 'paired';
+    const held = BROADCAST.has(kind);
+    switch (says.word) {
+      case 'go-live':
+        return isPaired ? goLive(says.cause) : undefined;
+      case 'live':
+        return isPaired ? goLive('rejoin') : undefined;
+      case 'over':
+        return over(says.lastEnd);
+      case 'refused':
+        return isPaired ? publish({ refusal: says.refusal }) : undefined;
+      case 'replaced':
+        return isPaired || kind === 'pairing' || held ? unpaired('replaced') : undefined;
+      case 'taken':
+        return isPaired || kind === 'pairing' ? unpaired('taken') : undefined;
+      case 'code-ended':
+        if (held && kind !== 'arming') return publish({ codeEndedPending: true });
+        return isPaired || kind === 'arming' ? unpaired('code-ended') : undefined;
+    }
+  };
+
+  const setReady = (change: Partial<Readiness>): void => {
+    const ready = { ...snapshot.ready, ...change };
+    const { state } = snapshot;
+    if (state.kind !== 'armed') return publish({ ready });
+    const notReady = firstNotReady(ready);
+    publish({ ready, state: { ...state, notReady } });
+    if (notReady === null && snapshot.broadcast !== null) connect(snapshot.broadcast);
+  };
+
+  const setPermissions = (answer: PermissionAnswer): void => {
+    permissions = answer;
+    if (snapshot.state.kind !== 'pairing' || snapshot.pairing === null || answer === 'hold') return;
+    if (answer === 'grant') return paired(snapshot.pairing);
+    const { code, slot, tokenTag: tag } = snapshot.pairing;
+    atRest({ unpaired: { reason: 'permissions', code, slot, tokenTag: tag } });
+  };
+
+  const automatic = (on: boolean): void => {
+    const { pairing, state } = snapshot;
+    if (pairing !== null && state.kind !== 'ended')
+      publish({ pairing: { ...pairing, automatic: on } });
+  };
+
   const play = (scene: Scene): void => {
     cancelPending();
-    show(scene.state, scene.telemetry, scene.camera);
+    const held = snapshot.pairing ?? { ...FAKE_PAIRING, ...waiting };
+    const resting = scene.state.kind === 'idle';
+    // A pairing native left was paired first: on native an unpair is always reached through
+    // Pairing, which names none (review C5, re-review round 1).
+    if (resting) show({ kind: 'pairing' }, { ...AT_REST, pairing: held, ready: NOT_READY });
+    publish({
+      ...AT_REST,
+      state: scene.state,
+      telemetry: scene.telemetry,
+      camera: scene.camera ?? cameraFor(scene.state),
+      survivesBackground: survivesFor(scene.state),
+      ready: scene.ready ?? READY,
+      pairing: resting ? null : held,
+      broadcast: BROADCAST.has(scene.state.kind)
+        ? (snapshot.broadcast ?? broadcastFor(held, 'operator'))
+        : null,
+      unpaired: resting
+        ? { reason: 'replaced', code: held.code, slot: held.slot, tokenTag: held.tokenTag }
+        : null,
+      ...scene.extra,
+    });
     const { then } = scene;
-    if (then !== undefined) later(then.afterMs, () => then.state);
+    if (then !== undefined) later(then.afterMs, () => then.state, { ready: READY });
   };
 
   const send = (intent: EngineIntent): void => {
     intentKinds.push(intent.kind);
     if (intentKinds.length > INTENT_LOG_CAP) intentKinds.shift();
     switch (intent.kind) {
-      case 'arm':
-        return arm(intent.session);
+      case 'pair':
+        return pair(intent);
       case 'start':
         return start();
       case 'stop':
         return stop();
+      case 'unpair':
+        return unpair();
       case 'reset':
         return reset();
+      case 'setAutomatic':
+        return automatic(intent.on);
+      case 'setLanguage':
       case 'switchCamera':
         return;
     }
@@ -444,11 +722,16 @@ export function createFakeCaptureEngine(now: () => number = Date.now): FakeCaptu
       cancelPending();
       show(state);
     },
+    hear,
+    setReady,
+    setPermissions,
+    setPairing: (change) => {
+      waiting = { ...waiting, ...change };
+      if (snapshot.pairing !== null) publish({ pairing: { ...snapshot.pairing, ...change } });
+    },
     patch: (telemetry) => publish({ telemetry: { ...snapshot.telemetry, ...telemetry } }),
     setCamera: (camera) => publish({ camera }),
-    setDescriptor: (descriptor) => publish({ descriptor }),
-    setSlot: (slot) => publish({ slot }),
-    setTokenTag: (tag) => publish({ tokenTag: tag }),
+    setSurvivesBackground: (on) => publish({ survivesBackground: on }),
     // A suspended process reports nothing at all, a pending connect included.
     suspend: () => {
       cancelPending();

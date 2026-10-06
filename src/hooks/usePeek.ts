@@ -22,7 +22,10 @@ export type Peek = {
  * N4): nothing is left playing where the operator cannot see it.
  */
 export function usePeek(available: boolean): Peek {
-  const playable = available && !useTurnCardShowing();
+  // Read on every render, never behind `&&`: a skipped hook changes the order
+  // React calls them in (rules-of-hooks; HoldAction's twin, 2026-10-05).
+  const turnCard = useTurnCardShowing();
+  const playable = available && !turnCard;
   const [showing, setShowing] = useState(false);
   const [mounted, setMounted] = useState(false);
   const cooling = useCooling(setMounted);

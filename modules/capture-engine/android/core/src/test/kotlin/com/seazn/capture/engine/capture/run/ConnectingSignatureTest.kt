@@ -1,0 +1,459 @@
+package com.seazn.capture.engine.capture.run
+
+import com.seazn.capture.engine.adapter.AttemptSignals
+import com.seazn.capture.engine.adapter.CameraAvailability
+import com.seazn.capture.engine.core.BeatCadence
+import com.seazn.capture.engine.core.BeatReply
+import com.seazn.capture.engine.core.Command
+import com.seazn.capture.engine.core.Configs
+import com.seazn.capture.engine.core.ConnectFailure
+import com.seazn.capture.engine.core.Engine
+import com.seazn.capture.engine.core.FakeClock
+import com.seazn.capture.engine.core.FakeScheduler
+import com.seazn.capture.engine.core.FallbackPolicy
+import com.seazn.capture.engine.core.EndReason
+import com.seazn.capture.engine.core.HeartbeatResponse
+import com.seazn.capture.engine.core.Input
+import com.seazn.capture.engine.core.LastEnd
+import com.seazn.capture.engine.core.Phase
+import com.seazn.capture.engine.core.holdsBroadcast
+import com.seazn.capture.engine.core.session
+import com.seazn.capture.engine.core.RtmpsTarget
+import com.seazn.capture.engine.core.SessionMachine
+import com.seazn.capture.engine.core.SessionRecord
+import com.seazn.capture.engine.core.Side
+import com.seazn.capture.engine.core.SrtTarget
+import java.net.ConnectException
+import java.net.UnknownHostException
+import java.util.concurrent.ConcurrentLinkedQueue
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.asCoroutineDispatcher
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.test.TestScope
+import kotlinx.coroutines.test.advanceTimeBy
+import kotlinx.coroutines.test.runCurrent
+import kotlinx.coroutines.test.runTest
+import org.json.JSONObject
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertIs
+import kotlin.test.assertTrue
+
+/**
+ * Fix round 2, item 4: staging session a094a232 sat in `connecting` over SRT for more than 60 s, then sent no
+ * beat for about 112 s, then came back `paired` with `stopped`. The real machine, the real capture queue
+ * ([CaptureRun], [CaptureSerial]) and the real [AttemptSignals], with only StreamPack faked, on both clocks.
+ *
+ * What these show, whichever way the capture fails:
+ * - The beat runs on the machine's scheduler and never waits on the capture: a start that hangs, on a
+ *   coroutine or on a thread no cancel reaches, leaves the beat cadence as it was.
+ * - The start bound (C6 I-1) and the connect timeout bound one attempt each, never the session: a session
+ *   whose every attempt fails retries every [SessionMachine.RETRY_MS]. Only a counted failure moves it to
+ *   RTMPS, so a session in `connecting` on SRT past three attempts is one whose failures did not count.
+ * - A Stop while never live used to end the pairing with no final beat (A8), and Ended beats nothing, so the
+ *   server heard nothing until the next pairing's first beat carried the stopped sid (A17). Owner decision 1
+ *   (2026-10-05) supersedes that: the pairing stays Paired, and the stopped sid goes on a beat at once.
+ */
+@OptIn(ExperimentalCoroutinesApi::class) // advanceTimeBy and runCurrent
+class ConnectingSignatureTest {
+  /** One beat as the server would have read it. */
+  private data class Beat(val atMs: Long, val state: String, val transport: String?, val sid: String?, val stopped: String?, val notReady: String?)
+
+  private class Rig(private val scope: TestScope) {
+    val clock = FakeClock()
+    val scheduler = FakeScheduler(clock)
+    val lines = mutableListOf<String>()
+    val executed = mutableListOf<Command>()
+    val parts = FakeParts()
+    val told = Told()
+    val beats = mutableListOf<Beat>()
+
+    /** Each capture report, with the capture's own clock when it was made. */
+    val reported = mutableListOf<Pair<Input, Long>>()
+
+    /** When each attempt's start began, on the capture's clock. */
+    val startedAt = mutableMapOf<Int, Long>()
+
+    /** Beats are answered 2xx from the second on; the first is the pairing's, answered by [Configs.pairInputs]. */
+    var answering = false
+
+    /** The answers the next beats get instead of [ANSWER], in order. */
+    val failing = ArrayDeque<HeartbeatResponse>()
+    lateinit var run: CaptureRun
+    val engine =
+      Engine(
+        clock,
+        scheduler,
+        commands = { command ->
+          executed += command
+          if (command is Command.PostHeartbeat) heard(command)
+          run.execute(command)
+        },
+        snapshots = {},
+        record = SessionRecord { lines += it },
+      )
+
+    init {
+      val calls =
+        told.calls(
+          report = {
+            told.reports += it
+            reported += it to scope.testScheduler.currentTime
+            engine.send(it)
+          },
+          cameraBusy = { told.busy += it; engine.send(Input.CameraContended) },
+        )
+      parts.starting = { id -> startedAt[id] = scope.testScheduler.currentTime }
+      run = CaptureRun(parts, AttemptSignals(), CameraAvailability(), calls, { Side.LEFT }, scope.queueScope())
+      engine.start()
+      run.open(Configs.pairRequest())
+    }
+
+    private fun heard(beat: Command.PostHeartbeat) {
+      val body = JSONObject(beat.body)
+      fun text(key: String) = if (body.isNull(key)) null else body.getString(key)
+      beats += Beat(clock.mono, body.getString("state"), text("transport"), text("sid"), text("stopped"), text("notReady"))
+      if (answering) engine.send(Input.HeartbeatAnswered(beat.beatId, failing.removeFirstOrNull() ?: ANSWER))
+    }
+
+    fun kinds(kind: String): List<JSONObject> = lines.map(::JSONObject).filter { it.getString("kind") == kind }
+
+    /** Every attempt the machine asked for: a connect, or a rebuild's or a new session's next one. */
+    val connects: List<Command.Connect>
+      get() = executed.mapNotNull { (it as? Command.Connect) ?: (it as? Command.Rebuild)?.next ?: (it as? Command.StartNewSession)?.next }
+  }
+
+  /** Pair, go live and arm, as staging's session did; beats are answered from here on. */
+  private fun TestScope.armed(rig: Rig) {
+    Configs.pairInputs().forEach(rig.engine::send)
+    rig.scheduler.advanceBy(0)
+    runCurrent()
+    rig.answering = true
+  }
+
+  /** Both clocks forward together, the capture's first, in steps of [STEP_MS]; [each] runs after every step. */
+  private fun TestScope.both(rig: Rig, ms: Long, each: () -> Unit = {}) {
+    var done = 0L
+    while (done < ms) {
+      advanceTimeBy(STEP_MS)
+      runCurrent()
+      rig.scheduler.advanceBy(STEP_MS)
+      runCurrent()
+      each()
+      done += STEP_MS
+    }
+  }
+
+  /** The beat cadence over [beats]: every gap the held cadence, give or take a tick. Returns how many gaps it checked. */
+  private fun cadence(beats: List<Beat>, label: String): Int {
+    val gaps = beats.zipWithNext { a, b -> b.atMs - a.atMs }
+    for (gap in gaps) assertTrue(gap in BeatCadence.HELD_MAX_MS..BeatCadence.HELD_MAX_MS + Engine.TICK_MS, "$label: a beat gap of $gap ms in ${beats.map { it.atMs }}")
+    return gaps.size
+  }
+
+  /** How the capture fails each attempt, and whether that moves the session to RTMPS (C1, F-P5-1, F-P5-2, F-P5-6). */
+  private enum class Failing(val fallsBack: Boolean) {
+    /** The start never returns: the start bound fails it TIMEOUT, counted. */
+    HANGS(fallsBack = true),
+
+    /** The ingest rejects the handshake: REFUSED, counted. */
+    REFUSED(fallsBack = true),
+
+    /** It connects, and the far end closes it at once: a short attempt's drop, counted. */
+    CLOSED_BY_FAR_END(fallsBack = true),
+
+    /** It connects, and no encoded frame reaches the endpoint: the stall watchdog rebuilds it, never counted. */
+    NO_FIRST_FRAME(fallsBack = false),
+
+    /** The start never returns, and the network is not validated: nothing counts (C1). */
+    HANGS_UNVALIDATED(fallsBack = false),
+
+    /** The ingest host does not resolve: UNRESOLVED, never counted (F-P5-1). */
+    UNRESOLVED(fallsBack = false),
+  }
+
+  private fun Rig.fail(how: Failing) {
+    val ids = 1..MAX_ATTEMPTS
+    when (how) {
+      Failing.HANGS, Failing.HANGS_UNVALIDATED -> ids.forEach { parts.gates[it] = CompletableDeferred() }
+      Failing.REFUSED -> ids.forEach { parts.failing[it] = ConnectException("Connection setup failure: connection rejected") }
+      Failing.UNRESOLVED -> ids.forEach { parts.failing[it] = UnknownHostException(Configs.INGEST_HOST) }
+      Failing.CLOSED_BY_FAR_END, Failing.NO_FIRST_FRAME -> Unit
+    }
+  }
+
+  /**
+   * Item 4's sweep: six ways a start fails, each for [WINDOW_MS] on both clocks. In all six the beat keeps its
+   * cadence. The three counted ones are on RTMPS by the fourth attempt, which the beats then name; the three that
+   * never count stay `connecting` on SRT the whole window, as staging's did. A hung start fails TIMEOUT at
+   * exactly [CaptureRun.START_BOUND_MS] after it began.
+   *
+   * CHARACTERISING, not a requirement (re-review 2 §3, AGENTS #4): the uncounted branch (never off SRT, still
+   * `connecting` past 60 s) pins plan B's adopted fallback rules as they stand, not a ruled behaviour. The
+   * amendment (`docs/specs/2026-10-01-s1-amendment-stable-code-design.md:120`) leaves a never-live broadcast's
+   * bound to the server's 10-minute `no_inbound_timeout`, and no phone-side bound on the whole start exists. Its
+   * principle at `:275` (cited as `:276` in the review), "A start that fails never loops all day, and never
+   * leaves the screen silent", is the owner's lever. If an owner ruling adds a whole-start bound, or counts a
+   * failure that does not count now, and that flips this branch, the change is intended: update the branch with
+   * the ruling, never read it as a regression. The cadence, the start bound and the counted branch are rules.
+   */
+  @Test
+  fun `final r2 item 4 whatever the start does the beat keeps its cadence, and (characterising plan B, pending an owner ruling) only uncounted failures stay connecting on SRT`() =
+    runTest {
+      var beatGaps = 0
+      var bounded = 0
+      val checked = mutableListOf<Failing>()
+      for (how in Failing.entries) {
+        val rig = Rig(this)
+        rig.fail(how)
+        armed(rig)
+        if (how == Failing.HANGS_UNVALIDATED) {
+          rig.engine.send(Input.Network(false))
+          rig.scheduler.advanceBy(0)
+        }
+        both(rig, WINDOW_MS) { if (how == Failing.CLOSED_BY_FAR_END) rig.parts.publishing?.let { rig.parts.farEndCloses() } }
+        val label = "$how"
+        val held = rig.beats.filter { it.sid != null }
+        assertTrue(held.size >= (WINDOW_MS / (BeatCadence.HELD_MAX_MS + Engine.TICK_MS)).toInt() - 1, "$label: ${held.size} held beats in $WINDOW_MS ms")
+        beatGaps += cadence(rig.beats, label)
+        assertEquals(setOf("connecting"), held.drop(1).map { it.state }.toSet(), "$label: ${held.map { it.state }}")
+
+        val srt = rig.connects.takeWhile { it.target is SrtTarget }
+        if (how.fallsBack) {
+          assertEquals(FallbackPolicy.FAILURES_TO_FALL_BACK, srt.size, "$label: SRT attempts before the fallback: ${rig.connects.map { it.target }}")
+          assertTrue(rig.connects.drop(srt.size).isNotEmpty() && rig.connects.drop(srt.size).all { it.target is RtmpsTarget }, "$label: then RTMPS")
+          assertEquals(1, rig.kinds("fell-back").size, label)
+          assertTrue(held.any { it.transport == "rtmps" }, "$label: the beats name RTMPS: ${held.map { it.transport }}")
+        } else {
+          // Characterising plan B's rules today, pending an owner ruling on a whole-start bound (see the KDoc).
+          assertTrue(rig.connects.size > FallbackPolicy.FAILURES_TO_FALL_BACK, "$label: ${rig.connects.size} attempts, past the fallback's count")
+          assertTrue(rig.connects.all { it.target is SrtTarget }, "$label: never off SRT")
+          assertEquals(emptyList(), rig.kinds("fell-back"), label)
+          assertEquals(setOf("srt"), held.drop(1).map { it.transport }.toSet(), "$label: ${held.map { it.transport }}")
+          val connecting = held.drop(1)
+          assertTrue(connecting.last().atMs - connecting.first().atMs >= STAGING_CONNECTING_MS, "$label: connecting on SRT for ${connecting.last().atMs - connecting.first().atMs} ms")
+        }
+        if (how == Failing.HANGS || how == Failing.HANGS_UNVALIDATED) {
+          val timeouts = rig.reported.filter { (input, _) -> input is Input.ConnectFailed && input.failure == ConnectFailure.TIMEOUT }
+          assertTrue(timeouts.size >= FallbackPolicy.FAILURES_TO_FALL_BACK, "$label: ${timeouts.size} timeouts")
+          for ((input, at) in timeouts) {
+            val id = (input as Input.ConnectFailed).attemptId
+            assertEquals(CaptureRun.START_BOUND_MS, at - rig.startedAt.getValue(id), "$label: attempt $id's start bound")
+            bounded += 1
+          }
+        }
+        if (how == Failing.HANGS_UNVALIDATED) assertEquals(setOf("network"), held.drop(1).map { it.notReady }.toSet(), "$label: the beats say why")
+        if (how == Failing.NO_FIRST_FRAME) assertTrue(rig.kinds("video-stalled").all { it.getString("cause") == "no-first-frame" } && rig.kinds("video-stalled").isNotEmpty(), label)
+        checked += how
+      }
+      assertEquals(Failing.entries.toList(), checked, "the sweep's own count")
+      assertTrue(beatGaps > 0 && bounded > 0, "$beatGaps beat gaps and $bounded start bounds checked")
+    }
+
+  /**
+   * Item 4's silence, and owner decision 1 (2026-10-05), which supersedes A8's "no final beat when never live":
+   * staging's session was stopped in `connecting` and the server heard nothing for about 112 s, until the next
+   * pairing's first beat. Now a Stop while connecting, never live, keeps the pairing Paired with its service, writes
+   * A17's record, and sends one beat at once, within a tick and never at the cadence: `paired`, holding no sid,
+   * carrying the stopped one. Its 2xx delivers the record, so no later beat carries it, and a second Stop sends nothing.
+   */
+  @Test
+  fun `owner decision 1 a Stop while connecting, never live, beats the stopped sid at once and stays Paired`() =
+    runTest {
+      val rig = Rig(this)
+      rig.fail(Failing.NO_FIRST_FRAME)
+      armed(rig)
+      both(rig, WINDOW_MS)
+      val held = rig.engine.phase
+      assertTrue(held.holdsBroadcast && held.session?.liveSinceEpochMs == null, "held, never live: $held")
+      val before = rig.beats.size
+      val sent = rig.executed.size
+      val stoppedAt = rig.clock.mono
+      rig.engine.send(Input.Stop)
+      rig.scheduler.advanceBy(0)
+      runCurrent()
+      val atStop = rig.executed.drop(sent)
+      assertEquals("sess_42", atStop.filterIsInstance<Command.WriteStopped>().single().record.sid)
+      assertTrue(atStop.none { it is Command.End || it == Command.Release }, "the pairing and its service stay: $atStop")
+      val first = rig.beats.drop(before).first()
+      assertTrue(first.atMs - stoppedAt <= Engine.TICK_MS, "at once, within a tick: ${first.atMs - stoppedAt} ms")
+      assertEquals(Beat(first.atMs, "paired", null, null, "sess_42", first.notReady), first)
+      assertEquals(LastEnd.STOPPED, assertIs<Phase.Paired>(rig.engine.phase).pairing.lastEnd)
+      assertEquals(1, rig.kinds("stopped-delivered").size, "its 2xx delivered it")
+      assertTrue(Command.DeleteStopped("fx42hmnp7k2q", 1) in rig.executed)
+
+      rig.engine.send(Input.Stop)
+      rig.scheduler.advanceBy(0)
+      both(rig, 30_000)
+      val after = rig.beats.drop(before + 1)
+      assertTrue(after.isNotEmpty() && after.all { it.stopped == null && it.state == "paired" }, "never carried twice: $after")
+      assertEquals(1, rig.kinds("intent-ignored").count { it.getString("intent") == "stop" }, "the second Stop holds nothing")
+      assertIs<Phase.Paired>(rig.engine.phase, "the old sid's go-live answers are refused")
+    }
+
+  /** Owner decision 1, through the real machine: the stopped beat's send fails, so the next beat carries it and delivers it. */
+  @Test
+  fun `owner decision 1 a stopped beat that fails is delivered by the next beat`() =
+    runTest {
+      val rig = Rig(this)
+      rig.fail(Failing.NO_FIRST_FRAME)
+      armed(rig)
+      both(rig, 5_000)
+      val before = rig.beats.size
+      rig.failing += HeartbeatResponse.Failed("timeout")
+      rig.engine.send(Input.Stop)
+      rig.scheduler.advanceBy(0)
+      runCurrent()
+      assertEquals(listOf("sess_42"), rig.beats.drop(before).map { it.stopped }, "the stopped beat, which failed")
+      assertTrue(rig.kinds("stopped-delivered").isEmpty())
+      both(rig, BeatCadence.HELD_MAX_MS * 2)
+      val next = rig.beats.drop(before + 1)
+      assertEquals("sess_42", next.first().stopped, "the next beat carries it: $next")
+      assertEquals(1, rig.kinds("stopped-delivered").size, "and delivers it")
+      assertTrue(next.drop(1).all { it.stopped == null }, "once: $next")
+    }
+
+  /** Owner decision 1 leaves a live Stop as A8 has it, through the real machine: Ended, and one final beat, ended with the sid. */
+  @Test
+  fun `owner decision 1 leaves a live Stop as A8 has it - Ended, with one final beat that holds the sid`() =
+    runTest {
+      val rig = Rig(this)
+      armed(rig)
+      both(rig, 1_000)
+      val attempt = (rig.engine.phase as? Phase.OnAir)?.attemptId ?: error("on air: ${rig.engine.phase}")
+      rig.engine.send(Input.Frames(attempt, 15, 23))
+      both(rig, 500)
+      rig.engine.send(Input.Frames(attempt, 30, 46))
+      both(rig, 500)
+      assertTrue(rig.engine.phase.session?.liveSinceEpochMs != null, "live: ${rig.engine.phase}")
+      val before = rig.beats.size
+      rig.engine.send(Input.Stop)
+      rig.scheduler.advanceBy(0)
+      runCurrent()
+      assertEquals(EndReason.OPERATOR_STOPPED, assertIs<Phase.Ended>(rig.engine.phase).reason)
+      val last = rig.beats.drop(before).single()
+      assertEquals(listOf("ended", "sess_42", null), listOf(last.state, last.sid, last.stopped))
+    }
+
+  /**
+   * Item 4, a start that blocks its thread where no cancel reaches it (a vendor call that ignores interrupts), on
+   * real threads as `Dispatchers.Default` runs the capture. The machine never waits on it: every command it hands
+   * the capture returns at once, the beat keeps its cadence, the machine's own connect timeout fails each attempt
+   * queued behind the stuck one, and the third counted failure moves the session to RTMPS. So a stuck capture
+   * thread alone cannot keep a session on SRT, or stop its beats.
+   */
+  @Test
+  fun `final r2 item 4 a start blocked on its thread holds nothing the machine waits for`() {
+    val pool = Executors.newSingleThreadExecutor()
+    val scope = CoroutineScope(pool.asCoroutineDispatcher() + SupervisorJob())
+    val blocked = CountDownLatch(1)
+    val release = CountDownLatch(1)
+    try {
+      val clock = FakeClock()
+      val scheduler = FakeScheduler(clock)
+      val lines = mutableListOf<String>()
+      val executed = mutableListOf<Command>()
+      val beats = mutableListOf<Beat>()
+      val fromCapture = ConcurrentLinkedQueue<Input>()
+      val failures = ConcurrentLinkedQueue<Throwable>()
+      val parts = FakeParts()
+      parts.starting = { id ->
+        if (id == 1) {
+          blocked.countDown()
+          while (true) {
+            try {
+              release.await()
+              break
+            } catch (_: InterruptedException) {
+              // a vendor call that ignores interrupts: keep holding the thread
+            }
+          }
+        }
+      }
+      val calls =
+        CoreCalls(
+          report = { fromCapture += it },
+          failure = { failures += it },
+          pairFailed = { _, t -> failures += t },
+          cameraBusy = {},
+          readiness = { _, _ -> },
+          line = {},
+        )
+      val run = CaptureRun(parts, AttemptSignals(), CameraAvailability(), calls, { Side.LEFT }, scope)
+      var slowest = 0L
+      lateinit var engine: Engine
+      engine =
+        Engine(
+          clock,
+          scheduler,
+          commands = { command ->
+            executed += command
+            if (command is Command.PostHeartbeat) {
+              val body = JSONObject(command.body)
+              beats += Beat(clock.mono, body.getString("state"), body.optString("transport"), body.optString("sid"), null, null)
+              engine.send(Input.HeartbeatAnswered(command.beatId, ANSWER))
+            }
+            val began = System.nanoTime()
+            run.execute(command)
+            slowest = maxOf(slowest, System.nanoTime() - began)
+          },
+          snapshots = {},
+          record = SessionRecord { lines += it },
+        )
+      engine.start()
+      run.open(Configs.pairRequest())
+      Configs.pairInputs().forEach(engine::send)
+      scheduler.advanceBy(0)
+      assertTrue(blocked.await(5, TimeUnit.SECONDS), "attempt 1's start is holding the capture's thread")
+      var stepped = 0L
+      while (stepped < WINDOW_MS) {
+        while (true) engine.send(fromCapture.poll() ?: break)
+        scheduler.advanceBy(STEP_MS)
+        stepped += STEP_MS
+      }
+      assertTrue(slowest < TimeUnit.MILLISECONDS.toNanos(MAX_CALL_MS), "a command took ${slowest / 1_000_000} ms to hand to the capture")
+      assertEquals(listOf("start 1"), parts.log.filter { it.startsWith("start") }, "the capture is still inside attempt 1's start")
+      val gaps = cadence(beats, "blocked")
+      assertTrue(gaps >= (WINDOW_MS / (BeatCadence.HELD_MAX_MS + Engine.TICK_MS)).toInt() - 1, "$gaps beat gaps")
+      val failed = lines.map(::JSONObject).filter { it.getString("kind") == "connect-failed" }
+      assertEquals(List(FallbackPolicy.FAILURES_TO_FALL_BACK) { "timeout" }, failed.take(FallbackPolicy.FAILURES_TO_FALL_BACK).map { it.getString("failure") })
+      assertTrue(failed.take(FallbackPolicy.FAILURES_TO_FALL_BACK).all { it.getBoolean("counted") }, "$failed")
+      val connects = executed.filterIsInstance<Command.Connect>()
+      assertTrue(connects.drop(FallbackPolicy.FAILURES_TO_FALL_BACK).firstOrNull()?.target is RtmpsTarget, "fell back: ${connects.map { it.target }}")
+      assertTrue(beats.any { it.transport == "rtmps" }, "the beats name RTMPS: ${beats.map { it.transport }}")
+      assertEquals(emptyList(), failures.toList(), "the capture's queue took every command")
+    } finally {
+      release.countDown()
+      scope.cancel()
+      pool.shutdownNow()
+    }
+  }
+
+  private companion object {
+    const val STEP_MS = 100L
+
+    /** Two minutes, as staging's session was in `connecting` from 13:41:11.8 to its last beat at 13:43:03.1. */
+    const val WINDOW_MS = 120_000L
+
+    /** Staging's: still `connecting` on SRT more than 60 s after its first connecting beat. */
+    const val STAGING_CONNECTING_MS = 60_000L
+
+    /** Staging's silence, 13:43:03.1 to 13:44:55.3, rounded down. */
+    const val SILENT_MS = 112_000L
+
+    /** More attempts than any window here makes. */
+    const val MAX_ATTEMPTS = 100
+
+    /** Handing a command to the capture is a queue's send: far under this, even on a loaded machine. */
+    const val MAX_CALL_MS = 1_000L
+
+    /** Staging's answer while a session warms: go-live, naming it, with its waiting fields. */
+    val ANSWER = HeartbeatResponse.Answered(200, BeatReply("go-live", "sess_42", "organiser", null, Configs.waiting()))
+  }
+}

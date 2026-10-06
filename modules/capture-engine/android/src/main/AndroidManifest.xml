@@ -1,0 +1,19 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+  <uses-permission android:name="android.permission.CAMERA" />
+  <uses-permission android:name="android.permission.RECORD_AUDIO" />
+  <uses-permission android:name="android.permission.INTERNET" />
+  <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+  <uses-permission android:name="android.permission.WAKE_LOCK" />
+  <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+  <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CAMERA" />
+  <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
+  <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+  <application>
+    <!-- AGENTS §9: camera + microphone, started from the foreground at pairing, after both permissions (A5, CD16).
+         The camera and microphone service types date from API 30 (review C4b M8); minSdk is 31 (CD34). -->
+    <service
+      android:name="com.seazn.capture.engine.CaptureForegroundService"
+      android:exported="false"
+      android:foregroundServiceType="camera|microphone" />
+  </application>
+</manifest>

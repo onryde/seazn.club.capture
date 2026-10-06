@@ -1,5 +1,4 @@
-import type { SessionSecrets } from '@/domain/credentials/StreamSession';
-import { scrubEvent, scrubFields, type LogFields } from '@/services/scrub';
+import { scrubEvent, scrubFields, type HeldSecrets, type LogFields } from '@/services/scrub';
 import type { LogLevel, SessionRecord } from '@/services/sessionRecord';
 
 /**
@@ -13,10 +12,16 @@ export interface Logger {
   error(event: string, fields?: LogFields): void;
   /**
    * M3: from now on these values never reach the record (plan B's
-   * `SessionRecord.protect`). It only ever adds: a value that was a secret in
-   * this process stays masked.
+   * `SessionRecord.protect`), and `textOnly` (the code) never reaches free
+   * text. It only ever adds: a value that was a secret in this process stays
+   * masked.
    */
-  protect(held: SessionSecrets): void;
+  protect(held: HeldSecrets): void;
+  /**
+   * N7: the viewfinder has let its session go. What was protected stays
+   * masked; free text is masked whole until the next `protect` (CD6).
+   */
+  release(): void;
 }
 
 const RANK: Readonly<Record<LogLevel, number>> = { debug: 0, info: 1, warn: 2, error: 3 };
@@ -27,12 +32,20 @@ export function createLogger(deps: {
   minLevel?: LogLevel;
 }): Logger {
   const floor = RANK[deps.minLevel ?? 'debug'];
-  let held: SessionSecrets = { secrets: [], streamIds: [] };
-  const protect = (more: SessionSecrets): void => {
+  let held: Required<HeldSecrets> = { secrets: [], streamIds: [], textOnly: [] };
+  // N7: keyed on the session in hand, not on "anything was ever protected", so a
+  // second code in the same process is covered as the first was.
+  let inHand = false;
+  const protect = (more: HeldSecrets): void => {
     held = {
       secrets: [...held.secrets, ...more.secrets],
       streamIds: [...held.streamIds, ...more.streamIds],
+      textOnly: [...held.textOnly, ...(more.textOnly ?? [])],
     };
+    inHand = true;
+  };
+  const release = (): void => {
+    inHand = false;
   };
   const at =
     (level: LogLevel) =>
@@ -42,9 +55,16 @@ export function createLogger(deps: {
         atMs: deps.now(),
         level,
         event: scrubEvent(event, held),
-        fields: scrubFields(fields, held),
+        fields: scrubFields(fields, held, inHand),
       };
       deps.record.append(entry);
     };
-  return { debug: at('debug'), info: at('info'), warn: at('warn'), error: at('error'), protect };
+  return {
+    debug: at('debug'),
+    info: at('info'),
+    warn: at('warn'),
+    error: at('error'),
+    protect,
+    release,
+  };
 }

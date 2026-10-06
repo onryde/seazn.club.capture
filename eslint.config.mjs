@@ -1,5 +1,6 @@
 import tsParser from '@typescript-eslint/parser';
 import boundaries from 'eslint-plugin-boundaries';
+import reactHooks from 'eslint-plugin-react-hooks';
 import prettier from 'eslint-config-prettier';
 
 /**
@@ -95,25 +96,11 @@ const NO_COLOUR_LITERALS = [
   { selector: `JSXAttribute[name.name=${COLOUR_PROP}] ${NAMED_COLOUR}`, message: COLOUR_MESSAGE },
 ];
 
-/**
- * The on-air phase is not a colour: `connecting` is phase `live`, yet its plate
- * is inert. A plate or component that coloured itself from the phase would
- * paint connecting red, so ui never reads it; `tallyPlateFor` and `tallyTone`
- * are the one colour authority (D14, batch 7 carry 5).
- */
-const NO_PHASE_AS_COLOUR = {
-  name: '@/hooks/engineSelectors',
-  importNames: ['selectOnAirPhase', 'OnAirPhase'],
-  message:
-    'The on-air phase is not a colour (D14): plates take theirs from tallyPlateFor and tallyTone; ask selectIsOnAir for on/off.',
-};
-
 /** The ui import rule, for a given list of services the files may not import. */
 function uiRestrictedImports(services, message) {
   return [
     'error',
     {
-      paths: [NO_PHASE_AS_COLOUR],
       patterns: [{ group: [...UI_NATIVE_IMPORTS, services], allowTypeImports: true, message }],
     },
   ];
@@ -141,7 +128,7 @@ export default [
         ecmaFeatures: { jsx: true },
       },
     },
-    plugins: { boundaries },
+    plugins: { boundaries, 'react-hooks': reactHooks },
     settings: {
       'boundaries/elements': [
         { type: 'domain', pattern: 'src/domain/**' },
@@ -165,6 +152,10 @@ export default [
       // AGENTS §11: no console anywhere — one levelled logger feeds the session
       // record, scrubbed. A console line is unscrubbed and lost at the ground.
       'no-console': 'error',
+      // A hook behind `&&` or an early return changes the order React calls
+      // them in: found on the phone as HoldAction's (2026-10-05). The rule
+      // alone, not the plugin's compiler-era recommended set.
+      'react-hooks/rules-of-hooks': 'error',
       'no-restricted-syntax': ['error', NO_ANY],
       'boundaries/dependencies': [
         'error',

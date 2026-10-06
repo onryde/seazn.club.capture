@@ -1,138 +1,97 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import type { StreamSession } from '@/domain/credentials/StreamSession';
-import { tokenTag } from '@/domain/credentials/tokenTag';
-import type { CaptureEnginePort, EngineIntent } from '@/engine/CaptureEnginePort';
-import { streamSession } from './fixtures/session';
+import type { Readiness } from '@/domain/session/Pairing';
+import type { CaptureEnginePort } from '@/engine/CaptureEnginePort';
+import { ENGINE_SCENARIOS, type ScenarioKit } from '@/engine/contract/engineScenarios';
+import type { ServerSays } from '@/engine/contract/serverSays';
 
-/** One engine for one test, and how to let it go. */
-export type EngineUnderTest = { readonly engine: CaptureEnginePort; dispose(): void };
+/** One engine for one test, the server that answers it, and how to let both go. */
+export type EngineUnderTest = {
+  readonly engine: CaptureEnginePort;
+  say(words: ServerSays): void | Promise<void>;
+  /** See `ScenarioKit.ready`: an engine with a meter resolves on its readiness line (review C4a N-3). */
+  ready(ready: Partial<Readiness>): void | Promise<void>;
+  /** How this engine settles, when it knows better than the kit's default: the bridge waits for a quiet host (PV28). */
+  settle?: Settle;
+  dispose(): void | Promise<void>;
+};
 
 /**
- * Waits until the engine has reported on the intent just sent. The fake
- * reports synchronously, so its default waits for nothing; a bridge waits for
- * native's next snapshot.
+ * Waits until the engine has reported on what was just sent. The fake reports
+ * synchronously, so its default waits for nothing; the bridge waits for the ack (CD8).
  */
 export type Settle = () => Promise<void>;
-
 const NOTHING: Settle = () => Promise.resolve();
 
-/** Two made-up sessions of different matches: A is armed first, B tries to take its place. */
-const A = streamSession();
-const B = streamSession(
-  { sid: '5d9c1d0e-0000-4000-8000-00000000000b', label: 'Example Town v Sample CC' },
-  { sid: '5d9c1d0e-0000-4000-8000-00000000000b', slot: 2, tok: 'fake-token-b0000000000000000000' },
-);
+/** The kit's size, so a scenario lost from the list reds here rather than passing unseen (PV12). */
+export const ENGINE_SCENARIO_COUNT = 14;
 
-const ON_AIR: ReadonlySet<string> = new Set([
-  'connecting',
-  'publishing',
-  'degraded',
-  'reconnecting',
-]);
-
-/**
- * The engine contract (fix round 3, N1): what JS may rely on from any
- * `CaptureEnginePort`. Plan B's core sets it (SessionMachine.kt): reset only
- * from Ended, arm only from Idle, start only from Armed, and stop ends any
- * session. The session is named by its sid, slot and token tag, armed and
- * ended, and by nothing after a reset (C7, C8, N2).
- *
- * It drives the engine through the port's own intents and reads only
- * `getSnapshot()`, never a fake's test hooks, so plan C runs the same kit
- * against the bridge.
- */
 export function describeEngineContract(
   name: string,
-  make: () => EngineUnderTest,
+  make: () => EngineUnderTest | Promise<EngineUnderTest>,
   settle: Settle = NOTHING,
 ): void {
   describe(`the engine contract: ${name}`, () => {
     let subject: EngineUnderTest;
-    beforeEach(() => {
-      subject = make();
+    beforeEach(async () => {
+      subject = await make();
     });
     afterEach(() => subject.dispose());
+    it(`runs all ${ENGINE_SCENARIO_COUNT} scenarios, each named once`, () => {
+      const names = new Set(ENGINE_SCENARIOS.map((scenario) => scenario.name));
+      expect([ENGINE_SCENARIOS.length, names.size]).toEqual([
+        ENGINE_SCENARIO_COUNT,
+        ENGINE_SCENARIO_COUNT,
+      ]);
+    });
+    for (const scenario of ENGINE_SCENARIOS)
+      it(scenario.name, () => scenario.run(scenarioKit(subject, settle)));
+  });
+}
 
-    const snapshot = () => subject.engine.getSnapshot();
-    const kind = () => snapshot().state.kind;
-    const send = async (intent: EngineIntent) => {
+/**
+ * The kit a scenario drives [subject] through: each step settles once, by the engine's own settle
+ * when it has one, else by [settle]; `sendTogether` sends every intent before its one settle (PV33).
+ */
+export function scenarioKit(subject: EngineUnderTest, settle: Settle): ScenarioKit {
+  const settled = () => subject.settle?.() ?? settle();
+  return {
+    send: async (intent) => {
       subject.engine.send(intent);
-      await settle();
+      await settled();
+    },
+    sendTogether: async (intents) => {
+      for (const intent of intents) subject.engine.send(intent);
+      await settled();
+    },
+    say: async (words) => {
+      await subject.say(words);
+      await settled();
+    },
+    ready: async (ready) => {
+      await subject.ready(ready);
+      await settled();
+    },
+    live: () => publishing(subject.engine),
+    snapshot: () => subject.engine.getSnapshot(),
+  };
+}
+
+/** The fake publishes a second after its connect; the JVM host after its first frames, well inside this. */
+export const LIVE_WAIT_MS = 3_000;
+const LIVE_POLL_MS = 20;
+
+/** Polls until [engine] reads publishing, or rejects at [LIVE_WAIT_MS] naming what it read. */
+function publishing(engine: CaptureEnginePort): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const started = Date.now();
+    const poll = (): void => {
+      const { kind } = engine.getSnapshot().state;
+      if (kind === 'publishing') return resolve();
+      if (Date.now() - started >= LIVE_WAIT_MS) {
+        return reject(new Error(`live: saw ${kind} after ${LIVE_WAIT_MS} ms, wanted publishing`));
+      }
+      setTimeout(poll, LIVE_POLL_MS);
     };
-    const arm = (session: StreamSession) =>
-      send({
-        kind: 'arm',
-        session,
-        heartbeat: { url: session.descriptor.heartbeatUrl, token: session.token },
-      });
-    const named = () => ({
-      sid: snapshot().descriptor?.sid ?? null,
-      slot: snapshot().slot,
-      tokenTag: snapshot().tokenTag,
-    });
-    const nameOf = (session: StreamSession) => ({
-      sid: session.sid,
-      slot: session.slot,
-      tokenTag: tokenTag(session.token),
-    });
-
-    it('arms from idle, and a second arm keeps the first session', async () => {
-      expect(kind()).toBe('idle');
-      await arm(A);
-      expect(kind()).toBe('armed');
-      await arm(B);
-      expect(kind()).toBe('armed');
-      expect(named()).toEqual(nameOf(A));
-    });
-
-    it('arms nothing over an ended session or one on air', async () => {
-      await arm(A);
-      await send({ kind: 'start' });
-      expect(ON_AIR.has(kind())).toBe(true);
-      await arm(B);
-      expect(named()).toEqual(nameOf(A));
-      await send({ kind: 'stop' });
-      await arm(B);
-      expect(kind()).toBe('ended');
-      expect(named()).toEqual(nameOf(A));
-    });
-
-    it('starts only from armed: idle and ended stay as they are', async () => {
-      await send({ kind: 'start' });
-      expect(kind()).toBe('idle');
-      await arm(A);
-      await send({ kind: 'stop' });
-      await send({ kind: 'start' });
-      expect(kind()).toBe('ended');
-    });
-
-    it('ends an armed session on stop, operator-stopped, still naming it', async () => {
-      await arm(A);
-      await send({ kind: 'stop' });
-      expect(snapshot().state).toMatchObject({ kind: 'ended', reason: 'operator-stopped' });
-      expect(named()).toEqual(nameOf(A));
-    });
-
-    it('ignores a reset unless ended: an armed session and one on air are left as they are', async () => {
-      await arm(A);
-      await send({ kind: 'reset' });
-      expect(kind()).toBe('armed');
-      expect(named()).toEqual(nameOf(A));
-      await send({ kind: 'start' });
-      await send({ kind: 'reset' });
-      expect(ON_AIR.has(kind())).toBe(true);
-      expect(named()).toEqual(nameOf(A));
-    });
-
-    it('resets an ended session to idle, naming nothing, and then arms the next', async () => {
-      await arm(A);
-      await send({ kind: 'stop' });
-      await send({ kind: 'reset' });
-      expect(kind()).toBe('idle');
-      expect(named()).toEqual({ sid: null, slot: null, tokenTag: null });
-      await arm(B);
-      expect(kind()).toBe('armed');
-      expect(named()).toEqual(nameOf(B));
-    });
+    poll();
   });
 }

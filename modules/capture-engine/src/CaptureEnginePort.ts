@@ -1,5 +1,12 @@
-import type { SessionDescriptor } from '@/domain/credentials/SessionDescriptor';
-import type { StreamSession } from '@/domain/credentials/StreamSession';
+import type {
+  BroadcastInfo,
+  Environment,
+  LastEnd,
+  PairingInfo,
+  Readiness,
+  Refusal,
+  Unpaired,
+} from '@/domain/session/Pairing';
 import type { SessionState, ShedStep } from '@/domain/session/SessionState';
 
 /**
@@ -10,29 +17,49 @@ import type { SessionState, ShedStep } from '@/domain/session/SessionState';
  * developable on a laptop with no device.
  */
 
-/** Where native posts the heartbeat from its foreground service (spec decisions 5 and 6). */
-export type HeartbeatTarget = { readonly url: string; readonly token: string };
+/** A9: `new` from a scan or Continue, `resume` from the cold-start re-pair only. */
+export type Claim = 'new' | 'resume';
 
 /**
- * Intents, not RPC. Every command returns void and is reconciled against
- * native state. A promise that must resolve mid-reconnect is a deadlock
- * waiting for a bad cell.
+ * Everything native needs to pair (amendment, The engine port). `token` is
+ * the code's Bearer: a secret, never logged; the bridge protects it on arrival.
+ * `language` is the notification's (P3), a two-letter code. `venueTimezone` is
+ * the saved waiting fields' (carry T23), so a cold-start re-pair names the
+ * venue's zone before the first beat answers.
+ */
+export type PairIntent = {
+  readonly kind: 'pair';
+  readonly code: string;
+  readonly slot: number;
+  readonly token: string;
+  readonly codeUrl: string;
+  readonly heartbeatUrl: string;
+  readonly startUrl: string;
+  readonly venueTimezone: string;
+  readonly language: string;
+  readonly automatic: boolean;
+  readonly claim: Claim;
+  readonly environment: Environment;
+};
+
+/**
+ * Intents, not RPC (AGENTS §2): each returns void, is reconciled against
+ * native state, and native ignores one that does not fit. A promise that must
+ * resolve mid-reconnect is a deadlock waiting for a bad cell.
  *
- * Note what is absent: lifecycle sends no intents. Native receives
- * `applicationDidBecomeActive` / `onResume` itself and owns the decision to
- * reconnect. A `start` sent from JS on return could open a *new* broadcast on
- * a live input the compositor already considers finished.
+ * Note what is absent: lifecycle sends no intents, and nothing arms. Native
+ * receives `onResume` itself and owns reconnecting, and it arms itself on a
+ * start (amendment, The engine port: "`arm` goes").
  */
 export type EngineIntent =
-  | { readonly kind: 'arm'; readonly session: StreamSession; readonly heartbeat: HeartbeatTarget }
+  | PairIntent
   | { readonly kind: 'start' }
   | { readonly kind: 'stop' }
-  /**
-   * Clear a finished session so the next fixture can be scanned. Ended only:
-   * native ignores it in any other state (plan B's SessionMachine.kt), so an
-   * armed session is stopped first (fix round 3, N1).
-   */
+  | { readonly kind: 'unpair' }
+  /** Clear an ended session so the next code can pair. Ended only: native ignores it elsewhere. */
   | { readonly kind: 'reset' }
+  | { readonly kind: 'setAutomatic'; readonly on: boolean }
+  | { readonly kind: 'setLanguage'; readonly language: string }
   | { readonly kind: 'switchCamera' };
 
 /**
@@ -55,35 +82,24 @@ export type CameraState = 'own' | 'taken' | 'reopening' | 'resuming' | 'switchin
 export type EngineSnapshot = {
   readonly state: SessionState;
   readonly telemetry: Telemetry;
-  /**
-   * What the session was armed with, secrets left behind (D8): the UI needs
-   * the overlay and playback URLs, the label and the warming deadline, and
-   * never the token, passphrase or stream key. Null before an arm.
-   */
-  readonly descriptor: SessionDescriptor | null;
-  /**
-   * The slot the session was armed with: which camera position of the match,
-   * and so which credential, this phone publishes. Null before an arm and
-   * after a reset. Together with `descriptor.sid` it names the session a
-   * returning code may adopt (C7: another slot is another camera). Plan B's
-   * native snapshot carries neither; plan C's bridge must report both.
-   */
-  readonly slot: number | null;
-  /**
-   * N2: `tokenTag` of the armed session's token, never the token (D8). With
-   * `descriptor.sid` and `slot` it names the code native holds, so a re-issued
-   * code (same match and slot, new token) is told from the first. Null before
-   * an arm and after a reset. Plan C: the bridge computes it at the arm with
-   * the same `tokenTag` and native echoes it (C8).
-   */
-  readonly tokenTag: string | null;
-  /** Null with no session: idle, and once ended (plan B's `Snapshot.camera`). */
+  /** From `pair` until `reset` or Idle; Ended keeps it, so JS can forget the code it names. */
+  readonly pairing: PairingInfo | null;
+  /** While a broadcast is held. Ended carries none (CD40). */
+  readonly broadcast: BroadcastInfo | null;
+  /** Native's readiness verdict (A11), the one authority behind the chips and Go live. */
+  readonly ready: Readiness;
+  readonly refusal: Refusal | null;
+  readonly lastEnd: LastEnd | null;
+  /** In Idle after an unpair the operator did not ask for, until the next `pair`. */
+  readonly unpaired: Unpaired | null;
+  /** A 401 seen while a broadcast is held: "Code ended" follows the broadcast's end. */
+  readonly codeEndedPending: boolean;
+  /** Null with no session: idle, pairing, and once ended (plan B's `Snapshot.camera`). */
   readonly camera: CameraState | null;
   /**
-   * The phone clock when native emitted this, in epoch ms. Nothing in S1
-   * plan A reads it: the in-process fake cannot stall. What the app shows when
-   * native stops reporting (a stale snapshot) is plan C's decision, made with
-   * the bridge (final review M1); until then the app makes no staleness claim.
+   * The phone clock when native emitted this, in epoch ms. What the app shows
+   * when native stops reporting (a stale snapshot) is plan C's decision, made
+   * with the bridge (final review M1); until then the app makes no staleness claim.
    */
   readonly reportedAtMs: number;
   /**
@@ -131,9 +147,11 @@ export type HeartbeatStatus = {
  * `bitrateKbps`, `targetBitrateKbps`, `encodedVideoFps`, `audioPacketsPerSecond`,
  * `srt`, `delivery`, `deliveredLagMs`, `dataUsedBytes`, `charging`,
  * `heartbeat`, `shed`. The device fields are plan B's `DeviceSample`
- * flattened, with the thermal int named. `audioLevel`, `cameraReady`,
- * `networkReachable`, `deliveryCheckedAtMs` and `captureTimestampMs` are
- * platform facts plan C's bridge adds.
+ * flattened, with the thermal int named. `audioLevel`, `deliveryCheckedAtMs`
+ * and `captureTimestampMs` are platform facts plan C's bridge adds; the
+ * counters after `heartbeat` are the bridge's own (C4a). Camera and network
+ * readiness are not telemetry: native's `ready` is their one authority (A11).
+ * The keys are `wire/snapshot-vectors.json`'s `telemetryKeys`, exactly.
  *
  * **Null is "no reading", never zero and never healthy.** Native reports null
  * off air, while the camera is taken (the stall watchdog holds, so the
@@ -147,10 +165,6 @@ export type Telemetry = {
   readonly targetBitrateKbps: number | null;
   /** Peak audio level, 0-1. Nothing downstream normalises, so this is load-bearing. */
   readonly audioLevel: number;
-  /** Pre-flight (spec §1): the camera is producing frames. */
-  readonly cameraReady: boolean;
-  /** Pre-flight: a validated network, not merely a connected one. */
-  readonly networkReachable: boolean;
   /** F-P5-4: encoded video frames and audio packets per second. Null off air and while the camera is taken. */
   readonly encodedVideoFps: number | null;
   readonly audioPacketsPerSecond: number | null;
@@ -180,6 +194,25 @@ export type Telemetry = {
   /** How far down the degradation ladder the device is (AGENTS §8). A device condition, not a state. */
   readonly shed: ShedStep | null;
   readonly heartbeat: HeartbeatStatus;
+  /** Record lines the native sink refused, and lines dropped by its re-entrancy guard (Diagnostics). */
+  readonly recordSinkFailures: number;
+  readonly recordReentrantDropped: number;
+  /**
+   * Native's `RecordCounters` (review 13 I3, review C4a I-2 and m-8): failures
+   * that reached the scheduler's task boundary; reporters that failed to report
+   * one; snapshots the projection or the bridge threw on, or sent over the last
+   * good facts; commands the platform threw on; and `stickyFailure` while a
+   * platform failure is held, each attempt refused until the next pair (carry
+   * 18). No UI row reads them, and nothing in JS does: the spec names no
+   * Diagnostics row for them (review C5 I-2). They travel only on the snapshot,
+   * as telemetry; the shared record carries native's own lines (a
+   * `command-failed` line per command the platform threw on), not these counts.
+   */
+  readonly taskFailures: number;
+  readonly reporterFailures: number;
+  readonly snapshotFailures: number;
+  readonly commandFailures: number;
+  readonly stickyFailure: boolean;
 };
 
 /**

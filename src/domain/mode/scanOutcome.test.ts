@@ -5,7 +5,7 @@ import { scanOutcome } from '@/domain/mode/scanOutcome';
 const streamCode: ModeCode = {
   mode: 'stream',
   raw: '{"fake":true}',
-  sid: 'fake-sid',
+  code: 'fx42hmnp7k2q',
   slot: 0,
   token: 'fake-token',
   expiresAt: new Date('2026-10-03T18:40:00Z'),

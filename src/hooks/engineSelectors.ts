@@ -1,3 +1,4 @@
+import { NO_NAME, type CodeName } from '@/domain/mode/codeName';
 import type { EngineStatus } from '@/domain/mode/reopen';
 import type { EngineSnapshot } from '@/engine/CaptureEnginePort';
 
@@ -11,78 +12,36 @@ import type { EngineSnapshot } from '@/engine/CaptureEnginePort';
  */
 
 /**
- * Where the session stands relative to going out: nothing yet, armed, on air,
- * or on air and fighting. A phase, NOT a colour: `connecting` is phase `live`
- * here, yet its plate is inert, never red, because LIVE waits for frames to
- * advance (F-P5-6). A plate's colour comes only from `tallyPlateFor` and
- * `tallyTone` in preflight.ts; lint bars src/ui from importing this.
- */
-export type OnAirPhase = 'idle' | 'ready' | 'live' | 'trouble';
-
-export function selectOnAirPhase(snapshot: EngineSnapshot): OnAirPhase {
-  switch (snapshot.state.kind) {
-    case 'idle':
-    case 'ended':
-      return 'idle';
-    case 'armed':
-      return 'ready';
-    case 'connecting':
-    case 'publishing':
-      return 'live';
-    case 'degraded':
-    case 'reconnecting':
-      return 'trouble';
-  }
-}
-
-/**
- * On air in the only sense the operator cares about: something is going out, or
- * the app is fighting to keep it going out. One definition, because three
- * screens now ask the question — the viewfinder to choose its action, Settings
- * and Diagnostics to show that the broadcast is still running behind them.
- *
- * Broader than `selectIsPublishing`, which excludes connecting and
- * reconnecting. Those are exactly the moments when stopping costs the match.
- */
-export function selectIsOnAir(snapshot: EngineSnapshot): boolean {
-  const phase = selectOnAirPhase(snapshot);
-  return phase === 'live' || phase === 'trouble';
-}
-
-/**
  * The engine as the shell's reopen and leave rules see it. Module scope and
  * primitive-returning, like every selector here, so a 1 Hz tick re-renders
- * nothing unless the status itself changes.
+ * nothing unless the status itself changes. The `default` is safe because
+ * `ended` and the resting kinds are named: a new broadcast kind is `live` by
+ * construction, which is the amendment's rule.
  */
 export function selectEngineStatus(snapshot: EngineSnapshot): EngineStatus {
   const { state } = snapshot;
   switch (state.kind) {
     case 'idle':
       return 'idle';
-    case 'armed':
-      return 'armed';
-    case 'connecting':
-    case 'publishing':
-    case 'degraded':
-    case 'reconnecting':
-      return 'live';
+    case 'pairing':
+    case 'paired':
+      return 'paired';
     case 'ended':
-      // D10: an organiser stop spends the code, exactly as the operator's does.
-      return state.reason === 'operator-stopped' || state.reason === 'stopped-by-organiser'
-        ? 'stopped'
-        : 'failed';
+      return state.reason === 'operator-stopped' ? 'stopped' : 'failed';
+    default:
+      return 'live';
   }
 }
 
 /**
- * Whether the orientation gate must hold its lock (ruling R24): armed or live.
- * Armed counts, unlike `selectIsOnAir`, because the camera is already running
- * and a rotation would re-lay it out; this asks "is the camera committed", not
- * "is something going out".
+ * Whether the orientation gate must hold its lock (ruling R24): paired or
+ * live. The camera is open while paired (CD37), so the lock holds from Paired
+ * on, as it did from Armed; this asks "is the camera committed", not "is
+ * something going out".
  */
 export function selectHoldsOrientation(snapshot: EngineSnapshot): boolean {
   const status = selectEngineStatus(snapshot);
-  return status === 'armed' || status === 'live';
+  return status === 'paired' || status === 'live';
 }
 
 /**
@@ -94,42 +53,79 @@ export const selectStateKind = (snapshot: EngineSnapshot) => snapshot.state.kind
 export const selectBitrateKbps = (snapshot: EngineSnapshot) => snapshot.telemetry.bitrateKbps;
 export const selectAudioLevel = (snapshot: EngineSnapshot) => snapshot.telemetry.audioLevel;
 export const selectShed = (snapshot: EngineSnapshot) => snapshot.telemetry.shed;
-export const selectSurvivesBackground = (snapshot: EngineSnapshot) => snapshot.survivesBackground;
-/** Null with no descriptor, and null when the server sent no usable overlay (a /relay or foreign URL). */
+/** The broadcast's overlay, else the pairing's; null when the server sent no usable one. */
 export const selectOverlayUrl = (snapshot: EngineSnapshot) =>
-  snapshot.descriptor?.overlayUrl ?? null;
+  snapshot.broadcast?.overlayUrl ?? snapshot.pairing?.overlayUrl ?? null;
+/**
+ * Final review I-2: whether the overlay URL is the server's word yet. The pair
+ * intent carries none, so a pairing's waiting fields, its overlay among them,
+ * come with its first 2xx answer, and its label is empty until then (the
+ * contract's label is never empty). A broadcast's descriptor carries its own.
+ */
+export const selectOverlayKnown = (snapshot: EngineSnapshot) =>
+  snapshot.broadcast !== null || (snapshot.pairing !== null && snapshot.pairing.label !== '');
 export const selectPlaybackUrl = (snapshot: EngineSnapshot) =>
-  snapshot.descriptor?.playbackUrl ?? null;
-export const selectScoreUpdates = (snapshot: EngineSnapshot) =>
-  snapshot.descriptor?.scoreUpdates ?? null;
-export const selectLabel = (snapshot: EngineSnapshot) => snapshot.descriptor?.label ?? null;
-/** What names native's session (I1, C7, N2): read apart, so each is a stable scalar. */
-export const selectHeldSid = (snapshot: EngineSnapshot) => snapshot.descriptor?.sid ?? null;
-export const selectHeldSlot = (snapshot: EngineSnapshot) => snapshot.slot;
-export const selectHeldTokenTag = (snapshot: EngineSnapshot) => snapshot.tokenTag;
-/** The venue's zone from the armed descriptor: every time the operator reads is in it (spec §2). */
+  snapshot.broadcast?.playbackUrl ?? null;
+/** Pairing's label is empty until the claim is answered: read as none. */
+export const selectLabel = (snapshot: EngineSnapshot) =>
+  snapshot.broadcast?.label || snapshot.pairing?.label || null;
+/** The venue's zone from the pairing: every time the operator reads is in it (spec §2). */
 export const selectVenueZone = (snapshot: EngineSnapshot) =>
-  snapshot.descriptor?.venueTimezone ?? null;
+  snapshot.pairing?.venueTimezone || null;
+/** When the match is scheduled to start, as epoch ms (a primitive); null with none. */
+export const selectScheduledStartMs = (snapshot: EngineSnapshot) =>
+  snapshot.pairing?.scheduledStart?.getTime() ?? null;
+/** AUTO shows only when automatic mode is on at both ends (A4): the organiser's and the phone's. */
+export const selectAutomaticOn = (snapshot: EngineSnapshot) =>
+  snapshot.pairing !== null && snapshot.pairing.autoAllowed && snapshot.pairing.automatic;
+/**
+ * The pre-picked destination's name; none when the organiser picked none. The
+ * wire never sends an empty one (minLength 1), so an empty one reads as none,
+ * as `selectLabel` reads an empty label.
+ */
+export const selectDestination = (snapshot: EngineSnapshot) =>
+  snapshot.pairing?.destinationName || null;
+/** How the session ended, once it has (Ended's own two reasons); null before. */
+export const selectEndReason = (snapshot: EngineSnapshot) =>
+  snapshot.state.kind === 'ended' ? snapshot.state.reason : null;
 /** Time on air when it ended (plan B's `durationMs`); null for a session that never went live. */
 export const selectEndedDurationMs = (snapshot: EngineSnapshot) =>
   snapshot.state.kind === 'ended' ? snapshot.state.durationMs : null;
-/** Whether native holds a session it was armed with; before that there is no overlay to try. */
-export const selectHasDescriptor = (snapshot: EngineSnapshot) => snapshot.descriptor !== null;
-/** A number, not the Date: `useEngineSelector` compares by identity. */
-export const selectWarmingDeadlineMs = (snapshot: EngineSnapshot) =>
-  snapshot.descriptor?.warmingDeadline.getTime() ?? null;
+/** Whether native holds a pairing; before that there is no overlay to try. */
+export const selectHasPairing = (snapshot: EngineSnapshot) => snapshot.pairing !== null;
+/** What names native's pairing (amendment, Identity rules): read apart, so each is a stable scalar. */
+export const selectHeldCode = (snapshot: EngineSnapshot) => snapshot.pairing?.code ?? null;
+export const selectHeldSlot = (snapshot: EngineSnapshot) => snapshot.pairing?.slot ?? null;
+export const selectHeldTokenTag = (snapshot: EngineSnapshot) => snapshot.pairing?.tokenTag ?? null;
 
-/** The transport in use, or null when nothing is connected. */
-export function selectTransport(snapshot: EngineSnapshot): 'srt' | 'rtmps' | null {
-  const { state } = snapshot;
-  return 'transport' in state ? state.transport : null;
+/** For one-off reads (usePairing), never for useEngineSelector: a new object each call. */
+export function selectHeldName(snapshot: EngineSnapshot): CodeName {
+  const { pairing } = snapshot;
+  return pairing === null
+    ? NO_NAME
+    : { code: pairing.code, slot: pairing.slot, tokenTag: pairing.tokenTag };
 }
 
-/** True whenever bytes are reaching the front door. */
-export function selectIsPublishing(snapshot: EngineSnapshot): boolean {
-  const { kind } = snapshot.state;
-  return kind === 'publishing' || kind === 'degraded';
+/** The pairing native left without being asked, by name; null when none (one-off reads only). */
+export function selectUnpairedName(snapshot: EngineSnapshot): CodeName | null {
+  const { unpaired } = snapshot;
+  return unpaired === null
+    ? null
+    : { code: unpaired.code, slot: unpaired.slot, tokenTag: unpaired.tokenTag };
 }
+
+/**
+ * The unpair native names, as one primitive, so `useEngineSelector` compares it
+ * with Object.is: one change per unpair, not per snapshot. Null with none.
+ */
+export const selectUnpairedKey = (snapshot: EngineSnapshot): string | null => {
+  const { unpaired } = snapshot;
+  return unpaired === null
+    ? null
+    : `${unpaired.reason}|${unpaired.code}|${unpaired.slot}|${unpaired.tokenTag}`;
+};
+/** Why native left the pairing, a primitive beside the key; null with no unpair. */
+export const selectUnpairedReason = (snapshot: EngineSnapshot) => snapshot.unpaired?.reason ?? null;
 
 /**
  * When the current broadcast began, or null when nothing is running.

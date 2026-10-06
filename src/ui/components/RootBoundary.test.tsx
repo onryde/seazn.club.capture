@@ -3,6 +3,8 @@ import type { ReactElement } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { selectAudioLevel, selectStateKind } from '@/hooks/engineSelectors';
 import { useEngineSelector } from '@/hooks/useCaptureEngine';
+import { noteLanguage, resetLastLanguage } from '@/hooks/lastLanguage';
+import { STORE_KEYS } from '@/services/modeStore';
 import { RootBoundary } from '@/ui/components/RootBoundary';
 import { createFakePorts, readRecord, TEST_NOW } from '../../../test/fakePorts';
 import { captureRaw, epochSeconds } from '../../../test/fixtures/wire';
@@ -21,7 +23,7 @@ function Boom(): ReactElement {
 
 const MAY_BE_LIVE = 'The broadcast may still be live. Try again to get back to Stop.';
 const GO_LIVE = 'Go live. Press and hold for 3 seconds.';
-const STOP = 'Stop. Press and hold for 3 seconds.';
+const STOP = 'Hold to stop and unpair';
 
 /** Holds an action for its 3 s, as the operator does. */
 async function hold(name: string) {
@@ -40,7 +42,7 @@ function HudPart(): null {
   return null;
 }
 
-/** The same, re-rendered by the sound level: a crash while armed, with no change of state. */
+/** The same, re-rendered by the sound level: a crash while paired, with no change of state. */
 function MeterPart(): null {
   const level = useEngineSelector(selectAudioLevel);
   if (crash.on) throw new Error(`render failed at ${level}`);
@@ -56,6 +58,8 @@ describe('RootBoundary', () => {
   // React reports every caught render error on console.error; keep the run quiet.
   beforeEach(() => {
     vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    // Each test starts as a cold launch: no language resolved yet (P1).
+    resetLastLanguage();
   });
   afterEach(() => {
     vi.restoreAllMocks();
@@ -122,6 +126,51 @@ describe('RootBoundary', () => {
     expect(screen.getByRole('button', { name: retry })).toBeTruthy();
   });
 
+  it('P1 a crash after the operator picked French reads in French, though the phone is English', () => {
+    noteLanguage('fr');
+    const fakes = createFakePorts({ deviceLanguages: ['en'] });
+    render(
+      <RootBoundary ports={fakes.ports}>
+        <Boom />
+      </RootBoundary>,
+    );
+    expect(screen.getByText('Un problème est survenu')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Réessayer' })).toBeTruthy();
+  });
+
+  it('P1 a crash before any language resolved reads in the phone language', () => {
+    const fakes = createFakePorts({ deviceLanguages: ['nl'] });
+    render(
+      <RootBoundary ports={fakes.ports}>
+        <Boom />
+      </RootBoundary>,
+    );
+    expect(screen.getByText('Er ging iets mis')).toBeTruthy();
+  });
+
+  // The seam through its real producer: the language provider notes the operator's saved pick.
+  it('P1 a crash in the app reads the pick the language provider resolved', async () => {
+    vi.useFakeTimers();
+    try {
+      const app = await launchApp({
+        kvSeed: { [STORE_KEYS.lang]: 'nl' },
+        extra: <HudPart />,
+        around: (ui, fakes) => <RootBoundary ports={fakes.ports}>{ui}</RootBoundary>,
+      });
+      // The phone is English; the operator's saved pick is Dutch, and the app reads it.
+      expect(app.ports.deviceLanguages).toEqual(['en']);
+      expect(screen.getByRole('button', { name: /Livestream/ })).toBeTruthy();
+      crash.on = true;
+      act(() => app.engine.forceState({ kind: 'pairing' }));
+      await flush();
+      expect(screen.getByText('Er ging iets mis')).toBeTruthy();
+      expect(screen.queryByText('Something broke')).toBeNull();
+    } finally {
+      crash.on = false;
+      vi.useRealTimers();
+    }
+  });
+
   describe('on air', () => {
     beforeEach(() => vi.useFakeTimers());
     afterEach(() => {
@@ -148,7 +197,7 @@ describe('RootBoundary', () => {
       expect(screen.queryByRole('button', { name: STOP })).toBeNull();
       // Native never heard of the crash: the broadcast goes on.
       expect(app.engine.getSnapshot().state.kind).toBe('degraded');
-      expect(intentKinds(app)).toEqual(['arm', 'start']);
+      expect(intentKinds(app)).toEqual(['pair', 'start']);
       expect(readRecord(app.record).map((entry) => entry.event)).toContain('ui.crash');
 
       crash.on = false;
@@ -156,7 +205,7 @@ describe('RootBoundary', () => {
       await flush();
       expect(app.nav.current()).toBe('stream');
       await hold(STOP);
-      expect(intentKinds(app)).toEqual(['arm', 'start', 'stop']);
+      expect(intentKinds(app)).toEqual(['pair', 'start', 'stop']);
       expect(app.engine.getSnapshot().state).toMatchObject({
         kind: 'ended',
         reason: 'operator-stopped',
@@ -199,14 +248,14 @@ describe('RootBoundary', () => {
     });
   });
 
-  describe('armed', () => {
+  describe('paired', () => {
     beforeEach(() => vi.useFakeTimers());
     afterEach(() => {
       crash.on = false;
       vi.useRealTimers();
     });
 
-    it('a crash before air: Try again returns to Arm, and Home then Continue still opens it', async () => {
+    it('a crash before air: Try again returns to Ready, and Home then Continue still opens it', async () => {
       const app = await launchApp({
         extra: <MeterPart />,
         around: (ui, fakes) => <RootBoundary ports={fakes.ports}>{ui}</RootBoundary>,
@@ -227,8 +276,8 @@ describe('RootBoundary', () => {
       await flush();
       expect(app.nav.current()).toBe('stream');
       expect(screen.getByRole('button', { name: GO_LIVE })).toBeTruthy();
-      // Adopted every time, never re-armed: the same code's session.
-      expect(intentKinds(app)).toEqual(['arm']);
+      // Adopted every time, never paired again: the same code's pairing.
+      expect(intentKinds(app)).toEqual(['pair']);
     });
   });
 });

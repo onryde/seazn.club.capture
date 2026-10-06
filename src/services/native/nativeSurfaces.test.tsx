@@ -1,10 +1,11 @@
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import { createElement } from 'react';
 import { describe, expect, it, vi } from 'vitest';
+import { StyleSheet } from 'react-native';
 import { createLogger } from '@/services/logger';
 import { createNativeSurfaces, type SurfacePackages } from '@/services/native/nativeSurfaces';
 import { NO_MEDIA_CAPTURE } from '@/services/overlayGuard';
-import { createRingRecord } from '@/services/sessionRecord';
+import { createRingRecord, parseRecordLine } from '@/services/sessionRecord';
 
 // This "binary" has neither package: importing one throws, as the native halves
 // do on a phone built without them (requireNativeModule / getEnforcing). With a
@@ -33,6 +34,19 @@ function fakeWebView() {
   return { renders, pkg: { WebView } as unknown as WebViewPackage };
 }
 
+/** The engine module's native view (Task 39), recording the props it was given. */
+function fakePreview() {
+  const renders: Props[] = [];
+  function View(props: Props) {
+    renders.push(props);
+    return createElement('div', { 'data-testid': 'native-preview' });
+  }
+  return {
+    renders,
+    View: View as unknown as NonNullable<Awaited<ReturnType<SurfacePackages['preview']>>>,
+  };
+}
+
 /** An expo-video package with one player that records what it was told. */
 function fakeVideo() {
   const player = { muted: false, loop: true, play: vi.fn(), pause: vi.fn() };
@@ -52,9 +66,11 @@ function build(packages: Partial<SurfacePackages> = {}) {
   const record = createRingRecord();
   const webview = fakeWebView();
   const video = fakeVideo();
+  const preview = fakePreview();
   const loads = {
     webview: vi.fn(async () => webview.pkg),
     video: vi.fn(async () => video.pkg),
+    preview: vi.fn(async () => preview.View),
   };
   const surfaces = createNativeSurfaces({
     logger: createLogger({ record, now: () => 0 }),
@@ -62,10 +78,10 @@ function build(packages: Partial<SurfacePackages> = {}) {
   });
   const entries = () =>
     record.lines().map((line) => {
-      const { event, fields } = JSON.parse(line);
+      const { event, fields } = parseRecordLine(line);
       return { event, fields };
     });
-  return { surfaces, webview, video, loads, entries };
+  return { surfaces, webview, video, preview, loads, entries };
 }
 
 async function renderOverlay(built: ReturnType<typeof build>, onFailed = vi.fn()) {
@@ -155,6 +171,7 @@ describe('a native package missing from the binary (m3)', () => {
     const { loads } = build();
     expect(loads.webview).not.toHaveBeenCalled();
     expect(loads.video).not.toHaveBeenCalled();
+    expect(loads.preview).not.toHaveBeenCalled();
   });
 
   it('loads each package once, however many overlays are drawn', async () => {
@@ -226,8 +243,46 @@ describe('a native package missing from the binary (m3)', () => {
     render(createElement(surfaces.Video, { url: PEEK, playing: true }));
     await waitFor(() => expect(onFailed).toHaveBeenCalledTimes(1));
     await waitFor(() => expect(record.lines()).toHaveLength(2));
-    const kinds = record.lines().map((line) => JSON.parse(line).fields.kind);
+    const kinds = record.lines().map((line) => parseRecordLine(line).fields.kind);
     expect(kinds.sort()).toEqual(['overlay', 'video']);
+  });
+});
+
+// Task 39: the engine module's own view, full-bleed, where the module is in the binary; an empty
+// stage where it is not (iOS in S1, Expo Go, web), which is no failure, so nothing is said.
+describe('the native preview', () => {
+  it("draws the engine module's view, full-bleed, loading it once", async () => {
+    const built = build();
+    render(createElement(built.surfaces.Preview));
+    render(createElement(built.surfaces.Preview));
+    await waitFor(() => expect(screen.getAllByTestId('native-preview')).toHaveLength(2));
+    expect(built.loads.preview).toHaveBeenCalledTimes(1);
+    expect(StyleSheet.flatten(built.preview.renders.at(-1)?.style as never)).toEqual(
+      StyleSheet.flatten(StyleSheet.absoluteFill),
+    );
+    expect(built.entries()).toEqual([]);
+  });
+
+  it('draws an empty stage when the module is absent, and says nothing', async () => {
+    const loader = vi.fn(async () => null);
+    const built = build({ preview: loader });
+    const view = render(createElement(built.surfaces.Preview));
+    await waitFor(() => expect(loader).toHaveBeenCalledTimes(1));
+    await act(async () => undefined);
+    expect(view.queryByTestId('native-preview')).toBeNull();
+    expect(view.container.childElementCount).toBe(1);
+    expect(built.entries()).toEqual([]);
+  });
+
+  it('draws an empty stage when the loader fails, and says why once', async () => {
+    const built = build({ preview: absent });
+    const view = render(createElement(built.surfaces.Preview));
+    await waitFor(() =>
+      expect(built.entries()).toEqual([
+        { event: 'surface.unavailable', fields: { kind: 'preview' } },
+      ]),
+    );
+    expect(view.queryByTestId('native-preview')).toBeNull();
   });
 });
 

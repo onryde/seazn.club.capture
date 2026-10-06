@@ -4,9 +4,12 @@ import { useEffect, useState, type ReactNode } from 'react';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { createNativePorts } from '@/hooks/nativePorts';
 import { useAppFonts } from '@/hooks/useAppFonts';
+import { useEngineFollow } from '@/hooks/useEngineFollow';
+import { useEngineSync } from '@/hooks/useEngineSync';
 import { LanguageProvider } from '@/hooks/useLanguage';
 import { routeTarget, useOrientationGate } from '@/hooks/useOrientationGate';
 import { PortsProvider, usePorts, type Ports } from '@/hooks/usePorts';
+import { useProtectCode } from '@/hooks/useProtectCode';
 import { useReopenGate } from '@/hooks/useReopenGate';
 import { BootFailure } from '@/ui/components/BootFailure';
 import { OrientationGate } from '@/ui/components/OrientationGate';
@@ -46,6 +49,11 @@ function Shell() {
   const navigatorReady = useRootNavigationState()?.key !== undefined;
   // The gate decides where to land, then hides the splash (spec §4).
   useReopenGate(navigatorReady);
+  // Native's word on the saved code, and the route rule (amendment, Process death and reopen).
+  useEngineFollow();
+  // Native's copy of the automatic switch and the language (amendment §2, P3).
+  useEngineSync();
+  useProtectCode();
   // The one orientation controller (spec §5); its card covers the stack (R25).
   const { card } = useOrientationGate(routeTarget(usePathname()));
   return (

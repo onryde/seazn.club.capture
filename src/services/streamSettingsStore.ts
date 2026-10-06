@@ -2,15 +2,27 @@ import type { KeyValueStore } from '@/services/KeyValueStore';
 import type { Logger } from '@/services/logger';
 
 export type ControlSide = 'left' | 'right';
-export type StreamSettings = { readonly overlay: boolean; readonly side: ControlSide };
+/**
+ * `automatic` is A4's: whether the phone goes live by itself at the scheduled
+ * start, if the club allows it. On by default; the Settings switch is Task 30's.
+ */
+export type StreamSettings = {
+  readonly overlay: boolean;
+  readonly side: ControlSide;
+  readonly automatic: boolean;
+};
 
-export const DEFAULT_STREAM_SETTINGS: StreamSettings = { overlay: true, side: 'right' };
+export const DEFAULT_STREAM_SETTINGS: StreamSettings = {
+  overlay: true,
+  side: 'right',
+  automatic: true,
+};
 export const SETTINGS_KEY = 'settings.stream';
 
 export type SaveResult = 'saved' | 'refused';
 
 /**
- * Spec §4's two stream settings, behind the key-value port (D23). A change
+ * Spec §4's stream settings, and A4's automatic start, behind the key-value port (D23). A change
  * applies at once and is saved once the saved record has been read, on top of
  * it; a refused save is logged and the choice holds for the session. Shaped
  * for useSyncExternalStore. `load()` never rejects and reads once, however
@@ -87,8 +99,8 @@ function serialSaves(
   };
 }
 
-function encode({ overlay, side }: StreamSettings): string {
-  return JSON.stringify({ v: 1, overlay, side });
+function encode({ overlay, side, automatic }: StreamSettings): string {
+  return JSON.stringify({ v: 2, overlay, side, automatic });
 }
 
 async function read(kv: KeyValueStore, logger: Logger): Promise<StreamSettings> {
@@ -105,14 +117,19 @@ async function read(kv: KeyValueStore, logger: Logger): Promise<StreamSettings> 
   return decoded ?? DEFAULT_STREAM_SETTINGS;
 }
 
+/**
+ * v2 whole, or v1's two values with `automatic` on (its default), so an
+ * operator's overlay and side survive the upgrade. Anything else is unreadable.
+ */
 function decode(text: string): StreamSettings | null {
   try {
     const data: unknown = JSON.parse(text);
     if (typeof data !== 'object' || data === null) return null;
-    const { v, overlay, side } = data as Record<string, unknown>;
-    if (v !== 1 || typeof overlay !== 'boolean' || (side !== 'left' && side !== 'right'))
-      return null;
-    return { overlay, side };
+    const { v, overlay, side, automatic } = data as Record<string, unknown>;
+    if (typeof overlay !== 'boolean' || (side !== 'left' && side !== 'right')) return null;
+    if (v === 1) return { overlay, side, automatic: DEFAULT_STREAM_SETTINGS.automatic };
+    if (v === 2 && typeof automatic === 'boolean') return { overlay, side, automatic };
+    return null;
   } catch {
     return null;
   }

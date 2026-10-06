@@ -28,10 +28,12 @@ enum class DegradeReason(override val wire: String) : Wire {
   FELL_BACK_TO_RTMPS("fell-back-to-rtmps"),
 }
 
+/**
+ * Why a pairing ended: the operator's stop, or a failure. A broadcast that ends without the operator
+ * (an organiser stop, a server end, a hold that runs out) returns to Paired with its [LastEnd].
+ */
 enum class EndReason(override val wire: String) : Wire {
   OPERATOR_STOPPED("operator-stopped"),
-  STOPPED_BY_ORGANISER("stopped-by-organiser"),
-  HOLD_WINDOW_EXPIRED("hold-window-expired"),
   FATAL_ERROR("fatal-error"),
 }
 
@@ -63,12 +65,41 @@ enum class ConnectFailure(override val wire: String) : Wire {
   REFUSED("refused"),
   TIMEOUT("timeout"),
   OTHER("other"),
+
+  /**
+   * C6 I-3: the capture held no camera to connect (an Orient rebuild that found it busy, a reopen that
+   * failed). It says nothing about the path to the ingest or the session: never counted towards the
+   * fallback, and never an ask for the code.
+   */
+  UNHELD("unheld"),
+
+  /**
+   * Device session 4, F-S4-1: the camera failed the start (StreamPack lost it, or a throw from its camera source).
+   * It says nothing about the path to the ingest either: never counted towards the fallback, which could not help,
+   * and never an ask. The capture builds the camera afresh, and its `camera` readiness is false while it is lost.
+   */
+  CAMERA("camera"),
 }
 
 enum class HeartbeatResult(override val wire: String) : Wire {
   OK("ok"),
   FAILED("failed"),
   SESSION_OVER("session-over"),
+}
+
+/**
+ * How the overlay's score reaches it: the session shape's `scoreUpdates`, a closed set in the web
+ * descriptor schema (09e87aabd). The core holds the server's word as read; the snapshot wire crosses
+ * only these words, and any other as null, for that field alone (controller ruling, review 12 I2).
+ */
+enum class ScoreUpdates(override val wire: String) : Wire {
+  REALTIME("realtime"),
+  POLLED("polled");
+
+  companion object {
+    /** The server's word; null for any other, an absent one included. */
+    fun of(word: String?): ScoreUpdates? = entries.firstOrNull { it.wire == word }
+  }
 }
 
 /** Device conditions the platform reads (thermal, battery). Relayed, never judged (AGENTS §8). */

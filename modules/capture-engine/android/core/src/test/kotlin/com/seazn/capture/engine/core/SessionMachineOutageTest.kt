@@ -33,7 +33,7 @@ class SessionMachineOutageTest {
     rig.failingConnects(182_500)
     assertIs<SnapshotState.Reconnecting>(rig.state)
     rig.failingConnects(500)
-    assertEquals(EndReason.HOLD_WINDOW_EXPIRED, rig.state.endReason)
+    assertEquals(LastEnd.HOLD_WINDOW_EXPIRED, assertIs<Phase.Paired>(rig.phase).pairing.lastEnd)
   }
 
   @Test
@@ -66,7 +66,7 @@ class SessionMachineOutageTest {
   @Test
   fun `a drop before the first frame is a retry with no hold`() {
     val rig = MachineRig().armed()
-    rig.send(Input.Start)
+    rig.ready()
     rig.send(Input.Connected(1))
     rig.send(Input.Dropped(1, DropReason.ENDPOINT_CLOSED, null))
     assertNull((rig.phase as Phase.Connecting).outage)
@@ -105,12 +105,14 @@ class SessionMachineOutageTest {
   @Test
   fun `C1 three validated connect failures fall back, and a dead network never does`() {
     val validated = MachineRig().armed(validated = true)
-    validated.send(Input.Start)
+    validated.ready()
     validated.failingConnects(6_500, ConnectFailure.TIMEOUT)
     assertEquals(Transport.RTMPS, validated.connects()[3].target.transport)
 
-    val dead = MachineRig().armed(validated = false)
-    dead.send(Input.Start)
+    // A11: an unvalidated network is not ready, so the dead network comes once connecting.
+    val dead = MachineRig().armed(validated = true)
+    dead.ready()
+    dead.send(Input.Network(validated = false))
     dead.failingConnects(40_000, ConnectFailure.TIMEOUT)
     assertTrue(dead.connects().size >= 20)
     assertTrue(dead.connects().all { it.target.transport == Transport.SRT })
@@ -118,13 +120,19 @@ class SessionMachineOutageTest {
 
   private val srtThreeTimesThenRtmps = listOf(Transport.SRT, Transport.SRT, Transport.SRT, Transport.RTMPS)
 
+  /** The pair and permissions with no network fact of its own: the one the platform last pushed stands. */
+  private fun MachineRig.pairedWithoutANetworkFact() {
+    send(Input.Pair(request, Configs.PHONE, stopped = null))
+  }
+
   @Test
   fun `final review I-1 a network fact pushed before the arm counts toward C1, and is recorded`() {
     // Plan C's network callback can fire once, before any arm, and not again while nothing changes.
     val rig = MachineRig()
     rig.send(Input.Network(validated = true))
-    rig.send(Input.Arm(rig.config))
-    rig.send(Input.Start)
+    rig.pairedWithoutANetworkFact()
+    rig.hear("go-live", sid = "sess_42")
+    rig.ready()
     rig.failingConnects(6_500, ConnectFailure.TIMEOUT)
     assertEquals(srtThreeTimesThenRtmps, rig.connects().map { it.target.transport })
     assertEquals(listOf<Any?>(true), rig.records("network").map { it.field("validated") })
@@ -132,21 +140,28 @@ class SessionMachineOutageTest {
 
   @Test
   fun `final review I-1 one network fact spans two sessions, however the first one ended`() {
-    // The first session is stopped while armed, while connecting, and once it has been live.
-    val firstSessions: List<Pair<String, (MachineRig) -> Unit>> =
+    // The first session is stopped while armed, while connecting, and once it has been live. Owner decision 1
+    // (2026-10-05): a stop never live keeps the pairing, so the next session is the organiser's next Go live on it;
+    // a live stop ends the pairing, and the next is a fresh pair with no network fact of its own.
+    val again: (MachineRig) -> Unit = { rig -> rig.armedAgain() }
+    val afresh: (MachineRig) -> Unit = { rig ->
+      rig.send(Input.Reset)
+      rig.pairedWithoutANetworkFact()
+      rig.hear("go-live", sid = "sess_42")
+    }
+    val firstSessions: List<Triple<String, (MachineRig) -> Unit, (MachineRig) -> Unit>> =
       listOf(
-        "armed" to { rig -> rig.armed(validated = true) },
-        "connecting" to { rig -> rig.armed(validated = true).send(Input.Start) },
-        "live" to { rig -> rig.live() },
+        Triple("armed", { rig -> rig.armed(validated = true) }, again),
+        Triple("connecting", { rig -> rig.armed(validated = true).ready() }, again),
+        Triple("live", { rig -> rig.live() }, afresh),
       )
-    for ((name, first) in firstSessions) {
+    for ((name, first, next) in firstSessions) {
       val rig = MachineRig()
       first(rig)
       rig.send(Input.Stop)
-      rig.send(Input.Reset)
       val before = rig.connects().size
-      rig.send(Input.Arm(rig.config))
-      rig.send(Input.Start)
+      next(rig)
+      rig.ready()
       rig.failingConnects(6_500, ConnectFailure.TIMEOUT)
       assertEquals(srtThreeTimesThenRtmps, rig.connects().drop(before).map { it.target.transport }, name)
     }
@@ -154,9 +169,11 @@ class SessionMachineOutageTest {
 
   @Test
   fun `final review I-1 a network fact that changes while connecting or on air applies to that session at once`() {
-    // Connecting on a dead network that then validates: the next three timeouts count.
-    val connecting = MachineRig().armed(validated = false)
-    connecting.send(Input.Start)
+    // Connecting on a dead network that then validates: the next three timeouts count. A11 connects
+    // only on a validated network, so the network dies once connecting, then validates again.
+    val connecting = MachineRig().armed(validated = true)
+    connecting.ready()
+    connecting.send(Input.Network(validated = false))
     connecting.send(Input.Network(validated = true))
     connecting.failingConnects(6_500, ConnectFailure.TIMEOUT)
     assertEquals(srtThreeTimesThenRtmps, connecting.connects().map { it.target.transport })
@@ -172,31 +189,34 @@ class SessionMachineOutageTest {
 
   @Test
   fun `final review I-1 a network fact that lands after the end is the next session's, and asks nothing`() {
-    val rig = MachineRig().armed(validated = true)
+    // Live, so the stop ends the pairing (owner decision 1 keeps it for a stop never live).
+    val rig = MachineRig().live()
     rig.send(Input.Stop)
     val lost = rig.send(Input.Network(validated = false))
     assertEquals(listOf<Any?>(false), lost.map { (it as Command.Record).entry.field("validated") }, "recorded, nothing asked")
     assertEquals(EndReason.OPERATOR_STOPPED, rig.state.endReason)
+    val before = rig.connects().size
     rig.send(Input.Reset)
-    rig.send(Input.Arm(rig.config))
-    rig.send(Input.Start)
+    rig.pairedWithoutANetworkFact()
+    rig.hear("go-live", sid = "sess_42")
+    rig.ready()
     rig.failingConnects(40_000, ConnectFailure.TIMEOUT)
-    assertTrue(rig.connects().size >= 20)
-    assertTrue(rig.connects().all { it.target.transport == Transport.SRT }, "a dead network never falls back (F-P5-1)")
+    // A11: the next broadcast holds in Armed on the dead network it inherited, and never connects.
+    assertIs<Phase.Armed>(rig.phase)
+    assertTrue(rig.connects().drop(before).isEmpty(), "a dead network is not ready (A11)")
   }
 
   @Test
-  fun `final review N-3 a refused arm keeps the network fact for the next session, and was never live`() {
+  fun `final review N-3 a refused pair keeps the network fact for the next session, and was never live`() {
     // Plan C's callback fires once, the first code scanned is refused, and the next one arms with C1 intact.
-    val refused =
-      SessionConfig("sess_42", Configs.TOKEN, Configs.srt, Configs.rtmps, mapOf(Transport.SRT to 183, Transport.RTMPS to 180), "", "https://h/", "1.0.0")
     val rig = MachineRig()
     rig.send(Input.Network(validated = true))
-    rig.send(Input.Arm(refused))
+    rig.send(Input.Pair(Configs.pairRequest(token = ""), Configs.PHONE, null))
     assertEquals(SnapshotState.Ended(EndReason.FATAL_ERROR, durationMs = null), rig.state)
     rig.send(Input.Reset)
-    rig.send(Input.Arm(rig.config))
-    rig.send(Input.Start)
+    rig.pairedWithoutANetworkFact()
+    rig.hear("go-live", sid = "sess_42")
+    rig.ready()
     rig.failingConnects(6_500, ConnectFailure.TIMEOUT)
     assertEquals(srtThreeTimesThenRtmps, rig.connects().map { it.target.transport })
   }
@@ -205,25 +225,32 @@ class SessionMachineOutageTest {
   fun `every reconnect fetches the descriptor again`() {
     val rig = MachineRig().live()
     rig.send(Input.Dropped(1, DropReason.ENDPOINT_CLOSED, null))
-    assertEquals(listOf(Command.FetchDescriptor(1)), rig.sent<Command.FetchDescriptor>())
+    // Fetch 1 armed the broadcast; the drop's is fetch 2, with the pairing's Bearer and the phone's id.
+    assertEquals(listOf(1, 2), rig.sent<Command.FetchCode>().map { it.requestId })
+    val again = rig.sent<Command.FetchCode>().last()
+    assertEquals(Configs.TOKEN, again.bearer)
+    assertEquals(Configs.PHONE_ID, again.phoneId)
   }
 
   @Test
   fun `a descriptor that says the session is over ends stopped-by-organiser`() {
     val rig = MachineRig().live()
     rig.send(Input.Dropped(1, DropReason.ENDPOINT_CLOSED, null))
-    rig.send(Input.DescriptorChecked(1, DescriptorCheck.Over("stopped")))
-    assertEquals(EndReason.STOPPED_BY_ORGANISER, rig.state.endReason)
-    assertEquals(Command.End(EndReason.STOPPED_BY_ORGANISER), rig.sent<Command.End>().single())
+    rig.send(Input.CodeAnswered(2, CodeAnswer.Over("sess_42", "stopped")))
+    assertEquals(LastEnd.STOPPED_BY_ORGANISER, assertIs<Phase.Paired>(rig.phase).pairing.lastEnd)
+    assertEquals(listOf(Command.StopBroadcast), rig.sent<Command.StopBroadcast>())
+    assertTrue(rig.sent<Command.End>().isEmpty(), "the pairing goes on")
   }
 
   @Test
   fun `refused ingest asks the descriptor, and a live answer keeps trying`() {
     val rig = MachineRig().armed()
-    rig.send(Input.Start)
+    rig.ready()
+    // The code was fetched at Arming (0 s): a refusal asks again once C1's 10 s have passed.
+    rig.at(10_000)
     rig.send(Input.ConnectFailed(1, ConnectFailure.REFUSED, "publish rejected"))
-    assertEquals(1, rig.sent<Command.FetchDescriptor>().size)
-    rig.send(Input.DescriptorChecked(1, DescriptorCheck.Live))
+    assertEquals(listOf(1, 2), rig.sent<Command.FetchCode>().map { it.requestId })
+    rig.send(Input.CodeAnswered(2, Configs.open()))
     rig.advance(2_000)
     assertEquals(2, rig.connects().size)
   }
@@ -231,11 +258,11 @@ class SessionMachineOutageTest {
   @Test
   fun `F-P5-11 an SRT connect carries SRTO_MAXBW from the target, and RTMPS none`() {
     val srt = MachineRig().armed()
-    srt.send(Input.Start)
+    srt.ready()
     assertEquals(468_050, srt.connects().single().maxBwBytesPerSecond)
     assertEquals(1_500_000, srt.connects().single().startBitrateBps)
-    val rtmps = MachineRig(Configs.valid(primary = Configs.rtmps, fallback = Configs.srt)).armed()
-    rtmps.send(Input.Start)
+    val rtmps = MachineRig(descriptor = Configs.descriptor(primary = Configs.rtmps, fallback = Configs.srt)).armed()
+    rtmps.ready()
     assertNull(rtmps.connects().single().maxBwBytesPerSecond)
   }
 
@@ -357,15 +384,15 @@ class SessionMachineOutageTest {
    * Answers every connect with a refusal, and every descriptor fetch at once with [answer] (none when
    * null). Returns when each fetch was asked for.
    */
-  private fun MachineRig.refusedConnects(ms: Long, answer: DescriptorCheck?): List<Long> {
+  private fun MachineRig.refusedConnects(ms: Long, answer: CodeAnswer?): List<Long> {
     val asked = mutableListOf<Long>()
     advance(ms) {
       val step = (phase as? Phase.Connecting)?.step
       if (step is ConnectStep.Requested) {
         val commands = send(Input.ConnectFailed(step.attemptId, ConnectFailure.REFUSED, "publish rejected"))
-        val fetch = commands.filterIsInstance<Command.FetchDescriptor>().singleOrNull()
+        val fetch = commands.filterIsInstance<Command.FetchCode>().singleOrNull()
         if (fetch != null) asked += mono
-        if (answer != null && fetch != null) send(Input.DescriptorChecked(fetch.requestId, answer))
+        if (answer != null && fetch != null) send(Input.CodeAnswered(fetch.requestId, answer))
       }
     }
     return asked
@@ -374,35 +401,40 @@ class SessionMachineOutageTest {
   @Test
   fun `B6 ruling C1 refused connects before the first frame ask the descriptor at most once per 10 s`() {
     val rig = MachineRig().armed()
-    rig.send(Input.Start)
-    assertEquals(listOf(500L, 10_500L, 20_500L, 30_500L, 40_500L, 50_500L), rig.refusedConnects(60_000, DescriptorCheck.Live))
+    rig.ready()
+    // The fetch at Arming (0 s) is the first ask of the minute: refusals ask from 10 s on.
+    assertEquals(listOf(10_500L, 20_500L, 30_500L, 40_500L, 50_500L), rig.refusedConnects(60_000, Configs.open()))
     assertEquals(30, rig.records("connect-failed").size, "refused every 2 s")
   }
 
   @Test
   fun `B6 ruling C1 never with an ask in flight - an unanswered ask holds the next until it is given up at 30 s`() {
     val rig = MachineRig().armed()
-    rig.send(Input.Start)
-    assertEquals(listOf(500L, 30_500L), rig.refusedConnects(60_000, answer = null))
+    rig.ready()
+    // The fetch at Arming was answered; the first refusal ask, at 10.5 s, never is.
+    assertEquals(listOf(10_500L, 40_500L), rig.refusedConnects(60_000, answer = null))
   }
 
   @Test
   fun `B6 ruling C1 within an outage the drop asks, and the refusals after it keep the spacing`() {
     val rig = MachineRig().live()
     rig.send(Input.Dropped(1, DropReason.ENDPOINT_CLOSED, null))
-    assertEquals(listOf(Command.FetchDescriptor(1)), rig.sent<Command.FetchDescriptor>(), "the drop asks at 1 s")
-    rig.send(Input.DescriptorChecked(1, DescriptorCheck.Live))
-    assertEquals(listOf(11_000L, 21_000L, 31_000L), rig.refusedConnects(30_000, DescriptorCheck.Live))
+    assertEquals(listOf(1, 2), rig.sent<Command.FetchCode>().map { it.requestId }, "the drop asks at 1 s (fetch 1 armed)")
+    rig.send(Input.CodeAnswered(2, Configs.open()))
+    assertEquals(listOf(11_000L, 21_000L, 31_000L), rig.refusedConnects(30_000, Configs.open()))
   }
 
   @Test
   fun `B7 spec 1 - a rebuild reconnects the link, so it asks the descriptor again, and the answer counts`() {
     val rig = MachineRig().live()
+    // Past C1's 10 s from the fetch at Arming, so the rebuild may ask.
+    rig.advance(9_000)
     rig.advance(3_000, videoPerStep = 0)
-    assertEquals(1, rig.sent<Command.Rebuild>().size, "no video for 3 s at 4 s")
-    val ask = rig.sent<Command.FetchDescriptor>().single()
-    rig.send(Input.DescriptorChecked(ask.requestId, DescriptorCheck.Over("stopped")))
-    assertEquals(EndReason.STOPPED_BY_ORGANISER, rig.state.endReason)
+    assertEquals(1, rig.sent<Command.Rebuild>().size, "no video for 3 s at 13 s")
+    assertEquals(listOf(1, 2), rig.sent<Command.FetchCode>().map { it.requestId })
+    val ask = rig.sent<Command.FetchCode>().last()
+    rig.send(Input.CodeAnswered(ask.requestId, CodeAnswer.Over("sess_42", "stopped")))
+    assertEquals(LastEnd.STOPPED_BY_ORGANISER, assertIs<Phase.Paired>(rig.phase).pairing.lastEnd)
   }
 
   /**
@@ -410,15 +442,15 @@ class SessionMachineOutageTest {
    * it is connected at once and rebuilt no-first-frame 5 s later. Each ask is answered with [answer]
    * (none when null) at the end of its step. Returns when each ask went.
    */
-  private fun MachineRig.rebuiltEvery5s(ms: Long, answer: DescriptorCheck?): List<Long> {
+  private fun MachineRig.rebuiltEvery5s(ms: Long, answer: CodeAnswer?): List<Long> {
     val asked = mutableListOf<Long>()
     var seen = commands.size
     advance(ms, videoPerStep = 0) {
-      val asks = commands.drop(seen).filterIsInstance<Command.FetchDescriptor>()
+      val asks = commands.drop(seen).filterIsInstance<Command.FetchCode>()
       seen = commands.size
       for (ask in asks) {
         asked += mono
-        if (answer != null) send(Input.DescriptorChecked(ask.requestId, answer))
+        if (answer != null) send(Input.CodeAnswered(ask.requestId, answer))
       }
       val step = (phase as? Phase.Connecting)?.step
       if (step is ConnectStep.Requested) send(Input.Connected(step.attemptId))
@@ -429,38 +461,43 @@ class SessionMachineOutageTest {
 
   @Test
   fun `B7 spec 1 - rebuilds ask under the refusals' spacing - once per 10 s at most, and never with an ask in flight`() {
+    // The fetch at Arming (0 s) holds the rebuilds at 4 s and 9 s; they ask from 14 s on.
     val answered = MachineRig().live()
-    assertEquals(listOf(4_000L, 14_000L, 24_000L, 34_000L, 44_000L, 54_000L), answered.rebuiltEvery5s(58_000, DescriptorCheck.Live))
+    assertEquals(listOf(14_000L, 24_000L, 34_000L, 44_000L, 54_000L), answered.rebuiltEvery5s(58_000, Configs.open()))
     assertEquals(12, answered.sent<Command.Rebuild>().size, "a rebuild every 5 s from 4 s to 59 s")
     val unanswered = MachineRig().live()
-    assertEquals(listOf(4_000L, 34_000L), unanswered.rebuiltEvery5s(58_000, answer = null))
+    assertEquals(listOf(14_000L, 44_000L), unanswered.rebuiltEvery5s(58_000, answer = null))
   }
 
   @Test
   fun `B6 review I2 a late descriptor answer from the last session changes nothing in the next`() {
     val rig = MachineRig().live()
+    // Fetch 1 armed the first broadcast, and the drop asked fetch 2.
     rig.send(Input.Dropped(1, DropReason.ENDPOINT_CLOSED, null))
     rig.send(Input.Stop)
     rig.send(Input.Reset)
     rig.armed()
-    assertEquals(emptyList(), rig.send(Input.DescriptorChecked(1, DescriptorCheck.Over("no_inbound_timeout"))))
+    assertEquals(emptyList(), rig.send(Input.CodeAnswered(2, CodeAnswer.Over("sess_42", "no_inbound_timeout"))))
     assertIs<Phase.Armed>(rig.phase)
-    rig.send(Input.Start)
+    rig.ready()
+    // Fetch 3 armed this one at 1 s; a refusal asks once C1's 10 s have passed.
+    rig.at(11_000)
     rig.send(Input.ConnectFailed(rig.attempt!!, ConnectFailure.REFUSED, "publish rejected"))
-    assertEquals(listOf(1, 2), rig.sent<Command.FetchDescriptor>().map { it.requestId }, "ids carry on across sessions")
-    assertEquals(emptyList(), rig.send(Input.DescriptorChecked(1, DescriptorCheck.Over("no_inbound_timeout"))))
+    assertEquals(listOf(1, 2, 3, 4), rig.sent<Command.FetchCode>().map { it.requestId }, "ids carry on across sessions")
+    assertEquals(emptyList(), rig.send(Input.CodeAnswered(2, CodeAnswer.Over("sess_42", "no_inbound_timeout"))))
     assertIs<Phase.Connecting>(rig.phase)
-    rig.send(Input.DescriptorChecked(2, DescriptorCheck.Over("stopped")))
-    assertEquals(EndReason.STOPPED_BY_ORGANISER, rig.state.endReason)
+    rig.send(Input.CodeAnswered(4, CodeAnswer.Over("sess_42", "stopped")))
+    assertEquals(LastEnd.STOPPED_BY_ORGANISER, assertIs<Phase.Paired>(rig.phase).pairing.lastEnd)
   }
 
   @Test
   fun `B6 review I2 an answer nobody asked for changes nothing`() {
+    // Fetch 1, the one at Arming, was answered: a second answer to it is one nobody asked for.
     val armed = MachineRig().armed()
-    assertEquals(emptyList(), armed.send(Input.DescriptorChecked(1, DescriptorCheck.Over("stopped"))))
+    assertEquals(emptyList(), armed.send(Input.CodeAnswered(1, CodeAnswer.Over("sess_42", "stopped"))))
     assertIs<Phase.Armed>(armed.phase)
     val live = MachineRig().live()
-    assertEquals(emptyList(), live.send(Input.DescriptorChecked(1, DescriptorCheck.Over("stopped"))))
+    assertEquals(emptyList(), live.send(Input.CodeAnswered(2, CodeAnswer.Over("sess_42", "stopped"))))
     assertIs<SnapshotState.Publishing>(live.state)
   }
 
@@ -472,11 +509,11 @@ class SessionMachineOutageTest {
     rig.send(Input.Connected(2))
     rig.advance(1_000)
     rig.send(Input.Dropped(2, DropReason.ENDPOINT_CLOSED, null))
-    assertEquals(listOf(1, 2), rig.sent<Command.FetchDescriptor>().map { it.requestId }, "a drop asks, whatever is in flight")
-    assertEquals(emptyList(), rig.send(Input.DescriptorChecked(1, DescriptorCheck.Over("stopped"))), "superseded")
-    rig.send(Input.DescriptorChecked(2, DescriptorCheck.Live))
-    assertEquals(1, rig.records("descriptor").size)
-    assertEquals(emptyList(), rig.send(Input.DescriptorChecked(2, DescriptorCheck.Over("stopped"))), "a second answer to one ask")
+    assertEquals(listOf(1, 2, 3), rig.sent<Command.FetchCode>().map { it.requestId }, "a drop asks, whatever is in flight (fetch 1 armed)")
+    assertEquals(emptyList(), rig.send(Input.CodeAnswered(2, CodeAnswer.Over("sess_42", "stopped"))), "superseded")
+    rig.send(Input.CodeAnswered(3, Configs.open()))
+    assertEquals(1, rig.records("code").size)
+    assertEquals(emptyList(), rig.send(Input.CodeAnswered(3, CodeAnswer.Over("sess_42", "stopped"))), "a second answer to one ask")
     assertIs<SnapshotState.Reconnecting>(rig.state)
   }
 
@@ -485,7 +522,7 @@ class SessionMachineOutageTest {
     val cases = listOf(DropReason.ENDPOINT_CLOSED to true, DropReason.INPUTS_STOPPED to false, DropReason.REQUESTED to false)
     for ((reason, counted) in cases) {
       val rig = MachineRig().armed()
-      rig.send(Input.Start)
+      rig.ready()
       repeat(3) {
         rig.send(Input.Dropped(rig.attempt!!, reason, "gone"))
         rig.advance(2_000)
@@ -500,42 +537,45 @@ class SessionMachineOutageTest {
 
   @Test
   fun `ruling 15 refused ingest alone never ends a live session - the hold's end does`() {
-    for (answer in listOf(null, DescriptorCheck.Live, DescriptorCheck.Unreachable("HTTP 429"))) {
+    for (answer in listOf(null, Configs.open(), CodeAnswer.Unreachable("HTTP 429"))) {
       val rig = MachineRig().live()
       rig.send(Input.Dropped(1, DropReason.ENDPOINT_CLOSED, null))
       rig.refusedConnects(182_500, answer)
       assertIs<SnapshotState.Reconnecting>(rig.state, "answer $answer")
-      assertTrue(rig.sent<Command.FetchDescriptor>().size > 1, "refusals keep asking the descriptor, 10 s apart")
+      // After the fetch at Arming: the drop's, and the refusals', 10 s apart.
+      assertTrue(rig.sent<Command.FetchCode>().drop(1).size > 1, "refusals keep asking the descriptor, 10 s apart")
       rig.refusedConnects(500, answer)
-      assertEquals(EndReason.HOLD_WINDOW_EXPIRED, rig.state.endReason, "answer $answer")
+      assertEquals(LastEnd.HOLD_WINDOW_EXPIRED, assertIs<Phase.Paired>(rig.phase).pairing.lastEnd, "answer $answer")
     }
   }
 
   @Test
   fun `ruling 15 a refused first connect ends stopped-by-organiser only when the descriptor says so`() {
     val rig = MachineRig().armed()
-    rig.send(Input.Start)
-    rig.refusedConnects(10_000, DescriptorCheck.Unreachable("timeout"))
-    rig.refusedConnects(10_000, DescriptorCheck.Live)
+    rig.ready()
+    // The fetch at Arming (0 s) holds the refusals' first ask to 10.5 s.
+    rig.refusedConnects(20_000, CodeAnswer.Unreachable("timeout"))
+    rig.refusedConnects(10_000, Configs.open())
     assertIs<Phase.Connecting>(rig.phase)
-    assertEquals(2, rig.sent<Command.FetchDescriptor>().size)
-    rig.refusedConnects(10_000, DescriptorCheck.Over("stopped"))
-    assertEquals(EndReason.STOPPED_BY_ORGANISER, rig.state.endReason)
-    assertEquals("stopped", rig.records("ended").single().field("endReason"))
+    assertEquals(listOf(1, 2, 3), rig.sent<Command.FetchCode>().map { it.requestId })
+    rig.refusedConnects(10_000, CodeAnswer.Over("sess_42", "stopped"))
+    assertEquals(LastEnd.STOPPED_BY_ORGANISER, assertIs<Phase.Paired>(rig.phase).pairing.lastEnd)
+    assertEquals(LastEnd.STOPPED_BY_ORGANISER, rig.records("broadcast-ended").single().field("lastEnd"))
   }
 
   @Test
-  fun `ruling 15 a 410 from the heartbeat ends stopped-by-organiser`() {
+  fun `ruling 15 a 410 from the heartbeat, with no endReason, ends stopped`() {
     val rig = MachineRig().live()
-    rig.beats = { HeartbeatResponse.Answered(410, null, null) }
+    rig.beats = { HeartbeatResponse.Answered(410) }
     rig.advance(10_000)
-    assertEquals(EndReason.STOPPED_BY_ORGANISER, rig.state.endReason)
+    // The answer table: a beat's 410 naming S, with no endReason, is stopped.
+    assertEquals(LastEnd.STOPPED, assertIs<Phase.Paired>(rig.phase).pairing.lastEnd)
   }
 
   @Test
   fun `with no fallback target, validated failures keep retrying the primary`() {
-    val rig = MachineRig(Configs.valid(fallback = null)).armed()
-    rig.send(Input.Start)
+    val rig = MachineRig(descriptor = Configs.descriptor(fallback = null)).armed()
+    rig.ready()
     rig.failingConnects(10_000, ConnectFailure.TIMEOUT)
     assertTrue(rig.connects().size >= 5)
     assertTrue(rig.connects().all { it.target.transport == Transport.SRT })
@@ -544,8 +584,8 @@ class SessionMachineOutageTest {
 
   @Test
   fun `RTMPS preferred falls back to SRT, and never reads fell-back-to-rtmps`() {
-    val rig = MachineRig(Configs.valid(primary = Configs.rtmps, fallback = Configs.srt)).armed()
-    rig.send(Input.Start)
+    val rig = MachineRig(descriptor = Configs.descriptor(primary = Configs.rtmps, fallback = Configs.srt)).armed()
+    rig.ready()
     rig.failingConnects(4_500, ConnectFailure.TIMEOUT)
     rig.advance(2_000)
     assertEquals(listOf(Transport.RTMPS, Transport.RTMPS, Transport.RTMPS, Transport.SRT), rig.connects().map { it.target.transport })
@@ -557,7 +597,7 @@ class SessionMachineOutageTest {
 
   @Test
   fun `on RTMPS a drop holds for RTMPS's own window, and the snapshot carries no SRT counters`() {
-    val rig = MachineRig(Configs.valid(primary = Configs.rtmps, fallback = Configs.srt))
+    val rig = MachineRig(descriptor = Configs.descriptor(primary = Configs.rtmps, fallback = Configs.srt))
     var bytes = 0L
     rig.link = { t ->
       bytes += 375_000
@@ -575,7 +615,7 @@ class SessionMachineOutageTest {
 
   @Test
   fun `on RTMPS a raise sets the bitrate and no SRTO_MAXBW`() {
-    val rig = MachineRig(Configs.valid(primary = Configs.rtmps, fallback = Configs.srt))
+    val rig = MachineRig(descriptor = Configs.descriptor(primary = Configs.rtmps, fallback = Configs.srt))
     var bytes = 0L
     rig.link = { t ->
       bytes += 500_000
@@ -590,22 +630,41 @@ class SessionMachineOutageTest {
   @Test
   fun `C1 a fallback on connect failures is recorded once, from SRT to RTMPS`() {
     val rig = MachineRig().armed(validated = true)
-    rig.send(Input.Start)
+    rig.ready()
     rig.failingConnects(6_500, ConnectFailure.TIMEOUT)
     val fell = rig.records("fell-back").single()
     assertEquals(Transport.SRT, fell.field("from"))
     assertEquals(Transport.RTMPS, fell.field("to"))
   }
 
+  /**
+   * C6 I-3: mid-session, an Orient rebuild that found the camera busy, or a reopen that failed, leaves
+   * nothing held, and the capture answers each connect UNHELD. Through the machine: no fallback, nothing
+   * counted, and no ask, past C1's 10 s.
+   */
+  @Test
+  fun `C6 I-3 connects answered UNHELD keep SRT, count nothing, and never ask the descriptor`() {
+    val rig = MachineRig().armed(validated = true)
+    rig.ready()
+    rig.failingConnects(16_500, ConnectFailure.UNHELD)
+    val failed = rig.records("connect-failed")
+    assertTrue(failed.size >= 3, "past three: counted, they would have fallen back (${failed.size} failed)")
+    assertTrue(failed.all { it.field("failure") == ConnectFailure.UNHELD && it.field("counted") == false && it.field("validated") == true }, "$failed")
+    assertEquals(emptyList(), rig.records("fell-back"))
+    assertTrue(rig.connects().all { it.target is SrtTarget }, "${rig.connects()}")
+    assertEquals(listOf(1), rig.sent<Command.FetchCode>().map { it.requestId }, "an unheld connect says nothing about the session")
+  }
+
   @Test
   fun `only a refused connect asks the descriptor`() {
     val rig = MachineRig().armed()
-    rig.send(Input.Start)
-    rig.failingConnects(4_000, ConnectFailure.OTHER)
-    rig.failingConnects(2_000, ConnectFailure.UNRESOLVED)
-    assertTrue(rig.sent<Command.FetchDescriptor>().isEmpty(), "a failure that is not a refusal says nothing about the session")
+    rig.ready()
+    // Past C1's 10 s from the fetch at Arming before the refusals, so one may ask.
+    rig.failingConnects(6_000, ConnectFailure.OTHER)
+    rig.failingConnects(4_000, ConnectFailure.UNRESOLVED)
+    assertEquals(listOf(1), rig.sent<Command.FetchCode>().map { it.requestId }, "a failure that is not a refusal says nothing about the session")
     rig.failingConnects(2_000, ConnectFailure.REFUSED)
-    assertEquals(1, rig.sent<Command.FetchDescriptor>().size)
+    assertEquals(listOf(1, 2), rig.sent<Command.FetchCode>().map { it.requestId })
   }
 
   @Test
@@ -633,7 +692,7 @@ class SessionMachineOutageTest {
 
   @Test
   fun `frames after a reconnect end the outage, so its hold never ends a publishing session`() {
-    val rig = MachineRig(Configs.valid(holdWindowSeconds = mapOf(Transport.SRT to 5, Transport.RTMPS to 5))).live()
+    val rig = MachineRig(descriptor = Configs.descriptor(holdWindowSeconds = mapOf(Transport.SRT to 5, Transport.RTMPS to 5))).live()
     rig.send(Input.Dropped(1, DropReason.ENDPOINT_CLOSED, null))
     rig.advance(2_000)
     rig.send(Input.Connected(2))
@@ -645,14 +704,14 @@ class SessionMachineOutageTest {
 
   @Test
   fun `C2 the hold ends a reconnected attempt that shows no frame, at the window`() {
-    val rig = MachineRig(Configs.valid(holdWindowSeconds = mapOf(Transport.SRT to 5, Transport.RTMPS to 5))).live()
+    val rig = MachineRig(descriptor = Configs.descriptor(holdWindowSeconds = mapOf(Transport.SRT to 5, Transport.RTMPS to 5))).live()
     rig.send(Input.Dropped(1, DropReason.ENDPOINT_CLOSED, null))
     rig.advance(2_000)
     rig.send(Input.Connected(2))
     rig.advance(2_500, feeding = false)
     assertIs<SnapshotState.Reconnecting>(rig.state, "5.5 s: half a second of the 5 s hold from the drop at 1 s")
     rig.advance(500, feeding = false)
-    assertEquals(EndReason.HOLD_WINDOW_EXPIRED, rig.state.endReason)
+    assertEquals(LastEnd.HOLD_WINDOW_EXPIRED, assertIs<Phase.Paired>(rig.phase).pairing.lastEnd)
   }
 
   @Test

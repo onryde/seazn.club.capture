@@ -7,11 +7,12 @@ import { createModeStore, STORE_KEYS } from '@/services/modeStore';
 import { createRingRecord } from '@/services/sessionRecord';
 import { savedStreamCode } from '../../test/fixtures/savedStream';
 
+const EXPIRES = new Date('2026-10-03T18:40:00Z');
 const code: SavedCode = savedStreamCode({
   raw: '{"fake":true}',
   slot: 0,
   savedAt: new Date('2026-10-03T13:00:00Z'),
-  expiresAt: new Date('2026-10-03T18:40:00Z'),
+  expiresAt: EXPIRES,
 });
 
 const ready = (store: ReturnType<typeof createModeStore>) => {
@@ -105,7 +106,7 @@ describe('modeStore', () => {
     const store = createModeStore(createMemoryKeyValueStore());
     await store.load();
     await store.open(code);
-    await store.forget('stream');
+    await expect(store.forget(code)).resolves.toBe(true);
     expect(ready(store).saved).toEqual({ active: null, codes: {} });
   });
 
@@ -161,6 +162,167 @@ describe('modeStore', () => {
     expect(memory.entries.has(STORE_KEYS.code('stream'))).toBe(true);
   });
 
+  /** Task 24: the `tapToPair` mark, kept on the saved stream code (amendment, tapToPair). */
+  describe('markTapToPair', () => {
+    const tapOf = (store: ReturnType<typeof createModeStore>) =>
+      ready(store).saved.codes.stream?.stream?.tapToPair;
+    const opened = async (kv: KeyValueStore = createMemoryKeyValueStore()) => {
+      const store = createModeStore(kv);
+      await store.load();
+      await store.open(code);
+      return store;
+    };
+
+    it('marks the saved code, and the mark survives a relaunch; clearing it does too', async () => {
+      const kv = createMemoryKeyValueStore();
+      const store = await opened(kv);
+      expect(tapOf(store)).toBe(false);
+      await expect(store.markTapToPair(true, code)).resolves.toBe(true);
+      expect(tapOf(store)).toBe(true);
+      expect((await relaunch(kv)).codes.stream?.stream?.tapToPair).toBe(true);
+      // The marked record is the same scan: clearing it names the code as scanned.
+      await expect(store.markTapToPair(false, code)).resolves.toBe(true);
+      expect(tapOf(store)).toBe(false);
+      expect((await relaunch(kv)).codes.stream?.stream?.tapToPair).toBe(false);
+      // The rest of the record is untouched.
+      expect((await relaunch(kv)).codes.stream).toEqual(code);
+    });
+
+    it('writes nothing for the value it already has, called twice or once', async () => {
+      const kv = createMemoryKeyValueStore();
+      const store = await opened(kv);
+      const set = vi.spyOn(kv, 'set');
+      await expect(store.markTapToPair(false, code)).resolves.toBe(false);
+      expect(set).not.toHaveBeenCalled();
+      const both = await Promise.all([
+        store.markTapToPair(true, code),
+        store.markTapToPair(true, code),
+      ]);
+      expect(both).toEqual([true, false]);
+      expect(set).toHaveBeenCalledTimes(1);
+    });
+
+    it('writes nothing with no stream code saved, or one with no stream part', async () => {
+      const kv = createMemoryKeyValueStore();
+      const store = createModeStore(kv);
+      await store.load();
+      const set = vi.spyOn(kv, 'set');
+      const before = store.getSnapshot();
+      await expect(store.markTapToPair(true, code)).resolves.toBe(false);
+      expect(set).not.toHaveBeenCalled();
+      expect(store.getSnapshot()).toBe(before);
+      const bare = { ...code, stream: null };
+      await store.open(bare);
+      set.mockClear();
+      await expect(store.markTapToPair(true, bare)).resolves.toBe(false);
+      expect(set).not.toHaveBeenCalled();
+      expect(ready(store).saved.codes.stream?.stream).toBeNull();
+    });
+
+    it('rejects a refused write and publishes nothing', async () => {
+      const kv = createMemoryKeyValueStore();
+      const store = await opened(kv);
+      vi.spyOn(kv, 'set').mockRejectedValueOnce(new Error('keystore locked'));
+      const before = store.getSnapshot();
+      await expect(store.markTapToPair(true, code)).rejects.toThrow('keystore locked');
+      expect(store.getSnapshot()).toBe(before);
+      expect(tapOf(store)).toBe(false);
+    });
+  });
+
+  /**
+   * C4b-I2: a forget or a mark is about the code its caller saw. It runs
+   * later, behind the writes ahead of it, so it checks again when it runs: a
+   * code saved since is a new scan and is left alone. A mark re-writes the
+   * scan it marks, so the marked record is still that scan.
+   */
+  describe('acts only on the code it was asked about (C4b-I2)', () => {
+    const next = savedStreamCode({
+      raw: '{"fake":"next"}',
+      slot: 2,
+      savedAt: new Date('2026-10-03T13:05:00Z'),
+      expiresAt: new Date('2026-10-03T18:40:00Z'),
+    });
+    const opened = async () => {
+      const kv = createMemoryKeyValueStore();
+      const store = createModeStore(kv);
+      await store.load();
+      await store.open(code);
+      return { kv, store };
+    };
+
+    it.each([
+      ['another code saved since', next],
+      ['the same code scanned again since', { ...code }],
+    ])('forgets nothing, and says so, with %s', async (_why, since) => {
+      const { kv, store } = await opened();
+      const saved = store.open(since);
+      const forgot = store.forget(code);
+      await saved;
+      await expect(forgot).resolves.toBe(false);
+      expect(ready(store).saved.codes.stream).toBe(since);
+      expect(kv.entries.get(STORE_KEYS.code('stream'))).toBe(encodeSavedCode(since));
+    });
+
+    it('marks nothing, and says so, with another code saved since', async () => {
+      const { kv, store } = await opened();
+      const saved = store.open(next);
+      const marked = store.markTapToPair(true, code);
+      await saved;
+      await expect(marked).resolves.toBe(false);
+      expect(ready(store).saved.codes.stream).toBe(next);
+      expect(kv.entries.get(STORE_KEYS.code('stream'))).toBe(encodeSavedCode(next));
+    });
+
+    it('forgets nothing with nothing saved', async () => {
+      const kv = createMemoryKeyValueStore();
+      const store = createModeStore(kv);
+      await store.load();
+      const del = vi.spyOn(kv, 'delete');
+      await expect(store.forget(code)).resolves.toBe(false);
+      expect(del).not.toHaveBeenCalled();
+    });
+
+    it('forgets the code a mark queued ahead of it re-wrote', async () => {
+      const { kv, store } = await opened();
+      const results = await Promise.all([store.markTapToPair(true, code), store.forget(code)]);
+      expect(results).toEqual([true, true]);
+      expect([...kv.entries.keys()]).toEqual([]);
+      expect(ready(store).saved.codes.stream).toBeUndefined();
+    });
+
+    // C4b-N2, the reviewer's probe P6: an expiry judged on the code a mark,
+    // queued ahead and slow to write, re-writes. The code is still the one
+    // judged expired, so it goes, with its notice.
+    it('expires, and names, a code a mark queued ahead of it re-wrote', async () => {
+      const memory = createMemoryKeyValueStore({
+        [STORE_KEYS.active]: 'stream',
+        [STORE_KEYS.code('stream')]: encodeSavedCode(code),
+      });
+      const store = createModeStore(memory);
+      await store.load();
+      const loaded = ready(store).saved.codes.stream;
+      if (loaded === undefined) throw new Error('the seeded code did not load');
+      const write = memory.set;
+      let release = () => undefined as void;
+      const slow = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      vi.spyOn(memory, 'set').mockImplementation(async (key, value) => {
+        await slow;
+        return write(key, value);
+      });
+      const notice = { mode: 'stream' as const, expiredAt: EXPIRES, venueTz: null };
+      const marked = store.markTapToPair(true, loaded);
+      const expired = store.expire(['stream'], notice);
+      release();
+      await Promise.all([marked, expired]);
+      expect(ready(store).saved).toEqual({ active: null, codes: {} });
+      expect(ready(store).notice).toEqual(notice);
+      expect([...memory.entries.keys()]).toEqual([]);
+    });
+  });
+
   describe('one write at a time (I2)', () => {
     /** Every write waits for `release()`, then lands in the order it was asked. */
     function slowKv(seed: Record<string, string>) {
@@ -208,7 +370,9 @@ describe('modeStore', () => {
       const store = createModeStore(kv);
       await store.load();
       const continued = store.setActive('stream');
-      const forgotten = store.forget('stream');
+      const loaded = ready(store).saved.codes.stream;
+      if (loaded === undefined) throw new Error('the seeded code did not load');
+      const forgotten = store.forget(loaded);
       release();
       await Promise.all([continued, forgotten]);
       expect([...memory.entries.keys()]).toEqual([]);
@@ -247,7 +411,7 @@ describe('modeStore', () => {
         const store = createModeStore(kv);
         await store.load();
         await store.open(code);
-        await (drop === 'forget' ? store.forget('stream') : store.expire(['stream'], null));
+        await (drop === 'forget' ? store.forget(code) : store.expire(['stream'], null));
         expect([...kv.entries.keys()]).toEqual([]);
       }
     });
@@ -305,9 +469,10 @@ describe('mode store behind the 5 s timeout (spec §5)', () => {
     const store = createModeStore(withTimeout(hanging, { logger }));
     await store.load();
     const first = expect(store.setActive('stream')).rejects.toThrow('did not settle');
-    const second = store.forget('stream');
+    const second = store.forget(code);
     await vi.advanceTimersByTimeAsync(KV_TIMEOUT_MS);
     await first;
-    await expect(second).resolves.toBeUndefined();
+    // Nothing was ever saved, so there was nothing of `code` to forget; the write still ran.
+    await expect(second).resolves.toBe(false);
   });
 });

@@ -2,32 +2,17 @@ package com.seazn.capture.engine.core
 
 /** The heartbeat's answer, already typed by the platform's HTTP client. */
 sealed interface HeartbeatResponse {
-  /** [state] and [endReason] are the response body's `{state, endReason?}`; null when absent or unreadable. */
-  data class Answered(val status: Int, val state: String?, val endReason: String?) : HeartbeatResponse
+  /** [reply] is the body as read (Task 15), null when absent or unreadable; [retryAfterS] a 429's. */
+  data class Answered(val status: Int, val reply: BeatReply? = null, val retryAfterS: Int? = null) : HeartbeatResponse
 
   data class Failed(val message: String) : HeartbeatResponse
 }
 
-/** What one beat reports (spec, _Ask_ → Heartbeat). Built from the snapshot; carries no secret. */
-data class HeartbeatFacts(
-  val sid: String,
-  val atEpochMs: Long,
-  val state: SnapshotState,
-  val transport: Transport?,
-  val bitrateKbps: Int?,
-  val delivery: Delivery,
-  val deliveredLagMs: Long?,
-  val audioOk: Boolean,
-  val batteryPercent: Int?,
-  val charging: Boolean?,
-  val drainPctPerHour: Double?,
-  val thermalStatus: Int?,
-  val dataUsedBytes: Long,
-  val appVersion: String,
-)
-
 data class HeartbeatState(
-  val nextDueAtMs: Long = 0,
+  /** When the last beat went, on the monotonic clock; null before the first. */
+  val lastSentAtMonoMs: Long? = null,
+  /** No beat before this, on the monotonic clock: the first beat's time, or a 429's Retry-After. */
+  val notBeforeMs: Long = 0,
   val inFlightId: Int? = null,
   val inFlightSinceMs: Long = 0,
   val nextId: Int = 1,
@@ -39,69 +24,48 @@ data class HeartbeatState(
   val status: HeartbeatStatus
     get() = HeartbeatStatus(lastSentAtEpochMs, lastResult, consecutiveFailures, failures)
 
+  /** The next beat due at [nowMs], whatever the cadence: the claim at a pairing goes at once (A9). */
+  fun soon(nowMs: Long): HeartbeatState = copy(lastSentAtMonoMs = null, notBeforeMs = nowMs)
+
   internal fun failed(): HeartbeatState =
     copy(inFlightId = null, lastResult = HeartbeatResult.FAILED, consecutiveFailures = consecutiveFailures + 1, failures = failures + 1)
 }
 
 /**
- * Ruling 5: a heartbeat to the console every ~10 s while armed or live, sent natively (ruling 6). It
- * never blocks or degrades the stream: a failure is counted and dropped, and a beat that never comes
- * back is given up after [TIMEOUT_MS] so the next one still goes. Its answer is the phone's way to
- * learn of an organiser stop (decision 9).
+ * The pairing's beat (amendment, _Contract shapes_), sent natively (ruling 6) at [BeatCadence]'s
+ * interval. It never blocks or degrades the stream: a failure is counted and dropped, and a beat
+ * that never comes back is given up after [TIMEOUT_MS] so the next one still goes. Its answer is the
+ * phone's way to hear a Go live and an organiser stop ([ServerWord.ofBeat]).
  */
 object Heartbeat {
-  const val INTERVAL_MS = 10_000L
   const val TIMEOUT_MS = 10_000L
 
-  /** The id of the beat to send now, or null. */
-  fun due(state: HeartbeatState, nowMs: Long, wallMs: Long): Pair<HeartbeatState, Int?> {
+  /** The id of the beat to send now, or null. [intervalMs] is the cadence now: it may shorten between beats. */
+  fun due(state: HeartbeatState, nowMs: Long, wallMs: Long, intervalMs: Long): Pair<HeartbeatState, Int?> {
     var next = state
     if (next.inFlightId != null && nowMs - next.inFlightSinceMs >= TIMEOUT_MS) next = next.failed()
-    if (next.inFlightId != null || nowMs < next.nextDueAtMs) return next to null
+    val last = next.lastSentAtMonoMs
+    val waiting = next.inFlightId != null || nowMs < next.notBeforeMs || (last != null && nowMs < last + intervalMs)
+    if (waiting) return next to null
     val id = next.nextId
-    return next.copy(
-      inFlightId = id,
-      inFlightSinceMs = nowMs,
-      nextId = id + 1,
-      nextDueAtMs = nowMs + INTERVAL_MS,
-      lastSentAtEpochMs = wallMs,
-    ) to id
+    return next.copy(inFlightId = id, inFlightSinceMs = nowMs, nextId = id + 1, lastSentAtMonoMs = nowMs, lastSentAtEpochMs = wallMs) to id
   }
 
-  /** The answer to beat [id]. The boolean is true when the server says the session is over ([SessionOver]). */
-  fun answered(state: HeartbeatState, id: Int, response: HeartbeatResponse): Pair<HeartbeatState, Boolean> {
-    if (state.inFlightId != id) return state to false
-    val over = response is HeartbeatResponse.Answered && SessionOver.said(response.status, response.state)
+  /**
+   * The answer to beat [id], or the state unchanged for any other. [HeartbeatResult.SESSION_OVER]
+   * when the server's word is [ServerWord.Over] (the answer table decides what that ends). A 429 sets
+   * [HeartbeatState.notBeforeMs].
+   */
+  fun answered(state: HeartbeatState, id: Int, response: HeartbeatResponse, nowMs: Long): HeartbeatState {
+    if (state.inFlightId != id) return state
+    val over = ServerWord.ofBeat(response, named = null) is ServerWord.Over
+    val delayed = (response as? HeartbeatResponse.Answered)?.retryAfterS?.let { nowMs + BeatCadence.retryAfterMs(it) }
+    val answered = if (delayed != null) state.copy(notBeforeMs = delayed) else state
     return when {
-      over -> state.copy(inFlightId = null, lastResult = HeartbeatResult.SESSION_OVER) to true
+      over -> answered.copy(inFlightId = null, lastResult = HeartbeatResult.SESSION_OVER)
       response is HeartbeatResponse.Answered && response.status in 200..299 ->
-        state.copy(inFlightId = null, lastResult = HeartbeatResult.OK, consecutiveFailures = 0) to false
-      else -> state.failed() to false
+        answered.copy(inFlightId = null, lastResult = HeartbeatResult.OK, consecutiveFailures = 0)
+      else -> answered.failed()
     }
   }
-
-  fun payload(facts: HeartbeatFacts): String =
-    Json.obj(
-      listOf(
-        "sid" to facts.sid,
-        "at" to IsoTime.utc(facts.atEpochMs),
-        "state" to facts.state,
-        "transport" to facts.transport,
-        "bitrateKbps" to facts.bitrateKbps,
-        "delivery" to facts.delivery,
-        "deliveredLagS" to facts.deliveredLagMs?.let { Decimal.tenths(it / 1_000.0) },
-        "audioOk" to facts.audioOk,
-        "battery" to
-          JsonObject(
-            listOf(
-              "percent" to facts.batteryPercent,
-              "charging" to facts.charging,
-              "drainPctPerHour" to facts.drainPctPerHour?.let { Decimal.tenths(it) },
-            )
-          ),
-        "thermal" to facts.thermalStatus,
-        "dataUsedMB" to Decimal.tenths(facts.dataUsedBytes / 1_000_000.0),
-        "appVersion" to facts.appVersion,
-      )
-    )
 }

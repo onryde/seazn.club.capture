@@ -8,7 +8,7 @@ import { createModeStore, STORE_KEYS } from '@/services/modeStore';
 import { createFakePorts, readRecord, TEST_NOW } from '../../test/fakePorts';
 import { savedStreamCode } from '../../test/fixtures/savedStream';
 import { captureRaw } from '../../test/fixtures/wire';
-import { holdCode } from '../../test/holdCode';
+import { pairCode } from '../../test/pairCode';
 import { wrapperFor } from '../../test/renderWithPorts';
 
 const code: SavedCode = savedStreamCode({
@@ -30,12 +30,12 @@ const STOPPED: SessionState = { kind: 'ended', reason: 'operator-stopped', durat
 const FAILED: SessionState = { kind: 'ended', reason: 'fatal-error', durationMs: null };
 
 /**
- * The engine names this code's session, as it does once this visit armed it
- * (I1, C7, N2), so a state forced below is this code's own.
+ * The engine names this code's pairing, as it does once the scan paired it
+ * (amendment, Identity rules), so a state forced below is this code's own.
  */
 async function leaveHook(options: Parameters<typeof createFakePorts>[0] = {}) {
   const fakes = createFakePorts({ kvSeed: inStream, ...options });
-  holdCode(fakes.engine, code);
+  pairCode(fakes.engine, code);
   const hook = renderHook(() => useStreamLeave(), { wrapper: wrapperFor(fakes) });
   await act(() => fakes.ports.modeStore.load());
   fakes.navigation.go('stream');
@@ -51,14 +51,13 @@ describe('useStreamLeave', () => {
     expect(leaving.kv.entries.has(STORE_KEYS.active)).toBe(false);
   });
 
-  it('leaves for Home while armed, keeping the code and the armed session', async () => {
+  it('leaves for Home while paired, keeping the code and the pairing', async () => {
     const leaving = await leaveHook();
-    act(() => leaving.engine.forceState({ kind: 'armed' }));
     act(() => leaving.hook.result.current.leave());
     await waitFor(() => expect(leaving.navigation.current()).toBe('home'));
     expect(leaving.kv.entries.has(STORE_KEYS.code('stream'))).toBe(true);
-    // Armed is free to leave (decision 5): the engine is not told anything.
-    expect(leaving.engine.getSnapshot().state).toEqual({ kind: 'armed' });
+    // Paired is free to leave (decision 5): the engine is not told anything.
+    expect(leaving.engine.getSnapshot().state).toEqual({ kind: 'paired' });
   });
 
   it('cannot be left on air: Home is hidden and Back explains', async () => {
@@ -107,19 +106,40 @@ describe('useStreamLeave', () => {
     expect(leaving.hook.result.current.canLeave).toBe(true);
   });
 
-  // Reachable with nothing saved. Armed: the reopen gate sends an armed or live
-  // engine here whatever is saved (reopen.ts). Stopped: a stopped leave that was
-  // cancelled on air had already forgotten the code, and then the broadcast stops.
-  it.each<[string, SessionState]>([
-    ['armed', { kind: 'armed' }],
-    ['stopped', STOPPED],
-  ])('leaves for Home with nothing saved while %s', async (_, state) => {
+  // Reachable with nothing saved. Paired: the reopen gate sends a paired or live
+  // engine here whatever is saved (reopen.ts); the leave never unpairs it.
+  // Stopped: the follow forgot the code at the operator's Stop, or a stopped
+  // leave cancelled on air had; nothing saved owns the session, so it is
+  // cleared (C4b-I1, the gate's orphan rule).
+  it.each<[string, SessionState, readonly string[]]>([
+    ['paired', { kind: 'paired' }, []],
+    ['stopped', STOPPED, ['intent.reset']],
+  ])('leaves for Home with nothing saved while %s', async (_, state, lines) => {
     const leaving = await leaveHook({ kvSeed: {} });
     act(() => leaving.engine.forceState(state));
+    const before = leaving.engine.intents.length;
     act(() => leaving.hook.result.current.leave());
     await waitFor(() => expect(leaving.navigation.current()).toBe('home'));
     expect(leaving.kv.entries.size).toBe(0);
-    expect(readRecord(leaving.record)).toEqual([]);
+    expect(readRecord(leaving.record).map((entry) => entry.event)).toEqual(lines);
+    expect(leaving.engine.intents.slice(before).map((intent) => intent.kind)).toEqual(
+      lines.map((line) => line.replace('intent.', '')),
+    );
+  });
+
+  // C4b-I1's "nothing saved" is a loaded store's answer. Before it loads, whose
+  // session it is is not known, so a stopped one is left for the gate to judge.
+  it('clears no stopped session before the store has loaded', async () => {
+    const fakes = createFakePorts({ kvSeed: inStream });
+    pairCode(fakes.engine, code);
+    const hook = renderHook(() => useStreamLeave(), { wrapper: wrapperFor(fakes) });
+    fakes.navigation.go('stream');
+    act(() => fakes.engine.forceState(STOPPED));
+    const before = fakes.engine.intents.length;
+    act(() => hook.result.current.leave());
+    await waitFor(() => expect(fakes.navigation.current()).toBe('home'));
+    expect(fakes.engine.intents.slice(before)).toEqual([]);
+    expect(fakes.engine.getSnapshot().state).toEqual(STOPPED);
   });
 
   // Back inside a stream sub-screen (Settings, Diagnostics) is that screen's
@@ -198,7 +218,7 @@ describe('useStreamLeave: the record names the leave’s reset (M2)', () => {
 
   it('records no reset for a leave that sends none', async () => {
     const leaving = await leaveHook();
-    act(() => leaving.engine.forceState({ kind: 'armed' }));
+    act(() => leaving.engine.forceState({ kind: 'paired' }));
     act(() => leaving.hook.result.current.leave());
     await waitFor(() => expect(leaving.navigation.current()).toBe('home'));
     expect(resetLines(leaving)).toEqual([]);
@@ -206,17 +226,13 @@ describe('useStreamLeave: the record names the leave’s reset (M2)', () => {
 });
 
 describe('useStreamLeave: the next code after a stop (I1)', () => {
-  // Fix round 3: a replace passes through the old session's Ended (N1). A
-  // leave there spends nothing of this code's: it is kept, and the old
-  // session is left for the next visit's replace.
-  it('keeps the code when the stopped session is another code’s', async () => {
+  // Fix round 3: an engine ended under another code's pairing spends nothing
+  // of this code's: it is kept, and the old pairing is left for the next scan.
+  it('keeps the code when the stopped pairing is another code’s', async () => {
     const leaving = await leaveHook();
-    holdCode(
+    pairCode(
       leaving.engine,
-      savedStreamCode({
-        raw: captureRaw({ slot: 2, tok: 'fake-token-other-0000000000000' }),
-        slot: 2,
-      }),
+      savedStreamCode({ raw: captureRaw({ slot: 2, tok: 'tok-other-000000000000' }), slot: 2 }),
     );
     act(() => leaving.engine.forceState(STOPPED));
     const send = vi.spyOn(leaving.engine, 'send');
@@ -355,7 +371,7 @@ describe('useStreamLeave: one leave at a time', () => {
     expect(go).toHaveBeenCalledTimes(1);
   });
 
-  it('clears no armed session that arrived while the stopped leave was saving (I1)', async () => {
+  it('clears no pairing that arrived while the stopped leave was saving (I1)', async () => {
     const { modeStore, release } = slowStore();
     const leaving = await leaveHook({ modeStore });
     const send = vi.spyOn(leaving.engine, 'send');
@@ -363,7 +379,7 @@ describe('useStreamLeave: one leave at a time', () => {
     act(() => {
       leaving.back.press();
     });
-    act(() => leaving.engine.forceState({ kind: 'armed' }));
+    act(() => leaving.engine.forceState({ kind: 'paired' }));
     release();
     await waitFor(() => expect(leaving.navigation.current()).toBe('home'));
     expect(send).not.toHaveBeenCalled();
@@ -374,7 +390,7 @@ describe('useStreamLeave: one leave at a time', () => {
     const forget = vi.spyOn(modeStore, 'forget');
     const leaving = await leaveHook({ modeStore });
     const send = vi.spyOn(leaving.engine, 'send');
-    act(() => leaving.engine.forceState({ kind: 'armed' }));
+    act(() => leaving.engine.forceState({ kind: 'paired' }));
     act(() => leaving.hook.result.current.leave());
     act(() => leaving.engine.forceState(STOPPED));
     release();

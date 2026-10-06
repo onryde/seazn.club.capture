@@ -1,0 +1,5 @@
+<resources>
+  <!-- Copied from src/ui/theme/tokens.ts; SlateColoursTest keeps them equal (M11). -->
+  <color name="seazn_ground">#150b36</color>
+  <color name="seazn_ink">#f5f0e8</color>
+</resources>

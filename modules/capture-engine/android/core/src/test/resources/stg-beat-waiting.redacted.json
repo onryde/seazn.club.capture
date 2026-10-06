@@ -1,0 +1,18 @@
+{
+ "_meta": {
+  "captured": "2026-10-05 stg, POST /api/v1/capture/codes/xmysraq98edt/beats, phone state armed, HTTP 200, Cache-Control private, no-store",
+  "redacted_paths": [
+   "overlayUrl (key= value)"
+  ],
+  "note": "strings replaced by same-type placeholders; numbers/booleans/nulls/nesting untouched"
+ },
+ "body": {
+  "state": "waiting",
+  "label": "c v a",
+  "scheduledStart": 1790222700,
+  "autoAllowed": false,
+  "destinationName": "B_YoutubeTest",
+  "overlayUrl": "https://stg.seazn.club/overlay/fixtures/fb9bb9c7-1668-4da5-9a34-1c80c5b4efe8?style=bug&key=REDACTED",
+  "pollSeconds": 10
+ }
+}

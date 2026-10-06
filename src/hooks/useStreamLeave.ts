@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { leaveRule, type EngineStatus, type LeaveRule } from '@/domain/mode/reopen';
+import type { SavedCode } from '@/domain/mode/savedCode';
 import { selectEngineStatus, selectStateKind } from '@/hooks/engineSelectors';
 import { useEngineSelector } from '@/hooks/useCaptureEngine';
 import { usePorts } from '@/hooks/usePorts';
-import { useOwnSession, useSavedStream } from '@/hooks/useSavedStream';
+import { useNothingSaved, useOwnPairing, useSavedStream } from '@/hooks/useSavedStream';
 import { isStreamSubRoute } from '@/services/devicePorts';
 import type { Logger } from '@/services/logger';
 import type { ModeStore } from '@/services/modeStore';
@@ -34,8 +35,12 @@ export function useStreamLeave(): {
   departed(): boolean;
 } {
   const status = useEngineSelector(selectEngineStatus);
-  // Fix round 3: a stopped session spends this code only if it is this code's.
-  const own = useOwnSession(useSavedStream());
+  const saved = useSavedStream();
+  // Fix round 3: a stopped engine spends this code only if its pairing was this code's.
+  const ownPairing = useOwnPairing(saved);
+  // C4b-I1: or if no code is saved at all, the gate's own orphan rule (see `clearsSession`).
+  const nothingSaved = useNothingSaved();
+  const own = ownPairing || nothingSaved;
   const [blocked, block] = useRefusalLine();
   const left = useRef(false);
   const departed = useCallback(() => left.current, []);
@@ -45,9 +50,9 @@ export function useStreamLeave(): {
     (beforeHome: () => void) => {
       const rule = leaveRule('stream', status, own);
       if (rule === 'blockedOnAir') return block();
-      leaveOnce(rule, beforeHome);
+      leaveOnce(rule, saved, beforeHome);
     },
-    [status, own, leaveOnce, block],
+    [status, own, saved, leaveOnce, block],
   );
   const leave = useCallback(() => leaveWith(NOTHING), [leaveWith]);
   useBackLeaves(leave);
@@ -111,16 +116,19 @@ function useRefusalLine(): [boolean, () => void] {
  * leave-on-air line; the engine is the authority, so nothing is written back
  * — a reopen goes to the stream whatever is saved (spec §1).
  */
-function useLeaveOnce(onBlocked: () => void, left: { current: boolean }): FinishLeave {
+function useLeaveOnce(
+  onBlocked: () => void,
+  left: { current: boolean },
+): (rule: FreeRule, saved: SavedCode | null, beforeHome: () => void) => void {
   const { modeStore, logger } = usePorts();
   const finish = useFinishLeave(onBlocked);
   const pending = useRef(false);
   return useCallback(
-    (rule: FreeRule, beforeHome: () => void) => {
+    (rule: FreeRule, saved: SavedCode | null, beforeHome: () => void) => {
       if (pending.current) return;
       pending.current = true;
       left.current = true;
-      void saveLeave(modeStore, rule, logger).then(() => {
+      void saveLeave(modeStore, rule, saved, logger).then(() => {
         pending.current = false;
         finish(rule, beforeHome);
       });
@@ -155,13 +163,16 @@ function useFinishLeave(onBlocked: () => void): FinishLeave {
 }
 
 /**
- * I1: a stopped session is cleared only if this leave forgot its code — a
- * session that moved on meanwhile is not ours to clear. Left `stopped`, the
- * engine would make the next code's first leave a forget too. D11: a failed
- * one is always cleared; its code is kept, so Continue re-arms instead of
- * landing on Ended. Sent however the write went: a refused forget leaves the
- * spent code saved, and it waits on the Continue card until it expires or is
- * forgotten (spec §4).
+ * I1: a stopped session is cleared when it is ours: its pairing is the saved
+ * code's, which this leave forgets, or no code is saved at all (C4b-I1). The
+ * follow forgets the code at the operator's Stop (Task 24), so by the time
+ * they leave Ended nothing owns the session, and it is nobody's, as the gate's
+ * orphan rule reads it. A session another, still saved, code has moved on from
+ * is not ours to clear. Left `stopped`, native would hold Ended until the next
+ * foreground or scan. D11: a failed one is always cleared; its code is kept,
+ * so Continue re-arms instead of landing on Ended. Sent however the write
+ * went: a refused forget leaves the spent code saved, and it waits on the
+ * Continue card until it expires or is forgotten (spec §4).
  */
 function clearsSession(rule: FreeRule, status: EngineStatus): boolean {
   return status === 'failed' || (rule === 'freeAndForget' && status === 'stopped');
@@ -172,11 +183,18 @@ function clearsSession(rule: FreeRule, status: EngineStatus): boolean {
  * leaves — the operator asked to go — and is recorded (spec §5). A stale
  * active mode only means the next foreground reopens Stream, which is one
  * more leave. Async, so a write that throws before returning a promise lands
- * here too.
+ * here too. The forget is of the code the screen showed (C4b-I2); with
+ * nothing saved (C4b-I1) there is nothing to write.
  */
-async function saveLeave(modeStore: ModeStore, rule: FreeRule, logger: Logger): Promise<void> {
+async function saveLeave(
+  modeStore: ModeStore,
+  rule: FreeRule,
+  saved: SavedCode | null,
+  logger: Logger,
+): Promise<void> {
   try {
-    await (rule === 'freeAndForget' ? modeStore.forget('stream') : modeStore.setActive(null));
+    if (rule !== 'freeAndForget') await modeStore.setActive(null);
+    else if (saved !== null) await modeStore.forget(saved);
   } catch {
     logger.warn('store.write-refused', { action: 'leave' });
   }

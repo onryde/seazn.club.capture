@@ -1,170 +1,145 @@
 import { describe, expect, it } from 'vitest';
 import type { SessionState } from '@/domain/session/SessionState';
-import type { EngineSnapshot, Telemetry } from '@/engine/CaptureEnginePort';
-import { IDLE_TELEMETRY } from '@/engine/FakeCaptureEngine';
+import type { NotReady, Readiness } from '@/domain/session/Pairing';
+import type { CameraState, EngineSnapshot } from '@/engine/CaptureEnginePort';
+import { IDLE_TELEMETRY } from '@/engine/unreported';
 import {
   CHIP_ORDER,
   blockerReason,
-  CODE_READS,
-  codeCheck,
-  goLiveBlocker,
+  selectBlocker,
   selectCameraReady,
   selectNetworkReachable,
   selectSoundReady,
   tallyPlateFor,
   tallyTone,
-  type Chip,
-  type Preflight,
   type TallyPlate,
   type TallyTone,
 } from '@/hooks/preflight';
-import { selectStatusKey } from '@/hooks/statusKey';
 import { createTranslator } from '@/i18n/translate';
 
 const { t } = createTranslator('en');
 
-const ALL_GREEN: Preflight = { code: true, camera: true, network: true, sound: true };
-
-const armed = (telemetry: Partial<Telemetry>): EngineSnapshot => ({
-  state: { kind: 'armed' },
-  telemetry: { ...IDLE_TELEMETRY, ...telemetry },
-  descriptor: null,
-  slot: null,
-  tokenTag: null,
-  camera: 'own',
+const paired = (ready: Partial<Readiness>, camera: CameraState | null = 'own'): EngineSnapshot => ({
+  state: { kind: 'paired' },
+  telemetry: IDLE_TELEMETRY,
+  pairing: null,
+  broadcast: null,
+  ready: { camera: true, sound: true, network: true, held: true, ...ready },
+  refusal: null,
+  lastEnd: null,
+  unpaired: null,
+  codeEndedPending: false,
+  camera,
   reportedAtMs: 0,
   survivesBackground: true,
 });
 
-describe('goLiveBlocker (spec §1: Go live only when every chip is green)', () => {
-  it('lets Go live through with every chip green', () => {
-    expect(goLiveBlocker(ALL_GREEN)).toBeNull();
-  });
-
-  it.each([
-    [{ code: false, camera: false }, 'code'],
-    [{ camera: false, network: false }, 'camera'],
-    [{ camera: false, sound: false }, 'camera'],
-    [{ network: false, sound: false }, 'network'],
-    [{ sound: false }, 'sound'],
-    [{ code: false, camera: false, network: false, sound: false }, 'code'],
-  ] as const)('names the first chip that is off: %j → %s', (off, chip) => {
-    expect(goLiveBlocker({ ...ALL_GREEN, ...off })).toBe(chip);
-  });
-
-  it('shows the chips in spec §1’s order: camera, sound, network, code', () => {
-    expect(CHIP_ORDER).toEqual(['camera', 'sound', 'network', 'code']);
-  });
-});
-
 /**
- * R3: the code chip is the saved code usable AND the warming gate open. One
- * reading for the chip, Go live's blocker and the status line
- * (viewfinderStatusKey), so the three can never disagree.
+ * Native's verdict (A11), in native's order, so the blocker at the control and
+ * native's `notReady` never disagree. The rows are the amendment's _Readiness_
+ * table, its order camera, sound, network, held, written out.
  */
-describe('codeCheck', () => {
-  it.each([
-    [{ unusable: false, deadlineKnown: true, passed: false }, 'usable'],
-    [{ unusable: false, deadlineKnown: true, passed: true }, 'timedOut'],
-    [{ unusable: false, deadlineKnown: false, passed: false }, 'noDeadline'],
-    [{ unusable: true, deadlineKnown: true, passed: false }, 'unusable'],
-    // No wait on the phone fixes an unusable code, so it is named first.
-    [{ unusable: true, deadlineKnown: true, passed: true }, 'unusable'],
-    [{ unusable: true, deadlineKnown: false, passed: false }, 'unusable'],
-  ] as const)('%j reads %s', (input, check) => {
-    expect(codeCheck(input)).toBe(check);
+describe('selectBlocker (A11: native’s verdict, in native’s order)', () => {
+  it('lets Go live through with every check passing and the camera ours', () => {
+    expect(selectBlocker(paired({}))).toBeNull();
   });
 
-  // Ruling I3 and M6: the one table the chip, Go live's reason and the line read.
-  it('reads each check one way on the chip, at Go live and in the line', () => {
-    expect(CODE_READS).toEqual({
-      usable: { chip: true, reason: null, line: null },
-      unusable: { chip: false, reason: 'stream.blocker.unusable', line: 'stream.status.unusable' },
-      timedOut: { chip: false, reason: 'stream.blocker.code', line: 'stream.status.codeTimedOut' },
-      noDeadline: {
-        chip: false,
-        reason: 'stream.blocker.noDetails',
-        line: 'stream.status.noDetails',
-      },
-    });
+  it.each<[Partial<Readiness>, NotReady]>([
+    [{ camera: false }, 'camera'],
+    [{ sound: false }, 'sound'],
+    [{ network: false }, 'network'],
+    [{ held: false }, 'held'],
+    [{ sound: false, held: false }, 'sound'],
+    [{ sound: false, network: false }, 'sound'],
+    [{ network: false, held: false }, 'network'],
+    [{ camera: false, sound: false, network: false, held: false }, 'camera'],
+  ])('names the first check native says is off: %j → %s', (off, blocker) => {
+    expect(selectBlocker(paired(off))).toBe(blocker);
+  });
+
+  // M2: never READY beside a camera line; no session is no camera of ours.
+  it.each(['taken', 'reopening', 'resuming', 'switching', null] as const)(
+    'reads a %s camera as the camera blocker, whatever native says of it',
+    (camera) => {
+      expect(selectBlocker(paired({}, camera))).toBe('camera');
+      expect(selectBlocker(paired({ sound: false }, camera))).toBe('sound');
+    },
+  );
+
+  /** Every combination of the four checks, against the amendment's order written out. */
+  const AMENDMENT_ORDER = ['camera', 'sound', 'network', 'held'] as const;
+  const combos = [false, true].flatMap((camera) =>
+    [false, true].flatMap((sound) =>
+      [false, true].flatMap((network) =>
+        [false, true].map((held) => ({ camera, sound, network, held })),
+      ),
+    ),
+  );
+  it('sweeps all sixteen combinations (PV12: zero is a failure)', () => {
+    expect(combos).toHaveLength(16);
+  });
+  it.each(combos)('agrees with the amendment’s order for %j', (ready) => {
+    const expected = AMENDMENT_ORDER.find((check) => !ready[check]) ?? null;
+    expect(selectBlocker(paired(ready))).toBe(expected);
+  });
+
+  it('shows the chips in spec §1’s order: camera, sound, network, and no held chip', () => {
+    expect(CHIP_ORDER).toEqual(['camera', 'sound', 'network']);
   });
 });
 
 describe('Go live’s reason (ruling I3)', () => {
   it.each([
-    ['usable', null],
-    ['unusable', "Code can't be used"],
-    ['timedOut', 'Code timed out'],
-    ['noDeadline', 'No session details'],
-  ] as const)('a %s code reads %s', (code, said) => {
-    const key = blockerReason('code', code);
-    expect(key === null ? null : t(key)).toBe(said);
-  });
-
-  it.each([
     ['camera', 'Camera not ready'],
     ['network', 'No network'],
     ['sound', 'No sound'],
-  ] as const)('the %s chip reads %s, whatever the code', (chip, said) => {
-    const key = blockerReason(chip, 'timedOut');
+    // Amendment §2: a flat phone has no chip; it blocks, and says so here.
+    ['held', 'Turn the phone sideways'],
+  ] as const)('the %s blocker reads %s', (blocker, said) => {
+    const key = blockerReason(blocker);
     expect(key === null ? null : t(key)).toBe(said);
   });
 
   it('says nothing with nothing blocking', () => {
-    expect(blockerReason(null, 'usable')).toBeNull();
+    expect(blockerReason(null)).toBeNull();
   });
 });
 
-describe('the chips read the snapshot', () => {
-  // M2: the chip reads whose camera it is, not only its frames.
+describe('the chips read native’s verdict (A11)', () => {
+  // M2: the chip reads whose camera it is, not only native's readiness.
   it.each(['taken', 'reopening', 'resuming', 'switching', null] as const)(
-    'a %s camera is not ready, whatever its frames',
+    'a %s camera is not ready, whatever native says of it',
     (camera) => {
-      expect(selectCameraReady({ ...armed({ cameraReady: true }), camera })).toBe(false);
+      expect(selectCameraReady(paired({ camera: true }, camera))).toBe(false);
     },
   );
 
-  it('reads the camera and the network as native reports them', () => {
-    const off = armed({ cameraReady: false, networkReachable: false });
-    const on = armed({ cameraReady: true, networkReachable: true });
-    expect([selectCameraReady(off), selectNetworkReachable(off)]).toEqual([false, false]);
-    expect([selectCameraReady(on), selectNetworkReachable(on)]).toEqual([true, true]);
+  it('reads the camera, the network and the sound as native reports them', () => {
+    const off = paired({ camera: false, network: false, sound: false });
+    const on = paired({});
+    const read = (s: EngineSnapshot) => [
+      selectCameraReady(s),
+      selectNetworkReachable(s),
+      selectSoundReady(s),
+    ];
+    expect(read(off)).toEqual([false, false, false]);
+    expect(read(on)).toEqual([true, true, true]);
   });
 
+  // A11: the JS audio floor is no longer the judge; a silent meter with native's yes reads ready.
+  it('reads sound from native, not from the level', () => {
+    const quiet = { ...paired({ sound: true }), telemetry: { ...IDLE_TELEMETRY, audioLevel: 0 } };
+    const loud = { ...paired({ sound: false }), telemetry: { ...IDLE_TELEMETRY, audioLevel: 0.9 } };
+    expect([selectSoundReady(quiet), selectSoundReady(loud)]).toEqual([true, false]);
+  });
+
+  /** One authority (S0's audio-floor lesson): a chip that is off always blocks. */
   it.each([
-    [0, false],
-    [0.049, false],
-    [0.05, true],
-    [0.4, true],
-  ])('counts a level of %s as sound: %s (the floor itself counts)', (audioLevel, ready) => {
-    expect(selectSoundReady(armed({ audioLevel }))).toBe(ready);
-  });
-
-  /**
-   * One authority on each pre-flight question (S0's audio-floor lesson): the
-   * status line names the same chip the Go live control is blocked on.
-   */
-  const NAMED: Readonly<Record<Exclude<Chip, 'code'>, string>> = {
-    camera: 'stream.status.noCamera',
-    network: 'stream.status.noNetwork',
-    sound: 'stream.status.noSound',
-  };
-  const combos = [false, true].flatMap((cameraReady) =>
-    [false, true].flatMap((networkReachable) =>
-      [0.01, 0.4].map((audioLevel) => ({ cameraReady, networkReachable, audioLevel })),
-    ),
-  );
-  it.each(combos)('agrees with the status line for %j', (telemetry) => {
-    const s = armed(telemetry);
-    const blocker = goLiveBlocker({
-      code: true,
-      camera: selectCameraReady(s),
-      network: selectNetworkReachable(s),
-      sound: selectSoundReady(s),
-    });
-    const expected =
-      blocker === null ? 'stream.status.ready' : NAMED[blocker as keyof typeof NAMED];
-    expect(selectStatusKey(s)).toBe(expected);
+    ['camera', { camera: false }],
+    ['sound', { sound: false }],
+    ['network', { network: false }],
+  ] as const)('a %s chip that is off blocks Go live', (_chip, ready) => {
+    expect(selectBlocker(paired(ready))).not.toBeNull();
   });
 });
 
@@ -172,8 +147,13 @@ describe('the tally plate (spec §4, D14)', () => {
   it.each<[SessionState['kind'], boolean, TallyPlate]>([
     ['idle', false, 'starting'],
     ['idle', true, 'starting'],
-    ['armed', false, 'notReady'],
-    ['armed', true, 'ready'],
+    ['pairing', false, 'starting'],
+    ['pairing', true, 'starting'],
+    ['paired', false, 'notReady'],
+    ['paired', true, 'ready'],
+    // The amendment names no plate for Starting: they keep CONNECTING (Task 28's report).
+    ['arming', true, 'connecting'],
+    ['armed', false, 'connecting'],
     ['connecting', true, 'connecting'],
     ['publishing', true, 'live'],
     ['publishing', false, 'live'],

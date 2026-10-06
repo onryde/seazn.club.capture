@@ -1,5 +1,6 @@
 package com.seazn.capture.engine.core
 
+import com.seazn.capture.engine.adapter.Thermal
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
@@ -87,13 +88,13 @@ class SessionMachineDeviceTest {
   }
 
   @Test
-  fun `B6 review I4 a reopen answered while armed gives the preview camera back`() {
+  fun `B6 review I4 a reopen answered while armed gives the camera back, and puts up no slate - nothing is on air (I2)`() {
     val rig = MachineRig().armed()
     rig.send(Input.CameraContended)
     rig.send(Input.CameraReleased)
     rig.send(Input.CameraReopened(ok = true))
     assertEquals(CameraState.OWN, rig.phase.session?.camera)
-    assertEquals(listOf(Command.Slate(on = true), Command.Slate(on = false)), rig.sent<Command.Slate>())
+    assertTrue(rig.sent<Command.Slate>().isEmpty())
     rig.send(Input.SwitchCamera)
     assertEquals(listOf(Command.SwitchCamera), rig.sent<Command.SwitchCamera>(), "a camera of ours to switch again")
   }
@@ -163,6 +164,52 @@ class SessionMachineDeviceTest {
     assertEquals(listOf(DegradeReason.MIC_SILENCED), assertIs<SnapshotState.Degraded>(rig.state).reasons)
   }
 
+  /**
+   * Session 8, item 7: on RTMPS at thermal 3 then 4 (shed preview-framerate, then encode), 54 `video-stalled
+   * {below-floor, msSinceAdvance 0}` in 19 min (20:13:50 to 20:33:09), each a reconnect: audio under its floor in all
+   * 54 (3.8 to 19.8 a second), video under its own once (9.8; up to 24.7). The phone throttles its own encoders for heat, which no reconnect cools, and our shed
+   * lowers no rate of its own. Under any shed step no rate floor is judged, as for a silenced mic (F-P5-8); the rates
+   * are still Diagnostics', and a picture that truly stops is still rebuilt by the zero test. Swept over every
+   * thermal status through the engine's own [Thermal.shed]: with no shed, the same rate is a rate-floor rebuild.
+   */
+  @Test
+  fun `item 7 under a thermal shed a steady rate under the audio floor never reconnects, and a real freeze still does`() {
+    val perStep = ((StallWatchdog.AUDIO_FLOOR_FPS - 2) / 2).toLong() // 18 a second, on 500 ms steps
+    val fps = perStep * 2.0
+    assertTrue(fps < StallWatchdog.AUDIO_FLOOR_FPS && fps >= StallWatchdog.VIDEO_FLOOR_FPS, "under audio's floor alone, as on the device")
+    val statuses = 0..6
+    var shed = 0
+    var judged = 0
+    for (status in statuses) {
+      val step = Thermal.shed(status)
+      val rig = MachineRig().live()
+      rig.send(Input.Device(DeviceSample(status, null, 50, false, null, step)))
+      val attempt = rig.attempt
+      rig.advance(60_000, videoPerStep = perStep, audioPerStep = perStep)
+      if (step != null) {
+        assertEquals(emptyList(), rig.sent<Command.Rebuild>(), "status $status, shed ${step.wire}: no reconnect")
+        assertEquals(emptyList(), rig.records("video-stalled"), "status $status")
+        assertEquals(attempt, rig.attempt, "the same attempt on air")
+        assertEquals(fps to fps, rig.snapshot.encodedVideoFps to rig.snapshot.audioPacketsPerSecond, "Diagnostics still shows the rates")
+        // A real freeze: video stops dead, and the zero test rebuilds it, as it always did.
+        rig.advance(StallWatchdog.STALL_MS + 500, videoPerStep = 0, audioPerStep = perStep)
+        val stalled = rig.records("video-stalled").single()
+        assertEquals(StallCause.NO_VIDEO, stalled.field("cause"), "status $status")
+        assertTrue((stalled.field("msSinceAdvance") as Long) >= StallWatchdog.STALL_MS, "frames truly stopped: $stalled")
+        assertEquals(1, rig.sent<Command.Rebuild>().size)
+        shed += 1
+      } else {
+        val stalled = rig.records("video-stalled").first()
+        assertEquals(StallCause.BELOW_FLOOR, stalled.field("cause"), "status $status, no shed: the floor holds")
+        assertEquals(0L, stalled.field("msSinceAdvance"))
+        assertTrue(rig.sent<Command.Rebuild>().isNotEmpty())
+        judged += 1
+      }
+    }
+    assertEquals(statuses.count { Thermal.shed(it) != null } to statuses.count { Thermal.shed(it) == null }, shed to judged)
+    assertTrue(shed > 0 && judged > 0, "both sides checked")
+  }
+
   @Test
   fun `F-P5-9 the same dip with the mic live is a rate-floor rebuild`() {
     val rig = MachineRig().live()
@@ -191,6 +238,134 @@ class SessionMachineDeviceTest {
     rig.send(Input.MicSilenced(true))
     rig.send(Input.MicSilenced(true))
     assertEquals(1, rig.records("mic-silenced").size)
+  }
+
+  // Review 18 I1: the watch reports changes only, so the engine keeps the fact in every phase, as it
+  // keeps the network's (final review I-1), and seeds each broadcast with it at arm.
+  @Test
+  fun `I1 a mic silenced while paired is known to the broadcast from the start, and the snapshot shows it`() {
+    val rig = MachineRig().paired()
+    rig.send(Input.MicSilenced(true))
+    rig.send(Input.MicSilenced(true))
+    assertEquals(1, rig.records("mic-silenced").size, "recorded while paired, once")
+    rig.hear("go-live", sid = "sess_42", startedBy = "organiser")
+    assertTrue(rig.session.micSilenced, "armed knowing")
+    rig.ready()
+    rig.send(Input.Connected(rig.attempt!!))
+    rig.advance(1_000)
+    assertEquals(listOf(DegradeReason.MIC_SILENCED), assertIs<SnapshotState.Degraded>(rig.snapshot.state).reasons)
+    assertEquals(1, rig.records("mic-silenced").size, "no line for the seed at arm")
+  }
+
+  @Test
+  fun `I1 a mic silenced and restored while paired is clear at go-live`() {
+    val rig = MachineRig().paired()
+    rig.send(Input.MicSilenced(true))
+    rig.send(Input.MicSilenced(false))
+    assertEquals(1, rig.records("mic-silenced").size)
+    assertEquals(1, rig.records("mic-restored").size)
+    rig.hear("go-live", sid = "sess_42", startedBy = "organiser")
+    rig.ready()
+    rig.send(Input.Connected(rig.attempt!!))
+    rig.advance(1_000)
+    assertIs<SnapshotState.Publishing>(rig.snapshot.state)
+  }
+
+  @Test
+  fun `I1 a mic silenced before the first pairing reaches the broadcast`() {
+    val rig = MachineRig()
+    rig.send(Input.MicSilenced(true))
+    rig.live()
+    assertEquals(listOf(DegradeReason.MIC_SILENCED), assertIs<SnapshotState.Degraded>(rig.state).reasons)
+  }
+
+  @Test
+  fun `I1 the mic fact outlives an ended pairing and a reset`() {
+    val rig = MachineRig().live()
+    rig.send(Input.MicSilenced(true))
+    rig.send(Input.Stop)
+    rig.send(Input.Reset)
+    assertIs<Phase.Idle>(rig.phase)
+    rig.live()
+    assertEquals(listOf(DegradeReason.MIC_SILENCED), assertIs<SnapshotState.Degraded>(rig.state).reasons)
+    assertEquals(1, rig.records("mic-silenced").size)
+  }
+
+  @Test
+  fun `I1 a mic fact that lands after the end is recorded and kept for the next pairing, and the end stands`() {
+    val rig = MachineRig().live()
+    rig.send(Input.Stop)
+    val ended = assertIs<Phase.Ended>(rig.phase)
+    rig.send(Input.MicSilenced(true))
+    assertEquals(ended.copy(micSilenced = true), rig.phase, "only the mic fact changed")
+    assertEquals(1, rig.records("mic-silenced").size)
+    rig.send(Input.Reset)
+    assertTrue(assertIs<Phase.Idle>(rig.phase).micSilenced)
+  }
+
+  @Test
+  fun `I1 the mic fact outlives a broadcast the organiser stopped, into the next one`() {
+    val rig = MachineRig().live()
+    rig.send(Input.MicSilenced(true))
+    rig.hear("over", sid = "sess_42", endReason = "stopped")
+    assertIs<Phase.Paired>(rig.phase)
+    rig.codes = { if (rig.phase is Phase.Arming) Configs.open(sid = "sess_43") else null }
+    rig.hear("go-live", sid = "sess_43", startedBy = "organiser")
+    assertTrue(rig.session.micSilenced, "the next broadcast is armed knowing")
+  }
+
+  @Test
+  fun `I1 a mic fact that lands in any phase is kept there, recorded once each way, and the phase stands`() {
+    val phases: List<Pair<String, () -> MachineRig>> =
+      listOf(
+        "idle" to { MachineRig() },
+        "pairing" to { MachineRig().apply { permissions = null; send(Input.Pair(request, Configs.PHONE, stopped = null)) } },
+        "paired" to { MachineRig().paired() },
+        "arming" to { MachineRig().apply { codes = null; paired(); hear("go-live", sid = "sess_42", startedBy = "organiser") } },
+        "armed" to { MachineRig().armed() },
+        "connecting" to { MachineRig().armed().apply { ready() } },
+        "on-air" to { MachineRig().live() },
+        "ended" to { MachineRig().live().apply { send(Input.Stop) } },
+      )
+    for ((name, reach) in phases) {
+      val rig = reach()
+      assertEquals(name, rig.phase.name)
+      rig.send(Input.MicSilenced(true))
+      rig.send(Input.MicSilenced(true))
+      assertTrue(rig.phase.micSilenced, name)
+      assertEquals(1, rig.records("mic-silenced").size, name)
+      rig.send(Input.MicSilenced(false))
+      assertEquals(false, rig.phase.micSilenced, name)
+      assertEquals(1, rig.records("mic-restored").size, name)
+      assertEquals(name, rig.phase.name, "$name stands")
+    }
+  }
+
+  @Test
+  fun `I1 the mic fact survives every other way back to Paired or Idle`() {
+    val rig = MachineRig()
+    rig.send(Input.MicSilenced(true))
+    rig.permissions = false
+    rig.send(Input.Pair(rig.request, Configs.PHONE, stopped = null))
+    assertTrue(assertIs<Phase.Idle>(rig.phase).micSilenced, "permissions refused")
+    rig.permissions = null
+    rig.send(Input.Pair(rig.request, Configs.PHONE, stopped = null))
+    assertTrue(assertIs<Phase.Pairing>(rig.phase).micSilenced, "pairing")
+    rig.send(Input.Unpair)
+    assertTrue(assertIs<Phase.Idle>(rig.phase).micSilenced, "unpaired while pairing")
+    rig.permissions = true
+    rig.paired()
+    rig.codes = { CodeAnswer.Status(404, null, null) }
+    rig.hear("go-live", sid = "sess_42", startedBy = "organiser")
+    assertTrue(assertIs<Phase.Paired>(rig.phase).micSilenced, "a start that failed at Arming")
+    rig.send(Input.Unpair)
+    assertTrue(assertIs<Phase.Idle>(rig.phase).micSilenced, "unpaired while paired")
+    rig.paired()
+    rig.codes = { CodeAnswer.Status(401, null, null) }
+    rig.hear("go-live", sid = "sess_43", startedBy = "organiser")
+    assertTrue(assertIs<Phase.Idle>(rig.phase).micSilenced, "the code ended at Arming")
+    assertEquals(1, rig.records("mic-silenced").size)
+    assertTrue(rig.records("mic-restored").isEmpty())
   }
 
   @Test
@@ -300,7 +475,7 @@ class SessionMachineDeviceTest {
   @Test
   fun `B7 sweep - a camera taken, reopening or resuming before the first frame is not LIVE - nothing has been on air to hold`() {
     val rig = MachineRig().armed()
-    rig.send(Input.Start)
+    rig.ready()
     rig.send(Input.Connected(rig.attempt!!))
     val steps =
       listOf(

@@ -19,8 +19,11 @@ export type Hold = { readonly holding: boolean; pressIn(): void; pressOut(): voi
  * so a pending hold would otherwise act on the return with no finger down.
  */
 export function useHold(onHeld: () => void, enabledByOwner: boolean): Hold {
-  // Ruling N4: under the turn card nothing acts, as if disabled.
-  const enabled = enabledByOwner && !useTurnCardShowing();
+  // Ruling N4: under the turn card nothing acts, as if disabled. Read on every
+  // render, never behind `&&`: a skipped hook changes the order (the phone's
+  // "change in the order of Hooks called by HoldAction", 2026-10-05).
+  const turnCard = useTurnCardShowing();
+  const enabled = enabledByOwner && !turnCard;
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [holding, setHolding] = useState(false);
   const cancel = useCallback(() => {

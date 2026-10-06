@@ -1,0 +1,42 @@
+{
+  "about": "capture-qr.v2's code and tok, as the web published them at 5bb72e8a2: code ^[0-9a-hjkmnp-tv-z]{12}$ (lowercase Crockford base32, no i, l, o or u), tok ^[A-Za-z0-9_-]{22}$ (16 bytes as base64url). Read by streamCodeVectors.test.ts (parseStreamCode refuses a QR whose value has ok false) and by CodeVectorsTest.kt (PairRequest.problems() names it). Every class is ASCII, matched whole. The values are made up. Change only with both (carry G1).",
+  "codes": [
+    { "value": "fx42hmnp7k2q", "ok": true, "why": "the fixtures' code" },
+    { "value": "0123456789ab", "ok": true, "why": "every digit" },
+    { "value": "cdefghjkmnpq", "ok": true, "why": "the letters either side of i and l" },
+    { "value": "rstvwxyzzzzz", "ok": true, "why": "the letters either side of u, and z" },
+    { "value": "fx42hmnp7k2", "ok": false, "why": "11 characters" },
+    { "value": "fx42hmnp7k2qq", "ok": false, "why": "13 characters" },
+    { "value": "", "ok": false, "why": "empty" },
+    { "value": "FX42HMNP7K2Q", "ok": false, "why": "upper case" },
+    { "value": "fx42hmnp7k2i", "ok": false, "why": "an i" },
+    { "value": "fx42hmnp7k2l", "ok": false, "why": "an l" },
+    { "value": "fx42hmnp7k2o", "ok": false, "why": "an o" },
+    { "value": "fx42hmnp7k2u", "ok": false, "why": "a u" },
+    { "value": "fx-42hmnp7k2", "ok": false, "why": "a hyphen" },
+    {
+      "value": "fx42hmnp7k2\n",
+      "ok": false,
+      "why": "a final line break, twelve characters in all"
+    },
+    { "value": " fx42hmnp7k2", "ok": false, "why": "a leading space" },
+    { "value": "fx42hmnp7k2٣", "ok": false, "why": "an Arabic-Indic digit" },
+    { "value": "ｆx42hmnp7k2q", "ok": false, "why": "a fullwidth letter" }
+  ],
+  "tokens": [
+    { "value": "tok-9f3c2a7e5b1d4680ab", "ok": true, "why": "the fixtures' token" },
+    { "value": "AAAAAAAAAAAAAAAAAAAAAA", "ok": true, "why": "upper case" },
+    { "value": "_-_-_-_-_-_-_-_-_-_-_-", "ok": true, "why": "base64url's two symbols" },
+    { "value": "zZ09zZ09zZ09zZ09zZ09zZ", "ok": true, "why": "both cases and digits" },
+    { "value": "tok-9f3c2a7e5b1d4680a", "ok": false, "why": "21 characters" },
+    { "value": "tok-9f3c2a7e5b1d4680abc", "ok": false, "why": "23 characters" },
+    { "value": "tok-9f3c2a7e5b1d4680", "ok": false, "why": "20 characters, the old fixture" },
+    { "value": "", "ok": false, "why": "empty" },
+    { "value": "tok+9f3c2a7e5b1d4680ab", "ok": false, "why": "base64's plus" },
+    { "value": "tok/9f3c2a7e5b1d4680ab", "ok": false, "why": "base64's slash" },
+    { "value": "tok-9f3c2a7e5b1d4680a=", "ok": false, "why": "padding" },
+    { "value": "tok 9f3c2a7e5b1d4680ab", "ok": false, "why": "a space" },
+    { "value": "tok-9f3c2a7e5b1d4680a\n", "ok": false, "why": "a final line break" },
+    { "value": "tök-9f3c2a7e5b1d4680ab", "ok": false, "why": "a non-ASCII letter" }
+  ]
+}

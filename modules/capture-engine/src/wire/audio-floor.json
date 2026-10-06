@@ -1,0 +1,4 @@
+{
+  "about": "The audio level Go live gates on (A11): src/domain/policy/audioFloor.ts and Readiness.AUDIO_FLOOR both equal it. Change only with both.",
+  "floor": 0.05
+}

@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { useEffect, useMemo, useState, type ComponentType } from 'react';
+import { StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
 import type { VideoPlayer } from 'expo-video';
 import type { WebViewProps } from 'react-native-webview';
 import type { Logger } from '@/services/logger';
@@ -13,6 +13,9 @@ import type { OverlayProps, Surfaces, VideoProps } from '@/services/surfaces';
 type WebViewPackage = typeof import('react-native-webview');
 type VideoPackage = typeof import('expo-video');
 
+/** The engine module's native preview view (Task 39), full-bleed. */
+export type PreviewView = ComponentType<{ style?: StyleProp<ViewStyle> }>;
+
 /**
  * Where the two native packages come from. Both are loaded on first draw, not
  * at launch (m3): each one's native half throws on import when the binary
@@ -23,11 +26,25 @@ type VideoPackage = typeof import('expo-video');
 export type SurfacePackages = {
   readonly webview: () => Promise<WebViewPackage>;
   readonly video: () => Promise<VideoPackage>;
+  /** The engine module's view, or null where the module is not in the binary (no failure). */
+  readonly preview: () => Promise<PreviewView | null>;
 };
+
+/**
+ * Task 39: the engine module's default view, behind the optional-module check the engine itself is
+ * chosen by (`requireOptionalNativeModule`, CD23): null on iOS in S1, in Expo Go and on web. `expo`
+ * comes in on first draw, as the two packages do (m3).
+ */
+async function installedPreview(): Promise<PreviewView | null> {
+  const { requireNativeView, requireOptionalNativeModule } = await import('expo');
+  if (requireOptionalNativeModule('CaptureEngine') === null) return null;
+  return requireNativeView<{ style?: StyleProp<ViewStyle> }>('CaptureEngine');
+}
 
 const INSTALLED: SurfacePackages = {
   webview: () => import('react-native-webview'),
   video: () => import('expo-video'),
+  preview: installedPreview,
 };
 
 /** A package loaded at most once: `undefined` while loading, `null` if it is missing. */
@@ -60,11 +77,6 @@ function usePackage<T>(lazy: Lazy<T>): T | null | undefined {
     void lazy.load().then((loaded) => setValue(() => loaded));
   }, [lazy]);
   return value;
-}
-
-/** Empty until phase 4 hands the engine's native preview in (spec §3 Bridge). */
-function NativePreview() {
-  return <View style={styles.fill} />;
 }
 
 /**
@@ -166,10 +178,18 @@ export function createNativeSurfaces(deps: {
 }): Surfaces {
   const { logger } = deps;
   const packages = deps.packages ?? INSTALLED;
-  const unavailable = (kind: 'overlay' | 'video') => () =>
+  const unavailable = (kind: 'overlay' | 'video' | 'preview') => () =>
     logger.warn('surface.unavailable', { kind });
   const webview = lazyPackage(packages.webview, unavailable('overlay'));
   const video = lazyPackage(packages.video, unavailable('video'));
+  const preview = lazyPackage(packages.preview, unavailable('preview'));
+
+  /** The engine's native preview (spec §3 Bridge, carry 9); an empty stage while loading or absent. */
+  function NativePreview() {
+    const Preview = usePackage(preview);
+    if (!Preview) return <View style={styles.fill} />;
+    return <Preview style={styles.fill} />;
+  }
 
   function NativeOverlay(props: OverlayProps) {
     return <OverlayStage {...props} webview={usePackage(webview)} logger={logger} />;

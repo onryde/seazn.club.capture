@@ -1,23 +1,23 @@
 import { useCallback, useMemo } from 'react';
 import type { SessionState } from '@/domain/session/SessionState';
 import {
+  selectAutomaticOn,
+  selectDestination,
   selectPlaybackUrl,
+  selectScheduledStartMs,
   selectStateKind,
   selectVenueZone,
-  selectWarmingDeadlineMs,
 } from '@/hooks/engineSelectors';
+import { useEngineSilent } from '@/hooks/engineSilence';
 import {
   blockerReason,
-  CODE_READS,
-  codeCheck,
-  goLiveBlocker,
+  selectBlocker,
   selectCameraReady,
   selectNetworkReachable,
   selectSoundReady,
   tallyPlateFor,
+  type Blocker,
   type BlockerKey,
-  type Chip,
-  type CodeCheck,
   type Preflight,
   type TallyPlate,
 } from '@/hooks/preflight';
@@ -25,14 +25,11 @@ import {
   selectHoldRemaining,
   selectHoldWindow,
   selectStatusKey,
-  viewfinderStatusKey,
   type StatusKey,
 } from '@/hooks/statusKey';
 import { useEngine, useEngineSelector } from '@/hooks/useCaptureEngine';
-import { useDeadlinePassed } from '@/hooks/useDeadlinePassed';
 import { useFormatTime } from '@/hooks/useFormatTime';
 import { usePorts } from '@/hooks/usePorts';
-import { useStreamArm } from '@/hooks/useStreamArm';
 
 type Kind = SessionState['kind'];
 export type ViewfinderAction = 'goLive' | 'stop' | 'ended';
@@ -45,28 +42,45 @@ export type Viewfinder = {
   readonly holdRemaining: number | null;
   readonly holdWindow: number | null;
   readonly preflight: Preflight;
-  readonly blocker: Chip | null;
+  /** Native's first failing check, in native's order (A11); held has no chip but blocks. */
+  readonly blocker: Blocker | null;
   /** Why Go live is off, at the control (ruling I3); null with nothing blocking. */
   readonly reason: BlockerKey | null;
-  readonly goLiveBy: string | null;
   readonly action: ViewfinderAction;
+  /**
+   * Stop ends the pairing too: the broadcast went live. Owner decision 1 (2026-10-05): a Stop before the first
+   * frame (Arming, Armed, Connecting) ends the broadcast only, and the pairing stays Paired.
+   */
+  readonly stopUnpairs: boolean;
   readonly onAir: boolean;
   /** On air with a viewer picture to play (carry 13): the peek's one gate. */
   readonly peekable: boolean;
   /**
-   * N3: on the way from another code's session to this one's arm. The column
-   * reads not ready until it arrives, and the stage shows nothing of the old
-   * session (its label, overlay or Ended screen).
+   * "Starts {time}" in the venue's zone; null with no scheduled start. The
+   * column shows it, and AUTO, only beside Go live (its one gate).
    */
-  readonly replacing: boolean;
+  readonly startsAt: string | null;
+  /** AUTO beside the chips (A4: on at both ends). */
+  readonly auto: boolean;
+  /** The pre-picked destination, uncut; the column cuts it for the line. Null with none. */
+  readonly destination: string | null;
   start(): void;
   stop(): void;
 };
 
-/** Which control the column offers in each state: Go live before air, Stop on it, none after. */
+/**
+ * Which control the column offers in each state: Go live before air, Stop on
+ * it, none after. Arming and Armed hold a broadcast, so they offer Stop.
+ */
+/** The states that went live: the ones native reports with `sinceEpochMs`, which a Stop ends with the pairing. */
+const LIVE: ReadonlySet<Kind> = new Set(['publishing', 'degraded', 'reconnecting']);
+
 const ACTION: Readonly<Record<Kind, ViewfinderAction>> = {
   idle: 'goLive',
-  armed: 'goLive',
+  pairing: 'goLive',
+  paired: 'goLive',
+  arming: 'stop',
+  armed: 'stop',
   connecting: 'stop',
   publishing: 'stop',
   degraded: 'stop',
@@ -75,87 +89,100 @@ const ACTION: Readonly<Record<Kind, ViewfinderAction>> = {
 };
 
 /**
- * `departed`: the visit has started to leave, so it never arms again (ruling
- * I1). M7: memoised on its inputs, so a re-render that changes none of them
- * hands the column the same object and its React.memo parts skip (AGENTS §8).
+ * M7: memoised on its inputs, so a re-render that changes none of them hands
+ * the column the same object and its React.memo parts skip (AGENTS §8). A
+ * visit never pairs (amendment §2): Home does, so nothing here sends one.
  */
-export function useViewfinder(departed: () => boolean): Viewfinder {
-  const { unusable, replacing } = useStreamArm(departed);
-  // N3: a replace reads as armed with no details yet, whatever the old session is doing.
-  const engineKind = useEngineSelector(selectStateKind);
-  const kind = replacing ? 'armed' : engineKind;
-  const checks = usePreflight(unusable, replacing);
+export function useViewfinder(): Viewfinder {
+  const kind = useEngineSelector(selectStateKind);
+  const preflight = usePreflight();
+  const blocker = useEngineSelector(selectBlocker);
   const engineKey = useEngineSelector(selectStatusKey);
   const countdown = useHoldCountdown();
+  const waiting = useWaitingFields();
   const intents = useIntents();
   const playable = useEngineSelector(selectPlaybackUrl) !== null;
+  const engineSilent = useEngineSilent();
   return useMemo(
     () => ({
-      ...project({ kind, unusable, checks, engineKey, playable }),
+      ...project({ kind, preflight, blocker, engineKey, playable, waiting, engineSilent }),
       ...countdown,
       ...intents,
-      replacing,
     }),
-    [kind, unusable, checks, engineKey, playable, countdown, intents, replacing],
+    [kind, preflight, blocker, engineKey, playable, waiting, engineSilent, countdown, intents],
   );
 }
 
 type ProjectInput = {
   readonly kind: Kind;
-  readonly unusable: boolean;
-  readonly checks: PreflightView;
+  readonly preflight: Preflight;
+  readonly blocker: Blocker | null;
   readonly engineKey: StatusKey;
   readonly playable: boolean;
-};
-
-/** The column's reading of native state and the saved code. Pure: a projection, no state machine. */
-function project(
-  input: ProjectInput,
-): Omit<Viewfinder, 'holdRemaining' | 'holdWindow' | 'start' | 'stop' | 'replacing'> {
-  const { kind, checks } = input;
-  const blocker = goLiveBlocker(checks.preflight);
-  const action = ACTION[kind];
-  return {
-    kind,
-    plate: input.unusable && kind === 'idle' ? 'notReady' : tallyPlateFor(kind, blocker === null),
-    statusKey: viewfinderStatusKey(input.engineKey, { kind, code: checks.code }),
-    preflight: checks.preflight,
-    blocker,
-    reason: blockerReason(blocker, checks.code),
-    goLiveBy: action === 'goLive' ? checks.goLiveBy : null,
-    action,
-    onAir: action === 'stop',
-    peekable: action === 'stop' && input.playable,
-  };
-}
-
-type PreflightView = {
-  readonly preflight: Preflight;
-  readonly code: CodeCheck;
-  readonly goLiveBy: string | null;
+  readonly waiting: WaitingFields;
+  /** CD17: no report for three seconds while native holds a pairing. */
+  readonly engineSilent: boolean;
 };
 
 /**
- * Spec §1's four chips; the code chip is `CODE_READS`', as the status line is
- * (R3). Memoised (M7). While replacing (N3) this code's details are not known
- * yet, whatever the old session's descriptor says.
+ * The column's reading of native state. Pure: a projection, no state machine.
+ * A silent engine reads TROUBLE with its own line (CD17, P2): TROUBLE is then
+ * "broadcast degraded" or "engine silent", and the line tells them apart. A
+ * display rule over the tables, applied last; native's state is untouched.
  */
-function usePreflight(unusable: boolean, replacing: boolean): PreflightView {
+function project(
+  input: ProjectInput,
+): Omit<Viewfinder, 'holdRemaining' | 'holdWindow' | 'start' | 'stop'> {
+  const { kind, blocker, waiting, engineSilent } = input;
+  const action = ACTION[kind];
+  return {
+    kind,
+    plate: engineSilent ? 'trouble' : tallyPlateFor(kind, blocker === null),
+    statusKey: engineSilent ? 'stream.status.engineSilent' : input.engineKey,
+    preflight: input.preflight,
+    blocker,
+    reason: blockerReason(blocker),
+    action,
+    stopUnpairs: LIVE.has(kind),
+    onAir: action === 'stop',
+    peekable: action === 'stop' && input.playable,
+    ...waiting,
+  };
+}
+
+type WaitingFields = {
+  readonly startsAt: string | null;
+  readonly auto: boolean;
+  readonly destination: string | null;
+};
+
+/**
+ * Amendment §2, Viewfinder paired: "Starts {time}" in the venue's zone, AUTO,
+ * and the destination. Primitives from the snapshot, formatted here, memoised
+ * on them (M7): a 1 Hz tick that changes none of them changes nothing.
+ */
+function useWaitingFields(): WaitingFields {
+  const startMs = useEngineSelector(selectScheduledStartMs);
+  const zone = useEngineSelector(selectVenueZone);
+  const auto = useEngineSelector(selectAutomaticOn);
+  const destination = useEngineSelector(selectDestination);
+  const formatTime = useFormatTime();
+  return useMemo(
+    () => ({
+      startsAt: startMs === null ? null : formatTime(new Date(startMs), zone),
+      auto,
+      destination,
+    }),
+    [startMs, zone, auto, destination, formatTime],
+  );
+}
+
+/** Spec §1's three chips, from native's verdict (A11). Memoised (M7). */
+function usePreflight(): Preflight {
   const camera = useEngineSelector(selectCameraReady);
   const network = useEngineSelector(selectNetworkReachable);
   const sound = useEngineSelector(selectSoundReady);
-  const deadlineMs = useEngineSelector(selectWarmingDeadlineMs);
-  const zone = useEngineSelector(selectVenueZone);
-  const passed = useDeadlinePassed(deadlineMs);
-  const format = useFormatTime();
-  const deadlineKnown = deadlineMs !== null && !replacing;
-  const code = codeCheck({ unusable, deadlineKnown, passed });
-  const chip = CODE_READS[code].chip;
-  const goLiveBy = chip && deadlineMs !== null ? format(new Date(deadlineMs), zone) : null;
-  return useMemo(
-    () => ({ preflight: { code: chip, camera, network, sound }, code, goLiveBy }),
-    [chip, camera, network, sound, code, goLiveBy],
-  );
+  return useMemo(() => ({ camera, network, sound }), [camera, network, sound]);
 }
 
 /** The reconnect hold's countdown, for the `holding*` lines; null otherwise. Memoised (M7). */

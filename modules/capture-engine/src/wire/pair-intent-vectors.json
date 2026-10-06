@@ -1,0 +1,39 @@
+{
+  "about": "The pair intent as the bridge hands it to native: intentWire over pairIntentFor's output, the code checked and saved through the real fetch code port on the build's origin (pairIntentWire.test.ts), and read by PairMapping into a PairRequest whose problems() is empty (PairIntentVectorsTest.kt). codeUrl is the origin, with no trailing slash, then /api/v1/capture/codes/<code>: Pairing.kt holds it to that exactly. Every value is made up and inside capture-qr.v2 and capture-descriptor.v1 at web 5bb72e8a2. Change only with both (carry T25, the C4b gap hunt).",
+  "intents": [
+    {
+      "name": "staging, a scan",
+      "wire": {
+        "kind": "pair",
+        "code": "fx42hmnp7k2q",
+        "slot": 1,
+        "token": "tok-9f3c2a7e5b1d4680ab",
+        "codeUrl": "https://stg.seazn.club/api/v1/capture/codes/fx42hmnp7k2q",
+        "heartbeatUrl": "https://stg.seazn.club/api/v1/capture/codes/fx42hmnp7k2q/beats",
+        "startUrl": "https://stg.seazn.club/api/v1/capture/codes/fx42hmnp7k2q/start",
+        "venueTimezone": "Europe/London",
+        "language": "en",
+        "automatic": true,
+        "claim": "new",
+        "environment": "staging"
+      }
+    },
+    {
+      "name": "production, the cold-start re-pair",
+      "wire": {
+        "kind": "pair",
+        "code": "0123456789ab",
+        "slot": 2,
+        "token": "zZ09zZ09zZ09zZ09zZ09zZ",
+        "codeUrl": "https://seazn.club/api/v1/capture/codes/0123456789ab",
+        "heartbeatUrl": "https://seazn.club/api/v1/capture/codes/0123456789ab/beats",
+        "startUrl": "https://seazn.club/api/v1/capture/codes/0123456789ab/start",
+        "venueTimezone": "Europe/Amsterdam",
+        "language": "nl",
+        "automatic": false,
+        "claim": "resume",
+        "environment": "production"
+      }
+    }
+  ]
+}

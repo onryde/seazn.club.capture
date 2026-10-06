@@ -38,15 +38,23 @@ object SessionMachine {
     if (input == Input.Tick || input == Input.Stop) return apply(phase, input, now)
     val judged = if (input is Input.PlatformFailed) Timers.holdRanOut(phase, now) ?: Step(phase) else Timers.judged(phase, now)
     val step = apply(judged.phase, input, now)
-    return if (judged.commands.isEmpty()) step else step.copy(commands = judged.commands + step.commands)
+    val merged = if (judged.commands.isEmpty()) step else step.copy(commands = judged.commands + step.commands)
+    // A11: whatever the input, an Armed phase that is ready connects now.
+    return Pairings.gate(merged, now)
   }
 
-  private fun apply(phase: Phase, input: Input, now: Now): Step =
-    when (input) {
-      is Input.Arm -> arm(phase, input.config, now)
-      Input.Start -> start(phase, now)
-      Input.Stop -> if (phase.session == null) ignored(phase, "stop") else end(phase, EndReason.OPERATOR_STOPPED, now)
-      Input.Reset -> if (phase is Phase.Ended) Step(Phase.Idle(phase.ids, phase.networkValidated), listOf(record("reset"))) else ignored(phase, "reset")
+  private fun apply(phase: Phase, input: Input, now: Now): Step {
+    if (phase is Phase.Ended && phase.finalBeatId != null) finalBeat(phase, input, now)?.let { return it }
+    return when (input) {
+      is Input.Pair -> Pairings.pair(phase, input, now)
+      is Input.PermissionsAnswered -> Pairings.permissions(phase, input.granted, now)
+      Input.Unpair -> Pairings.unpair(phase)
+      is Input.SetAutomatic -> Pairings.automatic(phase, input.on)
+      is Input.SetLanguage -> Pairings.language(phase, input.language)
+      is Input.ReadinessChanged -> Pairings.readiness(phase, input.readiness)
+      Input.Start -> Verdicts.postStart(phase, now)
+      Input.Stop -> stop(phase, now)
+      Input.Reset -> if (phase is Phase.Ended) reset(phase) else ignored(phase, "reset")
       Input.SwitchCamera -> Devices.switched(phase, now)
       Input.Tick -> Heartbeats.tick(Timers.tick(phase, now), now)
       is Input.Connected -> Transports.connected(phase, input.attemptId, now)
@@ -62,45 +70,97 @@ object SessionMachine {
       is Input.Device -> Devices.sampled(phase, input.sample)
       is Input.PlaylistFetched -> Deliveries.fetched(phase, input, now)
       is Input.HeartbeatAnswered -> Heartbeats.answered(phase, input, now)
-      is Input.DescriptorChecked -> descriptor(phase, input, now)
+      is Input.CodeAnswered -> Verdicts.code(phase, input, now)
+      is Input.StartAnswered -> Verdicts.started(phase, input, now)
       is Input.PlatformFailed -> platformFailed(phase, input, now)
     }
+  }
+
+  /** A8: the final beat's answer, or its timeout, releases the service. Null for any other input. */
+  private fun finalBeat(ended: Phase.Ended, input: Input, now: Now): Step? {
+    val result =
+      when {
+        input is Input.HeartbeatAnswered && input.beatId == ended.finalBeatId ->
+          record("final-beat", "result" to "answered", "status" to (input.response as? HeartbeatResponse.Answered)?.status)
+        input == Input.Tick && now.monoMs >= ended.finalBeatAtMs + Heartbeat.TIMEOUT_MS -> record("final-beat", "result" to "timeout", "status" to null)
+        else -> return null
+      }
+    return Step(ended.copy(finalBeatId = null), listOf(Command.Release, result))
+  }
+
+  /** Back to Idle; a final beat still pending is let go, and the service with it. */
+  private fun reset(ended: Phase.Ended): Step {
+    val release = if (ended.finalBeatId != null) listOf(Command.Release) else emptyList()
+    return Step(Phase.Idle(ended.ids, ended.networkValidated, ended.micSilenced), release + record("reset"))
+  }
 
   internal fun ignored(phase: Phase, intent: String): Step =
     Step(phase, listOf(record("intent-ignored", "intent" to intent, "phase" to phase.name)))
 
+  /**
+   * The operator's Stop (A3), only while a broadcast is held. From a broadcast that went live it ends the pairing
+   * ([end], A8's final beat). Owner decision 1 (2026-10-05) supersedes A8's silence for one that never went live
+   * (Arming, Armed, or Connecting before its first frame): the broadcast ends and the pairing stays Paired, so Go
+   * live can be tried again, and A17's record goes out on a beat at once ([neverLive]). A 401 heard while it was
+   * held ends the pairing with it, as before (the 401 deferral): its code is dead, so no beat could deliver.
+   */
+  private fun stop(phase: Phase, now: Now): Step {
+    val pairing = phase.pairing
+    val sid = phase.heldSid
+    if (pairing == null || sid == null) return ignored(phase, "stop")
+    if (phase.session?.liveSinceEpochMs != null || pairing.codeEndedPending) return end(phase, EndReason.OPERATOR_STOPPED, now)
+    return neverLive(phase, pairing, sid, now)
+  }
+
+  /**
+   * Owner decision 1: A17's record is written, as [end] writes it, and the Paired pairing holds it and refuses its
+   * sid, so a late start answer or a server word naming it never starts it again. The beat that goes now, not at
+   * the cadence, holds no sid, so it carries `stopped: <sid>` (RR3), which the server takes as the operator's stop
+   * of a session not yet live, ending it `operator_stopped` and keeping the pairing (web lane, stg da3297a33).
+   * Never `state: ended` with the sid (T21): that ends the server's pairing. It is the late path's beat, early:
+   * its 2xx delivers the record (`stopped-delivered`, and no later beat carries it), and one that fails leaves it
+   * for the next beat, or the next pair. A beat already in flight, or a 429's wait, goes first.
+   */
+  private fun neverLive(phase: Phase, pairing: PairingState, sid: String, now: Now): Step {
+    val stopped = StoppedRecord.of(pairing.name, sid, now.wallMs, phase.session?.broadcast?.maxDurationMinutes)
+    val over = Verdicts.over(phase, LastEnd.STOPPED, now)
+    val paired = over.phase as? Phase.Paired ?: return over
+    val held = paired.pairing.copy(stopped = stopped, refused = paired.pairing.refused + sid, heartbeat = paired.pairing.heartbeat.copy(lastSentAtMonoMs = null))
+    val step = Step(paired.copy(pairing = held), over.commands + Command.WriteStopped(stopped))
+    return Heartbeats.tick(step, now)
+  }
+
+  /**
+   * The pairing is over: the operator's Stop from a broadcast that went live (A3), or a fatal error. A Stop writes
+   * A17's record before End, sends A8's one final beat, and holds the service for it.
+   */
   internal fun end(phase: Phase, reason: EndReason, now: Now, vararg fields: Pair<String, Any?>): Step {
-    val liveMs = phase.session?.liveSinceEpochMs
-    return Step(phase.ended(reason, now), listOf(record("ended", "reason" to reason, "wasLive" to (liveMs != null), *fields), Command.End(reason)))
-  }
-
-  private fun arm(phase: Phase, config: SessionConfig, now: Now): Step {
-    if (phase !is Phase.Idle) return ignored(phase, "arm")
-    val problems = config.problems()
-    if (problems.isNotEmpty()) {
-      val refused = record("arm-refused", "problems" to problems.joinToString("; "))
-      return Step(phase.ended(EndReason.FATAL_ERROR, now), listOf(refused, Command.End(EndReason.FATAL_ERROR)))
+    val pairing = phase.pairing
+    val sid = phase.heldSid
+    val wasLive = phase.session?.liveSinceEpochMs != null
+    val ended = phase.ended(reason, now)
+    val commands = mutableListOf<Command>(record("ended", "reason" to reason, "wasLive" to wasLive, *fields))
+    if (reason == EndReason.OPERATOR_STOPPED && pairing != null && sid != null) {
+      commands += Command.WriteStopped(StoppedRecord.of(pairing.name, sid, now.wallMs, phase.session?.broadcast?.maxDurationMinutes))
     }
-    // Ids carry on from the last session (B6 review m3): its late answers never match this one's asks.
-    val ids = phase.ids
-    val session =
-      Session(
-        config = config,
-        fallback = FallbackPolicy(config.primary.transport, config.fallback?.transport),
-        regulation = BitrateRegulator.sessionStarted(),
-        heartbeat = HeartbeatState(nextDueAtMs = now.monoMs, nextId = ids.beat),
-        delivery = DeliveryWatch(config.playbackUrl, nextRequestId = ids.playlist),
-        nextAttemptId = ids.attempt,
-        descriptor = DescriptorAsks(nextId = ids.descriptor),
-        networkValidated = phase.networkValidated,
-      )
-    val armed = record("armed", "sid" to config.sid, "transport" to config.primary.transport, "playbackUrl" to config.playbackUrl)
-    return Step(Phase.Armed(session), listOf(armed))
+    commands += Command.End(reason)
+    if (reason == EndReason.OPERATOR_STOPPED && wasLive && pairing != null) {
+      val (beat, id) = finalBeat(phase, pairing, now)
+      commands += beat
+      // The final beat's id is spent: the next pairing's beats start after it (plan B: ids never repeat).
+      val beating = pairing.copy(heartbeat = pairing.heartbeat.copy(nextId = id + 1, inFlightId = null))
+      return Step(ended.copy(ids = ended.ids.copy(beat = id + 1), pairing = beating, finalBeatId = id, finalBeatAtMs = now.monoMs), commands)
+    }
+    if (phase.holdsService) commands += Command.Release
+    return Step(ended, commands)
   }
 
-  private fun start(phase: Phase, now: Now): Step {
-    if (phase !is Phase.Armed) return ignored(phase, "start")
-    return Transports.connect(phase.session, phase.session.fallback.current, outage = null, now = now)
+  /** A8: `{sid, state:"ended", endReason:"operator-stopped"}`, once, never retried. */
+  private fun finalBeat(phase: Phase, pairing: PairingState, now: Now): Pair<Command, Int> {
+    val id = pairing.heartbeat.nextId
+    // State ended: nothing publishes, so audioOk is null (D14), and with no claim device is null (D1).
+    val facts = Projection.beatFacts(phase, pairing, now).copy(state = "ended", claim = null, deviceModel = null, audioOk = null, endReason = EndReason.OPERATOR_STOPPED)
+    return Command.PostHeartbeat(id, pairing.request.heartbeatUrl, pairing.token, Beats.payload(facts)) to id
   }
 
   /** Recorded when it changes, in any phase: with no session it is kept for the next (final review I-1). */
@@ -110,39 +170,16 @@ object SessionMachine {
   }
 
   /**
-   * A failure the platform knows is permanent (spec §5, final review M-5) ends any session, and an
-   * idle engine too, fatal-error, when it comes from the attempt in hand. One from an older attempt is
-   * stale (final review N-4), and one after the end comes too late: the session already said why it
-   * ended. Both are only recorded.
+   * A failure the platform knows is permanent (amendment, _Permanent failures_; final review M-5) ends
+   * the pairing fatal-error, from Pairing on, when it comes from the attempt in hand. In Idle there is
+   * no pairing to end: the amendment's diagram says "from any phase but Idle" and its section "from any
+   * phase", and the ruling (review C0b M3) is the diagram's. One from an older attempt is stale (final
+   * review N-4), and one after the end comes too late. All three are only recorded.
    */
   private fun platformFailed(phase: Phase, input: Input.PlatformFailed, now: Now): Step {
     val fields = arrayOf("attempt" to input.attemptId, "message" to input.message)
-    if (phase is Phase.Ended || input.attemptId < phase.attemptInHand) return Step(phase, listOf(record("platform-failed", *fields)))
+    if (phase is Phase.Idle || phase is Phase.Ended || input.attemptId < phase.attemptInHand) return Step(phase, listOf(record("platform-failed", *fields)))
     return end(phase, EndReason.FATAL_ERROR, now, *fields)
-  }
-
-  /** The attempt a platform failure can come from: the one in flight or, with none in flight, the next. */
-  private val Phase.attemptInHand: Int
-    get() =
-      when (this) {
-        is Phase.OnAir -> attemptId
-        is Phase.Connecting -> (step as? ConnectStep.Requested)?.attemptId ?: ids.attempt
-        is Phase.Idle, is Phase.Armed, is Phase.Ended -> ids.attempt
-      }
-
-  /**
-   * A 410 or a finished state on a reconnect's descriptor fetch is an organiser stop (spec §1). Only
-   * the answer to the ask in flight is acted on (B6 review I2): any other changes nothing.
-   */
-  private fun descriptor(phase: Phase, input: Input.DescriptorChecked, now: Now): Step {
-    val session = phase.session ?: return Step(phase)
-    val asks = session.descriptor.answered(input.requestId) ?: return Step(phase)
-    val answered = phase.withSession(session.copy(descriptor = asks))
-    return when (val result = input.result) {
-      is DescriptorCheck.Over -> end(answered, EndReason.STOPPED_BY_ORGANISER, now, "endReason" to result.endReason)
-      DescriptorCheck.Live -> Step(answered, listOf(record("descriptor", "result" to "live")))
-      is DescriptorCheck.Unreachable -> Step(answered, listOf(record("descriptor", "result" to "unreachable", "message" to result.message)))
-    }
   }
 }
 
@@ -198,7 +235,11 @@ internal object Transports {
 
   fun connectFailed(phase: Phase, input: Input.ConnectFailed, now: Now): Step {
     val step = (phase as? Phase.Connecting)?.step
-    if (phase !is Phase.Connecting || step !is ConnectStep.Requested || step.attemptId != input.attemptId) return Step(phase)
+    // G4: ignored, but recorded: a connect failure no one hears is a failure the record never shows.
+    if (phase !is Phase.Connecting || step !is ConnectStep.Requested || step.attemptId != input.attemptId) {
+      val fields = arrayOf("attempt" to input.attemptId, "failure" to input.failure, "phase" to phase.name, "message" to input.message)
+      return Step(phase, listOf(record("connect-failed-ignored", *fields)))
+    }
     return failed(phase, input.failure, input.message, now)
   }
 
@@ -237,9 +278,10 @@ internal object Transports {
     return record("connect-failed", *fields.toTypedArray())
   }
 
+  /** The code asked again on a reconnect (spec §1), spaced as plan B's descriptor asks were. */
   private fun askDescriptor(session: Session, now: Now): Pair<Session, Command> {
     val (asks, id) = session.descriptor.asked(now.monoMs)
-    return session.copy(descriptor = asks) to Command.FetchDescriptor(id)
+    return session.copy(descriptor = asks) to Starts.fetchCode(session.pairing, id)
   }
 
   fun dropped(phase: Phase, input: Input.Dropped, now: Now): Step {
@@ -281,7 +323,8 @@ internal object Transports {
   fun frames(phase: Phase, input: Input.Frames, now: Now): Step {
     if (phase !is Phase.OnAir || phase.attemptId != input.attemptId) return Step(phase)
     val session = phase.session
-    val (watchdog, verdict) = phase.watchdog.frames(input.videoFrames, input.audioFrames, now.monoMs, session.camera.slateOnAir, session.micSilenced)
+    val (watchdog, verdict) =
+      phase.watchdog.frames(input.videoFrames, input.audioFrames, now.monoMs, session.camera.slateOnAir, session.micSilenced, session.device?.shed)
     var next = phase.copy(watchdog = watchdog)
     val commands = mutableListOf<Command>()
     if (watchdog.advancing(now.monoMs)) {
@@ -334,7 +377,8 @@ internal object Timers {
     when (phase) {
       is Phase.Connecting -> connecting(phase, now)
       is Phase.OnAir -> onAir(phase, now)
-      is Phase.Idle, is Phase.Armed, is Phase.Ended -> Step(phase)
+      is Phase.Arming -> Starts.tick(phase, now)
+      is Phase.Idle, is Phase.Pairing, is Phase.Paired, is Phase.Armed, is Phase.Ended -> Step(phase)
     }
 
   private fun connecting(connecting: Phase.Connecting, now: Now): Step {
@@ -387,8 +431,11 @@ internal object Timers {
     return Step(polled, requests.map { Command.FetchPlaylist(it.id, it.url) })
   }
 
-  private fun expired(phase: Phase, outage: Outage, now: Now): Step =
-    SessionMachine.end(phase, EndReason.HOLD_WINDOW_EXPIRED, now, "transport" to outage.hold.transport, "cause" to outage.cause)
+  /** The hold ran out: the broadcast is over for this phone, back to Paired. The server may keep it open, and a `live` rejoins (A10). */
+  private fun expired(phase: Phase, outage: Outage, now: Now): Step {
+    val over = Verdicts.over(phase, LastEnd.HOLD_WINDOW_EXPIRED, now)
+    return over.copy(commands = listOf(record("hold-expired", "transport" to outage.hold.transport, "cause" to outage.cause)) + over.commands)
+  }
 
   /**
    * The stall watchdog asked for a rebuild (F-P5-6, F-P5-9). The record's `msSinceAdvance` counts
@@ -415,26 +462,29 @@ internal object Timers {
 
 /** Camera, microphone and device conditions. */
 internal object Devices {
+  /** I2: the slate is a picture sent in our camera's place, so it goes up only while sending. Armed sends nothing. */
+  private fun sending(phase: Phase) = phase is Phase.Connecting || phase is Phase.OnAir
+
   fun contended(phase: Phase): Step {
-    val session = phase.session ?: return Step(phase)
+    val session = phase.session ?: return onPairing(phase, CameraState.TAKEN, record("camera-taken")) { it != CameraState.TAKEN }
     if (session.camera == CameraState.TAKEN) return Step(phase)
     val next = phase.withSession(session.copy(camera = CameraState.TAKEN))
     // Taken again mid-reopen: the slate never came down, so it is not put up twice.
-    val slate = if (session.camera.slateOnAir) emptyList() else listOf(Command.Slate(on = true))
+    val slate = if (!sending(phase) || session.camera.slateOnAir) emptyList() else listOf(Command.Slate(on = true))
     return Step(next, slate + record("camera-taken"))
   }
 
   fun released(phase: Phase): Step {
-    val session = phase.session ?: return Step(phase)
+    val session = phase.session ?: return onPairing(phase, CameraState.REOPENING, Command.ReopenCamera, record("camera-released")) { it == CameraState.TAKEN }
     if (session.camera != CameraState.TAKEN) return Step(phase)
     return Step(phase.withSession(session.copy(camera = CameraState.REOPENING)), listOf(Command.ReopenCamera, record("camera-released")))
   }
 
   fun reopened(phase: Phase, ok: Boolean, now: Now): Step {
-    val session = phase.session ?: return Step(phase)
+    val session = phase.session ?: return onPairing(phase, CameraState.OWN, record("camera-reopened", "ok" to ok)) { it == CameraState.REOPENING }
     if (session.camera != CameraState.REOPENING) return Step(phase)
     val own = phase.withSession(session.copy(camera = CameraState.OWN))
-    val commands = listOf(Command.Slate(on = false), record("camera-reopened", "ok" to ok))
+    val commands = (if (sending(phase)) listOf(Command.Slate(on = false)) else emptyList()) + record("camera-reopened", "ok" to ok)
     if (own !is Phase.OnAir) return Step(own, commands)
     if (ok) {
       // A fresh stall window from now, and camera-taken until the camera's first frame (carry 6).
@@ -444,6 +494,12 @@ internal object Devices {
     // The spike's forced rebuild: a reopen that failed leaves the stream's own restart as the recovery.
     val rebuilt = Timers.rebuild(own, StallVerdict.Rebuild(StallCause.NO_VIDEO, 0, null, null), now)
     return rebuilt.copy(commands = commands + rebuilt.commands)
+  }
+
+  /** I3: no broadcast held, so the pairing keeps the camera. No slate: nothing is sent. Ended keeps nothing. */
+  private fun onPairing(phase: Phase, to: CameraState, vararg commands: Command, from: (CameraState) -> Boolean): Step {
+    val pairing = phase.pairing?.takeIf { phase !is Phase.Ended && from(it.camera) } ?: return Step(phase)
+    return Step(phase.withPairing(pairing.copy(camera = to)), commands.toList())
   }
 
   /**
@@ -476,11 +532,11 @@ internal object Devices {
     return Step(switching, commands)
   }
 
+  /** Recorded when it changes, in any phase: with no session it is kept for the next (review 18 I1). */
   fun mic(phase: Phase, silenced: Boolean): Step {
-    val session = phase.session ?: return Step(phase)
-    if (session.micSilenced == silenced) return Step(phase)
+    if (phase.micSilenced == silenced) return Step(phase)
     val kind = if (silenced) "mic-silenced" else "mic-restored"
-    return Step(phase.withSession(session.copy(micSilenced = silenced)), listOf(record(kind)))
+    return Step(phase.withMic(silenced), listOf(record(kind)))
   }
 
   /** Relayed, and recorded when it changes (AGENTS §11). Never a session state (AGENTS §8). */
@@ -508,6 +564,8 @@ internal object Deliveries {
     val session = phase.session
     val (watch, requests, verdict) = session.delivery.fetched(input.requestId, input.result, now.monoMs)
     val commands = requests.map<PlaylistRequest, Command> { Command.FetchPlaylist(it.id, it.url) }.toMutableList()
+    // Re-review 6: a rendition refused off the playback host leaves delivery unknown; the record says why, once.
+    if (watch.refusedOffHost && !session.delivery.refusedOffHost) commands += record("rendition-refused", "reason" to DeliveryWatch.OFF_HOST)
     var next = session.copy(delivery = watch)
     if (next.notDelivered && watch.delivery == Delivery.OK) {
       next = next.copy(notDelivered = false)
@@ -529,31 +587,65 @@ internal object Deliveries {
   }
 }
 
-/** The console heartbeat (ruling 5): due on the tick while armed or live, never gating anything. */
+/** The pairing's beats (amendment, _Contract shapes_): Paired to On air, never gating anything. */
 internal object Heartbeats {
   fun tick(step: Step, now: Now): Step {
     val phase = step.phase
-    val session = phase.session ?: return step
-    val (heartbeat, id) = Heartbeat.due(session.heartbeat, now.monoMs, now.wallMs)
+    val pairing = phase.beating ?: return step
+    val held = phase.heldSid
+    val interval = BeatCadence.intervalMs(pairing.waiting.pollSeconds, held = held != null)
+    val (heartbeat, id) = Heartbeat.due(pairing.heartbeat, now.monoMs, now.wallMs, interval)
     val commands = step.commands.toMutableList()
-    if (heartbeat.failures > session.heartbeat.failures) commands += record("heartbeat", "result" to HeartbeatResult.FAILED, "message" to "no answer")
-    val next = phase.withSession(session.copy(heartbeat = heartbeat))
-    if (id == null) return Step(next, commands)
-    val body = Heartbeat.payload(Projection.heartbeatFacts(next, session.copy(heartbeat = heartbeat), now))
-    commands += Command.PostHeartbeat(id, session.config.heartbeatUrl, session.config.token, body)
-    return Step(next, commands)
+    if (heartbeat.failures > pairing.heartbeat.failures) commands += record("heartbeat", "result" to HeartbeatResult.FAILED, "message" to "no answer")
+    if (id == null) return Step(phase.withPairing(pairing.copy(heartbeat = heartbeat)), commands)
+    // RR3: the stopped sid rides only a beat that holds none.
+    val carried = if (held == null) pairing.stopped?.sid else null
+    val next = pairing.copy(heartbeat = heartbeat, stoppedInFlight = carried)
+    val nextPhase = phase.withPairing(next)
+    val body = Beats.payload(Projection.beatFacts(nextPhase, next, now))
+    commands += Command.PostHeartbeat(id, pairing.request.heartbeatUrl, pairing.token, body)
+    return Step(nextPhase, commands)
   }
 
   fun answered(phase: Phase, input: Input.HeartbeatAnswered, now: Now): Step {
-    val session = phase.session ?: return Step(phase)
-    val (heartbeat, over) = Heartbeat.answered(session.heartbeat, input.beatId, input.response)
-    if (heartbeat == session.heartbeat) return Step(phase)
-    val status = (input.response as? HeartbeatResponse.Answered)?.status
-    if (over) {
-      val answered = (input.response as? HeartbeatResponse.Answered)?.endReason
-      return SessionMachine.end(phase, EndReason.STOPPED_BY_ORGANISER, now, "status" to status, "endReason" to answered)
-    }
-    val noted = record("heartbeat", "result" to heartbeat.lastResult, "status" to status, "message" to (input.response as? HeartbeatResponse.Failed)?.message)
-    return Step(phase.withSession(session.copy(heartbeat = heartbeat)), listOf(noted))
+    val pairing = phase.beating ?: return Step(phase)
+    val heartbeat = Heartbeat.answered(pairing.heartbeat, input.beatId, input.response, now.monoMs)
+    if (heartbeat == pairing.heartbeat) return Step(phase)
+    val response = input.response as? HeartbeatResponse.Answered
+    val word = ServerWord.ofBeat(input.response, named = phase.heldSid ?: pairing.stoppedInFlight)
+    val ok = response != null && response.status in 200..299
+    // Final review I-2b: a 2xx whose waiting fields cannot be read leaves the pairing's as they were, and says so.
+    val unreadable = WaitingUnread.line(pairing, response?.reply?.waitingUnreadable?.takeIf { ok }, "beat")
+    val refreshed =
+      pairing.copy(
+        heartbeat = heartbeat,
+        claim = if (ok) null else pairing.claim,
+        waiting = response?.reply?.waiting?.takeIf { ok }?.over(pairing.waiting) ?: pairing.waiting,
+        stoppedInFlight = null,
+        waitingUnreadableSaid = pairing.waitingUnreadableSaid || unreadable != null,
+      )
+    // The beat line. Its claim is the one the answered beat carried, before this answer cleared it
+    // (PV11). Paired, it is written only when it changes, message aside, so hours of waiting cost a
+    // few lines; a held beat is written every time, as plan B wrote them.
+    val fields =
+      listOf(
+        "result" to heartbeat.lastResult,
+        "status" to response?.status,
+        "word" to word::class.simpleName,
+        "claim" to pairing.claim,
+        "message" to (input.response as? HeartbeatResponse.Failed)?.message,
+      )
+    val compared = fields.filter { it.first != "message" }
+    val changed = phase.heldSid != null || compared != pairing.lastBeatLine
+    val noted = if (changed) listOf(Command.Record(RecordEntry("heartbeat", fields))) else emptyList()
+    // A17: a beat that carried the stopped record and was heard delivers it (G0-g); a 401 ends its code.
+    val status = response?.status
+    val delivered = pairing.stoppedInFlight != null && StoppedRecord.delivered(status)
+    val codeDead = word == ServerWord.CodeEnded && pairing.stopped != null
+    val deletes = if (delivered || codeDead) listOf(Command.DeleteStopped(pairing.name.code, pairing.name.slot), record("stopped-delivered", "status" to status)) else emptyList()
+    // The refused set keeps the sid for the pairing's life (A17): a server that names it later is still ignored.
+    val kept = (if (delivered || codeDead) refreshed.copy(stopped = null) else refreshed).copy(lastBeatLine = compared)
+    val decided = Verdicts.beat(phase.withPairing(kept), word, now)
+    return decided.copy(commands = noted + listOfNotNull(unreadable) + deletes + decided.commands)
   }
 }

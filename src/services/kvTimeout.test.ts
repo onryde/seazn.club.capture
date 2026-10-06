@@ -2,14 +2,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createMemoryKeyValueStore, type KeyValueStore } from '@/services/KeyValueStore';
 import { isKvTimeout, KV_TIMEOUT_MS, withTimeout } from '@/services/kvTimeout';
 import { createLogger } from '@/services/logger';
-import { createRingRecord } from '@/services/sessionRecord';
+import { createRingRecord, parseRecordLine } from '@/services/sessionRecord';
 
 const never = <T>() => new Promise<T>(() => undefined);
 
 function wrap(kv: KeyValueStore) {
   const record = createRingRecord();
   const store = withTimeout(kv, { logger: createLogger({ record, now: () => 0 }) });
-  return { store, events: () => record.lines().map((line) => JSON.parse(line)) };
+  return { store, events: () => record.lines().map(parseRecordLine) };
 }
 
 describe('withTimeout', () => {

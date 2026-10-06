@@ -1,0 +1,292 @@
+{
+  "about": "Run by ScrubParityTest.kt and scrubParity.test.ts. expected is what the line carries under key (a reserved key as field_<key>). held.textOnly is masked in free text alone: the code (M3). Both runners protect held more than once, as production does, before each row.",
+  "held": {
+    "secrets": ["tok-9f3c2a7e5b1d4680ab", "pass+phrase/6d1e8b0c", "key-4c7a0e2b9d5f1386"],
+    "streamIds": ["a1b2c3d4e5f60718293a4b5c6d7e8f90"],
+    "textOnly": ["fx42hmnp7k2q"]
+  },
+  "cases": [
+    {
+      "why": "a never key is masked whatever it holds",
+      "key": "token",
+      "value": "anything",
+      "expected": "***"
+    },
+    {
+      "why": "a never key masks a number too",
+      "key": "passphrase",
+      "value": 12345,
+      "expected": "***"
+    },
+    {
+      "why": "a code is never written, under its own key",
+      "key": "code",
+      "value": "fx-42",
+      "expected": "***"
+    },
+    { "why": "an unknown key masks a string", "key": "note", "value": "hello", "expected": "***" },
+    { "why": "a number passes under any key", "key": "bytes", "value": 1410, "expected": 1410 },
+    { "why": "a boolean passes under any key", "key": "wasLive", "value": true, "expected": true },
+    {
+      "why": "a failure kind passes as a plain word, under the reserved name",
+      "key": "kind",
+      "value": "offline",
+      "expected": "offline"
+    },
+    { "why": "null passes under any key", "key": "status", "value": null, "expected": null },
+    {
+      "why": "a plain word passes a plain key",
+      "key": "transport",
+      "value": "srt",
+      "expected": "srt"
+    },
+    {
+      "why": "a sentence under a plain key is masked whole",
+      "key": "reason",
+      "value": "two words",
+      "expected": "***"
+    },
+    {
+      "why": "a secret under a plain key is masked whole",
+      "key": "reason",
+      "value": "tok-9f3c2a7e5b1d4680ab",
+      "expected": "***"
+    },
+    {
+      "why": "a stream id under a plain key is masked whole",
+      "key": "state",
+      "value": "a1b2c3d4e5f60718293a4b5c6d7e8f90",
+      "expected": "***"
+    },
+    {
+      "why": "a public playback URL passes, the stream id in its path allowed",
+      "key": "playbackUrl",
+      "value": "https://customer-x.cloudflarestream.com/a1b2c3d4e5f60718293a4b5c6d7e8f90/manifest/video.m3u8",
+      "expected": "https://customer-x.cloudflarestream.com/a1b2c3d4e5f60718293a4b5c6d7e8f90/manifest/video.m3u8"
+    },
+    {
+      "why": "a URL with a query is masked whole",
+      "key": "overlayUrl",
+      "value": "https://stg.seazn.club/overlay/fixtures/f1?tok=tok-9f3c2a7e5b1d4680ab",
+      "expected": "***"
+    },
+    {
+      "why": "a URL with a harmless query is masked whole too",
+      "key": "url",
+      "value": "https://stg.seazn.club/a?b=c",
+      "expected": "***"
+    },
+    {
+      "why": "a URL with a token in its path is masked whole",
+      "key": "url",
+      "value": "https://stg.seazn.club/tok-9f3c2a7e5b1d4680ab/x",
+      "expected": "***"
+    },
+    {
+      "why": "an http URL is masked whole",
+      "key": "url",
+      "value": "http://stg.seazn.club/a",
+      "expected": "***"
+    },
+    {
+      "why": "a URL with userinfo is masked whole",
+      "key": "url",
+      "value": "https://u:p@stg.seazn.club/a",
+      "expected": "***"
+    },
+    {
+      "why": "a non-breaking space is not ASCII whitespace, so it does not break a public URL on either side",
+      "key": "url",
+      "value": "https://stg.seazn.club/a\u00a0b",
+      "expected": "https://stg.seazn.club/a\u00a0b"
+    },
+    {
+      "why": "a line separator is not ASCII whitespace either (Java's \\v class holds it; JS's \\v does not)",
+      "key": "url",
+      "value": "https://stg.seazn.club/a\u2028b",
+      "expected": "https://stg.seazn.club/a\u2028b"
+    },
+    {
+      "why": "a vertical tab is ASCII whitespace, so a URL holding one is masked whole",
+      "key": "url",
+      "value": "https://stg.seazn.club/a\u000bb",
+      "expected": "***"
+    },
+    {
+      "why": "text masks a raw secret in place",
+      "key": "message",
+      "value": "connect failed tok=tok-9f3c2a7e5b1d4680ab at x",
+      "expected": "connect failed tok=*** at x"
+    },
+    {
+      "why": "text masks a form-encoded secret in place",
+      "key": "message",
+      "value": "srt://h:1?passphrase=pass%2Bphrase%2F6d1e8b0c&x=1",
+      "expected": "srt://h:1?passphrase=***&x=1"
+    },
+    {
+      "why": "text masks a component-encoded secret in place",
+      "key": "message",
+      "value": "pass%2Bphrase%2F6d1e8b0c",
+      "expected": "***"
+    },
+    {
+      "why": "text masks the stream id in place",
+      "key": "problems",
+      "value": "streamid a1b2c3d4e5f60718293a4b5c6d7e8f90 refused",
+      "expected": "streamid *** refused"
+    },
+    {
+      "why": "text whose lowercase escapes still reveal a secret is masked whole",
+      "key": "message",
+      "value": "k=key%2d4c7a0e2b9d5f1386",
+      "expected": "***"
+    },
+    {
+      "why": "text with no secret passes as written",
+      "key": "message",
+      "value": "Connection refused (errno 111)",
+      "expected": "Connection refused (errno 111)"
+    },
+    {
+      "why": "a public URL carrying a secret encoded twice is masked whole",
+      "key": "url",
+      "value": "https://stg.seazn.club/pass%252Bphrase%252F6d1e8b0c",
+      "expected": "***"
+    },
+    {
+      "why": "text carrying a secret encoded twice is masked whole",
+      "key": "message",
+      "value": "x pass%252Bphrase%252F6d1e8b0c",
+      "expected": "***"
+    },
+    {
+      "why": "a secret beside non-ASCII text is masked, the rest kept",
+      "key": "message",
+      "value": "bad tok-9f3c2a7e5b1d4680ab ñ",
+      "expected": "bad *** ñ"
+    },
+    {
+      "why": "a plain word of 63 characters passes",
+      "key": "tag",
+      "value": "abcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabc",
+      "expected": "abcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabc"
+    },
+    {
+      "why": "a plain word of exactly 64 characters passes",
+      "key": "tag",
+      "value": "abcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcd",
+      "expected": "abcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcd"
+    },
+    {
+      "why": "a plain word of 65 characters is masked whole: the bound is what keeps an unheld long token off a plain key",
+      "key": "tag",
+      "value": "abcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcde",
+      "expected": "***"
+    },
+    {
+      "why": "a plain word may hold a colon, a dot, a dash and an underscore",
+      "key": "tag",
+      "value": "a:b.c-d_e",
+      "expected": "a:b.c-d_e"
+    },
+    {
+      "why": "a URL with a fragment in its path is masked whole",
+      "key": "url",
+      "value": "https://stg.seazn.club/a#f",
+      "expected": "***"
+    },
+    {
+      "why": "a URL with a fragment straight after its host is masked whole",
+      "key": "url",
+      "value": "https://stg.seazn.club#f",
+      "expected": "***"
+    },
+    {
+      "why": "a public URL with a port passes",
+      "key": "url",
+      "value": "https://stg.seazn.club:8443/a",
+      "expected": "https://stg.seazn.club:8443/a"
+    },
+    {
+      "why": "a URL whose port is not a number is masked whole",
+      "key": "url",
+      "value": "https://stg.seazn.club:x/a",
+      "expected": "***"
+    },
+    {
+      "why": "the scheme passes in any ASCII case",
+      "key": "playbackUrl",
+      "value": "HTTPS://stg.seazn.club/a",
+      "expected": "HTTPS://stg.seazn.club/a"
+    },
+    {
+      "why": "a long s is not an s: no Unicode case folding on either side, so this scheme is masked whole",
+      "key": "url",
+      "value": "http\u017f://stg.seazn.club/a",
+      "expected": "***"
+    },
+    {
+      "why": "a field named level is written field_level, never as the line's level",
+      "key": "level",
+      "value": 3,
+      "expected": 3
+    },
+    {
+      "why": "text naming the code masks it in place: the code is masked in free text (M3)",
+      "key": "message",
+      "value": "GET https://stg.seazn.club/api/capture/codes/fx42hmnp7k2q/beat failed",
+      "expected": "GET https://stg.seazn.club/api/capture/codes/***/beat failed"
+    },
+    {
+      "why": "text naming the code beside the token masks both in place",
+      "key": "problems",
+      "value": "code fx42hmnp7k2q tok tok-9f3c2a7e5b1d4680ab refused",
+      "expected": "code *** tok *** refused"
+    },
+    {
+      "why": "a plain word containing the code passes: the code is masked in free text alone",
+      "key": "tag",
+      "value": "ref-fx42hmnp7k2q",
+      "expected": "ref-fx42hmnp7k2q"
+    },
+    {
+      "why": "an escape spelled with an Arabic-Indic digit is a hex digit on both sides, so the key it reveals masks the text whole",
+      "key": "message",
+      "value": "k=key%\u0662d4c7a0e2b9d5f1386",
+      "expected": "***"
+    },
+    {
+      "why": "an escape spelled with a fullwidth digit and a fullwidth letter decodes too, so the key it reveals masks the text whole",
+      "key": "message",
+      "value": "k=key%\uff12\uff444c7a0e2b9d5f1386",
+      "expected": "***"
+    },
+    {
+      "why": "a digit outside the BMP is two UTF-16 units, neither a hex digit on either side, so the escape is none and the text passes as written",
+      "key": "message",
+      "value": "k=key%\ud835\udfd0d4c7a0e2b9d5f1386",
+      "expected": "k=key%\ud835\udfd0d4c7a0e2b9d5f1386"
+    },
+    {
+      "why": "text carrying a secret encoded twice among other words is masked whole, after a second protect too",
+      "key": "message",
+      "value": "x pass%252Bphrase%252F6d1e8b0c y",
+      "expected": "***"
+    }
+  ],
+  "kinds": [
+    { "why": "a plain kind passes", "value": "armed", "expected": "armed" },
+    {
+      "why": "a kind that holds a secret is masked",
+      "value": "tok-9f3c2a7e5b1d4680ab",
+      "expected": "***"
+    },
+    { "why": "a kind that is not a word is masked", "value": "two words", "expected": "***" },
+    {
+      "why": "a kind containing the code passes: the code is masked in free text alone",
+      "value": "pair.fx42hmnp7k2q",
+      "expected": "pair.fx42hmnp7k2q"
+    }
+  ]
+}

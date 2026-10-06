@@ -1,0 +1,132 @@
+{
+  "about": "Which URLs sit on the build's Seazn host (role seazn: heartbeatUrl, startUrl, codeUrl, overlayUrl; JS and Kotlin) and on the ingest host (role ingest: cred urls; Kotlin only). The ingest host is live.cloudflare.com for both srt and rtmps in every environment, so ingest rows name no env (owner ruling A, 2026-10-05: stg dropped its custom host; prd never had one). Change only with both.",
+  "rows": [
+    {
+      "env": "staging",
+      "role": "seazn",
+      "url": "https://stg.seazn.club/api/capture/beat",
+      "ok": true
+    },
+    { "env": "staging", "role": "seazn", "url": "https://STG.seazn.club/x", "ok": true },
+    { "env": "staging", "role": "seazn", "url": "HTTPS://stg.seazn.club/x", "ok": true },
+    { "env": "staging", "role": "seazn", "url": "https://stg.seazn.club:8443/x", "ok": true },
+    { "env": "staging", "role": "seazn", "url": "https://seazn.club/x", "ok": false },
+    { "env": "staging", "role": "seazn", "url": "https://evil.stg.seazn.club/x", "ok": false },
+    { "env": "staging", "role": "seazn", "url": "https://stg.seazn.club.evil.io/x", "ok": false },
+    { "env": "staging", "role": "seazn", "url": "https://stg.seazn.club@evil.io/x", "ok": false },
+    { "env": "staging", "role": "seazn", "url": "http://stg.seazn.club/x", "ok": false },
+    { "env": "staging", "role": "seazn", "url": "https://stg.seazn.club\n", "ok": false },
+    { "env": "staging", "role": "seazn", "url": "httpſ://stg.seazn.club/x", "ok": false },
+    {
+      "env": "production",
+      "role": "seazn",
+      "url": "https://seazn.club/api/capture/start",
+      "ok": true
+    },
+    { "env": "production", "role": "seazn", "url": "https://stg.seazn.club/x", "ok": false },
+    { "role": "ingest", "scheme": "srt", "url": "srt://live.cloudflare.com:778", "ok": true },
+    {
+      "role": "ingest",
+      "scheme": "rtmps",
+      "url": "rtmps://live.cloudflare.com:443/live/",
+      "ok": true
+    },
+    { "role": "ingest", "scheme": "srt", "url": "srt://LIVE.cloudflare.com:778", "ok": true },
+    {
+      "role": "ingest",
+      "scheme": "rtmps",
+      "url": "RTMPS://Live.Cloudflare.COM:443/live/",
+      "ok": true
+    },
+    { "role": "ingest", "scheme": "srt", "url": "srt://live.stg.seazn.club:778", "ok": false },
+    {
+      "role": "ingest",
+      "scheme": "rtmps",
+      "url": "rtmps://live.stg.seazn.club:443/live/",
+      "ok": false
+    },
+    { "role": "ingest", "scheme": "srt", "url": "srt://live.seazn.club:778", "ok": false },
+    {
+      "role": "ingest",
+      "scheme": "rtmps",
+      "url": "rtmps://live.seazn.club:443/live/",
+      "ok": false
+    },
+    {
+      "role": "ingest",
+      "scheme": "rtmps",
+      "url": "rtmps://x.live.seazn.club:443/live/",
+      "ok": false
+    },
+    { "role": "ingest", "scheme": "srt", "url": "srt://live.cloudflare.com.evil:778", "ok": false },
+    { "role": "ingest", "scheme": "srt", "url": "srt://evil-live.cloudflare.com:778", "ok": false },
+    { "role": "ingest", "scheme": "srt", "url": "srt://x.live.cloudflare.com:778", "ok": false },
+    { "role": "ingest", "scheme": "srt", "url": "srt://live.cloudflare.com.:778", "ok": false },
+    { "role": "ingest", "scheme": "srt", "url": "srt://live.cloudflare.com@evil:778", "ok": false },
+    { "role": "ingest", "scheme": "srt", "url": "srt://user@live.cloudflare.com:778", "ok": false },
+    { "role": "ingest", "scheme": "srt", "url": "srt://live.cloudflare.com :778", "ok": false },
+    { "role": "ingest", "scheme": "srt", "url": "srt://live.cloudflare.com :778", "ok": false },
+    {
+      "role": "ingest",
+      "scheme": "rtmps",
+      "url": "rtmps://live.cloudflare.com.evil:443/live/",
+      "ok": false
+    },
+    {
+      "role": "ingest",
+      "scheme": "rtmps",
+      "url": "rtmps://evil-live.cloudflare.com:443/live/",
+      "ok": false
+    },
+    {
+      "role": "ingest",
+      "scheme": "rtmps",
+      "url": "rtmps://x.live.cloudflare.com:443/live/",
+      "ok": false
+    },
+    {
+      "role": "ingest",
+      "scheme": "rtmps",
+      "url": "rtmps://live.cloudflare.com.:443/live/",
+      "ok": false
+    },
+    {
+      "role": "ingest",
+      "scheme": "rtmps",
+      "url": "rtmps://live.cloudflare.com@evil:443/live/",
+      "ok": false
+    },
+    {
+      "role": "ingest",
+      "scheme": "rtmps",
+      "url": "rtmps://user@live.cloudflare.com:443/live/",
+      "ok": false
+    },
+    {
+      "role": "ingest",
+      "scheme": "rtmps",
+      "url": "rtmps://live.cloudflare.com :443/live/",
+      "ok": false
+    },
+    {
+      "role": "ingest",
+      "scheme": "rtmps",
+      "url": "rtmps://live.cloudflare.com :443/live/",
+      "ok": false
+    },
+    {
+      "role": "ingest",
+      "scheme": "srt",
+      "url": "rtmps://live.cloudflare.com:443/live/",
+      "ok": false
+    },
+    { "role": "ingest", "scheme": "rtmps", "url": "srt://live.cloudflare.com:778", "ok": false },
+    {
+      "role": "ingest",
+      "scheme": "rtmps",
+      "url": "rtmp://live.cloudflare.com:443/live/",
+      "ok": false
+    },
+    { "role": "ingest", "scheme": "srt", "url": "ſrt://live.cloudflare.com:778", "ok": false }
+  ]
+}

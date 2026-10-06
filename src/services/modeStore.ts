@@ -38,8 +38,19 @@ export type ModeStore = {
   subscribe(listener: () => void): () => void;
   open(code: SavedCode): Promise<void>;
   setActive(mode: Mode | null): Promise<void>;
-  forget(mode: Mode): Promise<void>;
+  /**
+   * Forgets `expected`, if its mode still holds it when the write runs
+   * (C4b-I2): a code saved since is a new scan, and stays. Resolves whether
+   * it forgot.
+   */
+  forget(expected: SavedCode): Promise<boolean>;
   expire(modes: readonly Mode[], notice: ExpiryNotice | null): Promise<void>;
+  /**
+   * The saved stream code's `tapToPair` mark (amendment), if it is still
+   * `expected` when the write runs (C4b-I2). Resolves whether it wrote:
+   * nothing to write when the code already holds the value.
+   */
+  markTapToPair(on: boolean, expected: SavedCode): Promise<boolean>;
   dismissNotices(): void;
 };
 
@@ -76,6 +87,15 @@ export function createModeStore(kv: KeyValueStore): ModeStore {
   };
   const withSaved = (saved: SavedState): Ready => ({ ...current(), saved });
   const serial = serialWrites();
+  // C4b-I2: a mark re-writes the scan it marks, so the marked record is still
+  // that scan to a forget or mark asked about the record before it.
+  const scanOf = new WeakMap<SavedCode, SavedCode>();
+  const scan = (code: SavedCode) => scanOf.get(code) ?? code;
+  /** The code `mode` holds now, if it is the scan `expected` is; a new scan otherwise. */
+  const stillHeld = (mode: Mode, expected: SavedCode): SavedCode | undefined => {
+    const code = current().saved.codes[mode];
+    return code !== undefined && scan(code) === scan(expected) ? code : undefined;
+  };
 
   return {
     load: async () => publish(await readAll(kv).catch(() => UNREADABLE)),
@@ -96,10 +116,13 @@ export function createModeStore(kv: KeyValueStore): ModeStore {
         await (mode === null ? kv.delete(STORE_KEYS.active) : kv.set(STORE_KEYS.active, mode));
         publish(withSaved({ ...current().saved, active: mode }));
       }),
-    forget: (mode) =>
+    forget: (expected) =>
       serial(async () => {
+        const { mode } = expected;
+        if (stillHeld(mode, expected) === undefined) return false;
         await removeCodes(kv, [mode], current().saved.active === mode);
         publish(withSaved(without(current().saved, [mode])));
+        return true;
       }),
     // R21: publish first. An expired code is unusable whether or not the phone
     // lets it be deleted, so the notice is true either way; a refused delete
@@ -109,13 +132,25 @@ export function createModeStore(kv: KeyValueStore): ModeStore {
       // The codes as the caller judged them, read now; the write runs later.
       const judged = current().saved.codes;
       return serial(async () => {
-        const { gone, named } = stillExpired(current().saved, judged, modes, notice);
+        const { gone, named } = stillExpired(current().saved, judged, modes, notice, scan);
         if (gone.length === 0 && named === null) return;
         const clearsActive = gone.some((mode) => mode === current().saved.active);
         publish({ ...withSaved(without(current().saved, gone)), notice: named });
         await removeCodes(kv, gone, clearsActive);
       });
     },
+    markTapToPair: (on, expected) =>
+      serial(async () => {
+        const code = stillHeld('stream', expected);
+        if (code === undefined || code.stream === null || code.stream.tapToPair === on)
+          return false;
+        const next: SavedCode = { ...code, stream: { ...code.stream, tapToPair: on } };
+        scanOf.set(next, scan(code));
+        await kv.set(STORE_KEYS.code('stream'), encodeSavedCode(next));
+        const { saved } = current();
+        publish(withSaved({ ...saved, codes: { ...saved.codes, stream: next } }));
+        return true;
+      }),
     dismissNotices: () => {
       const ready = current();
       if (ready.notice !== null || ready.dropped) {
@@ -131,8 +166,8 @@ export function createModeStore(kv: KeyValueStore): ModeStore {
  * scanner can land between the two writes of an open. A refused write rejects
  * its own caller and never blocks the next.
  */
-function serialWrites(): (write: () => Promise<void>) => Promise<void> {
-  let tail: Promise<void> = Promise.resolve();
+function serialWrites(): <T>(write: () => Promise<T>) => Promise<T> {
+  let tail: Promise<unknown> = Promise.resolve();
   return (write) => {
     const run = tail.then(write);
     tail = run.catch(() => undefined);
@@ -144,14 +179,17 @@ function serialWrites(): (write: () => Promise<void>) => Promise<void> {
  * Of the modes judged expired, those still holding the code that was judged.
  * A code opened since is a fresh one and is kept, and the notice that named
  * the old one is dropped with it: it would be about a code no longer saved.
+ * A record a mark re-wrote since is still the scan judged (`scan`, C4b-N2).
  */
 function stillExpired(
   saved: SavedState,
   judged: SavedState['codes'],
   modes: readonly Mode[],
   notice: ExpiryNotice | null,
+  scan: (code: SavedCode) => SavedCode,
 ): { gone: readonly Mode[]; named: ExpiryNotice | null } {
-  const still = (mode: Mode) => saved.codes[mode] === judged[mode];
+  const scanOf = (code: SavedCode | undefined) => (code === undefined ? undefined : scan(code));
+  const still = (mode: Mode) => scanOf(saved.codes[mode]) === scanOf(judged[mode]);
   const named = notice !== null && still(notice.mode) ? notice : null;
   return { gone: modes.filter(still), named };
 }

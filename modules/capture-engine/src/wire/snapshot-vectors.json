@@ -1,0 +1,442 @@
+{
+  "about": "Native Snapshot → wire (SnapshotWireTest.kt) and wire → EngineSnapshot (snapshotWire.test.ts). A case's telemetry, pairing and broadcast are { ...base, ...case.wire.<field> } when an object. Every case is a snapshot native can send. telemetryKeys are the keys of telemetry, srt and heartbeat, which JS hands through unchanged. Change only with both.",
+  "vocabulary": {
+    "state": [
+      "idle",
+      "pairing",
+      "paired",
+      "arming",
+      "armed",
+      "connecting",
+      "publishing",
+      "degraded",
+      "reconnecting",
+      "ended"
+    ],
+    "transport": ["srt", "rtmps"],
+    "reconnectCause": ["uplink-lost", "video-stalled", "not-delivered"],
+    "degradeReason": [
+      "not-delivered",
+      "camera-taken",
+      "mic-silenced",
+      "poor-uplink",
+      "fell-back-to-rtmps"
+    ],
+    "endReason": ["operator-stopped", "fatal-error"],
+    "cause": ["organiser", "automatic", "operator", "rejoin"],
+    "notReady": ["camera", "sound", "network", "held"],
+    "refusal": ["no_destination", "no_credit", "not_entitled", "unknown", "start-failed"],
+    "lastEnd": [
+      "stopped-by-organiser",
+      "stopped-automatically",
+      "no-signal",
+      "destination-refused",
+      "max-duration",
+      "phone-lost",
+      "ended-by-seazn",
+      "hold-window-expired",
+      "stopped"
+    ],
+    "unpairReason": ["code-ended", "replaced", "taken", "permissions"],
+    "delivery": ["ok", "stalled", "unknown"],
+    "shed": ["overlay-preview", "preview-framerate", "encode"],
+    "heartbeatResult": ["ok", "failed", "session-over"],
+    "connectFailure": ["unresolved", "refused", "timeout", "other", "unheld", "camera"],
+    "camera": ["own", "taken", "reopening", "resuming", "switching"],
+    "thermal": ["none", "light", "moderate", "severe", "critical", "emergency", "shutdown"],
+    "scoreUpdates": ["realtime", "polled"]
+  },
+  "telemetryKeys": {
+    "telemetry": [
+      "bitrateKbps",
+      "targetBitrateKbps",
+      "audioLevel",
+      "encodedVideoFps",
+      "audioPacketsPerSecond",
+      "srt",
+      "delivery",
+      "deliveredLagMs",
+      "deliveryCheckedAtMs",
+      "dataUsedBytes",
+      "charging",
+      "batteryPercent",
+      "drainPctPerHour",
+      "thermalStatus",
+      "thermalHeadroom",
+      "captureTimestampMs",
+      "shed",
+      "heartbeat",
+      "recordSinkFailures",
+      "recordReentrantDropped",
+      "taskFailures",
+      "reporterFailures",
+      "snapshotFailures",
+      "commandFailures",
+      "stickyFailure"
+    ],
+    "srt": ["sent", "retransmitted", "dropped", "rttMs"],
+    "heartbeat": ["lastSentAtEpochMs", "lastResult", "consecutiveFailures", "failures"]
+  },
+  "telemetryBase": {
+    "bitrateKbps": null,
+    "targetBitrateKbps": null,
+    "audioLevel": 0,
+    "encodedVideoFps": null,
+    "audioPacketsPerSecond": null,
+    "srt": null,
+    "delivery": "unknown",
+    "deliveredLagMs": null,
+    "deliveryCheckedAtMs": null,
+    "dataUsedBytes": 0,
+    "charging": null,
+    "batteryPercent": null,
+    "drainPctPerHour": null,
+    "thermalStatus": null,
+    "thermalHeadroom": null,
+    "captureTimestampMs": null,
+    "shed": null,
+    "heartbeat": {
+      "lastSentAtEpochMs": null,
+      "lastResult": null,
+      "consecutiveFailures": 0,
+      "failures": 0
+    },
+    "recordSinkFailures": 0,
+    "recordReentrantDropped": 0,
+    "taskFailures": 0,
+    "reporterFailures": 0,
+    "snapshotFailures": 0,
+    "commandFailures": 0,
+    "stickyFailure": false
+  },
+  "pairingBase": {
+    "code": "fx42hmnp7k2q",
+    "slot": 1,
+    "tokenTag": "c980ff38",
+    "automatic": true,
+    "label": "Example Town v Sample CC",
+    "venueTimezone": "Europe/London",
+    "scheduledStart": 1790003600,
+    "autoAllowed": true,
+    "destinationName": "YouTube · Example Town CC",
+    "overlayUrl": "https://stg.seazn.club/overlay/fixtures/fx42hmnp7k2q",
+    "pollSeconds": 10
+  },
+  "broadcastBase": {
+    "sid": "sess_42",
+    "cause": "organiser",
+    "playbackUrl": "https://customer-x.cloudflarestream.com/a1b2c3d4e5f60718293a4b5c6d7e8f90/manifest/video.m3u8",
+    "overlayUrl": "https://stg.seazn.club/overlay/fixtures/fx42hmnp7k2q",
+    "label": "Example Town v Sample CC",
+    "holdWindowSeconds": { "srt": 183, "rtmps": 180 },
+    "maxDurationMinutes": 300,
+    "scoreUpdates": "realtime",
+    "srtOffered": true
+  },
+  "cases": [
+    {
+      "name": "idle",
+      "wire": {
+        "state": { "kind": "idle" },
+        "pairing": null,
+        "broadcast": null,
+        "ready": { "camera": false, "sound": false, "network": false, "held": false },
+        "refusal": null,
+        "lastEnd": null,
+        "unpaired": null,
+        "codeEndedPending": false,
+        "camera": null,
+        "reportedAtMs": 1790000000000,
+        "survivesBackground": false,
+        "telemetry": {}
+      }
+    },
+    {
+      "name": "idle-unpaired-replaced",
+      "wire": {
+        "state": { "kind": "idle" },
+        "pairing": null,
+        "broadcast": null,
+        "ready": { "camera": false, "sound": false, "network": false, "held": false },
+        "refusal": null,
+        "lastEnd": null,
+        "unpaired": {
+          "reason": "replaced",
+          "code": "fx42hmnp7k2q",
+          "slot": 1,
+          "tokenTag": "c980ff38"
+        },
+        "codeEndedPending": false,
+        "camera": null,
+        "reportedAtMs": 1790000000500,
+        "survivesBackground": false,
+        "telemetry": {}
+      }
+    },
+    {
+      "name": "pairing",
+      "wire": {
+        "state": { "kind": "pairing" },
+        "pairing": {
+          "label": "",
+          "venueTimezone": "",
+          "scheduledStart": null,
+          "autoAllowed": false,
+          "destinationName": null,
+          "overlayUrl": null
+        },
+        "broadcast": null,
+        "ready": { "camera": false, "sound": false, "network": true, "held": false },
+        "refusal": null,
+        "lastEnd": null,
+        "unpaired": null,
+        "codeEndedPending": false,
+        "camera": "own",
+        "reportedAtMs": 1790000001000,
+        "survivesBackground": false,
+        "telemetry": {}
+      }
+    },
+    {
+      "name": "paired-after-organiser-stop",
+      "wire": {
+        "state": { "kind": "paired" },
+        "pairing": { "pollSeconds": 60 },
+        "broadcast": null,
+        "ready": { "camera": true, "sound": false, "network": true, "held": false },
+        "refusal": null,
+        "lastEnd": "stopped-by-organiser",
+        "unpaired": null,
+        "codeEndedPending": false,
+        "camera": "own",
+        "reportedAtMs": 1790000002000,
+        "survivesBackground": true,
+        "telemetry": {
+          "audioLevel": 0.42,
+          "heartbeat": {
+            "lastSentAtEpochMs": 1790000001500,
+            "lastResult": "ok",
+            "consecutiveFailures": 0,
+            "failures": 0
+          }
+        }
+      }
+    },
+    {
+      "name": "paired-refused-no-destination",
+      "wire": {
+        "state": { "kind": "paired" },
+        "pairing": { "destinationName": null, "automatic": false },
+        "broadcast": null,
+        "ready": { "camera": true, "sound": true, "network": true, "held": true },
+        "refusal": "no_destination",
+        "lastEnd": null,
+        "unpaired": null,
+        "codeEndedPending": false,
+        "camera": "own",
+        "reportedAtMs": 1790000003000,
+        "survivesBackground": true,
+        "telemetry": { "audioLevel": 0.42 }
+      }
+    },
+    {
+      "name": "arming-retrying",
+      "wire": {
+        "state": { "kind": "arming", "cause": "automatic", "retrying": true },
+        "pairing": {},
+        "broadcast": null,
+        "ready": { "camera": true, "sound": true, "network": true, "held": true },
+        "refusal": null,
+        "lastEnd": null,
+        "unpaired": null,
+        "codeEndedPending": false,
+        "camera": "own",
+        "reportedAtMs": 1790000004000,
+        "survivesBackground": true,
+        "telemetry": {}
+      }
+    },
+    {
+      "name": "armed-not-held-rtmps-only",
+      "wire": {
+        "state": { "kind": "armed", "cause": "rejoin", "notReady": "held" },
+        "pairing": {},
+        "broadcast": {
+          "cause": "rejoin",
+          "holdWindowSeconds": { "rtmps": 180 },
+          "srtOffered": false
+        },
+        "ready": { "camera": true, "sound": true, "network": true, "held": false },
+        "refusal": null,
+        "lastEnd": null,
+        "unpaired": null,
+        "codeEndedPending": false,
+        "camera": "own",
+        "reportedAtMs": 1790000005000,
+        "survivesBackground": true,
+        "telemetry": { "audioLevel": 0.3 }
+      }
+    },
+    {
+      "name": "armed-gate-open-no-overlay",
+      "wire": {
+        "state": { "kind": "armed", "cause": "operator", "notReady": null },
+        "pairing": { "overlayUrl": null },
+        "broadcast": { "cause": "operator", "overlayUrl": null },
+        "ready": { "camera": true, "sound": true, "network": true, "held": true },
+        "refusal": null,
+        "lastEnd": null,
+        "unpaired": null,
+        "codeEndedPending": false,
+        "camera": "own",
+        "reportedAtMs": 1790000005500,
+        "survivesBackground": true,
+        "telemetry": { "audioLevel": 0.3 }
+      }
+    },
+    {
+      "name": "connecting-unknown-score-updates",
+      "wire": {
+        "state": { "kind": "connecting", "transport": "srt" },
+        "pairing": {},
+        "broadcast": { "scoreUpdates": null },
+        "ready": { "camera": true, "sound": true, "network": true, "held": true },
+        "refusal": null,
+        "lastEnd": null,
+        "unpaired": null,
+        "codeEndedPending": false,
+        "camera": "own",
+        "reportedAtMs": 1790000006000,
+        "survivesBackground": true,
+        "telemetry": { "audioLevel": 0.3 }
+      }
+    },
+    {
+      "name": "degraded-two-reasons",
+      "wire": {
+        "state": {
+          "kind": "degraded",
+          "transport": "srt",
+          "reason": "not-delivered",
+          "sinceEpochMs": 1790000001000
+        },
+        "pairing": {},
+        "broadcast": {},
+        "ready": { "camera": true, "sound": true, "network": true, "held": true },
+        "refusal": null,
+        "lastEnd": null,
+        "unpaired": null,
+        "codeEndedPending": false,
+        "camera": "own",
+        "reportedAtMs": 1790000060000,
+        "survivesBackground": true,
+        "telemetry": { "srt": { "sent": 600, "retransmitted": 0, "dropped": 0, "rttMs": null } }
+      }
+    },
+    {
+      "name": "reconnecting-code-ended-pending",
+      "wire": {
+        "state": {
+          "kind": "reconnecting",
+          "cause": "uplink-lost",
+          "holdRemainingSeconds": 38,
+          "holdWindowSeconds": 183,
+          "sinceEpochMs": 1790000001000
+        },
+        "pairing": {},
+        "broadcast": {},
+        "ready": { "camera": true, "sound": true, "network": false, "held": true },
+        "refusal": null,
+        "lastEnd": null,
+        "unpaired": null,
+        "codeEndedPending": true,
+        "camera": "own",
+        "reportedAtMs": 1790000146000,
+        "survivesBackground": true,
+        "telemetry": {}
+      }
+    },
+    {
+      "name": "ended-operator-stopped",
+      "wire": {
+        "state": { "kind": "ended", "reason": "operator-stopped", "durationMs": 2700000 },
+        "pairing": {},
+        "broadcast": null,
+        "ready": { "camera": false, "sound": true, "network": true, "held": true },
+        "refusal": null,
+        "lastEnd": null,
+        "unpaired": null,
+        "codeEndedPending": false,
+        "camera": null,
+        "reportedAtMs": 1790002700000,
+        "survivesBackground": false,
+        "telemetry": {}
+      }
+    },
+    {
+      "name": "ended-pair-refused-never-live",
+      "wire": {
+        "state": { "kind": "ended", "reason": "fatal-error", "durationMs": null },
+        "pairing": null,
+        "broadcast": null,
+        "ready": { "camera": false, "sound": false, "network": false, "held": false },
+        "refusal": null,
+        "lastEnd": null,
+        "unpaired": null,
+        "codeEndedPending": false,
+        "camera": null,
+        "reportedAtMs": 1790000000200,
+        "survivesBackground": false,
+        "telemetry": {}
+      }
+    },
+    {
+      "name": "live-telemetry",
+      "wire": {
+        "state": { "kind": "publishing", "transport": "srt", "sinceEpochMs": 1790000001000 },
+        "pairing": {},
+        "broadcast": {},
+        "ready": { "camera": true, "sound": true, "network": true, "held": true },
+        "refusal": null,
+        "lastEnd": null,
+        "unpaired": null,
+        "codeEndedPending": false,
+        "camera": "own",
+        "reportedAtMs": 1790000061000,
+        "survivesBackground": true,
+        "telemetry": {
+          "bitrateKbps": 2950,
+          "targetBitrateKbps": 3000,
+          "audioLevel": 0.5,
+          "encodedVideoFps": 29.5,
+          "audioPacketsPerSecond": 46,
+          "srt": { "sent": 1200, "retransmitted": 4, "dropped": 0, "rttMs": 38 },
+          "delivery": "ok",
+          "deliveredLagMs": 9000,
+          "deliveryCheckedAtMs": 1790000060000,
+          "dataUsedBytes": 22000000,
+          "charging": true,
+          "batteryPercent": 81,
+          "drainPctPerHour": 7.5,
+          "thermalStatus": "moderate",
+          "thermalHeadroom": 0.6,
+          "captureTimestampMs": 1790000060900,
+          "shed": "overlay-preview",
+          "heartbeat": {
+            "lastSentAtEpochMs": 1790000060000,
+            "lastResult": "ok",
+            "consecutiveFailures": 0,
+            "failures": 1
+          },
+          "recordSinkFailures": 2,
+          "recordReentrantDropped": 1,
+          "taskFailures": 4,
+          "reporterFailures": 3,
+          "snapshotFailures": 7,
+          "commandFailures": 8,
+          "stickyFailure": true
+        }
+      }
+    }
+  ]
+}

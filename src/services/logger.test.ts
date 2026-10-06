@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { createLogger } from '@/services/logger';
 import { SCRUBBED } from '@/services/scrub';
-import { createRingRecord } from '@/services/sessionRecord';
+import { createRingRecord, parseRecordLine } from '@/services/sessionRecord';
 
-const parsed = (lines: readonly string[]) => lines.map((line) => JSON.parse(line));
+const parsed = (lines: readonly string[]) => lines.map(parseRecordLine);
 
 describe('the logger', () => {
   it('writes each level to the record, stamped with the clock', () => {
@@ -11,7 +11,12 @@ describe('the logger', () => {
     const logger = createLogger({ record, now: () => Date.parse('2026-10-03T13:00:00Z') });
     logger.warn('kv.timeout', { op: 'set' });
     expect(parsed(record.lines())).toEqual([
-      { at: '2026-10-03T13:00:00.000Z', level: 'warn', event: 'kv.timeout', fields: { op: 'set' } },
+      {
+        atMs: Date.parse('2026-10-03T13:00:00Z'),
+        level: 'warn',
+        event: 'kv.timeout',
+        fields: { op: 'set' },
+      },
     ]);
   });
 
@@ -61,6 +66,39 @@ describe('the logger', () => {
       reason: SCRUBBED,
       state: SCRUBBED,
     });
+  });
+
+  // M3, review I2: the code is masked in free text alone, and a later protect keeps an earlier code.
+  it('masks a text-only value in free text alone, and keeps it masked after a later protect', () => {
+    const record = createRingRecord();
+    const logger = createLogger({ record, now: () => 0 });
+    logger.protect({ secrets: ['fake-token-000a'], streamIds: [], textOnly: ['fakecode000a'] });
+    logger.protect({ secrets: ['fake-token-000b'], streamIds: [], textOnly: ['fakecode000b'] });
+    logger.info('probe', {
+      message: 'GET /codes/fakecode000a then /codes/fakecode000b',
+      tag: 'fakecode000a',
+    });
+    expect(parsed(record.lines())[0].fields).toEqual({
+      message: `GET /codes/${SCRUBBED} then /codes/${SCRUBBED}`,
+      tag: 'fakecode000a',
+    });
+  });
+
+  // N7: keyed on the session in hand, so a second code in the same process is covered as the first was.
+  it('N7 masks free text whole between one session and the next, and keeps the first masked', () => {
+    const record = createRingRecord();
+    const logger = createLogger({ record, now: () => 0 });
+    logger.protect({ secrets: ['fake-token-000a'], streamIds: ['fake-stream-id-000a'] });
+    logger.warn('first.held', { message: 'Connection refused (errno 111)' });
+    logger.release();
+    logger.warn('second.scanned', { message: 'GET /c?tok=fake-token-000b failed' });
+    logger.protect({ secrets: ['fake-token-000b'], streamIds: ['fake-stream-id-000b'] });
+    logger.warn('second.held', { message: 'retry fake-token-000a then fake-token-000b' });
+    expect(record.lines().map((line) => parseRecordLine(line).fields.message)).toEqual([
+      'Connection refused (errno 111)',
+      SCRUBBED,
+      `retry ${SCRUBBED} then ${SCRUBBED}`,
+    ]);
   });
 
   it('drops entries below its floor', () => {

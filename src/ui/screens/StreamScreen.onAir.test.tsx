@@ -1,5 +1,6 @@
 import { act, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { SessionState } from '@/domain/session/SessionState';
 import type { FakeScene } from '@/engine/FakeCaptureEngine';
 import { HOLD_MS } from '@/hooks/useHold';
 import type { FakePorts } from '../../../test/fakePorts';
@@ -7,7 +8,9 @@ import { pressIn } from '../../../test/press';
 import { renderViewfinder } from '../../../test/renderViewfinder';
 
 const plate = () => screen.getByTestId('tally-plate').textContent;
-const stop = () => screen.getByRole('button', { name: 'Stop. Press and hold for 3 seconds.' });
+const stop = () => screen.getByRole('button', { name: 'Hold to stop and unpair' });
+/** Stop before the first frame ends the broadcast, not the pairing (owner decision 1, 2026-10-05). */
+const stopNeverLive = () => screen.getByRole('button', { name: 'Hold to stop' });
 const goLive = () => screen.getByRole('button', { name: 'Go live. Press and hold for 3 seconds.' });
 const peek = () => screen.getByRole('button', { name: 'What viewers see' });
 const fill = () => screen.getByTestId('hold-fill').dataset.holding;
@@ -41,7 +44,40 @@ describe('on air (spec §6, through the fake)', () => {
     expect(plate()).toBe('Connecting');
     expect(screen.queryByText('Live')).toBeNull();
     expect(screen.getByText('Opening the link.')).toBeTruthy();
-    expect(stop()).toBeTruthy();
+    expect(stopNeverLive()).toBeTruthy();
+  });
+
+  /**
+   * Owner decision 1 (2026-10-05): a Stop unpairs only once the broadcast went live. Native says which states went
+   * live: those it reports with `sinceEpochMs` (SessionState). Every state that offers Stop is swept, and each label
+   * is read off the state's own shape, not a list of ours.
+   */
+  it('says Stop unpairs in every state that went live, and only those', async () => {
+    const view = await renderViewfinder();
+    const offeringStop: readonly SessionState[] = [
+      { kind: 'arming', cause: 'operator', retrying: false },
+      { kind: 'armed', cause: 'organiser', notReady: 'camera' },
+      { kind: 'connecting', transport: 'srt' },
+      { kind: 'publishing', transport: 'srt', sinceEpochMs: 1 },
+      { kind: 'degraded', transport: 'srt', reason: 'poor-uplink', sinceEpochMs: 1 },
+      {
+        kind: 'reconnecting',
+        cause: 'uplink-lost',
+        holdRemainingSeconds: 30,
+        holdWindowSeconds: 60,
+        sinceEpochMs: 1,
+      },
+    ];
+    const said: string[] = [];
+    for (const state of offeringStop) {
+      act(() => view.engine.forceState(state));
+      const name = 'sinceEpochMs' in state ? 'Hold to stop and unpair' : 'Hold to stop';
+      if (screen.queryByRole('button', { name }) !== null) said.push(state.kind);
+    }
+    expect(said).toEqual(offeringStop.map((state) => state.kind));
+    expect(
+      said.filter((kind) => ['publishing', 'degraded', 'reconnecting'].includes(kind)),
+    ).toHaveLength(3);
   });
 
   it('says live with no sound when the level drops under the floor on air (D39)', async () => {
@@ -215,14 +251,18 @@ describe('what viewers see (spec §4, carry 13)', () => {
   });
 
   /**
-   * A descriptor always carries a playback URL (parseDescriptor refuses one
-   * without), so no picture means no descriptor: native on air in a session
-   * it reports none for, as the unarmed fake does.
+   * A broadcast always carries a playback URL (BroadcastInfo.playbackUrl is
+   * required), so no picture means no broadcast in the snapshot: native on air
+   * with none reported, forced here on an engine that holds no pairing.
    */
-  const liveWithNoDescriptor = { prepare: (fakes: FakePorts) => fakes.engine.scene('live') };
+  const liveWithNoBroadcast = {
+    engine: 'idle',
+    prepare: (fakes: FakePorts) =>
+      fakes.engine.forceState({ kind: 'publishing', transport: 'srt', sinceEpochMs: 1 }),
+  } as const;
 
   it('is off, and says why, on air with no viewer picture: a press lights nothing', async () => {
-    await renderViewfinder({}, liveWithNoDescriptor);
+    await renderViewfinder({}, liveWithNoBroadcast);
     expect(plate()).toBe('Live');
     expect(peek().getAttribute('aria-disabled')).toBe('true');
     expect(screen.getByText('No viewer picture')).toBeTruthy();
@@ -237,7 +277,7 @@ describe('what viewers see (spec §4, carry 13)', () => {
   });
 
   it('says why in French', async () => {
-    await renderViewfinder({ deviceLanguages: ['fr'] }, liveWithNoDescriptor);
+    await renderViewfinder({ deviceLanguages: ['fr'] }, liveWithNoBroadcast);
     expect(screen.getByText('Image indisponible')).toBeTruthy();
   });
 
@@ -292,16 +332,15 @@ describe('the score preview on air', () => {
     expect(screen.getByTestId('overlay')).toBeTruthy();
   });
 
-  // M1: native re-fetches the descriptor on every reconnect (spec §1); a new
-  // overlay URL is a new showing, tried afresh, with no caption.
+  // M1: native re-asks the code (spec §1), so the pairing's overlay URL can
+  // change; a new URL is a new showing, tried afresh, with no caption. Paired,
+  // since the fake's broadcast keeps the URL it went live with.
   it('tries a new overlay URL afresh, with no caption (carry 13)', async () => {
-    const view = await onAir('live');
+    const view = await renderViewfinder();
     act(() => view.surfaces.failOverlay());
     expect(screen.getByText(OVERLAY_FAILED)).toBeTruthy();
-    const descriptor = view.engine.getSnapshot().descriptor;
-    if (descriptor === null) throw new Error('armed with no descriptor');
     const next = 'https://stg.seazn.club/overlay/fixtures/next-fixture';
-    act(() => view.engine.setDescriptor({ ...descriptor, overlayUrl: next }));
+    act(() => view.engine.setPairing({ overlayUrl: next }));
     expect(screen.queryByText(OVERLAY_FAILED)).toBeNull();
     expect(screen.getByTestId('overlay').dataset.url).toBe(`${next}?delay=0`);
   });

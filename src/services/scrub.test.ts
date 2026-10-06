@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import type { SessionSecrets } from '@/domain/credentials/StreamSession';
-import { SCRUBBED, scrubEvent, scrubFields, type LogFields } from '@/services/scrub';
+import {
+  SCRUBBED,
+  scrubEvent,
+  scrubFields,
+  type LogFields,
+  type SessionSecrets,
+} from '@/services/scrub';
 
 const TOKEN = 'fake-token-0001';
 const PASSPHRASE = 'fake-pass-0001';
@@ -184,11 +189,57 @@ describe('scrubFields: the held session’s secrets, by value (M3)', () => {
     expect(scrubFields({ url }, HELD)).toEqual({ url });
   });
 
+  // Task 10: the scrub is the boundary and never throws. A lone surrogate has no UTF-8 form, so
+  // encodeURIComponent throws on it; one such secret must not end every later line.
+  it('masks a secret holding a lone surrogate raw, and never throws on it', () => {
+    const odd: SessionSecrets = { secrets: ['fake-\uD800-0001'], streamIds: [] };
+    expect(scrubFields({ message: 'bad fake-\uD800-0001 here', kind: 'offline' }, odd)).toEqual({
+      message: `bad ${SCRUBBED} here`,
+      kind: 'offline',
+    });
+    expect(scrubEvent('kv.timeout', odd)).toBe('kv.timeout');
+  });
+
   it('never masks with a blank value', () => {
     const blank: SessionSecrets = { secrets: ['', '  '], streamIds: [''] };
     expect(scrubFields({ kind: 'offline' }, blank)).toEqual({ kind: 'offline' });
     expect(scrubEvent('kv.timeout', blank)).toBe('kv.timeout');
     const url = 'https://video.example/a';
     expect(scrubFields({ url }, blank)).toEqual({ url });
+  });
+});
+
+/**
+ * Task 10 (CD6): a text key masks each held secret where it stands. JS alone
+ * masks it whole while no session is in hand: it holds a code's `tok` from the
+ * scan, before the viewfinder protects the session (I12, N7).
+ */
+describe('scrubFields: free text (CD6, I12, N7)', () => {
+  it('I12 masks free text whole while nothing is protected: JS holds the code before the arm', () => {
+    expect(scrubFields({ message: 'Connection refused (errno 111)' })).toEqual({
+      message: SCRUBBED,
+    });
+    expect(scrubFields({ message: 'Connection refused (errno 111)' }, HELD)).toEqual({
+      message: 'Connection refused (errno 111)',
+    });
+  });
+
+  it('N7 masks free text whole when secrets are held but no session is in hand', () => {
+    expect(scrubFields({ message: 'Connection refused (errno 111)' }, HELD, false)).toEqual({
+      message: SCRUBBED,
+    });
+  });
+
+  // URLEncoder's form differs from the component form for a space (`+`) and for `! ' ( ) ~`
+  // (escaped), so only `formsOf`'s form finds these where they stand; without it a decode still
+  // shows them and the whole message goes. The shared passphrase cannot show this: its two
+  // encoded forms are the same.
+  it.each([
+    ['a space written as +', 'srt://h:1?passphrase=fake+pass+0001&x=1'],
+    ['a ! escaped', 'srt://h:1?passphrase=p%40ss%2Fw0rd%21&x=1'],
+  ])('masks a URLEncoder-form secret in text where it stands: %s', (_, message) => {
+    expect(scrubFields({ message }, HELD)).toEqual({
+      message: `srt://h:1?passphrase=${SCRUBBED}&x=1`,
+    });
   });
 });

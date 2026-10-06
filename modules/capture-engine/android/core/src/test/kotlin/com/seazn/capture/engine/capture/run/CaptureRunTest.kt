@@ -1,0 +1,1056 @@
+package com.seazn.capture.engine.capture.run
+
+import com.seazn.capture.engine.StreamPack
+import com.seazn.capture.engine.adapter.AttemptSignals
+import com.seazn.capture.engine.adapter.CameraAvailability
+import com.seazn.capture.engine.adapter.EncoderKeys
+import com.seazn.capture.engine.adapter.Failures
+import com.seazn.capture.engine.adapter.PermanentPlatformFailure
+import com.seazn.capture.engine.core.Command
+import com.seazn.capture.engine.core.Configs
+import com.seazn.capture.engine.core.ConnectFailure
+import com.seazn.capture.engine.core.DropReason
+import com.seazn.capture.engine.core.EndReason
+import com.seazn.capture.engine.core.Input
+import com.seazn.capture.engine.core.RecordEntry
+import com.seazn.capture.engine.core.SessionMachine
+import com.seazn.capture.engine.core.SessionRecord
+import com.seazn.capture.engine.core.Shared
+import com.seazn.capture.engine.core.Side
+import com.seazn.capture.engine.thrownAt
+import java.io.IOException
+import java.net.ConnectException
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.test.TestScope
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
+import kotlinx.coroutines.test.advanceTimeBy
+import kotlinx.coroutines.test.advanceUntilIdle
+import kotlinx.coroutines.test.runCurrent
+import kotlinx.coroutines.test.runTest
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertIs
+import kotlin.test.assertNotNull
+import kotlin.test.assertNull
+import kotlin.test.assertSame
+import kotlin.test.assertTrue
+
+/**
+ * The capture's rules (Task 36) against a fake of StreamPack's parts. Single-mode: the capture has no
+ * sport; the side held is its one mode, and the Orient cases take both.
+ */
+@OptIn(ExperimentalCoroutinesApi::class) // advanceUntilIdle and runCurrent
+class CaptureRunTest {
+  private val request = Configs.pairRequest()
+  private val left = EncoderKeys.surfaceRotation(Side.LEFT)
+
+  // Camera2's reasons, read with javap from android-36's android.jar (CameraAccessException).
+  private val cameraInUse = 4
+  private val maxCamerasInUse = 5
+  private val cameraDisconnected = 2
+
+  private fun connect(id: Int) = Command.Connect(id, Configs.srt, startBitrateBps = 3_000_000, maxBwBytesPerSecond = 1_000_000)
+
+  private class Scene(val parts: FakeParts, val told: Told, val cameras: CameraAvailability, val run: CaptureRun)
+
+  private fun TestScope.scene(
+    cameras: CameraAvailability = CameraAvailability(),
+    side: () -> Side = { Side.LEFT },
+    signals: AttemptSignals = AttemptSignals(),
+    scope: CoroutineScope = queueScope(),
+  ): Scene {
+    val parts = FakeParts()
+    val told = Told()
+    return Scene(parts, told, cameras, CaptureRun(parts, signals, cameras, told.calls(), side, scope))
+  }
+
+  private fun TestScope.opened(scope: CoroutineScope = queueScope()): Scene =
+    scene(scope = scope).also {
+      it.run.open(request)
+      advanceUntilIdle()
+      it.parts.log.clear()
+    }
+
+  private fun TestScope.does(scene: Scene, vararg commands: Command) {
+    commands.forEach(scene.run::execute)
+    advanceUntilIdle()
+  }
+
+  // --- Review C7 I-2: StreamPack opens the camera lazily, so the build holds nothing until the open is seen ---
+
+  @Test
+  fun `I-2 a camera taken before the build is told at it, and stays taken until StreamPack reports our open`() =
+    runTest {
+      val cameras = CameraAvailability().apply { unavailable("0", 1_000) } // CameraWatch heard it before the build
+      val s = scene(cameras)
+      s.run.open(request)
+      advanceUntilIdle()
+      assertEquals(listOf<Input>(Input.CameraContended), s.told.reports, "the build holds nothing yet: the take stands")
+      assertTrue(cameras.contended("0"))
+      s.parts.opened("1")
+      advanceUntilIdle()
+      assertEquals(listOf<Input>(Input.CameraContended), s.told.reports, "another camera's open is not ours")
+      s.parts.opened("0")
+      advanceUntilIdle()
+      assertEquals(listOf(Input.CameraContended, Input.CameraReleased), s.told.reports, "ours once open, and told over")
+      assertFalse(cameras.contended("0"))
+    }
+
+  @Test
+  fun `I-2 a build with nothing taken tells nothing, and its open tells nothing either`() =
+    runTest {
+      val s = opened()
+      s.parts.opened("0")
+      advanceUntilIdle()
+      assertEquals(emptyList(), s.told.reports)
+      assertTrue(s.cameras.ready(camera = true))
+    }
+
+  @Test
+  fun `I-2 each opening watches its own camera's opens, the release ends the watch, and a rebuild keeps one`() =
+    runTest {
+      val s = scene()
+      assertEquals(0, s.parts.watching, "nothing built, nothing watched")
+      s.run.open(request)
+      advanceUntilIdle()
+      assertEquals(1, s.parts.watching)
+      s.parts.log.clear()
+      does(s, Command.Orient(Side.RIGHT)) // CD42: another side rebuilds
+      assertEquals(listOf("release", "release done", "build ${EncoderKeys.surfaceRotation(Side.RIGHT)}", "build done"), s.parts.log.filter { it.startsWith("build") || it.startsWith("release") })
+      assertEquals(1, s.parts.watching, "the old opening's watch ended with its release")
+      s.run.close()
+      advanceUntilIdle()
+      assertEquals(0, s.parts.watching, "the release ends the watch")
+      s.run.open(request)
+      advanceUntilIdle()
+      assertEquals(1, s.parts.watching, "the next opening watches again")
+    }
+
+  @Test
+  fun `I-2 a busy build's release then the reopen's build is told nothing taken, and its open nothing more`() =
+    runTest {
+      val cameras = CameraAvailability()
+      val s = scene(cameras)
+      s.parts.builds += Built.Failed("0", cameraInUse, encoder = false, error = RuntimeException("Camera already in use"))
+      s.run.open(request)
+      advanceUntilIdle()
+      assertEquals(listOf(request), s.told.busy)
+      assertEquals(Input.CameraReleased, cameras.available("0", 3_000), "CameraWatch: the holder let go")
+      does(s, Command.ReopenCamera)
+      assertEquals(listOf<Input>(Input.CameraReopened(true)), s.told.reports, "nothing taken at the reopen's build")
+      s.parts.opened("0")
+      advanceUntilIdle()
+      assertEquals(listOf<Input>(Input.CameraReopened(true)), s.told.reports)
+    }
+
+  // --- C6 CRITICAL: Disconnect(n) closes attempt n's endpoint only ---
+
+  @Test
+  fun `C6 CRITICAL Disconnect of an attempt the endpoint no longer holds leaves the newer attempt publishing`() =
+    runTest {
+      val s = opened()
+      does(s, connect(1), connect(2))
+      assertEquals(listOf(1), s.parts.closed, "attempt 2's connect closed attempt 1's endpoint")
+      assertEquals(2, s.parts.publishing)
+      s.parts.log.clear()
+      does(s, Command.Disconnect(1))
+      assertEquals(2, s.parts.publishing, "attempt 2 keeps publishing")
+      assertEquals(emptyList(), s.parts.log, "nothing was stopped")
+      // The positive pair: the attempt held is the one a Disconnect closes.
+      does(s, Command.Disconnect(2))
+      assertNull(s.parts.publishing)
+      assertEquals(listOf(1, 2), s.parts.closed)
+      assertEquals(emptyList(), s.told.reports.filterIsInstance<Input.Dropped>(), "both closes were asked for: no drop")
+    }
+
+  @Test
+  fun `C6 a Disconnect with nothing held, or after the broadcast stopped, stops nothing`() =
+    runTest {
+      val s = opened()
+      does(s, Command.Disconnect(1))
+      assertEquals(emptyList(), s.parts.log)
+      does(s, connect(1), Command.StopBroadcast)
+      s.parts.log.clear()
+      does(s, Command.Disconnect(1))
+      assertEquals(emptyList(), s.parts.log, "the stop already closed it")
+    }
+
+  @Test
+  fun `Rebuild and StartNewSession close the attempt held, then connect the next`() =
+    runTest {
+      val s = opened()
+      does(s, connect(1))
+      s.parts.log.clear()
+      does(s, Command.Rebuild(1, connect(2)))
+      assertEquals(listOf("stop 1", "stop done", "before 2", "start 2", "start done"), s.parts.log)
+      s.parts.log.clear()
+      does(s, Command.StartNewSession(2, connect(3)))
+      assertEquals(listOf("stop 2", "stop done", "before 3", "start 3", "start done"), s.parts.log)
+      assertEquals(listOf(1, 2), s.parts.closed)
+      assertEquals(listOf(1, 2, 3), s.told.reports.filterIsInstance<Input.Connected>().map { it.attemptId })
+      assertEquals(emptyList(), s.told.reports.filterIsInstance<Input.Dropped>(), "each close was asked for: no drop")
+    }
+
+  // --- AttemptSignals: every open reaches the machine; one drop per attempt ---
+
+  @Test
+  fun `every open reaches the machine, once, and an endpoint closing unasked is that attempt's one drop`() =
+    runTest {
+      val s = opened()
+      does(s, connect(1))
+      assertEquals(listOf<Input>(Input.Connected(1)), s.told.reports)
+      s.parts.farEndCloses()
+      advanceUntilIdle()
+      val dropped = s.told.reports.filterIsInstance<Input.Dropped>()
+      assertEquals(listOf(1), dropped.map { it.attemptId })
+      assertEquals(DropReason.ENDPOINT_CLOSED, dropped.single().reason)
+      // The machine's retry after the drop: the dead endpoint is closed first, as a stop asked for.
+      does(s, connect(2))
+      assertEquals(listOf("stop -", "stop done", "before 2", "start 2", "start done"), s.parts.log.takeLast(5))
+      assertEquals(1, s.told.reports.count { it is Input.Dropped }, "still one drop")
+    }
+
+  @Test
+  fun `a failed connect is reported through the signals, classified, and a target that does not plan is OTHER`() =
+    runTest {
+      val s = opened()
+      s.parts.failing[1] = ConnectException("Connection setup failure: connection timed out")
+      does(s, connect(1))
+      val failed = s.told.reports.single()
+      assertIs<Input.ConnectFailed>(failed)
+      assertEquals(1, failed.attemptId)
+      assertEquals(ConnectFailure.TIMEOUT, failed.failure)
+      s.parts.gates[2] = CompletableDeferred(false) // already answered: the target does not plan
+      does(s, connect(2))
+      assertEquals(Input.ConnectFailed(2, ConnectFailure.OTHER, "srt url does not parse"), s.told.reports.last())
+      assertEquals(emptyList(), s.told.reports.filterIsInstance<Input.Connected>())
+    }
+
+  // --- C7 carry: StreamPack opens the camera lazily, so another app's hold can surface first at the start ---
+
+  @Test
+  fun `C7 a camera found busy at the start is taken and the attempt UNHELD, and a transport's failure classifies as before`() =
+    runTest {
+      val s = opened()
+      val busy = RuntimeException("Camera already in use")
+      s.parts.failing[1] = busy
+      s.parts.busyFailures[busy] = "0"
+      does(s, connect(1))
+      assertEquals(listOf(request), s.told.busy, "the camera is taken: the pairing waits for it")
+      assertEquals(listOf<Input>(Input.ConnectFailed(1, ConnectFailure.UNHELD, "camera busy")), s.told.reports, "one report, never counted")
+      assertTrue(s.cameras.contended("0"), "its release is waited for")
+      assertEquals(emptyList(), s.told.pairFailed, "never an end")
+      // The pair: the next attempt's transport failure is the signals' word, and no camera.
+      s.parts.failing[2] = ConnectException("Connection setup failure: connection timed out")
+      does(s, connect(2))
+      val failed = s.told.reports.last()
+      assertIs<Input.ConnectFailed>(failed)
+      assertEquals(2 to ConnectFailure.TIMEOUT, failed.attemptId to failed.failure)
+      assertEquals(listOf(request), s.told.busy, "a transport's failure is no busy camera")
+    }
+
+  @Test
+  fun `C7 after a busy start the release reopens the camera, and the next attempt closes the first's endpoint and connects`() =
+    runTest {
+      val s = opened()
+      val busy = RuntimeException("Max cameras in use")
+      s.parts.failing[1] = busy
+      s.parts.busyFailures[busy] = "0"
+      does(s, connect(1))
+      s.parts.log.clear()
+      assertEquals(Input.CameraReleased, s.cameras.available("0", 5_000), "the device's release is told")
+      does(s, Command.ReopenCamera, connect(2))
+      assertEquals(listOf("reopen", "stop -", "stop done", "before 2", "start 2", "start done"), s.parts.log)
+      assertEquals(listOf<Input>(Input.CameraReopened(true), Input.Connected(2)), s.told.reports.drop(1))
+      assertEquals(2, s.parts.publishing)
+    }
+
+  /** R3: the sink's completion can end the attempt first; the busy start is then no second report, and still the camera's. */
+  @Test
+  fun `C7 M-3 a busy start whose attempt dropped while it started is UNHELD, never a drop, and takes the camera`() =
+    runTest {
+      val signals = AttemptSignals()
+      val s = scene(signals = signals)
+      s.run.open(request)
+      advanceUntilIdle()
+      val busy = RuntimeException("Camera already in use")
+      s.parts.failing[1] = busy
+      s.parts.busyFailures[busy] = "0"
+      s.parts.starting = { id -> signals.dropped(id, IOException("endpoint closed"))?.let { s.told.reports += it } }
+      does(s, connect(1))
+      assertEquals(listOf<Input>(Input.ConnectFailed(1, ConnectFailure.UNHELD, "camera busy")), s.told.reports, "the drop was the busy start's own")
+      assertEquals(listOf(request), s.told.busy)
+      assertTrue(s.cameras.contended("0"))
+    }
+
+  @Test
+  fun `M-3 a drop while a start is in flight passes at its end when the camera was not busy, as before`() =
+    runTest {
+      var checked = 0
+      for ((label, fails) in listOf("a transport failure" to true, "an open" to false)) {
+        val signals = AttemptSignals()
+        val s = scene(signals = signals)
+        s.run.open(request)
+        advanceUntilIdle()
+        if (fails) s.parts.failing[1] = ConnectException("refused")
+        s.parts.starting = { id -> signals.dropped(id, IOException("endpoint closed"))?.let { s.told.reports += it } }
+        does(s, connect(1))
+        val expected = listOf<Input>(Input.Dropped(1, DropReason.ENDPOINT_CLOSED, "IOException: endpoint closed")) + if (fails) emptyList() else listOf(Input.Connected(1))
+        assertEquals(expected, s.told.reports, label)
+        checked += 1
+      }
+      assertEquals(2, checked, "the sweep's own count")
+    }
+
+  @Test
+  fun `M-3 a drop held while a start is in flight passes when the start times out or is cancelled`() =
+    runTest {
+      var checked = 0
+      for (cancelled in listOf(false, true)) {
+        val signals = AttemptSignals()
+        val parts = FakeParts()
+        val told = Told()
+        val scope = queueScope()
+        val run = CaptureRun(parts, signals, CameraAvailability(), told.calls(), { Side.LEFT }, scope)
+        run.open(request)
+        advanceUntilIdle()
+        parts.gates[1] = CompletableDeferred() // never answered: the start ends by its bound, or by the cancel
+        parts.starting = { id -> signals.dropped(id, IOException("endpoint closed"))?.let { told.reports += it } }
+        run.execute(connect(1))
+        runCurrent()
+        assertEquals(emptyList(), told.reports, "held while the start is in flight")
+        if (cancelled) scope.cancel()
+        advanceUntilIdle()
+        val label = if (cancelled) "cancelled" else "timed out"
+        assertEquals(listOf<Input>(Input.Dropped(1, DropReason.ENDPOINT_CLOSED, "IOException: endpoint closed")), told.reports, label)
+        checked += 1
+      }
+      assertEquals(2, checked, "the sweep's own count")
+    }
+
+  /**
+   * Device session 4, F-S4-1, through the real run and the real signals. The SRT socket connected, then StreamPack
+   * 3.2.1's start failed later on, and its own catch closed the endpoint it had opened (`EncodingPipelineOutput
+   * .startStream`, the 3.2.1 sources): our sink's close is a drop with no cause, held while the start was in flight.
+   * The start's failure is what the machine hears, never that close; the record names the throw by class only.
+   */
+  @Test
+  fun `F-S4-1 a start that fails after its endpoint opened reports its own failure, never the close its cleanup made`() =
+    runTest {
+      val quoted = "srt://live.cloudflare.com:778?streamid=${Configs.STREAM_ID}"
+      val pipeline = thrownAt(IllegalArgumentException("Endpoint must be opened before starting stream: $quoted"), StreamPack.PIPELINE_OUTPUT, "startStreamUnsafe")
+      val refused = thrownAt(ConnectException("Connection setup failure: connection rejected"), "com.seazn.capture.engine.srt.SeaznSrtSink", "startStream")
+      val wrapped = RuntimeException("start failed", thrownAt(IllegalStateException("Codec is released"), "${StreamPack.ENCODER}\$startStream\$1", "invokeSuspend"))
+      val rows =
+        listOf(
+          Triple(pipeline, ConnectFailure.OTHER, listOf("error" to "IllegalArgumentException", "site" to "EncodingPipelineOutput.startStreamUnsafe")),
+          Triple(refused, ConnectFailure.REFUSED, listOf("error" to "ConnectException", "site" to "SeaznSrtSink.startStream")),
+          Triple(wrapped, ConnectFailure.OTHER, listOf("error" to "RuntimeException", "site" to "MediaCodecEncoder.invokeSuspend", "rootError" to "IllegalStateException")),
+        )
+      var checked = 0
+      for ((thrown, expected, named) in rows) {
+        val signals = AttemptSignals()
+        val s = scene(signals = signals)
+        s.run.open(request)
+        advanceUntilIdle()
+        s.parts.failing[1] = thrown
+        s.parts.starting = { id -> signals.dropped(id, null)?.let { s.told.reports += it } } // the cleanup's close, while the start is in flight
+        does(s, connect(1))
+        assertEquals(listOf<Input>(Input.ConnectFailed(1, expected, Failures.describe(thrown))), s.told.reports, "${thrown.javaClass.simpleName}: the start's own failure")
+        val line = s.told.lines.single { it.kind == "capture-start-failed" }
+        assertEquals(listOf<Pair<String, Any?>>("attempt" to 1) + named, line.fields, "class names only")
+        assertFalse(line.fields.any { (_, value) -> value.toString().contains("srt://") || value.toString().contains(" ") }, "never a message: ${line.fields}")
+        checked += 1
+      }
+      assertEquals(3, checked, "the sweep's own count")
+    }
+
+  /** F-S4-1: the line is the allow-list's (kind and keys), and the record keeps its class names whole, never masked. */
+  @Test
+  fun `F-S4-1 the start-failed line is the allow-list's, and the record keeps its names`() =
+    runTest {
+      val signals = AttemptSignals()
+      val s = scene(signals = signals)
+      s.run.open(request)
+      advanceUntilIdle()
+      s.parts.failing[1] = RuntimeException("start failed", thrownAt(IllegalStateException("Codec is released"), StreamPack.ENCODER, "startStream"))
+      does(s, connect(1))
+      val line = s.told.lines.single { it.kind == "capture-start-failed" }
+      val list = Shared.read("scrub/allow-list.json")
+      val plain = list.getJSONArray("plain").let { a -> (0 until a.length()).map { a.getString(it) }.toSet() }
+      assertTrue(line.kind in list.getJSONObject("kinds").keySet(), "the kind is listed")
+      assertEquals(emptyList(), line.fields.map { it.first }.filterNot { it in plain || it == "attempt" }, "each key plain")
+      val written = mutableListOf<String>()
+      SessionRecord { written += it }.append(0L, line)
+      val record = written.single()
+      for (name in listOf("RuntimeException", "MediaCodecEncoder.startStream", "IllegalStateException")) assertTrue("\"$name\"" in record, "$name kept: $record")
+      assertFalse(SessionRecord.MASK in record, record)
+    }
+
+  /**
+   * Session 7, F-S7-1: every SRT start failed with `site: Preconditions.outOfBounds`, the JDK's bounds check, which
+   * names no call of ours or StreamPack's. The stack below is the one a list's `get(0)` makes in StreamPack 3.2.1's
+   * `TsMuxer.addStreams` (reproduced on the JVM against its bytecode): the site is the first frame outside the Java
+   * and Kotlin runtimes. A stack made of runtime frames alone keeps its first, rather than naming nothing.
+   */
+  @Test
+  fun `F-S7-1 the site skips the Java and Kotlin runtimes' frames, to the call that reached them`() =
+    runTest {
+      val runtime = listOf("jdk.internal.util.Preconditions" to "outOfBounds", "java.util.Objects" to "checkIndex", "java.util.ArrayList" to "get", "kotlin.collections.CollectionsKt" to "first")
+      val reached = runtime.foldRight(thrownAt(IndexOutOfBoundsException("Index 0 out of bounds for length 0"), StreamPack.TS_MUXER, "addStreams")) { (type, method), thrown -> thrownAt(thrown, type, method) }
+      val bare = IndexOutOfBoundsException("Index 0 out of bounds for length 0").apply { stackTrace = runtime.map { (type, method) -> StackTraceElement(type, method, null, 1) }.toTypedArray() }
+      val rows =
+        listOf(
+          reached to "${StreamPack.TS_MUXER.substringAfterLast('.')}.addStreams",
+          bare to runtime.first().let { (type, method) -> "${type.substringAfterLast('.')}.$method" },
+        )
+      var checked = 0
+      for ((thrown, site) in rows) {
+        assertEquals(runtime.first().first, thrown.stackTrace.first().className, "the stack starts in the runtime")
+        val s = scene(signals = AttemptSignals())
+        s.run.open(request)
+        advanceUntilIdle()
+        s.parts.failing[1] = thrown
+        does(s, connect(1))
+        val line = s.told.lines.single { it.kind == "capture-start-failed" }
+        assertEquals(listOf<Pair<String, Any?>>("attempt" to 1, "error" to "IndexOutOfBoundsException", "site" to site), line.fields)
+        checked += 1
+      }
+      assertEquals(2, checked, "the sweep's own count")
+    }
+
+  /** F-S4-1: a start that runs out its bound is TIMEOUT, though its cancelled cleanup closed the endpoint it opened. */
+  @Test
+  fun `F-S4-1 a start that times out after its endpoint opened is TIMEOUT, never the close its cleanup made`() =
+    runTest {
+      val signals = AttemptSignals()
+      val s = scene(signals = signals)
+      s.run.open(request)
+      advanceUntilIdle()
+      s.parts.gates[1] = CompletableDeferred() // never answered: the start ends by its bound
+      s.parts.starting = { id -> signals.dropped(id, null)?.let { s.told.reports += it } }
+      does(s, connect(1))
+      assertEquals(ConnectFailure.TIMEOUT, (s.told.reports.single() as? Input.ConnectFailed)?.failure, "${s.told.reports}")
+    }
+
+  // --- F-S4-1: a camera StreamPack lost, or one that failed the start, is the camera's: not ready, and built afresh ---
+
+  /**
+   * F-S4-1: a start the camera failed says nothing of the path. It is CAMERA, never counted (FallbackPolicy), the
+   * camera reads not ready while it is lost, and the capture builds it afresh, a real open: StreamPack 3.2.1's
+   * `VideoInput.setSource` skips a camera source of the same id (its sources), so only a new build opens it again.
+   * The cleanup's close while the start was in flight is the camera's failure's own, never a drop.
+   */
+  @Test
+  fun `F-S4-1 a start the camera failed is CAMERA, marks it lost until it is built afresh, and the next attempt connects`() =
+    runTest {
+      // Each with the drop its start made meanwhile: the cleanup's close (no cause), or the far end's (a cause).
+      val rows =
+        listOf(
+          RuntimeException("Camera has been disconnected") to null,
+          thrownAt(IllegalArgumentException("Output STREAM not found"), "${StreamPack.CAMERA}.controllers.CameraController", "addTarget") to
+            IOException("endpoint closed"),
+        )
+      var checked = 0
+      for ((failure, cause) in rows) {
+        val signals = AttemptSignals()
+        val s = scene(signals = signals)
+        s.run.open(request)
+        advanceUntilIdle()
+        s.parts.opened("0")
+        advanceUntilIdle()
+        assertTrue(s.cameras.ready(camera = true), "open, before")
+        s.parts.log.clear()
+        s.parts.failing[1] = failure
+        s.parts.starting = { id -> signals.dropped(id, cause)?.let { s.told.reports += it } }
+        s.run.execute(connect(1))
+        runCurrent() // to the rebuild's release, which waits STEP_MS
+        val name = failure.javaClass.simpleName
+        assertEquals(listOf<Input>(Input.ConnectFailed(1, ConnectFailure.CAMERA, "camera: $name")), s.told.reports, name)
+        assertFalse(s.cameras.ready(camera = true), "$name: lost, not ready")
+        advanceUntilIdle()
+        assertEquals(listOf("before 1", "start 1", "release", "release done", "build $left", "build done"), s.parts.log, name)
+        assertTrue(s.cameras.ready(camera = true), "$name: a new open asked")
+        assertEquals(1, s.parts.watchingLosses, "the new build's losses are watched, once")
+        val lines = s.told.lines.filter { it.kind in setOf("camera-lost", "capture-rebuilt") }
+        assertEquals(
+          listOf(
+            RecordEntry("camera-lost", listOf("from" to "start", "attempt" to 1)),
+            RecordEntry("capture-rebuilt", listOf("action" to "camera")),
+          ),
+          lines,
+          name,
+        )
+        does(s, connect(2))
+        assertEquals(Input.Connected(2), s.told.reports.last(), name)
+        assertEquals(emptyList(), s.told.busy + s.told.pairFailed.map { it.first }, "$name: no take, no end")
+        checked += 1
+      }
+      assertEquals(rows.size, checked, "the sweep's own count")
+    }
+
+  /**
+   * F-S4-1: StreamPack's word that our camera was lost, with nothing on air, reads not ready and builds it afresh;
+   * another camera's loss is nothing; with an attempt held the loss is marked, and the attempt's own paths decide
+   * (a start the camera fails builds it afresh), so a broadcast is never cut by the capture's guess.
+   */
+  @Test
+  fun `F-S4-1 a camera lost with nothing on air is built afresh, and with an attempt held it is only marked`() =
+    runTest {
+      val s = opened()
+      s.parts.opened("0")
+      advanceUntilIdle()
+      s.parts.lose("1")
+      advanceUntilIdle()
+      assertEquals(emptyList(), s.parts.log, "another camera's loss is nothing")
+      assertTrue(s.cameras.ready(camera = true))
+
+      s.parts.lose("0")
+      runCurrent()
+      assertFalse(s.cameras.ready(camera = true), "lost: not ready")
+      advanceUntilIdle()
+      assertEquals(listOf("release", "release done", "build $left", "build done"), s.parts.log)
+      assertTrue(s.cameras.ready(camera = true), "a new open asked")
+      s.parts.opened("0")
+      advanceUntilIdle()
+      assertTrue(s.cameras.ready(camera = true), "and seen")
+      assertEquals(
+        listOf(RecordEntry("camera-lost", listOf("from" to "device", "attempt" to null)), RecordEntry("capture-rebuilt", listOf("action" to "camera"))),
+        s.told.lines.filter { it.kind in setOf("camera-lost", "capture-rebuilt") },
+      )
+
+      does(s, connect(1))
+      assertEquals(listOf<Input>(Input.Connected(1)), s.told.reports)
+      s.parts.log.clear()
+      s.parts.lose("0")
+      advanceUntilIdle()
+      assertFalse(s.cameras.ready(camera = true), "lost on air: not ready")
+      assertEquals(emptyList(), s.parts.log, "never a rebuild under an attempt held")
+      assertEquals(1, s.parts.publishing, "still on air")
+      assertEquals(RecordEntry("camera-lost", listOf("from" to "device", "attempt" to 1)), s.told.lines.last { it.kind == "camera-lost" })
+      s.parts.opened("0") // StreamPack's start opened it again
+      advanceUntilIdle()
+      assertTrue(s.cameras.ready(camera = true), "an open seen clears the loss")
+    }
+
+  /**
+   * Re-review 3 m2: a camera that fails as it opens is lost again as soon as its rebuild opens it, so a loss rebuild
+   * at once would loop at open speed. Loss rebuilds are spaced by the machine's own retry rhythm (RETRY_MS): a second
+   * loss straight after one is marked (not ready) and owed, and however many come inside the spacing, one rebuild
+   * follows when it ends. A loss after it is built at once again.
+   */
+  @Test
+  fun `re-review 3 m2 a second loss straight after a loss rebuild waits RETRY_MS, then builds once`() =
+    runTest {
+      val s = opened()
+      s.parts.opened("0")
+      advanceUntilIdle()
+      s.parts.lose("0")
+      advanceTimeBy(100)
+      runCurrent()
+      assertEquals(listOf("release", "release done", "build $left", "build done"), s.parts.log, "the first loss, at once")
+      s.parts.log.clear()
+      s.parts.lose("0") // the rebuild's own open failed, 100 ms after the first loss: inside the spacing
+      s.parts.lose("0")
+      advanceTimeBy(SessionMachine.RETRY_MS - 200)
+      runCurrent()
+      assertEquals(emptyList(), s.parts.log, "no rebuild inside the spacing")
+      assertFalse(s.cameras.ready(camera = true), "lost meanwhile: not ready")
+      advanceTimeBy(400)
+      runCurrent()
+      assertEquals(listOf("release", "release done", "build $left", "build done"), s.parts.log, "one rebuild, owed, when it ends")
+      assertTrue(s.cameras.ready(camera = true), "a new open asked")
+      assertEquals(
+        listOf("camera-lost", "capture-rebuilt", "camera-lost", "camera-lost", "capture-rebuilt"),
+        s.told.lines.map { it.kind }.filter { it in setOf("camera-lost", "capture-rebuilt") },
+      )
+      s.parts.log.clear()
+      s.parts.opened("0")
+      advanceTimeBy(SessionMachine.RETRY_MS + 100)
+      runCurrent()
+      s.parts.lose("0")
+      advanceTimeBy(100)
+      runCurrent()
+      assertEquals(listOf("release", "release done", "build $left", "build done"), s.parts.log, "past the spacing, at once again")
+      advanceUntilIdle()
+      assertEquals(4, s.parts.log.size, "and nothing owed after it")
+    }
+
+  /** Re-review 4 m2: a loss rebuilt at once, and a second loss inside the spacing, owed. */
+  private fun TestScope.owedLoss(): Scene {
+    val s = opened()
+    s.parts.opened("0")
+    advanceTimeBy(100)
+    s.parts.lose("0")
+    advanceTimeBy(100)
+    runCurrent()
+    s.parts.lose("0")
+    runCurrent()
+    assertEquals(1, s.told.lines.count { it.kind == "capture-rebuilt" }, "the first loss, at once")
+    assertFalse(s.cameras.ready(camera = true), "owed: lost")
+    return s
+  }
+
+  /** Re-review 4 m2, guard (a): an attempt started inside the spacing owns the camera; the owed rebuild would cut it. */
+  @Test
+  fun `re-review 4 m2 an owed rebuild does not run once a connect started inside the spacing, and the attempt is not closed`() =
+    runTest {
+      val s = owedLoss()
+      s.run.execute(connect(1))
+      advanceTimeBy(100)
+      runCurrent()
+      assertEquals(Input.Connected(1), s.told.reports.last())
+      s.parts.log.clear()
+      advanceTimeBy(SessionMachine.RETRY_MS + 200)
+      runCurrent()
+      assertEquals(emptyList(), s.parts.log, "no release, no build")
+      assertEquals(1, s.parts.publishing, "still on air")
+      assertEquals(1, s.told.lines.count { it.kind == "capture-rebuilt" })
+    }
+
+  /** Re-review 4 m2, guard (b): an open seen inside the spacing answers the loss; nothing is rebuilt. */
+  @Test
+  fun `re-review 4 m2 an owed rebuild does not run once an open was seen inside the spacing`() =
+    runTest {
+      val s = owedLoss()
+      s.parts.opened("0")
+      runCurrent()
+      assertTrue(s.cameras.ready(camera = true), "the open seen")
+      s.parts.log.clear()
+      advanceTimeBy(SessionMachine.RETRY_MS + 200)
+      runCurrent()
+      assertEquals(emptyList(), s.parts.log, "no release, no build")
+      assertEquals(1, s.told.lines.count { it.kind == "capture-rebuilt" })
+    }
+
+  /**
+   * Re-review 4 m2: on a dispatcher that resumes at once (as Dispatchers.Default can), the spacing's queued block
+   * runs while the spacing's own job is still active. Read as "inside the spacing", the owed rebuild owed itself
+   * and never ran: the camera stayed lost. The block clears the spacing first.
+   */
+  @Test
+  fun `re-review 4 m2 the owed rebuild runs when the spacing's block runs inside its own job`() =
+    runTest {
+      val s = opened(CoroutineScope(UnconfinedTestDispatcher(testScheduler) + SupervisorJob()))
+      s.parts.opened("0")
+      advanceTimeBy(100)
+      s.parts.lose("0")
+      advanceTimeBy(100)
+      runCurrent()
+      s.parts.lose("0") // owed
+      assertFalse(s.cameras.ready(camera = true))
+      advanceTimeBy(SessionMachine.RETRY_MS + 200)
+      runCurrent()
+      val rebuilds = s.told.lines.count { it.kind == "capture-rebuilt" }
+      assertEquals(2, rebuilds, "the loss at once, then the owed one: ${s.parts.log}")
+      assertTrue(s.cameras.ready(camera = true), "a new open asked")
+    }
+
+  // --- Re-review 4 m2 cap (controller ruling 2026-10-05): consecutive loss rebuilds with no open seen stop ---
+
+  /** The camera fails the open each rebuild asks for: [times] losses, each followed by its spacing. */
+  private fun TestScope.failOpens(s: Scene, times: Int) =
+    repeat(times) {
+      s.parts.lose("0")
+      advanceTimeBy(SessionMachine.RETRY_MS + 100)
+      runCurrent()
+    }
+
+  private fun rebuilds(s: Scene) = s.told.lines.count { it.kind == "capture-rebuilt" }
+
+  private fun gaveUp(s: Scene) = s.told.lines.filter { it.kind == "camera-gave-up" }
+
+  private fun TestScope.seenOpen(): Scene =
+    opened().also {
+      it.parts.opened("0")
+      advanceTimeBy(100)
+      runCurrent()
+    }
+
+  @Test
+  fun `re-review 4 cap a camera that fails every open is rebuilt MAX_LOSS_REBUILDS times, then one camera-gave-up line, then nothing`() =
+    runTest {
+      val max = CaptureRun.MAX_LOSS_REBUILDS
+      val s = seenOpen()
+      failOpens(s, max)
+      assertEquals(max, rebuilds(s), "each loss rebuilt, up to the cap")
+      assertEquals(emptyList(), gaveUp(s), "not yet")
+      failOpens(s, 1)
+      assertEquals(max, rebuilds(s), "no rebuild past the cap")
+      assertEquals(listOf(RecordEntry("camera-gave-up", listOf("rebuilds" to max))), gaveUp(s))
+      assertFalse(s.cameras.ready(camera = true), "it stays not ready")
+      val lines = s.told.lines.size
+      val log = s.parts.log.size
+      advanceTimeBy(10 * SessionMachine.RETRY_MS)
+      runCurrent()
+      assertEquals(lines to log, s.told.lines.size to s.parts.log.size, "silence")
+      failOpens(s, 2)
+      assertEquals(max, rebuilds(s), "a later loss rebuilds nothing")
+      assertEquals(1, gaveUp(s).size, "and is not said twice")
+    }
+
+  @Test
+  fun `re-review 4 cap the next foreground re-arms - one rebuild at once, and the count starts again`() =
+    runTest {
+      val max = CaptureRun.MAX_LOSS_REBUILDS
+      val s = seenOpen()
+      failOpens(s, max + 1)
+      assertEquals(1, gaveUp(s).size)
+      s.run.foreground()
+      advanceTimeBy(100)
+      runCurrent()
+      assertEquals(max + 1, rebuilds(s), "re-armed: built at once")
+      assertTrue(s.cameras.ready(camera = true), "a new open asked")
+      failOpens(s, max)
+      assertEquals(2 * max, rebuilds(s), "the count started again: ${max - 1} more")
+      assertEquals(2, gaveUp(s).size, "a new give-up, said once")
+      s.run.foreground() // given up again: re-armed again
+      advanceTimeBy(100)
+      runCurrent()
+      assertEquals(2 * max + 1, rebuilds(s))
+      s.parts.opened("0")
+      runCurrent()
+      s.parts.log.clear()
+      s.run.foreground()
+      advanceTimeBy(SessionMachine.RETRY_MS + 100)
+      runCurrent()
+      assertEquals(emptyList(), s.parts.log, "a foreground with the camera ready rebuilds nothing")
+    }
+
+  /**
+   * Re-review 5 C2: the re-arm builds at once only a camera GIVEN UP on. A camera lost on air is marked only (the
+   * attempt's own paths decide), so once that attempt ends it reads lost, given up on by no one, with nothing on
+   * air: a foreground then re-arms the count and builds nothing. The sequence goes on to the positive pair: the
+   * same camera, opened, then given up on, is built at the next foreground.
+   */
+  @Test
+  fun `re-review 5 C2 a foreground builds only a camera given up on, never one lost on air and left for its attempt`() =
+    runTest {
+      val max = CaptureRun.MAX_LOSS_REBUILDS
+      val s = seenOpen()
+      does(s, connect(1))
+      s.parts.lose("0")
+      advanceUntilIdle()
+      does(s, Command.Disconnect(1))
+      assertFalse(s.cameras.ready(camera = true), "lost on air, and still lost after its attempt")
+      assertEquals(emptyList(), gaveUp(s), "given up on by no one")
+      s.run.foreground()
+      advanceTimeBy(SessionMachine.RETRY_MS + 100)
+      runCurrent()
+      assertEquals(0, rebuilds(s), "not given up on: the foreground builds nothing")
+      s.parts.opened("0")
+      advanceTimeBy(100)
+      runCurrent()
+      failOpens(s, max + 1)
+      assertEquals(max to 1, rebuilds(s) to gaveUp(s).size, "then given up on")
+      s.run.foreground()
+      advanceTimeBy(100)
+      runCurrent()
+      assertEquals(max + 1, rebuilds(s), "given up on: built at once")
+    }
+
+  @Test
+  fun `re-review 4 cap a re-pair re-arms a camera given up on`() =
+    runTest {
+      val max = CaptureRun.MAX_LOSS_REBUILDS
+      val s = seenOpen()
+      failOpens(s, max + 1)
+      assertEquals(1, gaveUp(s).size)
+      s.run.open(request)
+      advanceTimeBy(100)
+      runCurrent()
+      assertEquals(max + 1, rebuilds(s), "re-armed: built at once")
+      failOpens(s, max)
+      assertEquals(2, gaveUp(s).size, "the count started again")
+    }
+
+  @Test
+  fun `re-review 4 cap an open seen between losses resets the count`() =
+    runTest {
+      val max = CaptureRun.MAX_LOSS_REBUILDS
+      val s = seenOpen()
+      val before = max - 1
+      failOpens(s, before)
+      s.parts.opened("0")
+      advanceTimeBy(100)
+      runCurrent()
+      failOpens(s, max)
+      assertEquals(before + max, rebuilds(s), "the open reset the count")
+      assertEquals(emptyList(), gaveUp(s))
+      failOpens(s, 1)
+      assertEquals(listOf(RecordEntry("camera-gave-up", listOf("rebuilds" to max))), gaveUp(s))
+    }
+
+  // --- C6 I-1: a start is bounded, under the machine's own connect timeout ---
+
+  @Test
+  fun `C6 I-1 a start that never returns fails TIMEOUT, and a close queued behind it releases the camera within the machine's connect timeout`() =
+    runTest {
+      val s = opened()
+      s.parts.gates[1] = CompletableDeferred() // never answered: a connect hung in the vendor's code
+      var releasedAt: Long? = null
+      s.parts.stopped = { if (s.parts.log.lastOrNull() == "release done") releasedAt = testScheduler.currentTime }
+      s.run.execute(connect(1))
+      s.run.close()
+      advanceTimeBy(SessionMachine.CONNECT_TIMEOUT_MS / 2)
+      runCurrent()
+      assertFalse("release" in s.parts.log, "the hung start holds the one queue, and the close waits behind it")
+      advanceUntilIdle()
+      assertTrue("release done" in s.parts.log, "the close queued behind the hung start ran: ${s.parts.log}")
+      assertFalse(s.parts.held, "the camera is released")
+      val at = assertNotNull(releasedAt)
+      assertTrue(at <= SessionMachine.CONNECT_TIMEOUT_MS, "released at $at ms, past the machine's ${SessionMachine.CONNECT_TIMEOUT_MS} ms")
+      val failed = s.told.reports.single()
+      assertIs<Input.ConnectFailed>(failed)
+      assertEquals(1, failed.attemptId)
+      assertEquals(ConnectFailure.TIMEOUT, failed.failure)
+    }
+
+  /** The sequence after it: the half-open endpoint is closed, the machine's own late Disconnect stops nothing, and the next attempt connects. */
+  @Test
+  fun `C6 I-1 after a start timed out its endpoint is closed, and the next attempt connects`() =
+    runTest {
+      val s = opened()
+      s.parts.gates[1] = CompletableDeferred()
+      does(s, connect(1))
+      assertEquals(listOf("before 1", "start 1", "stop -", "stop done"), s.parts.log, "the cancelled start's endpoint is closed as a stop asked for")
+      s.parts.log.clear()
+      does(s, Command.Disconnect(1), connect(2))
+      assertEquals(listOf("before 2", "start 2", "start done"), s.parts.log)
+      assertEquals(2, s.parts.publishing)
+      assertEquals(listOf(ConnectFailure.TIMEOUT), s.told.reports.filterIsInstance<Input.ConnectFailed>().map { it.failure })
+      assertEquals(listOf<Input>(Input.Connected(2)), s.told.reports.filter { it !is Input.ConnectFailed })
+    }
+
+  // --- N2, I4, P11, P12 and the ledger advisory ---
+
+  @Test
+  fun `N2 a second open while one is held builds nothing, and serves the new pairing`() =
+    runTest {
+      val s = opened()
+      val again = Configs.pairRequest(code = "fx42hmnp7k3r")
+      s.run.open(again)
+      advanceUntilIdle()
+      assertEquals(emptyList(), s.parts.log)
+      assertSame(again, s.run.request)
+    }
+
+  @Test
+  fun `I4 a busy camera waits - Camera2's reasons, or the device's own word - and never fails the pairing`() =
+    runTest {
+      for ((label, reason, takenFirst) in listOf(Triple("in use", cameraInUse, false), Triple("max in use", maxCamerasInUse, false), Triple("onError, no code", null, true))) {
+        val cameras = CameraAvailability()
+        if (takenFirst) cameras.unavailable("0", 1_000) // another app opened camera 0 first
+        val s = scene(cameras)
+        s.parts.builds += Built.Failed("0", reason, encoder = false, error = RuntimeException("Camera already in use"))
+        s.run.open(request)
+        advanceUntilIdle()
+        assertEquals(listOf(request), s.told.busy, label)
+        assertEquals(emptyList(), s.told.pairFailed, label)
+        assertTrue(cameras.contended("0"), "$label: the release is waited for")
+        // The release asks for the reopen, with nothing open: the pairing's request is built. Review C7 I-2:
+        // the release is heard first, as CameraWatch hears it; the reopen's build erases no take of its own.
+        assertEquals(Input.CameraReleased, cameras.available("0", 3_000), "$label: the holder let go")
+        s.parts.log.clear()
+        does(s, Command.ReopenCamera)
+        assertEquals(listOf("build $left", "build done"), s.parts.log, label)
+        assertEquals(listOf<Input>(Input.CameraReopened(true)), s.told.reports, label)
+      }
+    }
+
+  @Test
+  fun `P12 the camera's own failure passes as it is, and a disconnect is not busy`() =
+    runTest {
+      val s = scene()
+      val error = RuntimeException("Camera has been disabled")
+      s.parts.builds += Built.Failed("0", cameraDisconnected, encoder = false, error = error)
+      s.run.open(request)
+      advanceUntilIdle()
+      assertEquals(emptyList(), s.told.busy)
+      assertSame(request, s.told.pairFailed.single().first)
+      assertSame(error, s.told.pairFailed.single().second, "never wrapped: Failures.permanent alone decides")
+      assertEquals(emptyList(), s.told.failures, "reported, never thrown (P11)")
+    }
+
+  @Test
+  fun `CD11 the encoder's configuration failure is permanent, unless another app holds the camera`() =
+    runTest {
+      val s = scene()
+      val error = IllegalArgumentException("codec refused")
+      s.parts.builds += Built.Failed("0", null, encoder = true, error = error)
+      s.run.open(request)
+      advanceUntilIdle()
+      val failed = s.told.pairFailed.single().second
+      assertIs<PermanentPlatformFailure>(failed)
+      assertSame(error, failed.cause)
+      // StreamPack opens the camera lazily: a configuration that failed while another app holds it is busy.
+      val cameras = CameraAvailability().apply { unavailable("0", 1_000) }
+      val busy = scene(cameras)
+      busy.parts.builds += Built.Failed("0", null, encoder = true, error = error)
+      busy.run.open(request)
+      advanceUntilIdle()
+      assertEquals(listOf(request), busy.told.busy)
+      assertEquals(emptyList(), busy.told.pairFailed)
+    }
+
+  @Test
+  fun `ledger advisory - closing forgets the pairing, so a later reopen builds nothing`() =
+    runTest {
+      val s = scene()
+      s.parts.builds += Built.Failed("0", cameraInUse, encoder = false, error = RuntimeException("busy"))
+      s.run.open(request)
+      s.run.close()
+      advanceUntilIdle()
+      assertNull(s.run.request)
+      s.parts.log.clear()
+      does(s, Command.ReopenCamera)
+      assertEquals(emptyList(), s.parts.log, "no build for a pairing the capture no longer serves")
+      assertEquals(listOf<Input>(Input.CameraReopened(false)), s.told.reports)
+      // A second close is harmless, and opens nothing.
+      s.run.close()
+      advanceUntilIdle()
+      assertEquals(listOf("release", "release done"), s.parts.log)
+    }
+
+  // --- CD42: the rotation is the build's ---
+
+  @Test
+  fun `CD42 Orient for the side the build encodes changes nothing, and with nothing open there is nothing to turn`() =
+    runTest {
+      val s = opened()
+      does(s, Command.Orient(Side.LEFT))
+      assertEquals(emptyList(), s.parts.log)
+      assertEquals(emptyList(), s.told.lines)
+      s.run.close()
+      advanceUntilIdle()
+      s.parts.log.clear()
+      does(s, Command.Orient(Side.RIGHT))
+      assertEquals(emptyList(), s.parts.log, "closed: no request, no rebuild")
+    }
+
+  @Test
+  fun `CD42 the opening's side is read at the build, never later`() =
+    runTest {
+      var side = Side.RIGHT
+      val s = scene(side = { side })
+      s.run.open(request)
+      advanceUntilIdle()
+      side = Side.LEFT
+      does(s, connect(1))
+      assertEquals(listOf("build ${EncoderKeys.surfaceRotation(Side.RIGHT)}", "build done", "before 1", "start 1", "start done"), s.parts.log)
+    }
+
+  // --- N8 ---
+
+  @Test
+  fun `N8 an unreadable mic session is recorded once per opening, at its first connect`() =
+    runTest {
+      val s = opened()
+      s.parts.micKnown = false
+      does(s, connect(1), Command.Disconnect(1), connect(2))
+      assertEquals(listOf("watch-failed"), s.told.lines.map { it.kind })
+      assertEquals(listOf("action" to "mic-session"), s.told.lines.single().fields)
+      does(s, Command.Orient(Side.RIGHT), connect(3)) // a new opening
+      assertEquals(listOf("watch-failed", "capture-rebuilt", "watch-failed"), s.told.lines.map { it.kind })
+    }
+
+  // --- The broadcast's end, and the commands passed through ---
+
+  @Test
+  fun `StopBroadcast and End stop the attempt held and keep the camera`() =
+    runTest {
+      for (end in listOf(Command.StopBroadcast, Command.End(EndReason.OPERATOR_STOPPED), Command.End(EndReason.FATAL_ERROR))) {
+        val s = opened()
+        does(s, connect(1), end)
+        assertEquals(listOf("before 1", "start 1", "start done", "stop 1", "stop done", "after"), s.parts.log, "$end")
+        assertTrue(s.parts.held, "$end: the camera stays until close")
+        assertEquals(emptyList(), s.told.reports.filterIsInstance<Input.Dropped>(), "$end")
+      }
+    }
+
+  @Test
+  fun `nothing held - no command reaches StreamPack, a connect is answered at once, and a reopen answers false`() =
+    runTest {
+      val s = scene()
+      does(s, connect(1), Command.Disconnect(1), Command.SetBitrate(1, 2_000_000), Command.Slate(true), Command.SwitchCamera, Command.ReopenCamera)
+      assertEquals(emptyList(), s.parts.log)
+      assertEquals(listOf<Input>(Input.ConnectFailed(1, ConnectFailure.UNHELD, "no capture held"), Input.CameraReopened(false)), s.told.reports)
+    }
+
+  /**
+   * C6 m-3: a connect with no capture held, a Rebuild's or a new session's next one too, is answered at
+   * once with a line, never left for the machine's connect timeout. After a close as before an open, and
+   * again for the next attempt.
+   */
+  @Test
+  fun `C6 m-3 and I-3 a connect with nothing held writes a line and fails UNHELD at once, each time`() =
+    runTest {
+      val s = opened()
+      s.run.close()
+      advanceUntilIdle()
+      s.parts.log.clear()
+      does(s, connect(1), Command.Rebuild(1, connect(2)), Command.StartNewSession(2, connect(3)))
+      assertEquals(emptyList(), s.parts.log, "nothing reached StreamPack")
+      assertEquals((1..3).map<Int, Input> { Input.ConnectFailed(it, ConnectFailure.UNHELD, "no capture held") }, s.told.reports)
+      assertEquals(List(3) { "capture-unheld" }, s.told.lines.map { it.kind })
+      assertEquals((1..3).map { listOf<Pair<String, Any?>>("action" to "connect", "attempt" to it) }, s.told.lines.map { it.fields })
+    }
+
+  /** With an attempt held the reopen is the source's swap back from the slate, its answer passed as it is. */
+  @Test
+  fun `held - the encoder, the link, the camera and the slate commands reach StreamPack`() =
+    runTest {
+      val s = opened()
+      does(s, connect(1))
+      s.parts.log.clear()
+      s.parts.reopens = false
+      does(s, Command.SetBitrate(1, 2_000_000), Command.SetMaxBw(1, 250_000), Command.SwitchCamera, Command.ReopenCamera, Command.Slate(true))
+      assertEquals(listOf("bitrate 2000000", "maxbw 1 250000", "switch", "reopen", "slate true"), s.parts.log)
+      assertEquals(listOf<Input>(Input.Connected(1), Input.CameraReopened(false)), s.told.reports)
+    }
+
+  /**
+   * Device fix round, item (c): with nothing on air no slate is up (I2), so the source held is our camera, and
+   * StreamPack 3.2.1's `VideoInput.setSource` skips a camera source of the same id (`CameraSourceFactory.isSourceEquals`,
+   * javap): the swap opened nothing and answered true. The reopen is a build afresh, a real open, at the rotation
+   * the broadcast holds (CD42), never the side the phone turned to since; the new opening's open is watched.
+   */
+  @Test
+  fun `(c) with nothing on air the release's reopen builds the camera afresh, at the rotation held, and watches its open`() =
+    runTest {
+      var side = Side.LEFT
+      val s = scene(side = { side })
+      s.run.open(request)
+      advanceUntilIdle()
+      s.parts.log.clear()
+      side = Side.RIGHT // turned, with no Orient yet: the build keeps the rotation held
+      does(s, Command.ReopenCamera)
+      assertEquals(listOf("release", "release done", "build $left", "build done"), s.parts.log)
+      assertEquals(listOf<Input>(Input.CameraReopened(true)), s.told.reports)
+      assertEquals(listOf(RecordEntry("capture-rebuilt", listOf("action" to "reopen"))), s.told.lines)
+      assertEquals(1, s.parts.watching, "the new opening watches its camera")
+    }
+
+  /** The sequence: a reopen whose build finds the camera taken again is the busy build's (I4), and the next release opens it. */
+  @Test
+  fun `(c) a reopen whose build finds the camera taken again claims no reopen, and the next release builds it`() =
+    runTest {
+      val s = opened()
+      s.parts.builds += Built.Failed("0", cameraInUse, encoder = false, error = RuntimeException("Camera already in use"))
+      does(s, Command.ReopenCamera)
+      assertEquals(listOf(request), s.told.busy, "taken again: the pairing waits for the release")
+      assertEquals(emptyList(), s.told.reports, "no reopen claimed")
+      assertFalse(s.parts.held)
+      s.parts.log.clear()
+      assertEquals(Input.CameraReleased, s.cameras.available("0", 3_000), "CameraWatch: the holder let go again")
+      does(s, Command.ReopenCamera)
+      assertEquals(listOf("build $left", "build done"), s.parts.log, "nothing held: a build, no release")
+      assertEquals(listOf<Input>(Input.CameraReopened(true)), s.told.reports)
+      assertEquals(1, s.told.lines.count { it.kind == "capture-rebuilt" }, "the release once, the first reopen's")
+    }
+}

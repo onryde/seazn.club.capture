@@ -51,6 +51,12 @@ data class StallWatchdog(
    *   then: P5's call starved video as well as audio (9.7 and 15.2 a second), and a rebuild cannot
    *   end the call. The rates are still taken, for Diagnostics, and a picture that stops dead is
    *   still rebuilt by the zero test in [tick].
+   * @param shed the phone's thermal shed step (CD20), any step. No rate floor is judged then either:
+   *   session 8 rebuilt 54 times in 19 min at thermal 3 and 4 (20:13:50 to 20:33:09), audio under its
+   *   floor in all 54 (3.8 to 19.8 a second) and video under its own once (9.8; up to 24.7), because
+   *   the phone throttles its own encoders for heat, which no rebuild cools (our shed lowers no rate
+   *   of its own). As for the mic: the rates are still taken, and the zero test
+   *   still rebuilds a picture that truly stops.
    */
   fun frames(
     video: Long,
@@ -58,6 +64,7 @@ data class StallWatchdog(
     nowMs: Long,
     cameraTaken: Boolean,
     micSilenced: Boolean,
+    shed: ShedStep? = null,
   ): Pair<StallWatchdog, StallVerdict> {
     val previous = lastVideo
     if (previous == null || video < previous) return copy(lastVideo = video, readings = emptyList()) to StallVerdict.None
@@ -71,7 +78,7 @@ data class StallWatchdog(
     }
     val advanced = copy(lastVideo = video, lastAdvanceAtMs = nowMs, readings = pruned(kept + reading, nowMs))
     if (cameraTaken) return advanced.copy(readings = emptyList(), videoFps = null, audioFps = null) to StallVerdict.None
-    return advanced.judgeRate(nowMs, micSilenced)
+    return advanced.judgeRate(nowMs, floorWaived = micSilenced || shed != null)
   }
 
   /** The time-based rules: the first-frame grace and the zero test, which a reopen restarts. */
@@ -103,7 +110,7 @@ data class StallWatchdog(
       audioFps = null,
     )
 
-  private fun judgeRate(nowMs: Long, micSilenced: Boolean): Pair<StallWatchdog, StallVerdict> {
+  private fun judgeRate(nowMs: Long, floorWaived: Boolean): Pair<StallWatchdog, StallVerdict> {
     val base = readings.firstOrNull()?.takeIf { it.atMs <= nowMs - WINDOW_MS } ?: return this to StallVerdict.None
     val last = readings.last()
     val seconds = (last.atMs - base.atMs) / 1_000.0
@@ -111,7 +118,7 @@ data class StallWatchdog(
     val audio = oneDecimal((last.audio - base.audio) / seconds)
     val rated = copy(videoFps = video, audioFps = audio)
     if (video >= VIDEO_FLOOR_FPS && audio >= AUDIO_FLOOR_FPS) return rated to StallVerdict.None
-    if (micSilenced) return rated to StallVerdict.None
+    if (floorWaived) return rated to StallVerdict.None
     return rated to StallVerdict.Rebuild(StallCause.BELOW_FLOOR, 0, video, audio)
   }
 

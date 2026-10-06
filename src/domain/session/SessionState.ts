@@ -1,4 +1,4 @@
-import type { Transport } from '@/domain/credentials/StreamCredentials';
+import type { Cause, NotReady, Transport } from '@/domain/session/Pairing';
 
 /**
  * A *projection* of native state, not an authority (AGENTS.md §2).
@@ -18,8 +18,14 @@ import type { Transport } from '@/domain/credentials/StreamCredentials';
  */
 export type SessionState =
   | { readonly kind: 'idle' }
-  /** Credentials parsed, camera running, audio above the floor, network reachable. */
-  | { readonly kind: 'armed' }
+  /** `pair` accepted; the permission dialog may be up (amendment §2, Pairing). */
+  | { readonly kind: 'pairing' }
+  /** Waiting for a Go live, with the camera open while the viewfinder shows (CD37). */
+  | { readonly kind: 'paired' }
+  /** A start accepted; native is fetching the session (`retrying` when the fetch failed). */
+  | { readonly kind: 'arming'; readonly cause: Cause; readonly retrying: boolean }
+  /** The session in hand; native connects on its own once ready (A11). */
+  | { readonly kind: 'armed'; readonly cause: Cause; readonly notReady: NotReady | null }
   | { readonly kind: 'connecting'; readonly transport: Transport }
   | { readonly kind: 'publishing'; readonly transport: Transport; readonly sinceEpochMs: number }
   /** Still publishing, but something is wrong the operator should see. */
@@ -77,12 +83,14 @@ export type DegradeReason =
   /** A call silenced the microphone (F-P5-8). */
   | 'mic-silenced';
 
-export type EndReason =
-  | 'operator-stopped'
-  /** A 410 on reconnect, a heartbeat saying the session is over, or refused ingest (spec §1). */
-  | 'stopped-by-organiser'
-  | 'hold-window-expired'
-  | 'fatal-error';
+/**
+ * Ended is only the operator's Stop and a permanent failure (amendment, What
+ * this changes in S1): every other end returns to Paired with a `lastEnd`.
+ * Owner decision 1 (2026-10-05): the operator's Stop ends the pairing only
+ * once the broadcast went live; one before the first frame returns to Paired
+ * with the last end `stopped`.
+ */
+export type EndReason = 'operator-stopped' | 'fatal-error';
 
 /**
  * The degradation ladder, in order, never reordered (AGENTS.md §8).
