@@ -412,12 +412,13 @@ class BridgeCoreTest {
   }
 
   /**
-   * Review C4a I-1: the reviewer's flap, 0.049 and 0.051 a reading apart, every 500 ms for ten minutes. Spec §4
+   * Review C4a I-1: the reviewer's flap, 0.049 and 0.051 a reading apart (either side of the level floor this task
+   * deleted), every 500 ms for ten minutes. Spec §4
    * (owner, 2026-10-06): sound is the mic's availability, so it turns at the first reading, whatever its level,
    * and no level turns it back: one line.
    */
   @Test
-  fun `I-1 a peak hovering at the floor for ten minutes writes one readiness line, and the tail keeps the line before it`() {
+  fun `I-1 a peak flapping between two quiet levels for ten minutes writes one readiness line, and the tail keeps the line before it`() {
     core.start()
     core.report(Input.Network(true))
     core.readiness(cameraFrames = true, pose = Pose.Held(Side.LEFT))
@@ -1276,11 +1277,12 @@ class BridgeCoreTest {
       core.readiness(audioPeak = 0.0)
       scheduler.advanceBy(Engine.TICK_MS)
       assertEquals("publishing", state(), "${clock.monotonicMs() - from} ms of silence on air")
+      assertEquals(true, readyOn(core)["sound"], "${clock.monotonicMs() - from} ms of silence on air: the mic is available")
       readings += 1
     }
     assertEquals(60_000 / Engine.TICK_MS, readings.toLong(), "the sweep's own count")
-    assertEquals(true, readyOn(core)["sound"])
-    // F6: no record assertion. No record kind "degraded" exists, so one could never fail; the per-step state() is the witness.
+    // F6: no record assertion, as no record kind "degraded" exists and one could never fail. The per-step state() and
+    // sound are what this test reads; the line the screen shows is statusKey.test.ts's.
   }
 
   /**
@@ -1340,14 +1342,71 @@ class BridgeCoreTest {
     assertEquals(true, readyOn(core)["sound"], "the next buffer, silent, is a working mic again")
   }
 
+  /** Pre-flight F4: "no audio buffer" is 2 s (D1), a literal here, never read back from the code under test. */
+  @Test
+  fun `F4 the no-audio window is two seconds`() {
+    assertEquals(2_000L, BridgeCore.NO_AUDIO_MS)
+  }
+
   /**
-   * Spec §4, the sequence: a pair, an unpair and a re-pair carry no mic state over. Pairing 1's capture closes at the
-   * unpair, which is "audio capture unavailable" at once (the C4a carry), and its pose is forgotten at Release
-   * (final I-1). Pairing 2 is not sound until its own first reading, a silent one, and not held until its first held
-   * report. (The glue's pose watch starts a new tracker at each Hold, so held's own window starts afresh there.)
+   * Spec §4 "audio capture unavailable": a level that is not a number is no buffer. PeakMeter drops one already, so
+   * this is the core's own guard for a producer that does not (review m-4): an open capture, no buffer before it.
    */
   @Test
-  fun `S4 a pair, an unpair and a re-pair carry no mic state over`() {
+  fun `S4 a non-finite peak is no buffer, so it never makes the mic available`() {
+    core.start()
+    pair()
+    core.viewfinder(true)
+    var checked = 0
+    for (peak in listOf(Double.NaN, Double.POSITIVE_INFINITY, Double.NEGATIVE_INFINITY)) {
+      core.readiness(audioPeak = peak)
+      scheduler.advanceBy(0)
+      assertEquals(false, readyOn(core)["sound"], "$peak")
+      checked += 1
+    }
+    assertEquals(3, checked, "the sweep's own count")
+    core.readiness(audioPeak = 0.0)
+    scheduler.advanceBy(0)
+    assertEquals(true, readyOn(core)["sound"], "a finite buffer still is: the readings above were judged, not ignored")
+  }
+
+  /**
+   * Review G-2: a call is the system's word, not a reading, and MicWatch tells each change once (MicSilenceWatch's
+   * baseline lives for the process). A call still going when the capture closes and reopens is told no second
+   * time, so the core keeps it across the close; its end is heard on the new meter's recording (MicSilenceWatchTest's
+   * handover). Clearing it at the close would make a call in progress read as an available mic.
+   */
+  @Test
+  fun `G-2 a call that spans the capture's close is still not sound at the next opening, until it ends`() {
+    core.start()
+    pair()
+    core.viewfinder(true)
+    core.readiness(audioPeak = 0.0)
+    scheduler.advanceBy(0)
+    core.report(Input.MicSilenced(true))
+    scheduler.advanceBy(0)
+    assertEquals(false, readyOn(core)["sound"], "the call")
+    core.viewfinder(false)
+    core.readiness(cameraFrames = false, audioPeak = null) // the glue's release(), as it reports
+    scheduler.advanceBy(0)
+    core.viewfinder(true)
+    core.readiness(audioPeak = 0.0) // the new meter's first buffer: zeros, as a silenced client reads
+    scheduler.advanceBy(0)
+    assertEquals(false, readyOn(core)["sound"], "reopened during the call: the mic is still taken")
+    core.report(Input.MicSilenced(false))
+    scheduler.advanceBy(0)
+    assertEquals(true, readyOn(core)["sound"], "the call's end, heard on the new recording")
+  }
+
+  /**
+   * Spec §4, the sequence: a pair, an unpair and a re-pair carry no mic reading over. Pairing 1's capture closes at the
+   * unpair, which is "audio capture unavailable" at once (the C4a carry), and its pose is forgotten at Release
+   * (final I-1). Pairing 2 is not sound until its own first reading, a silent one, and not held until its first held
+   * report. (The glue's pose watch starts a new tracker at each Hold, so held's own window starts afresh there.) A
+   * call's silencing is not a reading and does carry over (G-2's test above).
+   */
+  @Test
+  fun `S4 a pair, an unpair and a re-pair carry no mic reading over`() {
     core.start()
     core.report(Input.Network(true))
     core.viewfinder(true)

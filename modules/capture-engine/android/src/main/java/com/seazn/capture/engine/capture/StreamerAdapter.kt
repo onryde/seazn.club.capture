@@ -12,6 +12,7 @@ import com.seazn.capture.engine.adapter.CameraAvailability
 import com.seazn.capture.engine.adapter.CameraFailures
 import com.seazn.capture.engine.adapter.EncoderKeys
 import com.seazn.capture.engine.adapter.FrameTally
+import com.seazn.capture.engine.adapter.MicSilenceWatch
 import com.seazn.capture.engine.adapter.PeakMeter
 import com.seazn.capture.engine.adapter.RtmpsLink
 import com.seazn.capture.engine.adapter.SrtOptions
@@ -137,8 +138,14 @@ class StreamerAdapter(
       (cause is CameraException && cause.message in BUSY_WORDS) || (cause is CameraAccessException && CameraAvailability.busy(cause.reason))
     }
 
-  /** Task 37's MicWatch: our AudioRecord's session id, by reflection (StreamPack keeps it private). */
-  fun audioSessionId(): Int? = current.value?.audioInput?.sourceFlow?.value?.let(AudioSessionIds::of)
+  /**
+   * Task 37's MicWatch: the session id of our recording that records (review I-1). Before air the meter's, which
+   * every connect stops first; on air StreamPack's.
+   */
+  fun audioSessionId(): Int? = MicSilenceWatch.ours(sound.sessionId(), ::streamerSession)
+
+  /** StreamPack's AudioRecord's session id, by reflection (StreamPack keeps it private). */
+  private fun streamerSession(): Int? = current.value?.audioInput?.sourceFlow?.value?.let(AudioSessionIds::of)
 
   private fun level(peak: Double) {
     shown.offer(peak)
@@ -317,7 +324,7 @@ class StreamerAdapter(
       held.audioInput.isMuted = on
     }
 
-    override fun micSessionKnown(): Boolean = audioSessionId() != null
+    override fun micSessionKnown(): Boolean = streamerSession() != null
 
     /** C7 carry: our camera's id when the start failed on Camera2's busy word ([busy]). */
     override fun busyCamera(failure: Throwable): String? = cameraId?.takeIf { busy(failure) }

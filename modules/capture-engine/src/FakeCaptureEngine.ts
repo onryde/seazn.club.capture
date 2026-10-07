@@ -379,9 +379,11 @@ function sceneOf(name: FakeScene, now: number): Scene {
         then: { afterMs: REOPEN_FIRST_FRAME_MS, state: publishing('srt', since) },
       };
     case 'mic-silenced':
+      // Spec §4: a call takes the mic, so native reads it not available (BridgeCore's systemSilenced).
       return {
         state: degraded('srt', 'mic-silenced', since),
         telemetry: { ...live, audioLevel: 0 },
+        ready: { ...READY, sound: false },
       };
     case 'stopped':
       return {

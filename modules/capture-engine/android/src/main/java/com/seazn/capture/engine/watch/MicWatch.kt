@@ -12,9 +12,9 @@ import com.seazn.capture.engine.core.RecordEntry
 
 /**
  * F-P5-8: a call silencing our recording, matched by our AudioRecord's session id. `isClientSilenced`
- * is API 29; minSdk is 31 (CD34). [sessionId] is the capture's (`StreamerAdapter.audioSessionId`); when
- * it is null the rule reads nothing, and the capture records that once per opening (N8). Holds no
- * session state of its own.
+ * is API 29; minSdk is 31 (CD34). [sessionId] is the capture's (`StreamerAdapter.audioSessionId`): the
+ * meter's recording before air, StreamPack's on air (review I-1). When it is null the rule reads
+ * nothing, and the capture records StreamPack's once per opening (N8). Holds no session state of its own.
  */
 class MicWatch(
   private val context: Context,

@@ -153,6 +153,29 @@ class GlueRulesTest {
     assertTrue("ready.take())" in glue.substring(glue.indexOf("private suspend fun reportReadiness()")), "the tick passes the take")
   }
 
+  /**
+   * Review I-1, spec §4 ("a call means not ready"): MicWatch reads the session of the recording that records. Before
+   * air that is the meter's own AudioRecord, StreamPack's records only on air, and every connect stops the meter
+   * first, so `MicSilenceWatch.ours` picks the meter's while it records (MicSilenceWatchTest drives the handover).
+   * N8's check stays StreamPack's: it asks whether the reflection works.
+   */
+  @Test
+  fun `I-1 MicWatch reads the meter's session before air and StreamPack's after the connect stops the meter`() {
+    val adapter = glue("StreamerAdapter.kt")
+    assertTrue("fun audioSessionId(): Int? = MicSilenceWatch.ours(sound.sessionId(), ::streamerSession)" in adapter, "the meter's session first")
+    assertTrue("private fun streamerSession(): Int? = current.value?.audioInput?.sourceFlow?.value?.let(AudioSessionIds::of)" in adapter, "StreamPack's, by reflection")
+    assertTrue(Regex("""^\{\s+sound\.stop\(\)\n""").containsMatchIn(body(adapter, "override fun beforeConnect(")), "the connect stops the meter first")
+    assertTrue("sound.start()" in body(adapter, "override suspend fun afterBroadcast()"), "G-2: a new meter after the broadcast")
+    assertTrue("override fun micSessionKnown(): Boolean = streamerSession() != null" in adapter, "N8 asks after StreamPack's")
+    val meter = glue("SoundMeter.kt")
+    assertTrue("fun sessionId(): Int? = session" in meter, "the meter hands over its session")
+    val start = body(meter, "fun start()")
+    assertTrue(Regex("""session = it\.audioSessionId [^\n]*\n\s+it\.startRecording\(\)""").containsMatchIn(start), "set before it records, so the callback for this start finds it")
+    assertTrue(Regex("""catch \(e: Exception\) \{[^\n]*\n\s+session = null\n""").containsMatchIn(start), "cleared when the start fails")
+    assertTrue(Regex("""record = null\s+session = null\n""").containsMatchIn(body(meter, "fun stop()")), "cleared before the release")
+    assertTrue("MicWatch(app, capture::audioSessionId, MicSilenceWatch(), report, toCore)" in glue("EngineHost.kt"), "MicWatch reads it")
+  }
+
   @Test
   fun `A11 the encode's rotation never reads the display, StreamPack's default included`() {
     val problems = mutableListOf<String>()

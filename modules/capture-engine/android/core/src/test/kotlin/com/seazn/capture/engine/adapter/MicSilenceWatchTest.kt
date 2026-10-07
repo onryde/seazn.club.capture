@@ -54,4 +54,53 @@ class MicSilenceWatchTest {
     // The viewfinder reopened: a new AudioRecord, a new session id, and the call has ended.
     assertEquals(false, watch.update(52, listOf(RecordingConfig(52, false), RecordingConfig(41, true))))
   }
+
+  /**
+   * Review I-1, spec §4 ("a call means not ready"): before air our one recording is the meter's (SoundMeter, 41).
+   * StreamPack's AudioRecord (52) is built with the streamer but records only from the connect, so a watch that
+   * read it before air would never hear a call there.
+   */
+  @Test
+  fun `I-1 before air the meter's recording is ours, though StreamPack's exists, and a call on it is heard`() {
+    val watch = MicSilenceWatch()
+    val ours = MicSilenceWatch.ours(meter = 41, streamer = { 52 })
+    assertEquals(41, ours, "the meter's session while it records")
+    assertEquals(true, watch.update(ours, listOf(RecordingConfig(41, true))), "a call before Go live")
+    assertEquals(false, watch.update(ours, listOf(RecordingConfig(41, false))), "and its end")
+  }
+
+  /**
+   * Review I-1 and G-2, the handover in the glue's own order (StreamerAdapter): the meter records from the build;
+   * `beforeConnect` stops it, so StreamPack's recording is ours on air; `afterBroadcast` starts a new meter, so a
+   * call that outlives the broadcast is still heard ending (G-2: watching StreamPack's alone, its recording leaves
+   * the list with the broadcast and the call's end is never read). Each step: who records, the configs Android
+   * hands over, and the word the watch must report.
+   */
+  @Test
+  fun `I-1 G-2 the watched session hands over to StreamPack's at the connect and back to a new meter after the broadcast`() {
+    data class Step(val name: String, val meter: Int?, val configs: List<RecordingConfig>, val told: Boolean?)
+    val streamer = 52 // StreamPack's AudioRecord, built with the streamer, readable from the build to the release
+    val steps =
+      listOf(
+        Step("before air, a quiet room", meter = 41, listOf(RecordingConfig(41, false)), told = null),
+        Step("the connect: the meter stopped, StreamPack records", meter = null, listOf(RecordingConfig(52, false)), told = null),
+        Step("a call on air", meter = null, listOf(RecordingConfig(52, true)), told = true),
+        Step("the broadcast ends during the call: a new meter records, still silenced", meter = 63, listOf(RecordingConfig(63, true)), told = null),
+        Step("the call ends", meter = 63, listOf(RecordingConfig(63, false)), told = false),
+        Step("a second call, before the next Go live", meter = 63, listOf(RecordingConfig(63, true)), told = true),
+      )
+    val watch = MicSilenceWatch()
+    var checked = 0
+    for (step in steps) {
+      assertEquals(step.told, watch.update(MicSilenceWatch.ours(step.meter) { streamer }, step.configs), step.name)
+      checked += 1
+    }
+    assertEquals(6, checked, "the steps' own count")
+  }
+
+  @Test
+  fun `I-1 with no meter recording, StreamPack's session is ours, and with neither there is none`() {
+    assertEquals(52, MicSilenceWatch.ours(meter = null, streamer = { 52 }))
+    assertEquals(null, MicSilenceWatch.ours(meter = null, streamer = { null }))
+  }
 }

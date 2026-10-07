@@ -462,6 +462,14 @@ describe('scenes: every state spec §6 and the amendment list', () => {
     expect(telemetry().shed).toBe('overlay-preview');
   });
 
+  /** Spec §4: a call is the one way the mic reads not available on air; native's readiness says so too (BridgeCore). */
+  it('mic-silenced has the mic not available, as native reads a call, and live has it available', () => {
+    engine.scene('mic-silenced');
+    expect(snapshot().ready.sound).toBe(false);
+    engine.scene('live');
+    expect(snapshot().ready.sound).toBe(true);
+  });
+
   it('carries each paired scene’s own fact: not held, a refusal, a last end', () => {
     engine.scene('paired-not-held');
     expect(snapshot().ready.held).toBe(false);

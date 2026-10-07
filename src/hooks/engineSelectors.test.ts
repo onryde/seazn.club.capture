@@ -320,10 +320,10 @@ describe('no reading is null, never zero (plan B reports null off air)', () => {
 });
 
 /**
- * Spec §4: six segments, orange below the floor. A segment lights once the
- * level reaches into its sixth of 0..1, so any sound at all shows: with
- * AUDIO_FLOOR at 0.05, a faint mic is one (orange) segment, never an empty
- * meter beside a green sound chip.
+ * Spec §4: six segments. A segment lights once the level reaches into its
+ * sixth of 0..1, so any sound at all shows: a faint mic is one segment, never
+ * an empty meter beside a ready mic chip. The segments' colour is the mic's
+ * availability, not the level (Hud.test.tsx).
  */
 describe('selectMeterSegments', () => {
   it('has six segments', () => {

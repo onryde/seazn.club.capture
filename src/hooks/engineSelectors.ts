@@ -148,9 +148,9 @@ export const METER_SEGMENTS = 6;
 /**
  * Whole segments lit, not the level: a primitive that changes only when a
  * segment does. A segment lights once the level reaches into its sixth, so any
- * sound shows — a faint mic below AUDIO_FLOOR is one orange segment, never an
- * empty meter (spec §4). A level off the wire outside 0..1, or not a number,
- * is clamped rather than drawn.
+ * sound shows: a faint mic is one segment, never an empty meter. Its colour is
+ * the mic's availability, not the level (spec §4). A level off the wire outside
+ * 0..1, or not a number, is clamped rather than drawn.
  */
 export function selectMeterSegments(snapshot: EngineSnapshot): number {
   const lit = Math.ceil(snapshot.telemetry.audioLevel * METER_SEGMENTS);

@@ -22,4 +22,13 @@ class MicSilenceWatch {
     last = config.silenced
     return last
   }
+
+  companion object {
+    /**
+     * Review I-1, spec §4 ("a call means not ready"): whose session is ours, the recording that records. Before air
+     * that is the meter's own AudioRecord ([meter], null once stopped); StreamPack's is built with the streamer but
+     * records only on air, and every connect stops the meter first, so on air it is [streamer]'s, read only then.
+     */
+    fun ours(meter: Int?, streamer: () -> Int?): Int? = meter ?: streamer()
+  }
 }
