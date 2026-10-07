@@ -1,6 +1,7 @@
 import { act, screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import { MatchLabel } from '@/ui/components/MatchLabel';
+import { typeScale } from '@/ui/theme/type';
 import { CASES } from '../../../test/fixtures/matchLabelCases';
 import { renderWithPorts } from '../../../test/renderWithPorts';
 
@@ -53,6 +54,8 @@ describe('MatchLabel (spec §2)', () => {
     (_n, label, shape, size) => {
       pairedWith(label);
       const root = screen.getByTestId('match-label');
+      // Review M4: the whole label, as typed, is the root's accessible name: one stop, not three.
+      expect(screen.getByLabelText(label)).toBe(root);
       const parts = shape.kind === 'block' ? [shape.block] : [shape.a, shape.b];
       const lines = lineElements(root);
       expect(lines.map((line) => line.textContent)).toEqual(parts.flatMap((part) => part.lines));
@@ -70,6 +73,10 @@ describe('MatchLabel (spec §2)', () => {
         expect(root.textContent).toBe(shape.block.lines.join(''));
       } else {
         expect(v?.textContent).toBe('v');
+        // Review M3: the small v is the metricUnit role's size, read from the token's declaration.
+        expect(getComputedStyle(v as HTMLElement).fontSize).toBe(
+          `${typeScale.metricUnit.fontSize}px`,
+        );
         // The v shares a row with side B's first line, after side A's last.
         const row = v?.parentElement as HTMLElement;
         const firstOfB = lines[shape.a.lines.length];
@@ -82,8 +89,8 @@ describe('MatchLabel (spec §2)', () => {
     },
   );
 
-  it('showed every case §2 owes', () => {
-    expect(seen).toBe(7);
+  it('showed every case §2 and the review owe', () => {
+    expect(seen).toBe(12);
   });
 
   it('follows the label as it changes, and goes when the pairing does', () => {
@@ -94,6 +101,7 @@ describe('MatchLabel (spec §2)', () => {
     act(() => view.engine.setPairing({ label: 'Ana Ruiz v Bea Lima' }));
     expect(lineElements(root()).map((line) => line.textContent)).toEqual(['Ana Ruiz', 'Bea Lima']);
     expect(root().dataset.size).toBe('regular');
+    expect(screen.getByLabelText('Ana Ruiz v Bea Lima')).toBe(root());
 
     act(() => view.engine.scene('unpaired-replaced'));
     expect(screen.queryByTestId('match-label')).toBeNull();

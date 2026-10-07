@@ -20,7 +20,9 @@ function SplitLabel({ label }: { label: string }) {
   const size = labelSize(split);
   const variant: TypeRole = size === 'long' ? 'labelLong' : 'label';
   return (
-    <View {...marker({ size, kind: split.kind })}>
+    // One accessible stop that reads the whole label as typed, not each line and the v
+    // (review M4). `accessible` groups the children on native; react-native-web drops it.
+    <View {...marker({ size, kind: split.kind })} accessible accessibilityLabel={label}>
       {split.kind === 'block' ? (
         <Lines part={split.block} variant={variant} />
       ) : (
