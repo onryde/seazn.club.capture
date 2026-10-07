@@ -5,6 +5,8 @@ import { ADVISORY_KEY } from '@/hooks/advisory';
 import en from '@/i18n/en.json';
 import { colour, layout } from '@/ui/theme/tokens';
 import { typeScale } from '@/ui/theme/type';
+import { CASES } from '../../../test/fixtures/matchLabelCases';
+import { layOut } from '../../../test/layOut';
 import { pressIn } from '../../../test/press';
 import { renderViewfinder } from '../../../test/renderViewfinder';
 
@@ -150,7 +152,7 @@ describe('the camera half (spec §1)', () => {
     expect(within(byId('camera-box')).getByTestId('preview')).toBeTruthy();
   });
 
-  it('is a black 16:9 box as wide as its half, clipping what it holds', async () => {
+  it('is a black 16:9 box as wide as its half until the half is measured, clipping what it holds', async () => {
     await renderViewfinder();
     const style = getComputedStyle(byId('camera-box'));
     expect(style.width).toBe('100%');
@@ -440,5 +442,175 @@ describe('the halves are one screen through a sequence (spec §1, §4)', () => {
     expect(byId('controls-half')).toBe(controls);
     // The preview inside the box is the same element too: a status change does not reopen the camera.
     expect(within(byId('camera-box')).getByTestId('preview')).toBe(preview);
+  });
+});
+
+/**
+ * Fix round 1, I-1 (owner ruling): the strip keeps its content height and the camera box gives way.
+ * The half reports its size (`onLayout`); the box is min(half width × 9/16, height - 180), centred in
+ * the half, on the half's surface colour. jsdom lays nothing out, so `layOut` delivers the size the
+ * phone would, and the box is read from the style it was given.
+ */
+describe('the camera box gives way to the strip (spec §1, fix round 1 I-1)', () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  // [width, height, box width, box height] in dp, worked by hand from spec §1 and the strip's 180 dp
+  // reserve (Q4 option A): 640 × 360 is the whole half; the wider screens' boxes are what the strip leaves.
+  const SCREENS = [
+    [640, 360, 320, 180],
+    [800, 360, 320, 180],
+    [844, 390, 373.3333333, 210],
+    [915, 412, 412.4444444, 232],
+  ] as const;
+  let screensChecked = 0;
+
+  const boxSize = () => {
+    const style = getComputedStyle(byId('camera-box'));
+    return { width: parseFloat(style.width), height: parseFloat(style.height) };
+  };
+
+  it('listens: the half takes a layout, and an element that listens to none refuses one', async () => {
+    await renderViewfinder();
+    expect(() => layOut(byId('camera-half'), { width: 320, height: 360 })).not.toThrow();
+    // The probe of test/layOut.ts's reach into react-native-web: a View with no onLayout has no handler.
+    expect(() => layOut(byId('camera-box'), { width: 320, height: 180 })).toThrow(/no onLayout/);
+  });
+
+  it.each(SCREENS)(
+    '%i × %i: the box is %d × %d and the strip is not squeezed',
+    async (width, height, boxWidth, boxHeight) => {
+      await renderViewfinder();
+      layOut(byId('camera-half'), { width: width / 2, height });
+      const size = boxSize();
+      expect(size.width).toBeCloseTo(boxWidth, 2);
+      expect(size.height).toBeCloseTo(boxHeight, 2);
+      // 16:9, and the box plus the strip's 180 fits the screen.
+      expect(size.width / size.height).toBeCloseTo(16 / 9, 3);
+      expect(size.height + 180).toBeLessThanOrEqual(height + 1e-6);
+      expect(size.width).toBeLessThanOrEqual(width / 2 + 1e-6);
+      screensChecked += 1;
+    },
+  );
+
+  it('measured four screens (anti-vacuity)', () => {
+    expect(SCREENS).toHaveLength(4);
+    expect(screensChecked).toBe(SCREENS.length);
+  });
+
+  it('centres the box in its half, on the half’s surface colour', async () => {
+    await renderViewfinder();
+    layOut(byId('camera-half'), { width: 400, height: 360 });
+    expect(getComputedStyle(byId('camera-box')).alignSelf).toBe('center');
+    expect(getComputedStyle(byId('camera-half')).backgroundColor).toBe(paintOf(TOKEN.surface));
+  });
+
+  it('keeps the overlay and What viewers see inside the narrower box', async () => {
+    const view = await renderViewfinder();
+    layOut(byId('camera-half'), { width: 400, height: 360 });
+    const box = byId('camera-box');
+    expect(box.contains(byId('overlay'))).toBe(true);
+    act(() => view.engine.scene('live'));
+    pressIn(peek());
+    expect(box.contains(byId('viewer-video'))).toBe(true);
+    expect(box.contains(byId('overlay'))).toBe(true);
+    expect(boxSize().width).toBeCloseTo(320, 2);
+  });
+
+  it('follows the screen and never remounts: 800 × 360, then 640 × 360, then 844 × 390', async () => {
+    await renderViewfinder();
+    const box = byId('camera-box');
+    const preview = within(box).getByTestId('preview');
+    layOut(byId('camera-half'), { width: 400, height: 360 });
+    expect(boxSize().width).toBeCloseTo(320, 2);
+    layOut(byId('camera-half'), { width: 320, height: 360 });
+    expect(boxSize()).toEqual({ width: 320, height: 180 });
+    layOut(byId('camera-half'), { width: 422, height: 390 });
+    expect(boxSize().height).toBeCloseTo(210, 2);
+    expect(byId('camera-box')).toBe(box);
+    expect(within(byId('camera-box')).getByTestId('preview')).toBe(preview);
+  });
+
+  it('keeps the unmeasured box for a layout of nothing', async () => {
+    await renderViewfinder();
+    layOut(byId('camera-half'), { width: 0, height: 0 });
+    const style = getComputedStyle(byId('camera-box'));
+    expect(style.width).toBe('100%');
+  });
+});
+
+/**
+ * Fix round 1, I-2: the fit arithmetic reads tokens; these bind the rendered components to the same
+ * numbers, as literals from the brief (Board "Before"), so a changed padding or gap reds here.
+ */
+describe('the strip and the controls half are padded and spaced as the fit reserves (fix round 1 I-2)', () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  it('the status strip: 8 above and below, 16 either side, 6 between its rows', async () => {
+    await renderViewfinder();
+    const style = getComputedStyle(byId('status-strip'));
+    expect([style.paddingTop, style.paddingBottom, style.paddingLeft, style.paddingRight]).toEqual([
+      '8px',
+      '8px',
+      '16px',
+      '16px',
+    ]);
+    expect(style.gap).toBe('6px');
+  });
+
+  it('the controls half: 16 all round, 12 between its rows', async () => {
+    await renderViewfinder();
+    const style = getComputedStyle(byId('controls-half'));
+    expect([style.paddingTop, style.paddingBottom, style.paddingLeft, style.paddingRight]).toEqual([
+      '16px',
+      '16px',
+      '16px',
+      '16px',
+    ]);
+    expect(style.gap).toBe('12px');
+  });
+});
+
+/**
+ * Fix round 1, I-2: the strip reserves at most 4 lines for the label (Q4 option A, `labelLinesMax`).
+ * Every label the family holds is rendered in the strip and its lines counted: what each line may take
+ * (`numberOfLines`) summed, bounded at 4; and a regular label is one line a side, 2 in all (F9).
+ */
+describe('the match label stays inside its reserved lines (fix round 1 I-2)', () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+  const seen = { all: 0, regular: 0, long: 0 };
+
+  it.each(CASES)('%s: at most 4 lines in all', async (_name, label, _shape, size) => {
+    await renderViewfinder({}, { prepare: (fakes) => fakes.engine.setPairing({ label }) });
+    const root = within(byId('status-strip')).getByTestId('match-label');
+    const lines = [...root.querySelectorAll('[data-testid="match-label-line"]')];
+    const allowed = lines.reduce((sum, line) => sum + linesAllowed(line), 0);
+    expect(lines.length).toBeGreaterThan(0);
+    expect(allowed).toBeLessThanOrEqual(4);
+    expect(root.dataset.size).toBe(size);
+    if (size === 'regular') {
+      // F9, made a guard: one line a side, each no longer than 26 characters (code points).
+      expect(lines.length).toBeLessThanOrEqual(2);
+      for (const line of lines)
+        expect([...(line.textContent ?? '')].length).toBeLessThanOrEqual(26);
+      seen.regular += 1;
+    } else {
+      // At the long size a line is 19 dp, and 4 of them are the 76 the strip reserves.
+      expect(
+        allowed * parseFloat(getComputedStyle(lines[0] as Element).lineHeight),
+      ).toBeLessThanOrEqual(76);
+      seen.long += 1;
+    }
+    seen.all += 1;
+  });
+
+  it('swept all twelve labels, both sizes (anti-vacuity)', () => {
+    expect(CASES).toHaveLength(12);
+    expect(seen.all).toBe(CASES.length);
+    expect(seen.regular).toBeGreaterThan(0);
+    expect(seen.long).toBeGreaterThan(0);
+    expect(seen.regular + seen.long).toBe(seen.all);
   });
 });
