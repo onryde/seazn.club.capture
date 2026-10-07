@@ -12,7 +12,7 @@ type IconButtonProps = {
 
 /**
  * An icon-row button (spec §3): a 48 dp square, outlined as GhostButton is,
- * holding a glyph in ink. The name is the label alone, so a screen reader reads
+ * holding a glyph in ink2, cream at 80% (the canvas). The name is the label alone, so a screen reader reads
  * "Settings" and a sighted operator reads the picture.
  */
 export const IconButton = memo(function IconButton({ glyph, label, onPress }: IconButtonProps) {
@@ -23,7 +23,7 @@ export const IconButton = memo(function IconButton({ glyph, label, onPress }: Ic
       onPress={onPress}
       style={iconButtonStyle}
     >
-      <Glyph name={glyph} tone="ink" />
+      <Glyph name={glyph} tone="ink2" />
     </Pressable>
   );
 });

@@ -25,13 +25,16 @@ const BUTTONS = [
 let buttonsRun = 0;
 
 describe('IconButton (spec §3)', () => {
-  it.each(BUTTONS)('%s: a button named %s, drawn as its glyph in ink', (glyph, label) => {
+  it.each(BUTTONS)('%s: a button named %s, drawn as its glyph in ink2', (glyph, label) => {
     renderWithPorts(<IconButton glyph={glyph} label={label} onPress={vi.fn()} />);
     const button = screen.getByRole('button', { name: label });
     const drawn = within(button).getByTestId('glyph');
     expect(drawn.dataset.name).toBe(glyph);
     expect(drawn.dataset.slashed).toBe('false');
-    expect(drawn.dataset.tone).toBe('ink');
+    // The canvas draws the icon row in cream at 80%, not the chips' full ink.
+    expect(drawn.dataset.tone).toBe('ink2');
+    expect(colour[drawn.dataset.tone as 'ink2']).toBe(colour.ink2);
+    expect(colour.ink2).not.toBe(colour.ink);
     buttonsRun += 1;
   });
 

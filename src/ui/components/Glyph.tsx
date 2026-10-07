@@ -4,8 +4,11 @@ import { colour } from '@/ui/theme/tokens';
 
 export type GlyphName = 'camera' | 'mic' | 'network' | 'settings' | 'home';
 
-/** What a glyph is drawn in: ink for a control, lime for ready, caution-orange for not (spec §3). */
-export type GlyphTone = 'ink' | 'lime' | 'caution';
+/**
+ * What a glyph is drawn in, by the canvas: ink on a readiness chip (its outline carries the state),
+ * ink2, cream at 80%, on an icon-row button.
+ */
+export type GlyphTone = 'ink' | 'ink2';
 
 type GlyphProps = {
   readonly name: GlyphName;

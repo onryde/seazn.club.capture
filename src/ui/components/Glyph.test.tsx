@@ -86,18 +86,21 @@ describe('Glyph draws the canvas’s line icons (spec §3)', () => {
 
   it.each([
     ['ink', colour.ink],
-    ['lime', colour.lime],
-    ['caution', colour.caution],
+    ['ink2', colour.ink2],
   ] as const)('strokes in the %s tone’s colour', (tone, stroke) => {
     const view = render(<Glyph name="camera" tone={tone} />);
     expect(view.container.querySelector('svg')?.getAttribute('stroke')).toBe(stroke);
   });
 
+  it('draws the two tones in two colours (anti-vacuity)', () => {
+    expect(colour.ink).not.toBe(colour.ink2);
+  });
+
   it('slashes the camera when asked, and draws the same camera under the slash', () => {
-    const plain = render(<Glyph name="camera" tone="caution" />);
+    const plain = render(<Glyph name="camera" tone="ink" />);
     const plainPaths = paths(plain.container);
     plain.unmount();
-    const slashed = render(<Glyph name="camera" slashed tone="caution" />);
+    const slashed = render(<Glyph name="camera" slashed tone="ink" />);
     expect(paths(slashed.container)).toEqual([...plainPaths, SLASH]);
     expect(plainPaths).not.toContain(SLASH);
   });
@@ -105,7 +108,7 @@ describe('Glyph draws the canvas’s line icons (spec §3)', () => {
   it.each(DRAWN.filter(([name]) => name !== 'camera'))(
     '%s has no slashed form: asked for one, it draws as it does plain',
     (name, d) => {
-      const view = render(<Glyph name={name} slashed tone="caution" />);
+      const view = render(<Glyph name={name} slashed tone="ink" />);
       expect(paths(view.container)).toEqual(d);
     },
   );
