@@ -84,39 +84,42 @@ describe('PreflightChips (spec §1)', () => {
 });
 
 /**
- * Spec §3: the chips are icons. Each row is a chip, whether it is ready, and what spec §3 says it
- * draws then: a camera that is not ready gains a slash, and the other two never do; the state is in
- * the glyph's colour (lime ready, caution-orange not). Written out from the spec, not read from the
+ * Spec §3 and the canvas: the chips are icons. Each row is a chip, whether it is ready, and what it
+ * draws then: a camera that is not ready gains a slash, and the other two never do. The glyph is
+ * ink in both states; only the 2 dp outline carries the state, lime ready and caution-orange not
+ * (`outline` names the TOKEN it is compared to). Written out from the spec, not read from the
  * component.
  */
 const ICON_CASES = [
-  ['camera', 'Camera', true, 'camera', false, 'lime'],
-  ['camera', 'Camera', false, 'camera', true, 'caution'],
-  ['sound', 'Mic', true, 'mic', false, 'lime'],
-  ['sound', 'Mic', false, 'mic', false, 'caution'],
-  ['network', 'Network', true, 'network', false, 'lime'],
-  ['network', 'Network', false, 'network', false, 'caution'],
+  ['camera', 'Camera', true, 'camera', false, 'ok'],
+  ['camera', 'Camera', false, 'camera', true, 'off'],
+  ['sound', 'Mic', true, 'mic', false, 'ok'],
+  ['sound', 'Mic', false, 'mic', false, 'off'],
+  ['network', 'Network', true, 'network', false, 'ok'],
+  ['network', 'Network', false, 'network', false, 'off'],
 ] as const;
 let iconCasesRun = 0;
 
 describe('PreflightChips are icons (spec §3)', () => {
   it.each(ICON_CASES)(
-    '%s chip (%s), ready=%s: the %s glyph, slashed=%s, in %s',
-    (chip, word, ok, glyph, slashed, tone) => {
+    '%s chip (%s), ready=%s: the %s glyph in ink, slashed=%s, outlined %s',
+    (chip, word, ok, glyph, slashed, outline) => {
       renderWithPorts(<PreflightChips preflight={{ ...GREEN, [chip]: ok }} {...QUIET} />);
       const box = screen.getByLabelText(`${word}: ${ok ? 'ready' : 'not ready'}`);
       const drawn = within(box).getByTestId('glyph');
       expect(drawn.dataset.name).toBe(glyph);
       expect(drawn.dataset.slashed).toBe(String(slashed));
-      expect(drawn.dataset.tone).toBe(tone);
+      // The glyph is the same ink ready or not; the state is the outline's (the canvas).
+      expect(drawn.dataset.tone).toBe('ink');
       const style = getComputedStyle(box);
       expect([style.width, style.height, style.borderTopWidth]).toEqual([
         `${layout.chip}px`,
         `${layout.chip}px`,
         `${layout.chipBorder}px`,
       ]);
-      // The box carries the same state in its outline.
-      expect(style.borderTopColor).toBe(borderOf(ok ? TOKEN.ok : TOKEN.off));
+      expect(style.borderTopColor).toBe(borderOf(TOKEN[outline]));
+      // Square: the canvas gives the readiness chips no radius.
+      expect(parseFloat(style.borderTopLeftRadius || '0')).toBe(0);
       iconCasesRun += 1;
     },
   );
@@ -137,10 +140,19 @@ describe('PreflightChips are icons (spec §3)', () => {
     expect(screen.getAllByTestId('glyph')).toHaveLength(3);
   });
 
-  it('keeps AUTO a word chip, now 44 dp tall', () => {
+  it('spaces the chips 8 dp apart, as the canvas does', () => {
+    renderWithPorts(<PreflightChips preflight={GREEN} auto={true} startsAt={null} />);
+    expect(getComputedStyle(screen.getByTestId('chip-row')).gap).toBe('8px');
+  });
+
+  it('keeps AUTO a word chip, 44 dp tall, square and lime outlined like the chips beside it', () => {
     renderWithPorts(<PreflightChips preflight={GREEN} auto={true} startsAt={null} />);
     const auto = screen.getByText('Auto').parentElement as HTMLElement;
-    expect(getComputedStyle(auto).height).toBe(`${layout.chip}px`);
+    const style = getComputedStyle(auto);
+    expect(style.height).toBe(`${layout.chip}px`);
+    expect(style.borderTopWidth).toBe(`${layout.chipBorder}px`);
+    expect(style.borderTopColor).toBe(borderOf(TOKEN.ok));
+    expect(parseFloat(style.borderTopLeftRadius || '0')).toBe(0);
     // A word, not an icon: no glyph inside it, and three glyphs in the row beside it.
     expect(within(auto).queryByTestId('glyph')).toBeNull();
     expect(screen.getAllByTestId('glyph')).toHaveLength(3);
@@ -182,12 +194,13 @@ describe('PreflightChips follow the engine (spec §3, §4)', () => {
     act(() => view.engine.setReady({ sound: false }));
     expect(screen.queryByLabelText('Mic: ready')).toBeNull();
     expect(outline('Mic: not ready')).toBe(borderOf(TOKEN.off));
-    expect(within(mic('Mic: not ready')).getByTestId('glyph').dataset.tone).toBe('caution');
+    // The glyph stays ink; the outline alone moved.
+    expect(within(mic('Mic: not ready')).getByTestId('glyph').dataset.tone).toBe('ink');
 
     act(() => view.engine.setReady({ sound: true }));
     expect(screen.queryByLabelText('Mic: not ready')).toBeNull();
     expect(outline('Mic: ready')).toBe(borderOf(TOKEN.ok));
-    expect(within(mic('Mic: ready')).getByTestId('glyph').dataset.tone).toBe('lime');
+    expect(within(mic('Mic: ready')).getByTestId('glyph').dataset.tone).toBe('ink');
     // The other two never moved.
     expect(screen.getByLabelText('Camera: ready')).toBeTruthy();
     expect(screen.getByLabelText('Network: ready')).toBeTruthy();

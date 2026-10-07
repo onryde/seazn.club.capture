@@ -75,12 +75,13 @@ describe('Glyph draws the canvas’s line icons (spec §3)', () => {
     ]);
   });
 
-  it('is a 24-unit line drawing, stroke 2, no fill', () => {
+  it('is a 24-unit line drawing at 22 dp, stroke 1.8, no fill (the canvas)', () => {
     const view = render(<Glyph name="home" tone="ink" />);
     const svg = view.container.querySelector('svg') as Element;
     expect(svg.getAttribute('viewBox')).toBe('0 0 24 24');
+    expect([svg.getAttribute('width'), svg.getAttribute('height')]).toEqual(['22', '22']);
     expect(svg.getAttribute('fill')).toBe('none');
-    expect(svg.getAttribute('stroke-width')).toBe('2');
+    expect(svg.getAttribute('stroke-width')).toBe('1.8');
   });
 
   it.each([

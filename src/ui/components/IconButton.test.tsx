@@ -45,6 +45,8 @@ describe('IconButton (spec §3)', () => {
     const style = getComputedStyle(screen.getByRole('button', { name: 'Settings' }));
     // Spec §3's number, written out beside the token it is read from.
     expect(layout.iconButton).toBe(48);
+    // The canvas's 1 px hairline, likewise.
+    expect(layout.iconBorder).toBe(1);
     expect([style.width, style.height]).toEqual([
       `${layout.iconButton}px`,
       `${layout.iconButton}px`,

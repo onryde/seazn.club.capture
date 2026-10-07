@@ -5,7 +5,7 @@ import { useT } from '@/hooks/useLanguage';
 import type { MessageKey } from '@/i18n/messages';
 import { Glyph, type GlyphName } from '@/ui/components/Glyph';
 import { Text } from '@/ui/components/Text';
-import { colour, layout, radius, space } from '@/ui/theme/tokens';
+import { colour, layout, space } from '@/ui/theme/tokens';
 
 const NAME: Readonly<Record<Chip, MessageKey>> = {
   camera: 'stream.chip.camera',
@@ -68,8 +68,9 @@ const AutoChip = memo(function AutoChip() {
 
 /**
  * An icon in a 44 dp box. The name keeps its state for a screen reader
- * ("Camera: ready"); the state a sighted operator reads is the colour of the
- * outline and the icon, and the camera's slash (spec §3).
+ * ("Camera: ready"); the state a sighted operator reads is the outline's colour
+ * and the camera's slash (spec §3). The icon is always ink; only the outline
+ * is lime or caution-orange (the canvas).
  */
 const ChipView = memo(function ChipView({ chip, ok }: { chip: Chip; ok: boolean }) {
   const { t } = useT();
@@ -80,19 +81,18 @@ const ChipView = memo(function ChipView({ chip, ok }: { chip: Chip; ok: boolean 
       accessibilityLabel={t(ok ? 'stream.chip.ok' : 'stream.chip.notOk', { chip: name })}
       style={ok ? chipOk : chipOff}
     >
-      <Glyph name={GLYPH[chip]} slashed={chip === 'camera' && !ok} tone={ok ? 'lime' : 'caution'} />
+      <Glyph name={GLYPH[chip]} slashed={chip === 'camera' && !ok} tone="ink" />
     </View>
   );
 });
 
 const styles = StyleSheet.create({
   block: { gap: space.xs },
-  row: { flexDirection: 'row', flexWrap: 'wrap', gap: space.xs },
-  /** The box of every chip: 44 dp tall, outlined, its contents centred. */
+  row: { flexDirection: 'row', flexWrap: 'wrap', gap: space.sm },
+  /** The box of every chip: 44 dp tall, outlined and square (the canvas), its contents centred. */
   chip: {
     height: layout.chip,
     borderWidth: layout.chipBorder,
-    borderRadius: radius.card,
     alignItems: 'center',
     justifyContent: 'center',
   },

@@ -49,8 +49,15 @@ const CONTROLS = [
     ],
   ],
   [
-    'on air: plate with timer, meter, the flexible gap, icons, hold',
-    [layout.plateHeight, layout.meterHeight, 0, layout.iconButton, layout.holdHeight],
+    'on air: plate with timer, meter, the flexible gap, icons with the peek’s reason line, hold',
+    [
+      layout.plateHeight,
+      layout.meterHeight,
+      0,
+      // m-3: What viewers see, with its "No viewer picture" line under it while there is no picture (ViewerPeek).
+      layout.iconButton + space.xs + typeScale.metricUnit.lineHeight,
+      layout.holdHeight,
+    ],
   ],
 ] as const;
 

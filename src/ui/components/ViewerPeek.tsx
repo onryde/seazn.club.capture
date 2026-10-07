@@ -3,7 +3,7 @@ import { Pressable, StyleSheet, View, type PressableStateCallbackType } from 're
 import { useHeldPress } from '@/hooks/useHeldPress';
 import { useT } from '@/hooks/useLanguage';
 import { Text } from '@/ui/components/Text';
-import { colour, space } from '@/ui/theme/tokens';
+import { colour, layout, space } from '@/ui/theme/tokens';
 
 type ViewerPeekProps = {
   /** Nothing to play (carry 13): a press that cannot play lights nothing. */
@@ -57,7 +57,7 @@ const styles = StyleSheet.create({
     minHeight: 48,
     justifyContent: 'center',
     paddingHorizontal: space.sm,
-    borderWidth: 1,
+    borderWidth: layout.iconBorder,
     borderColor: colour.ink3,
   },
   pressed: { borderColor: colour.ink },

@@ -14,14 +14,13 @@ type GlyphProps = {
   readonly tone: GlyphTone;
 };
 
-/** The canvas's 24-unit viewBox, drawn one to one. */
-const SIZE = 24;
+/** The canvas draws its 24-unit viewBox at 22 dp. */
+const SIZE = 22;
 
 /**
  * The line icons of the chips and the icon row (spec §3), after `ModeIcon`:
- * a 24-unit viewBox, stroke 2, no fill. The paths are the canvas's, version 23.
- * The stroke is the tone's colour, so the state a chip is in is the colour it
- * is drawn in.
+ * a 24-unit viewBox drawn at 22 dp, stroke 1.8, no fill. The paths are the
+ * canvas's, version 23. The stroke is the tone's colour.
  */
 export const Glyph = memo(function Glyph({ name, slashed = false, tone }: GlyphProps) {
   return (
@@ -31,7 +30,7 @@ export const Glyph = memo(function Glyph({ name, slashed = false, tone }: GlyphP
       viewBox="0 0 24 24"
       fill="none"
       stroke={colour[tone]}
-      strokeWidth={2}
+      strokeWidth={1.8}
       strokeLinecap="round"
       strokeLinejoin="round"
     >
