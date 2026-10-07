@@ -4,7 +4,7 @@ import { METER_SEGMENTS, selectMeterSegments } from '@/hooks/engineSelectors';
 import { selectSoundReady } from '@/hooks/preflight';
 import { useEngineSelector } from '@/hooks/useCaptureEngine';
 import { useT } from '@/hooks/useLanguage';
-import { colour, space } from '@/ui/theme/tokens';
+import { colour, layout, space } from '@/ui/theme/tokens';
 
 /**
  * Permanent, never in Settings (AGENTS §6): nothing downstream normalises, so
@@ -34,7 +34,7 @@ function renderSegment(style: StyleProp<ViewStyle>, index: number) {
 }
 
 const styles = StyleSheet.create({
-  meter: { flexDirection: 'row', gap: space.xs, height: 12 },
+  meter: { flexDirection: 'row', gap: space.xs, height: layout.meterHeight },
   segment: { flex: 1, backgroundColor: colour.surface2 },
   ok: { backgroundColor: colour.lime },
   low: { backgroundColor: colour.caution },

@@ -62,7 +62,10 @@ describe('the paired viewfinder (spec §1)', () => {
     // The code chip and "Go live by" went with the go-live deadline (amendment §2).
     expect(screen.queryByLabelText(/^Code:/)).toBeNull();
     expect(screen.queryByText(/Go live by/)).toBeNull();
-    expect(screen.getByText('Seazn XI v Fake CC')).toBeTruthy();
+    // Spec §2: the strip's label is one accessible name, the label as typed, split into its sides on screen.
+    expect(screen.getByLabelText('Seazn XI v Fake CC').getAttribute('data-testid')).toBe(
+      'match-label',
+    );
   });
 
   it('starts once after a full 3 s hold on Go live', async () => {

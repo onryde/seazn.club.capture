@@ -30,7 +30,7 @@ export const PreflightChips = memo(function PreflightChips({
   const { t } = useT();
   return (
     <View style={styles.block}>
-      <View style={styles.row}>
+      <View testID="chip-row" style={styles.row}>
         <ChipView chip="camera" ok={preflight.camera} />
         <ChipView chip="sound" ok={preflight.sound} />
         <ChipView chip="network" ok={preflight.network} />

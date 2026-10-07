@@ -62,7 +62,8 @@ const resetRenders = () => {
 /**
  * M7 (AGENTS §8): React.memo on the HUD is load-bearing, so it has to skip.
  * A change the stage, the peek and the action do not show re-renders the
- * column's line and nothing of theirs.
+ * status line (in the camera half's strip, under the box) and nothing of theirs:
+ * `stage` counts the overlay in the camera box, which the line never reaches.
  */
 describe('the viewfinder re-renders only what changed', () => {
   beforeEach(() => vi.useFakeTimers());

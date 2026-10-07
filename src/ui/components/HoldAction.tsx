@@ -4,7 +4,7 @@ import { useHold } from '@/hooks/useHold';
 import { useT } from '@/hooks/useLanguage';
 import { HoldFill } from '@/ui/components/HoldFill';
 import { Text } from '@/ui/components/Text';
-import { colour, space } from '@/ui/theme/tokens';
+import { colour, layout, space } from '@/ui/theme/tokens';
 
 type HoldActionProps = {
   readonly label: string;
@@ -52,7 +52,7 @@ export const HoldAction = memo(function HoldAction(props: HoldActionProps) {
 const styles = StyleSheet.create({
   zone: { gap: space.xs },
   plate: {
-    minHeight: 64,
+    minHeight: layout.holdHeight,
     overflow: 'hidden',
     justifyContent: 'center',
     paddingHorizontal: space.sm,

@@ -1,7 +1,5 @@
 import { memo } from 'react';
 import { StyleSheet, View } from 'react-native';
-import { cutDestination } from '@/domain/session/destination';
-import { columnLineKey } from '@/hooks/statusKey';
 import { useT } from '@/hooks/useLanguage';
 import type { Peek } from '@/hooks/usePeek';
 import type { BlockerKey } from '@/hooks/preflight';
@@ -9,38 +7,56 @@ import type { Viewfinder, ViewfinderAction } from '@/hooks/useViewfinder';
 import { AudioMeter } from '@/ui/components/AudioMeter';
 import { Elapsed } from '@/ui/components/Elapsed';
 import { EndedBlock } from '@/ui/components/EndedBlock';
+import { GhostButton } from '@/ui/components/GhostButton';
 import { HoldAction } from '@/ui/components/HoldAction';
 import { PreflightChips } from '@/ui/components/PreflightChips';
-import { StatusLine } from '@/ui/components/StatusLine';
 import { TallyPlate } from '@/ui/components/TallyPlate';
 import { ViewerPeek } from '@/ui/components/ViewerPeek';
 import { colour, layout, space } from '@/ui/theme/tokens';
 
 type ColumnProps = {
   readonly view: Viewfinder;
-  readonly blocked: boolean;
   readonly peek: Peek;
+  readonly canLeave: boolean;
+  readonly onHome: () => void;
+  readonly onSettings: () => void;
+  /** Until Task 4 folds Diagnostics into Settings (spec §6). */
+  readonly onDiagnostics: () => void;
   /** Ended's Scan another (D24). */
   readonly onScanAnother: () => void;
 };
 
 /**
- * The side column (spec §4), top to bottom: state plate, elapsed, meter, the
- * one true sentence, then the pre-flight or the peek, then the action.
+ * The controls half (spec §1), top to bottom: the tally plate with the timer
+ * (on air) or the sound meter (before air), the readiness chips and the start
+ * line (before air), the meter (on air), a flexible gap, the icon row, then the
+ * action. The status line is the strip's, under the shot.
  */
 export const StreamColumn = memo(function StreamColumn(props: ColumnProps) {
   const { view, peek } = props;
-  const line = useColumnLine(view, props.blocked);
   return (
-    <View style={styles.column}>
-      <TallyPlate plate={view.plate} />
-      <Elapsed />
-      <AudioMeter />
-      <StatusLine>{line}</StatusLine>
+    <View testID="controls-half" style={styles.half}>
+      <View testID="plate-row" style={styles.plateRow}>
+        {/* A cell each, sharing the row: the meter has no width of its own to claim one. */}
+        <View style={styles.cell}>
+          <TallyPlate plate={view.plate} />
+        </View>
+        <View style={styles.cell}>{view.onAir ? <Elapsed /> : <AudioMeter />}</View>
+      </View>
+      {view.onAir ? <AudioMeter /> : null}
       {view.action === 'goLive' ? (
         <PreflightChips preflight={view.preflight} auto={view.auto} startsAt={view.startsAt} />
       ) : null}
-      <ColumnPeek onAir={view.onAir} peekable={view.peekable} peek={peek} />
+      <View testID="controls-gap" style={styles.gap} />
+      <IconRow
+        onAir={view.onAir}
+        peekable={view.peekable}
+        peek={peek}
+        canLeave={props.canLeave}
+        onHome={props.onHome}
+        onSettings={props.onSettings}
+        onDiagnostics={props.onDiagnostics}
+      />
       <ColumnAction
         action={view.action}
         stopUnpairs={view.stopUnpairs}
@@ -54,19 +70,29 @@ export const StreamColumn = memo(function StreamColumn(props: ColumnProps) {
   );
 });
 
+type IconRowProps = PeekProps & {
+  readonly canLeave: boolean;
+  readonly onHome: () => void;
+  readonly onSettings: () => void;
+  readonly onDiagnostics: () => void;
+};
+
 /**
- * The one true sentence: the status line, or Back's refusal over a calm one
- * (ruling I2). `{destination}` is cut at 24, the width every budget counts.
+ * Settings and Diagnostics in every state, live included (AGENTS §6), Home
+ * whenever leaving is allowed (never on air), and on air What viewers see after
+ * Settings. Primitives and stable handlers, so memo skips (M7).
  */
-function useColumnLine(view: Viewfinder, blocked: boolean): string {
+const IconRow = memo(function IconRow(props: IconRowProps) {
   const { t } = useT();
-  const vars = {
-    remaining: view.holdRemaining ?? '',
-    window: view.holdWindow ?? '',
-    destination: view.destination === null ? '' : cutDestination(view.destination),
-  };
-  return t(columnLineKey(view.statusKey, blocked), vars);
-}
+  return (
+    <View testID="icon-row" style={styles.iconRow}>
+      <GhostButton label={t('stream.link.settings')} onPress={props.onSettings} />
+      <ColumnPeek onAir={props.onAir} peekable={props.peekable} peek={props.peek} />
+      <GhostButton label={t('stream.link.diagnostics')} onPress={props.onDiagnostics} />
+      {props.canLeave ? <GhostButton label={t('stream.home')} onPress={props.onHome} /> : null}
+    </View>
+  );
+});
 
 type PeekProps = { readonly onAir: boolean; readonly peekable: boolean; readonly peek: Peek };
 
@@ -132,10 +158,14 @@ const ColumnAction = memo(function ColumnAction(props: ActionProps) {
 });
 
 const styles = StyleSheet.create({
-  column: {
-    width: layout.columnWidth,
-    gap: space.sm,
-    padding: space.sm,
+  half: {
+    flex: 1,
+    gap: layout.controlsGap,
+    padding: layout.controlsPad,
     backgroundColor: colour.ground,
   },
+  plateRow: { flexDirection: 'row', gap: space.sm },
+  cell: { flex: 1, justifyContent: 'center' },
+  gap: { flex: 1 },
+  iconRow: { flexDirection: 'row', flexWrap: 'wrap', gap: space.sm },
 });

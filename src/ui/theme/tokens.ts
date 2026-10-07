@@ -118,14 +118,37 @@ export const space = {
 } as const;
 
 /**
- * A correctly uncropped 720p preview is 16:9; a phone in landscape is roughly
- * 19.5:9. The column is the width that geometry leaves over, which is why it
- * never occludes the shot.
+ * The viewfinder is two equal halves (spec §1): the camera half holds a 16:9
+ * box, a correctly uncropped 720p preview, with the status strip under it; the
+ * controls half holds the rest. The box is as wide as its half, so the strip
+ * gets what the phone's height leaves.
  */
 export const layout = {
-  columnWidth: 150,
   tallyStripe: 4,
   previewAspect: 16 / 9,
+  /** Spec §1: the hold button is 72 dp tall. */
+  holdHeight: 72,
+  /** Spec §3: readiness chips are 44 dp square. */
+  chip: 44,
+  /** Spec §3: icon-row buttons are 48 dp square. */
+  iconButton: 48,
+  /** The tally plate's floor (TallyPlate), unchanged. */
+  plateHeight: 56,
+  /** AudioMeter's bar, unchanged. */
+  meterHeight: 12,
+  /** Board "Before": the controls half's padding and gap. */
+  controlsPad: 16,
+  controlsGap: 12,
+  /** Board "Before": the status strip's padding and gap (Q4 A: vertical 8, not the board's 10). */
+  stripPadV: 8,
+  stripPadH: 16,
+  stripGap: 6,
+  /** Lines the strip reserves: the label at most 4, the status line 2, the caption 2 (Q4). */
+  labelLinesMax: 4,
+  /** D17 (F9): a regular-size label is at most 2 lines, one a side, by the written assumption. */
+  labelLinesRegular: 2,
+  statusLinesMax: 2,
+  captionLinesMax: 2,
 } as const;
 
 /**
