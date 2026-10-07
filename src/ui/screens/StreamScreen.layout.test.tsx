@@ -50,11 +50,11 @@ const byId = (id: string) => screen.getByTestId(id);
 /** `after` comes later in the document than `before`. */
 const follows = (before: Element, after: Element) =>
   (before.compareDocumentPosition(after) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0;
-/** The names of the buttons in a row, in order. */
+/** The accessible names of the buttons in a row, in order: an icon button has no text, only its label. */
 const buttonNames = (row: HTMLElement) =>
   within(row)
     .getAllByRole('button')
-    .map((button) => button.textContent);
+    .map((button) => button.getAttribute('aria-label') ?? button.textContent);
 
 const goLive = () => screen.getByRole('button', { name: 'Go live. Press and hold for 3 seconds.' });
 const stopLive = () => screen.getByRole('button', { name: 'Hold to stop and unpair' });
@@ -347,24 +347,49 @@ describe('the controls half (spec §1)', () => {
     expect(screen.getAllByRole('progressbar')).toHaveLength(1);
   });
 
-  it('keeps the icon row: Settings, Diagnostics and Home before air', async () => {
+  it('keeps the icon row: Settings, then Home before air, 48 dp square, and no Diagnostics (spec §3)', async () => {
     await renderViewfinder();
     expect(getComputedStyle(byId('icon-row')).flexDirection).toBe('row');
-    expect(buttonNames(byId('icon-row'))).toEqual([
-      en['stream.link.settings'],
-      en['stream.link.diagnostics'],
-      en['stream.home'],
-    ]);
+    expect(buttonNames(byId('icon-row'))).toEqual([en['stream.link.settings'], en['stream.home']]);
+    // M-2: the row does not wrap, so it cannot grow a second line the fit arithmetic never counted.
+    expect(getComputedStyle(byId('icon-row')).flexWrap).not.toBe('wrap');
+    for (const name of [en['stream.link.settings'], en['stream.home']]) {
+      const style = getComputedStyle(within(byId('icon-row')).getByRole('button', { name }));
+      expect([style.width, style.height]).toEqual([
+        `${layout.iconButton}px`,
+        `${layout.iconButton}px`,
+      ]);
+    }
+    expect(screen.queryByRole('button', { name: 'Diagnostics' })).toBeNull();
   });
 
-  it('on air: What viewers see sits in the icon row after Settings, and Home is not offered', async () => {
+  it('on air: What viewers see sits in the icon row after Settings, Home is not offered, and no Diagnostics', async () => {
     const view = await renderViewfinder();
     act(() => view.engine.scene('live'));
     expect(buttonNames(byId('icon-row'))).toEqual([
       en['stream.link.settings'],
       en['stream.peek.label'],
-      en['stream.link.diagnostics'],
     ]);
+    // The peek keeps its text and takes the row's remaining width (spec §3: "text, as today").
+    expect(peek().textContent).toBe(en['stream.peek.label']);
+    expect(getComputedStyle(peek().closest('[data-testid="peek-cell"]') as Element).flexGrow).toBe(
+      '1',
+    );
+    expect(screen.queryByRole('button', { name: 'Diagnostics' })).toBeNull();
+    expect(screen.queryByRole('button', { name: en['stream.home'] })).toBeNull();
+  });
+
+  it('follows the broadcast through the icon row: Settings and Home, then Settings and the peek, then Settings and Home again when it ends', async () => {
+    const view = await renderViewfinder();
+    expect(buttonNames(byId('icon-row'))).toEqual([en['stream.link.settings'], en['stream.home']]);
+    act(() => view.engine.scene('live'));
+    expect(buttonNames(byId('icon-row'))).toEqual([
+      en['stream.link.settings'],
+      en['stream.peek.label'],
+    ]);
+    act(() => view.engine.scene('stopped'));
+    // Ended: not on air, so leaving is allowed again and Home is back; the peek goes with the broadcast.
+    expect(buttonNames(byId('icon-row'))).toEqual([en['stream.link.settings'], en['stream.home']]);
   });
 
   it('is 72 dp tall at the hold button, Go live and Stop alike (spec §1)', async () => {

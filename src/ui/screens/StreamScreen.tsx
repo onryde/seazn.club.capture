@@ -40,7 +40,6 @@ export function StreamScreen() {
         canLeave={leave.canLeave}
         onHome={leave.leave}
         onSettings={links.settings}
-        onDiagnostics={links.diagnostics}
         onScanAnother={scanAnother}
       />
     </View>

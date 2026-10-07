@@ -213,24 +213,23 @@ describe('Settings (spec §4)', () => {
   });
 });
 
-describe('the viewfinder’s ways into Settings and Diagnostics (AGENTS §6)', () => {
-  it.each(['paired-ready', 'connecting', 'live', 'holding', 'stopped', 'fatal'] as const)(
-    'are both there while %s',
-    async (scene) => {
-      const view = await renderViewfinder();
-      act(() => view.engine.scene(scene));
-      fireEvent.click(screen.getByRole('button', { name: 'Diagnostics' }));
-      expect(view.navigation.current()).toBe('streamDiagnostics');
-      view.navigation.go('stream');
-      fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
-      expect(view.navigation.current()).toBe('streamSettings');
-    },
-  );
+describe('the viewfinder’s way into Settings (AGENTS §6; spec §3, §6: no Diagnostics button)', () => {
+  const SCENES = ['paired-ready', 'connecting', 'live', 'holding', 'stopped', 'fatal'] as const;
 
-  it('read in Spanish', async () => {
+  it.each(SCENES)('Settings is there while %s, and Diagnostics is not', async (scene) => {
+    const view = await renderViewfinder();
+    act(() => view.engine.scene(scene));
+    expect(screen.queryByRole('button', { name: 'Diagnostics' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
+    expect(view.navigation.current()).toBe('streamSettings');
+  });
+
+  it('covers its scenes', () => expect(SCENES).toHaveLength(6));
+
+  it('reads in Spanish', async () => {
     await renderViewfinder({ deviceLanguages: ['es'] });
     expect(screen.getByRole('button', { name: 'Ajustes' })).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Diagnóstico' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Diagnóstico' })).toBeNull();
   });
 });
 

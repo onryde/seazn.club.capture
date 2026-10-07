@@ -130,8 +130,12 @@ export const layout = {
   holdHeight: 72,
   /** Spec §3: readiness chips are 44 dp square. */
   chip: 44,
+  /** Spec §3, the board's chip outline; today's PreflightChips border. */
+  chipBorder: 2,
   /** Spec §3: icon-row buttons are 48 dp square. */
   iconButton: 48,
+  /** The icon button's hairline outline, GhostButton's and the peek control's. */
+  iconBorder: 1,
   /** The tally plate's floor (TallyPlate), unchanged. */
   plateHeight: 56,
   /** AudioMeter's bar, unchanged. */

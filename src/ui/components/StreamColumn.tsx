@@ -7,8 +7,8 @@ import type { Viewfinder, ViewfinderAction } from '@/hooks/useViewfinder';
 import { AudioMeter } from '@/ui/components/AudioMeter';
 import { Elapsed } from '@/ui/components/Elapsed';
 import { EndedBlock } from '@/ui/components/EndedBlock';
-import { GhostButton } from '@/ui/components/GhostButton';
 import { HoldAction } from '@/ui/components/HoldAction';
+import { IconButton } from '@/ui/components/IconButton';
 import { PreflightChips } from '@/ui/components/PreflightChips';
 import { TallyPlate } from '@/ui/components/TallyPlate';
 import { ViewerPeek } from '@/ui/components/ViewerPeek';
@@ -20,8 +20,6 @@ type ColumnProps = {
   readonly canLeave: boolean;
   readonly onHome: () => void;
   readonly onSettings: () => void;
-  /** Until Task 4 folds Diagnostics into Settings (spec §6). */
-  readonly onDiagnostics: () => void;
   /** Ended's Scan another (D24). */
   readonly onScanAnother: () => void;
 };
@@ -55,7 +53,6 @@ export const StreamColumn = memo(function StreamColumn(props: ColumnProps) {
         canLeave={props.canLeave}
         onHome={props.onHome}
         onSettings={props.onSettings}
-        onDiagnostics={props.onDiagnostics}
       />
       <ColumnAction
         action={view.action}
@@ -74,22 +71,23 @@ type IconRowProps = PeekProps & {
   readonly canLeave: boolean;
   readonly onHome: () => void;
   readonly onSettings: () => void;
-  readonly onDiagnostics: () => void;
 };
 
 /**
- * Settings and Diagnostics in every state, live included (AGENTS §6), Home
- * whenever leaving is allowed (never on air), and on air What viewers see after
- * Settings. Primitives and stable handlers, so memo skips (M7).
+ * The icon row (spec §3), 48 dp buttons: Settings in every state, live
+ * included (AGENTS §6), then Home whenever leaving is allowed (never on air),
+ * and on air What viewers see after Settings. Diagnostics is Settings' (§6).
+ * Primitives and stable handlers, so memo skips (M7).
  */
 const IconRow = memo(function IconRow(props: IconRowProps) {
   const { t } = useT();
   return (
     <View testID="icon-row" style={styles.iconRow}>
-      <GhostButton label={t('stream.link.settings')} onPress={props.onSettings} />
+      <IconButton glyph="settings" label={t('stream.link.settings')} onPress={props.onSettings} />
       <ColumnPeek onAir={props.onAir} peekable={props.peekable} peek={props.peek} />
-      <GhostButton label={t('stream.link.diagnostics')} onPress={props.onDiagnostics} />
-      {props.canLeave ? <GhostButton label={t('stream.home')} onPress={props.onHome} /> : null}
+      {props.canLeave ? (
+        <IconButton glyph="home" label={t('stream.home')} onPress={props.onHome} />
+      ) : null}
     </View>
   );
 });
@@ -97,19 +95,22 @@ const IconRow = memo(function IconRow(props: IconRowProps) {
 type PeekProps = { readonly onAir: boolean; readonly peekable: boolean; readonly peek: Peek };
 
 /**
- * What viewers see, on air only; off, with its reason, when there is no
- * picture (carry 13). Primitives, not the view, so memo skips (M7).
+ * What viewers see, on air only, and the row's remaining width; off, with its
+ * reason, when there is no picture (carry 13). Primitives, not the view, so
+ * memo skips (M7).
  */
 const ColumnPeek = memo(function ColumnPeek({ onAir, peekable, peek }: PeekProps) {
   const { t } = useT();
   if (!onAir) return null;
   return (
-    <ViewerPeek
-      disabled={!peekable}
-      reason={peekable ? null : t('stream.peek.unavailable')}
-      onPressIn={peek.pressIn}
-      onPressOut={peek.pressOut}
-    />
+    <View testID="peek-cell" style={styles.peekCell}>
+      <ViewerPeek
+        disabled={!peekable}
+        reason={peekable ? null : t('stream.peek.unavailable')}
+        onPressIn={peek.pressIn}
+        onPressOut={peek.pressOut}
+      />
+    </View>
   );
 });
 
@@ -167,5 +168,6 @@ const styles = StyleSheet.create({
   plateRow: { flexDirection: 'row', gap: space.sm },
   cell: { flex: 1, justifyContent: 'center' },
   gap: { flex: 1 },
-  iconRow: { flexDirection: 'row', flexWrap: 'wrap', gap: space.sm },
+  iconRow: { flexDirection: 'row', gap: space.sm },
+  peekCell: { flex: 1 },
 });

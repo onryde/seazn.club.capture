@@ -1,4 +1,4 @@
-import { act, screen } from '@testing-library/react';
+import { act, fireEvent, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { HOLD_MS } from '@/hooks/useHold';
 import type { Peek } from '@/hooks/usePeek';
@@ -14,7 +14,6 @@ const ICONS = {
   canLeave: true,
   onHome: vi.fn(),
   onSettings: vi.fn(),
-  onDiagnostics: vi.fn(),
 } as const;
 
 /** A hand-built projection, so the column's own gates are tested apart from the hooks'. */
@@ -119,5 +118,35 @@ describe('StreamColumn’s Go live', () => {
       />,
     );
     expect(screen.queryByText('Mic not available')).toBeNull();
+  });
+});
+
+describe('StreamColumn’s icon row (spec §3)', () => {
+  const column = (canLeave: boolean, onSettings: () => void, onHome: () => void) => (
+    <StreamColumn
+      view={viewOf({})}
+      canLeave={canLeave}
+      onHome={onHome}
+      onSettings={onSettings}
+      peek={PEEK}
+      onScanAnother={vi.fn()}
+    />
+  );
+
+  it('presses Settings and Home each to its own handler, and offers Home only while leaving is allowed', () => {
+    const onSettings = vi.fn();
+    const onHome = vi.fn();
+    const { rerender } = renderWithPorts(column(true, onSettings, onHome));
+    fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
+    expect(onSettings).toHaveBeenCalledTimes(1);
+    expect(onHome).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'Home' }));
+    expect(onHome).toHaveBeenCalledTimes(1);
+    expect(onSettings).toHaveBeenCalledTimes(1);
+    // Leaving is not allowed: Home goes and Settings stays, so the absence is not an empty row.
+    rerender(column(false, onSettings, onHome));
+    expect(screen.queryByRole('button', { name: 'Home' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Settings' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Diagnostics' })).toBeNull();
   });
 });

@@ -204,13 +204,6 @@ describe('Diagnostics (spec §4)', () => {
     expect(view.navigation.current()).toBe('stream');
   });
 
-  it('is reachable from the viewfinder on air', async () => {
-    const view = await renderViewfinder();
-    act(() => view.engine.scene('live'));
-    fireEvent.click(screen.getByRole('button', { name: 'Diagnostics' }));
-    expect(view.navigation.current()).toBe('streamDiagnostics');
-  });
-
   it('reads in Dutch', () => {
     renderWithPorts(<DiagnosticsScreen />, { deviceLanguages: ['nl'] });
     expect(screen.getByText('Diagnose')).toBeTruthy();
