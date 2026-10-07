@@ -18,7 +18,7 @@ import fr from '@/i18n/fr.json';
 import nl from '@/i18n/nl.json';
 import { createTranslator } from '@/i18n/translate';
 
-/** A level well above the on-air floor: the display rule (D39) reads sound. */
+/** A level, any level: on air the level decides nothing (spec §4). */
 const ARMED_OK: Partial<Telemetry> = { audioLevel: 0.4 };
 const READY: Readiness = { camera: true, sound: true, network: true, held: true };
 /** Plan B's `Snapshot.camera`: our own with a pairing, none without one. */
@@ -108,7 +108,7 @@ describe('the status line (spec §4 and §5)', () => {
     ['idle', { kind: 'idle' }, 'Starting the camera…'],
     ['pairing', { kind: 'pairing' }, 'Pairing this phone…'],
     ['arming', ARMING, 'Going live — started by the organiser'],
-    ['armed', ARMED, "Can't go live yet — no sound from the mic"],
+    ['armed', ARMED, "Can't go live yet — the mic isn't available"],
     ['connecting', { kind: 'connecting', transport: 'srt' }, 'Opening the link.'],
     [
       'the operator stopped',
@@ -130,23 +130,13 @@ describe('the status line (spec §4 and §5)', () => {
     expect(selectStatusKey(paired({ ready: none }))).toBe('stream.status.waitingGoLive');
   });
 
-  it('says live with no sound when the level is under the floor on air (a display rule, D39)', () => {
-    expect(line(snap(LIVE, { ...ARMED_OK, audioLevel: 0.01 }))).toBe(
-      'Live with no sound. Check the mic now.',
-    );
-    expect(line(snap(LIVE))).toBe('Live. Sound and picture going out.');
-  });
-
-  it.each([
-    ['just under the floor', 0.049, 'Live with no sound. Check the mic now.'],
-    [
-      'exactly at the floor, where the meter and Go Live call it sound',
-      0.05,
+  // Spec §4 (owner, 2026-10-06): the level decides nothing on air; a quiet room is plain Live.
+  it.each([0, 0.01, 0.049, 0.05, 0.4])('says plain Live on air at level %s', (audioLevel) => {
+    expect(line(snap(LIVE, { ...ARMED_OK, audioLevel }))).toBe(
       'Live. Sound and picture going out.',
-    ],
-  ])('draws the on-air floor where the meter does: %s', (_name, audioLevel, copy) => {
-    expect(line(snap(LIVE, { ...ARMED_OK, audioLevel }))).toBe(copy);
+    );
   });
+  // The mic-silenced warning stays (spec §4): its line is the DEGRADED table's, unchanged.
 
   it('never lets a failing heartbeat change what it says (ruling 5)', () => {
     const heartbeat = {
@@ -428,7 +418,7 @@ describe('whose camera it is, by state (camera ruling)', () => {
   // taken while Armed blocks as notReady camera, which says so (Task 28).
   it.each<[string, SessionState, string]>([
     ['arming', ARMING, 'Going live — started by the organiser'],
-    ['armed', ARMED, "Can't go live yet — no sound from the mic"],
+    ['armed', ARMED, "Can't go live yet — the mic isn't available"],
   ])('another app’s take while Starting keeps the %s line', (_, state, said) => {
     expect(line(snap(state, ARMED_OK, 'taken'))).toBe(said);
   });
@@ -535,7 +525,6 @@ describe('Back’s line on air (ruling I2)', () => {
   });
 
   it.each([
-    'stream.status.liveNoSound',
     'stream.status.weakSignal',
     'stream.status.fellBack',
     'stream.status.notDelivered',

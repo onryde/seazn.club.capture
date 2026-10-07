@@ -1,5 +1,4 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { AUDIO_FLOOR } from '@/domain/policy/audioFloor';
 import type { CameraState, PairIntent } from './CaptureEnginePort';
 import { KIT_CODE_A, KIT_CODE_B } from './contract/engineScenarios';
 import {
@@ -456,9 +455,8 @@ describe('scenes: every state spec §6 and the amendment list', () => {
     expect(state()).toMatchObject(EXPECTED[scene]);
   });
 
-  it('puts paired-not-ready below the audio floor with sound failing, and shed on the first ladder step', () => {
+  it('paired-not-ready has the mic not available, and shed is on the first ladder step', () => {
     engine.scene('paired-not-ready');
-    expect(telemetry().audioLevel).toBeLessThan(AUDIO_FLOOR);
     expect(snapshot().ready.sound).toBe(false);
     engine.scene('shed');
     expect(telemetry().shed).toBe('overlay-preview');

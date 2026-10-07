@@ -22,6 +22,6 @@ class EncoderKeysTest {
     assertEquals(1, EncoderKeys.surfaceRotation(Side.LEFT))
     assertEquals(3, EncoderKeys.surfaceRotation(Side.RIGHT))
     // No accelerometer: Readiness.side defaults to LEFT (Task 4), so the usual landscape.
-    assertEquals(1, EncoderKeys.surfaceRotation(Readiness(true, 0.4, Pose.NoSensor).side))
+    assertEquals(1, EncoderKeys.surfaceRotation(Readiness(true, true, Pose.NoSensor).side))
   }
 }

@@ -115,7 +115,7 @@ class StreamerAdapter(
 
   override fun link(attemptId: Int) = sink.counters(attemptId) ?: rtmps.counters(attemptId, endpoints::rtmpMetrics)
 
-  override fun facts() = CaptureFacts(shown.take(), clock.lastVideoEpochMs)
+  override fun facts() = CaptureFacts(shown.take() ?: 0.0, clock.lastVideoEpochMs)
 
   /**
    * Review C7 I-2: the preview's open of the camera source failed (StreamPack 3.2.1's `PreviewView` catches it
@@ -229,7 +229,7 @@ class StreamerAdapter(
       cameras.held(null) // C6: another app's take of our old camera is heard again
       cameras.sessionEnded()
       tally.begin(-1)
-      calls.readiness(false, 0.0)
+      calls.readiness(false, null) // no buffer: the capture is gone (spec §4, pre-flight F5)
     }
 
     override fun beforeConnect(attemptId: Int, startBitrateBps: Int) {

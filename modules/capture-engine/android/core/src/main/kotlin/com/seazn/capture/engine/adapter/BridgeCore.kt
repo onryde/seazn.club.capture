@@ -39,8 +39,6 @@ class BridgeCore(
   private val appVersion: String,
   private val model: String,
   newId: () -> String = { java.util.UUID.randomUUID().toString() },
-  /** Sound's silence window: [SoundHold.SILENCE_MS] on the phone; only the JVM host passes another. */
-  silenceMs: Long = SoundHold.SILENCE_MS,
 ) {
   private val guarded = GuardedScheduler(scheduler, ::failed)
   /** Carry C4c-I3: inside the sink, the record's newest seq is the line's own. */
@@ -50,7 +48,6 @@ class BridgeCore(
   private val ticks = TickLateness()
   private val gaps = FrameGaps()
   private val errors = ErrorLines()
-  private val sounds = SoundHold(silenceMs)
   private val readinessLines = CappedLines("readiness")
   private val engine: Engine = Engine(clock, guarded, sticky, SnapshotSink(::published), record)
   private val pairings = PairingStore(store, newId) { engine.log(it) }
@@ -80,6 +77,12 @@ class BridgeCore(
   /** The platform's latest readiness, and the last one sent to the machine. Scheduler thread only. */
   private var readiness = Readiness.UNKNOWN
   private var sent: Readiness? = null
+
+  /** Spec §4, pre-flight F4: when the open capture last delivered an audio buffer (D1). Cleared at the capture's close. */
+  private var lastAudioAtMs: Long? = null
+
+  /** The system's last word on our recording (F-P5-8, `MicSilenceWatch`), kept across the capture's close. */
+  private var systemSilenced = false
 
   @Volatile private var checkedAtMs: Long? = null
 
@@ -188,17 +191,17 @@ class BridgeCore(
 
   /**
    * From any thread (A11): the platform's facts; null leaves a fact as it was. Sent only when a check
-   * changes. Sound has hysteresis ([SoundHold], owner 2026-10-05): the machine is handed the last peak on
-   * the side held, so its `sound` is the held one, and a quiet peak inside the silence window is no
-   * change. The pose comes held already, from the glue's [PoseTracker].
+   * changes. Sound is the mic's availability, never its level (spec §4): any finite [audioPeak] is an
+   * audio buffer, so a silent room is sound at its first reading, and a null is no buffer since the
+   * last call (pre-flight F4), which refreshes nothing. No buffer for [NO_AUDIO_MS] is not sound. The
+   * pose comes held already, from the glue's [PoseTracker].
    */
   fun readiness(cameraFrames: Boolean? = null, audioPeak: Double? = null, pose: Pose? = null) {
     val atMs = clock.monotonicMs()
     guarded.schedule(0) {
       val ours = pose?.takeUnless { poseReleased }
-      audioPeak?.let { sounds.sample(it, atMs) }
-      val peak = audioPeak?.takeIf { readiness.copy(audioPeak = it).sound == sounds.sound } ?: readiness.audioPeak
-      readiness = readiness.copy(cameraFrames = cameraFrames ?: readiness.cameraFrames, audioPeak = peak, pose = ours ?: readiness.pose)
+      if (audioPeak != null && audioPeak.isFinite()) lastAudioAtMs = atMs // a null is no buffer (F4)
+      readiness = readiness.copy(cameraFrames = cameraFrames ?: readiness.cameraFrames, micAvailable = micAvailable(), pose = ours ?: readiness.pose)
       val last = sent
       if (last == null || last.cameraFrames != readiness.cameraFrames || last.sound != readiness.sound || last.pose != readiness.pose) sendReadiness()
     }
@@ -281,24 +284,35 @@ class BridgeCore(
   }
 
   /**
-   * C4a carry (Task 33): the capture closed, so sound is off at once, past its silence window. The glue's
-   * one silent reading at the close could never turn a sound alone, and nothing reads after it: the chip
-   * would show sound while nothing records. The next opening's first loud reading is sound again.
+   * C4a carry (Task 33), under spec §4: the capture closed, so audio capture is unavailable and sound is
+   * off at once, with no reading after it: the chip would otherwise show sound while nothing records. The
+   * next opening's first buffer, silent or not, is sound again.
    */
   private fun silenced() {
-    sounds.reset()
-    readiness = readiness.copy(audioPeak = 0.0)
-    if (sent?.sound == true) sendReadiness()
+    lastAudioAtMs = null
+    turnMic()
   }
 
   /**
-   * Owner, 2026-10-05: the system silenced our recording (F-P5-8), the machine's fact as ever, and sound is
-   * silent at once, past its silence window ([SoundHold.micSilenced]). Restored, sound waits for a loud reading.
+   * Spec §4: the system silenced our recording (F-P5-8, a call), the machine's fact as ever, and sound is
+   * not ready at once; restored, sound is ready again at once, while the capture's last buffer is recent.
    */
   private fun micSilenced(silenced: Boolean) {
-    if (sounds.micSilenced(silenced) == null) return
-    readiness = readiness.copy(audioPeak = 0.0)
-    if (sent?.sound == true) sendReadiness()
+    systemSilenced = silenced
+    turnMic()
+  }
+
+  /** D15: judged at each call; the glue calls every 500 ms while the capture is open, buffer or not. */
+  private fun micAvailable(): Boolean {
+    val heard = lastAudioAtMs ?: return false
+    return clock.monotonicMs() - heard < NO_AUDIO_MS && !systemSilenced
+  }
+
+  /** Sends readiness when the mic's availability changed since the last one sent; nothing before the first. */
+  private fun turnMic() {
+    readiness = readiness.copy(micAvailable = micAvailable())
+    val last = sent ?: return
+    if (last.sound != readiness.sound) sendReadiness()
   }
 
   /**
@@ -487,6 +501,9 @@ class BridgeCore(
     /** The backstop's reason, a word: [HttpOutcome.Failed] carries a reason, never a value. */
     const val NO_ANSWER = "no-answer"
 
+    /** Spec §4, pre-flight F4: no audio buffer for this long is "audio capture unavailable". */
+    const val NO_AUDIO_MS = 2_000L
+
     /** 2^53: every whole Double up to it is exact. */
     private const val MAX_EXACT = 9_007_199_254_740_992.0
 
@@ -536,8 +553,8 @@ internal class ErrorLines {
 }
 
 /**
- * Review C4a I-1: at most [MAX_LINES] lines of one [kind] a minute; `readiness` first, the second of its guards (the first are
- * [SoundHold] and [PoseTracker], owner 2026-10-05). A pairing settles in about four (the pair's, then
+ * Review C4a I-1: at most [MAX_LINES] lines of one [kind] a minute; `readiness` first, the second of its guards (the first is
+ * [PoseTracker], owner 2026-10-05; sound needs none, as no level turns it, spec §4). A pairing settles in about four (the pair's, then
  * camera, sound and held), so six leave room; a check that keeps turning is held to six a minute, where it wiped the
  * record's tail before. The first line of a minute carries how many were held back since the last one
  * written, and every line the state it was written in. Only the line is held back: the machine hears

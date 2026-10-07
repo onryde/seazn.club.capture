@@ -119,7 +119,7 @@ describe('StreamColumn’s Go live', () => {
     const { rerender } = renderWithPorts(
       <StreamColumn view={viewOf(blocked)} blocked={false} peek={PEEK} onScanAnother={vi.fn()} />,
     );
-    expect(screen.getByText('No sound')).toBeTruthy();
+    expect(screen.getByText('Mic not available')).toBeTruthy();
     rerender(
       <StreamColumn
         view={viewOf({ ...blocked, kind: 'pairing' })}
@@ -128,6 +128,6 @@ describe('StreamColumn’s Go live', () => {
         onScanAnother={vi.fn()}
       />,
     );
-    expect(screen.queryByText('No sound')).toBeNull();
+    expect(screen.queryByText('Mic not available')).toBeNull();
   });
 });

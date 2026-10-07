@@ -92,7 +92,7 @@ describe('Go live’s reason (ruling I3)', () => {
   it.each([
     ['camera', 'Camera not ready'],
     ['network', 'No network'],
-    ['sound', 'No sound'],
+    ['sound', 'Mic not available'],
     // Amendment §2: a flat phone has no chip; it blocks, and says so here.
     ['held', 'Turn the phone sideways'],
   ] as const)('the %s blocker reads %s', (blocker, said) => {

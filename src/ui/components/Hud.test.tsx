@@ -233,14 +233,15 @@ describe('Elapsed', () => {
 });
 
 /**
- * Levels from the fake's scenes: paired 0.42, not ready 0.01, mic silenced 0.
- * A segment lights when the level reaches into it, so any sound shows; below
- * AUDIO_FLOOR (0.05) that segment is orange (spec §4).
+ * Levels from the fake's scenes: paired 0.42, not ready 0, mic silenced 0.
+ * A segment lights when the level reaches into it, so any sound shows; the lit
+ * segments are lime while the mic is available, and orange when the mic is not
+ * available (spec §4): the level never decides the colour.
  */
 describe('AudioMeter', () => {
   const firstSegment = (meter: HTMLElement) => meter.children[0] as Element;
 
-  it('lights segments with the level, in lime at or above the floor', () => {
+  it('lights segments with the level, in lime while the mic is available', () => {
     const view = renderWithPorts(<AudioMeter />);
     act(() => view.engine.scene('paired-ready'));
     const meter = screen.getByRole('progressbar', { name: 'Sound level 3 of 6' });
@@ -250,11 +251,22 @@ describe('AudioMeter', () => {
     expect(backgroundOf(meter.children[3] as Element)).toBe(paintOf(TOKEN.unlit));
   });
 
-  it('shows a faint mic as one orange segment: quiet reaches YouTube quiet', () => {
+  it('shows a faint level as one orange segment while the mic is not available', () => {
     const view = renderWithPorts(<AudioMeter />);
     act(() => view.engine.scene('paired-not-ready'));
+    act(() => view.engine.patch({ audioLevel: 0.01 }));
     const meter = screen.getByRole('progressbar', { name: 'Sound level 1 of 6' });
     expect(backgroundOf(firstSegment(meter))).toBe(paintOf(TOKEN.caution));
+    expect(backgroundOf(meter.children[1] as Element)).toBe(paintOf(TOKEN.unlit));
+  });
+
+  // Spec §4: "lime whenever sound is ready". A quiet room is a working mic, so its one segment is lime.
+  it('shows a quiet room as one lime segment: quiet reaches YouTube quiet, and the mic is available', () => {
+    const view = renderWithPorts(<AudioMeter />);
+    act(() => view.engine.scene('paired-ready'));
+    act(() => view.engine.patch({ audioLevel: 0.01 }));
+    const meter = screen.getByRole('progressbar', { name: 'Sound level 1 of 6' });
+    expect(backgroundOf(firstSegment(meter))).toBe(paintOf(TOKEN.lime));
     expect(backgroundOf(meter.children[1] as Element)).toBe(paintOf(TOKEN.unlit));
   });
 

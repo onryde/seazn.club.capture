@@ -26,7 +26,7 @@ describe('PreflightChips (spec §1)', () => {
   it('names every chip and whether it is ready', () => {
     renderWithPorts(<PreflightChips preflight={{ ...GREEN, sound: false }} {...QUIET} />);
     expect(screen.getByLabelText('Camera: ready')).toBeTruthy();
-    expect(screen.getByLabelText('Sound: not ready')).toBeTruthy();
+    expect(screen.getByLabelText('Mic: not ready')).toBeTruthy();
     expect(screen.getByLabelText('Network: ready')).toBeTruthy();
   });
 
@@ -37,7 +37,7 @@ describe('PreflightChips (spec §1)', () => {
     const labels = [...view.container.querySelectorAll('[aria-label]')].map((chip) =>
       chip.getAttribute('aria-label'),
     );
-    expect(labels).toEqual(['Camera: ready', 'Sound: ready', 'Network: ready']);
+    expect(labels).toEqual(['Camera: ready', 'Mic: ready', 'Network: ready']);
   });
 
   it('borders a ready chip lime and a chip that is not ready orange', () => {
@@ -68,7 +68,7 @@ describe('PreflightChips (spec §1)', () => {
     const labels = [...view.container.querySelectorAll('[aria-label]')].map((chip) =>
       chip.getAttribute('aria-label'),
     );
-    expect(labels).toEqual(['Camera: ready', 'Sound: ready', 'Network: ready']);
+    expect(labels).toEqual(['Camera: ready', 'Mic: ready', 'Network: ready']);
   });
 
   it('says when it starts under the chips, and nothing without a scheduled start', () => {
@@ -84,7 +84,7 @@ describe('PreflightChips (spec §1)', () => {
     renderWithPorts(<PreflightChips preflight={{ ...GREEN, sound: false }} {...QUIET} />, {
       deviceLanguages: ['fr'],
     });
-    expect(screen.getByLabelText('Son : en attente')).toBeTruthy();
+    expect(screen.getByLabelText('Micro : en attente')).toBeTruthy();
     expect(screen.getByLabelText('Caméra : OK')).toBeTruthy();
   });
 });

@@ -303,9 +303,10 @@ function sceneOf(name: FakeScene, now: number): Scene {
     case 'paired-ready':
       return { state: { kind: 'paired' }, telemetry: ARMED };
     case 'paired-not-ready':
+      // The mic is not available (spec §4). Level 0, so no test can read a level as the cause.
       return {
         state: { kind: 'paired' },
-        telemetry: { ...ARMED, audioLevel: 0.01 },
+        telemetry: { ...ARMED, audioLevel: 0 },
         ready: { ...READY, sound: false },
       };
     case 'paired-not-held':

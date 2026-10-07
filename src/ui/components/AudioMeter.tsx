@@ -8,7 +8,8 @@ import { colour, space } from '@/ui/theme/tokens';
 
 /**
  * Permanent, never in Settings (AGENTS §6): nothing downstream normalises, so
- * a quiet mic reaches YouTube quiet. Six segments, orange below the floor.
+ * a quiet mic reaches YouTube quiet. Six segments, lime while the mic is
+ * available and orange when the mic is not available (spec §4).
  */
 export const AudioMeter = memo(function AudioMeter() {
   const { t } = useT();

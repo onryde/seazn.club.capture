@@ -1,4 +1,3 @@
-import { AUDIO_FLOOR } from '@/domain/policy/audioFloor';
 import type { Cause, LastEnd, NotReady, Refusal } from '@/domain/session/Pairing';
 import type {
   DegradeReason,
@@ -22,7 +21,6 @@ export const STATUS_LINE_BUDGET = 48;
 const DEGRADED: Readonly<Record<DegradeReason, StatusKey>> = {
   'fell-back-to-rtmps': 'stream.status.fellBack',
   'poor-uplink': 'stream.status.weakSignal',
-  'audio-below-floor': 'stream.status.liveNoSound',
   'not-delivered': 'stream.status.notDelivered',
   'camera-taken': 'stream.status.cameraTaken',
   'mic-silenced': 'stream.status.micSilenced',
@@ -139,7 +137,7 @@ export function selectStatusKey(snapshot: EngineSnapshot): StatusKey {
 
 /** Each state's own line. A table, exempt from the line count (AGENTS §12). */
 function stateKey(snapshot: EngineSnapshot): StatusKey {
-  const { state, telemetry } = snapshot;
+  const { state } = snapshot;
   switch (state.kind) {
     case 'idle':
       return 'stream.status.starting';
@@ -153,10 +151,7 @@ function stateKey(snapshot: EngineSnapshot): StatusKey {
     case 'connecting':
       return 'stream.status.connecting';
     case 'publishing':
-      // D39: the level floor is a display rule, never a native reason.
-      return telemetry.audioLevel < AUDIO_FLOOR
-        ? 'stream.status.liveNoSound'
-        : 'stream.status.live';
+      return 'stream.status.live';
     case 'degraded':
       return DEGRADED[state.reason];
     case 'reconnecting':

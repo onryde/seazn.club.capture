@@ -54,7 +54,7 @@ class HeldPoseTest {
     }
   }
 
-  private fun held(pose: Pose) = Readiness(cameraFrames = true, audioPeak = 1.0, pose = pose).held
+  private fun held(pose: Pose) = Readiness(cameraFrames = true, micAvailable = true, pose = pose).held
 
   /** Gravity for a phone turned [deg] from upright in the screen's plane, as JS's orientation test builds it. */
   private fun tilted(deg: Double) = Math.toRadians(deg).let { Triple(sin(it), cos(it), 0.0) }

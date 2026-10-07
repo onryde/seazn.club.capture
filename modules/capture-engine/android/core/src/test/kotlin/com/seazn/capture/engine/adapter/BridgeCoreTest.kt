@@ -37,7 +37,7 @@ class BridgeCoreTest {
   private fun readyOn(of: BridgeCore) = (of.current()["ready"] as Map<*, *>).mapKeys { it.key as String }
 
   /**
-   * Ready on every check. Sound is ready at its first loud reading (owner, 2026-10-05); the second, a
+   * Ready on every check. Sound is ready at its first reading, whatever its level (spec §4); the second, a
    * tick on, is the glue's next meter reading, kept so the tests stay on the tick they were written on.
    */
   private fun ready(of: BridgeCore = core) {
@@ -177,7 +177,9 @@ class BridgeCoreTest {
     core.send(mapOf("kind" to "start"))
     scheduler.advanceBy(1_500)
     assertEquals("paired", state(), "Go live refused on held")
-    // The positive pair: a held report of pairing 2's own opens it.
+    // The positive pair: a held report of pairing 2's own opens it. F4: the glue's meter reading comes first, as it
+    // does every 500 ms while the capture is open; without one for NO_AUDIO_MS the mic is not available (spec §4).
+    core.readiness(audioPeak = 0.4)
     core.readiness(pose = Pose.Held(Side.RIGHT))
     scheduler.advanceBy(Engine.TICK_MS)
     assertEquals(true, readyOn(core)["held"], "held once pairing 2's tracker says so")
@@ -410,8 +412,9 @@ class BridgeCoreTest {
   }
 
   /**
-   * Review C4a I-1: the reviewer's flap, 0.049 and 0.051 a reading apart, every 500 ms for ten minutes. Owner,
-   * 2026-10-05: sound turns at the first 0.051, and the silence between never lasts its window, so one line.
+   * Review C4a I-1: the reviewer's flap, 0.049 and 0.051 a reading apart, every 500 ms for ten minutes. Spec §4
+   * (owner, 2026-10-06): sound is the mic's availability, so it turns at the first reading, whatever its level,
+   * and no level turns it back: one line.
    */
   @Test
   fun `I-1 a peak hovering at the floor for ten minutes writes one readiness line, and the tail keeps the line before it`() {
@@ -429,7 +432,7 @@ class BridgeCoreTest {
       readings += 1
     }
     assertEquals(1_200, readings, "the sweep's own count")
-    assertEquals(1, lines().count { it.getString("kind") == "readiness" } - before, "on at the first 0.051, and never off")
+    assertEquals(1, lines().count { it.getString("kind") == "readiness" } - before, "on at the first reading, and never off")
     assertTrue(core.tail().any { "probe.before" in it["line"] as String }, "the line before the flap is still in the tail: ${core.tail()}")
     assertEquals(true, readyOn(core)["sound"])
   }
@@ -479,10 +482,11 @@ class BridgeCoreTest {
    * change is held back, and nothing changes for five minutes. The camera turns, as sound no longer can
    * once a second (owner, 2026-10-05). The tick after the minute
    * runs out writes the state the machine holds, with the one held back; a state that stays, with
-   * nothing held back, writes nothing more.
+   * nothing held back, writes nothing more. The readings after the turns carry no audio buffer: this
+   * capture is never opened, and under spec §4 any buffer, a silent one too, would turn sound on.
    */
   @Test
-  fun `N-1 a turn held back is written once its minute runs out, and a quiet room writes nothing more`() {
+  fun `N-1 a turn held back is written once its minute runs out, and a state that stays writes nothing more`() {
     core.start()
     val before = platform.lines.size
     pair()
@@ -494,7 +498,7 @@ class BridgeCoreTest {
     assertEquals(true, readiness().last().getBoolean("camera"), "the record has not, yet")
     var quiet = 0
     while (clock.monotonicMs() < lastChangeMs + 60_000) {
-      core.readiness(cameraFrames = false, audioPeak = 0.0)
+      core.readiness(cameraFrames = false)
       scheduler.advanceBy(Engine.TICK_MS)
       quiet += 1
     }
@@ -503,7 +507,7 @@ class BridgeCoreTest {
     assertEquals(machineChecks(), checksOf(flushed.last()), "within 60 s, the record's last line is the machine's state")
     assertEquals(1, flushed.last().getInt("suppressed"))
     while (clock.monotonicMs() < lastChangeMs + 300_000) {
-      core.readiness(cameraFrames = false, audioPeak = 0.0)
+      core.readiness(cameraFrames = false)
       scheduler.advanceBy(Engine.TICK_MS)
       quiet += 1
     }
@@ -527,10 +531,15 @@ class BridgeCoreTest {
     scheduler.advanceBy(1_000)
     core.readiness(audioPeak = 0.4)
     scheduler.advanceBy(1_000)
+    // F4: the glue's meter reading before each later report, as it comes every 500 ms while the capture is open;
+    // without one for NO_AUDIO_MS the mic is not available (spec §4). A reading that turns nothing writes nothing.
+    core.readiness(audioPeak = 0.4)
     core.readiness(pose = Pose.NotHeld)
     scheduler.advanceBy(1_000)
+    core.readiness(audioPeak = 0.4)
     core.readiness(pose = Pose.Held(Side.LEFT))
     scheduler.advanceBy(1_000)
+    core.readiness(audioPeak = 0.4)
     core.readiness(cameraFrames = false)
     val diedMs = clock.monotonicMs()
     scheduler.advanceBy(Engine.TICK_MS)
@@ -1197,113 +1206,148 @@ class BridgeCoreTest {
     assertEquals(listOf(mapOf("seq" to 1.0, "line" to fresh.lines.single())), idle.tail())
   }
 
-  /**
-   * C4a carry (Task 33): the capture's close turns sound off at once. Sound waits out its silence window
-   * (owner, 2026-10-05), so the one silent reading the glue sends at the close could never turn it alone,
-   * and with the capture closed nothing reads again: the chip would show sound while nothing records.
-   */
+  /** Spec §4 (owner, 2026-10-06): "even though there is no sound … it is ok … should allow to go live". */
   @Test
-  fun `C4a carry sound turns off the moment the capture closes, past its silence window, and the next open starts silent`() {
+  fun `S4 a room silent from the start is sound at its first reading`() {
     core.start()
-    core.report(Input.Network(true))
     pair()
     core.viewfinder(true)
     scheduler.advanceBy(0)
-    assertEquals(listOf(true), platform.captures)
-    core.readiness(audioPeak = 0.4)
-    scheduler.advanceBy(0)
+    assertEquals(false, readyOn(core)["sound"], "no reading yet: the mic is not known to be available")
     core.readiness(audioPeak = 0.0)
     scheduler.advanceBy(0)
-    assertEquals(true, readyOn(core)["sound"], "sound, its silence window begun, before the close")
-    core.viewfinder(false)
-    scheduler.advanceBy(0)
-    assertEquals(listOf(true, false), platform.captures)
-    assertEquals(false, readyOn(core)["sound"], "off at the close, with no reading after it")
-    assertFalse(lines().last { it.getString("kind") == "readiness" }.getBoolean("sound"), "and on the record")
-    // The next open starts silent, and its first loud reading is sound, at once.
-    core.viewfinder(true)
-    scheduler.advanceBy(0)
-    assertEquals(false, readyOn(core)["sound"], "silent at the open")
-    core.readiness(audioPeak = 0.4)
-    scheduler.advanceBy(0)
-    assertEquals(true, readyOn(core)["sound"], "and sound at its first loud reading")
+    assertEquals(true, readyOn(core)["sound"], "a silent reading is a working mic")
+    assertTrue(lines().last { it.getString("kind") == "readiness" }.getBoolean("sound"), "and on the record")
   }
 
-  /** The other direction (AGENTS §13, class 7): a capture that stays open keeps its sound through a silent reading. */
+  /** Spec §4: 60 s of silence is still ready. 60 s is the spec's figure; the cadence is the engine's tick. */
   @Test
-  fun `C4a carry a silent reading while the capture stays open is still sound, not reset`() {
+  fun `S4 sixty seconds of silence stays sound`() {
     core.start()
     pair()
     core.viewfinder(true)
-    scheduler.advanceBy(0)
-    core.readiness(audioPeak = 0.4)
-    scheduler.advanceBy(0)
     core.readiness(audioPeak = 0.0)
     scheduler.advanceBy(0)
-    assertEquals(true, readyOn(core)["sound"], "one silent reading does not turn sound")
-  }
-
-  /** Owner, 2026-10-05: through the core, sound outlasts a silence short of its window, and the machine hears it end. */
-  @Test
-  fun `hysteresis sound stays ready through silence short of its window, and the machine hears it off at the window`() {
-    core.start()
-    pair()
-    core.readiness(audioPeak = 0.4)
-    scheduler.advanceBy(Engine.TICK_MS)
-    assertEquals(true, readyOn(core)["sound"], "on at the first loud reading")
-    val quietFrom = clock.monotonicMs()
+    val from = clock.monotonicMs()
     var readings = 0
-    while (clock.monotonicMs() < quietFrom + SoundHold.SILENCE_MS) {
+    while (clock.monotonicMs() < from + 60_000) {
       core.readiness(audioPeak = 0.0)
       scheduler.advanceBy(0)
-      assertEquals(true, readyOn(core)["sound"], "${clock.monotonicMs() - quietFrom} ms of silence")
+      assertEquals(true, readyOn(core)["sound"], "${clock.monotonicMs() - from} ms of silence")
       scheduler.advanceBy(Engine.TICK_MS)
       readings += 1
     }
-    assertEquals(SoundHold.SILENCE_MS / Engine.TICK_MS, readings.toLong(), "the sweep's own count")
-    core.readiness(audioPeak = 0.0)
-    scheduler.advanceBy(0)
-    assertEquals(false, readyOn(core)["sound"], "off at the window")
-    assertFalse(lines().last { it.getString("kind") == "readiness" }.getBoolean("sound"), "and on the record")
+    assertEquals(60_000 / Engine.TICK_MS, readings.toLong(), "the sweep's own count")
   }
 
-  /**
-   * Owner, 2026-10-05: the system silencing our recording (F-P5-8, relayed by `report` as ever) is not ready at
-   * once, past sound's window. The meter's next reading is the loudest of the 500 ms before it, so a loud one
-   * while silenced is not sound; restored, the first loud reading is.
-   */
+  /** Spec §4: a call takes the mic (F-P5-8) and gives it back; the sequence twice, so the second call is not the first's leftovers. */
   @Test
-  fun `hysteresis the system silencing the mic is not ready at once, and sound returns at the first loud reading once restored`() {
+  fun `S4 a call makes sound not ready at once, and ready again the moment it ends, twice`() {
     core.start()
     pair()
-    core.readiness(audioPeak = 0.4)
+    core.viewfinder(true)
+    core.readiness(audioPeak = 0.0)
     scheduler.advanceBy(0)
+    repeat(2) { call ->
+      core.report(Input.MicSilenced(true))
+      scheduler.advanceBy(0)
+      assertEquals(false, readyOn(core)["sound"], "call ${call + 1}: at once, with no reading after it")
+      core.readiness(audioPeak = 0.4)
+      scheduler.advanceBy(Engine.TICK_MS)
+      assertEquals(false, readyOn(core)["sound"], "call ${call + 1}: a loud reading while silenced is not sound")
+      core.report(Input.MicSilenced(false))
+      scheduler.advanceBy(0)
+      assertEquals(true, readyOn(core)["sound"], "call ${call + 1}: ready when the call ends, with no reading after it")
+    }
+    assertEquals(2, kinds().count { it == "mic-silenced" }, "the machine heard both calls, as ever")
+  }
+
+  /** Spec §4: on air, a silent room never degrades, and the broadcast never leaves publishing. */
+  @Test
+  fun `S4 on air a silent room never degrades`() {
+    live()
+    platform.answer = PairWire::answerLive // beats say live, so the broadcast runs on past the first beat
+    assertEquals("publishing", state())
+    // live() never opens the viewfinder: the broadcast holds the capture. Opened here, as the phone shows it on air.
+    core.viewfinder(true)
+    val from = clock.monotonicMs()
+    var readings = 0
+    while (clock.monotonicMs() < from + 60_000) {
+      core.readiness(audioPeak = 0.0)
+      scheduler.advanceBy(Engine.TICK_MS)
+      assertEquals("publishing", state(), "${clock.monotonicMs() - from} ms of silence on air")
+      readings += 1
+    }
+    assertEquals(60_000 / Engine.TICK_MS, readings.toLong(), "the sweep's own count")
     assertEquals(true, readyOn(core)["sound"])
-    core.report(Input.MicSilenced(true))
-    scheduler.advanceBy(0)
-    assertEquals(false, readyOn(core)["sound"], "at once, with no reading after it")
-    assertFalse(lines().last { it.getString("kind") == "readiness" }.getBoolean("sound"), "and on the record")
-    assertEquals(1, kinds().count { it == "mic-silenced" }, "the machine heard it too, as ever")
-    core.readiness(audioPeak = 0.4)
-    scheduler.advanceBy(Engine.TICK_MS)
-    assertEquals(false, readyOn(core)["sound"], "a loud reading while silenced is not sound")
-    core.report(Input.MicSilenced(false))
-    scheduler.advanceBy(0)
-    assertEquals(false, readyOn(core)["sound"], "restored is not sound by itself")
-    core.readiness(audioPeak = 0.4)
-    scheduler.advanceBy(0)
-    assertEquals(true, readyOn(core)["sound"], "the first loud reading after it, at once")
+    // F6: no record assertion. No record kind "degraded" exists, so one could never fail; the per-step state() is the witness.
   }
 
   /**
-   * Owner, 2026-10-05, the sequence: a pair, an unpair and a re-pair carry no window over. Pairing 1 goes quiet
-   * for most of sound's window and is unpaired: its capture's close is silent at once (the C4a carry) and its
-   * pose is forgotten at Release (final I-1). Pairing 2's first loud reading and first held report are ready at
-   * once, and its sound waits out a whole window of its own. (The glue's pose watch starts a new tracker at
-   * each Hold, so held's own window starts afresh there.)
+   * C4a carry, in the glue's real call order (pre-flight F5). The close is `noticeCapture` → `silenced()`
+   * (BridgeCore's `noticeCapture`), then the glue's `release()` reports `readiness(false, null)` (StreamerAdapter's
+   * `release()`, `0.0` before this task). Spec §4: a closed capture is "audio capture unavailable", so sound is not
+   * ready after it.
    */
   @Test
-  fun `hysteresis a pair, an unpair and a re-pair carry no readiness window over`() {
+  fun `C4a carry the capture's close is not sound after the glue's close report, and the next opening's first buffer is`() {
+    core.start()
+    pair()
+    core.viewfinder(true)
+    core.readiness(audioPeak = 0.0)
+    scheduler.advanceBy(0)
+    assertEquals(true, readyOn(core)["sound"])
+    core.viewfinder(false) // posted first: noticeCapture closes the capture and calls silenced()
+    core.readiness(cameraFrames = false, audioPeak = null) // posted after: the glue's release(), as it reports
+    scheduler.advanceBy(0)
+    assertEquals(false, readyOn(core)["sound"], "closed: the capture delivers nothing")
+    core.viewfinder(true)
+    scheduler.advanceBy(0)
+    assertEquals(false, readyOn(core)["sound"], "open, no buffer yet")
+    core.readiness(audioPeak = 0.0)
+    scheduler.advanceBy(0)
+    assertEquals(true, readyOn(core)["sound"], "its first buffer, silent or not")
+  }
+
+  /**
+   * Spec §4 "audio capture unavailable", pre-flight F4. Driven through the real producer: the glue's tick hands the
+   * core PeakMeter's take every READINESS_MS (StreamerAdapter's `reportReadiness`), and the take is null when no
+   * buffer came.
+   */
+  @Test
+  fun `S4 no audio buffer for NO_AUDIO_MS is not sound, and the next buffer is`() {
+    val glueTickMs = 500L // StreamerAdapter.READINESS_MS, the glue's cadence
+    val meter = PeakMeter()
+    core.start()
+    pair()
+    core.viewfinder(true)
+    meter.offer(0.0) // a silent buffer: a working mic
+    core.readiness(audioPeak = meter.take())
+    scheduler.advanceBy(0)
+    assertEquals(true, readyOn(core)["sound"], "a silent buffer is a working mic")
+    var ticks = 0
+    for (elapsed in glueTickMs..(BridgeCore.NO_AUDIO_MS + glueTickMs) step glueTickMs) {
+      scheduler.advanceBy(glueTickMs)
+      core.readiness(audioPeak = meter.take()) // nothing was offered: null
+      scheduler.advanceBy(0)
+      assertEquals(elapsed < BridgeCore.NO_AUDIO_MS, readyOn(core)["sound"], "$elapsed ms with no audio buffer")
+      ticks += 1
+    }
+    assertEquals((BridgeCore.NO_AUDIO_MS / glueTickMs + 1).toInt(), ticks, "the sweep's own count")
+    meter.offer(0.0)
+    core.readiness(audioPeak = meter.take())
+    scheduler.advanceBy(0)
+    assertEquals(true, readyOn(core)["sound"], "the next buffer, silent, is a working mic again")
+  }
+
+  /**
+   * Spec §4, the sequence: a pair, an unpair and a re-pair carry no mic state over. Pairing 1's capture closes at the
+   * unpair, which is "audio capture unavailable" at once (the C4a carry), and its pose is forgotten at Release
+   * (final I-1). Pairing 2 is not sound until its own first reading, a silent one, and not held until its first held
+   * report. (The glue's pose watch starts a new tracker at each Hold, so held's own window starts afresh there.)
+   */
+  @Test
+  fun `S4 a pair, an unpair and a re-pair carry no mic state over`() {
     core.start()
     core.report(Input.Network(true))
     core.viewfinder(true)
@@ -1311,34 +1355,15 @@ class BridgeCoreTest {
     pair()
     scheduler.advanceBy(Engine.TICK_MS)
     assertEquals(mapOf("camera" to true, "sound" to true, "held" to true), machineChecks(), "pairing 1 ready")
-    val quietFrom = clock.monotonicMs()
-    while (clock.monotonicMs() < quietFrom + SoundHold.SILENCE_MS - 2 * Engine.TICK_MS) {
-      core.readiness(audioPeak = 0.0)
-      scheduler.advanceBy(Engine.TICK_MS)
-    }
-    assertEquals(true, readyOn(core)["sound"], "pairing 1 still sound, its window nearly out")
     core.send(mapOf("kind" to "unpair"))
     scheduler.advanceBy(0)
     pair()
     scheduler.advanceBy(Engine.TICK_MS)
     assertEquals("paired", state())
-    assertEquals(mapOf("camera" to true, "sound" to false, "held" to false), machineChecks(), "pairing 2 starts silent and not held")
-    core.readiness(audioPeak = 0.4, pose = Pose.Held(Side.RIGHT))
+    assertEquals(mapOf("camera" to true, "sound" to false, "held" to false), machineChecks(), "pairing 2 starts with no mic and not held")
+    core.readiness(audioPeak = 0.0, pose = Pose.Held(Side.RIGHT))
     scheduler.advanceBy(0)
-    assertEquals(mapOf("camera" to true, "sound" to true, "held" to true), machineChecks(), "each at once")
-    val quiet2 = clock.monotonicMs()
-    var readings = 0
-    while (clock.monotonicMs() < quiet2 + SoundHold.SILENCE_MS) {
-      core.readiness(audioPeak = 0.0)
-      scheduler.advanceBy(0)
-      assertEquals(true, readyOn(core)["sound"], "pairing 2's own window, ${clock.monotonicMs() - quiet2} ms in")
-      scheduler.advanceBy(Engine.TICK_MS)
-      readings += 1
-    }
-    assertEquals(SoundHold.SILENCE_MS / Engine.TICK_MS, readings.toLong(), "the sweep's own count")
-    core.readiness(audioPeak = 0.0)
-    scheduler.advanceBy(0)
-    assertEquals(false, readyOn(core)["sound"], "off at its own window")
+    assertEquals(mapOf("camera" to true, "sound" to true, "held" to true), machineChecks(), "each at its first reading, the mic's a silent one")
   }
 
   @Test

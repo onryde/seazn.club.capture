@@ -24,18 +24,19 @@ object PcmPeak {
 }
 
 /**
- * Written on the audio thread, taken on the scheduler thread at each snapshot. A level that is not
- * finite is no reading: an infinite one would pass the sound check (`Readiness.sound`) on nothing.
+ * Written on the audio thread, taken on the scheduler thread at each snapshot. Each offer is one audio
+ * buffer's peak; a level that is not finite is no buffer, so it can never stand for a working mic.
  */
 class PeakMeter {
-  private var peak = 0.0
+  private var peak: Double? = null
 
   @Synchronized
   fun offer(level: Double) {
-    if (level.isFinite() && level > peak) peak = level
+    if (level.isFinite()) peak = maxOf(peak ?: level, level)
   }
 
-  @Synchronized fun take(): Double = peak.also { peak = 0.0 }
+  /** The highest level since the last take, or null when no buffer came (spec §4: no buffer is no mic). */
+  @Synchronized fun take(): Double? = peak.also { peak = null }
 }
 
 /**

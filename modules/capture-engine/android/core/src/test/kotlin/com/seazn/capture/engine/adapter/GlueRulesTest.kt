@@ -124,31 +124,33 @@ class GlueRulesTest {
   }
 
   /**
-   * Final review round 2, minor 3: the core's readiness timing is the phone's own (owner, 2026-10-05: sound's
-   * 15 s silence window). Only the JVM host shortens it, through a defaulted `BridgeCore` parameter, so the
-   * glue must never pass one. The timing parameters are read from BridgeCore's constructor (every one whose
-   * name ends `Ms`), never listed here; the glue's calls pass none by name, and their positional arguments end
-   * before the first of them.
+   * Final review round 2, minor 3, kept under spec §4 (owner, 2026-10-06): the silence window that was the core's one
+   * readiness timing parameter is gone, so BridgeCore declares none, and the glue has none to pass. The timing
+   * parameters are read from BridgeCore's constructor (every one whose name ends `Ms`), never listed here. A
+   * companion constant such as `NO_AUDIO_MS` is not a parameter, and the glue cannot pass it.
    */
   @Test
-  fun `final r2 the glue never passes the core a readiness timing override`() {
+  fun `D2 BridgeCore declares no readiness timing parameter`() {
     val core = File(src.parentFile, "core/src/main/kotlin/com/seazn/capture/engine/adapter/BridgeCore.kt").readText()
     val declared = core.indexOf("class BridgeCore(").also { assertTrue(it >= 0, "BridgeCore's constructor") }
     val params = topLevel(arguments(core, core.indexOf('(', declared))).map { Regex("""^(?:(?:private|internal)\s+)?(?:va[lr]\s+)?(\w+)\s*:""").find(it)!!.groupValues[1] }
     val timing = params.filter { it.endsWith("Ms") }
-    assertTrue("silenceMs" in timing, "the timing parameters read from the constructor: $params")
-    val firstTiming = params.indexOf(timing.first())
-    val calls =
-      sources().flatMap { file ->
-        val text = file.readText()
-        Regex("""\bBridgeCore\(""").findAll(text).map { file.name to topLevel(arguments(text, it.range.last)) }.toList()
-      }
-    assertEquals(listOf("EngineHost.kt"), calls.map { it.first }, "the glue builds its one core in EngineHost")
-    for ((name, args) in calls) {
-      val named = args.mapNotNull { Regex("""^(\w+)\s*=[^=]""").find(it)?.groupValues?.get(1) }
-      assertEquals(emptyList(), named.filter { it in timing }, "$name passes a timing parameter by name")
-      assertTrue(args.count { Regex("""^\w+\s*=[^=]""").find(it) == null } <= firstTiming, "$name passes ${args.size} arguments, reaching ${timing.first()}: $args")
-    }
+    assertTrue("clock" in params && "newId" in params, "the constructor parsed: $params")
+    assertEquals(emptyList(), timing, "a new timing parameter re-opens final r2: the glue must never pass it")
+  }
+
+  /**
+   * Pre-flight F5: under spec §4 any finite level is a buffer, so the release's closing report must carry none, or
+   * sound reads ready after the capture is gone. The tick hands over PeakMeter's take as it is (F4).
+   */
+  @Test
+  fun `F5 the glue's release reports no audio buffer, and its tick hands over the meter's take`() {
+    val glue = sources().single { it.name == "StreamerAdapter.kt" }.readText()
+    val at = glue.indexOf("override suspend fun release()").also { assertTrue(it >= 0, "release()") }
+    val release = glue.substring(at, glue.indexOf("\n    }\n", at))
+    assertTrue("calls.readiness(false, null)" in release, "release() reports no buffer: $release")
+    assertFalse(Regex("""calls\.readiness\([^)]*\b0\.0\b""").containsMatchIn(glue), "no literal level reaches the core as a buffer")
+    assertTrue("ready.take())" in glue.substring(glue.indexOf("private suspend fun reportReadiness()")), "the tick passes the take")
   }
 
   @Test

@@ -55,7 +55,7 @@ describe('the paired viewfinder (spec §1)', () => {
     // en['stream.status.waitingGoLive'] with FAKE_PAIRING's destination, written out.
     expect(screen.getByText(WAITING)).toBeTruthy();
     expect(screen.getByLabelText('Camera: ready')).toBeTruthy();
-    expect(screen.getByLabelText('Sound: ready')).toBeTruthy();
+    expect(screen.getByLabelText('Mic: ready')).toBeTruthy();
     expect(screen.getByLabelText('Network: ready')).toBeTruthy();
     // The fake's pairing allows automatic mode, and the scan sent the switch on.
     expect(screen.getByText(en['stream.chip.auto'])).toBeTruthy();
@@ -77,7 +77,7 @@ describe('the paired viewfinder (spec §1)', () => {
   it.each([
     ['camera', 'Camera', 'Camera not ready'],
     ['network', 'Network', 'No network'],
-    ['sound', 'Sound', 'No sound'],
+    ['sound', 'Mic', 'Mic not available'],
   ] as const)(
     'blocks Go live when native says %s is not ready, and says why at the control',
     async (check, chip, reason) => {
@@ -103,7 +103,7 @@ describe('the paired viewfinder (spec §1)', () => {
     expect(screen.getByText(en['stream.blocker.held'])).toBeTruthy();
     expect(screen.getByText(WAITING)).toBeTruthy();
     expect(screen.getByLabelText('Camera: ready')).toBeTruthy();
-    expect(screen.getByLabelText('Sound: ready')).toBeTruthy();
+    expect(screen.getByLabelText('Mic: ready')).toBeTruthy();
     expect(screen.getByLabelText('Network: ready')).toBeTruthy();
     pressIn(goLive());
     act(() => vi.advanceTimersByTime(HOLD_MS));

@@ -17,8 +17,7 @@ enum class Transport(override val wire: String) : Wire {
  * active ones in this order, so the first is the one the status line names.
  *
  * Deliberately absent: thermal. A hot phone is a device condition and travels as `shed` (AGENTS §8).
- * Also absent: `audio-below-floor`. The level floor stays a TypeScript display selector (spec §2,
- * "`audioFloor` stays"), so native never decides it.
+ * Also absent: any level-based reason; a silent room is ready and on air is plain Live (spec §4).
  */
 enum class DegradeReason(override val wire: String) : Wire {
   NOT_DELIVERED("not-delivered"),
