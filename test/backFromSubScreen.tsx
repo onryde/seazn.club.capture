@@ -11,7 +11,7 @@ import { wrapperFor } from './renderWithPorts';
 const LEAVE_ON_AIR = 'Stop the broadcast first — hold Stop.';
 
 /** The stream stack as Expo Router keeps it: the viewfinder stays mounted under a pushed sub-screen. */
-async function renderStack(subScreen: ReactElement, link: 'Settings' | 'Diagnostics') {
+async function renderStack(subScreen: ReactElement, link: 'Settings') {
   const fakes = createFakePorts({
     kvSeed: {
       [STORE_KEYS.active]: 'stream',
@@ -28,10 +28,7 @@ async function renderStack(subScreen: ReactElement, link: 'Settings' | 'Diagnost
   await act(() => fakes.ports.modeStore.load());
   fakes.navigation.go('stream');
   const openSubScreen = () => {
-    // Spec §3 took the viewfinder's Diagnostics button away (its way in is Settings' card, §6, Task 5).
-    // Until that task removes the route, Back from it is still proven, entered as the button entered it.
-    if (link === 'Settings') fireEvent.click(screen.getByRole('button', { name: link }));
-    else fakes.navigation.go('streamDiagnostics');
+    fireEvent.click(screen.getByRole('button', { name: link }));
     rendered.rerender(<Stack open />);
   };
   return { ...rendered, ...fakes, openSubScreen };
@@ -43,10 +40,7 @@ async function renderStack(subScreen: ReactElement, link: 'Settings' | 'Diagnost
  * first, even under a sub-screen; it answers only off a named sub-route. Run
  * by each sub-screen's own suite, so each one's Back is proven on its own.
  */
-export function describeBackFromSubScreen(
-  link: 'Settings' | 'Diagnostics',
-  subScreen: ReactElement,
-) {
+export function describeBackFromSubScreen(link: 'Settings', subScreen: ReactElement) {
   describe(`Back between the viewfinder and ${link} (M21)`, () => {
     it('a state change underneath, then Back, returns to the camera without leaving', async () => {
       const view = await renderStack(subScreen, link);

@@ -186,7 +186,7 @@ describe('useEngineFollow: the route follows a broadcast', () => {
     expect(fakes.navigation.current()).toBe('stream');
   });
 
-  it.each(['streamSettings', 'streamDiagnostics'] as const)(
+  it.each(['streamSettings'] as const)(
     'leaves %s where it is: it is inside Live Stream already (M22)',
     async (route) => {
       const fakes = await shell();

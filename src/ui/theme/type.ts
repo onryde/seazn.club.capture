@@ -93,6 +93,19 @@ export const typeScale = {
     textTransform: 'uppercase',
     color: colour.ink2,
   },
+  /**
+   * Board "Settings": a Diagnostics section's name in its 84 dp column. Barlow Condensed
+   * 600, caps and letterspaced like `actionSecondary`, at 14 so the longest name in the
+   * four languages ("Verbinding") fits the column.
+   */
+  diagSection: {
+    fontFamily: font.displaySemibold,
+    fontSize: 14,
+    lineHeight: 16,
+    letterSpacing: 0.6,
+    textTransform: 'uppercase',
+    color: colour.ink2,
+  },
   status: {
     fontFamily: font.body,
     fontSize: 13.5,

@@ -1,14 +1,26 @@
-import { act, fireEvent, screen, waitFor } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import { act, cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
+import { Dimensions } from 'react-native';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import type { NativeCaptureEngine } from '@/engine/nativeCaptureEngine';
+import en from '@/i18n/en.json';
 import type { KeyValueStore } from '@/services/KeyValueStore';
 import { useEngineSync } from '@/hooks/useEngineSync';
+import { HOLD_MS } from '@/hooks/useHold';
 import { SETTINGS_KEY } from '@/services/streamSettingsStore';
 import { SettingsScreen } from '@/ui/screens/SettingsScreen';
+import { font } from '@/ui/theme/tokens';
 import { describeBackFromSubScreen } from '../../../test/backFromSubScreen';
+import { readRecord } from '../../../test/fakePorts';
 import { savedStreamCode } from '../../../test/fixtures/savedStream';
+import { FIXTURE_SECRETS } from '../../../test/fixtures/wire';
 import { pairCode } from '../../../test/pairCode';
+import { pressIn } from '../../../test/press';
 import { renderViewfinder } from '../../../test/renderViewfinder';
 import { renderWithPorts } from '../../../test/renderWithPorts';
+import { restoreWindowSize, setWindowSize } from '../../../test/windowSize';
+
+// D13: a landscape test turns the window; every test starts with jsdom's own 0 × 0.
+afterEach(restoreWindowSize);
 
 function renderSettings(options: Parameters<typeof renderWithPorts>[1] = {}) {
   const view = renderWithPorts(<SettingsScreen />, options);
@@ -24,6 +36,45 @@ const automaticSwitch = () => screen.getByRole('switch', { name: 'Start and stop
 function SyncedSettings() {
   useEngineSync();
   return <SettingsScreen />;
+}
+
+const shareButton = () => screen.getByRole('button', { name: 'Share record' });
+const faceOf = (text: string) => getComputedStyle(screen.getByText(text)).fontFamily;
+const diagRows = () => screen.getAllByTestId('diag-row');
+const cellsOf = (row: Element) => [...row.children].map((cell) => cell.textContent ?? '');
+const layoutOf = () => screen.getByTestId('settings').dataset.layout;
+
+/** The Diagnostics row for an item label; a missing row is a failure, never a skipped check. */
+function rowOf(label: string): HTMLElement {
+  const row = diagRows().find((candidate) => cellsOf(candidate)[1] === label);
+  if (row === undefined) throw new Error(`no Diagnostics row for ${label}`);
+  return row;
+}
+
+const scrolls = (element: Element) =>
+  ['auto', 'scroll'].includes(getComputedStyle(element).overflowY);
+/** The nearest ancestor that scrolls (a ScrollView), or null. */
+function scrollerOf(element: Element): Element | null {
+  for (let up = element.parentElement; up !== null; up = up.parentElement) {
+    if (scrolls(up)) return up;
+  }
+  return null;
+}
+
+/**
+ * The viewfinder, after the operator held Go live: a visit sends nothing until
+ * then (amendment §2), so the hold is what puts a line in the record.
+ */
+async function startedViewfinder() {
+  vi.useFakeTimers();
+  try {
+    const view = await renderViewfinder();
+    pressIn(screen.getByRole('button', { name: 'Go live. Press and hold for 3 seconds.' }));
+    act(() => vi.advanceTimersByTime(HOLD_MS));
+    return view;
+  } finally {
+    vi.useRealTimers();
+  }
 }
 
 describe('Settings (spec §4)', () => {
@@ -210,6 +261,359 @@ describe('Settings (spec §4)', () => {
     expect(screen.getByRole('switch', { name: 'Automatisch starten en stoppen' })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Terug naar de camera' })).toBeTruthy();
     expect(screen.getByRole('radio', { name: 'Linkerkant' })).toBeTruthy();
+    // Spec §6: the Diagnostics card is Settings' now, in the operator's language.
+    expect(within(screen.getByTestId('diagnostics-card')).getByText('Diagnose')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Logboek delen' })).toBeTruthy();
+  });
+});
+
+describe('Diagnostics inside Settings (spec §6, Q1)', () => {
+  it('is a card titled Diagnostics, with Share record in its header row', () => {
+    renderSettings();
+    const card = screen.getByTestId('diagnostics-card');
+    const title = within(card).getByText('Diagnostics');
+    const header = title.parentElement;
+    expect(header).not.toBeNull();
+    expect(header).not.toBe(card);
+    expect(shareButton().parentElement).toBe(header);
+  });
+
+  it("lists Q1's nine rows as section | item | value, from the live report", () => {
+    const view = renderSettings();
+    act(() => view.engine.scene('live'));
+    const rows = diagRows();
+    expect(rows).toHaveLength(9); // Q1's count, a literal (F13): 0 rows must fail, not pass as 0 = 0
+    expect(rows.map(cellsOf)).toEqual([
+      ['Link', 'Transport', 'SRT'],
+      ['', 'Bitrate', '2840 kbps'],
+      ['', 'Round trip', '48 ms'],
+      ['Delivery', 'Viewers receiving', 'Yes'],
+      ['', 'Behind live', '9.2 s'],
+      ['', 'Checked', '1.5 s ago'],
+      ['Phone', 'Battery', '74%'],
+      ['', 'Heat', 'Normal'],
+      ['Heartbeat', 'Last sent', '4 s ago'],
+    ]);
+    for (const row of rows) expect(row.children).toHaveLength(3);
+  });
+
+  it('shows nine rows of dashes when nothing has been measured', () => {
+    const view = renderSettings();
+    act(() => view.engine.scene('stopped'));
+    expect(diagRows()).toHaveLength(9);
+    expect(cellsOf(rowOf('Battery'))[2]).toBe('—');
+    expect(cellsOf(rowOf('Last sent'))[2]).toBe('—');
+  });
+
+  it("leaves the other rows and the Engine section out (Q1), and the card's Phone section is named once", () => {
+    const view = renderSettings();
+    act(() => view.engine.scene('live'));
+    const left = [
+      'Target',
+      'Video',
+      'Sending audio',
+      'Resent',
+      'Dropped',
+      'Data used',
+      'Camera',
+      'Drain',
+      'Charging',
+      'Last result',
+      'Failures',
+      'Last report',
+      'Record lines refused',
+      'Record lines dropped',
+      'Engine',
+      'Session record',
+    ];
+    expect(left).toHaveLength(16);
+    for (const text of left)
+      expect({ text, shown: screen.queryByText(text) !== null }).toEqual({ text, shown: false });
+    // The positive pair: the card is there, so an absent label is absent from a card that renders.
+    expect(screen.getByText('Bitrate')).toBeTruthy();
+    expect(screen.getAllByText('Phone')).toHaveLength(1);
+  });
+
+  it('draws the section column 84 dp wide, the item flexible and the value right-aligned', () => {
+    const view = renderSettings();
+    act(() => view.engine.scene('live'));
+    const [section, label, value] = [...rowOf('Bitrate').children];
+    expect(getComputedStyle(section as Element).width).toBe('84px');
+    expect(getComputedStyle(label as Element).flexGrow).toBe('1');
+    expect(getComputedStyle(value as Element).textAlign).toBe('right');
+  });
+
+  // AGENTS §5 and M25: Geist Mono carries the values, never the labels.
+  it('sets the values in Geist Mono and the labels in Geist', () => {
+    const view = renderSettings();
+    act(() => view.engine.scene('live'));
+    expect(faceOf('2840 kbps')).toBe(font.numeric);
+    // M6: Geist Medium, the `metricUnit` face, named rather than "not mono".
+    expect(faceOf('Bitrate')).toBe(font.bodyMedium);
+  });
+
+  // D32: Diagnostics shows ticking values and is not the HUD; the 1 Hz report is its clock.
+  it('ticks: a changed bitrate shows in the Bitrate row after the next 1 Hz report', () => {
+    vi.useFakeTimers();
+    try {
+      const view = renderSettings();
+      act(() => view.engine.scene('live'));
+      expect(cellsOf(rowOf('Bitrate'))[2]).toBe('2840 kbps');
+      act(() => view.engine.patch({ bitrateKbps: 2950 }));
+      act(() => vi.advanceTimersByTime(1000));
+      expect(cellsOf(rowOf('Bitrate'))[2]).toBe('2950 kbps');
+      expect(screen.queryByText('2840 kbps')).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('has no session-record-lines, and shows no record line at all (spec §6)', () => {
+    const view = renderSettings();
+    act(() => {
+      for (let n = 1; n <= 25; n += 1) view.ports.logger.info(`probe.line-${n}`);
+    });
+    // The positive pair: the record did take the lines, so none on screen is the drop.
+    expect(view.record.lines().length).toBeGreaterThanOrEqual(25);
+    expect(screen.queryByTestId('session-record-lines')).toBeNull();
+    expect(screen.queryByText(/probe\.line-/)).toBeNull();
+  });
+
+  it('shares the whole record on one press, with no secret in it', async () => {
+    const view = await startedViewfinder();
+    view.rerender(<SettingsScreen />);
+    const lines = view.record.lines().length;
+    expect(lines).toBeGreaterThan(0);
+    fireEvent.click(shareButton());
+    await waitFor(() => expect(view.share.shared).toHaveLength(1));
+    const shared = view.share.shared[0] ?? '';
+    expect(shared).toContain('intent.start');
+    expect(shared.split('\n')).toHaveLength(lines);
+    // M16: the QR's token is the only secret it carries now; every one is checked.
+    expect(FIXTURE_SECRETS).toHaveLength(1);
+    for (const secret of FIXTURE_SECRETS) {
+      expect(secret.length).toBeGreaterThan(0);
+      expect({ secret, leaked: shared.includes(secret) }).toEqual({ secret, leaked: false });
+    }
+    // M15: the count is on the scrub's allow-list, so it survives into the record.
+    const entry = readRecord(view.record).find((line) => line.event === 'record.shared');
+    expect(entry?.fields).toEqual({ count: shared.split('\n').length });
+    expect(screen.queryByText("Couldn't open sharing.")).toBeNull();
+  });
+
+  // The old screen showed the last twenty lines; the card shows none, and Share sends them all.
+  it('shares every line of a long record, not a tail of it', async () => {
+    const view = renderSettings();
+    act(() => {
+      for (let n = 1; n <= 25; n += 1) view.ports.logger.info(`probe.line-${n}`);
+    });
+    const lines = view.record.lines().length;
+    expect(lines).toBeGreaterThan(20); // the old tail was 20
+    fireEvent.click(shareButton());
+    await waitFor(() => expect(view.share.shared).toHaveLength(1));
+    expect(view.share.shared[0]?.split('\n')).toHaveLength(lines);
+    expect(view.share.shared[0]).toContain('probe.line-1"');
+  });
+
+  it('shares twice when asked twice', async () => {
+    const view = renderSettings();
+    fireEvent.click(shareButton());
+    fireEvent.click(shareButton());
+    await waitFor(() => expect(view.share.shared).toHaveLength(2));
+  });
+
+  it('says when sharing could not open, and records it', async () => {
+    const view = renderSettings();
+    view.share.refuse();
+    expect(screen.queryByText("Couldn't open sharing.")).toBeNull();
+    fireEvent.click(shareButton());
+    expect(await screen.findByText("Couldn't open sharing.")).toBeTruthy();
+    expect(readRecord(view.record).map((entry) => entry.event)).toContain('record.share-failed');
+    expect(readRecord(view.record).map((entry) => entry.event)).not.toContain('record.shared');
+  });
+
+  it('clears the message once a later share opens', async () => {
+    const view = renderSettings();
+    vi.spyOn(view.share, 'share').mockRejectedValueOnce(new Error('share sheet refused'));
+    fireEvent.click(shareButton());
+    expect(await screen.findByText("Couldn't open sharing.")).toBeTruthy();
+    fireEvent.click(shareButton());
+    await waitFor(() => expect(screen.queryByText("Couldn't open sharing.")).toBeNull());
+    expect(view.share.shared).toHaveLength(1);
+  });
+
+  it('plays any fake scene in a development build', () => {
+    const view = renderSettings();
+    expect(screen.getByText('Fake engine (development only)')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Scene: holding' }));
+    expect(view.engine.getSnapshot().state.kind).toBe('reconnecting');
+    fireEvent.click(screen.getByRole('button', { name: 'Scene: fatal' }));
+    expect(view.engine.getSnapshot().state).toMatchObject({ kind: 'ended', reason: 'fatal-error' });
+  });
+
+  it('shows no scenes in a release build', () => {
+    renderSettings({ devTools: false, devEngine: null });
+    expect(screen.queryByRole('button', { name: /^Scene:/ })).toBeNull();
+    expect(screen.queryByText('Fake engine (development only)')).toBeNull();
+  });
+
+  it('shows no scenes with development tools off, whatever engine is wired', () => {
+    renderSettings({ devTools: false });
+    expect(screen.queryByRole('button', { name: /^Scene:/ })).toBeNull();
+  });
+
+  it('shows no scenes without the fake engine, even in a development build', () => {
+    renderSettings({ devEngine: null });
+    expect(screen.queryByRole('button', { name: /^Scene:/ })).toBeNull();
+  });
+
+  // Task 39: the dev controls for the preview's boundary and CD17's silence. They matter most with
+  // native wired, where the fake engine's scenes are hidden, so the scenes' gate never hides them.
+  it('offers Crash preview and Pause engine reports with native wired, and pauses native for 5 s', () => {
+    const pauseReports = vi.fn();
+    const nativeEngine = { pauseReports } as unknown as NativeCaptureEngine;
+    renderSettings({ devEngine: null, nativeEngine });
+    expect(screen.queryByRole('button', { name: /^Scene:/ })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Pause engine reports' }));
+    expect(pauseReports.mock.calls).toEqual([[5_000]]);
+    expect(screen.getByRole('button', { name: 'Crash preview' })).toBeTruthy();
+  });
+
+  it('offers no Pause engine reports without native, and neither control with development tools off', () => {
+    renderSettings();
+    expect(screen.getByRole('button', { name: 'Crash preview' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Pause engine reports' })).toBeNull();
+    cleanup();
+    const nativeEngine = { pauseReports: vi.fn() } as unknown as NativeCaptureEngine;
+    renderSettings({ devTools: false, nativeEngine });
+    expect(screen.queryByRole('button', { name: 'Crash preview' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Pause engine reports' })).toBeNull();
+  });
+
+  it("Crash preview arms the viewfinder's preview to crash, until Show preview", async () => {
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    try {
+      renderSettings();
+      fireEvent.click(screen.getByRole('button', { name: 'Crash preview' }));
+      cleanup();
+      const view = await renderViewfinder();
+      expect(screen.getByText('Camera preview stopped — the session carries on')).toBeTruthy();
+      expect(
+        readRecord(view.record).filter((entry) => entry.event === 'preview.crashed'),
+      ).toHaveLength(1);
+      fireEvent.click(screen.getByRole('button', { name: 'Show preview' }));
+      expect(screen.getByTestId('preview')).toBeTruthy();
+    } finally {
+      errors.mockRestore();
+    }
+  });
+});
+
+describe('where Diagnostics sits (spec §6)', () => {
+  // SP2 (F2): the licences were already under the power advice; this pins that order with the card after it.
+  it('orders the switch hints, the side radios, the power advice, the licences, then the card', () => {
+    renderSettings();
+    expect(layoutOf()).toBe('portrait'); // jsdom's 0 × 0 default (D10)
+    const named: readonly (readonly [string, HTMLElement])[] = [
+      ['score preview switch', overlaySwitch()],
+      ['score preview hint', screen.getByText(en['settings.overlay.hint'])],
+      ['automatic switch', automaticSwitch()],
+      ['automatic hint', screen.getByText(en['settings.automatic.hint'])],
+      ['left radio', screen.getByRole('radio', { name: 'Left' })],
+      ['right radio', screen.getByRole('radio', { name: 'Right' })],
+      ['power label', screen.getByText(en['settings.power.label'])],
+      ['power advice', screen.getByText(en['settings.power.advice'])],
+      ['licences', screen.getByRole('button', { name: 'Open-source licences' })],
+      ['Diagnostics card', screen.getByTestId('diagnostics-card')],
+    ];
+    expect(named).toHaveLength(10);
+    const misordered = named.slice(1).flatMap(([name, element], at) => {
+      const before = named[at]?.[1];
+      const follows = before?.compareDocumentPosition(element) === Node.DOCUMENT_POSITION_FOLLOWING;
+      return follows ? [] : [name];
+    });
+    expect(misordered).toEqual([]);
+  });
+
+  it('keeps the card after the licences when they are open', () => {
+    renderSettings();
+    fireEvent.click(screen.getByRole('button', { name: 'Open-source licences' }));
+    const source = screen.getByText('libsrt source code: https://github.com/Haivision/srt');
+    const card = screen.getByTestId('diagnostics-card');
+    expect(source.compareDocumentPosition(card)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+  });
+
+  it('in portrait, one column: the switches and the card share one scrolling column', () => {
+    setWindowSize(390, 844);
+    renderSettings();
+    expect(layoutOf()).toBe('portrait');
+    expect(screen.queryByTestId('settings-halves')).toBeNull();
+    const scroller = scrollerOf(overlaySwitch());
+    expect(scroller).not.toBeNull();
+    expect(scrollerOf(screen.getByTestId('diagnostics-card'))).toBe(scroller);
+    expect(getComputedStyle(screen.getByTestId('diagnostics-card')).flexDirection).toBe('column');
+  });
+
+  it('the helper really turns the window (positive control, D13)', () => {
+    renderSettings();
+    expect(layoutOf()).toBe('portrait');
+    setWindowSize(844, 390);
+    expect(Dimensions.get('window')).toMatchObject({ width: 844, height: 390 });
+    expect(layoutOf()).toBe('landscape');
+  });
+
+  it('in landscape, settings on one half and Diagnostics on the other (spec §6)', () => {
+    setWindowSize(640, 360); // spec §1's smallest landscape phone
+    renderSettings();
+    const halves = screen.getByTestId('settings-halves');
+    expect(getComputedStyle(halves).flexDirection).toBe('row');
+    expect(halves.children).toHaveLength(2);
+    const [settingsHalf, diagnosticsHalf] = [...halves.children];
+    expect(settingsHalf?.contains(screen.getByText('Open-source licences'))).toBe(true);
+    expect(settingsHalf?.contains(overlaySwitch())).toBe(true);
+    expect(diagnosticsHalf?.contains(screen.getByTestId('diagnostics-card'))).toBe(true);
+    expect(settingsHalf?.contains(screen.getByTestId('diagnostics-card'))).toBe(false);
+    // Two equal halves.
+    for (const half of [settingsHalf, diagnosticsHalf]) {
+      expect(getComputedStyle(half as Element).flexGrow).toBe('1');
+    }
+    // The way back runs across the top, over both halves (the board's header).
+    expect(halves.contains(screen.getByRole('button', { name: 'Back to camera' }))).toBe(false);
+  });
+
+  it('in landscape, the settings half scrolls and the Diagnostics card does not', () => {
+    setWindowSize(640, 360);
+    renderSettings();
+    const halves = screen.getByTestId('settings-halves');
+    const card = screen.getByTestId('diagnostics-card');
+    // The positive pair: this probe sees a scroller where there is one.
+    const settingsScroller = scrollerOf(screen.getByText('Open-source licences'));
+    expect(settingsScroller).not.toBeNull();
+    expect(halves.children[0]?.contains(settingsScroller)).toBe(true);
+    expect(scrollerOf(card)).toBeNull();
+    expect([...card.querySelectorAll('*')].filter(scrolls)).toEqual([]);
+    expect(scrolls(card)).toBe(false);
+  });
+
+  it('in landscape, the way back works and a refused save is said on the settings half', async () => {
+    setWindowSize(640, 360);
+    const view = renderSettings();
+    const refusing: Partial<KeyValueStore> = { set: () => Promise.reject(new Error('locked')) };
+    Object.assign(view.kv, refusing);
+    fireEvent.click(screen.getByRole('radio', { name: 'Left' }));
+    const said = await screen.findByText("Couldn't save that. It applies until the app closes.");
+    expect(screen.getByTestId('settings-halves').children[0]?.contains(said)).toBe(true);
+    fireEvent.click(screen.getByRole('button', { name: 'Back to camera' }));
+    expect(view.navigation.current()).toBe('stream');
+  });
+
+  it('hands the window back after a test that turned it (D13)', () => {
+    setWindowSize(844, 390);
+    restoreWindowSize();
+    expect(Dimensions.get('window')).toMatchObject({ width: 0, height: 0 });
+    renderSettings();
+    expect(layoutOf()).toBe('portrait');
+    expect(screen.queryByTestId('settings-halves')).toBeNull();
   });
 });
 

@@ -28,8 +28,8 @@ export interface ForegroundPort {
   subscribeBackground(onBackground: () => void): () => void;
 }
 
-/** Settings and Diagnostics sit inside Live Stream (AGENTS §6): on air, only leaving the mode is blocked. */
-export type Route = 'home' | 'stream' | 'streamSettings' | 'streamDiagnostics';
+/** Settings (with Diagnostics inside it, spec §6) sits inside Live Stream (AGENTS §6): on air, only leaving the mode is blocked. */
+export type Route = 'home' | 'stream' | 'streamSettings';
 
 /**
  * Live Stream's sub-screens, pushed over the mounted viewfinder (D19). Named
@@ -37,7 +37,7 @@ export type Route = 'home' | 'stream' | 'streamSettings' | 'streamDiagnostics';
  * route nobody expected never hands Back to Android on air.
  */
 export function isStreamSubRoute(route: Route): boolean {
-  return route === 'streamSettings' || route === 'streamDiagnostics';
+  return route === 'streamSettings';
 }
 
 /**

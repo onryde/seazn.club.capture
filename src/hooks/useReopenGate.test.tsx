@@ -273,16 +273,15 @@ describe('useReopenGate: an ended session whose code is gone (N4)', () => {
 });
 
 /**
- * M22: Settings and Diagnostics are inside Live Stream (AGENTS §6). A return
+ * M22: Settings is inside Live Stream (AGENTS §6). A return
  * to the foreground that lands on Live Stream leaves the operator where they
  * were, never popping them back to the camera.
  */
 describe('useReopenGate: inside Live Stream already (M22)', () => {
   it.each([
     ['streamSettings', 'a valid code', null],
-    ['streamDiagnostics', 'a valid code', null],
     ['streamSettings', 'the engine on air', 'live'],
-    ['streamDiagnostics', 'the engine paired', 'paired-ready'],
+    ['streamSettings', 'the engine paired', 'paired-ready'],
   ] as const)('stays on %s with %s', async (route, _, scene) => {
     const fakes = createFakePorts({ kvSeed: inStream });
     if (scene !== null) fakes.engine.scene(scene);
@@ -301,7 +300,7 @@ describe('useReopenGate: inside Live Stream already (M22)', () => {
     gate(fakes);
     await waitFor(() => expect(fakes.navigation.current()).toBe('stream'));
     act(() => fakes.engine.forceState({ kind: 'idle' }));
-    fakes.navigation.go('streamDiagnostics');
+    fakes.navigation.go('streamSettings');
     fakes.setNow(new Date(EXPIRY.getTime() + 60_000));
     act(() => fakes.foreground.fire());
     await waitFor(() => expect(fakes.navigation.current()).toBe('home'));

@@ -64,6 +64,23 @@ describe('diagnosticsSections (spec §4)', () => {
     expect(titles).toEqual(['Link', 'Delivery', 'Phone', 'Heartbeat', 'Engine']);
   });
 
+  // Task 5: Settings' card picks its rows by key, never by translated text, so a row says which
+  // message it was made from. The count is the table above: 23 rows, each a distinct key.
+  it('gives every row the message key its label was translated from', () => {
+    const engine = createFakeCaptureEngine(() => NOW);
+    engine.scene('live');
+    const sections = diagnosticsSections(engine.getSnapshot(), NOW, createTranslator('en'));
+    engine.dispose();
+    const rows = sections.flatMap((section) => section.rows);
+    expect(rows).toHaveLength(23);
+    expect(new Set(rows.map((row) => row.key)).size).toBe(23);
+    for (const row of rows)
+      expect({ key: row.key, label: row.label }).toEqual({
+        key: row.key,
+        label: en[row.key],
+      });
+  });
+
   it('says what is unknown rather than inventing a number', () => {
     expect(rowsFor('fell-back')).toMatchObject({
       Transport: 'RTMPS',
@@ -232,9 +249,9 @@ describe('diagnosticsSections (spec §4)', () => {
     const sections = diagnosticsSections(snapshot, NOW, createTranslator('en'));
     const section = sections.find((s) => s.title === en['diag.section.engine']);
     expect(section?.rows).toEqual([
-      { label: en['diag.lastReport'], value: '4 s ago' },
-      { label: en['diag.recordRefused'], value: '2' },
-      { label: en['diag.recordDropped'], value: '1' },
+      { key: 'diag.lastReport', label: en['diag.lastReport'], value: '4 s ago' },
+      { key: 'diag.recordRefused', label: en['diag.recordRefused'], value: '2' },
+      { key: 'diag.recordDropped', label: en['diag.recordDropped'], value: '1' },
     ]);
     engine.dispose();
   });
@@ -243,14 +260,18 @@ describe('diagnosticsSections (spec §4)', () => {
   it('says it does not know when native has not reported yet', () => {
     const sections = diagnosticsSections(UNREPORTED, NOW, createTranslator('en'));
     const section = sections.find((s) => s.title === 'Engine');
-    expect(section?.rows[0]).toEqual({ label: 'Last report', value: '—' });
+    expect(section?.rows[0]).toEqual({ key: 'diag.lastReport', label: 'Last report', value: '—' });
   });
 
   // C4c-I4: silence reads as a climbing age; drift keeps it current (nativeCaptureEngine).
   it('reads a silent engine as a report long ago', () => {
     const snapshot = { ...UNREPORTED, reportedAtMs: NOW - 12_000 };
     const section = diagnosticsSections(snapshot, NOW, createTranslator('en')).at(-1);
-    expect(section?.rows[0]).toEqual({ label: 'Last report', value: '12 s ago' });
+    expect(section?.rows[0]).toEqual({
+      key: 'diag.lastReport',
+      label: 'Last report',
+      value: '12 s ago',
+    });
   });
 });
 
@@ -273,17 +294,26 @@ describe('A18: SRT not offered (Diagnostics)', () => {
 
   it('A18 a broadcast with no SRT offered says so beside its transport', () => {
     expect(linkRows(false)?.rows[0]).toEqual({
+      key: 'diag.transport',
       label: en['diag.transport'],
       value: 'RTMPS · SRT not offered',
     });
   });
 
   it('a fallback to RTMPS with SRT offered shows RTMPS alone', () => {
-    expect(linkRows(true)?.rows[0]).toEqual({ label: en['diag.transport'], value: 'RTMPS' });
+    expect(linkRows(true)?.rows[0]).toEqual({
+      key: 'diag.transport',
+      label: en['diag.transport'],
+      value: 'RTMPS',
+    });
   });
 
   // Question 2: no broadcast, no SRT line.
   it('says nothing of SRT with no broadcast', () => {
-    expect(linkRows(null)?.rows[0]).toEqual({ label: 'Transport', value: 'RTMPS' });
+    expect(linkRows(null)?.rows[0]).toEqual({
+      key: 'diag.transport',
+      label: 'Transport',
+      value: 'RTMPS',
+    });
   });
 });

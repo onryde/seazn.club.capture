@@ -176,7 +176,6 @@
   "diag.section.device": "Móvil",
   "diag.section.heartbeat": "Latido",
   "diag.section.engine": "Motor",
-  "diag.section.record": "Registro de la sesión",
   "diag.transport": "Transporte",
   "diag.srtNotOffered": "SRT no ofrecido",
   "diag.bitrate": "Tasa de bits",

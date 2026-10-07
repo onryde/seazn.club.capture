@@ -153,6 +153,16 @@ export const layout = {
   labelLinesRegular: 2,
   statusLinesMax: 2,
   captionLinesMax: 2,
+  /** Board "Settings, landscape": the screen's vertical padding (the board's 12, under the portrait 16). */
+  settingsPadV: 12,
+  /** Board "Settings": the Diagnostics card's section column (the section name sits in it). */
+  diagSection: 84,
+  /** Board "Settings": a Diagnostics row's least height. */
+  diagRow: 24,
+  /** Board "Settings": the Diagnostics card's padding, and the gutter between its columns. */
+  diagPad: 12,
+  /** Board "Settings": the gap between the card's header row and its rows. */
+  diagGap: 6,
 } as const;
 
 /**

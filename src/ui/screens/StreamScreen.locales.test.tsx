@@ -7,7 +7,6 @@ import fr from '@/i18n/fr.json';
 import type { Lang } from '@/i18n/language';
 import nl from '@/i18n/nl.json';
 import type { KeyValueStore } from '@/services/KeyValueStore';
-import { DiagnosticsScreen } from '@/ui/screens/DiagnosticsScreen';
 import { SettingsScreen } from '@/ui/screens/SettingsScreen';
 import { renderViewfinder } from '../../../test/renderViewfinder';
 
@@ -27,13 +26,12 @@ const RAW_KEY = /\b(stream|settings|diag|home|mode)\.[a-z]+[A-Za-z.]*\b/;
  * Every string on screen, one by one, and every accessibility label (what
  * TalkBack reads). One by one, because `textContent` glues neighbours together
  * ("Diagnosticsstream.tally.live") and the pattern's `\b` then never fires.
- * The session record's lines are left out: they are event names, not copy, and
- * some match the pattern by design (`settings.write-refused`,
- * `stream.unusable-code`). Its heading, Share and failure line stay in.
+ * Nothing is left out: spec §6 dropped the session record's lines from the
+ * screen (they were event names, not copy, and some matched the pattern by
+ * design), so the Diagnostics card is swept whole.
  */
 function visibleCopy(): string[] {
   const body = document.body.cloneNode(true) as HTMLElement;
-  body.querySelector('[data-testid="session-record-lines"]')?.remove();
   const copy: string[] = [];
   const walker = document.createTreeWalker(body, NodeFilter.SHOW_TEXT);
   for (let node = walker.nextNode(); node !== null; node = walker.nextNode()) {
@@ -82,7 +80,7 @@ const SUB_STATES: Readonly<Record<string, (lang: Lang) => Promise<void>>> = {
   },
   'a share refused': async (lang) => {
     const view = await renderViewfinder({ deviceLanguages: [lang] });
-    view.rerender(<DiagnosticsScreen />);
+    view.rerender(<SettingsScreen />);
     view.share.refuse();
     fireEvent.click(screen.getByRole('button', { name: shown(lang, 'diag.share') }));
     expect(await screen.findByText(shown(lang, 'diag.shareFailed'))).toBeTruthy();
@@ -163,19 +161,20 @@ describe('no screen in any state shows a raw key (AGENTS §10, question 4)', () 
     const view = await renderViewfinder({ deviceLanguages: [lang] });
     act(() => view.engine.scene(scene));
     expect(rawKeys()).toEqual([]);
+    // Settings carries the Diagnostics card now (spec §6), so this reads it too.
     view.rerender(<SettingsScreen />);
-    expect(rawKeys()).toEqual([]);
-    view.rerender(<DiagnosticsScreen />);
     expect(rawKeys()).toEqual([]);
   });
 
-  it('reads around the record lines only, never the rest of Diagnostics', async () => {
+  it('reads the whole Diagnostics card: no record line is on screen to leave out', async () => {
     const view = await renderViewfinder();
-    view.rerender(<DiagnosticsScreen />);
+    view.rerender(<SettingsScreen />);
     act(() => view.ports.logger.warn('settings.write-refused'));
-    expect(screen.getByText(/settings\.write-refused/)).toBeTruthy();
+    // The record took the line, and the screen did not (spec §6): nothing is exempt from the sweep.
+    expect(view.record.lines().join('\n')).toContain('settings.write-refused');
+    expect(screen.queryByText(/settings\.write-refused/)).toBeNull();
     expect(rawKeys()).toEqual([]);
-    for (const copy of ['Session record', 'Share record', 'Diagnostics', 'Bitrate']) {
+    for (const copy of ['Share record', 'Diagnostics', 'Bitrate']) {
       expect(visibleCopy()).toContain(copy);
     }
   });

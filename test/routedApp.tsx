@@ -11,7 +11,6 @@ import {
   type Path,
   type RouterMoves,
 } from '@/services/native/expoRouterNavigation';
-import { DiagnosticsScreen } from '@/ui/screens/DiagnosticsScreen';
 import { HomeScreen } from '@/ui/screens/HomeScreen';
 import { SettingsScreen } from '@/ui/screens/SettingsScreen';
 import { StreamScreen } from '@/ui/screens/StreamScreen';
@@ -41,7 +40,6 @@ const ROUTE_OF: Readonly<Record<Path, Route>> = {
   '/': 'home',
   '/stream': 'stream',
   '/stream/settings': 'streamSettings',
-  '/stream/diagnostics': 'streamDiagnostics',
 };
 
 function routerDouble(): RouterDouble {
@@ -74,7 +72,7 @@ function routerDouble(): RouterDouble {
 
 /**
  * The app as the root layout composes it: the reopen gate, then one screen per
- * route, with Settings and Diagnostics over a viewfinder that stays mounted.
+ * route, with Settings over a viewfinder that stays mounted.
  * `extra` renders beside the screens, as part of the app. A remount (Try again
  * after a crash) starts the Stack afresh at Home, as Expo Router's does.
  */
@@ -89,7 +87,6 @@ function RoutedApp({ nav, extra }: { nav: RouterDouble; extra?: ReactNode }) {
     <>
       {route === 'home' ? <HomeScreen /> : <StreamScreen />}
       {route === 'streamSettings' ? <SettingsScreen /> : null}
-      {route === 'streamDiagnostics' ? <DiagnosticsScreen /> : null}
       {extra}
     </>
   );

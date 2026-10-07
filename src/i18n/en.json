@@ -175,7 +175,6 @@
   "diag.section.device": "Phone",
   "diag.section.heartbeat": "Heartbeat",
   "diag.section.engine": "Engine",
-  "diag.section.record": "Session record",
   "diag.transport": "Transport",
   "diag.srtNotOffered": "SRT not offered",
   "diag.bitrate": "Bitrate",

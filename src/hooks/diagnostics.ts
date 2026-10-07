@@ -10,14 +10,16 @@ import { formatNumber } from '@/i18n/formatNumber';
 import type { MessageKey } from '@/i18n/messages';
 import type { Translator } from '@/i18n/translate';
 
-export type DiagnosticsRow = { readonly label: string; readonly value: string };
+/** `key` is the message the label was translated from: a row is picked by it, never by its text. */
+export type DiagnosticsRow = {
+  readonly key: MessageKey;
+  readonly label: string;
+  readonly value: string;
+};
 export type DiagnosticsSection = {
   readonly title: string;
   readonly rows: readonly DiagnosticsRow[];
 };
-
-/** How many session-record lines the screen shows; Share sends them all. */
-export const RECORD_TAIL = 20;
 
 /** The copy and the numbers, both in the operator's language. */
 type Say = { readonly t: Translator['t']; readonly num: (value: number) => string };
@@ -39,7 +41,7 @@ export function diagnosticsSections(
   const tel = snapshot.telemetry;
   const section = (title: MessageKey, pairs: readonly Pair[]): DiagnosticsSection => ({
     title: t(title),
-    rows: pairs.map(([label, value]) => ({ label: t(label), value })),
+    rows: pairs.map(([key, value]) => ({ key, label: t(key), value })),
   });
   return [
     section('diag.section.link', linkRows(snapshot, say)),

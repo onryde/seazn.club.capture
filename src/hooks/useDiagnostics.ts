@@ -1,4 +1,4 @@
-import { useCallback, useState, useSyncExternalStore } from 'react';
+import { useCallback, useState } from 'react';
 import type { EngineSnapshot } from '@/engine/CaptureEnginePort';
 import { diagnosticsSections, type DiagnosticsSection } from '@/hooks/diagnostics';
 import { useEngineSelector } from '@/hooks/useCaptureEngine';
@@ -24,23 +24,23 @@ export function useDiagnostics(): readonly DiagnosticsSection[] {
 }
 
 /**
- * The session record as it grows, and Share record (D21). The record is
- * scrubbed when written (Task 1's allow-list), so sharing sends nothing that
- * was not already safe to keep. A refused share sheet says so and is
- * recorded; the next share that opens clears it.
+ * Share record (D21): the whole session record, as it is when the press lands.
+ * Nothing here subscribes to the record, so its growth re-renders no one (the
+ * screen shows no line of it, spec §6). The record is scrubbed when written
+ * (Task 1's allow-list), so sharing sends nothing that was not already safe to
+ * keep. A refused share sheet says so and is recorded; the next share that
+ * opens clears it.
  */
 export function useSessionRecord(): {
-  readonly lines: readonly string[];
   readonly shareFailed: boolean;
   share(): void;
 } {
   const { record, share, logger } = usePorts();
-  const lines = useSyncExternalStore(record.subscribe, record.lines);
   const [shareFailed, setShareFailed] = useState(false);
   const send = useCallback(() => {
     void shareRecord(share, record, logger).then((opened) => setShareFailed(!opened));
   }, [share, record, logger]);
-  return { lines, shareFailed, share: send };
+  return { shareFailed, share: send };
 }
 
 /** Never rejects; async, so a port that throws before returning a promise lands here too. */

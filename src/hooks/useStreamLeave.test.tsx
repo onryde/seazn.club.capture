@@ -142,19 +142,17 @@ describe('useStreamLeave', () => {
     expect(fakes.engine.getSnapshot().state).toEqual(STOPPED);
   });
 
-  // Back inside a stream sub-screen (Settings, Diagnostics) is that screen's
+  // Back inside a stream sub-screen (Settings) is that screen's
   // (useBackToViewfinder), not a leave: the viewfinder stays mounted under it.
   it.each(
-    (['streamSettings', 'streamDiagnostics'] as const).flatMap((route) =>
-      (
-        [
-          ['nothing is live', null],
-          ['the broadcast is on air', LIVE],
-          ['the broadcast stopped', STOPPED],
-          ['the broadcast failed', FAILED],
-        ] as const
-      ).map(([what, state]) => [route, what, state] as const),
-    ),
+    (
+      [
+        ['nothing is live', null],
+        ['the broadcast is on air', LIVE],
+        ['the broadcast stopped', STOPPED],
+        ['the broadcast failed', FAILED],
+      ] as const
+    ).map(([what, state]) => ['streamSettings', what, state] as const),
   )('leaves Back on %s to that screen when %s', async (route, _, state) => {
     const modeStore = createModeStore(createMemoryKeyValueStore(inStream));
     const setActive = vi.spyOn(modeStore, 'setActive');
