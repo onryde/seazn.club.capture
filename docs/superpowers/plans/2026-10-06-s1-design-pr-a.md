@@ -145,10 +145,10 @@ The orchestrator puts these to the owner as recommendations with their reasons, 
 
 _To be filled by the orchestrator before Task 1, one line per question: the answer, the date, and the owner's words._
 
-- Q1:
-- Q2:
-- Q3:
-- Q4:
+- Q1: the recommendation, the board's 9 rows (`diag.transport`, `diag.bitrate`, `diag.rtt`, `diag.delivery`, `diag.lag`, `diag.checked`, `diag.battery`, `diag.thermal`, `diag.hbSent`); the other rows and the Engine section stop showing; Share record still shares the whole record. 2026-10-07, owner: "yes" (to all four recommendations).
+- Q2: the recommendation, 200 × 70 in portrait and 160 × 56 in landscape. 2026-10-07, owner: "yes".
+- Q3: the recommendation, Settings follows the phone unless a broadcast is held (`selectEngineStatus === 'live'`); paired Settings turns; the viewfinder re-locks landscape on return. 2026-10-07, owner: "yes".
+- Q4: option A, a doubles label (either side has partners) takes 17 sp, and the strip's vertical padding is 8 (180 of 180 dp). 2026-10-07, owner: "yes".
 
 ## Spec premises found false
 
