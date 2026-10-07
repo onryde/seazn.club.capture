@@ -113,6 +113,25 @@ export const typeScale = {
     lineHeight: 22,
     color: colour.ink2,
   },
+  /**
+   * The match label in the status strip (spec §2): Barlow Condensed 600 at
+   * 20 sp. No caps or letterspacing, unlike the other display roles: §2 names
+   * the face and the size only, and its 26-character rule counts the names as
+   * the organiser typed them.
+   */
+  label: {
+    fontFamily: font.displaySemibold,
+    fontSize: 20,
+    lineHeight: 22,
+    color: colour.ink,
+  },
+  /** Spec §2: 17 sp when the longest line is over 26 characters; doubles too (Q4 option A). */
+  labelLong: {
+    fontFamily: font.displaySemibold,
+    fontSize: 17,
+    lineHeight: 19,
+    color: colour.ink,
+  },
 } satisfies Record<string, TextStyle>;
 
 export type TypeRole = keyof typeof typeScale;
