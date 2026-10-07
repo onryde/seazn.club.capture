@@ -63,11 +63,13 @@ Three pull requests, in order. Each is reviewed and merged on its own.
 - Type: Barlow Condensed 600, 20 sp; 17 sp when the longest line is over 26 chars.
 - **Tests owe:** short singles, long singles, doubles, long doubles, `Match {n}`, a label with two
   `" v "`, and the 200-char maximum — each at 640 × 360 without clipping.
-- **Round line (not PR A; owner-approved 2026-10-06):** a small grey line above the label —
-  _Quarter-final_, _Round 3_, _Group A · Round 2_. It needs a descriptor addition from the web,
-  sent as structured data (stage kind and number) so the app translates it into the 4 locales;
-  organiser-typed names such as a group name are shown as typed. Absent → no line. It ships with
-  PR C or in a small PR once the web sends it — never as an empty slot.
+- **Round line (not PR A; owner-approved 2026-10-06/07):** a small grey line above the label showing
+  the scheduler board's round code, e.g. _QF_, _WB2_, _Grupo A · R2_. The server renders the whole line
+  and the descriptor carries it from pairing on (every descriptor shape, the waiting one included):
+  `stage: { label (1..40, org default locale, shown verbatim), code (board chip, ≤ 8), role { kind
+  (open string), n?, entrants? }, pool? (^[A-Z]$) }`. A missing, empty or over-40 `label` → no line.
+  The phone never builds or translates it. Ships with PR C, after the web contract lands
+  (web branches `fix/pool-label-i18n`, then `feat/capture-scoring-link-stage`).
 
 ## §3 Icons
 
