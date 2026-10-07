@@ -12,7 +12,7 @@
 - Diagnostics moves inside Settings and its route goes (§6);
 - the Seazn Club logo, a Home that turns with the phone, and Settings that turns when not on air (§7).
 
-**Architecture:** Almost all of this is JavaScript and React Native UI over the existing ports. The one native change is to the readiness predicate in the pure-Kotlin core (`modules/capture-engine/android/core`). There, `Readiness.sound` becomes "the mic is available", and `SoundHold`'s 15 s window is deleted. That change is JVM-tested, and is driven through the JVM host's JS contract by the `bridge` vitest project.
+**Architecture:** Almost all of this is JavaScript and React Native UI over the existing ports. The one native change is to the readiness predicate in the pure-Kotlin core (`modules/capture-engine/android/core`). There, `Readiness.sound` becomes "the mic is available", and `SoundHold`'s 15 s window is deleted. "Available" means an audio buffer arrived within `BridgeCore.NO_AUDIO_MS` (2 s) and the system has not silenced the mic (pre-flight F4). That needs a three-line glue change too: `PeakMeter.take()` reports "no buffer since the last take" as `null`, and the glue's close reports no buffer. The change is JVM-tested through the real `PeakMeter`, and is driven through the JVM host's JS contract by the `bridge` vitest project.
 
 Three facts stay where they live:
 
@@ -61,6 +61,8 @@ Three facts stay where they live:
   - **Sequence cases are owed**: a second Stop, OK then a new broadcast, and a call starting and ending. Each task lists its own.
 - **Scoped verification only. Never a full suite.**
   - Never run `pnpm test`, `pnpm check` (it ends in a full `vitest run`), a bare `pnpm vitest run`, or an unfiltered `./gradlew test`. CI runs the full suites.
+  - The `bridge` project is always run with its one file named: `modules/capture-engine/src/NativeCaptureEngine.bridge.test.ts` (F19).
+  - `pnpm typecheck` and `pnpm lint` stay allowed: they are not test suites, and the owner's rule bans full test runs only (F19).
   - Each task runs:
     - the vitest files it names;
     - the Gradle filters it names;
@@ -96,10 +98,16 @@ Three facts stay where they live:
 ## Review Focus
 
 1. **§4 is a native readiness change.** Every path that turned sound off must still turn it off: a call, the capture's close, an unpair. A silent room must never turn it off, before air or on air.
-2. **§5's leave reuses the existing leave rule.** Check that the card is shown only by a leave that really went Home. Check that the code is forgotten exactly as before. Check that a fatal end keeps the code, as the card's wording claims.
-3. **Rotation (`free`) must never let the activity rotate under a held broadcast or a committed camera.** Read every `current === 'free'` path in `orientationGate`.
-4. **Layout claims that jsdom cannot see are routed to Task 9, not asserted in vitest.** A test that reads `getComputedStyle` pins declared sizes only. It never proves a fit.
-5. **Removed things are gone everywhere.** `/stream/diagnostics`, `homeIntent`, `EndedBlock`, `SoundHold` and the `audio-below-floor` reason must leave nothing that still names them (`grep -a`).
+   - **New guard (F4): no audio buffer for `NO_AUDIO_MS` is not sound.** It is evaluated at each `readiness` call. The glue calls every 500 ms while the capture is open, whether or not a buffer came (`StreamerAdapter.kt:149-154`), so detection takes at most 2.5 s. Check that a silent buffer (level `0.0`) still counts as a buffer, and that only `null` means none.
+   - **The close path (F5).** The glue's real order is `silenced()` (`BridgeCore.kt:280`), then the release's `readiness(false, …)` (`StreamerAdapter.kt:232`). That call passed `0.0`, which is a buffer under the new rule and would turn sound back on after the close. It now passes `null`. A GlueRulesTest rule pins the text.
+   - **Cost of the window (F4).** StreamPack's own audio starts only with the stream. Between `beforeConnect`'s `sound.stop()` (`StreamerAdapter.kt:236`) and the first frame on air, a connect slower than 2 s shows sound not ready. The machine reads readiness only in Armed (`Pairings.kt:94-101`), so that cannot stop a connect. Only the meter turns orange. Task 9 item 4 looks at it.
+   - **A residual race, pre-existing.** A glue tick posted after `silenced()` but before the release cancels the job can carry a real buffer. Nothing ticks after the close, so sound would read ready until the next opening. `SoundHold` had the same hole. It is named here, not fixed.
+   - **The glue change compiles first on Task 9's release build.** `StreamerAdapter.kt`, `CoreCalls.kt` and `EngineHost.kt` are in the Android module, which no local task compiles. Keep the change to the three lines Task 1 names.
+2. **§5's leave reuses the existing leave rule.** Check that the card is shown only by a leave that really went Home. Check that the code is forgotten exactly as before. Check that a fatal end keeps the code, as the card's wording claims. Check the two F14 guards: a code-ended Stop has no "Scan the code again" line, and Continue clears the card.
+3. **Rotation (`free`) must never let the activity rotate under a held broadcast or a committed camera.** Read every `current === 'free'` path in `orientationGate`. The code says paired Settings closes the capture (F16, Task 7's top note). The phone confirms it in Task 9 item 7, and if it does not, Settings stays landscape-locked while paired.
+4. **Layout claims that jsdom cannot see are routed to Task 9, not asserted in vitest.** A test that reads `getComputedStyle` pins declared sizes only. It never proves a fit. The window-size helper (D13) flips a branch. It proves nothing about fit.
+5. **Removed things are gone everywhere.** `/stream/diagnostics`, `homeIntent`, `EndedBlock`, `SoundHold` and the `audio-below-floor` reason must leave nothing that still names them (`grep -a`). Neither may the old English strings: _No sound_, _Sound: ready_ and _Live with no sound_ (F1).
+6. **All five advisories now live in the status strip, on air too (D4, F17, accepted).** The top strip is gone, so the strip is their only home. Check that none of the five is lost.
 
 ## Owner questions (ask before Task 1)
 
@@ -150,12 +158,41 @@ _To be filled by the orchestrator before Task 1, one line per question: the answ
 - Q3: the recommendation, Settings follows the phone unless a broadcast is held (`selectEngineStatus === 'live'`); paired Settings turns; the viewfinder re-locks landscape on return. 2026-10-07, owner: "yes".
 - Q4: option A, a doubles label (either side has partners) takes 17 sp, and the strip's vertical padding is 8 (180 of 180 dp). 2026-10-07, owner: "yes".
 
+## Pre-flight amendments
+
+The pre-flight scan of this plan at `daa230c` found F1 to F20 (`.superpowers/sdd/2026-10-06-s1-design-pr-a/preflight.md`). Each carries the controller's ruling, applied here as written:
+
+| #   | Finding, in short                                                                                | Landed in                                                                  |
+| --- | ------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------- |
+| F1  | Three suites outside Task 1 assert the old sound copy                                            | Task 1 _Files_, Step 6 and Step 7 (the old English grep too)               |
+| F2  | Task 4 removes Diagnostics, but `SettingsScreen.test.tsx` clicks it                              | Task 4 _Files_, Step 4a and Step 5 run; taken out of Task 5                |
+| F3  | `stopped` and `fatal` leave for Home after Task 6                                                | Task 6 _Files_, Step 4 and Step 6 run                                      |
+| F4  | No producer ever reports "no audio"                                                              | D1, D15; Task 1 _Interfaces_, Steps 2, 4 and 5 (M3, M5); Review Focus 1    |
+| F5  | The glue's close re-turns sound on                                                               | Task 1 Step 2 (the C4a test and the glue rule), Step 4 and Step 5 (M4, M6) |
+| F6  | `"degraded" in kinds()` can never fail                                                           | Task 1 Step 2: deleted                                                     |
+| F7  | The D2 rule rewrite lost its positive control                                                    | Task 1 Step 2: `clock` and `newId` must parse                              |
+| F8  | The `.filter` mutation names a test that cannot reach it; Q4-A has no code                       | Task 2 Steps 1 and 2                                                       |
+| F9  | The fit test reserves the long size only                                                         | D17; Task 3 Steps 1 and 2; Task 9 item 2                                   |
+| F10 | `StreamStage` props, `chip-row`, the suite count, `TallyPlate` and `AudioMeter`, `onScanAnother` | Task 3 _Files_, Steps 3, 4 and 6                                           |
+| F11 | `borderWidth: 2`; the double-press test pins old code; the `Glyph` mock drops `tone`             | Task 4 Steps 1 to 5                                                        |
+| F12 | react-native-web reads `documentElement`, not `innerWidth`                                       | D10, D13; Task 5 Step 3; Task 7 Step 4                                     |
+| F13 | Settings `dataSet`; the row count read from the code under test; the 84 dp literal               | Task 5 Steps 1, 3 and 4                                                    |
+| F14 | A code-ended Stop says "scan again"; Continue keeps the card; case text                          | D7, D16; Task 6 _Interfaces_, Steps 1 to 5 (cases 4, 6, 10, 11; M5, M6)    |
+| F15 | `routeTarget`'s file, `EndedCard` in landscape, the File map, Continue's place                   | File map; Task 7 _Files_, Steps 2 to 4                                     |
+| F16 | Q3's "re-locks landscape"; whether Settings closes the capture                                   | Task 7's top note (the code fact); Task 7 Step 3; Task 9 item 7            |
+| F17 | D4 moves all five advisories into the strip                                                      | D4 (accepted); Review Focus 6                                              |
+| F18 | Task 9 misses no-audio, mic after reopen, the longest start time and the capture in Settings     | D14; Task 3 Step 2; Task 4 Steps 2 and 3; Task 9 items 4, 7 and 10         |
+| F19 | Stale self-review, `Q4_DOUBLES`, AGENTS line numbers, an unfiltered bridge run                   | Global Constraints; Task 1 Step 7; Task 8 Steps 2 and 3; Self-review       |
+| F20 | `stripStatus` duplicates `body`                                                                  | Task 2 Step 3; Task 3 Steps 2 and 4                                        |
+
 ## Spec premises found false
 
-- **F1. The `audio-below-floor` degrade reason is not native.** §4 lists it beside the native change. It is TypeScript-only: `SessionState.ts:72-78` says so, and `Vocabulary.kt:15-29` records that native never sends it. Its removal is JS-only (Task 1). Natively there is `MIC_SILENCED` alone, which stays.
-- **F2. "_Open-source licences_ moves under the power advice" is already true.** `SettingsScreen.tsx` renders `SideChoice`, power label, power advice, `Licences`, in that order. Task 5 pins the order with a test instead of moving anything.
-- **F3. The 640 × 360 fit is not achievable as written for every §2 label case** (Q4).
-- **F4. The spec's verification names `pnpm check`.** That command runs the full vitest suite, which the owner's standing rule forbids locally. This plan runs `check`'s three non-test parts plus the scoped vitest files. CI runs `pnpm check` itself.
+Labelled SP1 to SP4 since the pre-flight, so they never read as its F1 to F20.
+
+- **SP1. The `audio-below-floor` degrade reason is not native.** §4 lists it beside the native change. It is TypeScript-only: `SessionState.ts:72-78` says so, and `Vocabulary.kt:15-29` records that native never sends it. Its removal is JS-only (Task 1). Natively there is `MIC_SILENCED` alone, which stays.
+- **SP2. "_Open-source licences_ moves under the power advice" is already true.** `SettingsScreen.tsx` renders `SideChoice`, power label, power advice, `Licences`, in that order. Task 5 pins the order with a test instead of moving anything.
+- **SP3. The 640 × 360 fit is not achievable as written for every §2 label case** (Q4).
+- **SP4. The spec's verification names `pnpm check`.** That command runs the full vitest suite, which the owner's standing rule forbids locally. This plan runs `check`'s three non-test parts plus the scoped vitest files. CI runs `pnpm check` itself.
 - **Checked and true:** "_Something failed. Your code is kept._" is truthful on a fatal end.
   - `forgetsSaved` (`src/domain/mode/reopen.ts`) forgets only on an unpair or an operator stop.
   - `leaveRule` gives a failed engine `free`, which runs `setActive(null)` and keeps the saved code.
@@ -164,20 +201,26 @@ _To be filled by the orchestrator before Task 1, one line per question: the answ
 
 ## Plan decisions
 
-- **D1. Native's `sound` is "a reading from the open capture, and not silenced by the system".**
-  - A NaN reading is not a reading: it keeps `ReadinessTest`'s NaN case meaningful.
-  - The capture's close clears it, as today (the C4a carry).
-  - When the system restores the mic, the sound check is ready again at once if the capture is still reading. §4 says "ready when the call ends", and the glue keeps reading through a call.
+- **D1. Native's `sound` is "an audio buffer within the last `NO_AUDIO_MS`, and not silenced by the system" (F4).**
+  - **The fact this rests on (F4).** Before this PR, an empty `PeakMeter.take()` returned `0.0` (`DeviceReadings.kt:38`). The glue handed that to the core every 500 ms (`StreamerAdapter.kt:149-154`), so "no buffer" and "a silent buffer" looked the same. `take()` now returns `null` when nothing was offered since the last take. A silent buffer is `0.0`, never `null`. The glue passes the take through unchanged, and `CoreCalls.readiness` (`CoreCalls.kt:13`) takes a `Double?`.
+  - **No buffer for `NO_AUDIO_MS` (2 000 ms) is "audio capture unavailable" (§4).** The next buffer makes sound ready again, at the call that carries it. The constant is a `BridgeCore` companion value, not a constructor parameter, so D2 holds. Its cost: a real pause in buffers of over 2 s reads _Mic not available_. That happens at a connect (Review Focus 1); it is never a silent room.
+  - A non-finite level never reaches the core as a buffer: `PeakMeter.offer` drops it (`DeviceReadings.kt:35`), so a take of only non-finite offers is `null`. The old NaN test guarded a value no producer sends. It is replaced by the no-buffer test, driven through `PeakMeter` (Task 1, M3 and M5).
+  - **The capture's close clears it (the C4a carry), in the glue's real order (F5).** `noticeCapture` calls `silenced()` (`BridgeCore.kt:280`). Then the glue's `release()` reports `calls.readiness(false, 0.0)` (`StreamerAdapter.kt:232`), which this PR changes to `null`. Left at `0.0`, it is a buffer, and sound would read ready after the close.
+  - When the system restores the mic, sound is ready again at once if a buffer came within the window. §4 says "ready when the call ends", and the glue keeps reading through a call.
   - `Readiness.AUDIO_FLOOR` and its parity test go: nothing native reads the level any more.
   - `wire/audio-floor.json` and the JS `AUDIO_FLOOR` stay, because the meter's segments still use them.
 - **D2. `BridgeCore` loses its `silenceMs` parameter, so the glue rule test changes.** `GlueRulesTest`'s "final r2" rule ("the glue never passes a readiness timing override") becomes "BridgeCore declares no `…Ms` timing parameter". A new one then re-opens the rule instead of passing silently.
-- **D3. The JVM host learns `micSilenced` on its `readiness` line.** The JS contract's `ready.sound = false` maps to it: a level can no longer make sound not ready.
+- **D3. The JVM host learns `micSilenced` on its `readiness` line.** The JS contract's `ready.sound = false` maps to it: a level can no longer make sound not ready. The host's `meter()` offers a reading every 500 ms (`Host.kt:123-128`), so the host never meets the no-buffer window. That window is proved in the JVM core tests through `PeakMeter`, not in the contract.
 - **D4. The advisory caption moves into the status strip, under the status line.** `topAdvisory` and its priorities are unchanged: _keepOpen_, _shed_, _overlayFailed_, _notCharging_, then _scoreAhead_. _scoreAhead_ is already before-air only, from its `paired` input.
+  - **Accepted at pre-flight (F17).** §1 names only _scoreAhead_ for the strip, but the top strip is gone and the other four must stay visible, on air too. The strip is their only home. Cost if wrong: a layout tweak.
   - The top and bottom `EdgeStrip`s go, and so does `EdgeStrip.tsx`, whose only user is the stage. Nothing is drawn over the camera box but the overlay and the _What viewers see_ video.
   - AGENTS §6's "Full-bleed preview" rule is amended in Task 8.
 - **D5. `StreamStage` becomes the camera half and `StreamColumn` becomes the controls half.** Both keep their file names, so the existing tests' imports stay valid. Back's refusal line (`useColumnLine`) moves to `StreamScreen`, which hands the line to the strip.
 - **D6. The card's _You stopped the broadcast._ and _Something failed. Your code is kept._ reuse the existing `stream.status.endedOperator` and `stream.status.endedFatal`.** They are the same strings in all four languages, so nothing is translated twice. New keys exist only for the title and OK.
 - **D7. An Ended with no time on air goes Home too, and the card says _Never went live_ in place of the duration.** That covers the 401-deferral stop and a fatal end before the first frame. A Stop before the first frame is Paired, not Ended (`SessionMachine.kt:107-113`), so it stays on the viewfinder as §5 asks.
+  - **A Stop over a code that ended (the 401 deferral, F14 a).** `SessionMachine.kt:111` ends a Stop as `operator-stopped` when `pairing.codeEndedPending` is set, live or not. That code is dead, so _Scan the code again_ would send the operator back to a dead code. Ended keeps the pairing, so its snapshot still carries `codeEndedPending: true` (`Projection.kt:38`, `CaptureEnginePort.ts:96`).
+  - The card then omits _Scan the code again_ and shows the existing code-ended wording, `panel.codeEnded.body`: _This code has ended. Scan the new one._ (`en.json:45`, used today by `CodePanel.tsx:98`). No new copy. Cost: one less hint.
+  - The card reads `codeEnded` only for `operator-stopped`, the deferral's own path. A fatal end with `codeEndedPending` set is outside this ruling. It keeps D6's _Your code is kept._ (see _Self-review, Unresolved_).
 - **D8. `endedNotice` is an in-memory port built in `createNativePorts`.** A restart clears it by construction. `show` always stores a fresh object, so a second broadcast's card is never the first one's.
 - **D9. Rotation.** `Target` gains `free`.
   - `routeTarget` returns `landscape` for `/stream` and `free` for everything else, which is Home and `/stream/settings`.
@@ -185,9 +228,27 @@ _To be filled by the orchestrator before Task 1, one line per question: the answ
   - `free` while a broadcast is held keeps the lock. If nothing is locked yet, or the lock is `free`, it locks landscape (the R37 analogue). It never shows a card.
   - Returning to `landscape` while paired from a `free` lock never keeps `free`. It locks how the phone is held, with the turn card, as R24 does, or locks landscape when there is no reading yet. A `null` current keeps today's meaning.
   - `portrait` and `turnUpright` stay in the domain and its tests, though no route asks for them now. Removing them is a separate change the reviewer may ask for.
-- **D10. Home's layout is `landscape` when the window is wider than tall (`useWindowDimensions`).** It is one tree, branched by style, with a `dataSet={{ layout }}` marker that tests read. jsdom's default window is 1024 × 768, so every existing Home suite renders the landscape branch. Task 7 pins both branches explicitly and proves they offer the same controls in the same order.
+- **D10. Home's layout is `landscape` when the window is wider than tall (`useWindowDimensions`).** It is one tree, branched by style, with a `dataSet={{ layout }}` marker that tests read. Task 7 pins both branches explicitly and proves they offer the same controls in the same order.
+  - **Corrected at pre-flight (F12).** react-native-web 0.21.2 never reads `window.innerWidth`. Its `Dimensions.update` reads `window.visualViewport` when there is one, else `document.documentElement.clientWidth` and `clientHeight` (`node_modules/react-native-web/dist/exports/Dimensions/index.js:44-58`). It re-reads them on window `resize` (lines 117-121). jsdom has no `visualViewport`, and its `documentElement` is 0 × 0, so `screenLayout(0, 0)` is `portrait`. Every existing Home and Settings suite therefore renders the **portrait** branch, today's layout, unless a test sets the window with D13's helper.
 - **D11. The logo lives at `src/ui/assets/logo-wide-night.png`, inside the `ui` element, so the import is legal.** A `src/ui/assets/png.d.ts` declares `*.png` as an `ImageSourcePropType`, because `expo-env.d.ts` is gitignored and cannot be relied on.
 - **D12. `homeIntent` is deleted.** Its only producer was _Scan another_. Its consumer, `useScanRequest` in `useHome.ts`, goes with it.
+- **D13. The window-size test helper (F12, "pick one"): stub `documentElement`'s `clientWidth` and `clientHeight` getters and fire `resize`.** The rejected alternative was mocking `useWindowDimensions`.
+  - _Why:_ the stub drives react-native-web's real `Dimensions` → `useWindowDimensions` path, so a test also proves the screen reads the window. A mock would make the marker follow the mock and prove only the branch.
+  - It is one shared file, `test/windowSize.ts`, created in Task 5 (its first user) and reused in Task 7. Each test file that uses it registers `afterEach(restoreWindowSize)`.
+  - Each task that uses it has a positive control, which shows the helper really flips the layout.
+- **D14. The AUTO start time stays on its own line under the chips (F18, "pick one").** It does not share `chip-row`, and the fit test counts it as its own line. The rejected alternative was a chip row that wraps to a second line.
+  - _Why:_ this is where `PreflightChips.tsx:39-41` already puts it (amendment §2). The longest start time is es _Empieza a las 14:32 CEST_. It would have about 70 dp beside three 44 dp chips and AUTO in a 288 dp row, and would wrap to three lines. Under the chips it has the whole 288 dp.
+  - The fit arithmetic: 340 of 360 before air, with the line counted (Task 3 Step 2).
+  - Task 4 therefore does not move it into the row.
+- **D15. `NO_AUDIO_MS` is judged at each `readiness` call, not by a timer of its own (F4).**
+  - _Why:_ the glue calls every 500 ms while the capture is open, buffer or not (`StreamerAdapter.kt:149-154`). A timer per buffer would put up to 50 cancellations a second on the core's scheduler.
+  - The JVM tests drive the same cadence: a readiness call every 500 ms, the glue's `READINESS_MS`.
+- **D16. Continue clears the _Stream ended_ card, like a new scan (F14 b).** `useContinue` (`useHome.ts:472-499`) calls `endedNotice.clear()` beside `setStatusKey(null)`, on the path that re-pairs. An expired code does not re-pair and leaves the card. Cost: none visible.
+- **D17. The strip's label reservation is the larger of the two size rules (F9).**
+  - _Written assumption:_ a side of 26 characters or fewer, at 20 sp Barlow Condensed 600, does not wrap in the strip's 288 dp. That is 26 × about 9 dp = 234 dp. A side over 26 characters is already 17 sp (§2), and doubles are 17 sp (Q4 A).
+  - So the regular size needs at most 2 lines (`labelLinesRegular`, 2 × 22 = 44), and the long size at most 4 (4 × 19 = 76). The test reserves `max(44, 76)`.
+  - Doubles are two partners a side. A side with three partners is 3 lines and overruns, so it is a Task 9 observation.
+  - _Cost if wrong:_ one clipped line on a 360 dp-tall phone. Task 9 item 2 catches it with a 26-character side.
 
 ## What jsdom can and cannot see
 
@@ -225,26 +286,29 @@ Lengths are counted with `s.length`, as `budgets.test.ts` counts. French ` ` co
 | `home.ended.title`            | Stream ended                                | Emisión terminada                           | Direct terminé                            | Stream beëindigd              | new (T6); the card's title and its region name             |
 | `home.ended.ok`               | OK                                          | Aceptar                                     | OK                                        | OK                            | new (T6). es: Android's own button word                    |
 
-Reused unchanged: `stream.ended.duration`, `stream.ended.neverLive`, `stream.ended.scanAgain`, `stream.status.endedOperator`, `stream.status.endedFatal`, `diag.title`, `diag.share`, `diag.shareFailed`, `stream.link.settings`, `stream.home` and `stream.peek.label`. Task 8 adds _Stream ended_, _OK (button)_ and _Mic not available_ to the glossary.
+Reused unchanged: `stream.ended.duration`, `stream.ended.neverLive`, `stream.ended.scanAgain`, `stream.status.endedOperator`, `stream.status.endedFatal`, `panel.codeEnded.body` (the code-ended Stop, F14 a), `stream.status.micSilenced`, `diag.title`, `diag.share`, `diag.shareFailed`, `stream.link.settings`, `stream.home` and `stream.peek.label`. Task 8 adds _Stream ended_, _OK (button)_ and _Mic not available_ to the glossary.
 
 ## File map
 
-| Path                                                                                                                                                                                                                                                                                                                                                                                                                                        | Tasks | What                                                 |
-| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----- | ---------------------------------------------------- |
-| `modules/capture-engine/android/core/src/main/kotlin/com/seazn/capture/engine/core/Readiness.kt`                                                                                                                                                                                                                                                                                                                                            | 1     | `micAvailable` replaces `audioPeak`; floor removed   |
-| `…/engine/adapter/BridgeCore.kt`, `…/engine/adapter/SoundHold.kt` (deleted)                                                                                                                                                                                                                                                                                                                                                                 | 1     | mic availability; no silence window                  |
-| `…/core/host/src/main/kotlin/com/seazn/capture/engine/host/Host.kt`                                                                                                                                                                                                                                                                                                                                                                         | 1     | `micSilenced` on the readiness line; no `SILENCE_MS` |
-| `…/core/Vocabulary.kt`                                                                                                                                                                                                                                                                                                                                                                                                                      | 1     | stale `audio-below-floor` comment                    |
-| `…/src/test/…/core/ReadinessTest.kt`, `Configs.kt`; `…/adapter/BridgeCoreTest.kt`, `GlueRulesTest.kt`, `HeldPoseTest.kt`, `EncoderKeysTest.kt`, `SoundHoldTest.kt` (deleted)                                                                                                                                                                                                                                                                | 1     | tests                                                |
-| `src/hooks/statusKey.ts`, `src/domain/session/SessionState.ts`, `src/hooks/engineSelectors.test-d.ts`, `src/hooks/statusKey.test.ts`                                                                                                                                                                                                                                                                                                        | 1     | no `audio-below-floor`, no live-no-sound             |
-| `modules/capture-engine/src/FakeCaptureEngine.ts`, `FakeCaptureEngine.test.ts`, `test/hostEngine.ts`                                                                                                                                                                                                                                                                                                                                        | 1     | fake and contract say "mic not available"            |
-| `src/domain/session/matchLabel.ts` (+ test), `src/ui/components/MatchLabel.tsx` (+ test), `src/ui/theme/type.ts`                                                                                                                                                                                                                                                                                                                            | 2     | the label                                            |
-| `src/ui/theme/tokens.ts`, `src/ui/theme/viewfinderFit.test.ts`, `src/ui/screens/StreamScreen.tsx`, `src/ui/components/StreamStage.tsx`, `StreamColumn.tsx`, `StatusStrip.tsx` (new), `HoldAction.tsx`, `EdgeStrip.tsx` (deleted)                                                                                                                                                                                                            | 3     | the halves                                           |
-| `src/ui/components/Glyph.tsx` (new), `PreflightChips.tsx`, `IconButton.tsx` (new), `test/setup-ui.ts`                                                                                                                                                                                                                                                                                                                                       | 4     | icons                                                |
-| `app/stream/diagnostics.tsx` (deleted), `src/ui/screens/DiagnosticsScreen.tsx` (deleted), `SettingsScreen.tsx`, `src/ui/components/DiagnosticsCard.tsx` (new), `src/hooks/settingsDiagnostics.ts` (new), `src/domain/mode/homeLayout.ts` (new), `src/hooks/diagnostics.ts`, `src/services/devicePorts.ts`, `src/services/native/expoRouterNavigation.ts`, `src/hooks/useStreamLinks.ts`, `test/routedApp.tsx`, `test/backFromSubScreen.tsx` | 5     | Diagnostics in Settings                              |
-| `src/services/endedNotice.ts` (new), `src/services/homeIntent.ts` (deleted), `src/domain/session/endedCard.ts` (new), `src/hooks/useEndedNotice.ts` (new), `src/ui/components/EndedCard.tsx` (new), `EndedBlock.tsx` (deleted), `src/hooks/useViewfinder.ts`, `useHome.ts`, `usePorts.tsx`, `nativePorts.ts`, `test/fakePorts.ts`, `src/domain/mode/reopen.ts` (comments)                                                                   | 6     | Stop → Home                                          |
-| `src/ui/assets/logo-wide-night.png` (copied), `src/ui/assets/png.d.ts`, `src/domain/orientation/orientation.ts`, `src/hooks/useOrientationGate.ts`, `src/services/native/nativeOrientationLock.ts`, `HomeScreen.tsx`, `HomeFooter.tsx`                                                                                                                                                                                                      | 7     | Home, logo, rotation                                 |
-| `AGENTS.md`, `docs/i18n-glossary.md`, the four dictionaries                                                                                                                                                                                                                                                                                                                                                                                 | 8     | rules, review pass                                   |
+| Path                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            | Tasks | What                                                                             |
+| ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----- | -------------------------------------------------------------------------------- |
+| `modules/capture-engine/android/core/src/main/kotlin/com/seazn/capture/engine/core/Readiness.kt`                                                                                                                                                                                                                                                                                                                                                                                                                                                | 1     | `micAvailable` replaces `audioPeak`; floor removed                               |
+| `…/engine/adapter/BridgeCore.kt`, `…/engine/adapter/SoundHold.kt` (deleted)                                                                                                                                                                                                                                                                                                                                                                                                                                                                     | 1     | mic availability: a buffer within `NO_AUDIO_MS`, not silenced; no silence window |
+| `…/engine/adapter/DeviceReadings.kt` (`PeakMeter`)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              | 1     | `take()` is `null` when no buffer came (F4)                                      |
+| `modules/capture-engine/android/src/main/java/com/seazn/capture/engine/capture/StreamerAdapter.kt`, `…/capture/run/CoreCalls.kt`                                                                                                                                                                                                                                                                                                                                                                                                                | 1     | the glue passes the take as is; its close reports no buffer (F4, F5)             |
+| `…/core/host/src/main/kotlin/com/seazn/capture/engine/host/Host.kt`                                                                                                                                                                                                                                                                                                                                                                                                                                                                             | 1     | `micSilenced` on the readiness line; no `SILENCE_MS`                             |
+| `…/core/Vocabulary.kt`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          | 1     | stale `audio-below-floor` comment                                                |
+| `…/src/test/…/core/ReadinessTest.kt`, `Configs.kt`; `…/adapter/BridgeCoreTest.kt`, `GlueRulesTest.kt`, `DeviceReadingsTest.kt`, `HeldPoseTest.kt`, `EncoderKeysTest.kt`, `SoundHoldTest.kt` (deleted)                                                                                                                                                                                                                                                                                                                                           | 1     | tests                                                                            |
+| `src/hooks/statusKey.ts`, `src/domain/session/SessionState.ts`, `src/hooks/engineSelectors.test-d.ts`, `src/hooks/statusKey.test.ts`                                                                                                                                                                                                                                                                                                                                                                                                            | 1     | no `audio-below-floor`, no live-no-sound                                         |
+| `src/ui/components/StreamColumn.test.tsx`, `src/ui/screens/StreamScreen.onAir.test.tsx`, `StreamScreen.paired.test.tsx`                                                                                                                                                                                                                                                                                                                                                                                                                         | 1     | the old sound copy (F1)                                                          |
+| `modules/capture-engine/src/FakeCaptureEngine.ts`, `FakeCaptureEngine.test.ts`, `test/hostEngine.ts`                                                                                                                                                                                                                                                                                                                                                                                                                                            | 1     | fake and contract say "mic not available"                                        |
+| `src/domain/session/matchLabel.ts` (+ test), `src/ui/components/MatchLabel.tsx` (+ test), `src/ui/theme/type.ts`                                                                                                                                                                                                                                                                                                                                                                                                                                | 2     | the label                                                                        |
+| `src/ui/theme/tokens.ts`, `src/ui/theme/viewfinderFit.test.ts`, `src/ui/screens/StreamScreen.tsx`, `StreamScreen.layout.test.tsx` (new), `src/ui/components/StreamStage.tsx`, `StreamColumn.tsx`, `StatusStrip.tsx` (new), `StatusLine.tsx`, `HoldAction.tsx`, `TallyPlate.tsx`, `AudioMeter.tsx`, `PreflightChips.tsx` (`chip-row`), `EdgeStrip.tsx` (deleted)                                                                                                                                                                                 | 3     | the halves                                                                       |
+| `src/ui/components/Glyph.tsx` (new), `PreflightChips.tsx`, `IconButton.tsx` (new), `test/setup-ui.ts`, `src/ui/theme/tokens.ts` (`chipBorder`), `src/ui/screens/SettingsScreen.test.tsx` (F2)                                                                                                                                                                                                                                                                                                                                                   | 4     | icons                                                                            |
+| `app/stream/diagnostics.tsx` (deleted), `src/ui/screens/DiagnosticsScreen.tsx` (deleted), `SettingsScreen.tsx`, `src/ui/components/DiagnosticsCard.tsx` (new), `src/hooks/settingsDiagnostics.ts` (new), `src/domain/mode/homeLayout.ts` (new), `src/hooks/diagnostics.ts`, `src/services/devicePorts.ts`, `src/services/native/expoRouterNavigation.ts`, `src/hooks/useStreamLinks.ts`, `src/ui/theme/tokens.ts` (`diagSection`), `test/windowSize.ts` (new), `test/routedApp.tsx`, `test/backFromSubScreen.tsx`                               | 5     | Diagnostics in Settings                                                          |
+| `src/services/endedNotice.ts` (new), `src/services/homeIntent.ts` (deleted), `src/domain/session/endedCard.ts` (new), `src/hooks/useEndedNotice.ts` (new), `src/ui/components/EndedCard.tsx` (new), `EndedBlock.tsx` (deleted), `src/hooks/engineSelectors.ts` (`selectCodeEndedPending`), `src/hooks/useViewfinder.ts`, `useHome.ts`, `usePorts.tsx`, `nativePorts.ts`, `test/fakePorts.ts`, `src/domain/mode/reopen.ts` (comments), `src/ui/screens/SettingsScreen.test.tsx` (F3)                                                             | 6     | Stop → Home                                                                      |
+| `src/ui/assets/logo-wide-night.png` (copied), `src/ui/assets/png.d.ts`, `src/ui/assets/logo.test.ts` (new), `src/domain/orientation/orientation.ts` (+ test), `src/hooks/useOrientationGate.ts` (`routeTarget`, + test), `src/hooks/engineSelectors.ts` (`selectBroadcastHeld`), `src/services/devicePorts.ts`, `src/services/native/nativeOrientationLock.ts` (+ new test), `src/ui/theme/tokens.ts` (`logo`, `logoLandscape`), `HomeScreen.tsx`, `HomeScreen.layout.test.tsx` (new), `HomeFooter.tsx`, `EndedCard.tsx` (one row in landscape) | 7     | Home, logo, rotation                                                             |
+| `AGENTS.md`, `docs/i18n-glossary.md`, the four dictionaries                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     | 8     | rules, review pass                                                               |
 
 ---
 
@@ -257,6 +321,10 @@ Reused unchanged: `stream.ended.duration`, `stream.ended.neverLive`, `stream.end
   - `…/core/Vocabulary.kt` (the comment at lines 15–29)
   - `…/adapter/BridgeCore.kt` (constructor at lines 34–43, the `sounds` field at line 53, `readiness` at lines 190–205, `silenced` and `micSilenced` at lines 283–302, and the comments at lines 540 and in `CappedLines`)
   - `modules/capture-engine/android/core/host/src/main/kotlin/com/seazn/capture/engine/host/Host.kt` (lines 13–32, 63–69 and 119–157)
+  - `…/engine/adapter/DeviceReadings.kt:26-39` (`PeakMeter`, F4)
+  - The glue, three call sites (F4, F5). It is compiled first by Task 9's release build (Review Focus 1):
+    - `modules/capture-engine/android/src/main/java/com/seazn/capture/engine/capture/StreamerAdapter.kt:118` (`facts()`), `:149-154` (`reportReadiness`) and `:232` (`release()`'s last line)
+    - `…/capture/run/CoreCalls.kt:13` (`readiness`'s type)
 - Delete:
   - `…/adapter/SoundHold.kt`
   - `…/src/test/kotlin/com/seazn/capture/engine/adapter/SoundHoldTest.kt`
@@ -264,10 +332,15 @@ Reused unchanged: `stream.ended.duration`, `stream.ended.neverLive`, `stream.end
   - `…/core/ReadinessTest.kt`
   - `…/core/Configs.kt:86`
   - `…/adapter/BridgeCoreTest.kt` (lines 1210–1338, the sound tests)
-  - `…/adapter/GlueRulesTest.kt:125-150`
+  - `…/adapter/GlueRulesTest.kt:125-150`, plus one new rule (F5)
+  - `…/adapter/DeviceReadingsTest.kt:29-48` (the `PeakMeter` cases, F4)
   - `…/adapter/HeldPoseTest.kt:57`
   - `…/adapter/EncoderKeysTest.kt:25`
   - `…/host/src/test/kotlin/com/seazn/capture/engine/host/ProtocolTest.kt`, if it constructs a `Readiness`
+- JS tests that assert the old sound copy (F1):
+  - `src/ui/components/StreamColumn.test.tsx:117-131` (_No sound_)
+  - `src/ui/screens/StreamScreen.onAir.test.tsx:83-88` and `:119-125` (_Live with no sound…_)
+  - `src/ui/screens/StreamScreen.paired.test.tsx:58`, `:80` and `:106` (_Sound: ready_, `'Sound'`, `'No sound'`)
 - JS:
   - `src/hooks/statusKey.ts` (lines 1, 25 and 155–159)
   - `src/domain/session/SessionState.ts:60-90`
@@ -290,14 +363,27 @@ data class Readiness(val cameraFrames: Boolean, val micAvailable: Boolean, val p
   // held, side, notReady(camera, networkValidated) unchanged
   companion object { val UNKNOWN = Readiness(cameraFrames = false, micAvailable = false, pose = Pose.NotHeld) }
 }
-class BridgeCore(clock, scheduler, platform, store, appVersion, model, newId = …) // no silenceMs
-fun BridgeCore.readiness(cameraFrames: Boolean? = null, audioPeak: Double? = null, pose: Pose? = null) // unchanged signature: the glue still passes the peak
+class BridgeCore(clock, scheduler, platform, store, appVersion, model, newId = …) { // no silenceMs
+  companion object {
+    /** Spec §4, pre-flight F4: no audio buffer for this long is "audio capture unavailable". */
+    const val NO_AUDIO_MS = 2_000L
+  }
+}
+// Unchanged signature. A null audioPeak is "no buffer since the last call" (F4): it refreshes nothing.
+fun BridgeCore.readiness(cameraFrames: Boolean? = null, audioPeak: Double? = null, pose: Pose? = null)
+
+class PeakMeter {
+  fun offer(level: Double)  // unchanged: a non-finite level is dropped
+  fun take(): Double?       // F4: null when nothing was offered since the last take; a silent buffer is 0.0
+}
+class CoreCalls(…, val readiness: (cameraFrames: Boolean, audioPeak: Double?) -> Unit, …)
 ```
 
 - [ ] **Step 1: Baselines.**
   - Run `pnpm install --frozen-lockfile` once.
   - Run the Gradle filter below and the JS files below, and record the counts. These are the "before" numbers every later count is relative to.
   - Write down the `NotReady.SOUND`, `sound` and `audioPeak` uses: `cd "$WT" && grep -arn "audioPeak\|SoundHold\|SILENCE_MS\|silenceMs\|AUDIO_FLOOR\b" modules/capture-engine/android --include=*.kt | grep -v /build/`. Every hit is either changed in this task or named here as untouched. `StallWatchdog.AUDIO_FLOOR_FPS` is the audio packet rate, unrelated, and stays.
+  - Write down the old English too (F1): `cd "$WT" && grep -arn "No sound\|Sound: \|'Sound'\|Live with no sound\|no sound from the mic" src app modules test`. Each hit is rewritten in Step 6. `Live. Sound and picture going out.` is not matched by these patterns and stays.
 
 - [ ] **Step 2: Write the failing JVM tests (§4's four, plus the carries).**
   - Delete `SoundHoldTest.kt`. Each of its rules either dies with the window or moves to `BridgeCoreTest`, as listed in Step 5.
@@ -375,38 +461,97 @@ fun BridgeCore.readiness(cameraFrames: Boolean? = null, audioPeak: Double? = nul
     }
     assertEquals(60_000 / Engine.TICK_MS, readings.toLong(), "the sweep's own count")
     assertEquals(true, readyOn(core)["sound"])
-    assertFalse("degraded" in kinds(), "no degrade was ever recorded")
+    // F6: no record assertion. No record kind "degraded" exists, so one could never fail; the per-step state() is the witness.
   }
 
-  /** The C4a carry, kept: the capture's close is not ready at once; the next opening's first reading is. */
+  /**
+   * C4a carry, in the glue's real call order (pre-flight F5). The close is `noticeCapture` → `silenced()`
+   * (BridgeCore.kt:280), then the glue's `release()` reports `readiness(false, null)` (StreamerAdapter.kt:232, `0.0`
+   * before this task). Spec §4: a closed capture is "audio capture unavailable", so sound is not ready after it.
+   */
   @Test
-  fun `C4a carry the capture's close is not sound, and the next opening's first reading is`() {
+  fun `C4a carry the capture's close is not sound after the glue's close report, and the next opening's first buffer is`() {
     core.start()
     pair()
     core.viewfinder(true)
     core.readiness(audioPeak = 0.0)
     scheduler.advanceBy(0)
     assertEquals(true, readyOn(core)["sound"])
-    core.viewfinder(false)
+    core.viewfinder(false) // posted first: noticeCapture closes the capture and calls silenced()
+    core.readiness(cameraFrames = false, audioPeak = null) // posted after: the glue's release(), as it reports
     scheduler.advanceBy(0)
-    assertEquals(false, readyOn(core)["sound"], "closed: nothing records")
+    assertEquals(false, readyOn(core)["sound"], "closed: the capture delivers nothing")
     core.viewfinder(true)
     scheduler.advanceBy(0)
-    assertEquals(false, readyOn(core)["sound"], "open, no reading yet")
+    assertEquals(false, readyOn(core)["sound"], "open, no buffer yet")
     core.readiness(audioPeak = 0.0)
     scheduler.advanceBy(0)
-    assertEquals(true, readyOn(core)["sound"], "its first reading, silent or not")
+    assertEquals(true, readyOn(core)["sound"], "its first buffer, silent or not")
   }
 
-  /** D1: a reading that is no number is no reading. */
+  /**
+   * Spec §4 "audio capture unavailable", pre-flight F4. Driven through the real producer: the glue's tick hands the
+   * core PeakMeter's take every READINESS_MS (StreamerAdapter.kt:149-154), and the take is null when no buffer came.
+   */
   @Test
-  fun `S4 a NaN reading is not a working mic`() {
+  fun `S4 no audio buffer for NO_AUDIO_MS is not sound, and the next buffer is`() {
+    val glueTickMs = 500L // StreamerAdapter.READINESS_MS, the glue's cadence
+    val meter = PeakMeter()
     core.start()
     pair()
     core.viewfinder(true)
-    core.readiness(audioPeak = Double.NaN)
+    meter.offer(0.0) // a silent buffer: a working mic
+    core.readiness(audioPeak = meter.take())
     scheduler.advanceBy(0)
-    assertEquals(false, readyOn(core)["sound"])
+    assertEquals(true, readyOn(core)["sound"], "a silent buffer is a working mic")
+    var ticks = 0
+    for (elapsed in glueTickMs..(BridgeCore.NO_AUDIO_MS + glueTickMs) step glueTickMs) {
+      scheduler.advanceBy(glueTickMs)
+      core.readiness(audioPeak = meter.take()) // nothing was offered: null
+      scheduler.advanceBy(0)
+      assertEquals(elapsed < BridgeCore.NO_AUDIO_MS, readyOn(core)["sound"], "$elapsed ms with no audio buffer")
+      ticks += 1
+    }
+    assertEquals((BridgeCore.NO_AUDIO_MS / glueTickMs + 1).toInt(), ticks, "the sweep's own count")
+    meter.offer(0.0)
+    core.readiness(audioPeak = meter.take())
+    scheduler.advanceBy(0)
+    assertEquals(true, readyOn(core)["sound"], "the next buffer, silent, is a working mic again")
+  }
+```
+
+- `DeviceReadingsTest.kt` (F4), at the producer:
+  - In `the meter keeps the highest peak until it is taken`, the second `take()` becomes `assertNull(meter.take(), "no buffer since the last take")`.
+  - In `a level that is not finite is no reading…`, the last line becomes `assertNull(meter.take(), "an infinite level alone is no buffer")`.
+  - Add one case:
+
+```kotlin
+  /** Pre-flight F4: a silent buffer and no buffer are different facts; only the first is a working mic (spec §4). */
+  @Test
+  fun `a silent buffer is 0, and no buffer since the last take is null`() {
+    val meter = PeakMeter()
+    assertNull(meter.take(), "nothing offered yet")
+    meter.offer(0.0)
+    assertEquals(0.0, meter.take(), "a silent buffer")
+    assertNull(meter.take(), "and none since")
+  }
+```
+
+- `GlueRulesTest.kt` gains a rule for the close path (F5). It reads the glue's text, like every rule there:
+
+```kotlin
+  /**
+   * Pre-flight F5: under spec §4 any finite level is a buffer, so the release's closing report must carry none, or
+   * sound reads ready after the capture is gone. The tick hands over PeakMeter's take as it is (F4).
+   */
+  @Test
+  fun `F5 the glue's release reports no audio buffer, and its tick hands over the meter's take`() {
+    val glue = sources().single { it.name == "StreamerAdapter.kt" }.readText()
+    val at = glue.indexOf("override suspend fun release()").also { assertTrue(it >= 0, "release()") }
+    val release = glue.substring(at, glue.indexOf("\n    }\n", at))
+    assertTrue("calls.readiness(false, null)" in release, "release() reports no buffer: $release")
+    assertFalse(Regex("""calls\.readiness\([^)]*\b0\.0\b""").containsMatchIn(glue), "no literal level reaches the core as a buffer")
+    assertTrue("ready.take())" in glue.substring(glue.indexOf("private suspend fun reportReadiness()")), "the tick passes the take")
   }
 ```
 
@@ -419,14 +564,25 @@ fun BridgeCore.readiness(cameraFrames: Boolean? = null, audioPeak: Double? = nul
   - rewrite `ready` as `Readiness(cameraFrames = true, micAvailable = true, pose = Pose.Held(Side.RIGHT))`;
   - make the SOUND case `ready.copy(micAvailable = false)`;
   - replace the floor test with `S4 sound is the mic's availability, whatever the level`: `assertNull(ready.notReady(OWN, true))` and `assertEquals(NotReady.SOUND, ready.copy(micAvailable = false).notReady(OWN, true))`.
-- In `GlueRulesTest.kt`, rewrite `final r2 the glue never passes the core a readiness timing override` as `D2 BridgeCore declares no readiness timing parameter`. Keep the constructor parse and assert `assertEquals(emptyList(), timing, "a new timing parameter re-opens final r2: the glue must never pass it")`.
+- In `GlueRulesTest.kt`, rewrite `final r2 the glue never passes the core a readiness timing override` as `D2 BridgeCore declares no readiness timing parameter`. Keep the constructor parse. Replace `assertTrue("silenceMs" in timing, …)` with a positive control (F7), so an empty parse fails instead of passing:
+
+```kotlin
+    assertTrue("clock" in params && "newId" in params, "the constructor parsed: $params")
+    assertEquals(emptyList(), timing, "a new timing parameter re-opens final r2: the glue must never pass it")
+```
+
+`NO_AUDIO_MS` is a companion constant, not a parameter, so this rule stays green with it. Drop the old rule's call-site loop: it reads `timing.first()`, which an empty list cannot give, and the empty list already says there is nothing to pass.
+
 - `Configs.READY` becomes `Readiness(cameraFrames = true, micAvailable = true, pose = Pose.Held(Side.LEFT))`. `HeldPoseTest:57` and `EncoderKeysTest:25` change likewise.
+- **The window touches existing tests (F4).** A test that reports one reading, waits past `NO_AUDIO_MS`, and then reports another fact (a pose, the camera) now reads sound not ready at that report. That is §4's rule, not a regression. Give such a test a reading at the glue's cadence before the report. Never change an assertion about another check to make it pass. List each test changed this way in the commit body.
 
 - [ ] **Step 3: Run them red.**
 
   ```bash
-  cd "$WT/modules/capture-engine/android/core" && ./gradlew :test --tests 'com.seazn.capture.engine.adapter.BridgeCoreTest' --tests 'com.seazn.capture.engine.core.ReadinessTest' --tests 'com.seazn.capture.engine.adapter.GlueRulesTest' > "$TMPDIR/g.log" 2>&1; echo "EXIT=$?"
+  cd "$WT/modules/capture-engine/android/core" && ./gradlew :test --tests 'com.seazn.capture.engine.adapter.BridgeCoreTest' --tests 'com.seazn.capture.engine.core.ReadinessTest' --tests 'com.seazn.capture.engine.adapter.GlueRulesTest' --tests 'com.seazn.capture.engine.adapter.DeviceReadingsTest' --tests 'com.seazn.capture.engine.adapter.HeldPoseTest' --tests 'com.seazn.capture.engine.adapter.EncoderKeysTest' > "$TMPDIR/g.log" 2>&1; echo "EXIT=$?"
   ```
+
+  Re-pin each class's package before running: a `--tests` filter that matches nothing fails the run with "No tests found", which is the signal to fix it, not to drop the filter.
 
   Expected: compilation fails on `micAvailable`. That is the red state for a signature change. Note it, then go on.
 
@@ -434,27 +590,32 @@ fun BridgeCore.readiness(cameraFrames: Boolean? = null, audioPeak: Double? = nul
   - `Readiness.kt`: as in _Interfaces_. Delete `AUDIO_FLOOR` and its KDoc. Rewrite the class KDoc to cite spec §4 and the owner's words.
   - `BridgeCore.kt`:
     - remove the `silenceMs` parameter, its KDoc, and the `sounds` field;
-    - add the two facts and one predicate:
+    - add the two facts, the window and one predicate:
 
     ```kotlin
-      /** Spec §4: the open capture has given a reading (a finite one; D1). Cleared at the capture's close. */
-      private var micReading = false
+      /** Spec §4, pre-flight F4: when the open capture last delivered an audio buffer (D1). Cleared at the capture's close. */
+      private var lastAudioAtMs: Long? = null
 
       /** The system's last word on our recording (F-P5-8, `MicSilenceWatch`), kept across the capture's close. */
       private var systemSilenced = false
 
-      private fun micAvailable() = micReading && !systemSilenced
+      /** D15: judged at each call; the glue calls every 500 ms while the capture is open, buffer or not. */
+      private fun micAvailable(): Boolean {
+        val heard = lastAudioAtMs ?: return false
+        return clock.monotonicMs() - heard < NO_AUDIO_MS && !systemSilenced
+      }
     ```
 
-    - in `readiness(...)`, drop `atMs`, the `sounds.sample` call and the `peak` line;
+    - add `NO_AUDIO_MS = 2_000L` to the companion, with the KDoc in _Interfaces_;
+    - in `readiness(...)`, keep `atMs`, and drop the `sounds.sample` call and the `peak` line;
     - inside the scheduled block, put:
 
     ```kotlin
-          if (audioPeak != null && audioPeak.isFinite()) micReading = true
+          if (audioPeak != null && audioPeak.isFinite()) lastAudioAtMs = atMs // a null is no buffer (F4)
           readiness = readiness.copy(cameraFrames = cameraFrames ?: readiness.cameraFrames, micAvailable = micAvailable(), pose = ours ?: readiness.pose)
     ```
 
-    - `silenced()` becomes `micReading = false; turnMic()`;
+    - `silenced()` becomes `lastAudioAtMs = null; turnMic()`;
     - `micSilenced(silenced)` becomes `systemSilenced = silenced; turnMic()`;
     - add `turnMic`:
 
@@ -477,6 +638,29 @@ fun BridgeCore.readiness(cameraFrames: Boolean? = null, audioPeak: Double? = nul
     - delete `settleFor` and `SILENCE_MS`;
     - rewrite the class KDoc's sound paragraph: sound is ready at the first reading, and `micSilenced` is the contract's only way to make it not ready.
   - `Vocabulary.kt`: the "Also absent: `audio-below-floor`…" sentence becomes "Also absent: any level-based reason; a silent room is ready and on air is plain Live (spec §4)."
+  - `DeviceReadings.kt`, `PeakMeter` (F4):
+
+    ```kotlin
+    class PeakMeter {
+      private var peak: Double? = null
+
+      @Synchronized
+      fun offer(level: Double) {
+        if (level.isFinite()) peak = maxOf(peak ?: level, level)
+      }
+
+      /** The highest level since the last take, or null when no buffer came (spec §4: no buffer is no mic). */
+      @Synchronized fun take(): Double? = peak.also { peak = null }
+    }
+    ```
+
+    Rewrite its KDoc: a level that is not finite is no buffer.
+
+  - The glue, exactly three call sites (F4, F5):
+    - `StreamerAdapter.kt:118`: `CaptureFacts(shown.take() ?: 0.0, clock.lastVideoEpochMs)`. The meter shows no buffer as silence, as it does today.
+    - `StreamerAdapter.kt:151` stays `calls.readiness(current.value?.let(::cameraOurs) ?: false, ready.take())`, now passing a `Double?`.
+    - `StreamerAdapter.kt:232`: `calls.readiness(false, null)`. Add a comment: "no buffer: the capture is gone (spec §4, pre-flight F5)".
+    - `CoreCalls.kt:13`: `val readiness: (cameraFrames: Boolean, audioPeak: Double?) -> Unit`. The lambda at `EngineHost.kt:143` needs no change.
   - Delete `SoundHold.kt`.
 
 - [ ] **Step 5: Run green, then mutate.**
@@ -490,11 +674,14 @@ fun BridgeCore.readiness(cameraFrames: Boolean? = null, audioPeak: Double? = nul
     - the window rules die with the window (owner, 2026-10-06);
     - "micSilenced" → `S4 a call…`;
     - "reset" → the C4a carry.
-  - Run three mutations, one at a time, each from a `cp` backup:
+  - Run six mutations, one at a time, each from a `cp` backup. M3 to M6 are the new guards' own (F4, F5):
     - **M1.** `Readiness.sound` → `get() = true`. `S4 a call…` must fail.
-    - **M2.** `micAvailable()` → `micReading`, dropping `&& !systemSilenced`. `S4 a call…` must fail.
-    - **M3.** In `readiness`, `audioPeak != null` without `&& audioPeak.isFinite()`. `S4 a NaN reading…` must fail.
-  - A fourth check, of the old rule rather than of a new guard: put `micAvailable() && (audioPeak ?: 0.0) >= 0.05` back as the predicate. `S4 a room silent…`, `S4 sixty seconds…` and `S4 on air…` must all fail. That proves the tests witness §4, not just the refactor.
+    - **M2.** In `micAvailable()`, drop `&& !systemSilenced`. `S4 a call…` must fail.
+    - **M3, the no-audio window (F4).** In `micAvailable()`, drop the window: `return !systemSilenced` after the null check. `S4 no audio buffer for NO_AUDIO_MS…` must fail at 2 000 ms.
+    - **M4, the close (F5).** In `silenced()`, delete `lastAudioAtMs = null`. `C4a carry the capture's close…` must fail at "closed".
+    - **M5, the producer (F4).** In `PeakMeter.take()`, reset to `0.0` instead of `null`. `a silent buffer is 0, and no buffer… is null` must fail. So must `S4 no audio buffer…`, at 2 000 ms.
+    - **M6, the glue's close report (F5).** Put `calls.readiness(false, 0.0)` back at `StreamerAdapter.kt:232`. `F5 the glue's release reports no audio buffer…` must fail.
+  - A seventh check, of the old rule rather than of a new guard: make the predicate `micAvailable() && (audioPeak ?: 0.0) >= 0.05` again. `S4 a room silent…`, `S4 sixty seconds…` and `S4 on air…` must all fail. That proves the tests witness §4, not just the refactor.
 
 - [ ] **Step 6: The JS side.**
   - In `statusKey.ts`:
@@ -519,16 +706,46 @@ it.each([0, 0.01, 0.049, 0.05, 0.4])('says plain Live on air at level %s', (audi
 - `test/hostEngine.ts` `readinessLine`: `...(ready.sound === undefined ? {} : { micSilenced: !ready.sound })`. Remove the `audioPeak` mapping. Rewrite the comment at lines 203–207: sound is ready at the host's first reading, and the wait is the host-alive check.
 - `AudioMeter.tsx` KDoc: "orange when the mic is not available" (no behaviour change: it already colours by `selectSoundReady`). Change the `Hud.test.tsx:235-238` comment the same way.
 - Copy: the `stream.chip.sound`, `stream.blocker.sound` and `stream.status.notReadySound` rows of _Copy_, in all four languages. Delete `stream.status.liveNoSound` from all four. Add the `_review` marker to es, fr and nl.
+- **The three suites that assert the old copy (F1).** The expected strings are the spec's English (§4: _Mic not available_) and _Copy_'s en column:
+  - `StreamColumn.test.tsx:122` and `:131`: `'No sound'` becomes `'Mic not available'`.
+  - `StreamScreen.paired.test.tsx:58` and `:106`: `getByLabelText('Sound: ready')` becomes `getByLabelText('Mic: ready')`. The row at `:80`, `['sound', 'Sound', 'No sound']`, becomes `['sound', 'Mic', 'Mic not available']`.
+  - `StreamScreen.onAir.test.tsx:83-88` is replaced. Its D39 rule is gone (§4):
+
+```ts
+it('says plain Live when the room is quiet on air (spec §4: a silent room is ready)', async () => {
+  const view = await onAir('live');
+  act(() => view.engine.patch({ audioLevel: 0.01 }));
+  expect(plate()).toBe('Live');
+  expect(screen.getByText(LIVE_LINE)).toBeTruthy();
+  expect(screen.queryByText('Live with no sound. Check the mic now.')).toBeNull();
+});
+```
+
+- `StreamScreen.onAir.test.tsx:119-125` keeps ruling I2 ("never hides a fault"). The fault is now the one §4 keeps, a call taking the mic. Re-pin that `CALM_ON_AIR` (`statusKey.ts`) does not hold `stream.status.micSilenced`, then write:
+
+```ts
+it('never hides a fault: the mic-silenced line outranks it at once (ruling I2, spec §4)', async () => {
+  const view = await onAir('live');
+  act(() => void view.back.press());
+  expect(screen.getByText('Stop the broadcast first — hold Stop.')).toBeTruthy();
+  act(() => view.engine.scene('mic-silenced'));
+  expect(screen.getByText(en['stream.status.micSilenced'])).toBeTruthy();
+  expect(screen.queryByText('Stop the broadcast first — hold Stop.')).toBeNull();
+});
+```
+
+- Add `import en from '@/i18n/en.json';` to that file, as `StreamScreen.paired.test.tsx:4` has it.
 
 - [ ] **Step 7: Scoped JS run.**
 
   ```bash
-  cd "$WT" && pnpm vitest run --project domain --project ui --project types src/hooks/statusKey.test.ts src/hooks/engineSelectors.test-d.ts modules/capture-engine/src/FakeCaptureEngine.test.ts src/hooks/preflight.test.ts src/ui/components/Hud.test.tsx src/ui/components/PreflightChips.test.tsx src/i18n/budgets.test.ts src/i18n/dictionaries.test.ts --reporter=json --outputFile="$TMPDIR/v.json" > "$TMPDIR/v.log" 2>&1; echo "EXIT=$?"
-  cd "$WT" && CAPTURE_BRIDGE=1 pnpm vitest run --project bridge --reporter=json --outputFile="$TMPDIR/b.json" > "$TMPDIR/b.log" 2>&1; echo "EXIT=$?"
+  cd "$WT" && pnpm vitest run --project domain --project ui --project types src/hooks/statusKey.test.ts src/hooks/engineSelectors.test-d.ts modules/capture-engine/src/FakeCaptureEngine.test.ts src/hooks/preflight.test.ts src/ui/components/Hud.test.tsx src/ui/components/PreflightChips.test.tsx src/ui/components/StreamColumn.test.tsx src/ui/screens/StreamScreen.onAir.test.tsx src/ui/screens/StreamScreen.paired.test.tsx src/i18n/budgets.test.ts src/i18n/dictionaries.test.ts --reporter=json --outputFile="$TMPDIR/v.json" > "$TMPDIR/v.log" 2>&1; echo "EXIT=$?"
+  cd "$WT" && CAPTURE_BRIDGE=1 pnpm vitest run --project bridge modules/capture-engine/src/NativeCaptureEngine.bridge.test.ts --reporter=json --outputFile="$TMPDIR/b.json" > "$TMPDIR/b.log" 2>&1; echo "EXIT=$?"
   ```
-  - The `bridge` project is the JVM host's contract (`test/hostEngine.ts`). It is the seam's real producer and consumer, so it is owed here (AGENTS failure class 1).
+  - The `bridge` project is the JVM host's contract (`test/hostEngine.ts`). It is the seam's real producer and consumer, so it is owed here (AGENTS failure class 1). Its one file is named (F19); confirm it is the only `name` in `b.json`.
   - Then run `pnpm typecheck`, `rtk proxy pnpm lint` (read `✖ N problems`) and `pnpm format:check`.
   - `grep -a` must find no `audio-below-floor`, `liveNoSound`, `SoundHold` or `SILENCE_MS` in `src app modules test`.
+  - Step 1's old-English grep (F1) must now be empty.
 
 - [ ] **Step 8: Commit** with the message `feat(capture): a silent room is ready; the mic's availability is sound (spec §4)` and the trailer.
 
@@ -541,7 +758,7 @@ it.each([0, 0.01, 0.049, 0.05, 0.4])('says plain Live on air at level %s', (audi
   - `src/domain/session/matchLabel.test.ts`
   - `src/ui/components/MatchLabel.tsx`
   - `src/ui/components/MatchLabel.test.tsx`
-- Modify: `src/ui/theme/type.ts`, which gains `label`, `labelLong` and `stripStatus`.
+- Modify: `src/ui/theme/type.ts`, which gains `label` and `labelLong`. The status line reuses the existing `body` role (F20).
 
 **Interfaces:**
 
@@ -587,7 +804,7 @@ const CASES = [
   [
     'doubles',
     'Ana Ruiz / Bea Lima v Cai Wen / Dee Roy',
-    // Q4 option A: doubles are long. Under option B or C this literal is 'regular'.
+    // Q4 option A (owner, 2026-10-07): doubles are long. Every line here is 8 characters or fewer, so only that rule makes it long.
     {
       kind: 'sides',
       a: { lines: ['Ana Ruiz', 'Bea Lima'], wrap: 1 },
@@ -641,6 +858,15 @@ describe('splitMatchLabel (spec §2)', () => {
       expect(splitMatchLabel(label).kind).toBe('block');
   });
 
+  it('an empty partner piece is dropped, not shown as a blank line (§2: one partner per line)', () => {
+    // The one input that reaches the filter: the side is not trimmed away to 'Ana /', so the split yields ''.
+    expect(splitMatchLabel('Ana /  / Bea v Cai')).toEqual({
+      kind: 'sides',
+      a: { lines: ['Ana', 'Bea'], wrap: 1 },
+      b: { lines: ['Cai'], wrap: 2 },
+    });
+  });
+
   it('a lone " / " is not a partner list', () => {
     expect(splitMatchLabel('Ana / v Bea')).toEqual({
       kind: 'sides',
@@ -656,7 +882,7 @@ describe('splitMatchLabel (spec §2)', () => {
 });
 ```
 
-- The doubles case's size is `'long'` under Q4 option A, and `'regular'` under options B and C. Write the literal the owner's answer gives, never a value read from the code.
+- The doubles case's size is `'long'`, the owner's Q4 answer (option A), written as a literal, never a value read from the code.
 - The 200-char case keeps §2's maximum exactly. The `toHaveLength(200)` line guards the fixture itself.
 - Run it red: the module does not exist.
 
@@ -681,22 +907,22 @@ export function splitMatchLabel(label: string): MatchLabel {
 
 export function labelSize(label: MatchLabel): 'regular' | 'long' {
   const parts = label.kind === 'block' ? [label.block] : [label.a, label.b];
+  // Q4 option A (owner, 2026-10-07): a doubles label, either side with partners, is long.
+  if (parts.some((part) => part.wrap === 1)) return 'long';
   const longest = Math.max(...parts.flatMap((part) => part.lines.map((line) => line.length)));
   return longest > LONG_LINE_OVER ? 'long' : 'regular';
 }
 ```
 
-Under Q4 option A, `labelSize` also returns `'long'` when any part has `wrap === 1`, meaning partners. Add that line, and the doubles case pins it.
-
 - **Mutation:** change `>` to `>=` in `labelSize`. "the size turns at 26" must fail.
-- **Mutation:** remove `.filter(...)`. "a lone ' / '" must fail.
+- **Mutation (F8):** remove `.filter(...)`. "an empty partner piece is dropped…" must fail, with `['Ana', '', 'Bea']`. "a lone ' / '" cannot fail here: `'Ana /'` is trimmed before the split, and gives the same output either way (checked by hand with `node`).
+- **Mutation (F8, Q4 A):** delete the Q4 option A line in `labelSize`. The `doubles` case must fail with `'regular'`. Its lines are all 8 characters or fewer, so nothing else makes it long.
 
 - [ ] **Step 3: Type roles.** In `type.ts`, add:
   - `label`: `font.displaySemibold`, 20/22, `colour.ink`;
-  - `labelLong`: 17/19, the same otherwise;
-  - `stripStatus`: `font.body`, 15/22, `colour.ink2`. These are the board's status-strip figures.
+  - `labelLong`: 17/19, the same otherwise.
 
-  The grey `v` uses `metricUnit` (12/16, `ink3`).
+  The status strip's line uses the existing `body` role (`font.body`, 15/22, `colour.ink2`, `type.ts:110-115`), which is already the board's status-strip figure. No `stripStatus` role is added (F20). The grey `v` uses `metricUnit` (12/16, `ink3`).
 
 - [ ] **Step 4: The component and its failing test.**
   - `MatchLabel` reads `selectLabel` and renders nothing for a null label.
@@ -732,6 +958,8 @@ Under Q4 option A, `labelSize` also returns `'long'` when any part has `wrap ===
   - `src/ui/components/StreamColumn.tsx`: this becomes the controls half.
   - `src/ui/components/HoldAction.tsx`: `minHeight` becomes `layout.holdHeight`.
   - `src/ui/components/StatusLine.tsx`: a `variant` prop, defaulting to `status`, so Home is unchanged.
+  - `src/ui/components/TallyPlate.tsx:37` (`minHeight: 56` becomes `layout.plateHeight`) and `src/ui/components/AudioMeter.tsx:36` (`height: 12` becomes `layout.meterHeight`) (F10).
+  - `src/ui/components/PreflightChips.tsx:33`: the chips' row `View` gains `testID="chip-row"`, so this task's layout test can name it (F10). Nothing else in the file changes until Task 4.
 - Create:
   - `src/ui/components/StatusStrip.tsx`
   - `src/ui/theme/viewfinderFit.test.ts`
@@ -761,11 +989,13 @@ Under Q4 option A, `labelSize` also returns `'long'` when any part has `wrap ===
   stripGap: 6,
   /** Lines the strip reserves: the label at most 4, the status line 2, the caption 2 (Q4). */
   labelLinesMax: 4,
+  /** D17 (F9): a regular-size label is at most 2 lines, one a side, by the written assumption. */
+  labelLinesRegular: 2,
   statusLinesMax: 2,
   captionLinesMax: 2,
 ```
 
-- Use the values Q4's answer gives. Option B makes `captionLinesMax: 1` and `stripPadV: 10`.
+- These are the values of Q4's answer, option A.
 - `TallyPlate`, `AudioMeter` and `HoldAction` read these tokens instead of their literals.
 
 - [ ] **Step 2: The fit arithmetic, failing first** (`viewfinderFit.test.ts`, `domain` project):
@@ -789,8 +1019,12 @@ describe('the viewfinder fits 640 × 360 (spec §1)', () => {
   });
 
   it('the status strip, worst case before air', () => {
-    const label = layout.labelLinesMax * typeScale.labelLong.lineHeight; // Q4 A: doubles are long
-    const status = layout.statusLinesMax * typeScale.stripStatus.lineHeight;
+    // D17 (F9): the larger of the two size rules. Regular: 2 lines at 22 (a side of 26 or fewer does not wrap).
+    // Long: 4 lines at 19 (a side over 26 wraps to 2, or doubles take one partner a line; Q4 A).
+    const regular = layout.labelLinesRegular * typeScale.label.lineHeight;
+    const long = layout.labelLinesMax * typeScale.labelLong.lineHeight;
+    const label = Math.max(regular, long);
+    const status = layout.statusLinesMax * typeScale.body.lineHeight; // F20: the strip's line is `body`
     const caption = layout.captionLinesMax * typeScale.metricUnit.lineHeight;
     const items = [label, status, caption];
     expect(items).toHaveLength(3);
@@ -799,10 +1033,10 @@ describe('the viewfinder fits 640 × 360 (spec §1)', () => {
     );
   });
 
-  it('the controls half before air: plate, chips, the flexible gap, icons, hold and its reason', () => {
+  it('the controls half before air: plate, chips and the start line, the flexible gap, icons, hold and its reason', () => {
     const items = [
       layout.plateHeight,
-      layout.chip,
+      layout.chip + space.xs + typeScale.metricUnit.lineHeight, // D14 (F18): the AUTO start line under the chips
       0,
       layout.iconButton,
       layout.holdHeight + space.xs + typeScale.metricUnit.lineHeight,
@@ -823,38 +1057,40 @@ describe('the viewfinder fits 640 × 360 (spec §1)', () => {
 });
 ```
 
-- Red first: `labelLong`, `stripStatus` and the new tokens are missing until Steps 1 and Task 2 land. Run it after Step 1 alone, and the strip case must be green at exactly 180.
-- **Mutation:** set `stripPadV: 10` without option B. The strip case must fail at 184. This is the arithmetic that made Q4 an owner question.
+- Red first: the new tokens are missing until Step 1 lands (`label` and `labelLong` come from Task 2). Run it after Step 1 alone. The strip case must be green at exactly 180: 2 × 8 + 76 + 44 + 32 + 2 × 6. The controls half before air is 340 of 360: 2 × 16 + 56 + 64 + 0 + 48 + 92 + 4 × 12.
+- **Mutation:** set `stripPadV: 10`. The strip case must fail at 184. This is the arithmetic that made Q4 an owner question.
+- **Mutation (F9):** set `labelLinesRegular: 4`. The regular rule then reserves 88 dp, and the strip case must fail at 192. That is the reviewer's case, and it proves the `max` reads both rules.
 
 - [ ] **Step 3: The layout test, failing first** (`StreamScreen.layout.test.tsx`, `ui`). Use `renderViewfinder` and assert:
   - The root has two children, `testID="camera-half"` and `testID="controls-half"`, each with computed `flex-grow: 1`. That is spec §1's 50/50.
   - `flex-direction` is `row` for `side: 'right'`, and `row-reverse` after `settings.change({ side: 'left' })`. The test sets the side through the store, then re-reads.
   - Inside `camera-half`, in DOM order: `testID="camera-box"`, which contains `preview` and, with the overlay on and a URL, `overlay`, then `testID="status-strip"`. The `viewer-video` is inside `camera-box` during a peek. Use `view.engine.scene('live')`, then press and hold _What viewers see_.
   - `status-strip` contains `match-label`, then the status line, then, before air with the overlay on, the text _You see the score slightly ahead of viewers_. In scene `live`, that text is absent.
-  - `controls-half`'s children, in DOM order, before air: `tally-plate` and the meter in one row (`testID="plate-row"`), then the chips row, then `testID="controls-gap"`, then `testID="icon-row"`, then the hold button. On air: `plate-row` holds `tally-plate` and the elapsed text, then the meter, `controls-gap`, `icon-row`, and the hold button.
+  - `controls-half`'s children, in DOM order, before air: `tally-plate` and the meter in one row (`testID="plate-row"`), then `chip-row` (added in this task, F10), with the AUTO start line after it when AUTO is on (D14), then `testID="controls-gap"`, then `testID="icon-row"`, then the hold button. On air: `plate-row` holds `tally-plate` and the elapsed text, then the meter, `controls-gap`, `icon-row`, and the hold button.
   - Computed `min-height` of the hold button's plate is `${layout.holdHeight}px`, and `background-color` of `status-strip` is `colour.surface`, painted with the same `paintOf` helper `Hud.test.tsx` uses.
-  - Organiser-stopped (`view.engine.forceState` with Paired and `lastEnd: 'organiser'`, or the fake's scene for it; re-pin which) still renders both halves. This is §1's last bullet.
+  - Organiser-stopped (the fake's scene `paired-after-organiser-stop`, `FakeCaptureEngine.ts:315`) still renders both halves. This is §1's last bullet.
   - **Sequence:** Paired, then live, then the call starts (scene `mic-silenced`), then the call ends (scene `live`). The strip's status line follows each step, and the halves never remount: the `camera-box` element is the same object before and after (`toBe`).
   - Run red: no halves yet.
 
 - [ ] **Step 4: Implement.**
   - `StreamScreen`: `<View testID="viewfinder" style={side === 'left' ? styles.mirrored : styles.halves}>`, holding `<StreamStage …line={line} />` and then `<StreamColumn …/>`. `halves` is `{ flex: 1, flexDirection: 'row' }` and `mirrored` is `row-reverse`.
     - `useColumnLine(view, leave.blocked)` moves here from `StreamColumn`, unchanged.
-    - `StreamStage` gets `line`, `paired`, `overlayOn`, `peek`, `canLeave`, `onHome` and `onSettings`. `onDiagnostics` is kept until Task 4.
+    - `StreamStage` gets `line`, `paired`, `overlayOn` and `peek` only. It keeps no buttons, so it takes no `canLeave`, `onHome`, `onSettings` or `onDiagnostics` (F10).
+    - `StreamColumn` gets `canLeave`, `onHome` and `onSettings`, and `onDiagnostics` until Task 4. It keeps `onScanAnother`, passed through unchanged, until Task 6 deletes it (F10).
   - `StreamStage` is the camera half (`testID="camera-half"`, `flex: 1`). It holds:
     - `camera-box`: `width: '100%'`, `aspectRatio: layout.previewAspect`, `backgroundColor: colour.stage`, `overflow: 'hidden'`. Inside it go `PreviewBoundary`, `OverlayPreview` and `StageVideo`, as today; their `absoluteFill` now fills the box only.
     - `<StatusStrip line={line} advisory={advisory} />`. `advisory` is `topAdvisory(...)` exactly as `TopStrip` computes it today, with the same inputs.
     - `TopStrip`, `BottomStrip` and the `EdgeStrip` import are deleted.
   - `StatusStrip` (`testID="status-strip"`, `flex: 1`, `backgroundColor: colour.surface`, padding `stripPadV`/`stripPadH`, gap `stripGap`) holds:
     - `<MatchLabel />`;
-    - `<StatusLine variant="stripStatus" numberOfLines={layout.statusLinesMax}>{line}</StatusLine>`;
+    - `<StatusLine variant="body" numberOfLines={layout.statusLinesMax}>{line}</StatusLine>` (F20);
     - when the advisory is not null, `<Text variant="metricUnit" numberOfLines={layout.captionLinesMax}>{t(ADVISORY_KEY[advisory])}</Text>`.
   - `StreamColumn` is the controls half (`testID="controls-half"`, `flex: 1`, padding `controlsPad`, gap `controlsGap`, `backgroundColor: colour.ground`). It holds:
     - `plate-row` (`flexDirection: 'row'`, gap `space.sm`): `TallyPlate`, then `view.onAir ? <Elapsed /> : <AudioMeter />`;
     - `view.onAir ? <AudioMeter /> : null`;
-    - before air, `<PreflightChips …/>`;
+    - before air, `<PreflightChips …/>`, whose `chip-row` now carries its testID;
     - `<View testID="controls-gap" style={{flex:1}}/>`, written through `StyleSheet`;
-    - `<View testID="icon-row">` with the existing `GhostButton`s for Settings, Diagnostics and Home (if `canLeave`). The icon row receives `onSettings`, `onDiagnostics`, `onHome` and `canLeave` from `StreamScreen`. On air, `ColumnPeek` goes into this row, after Settings;
+    - `<View testID="icon-row">` with the existing `GhostButton`s for Settings, Diagnostics and Home (if `canLeave`). These move here from `StreamStage.tsx:113-115`. The icon row receives `onSettings`, `onDiagnostics`, `onHome` and `canLeave` from `StreamScreen`. On air, `ColumnPeek` goes into this row, after Settings;
     - `ColumnAction`.
 
     `StreamColumn` no longer renders `StatusLine`. `StreamStage` keeps no buttons.
@@ -872,7 +1108,7 @@ describe('the viewfinder fits 640 × 360 (spec §1)', () => {
   ```bash
   cd "$WT" && pnpm vitest run --project domain --project ui src/ui/theme/viewfinderFit.test.ts src/ui/screens/StreamScreen. src/ui/components/StreamColumn.test.tsx src/ui/components/Hud.test.tsx src/ui/components/OverlayPreview.test.tsx src/ui/components/ViewerPeek.test.tsx src/ui/components/PreviewBoundary.test.tsx src/ui/components/HoldAction.test.tsx src/ui/components/MatchLabel.test.tsx src/ui/components/hookOrder.test.tsx --reporter=json --outputFile="$TMPDIR/v.json" > "$TMPDIR/v.log" 2>&1; echo "EXIT=$?"
   ```
-  - `src/ui/screens/StreamScreen.` is a deliberate substring. It must match all eight `StreamScreen.*.test.tsx` files plus the new layout test. Check the printed names.
+  - `src/ui/screens/StreamScreen.` is a deliberate substring. It must match eight files: the seven existing `StreamScreen.*.test.tsx` (`ended`, `locales`, `memo`, `native`, `newCode`, `onAir`, `paired`) and the new `layout` test (F10). Check the printed names.
   - Then run typecheck, lint and format. Commit `feat(viewfinder): two halves, a 16:9 camera box and the status strip (spec §1)`.
 
 ## Task 4: Icon chips and the icon row (§3)
@@ -889,6 +1125,8 @@ describe('the viewfinder fits 640 × 360 (spec §1)', () => {
   - `src/ui/components/StreamColumn.tsx`: the icon row.
   - `src/ui/screens/StreamScreen.tsx`: no `onDiagnostics`.
   - `test/setup-ui.ts`: the `Glyph` stand-in.
+  - `src/ui/theme/tokens.ts`: `layout.chipBorder` (F11).
+  - `src/ui/screens/SettingsScreen.test.tsx:216-234`: its viewfinder cases click the Diagnostics button this task removes (F2). The edit moves here from Task 5; Step 4a has it.
   - the four dictionaries: remove `stream.link.diagnostics`.
 
 **Interfaces:**
@@ -921,10 +1159,11 @@ export const IconButton: (props: {
     const { createElement } = await import('react');
     const { View } = await import('react-native');
     return {
-      Glyph: ({ name, slashed }: { name: string; slashed?: boolean }) =>
+      // F11: the stand-in keeps `tone`, so a test can see the glyph's colour.
+      Glyph: ({ name, slashed, tone }: { name: string; slashed?: boolean; tone: string }) =>
         createElement(View, {
           testID: 'glyph',
-          dataSet: { name, slashed: String(slashed === true) },
+          dataSet: { name, slashed: String(slashed === true), tone },
         } as ViewProps),
     };
   });
@@ -935,40 +1174,68 @@ export const IconButton: (props: {
     - the accessible name is `"{Camera|Mic|Network}: ready|not ready"`, from en via `stream.chip.ok` and `stream.chip.notOk`;
     - the glyph's `data-name` is `camera`, `mic` or `network`;
     - the camera glyph's `data-slashed` is `"true"` only when the camera is not ready, and the other two are never slashed;
-    - computed `width` and `height` are `${layout.chip}px`.
+    - the glyph's `data-tone` is `lime` when ready and `caution` when not (§3: the state is in the colour; F11);
+    - computed `width` and `height` are `${layout.chip}px`, and computed `border-width` is `${layout.chipBorder}px`.
   - No chip has a visible word: `queryByText('Camera')` is null. AUTO stays a word chip, now 44 tall.
   - _Held_ has no chip (§3): exactly 3 elements named `/: (ready|not ready)$/`.
   - **Sequence (a call):** scene `paired-ready`, then `view.engine.setReady({ sound: false })` (the call), then `setReady({ sound: true })` (it ends). The mic chip's name goes "Mic: ready", then "Mic: not ready", then "Mic: ready". Its border goes lime, caution, lime.
-  - "Starts {time}" is in the same row as the chips (`testID="chip-row"`), after them.
+  - The AUTO start line stays where it is today, under `chip-row` and not inside it (D14, F18): with `auto` and a `startsAt`, `chip-row` does not contain the _Starts {time}_ text, and that text follows `chip-row` in DOM order.
 
   Run red.
 
 - [ ] **Step 3: Implement the chips.** Each `ChipView` is a `View`:
   - `accessible`, with the same `accessibilityLabel`;
-  - style `{ width: layout.chip, height: layout.chip, borderWidth: 2, borderRadius: radius.card, alignItems: 'center', justifyContent: 'center' }`, with the border lime or caution;
+  - style `{ width: layout.chip, height: layout.chip, borderWidth: layout.chipBorder, borderRadius: radius.card, alignItems: 'center', justifyContent: 'center' }`, with the border lime or caution. Add `/** Spec §3, the board's chip outline; today's PreflightChips border. */ chipBorder: 2` to `layout` (F11). `styles.chip`'s `borderWidth: 2` at `PreflightChips.tsx:77` reads it too;
   - containing `<Glyph name={GLYPH[chip]} slashed={chip === 'camera' && !ok} tone={ok ? 'lime' : 'caution'} />`.
 
-  `GLYPH` is `{ camera: 'camera', sound: 'mic', network: 'network' }`. The row is `chip-row` and carries the start time on its right (`marginLeft: 'auto'`).
+  `GLYPH` is `{ camera: 'camera', sound: 'mic', network: 'network' }`. The row keeps `chip-row` (Task 3), and the start line stays under it (D14).
 
 - [ ] **Step 4: The icon row, test first** (`IconButton.test.tsx` and additions to `StreamScreen.layout.test.tsx`):
   - `IconButton`: role `button`, accessible name = `label`, computed `width` and `height` `${layout.iconButton}px`, border `ink3`, `onPress` called once per press.
   - Before air, the icon row's buttons in order are `Settings`, then `Home`.
   - On air (scene `live`), the order is `Settings`, then the _What viewers see_ button, which keeps its text, and no `Home`.
   - No button named `Diagnostics` exists in either state.
-  - **Sequence (a second press):** pressing Settings twice navigates once. `useStreamLinks.settings` already guards this; assert `app.nav.history`, which shows one push.
+  - No double-press test (F11). It would pin `NavigationPort.go`'s existing dedupe; `useStreamLinks.ts:8` has no guard of its own. So it cannot fail because of this task. `IconButton`'s own "`onPress` once per press" case is the press test this task owes.
 
   Run red, then implement:
   - `StreamColumn`'s icon row holds `<IconButton glyph="settings" label={t('stream.link.settings')} …/>`;
   - before air, when `canLeave`, `<IconButton glyph="home" label={t('stream.home')} …/>`;
   - on air, `ColumnPeek` with `flex: 1`.
 
-  Remove `onDiagnostics` from `StreamScreen`, `StreamStage` and `StreamColumn`. Delete `stream.link.diagnostics` from the four dictionaries. `useStreamLinks.diagnostics` stays until Task 5.
+  Remove `onDiagnostics` from `StreamScreen` and `StreamColumn`. Delete `stream.link.diagnostics` from the four dictionaries. `useStreamLinks.diagnostics` stays until Task 5.
+
+- [ ] **Step 4a: `SettingsScreen.test.tsx`'s viewfinder cases (F2).** Replace the `describe` at lines 216-234 with the following. The scene list is unchanged here; Task 6 trims it (F3).
+
+```ts
+describe('the viewfinder’s way into Settings (AGENTS §6; spec §3, §6: no Diagnostics button)', () => {
+  const SCENES = ['paired-ready', 'connecting', 'live', 'holding', 'stopped', 'fatal'] as const;
+
+  it.each(SCENES)('Settings is there while %s, and Diagnostics is not', async (scene) => {
+    const view = await renderViewfinder();
+    act(() => view.engine.scene(scene));
+    expect(screen.queryByRole('button', { name: 'Diagnostics' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
+    expect(view.navigation.current()).toBe('streamSettings');
+  });
+
+  it('covers its scenes', () => expect(SCENES).toHaveLength(6));
+
+  it('reads in Spanish', async () => {
+    await renderViewfinder({ deviceLanguages: ['es'] });
+    expect(screen.getByRole('button', { name: 'Ajustes' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Diagnóstico' })).toBeNull();
+  });
+});
+```
+
+Each absence has its positive pair in the same case: the Settings button is found and pressed.
 
 - [ ] **Step 5: Scoped run, mutation, commit.**
   - **Mutation:** make `slashed={!ok}`, so every glyph is slashed when not ready. The "camera only" case must fail.
+  - **Mutation (F11):** make `tone="lime"` whatever `ok` is. The `data-tone` assertion must fail on every not-ready case.
   - Run:
   ```bash
-  cd "$WT" && pnpm vitest run --project domain --project ui src/ui/components/PreflightChips.test.tsx src/ui/components/IconButton.test.tsx src/ui/screens/StreamScreen. src/ui/components/StreamColumn.test.tsx src/i18n/ --reporter=json --outputFile="$TMPDIR/v.json" > "$TMPDIR/v.log" 2>&1; echo "EXIT=$?"
+  cd "$WT" && pnpm vitest run --project domain --project ui src/ui/components/PreflightChips.test.tsx src/ui/components/IconButton.test.tsx src/ui/screens/StreamScreen. src/ui/components/StreamColumn.test.tsx src/ui/screens/SettingsScreen.test.tsx src/i18n/ --reporter=json --outputFile="$TMPDIR/v.json" > "$TMPDIR/v.log" 2>&1; echo "EXIT=$?"
   ```
   - Then run typecheck, lint and format. Commit `feat(viewfinder): icon chips and the icon row; the Diagnostics button goes (spec §3)`.
 
@@ -987,9 +1254,11 @@ export const IconButton: (props: {
   - `src/ui/components/DiagnosticsCard.tsx`
   - `src/hooks/settingsDiagnostics.ts`
   - `src/hooks/settingsDiagnostics.test.ts`
+  - `test/windowSize.ts`: the shared window-size helper (D13, F12). Task 7 reuses it.
 - Modify:
-  - `src/ui/screens/SettingsScreen.tsx`
-  - `src/ui/screens/SettingsScreen.test.tsx`, including lines 218–223
+  - `src/ui/screens/SettingsScreen.tsx`: the Diagnostics card, the halves, and `dataSet={{ layout }}` on its root (F13).
+  - `src/ui/screens/SettingsScreen.test.tsx`. Its viewfinder cases (lines 216-234) are Task 4's now (F2).
+  - `src/ui/theme/tokens.ts`: `layout.diagSection` (F13).
   - `src/hooks/diagnostics.ts`: `RECORD_TAIL` goes.
   - `src/hooks/useDiagnostics.ts`: `useSessionRecord` keeps `share` and `shareFailed`. `lines` goes if nothing else reads it.
   - `src/hooks/useStreamLinks.ts`: `diagnostics()` goes.
@@ -1007,6 +1276,7 @@ export const IconButton: (props: {
 
 ```ts
 export type DiagRow = {
+  readonly key: MessageKey;
   readonly section: string | null;
   readonly label: string;
   readonly value: string;
@@ -1023,34 +1293,106 @@ export function settingsDiagRows(
 
 - [ ] **Step 1: Failing domain test** (`settingsDiagnostics.test.ts`).
   - Build `diagnosticsSections` from a fake snapshot, the way `src/hooks/diagnostics.test.ts` does. Re-pin its helper first.
-  - Assert that `settingsDiagRows(...)`:
-    - has exactly the Q1 rows, in the board's order;
-    - carries `section` on the first row of each of Link, Delivery, Phone and Heartbeat, with the translated `diag.section.*` text, and `null` on every other row;
-    - has 9 rows under Q1's recommendation (`expect(rows).toHaveLength(9)`, the anti-vacuity count);
-    - has no Engine row.
-  - Under Q1's alternative, the count is 20, and the "card does not scroll" test in Step 3 becomes "the card scrolls within itself". Write whichever the owner chose.
-  - **Mutation:** drop one key from `SETTINGS_DIAG_ROWS`. The length and order assertion must fail.
+  - The expected rows are the owner's Q1 answer, written as literals (F13). They are never read from `SETTINGS_DIAG_ROWS` or from `settingsDiagRows`, which are the code under test:
+
+```ts
+// Owner, Q1 (2026-10-07): the board's 9 rows, in the board's order. The section keys are diagnostics.ts:45-48's.
+const Q1_ROWS = [
+  ['diag.transport', 'diag.section.link'],
+  ['diag.bitrate', null],
+  ['diag.rtt', null],
+  ['diag.delivery', 'diag.section.delivery'],
+  ['diag.lag', null],
+  ['diag.checked', null],
+  ['diag.battery', 'diag.section.device'],
+  ['diag.thermal', null],
+  ['diag.hbSent', 'diag.section.heartbeat'],
+] as const;
+
+it("shows Q1's rows, in the board's order, each section named once on its first row", () => {
+  const rows = settingsDiagRows(diagnosticsSections(SNAPSHOT, NOW, say), say);
+  expect(rows).toHaveLength(9); // Q1's count, a literal (anti-vacuity: 0 rows would fail)
+  expect(rows.map((row) => row.key)).toEqual(Q1_ROWS.map(([key]) => key));
+  expect(rows.map((row) => row.section)).toEqual(
+    Q1_ROWS.map(([, section]) => (section === null ? null : en[section])),
+  );
+  expect(rows.some((row) => row.key.startsWith('diag.engine'))).toBe(false);
+});
+```
+
+- `SNAPSHOT`, `NOW` and `say` are the helpers `diagnostics.test.ts` already uses. Re-pin their names; never build a new snapshot builder.
+- **Mutation:** drop one key from `SETTINGS_DIAG_ROWS`. The length assertion must fail at 8.
 
 - [ ] **Step 2: Implement** `settingsDiagnostics.ts`. It flattens the sections, keeps rows whose `key` is in `SETTINGS_DIAG_ROWS`, orders them by that list, and sets `section` on the first row of each section.
 
 - [ ] **Step 3: Failing Settings tests** (`SettingsScreen.test.tsx`):
   - A card titled `Diagnostics` (`diag.title`) with a `Share record` button (`diag.share`) in its header row. Pressing Share calls `ports.share` once with the whole record. Count the lines shared against `record` length, not against a tail.
-  - Its rows render section | item | value. Each row is a `View` with three `Text`s, `testID="diag-row"`, and `diag-row` count equals `settingsDiagRows(...)` length, so the anti-vacuity count is the domain's.
+  - Its rows render section | item | value. Each row is a `View` with three `Text`s and `testID="diag-row"`. Assert `expect(screen.getAllByTestId('diag-row')).toHaveLength(9)`: Q1's literal count, never `settingsDiagRows(...)`'s length, which would let 0 = 0 pass (F13).
   - The rows tick: after `vi.advanceTimersByTime(1000)` with a changed bitrate, the Bitrate row shows the new value.
   - `session-record-lines` does not exist.
   - The dev scenes render only when `devTools` is true, as on Diagnostics today: move that case from `DiagnosticsScreen.test.tsx`.
-  - Order, which also checks F2: the switch hints, the side radios, the power label and advice, then `Open-source licences`, then the Diagnostics card in portrait (`dataset.layout === 'portrait'`).
-  - Landscape (Task 7 sets the window size; here, set `window.innerWidth = 844; window.innerHeight = 390` and dispatch `resize`): the screen root has `testID="settings-halves"`, with `flex-direction: row`. The settings `ScrollView` is the first half and the card is the second.
-  - The card itself is not a `ScrollView`: `card.closest('[data-testid=diagnostics-card]')` has no scrolling ancestor inside the card. Whether it fits at 640 × 360 is Task 9.
-  - Settings re-renders at most once a second while open. `DiagnosticsCard` holds `useDiagnostics()` itself, so the switches do not re-render on a tick. Assert it with a render counter, on the pattern of `StreamScreen.memo.test.tsx`.
+  - Order, which also checks SP2: the switch hints, the side radios, the power label and advice, then `Open-source licences`, then the Diagnostics card. This is in portrait: `screen.getByTestId('settings').dataset.layout === 'portrait'`, jsdom's 0 × 0 default (D10).
+  - Landscape, through D13's helper. Create `test/windowSize.ts`:
 
-  Run red.
+```ts
+import { act } from '@testing-library/react';
+
+/**
+ * D13 (pre-flight F12): react-native-web 0.21 reads the window from documentElement's clientWidth and
+ * clientHeight (jsdom has no visualViewport, and its documentElement is 0 × 0), and re-reads it on window
+ * `resize`. A stub of those two getters, then `resize`, moves useWindowDimensions for real.
+ */
+export function setWindowSize(width: number, height: number): void {
+  const root = document.documentElement;
+  Object.defineProperty(root, 'clientWidth', { configurable: true, get: () => width });
+  Object.defineProperty(root, 'clientHeight', { configurable: true, get: () => height });
+  act(() => void window.dispatchEvent(new Event('resize')));
+}
+
+/** Back to jsdom's own getters (Element.prototype's), and tell react-native-web. Register with afterEach. */
+export function restoreWindowSize(): void {
+  const root = document.documentElement;
+  Reflect.deleteProperty(root, 'clientWidth');
+  Reflect.deleteProperty(root, 'clientHeight');
+  act(() => void window.dispatchEvent(new Event('resize')));
+}
+```
+
+- The landscape cases, with `afterEach(restoreWindowSize)` in the file:
+
+```ts
+it('the helper really turns the window (positive control, D13)', () => {
+  renderSettings();
+  expect(screen.getByTestId('settings').dataset.layout).toBe('portrait');
+  setWindowSize(844, 390);
+  expect(Dimensions.get('window')).toMatchObject({ width: 844, height: 390 });
+  expect(screen.getByTestId('settings').dataset.layout).toBe('landscape');
+});
+
+it('in landscape, settings on one half and Diagnostics on the other (spec §6)', () => {
+  setWindowSize(640, 360); // spec §1's smallest landscape phone
+  renderSettings();
+  const halves = screen.getByTestId('settings-halves');
+  expect(getComputedStyle(halves).flexDirection).toBe('row');
+  expect(halves.children).toHaveLength(2);
+  expect(halves.children[0]?.contains(screen.getByText('Open-source licences'))).toBe(true);
+  expect(halves.children[1]?.contains(screen.getByTestId('diagnostics-card'))).toBe(true);
+});
+```
+
+- `Dimensions` comes from `react-native`. `renderSettings` is the file's existing helper; re-pin its name.
+- The card itself is not a `ScrollView`: `card.closest('[data-testid=diagnostics-card]')` has no scrolling ancestor inside the card. Whether it fits at 640 × 360 is Task 9.
+- Settings re-renders at most once a second while open. `DiagnosticsCard` holds `useDiagnostics()` itself, so the switches do not re-render on a tick. Assert it with a render counter, on the pattern of `StreamScreen.memo.test.tsx`.
+
+Run red.
 
 - [ ] **Step 4: Implement, then remove the route.**
-  - `DiagnosticsCard` (`testID="diagnostics-card"`, `memo`): a header row with `<Text variant="control">{t('diag.title')}</Text>` and `<GhostButton label={t('diag.share')} …/>`, the `shareFailed` line, the rows as a grid (`section` 84 dp wide, `label` `flex: 1`, `value` right-aligned in `metricValue`), then `<DevScenes />`.
+  - `DiagnosticsCard` (`testID="diagnostics-card"`, `memo`): a header row with `<Text variant="control">{t('diag.title')}</Text>` and `<GhostButton label={t('diag.share')} …/>`, the `shareFailed` line, the rows as a grid (`section` `layout.diagSection` wide, `label` `flex: 1`, `value` right-aligned in `metricValue`), then `<DevScenes />`. Add `/** Board "Settings": the Diagnostics card's section column. */ diagSection: 84` to `layout` (F13).
   - `SettingsScreen`:
+    - the root `View` gets `testID="settings"` and `dataSet={{ layout }}`, the marker the tests read (F13);
     - portrait: one `ScrollView`, with the current content and then `<DiagnosticsCard />`;
-    - landscape: a row of two `flex: 1` halves. The current content goes in a `ScrollView`, and `<DiagnosticsCard />` goes in a plain `View`.
+    - landscape: `testID="settings-halves"`, a row of two `flex: 1` halves. The current content goes in a `ScrollView`, and `<DiagnosticsCard />` goes in a plain `View`;
+    - `layout` is `screenLayout(width, height)` from `useWindowDimensions()`.
     - The portrait/landscape decision is Task 7's `homeLayout`. Until Task 7 lands, Task 5 adds it as `src/domain/mode/homeLayout.ts` with this interface:
 
     ```ts
@@ -1089,12 +1431,14 @@ export function settingsDiagRows(
   - `src/ui/screens/StreamScreen.tsx`: `useScanAnother` goes, `useEndedToHome` comes.
   - `src/ui/components/StreamColumn.tsx`: `ColumnAction` has no `ended` branch.
   - `src/hooks/useViewfinder.ts`: `ViewfinderAction` `'ended'` becomes `'none'`.
-  - `src/hooks/useHome.ts`: `useScanRequest` goes, and `useTapTile` clears the card.
+  - `src/hooks/useHome.ts`: `useScanRequest` goes; `useTapTile` clears the card, and so does `useContinue` when it re-pairs (D16, F14 b).
+  - `src/hooks/engineSelectors.ts`: `selectCodeEndedPending = (s) => s.codeEndedPending`, at module scope (F14 a).
   - `src/hooks/usePorts.tsx`, `src/hooks/nativePorts.ts`, `test/fakePorts.ts`: `homeIntent` becomes `endedNotice`.
   - `src/ui/screens/HomeScreen.tsx`
   - `src/hooks/useEngineFollow.ts`: its comment "their Stop stays on Ended".
   - `src/domain/mode/reopen.ts`: the comment "A permanent failure keeps its code and its Ended screen".
   - `src/i18n/budgets.test.ts`: the `stream.ended.scanAnother` row goes.
+  - `src/ui/screens/SettingsScreen.test.tsx`: Task 4's viewfinder `SCENES` lose `stopped` and `fatal` (F3, Step 4).
   - the four dictionaries
 - Rewrite:
   - `src/ui/screens/StreamScreen.ended.test.tsx`
@@ -1105,13 +1449,23 @@ export function settingsDiagRows(
 ```ts
 // src/domain/session/endedCard.ts
 import type { EndReason } from '@/domain/session/SessionState';
-export type EndedCard = { readonly reason: EndReason; readonly durationMs: number | null };
+export type EndedCard = {
+  readonly reason: EndReason;
+  readonly durationMs: number | null;
+  /** The Ended snapshot's `codeEndedPending` (CaptureEnginePort.ts:96): the 401 deferral's Stop (D7, F14 a). */
+  readonly codeEnded: boolean;
+};
 export type EndedLines = {
   readonly time:
     { readonly kind: 'onAir'; readonly durationMs: number } | { readonly kind: 'neverLive' };
   readonly reason: 'stopped' | 'failed';
-  /** Spec §5: only after the operator's own Stop; a fatal end keeps its code, so there is nothing to rescan. */
+  /**
+   * Spec §5: only after the operator's own Stop over a code that still works. A fatal end keeps its code, so there is
+   * nothing to rescan; a code-ended Stop's code is dead (SessionMachine.kt:111), so rescanning it is wrong (F14 a).
+   */
   readonly scanAgain: boolean;
+  /** F14 a: the code-ended Stop shows `panel.codeEnded.body` in place of the scan-again line. */
+  readonly codeEnded: boolean;
 };
 export function endedLines(card: EndedCard): EndedLines;
 
@@ -1130,27 +1484,54 @@ export function useEndedToHome(leaveWith: (beforeHome: () => void) => void): voi
 ```
 
 - [ ] **Step 1: Failing pure tests.**
-  - `endedCard.test.ts`. The table is spec §5 plus D7, so 4 cases, with `expect(n).toBe(4)`:
+  - `endedCard.test.ts`. The table is spec §5 plus D7 and its F14 a case, so 6 cases, with `expect(CASES).toHaveLength(6)`. A fatal end with `codeEnded` is outside F14 a (D7), so it is not in the table:
 
   ```ts
-  it.each([
+  const CASES = [
     [
-      { reason: 'operator-stopped', durationMs: 754_000 },
-      { time: { kind: 'onAir', durationMs: 754_000 }, reason: 'stopped', scanAgain: true },
+      { reason: 'operator-stopped', durationMs: 754_000, codeEnded: false },
+      {
+        time: { kind: 'onAir', durationMs: 754_000 },
+        reason: 'stopped',
+        scanAgain: true,
+        codeEnded: false,
+      },
     ],
     [
-      { reason: 'fatal-error', durationMs: 754_000 },
-      { time: { kind: 'onAir', durationMs: 754_000 }, reason: 'failed', scanAgain: false },
+      { reason: 'fatal-error', durationMs: 754_000, codeEnded: false },
+      {
+        time: { kind: 'onAir', durationMs: 754_000 },
+        reason: 'failed',
+        scanAgain: false,
+        codeEnded: false,
+      },
     ],
     [
-      { reason: 'operator-stopped', durationMs: null },
-      { time: { kind: 'neverLive' }, reason: 'stopped', scanAgain: true },
+      { reason: 'operator-stopped', durationMs: null, codeEnded: false },
+      { time: { kind: 'neverLive' }, reason: 'stopped', scanAgain: true, codeEnded: false },
     ],
     [
-      { reason: 'fatal-error', durationMs: null },
-      { time: { kind: 'neverLive' }, reason: 'failed', scanAgain: false },
+      { reason: 'fatal-error', durationMs: null, codeEnded: false },
+      { time: { kind: 'neverLive' }, reason: 'failed', scanAgain: false, codeEnded: false },
     ],
-  ] as const)('%o', (card, lines) => expect(endedLines(card)).toEqual(lines));
+    // F14 a: the 401 deferral's Stop (SessionMachine.kt:111), before and after the first frame. The code is dead.
+    [
+      { reason: 'operator-stopped', durationMs: null, codeEnded: true },
+      { time: { kind: 'neverLive' }, reason: 'stopped', scanAgain: false, codeEnded: true },
+    ],
+    [
+      { reason: 'operator-stopped', durationMs: 754_000, codeEnded: true },
+      {
+        time: { kind: 'onAir', durationMs: 754_000 },
+        reason: 'stopped',
+        scanAgain: false,
+        codeEnded: true,
+      },
+    ],
+  ] as const;
+
+  it.each(CASES)('%o', (card, lines) => expect(endedLines(card)).toEqual(lines));
+  it('covers its cases', () => expect(CASES).toHaveLength(6));
   ```
 
   - `endedNotice.test.ts`:
@@ -1167,11 +1548,13 @@ export function useEndedToHome(leaveWith: (beforeHome: () => void) => void): voi
 - [ ] **Step 2: Implement both.**
 
 ```ts
-export function endedLines({ reason, durationMs }: EndedCard): EndedLines {
+export function endedLines({ reason, durationMs, codeEnded }: EndedCard): EndedLines {
+  const stopped = reason === 'operator-stopped';
   return {
     time: durationMs === null ? { kind: 'neverLive' } : { kind: 'onAir', durationMs },
-    reason: reason === 'operator-stopped' ? 'stopped' : 'failed',
-    scanAgain: reason === 'operator-stopped',
+    reason: stopped ? 'stopped' : 'failed',
+    scanAgain: stopped && !codeEnded, // F14 a: never send the operator back to a dead code
+    codeEnded: stopped && codeEnded, // D7: the deferral's own path only
   };
 }
 
@@ -1208,18 +1591,24 @@ export function createEndedNotice(): EndedNotice {
      - the code is forgotten: no Continue card.
   2. **OK clears it.** Press OK. The region is gone and stays gone after `flush(2000)`.
   3. **A fatal end → its reason.** Scan, live, then `scene('fatal')`. Home shows the card with `Something failed. Your code is kept.` and no scan-again line. The Continue card for the kept code is present, which is the truth of that line.
-  4. **Stop before the first frame → stays.** Scan to Paired, then `view.engine.forceState(...)`, using whatever the fake gives for a Stop before live. Re-pin the existing "a Stop before live (owner decision 1)" tests and keep them. Then:
+  4. **Stop before the first frame → stays.** Scan to Paired, then `app.engine.forceState(...)`, using whatever the fake gives for a Stop before live (F14 c: `app`, the `launchApp` handle these cases use, not `view`). Re-pin the existing "a Stop before live (owner decision 1)" tests and keep them. Then:
      - the route is still `'stream'`;
      - no `Stream ended` region exists;
      - the viewfinder shows its neverLive state as today.
   5. **A second broadcast after OK → a fresh card.** Run case 1, press OK, scan the code again, go live, then `forceState({ kind: 'ended', reason: 'operator-stopped', durationMs: 61_000 })`. The card reads `On air 0:01:01` (worked by hand: 61 s is 0 h 01 min 01 s). `On air 0:12:34` is absent.
   6. **A second Stop.** In case 1, deliver the Ended snapshot twice, by `scene('stopped')` then `patch({})` before the flush. Then:
      - `app.nav.history.filter((r) => r === 'home')` gains exactly one entry;
-     - the region appears once;
-     - `modeStore.forget` resolves without a second write warning.
+     - the region appears once.
+
+     The old third bullet ("without a second write warning") is dropped (F14 d): nothing in the fakes records it, so it could not be observed. The two above are the witnesses.
+
   7. **A new scan clears it.** After case 1, tap the Live Stream tile with the scanner queued to cancel. The region is gone.
   8. **A restart clears it.** After case 1, `cleanup()` and `launchApp()` again with the same KV seed. There is no region.
   9. **Never went live, on Ended (D7).** `forceState({ kind: 'ended', reason: 'fatal-error', durationMs: null })` from Paired goes Home with `Never went live` in place of the duration, and no scan-again line.
+  10. **A Stop over a code that ended (F14 a).** Scan, `app.engine.scene('live')`, then `act(() => app.engine.patch({ codeEndedPending: true }))`, the 401 heard while live. Hold Stop. The fake's `stop()` ends it `operator-stopped` and leaves `codeEndedPending` set (`FakeCaptureEngine.ts:577-588`), as native's Ended keeps its pairing (`Phase.kt:378-382`, `Projection.kt:38`). Then:
+      - the route is `'home'`, and the region holds `You stopped the broadcast.` and `This code has ended. Scan the new one.` (`panel.codeEnded.body`);
+      - `Scan the code again for the next broadcast` is absent from the region. Its positive pair is case 1, where the same line is present.
+  11. **Continue clears the card (F14 b, D16).** Run case 3, a fatal end, which keeps the code. The region and the Continue card are both on Home. Press Continue. The route is `'stream'`, and the fake pairs. Press the viewfinder's Home (paired, so `canLeave`). Back on Home, there is no `Stream ended` region, and the Continue card is there again.
 
   Run red.
 
@@ -1241,10 +1630,11 @@ export function createEndedNotice(): EndedNotice {
     const { endedNotice } = usePorts();
     const reason = useEngineSelector(selectEndReason);
     const durationMs = useEngineSelector(selectEndedDurationMs);
+    const codeEnded = useEngineSelector(selectCodeEndedPending); // F14 a
     useEffect(() => {
       if (reason === null) return;
-      leaveWith(() => endedNotice.show({ reason, durationMs }));
-    }, [reason, durationMs, leaveWith, endedNotice]);
+      leaveWith(() => endedNotice.show({ reason, durationMs, codeEnded }));
+    }, [reason, durationMs, codeEnded, leaveWith, endedNotice]);
   }
   ```
 
@@ -1254,9 +1644,12 @@ export function createEndedNotice(): EndedNotice {
     - a header row: `<Text variant="state">{t('home.ended.title')}</Text>` and the time line in `metricValue`: `t('stream.ended.duration', { duration: formatElapsed(ms) })`, or `t('stream.ended.neverLive')`;
     - the reason in `body`: `stream.status.endedOperator` or `stream.status.endedFatal`;
     - when `scanAgain`, `stream.ended.scanAgain` in `metricUnit`;
+    - when `codeEnded`, `panel.codeEnded.body` in `metricUnit`, in the same place (F14 a);
     - `<GhostButton label={t('home.ended.ok')} onPress={endedNotice.clear} />`.
   - `HomeScreen`'s `HomeContent` renders `<EndedSlot />` after `StatusLine` and before `ContinueSlot`. `EndedSlot` reads `useEndedCard()`, and renders nothing for null.
   - `useTapTile` calls `endedNotice.clear()` beside `setPanel(null)`.
+  - `useContinue` (`useHome.ts:472-499`) calls `endedNotice.clear()` beside `setStatusKey(null)`, in the `.then` that re-pairs (D16, F14 b).
+  - `SettingsScreen.test.tsx` (F3): Task 4's `SCENES` become `['paired-ready', 'connecting', 'live', 'holding']`, and its count `toHaveLength(4)`. _Why:_ after this task, `stopped` and `fatal` leave the viewfinder for Home (§5), so there is no Settings button to press. Cases 1 and 3 own those two states now. Write the reason as a comment above `SCENES`.
   - Copy: add `home.ended.title` and `home.ended.ok` (_Copy_) to all four dictionaries with the `_review` marker. Delete `stream.ended.scanAnother` and its budget row.
   - Rewrite the two comments. `useEngineFollow.ts`: "their Stop goes Home with the card, by StreamScreen's leave (spec §5)". `reopen.ts`: "A permanent failure keeps its code; the viewfinder then leaves for Home with the card (spec §5)".
   - Delete `EndedBlock.tsx`. `grep -a "EndedBlock\|scanAnother\|homeIntent\|requestScan\|takeScan"` must be empty across `src app test modules`.
@@ -1266,16 +1659,29 @@ export function createEndedNotice(): EndedNotice {
   - **M2.** In `useTapTile`, delete the `clear()` call. Case 7 must fail.
   - **M3.** In `endedLines`, `scanAgain: true`. Case 3 must fail.
   - **M4.** `useLeaveOnce`'s pending guard is existing behaviour, but case 6 depends on it. Disable it once and record whether case 6 fails. If case 6 stays green, the effect's own dependency list is what guards it. Name that in the commit body (AGENTS failure class 3: two guards, each mutated alone).
+  - **M5 (F14 a).** In `endedLines`, `scanAgain: stopped`, dropping `&& !codeEnded`. The two F14 a table rows and case 10 must fail.
+  - **M6 (F14 b).** In `useContinue`, delete the `endedNotice.clear()` call. Case 11 must fail.
 
 - [ ] **Step 6: Scoped run.**
   ```bash
-  cd "$WT" && pnpm vitest run --project domain --project ui src/domain/session/endedCard.test.ts src/services/endedNotice.test.ts src/ui/screens/StreamScreen. src/ui/screens/HomeScreen. src/hooks/useEngineFollow.test.tsx src/hooks/useStreamLeave.test.tsx src/hooks/useReopenGate.test.tsx src/domain/mode/reopen.test.ts test/fakePorts.test.ts test/routedApp.drift.test.ts src/i18n/ --reporter=json --outputFile="$TMPDIR/v.json" > "$TMPDIR/v.log" 2>&1; echo "EXIT=$?"
+  cd "$WT" && pnpm vitest run --project domain --project ui src/domain/session/endedCard.test.ts src/services/endedNotice.test.ts src/ui/screens/StreamScreen. src/ui/screens/HomeScreen. src/ui/screens/SettingsScreen.test.tsx src/hooks/engineSelectors.test.ts src/hooks/useEngineFollow.test.tsx src/hooks/useStreamLeave.test.tsx src/hooks/useReopenGate.test.tsx src/domain/mode/reopen.test.ts test/fakePorts.test.ts test/routedApp.drift.test.ts src/i18n/ --reporter=json --outputFile="$TMPDIR/v.json" > "$TMPDIR/v.log" 2>&1; echo "EXIT=$?"
   ```
   Then run typecheck, lint and format. Commit `feat(stream): the phone's Stop returns Home with a Stream ended card (spec §5)`.
 
 ## Task 7: The logo, a Home that turns, and Settings that turns (§7)
 
 **Gates:** Q2 and Q3 answered.
+
+> **Code fact (pre-flight F16): opening Settings while Paired closes the capture, so Q3's answer stands and the fallback is NOT applied.** The chain, read from code:
+>
+> 1. `/stream/settings` is an opaque, non-modal push on Live Stream's native stack: `app/stream/_layout.tsx:12` sets only `headerShown`, `animation: 'none'` and `gestureEnabled`, and `app/stream/settings.tsx` sets no presentation.
+> 2. react-native-screens 4.26.2's `ScreenStack.onUpdate` takes every screen under a non-translucent new top out of the fragment transaction (`node_modules/react-native-screens/android/src/main/java/com/swmansion/rnscreens/ScreenStack.kt:273-278`, `transaction.remove(wrapper.fragment)`). The viewfinder's view leaves the window.
+> 3. `CapturePreviewView.onDetachedFromWindow` reports `detach` (`CapturePreviewView.kt:84-94`), which calls `BridgeCore.viewfinder(false)`.
+> 4. `noticeCapture` then wants the capture only if `phase.holdsBroadcast || (viewfinder && held)` (`BridgeCore.kt:271-281`). Paired holds no broadcast, so the capture closes (`platform.capture(false)`, then `silenced()`). From Arming on (`Phase.kt:250-259`, `heldSid`), it stays open, and JS's `live` status covers the same phases (`engineSelectors.ts:21-34`).
+>
+> So a rotation in paired Settings turns no open camera. This is read, not run. `CapturePreviewView.kt:20-21` itself says a pushed screen "may" detach the view. **Task 9 item 7 checks it on the phone. If the capture stays open while paired Settings is shown, Q3's fallback applies:** Settings stays landscape-locked while paired (§7 read literally), `useOrientationGate`'s `free` target uses `selectHoldsOrientation`, and the orchestrator takes that back to the owner.
+>
+> **Q3's "re-locks landscape on return", as the gate really does it (F16).** Leaving paired Settings for the viewfinder with the phone **upright** gives `{ lock: 'portrait', card: 'turnSideways' }`: the turn card shows until the phone is turned, then the gate locks landscape. With the phone sideways or flat it locks landscape at once. Step 2's "leaving free" cases pin both. Task 9 item 7 is worded the same way.
 
 **Files:**
 
@@ -1286,15 +1692,17 @@ export function createEndedNotice(): EndedNotice {
   - `src/services/native/nativeOrientationLock.test.ts`
   - `src/ui/screens/HomeScreen.layout.test.tsx`
 - Modify:
-  - `src/domain/orientation/orientation.ts` and its test
-  - `src/hooks/useOrientationGate.ts` and its test
+  - `src/domain/orientation/orientation.ts` and its test: `Target` gains `free`, and `orientationGate` its `free` cases.
+  - `src/hooks/useOrientationGate.ts` and its test. `routeTarget` lives here, at `useOrientationGate.ts:17`, not in `orientation.ts`, and its table is `useOrientationGate.test.tsx:325-334` (F15).
   - `src/hooks/engineSelectors.ts`: `selectBroadcastHeld`.
   - `src/services/native/nativeOrientationLock.ts`
   - `src/services/devicePorts.ts`: `OrientationLockPort.lock(target: Target)` now accepts `free`, through `Target`.
   - `src/ui/screens/HomeScreen.tsx`
   - `src/ui/components/HomeFooter.tsx`
+  - `src/ui/components/EndedCard.tsx`: a `layout` prop; one row in landscape (F15).
   - `src/ui/theme/tokens.ts`: `layout.logo` and `layout.logoLandscape`.
   - the four dictionaries: `brand`.
+- Reuse: `test/windowSize.ts` (Task 5, D13).
 
 - [ ] **Step 1: The logo, with its proof first** (`logo.test.ts`, `domain`):
 
@@ -1343,8 +1751,8 @@ declare module '*.png' {
 - Add to `layout`: `logo: { width: 200, height: 70 }` and `logoLandscape: { width: 160, height: 56 }`, the latter per Q2. Under the other answer it is `logo`'s size.
 - Change `brand` to `Seazn Club` in all four dictionaries. It is the logo's accessible name, a brand that is never translated. It is still changed copy, so es, fr and nl get the `_review` marker, which Task 8 clears. Confirm with `grep -a "'brand'"` that HomeScreen is its only user.
 
-- [ ] **Step 2: Rotation, pure, failing first** (`orientation.test.ts`):
-  - `routeTarget`: `/stream` → `landscape`; `/stream/settings` → `free`; `/` → `free`. That is 3 cases.
+- [ ] **Step 2: Rotation, failing first** (`orientation.test.ts`, and `routeTarget` in `useOrientationGate.test.tsx`):
+  - `routeTarget`, in its existing table at `useOrientationGate.test.tsx:325-334` (F15). Rewrite the rows to `['/', 'free']`, `['/stream', 'landscape']`, `['/stream/settings', 'free']` and `['/streaming-help', 'free']`, and add `expect(ROWS).toHaveLength(4)`. The last row keeps the existing guard that `/streaming-help` is not Live Stream.
   - `orientationGate('free', physical, holding, current)` over every combination: physical in `portrait`, `landscape`, `flat` and `unknown`; holding true or false; current in `null`, `portrait`, `landscape` and `free`. That is 32 cases, with `expect(n).toBe(32)`. The expected value comes from §7 and D9, written as its own small oracle in the test, never as `orientationGate`'s code:
     - not holding: `{ lock: 'free', card: 'none' }`;
     - holding, with current `null` or `free`: `{ lock: 'landscape', card: 'none' }`;
@@ -1386,7 +1794,7 @@ function freeGate(holding: boolean, current: Target | null): GateView {
 ```
 
 - `orientationGate` changes only where `current === 'free'`. Every existing R24, R34, R35 and R37 case must stay green unchanged, except the R35 Home case named below. Any other red is a finding to bring back, not something to edit away.
-- `routeTarget`: `pathname === '/stream' ? 'landscape' : 'free'`.
+- `routeTarget`, at `useOrientationGate.ts:17` (F15): `pathname === '/stream' ? 'landscape' : 'free'`. Rewrite its KDoc: Live Stream's viewfinder is the only landscape-locked route (§7).
 - `useOrientationGate(target)` selects the holding fact by target:
   - `target === 'free'` uses `useEngineSelector(selectBroadcastHeld)` (Q3's answer). Under Q3's alternative this is `selectHoldsOrientation`, and the 32-case oracle's "holding" means paired or live;
   - otherwise it uses `selectHoldsOrientation`.
@@ -1396,22 +1804,27 @@ function freeGate(holding: boolean, current: Target | null): GateView {
 - `selectBroadcastHeld = (s) => selectEngineStatus(s) === 'live'`, at module scope.
 - `nativeOrientationLock`: `free` → `OrientationLock.DEFAULT`, `portrait` → `PORTRAIT_UP`, `landscape` → `LANDSCAPE`. Write it as a `Record<Target, OrientationLock>`.
 - `nativeOrientationLock.test.ts` mocks `expo-screen-orientation` with `{ lockAsync: vi.fn(), OrientationLock: { DEFAULT: 0, PORTRAIT_UP: 3, LANDSCAPE: 5 } }`. These numbers are the module's own enum (`expo-screen-orientation/build/ScreenOrientation.types`); re-read them from `node_modules` before writing. Assert each target's call. That is 3 cases.
-- `useOrientationGate.test.tsx`: Home (`/`) while idle locks `free` and shows no card. Home after leaving a live broadcast that just ended locks `free`, which retires R35's "Home in landscape" card case: amend that test's expectation and cite §7. Settings while live keeps the viewfinder's landscape lock, with no `lock` call.
+- `useOrientationGate.test.tsx`:
+  - Home (`/`) while idle locks `free` and shows no card.
+  - Home after leaving a live broadcast that just ended locks `free`. That retires R35's "Home in landscape" card case: amend that test's expectation and cite §7.
+  - Settings while live keeps the viewfinder's landscape lock, with no `lock` call.
+  - **Leaving paired Settings for the viewfinder (F16).** Paired, target `free`, then the target becomes `landscape`. With the phone reading `portrait`, the result is `{ lock: 'portrait', card: 'turnSideways' }`, and `orientationLock.locks` ends in `'portrait'`. Then the phone reads `landscape`, and the result is `{ lock: 'landscape', card: 'none' }`, with `locks` ending in `'landscape'`. This is the gate's own R24 rule, which Q3's "re-locks landscape on return" shortens.
 - **Mutations:**
   - in `freeGate`, `current === null` only, without `|| current === 'free'`. The remote-Go-live sequence must fail;
   - in `orientationGate`, `fromFree` set to `false`. The "leaving free while paired" cases must fail.
 
 - [ ] **Step 4: Home turns, failing first** (`HomeScreen.layout.test.tsx`):
-  - In a helper, set the window: `window.innerWidth = w; window.innerHeight = h; window.dispatchEvent(new Event('resize'))`. Then `renderWithPorts(<HomeScreen />)` and read `screen.getByTestId('home').dataset.layout`.
+  - Set the window with Task 5's `setWindowSize(w, h)` (D13, F12), with `afterEach(restoreWindowSize)` in the file. Then `renderWithPorts(<HomeScreen />)` and read `screen.getByTestId('home').dataset.layout`.
+  - **Positive control (F12):** render at jsdom's default and read `portrait`. Then `setWindowSize(844, 390)`, and the same rendered tree reads `landscape`, with `Dimensions.get('window')` at `{ width: 844, height: 390 }`. Then `setWindowSize(390, 844)`, and it reads `portrait` again. A helper that moved nothing fails here, before any layout case can pass on a default.
   - Portrait (390 × 844), in DOM order: the logo (`getByLabelText('Seazn Club')`, computed `width` `200px`, `height` `70px`), the status line, the ended card (when shown, through `ports.endedNotice.show(...)`), Continue, the three tiles (`testID="tiles"`, `flex-direction: column`), then the footer: Language, then version.
-  - Landscape (844 × 390): `testID="home-top"`, a row holding the logo (Q2's size, computed), the status line, the Language picker and the version, in that order. Then the ended card, as one row (`flex-direction: row`). Then `tiles` with `flex-direction: row`, holding 3 tiles. There is no footer after the tiles.
+  - Landscape (844 × 390): `testID="home-top"`, a row holding the logo (Q2's size, computed), the status line, the Language picker and the version, in that order. Then, between `home-top` and the tiles, in this order (F15): the ended card, as one row (computed `flex-direction: row`), then Continue, as one row. Then `tiles` with `flex-direction: row`, holding 3 tiles. There is no footer after the tiles. Portrait keeps today's order. Seed both cards for this case: `ports.endedNotice.show(...)` and a saved code, as `HomeScreen.test.tsx`'s Continue cases do (re-pin their seed).
   - **The same controls in both** (AGENTS: a control-set diff, never box sizes). Collect `getAllByRole('button').map(name)` plus the logo's label in each layout. They are equal in membership and order, apart from the footer moving to the top. State the expected order as a literal list from the spec's layout description, not from the code.
   - Run red. Then implement in `HomeScreen`:
     - `const { width, height } = useWindowDimensions(); const layout = screenLayout(width, height);`
     - the root `View` gets `testID="home"` and `dataSet={{ layout }}`;
     - the logo is `<Image source={logo} accessibilityLabel={t('brand')} accessibilityRole="image" style={layout === 'landscape' ? styles.logoLandscape : styles.logo} />`, replacing `<Text variant="title">{t('brand')}</Text>`;
     - in landscape, logo, status and `HomeFooter`'s two parts sit in `home-top`. `HomeFooter` gains a `layout` prop and renders inline in the top row in landscape, and as today in portrait;
-    - `EndedSlot` and `ContinueSlot` stay where Task 6 put them;
+    - `EndedSlot` and `ContinueSlot` stay where Task 6 put them, which is between `home-top` and the tiles in landscape too (F15). `EndedSlot` passes `layout` to `EndedCard`, whose root is `flexDirection: 'row'` in landscape and a column in portrait. Continue's card takes the same row style in landscape;
     - `ModeTiles` gets `styles.tilesRow` in landscape.
   - Settings' halves (Task 5) now use the same `screenLayout`. Check that Task 5's landscape test still passes.
 
@@ -1444,22 +1857,22 @@ function freeGate(holding: boolean, current: Target | null): GateView {
 
   Then run `cd "$WT" && pnpm i18n:release-check; echo "EXIT=$?"`. It must exit 0.
 
-- [ ] **Step 2: AGENTS.md, as the spec rules it.** Edit only these passages:
-  - **§1, line 61.** The five-screen list becomes "**Scan** → **Paired** → **Live** (HUD) → **Settings**, with Diagnostics as a card inside Settings (2026-10-06 design follow-up §6)".
-  - **§6, lines 214–222.**
+- [ ] **Step 2: AGENTS.md, as the spec rules it.** Edit only these passages. The line numbers were re-pinned at pre-flight (F19); re-pin them again before editing:
+  - **§1, line 60.** The five-screen list becomes "**Scan** → **Paired** → **Live** (HUD) → **Settings**, with Diagnostics as a card inside Settings (2026-10-06 design follow-up §6)".
+  - **§6, lines 214–225.**
     - "everything else is portrait (ruling 4)" becomes "Home and Settings follow the phone; Settings keeps the lock while a broadcast is held (2026-10-06 design follow-up §7, amending ruling 4)".
     - Keep the turn-card text for the viewfinder.
   - **§6, lines 226–230.** Replace "Full-bleed preview…" with: "The viewfinder is two halves (design follow-up §1): a 16:9 camera box with the status strip below it, and the controls half. Nothing is drawn over the camera box but the overlay and the _What viewers see_ video. Advisory text rides the status strip, under the status line."
   - **§6, lines 248–250.** "audio above the level floor" becomes "the mic available (a silent room is ready; design follow-up §4)".
-  - **§6, lines 251–262.** "Settings and Diagnostics stay reachable…" becomes "Settings, with its Diagnostics card, stays reachable in every state, live included". Keep the rest of the paragraph's reasoning.
+  - **§6, lines 251–263.** "Settings and Diagnostics stay reachable…" becomes "Settings, with its Diagnostics card, stays reachable in every state, live included". Keep the rest of the paragraph's reasoning.
   - **§10, line 340.** "Assert an audio **level floor**, never stream presence" stays for the meter and the pipeline. Append: "Readiness is not the level: a silent room is ready (design follow-up §4)."
   - Then run `pnpm prettier --check AGENTS.md docs/i18n-glossary.md docs/superpowers/plans/2026-10-06-s1-design-pr-a.md`.
 
 - [ ] **Step 3: The PR's scoped gate.** Run every vitest file named in Tasks 1 to 7, in one command, with the JSON reporter, and paste the counts: total, failed, and the file list.
   - Run the Gradle filters from Task 1, and `:host:test`.
-  - Run the `bridge` project.
+  - Run the `bridge` project with its one file named: `CAPTURE_BRIDGE=1 pnpm vitest run --project bridge modules/capture-engine/src/NativeCaptureEngine.bridge.test.ts` (F19).
   - Run `pnpm typecheck`, `rtk proxy pnpm lint`, `pnpm format:check` and `pnpm i18n:release-check`.
-  - Never `pnpm check`, never `pnpm test` (F4).
+  - Never `pnpm check`, never `pnpm test` (SP4).
   - Run each command three times if any one of them was ever red in this branch, because flaky-shaped reds recur.
   - Commit `docs: AGENTS.md and the glossary as the design follow-up rules them; translation review`.
 
@@ -1475,6 +1888,7 @@ This task is a checklist for the owner. An agent never simulates it, infers it, 
   - Nothing is clipped and nothing scrolls. Record the phone's dp size and its font scale.
 - [ ] **2. The §2 label cases.** Show each of the seven labels from Task 2 on a staging fixture, or through dev scenes if one carries a label.
   - Each one wraps or ellipsises as §2 says, and nothing is clipped.
+  - **D17's assumption (F9).** Show a singles label with a 26-character side, e.g. `Alexandra Konstantinopoulo v Bea Lima` (side A is 26 characters). At 20 sp, side A must stay on one line. If it wraps, record it: D17's assumption is false, and the strip can clip one line at 360 dp tall.
   - Also try one case at the phone's largest font scale, and note what happens there. Font scale is not covered by Q4's arithmetic.
 - [ ] **3. The camera box.**
   - The preview is 16:9, edge to edge across its half.
@@ -1484,6 +1898,9 @@ This task is a checklist for the owner. An agent never simulates it, infers it, 
   - In a quiet room the mic chip is lime and Go live enables.
   - On air in silence for a minute, the line stays _Live_.
   - A phone call on air shows the mic-silenced warning. When the call ends, the warning clears.
+  - **At the connect (F4's cost).** Go live and watch the meter from the hold's end to the first frame. Record whether it turns orange, and for how long. It may, for a connect over 2 s (Review Focus 1). It must never stop the connect.
+  - **A capture with no audio (F18).** Start a voice-recorder app and keep it recording, then open the viewfinder. Within about 2.5 s (`NO_AUDIO_MS` plus one glue tick), the mic chip must be caution and Go live must say _Mic not available_. Share the record and look for `watch-failed` with `action: sound`. If the phone shares the mic and buffers still flow, write that down: the case could not be made on this phone.
+  - **The mic chip after the viewfinder closes and reopens (F18).** Paired, in a quiet room: open Settings, then go Back. Within a second of the preview's return, the mic chip is lime again, with no sound needed.
 - [ ] **5. Stop after live.**
   - Go live, hold Stop. The app lands on Home with the _Stream ended_ card: title, _On air_ time, _You stopped the broadcast._, the scan-again line, and OK. This must be observed, not inferred.
   - OK clears it.
@@ -1495,11 +1912,13 @@ This task is a checklist for the owner. An agent never simulates it, infers it, 
   - There is no Diagnostics button anywhere.
 - [ ] **7. Rotation.**
   - Home turns with the phone, provided auto-rotate is on, and stays put when it is off. Record which.
-  - Settings turns while paired, per Q3. After a rotation in Settings, Back to the viewfinder: the preview is upright and landscape.
+  - **The capture while Settings is open (F16), first.** Paired, open Settings. Android's camera-in-use dot in the status bar (Android 12+) must go out within about a second: the capture closed, as Task 7's code fact says. Then, live, open Settings: the dot stays on. Share the record and check for the close too. **If the dot stays on while paired, stop this item.** That is the F16 fallback's trigger, and the finding goes to the orchestrator: Settings must stay landscape-locked while paired.
+  - Settings turns while paired, per Q3. After a rotation in Settings, go Back to the viewfinder **with the phone upright**. The turn card shows until the phone is turned sideways; then the viewfinder locks landscape, and the preview is upright (F16). Repeat with the phone already sideways: it locks landscape at once.
   - Settings while live does not turn.
   - The viewfinder never turns.
 - [ ] **8. Logo.** The logo is sharp at 200 × 70 in portrait, at Q2's size in landscape, and TalkBack reads it as "Seazn Club".
 - [ ] **9. Locales.** Repeat 1, 5 and 6 in es, fr and nl: screenshots of each.
+- [ ] **10. AUTO with the longest start time (F18, D14).** In es, with automatic mode on at both ends and a start time set, look at the viewfinder before air at 640 × 360. _Empieza a las 14:32 CEST_ sits on one line under the chips, and nothing below it is clipped or pushed off the screen.
 
 Any line that fails is a finding for the orchestrator. It is never a change made on the device run.
 
@@ -1509,21 +1928,21 @@ Any line that fails is a finding for the orchestrator. It is never a change made
   - §1 is Task 3.
   - §2 is Task 2, rendered by Task 3, with clipping checked in Task 9 (2).
   - §3 is Task 4.
-  - §4 is Task 1. Its four owed JVM tests are `S4 a room silent…`, `S4 sixty seconds…`, `S4 a call…` and `S4 on air…`, and the predicate is mutated in M1 to M3.
-  - §5 is Task 6. Its five owed tests are cases 1 to 5, and cases 6 to 9 are its sequences and D7.
+  - §4 is Task 1. Its four owed JVM tests are `S4 a room silent…`, `S4 sixty seconds…`, `S4 a call…` and `S4 on air…`. "Audio capture unavailable" is `S4 no audio buffer…`, driven through `PeakMeter` (F4). The predicate and its producers are mutated in M1 to M6.
+  - §5 is Task 6. Its five owed tests are cases 1 to 5. Cases 6 to 9 are its sequences and D7, and cases 10 and 11 are F14 a and b.
   - §6 is Task 5.
   - §7 is Task 7.
-  - The spec's _Verification_ is Task 8 (3) and Task 9, minus `pnpm check` (F4).
+  - The spec's _Verification_ is Task 8 (3) and Task 9, minus `pnpm check` (SP4).
 - **Sequence cases owed by the brief:**
   - a second Stop: Task 6, case 6;
   - OK then a new broadcast: Task 6, case 5;
   - a call starting and ending: Task 1 (`S4 a call…`, twice), Task 4 (the mic chip) and Task 3 (the strip's line).
-- **Anti-vacuity.** Every table or sweep states its count: the 60 s sweeps, the 7 label cases, the 6 chip cases, the 9 rows (or 20), the 4 ended lines, the 32 rotation cases, the 3 route targets and the 5 layout cases.
+- **Anti-vacuity.** Every table or sweep states its count: the 60 s sweeps, the no-buffer sweep (5 ticks), the 7 label cases, the 6 chip cases, the 6 viewfinder scenes into Settings (4 after Task 6), the 9 rows, the 6 ended lines, the 32 rotation cases, the 4 route targets and the 5 layout cases.
 - **Unresolved, by design:**
-  - Q1 to Q4 are the owner's.
+  - Q1 to Q4 are answered (_Owner answers_, 2026-10-07).
   - Font scale above 1.0 is not covered by any fit arithmetic (Task 9, item 2).
   - Whether Android's `UNSPECIFIED` respects a user who has turned auto-rotate off is Task 9, item 7.
-- **Placeholders:**
-  - The _Owner answers_ lines are empty on purpose, and filled before Task 1.
-  - `Q4_DOUBLES` in Task 2 is a literal the owner's answer fixes.
-  - The "re-pin" notes mark line numbers and fake APIs that must be read before editing (AGENTS failure class 5). They are not open design.
+  - Whether paired Settings really closes the capture on the phone is Task 9, item 7 (F16). The code says it does.
+  - **A fatal end with `codeEndedPending` set** is outside F14 a. Its card says _Your code is kept._ about a dead code (D7). This is for the orchestrator to put to the owner, not to decide here.
+  - The pre-existing race after the capture's close (Review Focus 1) is named, not fixed.
+- **Placeholders:** none. The owner's answers are recorded, and Task 2's doubles size is the literal `'long'` (Q4 A); there is no `Q4_DOUBLES` (F19). The "re-pin" notes mark line numbers and fake APIs that must be read before editing (AGENTS failure class 5). They are not open design.
