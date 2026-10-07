@@ -607,13 +607,20 @@ describe('where Diagnostics sits (spec §6)', () => {
     expect(view.navigation.current()).toBe('stream');
   });
 
-  it('hands the window back after a test that turned it (D13)', () => {
-    setWindowSize(844, 390);
-    restoreWindowSize();
+  // Order-dependent on purpose: it follows the landscape tests above, so the file's afterEach is
+  // what it witnesses. A file that forgot `afterEach(restoreWindowSize)` fails here.
+  it('starts on the jsdom window again after the landscape tests (D13)', () => {
     expect(Dimensions.get('window')).toMatchObject({ width: 0, height: 0 });
     renderSettings();
     expect(layoutOf()).toBe('portrait');
     expect(screen.queryByTestId('settings-halves')).toBeNull();
+  });
+
+  it('restoreWindowSize hands the window back, width and height both', () => {
+    setWindowSize(844, 390);
+    expect(Dimensions.get('window')).toMatchObject({ width: 844, height: 390 });
+    restoreWindowSize();
+    expect(Dimensions.get('window')).toMatchObject({ width: 0, height: 0 });
   });
 });
 
