@@ -124,14 +124,15 @@ describe('orientationGate', () => {
     ['landscape', 'flat', false, null, { lock: 'landscape', card: 'none' }],
     ['landscape', 'flat', true, null, { lock: 'landscape', card: 'none' }],
     ['landscape', 'flat', true, 'portrait', { lock: 'landscape', card: 'none' }],
-    // Held the other way: the target's card; lock to the hands, or keep on air (R24).
+    // Held the other way: the target's card; off air lock to the hands (R24); on air keep a lock that is held
+    // (R35) and lock the target when none is (R37).
     ['portrait', 'landscape', false, null, { lock: 'landscape', ...UP }],
     ['portrait', 'landscape', false, 'portrait', { lock: 'landscape', ...UP }],
-    ['portrait', 'landscape', true, null, { lock: 'keep', ...UP }],
+    ['portrait', 'landscape', true, null, { lock: 'portrait', ...UP }],
     ['portrait', 'landscape', true, 'landscape', { lock: 'keep', ...UP }],
     ['landscape', 'portrait', false, null, { lock: 'portrait', ...SIDE }],
     ['landscape', 'portrait', false, 'landscape', { lock: 'portrait', ...SIDE }],
-    ['landscape', 'portrait', true, null, { lock: 'keep', ...SIDE }],
+    ['landscape', 'portrait', true, null, { lock: 'landscape', ...SIDE }],
     ['landscape', 'portrait', true, 'portrait', { lock: 'keep', ...SIDE }],
     // No settled reading, not on air: the target, no card (R34).
     ['portrait', 'unknown', false, null, { lock: 'portrait', card: 'none' }],
@@ -157,6 +158,42 @@ describe('orientationGate', () => {
 // below is written from those two, as its own small oracle, never from `orientationGate`.
 const PHYSICALS: readonly Physical[] = ['portrait', 'landscape', 'flat', 'unknown'];
 const HOLDINGS: readonly boolean[] = [false, true];
+
+describe('orientationGate: held the other way, by what is locked (R24, R35, R37)', () => {
+  const OTHER = { portrait: 'landscape', landscape: 'portrait' } as const;
+  const CARD = { landscape: 'turnSideways', portrait: 'turnUpright' } as const;
+  /** Off air the hands lock (R24); on air a lock that is held stays (R35) and none held locks the target (R37). The card is the target's. */
+  function oracle(
+    target: 'portrait' | 'landscape',
+    holding: boolean,
+    current: Target | null,
+  ): GateView {
+    const lock = !holding ? OTHER[target] : current === null ? target : 'keep';
+    return { lock, card: CARD[target] };
+  }
+
+  it('answers the oracle for every target, holding and lock (12 cases)', () => {
+    let checked = 0;
+    let locksTarget = 0;
+    for (const target of ['portrait', 'landscape'] as const) {
+      for (const holding of HOLDINGS) {
+        for (const current of [null, 'portrait', 'landscape'] as const) {
+          const view = orientationGate(target, OTHER[target], holding, current);
+          expect({ target, holding, current, view }).toEqual({
+            target,
+            holding,
+            current,
+            view: oracle(target, holding, current),
+          });
+          checked += 1;
+          if (holding && current === null) locksTarget += 1;
+        }
+      }
+    }
+    expect(checked).toBe(12);
+    expect(locksTarget).toBe(2); // the new case is in the sweep, once per target
+  });
+});
 
 describe('orientationGate: the free target (spec §7, D9)', () => {
   /**
@@ -315,8 +352,12 @@ describe('orientationGate: leaving a free lock for a fixed target (D9)', () => {
     expect(orientationGate('landscape', physical, holding, 'free')).toEqual(view);
   });
 
-  it('touches `free` only: a null lock held upright on air still keeps (R35 / R37 unchanged)', () => {
+  it('a held tilt with nothing locked locks the target, and a lock that is held is kept (R35 / R37)', () => {
     expect(orientationGate('landscape', 'portrait', true, null)).toEqual({
+      lock: 'landscape',
+      card: 'turnSideways',
+    });
+    expect(orientationGate('landscape', 'portrait', true, 'landscape')).toEqual({
       lock: 'keep',
       card: 'turnSideways',
     });

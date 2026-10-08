@@ -100,11 +100,13 @@ export type TurnCardKind = Exclude<GateView['card'], 'none'>;
  * (R34). A phone can sit in a dead band for good (face down, tilted), and
  * Android's activity is `unspecified` until the first lock, so waiting for a
  * reading left Home following auto-rotate and Live Stream open in portrait.
- * Held, the current lock stays, as above, with two refinements:
+ * Held, the current lock stays, as above, with three refinements:
  * - nothing locked yet (`current` null, e.g. the activity remounted
  *   mid-broadcast) locks the target, since there is no lock to keep (R37);
  * - a kept lock that disagrees with the target shows the target's card, or
- *   the screen is drawn against the wrong lock (R35).
+ *   the screen is drawn against the wrong lock (R35);
+ * - a reading that disagrees with the target, with nothing locked yet, locks the target and shows its card:
+ *   there is no lock to keep, and locking the hands would turn the activity under the camera (R37).
  *
  * `current` is the lock last applied, or null when nothing has been locked.
  * D9: a `free` lock is no lock to keep, so leaving it for a fixed target
@@ -121,7 +123,9 @@ export function orientationGate(
   const fromFree = current === 'free';
   if (physical === 'unknown') return unsettled(target, holding, fromFree ? null : current);
   if (physical === 'flat' || physical === target) return { lock: target, card: 'none' };
-  return { lock: holding && !fromFree ? 'keep' : physical, card: cardFor(target) };
+  if (!holding || fromFree) return { lock: physical, card: cardFor(target) };
+  // Held: a lock that is held stays (R35). Nothing locked has none to keep, so the target is locked, as R37 does.
+  return { lock: current === null ? target : 'keep', card: cardFor(target) };
 }
 
 /**
