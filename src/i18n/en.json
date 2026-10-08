@@ -161,7 +161,7 @@
   "stream.scoring.hidesIn": "Hides in {seconds} s",
   "stream.scoring.asking": "Getting the link",
   "stream.scoring.code": "Remote scoring code for this match",
-  "stream.scoring.refused.codeEnded": "This code has ended. Scan it again.",
+  "stream.scoring.refused.codeEnded": "This code has ended. Scan the new one.",
   "stream.scoring.refused.replaced": "Another phone has this camera now.",
   "stream.scoring.refused.matchFinished": "This match is finished.",
   "stream.scoring.refused.notEntitled": "Not on your plan",

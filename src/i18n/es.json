@@ -161,7 +161,7 @@
   "stream.scoring.hidesIn": "Se oculta en {seconds} s",
   "stream.scoring.asking": "Obteniendo el enlace",
   "stream.scoring.code": "Código de anotación remota de este partido",
-  "stream.scoring.refused.codeEnded": "Este código ha finalizado. Escanéalo de nuevo.",
+  "stream.scoring.refused.codeEnded": "Este código ha finalizado. Escanea el nuevo.",
   "stream.scoring.refused.replaced": "Otro móvil tiene esta cámara ahora.",
   "stream.scoring.refused.matchFinished": "Este partido ha terminado.",
   "stream.scoring.refused.notEntitled": "No está en tu plan",

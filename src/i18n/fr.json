@@ -161,7 +161,7 @@
   "stream.scoring.hidesIn": "Se masque dans {seconds} s",
   "stream.scoring.asking": "Récupération du lien",
   "stream.scoring.code": "Code de score à distance pour ce match",
-  "stream.scoring.refused.codeEnded": "Ce code est terminé. Scannez-le de nouveau.",
+  "stream.scoring.refused.codeEnded": "Ce code est terminé. Scannez le nouveau.",
   "stream.scoring.refused.replaced": "Un autre téléphone a maintenant cette caméra.",
   "stream.scoring.refused.matchFinished": "Ce match est terminé.",
   "stream.scoring.refused.notEntitled": "Pas dans votre offre",

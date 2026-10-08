@@ -161,7 +161,7 @@
   "stream.scoring.hidesIn": "Verdwijnt over {seconds} s",
   "stream.scoring.asking": "Link ophalen",
   "stream.scoring.code": "Code voor scoren op afstand van deze wedstrijd",
-  "stream.scoring.refused.codeEnded": "Deze code is beëindigd. Scan hem opnieuw.",
+  "stream.scoring.refused.codeEnded": "Deze code is beëindigd. Scan de nieuwe.",
   "stream.scoring.refused.replaced": "Een andere telefoon heeft deze camera nu.",
   "stream.scoring.refused.matchFinished": "Deze wedstrijd is afgelopen.",
   "stream.scoring.refused.notEntitled": "Niet in je abonnement",

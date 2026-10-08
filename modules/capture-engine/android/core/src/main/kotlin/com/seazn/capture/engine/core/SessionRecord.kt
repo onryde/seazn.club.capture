@@ -104,9 +104,9 @@ class SessionRecord(private val sink: (String) -> Unit) {
   /**
    * Spec §10: a scoring link's secret, protected before the answer that carries it is handed to the caller. It is
    * masked everywhere a [protect]ed value is. A repeat (the server returns the same link) moves it to the newest
-   * place and adds nothing; past [LINK_SECRETS] distinct links the oldest is dropped. A link 16 re-issues old is long
-   * revoked (an organiser's Revoke & reissue is the only thing that changes one), so the bound costs nothing real,
-   * and the bucket cannot grow for as long as a phone taps.
+   * place and adds nothing; past [LINK_SECRETS] distinct links the oldest is dropped. That is safe because an evicted
+   * secret only comes back inside a new answer, and [protectLink] runs on that answer before it is handed on, so the
+   * secret is masked again first; the bucket cannot grow for as long as a phone taps.
    */
   fun protectLink(secret: String) {
     if (secret.isBlank()) return

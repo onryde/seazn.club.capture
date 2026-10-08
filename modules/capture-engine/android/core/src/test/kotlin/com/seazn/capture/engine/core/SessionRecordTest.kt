@@ -574,7 +574,7 @@ class SessionRecordTest {
     assertFalse(record.wrote(link(0)).contains(link(0)), "dedupe: twenty repeats of one link left the other masked")
     for (n in 2..16) record.protectLink(link(n))
     // 17 distinct links have been protected (0 to 16): the oldest is outside the bucket now, which holds 16.
-    // Its cost is the plan's D11: a link 16 re-issues old is long revoked.
+    // Why that is safe (the plan's D11): an evicted secret only comes back inside a new answer, which protects it again first.
     assertTrue(record.wrote(link(0)).contains(link(0)), "the cap: the 17th distinct link evicted the first")
     for (n in 1..16) assertFalse(record.wrote(link(n)).contains(link(n)), "link $n is held")
   }

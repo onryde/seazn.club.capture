@@ -143,7 +143,7 @@ describe('the link bucket (F15)', () => {
     // Deduplicated by value: twenty repeats of link 1 did not push link 0 out.
     expect(wrote(link(0))).toBe(`x ${SCRUBBED} y`);
     for (let n = 2; n <= 16; n += 1) logger.protectLink(link(n));
-    // 17 distinct links have been protected (0 to 16) into a bucket of 16: the oldest is out. D11: a link 16 re-issues old is long revoked.
+    // 17 distinct links have been protected (0 to 16) into a bucket of 16: the oldest is out. D11: an evicted secret only comes back inside a new answer, which protects it again first.
     expect(wrote(link(0))).toBe(`x ${link(0)} y`);
     for (let n = 1; n <= 16; n += 1) expect(wrote(link(n))).toBe(`x ${SCRUBBED} y`);
   });
