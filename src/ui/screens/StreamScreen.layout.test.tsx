@@ -334,30 +334,60 @@ describe('the round line above the match label (spec §2, R-F5)', () => {
     expect(stage()?.textContent).toBe('QF');
   });
 
-  it('yields at each of the four real screens: the strip is what the rendered box leaves, 180 at all of them', async () => {
+  // The camera half is not W / 2: the controls half's padding clamps its flex basis (PR A), so the layout gives the
+  // camera (W - 2 x the controls padding) / 2, which Chromium measured as 304 at 640 wide. The box yields to the strip
+  // from 800 wide, where the strip is 180; at 640 x 360 the box is the half's whole width (171), so the strip is 189.
+  // The sizes are delivered by `layOut` from the layout's own constants, and the strip is what the rendered box leaves.
+  const REAL_HALF = (width: number) => (width - 2 * layout.controlsPad) / 2;
+
+  it('at 640 × 360 the strip is 189, so a three-line long label (57) shows the line and a three-line regular one (66) hides it', async () => {
+    await withStage('QF', { strip: 0, label: 0 });
+    layOut(byId('camera-half'), { width: REAL_HALF(640), height: 360 });
+    expect(REAL_HALF(640)).toBe(304);
+    const box = parseFloat(getComputedStyle(byId('camera-box')).height);
+    expect(box).toBeCloseTo(171, 6);
+    const strip = 360 - box;
+    expect(strip).toBeCloseTo(189, 6);
+    layOut(byId('status-strip'), { width: REAL_HALF(640), height: strip });
+    layOut(byId('match-label'), { width: 270, height: 57 });
+    expect(stage()?.textContent).toBe('QF');
+    layOut(byId('match-label'), { width: 270, height: 66 });
+    expect(stage()).toBeNull();
+    layOut(byId('match-label'), { width: 270, height: 76 });
+    expect(stage()).toBeNull();
+    layOut(byId('match-label'), { width: 270, height: 44 });
+    expect(stage()?.textContent).toBe('QF');
+  });
+
+  it('yields at each of the four real screens, in the half the layout gives the camera', async () => {
+    // [width, height, the strip the rendered box leaves, whether a 57 dp label (three long lines) still shows the line]
     const SCREENS = [
-      [640, 360],
-      [800, 360],
-      [844, 390],
-      [915, 412],
+      [640, 360, 189, true],
+      [800, 360, 180, false],
+      [844, 390, 180, false],
+      [915, 412, 180, false],
     ] as const;
     let checked = 0;
-    for (const [width, height] of SCREENS) {
+    for (const [width, height, expected, showsThreeLong] of SCREENS) {
       const view = await withStage('QF', { strip: 0, label: 0 });
       // The producer, not a typed number: the half lays out, the box takes its size, the strip is the rest.
-      layOut(byId('camera-half'), { width: width / 2, height });
-      const box = parseFloat(getComputedStyle(byId('camera-box')).height);
-      const strip = height - box;
-      expect(strip).toBeCloseTo(180, 6);
-      layOut(byId('status-strip'), { width: width / 2, height: strip });
-      layOut(byId('match-label'), { width: width / 2 - 20, height: 44 });
+      layOut(byId('camera-half'), { width: REAL_HALF(width), height });
+      const strip = height - parseFloat(getComputedStyle(byId('camera-box')).height);
+      expect(strip).toBeCloseTo(expected, 6);
+      layOut(byId('status-strip'), { width: REAL_HALF(width), height: strip });
+      layOut(byId('match-label'), { width: REAL_HALF(width) - 32, height: 44 });
       expect(stage()?.textContent, `${width} × ${height}, 2 lines`).toBe('QF');
-      layOut(byId('match-label'), { width: width / 2 - 20, height: 57 });
-      expect(stage(), `${width} × ${height}, 3 lines`).toBeNull();
+      layOut(byId('match-label'), { width: REAL_HALF(width) - 32, height: 57 });
+      expect(stage() !== null, `${width} × ${height}, 3 long lines`).toBe(showsThreeLong);
+      layOut(byId('match-label'), { width: REAL_HALF(width) - 32, height: 66 });
+      expect(stage(), `${width} × ${height}, 3 regular lines`).toBeNull();
+      layOut(byId('match-label'), { width: REAL_HALF(width) - 32, height: 76 });
+      expect(stage(), `${width} × ${height}, 4 long lines`).toBeNull();
       view.unmount();
       checked += 1;
     }
     expect(checked).toBe(SCREENS.length);
+    expect(SCREENS.filter((screen) => screen[3])).toHaveLength(1);
   });
 });
 

@@ -1,4 +1,4 @@
-import { useCallback, useEffect } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import {
   StyleSheet,
   View,
@@ -19,13 +19,16 @@ import { space } from '@/ui/theme/tokens';
  * then a small grey `v` and side B. Nothing at all until the label is known.
  *
  * `onLayoutHeight` (R-F5) tells the status strip how tall the label came out, which is how it knows
- * whether the round line fits above it: the height after each layout, and 0 when the label goes, so a
- * label that is not there is unmeasured, never the last one's height. Pass a stable function (a state
- * setter): a new one each render would read as a label that went.
+ * whether the round line fits above it: the height after each layout, and 0 when the label goes or changes,
+ * so a label that is not there yet is unmeasured, never the last one's height. The newest callback is the
+ * one called, so one made anew on every render is fine.
  */
 export function MatchLabel({ onLayoutHeight }: { onLayoutHeight?: (height: number) => void }) {
   const label = useEngineSelector(selectLabel);
-  return label === null ? null : <SplitLabel label={label} onLayoutHeight={onLayoutHeight} />;
+  // Keyed on its text: a label that changes in place is a new label, so the old one's height goes with it.
+  return label === null ? null : (
+    <SplitLabel key={label} label={label} onLayoutHeight={onLayoutHeight} />
+  );
 }
 
 function SplitLabel({
@@ -35,11 +38,18 @@ function SplitLabel({
   label: string;
   onLayoutHeight?: (height: number) => void;
 }) {
+  // The newest callback, held in a ref, so the layout handler is stable and the reset below runs only when the
+  // label goes: a callback made anew each render would otherwise read as a label that went, and no layout comes
+  // after it to say the height again.
+  const latest = useRef(onLayoutHeight);
+  useEffect(() => {
+    latest.current = onLayoutHeight;
+  });
   const onLayout = useCallback(
-    (event: LayoutChangeEvent) => onLayoutHeight?.(event.nativeEvent.layout.height),
-    [onLayoutHeight],
+    (event: LayoutChangeEvent) => latest.current?.(event.nativeEvent.layout.height),
+    [],
   );
-  useEffect(() => () => onLayoutHeight?.(0), [onLayoutHeight]);
+  useEffect(() => () => latest.current?.(0), []);
   const split = splitMatchLabel(label);
   const size = labelSize(split);
   const variant: TypeRole = size === 'long' ? 'labelLong' : 'label';

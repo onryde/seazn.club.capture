@@ -79,10 +79,11 @@ describe('the strip and the controls fit, at their worst', () => {
     expect(STRIP_RESERVE).toBeGreaterThanOrEqual(STRIP_WORST);
   });
 
-  // R-F5 (controller): the round line is NOT in the reserve. The strip is 180 at every real geometry, so
-  // a long double plus the round line does not fit, and the line yields (stageFit.ts). This states the
-  // over-run so nobody "fixes" it by deleting the yield or by adding a reserve the owner did not choose.
-  it('the round line plus PR A’s worst-case strip is 202 dp, 22 over the 180 the strip has, which is why it yields (R-F5)', () => {
+  // R-F5 (controller): the round line is NOT in the reserve. The strip is 180 where the box yields (800 wide and
+  // up) and 189 at 640 × 360, so a long double plus the round line does not fit at either, and the line yields
+  // (stageFit.ts). This states the over-run so nobody "fixes" it by deleting the yield or by adding a reserve the
+  // owner did not choose.
+  it('the round line plus PR A’s worst-case strip is 202 dp, 22 over the 180 the strip has (13 over the 189 at 640 × 360), which is why it yields (R-F5)', () => {
     const worst = layout.labelLinesMax * typeScale.labelLong.lineHeight;
     const status = layout.statusLinesMax * typeScale.body.lineHeight;
     const caption = layout.captionLinesMax * typeScale.metricUnit.lineHeight;
@@ -91,6 +92,7 @@ describe('the strip and the controls fit, at their worst', () => {
     expect(items).toHaveLength(4);
     expect(stack(items, layout.stripGap, layout.stripPadV)).toBe(202);
     expect(stack(items, layout.stripGap, layout.stripPadV) - STRIP_WORST).toBe(22);
+    expect(stack(items, layout.stripGap, layout.stripPadV) - 189).toBe(13);
     // No reserve was added: the strip's reserve is still the worst case WITHOUT the round line.
     expect(STRIP_RESERVE).toBe(STRIP_WORST);
   });
