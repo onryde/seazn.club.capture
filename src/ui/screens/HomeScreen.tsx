@@ -181,7 +181,13 @@ const ModeTiles = memo(function ModeTiles({
   return (
     <View testID="tiles" style={layout === 'landscape' ? styles.tilesRow : styles.tiles}>
       {MODES.map((mode) => (
-        <Tile key={mode} mode={mode} available={BUILT_MODES.includes(mode)} onPress={onPress} />
+        <Tile
+          key={mode}
+          mode={mode}
+          available={BUILT_MODES.includes(mode)}
+          onPress={onPress}
+          layout={layout}
+        />
       ))}
     </View>
   );

@@ -174,6 +174,15 @@ export const layout = {
   /** Board "After-you-stopped-landscape": a card laid out as one row has 10 above and below and 12 at its end (16 at its start). */
   rowCardPadV: 10,
   rowCardPadEnd: 12,
+  /** ModeIcon's side: it is drawn this square, and the tile fit (homeFit.test.ts) reads it from here. */
+  modeIcon: 28,
+  /** The lines StatusLine reserves on Home (the `status` role's three), which the top row's fit reads from here. */
+  homeStatusLines: 3,
+  /**
+   * A Tile's padding in landscape (fix round 1, coordinator ruling): 12 against portrait's `space.md` 16, so that
+   * Continue alone, or the ended card alone, leaves the tiles room at 800 × 360 (homeFit.test.ts). Portrait is unchanged.
+   */
+  tileLandscapePad: 12,
   /** Board "Settings": the Diagnostics card's section column (the section name sits in it). */
   diagSection: 84,
   /**

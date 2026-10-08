@@ -13,15 +13,13 @@ import { GhostButton } from '@/ui/components/GhostButton';
 import { Text } from '@/ui/components/Text';
 import { colour, layout, radius, space } from '@/ui/theme/tokens';
 
-/**
- * `stacked` is the portrait card (the board's After-you-stopped): a header, the lines, then OK. `row` lays the same
- * parts in one row for landscape, where Home has no height to spare (spec §7); Home picks it.
- */
-export type EndedCardLayout = CardShape;
-
 type EndedCardProps = {
   readonly card: EndedCardData;
-  readonly layout?: EndedCardLayout;
+  /**
+   * `stacked` is the portrait card (the board's After-you-stopped): a header, the lines, then OK. `row` lays the same
+   * parts in one row for landscape, where Home has no height to spare (spec §7); Home picks it.
+   */
+  readonly layout?: CardShape;
   readonly onOk: () => void;
 };
 

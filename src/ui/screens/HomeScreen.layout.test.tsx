@@ -226,7 +226,10 @@ describe('Home turns with the phone (spec §7)', () => {
       setWindowSize(...LANDSCAPE);
       await renderHome({ ended: true, saved: true });
       const rows = screen.getByTestId('home-top').parentElement as HTMLElement;
-      expect(['auto', 'scroll']).toContain(style(rows.parentElement as HTMLElement).overflowY);
+      const scroller = rows.parentElement as HTMLElement;
+      expect(['auto', 'scroll']).toContain(style(scroller).overflowY);
+      // Down only: a row wider than the window is a layout defect to fix, never a sideways scroll to hide it.
+      expect(['auto', 'scroll']).not.toContain(style(scroller).overflowX);
       expect(style(rows).flexGrow).toBe('1'); // short content still fills the window, so the tiles do
       expect(style(tiles()).flexGrow).toBe('1');
       setWindowSize(...PORTRAIT);
@@ -274,16 +277,39 @@ describe('Home turns with the phone (spec §7)', () => {
       expect(style(language()).minHeight).toBe('48px');
     });
 
-    it('sets the tiles 8 apart, each with its 4 dp edge and 16 dp of padding, and the top row 16 apart', async () => {
+    it('sets the tiles 8 apart, each with its 4 dp edge and 12 dp of padding, and the top row 16 apart', async () => {
       setWindowSize(...LANDSCAPE);
       await renderHome();
       expect(style(tiles()).gap).toBe('8px');
       expect(tiles().children).toHaveLength(3);
       for (const tile of tiles().children) {
         expect(style(tile).borderLeftWidth).toBe('4px');
-        expect(edges(tile)).toEqual(['16px', '16px', '16px', '16px']);
+        expect(edges(tile)).toEqual(['12px', '12px', '12px', '12px']);
       }
       expect(style(screen.getByTestId('home-top')).gap).toBe('16px');
+    });
+
+    it('keeps portrait’s tiles at 16 dp of padding: the tightening is landscape’s alone (fix round 1)', async () => {
+      setWindowSize(...PORTRAIT);
+      await renderHome();
+      expect(tiles().children).toHaveLength(3);
+      for (const tile of tiles().children) {
+        expect(style(tile).borderLeftWidth).toBe('4px');
+        expect(edges(tile)).toEqual(['16px', '16px', '16px', '16px']);
+      }
+      // And a turn to landscape and back lands on the same 16 (the tile's style is chosen per render).
+      setWindowSize(...LANDSCAPE);
+      for (const tile of tiles().children) expect(edges(tile)[0]).toBe('12px');
+      setWindowSize(...PORTRAIT);
+      for (const tile of tiles().children) expect(edges(tile)[0]).toBe('16px');
+    });
+
+    it('reserves the status three lines of the status role, 57, in both layouts (the height homeFit adds up)', async () => {
+      setWindowSize(...LANDSCAPE);
+      await renderHome();
+      expect(style(status()).minHeight).toBe('57px');
+      setWindowSize(...PORTRAIT);
+      expect(style(status()).minHeight).toBe('57px');
     });
   });
 

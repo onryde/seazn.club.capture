@@ -3,8 +3,8 @@ import { Text } from '@/ui/components/Text';
 import { layout } from '@/ui/theme/tokens';
 import { typeScale, type TypeRole } from '@/ui/theme/type';
 
-/** Home's three lines, which the `status` reservation below is made for. */
-const HOME_LINES = 3;
+/** Home's three lines, which the `status` reservation below is made for (a token: homeFit.test.ts adds them up). */
+const HOME_LINES = layout.homeStatusLines;
 
 type StatusLineProps = {
   readonly children: string;
