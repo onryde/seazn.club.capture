@@ -358,63 +358,86 @@ describe('the round line above the match label (spec §2, R-F5)', () => {
   });
 
   // The camera half is what the controls half leaves: the window less the controls half's width (owner, 2026-10-08),
-  // read here from what the controls half RENDERED, so the halves the test lays out are the producer's. At 640 wide
-  // that is 330, and the box (height-limited from 630 wide up) is 320 x 180 with the strip's 180 under it, as at
-  // every wider screen: there is no 189 dp strip any more, where PR A's camera half (304) left the box 171 tall.
+  // read here from what the controls half RENDERED, so the halves the test lays out are the producer's. The picture
+  // is sized from this match's label (owner, 2026-10-08, option A): the half lays out, the label lays out at its
+  // height, the box takes its size from both, and the strip is the rest. So the chain below is the producer's, not a
+  // typed strip.
   const cameraHalf = (width: number) =>
     width - parseFloat(getComputedStyle(byId('controls-half')).width);
 
-  it('at 640 × 360 the strip is 180, so a two-line label shows the line and a three-line long label (57) hides it', async () => {
-    await withStage('QF', { strip: 0, label: 0 });
-    expect(cameraHalf(640)).toBe(330);
-    layOut(byId('camera-half'), { width: cameraHalf(640), height: 360 });
-    const box = parseFloat(getComputedStyle(byId('camera-box')).height);
-    expect(box).toBeCloseTo(180, 6);
-    const strip = 360 - box;
-    expect(strip).toBeCloseTo(180, 6);
-    layOut(byId('status-strip'), { width: cameraHalf(640), height: strip });
-    layOut(byId('match-label'), { width: 270, height: 44 });
-    expect(stage()?.textContent).toBe('QF');
-    layOut(byId('match-label'), { width: 270, height: 57 });
-    expect(stage()).toBeNull();
-    layOut(byId('match-label'), { width: 270, height: 66 });
-    expect(stage()).toBeNull();
-    layOut(byId('match-label'), { width: 270, height: 76 });
-    expect(stage()).toBeNull();
-    layOut(byId('match-label'), { width: 270, height: 44 });
-    expect(stage()?.textContent).toBe('QF');
+  /**
+   * One window, one label height, a caption up or not: the strip the box leaves and whether the round line shows.
+   * A caption up is the viewfinder as it opens (the fake phone is uncharged, so Not charging is on top); no caption is
+   * on air with the phone charging. Each is checked to be what it says (anti-vacuity: a "no caption" run that had one
+   * proves nothing).
+   */
+  async function roundLineIn(width: number, height: number, label: number, captionUp: boolean) {
+    const view = await withStage('QF', { strip: 0, label: 0 });
+    if (!captionUp) {
+      act(() => {
+        view.engine.scene('live');
+        view.engine.patch({ charging: true });
+      });
+    }
+    layOut(byId('camera-half'), { width: cameraHalf(width), height });
+    layOut(byId('match-label'), { width: cameraHalf(width) - 32, height: label });
+    const strip = height - parseFloat(getComputedStyle(byId('camera-box')).height);
+    layOut(byId('status-strip'), { width: cameraHalf(width), height: strip });
+    const captions = ADVISORIES.filter(([, text]) => screen.queryByText(text) !== null);
+    expect(captions.length === 1, `${width} × ${height}: ${captions.length} captions up`).toBe(
+      captionUp,
+    );
+    const shown = stage() !== null;
+    view.unmount();
+    return { shown, strip };
+  }
+
+  it('at 640 × 360 the half limits the picture for a label up to 70 dp, so a caption and a two-line label (44) leave room for the round line, and three long lines (57) do not', async () => {
+    expect(await roundLineIn(640, 360, 44, true), 'two lines, a caption up').toEqual({
+      shown: true,
+      strip: expect.closeTo(174.375, 6),
+    });
+    expect(await roundLineIn(640, 360, 57, true), 'three long lines, a caption up').toEqual({
+      shown: false,
+      strip: expect.closeTo(174.375, 6),
+    });
+    // Four long lines are the worst case the reserve is made for: the strip is the 180 it always was.
+    expect(await roundLineIn(640, 360, 76, true), 'four long lines').toEqual({
+      shown: false,
+      strip: expect.closeTo(180, 6),
+    });
   });
 
-  it('yields at each of the five real screens, in the half the layout gives the camera', async () => {
-    // [width, height, the strip the rendered box leaves]: the owner's phone (804 × 360) with the four of the fit files.
-    const SCREENS = [
-      [640, 360, 180],
-      [800, 360, 180],
-      [804, 360, 180],
-      [844, 390, 180],
-      [915, 412, 180],
+  // Each of the five real windows, with a label of two lines and a long one. Written by hand, never from stageFits:
+  // height-limited (every window but 640 × 360), the strip is the label's reserve, 104 + the label; the round line
+  // needs 88 + the label with no caption (it fits with 16 to spare) and 126 + the label with one (22 over).
+  it('yields at each of the five real screens, with a caption up and not, in the half the layout gives the camera', async () => {
+    // [width, height, label, strip, shows with no caption, shows with a caption]
+    const ROWS = [
+      [640, 360, 44, 174.375, true, true],
+      [640, 360, 57, 174.375, true, false],
+      [640, 360, 76, 180, true, false],
+      [800, 360, 44, 148, true, false],
+      [800, 360, 76, 180, true, false],
+      [804, 360, 44, 148, true, false],
+      [804, 360, 57, 161, true, false],
+      [844, 390, 44, 148, true, false],
+      [915, 412, 22, 126, true, false],
+      [915, 412, 44, 148, true, false],
+      [915, 412, 76, 180, true, false],
     ] as const;
     let checked = 0;
-    for (const [width, height, expected] of SCREENS) {
-      const view = await withStage('QF', { strip: 0, label: 0 });
-      // The producer, not a typed number: the half lays out, the box takes its size, the strip is the rest.
-      layOut(byId('camera-half'), { width: cameraHalf(width), height });
-      const strip = height - parseFloat(getComputedStyle(byId('camera-box')).height);
-      expect(strip).toBeCloseTo(expected, 6);
-      layOut(byId('status-strip'), { width: cameraHalf(width), height: strip });
-      layOut(byId('match-label'), { width: cameraHalf(width) - 32, height: 44 });
-      expect(stage()?.textContent, `${width} × ${height}, 2 lines`).toBe('QF');
-      layOut(byId('match-label'), { width: cameraHalf(width) - 32, height: 57 });
-      expect(stage(), `${width} × ${height}, 3 long lines`).toBeNull();
-      layOut(byId('match-label'), { width: cameraHalf(width) - 32, height: 66 });
-      expect(stage(), `${width} × ${height}, 3 regular lines`).toBeNull();
-      layOut(byId('match-label'), { width: cameraHalf(width) - 32, height: 76 });
-      expect(stage(), `${width} × ${height}, 4 long lines`).toBeNull();
-      view.unmount();
-      checked += 1;
+    for (const [width, height, label, strip, none, up] of ROWS) {
+      const bare = await roundLineIn(width, height, label, false);
+      expect(bare.strip, `${width} × ${height}, label ${label}`).toBeCloseTo(strip, 6);
+      expect(bare.shown, `${width} × ${height}, label ${label}, no caption`).toBe(none);
+      const captioned = await roundLineIn(width, height, label, true);
+      expect(captioned.strip, `${width} × ${height}, label ${label}, strip`).toBeCloseTo(strip, 6);
+      expect(captioned.shown, `${width} × ${height}, label ${label}, a caption`).toBe(up);
+      checked += 2;
     }
-    expect(checked).toBe(SCREENS.length);
-    expect(SCREENS).toHaveLength(5);
+    expect(checked).toBe(ROWS.length * 2);
+    expect(ROWS.filter((row) => row[4] && !row[5]).length).toBeGreaterThan(0);
   });
 });
 
@@ -649,11 +672,15 @@ describe('the halves are one screen through a sequence (spec §1, §4)', () => {
 
 /**
  * Fix round 1, I-1 (owner ruling): the strip keeps its content height and the camera box gives way.
- * The half reports its size (`onLayout`); the box is min(half width × 9/16, height - 180), centred in
+ * The half reports its size (`onLayout`); the box is min(half width × 9/16, height - the strip's reserve), centred in
  * the half, on the half's surface colour. jsdom lays nothing out, so `layOut` delivers the size the
  * phone would, and the box is read from the style it was given.
+ *
+ * This describe is the INITIAL WORST CASE: no match label has been laid out, so the box is sized against the strip's
+ * worst case, 180, as it was before the owner's ruling of 2026-10-08 (option A) sized it from the label (the describe
+ * after this one). Nothing here lays the label out, which is what makes these the unmeasured numbers.
  */
-describe('the camera box gives way to the strip (spec §1, fix round 1 I-1)', () => {
+describe('the camera box gives way to the strip, before the label is measured (spec §1, fix round 1 I-1)', () => {
   beforeEach(() => vi.useFakeTimers());
   afterEach(() => vi.useRealTimers());
 
@@ -770,6 +797,227 @@ describe('the camera box gives way to the strip (spec §1, fix round 1 I-1)', ()
     layOut(byId('camera-half'), { width: 0, height: 0 });
     const style = getComputedStyle(byId('camera-box'));
     expect(style.width).toBe('100%');
+  });
+});
+
+/**
+ * Owner, 2026-10-08, option A: the picture is sized from what THIS match's label needs (its measured height, as laid
+ * out in the half's width), plus fixed room for the status line, the caption and the padding and gaps. It is one size for
+ * the whole match: it changes when the label's text or the half's width does and for nothing else, and until the label
+ * has been measured it is the worst case. jsdom lays nothing out, so `layOut` delivers what the phone would: the half's
+ * size, then the label's height. The expected numbers are written out by hand from the token and type declarations
+ * (the strip's fixed terms are 16 + 44 + 32 + 12 = 104, and a label of 22, 44 or 76), never read from the component.
+ */
+describe('the picture is sized from this match’s label (owner, 2026-10-08, option A)', () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  const MATCH = 'Ana Ruiz v Bea Lima';
+  const LONG_DOUBLES =
+    'Alexandra Konstantinopoulou / Bea Lima v Cai Wen / Maria Fernanda Albuquerque Santos';
+  const half = (width: number) => width - parseFloat(getComputedStyle(byId('controls-half')).width);
+  const boxSize = () => {
+    const style = getComputedStyle(byId('camera-box'));
+    return { width: parseFloat(style.width), height: parseFloat(style.height) };
+  };
+  /** A viewfinder for this match, the half laid out for the window, and the label too when it has a height. */
+  async function open(width: number, height: number, label: number | null, text = MATCH) {
+    const view = await renderViewfinder(
+      {},
+      { prepare: (fakes) => fakes.engine.setPairing({ label: text, stageLabel: 'QF' }) },
+    );
+    layOut(byId('camera-half'), { width: half(width), height });
+    if (label !== null)
+      layOut(byId('match-label'), { width: half(width) - 2 * layout.stripPadH, height: label });
+    return view;
+  }
+
+  // The initial worst case: the half has laid out and the label has not. The strip is never short: the box leaves it
+  // the 180 it always reserved, whatever the match.
+  it.each([
+    [640, 360, 320, 180],
+    [804, 360, 320, 180],
+    [915, 412, 412.4444444, 232],
+  ] as const)(
+    'before the label is measured the strip has its worst case, 180: %i × %i is %d × %d',
+    async (width, height, boxWidth, boxHeight) => {
+      await open(width, height, null);
+      expect(boxSize().width).toBeCloseTo(boxWidth, 2);
+      expect(boxSize().height).toBeCloseTo(boxHeight, 2);
+      expect(height - boxSize().height).toBeCloseTo(180, 6);
+    },
+  );
+
+  // [window, height, label lines, label height, box width, box height]: by hand, from the strip's reserve of 104 + the
+  // label (126, 148, 180) and a camera half of the window less 310. The same table as cameraBox.test.ts, but rendered:
+  // the half lays out, then the label does, and the box that results is read from what the component painted.
+  const TABLE = [
+    [640, 360, '1 line', 22, 330, 185.625],
+    [640, 360, '2 lines', 44, 330, 185.625],
+    [640, 360, '4 long lines', 76, 320, 180],
+    [804, 360, '1 line', 22, 416, 234],
+    [804, 360, '2 lines', 44, 376.8888889, 212],
+    [804, 360, '4 long lines', 76, 320, 180],
+    [915, 412, '1 line', 22, 508.4444444, 286],
+    [915, 412, '2 lines', 44, 469.3333333, 264],
+    [915, 412, '4 long lines', 76, 412.4444444, 232],
+  ] as const;
+  let tabled = 0;
+
+  it.each(TABLE)(
+    '%i × %i, a label of %s (%d dp): the box is %d × %d',
+    async (width, height, _lines, label, boxWidth, boxHeight) => {
+      await open(width, height, label);
+      const size = boxSize();
+      expect(size.width).toBeCloseTo(boxWidth, 2);
+      expect(size.height).toBeCloseTo(boxHeight, 2);
+      expect(size.width / size.height).toBeCloseTo(16 / 9, 3);
+      // Derived from the declarations: the lesser of what the half holds and what the window leaves the strip.
+      expect(size.height).toBeCloseTo(
+        Math.min(((width - layout.controlsHalf) * 9) / 16, height - (104 + label)),
+        6,
+      );
+      expect(size.width).toBeLessThanOrEqual(half(width) + 1e-6);
+      tabled += 1;
+    },
+  );
+
+  it('rendered nine shapes, and a longer label is never a larger box (anti-vacuity)', () => {
+    expect(TABLE).toHaveLength(9);
+    expect(tabled).toBe(9);
+    for (let window = 0; window < 3; window += 1) {
+      const [one, two, four] = TABLE.slice(window * 3, window * 3 + 3);
+      expect(one?.[5]).toBeGreaterThanOrEqual(two?.[5] ?? Infinity);
+      expect(two?.[5]).toBeGreaterThanOrEqual(four?.[5] ?? Infinity);
+    }
+  });
+
+  // The sequence, on the owner's phone (804 × 360), the match as the operator lives it. The box is read after every
+  // step and must be the same size to the pixel until the label's text changes: a status line that changes (paired,
+  // live, holding), a caption that comes up and goes, the round line that comes and goes. Then a new match with a
+  // longer label is a smaller box, with the worst case in between (the new label has not been laid out), and a
+  // shorter one is a larger box again, the first one's, exactly.
+  it('keeps the same picture for the whole match, and changes it only with the label (804 × 360)', async () => {
+    const view = await open(804, 360, 44);
+    const first = boxSize();
+    expect(first.width).toBeCloseTo(376.8888889, 2);
+    expect(first.height).toBeCloseTo(212, 6);
+    const stripOf = () => 804 > 0 && 360 - boxSize().height;
+    layOut(byId('status-strip'), { width: half(804), height: 148 });
+    const sameBox = (when: string) => expect(boxSize(), when).toEqual(first);
+    const roundLine = () => within(byId('status-strip')).queryByTestId('stage-line');
+
+    // The status line changes: going live, a call holding the link, back, waiting for Go live after an organiser stop.
+    const status = byId('status-strip').textContent;
+    act(() => view.engine.scene('live'));
+    expect(byId('status-strip').textContent).not.toBe(status);
+    sameBox('after going live');
+    act(() => view.engine.patch({ charging: true }));
+    sameBox('after the phone is charging');
+    const live = byId('status-strip').textContent;
+    act(() => view.engine.scene('holding'));
+    expect(byId('status-strip').textContent).not.toBe(live);
+    sameBox('after the link is held');
+    act(() => view.engine.scene('live'));
+    act(() => view.engine.patch({ charging: true }));
+    sameBox('after it is back');
+
+    // No caption now, so the round line has the room: 132 of the 148 the strip is.
+    expect(roundLine()?.textContent).toBe('QF');
+    sameBox('with the round line up');
+
+    // A caption comes up: the round line goes (170 > 148), the picture does not move.
+    act(() => view.engine.patch({ charging: false }));
+    expect(within(byId('status-strip')).getByText(en['stream.advisory.notCharging'])).toBeTruthy();
+    expect(roundLine()).toBeNull();
+    sameBox('with a caption up');
+    act(() => view.engine.setSurvivesBackground(false));
+    sameBox('with another caption on top');
+    act(() => view.engine.patch({ charging: true }));
+    act(() => view.engine.setSurvivesBackground(true));
+    sameBox('with the captions gone');
+    expect(roundLine()?.textContent).toBe('QF');
+
+    // The round line itself comes and goes with the stage label: the picture does not move.
+    act(() => view.engine.setPairing({ stageLabel: null }));
+    expect(roundLine()).toBeNull();
+    sameBox('with no round line');
+    act(() => view.engine.setPairing({ stageLabel: 'SF' }));
+    expect(roundLine()?.textContent).toBe('SF');
+    sameBox('with another round line');
+    expect(stripOf()).toBeCloseTo(148, 6);
+
+    // The match ends (the organiser stops it) and the next is paired: the label now comes from the pairing, before air.
+    act(() => view.engine.scene('paired-after-organiser-stop'));
+    sameBox('after the organiser stopped the match');
+
+    // A new match, with a longer label: the label changes text, so the picture is sized again. Not laid out yet it is
+    // the worst case (320 × 180, never short), and laid out at four long lines it is that reserve: smaller than the first.
+    act(() => view.engine.setPairing({ label: LONG_DOUBLES }));
+    expect(boxSize().height).toBeCloseTo(180, 6);
+    layOut(byId('match-label'), { width: half(804) - 2 * layout.stripPadH, height: 76 });
+    expect(boxSize().width).toBeCloseTo(320, 6);
+    expect(boxSize().height).toBeCloseTo(180, 6);
+    expect(boxSize().height).toBeLessThan(first.height);
+
+    // And a shorter one is the first picture again, to the pixel: it depends on the label and the half and nothing else.
+    act(() => view.engine.setPairing({ label: MATCH }));
+    layOut(byId('match-label'), { width: half(804) - 2 * layout.stripPadH, height: 44 });
+    sameBox('with the first label again');
+  });
+
+  // The half's width is the label's wrapping width, so a new width is a new measurement (the label lays out again in
+  // it) and a new box: here a rotation of the half and the same label measured again.
+  it('is sized again when the half’s width changes, and the label lays out in the new width', async () => {
+    await open(804, 360, 44);
+    expect(boxSize().height).toBeCloseTo(212, 6);
+    layOut(byId('camera-half'), { width: half(915), height: 412 });
+    layOut(byId('match-label'), { width: half(915) - 2 * layout.stripPadH, height: 22 });
+    expect(boxSize().height).toBeCloseTo(286, 6);
+    expect(boxSize().width).toBeCloseTo(508.4444444, 2);
+  });
+
+  // The strip's room for the round line, on the owner's phone: the reserve is 148 with a two-line label, and the round
+  // line fits it (132) while no caption is up and does not (170) while one is. The picture is the same either way. Each
+  // of the five captions in turn, each on a viewfinder of its own (a failed overlay stays failed).
+  let captionsTried = 0;
+  it.each(ADVISORIES)(
+    'shows the round line at 804 × 360 with no caption and hides it while the %s caption is up, the picture still',
+    async (_name, text, bringUp) => {
+      const view = await open(804, 360, 44);
+      // The calm baseline: on air, the phone charging, no caption of any kind.
+      act(() => {
+        view.engine.scene('live');
+        view.engine.patch({ charging: true });
+      });
+      const calm = boxSize();
+      layOut(byId('status-strip'), { width: half(804), height: 360 - calm.height });
+      expect(360 - calm.height).toBeCloseTo(148, 6);
+      const roundLine = () => within(byId('status-strip')).queryByTestId('stage-line');
+      expect(ADVISORIES.filter(([, other]) => screen.queryByText(other) !== null)).toHaveLength(0);
+      expect(roundLine()?.textContent).toBe('QF');
+      // The score-ahead note is before air only, so its own state is the paired one; the rest are on air.
+      if (text === SCORE_AHEAD) {
+        act(() => {
+          view.engine.scene('paired-ready');
+          view.engine.patch({ charging: true });
+        });
+      } else if (text === en['stream.advisory.notCharging']) {
+        // The fake phone starts uncharged, so Not charging is the one that needs the phone unplugged again.
+        act(() => view.engine.patch({ charging: false }));
+      } else {
+        act(() => bringUp(view));
+      }
+      expect(screen.queryByText(text) !== null, `${text} is up`).toBe(true);
+      expect(roundLine()).toBeNull();
+      expect(boxSize()).toEqual(calm);
+      captionsTried += 1;
+    },
+  );
+
+  it('tried all five captions (anti-vacuity)', () => {
+    expect(ADVISORIES).toHaveLength(5);
+    expect(captionsTried).toBe(5);
   });
 });
 

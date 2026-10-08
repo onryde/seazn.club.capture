@@ -294,9 +294,11 @@ export function controlsHalfWidth(cells: ControlsCells): number {
  *
  * The halves are NOT equal. Owner, 2026-10-08 (design follow-up §1, amended): the
  * controls half takes the width its content needs (`controlsHalf`) and the camera
- * half takes everything else. On a 360 dp screen the strip's 180 limits the box
- * from 630 wide up, so a wider camera half there is room for the strip and the
- * Remote scoring panel, not a larger picture.
+ * half takes everything else. The picture in it is sized from this match's label,
+ * as measured, and not from the strip's worst case (owner, 2026-10-08, option A;
+ * `stripReserve`): a two-line label on an 804 × 360 phone gives a box of about
+ * 375 × 211 where the worst case, which is what it is until the label has been
+ * measured, gives 320 × 180.
  */
 export const layout = { ...base, controlsHalf: controlsHalfWidth(base) } as const;
 

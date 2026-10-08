@@ -25,17 +25,41 @@ export function cameraBoxSize(input: {
 }
 
 /**
- * The status strip's content at its worst, whatever the width (D17, F9, F20, Q4 option A): the
- * larger of the two label size rules, the status line's two lines of `body`, the caption's two lines,
- * the padding and the gaps between the three. The box is sized against this, so the strip is never
- * short of it. Real text staying inside these lines is the phone's to prove (Task 9).
+ * The strip's reserve for a label that has been measured (owner, 2026-10-08, option A): the padding, the label at the
+ * height it really came out, the status line's two lines of `body`, the caption's two lines and the gaps between the
+ * three. Every term but the label is a fixed reservation, so the picture is the same size for the whole match: it
+ * moves with the label's text and the half's width (what the label wraps in), and with nothing else. A status line,
+ * a caption or the round line coming and going changes none of its inputs. The caption's room is reserved whether or
+ * not a caption is up, and the round line borrows it while there is none (stageFit.ts).
+ *
+ * `labelHeight` is what `MatchLabel` reported: 0 is not measured yet (or the label is going), and so is anything that
+ * is not a positive height. Then it is the worst case the strip can need, the larger of the label's two size rules, so
+ * the strip is never short before the first measurement. A measured label taller than that (large system text) is
+ * taken as measured: the strip really is that tall.
  */
-export const STRIP_RESERVE =
-  2 * layout.stripPadV +
-  Math.max(
-    layout.labelLinesRegular * typeScale.label.lineHeight,
-    layout.labelLinesMax * typeScale.labelLong.lineHeight,
-  ) +
-  layout.statusLinesMax * typeScale.body.lineHeight +
-  layout.captionLinesMax * typeScale.metricUnit.lineHeight +
-  2 * layout.stripGap;
+export function stripReserve(labelHeight: number): number {
+  const label = labelHeight > 0 ? labelHeight : WORST_LABEL;
+  return (
+    2 * layout.stripPadV +
+    label +
+    layout.statusLinesMax * typeScale.body.lineHeight +
+    layout.captionLinesMax * typeScale.metricUnit.lineHeight +
+    2 * layout.stripGap
+  );
+}
+
+/**
+ * The label at its worst, whatever the width (D17, F9, Q4 option A): the larger of its two size rules, 2 lines of 22
+ * (a regular label, a line a side) and 4 lines of 19 (a long one, a doubles label).
+ */
+const WORST_LABEL = Math.max(
+  layout.labelLinesRegular * typeScale.label.lineHeight,
+  layout.labelLinesMax * typeScale.labelLong.lineHeight,
+);
+
+/**
+ * The status strip's content at its worst, whatever the width and the label (D17, F9, F20, Q4 option A): the
+ * reserve before the label is measured. The box is sized against this until it is, so the strip is never short of
+ * it. Real text staying inside these lines is the phone's to prove (Task 9).
+ */
+export const STRIP_RESERVE = stripReserve(0);

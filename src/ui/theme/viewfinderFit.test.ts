@@ -3,7 +3,7 @@ import en from '@/i18n/en.json';
 import es from '@/i18n/es.json';
 import fr from '@/i18n/fr.json';
 import nl from '@/i18n/nl.json';
-import { cameraBoxSize, STRIP_RESERVE } from '@/ui/theme/cameraBox';
+import { cameraBoxSize, STRIP_RESERVE, stripReserve } from '@/ui/theme/cameraBox';
 import { font, layout, space } from '@/ui/theme/tokens';
 import { typeScale } from '@/ui/theme/type';
 import { loadFont } from '../../../test/fontMetrics';
@@ -83,10 +83,11 @@ describe('the strip and the controls fit, at their worst', () => {
     expect(STRIP_RESERVE).toBeGreaterThanOrEqual(STRIP_WORST);
   });
 
-  // R-F5 (controller): the round line is NOT in the reserve. The strip is 180 wherever the box yields to it, which
-  // is from 630 wide up on a 360 dp screen (the owner's rule, 2026-10-08, leaves the camera half 330 at 640, so
-  // 640 × 360 is one of them), so a long double plus the round line does not fit, and the line yields (stageFit.ts).
-  // This states the over-run so nobody "fixes" it by deleting the yield or by adding a reserve the owner did not choose.
+  // R-F5 (controller): the round line is NOT in the reserve. The strip is the reserve wherever the box is
+  // height-limited, the worst case's 180 before the label has been measured and for a label of four long lines (owner,
+  // 2026-10-08, option A: the reserve is 104 dp and the label as measured, stripReserve), so the round line plus a
+  // caption plus a long double does not fit, and the line yields (stageFit.ts). This states the over-run so nobody "fixes"
+  // it by deleting the yield or by adding a reserve the owner did not choose.
   it('the round line plus PR A’s worst-case strip is 202 dp, 22 over the 180 the strip has, which is why it yields (R-F5)', () => {
     const worst = layout.labelLinesMax * typeScale.labelLong.lineHeight;
     const status = layout.statusLinesMax * typeScale.body.lineHeight;
@@ -154,8 +155,8 @@ describe('the on-air controls half with Remote scoring in the icon row (spec §1
 });
 
 describe('the camera box at the smallest screen (spec §1)', () => {
-  // Spec §1's 640 × 360: the camera half is 330 (640 - 310), which would hold a box 186 tall, but the strip leaves
-  // 180, so the box is 320 × 180 and the strip gets the 180 that is left. (Before the owner's rule of 2026-10-08 the
+  // Spec §1's 640 × 360 before the label has been measured: the camera half is 330 (640 - 310), which would hold a box
+  // 186 tall, but the worst-case strip leaves 180, so the box is 320 × 180 and the strip gets the 180 that is left. (Before the owner's rule of 2026-10-08 the
   // half was 304 and the box 304 × 171, the strip 189.) This is the arithmetic that made Q4 an owner question: a
   // padding of 10 would make the strip 184 and take 4 dp off the box.
   it('is 320 × 180: the strip’s 180 limits it, not the half', () => {
@@ -194,14 +195,39 @@ describe('the owner’s phone, 804 × 360 (the ruling of 2026-10-08)', () => {
     expect(half).toBeGreaterThan(804 / 2);
   });
 
-  // The box is 16:9 and the strip is below it, so it is limited by what the strip's 180 leaves: 360 - 180 = 180 tall,
-  // 320 wide. A box of 480 × 270 would leave the strip 90 dp, half what it reserves at its worst case (Q4 option A).
-  it('holds a 320 × 180 box, limited by the strip’s 180 and not by the half: 494 would hold 277', () => {
+  // Before the label has been measured the box is 16:9 with the strip below it, limited by what the worst-case strip's
+  // 180 leaves: 360 - 180 = 180 tall, 320 wide. A box of 480 × 270 would leave the strip 90 dp, half what it reserves
+  // at its worst case (Q4 option A). Once the label is measured the strip is its reserve (the next test).
+  it('holds a 320 × 180 box before the label is measured, limited by the strip’s 180 and not by the half: 494 would hold 277', () => {
     expect(box.width).toBeCloseTo(320, 9);
     expect(box.height).toBeCloseTo(180, 9);
     expect(box.width / box.height).toBeCloseTo(16 / 9, 9);
     expect(half / layout.previewAspect).toBeGreaterThan(box.height);
     expect(box.height + STRIP_WORST).toBe(360);
+  });
+
+  // Option A (owner, 2026-10-08): the strip is what this match's label needs. A two-line label (44) reserves 104 + 44 =
+  // 148, so the 804 × 360 box is 212 tall and 376.9 wide, and the strip under it is the 148 its content needs: the 16
+  // of padding, the label, the status line's two lines, the caption's two and the two gaps. A caption up fills it
+  // exactly; with none, the caption's 32 and a gap are room for the round line.
+  it('holds a 376.9 × 212 box for a two-line label, and the strip under it holds that label’s worst content', () => {
+    const label = 2 * typeScale.label.lineHeight;
+    const measured = cameraBoxSize({
+      halfWidth: half,
+      height: 360,
+      stripContent: stripReserve(label),
+      aspect: layout.previewAspect,
+    });
+    expect(label).toBe(44);
+    expect(measured.height).toBeCloseTo(212, 9);
+    expect(measured.width).toBeCloseTo(376.888889, 5);
+    expect(measured.width).toBeGreaterThan(box.width);
+    expect(measured.width / measured.height).toBeCloseTo(16 / 9, 9);
+    // The strip left under it is what its content needs: 16 + 44 + 44 + 32 + 12.
+    expect(stack([label, STATUS, CAPTION], layout.stripGap, layout.stripPadV)).toBe(148);
+    expect(
+      measured.height + stack([label, STATUS, CAPTION], layout.stripGap, layout.stripPadV),
+    ).toBe(360);
   });
 });
 

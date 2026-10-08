@@ -1,5 +1,6 @@
 import { act, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
+import type { Advisory } from '@/hooks/advisory';
 import { StatusStrip } from '@/ui/components/StatusStrip';
 import { layOut } from '../../../test/layOut';
 import { renderWithPorts } from '../../../test/renderWithPorts';
@@ -22,9 +23,16 @@ vi.mock('@/ui/components/MatchLabel', async () => {
   };
 });
 
-function stripWith(stageLabel: string | null, label = 'A v B') {
+function stripWith(
+  stageLabel: string | null,
+  label = 'A v B',
+  advisory: Advisory | null = null,
+  onLabelHeight?: (height: number) => void,
+) {
   standIn.report = undefined;
-  const view = renderWithPorts(<StatusStrip line="Ready" advisory={null} />);
+  const view = renderWithPorts(
+    <StatusStrip line="Ready" advisory={advisory} onLabelHeight={onLabelHeight} />,
+  );
   act(() => {
     view.engine.setPairing({ label, stageLabel });
     view.engine.scene('paired-ready');
@@ -37,8 +45,9 @@ const strip = (height: number) =>
 const line = () => screen.queryByTestId('stage-line');
 
 // This is a WIRING test, not a fit proof: the fit itself is stageFit.test.ts's arithmetic and Task 11's
-// device check. The heights are the strip's 180 and the table's labels: 44 (two regular lines) fits the 54 dp
-// room, 57 (three long lines) does not.
+// device check. The heights are the strip's 180 and the table's labels. With no caption up the round line needs 88 dp
+// and the label (44: two regular lines, 57: three long ones), so both fit a 180 strip; with a caption up it needs 126
+// and the label, so 44 fits (170) and 57 does not (183).
 describe('the status strip shows the round line only when it fits (R-F5)', () => {
   it('hands the label a real function to report its height with (the wiring is not vacuous)', () => {
     stripWith('QF');
@@ -56,11 +65,41 @@ describe('the status strip shows the round line only when it fits (R-F5)', () =>
     expect(above.compareDocumentPosition(below) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0);
   });
 
-  it('hides it when the label is three lines (57)', () => {
-    stripWith('QF');
+  it('hides it when the label is three lines (57) and a caption is up, and shows it with no caption', () => {
+    const view = stripWith('QF', 'A v B', 'notCharging');
     strip(180);
     label(57);
     expect(line()).toBeNull();
+    // The positive pair: the same strip and label, the caption gone, and the caption's room is room.
+    view.rerender(<StatusStrip line="Ready" advisory={null} />);
+    expect(line()?.textContent).toBe('QF');
+  });
+
+  it('a caption coming up takes it away and the caption going brings it back, at the same strip (148, the reserve of a 44 label)', () => {
+    const view = stripWith('QF');
+    strip(148);
+    label(44);
+    expect(line()?.textContent).toBe('QF');
+    view.rerender(<StatusStrip line="Ready" advisory="shed" />);
+    expect(line()).toBeNull();
+    view.rerender(<StatusStrip line="Ready" advisory="keepOpen" />);
+    expect(line()).toBeNull();
+    view.rerender(<StatusStrip line="Ready" advisory={null} />);
+    expect(line()?.textContent).toBe('QF');
+  });
+
+  it('tells its caller the label’s height, each time it is laid out (the picture is sized from it), and nothing else', () => {
+    const heights: number[] = [];
+    const view = stripWith('QF', 'A v B', null, (height) => heights.push(height));
+    label(44);
+    label(76);
+    expect(heights).toEqual([44, 76]);
+    // The strip's own layout and the round line are not the label's height: nothing more is said.
+    strip(180);
+    view.rerender(
+      <StatusStrip line="Ready" advisory={null} onLabelHeight={(h) => heights.push(h)} />,
+    );
+    expect(heights).toEqual([44, 76]);
   });
 
   it('hides it until the strip has been laid out', () => {
@@ -88,8 +127,8 @@ describe('the status strip shows the round line only when it fits (R-F5)', () =>
     expect(line()).not.toBeNull();
   });
 
-  it('brings it back when a shorter label arrives (57, then 44)', () => {
-    stripWith('QF');
+  it('brings it back when a shorter label arrives (57, then 44), a caption up', () => {
+    stripWith('QF', 'A v B', 'notCharging');
     strip(180);
     label(57);
     expect(line()).toBeNull();
@@ -97,8 +136,8 @@ describe('the status strip shows the round line only when it fits (R-F5)', () =>
     expect(line()?.textContent).toBe('QF');
   });
 
-  it('takes it away when a longer label arrives (44, then 57)', () => {
-    stripWith('QF');
+  it('takes it away when a longer label arrives (44, then 57), a caption up', () => {
+    stripWith('QF', 'A v B', 'notCharging');
     strip(180);
     label(44);
     expect(line()).not.toBeNull();
