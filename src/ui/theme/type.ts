@@ -129,6 +129,18 @@ export const typeScale = {
     lineHeight: 16,
     color: colour.ink,
   },
+  /**
+   * Board "Remote scoring": the code panel's title, Barlow Condensed 700 at 22/24, caps and letterspaced like `action`
+   * (the board names the face, size and caps only; 0.7 is `action`'s, 0.03em of 22). Left-aligned, as every role is.
+   */
+  panelTitle: {
+    fontFamily: font.displayBold,
+    fontSize: 22,
+    lineHeight: 24,
+    letterSpacing: 0.7,
+    textTransform: 'uppercase',
+    color: colour.ink,
+  },
   status: {
     fontFamily: font.body,
     fontSize: 13.5,

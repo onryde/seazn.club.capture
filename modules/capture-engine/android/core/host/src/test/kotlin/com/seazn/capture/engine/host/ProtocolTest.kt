@@ -84,6 +84,68 @@ class ProtocolTest {
   }
 
   @Test
+  fun `a scoring-link answer is one line naming its call, with the answer inside`() {
+    val line = Protocol.scoringLink(7, mapOf("outcome" to "rate_limited", "retryAfterS" to 30.0))
+    assertFalse('\n' in line)
+    val json = JSONObject(line)
+    assertEquals("scoringLink", json.getString("ev"))
+    assertEquals(7, json.getInt("call"))
+    assertEquals("rate_limited", json.getJSONObject("answer").getString("outcome"))
+    assertEquals(30, json.getJSONObject("answer").getInt("retryAfterS"))
+  }
+
+  /**
+   * The link's secret leaves the host in exactly one line, the answer to the call that asked, and in no snapshot, record or
+   * request line. The `log` op is the way a caller (or a library's error) could name it in the record: unmasked before the
+   * answer, which is the witness that the masking after it is the protect call's work.
+   */
+  @Test
+  fun `the scoring link reaches the caller once and no other line the host writes carries its secret`() {
+    val out = mutableListOf<String>()
+    val executor = ExecutorScheduler()
+    val host = Host(executor) { synchronized(out) { out += it } }
+    val secret = ScriptedServer.SCORING_SECRET
+    host.handle("""{"op":"send","seq":1,"intent":${ScriptedServer.PAIR}}""")
+    executor.drain()
+    await(out) { it.getString("ev") == "snapshot" && it.getJSONObject("body").getJSONObject("state").getString("kind") == "paired" }
+    // Before the answer the host cannot know the secret: the same probe shows its text (the witness).
+    host.handle("""{"op":"log","level":"info","kind":"probe","fields":{"message":"x $secret y"}}""")
+    executor.drain()
+    await(out) { it.getString("ev") == "record" && secret in it.getString("line") }
+    val probed = synchronized(out) { out.size }
+    host.handle("""{"op":"scoringLink","call":1}""")
+    executor.drain()
+    await(out) { it.getString("ev") == "scoringLink" && it.getInt("call") == 1 }
+    // After it, a line that names the secret under a public url key or inside a message is masked.
+    host.handle("""{"op":"log","level":"info","kind":"probe","fields":{"url":"https://stg.seazn.club/score/$secret","message":"x $secret y"}}""")
+    executor.drain()
+    await(out) { it.getString("ev") == "record" && JSONObject(it.getString("line")).has("url") }
+    // A refusal, scripted, then asked again: the sequence, and a second call number.
+    host.handle("""{"op":"script","path":"scoring-link","status":409,"body":{"code":"replaced","message":"m"}}""")
+    host.handle("""{"op":"scoringLink","call":2}""")
+    executor.drain()
+    await(out) { it.getString("ev") == "scoringLink" && it.getInt("call") == 2 }
+    val all = synchronized(out) { out.toList() }
+    val answers = all.map(::JSONObject).filter { it.getString("ev") == "scoringLink" }
+    assertEquals(listOf("ok", "replaced"), answers.map { it.getJSONObject("answer").getString("outcome") })
+    assertEquals("https://stg.seazn.club/score/$secret", answers[0].getJSONObject("answer").getString("url"))
+    assertFalse(answers[1].getJSONObject("answer").has("url"))
+    val probe = all.map(::JSONObject).filter { it.getString("ev") == "record" }.map { JSONObject(it.getString("line")) }.last { it.has("url") }
+    assertEquals("probe", probe.getString("kind"))
+    assertEquals(listOf("***", "x *** y"), listOf(probe.getString("url"), probe.getString("message")))
+    // From the answer on, the secret is in exactly one line: the call's own answer.
+    val carrying = all.drop(probed).filter { secret in it }
+    assertEquals(1, carrying.size, "only the first answer carries the secret")
+    assertEquals("scoringLink", JSONObject(carrying.single()).getString("ev"))
+    // Anti-vacuity: the lines it was kept out of exist (the snapshots, the record, and the scoring-link requests themselves).
+    val events = all.map { JSONObject(it).getString("ev") }
+    assertTrue(events.count { it == "snapshot" } > 0 && events.count { it == "record" } > 0 && events.count { it == "request" } > 0)
+    val asked = all.map(::JSONObject).filter { it.getString("ev") == "request" && it.getString("path") == "scoring-link" }
+    assertEquals(2, asked.size, "both taps reached the server as scoring-link requests, and neither request line carries the secret")
+    executor.shutdown()
+  }
+
+  @Test
   fun `the ready line is the first the host writes, before the start's first snapshot`() {
     val out = mutableListOf<String>()
     // Runs each task at once, so a snapshot the start publishes would land before a ready written after it.

@@ -22,6 +22,7 @@ class PairIntentVectorsTest {
     // The file's row count, so an emptied or truncated file cannot pass by sweeping nothing (PV12).
     assertEquals(2, rows.length())
     var checked = 0
+    var staged = 0
     for (index in 0 until rows.length()) {
       val sent = wire(index)
       val request = PairMapping.request(sent)
@@ -29,9 +30,13 @@ class PairIntentVectorsTest {
       assertEquals(emptyList(), request.problems(), name)
       assertEquals(listOf(sent["code"], sent["slot"], sent["codeUrl"], sent["heartbeatUrl"], sent["startUrl"]), listOf(request.code, request.slot.toDouble(), request.codeUrl, request.heartbeatUrl, request.startUrl), name)
       assertEquals(listOf(sent["environment"], sent["claim"], sent["venueTimezone"]), listOf(request.environment.wire, request.claim.wire, request.venueTimezone), name)
+      // The round line and its match cross as sent, or as none: the first row sends both, the second neither.
+      assertEquals(listOf(sent["stageLabel"], sent["stageMatch"]), listOf(request.stageLabel, request.stageMatch), name)
+      if (sent.containsKey("stageLabel")) staged += 1
       checked += 1
     }
     assertEquals(2, checked, "the rows checked")
+    assertEquals(1, staged, "the rows that send a stage: a sweep that read none as none would pass the rest")
   }
 
   @Test

@@ -8,7 +8,7 @@ import com.seazn.capture.engine.core.JsonObject
  * The pair intent's wire, as Expo hands it over (every number a Double), and the server's made-up
  * answers, built from [Configs]' values with [Json.obj], so no credential is typed twice. Shared by
  * `PairMappingTest` and `BridgeCoreTest`. Every value sits inside the web's schemas (capture-qr.v2,
- * capture-beat.v1, capture-descriptor.v1 at 5bb72e8a2): the code is 12 characters of the code
+ * capture-beat.v1, capture-descriptor.v1 at 7e75fd4a7): the code is 12 characters of the code
  * alphabet, the sid a uuid, the phone id 16 to 64 characters, and the beat path `/beats` (D3). The
  * server's bodies are `wire/server-bodies.json`'s, which ajv checks against those schemas
  * (`serverBodies.test.ts`, review C4a m-4): a beat names no zone, so the engine keeps the code's.

@@ -163,6 +163,12 @@ class SnapshotWireTest {
         SnapshotWire.of(bare(SnapshotState.Ended(EndReason.FATAL_ERROR, durationMs = null), 1_790_000_000_200), PlatformFacts(), clean)
       },
       "live-telemetry" to { SnapshotWire.of(live, liveFacts, RecordCounters(2, 1, 4, 3, snapshotFailures = 7, commandFailures = 8, stickyFailure = true)) },
+      // W28: the round line the descriptor gave crosses on the pairing; every other case's pairing carries none (null).
+      "paired-with-stage-label" to {
+        val waiting = waiting().copy(stageLabel = "QF", stageFor = "Example Town v Sample CC")
+        val snapshot = bare(SnapshotState.Paired, 1_790_000_007_000).copy(pairing = PairingView(name, true, waiting), ready = allReady, camera = CameraState.OWN)
+        SnapshotWire.of(snapshot, PlatformFacts(survivesBackground = true), clean)
+      },
     )
 
   /** `{ ...base, ...overrides }` when the case's value is an object; `null` stays `null`. */
@@ -226,7 +232,7 @@ class SnapshotWireTest {
   @Test
   fun `carries 3, 5, 6 each native snapshot becomes the shared wire`() {
     val cases = cases()
-    assertEquals(14, cases.size, "the vector file's fourteen cases")
+    assertEquals(15, cases.size, "the vector file's fifteen cases")
     assertEquals(cases.map { it.first }.toSet(), builders.keys, "one builder per case")
     for ((name, expected) in cases) assertJsonEquals(expected, JSONObject(WireJson.encode(builders.getValue(name)())), name)
   }
@@ -509,6 +515,7 @@ class SnapshotWireTest {
       "pairing.waiting.destinationName" to { s -> s.waiting { copy(destinationName = null) } },
       "pairing.waiting.overlayUrl" to { s -> s.waiting { copy(overlayUrl = null) } },
       "pairing.waiting.pollSeconds" to { s -> s.waiting { copy(pollSeconds = 60) } },
+      "pairing.waiting.stageLabel" to { s -> s.waiting { copy(stageLabel = "SF") } },
       "broadcast.sid" to { s -> s.broadcast { copy(sid = "sess_43") } },
       "broadcast.cause" to { s -> s.broadcast { copy(cause = Cause.OPERATOR) } },
       "broadcast.playbackUrl" to { s -> s.broadcast { copy(playbackUrl = "$playbackUrl?x") } },
@@ -548,6 +555,7 @@ class SnapshotWireTest {
       "language" to ("the notification's: JS already holds it" to { s -> s.snap { copy(language = "nl") } }),
       "device.charging" to ("a copy: the projection sets the snapshot's charging from it, and that crosses" to { s -> s.device { copy(charging = false) } }),
       "device.shed" to ("a copy: the projection sets the snapshot's shed from it, and that crosses" to { s -> s.device { copy(shed = ShedStep.ENCODE) } }),
+      "pairing.waiting.stageFor" to ("the match the stage was read with: the engine's own check against a beat's label, never shown" to { s -> s.waiting { copy(stageFor = "Sample CC v Example Town") } }),
     )
 
   @Test

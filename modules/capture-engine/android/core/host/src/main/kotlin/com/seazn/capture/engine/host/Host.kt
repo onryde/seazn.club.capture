@@ -20,6 +20,9 @@ import org.json.JSONObject
  * way to make it not ready: the system's word that a call took the mic (F-P5-8), and its `false` gives
  * it back. A `readiness` line's `audioPeak` sets the level read from then on.
  *
+ * Spec §10: a `scoringLink` line (`{"op":"scoringLink","call":N}`) is the module's `scoringLink` call, through the same core
+ * call, and its answer is one `scoringLink` event naming the call (`Protocol.scoringLink`): the only line that carries the link.
+ *
  * Task 27: a `script`, `readiness` or `quiet` line with a `seq` is acked once the host is quiet (PV28):
  * no answer in flight and nothing due on the core's scheduler. A numbered script waits first for its
  * path's next answer; a numbered readiness for two meter periods (review C4a N-3).
@@ -54,6 +57,11 @@ class Host(private val scheduler: Scheduler, private val write: (String) -> Unit
       when (val op = json.optString("op")) {
         "send" -> core.send(Protocol.toWire(json.getJSONObject("intent")) + ("seq" to json.getNumber("seq").toDouble()))
         "log" -> core.log(json.getString("level"), json.getString("kind"), json.optJSONObject("fields")?.let(Protocol::toWire).orEmpty())
+        // §10: the module's scoringLink call, through the same core call; the answer is one event naming the call.
+        "scoringLink" -> {
+          val call = json.getInt("call")
+          core.scoringLink { answer -> write(Protocol.scoringLink(call, answer)) }
+        }
         "script" -> {
           val path = json.getString("path")
           server.script(path, json.getInt("status"), json.getJSONObject("body"))

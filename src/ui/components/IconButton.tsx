@@ -8,6 +8,11 @@ type IconButtonProps = {
   /** The accessible name: the button draws no word (spec §3). */
   readonly label: string;
   readonly onPress: () => void;
+  /**
+   * B5 (owner's board): the button's panel is open. A 2 dp lime outline and the selected state a screen reader
+   * announces. Left out, the button says nothing about being selected (Settings, Home, Take photo).
+   */
+  readonly selected?: boolean;
 };
 
 /**
@@ -15,13 +20,21 @@ type IconButtonProps = {
  * holding a glyph in ink2, cream at 80% (the canvas). The name is the label alone, so a screen reader reads
  * "Settings" and a sighted operator reads the picture.
  */
-export const IconButton = memo(function IconButton({ glyph, label, onPress }: IconButtonProps) {
+export const IconButton = memo(function IconButton({
+  glyph,
+  label,
+  onPress,
+  selected,
+}: IconButtonProps) {
   return (
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={label}
+      // `aria-selected`, not `accessibilityState`: Pressable reads it as the selected state on the phone, and
+      // react-native-web renders only this form (it drops the state object).
+      aria-selected={selected}
       onPress={onPress}
-      style={iconButtonStyle}
+      style={selected === true ? selectedButtonStyle : iconButtonStyle}
     >
       <Glyph name={glyph} tone="ink2" />
     </Pressable>
@@ -44,6 +57,14 @@ const styles = StyleSheet.create({
     borderRadius: radius.card,
   },
   pressed: { opacity: 0.85 },
+  selected: { borderWidth: layout.iconBorderOn, borderColor: colour.lime },
 });
 
 const pressedButton = [styles.button, styles.pressed];
+
+/** B5: lime and 2 dp in place of the hairline; the box stays 48 square, the border is drawn inside it. */
+function selectedButtonStyle({ pressed }: PressableStateCallbackType) {
+  return pressed ? pressedSelectedButton : selectedStyles;
+}
+const selectedStyles = [styles.button, styles.selected];
+const pressedSelectedButton = [styles.button, styles.selected, styles.pressed];

@@ -3,9 +3,11 @@ import { describeEngineContract } from '../../../test/engineContract';
 import { startHostEngine, type HostEngine } from '../../../test/hostEngine';
 import { SERVER_END } from '../../../test/serverScript';
 import type { LastEnd, Readiness } from '@/domain/session/Pairing';
+import { createScoringLinkPort, scoringSecret } from '@/services/scoringLinkPort';
 import { KIT_CODE_A } from './contract/engineScenarios';
 import { toEngineSnapshot } from './snapshotWire';
 import { UNREPORTED } from './unreported';
+import serverBodies from './wire/server-bodies.json';
 import { vectorWire } from './wire/vectorWire';
 
 // Every scenario, server words included: the host's ScriptedServer answers them (Task 21).
@@ -49,6 +51,92 @@ describe('the server script, read back by the real core', () => {
     await host.settle!();
     const { state, lastEnd: seen } = host.engine.getSnapshot();
     expect([state.kind, seen]).toEqual(['paired', lastEnd]);
+  });
+});
+
+/** The host's own link, from the contract-checked vector the host answers with (never typed here). */
+const HOST_LINK = (() => {
+  const url = serverBodies.bodies.find((body) => body.name === 'host/scoring-link-ok')?.body.url;
+  if (typeof url !== 'string') throw new Error('host/scoring-link-ok names no url');
+  return url;
+})();
+
+describe('the scoring link over the real Kotlin core (JVM host)', () => {
+  let host: HostEngine | null = null;
+  afterEach(async () => {
+    await host?.dispose();
+    host = null;
+  });
+  const paired = async () => {
+    host = await startHostEngine();
+    host.engine.send(KIT_CODE_A);
+    await host.settle!();
+    return host;
+  };
+
+  it('resolves the link to the caller that asked, as the module would', async () => {
+    const h = await paired();
+    expect(scoringSecret(HOST_LINK)).toHaveLength(46);
+    await expect(h.scoringLink()).resolves.toEqual({ outcome: 'ok', url: HOST_LINK });
+  });
+
+  it('the real port over the real core: ok, the secret protected, and in no record line, snapshot or request', async () => {
+    const h = await paired();
+    const protectedSecrets: string[] = [];
+    const port = createScoringLinkPort(() => h.scoringLink(), {
+      protect: (secret) => protectedSecrets.push(secret),
+      host: 'stg.seazn.club',
+    });
+    await expect(port.request()).resolves.toEqual({ kind: 'ok', url: HOST_LINK });
+    await h.settle!();
+    const secret = scoringSecret(HOST_LINK);
+    expect(protectedSecrets).toEqual([secret]);
+    expect(h.record.join('\n')).not.toContain(secret);
+    expect(JSON.stringify(h.engine.getSnapshot())).not.toContain(secret);
+    expect(JSON.stringify(h.requests)).not.toContain(secret);
+    // Anti-vacuity: there were lines, and the tap reached the server.
+    expect(h.record.length).toBeGreaterThan(0);
+    expect(h.requests.some((request) => request.path === 'scoring-link')).toBe(true);
+    // The record learned that a link was asked for, by its word and status only: the absence above is not an empty record.
+    const asked = h.record
+      .map((line) => JSON.parse(line) as Record<string, unknown>)
+      .filter((line) => line.kind === 'scoring-link');
+    expect(asked).toHaveLength(1);
+    expect(asked[0]).toMatchObject({ kind: 'scoring-link', result: 'ok', status: 200 });
+    expect(Object.keys(asked[0]!).sort()).toEqual(['at', 'kind', 'result', 'status']);
+  });
+
+  it('a refusal then a success (the sequence)', async () => {
+    const h = await paired();
+    h.script('scoring-link', 409, { code: 'replaced', message: 'm' });
+    const refused = await h.scoringLink();
+    expect(refused).toStrictEqual({ outcome: 'replaced' });
+    h.script('scoring-link', 200, { url: HOST_LINK });
+    await expect(h.scoringLink()).resolves.toEqual({ outcome: 'ok', url: HOST_LINK });
+  });
+
+  it('a 429 with no Retry-After header is rate_limited with no retryAfterS', async () => {
+    const h = await paired();
+    h.script('scoring-link', 429, { code: 'rate_limited', message: 'm' });
+    const answer = await h.scoringLink();
+    expect(answer).toStrictEqual({ outcome: 'rate_limited' });
+    expect(answer).not.toHaveProperty('retryAfterS');
+  });
+
+  it('with no pairing: unavailable, and no request is sent', async () => {
+    host = await startHostEngine();
+    await expect(host.scoringLink()).resolves.toStrictEqual({ outcome: 'unavailable' });
+    expect(host.requests.some((request) => request.path === 'scoring-link')).toBe(false);
+  });
+
+  it('two calls in flight each resolve their own', async () => {
+    const h = await paired();
+    const answers = await Promise.all([h.scoringLink(), h.scoringLink()]);
+    expect(answers).toEqual([
+      { outcome: 'ok', url: HOST_LINK },
+      { outcome: 'ok', url: HOST_LINK },
+    ]);
+    expect(h.requests.filter((request) => request.path === 'scoring-link')).toHaveLength(2);
   });
 });
 

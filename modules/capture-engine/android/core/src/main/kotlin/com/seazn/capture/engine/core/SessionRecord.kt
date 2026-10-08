@@ -43,12 +43,18 @@ data class RecordTail(val firstSeq: Long, val lines: List<String>)
 class SessionRecord(private val sink: (String) -> Unit) {
   private class Pending(val line: String, val echo: Boolean)
 
+  // What [protect] holds, and what the scrub reads. The scrub's three lists are [refresh]ed from the held ones plus the links (F15).
+  private var heldSecrets: List<String> = emptyList()
+  private var heldUrlSecrets: List<String> = emptyList()
+  private var heldTextOnly: List<String> = emptyList()
   private var secrets: List<String> = emptyList()
   private var urlSecrets: List<String> = emptyList()
-  private var textOnly: List<String> = emptyList()
 
-  /** [secrets] and [textOnly] together, longest first: what free text is masked with. */
+  /** [secrets] and the text-only values together, longest first: what free text is masked with. */
   private var textSecrets: List<String> = emptyList()
+
+  /** The secrets of scoring links, newest last: at most [LINK_SECRETS], no value twice. A bucket of its own, so a link never evicts the token. */
+  private val links = ArrayDeque<String>()
   private val recent = ArrayDeque<String>()
   private val queue = ArrayDeque<Pending>()
 
@@ -89,10 +95,32 @@ class SessionRecord(private val sink: (String) -> Unit) {
    * adds: a value that was a secret in this process stays masked.
    */
   fun protect(secrets: List<String>, notInUrls: List<String> = emptyList(), inTextOnly: List<String> = emptyList()) {
-    this.secrets = adding(this.secrets, secrets)
-    urlSecrets = adding(urlSecrets, secrets - notInUrls.toSet())
-    textOnly = adding(textOnly, inTextOnly)
-    textSecrets = (this.secrets + textOnly).distinct().sortedByDescending { it.length }
+    heldSecrets = adding(heldSecrets, secrets)
+    heldUrlSecrets = adding(heldUrlSecrets, secrets - notInUrls.toSet())
+    heldTextOnly = adding(heldTextOnly, inTextOnly)
+    refresh()
+  }
+
+  /**
+   * Spec §10: a scoring link's secret, protected before the answer that carries it is handed to the caller. It is
+   * masked everywhere a [protect]ed value is. A repeat (the server returns the same link) moves it to the newest
+   * place and adds nothing; past [LINK_SECRETS] distinct links the oldest is dropped. That is safe because an evicted
+   * secret only comes back inside a new answer, and [protectLink] runs on that answer before it is handed on, so the
+   * secret is masked again first; the bucket cannot grow for as long as a phone taps.
+   */
+  fun protectLink(secret: String) {
+    if (secret.isBlank()) return
+    links.remove(secret)
+    links.addLast(secret)
+    while (links.size > LINK_SECRETS) links.removeFirst()
+    refresh()
+  }
+
+  private fun refresh() {
+    val forLinks = withEncodings(links.toList())
+    secrets = (heldSecrets + forLinks).distinct().sortedByDescending { it.length }
+    urlSecrets = (heldUrlSecrets + forLinks).distinct().sortedByDescending { it.length }
+    textSecrets = (secrets + heldTextOnly).distinct().sortedByDescending { it.length }
   }
 
   /**
@@ -211,6 +239,9 @@ class SessionRecord(private val sink: (String) -> Unit) {
 
   companion object {
     const val LAST_LINES = 20
+
+    /** Spec §10 (F15, D11): how many distinct scoring links' secrets the record holds masked at once. */
+    const val LINK_SECRETS = 16
     const val MASK = "***"
 
     // The key sets are `scrub/allow-list.json`'s, each key with its reason there; ScrubParityTest

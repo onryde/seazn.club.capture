@@ -1,5 +1,6 @@
 import { NO_NAME, type CodeName } from '@/domain/mode/codeName';
 import type { EngineStatus } from '@/domain/mode/reopen';
+import { stageLine } from '@/domain/session/stageLine';
 import type { EngineSnapshot } from '@/engine/CaptureEnginePort';
 
 /**
@@ -80,6 +81,12 @@ export const selectPlaybackUrl = (snapshot: EngineSnapshot) =>
 /** Pairing's label is empty until the claim is answered: read as none. */
 export const selectLabel = (snapshot: EngineSnapshot) =>
   snapshot.broadcast?.label || snapshot.pairing?.label || null;
+/**
+ * The round line (spec §2): the pairing's stage label, once the match label is known. Native keeps it only for
+ * the match it was read with; the length is held again here, so an over-long one can never paint.
+ */
+export const selectStageLine = (snapshot: EngineSnapshot) =>
+  selectLabel(snapshot) === null ? null : stageLine(snapshot.pairing?.stageLabel);
 /** The venue's zone from the pairing: every time the operator reads is in it (spec §2). */
 export const selectVenueZone = (snapshot: EngineSnapshot) =>
   snapshot.pairing?.venueTimezone || null;

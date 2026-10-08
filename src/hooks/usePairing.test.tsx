@@ -2,6 +2,7 @@ import { act, renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { SavedCode } from '@/domain/mode/savedCode';
 import type { EngineIntent } from '@/engine/CaptureEnginePort';
+import { sampleWaiting } from '@/services/fakeCodePort';
 import { pairIntentFor, usePairing } from '@/hooks/usePairing';
 import { createFakePorts, readRecord, type FakePorts } from '../../test/fakePorts';
 import { savedStreamCode } from '../../test/fixtures/savedStream';
@@ -45,6 +46,32 @@ describe('pairIntentFor', () => {
       environment: 'production',
       claim: 'resume',
     } satisfies EngineIntent);
+  });
+
+  // W28: the scan's round line rides the pair with the match label it was read with (the waiting label).
+  it('carries the saved stage as the intent’s round line and its match, and omits both keys without one', () => {
+    const facts = {
+      language: 'en',
+      automatic: true,
+      environment: 'staging',
+      claim: 'new',
+    } as const;
+    const withStage = savedStreamCode({
+      stream: {
+        waiting: sampleWaiting({
+          label: 'A v B',
+          stage: { label: 'Grupo A · R2', kind: 'plain_round' },
+        }),
+        codeUrl: CODE_URL,
+        tapToPair: false,
+      },
+    });
+    const staged = pairIntentFor(withStage, facts);
+    expect(staged).toMatchObject({ stageLabel: 'Grupo A · R2', stageMatch: 'A v B' });
+    const bare = pairIntentFor(savedStreamCode(), facts);
+    expect(bare).not.toBeNull();
+    expect(Object.keys(bare ?? {})).not.toContain('stageLabel');
+    expect(Object.keys(bare ?? {})).not.toContain('stageMatch');
   });
 
   it.each<[string, SavedCode]>([

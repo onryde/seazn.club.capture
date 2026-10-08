@@ -1,6 +1,12 @@
 import { httpsHost, isRecord } from '@/domain/credentials/wire';
 
 /**
+ * The descriptor's stage (W28), as far as the phone uses it: the label the line shows and the role kind that
+ * allowed it. Both or neither, so a saved copy reads back through the same parser, kind rule included.
+ */
+export type StageRead = { readonly label: string; readonly kind: string };
+
+/**
  * What a stream code says while it waits for a Go live (amendment, Contract
  * shapes): read by JS at the scan, saved with the code, and read again by
  * native on every beat. Publish credentials are never part of it (A1, A5).
@@ -16,6 +22,7 @@ export type WaitingFields = {
   readonly pollSeconds: number;
   readonly heartbeatUrl: string;
   readonly startUrl: string;
+  readonly stage: StageRead | null;
 };
 
 /**
@@ -38,6 +45,26 @@ const LABEL = { min: 1, max: 200 };
 const ZONE = { min: 1, max: 64 };
 const DESTINATION = { min: 1, max: 80 };
 const POLL = { min: 5, max: 300 };
+const STAGE = { min: 1, max: 40 };
+
+/** capture-descriptor.v1 `stage.role.kind`'s values (R-F20): an open string, of which only these show a line. */
+export const STAGE_KINDS: ReadonlySet<string> = new Set([
+  'round_of',
+  'quarter_final',
+  'semi_final',
+  'final',
+  'winners_final',
+  'losers_round',
+  'losers_final',
+  'grand_final',
+  'grand_final_reset',
+  'third_place',
+  'qualifier1',
+  'eliminator',
+  'qualifier2',
+  'rung',
+  'plain_round',
+]);
 
 type Bounds = { readonly min: number; readonly max: number };
 /** A field the schema lets be absent or null: its value, `null`, or `BAD` (wrong type or out of bounds). */
@@ -65,6 +92,17 @@ function readStart(value: unknown): Date | null {
   if (!wholeWithin(value, { min: 1, max: Number.MAX_SAFE_INTEGER })) return null;
   const at = new Date(value * 1000);
   return Number.isNaN(at.getTime()) ? null : at;
+}
+
+/**
+ * W28: display only, so anything wrong is no stage and never makes the answer unreadable (Bodies.stageLabel). The label
+ * counts only for a role kind the contract names, and is kept with its kind so a saved copy reads back the same way.
+ */
+function readStage(value: unknown): StageRead | null {
+  if (!isRecord(value) || !isRecord(value.role)) return null;
+  const { kind } = value.role;
+  if (!isText(kind) || !STAGE_KINDS.has(kind)) return null;
+  return textWithin(value.label, STAGE) ? { label: value.label, kind } : null;
 }
 
 /**
@@ -98,12 +136,15 @@ export function parseWaitingFields(input: unknown, host: string): WaitingFields 
     pollSeconds,
     heartbeatUrl,
     startUrl,
+    stage: readStage(input.stage),
   };
 }
 
 /** The server's own shape, epoch seconds included, so a saved code is read back by the one parser. */
 export function waitingToWire(fields: WaitingFields): Record<string, unknown> {
-  const { scheduledStart, ...rest } = fields;
+  const { scheduledStart, stage, ...rest } = fields;
   const seconds = scheduledStart === null ? null : Math.floor(scheduledStart.getTime() / 1000);
-  return { ...rest, scheduledStart: seconds };
+  // A saved stage is `{ role: { kind }, label }`: what the one parser reads back, kind rule included. `code` and `pool` are not read.
+  const saved = stage === null ? {} : { stage: { role: { kind: stage.kind }, label: stage.label } };
+  return { ...rest, scheduledStart: seconds, ...saved };
 }

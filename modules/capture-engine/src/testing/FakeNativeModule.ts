@@ -38,6 +38,13 @@ export class FakeNativeModule implements CaptureEngineNative {
     this.photoCalls += 1;
     return Promise.resolve(this.photoAnswer);
   }
+  /** What `scoringLink` answers, and how often it was asked. Tests set the first and read the second. */
+  scoringAnswer: unknown = { outcome: 'unavailable' };
+  scoringCalls = 0;
+  scoringLink(): Promise<unknown> {
+    this.scoringCalls += 1;
+    return Promise.resolve(this.scoringAnswer);
+  }
   addListener<E extends keyof Events>(event: E, listener: (body: Events[E]) => void): Subscription {
     const set = this.listeners.get(event) ?? new Set<Listener>();
     set.add(listener as Listener);

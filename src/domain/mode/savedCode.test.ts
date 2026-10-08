@@ -82,11 +82,40 @@ describe('saved codes, v3 (amendment §3)', () => {
         waiting: {
           ...waitingWire(),
           scheduledStart: new Date(1790003600_000),
+          // A record written before the stage existed has no such key: it reads as none.
+          stage: null,
         },
         codeUrl: CODE_URL,
         tapToPair: false,
       },
     });
+  });
+
+  // W28: the round line is kept with the code, kind and all, so a cold-start re-pair seeds it.
+  it('keeps a stage through encode and decode, and reads a record saved before this change with none', () => {
+    const stage = { label: 'QF', kind: 'quarter_final' };
+    const code = savedStreamCode({
+      stream: { waiting: sampleWaiting({ stage }), codeUrl: CODE_URL, tapToPair: false },
+    });
+    const back = decodeSavedCode(encodeSavedCode(code));
+    expect(back?.stream?.waiting.stage).toEqual(stage);
+    expect(back).toEqual(code);
+    // The stored record holds the stage in the server's own shape, which the one parser reads back.
+    expect(JSON.parse(encodeSavedCode(code)).stream.waiting.stage).toEqual({
+      role: { kind: 'quarter_final' },
+      label: 'QF',
+    });
+    // A record with no `stage` key at all, as every record saved before this PR is.
+    expect(decodeSavedCode(record({}))?.stream?.waiting.stage).toBeNull();
+    // A stored stage of a kind the contract does not name reads as none, and the code is kept.
+    const future = record({
+      stream: {
+        waiting: waitingWire({ stage: { role: { kind: 'a_future_kind' }, label: 'QF' } }),
+        codeUrl: CODE_URL,
+        tapToPair: false,
+      },
+    });
+    expect(decodeSavedCode(future)?.stream?.waiting.stage).toBeNull();
   });
 
   it('drops a v1 record: clean slate, never migrated', () => {

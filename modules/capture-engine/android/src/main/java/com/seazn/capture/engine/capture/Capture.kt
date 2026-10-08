@@ -42,7 +42,7 @@ interface Capture {
 
   /**
    * Spec §8: one still, answered once with a photo word ("saved" or "failed"). Returns at once, from any thread; never
-   * throws. The one call that answers, recorded in AGENTS §2.
+   * throws. One of the two calls that answer (the other is `scoringLink`), recorded in AGENTS §2.
    */
   fun takePhoto(done: (String) -> Unit)
 }

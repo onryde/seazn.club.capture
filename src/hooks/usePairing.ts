@@ -35,6 +35,9 @@ export function pairIntentFor(saved: SavedCode, facts: PairFacts): PairIntent | 
     heartbeatUrl: waiting.heartbeatUrl,
     startUrl: waiting.startUrl,
     venueTimezone: waiting.venueTimezone,
+    ...(waiting.stage === null
+      ? {}
+      : { stageLabel: waiting.stage.label, stageMatch: waiting.label }),
     ...facts,
   };
 }

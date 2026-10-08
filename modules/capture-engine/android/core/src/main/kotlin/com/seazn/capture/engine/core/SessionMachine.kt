@@ -620,7 +620,7 @@ internal object Heartbeats {
       pairing.copy(
         heartbeat = heartbeat,
         claim = if (ok) null else pairing.claim,
-        waiting = response?.reply?.waiting?.takeIf { ok }?.over(pairing.waiting) ?: pairing.waiting,
+        waiting = response?.reply?.waiting?.takeIf { ok }?.overBeat(pairing.waiting) ?: pairing.waiting,
         stoppedInFlight = null,
         waitingUnreadableSaid = pairing.waitingUnreadableSaid || unreadable != null,
       )

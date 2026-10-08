@@ -22,6 +22,7 @@ import type { ModeStore } from '@/services/modeStore';
 import type { PhotoPort } from '@/services/photoPort';
 import type { ProbeFlight } from '@/services/probeFlight';
 import type { ScanFlight } from '@/services/scanFlight';
+import type { ScoringLinkPort } from '@/services/scoringLinkPort';
 import type { SessionRecord } from '@/services/sessionRecord';
 import type { StreamSettingsStore } from '@/services/streamSettingsStore';
 import type { Surfaces } from '@/services/surfaces';
@@ -66,8 +67,10 @@ export type Ports = {
   readonly record: SessionRecord;
   /** The system share sheet, for Diagnostics' Share record (D21). */
   readonly share: SharePort;
-  /** Spec §8: a still to the gallery (the one call that answers, Q2). */
+  /** Spec §8: a still to the gallery (one of the two calls that answer, Q2). */
   readonly photo: PhotoPort;
+  /** Spec §10: the match's Remote scoring link (the second call that answers). */
+  readonly scoringLink: ScoringLinkPort;
   readonly clock: () => Date;
   readonly hosts: readonly string[];
   readonly deviceLanguages: readonly (string | null)[];

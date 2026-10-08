@@ -5,6 +5,7 @@ import com.seazn.capture.engine.core.Configs
 import com.seazn.capture.engine.core.Environment
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class PairMappingTest {
@@ -42,6 +43,52 @@ class PairMappingTest {
       assertEquals("", request.venueTimezone, "$bad")
       assertEquals(emptyList<String>(), request.problems(), "$bad")
     }
+  }
+
+  @Test
+  fun `the scan's round line rides the pair only whole - a label of 1 to 40 characters with its match, and a lack of either seeds none and never refuses`() {
+    fun staged(label: Any?, match: Any?) = PairMapping.request(wire().also { it["stageLabel"] = label; it["stageMatch"] = match })
+    // Whole: both cross as sent, the label at its edges, counted in code points (39 and an emoji is 40 characters).
+    val whole = listOf("QF", "x", "x".repeat(40), "x".repeat(39) + "🏏")
+    for (label in whole) {
+      val request = staged(label, "Example Town v Sample CC")
+      assertEquals(label, request.stageLabel, label)
+      assertEquals("Example Town v Sample CC", request.stageMatch, label)
+    }
+    assertEquals(4, whole.size)
+    // The match is the label of the match the line was read with, so it has the label's own bound: 1 to 200 characters.
+    for (match in listOf("A", "x".repeat(200), "x".repeat(199) + "🏏")) {
+      val request = staged("QF", match)
+      assertEquals("QF", request.stageLabel, match)
+      assertEquals(match, request.stageMatch, match)
+    }
+    // Neither: a label out of bounds or mistyped with a good match, then a good label with a match that is none.
+    val lacking =
+      listOf(
+        "" to "A v B",
+        "x".repeat(41) to "A v B",
+        "x".repeat(40) + "🏏" to "A v B",
+        7.0 to "A v B",
+        null to "A v B",
+        "QF" to "",
+        "QF" to 7.0,
+        "QF" to null,
+        null to null,
+        // A match past the label's own 200 characters is no match, so the pair holds neither (code points: the emoji is one).
+        "QF" to "x".repeat(201),
+        "QF" to "x".repeat(200) + "🏏",
+      )
+    for ((label, match) in lacking) {
+      val request = staged(label, match)
+      assertNull(request.stageLabel, "$label / $match")
+      assertNull(request.stageMatch, "$label / $match")
+      assertEquals(emptyList<String>(), request.problems(), "$label / $match")
+    }
+    assertEquals(11, lacking.size)
+    // A pair from a JS that sends neither key holds none.
+    val bare = PairMapping.request(wire())
+    assertNull(bare.stageLabel)
+    assertNull(bare.stageMatch)
   }
 
   @Test

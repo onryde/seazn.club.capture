@@ -1,5 +1,5 @@
 {
-  "about": "The waiting fields (amendment, Contract shapes), read by Bodies.waiting (Kotlin) and parseWaitingFields (TS). env is the build's. expected null means unreadable. Kotlin reads label..pollSeconds and skips jsOnly rows; TS also reads code, heartbeatUrl and startUrl, which only it keeps, and skips kotlinOnly rows, which are shaped as a beat's answer (capture-beat.v1 $defs.answer): only Kotlin reads those. Every other row is shaped as capture-descriptor.v1's waiting branch. A field absent or null where the schema allows it is null; a field of the wrong type, or outside the schema's bounds, makes the whole unreadable (a length counts characters, that is code points, as JSON Schema counts them); an overlayUrl off the build's Seazn host is dropped alone. Change only with both.",
+  "about": "The waiting fields (amendment, Contract shapes), read by Bodies.waiting (Kotlin) and parseWaitingFields (TS). env is the build's. expected null means unreadable. Kotlin reads label..pollSeconds and skips jsOnly rows; TS also reads code, heartbeatUrl and startUrl, which only it keeps, and skips kotlinOnly rows, which are shaped as a beat's answer (capture-beat.v1 $defs.answer): only Kotlin reads those. Every other row is shaped as capture-descriptor.v1's waiting branch. A field absent or null where the schema allows it is null; a field of the wrong type, or outside the schema's bounds, makes the whole unreadable (a length counts characters, that is code points, as JSON Schema counts them); an overlayUrl off the build's Seazn host is dropped alone. A descriptor may carry an optional stage (capture-descriptor.v1, W28): expected.stageLabel is its label, shown verbatim, only when its role.kind is one of wire/stage-kinds.json and the label is 1 to 40 characters (code points); any other stage, or none, is null, and never makes the row unreadable. A beat has no stage. Change only with both.",
   "cases": [
     {
       "why": "every field",
@@ -26,7 +26,8 @@
         "overlayUrl": "https://stg.seazn.club/overlay/fixtures/f1",
         "pollSeconds": 60,
         "heartbeatUrl": "https://stg.seazn.club/api/v1/capture/codes/fx42hmnp7k2q/beats",
-        "startUrl": "https://stg.seazn.club/api/v1/capture/codes/fx42hmnp7k2q/start"
+        "startUrl": "https://stg.seazn.club/api/v1/capture/codes/fx42hmnp7k2q/start",
+        "stageLabel": null
       }
     },
     {
@@ -54,7 +55,8 @@
         "overlayUrl": "https://stg.seazn.club/overlay/fixtures/fx42hmnp7k2q?style=bug&key=k3y-0123",
         "pollSeconds": 60,
         "heartbeatUrl": "https://stg.seazn.club/api/v1/capture/codes/fx42hmnp7k2q/beats",
-        "startUrl": "https://stg.seazn.club/api/v1/capture/codes/fx42hmnp7k2q/start"
+        "startUrl": "https://stg.seazn.club/api/v1/capture/codes/fx42hmnp7k2q/start",
+        "stageLabel": null
       }
     },
     {
@@ -81,7 +83,8 @@
         "overlayUrl": null,
         "pollSeconds": 10,
         "heartbeatUrl": "https://stg.seazn.club/b",
-        "startUrl": "https://stg.seazn.club/s"
+        "startUrl": "https://stg.seazn.club/s",
+        "stageLabel": null
       }
     },
     {
@@ -108,7 +111,8 @@
         "overlayUrl": null,
         "pollSeconds": 10,
         "heartbeatUrl": "https://stg.seazn.club/b",
-        "startUrl": "https://stg.seazn.club/s"
+        "startUrl": "https://stg.seazn.club/s",
+        "stageLabel": null
       }
     },
     {
@@ -135,7 +139,8 @@
         "overlayUrl": "https://seazn.club/overlay/fixtures/f1",
         "pollSeconds": 300,
         "heartbeatUrl": "https://seazn.club/b",
-        "startUrl": "https://seazn.club/s"
+        "startUrl": "https://seazn.club/s",
+        "stageLabel": null
       }
     },
     {
@@ -306,7 +311,8 @@
         "overlayUrl": null,
         "pollSeconds": 10,
         "heartbeatUrl": "https://stg.seazn.club/b",
-        "startUrl": "https://stg.seazn.club/s"
+        "startUrl": "https://stg.seazn.club/s",
+        "stageLabel": null
       }
     },
     {
@@ -365,7 +371,8 @@
         "overlayUrl": null,
         "pollSeconds": 10,
         "heartbeatUrl": "https://stg.seazn.club/b",
-        "startUrl": "https://stg.seazn.club/s"
+        "startUrl": "https://stg.seazn.club/s",
+        "stageLabel": null
       }
     },
     {
@@ -441,7 +448,8 @@
         "overlayUrl": null,
         "pollSeconds": 10,
         "heartbeatUrl": "https://stg.seazn.club/b",
-        "startUrl": "https://stg.seazn.club/s"
+        "startUrl": "https://stg.seazn.club/s",
+        "stageLabel": null
       }
     },
     {
@@ -495,7 +503,8 @@
         "autoAllowed": false,
         "destinationName": "YouTube · Example Town CC",
         "overlayUrl": "https://stg.seazn.club/overlay/fixtures/f1",
-        "pollSeconds": 5
+        "pollSeconds": 5,
+        "stageLabel": null
       }
     },
     {
@@ -517,7 +526,8 @@
         "autoAllowed": true,
         "destinationName": null,
         "overlayUrl": null,
-        "pollSeconds": 60
+        "pollSeconds": 60,
+        "stageLabel": null
       }
     },
     {
@@ -568,6 +578,551 @@
         "startUrl": "https://stg.seazn.club/s"
       },
       "expected": null
+    },
+    {
+      "why": "stage: a label with a known kind",
+      "env": "staging",
+      "fields": {
+        "code": "fx42hmnp7k2q",
+        "label": "Example Town v Sample CC",
+        "venueTimezone": "Europe/London",
+        "scheduledStart": 1790003600,
+        "autoAllowed": true,
+        "destinationName": "YouTube · Example Town CC",
+        "overlayUrl": "https://stg.seazn.club/overlay/fixtures/f1",
+        "pollSeconds": 60,
+        "heartbeatUrl": "https://stg.seazn.club/api/v1/capture/codes/fx42hmnp7k2q/beats",
+        "startUrl": "https://stg.seazn.club/api/v1/capture/codes/fx42hmnp7k2q/start",
+        "stage": {
+          "code": "QF",
+          "role": {
+            "kind": "quarter_final"
+          },
+          "label": "QF"
+        }
+      },
+      "expected": {
+        "code": "fx42hmnp7k2q",
+        "label": "Example Town v Sample CC",
+        "venueTimezone": "Europe/London",
+        "scheduledStart": 1790003600,
+        "autoAllowed": true,
+        "destinationName": "YouTube · Example Town CC",
+        "overlayUrl": "https://stg.seazn.club/overlay/fixtures/f1",
+        "pollSeconds": 60,
+        "heartbeatUrl": "https://stg.seazn.club/api/v1/capture/codes/fx42hmnp7k2q/beats",
+        "startUrl": "https://stg.seazn.club/api/v1/capture/codes/fx42hmnp7k2q/start",
+        "stageLabel": "QF"
+      }
+    },
+    {
+      "why": "stage: the 40-character label",
+      "env": "staging",
+      "fields": {
+        "code": "fx42hmnp7k2q",
+        "label": "Example Town v Sample CC",
+        "venueTimezone": "Europe/London",
+        "scheduledStart": 1790003600,
+        "autoAllowed": true,
+        "destinationName": "YouTube · Example Town CC",
+        "overlayUrl": "https://stg.seazn.club/overlay/fixtures/f1",
+        "pollSeconds": 60,
+        "heartbeatUrl": "https://stg.seazn.club/api/v1/capture/codes/fx42hmnp7k2q/beats",
+        "startUrl": "https://stg.seazn.club/api/v1/capture/codes/fx42hmnp7k2q/start",
+        "stage": {
+          "code": "R2",
+          "role": {
+            "kind": "plain_round",
+            "n": 2
+          },
+          "pool": "A",
+          "label": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+        }
+      },
+      "expected": {
+        "code": "fx42hmnp7k2q",
+        "label": "Example Town v Sample CC",
+        "venueTimezone": "Europe/London",
+        "scheduledStart": 1790003600,
+        "autoAllowed": true,
+        "destinationName": "YouTube · Example Town CC",
+        "overlayUrl": "https://stg.seazn.club/overlay/fixtures/f1",
+        "pollSeconds": 60,
+        "heartbeatUrl": "https://stg.seazn.club/api/v1/capture/codes/fx42hmnp7k2q/beats",
+        "startUrl": "https://stg.seazn.club/api/v1/capture/codes/fx42hmnp7k2q/start",
+        "stageLabel": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+      }
+    },
+    {
+      "why": "stage: 40 characters counted as code points",
+      "env": "staging",
+      "fields": {
+        "code": "fx42hmnp7k2q",
+        "label": "Example Town v Sample CC",
+        "venueTimezone": "Europe/London",
+        "scheduledStart": 1790003600,
+        "autoAllowed": true,
+        "destinationName": "YouTube · Example Town CC",
+        "overlayUrl": "https://stg.seazn.club/overlay/fixtures/f1",
+        "pollSeconds": 60,
+        "heartbeatUrl": "https://stg.seazn.club/api/v1/capture/codes/fx42hmnp7k2q/beats",
+        "startUrl": "https://stg.seazn.club/api/v1/capture/codes/fx42hmnp7k2q/start",
+        "stage": {
+          "code": "F",
+          "role": {
+            "kind": "final"
+          },
+          "label": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx🏏"
+        }
+      },
+      "expected": {
+        "code": "fx42hmnp7k2q",
+        "label": "Example Town v Sample CC",
+        "venueTimezone": "Europe/London",
+        "scheduledStart": 1790003600,
+        "autoAllowed": true,
+        "destinationName": "YouTube · Example Town CC",
+        "overlayUrl": "https://stg.seazn.club/overlay/fixtures/f1",
+        "pollSeconds": 60,
+        "heartbeatUrl": "https://stg.seazn.club/api/v1/capture/codes/fx42hmnp7k2q/beats",
+        "startUrl": "https://stg.seazn.club/api/v1/capture/codes/fx42hmnp7k2q/start",
+        "stageLabel": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx🏏"
+      }
+    },
+    {
+      "why": "stage: a 41-character label reads as no stage, the rest stays readable",
+      "env": "staging",
+      "fields": {
+        "code": "fx42hmnp7k2q",
+        "label": "Example Town v Sample CC",
+        "venueTimezone": "Europe/London",
+        "scheduledStart": 1790003600,
+        "autoAllowed": true,
+        "destinationName": "YouTube · Example Town CC",
+        "overlayUrl": "https://stg.seazn.club/overlay/fixtures/f1",
+        "pollSeconds": 60,
+        "heartbeatUrl": "https://stg.seazn.club/api/v1/capture/codes/fx42hmnp7k2q/beats",
+        "startUrl": "https://stg.seazn.club/api/v1/capture/codes/fx42hmnp7k2q/start",
+        "stage": {
+          "code": "F",
+          "role": {
+            "kind": "final"
+          },
+          "label": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+        }
+      },
+      "expected": {
+        "code": "fx42hmnp7k2q",
+        "label": "Example Town v Sample CC",
+        "venueTimezone": "Europe/London",
+        "scheduledStart": 1790003600,
+        "autoAllowed": true,
+        "destinationName": "YouTube · Example Town CC",
+        "overlayUrl": "https://stg.seazn.club/overlay/fixtures/f1",
+        "pollSeconds": 60,
+        "heartbeatUrl": "https://stg.seazn.club/api/v1/capture/codes/fx42hmnp7k2q/beats",
+        "startUrl": "https://stg.seazn.club/api/v1/capture/codes/fx42hmnp7k2q/start",
+        "stageLabel": null
+      }
+    },
+    {
+      "why": "stage: an empty label",
+      "env": "staging",
+      "fields": {
+        "code": "fx42hmnp7k2q",
+        "label": "Example Town v Sample CC",
+        "venueTimezone": "Europe/London",
+        "scheduledStart": 1790003600,
+        "autoAllowed": true,
+        "destinationName": "YouTube · Example Town CC",
+        "overlayUrl": "https://stg.seazn.club/overlay/fixtures/f1",
+        "pollSeconds": 60,
+        "heartbeatUrl": "https://stg.seazn.club/api/v1/capture/codes/fx42hmnp7k2q/beats",
+        "startUrl": "https://stg.seazn.club/api/v1/capture/codes/fx42hmnp7k2q/start",
+        "stage": {
+          "code": "QF",
+          "role": {
+            "kind": "quarter_final"
+          },
+          "label": ""
+        }
+      },
+      "expected": {
+        "code": "fx42hmnp7k2q",
+        "label": "Example Town v Sample CC",
+        "venueTimezone": "Europe/London",
+        "scheduledStart": 1790003600,
+        "autoAllowed": true,
+        "destinationName": "YouTube · Example Town CC",
+        "overlayUrl": "https://stg.seazn.club/overlay/fixtures/f1",
+        "pollSeconds": 60,
+        "heartbeatUrl": "https://stg.seazn.club/api/v1/capture/codes/fx42hmnp7k2q/beats",
+        "startUrl": "https://stg.seazn.club/api/v1/capture/codes/fx42hmnp7k2q/start",
+        "stageLabel": null
+      }
+    },
+    {
+      "why": "stage: no label",
+      "env": "staging",
+      "fields": {
+        "code": "fx42hmnp7k2q",
+        "label": "Example Town v Sample CC",
+        "venueTimezone": "Europe/London",
+        "scheduledStart": 1790003600,
+        "autoAllowed": true,
+        "destinationName": "YouTube · Example Town CC",
+        "overlayUrl": "https://stg.seazn.club/overlay/fixtures/f1",
+        "pollSeconds": 60,
+        "heartbeatUrl": "https://stg.seazn.club/api/v1/capture/codes/fx42hmnp7k2q/beats",
+        "startUrl": "https://stg.seazn.club/api/v1/capture/codes/fx42hmnp7k2q/start",
+        "stage": {
+          "code": "QF",
+          "role": {
+            "kind": "quarter_final"
+          }
+        }
+      },
+      "expected": {
+        "code": "fx42hmnp7k2q",
+        "label": "Example Town v Sample CC",
+        "venueTimezone": "Europe/London",
+        "scheduledStart": 1790003600,
+        "autoAllowed": true,
+        "destinationName": "YouTube · Example Town CC",
+        "overlayUrl": "https://stg.seazn.club/overlay/fixtures/f1",
+        "pollSeconds": 60,
+        "heartbeatUrl": "https://stg.seazn.club/api/v1/capture/codes/fx42hmnp7k2q/beats",
+        "startUrl": "https://stg.seazn.club/api/v1/capture/codes/fx42hmnp7k2q/start",
+        "stageLabel": null
+      }
+    },
+    {
+      "why": "stage: null is no stage",
+      "env": "staging",
+      "fields": {
+        "code": "fx42hmnp7k2q",
+        "label": "Example Town v Sample CC",
+        "venueTimezone": "Europe/London",
+        "scheduledStart": 1790003600,
+        "autoAllowed": true,
+        "destinationName": "YouTube · Example Town CC",
+        "overlayUrl": "https://stg.seazn.club/overlay/fixtures/f1",
+        "pollSeconds": 60,
+        "heartbeatUrl": "https://stg.seazn.club/api/v1/capture/codes/fx42hmnp7k2q/beats",
+        "startUrl": "https://stg.seazn.club/api/v1/capture/codes/fx42hmnp7k2q/start",
+        "stage": null
+      },
+      "expected": {
+        "code": "fx42hmnp7k2q",
+        "label": "Example Town v Sample CC",
+        "venueTimezone": "Europe/London",
+        "scheduledStart": 1790003600,
+        "autoAllowed": true,
+        "destinationName": "YouTube · Example Town CC",
+        "overlayUrl": "https://stg.seazn.club/overlay/fixtures/f1",
+        "pollSeconds": 60,
+        "heartbeatUrl": "https://stg.seazn.club/api/v1/capture/codes/fx42hmnp7k2q/beats",
+        "startUrl": "https://stg.seazn.club/api/v1/capture/codes/fx42hmnp7k2q/start",
+        "stageLabel": null
+      }
+    },
+    {
+      "why": "stage: not an object",
+      "env": "staging",
+      "fields": {
+        "code": "fx42hmnp7k2q",
+        "label": "Example Town v Sample CC",
+        "venueTimezone": "Europe/London",
+        "scheduledStart": 1790003600,
+        "autoAllowed": true,
+        "destinationName": "YouTube · Example Town CC",
+        "overlayUrl": "https://stg.seazn.club/overlay/fixtures/f1",
+        "pollSeconds": 60,
+        "heartbeatUrl": "https://stg.seazn.club/api/v1/capture/codes/fx42hmnp7k2q/beats",
+        "startUrl": "https://stg.seazn.club/api/v1/capture/codes/fx42hmnp7k2q/start",
+        "stage": "QF"
+      },
+      "expected": {
+        "code": "fx42hmnp7k2q",
+        "label": "Example Town v Sample CC",
+        "venueTimezone": "Europe/London",
+        "scheduledStart": 1790003600,
+        "autoAllowed": true,
+        "destinationName": "YouTube · Example Town CC",
+        "overlayUrl": "https://stg.seazn.club/overlay/fixtures/f1",
+        "pollSeconds": 60,
+        "heartbeatUrl": "https://stg.seazn.club/api/v1/capture/codes/fx42hmnp7k2q/beats",
+        "startUrl": "https://stg.seazn.club/api/v1/capture/codes/fx42hmnp7k2q/start",
+        "stageLabel": null
+      }
+    },
+    {
+      "why": "stage: an unknown role kind with a good label shows NOTHING (R-F20)",
+      "env": "staging",
+      "fields": {
+        "code": "fx42hmnp7k2q",
+        "label": "Example Town v Sample CC",
+        "venueTimezone": "Europe/London",
+        "scheduledStart": 1790003600,
+        "autoAllowed": true,
+        "destinationName": "YouTube · Example Town CC",
+        "overlayUrl": "https://stg.seazn.club/overlay/fixtures/f1",
+        "pollSeconds": 60,
+        "heartbeatUrl": "https://stg.seazn.club/api/v1/capture/codes/fx42hmnp7k2q/beats",
+        "startUrl": "https://stg.seazn.club/api/v1/capture/codes/fx42hmnp7k2q/start",
+        "stage": {
+          "code": "X1",
+          "role": {
+            "kind": "a_future_kind"
+          },
+          "label": "X1"
+        }
+      },
+      "expected": {
+        "code": "fx42hmnp7k2q",
+        "label": "Example Town v Sample CC",
+        "venueTimezone": "Europe/London",
+        "scheduledStart": 1790003600,
+        "autoAllowed": true,
+        "destinationName": "YouTube · Example Town CC",
+        "overlayUrl": "https://stg.seazn.club/overlay/fixtures/f1",
+        "pollSeconds": 60,
+        "heartbeatUrl": "https://stg.seazn.club/api/v1/capture/codes/fx42hmnp7k2q/beats",
+        "startUrl": "https://stg.seazn.club/api/v1/capture/codes/fx42hmnp7k2q/start",
+        "stageLabel": null
+      }
+    },
+    {
+      "why": "stage: no role shows nothing",
+      "env": "staging",
+      "fields": {
+        "code": "fx42hmnp7k2q",
+        "label": "Example Town v Sample CC",
+        "venueTimezone": "Europe/London",
+        "scheduledStart": 1790003600,
+        "autoAllowed": true,
+        "destinationName": "YouTube · Example Town CC",
+        "overlayUrl": "https://stg.seazn.club/overlay/fixtures/f1",
+        "pollSeconds": 60,
+        "heartbeatUrl": "https://stg.seazn.club/api/v1/capture/codes/fx42hmnp7k2q/beats",
+        "startUrl": "https://stg.seazn.club/api/v1/capture/codes/fx42hmnp7k2q/start",
+        "stage": {
+          "code": "QF",
+          "label": "QF"
+        }
+      },
+      "expected": {
+        "code": "fx42hmnp7k2q",
+        "label": "Example Town v Sample CC",
+        "venueTimezone": "Europe/London",
+        "scheduledStart": 1790003600,
+        "autoAllowed": true,
+        "destinationName": "YouTube · Example Town CC",
+        "overlayUrl": "https://stg.seazn.club/overlay/fixtures/f1",
+        "pollSeconds": 60,
+        "heartbeatUrl": "https://stg.seazn.club/api/v1/capture/codes/fx42hmnp7k2q/beats",
+        "startUrl": "https://stg.seazn.club/api/v1/capture/codes/fx42hmnp7k2q/start",
+        "stageLabel": null
+      }
+    },
+    {
+      "why": "stage: a role kind that is not a string shows nothing",
+      "env": "staging",
+      "fields": {
+        "code": "fx42hmnp7k2q",
+        "label": "Example Town v Sample CC",
+        "venueTimezone": "Europe/London",
+        "scheduledStart": 1790003600,
+        "autoAllowed": true,
+        "destinationName": "YouTube · Example Town CC",
+        "overlayUrl": "https://stg.seazn.club/overlay/fixtures/f1",
+        "pollSeconds": 60,
+        "heartbeatUrl": "https://stg.seazn.club/api/v1/capture/codes/fx42hmnp7k2q/beats",
+        "startUrl": "https://stg.seazn.club/api/v1/capture/codes/fx42hmnp7k2q/start",
+        "stage": {
+          "code": "QF",
+          "role": {
+            "kind": 7
+          },
+          "label": "QF"
+        }
+      },
+      "expected": {
+        "code": "fx42hmnp7k2q",
+        "label": "Example Town v Sample CC",
+        "venueTimezone": "Europe/London",
+        "scheduledStart": 1790003600,
+        "autoAllowed": true,
+        "destinationName": "YouTube · Example Town CC",
+        "overlayUrl": "https://stg.seazn.club/overlay/fixtures/f1",
+        "pollSeconds": 60,
+        "heartbeatUrl": "https://stg.seazn.club/api/v1/capture/codes/fx42hmnp7k2q/beats",
+        "startUrl": "https://stg.seazn.club/api/v1/capture/codes/fx42hmnp7k2q/start",
+        "stageLabel": null
+      }
+    },
+    {
+      "why": "stage: an array is not a stage",
+      "env": "staging",
+      "fields": {
+        "code": "fx42hmnp7k2q",
+        "label": "Example Town v Sample CC",
+        "venueTimezone": "Europe/London",
+        "scheduledStart": 1790003600,
+        "autoAllowed": true,
+        "destinationName": "YouTube · Example Town CC",
+        "overlayUrl": "https://stg.seazn.club/overlay/fixtures/f1",
+        "pollSeconds": 60,
+        "heartbeatUrl": "https://stg.seazn.club/api/v1/capture/codes/fx42hmnp7k2q/beats",
+        "startUrl": "https://stg.seazn.club/api/v1/capture/codes/fx42hmnp7k2q/start",
+        "stage": []
+      },
+      "expected": {
+        "code": "fx42hmnp7k2q",
+        "label": "Example Town v Sample CC",
+        "venueTimezone": "Europe/London",
+        "scheduledStart": 1790003600,
+        "autoAllowed": true,
+        "destinationName": "YouTube · Example Town CC",
+        "overlayUrl": "https://stg.seazn.club/overlay/fixtures/f1",
+        "pollSeconds": 60,
+        "heartbeatUrl": "https://stg.seazn.club/api/v1/capture/codes/fx42hmnp7k2q/beats",
+        "startUrl": "https://stg.seazn.club/api/v1/capture/codes/fx42hmnp7k2q/start",
+        "stageLabel": null
+      }
+    },
+    {
+      "why": "stage: a label that is not a string shows nothing",
+      "env": "staging",
+      "fields": {
+        "code": "fx42hmnp7k2q",
+        "label": "Example Town v Sample CC",
+        "venueTimezone": "Europe/London",
+        "scheduledStart": 1790003600,
+        "autoAllowed": true,
+        "destinationName": "YouTube · Example Town CC",
+        "overlayUrl": "https://stg.seazn.club/overlay/fixtures/f1",
+        "pollSeconds": 60,
+        "heartbeatUrl": "https://stg.seazn.club/api/v1/capture/codes/fx42hmnp7k2q/beats",
+        "startUrl": "https://stg.seazn.club/api/v1/capture/codes/fx42hmnp7k2q/start",
+        "stage": {
+          "code": "QF",
+          "role": {
+            "kind": "quarter_final"
+          },
+          "label": 7
+        }
+      },
+      "expected": {
+        "code": "fx42hmnp7k2q",
+        "label": "Example Town v Sample CC",
+        "venueTimezone": "Europe/London",
+        "scheduledStart": 1790003600,
+        "autoAllowed": true,
+        "destinationName": "YouTube · Example Town CC",
+        "overlayUrl": "https://stg.seazn.club/overlay/fixtures/f1",
+        "pollSeconds": 60,
+        "heartbeatUrl": "https://stg.seazn.club/api/v1/capture/codes/fx42hmnp7k2q/beats",
+        "startUrl": "https://stg.seazn.club/api/v1/capture/codes/fx42hmnp7k2q/start",
+        "stageLabel": null
+      }
+    },
+    {
+      "why": "stage: a null role shows nothing",
+      "env": "staging",
+      "fields": {
+        "code": "fx42hmnp7k2q",
+        "label": "Example Town v Sample CC",
+        "venueTimezone": "Europe/London",
+        "scheduledStart": 1790003600,
+        "autoAllowed": true,
+        "destinationName": "YouTube · Example Town CC",
+        "overlayUrl": "https://stg.seazn.club/overlay/fixtures/f1",
+        "pollSeconds": 60,
+        "heartbeatUrl": "https://stg.seazn.club/api/v1/capture/codes/fx42hmnp7k2q/beats",
+        "startUrl": "https://stg.seazn.club/api/v1/capture/codes/fx42hmnp7k2q/start",
+        "stage": {
+          "code": "QF",
+          "role": null,
+          "label": "QF"
+        }
+      },
+      "expected": {
+        "code": "fx42hmnp7k2q",
+        "label": "Example Town v Sample CC",
+        "venueTimezone": "Europe/London",
+        "scheduledStart": 1790003600,
+        "autoAllowed": true,
+        "destinationName": "YouTube · Example Town CC",
+        "overlayUrl": "https://stg.seazn.club/overlay/fixtures/f1",
+        "pollSeconds": 60,
+        "heartbeatUrl": "https://stg.seazn.club/api/v1/capture/codes/fx42hmnp7k2q/beats",
+        "startUrl": "https://stg.seazn.club/api/v1/capture/codes/fx42hmnp7k2q/start",
+        "stageLabel": null
+      }
+    },
+    {
+      "why": "stage: a role that is not an object shows nothing",
+      "env": "staging",
+      "fields": {
+        "code": "fx42hmnp7k2q",
+        "label": "Example Town v Sample CC",
+        "venueTimezone": "Europe/London",
+        "scheduledStart": 1790003600,
+        "autoAllowed": true,
+        "destinationName": "YouTube · Example Town CC",
+        "overlayUrl": "https://stg.seazn.club/overlay/fixtures/f1",
+        "pollSeconds": 60,
+        "heartbeatUrl": "https://stg.seazn.club/api/v1/capture/codes/fx42hmnp7k2q/beats",
+        "startUrl": "https://stg.seazn.club/api/v1/capture/codes/fx42hmnp7k2q/start",
+        "stage": {
+          "code": "QF",
+          "role": "x",
+          "label": "QF"
+        }
+      },
+      "expected": {
+        "code": "fx42hmnp7k2q",
+        "label": "Example Town v Sample CC",
+        "venueTimezone": "Europe/London",
+        "scheduledStart": 1790003600,
+        "autoAllowed": true,
+        "destinationName": "YouTube · Example Town CC",
+        "overlayUrl": "https://stg.seazn.club/overlay/fixtures/f1",
+        "pollSeconds": 60,
+        "heartbeatUrl": "https://stg.seazn.club/api/v1/capture/codes/fx42hmnp7k2q/beats",
+        "startUrl": "https://stg.seazn.club/api/v1/capture/codes/fx42hmnp7k2q/start",
+        "stageLabel": null
+      }
+    },
+    {
+      "why": "stage: absent",
+      "env": "staging",
+      "fields": {
+        "code": "fx42hmnp7k2q",
+        "label": "Example Town v Sample CC",
+        "venueTimezone": "Europe/London",
+        "scheduledStart": 1790003600,
+        "autoAllowed": true,
+        "destinationName": "YouTube · Example Town CC",
+        "overlayUrl": "https://stg.seazn.club/overlay/fixtures/f1",
+        "pollSeconds": 60,
+        "heartbeatUrl": "https://stg.seazn.club/api/v1/capture/codes/fx42hmnp7k2q/beats",
+        "startUrl": "https://stg.seazn.club/api/v1/capture/codes/fx42hmnp7k2q/start"
+      },
+      "expected": {
+        "code": "fx42hmnp7k2q",
+        "label": "Example Town v Sample CC",
+        "venueTimezone": "Europe/London",
+        "scheduledStart": 1790003600,
+        "autoAllowed": true,
+        "destinationName": "YouTube · Example Town CC",
+        "overlayUrl": "https://stg.seazn.club/overlay/fixtures/f1",
+        "pollSeconds": 60,
+        "heartbeatUrl": "https://stg.seazn.club/api/v1/capture/codes/fx42hmnp7k2q/beats",
+        "startUrl": "https://stg.seazn.club/api/v1/capture/codes/fx42hmnp7k2q/start",
+        "stageLabel": null
+      }
     }
   ]
 }

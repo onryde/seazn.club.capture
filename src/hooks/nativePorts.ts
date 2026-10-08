@@ -5,6 +5,7 @@ import { loadCaptureEngineNative } from '@/engine/nativeModule';
 import { chooseCodePort } from '@/hooks/codePortWiring';
 import { chooseEngine, routedRecordFor } from '@/hooks/engineWiring';
 import { photoPortFor } from '@/hooks/photoPortWiring';
+import { scoringLinkPortFor } from '@/hooks/scoringLinkPortWiring';
 import type { Ports } from '@/hooks/usePorts';
 import { createNativeCodeScanner } from '@/scanner/nativeCodeScanner';
 import { createEndedNotice } from '@/services/endedNotice';
@@ -86,6 +87,7 @@ export function createNativePorts(): Ports {
     // A development build with the fake engine and a native module still calls the real `takePhoto`, which
     // fails with no camera open: the line says so, truthfully. There is no second gate to keep.
     photo: photoPortFor(native),
+    scoringLink: scoringLinkPortFor(native, { logger, hosts }),
     clock,
     hosts,
     deviceLanguages: getLocales().map((locale) => locale.languageCode),

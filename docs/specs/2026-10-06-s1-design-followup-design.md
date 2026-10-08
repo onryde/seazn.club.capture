@@ -70,6 +70,13 @@ Three pull requests, in order. Each is reviewed and merged on its own.
   (open string), n?, entrants? }, pool? (^[A-Z]$) }`. A missing, empty or over-40 `label` → no line.
   The phone never builds or translates it. Ships with PR C, after the web contract lands
   (web branches `fix/pool-label-i18n`, then `feat/capture-scoring-link-stage`).
+- **The line yields to the label (R-F5).** It shows only when the status strip has room for it beside the
+  label; no strip reserve is added and the camera box never gives way. The strip is 189 dp at 640 × 360 and 180 dp
+  from 800 wide, so a label of one or two lines shows the line everywhere, a label of four lines or of three regular
+  lines never does, and a compact three-line label (a long name) shows it at 640 × 360 only. Until the strip and
+  the label are both measured, the line is hidden.
+- **An unknown `role.kind` shows no line (R-F20).** A kind outside the contract's list shows nothing, even with a
+  good label; a kind the web adds later shows nothing until the app learns it.
 
 ## §3 Icons
 
@@ -159,7 +166,8 @@ starts.
   photo, nothing make complex"_). A shutter in the icon row whenever the camera picture is showing, Paired and on air
   (Settings, Home, Take photo before air; Settings, Take photo, _What viewers see_ on air). Native saves a JPEG of the
   camera picture, no scorebug, and answers `saved` or `failed`; the app says so for 3 s. A tap while a photo is saving
-  does nothing. It is the one request-with-an-answer among the commands (AGENTS §2, recorded).
+  does nothing. It is one of the two requests-with-an-answer among the commands (the other is the scoring link, §10;
+  AGENTS §2, recorded).
 - **Gallery permission: none.** The still is written with `MediaStore.Images` to `Pictures/Seazn Capture`. minSdk is 31,
   so the app writes its own image with no storage permission, no prompt, no library and no config plugin.
 - **Confirmation copy:** _Photo saved_ (lime) or _Couldn't save the photo_ (caution), one line for 3 s in the controls
@@ -226,6 +234,39 @@ Owner rulings, 2026-10-06:
 - The URL is a scoring credential for that one fixture: never logged, never in the session record,
   never in a beat. Links do not expire; an organiser's _Revoke & reissue_ changes it, and the next
   tap fetches the new one.
+
+## §10 as settled in PR C (UNVERIFIED-ON-DEVICE)
+
+The owner answered where the code shows by linking the canvas board _Idea · show the Remote Scoring code (hides after
+10 s)_ (2026-10-08): the panel covers the camera half, the controls half stays as it is, and the code hides after
+10 s or on _Hide_. The controller's rulings below were approved by the owner the same day ("ok, go with your calls").
+
+- **B1 Two keys.** `stream.scoring.title` is _Score this match_ (the board's); the icon button's own name is
+  `stream.scoring.open`, _Remote scoring_.
+- **B2 The hint stays _Scan with any phone camera_,** not the board's "Scan with Seazn Capture → Remote Scoring": the
+  app's own Remote Scoring mode (S2) does not exist yet, and the board's line would send a scorer to a feature they
+  cannot find.
+- **B3 A countdown.** A bar and _Hides in {seconds} s_ beside _Hide_, counting 10 to 1 on a 1 s tick; the 10 s timer
+  stays the authority.
+- **B4 Colours.** A cream ground and ink text; the QR keeps its white quiet zone.
+- **B5 Pressed.** While the panel shows, the Remote scoring button has a 2 dp lime outline and is selected.
+- **B6 No reassurance line.** The board's "The code shows on this phone only, never on the stream." is not taken: the
+  status line is engine-driven and carries the Reconnecting and Degraded warnings, and overriding it would hide them.
+- **B7 Icon order.** The board puts the QR first; the app does not, so Settings and Take photo stay where the operator
+  has them (on air, see R8c).
+- **R8a The panel yields to trouble.** It is opaque and covers the status strip, so it hides when the session
+  enters Reconnecting, Degraded or a silent engine, and a warning is never covered. A tap made while the trouble
+  already stands is honoured (the operator saw the warning and chose), and the panel then covers the strip for up to
+  10 s. Advisory captions (keep-open, heat, overlay failed, not charging, camera switching, paired refusals) may be
+  covered for up to 10 s. _Cost:_ a scorer mid-scan loses the code in a network drop and taps again.
+- **R8b The title is the board's:** Barlow Condensed 700, 22/24, uppercase, left.
+- **R8c On air the icon row is Settings, Take photo, Remote scoring, _What viewers see_:** the QR is third of four
+  because the flexible viewers cell has to end the row.
+- **D11 A bucket for link secrets.** In the session record and in the JS logger alike, a scoring link's secret goes
+  in a bucket of its own: at most 16, deduplicated by value, the newest kept (a repeat, which the server's same
+  link is, moves to the newest place on both sides). A general cap would evict the pairing token. Eviction is safe
+  because an evicted secret only comes back inside a new answer, and that answer protects it again before it is
+  handed on.
 
 ## Out of scope
 

@@ -218,6 +218,7 @@ export const FAKE_PAIRING: PairingInfo = {
   destinationName: 'YouTube · Fake CC',
   overlayUrl: 'https://stg.seazn.club/overlay/fixtures/fx42hmnp7k2q',
   pollSeconds: 60,
+  stageLabel: null,
 };
 
 const broadcastFor = (pairing: PairingInfo, cause: Cause): BroadcastInfo => ({
@@ -538,6 +539,15 @@ export function createFakeCaptureEngine(now: () => number = Date.now): FakeCaptu
       ...waiting,
       ...name,
       venueTimezone: intent.venueTimezone,
+      // Native seeds the scan's round line when the pair carries it with its match, and not otherwise.
+      // A SEED ONLY. Native holds the line for the match it was read with (`stageFor`) while the waiting label
+      // is still "" before the first beat, and the first beat that moves the label drops it (WaitingFields.overBeat).
+      // This fake shows the line from the pair, with the fake's own label, and never clears it: a test of a
+      // stale line sets or clears `stageLabel` with `setPairing`, and the drop is native's, proved by
+      // PairingTest and BodiesTest.
+      ...(intent.stageLabel !== undefined && intent.stageMatch !== undefined
+        ? { stageLabel: intent.stageLabel }
+        : {}),
       automatic: intent.automatic,
     };
     if (permissions === 'hold') {

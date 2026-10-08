@@ -53,6 +53,7 @@ object SnapshotWire {
       "autoAllowed" to w.autoAllowed,
       "destinationName" to w.destinationName,
       "overlayUrl" to w.overlayUrl,
+      "stageLabel" to w.stageLabel,
       "pollSeconds" to num(w.pollSeconds),
     )
   }

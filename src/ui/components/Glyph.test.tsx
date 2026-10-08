@@ -40,6 +40,13 @@ const DRAWN = [
   ['home', ['M3 11l9-7 9 7M5 10v10h14V10M10 20v-5h4v5'], [], 0],
   // the shutter is the plan's drawing (D9), not the canvas's
   ['shutter', [], ['12,12,9', '12,12,4'], 0],
+  // the plan's drawing (D9 of PR B's convention), not the canvas's
+  [
+    'qr',
+    ['M3 3h7v7H3zM14 3h7v7h-7zM3 14h7v7H3zM14 14h3v3h-3zM19 14h2M14 19h2M18 18h3v3h-3z'],
+    [],
+    0,
+  ],
 ] as const;
 /** The camera's not-ready slash (spec §3). */
 const SLASH = 'M3 3l18 18';
@@ -60,9 +67,9 @@ describe('Glyph draws the canvas’s line icons (spec §3)', () => {
     drawn += 1;
   });
 
-  it('drew all six glyphs (anti-vacuity)', () => {
-    expect(DRAWN).toHaveLength(6);
-    expect(drawn).toBe(6);
+  it('drew all seven glyphs (anti-vacuity)', () => {
+    expect(DRAWN).toHaveLength(7);
+    expect(drawn).toBe(7);
   });
 
   it('draws the mic’s capsule as the canvas has it: 9, 3, 6 wide, 11 tall, corners of 3', () => {

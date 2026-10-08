@@ -16,6 +16,9 @@ object Protocol {
   /** `{"ev": event, ...fields}` on one line, through the wire's own writer: numbers as JS writes them. */
   fun encode(event: String, fields: Map<String, Any?>): String = WireJson.encode(linkedMapOf<String, Any?>("ev" to event) + fields)
 
+  /** An `AsyncFunction`'s answer: `{"ev":"scoringLink","call":N,"answer":{…}}`, the call it resolves and the value Expo would resolve it with. */
+  fun scoringLink(call: Int, answer: Map<String, Any?>): String = encode("scoringLink", mapOf("call" to call.toDouble(), "answer" to answer))
+
   private fun value(raw: Any?): Any? =
     when (raw) {
       null, JSONObject.NULL -> null

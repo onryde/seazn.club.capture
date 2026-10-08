@@ -1,0 +1,20 @@
+{
+  "about": "The values of capture-descriptor.v1 stage.role.kind that the contract names (its description lists them and calls the string OPEN). A stage with any other kind, or none, shows no round line: the contract says consumers show nothing for an unknown kind. Read by Bodies.kt and waitingFields.ts, each tested against this file; this file is tested against the contract (stageKinds.test.ts). Change only with all three.",
+  "kinds": [
+    "round_of",
+    "quarter_final",
+    "semi_final",
+    "final",
+    "winners_final",
+    "losers_round",
+    "losers_final",
+    "grand_final",
+    "grand_final_reset",
+    "third_place",
+    "qualifier1",
+    "eliminator",
+    "qualifier2",
+    "rung",
+    "plain_round"
+  ]
+}

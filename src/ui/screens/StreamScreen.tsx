@@ -6,6 +6,7 @@ import { usePeek } from '@/hooks/usePeek';
 import { useEndedToHome } from '@/hooks/useEndedNotice';
 import { useStreamLeave } from '@/hooks/useStreamLeave';
 import { useStreamLinks } from '@/hooks/useStreamLinks';
+import { useScoringLink } from '@/hooks/useScoringLink';
 import { useStreamSettings } from '@/hooks/useStreamSettings';
 import { useViewfinder, type Viewfinder } from '@/hooks/useViewfinder';
 import { StreamColumn } from '@/ui/components/StreamColumn';
@@ -25,6 +26,7 @@ export function StreamScreen() {
   const peek = usePeek(view.peekable);
   useEndedToHome(leave.leaveWith);
   const links = useStreamLinks();
+  const scoring = useScoringLink(view.plate === 'trouble');
   const line = useColumnLine(view, leave.blocked);
   return (
     <View testID="viewfinder" style={settings.side === 'left' ? styles.mirrored : styles.halves}>
@@ -33,6 +35,9 @@ export function StreamScreen() {
         paired={view.kind === 'paired'}
         overlayOn={settings.overlay}
         peek={peek}
+        scoring={scoring.view}
+        scoringSecondsLeft={scoring.secondsLeft}
+        onHideScoring={scoring.hide}
       />
       <StreamColumn
         view={view}
@@ -40,6 +45,8 @@ export function StreamScreen() {
         canLeave={leave.canLeave}
         onHome={leave.leave}
         onSettings={links.settings}
+        onScoringLink={scoring.open}
+        scoringOpen={scoring.view.kind !== 'hidden'}
       />
     </View>
   );

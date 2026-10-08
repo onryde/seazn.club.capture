@@ -34,7 +34,10 @@ type Input = {
   readonly fromStore: boolean;
 };
 
-const waiting = (code: string, zone: string, beats: string, start: string) => ({
+/** W28: the first row's answer carries a stage, the second's none (the common case). */
+const QF = { code: 'QF', role: { kind: 'quarter_final' }, label: 'QF' };
+
+const waiting = (code: string, zone: string, beats: string, start: string, stage?: object) => ({
   state: 'waiting',
   code,
   label: 'Example Town v Sample CC',
@@ -45,6 +48,7 @@ const waiting = (code: string, zone: string, beats: string, start: string) => ({
   pollSeconds: 60,
   heartbeatUrl: beats,
   startUrl: start,
+  ...(stage === undefined ? {} : { stage }),
 });
 
 const INPUTS: Readonly<Record<string, Input>> = {
@@ -56,6 +60,7 @@ const INPUTS: Readonly<Record<string, Input>> = {
       'Europe/London',
       'https://stg.seazn.club/api/v1/capture/codes/fx42hmnp7k2q/beats',
       'https://stg.seazn.club/api/v1/capture/codes/fx42hmnp7k2q/start',
+      QF,
     ),
     facts: { language: 'en', automatic: true, claim: 'new' },
     fromStore: false,

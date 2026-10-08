@@ -1,5 +1,5 @@
 {
-  "about": "The made-up server bodies the native tests answer with (PairWire.kt, the host's ScriptedServer.kt), each checked against the web's contract it stands for by serverBodies.test.ts, with ajv, so a fixture that drifts from the contract reds (review C4a m-4). The contracts are test/fixtures/contracts/, copied from the web repo at 5bb72e8a2 and pinned there by sha256. Each Kotlin side asserts its bodies equal these. Change only with both. The credentials are the tests' own made-up values.",
+  "about": "The made-up server bodies the native tests answer with (PairWire.kt, the host's ScriptedServer.kt), each checked against the web's contract it stands for by serverBodies.test.ts, with ajv, so a fixture that drifts from the contract reds (review C4a m-4). The contracts are test/fixtures/contracts/, copied from the web repo at 7e75fd4a7 and pinned there by sha256. Each Kotlin side asserts its bodies equal these. Change only with both. The credentials are the tests' own made-up values.",
   "bodies": [
     {
       "name": "pair-wire/beat-waiting",
@@ -129,6 +129,13 @@
       "schema": "capture-start.v1.json#/$defs/ok",
       "body": {
         "sid": "2d7c4b1e-5f3a-4e6b-9c8d-1a2b3c4d5e6f"
+      }
+    },
+    {
+      "name": "host/scoring-link-ok",
+      "schema": "capture-scoring-link.v1.json#/$defs/ok",
+      "body": {
+        "url": "https://stg.seazn.club/score/dl_HostLinkAbCdEfGhIjKlMnOpQrStUvWxYz012345678"
       }
     }
   ]

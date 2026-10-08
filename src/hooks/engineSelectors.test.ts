@@ -5,6 +5,9 @@ import type { BroadcastInfo, PairingInfo, Unpaired } from '@/domain/session/Pair
 import type { EngineSnapshot, Telemetry } from '@/engine/CaptureEnginePort';
 import { FAKE_PAIRING } from '@/engine/FakeCaptureEngine';
 import { IDLE_TELEMETRY } from '@/engine/unreported';
+import { toEngineSnapshot } from '@/engine/snapshotWire';
+import vectors from '@/engine/wire/snapshot-vectors.json';
+import { vectorWire } from '@/engine/wire/vectorWire';
 import {
   METER_SEGMENTS,
   selectBitrateKbps,
@@ -27,6 +30,7 @@ import {
   selectOverlayUrl,
   selectPlaybackUrl,
   selectScheduledStartMs,
+  selectStageLine,
   selectUnpairedKey,
   selectUnpairedReason,
   selectVenueZone,
@@ -338,6 +342,48 @@ describe('the waiting fields the viewfinder shows (Task 28)', () => {
       selectEndReason(snapshot(LIVE)),
       selectEndReason(snapshot(PAIRED)),
     ]).toEqual(['operator-stopped', 'fatal-error', null, null]);
+  });
+});
+
+describe('the round line selector (spec §2)', () => {
+  const paired = (over: Partial<PairingInfo>) =>
+    snapshot(PAIRED, {}, { pairing: { ...FAKE_PAIRING, ...over } });
+
+  it('selectStageLine is the pairing’s stage label, only while a match label is known, and null otherwise', () => {
+    expect(selectStageLine(paired({ label: 'A v B', stageLabel: 'QF' }))).toBe('QF');
+    expect(selectStageLine(paired({ label: '', stageLabel: 'QF' }))).toBeNull();
+    expect(selectStageLine(paired({ label: 'A v B', stageLabel: null }))).toBeNull();
+    expect(selectStageLine(paired({ label: 'A v B', stageLabel: 'x'.repeat(41) }))).toBeNull();
+    expect(selectStageLine(snapshot(PAIRED, {}, { pairing: null }))).toBeNull();
+  });
+
+  // The seam, driven through its real producer: the wire native sends (the shared vector), read by the real
+  // snapshot reader, then by the selector the status strip uses. The expected line is the vector's own.
+  it('selectStageLine reads the line a native snapshot carries: the shared vector, through toEngineSnapshot', () => {
+    const named = (name: string) => vectors.cases.find((row) => row.name === name);
+    const sent = named('paired-with-stage-label')?.wire.pairing?.stageLabel;
+    // The vector really carries a line, and a paired case that carries none (the shared base) is its pair.
+    expect(typeof sent).toBe('string');
+    expect(sent).not.toBe('');
+    expect(vectors.pairingBase.stageLabel).toBeNull();
+
+    const read = toEngineSnapshot(vectorWire('paired-with-stage-label'));
+    expect(read).not.toBeNull();
+    expect(read?.pairing?.label).toBe(vectors.pairingBase.label);
+    expect(selectStageLine(read as EngineSnapshot)).toBe(sent);
+
+    const bare = toEngineSnapshot(vectorWire('paired-after-organiser-stop'));
+    expect(bare?.pairing?.label).toBe(vectors.pairingBase.label);
+    expect(selectStageLine(bare as EngineSnapshot)).toBeNull();
+  });
+
+  it('a known match label is the broadcast’s too: selectLabel reads it before the pairing’s', () => {
+    const live = snapshot(
+      LIVE,
+      {},
+      { pairing: { ...FAKE_PAIRING, label: '', stageLabel: 'QF' }, broadcast: BROADCAST },
+    );
+    expect(selectStageLine(live)).toBe('QF');
   });
 });
 

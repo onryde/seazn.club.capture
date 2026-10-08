@@ -120,7 +120,8 @@
     "autoAllowed": true,
     "destinationName": "YouTube · Example Town CC",
     "overlayUrl": "https://stg.seazn.club/overlay/fixtures/fx42hmnp7k2q",
-    "pollSeconds": 10
+    "pollSeconds": 10,
+    "stageLabel": null
   },
   "broadcastBase": {
     "sid": "sess_42",
@@ -436,6 +437,23 @@
           "commandFailures": 8,
           "stickyFailure": true
         }
+      }
+    },
+    {
+      "name": "paired-with-stage-label",
+      "wire": {
+        "state": { "kind": "paired" },
+        "pairing": { "stageLabel": "QF" },
+        "broadcast": null,
+        "ready": { "camera": true, "sound": true, "network": true, "held": true },
+        "refusal": null,
+        "lastEnd": null,
+        "unpaired": null,
+        "codeEndedPending": false,
+        "camera": "own",
+        "reportedAtMs": 1790000007000,
+        "survivesBackground": true,
+        "telemetry": {}
       }
     }
   ]

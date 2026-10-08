@@ -10,15 +10,24 @@ const rows = vectors.cases.filter((row) => !('kotlinOnly' in row && row.kotlinOn
 
 describe('the waiting fields: one reading in two languages (Bodies.waiting in Kotlin)', () => {
   // The file's counts, so an emptied or truncated file cannot pass by sweeping nothing (PV12).
-  it("sweeps 27 of the file's 29 rows, readable and unreadable both", () => {
-    expect(vectors.cases).toHaveLength(29);
-    expect(rows).toHaveLength(27);
+  it("sweeps 43 of the file's 45 rows, readable and unreadable both", () => {
+    expect(vectors.cases).toHaveLength(45);
+    expect(rows).toHaveLength(43);
     expect(rows.filter((row) => row.expected === null)).toHaveLength(19);
   });
 
   it.each(rows.map((row) => [row.why, row] as const))('%s', (_why, row) => {
     const read = parseWaitingFields(row.fields, seaznHosts(row.env)[0] ?? '');
-    const seen = read === null ? null : { ...read, scheduledStart: inSeconds(read.scheduledStart) };
+    // The shared rows state the stage as the label the line shows (Kotlin's WaitingFields.stageLabel).
+    const { stage, ...rest } = read ?? { stage: null };
+    const seen =
+      read === null
+        ? null
+        : {
+            ...rest,
+            scheduledStart: inSeconds(read.scheduledStart),
+            stageLabel: stage?.label ?? null,
+          };
     expect(seen).toEqual(row.expected);
   });
 });

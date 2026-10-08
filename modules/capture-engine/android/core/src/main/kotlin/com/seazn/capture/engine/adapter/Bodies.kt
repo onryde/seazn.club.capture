@@ -20,7 +20,7 @@ import com.seazn.capture.engine.core.characters
 /**
  * The server's bodies, read where they are acted on (amendment, _Who reads what_): GET code's session
  * shape, a beat's answer and `POST start`'s answer, as the web published them (capture-descriptor.v1,
- * capture-beat.v1 and capture-start.v1, web 09e87aabd). `cred` is read here and nowhere else, and only
+ * capture-beat.v1 and capture-start.v1, web 7e75fd4a7). `cred` is read here and nowhere else, and only
  * onto the ingest host ([Hosts.onIngest]). Never throws.
  *
  * What the engine echoes or branches on is held to the schema: every sid matches the schema's uuid
@@ -76,8 +76,22 @@ object Bodies {
   private val LABEL = 1..200
   private val ZONE = 1..64
   private val DESTINATION = 1..80
+
+  /** capture-descriptor.v1 `stage.label`: 1 to 40 characters, in code points. */
+  private val STAGE_LABEL = 1..40
   private val POLL = 5..300
   private val HOLD = 1..999
+
+  /**
+   * `stage.role.kind`'s values (R-F20): the contract's description lists them and calls the string OPEN, and says
+   * consumers show nothing for any other. `wire/stage-kinds.json` is the authority; BodiesTest holds this set to it
+   * and `stageKinds.test.ts` holds the file to the contract. Internal for that test.
+   */
+  internal val STAGE_KINDS =
+    setOf(
+      "round_of", "quarter_final", "semi_final", "final", "winners_final", "losers_round", "losers_final", "grand_final",
+      "grand_final_reset", "third_place", "qualifier1", "eliminator", "qualifier2", "rung", "plain_round",
+    )
 
   /** The schemas' integer ceiling, JS's largest safe integer (2^53 - 1). */
   private const val MAX_SAFE = 9_007_199_254_740_991L
@@ -142,7 +156,22 @@ object Bodies {
     val optionals = listOf("venueTimezone" to zone, "scheduledStart" to start, "destinationName" to destination, "overlayUrl" to overlay)
     optionals.firstOrNull { it.second is Field.Bad }?.let { return unreadable(it.first) }
     val seazn = overlay.orNull()?.takeIf { Hosts.onSeazn(it, env) }
-    return WaitingRead(WaitingFields(label, zone.orNull() ?: "", start.orNull(), auto, destination.orNull(), seazn, poll), null)
+    val stage = stageLabel(fields["stage"])
+    return WaitingRead(WaitingFields(label, zone.orNull() ?: "", start.orNull(), auto, destination.orNull(), seazn, poll, stage, stage?.let { label }), null)
+  }
+
+  /**
+   * capture-descriptor.v1 `stage` (W28): its `label`, shown verbatim, 1 to 40 characters in code points, but only
+   * when `role.kind` is one the contract names ([STAGE_KINDS]); an unknown kind, no `role` or a kind that is not a
+   * string shows no line, even with a good label (R-F20). Display only, so anything else, a null, a non-object, a
+   * label of 0 or over 40, is no stage and never makes the waiting fields unreadable; that is why `stage` is not in
+   * [WAITING_KEYS]. `code`, `role.n`, `role.entrants` and `pool` are not read: the server renders the whole line.
+   */
+  private fun stageLabel(value: Any?): String? {
+    val stage = value as? Map<*, *> ?: return null
+    val kind = (stage["role"] as? Map<*, *>)?.get("kind") as? String ?: return null
+    if (kind !in STAGE_KINDS) return null
+    return (stage["label"] as? String)?.takeIf { it.characters in STAGE_LABEL }
   }
 
   /** A beat's waiting fields, and the field refused when the body owed them ([WAITING_OWED], or any sent). */
@@ -269,6 +298,33 @@ object Bodies {
       status in START_FAILS -> failed
       status in 400..499 && code != null -> StartAnswer.Refused(Refusal.of(code), fields?.get("message") as? String)
       else -> failed
+    }
+  }
+
+  /** capture-scoring-link.v1 `$defs.ok.url`: the server's https origin, `/score/`, and `dl_` with 43 base64url characters. */
+  private val SCORING_URL = Regex("https://[^/]+/score/dl_[A-Za-z0-9_-]{43}")
+
+  /**
+   * A tap's answer (spec §10, web ask W27). By status and `code`, like [start]: a 401 or 404 only from the
+   * server's refusal naming it (X1), so a captive portal's page is unavailable, never "code ended". A 2xx is
+   * a link only when its `url` is exactly the contract's shape on the build's own Seazn host: anything else
+   * is no link and is never shown as a QR. The URL is a credential, so nothing here prints it.
+   */
+  fun scoringLink(status: Int, body: String, retryAfterS: Int?, env: Environment): ScoringLinkAnswer {
+    val fields = obj(body)
+    val code = fields?.get("code") as? String
+    val none = ScoringLinkAnswer.Refused("unavailable", null)
+    return when {
+      status in 200..299 -> {
+        val url = (fields?.get("url") as? String)?.takeIf { SCORING_URL.matches(it) && Hosts.onSeazn(it, env) }
+        url?.let { ScoringLinkAnswer.Link(it) } ?: none
+      }
+      status == 401 || status == 404 -> if (unconfirmed(status, fields)) none else ScoringLinkAnswer.Refused("code_ended", null)
+      status == 409 && code == "replaced" -> ScoringLinkAnswer.Refused("replaced", null)
+      status == 409 && code == "match_finished" -> ScoringLinkAnswer.Refused("match_finished", null)
+      status == 402 && code == "not_entitled" -> ScoringLinkAnswer.Refused("not_entitled", null)
+      status == 429 && code == "rate_limited" -> ScoringLinkAnswer.Refused("rate_limited", retryAfterS)
+      else -> none
     }
   }
 

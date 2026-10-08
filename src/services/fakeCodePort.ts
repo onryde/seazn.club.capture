@@ -29,6 +29,7 @@ export function sampleWaiting(
     pollSeconds: 60,
     heartbeatUrl: `${codeUrl(origin, code)}/beats`,
     startUrl: `${codeUrl(origin, code)}/start`,
+    stage: null,
     ...overrides,
   };
 }

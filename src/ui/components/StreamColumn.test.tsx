@@ -1,4 +1,4 @@
-import { act, fireEvent, screen } from '@testing-library/react';
+import { act, fireEvent, screen, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { HOLD_MS } from '@/hooks/useHold';
 import type { Peek } from '@/hooks/usePeek';
@@ -14,6 +14,8 @@ const ICONS = {
   canLeave: true,
   onHome: vi.fn(),
   onSettings: vi.fn(),
+  onScoringLink: vi.fn(),
+  scoringOpen: false,
 } as const;
 
 /** A hand-built projection, so the column's own gates are tested apart from the hooks'. */
@@ -30,6 +32,7 @@ const viewOf = (overrides: Partial<Viewfinder>): Viewfinder => ({
   stopUnpairs: false,
   onAir: false,
   shutter: false,
+  scoring: false,
   peekable: false,
   startsAt: null,
   auto: false,
@@ -135,6 +138,8 @@ describe('StreamColumn’s icon row (spec §3)', () => {
       canLeave={canLeave}
       onHome={onHome}
       onSettings={onSettings}
+      onScoringLink={vi.fn()}
+      scoringOpen={false}
       peek={PEEK}
     />
   );
@@ -154,5 +159,79 @@ describe('StreamColumn’s icon row (spec §3)', () => {
     expect(screen.queryByRole('button', { name: 'Home' })).toBeNull();
     expect(screen.getByRole('button', { name: 'Settings' })).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Diagnostics' })).toBeNull();
+  });
+
+  /** The icon row's accessible names, in order (an icon button has no text, only its label). */
+  const rowNames = () =>
+    within(screen.getByTestId('icon-row'))
+      .getAllByRole('button')
+      .map((button) => button.getAttribute('aria-label') ?? button.textContent);
+
+  it('offers Remote scoring only while a pairing is held, presses onScoringLink once and nothing else, and keeps Settings either way', () => {
+    const onScoringLink = vi.fn();
+    const onSettings = vi.fn();
+    const onHome = vi.fn();
+    const handlers = { ...ICONS, onScoringLink, onSettings, onHome };
+    const { rerender } = renderWithPorts(
+      <StreamColumn view={viewOf({ scoring: true })} {...handlers} peek={PEEK} />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Remote scoring' }));
+    expect(onScoringLink).toHaveBeenCalledTimes(1);
+    expect(onSettings).not.toHaveBeenCalled();
+    expect(onHome).not.toHaveBeenCalled();
+    // No pairing held: the button goes and Settings stays, so the absence is not an empty row.
+    rerender(<StreamColumn view={viewOf({ scoring: false })} {...handlers} peek={PEEK} />);
+    expect(screen.queryByRole('button', { name: 'Remote scoring' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Settings' })).toBeTruthy();
+  });
+
+  it('before air it is the last of the row, after Take photo', () => {
+    renderWithPorts(
+      <StreamColumn view={viewOf({ scoring: true, shutter: true })} {...ICONS} peek={PEEK} />,
+    );
+    expect(rowNames()).toEqual(['Settings', 'Home', 'Take photo', 'Remote scoring']);
+  });
+
+  it('on air it follows Take photo and leads What viewers see, and Home is not offered (leaving is not allowed on air)', () => {
+    renderWithPorts(
+      <StreamColumn
+        view={viewOf({ onAir: true, action: 'stop', scoring: true, shutter: true })}
+        {...ICONS}
+        canLeave={false}
+        peek={PEEK}
+      />,
+    );
+    expect(rowNames()).toEqual(['Settings', 'Take photo', 'Remote scoring', 'What viewers see']);
+  });
+
+  // B5: the button is pressed in while its panel shows, and only that button.
+  it('marks Remote scoring selected while its panel is open, unselected when it is not, and no other button either way', () => {
+    const scoringButton = () => screen.getByRole('button', { name: 'Remote scoring' });
+    const { rerender } = renderWithPorts(
+      <StreamColumn
+        view={viewOf({ scoring: true, shutter: true })}
+        {...ICONS}
+        scoringOpen
+        peek={PEEK}
+      />,
+    );
+    expect(scoringButton().getAttribute('aria-selected')).toBe('true');
+    const others = () =>
+      screen
+        .getAllByRole('button')
+        .filter((button) => button.getAttribute('aria-label') !== 'Remote scoring')
+        .map((button) => button.getAttribute('aria-selected'));
+    expect(others().length).toBeGreaterThan(0);
+    expect(others().every((state) => state === null)).toBe(true);
+    rerender(
+      <StreamColumn
+        view={viewOf({ scoring: true, shutter: true })}
+        {...ICONS}
+        scoringOpen={false}
+        peek={PEEK}
+      />,
+    );
+    expect(scoringButton().getAttribute('aria-selected')).toBe('false');
+    expect(others().every((state) => state === null)).toBe(true);
   });
 });

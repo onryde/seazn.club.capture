@@ -24,6 +24,8 @@ const SAY_MS = 10_000;
 const READY_MS = 5_000;
 /** `dispose`: how long a host has to leave after `exit` before it is killed. */
 const EXIT_MS = 2_000;
+/** A scoring-link call: native's own bound is 16 s with a real network, the host answers from its script at once. */
+const SCORING_MS = 5_000;
 
 type Events = { onSnapshot: unknown; onRecord: RecordLine; onAck: { seq: number } };
 type Listener = (body: never) => void;
@@ -34,7 +36,8 @@ type HostLine =
   | { ev: 'snapshot'; body: unknown }
   | { ev: 'record'; line: string; seq: number }
   | { ev: 'ack'; seq: number }
-  | { ev: 'request'; path: string; body: unknown };
+  | { ev: 'request'; path: string; body: unknown }
+  | { ev: 'scoringLink'; call: number; answer: unknown };
 
 export type HostEngine = EngineUnderTest & {
   /** The bridge itself, so a test can wait on the intent's own ack (CD8) rather than on quiet. */
@@ -45,11 +48,24 @@ export type HostEngine = EngineUnderTest & {
   readonly record: readonly string[];
   /** The host's process id, for a test that makes it die or hang. */
   readonly pid: number;
+  /**
+   * Spec §10: asks the host's core for the scoring link and resolves what native would resolve. Bounded: a host
+   * that never answers rejects with `no scoring-link answer`, never stalls the run.
+   */
+  scoringLink(): Promise<unknown>;
+  /**
+   * Scripts the next answer on [path] (an unnumbered `script` op, as `say` writes a refusal at `start`): the
+   * server's [status] and [body]. It is read by the host's script table before the next call on [path].
+   */
+  script(path: string, status: number, body: unknown): void;
 };
 
 /** `CaptureEngineNative` over the host's stdin and stdout: what the Expo module is on a phone. */
 class HostModule implements CaptureEngineNative {
   private readonly listeners = new Map<keyof Events, Set<Listener>>();
+  /** The scoring-link calls in flight, by the number the host's answer carries back: concurrent asks never cross. */
+  private readonly asked = new Map<number, (answer: unknown) => void>();
+  private nextCall = 1;
 
   constructor(
     private readonly write: (op: Record<string, unknown>) => void,
@@ -72,6 +88,19 @@ class HostModule implements CaptureEngineNative {
   /** The JVM host has no camera and no gallery: a photo is never taken through it, so asking is loud. */
   takePhoto(): Promise<unknown> {
     return Promise.reject(new Error('the host has no camera'));
+  }
+  scoringLink(): Promise<unknown> {
+    const call = this.nextCall++;
+    return new Promise((resolve) => {
+      this.asked.set(call, resolve);
+      this.write({ op: 'scoringLink', call });
+    });
+  }
+  /** The host's answer to [call]; one for a call nobody asked (or already answered) is dropped. */
+  answered(call: number, answer: unknown): void {
+    const resolve = this.asked.get(call);
+    this.asked.delete(call);
+    resolve?.(answer);
   }
   addListener<E extends keyof Events>(event: E, listener: (body: Events[E]) => void): Subscription {
     const set = this.listeners.get(event) ?? new Set<Listener>();
@@ -176,6 +205,9 @@ export async function startHostEngine(binary: string = HOST_BINARY): Promise<Hos
       case 'request':
         requests.push({ path: line.path, body: line.body });
         return;
+      case 'scoringLink':
+        native.answered(line.call, line.answer);
+        return;
       default:
         fail(
           new Error(`the host wrote an event it has no name for: ${(line as { ev: string }).ev}`),
@@ -224,6 +256,8 @@ export async function startHostEngine(binary: string = HOST_BINARY): Promise<Hos
     requests,
     record,
     pid,
+    scoringLink: () => bounded(native.scoringLink(), SCORING_MS, () => 'no scoring-link answer'),
+    script: (path, status, body) => write({ op: 'script', path, status, body }),
     say: async (words) => {
       const script = scriptFor(words);
       // A refusal is heard at the next operator start, whose own settle waits for its answer (PV28).

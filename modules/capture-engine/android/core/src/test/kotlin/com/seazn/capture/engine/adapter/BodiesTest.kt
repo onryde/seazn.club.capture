@@ -21,22 +21,30 @@ class BodiesTest {
   @Test
   fun `the waiting fields, every shared case`() {
     val cases = waiting.getJSONArray("cases")
-    // The file's rows: 29, of which 3 are JS's alone (PV12: a truncated file cannot pass).
-    assertEquals(29, cases.length())
+    // The file's rows: 45, of which 3 are JS's alone (PV12: a truncated file cannot pass).
+    assertEquals(45, cases.length())
     var read = 0
     var beats = 0
+    var staged = 0
     for (i in 0 until cases.length()) {
       val case = cases.getJSONObject(i)
       if (case.optBoolean("jsOnly")) continue
       read += 1
       if (case.optBoolean("kotlinOnly")) beats += 1
       val why = case.getString("why")
-      val got = Bodies.waiting(case.getJSONObject("fields").plain(), Environment.of(case.getString("env")))
+      // A reader that throws on a row names the row (a cast that fails on a stage of the wrong shape would not).
+      val got =
+        try {
+          Bodies.waiting(case.getJSONObject("fields").plain(), Environment.of(case.getString("env")))
+        } catch (thrown: RuntimeException) {
+          throw AssertionError("$why: the reader threw $thrown", thrown)
+        }
       if (case.isNull("expected")) {
         assertNull(got, why)
         continue
       }
       val e = case.getJSONObject("expected")
+      if (!e.isNull("stageLabel")) staged += 1
       val expected =
         WaitingFields(
           e.getString("label"),
@@ -46,11 +54,16 @@ class BodiesTest {
           if (e.isNull("destinationName")) null else e.getString("destinationName"),
           if (e.isNull("overlayUrl")) null else e.getString("overlayUrl"),
           e.getInt("pollSeconds"),
+          if (e.isNull("stageLabel")) null else e.getString("stageLabel"),
+          // The stage is only true of the match it was read with: that match's label.
+          if (e.isNull("stageLabel")) null else e.getString("label"),
         )
       assertEquals(expected, got, why)
     }
-    assertEquals(26, read)
+    assertEquals(42, read)
     assertEquals(2, beats)
+    // The rows that show a round line: the sweep cannot pass by reading every stage as none.
+    assertEquals(3, staged)
   }
 
   @Test
@@ -61,6 +74,82 @@ class BodiesTest {
     assertEquals(5, read?.pollSeconds)
     // Past the schema's 2^53 - 1: a whole number, and still out of bounds.
     assertNull(Bodies.waiting(JSONObject(base).put("scheduledStart", 9_007_199_254_740_992L).plain(), Environment.STAGING))
+  }
+
+  @Test
+  fun `a descriptor's stage replaces the held one and a beat keeps it only while the match label is unchanged`() {
+    val held = WaitingFields("Example Town v Sample CC", "Europe/London", null, true, null, null, 10, "QF", "Example Town v Sample CC")
+    // A beat's answer carries no stage (capture-beat.v1): the same match keeps its round line.
+    val sameMatch = WaitingFields("Example Town v Sample CC", "", null, true, null, null, 10)
+    assertEquals("QF", sameMatch.overBeat(held).stageLabel)
+    // The stable code was re-pointed at the next match: the old round line is a wrong fact, so none.
+    val nextMatch = WaitingFields("Sample CC v Other CC", "", null, true, null, null, 10)
+    assertNull(nextMatch.overBeat(held).stageLabel)
+    assertNull(nextMatch.overBeat(held).stageFor)
+    // Nothing held, nothing carried: a held match with no round line is no line, whatever match it names.
+    assertNull(sameMatch.overBeat(held.copy(stageLabel = null)).stageFor)
+    // A beat carries a held line to a second beat for the same match, and not past the first that moved it.
+    assertEquals("QF", sameMatch.overBeat(sameMatch.overBeat(held)).stageLabel)
+    assertNull(sameMatch.overBeat(nextMatch.overBeat(held)).stageLabel)
+    // A descriptor is fresh: what it says replaces what is held, and silence is no stage.
+    val fresh = WaitingFields("Sample CC v Other CC", "Europe/London", null, true, null, null, 10, "SF", "Sample CC v Other CC")
+    assertEquals("SF", fresh.over(held).stageLabel)
+    val silent = WaitingFields("Sample CC v Other CC", "Europe/London", null, true, null, null, 10)
+    assertNull(silent.over(held).stageLabel)
+  }
+
+  /** A waiting descriptor with [stage] spliced in, as the server would send it. */
+  private fun withStage(stage: String): String =
+    """{"state":"waiting","code":"fx42hmnp7k2q","label":"A v B","autoAllowed":true,"pollSeconds":10,"venueTimezone":"Europe/London","stage":$stage}"""
+
+  @Test
+  fun `a stage is read tolerantly and never makes the waiting fields unreadable`() {
+    val good = """{"code":"QF","role":{"kind":"quarter_final"},"label":"QF"}"""
+    val read = Bodies.code(200, withStage(good), null, Environment.STAGING) as CodeAnswer.Waiting
+    assertEquals("QF", read.waiting.stageLabel)
+    assertEquals("A v B", read.waiting.stageFor)
+    val bad =
+      listOf(
+        "null",
+        "\"QF\"",
+        "[]",
+        """{"role":{"kind":"quarter_final"},"label":7}""",
+        """{"role":{"kind":"quarter_final"},"label":""}""",
+        // R-F20: the contract says consumers show nothing for a kind they do not know, or for no role.
+        """{"code":"X1","role":{"kind":"a_future_kind"},"label":"X1"}""",
+        """{"code":"QF","label":"QF"}""",
+        """{"code":"QF","role":{"kind":7},"label":"QF"}""",
+      )
+    for (stage in bad) {
+      val answer = Bodies.code(200, withStage(stage), null, Environment.STAGING)
+      // Still a waiting answer with its label: the stage alone was dropped.
+      val waiting = (answer as CodeAnswer.Waiting).waiting
+      assertNull(waiting.stageLabel, stage)
+      assertEquals("A v B", waiting.label, stage)
+    }
+    assertEquals(8, bad.size)
+  }
+
+  @Test
+  fun `the open session shape carries the stage too`() {
+    val body = JSONObject(PairWire.SESSION).put("stage", JSONObject("""{"code":"QF","role":{"kind":"quarter_final"},"label":"QF"}""")).toString()
+    val open = Bodies.code(200, body, null, Environment.STAGING) as CodeAnswer.Open
+    assertEquals("QF", open.waiting?.stageLabel)
+  }
+
+  @Test
+  fun `the role kinds are the shared file's fifteen, and each shows its label (R-F20)`() {
+    val array = Shared.read("wire/stage-kinds.json").getJSONArray("kinds")
+    val file = (0 until array.length()).map(array::getString)
+    assertEquals(15, file.size)
+    assertEquals(file.toSet(), Bodies.STAGE_KINDS)
+    var shown = 0
+    for (kind in file) {
+      val answer = Bodies.code(200, withStage("""{"code":"X","role":{"kind":"$kind"},"label":"L1"}"""), null, Environment.STAGING)
+      assertEquals("L1", (answer as CodeAnswer.Waiting).waiting.stageLabel, kind)
+      shown += 1
+    }
+    assertEquals(15, shown)
   }
 
   @Test
@@ -719,6 +808,30 @@ class BodiesTest {
     assertNull(open.waiting)
     assertEquals("pollSeconds", open.waitingUnreadable)
     assertNull(assertIs<CodeAnswer.Open>(Bodies.code(200, base, null, Environment.STAGING)).waitingUnreadable, "the shared shape names none")
+  }
+
+  @Test
+  fun `the scoring-link answers one reading, over the vector rows`() {
+    val rows = Shared.read("wire/scoring-link-vectors.json").getJSONArray("cases")
+    assertEquals(19, rows.length())
+    var checked = 0
+    for (i in 0 until rows.length()) {
+      val row = rows.getJSONObject(i)
+      val body = if (row.has("rawBody")) row.getString("rawBody") else row.getJSONObject("body").toString()
+      val retry = Bodies.retryAfter(row.optString("retryAfter").takeIf { it.isNotEmpty() })
+      val answer = Bodies.scoringLink(row.getInt("status"), body, retry, Environment.of(row.getString("env")))
+      assertEquals(row.getString("expected"), answer.word, row.getString("why"))
+      if (row.has("retryAfterS")) {
+        val refused = assertIs<ScoringLinkAnswer.Refused>(answer, row.getString("why"))
+        assertEquals(row.optInt("retryAfterS").takeIf { !row.isNull("retryAfterS") }, refused.retryAfterS, row.getString("why"))
+      }
+      // An ok row hands the server's own url over untouched: the QR encodes what the server issued, not a rewrite of it.
+      if (row.getString("expected") == "ok") {
+        assertEquals(row.getJSONObject("body").getString("url"), assertIs<ScoringLinkAnswer.Link>(answer, row.getString("why")).url, row.getString("why"))
+      }
+      checked += 1
+    }
+    assertEquals(19, checked)
   }
 
   private fun answeredBeat(status: Int, body: String): HeartbeatResponse.Answered = assertIs<HeartbeatResponse.Answered>(Bodies.beat(status, body, null, Environment.STAGING))

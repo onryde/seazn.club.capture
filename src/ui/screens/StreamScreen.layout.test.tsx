@@ -264,6 +264,133 @@ describe('the status strip (spec §1)', () => {
   });
 });
 
+/**
+ * Spec §2, R-F5: the round line is the first line of the strip, above the match label, and it yields: no
+ * reserve was added, so it shows only when the strip has room beside the label (stageFit.ts). Real
+ * components, nothing mocked; jsdom lays nothing out, so `layOut` delivers the sizes the phone would.
+ * Whether the line fits on a real phone is Task 11's device check (item 3); this is the wiring.
+ */
+describe('the round line above the match label (spec §2, R-F5)', () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  /** A viewfinder paired with this match label and stage label, the strip and the label laid out. */
+  async function withStage(
+    stageLabel: string | null,
+    { strip = 180, label = 44 }: { strip?: number; label?: number } = {},
+  ) {
+    const view = await renderViewfinder(
+      {},
+      { prepare: (fakes) => fakes.engine.setPairing({ label: 'A v B', stageLabel }) },
+    );
+    layOut(byId('status-strip'), { width: 320, height: strip });
+    layOut(byId('match-label'), { width: 300, height: label });
+    return view;
+  }
+  const stage = () => within(byId('status-strip')).queryByTestId('stage-line');
+
+  it('listens: the strip takes a layout, so it can say how much room it has', async () => {
+    await renderViewfinder();
+    expect(() => layOut(byId('status-strip'), { width: 320, height: 180 })).not.toThrow();
+    expect(() => layOut(byId('match-label'), { width: 300, height: 44 })).not.toThrow();
+  });
+
+  it('is the strip’s first row: the round line, then the match label, then the status line', async () => {
+    await withStage('QF');
+    const round = within(byId('status-strip')).getByTestId('stage-line');
+    const label = within(byId('status-strip')).getByTestId('match-label');
+    const status = within(byId('status-strip')).getByText(WAITING);
+    expect(round.textContent).toBe('QF');
+    expect(follows(round, label)).toBe(true);
+    expect(follows(label, status)).toBe(true);
+    // The first child of the strip, not tucked in beside the label.
+    expect(byId('status-strip').firstElementChild).toBe(round);
+    expect(screen.getAllByTestId('stage-line')).toHaveLength(1);
+  });
+
+  it('shows what the engine gives it, and goes with it (null: absent, the label stays)', async () => {
+    const view = await withStage(null);
+    expect(stage()).toBeNull();
+    expect(within(byId('status-strip')).getByTestId('match-label')).toBeTruthy();
+    act(() => view.engine.setPairing({ stageLabel: 'SF' }));
+    expect(stage()?.textContent).toBe('SF');
+    expect(within(byId('status-strip')).getByTestId('match-label')).toBeTruthy();
+    act(() => view.engine.setPairing({ stageLabel: null }));
+    expect(stage()).toBeNull();
+    expect(within(byId('status-strip')).getByTestId('match-label')).toBeTruthy();
+  });
+
+  it('holds the contract’s 40 characters again: 41 is never shown, never cut', async () => {
+    const view = await withStage('x'.repeat(40));
+    expect(stage()?.textContent).toBe('x'.repeat(40));
+    act(() => view.engine.setPairing({ stageLabel: 'x'.repeat(41) }));
+    expect(stage()).toBeNull();
+  });
+
+  it('yields to a label of three lines (57 dp) and is back when the label is two (44 dp)', async () => {
+    await withStage('QF', { label: 57 });
+    expect(stage()).toBeNull();
+    layOut(byId('match-label'), { width: 300, height: 44 });
+    expect(stage()?.textContent).toBe('QF');
+  });
+
+  // The camera half is not W / 2: the controls half's padding clamps its flex basis (PR A), so the layout gives the
+  // camera (W - 2 x the controls padding) / 2, which Chromium measured as 304 at 640 wide. The box yields to the strip
+  // from 800 wide, where the strip is 180; at 640 x 360 the box is the half's whole width (171), so the strip is 189.
+  // The sizes are delivered by `layOut` from the layout's own constants, and the strip is what the rendered box leaves.
+  const REAL_HALF = (width: number) => (width - 2 * layout.controlsPad) / 2;
+
+  it('at 640 × 360 the strip is 189, so a three-line long label (57) shows the line and a three-line regular one (66) hides it', async () => {
+    await withStage('QF', { strip: 0, label: 0 });
+    layOut(byId('camera-half'), { width: REAL_HALF(640), height: 360 });
+    expect(REAL_HALF(640)).toBe(304);
+    const box = parseFloat(getComputedStyle(byId('camera-box')).height);
+    expect(box).toBeCloseTo(171, 6);
+    const strip = 360 - box;
+    expect(strip).toBeCloseTo(189, 6);
+    layOut(byId('status-strip'), { width: REAL_HALF(640), height: strip });
+    layOut(byId('match-label'), { width: 270, height: 57 });
+    expect(stage()?.textContent).toBe('QF');
+    layOut(byId('match-label'), { width: 270, height: 66 });
+    expect(stage()).toBeNull();
+    layOut(byId('match-label'), { width: 270, height: 76 });
+    expect(stage()).toBeNull();
+    layOut(byId('match-label'), { width: 270, height: 44 });
+    expect(stage()?.textContent).toBe('QF');
+  });
+
+  it('yields at each of the four real screens, in the half the layout gives the camera', async () => {
+    // [width, height, the strip the rendered box leaves, whether a 57 dp label (three long lines) still shows the line]
+    const SCREENS = [
+      [640, 360, 189, true],
+      [800, 360, 180, false],
+      [844, 390, 180, false],
+      [915, 412, 180, false],
+    ] as const;
+    let checked = 0;
+    for (const [width, height, expected, showsThreeLong] of SCREENS) {
+      const view = await withStage('QF', { strip: 0, label: 0 });
+      // The producer, not a typed number: the half lays out, the box takes its size, the strip is the rest.
+      layOut(byId('camera-half'), { width: REAL_HALF(width), height });
+      const strip = height - parseFloat(getComputedStyle(byId('camera-box')).height);
+      expect(strip).toBeCloseTo(expected, 6);
+      layOut(byId('status-strip'), { width: REAL_HALF(width), height: strip });
+      layOut(byId('match-label'), { width: REAL_HALF(width) - 32, height: 44 });
+      expect(stage()?.textContent, `${width} × ${height}, 2 lines`).toBe('QF');
+      layOut(byId('match-label'), { width: REAL_HALF(width) - 32, height: 57 });
+      expect(stage() !== null, `${width} × ${height}, 3 long lines`).toBe(showsThreeLong);
+      layOut(byId('match-label'), { width: REAL_HALF(width) - 32, height: 66 });
+      expect(stage(), `${width} × ${height}, 3 regular lines`).toBeNull();
+      layOut(byId('match-label'), { width: REAL_HALF(width) - 32, height: 76 });
+      expect(stage(), `${width} × ${height}, 4 long lines`).toBeNull();
+      view.unmount();
+      checked += 1;
+    }
+    expect(checked).toBe(SCREENS.length);
+    expect(SCREENS.filter((screen) => screen[3])).toHaveLength(1);
+  });
+});
+
 describe('the controls half (spec §1)', () => {
   beforeEach(() => vi.useFakeTimers());
   afterEach(() => vi.useRealTimers());
@@ -347,17 +474,23 @@ describe('the controls half (spec §1)', () => {
     expect(screen.getAllByRole('progressbar')).toHaveLength(1);
   });
 
-  it('keeps the icon row: Settings, Home, then Take photo before air, 48 dp square, and no Diagnostics (spec §3, §8)', async () => {
+  it('keeps the icon row: Settings, Home, then Take photo, then Remote scoring before air, 48 dp square, and no Diagnostics (spec §3, §8, §10)', async () => {
     await renderViewfinder();
     expect(getComputedStyle(byId('icon-row')).flexDirection).toBe('row');
     expect(buttonNames(byId('icon-row'))).toEqual([
       en['stream.link.settings'],
       en['stream.home'],
       en['stream.photo.label'],
+      en['stream.scoring.open'],
     ]);
     // M-2: the row does not wrap, so it cannot grow a second line the fit arithmetic never counted.
     expect(getComputedStyle(byId('icon-row')).flexWrap).not.toBe('wrap');
-    for (const name of [en['stream.link.settings'], en['stream.home'], en['stream.photo.label']]) {
+    for (const name of [
+      en['stream.link.settings'],
+      en['stream.home'],
+      en['stream.photo.label'],
+      en['stream.scoring.open'],
+    ]) {
       const style = getComputedStyle(within(byId('icon-row')).getByRole('button', { name }));
       expect([style.width, style.height]).toEqual([
         `${layout.iconButton}px`,
@@ -367,12 +500,13 @@ describe('the controls half (spec §1)', () => {
     expect(screen.queryByRole('button', { name: 'Diagnostics' })).toBeNull();
   });
 
-  it('on air: Take photo, then What viewers see, sit in the icon row after Settings, Home is not offered, and no Diagnostics', async () => {
+  it('on air: Take photo and Remote scoring, then What viewers see, sit in the icon row after Settings, Home is not offered, and no Diagnostics', async () => {
     const view = await renderViewfinder();
     act(() => view.engine.scene('live'));
     expect(buttonNames(byId('icon-row'))).toEqual([
       en['stream.link.settings'],
       en['stream.photo.label'],
+      en['stream.scoring.open'],
       en['stream.peek.label'],
     ]);
     // The peek keeps its text and takes the row's remaining width (spec §3: "text, as today").
@@ -384,22 +518,25 @@ describe('the controls half (spec §1)', () => {
     expect(screen.queryByRole('button', { name: en['stream.home'] })).toBeNull();
   });
 
-  it('follows the broadcast through the icon row: Settings, Home and Take photo, then Settings, Take photo and the peek, then Settings and Home again when it ends', async () => {
+  it('follows the broadcast through the icon row: Settings, Home, Take photo and Remote scoring, then Settings, Take photo, Remote scoring and the peek, then Settings and Home again when it ends', async () => {
     const view = await renderViewfinder();
     expect(buttonNames(byId('icon-row'))).toEqual([
       en['stream.link.settings'],
       en['stream.home'],
       en['stream.photo.label'],
+      en['stream.scoring.open'],
     ]);
     act(() => view.engine.scene('live'));
     expect(buttonNames(byId('icon-row'))).toEqual([
       en['stream.link.settings'],
       en['stream.photo.label'],
+      en['stream.scoring.open'],
       en['stream.peek.label'],
     ]);
     act(() => view.engine.scene('stopped'));
     // Ended: not on air, so leaving is allowed again and Home is back; the peek goes with the broadcast.
-    // Ended: the camera picture is gone, so the shutter goes with it
+    // Ended: the camera picture is gone, so the shutter goes with it, and the pairing is gone, so Remote scoring does
+    // (the absence witness: a stopped broadcast leaves no pairing to score for).
     expect(buttonNames(byId('icon-row'))).toEqual([en['stream.link.settings'], en['stream.home']]);
   });
 

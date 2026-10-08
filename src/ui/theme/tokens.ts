@@ -47,6 +47,13 @@ export const colour = {
   violet: '#7c3aed',
   /** Behind the camera frame. True black so the letterbox is not a grey slab. */
   stage: '#000000',
+  /** A QR needs a white quiet zone to scan; the only white in the app. */
+  qrGround: '#ffffff',
+  /**
+   * The Remote scoring panel's countdown track on its cream ground: the night ink at 15% (the owner's board, "ink at
+   * 15 %"). The panel's ground is `ink` (cream, #f5f0e8) and its text and bar fill are `ground` (night, #150b36).
+   */
+  panelTrack: '#150b3626',
 } as const;
 
 /**
@@ -138,6 +145,8 @@ export const layout = {
   iconButton: 48,
   /** The icon button's hairline outline, GhostButton's and the peek control's. */
   iconBorder: 1,
+  /** B5 (owner's board): an icon button whose panel is open has a 2 dp lime outline, in place of the hairline. */
+  iconBorderOn: 2,
   /** Home's cards are outlined by a hairline: the Stream ended card's (spec §5). */
   cardBorder: 1,
   /** The tally plate's floor (TallyPlate), unchanged. */
@@ -157,6 +166,8 @@ export const layout = {
   labelLinesRegular: 2,
   statusLinesMax: 2,
   captionLinesMax: 2,
+  /** Spec §2 round line: one line above the label. */
+  stageLines: 1,
   /** Board "Settings, landscape": the screen's vertical padding (the board's 12, under the portrait 16). */
   settingsPadV: 12,
   /** Spec §7: Home's title is the Seazn Club night logo, 200 × 70 (its 800 × 280 file's own 20:7). */
@@ -185,6 +196,20 @@ export const layout = {
    * Continue alone, or the ended card alone, leaves the tiles room at 800 × 360 (homeFit.test.ts). Portrait is unchanged.
    */
   tileLandscapePad: 12,
+  /**
+   * Spec §10, Q-C2: the Remote scoring code, drawn at a whole number of dp per module so every module edge lands on a
+   * pixel (D13): 3 x the 57-unit symbol (49 modules + a quiet zone of 4 each side). The largest such multiple that
+   * fits the smallest half with the title, the hint, Hide and 4 dp to spare (scoringFit.test.ts derives it).
+   */
+  qrSize: 171,
+  /**
+   * The lines the peek's label and its reason may take in the 120 dp cell at 640 once Remote scoring joined the row:
+   * measured by scoringFit.test.ts, read by it and by viewfinderFit.test.ts.
+   */
+  peekLabelLines: 2,
+  peekReasonLines: 2,
+  /** B3 (owner's board): the Remote scoring countdown's track is 6 dp high. */
+  scoringBar: 6,
   /** Board "Settings": the Diagnostics card's section column (the section name sits in it). */
   diagSection: 84,
   /**

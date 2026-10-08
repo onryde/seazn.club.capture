@@ -109,3 +109,96 @@ describe('the logger', () => {
     expect(parsed(record.lines()).map((line) => line.event)).toEqual(['kept']);
   });
 });
+
+const link = (n: number) => `dl_${String(n).padStart(2, '0')}${'B'.repeat(41)}`;
+
+describe('the link bucket (F15)', () => {
+  function rig() {
+    const record = createRingRecord();
+    const logger = createLogger({ record, now: () => 0 });
+    // A session in hand, or free text is masked whole and the "shown before" witness below could never show.
+    logger.protect({ secrets: ['tok-test-0000000000000'], streamIds: [] });
+    /** Logs [secret] inside a message and returns what the record kept of the message. */
+    const wrote = (secret: string) => {
+      logger.info('probe', { message: `x ${secret} y` });
+      return String(parsed(record.lines()).at(-1)?.fields.message);
+    };
+    return { record, logger, wrote };
+  }
+
+  it('protectLink masks a link’s secret in text and under a public url key, and only from then on', () => {
+    const { record, logger, wrote } = rig();
+    expect(wrote(link(1))).toBe(`x ${link(1)} y`);
+    logger.protectLink(link(1));
+    expect(wrote(link(1))).toBe(`x ${SCRUBBED} y`);
+    logger.info('probe', { url: `https://stg.seazn.club/score/${link(1)}` });
+    expect(parsed(record.lines()).at(-1)?.fields.url).toBe(SCRUBBED);
+  });
+
+  it('a repeated link never pushes another out of the bucket, and the 17th distinct one evicts the oldest', () => {
+    const { logger, wrote } = rig();
+    logger.protectLink(link(0));
+    logger.protectLink(link(1));
+    for (let i = 0; i < 20; i += 1) logger.protectLink(link(1));
+    // Deduplicated by value: twenty repeats of link 1 did not push link 0 out.
+    expect(wrote(link(0))).toBe(`x ${SCRUBBED} y`);
+    for (let n = 2; n <= 16; n += 1) logger.protectLink(link(n));
+    // 17 distinct links have been protected (0 to 16) into a bucket of 16: the oldest is out. D11: an evicted secret only comes back inside a new answer, which protects it again first.
+    expect(wrote(link(0))).toBe(`x ${link(0)} y`);
+    for (let n = 1; n <= 16; n += 1) expect(wrote(link(n))).toBe(`x ${SCRUBBED} y`);
+  });
+
+  it('a link asked for again is the newest: it outlives the one that was protected after it', () => {
+    const { logger, wrote } = rig();
+    logger.protectLink(link(0));
+    for (let n = 1; n <= 15; n += 1) logger.protectLink(link(n));
+    // 16 links held, link 0 the oldest. Heard again, it is the newest; the next new link evicts link 1, not link 0.
+    logger.protectLink(link(0));
+    logger.protectLink(link(16));
+    expect(wrote(link(0))).toBe(`x ${SCRUBBED} y`);
+    expect(wrote(link(1))).toBe(`x ${link(1)} y`);
+    for (let n = 2; n <= 16; n += 1) expect(wrote(link(n)), `link ${n}`).toBe(`x ${SCRUBBED} y`);
+  });
+
+  it('a pairing token is never evicted by links, and a later protect keeps the links', () => {
+    const { logger, wrote } = rig();
+    for (let n = 0; n <= 30; n += 1) logger.protectLink(link(n));
+    expect(wrote('tok-test-0000000000000')).toBe(`x ${SCRUBBED} y`);
+    logger.protect({ secrets: ['tok-test-0000000000001'], streamIds: [] });
+    expect(wrote(link(30))).toBe(`x ${SCRUBBED} y`);
+  });
+
+  it('release forgets nothing: free text is masked whole, and the next protect keeps the links', () => {
+    const { logger, wrote } = rig();
+    logger.protectLink(link(1));
+    logger.release();
+    expect(wrote('anything')).toBe(SCRUBBED);
+    logger.protect({ secrets: ['tok-test-0000000000002'], streamIds: [] });
+    expect(wrote(link(1))).toBe(`x ${SCRUBBED} y`);
+  });
+
+  // N7 stays true across a link: the Ended card asks for a link after the viewfinder let its session go, and a
+  // link is not a session. Free text stays masked whole until a `protect` puts the next session in hand.
+  it('a link does not put a session in hand: after release, a link leaves free text masked whole', () => {
+    const { logger, wrote } = rig();
+    logger.release();
+    logger.protectLink(link(1));
+    expect(wrote('anything')).toBe(SCRUBBED);
+    // And with no session ever in hand.
+    const fresh = createRingRecord();
+    const bare = createLogger({ record: fresh, now: () => 0 });
+    bare.protectLink(link(2));
+    bare.info('probe', { message: 'anything' });
+    expect(parsed(fresh.lines()).at(-1)?.fields.message).toBe(SCRUBBED);
+  });
+
+  it('a blank link secret is never held: it masks nothing and takes no place in the bucket', () => {
+    const { logger, wrote } = rig();
+    for (let n = 0; n <= 14; n += 1) logger.protectLink(link(n));
+    logger.protectLink('');
+    logger.protectLink(link(15));
+    // 16 real links and a blank: had the blank taken a place, link 0 would be out of the bucket.
+    for (let n = 0; n <= 15; n += 1) expect(wrote(link(n)), `link ${n}`).toBe(`x ${SCRUBBED} y`);
+    expect(wrote('plain words')).toBe('x plain words y');
+  });
+});

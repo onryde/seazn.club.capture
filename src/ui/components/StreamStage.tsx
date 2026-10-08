@@ -6,9 +6,11 @@ import { useEngineSelector } from '@/hooks/useCaptureEngine';
 import type { Peek } from '@/hooks/usePeek';
 import { usePorts } from '@/hooks/usePorts';
 import { useStageOverlay } from '@/hooks/useStageOverlay';
+import type { ScoringLinkView } from '@/hooks/useScoringLink';
 import { useViewerFeed } from '@/hooks/useViewerFeed';
 import { OverlayPreview } from '@/ui/components/OverlayPreview';
 import { PreviewBoundary } from '@/ui/components/PreviewBoundary';
+import { ScoringLinkPanel } from '@/ui/components/ScoringLinkPanel';
 import { StageVideo } from '@/ui/components/StageVideo';
 import { StatusStrip } from '@/ui/components/StatusStrip';
 import { cameraBoxSize, STRIP_RESERVE, type BoxSize } from '@/ui/theme/cameraBox';
@@ -21,13 +23,19 @@ type StageProps = {
   readonly paired: boolean;
   readonly overlayOn: boolean;
   readonly peek: Peek;
+  /** The Remote scoring panel's state (spec §10), and the seconds it has left (B3). */
+  readonly scoring: ScoringLinkView;
+  readonly scoringSecondsLeft: number;
+  readonly onHideScoring: () => void;
 };
 
 /**
  * The camera half (spec §1): the shot as a 16:9 box across the half, with the
  * status strip under it. Nothing is drawn over the shot but the overlay preview
- * and the peek (AGENTS §6, D17); the match label, the status line and the one
- * advisory caption sit in the strip, below it. It keeps no buttons.
+ * and the peek (AGENTS §6, D17) and, for at most 10 s after a tap, the Remote
+ * scoring panel (spec §10), which covers the whole half, strip included, and
+ * brings the half's one button: its Hide. The match label, the status line and
+ * the one advisory caption sit in the strip, below the shot.
  *
  * The strip keeps its content height and the box gives way (`cameraBoxSize`):
  * on a screen too short for a full-width box the box is narrower, centred, on
@@ -78,6 +86,12 @@ export const StreamStage = memo(function StreamStage(props: StageProps) {
         peek={props.peek}
       />
       <StatusStrip line={props.line} advisory={advisory} />
+      {/* Last, so it paints over the box and the strip (Q-C2). */}
+      <ScoringLinkPanel
+        view={props.scoring}
+        secondsLeft={props.scoringSecondsLeft}
+        onHide={props.onHideScoring}
+      />
     </View>
   );
 });
