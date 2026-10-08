@@ -347,13 +347,17 @@ describe('the controls half (spec §1)', () => {
     expect(screen.getAllByRole('progressbar')).toHaveLength(1);
   });
 
-  it('keeps the icon row: Settings, then Home before air, 48 dp square, and no Diagnostics (spec §3)', async () => {
+  it('keeps the icon row: Settings, Home, then Take photo before air, 48 dp square, and no Diagnostics (spec §3, §8)', async () => {
     await renderViewfinder();
     expect(getComputedStyle(byId('icon-row')).flexDirection).toBe('row');
-    expect(buttonNames(byId('icon-row'))).toEqual([en['stream.link.settings'], en['stream.home']]);
+    expect(buttonNames(byId('icon-row'))).toEqual([
+      en['stream.link.settings'],
+      en['stream.home'],
+      en['stream.photo.label'],
+    ]);
     // M-2: the row does not wrap, so it cannot grow a second line the fit arithmetic never counted.
     expect(getComputedStyle(byId('icon-row')).flexWrap).not.toBe('wrap');
-    for (const name of [en['stream.link.settings'], en['stream.home']]) {
+    for (const name of [en['stream.link.settings'], en['stream.home'], en['stream.photo.label']]) {
       const style = getComputedStyle(within(byId('icon-row')).getByRole('button', { name }));
       expect([style.width, style.height]).toEqual([
         `${layout.iconButton}px`,
@@ -363,11 +367,12 @@ describe('the controls half (spec §1)', () => {
     expect(screen.queryByRole('button', { name: 'Diagnostics' })).toBeNull();
   });
 
-  it('on air: What viewers see sits in the icon row after Settings, Home is not offered, and no Diagnostics', async () => {
+  it('on air: Take photo, then What viewers see, sit in the icon row after Settings, Home is not offered, and no Diagnostics', async () => {
     const view = await renderViewfinder();
     act(() => view.engine.scene('live'));
     expect(buttonNames(byId('icon-row'))).toEqual([
       en['stream.link.settings'],
+      en['stream.photo.label'],
       en['stream.peek.label'],
     ]);
     // The peek keeps its text and takes the row's remaining width (spec §3: "text, as today").
@@ -379,16 +384,22 @@ describe('the controls half (spec §1)', () => {
     expect(screen.queryByRole('button', { name: en['stream.home'] })).toBeNull();
   });
 
-  it('follows the broadcast through the icon row: Settings and Home, then Settings and the peek, then Settings and Home again when it ends', async () => {
+  it('follows the broadcast through the icon row: Settings, Home and Take photo, then Settings, Take photo and the peek, then Settings and Home again when it ends', async () => {
     const view = await renderViewfinder();
-    expect(buttonNames(byId('icon-row'))).toEqual([en['stream.link.settings'], en['stream.home']]);
+    expect(buttonNames(byId('icon-row'))).toEqual([
+      en['stream.link.settings'],
+      en['stream.home'],
+      en['stream.photo.label'],
+    ]);
     act(() => view.engine.scene('live'));
     expect(buttonNames(byId('icon-row'))).toEqual([
       en['stream.link.settings'],
+      en['stream.photo.label'],
       en['stream.peek.label'],
     ]);
     act(() => view.engine.scene('stopped'));
     // Ended: not on air, so leaving is allowed again and Home is back; the peek goes with the broadcast.
+    // Ended: the camera picture is gone, so the shutter goes with it
     expect(buttonNames(byId('icon-row'))).toEqual([en['stream.link.settings'], en['stream.home']]);
   });
 

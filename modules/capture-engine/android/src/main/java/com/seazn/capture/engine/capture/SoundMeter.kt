@@ -30,8 +30,13 @@ class SoundMeter(private val offer: (Double) -> Unit, private val line: (RecordE
     val made =
       try {
         AudioRecord(MediaRecorder.AudioSource.MIC, RATE, MONO, PCM16, size).also {
-          session = it.audioSessionId // before it records: MicWatch's callback for this very start reads it
-          it.startRecording()
+          try {
+            session = it.audioSessionId // before it records: MicWatch's callback for this very start reads it
+            it.startRecording()
+          } catch (e: Exception) {
+            it.release() // built but would not start: it still holds the microphone
+            throw e
+          }
         }
       } catch (e: Exception) { // IllegalStateException, IllegalArgumentException, SecurityException
         session = null

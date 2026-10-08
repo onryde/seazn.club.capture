@@ -42,6 +42,10 @@ kotlin.sourceSets["test"].kotlin.srcDir("../src/debug/java/com/seazn/capture/eng
 // import nothing Android, so core's tests run them against a fake of StreamPack's parts.
 kotlin.sourceSets["test"].kotlin.srcDir("../src/main/java/com/seazn/capture/engine/capture/run")
 
+// Spec §8: the photo's bound and its two results import nothing Android or StreamPack, so core's tests run them
+// against a lambda that stands for the gallery write. The writer, which does import them, is one folder up.
+kotlin.sourceSets["test"].kotlin.srcDir("../src/main/java/com/seazn/capture/engine/capture/photo")
+
 // C6 I-2: our SRT sink's connect and end sit behind a socket port, apart from StreamPack and srtdroid, so
 // core's tests run the sink's own order against a fake of srtdroid's socket.
 kotlin.sourceSets["test"].kotlin.srcDir("../src/main/java/com/seazn/capture/engine/srt/connect")

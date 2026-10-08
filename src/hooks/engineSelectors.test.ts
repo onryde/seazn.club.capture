@@ -17,6 +17,7 @@ import {
   selectAutomaticOn,
   selectBroadcastHeld,
   selectCodeEndedPending,
+  selectDelivery,
   selectDestination,
   selectEndReason,
   selectHoldsOrientation,
@@ -88,6 +89,25 @@ describe('selectEngineStatus', () => {
     [{ kind: 'ended', reason: 'fatal-error', durationMs: null }, 'failed'],
   ])('%j is %s', (state, status) => {
     expect(selectEngineStatus(snapshot(state))).toBe(status);
+  });
+});
+
+describe('selectDelivery (spec §9: the word the viewer layer waits on)', () => {
+  it('reads native’s delivery word, each of the three, off the telemetry', () => {
+    const words: readonly Telemetry['delivery'][] = ['ok', 'stalled', 'unknown'];
+    const read = words.map((delivery) => selectDelivery(snapshot(LIVE, { delivery })));
+    expect(read).toEqual(['ok', 'stalled', 'unknown']);
+    expect(read).toHaveLength(3);
+  });
+
+  it('reads the word whatever the state is: a hold, a pairing and an idle engine carry one too', () => {
+    const states: readonly SessionState[] = [{ kind: 'idle' }, PAIRING, PAIRED, ARMING, LIVE];
+    for (const state of states)
+      expect([state.kind, selectDelivery(snapshot(state, { delivery: 'stalled' }))]).toEqual([
+        state.kind,
+        'stalled',
+      ]);
+    expect(states).toHaveLength(5);
   });
 });
 

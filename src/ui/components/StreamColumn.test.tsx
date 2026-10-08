@@ -29,6 +29,7 @@ const viewOf = (overrides: Partial<Viewfinder>): Viewfinder => ({
   action: 'goLive',
   stopUnpairs: false,
   onAir: false,
+  shutter: false,
   peekable: false,
   startsAt: null,
   auto: false,

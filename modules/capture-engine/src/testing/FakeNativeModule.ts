@@ -31,6 +31,13 @@ export class FakeNativeModule implements CaptureEngineNative {
     this.duringTail?.();
     return this.state.tail ?? [];
   }
+  /** What `takePhoto` answers, and how often it was asked. Tests set the first and read the second. */
+  photoAnswer: unknown = 'saved';
+  photoCalls = 0;
+  takePhoto(): Promise<unknown> {
+    this.photoCalls += 1;
+    return Promise.resolve(this.photoAnswer);
+  }
   addListener<E extends keyof Events>(event: E, listener: (body: Events[E]) => void): Subscription {
     const set = this.listeners.get(event) ?? new Set<Listener>();
     set.add(listener as Listener);

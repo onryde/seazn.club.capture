@@ -88,6 +88,12 @@ page in the main repo, not here. Do not grow the app to accommodate them.
   `reset`, `setAutomatic`, `setLanguage` and `switchCamera` return void and
   are reconciled against native state. A promise that must resolve
   mid-reconnect is a deadlock waiting for a bad cell.
+  One recorded exception (design follow-up §8; owner, 2026-10-08): `takePhoto`
+  is a request with an answer, one call that resolves `saved` or `failed`
+  within native's 2 s bound when the call honours cancellation; the app gives
+  up at 4 s. It carries no session state, runs on a scope of its
+  own with no path to the session's failure path, and is never read by the
+  machine, the snapshot or the heartbeat. It is the only such call.
 - **Never build a second state machine in TypeScript.** The aggregate lives in
   native. The TS layer is a *projection* of native events. Two authorities
   disagree at 3-1 in the 40th over.
@@ -232,7 +238,11 @@ Three rules travel with these tokens:
 - The viewfinder is two halves (design follow-up §1): a 16:9 camera box with
   the status strip below it, and the controls half. Nothing is drawn over the
   camera box but the overlay and the _What viewers see_ video. Advisory text
-  rides the status strip, under the status line.
+  rides the status strip, under the status line. The icon row also holds Take
+  photo (design follow-up §8); its confirmation is one line in the controls
+  half's gap, never over the camera box. The viewer video's Waiting and
+  No-viewer-picture notes are the viewer video's own layer: nothing else is
+  drawn over the camera box.
 - **Go Live and Stop are both 3-second holds, with a progress fill.** Product
   owner's call, 2026-09-11, replacing "Go Live is a tap, Stop is
   hold-to-confirm"; first set at 5 s and shortened to 3 s on 2026-09-12. The reason the asymmetry was wrong: at a ground the likely

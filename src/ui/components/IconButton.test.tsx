@@ -17,10 +17,11 @@ function borderOf(style: ViewStyle): string {
   return painted;
 }
 
-/** The two glyphs the icon row draws (spec §3): the name is the label, the glyph is the picture. */
+/** The three glyphs the icon row draws (spec §3, §8): the name is the label, the glyph is the picture. */
 const BUTTONS = [
   ['settings', 'Settings'],
   ['home', 'Home'],
+  ['shutter', 'Take photo'],
 ] as const;
 let buttonsRun = 0;
 
@@ -38,9 +39,9 @@ describe('IconButton (spec §3)', () => {
     buttonsRun += 1;
   });
 
-  it('ran both buttons (anti-vacuity)', () => {
-    expect(BUTTONS).toHaveLength(2);
-    expect(buttonsRun).toBe(2);
+  it('ran all three buttons (anti-vacuity)', () => {
+    expect(BUTTONS).toHaveLength(3);
+    expect(buttonsRun).toBe(3);
   });
 
   it('is 48 dp square with a quiet ink3 outline', () => {

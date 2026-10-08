@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ComponentType } from 'react';
+import { useEffect, useMemo, useRef, useState, type ComponentType } from 'react';
 import { StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
 import type { VideoPlayer } from 'expo-video';
 import type { WebViewProps } from 'react-native-webview';
@@ -8,7 +8,7 @@ import {
   OVERLAY_ORIGIN_WHITELIST,
   overlayNavigationGuard,
 } from '@/services/overlayGuard';
-import type { OverlayProps, Surfaces, VideoProps } from '@/services/surfaces';
+import type { OverlayProps, Surfaces, VideoProps, VideoStatus } from '@/services/surfaces';
 
 type WebViewPackage = typeof import('react-native-webview');
 type VideoPackage = typeof import('expo-video');
@@ -151,13 +151,43 @@ function muted(player: VideoPlayer): void {
   player.loop = false;
 }
 
-/** ExoPlayer on Android. `useCaching: false`: a manifest is fetched live, never stored (D37). */
+/**
+ * expo-video's `statusChange` word, in ours (spec §9). Anything it adds later reads as loading: a new word is
+ * never taken for a picture.
+ */
+const STATUS: Readonly<Record<string, VideoStatus>> = {
+  readyToPlay: 'ready',
+  error: 'failed',
+  loading: 'loading',
+  idle: 'loading',
+};
+
+/**
+ * ExoPlayer on Android. `useCaching: false`: a manifest is fetched live, never stored (D37). It tells the
+ * viewer layer what the player says of itself, and plays the moment it is ready while it is wanted (D6).
+ */
 function MutedVideo({
   url,
   playing,
+  onStatus,
   expoVideo,
 }: VideoProps & { readonly expoVideo: VideoPackage }) {
-  const player = expoVideo.useVideoPlayer({ uri: url, useCaching: false }, muted);
+  const source = useMemo(() => ({ uri: url, useCaching: false }), [url]);
+  const player = expoVideo.useVideoPlayer(source, muted);
+  const playingRef = useRef(playing);
+  playingRef.current = playing;
+  useEffect(() => {
+    const report = (status: string) => {
+      // An own key only: a status word named like something on Object is not one of ours.
+      const mapped = Object.hasOwn(STATUS, status) ? STATUS[status] : 'loading';
+      onStatus?.(mapped);
+      // The start fix (D6): a player that became ready while it is wanted plays at once.
+      if (mapped === 'ready' && playingRef.current) player.play();
+    };
+    const subscription = player.addListener('statusChange', ({ status }) => report(status));
+    report(player.status); // it may be ready before the listener was attached
+    return () => subscription.remove();
+  }, [player, onStatus]);
   useEffect(() => {
     if (playing) player.play();
     else player.pause();

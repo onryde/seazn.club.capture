@@ -62,6 +62,8 @@ export const selectStateKind = (snapshot: EngineSnapshot) => snapshot.state.kind
 export const selectBitrateKbps = (snapshot: EngineSnapshot) => snapshot.telemetry.bitrateKbps;
 export const selectAudioLevel = (snapshot: EngineSnapshot) => snapshot.telemetry.audioLevel;
 export const selectShed = (snapshot: EngineSnapshot) => snapshot.telemetry.shed;
+/** Native's word on whether the viewers' manifest has a window yet (`ok`, `stalled`, `unknown`): the viewer layer waits on it. */
+export const selectDelivery = (snapshot: EngineSnapshot) => snapshot.telemetry.delivery;
 /** The broadcast's overlay, else the pairing's; null when the server sent no usable one. */
 export const selectOverlayUrl = (snapshot: EngineSnapshot) =>
   snapshot.broadcast?.overlayUrl ?? snapshot.pairing?.overlayUrl ?? null;

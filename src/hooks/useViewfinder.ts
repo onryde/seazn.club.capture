@@ -53,6 +53,8 @@ export type Viewfinder = {
    */
   readonly stopUnpairs: boolean;
   readonly onAir: boolean;
+  /** The camera picture shows, so Take photo is offered: Paired and on air (design follow-up §8, the owner's scope cut). */
+  readonly shutter: boolean;
   /** On air with a viewer picture to play (carry 13): the peek's one gate. */
   readonly peekable: boolean;
   /**
@@ -146,6 +148,7 @@ function project(
     action,
     stopUnpairs: LIVE.has(kind),
     onAir: action === 'stop',
+    shutter: kind === 'paired' || action === 'stop',
     peekable: action === 'stop' && input.playable,
     ...waiting,
   };

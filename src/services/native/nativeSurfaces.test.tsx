@@ -6,6 +6,8 @@ import { createLogger } from '@/services/logger';
 import { createNativeSurfaces, type SurfacePackages } from '@/services/native/nativeSurfaces';
 import { NO_MEDIA_CAPTURE } from '@/services/overlayGuard';
 import { createRingRecord, parseRecordLine } from '@/services/sessionRecord';
+import type { VideoStatus } from '@/services/surfaces';
+import { fakeVideo } from '../../../test/fakeExpoVideo';
 
 // This "binary" has neither package: importing one throws, as the native halves
 // do on a phone built without them (requireNativeModule / getEnforcing). With a
@@ -22,7 +24,6 @@ const PEEK = 'https://video.example/fake/manifest/video.m3u8?clientBandwidthHint
 
 type Props = Record<string, unknown>;
 type WebViewPackage = Awaited<ReturnType<SurfacePackages['webview']>>;
-type VideoPackage = Awaited<ReturnType<SurfacePackages['video']>>;
 
 /** A WebView package whose component records the props it was given. */
 function fakeWebView() {
@@ -45,19 +46,6 @@ function fakePreview() {
     renders,
     View: View as unknown as NonNullable<Awaited<ReturnType<SurfacePackages['preview']>>>,
   };
-}
-
-/** An expo-video package with one player that records what it was told. */
-function fakeVideo() {
-  const player = { muted: false, loop: true, play: vi.fn(), pause: vi.fn() };
-  const useVideoPlayer = vi.fn((_source: unknown, setup?: (p: typeof player) => void) => {
-    setup?.(player);
-    return player;
-  });
-  function VideoView() {
-    return createElement('div', { 'data-testid': 'video-view' });
-  }
-  return { player, useVideoPlayer, pkg: { useVideoPlayer, VideoView } as unknown as VideoPackage };
 }
 
 const absent = () => Promise.reject(new Error('native module missing'));
@@ -299,5 +287,111 @@ describe('the native viewer video', () => {
     await waitFor(() => expect(built.video.player.play).toHaveBeenCalledTimes(1));
     view.rerender(createElement(built.surfaces.Video, { url: PEEK, playing: false }));
     expect(built.video.player.pause).toHaveBeenCalledTimes(1);
+  });
+
+  it('hands the player one source object for one url, however often it re-renders', async () => {
+    const built = build();
+    const view = render(createElement(built.surfaces.Video, { url: PEEK, playing: true }));
+    await screen.findByTestId('video-view');
+    view.rerender(createElement(built.surfaces.Video, { url: PEEK, playing: false }));
+    const sources = built.video.useVideoPlayer.mock.calls.map(([source]) => source);
+    expect(sources.length).toBeGreaterThanOrEqual(2);
+    for (const source of sources) expect(source).toBe(sources[0]);
+  });
+});
+
+/** The player's own word, as expo-video's `statusChange` says it; our three words are VideoStatus (spec §9, D6). */
+describe('the native viewer video reports its status', () => {
+  const draw = async (
+    built: ReturnType<typeof build>,
+    props: { playing?: boolean; onStatus?: (status: VideoStatus) => void } = {},
+  ) => {
+    const { playing = true, onStatus = vi.fn() } = props;
+    const element = (p: boolean, o: (status: VideoStatus) => void) =>
+      createElement(built.surfaces.Video, { url: PEEK, playing: p, onStatus: o });
+    const view = render(element(playing, onStatus));
+    await screen.findByTestId('video-view');
+    await waitFor(() => expect(built.video.player.addListener).toHaveBeenCalledTimes(1));
+    return { view, again: (p: boolean, o = onStatus) => view.rerender(element(p, o)) };
+  };
+
+  it('maps the player’s word to ours: ready, loading, loading, failed', async () => {
+    const table: readonly (readonly [string, VideoStatus])[] = [
+      ['readyToPlay', 'ready'],
+      ['loading', 'loading'],
+      ['idle', 'loading'],
+      ['error', 'failed'],
+    ];
+    let rows = 0;
+    for (const [word, ours] of table) {
+      const built = build();
+      const heard: VideoStatus[] = [];
+      const { view } = await draw(built, { onStatus: (status) => heard.push(status) });
+      act(() => built.video.emit(word));
+      expect({ word, ours: heard.at(-1) }).toEqual({ word, ours });
+      view.unmount();
+      rows += 1;
+    }
+    expect(rows).toBe(4);
+  });
+
+  it('reads an unknown word as loading, never as a picture, even one the table inherits from Object', async () => {
+    const words = ['somethingNewInExpoVideo', 'constructor', 'toString', '__proto__'];
+    let rows = 0;
+    for (const word of words) {
+      const built = build();
+      const heard: VideoStatus[] = [];
+      const { view } = await draw(built, { onStatus: (status) => heard.push(status) });
+      act(() => built.video.emit(word));
+      expect({ word, heard: heard.at(-1) }).toEqual({ word, heard: 'loading' });
+      view.unmount();
+      rows += 1;
+    }
+    expect(rows).toBe(4);
+  });
+
+  it('reports the status the player already has, once, when it mounts', async () => {
+    const built = build();
+    built.video.player.status = 'readyToPlay'; // ready before the listener was attached
+    const heard: VideoStatus[] = [];
+    await draw(built, { onStatus: (status) => heard.push(status) });
+    expect(heard).toEqual(['ready']);
+  });
+
+  it('plays at once when the player turns ready while it is wanted, and not when it is not', async () => {
+    const wanted = build();
+    await draw(wanted, { playing: true });
+    await waitFor(() => expect(wanted.video.player.play).toHaveBeenCalledTimes(1));
+    act(() => wanted.video.emit('readyToPlay'));
+    expect(wanted.video.player.play).toHaveBeenCalledTimes(2);
+
+    const unwanted = build();
+    await draw(unwanted, { playing: false });
+    act(() => unwanted.video.emit('readyToPlay'));
+    expect(unwanted.video.player.play).not.toHaveBeenCalled();
+  });
+
+  it('asks whether it is wanted now, not when it mounted', async () => {
+    const built = build();
+    const { again } = await draw(built, { playing: true });
+    await waitFor(() => expect(built.video.player.play).toHaveBeenCalledTimes(1));
+    again(false);
+    act(() => built.video.emit('readyToPlay'));
+    expect(built.video.player.play).toHaveBeenCalledTimes(1);
+  });
+
+  it('removes its listener on unmount, and moves to a new onStatus without keeping the old one', async () => {
+    const built = build();
+    const first = vi.fn();
+    const second = vi.fn();
+    const { view, again } = await draw(built, { onStatus: first });
+    expect(built.video.listeners).toHaveLength(1);
+    again(true, second);
+    expect(built.video.listeners).toHaveLength(1);
+    act(() => built.video.emit('error'));
+    expect(second).toHaveBeenLastCalledWith('failed');
+    expect(first).not.toHaveBeenCalledWith('failed');
+    view.unmount();
+    expect(built.video.listeners).toHaveLength(0);
   });
 });

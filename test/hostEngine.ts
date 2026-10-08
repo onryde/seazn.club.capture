@@ -69,6 +69,10 @@ class HostModule implements CaptureEngineNative {
   tail(): readonly RecordLine[] {
     return this.state.tail;
   }
+  /** The JVM host has no camera and no gallery: a photo is never taken through it, so asking is loud. */
+  takePhoto(): Promise<unknown> {
+    return Promise.reject(new Error('the host has no camera'));
+  }
   addListener<E extends keyof Events>(event: E, listener: (body: Events[E]) => void): Subscription {
     const set = this.listeners.get(event) ?? new Set<Listener>();
     set.add(listener as Listener);

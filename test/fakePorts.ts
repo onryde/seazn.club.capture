@@ -22,6 +22,7 @@ import { createProbeFlight } from '@/services/probeFlight';
 import { createScanFlight } from '@/services/scanFlight';
 import { createRingRecord, parseRecordLine, type SessionRecord } from '@/services/sessionRecord';
 import { createStreamSettingsStore } from '@/services/streamSettingsStore';
+import { createFakePhotoPort, type FakePhotoPort } from './fakePhotoPort';
 import { createFakeSurfaces, type FakeSurfaces } from './fakeSurfaces';
 
 export const TEST_NOW = new Date('2026-10-03T13:00:00Z');
@@ -52,6 +53,8 @@ export type FakePorts = {
   readonly record: SessionRecord;
   /** What Share record sent, in order; `refuse()` makes every later share fail to open (M18). */
   readonly share: SharePort & { readonly shared: string[]; refuse(): void };
+  /** `hold()`/`release()` pend a take; `calls` counts. */
+  readonly photo: FakePhotoPort;
   setNow(at: Date): void;
 };
 
@@ -82,6 +85,7 @@ export function createFakePorts(
     surfaces: createFakeSurfaces(),
     record,
     share: fakeShare(),
+    photo: createFakePhotoPort(),
   };
   const ports: Ports = {
     ...fakes,

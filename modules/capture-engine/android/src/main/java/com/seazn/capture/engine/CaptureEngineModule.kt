@@ -1,6 +1,7 @@
 package com.seazn.capture.engine
 
 import android.content.Context
+import expo.modules.kotlin.Promise
 import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
 
@@ -32,6 +33,8 @@ class CaptureEngineModule : Module() {
     Function("current") { core.current() }
     // Carry C4c-I3: each line with its seq, `{seq, line}`, so JS drops a repeat by number.
     Function("tail") { core.tail() }
+    // Spec §8: the one call that answers (AGENTS §2, recorded). It resolves "saved" or "failed", within native's bound.
+    AsyncFunction("takePhoto") { promise: Promise -> EngineHost.capture(app()).takePhoto { word -> promise.resolve(word) } }
 
     // Task 39: the native preview, the module's default view (JS `requireNativeView('CaptureEngine')`); it fills the camera box.
     View(CapturePreviewView::class) {}

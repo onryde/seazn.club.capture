@@ -156,7 +156,7 @@
     "camera-resumed": "native: frames came back after the camera returned",
     "camera-switched": "native: the operator switched cameras",
     "camera-taken": "native: another app took the camera",
-    "capture-call-failed": "native: a StreamPack teardown or reopen call threw, with the call and the throwable's class name; the next call still ran (Task 36)",
+    "capture-call-failed": "native: a StreamPack teardown or reopen call threw, with the call and the throwable's class name; the next call still ran (Task 36). Also a photo that failed (action photo): refused as not-ready because the camera is not ours or has failed or been lost, timeout at the bound, or the throwable's class name (spec §8)",
     "capture-clock": "native: the first video frame of an attempt reached the endpoint, with its capture lag behind the wall clock (carry 5)",
     "capture-rebuilt": "native: the capture was released and built again, with why: an Orient for the other side (CD42), a camera lost (F-S4-1), or a camera released with nothing on air (reopen)",
     "capture-start-failed": "native: a connect's start threw, with its attempt, the throwable's class, where its first throw was made (Type.method) and that throw's class when another wraps it; names only, never a message (F-S4-1)",

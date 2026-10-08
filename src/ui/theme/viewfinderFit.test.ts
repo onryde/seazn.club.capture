@@ -1,7 +1,12 @@
 import { describe, expect, it } from 'vitest';
+import en from '@/i18n/en.json';
+import es from '@/i18n/es.json';
+import fr from '@/i18n/fr.json';
+import nl from '@/i18n/nl.json';
 import { cameraBoxSize, STRIP_RESERVE } from '@/ui/theme/cameraBox';
-import { layout, space } from '@/ui/theme/tokens';
+import { font, layout, space } from '@/ui/theme/tokens';
 import { typeScale } from '@/ui/theme/type';
+import { loadFont } from '../../../test/fontMetrics';
 
 // Spec §1: "Must fit a landscape phone from 640 × 360 dp up". This proves the RESERVATIONS fit, on
 // the screens real phones have; whether real text stays inside them is Task 9's, on the phone.
@@ -43,7 +48,7 @@ const CONTROLS = [
     [
       layout.plateHeight,
       layout.chip + space.xs + typeScale.metricUnit.lineHeight, // D14 (F18): the AUTO start line under the chips
-      0,
+      typeScale.metricUnit.lineHeight, // R3 (PR B): the photo line's place in the gap.
       layout.iconButton,
       layout.holdHeight + space.xs + typeScale.metricUnit.lineHeight,
     ],
@@ -53,7 +58,7 @@ const CONTROLS = [
     [
       layout.plateHeight,
       layout.meterHeight,
-      0,
+      typeScale.metricUnit.lineHeight, // R3 (PR B): the photo line's place in the gap.
       // m-3: What viewers see, with its "No viewer picture" line under it while there is no picture (ViewerPeek).
       layout.iconButton + space.xs + typeScale.metricUnit.lineHeight,
       layout.holdHeight,
@@ -130,5 +135,40 @@ describe('the camera box at the smallest screen (spec §1)', () => {
   it('checked every geometry, and there were four (anti-vacuity)', () => {
     expect(GEOMETRIES).toHaveLength(4);
     expect(geometriesChecked).toBe(GEOMETRIES.length);
+  });
+});
+
+// R3 (PR B): the photo line is one line (`numberOfLines` 1), and a line that is too wide is cut with an
+// ellipsis and no error. So its words are measured, in every language, in the narrowest controls half: 640
+// wide gives 320, and a wider screen only widens it. The widths come from the font file the app ships
+// (test/fontMetrics.ts) at the size its type role declares, never from the strings being judged.
+describe('the photo line fits one line in the controls half (spec §8)', () => {
+  const CONTENT = 640 / 2 - 2 * layout.controlsPad;
+  const LANGUAGES = [
+    ['en', en],
+    ['es', es],
+    ['fr', fr],
+    ['nl', nl],
+  ] as const;
+  const KEYS = ['stream.photo.saved', 'stream.photo.failed'] as const;
+
+  it('is set in Geist 500 at 12, the role’s own font, in a 288 dp content width', () => {
+    expect(font.bodyMedium).toBe('Geist_500Medium');
+    expect(typeScale.metricUnit.fontFamily).toBe(font.bodyMedium);
+    expect(typeScale.metricUnit.fontSize).toBe(12);
+    expect(CONTENT).toBe(288);
+  });
+
+  it('every photo line, in all four languages, is narrower than the content', () => {
+    const geist = loadFont('geist-500');
+    let checked = 0;
+    for (const [lang, dictionary] of LANGUAGES) {
+      for (const key of KEYS) {
+        const width = geist.width(dictionary[key], typeScale.metricUnit.fontSize);
+        expect({ lang, key, fits: width <= CONTENT }).toEqual({ lang, key, fits: true });
+        checked += 1;
+      }
+    }
+    expect(checked).toBe(8);
   });
 });

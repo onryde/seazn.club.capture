@@ -30,7 +30,8 @@ export function routeTarget(pathname: string): Target {
  * unless the engine is on air, when the current lock stays. Locks to the target
  * once they agree, and before any reading has settled (R34). On air with no
  * reading, a kept lock that disagrees with the target shows the target's card
- * (R35), and with nothing locked yet the target is locked (R37). React state
+ * (R35), and with nothing locked yet the target is locked (R37); so does a reading that disagrees under a hold,
+ * with the target's card. React state
  * changes only when the settled reading or the on-air status does, never per
  * sample or per telemetry tick.
  *
@@ -47,6 +48,9 @@ export function useOrientationGate(target: Target): GateView {
   const holding = target === 'free' ? broadcastHeld : holdsOrientation;
   const { orientationLock, logger } = usePorts();
   const locked = useRef<Target | null>(null);
+  // Cancels the lock attempt in flight (its pending retry). Run by a newer, different lock and on unmount, never by
+  // a `keep`: a keep is no lock, so it supersedes nothing.
+  const inFlight = useRef<(() => void) | null>(null);
   // The lock last applied (R35, R37). Read in render on purpose: it changes
   // only in the effect below, and only to what this render already decided.
   const view = orientationGate(target, physical, holding, locked.current);
@@ -61,12 +65,17 @@ export function useOrientationGate(target: Target): GateView {
   useEffect(() => {
     if (view.lock === 'keep' || view.lock === locked.current) return;
     const wanted = view.lock;
+    inFlight.current?.(); // a newer, different lock supersedes the attempt in flight
     locked.current = wanted;
-    return lockWithRetry(orientationLock, logger, wanted, () => {
+    inFlight.current = lockWithRetry(orientationLock, logger, wanted, () => {
       // R26: forget it, so the next differing lock retries.
       if (locked.current === wanted) locked.current = null;
     });
   }, [view.lock, evaluation, orientationLock, logger]);
+
+  // The screen going away ends the attempt too. (The rule that reads refs in a cleanup only objects to a ref the
+  // component never assigns; this one is assigned above.)
+  useEffect(() => () => inFlight.current?.(), []);
 
   return view;
 }
@@ -75,11 +84,11 @@ export function useOrientationGate(target: Target): GateView {
 export const LOCK_RETRY_MS = 500;
 
 /**
- * Locks; on a refusal logs it and tries once more. Returns the effect's
- * cleanup, which cancels a pending retry: a newer view supersedes it, and
- * that includes the on-air `keep`, which is no lock at all. A refused lock
- * whose retry never ran is not applied, so it is forgotten either way (R26),
- * or `keep` would leave it recorded as applied and deduped for good.
+ * Locks; on a refusal logs it and tries once more. Returns a cancel, which cancels a pending retry and stops a
+ * refusal that lands later from scheduling one. The caller runs it when a newer, different lock supersedes this one
+ * and on unmount, never for a `keep`, which is no lock at all. The cancel forgets nothing itself: the newer lock
+ * overwrites the record, and an unmounted screen has none to keep. A refusal landing after it still gives up (R26),
+ * which clears the record only while it is still this lock's.
  */
 function lockWithRetry(
   port: OrientationLockPort,
@@ -102,9 +111,7 @@ function lockWithRetry(
   attempt(1);
   return () => {
     cancelled = true;
-    if (timer === null) return;
-    clearTimeout(timer);
-    giveUp();
+    if (timer !== null) clearTimeout(timer);
   };
 }
 

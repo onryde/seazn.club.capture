@@ -2,7 +2,14 @@ import type { FunctionComponent } from 'react';
 
 export type PreviewProps = Record<string, never>;
 export type OverlayProps = { readonly url: string; readonly onFailed: () => void };
-export type VideoProps = { readonly url: string; readonly playing: boolean };
+/** What the viewer player says of itself (spec §9): the native player's own word, in three. */
+export type VideoStatus = 'loading' | 'ready' | 'failed';
+export type VideoProps = {
+  readonly url: string;
+  readonly playing: boolean;
+  /** Told on mount and on every change: the layer shows nothing it has not been told is a picture. */
+  readonly onStatus?: (status: VideoStatus) => void;
+};
 
 /**
  * The native views the viewfinder draws, as a port (D16). Screens never import
