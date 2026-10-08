@@ -105,7 +105,7 @@ class StreamerAdapter(
   /** D2 (1): a scope of its own, so a throw on a photo cannot reach `scope`'s handler above, which fails the session. */
   private val photoScope = CoroutineScope(SupervisorJob() + Dispatchers.Default + CoroutineExceptionHandler { _, t -> calls.line(RecordEntry("capture-call-failed", listOf("action" to "photo", "error" to t.javaClass.simpleName))) })
   private val gallery = GalleryPhoto(context.contentResolver, { current.value }, side)
-  private val photo = PhotoRun({ name -> gallery.shoot(name) }, System::currentTimeMillis, calls.line)
+  private val photo = PhotoRun({ name -> gallery.shoot(name) }, { current.value?.let(::cameraOurs) ?: false }, System::currentTimeMillis, calls.line)
 
   // Last: the run's consumer starts here, and only ever calls the parts for a call made after construction.
   private val run = CaptureRun(Parts(), signals, cameras, calls, side, scope)

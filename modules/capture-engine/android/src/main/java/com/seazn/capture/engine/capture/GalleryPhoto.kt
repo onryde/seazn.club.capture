@@ -27,7 +27,7 @@ class GalleryPhoto(
     try {
       withContext(Dispatchers.IO) { store(name, bitmap) }
     } finally {
-      bitmap.recycle()
+      bitmap.recycle() // withContext returns only once store has, a cancelled photo included, so this never meets a running compress
     }
   }
 
@@ -43,7 +43,7 @@ class GalleryPhoto(
     try {
       val stream = resolver.openOutputStream(uri) ?: error("no-stream")
       stream.use { check(bitmap.compress(Bitmap.CompressFormat.JPEG, QUALITY, it)) { "compress-failed" } }
-      resolver.update(uri, ContentValues().apply { put(MediaStore.Images.Media.IS_PENDING, 0) }, null, null)
+      check(resolver.update(uri, ContentValues().apply { put(MediaStore.Images.Media.IS_PENDING, 0) }, null, null) == 1) { "not-published" }
     } catch (t: Throwable) {
       resolver.delete(uri, null, null) // no half-written row is left in the gallery
       throw t

@@ -745,7 +745,24 @@ class GlueRulesTest {
     assertFalse("calls.report" in declaration, declaration)
     val take = body(text, "override fun takePhoto(")
     assertTrue("photoScope.launch" in take, take)
+    assertTrue("done(photo.take().wire)" in take, "the answer is what the photo came to, not a constant and not dropped: $take")
     assertFalse(Regex("""\bscope\.launch|\brun\.|serial""").containsMatchIn(take), "never on the capture's scope or its queue: $take")
+  }
+
+  /**
+   * I-1: the photo is refused unless the camera is open and ours. StreamPack's snapshot blocks a thread holding the
+   * input's source lock, which Stop, Go live and the slate take too, and cancellation cannot interrupt it. PhotoRun's
+   * own tests prove the gate against a lambda; this is the wire: the lambda is the viewfinder's own readiness.
+   */
+  @Test
+  fun `I-1 StreamerAdapter hands the photo the readiness the viewfinder reads`() {
+    val text = glue("StreamerAdapter.kt")
+    val at = text.indexOf("private val photo = PhotoRun(")
+    assertTrue(at >= 0, "the photo is declared")
+    assertEquals(at, text.lastIndexOf("private val photo = PhotoRun("), "declared once")
+    val declaration = text.substring(at, text.indexOf('\n', at))
+    assertTrue("{ current.value?.let(::cameraOurs) ?: false }" in declaration, declaration)
+    assertTrue("private fun cameraOurs(held: SingleStreamer): Boolean = cameras.ready(held.videoInput.sourceFlow.value is ICameraSource)" in text, "the one readiness")
   }
 
   /** Spec §8, the seam: JS calls `takePhoto`; the module declares it once and hands it to the capture. Without this, every photo fails and nothing in a unit test says so. */
@@ -753,7 +770,7 @@ class GlueRulesTest {
   fun `M9 the bridge declares takePhoto once and asks the capture`() {
     val module = glue("CaptureEngineModule.kt")
     assertEquals(1, Regex("""AsyncFunction\("takePhoto"\)""").findAll(module).count())
-    assertTrue(Regex("""AsyncFunction\("takePhoto"\)[^\n]*EngineHost\.capture\([^\n]*\.takePhoto""").containsMatchIn(module), "it asks the capture")
+    assertTrue(Regex("""AsyncFunction\("takePhoto"\)[^\n]*EngineHost\.capture\([^\n]*\.takePhoto \{ (\w+) -> promise\.resolve\(\1\) \}""").containsMatchIn(module), "it asks the capture and resolves with the word it is given")
   }
 
   /** R1, R2: no storage permission in the manifest; the still goes to MediaStore, is cleaned up when it fails, and is the camera's own. */
@@ -771,6 +788,7 @@ class GlueRulesTest {
         "IS_PENDING, 1",
         "IS_PENDING, 0",
         "check(bitmap.compress(", // a failed compress is a failed photo, never an empty file reported as saved
+        "check(resolver.update(", // so is a row that never became visible
         "resolver.delete(",
         "is ICameraSource",
       )
@@ -779,7 +797,8 @@ class GlueRulesTest {
       assertTrue(needed in writer, needed)
       checked++
     }
-    assertEquals(7, checked)
+    assertEquals(8, checked)
+    assertTrue(Regex("""finally \{\s+bitmap\.recycle\(\)""").containsMatchIn(writer), "the bitmap is recycled in a finally, a cancelled photo included")
   }
 
   /**
