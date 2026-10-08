@@ -54,6 +54,10 @@ kotlin.sourceSets["test"].kotlin.srcDir("../src/main/java/com/seazn/capture/engi
 // a real record. komuxer's JVM variant is Java 21 bytecode, which core's 17 cannot load, so the adapters stay out.
 kotlin.sourceSets["test"].kotlin.srcDir("../src/main/java/com/seazn/capture/engine/vendor")
 
+// The preview's placement in its camera box (the preview is laid out at the encode's size and scaled to fit) imports
+// nothing Android, so core's tests run it. The view that applies it is one folder up.
+kotlin.sourceSets["test"].kotlin.srcDir("../src/main/java/com/seazn/capture/engine/preview")
+
 // C6 re-review: the glue's one DNS lookup, for both transports, imports nothing Android, so core's tests run
 // it against the start's bound.
 kotlin.sourceSets["test"].kotlin.srcDir("../src/main/java/com/seazn/capture/engine/net")

@@ -2,6 +2,13 @@ package com.seazn.capture.engine.core
 
 /** The encode's fixed numbers (decision 3; AGENTS §8's ceiling). */
 object Encode {
+  /**
+   * CD27: the encode is 720p30, and 16:9 is what viewers get and what the camera box shows (spec §1). The one place
+   * the size is spelled: the encoder is configured with it and the preview is laid out at it (CapturePreviewView).
+   */
+  const val WIDTH = 1280
+  const val HEIGHT = 720
+
   const val CEILING_BPS = 3_000_000
   const val FLOOR_BPS = 500_000
   const val START_BPS = 1_500_000

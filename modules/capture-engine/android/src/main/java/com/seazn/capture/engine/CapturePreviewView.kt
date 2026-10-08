@@ -1,7 +1,9 @@
 package com.seazn.capture.engine
 
 import android.content.Context
+import com.seazn.capture.engine.core.Encode
 import com.seazn.capture.engine.core.RecordEntry
+import com.seazn.capture.engine.preview.PreviewFit
 import expo.modules.kotlin.AppContext
 import expo.modules.kotlin.views.ExpoView
 import io.github.thibaultbee.streampack.ui.views.PreviewView
@@ -15,7 +17,12 @@ import kotlinx.coroutines.launch
 
 /**
  * The native preview, filling the camera box it is mounted in (AGENTS §6; design follow-up §1).
- * Frames never cross the bridge. FIT, so the operator frames exactly what is encoded (#288). No
+ * Frames never cross the bridge. The box shows exactly what viewers get (#288): StreamPack's ([PreviewFit.STREAMPACK])
+ * PreviewView takes its preview stream's size from its own view's AREA, in any shape, and not from the
+ * encode's config (javap, see [PreviewFit]), so the PreviewView is laid out at the encode's own size
+ * ([Encode]) and scaled to fit the box by [PreviewFit]; by that rule its stream should be the encode's
+ * 1280 x 720 (inferred until `dumpsys media.camera` and the `preview-size` record line confirm it). FIT
+ * stays, so a box that is not quite 16:9 leaves bars and crops nothing. No
  * pinch-zoom or tap-to-focus: a tap on a tripod is a mis-tap. It follows the pairing's streamer
  * while attached, and only then. It tells the engine
  * whether the viewfinder is shown (CD37): attached to a window that is visible. A screen pushed over the
@@ -53,7 +60,27 @@ class CapturePreviewView(context: Context, appContext: AppContext) : ExpoView(co
     }
 
   init {
-    addView(preview, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
+    // The placement's left and top assume the preview is laid out from the box's left, in any locale.
+    layoutDirection = LAYOUT_DIRECTION_LTR
+    // The size is the preview stream's size (see the class note). Scaling about the corner puts the picture where
+    // PreviewFit says; onSizeChanged hands it each size the box takes.
+    preview.pivotX = 0f
+    preview.pivotY = 0f
+    addView(preview, LayoutParams(Encode.WIDTH, Encode.HEIGHT))
+  }
+
+  override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
+    super.onSizeChanged(w, h, oldw, oldh)
+    place(w, h)
+  }
+
+  /** The encode-sized preview, scaled uniformly into the box and centred: the whole box is the encode's picture. */
+  private fun place(boxWidth: Int, boxHeight: Int) {
+    val at = PreviewFit.place(boxWidth, boxHeight)
+    preview.scaleX = at.scale
+    preview.scaleY = at.scale
+    preview.translationX = at.left
+    preview.translationY = at.top
   }
 
   override fun onAttachedToWindow() {

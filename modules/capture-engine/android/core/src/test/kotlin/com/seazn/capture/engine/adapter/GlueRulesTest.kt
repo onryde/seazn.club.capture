@@ -545,6 +545,108 @@ class GlueRulesTest {
     assertTrue(Regex("""CoroutineScope\(SupervisorJob\(\) \+ Dispatchers\.Main \+ failed\)""").containsMatchIn(view), "the follow's scope has its handler")
   }
 
+  /** A glue file's code: its comment lines and the tails of its line comments gone, so a pin reads what runs. */
+  private fun code(text: String): String =
+    text.lines().filterNot { it.trim().startsWith("*") || it.trim().startsWith("/*") }.joinToString("\n") { it.substringBefore("//") }
+
+  /** How many times [word] stands in [code] as a whole identifier. */
+  private fun uses(code: String, word: String): Int = Regex("""\b$word\b""").findAll(code).count()
+
+  /**
+   * The 16:9 camera box shows exactly what viewers get (AGENTS §6). StreamPack 3.2.1's PreviewView does not apply the
+   * encode's config to the preview: it asks the camera source for the output size whose AREA is nearest its own
+   * view's (javap: `PreviewView.getPreviewSize` -> `CameraSource.getPreviewSize` -> `CameraSizes.getPreviewOutputSize`
+   * -> `SizeExtensionsKt.closestTo`, a minimum of |w x h - view w x h|, any shape), and the maintainer says the same in
+   * StreamPack#288 ("The video configuration of 1280x720 does not apply to the preview"). Laid out at the box's size,
+   * the owner's 2412 x 1080 phone showed content of about 2.24:1 in the 16:9 box (measured); that the camera size
+   * picked was 20:9, and that the encode's size now gets the 1280 x 720 stream, are INFERRED from the rule until
+   * `dumpsys media.camera` and the `preview-size` record line confirm them. So the view is laid out at the encode's
+   * own size (one constant, [Encode], which the encoder reads too) and [PreviewFit] scales it into the box. Each
+   * hand-off is pinned: the layout, the box's size reaching the placement, the placement reaching the view, and the
+   * encoder reading the same size; and each property the view is set by is written at ONE site (a second write, later
+   * or elsewhere, would undo the first and leave its pin green, as `attached` is counted in the test above).
+   */
+  @Test
+  fun `the preview is laid out at the encode's size and scaled into the box, and the encoder reads the same size`() {
+    val raw = glue("CapturePreviewView.kt")
+    val view = code(raw)
+    // Where a line sits is part of the pin: one moved into a function nothing calls is still ONE site, and does nothing.
+    val built = body(view, "init {")
+    assertEquals(1, Regex("""addView\(preview, LayoutParams\(Encode\.WIDTH, Encode\.HEIGHT\)\)""").findAll(view).count(), "the preview is laid out at the encode's size")
+    assertEquals(1, Regex("""addView\(preview, LayoutParams\(Encode\.WIDTH, Encode\.HEIGHT\)\)""").findAll(built).count(), "and that is in init, which runs: $built")
+    assertFalse("MATCH_PARENT" in view, "and never at the box's")
+    assertEquals(1, uses(view, "addView"), "one child")
+    assertEquals(1, uses(view, "LayoutParams"), "laid out once")
+    // FIT stays: a box that is not quite 16:9 leaves bars and crops nothing. FILL would crop it.
+    assertEquals(1, Regex("""scaleMode = PreviewView\.ScaleMode\.FIT\b""").findAll(view).count(), "FIT")
+    assertEquals(1, uses(view, "scaleMode"), "one scale mode, set once")
+    assertEquals(0, uses(view, "FILL"), "never FILL")
+    // One write site per property the view is set by, so a second write cannot undo the first behind a green pin.
+    for (property in listOf("scaleX", "scaleY", "translationX", "translationY", "pivotX", "pivotY", "layoutDirection")) assertEquals(1, uses(view, property), "$property is written at one site")
+    for (property in listOf("rotation", "rotationX", "rotationY", "translationZ", "alpha", "x", "y", "setScaleX", "setScaleY", "setTranslationX", "setTranslationY", "animate", "setPivotX", "setPivotY", "setLayoutDirection"))
+      assertEquals(0, uses(view, property), "$property: nothing else moves the view")
+    assertEquals(1, uses(view, "left"), "`at.left`, once")
+    assertEquals(1, uses(view, "top"), "`at.top`, once")
+    assertTrue(Regex("""preview\.pivotX = 0f\s+preview\.pivotY = 0f""").containsMatchIn(built), "scaled about its corner, which the placement's left and top assume, set in init: $built")
+    assertTrue(Regex("""layoutDirection = LAYOUT_DIRECTION_LTR""").containsMatchIn(built), "laid out from the left in any locale, which the placement's left assumes, set in init: $built")
+    val sized = body(view, "override fun onSizeChanged(")
+    assertTrue(Regex("""super\.onSizeChanged\(w, h, oldw, oldh\)\s+place\(w, h\)""").containsMatchIn(sized), "the box's size reaches the placement: $sized")
+    assertEquals(1, Regex("""(?<!fun )(?<!\.)\bplace\(""").findAll(view).count(), "place is called from onSizeChanged and nowhere else")
+    val place = body(view, "private fun place(")
+    assertTrue(Regex("""PreviewFit\.place\(boxWidth, boxHeight\)""").containsMatchIn(place), "the placement is PreviewFit's: $place")
+    for (line in listOf("preview.scaleX = at.scale", "preview.scaleY = at.scale", "preview.translationX = at.left", "preview.translationY = at.top")) assertTrue(line in place, "$line: $place")
+    val adapter = code(glue("StreamerAdapter.kt"))
+    assertEquals(1, Regex("""resolution = Size\(Encode\.WIDTH, Encode\.HEIGHT\),""").findAll(adapter).count(), "the encoder reads the same size")
+    // The slate is the picture on air while the camera is someone else's: the encode's frame, so the encode's size.
+    val slate = code(glue("SlateSource.kt"))
+    assertEquals(1, Regex("""Bitmap\.createBitmap\(Encode\.WIDTH, Encode\.HEIGHT, """).findAll(slate).count(), "the slate is the encode's size")
+    assertTrue("val left = (Encode.WIDTH - GLYPH) / 2" in slate && "val top = (Encode.HEIGHT - GLYPH) / 2" in slate, "and its glyph is centred in it: $slate")
+    for ((name, text) in listOf("CapturePreviewView.kt" to view, "StreamerAdapter.kt" to adapter, "SlateSource.kt" to slate))
+      assertFalse(Regex("""\b(1280|720|520|760|480)\b""").containsMatchIn(text), "$name: the encode's size is spelled once, in Encode")
+  }
+
+  /**
+   * The workaround reads StreamPack 3.2.1's PreviewView by javap (an area rule no release promises), so it names the
+   * StreamPack it was read from beside the rule, and that is the one build.gradle pins strictly: a bump that does not
+   * re-read `CameraSizes.getPreviewOutputSize` and move the pin reds here (as VendorLines.STREAMPACK does for its regexes).
+   */
+  @Test
+  fun `the preview workaround names the StreamPack it read, and it is the one build_gradle pins`() {
+    val gradle = File(src.parentFile, "build.gradle").readText()
+    val pinned = Regex("""streampack[^\n]*strictly '([^']+)'""").findAll(gradle).map { it.groupValues[1] }.toList()
+    assertEquals(1, pinned.size, "one strict StreamPack pin: $pinned")
+    val read = Regex("""const val STREAMPACK = "([^"]+)"""").findAll(glue("PreviewFit.kt")).map { it.groupValues[1] }.toList()
+    assertEquals(pinned, read, "PreviewFit.STREAMPACK is build.gradle's StreamPack")
+    assertEquals(pinned, listOf(com.seazn.capture.engine.preview.PreviewFit.STREAMPACK), "and it is the constant the glue compiles")
+  }
+
+  /**
+   * Preview-fill review I-1: the phone's own word on the preview. StreamPack's logger is replaced, so which camera size
+   * its PreviewView takes is never seen; the `preview-size` line says what its rule would pick for a view of the encode's
+   * size, from the sizes the camera lists for a SurfaceHolder (the class PreviewView asks for). Written when StreamPack
+   * reports a camera source open, each time the camera differs from the last one reported, before the open is told on; a failure is one `capture-call-failed`
+   * line (`quietly`) and never stops the open being told. Evidence only: nothing acts on it.
+   */
+  @Test
+  fun `I-1 the glue records the sizes the camera lists and the pick of StreamPack's rule, on each camera change, before the open is told`() {
+    val adapter = code(glue("StreamerAdapter.kt"))
+    val opens = body(adapter, "override fun cameraOpens()")
+    assertTrue(Regex("""\.collect \{\s+reportPreviewSizes\(camera\.cameraId\)\s+emit\(camera\.cameraId\)\s+\}""").containsMatchIn(opens), "reported, then told on: $opens")
+    assertEquals(2, uses(adapter, "reportPreviewSizes"), "one call site, and the declaration")
+    val report = body(adapter, "private suspend fun reportPreviewSizes(")
+    assertTrue(Regex("""if \(id == sizedCamera\) return\s+sizedCamera = id""").containsMatchIn(report), "each camera change, not each open: $report")
+    assertTrue(Regex("""quietly\("preview-size"\) \{""").containsMatchIn(report), "a failure is a line, never a throw: $report")
+    val derived =
+      Regex(
+        """val map = context\.cameraManager\.getCameraCharacteristics\(id\)\.get\(CameraCharacteristics\.SCALER_STREAM_CONFIGURATION_MAP\)\s+""" +
+          """val sizes = map\?\.getOutputSizes\(SurfaceHolder::class\.java\)\.orEmpty\(\)\.map \{ it\.width to it\.height \}\s+""" +
+          """calls\.line\(PreviewSizes\.entry\(PreviewSizes\.report\(sizes\)\)\)""",
+      )
+    assertTrue(derived.containsMatchIn(report), "the camera's own characteristics, the sizes StreamPack's PreviewView asks for (a SurfaceHolder's), whole and as (width, height), and the rule's report is the line: $report")
+    assertTrue(Regex("""sizedCamera = null""").containsMatchIn(body(adapter, "override suspend fun release()")), "a new capture reports again")
+    assertEquals(2, Regex("""\bsizedCamera = """).findAll(adapter).count(), "set by the report and the release only")
+  }
+
   /**
    * Review C7 I-2 and M-4: StreamPack opens the camera lazily, at the first preview or the start, so the glue calls
    * no camera held; the run does, once StreamPack reports the source open (CaptureRunTest, CaptureRunMachineTest).
@@ -569,7 +671,8 @@ class GlueRulesTest {
     assertTrue("(camera as? IVideoSourceInternal)?.isStreamingFlow" in adapter, "the start's open is an open too")
     assertTrue("combine(camera.isPreviewingFlow, streaming) { previewing, streams -> previewing || streams }" in adapter, "previewing or streaming")
     // F-S4-1: each time it turns open, so a camera lost on air reads ready again once StreamPack's start reopens it.
-    val eachOpen = Regex("""previewing \|\| streams \}\s+\.distinctUntilChanged\(\)\s+\.filter \{ it \}\s+\.collect \{ emit\(camera\.cameraId\) \}""")
+    // Preview-fill I-1: its preview-size line is written first, on each camera change (pinned by its own rule below).
+    val eachOpen = Regex("""previewing \|\| streams \}\s+\.distinctUntilChanged\(\)\s+\.filter \{ it \}\s+\.collect \{\s+reportPreviewSizes\(camera\.cameraId\)\s+emit\(camera\.cameraId\)\s+\}""")
     assertTrue(eachOpen.containsMatchIn(adapter), "the source's id, each time it turns open")
     assertTrue("cameras.ready(held.videoInput.sourceFlow.value is ICameraSource)" in adapter, "the readiness reads the open's outcome")
     assertTrue("cameras.openFailed(camera.cameraId, busy(failure))?.let(calls.report)" in adapter, "a failed open is heard, a busy one told")
