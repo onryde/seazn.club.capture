@@ -570,7 +570,10 @@ class GlueRulesTest {
   fun `the preview is laid out at the encode's size and scaled into the box, and the encoder reads the same size`() {
     val raw = glue("CapturePreviewView.kt")
     val view = code(raw)
+    // Where a line sits is part of the pin: one moved into a function nothing calls is still ONE site, and does nothing.
+    val built = body(view, "init {")
     assertEquals(1, Regex("""addView\(preview, LayoutParams\(Encode\.WIDTH, Encode\.HEIGHT\)\)""").findAll(view).count(), "the preview is laid out at the encode's size")
+    assertEquals(1, Regex("""addView\(preview, LayoutParams\(Encode\.WIDTH, Encode\.HEIGHT\)\)""").findAll(built).count(), "and that is in init, which runs: $built")
     assertFalse("MATCH_PARENT" in view, "and never at the box's")
     assertEquals(1, uses(view, "addView"), "one child")
     assertEquals(1, uses(view, "LayoutParams"), "laid out once")
@@ -584,8 +587,8 @@ class GlueRulesTest {
       assertEquals(0, uses(view, property), "$property: nothing else moves the view")
     assertEquals(1, uses(view, "left"), "`at.left`, once")
     assertEquals(1, uses(view, "top"), "`at.top`, once")
-    assertTrue(Regex("""preview\.pivotX = 0f\s+preview\.pivotY = 0f""").containsMatchIn(view), "scaled about its corner, which the placement's left and top assume")
-    assertTrue(Regex("""layoutDirection = LAYOUT_DIRECTION_LTR""").containsMatchIn(view), "laid out from the left in any locale, which the placement's left assumes")
+    assertTrue(Regex("""preview\.pivotX = 0f\s+preview\.pivotY = 0f""").containsMatchIn(built), "scaled about its corner, which the placement's left and top assume, set in init: $built")
+    assertTrue(Regex("""layoutDirection = LAYOUT_DIRECTION_LTR""").containsMatchIn(built), "laid out from the left in any locale, which the placement's left assumes, set in init: $built")
     val sized = body(view, "override fun onSizeChanged(")
     assertTrue(Regex("""super\.onSizeChanged\(w, h, oldw, oldh\)\s+place\(w, h\)""").containsMatchIn(sized), "the box's size reaches the placement: $sized")
     assertEquals(1, Regex("""(?<!fun )(?<!\.)\bplace\(""").findAll(view).count(), "place is called from onSizeChanged and nowhere else")
@@ -621,17 +624,17 @@ class GlueRulesTest {
    * Preview-fill review I-1: the phone's own word on the preview. StreamPack's logger is replaced, so which camera size
    * its PreviewView takes is never seen; the `preview-size` line says what its rule would pick for a view of the encode's
    * size, from the sizes the camera lists for a SurfaceHolder (the class PreviewView asks for). Written when StreamPack
-   * reports a camera source open, once per camera, before the open is told on; a failure is one `capture-call-failed`
+   * reports a camera source open, each time the camera differs from the last one reported, before the open is told on; a failure is one `capture-call-failed`
    * line (`quietly`) and never stops the open being told. Evidence only: nothing acts on it.
    */
   @Test
-  fun `I-1 the glue records the sizes the camera lists and the pick of StreamPack's rule, once per camera, before the open is told`() {
+  fun `I-1 the glue records the sizes the camera lists and the pick of StreamPack's rule, on each camera change, before the open is told`() {
     val adapter = code(glue("StreamerAdapter.kt"))
     val opens = body(adapter, "override fun cameraOpens()")
     assertTrue(Regex("""\.collect \{\s+reportPreviewSizes\(camera\.cameraId\)\s+emit\(camera\.cameraId\)\s+\}""").containsMatchIn(opens), "reported, then told on: $opens")
     assertEquals(2, uses(adapter, "reportPreviewSizes"), "one call site, and the declaration")
     val report = body(adapter, "private suspend fun reportPreviewSizes(")
-    assertTrue(Regex("""if \(id == sizedCamera\) return\s+sizedCamera = id""").containsMatchIn(report), "once per camera: $report")
+    assertTrue(Regex("""if \(id == sizedCamera\) return\s+sizedCamera = id""").containsMatchIn(report), "each camera change, not each open: $report")
     assertTrue(Regex("""quietly\("preview-size"\) \{""").containsMatchIn(report), "a failure is a line, never a throw: $report")
     val derived =
       Regex(
@@ -668,7 +671,7 @@ class GlueRulesTest {
     assertTrue("(camera as? IVideoSourceInternal)?.isStreamingFlow" in adapter, "the start's open is an open too")
     assertTrue("combine(camera.isPreviewingFlow, streaming) { previewing, streams -> previewing || streams }" in adapter, "previewing or streaming")
     // F-S4-1: each time it turns open, so a camera lost on air reads ready again once StreamPack's start reopens it.
-    // Preview-fill I-1: its preview-size line is written first, once a camera (pinned by its own rule below).
+    // Preview-fill I-1: its preview-size line is written first, on each camera change (pinned by its own rule below).
     val eachOpen = Regex("""previewing \|\| streams \}\s+\.distinctUntilChanged\(\)\s+\.filter \{ it \}\s+\.collect \{\s+reportPreviewSizes\(camera\.cameraId\)\s+emit\(camera\.cameraId\)\s+\}""")
     assertTrue(eachOpen.containsMatchIn(adapter), "the source's id, each time it turns open")
     assertTrue("cameras.ready(held.videoInput.sourceFlow.value is ICameraSource)" in adapter, "the readiness reads the open's outcome")

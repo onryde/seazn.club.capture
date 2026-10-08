@@ -104,7 +104,7 @@ class StreamerAdapter(
 
   @Volatile private var cameraId: String? = null
 
-  /** The camera whose preview sizes the record already holds, so one line a camera for a capture. */
+  /** The last camera whose preview sizes were written, so a reopen of the same camera writes none (a change of camera writes again). */
   @Volatile private var sizedCamera: String? = null
   private var readinessJob: Job? = null
 
@@ -183,11 +183,13 @@ class StreamerAdapter(
   private fun cameraOurs(held: SingleStreamer): Boolean = cameras.ready(held.videoInput.sourceFlow.value is ICameraSource)
 
   /**
-   * Preview-fill review I-1: one `preview-size` line a camera for a capture, when StreamPack reports its source open (a
-   * preview or the start): the sizes the camera lists for a SurfaceHolder, the class StreamPack's PreviewView asks for,
-   * and the one its area rule would pick for a view of the encode's size ([PreviewSizes]). StreamPack's own log of its
-   * pick is dropped with the rest of its INFO, so this is the only word the record has of it. Evidence only; a failure
-   * is one `capture-call-failed` line and the open is told on regardless.
+   * Preview-fill review I-1: one `preview-size` line each time the camera changes (the id differs from the last one
+   * reported; `sizedCamera` holds only that last id, so a switch A to B and back to A writes three lines), when StreamPack
+   * reports its source open (a preview or the start): the sizes the camera lists for a SurfaceHolder, the class
+   * StreamPack's PreviewView asks for, and the one its area rule would pick for a view of the encode's size
+   * ([PreviewSizes]). A reopen of the same camera writes none. StreamPack's own log of its pick is dropped with the rest
+   * of its INFO, so this is the only word the record has of it. Evidence only; a failure is one `capture-call-failed`
+   * line and the open is told on regardless.
    */
   private suspend fun reportPreviewSizes(id: String) {
     if (id == sizedCamera) return
