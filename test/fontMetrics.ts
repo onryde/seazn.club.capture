@@ -7,13 +7,16 @@ import { join } from 'node:path';
  * project). A TrueType reader just big enough for this: `head.unitsPerEm`, `hhea.numberOfHMetrics`,
  * `hmtx` and a `cmap` of format 4 or 12.
  */
-export type FontFile = 'geist-mono-400' | 'geist-500' | 'barlow-condensed-600';
+export type FontFile =
+  'geist-mono-400' | 'geist-400' | 'geist-500' | 'barlow-condensed-600' | 'barlow-condensed-700';
 
 const PATH: Readonly<Record<FontFile, string>> = {
   'geist-mono-400': '@expo-google-fonts/geist-mono/400Regular/GeistMono_400Regular.ttf',
+  'geist-400': '@expo-google-fonts/geist/400Regular/Geist_400Regular.ttf',
   'geist-500': '@expo-google-fonts/geist/500Medium/Geist_500Medium.ttf',
   'barlow-condensed-600':
     '@expo-google-fonts/barlow-condensed/600SemiBold/BarlowCondensed_600SemiBold.ttf',
+  'barlow-condensed-700': '@expo-google-fonts/barlow-condensed/700Bold/BarlowCondensed_700Bold.ttf',
 };
 
 export type Font = {

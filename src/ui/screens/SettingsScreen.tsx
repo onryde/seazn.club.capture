@@ -1,6 +1,6 @@
 import { useCallback, useState } from 'react';
-import { ScrollView, StyleSheet, useWindowDimensions, View, type ViewProps } from 'react-native';
-import { screenLayout, type ScreenLayout } from '@/domain/mode/homeLayout';
+import { ScrollView, StyleSheet, useWindowDimensions, View } from 'react-native';
+import { screenLayout } from '@/domain/mode/homeLayout';
 import { useT } from '@/hooks/useLanguage';
 import { useBackToViewfinder } from '@/hooks/useStreamLinks';
 import { useStreamSettings } from '@/hooks/useStreamSettings';
@@ -10,6 +10,7 @@ import { DiagnosticsCard } from '@/ui/components/DiagnosticsCard';
 import { GhostButton } from '@/ui/components/GhostButton';
 import { SubScreenHeader } from '@/ui/components/SubScreenHeader';
 import { Text } from '@/ui/components/Text';
+import { layoutMarker } from '@/ui/layoutMarker';
 import { colour, layout as metrics, space } from '@/ui/theme/tokens';
 
 /** D22: shipped and linked native code, and the one source link MPL-2.0 asks for. */
@@ -77,7 +78,7 @@ export function SettingsScreen() {
   );
   if (layout === 'landscape') {
     return (
-      <View {...marker(layout)} style={styles.landscape}>
+      <View {...layoutMarker('settings', layout)} style={styles.landscape}>
         {header}
         <View testID="settings-halves" style={styles.halves}>
           <ScrollView style={styles.half} contentContainerStyle={styles.controls}>
@@ -91,7 +92,7 @@ export function SettingsScreen() {
     );
   }
   return (
-    <View {...marker(layout)} style={styles.screen}>
+    <View {...layoutMarker('settings', layout)} style={styles.screen}>
       <ScrollView style={styles.screen} contentContainerStyle={styles.column}>
         {header}
         <View style={styles.controls}>{controls}</View>
@@ -100,13 +101,6 @@ export function SettingsScreen() {
     </View>
   );
 }
-
-/**
- * The root's test marker, the layout it drew. react-native-web renders `dataSet` as `data-*`
- * attributes, which tests read; native ignores it. React Native's own types leave `dataSet` out,
- * hence the cast (as MatchLabel's).
- */
-const marker = (layout: ScreenLayout) => ({ testID: 'settings', dataSet: { layout } }) as ViewProps;
 
 /**
  * Controls on the left or the right: a pair of radios. Takes the screen's own

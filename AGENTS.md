@@ -211,8 +211,10 @@ Three rules travel with these tokens:
 
 ## 6. UI rules
 
-- **Live Stream is landscape, either way round; everything else is
-  portrait** (ruling 4). P4 still holds inside Live Stream. The encoded
+- **Live Stream's viewfinder is landscape, either way round; Home and
+  Settings follow the phone** (ruling 4, amended by the S1 design follow-up
+  §7). While a broadcast is held the lock never moves, Settings included. P4
+  still holds inside Live Stream. The encoded
   orientation is the side the phone is held, read from the accelerometer, never
   the screen's rotation (A11). The app never rotates text the operator is not
   yet holding the right way: a turn card covers the app until the phone

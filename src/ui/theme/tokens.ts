@@ -157,6 +157,23 @@ export const layout = {
   captionLinesMax: 2,
   /** Board "Settings, landscape": the screen's vertical padding (the board's 12, under the portrait 16). */
   settingsPadV: 12,
+  /** Spec §7: Home's title is the Seazn Club night logo, 200 × 70 (its 800 × 280 file's own 20:7). */
+  logo: { width: 200, height: 70 },
+  /** Q2 (owner, 2026-10-06): the logo is 160 × 56 in landscape, the board's "Home, landscape". */
+  logoLandscape: { width: 160, height: 56 },
+  /**
+   * The PNG's own empty left edge (63 of its 800 px), which the board hangs outside the column so the wordmark
+   * sits on the screen's margin: 16 at 200 wide, 12 at 160 (Main.dc.html, Home-landscape.dc.html).
+   */
+  logoInset: 16,
+  logoInsetLandscape: 12,
+  /** Board "Home, landscape": the screen's padding above and below (the sides are `space.md`) and the gap between its rows. */
+  homePadTop: 12,
+  homePadBottom: 16,
+  homeGap: 12,
+  /** Board "After-you-stopped-landscape": a card laid out as one row has 10 above and below and 12 at its end (16 at its start). */
+  rowCardPadV: 10,
+  rowCardPadEnd: 12,
   /** Board "Settings": the Diagnostics card's section column (the section name sits in it). */
   diagSection: 84,
   /**

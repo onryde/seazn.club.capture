@@ -15,6 +15,7 @@ import {
   selectHeldSlot,
   selectHeldTokenTag,
   selectAutomaticOn,
+  selectBroadcastHeld,
   selectCodeEndedPending,
   selectDestination,
   selectEndReason,
@@ -115,6 +116,48 @@ describe('selectHoldsOrientation', () => {
     [{ kind: 'ended', reason: 'fatal-error', durationMs: null }, false],
   ])('%j holds the lock: %s', (state, holds) => {
     expect(selectHoldsOrientation(snapshot(state))).toBe(holds);
+  });
+});
+
+describe('selectBroadcastHeld', () => {
+  // Q3 (owner) + F16: Home and Settings turn unless a broadcast is held. Paired and Pairing hold no broadcast and
+  // no open camera once the viewfinder is covered, so only Arming onward holds. Written per state kind, from the
+  // phase table in BridgeCore (`phase.holdsBroadcast`), never from the selector.
+  const STATES: readonly (readonly [SessionState, boolean])[] = [
+    [{ kind: 'idle' }, false],
+    [PAIRING, false],
+    [PAIRED, false],
+    [ARMING, true],
+    [ARMED, true],
+    [{ kind: 'connecting', transport: 'srt' }, true],
+    [{ kind: 'publishing', transport: 'srt', sinceEpochMs: 1 }, true],
+    [{ kind: 'degraded', transport: 'rtmps', reason: 'poor-uplink', sinceEpochMs: 1 }, true],
+    [
+      {
+        kind: 'reconnecting',
+        cause: 'uplink-lost',
+        holdRemainingSeconds: 30,
+        holdWindowSeconds: 183,
+        sinceEpochMs: 1,
+      },
+      true,
+    ],
+    [{ kind: 'ended', reason: 'operator-stopped', durationMs: null }, false],
+    [{ kind: 'ended', reason: 'fatal-error', durationMs: null }, false],
+  ];
+
+  it.each(STATES)('%j holds a broadcast: %s', (state, held) => {
+    expect(selectBroadcastHeld(snapshot(state))).toBe(held);
+  });
+
+  it('differs from the orientation hold exactly at Pairing and Paired, and nowhere else', () => {
+    const differing = STATES.filter(
+      ([state]) => selectBroadcastHeld(snapshot(state)) !== selectHoldsOrientation(snapshot(state)),
+    ).map(([state]) => state.kind);
+    expect(differing).toEqual(['pairing', 'paired']);
+    // Anti-vacuity: every kind of the state union is in the table (ten kinds, eleven states).
+    expect(new Set(STATES.map(([state]) => state.kind)).size).toBe(10);
+    expect(STATES).toHaveLength(11);
   });
 });
 

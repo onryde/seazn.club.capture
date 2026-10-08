@@ -45,6 +45,15 @@ export function selectHoldsOrientation(snapshot: EngineSnapshot): boolean {
 }
 
 /**
+ * Whether a broadcast is held (Q3, spec §7): armed or live, from Arming on. Home and Settings follow the phone
+ * unless this is true. Narrower than `selectHoldsOrientation` on purpose: a Pairing or Paired engine holds no
+ * broadcast, and Home and Settings cover the viewfinder, so native closes the capture (F16, read: opaque push,
+ * detach, `viewfinder(false)`, BridgeCore `wanted`) and nothing is left to turn under the operator's hands.
+ */
+export const selectBroadcastHeld = (snapshot: EngineSnapshot): boolean =>
+  selectEngineStatus(snapshot) === 'live';
+
+/**
  * Declared at module scope so their identity is stable across renders.
  * An inline `(s) => s.telemetry.bitrateKbps` is a new function every render,
  * which defeats the memoisation this hook exists for.

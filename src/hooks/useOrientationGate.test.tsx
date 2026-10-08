@@ -312,23 +312,168 @@ describe('useOrientationGate', () => {
     expect(fakes.orientationLock.locks).toEqual(['landscape']);
   });
 
-  it('shows the upright card on Home while a paired engine keeps the landscape lock (R35)', async () => {
-    const { fakes, hook } = await gate('landscape');
+  // Spec §7 retires R35's Home case: Home turns with the phone, so a paired engine back on Home is a free
+  // lock and no card. Opening Home or Settings covers the viewfinder, native closes the capture (F16), and
+  // there is no camera left to hold the landscape lock for.
+  it('Home after a paired viewfinder is free, with no upright card (spec §7, retiring R35)', async () => {
+    const { fakes, hook } = await gate(routeTarget('/stream'));
     expect(fakes.orientationLock.locks).toEqual(['landscape']);
     act(() => fakes.engine.forceState({ kind: 'paired' }));
-    hook.rerender({ to: 'portrait' });
-    expect(hook.result.current).toEqual({ lock: 'keep', card: 'turnUpright' });
+    hook.rerender({ to: routeTarget('/') });
+    expect(hook.result.current).toEqual({ lock: 'free', card: 'none' });
+    expect(fakes.orientationLock.locks).toEqual(['landscape', 'free']);
+  });
+});
+
+describe('useOrientationGate: Home and Settings turn with the phone (spec §7, D9)', () => {
+  afterEach(() => vi.useRealTimers());
+
+  it('Home while idle locks free, shows no card, and stays free as the phone turns', async () => {
+    const { fakes, hook } = await gate(routeTarget('/'));
+    expect(hook.result.current).toEqual({ lock: 'free', card: 'none' });
+    expect(fakes.orientationLock.locks).toEqual(['free']);
+    hold(fakes, SIDEWAYS, 0);
+    expect(hook.result.current).toEqual({ lock: 'free', card: 'none' });
+    hold(fakes, UPRIGHT, 1000);
+    expect(hook.result.current).toEqual({ lock: 'free', card: 'none' });
+    // Positive pair: the free lock is sent once, never per reading, and the gate is not simply dead.
+    expect(fakes.orientationLock.locks).toEqual(['free']);
+  });
+
+  it('Home after a live broadcast that just ended locks free, with no card (retires R35)', async () => {
+    const fakes = createFakePorts();
+    fakes.engine.forceState({ kind: 'publishing', transport: 'srt', sinceEpochMs: 1 });
+    const { hook } = await gate(routeTarget('/stream'), fakes);
     expect(fakes.orientationLock.locks).toEqual(['landscape']);
+    act(() =>
+      fakes.engine.forceState({ kind: 'ended', reason: 'operator-stopped', durationMs: 5 }),
+    );
+    hook.rerender({ to: routeTarget('/') });
+    expect(hook.result.current).toEqual({ lock: 'free', card: 'none' });
+    expect(fakes.orientationLock.locks).toEqual(['landscape', 'free']);
+  });
+
+  it('Settings while live keeps the viewfinder’s landscape lock: no card, no lock call, whatever the hands do', async () => {
+    const fakes = createFakePorts();
+    fakes.engine.forceState({ kind: 'publishing', transport: 'srt', sinceEpochMs: 1 });
+    const { hook } = await gate(routeTarget('/stream'), fakes);
+    hold(fakes, SIDEWAYS, 0);
+    expect(fakes.orientationLock.locks).toEqual(['landscape']);
+    hook.rerender({ to: routeTarget('/stream/settings') });
+    expect(hook.result.current).toEqual({ lock: 'keep', card: 'none' });
+    hold(fakes, UPRIGHT, 1000); // a tilt upright in Settings, mid-broadcast
+    expect(hook.result.current).toEqual({ lock: 'keep', card: 'none' });
+    hold(fakes, SIDEWAYS, 2000);
+    expect(fakes.orientationLock.locks).toEqual(['landscape']);
+  });
+
+  it.each<[string, SessionState]>([
+    ['arming', { kind: 'arming', cause: 'organiser', retrying: false }],
+    ['armed', { kind: 'armed', cause: 'operator', notReady: 'sound' }],
+    ['connecting', { kind: 'connecting', transport: 'srt' }],
+    [
+      'reconnecting',
+      {
+        kind: 'reconnecting',
+        cause: 'uplink-lost',
+        holdRemainingSeconds: 30,
+        holdWindowSeconds: 183,
+        sinceEpochMs: 1,
+      },
+    ],
+  ])(
+    'Settings while %s also keeps the lock: a broadcast is held from Arming on',
+    async (_name, state) => {
+      const fakes = createFakePorts();
+      fakes.engine.forceState(state);
+      const { hook } = await gate(routeTarget('/stream/settings'), fakes);
+      // Nothing locked yet, a broadcast held: landscape at once (R37, for a free target).
+      expect(hook.result.current).toEqual({ lock: 'landscape', card: 'none' });
+      expect(fakes.orientationLock.locks).toEqual(['landscape']);
+      hold(fakes, UPRIGHT, 0);
+      hold(fakes, SIDEWAYS, 1000);
+      hold(fakes, UPRIGHT, 2000);
+      expect(hook.result.current).toEqual({ lock: 'keep', card: 'none' });
+      expect(fakes.orientationLock.locks).toEqual(['landscape']);
+    },
+  );
+
+  it.each<[string, SessionState]>([
+    ['pairing', { kind: 'pairing' }],
+    ['paired', { kind: 'paired' }],
+  ])(
+    'Settings while %s turns with the phone: no broadcast is held (Q3, F16)',
+    async (_name, state) => {
+      const fakes = createFakePorts();
+      fakes.engine.forceState(state);
+      const { hook } = await gate(routeTarget('/stream/settings'), fakes);
+      hold(fakes, UPRIGHT, 0);
+      expect(hook.result.current).toEqual({ lock: 'free', card: 'none' });
+      hold(fakes, SIDEWAYS, 1000);
+      expect(hook.result.current).toEqual({ lock: 'free', card: 'none' });
+      expect(fakes.orientationLock.locks).toEqual(['free']);
+    },
+  );
+
+  it('leaving paired Settings for the viewfinder upright: the hands lock portrait with the turn card, then landscape once turned (F16)', async () => {
+    const fakes = createFakePorts();
+    fakes.engine.forceState({ kind: 'paired' });
+    const { hook } = await gate(routeTarget('/stream/settings'), fakes);
+    hold(fakes, UPRIGHT, 0);
+    expect(hook.result.current).toEqual({ lock: 'free', card: 'none' });
+    hook.rerender({ to: routeTarget('/stream') });
+    expect(hook.result.current).toEqual({ lock: 'portrait', card: 'turnSideways' });
+    expect(fakes.orientationLock.locks).toEqual(['free', 'portrait']);
+    hold(fakes, SIDEWAYS, 1000);
+    expect(hook.result.current).toEqual({ lock: 'landscape', card: 'none' });
+    expect(fakes.orientationLock.locks).toEqual(['free', 'portrait', 'landscape']);
+  });
+
+  it('leaving paired Settings for the viewfinder sideways locks landscape at once, no card (F16)', async () => {
+    const fakes = createFakePorts();
+    fakes.engine.forceState({ kind: 'paired' });
+    const { hook } = await gate(routeTarget('/stream/settings'), fakes);
+    hold(fakes, SIDEWAYS, 0);
+    hook.rerender({ to: routeTarget('/stream') });
+    expect(hook.result.current).toEqual({ lock: 'landscape', card: 'none' });
+    expect(fakes.orientationLock.locks).toEqual(['free', 'landscape']);
+  });
+
+  it('sequence: free on Settings while idle, a remote Go live locks landscape once, and the end frees it again', async () => {
+    const { fakes, hook } = await gate(routeTarget('/stream/settings'));
+    hold(fakes, UPRIGHT, 0);
+    expect(hook.result.current).toEqual({ lock: 'free', card: 'none' });
+    expect(fakes.orientationLock.locks).toEqual(['free']);
+    act(() => fakes.engine.forceState({ kind: 'publishing', transport: 'srt', sinceEpochMs: 1 }));
+    expect(hook.result.current).toEqual({ lock: 'landscape', card: 'none' });
+    expect(fakes.orientationLock.locks).toEqual(['free', 'landscape']);
+    hold(fakes, SIDEWAYS, 1000);
+    hold(fakes, UPRIGHT, 2000); // mid-broadcast: the camera never rotates under it
+    expect(hook.result.current).toEqual({ lock: 'keep', card: 'none' });
+    expect(fakes.orientationLock.locks).toEqual(['free', 'landscape']);
+    act(() =>
+      fakes.engine.forceState({ kind: 'ended', reason: 'operator-stopped', durationMs: 5 }),
+    );
+    expect(hook.result.current).toEqual({ lock: 'free', card: 'none' });
+    expect(fakes.orientationLock.locks).toEqual(['free', 'landscape', 'free']);
   });
 });
 
 describe('routeTarget', () => {
-  it.each([
-    ['/', 'portrait'],
+  // Spec §7: Live Stream's viewfinder is the only landscape-locked route; Home and Settings follow the phone.
+  const ROWS = [
+    ['/', 'free'],
     ['/stream', 'landscape'],
-    ['/stream/settings', 'landscape'],
-    ['/streaming-help', 'portrait'],
-  ])('%s wants %s', (pathname, target) => {
+    ['/stream/settings', 'free'],
+    // The Streaming help route is not Live Stream.
+    ['/streaming-help', 'free'],
+  ] as const;
+
+  it('has its four rows (anti-vacuity)', () => {
+    expect(ROWS).toHaveLength(4);
+  });
+
+  it.each(ROWS)('%s wants %s', (pathname, target) => {
     expect(routeTarget(pathname)).toBe(target);
   });
 });

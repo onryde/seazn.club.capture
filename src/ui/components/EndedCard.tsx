@@ -8,6 +8,7 @@ import {
 import { useT } from '@/hooks/useLanguage';
 import { formatElapsed } from '@/i18n/formatElapsed';
 import type { MessageKey } from '@/i18n/messages';
+import { rowCardPadding, type CardShape } from '@/ui/components/cardShape';
 import { GhostButton } from '@/ui/components/GhostButton';
 import { Text } from '@/ui/components/Text';
 import { colour, layout, radius, space } from '@/ui/theme/tokens';
@@ -16,7 +17,7 @@ import { colour, layout, radius, space } from '@/ui/theme/tokens';
  * `stacked` is the portrait card (the board's After-you-stopped): a header, the lines, then OK. `row` lays the same
  * parts in one row for landscape, where Home has no height to spare (spec §7); Home picks it.
  */
-export type EndedCardLayout = 'stacked' | 'row';
+export type EndedCardLayout = CardShape;
 
 type EndedCardProps = {
   readonly card: EndedCardData;
@@ -92,11 +93,10 @@ const card = {
   borderWidth: layout.cardBorder,
   borderColor: colour.ink3,
   backgroundColor: colour.surface,
-  padding: space.md,
 } as const;
 
 const stackedStyles = StyleSheet.create({
-  card: { ...card, gap: space.sm },
+  card: { ...card, padding: space.md, gap: space.sm },
   // The time goes under the title when it does not fit beside it (a long language on a narrow phone), whole;
   // `flexShrink` is only the backstop for one longer than the card.
   head: {
@@ -111,7 +111,7 @@ const stackedStyles = StyleSheet.create({
 });
 
 const rowStyles = StyleSheet.create({
-  card: { ...card, flexDirection: 'row', alignItems: 'center', gap: space.md },
+  card: { ...card, ...rowCardPadding, flexDirection: 'row', alignItems: 'center', gap: space.md },
   head: { flexShrink: 0 },
   time: {},
   lines: { flex: 1, minWidth: 0 },
