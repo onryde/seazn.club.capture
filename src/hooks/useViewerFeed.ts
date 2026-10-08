@@ -21,7 +21,7 @@ export type ViewerFeed = {
   readonly feed: Feed;
   /** The player's remount key: a retry is a fresh player, because expo-video takes its source at creation. */
   readonly attempt: number;
-  /** Playing, but the player has not shown a picture yet. */
+  /** Playing, but this player has not shown a picture yet (a rebuffer after one is not "starting"). */
   readonly starting: boolean;
   onStatus(status: VideoStatus): void;
 };
@@ -147,7 +147,10 @@ function usePlayer() {
     (reported: VideoStatus) => {
       if (reported !== 'failed') {
         if (reported === 'ready') rung.current = 0;
-        setStatus(reported);
+        // Once this player has shown a picture, a later loading is a rebuffer: the picture stays and no line is
+        // drawn. A real stall reaches `unavailable` by the delivery rule. A new player starts from loading,
+        // because a failure, a park and a reset each put the status back (M54).
+        setStatus((was) => (reported === 'loading' && was === 'ready' ? was : reported));
         return;
       }
       // A player that failed has no picture, whatever it showed before: its replacement is loading.

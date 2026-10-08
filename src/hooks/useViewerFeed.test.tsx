@@ -345,6 +345,36 @@ describe('the viewer layer (spec §9, D6 to D8)', () => {
     expect(rows).toBe(5);
   });
 
+  it('M54 a rebuffer after the first picture keeps the picture: ready, loading, ready never shows the line or drops the player', async () => {
+    const view = await liveWithoutWindow();
+    pressIn(peek());
+    windowLands(view);
+    // Before this player's first picture, loading IS the waiting line.
+    act(() => view.surfaces.videoStatus('loading'));
+    expect(note()).toBe(WAITING);
+    const seen: (string | null)[] = [];
+    for (const status of ['ready', 'loading', 'loading', 'ready'] as const) {
+      act(() => view.surfaces.videoStatus(status));
+      seen.push(note());
+      expect(video()).toBeTruthy();
+    }
+    expect(seen).toEqual([null, null, null, null]);
+    expect(view.surfaces.videoMounts()).toBe(1);
+  });
+
+  it('M54b the replacement of a player that had shown a picture starts from the waiting line again', async () => {
+    const view = await liveWithoutWindow();
+    pressIn(peek());
+    windowLands(view);
+    act(() => view.surfaces.videoStatus('ready'));
+    expect(failAndWait(view, 0)).toEqual({ before: 1, after: 2 });
+    // The new player reports loading, as every player does on mount: still no picture from it.
+    act(() => view.surfaces.videoStatus('loading'));
+    expect(note()).toBe(WAITING);
+    act(() => view.surfaces.videoStatus('ready'));
+    expect(note()).toBeNull();
+  });
+
   it('R1 a press after the give-up tries again with a fresh player, from the first wait', async () => {
     const view = await givenUp();
     const mounts = view.surfaces.videoMounts();
