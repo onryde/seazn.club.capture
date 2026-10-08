@@ -754,6 +754,49 @@ white-label build. The SDK page returned 404 on 2026-10-04.
 - **Silent on** keyframe interval, B-frames, CBR versus VBR, SRT latency and
   passphrase, reconnects, timestamps and phones.
 
+### N23 — Urgent status lines are cut by an ellipsis at 640 × 360, and some lose the part that matters
+
+**Status:** open · owner-actionable copy decision
+**Where:** capture app · the status strip's one message line · `stream.status.*` and `stream.leaveOnAir` ·
+relates to the two-tier message line (2026-10-08) and `src/ui/theme/stripTextFit.test.ts`
+
+The strip has one message line, one line of body text, and a string wider than the strip's text is cut with an
+ellipsis (owner, 2026-10-08, "one single line all the time"). The strip's text is 298 dp wide at 640 × 360 and 462 dp
+at 804 wide and up, where nothing is cut. At 640 × 360, `stripTextFit.test.ts` measures every status string and caption
+in the four languages with the shipped Geist font files' advance widths (no kerning; a three-digit window, a
+destination cut to 24 characters) and pins **57 strings that may be cut: 6 captions, 1 routine line (the French
+"going live, started by the organiser") and 50 urgent status lines.** The urgent tier always wins the line (refusals, trouble,
+a stopped stream, Back's "hold Stop", and "Waiting for Go live"), so it is exactly the tier that most needs to be read
+whole. The 50 by language: en 8, es 15, fr 14, nl 13. The widths are the font file's arithmetic, which over-states
+Chromium by 1 to 11 dp, so the 57 is a superset: a Chromium measurement on 2026-10-08 found 48 of the 57 cut at
+298 dp. Which cuts read badly is a call for the owner's eye on a 640 × 360 phone.
+
+The cuts that lose the point of the line:
+
+- **`stream.leaveOnAir`** (Back's "hold Stop"), in es, fr and nl: the instruction itself is the cut part. Spanish loses
+  "Detener.", French "…ter.", Dutch "…drukt." (what to press).
+- **`holdingNotDelivered`** (en, fr, nl): the window. "38 s of 183" loses "of 183", and French reads "38 s sur 1…".
+- **`waitingGoLive`** (all four) with a long destination: the destination's tail, on the one line that says where Go
+  live will stream.
+- **`waitingDestination`** (en, es, nl): the last word of "pick a destination".
+- **`engineSilent`** (fr, nl): the last word of "engine not responding".
+- **`fellBack`** (nl): "(RTMPS)", which link it fell back to.
+
+The other cut urgent strings are the `stopped*`, `notReady*`, `camera*`, `holding*`, `startRetrying` and `refused*`
+families; the
+full list is the `OVER_NARROW` ratchet in `stripTextFit.test.ts` (which also holds the five captions that are cut, and
+one routine string).
+
+**Open (the owner's call):**
+
+1. Shorten the cut copy. This repo does not change copy on its own; the copy is the i18n dictionaries'. The longest
+   (`leaveOnAir` in es and nl, `waitingGoLive` with a long destination, nl `waitingDestination`) matter most.
+   **Any copy fix has to edit the ratchet in the same change:** `stripTextFit.test.ts` pins the cut list by key and
+   language, and fails both when a pinned string stops being cut and when an unpinned one starts.
+2. Accept it: a 640 × 360 landscape phone is the spec's floor and rare, and nothing is cut from 804 wide up.
+3. Let the strip wrap at the smallest screens. That reverses the one-line ruling and puts the picture's reserve back
+   to two message lines (22 dp more), so it is the most expensive of the three.
+
 ---
 
 ## P5 device spike (Android)
