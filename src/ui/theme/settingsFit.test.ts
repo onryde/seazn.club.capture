@@ -24,13 +24,17 @@ const HEIGHTS = [360, 390, 412] as const;
 /** Q1 (owner, 2026-10-07): nine rows. A literal, so a card that grows or loses a row is noticed. */
 const ROWS = 9;
 /**
- * Back is an icon button, 48 square. Share record's row is 48 too: the board draws its box 36 dp tall, and the cell it sits
- * in (and the header row around it) is 48 so that its hit slop reaches the thumb. SettingsScreen.test.tsx pins both rendered.
+ * Back is an icon button, 48 square. Share record's row is 48 too: the board draws its box 37 dp tall (its outline's
+ * rules are 35.9 dp apart, plus the 1 dp stroke), and the button around it is the 48 dp target. SettingsScreen.test.tsx
+ * and GhostButton.test.tsx pin both rendered.
  */
 const BACK = 48;
 const SHARE = 48;
-/** The board's drawn Share record box (measured 36.9 with antialiasing). GhostButton.test.tsx pins its 6 + 6 of slop. */
-const SHARE_DRAWN = 36;
+/** The board's drawn Share record box, and the padding and 12 dp text it holds (the board's, measured). */
+const SHARE_DRAWN = 37;
+const SHARE_PAD_X = 11;
+const SHARE_BORDER = 1;
+const SHARE_TEXT_PX = 12;
 
 let fitsChecked = 0;
 
@@ -46,6 +50,46 @@ describe('the Diagnostics card fits its half in landscape (spec §6)', () => {
 
   it('the card is 272: 2 × 10 + 48 + 6 + 9 × 22 (canvas padding 10, gap 6)', () => {
     expect(cardHeight).toBe(272);
+  });
+
+  // Every sum in this file adds these up. They are the board's numbers written as literals, so a token that drifts
+  // from the board is red here and not quietly re-added into a new total (SettingsScreen.test.tsx pins the same
+  // numbers in what it renders, so a token and its use cannot drift apart either).
+  it('adds up the board’s numbers: the gaps, the paddings, the rows and the box', () => {
+    expect({
+      gap: space.sm,
+      screenPad: space.md,
+      landscapePadV: layout.settingsPadV,
+      cardPadX: layout.diagPad,
+      cardPadV: layout.diagPadV,
+      cardGap: layout.diagGap,
+      row: layout.diagRow,
+      touch: layout.touch,
+      switchRowPadX: layout.switchRowPadX,
+      switchTrackW: layout.switchTrackW,
+      segmentPadX: layout.segmentPadX,
+      segmentMin: layout.segmentMin,
+      shareBox: layout.ghostCompact,
+      sharePadX: layout.ghostCompactPadX,
+      shareBorder: layout.iconBorder,
+    }).toEqual({
+      gap: 8,
+      screenPad: 16,
+      landscapePadV: 12,
+      cardPadX: 12,
+      cardPadV: 10,
+      cardGap: 6,
+      row: 22,
+      touch: 48,
+      switchRowPadX: 12,
+      switchTrackW: 40,
+      segmentPadX: 12,
+      segmentMin: 66,
+      shareBox: SHARE_DRAWN,
+      sharePadX: SHARE_PAD_X,
+      shareBorder: SHARE_BORDER,
+    });
+    expect(layout.touch).toBe(SHARE); // the row Share sits in is the touch height
   });
 
   it.each(HEIGHTS)('the card fits the halves at a window %i dp tall', (height) => {
@@ -368,10 +412,6 @@ function cardRows(
 
 const fmt = (n: number) => n.toFixed(1);
 
-/** GhostButton's declared padding (space.md) and border (layout.iconBorder), each side. */
-const GHOST_PAD_X = 16;
-const GHOST_BORDER = 1;
-
 /** The owner's Settings board (2026-10-08): the pulse beside the heading is drawn in an 18 dp box; the heading is 18 caps. */
 const BOARD_PULSE_PX = 18;
 const BOARD_TITLE_PX = 18;
@@ -536,63 +576,97 @@ describe('every Diagnostics row fits its line at 640 × 360, in every language (
 
   // Round 2: a share that failed says so ON the button, in place of "Share record", so the card keeps its
   // height (a separate line would push a card with 8 dp of slack past its half). The header is the board's pulse,
-  // the heading and the button on one line: the button is its label plus GhostButton's 16 dp padding and 1 dp
-  // border each side (SettingsScreen.test.tsx pins those rendered). The heading keeps its width; the button is
-  // the cell that gives, wrapping its label to a second line inside its 48 dp minimum, and that is what is proved
-  // here: every label, in every language, fits the line left over in at most the lines a 48 dp button holds, with
-  // no word broken. Where it fits on one line (the English button), it simply does.
-  it.each(LANGS)(
-    '%s: the pulse, the heading, the Share button and its failure message share the header',
-    (lang) => {
-      const { t } = createTranslator(lang);
-      const inner = HALF - 2 * layout.diagPad;
-      const heading = t('diag.title').toUpperCase();
-      for (const char of heading) {
-        expect(
-          condensedBold.has(char.codePointAt(0) ?? 0),
-          `${lang} heading "${heading}" has "${char}"`,
-        ).toBe(true);
-      }
-      const title =
-        condensedBold.width(heading, typeScale.diagTitle.fontSize) +
-        Array.from(heading).length * (typeScale.diagTitle.letterSpacing ?? 0);
-      const labels = [t('diag.share'), t('diag.shareFailed')];
-      expect(new Set(labels).size).toBe(2); // the failure is not the same words as the button
-      const lineHeight = typeScale.control.lineHeight;
-      // The drawn box is 36 and grows with its label: a wrapped label makes it 2 x 18 + the 1 dp border each side, and that
-      // must still sit inside the 48 dp row it is centred in, or the card (272) would grow past its budget.
-      const buttonLines = Math.floor((SHARE - 2 * GHOST_BORDER) / lineHeight);
-      expect(buttonLines).toBe(2); // the 48 dp row holds a button of two 18 dp lines
-      expect(Math.max(SHARE_DRAWN, 2 * lineHeight + 2 * GHOST_BORDER)).toBeLessThanOrEqual(SHARE);
-      // What is left for the button once the pulse, the heading and the two 8 dp gaps are placed.
-      const cell = inner - BOARD_PULSE_PX - title - 2 * space.sm;
-      for (const label of labels) {
-        for (const char of label) {
+  // the heading and the button on one line. The button is its label (12 dp, the board's) plus the box's 11 dp of
+  // padding and 1 dp border each side (SettingsScreen.test.tsx pins those rendered). The heading keeps its width and
+  // the button is the cell that gives. Two widths are proved, the two that bound the app: the half of a 640 dp
+  // landscape window, and a 320 dp portrait phone (the narrowest card there is: 320 - 2 x 16 - 2 x 12 = 264).
+  const HEADER_WIDTHS = [
+    ['640 landscape half', HALF - 2 * layout.diagPad, 272],
+    ['320 portrait card', 320 - 2 * space.md - 2 * layout.diagPad, 264],
+  ] as const;
+  const LINE_16 = typeScale.controlSmall.lineHeight;
+
+  it('the label is the board’s 12 dp on 16, and a wrapped label still fits the 37 dp box', () => {
+    expect(typeScale.controlSmall.fontSize).toBe(SHARE_TEXT_PX);
+    expect(LINE_16).toBe(16);
+    // Two lines and the box's rules: 34, inside the 37 the board draws, so the box does not grow past the row's 48.
+    expect(2 * LINE_16 + 2 * SHARE_BORDER).toBe(34);
+    expect(Math.max(SHARE_DRAWN, 2 * LINE_16 + 2 * SHARE_BORDER)).toBeLessThanOrEqual(SHARE);
+    // Three would not (50 > 48): the proof allows two.
+    expect(3 * LINE_16 + 2 * SHARE_BORDER).toBeGreaterThan(SHARE);
+  });
+
+  it.each(HEADER_WIDTHS)('the %s is the width the proof says it is', (_name, inner, literal) => {
+    expect(inner).toBe(literal);
+  });
+
+  describe.each(HEADER_WIDTHS)('%s', (where, inner) => {
+    it.each(LANGS)(
+      '%s: the pulse, the heading, the Share button and its failure message share the header',
+      (lang) => {
+        const { t } = createTranslator(lang);
+        const heading = t('diag.title').toUpperCase();
+        for (const char of heading) {
           expect(
-            medium.has(char.codePointAt(0) ?? 0),
-            `${lang} button "${label}" has "${char}"`,
+            condensedBold.has(char.codePointAt(0) ?? 0),
+            `${lang} heading "${heading}" has "${char}"`,
           ).toBe(true);
         }
-        const text = cell - 2 * GHOST_PAD_X - 2 * GHOST_BORDER;
-        const lines = wrapLines(label, text, typeScale.control.fontSize);
-        expect(
-          lines,
-          `${lang} "${label}" fits ${fmt(text)} dp of text without a broken word`,
-        ).not.toBe(null);
-        expect(lines ?? 99, `${lang} header with "${label}"`).toBeLessThanOrEqual(buttonLines);
-        if ((lines ?? 0) > 1) wrappedHeaders += 1;
-        headersChecked += 1;
-      }
-    },
-  );
+        const title =
+          condensedBold.width(heading, typeScale.diagTitle.fontSize) +
+          Array.from(heading).length * (typeScale.diagTitle.letterSpacing ?? 0);
+        const labels = [t('diag.share'), t('diag.shareFailed')];
+        expect(new Set(labels).size).toBe(2); // the failure is not the same words as the button
+        // What is left for the button once the pulse, the heading and the two 8 dp gaps are placed.
+        const cell = inner - BOARD_PULSE_PX - title - 2 * space.sm;
+        for (const label of labels) {
+          for (const char of label) {
+            expect(
+              medium.has(char.codePointAt(0) ?? 0),
+              `${lang} button "${label}" has "${char}"`,
+            ).toBe(true);
+          }
+          const text = cell - 2 * SHARE_PAD_X - 2 * SHARE_BORDER;
+          const lines = wrapLines(label, text, typeScale.controlSmall.fontSize);
+          expect(
+            lines,
+            `${where} ${lang} "${label}" fits ${fmt(text)} dp of text without a broken word`,
+          ).not.toBe(null);
+          // At most two lines, the most the 37 dp box holds without growing past its 48 dp row.
+          expect(lines ?? 99, `${where} ${lang} header with "${label}"`).toBeLessThanOrEqual(2);
+          if (inner === 272) {
+            // The 12 dp text fits every label of every language on ONE line in a landscape half: the wrap the 14 dp
+            // label needed (es, fr, the failure messages) is gone.
+            expect(lines, `${where} ${lang} "${label}"`).toBe(1);
+          }
+          if ((lines ?? 0) > 1) wrappedHeaders += 1;
+          headersChecked += 1;
+        }
+      },
+    );
+  });
 
-  it('the narrow cells are real: some label wraps to two lines at 640 (the path under test ran)', () => {
+  // The narrowest card is where a label wraps, so the wrap path is exercised and not assumed: the English failure
+  // message ("Couldn't share. Retry", 117.5 dp of Geist 500 at 12) does not fit the 115.4 dp left at 320 and takes two.
+  it('the 320 portrait card is the narrow one: the English failure message takes two lines there (the wrap ran)', () => {
+    const { t } = createTranslator('en');
+    const heading = t('diag.title').toUpperCase();
+    const title =
+      condensedBold.width(heading, typeScale.diagTitle.fontSize) +
+      Array.from(heading).length * (typeScale.diagTitle.letterSpacing ?? 0);
+    const cell = 264 - BOARD_PULSE_PX - title - 2 * space.sm;
+    const text = cell - 2 * SHARE_PAD_X - 2 * SHARE_BORDER;
+    expect(wrapLines(t('diag.shareFailed'), text, typeScale.controlSmall.fontSize)).toBe(2);
+    expect(wrapLines(t('diag.share'), text, typeScale.controlSmall.fontSize)).toBe(1);
+  });
+
+  it('wrapped some labels in the narrow card and none in the half (anti-vacuity)', () => {
     expect(wrappedHeaders).toBeGreaterThan(0);
   });
 
   it('checked every string it set out to, in every language (anti-vacuity)', () => {
     expect(LANGS).toHaveLength(4);
-    expect(headersChecked).toBe(4 * 2);
+    expect(headersChecked).toBe(2 * 4 * 2); // two widths x four languages x two labels
     expect(probesChecked).toBe(4 * PROBES_PER_LANGUAGE);
     expect(labelsChecked).toBe(4 * 9);
     expect(sectionsChecked).toBe(4 * 4);

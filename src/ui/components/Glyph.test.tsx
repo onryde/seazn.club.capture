@@ -19,7 +19,7 @@ vi.mock('react-native-svg', async () => {
 
 // setup-ui.ts replaces Glyph with a marker for every other suite; this one is of the drawing itself.
 const actual: typeof GlyphModule = await vi.importActual('@/ui/components/Glyph');
-const { Glyph } = actual;
+const { Glyph, GLYPH_NAMES } = actual;
 
 /** What each glyph draws, as the canvas has it (version 23): its path data, then its circles and rect. */
 const DRAWN = [
@@ -75,6 +75,23 @@ describe('Glyph draws the canvas’s line icons (spec §3)', () => {
   it('drew all nine glyphs (anti-vacuity)', () => {
     expect(DRAWN).toHaveLength(9);
     expect(drawn).toBe(9);
+  });
+
+  // Every glyph the module declares is drawn above, and the table above holds no glyph the module does not declare:
+  // a tenth glyph added to the module without a row here fails this, instead of being drawn by nothing that checks it.
+  it('declares exactly the glyphs this suite draws', () => {
+    expect(GLYPH_NAMES).toHaveLength(9);
+    expect([...GLYPH_NAMES].sort()).toEqual(DRAWN.map(([name]) => name as string).sort());
+  });
+
+  // It used to fall through to the pulse for any name it did not know, so a mistyped name drew a heartbeat.
+  it('refuses a name it has no drawing for, by name, and draws nothing', () => {
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    try {
+      expect(() => render(<Glyph name={'nope' as never} tone="ink" />)).toThrow(/Glyph.*nope/);
+    } finally {
+      errors.mockRestore();
+    }
   });
 
   it('draws the mic’s capsule as the canvas has it: 9, 3, 6 wide, 11 tall, corners of 3', () => {

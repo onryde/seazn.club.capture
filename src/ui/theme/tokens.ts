@@ -228,10 +228,12 @@ export const layout = {
   /** The least height of anything a thumb must hit on a tripod: a switch row, a side segment. */
   touch: 48,
   /**
-   * Board "Settings": the Share record button's drawn box is 36 dp tall (measured 36.9 with antialiasing). Its touch
-   * target stays `touch`: the rest is hit slop, half above and half below.
+   * Board "Settings": the Share record button's drawn box is 37 dp tall (its outline's two rules are 35.9 dp apart on
+   * the board, plus the 1 dp stroke). The button around it stays `touch` tall: the box is drawn inside the target.
    */
-  ghostCompact: 36,
+  ghostCompact: 37,
+  /** Board "Settings": that box's side padding (measured 11.2 dp at the board's 12 dp text). */
+  ghostCompactPadX: 11,
   /** Board "Settings": a switch row's side padding (the label's left edge and the switch's right). */
   switchRowPadX: 12,
   /** Board "Settings": the pill switch, 40 x 24, its knob 18, the knob 3 in from the track's edge on every side. */

@@ -7,9 +7,9 @@ import { useStreamSettings } from '@/hooks/useStreamSettings';
 import type { ControlSide, StreamSettings } from '@/services/streamSettingsStore';
 import { ChoiceRow } from '@/ui/components/ChoiceRow';
 import { DiagnosticsCard } from '@/ui/components/DiagnosticsCard';
-import { GhostButton } from '@/ui/components/GhostButton';
 import { SubScreenHeader } from '@/ui/components/SubScreenHeader';
 import { Text } from '@/ui/components/Text';
+import { TextLink } from '@/ui/components/TextLink';
 import { layoutMarker } from '@/ui/layoutMarker';
 import { colour, layout as metrics, plateInk, radius, space } from '@/ui/theme/tokens';
 
@@ -69,8 +69,7 @@ export function SettingsScreen() {
       />
       <Text variant="metricUnit">{t('settings.automatic.hint')}</Text>
       <SideChoice side={settings.side} change={change} />
-      <Text variant="control">{t('settings.power.label')}</Text>
-      <Text variant="body">{t('settings.power.advice')}</Text>
+      <Text variant="metricUnit">{`${t('settings.power.label')} — ${t('settings.power.advice')}`}</Text>
       <Licences />
       {saveFailed ? <Text variant="status">{t('settings.saveFailed')}</Text> : null}
     </>
@@ -162,7 +161,7 @@ function Licences() {
   const toggle = useCallback(() => setOpen((was) => !was), []);
   return (
     <View style={styles.licences}>
-      <GhostButton label={t('settings.licences.label')} onPress={toggle} expanded={open} />
+      <TextLink label={t('settings.licences.label')} onPress={toggle} expanded={open} />
       {open
         ? LICENCES.map((entry) => (
             <Text key={entry.name} variant="metricUnit">

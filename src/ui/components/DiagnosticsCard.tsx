@@ -90,13 +90,13 @@ const styles = StyleSheet.create({
     borderRadius: radius.card,
     overflow: 'hidden',
   },
-  // 48 high though the board's Share button is drawn 36: the button's hit slop must lie inside its parents' bounds.
-  header: { flexDirection: 'row', alignItems: 'center', gap: space.sm, minHeight: layout.touch },
+  // As tall as its tallest cell: Share record's button, 48 (the board's 37 dp box is drawn inside it).
+  header: { flexDirection: 'row', alignItems: 'center', gap: space.sm },
   // The heading keeps its width and takes the line, so the Share button is pushed right; the button's cell is the
-  // one that gives when the half is narrow, its label wrapping to a second line inside the same 48 dp (the heading is
-  // wider than the Geist 14 it replaced, and "Compartir registro" no longer fits beside it at 640).
+  // one that gives when the half is narrow (a 320 dp phone: the longest failure message wraps to a second line inside
+  // the box, settingsFit.test.ts).
   title: { flexGrow: 1, flexShrink: 0 },
-  share: { flexShrink: 1, minHeight: layout.touch, justifyContent: 'center' },
+  share: { flexShrink: 1 },
   row: {
     flexDirection: 'row',
     alignItems: 'center',

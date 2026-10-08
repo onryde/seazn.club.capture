@@ -1,9 +1,20 @@
-import { memo } from 'react';
+import { memo, type ReactElement } from 'react';
 import Svg, { Circle, Path, Rect } from 'react-native-svg';
 import { colour } from '@/ui/theme/tokens';
 
-export type GlyphName =
-  'camera' | 'mic' | 'network' | 'settings' | 'home' | 'shutter' | 'qr' | 'back' | 'pulse';
+/** Every glyph, in one list: the lookup below is typed over it, so a name without a drawing does not compile. */
+export const GLYPH_NAMES = [
+  'camera',
+  'mic',
+  'network',
+  'settings',
+  'home',
+  'shutter',
+  'qr',
+  'back',
+  'pulse',
+] as const;
+export type GlyphName = (typeof GLYPH_NAMES)[number];
 
 /**
  * What a glyph is drawn in, by the canvas: ink on a readiness chip (its outline carries the state),
@@ -29,6 +40,9 @@ const SIZE = 22;
  * canvas's, version 23. The stroke is the tone's colour.
  */
 export const Glyph = memo(function Glyph({ name, slashed = false, tone, size = SIZE }: GlyphProps) {
+  const Drawing = DRAWINGS[name];
+  // tsc makes this unreachable for a typed caller; a name from elsewhere is refused by name, not drawn as another glyph.
+  if (Drawing === undefined) throw new Error(`Glyph: no drawing for "${String(name)}"`);
   return (
     <Svg
       width={size}
@@ -40,28 +54,23 @@ export const Glyph = memo(function Glyph({ name, slashed = false, tone, size = S
       strokeLinecap="round"
       strokeLinejoin="round"
     >
-      {name === 'camera' ? (
-        <CameraGlyph slashed={slashed} />
-      ) : name === 'mic' ? (
-        <MicGlyph />
-      ) : name === 'network' ? (
-        <NetworkGlyph />
-      ) : name === 'settings' ? (
-        <SettingsGlyph />
-      ) : name === 'home' ? (
-        <HomeGlyph />
-      ) : name === 'shutter' ? (
-        <ShutterGlyph />
-      ) : name === 'qr' ? (
-        <QrGlyph />
-      ) : name === 'back' ? (
-        <BackGlyph />
-      ) : (
-        <PulseGlyph />
-      )}
+      <Drawing slashed={slashed} />
     </Svg>
   );
 });
+
+/** The drawing of each glyph. Typed over every name, so adding one to `GLYPH_NAMES` without a drawing is a type error. */
+const DRAWINGS: Record<GlyphName, (props: { slashed: boolean }) => ReactElement> = {
+  camera: CameraGlyph,
+  mic: MicGlyph,
+  network: NetworkGlyph,
+  settings: SettingsGlyph,
+  home: HomeGlyph,
+  shutter: ShutterGlyph,
+  qr: QrGlyph,
+  back: BackGlyph,
+  pulse: PulseGlyph,
+};
 
 function CameraGlyph({ slashed }: { slashed: boolean }) {
   return (

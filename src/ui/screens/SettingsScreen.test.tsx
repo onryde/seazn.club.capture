@@ -4,6 +4,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { EngineSnapshot } from '@/engine/CaptureEnginePort';
 import type { NativeCaptureEngine } from '@/engine/nativeCaptureEngine';
 import en from '@/i18n/en.json';
+import { LANGS } from '@/i18n/language';
+import { createTranslator } from '@/i18n/translate';
 import type { KeyValueStore } from '@/services/KeyValueStore';
 import { useEngineSync } from '@/hooks/useEngineSync';
 import { HOLD_MS } from '@/hooks/useHold';
@@ -40,6 +42,11 @@ function SyncedSettings() {
 }
 
 const shareButton = () => screen.getByRole('button', { name: 'Share record' });
+/** The board's Power paragraph: the existing label and advice, one em dash between (no new copy). */
+const powerParagraph = (lang: (typeof LANGS)[number]) => {
+  const { t } = createTranslator(lang);
+  return `${t('settings.power.label')} — ${t('settings.power.advice')}`;
+};
 const faceOf = (text: string) => getComputedStyle(screen.getByText(text)).fontFamily;
 const diagRows = () => screen.getAllByTestId('diag-row');
 
@@ -182,11 +189,7 @@ describe('Settings (spec §4)', () => {
 
   it('gives the power advice', () => {
     renderSettings();
-    expect(
-      screen.getByText(
-        'A long match drains the battery. Plug in, or use a power bank on the tripod.',
-      ),
-    ).toBeTruthy();
+    expect(screen.getByText(powerParagraph('en'))).toBeTruthy();
   });
 
   it('goes back to the camera, by its button and by Back', () => {
@@ -524,16 +527,16 @@ describe('Diagnostics inside Settings (spec §6, Q1)', () => {
     expect(view.share.shared).toHaveLength(1);
   });
 
-  // settingsFit.test.ts adds the header up with GhostButton's padding (16) and border (1) each side.
-  it('the Share button wears the padding and border the fit test adds', () => {
+  // settingsFit.test.ts adds the header up with the Share box's padding (11) and border (1) each side.
+  it('the Share box wears the padding and border the fit test adds', () => {
     renderSettings();
-    const style = getComputedStyle(shareButton());
+    const style = getComputedStyle(within(shareButton()).getByTestId('ghost-box'));
     expect([
       style.paddingLeft,
       style.paddingRight,
       style.borderLeftWidth,
       style.borderRightWidth,
-    ]).toEqual(['16px', '16px', '1px', '1px']);
+    ]).toEqual(['11px', '11px', '1px', '1px']);
   });
 
   it('plays any fake scene in a development build', () => {
@@ -605,7 +608,7 @@ describe('Diagnostics inside Settings (spec §6, Q1)', () => {
 
 describe('where Diagnostics sits (spec §6)', () => {
   // SP2 (F2): the licences were already under the power advice; this pins that order with the card after it.
-  it('orders the switch hints, the side radios, the power advice, the licences, then the card', () => {
+  it('orders the switch hints, the side radios, the power paragraph, the licences, then the card', () => {
     renderSettings();
     expect(layoutOf()).toBe('portrait'); // jsdom's 0 × 0 default (D10)
     const named: readonly (readonly [string, HTMLElement])[] = [
@@ -615,12 +618,11 @@ describe('where Diagnostics sits (spec §6)', () => {
       ['automatic hint', screen.getByText(en['settings.automatic.hint'])],
       ['left radio', screen.getByRole('radio', { name: 'Left' })],
       ['right radio', screen.getByRole('radio', { name: 'Right' })],
-      ['power label', screen.getByText(en['settings.power.label'])],
-      ['power advice', screen.getByText(en['settings.power.advice'])],
+      ['power paragraph', screen.getByText(powerParagraph('en'))],
       ['licences', screen.getByRole('button', { name: 'Open-source licences' })],
       ['Diagnostics card', screen.getByTestId('diagnostics-card')],
     ];
-    expect(named).toHaveLength(10);
+    expect(named).toHaveLength(9);
     const misordered = named.slice(1).flatMap(([name, element], at) => {
       const before = named[at]?.[1];
       const follows = before?.compareDocumentPosition(element) === Node.DOCUMENT_POSITION_FOLLOWING;
@@ -691,8 +693,8 @@ describe('where Diagnostics sits (spec §6)', () => {
     for (const row of diagRows()) expect(getComputedStyle(row).minHeight).toBe('22px');
   });
 
-  // settingsFit.test.ts adds Back and the Share record row as 48 each: Back is the icon button's side, Share's is its
-  // touch cell (the visible box is the board's 36, and its hit slop fills the rest). This is the rendered witness.
+  // settingsFit.test.ts adds Back and the Share record row as 48 each: Back is the icon button's side and Share's is
+  // its button, whose 37 dp box is drawn inside it. This is the rendered witness.
   it('in landscape, Back and the Share record row are 48 dp tall, the heights the fit test adds', () => {
     setWindowSize(640, 360);
     renderSettings();
@@ -701,12 +703,7 @@ describe('where Diagnostics sits (spec §6)', () => {
       name: 'Back to camera',
       height: '48px',
     });
-    const cell = shareButton().parentElement as HTMLElement;
-    const header = cell.parentElement as HTMLElement;
-    expect([getComputedStyle(cell).minHeight, getComputedStyle(header).minHeight]).toEqual([
-      '48px',
-      '48px',
-    ]);
+    expect(getComputedStyle(shareButton()).minHeight).toBe('48px');
   });
 
   // Owner, device pass 2026-10-08 (a 360 dp tall phone): the card ran past the screen's foot and its last rows
@@ -794,6 +791,7 @@ const PAINT = StyleSheet.create({
   ink3: { backgroundColor: colour.ink3 },
   inkText: { color: colour.ink },
   ink2Text: { color: colour.ink2 },
+  ink3Text: { color: colour.ink3 },
   groundText: { color: colour.ground },
   ink3Edge: { borderWidth: 1, borderColor: colour.ink3 },
 });
@@ -918,13 +916,23 @@ describe('the switch rows wear the board (filled row, pill switch)', () => {
     expect(off.backgroundColor).not.toBe(on.backgroundColor);
   });
 
-  it('keeps the same 40 x 24 box in both states, so a press does not move the row', () => {
+  it('keeps the same 40 x 24 box in both states, so a press does not move the row', async () => {
     renderSettings();
-    const before = getComputedStyle(trackOf('Score preview'));
-    const sizeOn = [before.width, before.height, before.borderTopWidth, before.paddingTop];
+    const sizeOf = () => {
+      const style = getComputedStyle(trackOf('Score preview'));
+      return [style.width, style.height, style.borderTopWidth, style.paddingTop];
+    };
+    const on = sizeOf();
+    const onFill = getComputedStyle(trackOf('Score preview')).backgroundColor;
+    expect(switchNamed('Score preview').getAttribute('aria-checked')).toBe('true');
     fireEvent.click(switchNamed('Score preview'));
-    const after = getComputedStyle(trackOf('Score preview'));
-    expect([after.width, after.height, after.borderTopWidth, after.paddingTop]).toEqual(sizeOn);
+    // The press really flipped it (else on === off proves nothing): the state said and the picture changed.
+    await waitFor(() =>
+      expect(switchNamed('Score preview').getAttribute('aria-checked')).toBe('false'),
+    );
+    expect(getComputedStyle(trackOf('Score preview')).backgroundColor).not.toBe(onFill);
+    expect(sizeOf()).toEqual(on);
+    expect(on).toEqual(['40px', '24px', '1.5px', '1.5px']);
   });
 
   it('is still one control: the whole row presses, and the switch is hidden from a screen reader', async () => {
@@ -1039,6 +1047,7 @@ describe('the side control wears the board (a segmented pair on the label’s li
 });
 
 describe('Back wears the board (a square outlined icon button, no word)', () => {
+  const backNames = new Set<string>();
   it('is a 48 dp outlined square holding a chevron, named Back to camera', () => {
     renderSettings();
     const back = screen.getByRole('button', { name: 'Back to camera' });
@@ -1053,9 +1062,19 @@ describe('Back wears the board (a square outlined icon button, no word)', () => 
     expect(drawn.dataset.tone).toBe('ink2');
   });
 
-  it('keeps its name in every language', () => {
-    renderSettings({ deviceLanguages: ['es'] });
-    expect(screen.getByRole('button', { name: 'Volver a la cámara' }).textContent).toBe('');
+  it.each(LANGS)('%s: keeps its name, and draws no word', (lang) => {
+    renderSettings({ deviceLanguages: [lang] });
+    const name = createTranslator(lang).t('stream.back');
+    const back = screen.getByRole('button', { name });
+    expect(back.textContent).toBe('');
+    expect(within(back).getByTestId('glyph').dataset.name).toBe('back');
+    backNames.add(name);
+  });
+
+  it('is named in four languages, four different ways (anti-vacuity)', () => {
+    expect(LANGS).toHaveLength(4);
+    expect(backNames.size).toBe(4);
+    expect(backNames.has('Back to camera')).toBe(true);
   });
 
   it('stays the first control of the header, before the LIVE plate and the title', () => {
@@ -1118,11 +1137,20 @@ describe('the Diagnostics heading wears the board (a lime pulse, then the name i
     expect(heading().textContent).toBe('Diagnostics'); // upper-cased by style, not by new copy
   });
 
-  it('upper-cases the other languages by style too', () => {
-    renderSettings({ deviceLanguages: ['es'] });
-    const title = within(card()).getByText('Diagnóstico');
-    expect(title.textContent).toBe('Diagnóstico');
+  const headings = new Set<string>();
+  it.each(LANGS)('%s: upper-cases by style, with the copy left as written', (lang) => {
+    renderSettings({ deviceLanguages: [lang] });
+    const written = createTranslator(lang).t('diag.title');
+    const title = within(card()).getByText(written);
+    expect(title.textContent).toBe(written);
     expect(getComputedStyle(title).textTransform).toBe('uppercase');
+    expect(getComputedStyle(title).fontFamily).toContain('BarlowCondensed_700Bold');
+    headings.add(written);
+  });
+
+  it('upper-cased four headings, and they are four words (anti-vacuity)', () => {
+    expect(headings.size).toBe(LANGS.length);
+    expect(headings.size).toBe(4);
   });
 
   // The header is the pulse, the title and the Share button on one line. The title takes the line (the button is
@@ -1138,32 +1166,175 @@ describe('the Diagnostics heading wears the board (a lime pulse, then the name i
   });
 });
 
-// The board's Share record is a 36 dp box (measured 36.9 with its antialiasing). A tripod thumb still needs 48, so the
-// visible box keeps the board's height and its hit slop and its cell supply the rest (GhostButton.test.tsx pins the
-// slop; jsdom's react-native-web ignores hitSlop, so the cell is what is rendered here).
-describe('Share record wears the board’s height and keeps a 48 dp touch target', () => {
-  it('draws a 36 dp box inside a 48 dp header row and a 48 dp cell, centred in it', () => {
+// The board's Share record is a 37 dp box (its outline's rules are 35.9 dp apart, plus the 1 dp stroke) in 12 dp text. A
+// tripod thumb needs 48, and TalkBack reads a node's bounds (a hit slop is not one): the button is the 48 dp target and
+// the board's box is drawn inside it (GhostButton.test.tsx pins the component; this is the screen's use of it).
+describe('Share record wears the board’s box inside a 48 dp button', () => {
+  const box = () => within(shareButton()).getByTestId('ghost-box');
+
+  it('is a 48 dp button holding a 37 dp box, centred in the header row', () => {
     renderSettings();
-    const button = getComputedStyle(shareButton());
-    expect(button.minHeight).toBe('36px');
-    const cell = shareButton().parentElement as HTMLElement;
-    expect(getComputedStyle(cell).minHeight).toBe('48px'); // the hit slop must lie inside its parent on Android
-    expect(getComputedStyle(cell).justifyContent).toBe('center');
-    const header = cell.parentElement as HTMLElement;
-    expect(getComputedStyle(header).minHeight).toBe('48px');
+    expect(getComputedStyle(shareButton()).minHeight).toBe('48px');
+    expect(getComputedStyle(box()).minHeight).toBe('37px');
+    const header = (shareButton().parentElement as HTMLElement).parentElement as HTMLElement;
     expect(getComputedStyle(header).alignItems).toBe('center');
+    expect(getComputedStyle(header).flexDirection).toBe('row');
   });
 
-  it('keeps its width rules: GhostButton’s 16 dp padding and 1 dp border (the fit test adds them)', () => {
+  it('sets its label at 12 dp, the board’s', () => {
     renderSettings();
-    const style = getComputedStyle(shareButton());
-    expect([style.paddingLeft, style.borderLeftWidth]).toEqual(['16px', '1px']);
+    expect(getComputedStyle(within(box()).getByText('Share record')).fontSize).toBe('12px');
   });
 
-  it('is the only compact button: the licences button keeps its 48 dp box', () => {
+  it('is the only compact button on the screen: the box is not on any other button', () => {
     renderSettings();
-    const licences = screen.getByRole('button', { name: 'Open-source licences' });
-    expect(getComputedStyle(licences).minHeight).toBe('48px');
+    expect(screen.getAllByTestId('ghost-box')).toHaveLength(1);
+  });
+
+  it('keeps the same box and the same 48 dp when a share fails and the label changes', async () => {
+    const view = renderSettings();
+    vi.spyOn(view.share, 'share').mockRejectedValueOnce(new Error('share sheet refused'));
+    fireEvent.click(shareButton());
+    const failed = await screen.findByRole('button', { name: "Couldn't share. Retry" });
+    expect(getComputedStyle(failed).minHeight).toBe('48px');
+    expect(getComputedStyle(within(failed).getByTestId('ghost-box')).minHeight).toBe('37px');
+  });
+});
+
+// The fit proofs (settingsFit.test.ts) add rows up from these: the board's gaps and paddings as numbers. A proof that
+// reads the token it is judging proves the token, so these read what the screen renders, and the fit test pins the
+// tokens to the same literals.
+describe('the rows wear the gaps and paddings the fit proofs add up', () => {
+  const gapOf = (element: Element) => getComputedStyle(element).getPropertyValue('gap');
+
+  it.each(SWITCHES)(
+    '%s: 12 dp at each side of the row, 8 dp between its label and its switch',
+    (name) => {
+      renderSettings();
+      const row = getComputedStyle(switchNamed(name));
+      expect([row.paddingLeft, row.paddingRight]).toEqual(['12px', '12px']);
+      expect(gapOf(switchNamed(name))).toBe('8px');
+    },
+  );
+
+  it('puts 8 dp between the side control’s label and its pair, and 12 dp inside each segment', () => {
+    renderSettings();
+    const pair = screen.getByRole('radiogroup', { name: 'Controls on the' });
+    expect(gapOf(pair.parentElement as HTMLElement)).toBe('8px');
+    for (const name of ['Left', 'Right']) {
+      const segment = getComputedStyle(within(pair).getByRole('radio', { name }));
+      expect([segment.paddingLeft, segment.paddingRight]).toEqual(['12px', '12px']);
+    }
+  });
+
+  it('puts 8 dp between the Diagnostics pulse, its heading and Share record', () => {
+    renderSettings();
+    const header = screen.getByText('Diagnostics').parentElement as HTMLElement;
+    expect(gapOf(header)).toBe('8px');
+  });
+
+  it('puts 6 dp between the card’s header and its rows', () => {
+    renderSettings();
+    expect(getComputedStyle(screen.getByTestId('diagnostics-card')).getPropertyValue('gap')).toBe(
+      '6px',
+    );
+  });
+
+  it('pads the portrait column 16 dp all round (the 320 dp card is 320 - 2 x 16 wide)', () => {
+    renderSettings();
+    const column = screen.getByTestId('diagnostics-card').parentElement as HTMLElement;
+    const style = getComputedStyle(column);
+    expect([style.paddingTop, style.paddingRight, style.paddingBottom, style.paddingLeft]).toEqual([
+      '16px',
+      '16px',
+      '16px',
+      '16px',
+    ]);
+  });
+
+  it('pads the landscape screen 16 dp at the sides and 12 above and below', () => {
+    setWindowSize(640, 360);
+    renderSettings();
+    const style = getComputedStyle(screen.getByTestId('settings'));
+    expect([style.paddingTop, style.paddingRight, style.paddingBottom, style.paddingLeft]).toEqual([
+      '12px',
+      '16px',
+      '12px',
+      '16px',
+    ]);
+  });
+
+  it('puts 8 dp between the way back and the two halves, 16 between the halves, in landscape', () => {
+    setWindowSize(640, 360);
+    renderSettings();
+    const root = screen.getByTestId('settings');
+    expect(getComputedStyle(root).getPropertyValue('gap')).toBe('8px');
+    expect(getComputedStyle(screen.getByTestId('settings-halves')).getPropertyValue('gap')).toBe(
+      '16px',
+    );
+  });
+});
+
+// The board sets the Power line and the licences link as quiet small print: one paragraph in the muted violet (the
+// label and the advice joined by a dash, no new copy), and a bare underlined line, 12 dp.
+describe('Power and the licences link wear the board (small print in ink3)', () => {
+  const powers = new Set<string>();
+
+  it.each(LANGS)(
+    '%s: Power is one 12 dp ink3 paragraph, the label then a dash then the advice',
+    (lang) => {
+      renderSettings({ deviceLanguages: [lang] });
+      const { t } = createTranslator(lang);
+      const paragraph = screen.getByText(powerParagraph(lang));
+      const style = getComputedStyle(paragraph);
+      expect([style.fontSize, style.lineHeight, style.fontFamily]).toEqual([
+        '12px',
+        '16px',
+        font.bodyMedium,
+      ]);
+      expect(style.color).toBe(painted(PAINT.ink3Text, 'color'));
+      // One element: the label is not a line of its own, nor the advice.
+      // (in the settings column: Spanish names a Diagnostics row "Batería" too, and that one is the card's own)
+      const column = within(paragraph.parentElement as HTMLElement);
+      expect(column.queryByText(t('settings.power.label'))).toBeNull();
+      expect(column.queryByText(t('settings.power.advice'))).toBeNull();
+      expect(paragraph.textContent).toBe(
+        `${t('settings.power.label')} — ${t('settings.power.advice')}`,
+      );
+      powers.add(paragraph.textContent ?? '');
+    },
+  );
+
+  it('is set like the hints above it, which the board draws alike (four languages, four paragraphs)', () => {
+    expect(powers.size).toBe(4);
+    renderSettings();
+    const hint = getComputedStyle(screen.getByText(en['settings.overlay.hint']));
+    const power = getComputedStyle(screen.getByText(powerParagraph('en')));
+    expect([power.fontSize, power.lineHeight, power.color]).toEqual([
+      hint.fontSize,
+      hint.lineHeight,
+      hint.color,
+    ]);
+  });
+
+  it('draws the licences as an underlined 12 dp ink3 line in a 48 dp button, with no box around it', () => {
+    renderSettings();
+    const link = screen.getByRole('button', { name: 'Open-source licences' });
+    const text = getComputedStyle(within(link).getByText('Open-source licences'));
+    expect([text.fontSize, text.textDecorationLine]).toEqual(['12px', 'underline']);
+    expect(text.color).toBe(painted(PAINT.ink3Text, 'color'));
+    expect(getComputedStyle(link).minHeight).toBe('48px');
+    expect(getComputedStyle(link).borderTopWidth).toBe('0px');
+    expect(within(link).queryByTestId('ghost-box')).toBeNull();
+  });
+
+  it('still opens and closes the list from that line (it is a disclosure, not a link away)', () => {
+    renderSettings();
+    const link = screen.getByRole('button', { name: 'Open-source licences' });
+    expect(link.getAttribute('aria-expanded')).toBe('false');
+    fireEvent.click(link);
+    expect(link.getAttribute('aria-expanded')).toBe('true');
+    expect(screen.getByText('libsrt — MPL-2.0')).toBeTruthy();
   });
 });
 
