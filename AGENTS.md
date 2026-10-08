@@ -266,7 +266,8 @@ Three rules travel with these tokens:
   scoring is third of four because the flexible viewers cell has to end the
   row. The round line sits
   above the match label in the status strip and hides when the strip has no room
-  for it (long doubles on a phone 360 dp tall); the camera box never gives way
+  for it (it is decided on measured heights, so a long doubles label on a phone
+  360 dp tall can hide it while a compact one still shows it); the camera box never gives way
   for it (design follow-up §2).
 - Every QR carries the Seazn logo in the centre at error correction H
   (`src/domain/qr/seaznQr.ts`); the app draws it from a pure plan, at a whole
