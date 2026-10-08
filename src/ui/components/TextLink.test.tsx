@@ -49,6 +49,14 @@ describe('TextLink (the board’s underlined link)', () => {
     expect(label.textDecorationLine).toBe('underline');
   });
 
+  // One tab stop: the button itself is focusable, and the line inside it is not a second one.
+  it('is one focusable, the link, and nothing inside it', () => {
+    render(<TextLink label="Open-source licences" onPress={vi.fn()} />);
+    expect(link().getAttribute('tabindex')).toBe('0');
+    expect(link().querySelectorAll('[tabindex]')).toHaveLength(0);
+    expect(link().children).toHaveLength(1); // anti-vacuity: the line that must not be focusable is there
+  });
+
   it('presses once, and says whether what it opens is open', () => {
     const onPress = vi.fn();
     const view = render(

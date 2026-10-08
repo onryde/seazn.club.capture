@@ -16,6 +16,11 @@ function painted(style: { color: string }): string {
 }
 
 const button = () => screen.getByRole('button', { name: 'Share record' });
+/** One tab stop: the button itself is focusable, and no element inside it is. */
+function expectOneFocusable(target: HTMLElement) {
+  expect(target.getAttribute('tabindex')).toBe('0');
+  expect(target.querySelectorAll('[tabindex]')).toHaveLength(0);
+}
 const boxOf = () => within(button()).queryByTestId('ghost-box');
 
 describe('GhostButton (the secondary action)', () => {
@@ -25,6 +30,7 @@ describe('GhostButton (the secondary action)', () => {
     expect(style.minHeight).toBe('48px'); // the tripod target (AGENTS §5)
     expect([style.paddingLeft, style.borderLeftWidth]).toEqual(['16px', '1px']);
     expect(boxOf()).toBeNull();
+    expectOneFocusable(button());
   });
 
   // The owner's Settings board draws Share record a 37 dp box (measured: its outline's two rules are 35.9 dp apart, plus
@@ -57,6 +63,13 @@ describe('GhostButton (the secondary action)', () => {
       ]);
       expect(label.color).toBe(painted(PAINT.ink2));
       expect(label.color).not.toBe(painted(PAINT.ink));
+    });
+
+    // The button is the one thing a keyboard or a switch reaches: the box inside it must not be a second stop.
+    it('is one focusable, the button, and nothing inside it', () => {
+      render(<GhostButton label="Share record" onPress={vi.fn()} compact />);
+      expectOneFocusable(button());
+      expect(boxOf()).not.toBeNull(); // anti-vacuity: the box that must not be focusable is there
     });
 
     it('is still one button: pressed anywhere in the 48 dp it presses once', () => {

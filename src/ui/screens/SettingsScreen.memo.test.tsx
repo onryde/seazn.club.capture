@@ -1,5 +1,5 @@
 import { act, fireEvent, screen, waitFor } from '@testing-library/react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { SettingsScreen } from '@/ui/screens/SettingsScreen';
 import { renderWithPorts } from '../../../test/renderWithPorts';
 
@@ -48,7 +48,23 @@ const bitrateValue = () =>
  * re-renders Settings and never the card.
  */
 describe('Settings re-renders only what changed (spec §6)', () => {
-  beforeEach(resetCalls);
+  // The fake engine reports on a real 1 Hz setInterval (FakeCaptureEngine) and the card's clock ticks on another
+  // (useClockTick). Either firing between resetCalls and an assertion re-renders the card, which flaked the test that
+  // expects it NOT to. Only the intervals are faked (before the render creates them), so nothing ticks unless a test
+  // advances it, and waitFor, which runs on setTimeout, still works.
+  beforeEach(() => {
+    resetCalls();
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
+  });
+  afterEach(() => vi.useRealTimers());
+
+  it('the 1 Hz tick itself (the engine’s report and the clock) re-renders the card and not Settings', () => {
+    renderWithPorts(<SettingsScreen />);
+    resetCalls();
+    act(() => vi.advanceTimersByTime(1000));
+    expect(calls.diagnostics).toBeGreaterThan(0); // the tick is the faked one: it reaches the card
+    expect(calls.settings).toBe(0);
+  });
 
   it('a 1 Hz report re-renders the Diagnostics card and not Settings', () => {
     const view = renderWithPorts(<SettingsScreen />);
