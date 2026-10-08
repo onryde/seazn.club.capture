@@ -303,7 +303,7 @@ describe('A18: SRT not offered (Diagnostics)', () => {
   });
 
   it.each([
-    ['es', 'RTMPS solo'],
+    ['es', 'Solo RTMPS'],
     ['fr', 'RTMPS seul'],
     ['nl', 'Alleen RTMPS'],
   ] as const)('A18 says it in %s as "%s"', (lang, value) => {

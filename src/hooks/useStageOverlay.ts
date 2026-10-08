@@ -9,7 +9,7 @@ export type StageOverlay = {
   /** Any step down the ladder sheds the overlay first (AGENTS §8). */
   readonly shed: boolean;
   readonly visible: boolean;
-  /** The top strip's overlay-failed caption (D17), for the showing that failed. */
+  /** The status strip's overlay-failed caption (D17), for the showing that failed. */
   readonly failed: boolean;
   readonly onFailed: () => void;
 };

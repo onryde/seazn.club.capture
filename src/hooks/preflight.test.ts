@@ -126,7 +126,7 @@ describe('the chips read native’s verdict (A11)', () => {
     expect(read(on)).toEqual([true, true, true]);
   });
 
-  // A11: the JS audio floor is no longer the judge; a silent meter with native's yes reads ready.
+  // A11: native judges the mic, not the level (design follow-up §4); a silent meter with native's yes reads ready.
   it('reads sound from native, not from the level', () => {
     const quiet = { ...paired({ sound: true }), telemetry: { ...IDLE_TELEMETRY, audioLevel: 0 } };
     const loud = { ...paired({ sound: false }), telemetry: { ...IDLE_TELEMETRY, audioLevel: 0.9 } };

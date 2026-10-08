@@ -28,7 +28,7 @@ const BUDGETS: readonly (readonly [keys: RegExp, max: number])[] = [
   [/^stream\.peek\.label$/, 28],
   [/^stream\.peek\.unavailable$/, 24],
   [/^stream\.ended\.(duration|neverLive)$/, 24],
-  // The links share the bottom strip with the match label and Home.
+  // The link is the Settings icon's accessible name, in the icon row (spec §3).
   [/^stream\.link\./, 14],
   [/^stream\.back$/, 20],
 ];

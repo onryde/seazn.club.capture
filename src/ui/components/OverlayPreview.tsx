@@ -8,7 +8,7 @@ type OverlayPreviewProps = {
   readonly url: string | null;
   readonly visible: boolean;
   /**
-   * The stage then shows the failed caption on the top strip (D17). Told once
+   * The stage then shows the failed caption on the status strip (D17). Told once
    * per attempt; a failure holds until the preview is hidden or its URL
    * changes, and the fresh showing tries again and tells again. So the stage
    * may clear its caption whenever it hides the preview or the URL changes.

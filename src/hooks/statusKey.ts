@@ -12,9 +12,9 @@ import type { MessageKey } from '@/i18n/messages';
 export type StatusKey = Extract<MessageKey, `stream.status.${string}`>;
 
 /**
- * Copy budget: 48 characters (S0). The column is ~17 characters a line and
- * three lines before `StatusLine` ellipsises, silently. Enforced for every
- * language in src/i18n/budgets.test.ts.
+ * Copy budget: 48 characters (S0). `StatusLine` ellipsises, silently, past
+ * the status strip's two lines (`layout.statusLinesMax`) or Home's three.
+ * Enforced for every language in src/i18n/budgets.test.ts.
  */
 export const STATUS_LINE_BUDGET = 48;
 
@@ -125,7 +125,7 @@ const CAMERA_LINES: Readonly<Record<Kind, CameraLines | null>> = {
  * (amendment §2); never readiness, which the chips and the blocker say. It
  * never reads the heartbeat: a failing heartbeat never
  * blocks or degrades the stream (ruling 5), so it never changes what the
- * operator is told. Heat is the top strip's, never this line's (AGENTS §8).
+ * operator is told. Heat is the status strip's caption, never this line's (AGENTS §8).
  * Nor does it read the encoded rates or the delivered lag: native's state
  * already says what they mean, and a null there is no reading, not trouble.
  */

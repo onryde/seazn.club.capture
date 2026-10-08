@@ -106,7 +106,7 @@ function useSettle(): (coldStart: boolean) => void {
       // whose made-up code no saved code owns; its own clean-up unpairs it.
       if (orphanedSession({ ...facts, now }) && !probeFlight.active()) unpair('orphan');
       expireOnTheWay(modeStore, current.saved, target, now, logger);
-      // M22: Settings and Diagnostics are inside Live Stream; going there is staying.
+      // M22: Settings, with its Diagnostics card, is inside Live Stream; going there is staying.
       if (!(target.go === 'stream' && isStreamSubRoute(navigation.current())))
         navigation.go(target.go);
     },

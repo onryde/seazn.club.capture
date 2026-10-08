@@ -8952,6 +8952,8 @@ Spec §4 Diagnostics: link, delivery, device and heartbeat values, plus the sess
 | `diag.shareFailed`       | Couldn't open sharing. | No se pudo compartir. | Partage impossible. | Delen lukte niet.      |
 | `stream.dev.scene`       | Scene: {scene}         | Escena: {scene}       | Scène : {scene}     | Scène: {scene}         |
 
+_Amended by the 2026-10-06 design follow-up §6 (Diagnostics in Settings), whose review changed `diag.delivery.unknown` ("Unknown", es "Sin datos") and `diag.shareFailed` ("Couldn't share. Retry", shown on the Share button) and shortened other rows to fit the card. The dictionaries and `docs/i18n-glossary.md` are the authority._
+
 - [ ] **Step 2: Write the failing tests**
 
 `src/hooks/diagnostics.test.ts`:

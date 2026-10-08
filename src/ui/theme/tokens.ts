@@ -89,9 +89,10 @@ export const plate = {
  * The product's own three faces, from `apps/web/src/app/globals.css`.
  *
  * Barlow Condensed is the display face (`.app-display`, `.page-title`,
- * `.mk-display`), always uppercase and letterspaced — the house convention,
- * and a scoreboard idiom. It also earns its place functionally here: condensed
- * fits noticeably more legible characters into a 150px column than a normal
+ * `.mk-display`), uppercase and letterspaced — the house convention, and a
+ * scoreboard idiom — except the match label's names, which are mixed case
+ * (AGENTS §5). It also earns its place functionally here: condensed fits
+ * noticeably more legible characters into a narrow column than a normal
  * grotesk.
  *
  * Geist carries body text. Geist Mono carries numerals only, never labels —

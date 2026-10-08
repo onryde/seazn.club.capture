@@ -121,7 +121,7 @@ describe('TallyPlate', () => {
   });
 });
 
-describe('LivePlate (beside Back on Settings and Diagnostics)', () => {
+describe('LivePlate (beside Back on Settings)', () => {
   it('is absent off air', () => {
     renderWithPorts(<LivePlate />);
     expect(screen.queryByTestId('tally-plate')).toBeNull();

@@ -135,7 +135,7 @@ const REPORT_MS = 1000;
 export const INTENT_LOG_CAP = 100;
 
 /**
- * Camera up, sound above the floor: the meter sounds. No encoded rates yet:
+ * Camera up, the mic sounding: the meter shows a level. No encoded rates yet:
  * plan B reads them from the on-air stall watchdog, so native reports null
  * until the session is on air. Readiness is native's `ready`, not telemetry.
  */

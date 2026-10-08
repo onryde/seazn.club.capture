@@ -156,7 +156,7 @@ describe('the status line (spec §4 and §5)', () => {
     ).toBe('stream.status.waitingGoLive');
   });
 
-  it('never mentions heat, which the top strip owns (AGENTS §8)', () => {
+  it('never mentions heat, which the status strip owns (AGENTS §8)', () => {
     const hot = { ...ARMED_OK, shed: 'overlay-preview' as const, thermalStatus: 'severe' as const };
     expect(selectStatusKey(snap(LIVE, hot))).toBe('stream.status.live');
   });

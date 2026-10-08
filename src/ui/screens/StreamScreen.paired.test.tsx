@@ -261,7 +261,7 @@ describe('the score preview while paired', () => {
 
   // Final review I-2: no overlay URL is the server's "not entitled" (spec :61,
   // :400), not a failure: no caption at all, no warn, one info line.
-  it('says nothing on the top strip when the org is not entitled to an overlay', async () => {
+  it('says nothing on the status strip when the org is not entitled to an overlay', async () => {
     const view = await renderViewfinder(
       {},
       { prepare: (fakes) => fakes.engine.setPairing({ overlayUrl: null }) },

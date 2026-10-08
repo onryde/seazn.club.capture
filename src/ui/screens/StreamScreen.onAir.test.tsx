@@ -369,7 +369,7 @@ describe('the score preview on air', () => {
 });
 
 /** Carry 14 (ruling M6): one caption, shed > overlay failed > not charging > score ahead. */
-describe('the top strip’s one caption', () => {
+describe('the status strip’s one caption', () => {
   beforeEach(() => vi.useFakeTimers());
   afterEach(() => vi.useRealTimers());
 

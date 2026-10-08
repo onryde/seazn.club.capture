@@ -70,7 +70,7 @@ export function useEngineFollow(): void {
     };
     const follow = () => {
       const snapshot = engine.getSnapshot();
-      // The route rule: Settings and Diagnostics are inside /stream already (M22).
+      // The route rule: Settings, with its Diagnostics card, is inside /stream already (M22).
       if (selectEngineStatus(snapshot) === 'live' && navigation.current() === 'home')
         navigation.go('stream');
       const store = modeStore.getSnapshot();

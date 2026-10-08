@@ -12,7 +12,7 @@ export const ADVISORY_KEY: Readonly<Record<Advisory, MessageKey>> = {
 };
 
 /**
- * The top strip's one caption (D17). Device conditions go here, never in the
+ * The status strip's one caption (D17). Device conditions go here, never in the
  * status line: heat sheds the overlay while the broadcast is fine (AGENTS §8).
  * A device advisory — heat, not charging — outranks the score-ahead note,
  * which shows while paired only when nothing else is up (ruling M6, over

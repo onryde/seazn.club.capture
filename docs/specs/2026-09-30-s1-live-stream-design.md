@@ -64,6 +64,8 @@ Going live never navigates, so the camera view is never remounted (a spike decis
 
 `/stream/settings` and `/stream/diagnostics` can be reached in every state. Both carry a LIVE plate beside Back.
 
+_Amended by the 2026-10-06 design follow-up: §6 puts Diagnostics inside Settings as a card, so there is no `/stream/diagnostics`; §4 makes the sound chip mean the mic is available, not that audio is above the floor; §5 returns Home with a Stream ended card in place of the Ended block and Scan another._
+
 ### Reopen and leaving
 
 - With the engine **armed or live**, the app reopens into `/stream` with no prompt. The engine is the authority, and an armed engine only shows a preview. This settles S0's I3.
