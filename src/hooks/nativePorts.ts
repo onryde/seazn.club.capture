@@ -4,13 +4,13 @@ import { router } from 'expo-router';
 import { loadCaptureEngineNative } from '@/engine/nativeModule';
 import { chooseCodePort } from '@/hooks/codePortWiring';
 import { chooseEngine, routedRecordFor } from '@/hooks/engineWiring';
+import { photoPortFor } from '@/hooks/photoPortWiring';
 import type { Ports } from '@/hooks/usePorts';
 import { createNativeCodeScanner } from '@/scanner/nativeCodeScanner';
 import { createEndedNotice } from '@/services/endedNotice';
 import { withTimeout } from '@/services/kvTimeout';
 import { createLogger } from '@/services/logger';
 import { createModeStore } from '@/services/modeStore';
-import { createPhotoPort } from '@/services/photoPort';
 import { createProbeFlight } from '@/services/probeFlight';
 import { createScanFlight } from '@/services/scanFlight';
 import { createExpoRouterNavigation } from '@/services/native/expoRouterNavigation';
@@ -85,7 +85,7 @@ export function createNativePorts(): Ports {
     share: createNativeShare(),
     // A development build with the fake engine and a native module still calls the real `takePhoto`, which
     // fails with no camera open: the line says so, truthfully. There is no second gate to keep.
-    photo: createPhotoPort(native === null ? null : () => native.takePhoto()),
+    photo: photoPortFor(native),
     clock,
     hosts,
     deviceLanguages: getLocales().map((locale) => locale.languageCode),

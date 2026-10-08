@@ -17,6 +17,7 @@ const shutter = () => screen.getByRole('button', { name: en['stream.photo.label'
 /** Which token a Text painted: the `paintOf` of the layout test, so a colour is compared as jsdom resolves it. */
 const TOKEN = StyleSheet.create({
   caution: { color: colour.caution },
+  lime: { color: colour.lime },
 });
 
 function inkOf(style: TextStyle): string {
@@ -40,6 +41,9 @@ describe('Take photo in the icon row (spec §8, R3)', () => {
     expect(view.photo.calls).toBe(1);
     const note = screen.getByTestId('photo-notice');
     expect(note.textContent).toBe(en['stream.photo.saved']);
+    // Saved is said in lime (the app's LED), and lime is not what caution paints.
+    expect(getComputedStyle(note).color).toBe(inkOf(TOKEN.lime));
+    expect(inkOf(TOKEN.lime)).not.toBe(inkOf(TOKEN.caution));
     expect(within(screen.getByTestId('controls-gap')).getByTestId('photo-notice')).toBe(note);
     expect(within(screen.getByTestId('camera-box')).queryByTestId('photo-notice')).toBeNull();
     act(() => vi.advanceTimersByTime(PHOTO_NOTICE_MS));
@@ -113,6 +117,16 @@ describe('Take photo in the icon row (spec §8, R3)', () => {
     expect(getComputedStyle(gap).justifyContent).toBe('flex-end');
     expect(gap.getAttribute('aria-live')).toBe('polite');
     expect(typeScale.metricUnit.lineHeight).toBe(16);
+    // The reservation is one line of the role's own size (the fit test counts 16 and measures at 12), so the
+    // rendered line must be that and no more: 12 / 16 dp, and one line that cuts rather than wraps.
+    await act(async () => fireEvent.click(shutter()));
+    const line = getComputedStyle(screen.getByTestId('photo-notice'));
+    expect([line.fontSize, line.lineHeight]).toEqual([
+      `${typeScale.metricUnit.fontSize}px`,
+      `${typeScale.metricUnit.lineHeight}px`,
+    ]);
+    expect(typeScale.metricUnit.fontSize).toBe(12);
+    expect([line.whiteSpace, line.textOverflow]).toEqual(['nowrap', 'ellipsis']);
   });
 
   it.each([

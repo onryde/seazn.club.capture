@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { usePorts } from '@/hooks/usePorts';
 import type { PhotoOutcome } from '@/services/photoPort';
 
@@ -32,5 +32,12 @@ export function usePhoto(): Photo {
       }, PHOTO_NOTICE_MS);
     });
   }, [photo, logger, clock]);
+  // Unmounted with its line showing: nothing is left to fire.
+  useEffect(
+    () => () => {
+      if (timer.current !== null) clearTimeout(timer.current);
+    },
+    [],
+  );
   return useMemo(() => ({ notice, take }), [notice, take]);
 }

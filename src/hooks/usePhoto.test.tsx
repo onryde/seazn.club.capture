@@ -61,6 +61,19 @@ describe('usePhoto (spec §8)', () => {
     expect(view.result.current.notice).toBeNull();
   });
 
+  it('M22 unmounted while its line shows, it leaves no timer behind', async () => {
+    const { fakes, view } = setup();
+    // The fake engine's heartbeat is the one timer a fresh set of ports has; stop it so the count is the line's alone.
+    fakes.engine.dispose();
+    expect(vi.getTimerCount()).toBe(0);
+    await tap(view);
+    expect(view.result.current.notice).toBe('saved');
+    // The positive pair: the line's 3 s timer is armed.
+    expect(vi.getTimerCount()).toBe(1);
+    view.unmount();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
   it('writes one record line with a word and a duration, and nothing else', async () => {
     const { fakes, view } = setup();
     fakes.photo.hold();

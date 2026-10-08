@@ -17,15 +17,12 @@ export function readOutcome(value: unknown): PhotoOutcome {
   return value === 'saved' ? 'saved' : 'failed';
 }
 
-export function createPhotoPort(
-  call: (() => Promise<unknown>) | null,
-  deadlineMs: number = PHOTO_DEADLINE_MS,
-): PhotoPort {
+export function createPhotoPort(call: (() => Promise<unknown>) | null): PhotoPort {
   if (call === null) return { take: () => Promise.resolve('failed') };
   return {
     take: () =>
       new Promise<PhotoOutcome>((resolve) => {
-        const timer = setTimeout(() => resolve('failed'), deadlineMs);
+        const timer = setTimeout(() => resolve('failed'), PHOTO_DEADLINE_MS);
         const done = (outcome: PhotoOutcome) => {
           clearTimeout(timer);
           resolve(outcome);
