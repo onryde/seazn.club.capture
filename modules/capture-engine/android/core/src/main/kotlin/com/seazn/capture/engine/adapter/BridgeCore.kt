@@ -137,9 +137,14 @@ class BridgeCore(
    * pairing's own bearer and the start's body, and hand [answer] the result once. It bypasses the machine on
    * purpose: it changes no state, and a repeat returns the same link (the server never revokes one). The
    * request is guarded by [ask]'s own backstop ([ANSWER_BACKSTOP_MS]), so [answer] runs at the latest then,
-   * with the word `unavailable`: the module's promise always resolves. With no pairing it is answered at once,
-   * with no request. [answer] runs on the scheduler thread. The record learns the word and the status, never the
-   * URL, whose secret is protected before [answer] is called.
+   * with the word `unavailable`, unless [answer] itself is dead: a callback that throws is never answered, its
+   * throw is only noted (RP4), and the caller's own deadline is what ends its wait. With no pairing it is answered
+   * at once, with no request. [answer] runs on the scheduler thread. The record learns the word and the status,
+   * never the URL, whose secret is protected before [answer] is called.
+   *
+   * A link is one match's: an answer that arrives after the pairing changed (an unpair, a re-pair) is not handed
+   * over. The old match's scoring URL is not the caller's to have; it is answered `unavailable`, and its secret is
+   * protected all the same (it reached memory), so it never leaks.
    *
    * RP4: **off the machine's failure path.** Each stage is a guarded task whose body runs in [ScoringTap.apart], so a
    * throw from the transport, the reading or [answer] itself answers `unavailable` and is noted by its class; it never
@@ -159,21 +164,28 @@ class BridgeCore(
       tap.hand(ScoringLinks.wire(ScoringLinkAnswer.Refused("unavailable", null)))
       return
     }
-    val env = pairing.request.environment
-    ask({ HttpRequests.scoringLink("${pairing.request.codeUrl}/scoring-link", pairing.token, Beats.startBody(pairing.phone.phoneId)) }) { outcome ->
-      guarded.schedule(0) { tap.apart { scoringAnswered(outcome, env, tap) } }
+    // The tap's pairing, held by identity: what the answer is compared with when it comes (a re-pair is a new request).
+    val request = pairing.request
+    ask({ HttpRequests.scoringLink("${request.codeUrl}/scoring-link", pairing.token, Beats.startBody(pairing.phone.phoneId)) }) { outcome ->
+      guarded.schedule(0) { tap.apart { scoringAnswered(outcome, request, tap) } }
     }
   }
 
-  private fun scoringAnswered(outcome: HttpOutcome, env: Environment, tap: ScoringTap) {
+  private fun scoringAnswered(outcome: HttpOutcome, request: PairRequest, tap: ScoringTap) {
     // An Error out of the transport leaves ask before it can cancel its backstop; the backstop then answers into a tap
     // that was answered already, and must not write a second line for it.
     if (tap.spent) return
     val answered = outcome as? HttpOutcome.Answered
     val read =
       if (answered == null) ScoringLinkAnswer.Refused("unavailable", null)
-      else Bodies.scoringLink(answered.status, answered.body, Bodies.retryAfter(answered.retryAfter), env)
+      else Bodies.scoringLink(answered.status, answered.body, Bodies.retryAfter(answered.retryAfter), request.environment)
     if (read is ScoringLinkAnswer.Link) record.protectLink(ScoringLinks.secret(read.url))
+    // The pairing the tap asked for is not the one held now: the link is the old match's, and nobody is handed it.
+    if (engine.phase.pairing?.request !== request) {
+      engine.log(RecordEntry("scoring-link", listOf("result" to "stale", "status" to answered?.status)))
+      tap.hand(ScoringLinks.wire(ScoringLinkAnswer.Refused("unavailable", null)))
+      return
+    }
     engine.log(RecordEntry("scoring-link", listOf("result" to read.word, "status" to answered?.status)))
     tap.hand(ScoringLinks.wire(read))
   }

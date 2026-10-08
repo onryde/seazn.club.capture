@@ -178,6 +178,91 @@ class ScoringLinkTest {
     assertEquals(16_000L, BridgeCore.ANSWER_BACKSTOP_MS)
   }
 
+  /** The pairing the tap asked for is gone when its answer comes: the old match's link is not handed to anyone. */
+  private fun assertStale(change: () -> Unit, why: String) {
+    paired()
+    platform.unanswered = { it.url.endsWith("/scoring-link") }
+    tap()
+    scheduler.advanceBy(0)
+    val owed = platform.owed.single { it.first.url.endsWith("/scoring-link") }
+    assertEquals(0, got.size, why)
+    change()
+    scheduler.advanceBy(0)
+    owed.second(HttpOutcome.Answered(200, ok))
+    scheduler.advanceBy(0)
+    assertEquals(listOf(unavailable), got, why)
+    // One line, a word and a status as ever, and no url; the allow-list's own keys.
+    val line = scoringLines().single()
+    assertEquals(setOf("at", "kind", "result", "status"), line.keySet(), why)
+    assertEquals("stale", line.getString("result"), why)
+    assertEquals(200, line.getInt("status"), why)
+    for (text in platform.lines + platform.snapshots.map { it.toString() } + core.current().toString())
+      assertFalse(text.contains(secret), "$why: the secret is in ${text.take(80)}")
+    // The secret reached memory, so it is protected all the same: a probe that names it is masked from here on.
+    core.log("info", "probe", mapOf("url" to url, "message" to "x $secret y"))
+    scheduler.advanceBy(0)
+    val probe = JSONObject(platform.lines.last())
+    assertEquals("probe", probe.getString("kind"), why)
+    assertEquals(SessionRecord.MASK, probe.getString("url"), why)
+    assertEquals("x *** y", probe.getString("message"), why)
+  }
+
+  @Test
+  fun `m2 an answer that arrives after an unpair is not the caller's - unavailable, one line, no url`() {
+    assertStale({ core.send(mapOf("kind" to "unpair")) }, "unpaired")
+    assertEquals(null, core.current()["pairing"], "the unpair took")
+  }
+
+  @Test
+  fun `m2 an answer that arrives after a re-pair to another match is not the caller's - and the new match gets its own`() {
+    assertStale({ core.send(PairWire.valid() + ("slot" to 2.0)) }, "re-paired")
+    assertEquals("paired", state())
+    // The positive pair: the new pairing's own tap is answered with its link.
+    platform.unanswered = { false }
+    answering(200, ok)
+    tap()
+    scheduler.advanceBy(0)
+    assertEquals(mapOf("outcome" to "ok", "url" to url), got.last())
+    assertEquals(2, got.size)
+  }
+
+  @Test
+  fun `m3 a real answer that comes after the backstop is dropped - one answer and one line, and the secret is nowhere`() {
+    paired()
+    platform.unanswered = { it.url.endsWith("/scoring-link") }
+    tap()
+    scheduler.advanceBy(0)
+    scheduler.advanceBy(BridgeCore.ANSWER_BACKSTOP_MS + 1)
+    assertEquals(listOf(unavailable), got)
+    assertEquals(1, scoringLines().size)
+    val owed = platform.owed.single { it.first.url.endsWith("/scoring-link") }
+    owed.second(HttpOutcome.Answered(200, ok))
+    scheduler.advanceBy(BridgeCore.ANSWER_BACKSTOP_MS)
+    assertEquals(listOf(unavailable), got, "the late real answer reached nobody")
+    assertEquals(1, scoringLines().size, "and wrote no second line")
+    assertEquals("unavailable", scoringLines().single().getString("result"))
+    for (text in platform.lines + platform.snapshots.map { it.toString() })
+      assertFalse(text.contains(secret), "the secret is in ${text.take(80)}")
+  }
+
+  /** m1. The answers' own `toString` is on the path of every log of a value and every failure message. */
+  @Test
+  fun `m1 a link prints a length and never its url, alone or inside a collection or a message`() {
+    val link = ScoringLinkAnswer.Link(url)
+    val printed =
+      listOf(link.toString(), "$link", listOf(link).toString(), mapOf("answer" to link).toString(), "failed on $link", String.format("%s", link))
+    assertEquals(6, printed.size)
+    for (text in printed) {
+      assertFalse(text.contains(secret), "the secret is in: $text")
+      assertFalse(text.contains("seazn.club"), "the host is in: $text")
+      assertTrue(text.contains("${url.length}"), "no length in: $text")
+    }
+    // The refusal holds no url, and prints the word only: a Retry-After is not part of what it says.
+    val refused = ScoringLinkAnswer.Refused("rate_limited", 31)
+    assertEquals("Refused(rate_limited)", refused.toString())
+    assertFalse(refused.toString().contains("31"))
+  }
+
   @Test
   fun `with no pairing there is nothing to ask, and the answer says so without a request`() {
     core.start()

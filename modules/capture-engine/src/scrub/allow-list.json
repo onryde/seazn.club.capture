@@ -206,7 +206,7 @@
     "rendition-refused": "native: the master placed its rendition off the playback host, once a session, with a fixed reason word (re-review 6)",
     "reset": "native: the ended session was reset to idle",
     "resumed": "native: the broadcast resumed after an outage",
-    "scoring-link": "native: a tap asked for the Remote scoring link; its word and status only, never the url; or, when the call failed locally (RP4), result failed and the throwable's class name",
+    "scoring-link": "native: a tap asked for the Remote scoring link; its word and status only, never the url; or, when the call failed locally (RP4), result failed and the throwable's class name; or result stale when the pairing changed before the answer came (the old match's link is not handed over)",
     "scripted": "native, debug builds only: the scripted code server answered a request (Task 34), naming its route and status, never its body",
     "shed": "native: the degradation ladder moved",
     "srt-send-dropped": "native: our SRT sink's send buffer was full, so packets were dropped (StreamPack#302, C7u); with the attempt and the count since the last line, at most one line in 10 s",
