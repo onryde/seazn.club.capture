@@ -248,7 +248,14 @@ Three rules travel with these tokens:
   lying flat is never blocked by the card; Go live still waits until the phone
   is held sideways (A11).
 - The viewfinder is two halves (design follow-up §1): a 16:9 camera box with
-  the status strip below it, and the controls half. Nothing is drawn over the
+  the status strip below it, and the controls half. The halves are not equal
+  (owner, 2026-10-08): the controls half is the fixed width its widest row
+  needs, `layout.controlsHalf` (310 dp: the plate row, a tally plate and the
+  clock in 135 dp cells; the row sums are `controlsFit.test.ts`'s), and the
+  camera half is everything else, on whichever side the controls are. On a
+  360 dp screen the strip's 180 limits the box from 630 wide up, so a wider
+  camera half is room for the strip and the Remote scoring panel, not a larger
+  picture. Nothing is drawn over the
   camera box but the overlay, the _What viewers see_ video and, on the
   operator's tap, the Remote scoring panel (design follow-up §10): over the
   camera half, for at most 10 s, and it hides itself when the session enters

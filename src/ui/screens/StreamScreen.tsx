@@ -14,10 +14,13 @@ import { StreamStage } from '@/ui/components/StreamStage';
 
 /**
  * Live Stream's viewfinder (spec §1, §4): Arm and on air are one screen, a
- * projection of the engine's state, in two equal halves. An Ended leaves it for
+ * projection of the engine's state, in two halves. An Ended leaves it for
  * Home with the Stream ended card (spec §5). The camera half is
  * the shot with the status strip under it; the controls half is on the side the
- * operator picked in Settings, and Left mirrors the halves.
+ * operator picked in Settings, and Left mirrors the halves. They are not equal
+ * (owner, 2026-10-08): the controls half is the fixed width its widest row needs
+ * (`layout.controlsHalf`, set where the half is drawn, in `StreamColumn`) and the
+ * camera half (`flex: 1`, in `StreamStage`) is everything else, on either side.
  */
 export function StreamScreen() {
   const leave = useStreamLeave();

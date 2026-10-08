@@ -30,7 +30,8 @@ type ColumnProps = {
 };
 
 /**
- * The controls half (spec §1), top to bottom: the tally plate with the timer
+ * The controls half (spec §1), `layout.controlsHalf` wide whatever the screen (the camera half takes the rest, owner
+ * 2026-10-08), top to bottom: the tally plate with the timer
  * (on air) or the sound meter (before air), the readiness chips and the start
  * line (before air), the meter (on air), a flexible gap that holds the photo's
  * one line, the icon row, then the action. The status line is the strip's,
@@ -223,8 +224,11 @@ const ColumnAction = memo(function ColumnAction(props: ActionProps) {
 });
 
 const styles = StyleSheet.create({
+  // Owner, 2026-10-08: the width its widest row needs (layout.controlsHalf), fixed; the camera half takes the rest.
   half: {
-    flex: 1,
+    width: layout.controlsHalf,
+    flexGrow: 0,
+    flexShrink: 0,
     gap: layout.controlsGap,
     padding: layout.controlsPad,
     backgroundColor: colour.ground,

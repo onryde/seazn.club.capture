@@ -13,11 +13,11 @@ import { renderViewfinder } from '../../../test/renderViewfinder';
 type Viewfinder = Awaited<ReturnType<typeof renderViewfinder>>;
 
 /**
- * Spec §1, canvas option A: the screen is two equal halves. The camera half is a
- * 16:9 box with the status strip under it; the controls half holds the rest. This
- * proves the structure and the order of what is drawn, read from jsdom's cascade of
- * react-native-web's classes. That it fits a phone is the fit arithmetic's
- * (`viewfinderFit.test.ts`) and the phone's (Task 9).
+ * Spec §1, canvas option A, as amended by the owner on 2026-10-08: the screen is two halves, and the controls half
+ * takes the width its content needs (`layout.controlsHalf`, derived and proved by `controlsFit.test.ts`) while the
+ * camera half takes the rest. The camera half is a 16:9 box with the status strip under it. This proves the structure
+ * and the order of what is drawn, read from jsdom's cascade of react-native-web's classes. That it fits a phone is the
+ * fit arithmetic's (`viewfinderFit.test.ts`) and the phone's (Task 9).
  */
 
 /** Which token a component painted: the `paintOf` of Hud.test.tsx, so a colour is compared as jsdom resolves it. */
@@ -88,36 +88,59 @@ const ADVISORIES: readonly (readonly [
 ];
 let advisoriesRun = 0;
 
-describe('the viewfinder is two halves (spec §1)', () => {
+/** The two halves as the cascade gives them: what each grows, shrinks and starts from, and the controls half's width. */
+function halvesOf() {
+  const camera = getComputedStyle(byId('camera-half'));
+  const controls = getComputedStyle(byId('controls-half'));
+  return {
+    camera: { grow: camera.flexGrow, shrink: camera.flexShrink, basis: camera.flexBasis },
+    controls: {
+      grow: controls.flexGrow,
+      shrink: controls.flexShrink,
+      width: controls.width,
+    },
+  };
+}
+
+describe('the viewfinder is two halves (spec §1, amended 2026-10-08)', () => {
   beforeEach(() => vi.useFakeTimers());
   afterEach(() => vi.useRealTimers());
 
-  it('is a root of exactly two halves, the camera half and the controls half, each growing equally', async () => {
+  it('is a root of exactly two halves, the camera half and the controls half', async () => {
     await renderViewfinder();
     const root = byId('viewfinder');
     expect([...root.children].map((half) => half.getAttribute('data-testid'))).toEqual([
       'camera-half',
       'controls-half',
     ]);
-    // Spec §1: two equal halves. Equal flex-grow from a zero basis is what makes them equal.
-    for (const half of [byId('camera-half'), byId('controls-half')]) {
-      const style = getComputedStyle(half);
-      expect(style.flexGrow).toBe('1');
-      expect(style.flexBasis).toBe('0%');
-    }
+  });
+
+  // Owner, 2026-10-08: the controls half has the width its content needs and no more; the camera half has everything
+  // else. So the controls half is a fixed 310 that neither grows nor shrinks, and the camera half grows from nothing.
+  it('gives the controls half a fixed width that neither grows nor shrinks, and the camera half the rest', async () => {
+    await renderViewfinder();
+    expect(halvesOf()).toEqual({
+      camera: { grow: '1', shrink: '1', basis: '0%' },
+      controls: { grow: '0', shrink: '0', width: `${layout.controlsHalf}px` },
+    });
+    expect(layout.controlsHalf).toBe(310);
   });
 
   it('puts the controls on the right, mirrors the halves for Left, and back for Right (controlsSide)', async () => {
     const view = await renderViewfinder();
+    const RIGHT = halvesOf();
     expect(getComputedStyle(byId('viewfinder')).flexDirection).toBe('row');
     await act(() => view.ports.streamSettings.set({ side: 'left' }));
     expect(getComputedStyle(byId('viewfinder')).flexDirection).toBe('row-reverse');
-    // Mirrored, the halves are still the same two, in the same DOM order.
+    // Mirrored, the halves are still the same two, in the same DOM order, and the controls half is the same width:
+    // only the side moves, never the rule (the camera half is still the one that flexes).
     expect(
       [...byId('viewfinder').children].map((half) => half.getAttribute('data-testid')),
     ).toEqual(['camera-half', 'controls-half']);
+    expect(halvesOf()).toEqual(RIGHT);
     await act(() => view.ports.streamSettings.set({ side: 'right' }));
     expect(getComputedStyle(byId('viewfinder')).flexDirection).toBe('row');
+    expect(halvesOf()).toEqual(RIGHT);
   });
 });
 
@@ -334,23 +357,26 @@ describe('the round line above the match label (spec §2, R-F5)', () => {
     expect(stage()?.textContent).toBe('QF');
   });
 
-  // The camera half is not W / 2: the controls half's padding clamps its flex basis (PR A), so the layout gives the
-  // camera (W - 2 x the controls padding) / 2, which Chromium measured as 304 at 640 wide. The box yields to the strip
-  // from 800 wide, where the strip is 180; at 640 x 360 the box is the half's whole width (171), so the strip is 189.
-  // The sizes are delivered by `layOut` from the layout's own constants, and the strip is what the rendered box leaves.
-  const REAL_HALF = (width: number) => (width - 2 * layout.controlsPad) / 2;
+  // The camera half is what the controls half leaves: the window less the controls half's width (owner, 2026-10-08),
+  // read here from what the controls half RENDERED, so the halves the test lays out are the producer's. At 640 wide
+  // that is 330, and the box (height-limited from 630 wide up) is 320 x 180 with the strip's 180 under it, as at
+  // every wider screen: there is no 189 dp strip any more, where PR A's camera half (304) left the box 171 tall.
+  const cameraHalf = (width: number) =>
+    width - parseFloat(getComputedStyle(byId('controls-half')).width);
 
-  it('at 640 × 360 the strip is 189, so a three-line long label (57) shows the line and a three-line regular one (66) hides it', async () => {
+  it('at 640 × 360 the strip is 180, so a two-line label shows the line and a three-line long label (57) hides it', async () => {
     await withStage('QF', { strip: 0, label: 0 });
-    layOut(byId('camera-half'), { width: REAL_HALF(640), height: 360 });
-    expect(REAL_HALF(640)).toBe(304);
+    expect(cameraHalf(640)).toBe(330);
+    layOut(byId('camera-half'), { width: cameraHalf(640), height: 360 });
     const box = parseFloat(getComputedStyle(byId('camera-box')).height);
-    expect(box).toBeCloseTo(171, 6);
+    expect(box).toBeCloseTo(180, 6);
     const strip = 360 - box;
-    expect(strip).toBeCloseTo(189, 6);
-    layOut(byId('status-strip'), { width: REAL_HALF(640), height: strip });
-    layOut(byId('match-label'), { width: 270, height: 57 });
+    expect(strip).toBeCloseTo(180, 6);
+    layOut(byId('status-strip'), { width: cameraHalf(640), height: strip });
+    layOut(byId('match-label'), { width: 270, height: 44 });
     expect(stage()?.textContent).toBe('QF');
+    layOut(byId('match-label'), { width: 270, height: 57 });
+    expect(stage()).toBeNull();
     layOut(byId('match-label'), { width: 270, height: 66 });
     expect(stage()).toBeNull();
     layOut(byId('match-label'), { width: 270, height: 76 });
@@ -359,35 +385,36 @@ describe('the round line above the match label (spec §2, R-F5)', () => {
     expect(stage()?.textContent).toBe('QF');
   });
 
-  it('yields at each of the four real screens, in the half the layout gives the camera', async () => {
-    // [width, height, the strip the rendered box leaves, whether a 57 dp label (three long lines) still shows the line]
+  it('yields at each of the five real screens, in the half the layout gives the camera', async () => {
+    // [width, height, the strip the rendered box leaves]: the owner's phone (804 × 360) with the four of the fit files.
     const SCREENS = [
-      [640, 360, 189, true],
-      [800, 360, 180, false],
-      [844, 390, 180, false],
-      [915, 412, 180, false],
+      [640, 360, 180],
+      [800, 360, 180],
+      [804, 360, 180],
+      [844, 390, 180],
+      [915, 412, 180],
     ] as const;
     let checked = 0;
-    for (const [width, height, expected, showsThreeLong] of SCREENS) {
+    for (const [width, height, expected] of SCREENS) {
       const view = await withStage('QF', { strip: 0, label: 0 });
       // The producer, not a typed number: the half lays out, the box takes its size, the strip is the rest.
-      layOut(byId('camera-half'), { width: REAL_HALF(width), height });
+      layOut(byId('camera-half'), { width: cameraHalf(width), height });
       const strip = height - parseFloat(getComputedStyle(byId('camera-box')).height);
       expect(strip).toBeCloseTo(expected, 6);
-      layOut(byId('status-strip'), { width: REAL_HALF(width), height: strip });
-      layOut(byId('match-label'), { width: REAL_HALF(width) - 32, height: 44 });
+      layOut(byId('status-strip'), { width: cameraHalf(width), height: strip });
+      layOut(byId('match-label'), { width: cameraHalf(width) - 32, height: 44 });
       expect(stage()?.textContent, `${width} × ${height}, 2 lines`).toBe('QF');
-      layOut(byId('match-label'), { width: REAL_HALF(width) - 32, height: 57 });
-      expect(stage() !== null, `${width} × ${height}, 3 long lines`).toBe(showsThreeLong);
-      layOut(byId('match-label'), { width: REAL_HALF(width) - 32, height: 66 });
+      layOut(byId('match-label'), { width: cameraHalf(width) - 32, height: 57 });
+      expect(stage(), `${width} × ${height}, 3 long lines`).toBeNull();
+      layOut(byId('match-label'), { width: cameraHalf(width) - 32, height: 66 });
       expect(stage(), `${width} × ${height}, 3 regular lines`).toBeNull();
-      layOut(byId('match-label'), { width: REAL_HALF(width) - 32, height: 76 });
+      layOut(byId('match-label'), { width: cameraHalf(width) - 32, height: 76 });
       expect(stage(), `${width} × ${height}, 4 long lines`).toBeNull();
       view.unmount();
       checked += 1;
     }
     expect(checked).toBe(SCREENS.length);
-    expect(SCREENS.filter((screen) => screen[3])).toHaveLength(1);
+    expect(SCREENS).toHaveLength(5);
   });
 });
 
@@ -630,13 +657,16 @@ describe('the camera box gives way to the strip (spec §1, fix round 1 I-1)', ()
   beforeEach(() => vi.useFakeTimers());
   afterEach(() => vi.useRealTimers());
 
-  // [width, height, box width, box height] in dp, worked by hand from spec §1 and the strip's 180 dp
-  // reserve (Q4 option A): 640 × 360 is the whole half; the wider screens' boxes are what the strip leaves.
+  // [width, height, camera half, box width, box height] in dp, worked by hand from spec §1 as amended (the controls
+  // half is 310, so the camera half is the window less 310) and the strip's 180 dp reserve (Q4 option A). Every box
+  // here is what the strip leaves: height - 180 tall and 16:9. The camera half would hold a box 9/16 as tall as it is
+  // wide (186 at 640, 277 at 804, 340 at 915), which is more than the strip leaves on every one of these screens.
   const SCREENS = [
-    [640, 360, 320, 180],
-    [800, 360, 320, 180],
-    [844, 390, 373.3333333, 210],
-    [915, 412, 412.4444444, 232],
+    [640, 360, 330, 320, 180],
+    [800, 360, 490, 320, 180],
+    [804, 360, 494, 320, 180],
+    [844, 390, 534, 373.3333333, 210],
+    [915, 412, 605, 412.4444444, 232],
   ] as const;
   let screensChecked = 0;
 
@@ -653,24 +683,53 @@ describe('the camera box gives way to the strip (spec §1, fix round 1 I-1)', ()
   });
 
   it.each(SCREENS)(
-    '%i × %i: the box is %d × %d and the strip is not squeezed',
-    async (width, height, boxWidth, boxHeight) => {
+    '%i × %i: the camera half is %d, the box is %d × %d and the strip is not squeezed',
+    async (width, height, half, boxWidth, boxHeight) => {
       await renderViewfinder();
-      layOut(byId('camera-half'), { width: width / 2, height });
+      // The half the layout gives the camera is the window less what the controls half rendered.
+      const given = width - parseFloat(getComputedStyle(byId('controls-half')).width);
+      expect(given).toBe(half);
+      layOut(byId('camera-half'), { width: given, height });
       const size = boxSize();
       expect(size.width).toBeCloseTo(boxWidth, 2);
       expect(size.height).toBeCloseTo(boxHeight, 2);
       // 16:9, and the box plus the strip's 180 fits the screen.
       expect(size.width / size.height).toBeCloseTo(16 / 9, 3);
       expect(size.height + 180).toBeLessThanOrEqual(height + 1e-6);
-      expect(size.width).toBeLessThanOrEqual(width / 2 + 1e-6);
+      expect(size.width).toBeLessThanOrEqual(given + 1e-6);
       screensChecked += 1;
     },
   );
 
-  it('measured four screens (anti-vacuity)', () => {
-    expect(SCREENS).toHaveLength(4);
+  it('measured five screens (anti-vacuity)', () => {
+    expect(SCREENS).toHaveLength(5);
     expect(screensChecked).toBe(SCREENS.length);
+  });
+
+  // The rule's consequence, written from the declarations: the camera half is wider than half the screen wherever the
+  // screen is wider than twice the controls half, and the box is the lesser of what that half and the strip's 180 leave
+  // it. At 640 the half (330) is 10 dp wider than half the screen (320) and holds a box 186 tall; the strip leaves 180,
+  // so the box is 320 × 180. From 630 wide up it is the strip that limits the box: 320 × 180 on a 360 dp screen
+  // however wide the half is (804 × 360: a 494 dp half, a box of 320).
+  it('the camera half is wider than half the screen, and the box is the lesser of what the half and the strip leave', async () => {
+    await renderViewfinder();
+    const CONTROLS = parseFloat(getComputedStyle(byId('controls-half')).width);
+    const RESERVE = 180; // Q4 option A: 2 × 8 + 76 + 44 + 32 + 2 × 6, the strip at its worst
+    let wider = 0;
+    for (const [width, height] of SCREENS) {
+      layOut(byId('camera-half'), { width: width - CONTROLS, height });
+      const size = boxSize();
+      expect(size.height, `${width} × ${height}`).toBeCloseTo(
+        Math.min((width - CONTROLS) / layout.previewAspect, height - RESERVE),
+        6,
+      );
+      // Wider than half the screen wherever the screen is wider than twice the controls half.
+      if (width > 2 * CONTROLS) {
+        expect(width - CONTROLS, `${width} × ${height}`).toBeGreaterThan(width / 2);
+        wider += 1;
+      }
+    }
+    expect(wider).toBe(5);
   });
 
   it('centres the box in its half, on the half’s surface colour', async () => {

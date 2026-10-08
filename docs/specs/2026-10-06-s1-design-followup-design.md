@@ -35,11 +35,17 @@ Three pull requests, in order. Each is reviewed and merged on its own.
 
 ## §1 Viewfinder layout (canvas option A, "split 50/50")
 
-- The screen splits in two equal halves. The **camera half** holds the camera preview as a 16:9
+- The screen splits in two halves. The **camera half** holds the camera preview as a 16:9
   box at the top, edge to edge across the half, and the **status strip** below it (surface
   colour). The **controls half** holds, top to bottom: the tally plate with the timer (on air) or
   the sound meter (before air), the readiness chips and the start time (before air), the sound
   meter (on air), a flexible gap, the icon row, then the hold button (72 dp tall, GO LIVE / STOP).
+- **Amended (owner, 2026-10-08): the controls half takes the width its content needs; the camera half the rest.**
+  The controls half is `layout.controlsHalf` wide whatever the screen: its widest row in any state plus its padding.
+  That is 310 dp (the plate row: the tally plate and the clock in a 135 dp cell each; the rows are derived and
+  measured in `controlsFit.test.ts`), so the camera half is 330 at 640 × 360, 494 at the owner's 804 × 360 and 605 at
+  915 × 412. The box stays 16:9 and the strip stays below it, and `cameraBoxSize` is unchanged: on a 360 dp screen the
+  strip's 180 limits the box from 630 wide up, so the wider camera half does not make the box larger there.
 - `controlsSide` keeps working: _Left_ mirrors the halves.
 - The scorebug overlay (the transparent WebView) and the _What viewers see_ video sit over the
   **camera box**, not the whole half. The overlay keeps its design-of-record rule: never redrawn in
@@ -71,9 +77,9 @@ Three pull requests, in order. Each is reviewed and merged on its own.
   The phone never builds or translates it. Ships with PR C, after the web contract lands
   (web branches `fix/pool-label-i18n`, then `feat/capture-scoring-link-stage`).
 - **The line yields to the label (R-F5).** It shows only when the status strip has room for it beside the
-  label; no strip reserve is added and the camera box never gives way. The strip is 189 dp at 640 × 360 and 180 dp
-  from 800 wide, so a label of one or two lines shows the line everywhere, a label of four lines or of three regular
-  lines never does, and a compact three-line label (a long name) shows it at 640 × 360 only. Until the strip and
+  label; no strip reserve is added and the camera box never gives way. The strip is 180 dp on every screen (it was 189 dp at 640 × 360 until the owner's rule of
+  2026-10-08 widened the camera half, so the box yields to the strip there as it does from 630 wide), so a label of one
+  or two lines shows the line everywhere and a label of three or four lines never does. Until the strip and
   the label are both measured, the line is hidden.
 - **An unknown `role.kind` shows no line (R-F20).** A kind outside the contract's list shows nothing, even with a
   good label; a kind the web adds later shows nothing until the app learns it.

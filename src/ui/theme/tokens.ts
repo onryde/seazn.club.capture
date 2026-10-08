@@ -125,14 +125,8 @@ export const space = {
   xl: 40,
 } as const;
 
-/**
- * The viewfinder is two equal halves (spec §1): the camera half holds a 16:9
- * box, a correctly uncropped 720p preview, with the status strip under it; the
- * controls half holds the rest. The box is as wide as its half where the screen
- * is tall enough, and narrower where it is not (`cameraBoxSize`), so the strip
- * gets what the phone's height leaves.
- */
-export const layout = {
+/** The viewfinder's measures, before `layout` adds the one it derives from them (`controlsHalf`). */
+const base = {
   tallyStripe: 4,
   previewAspect: 16 / 9,
   /** Spec §1: the hold button is 72 dp tall. */
@@ -156,6 +150,20 @@ export const layout = {
   /** Board "Before": the controls half's padding and gap. */
   controlsPad: 16,
   controlsGap: 12,
+  /**
+   * The three cells of the controls half that hold text, each the least whole dp that holds its words in all four
+   * languages, measured from the shipped fonts and the dictionaries by controlsFit.test.ts (which fails by the new
+   * number when a string or a type role changes):
+   *  - the clock's cell, in the plate row: HH:MM:SS at Barlow Condensed 700 38 in the font's TABULAR figures, which
+   *    `tabular-nums` selects and which are wider than its proportional ones (a clock sized from those wrapped in a
+   *    browser). The plate beside it (a word of up to 98.5 dp) is narrower.
+   *  - the peek's cell, on air, the icon row's fourth cell: the label in two lines (`peekLabelLines`) and the
+   *    reason in two (`peekReasonLines`), every word whole.
+   *  - the AUTO chip: its word at `control`, 8 dp of padding and a 2 dp border either side.
+   */
+  clockCell: 135,
+  peekCell: 101,
+  autoChip: 52,
   /** Board "Before": the status strip's padding and gap (Q4 A: vertical 8, not the board's 10). */
   stripPadV: 8,
   stripPadH: 16,
@@ -248,6 +256,49 @@ export const layout = {
   /** A segment's side padding: the board's English segments sit on the 66 floor, so this only matters to longer words (Linkerkant). */
   segmentPadX: 12,
 } as const;
+
+/** The cells the controls half's width is made of (`base` holds the shipped ones). */
+type ControlsCells = Readonly<
+  Record<'iconButton' | 'chip' | 'peekCell' | 'autoChip' | 'clockCell' | 'controlsPad', number>
+>;
+
+/**
+ * The controls half's width (owner, 2026-10-08, option "A": the controls half takes the width its content needs and
+ * the camera half takes the rest). It is the WIDEST ROW of the half, in any state, plus the half's padding either side:
+ *  - icons before air: Settings, Home, Take photo, Remote scoring, four 48 dp buttons and three gaps (216);
+ *  - icons on air: Settings, Take photo, Remote scoring and the peek, three buttons, three gaps and the peek's cell (269);
+ *  - chips: camera, sound, network and AUTO, four boxes and three gaps, on ONE line (208);
+ *  - the plate row: the tally plate and the clock, a cell each and a gap (278), which governs.
+ * Each row's gap is `space.sm`, as the icon row, the chip row and the plate row set it. Every other line of text in
+ * the half (the hold label, its reason, the start line, the photo line, the plate's words) is narrower than the content
+ * (controlsFit.test.ts measures each), so it can wrap or not as the vertical budget (viewfinderFit.test.ts) already
+ * counts it, and nothing is clipped. controlsFit.test.ts writes the four rows out again from the same atoms and pins the
+ * sum, and makes each row the widest in turn, so a dropped term fails even while another row governs.
+ */
+export function controlsHalfWidth(cells: ControlsCells): number {
+  const widest = Math.max(
+    4 * cells.iconButton + 3 * space.sm,
+    3 * cells.iconButton + 3 * space.sm + cells.peekCell,
+    3 * cells.chip + 3 * space.sm + cells.autoChip,
+    2 * cells.clockCell + space.sm,
+  );
+  return widest + 2 * cells.controlsPad;
+}
+
+/**
+ * The viewfinder is two halves (spec §1): the camera half holds a 16:9
+ * box, a correctly uncropped 720p preview, with the status strip under it; the
+ * controls half holds the rest. The box is as wide as its half where the screen
+ * is tall enough, and narrower where it is not (`cameraBoxSize`), so the strip
+ * gets what the phone's height leaves.
+ *
+ * The halves are NOT equal. Owner, 2026-10-08 (design follow-up §1, amended): the
+ * controls half takes the width its content needs (`controlsHalf`) and the camera
+ * half takes everything else. On a 360 dp screen the strip's 180 limits the box
+ * from 630 wide up, so a wider camera half there is room for the strip and the
+ * Remote scoring panel, not a larger picture.
+ */
+export const layout = { ...base, controlsHalf: controlsHalfWidth(base) } as const;
 
 /**
  * Cards and tiles are rounded, as in the owner-approved Home layout A; plates

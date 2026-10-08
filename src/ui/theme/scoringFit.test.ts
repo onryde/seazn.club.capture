@@ -81,18 +81,13 @@ const bodyWidth = (text: string) => geist400.width(text, typeScale.body.fontSize
  * Four cells in the row (Settings, Take photo, Remote scoring, the peek: pinned on the rendered tree by
  * StreamScreen.layout.test.tsx's on-air test), three of them 48 dp icon buttons with three `space.sm` gaps between.
  *
- * CONSERVATIVE, on purpose: this takes the controls half to be W / 2. The real one is wider: the camera half is
- * (W - 2 × the controls padding) / 2 (304 at 640) and the controls half is what is left, (W - 2 × pad) / 2 + 2 × pad
- * (336 at 640, 16 dp more than W / 2). So every cell here is 16 dp narrower than the one a phone draws, and a label
- * that fits this cell fits the real one (`realPeekCell` below states the difference and pins it).
+ * Owner, 2026-10-08: the controls half is `layout.controlsHalf` (310) on every screen, so the peek cell is the same
+ * at every width: 310 - 2 × the padding - 3 × 48 - 3 × 8 = 110. (It was W / 2 - 2 × pad - ... = 120 at 640 here, a
+ * conservative reading of a half that was really 16 dp wider, and grew with the screen to 257.5 at 915.) The
+ * `width` argument is kept so the rows below still read per geometry, and the answer is asserted not to depend on it.
  */
-const peekCell = (width: number) =>
-  width / 2 - 2 * layout.controlsPad - 3 * layout.iconButton - 3 * space.sm;
-/** The peek cell in the controls half the layout really gives (see `peekCell`): the same row, 2 × padding wider. */
-const realControlsHalf = (width: number) =>
-  (width - 2 * layout.controlsPad) / 2 + 2 * layout.controlsPad;
-const realPeekCell = (width: number) =>
-  realControlsHalf(width) - 2 * layout.controlsPad - 3 * layout.iconButton - 3 * space.sm;
+const peekCell = (_width: number) =>
+  layout.controlsHalf - 2 * layout.controlsPad - 3 * layout.iconButton - 3 * space.sm;
 /** The peek button has a `layout.iconBorder` border and `space.sm` of padding each side. */
 const peekText = (width: number) => peekCell(width) - 2 * layout.iconBorder - 2 * space.sm;
 
@@ -123,20 +118,10 @@ let worstReasonLines = 0;
 const MEASURED_AT_640 = new Map<string, { label: number; reason: number }>();
 
 describe('the on-air icon row with four cells (F6, RP10)', () => {
-  it('the peek cell is 120 dp at 640, 200 at 800, 222 at 844 and 257.5 at 915', () => {
-    expect(GEOMETRIES.map(([width]) => peekCell(width))).toEqual([120, 200, 222, 257.5]);
-    expect(peekText(640)).toBe(102);
-  });
-
-  it('the cells measured here are the conservative ones: the real controls half is 336 at 640, 16 dp more than W / 2', () => {
-    expect(realControlsHalf(640)).toBe(336);
-    expect(GEOMETRIES.map(([width]) => realPeekCell(width) - peekCell(width))).toEqual([
-      16, 16, 16, 16,
-    ]);
-    for (const [width] of GEOMETRIES) {
-      expect(realControlsHalf(width)).toBeGreaterThan(width / 2);
-      expect(realPeekCell(width)).toBeGreaterThan(peekCell(width));
-    }
+  it('the peek cell is 110 dp at 640, 800, 844 and 915 alike: the controls half does not grow with the screen', () => {
+    expect(GEOMETRIES.map(([width]) => peekCell(width))).toEqual([110, 110, 110, 110]);
+    expect(peekText(640)).toBe(92);
+    expect(layout.controlsHalf).toBe(310);
   });
 
   it('the token for the label’s lines is the lines the component’s own height holds (ViewerPeek’s minHeight is 48)', () => {
@@ -177,8 +162,9 @@ describe('the on-air icon row with four cells (F6, RP10)', () => {
     expect(peekRows).toBe(16);
   });
 
-  // At 640 the numbers are asserted as they were measured, not as hoped (RP10): the label is wider than the 102 dp of
-  // text in every language, so it takes two lines; the reason takes two in es and nl and one in en and fr.
+  // At 640 the numbers are asserted as they were measured, not as hoped (RP10): the label is wider than the 92 dp of
+  // text in every language, so it takes two lines; the reason takes two in es and nl and one in en and fr, as it did
+  // in the 120 dp cell it had before the owner's rule of 2026-10-08 (fr's 107.0 is 3.0 under the 110 cell).
   it('at 640 the label takes 2 lines in all four languages, and the reason 1, 2, 1, 2 (en, es, fr, nl)', () => {
     const lines = LANGUAGES.map(([lang]) => MEASURED_AT_640.get(lang));
     expect(lines.map((each) => each?.label)).toEqual([2, 2, 2, 2]);
@@ -187,19 +173,20 @@ describe('the on-air icon row with four cells (F6, RP10)', () => {
     expect(worstReasonLines).toBe(2);
   });
 
-  it('the widths behind that are the shipped fonts’: each label is wider than the 102 dp, the 640 es reason 0.9 dp over its cell', () => {
+  it('the widths behind that are the shipped fonts’: each label is wider than the 92 dp, the fr reason 3.0 dp under its cell and the es one 10.9 over', () => {
     const widths = LANGUAGES.map(([, dictionary]) =>
       labelWidth(dictionary['stream.peek.label'] ?? ''),
     );
     for (const each of widths) expect(each).toBeGreaterThan(peekText(640));
     expect(widths.map((each) => Math.round(each * 10) / 10)).toEqual([119.7, 136.3, 140.9, 113.5]);
-    expect(unitWidth(es['stream.peek.unavailable']) - peekCell(640)).toBeCloseTo(0.9, 1);
+    expect(peekCell(640) - unitWidth(fr['stream.peek.unavailable'])).toBeCloseTo(3.0, 1);
+    expect(unitWidth(es['stream.peek.unavailable']) - peekCell(640)).toBeCloseTo(10.9, 1);
   });
 
   it('the on-air controls half at 640 × 360 is 320 dp of 360 with two label lines and two reason lines (RP7)', () => {
     // 56 + 12 + 16 + 84 + 72 = 240 for the five items, 4 × 12 = 48 of gaps, 2 × 16 = 32 of padding. The same number
     // viewfinderFit.test.ts pins: the two fit files stack the same half, and must agree. (The height does not depend
-    // on the half's width once the label lines are taken, which the rows above measure in the conservative cell.)
+    // on the half's width once the label lines are taken, which the rows above measure in the 104 dp cell.)
     expect(onAirStack(2, 2)).toBe(320);
     expect(onAirStack(2, 2)).toBeLessThanOrEqual(360);
     // The photo line is in it: with a 0 there instead (RP7's earlier draft) the stack would read 304.
@@ -213,11 +200,11 @@ describe('the on-air icon row with four cells (F6, RP10)', () => {
 
 /**
  * The panel is `absoluteFill` of the camera half, padded `layout.controlsPad` with `layout.controlsGap` between its
- * children. The camera half is NOT W / 2: the controls half's padding clamps its flex basis (PR A), so the camera gets
- * (W - 2 × the controls padding) / 2, which Chromium measured as 304 at 640 and the layout test pins. So the panel's
- * content is that less its own padding: 272 at 640, not the 288 of W / 2 - 2 × padding.
+ * children. The camera half is what the controls half leaves (owner, 2026-10-08): the window less
+ * `layout.controlsHalf`, 330 at 640 (it was (W - 2 × the controls padding) / 2 = 304 before the ruling, which
+ * Chromium measured). So the panel's content is that less its own padding: 298 at 640.
  */
-const cameraHalf = (width: number) => (width - 2 * layout.controlsPad) / 2;
+const cameraHalf = (width: number) => width - layout.controlsHalf;
 const panelWidth = (width: number) => cameraHalf(width) - 2 * layout.controlsPad;
 
 /** Whole dp the QR is least allowed to leave over. */
@@ -231,10 +218,10 @@ const URL_PRD = FAKE_SCORING_URL.replace('stg.seazn.club', 'seazn.club');
 let geometriesChecked = 0;
 
 describe('the code panel (F7, D13)', () => {
-  it('the panel is 272 dp wide at 640 (the half the layout gives the camera, less the padding), not 288', () => {
-    expect(cameraHalf(640)).toBe(304);
-    expect(panelWidth(640)).toBe(272);
-    expect(GEOMETRIES.map(([width]) => panelWidth(width))).toEqual([272, 352, 374, 409.5]);
+  it('the panel is 298 dp wide at 640 (the half the layout gives the camera, less the padding)', () => {
+    expect(cameraHalf(640)).toBe(330);
+    expect(panelWidth(640)).toBe(298);
+    expect(GEOMETRIES.map(([width]) => panelWidth(width))).toEqual([298, 458, 502, 573]);
   });
 
   it('the title is one line in all four languages, measured at `panelTitle` (Barlow Condensed 700, 22/24, caps)', () => {
@@ -246,7 +233,7 @@ describe('the code panel (F7, D13)', () => {
       checked += 1;
     }
     expect(checked).toBe(4);
-    // As measured with the shipped font: the widest is French at 227.8 of the 272 dp, so a larger title has room to grow.
+    // As measured with the shipped font: the widest is French at 227.8 of the 298 dp, so a larger title has room to grow.
     expect(
       LANGUAGES.map(
         ([, dictionary]) =>

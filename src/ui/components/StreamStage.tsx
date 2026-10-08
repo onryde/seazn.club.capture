@@ -39,9 +39,11 @@ type StageProps = {
  *
  * The strip keeps its content height and the box gives way (`cameraBoxSize`):
  * on a screen too short for a full-width box the box is narrower, centred, on
- * the half's surface colour. The half reports its size once laid out; until
- * then the box is the full-width 16:9 one, which is the answer wherever the
- * strip fits under it (640 × 360).
+ * the half's surface colour. That is every screen from 630 × 360 up: the half is
+ * what the controls half leaves (owner, 2026-10-08: it is the width its content
+ * needs, so this half is the rest), and the strip's 180 limits the box before the
+ * half does. The half reports its size once laid out; until then the box is the
+ * full-width 16:9 one, for the frame before the first layout.
  */
 export const StreamStage = memo(function StreamStage(props: StageProps) {
   const overlay = useStageOverlay(props.overlayOn);

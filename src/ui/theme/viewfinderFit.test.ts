@@ -11,6 +11,9 @@ import { loadFont } from '../../../test/fontMetrics';
 // Spec §1: "Must fit a landscape phone from 640 × 360 dp up". This proves the RESERVATIONS fit, on
 // the screens real phones have; whether real text stays inside them is Task 9's, on the phone.
 //
+// Owner, 2026-10-08: the controls half is `layout.controlsHalf` wide (310: its widest row, controlsFit.test.ts) and
+// the camera half is the window less that, so the camera half is 330 at 640 wide and 605 at 915.
+//
 // "From 640 × 360 up" is not monotone: a wider screen at the same height has a taller box, and so
 // less room for the strip (strip room = height - half width x 9/16). So the strip is proved at each
 // of these shapes, not at the smallest alone. W, H in dp.
@@ -60,7 +63,7 @@ const CONTROLS = [
       layout.meterHeight,
       typeScale.metricUnit.lineHeight, // R3 (PR B): the photo line's place in the gap.
       // m-3: What viewers see, with its "No viewer picture" line under it while there is no picture (ViewerPeek).
-      // the peek cell is 120 dp at 640 since Remote scoring joined the row: es and nl wrap the reason to two lines (scoringFit.test.ts measures it)
+      // the peek cell is 110 dp at every width now the controls half is fixed (310 - 32 - 3 × 48 - 3 × 8): es and nl wrap the reason to two lines (scoringFit.test.ts measures it)
       layout.iconButton + space.xs + layout.peekReasonLines * typeScale.metricUnit.lineHeight,
       layout.holdHeight,
     ],
@@ -80,11 +83,11 @@ describe('the strip and the controls fit, at their worst', () => {
     expect(STRIP_RESERVE).toBeGreaterThanOrEqual(STRIP_WORST);
   });
 
-  // R-F5 (controller): the round line is NOT in the reserve. The strip is 180 where the box yields (800 wide and
-  // up) and 189 at 640 × 360, so a long double plus the round line does not fit at either, and the line yields
-  // (stageFit.ts). This states the over-run so nobody "fixes" it by deleting the yield or by adding a reserve the
-  // owner did not choose.
-  it('the round line plus PR A’s worst-case strip is 202 dp, 22 over the 180 the strip has (13 over the 189 at 640 × 360), which is why it yields (R-F5)', () => {
+  // R-F5 (controller): the round line is NOT in the reserve. The strip is 180 wherever the box yields to it, which
+  // is from 630 wide up on a 360 dp screen (the owner's rule, 2026-10-08, leaves the camera half 330 at 640, so
+  // 640 × 360 is one of them), so a long double plus the round line does not fit, and the line yields (stageFit.ts).
+  // This states the over-run so nobody "fixes" it by deleting the yield or by adding a reserve the owner did not choose.
+  it('the round line plus PR A’s worst-case strip is 202 dp, 22 over the 180 the strip has, which is why it yields (R-F5)', () => {
     const worst = layout.labelLinesMax * typeScale.labelLong.lineHeight;
     const status = layout.statusLinesMax * typeScale.body.lineHeight;
     const caption = layout.captionLinesMax * typeScale.metricUnit.lineHeight;
@@ -93,14 +96,14 @@ describe('the strip and the controls fit, at their worst', () => {
     expect(items).toHaveLength(4);
     expect(stack(items, layout.stripGap, layout.stripPadV)).toBe(202);
     expect(stack(items, layout.stripGap, layout.stripPadV) - STRIP_WORST).toBe(22);
-    expect(stack(items, layout.stripGap, layout.stripPadV) - 189).toBe(13);
     // No reserve was added: the strip's reserve is still the worst case WITHOUT the round line.
     expect(STRIP_RESERVE).toBe(STRIP_WORST);
   });
 });
 
 describe.each(GEOMETRIES)('the viewfinder fits %i × %i (spec §1)', (width, height) => {
-  const halfWidth = width / 2; // spec §1: two equal halves
+  // Owner, 2026-10-08: the controls half has the width its widest row needs, the camera half the rest.
+  const halfWidth = width - layout.controlsHalf;
   // Spec §1: a 16:9 box across the half.
   const fullBox = halfWidth / layout.previewAspect;
   const box = cameraBoxSize({
@@ -151,18 +154,21 @@ describe('the on-air controls half with Remote scoring in the icon row (spec §1
 });
 
 describe('the camera box at the smallest screen (spec §1)', () => {
-  // Spec §1's 640 × 360: nothing changes there. The box is the whole half, 320 × 180, and the strip
-  // gets the 180 that is left. This is the arithmetic that made Q4 an owner question: a padding of 10
-  // would make the strip 184 and take 4 dp off the box.
-  it('is still the whole half: 320 × 180', () => {
+  // Spec §1's 640 × 360: the camera half is 330 (640 - 310), which would hold a box 186 tall, but the strip leaves
+  // 180, so the box is 320 × 180 and the strip gets the 180 that is left. (Before the owner's rule of 2026-10-08 the
+  // half was 304 and the box 304 × 171, the strip 189.) This is the arithmetic that made Q4 an owner question: a
+  // padding of 10 would make the strip 184 and take 4 dp off the box.
+  it('is 320 × 180: the strip’s 180 limits it, not the half', () => {
+    expect(640 - layout.controlsHalf).toBe(330);
     const box = cameraBoxSize({
-      halfWidth: 320,
+      halfWidth: 640 - layout.controlsHalf,
       height: 360,
       stripContent: STRIP_RESERVE,
       aspect: layout.previewAspect,
     });
     expect(box.width).toBeCloseTo(320, 9);
     expect(box.height).toBeCloseTo(180, 9);
+    expect(336 / layout.previewAspect).toBeGreaterThan(box.height);
   });
 
   it('checked every geometry, and there were four (anti-vacuity)', () => {
@@ -171,12 +177,41 @@ describe('the camera box at the smallest screen (spec §1)', () => {
   });
 });
 
+// Owner, 2026-10-08: the phone the ruling was made on is 804 × 360 dp. Written out from the declarations.
+describe('the owner’s phone, 804 × 360 (the ruling of 2026-10-08)', () => {
+  const half = 804 - layout.controlsHalf;
+  const box = cameraBoxSize({
+    halfWidth: half,
+    height: 360,
+    stripContent: STRIP_RESERVE,
+    aspect: layout.previewAspect,
+  });
+
+  it('gives the camera half 494 of the 804 dp, 92 more than half the screen (402), and the controls half 310', () => {
+    expect(layout.controlsHalf).toBe(310);
+    expect(half).toBe(494);
+    expect(half - 804 / 2).toBe(92);
+    expect(half).toBeGreaterThan(804 / 2);
+  });
+
+  // The box is 16:9 and the strip is below it, so it is limited by what the strip's 180 leaves: 360 - 180 = 180 tall,
+  // 320 wide. A box of 480 × 270 would leave the strip 90 dp, half what it reserves at its worst case (Q4 option A).
+  it('holds a 320 × 180 box, limited by the strip’s 180 and not by the half: 494 would hold 277', () => {
+    expect(box.width).toBeCloseTo(320, 9);
+    expect(box.height).toBeCloseTo(180, 9);
+    expect(box.width / box.height).toBeCloseTo(16 / 9, 9);
+    expect(half / layout.previewAspect).toBeGreaterThan(box.height);
+    expect(box.height + STRIP_WORST).toBe(360);
+  });
+});
+
 // R3 (PR B): the photo line is one line (`numberOfLines` 1), and a line that is too wide is cut with an
-// ellipsis and no error. So its words are measured, in every language, in the narrowest controls half: 640
-// wide gives 320, and a wider screen only widens it. The widths come from the font file the app ships
-// (test/fontMetrics.ts) at the size its type role declares, never from the strings being judged.
+// ellipsis and no error. So its words are measured, in every language, in the controls half: since the owner's
+// rule of 2026-10-08 it is `layout.controlsHalf` wide on every screen, not wider on a wider one. The widths come
+// from the font file the app ships (test/fontMetrics.ts) at the size its type role declares, never from the strings
+// being judged.
 describe('the photo line fits one line in the controls half (spec §8)', () => {
-  const CONTENT = 640 / 2 - 2 * layout.controlsPad;
+  const CONTENT = layout.controlsHalf - 2 * layout.controlsPad;
   const LANGUAGES = [
     ['en', en],
     ['es', es],
@@ -185,11 +220,11 @@ describe('the photo line fits one line in the controls half (spec §8)', () => {
   ] as const;
   const KEYS = ['stream.photo.saved', 'stream.photo.failed'] as const;
 
-  it('is set in Geist 500 at 12, the role’s own font, in a 288 dp content width', () => {
+  it('is set in Geist 500 at 12, the role’s own font, in a 278 dp content width', () => {
     expect(font.bodyMedium).toBe('Geist_500Medium');
     expect(typeScale.metricUnit.fontFamily).toBe(font.bodyMedium);
     expect(typeScale.metricUnit.fontSize).toBe(12);
-    expect(CONTENT).toBe(288);
+    expect(CONTENT).toBe(278);
   });
 
   it('every photo line, in all four languages, is narrower than the content', () => {

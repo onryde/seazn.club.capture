@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { cameraBoxSize, STRIP_RESERVE } from '@/ui/theme/cameraBox';
+import { layout } from '@/ui/theme/tokens';
 
 /** Spec §1: a 16:9 box. Written here, not read from a token. */
 const ASPECT = 16 / 9;
@@ -24,6 +25,11 @@ describe('cameraBoxSize', () => {
     ['844 x 390 at 164', 422, 390, 164, 401.7777778, 226],
     // A tall, narrow screen is width-limited again: 200 x 9/16 = 112.5, and 800 - 180 is far more.
     ['a tall screen', 200, 800, 180, 200, 112.5],
+    // The owner's rule (2026-10-08), 640 x 360: the camera half is 640 - 310 = 330, which holds 185.6, but 360 - 180 = 180
+    // is all the strip leaves: 180 x 16/9 = 320. (Before the rule the half was 304: 304 x 9/16 = 171, a box of 304 x 171.)
+    ['640 x 360 at 180, the controls half 310', 330, 360, 180, 320, 180],
+    // The owner's phone, 804 x 360: the half is 494 and holds 277.9, but the strip leaves 180: the same 320 x 180.
+    ['804 x 360 at 180, the controls half 310', 494, 360, 180, 320, 180],
   ] as const;
 
   it.each(CASES)('%s', (_name, halfWidth, height, stripContent, width, boxHeight) => {
@@ -32,8 +38,8 @@ describe('cameraBoxSize', () => {
     expect(box.height).toBeCloseTo(boxHeight, 5);
   });
 
-  it('ran six hand-worked cases', () => {
-    expect(CASES).toHaveLength(6);
+  it('ran eight hand-worked cases', () => {
+    expect(CASES).toHaveLength(8);
   });
 
   // The empty cases: nothing to draw is a box of nothing, never a negative size.
@@ -50,12 +56,13 @@ describe('cameraBoxSize', () => {
     });
   });
 
-  // Swept, not sampled: every shape from 640 x 360 up, in steps of 8 dp wide and 4 dp high, against the invariants.
+  // Swept, not sampled: every shape from 640 x 360 up, in steps of 8 dp wide and 4 dp high, against the invariants, in
+  // the half the owner's rule gives the camera (the window less the controls half, 2026-10-08).
   it('is 16:9, inside its half, and leaves the strip its content, at every size from 640 x 360', () => {
     let checked = 0;
     for (let width = 640; width <= 1000; width += 8) {
       for (let height = 360; height <= 460; height += 4) {
-        const halfWidth = width / 2;
+        const halfWidth = width - layout.controlsHalf;
         const box = cameraBoxSize({ halfWidth, height, stripContent: 180, aspect: ASPECT });
         expect(box.width).toBeLessThanOrEqual(halfWidth + 1e-9);
         expect(box.height).toBeLessThanOrEqual((halfWidth * 9) / 16 + 1e-9);
