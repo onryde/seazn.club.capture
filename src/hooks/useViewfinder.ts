@@ -32,7 +32,7 @@ import { useFormatTime } from '@/hooks/useFormatTime';
 import { usePorts } from '@/hooks/usePorts';
 
 type Kind = SessionState['kind'];
-export type ViewfinderAction = 'goLive' | 'stop' | 'ended';
+export type ViewfinderAction = 'goLive' | 'stop' | 'none';
 
 /** Everything the column shows, as a projection of native state (AGENTS §2). No state machine. */
 export type Viewfinder = {
@@ -70,7 +70,8 @@ export type Viewfinder = {
 
 /**
  * Which control the column offers in each state: Go live before air, Stop on
- * it, none after. Arming and Armed hold a broadcast, so they offer Stop.
+ * it, none after (an Ended leaves for Home, spec §5). Arming and Armed hold a
+ * broadcast, so they offer Stop.
  */
 /** The states that went live: the ones native reports with `sinceEpochMs`, which a Stop ends with the pairing. */
 const LIVE: ReadonlySet<Kind> = new Set(['publishing', 'degraded', 'reconnecting']);
@@ -85,7 +86,7 @@ const ACTION: Readonly<Record<Kind, ViewfinderAction>> = {
   publishing: 'stop',
   degraded: 'stop',
   reconnecting: 'stop',
-  ended: 'ended',
+  ended: 'none',
 };
 
 /**

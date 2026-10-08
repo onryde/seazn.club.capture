@@ -774,7 +774,9 @@ describe('where Diagnostics sits (spec §6)', () => {
 });
 
 describe('the viewfinder’s way into Settings (AGENTS §6; spec §3, §6: no Diagnostics button)', () => {
-  const SCENES = ['paired-ready', 'connecting', 'live', 'holding', 'stopped', 'fatal'] as const;
+  // F3, spec §5: `stopped` and `fatal` are Ended, and an Ended leaves the viewfinder for Home at once, so there is no
+  // Settings button to press on them. StreamScreen.ended.test.tsx and HomeScreen.ended.test.tsx own those two states.
+  const SCENES = ['paired-ready', 'connecting', 'live', 'holding'] as const;
 
   it.each(SCENES)('Settings is there while %s, and Diagnostics is not', async (scene) => {
     const view = await renderViewfinder();
@@ -784,7 +786,7 @@ describe('the viewfinder’s way into Settings (AGENTS §6; spec §3, §6: no Di
     expect(view.navigation.current()).toBe('streamSettings');
   });
 
-  it('covers its scenes', () => expect(SCENES).toHaveLength(6));
+  it('covers its scenes', () => expect(SCENES).toHaveLength(4));
 
   it('reads in Spanish', async () => {
     await renderViewfinder({ deviceLanguages: ['es'] });

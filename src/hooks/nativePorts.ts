@@ -6,10 +6,10 @@ import { chooseCodePort } from '@/hooks/codePortWiring';
 import { chooseEngine, routedRecordFor } from '@/hooks/engineWiring';
 import type { Ports } from '@/hooks/usePorts';
 import { createNativeCodeScanner } from '@/scanner/nativeCodeScanner';
+import { createEndedNotice } from '@/services/endedNotice';
 import { withTimeout } from '@/services/kvTimeout';
 import { createLogger } from '@/services/logger';
 import { createModeStore } from '@/services/modeStore';
-import { createHomeIntent } from '@/services/homeIntent';
 import { createProbeFlight } from '@/services/probeFlight';
 import { createScanFlight } from '@/services/scanFlight';
 import { createExpoRouterNavigation } from '@/services/native/expoRouterNavigation';
@@ -69,7 +69,7 @@ export function createNativePorts(): Ports {
     modeStore: createModeStore(kv),
     scanFlight: createScanFlight(),
     probeFlight: createProbeFlight(),
-    homeIntent: createHomeIntent(),
+    endedNotice: createEndedNotice(),
     streamSettings: createStreamSettingsStore(kv, logger),
     motion: createNativeMotion(),
     orientationLock: createNativeOrientationLock(),

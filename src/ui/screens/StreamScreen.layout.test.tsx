@@ -400,17 +400,19 @@ describe('the controls half (spec §1)', () => {
     expect(getComputedStyle(stopLive()).minHeight).toBe('72px');
   });
 
-  it('Ended keeps both halves: the summary and Scan another take the hold button’s place', async () => {
+  // Spec §5: an Ended is one frame before the viewfinder leaves for Home with the card (the leave is a later
+  // microtask, so a synchronous read still sees it). The frame keeps both halves and offers nothing to press.
+  it('Ended keeps both halves for its one frame, and the hold button goes with nothing in its place', async () => {
     const view = await renderViewfinder();
     act(() => view.engine.scene('live'));
+    expect(stopLive()).toBeTruthy();
     act(() => view.engine.scene('stopped'));
     expect([...byId('viewfinder').children]).toHaveLength(2);
     const rows = [...byId('controls-half').children];
     expect(rows[0]).toBe(byId('plate-row'));
-    expect(rows).toContain(byId('icon-row'));
-    const last = rows.at(-1) as HTMLElement;
-    expect(within(last).getByRole('button', { name: en['stream.ended.scanAnother'] })).toBeTruthy();
-    expect(screen.queryByRole('button', { name: /Press and hold/ })).toBeNull();
+    expect(rows.at(-1)).toBe(byId('icon-row'));
+    expect(screen.queryByRole('button', { name: /Press and hold|Hold to stop/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: /Scan another/ })).toBeNull();
   });
 });
 

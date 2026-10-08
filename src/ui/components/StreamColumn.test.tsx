@@ -46,7 +46,7 @@ describe('StreamColumn’s Go live', () => {
 
   it('starts after the hold when paired with nothing blocking', () => {
     const view = viewOf({});
-    renderWithPorts(<StreamColumn view={view} {...ICONS} peek={PEEK} onScanAnother={vi.fn()} />);
+    renderWithPorts(<StreamColumn view={view} {...ICONS} peek={PEEK} />);
     pressIn(goLive());
     act(() => vi.advanceTimersByTime(HOLD_MS));
     expect(view.start).toHaveBeenCalledTimes(1);
@@ -59,7 +59,7 @@ describe('StreamColumn’s Go live', () => {
     'stays off while the engine is %s, even with every chip green',
     (kind) => {
       const view = viewOf({ kind, plate: 'starting' });
-      renderWithPorts(<StreamColumn view={view} {...ICONS} peek={PEEK} onScanAnother={vi.fn()} />);
+      renderWithPorts(<StreamColumn view={view} {...ICONS} peek={PEEK} />);
       pressIn(goLive());
       act(() => vi.advanceTimersByTime(HOLD_MS));
       expect(view.start).not.toHaveBeenCalled();
@@ -69,16 +69,13 @@ describe('StreamColumn’s Go live', () => {
   // A3: Stop ends the broadcast and the pairing, and its label says so.
   // Owner decision 1 (2026-10-05): Stop unpairs only once live; before, it says it stops, and nothing more.
   it('labels Stop for a screen reader as stopping and unpairing once live, as stopping before; Go live keeps its own', () => {
-    const { rerender } = renderWithPorts(
-      <StreamColumn view={viewOf({})} {...ICONS} peek={PEEK} onScanAnother={vi.fn()} />,
-    );
+    const { rerender } = renderWithPorts(<StreamColumn view={viewOf({})} {...ICONS} peek={PEEK} />);
     expect(goLive()).toBeTruthy();
     rerender(
       <StreamColumn
         view={viewOf({ kind: 'connecting', action: 'stop', onAir: true, plate: 'connecting' })}
         {...ICONS}
         peek={PEEK}
-        onScanAnother={vi.fn()}
       />,
     );
     expect(screen.getByRole('button', { name: 'Hold to stop' })).toBeTruthy();
@@ -94,7 +91,6 @@ describe('StreamColumn’s Go live', () => {
         })}
         {...ICONS}
         peek={PEEK}
-        onScanAnother={vi.fn()}
       />,
     );
     expect(screen.getByRole('button', { name: 'Hold to stop and unpair' })).toBeTruthy();
@@ -102,20 +98,30 @@ describe('StreamColumn’s Go live', () => {
     expect(screen.queryByRole('button', { name: /^Stop\. Press and hold/ })).toBeNull();
   });
 
+  // Spec §5: an Ended is the one frame before the viewfinder leaves for Home. It offers no hold control, neither
+  // Go live nor Stop (nor the old Scan another); its positive pair is the 'goLive' column above.
+  it('offers no hold control when the action is none', () => {
+    renderWithPorts(
+      <StreamColumn
+        view={viewOf({ kind: 'ended', action: 'none', plate: 'ended' })}
+        {...ICONS}
+        peek={PEEK}
+      />,
+    );
+    expect(screen.queryByRole('button', { name: /Press and hold|Hold to stop/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: /Scan another/ })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Settings' })).toBeTruthy();
+  });
+
   it('says the reason it is given, and only once paired', () => {
     const reason = 'stream.blocker.sound' as const;
     const blocked = { blocker: 'sound', reason, preflight: { ...GREEN, sound: false } } as const;
     const { rerender } = renderWithPorts(
-      <StreamColumn view={viewOf(blocked)} {...ICONS} peek={PEEK} onScanAnother={vi.fn()} />,
+      <StreamColumn view={viewOf(blocked)} {...ICONS} peek={PEEK} />,
     );
     expect(screen.getByText('Mic not available')).toBeTruthy();
     rerender(
-      <StreamColumn
-        view={viewOf({ ...blocked, kind: 'pairing' })}
-        {...ICONS}
-        peek={PEEK}
-        onScanAnother={vi.fn()}
-      />,
+      <StreamColumn view={viewOf({ ...blocked, kind: 'pairing' })} {...ICONS} peek={PEEK} />,
     );
     expect(screen.queryByText('Mic not available')).toBeNull();
   });
@@ -129,7 +135,6 @@ describe('StreamColumn’s icon row (spec §3)', () => {
       onHome={onHome}
       onSettings={onSettings}
       peek={PEEK}
-      onScanAnother={vi.fn()}
     />
   );
 

@@ -1,10 +1,9 @@
-import { useCallback } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { cutDestination } from '@/domain/session/destination';
 import { columnLineKey } from '@/hooks/statusKey';
 import { useT } from '@/hooks/useLanguage';
 import { usePeek } from '@/hooks/usePeek';
-import { usePorts } from '@/hooks/usePorts';
+import { useEndedToHome } from '@/hooks/useEndedNotice';
 import { useStreamLeave } from '@/hooks/useStreamLeave';
 import { useStreamLinks } from '@/hooks/useStreamLinks';
 import { useStreamSettings } from '@/hooks/useStreamSettings';
@@ -13,8 +12,9 @@ import { StreamColumn } from '@/ui/components/StreamColumn';
 import { StreamStage } from '@/ui/components/StreamStage';
 
 /**
- * Live Stream's viewfinder (spec §1, §4): Arm, on air and Ended are one screen,
- * a projection of the engine's state, in two equal halves. The camera half is
+ * Live Stream's viewfinder (spec §1, §4): Arm and on air are one screen, a
+ * projection of the engine's state, in two equal halves. An Ended leaves it for
+ * Home with the Stream ended card (spec §5). The camera half is
  * the shot with the status strip under it; the controls half is on the side the
  * operator picked in Settings, and Left mirrors the halves.
  */
@@ -23,7 +23,7 @@ export function StreamScreen() {
   const view = useViewfinder();
   const { settings } = useStreamSettings();
   const peek = usePeek(view.peekable);
-  const scanAnother = useScanAnother(leave.leaveWith);
+  useEndedToHome(leave.leaveWith);
   const links = useStreamLinks();
   const line = useColumnLine(view, leave.blocked);
   return (
@@ -40,7 +40,6 @@ export function StreamScreen() {
         canLeave={leave.canLeave}
         onHome={leave.leave}
         onSettings={links.settings}
-        onScanAnother={scanAnother}
       />
     </View>
   );
@@ -59,17 +58,6 @@ function useColumnLine(view: Viewfinder, blocked: boolean): string {
     destination: view.destination === null ? '' : cutDestination(view.destination),
   };
   return t(columnLineKey(view.statusKey, blocked), vars);
-}
-
-/**
- * Ended's Scan another (D24): leave, asking Home to scan on the way. Only Home
- * calls `scan()`. The request is made only by a leave that goes Home (M9), so
- * a leave cancelled on air leaves nothing waiting for the next Home. The leave
- * is one at a time (useLeaveOnce), so a double press leaves and asks once.
- */
-function useScanAnother(leaveWith: (beforeHome: () => void) => void): () => void {
-  const { homeIntent } = usePorts();
-  return useCallback(() => leaveWith(homeIntent.requestScan), [homeIntent, leaveWith]);
 }
 
 const styles = StyleSheet.create({

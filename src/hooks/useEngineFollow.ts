@@ -75,7 +75,7 @@ export function useEngineFollow(): void {
       // part, so no rule below can forget or mark it (M-4).
       const name = savedCodeName(code);
       if (heard.current.code === code && forgetsSaved({ saved: name, ...facts })) {
-        // An unpair the operator did not ask for goes Home, to its panel (Task 29); their Stop stays on Ended.
+        // An unpair the operator did not ask for goes Home, to its panel (Task 29); their Stop goes Home with the card, by StreamScreen's leave (spec §5).
         // Only if this code went: one saved behind the write is a new scan, and the app follows it (C4b-I2).
         const home = facts.unpaired !== null;
         return once(code, 'forget', () =>

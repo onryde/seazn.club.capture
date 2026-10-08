@@ -15,6 +15,7 @@ import {
   selectHeldSlot,
   selectHeldTokenTag,
   selectAutomaticOn,
+  selectCodeEndedPending,
   selectDestination,
   selectEndReason,
   selectHoldsOrientation,
@@ -345,4 +346,20 @@ describe('selectMeterSegments', () => {
   ])('level %d lights %i', (audioLevel, lit) => {
     expect(selectMeterSegments(snapshot(LIVE, { audioLevel }))).toBe(lit);
   });
+});
+
+/**
+ * Spec §5, F14 a: the Stream ended card says the code has ended when the Ended snapshot still carries the 401
+ * deferral. The flag is the snapshot's own, read as it is in every state.
+ */
+describe('selectCodeEndedPending', () => {
+  const ENDED: SessionState = { kind: 'ended', reason: 'operator-stopped', durationMs: 1 };
+
+  it.each<[SessionState]>([[{ kind: 'idle' }], [PAIRED], [LIVE], [ENDED]])(
+    'reads the flag as the snapshot has it, in %j',
+    (state) => {
+      expect(selectCodeEndedPending({ ...snapshot(state), codeEndedPending: true })).toBe(true);
+      expect(selectCodeEndedPending({ ...snapshot(state), codeEndedPending: false })).toBe(false);
+    },
+  );
 });

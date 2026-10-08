@@ -27,7 +27,6 @@ const BUDGETS: readonly (readonly [keys: RegExp, max: number])[] = [
   [/^stream\.preview\.show$/, 16],
   [/^stream\.peek\.label$/, 28],
   [/^stream\.peek\.unavailable$/, 24],
-  [/^stream\.ended\.scanAnother$/, 16],
   [/^stream\.ended\.(duration|neverLive)$/, 24],
   // The links share the bottom strip with the match label and Home.
   [/^stream\.link\./, 14],

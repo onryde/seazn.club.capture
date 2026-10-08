@@ -136,6 +136,8 @@ export const layout = {
   iconButton: 48,
   /** The icon button's hairline outline, GhostButton's and the peek control's. */
   iconBorder: 1,
+  /** Home's cards are outlined by a hairline: the Stream ended card's (spec §5). */
+  cardBorder: 1,
   /** The tally plate's floor (TallyPlate), unchanged. */
   plateHeight: 56,
   /** AudioMeter's bar, unchanged. */

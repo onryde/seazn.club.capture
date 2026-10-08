@@ -36,8 +36,8 @@ export type ReopenTarget =
  * orphan, cleared on the way Home). An Idle engine reopens into /stream only
  * when the cold-start re-pair was sent (`resumed`); any other Idle engine with
  * a saved code goes Home, to the Continue card. A permanent failure keeps its
- * code and its Ended screen ("Your code is kept"); the operator's Stop goes
- * Home. S0 builds only Live Stream; S2 and S4 widen the union.
+ * code; the viewfinder then leaves for Home with the card (spec §5), and the
+ * operator's Stop goes Home. S0 builds only Live Stream; S2 and S4 widen the union.
  */
 export function reopenTarget(input: {
   engine: EngineStatus;

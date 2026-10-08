@@ -92,7 +92,8 @@ describe('useEngineFollow: native’s word on the saved code', () => {
     expect(savedOf(fakes)).toEqual(code);
   });
 
-  it('forgets the code on the operator’s Stop, and stays on its Ended screen', async () => {
+  // Spec §5: the leave for Home is StreamScreen's (useEndedToHome), not the follow's, and no viewfinder is mounted here.
+  it('forgets the code on the operator’s Stop, and does not move the route itself', async () => {
     const fakes = await shell();
     act(() => fakes.engine.send({ kind: 'start' }));
     await flush(5_000);
@@ -243,8 +244,7 @@ describe('useEngineFollow: the same code scanned again', () => {
     act(() => app.engine.send({ kind: 'stop' }));
     await flushApp();
     expect(app.kv.entries.has(STORE_KEYS.code('stream'))).toBe(false);
-    act(() => screen.getByRole('button', { name: 'Home' }).click());
-    await flushApp();
+    // Spec §5: the Stop leaves the viewfinder for Home by itself (no Home button to press on an Ended).
     expect(app.nav.current()).toBe('home');
     await scanFromHome(app, code.raw);
     await flushApp(3_000);

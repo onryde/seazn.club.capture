@@ -3,6 +3,7 @@ import { StyleSheet, View } from 'react-native';
 import type { Mode } from '@/domain/mode/Mode';
 import { BUILT_MODES } from '@/domain/mode/scanOutcome';
 import { useBackCloses } from '@/hooks/useBackCloses';
+import { useEndedCard } from '@/hooks/useEndedNotice';
 import { useHome, type HomeActions, type HomeView } from '@/hooks/useHome';
 import { useT } from '@/hooks/useLanguage';
 import { usePorts } from '@/hooks/usePorts';
@@ -10,6 +11,7 @@ import { CodePanel } from '@/ui/components/CodePanel';
 import { ContinueCard } from '@/ui/components/ContinueCard';
 import { DevPaste } from '@/ui/components/DevPaste';
 import { DevProbe } from '@/ui/components/DevProbe';
+import { EndedCard } from '@/ui/components/EndedCard';
 import { HomeFooter } from '@/ui/components/HomeFooter';
 import { StatusLine } from '@/ui/components/StatusLine';
 import { Text } from '@/ui/components/Text';
@@ -18,8 +20,8 @@ import { MODES } from '@/ui/modeCopy';
 import { colour, space } from '@/ui/theme/tokens';
 
 /**
- * Layout A (spec §7): brand, status, Continue, three equal tiles, footer; the
- * panel over all. Back closes the panel (R31).
+ * Layout A (spec §7): brand, status, the Stream ended card when there is one,
+ * Continue, three equal tiles, footer; the panel over all. Back closes the panel (R31).
  */
 export function HomeScreen() {
   const { view, actions } = useHome();
@@ -63,6 +65,7 @@ function HomeContent({ view, actions }: { view: HomeView; actions: HomeActions }
     >
       <Text variant="title">{t('brand')}</Text>
       <StatusLine>{view.statusText}</StatusLine>
+      <EndedSlot />
       <ContinueSlot view={view} actions={actions} />
       <ModeTiles onPress={actions.tapTile} />
       {devTools ? <DevPaste onUse={actions.useRaw} /> : null}
@@ -70,6 +73,16 @@ function HomeContent({ view, actions }: { view: HomeView; actions: HomeActions }
       <HomeFooter version={appVersion} />
     </View>
   );
+}
+
+/**
+ * The Stream ended card (spec §5), above Continue: only after the phone's Stop or a fatal end left the viewfinder
+ * for Home. OK, a new scan or Continue clears it; it is in memory, so a restart does too.
+ */
+function EndedSlot() {
+  const { endedNotice } = usePorts();
+  const card = useEndedCard();
+  return card === null ? null : <EndedCard card={card} onOk={endedNotice.clear} />;
 }
 
 /** The Continue card, only when a left mode still holds a valid code. */

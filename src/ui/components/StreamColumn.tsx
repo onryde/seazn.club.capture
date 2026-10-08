@@ -6,7 +6,6 @@ import type { BlockerKey } from '@/hooks/preflight';
 import type { Viewfinder, ViewfinderAction } from '@/hooks/useViewfinder';
 import { AudioMeter } from '@/ui/components/AudioMeter';
 import { Elapsed } from '@/ui/components/Elapsed';
-import { EndedBlock } from '@/ui/components/EndedBlock';
 import { HoldAction } from '@/ui/components/HoldAction';
 import { IconButton } from '@/ui/components/IconButton';
 import { PreflightChips } from '@/ui/components/PreflightChips';
@@ -20,8 +19,6 @@ type ColumnProps = {
   readonly canLeave: boolean;
   readonly onHome: () => void;
   readonly onSettings: () => void;
-  /** Ended's Scan another (D24). */
-  readonly onScanAnother: () => void;
 };
 
 /**
@@ -61,7 +58,6 @@ export const StreamColumn = memo(function StreamColumn(props: ColumnProps) {
         reason={view.kind === 'paired' ? view.reason : null}
         start={view.start}
         stop={view.stop}
-        onScanAnother={props.onScanAnother}
       />
     </View>
   );
@@ -127,18 +123,18 @@ type ActionProps = {
   readonly reason: BlockerKey | null;
   readonly start: () => void;
   readonly stop: () => void;
-  readonly onScanAnother: () => void;
 };
 
 /**
- * Go live before air, Stop on it; after it, Ended's summary and Scan another.
+ * Go live before air, Stop on it; after it, nothing: Ended leaves for Home (spec §5).
  * Keyed by the action (carry 13): a hold belongs to the control the finger
  * landed on, so Go live turning into Stop under it abandons it, while a
  * change of state that keeps Stop keeps the hold. Primitives, so memo skips (M7).
  */
 const ColumnAction = memo(function ColumnAction(props: ActionProps) {
   const { t } = useT();
-  if (props.action === 'ended') return <EndedBlock onScanAnother={props.onScanAnother} />;
+  // The one frame an Ended shows before the viewfinder leaves for Home (spec §5): nothing to press.
+  if (props.action === 'none') return null;
   const stop = props.action === 'stop';
   return (
     <HoldAction

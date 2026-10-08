@@ -91,6 +91,11 @@ export const selectEndReason = (snapshot: EngineSnapshot) =>
 /** Time on air when it ended (plan B's `durationMs`); null for a session that never went live. */
 export const selectEndedDurationMs = (snapshot: EngineSnapshot) =>
   snapshot.state.kind === 'ended' ? snapshot.state.durationMs : null;
+/**
+ * A 401 heard while a broadcast was held, deferred to the Stop (CaptureEnginePort.ts:96): the code has ended. Ended keeps
+ * it set (Projection.kt:38), so it is also the card's word that the code is dead (spec §5, F14 a).
+ */
+export const selectCodeEndedPending = (snapshot: EngineSnapshot) => snapshot.codeEndedPending;
 /** Whether native holds a pairing; before that there is no overlay to try. */
 export const selectHasPairing = (snapshot: EngineSnapshot) => snapshot.pairing !== null;
 /** What names native's pairing (amendment, Identity rules): read apart, so each is a stable scalar. */
