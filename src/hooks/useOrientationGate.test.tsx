@@ -245,7 +245,7 @@ describe('useOrientationGate', () => {
     await gate('landscape', fakes); // on air, nothing locked: landscape at once (R37), refused; the retry waits
     hold(fakes, UPRIGHT, 0); // the operator tilts up: keep, which is no newer lock
     expect(fakes.orientationLock.locks).toEqual([]);
-    await act(() => vi.advanceTimersByTimeAsync(499));
+    await act(() => vi.advanceTimersByTimeAsync(LOCK_RETRY_MS - 1));
     expect(fakes.orientationLock.locks).toEqual([]);
     await act(() => vi.advanceTimersByTimeAsync(1));
     expect(fakes.orientationLock.locks).toEqual(['landscape']);
@@ -270,7 +270,7 @@ describe('useOrientationGate', () => {
     await gate('landscape', fakes); // landscape asked for; the platform has not answered
     hold(fakes, UPRIGHT, 0); // on air: keep, which cancels nothing
     await act(async () => refuse(new Error('refused'))); // then the refusal lands: one retry is owed
-    await act(() => vi.advanceTimersByTimeAsync(500));
+    await act(() => vi.advanceTimersByTimeAsync(LOCK_RETRY_MS));
     expect(fakes.orientationLock.locks).toEqual(['landscape']);
     hold(fakes, SIDEWAYS, 1000);
     await act(async () => undefined);
@@ -305,6 +305,54 @@ describe('useOrientationGate', () => {
     hook.unmount();
     await act(() => vi.advanceTimersByTimeAsync(1000));
     expect(fakes.orientationLock.locks).toEqual([]);
+  });
+
+  // The cancel only clears a timer that exists. A lock still pending when it is cancelled has no timer yet, so
+  // its late refusal must not schedule one: that is `cancelled` in the catch, and nothing else stops it.
+  it('does not retry a superseded lock whose refusal lands late (R26)', async () => {
+    vi.useFakeTimers();
+    const fakes = createFakePorts();
+    const lock = fakes.orientationLock.lock;
+    let refuse: (reason: Error) => void = () => undefined;
+    let first = true;
+    fakes.orientationLock.lock = (target) => {
+      if (!first) return lock(target);
+      first = false;
+      return new Promise((_, reject) => {
+        refuse = reject;
+      });
+    };
+    await gate('landscape', fakes); // idle, no reading: landscape (R34); the platform has not answered
+    hold(fakes, UPRIGHT, 0); // off air: lock to the hands, portrait, a newer lock
+    expect(fakes.orientationLock.locks).toEqual(['portrait']);
+    await act(async () => refuse(new Error('refused'))); // the old landscape refusal lands
+    await act(() => vi.advanceTimersByTimeAsync(1000));
+    expect(fakes.orientationLock.locks).toEqual(['portrait']); // no landscape retry
+    const refused = readRecord(fakes.record).filter((e) => e.event === 'orientation.lock-refused');
+    expect(refused.map((e) => e.fields.attempt)).toEqual([1]); // the refusal did land, once
+  });
+
+  it('does not retry a lock whose refusal lands after unmount', async () => {
+    vi.useFakeTimers();
+    const fakes = createFakePorts();
+    fakes.engine.forceState({ kind: 'publishing', transport: 'srt', sinceEpochMs: 1 });
+    const lock = fakes.orientationLock.lock;
+    let refuse: (reason: Error) => void = () => undefined;
+    let first = true;
+    fakes.orientationLock.lock = (target) => {
+      if (!first) return lock(target); // a retry would reach the real port, and be recorded
+      first = false;
+      return new Promise((_, reject) => {
+        refuse = reject;
+      });
+    };
+    const { hook } = await gate('landscape', fakes); // on air: landscape (R37); the platform has not answered
+    hook.unmount();
+    await act(async () => refuse(new Error('refused'))); // the refusal lands on a screen that is gone
+    await act(() => vi.advanceTimersByTimeAsync(1000));
+    expect(fakes.orientationLock.locks).toEqual([]);
+    const refused = readRecord(fakes.record).filter((e) => e.event === 'orientation.lock-refused');
+    expect(refused.map((e) => e.fields.attempt)).toEqual([1]); // landed once, and no second attempt
   });
 
   it('keeps a newer applied lock when an older, superseded lock is refused late (R26)', async () => {

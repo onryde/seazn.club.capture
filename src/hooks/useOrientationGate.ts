@@ -84,9 +84,11 @@ export function useOrientationGate(target: Target): GateView {
 export const LOCK_RETRY_MS = 500;
 
 /**
- * Locks; on a refusal logs it and tries once more. Returns a cancel, which cancels a pending retry. The caller runs
- * it when a newer, different lock supersedes this one and on unmount, never for a `keep`, which is no lock at all.
- * A refused lock whose retry never ran is not applied, so it is forgotten either way (R26).
+ * Locks; on a refusal logs it and tries once more. Returns a cancel, which cancels a pending retry and stops a
+ * refusal that lands later from scheduling one. The caller runs it when a newer, different lock supersedes this one
+ * and on unmount, never for a `keep`, which is no lock at all. The cancel forgets nothing itself: the newer lock
+ * overwrites the record, and an unmounted screen has none to keep. A refusal landing after it still gives up (R26),
+ * which clears the record only while it is still this lock's.
  */
 function lockWithRetry(
   port: OrientationLockPort,
@@ -109,9 +111,7 @@ function lockWithRetry(
   attempt(1);
   return () => {
     cancelled = true;
-    if (timer === null) return;
-    clearTimeout(timer);
-    giveUp();
+    if (timer !== null) clearTimeout(timer);
   };
 }
 
