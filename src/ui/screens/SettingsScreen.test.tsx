@@ -704,16 +704,19 @@ describe('where Diagnostics sits (spec §6)', () => {
     }
   });
 
-  it('in landscape, the settings half scrolls and the Diagnostics card does not', () => {
+  // Owner, device pass 2026-10-08 (a 360 dp tall phone): the card ran past the screen's foot and its last rows
+  // could not be reached, because its half did not scroll. Each half now scrolls on its own; the card itself
+  // holds no scroller of its own, so there is one scroll per half and never one inside another.
+  it('in landscape, each half scrolls on its own, and the card holds no scroller inside it', () => {
     setWindowSize(640, 360);
     renderSettings();
     const halves = screen.getByTestId('settings-halves');
     const card = screen.getByTestId('diagnostics-card');
-    // The positive pair: this probe sees a scroller where there is one.
     const settingsScroller = scrollerOf(screen.getByText('Open-source licences'));
-    expect(settingsScroller).not.toBeNull();
-    expect(halves.children[0]?.contains(settingsScroller)).toBe(true);
-    expect(scrollerOf(card)).toBeNull();
+    const cardScroller = scrollerOf(card);
+    expect(settingsScroller).toBe(halves.children[0]);
+    expect(cardScroller).toBe(halves.children[1]);
+    expect(cardScroller).not.toBe(settingsScroller);
     expect([...card.querySelectorAll('*')].filter(scrolls)).toEqual([]);
     expect(scrolls(card)).toBe(false);
   });

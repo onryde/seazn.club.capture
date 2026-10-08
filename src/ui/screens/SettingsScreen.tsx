@@ -34,8 +34,9 @@ const LIBSRT_SOURCE = 'https://github.com/Haivision/srt';
  * `useEngineSync` (in the shell) tells native when it changes.
  *
  * Spec §6: the Diagnostics card is here, after the settings. Portrait is one
- * scrolling column; landscape is two halves, the settings (scrolling) beside
- * the card (not scrolling), with the way back across the top. The root says
+ * scrolling column; landscape is two halves, the settings and the card, each
+ * scrolling on its own (a 360 dp tall phone cannot hold the whole card under
+ * the header), with the way back across the top. The root says
  * which in `data-layout`, the marker the tests read.
  */
 export function SettingsScreen() {
@@ -84,9 +85,9 @@ export function SettingsScreen() {
           <ScrollView style={styles.half} contentContainerStyle={styles.controls}>
             {controls}
           </ScrollView>
-          <View style={styles.half}>
+          <ScrollView style={styles.half}>
             <DiagnosticsCard />
-          </View>
+          </ScrollView>
         </View>
       </View>
     );
