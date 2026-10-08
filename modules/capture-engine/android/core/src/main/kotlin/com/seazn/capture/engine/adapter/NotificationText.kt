@@ -82,7 +82,7 @@ object NotificationText {
           "stream.tally.ended" to "Beëindigd",
           "stream.notification.paired" to "Gekoppeld · wachten op de start",
           "stream.status.notReadyCamera" to "Nog niet live: de camera is niet klaar",
-          "stream.status.notReadySound" to "Nog niet live: geen microfoon",
+          "stream.status.notReadySound" to "Nog niet live: microfoon niet bruikbaar",
           "stream.status.notReadyNetwork" to "Nog niet live: geen netwerk",
           "stream.status.notReadyHeld" to "Nog niet live: draai de telefoon dwars",
         ),

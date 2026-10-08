@@ -139,6 +139,7 @@ function unsettled(target: Fixed, holding: boolean, current: Target | null): Gat
   return { lock: 'keep', card: current === target ? 'none' : cardFor(target) };
 }
 
+// No S1 route targets portrait, so `turnUpright` cannot show yet; kept for S2/S4.
 function cardFor(target: Fixed): TurnCardKind {
   return target === 'landscape' ? 'turnSideways' : 'turnUpright';
 }

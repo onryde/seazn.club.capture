@@ -156,7 +156,7 @@ data class BroadcastView(
   val holdWindowSeconds: Map<Transport, Int>,
   val maxDurationMinutes: Int,
   val scoreUpdates: String,
-  /** A18: false when the server offered RTMPS alone; Diagnostics shows "SRT not offered". */
+  /** A18: false when the server offered RTMPS alone; Diagnostics shows "RTMPS only" (the A18 amendment note in `docs/specs/2026-10-01-s1-amendment-stable-code-design.md`). */
   val srtOffered: Boolean,
 )
 

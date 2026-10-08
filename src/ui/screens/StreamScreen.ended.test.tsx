@@ -270,7 +270,7 @@ describe('a Stop before live (owner decision 1) stays on the viewfinder', () => 
     expect(screen.getByRole('button', { name: GO_LIVE })).toBeTruthy();
   });
 
-  it('once live, Stop says it unpairs, and ends the pairing with a rescan asked of Home', async () => {
+  it('once live, Stop ends the pairing and lands on Home, whose card asks to scan the code again', async () => {
     const app = await launchApp();
     await scanFromHome(app, CODE);
     await holdControl(GO_LIVE);

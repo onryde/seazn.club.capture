@@ -14,9 +14,10 @@ import type { MotionPort, OrientationLockPort } from '@/services/devicePorts';
 import type { Logger } from '@/services/logger';
 
 /**
- * Live Stream's viewfinder is the only landscape-locked route (spec §7). Home, Settings (with Diagnostics inside
- * it) and the Streaming help follow the phone. `/stream/settings` is `free` even though it sits inside Live
- * Stream: while a broadcast is held the gate keeps the viewfinder's lock under it (D9).
+ * Live Stream's viewfinder is the only landscape-locked route (spec §7). Home and Settings (with Diagnostics
+ * inside it) follow the phone. `/stream/settings` is `free` even though it sits inside Live Stream: while a
+ * broadcast is held the gate keeps the viewfinder's lock under it (D9). No S1 route targets `portrait`; the
+ * portrait target and its turn-upright card are kept for S2/S4.
  */
 export function routeTarget(pathname: string): Target {
   return pathname === '/stream' ? 'landscape' : 'free';
@@ -49,6 +50,13 @@ export function useOrientationGate(target: Target): GateView {
   // The lock last applied (R35, R37). Read in render on purpose: it changes
   // only in the effect below, and only to what this render already decided.
   const view = orientationGate(target, physical, holding, locked.current);
+  // R26 forgets a lock refused twice. A view that still asks for a fixed lock with nothing recorded as applied
+  // is asked again whenever its inputs change, or a refused landscape lock under a held broadcast on a `free`
+  // screen would never be sent again and the activity would follow the phone under the camera. Bounded by the
+  // inputs, never a timer: no state change, no third try. A refused `free` unlock is not re-sent this way (R26).
+  const unapplied =
+    (view.lock === 'landscape' || view.lock === 'portrait') && locked.current === null;
+  const evaluation = unapplied ? `${target}|${physical}|${holding}` : '';
 
   useEffect(() => {
     if (view.lock === 'keep' || view.lock === locked.current) return;
@@ -58,7 +66,7 @@ export function useOrientationGate(target: Target): GateView {
       // R26: forget it, so the next differing lock retries.
       if (locked.current === wanted) locked.current = null;
     });
-  }, [view.lock, orientationLock, logger]);
+  }, [view.lock, evaluation, orientationLock, logger]);
 
   return view;
 }

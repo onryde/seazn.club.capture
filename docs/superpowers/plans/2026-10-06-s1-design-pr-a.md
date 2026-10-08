@@ -100,11 +100,11 @@ Three facts stay where they live:
 1. **§4 is a native readiness change.** Every path that turned sound off must still turn it off: a call, the capture's close, an unpair. A silent room must never turn it off, before air or on air.
    - **New guard (F4): no audio buffer for `NO_AUDIO_MS` is not sound.** It is evaluated at each `readiness` call. The glue calls every 500 ms while the capture is open, whether or not a buffer came (`StreamerAdapter.kt:149-154`), so detection takes at most 2.5 s. Check that a silent buffer (level `0.0`) still counts as a buffer, and that only `null` means none.
    - **The close path (F5).** The glue's real order is `silenced()` (`BridgeCore.kt:280`), then the release's `readiness(false, …)` (`StreamerAdapter.kt:232`). That call passed `0.0`, which is a buffer under the new rule and would turn sound back on after the close. It now passes `null`. A GlueRulesTest rule pins the text.
-   - **Cost of the window (F4).** StreamPack's own audio starts only with the stream. Between `beforeConnect`'s `sound.stop()` (`StreamerAdapter.kt:236`) and the first frame on air, a connect slower than 2 s shows sound not ready. The machine reads readiness only in Armed (`Pairings.kt:94-101`), so that cannot stop a connect. Only the meter turns orange. Task 9 item 4 looks at it.
+   - **Cost of the window (F4).** StreamPack's own audio starts only with the stream. Between `beforeConnect`'s `sound.stop()` (`StreamerAdapter.kt:236`) and the first frame on air, a connect slower than 2 s shows sound not ready. The machine reads readiness only in Armed (`Pairings.kt:94-101`), so that cannot stop a connect. Only the meter turns orange. Task 9 item 29 looks at it.
    - **A residual race, pre-existing.** A glue tick posted after `silenced()` but before the release cancels the job can carry a real buffer. Nothing ticks after the close, so sound would read ready until the next opening. `SoundHold` had the same hole. It is named here, not fixed.
    - **The glue change compiles first on Task 9's release build.** `StreamerAdapter.kt`, `CoreCalls.kt` and `EngineHost.kt` are in the Android module, which no local task compiles. Keep the change to the three lines Task 1 names.
 2. **§5's leave reuses the existing leave rule.** Check that the card is shown only by a leave that really went Home. Check that the code is forgotten exactly as before. Check that a fatal end keeps the code, as the card's wording claims. Check the two F14 guards: a code-ended Stop has no "Scan the code again" line, and Continue clears the card.
-3. **Rotation (`free`) must never let the activity rotate under a held broadcast or a committed camera.** Read every `current === 'free'` path in `orientationGate`. The code says paired Settings closes the capture (F16, Task 7's top note). The phone confirms it in Task 9 item 7, and if it does not, Settings stays landscape-locked while paired.
+3. **Rotation (`free`) must never let the activity rotate under a held broadcast or a committed camera.** Read every `current === 'free'` path in `orientationGate`. The code says paired Settings closes the capture (F16, Task 7's top note). The phone confirms it in Task 9 item 65, and if it does not, Settings stays landscape-locked while paired.
 4. **Layout claims that jsdom cannot see are routed to Task 9, not asserted in vitest.** A test that reads `getComputedStyle` pins declared sizes only. It never proves a fit. The window-size helper (D13) flips a branch. It proves nothing about fit.
 5. **Removed things are gone everywhere.** `/stream/diagnostics`, `homeIntent`, `EndedBlock`, `SoundHold` and the `audio-below-floor` reason must leave nothing that still names them (`grep -a`). Neither may the old English strings: _No sound_, _Sound: ready_ and _Live with no sound_ (F1).
 6. **All five advisories now live in the status strip, on air too (D4, F17, accepted).** The top strip is gone, so the strip is their only home. Check that none of the five is lost.
@@ -172,16 +172,16 @@ The pre-flight scan of this plan at `daa230c` found F1 to F20 (`.superpowers/sdd
 | F6  | `"degraded" in kinds()` can never fail                                                           | Task 1 Step 2: deleted                                                     |
 | F7  | The D2 rule rewrite lost its positive control                                                    | Task 1 Step 2: `clock` and `newId` must parse                              |
 | F8  | The `.filter` mutation names a test that cannot reach it; Q4-A has no code                       | Task 2 Steps 1 and 2                                                       |
-| F9  | The fit test reserves the long size only                                                         | D17; Task 3 Steps 1 and 2; Task 9 item 2                                   |
+| F9  | The fit test reserves the long size only                                                         | D17; Task 3 Steps 1 and 2; Task 9 items 16 to 18                           |
 | F10 | `StreamStage` props, `chip-row`, the suite count, `TallyPlate` and `AudioMeter`, `onScanAnother` | Task 3 _Files_, Steps 3, 4 and 6                                           |
 | F11 | `borderWidth: 2`; the double-press test pins old code; the `Glyph` mock drops `tone`             | Task 4 Steps 1 to 5                                                        |
 | F12 | react-native-web reads `documentElement`, not `innerWidth`                                       | D10, D13; Task 5 Step 3; Task 7 Step 4                                     |
 | F13 | Settings `dataSet`; the row count read from the code under test; the 84 dp literal               | Task 5 Steps 1, 3 and 4                                                    |
 | F14 | A code-ended Stop says "scan again"; Continue keeps the card; case text                          | D7, D16; Task 6 _Interfaces_, Steps 1 to 5 (cases 4, 6, 10, 11; M5, M6)    |
 | F15 | `routeTarget`'s file, `EndedCard` in landscape, the File map, Continue's place                   | File map; Task 7 _Files_, Steps 2 to 4                                     |
-| F16 | Q3's "re-locks landscape"; whether Settings closes the capture                                   | Task 7's top note (the code fact); Task 7 Step 3; Task 9 item 7            |
+| F16 | Q3's "re-locks landscape"; whether Settings closes the capture                                   | Task 7's top note (the code fact); Task 7 Step 3; Task 9 item 65           |
 | F17 | D4 moves all five advisories into the strip                                                      | D4 (accepted); Review Focus 6                                              |
-| F18 | Task 9 misses no-audio, mic after reopen, the longest start time and the capture in Settings     | D14; Task 3 Step 2; Task 4 Steps 2 and 3; Task 9 items 4, 7 and 10         |
+| F18 | Task 9 misses no-audio, mic after reopen, the longest start time and the capture in Settings     | D14; Task 3 Step 2; Task 4 Steps 2 and 3; Task 9 items 22 to 29, 65 and 21 |
 | F19 | Stale self-review, `Q4_DOUBLES`, AGENTS line numbers, an unfiltered bridge run                   | Global Constraints; Task 1 Step 7; Task 8 Steps 2 and 3; Self-review       |
 | F20 | `stripStatus` duplicates `body`                                                                  | Task 2 Step 3; Task 3 Steps 2 and 4                                        |
 
@@ -208,7 +208,7 @@ Labelled SP1 to SP4 since the pre-flight, so they never read as its F1 to F20.
   - **The capture's close clears it (the C4a carry), in the glue's real order (F5).** `noticeCapture` calls `silenced()` (`BridgeCore.kt:280`). Then the glue's `release()` reports `calls.readiness(false, 0.0)` (`StreamerAdapter.kt:232`), which this PR changes to `null`. Left at `0.0`, it is a buffer, and sound would read ready after the close.
   - When the system restores the mic, sound is ready again at once if a buffer came within the window. §4 says "ready when the call ends", and the glue keeps reading through a call.
   - `Readiness.AUDIO_FLOOR` and its parity test go: nothing native reads the level any more.
-  - `wire/audio-floor.json` and the JS `AUDIO_FLOOR` stay, because the meter's segments still use them. _(Amended in Task 1: that premise was false. The meter's segments are `ceil(level * 6)` and its colour follows `selectSoundReady`, so `wire/audio-floor.json`, `audioFloor.ts` and the JS `AUDIO_FLOOR` were deleted.)_
+  - `wire/audio-floor.json`, `audioFloor.ts` and the JS `AUDIO_FLOOR` were deleted in Task 1. The meter's segments are `ceil(level * 6)` and its colour follows `selectSoundReady`, so nothing read them.
 - **D2. `BridgeCore` loses its `silenceMs` parameter, so the glue rule test changes.** `GlueRulesTest`'s "final r2" rule ("the glue never passes a readiness timing override") becomes "BridgeCore declares no `…Ms` timing parameter". A new one then re-opens the rule instead of passing silently.
 - **D3. The JVM host learns `micSilenced` on its `readiness` line.** The JS contract's `ready.sound = false` maps to it: a level can no longer make sound not ready. The host's `meter()` offers a reading every 500 ms (`Host.kt:123-128`), so the host never meets the no-buffer window. That window is proved in the JVM core tests through `PeakMeter`, not in the contract.
 - **D4. The advisory caption moves into the status strip, under the status line.** `topAdvisory` and its priorities are unchanged: _keepOpen_, _shed_, _overlayFailed_, _notCharging_, then _scoreAhead_. _scoreAhead_ is already before-air only, from its `paired` input.
@@ -248,7 +248,7 @@ Labelled SP1 to SP4 since the pre-flight, so they never read as its F1 to F20.
   - _Written assumption:_ a side of 26 characters or fewer, at 20 sp Barlow Condensed 600, does not wrap in the strip's 288 dp. That is 26 × about 9 dp = 234 dp. A side over 26 characters is already 17 sp (§2), and doubles are 17 sp (Q4 A).
   - So the regular size needs at most 2 lines (`labelLinesRegular`, 2 × 22 = 44), and the long size at most 4 (4 × 19 = 76). The test reserves `max(44, 76)`.
   - Doubles are two partners a side. A side with three partners is 3 lines and overruns, so it is a Task 9 observation.
-  - _Cost if wrong:_ one clipped line on a 360 dp-tall phone. Task 9 item 2 catches it with a 26-character side.
+  - _Cost if wrong:_ one clipped line on a 360 dp-tall phone. Task 9 item 17 catches it with a 26-character side.
 
 ## What jsdom can and cannot see
 
@@ -273,18 +273,18 @@ Labelled SP1 to SP4 since the pre-flight, so they never read as its F1 to F20.
 
 Lengths are counted with `s.length`, as `budgets.test.ts` counts. French ` ` counts as 1.
 
-| Key                           | en                                          | es                                          | fr                                        | nl                            | Change, budget                                             |
-| ----------------------------- | ------------------------------------------- | ------------------------------------------- | ----------------------------------------- | ----------------------------- | ---------------------------------------------------------- |
-| `stream.chip.sound`           | Mic                                         | Micro                                       | Micro                                     | Microfoon                     | changed (T1); 10                                           |
-| `stream.blocker.sound`        | Mic not available                           | Micro no disponible                         | Micro indisponible                        | Geen microfoon                | changed (T1); 24. nl: _niet beschikbaar_ would be 26       |
-| `stream.status.notReadySound` | Can't go live yet — the mic isn't available | Aún no se puede emitir: micro no disponible | Pas encore de direct : micro indisponible | Nog niet live: geen microfoon | changed (T1); 48. Lengths 43, 43, 41, 29                   |
-| `stream.status.liveNoSound`   | —                                           | —                                           | —                                         | —                             | removed (T1)                                               |
-| `stream.link.diagnostics`     | —                                           | —                                           | —                                         | —                             | removed (T4)                                               |
-| `diag.section.record`         | —                                           | —                                           | —                                         | —                             | removed (T5) if `grep -a` finds no other user              |
-| `stream.ended.scanAnother`    | —                                           | —                                           | —                                         | —                             | removed (T6), with its `budgets.test.ts` row               |
-| `brand`                       | Seazn Club                                  | Seazn Club                                  | Seazn Club                                | Seazn Club                    | changed (T7): the logo's accessible name, never translated |
-| `home.ended.title`            | Stream ended                                | Emisión terminada                           | Direct terminé                            | Stream beëindigd              | new (T6); the card's title and its region name             |
-| `home.ended.ok`               | OK                                          | Aceptar                                     | OK                                        | OK                            | new (T6). es: Android's own button word                    |
+| Key                           | en                                          | es                                          | fr                                        | nl                                      | Change, budget                                             |
+| ----------------------------- | ------------------------------------------- | ------------------------------------------- | ----------------------------------------- | --------------------------------------- | ---------------------------------------------------------- |
+| `stream.chip.sound`           | Mic                                         | Micro                                       | Micro                                     | Microfoon                               | changed (T1); 10                                           |
+| `stream.blocker.sound`        | Mic not available                           | Micro no disponible                         | Micro indisponible                        | Microfoon niet bruikbaar                | changed (T1); 24. nl: _niet beschikbaar_ would be 26       |
+| `stream.status.notReadySound` | Can't go live yet — the mic isn't available | Aún no se puede emitir: micro no disponible | Pas encore de direct : micro indisponible | Nog niet live: microfoon niet bruikbaar | changed (T1); 48. Lengths 43, 43, 41, 29                   |
+| `stream.status.liveNoSound`   | —                                           | —                                           | —                                         | —                                       | removed (T1)                                               |
+| `stream.link.diagnostics`     | —                                           | —                                           | —                                         | —                                       | removed (T4)                                               |
+| `diag.section.record`         | —                                           | —                                           | —                                         | —                                       | removed (T5) if `grep -a` finds no other user              |
+| `stream.ended.scanAnother`    | —                                           | —                                           | —                                         | —                                       | removed (T6), with its `budgets.test.ts` row               |
+| `brand`                       | Seazn Club                                  | Seazn Club                                  | Seazn Club                                | Seazn Club                              | changed (T7): the logo's accessible name, never translated |
+| `home.ended.title`            | Stream ended                                | Emisión terminada                           | Direct terminé                            | Stream beëindigd                        | new (T6); the card's title and its region name             |
+| `home.ended.ok`               | OK                                          | Aceptar                                     | OK                                        | OK                                      | new (T6). es: Android's own button word                    |
 
 Reused unchanged: `stream.ended.duration`, `stream.ended.neverLive`, `stream.ended.scanAgain`, `stream.status.endedOperator`, `stream.status.endedFatal`, `panel.codeEnded.body` (the code-ended Stop, F14 a), `stream.status.micSilenced`, `diag.title`, `diag.share`, `diag.shareFailed`, `stream.link.settings`, `stream.home` and `stream.peek.label`. Task 8 adds _Stream ended_, _OK (button)_ and _Mic not available_ to the glossary.
 
@@ -937,7 +937,7 @@ export function labelSize(label: MatchLabel): 'regular' | 'long' {
   - Add `expect(seen).toBe(7)`.
   - Run red (no component), implement, then run green.
 
-  Whether any of these clip at 640 × 360 is invisible here. That is Task 9, item 2.
+  Whether any of these clip at 640 × 360 is invisible here. That is Task 9, item 16.
 
 - [ ] **Step 5: Scoped run, mutation note, commit.**
   ```bash
@@ -1679,9 +1679,9 @@ export function createEndedNotice(): EndedNotice {
 > 3. `CapturePreviewView.onDetachedFromWindow` reports `detach` (`CapturePreviewView.kt:84-94`), which calls `BridgeCore.viewfinder(false)`.
 > 4. `noticeCapture` then wants the capture only if `phase.holdsBroadcast || (viewfinder && held)` (`BridgeCore.kt:271-281`). Paired holds no broadcast, so the capture closes (`platform.capture(false)`, then `silenced()`). From Arming on (`Phase.kt:250-259`, `heldSid`), it stays open, and JS's `live` status covers the same phases (`engineSelectors.ts:21-34`).
 >
-> So a rotation in paired Settings turns no open camera. This is read, not run. `CapturePreviewView.kt:20-21` itself says a pushed screen "may" detach the view. **Task 9 item 7 checks it on the phone. If the capture stays open while paired Settings is shown, Q3's fallback applies:** Settings stays landscape-locked while paired (§7 read literally), `useOrientationGate`'s `free` target uses `selectHoldsOrientation`, and the orchestrator takes that back to the owner.
+> So a rotation in paired Settings turns no open camera. This is read, not run. `CapturePreviewView.kt:20-21` itself says a pushed screen "may" detach the view. **Task 9 item 65 checks it on the phone. If the capture stays open while paired Settings is shown, Q3's fallback applies:** Settings stays landscape-locked while paired (§7 read literally), `useOrientationGate`'s `free` target uses `selectHoldsOrientation`, and the orchestrator takes that back to the owner.
 >
-> **Q3's "re-locks landscape on return", as the gate really does it (F16).** Leaving paired Settings for the viewfinder with the phone **upright** gives `{ lock: 'portrait', card: 'turnSideways' }`: the turn card shows until the phone is turned, then the gate locks landscape. With the phone sideways or flat it locks landscape at once. Step 2's "leaving free" cases pin both. Task 9 item 7 is worded the same way.
+> **Q3's "re-locks landscape on return", as the gate really does it (F16).** Leaving paired Settings for the viewfinder with the phone **upright** gives `{ lock: 'portrait', card: 'turnSideways' }`: the turn card shows until the phone is turned, then the gate locks landscape. With the phone sideways or flat it locks landscape at once. Step 2's "leaving free" cases pin both. Task 9 item 70 is worded the same way.
 
 **Files:**
 
@@ -1849,11 +1849,11 @@ function freeGate(holding: boolean, current: Target | null): GateView {
   - remove `_review` from es, fr and nl;
   - add three glossary rows:
 
-  | en                             | es                  | fr                 | nl               | Note                                              |
-  | ------------------------------ | ------------------- | ------------------ | ---------------- | ------------------------------------------------- |
-  | Stream ended (Home card title) | Emisión terminada   | Direct terminé     | Stream beëindigd | The broadcast nouns, as above.                    |
-  | OK (button)                    | Aceptar             | OK                 | OK               | es: Android's own button word.                    |
-  | Mic not available (blocker)    | Micro no disponible | Micro indisponible | Geen microfoon   | nl: _niet beschikbaar_ overruns the blocker's 24. |
+  | en                             | es                  | fr                 | nl                       | Note                                              |
+  | ------------------------------ | ------------------- | ------------------ | ------------------------ | ------------------------------------------------- |
+  | Stream ended (Home card title) | Emisión terminada   | Direct terminé     | Stream beëindigd         | The broadcast nouns, as above.                    |
+  | OK (button)                    | Aceptar             | OK                 | OK                       | es: Android's own button word.                    |
+  | Mic not available (blocker)    | Micro no disponible | Micro indisponible | Microfoon niet bruikbaar | nl: _niet beschikbaar_ overruns the blocker's 24. |
 
   Then run `cd "$WT" && pnpm i18n:release-check; echo "EXIT=$?"`. It must exit 0.
 
@@ -2074,7 +2074,7 @@ Any line that fails is a finding for the orchestrator. It is never a change made
 
 - **Spec coverage.**
   - §1 is Task 3.
-  - §2 is Task 2, rendered by Task 3, with clipping checked in Task 9 (2).
+  - §2 is Task 2, rendered by Task 3, with clipping checked in Task 9 (items 16 to 18).
   - §3 is Task 4.
   - §4 is Task 1. Its four owed JVM tests are `S4 a room silent…`, `S4 sixty seconds…`, `S4 a call…` and `S4 on air…`. "Audio capture unavailable" is `S4 no audio buffer…`, driven through `PeakMeter` (F4). The predicate and its producers are mutated in M1 to M6.
   - §5 is Task 6. Its five owed tests are cases 1 to 5. Cases 6 to 9 are its sequences and D7, and cases 10 and 11 are F14 a and b.
@@ -2088,9 +2088,9 @@ Any line that fails is a finding for the orchestrator. It is never a change made
 - **Anti-vacuity.** Every table or sweep states its count: the 60 s sweeps, the no-buffer sweep (5 ticks), the 7 label cases, the 6 chip cases, the 6 viewfinder scenes into Settings (4 after Task 6), the 9 rows, the 6 ended lines, the 32 rotation cases, the 4 route targets and the 5 layout cases.
 - **Unresolved, by design:**
   - Q1 to Q4 are answered (_Owner answers_, 2026-10-07).
-  - Font scale above 1.0 is not covered by any fit arithmetic (Task 9, item 2).
-  - Whether Android's `UNSPECIFIED` respects a user who has turned auto-rotate off is Task 9, item 7.
-  - Whether paired Settings really closes the capture on the phone is Task 9, item 7 (F16). The code says it does.
+  - Font scale above 1.0 is not covered by any fit arithmetic (Task 9, item 18).
+  - Whether Android's `UNSPECIFIED` respects a user who has turned auto-rotate off is Task 9, item 68.
+  - Whether paired Settings really closes the capture on the phone is Task 9, item 65 (F16). The code says it does.
   - **A fatal end with `codeEndedPending` set** is outside F14 a. Its card says _Your code is kept._ about a dead code (D7). This is for the orchestrator to put to the owner, not to decide here.
   - The pre-existing race after the capture's close (Review Focus 1) is named, not fixed.
 - **Placeholders:** none. The owner's answers are recorded, and Task 2's doubles size is the literal `'long'` (Q4 A); there is no `Q4_DOUBLES` (F19). The "re-pin" notes mark line numbers and fake APIs that must be read before editing (AGENTS failure class 5). They are not open design.

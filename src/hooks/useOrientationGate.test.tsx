@@ -188,6 +188,47 @@ describe('useOrientationGate', () => {
     expect(refused.map((e) => e.fields.attempt)).toEqual([1, 2]);
   });
 
+  // Final review m1: a lock refused twice is forgotten (R26), but the view still asks for it. The effect only ran
+  // when `view.lock` changed, so a refused landscape lock under a held broadcast on a `free` screen was never sent
+  // again, and the activity followed the phone under the camera.
+  it('sends a landscape lock refused twice again on the next evaluation, under a held broadcast on a free screen (R26)', async () => {
+    vi.useFakeTimers();
+    const fakes = createFakePorts();
+    fakes.engine.forceState({ kind: 'publishing', transport: 'srt', sinceEpochMs: 1 });
+    const lock = fakes.orientationLock.lock;
+    let refusals = 2;
+    fakes.orientationLock.lock = (target) =>
+      refusals-- > 0 ? Promise.reject(new Error('refused')) : lock(target);
+    await gate('free', fakes); // Settings with a broadcast held: landscape (D9), refused
+    await act(() => vi.advanceTimersByTimeAsync(500)); // the retry, refused too
+    await act(() => vi.advanceTimersByTimeAsync(500)); // no third attempt on its own
+    expect(fakes.orientationLock.locks).toEqual([]);
+    const refused = () =>
+      readRecord(fakes.record).filter((e) => e.event === 'orientation.lock-refused').length;
+    expect(refused()).toBe(2);
+    hold(fakes, UPRIGHT, 1000); // the next evaluation: the phone is upright under the held broadcast
+    await act(async () => undefined);
+    expect(fakes.orientationLock.locks).toEqual(['landscape']);
+    expect(refused()).toBe(2); // the re-request was accepted: nothing more was refused
+  });
+
+  // The same rule, bounded (R26): a refused `free` unlock is not re-sent on every evaluation. Two attempts, then
+  // it waits for a differing lock, as before. The positive pair is the test above.
+  it('does not send a refused free unlock again on later evaluations (R26)', async () => {
+    vi.useFakeTimers();
+    const fakes = createFakePorts();
+    fakes.orientationLock.lock = () => Promise.reject(new Error('refused'));
+    await gate('free', fakes); // Home, nothing held: the screen follows the phone, refused
+    await act(() => vi.advanceTimersByTimeAsync(500));
+    const refused = () =>
+      readRecord(fakes.record).filter((e) => e.event === 'orientation.lock-refused').length;
+    expect(refused()).toBe(2);
+    hold(fakes, UPRIGHT, 1000); // evaluations: the phone turns upright, then sideways
+    hold(fakes, SIDEWAYS, 2000);
+    await act(() => vi.advanceTimersByTimeAsync(1000));
+    expect(refused()).toBe(2);
+  });
+
   it('forgets a refused lock whose retry an on-air keep cancelled, so it is sent again (R26)', async () => {
     vi.useFakeTimers();
     const fakes = createFakePorts();

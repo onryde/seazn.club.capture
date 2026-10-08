@@ -35,6 +35,7 @@ export function OrientationGate({ card, children }: Props) {
   );
 }
 
+// No S1 route targets portrait, so `turnUpright` cannot show yet; kept for S2/S4.
 const TITLE: Readonly<Record<TurnCardKind, MessageKey>> = {
   turnSideways: 'turn.sideways.title',
   turnUpright: 'turn.upright.title',

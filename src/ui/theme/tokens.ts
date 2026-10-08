@@ -121,7 +121,8 @@ export const space = {
 /**
  * The viewfinder is two equal halves (spec §1): the camera half holds a 16:9
  * box, a correctly uncropped 720p preview, with the status strip under it; the
- * controls half holds the rest. The box is as wide as its half, so the strip
+ * controls half holds the rest. The box is as wide as its half where the screen
+ * is tall enough, and narrower where it is not (`cameraBoxSize`), so the strip
  * gets what the phone's height leaves.
  */
 export const layout = {
