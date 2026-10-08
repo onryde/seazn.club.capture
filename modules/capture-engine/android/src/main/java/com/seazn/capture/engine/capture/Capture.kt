@@ -39,4 +39,10 @@ interface Capture {
 
   /** Re-review 4 cap: the app came back to the foreground, which re-arms the camera's loss rebuilds. Returns at once. */
   fun foreground()
+
+  /**
+   * Spec §8: one still, answered once with a photo word ("saved" or "failed"). Returns at once, from any thread; never
+   * throws. The one call that answers, recorded in AGENTS §2.
+   */
+  fun takePhoto(done: (String) -> Unit)
 }

@@ -16,6 +16,7 @@ import com.seazn.capture.engine.adapter.MicSilenceWatch
 import com.seazn.capture.engine.adapter.PeakMeter
 import com.seazn.capture.engine.adapter.RtmpsLink
 import com.seazn.capture.engine.adapter.SrtOptions
+import com.seazn.capture.engine.capture.photo.PhotoRun
 import com.seazn.capture.engine.capture.run.Built
 import com.seazn.capture.engine.capture.run.CaptureParts
 import com.seazn.capture.engine.capture.run.CaptureRun
@@ -101,6 +102,11 @@ class StreamerAdapter(
   @Volatile private var cameraId: String? = null
   private var readinessJob: Job? = null
 
+  /** D2 (1): a scope of its own, so a throw on a photo cannot reach `scope`'s handler above, which fails the session. */
+  private val photoScope = CoroutineScope(SupervisorJob() + Dispatchers.Default + CoroutineExceptionHandler { _, t -> calls.line(RecordEntry("capture-call-failed", listOf("action" to "photo", "error" to t.javaClass.simpleName))) })
+  private val gallery = GalleryPhoto(context.contentResolver, { current.value }, side)
+  private val photo = PhotoRun({ name -> gallery.shoot(name) }, System::currentTimeMillis, calls.line)
+
   // Last: the run's consumer starts here, and only ever calls the parts for a call made after construction.
   private val run = CaptureRun(Parts(), signals, cameras, calls, side, scope)
 
@@ -111,6 +117,10 @@ class StreamerAdapter(
   override fun execute(command: Command) = run.execute(command)
 
   override fun foreground() = run.foreground()
+
+  override fun takePhoto(done: (String) -> Unit) {
+    photoScope.launch { done(photo.take().wire) }
+  }
 
   override fun frames(attemptId: Int) = tally.read(attemptId)
 
