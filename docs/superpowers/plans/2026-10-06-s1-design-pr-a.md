@@ -1878,49 +1878,195 @@ function freeGate(holding: boolean, current: Target | null): GateView {
 
 ## Task 9: Device verification (the owner's hands)
 
-This task is a checklist for the owner. An agent never simulates it, infers it, or ticks it. The orchestrator hands it over after Task 8, and the owner's results are recorded beside each line, with a screenshot of the app only.
+> **OWNER HANDS ONLY — not simulated.** No agent performs, simulates, infers or ticks any line of this task. There is no phone, no `adb`, no build and no test in it for an agent to run.
 
-**The build:** the owner's local release build of this branch, as AGENTS §11 has it. Never EAS.
+The orchestrator hands this list to the owner once PRs A, B and C are merged. The owner does each line on the phone and writes the result beside it: _pass_, _fail_ with what was seen, or _could not make_ with why. Add a screenshot of the app only where a picture helps.
 
-- [ ] **1. Fit at the smallest landscape.**
-  - On the owner's phone, or an emulator at 640 × 360 dp, look at the viewfinder before air, not ready, with the longest not-ready line in each of en, es, fr and nl.
-  - Then look at it on air.
-  - Nothing is clipped and nothing scrolls. Record the phone's dp size and its font scale.
-- [ ] **2. The §2 label cases.** Show each of the seven labels from Task 2 on a staging fixture, or through dev scenes if one carries a label.
-  - Each one wraps or ellipsises as §2 says, and nothing is clipped.
-  - **D17's assumption (F9).** Show a singles label with a 26-character side, e.g. `Alexandra Konstantinopoulo v Bea Lima` (side A is 26 characters). At 20 sp, side A must stay on one line. If it wraps, record it: D17's assumption is false, and the strip can clip one line at 360 dp tall.
-  - Also try one case at the phone's largest font scale, and note what happens there. Font scale is not covered by Q4's arithmetic.
-- [ ] **3. The camera box.**
-  - The preview is 16:9, edge to edge across its half.
-  - The overlay and the _What viewers see_ video sit inside the box only.
-  - _Controls on the left_ mirrors the halves.
-- [ ] **4. A silent room.**
-  - In a quiet room the mic chip is lime and Go live enables.
-  - On air in silence for a minute, the line stays _Live_.
-  - A phone call on air shows the mic-silenced warning. When the call ends, the warning clears.
-  - **At the connect (F4's cost).** Go live and watch the meter from the hold's end to the first frame. Record whether it turns orange, and for how long. It may, for a connect over 2 s (Review Focus 1). It must never stop the connect.
-  - **A capture with no audio (F18).** Start a voice-recorder app and keep it recording, then open the viewfinder. Within about 2.5 s (`NO_AUDIO_MS` plus one glue tick), the mic chip must be caution and Go live must say _Mic not available_. Share the record and look for `watch-failed` with `action: sound`. If the phone shares the mic and buffers still flow, write that down: the case could not be made on this phone.
-  - **A call before Go live (review I-1).** Paired, before air, in a quiet room, take a phone call. Within about a second the mic chip is caution and Go live says _Mic not available_. End the call: within about a second the chip is lime again.
-  - **A broadcast that ends during a call (review G-2).** Go live, then take a call: the mic-silenced warning shows. End the broadcast from the console while the call goes on, then end the call. Within about a second the mic chip is lime again, with no restart of the app.
-  - **The mic chip after the viewfinder closes and reopens (F18).** Paired, in a quiet room: open Settings, then go Back. Within a second of the preview's return, the mic chip is lime again, with no sound needed.
-- [ ] **5. Stop after live.**
-  - Go live, hold Stop. The app lands on Home with the _Stream ended_ card: title, _On air_ time, _You stopped the broadcast._, the scan-again line, and OK. This must be observed, not inferred.
-  - OK clears it.
-  - Go live again, stop again: a fresh card with the new time.
-- [ ] **6. Diagnostics in Settings.**
-  - Portrait and landscape.
-  - The card does not scroll at the phone's size.
-  - Share record opens the share sheet.
-  - There is no Diagnostics button anywhere.
-- [ ] **7. Rotation.**
-  - Home turns with the phone, provided auto-rotate is on, and stays put when it is off. Record which.
-  - **The capture while Settings is open (F16), first.** Paired, open Settings. Android's camera-in-use dot in the status bar (Android 12+) must go out within about a second: the capture closed, as Task 7's code fact says. Then, live, open Settings: the dot stays on. Share the record and check for the close too. **If the dot stays on while paired, stop this item.** That is the F16 fallback's trigger, and the finding goes to the orchestrator: Settings must stay landscape-locked while paired.
-  - Settings turns while paired, per Q3. After a rotation in Settings, go Back to the viewfinder **with the phone upright**. The turn card shows until the phone is turned sideways; then the viewfinder locks landscape, and the preview is upright (F16). Repeat with the phone already sideways: it locks landscape at once.
-  - Settings while live does not turn.
-  - The viewfinder never turns.
-- [ ] **8. Logo.** The logo is sharp at 200 × 70 in portrait, at Q2's size in landscape, and TalkBack reads it as "Seazn Club".
-- [ ] **9. Locales.** Repeat 1, 5 and 6 in es, fr and nl: screenshots of each.
-- [ ] **10. AUTO with the longest start time (F18, D14).** In es, with automatic mode on at both ends and a start time set, look at the viewfinder before air at 640 × 360. _Empieza a las 14:32 CEST_ sits on one line under the chips, and nothing below it is clipped or pushed off the screen.
+**Standing rules** (the owner's; they bind every line below):
+
+- Pull the phone's session record to the laptop before any install.
+- Install with `adb install -r`. Never uninstall the app.
+- Screenshots show the app only. Crop the status bar off (AGENTS §13, _Device evidence_, has the `ffmpeg` crop). Delete anything personal that shows.
+- Never screenshot a QR code, a scan screen or a scanned code.
+- Never EAS. The build is the owner's local release build (AGENTS §11).
+- Delete the recordings after every run: the stream's recording on Cloudflare, and any screen recording of the phone.
+
+**How to read a line.**
+
+- Each line is one action and one thing you should see.
+- A line that does not match is a finding for the orchestrator. It is never a change made during the device run.
+- A line that cannot be made to happen on this phone is _could not make_, never a pass.
+- Sizes are written width × height in dp, the unit Android draws in, with the phone held sideways.
+- Unless a line says otherwise, start from a phone that is paired to a staging match, held sideways, and not yet live. Pair by scanning the match's stream code on the Stream tile.
+
+### A. Setup
+
+- [ ] **1. Build.** After PRs A, B and C are merged, build the release app from `main` the way AGENTS §11 says: prebuild, then the release assemble, then undo the change prebuild makes to `package.json`. You should see the build finish with no error. An error in the Android part is a finding.
+- [ ] **2. Pull the record.** Before installing, copy the phone's session record to the laptop, your usual way. You should see the file on the laptop and not empty.
+- [ ] **3. Install.** Install the release app with `adb install -r`. You should see `Success`, and the app opens on Home.
+- [ ] **4. Note the phone.** Write down the phone's model, its screen size in dp (pixels from `adb shell wm size`, times 160, divided by `adb shell wm density`) and its font size setting. You should have three values at the top of your results. Later lines refer to them.
+- [ ] **5. Make the small sizes.** Run `adb shell wm size 360x640` and `adb shell wm density 160`, then hold the phone sideways. You should see the app drawn at 640 × 360 dp, the smallest landscape the design allows. For 800 × 360 dp use `360x800` instead, the common 20:9 phone shape. The last line resets both.
+
+### B. Viewfinder, before air
+
+- [ ] **6. Smallest landscape, not ready.** At 640 × 360 dp, make a "Can't go live yet" line show: a phone call gives the mic line, another camera app held open gives the camera line. You should see the camera box and the status strip under it on one half, the controls on the other half, nothing clipped and nothing that scrolls.
+- [ ] **7. The camera box.** At 640 × 360 dp, look at the camera picture. You should see a 16:9 picture that fills the width of its half, edge to edge.
+- [ ] **8. A wider phone.** At 800 × 360 dp, and again on the phone's own size if it is wider than 16:9, look at the camera picture. You should see the picture smaller and centred in its half, with a plain bar on each side, and the strip text under it still fully visible.
+- [ ] **9. The bar colour.** At 800 × 360 dp, look at the bars on each side of the picture. You should see them in the strip's own colour. Write down whether you want that colour or the darker stage colour.
+- [ ] **10. The first moment on a wide phone.** At 800 × 360 dp, tap Home, then open the viewfinder again, and watch its first moment (a screen recording helps; delete it afterwards). You should see the camera picture appear at its final size. Write down whether it first appears wide and then jumps smaller.
+- [ ] **11. Too short.** Make the window under 180 dp tall: split-screen if the phone allows it, otherwise `adb shell wm size 170x640` with the phone sideways. You should see the app still running, with no crash. The design asks for 360 dp tall and up, so a missing or tiny picture here is information, not a failure. Write down what you see.
+- [ ] **12. Controls on the left.** In Settings, change "Controls on the" to the other side (Left or Right), then go Back to camera. You should see the two halves swap sides. Put the setting back afterwards.
+- [ ] **13. The chips, ready.** With the camera, mic and network all ready, look at the three chips. You should see three square icons, each with a lime border.
+- [ ] **14. The chips, not ready.** Switch airplane mode on. You should see the network chip's border turn orange, the status line say "Can't go live yet — no network", and Go live say "No network". Switch airplane mode off and the chip goes lime again.
+- [ ] **15. The icon row.** Look at the row of icon buttons. You should see Settings and Home, and no Diagnostics button.
+- [ ] **16. The twelve match names.** For each row, name the two sides of a staging match as typed, and look at the strip. You should see what the right-hand column says, with nothing clipped. "Larger" is the 20 sp size; "smaller" is 17 sp. The three-partner row and the two emoji rows matter most. If the staging page will not take a name, write _could not make_ for that row.
+
+  | #   | Name as typed                                                                                  | You should see                                                                                              |
+  | --- | ---------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+  | 1   | `Ana Ruiz v Bea Lima`                                                                          | Larger size. Each name on its own line with a small grey "v" between them.                                  |
+  | 2   | `Alexandra Konstantinopoulou v Maria Fernanda Albuquerque`                                     | Smaller size. Each name may wrap to two lines.                                                              |
+  | 3   | `Ana Ruiz / Bea Lima v Cai Wen / Dee Roy`                                                      | Smaller size. One partner per line, two lines a side.                                                       |
+  | 4   | `Alexandra Konstantinopoulou / Bea Lima v Cai Wen / Maria Fernanda Albuquerque Santos`         | Smaller size. One partner per line. A partner that is too long ends in "…" on its line; it does not wrap.   |
+  | 5   | `Match 4`                                                                                      | Larger size. One block, up to two lines.                                                                    |
+  | 6   | `Ana v Bea v Cai`                                                                              | Larger size. Side A reads "Ana", side B reads "Bea v Cai".                                                  |
+  | 7   | 98 letters A, then the word "v" (a space each side), then 99 letters B (200 characters in all) | Smaller size. Each side wraps to at most two lines and nothing is clipped.                                  |
+  | 8   | `Ana v BBBBBBBBBBBBBBBBBBBBBBBBBBB` (27 letters B)                                             | Smaller size, because side B is over 26 characters.                                                         |
+  | 9   | `Ana Ruiz v Cai Wen / Dee Roy`                                                                 | Smaller size, because one side has partners. Side B shows one partner per line.                             |
+  | 10  | `Ana / Bea / Cai v Dee Roy`                                                                    | Smaller size. Side A is one block, "Ana / Bea / Cai", wrapping to at most two lines. It is not three lines. |
+  | 11  | `AAAAAAAAAAAAAAAAAAAAAAAAA🎾 v Bea` (25 letters A, then the tennis ball)                       | Larger size. Side A is 26 characters, the emoji counting as one, and stays on one line.                     |
+  | 12  | `Ana Ruiz v Los Volantes de Sevilla 🏸🏸`                                                      | Larger size. Side B is 26 characters, the two emoji counting as one each, and stays on one line.            |
+
+- [ ] **17. A 26-character side.** Name a match `Alexandra Konstantinopoulo v Bea Lima` (side A is exactly 26 characters). You should see side A on one line at the larger size. If it wraps, write that down: the design's assumption is false, and the strip can clip one line on a 360 dp tall phone.
+- [ ] **18. The biggest font.** Set the phone's font size to the largest. Show the doubles name (row 3 above) at 640 × 360 dp and look at the strip. Write down what happens: whether anything wraps more, clips or is pushed off. Font size above normal is not covered by any size arithmetic, so this is a record, not a pass.
+- [ ] **19. TalkBack reads the name as one stop.** Turn TalkBack on and swipe to the match name, using the doubles name from row 3. You should hear the whole name read in one stop, and not one stop per name or per line. Turn TalkBack off afterwards.
+- [ ] **20. TalkBack reads the chips.** With TalkBack on, swipe across the three chips. You should hear "Camera: ready", "Mic: ready" and "Network: ready". Turn TalkBack off afterwards.
+- [ ] **21. The longest start time.** In Spanish, turn on "Start and stop automatically" in Settings, have the organiser turn automatic on for the match, and give it a start time. At 640 × 360 dp, look under the chips. You should see "Empieza a las 14:32 CEST" (with your time) on one line under the chips, with nothing below it clipped or pushed off the screen.
+- [ ] **22. A silent room.** In a quiet room, with the app open on the viewfinder, look at the mic chip and Go live. You should see the mic chip lime and Go live enabled.
+- [ ] **23. A call before Go live.** Still paired and not live, in a quiet room, take a phone call. Within about a second you should see the mic chip turn orange and Go live say "Mic not available".
+- [ ] **24. The call ends.** End the call. Within about a second you should see the mic chip lime again.
+- [ ] **25. A capture with no audio.** Start a voice-recorder app and keep it recording, then open the viewfinder. Within about two and a half seconds you should see the mic chip orange and Go live say "Mic not available". If the phone shares its mic and sound keeps flowing, write that down: _could not make_ on this phone.
+- [ ] **26. The record says so.** After item 25, use Share record and look in the record. You should see a `watch-failed` line with `action: sound`. Skip this if item 25 was _could not make_.
+- [ ] **27. The viewfinder closes and reopens.** In a quiet room, open Settings, then go Back. Within a second of the picture returning you should see the mic chip lime again, with no sound needed.
+- [ ] **28. A call across the close.** Take a call, and with the call still going open Settings and go Back. You should see the mic chip orange as soon as the picture is back, and still orange until the call ends. It must not flash lime. This is the old race the plan parked.
+
+### C. Viewfinder, on air
+
+- [ ] **29. Go live.** Hold Go live for 3 seconds and watch the sound meter from the end of the hold until the first picture. You should see the status reach "Live. Sound and picture going out.". Write down whether the meter turned orange and for how long. It may for a connect over 2 seconds. It must never stop the connect.
+- [ ] **30. On air, smallest landscape.** At 640 × 360 dp, look at the viewfinder on air. You should see the timer, the sound meter, the match name and the status line, with nothing clipped and nothing that scrolls.
+- [ ] **31. A silent minute.** On air, stay silent in a quiet room for a full minute. You should see the status line stay "Live. Sound and picture going out." and no "no sound" warning.
+- [ ] **32. The score overlay.** With Score preview on in Settings, look at the camera picture on air. You should see the score over the picture only, and nothing drawn over the strip or the controls.
+- [ ] **33. What viewers see.** On air, press and hold "What viewers see". You should see the viewers' video inside the camera picture only, and nowhere else on the screen.
+- [ ] **34. The icon row on air.** On air, look at the row of icon buttons. You should see Settings, then "What viewers see". Take photo is PR B's and is not checked here.
+- [ ] **35. A warning in the strip.** On air, unplug the charger. You should see "Not charging — plug in for a long match" under the status line in the strip, readable, with the match name above it still fully shown. Plug the charger back in.
+- [ ] **36. A call on air.** On air, take a phone call. You should see "Mic silenced by a call" in the status line.
+- [ ] **37. The call ends.** End the call. You should see the warning clear.
+- [ ] **38. The broadcast ends during a call.** Go live, take a call (the warning shows), end the broadcast from the organiser's console while the call goes on, then end the call. Within about a second you should see the mic chip lime again, with no restart of the app.
+- [ ] **39. The organiser stops it.** Go live, then stop the broadcast from the organiser's console. You should see the phone stay on the viewfinder saying "Organiser stopped it — waiting for Go live", with no jump to Home and no "Stream ended" card.
+
+### D. Stop and the Stream ended card
+
+- [ ] **40. Stop after live.** Go live, let it run for a minute, then hold Stop. You should land on Home with the "Stream ended" card: the title, "On air" with the time, "You stopped the broadcast.", "Scan the code again for the next broadcast", and OK. This must be seen on the phone, not assumed.
+- [ ] **41. No Continue.** With the card showing, look at Home under it. You should see no Continue card for that code, because your own Stop forgets it.
+- [ ] **42. OK clears it.** Tap OK. You should see the card go.
+- [ ] **43. A second broadcast.** Scan the code again, go live, and stop again. You should see a new card with the new on-air time, not the old one.
+- [ ] **44. A restart clears it.** With the card showing, close the app completely and open it again. You should see Home without the card.
+- [ ] **45. A new scan clears it.** With the card showing, tap the Stream tile and close the scanner without scanning (no screenshot). You should see Home with no card when you come back.
+- [ ] **46. Stop before the first picture.** Go live and hold Stop at once, while it still says it is connecting, before the first picture. You should stay on the viewfinder, waiting for Go live, with no card and no jump to Home.
+- [ ] **47. A code that ended, while on air.** Go live, have that code ended from the organiser's console (ask the orchestrator which control does it), then hold Stop. You should land on Home with the card showing the on-air time, "You stopped the broadcast." and "This code has ended. Scan the new one." in place of the scan-again line, and no Continue card for that code.
+- [ ] **48. A code that ended before the first picture.** Do the same, with the code ended before the first picture. You should see the card say "Never went live" in place of the time, then "This code has ended. Scan the new one.", and no Continue card. If you cannot time it, write _could not make_.
+- [ ] **49. A failed end (only if one happens).** Do not force one. If a broadcast ever ends by failing, you should land on Home with the card saying "Something failed. Your code is kept." and a Continue card; tapping Continue clears the card.
+
+### E. Settings, with Diagnostics
+
+- [ ] **50. Open Settings.** Before air, tap Settings in the icon row. You should see the settings in order (Score preview, Start and stop automatically, Controls on the, then Power with its advice, then Open-source licences straight after the advice) and the Diagnostics card with Share record.
+- [ ] **51. The nine rows.** On air, open Settings and look at the Diagnostics card. You should see nine rows with readings, grouped under Link, Delivery, Phone and Heartbeat: Transport, Bitrate, Round trip, Viewers receiving, Behind live, Checked, Battery, Heat and Last sent. There is no Engine section.
+- [ ] **52. No Diagnostics button.** Look at the viewfinder before air, the viewfinder on air, and Home. You should see no button called Diagnostics on any of them.
+- [ ] **53. The smallest landscape.** At 640 × 360 dp, open Settings with the phone sideways. You should see the settings on one half and the Diagnostics card on the other, the card not scrolling, and no row cut off.
+- [ ] **54. The gaps between the halves.** In the same view, look at the space between the two halves and between the rows. You should see even gaps, with nothing touching or overlapping.
+- [ ] **55. Portrait.** Not on air, turn the phone upright in Settings. You should see one column: the settings, then the Diagnostics card.
+- [ ] **56. The biggest font, in Settings.** In the Settings screen itself, with the phone's font size at the largest, at 640 × 360 dp, look at the Diagnostics card. Write down what happens: whether rows wrap, clip or scroll, and whether Share record can still be reached. Font size above normal is not covered by any size arithmetic, so this is a record, not a pass.
+- [ ] **57. Share record.** Tap Share record. You should see the phone's share sheet open. Close it without sending, or send it to yourself.
+
+### F. Home, portrait and landscape
+
+- [ ] **58. Portrait Home.** Upright, with no broadcast, look at Home. You should see, top to bottom, the Seazn Club logo (sharp at 200 × 70), the status line, a Continue card if there is one, the three tiles in a column, then Language and Version. Nothing scrolls sideways.
+- [ ] **59. Landscape Home.** Turn the phone sideways on Home. You should see one top row with the logo (sharp at 160 × 56), the status line, Language and Version, then the three tiles side by side, with nothing under the tiles and nothing scrolling sideways.
+- [ ] **60. The Language list.** In landscape, tap Language in the top row. You should see the four languages in a list that is fully in view, not cut off at 360 dp tall. Pick one and the app changes language; pick English again.
+- [ ] **61. The cards, one row each.** At 800 × 360 dp in landscape, show the Stream ended card (after a Stop), then separately a Continue card (leave a paired viewfinder with Home). You should see each as a single row between the top row and the tiles, with all of Home in view and nothing that scrolls.
+- [ ] **62. Smaller, or both cards.** At 640 × 360 dp in landscape, show a card. You should see Home scroll up and down, which is accepted at this size and when both cards show together. Nothing should be cut off that you cannot scroll to, and nothing should scroll sideways.
+- [ ] **63. A code message at 360 dp tall.** In landscape at 360 dp tall, bring up a code message: scan a code that has ended (no screenshot of the scan). You should see the whole panel in view, with its title, its text and its buttons, nothing clipped.
+- [ ] **64. TalkBack reads the logo.** With TalkBack on, swipe to the logo on Home. You should hear "Seazn Club". Turn TalkBack off afterwards.
+
+### G. Rotation
+
+Do the first two lines before the rest of this group.
+
+- [ ] **65. Settings closes the camera while paired.** Paired and not on air, open Settings. You should see Android's camera-in-use dot in the status bar (Android 12 and up) go out within about a second. Share the record afterwards and look for the capture closing. If the dot stays on while paired, stop this group: the finding goes to the orchestrator, because Settings must then stay locked sideways while paired.
+- [ ] **66. Settings keeps the camera on air.** Go live, then open Settings. You should see the dot stay on.
+- [ ] **67. Home turns.** With auto-rotate on, turn the phone on Home. You should see Home turn with it, portrait and landscape.
+- [ ] **68. Auto-rotate off.** Switch auto-rotate off, then turn the phone on Home. You should see Home stay where it is. Write down what it did.
+- [ ] **69. Settings turns while paired.** Paired and not on air, open Settings and turn the phone upright. You should see Settings turn to portrait.
+- [ ] **70. Back to the camera, phone upright.** From Settings, with the phone upright, tap Back to camera. You should see the "Turn your phone sideways" card. Turn the phone sideways: you should see the viewfinder lock sideways with the camera picture upright, not rotated.
+- [ ] **71. Back to the camera, phone sideways.** Repeat item 70 with the phone already sideways. You should see the viewfinder lock sideways at once, with no turn card.
+- [ ] **72. Settings on air does not turn.** On air, open Settings and turn the phone upright. You should see Settings stay sideways.
+- [ ] **73. The viewfinder never turns.** On the viewfinder, before air and then on air, turn the phone upright. You should never see a portrait layout of the viewfinder.
+
+### H. Translations: Spanish, French and Dutch
+
+Switch the language with Language on Home before each group of three lines below (Spanish 74 to 76, French 77 to 79, Dutch 80 to 82), and take a screenshot of each result.
+
+- [ ] **74. Spanish, before air.** At 640 × 360 dp, show the longest not-ready line (in Spanish the camera one, "Aún no se puede emitir: la cámara no está lista"). You should see the strip and controls with nothing clipped and nothing that scrolls.
+- [ ] **75. Spanish, the Stream ended card.** Stop after live. You should see "Emisión terminada", the time, the two lines, and the button "Aceptar", all in view and not clipped.
+- [ ] **76. Spanish, Diagnostics.** At 640 × 360 dp, open Settings. You should see every label and value in full in the Diagnostics card, with no row cut off and no "…" on a fixed word.
+- [ ] **77. French, before air.** As item 74, in French (the mic one, "Pas encore de direct : micro indisponible"). You should see nothing clipped and nothing that scrolls.
+- [ ] **78. French, the Stream ended card.** As item 75. You should see "Direct terminé", the time, the two lines and "OK", all in view and not clipped.
+- [ ] **79. French, Diagnostics.** As item 76. You should see every label and value in full, with no row cut off.
+- [ ] **80. Dutch, before air.** As item 74, in Dutch (the mic one, "Nog niet live: microfoon niet bruikbaar"). You should see nothing clipped and nothing that scrolls.
+- [ ] **81. Dutch, the Stream ended card.** As item 75. You should see "Stream beëindigd", the time, the two lines and "OK", all in view and not clipped.
+- [ ] **82. Dutch, Diagnostics.** As item 76. You should see every label and value in full, with no row cut off.
+- [ ] **83. Spanish "Sin datos".** In Spanish, find the delivery row with no reading yet (in the first seconds after going live, before the first check). You should see "El público recibe" beside "Sin datos". Write down whether that reads as "no data about whether viewers receive", or wrongly as "viewers receive no data".
+- [ ] **84. Dutch "Stokt".** In Dutch, make viewers stop receiving on air (for example switch the phone's network off for a while, then back on) and open Settings. You should see the delivery row say "Stokt". Write down whether it reads clearly as stalled. If it never shows, write _could not make_.
+- [ ] **85. Dutch "Microfoon niet bruikbaar".** In Dutch, take a phone call before Go live. You should see "Microfoon niet bruikbaar" beside Go live, fitting without clipping, and it reads right for a mic taken by a call.
+- [ ] **86. The share failure, Spanish and French.** In each language, try to make Share record fail (for example with no app to share to). You should see "Falló. Reintentar" in Spanish and "Échec. Réessayer" in French. Write down whether each tells you what failed. If you cannot make it fail, write _could not make_.
+
+### I. One forced RTMPS session against staging
+
+Any time after the merge. It needs no PR C code: staging's own switch does the forcing, and the app has no RTMPS switch of its own. Staging's SRT flag must be off before the session and back on after it, and the orchestrator does both with the web lane.
+
+- [ ] **87. Ask for SRT off.** Tell the orchestrator you are about to start. It pings the web lane to switch staging's SRT flag off. Wait until the orchestrator tells you the web lane confirms it is off. Do not go live before that.
+- [ ] **88. Go live in French.** Set the app to French, pair to a staging match, and go live. You should see the status reach "Live" and the picture playing on the staging match page.
+- [ ] **89. The link in Diagnostics.** On air, open Settings and look at the Transport row. You should see "RTMPS seul", because SRT is not offered.
+- [ ] **90. Record the session id.** Write down the session id of this broadcast, from the staging console for the match or from the shared record. Give it to the orchestrator: it goes to the web lane.
+- [ ] **91. Stop and tell the orchestrator.** Hold Stop, then tell the orchestrator you are done. It pings the web lane to switch the SRT flag back on. Wait for its word that the flag is restored before any other staging run.
+- [ ] **92. Delete the recording.** Delete the broadcast's recording on Cloudflare, and the input with it. You should see it gone from the list.
+
+### J. Wrap-up
+
+- [ ] **93. Put the phone back.** Run `adb shell wm size reset` and `adb shell wm density reset`. Turn TalkBack off, set the font size to what you wrote down in item 4, switch auto-rotate and the charger back on, and set "Controls on the" as it was. You should see the phone as you found it.
+- [ ] **94. Hand it over.** Give the orchestrator your written results, the screenshots (app only, status bar cropped) and any finding. You should hear back which findings need a fix and which are accepted.
+
+**Where each earlier reference went.** Other parts of this plan, and the ledger, point at this task by its old item numbers or by name. They mean these items:
+
+| Earlier reference                                                                           | Items                  |
+| ------------------------------------------------------------------------------------------- | ---------------------- |
+| Old item 1, fit at the smallest landscape                                                   | 6, 30                  |
+| Old item 2, label cases, the 26-character side, font size                                   | 16, 17, 18             |
+| Old item 3, the camera box                                                                  | 7, 8, 12, 32, 33       |
+| Old item 4, the mic: silent room, connect, no audio, calls, reopen                          | 22 to 29, 31, 36 to 38 |
+| Old item 5, Stop after live                                                                 | 40 to 43               |
+| Old item 6, Diagnostics in Settings                                                         | 50 to 57               |
+| Old item 7, rotation, the capture while Settings is open                                    | 65 to 73               |
+| Old item 8, the logo                                                                        | 58, 59, 64             |
+| Old item 9, locales                                                                         | 74 to 86               |
+| Old item 10, the longest start time                                                         | 21                     |
+| Mic chip after the viewfinder reopens; the parked glue race                                 | 27, 28                 |
+| Bar colour; first picture jump on wide phones; split-screen under 180 dp tall               | 9, 10, 11              |
+| TalkBack: match name as one stop; logo as "Seazn Club"                                      | 19, 64                 |
+| Card-row wrapping at 800 × 360; Language list; code message at 360 dp tall                  | 61, 60, 63             |
+| Auto-rotate off; leaving paired Settings upright                                            | 68, 70, 71             |
+| Owner's-eye wording: Sin datos, RTMPS seul, Stokt, Microfoon niet bruikbaar, share failures | 83 to 86, 89           |
+| Organiser-stopped; never went live; code ended                                              | 39, 46, 47, 48         |
+| The forced RTMPS session, for the web lane                                                  | 87 to 92               |
 
 Any line that fails is a finding for the orchestrator. It is never a change made on the device run.
 
