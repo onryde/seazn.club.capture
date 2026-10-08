@@ -26,7 +26,7 @@ export function StreamScreen() {
   const peek = usePeek(view.peekable);
   useEndedToHome(leave.leaveWith);
   const links = useStreamLinks();
-  const scoring = useScoringLink();
+  const scoring = useScoringLink(view.plate === 'trouble');
   const line = useColumnLine(view, leave.blocked);
   return (
     <View testID="viewfinder" style={settings.side === 'left' ? styles.mirrored : styles.halves}>

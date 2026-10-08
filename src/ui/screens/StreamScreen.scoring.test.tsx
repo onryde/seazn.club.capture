@@ -1,14 +1,18 @@
 import { act, fireEvent, screen, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { seaznQrPlan } from '@/domain/qr/seaznQr';
+import type { SessionState } from '@/domain/session/SessionState';
 import en from '@/i18n/en.json';
 import { SCORING_SHOW_MS, SCORING_SHOW_SECONDS } from '@/hooks/useScoringLink';
 import type { ScoringLinkOutcome } from '@/services/scoringLinkPort';
 import { layout } from '@/ui/theme/tokens';
+import { TEST_NOW } from '../../../test/fakePorts';
 import { FAKE_SCORING_SECRET, FAKE_SCORING_URL } from '../../../test/fakeScoringLinkPort';
 import { captureRaw } from '../../../test/fixtures/wire';
 import { savedStreamCode } from '../../../test/fixtures/savedStream';
 import { pairCode } from '../../../test/pairCode';
 import { pressIn } from '../../../test/press';
+import { pathDigest } from '../../../test/qrDigest';
 import { renderViewfinder } from '../../../test/renderViewfinder';
 
 /**
@@ -265,6 +269,7 @@ describe('the status line is not overridden (B6)', () => {
   it('a reconnecting warning stays in the strip while the code is up', async () => {
     const view = await renderViewfinder();
     act(() => view.engine.scene('holding'));
+    // R8a hides the panel when trouble is ENTERED. Here the trouble stood before the tap, so the tap is honoured.
     const warning = 'Uplink lost — holding, 38 s of 183';
     expect(within(byId('status-strip')).getByText(warning)).toBeTruthy();
     await tap();
@@ -272,6 +277,138 @@ describe('the status line is not overridden (B6)', () => {
     expect(within(byId('status-strip')).getByText(warning)).toBeTruthy();
     // And the panel says nothing of the stream: its words are its own.
     expect(within(byId('scoring-panel')).queryByText(warning)).toBeNull();
+  });
+});
+
+// Review: the code on the screen is the code of the link the port ANSWERED, not merely "a code of the same size".
+describe('the drawn code is the answered link’s', () => {
+  const digestOf = (url: string) => pathDigest(seaznQrPlan(url).path);
+
+  it('a tap draws the answered link, and a different answer after Hide draws that one', async () => {
+    const view = await renderViewfinder();
+    const other = `https://stg.seazn.club/score/dl_${'Z'.repeat(43)}`;
+    expect(other).toHaveLength(FAKE_SCORING_URL.length); // same version, same modules: only the path differs
+    const first = digestOf(FAKE_SCORING_URL);
+    const second = digestOf(other);
+    expect(second).not.toBe(first);
+
+    await tap();
+    expect(within(byId('scoring-panel')).getByTestId('seazn-qr').dataset.digest).toBe(first);
+    fireEvent.click(
+      within(byId('scoring-panel')).getByRole('button', { name: en['stream.scoring.hide'] }),
+    );
+    view.scoringLink.answerWith({ kind: 'ok', url: other });
+    await tap();
+    expect(within(byId('scoring-panel')).getByTestId('seazn-qr').dataset.digest).toBe(second);
+    expect(view.scoringLink.calls).toBe(2);
+  });
+});
+
+// R8a (controller ruling): the opaque panel covers the status strip, so a session ENTERING trouble takes it down.
+describe('trouble takes the panel down (R8a)', () => {
+  type View = Awaited<ReturnType<typeof renderViewfinder>>;
+  /** `ms` after the test's clock, with the 1 s tick that re-reads it (`useClockTick`). */
+  const later = (view: View, ms: number) =>
+    act(() => {
+      view.setNow(new Date(TEST_NOW.getTime() + ms));
+      vi.advanceTimersByTime(1_000);
+    });
+  const state = (each: SessionState) => each;
+  /** The three states the plate shows as TROUBLE: Degraded, Reconnecting, and an engine gone silent. */
+  const TROUBLES: readonly (readonly [string, (view: View) => void, string])[] = [
+    [
+      'degraded',
+      (view) =>
+        act(() =>
+          view.engine.forceState(
+            state({ kind: 'degraded', transport: 'srt', reason: 'poor-uplink', sinceEpochMs: 1 }),
+          ),
+        ),
+      en['stream.status.weakSignal'],
+    ],
+    [
+      'reconnecting',
+      (view) =>
+        act(() =>
+          view.engine.forceState(
+            state({
+              kind: 'reconnecting',
+              cause: 'uplink-lost',
+              holdRemainingSeconds: 30,
+              holdWindowSeconds: 60,
+              sinceEpochMs: 1,
+            }),
+          ),
+        ),
+      en['stream.status.holding'].replace('{remaining}', '30').replace('{window}', '60'),
+    ],
+    [
+      'engine silent',
+      (view) => {
+        act(() => view.engine.suspend());
+        later(view, 3_001);
+      },
+      en['stream.status.engineSilent'],
+    ],
+  ];
+  const plate = () => byId('tally-plate').textContent;
+  let checked = 0;
+
+  it.each(TROUBLES.map(([name, enter, line]) => [name, enter, line] as const))(
+    '%s: entering it hides a shown code and a code being asked for, and the strip’s warning is visible',
+    async (name, enter, line) => {
+      // shown
+      const shown = await renderViewfinder();
+      act(() => shown.engine.scene('live'));
+      await tap();
+      expect(byId('scoring-panel')).toBeTruthy();
+      enter(shown);
+      expect(plate(), name).toBe(en['stream.tally.trouble']);
+      expect(screen.queryByTestId('scoring-panel'), name).toBeNull();
+      expect(button().getAttribute('aria-selected')).toBe('false');
+      expect(within(byId('status-strip')).getByText(line), name).toBeTruthy();
+      shown.unmount();
+
+      // asking: the answer that lands after the entry is dropped
+      const asking = await renderViewfinder();
+      act(() => asking.engine.scene('live'));
+      asking.scoringLink.hold();
+      await tap();
+      expect(within(byId('scoring-panel')).getByText(en['stream.scoring.asking'])).toBeTruthy();
+      enter(asking);
+      expect(screen.queryByTestId('scoring-panel'), name).toBeNull();
+      await act(async () => asking.scoringLink.release());
+      expect(screen.queryByTestId('scoring-panel'), name).toBeNull();
+      expect(screen.queryByTestId('seazn-qr'), name).toBeNull();
+      checked += 1;
+    },
+  );
+
+  it('counted three troubles, each in both legs (anti-vacuity)', () => {
+    expect(TROUBLES).toHaveLength(3);
+    expect(checked).toBe(3);
+  });
+
+  it('after the trouble the next tap shows the code again (the sequence)', async () => {
+    const view = await renderViewfinder();
+    act(() => view.engine.scene('live'));
+    await tap();
+    TROUBLES[1]?.[1](view);
+    expect(screen.queryByTestId('scoring-panel')).toBeNull();
+    act(() => view.engine.scene('live'));
+    expect(plate()).toBe(en['stream.tally.live']);
+    await tap();
+    expect(view.scoringLink.calls).toBe(2);
+    expect(within(byId('scoring-panel')).getByTestId('seazn-qr')).toBeTruthy();
+  });
+
+  it('the negative pair: a calm change of state (paired to live) leaves the code up', async () => {
+    const view = await renderViewfinder();
+    await tap();
+    expect(byId('scoring-panel')).toBeTruthy();
+    act(() => view.engine.scene('live'));
+    expect(plate()).toBe(en['stream.tally.live']);
+    expect(within(byId('scoring-panel')).getByTestId('seazn-qr')).toBeTruthy();
   });
 });
 

@@ -40,10 +40,15 @@ afterEach(() => vi.useRealTimers());
 function setup() {
   const fakes = createFakePorts();
   pairCode(fakes.engine, savedStreamCode());
-  const hook = renderHook(() => useScoringLink(), { wrapper: wrapperFor(fakes) });
+  const hook = renderHook(({ trouble }) => useScoringLink(trouble), {
+    wrapper: wrapperFor(fakes),
+    initialProps: { trouble: false },
+  });
   return {
     fakes,
     hook,
+    /** R8a: the session enters (true) or leaves (false) trouble, the one boolean the screen hands the hook. */
+    setTrouble: (trouble: boolean) => act(() => hook.rerender({ trouble })),
     view: () => hook.result.current.view,
     left: () => hook.result.current.secondsLeft,
     /** A tap, then the fake's already-resolved promise lands. */
@@ -213,6 +218,29 @@ describe('useScoringLink (spec §10, D7, D8)', () => {
     expect(view()).toEqual({ kind: 'refused', word: 'rate_limited', retryAfterS: 30 });
   });
 
+  it('10b: a rate limit belongs to its pairing: a new pairing asks at once, the same one stays blocked', async () => {
+    let rows = 0;
+    for (const [name, , other] of OTHER_PAIRINGS) {
+      const { fakes, hook, view, tap } = setup();
+      fakes.scoringLink.answerWith(refused('rate_limited', 30));
+      await tap();
+      expect(view().kind, name).toBe('refused');
+      act(() => hook.result.current.hide());
+      await tap(); // the positive pair: the same pairing, a second later, is still blocked
+      expect(fakes.scoringLink.calls, `${name}: blocked`).toBe(1);
+      expect(view(), name).toEqual({ kind: 'refused', word: 'rate_limited', retryAfterS: 30 });
+      act(() => hook.result.current.hide());
+      fakes.scoringLink.answerWith(OK);
+      act(() => pairCode(fakes.engine, other()));
+      await tap();
+      expect(fakes.scoringLink.calls, `${name}: asks again`).toBe(2);
+      expect(view(), name).toEqual({ kind: 'shown', url: FAKE_SCORING_URL });
+      rows += 1;
+    }
+    expect(rows).toBe(OTHER_PAIRINGS.length);
+    expect(rows).toBe(3);
+  });
+
   it('11: leaving the foreground hides it, and the hook listens only while mounted', async () => {
     const { fakes, hook, view, tap, armed } = setup();
     expect(fakes.foreground.leaveListeners()).toBe(1);
@@ -304,6 +332,61 @@ describe('useScoringLink (spec §10, D7, D8)', () => {
     expect(opens[2]).toBe(opens[0]);
     expect(hides[1]).toBe(hides[0]);
     expect(hides[2]).toBe(hides[0]);
+  });
+});
+
+// R8a (controller ruling): the opaque panel covers the status strip, so a session ENTERING trouble takes it down.
+describe('useScoringLink’s trouble (R8a)', () => {
+  it('entering trouble hides a shown code and stops its timers; calm again leaves it hidden; a tap shows it again', async () => {
+    const { fakes, view, tap, setTrouble, armed } = setup();
+    await tap();
+    expect(view().kind).toBe('shown');
+    expect(armed()).toBeGreaterThan(0);
+    setTrouble(true);
+    expect(view()).toEqual({ kind: 'hidden' });
+    expect(armed()).toBe(0);
+    setTrouble(false);
+    expect(view()).toEqual({ kind: 'hidden' });
+    await tap();
+    expect(fakes.scoringLink.calls).toBe(2);
+    expect(view().kind).toBe('shown');
+  });
+
+  it('entering trouble mid-ask drops the answer that arrives after it', async () => {
+    const { fakes, view, tap, setTrouble, armed } = setup();
+    fakes.scoringLink.hold();
+    await tap();
+    expect(view().kind).toBe('asking');
+    setTrouble(true);
+    expect(view()).toEqual({ kind: 'hidden' });
+    await act(async () => fakes.scoringLink.release(OK));
+    expect(view()).toEqual({ kind: 'hidden' });
+    expect(armed()).toBe(0);
+    expect(readRecord(fakes.record).map((line) => line.event)).not.toContain('scoring.shown');
+  });
+
+  it('a refusal on screen is taken down too (it covers the strip the same way)', async () => {
+    const { fakes, view, tap, setTrouble } = setup();
+    fakes.scoringLink.answerWith(refused('replaced'));
+    await tap();
+    expect(view().kind).toBe('refused');
+    setTrouble(true);
+    expect(view()).toEqual({ kind: 'hidden' });
+  });
+
+  it('it is ENTERING that hides: a tap made while trouble stands is honoured, and only a new entry takes it down', async () => {
+    const { view, tap, setTrouble } = setup();
+    setTrouble(true);
+    await tap();
+    expect(view().kind).toBe('shown'); // the operator's own tap, with the warning already known
+    act(() => vi.advanceTimersByTime(3_000));
+    expect(view().kind).toBe('shown'); // trouble standing does not hide it
+    setTrouble(true); // no change
+    expect(view().kind).toBe('shown');
+    setTrouble(false);
+    expect(view().kind).toBe('shown'); // leaving trouble does not hide it either
+    setTrouble(true); // a new entry
+    expect(view()).toEqual({ kind: 'hidden' });
   });
 });
 

@@ -46,7 +46,7 @@ export const ScoringLinkPanel = memo(function ScoringLinkPanel({
   const counting = view.kind === 'shown' || view.kind === 'refused';
   return (
     <View testID="scoring-panel" style={styles.panel}>
-      <Text variant="control" style={styles.ink}>
+      <Text variant="panelTitle" style={styles.title}>
         {t('stream.scoring.title')}
       </Text>
       {plan === null ? null : (
@@ -140,6 +140,8 @@ const styles = StyleSheet.create({
   },
   // Every Text role carries a colour made for the night ground; on the cream one the ink is the night.
   ink: { color: colour.ground },
+  // The board's title is left-aligned in a panel whose other children are centred: it takes the full width.
+  title: { color: colour.ground, alignSelf: 'stretch', textAlign: 'left' },
   sentence: { color: colour.ground, textAlign: 'center' },
   // One row: bar, text, Hide. The bar takes what the other two leave (scoringFit.test.ts keeps it at least 32 dp).
   bottom: {

@@ -28,8 +28,9 @@ export type ScoringLinkView =
 const HIDDEN: ScoringLinkView = { kind: 'hidden' };
 
 /**
- * A server's Retry-After as a whole number of seconds worth saying, or null for none: a fraction rounds up, anything
- * below one second (or not a finite number) is no wait at all, and the cap is [SCORING_RETRY_MAX_S].
+ * A server's Retry-After as a whole number of seconds worth saying, or null for none: a number that is not finite, or
+ * is zero or below, is no wait at all; any positive wait rounds UP to a whole second (a 0.2 s one is 1 s, so the
+ * sentence never says "0 s" while the button is still blocked); and the cap is [SCORING_RETRY_MAX_S].
  */
 function clampRetry(raw: number | null): number | null {
   if (raw === null || !Number.isFinite(raw) || raw <= 0) return null;
@@ -43,8 +44,13 @@ function clampRetry(raw: number | null): number | null {
  *
  * B3: while a view is shown or refused it counts down, one tick a second, from 10 to 1. The tick only draws the
  * number: the 10 s timer is what hides, and both are cleared together.
+ *
+ * R8a: the panel is opaque and covers the status strip, so a session ENTERING trouble (`trouble` goes true: the plate
+ * the viewfinder shows as TROUBLE, which is Degraded, Reconnecting and a silent engine) takes it down at once, and the
+ * strip's warning is not hidden for up to 10 s. A tap made while trouble already stands is the operator's own choice
+ * and is honoured.
  */
-export function useScoringLink() {
+export function useScoringLink(trouble: boolean) {
   const { scoringLink, foreground, clock, logger } = usePorts();
   // What names the pairing, as three scalars: a new pairing is a new code, and the link in hand is for the old one.
   const code = useEngineSelector(selectHeldCode);
@@ -118,8 +124,16 @@ export function useScoringLink() {
   }, [clock, clear, logger, scoringLink, show]);
 
   useEffect(() => foreground.subscribeBackground(hide), [foreground, hide]);
-  // Another code, or none: the link in hand is for a match this pairing no longer holds. Runs on mount too: harmless.
-  useEffect(() => hide(), [code, slot, tokenTag, hide]);
+  // Another code, or none: the link in hand is for a match this pairing no longer holds, and so is the wait the server
+  // set for it (a new pairing is not rate limited by the old one). Runs on mount too: harmless.
+  useEffect(() => {
+    blockedUntil.current = 0;
+    hide();
+  }, [code, slot, tokenTag, hide]);
+  // R8a: entering trouble takes the panel down (a change to true; on mount it hides what is not there).
+  useEffect(() => {
+    if (trouble) hide();
+  }, [trouble, hide]);
   useEffect(() => {
     alive.current = true;
     return () => {

@@ -32,8 +32,10 @@ type StageProps = {
 /**
  * The camera half (spec §1): the shot as a 16:9 box across the half, with the
  * status strip under it. Nothing is drawn over the shot but the overlay preview
- * and the peek (AGENTS §6, D17); the match label, the status line and the one
- * advisory caption sit in the strip, below it. It keeps no buttons.
+ * and the peek (AGENTS §6, D17) and, for at most 10 s after a tap, the Remote
+ * scoring panel (spec §10), which covers the whole half, strip included, and
+ * brings the half's one button: its Hide. The match label, the status line and
+ * the one advisory caption sit in the strip, below the shot.
  *
  * The strip keeps its content height and the box gives way (`cameraBoxSize`):
  * on a screen too short for a full-width box the box is narrower, centred, on

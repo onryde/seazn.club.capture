@@ -12,6 +12,7 @@ import type { ScoringLinkView } from '@/hooks/useScoringLink';
 import { ScoringLinkPanel } from '@/ui/components/ScoringLinkPanel';
 import { layout } from '@/ui/theme/tokens';
 import { boardGround, boardInkEdge, boardInkText } from '../../../test/boardPaint';
+import { pathDigest } from '../../../test/qrDigest';
 import { FAKE_SCORING_SECRET, FAKE_SCORING_URL } from '../../../test/fakeScoringLinkPort';
 import { renderWithPorts } from '../../../test/renderWithPorts';
 
@@ -220,6 +221,45 @@ describe('ScoringLinkPanel (spec §10, Q-C2)', () => {
       <ScoringLinkPanel view={{ kind: 'shown', url: other }} secondsLeft={7} onHide={vi.fn()} />,
     );
     expect(plan).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('ScoringLinkPanel draws the code of the link it was handed', () => {
+  it('the plan is made for the answered url, the drawn code is that plan’s, and the next answer is the next code', () => {
+    // Two links of one length: the version and the module count match, only the painted path tells them apart.
+    const other = `https://stg.seazn.club/score/dl_${'Z'.repeat(43)}`;
+    expect(other).toHaveLength(FAKE_SCORING_URL.length);
+    // The expected codes come from the real encoder, before the spy is looked at.
+    const wantFirst = pathDigest(seaznQrPlan(FAKE_SCORING_URL).path);
+    const wantNext = pathDigest(seaznQrPlan(other).path);
+    expect(wantNext).not.toBe(wantFirst);
+
+    const plan = vi.mocked(seaznQrPlan);
+    plan.mockClear();
+    const view = panelFor(SHOWN);
+    expect(plan).toHaveBeenLastCalledWith(FAKE_SCORING_URL);
+    expect(within(panel()).getByTestId('seazn-qr').dataset.digest).toBe(wantFirst);
+
+    view.rerender(
+      <ScoringLinkPanel view={{ kind: 'shown', url: other }} secondsLeft={9} onHide={vi.fn()} />,
+    );
+    expect(plan).toHaveBeenLastCalledWith(other);
+    expect(within(panel()).getByTestId('seazn-qr').dataset.digest).toBe(wantNext);
+    expect(view.container.innerHTML).not.toContain(other); // drawn, never written
+  });
+});
+
+describe('ScoringLinkPanel’s title is the board’s (R8b)', () => {
+  it('Barlow Condensed 700 at 22/24, uppercase, left-aligned, across the panel’s width, in the ink', () => {
+    panelFor(SHOWN);
+    const title = getComputedStyle(within(panel()).getByText(en['stream.scoring.title']));
+    expect(title.fontFamily).toContain('BarlowCondensed_700Bold');
+    expect(title.fontSize).toBe('22px');
+    expect(title.lineHeight).toBe('24px');
+    expect(title.textTransform).toBe('uppercase');
+    expect(title.textAlign).toBe('left');
+    expect(title.alignSelf).toBe('stretch');
+    expect(title.color).toBe(boardInkText());
   });
 });
 

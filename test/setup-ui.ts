@@ -42,17 +42,20 @@ vi.mock('@/ui/components/Glyph', async () => {
 });
 
 // The QR's drawing is paths and an image; its own suite (SeaznQr.test.tsx) takes the real component. The
-// stand-in is a marker other suites can find, carrying the plan's version and modules and the dp it was given.
+// stand-in is a marker other suites can find, carrying the plan's version and modules, the dp it was given and a
+// digest of the painted path (qrDigest.ts): the version and the modules are the same for any two links of one length,
+// the digest is not, so it is what ties a drawn code to the link it was made from.
 vi.mock('@/ui/components/SeaznQr', async () => {
   const { createElement } = await import('react');
   const { View } = await import('react-native');
+  const { pathDigest } = await import('./qrDigest');
   return {
     SeaznQr: ({
       plan,
       size,
       label,
     }: {
-      plan: { version: number; modules: number };
+      plan: { version: number; modules: number; path: string };
       size: number;
       label: string;
     }) =>
@@ -64,6 +67,7 @@ vi.mock('@/ui/components/SeaznQr', async () => {
           version: String(plan.version),
           modules: String(plan.modules),
           size: String(size),
+          digest: pathDigest(plan.path),
         },
       } as ViewProps),
   };
