@@ -6,6 +6,13 @@ export const SEAZN_QR_QUIET_MODULES = 4;
 /** The icon covers 0.22 of the symbol: the web's share (apps/web/src/lib/seazn-qr.ts). */
 export const SEAZN_QR_ICON_FRACTION = 0.22;
 export const SEAZN_QR_ICON_PAD_MODULES = 1;
+/**
+ * The smallest version drawn. At error correction H, versions 1 and 2 (21 and 25 modules) do not reliably decode once
+ * the logo's 7- or 9-module square is knocked out (jsqr 1.4.0, 240 decodes a version over four fills under the logo:
+ * v1 failed 69, v2 failed 145, v3 to v6 none; seaznQr.test.ts holds 3 to 10), so a short text is drawn at this
+ * version instead. A scoring URL is version 8 and never meets it.
+ */
+export const SEAZN_QR_MIN_VERSION = 3 as const;
 
 export type SeaznQrPlan = {
   /** The symbol's version, 1..40. */
@@ -26,15 +33,23 @@ export type SeaznQrPlan = {
   readonly knocked: (row: number, column: number) => boolean;
 };
 
+function encode(text: string, version: 0 | typeof SEAZN_QR_MIN_VERSION) {
+  const symbol = qrcode(version, SEAZN_QR_ERROR_CORRECTION);
+  symbol.addData(text, 'Byte');
+  symbol.make();
+  return symbol;
+}
+
 /**
  * A symbol and where its logo goes, pure. The logo's knock-out is the smallest ODD square of modules that holds
  * the icon plus a one-module pad on every side, so it centres on a module. The symbol's own data modules under
  * it are recovered by error correction H.
  */
 export function seaznQrPlan(text: string): SeaznQrPlan {
-  const symbol = qrcode(0, SEAZN_QR_ERROR_CORRECTION);
-  symbol.addData(text, 'Byte');
-  symbol.make();
+  // 0 is "the smallest version that holds the text"; a text that fits a smaller one is drawn at the minimum.
+  let symbol = encode(text, 0);
+  if ((symbol.getModuleCount() - 17) / 4 < SEAZN_QR_MIN_VERSION)
+    symbol = encode(text, SEAZN_QR_MIN_VERSION);
   const n = symbol.getModuleCount();
   const icon = n * SEAZN_QR_ICON_FRACTION;
   let k = Math.ceil(icon + 2 * SEAZN_QR_ICON_PAD_MODULES);

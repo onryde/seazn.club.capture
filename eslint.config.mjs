@@ -111,8 +111,9 @@ function uiRestrictedImports(services, message) {
  *
  * `domain/` must stay pure TypeScript so its tests run in milliseconds with no
  * React Native preset. That purity is enforced here, not by convention: the
- * domain policy below grants no external-module allowance, so any import of
- * react, react-native or expo from src/domain fails the build.
+ * domain policy below grants one external-module allowance, `qrcode-generator`
+ * (a pure JS encoder), and no other, so any import of react, react-native or
+ * expo from src/domain fails the build.
  */
 export default [
   {
@@ -165,7 +166,8 @@ export default [
           checkAllOrigins: true,
           policies: [
             {
-              // No external allowance: this is the domain purity rule.
+              // One external allowance, `qrcode-generator` below, and no other: this is the
+              // domain purity rule.
               from: { element: { type: 'domain' } },
               allow: [
                 { to: { element: { type: 'domain' } } },
@@ -177,7 +179,7 @@ export default [
               ],
             },
             {
-              // Pure, like domain: no external allowance, so no react. It may
+              // Pure, like domain, but with no external allowance at all, so no react. It may
               // name domain types (a mode's name key), since both are pure.
               from: { element: { type: 'i18n' } },
               allow: [
