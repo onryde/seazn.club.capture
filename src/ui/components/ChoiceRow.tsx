@@ -28,7 +28,7 @@ export const ChoiceRow = memo(function ChoiceRow({ label, checked, onPress }: Ch
       onPress={onPress}
       style={styles.row}
     >
-      <Text variant="control" style={styles.label}>
+      <Text variant="controlInk" style={styles.label}>
         {label}
       </Text>
       {/* aria-hidden: View reads it as importantForAccessibility "no-hide-descendants" on Android and as

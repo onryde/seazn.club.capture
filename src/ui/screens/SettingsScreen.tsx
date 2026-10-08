@@ -119,7 +119,7 @@ function SideChoice({
   const label = t('settings.side.label');
   return (
     <View style={styles.side}>
-      <Text variant="control" style={styles.sideLabel}>
+      <Text variant="controlInk" style={styles.sideLabel}>
         {label}
       </Text>
       <View accessibilityRole="radiogroup" accessibilityLabel={label} style={styles.pair}>

@@ -23,9 +23,14 @@ const HEIGHTS = [360, 390, 412] as const;
 
 /** Q1 (owner, 2026-10-07): nine rows. A literal, so a card that grows or loses a row is noticed. */
 const ROWS = 9;
-/** Back is a GhostButton, and Share record is one: `minHeight: 48`. SettingsScreen.test.tsx pins the rendered 48. */
+/**
+ * Back is an icon button, 48 square. Share record's row is 48 too: the board draws its box 36 dp tall, and the cell it sits
+ * in (and the header row around it) is 48 so that its hit slop reaches the thumb. SettingsScreen.test.tsx pins both rendered.
+ */
 const BACK = 48;
 const SHARE = 48;
+/** The board's drawn Share record box (measured 36.9 with antialiasing). GhostButton.test.tsx pins its 6 + 6 of slop. */
+const SHARE_DRAWN = 36;
 
 let fitsChecked = 0;
 
@@ -370,8 +375,6 @@ const GHOST_BORDER = 1;
 /** The owner's Settings board (2026-10-08): the pulse beside the heading is drawn in an 18 dp box; the heading is 18 caps. */
 const BOARD_PULSE_PX = 18;
 const BOARD_TITLE_PX = 18;
-/** What GhostButton can hold inside its 48 dp minimum: the 1 dp border each side, then lines of the control role. */
-const GHOST_MIN_HEIGHT = 48;
 
 /** The words of a label wrapped greedily into `width` dp of Geist 500; null when one word alone is wider. */
 function wrapLines(label: string, width: number, size: number): number | null {
@@ -556,8 +559,11 @@ describe('every Diagnostics row fits its line at 640 × 360, in every language (
       const labels = [t('diag.share'), t('diag.shareFailed')];
       expect(new Set(labels).size).toBe(2); // the failure is not the same words as the button
       const lineHeight = typeScale.control.lineHeight;
-      const buttonLines = Math.floor((GHOST_MIN_HEIGHT - 2 * GHOST_BORDER) / lineHeight);
-      expect(buttonLines).toBe(2); // a 48 dp button holds two 18 dp lines
+      // The drawn box is 36 and grows with its label: a wrapped label makes it 2 x 18 + the 1 dp border each side, and that
+      // must still sit inside the 48 dp row it is centred in, or the card (272) would grow past its budget.
+      const buttonLines = Math.floor((SHARE - 2 * GHOST_BORDER) / lineHeight);
+      expect(buttonLines).toBe(2); // the 48 dp row holds a button of two 18 dp lines
+      expect(Math.max(SHARE_DRAWN, 2 * lineHeight + 2 * GHOST_BORDER)).toBeLessThanOrEqual(SHARE);
       // What is left for the button once the pulse, the heading and the two 8 dp gaps are placed.
       const cell = inner - BOARD_PULSE_PX - title - 2 * space.sm;
       for (const label of labels) {

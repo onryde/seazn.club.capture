@@ -22,7 +22,7 @@ export const SubScreenHeader = memo(function SubScreenHeader({
     <View style={styles.header}>
       <IconButton glyph="back" label={t('stream.back')} onPress={onBack} />
       <LivePlate />
-      <Text variant="title" style={styles.title}>
+      <Text variant="screenTitle" style={styles.title}>
         {title}
       </Text>
     </View>

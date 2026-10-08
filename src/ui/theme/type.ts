@@ -71,6 +71,16 @@ export const typeScale = {
     lineHeight: 18,
     color: colour.ink2,
   },
+  /**
+   * Board "Settings": a switch row's label and the side control's label are full cream, where `control` is cream at
+   * 80 % (the board's pixels: (244,240,232), the ink token, against (200,196,197) for the words in the segments).
+   */
+  controlInk: {
+    fontFamily: font.bodyMedium,
+    fontSize: 14,
+    lineHeight: 18,
+    color: colour.ink,
+  },
   /** Condensed buys "HOLD TO STOP" on fewer lines in the controls half. */
   action: {
     fontFamily: font.displayBold,
@@ -165,6 +175,19 @@ export const typeScale = {
     fontSize: 26,
     lineHeight: 29,
     letterSpacing: 0.8,
+    textTransform: 'uppercase',
+    color: colour.ink,
+  },
+  /**
+   * Board "Settings": a sub-screen's title. "STREAM SETTINGS" is 165.7 dp of ink on the board, which Barlow Condensed
+   * 700 sets at 24 with `action`'s 0.7 letterspacing (26 at `title`'s would be 181). `title` stays: Home's tiles
+   * and the code panel read it.
+   */
+  screenTitle: {
+    fontFamily: font.displayBold,
+    fontSize: 24,
+    lineHeight: 27,
+    letterSpacing: 0.7,
     textTransform: 'uppercase',
     color: colour.ink,
   },

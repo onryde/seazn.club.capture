@@ -691,9 +691,9 @@ describe('where Diagnostics sits (spec §6)', () => {
     for (const row of diagRows()) expect(getComputedStyle(row).minHeight).toBe('22px');
   });
 
-  // settingsFit.test.ts adds Back and Share record as 48 each (the icon button's side, GhostButton's minHeight):
-  // this is the rendered witness that the literal there is theirs.
-  it('in landscape, Back and Share record are 48 dp tall, the heights the fit test adds', () => {
+  // settingsFit.test.ts adds Back and the Share record row as 48 each: Back is the icon button's side, Share's is its
+  // touch cell (the visible box is the board's 36, and its hit slop fills the rest). This is the rendered witness.
+  it('in landscape, Back and the Share record row are 48 dp tall, the heights the fit test adds', () => {
     setWindowSize(640, 360);
     renderSettings();
     const back = getComputedStyle(screen.getByRole('button', { name: 'Back to camera' }));
@@ -701,11 +701,12 @@ describe('where Diagnostics sits (spec §6)', () => {
       name: 'Back to camera',
       height: '48px',
     });
-    const share = getComputedStyle(screen.getByRole('button', { name: 'Share record' }));
-    expect({ name: 'Share record', minHeight: share.minHeight }).toEqual({
-      name: 'Share record',
-      minHeight: '48px',
-    });
+    const cell = shareButton().parentElement as HTMLElement;
+    const header = cell.parentElement as HTMLElement;
+    expect([getComputedStyle(cell).minHeight, getComputedStyle(header).minHeight]).toEqual([
+      '48px',
+      '48px',
+    ]);
   });
 
   // Owner, device pass 2026-10-08 (a 360 dp tall phone): the card ran past the screen's foot and its last rows
@@ -843,6 +844,16 @@ describe('the switch rows wear the board (filled row, pill switch)', () => {
     switchesChecked += 1;
   });
 
+  // The board draws the label in full cream (its pixels are the ink token's, not the 80 % `control` role's).
+  it.each(SWITCHES)('%s: its label is set in full ink', (name) => {
+    renderSettings();
+    const label = within(switchNamed(name)).getByText(name);
+    expect(getComputedStyle(label).color).toBe(painted(PAINT.inkText, 'color'));
+    expect(getComputedStyle(label).color).not.toBe(painted(PAINT.ink2Text, 'color'));
+    expect(getComputedStyle(label).fontFamily).toBe(font.bodyMedium); // only the colour moved: still Geist 500
+    expect(getComputedStyle(label).fontSize).toBe('14px');
+  });
+
   it('puts the label on the left and the switch on the right', () => {
     renderSettings();
     for (const [name] of SWITCHES) {
@@ -955,6 +966,15 @@ describe('the side control wears the board (a segmented pair on the label’s li
     expect(screen.getAllByRole('radio')).toHaveLength(2); // and no radio outside it
   });
 
+  it('sets its label in full ink, as the board does, and its words in the quieter ink2', () => {
+    renderSettings();
+    const label = screen.getByText('Controls on the');
+    expect(getComputedStyle(label).color).toBe(painted(PAINT.inkText, 'color'));
+    expect(getComputedStyle(label).fontFamily).toBe(font.bodyMedium);
+    const word = within(radio('Left')).getByText('Left'); // the unchosen segment keeps `control`'s ink2
+    expect(getComputedStyle(word).color).toBe(painted(PAINT.ink2Text, 'color'));
+  });
+
   it('sits on the same line as its label, to the right of it', () => {
     renderSettings();
     const label = screen.getByText('Controls on the');
@@ -1051,6 +1071,27 @@ describe('Back wears the board (a square outlined icon button, no word)', () => 
   });
 });
 
+describe('the screen title wears the board (Barlow Condensed bold, about 24 dp)', () => {
+  // Measured from the board: "STREAM SETTINGS" is 165.7 dp of ink, which Barlow Condensed 700 sets at 24 with the
+  // 0.7 letterspacing the other caps roles carry (26 would be 181 dp). `title` stays 26: Home's tiles and the code
+  // panel read it.
+  it('is 24 caps with 0.7 letterspacing in ink, in the display face', () => {
+    renderSettings();
+    const title = getComputedStyle(screen.getByText('Stream settings'));
+    expect(title.fontSize).toBe('24px');
+    expect(title.lineHeight).toBe('27px');
+    expect(title.letterSpacing).toBe('0.7px');
+    expect(title.fontFamily).toContain('BarlowCondensed_700Bold');
+    expect(title.textTransform).toBe('uppercase');
+    expect(title.color).toBe(painted(PAINT.inkText, 'color'));
+  });
+
+  it('is the same size in another language', () => {
+    renderSettings({ deviceLanguages: ['nl'] });
+    expect(getComputedStyle(screen.getByText('Streaminstellingen')).fontSize).toBe('24px');
+  });
+});
+
 describe('the Diagnostics heading wears the board (a lime pulse, then the name in the display face)', () => {
   const card = () => screen.getByTestId('diagnostics-card');
   const heading = () => within(card()).getByText('Diagnostics');
@@ -1094,6 +1135,35 @@ describe('the Diagnostics heading wears the board (a lime pulse, then the name i
     expect(getComputedStyle(heading()).flexShrink).toBe('0');
     const cell = shareButton().parentElement as HTMLElement;
     expect(getComputedStyle(cell).flexShrink).toBe('1');
+  });
+});
+
+// The board's Share record is a 36 dp box (measured 36.9 with its antialiasing). A tripod thumb still needs 48, so the
+// visible box keeps the board's height and its hit slop and its cell supply the rest (GhostButton.test.tsx pins the
+// slop; jsdom's react-native-web ignores hitSlop, so the cell is what is rendered here).
+describe('Share record wears the board’s height and keeps a 48 dp touch target', () => {
+  it('draws a 36 dp box inside a 48 dp header row and a 48 dp cell, centred in it', () => {
+    renderSettings();
+    const button = getComputedStyle(shareButton());
+    expect(button.minHeight).toBe('36px');
+    const cell = shareButton().parentElement as HTMLElement;
+    expect(getComputedStyle(cell).minHeight).toBe('48px'); // the hit slop must lie inside its parent on Android
+    expect(getComputedStyle(cell).justifyContent).toBe('center');
+    const header = cell.parentElement as HTMLElement;
+    expect(getComputedStyle(header).minHeight).toBe('48px');
+    expect(getComputedStyle(header).alignItems).toBe('center');
+  });
+
+  it('keeps its width rules: GhostButton’s 16 dp padding and 1 dp border (the fit test adds them)', () => {
+    renderSettings();
+    const style = getComputedStyle(shareButton());
+    expect([style.paddingLeft, style.borderLeftWidth]).toEqual(['16px', '1px']);
+  });
+
+  it('is the only compact button: the licences button keeps its 48 dp box', () => {
+    renderSettings();
+    const licences = screen.getByRole('button', { name: 'Open-source licences' });
+    expect(getComputedStyle(licences).minHeight).toBe('48px');
   });
 });
 

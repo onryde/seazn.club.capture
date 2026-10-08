@@ -28,7 +28,11 @@ export const DiagnosticsCard = memo(function DiagnosticsCard() {
           {t('diag.title')}
         </Text>
         <View style={styles.share}>
-          <GhostButton label={t(shareFailed ? 'diag.shareFailed' : 'diag.share')} onPress={share} />
+          <GhostButton
+            label={t(shareFailed ? 'diag.shareFailed' : 'diag.share')}
+            onPress={share}
+            compact
+          />
         </View>
       </View>
       <View>{rows.map(renderRow)}</View>
@@ -86,12 +90,13 @@ const styles = StyleSheet.create({
     borderRadius: radius.card,
     overflow: 'hidden',
   },
-  header: { flexDirection: 'row', alignItems: 'center', gap: space.sm },
+  // 48 high though the board's Share button is drawn 36: the button's hit slop must lie inside its parents' bounds.
+  header: { flexDirection: 'row', alignItems: 'center', gap: space.sm, minHeight: layout.touch },
   // The heading keeps its width and takes the line, so the Share button is pushed right; the button's cell is the
   // one that gives when the half is narrow, its label wrapping to a second line inside the same 48 dp (the heading is
   // wider than the Geist 14 it replaced, and "Compartir registro" no longer fits beside it at 640).
   title: { flexGrow: 1, flexShrink: 0 },
-  share: { flexShrink: 1 },
+  share: { flexShrink: 1, minHeight: layout.touch, justifyContent: 'center' },
   row: {
     flexDirection: 'row',
     alignItems: 'center',
