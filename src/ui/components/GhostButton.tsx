@@ -1,5 +1,5 @@
 import { memo } from 'react';
-import { type PressableStateCallbackType, Pressable, StyleSheet } from 'react-native';
+import { type PressableStateCallbackType, Pressable, StyleSheet, View } from 'react-native';
 import { Text } from '@/ui/components/Text';
 import { colour, layout, radius, space } from '@/ui/theme/tokens';
 
@@ -8,6 +8,12 @@ type GhostButtonProps = {
   onPress: () => void;
   /** Set only on a button that shows and hides something, like the language list. */
   expanded?: boolean;
+  /**
+   * The board's smaller box (Share record): 37 dp tall, 12 dp text. The button is still a `touch` tall target, and
+   * the outlined box is drawn inside it, centred: a screen reader reads a node's bounds, so the target is a real
+   * 48 dp node and not a hit slop on a smaller one.
+   */
+  compact?: boolean;
 };
 
 /** The secondary action beside a lime plate: outlined, never a second lime. */
@@ -15,15 +21,22 @@ export const GhostButton = memo(function GhostButton({
   label,
   onPress,
   expanded,
+  compact = false,
 }: GhostButtonProps) {
   return (
     <Pressable
       accessibilityRole="button"
       aria-expanded={expanded}
       onPress={onPress}
-      style={ghostStyle}
+      style={compact ? targetStyle : ghostStyle}
     >
-      <Text variant="control">{label}</Text>
+      {compact ? (
+        <View testID="ghost-box" style={styles.box}>
+          <Text variant="controlSmall">{label}</Text>
+        </View>
+      ) : (
+        <Text variant="control">{label}</Text>
+      )}
     </Pressable>
   );
 });
@@ -33,17 +46,37 @@ function ghostStyle({ pressed }: PressableStateCallbackType) {
   return pressed ? pressedGhost : styles.ghost;
 }
 
+/** The compact button's target dims as a whole while held, which dims the box drawn inside it. */
+function targetStyle({ pressed }: PressableStateCallbackType) {
+  return pressed ? pressedTarget : styles.target;
+}
+
+const outline = {
+  borderWidth: layout.iconBorder,
+  borderColor: colour.ink3,
+  borderRadius: radius.card,
+} as const;
+
 const styles = StyleSheet.create({
   ghost: {
-    minHeight: 48,
+    minHeight: layout.touch,
     paddingHorizontal: space.md,
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: layout.iconBorder,
-    borderColor: colour.ink3,
-    borderRadius: radius.card,
+    ...outline,
+  },
+  target: { minHeight: layout.touch, alignItems: 'center', justifyContent: 'center' },
+  // flexShrink: the box is what gives when its cell is narrow, its label wrapping inside it.
+  box: {
+    minHeight: layout.ghostCompact,
+    flexShrink: 1,
+    paddingHorizontal: layout.ghostCompactPadX,
+    alignItems: 'center',
+    justifyContent: 'center',
+    ...outline,
   },
   pressed: { opacity: 0.85 },
 });
 
 const pressedGhost = [styles.ghost, styles.pressed];
+const pressedTarget = [styles.target, styles.pressed];

@@ -1,15 +1,17 @@
-import { act, cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
-import { Dimensions } from 'react-native';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { Dimensions, StyleSheet, Text, type TextStyle } from 'react-native';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { EngineSnapshot } from '@/engine/CaptureEnginePort';
 import type { NativeCaptureEngine } from '@/engine/nativeCaptureEngine';
 import en from '@/i18n/en.json';
+import { LANGS } from '@/i18n/language';
+import { createTranslator } from '@/i18n/translate';
 import type { KeyValueStore } from '@/services/KeyValueStore';
 import { useEngineSync } from '@/hooks/useEngineSync';
 import { HOLD_MS } from '@/hooks/useHold';
 import { SETTINGS_KEY } from '@/services/streamSettingsStore';
 import { SettingsScreen } from '@/ui/screens/SettingsScreen';
-import { font } from '@/ui/theme/tokens';
+import { colour, font } from '@/ui/theme/tokens';
 import { describeBackFromSubScreen } from '../../../test/backFromSubScreen';
 import { readRecord, type TestEngine } from '../../../test/fakePorts';
 import { savedStreamCode } from '../../../test/fixtures/savedStream';
@@ -40,6 +42,11 @@ function SyncedSettings() {
 }
 
 const shareButton = () => screen.getByRole('button', { name: 'Share record' });
+/** The board's Power paragraph: the existing label and advice, one em dash between (no new copy). */
+const powerParagraph = (lang: (typeof LANGS)[number]) => {
+  const { t } = createTranslator(lang);
+  return `${t('settings.power.label')} — ${t('settings.power.advice')}`;
+};
 const faceOf = (text: string) => getComputedStyle(screen.getByText(text)).fontFamily;
 const diagRows = () => screen.getAllByTestId('diag-row');
 
@@ -182,11 +189,7 @@ describe('Settings (spec §4)', () => {
 
   it('gives the power advice', () => {
     renderSettings();
-    expect(
-      screen.getByText(
-        'A long match drains the battery. Plug in, or use a power bank on the tripod.',
-      ),
-    ).toBeTruthy();
+    expect(screen.getByText(powerParagraph('en'))).toBeTruthy();
   });
 
   it('goes back to the camera, by its button and by Back', () => {
@@ -297,7 +300,8 @@ describe('Diagnostics inside Settings (spec §6, Q1)', () => {
     const header = title.parentElement;
     expect(header).not.toBeNull();
     expect(header).not.toBe(card);
-    expect(shareButton().parentElement).toBe(header);
+    // The button sits in the header row inside its own shrinkable cell (the narrowest half lets it wrap).
+    expect(shareButton().parentElement?.parentElement).toBe(header);
   });
 
   it("lists Q1's nine rows as section | item | value, from the live report", () => {
@@ -523,16 +527,16 @@ describe('Diagnostics inside Settings (spec §6, Q1)', () => {
     expect(view.share.shared).toHaveLength(1);
   });
 
-  // settingsFit.test.ts adds the header up with GhostButton's padding (16) and border (1) each side.
-  it('the Share button wears the padding and border the fit test adds', () => {
+  // settingsFit.test.ts adds the header up with the Share box's padding (11) and border (1) each side.
+  it('the Share box wears the padding and border the fit test adds', () => {
     renderSettings();
-    const style = getComputedStyle(shareButton());
+    const style = getComputedStyle(within(shareButton()).getByTestId('ghost-box'));
     expect([
       style.paddingLeft,
       style.paddingRight,
       style.borderLeftWidth,
       style.borderRightWidth,
-    ]).toEqual(['16px', '16px', '1px', '1px']);
+    ]).toEqual(['11px', '11px', '1px', '1px']);
   });
 
   it('plays any fake scene in a development build', () => {
@@ -604,7 +608,7 @@ describe('Diagnostics inside Settings (spec §6, Q1)', () => {
 
 describe('where Diagnostics sits (spec §6)', () => {
   // SP2 (F2): the licences were already under the power advice; this pins that order with the card after it.
-  it('orders the switch hints, the side radios, the power advice, the licences, then the card', () => {
+  it('orders the switch hints, the side radios, the power paragraph, the licences, then the card', () => {
     renderSettings();
     expect(layoutOf()).toBe('portrait'); // jsdom's 0 × 0 default (D10)
     const named: readonly (readonly [string, HTMLElement])[] = [
@@ -614,12 +618,11 @@ describe('where Diagnostics sits (spec §6)', () => {
       ['automatic hint', screen.getByText(en['settings.automatic.hint'])],
       ['left radio', screen.getByRole('radio', { name: 'Left' })],
       ['right radio', screen.getByRole('radio', { name: 'Right' })],
-      ['power label', screen.getByText(en['settings.power.label'])],
-      ['power advice', screen.getByText(en['settings.power.advice'])],
+      ['power paragraph', screen.getByText(powerParagraph('en'))],
       ['licences', screen.getByRole('button', { name: 'Open-source licences' })],
       ['Diagnostics card', screen.getByTestId('diagnostics-card')],
     ];
-    expect(named).toHaveLength(10);
+    expect(named).toHaveLength(9);
     const misordered = named.slice(1).flatMap(([name, element], at) => {
       const before = named[at]?.[1];
       const follows = before?.compareDocumentPosition(element) === Node.DOCUMENT_POSITION_FOLLOWING;
@@ -690,18 +693,17 @@ describe('where Diagnostics sits (spec §6)', () => {
     for (const row of diagRows()) expect(getComputedStyle(row).minHeight).toBe('22px');
   });
 
-  // settingsFit.test.ts adds Back and Share record as 48 each (GhostButton's minHeight): this is the
-  // rendered witness that the literal there is the button's.
-  it('in landscape, Back and Share record are 48 dp tall, the heights the fit test adds', () => {
+  // settingsFit.test.ts adds Back and the Share record row as 48 each: Back is the icon button's side and Share's is
+  // its button, whose 37 dp box is drawn inside it. This is the rendered witness.
+  it('in landscape, Back and the Share record row are 48 dp tall, the heights the fit test adds', () => {
     setWindowSize(640, 360);
     renderSettings();
-    for (const name of ['Back to camera', 'Share record']) {
-      const button = screen.getByRole('button', { name });
-      expect({ name, minHeight: getComputedStyle(button).minHeight }).toEqual({
-        name,
-        minHeight: '48px',
-      });
-    }
+    const back = getComputedStyle(screen.getByRole('button', { name: 'Back to camera' }));
+    expect({ name: 'Back to camera', height: back.height }).toEqual({
+      name: 'Back to camera',
+      height: '48px',
+    });
+    expect(getComputedStyle(shareButton()).minHeight).toBe('48px');
   });
 
   // Owner, device pass 2026-10-08 (a 360 dp tall phone): the card ran past the screen's foot and its last rows
@@ -773,6 +775,590 @@ describe('where Diagnostics sits (spec §6)', () => {
     expect(Dimensions.get('window')).toMatchObject({ width: 844, height: 390 });
     restoreWindowSize();
     expect(Dimensions.get('window')).toMatchObject({ width: 0, height: 0 });
+  });
+});
+
+/**
+ * What the cascade paints a token as: a reference element wearing it. The colours are the TOKENS' declared meaning
+ * (the brief: "on: lime track, knob colour.ground"), read the way the layout test reads them (a colour literal is
+ * banned in a test, and a value read back from the component would prove the component equals itself).
+ */
+const PAINT = StyleSheet.create({
+  surface: { backgroundColor: colour.surface },
+  surface2: { backgroundColor: colour.surface2 },
+  lime: { backgroundColor: colour.lime },
+  ground: { backgroundColor: colour.ground },
+  ink3: { backgroundColor: colour.ink3 },
+  inkText: { color: colour.ink },
+  ink2Text: { color: colour.ink2 },
+  ink3Text: { color: colour.ink3 },
+  groundText: { color: colour.ground },
+  ink3Edge: { borderWidth: 1, borderColor: colour.ink3 },
+});
+type Painted = 'backgroundColor' | 'borderTopColor' | 'color';
+function painted(style: TextStyle, read: Painted): string {
+  const reference = render(
+    <Text testID="paint-reference" style={style}>
+      x
+    </Text>,
+  );
+  const colourOf = getComputedStyle(reference.getByTestId('paint-reference'))[read];
+  reference.unmount();
+  return colourOf;
+}
+/** What the cascade gives an element that is given no background at all. */
+const unpainted = () => painted({}, 'backgroundColor');
+/** All four corners, as jsdom keeps them (it leaves the `border-radius` shorthand empty). */
+const cornersOf = (style: CSSStyleDeclaration) => [
+  style.borderTopLeftRadius,
+  style.borderTopRightRadius,
+  style.borderBottomRightRadius,
+  style.borderBottomLeftRadius,
+];
+const ROUND = (dp: number) => [`${dp}px`, `${dp}px`, `${dp}px`, `${dp}px`];
+
+const SWITCHES = [
+  ['Score preview', 'the score preview'],
+  ['Start and stop automatically', 'start and stop automatically'],
+] as const;
+const switchNamed = (name: string) => screen.getByRole('switch', { name });
+const trackOf = (name: string) => within(switchNamed(name)).getByTestId('switch-track');
+const knobOf = (name: string) => within(switchNamed(name)).getByTestId('switch-knob');
+const px = (value: string) => Number.parseFloat(value);
+let switchesChecked = 0;
+
+// The owner's board, "Stream settings" (2026-10-08): the switch rows, the side control, Back and the Diagnostics
+// heading, as the board draws them (measured from the PNG at 1.436 px per dp; the brief's numbers). Look only:
+// every behaviour above is unchanged and its tests stay as they were.
+describe('the switch rows wear the board (filled row, pill switch)', () => {
+  it.each(SWITCHES)('%s: a filled card, no outline, 12 dp corners, one 48 dp row', (name) => {
+    renderSettings();
+    const row = getComputedStyle(switchNamed(name));
+    expect(row.backgroundColor).toBe(painted(PAINT.surface, 'backgroundColor'));
+    expect(row.borderTopWidth).toBe('0px');
+    expect(cornersOf(row)).toEqual(ROUND(12)); // the card radius, as the board's
+    expect(row.minHeight).toBe('48px'); // a tripod-sized target
+    expect([row.flexDirection, row.alignItems]).toEqual(['row', 'center']);
+    switchesChecked += 1;
+  });
+
+  // The board draws the label in full cream (its pixels are the ink token's, not the 80 % `control` role's).
+  it.each(SWITCHES)('%s: its label is set in full ink', (name) => {
+    renderSettings();
+    const label = within(switchNamed(name)).getByText(name);
+    expect(getComputedStyle(label).color).toBe(painted(PAINT.inkText, 'color'));
+    expect(getComputedStyle(label).color).not.toBe(painted(PAINT.ink2Text, 'color'));
+    expect(getComputedStyle(label).fontFamily).toBe(font.bodyMedium); // only the colour moved: still Geist 500
+    expect(getComputedStyle(label).fontSize).toBe('14px');
+  });
+
+  it('puts the label on the left and the switch on the right', () => {
+    renderSettings();
+    for (const [name] of SWITCHES) {
+      const label = within(switchNamed(name)).getByText(name);
+      expect(getComputedStyle(label).flexGrow).toBe('1'); // it takes the line, so the switch is pushed right
+      expect(label.compareDocumentPosition(trackOf(name))).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    }
+  });
+
+  // Board: a 40 x 24 pill, an 18 dp knob, 3 dp in from the edge on every side. Off, the track is outlined.
+  it.each([
+    ['on', true],
+    ['off', false],
+  ] as const)('is a 40 x 24 pill with an 18 dp knob 3 dp in, %s', async (_state, on) => {
+    renderSettings({
+      kvSeed: { [SETTINGS_KEY]: `{"v":2,"overlay":${on},"side":"right","automatic":${on}}` },
+    });
+    await waitFor(() =>
+      expect(switchNamed('Score preview').getAttribute('aria-checked')).toBe(String(on)),
+    );
+    for (const [name] of SWITCHES) {
+      const track = getComputedStyle(trackOf(name));
+      const knob = getComputedStyle(knobOf(name));
+      expect([track.width, track.height]).toEqual(['40px', '24px']);
+      expect(cornersOf(track)).toEqual(ROUND(12)); // a pill: half its height
+      expect([knob.width, knob.height]).toEqual(['18px', '18px']);
+      expect(cornersOf(knob)).toEqual(ROUND(9)); // a circle
+      // The knob's inset is the track's outline plus its padding, the same on every side: 3 dp.
+      for (const side of ['Top', 'Right', 'Bottom', 'Left'] as const) {
+        const inset =
+          px(track[`border${side}Width` as 'borderTopWidth']) +
+          px(track[`padding${side}` as 'paddingTop']);
+        expect({ name, side, inset }).toEqual({ name, side, inset: 3 });
+      }
+      // On, the knob sits at the right end; off, at the left.
+      expect(track.justifyContent).toBe(on ? 'flex-end' : 'flex-start');
+      switchesChecked += 1;
+    }
+  });
+
+  it('paints on as a lime track with a night knob, off as an outlined track with a lilac knob', async () => {
+    renderSettings();
+    const on = getComputedStyle(trackOf('Score preview'));
+    expect(on.backgroundColor).toBe(painted(PAINT.lime, 'backgroundColor'));
+    expect(getComputedStyle(knobOf('Score preview')).backgroundColor).toBe(
+      painted(PAINT.ground, 'backgroundColor'),
+    );
+    fireEvent.click(switchNamed('Score preview'));
+    await waitFor(() =>
+      expect(switchNamed('Score preview').getAttribute('aria-checked')).toBe('false'),
+    );
+    const off = getComputedStyle(trackOf('Score preview'));
+    // The board's off track is a shade above the row (the night input fill, surface2), outlined in lilac.
+    expect(off.backgroundColor).toBe(painted(PAINT.surface2, 'backgroundColor'));
+    expect(off.borderTopColor).toBe(painted(PAINT.ink3Edge, 'borderTopColor'));
+    expect(px(off.borderTopWidth)).toBeGreaterThanOrEqual(1);
+    expect(px(off.borderTopWidth)).toBeLessThanOrEqual(2); // the brief: 1 to 2 dp
+    expect(getComputedStyle(knobOf('Score preview')).backgroundColor).toBe(
+      painted(PAINT.ink3, 'backgroundColor'),
+    );
+    // The two states are not one picture (anti-vacuity).
+    expect(off.backgroundColor).not.toBe(on.backgroundColor);
+  });
+
+  it('keeps the same 40 x 24 box in both states, so a press does not move the row', async () => {
+    renderSettings();
+    const sizeOf = () => {
+      const style = getComputedStyle(trackOf('Score preview'));
+      return [style.width, style.height, style.borderTopWidth, style.paddingTop];
+    };
+    const on = sizeOf();
+    const onFill = getComputedStyle(trackOf('Score preview')).backgroundColor;
+    expect(switchNamed('Score preview').getAttribute('aria-checked')).toBe('true');
+    fireEvent.click(switchNamed('Score preview'));
+    // The press really flipped it (else on === off proves nothing): the state said and the picture changed.
+    await waitFor(() =>
+      expect(switchNamed('Score preview').getAttribute('aria-checked')).toBe('false'),
+    );
+    expect(getComputedStyle(trackOf('Score preview')).backgroundColor).not.toBe(onFill);
+    expect(sizeOf()).toEqual(on);
+    expect(on).toEqual(['40px', '24px', '1.5px', '1.5px']);
+  });
+
+  it('is still one control: the whole row presses, and the switch is hidden from a screen reader', async () => {
+    renderSettings();
+    expect(screen.getAllByRole('switch')).toHaveLength(2);
+    for (const [name] of SWITCHES) {
+      // Decorative: hidden from the accessibility tree, and no role of its own to be reached as a second control.
+      const track = trackOf(name);
+      expect(track.getAttribute('aria-hidden')).toBe('true');
+      expect(track.getAttribute('role')).toBeNull();
+      expect(knobOf(name).closest('[aria-hidden="true"]')).toBe(track);
+    }
+    // Pressing the picture of the switch presses the row.
+    fireEvent.click(trackOf('Score preview'));
+    await waitFor(() =>
+      expect(switchNamed('Score preview').getAttribute('aria-checked')).toBe('false'),
+    );
+    fireEvent.click(within(switchNamed('Score preview')).getByText('Score preview'));
+    await waitFor(() =>
+      expect(switchNamed('Score preview').getAttribute('aria-checked')).toBe('true'),
+    );
+  });
+
+  it('checked both rows, on and off (anti-vacuity)', () => {
+    // 2 rows in the card test + 2 rows x 2 states in the pill test, run before this one.
+    expect(SWITCHES).toHaveLength(2);
+    expect(switchesChecked).toBe(2 + 2 * 2);
+  });
+});
+
+describe('the side control wears the board (a segmented pair on the label’s line)', () => {
+  const group = () => screen.getByRole('radiogroup', { name: 'Controls on the' });
+  const radio = (name: string) => within(group()).getByRole('radio', { name });
+
+  it('is one radiogroup named by its label, holding Left then Right', () => {
+    renderSettings();
+    const radios = within(group()).getAllByRole('radio');
+    expect(radios.map((each) => each.getAttribute('aria-label'))).toEqual(['Left', 'Right']);
+    expect(screen.getAllByRole('radio')).toHaveLength(2); // and no radio outside it
+  });
+
+  it('sets its label in full ink, as the board does, and its words in the quieter ink2', () => {
+    renderSettings();
+    const label = screen.getByText('Controls on the');
+    expect(getComputedStyle(label).color).toBe(painted(PAINT.inkText, 'color'));
+    expect(getComputedStyle(label).fontFamily).toBe(font.bodyMedium);
+    const word = within(radio('Left')).getByText('Left'); // the unchosen segment keeps `control`'s ink2
+    expect(getComputedStyle(word).color).toBe(painted(PAINT.ink2Text, 'color'));
+  });
+
+  it('sits on the same line as its label, to the right of it', () => {
+    renderSettings();
+    const label = screen.getByText('Controls on the');
+    const line = group().parentElement as HTMLElement;
+    expect(line.contains(label)).toBe(true);
+    expect(getComputedStyle(line).flexDirection).toBe('row');
+    expect(getComputedStyle(line).alignItems).toBe('center');
+    expect(getComputedStyle(label).flexGrow).toBe('1'); // the label takes the line, the pair is pushed right
+    expect(label.compareDocumentPosition(group())).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+  });
+
+  it('is one outlined box: a 1 dp lilac line, 12 dp corners, the segments clipped inside', () => {
+    renderSettings();
+    const box = getComputedStyle(group());
+    expect(box.flexDirection).toBe('row');
+    expect(box.borderTopWidth).toBe('1px');
+    expect(box.borderTopColor).toBe(painted(PAINT.ink3Edge, 'borderTopColor'));
+    expect(cornersOf(box)).toEqual(ROUND(12));
+    expect([box.overflowX, box.overflowY]).toEqual(['hidden', 'hidden']); // so the lime fill takes the box's corners
+  });
+
+  it('gives each segment a 48 dp tall target and the board’s 66 dp floor', () => {
+    renderSettings();
+    for (const name of ['Left', 'Right']) {
+      const segment = getComputedStyle(radio(name));
+      expect({ name, minHeight: segment.minHeight, minWidth: segment.minWidth }).toEqual({
+        name,
+        minHeight: '48px',
+        minWidth: '66px',
+      });
+    }
+  });
+
+  it('fills the chosen segment lime with night text and leaves the other bare', async () => {
+    renderSettings();
+    const lime = painted(PAINT.lime, 'backgroundColor');
+    const night = painted(PAINT.groundText, 'color');
+    const quiet = painted(PAINT.ink2Text, 'color');
+    const textOf = (name: string) => getComputedStyle(within(radio(name)).getByText(name)).color;
+    // Right is chosen by default.
+    expect(getComputedStyle(radio('Right')).backgroundColor).toBe(lime);
+    expect(textOf('Right')).toBe(night);
+    expect(getComputedStyle(radio('Left')).backgroundColor).toBe(unpainted());
+    expect(textOf('Left')).toBe(quiet);
+    // And the other way once Left is chosen: the fill moves, it is not painted on both.
+    fireEvent.click(radio('Left'));
+    await waitFor(() => expect(radio('Left').getAttribute('aria-checked')).toBe('true'));
+    expect(getComputedStyle(radio('Left')).backgroundColor).toBe(lime);
+    expect(textOf('Left')).toBe(night);
+    expect(getComputedStyle(radio('Right')).backgroundColor).toBe(unpainted());
+    expect(textOf('Right')).toBe(quiet);
+    expect(night).not.toBe(quiet); // anti-vacuity: the two texts are two colours
+  });
+
+  it('has no divider line between the segments (the board draws none)', () => {
+    renderSettings();
+    for (const name of ['Left', 'Right']) {
+      expect(getComputedStyle(radio(name)).borderTopWidth).toBe('0px');
+      expect(getComputedStyle(radio(name)).borderLeftWidth).toBe('0px');
+    }
+  });
+});
+
+describe('Back wears the board (a square outlined icon button, no word)', () => {
+  const backNames = new Set<string>();
+  it('is a 48 dp outlined square holding a chevron, named Back to camera', () => {
+    renderSettings();
+    const back = screen.getByRole('button', { name: 'Back to camera' });
+    const style = getComputedStyle(back);
+    expect([style.width, style.height]).toEqual(['48px', '48px']);
+    expect(style.borderTopWidth).toBe('1px');
+    expect(style.borderTopColor).toBe(painted(PAINT.ink3Edge, 'borderTopColor'));
+    expect(cornersOf(style)).toEqual(ROUND(12)); // the board's corners are the card's (measured: the same curve)
+    expect(back.textContent).toBe(''); // no visible text; the name is the label alone
+    const drawn = within(back).getByTestId('glyph');
+    expect(drawn.dataset.name).toBe('back');
+    expect(drawn.dataset.tone).toBe('ink2');
+  });
+
+  it.each(LANGS)('%s: keeps its name, and draws no word', (lang) => {
+    renderSettings({ deviceLanguages: [lang] });
+    const name = createTranslator(lang).t('stream.back');
+    const back = screen.getByRole('button', { name });
+    expect(back.textContent).toBe('');
+    expect(within(back).getByTestId('glyph').dataset.name).toBe('back');
+    backNames.add(name);
+  });
+
+  it('is named in four languages, four different ways (anti-vacuity)', () => {
+    expect(LANGS).toHaveLength(4);
+    expect(backNames.size).toBe(4);
+    expect(backNames.has('Back to camera')).toBe(true);
+  });
+
+  it('stays the first control of the header, before the LIVE plate and the title', () => {
+    const view = renderSettings();
+    act(() => view.engine.scene('live'));
+    const back = screen.getByRole('button', { name: 'Back to camera' });
+    expect(back.compareDocumentPosition(screen.getByTestId('tally-plate'))).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    );
+    expect(back.compareDocumentPosition(screen.getByText('Stream settings'))).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    );
+  });
+});
+
+describe('the screen title wears the board (Barlow Condensed bold, about 24 dp)', () => {
+  // Measured from the board: "STREAM SETTINGS" is 165.7 dp of ink, which Barlow Condensed 700 sets at 24 with the
+  // 0.7 letterspacing the other caps roles carry (26 would be 181 dp). `title` stays 26: Home's tiles and the code
+  // panel read it.
+  it('is 24 caps with 0.7 letterspacing in ink, in the display face', () => {
+    renderSettings();
+    const title = getComputedStyle(screen.getByText('Stream settings'));
+    expect(title.fontSize).toBe('24px');
+    expect(title.lineHeight).toBe('27px');
+    expect(title.letterSpacing).toBe('0.7px');
+    expect(title.fontFamily).toContain('BarlowCondensed_700Bold');
+    expect(title.textTransform).toBe('uppercase');
+    expect(title.color).toBe(painted(PAINT.inkText, 'color'));
+  });
+
+  it('is the same size in another language', () => {
+    renderSettings({ deviceLanguages: ['nl'] });
+    expect(getComputedStyle(screen.getByText('Streaminstellingen')).fontSize).toBe('24px');
+  });
+});
+
+describe('the Diagnostics heading wears the board (a lime pulse, then the name in the display face)', () => {
+  const card = () => screen.getByTestId('diagnostics-card');
+  const heading = () => within(card()).getByText('Diagnostics');
+
+  it('draws an 18 dp lime pulse before the title, in the header row', () => {
+    renderSettings();
+    const pulse = within(card()).getByTestId('glyph');
+    expect(pulse.dataset.name).toBe('pulse');
+    expect(pulse.dataset.tone).toBe('lime');
+    expect(pulse.dataset.size).toBe('18');
+    expect(pulse.parentElement).toBe(heading().parentElement);
+    expect(pulse.compareDocumentPosition(heading())).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    // Only the pulse: the Back button's chevron is not in the card.
+    expect(within(card()).getAllByTestId('glyph')).toHaveLength(1);
+  });
+
+  it('sets the title in Barlow Condensed bold, 18, caps and ink, with the copy left as written', () => {
+    renderSettings();
+    const style = getComputedStyle(heading());
+    expect(style.fontFamily).toContain('BarlowCondensed_700Bold');
+    expect(style.fontSize).toBe('18px');
+    expect(style.textTransform).toBe('uppercase');
+    expect(style.color).toBe(painted(PAINT.inkText, 'color'));
+    expect(heading().textContent).toBe('Diagnostics'); // upper-cased by style, not by new copy
+  });
+
+  const headings = new Set<string>();
+  it.each(LANGS)('%s: upper-cases by style, with the copy left as written', (lang) => {
+    renderSettings({ deviceLanguages: [lang] });
+    const written = createTranslator(lang).t('diag.title');
+    const title = within(card()).getByText(written);
+    expect(title.textContent).toBe(written);
+    expect(getComputedStyle(title).textTransform).toBe('uppercase');
+    expect(getComputedStyle(title).fontFamily).toContain('BarlowCondensed_700Bold');
+    headings.add(written);
+  });
+
+  it('upper-cased four headings, and they are four words (anti-vacuity)', () => {
+    expect(headings.size).toBe(LANGS.length);
+    expect(headings.size).toBe(4);
+  });
+
+  // The header is the pulse, the title and the Share button on one line. The title takes the line (the button is
+  // pushed to the right) and keeps its width; the button is the cell that gives when the half is narrow.
+  it('lets the Share button give way before the title does', () => {
+    renderSettings();
+    const header = heading().parentElement as HTMLElement;
+    expect(getComputedStyle(header).flexDirection).toBe('row');
+    expect(getComputedStyle(heading()).flexGrow).toBe('1');
+    expect(getComputedStyle(heading()).flexShrink).toBe('0');
+    const cell = shareButton().parentElement as HTMLElement;
+    expect(getComputedStyle(cell).flexShrink).toBe('1');
+  });
+});
+
+// The board's Share record is a 37 dp box (its outline's rules are 35.9 dp apart, plus the 1 dp stroke) in 12 dp text. A
+// tripod thumb needs 48, and TalkBack reads a node's bounds (a hit slop is not one): the button is the 48 dp target and
+// the board's box is drawn inside it (GhostButton.test.tsx pins the component; this is the screen's use of it).
+describe('Share record wears the board’s box inside a 48 dp button', () => {
+  const box = () => within(shareButton()).getByTestId('ghost-box');
+
+  it('is a 48 dp button holding a 37 dp box, centred in the header row', () => {
+    renderSettings();
+    expect(getComputedStyle(shareButton()).minHeight).toBe('48px');
+    expect(getComputedStyle(box()).minHeight).toBe('37px');
+    const header = (shareButton().parentElement as HTMLElement).parentElement as HTMLElement;
+    expect(getComputedStyle(header).alignItems).toBe('center');
+    expect(getComputedStyle(header).flexDirection).toBe('row');
+  });
+
+  it('sets its label at 12 dp, the board’s', () => {
+    renderSettings();
+    expect(getComputedStyle(within(box()).getByText('Share record')).fontSize).toBe('12px');
+  });
+
+  it('is the only compact button on the screen: the box is not on any other button', () => {
+    renderSettings();
+    expect(screen.getAllByTestId('ghost-box')).toHaveLength(1);
+  });
+
+  it('keeps the same box and the same 48 dp when a share fails and the label changes', async () => {
+    const view = renderSettings();
+    vi.spyOn(view.share, 'share').mockRejectedValueOnce(new Error('share sheet refused'));
+    fireEvent.click(shareButton());
+    const failed = await screen.findByRole('button', { name: "Couldn't share. Retry" });
+    expect(getComputedStyle(failed).minHeight).toBe('48px');
+    expect(getComputedStyle(within(failed).getByTestId('ghost-box')).minHeight).toBe('37px');
+  });
+});
+
+// The fit proofs (settingsFit.test.ts) add rows up from these: the board's gaps and paddings as numbers. A proof that
+// reads the token it is judging proves the token, so these read what the screen renders, and the fit test pins the
+// tokens to the same literals.
+describe('the rows wear the gaps and paddings the fit proofs add up', () => {
+  const gapOf = (element: Element) => getComputedStyle(element).getPropertyValue('gap');
+
+  it.each(SWITCHES)(
+    '%s: 12 dp at each side of the row, 8 dp between its label and its switch',
+    (name) => {
+      renderSettings();
+      const row = getComputedStyle(switchNamed(name));
+      expect([row.paddingLeft, row.paddingRight]).toEqual(['12px', '12px']);
+      expect(gapOf(switchNamed(name))).toBe('8px');
+    },
+  );
+
+  it('puts 8 dp between the side control’s label and its pair, and 12 dp inside each segment', () => {
+    renderSettings();
+    const pair = screen.getByRole('radiogroup', { name: 'Controls on the' });
+    expect(gapOf(pair.parentElement as HTMLElement)).toBe('8px');
+    for (const name of ['Left', 'Right']) {
+      const segment = getComputedStyle(within(pair).getByRole('radio', { name }));
+      expect([segment.paddingLeft, segment.paddingRight]).toEqual(['12px', '12px']);
+    }
+  });
+
+  it('puts 8 dp between the Diagnostics pulse, its heading and Share record', () => {
+    renderSettings();
+    const header = screen.getByText('Diagnostics').parentElement as HTMLElement;
+    expect(gapOf(header)).toBe('8px');
+  });
+
+  it('puts 6 dp between the card’s header and its rows', () => {
+    renderSettings();
+    expect(getComputedStyle(screen.getByTestId('diagnostics-card')).getPropertyValue('gap')).toBe(
+      '6px',
+    );
+  });
+
+  it('pads the portrait column 16 dp all round (the 320 dp card is 320 - 2 x 16 wide)', () => {
+    renderSettings();
+    const column = screen.getByTestId('diagnostics-card').parentElement as HTMLElement;
+    const style = getComputedStyle(column);
+    expect([style.paddingTop, style.paddingRight, style.paddingBottom, style.paddingLeft]).toEqual([
+      '16px',
+      '16px',
+      '16px',
+      '16px',
+    ]);
+  });
+
+  it('pads the landscape screen 16 dp at the sides and 12 above and below', () => {
+    setWindowSize(640, 360);
+    renderSettings();
+    const style = getComputedStyle(screen.getByTestId('settings'));
+    expect([style.paddingTop, style.paddingRight, style.paddingBottom, style.paddingLeft]).toEqual([
+      '12px',
+      '16px',
+      '12px',
+      '16px',
+    ]);
+  });
+
+  it('puts 8 dp between the way back and the two halves, 16 between the halves, in landscape', () => {
+    setWindowSize(640, 360);
+    renderSettings();
+    const root = screen.getByTestId('settings');
+    expect(getComputedStyle(root).getPropertyValue('gap')).toBe('8px');
+    expect(getComputedStyle(screen.getByTestId('settings-halves')).getPropertyValue('gap')).toBe(
+      '16px',
+    );
+  });
+});
+
+// The board sets the Power line and the licences link as quiet small print: one paragraph in the muted violet (the
+// label and the advice joined by a dash, no new copy), and a bare underlined line, 12 dp.
+describe('Power and the licences link wear the board (small print in ink3)', () => {
+  const powers = new Set<string>();
+
+  it.each(LANGS)(
+    '%s: Power is one 12 dp ink3 paragraph, the label then a dash then the advice',
+    (lang) => {
+      renderSettings({ deviceLanguages: [lang] });
+      const { t } = createTranslator(lang);
+      const paragraph = screen.getByText(powerParagraph(lang));
+      const style = getComputedStyle(paragraph);
+      expect([style.fontSize, style.lineHeight, style.fontFamily]).toEqual([
+        '12px',
+        '16px',
+        font.bodyMedium,
+      ]);
+      expect(style.color).toBe(painted(PAINT.ink3Text, 'color'));
+      // One element: the label is not a line of its own, nor the advice.
+      // (in the settings column: Spanish names a Diagnostics row "Batería" too, and that one is the card's own)
+      const column = within(paragraph.parentElement as HTMLElement);
+      expect(column.queryByText(t('settings.power.label'))).toBeNull();
+      expect(column.queryByText(t('settings.power.advice'))).toBeNull();
+      expect(paragraph.textContent).toBe(
+        `${t('settings.power.label')} — ${t('settings.power.advice')}`,
+      );
+      powers.add(paragraph.textContent ?? '');
+    },
+  );
+
+  it('is set like the hints above it, which the board draws alike (four languages, four paragraphs)', () => {
+    expect(powers.size).toBe(4);
+    renderSettings();
+    const hint = getComputedStyle(screen.getByText(en['settings.overlay.hint']));
+    const power = getComputedStyle(screen.getByText(powerParagraph('en')));
+    expect([power.fontSize, power.lineHeight, power.color]).toEqual([
+      hint.fontSize,
+      hint.lineHeight,
+      hint.color,
+    ]);
+  });
+
+  it('draws the licences as an underlined 12 dp ink3 line in a 48 dp button, with no box around it', () => {
+    renderSettings();
+    const link = screen.getByRole('button', { name: 'Open-source licences' });
+    const text = getComputedStyle(within(link).getByText('Open-source licences'));
+    expect([text.fontSize, text.textDecorationLine]).toEqual(['12px', 'underline']);
+    expect(text.color).toBe(painted(PAINT.ink3Text, 'color'));
+    expect(getComputedStyle(link).minHeight).toBe('48px');
+    expect(getComputedStyle(link).borderTopWidth).toBe('0px');
+    expect(within(link).queryByTestId('ghost-box')).toBeNull();
+  });
+
+  it('still opens and closes the list from that line (it is a disclosure, not a link away)', () => {
+    renderSettings();
+    const link = screen.getByRole('button', { name: 'Open-source licences' });
+    expect(link.getAttribute('aria-expanded')).toBe('false');
+    fireEvent.click(link);
+    expect(link.getAttribute('aria-expanded')).toBe('true');
+    expect(screen.getByText('libsrt — MPL-2.0')).toBeTruthy();
+  });
+});
+
+describe('the Diagnostics values are fixed-width, right-aligned (the board’s)', () => {
+  it('sets every value in Geist Mono with tabular figures, flush right', () => {
+    const view = renderSettings();
+    act(() => view.engine.scene('live'));
+    expect(diagRows()).toHaveLength(9);
+    for (const row of diagRows()) {
+      const value = getComputedStyle(row.children[2] as Element);
+      expect(value.fontFamily).toContain(font.numeric);
+      expect(value.fontVariant).toBe('tabular-nums');
+      expect(value.textAlign).toBe('right');
+    }
+  });
+
+  it('leaves the item labels in Geist, with no tabular figures', () => {
+    const view = renderSettings();
+    act(() => view.engine.scene('live'));
+    for (const row of diagRows()) {
+      const item = getComputedStyle(row.children[1] as Element);
+      expect(item.fontFamily).toContain(font.bodyMedium);
+      expect(item.fontVariant).not.toBe('tabular-nums');
+    }
   });
 });
 

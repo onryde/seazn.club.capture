@@ -223,6 +223,30 @@ export const layout = {
   diagPadV: 10,
   /** Board "Settings": the gap between the card's header row and its rows. */
   diagGap: 6,
+  /** Board "Settings" (2026-10-08, 1.436 px per dp): the pulse beside the Diagnostics heading is drawn in an 18 dp box. */
+  pulseGlyph: 18,
+  /** The least height of anything a thumb must hit on a tripod: a switch row, a side segment. */
+  touch: 48,
+  /**
+   * Board "Settings": the Share record button's drawn box is 37 dp tall (its outline's two rules are 35.9 dp apart on
+   * the board, plus the 1 dp stroke). The button around it stays `touch` tall: the box is drawn inside the target.
+   */
+  ghostCompact: 37,
+  /** Board "Settings": that box's side padding (measured 11.2 dp at the board's 12 dp text). */
+  ghostCompactPadX: 11,
+  /** Board "Settings": a switch row's side padding (the label's left edge and the switch's right). */
+  switchRowPadX: 12,
+  /** Board "Settings": the pill switch, 40 x 24, its knob 18, the knob 3 in from the track's edge on every side. */
+  switchTrackW: 40,
+  switchTrackH: 24,
+  switchKnob: 18,
+  switchInset: 3,
+  /** Board "Settings": the off switch's lilac outline (measured 1.4 dp; drawn inside the 40 x 24, so on and off are one size). */
+  switchBorder: 1.5,
+  /** Board "Settings": a "Controls on the" segment is at least 66 dp wide (the board's Left and Right are 67 and 66). */
+  segmentMin: 66,
+  /** A segment's side padding: the board's English segments sit on the 66 floor, so this only matters to longer words (Linkerkant). */
+  segmentPadX: 12,
 } as const;
 
 /**

@@ -71,7 +71,31 @@ export const typeScale = {
     lineHeight: 18,
     color: colour.ink2,
   },
-  /** Condensed buys "HOLD TO STOP" on fewer lines in the controls half. */
+  /**
+   * Board "Settings": a switch row's label and the side control's label are full cream, where `control` is cream at
+   * 80 % (the board's pixels: (244,240,232), the ink token, against (200,196,197) for the words in the segments).
+   */
+  controlInk: {
+    fontFamily: font.bodyMedium,
+    fontSize: 14,
+    lineHeight: 18,
+    color: colour.ink,
+  },
+  /**
+   * Board "Settings": the small outlined button's label (Share record), Geist 500 at 12 in ink2 (the board's
+   * pixels are cream at 80 %, its text 12 dp). Smaller than `control`, which the regular GhostButton keeps.
+   */
+  controlSmall: {
+    fontFamily: font.bodyMedium,
+    fontSize: 12,
+    lineHeight: 16,
+    color: colour.ink2,
+  },
+  /**
+   * Condensed buys "HOLD TO STOP" on fewer lines in the controls half. Also a sub-screen's title (Settings): the board's
+   * "STREAM SETTINGS" is 165.7 dp of ink, which Barlow Condensed 700 sets at 24 with this role's 0.7 letterspacing
+   * (`title`'s 26 would be 181, and Home's tiles and the code panel read that one).
+   */
   action: {
     fontFamily: font.displayBold,
     fontSize: 24,
@@ -127,6 +151,19 @@ export const typeScale = {
     fontFamily: font.numeric,
     fontSize: 13,
     lineHeight: 16,
+    color: colour.ink,
+  },
+  /**
+   * Board "Settings": the Diagnostics card's heading, Barlow Condensed 700 in caps (the board's "DIAGNOSTICS" is 90 dp
+   * wide: 18 at the 0.6 letterspacing `diagSection` has), ink. Between `actionSecondary` (16, semibold, ink2) and
+   * `panelTitle` (22), which is 22 % too wide to leave the Share button its line at 640.
+   */
+  diagTitle: {
+    fontFamily: font.displayBold,
+    fontSize: 18,
+    lineHeight: 20,
+    letterSpacing: 0.6,
+    textTransform: 'uppercase',
     color: colour.ink,
   },
   /**

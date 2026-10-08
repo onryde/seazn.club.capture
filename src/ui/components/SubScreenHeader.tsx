@@ -1,12 +1,15 @@
 import { memo } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { useT } from '@/hooks/useLanguage';
-import { GhostButton } from '@/ui/components/GhostButton';
+import { IconButton } from '@/ui/components/IconButton';
 import { LivePlate } from '@/ui/components/LivePlate';
 import { Text } from '@/ui/components/Text';
 import { space } from '@/ui/theme/tokens';
 
-/** The way back, with the LIVE plate beside it so the broadcast is never out of sight (AGENTS §6). */
+/**
+ * The way back, with the LIVE plate beside it so the broadcast is never out of sight (AGENTS §6). Back is the
+ * owner's board's square outlined chevron (an icon button), named by the same words as before.
+ */
 export const SubScreenHeader = memo(function SubScreenHeader({
   title,
   onBack,
@@ -17,9 +20,9 @@ export const SubScreenHeader = memo(function SubScreenHeader({
   const { t } = useT();
   return (
     <View style={styles.header}>
-      <GhostButton label={t('stream.back')} onPress={onBack} />
+      <IconButton glyph="back" label={t('stream.back')} onPress={onBack} />
       <LivePlate />
-      <Text variant="title" style={styles.title}>
+      <Text variant="action" style={styles.title}>
         {title}
       </Text>
     </View>

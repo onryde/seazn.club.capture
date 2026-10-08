@@ -28,15 +28,26 @@ vi.mock('@/ui/components/TurnGlyph', async () => {
 
 // The chips' and the icon buttons' drawing is paths and a stroke colour. The stand-in is a marker
 // tests can find, carrying what the caller chose: the glyph's name, whether it is slashed and its
-// tone (F11: the tone is the chip's colour, so a test must be able to see it).
+// tone (F11: the tone is the chip's colour, so a test must be able to see it) and the size it asked for.
 vi.mock('@/ui/components/Glyph', async () => {
   const { createElement } = await import('react');
   const { View } = await import('react-native');
   return {
-    Glyph: ({ name, slashed, tone }: { name: string; slashed?: boolean; tone: string }) =>
+    Glyph: ({
+      name,
+      slashed,
+      tone,
+      size,
+    }: {
+      name: string;
+      slashed?: boolean;
+      tone: string;
+      size?: number;
+    }) =>
       createElement(View, {
         testID: 'glyph',
-        dataSet: { name, slashed: String(slashed === true), tone },
+        // `size` is the drawn dp, or "default" when the caller asked for none (the real Glyph's 22).
+        dataSet: { name, slashed: String(slashed === true), tone, size: String(size ?? 'default') },
       } as ViewProps),
   };
 });
