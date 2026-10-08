@@ -10,7 +10,7 @@ import org.json.JSONObject
  * Every value sits inside the web's schemas, so the real `Bodies` and `Hosts` rules accept them: the
  * code is 12 characters of the code alphabet, the sid a uuid, and the beat path `/beats` (D3). The
  * bodies are `wire/server-bodies.json`'s `host/` rows, which ajv checks against the schemas at
- * 5bb72e8a2 (review C4a m-4): a beat names no zone and no null sid, and a code's answer names its
+ * 7e75fd4a7 (review C4a m-4): a beat names no zone and no null sid, and a code's answer names its
  * beat and start URLs. The stdin protocol names the paths `beat`, `code`, `start` and `scoring-link`.
  *
  * Task 27's quiet: [inFlight] counts the answers taken and not yet handed to the core, and

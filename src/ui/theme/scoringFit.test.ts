@@ -246,13 +246,13 @@ describe('the code panel (F7, D13)', () => {
       checked += 1;
     }
     expect(checked).toBe(4);
-    // As measured with the shipped font: the widest is Dutch at 203.9 of the 272 dp, so a larger title has room to grow.
+    // As measured with the shipped font: the widest is French at 227.8 of the 272 dp, so a larger title has room to grow.
     expect(
       LANGUAGES.map(
         ([, dictionary]) =>
           Math.round(titleWidth(dictionary['stream.scoring.title'] ?? '') * 10) / 10,
       ),
-    ).toEqual([159.8, 181.4, 152.3, 203.9]);
+    ).toEqual([159.8, 181.4, 227.8, 203.9]);
     // The board's size and line height, written out beside the token they are read from.
     expect([typeScale.panelTitle.fontSize, typeScale.panelTitle.lineHeight]).toEqual([22, 24]);
   });
@@ -264,12 +264,15 @@ describe('the code panel (F7, D13)', () => {
     return lines;
   };
 
-  it('the hint is one line in all four languages at the narrowest panel, the widest being French at 257.4', () => {
+  it('the hint is one line in all four languages at the narrowest panel, the widest being French at 242.2 (en 163.7, es 237.1, nl 218.6)', () => {
     const lines = hintLines();
     expect(lines).toHaveLength(4);
     expect(Math.max(...lines)).toBe(1);
-    expect(unitWidth(fr['stream.scoring.hint'])).toBeCloseTo(257.4, 1);
-    expect(unitWidth(fr['stream.scoring.hint'])).toBeLessThanOrEqual(panelWidth(640));
+    const widths = LANGUAGES.map(([, dictionary]) =>
+      unitWidth(dictionary['stream.scoring.hint'] ?? ''),
+    );
+    expect(widths.map((each) => Math.round(each * 10) / 10)).toEqual([163.7, 237.1, 242.2, 218.6]);
+    for (const each of widths) expect(each).toBeLessThanOrEqual(panelWidth(640));
   });
 
   it('the symbol is 57 units on both hosts: 49 modules and a quiet zone of 4 a side', () => {

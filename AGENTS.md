@@ -88,12 +88,24 @@ page in the main repo, not here. Do not grow the app to accommodate them.
   `reset`, `setAutomatic`, `setLanguage` and `switchCamera` return void and
   are reconciled against native state. A promise that must resolve
   mid-reconnect is a deadlock waiting for a bad cell.
-  One recorded exception (design follow-up §8; owner, 2026-10-08): `takePhoto`
-  is a request with an answer, one call that resolves `saved` or `failed`
-  within native's 2 s bound when the call honours cancellation; the app gives
-  up at 4 s. It carries no session state, runs on a scope of its
+  Two recorded exceptions. The first (design follow-up §8; owner, 2026-10-08):
+  `takePhoto` is a request with an answer, one call that resolves `saved` or
+  `failed` within native's 2 s bound when the call honours cancellation; the
+  app gives up at 4 s. It carries no session state, runs on a scope of its
   own with no path to the session's failure path, and is never read by the
-  machine, the snapshot or the heartbeat. It is the only such call.
+  machine, the snapshot or the heartbeat. The second is `scoringLink` (design
+  follow-up §10): one call that resolves the Remote scoring link, or one of
+  six refusal words, to the caller that asked, within native's 16 s backstop
+  (`BridgeCore.ANSWER_BACKSTOP_MS`); the app gives up at 12 s, and a late
+  answer is dropped. It carries no session state and is never read by the
+  machine, the snapshot or the heartbeat. Neither call runs on the machine's
+  failure path: `takePhoto` has a scope of its own, and `scoringLink` runs
+  every stage in `ScoringTap.apart`, so what its transport, its reading or its
+  caller throws answers `unavailable` and never reaches the failure path.
+  `scoringLink` answers a scoring credential: its URL is never in a snapshot,
+  the record, a beat or a store, it goes to the one caller that asked, and its
+  secret is masked in both records before the caller has it. These are the
+  only two such calls.
 - **Never build a second state machine in TypeScript.** The aggregate lives in
   native. The TS layer is a *projection* of native events. Two authorities
   disagree at 3-1 in the 40th over.
@@ -237,12 +249,32 @@ Three rules travel with these tokens:
   is held sideways (A11).
 - The viewfinder is two halves (design follow-up §1): a 16:9 camera box with
   the status strip below it, and the controls half. Nothing is drawn over the
-  camera box but the overlay and the _What viewers see_ video. Advisory text
+  camera box but the overlay, the _What viewers see_ video and, on the
+  operator's tap, the Remote scoring panel (below). Advisory text
   rides the status strip, under the status line. The icon row also holds Take
   photo (design follow-up §8); its confirmation is one line in the controls
   half's gap, never over the camera box. The viewer video's Waiting and
-  No-viewer-picture notes are the viewer video's own layer: nothing else is
-  drawn over the camera box.
+  No-viewer-picture notes are the viewer video's own layer, the first
+  exception; the Remote scoring panel is the second, and nothing else is drawn
+  over the camera box. One thing more is drawn over the camera half, on the
+  operator's tap and for at most 10 s: the Remote scoring panel (design
+  follow-up §10; the second exception). It covers the camera half and never the
+  controls half, so Stop is never covered. It carries the board's title,
+  _Score this match_ (the button's own name is _Remote scoring_), the code, a
+  hint, a countdown and _Hide_. It hides when the session enters trouble
+  (Degraded, Reconnecting or a silent engine), so a warning in the status strip
+  is never hidden by a panel that opened before it; a tap made while the trouble
+  already stands is honoured (the operator saw the warning and chose), and the
+  panel then covers the strip for up to 10 s. The icon row on air is Settings,
+  Take photo, Remote scoring, _What viewers see_: Remote scoring is third of
+  four because the flexible viewers cell has to end the row. The round line sits
+  above the match label in the status strip and hides when the strip has no room
+  for it (long doubles on a phone 360 dp tall); the camera box never gives way
+  for it (design follow-up §2).
+- Every QR carries the Seazn logo in the centre at error correction H
+  (`src/domain/qr/seaznQr.ts`); the app draws it from a pure plan, at a whole
+  number of dp per module. Nobody screenshots a QR; the app adds no screenshot
+  block and no test depends on one.
 - **Go Live and Stop are both 3-second holds, with a progress fill.** Product
   owner's call, 2026-09-11, replacing "Go Live is a tap, Stop is
   hold-to-confirm"; first set at 5 s and shortened to 3 s on 2026-09-12. The reason the asymmetry was wrong: at a ground the likely

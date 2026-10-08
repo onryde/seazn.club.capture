@@ -1,5 +1,4 @@
 {
-  "_review": "pending translation review",
   "brand": "Seazn Club",
   "boot.fontsFailed": "De lettertypen van de app konden niet worden geladen. Sluit de app en open hem opnieuw.",
   "crash.heading": "Er ging iets mis",
@@ -157,7 +156,7 @@
   "stream.photo.failed": "Foto opslaan mislukt",
   "stream.scoring.title": "Scoor deze wedstrijd",
   "stream.scoring.open": "Scoren op afstand",
-  "stream.scoring.hint": "Scan met de camera van een telefoon",
+  "stream.scoring.hint": "Scan met de camera van elke telefoon",
   "stream.scoring.hide": "Verbergen",
   "stream.scoring.hidesIn": "Verdwijnt over {seconds} s",
   "stream.scoring.asking": "Link ophalen",

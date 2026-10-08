@@ -159,7 +159,8 @@ starts.
   photo, nothing make complex"_). A shutter in the icon row whenever the camera picture is showing, Paired and on air
   (Settings, Home, Take photo before air; Settings, Take photo, _What viewers see_ on air). Native saves a JPEG of the
   camera picture, no scorebug, and answers `saved` or `failed`; the app says so for 3 s. A tap while a photo is saving
-  does nothing. It is the one request-with-an-answer among the commands (AGENTS §2, recorded).
+  does nothing. It is one of the two requests-with-an-answer among the commands (the other is the scoring link, §10;
+  AGENTS §2, recorded).
 - **Gallery permission: none.** The still is written with `MediaStore.Images` to `Pictures/Seazn Capture`. minSdk is 31,
   so the app writes its own image with no storage permission, no prompt, no library and no config plugin.
 - **Confirmation copy:** _Photo saved_ (lime) or _Couldn't save the photo_ (caution), one line for 3 s in the controls

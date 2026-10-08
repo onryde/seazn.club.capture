@@ -20,7 +20,7 @@ import com.seazn.capture.engine.core.characters
 /**
  * The server's bodies, read where they are acted on (amendment, _Who reads what_): GET code's session
  * shape, a beat's answer and `POST start`'s answer, as the web published them (capture-descriptor.v1,
- * capture-beat.v1 and capture-start.v1, web 09e87aabd). `cred` is read here and nowhere else, and only
+ * capture-beat.v1 and capture-start.v1, web 7e75fd4a7). `cred` is read here and nowhere else, and only
  * onto the ingest host ([Hosts.onIngest]). Never throws.
  *
  * What the engine echoes or branches on is held to the schema: every sid matches the schema's uuid

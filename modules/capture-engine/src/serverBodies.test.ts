@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import Ajv2020 from 'ajv/dist/2020';
 import addFormats from 'ajv-formats';
 import { describe, expect, it } from 'vitest';
@@ -63,9 +63,12 @@ describe('the native tests answer with the web contract shapes', () => {
     expect(createHash('sha256').update(text(file)).digest('hex')).toBe(sha);
   });
 
-  // The pin list's own count, so a dropped contract cannot pass by pinning fewer files.
-  it('pins exactly 4 contracts', () => {
-    expect(Object.keys(PINNED)).toHaveLength(4);
+  // The pin list against the folder itself, so a contract added to the folder without a pin, or a pin dropped
+  // while its file stays, reds. The folder is read, not counted: a literal count would move with the list.
+  it('pins exactly the contracts in the folder', () => {
+    const inFolder = readdirSync(contracts).sort();
+    expect(inFolder.length).toBeGreaterThan(0); // anti-vacuity: an empty or missing folder is a failure
+    expect(Object.keys(PINNED).sort()).toEqual(inFolder);
   });
 
   // The file's count, so an emptied or truncated file cannot pass by sweeping nothing (PV12).
