@@ -178,7 +178,8 @@ function MutedVideo({
   playingRef.current = playing;
   useEffect(() => {
     const report = (status: string) => {
-      const mapped = STATUS[status] ?? 'loading';
+      // An own key only: a status word named like something on Object is not one of ours.
+      const mapped = Object.hasOwn(STATUS, status) ? STATUS[status] : 'loading';
       onStatus?.(mapped);
       // The start fix (D6): a player that became ready while it is wanted plays at once.
       if (mapped === 'ready' && playingRef.current) player.play();

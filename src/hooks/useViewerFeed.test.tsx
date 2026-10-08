@@ -15,7 +15,7 @@ import { createRingRecord } from '@/services/sessionRecord';
 import { fakeVideo } from '../../test/fakeExpoVideo';
 import { readRecord } from '../../test/fakePorts';
 import { createFakeSurfaces } from '../../test/fakeSurfaces';
-import { pressIn } from '../../test/press';
+import { pressIn, pressOut } from '../../test/press';
 import { renderViewfinder } from '../../test/renderViewfinder';
 
 type View = Awaited<ReturnType<typeof renderViewfinder>>;
@@ -109,17 +109,36 @@ describe('the viewer layer (spec §9, D6 to D8)', () => {
     expect(first[0]?.fields).toEqual({ ms: 19_000 });
   });
 
-  it('logs the first window once, under StrictMode too, when the viewfinder opens on a broadcast already delivering', async () => {
+  it('R3 opening the viewfinder on a broadcast already delivering records no first window: it did not see the start', async () => {
     const view = await renderViewfinder(
       {},
       { strict: true, prepare: (fakes) => fakes.engine.scene('live') },
     );
-    const first = lines(view, 'peek.firstWindow');
-    expect(first).toHaveLength(1);
-    expect(first[0]?.fields).toEqual({ ms: 0 });
+    // The set-up is what the test claims: on air, the window already there, and a player offered.
+    expect(view.ports.engine.getSnapshot().telemetry.delivery).toBe('ok');
+    pressIn(peek());
+    expect(video()).toBeTruthy();
     windowLands(view);
     act(() => vi.advanceTimersByTime(5_000));
-    expect(lines(view, 'peek.firstWindow')).toHaveLength(1);
+    expect(lines(view, 'peek.firstWindow')).toHaveLength(0);
+  });
+
+  it('M26d the first window is recorded once, however the kind flips afterwards', async () => {
+    const view = await renderViewfinder({}, { strict: true });
+    goLiveWithoutWindow(view);
+    advance(view, 7_000);
+    windowLands(view);
+    act(() => {
+      view.engine.forceState({
+        kind: 'degraded',
+        transport: 'srt',
+        reason: 'poor-uplink',
+        sinceEpochMs: 1,
+      });
+      view.engine.patch({ delivery: 'ok', deliveredLagMs: 9_200 });
+    });
+    act(() => view.engine.forceState({ kind: 'publishing', transport: 'srt', sinceEpochMs: 1 }));
+    expect(lines(view, 'peek.firstWindow').map((line) => line.fields)).toEqual([{ ms: 7_000 }]);
   });
 
   it('M27 the patience is 60 s exactly, then says no picture, and a later window still recovers', async () => {
@@ -180,6 +199,8 @@ describe('the viewer layer (spec §9, D6 to D8)', () => {
     expect(video()).toBeNull();
     windowLands(view);
     expect(view.surfaces.videoMounts()).toBe(2);
+    // The stretch after a hold began on this screen, so its first window is recorded too.
+    expect(lines(view, 'peek.firstWindow')).toHaveLength(2);
   });
 
   it('native’s stalled word is no picture, with no player', async () => {
@@ -300,15 +321,18 @@ describe('the viewer layer (spec §9, D6 to D8)', () => {
         view.engine.forceState({ kind: 'publishing', transport: 'srt', sinceEpochMs: 1 });
         view.engine.patch({ delivery: 'unknown', deliveredLagMs: null });
       });
-      // A resting kind let go of the peek; the finger lands again.
-      pressIn(peek());
-      expect({ name, note: note(), video: video() === null }).toEqual({
-        name,
-        note: WAITING,
-        video: true,
-      });
+      // What the layer decided, read from the record: a resting kind let go of the peek, and the finger
+      // landing again would itself try again (R1), so the forgetting is judged before it does.
+      const decided = () => lines(view, 'peek.state').at(-1)?.fields.state;
+      expect({ name, decided: decided() }).toEqual({ name, decided: 'waiting' });
       windowLands(view);
-      expect({ name, mounts: view.surfaces.videoMounts() }).toEqual({ name, mounts: mounts + 1 });
+      expect({ name, decided: decided() }).toEqual({ name, decided: 'playing' });
+      pressIn(peek());
+      expect({ name, mounts: view.surfaces.videoMounts(), note: note() }).toEqual({
+        name,
+        mounts: mounts + 1,
+        note: WAITING,
+      });
       // A first failure waits the FIRST rung again: one retry, not a give-up.
       expect({ name, ...failAndWait(view, 0) }).toEqual({
         name,
@@ -319,6 +343,100 @@ describe('the viewer layer (spec §9, D6 to D8)', () => {
       rows += 1;
     }
     expect(rows).toBe(5);
+  });
+
+  it('R1 a press after the give-up tries again with a fresh player, from the first wait', async () => {
+    const view = await givenUp();
+    const mounts = view.surfaces.videoMounts();
+    expect(note()).toBe(NONE);
+    pressOut(peek());
+    pressIn(peek());
+    expect(view.surfaces.videoMounts()).toBe(mounts + 1);
+    expect(note()).toBe(WAITING);
+    expect(failAndWait(view, 0)).toEqual({ before: mounts + 1, after: mounts + 2 });
+    expect(lines(view, 'peek.retry').map((line) => line.fields)).toEqual([
+      ...[...PLAYER_RETRY_MS.keys()].map((attempt) => ({ attempt })),
+      { attempt: 0 },
+    ]);
+  });
+
+  it('R1b a press while the player is healthy, or its replacement is on the way, changes nothing', async () => {
+    const view = await liveWithoutWindow();
+    pressIn(peek());
+    windowLands(view);
+    act(() => view.surfaces.videoStatus('ready'));
+    pressOut(peek());
+    pressIn(peek());
+    expect(note()).toBeNull();
+    expect(view.surfaces.videoMounts()).toBe(1);
+    act(() => view.surfaces.videoStatus('failed'));
+    pressOut(peek());
+    pressIn(peek());
+    act(() => vi.advanceTimersByTime(PLAYER_RETRY_MS[0] ?? Number.NaN));
+    expect(view.surfaces.videoMounts()).toBe(2);
+    expect(lines(view, 'peek.retry')).toHaveLength(1);
+  });
+
+  it('R2 a player that shows a picture earns its schedule back: failures spread by a picture never give up', async () => {
+    const view = await liveWithoutWindow();
+    pressIn(peek());
+    windowLands(view);
+    act(() => view.surfaces.videoStatus('ready'));
+    let cycles = 0;
+    for (let cycle = 0; cycle <= PLAYER_RETRY_MS.length; cycle += 1) {
+      // Always the FIRST wait: the schedule is whole again after each picture.
+      expect(failAndWait(view, 0)).toEqual({ before: cycle + 1, after: cycle + 2 });
+      act(() => view.surfaces.videoStatus('ready'));
+      cycles += 1;
+    }
+    expect(cycles).toBe(PLAYER_RETRY_MS.length + 1);
+    expect(video()).toBeTruthy();
+    expect(note()).toBeNull();
+    expect(lines(view, 'peek.retry').every((line) => line.fields.attempt === 0)).toBe(true);
+  });
+
+  it('R2b a picture does not remount the player that just showed it', async () => {
+    const view = await liveWithoutWindow();
+    pressIn(peek());
+    windowLands(view);
+    expect(failAndWait(view, 0)).toEqual({ before: 1, after: 2 });
+    act(() => view.surfaces.videoStatus('ready'));
+    act(() => vi.advanceTimersByTime(30_000));
+    expect(view.surfaces.videoMounts()).toBe(2);
+    expect(note()).toBeNull();
+  });
+
+  it('a player that was ready, then lost its window and got it back, starts from loading whatever the new one says', async () => {
+    const view = await liveWithoutWindow();
+    pressIn(peek());
+    windowLands(view);
+    act(() => view.surfaces.videoStatus('ready'));
+    expect(note()).toBeNull();
+    act(() => view.engine.patch({ delivery: 'stalled', deliveredLagMs: 21_000 }));
+    expect(video()).toBeNull();
+    windowLands(view);
+    expect(view.surfaces.videoMounts()).toBe(2);
+    // The double reports nothing on mount: only the layer's own memory can say loading here.
+    expect(note()).toBe(WAITING);
+  });
+
+  it('a retry that comes due while no player is mounted is not spent', async () => {
+    const view = await liveWithoutWindow();
+    pressIn(peek());
+    windowLands(view);
+    act(() => view.surfaces.videoStatus('failed'));
+    act(() => vi.advanceTimersByTime(500));
+    act(() => view.engine.patch({ delivery: 'stalled', deliveredLagMs: 21_000 }));
+    expect(video()).toBeNull();
+    act(() => vi.advanceTimersByTime(PLAYER_RETRY_MS[0] ?? Number.NaN));
+    windowLands(view);
+    expect(view.surfaces.videoMounts()).toBe(2);
+    // The window coming back mounted a fresh player: that WAS the retry, so the first wait is still ahead.
+    expect(failAndWait(view, 0)).toEqual({ before: 2, after: 3 });
+    expect(lines(view, 'peek.retry').map((line) => line.fields)).toEqual([
+      { attempt: 0 },
+      { attempt: 0 },
+    ]);
   });
 
   it('M31 the next broadcast starts from waiting, not from the last one’s window', async () => {

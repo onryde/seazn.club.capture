@@ -335,12 +335,19 @@ describe('the native viewer video reports its status', () => {
     expect(rows).toBe(4);
   });
 
-  it('reads an unknown word as loading, never as a picture', async () => {
-    const built = build();
-    const heard: VideoStatus[] = [];
-    await draw(built, { onStatus: (status) => heard.push(status) });
-    act(() => built.video.emit('somethingNewInExpoVideo'));
-    expect(heard.at(-1)).toBe('loading');
+  it('reads an unknown word as loading, never as a picture, even one the table inherits from Object', async () => {
+    const words = ['somethingNewInExpoVideo', 'constructor', 'toString', '__proto__'];
+    let rows = 0;
+    for (const word of words) {
+      const built = build();
+      const heard: VideoStatus[] = [];
+      const { view } = await draw(built, { onStatus: (status) => heard.push(status) });
+      act(() => built.video.emit(word));
+      expect({ word, heard: heard.at(-1) }).toEqual({ word, heard: 'loading' });
+      view.unmount();
+      rows += 1;
+    }
+    expect(rows).toBe(4);
   });
 
   it('reports the status the player already has, once, when it mounts', async () => {
