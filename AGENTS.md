@@ -248,7 +248,21 @@ Three rules travel with these tokens:
   lying flat is never blocked by the card; Go live still waits until the phone
   is held sideways (A11).
 - The viewfinder is two halves (design follow-up §1): a 16:9 camera box with
-  the status strip below it, and the controls half. Nothing is drawn over the
+  the status strip below it, and the controls half. The halves are not equal
+  (owner, 2026-10-08): the controls half is the fixed width its widest row
+  needs, `layout.controlsHalf` (310 dp: the plate row, a tally plate and the
+  clock in 135 dp cells; the row sums are `controlsFit.test.ts`'s), and the
+  camera half is everything else, on whichever side the controls are. The
+  picture in it is sized from THIS match (owner, 2026-10-08, option A): the
+  match label as measured in the half's width, plus fixed room for the status
+  line (2 lines), the caption (2 lines), the padding and the gaps
+  (`stripReserve`: 104 dp and the label). It is one size for the whole match
+  and is sized again only when the label's text changes, the label wraps
+  differently (its measured height moves), or the half's width or height changes:
+  a status line, a caption or the round line coming and going never moves it.
+  Before the label is measured it is sized against the worst case, 180 dp. An
+  804 × 360 phone gets about 375 × 211 for a two-line label (320 × 180 at the
+  worst case). Nothing is drawn over the
   camera box but the overlay, the _What viewers see_ video and, on the
   operator's tap, the Remote scoring panel (design follow-up §10): over the
   camera half, for at most 10 s, and it hides itself when the session enters
@@ -266,9 +280,11 @@ Three rules travel with these tokens:
   scoring is third of four because the flexible viewers cell has to end the
   row. The round line sits
   above the match label in the status strip and hides when the strip has no room
-  for it (it is decided on measured heights, so a long doubles label on a phone
-  360 dp tall can hide it while a compact one still shows it); the camera box never gives way
-  for it (design follow-up §2).
+  for it. The strip holds room for a caption whether or not one is up, so the
+  round line shows while none is and hides while one is, except where the camera
+  half, not the strip, limits the picture (640 × 360, a label of up to two
+  regular lines); it is decided on measured heights, and the camera box never
+  gives way for it (design follow-up §2).
 - Every QR carries the Seazn logo in the centre at error correction H
   (`src/domain/qr/seaznQr.ts`); the app draws it from a pure plan, at a whole
   number of dp per module. Nobody screenshots a QR; the app adds no screenshot

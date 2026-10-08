@@ -24,6 +24,13 @@ export type Font = {
   advance(codePoint: number): number;
   /** Whether the font maps the code point at all. */
   has(codePoint: number): boolean;
+  /**
+   * The advance of a glyph by its `post` name, in ems: the glyphs an OpenType feature swaps IN, which no code point
+   * reaches. `zero.tf` is the tabular zero that `fontVariant: ['tabular-nums']` (`tnum`) selects, and it is WIDER than
+   * any proportional digit, so `advance` / `width` under-measure a `tabular-nums` text. Throws for a name the font lacks
+   * and for a font whose `post` table carries no names (format 2).
+   */
+  advanceOfName(name: string): number;
   /** The width of a string at a font size, in dp, summing advances (no kerning: monospace has none, and
    * a proportional label is measured without it, which can only over-state a width slightly). */
   width(text: string, fontSize: number): number;
@@ -59,12 +66,45 @@ function parse(buffer: Buffer): Font {
     view.getUint16(hmtx + 4 * Math.min(glyph, hMetrics - 1)) / unitsPerEm;
   const glyphOf = cmapReader(view, table('cmap'));
   const advance = (codePoint: number): number => advanceOfGlyph(glyphOf(codePoint));
+  let names: ReadonlyMap<string, number> | null = null;
   return {
     advance,
     has: (codePoint) => glyphOf(codePoint) !== 0,
+    advanceOfName: (name) => {
+      names ??= postNames(buffer, view, table('post'));
+      const glyph = names.get(name);
+      if (glyph === undefined) throw new Error(`font has no glyph named ${name}`);
+      return advanceOfGlyph(glyph);
+    },
     width: (text, fontSize) =>
       Array.from(text).reduce((sum, char) => sum + advance(char.codePointAt(0) ?? 0), 0) * fontSize,
   };
+}
+
+/**
+ * Glyph name to glyph id, from a `post` table of format 2.0 (the names of glyphs outside the 258 standard Macintosh
+ * ones are Pascal strings after the index array; an index under 258 is a standard name and is not listed).
+ */
+function postNames(buffer: Buffer, view: DataView, post: number): ReadonlyMap<string, number> {
+  if (view.getUint32(post) !== 0x00020000) throw new Error('font has no post table of format 2');
+  const glyphs = view.getUint16(post + 32);
+  const indices = Array.from({ length: glyphs }, (_, glyph) =>
+    view.getUint16(post + 34 + glyph * 2),
+  );
+  const custom = Math.max(0, Math.max(...indices) - 257);
+  const strings: string[] = [];
+  let at = post + 34 + glyphs * 2;
+  for (let each = 0; each < custom; each += 1) {
+    const length = view.getUint8(at);
+    strings.push(buffer.toString('latin1', at + 1, at + 1 + length));
+    at += 1 + length;
+  }
+  const names = new Map<string, number>();
+  indices.forEach((index, glyph) => {
+    const name = strings[index - 258];
+    if (index >= 258 && name !== undefined) names.set(name, glyph);
+  });
+  return names;
 }
 
 /** A code point to a glyph id, from the first Unicode subtable of format 12 or 4 (0 = missing). */
