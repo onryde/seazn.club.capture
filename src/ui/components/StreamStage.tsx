@@ -100,7 +100,7 @@ type CameraBoxProps = {
 const CameraBox = memo(function CameraBox({ size, url, visible, onFailed, peek }: CameraBoxProps) {
   const { surfaces } = usePorts();
   const playbackUrl = useEngineSelector(selectPlaybackUrl);
-  const viewers = useViewerFeed(peek.showing);
+  const viewers = useViewerFeed(peek.showing, peek.mounted);
   const sized = useSizedStyle(size);
   const { Preview } = surfaces;
   return (

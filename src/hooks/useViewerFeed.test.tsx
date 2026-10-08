@@ -4,6 +4,7 @@ import type { SessionState } from '@/domain/session/SessionState';
 import type { DeliveryWord } from '@/domain/session/viewerFeed';
 import { FIRST_WINDOW_PATIENCE_MS } from '@/domain/session/viewerFeed';
 import type { Telemetry } from '@/engine/CaptureEnginePort';
+import { PEEK_WARM_MS } from '@/hooks/usePeek';
 import { PLAYER_RETRY_MS } from '@/hooks/useViewerFeed';
 import en from '@/i18n/en.json';
 import es from '@/i18n/es.json';
@@ -375,6 +376,44 @@ describe('the viewer layer (spec §9, D6 to D8)', () => {
     expect(note()).toBeNull();
   });
 
+  it('M55 a second peek, after the first player showed a picture and the peek let go, says it is waiting again', async () => {
+    const view = await liveWithoutWindow();
+    pressIn(peek());
+    windowLands(view);
+    act(() => view.surfaces.videoStatus('ready'));
+    expect(note()).toBeNull();
+    pressOut(peek());
+    act(() => vi.advanceTimersByTime(PEEK_WARM_MS + 1));
+    expect(video()).toBeNull(); // the player is gone, with the status it left
+    pressIn(peek());
+    expect(view.surfaces.videoMounts()).toBe(2);
+    // The fresh player has shown nothing yet. The double reports nothing on mount, so only the layer's own
+    // memory can say so.
+    expect(note()).toBe(WAITING);
+  });
+
+  it('M55b a retry that comes due after the peek let go is not spent on a player nobody can see', async () => {
+    const view = await liveWithoutWindow();
+    pressIn(peek());
+    windowLands(view);
+    pressOut(peek());
+    act(() => vi.advanceTimersByTime(PEEK_WARM_MS - 1_000));
+    // The warm player fails 1 s before the peek lets go; its retry would be due 1 s after.
+    act(() => view.surfaces.videoStatus('failed'));
+    act(() => vi.advanceTimersByTime((PLAYER_RETRY_MS[0] ?? Number.NaN) - 500));
+    expect(video()).toBeNull();
+    act(() => vi.advanceTimersByTime(1_000));
+    const mounts = view.surfaces.videoMounts();
+    pressIn(peek());
+    expect(view.surfaces.videoMounts()).toBe(mounts + 1);
+    // The new player's first failure waits the FIRST rung.
+    expect(failAndWait(view, 0)).toEqual({ before: mounts + 1, after: mounts + 2 });
+    expect(lines(view, 'peek.retry').map((line) => line.fields)).toEqual([
+      { attempt: 0 },
+      { attempt: 0 },
+    ]);
+  });
+
   it('R1 a press after the give-up tries again with a fresh player, from the first wait', async () => {
     const view = await givenUp();
     const mounts = view.surfaces.videoMounts();
@@ -680,6 +719,23 @@ describe('the viewer layer through the real native Video', () => {
     act(() => vi.advanceTimersByTime(PLAYER_RETRY_MS[0] ?? Number.NaN));
     expect(expo.player.addListener).toHaveBeenCalledTimes(2);
     expect(expo.listeners).toHaveLength(1);
+    act(() => expo.emit('readyToPlay'));
+    expect(note()).toBeNull();
+  });
+
+  it('M55c a second peek through the real Video says it is waiting: the fresh player’s own loading report does not read as a rebuffer', async () => {
+    const { expo } = await onNative();
+    act(() => expo.emit('readyToPlay'));
+    expect(note()).toBeNull();
+    pressOut(peek());
+    act(() => vi.advanceTimersByTime(PEEK_WARM_MS + 1));
+    expect(screen.queryByTestId('video-view')).toBeNull();
+    // A fresh ExoPlayer starts loading; the double is one object, so say so.
+    expo.player.status = 'loading';
+    pressIn(peek());
+    await act(() => vi.advanceTimersByTimeAsync(10));
+    expect(screen.queryByTestId('video-view')).not.toBeNull();
+    expect(note()).toBe(WAITING);
     act(() => expo.emit('readyToPlay'));
     expect(note()).toBeNull();
   });

@@ -40,9 +40,10 @@ const endsStretch = (kind: Kind): boolean => kind === 'reconnecting' || OVER.has
  * `viewerFeed`; this hook owns what the rule cannot know: whether a window has ever been delivered in this
  * stretch, whether the patience for the first one has run out, and where the player is in its retries.
  * Every record line it writes names a state or a number, never a URL (M32). `pressed` is the finger on
- * What viewers see: a new press after the layer gave up tries again (R1).
+ * What viewers see: a new press after the layer gave up tries again (R1). `mounted` is the peek holding a player
+ * (showing, or cooling): when it is not, no Video exists, whatever the feed says.
  */
-export function useViewerFeed(pressed: boolean): ViewerFeed {
+export function useViewerFeed(pressed: boolean, mounted: boolean): ViewerFeed {
   const kind = useEngineSelector(selectStateKind);
   const hasUrl = useEngineSelector(selectPlaybackUrl) !== null;
   const delivery = useEngineSelector(selectDelivery);
@@ -51,7 +52,7 @@ export function useViewerFeed(pressed: boolean): ViewerFeed {
   const feed = viewerFeed({ kind, hasUrl, delivery, ...first, playerFailed: player.failed });
   useFeedLines(feed, delivery);
   useResetPlayer(kind, player.reset);
-  useParkPlayer(feed, player.park);
+  useParkPlayer(feed, mounted, player.park);
   useRetryOnPress(pressed, player.failed, player.reset);
   return useMemo(
     () => ({
@@ -204,13 +205,14 @@ function useResetPlayer(kind: Kind, reset: () => void): void {
 }
 
 /**
- * While the feed is not `playing` there is no player: a retry waiting for one is moot (the next mount is a fresh
- * player anyway), and whatever the last player said is stale. Never clears a give-up (M30c).
+ * While the feed is not `playing`, or the peek holds no player (it let go, or cooled), there is no Video: a retry
+ * waiting for one is moot (the next mount is a fresh player anyway), and whatever the last player said is stale,
+ * the picture it showed included (M55). Never clears a give-up (M30c).
  */
-function useParkPlayer(feed: Feed, park: () => void): void {
+function useParkPlayer(feed: Feed, mounted: boolean, park: () => void): void {
   useEffect(() => {
-    if (feed !== 'playing') park();
-  }, [feed, park]);
+    if (!mounted || feed !== 'playing') park();
+  }, [feed, mounted, park]);
 }
 
 /**
