@@ -21,8 +21,8 @@ class BodiesTest {
   @Test
   fun `the waiting fields, every shared case`() {
     val cases = waiting.getJSONArray("cases")
-    // The file's rows: 41, of which 3 are JS's alone (PV12: a truncated file cannot pass).
-    assertEquals(41, cases.length())
+    // The file's rows: 45, of which 3 are JS's alone (PV12: a truncated file cannot pass).
+    assertEquals(45, cases.length())
     var read = 0
     var beats = 0
     var staged = 0
@@ -32,7 +32,13 @@ class BodiesTest {
       read += 1
       if (case.optBoolean("kotlinOnly")) beats += 1
       val why = case.getString("why")
-      val got = Bodies.waiting(case.getJSONObject("fields").plain(), Environment.of(case.getString("env")))
+      // A reader that throws on a row names the row (a cast that fails on a stage of the wrong shape would not).
+      val got =
+        try {
+          Bodies.waiting(case.getJSONObject("fields").plain(), Environment.of(case.getString("env")))
+        } catch (thrown: RuntimeException) {
+          throw AssertionError("$why: the reader threw $thrown", thrown)
+        }
       if (case.isNull("expected")) {
         assertNull(got, why)
         continue
@@ -54,7 +60,7 @@ class BodiesTest {
         )
       assertEquals(expected, got, why)
     }
-    assertEquals(38, read)
+    assertEquals(42, read)
     assertEquals(2, beats)
     // The rows that show a round line: the sweep cannot pass by reading every stage as none.
     assertEquals(3, staged)

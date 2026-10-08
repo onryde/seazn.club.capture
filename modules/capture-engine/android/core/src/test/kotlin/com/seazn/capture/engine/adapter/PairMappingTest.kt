@@ -56,6 +56,12 @@ class PairMappingTest {
       assertEquals("Example Town v Sample CC", request.stageMatch, label)
     }
     assertEquals(4, whole.size)
+    // The match is the label of the match the line was read with, so it has the label's own bound: 1 to 200 characters.
+    for (match in listOf("A", "x".repeat(200), "x".repeat(199) + "🏏")) {
+      val request = staged("QF", match)
+      assertEquals("QF", request.stageLabel, match)
+      assertEquals(match, request.stageMatch, match)
+    }
     // Neither: a label out of bounds or mistyped with a good match, then a good label with a match that is none.
     val lacking =
       listOf(
@@ -68,6 +74,9 @@ class PairMappingTest {
         "QF" to 7.0,
         "QF" to null,
         null to null,
+        // A match past the label's own 200 characters is no match, so the pair holds neither (code points: the emoji is one).
+        "QF" to "x".repeat(201),
+        "QF" to "x".repeat(200) + "🏏",
       )
     for ((label, match) in lacking) {
       val request = staged(label, match)
@@ -75,7 +84,7 @@ class PairMappingTest {
       assertNull(request.stageMatch, "$label / $match")
       assertEquals(emptyList<String>(), request.problems(), "$label / $match")
     }
-    assertEquals(9, lacking.size)
+    assertEquals(11, lacking.size)
     // A pair from a JS that sends neither key holds none.
     val bare = PairMapping.request(wire())
     assertNull(bare.stageLabel)
