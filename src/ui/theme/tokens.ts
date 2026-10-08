@@ -159,6 +159,8 @@ export const layout = {
   labelLinesRegular: 2,
   statusLinesMax: 2,
   captionLinesMax: 2,
+  /** Spec §2 round line: one line above the label. */
+  stageLines: 1,
   /** Board "Settings, landscape": the screen's vertical padding (the board's 12, under the portrait 16). */
   settingsPadV: 12,
   /** Spec §7: Home's title is the Seazn Club night logo, 200 × 70 (its 800 × 280 file's own 20:7). */

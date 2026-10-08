@@ -1,8 +1,9 @@
 import { act, screen } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { MatchLabel } from '@/ui/components/MatchLabel';
 import { typeScale } from '@/ui/theme/type';
 import { CASES } from '../../../test/fixtures/matchLabelCases';
+import { layOut } from '../../../test/layOut';
 import { renderWithPorts } from '../../../test/renderWithPorts';
 
 /** Spec §2: 20 sp, and 17 sp for a long label. Written from the spec, never read from the type scale. */
@@ -27,8 +28,8 @@ const lineElements = (root: HTMLElement) => [
 ];
 
 /** The fake pairs with this label, as a claim's answer would carry it. */
-function pairedWith(label: string) {
-  const view = renderWithPorts(<MatchLabel />);
+function pairedWith(label: string, onLayoutHeight?: (height: number) => void) {
+  const view = renderWithPorts(<MatchLabel onLayoutHeight={onLayoutHeight} />);
   act(() => {
     view.engine.setPairing({ label });
     view.engine.scene('paired-ready');
@@ -105,5 +106,35 @@ describe('MatchLabel (spec §2)', () => {
 
     act(() => view.engine.scene('unpaired-replaced'));
     expect(screen.queryByTestId('match-label')).toBeNull();
+  });
+
+  // R-F5: the strip decides whether the round line fits from the label's height, so the label reports it.
+  it('reports its height to onLayoutHeight, and again when the layout changes (R-F5)', () => {
+    const heights = vi.fn();
+    pairedWith('Ana Ruiz v Bea Lima', heights);
+    const root = screen.getByTestId('match-label');
+    layOut(root, { width: 300, height: 44 });
+    expect(heights.mock.calls).toEqual([[44]]);
+    layOut(root, { width: 300, height: 57 });
+    expect(heights.mock.calls).toEqual([[44], [57]]);
+  });
+
+  // The strip hides the round line while the label is unmeasured (stageFits), so a label that goes takes its height
+  // with it: a new label must not be judged by the last one's, for the frame before it is laid out.
+  it('reports 0 when the label goes, so its height is unmeasured again, not the last one’s (R-F5)', () => {
+    const heights = vi.fn();
+    const view = pairedWith('Ana Ruiz v Bea Lima', heights);
+    layOut(screen.getByTestId('match-label'), { width: 300, height: 44 });
+    expect(heights.mock.calls).toEqual([[44]]);
+    act(() => view.engine.scene('unpaired-replaced'));
+    expect(screen.queryByTestId('match-label')).toBeNull();
+    expect(heights.mock.calls.at(-1)).toEqual([0]);
+  });
+
+  it('lays out without an onLayoutHeight too: the handler tolerates its absence', () => {
+    pairedWith('Ana Ruiz v Bea Lima');
+    expect(() =>
+      layOut(screen.getByTestId('match-label'), { width: 300, height: 44 }),
+    ).not.toThrow();
   });
 });

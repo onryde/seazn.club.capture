@@ -264,6 +264,103 @@ describe('the status strip (spec §1)', () => {
   });
 });
 
+/**
+ * Spec §2, R-F5: the round line is the first line of the strip, above the match label, and it yields: no
+ * reserve was added, so it shows only when the strip has room beside the label (stageFit.ts). Real
+ * components, nothing mocked; jsdom lays nothing out, so `layOut` delivers the sizes the phone would.
+ * Whether the line fits on a real phone is Task 11's device check (item 3); this is the wiring.
+ */
+describe('the round line above the match label (spec §2, R-F5)', () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  /** A viewfinder paired with this match label and stage label, the strip and the label laid out. */
+  async function withStage(
+    stageLabel: string | null,
+    { strip = 180, label = 44 }: { strip?: number; label?: number } = {},
+  ) {
+    const view = await renderViewfinder(
+      {},
+      { prepare: (fakes) => fakes.engine.setPairing({ label: 'A v B', stageLabel }) },
+    );
+    layOut(byId('status-strip'), { width: 320, height: strip });
+    layOut(byId('match-label'), { width: 300, height: label });
+    return view;
+  }
+  const stage = () => within(byId('status-strip')).queryByTestId('stage-line');
+
+  it('listens: the strip takes a layout, so it can say how much room it has', async () => {
+    await renderViewfinder();
+    expect(() => layOut(byId('status-strip'), { width: 320, height: 180 })).not.toThrow();
+    expect(() => layOut(byId('match-label'), { width: 300, height: 44 })).not.toThrow();
+  });
+
+  it('is the strip’s first row: the round line, then the match label, then the status line', async () => {
+    await withStage('QF');
+    const round = within(byId('status-strip')).getByTestId('stage-line');
+    const label = within(byId('status-strip')).getByTestId('match-label');
+    const status = within(byId('status-strip')).getByText(WAITING);
+    expect(round.textContent).toBe('QF');
+    expect(follows(round, label)).toBe(true);
+    expect(follows(label, status)).toBe(true);
+    // The first child of the strip, not tucked in beside the label.
+    expect(byId('status-strip').firstElementChild).toBe(round);
+    expect(screen.getAllByTestId('stage-line')).toHaveLength(1);
+  });
+
+  it('shows what the engine gives it, and goes with it (null: absent, the label stays)', async () => {
+    const view = await withStage(null);
+    expect(stage()).toBeNull();
+    expect(within(byId('status-strip')).getByTestId('match-label')).toBeTruthy();
+    act(() => view.engine.setPairing({ stageLabel: 'SF' }));
+    expect(stage()?.textContent).toBe('SF');
+    expect(within(byId('status-strip')).getByTestId('match-label')).toBeTruthy();
+    act(() => view.engine.setPairing({ stageLabel: null }));
+    expect(stage()).toBeNull();
+    expect(within(byId('status-strip')).getByTestId('match-label')).toBeTruthy();
+  });
+
+  it('holds the contract’s 40 characters again: 41 is never shown, never cut', async () => {
+    const view = await withStage('x'.repeat(40));
+    expect(stage()?.textContent).toBe('x'.repeat(40));
+    act(() => view.engine.setPairing({ stageLabel: 'x'.repeat(41) }));
+    expect(stage()).toBeNull();
+  });
+
+  it('yields to a label of three lines (57 dp) and is back when the label is two (44 dp)', async () => {
+    await withStage('QF', { label: 57 });
+    expect(stage()).toBeNull();
+    layOut(byId('match-label'), { width: 300, height: 44 });
+    expect(stage()?.textContent).toBe('QF');
+  });
+
+  it('yields at each of the four real screens: the strip is what the rendered box leaves, 180 at all of them', async () => {
+    const SCREENS = [
+      [640, 360],
+      [800, 360],
+      [844, 390],
+      [915, 412],
+    ] as const;
+    let checked = 0;
+    for (const [width, height] of SCREENS) {
+      const view = await withStage('QF', { strip: 0, label: 0 });
+      // The producer, not a typed number: the half lays out, the box takes its size, the strip is the rest.
+      layOut(byId('camera-half'), { width: width / 2, height });
+      const box = parseFloat(getComputedStyle(byId('camera-box')).height);
+      const strip = height - box;
+      expect(strip).toBeCloseTo(180, 6);
+      layOut(byId('status-strip'), { width: width / 2, height: strip });
+      layOut(byId('match-label'), { width: width / 2 - 20, height: 44 });
+      expect(stage()?.textContent, `${width} × ${height}, 2 lines`).toBe('QF');
+      layOut(byId('match-label'), { width: width / 2 - 20, height: 57 });
+      expect(stage(), `${width} × ${height}, 3 lines`).toBeNull();
+      view.unmount();
+      checked += 1;
+    }
+    expect(checked).toBe(SCREENS.length);
+  });
+});
+
 describe('the controls half (spec §1)', () => {
   beforeEach(() => vi.useFakeTimers());
   afterEach(() => vi.useRealTimers());

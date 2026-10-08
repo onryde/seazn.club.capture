@@ -78,6 +78,22 @@ describe('the strip and the controls fit, at their worst', () => {
   it('the strip reserves what its worst content is, no less', () => {
     expect(STRIP_RESERVE).toBeGreaterThanOrEqual(STRIP_WORST);
   });
+
+  // R-F5 (controller): the round line is NOT in the reserve. The strip is 180 at every real geometry, so
+  // a long double plus the round line does not fit, and the line yields (stageFit.ts). This states the
+  // over-run so nobody "fixes" it by deleting the yield or by adding a reserve the owner did not choose.
+  it('the round line plus PR A’s worst-case strip is 202 dp, 22 over the 180 the strip has, which is why it yields (R-F5)', () => {
+    const worst = layout.labelLinesMax * typeScale.labelLong.lineHeight;
+    const status = layout.statusLinesMax * typeScale.body.lineHeight;
+    const caption = layout.captionLinesMax * typeScale.metricUnit.lineHeight;
+    const stage = layout.stageLines * typeScale.metricUnit.lineHeight;
+    const items = [stage, worst, status, caption];
+    expect(items).toHaveLength(4);
+    expect(stack(items, layout.stripGap, layout.stripPadV)).toBe(202);
+    expect(stack(items, layout.stripGap, layout.stripPadV) - STRIP_WORST).toBe(22);
+    // No reserve was added: the strip's reserve is still the worst case WITHOUT the round line.
+    expect(STRIP_RESERVE).toBe(STRIP_WORST);
+  });
 });
 
 describe.each(GEOMETRIES)('the viewfinder fits %i × %i (spec §1)', (width, height) => {
