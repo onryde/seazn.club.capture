@@ -1,6 +1,6 @@
 import { isStreamSubRoute, type NavigationPort, type Route } from '@/services/devicePorts';
 
-export type Path = '/' | '/stream' | '/stream/settings' | '/stream/diagnostics';
+export type Path = '/' | '/stream' | '/stream/settings';
 
 /** The three moves this adapter makes: Expo Router's `router` in production, a double in tests. */
 export type RouterMoves = {
@@ -13,13 +13,12 @@ const PATH: Readonly<Record<Route, Path>> = {
   home: '/',
   stream: '/stream',
   streamSettings: '/stream/settings',
-  streamDiagnostics: '/stream/diagnostics',
 };
 
 /**
  * Between modes, `replace`: there is no back stack between them. Inside Live
- * Stream, Settings and Diagnostics are pushed over the viewfinder and popped
- * back to it (D19), so the camera is never remounted mid-match. Back inside a
+ * Stream, Settings is pushed over the viewfinder and popped
+ * back from it (D19), so the camera is never remounted mid-match. Back inside a
  * mode is handled by that mode, and swipe-back is off, so every move comes
  * through here and `current()` stays true. The port outlives the root Stack:
  * when the Stack remounts, Expo Router starts it at its first route

@@ -14,9 +14,10 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 
 /**
- * The full-bleed native preview (AGENTS §6, carry 9). Frames never cross the bridge. FIT, so the
- * operator frames exactly what is encoded (#288). No pinch-zoom or tap-to-focus: a tap on a tripod
- * is a mis-tap. It follows the pairing's streamer while attached, and only then. It tells the engine
+ * The native preview, filling the camera box it is mounted in (AGENTS §6; design follow-up §1).
+ * Frames never cross the bridge. FIT, so the operator frames exactly what is encoded (#288). No
+ * pinch-zoom or tap-to-focus: a tap on a tripod is a mis-tap. It follows the pairing's streamer
+ * while attached, and only then. It tells the engine
  * whether the viewfinder is shown (CD37): attached to a window that is visible. A screen pushed over the
  * viewfinder may detach it and attach it again; a lock or Background keeps it attached and turns only its
  * window invisible (review C7 I-1), as StreamPack 3.2.1's own PreviewView reads it (javap: it stops its

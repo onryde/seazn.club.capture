@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { SessionState } from '@/domain/session/SessionState';
 import type { FakeScene } from '@/engine/FakeCaptureEngine';
 import { HOLD_MS } from '@/hooks/useHold';
+import en from '@/i18n/en.json';
 import type { FakePorts } from '../../../test/fakePorts';
 import { pressIn } from '../../../test/press';
 import { renderViewfinder } from '../../../test/renderViewfinder';
@@ -80,11 +81,11 @@ describe('on air (spec §6, through the fake)', () => {
     ).toHaveLength(3);
   });
 
-  it('says live with no sound when the level drops under the floor on air (D39)', async () => {
+  it('says plain Live when the room is quiet on air (spec §4: a silent room is ready)', async () => {
     const view = await onAir('live');
     act(() => view.engine.patch({ audioLevel: 0.01 }));
     expect(plate()).toBe('Live');
-    expect(screen.getByText('Live with no sound. Check the mic now.')).toBeTruthy();
+    expect(screen.getByText(LIVE_LINE)).toBeTruthy();
   });
 
   it('shows live: the plate, the clock, the line, and Stop in place of Go live', async () => {
@@ -116,12 +117,24 @@ describe('on air (spec §6, through the fake)', () => {
     expect(screen.getByText(LIVE_LINE)).toBeTruthy();
   });
 
-  it('never hides a fault: the no-sound line outranks it at once (ruling I2)', async () => {
+  it('never hides a fault: a call arriving clears Back’s line at once (ruling I2, spec §4)', async () => {
     const view = await onAir('live');
     act(() => void view.back.press());
-    act(() => view.engine.patch({ audioLevel: 0 }));
-    expect(screen.getByText('Live with no sound. Check the mic now.')).toBeTruthy();
+    expect(screen.getByText('Stop the broadcast first — hold Stop.')).toBeTruthy();
+    act(() => view.engine.scene('mic-silenced'));
+    expect(screen.getByText(en['stream.status.micSilenced'])).toBeTruthy();
     expect(screen.queryByText('Stop the broadcast first — hold Stop.')).toBeNull();
+  });
+
+  /** Back while the call holds the mic: the fault outranks Back's line, which only stands in for a calm one. */
+  it('never hides a fault: Back during the mic-silenced warning keeps the warning (ruling I2, spec §4)', async () => {
+    const view = await onAir('mic-silenced');
+    expect(screen.getByText(en['stream.status.micSilenced'])).toBeTruthy();
+    act(() => void view.back.press());
+    await act(() => vi.advanceTimersByTimeAsync(10));
+    expect(screen.getByText(en['stream.status.micSilenced'])).toBeTruthy();
+    expect(screen.queryByText(en['stream.leaveOnAir'])).toBeNull();
+    expect(view.navigation.current()).toBe('stream');
   });
 
   it('stops once after a full 3 s hold on Stop', async () => {
@@ -356,7 +369,7 @@ describe('the score preview on air', () => {
 });
 
 /** Carry 14 (ruling M6): one caption, shed > overlay failed > not charging > score ahead. */
-describe('the top strip’s one caption', () => {
+describe('the status strip’s one caption', () => {
   beforeEach(() => vi.useFakeTimers());
   afterEach(() => vi.useRealTimers());
 

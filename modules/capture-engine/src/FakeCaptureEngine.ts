@@ -135,7 +135,7 @@ const REPORT_MS = 1000;
 export const INTENT_LOG_CAP = 100;
 
 /**
- * Camera up, sound above the floor: the meter sounds. No encoded rates yet:
+ * Camera up, the mic sounding: the meter shows a level. No encoded rates yet:
  * plan B reads them from the on-air stall watchdog, so native reports null
  * until the session is on air. Readiness is native's `ready`, not telemetry.
  */
@@ -303,9 +303,10 @@ function sceneOf(name: FakeScene, now: number): Scene {
     case 'paired-ready':
       return { state: { kind: 'paired' }, telemetry: ARMED };
     case 'paired-not-ready':
+      // The mic is not available (spec §4). Level 0, so no test can read a level as the cause.
       return {
         state: { kind: 'paired' },
-        telemetry: { ...ARMED, audioLevel: 0.01 },
+        telemetry: { ...ARMED, audioLevel: 0 },
         ready: { ...READY, sound: false },
       };
     case 'paired-not-held':
@@ -378,9 +379,11 @@ function sceneOf(name: FakeScene, now: number): Scene {
         then: { afterMs: REOPEN_FIRST_FRAME_MS, state: publishing('srt', since) },
       };
     case 'mic-silenced':
+      // Spec §4: a call takes the mic, so native reads it not available (BridgeCore's systemSilenced).
       return {
         state: degraded('srt', 'mic-silenced', since),
         telemetry: { ...live, audioLevel: 0 },
+        ready: { ...READY, sound: false },
       };
     case 'stopped':
       return {

@@ -26,6 +26,21 @@ vi.mock('@/ui/components/TurnGlyph', async () => {
   };
 });
 
+// The chips' and the icon buttons' drawing is paths and a stroke colour. The stand-in is a marker
+// tests can find, carrying what the caller chose: the glyph's name, whether it is slashed and its
+// tone (F11: the tone is the chip's colour, so a test must be able to see it).
+vi.mock('@/ui/components/Glyph', async () => {
+  const { createElement } = await import('react');
+  const { View } = await import('react-native');
+  return {
+    Glyph: ({ name, slashed, tone }: { name: string; slashed?: boolean; tone: string }) =>
+      createElement(View, {
+        testID: 'glyph',
+        dataSet: { name, slashed: String(slashed === true), tone },
+      } as ViewProps),
+  };
+});
+
 // The sheet's entrance is drawing only; the panel inside it is what tests read.
 // react-native-web drops accessibilityViewIsModal, the prop native reads, so
 // the stand-in surfaces it as data-view-is-modal for tests to assert.

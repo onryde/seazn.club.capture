@@ -23,11 +23,14 @@ sealed interface Pose {
 /**
  * The platform's readiness facts (A11). Native judges readiness for every start, held or remote:
  * one gate, one authority. The network is the machine's own fact (`Input.Network`), passed in.
+ *
+ * Sound is the mic's availability, never its level (spec §4, owner 2026-10-06: "even though there is
+ * no sound … it is ok, nothing wrong and should allow to go live"): [micAvailable] is false only while
+ * the system silences our recording (a call) or audio capture is unavailable. `BridgeCore` judges it.
  */
-data class Readiness(val cameraFrames: Boolean, val audioPeak: Double, val pose: Pose) {
-  /** At or above the floor; a NaN level compares false and reads silent. */
+data class Readiness(val cameraFrames: Boolean, val micAvailable: Boolean, val pose: Pose) {
   val sound: Boolean
-    get() = audioPeak >= AUDIO_FLOOR
+    get() = micAvailable
 
   val held: Boolean
     get() = pose != Pose.NotHeld
@@ -47,10 +50,7 @@ data class Readiness(val cameraFrames: Boolean, val audioPeak: Double, val pose:
     }
 
   companion object {
-    /** Shared with JS's meter notch through `modules/capture-engine/src/wire/audio-floor.json`. */
-    const val AUDIO_FLOOR = 0.05
-
     /** Before the platform's first reading: nothing is ready. */
-    val UNKNOWN = Readiness(cameraFrames = false, audioPeak = 0.0, pose = Pose.NotHeld)
+    val UNKNOWN = Readiness(cameraFrames = false, micAvailable = false, pose = Pose.NotHeld)
   }
 }

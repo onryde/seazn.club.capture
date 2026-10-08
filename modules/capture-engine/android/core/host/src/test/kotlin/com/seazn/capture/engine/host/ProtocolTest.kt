@@ -64,7 +64,7 @@ class ProtocolTest {
     val executor = ExecutorScheduler()
     val host = Host(executor) { synchronized(out) { out += it } }
     host.handle("""{"op":"send","seq":1,"intent":${ScriptedServer.PAIR}}""")
-    // Paired once the grant is heard, and ready once sound has held (I-1), so the start is posted rather than refused.
+    // Paired once the grant is heard, and ready once the meter has read the mic (spec §4), so the start is posted rather than refused.
     executor.drain()
     await(out) { it.getString("ev") == "record" && JSONObject(it.getString("line")).let { line -> line.getString("kind") == "readiness" && line.getBoolean("sound") } }
     host.handle("""{"op":"send","seq":2,"intent":{"kind":"start"}}""")
@@ -171,17 +171,23 @@ class ProtocolTest {
     host.shutdown()
   }
 
-  // Review C4a N-3: the meter applies a level at its next readings, and a quiet one turns sound only once
-  // the host's silence window has passed (owner, 2026-10-05), so a host with nothing due is not yet a host
-  // that has judged the level. The ack waits the window and two periods.
+  // Spec §4 (owner, 2026-10-06), with review C4a N-3's settle: the level never turns sound, so a quiet level read
+  // for two meter periods is still sound; `micSilenced`, the system's word that a call took the mic (F-P5-8), is
+  // what makes it not ready, and its end gives it back. Each numbered readiness is acked two meter periods on.
   @Test
-  fun `N-3 a numbered readiness that silences the mic is acked only once sound reads false`() {
+  fun `S4 N-3 a quiet level stays sound, and a numbered micSilenced is acked once sound reads false, then true at its end`() {
     val (host, events) = hostWithEvents()
     host.handle("""{"op":"send","seq":1,"intent":${ScriptedServer.PAIR}}""")
     events.awaitThat("sound held") { events.names().contains("ack:1") && events.lastSnapshot().getJSONObject("ready").getBoolean("sound") }
     host.handle("""{"op":"readiness","seq":2,"audioPeak":0}""")
     events.await("ack:2")
-    assertEquals(false, events.lastSnapshot().getJSONObject("ready").getBoolean("sound"))
+    assertEquals(true, events.lastSnapshot().getJSONObject("ready").getBoolean("sound"), "a silent room is ready")
+    host.handle("""{"op":"readiness","seq":3,"micSilenced":true}""")
+    events.await("ack:3")
+    assertEquals(false, events.lastSnapshot().getJSONObject("ready").getBoolean("sound"), "a call took the mic")
+    host.handle("""{"op":"readiness","seq":4,"micSilenced":false}""")
+    events.await("ack:4")
+    assertEquals(true, events.lastSnapshot().getJSONObject("ready").getBoolean("sound"), "the call ended")
     host.shutdown()
   }
 

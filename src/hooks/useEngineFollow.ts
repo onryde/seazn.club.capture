@@ -11,13 +11,23 @@ const nameIf = (on: boolean, snapshot: EngineSnapshot): CodeName | null =>
 
 type Facts = ReturnType<typeof factsOf>;
 
-/** The snapshot's facts the saved-code rules read. */
+/**
+ * The snapshot's facts the saved-code rules read. An end over a code the server has ended (`codeEndedPending`, the
+ * 401 held to the end) is `stopped` whoever ended it (ruling M-5): the code is dead, so it is forgotten like the one
+ * the operator's Stop spends, and not kept for a Continue that could only re-arm a dead code. A fatal end is also
+ * `failed` either way, but the forget rule is read before the mark (`forgetsSaved`, then `tapToPairMark`), so a
+ * dead code is forgotten and never marked, and a fatal end over a live code is kept and marked for Continue.
+ */
 function factsOf(snapshot: EngineSnapshot) {
   const { state } = snapshot;
+  const ended = state.kind === 'ended';
+  const codeDead = snapshot.codeEndedPending;
+  const operatorStopped = ended && state.reason === 'operator-stopped';
+  const fatal = ended && state.reason === 'fatal-error';
   return {
     unpaired: selectUnpairedName(snapshot),
-    stopped: nameIf(state.kind === 'ended' && state.reason === 'operator-stopped', snapshot),
-    failed: nameIf(state.kind === 'ended' && state.reason === 'fatal-error', snapshot),
+    stopped: nameIf(operatorStopped || (fatal && codeDead), snapshot),
+    failed: nameIf(fatal, snapshot),
     paired: nameIf(state.kind === 'paired', snapshot),
   };
 }
@@ -35,8 +45,8 @@ function endingOf(facts: Facts): string | null {
 
 /**
  * Applies native's word to what JS keeps, on every snapshot (amendment, The
- * engine port and Process death and reopen): forget the code an unasked unpair
- * or the operator's Stop names; mark or clear `tapToPair`; and show /stream
+ * engine port and Process death and reopen): forget the code an unasked unpair,
+ * the operator's Stop or a fatal end over a code the server ended names; mark or clear `tapToPair`; and show /stream
  * while a broadcast is held, from wherever the app is. Each write is made once
  * per saved code (`acted`), so 1 Hz snapshots never queue a write each.
  *
@@ -60,7 +70,7 @@ export function useEngineFollow(): void {
     };
     const follow = () => {
       const snapshot = engine.getSnapshot();
-      // The route rule: Settings and Diagnostics are inside /stream already (M22).
+      // The route rule: Settings, with its Diagnostics card, is inside /stream already (M22).
       if (selectEngineStatus(snapshot) === 'live' && navigation.current() === 'home')
         navigation.go('stream');
       const store = modeStore.getSnapshot();
@@ -75,7 +85,7 @@ export function useEngineFollow(): void {
       // part, so no rule below can forget or mark it (M-4).
       const name = savedCodeName(code);
       if (heard.current.code === code && forgetsSaved({ saved: name, ...facts })) {
-        // An unpair the operator did not ask for goes Home, to its panel (Task 29); their Stop stays on Ended.
+        // An unpair the operator did not ask for goes Home, to its panel (Task 29); their Stop goes Home with the card, by StreamScreen's leave (spec §5).
         // Only if this code went: one saved behind the write is a new scan, and the app follows it (C4b-I2).
         const home = facts.unpaired !== null;
         return once(code, 'forget', () =>

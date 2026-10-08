@@ -20,9 +20,10 @@ const REFUSAL_LINE_MS = 4000;
  * Leaving Live Stream (spec decision 5). On air it cannot be left: Home is
  * hidden and Back explains how to stop. Stopped means the code is spent and
  * forgotten; anything else keeps it, so a failed broadcast is one tap from
- * being retried. Back is always handled here, so Android never closes the app
- * from this screen, except on a named stream sub-screen (Settings or
- * Diagnostics, under which this stays mounted): there it is that screen's,
+ * being retried, unless the server has ended its code (a 401 held to the end),
+ * which `useEngineFollow` forgets like a Stop. Back is always handled here, so
+ * Android never closes the app from this screen, except on a named stream
+ * sub-screen (Settings, under which this stays mounted): there it is that screen's,
  * which goes back to the camera and never runs the leave rule.
  */
 export function useStreamLeave(): {
@@ -169,7 +170,8 @@ function useFinishLeave(onBlocked: () => void): FinishLeave {
  * they leave Ended nothing owns the session, and it is nobody's, as the gate's
  * orphan rule reads it. A session another, still saved, code has moved on from
  * is not ours to clear. Left `stopped`, native would hold Ended until the next
- * foreground or scan. D11: a failed one is always cleared; its code is kept,
+ * foreground or scan. D11: a failed one is always cleared; its code is kept
+ * (unless the server has ended it, which `useEngineFollow` forgets like a Stop),
  * so Continue re-arms instead of landing on Ended. Sent however the write
  * went: a refused forget leaves the spent code saved, and it waits on the
  * Continue card until it expires or is forgotten (spec §4).

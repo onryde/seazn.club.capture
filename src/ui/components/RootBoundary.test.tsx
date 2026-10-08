@@ -205,11 +205,13 @@ describe('RootBoundary', () => {
       await flush();
       expect(app.nav.current()).toBe('stream');
       await hold(STOP);
-      expect(intentKinds(app)).toEqual(['pair', 'start', 'stop']);
-      expect(app.engine.getSnapshot().state).toMatchObject({
-        kind: 'ended',
-        reason: 'operator-stopped',
-      });
+      // Spec §5: the Stop ends the broadcast, and the viewfinder leaves for Home, clearing the ended session (one
+      // reset) and leaving the card that says the operator stopped it.
+      expect(intentKinds(app)).toEqual(['pair', 'start', 'stop', 'reset']);
+      expect(app.nav.current()).toBe('home');
+      expect(app.ports.endedNotice.getSnapshot()).toMatchObject({ reason: 'operator-stopped' });
+      expect(screen.getByRole('region', { name: 'Stream ended' })).toBeTruthy();
+      expect(screen.getByText('You stopped the broadcast.')).toBeTruthy();
     });
 
     // Final fix round 2, I-A: the Stack starts afresh at Home after Try again,
@@ -239,8 +241,7 @@ describe('RootBoundary', () => {
       fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
       await flush();
       await hold(STOP);
-      fireEvent.click(screen.getByRole('button', { name: 'Home' }));
-      await flush();
+      // Spec §5: the Stop leaves for Home by itself; there is no Home button to press on an Ended.
       expect(app.nav.current()).toBe('home');
       await scanFromHome(app, CODE);
       expect(app.nav.current()).toBe('stream');

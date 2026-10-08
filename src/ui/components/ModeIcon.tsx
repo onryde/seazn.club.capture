@@ -1,9 +1,9 @@
 import { memo } from 'react';
 import Svg, { Path, Rect } from 'react-native-svg';
 import type { Mode } from '@/domain/mode/Mode';
-import { colour } from '@/ui/theme/tokens';
+import { colour, layout } from '@/ui/theme/tokens';
 
-const SIZE = 28;
+const SIZE = layout.modeIcon;
 
 /** Lime line icons; an unbuilt mode's icon is inert ink. */
 export const ModeIcon = memo(function ModeIcon({ mode, dim }: { mode: Mode; dim: boolean }) {

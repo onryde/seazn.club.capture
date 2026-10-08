@@ -10,11 +10,13 @@ export type ScenarioKit = {
   sendTogether(intents: readonly EngineIntent[]): Promise<void>;
   say(words: ServerSays): Promise<void>;
   /**
-   * Sets native's readiness and resolves once the engine has judged it. An
-   * engine with a sound meter (the JVM host, Task 27) resolves only after the
-   * readiness record line that names the change, or after two meter periods:
-   * never on its scheduler having nothing due, since the meter applies a level
-   * 300–800 ms later and the sound debounce needs two readings (review C4a N-3).
+   * Sets native's readiness and resolves once the engine has judged it.
+   * `sound: false` means a call has taken the mic, not a quiet room: no level
+   * makes sound not ready (spec §4), so the JVM host sends it to the core as
+   * `Input.MicSilenced(true)`, and `sound: true` as the call's end
+   * (test/hostEngine.ts). An engine with a sound meter (the JVM host, Task 27)
+   * resolves only after two meter periods and quiet, never on its scheduler
+   * having nothing due (review C4a N-3).
    */
   ready(ready: Partial<Readiness>): Promise<void>;
   /**

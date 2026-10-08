@@ -5,7 +5,7 @@ import { useEngineSelector } from '@/hooks/useCaptureEngine';
 import { TallyPlate } from '@/ui/components/TallyPlate';
 
 /**
- * Beside Back on Settings and Diagnostics (AGENTS §6), so the broadcast is
+ * Beside Back on Settings (AGENTS §6), so the broadcast is
  * never out of sight. The viewfinder's own plate, so the LIVE gate holds
  * here too: connecting never reads LIVE.
  */

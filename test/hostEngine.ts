@@ -81,11 +81,14 @@ class HostModule implements CaptureEngineNative {
   }
 }
 
-/** Native's readiness as the host's `readiness` line: a level above or below the floor, a pose. */
+/**
+ * Native's readiness as the host's `readiness` line: the mic silenced by a call or given back (spec §4: no
+ * level makes sound not ready, so the system's word is the contract's only way), a pose.
+ */
 function readinessLine(ready: Partial<Readiness>): Record<string, unknown> {
   return {
     ...(ready.camera === undefined ? {} : { camera: ready.camera }),
-    ...(ready.sound === undefined ? {} : { audioPeak: ready.sound ? 0.5 : 0 }),
+    ...(ready.sound === undefined ? {} : { micSilenced: !ready.sound }),
     ...(ready.held === undefined ? {} : { pose: ready.held ? 'left' : 'not-held' }),
     ...(ready.network === undefined ? {} : { network: ready.network }),
   };
@@ -202,10 +205,8 @@ export async function startHostEngine(binary: string = HOST_BINARY): Promise<Hos
       () => `no ack for seq ${lastSeq} in ${ms} ms (${String(op.op)})`,
     );
   // The host's phone is ready once the meter has read it. A host that never acks it is let go here,
-  // as one with no ready line is (review C4c M-3). Review C4c M-8 found this wait was what held a start
-  // back until sound had held (dropping it, mutant J2, red 16 of 34). Since the owner's hysteresis
-  // (2026-10-05) sound is ready at the host's first reading, before this ack, so J2 passes again (35 of
-  // 35, rerun that day): the wait is the host-alive check now, not a readiness one.
+  // as one with no ready line is (review C4c M-3). Sound is ready at the host's first reading, whatever
+  // its level (spec §4), before this ack: the wait is the host-alive check, not a readiness one.
   try {
     await numbered({ op: 'readiness' }, READY_MS);
   } catch (error) {

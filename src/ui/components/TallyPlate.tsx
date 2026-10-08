@@ -4,7 +4,7 @@ import { tallyTone, type TallyPlate as Plate, type TallyTone } from '@/hooks/pre
 import { useT } from '@/hooks/useLanguage';
 import type { MessageKey } from '@/i18n/messages';
 import { Text } from '@/ui/components/Text';
-import { colour, plate as plateColour, plateInk, space } from '@/ui/theme/tokens';
+import { colour, layout, plate as plateColour, plateInk, space } from '@/ui/theme/tokens';
 
 const WORD: Readonly<Record<Plate, MessageKey>> = {
   starting: 'stream.tally.starting',
@@ -34,7 +34,7 @@ export const TallyPlate = memo(function TallyPlate({ plate }: { plate: Plate }) 
 });
 
 const styles = StyleSheet.create({
-  plate: { minHeight: 56, justifyContent: 'center', paddingHorizontal: space.sm },
+  plate: { minHeight: layout.plateHeight, justifyContent: 'center', paddingHorizontal: space.sm },
   live: { backgroundColor: plateColour.live },
   healthy: { backgroundColor: plateColour.healthy },
   degraded: { backgroundColor: plateColour.degraded },

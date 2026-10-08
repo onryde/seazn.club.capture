@@ -1,4 +1,3 @@
-import { AUDIO_FLOOR } from '@/domain/policy/audioFloor';
 import type { Cause, LastEnd, NotReady, Refusal } from '@/domain/session/Pairing';
 import type {
   DegradeReason,
@@ -13,16 +12,15 @@ import type { MessageKey } from '@/i18n/messages';
 export type StatusKey = Extract<MessageKey, `stream.status.${string}`>;
 
 /**
- * Copy budget: 48 characters (S0). The column is ~17 characters a line and
- * three lines before `StatusLine` ellipsises, silently. Enforced for every
- * language in src/i18n/budgets.test.ts.
+ * Copy budget: 48 characters (S0). `StatusLine` ellipsises, silently, past
+ * the status strip's two lines (`layout.statusLinesMax`) or Home's three.
+ * Enforced for every language in src/i18n/budgets.test.ts.
  */
 export const STATUS_LINE_BUDGET = 48;
 
 const DEGRADED: Readonly<Record<DegradeReason, StatusKey>> = {
   'fell-back-to-rtmps': 'stream.status.fellBack',
   'poor-uplink': 'stream.status.weakSignal',
-  'audio-below-floor': 'stream.status.liveNoSound',
   'not-delivered': 'stream.status.notDelivered',
   'camera-taken': 'stream.status.cameraTaken',
   'mic-silenced': 'stream.status.micSilenced',
@@ -127,7 +125,7 @@ const CAMERA_LINES: Readonly<Record<Kind, CameraLines | null>> = {
  * (amendment §2); never readiness, which the chips and the blocker say. It
  * never reads the heartbeat: a failing heartbeat never
  * blocks or degrades the stream (ruling 5), so it never changes what the
- * operator is told. Heat is the top strip's, never this line's (AGENTS §8).
+ * operator is told. Heat is the status strip's caption, never this line's (AGENTS §8).
  * Nor does it read the encoded rates or the delivered lag: native's state
  * already says what they mean, and a null there is no reading, not trouble.
  */
@@ -139,7 +137,7 @@ export function selectStatusKey(snapshot: EngineSnapshot): StatusKey {
 
 /** Each state's own line. A table, exempt from the line count (AGENTS §12). */
 function stateKey(snapshot: EngineSnapshot): StatusKey {
-  const { state, telemetry } = snapshot;
+  const { state } = snapshot;
   switch (state.kind) {
     case 'idle':
       return 'stream.status.starting';
@@ -153,10 +151,7 @@ function stateKey(snapshot: EngineSnapshot): StatusKey {
     case 'connecting':
       return 'stream.status.connecting';
     case 'publishing':
-      // D39: the level floor is a display rule, never a native reason.
-      return telemetry.audioLevel < AUDIO_FLOOR
-        ? 'stream.status.liveNoSound'
-        : 'stream.status.live';
+      return 'stream.status.live';
     case 'degraded':
       return DEGRADED[state.reason];
     case 'reconnecting':

@@ -69,13 +69,10 @@ export type ReconnectCause = 'uplink-lost' | 'video-stalled' | 'not-delivered';
  * reported as a damaged broadcast.
  *
  * Native sends one reason, the most important of plan B's ordered list (D39).
- * `audio-below-floor` is TypeScript-only and never on the wire: the level
- * floor is a display rule here (spec §2, "audioFloor stays"), not native's.
  */
 export type DegradeReason =
   | 'fell-back-to-rtmps'
   | 'poor-uplink'
-  | 'audio-below-floor'
   /** DeliveryWatch: viewers are not receiving, and native is forcing a new session (F-P5-13). */
   | 'not-delivered'
   /** Another app holds the camera; a phone-made slate is on air (spec decision 7). */

@@ -12,9 +12,15 @@ import java.nio.ByteOrder
 /**
  * A11's sound check before a broadcast publishes (CD42): our own AudioRecord, for the meter only, on
  * its own thread. Stopped before every connect, so StreamPack's recording is the only one on air.
+ * Before air it is our one recording, so MicWatch watches its session (review I-1, spec §4).
  */
 class SoundMeter(private val offer: (Double) -> Unit, private val line: (RecordEntry) -> Unit) {
   private var record: AudioRecord? = null
+
+  /** The recording's session while it runs, else null; read on the main looper by MicWatch, so never under the lock. */
+  @Volatile private var session: Int? = null
+
+  fun sessionId(): Int? = session
 
   @SuppressLint("MissingPermission") // CD37: the capture opens only after RECORD_AUDIO is granted
   @Synchronized
@@ -23,8 +29,12 @@ class SoundMeter(private val offer: (Double) -> Unit, private val line: (RecordE
     val size = maxOf(AudioRecord.getMinBufferSize(RATE, MONO, PCM16), MIN_BYTES)
     val made =
       try {
-        AudioRecord(MediaRecorder.AudioSource.MIC, RATE, MONO, PCM16, size).also { it.startRecording() }
+        AudioRecord(MediaRecorder.AudioSource.MIC, RATE, MONO, PCM16, size).also {
+          session = it.audioSessionId // before it records: MicWatch's callback for this very start reads it
+          it.startRecording()
+        }
       } catch (e: Exception) { // IllegalStateException, IllegalArgumentException, SecurityException
+        session = null
         return line(RecordEntry("watch-failed", listOf("action" to "sound", "error" to e.javaClass.simpleName)))
       }
     record = made
@@ -35,6 +45,7 @@ class SoundMeter(private val offer: (Double) -> Unit, private val line: (RecordE
   fun stop() {
     val held = record ?: return
     record = null
+    session = null
     held.stop()
     held.release()
   }

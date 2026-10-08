@@ -152,3 +152,177 @@ describe('orientationGate', () => {
     expect(orientationGate(target, physical, onAir, current)).toEqual(view);
   });
 });
+
+// Spec §7 and D9: Home and Settings follow the phone (`free`), unless a broadcast is held. Every expected value
+// below is written from those two, as its own small oracle, never from `orientationGate`.
+const PHYSICALS: readonly Physical[] = ['portrait', 'landscape', 'flat', 'unknown'];
+const HOLDINGS: readonly boolean[] = [false, true];
+
+describe('orientationGate: the free target (spec §7, D9)', () => {
+  /**
+   * §7: not holding, the screen follows the phone, whatever the hands do. D9: holding, the lock never moves
+   * under the camera, and a `free` lock (or none) is no lock to keep, so it locks landscape once.
+   */
+  function oracle(holding: boolean, current: Target | null): GateView {
+    if (!holding) return { lock: 'free', card: 'none' };
+    if (current === null || current === 'free') return { lock: 'landscape', card: 'none' };
+    return { lock: 'keep', card: 'none' };
+  }
+
+  it('answers the §7 / D9 oracle for every phone position, holding and lock (32 cases)', () => {
+    const currents: readonly (Target | null)[] = [null, 'portrait', 'landscape', 'free'];
+    let checked = 0;
+    for (const physical of PHYSICALS) {
+      for (const holding of HOLDINGS) {
+        for (const current of currents) {
+          expect({
+            physical,
+            holding,
+            current,
+            view: orientationGate('free', physical, holding, current),
+          }).toEqual({ physical, holding, current, view: oracle(holding, current) });
+          checked += 1;
+        }
+      }
+    }
+    expect(checked).toBe(32);
+  });
+
+  it.each<[string, Physical, boolean, Target | null, GateView]>([
+    ['idle, upright: follows the phone', 'portrait', false, null, { lock: 'free', card: 'none' }],
+    [
+      'idle, sideways: follows the phone',
+      'landscape',
+      false,
+      'free',
+      { lock: 'free', card: 'none' },
+    ],
+    [
+      'idle, and a lock is left from the viewfinder',
+      'portrait',
+      false,
+      'landscape',
+      { lock: 'free', card: 'none' },
+    ],
+    [
+      'held, nothing locked: landscape',
+      'portrait',
+      true,
+      null,
+      { lock: 'landscape', card: 'none' },
+    ],
+    [
+      'held, from a free lock: landscape',
+      'portrait',
+      true,
+      'free',
+      { lock: 'landscape', card: 'none' },
+    ],
+    [
+      'held, landscape applied: kept',
+      'portrait',
+      true,
+      'landscape',
+      { lock: 'keep', card: 'none' },
+    ],
+  ])('%s', (_name, physical, holding, current, view) => {
+    expect(orientationGate('free', physical, holding, current)).toEqual(view);
+  });
+
+  it('never shows a turn card: Home and Settings have no wrong way up', () => {
+    let checked = 0;
+    for (const physical of PHYSICALS) {
+      for (const holding of HOLDINGS) {
+        for (const current of [null, 'portrait', 'landscape', 'free'] as const) {
+          expect(orientationGate('free', physical, holding, current).card).toBe('none');
+          checked += 1;
+        }
+      }
+    }
+    expect(checked).toBe(32);
+  });
+
+  it('sequence: free while idle, a remote Go live locks landscape once, and the end frees it again', () => {
+    // Settings is open, upright, idle: nothing locked has been applied but `free`.
+    expect(orientationGate('free', 'portrait', false, 'free')).toEqual({
+      lock: 'free',
+      card: 'none',
+    });
+    // The organiser's Go live arrives (the engine reads `live`): landscape, once.
+    expect(orientationGate('free', 'portrait', true, 'free')).toEqual({
+      lock: 'landscape',
+      card: 'none',
+    });
+    // Landscape is applied; a tilt upright mid-broadcast keeps it (the camera never rotates under the broadcast).
+    expect(orientationGate('free', 'portrait', true, 'landscape')).toEqual({
+      lock: 'keep',
+      card: 'none',
+    });
+    // The broadcast ends: back to following the phone.
+    expect(orientationGate('free', 'portrait', false, 'landscape')).toEqual({
+      lock: 'free',
+      card: 'none',
+    });
+  });
+});
+
+describe('orientationGate: leaving a free lock for a fixed target (D9)', () => {
+  const CARD = { landscape: 'turnSideways', portrait: 'turnUpright' } as const;
+
+  /**
+   * D9: a `free` lock is no lock to keep, so the hands decide even when a broadcast is held: the activity is
+   * turned however the phone is held, and the lock holds it there. No settled reading, or flat, or held as the
+   * target, locks the target.
+   */
+  function oracle(target: 'portrait' | 'landscape', physical: Physical): GateView {
+    if (physical === 'unknown' || physical === 'flat' || physical === target) {
+      return { lock: target, card: 'none' };
+    }
+    return { lock: physical, card: CARD[target] };
+  }
+
+  it('answers the D9 oracle for every target, phone position and holding (16 cases)', () => {
+    let checked = 0;
+    for (const target of ['portrait', 'landscape'] as const) {
+      for (const physical of PHYSICALS) {
+        for (const holding of HOLDINGS) {
+          expect({
+            target,
+            physical,
+            holding,
+            view: orientationGate(target, physical, holding, 'free'),
+          }).toEqual({ target, physical, holding, view: oracle(target, physical) });
+          checked += 1;
+        }
+      }
+    }
+    expect(checked).toBe(16);
+  });
+
+  it.each<[string, Physical, boolean, GateView]>([
+    // Paired Settings upright, then the viewfinder: the hands lock portrait with the turn card (F16).
+    ['upright while paired', 'portrait', true, { lock: 'portrait', card: 'turnSideways' }],
+    ['upright while idle', 'portrait', false, { lock: 'portrait', card: 'turnSideways' }],
+    [
+      'no reading yet: nothing locked, lock the target (R37)',
+      'unknown',
+      true,
+      { lock: 'landscape', card: 'none' },
+    ],
+    ['sideways', 'landscape', true, { lock: 'landscape', card: 'none' }],
+    ['flat', 'flat', true, { lock: 'landscape', card: 'none' }],
+  ])('landscape, from free, %s', (_name, physical, holding, view) => {
+    expect(orientationGate('landscape', physical, holding, 'free')).toEqual(view);
+  });
+
+  it('touches `free` only: a null lock held upright on air still keeps (R35 / R37 unchanged)', () => {
+    expect(orientationGate('landscape', 'portrait', true, null)).toEqual({
+      lock: 'keep',
+      card: 'turnSideways',
+    });
+    expect(orientationGate('landscape', 'unknown', true, null)).toEqual({
+      lock: 'landscape',
+      card: 'none',
+    });
+  });
+});

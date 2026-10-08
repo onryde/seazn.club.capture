@@ -45,6 +45,15 @@ export function selectHoldsOrientation(snapshot: EngineSnapshot): boolean {
 }
 
 /**
+ * Whether a broadcast is held (Q3, spec §7): armed or live, from Arming on. Home and Settings follow the phone
+ * unless this is true. Narrower than `selectHoldsOrientation` on purpose: a Pairing or Paired engine holds no
+ * broadcast, and Home and Settings cover the viewfinder, so native closes the capture (F16, read: opaque push,
+ * detach, `viewfinder(false)`, BridgeCore `wanted`) and nothing is left to turn under the operator's hands.
+ */
+export const selectBroadcastHeld = (snapshot: EngineSnapshot): boolean =>
+  selectEngineStatus(snapshot) === 'live';
+
+/**
  * Declared at module scope so their identity is stable across renders.
  * An inline `(s) => s.telemetry.bitrateKbps` is a new function every render,
  * which defeats the memoisation this hook exists for.
@@ -91,6 +100,11 @@ export const selectEndReason = (snapshot: EngineSnapshot) =>
 /** Time on air when it ended (plan B's `durationMs`); null for a session that never went live. */
 export const selectEndedDurationMs = (snapshot: EngineSnapshot) =>
   snapshot.state.kind === 'ended' ? snapshot.state.durationMs : null;
+/**
+ * A 401 heard while a broadcast was held, deferred to the Stop (CaptureEnginePort.ts:96): the code has ended. Ended keeps
+ * it set (Projection.kt:38), so it is also the card's word that the code is dead (spec §5, F14 a).
+ */
+export const selectCodeEndedPending = (snapshot: EngineSnapshot) => snapshot.codeEndedPending;
 /** Whether native holds a pairing; before that there is no overlay to try. */
 export const selectHasPairing = (snapshot: EngineSnapshot) => snapshot.pairing !== null;
 /** What names native's pairing (amendment, Identity rules): read apart, so each is a stable scalar. */
@@ -148,9 +162,9 @@ export const METER_SEGMENTS = 6;
 /**
  * Whole segments lit, not the level: a primitive that changes only when a
  * segment does. A segment lights once the level reaches into its sixth, so any
- * sound shows — a faint mic below AUDIO_FLOOR is one orange segment, never an
- * empty meter (spec §4). A level off the wire outside 0..1, or not a number,
- * is clamped rather than drawn.
+ * sound shows: a faint mic is one segment, never an empty meter. Its colour is
+ * the mic's availability, not the level (spec §4). A level off the wire outside
+ * 0..1, or not a number, is clamped rather than drawn.
  */
 export function selectMeterSegments(snapshot: EngineSnapshot): number {
   const lit = Math.ceil(snapshot.telemetry.audioLevel * METER_SEGMENTS);

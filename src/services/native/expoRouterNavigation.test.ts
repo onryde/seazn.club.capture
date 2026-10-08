@@ -23,16 +23,25 @@ describe('the Expo Router adapter (D19)', () => {
     expect(navigation.current()).toBe('streamSettings');
   });
 
-  it('pushes Diagnostics over the viewfinder too', () => {
-    const navigation = createExpoRouterNavigation('stream');
-    navigation.go('streamDiagnostics');
-    expect(router.push).toHaveBeenCalledWith('/stream/diagnostics');
-    expect(navigation.current()).toBe('streamDiagnostics');
+  // Spec §6: Diagnostics is a card in Settings, so there is no route and no path to it. `Record<Route, true>`
+  // is a compile-time pin (a route added or removed fails tsc); the loop drives every route through the
+  // adapter and reads the path it moved to.
+  it('has exactly three routes, each with its own path, and none for Diagnostics', () => {
+    const routes: Record<Route, true> = { home: true, stream: true, streamSettings: true };
+    const paths = (Object.keys(routes) as Route[]).map((route) => {
+      vi.clearAllMocks();
+      createExpoRouterNavigation(route === 'home' ? 'stream' : 'home').go(route);
+      const moves = [...router.push.mock.calls, ...router.replace.mock.calls];
+      expect(moves).toHaveLength(1);
+      return moves[0]?.[0];
+    });
+    expect(paths).toHaveLength(3);
+    expect(paths.sort()).toEqual(['/', '/stream', '/stream/settings']);
   });
 
   it('goes back to the viewfinder rather than stacking a second one', () => {
     const navigation = createExpoRouterNavigation('stream');
-    navigation.go('streamDiagnostics');
+    navigation.go('streamSettings');
     navigation.go('stream');
     expect(router.back).toHaveBeenCalledTimes(1);
     expect(router.replace).not.toHaveBeenCalled();
@@ -69,7 +78,7 @@ describe('the Expo Router adapter (D19)', () => {
 
   // Final fix round 2, I-A: Try again after a crash remounts the root Stack,
   // which Expo Router starts afresh at its first route; the port outlives it.
-  it.each(['stream', 'streamSettings', 'streamDiagnostics'] as const)(
+  it.each(['stream', 'streamSettings'] as const)(
     'forgets %s when the root restarts, so the next move to it is made',
     (from) => {
       const navigation = createExpoRouterNavigation('home');
@@ -94,7 +103,7 @@ describe('the Expo Router adapter (D19)', () => {
   // A sub-route named with no sub-screen mounted would give Back away on air.
   it.each([
     ['push', 'stream', 'streamSettings'],
-    ['back', 'streamDiagnostics', 'stream'],
+    ['back', 'streamSettings', 'stream'],
     ['replace', 'stream', 'home'],
   ] as const)(
     'keeps the route it was on when %s throws, and lets the fault through',

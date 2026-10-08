@@ -2,17 +2,16 @@ import { useCallback, useEffect } from 'react';
 import { usePorts } from '@/hooks/usePorts';
 import { isStreamSubRoute } from '@/services/devicePorts';
 
-/** The viewfinder's ways into Settings and Diagnostics, open in every state (AGENTS §6). */
-export function useStreamLinks(): { settings(): void; diagnostics(): void } {
+/** The viewfinder's way into Settings (Diagnostics is a card in it, spec §6), open in every state (AGENTS §6). */
+export function useStreamLinks(): { settings(): void } {
   const { navigation } = usePorts();
   const settings = useCallback(() => navigation.go('streamSettings'), [navigation]);
-  const diagnostics = useCallback(() => navigation.go('streamDiagnostics'), [navigation]);
-  return { settings, diagnostics };
+  return { settings };
 }
 
 /**
- * Back from Settings or Diagnostics returns to the camera, and never runs the
- * viewfinder's leave rule. Handled only while a sub-screen is the route (M21):
+ * Back from Settings returns to the camera, and never runs the
+ * viewfinder's leave rule. Handled only while Settings is the route (M21):
  * once back on the camera, even before this screen has gone, Back is the
  * viewfinder's, which on air says how to stop.
  */

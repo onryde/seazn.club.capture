@@ -9,7 +9,14 @@
  */
 export type Gravity = { readonly x: number; readonly y: number; readonly z: number };
 export type Physical = 'portrait' | 'landscape' | 'flat' | 'unknown';
-export type Target = 'portrait' | 'landscape';
+/**
+ * What a route wants locked. `free` is no lock: the screen follows the phone (spec §7, Home and Settings).
+ * It is a value of its own, not an absent one, so a gate that unlocks can tell "following the phone" (`free`)
+ * from "nothing locked yet" (`null`).
+ */
+export type Target = 'portrait' | 'landscape' | 'free';
+/** A target that locks something. */
+type Fixed = Exclude<Target, 'free'>;
 
 export type OrientationTracker = {
   readonly settled: Physical;
@@ -80,39 +87,59 @@ export type TurnCardKind = Exclude<GateView['card'], 'none'>;
  * held, so the turn card and its glyph read upright in the operator's hands;
  * lock to the target once they match (ruling R24).
  *
- * On air (engine armed or live) the current lock stays instead: a tilt
- * mid-broadcast must never rotate the activity under the camera (AGENTS §8,
- * P4). The card then reads sideways, which R24 accepts.
+ * `holding` is whether the lock must hold: the engine is armed or live, or
+ * (for the fixed targets) paired too. The `free` target is asked a narrower
+ * question by its caller, a broadcast held (`selectBroadcastHeld`), because a
+ * paired phone has no open camera on Home or Settings (Q3, F16).
+ *
+ * Held, the current lock stays instead: a tilt mid-broadcast must never rotate
+ * the activity under the camera (AGENTS §8, P4). The card then reads sideways,
+ * which R24 accepts.
  *
  * With no settled reading (`unknown`) the target is locked, with no card
  * (R34). A phone can sit in a dead band for good (face down, tilted), and
  * Android's activity is `unspecified` until the first lock, so waiting for a
  * reading left Home following auto-rotate and Live Stream open in portrait.
- * On air the current lock stays, as above, with two refinements:
+ * Held, the current lock stays, as above, with two refinements:
  * - nothing locked yet (`current` null, e.g. the activity remounted
  *   mid-broadcast) locks the target, since there is no lock to keep (R37);
  * - a kept lock that disagrees with the target shows the target's card, or
- *   the screen is drawn against the wrong lock (R35: Home in landscape, with
- *   tiles overlapping, after leaving an armed Live Stream).
+ *   the screen is drawn against the wrong lock (R35).
  *
  * `current` is the lock last applied, or null when nothing has been locked.
+ * D9: a `free` lock is no lock to keep, so leaving it for a fixed target
+ * decides from the hands, whether or not a broadcast is held (a phone upright
+ * in free Settings is a portrait activity, and the lock holds it there).
  */
 export function orientationGate(
   target: Target,
   physical: Physical,
-  onAir: boolean,
+  holding: boolean,
   current: Target | null,
 ): GateView {
-  if (physical === 'unknown') return unsettled(target, onAir, current);
+  if (target === 'free') return freeGate(holding, current);
+  const fromFree = current === 'free';
+  if (physical === 'unknown') return unsettled(target, holding, fromFree ? null : current);
   if (physical === 'flat' || physical === target) return { lock: target, card: 'none' };
-  return { lock: onAir ? 'keep' : physical, card: cardFor(target) };
+  return { lock: holding && !fromFree ? 'keep' : physical, card: cardFor(target) };
 }
 
-function unsettled(target: Target, onAir: boolean, current: Target | null): GateView {
-  if (!onAir || current === null) return { lock: target, card: 'none' };
+/**
+ * Spec §7 (D9): the screen follows the phone. While a broadcast is held the
+ * lock never moves under the camera, and a `free` lock (or none) is no lock
+ * to keep, so it locks landscape once.
+ */
+function freeGate(holding: boolean, current: Target | null): GateView {
+  if (!holding) return { lock: 'free', card: 'none' };
+  return { lock: current === null || current === 'free' ? 'landscape' : 'keep', card: 'none' };
+}
+
+function unsettled(target: Fixed, holding: boolean, current: Target | null): GateView {
+  if (!holding || current === null) return { lock: target, card: 'none' };
   return { lock: 'keep', card: current === target ? 'none' : cardFor(target) };
 }
 
-function cardFor(target: Target): TurnCardKind {
+// No S1 route targets portrait, so `turnUpright` cannot show yet; kept for S2/S4.
+function cardFor(target: Fixed): TurnCardKind {
   return target === 'landscape' ? 'turnSideways' : 'turnUpright';
 }

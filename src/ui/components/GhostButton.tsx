@@ -1,7 +1,7 @@
 import { memo } from 'react';
 import { type PressableStateCallbackType, Pressable, StyleSheet } from 'react-native';
 import { Text } from '@/ui/components/Text';
-import { colour, radius, space } from '@/ui/theme/tokens';
+import { colour, layout, radius, space } from '@/ui/theme/tokens';
 
 type GhostButtonProps = {
   label: string;
@@ -39,7 +39,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: space.md,
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 1,
+    borderWidth: layout.iconBorder,
     borderColor: colour.ink3,
     borderRadius: radius.card,
   },

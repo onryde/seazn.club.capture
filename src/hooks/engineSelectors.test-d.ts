@@ -43,7 +43,7 @@ describe('wire strings equal plan B’s (D40)', () => {
       | 'reconnecting'
       | 'ended'
     >();
-    expectTypeOf<Exclude<DegradeReason, 'audio-below-floor'>>().toEqualTypeOf<
+    expectTypeOf<DegradeReason>().toEqualTypeOf<
       'not-delivered' | 'camera-taken' | 'mic-silenced' | 'poor-uplink' | 'fell-back-to-rtmps'
     >();
     expectTypeOf<EndReason>().toEqualTypeOf<'operator-stopped' | 'fatal-error'>();

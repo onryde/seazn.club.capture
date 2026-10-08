@@ -33,7 +33,7 @@ class CaptureEngineModule : Module() {
     // Carry C4c-I3: each line with its seq, `{seq, line}`, so JS drops a repeat by number.
     Function("tail") { core.tail() }
 
-    // Task 39: the full-bleed preview, the module's default view (JS `requireNativeView('CaptureEngine')`).
+    // Task 39: the native preview, the module's default view (JS `requireNativeView('CaptureEngine')`); it fills the camera box.
     View(CapturePreviewView::class) {}
   }
 }

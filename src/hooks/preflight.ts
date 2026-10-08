@@ -21,7 +21,7 @@ export type Blocker = NotReady;
 export const selectCameraReady = (snapshot: EngineSnapshot) =>
   snapshot.ready.camera && snapshot.camera === 'own';
 export const selectNetworkReachable = (snapshot: EngineSnapshot) => snapshot.ready.network;
-/** Native's verdict (A11): the JS audio floor is no longer the judge. */
+/** Native's verdict (A11): the mic is available. The level never decides it (design follow-up §4). */
 export const selectSoundReady = (snapshot: EngineSnapshot) => snapshot.ready.sound;
 
 export type BlockerKey = Extract<MessageKey, `stream.blocker.${string}`>;

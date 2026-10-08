@@ -6,6 +6,7 @@ import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNull
 
 class DeviceReadingsTest {
   private fun pcm(vararg samples: Short): ByteBuffer =
@@ -33,7 +34,7 @@ class DeviceReadingsTest {
     meter.offer(0.7)
     meter.offer(0.1)
     assertEquals(0.7, meter.take())
-    assertEquals(0.0, meter.take())
+    assertNull(meter.take(), "no buffer since the last take")
   }
 
   @Test
@@ -44,7 +45,17 @@ class DeviceReadingsTest {
     meter.offer(Double.NaN)
     assertEquals(0.3, meter.take())
     meter.offer(Double.POSITIVE_INFINITY)
-    assertEquals(0.0, meter.take(), "an infinite level alone leaves the meter at its no-reading 0")
+    assertNull(meter.take(), "an infinite level alone is no buffer")
+  }
+
+  /** Pre-flight F4: a silent buffer and no buffer are different facts; only the first is a working mic (spec §4). */
+  @Test
+  fun `a silent buffer is 0, and no buffer since the last take is null`() {
+    val meter = PeakMeter()
+    assertNull(meter.take(), "nothing offered yet")
+    meter.offer(0.0)
+    assertEquals(0.0, meter.take(), "a silent buffer")
+    assertNull(meter.take(), "and none since")
   }
 
   @Test

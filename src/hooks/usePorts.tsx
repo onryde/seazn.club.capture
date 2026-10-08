@@ -15,10 +15,10 @@ import type {
   SharePort,
   SplashPort,
 } from '@/services/devicePorts';
+import type { EndedNotice } from '@/services/endedNotice';
 import type { KeyValueStore } from '@/services/KeyValueStore';
 import type { Logger } from '@/services/logger';
 import type { ModeStore } from '@/services/modeStore';
-import type { HomeIntent } from '@/services/homeIntent';
 import type { ProbeFlight } from '@/services/probeFlight';
 import type { ScanFlight } from '@/services/scanFlight';
 import type { SessionRecord } from '@/services/sessionRecord';
@@ -47,8 +47,8 @@ export type Ports = {
   readonly scanFlight: ScanFlight;
   /** The dev engine probe running, whose pairing the reopen gate leaves alone (F-S4-2). */
   readonly probeFlight: ProbeFlight;
-  /** Ended's "Scan another", taken by Home once it is ready (D24). */
-  readonly homeIntent: HomeIntent;
+  /** The "Stream ended" card the viewfinder hands to Home (spec §5). In memory only. */
+  readonly endedNotice: EndedNotice;
   /** Score preview on or off, controls left or right (spec §4 Settings, D23). */
   readonly streamSettings: StreamSettingsStore;
   readonly motion: MotionPort;

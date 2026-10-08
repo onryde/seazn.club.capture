@@ -2,12 +2,14 @@ import { act, render, screen } from '@testing-library/react';
 import { StyleSheet, Text as RNText, View, type TextStyle, type ViewStyle } from 'react-native';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { TallyPlate as Plate } from '@/hooks/preflight';
+import nl from '@/i18n/nl.json';
 import { AudioMeter } from '@/ui/components/AudioMeter';
-import { EdgeStrip } from '@/ui/components/EdgeStrip';
 import { Elapsed } from '@/ui/components/Elapsed';
 import { LivePlate } from '@/ui/components/LivePlate';
+import { StatusLine } from '@/ui/components/StatusLine';
+import { StatusStrip } from '@/ui/components/StatusStrip';
 import { TallyPlate } from '@/ui/components/TallyPlate';
-import { colour, plate as plateColour, plateInk } from '@/ui/theme/tokens';
+import { colour, layout, plate as plateColour, plateInk } from '@/ui/theme/tokens';
 import { TEST_NOW } from '../../../test/fakePorts';
 import { renderWithPorts } from '../../../test/renderWithPorts';
 
@@ -96,6 +98,16 @@ describe('TallyPlate', () => {
     expect(getComputedStyle(screen.getByText(word)).color).toBe(inkOf(ink));
   });
 
+  // The fit arithmetic (viewfinderFit.test.ts) reserves `layout.plateHeight` for the plate; this is the plate keeping to it.
+  it.each<[Plate]>([['ready'], ['live'], ['trouble'], ['connecting']])(
+    '%s is as tall as the viewfinder’s fit reserves for it (56 dp, spec §4)',
+    (plate) => {
+      renderWithPorts(<TallyPlate plate={plate} />);
+      expect(layout.plateHeight).toBe(56);
+      expect(getComputedStyle(screen.getByTestId('tally-plate')).minHeight).toBe('56px');
+    },
+  );
+
   it('announces a change of state politely to a screen reader', () => {
     renderWithPorts(<TallyPlate plate="trouble" />);
     // react-native-web renders accessibilityLiveRegion as aria-live; whether
@@ -109,7 +121,7 @@ describe('TallyPlate', () => {
   });
 });
 
-describe('LivePlate (beside Back on Settings and Diagnostics)', () => {
+describe('LivePlate (beside Back on Settings)', () => {
   it('is absent off air', () => {
     renderWithPorts(<LivePlate />);
     expect(screen.queryByTestId('tally-plate')).toBeNull();
@@ -233,14 +245,15 @@ describe('Elapsed', () => {
 });
 
 /**
- * Levels from the fake's scenes: paired 0.42, not ready 0.01, mic silenced 0.
- * A segment lights when the level reaches into it, so any sound shows; below
- * AUDIO_FLOOR (0.05) that segment is orange (spec §4).
+ * Levels from the fake's scenes: paired 0.42, not ready 0, mic silenced 0.
+ * A segment lights when the level reaches into it, so any sound shows; the lit
+ * segments are lime while the mic is available, and orange when the mic is not
+ * available (spec §4): the level never decides the colour.
  */
 describe('AudioMeter', () => {
   const firstSegment = (meter: HTMLElement) => meter.children[0] as Element;
 
-  it('lights segments with the level, in lime at or above the floor', () => {
+  it('lights segments with the level, in lime while the mic is available', () => {
     const view = renderWithPorts(<AudioMeter />);
     act(() => view.engine.scene('paired-ready'));
     const meter = screen.getByRole('progressbar', { name: 'Sound level 3 of 6' });
@@ -250,12 +263,31 @@ describe('AudioMeter', () => {
     expect(backgroundOf(meter.children[3] as Element)).toBe(paintOf(TOKEN.unlit));
   });
 
-  it('shows a faint mic as one orange segment: quiet reaches YouTube quiet', () => {
+  it('shows a faint level as one orange segment while the mic is not available', () => {
     const view = renderWithPorts(<AudioMeter />);
     act(() => view.engine.scene('paired-not-ready'));
+    act(() => view.engine.patch({ audioLevel: 0.01 }));
     const meter = screen.getByRole('progressbar', { name: 'Sound level 1 of 6' });
     expect(backgroundOf(firstSegment(meter))).toBe(paintOf(TOKEN.caution));
     expect(backgroundOf(meter.children[1] as Element)).toBe(paintOf(TOKEN.unlit));
+  });
+
+  // Spec §4: "lime whenever sound is ready". A quiet room is a working mic, so its one segment is lime.
+  it('shows a quiet room as one lime segment: quiet reaches YouTube quiet, and the mic is available', () => {
+    const view = renderWithPorts(<AudioMeter />);
+    act(() => view.engine.scene('paired-ready'));
+    act(() => view.engine.patch({ audioLevel: 0.01 }));
+    const meter = screen.getByRole('progressbar', { name: 'Sound level 1 of 6' });
+    expect(backgroundOf(firstSegment(meter))).toBe(paintOf(TOKEN.lime));
+    expect(backgroundOf(meter.children[1] as Element)).toBe(paintOf(TOKEN.unlit));
+  });
+
+  // The fit arithmetic reserves `layout.meterHeight` for the bar; this is the bar keeping to it.
+  it('is as tall as the viewfinder’s fit reserves for it (12 dp)', () => {
+    const view = renderWithPorts(<AudioMeter />);
+    act(() => view.engine.scene('paired-ready'));
+    expect(layout.meterHeight).toBe(12);
+    expect(getComputedStyle(screen.getByRole('progressbar')).height).toBe('12px');
   });
 
   it('lights nothing for silence', () => {
@@ -279,18 +311,69 @@ describe('AudioMeter', () => {
   });
 });
 
-describe('EdgeStrip (AGENTS §6: the only thing drawn over the preview)', () => {
-  it.each([['top'], ['bottom']] as const)('sits solid on the %s edge of the stage', (edge) => {
-    render(
-      <EdgeStrip edge={edge}>
-        <RNText>caption</RNText>
-      </EdgeStrip>,
-    );
-    const strip = screen.getByText('caption').parentElement as HTMLElement;
-    const style = getComputedStyle(strip);
-    expect(style.position).toBe('absolute');
-    expect(style[edge]).toBe('0px');
-    expect(style[edge === 'top' ? 'bottom' : 'top']).not.toBe('0px');
+/**
+ * The status strip under the camera box (spec §1). It replaces the two edge strips,
+ * which sat over the shot: this one is in the flow below it. Where it sits in the
+ * screen is the layout test's; this is the strip on its own.
+ */
+describe('StatusStrip', () => {
+  it('says the line alone, with no caption, when there is no advisory', () => {
+    renderWithPorts(<StatusStrip line="Live. Sound and picture going out." advisory={null} />);
+    const strip = screen.getByTestId('status-strip');
+    // No pairing yet, so no label either: the line is the strip's only child.
+    expect([...strip.children].map((child) => child.textContent)).toEqual([
+      'Live. Sound and picture going out.',
+    ]);
+  });
+
+  it('says the label, then the line, then the advisory, in the operator’s language', () => {
+    const view = renderWithPorts(<StatusStrip line="Wachten op Go live" advisory="shed" />, {
+      deviceLanguages: ['nl'],
+    });
+    act(() => view.engine.scene('paired-ready'));
+    const strip = screen.getByTestId('status-strip');
+    expect(
+      [...strip.children].map((child) => child.getAttribute('data-testid') ?? child.textContent),
+    ).toEqual(['match-label', 'Wachten op Go live', nl['stream.advisory.shed']]);
+  });
+
+  // Q4 A: the line may take two lines, and the strip holds that height so the caption under it
+  // does not jump when the line wraps. 2 × the body role's 22 sp line.
+  it('holds two lines of height for the status line', () => {
+    renderWithPorts(<StatusStrip line="Live." advisory={null} />);
+    expect(getComputedStyle(screen.getByText('Live.')).minHeight).toBe('44px');
+  });
+
+  it('is the surface colour, in the flow: not drawn over the shot', () => {
+    renderWithPorts(<StatusStrip line="Live." advisory={null} />);
+    const style = getComputedStyle(screen.getByTestId('status-strip'));
     expect(style.backgroundColor).toBe(paintOf(TOKEN.surface));
+    expect(style.position).not.toBe('absolute');
+  });
+});
+
+/**
+ * Home's status line, which the strip's variant must leave as it was: the `status` role (13.5 sp), up
+ * to three lines, and the height of three of them reserved (3 × 19 = 57) so the controls below do not move.
+ */
+describe('StatusLine', () => {
+  it('is the status role at three lines with 57 dp reserved, unless told otherwise (Home)', () => {
+    render(<StatusLine>One sentence.</StatusLine>);
+    const style = getComputedStyle(screen.getByText('One sentence.'));
+    expect(style.fontSize).toBe('13.5px');
+    expect(style.minHeight).toBe('57px');
+    expect(style.getPropertyValue('-webkit-line-clamp')).toBe('3');
+  });
+
+  it('takes the body role and its own line count for the strip', () => {
+    render(
+      <StatusLine variant="body" numberOfLines={2}>
+        One sentence.
+      </StatusLine>,
+    );
+    const style = getComputedStyle(screen.getByText('One sentence.'));
+    expect(style.fontSize).toBe('15px');
+    expect(style.minHeight).toBe('44px');
+    expect(style.getPropertyValue('-webkit-line-clamp')).toBe('2');
   });
 });

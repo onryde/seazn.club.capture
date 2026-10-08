@@ -15,6 +15,8 @@ import {
   selectHeldSlot,
   selectHeldTokenTag,
   selectAutomaticOn,
+  selectBroadcastHeld,
+  selectCodeEndedPending,
   selectDestination,
   selectEndReason,
   selectHoldsOrientation,
@@ -114,6 +116,48 @@ describe('selectHoldsOrientation', () => {
     [{ kind: 'ended', reason: 'fatal-error', durationMs: null }, false],
   ])('%j holds the lock: %s', (state, holds) => {
     expect(selectHoldsOrientation(snapshot(state))).toBe(holds);
+  });
+});
+
+describe('selectBroadcastHeld', () => {
+  // Q3 (owner) + F16: Home and Settings turn unless a broadcast is held. Paired and Pairing hold no broadcast and
+  // no open camera once the viewfinder is covered, so only Arming onward holds. Written per state kind, from the
+  // phase table in BridgeCore (`phase.holdsBroadcast`), never from the selector.
+  const STATES: readonly (readonly [SessionState, boolean])[] = [
+    [{ kind: 'idle' }, false],
+    [PAIRING, false],
+    [PAIRED, false],
+    [ARMING, true],
+    [ARMED, true],
+    [{ kind: 'connecting', transport: 'srt' }, true],
+    [{ kind: 'publishing', transport: 'srt', sinceEpochMs: 1 }, true],
+    [{ kind: 'degraded', transport: 'rtmps', reason: 'poor-uplink', sinceEpochMs: 1 }, true],
+    [
+      {
+        kind: 'reconnecting',
+        cause: 'uplink-lost',
+        holdRemainingSeconds: 30,
+        holdWindowSeconds: 183,
+        sinceEpochMs: 1,
+      },
+      true,
+    ],
+    [{ kind: 'ended', reason: 'operator-stopped', durationMs: null }, false],
+    [{ kind: 'ended', reason: 'fatal-error', durationMs: null }, false],
+  ];
+
+  it.each(STATES)('%j holds a broadcast: %s', (state, held) => {
+    expect(selectBroadcastHeld(snapshot(state))).toBe(held);
+  });
+
+  it('differs from the orientation hold exactly at Pairing and Paired, and nowhere else', () => {
+    const differing = STATES.filter(
+      ([state]) => selectBroadcastHeld(snapshot(state)) !== selectHoldsOrientation(snapshot(state)),
+    ).map(([state]) => state.kind);
+    expect(differing).toEqual(['pairing', 'paired']);
+    // Anti-vacuity: every kind of the state union is in the table (ten kinds, eleven states).
+    expect(new Set(STATES.map(([state]) => state.kind)).size).toBe(10);
+    expect(STATES).toHaveLength(11);
   });
 });
 
@@ -320,10 +364,10 @@ describe('no reading is null, never zero (plan B reports null off air)', () => {
 });
 
 /**
- * Spec §4: six segments, orange below the floor. A segment lights once the
- * level reaches into its sixth of 0..1, so any sound at all shows: with
- * AUDIO_FLOOR at 0.05, a faint mic is one (orange) segment, never an empty
- * meter beside a green sound chip.
+ * Spec §4: six segments. A segment lights once the level reaches into its
+ * sixth of 0..1, so any sound at all shows: a faint mic is one segment, never
+ * an empty meter beside a ready mic chip. The segments' colour is the mic's
+ * availability, not the level (Hud.test.tsx).
  */
 describe('selectMeterSegments', () => {
   it('has six segments', () => {
@@ -345,4 +389,20 @@ describe('selectMeterSegments', () => {
   ])('level %d lights %i', (audioLevel, lit) => {
     expect(selectMeterSegments(snapshot(LIVE, { audioLevel }))).toBe(lit);
   });
+});
+
+/**
+ * Spec §5, F14 a: the Stream ended card says the code has ended when the Ended snapshot still carries the 401
+ * deferral. The flag is the snapshot's own, read as it is in every state.
+ */
+describe('selectCodeEndedPending', () => {
+  const ENDED: SessionState = { kind: 'ended', reason: 'operator-stopped', durationMs: 1 };
+
+  it.each<[SessionState]>([[{ kind: 'idle' }], [PAIRED], [LIVE], [ENDED]])(
+    'reads the flag as the snapshot has it, in %j',
+    (state) => {
+      expect(selectCodeEndedPending({ ...snapshot(state), codeEndedPending: true })).toBe(true);
+      expect(selectCodeEndedPending({ ...snapshot(state), codeEndedPending: false })).toBe(false);
+    },
+  );
 });

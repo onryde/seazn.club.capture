@@ -11,7 +11,7 @@ import { wrapperFor } from './renderWithPorts';
 const LEAVE_ON_AIR = 'Stop the broadcast first — hold Stop.';
 
 /** The stream stack as Expo Router keeps it: the viewfinder stays mounted under a pushed sub-screen. */
-async function renderStack(subScreen: ReactElement, link: string) {
+async function renderStack(subScreen: ReactElement, link: 'Settings') {
   const fakes = createFakePorts({
     kvSeed: {
       [STORE_KEYS.active]: 'stream',
@@ -40,10 +40,7 @@ async function renderStack(subScreen: ReactElement, link: string) {
  * first, even under a sub-screen; it answers only off a named sub-route. Run
  * by each sub-screen's own suite, so each one's Back is proven on its own.
  */
-export function describeBackFromSubScreen(
-  link: 'Settings' | 'Diagnostics',
-  subScreen: ReactElement,
-) {
+export function describeBackFromSubScreen(link: 'Settings', subScreen: ReactElement) {
   describe(`Back between the viewfinder and ${link} (M21)`, () => {
     it('a state change underneath, then Back, returns to the camera without leaving', async () => {
       const view = await renderStack(subScreen, link);

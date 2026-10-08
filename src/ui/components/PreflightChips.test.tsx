@@ -1,8 +1,10 @@
-import { render, screen } from '@testing-library/react';
+import { act, render, screen, within } from '@testing-library/react';
 import { StyleSheet, View, type ViewStyle } from 'react-native';
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import en from '@/i18n/en.json';
 import { PreflightChips } from '@/ui/components/PreflightChips';
-import { colour } from '@/ui/theme/tokens';
+import { colour, layout } from '@/ui/theme/tokens';
+import { renderViewfinder } from '../../../test/renderViewfinder';
 import { renderWithPorts } from '../../../test/renderWithPorts';
 
 const GREEN = { camera: true, network: true, sound: true };
@@ -26,7 +28,7 @@ describe('PreflightChips (spec §1)', () => {
   it('names every chip and whether it is ready', () => {
     renderWithPorts(<PreflightChips preflight={{ ...GREEN, sound: false }} {...QUIET} />);
     expect(screen.getByLabelText('Camera: ready')).toBeTruthy();
-    expect(screen.getByLabelText('Sound: not ready')).toBeTruthy();
+    expect(screen.getByLabelText('Mic: not ready')).toBeTruthy();
     expect(screen.getByLabelText('Network: ready')).toBeTruthy();
   });
 
@@ -37,7 +39,7 @@ describe('PreflightChips (spec §1)', () => {
     const labels = [...view.container.querySelectorAll('[aria-label]')].map((chip) =>
       chip.getAttribute('aria-label'),
     );
-    expect(labels).toEqual(['Camera: ready', 'Sound: ready', 'Network: ready']);
+    expect(labels).toEqual(['Camera: ready', 'Mic: ready', 'Network: ready']);
   });
 
   it('borders a ready chip lime and a chip that is not ready orange', () => {
@@ -68,7 +70,7 @@ describe('PreflightChips (spec §1)', () => {
     const labels = [...view.container.querySelectorAll('[aria-label]')].map((chip) =>
       chip.getAttribute('aria-label'),
     );
-    expect(labels).toEqual(['Camera: ready', 'Sound: ready', 'Network: ready']);
+    expect(labels).toEqual(['Camera: ready', 'Mic: ready', 'Network: ready']);
   });
 
   it('says when it starts under the chips, and nothing without a scheduled start', () => {
@@ -79,12 +81,138 @@ describe('PreflightChips (spec §1)', () => {
     rerender(<PreflightChips preflight={GREEN} auto={false} startsAt={null} />);
     expect(screen.queryByText(/^Starts/)).toBeNull();
   });
+});
 
+/**
+ * Spec §3 and the canvas: the chips are icons. Each row is a chip, whether it is ready, and what it
+ * draws then: a camera that is not ready gains a slash, and the other two never do. The glyph is
+ * ink in both states; only the 2 dp outline carries the state, lime ready and caution-orange not
+ * (`outline` names the TOKEN it is compared to). Written out from the spec, not read from the
+ * component.
+ */
+const ICON_CASES = [
+  ['camera', 'Camera', true, 'camera', false, 'ok'],
+  ['camera', 'Camera', false, 'camera', true, 'off'],
+  ['sound', 'Mic', true, 'mic', false, 'ok'],
+  ['sound', 'Mic', false, 'mic', false, 'off'],
+  ['network', 'Network', true, 'network', false, 'ok'],
+  ['network', 'Network', false, 'network', false, 'off'],
+] as const;
+let iconCasesRun = 0;
+
+describe('PreflightChips are icons (spec §3)', () => {
+  it.each(ICON_CASES)(
+    '%s chip (%s), ready=%s: the %s glyph in ink, slashed=%s, outlined %s',
+    (chip, word, ok, glyph, slashed, outline) => {
+      renderWithPorts(<PreflightChips preflight={{ ...GREEN, [chip]: ok }} {...QUIET} />);
+      const box = screen.getByLabelText(`${word}: ${ok ? 'ready' : 'not ready'}`);
+      const drawn = within(box).getByTestId('glyph');
+      expect(drawn.dataset.name).toBe(glyph);
+      expect(drawn.dataset.slashed).toBe(String(slashed));
+      // The glyph is the same ink ready or not; the state is the outline's (the canvas).
+      expect(drawn.dataset.tone).toBe('ink');
+      const style = getComputedStyle(box);
+      expect([style.width, style.height, style.borderTopWidth]).toEqual([
+        `${layout.chip}px`,
+        `${layout.chip}px`,
+        `${layout.chipBorder}px`,
+      ]);
+      expect(style.borderTopColor).toBe(borderOf(TOKEN[outline]));
+      // Square: the canvas gives the readiness chips no radius.
+      expect(parseFloat(style.borderTopLeftRadius || '0')).toBe(0);
+      iconCasesRun += 1;
+    },
+  );
+
+  it('ran all six chip and state cases (anti-vacuity)', () => {
+    expect(ICON_CASES).toHaveLength(6);
+    expect(iconCasesRun).toBe(6);
+  });
+
+  it('is 44 dp square with a 2 dp outline, the numbers spec §3 and the board give', () => {
+    expect(layout.chip).toBe(44);
+    expect(layout.chipBorder).toBe(2);
+  });
+
+  it('draws no word on a readiness chip: the name is for a screen reader alone', () => {
+    renderWithPorts(<PreflightChips preflight={GREEN} {...QUIET} />);
+    for (const word of ['Camera', 'Mic', 'Network']) expect(screen.queryByText(word)).toBeNull();
+    expect(screen.getAllByTestId('glyph')).toHaveLength(3);
+  });
+
+  it('spaces the chips 8 dp apart, as the canvas does', () => {
+    renderWithPorts(<PreflightChips preflight={GREEN} auto={true} startsAt={null} />);
+    expect(getComputedStyle(screen.getByTestId('chip-row')).gap).toBe('8px');
+  });
+
+  it('keeps AUTO a word chip, 44 dp tall, square and lime outlined like the chips beside it', () => {
+    renderWithPorts(<PreflightChips preflight={GREEN} auto={true} startsAt={null} />);
+    const auto = screen.getByText('Auto').parentElement as HTMLElement;
+    const style = getComputedStyle(auto);
+    expect(style.height).toBe(`${layout.chip}px`);
+    expect(style.borderTopWidth).toBe(`${layout.chipBorder}px`);
+    expect(style.borderTopColor).toBe(borderOf(TOKEN.ok));
+    expect(parseFloat(style.borderTopLeftRadius || '0')).toBe(0);
+    // A word, not an icon: no glyph inside it, and three glyphs in the row beside it.
+    expect(within(auto).queryByTestId('glyph')).toBeNull();
+    expect(screen.getAllByTestId('glyph')).toHaveLength(3);
+  });
+
+  // D14 (F18): the start line is under the chip row, not a chip in it, and the fit counts the row as 44 dp.
+  it('keeps the AUTO start line under the chip row, not inside it (D14)', () => {
+    renderWithPorts(<PreflightChips preflight={GREEN} auto={true} startsAt="14:32" />);
+    const row = screen.getByTestId('chip-row');
+    const start = screen.getByText('Starts 14:32');
+    expect(row.contains(start)).toBe(false);
+    expect((row.compareDocumentPosition(start) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0).toBe(
+      true,
+    );
+    expect(within(row).getByText('Auto')).toBeTruthy();
+  });
+});
+
+/** The chips follow native's verdict: a call takes the mic and gives it back, and the chip follows both ways. */
+describe('PreflightChips follow the engine (spec §3, §4)', () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  // The old pre-flight had a fourth, held; it has no chip (§3), and its blocker text sits by Go live.
+  it('names exactly three chips with Go live blocked by a phone not held sideways: Held has none', async () => {
+    const view = await renderViewfinder();
+    act(() => view.engine.setReady({ held: false }));
+    expect(screen.getByTestId('tally-plate').textContent).toBe('Not ready');
+    expect(screen.getByText(en['stream.blocker.held'])).toBeTruthy();
+    expect(screen.getAllByLabelText(/: (ready|not ready)$/)).toHaveLength(3);
+  });
+
+  it('the mic chip goes ready, not ready while the call lasts, then ready again, in name and in outline', async () => {
+    const view = await renderViewfinder();
+    const mic = (label: string) => screen.getByLabelText(label);
+    const outline = (label: string) => getComputedStyle(mic(label)).borderTopColor;
+    expect(outline('Mic: ready')).toBe(borderOf(TOKEN.ok));
+
+    act(() => view.engine.setReady({ sound: false }));
+    expect(screen.queryByLabelText('Mic: ready')).toBeNull();
+    expect(outline('Mic: not ready')).toBe(borderOf(TOKEN.off));
+    // The glyph stays ink; the outline alone moved.
+    expect(within(mic('Mic: not ready')).getByTestId('glyph').dataset.tone).toBe('ink');
+
+    act(() => view.engine.setReady({ sound: true }));
+    expect(screen.queryByLabelText('Mic: not ready')).toBeNull();
+    expect(outline('Mic: ready')).toBe(borderOf(TOKEN.ok));
+    expect(within(mic('Mic: ready')).getByTestId('glyph').dataset.tone).toBe('ink');
+    // The other two never moved.
+    expect(screen.getByLabelText('Camera: ready')).toBeTruthy();
+    expect(screen.getByLabelText('Network: ready')).toBeTruthy();
+  });
+});
+
+describe('PreflightChips speak (spec §3)', () => {
   it('speaks the operator’s language', () => {
     renderWithPorts(<PreflightChips preflight={{ ...GREEN, sound: false }} {...QUIET} />, {
       deviceLanguages: ['fr'],
     });
-    expect(screen.getByLabelText('Son : en attente')).toBeTruthy();
+    expect(screen.getByLabelText('Micro : en attente')).toBeTruthy();
     expect(screen.getByLabelText('Caméra : OK')).toBeTruthy();
   });
 });

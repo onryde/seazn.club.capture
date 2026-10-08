@@ -83,7 +83,7 @@ object Configs {
     )
 
   /** Every check passes, held with the top to the operator's left. */
-  val READY = Readiness(cameraFrames = true, audioPeak = 0.4, pose = Pose.Held(Side.LEFT))
+  val READY = Readiness(cameraFrames = true, micAvailable = true, pose = Pose.Held(Side.LEFT))
 
   fun waiting(pollSeconds: Int = 10, destinationName: String? = "YouTube · Example Town CC", autoAllowed: Boolean = true) =
     WaitingFields(

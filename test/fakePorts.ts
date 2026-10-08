@@ -13,11 +13,11 @@ import type {
   SharePort,
   SplashPort,
 } from '@/services/devicePorts';
+import { createEndedNotice } from '@/services/endedNotice';
 import { createFakeCodePort, type FakeCodePort } from '@/services/fakeCodePort';
 import { createMemoryKeyValueStore, type MemoryKeyValueStore } from '@/services/KeyValueStore';
 import { createLogger } from '@/services/logger';
 import { createModeStore } from '@/services/modeStore';
-import { createHomeIntent } from '@/services/homeIntent';
 import { createProbeFlight } from '@/services/probeFlight';
 import { createScanFlight } from '@/services/scanFlight';
 import { createRingRecord, parseRecordLine, type SessionRecord } from '@/services/sessionRecord';
@@ -90,7 +90,7 @@ export function createFakePorts(
     modeStore: createModeStore(kv),
     scanFlight: createScanFlight(),
     probeFlight: createProbeFlight(),
-    homeIntent: createHomeIntent(),
+    endedNotice: createEndedNotice(),
     streamSettings: createStreamSettingsStore(kv, logger),
     clock: () => now,
     hosts: ['stg.seazn.club'],

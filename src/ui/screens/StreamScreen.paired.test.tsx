@@ -55,14 +55,17 @@ describe('the paired viewfinder (spec §1)', () => {
     // en['stream.status.waitingGoLive'] with FAKE_PAIRING's destination, written out.
     expect(screen.getByText(WAITING)).toBeTruthy();
     expect(screen.getByLabelText('Camera: ready')).toBeTruthy();
-    expect(screen.getByLabelText('Sound: ready')).toBeTruthy();
+    expect(screen.getByLabelText('Mic: ready')).toBeTruthy();
     expect(screen.getByLabelText('Network: ready')).toBeTruthy();
     // The fake's pairing allows automatic mode, and the scan sent the switch on.
     expect(screen.getByText(en['stream.chip.auto'])).toBeTruthy();
     // The code chip and "Go live by" went with the go-live deadline (amendment §2).
     expect(screen.queryByLabelText(/^Code:/)).toBeNull();
     expect(screen.queryByText(/Go live by/)).toBeNull();
-    expect(screen.getByText('Seazn XI v Fake CC')).toBeTruthy();
+    // Spec §2: the strip's label is one accessible name, the label as typed, split into its sides on screen.
+    expect(screen.getByLabelText('Seazn XI v Fake CC').getAttribute('data-testid')).toBe(
+      'match-label',
+    );
   });
 
   it('starts once after a full 3 s hold on Go live', async () => {
@@ -77,7 +80,7 @@ describe('the paired viewfinder (spec §1)', () => {
   it.each([
     ['camera', 'Camera', 'Camera not ready'],
     ['network', 'Network', 'No network'],
-    ['sound', 'Sound', 'No sound'],
+    ['sound', 'Mic', 'Mic not available'],
   ] as const)(
     'blocks Go live when native says %s is not ready, and says why at the control',
     async (check, chip, reason) => {
@@ -103,7 +106,7 @@ describe('the paired viewfinder (spec §1)', () => {
     expect(screen.getByText(en['stream.blocker.held'])).toBeTruthy();
     expect(screen.getByText(WAITING)).toBeTruthy();
     expect(screen.getByLabelText('Camera: ready')).toBeTruthy();
-    expect(screen.getByLabelText('Sound: ready')).toBeTruthy();
+    expect(screen.getByLabelText('Mic: ready')).toBeTruthy();
     expect(screen.getByLabelText('Network: ready')).toBeTruthy();
     pressIn(goLive());
     act(() => vi.advanceTimersByTime(HOLD_MS));
@@ -258,7 +261,7 @@ describe('the score preview while paired', () => {
 
   // Final review I-2: no overlay URL is the server's "not entitled" (spec :61,
   // :400), not a failure: no caption at all, no warn, one info line.
-  it('says nothing on the top strip when the org is not entitled to an overlay', async () => {
+  it('says nothing on the status strip when the org is not entitled to an overlay', async () => {
     const view = await renderViewfinder(
       {},
       { prepare: (fakes) => fakes.engine.setPairing({ overlayUrl: null }) },

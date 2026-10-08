@@ -57,8 +57,9 @@ Home is the only screen outside a mode: three tiles, a Continue card when a
 mode can be resumed, and the language picker. Scanning is the phone's own
 code scanner, not a screen of ours.
 
-**Live Stream** keeps the five-screen shape of its own: **Scan** → **Paired** →
-**Live** (HUD) → **Settings** → **Diagnostics**. A stream code pairs the phone
+**Live Stream** keeps the four-screen shape of its own: **Scan** → **Paired** →
+**Live** (HUD) → **Settings**, with Diagnostics as a card inside Settings
+(2026-10-06 design follow-up §6). A stream code pairs the phone
 once and serves every Go live of the match (A1, A5). S1 designs those screens.
 (Scan is now Home's Live Stream tile plus the system scanner, not a screen,
 and S1 redraws this list.)
@@ -195,10 +196,13 @@ Three rules travel with these tokens:
   do not "correct" it.
 
 - **Barlow Condensed** for display — state word, actions, titles, and the
-  elapsed clock — always uppercase and letterspaced, which is the house
-  convention (`.app-display`, `.page-title`). Condensed also fits more legible
-  characters into a 150px column than a normal grotesk.
-- **Geist** for body text and labels.
+  elapsed clock — uppercase and letterspaced, which is the house convention
+  (`.app-display`, `.page-title`). The one exception is the player and team
+  names in the match label: Barlow Condensed 600, mixed case, as the organiser
+  typed them (design of record, canvas v23; follow-up spec §2). Condensed also
+  fits more legible characters into a narrow column than a normal grotesk.
+- **Geist** for body text and for item labels (a Diagnostics item, a control's
+  name). The match label is display type, not a Geist label.
 - **Geist Mono for numerals in tables** — Diagnostics values — where tabular
   figures matter and the column is not the constraint.
 - Numbers that must not twitch as they change use `tabular-nums`, whichever
@@ -211,9 +215,11 @@ Three rules travel with these tokens:
 
 ## 6. UI rules
 
-- **Live Stream is landscape, either way round; everything else is
-  portrait** (ruling 4). P4 still holds inside Live Stream. The encoded
-  orientation is the side the phone is held, read from the accelerometer, never
+- **Live Stream's viewfinder is landscape, either way round; Home and
+  Settings follow the phone** (ruling 4, amended by the 2026-10-06 design
+  follow-up §7). While a broadcast is held the lock never moves, Settings
+  included. P4 still holds inside Live Stream. The encoded orientation is the
+  side the phone is held, read from the accelerometer, never
   the screen's rotation (A11). The app never rotates text the operator is not
   yet holding the right way: a turn card covers the app until the phone
   matches, read from the accelerometer. The card is a phone outline turning to
@@ -223,11 +229,10 @@ Three rules travel with these tokens:
   session is armed or live, when the lock never moves under the camera. A phone
   lying flat is never blocked by the card; Go live still waits until the phone
   is held sideways (A11).
-- Full-bleed preview. Controls live in the side gutters, never over the middle
-  third — that is the shot being framed. Advisory text (device conditions, the
-  lock rule) rides a solid strip on the top or bottom **edge** of the stage,
-  which is the only thing ever drawn over the preview: the column is for what
-  the operator acts on, and it has no height to spare for prose.
+- The viewfinder is two halves (design follow-up §1): a 16:9 camera box with
+  the status strip below it, and the controls half. Nothing is drawn over the
+  camera box but the overlay and the _What viewers see_ video. Advisory text
+  rides the status strip, under the status line.
 - **Go Live and Stop are both 3-second holds, with a progress fill.** Product
   owner's call, 2026-09-11, replacing "Go Live is a tap, Stop is
   hold-to-confirm"; first set at 5 s and shortened to 3 s on 2026-09-12. The reason the asymmetry was wrong: at a ground the likely
@@ -245,18 +250,19 @@ Three rules travel with these tokens:
   instant the finger lands — there the hold *is* the feature, the thing that
   stops a billed preview running unattended (§7). Never put a confirmation delay
   on it.
-- Go Live enables only when _paired and ready_: camera running, audio above
-  the level floor, network reachable, phone held sideways, as native judges
-  it. The pre-flight is the safety, for every start, held or remote (A11).
-- **Settings and Diagnostics stay reachable in every state, live included.**
-  Mid-match is exactly when somebody needs Diagnostics, and hiding it on air
-  made the app least useful when it mattered most. Both screens carry a LIVE
-  plate beside the way back so the broadcast is never out of sight. The
+- Go Live enables only when _paired and ready_: camera running, the mic
+  available (a silent room is ready; design follow-up §4), network reachable,
+  phone held sideways, as native judges it. The pre-flight is the safety, for
+  every start, held or remote (A11).
+- **Settings, with its Diagnostics card, stays reachable in every state, live
+  included.** Mid-match is exactly when somebody needs Diagnostics, and hiding
+  it on air made the app least useful when it mattered most. Settings carries a
+  LIVE plate beside the way back so the broadcast is never out of sight. The
   protection belongs on the individual control, not the screen: a setting that
   would disturb a live broadcast is disabled while live with a one-line reason —
   the encode profile is the first one that will be. The named exception is
   Settings' automatic switch: it stays usable on air, because it only affects
-  the automatic stop (A4). They live inside the Live Stream route
+  the automatic stop (A4). It lives inside the Live Stream route
   (`app/stream/`), so on air it is only *leaving the mode* that is blocked:
   Home is hidden and Back says how to stop. A broadcast started remotely moves
   the app to Live Stream from wherever it is (A2).
@@ -338,7 +344,9 @@ thermal member. Only transport trouble degrades a session.
   the fake — armed, live, degraded, fell-back, uplink-lost, thermal-capped —
   and assert what the operator can see.
 - Assert an audio **level floor**, never stream presence. That is T1's mistake
-  and it is just as easy to make here.
+  and it is just as easy to make here. That applies to tests of the meter and
+  the pipeline. Readiness is not the level: a silent room is ready (design
+  follow-up §4).
 - Orientation gets three independent assertions: preview orientation, encoded
   orientation, rotation metadata. They fail separately (P4).
 - Detox covers scan→pair→live. The failures that matter — three-hour thermals,

@@ -7,9 +7,10 @@ import { colour, font } from '@/ui/theme/tokens';
  *
  * Display roles are uppercase and letterspaced, which is the web product's own
  * convention for Barlow Condensed (`.app-display` at 0.03em, `.page-title` at
- * 0.035em). Body roles stay sentence case in Geist.
+ * 0.035em); the match label's names are the one exception (`label`, AGENTS §5).
+ * Body roles stay sentence case in Geist.
  *
- * Everything is left-aligned: a 150px column would ragged badly centred, and
+ * Everything is left-aligned: a narrow column would ragged badly centred, and
  * numbers must share a left edge to be scannable at a glance.
  */
 export const typeScale = {
@@ -18,8 +19,9 @@ export const typeScale = {
    *
    * Barlow Condensed rather than Geist Mono: a mono's colon advance opened
    * visible gaps that broke `00:00` into three groups instead of one time, and
-   * condensed digits fit ~38px into the column's 118px of content where a mono
-   * capped out at 28px. `tabular-nums` is what keeps the digits from jittering
+   * condensed digits fit ~38px into the 150px column's 118px of content (the
+   * column this was sized in, before the controls half) where a mono capped out
+   * at 28px. `tabular-nums` is what keeps the digits from jittering
    * — the reason a mono was there in the first place.
    */
   elapsed: {
@@ -69,7 +71,7 @@ export const typeScale = {
     lineHeight: 18,
     color: colour.ink2,
   },
-  /** Condensed buys "HOLD TO STOP" on fewer lines in a 150px column. */
+  /** Condensed buys "HOLD TO STOP" on fewer lines in the controls half. */
   action: {
     fontFamily: font.displayBold,
     fontSize: 24,
@@ -83,7 +85,7 @@ export const typeScale = {
    * letterspacing as `action`, so a column holding "HOLD TO PREVIEW" above
    * "HOLD TO STOP" reads as one pair of controls rather than a link above a
    * button. Smaller because it is subordinate, and because 24px condensed sets
-   * "HOLD TO PREVIEW SCORE" on three lines in a 150px column.
+   * "HOLD TO PREVIEW SCORE" on three lines in the 150px column it was sized in.
    */
   actionSecondary: {
     fontFamily: font.displaySemibold,
@@ -92,6 +94,40 @@ export const typeScale = {
     letterSpacing: 0.6,
     textTransform: 'uppercase',
     color: colour.ink2,
+  },
+  /**
+   * Board "Settings": a Diagnostics section's name in its 84 dp column. Barlow Condensed
+   * 600, caps and letterspaced like `actionSecondary`, at 14 so the longest name in the
+   * four languages ("Verbinding") fits the column.
+   */
+  diagSection: {
+    fontFamily: font.displaySemibold,
+    fontSize: 14,
+    lineHeight: 16,
+    letterSpacing: 0.6,
+    textTransform: 'uppercase',
+    color: colour.ink2,
+  },
+  /**
+   * Board "Settings, landscape": a Diagnostics row's item, Geist 500 at 13 (the board's, in ink3 like
+   * `metricUnit`). 16 dp lines, so a row of `layout.diagRow` holds one.
+   */
+  diagLabel: {
+    fontFamily: font.bodyMedium,
+    fontSize: 13,
+    lineHeight: 16,
+    color: colour.ink3,
+  },
+  /**
+   * Board "Settings, landscape": a Diagnostics row's value, Geist Mono at 13 (the board's; the brief's 16/20
+   * came from the plan). Monospaced, so a value's width is its code points x 0.6 x 13 (settingsFit.test.ts
+   * measures every shipped one against its row).
+   */
+  diagValue: {
+    fontFamily: font.numeric,
+    fontSize: 13,
+    lineHeight: 16,
+    color: colour.ink,
   },
   status: {
     fontFamily: font.body,
@@ -112,6 +148,25 @@ export const typeScale = {
     fontSize: 15,
     lineHeight: 22,
     color: colour.ink2,
+  },
+  /**
+   * The match label in the status strip (spec §2): Barlow Condensed 600 at
+   * 20 sp. No caps or letterspacing, unlike the other display roles: §2 names
+   * the face and the size only, and its 26-character rule counts the names as
+   * the organiser typed them.
+   */
+  label: {
+    fontFamily: font.displaySemibold,
+    fontSize: 20,
+    lineHeight: 22,
+    color: colour.ink,
+  },
+  /** Spec §2: 17 sp when the longest line is over 26 characters; doubles too (Q4 option A). */
+  labelLong: {
+    fontFamily: font.displaySemibold,
+    fontSize: 17,
+    lineHeight: 19,
+    color: colour.ink,
   },
 } satisfies Record<string, TextStyle>;
 

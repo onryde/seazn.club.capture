@@ -112,11 +112,11 @@ describe('HoldAction (AGENTS §6: a 3 s hold, both ways)', () => {
   });
 
   it('never acts while disabled, and shows the reason', () => {
-    const hold = renderHold({ disabled: true, reason: 'No sound' });
+    const hold = renderHold({ disabled: true, reason: 'Mic not available' });
     pressIn(hold.button());
     act(() => vi.advanceTimersByTime(HOLD_MS));
     expect(hold.onHeld).not.toHaveBeenCalled();
-    expect(screen.getByText('No sound')).toBeTruthy();
+    expect(screen.getByText('Mic not available')).toBeTruthy();
   });
 
   it('tells a screen reader it is disabled, and says no reason when there is none', () => {
@@ -130,7 +130,7 @@ describe('HoldAction (AGENTS §6: a 3 s hold, both ways)', () => {
   });
 
   it('sets a disabled label in the inert ink, and an enabled one in cream', () => {
-    const hold = renderHold({ disabled: true, reason: 'No sound' });
+    const hold = renderHold({ disabled: true, reason: 'Mic not available' });
     expect(getComputedStyle(screen.getByText('Go live')).color).toBe(inkOf(LABEL.disabled));
     hold.rerender(<HoldAction {...hold.all} disabled={false} />);
     expect(getComputedStyle(screen.getByText('Go live')).color).toBe(inkOf(LABEL.enabled));

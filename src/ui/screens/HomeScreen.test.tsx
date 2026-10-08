@@ -914,35 +914,13 @@ describe('Home: Android Back closes what is open (R31)', () => {
   });
 });
 
-describe('Scan another (D24)', () => {
-  it('scans from the Live Stream tile once Home is ready, and only once', async () => {
-    // Asked before Home mounts, on a store still loading: the request waits for it (R12).
-    const home = createFakePorts();
-    home.ports.homeIntent.requestScan();
-    render(<HomeScreen />, { wrapper: wrapperFor(home) });
-    expect(home.scanner.scans).toBe(0);
-    await act(() => home.ports.modeStore.load());
-    await waitFor(() => expect(home.scanner.scans).toBe(1));
-    await waitFor(() => expect(home.ports.scanFlight.active()).toBe(false));
-    // M19: a fresh Home over the same ports, as the next visit would mount it.
-    cleanup();
-    render(<HomeScreen />, { wrapper: wrapperFor(home) });
-    await act(async () => undefined);
-    expect(home.scanner.scans).toBe(1);
-  });
-
-  it('does nothing when nobody asked', async () => {
+// Spec §5 removed Ended's Scan another, and with it the viewfinder's hand-off to Home (D24): Home scans only when the
+// operator taps. The card that replaced it is HomeScreen.ended.test.tsx's, with a new scan clearing it.
+describe('Home scans only on a tap', () => {
+  it('does not scan by itself, however long it sits ready', async () => {
     const home = await renderHome();
     await act(async () => undefined);
     expect(home.scanner.scans).toBe(0);
-  });
-
-  it('opens a stream code scanned on the hand-off, as a tap on the tile would', async () => {
-    const home = renderWithPorts(<HomeScreen />);
-    home.scanner.queue({ outcome: 'scanned', raw: streamRaw(IN_TWO_HOURS) });
-    home.ports.homeIntent.requestScan();
-    await act(() => home.ports.modeStore.load());
-    await waitFor(() => expect(home.navigation.current()).toBe('stream'));
   });
 });
 

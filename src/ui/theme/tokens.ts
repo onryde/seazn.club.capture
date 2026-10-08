@@ -89,9 +89,10 @@ export const plate = {
  * The product's own three faces, from `apps/web/src/app/globals.css`.
  *
  * Barlow Condensed is the display face (`.app-display`, `.page-title`,
- * `.mk-display`), always uppercase and letterspaced — the house convention,
- * and a scoreboard idiom. It also earns its place functionally here: condensed
- * fits noticeably more legible characters into a 150px column than a normal
+ * `.mk-display`), uppercase and letterspaced — the house convention, and a
+ * scoreboard idiom — except the match label's names, which are mixed case
+ * (AGENTS §5). It also earns its place functionally here: condensed fits
+ * noticeably more legible characters into a narrow column than a normal
  * grotesk.
  *
  * Geist carries body text. Geist Mono carries numerals only, never labels —
@@ -118,14 +119,85 @@ export const space = {
 } as const;
 
 /**
- * A correctly uncropped 720p preview is 16:9; a phone in landscape is roughly
- * 19.5:9. The column is the width that geometry leaves over, which is why it
- * never occludes the shot.
+ * The viewfinder is two equal halves (spec §1): the camera half holds a 16:9
+ * box, a correctly uncropped 720p preview, with the status strip under it; the
+ * controls half holds the rest. The box is as wide as its half where the screen
+ * is tall enough, and narrower where it is not (`cameraBoxSize`), so the strip
+ * gets what the phone's height leaves.
  */
 export const layout = {
-  columnWidth: 150,
   tallyStripe: 4,
   previewAspect: 16 / 9,
+  /** Spec §1: the hold button is 72 dp tall. */
+  holdHeight: 72,
+  /** Spec §3: readiness chips are 44 dp square. */
+  chip: 44,
+  /** Spec §3, the board's chip outline; today's PreflightChips border. */
+  chipBorder: 2,
+  /** Spec §3: icon-row buttons are 48 dp square. */
+  iconButton: 48,
+  /** The icon button's hairline outline, GhostButton's and the peek control's. */
+  iconBorder: 1,
+  /** Home's cards are outlined by a hairline: the Stream ended card's (spec §5). */
+  cardBorder: 1,
+  /** The tally plate's floor (TallyPlate), unchanged. */
+  plateHeight: 56,
+  /** AudioMeter's bar, unchanged. */
+  meterHeight: 12,
+  /** Board "Before": the controls half's padding and gap. */
+  controlsPad: 16,
+  controlsGap: 12,
+  /** Board "Before": the status strip's padding and gap (Q4 A: vertical 8, not the board's 10). */
+  stripPadV: 8,
+  stripPadH: 16,
+  stripGap: 6,
+  /** Lines the strip reserves: the label at most 4, the status line 2, the caption 2 (Q4). */
+  labelLinesMax: 4,
+  /** D17 (F9): a regular-size label is at most 2 lines, one a side, by the written assumption. */
+  labelLinesRegular: 2,
+  statusLinesMax: 2,
+  captionLinesMax: 2,
+  /** Board "Settings, landscape": the screen's vertical padding (the board's 12, under the portrait 16). */
+  settingsPadV: 12,
+  /** Spec §7: Home's title is the Seazn Club night logo, 200 × 70 (its 800 × 280 file's own 20:7). */
+  logo: { width: 200, height: 70 },
+  /** Q2 (owner, 2026-10-06): the logo is 160 × 56 in landscape, the board's "Home, landscape". */
+  logoLandscape: { width: 160, height: 56 },
+  /**
+   * The PNG's own empty left edge (63 of its 800 px), which the board hangs outside the column so the wordmark
+   * sits on the screen's margin: 16 at 200 wide, 12 at 160 (Main.dc.html, Home-landscape.dc.html).
+   */
+  logoInset: 16,
+  logoInsetLandscape: 12,
+  /** Board "Home, landscape": the screen's padding above and below (the sides are `space.md`) and the gap between its rows. */
+  homePadTop: 12,
+  homePadBottom: 16,
+  homeGap: 12,
+  /** Board "After-you-stopped-landscape": a card laid out as one row has 10 above and below and 12 at its end (16 at its start). */
+  rowCardPadV: 10,
+  rowCardPadEnd: 12,
+  /** ModeIcon's side: it is drawn this square, and the tile fit (homeFit.test.ts) reads it from here. */
+  modeIcon: 28,
+  /** The lines StatusLine reserves on Home (the `status` role's three), which the top row's fit reads from here. */
+  homeStatusLines: 3,
+  /**
+   * A Tile's padding in landscape (fix round 1, coordinator ruling): 12 against portrait's `space.md` 16, so that
+   * Continue alone, or the ended card alone, leaves the tiles room at 800 × 360 (homeFit.test.ts). Portrait is unchanged.
+   */
+  tileLandscapePad: 12,
+  /** Board "Settings": the Diagnostics card's section column (the section name sits in it). */
+  diagSection: 84,
+  /**
+   * A Diagnostics row's least height: the board's 24, cut to 22 so the card fits a 640 x 360 half (spec §6;
+   * settingsFit.test.ts). The tallest line in it is 16: the item, the value and the section name.
+   */
+  diagRow: 22,
+  /** Board "Settings": the Diagnostics card's side padding, and the gutter between its columns. */
+  diagPad: 12,
+  /** Board "Settings, landscape": the card's vertical padding (10; the portrait board's 12 is 4 dp taller). */
+  diagPadV: 10,
+  /** Board "Settings": the gap between the card's header row and its rows. */
+  diagGap: 6,
 } as const;
 
 /**

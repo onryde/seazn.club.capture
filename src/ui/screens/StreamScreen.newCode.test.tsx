@@ -28,6 +28,8 @@ const codeB = (): SavedCode =>
 const kinds = (fakes: FakePorts) => fakes.engine.intents.map((intent) => intent.kind);
 const plate = () => screen.getByTestId('tally-plate').textContent;
 const settle = () => act(() => vi.advanceTimersByTimeAsync(10));
+/** The status strip's match label (spec §2) is one accessible name: the label as the organiser typed it. */
+const labelled = (label: string) => screen.queryByLabelText(label)?.getAttribute('data-testid');
 
 /**
  * A newly scanned code's viewfinder reads native's pairing for it (amendment
@@ -44,8 +46,8 @@ describe('a newly paired code’s viewfinder', () => {
       {},
       { saved, prepare: (fakes) => fakes.engine.setPairing({ label: LABEL_B }) },
     );
-    expect(screen.getByText(LABEL_B)).toBeTruthy();
-    expect(screen.queryByText(LABEL_A)).toBeNull();
+    expect(labelled(LABEL_B)).toBe('match-label');
+    expect(labelled(LABEL_A)).toBeUndefined();
     expect(plate()).toBe('Ready');
   });
 
@@ -61,6 +63,6 @@ describe('a newly paired code’s viewfinder', () => {
     await settle();
     expect(kinds(view)).toEqual(['pair']);
     expect(plate()).toBe('Ready');
-    expect(screen.getByText(LABEL_A)).toBeTruthy();
+    expect(labelled(LABEL_A)).toBe('match-label');
   });
 });

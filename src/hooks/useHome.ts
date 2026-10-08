@@ -132,7 +132,6 @@ export function useHome(): { view: HomeView; actions: HomeActions } {
   const { openOrCheck, retryCheck } = useCodeCheck(openCode, panel, setPanel);
   const handle = useHandleScan(openOrCheck, setPanel, setStatusKey);
   const tapTile = useTapTile(handle, setPanel, setStatusKey);
-  useScanRequest(snapshot.status === 'ready', tapTile);
   const view = useHomeView(snapshot, panel, statusKey);
   const panelActions = usePanelActions(panel, tapTile, openOrCheck, setPanel);
   const continueStream = useContinue(setStatusKey, saveFailed);
@@ -283,7 +282,7 @@ function useTapTile(
   setPanel: SetPanel,
   setStatusKey: SetStatusKey,
 ): (mode: Mode) => void {
-  const { modeStore, scanner, scanFlight } = usePorts();
+  const { modeStore, scanner, scanFlight, endedNotice } = usePorts();
   return useCallback(
     (mode: Mode) => {
       // Ready first: a tap on a loading store must not raise the flag.
@@ -291,25 +290,16 @@ function useTapTile(
       if (!scanFlight.begin()) return;
       setPanel(null);
       setStatusKey(null);
+      // A new scan clears the Stream ended card (spec §5).
+      endedNotice.clear();
       modeStore.dismissNotices();
       void scanSafely(scanner)
         .then((result) => handle(mode, result))
         .catch(ignoreUnexpected)
         .finally(() => scanFlight.end());
     },
-    [modeStore, scanner, scanFlight, handle, setPanel, setStatusKey],
+    [modeStore, scanner, scanFlight, endedNotice, handle, setPanel, setStatusKey],
   );
-}
-
-/**
- * Takes Ended's "Scan another" hand-off (D24) once the store is ready (R12),
- * and scans from the Live Stream tile, under the tile's own scan flight.
- */
-function useScanRequest(ready: boolean, tapTile: (mode: Mode) => void): void {
-  const { homeIntent } = usePorts();
-  useEffect(() => {
-    if (ready && homeIntent.takeScan()) tapTile('stream');
-  }, [ready, homeIntent, tapTile]);
 }
 
 /**
@@ -470,7 +460,7 @@ function usePanelActions(
  * next launch expires it again.
  */
 function useContinue(setStatusKey: SetStatusKey, saveFailed: SaveFailed): () => void {
-  const { modeStore, navigation, clock, logger } = usePorts();
+  const { modeStore, navigation, clock, logger, endedNotice } = usePorts();
   const pair = usePairing();
   return useCallback(() => {
     const code = savedStream(modeStore);
@@ -490,13 +480,15 @@ function useContinue(setStatusKey: SetStatusKey, saveFailed: SaveFailed): () => 
       .then(
         () => {
           setStatusKey(null);
+          // D16 (F14 b): Continue re-pairs, so it is a new broadcast and the last one's card goes (spec §5).
+          endedNotice.clear();
           navigation.go('stream');
           pair(code, 'new');
         },
         () => saveFailed('continue'),
       )
       .catch(ignoreUnexpected);
-  }, [modeStore, navigation, clock, logger, pair, setStatusKey, saveFailed]);
+  }, [modeStore, navigation, clock, logger, endedNotice, pair, setStatusKey, saveFailed]);
 }
 
 /**

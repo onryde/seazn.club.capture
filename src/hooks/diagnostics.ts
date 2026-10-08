@@ -6,18 +6,21 @@ import type {
   ThermalStatus,
 } from '@/engine/CaptureEnginePort';
 import { UNREPORTED } from '@/engine/unreported';
+import { formatAge } from '@/i18n/formatAge';
 import { formatNumber } from '@/i18n/formatNumber';
 import type { MessageKey } from '@/i18n/messages';
 import type { Translator } from '@/i18n/translate';
 
-export type DiagnosticsRow = { readonly label: string; readonly value: string };
+/** `key` is the message the label was translated from: a row is picked by it, never by its text. */
+export type DiagnosticsRow = {
+  readonly key: MessageKey;
+  readonly label: string;
+  readonly value: string;
+};
 export type DiagnosticsSection = {
   readonly title: string;
   readonly rows: readonly DiagnosticsRow[];
 };
-
-/** How many session-record lines the screen shows; Share sends them all. */
-export const RECORD_TAIL = 20;
 
 /** The copy and the numbers, both in the operator's language. */
 type Say = { readonly t: Translator['t']; readonly num: (value: number) => string };
@@ -39,7 +42,7 @@ export function diagnosticsSections(
   const tel = snapshot.telemetry;
   const section = (title: MessageKey, pairs: readonly Pair[]): DiagnosticsSection => ({
     title: t(title),
-    rows: pairs.map(([label, value]) => ({ label: t(label), value })),
+    rows: pairs.map(([key, value]) => ({ key, label: t(key), value })),
   });
   return [
     section('diag.section.link', linkRows(snapshot, say)),
@@ -57,8 +60,8 @@ const unit = ({ t, num }: Say, key: MessageKey, value: number | null): string =>
  * `lastSentAtEpochMs`). An age is never below zero: a native time a moment
  * ahead of the phone's clock (an NTP step) reads 0, never Intl's "-0" (n1).
  */
-const secondsAgo = (say: Say, nowMs: number, atMs: number | null): string =>
-  unit(say, 'diag.unit.ago', atMs === null ? null : Math.max(0, (nowMs - atMs) / 1000));
+const secondsAgo = ({ t, num }: Say, nowMs: number, atMs: number | null): string =>
+  atMs === null ? t('diag.none') : formatAge((nowMs - atMs) / 1000, t, num);
 
 /**
  * The uplink. "Sending audio" is the encoded audio packet rate: audio leaving
@@ -69,9 +72,13 @@ function linkRows(snapshot: EngineSnapshot, say: Say): Pair[] {
   const { t, num } = say;
   const { state, telemetry: tel } = snapshot;
   const named = 'transport' in state ? state.transport.toUpperCase() : t('diag.none');
-  // A18: a broadcast planned RTMPS-only says so beside its transport; a fallback does not.
+  // A18: a broadcast planned RTMPS-only says so in its transport ("RTMPS only"); a fallback does not. Only
+  // with a transport to qualify: arming, armed and reconnecting name none, and "— only" says nothing.
+  // Short on purpose: it shares a row with its label (settingsFit.test.ts measures every language).
   const transport =
-    snapshot.broadcast?.srtOffered === false ? `${named} · ${t('diag.srtNotOffered')}` : named;
+    snapshot.broadcast?.srtOffered === false && 'transport' in state
+      ? t('diag.srtNotOffered', { transport: named })
+      : named;
   const { srt } = tel;
   return [
     ['diag.transport', transport],

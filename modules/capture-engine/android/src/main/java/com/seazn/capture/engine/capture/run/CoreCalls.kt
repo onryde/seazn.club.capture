@@ -10,6 +10,6 @@ class CoreCalls(
   val failure: (Throwable) -> Unit,
   val pairFailed: (PairRequest, Throwable) -> Unit,
   val cameraBusy: (PairRequest) -> Unit,
-  val readiness: (cameraFrames: Boolean, audioPeak: Double) -> Unit,
+  val readiness: (cameraFrames: Boolean, audioPeak: Double?) -> Unit,
   val line: (RecordEntry) -> Unit,
 )

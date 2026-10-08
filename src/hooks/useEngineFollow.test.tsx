@@ -92,7 +92,8 @@ describe('useEngineFollow: native’s word on the saved code', () => {
     expect(savedOf(fakes)).toEqual(code);
   });
 
-  it('forgets the code on the operator’s Stop, and stays on its Ended screen', async () => {
+  // Spec §5: the leave for Home is StreamScreen's (useEndedToHome), not the follow's, and no viewfinder is mounted here.
+  it('forgets the code on the operator’s Stop, and does not move the route itself', async () => {
     const fakes = await shell();
     act(() => fakes.engine.send({ kind: 'start' }));
     await flush(5_000);
@@ -129,6 +130,27 @@ describe('useEngineFollow: native’s word on the saved code', () => {
     act(() => pairCode(fakes.engine, code));
     await flush();
     expect(tap()).toBe(false);
+  });
+
+  // Ruling M-5: a fatal end over a code the server has ended (codeEndedPending) is as dead as the one the operator's
+  // Stop leaves, so the code is forgotten, not kept and marked tapToPair; its positive pair is the test above,
+  // where a fatal end WITHOUT the flag keeps the code and marks it.
+  it('forgets the code a fatal end over a 401 names, and marks nothing', async () => {
+    const fakes = await shell();
+    act(() => fakes.engine.send({ kind: 'start' }));
+    await flush(5_000);
+    act(() => fakes.engine.hear({ word: 'code-ended' }));
+    expect(fakes.engine.getSnapshot().codeEndedPending).toBe(true);
+    act(() =>
+      fakes.engine.forceState({ kind: 'ended', reason: 'fatal-error', durationMs: 754_000 }),
+    );
+    await flush();
+    expect(fakes.engine.getSnapshot().state).toMatchObject({
+      kind: 'ended',
+      reason: 'fatal-error',
+    });
+    expect(savedOf(fakes)).toBeUndefined();
+    expect(fakes.kv.entries.has(STORE_KEYS.code('stream'))).toBe(false);
   });
 
   it('leaves another code’s failure alone', async () => {
@@ -186,7 +208,7 @@ describe('useEngineFollow: the route follows a broadcast', () => {
     expect(fakes.navigation.current()).toBe('stream');
   });
 
-  it.each(['streamSettings', 'streamDiagnostics'] as const)(
+  it.each(['streamSettings'] as const)(
     'leaves %s where it is: it is inside Live Stream already (M22)',
     async (route) => {
       const fakes = await shell();
@@ -243,8 +265,7 @@ describe('useEngineFollow: the same code scanned again', () => {
     act(() => app.engine.send({ kind: 'stop' }));
     await flushApp();
     expect(app.kv.entries.has(STORE_KEYS.code('stream'))).toBe(false);
-    act(() => screen.getByRole('button', { name: 'Home' }).click());
-    await flushApp();
+    // Spec §5: the Stop leaves the viewfinder for Home by itself (no Home button to press on an Ended).
     expect(app.nav.current()).toBe('home');
     await scanFromHome(app, code.raw);
     await flushApp(3_000);

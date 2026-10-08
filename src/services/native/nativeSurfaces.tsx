@@ -13,7 +13,7 @@ import type { OverlayProps, Surfaces, VideoProps } from '@/services/surfaces';
 type WebViewPackage = typeof import('react-native-webview');
 type VideoPackage = typeof import('expo-video');
 
-/** The engine module's native preview view (Task 39), full-bleed. */
+/** The engine module's native preview view (Task 39); it fills its parent, the camera box. */
 export type PreviewView = ComponentType<{ style?: StyleProp<ViewStyle> }>;
 
 /**

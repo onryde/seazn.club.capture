@@ -1,11 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import type { CameraState, Telemetry } from '@/engine/CaptureEnginePort';
-import { createFakeCaptureEngine, type FakeScene } from '@/engine/FakeCaptureEngine';
+import { createFakeCaptureEngine, FAKE_SCENES, type FakeScene } from '@/engine/FakeCaptureEngine';
 import { PAIR } from '@/engine/testing/pairIntent';
 import { UNREPORTED } from '@/engine/unreported';
 import { diagnosticsSections } from '@/hooks/diagnostics';
 import en from '@/i18n/en.json';
-import type { Lang } from '@/i18n/language';
+import { LANGS, type Lang } from '@/i18n/language';
+import type { SessionState } from '@/domain/session/SessionState';
 import { createTranslator } from '@/i18n/translate';
 
 const NOW = Date.parse('2026-10-03T13:00:00Z');
@@ -64,6 +65,23 @@ describe('diagnosticsSections (spec §4)', () => {
     expect(titles).toEqual(['Link', 'Delivery', 'Phone', 'Heartbeat', 'Engine']);
   });
 
+  // Task 5: Settings' card picks its rows by key, never by translated text, so a row says which
+  // message it was made from. The count is the table above: 23 rows, each a distinct key.
+  it('gives every row the message key its label was translated from', () => {
+    const engine = createFakeCaptureEngine(() => NOW);
+    engine.scene('live');
+    const sections = diagnosticsSections(engine.getSnapshot(), NOW, createTranslator('en'));
+    engine.dispose();
+    const rows = sections.flatMap((section) => section.rows);
+    expect(rows).toHaveLength(23);
+    expect(new Set(rows.map((row) => row.key)).size).toBe(23);
+    for (const row of rows)
+      expect({ key: row.key, label: row.label }).toEqual({
+        key: row.key,
+        label: en[row.key],
+      });
+  });
+
   it('says what is unknown rather than inventing a number', () => {
     expect(rowsFor('fell-back')).toMatchObject({
       Transport: 'RTMPS',
@@ -110,7 +128,7 @@ describe('diagnosticsSections (spec §4)', () => {
       Charging: '—',
       Heat: '—',
       Checked: '—',
-      'Viewers receiving': 'Not checked yet',
+      'Viewers receiving': 'Unknown',
       'Last sent': '—',
       'Last result': '—',
       Failures: '0',
@@ -172,7 +190,7 @@ describe('diagnosticsSections (spec §4)', () => {
     ['en', { 'Behind live': '9.2 s', Checked: '1.5 s ago' }],
     ['es', { Retraso: '9,2 s', Comprobado: 'hace 1,5 s' }],
     ['fr', { Retard: '9,2 s', Vérifié: 'il y a 1,5 s' }],
-    ['nl', { Achterstand: '9,2 s', Gecontroleerd: '1,5 s geleden' }],
+    ['nl', { Achterstand: '9,2 s', Controle: '1,5 s geleden' }],
   ] as const)('writes decimals the %s way', (lang, expected) => {
     expect(rowsFor('live', {}, lang)).toMatchObject(expected);
   });
@@ -217,7 +235,7 @@ describe('diagnosticsSections (spec §4)', () => {
       Débit: '2840 kbps',
       Vidéo: '30 i/s',
       'Données utilisées': '312 Mo',
-      'Dernier envoi': 'il y a 4 s',
+      Envoyé: 'il y a 4 s',
       'Dernier rapport': 'il y a 0 s',
       'Lignes du journal refusées': '0',
       Batterie: '74 %',
@@ -232,9 +250,9 @@ describe('diagnosticsSections (spec §4)', () => {
     const sections = diagnosticsSections(snapshot, NOW, createTranslator('en'));
     const section = sections.find((s) => s.title === en['diag.section.engine']);
     expect(section?.rows).toEqual([
-      { label: en['diag.lastReport'], value: '4 s ago' },
-      { label: en['diag.recordRefused'], value: '2' },
-      { label: en['diag.recordDropped'], value: '1' },
+      { key: 'diag.lastReport', label: en['diag.lastReport'], value: '4 s ago' },
+      { key: 'diag.recordRefused', label: en['diag.recordRefused'], value: '2' },
+      { key: 'diag.recordDropped', label: en['diag.recordDropped'], value: '1' },
     ]);
     engine.dispose();
   });
@@ -243,20 +261,24 @@ describe('diagnosticsSections (spec §4)', () => {
   it('says it does not know when native has not reported yet', () => {
     const sections = diagnosticsSections(UNREPORTED, NOW, createTranslator('en'));
     const section = sections.find((s) => s.title === 'Engine');
-    expect(section?.rows[0]).toEqual({ label: 'Last report', value: '—' });
+    expect(section?.rows[0]).toEqual({ key: 'diag.lastReport', label: 'Last report', value: '—' });
   });
 
   // C4c-I4: silence reads as a climbing age; drift keeps it current (nativeCaptureEngine).
   it('reads a silent engine as a report long ago', () => {
     const snapshot = { ...UNREPORTED, reportedAtMs: NOW - 12_000 };
     const section = diagnosticsSections(snapshot, NOW, createTranslator('en')).at(-1);
-    expect(section?.rows[0]).toEqual({ label: 'Last report', value: '12 s ago' });
+    expect(section?.rows[0]).toEqual({
+      key: 'diag.lastReport',
+      label: 'Last report',
+      value: '12 s ago',
+    });
   });
 });
 
 describe('A18: SRT not offered (Diagnostics)', () => {
   /** A broadcast the fake held, on RTMPS, with SRT offered or not. */
-  function linkRows(srtOffered: boolean | null) {
+  function linkRows(srtOffered: boolean | null, lang: Lang = 'en') {
     const engine = createFakeCaptureEngine(() => NOW);
     engine.send(PAIR);
     engine.send({ kind: 'start' });
@@ -268,22 +290,116 @@ describe('A18: SRT not offered (Diagnostics)', () => {
       state: { kind: 'publishing' as const, transport: 'rtmps' as const, sinceEpochMs: NOW },
       broadcast: srtOffered === null ? null : { ...live.broadcast, srtOffered },
     };
-    return diagnosticsSections(rtmpsOnly, NOW, createTranslator('en'))[0];
+    return diagnosticsSections(rtmpsOnly, NOW, createTranslator(lang))[0];
   }
 
-  it('A18 a broadcast with no SRT offered says so beside its transport', () => {
+  // I-2: short enough for the Settings card's value track in every language (settingsFit.test.ts measures it).
+  it('A18 a broadcast with no SRT offered says RTMPS only', () => {
     expect(linkRows(false)?.rows[0]).toEqual({
+      key: 'diag.transport',
       label: en['diag.transport'],
-      value: 'RTMPS · SRT not offered',
+      value: 'RTMPS only',
     });
   });
 
+  it.each([
+    ['es', 'Solo RTMPS'],
+    ['fr', 'RTMPS seul'],
+    ['nl', 'Alleen RTMPS'],
+  ] as const)('A18 says it in %s as "%s"', (lang, value) => {
+    expect(linkRows(false, lang)?.rows[0]?.value).toBe(value);
+  });
+
   it('a fallback to RTMPS with SRT offered shows RTMPS alone', () => {
-    expect(linkRows(true)?.rows[0]).toEqual({ label: en['diag.transport'], value: 'RTMPS' });
+    expect(linkRows(true)?.rows[0]).toEqual({
+      key: 'diag.transport',
+      label: en['diag.transport'],
+      value: 'RTMPS',
+    });
   });
 
   // Question 2: no broadcast, no SRT line.
   it('says nothing of SRT with no broadcast', () => {
-    expect(linkRows(null)?.rows[0]).toEqual({ label: 'Transport', value: 'RTMPS' });
+    expect(linkRows(null)?.rows[0]).toEqual({
+      key: 'diag.transport',
+      label: 'Transport',
+      value: 'RTMPS',
+    });
+  });
+
+  // Round 2: before a transport is named (arming, armed, reconnecting) the name is the dash, and "only"
+  // qualifies a transport, not a dash: "— only" is a sentence about nothing.
+  const NO_TRANSPORT = {
+    arming: { kind: 'arming', cause: 'organiser', retrying: false },
+    armed: { kind: 'armed', cause: 'organiser', notReady: 'held' },
+    reconnecting: {
+      kind: 'reconnecting',
+      cause: 'video-stalled',
+      holdRemainingSeconds: 38,
+      holdWindowSeconds: 183,
+      sinceEpochMs: NOW,
+    },
+  } as const;
+
+  function transportIn(state: SessionState, lang: Lang, srtOffered = false) {
+    const engine = createFakeCaptureEngine(() => NOW);
+    engine.send(PAIR);
+    engine.send({ kind: 'start' });
+    const live = engine.getSnapshot();
+    engine.dispose();
+    if (live.broadcast === null) throw new Error('the fake holds no broadcast after a start');
+    const shown = { ...live, state, broadcast: { ...live.broadcast, srtOffered } };
+    return diagnosticsSections(shown, NOW, createTranslator(lang))[0]?.rows[0]?.value;
+  }
+
+  it.each(
+    Object.entries(NO_TRANSPORT).flatMap(([name, state]) =>
+      LANGS.map((lang) => [name, lang, state] as const),
+    ),
+  )('with %s and no SRT offered, %s shows the dash alone', (_name, lang, state) => {
+    expect(transportIn(state as SessionState, lang)).toBe('—');
+  });
+
+  // The positive pair: with a transport named, the same broadcast says "only".
+  it.each([
+    ['publishing', { kind: 'publishing', transport: 'rtmps', sinceEpochMs: NOW }],
+    [
+      'degraded',
+      { kind: 'degraded', transport: 'rtmps', reason: 'poor-uplink', sinceEpochMs: NOW },
+    ],
+  ] as const)('with %s and no SRT offered, it says RTMPS only', (_name, state) => {
+    expect(transportIn(state as SessionState, 'en')).toBe('RTMPS only');
+    expect(transportIn(state as SessionState, 'nl')).toBe('Alleen RTMPS');
+  });
+
+  // Every scene the fake can show, with SRT not offered: the value is the dash or a named transport,
+  // and never the dash inside a sentence.
+  it('never writes the dash inside "only", in any fake scene or language', () => {
+    let held = 0;
+    for (const lang of LANGS) {
+      for (const scene of FAKE_SCENES) {
+        const engine = createFakeCaptureEngine(() => NOW);
+        engine.scene(scene);
+        const snapshot = engine.getSnapshot();
+        engine.dispose();
+        if (snapshot.broadcast === null) continue;
+        const shown = { ...snapshot, broadcast: { ...snapshot.broadcast, srtOffered: false } };
+        const value =
+          diagnosticsSections(shown, NOW, createTranslator(lang))[0]?.rows[0]?.value ?? '';
+        expect({
+          lang,
+          scene,
+          value,
+          dashInSentence: value !== '—' && value.includes('—'),
+        }).toEqual({
+          lang,
+          scene,
+          value,
+          dashInSentence: false,
+        });
+        held += 1;
+      }
+    }
+    expect(held).toBeGreaterThan(4 * 5); // anti-vacuity: at least five scenes hold a broadcast
   });
 });
