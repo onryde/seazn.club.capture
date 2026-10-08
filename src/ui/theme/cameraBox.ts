@@ -25,12 +25,14 @@ export function cameraBoxSize(input: {
 }
 
 /**
- * The strip's reserve for a label that has been measured (owner, 2026-10-08, option A and "one single line all the
- * time"): the padding, the label at the height it really came out, one gap, and the one message line, a line of the
- * body role. The message is the caption when one is up and the status line otherwise, so there is no room reserved for
- * a second line: the picture is the same size for the whole match. It moves with the label's text and the half's size
- * (what the label wraps in), and with nothing else. A status line, a caption or the round line coming and going
- * changes none of its inputs; the round line takes the strip's free room, if there is any, and never the picture's.
+ * The strip's reserve for a label that has been measured (owner, 2026-10-08, option A, "one single line all the time"
+ * and the round line always shown, option B): the padding, the round line's slot (one line of metricUnit), a gap, the
+ * label at the height it really came out, a gap, and the one message line, a line of the body role. The message is the
+ * caption when one is up and the status line otherwise, so there is no room reserved for a second line: the picture is
+ * the same size for the whole match. The round line's slot is reserved whether or not this match has a stage label
+ * (controller ruling R1), so a stage arriving or going mid-match moves nothing; the cost is 22 dp of empty strip for a
+ * match with no stage. The reserve moves with the label's text and the half's size (what the label wraps in), and with
+ * nothing else. A status line, a caption or the round line coming and going changes none of its inputs.
  *
  * `labelHeight` is what `MatchLabel` reported: 0 is not measured yet (or the label is going), and so is anything that
  * is not a positive height. Then it is the worst case the strip can need, the larger of the label's two size rules, so
@@ -41,9 +43,10 @@ export function cameraBoxSize(input: {
  */
 export function stripReserve(labelHeight: number): number {
   const label = labelHeight > 0 ? labelHeight : WORST_LABEL;
-  return (
-    2 * layout.stripPadV + label + layout.stripGap + layout.messageLines * typeScale.body.lineHeight
-  );
+  const stage = layout.stageLines * typeScale.metricUnit.lineHeight;
+  const message = layout.messageLines * typeScale.body.lineHeight;
+  // The padding, then the round line, a gap, the label, a gap, the message line.
+  return 2 * layout.stripPadV + stage + layout.stripGap + label + layout.stripGap + message;
 }
 
 /**

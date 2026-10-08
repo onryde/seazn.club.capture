@@ -80,25 +80,29 @@ describe('cameraBoxSize', () => {
 });
 
 describe('STRIP_RESERVE', () => {
-  // Owner, 2026-10-08 ("one single line all the time"): the strip is the padding, the label at most 4 lines of 19 (76),
-  // one gap and ONE line of the body role (22): 2 x 8 + 76 + 6 + 22. There is no room for a second line: the caption
-  // and the status line share the one.
-  it('is 120: the strip at its worst, whatever the width', () => {
-    expect(STRIP_RESERVE).toBe(16 + 76 + 6 + 22);
-    expect(STRIP_RESERVE).toBe(120);
+  // Owner, 2026-10-08 ("one single line all the time", then the round line always shown, option B): the strip is the
+  // padding, the round line's slot (one line of metricUnit, 16), a gap, the label at most 4 lines of 19 (76), a gap and
+  // ONE line of the body role (22): 2 x 8 + 16 + 6 + 76 + 6 + 22. There is no room for a second message line: the
+  // caption and the status line share the one.
+  it('is 142: the strip at its worst, whatever the width, with the round line’s room in it', () => {
+    expect(STRIP_RESERVE).toBe(16 + 16 + 6 + 76 + 6 + 22);
+    expect(STRIP_RESERVE).toBe(142);
   });
 });
 
 // Owner, 2026-10-08, option A: the picture is sized from what THIS match's label needs, not from the strip's worst
-// case. The strip is the padding, the label as measured, one gap and the one message line (the caption when one is up,
-// else the status line; always one line, an ellipsis if it is longer). Every term but the label is a fixed
+// case. The strip is the padding, the round line's slot, a gap, the label as measured, a gap and the one message line
+// (the caption when one is up, else the status line; always one line, an ellipsis if it is longer). The round line is
+// ALWAYS shown (owner, option B) and its 22 dp (16 and a gap) are reserved whether or not this match has a stage, so the
+// picture does not move when a stage arrives or goes (controller ruling R1). Every term but the label is a fixed
 // reservation, so the reserve moves with the label alone.
 describe('stripReserve (the strip a measured label needs)', () => {
   // The terms, written out from the token and type declarations: not read from the module under test.
   const PAD = 2 * layout.stripPadV; // 16
+  const STAGE = layout.stageLines * typeScale.metricUnit.lineHeight; // 16: one line of metricUnit
   const MESSAGE = layout.messageLines * typeScale.body.lineHeight; // 22: one line of body
-  const GAP = layout.stripGap; // 6: label-message
-  const FIXED = PAD + MESSAGE + GAP;
+  const GAP = layout.stripGap; // 6: stage-label, and label-message
+  const FIXED = PAD + STAGE + MESSAGE + 2 * GAP;
 
   // [name, the label's lines, its height]: one regular line (Match 4), a short singles label (a line a side), and the
   // four lines of a long double at the long size.
@@ -108,43 +112,44 @@ describe('stripReserve (the strip a measured label needs)', () => {
     ['4 long lines', layout.labelLinesMax * typeScale.labelLong.lineHeight, 76],
   ] as const;
 
-  it('the fixed terms are 44 dp: 16 + 22 + 6, and the message is one line', () => {
+  it('the fixed terms are 66 dp: 16 + 16 + 22 + 6 + 6, one round line and one message line', () => {
     expect(layout.messageLines).toBe(1);
-    expect([PAD, MESSAGE, GAP]).toEqual([16, 22, 6]);
-    expect(FIXED).toBe(44);
+    expect(layout.stageLines).toBe(1);
+    expect([PAD, STAGE, MESSAGE, GAP]).toEqual([16, 16, 22, 6]);
+    expect(FIXED).toBe(66);
   });
 
-  it.each(LABELS)('%s: the reserve is the fixed 44 and the label, %d', (_name, height, literal) => {
+  it.each(LABELS)('%s: the reserve is the fixed 66 and the label, %d', (_name, height, literal) => {
     expect(height).toBe(literal);
     expect(stripReserve(height)).toBe(FIXED + height);
   });
 
-  it('is 66, 88 and 120 for one, two and four lines, written out by hand', () => {
-    expect(LABELS.map(([, height]) => stripReserve(height))).toEqual([66, 88, 120]);
+  it('is 88, 110 and 142 for one, two and four lines, written out by hand', () => {
+    expect(LABELS.map(([, height]) => stripReserve(height))).toEqual([88, 110, 142]);
   });
 
-  // Before the first measurement the strip is never short: the worst case, 120.
+  // Before the first measurement the strip is never short: the worst case, 142.
   it.each([
     ['not measured yet (0)', 0],
     ['a negative height', -1],
     ['not a number', Number.NaN],
-  ])('is the worst case, 120, for a label that is %s', (_name, height) => {
-    expect(stripReserve(height)).toBe(120);
+  ])('is the worst case, 142, for a label that is %s', (_name, height) => {
+    expect(stripReserve(height)).toBe(142);
     expect(stripReserve(height)).toBe(STRIP_RESERVE);
   });
 
-  it('the worst case is the four long lines: a measured label at its largest reserves the same 120', () => {
+  it('the worst case is the four long lines: a measured label at its largest reserves the same 142', () => {
     expect(stripReserve(76)).toBe(STRIP_RESERVE);
     expect(STRIP_RESERVE).toBe(FIXED + 76);
   });
 
   // A label measured TALLER than the worst case is taken as measured: the strip really is that tall (large system
-  // text), so the reserve is the label plus 44, 132 for 88 dp, and past the unmeasured 120. Only the label term
+  // text), so the reserve is the label plus 66, 154 for 88 dp, and past the unmeasured 142. Only the label term
   // follows the system's text size: the message line's 22 is a fixed reservation, so at a font scale over 1 that line
   // can still outgrow its room and overflow the strip. That is the strip's to bound, not this reserve's.
   it.each([
-    ['88 dp, a label past the four long lines', 88, 132],
-    ['120 dp, a label at a large system text size', 120, 164],
+    ['88 dp, a label past the four long lines', 88, 154],
+    ['120 dp, a label at a large system text size', 120, 186],
   ])('takes a measured label of %s as measured: the reserve is %d', (_name, height, reserve) => {
     expect(height).toBeGreaterThan(76);
     expect(stripReserve(height)).toBe(reserve);
@@ -152,9 +157,9 @@ describe('stripReserve (the strip a measured label needs)', () => {
     expect(stripReserve(height)).toBeGreaterThan(STRIP_RESERVE);
   });
 
-  // Swept, not sampled: every label height from 1 to 76 dp gives a reserve that is the label plus the same 44, and
+  // Swept, not sampled: every label height from 1 to 76 dp gives a reserve that is the label plus the same 66, and
   // never more than the worst case.
-  it('is the label plus 44 at every height from 1 to 76, and never over the worst case', () => {
+  it('is the label plus 66 at every height from 1 to 76, and never over the worst case', () => {
     let checked = 0;
     for (let height = 1; height <= 76; height += 1) {
       expect(stripReserve(height)).toBe(FIXED + height);
@@ -165,22 +170,23 @@ describe('stripReserve (the strip a measured label needs)', () => {
   });
 
   // [window, camera half, height, label, box width, box height]: worked by hand. The half is the window less the
-  // controls half's 310. A box is min(half x 9/16, height - the reserve): 1, 2 and 4 lines of label reserve 66, 88 and
-  // 120. 804 x 332 is the owner's phone as it really is (the app area is 332 tall with the Android status bar showing).
-  // Where the half limits (the half's 9/16 is the smaller) the box is the whole half: full width.
+  // controls half's 310. A box is min(half x 9/16, height - the reserve): 1, 2 and 4 lines of label reserve 88, 110 and
+  // 142. 804 x 332 is the owner's phone as it really is (the app area is 332 tall with the Android status bar showing).
+  // Where the half limits (the half's 9/16 is the smaller) the box is the whole half: full width. With the round line's
+  // room in the reserve (option B) that is 640 x 360 alone: 804 x 360 would need 278 + 88 = 366, and 915 x 412 340 + 88.
   const TABLE = [
     ['640 x 360, 1 line', 330, 360, 22, 330, 185.625],
     ['640 x 360, 2 lines', 330, 360, 44, 330, 185.625],
     ['640 x 360, 4 lines', 330, 360, 76, 330, 185.625],
-    ['804 x 332, 1 line', 494, 332, 22, 472.8888889, 266],
-    ['804 x 332, 2 lines', 494, 332, 44, 433.7777778, 244],
-    ['804 x 332, 4 lines', 494, 332, 76, 376.8888889, 212],
-    ['804 x 360, 1 line', 494, 360, 22, 494, 277.875],
-    ['804 x 360, 2 lines', 494, 360, 44, 483.5555556, 272],
-    ['804 x 360, 4 lines', 494, 360, 76, 426.6666667, 240],
-    ['915 x 412, 1 line', 605, 412, 22, 605, 340.3125],
-    ['915 x 412, 2 lines', 605, 412, 44, 576, 324],
-    ['915 x 412, 4 lines', 605, 412, 76, 519.1111111, 292],
+    ['804 x 332, 1 line', 494, 332, 22, 433.7777778, 244],
+    ['804 x 332, 2 lines', 494, 332, 44, 394.6666667, 222],
+    ['804 x 332, 4 lines', 494, 332, 76, 337.7777778, 190],
+    ['804 x 360, 1 line', 494, 360, 22, 483.5555556, 272],
+    ['804 x 360, 2 lines', 494, 360, 44, 444.4444444, 250],
+    ['804 x 360, 4 lines', 494, 360, 76, 387.5555556, 218],
+    ['915 x 412, 1 line', 605, 412, 22, 576, 324],
+    ['915 x 412, 2 lines', 605, 412, 44, 536.8888889, 302],
+    ['915 x 412, 4 lines', 605, 412, 76, 480, 270],
   ] as const;
 
   it.each(TABLE)('%s', (_name, halfWidth, height, label, width, boxHeight) => {
@@ -210,15 +216,14 @@ describe('stripReserve (the strip a measured label needs)', () => {
   });
 
   // Full width is the picture's target (owner, 2026-10-08): the box is the whole half whenever the half's 9/16 leaves
-  // the strip its reserve, and the rows above that are full width are exactly those.
+  // the strip its reserve, and the rows above that are full width are exactly those: with the round line's 22 dp
+  // reserved (option B) only the smallest window, 640 x 360, where the half holds a 185.6 box and the window leaves 218.
   it('is the whole half wherever the strip fits under it (full width), and narrower only where the window is short', () => {
     const full = TABLE.filter(([, half, , , width]) => Math.abs(width - half) < 1e-6);
     expect(full.map(([name]) => name)).toEqual([
       '640 x 360, 1 line',
       '640 x 360, 2 lines',
       '640 x 360, 4 lines',
-      '804 x 360, 1 line',
-      '915 x 412, 1 line',
     ]);
   });
 });

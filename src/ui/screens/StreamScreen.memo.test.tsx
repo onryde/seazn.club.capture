@@ -94,10 +94,10 @@ describe('the viewfinder re-renders only what changed', () => {
     act(() => view.engine.scene('holding'));
     layOut(screen.getByTestId('camera-half'), { width: 494, height: 332 });
     layOut(screen.getByTestId('match-label'), { width: 494 - 2 * layout.stripPadH, height: 44 });
-    // Sized: a two-line label (44) leaves the box 244 dp tall of the 332 (the owner's phone): the strip is 44 and the
-    // label, 88. The unmeasured one would be 212 tall (the strip's worst case, 120).
+    // Sized: a two-line label (44) leaves the box 222 dp tall of the 332 (the owner's phone): the strip is 66 and the
+    // label, 110. The unmeasured one would be 190 tall (the strip's worst case, 142).
     expect(parseFloat(getComputedStyle(screen.getByTestId('camera-box')).height)).toBeCloseTo(
-      244,
+      222,
       2,
     );
     const held = view.engine.getSnapshot().state;

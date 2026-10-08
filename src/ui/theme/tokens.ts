@@ -187,7 +187,7 @@ const base = {
    * never wrapped. stripTextFit.test.ts measures which of the four languages' strings that is at each width.
    */
   messageLines: 1,
-  /** Spec §2 round line: one line above the label. */
+  /** Spec §2 round line: one line above the label, always shown (owner, 2026-10-08, option B): in the strip's reserve. */
   stageLines: 1,
   /** Board "Settings, landscape": the screen's vertical padding (the board's 12, under the portrait 16). */
   settingsPadV: 12,
@@ -311,9 +311,9 @@ export function controlsHalfWidth(cells: ControlsCells): number {
  * controls half takes the width its content needs (`controlsHalf`) and the camera
  * half takes everything else. The picture in it is sized from this match's label,
  * as measured, and not from the strip's worst case (owner, 2026-10-08, option A;
- * `stripReserve`): a two-line label on an 804 × 360 phone gives a box of about
- * 375 × 211 where the worst case, which is what it is until the label has been
- * measured, gives 320 × 180.
+ * `stripReserve`, which holds the round line's room): a two-line label on an
+ * 804 × 360 phone gives a box of about 444 × 250 where the worst case, which is
+ * what it is until the label has been measured, gives 388 × 218.
  */
 export const layout = { ...base, controlsHalf: controlsHalfWidth(base) } as const;
 

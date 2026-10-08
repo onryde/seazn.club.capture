@@ -190,21 +190,29 @@ describe('our own camera coming back (camera ruling)', () => {
   beforeEach(() => vi.useFakeTimers());
   afterEach(() => vi.useRealTimers());
 
+  // The fake phone as it is (unplugged, so Not charging is active): the reopening line is URGENT (an interruption), so
+  // it keeps the strip's one message from the caption. Then it is the live line's turn, which is routine, so the phone is
+  // plugged in to read it and not the caption (the gate on the reopening line is what the first half of each proves).
   it('after another app lets go: Trouble, the reopening line, then Live at the first frame', async () => {
-    await onAir('camera-reopened', {}, { quiet: true });
+    const view = await onAir('camera-reopened');
     expect(plate()).toBe('Trouble');
     expect(screen.getByText(REOPENING)).toBeTruthy();
+    expect(screen.queryByText(NOT_CHARGING)).toBeNull();
     expect(screen.queryByText(/slate/)).toBeNull();
     act(() => vi.advanceTimersByTime(3000));
     expect(plate()).toBe('Live');
+    expect(screen.getByTestId('strip-message').textContent).toBe(NOT_CHARGING);
+    act(() => view.engine.patch({ charging: true }));
     expect(screen.getByText(LIVE_LINE)).toBeTruthy();
   });
 
   it('through the operator’s switch: still Live, the reopening line, then the live line', async () => {
-    await onAir('camera-switching', {}, { quiet: true });
+    const view = await onAir('camera-switching');
     expect(plate()).toBe('Live');
     expect(screen.getByText(REOPENING)).toBeTruthy();
+    expect(screen.queryByText(NOT_CHARGING)).toBeNull();
     act(() => vi.advanceTimersByTime(3000));
+    act(() => view.engine.patch({ charging: true }));
     expect(screen.getByText(LIVE_LINE)).toBeTruthy();
   });
 
@@ -327,8 +335,17 @@ describe('the score preview on air', () => {
     expect(screen.getByText(SHED)).toBeTruthy();
   });
 
+  // On air, where the line is routine and a caption can have the one message (before air every line is urgent).
   it('keeps the HUD whole when the overlay crashes, with a caption, not a plate', async () => {
-    await renderViewfinder({}, { prepare: (fakes) => fakes.surfaces.crashOverlay() });
+    await renderViewfinder(
+      {},
+      {
+        prepare: (fakes) => {
+          fakes.engine.scene('live');
+          fakes.surfaces.crashOverlay();
+        },
+      },
+    );
     expect(screen.getByText(OVERLAY_FAILED)).toBeTruthy();
     expect(screen.getByTestId('tally-plate')).toBeTruthy();
     expect(screen.queryByText('Something broke')).toBeNull();
@@ -352,11 +369,13 @@ describe('the score preview on air', () => {
 
   // M1: native re-asks the code (spec §1), so the pairing's overlay URL can
   // change; a new URL is a new showing, tried afresh, with no caption. Paired,
-  // since the fake's broadcast keeps the URL it went live with.
+  // since the fake's broadcast keeps the URL it went live with. Before air the waiting line is urgent and keeps the
+  // strip's one message, so the failure is read where it is drawn: the overlay is gone while it has failed.
   it('tries a new overlay URL afresh, with no caption (carry 13)', async () => {
     const view = await renderViewfinder();
+    expect(screen.getByTestId('overlay')).toBeTruthy();
     act(() => view.surfaces.failOverlay());
-    expect(screen.getByText(OVERLAY_FAILED)).toBeTruthy();
+    expect(screen.queryByTestId('overlay')).toBeNull();
     const next = 'https://stg.seazn.club/overlay/fixtures/next-fixture';
     act(() => view.engine.setPairing({ overlayUrl: next }));
     expect(screen.queryByText(OVERLAY_FAILED)).toBeNull();
@@ -379,13 +398,16 @@ describe('the status strip’s one caption', () => {
   beforeEach(() => vi.useFakeTimers());
   afterEach(() => vi.useRealTimers());
 
-  it('puts not charging above the score-ahead note while arming', async () => {
+  // Score ahead is up only while paired, and a paired phone's every line is urgent (the two tiers, with "Waiting for Go
+  // live" urgent by the controller's ruling R2), so it is never the one line: the order of the captions is the pure
+  // `topAdvisory`'s test. On air what the phone shows is Not charging, and the live line when it is plugged in.
+  it('says not charging on air, and gives the live line back once the phone is plugged in', async () => {
     const view = await renderViewfinder();
-    expect(screen.getByText(NOT_CHARGING)).toBeTruthy();
+    act(() => view.engine.scene('live'));
+    expect(screen.getByTestId('strip-message').textContent).toBe(NOT_CHARGING);
     expect(screen.queryByText(SCORE_AHEAD)).toBeNull();
     act(() => view.engine.patch({ charging: true }));
-    expect(screen.getByText(SCORE_AHEAD)).toBeTruthy();
-    expect(screen.queryByText(NOT_CHARGING)).toBeNull();
+    expect(screen.getByTestId('strip-message').textContent).toBe(LIVE_LINE);
   });
 
   it('puts a failed preview above not charging', async () => {

@@ -18,8 +18,8 @@ import { space } from '@/ui/theme/tokens';
  * The match label, split on its sides (spec §2): side A on its own line(s),
  * then a small grey `v` and side B. Nothing at all until the label is known.
  *
- * `onLayoutHeight` (R-F5) tells the status strip how tall the label came out, which is how it knows
- * whether the round line fits above it: the height after each layout, and 0 when the label goes or changes,
+ * `onLayoutHeight` (R-F5) tells the stage how tall the label came out, which is how the picture is sized from
+ * this match (`stripReserve`): the height after each layout, and 0 when the label goes or changes,
  * so a label that is not there yet is unmeasured, never the last one's height. The newest callback is the
  * one called, so one made anew on every render is fine.
  */

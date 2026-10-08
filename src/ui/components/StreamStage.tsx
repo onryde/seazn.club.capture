@@ -47,8 +47,9 @@ type StageProps = {
  *
  * The strip's height is sized from THIS match (owner, 2026-10-08, option A): the
  * match label as it was measured in the half's width (`StatusStrip` reports it),
- * plus fixed room for the padding, a gap and ONE message line (`stripReserve`; owner,
- * 2026-10-08, "one single line all the time"). So the picture is one size for the whole match. It is sized
+ * plus fixed room for the padding, the round line, two gaps and ONE message line (`stripReserve`; owner,
+ * 2026-10-08, "one single line all the time", the round line always shown: option B). So the picture is one
+ * size for the whole match. It is sized
  * again when the label's text changes (a new match remounts the label, which is
  * measured again) or when the label wraps differently in the half (its measured
  * height moves), and when the half's width or height changes; for nothing else:

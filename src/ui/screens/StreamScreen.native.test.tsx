@@ -1,5 +1,6 @@
 import { act, getDefaultNormalizer, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { ADVISORY_KEY } from '@/hooks/advisory';
 import en from '@/i18n/en.json';
 import es from '@/i18n/es.json';
 import fr from '@/i18n/fr.json';
@@ -51,18 +52,22 @@ describe('CD17: an engine that goes quiet', () => {
   });
 
   // The owner's two tiers (2026-10-08): a silent engine reports a failure, so its line is URGENT and keeps the strip's one
-  // line from every caption. Before air, with the score preview on and a charger plugged in, the one line is the Score
-  // ahead note; the engine going quiet takes it, and the note is back when it reports again.
-  it('with the score preview on, a silent engine’s line beats the Score ahead note, which comes back with the engine', async () => {
-    const view = await renderViewfinder({}, { quiet: true });
-    expect(screen.getByTestId('strip-message').textContent).toBe(en['stream.advisory.scoreAhead']);
+  // line from every caption. On air the live line is routine, so a caption (the fake phone is not plugged in) is the one
+  // line; the engine going quiet takes it, and the same caption is back when the engine reports again.
+  it('a silent engine’s line beats the caption that was the one line on air, which comes back with the engine', async () => {
+    const view = await renderViewfinder();
+    act(() => view.engine.scene('live'));
+    const message = () => screen.getByTestId('strip-message').textContent;
+    const captions = Object.values(ADVISORY_KEY).map((key) => en[key]);
+    const caption = message();
+    expect(captions).toContain(caption);
     act(() => view.engine.suspend());
     later(view, 3_001);
     expect(plate()).toBe('Trouble');
-    expect(screen.getByTestId('strip-message').textContent).toBe(SILENT);
-    expect(screen.queryByText(en['stream.advisory.scoreAhead'])).toBeNull();
-    act(() => view.engine.scene('paired-ready'));
-    expect(screen.getByTestId('strip-message').textContent).toBe(en['stream.advisory.scoreAhead']);
+    expect(message()).toBe(SILENT);
+    expect(screen.queryByText(caption ?? '')).toBeNull();
+    act(() => view.engine.scene('live'));
+    expect(message()).toBe(caption);
   });
 
   // The negative pair: the same clock, with native reporting, is no news.
@@ -109,8 +114,13 @@ describe('CD17: an engine that goes quiet', () => {
 // The fake phone as it is: uncharged, and one that would not survive the background, which are the two conditions
 // under test here.
 describe('CD18: keep the app open', () => {
-  it('a paired phone that would not survive the background says keep the app open', async () => {
+  // Two tiers (owner, 2026-10-08): a caption beats only a routine line. "Pairing" is routine, so while the pairing is
+  // under way the phone says it.
+  it('a pairing phone that would not survive the background says keep the app open', async () => {
     const view = await renderViewfinder();
+    act(() => view.engine.scene('pairing'));
+    // The pairing scene reports no charger yet (null); the phone is unplugged.
+    act(() => view.engine.patch({ charging: false }));
     expect(screen.queryByText(KEEP_OPEN)).toBeNull();
     expect(screen.getByText(NOT_CHARGING)).toBeTruthy();
     act(() => view.engine.setSurvivesBackground(false));
@@ -118,6 +128,21 @@ describe('CD18: keep the app open', () => {
     expect(en['stream.advisory.keepOpen']).toBe(KEEP_OPEN);
     // One caption at a time: keep-open outranks not charging (topAdvisory).
     expect(screen.queryByText(NOT_CHARGING)).toBeNull();
+  });
+
+  // Controller ruling R2 (2026-10-08): once paired and ready the line is "Waiting for Go live", which names where the
+  // stream will go and is urgent, so it keeps the one message. The caption is not gone: it is the one line again the
+  // moment the line is routine, here on air.
+  it('a paired phone that would not survive the background keeps its waiting line until Go live', async () => {
+    const view = await renderViewfinder();
+    act(() => view.engine.setSurvivesBackground(false));
+    expect(screen.getByTestId('strip-message').textContent).toBe(
+      'Waiting for Go live · YouTube · Fake CC',
+    );
+    expect(screen.queryByText(KEEP_OPEN)).toBeNull();
+    act(() => view.engine.scene('live'));
+    act(() => view.engine.setSurvivesBackground(false));
+    expect(screen.getByTestId('strip-message').textContent).toBe(KEEP_OPEN);
   });
 
   it('says it on air too, and stops once the service runs', async () => {

@@ -8,14 +8,15 @@ import nl from '@/i18n/nl.json';
 // Owner ruling, 2026-10-08 (coordinator): the strip's one message line has TWO tiers. Tier 1, URGENT, always wins the
 // line: any status that needs action or reports a failure, that is refusals, a stopped or ended stream, a silent
 // engine, trouble and degraded reasons, a blocked start, and Back's "hold Stop" line. Tier 2, ROUTINE: plain progress
-// ("Live. Sound and picture going out.", "Waiting for Go live"). An advisory caption beats only a ROUTINE line.
+// ("Live. Sound and picture going out."). An advisory caption beats only a ROUTINE line. One placement is the
+// controller's, not the owner's (ruling R2, 2026-10-08): "Waiting for Go live" is URGENT, because it is the one line that
+// names where Go live will stream (the destination), and a caption must never hide that.
 //
 // The expected tiers are written out here from that rule, key by key, and NOT read from the table under test.
 // Every status key is in exactly one list, so a new key in the dictionary reds this file until somebody chooses.
 const ROUTINE: readonly LineKey[] = [
   'stream.status.starting', // the camera is opening
   'stream.status.pairing', // pairing is under way
-  'stream.status.waitingGoLive', // ready, nothing to do but go live
   'stream.status.goingLiveOrganiser', // going live, started by the organiser
   'stream.status.goingLiveMatch', // going live, the match has started
   'stream.status.rejoining', // rejoining the live stream
@@ -26,6 +27,9 @@ const ROUTINE: readonly LineKey[] = [
 const URGENT: readonly LineKey[] = [
   // Needs somebody to act: the organiser must pick a destination.
   'stream.status.waitingDestination',
+  // Ready and waiting for Go live: the only line that names where the stream will go (the destination), so a caption
+  // never hides it (controller ruling R2, 2026-10-08).
+  'stream.status.waitingGoLive',
   // Refusals and a start that failed or cannot reach Seazn.
   'stream.status.refusedDestination',
   'stream.status.refusedCredit',
@@ -85,8 +89,8 @@ describe('the strip’s two tiers of line (owner ruling, 2026-10-08)', () => {
     }
     // Anti-vacuity: the lists are the whole copy, 41 status keys and Back's line.
     expect(chosen).toHaveLength(42);
-    expect(ROUTINE).toHaveLength(8);
-    expect(URGENT).toHaveLength(34);
+    expect(ROUTINE).toHaveLength(7);
+    expect(URGENT).toHaveLength(35);
     // And the table has an entry for exactly those keys.
     expect(Object.keys(LINE_TIER).sort()).toEqual(chosen);
   });

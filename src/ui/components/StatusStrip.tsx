@@ -1,5 +1,5 @@
-import { memo, useCallback, useState } from 'react';
-import { StyleSheet, View, type LayoutChangeEvent } from 'react-native';
+import { memo } from 'react';
+import { StyleSheet, View } from 'react-native';
 import { ADVISORY_KEY, type Advisory } from '@/hooks/advisory';
 import { selectStageLine } from '@/hooks/engineSelectors';
 import type { LineTier } from '@/hooks/statusKey';
@@ -9,7 +9,6 @@ import { MatchLabel } from '@/ui/components/MatchLabel';
 import { StageLine } from '@/ui/components/StageLine';
 import { StatusLine } from '@/ui/components/StatusLine';
 import { Text } from '@/ui/components/Text';
-import { stageFits } from '@/ui/theme/stageFit';
 import { colour, layout } from '@/ui/theme/tokens';
 import { typeScale } from '@/ui/theme/type';
 
@@ -26,20 +25,20 @@ type StatusStripProps = {
   /**
    * The match label's height after each layout, and 0 when the label goes or changes (`MatchLabel`'s
    * `onLayoutHeight`), said to the camera half, which sizes the picture from it (owner, 2026-10-08, option A). The
-   * strip reports nothing else: its own height, the round line and the caption are not inputs to the picture.
+   * strip reports nothing else: the round line and the caption are not inputs to the picture.
    */
   readonly onLabelHeight?: (height: number) => void;
 };
 
 /**
- * Under the camera box (spec §1), top to bottom: the round line when there is one and it fits (spec §2, R-F5), the
- * match label, and ONE message line (owner, 2026-10-08, "one single line all the time"): never both, always exactly
- * one line (an ellipsis if it is longer than the strip's text). Two tiers decide which: a status line that needs
- * action or reports a failure is URGENT and always wins; an advisory caption beats only a ROUTINE status line (`LINE_TIER`). Solid surface, in the flow below the shot:
- * nothing here is drawn over the preview (AGENTS §6, D17).
+ * Under the camera box (spec §1), top to bottom: the round line whenever the match has one (spec §2; owner, 2026-10-08,
+ * option B: always shown, its room is in the reserve), the match label, and ONE message line (owner, 2026-10-08, "one
+ * single line all the time"): never both, always exactly one line (an ellipsis if it is longer than the strip's text).
+ * Two tiers decide which: a status line that needs action or reports a failure is URGENT and always wins; an advisory
+ * caption beats only a ROUTINE status line (`LINE_TIER`). Solid surface, in the flow below the shot: nothing here is
+ * drawn over the preview (AGENTS §6, D17).
  * Every reservation is a token, so the fit arithmetic and this read one number. The label is the one thing measured:
- * the camera half sizes the picture from its height (`stripReserve`), and the round line asks whether the strip has
- * room for it (`stageFits`).
+ * the camera half sizes the picture from its height (`stripReserve`), which holds the round line's room.
  */
 export const StatusStrip = memo(function StatusStrip({
   line,
@@ -49,24 +48,10 @@ export const StatusStrip = memo(function StatusStrip({
 }: StatusStripProps) {
   const { t } = useT();
   const stage = useEngineSelector(selectStageLine);
-  // R-F5: the round line yields. The strip and the label say how tall they came out; 0 is not measured yet.
-  const [stripHeight, setStripHeight] = useState(0);
-  const [labelHeight, setLabelHeight] = useState(0);
-  const onLayout = useCallback(
-    (event: LayoutChangeEvent) => setStripHeight(event.nativeEvent.layout.height),
-    [],
-  );
-  const onLabel = useCallback(
-    (height: number) => {
-      setLabelHeight(height);
-      onLabelHeight?.(height);
-    },
-    [onLabelHeight],
-  );
   return (
-    <View testID="status-strip" style={styles.strip} onLayout={onLayout}>
-      {stage !== null && stageFits(stripHeight, labelHeight) ? <StageLine text={stage} /> : null}
-      <MatchLabel onLayoutHeight={onLabel} />
+    <View testID="status-strip" style={styles.strip}>
+      {stage !== null ? <StageLine text={stage} /> : null}
+      <MatchLabel onLayoutHeight={onLabelHeight} />
       {/* One line of body height either way, so the strip is the same height whichever it says. */}
       <View testID="strip-message" style={styles.message}>
         {advisory !== null && lineTier === 'routine' ? (

@@ -12,6 +12,7 @@ import { StatusLine } from '@/ui/components/StatusLine';
 import { StatusStrip } from '@/ui/components/StatusStrip';
 import { TallyPlate } from '@/ui/components/TallyPlate';
 import { colour, layout, plate as plateColour, plateInk } from '@/ui/theme/tokens';
+import { typeScale } from '@/ui/theme/type';
 import { TEST_NOW } from '../../../test/fakePorts';
 import { renderWithPorts } from '../../../test/renderWithPorts';
 
@@ -411,6 +412,27 @@ describe('StatusStrip', () => {
     const caption = screen.getByText(en['stream.advisory.notCharging']);
     expect(oneLine(caption)).toBe(true);
     expect(getComputedStyle(messageOf()).minHeight).toBe('22px');
+  });
+
+  // The caption is a line of metricUnit (12 on 16) and the status line one of body (15 on 22), both in the same 22 dp
+  // slot. The slot centres its child, so a caption sits 3 dp from the top and 3 from the bottom of it and is not pinned
+  // to the top edge, where it would read as sitting on the match label above it. jsdom lays nothing out, so this pins
+  // the style that does the centring, and the arithmetic of what it centres.
+  it('centres a caption in the message line’s 22 dp slot: a column that centres its child, 3 dp spare a side', () => {
+    const view = renderWithPorts(
+      <StatusStrip line="Live." lineTier="routine" advisory="notCharging" />,
+    );
+    const slot = getComputedStyle(messageOf());
+    expect(slot.flexDirection).toBe('column');
+    expect(slot.justifyContent).toBe('center');
+    const caption = getComputedStyle(screen.getByText(en['stream.advisory.notCharging']));
+    expect(caption.lineHeight).toBe(`${typeScale.metricUnit.lineHeight}px`);
+    expect(caption.lineHeight).toBe('16px');
+    expect((22 - typeScale.metricUnit.lineHeight) / 2).toBe(3);
+    // The same slot centres the status line, which fills it (22 on 22): nothing to move, the same style either way.
+    view.rerender(<StatusStrip line="Live." lineTier="routine" advisory={null} />);
+    expect(getComputedStyle(messageOf()).justifyContent).toBe('center');
+    expect(getComputedStyle(screen.getByText('Live.')).lineHeight).toBe('22px');
   });
 
   it('is the surface colour, in the flow: not drawn over the shot', () => {

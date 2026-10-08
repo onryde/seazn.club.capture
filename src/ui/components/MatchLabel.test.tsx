@@ -119,7 +119,7 @@ describe('MatchLabel (spec §2)', () => {
     expect(heights.mock.calls).toEqual([[44], [57]]);
   });
 
-  // The strip hides the round line while the label is unmeasured (stageFits), so a label that goes takes its height
+  // The picture is sized from the label's measured height (`stripReserve`), so a label that goes takes its height
   // with it: a new label must not be judged by the last one's, for the frame before it is laid out.
   it('reports 0 when the label goes, so its height is unmeasured again, not the last one’s (R-F5)', () => {
     const heights = vi.fn();
