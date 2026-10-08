@@ -53,13 +53,16 @@ describe('which photo port the composition root wires (spec §8)', () => {
  * `createNativePorts` is the composition root and no test renders it (it imports Expo Router and the device
  * ports), so its photo and scoring-link wiring is read from its source, as `routedApp.drift.test.ts` reads the
  * layout's. The syntax tree has no comments, so a line commented out is not wiring. What it gives `photoPortFor`,
- * what it gives `scoringLinkPortFor` (its module and the names of its dependencies), what it gives `chooseEngine`
- * as `native`, and how often it loads the module.
+ * what it gives `scoringLinkPortFor` (its module and each dependency as `name:initializer`, so `{ logger: throwaway }`
+ * is not `{ logger }`), what `logger` and `hosts` are bound to there (the real ones the dependencies must name), what
+ * it gives `chooseEngine` as `native`, and how often it loads the module.
  */
 type Wiring = {
   photo: string | null;
   scoringLink: string | null;
   scoringLinkDeps: string | null;
+  loggerBinding: string | null;
+  hostsBinding: string | null;
   engine: string | null;
   loads: number;
 };
@@ -79,6 +82,8 @@ function wiringOf(source: string): Wiring {
     photo: null,
     scoringLink: null,
     scoringLinkDeps: null,
+    loggerBinding: null,
+    hostsBinding: null,
     engine: null,
     loads: 0,
   };
@@ -100,11 +105,25 @@ function wiringOf(source: string): Wiring {
         result.scoringLinkDeps =
           deps !== undefined && ts.isObjectLiteralExpression(deps)
             ? deps.properties
-                .map((property) => property.name?.getText(file) ?? '?')
+                .map((property) =>
+                  ts.isShorthandPropertyAssignment(property)
+                    ? `${property.name.text}:${property.name.text}`
+                    : ts.isPropertyAssignment(property)
+                      ? `${property.name.getText(file)}:${property.initializer.getText(file)}`
+                      : '?',
+                )
                 .sort()
                 .join(', ')
             : null;
       }
+    }
+    if (
+      ts.isVariableDeclaration(node) &&
+      ts.isIdentifier(node.name) &&
+      node.initializer !== undefined
+    ) {
+      if (node.name.text === 'logger') result.loggerBinding = node.initializer.getText(file);
+      if (node.name.text === 'hosts') result.hostsBinding = node.initializer.getText(file);
     }
     if (ts.isCallExpression(node) && calledAs(node, 'chooseEngine')) {
       const options = node.arguments[0];
@@ -133,6 +152,8 @@ const SKELETON = (photo: string, scoring: string, load: string) => `
     // photo: photoPortFor(null),
     // scoringLink: scoringLinkPortFor(null, { logger, hosts }),
     const native = ${load};
+    const logger = createLogger({ record, now: Date.now });
+    const hosts = seaznHosts(env);
     const wired = chooseEngine({ dev: true, native });
     return { engine: wired.engine, photo: ${photo}, scoringLink: ${scoring} };
   }`;
@@ -142,7 +163,9 @@ describe('createNativePorts hands the module it loaded once to the engine, to th
     expect(wiringOf(SKELETON(PHOTO, SCORING, LOAD))).toEqual({
       photo: 'native',
       scoringLink: 'native',
-      scoringLinkDeps: 'hosts, logger',
+      scoringLinkDeps: 'hosts:hosts, logger:logger',
+      loggerBinding: 'createLogger({ record, now: Date.now })',
+      hostsBinding: 'seaznHosts(env)',
       engine: 'native',
       loads: 1,
     });
@@ -155,7 +178,18 @@ describe('createNativePorts hands the module it loaded once to the engine, to th
     expect(wiringOf(SKELETON(PHOTO, 'createScoringLinkPort(native)', LOAD)).scoringLink).toBeNull();
     expect(
       wiringOf(SKELETON(PHOTO, 'scoringLinkPortFor(native, { logger })', LOAD)).scoringLinkDeps,
-    ).toBe('logger');
+    ).toBe('logger:logger');
+    // A swapped dependency: the right names, the wrong values, which a names-only pin would pass.
+    expect(
+      wiringOf(
+        SKELETON(PHOTO, 'scoringLinkPortFor(native, { logger: throwaway, hosts: [] })', LOAD),
+      ).scoringLinkDeps,
+    ).toBe('hosts:[], logger:throwaway');
+    expect(
+      wiringOf(
+        SKELETON(PHOTO, 'scoringLinkPortFor(native, { logger, hosts: hosts.slice(1) })', LOAD),
+      ).scoringLinkDeps,
+    ).toBe('hosts:hosts.slice(1), logger:logger');
     expect(wiringOf(SKELETON(PHOTO, SCORING, 'null')).loads).toBe(0);
   });
 
@@ -164,7 +198,9 @@ describe('createNativePorts hands the module it loaded once to the engine, to th
     expect(wiringOf(source)).toEqual({
       photo: 'native',
       scoringLink: 'native',
-      scoringLinkDeps: 'hosts, logger',
+      scoringLinkDeps: 'hosts:hosts, logger:logger',
+      loggerBinding: expect.stringMatching(/^createLogger\(/),
+      hostsBinding: 'seaznHosts(env)',
       engine: 'native',
       loads: 1,
     });

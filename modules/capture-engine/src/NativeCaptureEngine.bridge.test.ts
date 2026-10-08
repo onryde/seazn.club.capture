@@ -97,6 +97,13 @@ describe('the scoring link over the real Kotlin core (JVM host)', () => {
     // Anti-vacuity: there were lines, and the tap reached the server.
     expect(h.record.length).toBeGreaterThan(0);
     expect(h.requests.some((request) => request.path === 'scoring-link')).toBe(true);
+    // The record learned that a link was asked for, by its word and status only: the absence above is not an empty record.
+    const asked = h.record
+      .map((line) => JSON.parse(line) as Record<string, unknown>)
+      .filter((line) => line.kind === 'scoring-link');
+    expect(asked).toHaveLength(1);
+    expect(asked[0]).toMatchObject({ kind: 'scoring-link', result: 'ok', status: 200 });
+    expect(Object.keys(asked[0]!).sort()).toEqual(['at', 'kind', 'result', 'status']);
   });
 
   it('a refusal then a success (the sequence)', async () => {

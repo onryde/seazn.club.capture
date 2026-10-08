@@ -23,9 +23,9 @@ export type CaptureEngineNative = {
   /** The record's last lines, oldest first, each with its seq. */
   tail(): readonly RecordLine[];
   /**
-   * Spec §8: one still to the gallery. One of the two calls that answer (the other is `scoringLink`; AGENTS §2, recorded): native resolves `'saved'` or
-   * `'failed'` within its bound, and the port reads anything else as failed. Required, not optional: an absent
-   * member would be a photo that quietly never happens.
+   * Spec §8: one still to the gallery. One of the two calls that answer (the other is `scoringLink`; AGENTS §2,
+   * recorded): native resolves `'saved'` or `'failed'` within its bound, and the port reads anything else as failed.
+   * Required, not optional: an absent member would be a photo that quietly never happens.
    */
   takePhoto(): Promise<unknown>;
   /**

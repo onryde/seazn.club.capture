@@ -148,6 +148,18 @@ describe('the link bucket (F15)', () => {
     for (let n = 1; n <= 16; n += 1) expect(wrote(link(n))).toBe(`x ${SCRUBBED} y`);
   });
 
+  it('a link asked for again is the newest: it outlives the one that was protected after it', () => {
+    const { logger, wrote } = rig();
+    logger.protectLink(link(0));
+    for (let n = 1; n <= 15; n += 1) logger.protectLink(link(n));
+    // 16 links held, link 0 the oldest. Heard again, it is the newest; the next new link evicts link 1, not link 0.
+    logger.protectLink(link(0));
+    logger.protectLink(link(16));
+    expect(wrote(link(0))).toBe(`x ${SCRUBBED} y`);
+    expect(wrote(link(1))).toBe(`x ${link(1)} y`);
+    for (let n = 2; n <= 16; n += 1) expect(wrote(link(n)), `link ${n}`).toBe(`x ${SCRUBBED} y`);
+  });
+
   it('a pairing token is never evicted by links, and a later protect keeps the links', () => {
     const { logger, wrote } = rig();
     for (let n = 0; n <= 30; n += 1) logger.protectLink(link(n));

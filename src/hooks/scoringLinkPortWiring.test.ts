@@ -128,13 +128,14 @@ describe('which scoring-link port the composition root wires (spec §10, RP3)', 
       // The first of two, not the last and not any of them.
       [['seazn.club', 'stg.seazn.club'], PRODUCTION_URL, 'ok'],
       [['seazn.club', 'stg.seazn.club'], FAKE_SCORING_URL, 'refused'],
-      // A build that names no host trusts none.
+      // A build that names no host trusts none: neither build's link, so no fallback host is hiding behind `?? ''`.
       [[], FAKE_SCORING_URL, 'refused'],
+      [[], PRODUCTION_URL, 'refused'],
     ] as const;
     for (const [hosts, url, kind] of rows) {
       expect(await kindOf(hosts, url), `${hosts.join(',')} ${url}`).toBe(kind);
     }
-    expect(rows).toHaveLength(7);
+    expect(rows).toHaveLength(8);
   });
 
   it('the real logger behind the real wiring masks the secret in a message and under url once the answer is heard, and not before (the JS twin of the native leak test)', async () => {
