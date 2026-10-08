@@ -30,7 +30,7 @@ internal object Pairings {
         phone = input.phone,
         claim = input.request.claim,
         // The zone the scan's GET gave: the engine holds it from here (D4: a beat carries none).
-        waiting = WaitingFields.UNKNOWN.copy(venueTimezone = input.request.venueTimezone),
+        waiting = WaitingFields.UNKNOWN.copy(venueTimezone = input.request.venueTimezone, stageLabel = input.request.stageLabel, stageFor = input.request.stageMatch),
         automatic = input.request.automatic,
         language = input.request.language,
         heartbeat = HeartbeatState(nextId = ids.beat),

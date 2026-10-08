@@ -76,8 +76,22 @@ object Bodies {
   private val LABEL = 1..200
   private val ZONE = 1..64
   private val DESTINATION = 1..80
+
+  /** capture-descriptor.v1 `stage.label`: 1 to 40 characters, in code points. */
+  private val STAGE_LABEL = 1..40
   private val POLL = 5..300
   private val HOLD = 1..999
+
+  /**
+   * `stage.role.kind`'s values (R-F20): the contract's description lists them and calls the string OPEN, and says
+   * consumers show nothing for any other. `wire/stage-kinds.json` is the authority; BodiesTest holds this set to it
+   * and `stageKinds.test.ts` holds the file to the contract. Internal for that test.
+   */
+  internal val STAGE_KINDS =
+    setOf(
+      "round_of", "quarter_final", "semi_final", "final", "winners_final", "losers_round", "losers_final", "grand_final",
+      "grand_final_reset", "third_place", "qualifier1", "eliminator", "qualifier2", "rung", "plain_round",
+    )
 
   /** The schemas' integer ceiling, JS's largest safe integer (2^53 - 1). */
   private const val MAX_SAFE = 9_007_199_254_740_991L
@@ -142,7 +156,22 @@ object Bodies {
     val optionals = listOf("venueTimezone" to zone, "scheduledStart" to start, "destinationName" to destination, "overlayUrl" to overlay)
     optionals.firstOrNull { it.second is Field.Bad }?.let { return unreadable(it.first) }
     val seazn = overlay.orNull()?.takeIf { Hosts.onSeazn(it, env) }
-    return WaitingRead(WaitingFields(label, zone.orNull() ?: "", start.orNull(), auto, destination.orNull(), seazn, poll), null)
+    val stage = stageLabel(fields["stage"])
+    return WaitingRead(WaitingFields(label, zone.orNull() ?: "", start.orNull(), auto, destination.orNull(), seazn, poll, stage, stage?.let { label }), null)
+  }
+
+  /**
+   * capture-descriptor.v1 `stage` (W28): its `label`, shown verbatim, 1 to 40 characters in code points, but only
+   * when `role.kind` is one the contract names ([STAGE_KINDS]); an unknown kind, no `role` or a kind that is not a
+   * string shows no line, even with a good label (R-F20). Display only, so anything else, a null, a non-object, a
+   * label of 0 or over 40, is no stage and never makes the waiting fields unreadable; that is why `stage` is not in
+   * [WAITING_KEYS]. `code`, `role.n`, `role.entrants` and `pool` are not read: the server renders the whole line.
+   */
+  private fun stageLabel(value: Any?): String? {
+    val stage = value as? Map<*, *> ?: return null
+    val kind = (stage["role"] as? Map<*, *>)?.get("kind") as? String ?: return null
+    if (kind !in STAGE_KINDS) return null
+    return (stage["label"] as? String)?.takeIf { it.characters in STAGE_LABEL }
   }
 
   /** A beat's waiting fields, and the field refused when the body owed them ([WAITING_OWED], or any sent). */

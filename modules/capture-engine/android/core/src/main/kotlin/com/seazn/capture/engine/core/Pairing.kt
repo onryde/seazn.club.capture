@@ -119,12 +119,27 @@ data class WaitingFields(
   val destinationName: String?,
   val overlayUrl: String?,
   val pollSeconds: Int,
+  /** The descriptor's `stage.label` (W28), shown verbatim as the round line; null when none, unreadable or of a kind the contract does not name. Display only. */
+  val stageLabel: String? = null,
+  /** The match [label] the stage was read with: a stage is only true of that match (the code is stable, so a beat can move the label). */
+  val stageFor: String? = null,
 ) {
   /**
    * These fields over the ones [held]: the venue's zone is the engine's to keep. A beat's answer carries
    * none (D4, read as ""), so an empty zone keeps the one held; any other replaces it.
    */
   fun over(held: WaitingFields): WaitingFields = if (venueTimezone.isEmpty()) copy(venueTimezone = held.venueTimezone) else this
+
+  /**
+   * A beat's answer over what is held. The beat carries no `stage` (capture-beat.v1), so the held stage
+   * stays while this answer's [label] is the match it was read with, and goes when the label moved: the
+   * stable code may now point at the next match, and the old round line would be a wrong fact on the tripod.
+   */
+  fun overBeat(held: WaitingFields): WaitingFields {
+    val merged = over(held)
+    val still = held.stageLabel != null && held.stageFor == label
+    return merged.copy(stageLabel = held.stageLabel.takeIf { still }, stageFor = held.stageFor.takeIf { still })
+  }
 
   companion object {
     /** Before the first 2xx: nothing known, and the default cadence (CD38). */
@@ -149,6 +164,9 @@ class PairRequest(
   val environment: Environment,
   /** The venue's zone from the code's GET at the scan, which seeds the pairing's; "" when JS sent none. Not a secret. */
   val venueTimezone: String = "",
+  /** The round line the scan's GET gave, and the match label it was read with; both or neither. Not a secret. */
+  val stageLabel: String? = null,
+  val stageMatch: String? = null,
 ) {
   val name: PairingName
     get() = PairingName(code, slot, TokenTag.of(token))

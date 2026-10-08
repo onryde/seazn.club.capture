@@ -32,5 +32,9 @@ object PairMapping {
       // The zone from the code's GET at the scan. Display only, so it never refuses a pair: outside the
       // schema's 1 to 64 characters, or absent, it is "" and the first descriptor or beat that has one sets it.
       venueTimezone = WireValues.text(wire["venueTimezone"]).takeIf { it.characters in 1..64 } ?: "",
+      // The round line the scan's GET gave, with the match label it belongs to. Display only: outside 1 to 40
+      // characters, or without its match, it is none, and never refuses a pair. JS read the kind rule at the scan.
+      stageLabel = WireValues.text(wire["stageLabel"]).takeIf { it.characters in 1..40 && WireValues.text(wire["stageMatch"]).isNotEmpty() },
+      stageMatch = WireValues.text(wire["stageMatch"]).takeIf { it.isNotEmpty() && WireValues.text(wire["stageLabel"]).characters in 1..40 },
     )
 }

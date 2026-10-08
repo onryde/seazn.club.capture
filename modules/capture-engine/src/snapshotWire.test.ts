@@ -23,6 +23,8 @@ const PAIRING = {
   overlayUrl: 'https://stg.seazn.club/overlay/fixtures/fx42hmnp7k2q',
   pollSeconds: 10,
 };
+// W28: the pairing of the case that carries a round line, by hand from its override { stageLabel: 'QF' }.
+const PAIRING_STAGED = { ...PAIRING, stageLabel: 'QF' };
 const BROADCAST = {
   sid: 'sess_42',
   cause: 'organiser',
@@ -208,12 +210,22 @@ const EXPECTED: Readonly<Record<string, Expected>> = {
     reportedAtMs: 1_790_000_061_000,
     survivesBackground: true,
   },
+  'paired-with-stage-label': {
+    ...REST,
+    state: { kind: 'paired' },
+    pairing: PAIRING_STAGED,
+    broadcast: null,
+    ready: READY,
+    camera: 'own',
+    reportedAtMs: 1_790_000_007_000,
+    survivesBackground: true,
+  },
 };
 
 describe('carries 2-6: the snapshot wire, as native writes it (Task 12)', () => {
   // The file's count, so an emptied or truncated file cannot pass by sweeping nothing (PV12).
-  it('has an expectation for each of the 14 cases, and a case for every expectation', () => {
-    expect(vectors.cases).toHaveLength(14);
+  it('has an expectation for each of the 15 cases, and a case for every expectation', () => {
+    expect(vectors.cases).toHaveLength(15);
     expect(vectors.cases.map((c) => c.name).sort()).toEqual(Object.keys(EXPECTED).sort());
   });
 

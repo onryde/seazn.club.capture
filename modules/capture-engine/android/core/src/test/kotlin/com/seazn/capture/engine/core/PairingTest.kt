@@ -45,6 +45,60 @@ class PairingTest {
     assertEquals("", bare.zone)
   }
 
+  /** The pair as JS sends it with the scan's round line: the stage label and the match label it was read with. */
+  private fun staged(label: String, match: String): PairRequest {
+    val r = Configs.pairRequest()
+    return PairRequest(r.code, r.slot, r.token, r.codeUrl, r.heartbeatUrl, r.startUrl, r.language, r.automatic, r.claim, r.environment, stageLabel = label, stageMatch = match)
+  }
+
+  private val MachineRig.stage: String?
+    get() = snapshot.pairing?.waiting?.stageLabel
+
+  @Test
+  fun `the scan's round line is the engine's - seeded at pair, kept over a beat for the same match, gone when the match moved`() {
+    // The sequence on one pairing: pair, a beat naming the same match, then a beat naming the next one.
+    val rig = MachineRig(request = staged("QF", "A v B"))
+    rig.permissions = null
+    rig.send(Input.Pair(rig.request, Configs.PHONE, stopped = null))
+    assertEquals("QF", rig.stage, "Pairing")
+    assertEquals("", rig.phase.pairing!!.waiting.label, "the held label is UNKNOWN's: no beat has named a match yet")
+    rig.send(Input.PermissionsAnswered(granted = true))
+    rig.send(Input.Network(true))
+    // A beat names the match the stage was read with: its answer carries no stage (capture-beat.v1), the line stays.
+    rig.heard(Configs.waiting().copy(label = "A v B"))
+    assertEquals("QF", rig.stage)
+    rig.heard(Configs.waiting().copy(label = "A v B"))
+    assertEquals("QF", rig.stage, "a second beat for the same match")
+    // The stable code was re-pointed at another match: the old round line is gone, and stays gone.
+    rig.heard(Configs.waiting().copy(label = "C v D"))
+    assertNull(rig.stage)
+    assertNull(rig.phase.pairing!!.waiting.stageFor)
+    rig.heard(Configs.waiting().copy(label = "A v B"))
+    assertNull(rig.stage, "the first match named again does not bring the line back")
+    // A pair with no round line holds none, as before.
+    val bare = MachineRig().paired()
+    assertNull(bare.stage)
+  }
+
+  @Test
+  fun `the descriptor's stage replaces the held one at Arming, and its silence is no stage`() {
+    var said: WaitingFields = Configs.waiting().copy(label = "A v B", stageLabel = "SF", stageFor = "A v B")
+    val rig = MachineRig(request = staged("QF", "A v B"))
+    rig.codes = { if (rig.phase is Phase.Arming) CodeAnswer.Open("sess_42", "warming", Configs.descriptor(), said) else null }
+    rig.paired()
+    rig.heard(Configs.waiting().copy(label = "A v B"), "go-live", "sess_42")
+    assertIs<Phase.Armed>(rig.phase)
+    assertEquals("SF", rig.stage, "the descriptor is fresh: what it says replaces the scan's")
+    // The same, and a descriptor with no stage: silence replaces the scan's line with none.
+    said = Configs.waiting().copy(label = "A v B")
+    val silent = MachineRig(request = staged("QF", "A v B"))
+    silent.codes = { if (silent.phase is Phase.Arming) CodeAnswer.Open("sess_42", "warming", Configs.descriptor(), said) else null }
+    silent.paired()
+    silent.heard(Configs.waiting().copy(label = "A v B"), "go-live", "sess_42")
+    assertIs<Phase.Armed>(silent.phase)
+    assertNull(silent.stage)
+  }
+
   @Test
   fun `the descriptor's waiting fields land at Arming, keeping the held zone when they carry none`() {
     for ((sent, held) in listOf("" to "Europe/London", "Europe/Madrid" to "Europe/Madrid")) {
