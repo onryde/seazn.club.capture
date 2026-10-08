@@ -13,7 +13,7 @@ export type StatusKey = Extract<MessageKey, `stream.status.${string}`>;
 
 /**
  * Copy budget: 48 characters (S0). `StatusLine` ellipsises, silently, past
- * the status strip's two lines (`layout.statusLinesMax`) or Home's three.
+ * the status strip's ONE line (`layout.messageLines`, owner 2026-10-08) or Home's three.
  * Enforced for every language in src/i18n/budgets.test.ts.
  */
 export const STATUS_LINE_BUDGET = 48;

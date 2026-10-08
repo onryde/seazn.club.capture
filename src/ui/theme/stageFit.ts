@@ -6,24 +6,21 @@ import { typeScale } from '@/ui/theme/type';
  * when the strip has room for it beside what is really there, and it never makes the picture smaller (the picture is
  * sized from the label alone, `stripReserve`, and this line is not one of its inputs).
  *
- * The strip reserves room for a caption, two lines of `metricUnit`, whether or not one is up (owner, 2026-10-08,
- * option A). So with no caption that room is room: the round line fits the strip's reserve with 16 dp to spare, and
- * it shows wherever the strip is at least that tall, which is every real screen. With a caption up, the strip holds
- * the caption at its worst, two lines, and the round line needs 22 dp more than the reserve: it shows only where the
- * half, not the strip's reserve, limits the picture and the window leaves more (640 × 360 with a label of up to two
- * lines of 22: a 174.375 strip against the 170 it needs). The caption counts at its two lines whatever it really takes,
- * so a one-line caption does not bring the line back and take it away again as the text wraps.
+ * The strip is the padding, the label, the ONE message line and a gap between them (owner, 2026-10-08, "one single line
+ * all the time"). The round line is a line of `metricUnit` and a gap more: 22 dp over the strip's reserve. So it shows
+ * only where the window leaves the strip more than the picture's reserve, that is where the half limits the picture
+ * (640 × 360, and 804 × 360 for a short label gives only 82 of the 88 it needs, so no). On the height-limited phones,
+ * where the picture is as tall as the window allows, it is hidden: the picture, not the round line, keeps the room.
+ * The caption is not a term: it takes the message line, never more room.
  *
  * Unmeasured (a strip or a label of 0) it is hidden too, so a phone never paints a line it may have to take back.
  */
-export function stageFits(stripHeight: number, labelHeight: number, captionUp: boolean): boolean {
-  if (stripHeight <= 0 || labelHeight <= 0) return false;
+export function stageFits(stripHeight: number, labelHeight: number): boolean {
+  // An unmeasured label would read as an empty one and let the line in; an unmeasured strip (0) is never enough, below.
+  if (labelHeight <= 0) return false;
   const stage = layout.stageLines * typeScale.metricUnit.lineHeight;
-  const status = layout.statusLinesMax * typeScale.body.lineHeight;
-  const caption = captionUp ? layout.captionLinesMax * typeScale.metricUnit.lineHeight : 0;
-  // The items in the strip: the round line, the label, the status line, and the caption when one is up.
-  const gaps = captionUp ? 3 : 2;
-  const needed =
-    2 * layout.stripPadV + stage + labelHeight + status + caption + gaps * layout.stripGap;
+  const message = layout.messageLines * typeScale.body.lineHeight;
+  // The items in the strip: the round line, the label, the message line, with a gap between each pair.
+  const needed = 2 * layout.stripPadV + stage + labelHeight + message + 2 * layout.stripGap;
   return needed <= stripHeight;
 }

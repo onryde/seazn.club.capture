@@ -52,7 +52,20 @@ Three pull requests, in order. Each is reviewed and merged on its own.
   changes, never for a status line, a caption or the round line coming and going. Before the label is measured it is
   the worst case, 180 dp. On 804 × 360 a two-line label gives about 375 × 211 (320 × 180 at the worst case); on
   915 × 412, 467 × 263; at 640 × 360 the half limits the picture for a label of up to two lines (330 × 185.6).
-- `controlsSide` keeps working: _Left_ mirrors the halves.
+  **Superseded in its numbers by the next line (one message line).**
+- **Amended a third time (owner, 2026-10-08, "one single line all the time"): ONE message line.** Under the label the
+  strip has exactly one line (`numberOfLines` 1, `layout.messageLines`): the advisory caption when one is up (it
+  outranks the status line), otherwise the status line, and a string wider than the strip's text is cut with an
+  ellipsis. The strip's reserve is the padding, the label as measured, a gap and one body line: 44 dp and the label
+  (`stripReserve`), 120 dp at the worst case. The owner's phone is 804 × 332 (360 less the Android status bar): a
+  one-line label gives 472.9 × 266, a two-line label 433.8 × 244 (432 × 243 as laid out, the label measuring 45), four
+  long lines 376.9 × 212. On 804 × 360 they are 494 × 277.9 (the half limits it), 483.6 × 272 and 426.7 × 240; on
+  915 × 412, 605 × 340.3, 576 × 324 and 519.1 × 292; at 640 × 360 the half limits the picture for every label
+  (330 × 185.6). The controls half's column has its own vertical padding and gap, 8 and 8 (`controlsPadV`,
+  `controlsColumnGap`; the horizontal padding stays 16, so the half stays 310 wide): the board's 16 and 12 made the
+  worst before-air state (the AUTO start line and a reason under the hold button) 356 dp tall, 24 more than 332.
+  `stripTextFit.test.ts` measures every status and caption string in the four languages at the strip's text width
+  (298 dp at 640 × 360, 462 dp at 804) and pins the 57 that may be cut at 640 × 360.- `controlsSide` keeps working: _Left_ mirrors the halves.
 - The scorebug overlay (the transparent WebView) and the _What viewers see_ video sit over the
   **camera box**, not the whole half. The overlay keeps its design-of-record rule: never redrawn in
   React Native.
@@ -83,13 +96,13 @@ Three pull requests, in order. Each is reviewed and merged on its own.
   The phone never builds or translates it. Ships with PR C, after the web contract lands
   (web branches `fix/pool-label-i18n`, then `feat/capture-scoring-link-stage`).
 - **The line yields to the label (R-F5).** It shows only when the status strip has room for it beside the
-  label; no strip reserve is added and the picture never gives way. Since the owner's rule of 2026-10-08 (option A) the
-  strip is its reserve, 104 dp and the label, wherever the picture is limited by it, and the reserve includes the
-  caption's two lines whether or not a caption is up. So with no caption up the round line fits for every label (88 dp
-  and the label against the 104 and the label), and with a caption up it needs 22 dp more than the reserve and shows
-  only where the camera half, not the strip, limits the picture: 640 × 360, a label of up to two regular lines (a 174 dp
-  strip against the 170 it needs). It is 22 dp short for a label of three or four lines, and everywhere else. Until the strip and
-  the label are both measured, the line is hidden.
+  label; no strip reserve is added and the picture never gives way. Since the owner's rules of 2026-10-08 (option A,
+  then one message line) the strip is its reserve, 44 dp and the label, wherever the picture is limited by it. The
+  round line needs 22 dp more than that (the padding, itself, the label, the one message line and a gap each side of
+  the line: 66 dp and the label), whether or not a caption is up (the caption takes the message line, it is not a
+  term). So it shows only where the camera half, not the strip, limits the picture: 640 × 360 for every label (a
+  174 dp strip against at most 142), and 844 × 390 for a one-line label; it is hidden on 804 × 332, 804 × 360 and
+  915 × 412. Until the strip and the label are both measured, the line is hidden.
 - **An unknown `role.kind` shows no line (R-F20).** A kind outside the contract's list shows nothing, even with a
   good label; a kind the web adds later shows nothing until the app learns it.
 

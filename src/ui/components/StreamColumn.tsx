@@ -35,7 +35,9 @@ type ColumnProps = {
  * (on air) or the sound meter (before air), the readiness chips and the start
  * line (before air), the meter (on air), a flexible gap that holds the photo's
  * one line, the icon row, then the action. The status line is the strip's,
- * under the shot.
+ * under the shot. The column's vertical padding and gap are its own
+ * (`controlsPadV`, `controlsColumnGap`: 8 and 8, so every control is on screen at
+ * 804 × 332); its horizontal padding is the board's, which the half's width is made of.
  */
 export const StreamColumn = memo(function StreamColumn(props: ColumnProps) {
   const { view, peek } = props;
@@ -229,8 +231,11 @@ const styles = StyleSheet.create({
     width: layout.controlsHalf,
     flexGrow: 0,
     flexShrink: 0,
-    gap: layout.controlsGap,
-    padding: layout.controlsPad,
+    // The vertical rhythm is the column's own (owner, 2026-10-08: every control on screen at 804 × 332); the horizontal
+    // padding is what the half's width is made of (`controlsHalfWidth`), unchanged.
+    gap: layout.controlsColumnGap,
+    paddingVertical: layout.controlsPadV,
+    paddingHorizontal: layout.controlsPad,
     backgroundColor: colour.ground,
   },
   plateRow: { flexDirection: 'row', gap: space.sm },

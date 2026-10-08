@@ -10,7 +10,7 @@ type StatusLineProps = {
   readonly children: string;
   /** Home's line is the `status` role; the viewfinder's strip sets its line in `body` (F20). */
   readonly variant?: Extract<TypeRole, 'status' | 'body'>;
-  /** The lines it may take before it ellipsises: Home's three, or the strip's `statusLinesMax`. */
+  /** The lines it may take before it ellipsises: Home's three, or the strip's `messageLines` (one). */
   readonly numberOfLines?: number;
 };
 
@@ -41,12 +41,12 @@ const styles = StyleSheet.create({
   // Height is reserved for the most lines it may take, so the block does not
   // jump ~40px between "Live." and a longer sentence, which would move every
   // control below it, including the one being pressed. Home's is three lines of
-  // the status role (3 × 19); the strip's is `statusLinesMax` lines of body.
+  // the status role (3 × 19); the strip's is `messageLines` (one) line of body.
   status: {
     minHeight: HOME_LINES * typeScale.status.lineHeight,
   },
   body: {
-    minHeight: layout.statusLinesMax * typeScale.body.lineHeight,
+    minHeight: layout.messageLines * typeScale.body.lineHeight,
   },
 });
 

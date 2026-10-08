@@ -147,9 +147,18 @@ const base = {
   plateHeight: 56,
   /** AudioMeter's bar, unchanged. */
   meterHeight: 12,
-  /** Board "Before": the controls half's padding and gap. */
+  /** Board "Before": the controls half's padding and gap. The scoring panel over the camera half keeps both. */
   controlsPad: 16,
   controlsGap: 12,
+  /**
+   * The controls half's column rhythm, vertical only (owner, 2026-10-08: every control fully on screen at 804 x 332).
+   * Before air, with the AUTO start line and a hold reason up, the column's five rows are 56 + 64 + 16 + 48 + 92 = 276
+   * dp and the board's 16 padding and 12 gaps (32 + 4 x 12 = 80) made 356 of a 332 dp app area: 24 over. 8 and 8 are
+   * 16 + 32 = 48, so the worst state is 324 with the photo line's 16 dp still in place. The horizontal padding
+   * (`controlsPad`) is the half's WIDTH and stays: 310 is unchanged. Every control keeps its size.
+   */
+  controlsPadV: 8,
+  controlsColumnGap: 8,
   /**
    * The three cells of the controls half that hold text, each the least whole dp that holds its words in all four
    * languages, measured from the shipped fonts and the dictionaries by controlsFit.test.ts (which fails by the new
@@ -168,12 +177,16 @@ const base = {
   stripPadV: 8,
   stripPadH: 16,
   stripGap: 6,
-  /** Lines the strip reserves: the label at most 4, the status line 2, the caption 2 (Q4). */
+  /** Lines the strip reserves for the label: at most 4 (Q4). */
   labelLinesMax: 4,
   /** D17 (F9): a regular-size label is at most 2 lines, one a side, by the written assumption. */
   labelLinesRegular: 2,
-  statusLinesMax: 2,
-  captionLinesMax: 2,
+  /**
+   * The strip's message: ONE line of the body role, always (owner, 2026-10-08, "one single line all the time"). It says
+   * the caption when one is up, else the status line, and a string wider than the strip's text is cut with an ellipsis,
+   * never wrapped. stripTextFit.test.ts measures which of the four languages' strings that is at each width.
+   */
+  messageLines: 1,
   /** Spec §2 round line: one line above the label. */
   stageLines: 1,
   /** Board "Settings, landscape": the screen's vertical padding (the board's 12, under the portrait 16). */

@@ -308,10 +308,15 @@ describe('the score preview on air', () => {
   afterEach(() => vi.useRealTimers());
 
   it('sheds the overlay on a hot phone and says so, still Live (AGENTS §8, carry 12)', async () => {
-    await onAir('shed');
+    const view = await onAir('shed');
     expect(plate()).toBe('Live');
     expect(screen.getByText(SHED)).toBeTruthy();
     expect(screen.queryByTestId('overlay')).toBeNull();
+    // The strip says ONE message (owner, 2026-10-08): the caption is up, so the live line is not. The plate above still
+    // says Live. The positive pair: when the phone cools the caption goes and the live line is back.
+    expect(screen.queryByText(LIVE_LINE)).toBeNull();
+    act(() => view.engine.scene('live'));
+    expect(screen.queryByText(SHED)).toBeNull();
     expect(screen.getByText(LIVE_LINE)).toBeTruthy();
   });
 
@@ -369,12 +374,13 @@ describe('the score preview on air', () => {
 });
 
 /** Carry 14 (ruling M6): one caption, shed > overlay failed > not charging > score ahead. */
+// The fake phone as it is (quiet: false): uncharged, which is the condition under test.
 describe('the status strip’s one caption', () => {
   beforeEach(() => vi.useFakeTimers());
   afterEach(() => vi.useRealTimers());
 
   it('puts not charging above the score-ahead note while arming', async () => {
-    const view = await renderViewfinder();
+    const view = await renderViewfinder({}, { quiet: false });
     expect(screen.getByText(NOT_CHARGING)).toBeTruthy();
     expect(screen.queryByText(SCORE_AHEAD)).toBeNull();
     act(() => view.engine.patch({ charging: true }));
@@ -383,7 +389,7 @@ describe('the status strip’s one caption', () => {
   });
 
   it('puts a failed preview above not charging', async () => {
-    const view = await onAir('live');
+    const view = await onAir('live', {}, { quiet: false });
     expect(screen.getByText(NOT_CHARGING)).toBeTruthy();
     act(() => view.surfaces.failOverlay());
     expect(screen.getByText(OVERLAY_FAILED)).toBeTruthy();
@@ -391,13 +397,13 @@ describe('the status strip’s one caption', () => {
   });
 
   it('puts shed above not charging', async () => {
-    await onAir('shed');
+    await onAir('shed', {}, { quiet: false });
     expect(screen.getByText(SHED)).toBeTruthy();
     expect(screen.queryByText(NOT_CHARGING)).toBeNull();
   });
 
   it('shows no score-ahead note on air', async () => {
-    const view = await onAir('live');
+    const view = await onAir('live', {}, { quiet: false });
     act(() => view.engine.patch({ charging: true }));
     expect(screen.queryByText(SCORE_AHEAD)).toBeNull();
     expect(screen.queryByText(NOT_CHARGING)).toBeNull();

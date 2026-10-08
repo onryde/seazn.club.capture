@@ -6,6 +6,7 @@ import { STORE_KEYS } from '@/services/modeStore';
 import { StreamScreen } from '@/ui/screens/StreamScreen';
 import { createFakePorts } from './fakePorts';
 import { savedStreamCode } from './fixtures/savedStream';
+import { quietDevice } from './quietDevice';
 import { wrapperFor } from './renderWithPorts';
 
 const LEAVE_ON_AIR = 'Stop the broadcast first — hold Stop.';
@@ -18,6 +19,8 @@ async function renderStack(subScreen: ReactElement, link: 'Settings') {
       [STORE_KEYS.code('stream')]: encodeSavedCode(savedStreamCode()),
     },
   });
+  // Back's line over the calm status line is what these tests read: a phone with nothing to warn about (quietDevice.ts).
+  quietDevice(fakes.engine);
   const Stack = ({ open }: { open: boolean }) => (
     <>
       <StreamScreen />

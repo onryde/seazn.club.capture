@@ -43,11 +43,25 @@ describe('CD17: an engine that goes quiet', () => {
   });
 
   it('a paired engine that goes quiet says so too', async () => {
-    const view = await renderViewfinder();
+    // The score preview is off: with it on, a paired phone before air says Score ahead in the strip's one line.
+    const view = await renderViewfinder({}, { overlay: false });
     act(() => view.engine.suspend());
     later(view, 3_001);
     expect(plate()).toBe('Trouble');
     expect(screen.getByText(SILENT)).toBeTruthy();
+  });
+
+  // The owner's one-line rule (2026-10-08, "caption over status") has a consequence worth keeping in view: before air the
+  // score preview is on by default, and a paired phone then always has the Score ahead note up, so the strip's ONE line
+  // is that note and the silent engine's line is not on screen. The plate still says Trouble. Pinned so the priority is
+  // a decision and not a surprise; if the owner wants a Trouble line to outrank the note, this is the test that moves.
+  it('with the score preview on, a paired phone’s one line is the Score ahead note, and the silent engine line waits', async () => {
+    const view = await renderViewfinder();
+    act(() => view.engine.suspend());
+    later(view, 3_001);
+    expect(plate()).toBe('Trouble');
+    expect(screen.getByText(en['stream.advisory.scoreAhead'])).toBeTruthy();
+    expect(screen.queryByText(SILENT)).toBeNull();
   });
 
   // The negative pair: the same clock, with native reporting, is no news.
@@ -91,9 +105,11 @@ describe('CD17: an engine that goes quiet', () => {
 });
 
 /** CD18: a held pairing on a phone that would not survive the background says keep it open. */
+// The fake phone as it is (quiet: false): uncharged, and one that would not survive the background, which are the two
+// conditions under test here.
 describe('CD18: keep the app open', () => {
   it('a paired phone that would not survive the background says keep the app open', async () => {
-    const view = await renderViewfinder();
+    const view = await renderViewfinder({}, { quiet: false });
     expect(screen.queryByText(KEEP_OPEN)).toBeNull();
     expect(screen.getByText(NOT_CHARGING)).toBeTruthy();
     act(() => view.engine.setSurvivesBackground(false));
@@ -104,7 +120,7 @@ describe('CD18: keep the app open', () => {
   });
 
   it('says it on air too, and stops once the service runs', async () => {
-    const view = await renderViewfinder();
+    const view = await renderViewfinder({}, { quiet: false });
     act(() => view.engine.scene('live'));
     act(() => view.engine.setSurvivesBackground(false));
     expect(screen.getByText(KEEP_OPEN)).toBeTruthy();
@@ -113,7 +129,7 @@ describe('CD18: keep the app open', () => {
   });
 
   it('says nothing once ended', async () => {
-    const view = await renderViewfinder();
+    const view = await renderViewfinder({}, { quiet: false });
     act(() => view.engine.scene('stopped'));
     act(() => view.engine.setSurvivesBackground(false));
     expect(screen.queryByText(KEEP_OPEN)).toBeNull();

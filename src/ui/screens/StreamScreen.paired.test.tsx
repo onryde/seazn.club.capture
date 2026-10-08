@@ -18,6 +18,17 @@ const kinds = (view: Awaited<ReturnType<typeof renderViewfinder>>) =>
 const events = (view: Awaited<ReturnType<typeof renderViewfinder>>) =>
   readRecord(view.record).map((entry) => entry.event);
 
+/**
+ * The paired viewfinder with the score preview OFF in the saved settings. The strip says ONE message (owner,
+ * 2026-10-08): the caption when one is up, the status line otherwise, and with the preview on, a paired phone before air
+ * always has the Score ahead caption up, which would hide the status line these tests read. The preview-on strip is
+ * pinned on its own below ('the strip’s one message before air').
+ */
+const renderPaired = (
+  options: Parameters<typeof renderViewfinder>[0] = {},
+  setup: Parameters<typeof renderViewfinder>[1] = {},
+) => renderViewfinder(options, { overlay: false, ...setup });
+
 const OVERLAY_FAILED = 'Score preview failed — the broadcast is not affected';
 const SCORE_AHEAD = 'You see the score slightly ahead of viewers';
 
@@ -49,7 +60,7 @@ describe('the paired viewfinder (spec §1)', () => {
   afterEach(() => vi.useRealTimers());
 
   it('shows Ready with the three chips, AUTO, the waiting line and the match label', async () => {
-    await renderViewfinder();
+    await renderPaired();
     expect(plate()).toBe('Ready');
     expect(goLive().getAttribute('aria-disabled')).not.toBe('true');
     // en['stream.status.waitingGoLive'] with FAKE_PAIRING's destination, written out.
@@ -69,7 +80,7 @@ describe('the paired viewfinder (spec §1)', () => {
   });
 
   it('starts once after a full 3 s hold on Go live', async () => {
-    const view = await renderViewfinder();
+    const view = await renderPaired();
     pressIn(goLive());
     act(() => vi.advanceTimersByTime(HOLD_MS));
     expect(view.engine.intents.filter((intent) => intent.kind === 'start')).toHaveLength(1);
@@ -84,7 +95,7 @@ describe('the paired viewfinder (spec §1)', () => {
   ] as const)(
     'blocks Go live when native says %s is not ready, and says why at the control',
     async (check, chip, reason) => {
-      const view = await renderViewfinder();
+      const view = await renderPaired();
       act(() => view.engine.setReady({ [check]: false }));
       expect(plate()).toBe('Not ready');
       expect(screen.getByLabelText(`${chip}: not ready`)).toBeTruthy();
@@ -99,7 +110,7 @@ describe('the paired viewfinder (spec §1)', () => {
 
   // Amendment §2: a flat phone has no chip; it blocks Go live and says so.
   it('blocks Go live on a phone not held sideways, with no chip for it', async () => {
-    const view = await renderViewfinder();
+    const view = await renderPaired();
     act(() => view.engine.setReady({ held: false }));
     expect(plate()).toBe('Not ready');
     expect(goLive().getAttribute('aria-disabled')).toBe('true');
@@ -114,25 +125,25 @@ describe('the paired viewfinder (spec §1)', () => {
   });
 
   it('shows no AUTO when the organiser does not allow automatic mode', async () => {
-    const view = await renderViewfinder();
+    const view = await renderPaired();
     act(() => view.engine.setPairing({ autoAllowed: false }));
     expect(screen.queryByText(en['stream.chip.auto'])).toBeNull();
   });
 
   it('waits for a destination while the organiser has picked none', async () => {
-    const view = await renderViewfinder();
+    const view = await renderPaired();
     act(() => view.engine.setPairing({ destinationName: null }));
     expect(screen.getByText(en['stream.status.waitingDestination'])).toBeTruthy();
   });
 
   it('names the destination cut at 24 characters (PV29)', async () => {
-    const view = await renderViewfinder();
+    const view = await renderPaired();
     act(() => view.engine.setPairing({ destinationName: 'YouTube · A Very Long Club Name CC' }));
     expect(screen.getByText('Waiting for Go live · YouTube · A Very Long C…')).toBeTruthy();
   });
 
   it('says when it starts, in the venue’s zone, and nothing once it is going live', async () => {
-    const view = await renderViewfinder();
+    const view = await renderPaired();
     expect(screen.queryByText(/^Starts/)).toBeNull();
     act(() => view.engine.setPairing({ scheduledStart: new Date('2026-10-03T13:30:00Z') }));
     // Europe/London in October is BST: 13:30Z reads 14:30, the phone's zone, so no zone name.
@@ -144,7 +155,7 @@ describe('the paired viewfinder (spec §1)', () => {
 
   // Spec decision 13: the venue's zone, named when it is not the phone's (Europe/London here).
   it('says the start in a venue zone that is not the phone’s, and names it', async () => {
-    const view = await renderViewfinder();
+    const view = await renderPaired();
     act(() =>
       view.engine.setPairing({
         scheduledStart: new Date('2026-10-03T13:30:00Z'),
@@ -155,7 +166,7 @@ describe('the paired viewfinder (spec §1)', () => {
   });
 
   it('says a refused start, then how the last broadcast ended', async () => {
-    const view = await renderViewfinder();
+    const view = await renderPaired();
     act(() => view.engine.scene('paired-refused'));
     expect(screen.getByText(en['stream.status.refusedCredit'])).toBeTruthy();
     act(() => view.engine.scene('paired-after-organiser-stop'));
@@ -163,7 +174,7 @@ describe('the paired viewfinder (spec §1)', () => {
   });
 
   it('a remote Go live on a flat phone waits, says why, then goes live once held', async () => {
-    const view = await renderViewfinder();
+    const view = await renderPaired();
     act(() => view.engine.setReady({ held: false }));
     act(() => view.engine.hear({ word: 'go-live', cause: 'organiser' }));
     expect(stop()).toBeTruthy();
@@ -179,7 +190,7 @@ describe('the paired viewfinder (spec §1)', () => {
   });
 
   it('says it is retrying a start it cannot fetch, with Stop offered', async () => {
-    const view = await renderViewfinder();
+    const view = await renderPaired();
     act(() => view.engine.scene('arming-retrying'));
     expect(screen.getByText(en['stream.status.startRetrying'])).toBeTruthy();
     expect(stop()).toBeTruthy();
@@ -189,7 +200,7 @@ describe('the paired viewfinder (spec §1)', () => {
     ['organiser', 'stream.status.goingLiveOrganiser'],
     ['automatic', 'stream.status.goingLiveMatch'],
   ] as const)('a remote Go live from the %s says who started it', async (cause, key) => {
-    const view = await renderViewfinder();
+    const view = await renderPaired();
     act(() => view.engine.setReady({ sound: false }));
     act(() => view.engine.hear({ word: 'go-live', cause }));
     // Armed, not ready: the not-ready line outranks who started it.
@@ -202,7 +213,7 @@ describe('the paired viewfinder (spec §1)', () => {
   // M2: with no pairing there is no camera of ours, whatever native's checks say.
   // The column's own kind gate is pinned in StreamColumn.test.tsx.
   it('keeps Go live off until the engine is paired: there is no camera yet', async () => {
-    const view = await renderViewfinder();
+    const view = await renderPaired();
     act(() => view.engine.forceState({ kind: 'idle' }));
     expect(screen.getByLabelText('Camera: not ready')).toBeTruthy();
     pressIn(goLive());
@@ -213,7 +224,7 @@ describe('the paired viewfinder (spec §1)', () => {
   // The camera ruling and M2: another app's take before air is named, with no
   // slate claim, and nothing beside it reads ready.
   it('reads not ready with the camera in use by another app before air', async () => {
-    const view = await renderViewfinder();
+    const view = await renderPaired();
     expect(plate()).toBe('Ready');
     act(() => view.engine.setCamera('taken'));
     expect(plate()).toBe('Not ready');
@@ -227,7 +238,7 @@ describe('the paired viewfinder (spec §1)', () => {
   });
 
   it('leaves for Home on Back while paired, with nothing to stop', async () => {
-    const view = await renderViewfinder();
+    const view = await renderPaired();
     act(() => void view.back.press());
     // The leave's write settles on microtasks; fake timers hold waitFor's own clock.
     await act(() => vi.advanceTimersByTimeAsync(10));
@@ -236,7 +247,7 @@ describe('the paired viewfinder (spec §1)', () => {
   });
 
   it('reads in French', async () => {
-    await renderViewfinder({ deviceLanguages: ['fr'] });
+    await renderPaired({ deviceLanguages: ['fr'] });
     expect(plate()).toBe('Prêt');
     expect(screen.getByText('En attente du direct · YouTube · Fake CC')).toBeTruthy();
     expect(screen.getByLabelText('Caméra : OK')).toBeTruthy();

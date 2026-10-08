@@ -3,7 +3,7 @@ import { StyleSheet, View, type ViewStyle } from 'react-native';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ADVISORY_KEY } from '@/hooks/advisory';
 import en from '@/i18n/en.json';
-import { colour, layout } from '@/ui/theme/tokens';
+import { colour, layout, space } from '@/ui/theme/tokens';
 import { typeScale } from '@/ui/theme/type';
 import { CASES } from '../../../test/fixtures/matchLabelCases';
 import { layOut } from '../../../test/layOut';
@@ -223,49 +223,73 @@ describe('the status strip (spec §1)', () => {
     expect(follows(byId('camera-box'), strip)).toBe(true);
   });
 
-  it('carries the match label, then the status line, then before air with the overlay on the score-ahead note', async () => {
-    const view = await renderViewfinder();
-    act(() => view.engine.patch({ charging: true }));
+  // Owner, 2026-10-08, "one single line all the time": under the label the strip has ONE message line, the advisory
+  // caption when one is up and the status line otherwise, never both. These phones are quiet (on the charger, surviving
+  // the background; test/quietDevice.ts), so the only caption a paired phone before air can have is Score ahead.
+  it('carries the match label, then ONE message: the status line when no caption is up', async () => {
+    await renderViewfinder({}, { overlay: false });
     const strip = byId('status-strip');
     const label = within(strip).getByTestId('match-label');
-    const line = within(strip).getByText(WAITING);
-    const note = within(strip).getByText(SCORE_AHEAD);
-    expect(follows(label, line)).toBe(true);
-    expect(follows(line, note)).toBe(true);
+    const message = within(strip).getByTestId('strip-message');
+    expect(follows(label, message)).toBe(true);
+    // The message is the status line and nothing else: no caption beside it.
+    expect(message.textContent).toBe(WAITING);
+    expect(within(message).getByText(WAITING)).toBeTruthy();
+    expect(screen.queryByText(SCORE_AHEAD)).toBeNull();
     // The label is the strip's alone: the old bottom strip's single line is gone.
     expect(screen.getAllByTestId('match-label')).toHaveLength(1);
+    expect(within(strip).getAllByTestId('strip-message')).toHaveLength(1);
   });
 
-  it('says the score-ahead note before air only: on air the note is gone', async () => {
+  it('puts the caption over the status line before air with the overlay on: the note is the one message', async () => {
+    await renderViewfinder();
+    const strip = byId('status-strip');
+    const message = within(strip).getByTestId('strip-message');
+    expect(follows(within(strip).getByTestId('match-label'), message)).toBe(true);
+    expect(message.textContent).toBe(SCORE_AHEAD);
+    // The caption outranks the status line, and the status line is NOT shown beside it: not anywhere on screen.
+    expect(screen.queryByText(WAITING)).toBeNull();
+    expect(within(strip).getAllByTestId('strip-message')).toHaveLength(1);
+  });
+
+  it('says the score-ahead note before air only: on air the note is gone and the live line is the one message', async () => {
     const view = await renderViewfinder();
-    act(() => view.engine.patch({ charging: true }));
     expect(within(byId('status-strip')).getByText(SCORE_AHEAD)).toBeTruthy();
     act(() => view.engine.scene('live'));
     expect(screen.queryByText(SCORE_AHEAD)).toBeNull();
+    expect(byId('strip-message').textContent).toBe(en['stream.status.live']);
   });
 
-  it('sets the status line in the body role, at most 2 lines, under the label (F20, Q4)', async () => {
-    await renderViewfinder();
+  it('sets the status line in the body role, ONE line, under the label (F20, owner 2026-10-08)', async () => {
+    await renderViewfinder({}, { overlay: false });
     const line = within(byId('status-strip')).getByText(WAITING);
     expect(getComputedStyle(line).fontSize).toBe(`${typeScale.body.fontSize}px`);
-    expect(linesAllowed(line)).toBe(2);
+    expect(linesAllowed(line)).toBe(layout.messageLines);
+    expect(linesAllowed(line)).toBe(1);
+    // A longer line is cut with an ellipsis and no second line (the owner's rule), not wrapped.
+    expect(getComputedStyle(line).textOverflow).toBe('ellipsis');
+    expect(getComputedStyle(line).whiteSpace).toBe('nowrap');
   });
 
   it.each(ADVISORIES)(
-    'carries the %s advisory in the strip, alone: not over the shot, not in the controls',
+    'carries the %s advisory in the strip, as the ONE message: not over the shot, not in the controls',
     async (_name, text, bringUp) => {
-      const view = await renderViewfinder();
+      const view = await renderViewfinder({}, { quiet: false });
       act(() => bringUp(view));
-      const caption = within(byId('status-strip')).getByText(text);
+      const strip = byId('status-strip');
+      const caption = within(strip).getByText(text);
       expect(byId('camera-box').contains(caption)).toBe(false);
       expect(byId('controls-half').contains(caption)).toBe(false);
+      // The caption IS the strip's message: nothing else is in it, and the status line is not on screen.
+      expect(within(strip).getByTestId('strip-message').textContent).toBe(text);
+      expect(screen.queryByText(WAITING)).toBeNull();
       // One caption at a time (topAdvisory): the other four are not up.
       for (const [other, otherText] of ADVISORIES) {
         if (otherText !== text) expect(screen.queryByText(otherText), other).toBeNull();
       }
-      // The caption is small, grey and clamped to 2 lines (Q4).
+      // The caption is small and grey, in its own role, and ONE line.
       expect(getComputedStyle(caption).fontSize).toBe(`${typeScale.metricUnit.fontSize}px`);
-      expect(linesAllowed(caption)).toBe(2);
+      expect(linesAllowed(caption)).toBe(layout.messageLines);
       advisoriesRun += 1;
     },
   );
@@ -281,6 +305,8 @@ describe('the status strip (spec §1)', () => {
     const strip = byId('status-strip');
     expect(within(strip).queryByTestId('match-label')).toBeNull();
     expect(within(strip).queryByText(SCORE_AHEAD)).toBeNull();
+    // The one message line is there with its status line (the empty case: no caption, no label, still a message).
+    expect(within(strip).getByTestId('strip-message').textContent).not.toBe('');
     expect(byId('camera-box')).toBeTruthy();
     expect(byId('controls-half')).toBeTruthy();
     expect(byId('tally-plate').textContent).toBe('Starting');
@@ -289,7 +315,8 @@ describe('the status strip (spec §1)', () => {
 
 /**
  * Spec §2, R-F5: the round line is the first line of the strip, above the match label, and it yields: no
- * reserve was added, so it shows only when the strip has room beside the label (stageFit.ts). Real
+ * reserve was added, so it shows only when the strip has room beside the label and the ONE message line (stageFit.ts;
+ * the caption is not a term, it takes the message line). Real
  * components, nothing mocked; jsdom lays nothing out, so `layOut` delivers the sizes the phone would.
  * Whether the line fits on a real phone is Task 11's device check (item 3); this is the wiring.
  */
@@ -300,11 +327,15 @@ describe('the round line above the match label (spec §2, R-F5)', () => {
   /** A viewfinder paired with this match label and stage label, the strip and the label laid out. */
   async function withStage(
     stageLabel: string | null,
-    { strip = 180, label = 44 }: { strip?: number; label?: number } = {},
+    {
+      strip = 180,
+      label = 44,
+      overlay,
+    }: { strip?: number; label?: number; overlay?: boolean } = {},
   ) {
     const view = await renderViewfinder(
       {},
-      { prepare: (fakes) => fakes.engine.setPairing({ label: 'A v B', stageLabel }) },
+      { overlay, prepare: (fakes) => fakes.engine.setPairing({ label: 'A v B', stageLabel }) },
     );
     layOut(byId('status-strip'), { width: 320, height: strip });
     layOut(byId('match-label'), { width: 300, height: label });
@@ -318,11 +349,12 @@ describe('the round line above the match label (spec §2, R-F5)', () => {
     expect(() => layOut(byId('match-label'), { width: 300, height: 44 })).not.toThrow();
   });
 
-  it('is the strip’s first row: the round line, then the match label, then the status line', async () => {
-    await withStage('QF');
+  it('is the strip’s first row: the round line, then the match label, then the one message line', async () => {
+    await withStage('QF', { overlay: false });
     const round = within(byId('status-strip')).getByTestId('stage-line');
     const label = within(byId('status-strip')).getByTestId('match-label');
-    const status = within(byId('status-strip')).getByText(WAITING);
+    const status = within(byId('status-strip')).getByTestId('strip-message');
+    expect(status.textContent).toBe(WAITING);
     expect(round.textContent).toBe('QF');
     expect(follows(round, label)).toBe(true);
     expect(follows(label, status)).toBe(true);
@@ -350,11 +382,22 @@ describe('the round line above the match label (spec §2, R-F5)', () => {
     expect(stage()).toBeNull();
   });
 
+  // A strip of 120 (the reserve of the worst label) holds the padding, the label, the message line and a gap (66 + the
+  // label), so the round line, which needs 22 more, is there for a label up to 54 dp: a two-line one (44), and not a
+  // three-line one (57).
   it('yields to a label of three lines (57 dp) and is back when the label is two (44 dp)', async () => {
-    await withStage('QF', { label: 57 });
+    await withStage('QF', { label: 57, strip: 120 });
     expect(stage()).toBeNull();
     layOut(byId('match-label'), { width: 300, height: 44 });
     expect(stage()?.textContent).toBe('QF');
+  });
+
+  // The edge, written from the declarations: 2 × 8 + 16 + 44 + 22 + 2 × 6 = 110.
+  it('needs exactly 110 dp for a two-line label: 110 shows it, 109 does not', async () => {
+    await withStage('QF', { label: 44, strip: 110 });
+    expect(stage()?.textContent).toBe('QF');
+    layOut(byId('status-strip'), { width: 320, height: 109 });
+    expect(stage()).toBeNull();
   });
 
   // The camera half is what the controls half leaves: the window less the controls half's width (owner, 2026-10-08),
@@ -367,18 +410,12 @@ describe('the round line above the match label (spec §2, R-F5)', () => {
 
   /**
    * One window, one label height, a caption up or not: the strip the box leaves and whether the round line shows.
-   * A caption up is the viewfinder as it opens (the fake phone is uncharged, so Not charging is on top); no caption is
-   * on air with the phone charging. Each is checked to be what it says (anti-vacuity: a "no caption" run that had one
-   * proves nothing).
+   * A caption up is the viewfinder as it opens (the phone is quiet, so the caption is Score ahead); no caption is
+   * on air. Each is checked to be what it says (anti-vacuity: a "no caption" run that had one proves nothing).
    */
   async function roundLineIn(width: number, height: number, label: number, captionUp: boolean) {
     const view = await withStage('QF', { strip: 0, label: 0 });
-    if (!captionUp) {
-      act(() => {
-        view.engine.scene('live');
-        view.engine.patch({ charging: true });
-      });
-    }
+    if (!captionUp) act(() => view.engine.scene('live'));
     layOut(byId('camera-half'), { width: cameraHalf(width), height });
     layOut(byId('match-label'), { width: cameraHalf(width) - 32, height: label });
     const strip = height - parseFloat(getComputedStyle(byId('camera-box')).height);
@@ -392,52 +429,53 @@ describe('the round line above the match label (spec §2, R-F5)', () => {
     return { shown, strip };
   }
 
-  it('at 640 × 360 the half limits the picture for a label up to 70 dp, so a caption and a two-line label (44) leave room for the round line, and three long lines (57) do not', async () => {
-    expect(await roundLineIn(640, 360, 44, true), 'two lines, a caption up').toEqual({
-      shown: true,
-      strip: expect.closeTo(174.375, 6),
-    });
-    expect(await roundLineIn(640, 360, 57, true), 'three long lines, a caption up').toEqual({
-      shown: false,
-      strip: expect.closeTo(174.375, 6),
-    });
-    // Four long lines are the worst case the reserve is made for: the strip is the 180 it always was.
-    expect(await roundLineIn(640, 360, 76, true), 'four long lines').toEqual({
-      shown: false,
-      strip: expect.closeTo(180, 6),
-    });
+  it('at 640 × 360 the half limits the picture for every label, so the strip has room for the round line, even four long lines (76)', async () => {
+    for (const label of [44, 57, 76]) {
+      expect(await roundLineIn(640, 360, label, true), `label ${label}, a caption up`).toEqual({
+        shown: true,
+        strip: expect.closeTo(174.375, 6),
+      });
+    }
   });
 
-  // Each of the five real windows, with a label of two lines and a long one. Written by hand, never from stageFits:
-  // height-limited (every window but 640 × 360), the strip is the label's reserve, 104 + the label; the round line
-  // needs 88 + the label with no caption (it fits with 16 to spare) and 126 + the label with one (22 over).
-  it('yields at each of the five real screens, with a caption up and not, in the half the layout gives the camera', async () => {
-    // [width, height, label, strip, shows with no caption, shows with a caption]
+  // Each of the real windows, with a label of one to four lines. Written by hand, never from stageFits: where the
+  // window limits the box (every one but 640 × 360, and 844 × 390 for a short label) the strip is the label's reserve,
+  // 44 + the label, and the round line needs 66 + the label: 22 over, so it is hidden and the picture keeps the room.
+  // The caption is not a term (it takes the message line, no room): every row gives the same answer with one up or not.
+  it('yields at each of the real screens, with a caption up and not, in the half the layout gives the camera', async () => {
+    // [width, height, label, strip, shows]
     const ROWS = [
-      [640, 360, 44, 174.375, true, true],
-      [640, 360, 57, 174.375, true, false],
-      [640, 360, 76, 180, true, false],
-      [800, 360, 44, 148, true, false],
-      [800, 360, 76, 180, true, false],
-      [804, 360, 44, 148, true, false],
-      [804, 360, 57, 161, true, false],
-      [844, 390, 44, 148, true, false],
-      [915, 412, 22, 126, true, false],
-      [915, 412, 44, 148, true, false],
-      [915, 412, 76, 180, true, false],
+      [640, 360, 44, 174.375, true],
+      [640, 360, 57, 174.375, true],
+      [640, 360, 76, 174.375, true],
+      [804, 332, 22, 66, false],
+      [804, 332, 44, 88, false],
+      [804, 332, 76, 120, false],
+      [804, 360, 22, 82.125, false],
+      [804, 360, 44, 88, false],
+      [804, 360, 57, 101, false],
+      [800, 360, 22, 84.375, false],
+      [800, 360, 76, 120, false],
+      [844, 390, 22, 89.625, true],
+      [844, 390, 44, 89.625, false],
+      [915, 412, 22, 71.6875, false],
+      [915, 412, 44, 88, false],
+      [915, 412, 76, 120, false],
     ] as const;
     let checked = 0;
-    for (const [width, height, label, strip, none, up] of ROWS) {
-      const bare = await roundLineIn(width, height, label, false);
-      expect(bare.strip, `${width} × ${height}, label ${label}`).toBeCloseTo(strip, 6);
-      expect(bare.shown, `${width} × ${height}, label ${label}, no caption`).toBe(none);
-      const captioned = await roundLineIn(width, height, label, true);
-      expect(captioned.strip, `${width} × ${height}, label ${label}, strip`).toBeCloseTo(strip, 6);
-      expect(captioned.shown, `${width} × ${height}, label ${label}, a caption`).toBe(up);
-      checked += 2;
+    for (const [width, height, label, strip, shows] of ROWS) {
+      for (const captionUp of [false, true]) {
+        const run = await roundLineIn(width, height, label, captionUp);
+        const where = `${width} × ${height}, label ${label}, ${captionUp ? 'a caption' : 'no caption'}`;
+        expect(run.strip, where).toBeCloseTo(strip, 2);
+        expect(run.shown, where).toBe(shows);
+        checked += 1;
+      }
     }
     expect(checked).toBe(ROWS.length * 2);
-    expect(ROWS.filter((row) => row[4] && !row[5]).length).toBeGreaterThan(0);
+    // Anti-vacuity: both answers occur.
+    expect(ROWS.filter((row) => row[4]).length).toBeGreaterThan(0);
+    expect(ROWS.filter((row) => !row[4]).length).toBeGreaterThan(0);
   });
 });
 
@@ -619,7 +657,8 @@ describe('organiser-stopped stays on the viewfinder (spec §1)', () => {
   afterEach(() => vi.useRealTimers());
 
   it('renders both halves, the box, the strip with its line, and Go live again', async () => {
-    const view = await renderViewfinder();
+    // The score preview is off: with it on, a paired phone before air says Score ahead in the strip's one line.
+    const view = await renderViewfinder({}, { overlay: false });
     act(() => view.engine.scene('paired-after-organiser-stop'));
     expect(
       [...byId('viewfinder').children].map((half) => half.getAttribute('data-testid')),
@@ -640,7 +679,8 @@ describe('the halves are one screen through a sequence (spec §1, §4)', () => {
   const line = () => within(byId('status-strip'));
 
   it('follows paired, live, a call starting and the call ending, and never remounts the camera box', async () => {
-    const view = await renderViewfinder();
+    // The score preview is off: with it on, a paired phone before air says Score ahead in the strip's one line.
+    const view = await renderViewfinder({}, { overlay: false });
     const box = byId('camera-box');
     const half = byId('camera-half');
     const controls = byId('controls-half');
@@ -677,23 +717,26 @@ describe('the halves are one screen through a sequence (spec §1, §4)', () => {
  * phone would, and the box is read from the style it was given.
  *
  * This describe is the INITIAL WORST CASE: no match label has been laid out, so the box is sized against the strip's
- * worst case, 180, as it was before the owner's ruling of 2026-10-08 (option A) sized it from the label (the describe
- * after this one). Nothing here lays the label out, which is what makes these the unmeasured numbers.
+ * worst case, 120 (the padding, four long label lines, one gap and ONE message line), as it was before the owner's
+ * ruling of 2026-10-08 (option A) sized it from the label (the describe after this one). Nothing here lays the label
+ * out, which is what makes these the unmeasured numbers.
  */
 describe('the camera box gives way to the strip, before the label is measured (spec §1, fix round 1 I-1)', () => {
   beforeEach(() => vi.useFakeTimers());
   afterEach(() => vi.useRealTimers());
 
   // [width, height, camera half, box width, box height] in dp, worked by hand from spec §1 as amended (the controls
-  // half is 310, so the camera half is the window less 310) and the strip's 180 dp reserve (Q4 option A). Every box
-  // here is what the strip leaves: height - 180 tall and 16:9. The camera half would hold a box 9/16 as tall as it is
-  // wide (186 at 640, 277 at 804, 340 at 915), which is more than the strip leaves on every one of these screens.
+  // half is 310, so the camera half is the window less 310) and the strip's 120 dp reserve (Q4 option A, one message
+  // line). The box is the lesser of what the half holds (9/16 of its width: 185.625 at 640, 277.875 at 804, 340.3125 at
+  // 915) and what the strip leaves (height - 120): the whole half at 640 (the half limits it, full width), and the
+  // strip's leaving at every other screen here, 212 at the owner's phone as it really is (804 × 332).
   const SCREENS = [
-    [640, 360, 330, 320, 180],
-    [800, 360, 490, 320, 180],
-    [804, 360, 494, 320, 180],
-    [844, 390, 534, 373.3333333, 210],
-    [915, 412, 605, 412.4444444, 232],
+    [640, 360, 330, 330, 185.625],
+    [800, 360, 490, 426.6666667, 240],
+    [804, 360, 494, 426.6666667, 240],
+    [804, 332, 494, 376.8888889, 212],
+    [844, 390, 534, 480, 270],
+    [915, 412, 605, 519.1111111, 292],
   ] as const;
   let screensChecked = 0;
 
@@ -720,28 +763,28 @@ describe('the camera box gives way to the strip, before the label is measured (s
       const size = boxSize();
       expect(size.width).toBeCloseTo(boxWidth, 2);
       expect(size.height).toBeCloseTo(boxHeight, 2);
-      // 16:9, and the box plus the strip's 180 fits the screen.
+      // 16:9, and the box plus the strip's worst case, 120, fits the screen.
       expect(size.width / size.height).toBeCloseTo(16 / 9, 3);
-      expect(size.height + 180).toBeLessThanOrEqual(height + 1e-6);
+      expect(size.height + 120).toBeLessThanOrEqual(height + 1e-6);
       expect(size.width).toBeLessThanOrEqual(given + 1e-6);
       screensChecked += 1;
     },
   );
 
   it('measured five screens (anti-vacuity)', () => {
-    expect(SCREENS).toHaveLength(5);
+    expect(SCREENS).toHaveLength(6);
     expect(screensChecked).toBe(SCREENS.length);
   });
 
   // The rule's consequence, written from the declarations: the camera half is wider than half the screen wherever the
-  // screen is wider than twice the controls half, and the box is the lesser of what that half and the strip's 180 leave
-  // it. At 640 the half (330) is 10 dp wider than half the screen (320) and holds a box 186 tall; the strip leaves 180,
-  // so the box is 320 × 180. From 630 wide up it is the strip that limits the box: 320 × 180 on a 360 dp screen
-  // however wide the half is (804 × 360: a 494 dp half, a box of 320).
+  // screen is wider than twice the controls half, and the box is the lesser of what that half and the strip's 120 leave
+  // it. At 640 the half (330) is 10 dp wider than half the screen (320) and holds a box 185.625 tall; the strip leaves
+  // 240, so the box is the whole half, 330 × 185.625. From 800 wide on a 360 dp screen it is the strip that limits the
+  // box: 240 tall however wide the half is (804 × 360: a 494 dp half, a box of 426.7).
   it('the camera half is wider than half the screen, and the box is the lesser of what the half and the strip leave', async () => {
     await renderViewfinder();
     const CONTROLS = parseFloat(getComputedStyle(byId('controls-half')).width);
-    const RESERVE = 180; // Q4 option A: 2 × 8 + 76 + 44 + 32 + 2 × 6, the strip at its worst
+    const RESERVE = 120; // Q4 option A: 2 × 8 + 76 + 22 + 6, the strip at its worst, one message line
     let wider = 0;
     for (const [width, height] of SCREENS) {
       layOut(byId('camera-half'), { width: width - CONTROLS, height });
@@ -756,7 +799,7 @@ describe('the camera box gives way to the strip, before the label is measured (s
         wider += 1;
       }
     }
-    expect(wider).toBe(5);
+    expect(wider).toBe(SCREENS.length);
   });
 
   it('centres the box in its half, on the half’s surface colour', async () => {
@@ -768,26 +811,27 @@ describe('the camera box gives way to the strip, before the label is measured (s
 
   it('keeps the overlay and What viewers see inside the narrower box', async () => {
     const view = await renderViewfinder();
-    layOut(byId('camera-half'), { width: 400, height: 360 });
+    // A half of 480: the strip's 120 leaves a box 240 tall, 426.7 wide, narrower than the half.
+    layOut(byId('camera-half'), { width: 480, height: 360 });
     const box = byId('camera-box');
     expect(box.contains(byId('overlay'))).toBe(true);
     act(() => view.engine.scene('live'));
     pressIn(peek());
     expect(box.contains(byId('viewer-video'))).toBe(true);
     expect(box.contains(byId('overlay'))).toBe(true);
-    expect(boxSize().width).toBeCloseTo(320, 2);
+    expect(boxSize().width).toBeCloseTo(426.6666667, 2);
   });
 
-  it('follows the screen and never remounts: 800 × 360, then 640 × 360, then 844 × 390', async () => {
+  it('follows the screen and never remounts: a 480 half at 360, then a 320 half, then a 560 half at 390', async () => {
     await renderViewfinder();
     const box = byId('camera-box');
     const preview = within(box).getByTestId('preview');
-    layOut(byId('camera-half'), { width: 400, height: 360 });
-    expect(boxSize().width).toBeCloseTo(320, 2);
+    layOut(byId('camera-half'), { width: 480, height: 360 });
+    expect(boxSize().width).toBeCloseTo(426.6666667, 2);
     layOut(byId('camera-half'), { width: 320, height: 360 });
     expect(boxSize()).toEqual({ width: 320, height: 180 });
-    layOut(byId('camera-half'), { width: 422, height: 390 });
-    expect(boxSize().height).toBeCloseTo(210, 2);
+    layOut(byId('camera-half'), { width: 560, height: 390 });
+    expect(boxSize().height).toBeCloseTo(270, 2);
     expect(byId('camera-box')).toBe(box);
     expect(within(byId('camera-box')).getByTestId('preview')).toBe(preview);
   });
@@ -802,11 +846,12 @@ describe('the camera box gives way to the strip, before the label is measured (s
 
 /**
  * Owner, 2026-10-08, option A: the picture is sized from what THIS match's label needs (its measured height, as laid
- * out in the half's width), plus fixed room for the status line, the caption and the padding and gaps. It is one size for
- * the whole match: it changes when the label's text or the half's width does and for nothing else, and until the label
- * has been measured it is the worst case. jsdom lays nothing out, so `layOut` delivers what the phone would: the half's
- * size, then the label's height. The expected numbers are written out by hand from the token and type declarations
- * (the strip's fixed terms are 16 + 44 + 32 + 12 = 104, and a label of 22, 44 or 76), never read from the component.
+ * out in the half's width), plus fixed room for the ONE message line ("one single line all the time") and the padding
+ * and gap. It is one size for the whole match: it changes when the label's text or the half's width does and for
+ * nothing else, and until the label has been measured it is the worst case. jsdom lays nothing out, so `layOut` delivers
+ * what the phone would: the half's size, then the label's height. The expected numbers are written out by hand from
+ * the token and type declarations (the strip's fixed terms are 16 + 22 + 6 = 44, and a label of 22, 44 or 76), never
+ * read from the component.
  */
 describe('the picture is sized from this match’s label (owner, 2026-10-08, option A)', () => {
   beforeEach(() => vi.useFakeTimers());
@@ -815,16 +860,24 @@ describe('the picture is sized from this match’s label (owner, 2026-10-08, opt
   const MATCH = 'Ana Ruiz v Bea Lima';
   const LONG_DOUBLES =
     'Alexandra Konstantinopoulou / Bea Lima v Cai Wen / Maria Fernanda Albuquerque Santos';
+  /** The strip's fixed terms: the padding, one gap and the ONE message line, from the declarations. */
+  const FIXED =
+    2 * layout.stripPadV + layout.stripGap + layout.messageLines * typeScale.body.lineHeight;
   const half = (width: number) => width - parseFloat(getComputedStyle(byId('controls-half')).width);
   const boxSize = () => {
     const style = getComputedStyle(byId('camera-box'));
     return { width: parseFloat(style.width), height: parseFloat(style.height) };
   };
   /** A viewfinder for this match, the half laid out for the window, and the label too when it has a height. */
-  async function open(width: number, height: number, label: number | null, text = MATCH) {
+  async function open(
+    width: number,
+    height: number,
+    label: number | null,
+    { text = MATCH, quiet = true }: { text?: string; quiet?: boolean } = {},
+  ) {
     const view = await renderViewfinder(
       {},
-      { prepare: (fakes) => fakes.engine.setPairing({ label: text, stageLabel: 'QF' }) },
+      { quiet, prepare: (fakes) => fakes.engine.setPairing({ label: text, stageLabel: 'QF' }) },
     );
     layOut(byId('camera-half'), { width: half(width), height });
     if (label !== null)
@@ -832,35 +885,43 @@ describe('the picture is sized from this match’s label (owner, 2026-10-08, opt
     return view;
   }
 
+  it('has fixed terms of 44 dp: 2 × 8 + 6 + 22', () => {
+    expect(FIXED).toBe(44);
+  });
+
   // The initial worst case: the half has laid out and the label has not. The strip is never short: the box leaves it
-  // the 180 it always reserved, whatever the match.
+  // the 120 it always reserved, whatever the match (or, where the half limits the picture, what the half leaves).
   it.each([
-    [640, 360, 320, 180],
-    [804, 360, 320, 180],
-    [915, 412, 412.4444444, 232],
+    [640, 360, 330, 185.625, 174.375],
+    [804, 332, 376.8888889, 212, 120],
+    [804, 360, 426.6666667, 240, 120],
+    [915, 412, 519.1111111, 292, 120],
   ] as const)(
-    'before the label is measured the strip has its worst case, 180: %i × %i is %d × %d',
-    async (width, height, boxWidth, boxHeight) => {
+    'before the label is measured the strip has its worst case, 120: %i × %i is %d × %d, a strip of %d',
+    async (width, height, boxWidth, boxHeight, strip) => {
       await open(width, height, null);
       expect(boxSize().width).toBeCloseTo(boxWidth, 2);
       expect(boxSize().height).toBeCloseTo(boxHeight, 2);
-      expect(height - boxSize().height).toBeCloseTo(180, 6);
+      expect(height - boxSize().height).toBeCloseTo(strip, 2);
     },
   );
 
-  // [window, height, label lines, label height, box width, box height]: by hand, from the strip's reserve of 104 + the
-  // label (126, 148, 180) and a camera half of the window less 310. The same table as cameraBox.test.ts, but rendered:
+  // [window, height, label lines, label height, box width, box height]: by hand, from the strip's reserve of 44 + the
+  // label (66, 88, 120) and a camera half of the window less 310. The same table as cameraBox.test.ts, but rendered:
   // the half lays out, then the label does, and the box that results is read from what the component painted.
   const TABLE = [
     [640, 360, '1 line', 22, 330, 185.625],
     [640, 360, '2 lines', 44, 330, 185.625],
-    [640, 360, '4 long lines', 76, 320, 180],
-    [804, 360, '1 line', 22, 416, 234],
-    [804, 360, '2 lines', 44, 376.8888889, 212],
-    [804, 360, '4 long lines', 76, 320, 180],
-    [915, 412, '1 line', 22, 508.4444444, 286],
-    [915, 412, '2 lines', 44, 469.3333333, 264],
-    [915, 412, '4 long lines', 76, 412.4444444, 232],
+    [640, 360, '4 long lines', 76, 330, 185.625],
+    [804, 332, '1 line', 22, 472.8888889, 266],
+    [804, 332, '2 lines', 44, 433.7777778, 244],
+    [804, 332, '4 long lines', 76, 376.8888889, 212],
+    [804, 360, '1 line', 22, 494, 277.875],
+    [804, 360, '2 lines', 44, 483.5555556, 272],
+    [804, 360, '4 long lines', 76, 426.6666667, 240],
+    [915, 412, '1 line', 22, 605, 340.3125],
+    [915, 412, '2 lines', 44, 576, 324],
+    [915, 412, '4 long lines', 76, 519.1111111, 292],
   ] as const;
   let tabled = 0;
 
@@ -874,144 +935,178 @@ describe('the picture is sized from this match’s label (owner, 2026-10-08, opt
       expect(size.width / size.height).toBeCloseTo(16 / 9, 3);
       // Derived from the declarations: the lesser of what the half holds and what the window leaves the strip.
       expect(size.height).toBeCloseTo(
-        Math.min(((width - layout.controlsHalf) * 9) / 16, height - (104 + label)),
-        6,
+        Math.min(((width - layout.controlsHalf) * 9) / 16, height - (FIXED + label)),
+        2,
       );
       expect(size.width).toBeLessThanOrEqual(half(width) + 1e-6);
       tabled += 1;
     },
   );
 
-  it('rendered nine shapes, and a longer label is never a larger box (anti-vacuity)', () => {
-    expect(TABLE).toHaveLength(9);
-    expect(tabled).toBe(9);
-    for (let window = 0; window < 3; window += 1) {
+  it('rendered twelve shapes, and a longer label is never a larger box (anti-vacuity)', () => {
+    expect(TABLE).toHaveLength(12);
+    expect(tabled).toBe(12);
+    for (let window = 0; window < 4; window += 1) {
       const [one, two, four] = TABLE.slice(window * 3, window * 3 + 3);
       expect(one?.[5]).toBeGreaterThanOrEqual(two?.[5] ?? Infinity);
       expect(two?.[5]).toBeGreaterThanOrEqual(four?.[5] ?? Infinity);
     }
+    // And the owner's phone as it really is (804 × 332) has a different box for each label: it is the strip that limits.
+    const phone = TABLE.filter((row) => row[0] === 804 && row[1] === 332).map((row) => row[5]);
+    expect(new Set(phone).size).toBe(3);
   });
 
-  // The sequence, on the owner's phone (804 × 360), the match as the operator lives it. The box is read after every
-  // step and must be the same size to the pixel until the label's text changes: a status line that changes (paired,
-  // live, holding), a caption that comes up and goes, the round line that comes and goes. Then a new match with a
-  // longer label is a smaller box, with the worst case in between (the new label has not been laid out), and a
-  // shorter one is a larger box again, the first one's, exactly.
-  it('keeps the same picture for the whole match, and changes it only with the label (804 × 360)', async () => {
-    const view = await open(804, 360, 44);
-    const first = boxSize();
-    expect(first.width).toBeCloseTo(376.8888889, 2);
-    expect(first.height).toBeCloseTo(212, 6);
-    const stripOf = () => 360 - boxSize().height;
-    layOut(byId('status-strip'), { width: half(804), height: 148 });
-    const sameBox = (when: string) => expect(boxSize(), when).toEqual(first);
-    const roundLine = () => within(byId('status-strip')).queryByTestId('stage-line');
+  // The sequence, the match as the operator lives it. The box is read after every step and must be the same size to
+  // the pixel until the label's text changes: a status line that changes (paired, live, holding), a caption that comes
+  // up and goes (the caption takes the message line, no room of its own), the round line that comes and goes. Then a
+  // new match with a longer label is a smaller box where the strip limits it, with the worst case in between (the new
+  // label has not been laid out), and a shorter one is the first box again, exactly. Two windows: the owner's phone
+  // (804 × 332), where the picture is as tall as the window allows and the round line never has room; and 640 × 360,
+  // where the half limits the picture and the round line has room, so it is up through the status change AND the
+  // caption.
+  // [width, height, first box, round line up, the box for an unmeasured new label, the box for 76 laid out]
+  const SEQUENCES = [
+    [804, 332, { width: 433.7777778, height: 244 }, false, { width: 376.8888889, height: 212 }],
+    [640, 360, { width: 330, height: 185.625 }, true, { width: 330, height: 185.625 }],
+  ] as const;
+  let sequences = 0;
+  it.each(SEQUENCES)(
+    'keeps the same picture for the whole match, and changes it only with the label (%i × %i)',
+    async (width, height, firstBox, roundLineUp, longBox) => {
+      // quiet: false, so the test drives the charger and the background itself.
+      const view = await open(width, height, 44, { quiet: false });
+      const first = boxSize();
+      expect(first.width).toBeCloseTo(firstBox.width, 2);
+      expect(first.height).toBeCloseTo(firstBox.height, 2);
+      const stripOf = () => height - boxSize().height;
+      layOut(byId('status-strip'), { width: half(width), height: stripOf() });
+      const sameBox = (when: string) => expect(boxSize(), when).toEqual(first);
+      const roundLine = () => within(byId('status-strip')).queryByTestId('stage-line');
+      const message = () => byId('strip-message').textContent;
+      const calm = () => {
+        act(() => view.engine.patch({ charging: true }));
+        act(() => view.engine.setSurvivesBackground(true));
+      };
+      // The round line is up exactly where the strip has room for it, and nowhere else (anti-vacuity both ways).
+      const roundLineIs = (when: string) => expect(roundLine() !== null, when).toBe(roundLineUp);
 
-    // The status line changes: going live, a call holding the link, back, waiting for Go live after an organiser stop.
-    const status = byId('status-strip').textContent;
-    act(() => view.engine.scene('live'));
-    expect(byId('status-strip').textContent).not.toBe(status);
-    sameBox('after going live');
-    act(() => view.engine.patch({ charging: true }));
-    sameBox('after the phone is charging');
-    const live = byId('status-strip').textContent;
-    act(() => view.engine.scene('holding'));
-    expect(byId('status-strip').textContent).not.toBe(live);
-    sameBox('after the link is held');
-    act(() => view.engine.scene('live'));
-    act(() => view.engine.patch({ charging: true }));
-    sameBox('after it is back');
+      // The status line changes: going live, a call holding the link, back.
+      act(() => view.engine.scene('live'));
+      calm();
+      expect(message()).toBe(en['stream.status.live']);
+      sameBox('after going live');
+      act(() => view.engine.scene('holding'));
+      calm();
+      expect(message()).not.toBe(en['stream.status.live']);
+      sameBox('after the link is held');
+      act(() => view.engine.scene('live'));
+      calm();
+      expect(message()).toBe(en['stream.status.live']);
+      sameBox('after it is back');
+      roundLineIs('with no caption');
+      if (roundLineUp) expect(roundLine()?.textContent).toBe('QF');
 
-    // No caption now, so the round line has the room: 132 of the 148 the strip is.
-    expect(roundLine()?.textContent).toBe('QF');
-    sameBox('with the round line up');
+      // A caption comes up and takes the message line: the picture does not move, and neither does the round line (the
+      // caption is not a term of the fit).
+      act(() => view.engine.patch({ charging: false }));
+      expect(message()).toBe(en['stream.advisory.notCharging']);
+      sameBox('with a caption up');
+      roundLineIs('with a caption up');
+      act(() => view.engine.setSurvivesBackground(false));
+      expect(message()).toBe(en['stream.advisory.keepOpen']);
+      sameBox('with another caption on top');
+      roundLineIs('with another caption on top');
+      calm();
+      expect(message()).toBe(en['stream.status.live']);
+      sameBox('with the captions gone');
+      roundLineIs('with the captions gone');
 
-    // A caption comes up: the round line goes (170 > 148), the picture does not move.
-    act(() => view.engine.patch({ charging: false }));
-    expect(within(byId('status-strip')).getByText(en['stream.advisory.notCharging'])).toBeTruthy();
-    expect(roundLine()).toBeNull();
-    sameBox('with a caption up');
-    act(() => view.engine.setSurvivesBackground(false));
-    sameBox('with another caption on top');
-    act(() => view.engine.patch({ charging: true }));
-    act(() => view.engine.setSurvivesBackground(true));
-    sameBox('with the captions gone');
-    expect(roundLine()?.textContent).toBe('QF');
+      // The round line itself comes and goes with the stage label: the picture does not move.
+      act(() => view.engine.setPairing({ stageLabel: null }));
+      expect(roundLine()).toBeNull();
+      sameBox('with no round line');
+      act(() => view.engine.setPairing({ stageLabel: 'SF' }));
+      roundLineIs('with another round line');
+      if (roundLineUp) expect(roundLine()?.textContent).toBe('SF');
+      sameBox('with another round line');
 
-    // The round line itself comes and goes with the stage label: the picture does not move.
-    act(() => view.engine.setPairing({ stageLabel: null }));
-    expect(roundLine()).toBeNull();
-    sameBox('with no round line');
-    act(() => view.engine.setPairing({ stageLabel: 'SF' }));
-    expect(roundLine()?.textContent).toBe('SF');
-    sameBox('with another round line');
-    expect(stripOf()).toBeCloseTo(148, 6);
+      // The match ends (the organiser stops it) and the next is paired: the label now comes from the pairing, before air.
+      act(() => view.engine.scene('paired-after-organiser-stop'));
+      sameBox('after the organiser stopped the match');
 
-    // The match ends (the organiser stops it) and the next is paired: the label now comes from the pairing, before air.
-    act(() => view.engine.scene('paired-after-organiser-stop'));
-    sameBox('after the organiser stopped the match');
+      // A new match, with a longer label: the label changes text, so the picture is sized again. Not laid out yet it is
+      // the worst case (never short), and laid out at four long lines it is that reserve.
+      act(() => view.engine.setPairing({ label: LONG_DOUBLES }));
+      expect(boxSize().width).toBeCloseTo(longBox.width, 2);
+      expect(boxSize().height).toBeCloseTo(longBox.height, 2);
+      layOut(byId('match-label'), { width: half(width) - 2 * layout.stripPadH, height: 76 });
+      expect(boxSize().width).toBeCloseTo(longBox.width, 2);
+      expect(boxSize().height).toBeCloseTo(longBox.height, 2);
+      expect(boxSize().height).toBeLessThanOrEqual(first.height);
 
-    // A new match, with a longer label: the label changes text, so the picture is sized again. Not laid out yet it is
-    // the worst case (320 × 180, never short), and laid out at four long lines it is that reserve: smaller than the first.
-    act(() => view.engine.setPairing({ label: LONG_DOUBLES }));
-    expect(boxSize().height).toBeCloseTo(180, 6);
-    layOut(byId('match-label'), { width: half(804) - 2 * layout.stripPadH, height: 76 });
-    expect(boxSize().width).toBeCloseTo(320, 6);
-    expect(boxSize().height).toBeCloseTo(180, 6);
-    expect(boxSize().height).toBeLessThan(first.height);
+      // And a shorter one is the first picture again, to the pixel: it depends on the label and the half and nothing else.
+      act(() => view.engine.setPairing({ label: MATCH }));
+      layOut(byId('match-label'), { width: half(width) - 2 * layout.stripPadH, height: 44 });
+      sameBox('with the first label again');
+      sequences += 1;
+    },
+  );
 
-    // And a shorter one is the first picture again, to the pixel: it depends on the label and the half and nothing else.
-    act(() => view.engine.setPairing({ label: MATCH }));
-    layOut(byId('match-label'), { width: half(804) - 2 * layout.stripPadH, height: 44 });
-    sameBox('with the first label again');
+  it('ran both sequences, and the longer label made a smaller box on the phone (anti-vacuity)', () => {
+    expect(SEQUENCES).toHaveLength(2);
+    expect(sequences).toBe(2);
+    const [phone] = SEQUENCES;
+    expect(phone[4].height).toBeLessThan(phone[2].height);
   });
 
   // The half's width is the label's wrapping width, so a new width is a new measurement (the label lays out again in
   // it) and a new box: here a rotation of the half and the same label measured again.
   it('is sized again when the half’s width changes, and the label lays out in the new width', async () => {
-    await open(804, 360, 44);
-    expect(boxSize().height).toBeCloseTo(212, 6);
+    await open(804, 332, 44);
+    expect(boxSize().height).toBeCloseTo(244, 2);
     layOut(byId('camera-half'), { width: half(915), height: 412 });
     layOut(byId('match-label'), { width: half(915) - 2 * layout.stripPadH, height: 22 });
-    expect(boxSize().height).toBeCloseTo(286, 6);
-    expect(boxSize().width).toBeCloseTo(508.4444444, 2);
+    expect(boxSize().height).toBeCloseTo(340.3125, 2);
+    expect(boxSize().width).toBeCloseTo(605, 2);
   });
 
   // The half's HEIGHT alone changes (the status bar comes or goes, a keyboard, a split window): the width, and so the
   // label's wrapping and its height, are the same, and the picture still has to follow, because the box is the lesser of
-  // what the half holds and what the window leaves the strip. By hand: 804 × 390 leaves 390 - 148 = 242, less than the
-  // 494 × 9 / 16 = 277.875 the width holds, so the box is 242 tall and 242 × 16 / 9 = 430.2222 wide. And back, exactly.
-  it('is sized again when only the half’s height changes (804 × 360 to 804 × 390 and back)', async () => {
-    await open(804, 360, 44);
-    expect(boxSize().width).toBeCloseTo(376.8888889, 2);
-    expect(boxSize().height).toBeCloseTo(212, 6);
-    layOut(byId('camera-half'), { width: half(804), height: 390 });
-    expect(boxSize().width).toBeCloseTo(430.2222222, 2);
-    expect(boxSize().height).toBeCloseTo(242, 6);
+  // what the half holds and what the window leaves the strip. By hand: 804 × 332 leaves 332 - 88 = 244 and 804 × 360
+  // leaves 272, both less than the 494 × 9 / 16 = 277.875 the width holds, so the box is 244 tall and 433.7778 wide, then
+  // 272 tall and 483.5556 wide. And back, exactly.
+  it('is sized again when only the half’s height changes (804 × 332 to 804 × 360 and back)', async () => {
+    await open(804, 332, 44);
+    expect(boxSize().width).toBeCloseTo(433.7777778, 2);
+    expect(boxSize().height).toBeCloseTo(244, 2);
     layOut(byId('camera-half'), { width: half(804), height: 360 });
-    expect(boxSize().width).toBeCloseTo(376.8888889, 2);
-    expect(boxSize().height).toBeCloseTo(212, 6);
+    expect(boxSize().width).toBeCloseTo(483.5555556, 2);
+    expect(boxSize().height).toBeCloseTo(272, 2);
+    layOut(byId('camera-half'), { width: half(804), height: 332 });
+    expect(boxSize().width).toBeCloseTo(433.7777778, 2);
+    expect(boxSize().height).toBeCloseTo(244, 2);
   });
 
-  // The strip's room for the round line, on the owner's phone: the reserve is 148 with a two-line label, and the round
-  // line fits it (132) while no caption is up and does not (170) while one is. The picture is the same either way. Each
-  // of the five captions in turn, each on a viewfinder of its own (a failed overlay stays failed).
+  // The five captions, each on a viewfinder of its own (a failed overlay stays failed), at 640 × 360 where the round
+  // line has room: the caption takes the strip's ONE message line and nothing else. The picture and the round line are
+  // the same with it up as without, and the message is the caption alone.
   let captionsTried = 0;
   it.each(ADVISORIES)(
-    'shows the round line at 804 × 360 with no caption and hides it while the %s caption is up, the picture still',
+    'the %s caption takes the message line and moves neither the picture nor the round line (640 × 360)',
     async (_name, text, bringUp) => {
-      const view = await open(804, 360, 44);
+      const view = await open(640, 360, 44, { quiet: false });
       // The calm baseline: on air, the phone charging, no caption of any kind.
       act(() => {
         view.engine.scene('live');
         view.engine.patch({ charging: true });
       });
       const calm = boxSize();
-      layOut(byId('status-strip'), { width: half(804), height: 360 - calm.height });
-      expect(360 - calm.height).toBeCloseTo(148, 6);
+      layOut(byId('status-strip'), { width: half(640), height: 360 - calm.height });
+      expect(360 - calm.height).toBeCloseTo(174.375, 2);
       const roundLine = () => within(byId('status-strip')).queryByTestId('stage-line');
       expect(ADVISORIES.filter(([, other]) => screen.queryByText(other) !== null)).toHaveLength(0);
       expect(roundLine()?.textContent).toBe('QF');
+      expect(byId('strip-message').textContent).toBe(en['stream.status.live']);
       // The score-ahead note is before air only, so its own state is the paired one; the rest are on air.
       if (text === SCORE_AHEAD) {
         act(() => {
@@ -1025,7 +1120,8 @@ describe('the picture is sized from this match’s label (owner, 2026-10-08, opt
         act(() => bringUp(view));
       }
       expect(screen.queryByText(text) !== null, `${text} is up`).toBe(true);
-      expect(roundLine()).toBeNull();
+      expect(byId('strip-message').textContent).toBe(text);
+      expect(roundLine()?.textContent).toBe('QF');
       expect(boxSize()).toEqual(calm);
       captionsTried += 1;
     },
@@ -1057,16 +1153,48 @@ describe('the strip and the controls half are padded and spaced as the fit reser
     expect(style.gap).toBe('6px');
   });
 
-  it('the controls half: 16 all round, 12 between its rows', async () => {
+  // Owner, 2026-10-08: every control on screen at 804 × 332. The half's width is the board's (16 either side, which
+  // `controlsHalf` is made of); its column has its own vertical padding and gap, 8 and 8 (the board's 16 and 12 made the
+  // worst before-air state 24 dp too tall for the phone).
+  it('the controls half: 8 above and below, 16 either side, 8 between its rows', async () => {
     await renderViewfinder();
     const style = getComputedStyle(byId('controls-half'));
     expect([style.paddingTop, style.paddingBottom, style.paddingLeft, style.paddingRight]).toEqual([
-      '16px',
-      '16px',
+      '8px',
+      '8px',
       '16px',
       '16px',
     ]);
-    expect(style.gap).toBe('12px');
+    expect(style.gap).toBe('8px');
+  });
+
+  // The worst before-air state, brought up on the real tree: the AUTO start line under the chips AND a reason under the
+  // hold button. Its five rows are the declared heights (the plate 56; the chips 44 and the start line 4 + 16; the photo
+  // line's place 16; the icons 48; the hold 72 and its reason 4 + 16), stacked with the padding and gap the half RENDERED:
+  // they must fit the owner's phone, 332 dp, which the board's 16 and 12 did not (356).
+  it('fits 332 dp in the worst before-air state, with the padding and gap it rendered', async () => {
+    const view = await renderViewfinder({}, { overlay: false });
+    act(() => view.engine.setPairing({ scheduledStart: new Date('2026-10-03T13:30:00Z') }));
+    act(() => view.engine.setReady({ held: false }));
+    // Both extra lines are really there: the start line under the chips, the reason under the hold button.
+    expect(screen.getByText('Starts 14:30')).toBeTruthy();
+    expect(screen.getByText(en['stream.blocker.held'])).toBeTruthy();
+    const style = getComputedStyle(byId('controls-half'));
+    expect(byId('controls-half').children).toHaveLength(5);
+    const gap = parseFloat(style.gap);
+    const pad = parseFloat(style.paddingTop) + parseFloat(style.paddingBottom);
+    const small = typeScale.metricUnit.lineHeight;
+    const items = [
+      layout.plateHeight,
+      layout.chip + space.xs + small,
+      small,
+      layout.iconButton,
+      layout.holdHeight + space.xs + small,
+    ];
+    const total = items.reduce((sum, item) => sum + item, 0) + 4 * gap + pad;
+    expect(items).toEqual([56, 64, 16, 48, 92]);
+    expect(total).toBe(324);
+    expect(total).toBeLessThanOrEqual(332);
   });
 });
 

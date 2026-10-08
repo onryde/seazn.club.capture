@@ -45,9 +45,9 @@ const strip = (height: number) =>
 const line = () => screen.queryByTestId('stage-line');
 
 // This is a WIRING test, not a fit proof: the fit itself is stageFit.test.ts's arithmetic and Task 11's
-// device check. The heights are the strip's 180 and the table's labels. With no caption up the round line needs 88 dp
-// and the label (44: two regular lines, 57: three long ones), so both fit a 180 strip; with a caption up it needs 126
-// and the label, so 44 fits (170) and 57 does not (183).
+// device check. The strip is the padding, the label, one message line and the gaps (owner, 2026-10-08: one line all
+// the time), so the round line needs 66 dp and the label (44: two regular lines, 57: three long ones): 110 and 123. The
+// caption is not a term: it takes the message line, not more room.
 describe('the status strip shows the round line only when it fits (R-F5)', () => {
   it('hands the label a real function to report its height with (the wiring is not vacuous)', () => {
     stripWith('QF');
@@ -65,27 +65,36 @@ describe('the status strip shows the round line only when it fits (R-F5)', () =>
     expect(above.compareDocumentPosition(below) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0);
   });
 
-  it('hides it when the label is three lines (57) and a caption is up, and shows it with no caption', () => {
+  // The caption takes the message line, not more room: with it up or not, the round line needs the same 66 and the
+  // label, so a caption coming and going never moves the round line (the one-message-line rule).
+  it('shows it the same with a caption up or not: the caption is not a term of the fit', () => {
     const view = stripWith('QF', 'A v B', 'notCharging');
-    strip(180);
-    label(57);
-    expect(line()).toBeNull();
-    // The positive pair: the same strip and label, the caption gone, and the caption's room is room.
+    strip(120);
+    label(44);
+    expect(line()?.textContent).toBe('QF');
     view.rerender(<StatusStrip line="Ready" advisory={null} />);
+    expect(line()?.textContent).toBe('QF');
+    view.rerender(<StatusStrip line="Ready" advisory="keepOpen" />);
     expect(line()?.textContent).toBe('QF');
   });
 
-  it('a caption coming up takes it away and the caption going brings it back, at the same strip (148, the reserve of a 44 label)', () => {
-    const view = stripWith('QF');
-    strip(148);
-    label(44);
-    expect(line()?.textContent).toBe('QF');
-    view.rerender(<StatusStrip line="Ready" advisory="shed" />);
-    expect(line()).toBeNull();
-    view.rerender(<StatusStrip line="Ready" advisory="keepOpen" />);
+  it('hides it when the label is three lines (57) at a strip of 120, caption or not, and shows it at 123', () => {
+    const view = stripWith('QF', 'A v B', 'notCharging');
+    strip(120);
+    label(57);
     expect(line()).toBeNull();
     view.rerender(<StatusStrip line="Ready" advisory={null} />);
+    expect(line()).toBeNull();
+    // The positive pair: the same label with the strip 3 dp taller, which is exactly what it needs.
+    strip(123);
     expect(line()?.textContent).toBe('QF');
+  });
+
+  it('hides it at the strip the picture leaves (the label’s reserve, 88 for a label of 44): it never shrinks the picture', () => {
+    stripWith('QF');
+    strip(88);
+    label(44);
+    expect(line()).toBeNull();
   });
 
   it('tells its caller the label’s height, each time it is laid out (the picture is sized from it), and nothing else', () => {
@@ -127,18 +136,18 @@ describe('the status strip shows the round line only when it fits (R-F5)', () =>
     expect(line()).not.toBeNull();
   });
 
-  it('brings it back when a shorter label arrives (57, then 44), a caption up', () => {
-    stripWith('QF', 'A v B', 'notCharging');
-    strip(180);
+  it('brings it back when a shorter label arrives (57, then 44), at a strip of 120', () => {
+    stripWith('QF');
+    strip(120);
     label(57);
     expect(line()).toBeNull();
     label(44);
     expect(line()?.textContent).toBe('QF');
   });
 
-  it('takes it away when a longer label arrives (44, then 57), a caption up', () => {
-    stripWith('QF', 'A v B', 'notCharging');
-    strip(180);
+  it('takes it away when a longer label arrives (44, then 57), at a strip of 120', () => {
+    stripWith('QF');
+    strip(120);
     label(44);
     expect(line()).not.toBeNull();
     label(57);
