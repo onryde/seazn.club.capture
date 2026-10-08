@@ -257,8 +257,9 @@ Three rules travel with these tokens:
   match label as measured in the half's width, plus fixed room for the status
   line (2 lines), the caption (2 lines), the padding and the gaps
   (`stripReserve`: 104 dp and the label). It is one size for the whole match
-  and is sized again only when the label's text or the half's width changes: a
-  status line, a caption or the round line coming and going never moves it.
+  and is sized again only when the label's text changes, the label wraps
+  differently (its measured height moves), or the half's width or height changes:
+  a status line, a caption or the round line coming and going never moves it.
   Before the label is measured it is sized against the worst case, 180 dp. An
   804 × 360 phone gets about 375 × 211 for a two-line label (320 × 180 at the
   worst case). Nothing is drawn over the

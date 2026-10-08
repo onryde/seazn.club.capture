@@ -35,7 +35,9 @@ export function cameraBoxSize(input: {
  * `labelHeight` is what `MatchLabel` reported: 0 is not measured yet (or the label is going), and so is anything that
  * is not a positive height. Then it is the worst case the strip can need, the larger of the label's two size rules, so
  * the strip is never short before the first measurement. A measured label taller than that (large system text) is
- * taken as measured: the strip really is that tall.
+ * taken as measured: the strip really is that tall. Only the label follows the system's text size, though: the status
+ * line's 44 and the caption's 32 are fixed reservations (two lines of the unscaled `body` and `metricUnit` heights), so
+ * at a font scale over 1 those two lines can still outgrow their room and overflow the strip.
  */
 export function stripReserve(labelHeight: number): number {
   const label = labelHeight > 0 ? labelHeight : WORST_LABEL;

@@ -902,7 +902,7 @@ describe('the picture is sized from this match’s label (owner, 2026-10-08, opt
     const first = boxSize();
     expect(first.width).toBeCloseTo(376.8888889, 2);
     expect(first.height).toBeCloseTo(212, 6);
-    const stripOf = () => 804 > 0 && 360 - boxSize().height;
+    const stripOf = () => 360 - boxSize().height;
     layOut(byId('status-strip'), { width: half(804), height: 148 });
     const sameBox = (when: string) => expect(boxSize(), when).toEqual(first);
     const roundLine = () => within(byId('status-strip')).queryByTestId('stage-line');
@@ -975,6 +975,22 @@ describe('the picture is sized from this match’s label (owner, 2026-10-08, opt
     layOut(byId('match-label'), { width: half(915) - 2 * layout.stripPadH, height: 22 });
     expect(boxSize().height).toBeCloseTo(286, 6);
     expect(boxSize().width).toBeCloseTo(508.4444444, 2);
+  });
+
+  // The half's HEIGHT alone changes (the status bar comes or goes, a keyboard, a split window): the width, and so the
+  // label's wrapping and its height, are the same, and the picture still has to follow, because the box is the lesser of
+  // what the half holds and what the window leaves the strip. By hand: 804 × 390 leaves 390 - 148 = 242, less than the
+  // 494 × 9 / 16 = 277.875 the width holds, so the box is 242 tall and 242 × 16 / 9 = 430.2222 wide. And back, exactly.
+  it('is sized again when only the half’s height changes (804 × 360 to 804 × 390 and back)', async () => {
+    await open(804, 360, 44);
+    expect(boxSize().width).toBeCloseTo(376.8888889, 2);
+    expect(boxSize().height).toBeCloseTo(212, 6);
+    layOut(byId('camera-half'), { width: half(804), height: 390 });
+    expect(boxSize().width).toBeCloseTo(430.2222222, 2);
+    expect(boxSize().height).toBeCloseTo(242, 6);
+    layOut(byId('camera-half'), { width: half(804), height: 360 });
+    expect(boxSize().width).toBeCloseTo(376.8888889, 2);
+    expect(boxSize().height).toBeCloseTo(212, 6);
   });
 
   // The strip's room for the round line, on the owner's phone: the reserve is 148 with a two-line label, and the round

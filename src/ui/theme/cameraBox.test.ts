@@ -139,6 +139,20 @@ describe('stripReserve (the strip a measured label needs)', () => {
     expect(STRIP_RESERVE).toBe(FIXED + 76);
   });
 
+  // A label measured TALLER than the worst case is taken as measured: the strip really is that tall (large system
+  // text), so the reserve is the label plus 104, 192 for 88 dp, and past the unmeasured 180. Only the label term
+  // follows the system's text size: the status line's 44 and the caption's 32 are fixed reservations, so at a font
+  // scale over 1 those two can still overflow the strip. That is the strip's to bound, not this reserve's.
+  it.each([
+    ['88 dp, a label past the four long lines', 88, 192],
+    ['120 dp, a label at a large system text size', 120, 224],
+  ])('takes a measured label of %s as measured: the reserve is %d', (_name, height, reserve) => {
+    expect(height).toBeGreaterThan(76);
+    expect(stripReserve(height)).toBe(reserve);
+    expect(stripReserve(height)).toBe(FIXED + height);
+    expect(stripReserve(height)).toBeGreaterThan(STRIP_RESERVE);
+  });
+
   // Swept, not sampled: every label height from 1 to 76 dp gives a reserve that is the label plus the same 104, and
   // never more than the worst case.
   it('is the label plus 104 at every height from 1 to 76, and never over the worst case', () => {

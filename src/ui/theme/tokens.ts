@@ -268,7 +268,9 @@ type ControlsCells = Readonly<
  *  - icons before air: Settings, Home, Take photo, Remote scoring, four 48 dp buttons and three gaps (216);
  *  - icons on air: Settings, Take photo, Remote scoring and the peek, three buttons, three gaps and the peek's cell (269);
  *  - chips: camera, sound, network and AUTO, four boxes and three gaps, on ONE line (208);
- *  - the plate row: the tally plate and the clock, a cell each and a gap (278), which governs.
+ *  - the plate row: the tally plate and the clock, a cell each and a gap (278), which governs. The two cells are kept
+ *    EQUAL on purpose (the balanced look): the plate's word is narrower than the clock (98.5
+ *    against 135), so the content's real need is 269, the icon row on air, and the equal cells cost 9 dp of it (278 - 269).
  * Each row's gap is `space.sm`, as the icon row, the chip row and the plate row set it. Every other line of text in
  * the half (the hold label, its reason, the start line, the photo line, the plate's words) is narrower than the content
  * (controlsFit.test.ts measures each), so it can wrap or not as the vertical budget (viewfinderFit.test.ts) already

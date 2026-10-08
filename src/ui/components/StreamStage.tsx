@@ -46,7 +46,9 @@ type StageProps = {
  * match label as it was measured in the half's width (`StatusStrip` reports it),
  * plus fixed room for the status line, the caption and the padding and gaps
  * (`stripReserve`). So the picture is one size for the whole match. It is sized
- * again when the label's text or the half's width changes, and for nothing else:
+ * again when the label's text changes (a new match remounts the label, which is
+ * measured again) or when the label wraps differently in the half (its measured
+ * height moves), and when the half's width or height changes; for nothing else:
  * a status line, a caption or the round line coming and going changes none of
  * `half` or `labelHeight`. Before the label is measured (0) the reserve is the
  * worst case, so the strip is never short. The half reports its size once laid

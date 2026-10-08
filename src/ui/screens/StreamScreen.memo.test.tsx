@@ -1,6 +1,8 @@
 import { act, screen } from '@testing-library/react';
 import type { ComponentProps } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { layout } from '@/ui/theme/tokens';
+import { layOut } from '../../../test/layOut';
 import { renderViewfinder } from '../../../test/renderViewfinder';
 
 /** Renders of the memoised HUD parts, counted where each one draws its child. */
@@ -81,6 +83,42 @@ describe('the viewfinder re-renders only what changed', () => {
       screen.getByText(`Uplink lost — holding, ${next} s of ${held.holdWindowSeconds}`),
     ).toBeTruthy();
     expect(renders).toMatchObject({ stage: 0, peek: 0, action: 0 });
+  });
+
+  // The picture's size is a memo over the half and the label's height. Until both have been laid out it is null, and a
+  // dependency added to that memo (the status line, say) recomputes a null to a null and shows nothing. Once the half
+  // and the label are laid out the memo holds a size, a recompute on every tick is a new object, and the overlay in the
+  // box re-renders once a second: so the tick is proved here, with the picture sized, and not only before it.
+  it('ticks the hold’s countdown without re-rendering the stage once the picture is sized', async () => {
+    const view = await renderViewfinder();
+    act(() => view.engine.scene('holding'));
+    layOut(screen.getByTestId('camera-half'), { width: 494, height: 360 });
+    layOut(screen.getByTestId('match-label'), { width: 494 - 2 * layout.stripPadH, height: 44 });
+    // Sized: a two-line label (44) leaves the box 212 dp tall of the 360, not the unmeasured full-width one.
+    expect(parseFloat(getComputedStyle(screen.getByTestId('camera-box')).height)).toBeCloseTo(
+      212,
+      6,
+    );
+    const held = view.engine.getSnapshot().state;
+    if (held.kind !== 'reconnecting') throw new Error('the holding scene is not a hold');
+    for (let tick = 1; tick <= 3; tick += 1) {
+      const next = held.holdRemainingSeconds - tick;
+      resetRenders();
+      act(() => view.engine.forceState({ ...held, holdRemainingSeconds: next }));
+      expect(
+        screen.getByText(`Uplink lost — holding, ${next} s of ${held.holdWindowSeconds}`),
+      ).toBeTruthy();
+      expect(renders, `tick ${tick}`).toMatchObject({ stage: 0, peek: 0, action: 0 });
+    }
+  });
+
+  it('counts at all with the picture sized: a change the stage shows re-renders it', async () => {
+    const view = await renderViewfinder();
+    layOut(screen.getByTestId('camera-half'), { width: 494, height: 360 });
+    layOut(screen.getByTestId('match-label'), { width: 494 - 2 * layout.stripPadH, height: 44 });
+    resetRenders();
+    act(() => view.engine.scene('live'));
+    expect(renders.stage).toBeGreaterThan(0);
   });
 
   it('says Back’s line on air without re-rendering the stage, the peek or Stop', async () => {
