@@ -1,5 +1,5 @@
 {
-  "about": "The pair intent as the bridge hands it to native: intentWire over pairIntentFor's output, the code checked and saved through the real fetch code port on the build's origin (pairIntentWire.test.ts), and read by PairMapping into a PairRequest whose problems() is empty (PairIntentVectorsTest.kt). codeUrl is the origin, with no trailing slash, then /api/v1/capture/codes/<code>: Pairing.kt holds it to that exactly. Every value is made up and inside capture-qr.v2 and capture-descriptor.v1 at web 5bb72e8a2. Change only with both (carry T25, the C4b gap hunt).",
+  "about": "The pair intent as the bridge hands it to native: intentWire over pairIntentFor's output, the code checked and saved through the real fetch code port on the build's origin (pairIntentWire.test.ts), and read by PairMapping into a PairRequest whose problems() is empty (PairIntentVectorsTest.kt). codeUrl is the origin, with no trailing slash, then /api/v1/capture/codes/<code>: Pairing.kt holds it to that exactly. Every value is made up and inside capture-qr.v2 and capture-descriptor.v1 at web 7e75fd4a7. Change only with both (carry T25, the C4b gap hunt).",
   "intents": [
     {
       "name": "staging, a scan",
