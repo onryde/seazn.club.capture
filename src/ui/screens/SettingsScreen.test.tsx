@@ -396,12 +396,12 @@ describe('Diagnostics inside Settings (spec §6, Q1)', () => {
     expect(cellsOf(rowOf('Transport'))[2]).toBe('RTMPS only');
   });
 
-  it('says it in Dutch: alleen RTMPS', () => {
+  it('says it in Dutch: Alleen RTMPS', () => {
     const view = renderSettings({ deviceLanguages: ['nl'] });
     act(() => view.engine.scene('fell-back'));
     reportSrtNotOffered(view.engine);
     act(() => view.engine.patch({}));
-    expect(cellsOf(rowOf('Transport'))[2]).toBe('alleen RTMPS');
+    expect(cellsOf(rowOf('Transport'))[2]).toBe('Alleen RTMPS');
   });
 
   // The backstop: an item or a value that still ran long is one line with an ellipsis, never a second line
@@ -465,7 +465,7 @@ describe('Diagnostics inside Settings (spec §6, Q1)', () => {
     // M15: the count is on the scrub's allow-list, so it survives into the record.
     const entry = readRecord(view.record).find((line) => line.event === 'record.shared');
     expect(entry?.fields).toEqual({ count: shared.split('\n').length });
-    expect(screen.queryByText("Couldn't open sharing.")).toBeNull();
+    expect(screen.queryByText("Couldn't share. Retry")).toBeNull();
   });
 
   // The old screen showed the last twenty lines; the card shows none, and Share sends them all.
@@ -489,24 +489,50 @@ describe('Diagnostics inside Settings (spec §6, Q1)', () => {
     await waitFor(() => expect(view.share.shared).toHaveLength(2));
   });
 
-  it('says when sharing could not open, and records it', async () => {
+  // Round 2: a failed share says so ON the Share button (it replaces the label), so the card is the same
+  // height as before and a card with 8 dp of slack is never pushed past its half.
+  const FAILED = "Couldn't share. Retry";
+  const failedButton = () => screen.getByRole('button', { name: FAILED });
+  const cardShape = () =>
+    [...screen.getByTestId('diagnostics-card').children].map((child) => child.tagName);
+
+  it('says when sharing could not open on the Share button, and records it', async () => {
     const view = renderSettings();
     view.share.refuse();
-    expect(screen.queryByText("Couldn't open sharing.")).toBeNull();
+    const before = cardShape();
+    expect(screen.queryByRole('button', { name: FAILED })).toBeNull();
     fireEvent.click(shareButton());
-    expect(await screen.findByText("Couldn't open sharing.")).toBeTruthy();
+    expect(await screen.findByRole('button', { name: FAILED })).toBeTruthy();
+    // The label was replaced, not added to: no Share record button, no line of its own, the same children.
+    expect(screen.queryByRole('button', { name: 'Share record' })).toBeNull();
+    expect(screen.getAllByText(FAILED)).toHaveLength(1);
+    expect(cardShape()).toEqual(before);
+    expect(before.length).toBeGreaterThan(2); // anti-vacuity: header, rows and the dev scenes
     expect(readRecord(view.record).map((entry) => entry.event)).toContain('record.share-failed');
     expect(readRecord(view.record).map((entry) => entry.event)).not.toContain('record.shared');
   });
 
-  it('clears the message once a later share opens', async () => {
+  it('retries from the same button and gets the label back once a later share opens', async () => {
     const view = renderSettings();
     vi.spyOn(view.share, 'share').mockRejectedValueOnce(new Error('share sheet refused'));
     fireEvent.click(shareButton());
-    expect(await screen.findByText("Couldn't open sharing.")).toBeTruthy();
-    fireEvent.click(shareButton());
-    await waitFor(() => expect(screen.queryByText("Couldn't open sharing.")).toBeNull());
+    expect(await screen.findByRole('button', { name: FAILED })).toBeTruthy();
+    fireEvent.click(failedButton());
+    await waitFor(() => expect(screen.queryByRole('button', { name: FAILED })).toBeNull());
+    expect(shareButton()).toBeTruthy();
     expect(view.share.shared).toHaveLength(1);
+  });
+
+  // settingsFit.test.ts adds the header up with GhostButton's padding (16) and border (1) each side.
+  it('the Share button wears the padding and border the fit test adds', () => {
+    renderSettings();
+    const style = getComputedStyle(shareButton());
+    expect([
+      style.paddingLeft,
+      style.paddingRight,
+      style.borderLeftWidth,
+      style.borderRightWidth,
+    ]).toEqual(['16px', '16px', '1px', '1px']);
   });
 
   it('plays any fake scene in a development build', () => {

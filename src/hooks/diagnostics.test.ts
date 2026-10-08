@@ -1,11 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import type { CameraState, Telemetry } from '@/engine/CaptureEnginePort';
-import { createFakeCaptureEngine, type FakeScene } from '@/engine/FakeCaptureEngine';
+import { createFakeCaptureEngine, FAKE_SCENES, type FakeScene } from '@/engine/FakeCaptureEngine';
 import { PAIR } from '@/engine/testing/pairIntent';
 import { UNREPORTED } from '@/engine/unreported';
 import { diagnosticsSections } from '@/hooks/diagnostics';
 import en from '@/i18n/en.json';
-import type { Lang } from '@/i18n/language';
+import { LANGS, type Lang } from '@/i18n/language';
+import type { SessionState } from '@/domain/session/SessionState';
 import { createTranslator } from '@/i18n/translate';
 
 const NOW = Date.parse('2026-10-03T13:00:00Z');
@@ -127,7 +128,7 @@ describe('diagnosticsSections (spec §4)', () => {
       Charging: '—',
       Heat: '—',
       Checked: '—',
-      'Viewers receiving': 'Not yet',
+      'Viewers receiving': 'Unknown',
       'Last sent': '—',
       'Last result': '—',
       Failures: '0',
@@ -304,7 +305,7 @@ describe('A18: SRT not offered (Diagnostics)', () => {
   it.each([
     ['es', 'RTMPS solo'],
     ['fr', 'RTMPS seul'],
-    ['nl', 'alleen RTMPS'],
+    ['nl', 'Alleen RTMPS'],
   ] as const)('A18 says it in %s as "%s"', (lang, value) => {
     expect(linkRows(false, lang)?.rows[0]?.value).toBe(value);
   });
@@ -324,5 +325,81 @@ describe('A18: SRT not offered (Diagnostics)', () => {
       label: 'Transport',
       value: 'RTMPS',
     });
+  });
+
+  // Round 2: before a transport is named (arming, armed, reconnecting) the name is the dash, and "only"
+  // qualifies a transport, not a dash: "— only" is a sentence about nothing.
+  const NO_TRANSPORT = {
+    arming: { kind: 'arming', cause: 'organiser', retrying: false },
+    armed: { kind: 'armed', cause: 'organiser', notReady: 'held' },
+    reconnecting: {
+      kind: 'reconnecting',
+      cause: 'video-stalled',
+      holdRemainingSeconds: 38,
+      holdWindowSeconds: 183,
+      sinceEpochMs: NOW,
+    },
+  } as const;
+
+  function transportIn(state: SessionState, lang: Lang, srtOffered = false) {
+    const engine = createFakeCaptureEngine(() => NOW);
+    engine.send(PAIR);
+    engine.send({ kind: 'start' });
+    const live = engine.getSnapshot();
+    engine.dispose();
+    if (live.broadcast === null) throw new Error('the fake holds no broadcast after a start');
+    const shown = { ...live, state, broadcast: { ...live.broadcast, srtOffered } };
+    return diagnosticsSections(shown, NOW, createTranslator(lang))[0]?.rows[0]?.value;
+  }
+
+  it.each(
+    Object.entries(NO_TRANSPORT).flatMap(([name, state]) =>
+      LANGS.map((lang) => [name, lang, state] as const),
+    ),
+  )('with %s and no SRT offered, %s shows the dash alone', (_name, lang, state) => {
+    expect(transportIn(state as SessionState, lang)).toBe('—');
+  });
+
+  // The positive pair: with a transport named, the same broadcast says "only".
+  it.each([
+    ['publishing', { kind: 'publishing', transport: 'rtmps', sinceEpochMs: NOW }],
+    [
+      'degraded',
+      { kind: 'degraded', transport: 'rtmps', reason: 'poor-uplink', sinceEpochMs: NOW },
+    ],
+  ] as const)('with %s and no SRT offered, it says RTMPS only', (_name, state) => {
+    expect(transportIn(state as SessionState, 'en')).toBe('RTMPS only');
+    expect(transportIn(state as SessionState, 'nl')).toBe('Alleen RTMPS');
+  });
+
+  // Every scene the fake can show, with SRT not offered: the value is the dash or a named transport,
+  // and never the dash inside a sentence.
+  it('never writes the dash inside "only", in any fake scene or language', () => {
+    let held = 0;
+    for (const lang of LANGS) {
+      for (const scene of FAKE_SCENES) {
+        const engine = createFakeCaptureEngine(() => NOW);
+        engine.scene(scene);
+        const snapshot = engine.getSnapshot();
+        engine.dispose();
+        if (snapshot.broadcast === null) continue;
+        const shown = { ...snapshot, broadcast: { ...snapshot.broadcast, srtOffered: false } };
+        const value =
+          diagnosticsSections(shown, NOW, createTranslator(lang))[0]?.rows[0]?.value ?? '';
+        expect({
+          lang,
+          scene,
+          value,
+          dashInSentence: value !== '—' && value.includes('—'),
+        }).toEqual({
+          lang,
+          scene,
+          value,
+          dashInSentence: false,
+        });
+        held += 1;
+      }
+    }
+    expect(held).toBeGreaterThan(4 * 5); // anti-vacuity: at least five scenes hold a broadcast
   });
 });

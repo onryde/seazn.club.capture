@@ -159,7 +159,7 @@ export const layout = {
   diagSection: 84,
   /**
    * A Diagnostics row's least height: the board's 24, cut to 22 so the card fits a 640 x 360 half (spec §6;
-   * settingsFit.test.ts). The tallest line in it is the value's 20.
+   * settingsFit.test.ts). The tallest line in it is 16: the item, the value and the section name.
    */
   diagRow: 22,
   /** Board "Settings": the Diagnostics card's side padding, and the gutter between its columns. */

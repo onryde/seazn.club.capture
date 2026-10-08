@@ -9,8 +9,8 @@ import { Text } from '@/ui/components/Text';
 import { colour, layout, radius, space } from '@/ui/theme/tokens';
 
 /**
- * Spec §6's Diagnostics, as a card inside Settings: a header row with Share record, then Q1's rows as
- * section | item | value. It holds `useDiagnostics()` itself and takes no props, so a 1 Hz report
+ * Spec §6's Diagnostics, as a card inside Settings: a header row with Share record (a share that fails says so
+ * in that button's label, so the card never grows a line), then Q1's rows as section | item | value. It holds `useDiagnostics()` itself and takes no props, so a 1 Hz report
  * re-renders this card and not the switches around it, and a switch does not re-render the card (D32).
  * It is not a ScrollView: the screen decides whether it has room (Task 9).
  */
@@ -24,9 +24,8 @@ export const DiagnosticsCard = memo(function DiagnosticsCard() {
         <Text variant="control" style={styles.title}>
           {t('diag.title')}
         </Text>
-        <GhostButton label={t('diag.share')} onPress={share} />
+        <GhostButton label={t(shareFailed ? 'diag.shareFailed' : 'diag.share')} onPress={share} />
       </View>
-      {shareFailed ? <Text variant="status">{t('diag.shareFailed')}</Text> : null}
       <View>{rows.map(renderRow)}</View>
       <DevScenes />
     </View>

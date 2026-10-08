@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import type { SessionState } from '@/domain/session/SessionState';
 import type { EngineSnapshot, Telemetry, ThermalStatus } from '@/engine/CaptureEnginePort';
 import { createFakeCaptureEngine, type FakeScene } from '@/engine/FakeCaptureEngine';
 import { diagnosticsSections } from '@/hooks/diagnostics';
@@ -124,6 +125,8 @@ type Probe = {
   readonly kind: 'static' | 'worst';
   /** A `worst` probe must really show its number (decimal point as dots), a `no reading` one the dash. */
   readonly contains?: string;
+  /** The row must read the dash alone (a transport not yet named, whatever the broadcast offered). */
+  readonly dash?: boolean;
   readonly shown: (scene: (name: FakeScene) => EngineSnapshot) => EngineSnapshot;
 };
 
@@ -150,6 +153,40 @@ const NO_READING: Readonly<Record<string, (snapshot: EngineSnapshot) => EngineSn
 };
 const DASH_ROWS = Object.keys(NO_READING) as (keyof typeof NO_READING &
   (typeof CARD_ROWS)[number])[];
+
+/** [seconds, its digits as written in en]: the widest of each band of formatAge and both edges of each. */
+const AGES = [
+  [99.9, '99.9'],
+  [100, '100'],
+  [300, '300'],
+  [599, '599'],
+  [600, '10'],
+  [5999, '99'],
+  [6000, '1'],
+  [86400, '24'],
+] as const;
+const LAGS = [
+  [99.9, '99.9'],
+  [100, '100'],
+  [300, '300'],
+  [599, '599'],
+  [600, '600'],
+  [5999, '5999'],
+  [6000, '6000'],
+  [86400, '86400'],
+] as const;
+
+/** Session states that name no transport (arming has none either, but a broadcast is not yet held). */
+const NO_TRANSPORT = {
+  armed: { kind: 'armed', cause: 'organiser', notReady: 'held' },
+  reconnecting: {
+    kind: 'reconnecting',
+    cause: 'video-stalled',
+    holdRemainingSeconds: 38,
+    holdWindowSeconds: 183,
+    sinceEpochMs: NOW,
+  },
+} as const satisfies Record<string, SessionState>;
 
 function probes(): readonly Probe[] {
   const live = (scene: (name: FakeScene) => EngineSnapshot) => scene('live');
@@ -199,6 +236,22 @@ function probes(): readonly Probe[] {
       kind: 'static',
       shown: (scene) => scene('paired-ready'),
     },
+    // Round 2: armed and reconnecting name no transport, so an RTMPS-only broadcast reads the dash alone.
+    ...(['armed', 'reconnecting'] as const).map((name) => ({
+      row: 'diag.transport' as const,
+      state: `${name}, RTMPS only`,
+      kind: 'static' as const,
+      dash: true,
+      shown: (scene: (name: FakeScene) => EngineSnapshot) => {
+        const snapshot = live(scene);
+        if (snapshot.broadcast === null) throw new Error('the live scene holds a broadcast');
+        return {
+          ...snapshot,
+          state: NO_TRANSPORT[name],
+          broadcast: { ...snapshot.broadcast, srtOffered: false },
+        };
+      },
+    })),
     {
       // 12000 kbps: five digits, above any single-stream 1080p60 the regulator would target.
       row: 'diag.bitrate',
@@ -233,25 +286,42 @@ function probes(): readonly Probe[] {
         return withTelemetry(snapshot, { deliveredLagMs: hold * 1000 + 900 });
       },
     },
-    {
-      // 99.9 s ago: the widest age under 100 s. A check or a heartbeat older than that is an incident the
-      // attention colour already owns, and the value is then cut at its tail by the backstop and not wrapped.
-      row: 'diag.checked',
-      state: '99.9 s ago',
-      kind: 'worst',
-      contains: '99.9',
-      shown: (scene) => withTelemetry(live(scene), { deliveryCheckedAtMs: NOW - 99_900 }),
-    },
-    {
-      row: 'diag.hbSent',
-      state: '99.9 s ago',
-      kind: 'worst',
-      contains: '99.9',
-      shown: (scene) =>
-        withTelemetry(live(scene), {
-          heartbeat: { ...live(scene).telemetry.heartbeat, lastSentAtEpochMs: NOW - 99_900 },
-        }),
-    },
+    // Ages and durations from 0 s to 24 h. Off air the heartbeat runs every pollSeconds (5 to 300 s), so
+    // ages of minutes and hours are normal; each band of the format (tenths, seconds, minutes, hours) is
+    // sampled at its widest and at each edge (formatAge.test.ts pins the strings).
+    ...AGES.flatMap(([seconds, contains]) => [
+      {
+        row: 'diag.checked' as const,
+        state: `${seconds} s ago`,
+        kind: 'worst' as const,
+        contains,
+        shown: (scene: (name: FakeScene) => EngineSnapshot) =>
+          withTelemetry(live(scene), { deliveryCheckedAtMs: NOW - seconds * 1000 }),
+      },
+      {
+        row: 'diag.hbSent' as const,
+        state: `${seconds} s ago`,
+        kind: 'worst' as const,
+        contains,
+        shown: (scene: (name: FakeScene) => EngineSnapshot) =>
+          withTelemetry(live(scene), {
+            heartbeat: {
+              ...live(scene).telemetry.heartbeat,
+              lastSentAtEpochMs: NOW - seconds * 1000,
+            },
+          }),
+      },
+    ]),
+    // Behind live is a length of time and is not worded as an age, so it stays in plain seconds: 86400 s is
+    // seven characters and fits, which the sweep proves at every edge.
+    ...LAGS.map(([seconds, contains]) => ({
+      row: 'diag.lag' as const,
+      state: `${seconds} s behind`,
+      kind: 'worst' as const,
+      contains,
+      shown: (scene: (name: FakeScene) => EngineSnapshot) =>
+        withTelemetry(live(scene), { deliveredLagMs: seconds * 1000 }),
+    })),
     // 100 %: a percentage's own ceiling.
     {
       row: 'diag.battery',
@@ -263,8 +333,13 @@ function probes(): readonly Probe[] {
   ];
 }
 
-/** Probes per language: 4 Transport, 3 Delivery, 8 Heat, 6 other dashes, 6 worst-case numbers. */
-const PROBES_PER_LANGUAGE = 27;
+/**
+ * Probes per language: 6 Transport (SRT, RTMPS, RTMPS only, the dash, and armed and reconnecting RTMPS-only),
+ * 3 Delivery, 8 Heat, 6 other dashes, and 28 worst-case numbers (bitrate, rtt, battery, the lag at the hold
+ * window, and 8 samples each of Behind live, Checked and Last sent).
+ */
+const PROBES_PER_LANGUAGE = 51;
+const WORST_PER_LANGUAGE = 28;
 
 /** A fake engine in a named scene, read once. */
 function scene(name: FakeScene): EngineSnapshot {
@@ -287,9 +362,14 @@ function cardRows(
 
 const fmt = (n: number) => n.toFixed(1);
 
+/** GhostButton's declared padding (space.md) and border (layout.iconBorder), each side. */
+const GHOST_PAD_X = 16;
+const GHOST_BORDER = 1;
+
 let probesChecked = 0;
 let labelsChecked = 0;
 let sectionsChecked = 0;
+let headersChecked = 0;
 
 describe('every Diagnostics row fits its line at 640 × 360, in every language (I-2)', () => {
   it('reads the fonts: Geist Mono is monospaced at 0.6 em', () => {
@@ -335,7 +415,7 @@ describe('every Diagnostics row fits its line at 640 × 360, in every language (
     (lang) => {
       const set = probes();
       expect(set).toHaveLength(PROBES_PER_LANGUAGE);
-      expect(set.filter((probe) => probe.kind === 'worst')).toHaveLength(6);
+      expect(set.filter((probe) => probe.kind === 'worst')).toHaveLength(WORST_PER_LANGUAGE);
       const misfits: string[] = [];
       let checkedHere = 0;
       for (const probe of set) {
@@ -344,7 +424,9 @@ describe('every Diagnostics row fits its line at 640 × 360, in every language (
         const row = rows.find((candidate) => candidate.key === probe.row);
         if (row === undefined) throw new Error(`no ${probe.row} row`);
         // The probe shows what it says it does: a dash for no reading, its number for a worst case.
-        if (probe.state === 'no reading') expect(row.value, `${lang} ${probe.row}`).toBe('—');
+        if (probe.state === 'no reading' || probe.dash === true) {
+          expect(row.value, `${lang} ${probe.row} [${probe.state}]`).toBe('—');
+        }
         if (probe.contains !== undefined) {
           expect(row.value.replace(',', '.'), `${lang} ${probe.row} [${probe.state}]`).toContain(
             probe.contains,
@@ -410,8 +492,38 @@ describe('every Diagnostics row fits its line at 640 × 360, in every language (
     }
   });
 
+  // Round 2: a share that failed says so ON the button, in place of "Share record", so the card keeps its
+  // height (a separate line would push a card with 8 dp of slack past its half). The header is the title and
+  // the button on one line: the button is its label plus GhostButton's 16 dp padding and 1 dp border each side
+  // (SettingsScreen.test.tsx pins those rendered), and the title keeps what is left.
+  it.each(LANGS)(
+    '%s: the title, the Share button and its failure message share the header',
+    (lang) => {
+      const { t } = createTranslator(lang);
+      const inner = HALF - 2 * layout.diagPad;
+      const title = medium.width(t('diag.title'), typeScale.control.fontSize);
+      const labels = [t('diag.share'), t('diag.shareFailed')];
+      expect(new Set(labels).size).toBe(2); // the failure is not the same words as the button
+      for (const label of labels) {
+        for (const char of label) {
+          expect(
+            medium.has(char.codePointAt(0) ?? 0),
+            `${lang} button "${label}" has "${char}"`,
+          ).toBe(true);
+        }
+        const button =
+          2 * GHOST_PAD_X + 2 * GHOST_BORDER + medium.width(label, typeScale.control.fontSize);
+        expect(title + space.sm + button, `${lang} header with "${label}"`).toBeLessThanOrEqual(
+          inner,
+        );
+        headersChecked += 1;
+      }
+    },
+  );
+
   it('checked every string it set out to, in every language (anti-vacuity)', () => {
     expect(LANGS).toHaveLength(4);
+    expect(headersChecked).toBe(4 * 2);
     expect(probesChecked).toBe(4 * PROBES_PER_LANGUAGE);
     expect(labelsChecked).toBe(4 * 9);
     expect(sectionsChecked).toBe(4 * 4);
