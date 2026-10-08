@@ -3,10 +3,12 @@ package com.seazn.capture.engine.capture
 import android.annotation.SuppressLint
 import android.content.Context
 import android.hardware.camera2.CameraAccessException
+import android.hardware.camera2.CameraCharacteristics
 import android.media.AudioFormat
 import android.media.MediaFormat
 import android.os.SystemClock
 import android.util.Size
+import android.view.SurfaceHolder
 import com.seazn.capture.engine.adapter.AttemptSignals
 import com.seazn.capture.engine.adapter.CameraAvailability
 import com.seazn.capture.engine.adapter.CameraFailures
@@ -32,6 +34,7 @@ import com.seazn.capture.engine.endpoints.CaptureClockLine
 import com.seazn.capture.engine.net.HostLookup
 import com.seazn.capture.engine.endpoints.CaptureEndpointFactory
 import com.seazn.capture.engine.endpoints.RtmpDispatcher
+import com.seazn.capture.engine.preview.PreviewSizes
 import com.seazn.capture.engine.srt.SeaznSrtSink
 import io.github.thibaultbee.streampack.core.elements.encoders.AudioCodecConfig
 import io.github.thibaultbee.streampack.core.elements.encoders.VideoCodecConfig
@@ -100,6 +103,9 @@ class StreamerAdapter(
   override val streamer: StateFlow<SingleStreamer?> = current
 
   @Volatile private var cameraId: String? = null
+
+  /** The camera whose preview sizes the record already holds, so one line a camera for a capture. */
+  @Volatile private var sizedCamera: String? = null
   private var readinessJob: Job? = null
 
   /** D2 (1): a scope of its own, so a throw on a photo cannot reach `scope`'s handler above, which fails the session. */
@@ -176,6 +182,23 @@ class StreamerAdapter(
    */
   private fun cameraOurs(held: SingleStreamer): Boolean = cameras.ready(held.videoInput.sourceFlow.value is ICameraSource)
 
+  /**
+   * Preview-fill review I-1: one `preview-size` line a camera for a capture, when StreamPack reports its source open (a
+   * preview or the start): the sizes the camera lists for a SurfaceHolder, the class StreamPack's PreviewView asks for,
+   * and the one its area rule would pick for a view of the encode's size ([PreviewSizes]). StreamPack's own log of its
+   * pick is dropped with the rest of its INFO, so this is the only word the record has of it. Evidence only; a failure
+   * is one `capture-call-failed` line and the open is told on regardless.
+   */
+  private suspend fun reportPreviewSizes(id: String) {
+    if (id == sizedCamera) return
+    sizedCamera = id
+    quietly("preview-size") {
+      val map = context.cameraManager.getCameraCharacteristics(id).get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP)
+      val sizes = map?.getOutputSizes(SurfaceHolder::class.java).orEmpty().map { it.width to it.height }
+      calls.line(PreviewSizes.entry(PreviewSizes.report(sizes)))
+    }
+  }
+
   /** A teardown call whose failure is recorded and does not stop the next one. Never swallows cancellation. */
   private suspend fun quietly(action: String, block: suspend () -> Unit): Boolean =
     try {
@@ -238,6 +261,7 @@ class StreamerAdapter(
       readinessJob = null
       val held = current.value
       current.value = null // the preview unbinds first (Task 39)
+      sizedCamera = null
       if (held != null) {
         quietly("stop") { held.stopStream() }
         quietly("close") { held.close() }
@@ -360,7 +384,10 @@ class StreamerAdapter(
         combine(camera.isPreviewingFlow, streaming) { previewing, streams -> previewing || streams }
           .distinctUntilChanged()
           .filter { it }
-          .collect { emit(camera.cameraId) }
+          .collect {
+            reportPreviewSizes(camera.cameraId)
+            emit(camera.cameraId)
+          }
       }
     }
   }

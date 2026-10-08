@@ -17,10 +17,11 @@ import kotlinx.coroutines.launch
 
 /**
  * The native preview, filling the camera box it is mounted in (AGENTS §6; design follow-up §1).
- * Frames never cross the bridge. The box shows exactly what viewers get (#288): StreamPack 3.2.1's
+ * Frames never cross the bridge. The box shows exactly what viewers get (#288): StreamPack's ([PreviewFit.STREAMPACK])
  * PreviewView takes its preview stream's size from its own view's AREA, in any shape, and not from the
  * encode's config (javap, see [PreviewFit]), so the PreviewView is laid out at the encode's own size
- * ([Encode]) and scaled to fit the box by [PreviewFit], and its stream is the encode's 1280 x 720. FIT
+ * ([Encode]) and scaled to fit the box by [PreviewFit]; by that rule its stream should be the encode's
+ * 1280 x 720 (inferred until `dumpsys media.camera` and the `preview-size` record line confirm it). FIT
  * stays, so a box that is not quite 16:9 leaves bars and crops nothing. No
  * pinch-zoom or tap-to-focus: a tap on a tripod is a mis-tap. It follows the pairing's streamer
  * while attached, and only then. It tells the engine
