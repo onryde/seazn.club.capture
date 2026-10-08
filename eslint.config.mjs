@@ -170,6 +170,10 @@ export default [
               allow: [
                 { to: { element: { type: 'domain' } } },
                 { to: { element: { type: 'contracts' } } },
+                // The one external package domain may name: a pure JS encoder with no react or
+                // react-native in it (the Seazn QR's modules, src/domain/qr). Named by source, so
+                // `react` and the rest stay refused.
+                { to: { module: { origin: 'external', source: 'qrcode-generator' } } },
               ],
             },
             {

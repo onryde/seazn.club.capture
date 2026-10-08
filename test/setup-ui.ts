@@ -41,6 +41,34 @@ vi.mock('@/ui/components/Glyph', async () => {
   };
 });
 
+// The QR's drawing is paths and an image; its own suite (SeaznQr.test.tsx) takes the real component. The
+// stand-in is a marker other suites can find, carrying the plan's version and modules and the dp it was given.
+vi.mock('@/ui/components/SeaznQr', async () => {
+  const { createElement } = await import('react');
+  const { View } = await import('react-native');
+  return {
+    SeaznQr: ({
+      plan,
+      size,
+      label,
+    }: {
+      plan: { version: number; modules: number };
+      size: number;
+      label: string;
+    }) =>
+      createElement(View, {
+        testID: 'seazn-qr',
+        accessibilityLabel: label,
+        style: { width: size, height: size },
+        dataSet: {
+          version: String(plan.version),
+          modules: String(plan.modules),
+          size: String(size),
+        },
+      } as ViewProps),
+  };
+});
+
 // The sheet's entrance is drawing only; the panel inside it is what tests read.
 // react-native-web drops accessibilityViewIsModal, the prop native reads, so
 // the stand-in surfaces it as data-view-is-modal for tests to assert.

@@ -47,6 +47,8 @@ export const colour = {
   violet: '#7c3aed',
   /** Behind the camera frame. True black so the letterbox is not a grey slab. */
   stage: '#000000',
+  /** A QR needs a white quiet zone to scan; the only white in the app. */
+  qrGround: '#ffffff',
 } as const;
 
 /**
