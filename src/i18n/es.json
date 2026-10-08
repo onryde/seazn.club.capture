@@ -22,7 +22,7 @@
   "home.continue.forget": "Olvidar",
   "home.ended.title": "Emisión terminada",
   "home.ended.failed": "Algo falló.",
-  "home.ended.ok": "OK",
+  "home.ended.ok": "Aceptar",
   "home.footer.language": "Idioma",
   "home.footer.version": "Versión {version}",
   "home.dev.paste": "Pega un código (solo desarrollo)",

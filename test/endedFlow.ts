@@ -1,4 +1,5 @@
 import { act, screen } from '@testing-library/react';
+import { expect } from 'vitest';
 import { HOLD_MS } from '@/hooks/useHold';
 import en from '@/i18n/en.json';
 import es from '@/i18n/es.json';
@@ -49,7 +50,7 @@ export async function scanAndGoLive(app: LaunchedApp, lang: Lang = 'en'): Promis
 }
 
 /** Hold the named control for its full time and let what follows run, as a thumb does. */
-export async function holdControl(name: string): Promise<void> {
+export async function holdControl(name: string | RegExp): Promise<void> {
   pressIn(screen.getByRole('button', { name }));
   await flush(HOLD_MS);
   await flush();
@@ -58,3 +59,22 @@ export async function holdControl(name: string): Promise<void> {
 /** The Stop of a broadcast that went live: it says it unpairs too. */
 export const holdStopAfterLive = (lang: Lang = 'en') =>
   holdControl(DICTIONARIES[lang]['stream.action.stopUnpairLabel'] ?? '');
+
+/**
+ * A Stop before the first frame over a 401 (D7): scan, the organiser's Go live with the camera not ready (Armed,
+ * never live), the server says the code has ended (deferred to the Stop, so `codeEndedPending`), and the operator
+ * stops. The fake's `stop` is native's: held past a 401 the Stop ends the pairing (Ended, never live) and does not
+ * go back to Paired. The label is read by its start, whichever way it says what a Stop does.
+ */
+export async function stopBeforeLiveOver401(app: LaunchedApp): Promise<void> {
+  app.scanner.queue({ outcome: 'scanned', raw: CODE });
+  act(() => screen.getByRole('button', { name: /Live Stream/ }).click());
+  await flush(200);
+  act(() => app.engine.setReady({ camera: false }));
+  act(() => app.engine.hear({ word: 'go-live', cause: 'organiser' }));
+  await flush();
+  expect(app.engine.getSnapshot().state.kind).toBe('armed');
+  act(() => app.engine.hear({ word: 'code-ended' }));
+  expect(app.engine.getSnapshot().codeEndedPending).toBe(true);
+  await holdControl(/^Hold to stop/);
+}

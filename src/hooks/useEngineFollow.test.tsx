@@ -132,6 +132,27 @@ describe('useEngineFollow: native’s word on the saved code', () => {
     expect(tap()).toBe(false);
   });
 
+  // Ruling M-5: a fatal end over a code the server has ended (codeEndedPending) is as dead as the one the operator's
+  // Stop leaves, so the code is forgotten, not kept and marked tapToPair; its positive pair is the test above,
+  // where a fatal end WITHOUT the flag keeps the code and marks it.
+  it('forgets the code a fatal end over a 401 names, and marks nothing', async () => {
+    const fakes = await shell();
+    act(() => fakes.engine.send({ kind: 'start' }));
+    await flush(5_000);
+    act(() => fakes.engine.hear({ word: 'code-ended' }));
+    expect(fakes.engine.getSnapshot().codeEndedPending).toBe(true);
+    act(() =>
+      fakes.engine.forceState({ kind: 'ended', reason: 'fatal-error', durationMs: 754_000 }),
+    );
+    await flush();
+    expect(fakes.engine.getSnapshot().state).toMatchObject({
+      kind: 'ended',
+      reason: 'fatal-error',
+    });
+    expect(savedOf(fakes)).toBeUndefined();
+    expect(fakes.kv.entries.has(STORE_KEYS.code('stream'))).toBe(false);
+  });
+
   it('leaves another code’s failure alone', async () => {
     const fakes = await shell({ saved: code, paired: other });
     act(() => fakes.engine.scene('fatal'));

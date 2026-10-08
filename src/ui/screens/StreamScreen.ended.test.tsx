@@ -1,4 +1,4 @@
-import { act, cleanup, render, renderHook, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, renderHook, screen } from '@testing-library/react';
 import { StrictMode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { encodeSavedCode } from '@/domain/mode/savedCode';
@@ -11,6 +11,7 @@ import {
   holdControl,
   holdStopAfterLive,
   scanAndGoLive,
+  stopBeforeLiveOver401,
 } from '../../../test/endedFlow';
 import { createFakePorts } from '../../../test/fakePorts';
 import { savedStreamCode } from '../../../test/fixtures/savedStream';
@@ -109,6 +110,53 @@ describe('an Ended leaves the viewfinder for Home (spec §5)', () => {
       reason: 'fatal-error',
       durationMs: 754_000,
       codeEnded: true,
+    });
+  });
+
+  // M-4. §5 says a Stop before the first frame stays on the viewfinder, and that holds while the pairing survives
+  // the Stop (owner decision 1: Paired, Go live offered again; the describe below). Held past a 401 the Stop
+  // ends the pairing, as the fake's `stop` has it from native: Ended, never live, the flag kept. There is nothing
+  // to stay on Ready for, since the code is dead, so it leaves like any Ended, with the dead code forgotten.
+  it('goes Home after a Stop before the first frame over a 401, since that Stop ends the pairing', async () => {
+    const app = await launchApp();
+    await stopBeforeLiveOver401(app);
+    expect(app.engine.getSnapshot()).toMatchObject({
+      state: { kind: 'idle' },
+      codeEndedPending: false,
+    });
+    expect(app.nav.current()).toBe('home');
+    expect(intentKinds(app).filter((kind) => kind === 'stop')).toHaveLength(1);
+    expect(intentKinds(app).filter((kind) => kind === 'reset')).toHaveLength(1);
+    expect(app.kv.entries.has(STORE_KEYS.code('stream'))).toBe(false);
+    expect(app.ports.endedNotice.getSnapshot()).toEqual({
+      reason: 'operator-stopped',
+      durationMs: null,
+      codeEnded: true,
+    });
+  });
+
+  // M-4: Settings sits over a viewfinder that stays mounted (isStreamSubRoute), so the leave runs from there too.
+  it('leaves Settings for Home with the card when a fatal end lands while Settings is open', async () => {
+    const app = await launchApp();
+    await scanAndGoLive(app);
+    // On air the icon row keeps Settings and hides Home (StreamScreen.layout.test.tsx), so this is the operator's own way in.
+    fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
+    await flush();
+    expect(app.nav.current()).toBe('streamSettings');
+    // Settings really is open first, and no card yet: the positive half of the Home assertions below.
+    expect(screen.getByRole('button', { name: 'Back to camera' })).toBeTruthy();
+    expect(screen.getByText('Stream settings')).toBeTruthy();
+    expect(endedRegion()).toBeNull();
+    act(() => app.engine.scene('fatal'));
+    await flush();
+    expect(app.nav.current()).toBe('home');
+    expect(screen.queryByRole('button', { name: 'Back to camera' })).toBeNull();
+    expect(screen.queryByText('Stream settings')).toBeNull();
+    expect(endedRegion()).not.toBeNull();
+    expect(app.ports.endedNotice.getSnapshot()).toEqual({
+      reason: 'fatal-error',
+      durationMs: 754_000,
+      codeEnded: false,
     });
   });
 

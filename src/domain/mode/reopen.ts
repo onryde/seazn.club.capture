@@ -37,7 +37,8 @@ export type ReopenTarget =
  * when the cold-start re-pair was sent (`resumed`); any other Idle engine with
  * a saved code goes Home, to the Continue card. A permanent failure keeps its
  * code; the viewfinder then leaves for Home with the card (spec §5), and the
- * operator's Stop goes Home. S0 builds only Live Stream; S2 and S4 widen the union.
+ * operator's Stop goes Home. A fatal end over a code the server ended forgets it, so it lands on the `home` branch
+ * above once the follow has written. S0 builds only Live Stream; S2 and S4 widen the union.
  */
 export function reopenTarget(input: {
   engine: EngineStatus;
@@ -104,8 +105,9 @@ export function resumesAtColdStart(input: {
 
 /**
  * JS forgets the saved code when native says its pairing ended (amendment, The
- * engine port): `unpaired` names it, or Ended `operator-stopped` does. Identity,
- * not a comparison of two snapshots, so it is idempotent.
+ * engine port): `unpaired` names it, or Ended `operator-stopped` does, or an Ended
+ * `fatal-error` over a code the server has ended (the follow calls that `stopped`,
+ * ruling M-5). Identity, not a comparison of two snapshots, so it is idempotent.
  */
 export function forgetsSaved(input: {
   saved: CodeName;

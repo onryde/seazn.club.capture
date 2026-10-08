@@ -1,7 +1,7 @@
 import { fireEvent, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import type { EndedCard as EndedCardData } from '@/domain/session/endedCard';
-import { EndedCard, type EndedCardLayout } from '@/ui/components/EndedCard';
+import { EndedCard } from '@/ui/components/EndedCard';
 import { textsIn } from '../../../test/endedFlow';
 import { renderWithPorts } from '../../../test/renderWithPorts';
 
@@ -16,11 +16,6 @@ const LINES = [
 const region = () => screen.getByRole('region', { name: 'Stream ended' });
 
 describe('EndedCard', () => {
-  it('has two layouts', () => {
-    const layouts: readonly EndedCardLayout[] = ['stacked', 'row'];
-    expect(layouts).toHaveLength(2);
-  });
-
   // Task 7 lays Home out in landscape with the card as one row (spec §7): same lines, same order, one row.
   it.each([
     ['stacked', 'column'],

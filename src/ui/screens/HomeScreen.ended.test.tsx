@@ -1,4 +1,4 @@
-import { act, cleanup, fireEvent, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, screen, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Lang } from '@/i18n/language';
 import { STORE_KEYS } from '@/services/modeStore';
@@ -10,6 +10,7 @@ import {
   endedRegion,
   holdStopAfterLive,
   scanAndGoLive,
+  stopBeforeLiveOver401,
   textsIn,
 } from '../../../test/endedFlow';
 import { flush, launchApp, scanFromHome, type LaunchedApp } from '../../../test/routedApp';
@@ -105,6 +106,8 @@ describe('Home: the Stream ended card (spec §5)', () => {
     expect(comesBefore(screen.getByText(STATUS), region())).toBe(true);
     expect(comesBefore(region(), cont)).toBe(true);
     expect(comesBefore(cont, liveStreamTile())).toBe(true);
+    // And it is kept on disk too, not only offered: the positive pair of the dead-code test below (ruling M-5).
+    expect(app.kv.entries.has(STORE_KEYS.code('stream'))).toBe(true);
   });
 
   it.each([
@@ -170,6 +173,31 @@ describe('Home: the Stream ended card (spec §5)', () => {
       'OK',
     ]);
     expect(screen.queryByText(/Your code is kept/)).toBeNull();
+    // Ruling M-5: the code is as dead as after the operator's Stop, so it is forgotten and nothing offers to
+    // re-arm it beside "Scan the new one". The tiles are there, so this is Home and not a blank screen.
+    expect(app.kv.entries.has(STORE_KEYS.code('stream'))).toBe(false);
+    expect(screen.queryByRole('button', { name: 'Continue' })).toBeNull();
+    expect(liveStreamTile()).toBeTruthy();
+  });
+
+  // D7, M-4: the Stop of a broadcast that never went live is only "stay on the viewfinder" while the pairing
+  // survives it. Held past a 401 it does not, so this is an Ended like any other: never went live, the Stop's
+  // reason, the code-ended line in place of scan-again, and the dead code gone with no Continue.
+  it('says never went live and that the code has ended, after a Stop over a 401 before the first frame', async () => {
+    const app = await launchApp();
+    await stopBeforeLiveOver401(app);
+    expect(app.nav.current()).toBe('home');
+    expect(textsIn(region())).toEqual([
+      'Stream ended',
+      'Never went live',
+      'You stopped the broadcast.',
+      'This code has ended. Scan the new one.',
+      'OK',
+    ]);
+    expect(screen.queryByText(/^On air/)).toBeNull();
+    expect(screen.queryByText('Scan the code again for the next broadcast')).toBeNull();
+    expect(app.kv.entries.has(STORE_KEYS.code('stream'))).toBe(false);
+    expect(screen.queryByRole('button', { name: 'Continue' })).toBeNull();
   });
 });
 
@@ -268,6 +296,50 @@ describe('Home: the card across broadcasts (spec §5: OK, a new scan or a restar
 });
 
 const LANGS = ['en', 'es', 'fr', 'nl'] as const;
+
+/**
+ * The card's two new words as the plan's Copy table has them (docs/superpowers/plans/2026-10-06-s1-design-pr-a.md,
+ * `home.ended.title` and `home.ended.ok`), typed here and not read from the dictionaries: the sweep below reads
+ * them from the dictionaries, so a wrong word in one of them passes it (review I-1: es had "OK", the table says
+ * "Aceptar", Android's own button word).
+ */
+const COPY_TABLE: Readonly<Record<(typeof LANGS)[number], { title: string; ok: string }>> = {
+  en: { title: 'Stream ended', ok: 'OK' },
+  es: { title: 'Emisión terminada', ok: 'Aceptar' },
+  fr: { title: 'Direct terminé', ok: 'OK' },
+  nl: { title: 'Stream beëindigd', ok: 'OK' },
+};
+
+describe('Home: the card’s title and OK are the Copy table’s words, in every language', () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  it('pins every language the app has', () => {
+    expect(Object.keys(COPY_TABLE).sort()).toEqual(Object.keys(DICTIONARIES).sort());
+    expect(LANGS).toHaveLength(4);
+  });
+
+  it.each(LANGS)('%s: the dictionaries say the table’s words', (lang) => {
+    expect(DICTIONARIES[lang]['home.ended.title']).toBe(COPY_TABLE[lang].title);
+    expect(DICTIONARIES[lang]['home.ended.ok']).toBe(COPY_TABLE[lang].ok);
+  });
+
+  it.each(LANGS)(
+    '%s: the card names its region and its button by them, and the button clears it',
+    async (lang) => {
+      const app = await launchApp({ kvSeed: { [STORE_KEYS.lang]: lang } });
+      await scanAndGoLive(app, lang);
+      await holdStopAfterLive(lang);
+      const { title, ok } = COPY_TABLE[lang];
+      const named = screen.getByRole('region', { name: title });
+      expect(textsIn(named)[0]).toBe(title);
+      expect(textsIn(named).at(-1)).toBe(ok);
+      fireEvent.click(within(named).getByRole('button', { name: ok }));
+      await flush();
+      expect(screen.queryByRole('region', { name: title })).toBeNull();
+    },
+  );
+});
 
 /**
  * The card in every language, from the dictionaries and not through `t()` (AGENTS §10). Each variant is a way the
