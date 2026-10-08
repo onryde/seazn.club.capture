@@ -153,6 +153,55 @@ first Cloudflare window lands 18–23 s after going live; the player is slow to 
 hold). The owner's parked question — "can't see the preview now" — is asked again before PR B
 starts.
 
+## §8 and §9 as settled in PR B (UNVERIFIED-ON-DEVICE)
+
+- **Take photo is one tap, one still, one line** (owner, 2026-10-08: _"a simply feature, where user can click to
+  photo, nothing make complex"_). A shutter in the icon row whenever the camera picture is showing, Paired and on air
+  (Settings, Home, Take photo before air; Settings, Take photo, _What viewers see_ on air). Native saves a JPEG of the
+  camera picture, no scorebug, and answers `saved` or `failed`; the app says so for 3 s. A tap while a photo is saving
+  does nothing. It is the one request-with-an-answer among the commands (AGENTS §2, recorded).
+- **Gallery permission: none.** The still is written with `MediaStore.Images` to `Pictures/Seazn Capture`. minSdk is 31,
+  so the app writes its own image with no storage permission, no prompt, no library and no config plugin.
+- **Confirmation copy:** _Photo saved_ (lime) or _Couldn't save the photo_ (caution), one line for 3 s in the controls
+  half's gap, just above the icon row, never over the camera box.
+- **File name:** `Seazn_yyyyMMdd_HHmmss.jpg`, the phone's wall clock; never a match, a side or a name.
+- **What gates it:** native refuses at once, `failed`, with no snapshot asked for, unless the camera is ours and not
+  failed or lost (the readiness the viewfinder reads). The reason is StreamPack's `takeSnapshot`: it blocks a thread on
+  a future while it holds the video input's source lock, and cancellation cannot interrupt it. Stop, Go live, a camera
+  reopen and the slate swap take the same lock, so a snapshot of a camera that delivers nothing would hold them all.
+  With the slate up (a hold, or the camera taken by another app) the camera is not ours, so the answer is `failed`.
+- **What bounds it:** a scope of its own with no path to the session's failure path; native answers within 2 s when the
+  call honours cancellation, and the app gives up at 4 s (`failed`). There is no single-flight lock, no refusal beside a
+  capture command and no pre-emption in native.
+- **What it does not cover, stated plainly:** the gate reads the capture's state, never frames. A stall that starts
+  mid-snapshot, or a camera that is ours and not yet delivering (a tap before the first frame waits for that frame),
+  holds StreamPack's source lock until the next frame, and a Stop or a Go live tapped in that window waits behind it. A
+  blocked call cannot be cut off at 2 s; the app's 4 s answers the shutter, but the lock stays held. The device
+  checklist times Stop with a stalled camera (PR B plan, Task 7, item 1); if it is slow, the cut pre-emption comes back.
+- **Follow-up, not in PR B (owner, 2026-10-08): a photo with the scorebug.** The candidate is an on-screen copy of the
+  camera box (Android `PixelCopy`, cropped to the box), spiked on the device first. Its known costs: screen resolution,
+  not camera resolution; it captures whatever sits over the box; rotation and the mirror; and the on-screen score runs
+  ahead of viewers. The score is never redrawn in the app.
+- **What viewers see (§9), as built.** The player is a display rule over native's word, not a second state machine.
+  - **It mounts only for a window.** The player is created once native reports `delivery: ok` (the first Cloudflare
+    window), latched for the stretch so one failed poll does not take it down. Until then, and until the player has
+    shown a picture, the layer says _Waiting for the first picture_. It says _No viewer picture_ after 60 s without a
+    window, on a stalled word, and during a hold; a hold ends the stretch, and the next one starts with a fresh player.
+  - **A failing player is replaced** up to three times (after 2, 4 and 8 s), then given up on. **A `readyToPlay`
+    resets that ladder**, so three failures spread over an hour do not give up.
+  - **A press after a give-up retries.** The finger landing on _What viewers see_ once the layer has given up starts a
+    fresh player with the whole ladder. A press with a player on screen changes nothing.
+  - **After the first picture, a rebuffer keeps the picture and draws no line.** A real stall still reaches _No viewer
+    picture_ by the delivery word.
+  - **A re-peek parks and starts fresh.** When the peek holds no player (it let go, or cooled) or the feed leaves
+    `playing`, a retry waiting for a player is dropped and whatever the last player said, its picture included, is
+    forgotten; the next peek says _Waiting for the first picture_ again.
+  - **`peek.firstWindow`** is one record line, `ms` from the broadcast reading Publishing to the first window, so the
+    18–23 s hypothesis is a number. It is timed only from a start the screen saw: opened mid-broadcast, none is
+    written. `peek.state` and `peek.retry` carry a state or a number, never a link or a host.
+- **Premises not confirmed:** the peek plays standard HLS, not LL-HLS (S1 spec, _Low-latency HLS is off_); the 18–23 s
+  figure has no evidence in the repo.
+
 ## §10 Scorer code (PR C)
 
 Owner rulings, 2026-10-06:

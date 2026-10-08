@@ -20,11 +20,13 @@ enum class PhotoResult(val wire: String) {
  * `ListenableFuture.get()` while it holds the input's source lock (javap: `DefaultSurfaceProcessor.takeSnapshot`,
  * `VideoInput$takeSnapshot$2`), and cancellation cannot interrupt a blocked `get()`. Go live, Stop, a camera
  * reopen and the slate swap take the same lock, so a snapshot of a camera that delivers nothing would hold them
- * all until a frame comes, which for a dead camera is never. So a photo is refused, `failed` at once and with no snapshot asked for, unless [ready] says the
- * camera is open and ours.
+ * all until a frame comes, which for a dead camera is never. So a photo is refused, `failed` at once and with no
+ * snapshot asked for, unless [ready] says the camera is ours and not failed or lost.
  *
- * What is left, stated plainly: [ready] reads the capture's state, never frames. A stall that starts during the
- * snapshot, or a camera that stalls with no failure or loss reported, still holds the lock until the next frame.
+ * What is left, stated plainly: [ready] reads the capture's state, never frames. It is also true for a camera that is
+ * ours and not yet opened, so a tap before the first frame is not refused: it waits for that frame. A stall that
+ * starts during the snapshot, or a camera that stalls with no failure or loss reported, still holds the lock until
+ * the next frame.
  * A call that honours cancellation is cut off at [SHOT_MS]; a blocked one cannot be, so it is answered by JS's own
  * deadline (`PHOTO_DEADLINE_MS`, 4 000), twice this.
  */

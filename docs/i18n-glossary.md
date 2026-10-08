@@ -2,8 +2,8 @@
 
 The terms `src/i18n/{es,fr,nl}.json` use, so a new string matches the ones
 already there. `en.json` is the source; this file is the target side. It was
-built by the AI translation review of 2026-10-01 and extended by the one of
-2026-10-06 (see _Translation review_ below).
+built by the AI translation review of 2026-10-01 and extended by the ones of
+2026-10-06 and 2026-10-08 (see _Translation review_ below).
 
 Who reads the copy: a volunteer at a ground, phone on a tripod, in sun or
 rain. State is read at two metres, detail at arm's length (AGENTS §5–6). Copy
@@ -82,6 +82,8 @@ is an owner decision, not a translation fix.
 | Score preview (the overlay)                         | vista previa del marcador               | aperçu du score                           | scorevoorbeeld                         | The screens never say overlay.                                                                                                                            |
 | viewers                                             | el público                              | le public                                 | kijkers                                | es and fr take the shorter word: the web's _espectadores, spectateurs_ do not fit the status line's 48.                                                   |
 | What viewers see                                    | Lo que ve el público                    | Ce que voit le public                     | Wat kijkers zien                       |                                                                                                                                                           |
+| photo (Take photo, Photo saved)                     | foto                                    | photo                                     | foto                                   | The still saved to the phone. The button is an infinitive, as the others: _Hacer foto, Prendre une photo, Foto maken_. Never snapshot or gallery.         |
+| picture (what viewers get)                          | imagen                                  | image                                     | beeld                                  | The viewers' video: _Waiting for the first picture_, _No viewer picture_. Never _foto_, which is the saved still.                                         |
 | organiser                                           | organizador                             | organisateur                              | organisator                            | As the web.                                                                                                                                               |
 | the desk                                            | la mesa                                 | l'accueil                                 | de balie                               | fr and nl as the web's "Scan at the desk".                                                                                                                |
 | phone                                               | móvil                                   | téléphone                                 | telefoon                               | es: Spain's word, as the web.                                                                                                                             |

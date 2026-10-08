@@ -150,9 +150,9 @@ describe('useOrientationGate', () => {
       refusals-- > 0 ? Promise.reject(new Error('refused')) : lock(target);
     await gate('landscape', fakes); // on air, nothing locked: landscape at once (R37), refused
     expect(fakes.orientationLock.locks).toEqual([]);
-    // D26's 500 ms as literals, never the module's own constant.
+    // D26's half second is pinned once, here, as a literal; every other wait below is written in the constant.
     expect(LOCK_RETRY_MS).toBe(500);
-    await act(() => vi.advanceTimersByTimeAsync(499));
+    await act(() => vi.advanceTimersByTimeAsync(LOCK_RETRY_MS - 1));
     expect(fakes.orientationLock.locks).toEqual([]);
     await act(() => vi.advanceTimersByTimeAsync(1));
     expect(fakes.orientationLock.locks).toEqual(['landscape']);
@@ -176,9 +176,9 @@ describe('useOrientationGate', () => {
     fakes.orientationLock.lock = (target) =>
       refusals-- > 0 ? Promise.reject(new Error('refused')) : lock(target);
     const { hook } = await gate('landscape', fakes);
-    await act(() => vi.advanceTimersByTimeAsync(500));
+    await act(() => vi.advanceTimersByTimeAsync(LOCK_RETRY_MS));
     expect(fakes.orientationLock.locks).toEqual([]);
-    await act(() => vi.advanceTimersByTimeAsync(500)); // no third attempt
+    await act(() => vi.advanceTimersByTimeAsync(LOCK_RETRY_MS)); // no third attempt
     expect(fakes.orientationLock.locks).toEqual([]);
     hold(fakes, UPRIGHT, 1000); // on air, nothing locked (it was forgotten): the target, with its card (finding b)
     await act(async () => undefined);
@@ -203,8 +203,8 @@ describe('useOrientationGate', () => {
     fakes.orientationLock.lock = (target) =>
       refusals-- > 0 ? Promise.reject(new Error('refused')) : lock(target);
     await gate('free', fakes); // Settings with a broadcast held: landscape (D9), refused
-    await act(() => vi.advanceTimersByTimeAsync(500)); // the retry, refused too
-    await act(() => vi.advanceTimersByTimeAsync(500)); // no third attempt on its own
+    await act(() => vi.advanceTimersByTimeAsync(LOCK_RETRY_MS)); // the retry, refused too
+    await act(() => vi.advanceTimersByTimeAsync(LOCK_RETRY_MS)); // no third attempt on its own
     expect(fakes.orientationLock.locks).toEqual([]);
     const refused = () =>
       readRecord(fakes.record).filter((e) => e.event === 'orientation.lock-refused').length;
@@ -222,7 +222,7 @@ describe('useOrientationGate', () => {
     const fakes = createFakePorts();
     fakes.orientationLock.lock = () => Promise.reject(new Error('refused'));
     await gate('free', fakes); // Home, nothing held: the screen follows the phone, refused
-    await act(() => vi.advanceTimersByTimeAsync(500));
+    await act(() => vi.advanceTimersByTimeAsync(LOCK_RETRY_MS));
     const refused = () =>
       readRecord(fakes.record).filter((e) => e.event === 'orientation.lock-refused').length;
     expect(refused()).toBe(2);

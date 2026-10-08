@@ -750,7 +750,7 @@ class GlueRulesTest {
   }
 
   /**
-   * I-1: the photo is refused unless the camera is open and ours. StreamPack's snapshot blocks a thread holding the
+   * I-1: the photo is refused unless the camera is ours and not failed or lost. StreamPack's snapshot blocks a thread holding the
    * input's source lock, which Stop, Go live and the slate take too, and cancellation cannot interrupt it. PhotoRun's
    * own tests prove the gate against a lambda; this is the wire: the lambda is the viewfinder's own readiness.
    */
