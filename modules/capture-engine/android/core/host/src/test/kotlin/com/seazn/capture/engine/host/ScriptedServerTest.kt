@@ -46,6 +46,7 @@ class ScriptedServerTest {
         "host/beat-waiting" to ask("${ScriptedServer.ORIGIN}/beats").body,
         "host/code-warming" to ask("${ScriptedServer.ORIGIN}?slot=0&phone=p").body,
         "host/start-ok" to ask("${ScriptedServer.ORIGIN}/start").body,
+        "host/scoring-link-ok" to ask("${ScriptedServer.ORIGIN}/scoring-link").body,
       )
     assertEquals(ours.keys, rows.map { it.getString("name") }.toSet())
     var checked = 0
@@ -54,7 +55,7 @@ class ScriptedServerTest {
       assertTrue(JSONObject(ours.getValue(name)).similar(row.getJSONObject("body")), "$name: ${ours[name]}")
       checked += 1
     }
-    assertEquals(3, checked, "the vectors' own count")
+    assertEquals(4, checked, "the vectors' own count")
   }
 
   // PV25: a kit typo is refused, never a script that answers nothing.
@@ -64,7 +65,19 @@ class ScriptedServerTest {
     assertEquals("unknown path beats", error.message)
     assertEquals(200, ask("${ScriptedServer.ORIGIN}/beats").status)
     assertEquals(200, ask("${ScriptedServer.ORIGIN}/start").status)
+    assertEquals(200, ask("${ScriptedServer.ORIGIN}/scoring-link").status)
     assertEquals(200, ask("${ScriptedServer.ORIGIN}?slot=0&phone=p").status)
+  }
+
+  @Test
+  fun `a scoring-link request is its own path, scriptable, and the default link is the host's on the staging host`() {
+    val request = HttpRequest("POST", "${ScriptedServer.ORIGIN}/scoring-link", emptyList(), "{}")
+    assertEquals("scoring-link", server.path(request))
+    assertEquals("https://stg.seazn.club/score/${ScriptedServer.SCORING_SECRET}", JSONObject(ask("${ScriptedServer.ORIGIN}/scoring-link").body).getString("url"))
+    server.script("scoring-link", 409, JSONObject("""{"code":"replaced","message":"m"}"""))
+    assertEquals(409, ask("${ScriptedServer.ORIGIN}/scoring-link").status)
+    assertEquals(200, ask("${ScriptedServer.ORIGIN}/beats").status, "other paths keep theirs")
+    assertEquals(46, ScriptedServer.SCORING_SECRET.length)
   }
 
   @Test

@@ -24,6 +24,18 @@
       "ok": true
     },
     { "env": "production", "role": "seazn", "url": "https://stg.seazn.club/x", "ok": false },
+    {
+      "env": "staging",
+      "role": "seazn",
+      "url": "https://stg.seazn.club/score/dl_AbCdEfGhIjKlMnOpQrStUvWxYz0123456789_-AbCdE",
+      "ok": true
+    },
+    {
+      "env": "staging",
+      "role": "seazn",
+      "url": "https://seazn.club/score/dl_AbCdEfGhIjKlMnOpQrStUvWxYz0123456789_-AbCdE",
+      "ok": false
+    },
     { "role": "ingest", "scheme": "srt", "url": "srt://live.cloudflare.com:778", "ok": true },
     {
       "role": "ingest",

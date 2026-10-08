@@ -33,8 +33,13 @@ class CaptureEngineModule : Module() {
     Function("current") { core.current() }
     // Carry C4c-I3: each line with its seq, `{seq, line}`, so JS drops a repeat by number.
     Function("tail") { core.tail() }
-    // Spec §8: the one call that answers (AGENTS §2, recorded). It resolves "saved" or "failed", within native's bound.
+    // Spec §8: one of the two calls that answer (the other is scoringLink; AGENTS §2, recorded). It resolves "saved" or "failed", within native's bound.
     AsyncFunction("takePhoto") { promise: Promise -> EngineHost.capture(app()).takePhoto { word -> promise.resolve(word) } }
+    // Spec §10, a tap: the other call that answers (AGENTS §2). The promise is resolved once, by the core, point to
+    // point; no event carries the link, so no other listener can hear it. Its own bound is native's ANSWER_BACKSTOP_MS.
+    AsyncFunction("scoringLink") { promise: Promise ->
+      core.scoringLink { answer -> promise.resolve(answer) }
+    }
 
     // Task 39: the native preview, the module's default view (JS `requireNativeView('CaptureEngine')`); it fills the camera box.
     View(CapturePreviewView::class) {}

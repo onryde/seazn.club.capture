@@ -22,7 +22,7 @@ class HostsTest {
       judged.merge("$role ${row.getBoolean("ok")}", 1, Int::plus)
     }
     // The file's rows by role and verdict, so a truncated file or a one-sided table cannot pass (PV12).
-    assertEquals(mapOf("seazn true" to 5, "seazn false" to 8, "ingest true" to 4, "ingest false" to 25), judged)
+    assertEquals(mapOf("seazn true" to 6, "seazn false" to 9, "ingest true" to 4, "ingest false" to 25), judged)
   }
 
   @Test

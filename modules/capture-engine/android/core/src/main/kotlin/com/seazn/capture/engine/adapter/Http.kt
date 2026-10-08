@@ -69,6 +69,9 @@ object HttpRequests {
   /** Web ask 9: the body is `{phone}`, built by the core. */
   fun start(command: Command.PostStart): HttpRequest = post(command.url, command.bearer, command.body)
 
+  /** §10: the same auth and body as `start` (web ask: `{phone}`); never retried by the engine, called on a tap only. */
+  fun scoringLink(url: String, bearer: String, body: String): HttpRequest = post(url, bearer, body)
+
   private fun post(url: String, bearer: String, body: String): HttpRequest =
     HttpRequest("POST", url, listOf("Authorization" to "Bearer $bearer", "Content-Type" to "application/json", "Cache-Control" to "no-store"), body)
 }

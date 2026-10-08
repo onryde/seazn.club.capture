@@ -130,6 +130,13 @@
       "body": {
         "sid": "2d7c4b1e-5f3a-4e6b-9c8d-1a2b3c4d5e6f"
       }
+    },
+    {
+      "name": "host/scoring-link-ok",
+      "schema": "capture-scoring-link.v1.json#/$defs/ok",
+      "body": {
+        "url": "https://stg.seazn.club/score/dl_HostLinkAbCdEfGhIjKlMnOpQrStUvWxYz012345678"
+      }
     }
   ]
 }

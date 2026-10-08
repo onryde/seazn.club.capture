@@ -1,0 +1,158 @@
+{
+  "about": "POST scoring-link answers (capture-scoring-link.v1 at web 7e75fd4a7) as Bodies.scoringLink in Kotlin reads them, and as the contract allows them (scoringLinkBodies.test.ts, ajv). env is the build's. expected is the outcome word. The 2xx rows that carry a url are also fed to the JS port (scoringLinkPort.test.ts), which must accept exactly the rows Kotlin calls ok. Change only with both.",
+  "cases": [
+    {
+      "why": "ok on the build's host",
+      "env": "staging",
+      "status": 200,
+      "body": {
+        "url": "https://stg.seazn.club/score/dl_AbCdEfGhIjKlMnOpQrStUvWxYz0123456789_-AbCdE"
+      },
+      "expected": "ok"
+    },
+    {
+      "why": "ok on production",
+      "env": "production",
+      "status": 200,
+      "body": {
+        "url": "https://seazn.club/score/dl_AbCdEfGhIjKlMnOpQrStUvWxYz0123456789_-AbCdE"
+      },
+      "expected": "ok"
+    },
+    {
+      "why": "ok but off the build's host is no link",
+      "env": "staging",
+      "status": 200,
+      "body": {
+        "url": "https://seazn.club/score/dl_AbCdEfGhIjKlMnOpQrStUvWxYz0123456789_-AbCdE"
+      },
+      "expected": "unavailable",
+      "contractValid": true
+    },
+    {
+      "why": "ok with userinfo naming another host is no link",
+      "env": "staging",
+      "status": 200,
+      "body": {
+        "url": "https://stg.seazn.club@evil.example/score/dl_AbCdEfGhIjKlMnOpQrStUvWxYz0123456789_-AbCdE"
+      },
+      "expected": "unavailable",
+      "contractValid": true
+    },
+    {
+      "why": "ok with an upper-case host is the build's host",
+      "env": "staging",
+      "status": 200,
+      "body": {
+        "url": "https://STG.seazn.club/score/dl_AbCdEfGhIjKlMnOpQrStUvWxYz0123456789_-AbCdE"
+      },
+      "expected": "ok",
+      "contractValid": true
+    },
+    {
+      "why": "401 code_ended",
+      "env": "staging",
+      "status": 401,
+      "body": { "code": "code_ended", "message": "m" },
+      "expected": "code_ended"
+    },
+    {
+      "why": "401 that is not the server's refusal is no answer",
+      "env": "staging",
+      "status": 401,
+      "body": { "code": "other", "message": "m" },
+      "expected": "unavailable"
+    },
+    {
+      "why": "404 not_a_stream_code",
+      "env": "staging",
+      "status": 404,
+      "body": { "code": "not_a_stream_code", "message": "m" },
+      "expected": "code_ended"
+    },
+    {
+      "why": "409 replaced",
+      "env": "staging",
+      "status": 409,
+      "body": { "code": "replaced", "message": "m" },
+      "expected": "replaced"
+    },
+    {
+      "why": "409 match_finished",
+      "env": "staging",
+      "status": 409,
+      "body": { "code": "match_finished", "message": "m" },
+      "expected": "match_finished"
+    },
+    {
+      "why": "402 not_entitled",
+      "env": "staging",
+      "status": 402,
+      "body": { "code": "not_entitled", "message": "m" },
+      "expected": "not_entitled"
+    },
+    {
+      "why": "429 rate_limited with Retry-After",
+      "env": "staging",
+      "status": 429,
+      "retryAfter": "30",
+      "body": { "code": "rate_limited", "message": "m" },
+      "expected": "rate_limited",
+      "retryAfterS": 30
+    },
+    {
+      "why": "429 without Retry-After",
+      "env": "staging",
+      "status": 429,
+      "body": { "code": "rate_limited", "message": "m" },
+      "expected": "rate_limited",
+      "retryAfterS": null
+    },
+    {
+      "why": "503 unavailable",
+      "env": "staging",
+      "status": 503,
+      "body": { "code": "unavailable", "message": "m" },
+      "expected": "unavailable"
+    },
+    {
+      "why": "422 invalid is retryable-looking, never a link",
+      "env": "staging",
+      "status": 422,
+      "body": { "code": "invalid", "message": "m" },
+      "expected": "unavailable"
+    },
+    {
+      "why": "402 no_credit is not this route's word",
+      "env": "staging",
+      "status": 402,
+      "body": { "code": "no_credit", "message": "m" },
+      "expected": "unavailable"
+    },
+    {
+      "why": "200 that is not an object",
+      "env": "staging",
+      "status": 200,
+      "rawBody": "<html>sign in</html>",
+      "expected": "unavailable"
+    },
+    {
+      "why": "200 with a short secret",
+      "env": "staging",
+      "status": 200,
+      "body": { "url": "https://stg.seazn.club/score/dl_short" },
+      "expected": "unavailable",
+      "contractValid": false
+    },
+    {
+      "why": "200 with http",
+      "env": "staging",
+      "status": 200,
+      "body": {
+        "url": "http://stg.seazn.club/score/dl_AbCdEfGhIjKlMnOpQrStUvWxYz0123456789_-AbCdE"
+      },
+      "expected": "unavailable",
+      "contractValid": false
+    }
+  ]
+}

@@ -545,4 +545,61 @@ class SessionRecordTest {
     assertEquals(0, wrong, "of $checked lines checked")
     assertEquals(5_000L, shared.lastSeq)
   }
+
+  private fun link(n: Int) = "dl_" + "%02d".format(n) + "B".repeat(41)
+
+  /** Writes `message` with [secret] in it and returns what the record wrote. */
+  private fun SessionRecord.wrote(secret: String): String {
+    append(0, RecordEntry("probe", listOf("message" to "x $secret y")))
+    return lastLines().last()
+  }
+
+  @Test
+  fun `a link's secret is masked in text and under a public url key, from protectLink on`() {
+    val lines = mutableListOf<String>()
+    val record = SessionRecord { lines += it }
+    assertTrue(record.wrote(link(1)).contains(link(1)), "the witness: not masked before it is known")
+    record.protectLink(link(1))
+    assertFalse(record.wrote(link(1)).contains(link(1)))
+    record.append(0, RecordEntry("probe", listOf("url" to "https://stg.seazn.club/score/${link(1)}")))
+    assertTrue(record.lastLines().last().contains(""""url":"***""""))
+  }
+
+  @Test
+  fun `a repeated link never pushes another out of the bucket, and the 17th distinct one evicts the oldest`() {
+    val record = SessionRecord {}
+    record.protectLink(link(0))
+    record.protectLink(link(1))
+    repeat(20) { record.protectLink(link(1)) }
+    assertFalse(record.wrote(link(0)).contains(link(0)), "dedupe: twenty repeats of one link left the other masked")
+    for (n in 2..16) record.protectLink(link(n))
+    // 17 distinct links have been protected (0 to 16): the oldest is outside the bucket now, which holds 16.
+    // Its cost is the plan's D11: a link 16 re-issues old is long revoked.
+    assertTrue(record.wrote(link(0)).contains(link(0)), "the cap: the 17th distinct link evicted the first")
+    for (n in 1..16) assertFalse(record.wrote(link(n)).contains(link(n)), "link $n is held")
+  }
+
+  /** `ScoringLinks.secret` always returns the contract's 46 characters, so a blank one cannot arrive; the guard is owed its test (TEST-STRATEGY: a "cannot happen" is a guard). */
+  @Test
+  fun `a blank link secret is never held and takes no place in the bucket`() {
+    val record = SessionRecord {}
+    for (n in 0..14) record.protectLink(link(n))
+    record.protectLink("")
+    record.protectLink("   ")
+    record.protectLink(link(15))
+    // 16 real links and two blanks: had the blanks taken places, the first links would be out of the bucket.
+    for (n in 0..15) assertFalse(record.wrote(link(n)).contains(link(n)), "link $n is held")
+    assertTrue(record.wrote("x y").contains("x y"), "a blank secret masks nothing in a line")
+  }
+
+  @Test
+  fun `a pairing token is never evicted by links, and a link never loosens a protected value`() {
+    val record = SessionRecord {}
+    val token = "tok-test-0000000000000"
+    record.protect(listOf(token))
+    for (n in 0..30) record.protectLink(link(n))
+    assertFalse(record.wrote(token).contains(token), "31 links later the token is still masked")
+    record.protect(listOf("another-secret-0001"))
+    assertFalse(record.wrote(link(30)).contains(link(30)), "protect after links keeps the links")
+  }
 }

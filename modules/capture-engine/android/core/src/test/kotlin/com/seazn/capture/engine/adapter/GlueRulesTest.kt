@@ -193,6 +193,18 @@ class GlueRulesTest {
   /** The glue file named [name], read whole: exactly one, or the rule below reads the wrong path. */
   private fun glue(name: String): String = sources().filter { it.name == name }.also { assertEquals(1, it.size, name) }.single().readText()
 
+  @Test
+  fun `the scoring link is the module's second answering call, an AsyncFunction on the Promise (R-F3), and no event carries it`() {
+    val module = glue("CaptureEngineModule.kt")
+    val pattern = Regex("""AsyncFunction\("scoringLink"\)\s*\{\s*promise: Promise ->\s*core\.scoringLink \{ answer -> promise\.resolve\(answer\) \}\s*\}""")
+    assertEquals(1, pattern.findAll(module).count(), "one AsyncFunction, resolved with the core's answer, point to point")
+    assertEquals(1, Regex("""AsyncFunction\("takePhoto"\)""").findAll(module).count(), "PR B's call is still the other one")
+    assertEquals(2, Regex("""\bAsyncFunction\(""").findAll(module).count(), "two calls answer, no more (AGENTS §2)")
+    assertTrue(Regex("""Events\("onSnapshot", "onRecord", "onAck"\)""").containsMatchIn(module), "the three events, and the scoring link is none of them")
+    assertFalse("onScoringLink" in module, "no event")
+    assertFalse(Regex("""fun scoringLink""").containsMatchIn(glue("AndroidPlatform.kt")), "the platform does not carry the answer")
+  }
+
   /** EngineHost's `build`, from its signature to the next function's. */
   private fun hostBuild(): String {
     val host = glue("EngineHost.kt")

@@ -301,6 +301,33 @@ object Bodies {
     }
   }
 
+  /** capture-scoring-link.v1 `$defs.ok.url`: the server's https origin, `/score/`, and `dl_` with 43 base64url characters. */
+  private val SCORING_URL = Regex("https://[^/]+/score/dl_[A-Za-z0-9_-]{43}")
+
+  /**
+   * A tap's answer (spec §10, web ask W27). By status and `code`, like [start]: a 401 or 404 only from the
+   * server's refusal naming it (X1), so a captive portal's page is unavailable, never "code ended". A 2xx is
+   * a link only when its `url` is exactly the contract's shape on the build's own Seazn host: anything else
+   * is no link and is never shown as a QR. The URL is a credential, so nothing here prints it.
+   */
+  fun scoringLink(status: Int, body: String, retryAfterS: Int?, env: Environment): ScoringLinkAnswer {
+    val fields = obj(body)
+    val code = fields?.get("code") as? String
+    val none = ScoringLinkAnswer.Refused("unavailable", null)
+    return when {
+      status in 200..299 -> {
+        val url = (fields?.get("url") as? String)?.takeIf { SCORING_URL.matches(it) && Hosts.onSeazn(it, env) }
+        url?.let { ScoringLinkAnswer.Link(it) } ?: none
+      }
+      status == 401 || status == 404 -> if (unconfirmed(status, fields)) none else ScoringLinkAnswer.Refused("code_ended", null)
+      status == 409 && code == "replaced" -> ScoringLinkAnswer.Refused("replaced", null)
+      status == 409 && code == "match_finished" -> ScoringLinkAnswer.Refused("match_finished", null)
+      status == 402 && code == "not_entitled" -> ScoringLinkAnswer.Refused("not_entitled", null)
+      status == 429 && code == "rate_limited" -> ScoringLinkAnswer.Refused("rate_limited", retryAfterS)
+      else -> none
+    }
+  }
+
   /** Whole seconds, 0 or more; an HTTP-date or anything else is no value (the engine uses its own cadence). */
   fun retryAfter(header: String?): Int? = header?.trim()?.takeIf { DIGITS.matches(it) }?.toIntOrNull()
 

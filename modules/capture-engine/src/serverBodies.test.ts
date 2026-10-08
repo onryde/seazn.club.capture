@@ -69,10 +69,10 @@ describe('the native tests answer with the web contract shapes', () => {
   });
 
   // The file's count, so an emptied or truncated file cannot pass by sweeping nothing (PV12).
-  it('sweeps all 7 bodies, PairWire four and the host three', () => {
+  it('sweeps all 8 bodies, PairWire four and the host four', () => {
     expect(bodies.map((b) => b.name.split('/')[0])).toEqual([
       ...Array(4).fill('pair-wire'),
-      ...Array(3).fill('host'),
+      ...Array(4).fill('host'),
     ]);
   });
 

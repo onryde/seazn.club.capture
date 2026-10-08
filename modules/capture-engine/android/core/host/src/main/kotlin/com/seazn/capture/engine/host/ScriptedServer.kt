@@ -11,7 +11,7 @@ import org.json.JSONObject
  * code is 12 characters of the code alphabet, the sid a uuid, and the beat path `/beats` (D3). The
  * bodies are `wire/server-bodies.json`'s `host/` rows, which ajv checks against the schemas at
  * 5bb72e8a2 (review C4a m-4): a beat names no zone and no null sid, and a code's answer names its
- * beat and start URLs. The stdin protocol names the paths `beat`, `code` and `start`.
+ * beat and start URLs. The stdin protocol names the paths `beat`, `code`, `start` and `scoring-link`.
  *
  * Task 27's quiet: [inFlight] counts the answers taken and not yet handed to the core, and
  * [onAnswered] runs once the next answer a script gave is handed over.
@@ -48,6 +48,7 @@ class ScriptedServer {
     when {
       request.url.endsWith("/beats") -> "beat"
       request.url.endsWith("/start") -> "start"
+      request.url.endsWith("/scoring-link") -> "scoring-link"
       CODE_URL.matches(request.url) -> "code"
       else -> null
     }
@@ -90,6 +91,7 @@ class ScriptedServer {
     when (path) {
       "beat" -> WAITING
       "code" -> session(CODE_URL.matchEntire(url)!!.groupValues[1])
+      "scoring-link" -> JSONObject().put("url", "https://stg.seazn.club/score/$SCORING_SECRET")
       else -> JSONObject().put("sid", SID)
     }
 
@@ -105,7 +107,7 @@ class ScriptedServer {
     const val ORIGIN = "$CODES$CODE"
 
     /** The protocol's paths (PV25). */
-    private val PATHS = setOf("beat", "code", "start")
+    private val PATHS = setOf("beat", "code", "start", "scoring-link")
 
     /** Any code's URL on the staging host, with the query the engine adds (`?slot=&phone=`): the kit's codes as well as the host's. */
     private val CODE_URL = Regex("${Regex.escape(CODES)}([^/?#]+)\\?.*")
@@ -115,6 +117,9 @@ class ScriptedServer {
 
     /** A made-up broadcast sid in the schemas' uuid pattern (version 4, variant 9). */
     const val SID = "2d7c4b1e-5f3a-4e6b-9c8d-1a2b3c4d5e6f"
+
+    /** The host's made-up scoring secret: `dl_` and 43 base64url characters, the contract's shape. No line but the call's own answer may carry it. */
+    const val SCORING_SECRET = "dl_HostLinkAbCdEfGhIjKlMnOpQrStUvWxYz012345678"
 
     /** The made-up session secrets the code's answer carries: no line the host writes may carry either. */
     const val PASSPHRASE = "host-passphrase-0"

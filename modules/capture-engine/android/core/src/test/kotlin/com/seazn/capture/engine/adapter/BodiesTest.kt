@@ -810,6 +810,30 @@ class BodiesTest {
     assertNull(assertIs<CodeAnswer.Open>(Bodies.code(200, base, null, Environment.STAGING)).waitingUnreadable, "the shared shape names none")
   }
 
+  @Test
+  fun `the scoring-link answers one reading, over the vector rows`() {
+    val rows = Shared.read("wire/scoring-link-vectors.json").getJSONArray("cases")
+    assertEquals(19, rows.length())
+    var checked = 0
+    for (i in 0 until rows.length()) {
+      val row = rows.getJSONObject(i)
+      val body = if (row.has("rawBody")) row.getString("rawBody") else row.getJSONObject("body").toString()
+      val retry = Bodies.retryAfter(row.optString("retryAfter").takeIf { it.isNotEmpty() })
+      val answer = Bodies.scoringLink(row.getInt("status"), body, retry, Environment.of(row.getString("env")))
+      assertEquals(row.getString("expected"), answer.word, row.getString("why"))
+      if (row.has("retryAfterS")) {
+        val refused = assertIs<ScoringLinkAnswer.Refused>(answer, row.getString("why"))
+        assertEquals(row.optInt("retryAfterS").takeIf { !row.isNull("retryAfterS") }, refused.retryAfterS, row.getString("why"))
+      }
+      // An ok row hands the server's own url over untouched: the QR encodes what the server issued, not a rewrite of it.
+      if (row.getString("expected") == "ok") {
+        assertEquals(row.getJSONObject("body").getString("url"), assertIs<ScoringLinkAnswer.Link>(answer, row.getString("why")).url, row.getString("why"))
+      }
+      checked += 1
+    }
+    assertEquals(19, checked)
+  }
+
   private fun answeredBeat(status: Int, body: String): HeartbeatResponse.Answered = assertIs<HeartbeatResponse.Answered>(Bodies.beat(status, body, null, Environment.STAGING))
 
   private fun wire(rig: MachineRig): String = WireJson.encode(SnapshotWire.of(rig.snapshot, PlatformFacts(), RecordCounters(0, 0)))
