@@ -2,16 +2,20 @@ import { memo } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { useT } from '@/hooks/useLanguage';
 import type { Peek } from '@/hooks/usePeek';
+import { usePhoto } from '@/hooks/usePhoto';
 import type { BlockerKey } from '@/hooks/preflight';
 import type { Viewfinder, ViewfinderAction } from '@/hooks/useViewfinder';
+import type { PhotoOutcome } from '@/services/photoPort';
 import { AudioMeter } from '@/ui/components/AudioMeter';
 import { Elapsed } from '@/ui/components/Elapsed';
 import { HoldAction } from '@/ui/components/HoldAction';
 import { IconButton } from '@/ui/components/IconButton';
 import { PreflightChips } from '@/ui/components/PreflightChips';
 import { TallyPlate } from '@/ui/components/TallyPlate';
+import { Text } from '@/ui/components/Text';
 import { ViewerPeek } from '@/ui/components/ViewerPeek';
 import { colour, layout, space } from '@/ui/theme/tokens';
+import { typeScale } from '@/ui/theme/type';
 
 type ColumnProps = {
   readonly view: Viewfinder;
@@ -24,11 +28,13 @@ type ColumnProps = {
 /**
  * The controls half (spec §1), top to bottom: the tally plate with the timer
  * (on air) or the sound meter (before air), the readiness chips and the start
- * line (before air), the meter (on air), a flexible gap, the icon row, then the
- * action. The status line is the strip's, under the shot.
+ * line (before air), the meter (on air), a flexible gap that holds the photo's
+ * one line, the icon row, then the action. The status line is the strip's,
+ * under the shot.
  */
 export const StreamColumn = memo(function StreamColumn(props: ColumnProps) {
   const { view, peek } = props;
+  const photo = usePhoto();
   return (
     <View testID="controls-half" style={styles.half}>
       <View testID="plate-row" style={styles.plateRow}>
@@ -42,11 +48,16 @@ export const StreamColumn = memo(function StreamColumn(props: ColumnProps) {
       {view.action === 'goLive' ? (
         <PreflightChips preflight={view.preflight} auto={view.auto} startsAt={view.startsAt} />
       ) : null}
-      <View testID="controls-gap" style={styles.gap} />
+      {/* R3: the photo's one line sits here, never over the camera box. Always mounted, so a screen reader hears it arrive. */}
+      <View testID="controls-gap" style={styles.gap} accessibilityLiveRegion="polite">
+        <PhotoNotice notice={photo.notice} />
+      </View>
       <IconRow
         onAir={view.onAir}
         peekable={view.peekable}
         peek={peek}
+        shutter={view.shutter}
+        onShutter={photo.take}
         canLeave={props.canLeave}
         onHome={props.onHome}
         onSettings={props.onSettings}
@@ -64,6 +75,8 @@ export const StreamColumn = memo(function StreamColumn(props: ColumnProps) {
 });
 
 type IconRowProps = PeekProps & {
+  readonly shutter: boolean;
+  readonly onShutter: () => void;
   readonly canLeave: boolean;
   readonly onHome: () => void;
   readonly onSettings: () => void;
@@ -73,18 +86,48 @@ type IconRowProps = PeekProps & {
  * The icon row (spec §3), 48 dp buttons: Settings in every state, live
  * included (AGENTS §6), then Home whenever leaving is allowed (never on air),
  * and on air What viewers see after Settings. Diagnostics is Settings' (§6).
+ * Take photo (§8) is present or absent, never dimmed: after Home before air,
+ * and after Settings on air, ahead of What viewers see.
  * Primitives and stable handlers, so memo skips (M7).
  */
 const IconRow = memo(function IconRow(props: IconRowProps) {
   const { t } = useT();
+  const shutter = props.shutter ? (
+    <IconButton glyph="shutter" label={t('stream.photo.label')} onPress={props.onShutter} />
+  ) : null;
   return (
     <View testID="icon-row" style={styles.iconRow}>
       <IconButton glyph="settings" label={t('stream.link.settings')} onPress={props.onSettings} />
+      {props.onAir ? shutter : null}
       <ColumnPeek onAir={props.onAir} peekable={props.peekable} peek={props.peek} />
       {props.canLeave ? (
         <IconButton glyph="home" label={t('stream.home')} onPress={props.onHome} />
       ) : null}
+      {props.onAir ? null : shutter}
     </View>
+  );
+});
+
+/** The keys by literal, never a template string, so each one type-checks. */
+const NOTICE_KEY = { saved: 'stream.photo.saved', failed: 'stream.photo.failed' } as const;
+
+/** The photo's one line (R3): lime when saved, caution when not. Nothing at all with no photo to report. */
+const PhotoNotice = memo(function PhotoNotice({
+  notice,
+}: {
+  readonly notice: PhotoOutcome | null;
+}) {
+  const { t } = useT();
+  if (notice === null) return null;
+  return (
+    <Text
+      variant="metricUnit"
+      testID="photo-notice"
+      numberOfLines={1}
+      style={notice === 'saved' ? styles.saved : styles.problem}
+    >
+      {t(NOTICE_KEY[notice])}
+    </Text>
   );
 });
 
@@ -163,7 +206,10 @@ const styles = StyleSheet.create({
   },
   plateRow: { flexDirection: 'row', gap: space.sm },
   cell: { flex: 1, justifyContent: 'center' },
-  gap: { flex: 1 },
+  // R3, F6, F9: a line of height always, so the line has a place to sit; at the bottom, beside the icon row it belongs to.
+  gap: { flex: 1, minHeight: typeScale.metricUnit.lineHeight, justifyContent: 'flex-end' },
+  saved: { color: colour.lime },
+  problem: { color: colour.caution },
   iconRow: { flexDirection: 'row', gap: space.sm },
   peekCell: { flex: 1 },
 });

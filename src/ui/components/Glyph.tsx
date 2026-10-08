@@ -2,7 +2,7 @@ import { memo } from 'react';
 import Svg, { Circle, Path, Rect } from 'react-native-svg';
 import { colour } from '@/ui/theme/tokens';
 
-export type GlyphName = 'camera' | 'mic' | 'network' | 'settings' | 'home';
+export type GlyphName = 'camera' | 'mic' | 'network' | 'settings' | 'home' | 'shutter';
 
 /**
  * What a glyph is drawn in, by the canvas: ink on a readiness chip (its outline carries the state),
@@ -45,8 +45,10 @@ export const Glyph = memo(function Glyph({ name, slashed = false, tone }: GlyphP
         <NetworkGlyph />
       ) : name === 'settings' ? (
         <SettingsGlyph />
-      ) : (
+      ) : name === 'home' ? (
         <HomeGlyph />
+      ) : (
+        <ShutterGlyph />
       )}
     </Svg>
   );
@@ -93,4 +95,14 @@ function SettingsGlyph() {
 
 function HomeGlyph() {
   return <Path d="M3 11l9-7 9 7M5 10v10h14V10M10 20v-5h4v5" />;
+}
+
+/** Take photo (spec §8): the plan's drawing (D9), not the canvas's. */
+function ShutterGlyph() {
+  return (
+    <>
+      <Circle cx={12} cy={12} r={9} />
+      <Circle cx={12} cy={12} r={4} />
+    </>
+  );
 }

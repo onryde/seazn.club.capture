@@ -19,6 +19,7 @@ import type { EndedNotice } from '@/services/endedNotice';
 import type { KeyValueStore } from '@/services/KeyValueStore';
 import type { Logger } from '@/services/logger';
 import type { ModeStore } from '@/services/modeStore';
+import type { PhotoPort } from '@/services/photoPort';
 import type { ProbeFlight } from '@/services/probeFlight';
 import type { ScanFlight } from '@/services/scanFlight';
 import type { SessionRecord } from '@/services/sessionRecord';
@@ -65,6 +66,8 @@ export type Ports = {
   readonly record: SessionRecord;
   /** The system share sheet, for Diagnostics' Share record (D21). */
   readonly share: SharePort;
+  /** Spec §8: a still to the gallery (the one call that answers, Q2). */
+  readonly photo: PhotoPort;
   readonly clock: () => Date;
   readonly hosts: readonly string[];
   readonly deviceLanguages: readonly (string | null)[];
