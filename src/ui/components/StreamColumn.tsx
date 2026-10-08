@@ -23,6 +23,10 @@ type ColumnProps = {
   readonly canLeave: boolean;
   readonly onHome: () => void;
   readonly onSettings: () => void;
+  /** Remote scoring (spec §10): ask for the code. Stable, so the memoised column skips (M7). */
+  readonly onScoringLink: () => void;
+  /** The scoring panel is up over the camera half: the button is pressed in (B5). */
+  readonly scoringOpen: boolean;
 };
 
 /**
@@ -58,6 +62,9 @@ export const StreamColumn = memo(function StreamColumn(props: ColumnProps) {
         peek={peek}
         shutter={view.shutter}
         onShutter={photo.take}
+        scoring={view.scoring}
+        scoringOpen={props.scoringOpen}
+        onScoring={props.onScoringLink}
         canLeave={props.canLeave}
         onHome={props.onHome}
         onSettings={props.onSettings}
@@ -77,6 +84,9 @@ export const StreamColumn = memo(function StreamColumn(props: ColumnProps) {
 type IconRowProps = PeekProps & {
   readonly shutter: boolean;
   readonly onShutter: () => void;
+  readonly scoring: boolean;
+  readonly scoringOpen: boolean;
+  readonly onScoring: () => void;
   readonly canLeave: boolean;
   readonly onHome: () => void;
   readonly onSettings: () => void;
@@ -86,8 +96,9 @@ type IconRowProps = PeekProps & {
  * The icon row (spec §3), 48 dp buttons: Settings in every state, live
  * included (AGENTS §6), then Home whenever leaving is allowed (never on air),
  * and on air What viewers see after Settings. Diagnostics is Settings' (§6).
- * Take photo (§8) is present or absent, never dimmed: after Home before air,
- * and after Settings on air, ahead of What viewers see.
+ * Take photo (§8) and Remote scoring (§10) are present or absent, never dimmed, and travel together as the
+ * camera-side pair, Remote scoring last of the two: after Home before air, and after Settings on air, ahead of
+ * What viewers see. Remote scoring is pressed in while its panel is up (B5).
  * Primitives and stable handlers, so memo skips (M7).
  */
 const IconRow = memo(function IconRow(props: IconRowProps) {
@@ -95,15 +106,29 @@ const IconRow = memo(function IconRow(props: IconRowProps) {
   const shutter = props.shutter ? (
     <IconButton glyph="shutter" label={t('stream.photo.label')} onPress={props.onShutter} />
   ) : null;
+  const scoring = props.scoring ? (
+    <IconButton
+      glyph="qr"
+      label={t('stream.scoring.open')}
+      selected={props.scoringOpen}
+      onPress={props.onScoring}
+    />
+  ) : null;
+  const camera = (
+    <>
+      {shutter}
+      {scoring}
+    </>
+  );
   return (
     <View testID="icon-row" style={styles.iconRow}>
       <IconButton glyph="settings" label={t('stream.link.settings')} onPress={props.onSettings} />
-      {props.onAir ? shutter : null}
+      {props.onAir ? camera : null}
       <ColumnPeek onAir={props.onAir} peekable={props.peekable} peek={props.peek} />
       {props.canLeave ? (
         <IconButton glyph="home" label={t('stream.home')} onPress={props.onHome} />
       ) : null}
-      {props.onAir ? null : shutter}
+      {props.onAir ? null : camera}
     </View>
   );
 });

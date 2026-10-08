@@ -2,7 +2,7 @@ import { memo } from 'react';
 import Svg, { Circle, Path, Rect } from 'react-native-svg';
 import { colour } from '@/ui/theme/tokens';
 
-export type GlyphName = 'camera' | 'mic' | 'network' | 'settings' | 'home' | 'shutter';
+export type GlyphName = 'camera' | 'mic' | 'network' | 'settings' | 'home' | 'shutter' | 'qr';
 
 /**
  * What a glyph is drawn in, by the canvas: ink on a readiness chip (its outline carries the state),
@@ -47,8 +47,10 @@ export const Glyph = memo(function Glyph({ name, slashed = false, tone }: GlyphP
         <SettingsGlyph />
       ) : name === 'home' ? (
         <HomeGlyph />
-      ) : (
+      ) : name === 'shutter' ? (
         <ShutterGlyph />
+      ) : (
+        <QrGlyph />
       )}
     </Svg>
   );
@@ -104,5 +106,12 @@ function ShutterGlyph() {
       <Circle cx={12} cy={12} r={9} />
       <Circle cx={12} cy={12} r={4} />
     </>
+  );
+}
+
+/** Remote scoring (spec §10): the plan's drawing, not the canvas's. Three finder squares and a few data cells, in the others' stroke. */
+function QrGlyph() {
+  return (
+    <Path d="M3 3h7v7H3zM14 3h7v7h-7zM3 14h7v7H3zM14 14h3v3h-3zM19 14h2M14 19h2M18 18h3v3h-3z" />
   );
 }

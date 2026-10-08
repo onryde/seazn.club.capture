@@ -3,6 +3,7 @@ import { StyleSheet, View, type ViewStyle } from 'react-native';
 import { describe, expect, it, vi } from 'vitest';
 import { IconButton } from '@/ui/components/IconButton';
 import { colour, layout } from '@/ui/theme/tokens';
+import { BOARD, boardLimeEdge } from '../../../test/boardPaint';
 import { renderWithPorts } from '../../../test/renderWithPorts';
 
 /** Which token a border was painted with (jsdom's cascade); the colour on a phone is a device check. */
@@ -17,11 +18,12 @@ function borderOf(style: ViewStyle): string {
   return painted;
 }
 
-/** The three glyphs the icon row draws (spec §3, §8): the name is the label, the glyph is the picture. */
+/** The four glyphs the icon row draws (spec §3, §8, §10): the name is the label, the glyph is the picture. */
 const BUTTONS = [
   ['settings', 'Settings'],
   ['home', 'Home'],
   ['shutter', 'Take photo'],
+  ['qr', 'Remote scoring'],
 ] as const;
 let buttonsRun = 0;
 
@@ -39,9 +41,9 @@ describe('IconButton (spec §3)', () => {
     buttonsRun += 1;
   });
 
-  it('ran all three buttons (anti-vacuity)', () => {
-    expect(BUTTONS).toHaveLength(3);
-    expect(buttonsRun).toBe(3);
+  it('ran all four buttons (anti-vacuity)', () => {
+    expect(BUTTONS).toHaveLength(4);
+    expect(buttonsRun).toBe(4);
   });
 
   it('is 48 dp square with a quiet ink3 outline', () => {
@@ -72,5 +74,64 @@ describe('IconButton (spec §3)', () => {
   it('is named by its label alone, and has no visible word', () => {
     renderWithPorts(<IconButton glyph="settings" label="Ajustes" onPress={vi.fn()} />);
     expect(screen.getByRole('button', { name: 'Ajustes' }).textContent).toBe('');
+  });
+
+  // B5 (owner-approved board ruling): while its panel shows, the button is pressed in: a 2 dp lime outline and the
+  // selected state a screen reader announces. The lime is the board's own (#9ae600), typed in test/boardPaint.ts.
+  describe('selected (B5)', () => {
+    const outline = (name: string) => {
+      const style = getComputedStyle(screen.getByRole('button', { name }));
+      return { width: style.borderTopWidth, colour: style.borderTopColor };
+    };
+
+    it('unselected, it is the hairline ink3 outline and says nothing about being selected', () => {
+      renderWithPorts(
+        <IconButton glyph="qr" label="Remote scoring" selected={false} onPress={vi.fn()} />,
+      );
+      expect(
+        screen.getByRole('button', { name: 'Remote scoring' }).getAttribute('aria-selected'),
+      ).toBe('false');
+      expect(outline('Remote scoring')).toEqual({
+        width: `${layout.iconBorder}px`,
+        colour: borderOf(TOKEN.ink3),
+      });
+    });
+
+    it('selected, it is a 2 dp lime outline and is announced as selected, and is still 48 dp square', () => {
+      renderWithPorts(<IconButton glyph="qr" label="Remote scoring" selected onPress={vi.fn()} />);
+      const button = screen.getByRole('button', { name: 'Remote scoring' });
+      expect(button.getAttribute('aria-selected')).toBe('true');
+      expect(layout.iconBorderOn).toBe(2); // the board's 2 dp, written out
+      expect(outline('Remote scoring')).toEqual({ width: '2px', colour: boardLimeEdge() });
+      expect(boardLimeEdge()).not.toBe(borderOf(TOKEN.ink3)); // anti-vacuity: lime is not the hairline's colour
+      expect(BOARD.lime).toBe(colour.lime); // and it is the app's LED, not a second green
+      const style = getComputedStyle(button);
+      expect([style.width, style.height]).toEqual([
+        `${layout.iconButton}px`,
+        `${layout.iconButton}px`,
+      ]);
+    });
+
+    it('without the prop it is the plain button of before: no selected state at all', () => {
+      renderWithPorts(<IconButton glyph="settings" label="Settings" onPress={vi.fn()} />);
+      expect(
+        screen.getByRole('button', { name: 'Settings' }).getAttribute('aria-selected'),
+      ).toBeNull();
+      expect(outline('Settings').width).toBe(`${layout.iconBorder}px`);
+    });
+
+    it('goes from selected back to unselected when its panel closes (both states, one button)', () => {
+      const view = renderWithPorts(
+        <IconButton glyph="qr" label="Remote scoring" selected onPress={vi.fn()} />,
+      );
+      expect(outline('Remote scoring').width).toBe('2px');
+      view.rerender(
+        <IconButton glyph="qr" label="Remote scoring" selected={false} onPress={vi.fn()} />,
+      );
+      expect(outline('Remote scoring').width).toBe(`${layout.iconBorder}px`);
+      expect(
+        screen.getByRole('button', { name: 'Remote scoring' }).getAttribute('aria-selected'),
+      ).toBe('false');
+    });
   });
 });

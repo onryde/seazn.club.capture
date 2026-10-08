@@ -6,9 +6,11 @@ import { useEngineSelector } from '@/hooks/useCaptureEngine';
 import type { Peek } from '@/hooks/usePeek';
 import { usePorts } from '@/hooks/usePorts';
 import { useStageOverlay } from '@/hooks/useStageOverlay';
+import type { ScoringLinkView } from '@/hooks/useScoringLink';
 import { useViewerFeed } from '@/hooks/useViewerFeed';
 import { OverlayPreview } from '@/ui/components/OverlayPreview';
 import { PreviewBoundary } from '@/ui/components/PreviewBoundary';
+import { ScoringLinkPanel } from '@/ui/components/ScoringLinkPanel';
 import { StageVideo } from '@/ui/components/StageVideo';
 import { StatusStrip } from '@/ui/components/StatusStrip';
 import { cameraBoxSize, STRIP_RESERVE, type BoxSize } from '@/ui/theme/cameraBox';
@@ -21,6 +23,10 @@ type StageProps = {
   readonly paired: boolean;
   readonly overlayOn: boolean;
   readonly peek: Peek;
+  /** The Remote scoring panel's state (spec §10), and the seconds it has left (B3). */
+  readonly scoring: ScoringLinkView;
+  readonly scoringSecondsLeft: number;
+  readonly onHideScoring: () => void;
 };
 
 /**
@@ -78,6 +84,12 @@ export const StreamStage = memo(function StreamStage(props: StageProps) {
         peek={props.peek}
       />
       <StatusStrip line={props.line} advisory={advisory} />
+      {/* Last, so it paints over the box and the strip (Q-C2). */}
+      <ScoringLinkPanel
+        view={props.scoring}
+        secondsLeft={props.scoringSecondsLeft}
+        onHide={props.onHideScoring}
+      />
     </View>
   );
 });

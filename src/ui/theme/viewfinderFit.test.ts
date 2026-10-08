@@ -60,7 +60,8 @@ const CONTROLS = [
       layout.meterHeight,
       typeScale.metricUnit.lineHeight, // R3 (PR B): the photo line's place in the gap.
       // m-3: What viewers see, with its "No viewer picture" line under it while there is no picture (ViewerPeek).
-      layout.iconButton + space.xs + typeScale.metricUnit.lineHeight,
+      // the peek cell is 120 dp at 640 since Remote scoring joined the row: es and nl wrap the reason to two lines (scoringFit.test.ts measures it)
+      layout.iconButton + space.xs + layout.peekReasonLines * typeScale.metricUnit.lineHeight,
       layout.holdHeight,
     ],
   ],
@@ -132,6 +133,20 @@ describe.each(GEOMETRIES)('the viewfinder fits %i × %i (spec §1)', (width, hei
 
   it('counts itself', () => {
     geometriesChecked += 1;
+  });
+});
+
+describe('the on-air controls half with Remote scoring in the icon row (spec §10, RP7)', () => {
+  // 56 + 12 + 16 + 84 + 72 = 240 for the five items, 4 × 12 = 48 of gaps, 2 × 16 = 32 of padding. The icon item is
+  // 48 + 4 + 2 × 16 = 84, not 68: the peek's reason takes two lines in es and nl. Pinned as a literal on purpose: it
+  // fails if the photo-line item is dropped, which is how 304 was once written (scoringFit.test.ts pins the same 320).
+  it('is 320 of 360 at 640 × 360, with 40 dp to spare', () => {
+    const onAir = CONTROLS[1][1];
+    // The literal first, so a dropped item fails here by its number (304), not only by the item count below.
+    expect(stack(onAir, layout.controlsGap, layout.controlsPad)).toBe(320);
+    expect(360 - stack(onAir, layout.controlsGap, layout.controlsPad)).toBe(40);
+    expect(onAir).toHaveLength(5);
+    expect(onAir[3]).toBe(84);
   });
 });
 

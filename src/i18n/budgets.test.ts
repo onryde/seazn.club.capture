@@ -31,6 +31,14 @@ const BUDGETS: readonly (readonly [keys: RegExp, max: number])[] = [
   // Take photo (spec §8): the icon's accessible name, and the one line over the icon row.
   [/^stream\.photo\.label$/, 20],
   [/^stream\.photo\.(saved|failed)$/, 36],
+  // Remote scoring (spec §10): the icon's accessible name (like Take photo's), the panel's title (B1) and its
+  // countdown (B3), the sentences, and Hide.
+  [/^stream\.scoring\.open$/, 20],
+  [/^stream\.scoring\.(title|hidesIn)$/, 24],
+  [/^stream\.scoring\.refused\./, 56],
+  // `code` is a screen-reader name, but a row per key keeps a new key from being added unbudgeted.
+  [/^stream\.scoring\.(hint|asking|code)$/, 48],
+  [/^stream\.scoring\.hide$/, 14],
   [/^stream\.ended\.(duration|neverLive)$/, 24],
   // The link is the Settings icon's accessible name, in the icon row (spec §3).
   [/^stream\.link\./, 14],
@@ -42,6 +50,8 @@ const WIDEST: Readonly<Record<string, string>> = {
   window: '183',
   time: '14:32 CEST',
   duration: '10:00:00',
+  // Remote scoring: a Retry-After the hook clamps at 300 (useScoringLink), and the countdown's 10 at most.
+  seconds: '300',
   // Amendment §2, footnote 1: `cutDestination` never lets the name past 24.
   destination: 'X'.repeat(DESTINATION_CAP),
 };

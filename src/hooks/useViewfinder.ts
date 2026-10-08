@@ -55,6 +55,8 @@ export type Viewfinder = {
   readonly onAir: boolean;
   /** The camera picture shows, so Take photo is offered: Paired and on air (design follow-up §8, the owner's scope cut). */
   readonly shutter: boolean;
+  /** A pairing is held, so Remote scoring is offered (spec §10, Q-C2): Paired and on air, before and during live. */
+  readonly scoring: boolean;
   /** On air with a viewer picture to play (carry 13): the peek's one gate. */
   readonly peekable: boolean;
   /**
@@ -149,6 +151,7 @@ function project(
     stopUnpairs: LIVE.has(kind),
     onAir: action === 'stop',
     shutter: kind === 'paired' || action === 'stop',
+    scoring: kind === 'paired' || action === 'stop',
     peekable: action === 'stop' && input.playable,
     ...waiting,
   };
