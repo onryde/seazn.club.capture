@@ -405,6 +405,23 @@ describe('the paired phase', () => {
     engine.setPairing({ label: 'Changed' });
     expect(snapshot().pairing?.label).toBe('Changed');
   });
+
+  // W28: native seeds the scan's round line from the pair (both keys or neither); the fake does the same,
+  // and a round line set by setPairing is the fake's own when the pair carries none.
+  it('seeds the round line from a pair that carries one, and has none otherwise', () => {
+    pair();
+    expect(snapshot().pairing?.stageLabel).toBeNull();
+    engine.send({ kind: 'unpair' });
+    pair({ ...KIT_CODE_A, stageLabel: 'QF', stageMatch: 'Example Town v Sample CC' });
+    expect(snapshot().pairing?.stageLabel).toBe('QF');
+    engine.send({ kind: 'unpair' });
+    pair({ ...KIT_CODE_A, stageLabel: 'QF' });
+    expect(snapshot().pairing?.stageLabel).toBeNull();
+    engine.send({ kind: 'unpair' });
+    engine.setPairing({ stageLabel: 'SF' });
+    pair();
+    expect(snapshot().pairing?.stageLabel).toBe('SF');
+  });
 });
 
 describe('scenes: every state spec §6 and the amendment list', () => {

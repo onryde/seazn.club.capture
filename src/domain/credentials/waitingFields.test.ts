@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { CODE_STATES, parseWaitingFields, waitingToWire } from '@/domain/credentials/waitingFields';
+import {
+  CODE_STATES,
+  parseWaitingFields,
+  STAGE_KINDS,
+  waitingToWire,
+} from '@/domain/credentials/waitingFields';
 
 // Made up, inside capture-descriptor.v1's waiting branch (web 5bb72e8a2): a 12-character code and
 // the D3 paths. The fixtures ruling replaces the plan's `fx-42`.
@@ -39,6 +44,7 @@ describe('the waiting fields at the scan', () => {
       'overlayUrl',
       'pollSeconds',
       'scheduledStart',
+      'stage',
       'startUrl',
       'venueTimezone',
     ]);
@@ -87,5 +93,65 @@ describe('the waiting fields at the scan', () => {
 
   it('names every state a 200 may carry, waiting and session-shaped (capture-descriptor.v1)', () => {
     expect(CODE_STATES).toEqual(['waiting', 'warming', 'live', 'ending', 'completed', 'failed']);
+  });
+});
+
+const STAGE = (over: Record<string, unknown> = {}) => ({
+  code: 'QF',
+  role: { kind: 'quarter_final' },
+  label: 'QF',
+  ...over,
+});
+
+describe('the stage at the scan (spec §2, R-F20)', () => {
+  it('reads the label of a stage with a known kind, and keeps the kind with it', () => {
+    expect(parseWaitingFields(fields({ stage: STAGE() }), HOST)?.stage).toEqual({
+      label: 'QF',
+      kind: 'quarter_final',
+    });
+  });
+
+  it.each([
+    ['a label of 41 characters', STAGE({ label: 'x'.repeat(41) })],
+    ['an empty label', STAGE({ label: '' })],
+    ['no label', { code: 'QF', role: { kind: 'quarter_final' } }],
+    ['null', null],
+    ['not an object', 'QF'],
+    ['an unknown kind with a good label (R-F20)', STAGE({ role: { kind: 'a_future_kind' } })],
+    ['no role', { code: 'QF', label: 'QF' }],
+    ['a kind that is not a string', STAGE({ role: { kind: 7 } })],
+  ])('%s is no stage, and the rest of the answer is still read', (_why, stage) => {
+    const read = parseWaitingFields(fields({ stage }), HOST);
+    expect(read).not.toBeNull();
+    expect(read?.stage).toBeNull();
+    expect(read?.label).toBe('Example Town v Sample CC');
+  });
+
+  it('reads no stage when the answer has none', () => {
+    expect(parseWaitingFields(fields(), HOST)?.stage).toBeNull();
+  });
+
+  it('shows the label for each of the 15 kinds the contract names', () => {
+    let shown = 0;
+    for (const kind of STAGE_KINDS) {
+      expect(
+        parseWaitingFields(fields({ stage: STAGE({ role: { kind } }) }), HOST)?.stage?.label,
+      ).toBe('QF');
+      shown += 1;
+    }
+    expect(shown).toBe(15);
+  });
+
+  it('round-trips a stage through the saved wire, kind and all, and a saved code from before this change reads none', () => {
+    const read = parseWaitingFields(fields({ stage: STAGE() }), HOST);
+    if (read === null) throw new Error('the fixture must parse');
+    expect(waitingToWire(read)).toMatchObject({
+      stage: { role: { kind: 'quarter_final' }, label: 'QF' },
+    });
+    expect(parseWaitingFields(waitingToWire(read), HOST)).toEqual(read);
+    // Without a stage the wire carries no `stage` key at all, so older saved codes and new ones agree.
+    const none = parseWaitingFields(fields(), HOST);
+    if (none === null) throw new Error('the fixture must parse');
+    expect(Object.keys(waitingToWire(none))).not.toContain('stage');
   });
 });

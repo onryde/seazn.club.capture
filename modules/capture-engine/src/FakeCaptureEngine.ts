@@ -218,6 +218,7 @@ export const FAKE_PAIRING: PairingInfo = {
   destinationName: 'YouTube · Fake CC',
   overlayUrl: 'https://stg.seazn.club/overlay/fixtures/fx42hmnp7k2q',
   pollSeconds: 60,
+  stageLabel: null,
 };
 
 const broadcastFor = (pairing: PairingInfo, cause: Cause): BroadcastInfo => ({
@@ -538,6 +539,10 @@ export function createFakeCaptureEngine(now: () => number = Date.now): FakeCaptu
       ...waiting,
       ...name,
       venueTimezone: intent.venueTimezone,
+      // Native seeds the scan's round line when the pair carries it with its match, and not otherwise.
+      ...(intent.stageLabel !== undefined && intent.stageMatch !== undefined
+        ? { stageLabel: intent.stageLabel }
+        : {}),
       automatic: intent.automatic,
     };
     if (permissions === 'hold') {

@@ -22,6 +22,7 @@ const PAIRING = {
   destinationName: 'YouTube · Example Town CC',
   overlayUrl: 'https://stg.seazn.club/overlay/fixtures/fx42hmnp7k2q',
   pollSeconds: 10,
+  stageLabel: null,
 };
 // W28: the pairing of the case that carries a round line, by hand from its override { stageLabel: 'QF' }.
 const PAIRING_STAGED = { ...PAIRING, stageLabel: 'QF' };
@@ -296,6 +297,23 @@ describe('carries 2-6: the snapshot wire, as native writes it (Task 12)', () => 
     ).toBeNull();
     const again = toEngineSnapshot(live, cache) as EngineSnapshot;
     expect(again.pairing).toBe(first.pairing);
+  });
+
+  // W28: the round line is text or null, and nothing else, because the pairing is read whole or not at all.
+  it('reads a pairing whose stageLabel is not text or null as no snapshot, and one without the key likewise', () => {
+    const staged = vectorWire('paired-with-stage-label');
+    expect(toEngineSnapshot(staged)?.pairing?.stageLabel).toBe('QF');
+    let refused = 0;
+    for (const stageLabel of [7, true, {}, ['QF']]) {
+      expect(
+        toEngineSnapshot({ ...staged, pairing: { ...staged.pairing, stageLabel } }),
+      ).toBeNull();
+      refused += 1;
+    }
+    const { stageLabel: _gone, ...without } = staged.pairing as Record<string, unknown>;
+    expect(toEngineSnapshot({ ...staged, pairing: without })).toBeNull();
+    refused += 1;
+    expect(refused).toBe(5);
   });
 
   const idle = () => vectorWire('idle');

@@ -12,7 +12,8 @@ export function intentWire(intent: EngineIntent): Record<string, unknown> {
   switch (intent.kind) {
     case 'pair': {
       const { code, slot, token, codeUrl, heartbeatUrl, startUrl } = intent;
-      const { venueTimezone, language, automatic, claim, environment } = intent;
+      const { venueTimezone, stageLabel, stageMatch, language, automatic, claim, environment } =
+        intent;
       return {
         kind: 'pair',
         code,
@@ -22,6 +23,7 @@ export function intentWire(intent: EngineIntent): Record<string, unknown> {
         heartbeatUrl,
         startUrl,
         venueTimezone,
+        ...(stageLabel !== undefined && stageMatch !== undefined ? { stageLabel, stageMatch } : {}),
         language,
         automatic,
         claim,

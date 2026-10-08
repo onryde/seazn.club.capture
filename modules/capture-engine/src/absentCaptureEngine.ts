@@ -16,6 +16,7 @@ const namedBy = (intent: PairIntent): PairingInfo => ({
   destinationName: null,
   overlayUrl: null,
   pollSeconds: 60,
+  stageLabel: null,
 });
 
 /**

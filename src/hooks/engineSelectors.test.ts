@@ -27,6 +27,7 @@ import {
   selectOverlayUrl,
   selectPlaybackUrl,
   selectScheduledStartMs,
+  selectStageLine,
   selectUnpairedKey,
   selectUnpairedReason,
   selectVenueZone,
@@ -338,6 +339,28 @@ describe('the waiting fields the viewfinder shows (Task 28)', () => {
       selectEndReason(snapshot(LIVE)),
       selectEndReason(snapshot(PAIRED)),
     ]).toEqual(['operator-stopped', 'fatal-error', null, null]);
+  });
+});
+
+describe('the round line selector (spec §2)', () => {
+  const paired = (over: Partial<PairingInfo>) =>
+    snapshot(PAIRED, {}, { pairing: { ...FAKE_PAIRING, ...over } });
+
+  it('selectStageLine is the pairing’s stage label, only while a match label is known, and null otherwise', () => {
+    expect(selectStageLine(paired({ label: 'A v B', stageLabel: 'QF' }))).toBe('QF');
+    expect(selectStageLine(paired({ label: '', stageLabel: 'QF' }))).toBeNull();
+    expect(selectStageLine(paired({ label: 'A v B', stageLabel: null }))).toBeNull();
+    expect(selectStageLine(paired({ label: 'A v B', stageLabel: 'x'.repeat(41) }))).toBeNull();
+    expect(selectStageLine(snapshot(PAIRED, {}, { pairing: null }))).toBeNull();
+  });
+
+  it('a known match label is the broadcast’s too: selectLabel reads it before the pairing’s', () => {
+    const live = snapshot(
+      LIVE,
+      {},
+      { pairing: { ...FAKE_PAIRING, label: '', stageLabel: 'QF' }, broadcast: BROADCAST },
+    );
+    expect(selectStageLine(live)).toBe('QF');
   });
 });
 

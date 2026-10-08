@@ -18,7 +18,16 @@ describe('the waiting fields: one reading in two languages (Bodies.waiting in Ko
 
   it.each(rows.map((row) => [row.why, row] as const))('%s', (_why, row) => {
     const read = parseWaitingFields(row.fields, seaznHosts(row.env)[0] ?? '');
-    const seen = read === null ? null : { ...read, scheduledStart: inSeconds(read.scheduledStart) };
+    // The shared rows state the stage as the label the line shows (Kotlin's WaitingFields.stageLabel).
+    const { stage, ...rest } = read ?? { stage: null };
+    const seen =
+      read === null
+        ? null
+        : {
+            ...rest,
+            scheduledStart: inSeconds(read.scheduledStart),
+            stageLabel: stage?.label ?? null,
+          };
     expect(seen).toEqual(row.expected);
   });
 });

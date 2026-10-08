@@ -39,6 +39,8 @@ export type PairingInfo = {
   readonly destinationName: string | null;
   readonly overlayUrl: string | null;
   readonly pollSeconds: number;
+  /** The descriptor's `stage.label` (W28) for the match in hand, shown verbatim; null with none. Display only. */
+  readonly stageLabel: string | null;
 };
 
 /** The broadcast's non-secret fields, while one is held. `cred` never crosses the bridge (A1, A5). */

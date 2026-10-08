@@ -251,12 +251,13 @@ function toUnpaired(value: unknown): Unpaired | null | undefined {
 function toPairing(value: Wire): PairingInfo | undefined {
   const { code, slot, tokenTag, automatic, label, venueTimezone, scheduledStart, autoAllowed } =
     value;
-  const { destinationName, overlayUrl, pollSeconds } = value;
+  const { destinationName, overlayUrl, pollSeconds, stageLabel } = value;
   if (!isText(code) || !isNumber(slot) || !isText(tokenTag) || !isFlag(automatic)) return undefined;
   if (!isText(label) || !isText(venueTimezone) || !isFlag(autoAllowed) || !isNumber(pollSeconds))
     return undefined;
   if (scheduledStart !== null && !isNumber(scheduledStart)) return undefined;
   if (!textOrNull(destinationName) || !textOrNull(overlayUrl)) return undefined;
+  if (!textOrNull(stageLabel)) return undefined;
   return {
     code,
     slot,
@@ -269,6 +270,7 @@ function toPairing(value: Wire): PairingInfo | undefined {
     destinationName,
     overlayUrl,
     pollSeconds,
+    stageLabel,
   };
 }
 

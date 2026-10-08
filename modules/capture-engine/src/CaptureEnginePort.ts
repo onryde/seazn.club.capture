@@ -36,6 +36,12 @@ export type PairIntent = {
   readonly heartbeatUrl: string;
   readonly startUrl: string;
   readonly venueTimezone: string;
+  /**
+   * The round line the scan's GET gave (W28) and the match label it was read with. They ride together: native
+   * seeds both or neither, and keeps the line only while a beat's label is that match. Not secrets.
+   */
+  readonly stageLabel?: string;
+  readonly stageMatch?: string;
   readonly language: string;
   readonly automatic: boolean;
   readonly claim: Claim;
