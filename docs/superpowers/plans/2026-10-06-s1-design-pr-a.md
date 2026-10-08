@@ -2037,7 +2037,7 @@ Any time after the merge. It needs no PR C code, and the orchestrator flips no f
 - [ ] **88. Go live in French.** Set the app to French, pair to a staging match, and go live. You should see the status reach "Live" and the picture playing on the staging match page.
 - [ ] **89. The link in Diagnostics.** On air, open Settings and look at the Transport row. You should see "RTMPS seul", because SRT is not offered.
 - [ ] **90. Record the session id.** Write down the session id of this broadcast, from the staging console for the match or from the shared record. Give it to the orchestrator: it goes to the web lane.
-- [ ] **91. (Withdrawn, 2026-10-08.)** Hold Stop. No ping and no flag to restore.
+- [ ] **91. Hold Stop.** No ping and no flag to restore (amended 2026-10-08: the web lane's owner runs the forced test).
 - [ ] **92. Delete the recording.** Delete the broadcast's recording on Cloudflare, and the input with it. You should see it gone from the list.
 
 ### J. Wrap-up
@@ -2066,7 +2066,7 @@ Any time after the merge. It needs no PR C code, and the orchestrator flips no f
 | Auto-rotate off; leaving paired Settings upright                                            | 68, 70, 71             |
 | Owner's-eye wording: Sin datos, RTMPS seul, Stokt, Microfoon niet bruikbaar, share failures | 83 to 86, 89           |
 | Organiser-stopped; never went live; code ended                                              | 39, 46, 47, 48         |
-| The forced RTMPS session, for the web lane                                                  | 88 to 90, 92           |
+| The forced RTMPS session, for the web lane                                                  | 88 to 92               |
 
 Any line that fails is a finding for the orchestrator. It is never a change made on the device run.
 

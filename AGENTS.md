@@ -90,7 +90,8 @@ page in the main repo, not here. Do not grow the app to accommodate them.
   mid-reconnect is a deadlock waiting for a bad cell.
   One recorded exception (design follow-up §8; owner, 2026-10-08): `takePhoto`
   is a request with an answer, one call that resolves `saved` or `failed`
-  within native's bound. It carries no session state, runs on a scope of its
+  within native's 2 s bound when the call honours cancellation; the app gives
+  up at 4 s. It carries no session state, runs on a scope of its
   own with no path to the session's failure path, and is never read by the
   machine, the snapshot or the heartbeat. It is the only such call.
 - **Never build a second state machine in TypeScript.** The aggregate lives in

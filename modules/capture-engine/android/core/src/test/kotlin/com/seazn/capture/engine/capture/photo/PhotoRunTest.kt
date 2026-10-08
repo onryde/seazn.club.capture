@@ -39,7 +39,7 @@ class PhotoRunTest {
     }
 
   @Test
-  fun `I-1 a camera that is not open and ours is refused at once, with one line, and no snapshot is asked for`() =
+  fun `I-1 a camera that is not ours, or has failed or been lost, is refused at once, with one line, and no snapshot is asked for`() =
     runTest {
       open = false
       assertEquals(PhotoResult.FAILED, run.take())

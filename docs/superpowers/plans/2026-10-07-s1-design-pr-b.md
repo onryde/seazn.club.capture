@@ -2472,6 +2472,7 @@ This task is a checklist for the owner. An agent never simulates it, infers it, 
   - It opens, is the camera picture with **no scorebug**, and is **upright** with the phone held sideways to the left and to the right, before air and on air. Record its resolution.
   - If it is sideways or upside down, record which side: the fix is the one `rotationDegrees` argument in `GalleryPhoto.shoot` (D5).
 - [ ] **3. Before air.** In Paired with the camera ready, tap _Take photo_: it saves, **and the preview keeps running afterwards** (a snapshot before air starts the source for the duration, SB5; if the preview freezes or the camera light drops, that is a finding).
+  - **A tap before the first frame.** Tap _Take photo_ the instant Paired shows, before the preview has a picture, then hold Go live. Time Go live against one with no photo. A tap before the first frame waits for that frame (the settled §8), so a longer Go live here is the residual made visible: record both times.
 - [ ] **4. No prompt, ever.** The first photo on a fresh install shows no permission dialog. If one appears, or the first photo says _Couldn't save the photo_, R1 is wrong on this phone: report it.
 - [ ] **5. Where the shutter is, and what it says when it cannot.**
   - The shutter is in the icon row in Paired and on air (including Arming, Armed, Connecting, Degraded and Reconnecting), and **absent** in Pairing, Idle and after the broadcast has ended (Ended). It is never dimmed.

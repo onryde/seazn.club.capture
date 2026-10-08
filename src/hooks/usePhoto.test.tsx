@@ -61,7 +61,7 @@ describe('usePhoto (spec §8)', () => {
     expect(view.result.current.notice).toBeNull();
   });
 
-  it('M22 unmounted while its line shows, it leaves no timer behind', async () => {
+  it('M21u unmounted while its line shows, it leaves no timer behind', async () => {
     const { fakes, view } = setup();
     // The fake engine's heartbeat is the one timer a fresh set of ports has; stop it so the count is the line's alone.
     fakes.engine.dispose();
