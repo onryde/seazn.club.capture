@@ -63,10 +63,10 @@ const DiagRowView = memo(function DiagRowView({
       <Text variant="diagSection" style={styles.section}>
         {section}
       </Text>
-      <Text variant="metricUnit" style={styles.label}>
+      <Text variant="diagLabel" style={styles.label} numberOfLines={1} ellipsizeMode="tail">
         {label}
       </Text>
-      <Text variant="metricValue" style={styles.value} numberOfLines={1} ellipsizeMode="tail">
+      <Text variant="diagValue" style={styles.value} numberOfLines={1} ellipsizeMode="tail">
         {value}
       </Text>
     </View>
@@ -95,8 +95,8 @@ const styles = StyleSheet.create({
   firstRow: { borderTopWidth: 0 },
   section: { width: layout.diagSection, paddingRight: layout.diagPad },
   label: { flex: 1, paddingRight: layout.diagPad },
-  // One line, shrinkable: the shipped copy always fits (settingsFit.test.ts); a value that ever did not
-  // is cut at its tail and never wraps the row taller than the card's budget.
+  // One line each, a backstop only: the shipped copy always fits its row (settingsFit.test.ts), so a
+  // string cut at its tail is a number past what that test samples, never static copy.
   value: { flexShrink: 1, fontVariant: ['tabular-nums'], textAlign: 'right' },
 });
 

@@ -404,21 +404,35 @@ describe('Diagnostics inside Settings (spec §6, Q1)', () => {
     expect(cellsOf(rowOf('Transport'))[2]).toBe('alleen RTMPS');
   });
 
-  // The backstop: a value that still ran long is one line with an ellipsis, never a second line that
-  // would push the card past its half (settingsFit.test.ts proves the shipped copy never needs it).
-  it('keeps every value to one line, ellipsised at the tail', () => {
+  // The backstop: an item or a value that still ran long is one line with an ellipsis, never a second line
+  // that would push the card past its half (settingsFit.test.ts proves the shipped copy never needs it).
+  it('keeps every item and value to one line, ellipsised at the tail', () => {
     const view = renderSettings();
     act(() => view.engine.scene('live'));
-    const values = diagRows().map((row) => row.children[2] as Element);
-    expect(values).toHaveLength(9);
-    for (const value of values) {
-      const style = getComputedStyle(value);
-      expect({ text: value.textContent, whiteSpace: style.whiteSpace }).toEqual({
-        text: value.textContent,
-        whiteSpace: 'nowrap',
-      });
-      expect(style.textOverflow).toBe('ellipsis');
+    expect(diagRows()).toHaveLength(9);
+    for (const row of diagRows()) {
+      for (const cell of [row.children[1], row.children[2]] as Element[]) {
+        const style = getComputedStyle(cell);
+        expect({ text: cell.textContent, whiteSpace: style.whiteSpace }).toEqual({
+          text: cell.textContent,
+          whiteSpace: 'nowrap',
+        });
+        expect(style.textOverflow).toBe('ellipsis');
+      }
     }
+  });
+
+  // settingsFit.test.ts measures every string in the board's type; this is the witness that the card is set
+  // in it: items in Geist 500 at 13, values in Geist Mono at 13, section names in Barlow Condensed at 14.
+  it('sets the rows in the board’s type: items and values 13, section names 14', () => {
+    const view = renderSettings();
+    act(() => view.engine.scene('live'));
+    const first = diagRows()[0] as Element;
+    const [section, item, value] = [...first.children].map((cell) => getComputedStyle(cell));
+    expect([section?.fontSize, item?.fontSize, value?.fontSize]).toEqual(['14px', '13px', '13px']);
+    expect(item?.fontFamily).toContain('Geist_500Medium');
+    expect(value?.fontFamily).toContain('GeistMono_400Regular');
+    expect(section?.fontFamily).toContain('BarlowCondensed_600SemiBold');
   });
 
   it('has no session-record-lines, and shows no record line at all (spec §6)', () => {

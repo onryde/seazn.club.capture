@@ -1,11 +1,10 @@
 import { describe, expect, it } from 'vitest';
+import type { EngineSnapshot, Telemetry, ThermalStatus } from '@/engine/CaptureEnginePort';
 import { createFakeCaptureEngine, type FakeScene } from '@/engine/FakeCaptureEngine';
 import { diagnosticsSections } from '@/hooks/diagnostics';
-import en from '@/i18n/en.json';
-import es from '@/i18n/es.json';
-import fr from '@/i18n/fr.json';
-import type { Lang } from '@/i18n/language';
-import nl from '@/i18n/nl.json';
+import { settingsDiagRows } from '@/hooks/settingsDiagnostics';
+import { LANGS, type Lang } from '@/i18n/language';
+import type { MessageKey } from '@/i18n/messages';
 import { createTranslator } from '@/i18n/translate';
 import { layout, space } from '@/ui/theme/tokens';
 import { typeScale } from '@/ui/theme/type';
@@ -49,13 +48,13 @@ describe('the Diagnostics card fits its half in landscape (spec §6)', () => {
   });
 
   // The rows hold a single line (the value is numberOfLines 1): a row is no shorter than its tallest line.
-  it('a row is as tall as its tallest line: the value’s 20, then the section and the item at 16', () => {
+  it('a row holds its tallest line: value, item and section are 16 dp lines in a 22 dp row', () => {
     const lines = [
-      typeScale.metricValue.lineHeight,
-      typeScale.metricUnit.lineHeight,
+      typeScale.diagValue.lineHeight,
+      typeScale.diagLabel.lineHeight,
       typeScale.diagSection.lineHeight,
     ];
-    expect(lines).toEqual([20, 16, 16]);
+    expect(lines).toEqual([16, 16, 16]);
     expect(layout.diagRow).toBeGreaterThanOrEqual(Math.max(...lines));
   });
 
@@ -65,63 +64,237 @@ describe('the Diagnostics card fits its half in landscape (spec §6)', () => {
   });
 });
 
-// I-2: the Transport value is the only row whose copy can be long ("RTMPS" beside why SRT is missing).
-// Geist Mono is monospaced, so a value's width is its code points × the font's advance × the font size.
-// The advance is read from the font file the app ships (test/fontMetrics.ts), and the item's label is
-// measured in Geist Medium from the same place: neither comes from the strings being judged.
-const DICTIONARIES: Readonly<Record<Lang, Readonly<Record<string, string>>>> = { en, es, fr, nl };
-const LANGS = ['en', 'es', 'fr', 'nl'] as const;
+// The text in the rows. The canvas ("Settings, landscape", the design of record) sets the values in Geist Mono
+// 13 and the items in Geist 500 at 13; the section names are Barlow Condensed 600 at 14, caps, +0.6 spacing.
+// Widths are measured per glyph from the font files the app ships (test/fontMetrics.ts; its reader is pinned
+// to a second reader below), at the size the card's type roles declare, and those roles are pinned to the
+// canvas's literals just below. No width is read from the strings being judged.
+const CANVAS_VALUE_PX = 13;
+const CANVAS_ITEM_PX = 13;
+const CANVAS_SECTION_PX = 14;
+const SECTION_SPACING = 0.6;
 
 /** 640 wide: two screen pads of 16, a 16 gap between the halves (canvas), the card's 12 pad each side. */
 const HALF = (640 - 2 * space.md - space.md) / 2;
+/** What the item and the value share in a row: the half less the card's side padding and the section column. */
 const ITEM_AND_VALUE = HALF - 2 * layout.diagPad - layout.diagSection;
+/** The section name's text: its column less the 12 dp it keeps clear of the item. */
+const SECTION_TEXT = layout.diagSection - layout.diagPad;
 
 const mono = loadFont('geist-mono-400');
 const medium = loadFont('geist-500');
+const condensed = loadFont('barlow-condensed-600');
 const ADVANCE = mono.advance('0'.codePointAt(0) ?? 0);
 
-/** What is left for the value once the item has its label and its gutter. */
-const valueTrack = (lang: Lang) =>
-  ITEM_AND_VALUE -
-  layout.diagPad -
-  medium.width(DICTIONARIES[lang]['diag.transport'] ?? '', typeScale.metricUnit.fontSize);
-const codePointBudget = (lang: Lang) =>
-  Math.floor(valueTrack(lang) / (typeScale.metricValue.fontSize * ADVANCE));
+const NOW = Date.parse('2026-10-03T13:00:00Z');
 
-/** The Transport value in each state it has: SRT, a fall-back to RTMPS, RTMPS-only (A18), and nothing yet. */
-function transportValues(lang: Lang): readonly string[] {
-  const translator = createTranslator(lang);
-  const now = Date.parse('2026-10-03T13:00:00Z');
-  const valueOf = (scene: FakeScene, srtOffered: boolean | null) => {
-    const engine = createFakeCaptureEngine(() => now);
-    engine.scene(scene);
-    const snapshot = engine.getSnapshot();
-    engine.dispose();
-    if (srtOffered !== null && snapshot.broadcast === null)
-      throw new Error(`${scene} holds no broadcast`);
-    const shown =
-      srtOffered === null || snapshot.broadcast === null
-        ? snapshot
-        : { ...snapshot, broadcast: { ...snapshot.broadcast, srtOffered } };
-    const link = diagnosticsSections(shown, now, translator)[0];
-    const row = link?.rows.find((candidate) => candidate.key === 'diag.transport');
-    if (row === undefined) throw new Error('no Transport row');
-    return row.value;
-  };
+/** The nine rows of the card, by key (Q1). Written out so a row that is renamed or dropped is noticed. */
+const CARD_ROWS = [
+  'diag.transport',
+  'diag.bitrate',
+  'diag.rtt',
+  'diag.delivery',
+  'diag.lag',
+  'diag.checked',
+  'diag.battery',
+  'diag.thermal',
+  'diag.hbSent',
+] as const satisfies readonly MessageKey[];
+
+/** The port's ThermalStatus, in full. `satisfies` makes the list complete or a type error. */
+const THERMAL = {
+  none: 0,
+  light: 0,
+  moderate: 0,
+  severe: 0,
+  critical: 0,
+  emergency: 0,
+  shutdown: 0,
+} as const satisfies Record<ThermalStatus, 0>;
+const THERMAL_STATUSES = Object.keys(THERMAL) as ThermalStatus[];
+
+/**
+ * One reading the card must hold: a row, the state that gives it that text, and the snapshot that shows it.
+ * `static` texts are the dictionary's own; `worst` ones are numbers, taken at the widest the row can be
+ * before an incident owns the screen (the reason is at each).
+ */
+type Probe = {
+  readonly row: (typeof CARD_ROWS)[number];
+  readonly state: string;
+  readonly kind: 'static' | 'worst';
+  /** A `worst` probe must really show its number (decimal point as dots), a `no reading` one the dash. */
+  readonly contains?: string;
+  readonly shown: (scene: (name: FakeScene) => EngineSnapshot) => EngineSnapshot;
+};
+
+const withTelemetry = (
+  snapshot: EngineSnapshot,
+  telemetry: Partial<Telemetry>,
+): EngineSnapshot => ({
+  ...snapshot,
+  telemetry: { ...snapshot.telemetry, ...telemetry },
+});
+
+/** Nothing measured yet: the telemetry field behind each row is null, and the row shows its dash. */
+const NO_READING: Readonly<Record<string, (snapshot: EngineSnapshot) => EngineSnapshot>> = {
+  'diag.bitrate': (snapshot) => withTelemetry(snapshot, { bitrateKbps: null }),
+  'diag.rtt': (snapshot) => withTelemetry(snapshot, { srt: null }),
+  'diag.lag': (snapshot) => withTelemetry(snapshot, { deliveredLagMs: null }),
+  'diag.checked': (snapshot) => withTelemetry(snapshot, { deliveryCheckedAtMs: null }),
+  'diag.battery': (snapshot) => withTelemetry(snapshot, { batteryPercent: null }),
+  'diag.thermal': (snapshot) => withTelemetry(snapshot, { thermalStatus: null }),
+  'diag.hbSent': (snapshot) =>
+    withTelemetry(snapshot, {
+      heartbeat: { ...snapshot.telemetry.heartbeat, lastSentAtEpochMs: null },
+    }),
+};
+const DASH_ROWS = Object.keys(NO_READING) as (keyof typeof NO_READING &
+  (typeof CARD_ROWS)[number])[];
+
+function probes(): readonly Probe[] {
+  const live = (scene: (name: FakeScene) => EngineSnapshot) => scene('live');
   return [
-    valueOf('live', null),
-    valueOf('fell-back', true),
-    valueOf('fell-back', false),
-    valueOf('paired-ready', null),
+    { row: 'diag.transport', state: 'SRT', kind: 'static', shown: live },
+    {
+      row: 'diag.transport',
+      state: 'RTMPS (fell back)',
+      kind: 'static',
+      shown: (scene) => scene('fell-back'),
+    },
+    {
+      row: 'diag.transport',
+      state: 'RTMPS only (A18)',
+      kind: 'static',
+      shown: (scene) => {
+        const snapshot = scene('fell-back');
+        if (snapshot.broadcast === null) throw new Error('fell-back holds no broadcast');
+        return { ...snapshot, broadcast: { ...snapshot.broadcast, srtOffered: false } };
+      },
+    },
+    ...(['ok', 'stalled', 'unknown'] as const).map((delivery) => ({
+      row: 'diag.delivery' as const,
+      state: `delivery ${delivery}`,
+      kind: 'static' as const,
+      shown: (scene: (name: FakeScene) => EngineSnapshot) =>
+        withTelemetry(live(scene), { delivery }),
+    })),
+    ...THERMAL_STATUSES.map((thermalStatus) => ({
+      row: 'diag.thermal' as const,
+      state: `thermal ${thermalStatus}`,
+      kind: 'static' as const,
+      shown: (scene: (name: FakeScene) => EngineSnapshot) =>
+        withTelemetry(live(scene), { thermalStatus }),
+    })),
+    ...DASH_ROWS.map((row) => ({
+      row,
+      state: 'no reading',
+      kind: 'static' as const,
+      shown: (scene: (name: FakeScene) => EngineSnapshot) =>
+        NO_READING[row]?.(live(scene)) ?? live(scene),
+    })),
+    // Transport has its dash too: before a session there is no transport to name.
+    {
+      row: 'diag.transport',
+      state: 'no reading',
+      kind: 'static',
+      shown: (scene) => scene('paired-ready'),
+    },
+    {
+      // 12000 kbps: five digits, above any single-stream 1080p60 the regulator would target.
+      row: 'diag.bitrate',
+      state: '12000 kbps',
+      kind: 'worst',
+      contains: '12000',
+      shown: (scene) => withTelemetry(live(scene), { bitrateKbps: 12000 }),
+    },
+    {
+      // 9999 ms: four digits, a link that has already stalled.
+      row: 'diag.rtt',
+      state: '9999 ms',
+      kind: 'worst',
+      contains: '9999',
+      shown: (scene) => {
+        const snapshot = live(scene);
+        const srt = snapshot.telemetry.srt;
+        if (srt === null) throw new Error('the live scene reports SRT stats');
+        return withTelemetry(snapshot, { srt: { ...srt, rttMs: 9999 } });
+      },
+    },
+    {
+      // Just past the hold window the broadcast declares: three digits and the one decimal formatNumber allows.
+      row: 'diag.lag',
+      state: 'hold window + 0.9 s',
+      kind: 'worst',
+      contains: '183.9',
+      shown: (scene) => {
+        const snapshot = live(scene);
+        const hold = snapshot.broadcast?.holdWindowSeconds.srt;
+        if (hold === undefined) throw new Error('the live scene holds a broadcast');
+        return withTelemetry(snapshot, { deliveredLagMs: hold * 1000 + 900 });
+      },
+    },
+    {
+      // 99.9 s ago: the widest age under 100 s. A check or a heartbeat older than that is an incident the
+      // attention colour already owns, and the value is then cut at its tail by the backstop and not wrapped.
+      row: 'diag.checked',
+      state: '99.9 s ago',
+      kind: 'worst',
+      contains: '99.9',
+      shown: (scene) => withTelemetry(live(scene), { deliveryCheckedAtMs: NOW - 99_900 }),
+    },
+    {
+      row: 'diag.hbSent',
+      state: '99.9 s ago',
+      kind: 'worst',
+      contains: '99.9',
+      shown: (scene) =>
+        withTelemetry(live(scene), {
+          heartbeat: { ...live(scene).telemetry.heartbeat, lastSentAtEpochMs: NOW - 99_900 },
+        }),
+    },
+    // 100 %: a percentage's own ceiling.
+    {
+      row: 'diag.battery',
+      state: '100 %',
+      kind: 'worst',
+      contains: '100',
+      shown: (scene) => withTelemetry(live(scene), { batteryPercent: 100 }),
+    },
   ];
 }
 
-let valuesChecked = 0;
+/** Probes per language: 4 Transport, 3 Delivery, 8 Heat, 6 other dashes, 6 worst-case numbers. */
+const PROBES_PER_LANGUAGE = 27;
 
-describe('every Transport value fits the value track, in every language (I-2)', () => {
-  it('reads the fonts: Geist Mono is monospaced at 0.6 em, Geist Medium is not', () => {
+/** A fake engine in a named scene, read once. */
+function scene(name: FakeScene): EngineSnapshot {
+  const engine = createFakeCaptureEngine(() => NOW);
+  engine.scene(name);
+  const snapshot = engine.getSnapshot();
+  engine.dispose();
+  return snapshot;
+}
+
+type Reading = { readonly label: string; readonly value: string; readonly section: string | null };
+
+/** The card's own rows for a snapshot, through the real composition and the real row selection. */
+function cardRows(
+  snapshot: EngineSnapshot,
+  lang: Lang,
+): readonly (Reading & { key: MessageKey })[] {
+  return settingsDiagRows(diagnosticsSections(snapshot, NOW, createTranslator(lang)));
+}
+
+const fmt = (n: number) => n.toFixed(1);
+
+let probesChecked = 0;
+let labelsChecked = 0;
+let sectionsChecked = 0;
+
+describe('every Diagnostics row fits its line at 640 × 360, in every language (I-2)', () => {
+  it('reads the fonts: Geist Mono is monospaced at 0.6 em', () => {
     expect(ADVANCE).toBeCloseTo(0.6, 9);
-    for (const char of 'RTMPS (·)—SRTonly') {
+    for (const char of 'RTMPS (·)—SRTonly0123456789,%/hé') {
       expect({ char, mapped: mono.has(char.codePointAt(0) ?? 0) }).toEqual({ char, mapped: true });
       expect(mono.advance(char.codePointAt(0) ?? 0)).toBeCloseTo(ADVANCE, 9);
     }
@@ -145,35 +318,102 @@ describe('every Transport value fits the value track, in every language (I-2)', 
     expect(medium.advance(char.codePointAt(0) ?? 0)).toBeCloseTo(em, 9);
   });
 
-  it('the track is 188 dp at 640 × 360: (640 - 32 - 16) / 2 - 24 - 84', () => {
+  it('the canvas type is what the roles carry: 13 / 13 / 14', () => {
+    expect(typeScale.diagValue.fontSize).toBe(CANVAS_VALUE_PX);
+    expect(typeScale.diagLabel.fontSize).toBe(CANVAS_ITEM_PX);
+    expect(typeScale.diagSection.fontSize).toBe(CANVAS_SECTION_PX);
+    expect(typeScale.diagSection.letterSpacing).toBe(SECTION_SPACING);
+  });
+
+  it('the item and value share 188 dp at 640 × 360: (640 - 32 - 16) / 2 - 24 - 84', () => {
     expect(ITEM_AND_VALUE).toBe(188);
+    expect(SECTION_TEXT).toBe(72);
   });
 
-  it.each(LANGS)('%s: the value track and its budget are what the fonts say', (lang) => {
-    // 188 - 12 - the label at 12 dp: en/fr/nl "Transport" 55.9 dp -> 120.1 dp -> 12 characters of 9.6 dp;
-    // es "Transporte" 62.8 dp -> 113.2 dp -> 11.
-    expect(codePointBudget(lang)).toBe({ en: 12, es: 11, fr: 12, nl: 12 }[lang]);
-  });
+  it.each(LANGS)(
+    '%s: each of the nine items and its value, in every state, share the line',
+    (lang) => {
+      const set = probes();
+      expect(set).toHaveLength(PROBES_PER_LANGUAGE);
+      expect(set.filter((probe) => probe.kind === 'worst')).toHaveLength(6);
+      const misfits: string[] = [];
+      let checkedHere = 0;
+      for (const probe of set) {
+        const rows = cardRows(probe.shown(scene), lang);
+        expect(rows.map((row) => row.key)).toEqual(CARD_ROWS);
+        const row = rows.find((candidate) => candidate.key === probe.row);
+        if (row === undefined) throw new Error(`no ${probe.row} row`);
+        // The probe shows what it says it does: a dash for no reading, its number for a worst case.
+        if (probe.state === 'no reading') expect(row.value, `${lang} ${probe.row}`).toBe('—');
+        if (probe.contains !== undefined) {
+          expect(row.value.replace(',', '.'), `${lang} ${probe.row} [${probe.state}]`).toContain(
+            probe.contains,
+          );
+        }
+        // Every character has a glyph in the face it is set in (a missing one falls back and is wider).
+        for (const char of row.value) {
+          expect(
+            mono.has(char.codePointAt(0) ?? 0),
+            `${lang} ${probe.row} value "${row.value}" has "${char}"`,
+          ).toBe(true);
+        }
+        for (const char of row.label) {
+          expect(
+            medium.has(char.codePointAt(0) ?? 0),
+            `${lang} label "${row.label}" has "${char}"`,
+          ).toBe(true);
+        }
+        const itemWidth = medium.width(row.label, typeScale.diagLabel.fontSize);
+        const valueWidth = mono.width(row.value, typeScale.diagValue.fontSize);
+        const need = itemWidth + layout.diagPad + valueWidth;
+        if (need > ITEM_AND_VALUE) {
+          misfits.push(
+            `${lang} ${probe.row} [${probe.state}] "${row.label}" ${fmt(itemWidth)} + ${layout.diagPad} + "${row.value}" ${fmt(valueWidth)} = ${fmt(need)} > ${ITEM_AND_VALUE}`,
+          );
+        }
+        checkedHere += 1;
+        probesChecked += 1;
+      }
+      expect(misfits).toEqual([]);
+      expect(checkedHere).toBe(PROBES_PER_LANGUAGE);
+    },
+  );
 
-  it.each(LANGS)('%s: SRT, RTMPS, RTMPS-only and the dash each fit', (lang) => {
-    const values = transportValues(lang);
-    expect(values).toHaveLength(4);
-    for (const value of values) {
-      expect(Array.from(value).length, `${lang} "${value}"`).toBeLessThanOrEqual(
-        codePointBudget(lang),
-      );
-      // The measure itself, not only the count: the glyphs are in the font and the width fits.
-      for (const char of value) expect(mono.has(char.codePointAt(0) ?? 0)).toBe(true);
+  it.each(LANGS)('%s: the nine item labels are all there and fit a line on their own', (lang) => {
+    const rows = cardRows(scene('paired-ready'), lang);
+    expect(rows).toHaveLength(9);
+    for (const row of rows) {
       expect(
-        mono.width(value, typeScale.metricValue.fontSize),
-        `${lang} "${value}"`,
-      ).toBeLessThanOrEqual(valueTrack(lang));
-      valuesChecked += 1;
+        medium.width(row.label, typeScale.diagLabel.fontSize) + layout.diagPad,
+        `${lang} "${row.label}"`,
+      ).toBeLessThanOrEqual(ITEM_AND_VALUE);
+      labelsChecked += 1;
     }
   });
 
-  it('checked sixteen values, four in each of four languages (anti-vacuity)', () => {
+  it.each(LANGS)('%s: the four section names fit the 72 dp of their column', (lang) => {
+    const named = cardRows(scene('paired-ready'), lang).filter((row) => row.section !== null);
+    expect(named).toHaveLength(4);
+    for (const row of named) {
+      const name = (row.section ?? '').toUpperCase();
+      for (const char of name) {
+        expect(
+          condensed.has(char.codePointAt(0) ?? 0),
+          `${lang} section "${name}" has "${char}"`,
+        ).toBe(true);
+      }
+      const width =
+        condensed.width(name, typeScale.diagSection.fontSize) +
+        Array.from(name).length * (typeScale.diagSection.letterSpacing ?? 0);
+      expect(width, `${lang} section "${name}"`).toBeLessThanOrEqual(SECTION_TEXT);
+      sectionsChecked += 1;
+    }
+  });
+
+  it('checked every string it set out to, in every language (anti-vacuity)', () => {
     expect(LANGS).toHaveLength(4);
-    expect(valuesChecked).toBe(16);
+    expect(probesChecked).toBe(4 * PROBES_PER_LANGUAGE);
+    expect(labelsChecked).toBe(4 * 9);
+    expect(sectionsChecked).toBe(4 * 4);
   });
 });

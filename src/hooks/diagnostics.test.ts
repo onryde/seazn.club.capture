@@ -127,7 +127,7 @@ describe('diagnosticsSections (spec §4)', () => {
       Charging: '—',
       Heat: '—',
       Checked: '—',
-      'Viewers receiving': 'Not checked yet',
+      'Viewers receiving': 'Not yet',
       'Last sent': '—',
       'Last result': '—',
       Failures: '0',
@@ -189,7 +189,7 @@ describe('diagnosticsSections (spec §4)', () => {
     ['en', { 'Behind live': '9.2 s', Checked: '1.5 s ago' }],
     ['es', { Retraso: '9,2 s', Comprobado: 'hace 1,5 s' }],
     ['fr', { Retard: '9,2 s', Vérifié: 'il y a 1,5 s' }],
-    ['nl', { Achterstand: '9,2 s', Gecontroleerd: '1,5 s geleden' }],
+    ['nl', { Achterstand: '9,2 s', Controle: '1,5 s geleden' }],
   ] as const)('writes decimals the %s way', (lang, expected) => {
     expect(rowsFor('live', {}, lang)).toMatchObject(expected);
   });
@@ -234,7 +234,7 @@ describe('diagnosticsSections (spec §4)', () => {
       Débit: '2840 kbps',
       Vidéo: '30 i/s',
       'Données utilisées': '312 Mo',
-      'Dernier envoi': 'il y a 4 s',
+      Envoyé: 'il y a 4 s',
       'Dernier rapport': 'il y a 0 s',
       'Lignes du journal refusées': '0',
       Batterie: '74 %',

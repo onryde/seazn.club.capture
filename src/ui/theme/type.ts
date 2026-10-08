@@ -106,6 +106,27 @@ export const typeScale = {
     textTransform: 'uppercase',
     color: colour.ink2,
   },
+  /**
+   * Board "Settings, landscape": a Diagnostics row's item, Geist 500 at 13 (the board's, in ink3 like
+   * `metricUnit`). 16 dp lines, so a row of `layout.diagRow` holds one.
+   */
+  diagLabel: {
+    fontFamily: font.bodyMedium,
+    fontSize: 13,
+    lineHeight: 16,
+    color: colour.ink3,
+  },
+  /**
+   * Board "Settings, landscape": a Diagnostics row's value, Geist Mono at 13 (the board's; the brief's 16/20
+   * came from the plan). Monospaced, so a value's width is its code points x 0.6 x 13 (settingsFit.test.ts
+   * measures every shipped one against its row).
+   */
+  diagValue: {
+    fontFamily: font.numeric,
+    fontSize: 13,
+    lineHeight: 16,
+    color: colour.ink,
+  },
   status: {
     fontFamily: font.body,
     fontSize: 13.5,

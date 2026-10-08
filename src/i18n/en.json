@@ -214,7 +214,7 @@
   "diag.no": "No",
   "diag.delivery.ok": "Yes",
   "diag.delivery.stalled": "Stalled",
-  "diag.delivery.unknown": "Not checked yet",
+  "diag.delivery.unknown": "Not yet",
   "diag.camera.own": "This app",
   "diag.camera.taken": "Another app",
   "diag.camera.reopening": "Reopening",
