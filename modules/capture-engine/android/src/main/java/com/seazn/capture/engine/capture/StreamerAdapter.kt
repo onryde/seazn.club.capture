@@ -369,7 +369,7 @@ class StreamerAdapter(
     VideoCodecConfig(
       mimeType = MediaFormat.MIMETYPE_VIDEO_AVC,
       startBitrate = Encode.START_BPS,
-      resolution = Size(1280, 720),
+      resolution = Size(Encode.WIDTH, Encode.HEIGHT),
       fps = 30,
       gopDurationInS = 2f,
       customize = { _ -> EncoderKeys.VIDEO.forEach { (key, value) -> setInteger(key, value) } },

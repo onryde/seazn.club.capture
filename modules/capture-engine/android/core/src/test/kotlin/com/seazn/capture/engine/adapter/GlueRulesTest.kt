@@ -546,6 +546,37 @@ class GlueRulesTest {
   }
 
   /**
+   * The 16:9 camera box shows exactly what viewers get (AGENTS §6). StreamPack 3.2.1's PreviewView does not apply the
+   * encode's config to the preview: it asks the camera source for the output size whose AREA is nearest its own
+   * view's (javap: `PreviewView.getPreviewSize` -> `CameraSource.getPreviewSize` -> `CameraSizes.getPreviewOutputSize`
+   * -> `SizeExtensionsKt.closestTo`, a minimum of |w x h - view w x h|, any shape), and the maintainer says the same in
+   * StreamPack#288 ("The video configuration of 1280x720 does not apply to the preview"). Laid out at the box's size,
+   * the preview took a 20:9 camera size on a 2412 x 1080 phone: black bars, and a different crop from the encode's.
+   * So the view is laid out at the encode's own size (one constant, [Encode], which the encoder reads too) and
+   * [PreviewFit] scales it into the box. Each hand-off is pinned: the layout, the box's size reaching the placement,
+   * the placement reaching the view, and the encoder reading the same size.
+   */
+  @Test
+  fun `the preview is laid out at the encode's size and scaled into the box, and the encoder reads the same size`() {
+    val view = glue("CapturePreviewView.kt")
+    assertEquals(1, Regex("""addView\(preview, LayoutParams\(Encode\.WIDTH, Encode\.HEIGHT\)\)""").findAll(view).count(), "the preview is laid out at the encode's size")
+    assertFalse("MATCH_PARENT" in view, "and never at the box's")
+    assertTrue(Regex("""preview\.pivotX = 0f\s+preview\.pivotY = 0f""").containsMatchIn(view), "scaled about its corner, which the placement's left and top assume")
+    assertTrue(Regex("""layoutDirection = LAYOUT_DIRECTION_LTR""").containsMatchIn(view), "laid out from the left in any locale, which the placement's left assumes")
+    val sized = body(view, "override fun onSizeChanged(")
+    assertTrue(Regex("""super\.onSizeChanged\(w, h, oldw, oldh\)\s+place\(w, h\)""").containsMatchIn(sized), "the box's size reaches the placement: $sized")
+    val place = body(view, "private fun place(")
+    assertTrue(Regex("""PreviewFit\.place\(boxWidth, boxHeight\)""").containsMatchIn(place), "the placement is PreviewFit's: $place")
+    for (line in listOf("preview.scaleX = at.scale", "preview.scaleY = at.scale", "preview.translationX = at.left", "preview.translationY = at.top")) assertTrue(line in place, "$line: $place")
+    val adapter = glue("StreamerAdapter.kt")
+    assertEquals(1, Regex("""resolution = Size\(Encode\.WIDTH, Encode\.HEIGHT\),""").findAll(adapter).count(), "the encoder reads the same size")
+    for ((name, text) in listOf("CapturePreviewView.kt" to view, "StreamerAdapter.kt" to adapter)) {
+      val code = text.lines().filterNot { it.trim().startsWith("*") || it.trim().startsWith("/*") }.joinToString("\n") { it.substringBefore("//") }
+      assertFalse(Regex("""\b(1280|720)\b""").containsMatchIn(code), "$name: the encode's size is spelled once, in Encode")
+    }
+  }
+
+  /**
    * Review C7 I-2 and M-4: StreamPack opens the camera lazily, at the first preview or the start, so the glue calls
    * no camera held; the run does, once StreamPack reports the source open (CaptureRunTest, CaptureRunMachineTest).
    * Every camera source the glue sets is announced first (`cameras.opening`), so its own open is ours; the open
