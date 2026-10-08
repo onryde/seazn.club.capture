@@ -151,6 +151,7 @@
   "stream.peek.label": "Ce que voit le public",
   "stream.peek.hint": "Maintenez appuyé pour voir ce que voit le public",
   "stream.peek.unavailable": "Image indisponible",
+  "stream.peek.loading": "En attente de la première image",
   "stream.photo.label": "Prendre une photo",
   "stream.photo.saved": "Photo enregistrée",
   "stream.photo.failed": "Impossible d'enregistrer la photo",

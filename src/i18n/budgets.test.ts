@@ -27,6 +27,7 @@ const BUDGETS: readonly (readonly [keys: RegExp, max: number])[] = [
   [/^stream\.preview\.show$/, 16],
   [/^stream\.peek\.label$/, 28],
   [/^stream\.peek\.unavailable$/, 24],
+  [/^stream\.peek\.loading$/, 44],
   // Take photo (spec §8): the icon's accessible name, and the one line over the icon row.
   [/^stream\.photo\.label$/, 20],
   [/^stream\.photo\.(saved|failed)$/, 36],

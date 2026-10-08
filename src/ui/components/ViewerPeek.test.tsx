@@ -5,6 +5,7 @@ import { PEEK_WARM_MS, usePeek } from '@/hooks/usePeek';
 import { StageVideo } from '@/ui/components/StageVideo';
 import { ViewerPeek } from '@/ui/components/ViewerPeek';
 import { OrientationGate } from '@/ui/components/OrientationGate';
+import en from '@/i18n/en.json';
 import { colour } from '@/ui/theme/tokens';
 import { createFakePorts } from '../../../test/fakePorts';
 import { pressIn, pressOut } from '../../../test/press';
@@ -24,7 +25,16 @@ function PeekHarness({ available, control = true }: { available: boolean; contro
           onPressOut={peek.pressOut}
         />
       ) : null}
-      {peek.mounted ? <StageVideo url={PLAYBACK} showing={peek.showing} /> : null}
+      {peek.mounted ? (
+        <StageVideo
+          url={PLAYBACK}
+          showing={peek.showing}
+          feed="playing"
+          attempt={0}
+          starting={false}
+          onStatus={() => undefined}
+        />
+      ) : null}
     </>
   );
 }
@@ -33,6 +43,8 @@ const peekButton = () => screen.getByRole('button', { name: 'What viewers see' }
 const video = () => screen.queryByTestId('viewer-video');
 /** The stage layer StageVideo draws around the player. */
 const layer = () => video()?.parentElement as HTMLElement;
+
+const GROUND = StyleSheet.create({ ground: { backgroundColor: colour.ground } });
 
 /** Which token a border was painted with; the colour on screen is a device check. */
 const TOKEN = StyleSheet.create({
@@ -250,6 +262,70 @@ describe('What viewers see (spec §4)', () => {
     renderWithPorts(<PeekHarness available />, { deviceLanguages: ['es'] });
     expect(screen.getByRole('button', { name: 'Lo que ve el público' })).toBeTruthy();
     expect(screen.getByText('Lo que ve el público')).toBeTruthy();
+  });
+});
+
+/**
+ * The layer says what it is doing (spec §9). StageVideo is given a feed and draws it: a player only in `playing`,
+ * a line over it until the player has shown a picture, a line alone when there is none. The rule that picks the
+ * feed is `viewerFeed`, and `useViewerFeed.test.tsx` drives it through the stage.
+ */
+describe('StageVideo, by feed', () => {
+  type Feed = 'waiting' | 'playing' | 'unavailable';
+  const layerOf = (feed: Feed, starting: boolean, showing = true) =>
+    renderWithPorts(
+      <StageVideo
+        url={PLAYBACK}
+        showing={showing}
+        feed={feed}
+        attempt={0}
+        starting={starting}
+        onStatus={() => undefined}
+      />,
+    );
+  const note = () => screen.queryByTestId('viewer-note')?.textContent ?? null;
+
+  it('draws a player only in playing, and a line in the two feeds that have none', () => {
+    const rows: readonly (readonly [Feed, boolean, boolean, string | null])[] = [
+      // feed, starting, a player on screen, the line
+      ['waiting', false, false, en['stream.peek.loading']],
+      ['unavailable', false, false, en['stream.peek.unavailable']],
+      ['playing', true, true, en['stream.peek.loading']],
+      ['playing', false, true, null],
+    ];
+    let checked = 0;
+    for (const [feed, starting, player, line] of rows) {
+      const view = layerOf(feed, starting);
+      expect({ feed, starting, player: video() !== null, line: note() }).toEqual({
+        feed,
+        starting,
+        player,
+        line,
+      });
+      view.unmount();
+      checked += 1;
+    }
+    expect(checked).toBe(4);
+  });
+
+  it('keeps the line inside the layer, so a warm layer hides it with the picture', () => {
+    layerOf('unavailable', false, false);
+    const line = screen.getByTestId('viewer-note');
+    const layer = line.parentElement as HTMLElement;
+    expect(getComputedStyle(layer).opacity).toBe('0');
+    expect(layer.getAttribute('aria-hidden')).toBe('true');
+    expect(getComputedStyle(layer).pointerEvents).toBe('none');
+  });
+
+  it('covers the player while it loads, with the stage’s own ground', () => {
+    layerOf('playing', true);
+    const style = getComputedStyle(screen.getByTestId('viewer-note'));
+    expect(style.position).toBe('absolute');
+    const reference = render(<View testID="ground-reference" style={GROUND.ground} />);
+    const ground = getComputedStyle(reference.getByTestId('ground-reference')).backgroundColor;
+    reference.unmount();
+    expect(ground).not.toBe('');
+    expect(style.backgroundColor).toBe(ground);
   });
 });
 

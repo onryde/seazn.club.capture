@@ -1,0 +1,180 @@
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type { SessionState } from '@/domain/session/SessionState';
+import {
+  FIRST_WINDOW_PATIENCE_MS,
+  viewerFeed,
+  type DeliveryWord,
+  type Feed,
+} from '@/domain/session/viewerFeed';
+import { selectDelivery, selectPlaybackUrl, selectStateKind } from '@/hooks/engineSelectors';
+import { useEngineSelector } from '@/hooks/useCaptureEngine';
+import { usePorts } from '@/hooks/usePorts';
+import { useStableCallback } from '@/hooks/useStableCallback';
+import type { VideoStatus } from '@/services/surfaces';
+
+type Kind = SessionState['kind'];
+
+/** D6: a failing player is retried with a fresh one after each wait, then given up on. */
+export const PLAYER_RETRY_MS: readonly number[] = [2_000, 4_000, 8_000];
+
+export type ViewerFeed = {
+  readonly feed: Feed;
+  /** The player's remount key: a retry is a fresh player, because expo-video takes its source at creation. */
+  readonly attempt: number;
+  /** Playing, but the player has not shown a picture yet. */
+  readonly starting: boolean;
+  onStatus(status: VideoStatus): void;
+};
+
+const LIVE: ReadonlySet<Kind> = new Set(['publishing', 'degraded']);
+/** D7 and the next broadcast: nothing is held, so nothing carries over. */
+const OVER: ReadonlySet<Kind> = new Set(['idle', 'pairing', 'paired', 'ended']);
+/**
+ * What ends a stretch of the broadcast: a hold (the Cloudflare session may be new after it), or one broadcast
+ * giving way to the next. Never the player's own failure: that is the player's to give up on (M30c).
+ */
+const endsStretch = (kind: Kind): boolean => kind === 'reconnecting' || OVER.has(kind);
+
+/**
+ * What the viewer layer shows, and when its player starts and restarts (spec §9). The rule is
+ * `viewerFeed`; this hook owns what the rule cannot know: whether a window has ever been delivered in this
+ * stretch, whether the patience for the first one has run out, and where the player is in its retries.
+ * Every record line it writes names a state or a number, never a URL (M32).
+ */
+export function useViewerFeed(): ViewerFeed {
+  const kind = useEngineSelector(selectStateKind);
+  const hasUrl = useEngineSelector(selectPlaybackUrl) !== null;
+  const delivery = useEngineSelector(selectDelivery);
+  const first = useFirstWindow(kind, delivery, hasUrl);
+  const player = usePlayer();
+  const feed = viewerFeed({ kind, hasUrl, delivery, ...first, playerFailed: player.failed });
+  useFeedLines(feed, delivery);
+  useResetPlayer(kind, player.reset);
+  return useMemo(
+    () => ({
+      feed,
+      attempt: player.attempt,
+      starting: feed === 'playing' && player.status !== 'ready',
+      onStatus: player.onStatus,
+    }),
+    [feed, player.attempt, player.status, player.onStatus],
+  );
+}
+
+/**
+ * D7, D8: whether a window has been delivered in this stretch (latched, so one failed poll does not take the
+ * player down), and whether the 60 s patience for the first one is over. The stretch runs from the broadcast
+ * first reading Publishing or Degraded; a hold, or anything not live, ends it. The patience is a timeout set
+ * for what is left of it, not a ticking clock (AGENTS §8).
+ */
+function useFirstWindow(kind: Kind, delivery: DeliveryWord, hasUrl: boolean) {
+  const { logger, clock } = usePorts();
+  const live = LIVE.has(kind);
+  const liveSince = useRef<number | null>(null);
+  // The latch as the effects see it; `everDelivered` is the same fact for the render. A ref, so StrictMode's
+  // second run of the same effect cannot log the window twice.
+  const latched = useRef(false);
+  const [everDelivered, setEverDelivered] = useState(false);
+  const [patienceOver, setPatienceOver] = useState(false);
+
+  useEffect(() => {
+    if (LIVE.has(kind)) {
+      liveSince.current ??= clock().getTime();
+      return;
+    }
+    liveSince.current = null;
+    setPatienceOver(false);
+    if (endsStretch(kind)) {
+      latched.current = false;
+      setEverDelivered(false);
+    }
+  }, [kind, clock]);
+
+  useEffect(() => {
+    if (delivery !== 'ok' || !hasUrl || !LIVE.has(kind) || latched.current) return;
+    latched.current = true;
+    setEverDelivered(true);
+    const now = clock().getTime();
+    logger.info('peek.firstWindow', { ms: now - (liveSince.current ?? now) });
+  }, [delivery, hasUrl, kind, clock, logger]);
+
+  useEffect(() => {
+    if (!live || everDelivered) return;
+    const now = clock().getTime();
+    const left = FIRST_WINDOW_PATIENCE_MS - (now - (liveSince.current ?? now));
+    const timer = setTimeout(() => setPatienceOver(true), Math.max(0, left));
+    return () => clearTimeout(timer);
+  }, [live, everDelivered, clock]);
+
+  return { everDelivered, patienceOver };
+}
+
+/**
+ * D6: the player's own word, and its retries. A failure waits its step of `PLAYER_RETRY_MS` and then remounts
+ * the player (`attempt` is its key); with the steps spent the player is given up on until a stretch ends.
+ * `onStatus` keeps its identity: the native Video subscribes to it.
+ */
+function usePlayer() {
+  const { logger } = usePorts();
+  const [attempt, setAttempt] = useState(0);
+  const [failed, setFailed] = useState(false);
+  const [status, setStatus] = useState<'loading' | 'ready'>('loading');
+  const attemptNow = useRef(0);
+  const retry = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const cancel = useCallback(() => {
+    if (retry.current !== null) clearTimeout(retry.current);
+    retry.current = null;
+  }, []);
+  useEffect(() => cancel, [cancel]);
+
+  const onStatus = useCallback(
+    (reported: VideoStatus) => {
+      if (reported !== 'failed') {
+        setStatus(reported);
+        return;
+      }
+      // A player that failed has no picture, whatever it showed before: its replacement is loading.
+      setStatus('loading');
+      // One failure at a time: a second report from the same player is the same failure.
+      if (retry.current !== null) return;
+      const step = attemptNow.current;
+      const wait = PLAYER_RETRY_MS[step];
+      if (wait === undefined) {
+        setFailed(true);
+        return;
+      }
+      logger.info('peek.retry', { attempt: step });
+      retry.current = setTimeout(() => {
+        retry.current = null;
+        attemptNow.current = step + 1;
+        setAttempt(step + 1);
+      }, wait);
+    },
+    [logger],
+  );
+
+  const reset = useCallback(() => {
+    cancel();
+    attemptNow.current = 0;
+    setAttempt(0);
+    setFailed(false);
+    setStatus('loading');
+  }, [cancel]);
+
+  return { attempt, failed, status, onStatus, reset };
+}
+
+/** One line each time what the layer shows changes, with the word that came with it. */
+function useFeedLines(feed: Feed, delivery: DeliveryWord): void {
+  const { logger } = usePorts();
+  const say = useStableCallback(() => logger.info('peek.state', { state: feed, delivery }));
+  useEffect(() => say(), [feed, say]);
+}
+
+/** A hold or a new broadcast gives the next stretch a fresh player and its full schedule (D7). */
+function useResetPlayer(kind: Kind, reset: () => void): void {
+  useEffect(() => {
+    if (endsStretch(kind)) reset();
+  }, [kind, reset]);
+}

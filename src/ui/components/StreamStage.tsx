@@ -6,6 +6,7 @@ import { useEngineSelector } from '@/hooks/useCaptureEngine';
 import type { Peek } from '@/hooks/usePeek';
 import { usePorts } from '@/hooks/usePorts';
 import { useStageOverlay } from '@/hooks/useStageOverlay';
+import { useViewerFeed } from '@/hooks/useViewerFeed';
 import { OverlayPreview } from '@/ui/components/OverlayPreview';
 import { PreviewBoundary } from '@/ui/components/PreviewBoundary';
 import { StageVideo } from '@/ui/components/StageVideo';
@@ -99,6 +100,7 @@ type CameraBoxProps = {
 const CameraBox = memo(function CameraBox({ size, url, visible, onFailed, peek }: CameraBoxProps) {
   const { surfaces } = usePorts();
   const playbackUrl = useEngineSelector(selectPlaybackUrl);
+  const viewers = useViewerFeed();
   const sized = useSizedStyle(size);
   const { Preview } = surfaces;
   return (
@@ -108,8 +110,15 @@ const CameraBox = memo(function CameraBox({ size, url, visible, onFailed, peek }
         <Preview />
       </PreviewBoundary>
       <OverlayPreview url={url} visible={visible} onFailed={onFailed} />
-      {peek.mounted && playbackUrl !== null ? (
-        <StageVideo url={playbackUrl} showing={peek.showing} />
+      {peek.mounted && playbackUrl !== null && viewers.feed !== 'none' ? (
+        <StageVideo
+          url={playbackUrl}
+          showing={peek.showing}
+          feed={viewers.feed}
+          attempt={viewers.attempt}
+          starting={viewers.starting}
+          onStatus={viewers.onStatus}
+        />
       ) : null}
     </View>
   );
