@@ -23,6 +23,7 @@ import { createScanFlight } from '@/services/scanFlight';
 import { createRingRecord, parseRecordLine, type SessionRecord } from '@/services/sessionRecord';
 import { createStreamSettingsStore } from '@/services/streamSettingsStore';
 import { createFakePhotoPort, type FakePhotoPort } from './fakePhotoPort';
+import { createFakeScoringLinkPort, type FakeScoringLinkPort } from './fakeScoringLinkPort';
 import { createFakeSurfaces, type FakeSurfaces } from './fakeSurfaces';
 
 export const TEST_NOW = new Date('2026-10-03T13:00:00Z');
@@ -55,6 +56,8 @@ export type FakePorts = {
   readonly share: SharePort & { readonly shared: string[]; refuse(): void };
   /** `hold()`/`release()` pend a take; `calls` counts. */
   readonly photo: FakePhotoPort;
+  /** `hold()`/`release()` pend a request; `calls` counts. */
+  readonly scoringLink: FakeScoringLinkPort;
   setNow(at: Date): void;
 };
 
@@ -86,6 +89,7 @@ export function createFakePorts(
     record,
     share: fakeShare(),
     photo: createFakePhotoPort(),
+    scoringLink: createFakeScoringLinkPort(),
   };
   const ports: Ports = {
     ...fakes,

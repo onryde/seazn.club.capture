@@ -1,6 +1,7 @@
 /**
  * Spec §8 and Q2: a still to the gallery. One bounded request whose answer is one of two words. It carries no
- * session state and is never read by the engine. The one call that answers (AGENTS §2, recorded).
+ * session state and is never read by the engine. One of the two calls that answer (the other is the scoring link;
+ * AGENTS §2, recorded).
  */
 export type PhotoOutcome = 'saved' | 'failed';
 

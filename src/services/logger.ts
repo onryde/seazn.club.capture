@@ -18,6 +18,12 @@ export interface Logger {
    */
   protect(held: HeldSecrets): void;
   /**
+   * F15: a scoring link's secret (`dl_...`) reached JS. From now on it never reaches the record. A bucket of its own
+   * (the newest `LINK_SECRETS`, deduplicated by value), so a link never evicts the pairing token `protect` holds, and
+   * it does NOT put a session in hand: free text stays masked as `release` left it (N7).
+   */
+  protectLink(secret: string): void;
+  /**
    * N7: the viewfinder has let its session go. What was protected stays
    * masked; free text is masked whole until the next `protect` (CD6).
    */
@@ -26,23 +32,40 @@ export interface Logger {
 
 const RANK: Readonly<Record<LogLevel, number>> = { debug: 0, info: 1, warn: 2, error: 3 };
 
+/** F15: how many scoring links the record remembers to mask. Each is one `dl_` secret of 46 characters. */
+export const LINK_SECRETS = 16;
+
+const unique = (values: readonly string[]): string[] => [...new Set(values)];
+
 export function createLogger(deps: {
   record: SessionRecord;
   now: () => number;
   minLevel?: LogLevel;
 }): Logger {
   const floor = RANK[deps.minLevel ?? 'debug'];
-  let held: Required<HeldSecrets> = { secrets: [], streamIds: [], textOnly: [] };
+  // Two buckets, composed into `held`: the session's own (never evicted) and the scoring links' (capped, F15).
+  let base: Required<HeldSecrets> = { secrets: [], streamIds: [], textOnly: [] };
+  let links: string[] = [];
+  let held: Required<HeldSecrets> = base;
+  const compose = (): void => {
+    held = { ...base, secrets: unique([...base.secrets, ...links]) };
+  };
   // N7: keyed on the session in hand, not on "anything was ever protected", so a
   // second code in the same process is covered as the first was.
   let inHand = false;
   const protect = (more: HeldSecrets): void => {
-    held = {
-      secrets: [...held.secrets, ...more.secrets],
-      streamIds: [...held.streamIds, ...more.streamIds],
-      textOnly: [...held.textOnly, ...(more.textOnly ?? [])],
+    base = {
+      secrets: unique([...base.secrets, ...more.secrets]),
+      streamIds: unique([...base.streamIds, ...more.streamIds]),
+      textOnly: unique([...base.textOnly, ...(more.textOnly ?? [])]),
     };
+    compose();
     inHand = true;
+  };
+  const protectLink = (secret: string): void => {
+    if (secret === '') return;
+    links = [...links.filter((existing) => existing !== secret), secret].slice(-LINK_SECRETS);
+    compose();
   };
   const release = (): void => {
     inHand = false;
@@ -65,6 +88,7 @@ export function createLogger(deps: {
     warn: at('warn'),
     error: at('error'),
     protect,
+    protectLink,
     release,
   };
 }

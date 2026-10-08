@@ -61,7 +61,8 @@
       "env": "staging",
       "status": 401,
       "body": { "code": "other", "message": "m" },
-      "expected": "unavailable"
+      "expected": "unavailable",
+      "contractValid": false
     },
     {
       "why": "404 not_a_stream_code",

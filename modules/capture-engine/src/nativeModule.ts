@@ -10,7 +10,8 @@ export type RecordLine = { seq: number; line: string };
 
 /**
  * The Expo module's surface, as the glue defines it (Task 33). Every call
- * returns void or a value read at once, except `takePhoto`: intents, not RPC (AGENTS §2).
+ * returns void or a value read at once, except `takePhoto` and `scoringLink`, the two calls that answer: intents,
+ * not RPC (AGENTS §2).
  */
 export type CaptureEngineNative = {
   /** An intent's wire, with the `seq` its ack will name (CD8). */
@@ -22,11 +23,18 @@ export type CaptureEngineNative = {
   /** The record's last lines, oldest first, each with its seq. */
   tail(): readonly RecordLine[];
   /**
-   * Spec §8: one still to the gallery. The one call that answers (AGENTS §2, recorded): native resolves `'saved'` or
+   * Spec §8: one still to the gallery. One of the two calls that answer (the other is `scoringLink`; AGENTS §2, recorded): native resolves `'saved'` or
    * `'failed'` within its bound, and the port reads anything else as failed. Required, not optional: an absent
    * member would be a photo that quietly never happens.
    */
   takePhoto(): Promise<unknown>;
+  /**
+   * Spec §10: this match's Remote scoring link. The second call that answers (AGENTS §2, recorded; the first is
+   * `takePhoto`): native resolves one `{ outcome, url?, retryAfterS? }` within its own bound (16 s), point to point to
+   * this caller and to nobody else, and the port reads anything else as unavailable. The value may carry a
+   * credential: never log it. Required, not optional: an absent member would be a button that quietly never works.
+   */
+  scoringLink(): Promise<unknown>;
   addListener(event: 'onSnapshot', listener: (body: unknown) => void): Subscription;
   addListener(event: 'onRecord', listener: (body: RecordLine) => void): Subscription;
   addListener(event: 'onAck', listener: (body: { seq: number }) => void): Subscription;
