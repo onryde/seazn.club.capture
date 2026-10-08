@@ -85,6 +85,7 @@ const SECTION_TEXT = layout.diagSection - layout.diagPad;
 const mono = loadFont('geist-mono-400');
 const medium = loadFont('geist-500');
 const condensed = loadFont('barlow-condensed-600');
+const condensedBold = loadFont('barlow-condensed-700');
 const ADVANCE = mono.advance('0'.codePointAt(0) ?? 0);
 
 const NOW = Date.parse('2026-10-03T13:00:00Z');
@@ -366,10 +367,35 @@ const fmt = (n: number) => n.toFixed(1);
 const GHOST_PAD_X = 16;
 const GHOST_BORDER = 1;
 
+/** The owner's Settings board (2026-10-08): the pulse beside the heading is drawn in an 18 dp box; the heading is 18 caps. */
+const BOARD_PULSE_PX = 18;
+const BOARD_TITLE_PX = 18;
+/** What GhostButton can hold inside its 48 dp minimum: the 1 dp border each side, then lines of the control role. */
+const GHOST_MIN_HEIGHT = 48;
+
+/** The words of a label wrapped greedily into `width` dp of Geist 500; null when one word alone is wider. */
+function wrapLines(label: string, width: number, size: number): number | null {
+  const space = medium.width(' ', size);
+  let lines = 1;
+  let used = 0;
+  for (const word of label.split(' ')) {
+    const wide = medium.width(word, size);
+    if (wide > width) return null;
+    if (used === 0) used = wide;
+    else if (used + space + wide <= width) used += space + wide;
+    else {
+      lines += 1;
+      used = wide;
+    }
+  }
+  return lines;
+}
+
 let probesChecked = 0;
 let labelsChecked = 0;
 let sectionsChecked = 0;
 let headersChecked = 0;
+let wrappedHeaders = 0;
 
 describe('every Diagnostics row fits its line at 640 × 360, in every language (I-2)', () => {
   it('reads the fonts: Geist Mono is monospaced at 0.6 em', () => {
@@ -403,6 +429,19 @@ describe('every Diagnostics row fits its line at 640 × 360, in every language (
     expect(typeScale.diagLabel.fontSize).toBe(CANVAS_ITEM_PX);
     expect(typeScale.diagSection.fontSize).toBe(CANVAS_SECTION_PX);
     expect(typeScale.diagSection.letterSpacing).toBe(SECTION_SPACING);
+  });
+
+  // The owner's board draws "DIAGNOSTICS" 90 dp wide in Barlow Condensed bold (measured 90.5 at 1.436 px per dp):
+  // 18 is the size at which the shipped font sets it that wide, and its pulse is an 18 dp box.
+  it('the heading is what the board draws: 18 caps, 90 dp wide, beside an 18 dp pulse', () => {
+    expect(typeScale.diagTitle.fontSize).toBe(BOARD_TITLE_PX);
+    expect(typeScale.diagTitle.textTransform).toBe('uppercase');
+    expect(layout.pulseGlyph).toBe(BOARD_PULSE_PX);
+    const word = 'DIAGNOSTICS';
+    const width =
+      condensedBold.width(word, typeScale.diagTitle.fontSize) +
+      word.length * (typeScale.diagTitle.letterSpacing ?? 0);
+    expect(Math.abs(width - 90.5)).toBeLessThanOrEqual(2);
   });
 
   it('the item and value share 188 dp at 640 × 360: (640 - 32 - 16) / 2 - 24 - 84', () => {
@@ -493,17 +532,34 @@ describe('every Diagnostics row fits its line at 640 × 360, in every language (
   });
 
   // Round 2: a share that failed says so ON the button, in place of "Share record", so the card keeps its
-  // height (a separate line would push a card with 8 dp of slack past its half). The header is the title and
-  // the button on one line: the button is its label plus GhostButton's 16 dp padding and 1 dp border each side
-  // (SettingsScreen.test.tsx pins those rendered), and the title keeps what is left.
+  // height (a separate line would push a card with 8 dp of slack past its half). The header is the board's pulse,
+  // the heading and the button on one line: the button is its label plus GhostButton's 16 dp padding and 1 dp
+  // border each side (SettingsScreen.test.tsx pins those rendered). The heading keeps its width; the button is
+  // the cell that gives, wrapping its label to a second line inside its 48 dp minimum, and that is what is proved
+  // here: every label, in every language, fits the line left over in at most the lines a 48 dp button holds, with
+  // no word broken. Where it fits on one line (the English button), it simply does.
   it.each(LANGS)(
-    '%s: the title, the Share button and its failure message share the header',
+    '%s: the pulse, the heading, the Share button and its failure message share the header',
     (lang) => {
       const { t } = createTranslator(lang);
       const inner = HALF - 2 * layout.diagPad;
-      const title = medium.width(t('diag.title'), typeScale.control.fontSize);
+      const heading = t('diag.title').toUpperCase();
+      for (const char of heading) {
+        expect(
+          condensedBold.has(char.codePointAt(0) ?? 0),
+          `${lang} heading "${heading}" has "${char}"`,
+        ).toBe(true);
+      }
+      const title =
+        condensedBold.width(heading, typeScale.diagTitle.fontSize) +
+        Array.from(heading).length * (typeScale.diagTitle.letterSpacing ?? 0);
       const labels = [t('diag.share'), t('diag.shareFailed')];
       expect(new Set(labels).size).toBe(2); // the failure is not the same words as the button
+      const lineHeight = typeScale.control.lineHeight;
+      const buttonLines = Math.floor((GHOST_MIN_HEIGHT - 2 * GHOST_BORDER) / lineHeight);
+      expect(buttonLines).toBe(2); // a 48 dp button holds two 18 dp lines
+      // What is left for the button once the pulse, the heading and the two 8 dp gaps are placed.
+      const cell = inner - BOARD_PULSE_PX - title - 2 * space.sm;
       for (const label of labels) {
         for (const char of label) {
           expect(
@@ -511,15 +567,22 @@ describe('every Diagnostics row fits its line at 640 × 360, in every language (
             `${lang} button "${label}" has "${char}"`,
           ).toBe(true);
         }
-        const button =
-          2 * GHOST_PAD_X + 2 * GHOST_BORDER + medium.width(label, typeScale.control.fontSize);
-        expect(title + space.sm + button, `${lang} header with "${label}"`).toBeLessThanOrEqual(
-          inner,
-        );
+        const text = cell - 2 * GHOST_PAD_X - 2 * GHOST_BORDER;
+        const lines = wrapLines(label, text, typeScale.control.fontSize);
+        expect(
+          lines,
+          `${lang} "${label}" fits ${fmt(text)} dp of text without a broken word`,
+        ).not.toBe(null);
+        expect(lines ?? 99, `${lang} header with "${label}"`).toBeLessThanOrEqual(buttonLines);
+        if ((lines ?? 0) > 1) wrappedHeaders += 1;
         headersChecked += 1;
       }
     },
   );
+
+  it('the narrow cells are real: some label wraps to two lines at 640 (the path under test ran)', () => {
+    expect(wrappedHeaders).toBeGreaterThan(0);
+  });
 
   it('checked every string it set out to, in every language (anti-vacuity)', () => {
     expect(LANGS).toHaveLength(4);
@@ -527,5 +590,65 @@ describe('every Diagnostics row fits its line at 640 × 360, in every language (
     expect(probesChecked).toBe(4 * PROBES_PER_LANGUAGE);
     expect(labelsChecked).toBe(4 * 9);
     expect(sectionsChecked).toBe(4 * 4);
+  });
+});
+
+// The switch rows and the side control are content-sized to their label (the board's rows): they are scrollers'
+// content, so they never overflow the screen, but a word that cannot fit beside its control would be broken in
+// the middle. Proved on the narrowest line the app lays them on: a 320 dp portrait phone, 16 dp each side
+// (288), which is also under the 296 of a 640 dp landscape half.
+const NARROW_LINE = 320 - 2 * space.md;
+let sideChecked = 0;
+let switchLabelsChecked = 0;
+
+/** The widest single word of a label, in Geist 500 at the control role's size. */
+const longestWord = (label: string) =>
+  Math.max(...label.split(' ').map((word) => medium.width(word, typeScale.control.fontSize)));
+
+describe('the side control and the switch rows fit the narrowest line, in every language', () => {
+  it('the narrowest line is 288 dp, and a 640 dp landscape half is wider (296)', () => {
+    expect(NARROW_LINE).toBe(288);
+    expect((640 - 2 * space.md - space.md) / 2).toBeGreaterThan(NARROW_LINE);
+  });
+
+  it.each(LANGS)('%s: the pair fits and leaves its label room for its longest word', (lang) => {
+    const { t } = createTranslator(lang);
+    const segment = (label: string) =>
+      Math.max(
+        layout.segmentMin,
+        medium.width(label, typeScale.control.fontSize) + 2 * layout.segmentPadX,
+      );
+    // The box's own 1 dp outline each side, on top of its two segments.
+    const pair =
+      segment(t('settings.side.left')) + segment(t('settings.side.right')) + 2 * layout.iconBorder;
+    const room = NARROW_LINE - pair - space.sm;
+    const label = t('settings.side.label');
+    expect(room, `${lang} room left for "${label}"`).toBeGreaterThanOrEqual(longestWord(label));
+    sideChecked += 1;
+  });
+
+  it.each(LANGS)('%s: each switch label’s longest word fits beside its switch', (lang) => {
+    const { t } = createTranslator(lang);
+    // The row's padding each side, the 40 dp pill and the 8 dp gap between the label and it.
+    const cell = NARROW_LINE - 2 * layout.switchRowPadX - layout.switchTrackW - space.sm;
+    for (const key of ['settings.overlay.label', 'settings.automatic.label'] as const) {
+      expect(longestWord(t(key)), `${lang} ${key}`).toBeLessThanOrEqual(cell);
+      switchLabelsChecked += 1;
+    }
+  });
+
+  it('the English pair is the board’s: Left and Right sit on the 66 dp floor, 134 dp with the outline', () => {
+    const { t } = createTranslator('en');
+    for (const word of [t('settings.side.left'), t('settings.side.right')]) {
+      expect(medium.width(word, typeScale.control.fontSize) + 2 * layout.segmentPadX).toBeLessThan(
+        layout.segmentMin,
+      );
+    }
+    expect(2 * layout.segmentMin + 2 * layout.iconBorder).toBe(134); // measured 134.4 on the board
+  });
+
+  it('checked every language for the pair and for both switch labels (anti-vacuity)', () => {
+    expect(sideChecked).toBe(4);
+    expect(switchLabelsChecked).toBe(4 * 2);
   });
 });

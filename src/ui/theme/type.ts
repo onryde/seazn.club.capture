@@ -130,6 +130,19 @@ export const typeScale = {
     color: colour.ink,
   },
   /**
+   * Board "Settings": the Diagnostics card's heading, Barlow Condensed 700 in caps (the board's "DIAGNOSTICS" is 90 dp
+   * wide: 18 at the 0.6 letterspacing `diagSection` has), ink. Between `actionSecondary` (16, semibold, ink2) and
+   * `panelTitle` (22), which is 22 % too wide to leave the Share button its line at 640.
+   */
+  diagTitle: {
+    fontFamily: font.displayBold,
+    fontSize: 18,
+    lineHeight: 20,
+    letterSpacing: 0.6,
+    textTransform: 'uppercase',
+    color: colour.ink,
+  },
+  /**
    * Board "Remote scoring": the code panel's title, Barlow Condensed 700 at 22/24, caps and letterspaced like `action`
    * (the board names the face, size and caps only; 0.7 is `action`'s, 0.03em of 22). Left-aligned, as every role is.
    */

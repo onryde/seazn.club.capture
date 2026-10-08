@@ -1,5 +1,5 @@
-import { useCallback, useState } from 'react';
-import { ScrollView, StyleSheet, useWindowDimensions, View } from 'react-native';
+import { memo, useCallback, useState } from 'react';
+import { Pressable, ScrollView, StyleSheet, useWindowDimensions, View } from 'react-native';
 import { screenLayout } from '@/domain/mode/homeLayout';
 import { useT } from '@/hooks/useLanguage';
 import { useBackToViewfinder } from '@/hooks/useStreamLinks';
@@ -11,7 +11,7 @@ import { GhostButton } from '@/ui/components/GhostButton';
 import { SubScreenHeader } from '@/ui/components/SubScreenHeader';
 import { Text } from '@/ui/components/Text';
 import { layoutMarker } from '@/ui/layoutMarker';
-import { colour, layout as metrics, space } from '@/ui/theme/tokens';
+import { colour, layout as metrics, plateInk, radius, space } from '@/ui/theme/tokens';
 
 /** D22: shipped and linked native code, and the one source link MPL-2.0 asks for. */
 const LICENCES: readonly { readonly name: string; readonly licence: string }[] = [
@@ -58,14 +58,12 @@ export function SettingsScreen() {
     <>
       <ChoiceRow
         label={t('settings.overlay.label')}
-        role="switch"
         checked={settings.overlay}
         onPress={toggleOverlay}
       />
       <Text variant="metricUnit">{t('settings.overlay.hint')}</Text>
       <ChoiceRow
         label={t('settings.automatic.label')}
-        role="switch"
         checked={settings.automatic}
         onPress={toggleAutomatic}
       />
@@ -104,8 +102,9 @@ export function SettingsScreen() {
 }
 
 /**
- * Controls on the left or the right: a pair of radios. Takes the screen's own
- * `change`, so a refused save says so in the one place the screen shows it.
+ * Controls on the left or the right (the owner's board): the label and, on the same line at its right, one outlined
+ * pair of segments, the chosen one filled lime. A radiogroup named by the label, each segment a radio. Takes the
+ * screen's own `change`, so a refused save says so in the one place the screen shows it.
  */
 function SideChoice({
   side,
@@ -117,26 +116,45 @@ function SideChoice({
   const { t } = useT();
   const toLeft = useCallback(() => change({ side: 'left' }), [change]);
   const toRight = useCallback(() => change({ side: 'right' }), [change]);
+  const label = t('settings.side.label');
   return (
     <View style={styles.side}>
-      <Text variant="control">{t('settings.side.label')}</Text>
-      <View style={styles.pair}>
-        <ChoiceRow
-          label={t('settings.side.left')}
-          role="radio"
-          checked={side === 'left'}
-          onPress={toLeft}
-        />
-        <ChoiceRow
-          label={t('settings.side.right')}
-          role="radio"
-          checked={side === 'right'}
-          onPress={toRight}
-        />
+      <Text variant="control" style={styles.sideLabel}>
+        {label}
+      </Text>
+      <View accessibilityRole="radiogroup" accessibilityLabel={label} style={styles.pair}>
+        <Segment label={t('settings.side.left')} checked={side === 'left'} onPress={toLeft} />
+        <Segment label={t('settings.side.right')} checked={side === 'right'} onPress={toRight} />
       </View>
     </View>
   );
 }
+
+/** One segment of the pair: a radio, 48 dp tall; chosen, a lime fill with night ink (the plate rule, AGENTS §5). */
+const Segment = memo(function Segment({
+  label,
+  checked,
+  onPress,
+}: {
+  label: string;
+  checked: boolean;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable
+      accessibilityRole="radio"
+      accessibilityLabel={label}
+      // aria-checked, not accessibilityState, as ChoiceRow has it.
+      aria-checked={checked}
+      onPress={onPress}
+      style={checked ? segmentOn : styles.segment}
+    >
+      <Text variant="control" style={checked ? styles.segmentTextOn : undefined}>
+        {label}
+      </Text>
+    </Pressable>
+  );
+});
 
 function Licences() {
   const { t } = useT();
@@ -175,7 +193,27 @@ const styles = StyleSheet.create({
   },
   halves: { flex: 1, flexDirection: 'row', gap: space.md },
   half: { flex: 1 },
-  side: { gap: space.xs },
-  pair: { flexDirection: 'row', gap: space.sm },
+  /** The label and the pair on one line, the pair at the right. */
+  side: { flexDirection: 'row', alignItems: 'center', gap: space.sm },
+  sideLabel: { flex: 1 },
+  /** One outlined box; clipping the segments inside it gives the lime fill the box's corners. */
+  pair: {
+    flexDirection: 'row',
+    borderWidth: metrics.iconBorder,
+    borderColor: colour.ink3,
+    borderRadius: radius.card,
+    overflow: 'hidden',
+  },
+  segment: {
+    minHeight: metrics.touch,
+    minWidth: metrics.segmentMin,
+    paddingHorizontal: metrics.segmentPadX,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  segmentOn: { backgroundColor: colour.lime },
+  segmentTextOn: { color: plateInk },
   licences: { gap: space.xs },
 });
+
+const segmentOn = [styles.segment, styles.segmentOn];

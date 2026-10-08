@@ -47,6 +47,11 @@ const DRAWN = [
     [],
     0,
   ],
+  // the owner's Settings board (2026-10-08), measured: a chevron-left in the others' stroke
+  ['back', ['M15 5l-7 7 7 7'], [], 0],
+  // the board's heartbeat: flat, a short rise, a long fall past the line, back to it and flat; 20 x 16 units
+  // is 15 x 12 dp at the 18 dp the board draws it at (measured 15.3 x 12.5)
+  ['pulse', ['M2 12h5l2.5-8 4 16 2.5-8h6'], [], 0],
 ] as const;
 /** The camera's not-ready slash (spec §3). */
 const SLASH = 'M3 3l18 18';
@@ -67,9 +72,9 @@ describe('Glyph draws the canvas’s line icons (spec §3)', () => {
     drawn += 1;
   });
 
-  it('drew all seven glyphs (anti-vacuity)', () => {
-    expect(DRAWN).toHaveLength(7);
-    expect(drawn).toBe(7);
+  it('drew all nine glyphs (anti-vacuity)', () => {
+    expect(DRAWN).toHaveLength(9);
+    expect(drawn).toBe(9);
   });
 
   it('draws the mic’s capsule as the canvas has it: 9, 3, 6 wide, 11 tall, corners of 3', () => {
@@ -96,13 +101,30 @@ describe('Glyph draws the canvas’s line icons (spec §3)', () => {
   it.each([
     ['ink', colour.ink],
     ['ink2', colour.ink2],
+    ['lime', colour.lime],
   ] as const)('strokes in the %s tone’s colour', (tone, stroke) => {
     const view = render(<Glyph name="camera" tone={tone} />);
     expect(view.container.querySelector('svg')?.getAttribute('stroke')).toBe(stroke);
   });
 
-  it('draws the two tones in two colours (anti-vacuity)', () => {
-    expect(colour.ink).not.toBe(colour.ink2);
+  it('draws the three tones in three colours (anti-vacuity)', () => {
+    expect(new Set([colour.ink, colour.ink2, colour.lime]).size).toBe(3);
+  });
+
+  // The board's Diagnostics heading draws its pulse at 18 dp (a 15 dp-wide line, the path's 20 units at 0.75 dp),
+  // where the chips and the icon row draw 22.
+  it('draws at the size it is asked, 18 for the pulse, over the same 24-unit box', () => {
+    const view = render(<Glyph name="pulse" tone="lime" size={18} />);
+    const svg = view.container.querySelector('svg') as Element;
+    expect([svg.getAttribute('width'), svg.getAttribute('height')]).toEqual(['18', '18']);
+    expect(svg.getAttribute('viewBox')).toBe('0 0 24 24');
+    expect(svg.getAttribute('stroke')).toBe(colour.lime);
+  });
+
+  it('is still 22 dp when no size is asked (the chips and the icon row)', () => {
+    const view = render(<Glyph name="pulse" tone="lime" />);
+    const svg = view.container.querySelector('svg') as Element;
+    expect([svg.getAttribute('width'), svg.getAttribute('height')]).toEqual(['22', '22']);
   });
 
   it('slashes the camera when asked, and draws the same camera under the slash', () => {

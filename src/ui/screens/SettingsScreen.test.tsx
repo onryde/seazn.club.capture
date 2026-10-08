@@ -1,5 +1,5 @@
-import { act, cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
-import { Dimensions } from 'react-native';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { Dimensions, StyleSheet, Text, type TextStyle } from 'react-native';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { EngineSnapshot } from '@/engine/CaptureEnginePort';
 import type { NativeCaptureEngine } from '@/engine/nativeCaptureEngine';
@@ -9,7 +9,7 @@ import { useEngineSync } from '@/hooks/useEngineSync';
 import { HOLD_MS } from '@/hooks/useHold';
 import { SETTINGS_KEY } from '@/services/streamSettingsStore';
 import { SettingsScreen } from '@/ui/screens/SettingsScreen';
-import { font } from '@/ui/theme/tokens';
+import { colour, font } from '@/ui/theme/tokens';
 import { describeBackFromSubScreen } from '../../../test/backFromSubScreen';
 import { readRecord, type TestEngine } from '../../../test/fakePorts';
 import { savedStreamCode } from '../../../test/fixtures/savedStream';
@@ -297,7 +297,8 @@ describe('Diagnostics inside Settings (spec §6, Q1)', () => {
     const header = title.parentElement;
     expect(header).not.toBeNull();
     expect(header).not.toBe(card);
-    expect(shareButton().parentElement).toBe(header);
+    // The button sits in the header row inside its own shrinkable cell (the narrowest half lets it wrap).
+    expect(shareButton().parentElement?.parentElement).toBe(header);
   });
 
   it("lists Q1's nine rows as section | item | value, from the live report", () => {
@@ -690,18 +691,21 @@ describe('where Diagnostics sits (spec §6)', () => {
     for (const row of diagRows()) expect(getComputedStyle(row).minHeight).toBe('22px');
   });
 
-  // settingsFit.test.ts adds Back and Share record as 48 each (GhostButton's minHeight): this is the
-  // rendered witness that the literal there is the button's.
+  // settingsFit.test.ts adds Back and Share record as 48 each (the icon button's side, GhostButton's minHeight):
+  // this is the rendered witness that the literal there is theirs.
   it('in landscape, Back and Share record are 48 dp tall, the heights the fit test adds', () => {
     setWindowSize(640, 360);
     renderSettings();
-    for (const name of ['Back to camera', 'Share record']) {
-      const button = screen.getByRole('button', { name });
-      expect({ name, minHeight: getComputedStyle(button).minHeight }).toEqual({
-        name,
-        minHeight: '48px',
-      });
-    }
+    const back = getComputedStyle(screen.getByRole('button', { name: 'Back to camera' }));
+    expect({ name: 'Back to camera', height: back.height }).toEqual({
+      name: 'Back to camera',
+      height: '48px',
+    });
+    const share = getComputedStyle(screen.getByRole('button', { name: 'Share record' }));
+    expect({ name: 'Share record', minHeight: share.minHeight }).toEqual({
+      name: 'Share record',
+      minHeight: '48px',
+    });
   });
 
   // Owner, device pass 2026-10-08 (a 360 dp tall phone): the card ran past the screen's foot and its last rows
@@ -773,6 +777,347 @@ describe('where Diagnostics sits (spec §6)', () => {
     expect(Dimensions.get('window')).toMatchObject({ width: 844, height: 390 });
     restoreWindowSize();
     expect(Dimensions.get('window')).toMatchObject({ width: 0, height: 0 });
+  });
+});
+
+/**
+ * What the cascade paints a token as: a reference element wearing it. The colours are the TOKENS' declared meaning
+ * (the brief: "on: lime track, knob colour.ground"), read the way the layout test reads them (a colour literal is
+ * banned in a test, and a value read back from the component would prove the component equals itself).
+ */
+const PAINT = StyleSheet.create({
+  surface: { backgroundColor: colour.surface },
+  surface2: { backgroundColor: colour.surface2 },
+  lime: { backgroundColor: colour.lime },
+  ground: { backgroundColor: colour.ground },
+  ink3: { backgroundColor: colour.ink3 },
+  inkText: { color: colour.ink },
+  ink2Text: { color: colour.ink2 },
+  groundText: { color: colour.ground },
+  ink3Edge: { borderWidth: 1, borderColor: colour.ink3 },
+});
+type Painted = 'backgroundColor' | 'borderTopColor' | 'color';
+function painted(style: TextStyle, read: Painted): string {
+  const reference = render(
+    <Text testID="paint-reference" style={style}>
+      x
+    </Text>,
+  );
+  const colourOf = getComputedStyle(reference.getByTestId('paint-reference'))[read];
+  reference.unmount();
+  return colourOf;
+}
+/** What the cascade gives an element that is given no background at all. */
+const unpainted = () => painted({}, 'backgroundColor');
+/** All four corners, as jsdom keeps them (it leaves the `border-radius` shorthand empty). */
+const cornersOf = (style: CSSStyleDeclaration) => [
+  style.borderTopLeftRadius,
+  style.borderTopRightRadius,
+  style.borderBottomRightRadius,
+  style.borderBottomLeftRadius,
+];
+const ROUND = (dp: number) => [`${dp}px`, `${dp}px`, `${dp}px`, `${dp}px`];
+
+const SWITCHES = [
+  ['Score preview', 'the score preview'],
+  ['Start and stop automatically', 'start and stop automatically'],
+] as const;
+const switchNamed = (name: string) => screen.getByRole('switch', { name });
+const trackOf = (name: string) => within(switchNamed(name)).getByTestId('switch-track');
+const knobOf = (name: string) => within(switchNamed(name)).getByTestId('switch-knob');
+const px = (value: string) => Number.parseFloat(value);
+let switchesChecked = 0;
+
+// The owner's board, "Stream settings" (2026-10-08): the switch rows, the side control, Back and the Diagnostics
+// heading, as the board draws them (measured from the PNG at 1.436 px per dp; the brief's numbers). Look only:
+// every behaviour above is unchanged and its tests stay as they were.
+describe('the switch rows wear the board (filled row, pill switch)', () => {
+  it.each(SWITCHES)('%s: a filled card, no outline, 12 dp corners, one 48 dp row', (name) => {
+    renderSettings();
+    const row = getComputedStyle(switchNamed(name));
+    expect(row.backgroundColor).toBe(painted(PAINT.surface, 'backgroundColor'));
+    expect(row.borderTopWidth).toBe('0px');
+    expect(cornersOf(row)).toEqual(ROUND(12)); // the card radius, as the board's
+    expect(row.minHeight).toBe('48px'); // a tripod-sized target
+    expect([row.flexDirection, row.alignItems]).toEqual(['row', 'center']);
+    switchesChecked += 1;
+  });
+
+  it('puts the label on the left and the switch on the right', () => {
+    renderSettings();
+    for (const [name] of SWITCHES) {
+      const label = within(switchNamed(name)).getByText(name);
+      expect(getComputedStyle(label).flexGrow).toBe('1'); // it takes the line, so the switch is pushed right
+      expect(label.compareDocumentPosition(trackOf(name))).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    }
+  });
+
+  // Board: a 40 x 24 pill, an 18 dp knob, 3 dp in from the edge on every side. Off, the track is outlined.
+  it.each([
+    ['on', true],
+    ['off', false],
+  ] as const)('is a 40 x 24 pill with an 18 dp knob 3 dp in, %s', async (_state, on) => {
+    renderSettings({
+      kvSeed: { [SETTINGS_KEY]: `{"v":2,"overlay":${on},"side":"right","automatic":${on}}` },
+    });
+    await waitFor(() =>
+      expect(switchNamed('Score preview').getAttribute('aria-checked')).toBe(String(on)),
+    );
+    for (const [name] of SWITCHES) {
+      const track = getComputedStyle(trackOf(name));
+      const knob = getComputedStyle(knobOf(name));
+      expect([track.width, track.height]).toEqual(['40px', '24px']);
+      expect(cornersOf(track)).toEqual(ROUND(12)); // a pill: half its height
+      expect([knob.width, knob.height]).toEqual(['18px', '18px']);
+      expect(cornersOf(knob)).toEqual(ROUND(9)); // a circle
+      // The knob's inset is the track's outline plus its padding, the same on every side: 3 dp.
+      for (const side of ['Top', 'Right', 'Bottom', 'Left'] as const) {
+        const inset =
+          px(track[`border${side}Width` as 'borderTopWidth']) +
+          px(track[`padding${side}` as 'paddingTop']);
+        expect({ name, side, inset }).toEqual({ name, side, inset: 3 });
+      }
+      // On, the knob sits at the right end; off, at the left.
+      expect(track.justifyContent).toBe(on ? 'flex-end' : 'flex-start');
+      switchesChecked += 1;
+    }
+  });
+
+  it('paints on as a lime track with a night knob, off as an outlined track with a lilac knob', async () => {
+    renderSettings();
+    const on = getComputedStyle(trackOf('Score preview'));
+    expect(on.backgroundColor).toBe(painted(PAINT.lime, 'backgroundColor'));
+    expect(getComputedStyle(knobOf('Score preview')).backgroundColor).toBe(
+      painted(PAINT.ground, 'backgroundColor'),
+    );
+    fireEvent.click(switchNamed('Score preview'));
+    await waitFor(() =>
+      expect(switchNamed('Score preview').getAttribute('aria-checked')).toBe('false'),
+    );
+    const off = getComputedStyle(trackOf('Score preview'));
+    // The board's off track is a shade above the row (the night input fill, surface2), outlined in lilac.
+    expect(off.backgroundColor).toBe(painted(PAINT.surface2, 'backgroundColor'));
+    expect(off.borderTopColor).toBe(painted(PAINT.ink3Edge, 'borderTopColor'));
+    expect(px(off.borderTopWidth)).toBeGreaterThanOrEqual(1);
+    expect(px(off.borderTopWidth)).toBeLessThanOrEqual(2); // the brief: 1 to 2 dp
+    expect(getComputedStyle(knobOf('Score preview')).backgroundColor).toBe(
+      painted(PAINT.ink3, 'backgroundColor'),
+    );
+    // The two states are not one picture (anti-vacuity).
+    expect(off.backgroundColor).not.toBe(on.backgroundColor);
+  });
+
+  it('keeps the same 40 x 24 box in both states, so a press does not move the row', () => {
+    renderSettings();
+    const before = getComputedStyle(trackOf('Score preview'));
+    const sizeOn = [before.width, before.height, before.borderTopWidth, before.paddingTop];
+    fireEvent.click(switchNamed('Score preview'));
+    const after = getComputedStyle(trackOf('Score preview'));
+    expect([after.width, after.height, after.borderTopWidth, after.paddingTop]).toEqual(sizeOn);
+  });
+
+  it('is still one control: the whole row presses, and the switch is hidden from a screen reader', async () => {
+    renderSettings();
+    expect(screen.getAllByRole('switch')).toHaveLength(2);
+    for (const [name] of SWITCHES) {
+      // Decorative: hidden from the accessibility tree, and no role of its own to be reached as a second control.
+      const track = trackOf(name);
+      expect(track.getAttribute('aria-hidden')).toBe('true');
+      expect(track.getAttribute('role')).toBeNull();
+      expect(knobOf(name).closest('[aria-hidden="true"]')).toBe(track);
+    }
+    // Pressing the picture of the switch presses the row.
+    fireEvent.click(trackOf('Score preview'));
+    await waitFor(() =>
+      expect(switchNamed('Score preview').getAttribute('aria-checked')).toBe('false'),
+    );
+    fireEvent.click(within(switchNamed('Score preview')).getByText('Score preview'));
+    await waitFor(() =>
+      expect(switchNamed('Score preview').getAttribute('aria-checked')).toBe('true'),
+    );
+  });
+
+  it('checked both rows, on and off (anti-vacuity)', () => {
+    // 2 rows in the card test + 2 rows x 2 states in the pill test, run before this one.
+    expect(SWITCHES).toHaveLength(2);
+    expect(switchesChecked).toBe(2 + 2 * 2);
+  });
+});
+
+describe('the side control wears the board (a segmented pair on the label’s line)', () => {
+  const group = () => screen.getByRole('radiogroup', { name: 'Controls on the' });
+  const radio = (name: string) => within(group()).getByRole('radio', { name });
+
+  it('is one radiogroup named by its label, holding Left then Right', () => {
+    renderSettings();
+    const radios = within(group()).getAllByRole('radio');
+    expect(radios.map((each) => each.getAttribute('aria-label'))).toEqual(['Left', 'Right']);
+    expect(screen.getAllByRole('radio')).toHaveLength(2); // and no radio outside it
+  });
+
+  it('sits on the same line as its label, to the right of it', () => {
+    renderSettings();
+    const label = screen.getByText('Controls on the');
+    const line = group().parentElement as HTMLElement;
+    expect(line.contains(label)).toBe(true);
+    expect(getComputedStyle(line).flexDirection).toBe('row');
+    expect(getComputedStyle(line).alignItems).toBe('center');
+    expect(getComputedStyle(label).flexGrow).toBe('1'); // the label takes the line, the pair is pushed right
+    expect(label.compareDocumentPosition(group())).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+  });
+
+  it('is one outlined box: a 1 dp lilac line, 12 dp corners, the segments clipped inside', () => {
+    renderSettings();
+    const box = getComputedStyle(group());
+    expect(box.flexDirection).toBe('row');
+    expect(box.borderTopWidth).toBe('1px');
+    expect(box.borderTopColor).toBe(painted(PAINT.ink3Edge, 'borderTopColor'));
+    expect(cornersOf(box)).toEqual(ROUND(12));
+    expect([box.overflowX, box.overflowY]).toEqual(['hidden', 'hidden']); // so the lime fill takes the box's corners
+  });
+
+  it('gives each segment a 48 dp tall target and the board’s 66 dp floor', () => {
+    renderSettings();
+    for (const name of ['Left', 'Right']) {
+      const segment = getComputedStyle(radio(name));
+      expect({ name, minHeight: segment.minHeight, minWidth: segment.minWidth }).toEqual({
+        name,
+        minHeight: '48px',
+        minWidth: '66px',
+      });
+    }
+  });
+
+  it('fills the chosen segment lime with night text and leaves the other bare', async () => {
+    renderSettings();
+    const lime = painted(PAINT.lime, 'backgroundColor');
+    const night = painted(PAINT.groundText, 'color');
+    const quiet = painted(PAINT.ink2Text, 'color');
+    const textOf = (name: string) => getComputedStyle(within(radio(name)).getByText(name)).color;
+    // Right is chosen by default.
+    expect(getComputedStyle(radio('Right')).backgroundColor).toBe(lime);
+    expect(textOf('Right')).toBe(night);
+    expect(getComputedStyle(radio('Left')).backgroundColor).toBe(unpainted());
+    expect(textOf('Left')).toBe(quiet);
+    // And the other way once Left is chosen: the fill moves, it is not painted on both.
+    fireEvent.click(radio('Left'));
+    await waitFor(() => expect(radio('Left').getAttribute('aria-checked')).toBe('true'));
+    expect(getComputedStyle(radio('Left')).backgroundColor).toBe(lime);
+    expect(textOf('Left')).toBe(night);
+    expect(getComputedStyle(radio('Right')).backgroundColor).toBe(unpainted());
+    expect(textOf('Right')).toBe(quiet);
+    expect(night).not.toBe(quiet); // anti-vacuity: the two texts are two colours
+  });
+
+  it('has no divider line between the segments (the board draws none)', () => {
+    renderSettings();
+    for (const name of ['Left', 'Right']) {
+      expect(getComputedStyle(radio(name)).borderTopWidth).toBe('0px');
+      expect(getComputedStyle(radio(name)).borderLeftWidth).toBe('0px');
+    }
+  });
+});
+
+describe('Back wears the board (a square outlined icon button, no word)', () => {
+  it('is a 48 dp outlined square holding a chevron, named Back to camera', () => {
+    renderSettings();
+    const back = screen.getByRole('button', { name: 'Back to camera' });
+    const style = getComputedStyle(back);
+    expect([style.width, style.height]).toEqual(['48px', '48px']);
+    expect(style.borderTopWidth).toBe('1px');
+    expect(style.borderTopColor).toBe(painted(PAINT.ink3Edge, 'borderTopColor'));
+    expect(cornersOf(style)).toEqual(ROUND(12)); // the board's corners are the card's (measured: the same curve)
+    expect(back.textContent).toBe(''); // no visible text; the name is the label alone
+    const drawn = within(back).getByTestId('glyph');
+    expect(drawn.dataset.name).toBe('back');
+    expect(drawn.dataset.tone).toBe('ink2');
+  });
+
+  it('keeps its name in every language', () => {
+    renderSettings({ deviceLanguages: ['es'] });
+    expect(screen.getByRole('button', { name: 'Volver a la cámara' }).textContent).toBe('');
+  });
+
+  it('stays the first control of the header, before the LIVE plate and the title', () => {
+    const view = renderSettings();
+    act(() => view.engine.scene('live'));
+    const back = screen.getByRole('button', { name: 'Back to camera' });
+    expect(back.compareDocumentPosition(screen.getByTestId('tally-plate'))).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    );
+    expect(back.compareDocumentPosition(screen.getByText('Stream settings'))).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    );
+  });
+});
+
+describe('the Diagnostics heading wears the board (a lime pulse, then the name in the display face)', () => {
+  const card = () => screen.getByTestId('diagnostics-card');
+  const heading = () => within(card()).getByText('Diagnostics');
+
+  it('draws an 18 dp lime pulse before the title, in the header row', () => {
+    renderSettings();
+    const pulse = within(card()).getByTestId('glyph');
+    expect(pulse.dataset.name).toBe('pulse');
+    expect(pulse.dataset.tone).toBe('lime');
+    expect(pulse.dataset.size).toBe('18');
+    expect(pulse.parentElement).toBe(heading().parentElement);
+    expect(pulse.compareDocumentPosition(heading())).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    // Only the pulse: the Back button's chevron is not in the card.
+    expect(within(card()).getAllByTestId('glyph')).toHaveLength(1);
+  });
+
+  it('sets the title in Barlow Condensed bold, 18, caps and ink, with the copy left as written', () => {
+    renderSettings();
+    const style = getComputedStyle(heading());
+    expect(style.fontFamily).toContain('BarlowCondensed_700Bold');
+    expect(style.fontSize).toBe('18px');
+    expect(style.textTransform).toBe('uppercase');
+    expect(style.color).toBe(painted(PAINT.inkText, 'color'));
+    expect(heading().textContent).toBe('Diagnostics'); // upper-cased by style, not by new copy
+  });
+
+  it('upper-cases the other languages by style too', () => {
+    renderSettings({ deviceLanguages: ['es'] });
+    const title = within(card()).getByText('Diagnóstico');
+    expect(title.textContent).toBe('Diagnóstico');
+    expect(getComputedStyle(title).textTransform).toBe('uppercase');
+  });
+
+  // The header is the pulse, the title and the Share button on one line. The title takes the line (the button is
+  // pushed to the right) and keeps its width; the button is the cell that gives when the half is narrow.
+  it('lets the Share button give way before the title does', () => {
+    renderSettings();
+    const header = heading().parentElement as HTMLElement;
+    expect(getComputedStyle(header).flexDirection).toBe('row');
+    expect(getComputedStyle(heading()).flexGrow).toBe('1');
+    expect(getComputedStyle(heading()).flexShrink).toBe('0');
+    const cell = shareButton().parentElement as HTMLElement;
+    expect(getComputedStyle(cell).flexShrink).toBe('1');
+  });
+});
+
+describe('the Diagnostics values are fixed-width, right-aligned (the board’s)', () => {
+  it('sets every value in Geist Mono with tabular figures, flush right', () => {
+    const view = renderSettings();
+    act(() => view.engine.scene('live'));
+    expect(diagRows()).toHaveLength(9);
+    for (const row of diagRows()) {
+      const value = getComputedStyle(row.children[2] as Element);
+      expect(value.fontFamily).toContain(font.numeric);
+      expect(value.fontVariant).toBe('tabular-nums');
+      expect(value.textAlign).toBe('right');
+    }
+  });
+
+  it('leaves the item labels in Geist, with no tabular figures', () => {
+    const view = renderSettings();
+    act(() => view.engine.scene('live'));
+    for (const row of diagRows()) {
+      const item = getComputedStyle(row.children[1] as Element);
+      expect(item.fontFamily).toContain(font.bodyMedium);
+      expect(item.fontVariant).not.toBe('tabular-nums');
+    }
   });
 });
 
