@@ -44,7 +44,19 @@ describe("Settings' Diagnostics rows (Q1, spec §6)", () => {
     expect(rows.map((row) => row.section)).toEqual(
       Q1_ROWS.map(([, section]) => (section === null ? null : en[section])),
     );
-    expect(rows.some((row) => row.key.startsWith('diag.engine'))).toBe(false);
+  });
+
+  // m-1: the Engine section's three real keys (diagnostics.ts engineRows), named and not guessed at.
+  it("leaves the Engine section's three rows out", () => {
+    const sections = sectionsFor('live');
+    const offered = sections.flatMap((section) => section.rows.map((row) => row.key));
+    const shown = settingsDiagRows(sections).map((row) => row.key);
+    const ENGINE = ['diag.lastReport', 'diag.recordRefused', 'diag.recordDropped'] as const;
+    for (const key of ENGINE) {
+      // The positive pair: the sections did offer it, so its absence is the selection's doing.
+      expect({ key, offered: offered.includes(key) }).toEqual({ key, offered: true });
+      expect({ key, shown: shown.includes(key) }).toEqual({ key, shown: false });
+    }
   });
 
   // The labels and values come from the dictionary and the live table in diagnostics.test.ts.

@@ -177,7 +177,7 @@
   "diag.section.heartbeat": "Hartslag",
   "diag.section.engine": "Engine",
   "diag.transport": "Transport",
-  "diag.srtNotOffered": "SRT niet aangeboden",
+  "diag.srtNotOffered": "alleen {transport}",
   "diag.bitrate": "Bitrate",
   "diag.target": "Doel",
   "diag.fps": "Video",

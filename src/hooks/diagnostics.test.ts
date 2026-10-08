@@ -277,7 +277,7 @@ describe('diagnosticsSections (spec §4)', () => {
 
 describe('A18: SRT not offered (Diagnostics)', () => {
   /** A broadcast the fake held, on RTMPS, with SRT offered or not. */
-  function linkRows(srtOffered: boolean | null) {
+  function linkRows(srtOffered: boolean | null, lang: Lang = 'en') {
     const engine = createFakeCaptureEngine(() => NOW);
     engine.send(PAIR);
     engine.send({ kind: 'start' });
@@ -289,15 +289,24 @@ describe('A18: SRT not offered (Diagnostics)', () => {
       state: { kind: 'publishing' as const, transport: 'rtmps' as const, sinceEpochMs: NOW },
       broadcast: srtOffered === null ? null : { ...live.broadcast, srtOffered },
     };
-    return diagnosticsSections(rtmpsOnly, NOW, createTranslator('en'))[0];
+    return diagnosticsSections(rtmpsOnly, NOW, createTranslator(lang))[0];
   }
 
-  it('A18 a broadcast with no SRT offered says so beside its transport', () => {
+  // I-2: short enough for the Settings card's value track in every language (settingsFit.test.ts measures it).
+  it('A18 a broadcast with no SRT offered says RTMPS only', () => {
     expect(linkRows(false)?.rows[0]).toEqual({
       key: 'diag.transport',
       label: en['diag.transport'],
-      value: 'RTMPS · SRT not offered',
+      value: 'RTMPS only',
     });
+  });
+
+  it.each([
+    ['es', 'RTMPS solo'],
+    ['fr', 'RTMPS seul'],
+    ['nl', 'alleen RTMPS'],
+  ] as const)('A18 says it in %s as "%s"', (lang, value) => {
+    expect(linkRows(false, lang)?.rows[0]?.value).toBe(value);
   });
 
   it('a fallback to RTMPS with SRT offered shows RTMPS alone', () => {

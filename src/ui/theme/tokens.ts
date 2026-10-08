@@ -157,10 +157,15 @@ export const layout = {
   settingsPadV: 12,
   /** Board "Settings": the Diagnostics card's section column (the section name sits in it). */
   diagSection: 84,
-  /** Board "Settings": a Diagnostics row's least height. */
-  diagRow: 24,
-  /** Board "Settings": the Diagnostics card's padding, and the gutter between its columns. */
+  /**
+   * A Diagnostics row's least height: the board's 24, cut to 22 so the card fits a 640 x 360 half (spec §6;
+   * settingsFit.test.ts). The tallest line in it is the value's 20.
+   */
+  diagRow: 22,
+  /** Board "Settings": the Diagnostics card's side padding, and the gutter between its columns. */
   diagPad: 12,
+  /** Board "Settings, landscape": the card's vertical padding (10; the portrait board's 12 is 4 dp taller). */
+  diagPadV: 10,
   /** Board "Settings": the gap between the card's header row and its rows. */
   diagGap: 6,
 } as const;

@@ -66,7 +66,7 @@ const DiagRowView = memo(function DiagRowView({
       <Text variant="metricUnit" style={styles.label}>
         {label}
       </Text>
-      <Text variant="metricValue" style={styles.value}>
+      <Text variant="metricValue" style={styles.value} numberOfLines={1} ellipsizeMode="tail">
         {value}
       </Text>
     </View>
@@ -76,7 +76,8 @@ const DiagRowView = memo(function DiagRowView({
 const styles = StyleSheet.create({
   card: {
     gap: layout.diagGap,
-    padding: layout.diagPad,
+    paddingHorizontal: layout.diagPad,
+    paddingVertical: layout.diagPadV,
     backgroundColor: colour.surface,
     borderRadius: radius.card,
     overflow: 'hidden',
@@ -94,7 +95,9 @@ const styles = StyleSheet.create({
   firstRow: { borderTopWidth: 0 },
   section: { width: layout.diagSection, paddingRight: layout.diagPad },
   label: { flex: 1, paddingRight: layout.diagPad },
-  value: { fontVariant: ['tabular-nums'], textAlign: 'right' },
+  // One line, shrinkable: the shipped copy always fits (settingsFit.test.ts); a value that ever did not
+  // is cut at its tail and never wraps the row taller than the card's budget.
+  value: { flexShrink: 1, fontVariant: ['tabular-nums'], textAlign: 'right' },
 });
 
 const plainRow = styles.row;

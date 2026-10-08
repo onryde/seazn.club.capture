@@ -176,7 +176,7 @@
   "diag.section.heartbeat": "Heartbeat",
   "diag.section.engine": "Engine",
   "diag.transport": "Transport",
-  "diag.srtNotOffered": "SRT not offered",
+  "diag.srtNotOffered": "{transport} only",
   "diag.bitrate": "Bitrate",
   "diag.target": "Target",
   "diag.fps": "Video",

@@ -1,6 +1,7 @@
 import { act, cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { Dimensions } from 'react-native';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import type { EngineSnapshot } from '@/engine/CaptureEnginePort';
 import type { NativeCaptureEngine } from '@/engine/nativeCaptureEngine';
 import en from '@/i18n/en.json';
 import type { KeyValueStore } from '@/services/KeyValueStore';
@@ -10,7 +11,7 @@ import { SETTINGS_KEY } from '@/services/streamSettingsStore';
 import { SettingsScreen } from '@/ui/screens/SettingsScreen';
 import { font } from '@/ui/theme/tokens';
 import { describeBackFromSubScreen } from '../../../test/backFromSubScreen';
-import { readRecord } from '../../../test/fakePorts';
+import { readRecord, type TestEngine } from '../../../test/fakePorts';
 import { savedStreamCode } from '../../../test/fixtures/savedStream';
 import { FIXTURE_SECRETS } from '../../../test/fixtures/wire';
 import { pairCode } from '../../../test/pairCode';
@@ -41,6 +42,27 @@ function SyncedSettings() {
 const shareButton = () => screen.getByRole('button', { name: 'Share record' });
 const faceOf = (text: string) => getComputedStyle(screen.getByText(text)).fontFamily;
 const diagRows = () => screen.getAllByTestId('diag-row');
+
+/**
+ * The engine reporting a broadcast that offered no SRT (A18). The fake has no switch for it, so its
+ * snapshot is wrapped, once per real snapshot (a new object each call would loop useSyncExternalStore).
+ */
+function reportSrtNotOffered(engine: TestEngine): void {
+  const real = engine.getSnapshot.bind(engine);
+  let seen: EngineSnapshot | undefined;
+  let shown: EngineSnapshot | undefined;
+  vi.spyOn(engine, 'getSnapshot').mockImplementation(() => {
+    const snapshot = real();
+    if (snapshot !== seen) {
+      seen = snapshot;
+      shown =
+        snapshot.broadcast === null
+          ? snapshot
+          : { ...snapshot, broadcast: { ...snapshot.broadcast, srtOffered: false } };
+    }
+    return shown ?? snapshot;
+  });
+}
 const cellsOf = (row: Element) => [...row.children].map((cell) => cell.textContent ?? '');
 const layoutOf = () => screen.getByTestId('settings').dataset.layout;
 
@@ -352,19 +374,50 @@ describe('Diagnostics inside Settings (spec §6, Q1)', () => {
     expect(faceOf('Bitrate')).toBe(font.bodyMedium);
   });
 
-  // D32: Diagnostics shows ticking values and is not the HUD; the 1 Hz report is its clock.
-  it('ticks: a changed bitrate shows in the Bitrate row after the next 1 Hz report', () => {
-    vi.useFakeTimers();
-    try {
-      const view = renderSettings();
-      act(() => view.engine.scene('live'));
-      expect(cellsOf(rowOf('Bitrate'))[2]).toBe('2840 kbps');
-      act(() => view.engine.patch({ bitrateKbps: 2950 }));
-      act(() => vi.advanceTimersByTime(1000));
-      expect(cellsOf(rowOf('Bitrate'))[2]).toBe('2950 kbps');
-      expect(screen.queryByText('2840 kbps')).toBeNull();
-    } finally {
-      vi.useRealTimers();
+  // D32: Diagnostics shows ticking values and is not the HUD: the engine's report is its clock. The 1 Hz
+  // cadence itself is the engine's (the fake publishes each second); here a report is a `patch`.
+  it('shows a changed bitrate in the Bitrate row as the engine reports it (D32)', () => {
+    const view = renderSettings();
+    act(() => view.engine.scene('live'));
+    expect(cellsOf(rowOf('Bitrate'))[2]).toBe('2840 kbps');
+    act(() => view.engine.patch({ bitrateKbps: 2950 }));
+    expect(cellsOf(rowOf('Bitrate'))[2]).toBe('2950 kbps');
+    expect(screen.queryByText('2840 kbps')).toBeNull();
+  });
+
+  // I-2: the longest Transport value is RTMPS-only (A18). The fake engine has no switch for it, so its
+  // snapshot is wrapped; the card's row is then read as the operator would.
+  it('says RTMPS only on the Transport row when the broadcast offered no SRT (A18)', () => {
+    const view = renderSettings();
+    act(() => view.engine.scene('fell-back'));
+    expect(cellsOf(rowOf('Transport'))[2]).toBe('RTMPS'); // the positive pair: offered, it is RTMPS alone
+    reportSrtNotOffered(view.engine);
+    act(() => view.engine.patch({}));
+    expect(cellsOf(rowOf('Transport'))[2]).toBe('RTMPS only');
+  });
+
+  it('says it in Dutch: alleen RTMPS', () => {
+    const view = renderSettings({ deviceLanguages: ['nl'] });
+    act(() => view.engine.scene('fell-back'));
+    reportSrtNotOffered(view.engine);
+    act(() => view.engine.patch({}));
+    expect(cellsOf(rowOf('Transport'))[2]).toBe('alleen RTMPS');
+  });
+
+  // The backstop: a value that still ran long is one line with an ellipsis, never a second line that
+  // would push the card past its half (settingsFit.test.ts proves the shipped copy never needs it).
+  it('keeps every value to one line, ellipsised at the tail', () => {
+    const view = renderSettings();
+    act(() => view.engine.scene('live'));
+    const values = diagRows().map((row) => row.children[2] as Element);
+    expect(values).toHaveLength(9);
+    for (const value of values) {
+      const style = getComputedStyle(value);
+      expect({ text: value.textContent, whiteSpace: style.whiteSpace }).toEqual({
+        text: value.textContent,
+        whiteSpace: 'nowrap',
+      });
+      expect(style.textOverflow).toBe('ellipsis');
     }
   });
 
@@ -581,6 +634,36 @@ describe('where Diagnostics sits (spec §6)', () => {
     expect(halves.contains(screen.getByRole('button', { name: 'Back to camera' }))).toBe(false);
   });
 
+  // settingsFit.test.ts adds the card up from the board's numbers (10 above and below, rows of 22): this is
+  // the rendered witness that DiagnosticsCard wears them, which a token-sum test cannot see.
+  it('the card wears the board’s sizes: 10 above and below, 12 at the sides, rows of 22', () => {
+    setWindowSize(640, 360);
+    renderSettings();
+    const card = getComputedStyle(screen.getByTestId('diagnostics-card'));
+    expect([card.paddingTop, card.paddingBottom, card.paddingLeft, card.paddingRight]).toEqual([
+      '10px',
+      '10px',
+      '12px',
+      '12px',
+    ]);
+    expect(diagRows()).toHaveLength(9);
+    for (const row of diagRows()) expect(getComputedStyle(row).minHeight).toBe('22px');
+  });
+
+  // settingsFit.test.ts adds Back and Share record as 48 each (GhostButton's minHeight): this is the
+  // rendered witness that the literal there is the button's.
+  it('in landscape, Back and Share record are 48 dp tall, the heights the fit test adds', () => {
+    setWindowSize(640, 360);
+    renderSettings();
+    for (const name of ['Back to camera', 'Share record']) {
+      const button = screen.getByRole('button', { name });
+      expect({ name, minHeight: getComputedStyle(button).minHeight }).toEqual({
+        name,
+        minHeight: '48px',
+      });
+    }
+  });
+
   it('in landscape, the settings half scrolls and the Diagnostics card does not', () => {
     setWindowSize(640, 360);
     renderSettings();
@@ -605,6 +688,32 @@ describe('where Diagnostics sits (spec §6)', () => {
     expect(screen.getByTestId('settings-halves').children[0]?.contains(said)).toBe(true);
     fireEvent.click(screen.getByRole('button', { name: 'Back to camera' }));
     expect(view.navigation.current()).toBe('stream');
+  });
+
+  // m-3 (spec §7: Settings follows the phone): a rotation swaps the tree, so what the operator chose has
+  // to live in the store and not in the tree. The switch, the radio and the saved file all survive, both ways.
+  it('keeps the switches and the side across a rotation, both ways', async () => {
+    setWindowSize(390, 844);
+    const view = renderSettings();
+    expect(layoutOf()).toBe('portrait');
+    fireEvent.click(overlaySwitch());
+    fireEvent.click(screen.getByRole('radio', { name: 'Left' }));
+    const saved = '{"v":2,"overlay":false,"side":"left","automatic":true}';
+    await waitFor(() => expect(view.kv.entries.get(SETTINGS_KEY)).toBe(saved));
+    for (const [width, height, layout] of [
+      [844, 390, 'landscape'],
+      [390, 844, 'portrait'],
+    ] as const) {
+      setWindowSize(width, height);
+      expect(layoutOf()).toBe(layout); // the positive pair: it did rotate
+      expect(overlaySwitch().getAttribute('aria-checked')).toBe('false');
+      expect(automaticSwitch().getAttribute('aria-checked')).toBe('true');
+      expect(screen.getByRole('radio', { name: 'Left' }).getAttribute('aria-checked')).toBe('true');
+      expect(screen.getByRole('radio', { name: 'Right' }).getAttribute('aria-checked')).toBe(
+        'false',
+      );
+      expect(view.kv.entries.get(SETTINGS_KEY)).toBe(saved);
+    }
   });
 
   // Order-dependent on purpose: it follows the landscape tests above, so the file's afterEach is

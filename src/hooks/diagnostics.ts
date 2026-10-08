@@ -71,9 +71,12 @@ function linkRows(snapshot: EngineSnapshot, say: Say): Pair[] {
   const { t, num } = say;
   const { state, telemetry: tel } = snapshot;
   const named = 'transport' in state ? state.transport.toUpperCase() : t('diag.none');
-  // A18: a broadcast planned RTMPS-only says so beside its transport; a fallback does not.
+  // A18: a broadcast planned RTMPS-only says so in its transport ("RTMPS only"); a fallback does not.
+  // Short on purpose: the Settings card's value track holds 11 to 12 mono characters (settingsFit.test.ts).
   const transport =
-    snapshot.broadcast?.srtOffered === false ? `${named} · ${t('diag.srtNotOffered')}` : named;
+    snapshot.broadcast?.srtOffered === false
+      ? t('diag.srtNotOffered', { transport: named })
+      : named;
   const { srt } = tel;
   return [
     ['diag.transport', transport],
