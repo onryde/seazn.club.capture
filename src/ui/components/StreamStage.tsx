@@ -2,6 +2,7 @@ import { memo, useCallback, useMemo, useState } from 'react';
 import { StyleSheet, View, type LayoutChangeEvent } from 'react-native';
 import { selectCharging, selectKeepOpen, topAdvisory } from '@/hooks/advisory';
 import { selectPlaybackUrl } from '@/hooks/engineSelectors';
+import type { LineTier } from '@/hooks/statusKey';
 import { useEngineSelector } from '@/hooks/useCaptureEngine';
 import type { Peek } from '@/hooks/usePeek';
 import { usePorts } from '@/hooks/usePorts';
@@ -19,6 +20,8 @@ import { colour, layout } from '@/ui/theme/tokens';
 type StageProps = {
   /** The status line the strip says under the shot (the column's, once; `StreamScreen` makes it). */
   readonly line: string;
+  /** Which tier that line is (`LINE_TIER`): an urgent line always wins the strip's one message line. */
+  readonly lineTier: LineTier;
   /** Framing a shot, before any broadcast. */
   readonly paired: boolean;
   readonly overlayOn: boolean;
@@ -99,7 +102,12 @@ export const StreamStage = memo(function StreamStage(props: StageProps) {
         onFailed={overlay.onFailed}
         peek={props.peek}
       />
-      <StatusStrip line={props.line} advisory={advisory} onLabelHeight={setLabelHeight} />
+      <StatusStrip
+        line={props.line}
+        lineTier={props.lineTier}
+        advisory={advisory}
+        onLabelHeight={setLabelHeight}
+      />
       {/* Last, so it paints over the box and the strip (Q-C2). */}
       <ScoringLinkPanel
         view={props.scoring}

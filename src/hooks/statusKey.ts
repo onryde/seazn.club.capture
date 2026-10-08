@@ -195,8 +195,67 @@ const CALM_ON_AIR: ReadonlySet<StatusKey> = new Set<StatusKey>([
   'stream.status.live',
 ]);
 
+/** Every sentence the strip's one message line can say as its status: a status key, or Back's refusal. */
+export type LineKey = StatusKey | 'stream.leaveOnAir';
+
+/**
+ * Which line wins the strip's ONE message line (owner ruling, 2026-10-08, two tiers). `urgent` always wins: any status
+ * that needs action or reports a failure (a refusal, a start that cannot go ahead, trouble and degraded reasons, a
+ * silent engine, a stopped or ended stream, Back's "hold Stop"). `routine` is plain progress, and gives way to an
+ * advisory caption (Not charging, heat, Keep the app open, Score ahead, a failed preview).
+ *
+ * A table over every key, so a new status key does not compile until somebody chooses (and
+ * `statusTier.test.ts` lists every key by hand from the rule). The routine lines are the calm ones: the camera and the
+ * pairing coming up, waiting for Go live, going live and the live line itself.
+ */
+export type LineTier = 'urgent' | 'routine';
+export const LINE_TIER: Readonly<Record<LineKey, LineTier>> = {
+  'stream.status.starting': 'routine',
+  'stream.status.pairing': 'routine',
+  'stream.status.waitingGoLive': 'routine',
+  'stream.status.waitingDestination': 'urgent',
+  'stream.status.refusedDestination': 'urgent',
+  'stream.status.refusedCredit': 'urgent',
+  'stream.status.refusedEntitlement': 'urgent',
+  'stream.status.refusedUnknown': 'urgent',
+  'stream.status.startFailed': 'urgent',
+  'stream.status.startRetrying': 'urgent',
+  'stream.status.goingLiveOrganiser': 'routine',
+  'stream.status.goingLiveMatch': 'routine',
+  'stream.status.rejoining': 'routine',
+  'stream.status.notReadyCamera': 'urgent',
+  'stream.status.notReadySound': 'urgent',
+  'stream.status.notReadyNetwork': 'urgent',
+  'stream.status.notReadyHeld': 'urgent',
+  'stream.status.connecting': 'routine',
+  'stream.status.live': 'routine',
+  'stream.status.fellBack': 'urgent',
+  'stream.status.weakSignal': 'urgent',
+  'stream.status.notDelivered': 'urgent',
+  'stream.status.cameraTaken': 'urgent',
+  'stream.status.cameraInUse': 'urgent',
+  'stream.status.cameraReopening': 'urgent',
+  'stream.status.micSilenced': 'urgent',
+  'stream.status.holding': 'urgent',
+  'stream.status.holdingStalled': 'urgent',
+  'stream.status.holdingNotDelivered': 'urgent',
+  'stream.status.stoppedOrganiser': 'urgent',
+  'stream.status.stoppedMatch': 'urgent',
+  'stream.status.stoppedHoldWindow': 'urgent',
+  'stream.status.stoppedNoSignal': 'urgent',
+  'stream.status.stoppedMaxDuration': 'urgent',
+  'stream.status.stoppedRefused': 'urgent',
+  'stream.status.stoppedPhoneLost': 'urgent',
+  'stream.status.stoppedBySeazn': 'urgent',
+  'stream.status.stopped': 'urgent',
+  'stream.status.endedOperator': 'urgent',
+  'stream.status.endedFatal': 'urgent',
+  'stream.status.engineSilent': 'urgent',
+  'stream.leaveOnAir': 'urgent',
+};
+
 /** The column's sentence: the status line, or Back's refusal over a calm one. */
-export function columnLineKey(statusKey: StatusKey, leaveRefused: boolean): MessageKey {
+export function columnLineKey(statusKey: StatusKey, leaveRefused: boolean): LineKey {
   return leaveRefused && CALM_ON_AIR.has(statusKey) ? 'stream.leaveOnAir' : statusKey;
 }
 

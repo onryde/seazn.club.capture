@@ -23,9 +23,10 @@ type Setup = {
   /** RTL's StrictMode at the root, so each effect runs twice on mount. */
   readonly strict?: boolean;
   /**
-   * The phone has nothing to warn about (the default): on the charger, and one that survives the background, so the
-   * strip's one message line is the status line a test reads and not Not charging or Keep the app open. `false` is
-   * the fake's own phone (see `quietDevice.ts`).
+   * The phone has nothing to warn about: on the charger, and one that survives the background, so no caption can take
+   * the strip's one message line from a ROUTINE status line (Live, Waiting for Go live). Left out, it is the fake's own
+   * phone (uncharged), which is what a caption test and every URGENT status line, which beats any caption, want
+   * (see `quietDevice.ts`).
    */
   readonly quiet?: boolean;
   /**
@@ -43,7 +44,7 @@ export async function renderViewfinder(
     engine = 'paired',
     prepare,
     strict = false,
-    quiet = true,
+    quiet = false,
     overlay,
   }: Setup = {},
 ): Promise<RenderResult & FakePorts> {

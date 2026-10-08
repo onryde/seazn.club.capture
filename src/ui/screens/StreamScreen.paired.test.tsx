@@ -19,15 +19,17 @@ const events = (view: Awaited<ReturnType<typeof renderViewfinder>>) =>
   readRecord(view.record).map((entry) => entry.event);
 
 /**
- * The paired viewfinder with the score preview OFF in the saved settings. The strip says ONE message (owner,
- * 2026-10-08): the caption when one is up, the status line otherwise, and with the preview on, a paired phone before air
- * always has the Score ahead caption up, which would hide the status line these tests read. The preview-on strip is
- * pinned on its own below ('the strip’s one message before air').
+ * The paired viewfinder on a phone with nothing to warn about and with the score preview OFF. The strip says ONE message
+ * (owner, 2026-10-08, two tiers): an URGENT status line (a refusal, a destination to pick, a camera in use, a retry)
+ * always wins it, but a caption beats a ROUTINE line, and the fake phone is uncharged and, before air with the preview
+ * on, Score ahead is up on every paired phone. So a test that reads a routine line (Waiting for Go live, Going live,
+ * Opening the link) renders here; a test that reads an urgent one renders plainly. The preview-on strip is pinned on its
+ * own in StreamScreen.layout.test.tsx.
  */
 const renderPaired = (
   options: Parameters<typeof renderViewfinder>[0] = {},
   setup: Parameters<typeof renderViewfinder>[1] = {},
-) => renderViewfinder(options, { overlay: false, ...setup });
+) => renderViewfinder(options, { overlay: false, quiet: true, ...setup });
 
 const OVERLAY_FAILED = 'Score preview failed — the broadcast is not affected';
 const SCORE_AHEAD = 'You see the score slightly ahead of viewers';
@@ -131,7 +133,7 @@ describe('the paired viewfinder (spec §1)', () => {
   });
 
   it('waits for a destination while the organiser has picked none', async () => {
-    const view = await renderPaired();
+    const view = await renderViewfinder();
     act(() => view.engine.setPairing({ destinationName: null }));
     expect(screen.getByText(en['stream.status.waitingDestination'])).toBeTruthy();
   });
@@ -166,7 +168,7 @@ describe('the paired viewfinder (spec §1)', () => {
   });
 
   it('says a refused start, then how the last broadcast ended', async () => {
-    const view = await renderPaired();
+    const view = await renderViewfinder();
     act(() => view.engine.scene('paired-refused'));
     expect(screen.getByText(en['stream.status.refusedCredit'])).toBeTruthy();
     act(() => view.engine.scene('paired-after-organiser-stop'));
@@ -190,7 +192,7 @@ describe('the paired viewfinder (spec §1)', () => {
   });
 
   it('says it is retrying a start it cannot fetch, with Stop offered', async () => {
-    const view = await renderPaired();
+    const view = await renderViewfinder();
     act(() => view.engine.scene('arming-retrying'));
     expect(screen.getByText(en['stream.status.startRetrying'])).toBeTruthy();
     expect(stop()).toBeTruthy();
@@ -224,7 +226,7 @@ describe('the paired viewfinder (spec §1)', () => {
   // The camera ruling and M2: another app's take before air is named, with no
   // slate claim, and nothing beside it reads ready.
   it('reads not ready with the camera in use by another app before air', async () => {
-    const view = await renderPaired();
+    const view = await renderViewfinder();
     expect(plate()).toBe('Ready');
     act(() => view.engine.setCamera('taken'));
     expect(plate()).toBe('Not ready');

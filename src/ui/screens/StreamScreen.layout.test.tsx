@@ -223,11 +223,13 @@ describe('the status strip (spec §1)', () => {
     expect(follows(byId('camera-box'), strip)).toBe(true);
   });
 
-  // Owner, 2026-10-08, "one single line all the time": under the label the strip has ONE message line, the advisory
-  // caption when one is up and the status line otherwise, never both. These phones are quiet (on the charger, surviving
-  // the background; test/quietDevice.ts), so the only caption a paired phone before air can have is Score ahead.
+  // Owner, 2026-10-08, "one single line all the time": under the label the strip has ONE message line, never both. Two
+  // tiers decide which: an URGENT status line (a refusal, trouble, a stopped stream, Back's "hold Stop") always wins; an
+  // advisory caption beats a ROUTINE one (Live, Waiting for Go live). The phones that read a routine line here are quiet
+  // (on the charger, surviving the background; test/quietDevice.ts), so the only caption a paired phone before air can
+  // have is Score ahead, and the preview setting decides whether it is up.
   it('carries the match label, then ONE message: the status line when no caption is up', async () => {
-    await renderViewfinder({}, { overlay: false });
+    await renderViewfinder({}, { overlay: false, quiet: true });
     const strip = byId('status-strip');
     const label = within(strip).getByTestId('match-label');
     const message = within(strip).getByTestId('strip-message');
@@ -241,8 +243,8 @@ describe('the status strip (spec §1)', () => {
     expect(within(strip).getAllByTestId('strip-message')).toHaveLength(1);
   });
 
-  it('puts the caption over the status line before air with the overlay on: the note is the one message', async () => {
-    await renderViewfinder();
+  it('puts the caption over a routine status line before air with the overlay on: the note is the one message', async () => {
+    await renderViewfinder({}, { quiet: true });
     const strip = byId('status-strip');
     const message = within(strip).getByTestId('strip-message');
     expect(follows(within(strip).getByTestId('match-label'), message)).toBe(true);
@@ -253,7 +255,7 @@ describe('the status strip (spec §1)', () => {
   });
 
   it('says the score-ahead note before air only: on air the note is gone and the live line is the one message', async () => {
-    const view = await renderViewfinder();
+    const view = await renderViewfinder({}, { quiet: true });
     expect(within(byId('status-strip')).getByText(SCORE_AHEAD)).toBeTruthy();
     act(() => view.engine.scene('live'));
     expect(screen.queryByText(SCORE_AHEAD)).toBeNull();
@@ -261,7 +263,7 @@ describe('the status strip (spec §1)', () => {
   });
 
   it('sets the status line in the body role, ONE line, under the label (F20, owner 2026-10-08)', async () => {
-    await renderViewfinder({}, { overlay: false });
+    await renderViewfinder({}, { overlay: false, quiet: true });
     const line = within(byId('status-strip')).getByText(WAITING);
     expect(getComputedStyle(line).fontSize).toBe(`${typeScale.body.fontSize}px`);
     expect(linesAllowed(line)).toBe(layout.messageLines);
@@ -274,7 +276,7 @@ describe('the status strip (spec §1)', () => {
   it.each(ADVISORIES)(
     'carries the %s advisory in the strip, as the ONE message: not over the shot, not in the controls',
     async (_name, text, bringUp) => {
-      const view = await renderViewfinder({}, { quiet: false });
+      const view = await renderViewfinder();
       act(() => bringUp(view));
       const strip = byId('status-strip');
       const caption = within(strip).getByText(text);
@@ -331,11 +333,16 @@ describe('the round line above the match label (spec §2, R-F5)', () => {
       strip = 180,
       label = 44,
       overlay,
-    }: { strip?: number; label?: number; overlay?: boolean } = {},
+      quiet,
+    }: { strip?: number; label?: number; overlay?: boolean; quiet?: boolean } = {},
   ) {
     const view = await renderViewfinder(
       {},
-      { overlay, prepare: (fakes) => fakes.engine.setPairing({ label: 'A v B', stageLabel }) },
+      {
+        overlay,
+        quiet,
+        prepare: (fakes) => fakes.engine.setPairing({ label: 'A v B', stageLabel }),
+      },
     );
     layOut(byId('status-strip'), { width: 320, height: strip });
     layOut(byId('match-label'), { width: 300, height: label });
@@ -350,7 +357,7 @@ describe('the round line above the match label (spec §2, R-F5)', () => {
   });
 
   it('is the strip’s first row: the round line, then the match label, then the one message line', async () => {
-    await withStage('QF', { overlay: false });
+    await withStage('QF', { overlay: false, quiet: true });
     const round = within(byId('status-strip')).getByTestId('stage-line');
     const label = within(byId('status-strip')).getByTestId('match-label');
     const status = within(byId('status-strip')).getByTestId('strip-message');
@@ -410,12 +417,17 @@ describe('the round line above the match label (spec §2, R-F5)', () => {
 
   /**
    * One window, one label height, a caption up or not: the strip the box leaves and whether the round line shows.
-   * A caption up is the viewfinder as it opens (the phone is quiet, so the caption is Score ahead); no caption is
-   * on air. Each is checked to be what it says (anti-vacuity: a "no caption" run that had one proves nothing).
+   * A caption up is the viewfinder as it opens (the fake phone is uncharged, so the caption is Not charging); no
+   * caption is on air with the phone charging. Each is checked to be what it says (anti-vacuity: a "no caption" run that had one proves nothing).
    */
   async function roundLineIn(width: number, height: number, label: number, captionUp: boolean) {
     const view = await withStage('QF', { strip: 0, label: 0 });
-    if (!captionUp) act(() => view.engine.scene('live'));
+    if (!captionUp) {
+      act(() => {
+        view.engine.scene('live');
+        view.engine.patch({ charging: true });
+      });
+    }
     layOut(byId('camera-half'), { width: cameraHalf(width), height });
     layOut(byId('match-label'), { width: cameraHalf(width) - 32, height: label });
     const strip = height - parseFloat(getComputedStyle(byId('camera-box')).height);
@@ -657,8 +669,8 @@ describe('organiser-stopped stays on the viewfinder (spec §1)', () => {
   afterEach(() => vi.useRealTimers());
 
   it('renders both halves, the box, the strip with its line, and Go live again', async () => {
-    // The score preview is off: with it on, a paired phone before air says Score ahead in the strip's one line.
-    const view = await renderViewfinder({}, { overlay: false });
+    // "Organiser stopped it" is an urgent line: it keeps the strip's one line from Score ahead and Not charging.
+    const view = await renderViewfinder();
     act(() => view.engine.scene('paired-after-organiser-stop'));
     expect(
       [...byId('viewfinder').children].map((half) => half.getAttribute('data-testid')),
@@ -679,8 +691,9 @@ describe('the halves are one screen through a sequence (spec §1, §4)', () => {
   const line = () => within(byId('status-strip'));
 
   it('follows paired, live, a call starting and the call ending, and never remounts the camera box', async () => {
-    // The score preview is off: with it on, a paired phone before air says Score ahead in the strip's one line.
-    const view = await renderViewfinder({}, { overlay: false });
+    // The routine lines (waiting, live) are the ones read here, so the phone is quiet and the preview off; the call
+    // (mic silenced) is urgent either way.
+    const view = await renderViewfinder({}, { overlay: false, quiet: true });
     const box = byId('camera-box');
     const half = byId('camera-half');
     const controls = byId('controls-half');
@@ -873,7 +886,7 @@ describe('the picture is sized from this match’s label (owner, 2026-10-08, opt
     width: number,
     height: number,
     label: number | null,
-    { text = MATCH, quiet = true }: { text?: string; quiet?: boolean } = {},
+    { text = MATCH, quiet = false }: { text?: string; quiet?: boolean } = {},
   ) {
     const view = await renderViewfinder(
       {},
@@ -973,8 +986,8 @@ describe('the picture is sized from this match’s label (owner, 2026-10-08, opt
   it.each(SEQUENCES)(
     'keeps the same picture for the whole match, and changes it only with the label (%i × %i)',
     async (width, height, firstBox, roundLineUp, longBox) => {
-      // quiet: false, so the test drives the charger and the background itself.
-      const view = await open(width, height, 44, { quiet: false });
+      // The fake phone as it is, so the test drives the charger and the background itself.
+      const view = await open(width, height, 44);
       const first = boxSize();
       expect(first.width).toBeCloseTo(firstBox.width, 2);
       expect(first.height).toBeCloseTo(firstBox.height, 2);
@@ -1094,7 +1107,7 @@ describe('the picture is sized from this match’s label (owner, 2026-10-08, opt
   it.each(ADVISORIES)(
     'the %s caption takes the message line and moves neither the picture nor the round line (640 × 360)',
     async (_name, text, bringUp) => {
-      const view = await open(640, 360, 44, { quiet: false });
+      const view = await open(640, 360, 44);
       // The calm baseline: on air, the phone charging, no caption of any kind.
       act(() => {
         view.engine.scene('live');

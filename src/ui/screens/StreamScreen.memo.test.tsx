@@ -142,7 +142,9 @@ describe('the viewfinder re-renders only what changed', () => {
   });
 
   it('counts at all: a change they show re-renders them', async () => {
-    const view = await renderViewfinder();
+    // A quiet phone: an uncharged one says Not charging in the strip's one line, and the status line (counted here as
+    // `column`) is then not drawn at all.
+    const view = await renderViewfinder({}, { quiet: true });
     resetRenders();
     act(() => view.engine.scene('live'));
     expect(renders.stage).toBeGreaterThan(0);

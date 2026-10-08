@@ -100,7 +100,7 @@ type Launch = {
   /** Runs before the first render: an engine native already holds, say. */
   readonly prepare?: (fakes: FakePorts) => void;
   readonly extra?: ReactNode;
-  /** The phone has nothing to warn about (the default): see `quietDevice.ts`. `false` is the fake's own phone. */
+  /** The phone has nothing to warn about, so no caption takes the strip's line from a routine status: see `quietDevice.ts`. */
   readonly quiet?: boolean;
   /** Wraps the whole app, as the root layout's error boundary does. */
   readonly around?: (app: ReactNode, fakes: FakePorts) => ReactNode;
@@ -112,7 +112,7 @@ type Launch = {
  * adapter over `nav`; read the screen from `nav`, never `fakes.navigation`.
  */
 export async function launchApp(launch: Launch = {}): Promise<LaunchedApp> {
-  const { kvSeed, prepare, extra, around, quiet = true } = launch;
+  const { kvSeed, prepare, extra, around, quiet = false } = launch;
   const nav = routerDouble();
   const fakes = createFakePorts({ navigation: createExpoRouterNavigation(nav), kvSeed });
   if (quiet) quietDevice(fakes.engine);

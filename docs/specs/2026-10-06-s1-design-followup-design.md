@@ -54,9 +54,11 @@ Three pull requests, in order. Each is reviewed and merged on its own.
   915 × 412, 467 × 263; at 640 × 360 the half limits the picture for a label of up to two lines (330 × 185.6).
   **Superseded in its numbers by the next line (one message line).**
 - **Amended a third time (owner, 2026-10-08, "one single line all the time"): ONE message line.** Under the label the
-  strip has exactly one line (`numberOfLines` 1, `layout.messageLines`): the advisory caption when one is up (it
-  outranks the status line), otherwise the status line, and a string wider than the strip's text is cut with an
-  ellipsis. The strip's reserve is the padding, the label as measured, a gap and one body line: 44 dp and the label
+  strip has exactly one line (`numberOfLines` 1, `layout.messageLines`), and a string wider than the strip's text is
+  cut with an ellipsis. Which says it is decided in **two tiers** (owner, 2026-10-08, `LINE_TIER`): a status line that
+  needs action or reports a failure (a refusal, trouble and its reasons, the engine not responding, a stopped or ended
+  stream, Back's "hold Stop") is urgent and always wins; an advisory caption outranks only a routine status line (Live,
+  Waiting for Go live, Starts hh:mm, going live). The strip's reserve is the padding, the label as measured, a gap and one body line: 44 dp and the label
   (`stripReserve`), 120 dp at the worst case. The owner's phone is 804 × 332 (360 less the Android status bar): a
   one-line label gives 472.9 × 266, a two-line label 433.8 × 244 (432 × 243 as laid out, the label measuring 45), four
   long lines 376.9 × 212. On 804 × 360 they are 494 × 277.9 (the half limits it), 483.6 × 272 and 426.7 × 240; on

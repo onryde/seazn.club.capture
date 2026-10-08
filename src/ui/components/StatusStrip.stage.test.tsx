@@ -31,7 +31,12 @@ function stripWith(
 ) {
   standIn.report = undefined;
   const view = renderWithPorts(
-    <StatusStrip line="Ready" advisory={advisory} onLabelHeight={onLabelHeight} />,
+    <StatusStrip
+      line="Ready"
+      lineTier="routine"
+      advisory={advisory}
+      onLabelHeight={onLabelHeight}
+    />,
   );
   act(() => {
     view.engine.setPairing({ label, stageLabel });
@@ -72,9 +77,9 @@ describe('the status strip shows the round line only when it fits (R-F5)', () =>
     strip(120);
     label(44);
     expect(line()?.textContent).toBe('QF');
-    view.rerender(<StatusStrip line="Ready" advisory={null} />);
+    view.rerender(<StatusStrip line="Ready" lineTier="routine" advisory={null} />);
     expect(line()?.textContent).toBe('QF');
-    view.rerender(<StatusStrip line="Ready" advisory="keepOpen" />);
+    view.rerender(<StatusStrip line="Ready" lineTier="routine" advisory="keepOpen" />);
     expect(line()?.textContent).toBe('QF');
   });
 
@@ -83,7 +88,7 @@ describe('the status strip shows the round line only when it fits (R-F5)', () =>
     strip(120);
     label(57);
     expect(line()).toBeNull();
-    view.rerender(<StatusStrip line="Ready" advisory={null} />);
+    view.rerender(<StatusStrip line="Ready" lineTier="routine" advisory={null} />);
     expect(line()).toBeNull();
     // The positive pair: the same label with the strip 3 dp taller, which is exactly what it needs.
     strip(123);
@@ -106,7 +111,12 @@ describe('the status strip shows the round line only when it fits (R-F5)', () =>
     // The strip's own layout and the round line are not the label's height: nothing more is said.
     strip(180);
     view.rerender(
-      <StatusStrip line="Ready" advisory={null} onLabelHeight={(h) => heights.push(h)} />,
+      <StatusStrip
+        line="Ready"
+        lineTier="routine"
+        advisory={null}
+        onLabelHeight={(h) => heights.push(h)}
+      />,
     );
     expect(heights).toEqual([44, 76]);
   });

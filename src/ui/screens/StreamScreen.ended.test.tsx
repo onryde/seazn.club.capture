@@ -15,7 +15,6 @@ import {
 } from '../../../test/endedFlow';
 import { createFakePorts } from '../../../test/fakePorts';
 import { savedStreamCode } from '../../../test/fixtures/savedStream';
-import { OVERLAY_OFF_SEED } from '../../../test/overlayOff';
 import { pairCode } from '../../../test/pairCode';
 import { renderViewfinder } from '../../../test/renderViewfinder';
 import { wrapperFor } from '../../../test/renderWithPorts';
@@ -235,8 +234,8 @@ describe('a Stop before live (owner decision 1) stays on the viewfinder', () => 
   const GO_LIVE = 'Go live. Press and hold for 3 seconds.';
 
   it('keeps the pairing and the code: back on Ready, Go live offered again, the stream said stopped, no card', async () => {
-    // The score preview is off here: with it on, a paired phone before air says Score ahead in the strip's one line.
-    const app = await launchApp({ kvSeed: OVERLAY_OFF_SEED });
+    // "Stream stopped" is an urgent line: it keeps the strip's one line from Score ahead and Not charging.
+    const app = await launchApp();
     await scanFromHome(app, CODE);
     expect(app.nav.current()).toBe('stream');
     const visits = homeVisits(app);

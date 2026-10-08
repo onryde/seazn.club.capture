@@ -257,10 +257,18 @@ Three rules travel with these tokens:
   match label as measured in the half's width, plus fixed room for the padding,
   a gap and ONE message line (`stripReserve`: 44 dp and the label). Under the
   label the strip has exactly one line, "one single line all the time" (owner,
-  2026-10-08): the advisory caption when one is up, otherwise the status line,
-  never both, cut with an ellipsis if it is wider than the strip's text
-  (`layout.messageLines`; `stripTextFit.test.ts` measures every string in four
-  languages and pins the ones that are cut at 640 × 360). It is one size for
+  2026-10-08), never two, cut with an ellipsis if it is wider than the strip's
+  text (`layout.messageLines`; `stripTextFit.test.ts` measures every string in
+  four languages and pins the ones that are cut at 640 × 360). Which says it is
+  decided in two tiers (`LINE_TIER` in `statusKey.ts`, a table over every
+  status key, owner 2026-10-08): a status line that needs action or reports a
+  failure (a refusal, a start that cannot go ahead, trouble and its reasons,
+  the engine not responding, a stopped or ended stream, Back's "hold Stop") is
+  _urgent_ and always wins; an advisory caption (Not charging, heat, keep the
+  app open, Score ahead, a failed preview) beats only a _routine_ line (Live,
+  Waiting for Go live, going live, opening the link). A new status key does not
+  compile until it is given a tier, and `statusTier.test.ts` lists every key by
+  hand. It is one size for
   the whole match and is sized again only when the label's text changes, the
   label wraps differently (its measured height moves), or the half's width or
   height changes: a status line, a caption or the round line coming and going
@@ -275,8 +283,8 @@ Three rules travel with these tokens:
   camera box but the overlay, the _What viewers see_ video and, on the
   operator's tap, the Remote scoring panel (design follow-up §10): over the
   camera half, for at most 10 s, and it hides itself when the session enters
-  trouble. Advisory text rides the status strip's one message line, over the
-  status line. The
+  trouble. Advisory text rides the status strip's one message line, over a
+  routine status line only (an urgent one keeps the line). The
   icon row also holds Take photo (design follow-up §8); its confirmation is one
   line in the controls half's gap, never over the camera box. The panel covers
   the camera half and never the controls half, so Stop is never covered. It

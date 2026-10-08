@@ -2,6 +2,7 @@ import { memo, useCallback, useState } from 'react';
 import { StyleSheet, View, type LayoutChangeEvent } from 'react-native';
 import { ADVISORY_KEY, type Advisory } from '@/hooks/advisory';
 import { selectStageLine } from '@/hooks/engineSelectors';
+import type { LineTier } from '@/hooks/statusKey';
 import { useEngineSelector } from '@/hooks/useCaptureEngine';
 import { useT } from '@/hooks/useLanguage';
 import { MatchLabel } from '@/ui/components/MatchLabel';
@@ -15,6 +16,11 @@ import { typeScale } from '@/ui/theme/type';
 type StatusStripProps = {
   /** The one true sentence (the status line, or Back's refusal over a calm one). */
   readonly line: string;
+  /**
+   * Which tier that line is (`LINE_TIER`, owner ruling 2026-10-08): an URGENT line (a refusal, trouble, a stopped
+   * stream, Back's "hold Stop") always wins the one message line; a ROUTINE one gives way to a caption.
+   */
+  readonly lineTier: LineTier;
   /** The one caption at a time (`topAdvisory`), or none. */
   readonly advisory: Advisory | null;
   /**
@@ -27,9 +33,9 @@ type StatusStripProps = {
 
 /**
  * Under the camera box (spec §1), top to bottom: the round line when there is one and it fits (spec §2, R-F5), the
- * match label, and ONE message line (owner, 2026-10-08, "one single line all the time"): the advisory caption when one
- * is up, otherwise the status line, never both, always exactly one line (an ellipsis if it is longer than the strip's
- * text). The caption outranks the status line because it is the warning. Solid surface, in the flow below the shot:
+ * match label, and ONE message line (owner, 2026-10-08, "one single line all the time"): never both, always exactly
+ * one line (an ellipsis if it is longer than the strip's text). Two tiers decide which: a status line that needs
+ * action or reports a failure is URGENT and always wins; an advisory caption beats only a ROUTINE status line (`LINE_TIER`). Solid surface, in the flow below the shot:
  * nothing here is drawn over the preview (AGENTS §6, D17).
  * Every reservation is a token, so the fit arithmetic and this read one number. The label is the one thing measured:
  * the camera half sizes the picture from its height (`stripReserve`), and the round line asks whether the strip has
@@ -37,6 +43,7 @@ type StatusStripProps = {
  */
 export const StatusStrip = memo(function StatusStrip({
   line,
+  lineTier,
   advisory,
   onLabelHeight,
 }: StatusStripProps) {
@@ -62,14 +69,14 @@ export const StatusStrip = memo(function StatusStrip({
       <MatchLabel onLayoutHeight={onLabel} />
       {/* One line of body height either way, so the strip is the same height whichever it says. */}
       <View testID="strip-message" style={styles.message}>
-        {advisory === null ? (
-          <StatusLine variant="body" numberOfLines={layout.messageLines}>
-            {line}
-          </StatusLine>
-        ) : (
+        {advisory !== null && lineTier === 'routine' ? (
           <Text variant="metricUnit" numberOfLines={layout.messageLines}>
             {t(ADVISORY_KEY[advisory])}
           </Text>
+        ) : (
+          <StatusLine variant="body" numberOfLines={layout.messageLines}>
+            {line}
+          </StatusLine>
         )}
       </View>
     </View>
