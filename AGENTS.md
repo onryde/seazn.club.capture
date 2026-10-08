@@ -344,8 +344,8 @@ thermal member. Only transport trouble degrades a session.
   the fake — armed, live, degraded, fell-back, uplink-lost, thermal-capped —
   and assert what the operator can see.
 - Assert an audio **level floor**, never stream presence. That is T1's mistake
-  and it is just as easy to make here. The floor belongs to the meter and the
-  pipeline; readiness is not the level: a silent room is ready (design
+  and it is just as easy to make here. That applies to tests of the meter and
+  the pipeline. Readiness is not the level: a silent room is ready (design
   follow-up §4).
 - Orientation gets three independent assertions: preview orientation, encoded
   orientation, rotation metadata. They fail separately (P4).
