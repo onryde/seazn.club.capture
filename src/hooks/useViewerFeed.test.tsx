@@ -2,7 +2,6 @@ import { act, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, expectTypeOf, it, vi } from 'vitest';
 import type { SessionState } from '@/domain/session/SessionState';
 import type { DeliveryWord } from '@/domain/session/viewerFeed';
-import { FIRST_WINDOW_PATIENCE_MS } from '@/domain/session/viewerFeed';
 import type { Telemetry } from '@/engine/CaptureEnginePort';
 import { PEEK_WARM_MS } from '@/hooks/usePeek';
 import { PLAYER_RETRY_MS } from '@/hooks/useViewerFeed';
@@ -142,40 +141,16 @@ describe('the viewer layer (spec §9, D6 to D8)', () => {
     expect(lines(view, 'peek.firstWindow').map((line) => line.fields)).toEqual([{ ms: 7_000 }]);
   });
 
-  it('M27 the patience is 60 s exactly, then says no picture, and a later window still recovers', async () => {
+  it('M27 has no patience of its own: two minutes on air with no window still say waiting, and a window plays (D2 §4.3)', async () => {
     const view = await liveWithoutWindow();
     pressIn(peek());
-    advance(view, FIRST_WINDOW_PATIENCE_MS - 1);
+    advance(view, 60_000);
     expect(note()).toBe(WAITING);
-    advance(view, 1);
-    expect(note()).toBe(NONE);
+    advance(view, 60_000);
+    expect(note()).toBe(WAITING);
     expect(video()).toBeNull();
     windowLands(view);
     expect(video()).toBeTruthy();
-  });
-
-  it('M27b the patience counts from the stretch, so a hold starts it again from nothing', async () => {
-    const view = await liveWithoutWindow();
-    pressIn(peek());
-    advance(view, FIRST_WINDOW_PATIENCE_MS - 1_000);
-    act(() => view.engine.scene('holding'));
-    goLiveWithoutWindow(view);
-    advance(view, FIRST_WINDOW_PATIENCE_MS - 1_000);
-    expect(note()).toBe(WAITING);
-    advance(view, 1_000);
-    expect(note()).toBe(NONE);
-  });
-
-  it('M27c a hold after the patience ran out gives the next stretch its patience back', async () => {
-    const view = await liveWithoutWindow();
-    pressIn(peek());
-    advance(view, FIRST_WINDOW_PATIENCE_MS);
-    expect(note()).toBe(NONE);
-    act(() => view.engine.scene('holding'));
-    goLiveWithoutWindow(view);
-    expect(note()).toBe(WAITING);
-    advance(view, FIRST_WINDOW_PATIENCE_MS);
-    expect(note()).toBe(NONE);
   });
 
   it('M28 one failed poll after the first window keeps playing', async () => {
@@ -224,24 +199,27 @@ describe('the viewer layer (spec §9, D6 to D8)', () => {
     expect(note()).toBe(WAITING);
   });
 
-  it('M30 a failing player is retried on the schedule with a fresh player, then given up on', async () => {
+  it('retries a failed player once, quietly, after 2 s, and gives up on the second failure (D2 §4.3)', async () => {
+    expect(PLAYER_RETRY_MS).toEqual([2_000]);
     const view = await liveWithoutWindow();
     pressIn(peek());
     windowLands(view);
-    let rungs = 0;
-    for (const index of PLAYER_RETRY_MS.keys()) {
-      expect(failAndWait(view, index)).toEqual({ before: index + 1, after: index + 2 });
-      rungs += 1;
-    }
-    expect(rungs).toBe(PLAYER_RETRY_MS.length);
+    expect(view.surfaces.videoMounts()).toBe(1);
+    // 1st failure: no remount before 2 s, one at 2 s, and the operator reads the waiting line meanwhile.
     act(() => view.surfaces.videoStatus('failed'));
+    expect(note()).toBe(WAITING);
+    act(() => vi.advanceTimersByTime(1_999));
+    expect(view.surfaces.videoMounts()).toBe(1);
+    act(() => vi.advanceTimersByTime(1));
+    expect(view.surfaces.videoMounts()).toBe(2);
+    // 2nd failure: no remount at any later time, and the layer says there is no picture.
+    act(() => view.surfaces.videoStatus('failed'));
+    act(() => vi.advanceTimersByTime(60_000));
+    expect(view.surfaces.videoMounts()).toBe(2);
     expect(video()).toBeNull();
     expect(note()).toBe(NONE);
-    expect(PLAYER_RETRY_MS).toHaveLength(3);
-    // The record says which retry each was, in order, and nothing else.
-    expect(lines(view, 'peek.retry').map((line) => line.fields)).toEqual(
-      [...PLAYER_RETRY_MS.keys()].map((attempt) => ({ attempt })),
-    );
+    // The record says it retried once, and which retry that was.
+    expect(lines(view, 'peek.retry').map((line) => line.fields)).toEqual([{ attempt: 0 }]);
   });
 
   it('M30c once given up it stays given up: a minute later it is still unavailable, with no new player', async () => {
@@ -265,13 +243,11 @@ describe('the viewer layer (spec §9, D6 to D8)', () => {
     act(() => view.surfaces.videoStatus('failed'));
     act(() => vi.advanceTimersByTime(wait));
     expect(view.surfaces.videoMounts()).toBe(2);
-    // The next failure is the SECOND rung (4 s), not the third.
-    const next = failAndWait(view, 1);
-    expect(next).toEqual({ before: 2, after: 3 });
-    expect(lines(view, 'peek.retry').map((line) => line.fields)).toEqual([
-      { attempt: 0 },
-      { attempt: 1 },
-    ]);
+    expect(video()).not.toBeNull();
+    // One retry was spent, not two: the replacement's own failure is the give-up.
+    act(() => view.surfaces.videoStatus('failed'));
+    expect(note()).toBe(NONE);
+    expect(lines(view, 'peek.retry').map((line) => line.fields)).toEqual([{ attempt: 0 }]);
   });
 
   it('M30e a player that fails after it was ready is waiting again while its replacement loads', async () => {

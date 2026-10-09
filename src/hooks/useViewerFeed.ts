@@ -1,11 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { SessionState } from '@/domain/session/SessionState';
-import {
-  FIRST_WINDOW_PATIENCE_MS,
-  viewerFeed,
-  type DeliveryWord,
-  type Feed,
-} from '@/domain/session/viewerFeed';
+import { viewerFeed, type DeliveryWord, type Feed } from '@/domain/session/viewerFeed';
 import { selectDelivery, selectPlaybackUrl, selectStateKind } from '@/hooks/engineSelectors';
 import { useEngineSelector } from '@/hooks/useCaptureEngine';
 import { usePorts } from '@/hooks/usePorts';
@@ -14,8 +9,8 @@ import type { VideoStatus } from '@/services/surfaces';
 
 type Kind = SessionState['kind'];
 
-/** D6: a failing player is retried with a fresh one after each wait, then given up on. */
-export const PLAYER_RETRY_MS: readonly number[] = [2_000, 4_000, 8_000];
+/** D2 §4.3: one quiet retry inside the view's 5 s loading window, then the player is given up on (D6). */
+export const PLAYER_RETRY_MS: readonly number[] = [2_000];
 
 export type ViewerFeed = {
   readonly feed: Feed;
@@ -38,7 +33,7 @@ const endsStretch = (kind: Kind): boolean => kind === 'reconnecting' || OVER.has
 /**
  * What the viewer layer shows, and when its player starts and restarts (spec §9). The rule is
  * `viewerFeed`; this hook owns what the rule cannot know: whether a window has ever been delivered in this
- * stretch, whether the patience for the first one has run out, and where the player is in its retries.
+ * stretch, and where the player is in its retries.
  * Every record line it writes names a state or a number, never a URL (M32). `pressed` is the finger on
  * What viewers see: a new press after the layer gave up tries again (R1). `mounted` is the peek holding a player
  * (showing, or cooling): when it is not, no Video exists, whatever the feed says.
@@ -66,14 +61,12 @@ export function useViewerFeed(pressed: boolean, mounted: boolean): ViewerFeed {
 }
 
 /**
- * D7, D8: whether a window has been delivered in this stretch (latched, so one failed poll does not take the
- * player down), and whether the 60 s patience for the first one is over. The stretch runs from the broadcast
- * first reading Publishing or Degraded; a hold, or anything not live, ends it. The patience is a timeout set
- * for what is left of it, not a ticking clock (AGENTS §8).
+ * D7: whether a window has been delivered in this stretch (latched, so one failed poll does not take the
+ * player down). The stretch runs from the broadcast first reading Publishing or Degraded; a hold, or anything
+ * not live, ends it.
  */
 function useFirstWindow(kind: Kind, delivery: DeliveryWord, hasUrl: boolean) {
   const { logger, clock } = usePorts();
-  const live = LIVE.has(kind);
   const liveSince = useRef<number | null>(null);
   // Whether this viewfinder saw the stretch BEGIN, a not-live to live edge. Opened mid-broadcast it did not, and
   // the time since it first looked is not the time to the first window, so none is recorded (R3).
@@ -83,7 +76,6 @@ function useFirstWindow(kind: Kind, delivery: DeliveryWord, hasUrl: boolean) {
   // second run of the same effect cannot log the window twice.
   const latched = useRef(false);
   const [everDelivered, setEverDelivered] = useState(false);
-  const [patienceOver, setPatienceOver] = useState(false);
 
   useEffect(() => {
     if (LIVE.has(kind)) {
@@ -94,7 +86,6 @@ function useFirstWindow(kind: Kind, delivery: DeliveryWord, hasUrl: boolean) {
     } else {
       liveSince.current = null;
       sawStart.current = false;
-      setPatienceOver(false);
       if (endsStretch(kind)) {
         latched.current = false;
         setEverDelivered(false);
@@ -112,15 +103,7 @@ function useFirstWindow(kind: Kind, delivery: DeliveryWord, hasUrl: boolean) {
     logger.info('peek.firstWindow', { ms: now - (liveSince.current ?? now) });
   }, [delivery, hasUrl, kind, clock, logger]);
 
-  useEffect(() => {
-    if (!live || everDelivered) return;
-    const now = clock().getTime();
-    const left = FIRST_WINDOW_PATIENCE_MS - (now - (liveSince.current ?? now));
-    const timer = setTimeout(() => setPatienceOver(true), Math.max(0, left));
-    return () => clearTimeout(timer);
-  }, [live, everDelivered, clock]);
-
-  return { everDelivered, patienceOver };
+  return { everDelivered };
 }
 
 /**
