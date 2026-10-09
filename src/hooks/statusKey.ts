@@ -206,16 +206,17 @@ export type LineKey = StatusKey | 'stream.leaveOnAir';
  *
  * A table over every key, so a new status key does not compile until somebody chooses (and
  * `statusTier.test.ts` lists every key by hand from the rule). The routine lines are the calm ones: the camera and the
- * pairing coming up, going live and the live line itself. "Waiting for Go live" is urgent on purpose (controller ruling
- * R2, 2026-10-08): it is the one line that names where Go live will stream, so a caption never hides it. The lines that
- * stay up until the next start (the stopped* family, waiting for a destination) keep the line over a keep-the-app-open
- * caption until then: the caption is not lost, it is the lesser message.
+ * pairing coming up, waiting for Go live, going live and the live line itself. "Waiting for Go live" is routine on
+ * purpose (owner ruling, 2026-10-09, option B): a phone warning before air (Not charging, Keep the app open, heat, a
+ * failed preview, Score ahead) beats the destination line, which shows when no caption is up. The lines that stay up
+ * until the next start (the stopped* family, waiting for a destination) keep the line over a keep-the-app-open caption
+ * until then: the caption is not lost, it is the lesser message.
  */
 export type LineTier = 'urgent' | 'routine';
 export const LINE_TIER: Readonly<Record<LineKey, LineTier>> = {
   'stream.status.starting': 'routine',
   'stream.status.pairing': 'routine',
-  'stream.status.waitingGoLive': 'urgent',
+  'stream.status.waitingGoLive': 'routine',
   'stream.status.waitingDestination': 'urgent',
   'stream.status.refusedDestination': 'urgent',
   'stream.status.refusedCredit': 'urgent',

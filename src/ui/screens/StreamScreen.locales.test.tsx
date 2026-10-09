@@ -81,18 +81,10 @@ const SUB_STATES: Readonly<Record<string, (lang: Lang) => Promise<void>>> = {
     fireEvent.click(screen.getByRole('button', { name: shown(lang, 'diag.share') }));
     expect(await screen.findByText(shown(lang, 'diag.shareFailed'))).toBeTruthy();
   },
-  // On air: a caption beats only a routine line, and before air every line is urgent (the two tiers). A quiet phone, so
-  // the failed preview is the caption that is up and not Not charging or Keep the app open.
   'the overlay crashed': async (lang) => {
     await renderViewfinder(
       { deviceLanguages: [lang] },
-      {
-        quiet: true,
-        prepare: (fakes) => {
-          fakes.engine.scene('live');
-          fakes.surfaces.crashOverlay();
-        },
-      },
+      { prepare: (fakes) => fakes.surfaces.crashOverlay() },
     );
     expect(visibleCopy()).toContain(shown(lang, 'stream.advisory.overlayFailed'));
   },
@@ -132,7 +124,10 @@ describe('the paired and starting lines read in every language', () => {
   it.each(['es', 'fr', 'nl'] as const)(
     '%s says its waiting line with the destination cut',
     async (lang) => {
-      const view = await renderViewfinder({ deviceLanguages: [lang] });
+      const view = await renderViewfinder(
+        { deviceLanguages: [lang] },
+        { overlay: false, quiet: true },
+      );
       act(() => view.engine.setPairing({ destinationName: LONG }));
       act(() => view.engine.scene('paired-ready'));
       const said = DICTIONARIES[lang]['stream.status.waitingGoLive']?.replace('{destination}', CUT);

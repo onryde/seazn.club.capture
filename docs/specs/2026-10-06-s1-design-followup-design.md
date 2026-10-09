@@ -58,12 +58,11 @@ Three pull requests, in order. Each is reviewed and merged on its own.
   cut with an ellipsis. What the line says is decided in **two tiers** (owner, 2026-10-08, `LINE_TIER`): a status line
   that needs action or reports a failure (a refusal, trouble and its reasons, the engine not responding, a stopped or
   ended stream, Back's "hold Stop") is urgent and always wins; an advisory caption outranks only a routine status line
-  (Starting, Pairing, going live, opening the link, Live). Two rulings the controller made with the fix round, which the
-  owner has not seen: **"Waiting for Go live" is urgent**, because it is the one line that names where Go live will
-  stream and a caption must never hide it; so every line a paired phone says before air is urgent, a caption shows only
-  while the phone is pairing, going live or on air, and Score ahead (which is up only while paired) is not reachable in
-  the app. And the lines that stay up until the next start (a stopped stream, waiting for a destination) keep the line
-  over a keep-the-app-open caption until then. The controls half's column has its own vertical padding and gap, 8 and 8
+  (Starting, Pairing, Waiting for Go live, going live, opening the link, Live). **"Waiting for Go live" is routine**
+  (owner, 2026-10-09, option B): before air a phone warning (Not charging, keep the app open, heat, a failed preview,
+  Score ahead) beats the destination line, which shows when no caption is active. The lines that stay up until the next
+  start (a stopped stream, waiting for a destination) keep the line over a keep-the-app-open caption until then. The
+  controls half's column has its own vertical padding and gap, 8 and 8
   (`controlsPadV`, `controlsColumnGap`; the horizontal padding stays 16, so the half stays 310 wide): the board's 16
   and 12 made the worst before-air state (the AUTO start line and a reason under the hold button) 356 dp tall, 24 more
   than 332. (The start time, "Starts hh:mm", is a line of the controls half, `PreflightChips.tsx:49`, not a status

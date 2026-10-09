@@ -5,6 +5,7 @@ import { StreamScreen } from '@/ui/screens/StreamScreen';
 import { createFakePorts, type FakePorts } from './fakePorts';
 import { savedStreamCode } from './fixtures/savedStream';
 import { pairCode } from './pairCode';
+import { OVERLAY_OFF_SEED } from './overlayOff';
 import { quietDevice } from './quietDevice';
 import { wrapperFor } from './renderWithPorts';
 
@@ -28,6 +29,11 @@ type Setup = {
    * (see `quietDevice.ts`).
    */
   readonly quiet?: boolean;
+  /**
+   * `false` turns the score preview off in the saved settings, so the paired viewfinder does not say Score ahead in
+   * its one message line and the status line shows. Left out, the setting is the app's own: on.
+   */
+  readonly overlay?: boolean;
 };
 
 /** The viewfinder as the operator reaches it: a saved stream code, the store loaded, on /stream. */
@@ -39,11 +45,13 @@ export async function renderViewfinder(
     prepare,
     strict = false,
     quiet = false,
+    overlay,
   }: Setup = {},
 ): Promise<RenderResult & FakePorts> {
   const kvSeed = {
     [STORE_KEYS.active]: 'stream',
     [STORE_KEYS.code('stream')]: encodeSavedCode(saved),
+    ...(overlay === false ? OVERLAY_OFF_SEED : {}),
     ...options.kvSeed,
   };
   const fakes = createFakePorts({ ...options, kvSeed });

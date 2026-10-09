@@ -266,13 +266,12 @@ Three rules travel with these tokens:
   reasons, the engine not responding, a stopped or ended stream, Back's "hold
   Stop") is _urgent_ and always wins; an advisory caption (Not charging, heat,
   keep the app open, Score ahead, a failed preview) beats only a _routine_ line
-  (Starting, Pairing, going live, opening the link, Live). Waiting for Go live
-  is urgent too (the controller's ruling, 2026-10-08, not the owner's): it is
-  the one line that names where Go live will stream, so a caption never hides
-  it. So every line a paired phone says before air is urgent, and a caption
-  shows only while the phone is pairing, going live or on air. The lines that
-  stay up until the next start (a stopped stream, waiting for a destination)
-  keep the line over a keep-the-app-open caption until then. A new status key
+  (Starting, Pairing, Waiting for Go live, going live, opening the link, Live).
+  Waiting for Go live is routine on purpose (owner, 2026-10-09): before air a
+  phone warning (Not charging, keep the app open, heat, a failed preview, Score
+  ahead) beats the destination line, which shows when no caption is active. The
+  lines that stay up until the next start (a stopped stream, waiting for a
+  destination) keep the line over a keep-the-app-open caption until then. A new status key
   does not compile until it is given a tier, and `statusTier.test.ts` lists
   every key by hand. The picture is one size for
   the whole match and is sized again only when the label's text changes, the
