@@ -598,7 +598,7 @@
           "role": {
             "kind": "quarter_final"
           },
-          "label": "QF"
+          "label": "Open · QF"
         }
       },
       "expected": {
@@ -612,7 +612,7 @@
         "pollSeconds": 60,
         "heartbeatUrl": "https://stg.seazn.club/api/v1/capture/codes/fx42hmnp7k2q/beats",
         "startUrl": "https://stg.seazn.club/api/v1/capture/codes/fx42hmnp7k2q/start",
-        "stageLabel": "QF"
+        "stageLabel": "Open · QF"
       }
     },
     {
@@ -908,7 +908,7 @@
         "startUrl": "https://stg.seazn.club/api/v1/capture/codes/fx42hmnp7k2q/start",
         "stage": {
           "code": "QF",
-          "label": "QF"
+          "label": "Open · QF"
         }
       },
       "expected": {
@@ -944,7 +944,7 @@
           "role": {
             "kind": 7
           },
-          "label": "QF"
+          "label": "Open · QF"
         }
       },
       "expected": {
@@ -1044,7 +1044,7 @@
         "stage": {
           "code": "QF",
           "role": null,
-          "label": "QF"
+          "label": "Open · QF"
         }
       },
       "expected": {
@@ -1078,7 +1078,7 @@
         "stage": {
           "code": "QF",
           "role": "x",
-          "label": "QF"
+          "label": "Open · QF"
         }
       },
       "expected": {
