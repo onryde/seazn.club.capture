@@ -1,32 +1,27 @@
-import { useCallback, useEffect, useRef } from 'react';
-import {
-  StyleSheet,
-  View,
-  type LayoutChangeEvent,
-  type StyleProp,
-  type ViewProps,
-  type ViewStyle,
-} from 'react-native';
-import { labelSize, SIDES, splitMatchLabel, type LabelPart } from '@/domain/session/matchLabel';
+import { memo, useCallback, useEffect, useRef } from 'react';
+import { StyleSheet, View, type LayoutChangeEvent, type ViewProps } from 'react-native';
+import { SIDES, splitMatchLabel } from '@/domain/session/matchLabel';
 import { selectLabel } from '@/hooks/engineSelectors';
 import { useEngineSelector } from '@/hooks/useCaptureEngine';
 import { Text } from '@/ui/components/Text';
-import type { TypeRole } from '@/ui/theme/type';
-import { space } from '@/ui/theme/tokens';
+import { colour, layout } from '@/ui/theme/tokens';
 
 /**
- * The match label, split on its sides (spec §2): side A on its own line(s),
- * then a small grey `v` and side B. Nothing at all until the label is known.
+ * The match label, C2 (D2 §4.4): one row per side, each with a 3 dp bar at its left edge (lime for the first side,
+ * lilac for the second), the names in Barlow Condensed 600, mixed case, as typed, at one size, at most 2 lines a side
+ * and an ellipsis beyond. A small v in ink2 sits in a fixed left margin outside both rows, centred between them. It
+ * is decorative: a screen reader reads the label once, as typed. A label with no two sides is one row, no bar, no v.
+ * Nothing at all until the label is known, or when it is empty.
  *
- * `onLayoutHeight` (R-F5) tells the stage how tall the label came out, which is how the picture is sized from
- * this match (`stripReserve`): the height after each layout, and 0 when the label goes or changes,
- * so a label that is not there yet is unmeasured, never the last one's height. The newest callback is the
- * one called, so one made anew on every render is fine.
+ * `onLayoutHeight` (R-F5) tells the stage how tall the label came out, which is how the picture is sized from this
+ * match (`stripReserve`): the height after each layout, and 0 when the label goes or changes, so a label that is not
+ * there yet is unmeasured, never the last one's height. The newest callback is the one called, so one made anew on
+ * every render is fine.
  */
 export function MatchLabel({ onLayoutHeight }: { onLayoutHeight?: (height: number) => void }) {
   const label = useEngineSelector(selectLabel);
   // Keyed on its text: a label that changes in place is a new label, so the old one's height goes with it.
-  return label === null ? null : (
+  return label === null || label.trim() === '' ? null : (
     <SplitLabel key={label} label={label} onLayoutHeight={onLayoutHeight} />
   );
 }
@@ -51,66 +46,80 @@ function SplitLabel({
   );
   useEffect(() => () => latest.current?.(0), []);
   const split = splitMatchLabel(label);
-  const size = labelSize(split);
-  const variant: TypeRole = size === 'long' ? 'labelLong' : 'label';
   return (
-    // One accessible stop that reads the whole label as typed, not each line and the v
-    // (review M4). `accessible` groups the children on native; react-native-web drops it.
-    <View
-      {...marker({ size, kind: split.kind })}
-      accessible
-      accessibilityLabel={label}
-      onLayout={onLayout}
-    >
-      {split.kind === 'block' ? (
-        <Lines part={split.block} variant={variant} />
-      ) : (
-        <>
-          <Lines part={split.a} variant={variant} />
-          <View style={styles.sideB}>
-            {/* The label's own separator, shown small and grey: the server's word, not app copy. */}
-            <Text variant="metricUnit" testID="match-label-v">
-              {SIDES.trim()}
-            </Text>
-            <Lines part={split.b} variant={variant} style={styles.fill} />
-          </View>
-        </>
-      )}
+    // One accessible stop that reads the whole label as typed, not each row and the v (review M4). `accessible`
+    // groups the children on native; react-native-web drops it.
+    <View {...marker(split.kind)} accessible accessibilityLabel={label} onLayout={onLayout}>
+      {split.kind === 'block' ? <Name text={split.text} /> : <Sides a={split.a} b={split.b} />}
     </View>
   );
 }
 
-/** One `Text` per line: a partner line ends in an ellipsis, a side or block wraps to two. */
-function Lines({
-  part,
-  variant,
-  style,
+const Sides = memo(function Sides({ a, b }: { readonly a: string; readonly b: string }) {
+  return (
+    <View style={styles.sides}>
+      <View style={styles.margin}>
+        {/* The label's own separator, the server's word: decorative, so hidden from a screen reader. */}
+        <Text variant="metricUnit" style={styles.v} aria-hidden testID="match-label-v">
+          {SIDES.trim()}
+        </Text>
+      </View>
+      <View style={styles.rows}>
+        <SideRow text={a} side="first" />
+        <SideRow text={b} side="second" />
+      </View>
+    </View>
+  );
+});
+
+const SideRow = memo(function SideRow({
+  text,
+  side,
 }: {
-  part: LabelPart;
-  variant: TypeRole;
-  style?: StyleProp<ViewStyle>;
+  readonly text: string;
+  readonly side: 'first' | 'second';
 }) {
   return (
-    <View style={style}>
-      {part.lines.map((line, at) => (
-        <Text key={at} variant={variant} numberOfLines={part.wrap} testID="match-label-line">
-          {line}
-        </Text>
-      ))}
+    <View style={styles.row}>
+      <View {...barMarker(side)} style={side === 'first' ? firstBar : secondBar} />
+      <Name text={text} />
     </View>
   );
-}
+});
+
+/** One side, or the block: one size, at most 2 lines, an ellipsis beyond (C2). */
+const Name = memo(function Name({ text }: { readonly text: string }) {
+  return (
+    <Text
+      variant="label"
+      numberOfLines={layout.labelSideLines}
+      style={styles.name}
+      testID="match-label-line"
+    >
+      {text}
+    </Text>
+  );
+});
 
 /**
- * The root's test marker. react-native-web renders `dataSet` as `data-*`
- * attributes, which tests read; native ignores it. React Native's own types
- * leave `dataSet` out, hence the cast.
+ * The test markers. react-native-web renders `dataSet` as `data-*` attributes, which tests read; native ignores it.
+ * React Native's own types leave `dataSet` out, hence the casts.
  */
-const marker = (dataSet: { size: string; kind: string }) =>
-  ({ testID: 'match-label', dataSet }) as ViewProps;
+const marker = (kind: string) => ({ testID: 'match-label', dataSet: { kind } }) as ViewProps;
+const barMarker = (side: string) => ({ testID: 'match-label-bar', dataSet: { side } }) as ViewProps;
 
 const styles = StyleSheet.create({
-  // Baseline, so the small v sits on the line of side B's first name.
-  sideB: { flexDirection: 'row', alignItems: 'baseline', gap: space.xs },
-  fill: { flex: 1 },
+  sides: { flexDirection: 'row' },
+  // The v's margin: fixed, outside both rows, the v centred between them.
+  margin: { width: layout.labelMargin, justifyContent: 'center' },
+  v: { color: colour.ink2 },
+  rows: { flex: 1 },
+  row: { flexDirection: 'row', gap: layout.labelBarGap },
+  bar: { width: layout.labelBar },
+  barFirst: { backgroundColor: colour.lime },
+  barSecond: { backgroundColor: colour.ink3 },
+  name: { flex: 1 },
 });
+
+const firstBar = [styles.bar, styles.barFirst];
+const secondBar = [styles.bar, styles.barSecond];

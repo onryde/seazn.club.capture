@@ -1,19 +1,13 @@
 import { render, screen } from '@testing-library/react';
+import { StyleSheet } from 'react-native';
 import { describe, expect, it } from 'vitest';
 import { StageLine } from '@/ui/components/StageLine';
 import { Text } from '@/ui/components/Text';
+import { colour } from '@/ui/theme/tokens';
+import { linesAllowed } from '../../../test/linesAllowed';
 
-/**
- * How many lines react-native-web lets a Text show, read from what it rendered (MatchLabel.test.tsx's
- * reading): `numberOfLines={1}` is no clamp at all but one unwrapped line that ends in an ellipsis.
- */
-function linesAllowed(element: Element): number {
-  const style = getComputedStyle(element);
-  const clamp = style.getPropertyValue('-webkit-line-clamp');
-  if (clamp !== '') return Number(clamp);
-  if (style.whiteSpace === 'nowrap' && style.textOverflow === 'ellipsis') return 1;
-  return Infinity;
-}
+/** The spec's colour for the round line (C2, D2 §4.4): lime, as the token paints it. */
+const PAINT = StyleSheet.create({ lime: { color: colour.lime } });
 
 // The server's text, shown verbatim (spec §2): a short code, the 40-character limit, and an emoji (a 🏏 is
 // one character to the contract and two UTF-16 units).
@@ -34,23 +28,31 @@ describe('StageLine (spec §2)', () => {
     run += 1;
   });
 
-  it.each(TEXTS)('%s: the same size and colour as the label’s own small grey v', (_why, text) => {
+  // C2 (D2 §4.4): restyled, not resized. The metricUnit role's size and line, so the strip's fixed 66 dp holds, in lime
+  // and caps. jsdom reports the CSS `text-transform`, not the drawn capitals; the text itself stays the server's.
+  it.each(TEXTS)('%s: the metricUnit size and line, in lime and caps', (_why, text) => {
     render(
       <>
         <StageLine text={text} />
-        <Text variant="metricUnit" testID="reference-v">
+        <Text variant="metricUnit" testID="reference-size">
+          v
+        </Text>
+        <Text variant="metricUnit" testID="reference-lime" style={PAINT.lime}>
           v
         </Text>
       </>,
     );
     const line = getComputedStyle(screen.getByTestId('stage-line'));
-    const reference = getComputedStyle(screen.getByTestId('reference-v'));
-    // Read from the rendered cascade, both sides: a hard-coded 12px or a grey would not move with the role.
-    expect(reference.fontSize).not.toBe('');
-    expect(line.fontSize).toBe(reference.fontSize);
-    expect(line.color).not.toBe('');
-    expect(line.color).toBe(reference.color);
-    expect(line.lineHeight).toBe(reference.lineHeight);
+    const size = getComputedStyle(screen.getByTestId('reference-size'));
+    const lime = getComputedStyle(screen.getByTestId('reference-lime'));
+    // Read from the rendered cascade, both sides: a hard-coded 12px or a colour would not move with the role.
+    expect(size.fontSize).not.toBe('');
+    expect(line.fontSize).toBe(size.fontSize);
+    expect(line.lineHeight).toBe(size.lineHeight);
+    expect(lime.color).not.toBe(size.color);
+    expect(line.color).toBe(lime.color);
+    expect(line.textTransform).toBe('uppercase');
+    expect(screen.getByTestId('stage-line').textContent).toBe(text);
     run += 1;
   });
 

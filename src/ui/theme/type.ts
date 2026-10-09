@@ -200,21 +200,14 @@ export const typeScale = {
   },
   /**
    * The match label in the status strip (spec §2): Barlow Condensed 600 at
-   * 20 sp. No caps or letterspacing, unlike the other display roles: §2 names
-   * the face and the size only, and its 26-character rule counts the names as
-   * the organiser typed them.
+   * 20 sp. No caps or letterspacing, unlike the other display roles: the names
+   * are shown mixed case, as the organiser typed them (AGENTS §5). C2 (D2 §4.4)
+   * draws every label at this one size, at most 2 lines a side.
    */
   label: {
     fontFamily: font.displaySemibold,
     fontSize: 20,
     lineHeight: 22,
-    color: colour.ink,
-  },
-  /** Spec §2: 17 sp when the longest line is over 26 characters; doubles too (Q4 option A). */
-  labelLong: {
-    fontFamily: font.displaySemibold,
-    fontSize: 17,
-    lineHeight: 19,
     color: colour.ink,
   },
 } satisfies Record<string, TextStyle>;

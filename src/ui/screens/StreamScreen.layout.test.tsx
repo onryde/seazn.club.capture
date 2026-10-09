@@ -7,6 +7,7 @@ import { colour, layout, space } from '@/ui/theme/tokens';
 import { typeScale } from '@/ui/theme/type';
 import { CASES } from '../../../test/fixtures/matchLabelCases';
 import { layOut } from '../../../test/layOut';
+import { linesAllowed } from '../../../test/linesAllowed';
 import { renderViewfinder } from '../../../test/renderViewfinder';
 
 type Viewfinder = Awaited<ReturnType<typeof renderViewfinder>>;
@@ -31,18 +32,6 @@ function paintOf(style: ViewStyle): string {
   const painted = getComputedStyle(reference.getByTestId('paint-reference')).backgroundColor;
   reference.unmount();
   return painted;
-}
-
-/**
- * How many lines react-native-web lets a Text show, read from what it rendered
- * (the MatchLabel test's reading): `numberOfLines={2}` is `-webkit-line-clamp: 2`.
- */
-function linesAllowed(element: Element): number {
-  const style = getComputedStyle(element);
-  const clamp = style.getPropertyValue('-webkit-line-clamp');
-  if (clamp !== '') return Number(clamp);
-  if (style.whiteSpace === 'nowrap' && style.textOverflow === 'ellipsis') return 1;
-  return Infinity;
 }
 
 const byId = (id: string) => screen.getByTestId(id);
@@ -1223,45 +1212,32 @@ describe('the strip and the controls half are padded and spaced as the fit reser
   });
 });
 
-/**
- * Fix round 1, I-2: the strip reserves at most 4 lines for the label (Q4 option A, `labelLinesMax`).
- * Every label the family holds is rendered in the strip and its lines counted: what each line may take
- * (`numberOfLines`) summed, bounded at 4; and a regular label is one line a side, 2 in all (F9).
- */
-describe('the match label stays inside its reserved lines (fix round 1 I-2)', () => {
+/** C2 (D2 §4.4): every label the family holds is at most 4 lines, 2 a side, at the one 22 dp line. */
+describe('the match label stays inside its reserved lines (C2)', () => {
   beforeEach(() => vi.useFakeTimers());
   afterEach(() => vi.useRealTimers());
-  const seen = { all: 0, regular: 0, long: 0 };
+  let seen = 0;
 
-  it.each(CASES)('%s: at most 4 lines in all', async (_name, label, _shape, size) => {
+  it.each(CASES)('%s: at most 4 lines, 88 dp', async (_name, label, shape) => {
     await renderViewfinder({}, { prepare: (fakes) => fakes.engine.setPairing({ label }) });
+    if (shape.kind === 'block' && shape.text === '') {
+      expect(within(byId('status-strip')).queryByTestId('match-label')).toBeNull();
+      seen += 1;
+      return;
+    }
     const root = within(byId('status-strip')).getByTestId('match-label');
     const lines = [...root.querySelectorAll('[data-testid="match-label-line"]')];
     const allowed = lines.reduce((sum, line) => sum + linesAllowed(line), 0);
-    expect(lines.length).toBeGreaterThan(0);
+    expect(lines).toHaveLength(shape.kind === 'sides' ? 2 : 1);
     expect(allowed).toBeLessThanOrEqual(4);
-    expect(root.dataset.size).toBe(size);
-    if (size === 'regular') {
-      // F9, made a guard: one line a side, each no longer than 26 characters (code points).
-      expect(lines.length).toBeLessThanOrEqual(2);
-      for (const line of lines)
-        expect([...(line.textContent ?? '')].length).toBeLessThanOrEqual(26);
-      seen.regular += 1;
-    } else {
-      // At the long size a line is 19 dp, and 4 of them are the 76 the strip reserves.
-      expect(
-        allowed * parseFloat(getComputedStyle(lines[0] as Element).lineHeight),
-      ).toBeLessThanOrEqual(76);
-      seen.long += 1;
-    }
-    seen.all += 1;
+    expect(
+      allowed * parseFloat(getComputedStyle(lines[0] as Element).lineHeight),
+    ).toBeLessThanOrEqual(88);
+    seen += 1;
   });
 
-  it('swept all twelve labels, both sizes (anti-vacuity)', () => {
-    expect(CASES).toHaveLength(12);
-    expect(seen.all).toBe(CASES.length);
-    expect(seen.regular).toBeGreaterThan(0);
-    expect(seen.long).toBeGreaterThan(0);
-    expect(seen.regular + seen.long).toBe(seen.all);
+  it('swept all thirteen labels (anti-vacuity)', () => {
+    expect(CASES).toHaveLength(13);
+    expect(seen).toBe(13);
   });
 });
