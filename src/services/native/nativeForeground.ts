@@ -9,7 +9,9 @@ function onAppState(listener: (state: AppStateStatus) => void): () => void {
 /**
  * Fires on every return to the foreground, where the reopen rules run again
  * (spec §4), and on every departure from it, which is how a scan knows the
- * phone's scanner took the app away (R36).
+ * phone's scanner took the app away (R36). `isForeground` reads AppState at the
+ * call: only `active` is the foreground, as for `subscribe`. Before AppState
+ * knows (`unknown`, or null with no native module), it is not.
  */
 export function createNativeForeground(): ForegroundPort {
   return {
@@ -21,5 +23,6 @@ export function createNativeForeground(): ForegroundPort {
       onAppState((state) => {
         if (state !== 'active') onBackground();
       }),
+    isForeground: () => AppState.currentState === 'active',
   };
 }

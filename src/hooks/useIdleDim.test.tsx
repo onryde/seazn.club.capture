@@ -3,14 +3,20 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { selectCharging, selectKeepOpen, selectShedding, topAdvisory } from '@/hooks/advisory';
 import { selectStatusKey } from '@/hooks/statusKey';
 import { useIdleDim } from '@/hooks/useIdleDim';
-import { createFakePorts } from '../../test/fakePorts';
+import { createFakePorts, type FakePorts } from '../../test/fakePorts';
 import { pairCode } from '../../test/pairCode';
 import { savedStreamCode } from '../../test/fixtures/savedStream';
 import { wrapperFor } from '../../test/renderWithPorts';
 
-function mount(paired = true, strict = false) {
+/** `before` runs after the pairing and before the hook mounts: the phone's state when Live Stream mounts. */
+function mount(
+  paired = true,
+  strict = false,
+  before: (fakes: FakePorts) => void = () => undefined,
+) {
   const fakes = createFakePorts();
   if (paired) pairCode(fakes.engine, savedStreamCode());
+  before(fakes);
   const view = renderHook(() => useIdleDim(), {
     wrapper: wrapperFor(fakes),
     reactStrictMode: strict,
@@ -291,5 +297,65 @@ describe('useIdleDim in the background (D2 §4.5)', () => {
     expect(fakes.screen.dimmed).toBe(false);
     act(() => vi.advanceTimersByTime(1));
     expect(fakes.screen.dimmed).toBe(true);
+  });
+});
+
+/**
+ * B5 fix round 4: Live Stream can MOUNT in the background. A paired phone sits on Home with the screen locked, and a
+ * remote Go live routes it to Live Stream (`useEngineFollow`). The clock starts paused there, so nothing dims until the
+ * return, and the 30 s count from the return.
+ */
+describe('useIdleDim mounted in the background (D2 §4.5)', () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  /** Paired and waiting on Home, the phone locked, then a remote Go live: Live Stream mounts while live. */
+  function mountLiveInBackground(strict = false) {
+    return mount(true, strict, (fakes) => {
+      fakes.engine.scene('paired-ready');
+      fakes.foreground.leave();
+      fakes.engine.scene('live');
+      expect(fakes.foreground.isForeground()).toBe(false);
+    });
+  }
+
+  it('a remote stop after a remote Go live on a locked phone never dims it, and it is bright on return', () => {
+    const { fakes } = mountLiveInBackground();
+    act(() => vi.advanceTimersByTime(600_000));
+    act(() => fakes.engine.scene('paired-after-organiser-stop'));
+    expect(selectStatusKey(fakes.engine.getSnapshot())).toBe('stream.status.stoppedOrganiser');
+    act(() => vi.advanceTimersByTime(31_000));
+    expect(fakes.screen.calls).toEqual([]);
+    act(() => fakes.foreground.fire());
+    expect(fakes.screen.dimmed).toBe(false);
+    expect(fakes.screen.calls).toEqual([]);
+  });
+
+  it.each([false, true])(
+    'mounted in the background, it dims 30 s after the return to the foreground (StrictMode: %s)',
+    (strict) => {
+      const { fakes } = mountLiveInBackground(strict);
+      act(() => fakes.engine.scene('paired-after-organiser-stop'));
+      act(() => vi.advanceTimersByTime(600_000));
+      expect(fakes.screen.calls).toEqual([]);
+      act(() => fakes.foreground.fire());
+      act(() => vi.advanceTimersByTime(29_999));
+      expect(fakes.screen.dimmed).toBe(false);
+      act(() => vi.advanceTimersByTime(1));
+      expect(fakes.screen.dimmed).toBe(true);
+      expect(fakes.screen.calls).toEqual(['dim']);
+    },
+  );
+
+  it('mounted in the foreground, it counts from mount as before: paired and waiting dims 30 s later', () => {
+    const { fakes } = mount(true, false, (fakes) => {
+      fakes.engine.scene('paired-ready');
+      expect(fakes.foreground.isForeground()).toBe(true);
+    });
+    act(() => vi.advanceTimersByTime(29_999));
+    expect(fakes.screen.dimmed).toBe(false);
+    act(() => vi.advanceTimersByTime(1));
+    expect(fakes.screen.dimmed).toBe(true);
+    expect(fakes.screen.calls).toEqual(['dim']);
   });
 });

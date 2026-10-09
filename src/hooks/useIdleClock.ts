@@ -1,23 +1,30 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { IDLE_DIM_MS } from '@/domain/session/idleDim';
+import type { ForegroundPort } from '@/services/devicePorts';
 
 export type IdleClock = {
   /** `IDLE_DIM_MS` have passed since the last wake. */
   readonly idle: boolean;
   /** Activity: idle ends and the count starts again, unless paused. */
   readonly wake: () => void;
-  /** The app left the foreground: idle ends, and nothing counts, whatever wakes it, until `resume`. */
+  /** The app left the foreground, or mounted there: idle ends, and nothing counts, whatever wakes it, till `resume`. */
   readonly pause: () => void;
-  /** The app is back in the foreground: the pause ends and it wakes, so the 30 s count from the return. */
+  /** The app is in the foreground (back, or at mount): the pause ends and it wakes, so the 30 s count from then. */
   readonly resume: () => void;
 };
 
 /**
- * The idle dim's clock (D2 §4.5). It counts from mount. `eligible` turning true (paired and waiting) is a wake from its
- * first render: idle is reset in render, so a stale idle from another state never reaches a commit (an effect alone
- * would dim, then restore), and the count starts again in an effect.
+ * The idle dim's clock (D2 §4.5). It counts from mount when the app is in the foreground. Mounted in the background
+ * (a remote Go live routes a locked phone from Home to Live Stream, `useEngineFollow`), it starts paused: nothing
+ * counts until `resume` (B5 fix round 4). The read is in the mount effect, in the same flush as the caller's
+ * foreground subscriptions, so no change between the two goes unheard. `eligible` turning true (paired and waiting)
+ * is a wake from its first render: idle is reset in render, so a stale idle from another state never reaches a
+ * commit (an effect alone would dim, then restore), and the count starts again in an effect.
  */
-export function useIdleClock(eligible: boolean): IdleClock {
+export function useIdleClock(
+  eligible: boolean,
+  foreground: Pick<ForegroundPort, 'isForeground'>,
+): IdleClock {
   const [idle, setIdle] = useState(false);
   const [eligibleBefore, setEligibleBefore] = useState(eligible);
   if (eligible !== eligibleBefore) {
@@ -26,9 +33,10 @@ export function useIdleClock(eligible: boolean): IdleClock {
   }
   const { wake, pause, resume, stop } = useCount(setIdle);
   useEffect(() => {
-    wake();
+    if (foreground.isForeground()) resume();
+    else pause();
     return stop;
-  }, [wake, stop]);
+  }, [foreground, pause, resume, stop]);
   useEffect(() => {
     if (eligible) wake();
   }, [eligible, wake]);

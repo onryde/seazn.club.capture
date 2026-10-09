@@ -52,6 +52,8 @@ export type FakePorts = {
   readonly back: BackPort & { press(): boolean };
   /**
    * `leave()` is the app going to the background; `fire()` is its return.
+   * `isForeground()` reports the last of them (the foreground at first), so a
+   * `leave()` before a mount mounts it in the background.
    * `leaveListeners()` counts who would hear a `leave()`.
    */
   readonly foreground: FakeForeground;
@@ -219,6 +221,7 @@ type FakeForeground = ForegroundPort & {
 function fakeForeground(): FakeForeground {
   const returns = new Set<() => void>();
   const leaves = new Set<() => void>();
+  let foreground = true;
   const add = (listeners: Set<() => void>, listener: () => void) => {
     listeners.add(listener);
     return () => {
@@ -228,10 +231,13 @@ function fakeForeground(): FakeForeground {
   return {
     subscribe: (onForeground) => add(returns, onForeground),
     subscribeBackground: (onBackground) => add(leaves, onBackground),
+    isForeground: () => foreground,
     fire: () => {
+      foreground = true;
       for (const listener of returns) listener();
     },
     leave: () => {
+      foreground = false;
       for (const listener of leaves) listener();
     },
     leaveListeners: () => leaves.size,

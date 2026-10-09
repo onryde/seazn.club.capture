@@ -88,3 +88,17 @@ describe('fake screen', () => {
     expect(fakes.ports.screen).toBe(fakes.screen);
   });
 });
+
+describe('fake foreground', () => {
+  it('is in the foreground at first, and reports the last leave or fire, with nobody listening', () => {
+    const fakes = createFakePorts();
+    expect(fakes.foreground.isForeground()).toBe(true);
+    fakes.foreground.leave();
+    expect(fakes.foreground.isForeground()).toBe(false);
+    fakes.foreground.leave();
+    expect(fakes.foreground.isForeground()).toBe(false);
+    fakes.foreground.fire();
+    expect(fakes.foreground.isForeground()).toBe(true);
+    expect(fakes.ports.foreground).toBe(fakes.foreground);
+  });
+});

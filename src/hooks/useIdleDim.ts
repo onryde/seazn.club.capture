@@ -9,7 +9,8 @@ import { usePorts } from '@/hooks/usePorts';
 /**
  * The idle dim (D2 §4.5, R4, R8): the window dims after 30 s with no touch while paired and waiting, and comes back on
  * any touch, on arming or going live, on unpairing, when the app leaves the foreground and when Live Stream unmounts.
- * After the app leaves the foreground nothing counts until it returns, so nothing dims there (`useIdleClock`'s pause).
+ * After the app leaves the foreground nothing counts until it returns, so nothing dims there (`useIdleClock`'s pause);
+ * Live Stream mounted in the background starts paused.
  * `shouldDim` alone decides, so there is one guard (AGENTS §10). The 30 s are idle time inside paired-and-waiting, so
  * entering it counts as a touch (`useIdleClock`), and so does a new urgent status line (`useUrgentWake`). The returned
  * handler is the touch: the stream layout's root calls it on every touch it sees (`TouchWake`). Keep-awake is
@@ -18,7 +19,7 @@ import { usePorts } from '@/hooks/usePorts';
 export function useIdleDim(): () => void {
   const { screen, foreground } = usePorts();
   const kind = useEngineSelector(selectStateKind);
-  const { idle, wake, pause, resume } = useIdleClock(shouldDim(kind, IDLE_DIM_MS));
+  const { idle, wake, pause, resume } = useIdleClock(shouldDim(kind, IDLE_DIM_MS), foreground);
   const dim = shouldDim(kind, idle ? IDLE_DIM_MS : 0);
   useEffect(() => {
     if (!dim) return undefined;
