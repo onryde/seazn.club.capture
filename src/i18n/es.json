@@ -143,8 +143,6 @@
   "stream.blocker.held": "Móvil en horizontal",
   "stream.startsAt": "Empieza a las {time}",
   "stream.advisory.shed": "Vista previa en pausa: sigue en directo",
-  "stream.advisory.overlayFailed": "Falló la vista previa del marcador: la emisión sigue",
-  "stream.advisory.scoreAhead": "Ves el marcador un poco antes que el público",
   "stream.advisory.notCharging": "No está cargando: enchúfalo para un partido largo",
   "stream.advisory.keepOpen": "Mantén la app abierta: en segundo plano no se graba",
   "stream.peek.label": "Lo que ve el público",

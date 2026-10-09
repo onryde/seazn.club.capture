@@ -686,7 +686,6 @@ describe('the viewer layer through the real native Video', () => {
     const native = createNativeSurfaces({
       logger: createLogger({ record: createRingRecord(), now: () => 0 }),
       packages: {
-        webview: () => Promise.reject(new Error('not under test')),
         video: async () => expo.pkg,
         preview: async () => null,
       },

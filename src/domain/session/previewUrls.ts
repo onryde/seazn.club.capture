@@ -17,16 +17,6 @@ export function withQueryParam(url: string, name: string, value: string): string
 }
 
 /**
- * AGENTS §7: the phone's preview runs with no delay, so the operator sees the
- * score slightly ahead of viewers. The Tier A route reads `?delay=` in ms
- * (seazn.club apps/web/src/app/overlay/fixtures/[fixtureId]/page.tsx:54-75,
- * `resolveDelayMs`); a broadcast delay already on the URL is replaced.
- */
-export function overlayPreviewUrl(overlayUrl: string): string {
-  return withQueryParam(overlayUrl, 'delay', '0');
-}
-
-/**
  * Cloudflare's own-player hint, in Mbps: the master playlist is restricted to
  * the rendition closest to it, so a peek on cellular costs little (D35).
  * Deliberately no `protocol=llhls`: it works only on low-latency inputs,

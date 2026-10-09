@@ -92,11 +92,11 @@ describe('the status strip always shows the round line, whenever there is one (o
     }
   });
 
-  // The caption takes the message line, not more room, and never the round line's: five captions and an urgent line,
+  // The caption takes the message line, not more room, and never the round line's: three captions and an urgent line,
   // a caption up or not, change nothing about it. Written from the engine's own declarations of the captions.
   it('shows it the same under every caption, under an urgent line, and with none', () => {
     const captions = Object.keys(ADVISORY_KEY) as Advisory[];
-    expect(captions).toHaveLength(5);
+    expect(captions).toHaveLength(3);
     const view = stripWith('Open · QF', 'A v B', null);
     label(44);
     let checked = 0;
@@ -114,7 +114,7 @@ describe('the status strip always shows the round line, whenever there is one (o
     }
     view.rerender(<StatusStrip line="Ready" lineTier="routine" advisory={null} />);
     expect(line()?.textContent).toBe('Open · QF');
-    expect(checked).toBe(5);
+    expect(checked).toBe(3);
   });
 
   it('tells its caller the label’s height, each time it is laid out (the picture is sized from it), and nothing else', () => {

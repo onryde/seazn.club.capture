@@ -7,7 +7,7 @@ import { ErrorBoundary } from '@/ui/components/ErrorBoundary';
 
 /**
  * The root's error boundary (final review M4). A render crash outside the
- * overlay's own boundary takes the whole shell down, LIVE plate and Stop with
+ * preview's own boundary takes the whole shell down, LIVE plate and Stop with
  * it, while native goes on publishing (AGENTS §2). So the crash is recorded,
  * the copy says the broadcast may still be live, and Try again remounts the
  * shell, whose reopen gate lands on the viewfinder again while on air.

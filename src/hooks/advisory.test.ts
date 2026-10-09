@@ -11,62 +11,21 @@ import {
 } from '@/hooks/advisory';
 import en from '@/i18n/en.json';
 
-const QUIET = {
-  shed: false,
-  overlayFailed: false,
-  paired: false,
-  overlayOn: true,
-  charging: true,
-  keepOpen: false,
-} as const;
-
-describe('topAdvisory (D17: one caption at a time, most important first)', () => {
-  it('says nothing when there is nothing to say', () => {
-    expect(topAdvisory(QUIET)).toBeNull();
+describe('topAdvisory (D17, CD18, D2 §4.1)', () => {
+  const calm = { shed: false, charging: true, keepOpen: false } as const;
+  it.each([
+    ['nothing up', calm, null],
+    ['charging unknown', { ...calm, charging: null }, null],
+    ['not charging', { ...calm, charging: false }, 'notCharging'],
+    ['shed', { ...calm, shed: true }, 'shed'],
+    ['shed over not charging', { ...calm, shed: true, charging: false }, 'shed'],
+    ['keep open over all', { shed: true, charging: false, keepOpen: true }, 'keepOpen'],
+  ] as const)('%s', (_name, input, expected) => {
+    expect(topAdvisory(input)).toBe(expected);
   });
 
-  it('puts heat first: preview paused, still live (AGENTS §8)', () => {
-    expect(topAdvisory({ ...QUIET, shed: true, overlayFailed: true, charging: false })).toBe(
-      'shed',
-    );
-  });
-
-  it('says the score preview failed, over the rest', () => {
-    expect(topAdvisory({ ...QUIET, overlayFailed: true, paired: true, charging: false })).toBe(
-      'overlayFailed',
-    );
-  });
-
-  it('says nothing of a failed preview the operator has turned off', () => {
-    expect(topAdvisory({ ...QUIET, overlayFailed: true, overlayOn: false })).toBeNull();
-  });
-
-  // Ruling M6 (overrides D17/D18): a device advisory outranks the score note,
-  // which shows while paired (framing a shot, before any broadcast) only when nothing else is up.
-  it('puts a device advisory before the score note while paired', () => {
-    expect(topAdvisory({ ...QUIET, paired: true, charging: false })).toBe('notCharging');
-    expect(topAdvisory({ ...QUIET, paired: true, shed: true })).toBe('shed');
-  });
-
-  it.each([[true], [null]] as const)(
-    'tells the operator, while paired, that the score runs ahead when nothing else is up (charging %s)',
-    (charging) => {
-      expect(topAdvisory({ ...QUIET, paired: true, charging })).toBe('scoreAhead');
-    },
-  );
-
-  it('drops the score note once not paired, leaving the charging warning', () => {
-    expect(topAdvisory({ ...QUIET, paired: false })).toBeNull();
-    expect(topAdvisory({ ...QUIET, paired: false, charging: false })).toBe('notCharging');
-  });
-
-  it('does not mention the score with the preview off', () => {
-    expect(topAdvisory({ ...QUIET, paired: true, overlayOn: false })).toBeNull();
-  });
-
-  it('warns when not charging; unknown is not a warning', () => {
-    expect(topAdvisory({ ...QUIET, charging: false })).toBe('notCharging');
-    expect(topAdvisory({ ...QUIET, charging: null })).toBeNull();
+  it('has three captions, each with its key', () => {
+    expect(Object.keys(ADVISORY_KEY).sort()).toEqual(['keepOpen', 'notCharging', 'shed']);
   });
 });
 
@@ -80,28 +39,12 @@ describe('the advisory copy', () => {
 // anything else, since leaving the app is what would end the capture.
 describe('topAdvisory: keep the app open (CD18)', () => {
   it('outranks every other caption', () => {
-    const base = {
-      shed: true,
-      overlayFailed: true,
-      paired: true,
-      overlayOn: true,
-      charging: false,
-    };
-    expect(topAdvisory({ ...base, keepOpen: true })).toBe('keepOpen');
-    expect(
-      topAdvisory({
-        shed: false,
-        overlayFailed: false,
-        paired: true,
-        overlayOn: true,
-        charging: null,
-        keepOpen: false,
-      }),
-    ).toBe('scoreAhead');
+    expect(topAdvisory({ shed: true, charging: false, keepOpen: true })).toBe('keepOpen');
+    expect(topAdvisory({ shed: false, charging: false, keepOpen: true })).toBe('keepOpen');
   });
 
   it('says it alone when nothing else is up', () => {
-    expect(topAdvisory({ ...QUIET, keepOpen: true })).toBe('keepOpen');
+    expect(topAdvisory({ shed: false, charging: true, keepOpen: true })).toBe('keepOpen');
   });
 
   it('reads its line from the dictionary', () => {

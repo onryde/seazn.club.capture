@@ -143,8 +143,6 @@
   "stream.blocker.held": "Tournez à l'horizontale",
   "stream.startsAt": "Début à {time}",
   "stream.advisory.shed": "Aperçu en pause\u00a0: toujours en direct",
-  "stream.advisory.overlayFailed": "Aperçu du score en panne\u00a0: le direct continue",
-  "stream.advisory.scoreAhead": "Vous voyez le score un peu avant le public",
   "stream.advisory.notCharging": "Pas en charge\u00a0: branchez-le pour un long match",
   "stream.advisory.keepOpen": "Gardez l'app ouverte\u00a0: en arrière-plan, rien n'est filmé",
   "stream.peek.label": "Ce que voit le public",

@@ -20,14 +20,14 @@ vi.mock('@/ui/components/StatusLine', async (importOriginal) => {
   };
 });
 
-vi.mock('@/ui/components/OverlayPreview', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('@/ui/components/OverlayPreview')>();
+vi.mock('@/ui/components/PreviewBoundary', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/ui/components/PreviewBoundary')>();
   const { createElement } = await import('react');
   return {
     ...actual,
-    OverlayPreview: (props: ComponentProps<typeof actual.OverlayPreview>) => {
+    PreviewBoundary: (props: ComponentProps<typeof actual.PreviewBoundary>) => {
       renders.stage += 1;
-      return createElement(actual.OverlayPreview, props);
+      return createElement(actual.PreviewBoundary, props);
     },
   };
 });
@@ -65,7 +65,8 @@ const resetRenders = () => {
  * M7 (AGENTS §8): React.memo on the HUD is load-bearing, so it has to skip.
  * A change the stage, the peek and the action do not show re-renders the
  * status line (in the camera half's strip, under the box) and nothing of theirs:
- * `stage` counts the overlay in the camera box, which the line never reaches.
+ * `stage` counts the preview's boundary, drawn on every render of the camera
+ * box, which the line never reaches.
  */
 describe('the viewfinder re-renders only what changed', () => {
   beforeEach(() => vi.useFakeTimers());
@@ -87,7 +88,7 @@ describe('the viewfinder re-renders only what changed', () => {
 
   // The picture's size is a memo over the half and the label's height. Until both have been laid out it is null, and a
   // dependency added to that memo (the status line, say) recomputes a null to a null and shows nothing. Once the half
-  // and the label are laid out the memo holds a size, a recompute on every tick is a new object, and the overlay in the
+  // and the label are laid out the memo holds a size, a recompute on every tick is a new object, and the preview in the
   // box re-renders once a second: so the tick is proved here, with the picture sized, and not only before it.
   it('ticks the hold’s countdown without re-rendering the stage once the picture is sized', async () => {
     const view = await renderViewfinder();

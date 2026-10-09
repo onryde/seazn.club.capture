@@ -1,40 +1,28 @@
 import type { EngineSnapshot } from '@/engine/CaptureEnginePort';
 import type { MessageKey } from '@/i18n/messages';
 
-export type Advisory = 'keepOpen' | 'shed' | 'overlayFailed' | 'scoreAhead' | 'notCharging';
+export type Advisory = 'keepOpen' | 'shed' | 'notCharging';
 
 export const ADVISORY_KEY: Readonly<Record<Advisory, MessageKey>> = {
   keepOpen: 'stream.advisory.keepOpen',
   shed: 'stream.advisory.shed',
-  overlayFailed: 'stream.advisory.overlayFailed',
-  scoreAhead: 'stream.advisory.scoreAhead',
   notCharging: 'stream.advisory.notCharging',
 };
 
 /**
- * The status strip's one caption (D17). Device conditions go here, never in the
- * status line: heat sheds the overlay while the broadcast is fine (AGENTS §8).
- * A device advisory — heat, not charging — outranks the score-ahead note,
- * which shows while paired only when nothing else is up (ruling M6, over
- * D17/D18): framing a shot, before any broadcast, is when plugging in
- * disturbs nothing. Keep the app open outranks them all (CD18): leaving the
- * app is what would end the capture.
+ * The status strip's one caption (D17). Device conditions go here, never in the status line (AGENTS §8). Keep the app
+ * open outranks them all (CD18): leaving the app is what would end the capture. Heat is next, then not charging. The
+ * score-ahead and preview-failed captions went with the score preview (D2 §4.1).
  */
 export function topAdvisory(input: {
   shed: boolean;
-  overlayFailed: boolean;
-  /** Framing a shot, before any broadcast. */
-  paired: boolean;
-  overlayOn: boolean;
   charging: boolean | null;
   /** CD18: a held pairing on a phone that would not survive the background (`selectKeepOpen`). */
   keepOpen: boolean;
 }): Advisory | null {
   if (input.keepOpen) return 'keepOpen';
   if (input.shed) return 'shed';
-  if (input.overlayOn && input.overlayFailed) return 'overlayFailed';
   if (input.charging === false) return 'notCharging';
-  if (input.overlayOn && input.paired) return 'scoreAhead';
   return null;
 }
 

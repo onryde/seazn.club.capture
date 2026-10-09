@@ -65,17 +65,6 @@ export const selectAudioLevel = (snapshot: EngineSnapshot) => snapshot.telemetry
 export const selectShed = (snapshot: EngineSnapshot) => snapshot.telemetry.shed;
 /** Native's word on whether the viewers' manifest has a window yet (`ok`, `stalled`, `unknown`): the viewer layer waits on it. */
 export const selectDelivery = (snapshot: EngineSnapshot) => snapshot.telemetry.delivery;
-/** The broadcast's overlay, else the pairing's; null when the server sent no usable one. */
-export const selectOverlayUrl = (snapshot: EngineSnapshot) =>
-  snapshot.broadcast?.overlayUrl ?? snapshot.pairing?.overlayUrl ?? null;
-/**
- * Final review I-2: whether the overlay URL is the server's word yet. The pair
- * intent carries none, so a pairing's waiting fields, its overlay among them,
- * come with its first 2xx answer, and its label is empty until then (the
- * contract's label is never empty). A broadcast's descriptor carries its own.
- */
-export const selectOverlayKnown = (snapshot: EngineSnapshot) =>
-  snapshot.broadcast !== null || (snapshot.pairing !== null && snapshot.pairing.label !== '');
 export const selectPlaybackUrl = (snapshot: EngineSnapshot) =>
   snapshot.broadcast?.playbackUrl ?? null;
 /** Pairing's label is empty until the claim is answered: read as none. */
@@ -114,8 +103,6 @@ export const selectEndedDurationMs = (snapshot: EngineSnapshot) =>
  * it set (Projection.kt:38), so it is also the card's word that the code is dead (spec §5, F14 a).
  */
 export const selectCodeEndedPending = (snapshot: EngineSnapshot) => snapshot.codeEndedPending;
-/** Whether native holds a pairing; before that there is no overlay to try. */
-export const selectHasPairing = (snapshot: EngineSnapshot) => snapshot.pairing !== null;
 /** What names native's pairing (amendment, Identity rules): read apart, so each is a stable scalar. */
 export const selectHeldCode = (snapshot: EngineSnapshot) => snapshot.pairing?.code ?? null;
 export const selectHeldSlot = (snapshot: EngineSnapshot) => snapshot.pairing?.slot ?? null;

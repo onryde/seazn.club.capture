@@ -61,15 +61,15 @@ const stopLive = () => screen.getByRole('button', { name: 'Hold to stop and unpa
 const peek = () => screen.getByRole('button', { name: 'What viewers see' });
 /** en['stream.status.waitingGoLive'] with FAKE_PAIRING's destination, written out. */
 const WAITING = 'Waiting for Go live · YouTube · Fake CC';
-const SCORE_AHEAD = en['stream.advisory.scoreAhead'];
 
 /**
- * The caption of each advisory, and how a test brings it up alone (F17/D4: all five live in the strip).
- * `topAdvisory` shows one at a time, so each case starts from the state where its own is on top.
+ * The caption of each advisory, and how a test brings it up alone (F17/D4: all three live in the strip; the score
+ * preview's two went with it, D2 §4.1). `topAdvisory` shows one at a time, so each case starts from the state where its
+ * own is on top.
  *
  * Which can be SEEN is decided by the two tiers (owner, 2026-10-08, and 2026-10-09, option B): a caption beats only a
- * routine status line, and "Waiting for Go live" is routine, so all five can reach the strip before air; on air the live
- * line is routine too, and four can (Score ahead is up only while paired).
+ * routine status line, and "Waiting for Go live" is routine, so all three can reach the strip before air; on air the
+ * live line is routine too, so all three can there as well.
  */
 const ADVISORIES: readonly (readonly [
   keyof typeof ADVISORY_KEY,
@@ -85,13 +85,9 @@ const ADVISORIES: readonly (readonly [
     },
   ],
   ['shed', en['stream.advisory.shed'], (view) => view.engine.scene('shed')],
-  ['overlayFailed', en['stream.advisory.overlayFailed'], (view) => view.surfaces.failOverlay()],
-  ['scoreAhead', SCORE_AHEAD, (view) => view.engine.patch({ charging: true })],
   // The fake phone starts uncharged, so the default viewfinder already says it.
   ['notCharging', en['stream.advisory.notCharging'], () => undefined],
 ];
-/** The four that a phone on air can show. Score ahead is up only while paired. */
-const SEEN_ON_AIR = ADVISORIES.filter(([name]) => name !== 'scoreAhead');
 let advisoriesRun = 0;
 
 /** The two halves as the cascade gives them: what each grows, shrinks and starts from, and the controls half's width. */
@@ -163,22 +159,12 @@ describe('the camera half (spec §1)', () => {
     ]);
   });
 
-  it('draws the preview and, with the overlay on and a URL, the overlay, over the box and nowhere else', async () => {
+  it('draws the preview in the box and nowhere else', async () => {
     await renderViewfinder();
     const box = byId('camera-box');
     expect(within(box).getByTestId('preview')).toBeTruthy();
-    expect(within(box).getByTestId('overlay')).toBeTruthy();
     expect(within(byId('status-strip')).queryByTestId('preview')).toBeNull();
-    expect(within(byId('status-strip')).queryByTestId('overlay')).toBeNull();
     expect(within(byId('controls-half')).queryByTestId('preview')).toBeNull();
-    expect(within(byId('controls-half')).queryByTestId('overlay')).toBeNull();
-  });
-
-  it('draws no overlay with the score preview turned off, and the box is still there', async () => {
-    const view = await renderViewfinder();
-    await act(() => view.ports.streamSettings.set({ overlay: false }));
-    expect(within(byId('camera-box')).queryByTestId('overlay')).toBeNull();
-    expect(within(byId('camera-box')).getByTestId('preview')).toBeTruthy();
   });
 
   it('is a black 16:9 box as wide as its half until the half is measured, clipping what it holds', async () => {
@@ -232,8 +218,8 @@ describe('the status strip (spec §1)', () => {
   // Owner, 2026-10-08, "one single line all the time": under the label the strip has ONE message line, never both. Two
   // tiers decide which: an URGENT status line (a refusal, trouble, a stopped stream, Back's "hold Stop") always wins; an
   // advisory caption beats a ROUTINE one (Live, Waiting for Go live: owner, 2026-10-09, option B). The phones that read
-  // a routine line here are quiet (on the charger, surviving the background; test/quietDevice.ts), so the only caption a
-  // paired phone before air can have is Score ahead, and the preview setting decides whether it is up.
+  // a routine line here are quiet (on the charger, surviving the background; test/quietDevice.ts), so a paired phone
+  // before air has no caption up.
   it('carries the match label, then ONE message: the status line when no caption is up', async () => {
     await renderViewfinder({}, { overlay: false, quiet: true });
     const strip = byId('status-strip');
@@ -243,16 +229,15 @@ describe('the status strip (spec §1)', () => {
     // The message is the status line and nothing else: no caption beside it.
     expect(message.textContent).toBe(WAITING);
     expect(within(message).getByText(WAITING)).toBeTruthy();
-    expect(screen.queryByText(SCORE_AHEAD)).toBeNull();
+    for (const [name, text] of ADVISORIES) expect(screen.queryByText(text), name).toBeNull();
     // The label is the strip's alone: the old bottom strip's single line is gone.
     expect(screen.getAllByTestId('match-label')).toHaveLength(1);
     expect(within(strip).getAllByTestId('strip-message')).toHaveLength(1);
   });
 
   // Owner, 2026-10-09, option B: before air a phone warning beats the destination line, which shows when no caption is
-  // active. Three phones, each with its own caption up (the fake as it is, unplugged; a charger but a phone that would
-  // not survive the background; a charger and the score preview on): the caption is the one message and the destination
-  // is not on screen. Its other half is the test above: with nothing to warn about, the destination shows.
+  // active. Two phones, each with its own caption up (the fake as it is, unplugged; a charger but a phone that would
+  // not survive the background): the caption is the one message and the destination is not on screen. Its other half is the test above: with nothing to warn about, the destination shows.
   it.each([
     ['Not charging', en['stream.advisory.notCharging'], (_view: Viewfinder) => undefined],
     [
@@ -263,11 +248,6 @@ describe('the status strip (spec §1)', () => {
         view.engine.setSurvivesBackground(false);
       },
     ],
-    [
-      'Score ahead',
-      en['stream.advisory.scoreAhead'],
-      (view: Viewfinder) => view.engine.patch({ charging: true }),
-    ],
   ])('puts %s over the destination line before air', async (_name, caption, bringUp) => {
     const view = await renderViewfinder();
     act(() => bringUp(view));
@@ -275,25 +255,6 @@ describe('the status strip (spec §1)', () => {
     expect(message.textContent).toBe(caption);
     expect(screen.queryByText(WAITING)).toBeNull();
     expect(screen.queryByText(/YouTube/)).toBeNull();
-  });
-
-  it('puts the caption over a routine status line before air with the overlay on: the note is the one message', async () => {
-    await renderViewfinder({}, { quiet: true });
-    const strip = byId('status-strip');
-    const message = within(strip).getByTestId('strip-message');
-    expect(follows(within(strip).getByTestId('match-label'), message)).toBe(true);
-    expect(message.textContent).toBe(SCORE_AHEAD);
-    // The caption outranks the status line, and the status line is NOT shown beside it: not anywhere on screen.
-    expect(screen.queryByText(WAITING)).toBeNull();
-    expect(within(strip).getAllByTestId('strip-message')).toHaveLength(1);
-  });
-
-  it('says the score-ahead note before air only: on air the note is gone and the live line is the one message', async () => {
-    const view = await renderViewfinder({}, { quiet: true });
-    expect(within(byId('status-strip')).getByText(SCORE_AHEAD)).toBeTruthy();
-    act(() => view.engine.scene('live'));
-    expect(screen.queryByText(SCORE_AHEAD)).toBeNull();
-    expect(byId('strip-message').textContent).toBe(en['stream.status.live']);
   });
 
   it('sets the status line in the body role, ONE line, under the label (F20, owner 2026-10-08)', async () => {
@@ -319,7 +280,7 @@ describe('the status strip (spec §1)', () => {
       // The caption IS the strip's message: nothing else is in it, and the status line is not on screen.
       expect(within(strip).getByTestId('strip-message').textContent).toBe(text);
       expect(screen.queryByText(WAITING)).toBeNull();
-      // One caption at a time (topAdvisory): the other four are not up.
+      // One caption at a time (topAdvisory): the other two are not up.
       for (const [other, otherText] of ADVISORIES) {
         if (otherText !== text) expect(screen.queryByText(otherText), other).toBeNull();
       }
@@ -330,7 +291,7 @@ describe('the status strip (spec §1)', () => {
     },
   );
 
-  it.each(SEEN_ON_AIR)(
+  it.each(ADVISORIES)(
     'carries the %s advisory in the strip on air, as the ONE message: not over the shot, not in the controls',
     async (_name, text, bringUp) => {
       const view = await renderViewfinder();
@@ -352,23 +313,18 @@ describe('the status strip (spec §1)', () => {
     },
   );
 
-  it('ran all five advisories before air and four on air: the five the engine declares', () => {
-    // Anti-vacuity: the sweeps above ran once per advisory in `ADVISORY_KEY` before air and once per advisory a phone on
-    // air can show, and none were skipped.
+  it('ran all three advisories before air and on air: the three the engine declares', () => {
+    // Anti-vacuity: the sweeps above ran once per advisory in `ADVISORY_KEY` before air and once on air, and none were
+    // skipped.
     expect(ADVISORIES.map(([name]) => name).sort()).toEqual(Object.keys(ADVISORY_KEY).sort());
-    expect(SEEN_ON_AIR.map(([name]) => name).sort()).toEqual(
-      Object.keys(ADVISORY_KEY)
-        .filter((name) => name !== 'scoreAhead')
-        .sort(),
-    );
-    expect(advisoriesRun).toBe(9);
+    expect(advisoriesRun).toBe(6);
   });
 
   it('draws the strip with no label and no caption before the pairing, and still says the line (empty case)', async () => {
     await renderViewfinder({}, { engine: 'idle' });
     const strip = byId('status-strip');
     expect(within(strip).queryByTestId('match-label')).toBeNull();
-    expect(within(strip).queryByText(SCORE_AHEAD)).toBeNull();
+    for (const [name, text] of ADVISORIES) expect(within(strip).queryByText(text), name).toBeNull();
     // The one message line is there with its status line (the empty case: no caption, no label, still a message).
     expect(within(strip).getByTestId('strip-message').textContent).toBe(
       en['stream.status.starting'],
@@ -714,7 +670,7 @@ describe('organiser-stopped stays on the viewfinder (spec §1)', () => {
   afterEach(() => vi.useRealTimers());
 
   it('renders both halves, the box, the strip with its line, and Go live again', async () => {
-    // "Organiser stopped it" is an urgent line: it keeps the strip's one line from Score ahead and Not charging.
+    // "Organiser stopped it" is an urgent line: it keeps the strip's one line from Not charging.
     const view = await renderViewfinder();
     act(() => view.engine.scene('paired-after-organiser-stop'));
     expect(
@@ -868,16 +824,14 @@ describe('the camera box gives way to the strip, before the label is measured (s
     expect(getComputedStyle(byId('camera-half')).backgroundColor).toBe(paintOf(TOKEN.surface));
   });
 
-  it('keeps the overlay and What viewers see inside the narrower box', async () => {
+  it('keeps What viewers see inside the narrower box', async () => {
     const view = await renderViewfinder();
     // A half of 480: the strip's 142 leaves a box 218 tall, 387.6 wide, narrower than the half.
     layOut(byId('camera-half'), { width: 480, height: 360 });
     const box = byId('camera-box');
-    expect(box.contains(byId('overlay'))).toBe(true);
     act(() => view.engine.scene('live'));
     pressIn(peek());
     expect(box.contains(byId('viewer-video'))).toBe(true);
-    expect(box.contains(byId('overlay'))).toBe(true);
     expect(boxSize().width).toBeCloseTo(387.5555556, 2);
   });
 
@@ -1148,7 +1102,7 @@ describe('the picture is sized from this match’s label (owner, 2026-10-08, opt
     expect(boxSize().height).toBeCloseTo(222, 2);
   });
 
-  // The five captions, each on a viewfinder of its own (a failed overlay stays failed), at 640 × 360 where the round
+  // The three captions, each on a viewfinder of its own, at 640 × 360 where the round
   // line has room: the caption takes the strip's ONE message line and nothing else. The picture and the round line are
   // the same with it up as without, and the message is the caption alone.
   let captionsTried = 0;
@@ -1167,13 +1121,7 @@ describe('the picture is sized from this match’s label (owner, 2026-10-08, opt
       expect(ADVISORIES.filter(([, other]) => screen.queryByText(other) !== null)).toHaveLength(0);
       expect(roundLine()?.textContent).toBe('Open · QF');
       expect(byId('strip-message').textContent).toBe(en['stream.status.live']);
-      // The score-ahead note is before air only, so its own state is the paired one; the rest are on air.
-      if (text === SCORE_AHEAD) {
-        act(() => {
-          view.engine.scene('paired-ready');
-          view.engine.patch({ charging: true });
-        });
-      } else if (text === en['stream.advisory.notCharging']) {
+      if (text === en['stream.advisory.notCharging']) {
         // The fake phone starts uncharged, so Not charging is the one that needs the phone unplugged again.
         act(() => view.engine.patch({ charging: false }));
       } else {
@@ -1187,9 +1135,9 @@ describe('the picture is sized from this match’s label (owner, 2026-10-08, opt
     },
   );
 
-  it('tried all five captions (anti-vacuity)', () => {
-    expect(ADVISORIES).toHaveLength(5);
-    expect(captionsTried).toBe(5);
+  it('tried all three captions (anti-vacuity)', () => {
+    expect(ADVISORIES).toHaveLength(3);
+    expect(captionsTried).toBe(3);
   });
 });
 

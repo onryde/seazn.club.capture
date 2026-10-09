@@ -366,7 +366,7 @@ describe('StatusStrip', () => {
     expect(screen.queryByText(nl['stream.advisory.shed'])).toBeNull();
   });
 
-  it.each(['keepOpen', 'shed', 'overlayFailed', 'scoreAhead', 'notCharging'] as const)(
+  it.each(['keepOpen', 'shed', 'notCharging'] as const)(
     'the %s caption takes the line over from a routine status line, and gives it back',
     (advisory) => {
       const view = renderWithPorts(
@@ -382,7 +382,7 @@ describe('StatusStrip', () => {
 
   // Owner ruling, 2026-10-08 (two tiers): a status line that needs action or reports a failure is URGENT and always
   // wins the one line, whichever caption is up; only a ROUTINE line gives way to a caption.
-  it.each(['keepOpen', 'shed', 'overlayFailed', 'scoreAhead', 'notCharging'] as const)(
+  it.each(['keepOpen', 'shed', 'notCharging'] as const)(
     'an urgent status line beats the %s caption: the line is the one message, the caption is not shown',
     (advisory) => {
       const view = renderWithPorts(

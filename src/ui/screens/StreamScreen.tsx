@@ -36,8 +36,6 @@ export function StreamScreen() {
       <StreamStage
         line={line.text}
         lineTier={line.tier}
-        paired={view.kind === 'paired'}
-        overlayOn={settings.overlay}
         peek={peek}
         scoring={scoring.view}
         scoringSecondsLeft={scoring.secondsLeft}

@@ -90,7 +90,6 @@ const name = (row: Row) => `${row.lang} ${row.key}`;
 const OVER_NARROW: Readonly<Record<string, readonly string[]>> = {
   en: [
     'stream.advisory.keepOpen',
-    'stream.advisory.overlayFailed',
     'stream.status.cameraTaken',
     'stream.status.holdingNotDelivered',
     'stream.status.notReadyHeld',
@@ -172,7 +171,7 @@ describe('the strip’s one message line, measured in every language (owner, 202
     expect(OWNER).toBe(462);
   });
 
-  it('measures 42 status strings and 5 captions in each of the four languages, and every glyph is in the font', () => {
+  it('measures 42 status strings and 3 captions in each of the four languages, and every glyph is in the font', () => {
     // Anti-vacuity: the table is the whole copy, not a sample. 41 `stream.status.*` keys and Back's refusal.
     for (const [lang] of LANGUAGES) {
       const rows = REALISTIC.filter((row) => row.lang === lang);
@@ -183,11 +182,11 @@ describe('the strip’s one message line, measured in every language (owner, 202
       expect(
         rows.filter((row) => row.kind === 'caption'),
         lang,
-      ).toHaveLength(5);
+      ).toHaveLength(3);
     }
-    expect(REALISTIC).toHaveLength(4 * 47);
+    expect(REALISTIC).toHaveLength(4 * 45);
     // The destination variants add two rows to the waiting line in each language.
-    expect(ROWS).toHaveLength(4 * 47 + 4 * 2);
+    expect(ROWS).toHaveLength(4 * 45 + 4 * 2);
     // A code point the font lacks is measured as its .notdef: the width would be wrong. None is missing.
     const missing = new Set<string>();
     for (const row of ROWS) {
@@ -221,9 +220,9 @@ describe('the strip’s one message line, measured in every language (owner, 202
     for (const row of over) byLanguage[row.lang]?.push(row.key);
     for (const keys of Object.values(byLanguage)) keys.sort();
     expect(byLanguage).toEqual(OVER_NARROW);
-    // 57 strings: 10 en, 16 es, 16 fr, 15 nl.
-    expect(over).toHaveLength(57);
-    expect(Object.values(OVER_NARROW).map((keys) => keys.length)).toEqual([10, 16, 16, 15]);
+    // 56 strings: 9 en, 16 es, 16 fr, 15 nl.
+    expect(over).toHaveLength(56);
+    expect(Object.values(OVER_NARROW).map((keys) => keys.length)).toEqual([9, 16, 16, 15]);
   });
 
   it('has strings on BOTH sides of 298 dp, so the line above can neither be everything nor nothing (anti-vacuity)', () => {

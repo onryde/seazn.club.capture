@@ -143,8 +143,6 @@
   "stream.blocker.held": "Turn the phone sideways",
   "stream.startsAt": "Starts {time}",
   "stream.advisory.shed": "Preview paused — still live",
-  "stream.advisory.overlayFailed": "Score preview failed — the broadcast is not affected",
-  "stream.advisory.scoreAhead": "You see the score slightly ahead of viewers",
   "stream.advisory.notCharging": "Not charging — plug in for a long match",
   "stream.advisory.keepOpen": "Keep the app open — capture stops in the background",
   "stream.peek.label": "What viewers see",

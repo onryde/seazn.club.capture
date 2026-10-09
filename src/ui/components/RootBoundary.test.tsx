@@ -50,7 +50,7 @@ function MeterPart(): null {
 }
 
 /**
- * M4 (final review): a render crash outside the overlay's own boundary
+ * M4 (final review): a render crash outside the preview's own boundary
  * replaced the whole app, LIVE plate and Stop with it, while native kept
  * publishing, and the record never heard of it.
  */

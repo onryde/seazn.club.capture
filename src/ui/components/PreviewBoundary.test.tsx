@@ -6,6 +6,7 @@ import fr from '@/i18n/fr.json';
 import nl from '@/i18n/nl.json';
 import { crashPreviewUntilShown, disarmPreviewCrash } from '@/ui/components/PreviewBoundary';
 import { readRecord } from '../../../test/fakePorts';
+import { layOut } from '../../../test/layOut';
 import { renderViewfinder } from '../../../test/renderViewfinder';
 
 // test/setup-ui.ts does not silence React's error log; each crash below would print it.
@@ -58,9 +59,9 @@ it('I4 Show preview brings the preview back; a second crash shows the caption ag
   expect(screen.queryByText(en['stream.preview.stopped'])).toBeNull();
   act(() => view.surfaces.crashPreview());
   // A re-render that reaches the throwing preview. `engine.scene('live')` does not: the stage is
-  // memoised and nothing it reads changes, so the boundary and Preview never render again. Turning
-  // the score preview off changes the stage's own props, and so the boundary's children.
-  await act(() => view.ports.streamSettings.set({ overlay: false }));
+  // memoised and nothing it reads changes, so the boundary and Preview never render again. The
+  // camera half laid out at a new size changes the box's own props, and so the boundary's children.
+  layOut(screen.getByTestId('camera-half'), { width: 494, height: 332 });
   expect(screen.getByText(en['stream.preview.stopped'])).toBeTruthy();
   expect(crashes(view).map((entry) => entry.fields)).toEqual([{ count: 1 }, { count: 2 }]);
 });

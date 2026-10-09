@@ -1,15 +1,13 @@
 import { memo, useCallback, useMemo, useState } from 'react';
 import { StyleSheet, View, type LayoutChangeEvent } from 'react-native';
-import { selectCharging, selectKeepOpen, topAdvisory } from '@/hooks/advisory';
+import { selectCharging, selectKeepOpen, selectShedding, topAdvisory } from '@/hooks/advisory';
 import { selectPlaybackUrl } from '@/hooks/engineSelectors';
 import type { LineTier } from '@/hooks/statusKey';
 import { useEngineSelector } from '@/hooks/useCaptureEngine';
 import type { Peek } from '@/hooks/usePeek';
 import { usePorts } from '@/hooks/usePorts';
-import { useStageOverlay } from '@/hooks/useStageOverlay';
 import type { ScoringLinkView } from '@/hooks/useScoringLink';
 import { useViewerFeed } from '@/hooks/useViewerFeed';
-import { OverlayPreview } from '@/ui/components/OverlayPreview';
 import { PreviewBoundary } from '@/ui/components/PreviewBoundary';
 import { ScoringLinkPanel } from '@/ui/components/ScoringLinkPanel';
 import { StageVideo } from '@/ui/components/StageVideo';
@@ -22,9 +20,6 @@ type StageProps = {
   readonly line: string;
   /** Which tier that line is (`LINE_TIER`): an urgent line always wins the strip's one message line. */
   readonly lineTier: LineTier;
-  /** Framing a shot, before any broadcast. */
-  readonly paired: boolean;
-  readonly overlayOn: boolean;
   readonly peek: Peek;
   /** The Remote scoring panel's state (spec §10), and the seconds it has left (B3). */
   readonly scoring: ScoringLinkView;
@@ -34,8 +29,8 @@ type StageProps = {
 
 /**
  * The camera half (spec §1): the shot as a 16:9 box across the half, with the
- * status strip under it. Nothing is drawn over the shot but the overlay preview
- * and the peek (AGENTS §6, D17) and, for at most 10 s after a tap, the Remote
+ * status strip under it. Nothing is drawn over the shot but the viewers' video
+ * (AGENTS §6, D17) and, for at most 10 s after a tap, the Remote
  * scoring panel (spec §10), which covers the whole half, strip included, and
  * brings the half's one button: its Hide. The match label and ONE message line (the
  * advisory caption when one is up, the status line otherwise) sit in the strip, below the shot.
@@ -60,19 +55,10 @@ type StageProps = {
  * first layout.
  */
 export const StreamStage = memo(function StreamStage(props: StageProps) {
-  const overlay = useStageOverlay(props.overlayOn);
+  const shed = useEngineSelector(selectShedding);
   const charging = useEngineSelector(selectCharging);
   const keepOpen = useEngineSelector(selectKeepOpen);
-  const advisory = topAdvisory({
-    shed: overlay.shed,
-    overlayFailed: overlay.failed,
-    paired: props.paired,
-    // Final review I-2: with no overlay URL there is no score preview to be
-    // ahead of viewers or to fail, so the strip says nothing of one.
-    overlayOn: props.overlayOn && overlay.url !== null,
-    charging,
-    keepOpen,
-  });
+  const advisory = topAdvisory({ shed, charging, keepOpen });
   const [half, setHalf] = useState<BoxSize | null>(null);
   // The match label's measured height, 0 until it has been (and while it is going): `stripReserve` reads 0 as the worst case.
   const [labelHeight, setLabelHeight] = useState(0);
@@ -96,13 +82,7 @@ export const StreamStage = memo(function StreamStage(props: StageProps) {
   );
   return (
     <View testID="camera-half" style={styles.half} onLayout={onLayout}>
-      <CameraBox
-        size={box}
-        url={overlay.url}
-        visible={overlay.visible}
-        onFailed={overlay.onFailed}
-        peek={props.peek}
-      />
+      <CameraBox size={box} peek={props.peek} />
       <StatusStrip
         line={props.line}
         lineTier={props.lineTier}
@@ -122,19 +102,16 @@ export const StreamStage = memo(function StreamStage(props: StageProps) {
 type CameraBoxProps = {
   /** Null until the half is measured. */
   readonly size: BoxSize | null;
-  readonly url: string | null;
-  readonly visible: boolean;
-  readonly onFailed: () => void;
   readonly peek: Peek;
 };
 
 /**
  * The shot. Its own memo, so a status line that changes every second (the
- * hold's countdown) re-renders the strip beneath it and never the preview, the
- * overlay or the peek (M7, AGENTS §8). The overlay and the peek's video fill
- * the box and nothing else.
+ * hold's countdown) re-renders the strip beneath it and never the preview or
+ * the viewers' video (M7, AGENTS §8). The viewers' video fills the box and
+ * nothing else.
  */
-const CameraBox = memo(function CameraBox({ size, url, visible, onFailed, peek }: CameraBoxProps) {
+const CameraBox = memo(function CameraBox({ size, peek }: CameraBoxProps) {
   const { surfaces } = usePorts();
   const playbackUrl = useEngineSelector(selectPlaybackUrl);
   const viewers = useViewerFeed(peek.showing, peek.mounted);
@@ -142,11 +119,10 @@ const CameraBox = memo(function CameraBox({ size, url, visible, onFailed, peek }
   const { Preview } = surfaces;
   return (
     <View testID="camera-box" style={[styles.box, sized ?? styles.unmeasured]}>
-      {/* CD19: the preview alone; the overlay keeps its own boundary (AGENTS §7). */}
+      {/* CD19: the preview alone. */}
       <PreviewBoundary>
         <Preview />
       </PreviewBoundary>
-      <OverlayPreview url={url} visible={visible} onFailed={onFailed} />
       {peek.mounted && playbackUrl !== null && viewers.feed !== 'none' ? (
         <StageVideo
           url={playbackUrl}

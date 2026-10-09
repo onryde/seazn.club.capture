@@ -8,8 +8,8 @@ import { colour, plateInk, status } from '@/ui/theme/tokens';
  *
  * Two jobs. At the root it makes a crash legible instead of a blank or a
  * vanished app — §6's "never an unexplained blank" applies hardest to failure.
- * Around the overlay WebView (§7) it keeps an overlay crash from taking the
- * live HUD with it: the stream survives and the operator still sees state.
+ * Around a surface it keeps that surface's crash from taking the live HUD
+ * with it: the stream survives and the operator still sees state.
  *
  * The system face is used deliberately — if the failure is in font loading or
  * the theme, the scale cannot be trusted to render the message.
@@ -23,7 +23,7 @@ type Props = {
    * otherwise leave this message behind a splash that never lifts (ruling R15).
    */
   onCatch?: () => void;
-  /** Rendered instead of the full-screen message — around the overlay, nothing at all (AGENTS §7). */
+  /** Rendered instead of the full-screen message. */
   fallback?: ReactNode;
   /** A line under the heading: at the root, that the broadcast may still be live (M4). */
   note?: string;
