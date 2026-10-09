@@ -28,7 +28,6 @@ class BroadcastDescriptor(
   val fallback: IngestTarget?,
   val holdWindowSeconds: Map<Transport, Int>,
   val playbackUrl: String,
-  val overlayUrl: String?,
   val label: String,
   val maxDurationMinutes: Int,
   val scoreUpdates: String,

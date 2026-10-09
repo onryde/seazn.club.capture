@@ -119,7 +119,6 @@ class ProjectionPairedTest {
         sid = "sess_42",
         cause = Cause.AUTOMATIC,
         playbackUrl = Configs.PLAYBACK_URL,
-        overlayUrl = "https://stg.seazn.club/overlay/fixtures/fx-42",
         label = "Example Town v Sample CC",
         holdWindowSeconds = mapOf(Transport.SRT to 183, Transport.RTMPS to 180),
         maxDurationMinutes = 300,

@@ -50,7 +50,6 @@ describe('the fake code port', () => {
     const answer = await port.check(CODE);
     if (!answer.ok) throw new Error('the fake answered an error');
     expect(answer.value).toMatchObject({
-      overlayUrl: 'https://seazn.club/overlay/fixtures/fake-fixture',
       heartbeatUrl: `https://seazn.club/api/v1/capture/codes/${SAMPLE_CODE}/beats`,
       startUrl: `https://seazn.club/api/v1/capture/codes/${SAMPLE_CODE}/start`,
     });

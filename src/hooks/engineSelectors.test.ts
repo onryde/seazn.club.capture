@@ -186,7 +186,6 @@ const BROADCAST: BroadcastInfo = {
   sid: 'fake-sid-1',
   cause: 'operator',
   playbackUrl: 'https://video.example/fake/manifest/video.m3u8',
-  overlayUrl: 'https://stg.seazn.club/overlay/fixtures/broadcast',
   label: 'Seazn XI v Fake CC (broadcast)',
   holdWindowSeconds: { srt: 183, rtmps: 183 },
   maxDurationMinutes: 300,

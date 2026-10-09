@@ -111,14 +111,6 @@ class HttpTest {
   }
 
   @Test
-  fun `a beat is read against the pairing's environment - an overlay off its Seazn host is dropped`() {
-    val body = """{"state":"waiting","label":"L","scheduledStart":null,"autoAllowed":true,"destinationName":null,"overlayUrl":"$OVERLAY","pollSeconds":10}"""
-    fun overlayIn(env: Environment): String? = assertIs<HeartbeatResponse.Answered>(HttpAnswers.heartbeat(1, HttpOutcome.Answered(200, body), env).response).reply?.waiting?.overlayUrl
-    assertEquals(OVERLAY, overlayIn(Environment.STAGING))
-    assertNull(overlayIn(Environment.PRODUCTION))
-  }
-
-  @Test
   fun `D3 and G0-d the code is fetched at its path with its slot and the phone's id, with the bearer, never cached`() {
     val request = HttpRequests.code(fetch)
     assertEquals("GET", request.method)
@@ -147,17 +139,14 @@ class HttpTest {
     // N1: an endReason alone is not the server's refusal, so it ends nothing.
     assertEquals(Input.CodeAnswered(11, CodeAnswer.Unreachable("410-not-refusal")), HttpAnswers.code(11, HttpOutcome.Answered(410, """{"endReason":"stopped"}"""), Environment.STAGING))
     assertEquals(Input.CodeAnswered(13, CodeAnswer.Unreachable("dns")), HttpAnswers.code(13, HttpOutcome.Failed("dns"), Environment.STAGING))
-    // The pairing's environment reaches Bodies. Not through the ingest host, one for both environments since owner
-    // ruling A (2026-10-05), but through the Seazn host: staging's overlay is foreign to a production pairing, dropped.
+    // The pairing's environment reaches Bodies; both environments open the same session shape.
     val open = HttpAnswers.code(14, HttpOutcome.Answered(200, session), Environment.STAGING)
     assertEquals(14, open.requestId)
     assertEquals(SID, assertIs<CodeAnswer.Open>(open.answer).sid)
-    assertTrue(assertIs<CodeAnswer.Open>(open.answer).waiting?.overlayUrl != null, "the positive pair: staging keeps its overlay")
     val production = HttpAnswers.code(15, HttpOutcome.Answered(200, session), Environment.PRODUCTION)
     assertEquals(15, production.requestId)
     val opened = assertIs<CodeAnswer.Open>(production.answer)
     assertEquals(SID, opened.sid)
-    assertNull(opened.waiting?.overlayUrl)
   }
 
   @Test
@@ -512,7 +501,6 @@ class HttpTest {
     const val CODE_URL = "https://stg.seazn.club/api/v1/capture/codes/$CODE"
     const val BEATS_URL = "$CODE_URL/beats"
     const val START_URL = "$CODE_URL/start"
-    const val OVERLAY = "https://stg.seazn.club/overlay/fixtures/f1"
 
     /** In a beat's body alone, so a printed body is seen even where the code would not be. */
     const val BODY_MARK = "body-5d2c8e1a7f30"

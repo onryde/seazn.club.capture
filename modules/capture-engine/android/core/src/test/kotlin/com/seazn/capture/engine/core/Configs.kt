@@ -48,7 +48,6 @@ object Configs {
       fallback = fallback,
       holdWindowSeconds = holdWindowSeconds,
       playbackUrl = PLAYBACK_URL,
-      overlayUrl = "https://stg.seazn.club/overlay/fixtures/fx-42",
       label = "Example Town v Sample CC",
       maxDurationMinutes = maxDurationMinutes,
       scoreUpdates = "realtime",
@@ -92,7 +91,6 @@ object Configs {
       scheduledStartEpochS = 1_790_003_600,
       autoAllowed = autoAllowed,
       destinationName = destinationName,
-      overlayUrl = "https://stg.seazn.club/overlay/fixtures/fx-42",
       pollSeconds = pollSeconds,
     )
 

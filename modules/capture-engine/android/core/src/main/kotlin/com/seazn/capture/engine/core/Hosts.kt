@@ -41,7 +41,7 @@ object Hosts {
     return match.groupValues[2].lowercase()
   }
 
-  /** `heartbeatUrl`, `startUrl`, `codeUrl` and `overlayUrl`: https on the build's Seazn host. */
+  /** `heartbeatUrl`, `startUrl` and `codeUrl`: https on the build's Seazn host. */
   fun onSeazn(url: String, env: Environment): Boolean = hostOf(url, "https") == env.seaznHost
 
   /**

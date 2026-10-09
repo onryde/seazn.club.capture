@@ -251,12 +251,12 @@ function toUnpaired(value: unknown): Unpaired | null | undefined {
 function toPairing(value: Wire): PairingInfo | undefined {
   const { code, slot, tokenTag, automatic, label, venueTimezone, scheduledStart, autoAllowed } =
     value;
-  const { destinationName, overlayUrl, pollSeconds, stageLabel } = value;
+  const { destinationName, pollSeconds, stageLabel } = value;
   if (!isText(code) || !isNumber(slot) || !isText(tokenTag) || !isFlag(automatic)) return undefined;
   if (!isText(label) || !isText(venueTimezone) || !isFlag(autoAllowed) || !isNumber(pollSeconds))
     return undefined;
   if (scheduledStart !== null && !isNumber(scheduledStart)) return undefined;
-  if (!textOrNull(destinationName) || !textOrNull(overlayUrl)) return undefined;
+  if (!textOrNull(destinationName)) return undefined;
   if (!textOrNull(stageLabel)) return undefined;
   return {
     code,
@@ -268,7 +268,6 @@ function toPairing(value: Wire): PairingInfo | undefined {
     scheduledStart: scheduledStart === null ? null : new Date(scheduledStart * 1000),
     autoAllowed,
     destinationName,
-    overlayUrl,
     pollSeconds,
     stageLabel,
   };
@@ -280,19 +279,17 @@ function toPairing(value: Wire): PairingInfo | undefined {
  * reads it the same way, and never drops a snapshot for it.
  */
 function toBroadcast(value: Wire): BroadcastInfo | undefined {
-  const { sid, playbackUrl, overlayUrl, label, maxDurationMinutes, srtOffered } = value;
+  const { sid, playbackUrl, label, maxDurationMinutes, srtOffered } = value;
   const cause = word<Cause>('cause', value.cause);
   const holdWindowSeconds = toHoldWindows(value.holdWindowSeconds);
   if (!isText(sid) || cause === undefined || !isText(playbackUrl) || !isText(label))
     return undefined;
-  if (!textOrNull(overlayUrl) || !isNumber(maxDurationMinutes) || !isFlag(srtOffered))
-    return undefined;
+  if (!isNumber(maxDurationMinutes) || !isFlag(srtOffered)) return undefined;
   if (holdWindowSeconds === undefined) return undefined;
   return {
     sid,
     cause,
     playbackUrl,
-    overlayUrl,
     label,
     holdWindowSeconds,
     maxDurationMinutes,

@@ -57,9 +57,6 @@ class BridgeCore(
   /** The pairing the last notice saw, by identity (P5): a re-scan of the same code is a new pairing. */
   private var noticed: PairRequest? = null
 
-  /** Final review I-2: the pairing [noticed] has had its `overlay-refused` line. Scheduler thread only. */
-  private var overlayRefusedSaid = false
-
   /** CD37. Scheduler thread only, but for [viewfinder], which is volatile. */
   private var captureWanted = false
 
@@ -307,7 +304,6 @@ class BridgeCore(
     val request = (engine.phase as? Phase.Pairing)?.pairing?.request ?: return
     if (request === noticed) return
     noticed = request
-    overlayRefusedSaid = false
     sticky.pairAccepted()
     sendReadiness()
   }
@@ -394,10 +390,7 @@ class BridgeCore(
         }
       is Command.PostHeartbeat -> beat(command)
       is Command.FetchCode ->
-        ask({ HttpRequests.code(command) }) {
-          refusedOverlay(it, command.environment)
-          report(HttpAnswers.code(command.requestId, it, command.environment))
-        }
+        ask({ HttpRequests.code(command) }) { report(HttpAnswers.code(command.requestId, it, command.environment)) }
       is Command.PostStart -> ask({ HttpRequests.start(command) }) { report(HttpAnswers.start(command.requestId, it)) }
       is Command.WriteStopped -> stored("write") { pairings.write(command.record) }
       is Command.DeleteStopped -> stored("delete") { pairings.delete(command.code, command.slot) }
@@ -417,25 +410,7 @@ class BridgeCore(
   /** The environment is read here, on the scheduler thread, for the answer that comes back on any thread. */
   private fun beat(command: Command.PostHeartbeat) {
     val env = engine.phase.pairing?.request?.environment ?: Environment.STAGING
-    ask({ HttpRequests.heartbeat(command) }) {
-      refusedOverlay(it, env)
-      report(HttpAnswers.heartbeat(command.beatId, it, env))
-    }
-  }
-
-  /**
-   * Final review I-2: an overlay off the build's Seazn host is dropped ([Bodies]), so JS sees none, which is the
-   * not-entitled answer and shows nothing. The record says it was a refusal: one warn line a pairing, however
-   * many answers repeat it ([overlayRefusedSaid], cleared in [noticePair]). From the answer's thread, so posted.
-   */
-  private fun refusedOverlay(outcome: HttpOutcome, env: Environment) {
-    if (outcome !is HttpOutcome.Answered || !Bodies.foreignOverlay(outcome.body, env)) return
-    guarded.schedule(0) {
-      if (!overlayRefusedSaid) {
-        overlayRefusedSaid = true
-        engine.log(RecordEntry("overlay-refused", level = "warn"))
-      }
-    }
+    ask({ HttpRequests.heartbeat(command) }) { report(HttpAnswers.heartbeat(command.beatId, it, env)) }
   }
 
   /**

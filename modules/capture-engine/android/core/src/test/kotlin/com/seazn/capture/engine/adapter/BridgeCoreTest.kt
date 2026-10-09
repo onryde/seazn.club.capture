@@ -189,93 +189,6 @@ class BridgeCoreTest {
   }
 
   /**
-   * Final review I-2: native drops an overlay off the build's Seazn host, so JS sees no overlay, which is the
-   * not-entitled answer and shows nothing. The record tells them apart: one warn line a pairing, however many
-   * answers repeat it, and the next pairing says it again.
-   */
-  @Test
-  fun `final I-2 an overlay off the Seazn host is one warn line a pairing, however many beats name it`() {
-    val foreign = JSONObject(PairWire.beat()).put("overlayUrl", "https://evil.example/overlay").toString()
-    platform.answer = { request -> if (request.url.endsWith("/beats")) HttpOutcome.Answered(200, foreign) else PairWire.answer(request) }
-    val refused = { lines().filter { it.getString("kind") == "overlay-refused" } }
-    core.start()
-    core.report(Input.Network(true))
-    ready()
-    pair()
-    scheduler.advanceBy(60_000)
-    val beats = platform.beats().size
-    assertTrue(beats >= 3, "beats answered: $beats")
-    assertEquals(1, refused().size, "one line over $beats beats")
-    assertEquals("warn", refused().single().getString("level"))
-    assertNull((core.current()["pairing"] as Map<*, *>)["overlayUrl"], "dropped")
-    core.send(mapOf("kind" to "unpair"))
-    scheduler.advanceBy(0)
-    pair()
-    scheduler.advanceBy(60_000)
-    assertTrue(platform.beats().size >= beats + 3, "pairing 2 beat too")
-    assertEquals(2, refused().size, "pairing 2 says it once more")
-  }
-
-  @Test
-  fun `final I-2 the code's answer naming a foreign overlay writes the line too, at arming`() {
-    val session = JSONObject(PairWire.SESSION).put("overlayUrl", "https://evil.example/overlay").toString()
-    platform.answer = { request -> if (request.url.startsWith("${PairWire.ORIGIN}?")) HttpOutcome.Answered(200, session) else PairWire.answer(request) }
-    live()
-    assertEquals("publishing", state())
-    val asked = platform.http.count { it.url.startsWith("${PairWire.ORIGIN}?") }
-    assertTrue(asked >= 1, "the code was asked: $asked")
-    assertEquals(listOf("overlay-refused"), kinds().filter { it == "overlay-refused" }, "beats named none; the code's answer did")
-  }
-
-  /**
-   * Final review I-2, staging evidence (2026-10-05): the pair intent carries no overlay, so a pairing's overlay is
-   * null, and its label empty, until the first 2xx answer names them. Staging's own shape, a query string with a
-   * key, then crosses the beat's answer, the pairing and the snapshot wire whole, and is no refusal.
-   */
-  @Test
-  fun `final I-2 a staging overlay with a query string crosses pair, paired and the first beat whole`() {
-    val url = "https://stg.seazn.club/overlay/fixtures/fx42hmnp7k2q?style=bug&key=k3y-0123"
-    platform.unanswered = { it.url.endsWith("/beats") }
-    core.start()
-    core.report(Input.Network(true))
-    ready()
-    pair()
-    assertEquals("paired", state())
-    assertTrue("overlayUrl" !in PairWire.valid(), "the pair intent names no overlay")
-    val waiting = platform.snapshots.last()["pairing"] as Map<*, *>
-    assertNull(waiting["overlayUrl"], "none known before the first answer")
-    assertEquals("", waiting["label"], "nor anything else the answer brings")
-    val (beat, answer) = platform.owed.first()
-    assertTrue(beat.url.endsWith("/beats"), "the first beat is owed")
-    answer(HttpOutcome.Answered(200, JSONObject(PairWire.beat()).put("overlayUrl", url).toString()))
-    scheduler.advanceBy(0)
-    val known = platform.snapshots.last()["pairing"] as Map<*, *>
-    assertEquals(url, known["overlayUrl"], "the snapshot JS reads")
-    assertEquals("Example Town v Sample CC", known["label"])
-    assertEquals(emptyList(), kinds().filter { it == "overlay-refused" })
-  }
-
-  @Test
-  fun `final I-2 no overlay, or Seazn's own, writes no overlay-refused line`() {
-    val own = "https://stg.seazn.club/overlay/fixtures/f1"
-    var body = PairWire.beat()
-    platform.answer = { request -> if (request.url.endsWith("/beats")) HttpOutcome.Answered(200, body) else PairWire.answer(request) }
-    core.start()
-    core.report(Input.Network(true))
-    ready()
-    pair()
-    scheduler.advanceBy(30_000)
-    val none = platform.beats().size
-    assertTrue(none >= 2, "beats with no overlay: $none")
-    assertNull((core.current()["pairing"] as Map<*, *>)["overlayUrl"])
-    body = JSONObject(PairWire.beat()).put("overlayUrl", own).toString()
-    scheduler.advanceBy(30_000)
-    assertTrue(platform.beats().size >= none + 2, "beats with Seazn's own")
-    assertEquals(own, (core.current()["pairing"] as Map<*, *>)["overlayUrl"], "Seazn's own crossed")
-    assertEquals(emptyList(), kinds().filter { it == "overlay-refused" })
-  }
-
-  /**
    * Final review round 2, minor 2: the pose watch's sensor callback runs on its own thread, so a report already
    * posted when Release unregisters it lands after `forgetPose`. Between a Release and the next Hold no watch is
    * the pairing's, so such a report is dropped; the next pairing hears only its own. (Before the first Hold, a
@@ -304,7 +217,7 @@ class BridgeCoreTest {
 
   /**
    * Final review I-2b: staging's captured waiting beat ([StgBeat]) through the real Bodies.beat and the machine:
-   * the pairing's label, start, destination, overlay and poll are the server's, the overlay's query and key whole.
+   * the pairing's label, start, destination and poll are the server's.
    */
   @Test
   fun `final I-2b staging's real waiting beat fills the pairing, and nothing is unreadable`() {
@@ -323,14 +236,15 @@ class BridgeCoreTest {
     assertEquals(stg.getString("label"), known["label"])
     assertEquals(stg.getLong("scheduledStart").toDouble(), known["scheduledStart"], "epoch seconds across the bridge")
     assertEquals(stg.getString("destinationName"), known["destinationName"])
-    assertEquals(stg.getString("overlayUrl"), known["overlayUrl"])
+    // D2 §4.1: the captured body names an overlay, and none crosses.
+    assertTrue("overlayUrl" !in known, "no overlay in the pairing")
     assertEquals(stg.getInt("pollSeconds").toDouble(), known["pollSeconds"])
-    assertEquals(emptyList(), kinds().filter { it == "waiting-unreadable" || it == "overlay-refused" })
+    assertEquals(emptyList(), kinds().filter { it == "waiting-unreadable" })
   }
 
   /**
    * Final review I-2b: a 2xx whose waiting fields the parser refuses leaves the pairing's as they were, as it
-   * must; it was silent, so a label that never came and an overlay never known looked like a slow server. One
+   * must; it was silent, so a label that never came looked like a slow server. One
    * `waiting-unreadable` warn a pairing names the field, never its value; a re-pair is a new pairing.
    */
   @Test

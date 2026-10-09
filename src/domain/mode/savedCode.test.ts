@@ -23,7 +23,6 @@ const waitingWire = (overrides: Record<string, unknown> = {}) => ({
   scheduledStart: 1790003600,
   autoAllowed: true,
   destinationName: 'YouTube · Fake CC',
-  overlayUrl: 'https://stg.seazn.club/overlay/fixtures/fake-fixture',
   pollSeconds: 60,
   heartbeatUrl: `${CODE_URL}/beats`,
   startUrl: `${CODE_URL}/start`,
@@ -57,6 +56,29 @@ describe('saved codes, v3 (amendment §3)', () => {
       },
     });
     expect(decodeSavedCode(encodeSavedCode(code))).toEqual(code);
+  });
+
+  // P6: a stream record keeps its waiting fields at `stream.waiting` (savedCode.ts encodeSavedCode), so that is where
+  // a code saved before D2 still names its overlay.
+  it('reads a code saved before D2, whose waiting fields still name an overlay (D2 §4.1)', () => {
+    const code = savedStreamCode({
+      stream: { waiting: sampleWaiting(), codeUrl: CODE_URL, tapToPair: false },
+    });
+    const saved = encodeSavedCode(code);
+    const old = JSON.parse(saved) as { stream: { waiting: Record<string, unknown> } };
+    const withOverlay = JSON.stringify({
+      ...old,
+      stream: {
+        ...old.stream,
+        waiting: {
+          ...old.stream.waiting,
+          overlayUrl: 'https://stg.seazn.club/overlay/fixtures/fake-fixture',
+        },
+      },
+    });
+    const read = decodeSavedCode(withOverlay);
+    expect(read).toEqual(code);
+    expect(read?.stream?.waiting && 'overlayUrl' in read.stream.waiting).toBe(false);
   });
 
   it('round-trips a scoring code, which has no stream part', () => {

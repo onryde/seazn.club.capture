@@ -18,7 +18,6 @@ export type WaitingFields = {
   readonly scheduledStart: Date | null;
   readonly autoAllowed: boolean;
   readonly destinationName: string | null;
-  readonly overlayUrl: string | null;
   readonly pollSeconds: number;
   readonly heartbeatUrl: string;
   readonly startUrl: string;
@@ -108,8 +107,8 @@ function readStage(value: unknown): StageRead | null {
 /**
  * The waiting fields, or null when the answer cannot be trusted whole: a
  * field missing, of the wrong type or outside the schema's bounds, or a beat
- * or start URL off the build's host (its Bearer would go there). A foreign
- * overlay is dropped and the rest kept, as Bodies.waiting does in Kotlin;
+ * or start URL off the build's host (its Bearer would go there). `overlayUrl`
+ * is not read (D2 §4.1), as in Bodies.waiting;
  * `wire/waiting-vectors.json` pins both readers. `cred` is never read.
  */
 export function parseWaitingFields(input: unknown, host: string): WaitingFields | null {
@@ -123,8 +122,7 @@ export function parseWaitingFields(input: unknown, host: string): WaitingFields 
   const destinationName = optional(input.destinationName, (value) =>
     textWithin(value, DESTINATION) ? value : null,
   );
-  const overlayUrl = optional(input.overlayUrl, (value) => (isText(value) ? value : null));
-  if (scheduledStart === BAD || destinationName === BAD || overlayUrl === BAD) return null;
+  if (scheduledStart === BAD || destinationName === BAD) return null;
   return {
     code,
     label,
@@ -132,7 +130,6 @@ export function parseWaitingFields(input: unknown, host: string): WaitingFields 
     scheduledStart,
     autoAllowed,
     destinationName,
-    overlayUrl: onHost(overlayUrl, host) ? overlayUrl : null,
     pollSeconds,
     heartbeatUrl,
     startUrl,

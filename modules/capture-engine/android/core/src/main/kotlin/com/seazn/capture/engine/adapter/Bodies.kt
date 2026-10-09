@@ -120,7 +120,7 @@ object Bodies {
   private val WAITING_OWED = setOf("waiting", "go-live", "live", "over")
 
   /** The waiting fields' keys, in the order [read] judges them: the first refused is the one named. */
-  private val WAITING_KEYS = listOf("label", "autoAllowed", "pollSeconds", "venueTimezone", "scheduledStart", "destinationName", "overlayUrl")
+  private val WAITING_KEYS = listOf("label", "autoAllowed", "pollSeconds", "venueTimezone", "scheduledStart", "destinationName")
 
   /** Final review I-2b: the waiting fields, or the first one refused: a field name, never its value. */
   private data class WaitingRead(val fields: WaitingFields?, val unreadable: String?)
@@ -136,8 +136,9 @@ object Bodies {
 
   /**
    * The waiting fields of a 2xx, beat or code. A field absent or null where the schema allows it is
-   * null; a field of the wrong type, or outside the schema's bounds, makes the whole null; an overlay
-   * off the build's Seazn host is dropped alone. D4: a beat's answer has no `venueTimezone`, so it is
+   * null; a field of the wrong type, or outside the schema's bounds, makes the whole null. `overlayUrl` is
+   * not read: the phone draws no score (D2 §4.1), and a field nothing reads is never a reason to refuse an
+   * answer. D4: a beat's answer has no `venueTimezone`, so it is
    * not required, and absent is "" (the engine keeps the zone it holds). `scheduledStart` is omitted by
    * the descriptor and null on a beat: both are null.
    */
@@ -152,12 +153,10 @@ object Bodies {
     val zone = optional(fields["venueTimezone"]) { text(it, ZONE) }
     val start = optional(fields["scheduledStart"]) { epoch -> whole(epoch)?.takeIf { it in 1..MAX_SAFE } }
     val destination = optional(fields["destinationName"]) { text(it, DESTINATION) }
-    val overlay = optional(fields["overlayUrl"]) { it as? String }
-    val optionals = listOf("venueTimezone" to zone, "scheduledStart" to start, "destinationName" to destination, "overlayUrl" to overlay)
+    val optionals = listOf("venueTimezone" to zone, "scheduledStart" to start, "destinationName" to destination)
     optionals.firstOrNull { it.second is Field.Bad }?.let { return unreadable(it.first) }
-    val seazn = overlay.orNull()?.takeIf { Hosts.onSeazn(it, env) }
     val stage = stageLabel(fields["stage"])
-    return WaitingRead(WaitingFields(label, zone.orNull() ?: "", start.orNull(), auto, destination.orNull(), seazn, poll, stage, stage?.let { label }), null)
+    return WaitingRead(WaitingFields(label, zone.orNull() ?: "", start.orNull(), auto, destination.orNull(), poll, stage, stage?.let { label }), null)
   }
 
   /**
@@ -179,16 +178,6 @@ object Bodies {
     val read = read(fields, env)
     val owed = state in WAITING_OWED || WAITING_KEYS.any(fields::containsKey)
     return if (owed) read else read.copy(unreadable = null)
-  }
-
-  /**
-   * Final review I-2: whether [body] names an `overlayUrl` off the build's Seazn host, which [waiting] and [code]
-   * drop. The drop reaches JS as no overlay, the server's answer for an org not entitled to one, so this is how
-   * the record tells the two apart (`overlay-refused`). Not JSON, or no overlay named: false.
-   */
-  fun foreignOverlay(body: String, env: Environment): Boolean {
-    val named = obj(body)?.get("overlayUrl") as? String ?: return false
-    return !Hosts.onSeazn(named, env)
   }
 
   fun code(status: Int, body: String, retryAfterS: Int?, env: Environment): CodeAnswer {
@@ -243,7 +232,6 @@ object Bodies {
         fallback = targets.second,
         holdWindowSeconds = holds,
         playbackUrl = filled(fields["playbackUrl"]) ?: return CodeAnswer.Unreadable("playbackUrl"),
-        overlayUrl = (fields["overlayUrl"] as? String)?.takeIf { Hosts.onSeazn(it, env) },
         // Shown, never acted on: outside the schema's 1 to 200 characters it is "", and the broadcast still opens.
         label = text(fields["label"], LABEL) ?: "",
         maxDurationMinutes = WireValues.int(fields["maxDurationMinutes"])?.takeIf { it >= 1 } ?: return CodeAnswer.Unreadable("maxDurationMinutes"),

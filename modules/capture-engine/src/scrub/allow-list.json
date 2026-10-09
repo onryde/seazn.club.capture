@@ -204,7 +204,6 @@
     "not-current": "native: the code answered that the broadcast is not current",
     "not-delivered": "native: the playlist stopped showing delivery",
     "open-ignored": "native: the server named a sid this pairing refused",
-    "overlay-refused": "native: the server named an overlay off the build's Seazn host, so it was dropped and JS shows none, as for an org not entitled to one; once a pairing (final review I-2)",
     "pair": "native: a pair was asked for, with its claim, slot and token tag",
     "pair-refused": "native: a pair whose values fell outside the contract",
     "pair-step-late": "native: a pairing step's failure for a pairing no longer held, recorded only (P11, CD21)",

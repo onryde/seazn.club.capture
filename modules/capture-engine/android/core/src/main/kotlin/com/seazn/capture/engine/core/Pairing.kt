@@ -117,7 +117,6 @@ data class WaitingFields(
   val scheduledStartEpochS: Long?,
   val autoAllowed: Boolean,
   val destinationName: String?,
-  val overlayUrl: String?,
   val pollSeconds: Int,
   /** The descriptor's `stage.label` (W28), shown verbatim as the round line; null when none, unreadable or of a kind the contract does not name. Display only. */
   val stageLabel: String? = null,
@@ -143,7 +142,7 @@ data class WaitingFields(
 
   companion object {
     /** Before the first 2xx: nothing known, and the default cadence (CD38). */
-    val UNKNOWN = WaitingFields("", "", null, false, null, null, BeatCadence.DEFAULT_POLL_S)
+    val UNKNOWN = WaitingFields("", "", null, false, null, BeatCadence.DEFAULT_POLL_S)
   }
 }
 

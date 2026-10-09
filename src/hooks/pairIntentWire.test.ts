@@ -44,7 +44,6 @@ const waiting = (code: string, zone: string, beats: string, start: string, stage
   venueTimezone: zone,
   autoAllowed: true,
   destinationName: null,
-  overlayUrl: null,
   pollSeconds: 60,
   heartbeatUrl: beats,
   startUrl: start,

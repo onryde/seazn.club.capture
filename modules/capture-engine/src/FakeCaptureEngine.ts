@@ -216,7 +216,6 @@ export const FAKE_PAIRING: PairingInfo = {
   scheduledStart: null,
   autoAllowed: true,
   destinationName: 'YouTube · Fake CC',
-  overlayUrl: 'https://stg.seazn.club/overlay/fixtures/fx42hmnp7k2q',
   pollSeconds: 60,
   stageLabel: null,
 };
@@ -225,7 +224,6 @@ const broadcastFor = (pairing: PairingInfo, cause: Cause): BroadcastInfo => ({
   sid: 'fake-sid-1',
   cause,
   playbackUrl: 'https://video.example/fake/manifest/video.m3u8',
-  overlayUrl: pairing.overlayUrl,
   label: pairing.label,
   holdWindowSeconds: { srt: 183, rtmps: 183 },
   maxDurationMinutes: 300,

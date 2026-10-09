@@ -21,8 +21,8 @@ class BodiesTest {
   @Test
   fun `the waiting fields, every shared case`() {
     val cases = waiting.getJSONArray("cases")
-    // The file's rows: 45, of which 3 are JS's alone (PV12: a truncated file cannot pass).
-    assertEquals(45, cases.length())
+    // The file's rows: 43, of which 3 are JS's alone (PV12: a truncated file cannot pass).
+    assertEquals(43, cases.length())
     var read = 0
     var beats = 0
     var staged = 0
@@ -52,7 +52,6 @@ class BodiesTest {
           if (e.isNull("scheduledStart")) null else e.getLong("scheduledStart"),
           e.getBoolean("autoAllowed"),
           if (e.isNull("destinationName")) null else e.getString("destinationName"),
-          if (e.isNull("overlayUrl")) null else e.getString("overlayUrl"),
           e.getInt("pollSeconds"),
           if (e.isNull("stageLabel")) null else e.getString("stageLabel"),
           // The stage is only true of the match it was read with: that match's label.
@@ -60,7 +59,7 @@ class BodiesTest {
         )
       assertEquals(expected, got, why)
     }
-    assertEquals(42, read)
+    assertEquals(40, read)
     assertEquals(2, beats)
     // The rows that show a round line: the sweep cannot pass by reading every stage as none.
     assertEquals(3, staged)
@@ -78,12 +77,12 @@ class BodiesTest {
 
   @Test
   fun `a descriptor's stage replaces the held one and a beat keeps it only while the match label is unchanged`() {
-    val held = WaitingFields("Example Town v Sample CC", "Europe/London", null, true, null, null, 10, "Open · QF", "Example Town v Sample CC")
+    val held = WaitingFields("Example Town v Sample CC", "Europe/London", null, true, null, 10, "Open · QF", "Example Town v Sample CC")
     // A beat's answer carries no stage (capture-beat.v1): the same match keeps its round line.
-    val sameMatch = WaitingFields("Example Town v Sample CC", "", null, true, null, null, 10)
+    val sameMatch = WaitingFields("Example Town v Sample CC", "", null, true, null, 10)
     assertEquals("Open · QF", sameMatch.overBeat(held).stageLabel)
     // The stable code was re-pointed at the next match: the old round line is a wrong fact, so none.
-    val nextMatch = WaitingFields("Sample CC v Other CC", "", null, true, null, null, 10)
+    val nextMatch = WaitingFields("Sample CC v Other CC", "", null, true, null, 10)
     assertNull(nextMatch.overBeat(held).stageLabel)
     assertNull(nextMatch.overBeat(held).stageFor)
     // Nothing held, nothing carried: a held match with no round line is no line, whatever match it names.
@@ -92,9 +91,9 @@ class BodiesTest {
     assertEquals("Open · QF", sameMatch.overBeat(sameMatch.overBeat(held)).stageLabel)
     assertNull(sameMatch.overBeat(nextMatch.overBeat(held)).stageLabel)
     // A descriptor is fresh: what it says replaces what is held, and silence is no stage.
-    val fresh = WaitingFields("Sample CC v Other CC", "Europe/London", null, true, null, null, 10, "Open · SF", "Sample CC v Other CC")
+    val fresh = WaitingFields("Sample CC v Other CC", "Europe/London", null, true, null, 10, "Open · SF", "Sample CC v Other CC")
     assertEquals("Open · SF", fresh.over(held).stageLabel)
-    val silent = WaitingFields("Sample CC v Other CC", "Europe/London", null, true, null, null, 10)
+    val silent = WaitingFields("Sample CC v Other CC", "Europe/London", null, true, null, 10)
     assertNull(silent.over(held).stageLabel)
   }
 
@@ -156,7 +155,7 @@ class BodiesTest {
   fun `the session shape, every shared case`() {
     val cases = sessions.getJSONArray("cases")
     // The file's rows (PV12).
-    assertEquals(45, cases.length())
+    assertEquals(44, cases.length())
     val seen = mutableMapOf<String, Int>()
     for (i in 0 until cases.length()) {
       val case = cases.getJSONObject(i)
@@ -168,7 +167,7 @@ class BodiesTest {
       // The whole expected object against the answer read the same way: no key unchecked, none extra.
       assertEquals(e.toMap(), decisive(answer), why)
     }
-    assertEquals(mapOf("open" to 8, "unreadable" to 22, "not-current" to 1, "foreign-ingest" to 10, "over" to 3, "waiting" to 1), seen)
+    assertEquals(mapOf("open" to 7, "unreadable" to 22, "not-current" to 1, "foreign-ingest" to 10, "over" to 3, "waiting" to 1), seen)
   }
 
   @Test
@@ -203,7 +202,7 @@ class BodiesTest {
   @Test
   fun `an open answer carries the session shape's waiting fields too`() {
     val open = assertIs<CodeAnswer.Open>(Bodies.code(200, base, null, Environment.STAGING))
-    assertEquals(WaitingFields("Example Town v Sample CC", "Europe/London", 1_790_003_600, true, "YouTube · Example Town CC", "https://stg.seazn.club/overlay/fixtures/f1", 10), open.waiting)
+    assertEquals(WaitingFields("Example Town v Sample CC", "Europe/London", 1_790_003_600, true, "YouTube · Example Town CC", 10), open.waiting)
     assertEquals("warming", open.state)
     val d = open.descriptor
     assertEquals(mapOf(Transport.SRT to 183, Transport.RTMPS to 180), d.holdWindowSeconds)
@@ -218,33 +217,18 @@ class BodiesTest {
     assertIs<CodeAnswer.Open>(Bodies.code(200, base, null, Environment.PRODUCTION))
   }
 
+  /** D2 §4.1: the session shape's `overlayUrl` is not read. Any value, or none, opens the same broadcast. */
   @Test
-  fun `a foreign overlay on the session shape is dropped from the broadcast and the waiting fields, the rest kept`() {
-    val open = assertIs<CodeAnswer.Open>(Bodies.code(200, JSONObject(base).put("overlayUrl", "https://evil.example/overlay").toString(), null, Environment.STAGING))
-    assertNull(open.descriptor.overlayUrl)
-    assertNull(open.waiting?.overlayUrl)
-    assertEquals("Example Town v Sample CC", open.descriptor.label)
-    assertEquals("https://stg.seazn.club/overlay/fixtures/f1", assertIs<CodeAnswer.Open>(Bodies.code(200, base, null, Environment.STAGING)).descriptor.overlayUrl)
-  }
-
-  /**
-   * Final review I-2: the drop above reaches JS as no overlay, which is the server's answer for an org not
-   * entitled to one. [Bodies.foreignOverlay] is how native tells them apart, for its own record line.
-   */
-  @Test
-  fun `final I-2 an overlay off the build's Seazn host is foreign, and no overlay or Seazn's own is not`() {
-    val foreign = JSONObject(base).put("overlayUrl", "https://evil.example/overlay").toString()
-    assertTrue(Bodies.foreignOverlay(foreign, Environment.STAGING))
-    assertNull(assertIs<CodeAnswer.Open>(Bodies.code(200, foreign, null, Environment.STAGING)).descriptor.overlayUrl, "and it is the one dropped")
-    // Staging's own overlay host is foreign to a production build.
-    assertFalse(Bodies.foreignOverlay(base, Environment.STAGING))
-    assertTrue(Bodies.foreignOverlay(base, Environment.PRODUCTION))
-    assertTrue(Bodies.foreignOverlay(JSONObject(base).put("overlayUrl", "http://stg.seazn.club/overlay/fixtures/f1").toString(), Environment.STAGING), "not https")
-    assertFalse(Bodies.foreignOverlay(JSONObject(base).put("overlayUrl", JSONObject.NULL).toString(), Environment.STAGING), "null is not entitled")
-    assertFalse(Bodies.foreignOverlay(JSONObject(base).apply { remove("overlayUrl") }.toString(), Environment.STAGING), "absent")
-    assertFalse(Bodies.foreignOverlay(PairWire.beat(), Environment.STAGING), "a beat with none")
-    assertTrue(Bodies.foreignOverlay(JSONObject(PairWire.beat()).put("overlayUrl", "https://evil.example/o").toString(), Environment.STAGING), "a beat")
-    assertFalse(Bodies.foreignOverlay("not json", Environment.STAGING))
+  fun `the session shape's overlayUrl is not read - any value opens the same broadcast`() {
+    val same = decisive(Bodies.code(200, base, null, Environment.STAGING))
+    val waiting = assertIs<CodeAnswer.Open>(Bodies.code(200, base, null, Environment.STAGING)).waiting
+    assertNotNull(waiting, "the base's waiting fields are read")
+    for (value in listOf<Any>("https://evil.example/overlay", 42, JSONObject.NULL, false)) {
+      val body = JSONObject(base).put("overlayUrl", value).toString()
+      assertEquals(same, decisive(Bodies.code(200, body, null, Environment.STAGING)), "$value")
+      assertEquals(waiting, assertIs<CodeAnswer.Open>(Bodies.code(200, body, null, Environment.STAGING)).waiting, "$value: the waiting fields")
+    }
+    assertEquals(same, decisive(Bodies.code(200, JSONObject(base).apply { remove("overlayUrl") }.toString(), null, Environment.STAGING)), "absent")
   }
 
   @Test
@@ -360,7 +344,7 @@ class BodiesTest {
   @Test
   fun `a beat's answer - its state, sid, startedBy, endReason and waiting fields`() {
     val goLive = Bodies.beat(200, beat("go-live", "sid" to SID, "startedBy" to "automatic"), null, Environment.STAGING)
-    val reply = BeatReply("go-live", SID, "automatic", null, WaitingFields("L", "", null, true, null, null, 10))
+    val reply = BeatReply("go-live", SID, "automatic", null, WaitingFields("L", "", null, true, null, 10))
     assertEquals(HeartbeatResponse.Answered(200, reply, null), goLive)
     val over = Bodies.beat(200, beat("over", "sid" to SID, "endReason" to "phone_lost"), null, Environment.STAGING)
     assertEquals(ServerWord.Over(SID, "phone_lost"), ServerWord.ofBeat(over, named = null))
@@ -464,7 +448,7 @@ class BodiesTest {
   @Test
   fun `a beat's words are closed - an unknown state, startedBy or endReason is null`() {
     val odd = answeredBeat(200, beat("paused", "sid" to SID, "startedBy" to "robot", "endReason" to "lunch"))
-    assertEquals(BeatReply(null, SID, null, null, WaitingFields("L", "", null, true, null, null, 10)), odd.reply)
+    assertEquals(BeatReply(null, SID, null, null, WaitingFields("L", "", null, true, null, 10)), odd.reply)
     val known = answeredBeat(200, beat("over", "sid" to SID, "startedBy" to "operator", "endReason" to "no_inbound_timeout"))
     assertEquals(listOf("over", "operator", "no_inbound_timeout"), listOf(known.reply?.state, known.reply?.startedBy, known.reply?.endReason))
     // An over state's endReason on the code is closed the same way.
@@ -590,7 +574,8 @@ class BodiesTest {
   fun `no answer prints a secret`() {
     val cases = sessions.getJSONArray("cases")
     val answers = (0 until cases.length()).map { Bodies.code(200, body(cases.getJSONObject(it)), null, Environment.STAGING) } + Bodies.code(200, base, null, Environment.STAGING)
-    assertEquals(46, answers.size)
+    // The session file's 44 rows and the base (D2 §4.1 dropped one row).
+    assertEquals(45, answers.size)
     assertTrue(answers.any { it is CodeAnswer.Open }, "an open answer, whose descriptor holds every secret")
     for (answer in answers) for (secret in SECRETS + Configs.STREAM_ID) assertFalse(secret in answer.toString(), "$secret in $answer")
   }
@@ -697,7 +682,6 @@ class BodiesTest {
           "fallback" to answer.descriptor.fallback?.transport?.wire,
           "srtOffered" to answer.descriptor.srtOffered,
           "scoreUpdates" to answer.descriptor.scoreUpdates,
-          "overlayUrl" to answer.descriptor.overlayUrl,
         )
       is CodeAnswer.Over -> mapOf("answer" to "over", "sid" to answer.sid, "endReason" to answer.endReason)
       is CodeAnswer.NotCurrent -> mapOf("answer" to "not-current", "sid" to answer.sid)
@@ -729,7 +713,7 @@ class BodiesTest {
   private fun stgWith(field: String, value: Any?): String = StgBeat.with(field, value)
 
   @Test
-  fun `I-2b staging's real waiting beat parses whole - its label, start in seconds, destination, overlay and poll`() {
+  fun `I-2b staging's real waiting beat parses whole - its label, start in seconds, destination and poll`() {
     assertEquals(setOf("state", "label", "scheduledStart", "autoAllowed", "destinationName", "overlayUrl", "pollSeconds"), stg.keySet(), "the captured body's seven keys")
     val reply = assertNotNull(answeredBeat(200, stg.toString()).reply)
     assertEquals("waiting", reply.state)
@@ -740,7 +724,6 @@ class BodiesTest {
     assertEquals(stg.getLong("scheduledStart"), read.scheduledStartEpochS, "epoch seconds, as sent: the wire crosses seconds and JS multiplies by 1000")
     assertEquals(stg.getBoolean("autoAllowed"), read.autoAllowed)
     assertEquals(stg.getString("destinationName"), read.destinationName)
-    assertEquals(stg.getString("overlayUrl"), read.overlayUrl, "the staging overlay, its query and key whole")
     assertEquals(stg.getInt("pollSeconds"), read.pollSeconds)
     assertEquals("", read.venueTimezone, "a beat carries no zone (D4): the engine keeps the one it holds")
     assertEquals(read, Bodies.waiting(stg.plain(), Environment.STAGING), "Bodies.waiting reads it alike")
@@ -757,7 +740,6 @@ class BodiesTest {
         "venueTimezone" to 7, "venueTimezone" to "",
         "scheduledStart" to "1790222700", "scheduledStart" to 0, "scheduledStart" to 1.5,
         "destinationName" to false, "destinationName" to "", "destinationName" to "D".repeat(81),
-        "overlayUrl" to 42,
       )
     var checked = 0
     for ((field, value) in bad) {
@@ -772,10 +754,12 @@ class BodiesTest {
       checked += 1
     }
     assertEquals(bad.size + 3, checked, "the sweep's own count")
-    assertEquals(7, bad.map { it.first }.toSet().size, "every waiting field")
-    // An overlay off the Seazn host is dropped alone (overlay-refused), never unreadable.
-    val foreign = assertNotNull(answeredBeat(200, stgWith("overlayUrl", "https://evil.example/o")).reply)
-    assertEquals(null to stg.getString("label"), foreign.waitingUnreadable to foreign.waiting?.label)
+    assertEquals(6, bad.map { it.first }.toSet().size, "every waiting field")
+    // D2 §4.1: an overlayUrl of any shape is not a waiting field, so it never makes the fields unreadable.
+    for (value in listOf<Any?>(42, "https://evil.example/o", null)) {
+      val read = assertNotNull(answeredBeat(200, stgWith("overlayUrl", value)).reply)
+      assertEquals(null to stg.getString("label"), read.waitingUnreadable to read.waiting?.label, "$value")
+    }
   }
 
   @Test

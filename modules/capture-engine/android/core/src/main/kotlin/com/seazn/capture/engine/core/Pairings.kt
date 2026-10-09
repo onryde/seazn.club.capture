@@ -376,7 +376,7 @@ internal object Verdicts {
 
 /**
  * Final review I-2b: a 2xx answer, beat or session shape, owed the waiting fields and one could not be read
- * (`Bodies`), so the pairing kept its own: its label never came, its overlay was never known, and nothing said
+ * (`Bodies`), so the pairing kept its own: its label never came, and nothing said
  * why. One `waiting-unreadable` warn a pairing names the [source] and the field, never its value.
  */
 internal object WaitingUnread {

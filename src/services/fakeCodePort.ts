@@ -25,7 +25,6 @@ export function sampleWaiting(
     scheduledStart: null,
     autoAllowed: true,
     destinationName: 'YouTube · Fake CC',
-    overlayUrl: `${origin}/overlay/fixtures/fake-fixture`,
     pollSeconds: 60,
     heartbeatUrl: `${codeUrl(origin, code)}/beats`,
     startUrl: `${codeUrl(origin, code)}/start`,

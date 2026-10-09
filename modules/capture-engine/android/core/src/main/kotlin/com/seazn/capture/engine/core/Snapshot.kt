@@ -151,7 +151,6 @@ data class BroadcastView(
   val sid: String,
   val cause: Cause,
   val playbackUrl: String,
-  val overlayUrl: String?,
   val label: String,
   val holdWindowSeconds: Map<Transport, Int>,
   val maxDurationMinutes: Int,

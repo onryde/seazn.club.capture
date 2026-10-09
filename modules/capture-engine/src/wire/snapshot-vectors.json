@@ -119,7 +119,6 @@
     "scheduledStart": 1790003600,
     "autoAllowed": true,
     "destinationName": "YouTube · Example Town CC",
-    "overlayUrl": "https://stg.seazn.club/overlay/fixtures/fx42hmnp7k2q",
     "pollSeconds": 10,
     "stageLabel": null
   },
@@ -127,7 +126,6 @@
     "sid": "sess_42",
     "cause": "organiser",
     "playbackUrl": "https://customer-x.cloudflarestream.com/a1b2c3d4e5f60718293a4b5c6d7e8f90/manifest/video.m3u8",
-    "overlayUrl": "https://stg.seazn.club/overlay/fixtures/fx42hmnp7k2q",
     "label": "Example Town v Sample CC",
     "holdWindowSeconds": { "srt": 183, "rtmps": 180 },
     "maxDurationMinutes": 300,
@@ -183,8 +181,7 @@
           "venueTimezone": "",
           "scheduledStart": null,
           "autoAllowed": false,
-          "destinationName": null,
-          "overlayUrl": null
+          "destinationName": null
         },
         "broadcast": null,
         "ready": { "camera": false, "sound": false, "network": true, "held": false },
@@ -279,11 +276,11 @@
       }
     },
     {
-      "name": "armed-gate-open-no-overlay",
+      "name": "armed-gate-open",
       "wire": {
         "state": { "kind": "armed", "cause": "operator", "notReady": null },
-        "pairing": { "overlayUrl": null },
-        "broadcast": { "cause": "operator", "overlayUrl": null },
+        "pairing": {},
+        "broadcast": { "cause": "operator" },
         "ready": { "camera": true, "sound": true, "network": true, "held": true },
         "refusal": null,
         "lastEnd": null,

@@ -14,7 +14,6 @@ const namedBy = (intent: PairIntent): PairingInfo => ({
   scheduledStart: null,
   autoAllowed: false,
   destinationName: null,
-  overlayUrl: null,
   pollSeconds: 60,
   stageLabel: null,
 });

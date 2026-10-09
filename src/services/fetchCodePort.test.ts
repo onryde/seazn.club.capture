@@ -16,7 +16,6 @@ const waiting = (overrides: Record<string, unknown> = {}) => ({
   venueTimezone: 'Europe/London',
   autoAllowed: true,
   destinationName: null,
-  overlayUrl: 'https://stg.seazn.club/overlay/fixtures/f1',
   pollSeconds: 60,
   heartbeatUrl: 'https://stg.seazn.club/api/v1/capture/codes/fx42hmnp7k2q/beats',
   startUrl: 'https://stg.seazn.club/api/v1/capture/codes/fx42hmnp7k2q/start',
@@ -167,27 +166,25 @@ describe('the code port (amendment §2, the Home outcome table)', () => {
     }
   });
 
-  it('refuses a beat URL off the build host whole, and drops a foreign overlay with a line', async () => {
+  it('refuses a beat URL off the build host whole', async () => {
     const foreignBeat = await portOver(
       answering(respond(200, waiting({ heartbeatUrl: 'https://evil.example/b' }))),
     ).ask();
     expect(foreignBeat).toEqual({ ok: false, error: { kind: 'invalid' } });
-    const view = portOver(
-      answering(respond(200, waiting({ overlayUrl: 'https://evil.example/o' }))),
-    );
-    expect(await view.ask()).toMatchObject({ ok: true, value: { overlayUrl: null } });
-    expect(view.entries().map((entry) => entry.event)).toEqual(['code.overlay-dropped']);
   });
 
-  it('says nothing in the record for a clean answer, an overlay null included', async () => {
-    const view = portOver(answering(respond(200, waiting({ overlayUrl: null }))));
-    expect(await view.ask()).toMatchObject({ ok: true });
-    expect(view.record.lines()).toEqual([]);
+  it('does not read an overlayUrl: a foreign one, a number or null answers whole, with nothing in the record (D2 §4.1)', async () => {
+    for (const overlayUrl of ['https://evil.example/o', 42, null]) {
+      const view = portOver(answering(respond(200, waiting({ overlayUrl }))));
+      const read = await view.ask();
+      expect(read).toMatchObject({ ok: true });
+      expect(read.ok && 'overlayUrl' in read.value).toBe(false);
+      expect(view.record.lines()).toEqual([]);
+    }
   });
 
   it('reads production answers on the production host only', async () => {
     const prod = waiting({
-      overlayUrl: null,
       heartbeatUrl: 'https://seazn.club/api/v1/capture/codes/fx42hmnp7k2q/beats',
       startUrl: 'https://seazn.club/api/v1/capture/codes/fx42hmnp7k2q/start',
     });

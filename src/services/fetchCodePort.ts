@@ -31,9 +31,8 @@ type Deps = {
 };
 
 type Refusal = { readonly error: CodeError; readonly status: number; readonly problem?: string };
-type Read = { readonly fields: WaitingFields; readonly droppedOverlay: boolean };
 /** An answer not yet logged: only the one that wins the deadline race ever is. */
-type Verdict = Result<Read, Refusal>;
+type Verdict = Result<WaitingFields, Refusal>;
 
 const OFFLINE: CodeError = { kind: 'offline' };
 const INVALID: CodeError = { kind: 'invalid' };
@@ -149,17 +148,12 @@ function readFields(data: unknown, asked: string, host: string): Verdict {
   const fields = parseWaitingFields(data, host);
   if (fields === null) return refusal(INVALID, 200, 'unparseable');
   if (fields.code !== asked) return refusal(INVALID, 200, 'code-mismatch');
-  const droppedOverlay = typeof data.overlayUrl === 'string' && fields.overlayUrl === null;
-  return ok({ fields, droppedOverlay });
+  return ok(fields);
 }
 
-/** A refusal or a dropped overlay is said in the record, never silent (recurring failure class 3). */
+/** A refusal is said in the record, never silent (recurring failure class 3). */
 function settle(verdict: Verdict, logger: Logger): Result<WaitingFields, CodeError> {
-  if (verdict.ok) {
-    if (verdict.value.droppedOverlay)
-      logger.warn('code.overlay-dropped', { problem: 'foreign-host' });
-    return ok(verdict.value.fields);
-  }
+  if (verdict.ok) return ok(verdict.value);
   const { error, status, problem } = verdict.error;
   logger.warn('code.error', { kind: error.kind, status, ...(problem ? { problem } : {}) });
   return err(error);
