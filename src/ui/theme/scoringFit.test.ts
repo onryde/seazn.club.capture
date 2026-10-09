@@ -144,11 +144,11 @@ describe('the on-air icon row with four cells (F6, RP10)', () => {
     expect(peekRows).toBe(16);
   });
 
-  it('the heat reason (D2 §4.2) is one line in the 110 dp cell in every language: 58.0, 79.7, 97.3 and 78.9 dp', () => {
+  it('the heat reason (D2 §4.2) is one line in the 110 dp cell in every language: 58.0, 79.7, 97.3 and 99.9 dp', () => {
     const widths = LANGUAGES.map(([, dictionary]) =>
       unitWidth(dictionary['stream.peek.hot'] ?? ''),
     );
-    expect(widths.map((each) => Math.round(each * 10) / 10)).toEqual([58.0, 79.7, 97.3, 78.9]);
+    expect(widths.map((each) => Math.round(each * 10) / 10)).toEqual([58.0, 79.7, 97.3, 99.9]);
     for (const [, dictionary] of LANGUAGES)
       expect(linesOf(dictionary['stream.peek.hot'] ?? '', peekCell(640), unitWidth)).toBe(1);
   });

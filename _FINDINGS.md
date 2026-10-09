@@ -845,6 +845,22 @@ beats write at most 200 beat lines (`BeatLogTest`, `three hours of held beats at
 
 ---
 
+### N26 — The degradation ladder's steps 2 and 3 have nothing behind them
+
+**Status:** open · known gap, recorded on purpose (D2 §4.2; owner, 2026-10-09, R9: "Steps 2 and 3 stay report-only")
+**Where:** capture app · `ShedStep` (`Vocabulary.kt:51`, `SessionState.ts:98`) · `DeviceReadings.shed`
+(`DeviceReadings.kt:84-90`) · `selectShedding` (`src/hooks/advisory.ts:34`) · AGENTS §8
+
+Native reads the thermal status and names a ladder step: 2 is `viewer-feed`, 3 `preview-framerate`, 4 to 6 `encode`
+(CD20). Only step 1 has an actor: the app closes and disables What viewers see on any shed. Nothing lowers the preview's
+frame rate at step 3, and nothing touches the encode at step 4 and above; both are reported in the snapshot and the
+session record, and that is all. This was true before Plan D, hidden while step 1 (then the score preview) was the only
+step ever exercised. Building a real preview-framerate shed is out of Plan D's scope (spec §7). Until it exists, a phone
+at thermal status 3 or higher is protected only by what step 1 saved and by the OS's own throttling. D3 row 13 proves
+step 1 on a debug build; nothing can prove steps 2 and 3, because there is nothing to observe.
+
+---
+
 ## P5 device spike (Android)
 
 The P5 findings, as an index. The full text, evidence and corrections for each
