@@ -123,7 +123,7 @@
               "pattern": "^[A-Z]$"
             },
             "label": {
-              "description": "What the phone shows for the stage, verbatim, 1 to 40 characters, in the org's locale (W28, added 2026-10-07): the pool's word and key, \" · \", then the code (\"Group A · R1\", \"Grupo A · R1\") for a pooled match, else exactly the code. Omitted, never cut, when it would not fit; show nothing then.",
+              "description": "What the phone shows for the stage, verbatim, 1 to 40 characters, in the org's locale (W28, added 2026-10-07; reshaped 2026-10-08): the division's name, then the pool's word and key for a pooled match, then the round, joined with \" · \" (\"Open · Round 2\", \"Open · QF\", \"Open · Final\", \"Girls U14 · Group A · Round 2\", \"Open · Grupo A · Ronda 1\"). The round is \"Round {n}\" where the board codes no round (n is the number in its R{n} code); the final, the third-place match and the grand final use their long names (\"Final\", \"Third place\", \"Grand final\"); every other round uses its code. Over 40 characters the pool is dropped first, then the division; a round still over 40 omits the label. Omitted, never cut; show nothing then.",
               "type": "string",
               "minLength": 1,
               "maxLength": 40
@@ -329,7 +329,7 @@
               "pattern": "^[A-Z]$"
             },
             "label": {
-              "description": "What the phone shows for the stage, verbatim, 1 to 40 characters, in the org's locale (W28, added 2026-10-07): the pool's word and key, \" · \", then the code (\"Group A · R1\", \"Grupo A · R1\") for a pooled match, else exactly the code. Omitted, never cut, when it would not fit; show nothing then.",
+              "description": "What the phone shows for the stage, verbatim, 1 to 40 characters, in the org's locale (W28, added 2026-10-07; reshaped 2026-10-08): the division's name, then the pool's word and key for a pooled match, then the round, joined with \" · \" (\"Open · Round 2\", \"Open · QF\", \"Open · Final\", \"Girls U14 · Group A · Round 2\", \"Open · Grupo A · Ronda 1\"). The round is \"Round {n}\" where the board codes no round (n is the number in its R{n} code); the final, the third-place match and the grand final use their long names (\"Final\", \"Third place\", \"Grand final\"); every other round uses its code. Over 40 characters the pool is dropped first, then the division; a round still over 40 omits the label. Omitted, never cut; show nothing then.",
               "type": "string",
               "minLength": 1,
               "maxLength": 40
@@ -352,7 +352,7 @@
                   "type": "object",
                   "properties": {
                     "url": {
-                      "description": "srt://live.cloudflare.com:778 (as Cloudflare issues it, W21) or the environment's live.* host; null cred.srt means the RTMPS-only safety net (A18). The server never rewrites it (§6.4, G0-i).",
+                      "description": "srt://live.cloudflare.com:778, exactly as Cloudflare issues it, in every environment; there is no custom ingest host. null cred.srt means the RTMPS-only safety net (A18). The server never rewrites it (§6.4, W21, W26).",
                       "type": "string",
                       "minLength": 1
                     },
@@ -388,7 +388,7 @@
               "type": "object",
               "properties": {
                 "url": {
-                  "description": "the environment's live.* host (live.seazn.club / live.stg.seazn.club) (§6.4, W15, G0-i).",
+                  "description": "rtmps://live.cloudflare.com:443/live/, exactly as Cloudflare issues it, in every environment; there is no custom ingest host (§6.4, W26, superseding W15).",
                   "type": "string",
                   "minLength": 1
                 },
@@ -611,7 +611,7 @@
               "pattern": "^[A-Z]$"
             },
             "label": {
-              "description": "What the phone shows for the stage, verbatim, 1 to 40 characters, in the org's locale (W28, added 2026-10-07): the pool's word and key, \" · \", then the code (\"Group A · R1\", \"Grupo A · R1\") for a pooled match, else exactly the code. Omitted, never cut, when it would not fit; show nothing then.",
+              "description": "What the phone shows for the stage, verbatim, 1 to 40 characters, in the org's locale (W28, added 2026-10-07; reshaped 2026-10-08): the division's name, then the pool's word and key for a pooled match, then the round, joined with \" · \" (\"Open · Round 2\", \"Open · QF\", \"Open · Final\", \"Girls U14 · Group A · Round 2\", \"Open · Grupo A · Ronda 1\"). The round is \"Round {n}\" where the board codes no round (n is the number in its R{n} code); the final, the third-place match and the grand final use their long names (\"Final\", \"Third place\", \"Grand final\"); every other round uses its code. Over 40 characters the pool is dropped first, then the division; a round still over 40 omits the label. Omitted, never cut; show nothing then.",
               "type": "string",
               "minLength": 1,
               "maxLength": 40
@@ -634,7 +634,7 @@
                   "type": "object",
                   "properties": {
                     "url": {
-                      "description": "srt://live.cloudflare.com:778 (as Cloudflare issues it, W21) or the environment's live.* host; null cred.srt means the RTMPS-only safety net (A18). The server never rewrites it (§6.4, G0-i).",
+                      "description": "srt://live.cloudflare.com:778, exactly as Cloudflare issues it, in every environment; there is no custom ingest host. null cred.srt means the RTMPS-only safety net (A18). The server never rewrites it (§6.4, W21, W26).",
                       "type": "string",
                       "minLength": 1
                     },
@@ -670,7 +670,7 @@
               "type": "object",
               "properties": {
                 "url": {
-                  "description": "the environment's live.* host (live.seazn.club / live.stg.seazn.club) (§6.4, W15, G0-i).",
+                  "description": "rtmps://live.cloudflare.com:443/live/, exactly as Cloudflare issues it, in every environment; there is no custom ingest host (§6.4, W26, superseding W15).",
                   "type": "string",
                   "minLength": 1
                 },
@@ -893,7 +893,7 @@
               "pattern": "^[A-Z]$"
             },
             "label": {
-              "description": "What the phone shows for the stage, verbatim, 1 to 40 characters, in the org's locale (W28, added 2026-10-07): the pool's word and key, \" · \", then the code (\"Group A · R1\", \"Grupo A · R1\") for a pooled match, else exactly the code. Omitted, never cut, when it would not fit; show nothing then.",
+              "description": "What the phone shows for the stage, verbatim, 1 to 40 characters, in the org's locale (W28, added 2026-10-07; reshaped 2026-10-08): the division's name, then the pool's word and key for a pooled match, then the round, joined with \" · \" (\"Open · Round 2\", \"Open · QF\", \"Open · Final\", \"Girls U14 · Group A · Round 2\", \"Open · Grupo A · Ronda 1\"). The round is \"Round {n}\" where the board codes no round (n is the number in its R{n} code); the final, the third-place match and the grand final use their long names (\"Final\", \"Third place\", \"Grand final\"); every other round uses its code. Over 40 characters the pool is dropped first, then the division; a round still over 40 omits the label. Omitted, never cut; show nothing then.",
               "type": "string",
               "minLength": 1,
               "maxLength": 40
@@ -916,7 +916,7 @@
                   "type": "object",
                   "properties": {
                     "url": {
-                      "description": "srt://live.cloudflare.com:778 (as Cloudflare issues it, W21) or the environment's live.* host; null cred.srt means the RTMPS-only safety net (A18). The server never rewrites it (§6.4, G0-i).",
+                      "description": "srt://live.cloudflare.com:778, exactly as Cloudflare issues it, in every environment; there is no custom ingest host. null cred.srt means the RTMPS-only safety net (A18). The server never rewrites it (§6.4, W21, W26).",
                       "type": "string",
                       "minLength": 1
                     },
@@ -952,7 +952,7 @@
               "type": "object",
               "properties": {
                 "url": {
-                  "description": "the environment's live.* host (live.seazn.club / live.stg.seazn.club) (§6.4, W15, G0-i).",
+                  "description": "rtmps://live.cloudflare.com:443/live/, exactly as Cloudflare issues it, in every environment; there is no custom ingest host (§6.4, W26, superseding W15).",
                   "type": "string",
                   "minLength": 1
                 },
@@ -1189,7 +1189,7 @@
               "pattern": "^[A-Z]$"
             },
             "label": {
-              "description": "What the phone shows for the stage, verbatim, 1 to 40 characters, in the org's locale (W28, added 2026-10-07): the pool's word and key, \" · \", then the code (\"Group A · R1\", \"Grupo A · R1\") for a pooled match, else exactly the code. Omitted, never cut, when it would not fit; show nothing then.",
+              "description": "What the phone shows for the stage, verbatim, 1 to 40 characters, in the org's locale (W28, added 2026-10-07; reshaped 2026-10-08): the division's name, then the pool's word and key for a pooled match, then the round, joined with \" · \" (\"Open · Round 2\", \"Open · QF\", \"Open · Final\", \"Girls U14 · Group A · Round 2\", \"Open · Grupo A · Ronda 1\"). The round is \"Round {n}\" where the board codes no round (n is the number in its R{n} code); the final, the third-place match and the grand final use their long names (\"Final\", \"Third place\", \"Grand final\"); every other round uses its code. Over 40 characters the pool is dropped first, then the division; a round still over 40 omits the label. Omitted, never cut; show nothing then.",
               "type": "string",
               "minLength": 1,
               "maxLength": 40
@@ -1416,7 +1416,7 @@
               "pattern": "^[A-Z]$"
             },
             "label": {
-              "description": "What the phone shows for the stage, verbatim, 1 to 40 characters, in the org's locale (W28, added 2026-10-07): the pool's word and key, \" · \", then the code (\"Group A · R1\", \"Grupo A · R1\") for a pooled match, else exactly the code. Omitted, never cut, when it would not fit; show nothing then.",
+              "description": "What the phone shows for the stage, verbatim, 1 to 40 characters, in the org's locale (W28, added 2026-10-07; reshaped 2026-10-08): the division's name, then the pool's word and key for a pooled match, then the round, joined with \" · \" (\"Open · Round 2\", \"Open · QF\", \"Open · Final\", \"Girls U14 · Group A · Round 2\", \"Open · Grupo A · Ronda 1\"). The round is \"Round {n}\" where the board codes no round (n is the number in its R{n} code); the final, the third-place match and the grand final use their long names (\"Final\", \"Third place\", \"Grand final\"); every other round uses its code. Over 40 characters the pool is dropped first, then the division; a round still over 40 omits the label. Omitted, never cut; show nothing then.",
               "type": "string",
               "minLength": 1,
               "maxLength": 40

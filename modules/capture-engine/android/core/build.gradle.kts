@@ -77,6 +77,13 @@ tasks.test {
     .dir(layout.projectDirectory.dir("../../src/scrub"))
     .withPropertyName("scrubVectors")
     .withPathSensitivity(PathSensitivity.RELATIVE)
+  // Plan D spec §3.1: the web's contracts, vendored at the repo root. The round-line fixtures are read from there
+  // (StageFixturesTest), under the same rule as the vectors: a re-vendor reruns the tests.
+  systemProperty("capture.contracts", layout.projectDirectory.dir("../../../../contracts").asFile.absolutePath)
+  inputs
+    .dir(layout.projectDirectory.dir("../../../../contracts"))
+    .withPropertyName("vendoredContracts")
+    .withPathSensitivity(PathSensitivity.RELATIVE)
   // The app's dictionaries, which the notification's words must equal (Task 18), under the same rule.
   systemProperty("capture.i18n", layout.projectDirectory.dir("../../../../src/i18n").asFile.absolutePath)
   inputs

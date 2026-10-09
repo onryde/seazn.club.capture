@@ -177,6 +177,30 @@ class EngineTest {
   }
 
   @Test
+  fun `B2 review Minor 1 a failure inside the machine writes the pairing's open minute of beats, once`() {
+    val engine = engine { phase, input, now -> if (input == Input.SwitchCamera) throw IllegalStateException("bug") else SessionMachine.reduce(phase, input, now) }
+    // Paired: the claim (beat 1) goes at once, 20 s into the minute that starts at 1_789_999_980_000, and is answered
+    // `waiting` (NoBroadcast). The engine is not started, so no tick sends another beat.
+    engine.sendAll(listOf(Input.Pair(Configs.pairRequest(), Configs.PHONE, stopped = null), Input.PermissionsAnswered(granted = true), Input.Network(true)))
+    scheduler.advanceBy(0)
+    assertEquals(listOf(1), executed.filterIsInstance<Command.PostHeartbeat>().map { it.beatId })
+    engine.send(Input.HeartbeatAnswered(1, HeartbeatResponse.Answered(200, BeatReply("waiting", null, null, null, Configs.waiting()))))
+    scheduler.advanceBy(1_000)
+    // A second later, still in that minute, the machine throws: the pairing ends fatal-error, and its minute is written
+    // after the failure's own line.
+    engine.send(Input.SwitchCamera)
+    scheduler.advanceBy(0)
+    assertEquals(EndReason.FATAL_ERROR, assertIs<Phase.Ended>(engine.phase).reason)
+    val minute = """{"at":"2026-09-21T14:13:21.000Z","kind":"beats","minuteEpochMs":1789999980000,"sent":1,"failed":0,"word":"NoBroadcast"}"""
+    assertTrue(""""kind":"engine-error"""" in lines[lines.size - 2] && "bug" in lines[lines.size - 2], lines[lines.size - 2])
+    assertEquals(minute, lines.last())
+    // Once: what lands after the end writes no second minute, a second failure (the Ended branch) included.
+    engine.sendAll(listOf(Input.SwitchCamera, Input.Unpair, Input.Tick))
+    scheduler.advanceBy(12_000)
+    assertEquals(listOf(minute), lines.filter { """"kind":"beats"""" in it })
+  }
+
+  @Test
   fun `stop cancels the tick, and start twice ticks once`() {
     val engine = engine()
     engine.start()
@@ -574,7 +598,11 @@ class EngineTest {
     // The End threw first, then the ended line, then the ended snapshot: each still ran.
     val thrown = assertFailsWith<LinkCrash> { scheduler.advanceBy(0) }
     assertEquals(1, engine.commandFailures, "an Error from the platform is counted too")
-    assertTrue(lines.last().contains(""""kind":"command-failed"""") && "libsrt.so not found" in lines.last(), lines.last())
+    // Plan D §3.4: the step's last line is the pairing's minute of beats, after the End's failure: the claim at 0
+    // (answered go-live, so Open) and A8's final beat at 0.5 s, both 20 s into the minute that starts at 1_789_999_980_000.
+    val failed = lines[lines.size - 2]
+    assertTrue(failed.contains(""""kind":"command-failed"""") && "libsrt.so not found" in failed, failed)
+    assertEquals("""{"at":"2026-09-21T14:13:20.500Z","kind":"beats","minuteEpochMs":1789999980000,"sent":2,"failed":0,"word":"Open"}""", lines.last())
     assertIs<SnapshotState.Ended>(published.last().second.state)
     // The later two ride on it, for plan C's crash report.
     assertEquals(listOf(SinkCrash::class, BridgeCrash::class), thrown.suppressed.map { it::class })

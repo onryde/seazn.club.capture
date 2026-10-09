@@ -350,8 +350,8 @@ describe('the round line selector (spec §2)', () => {
     snapshot(PAIRED, {}, { pairing: { ...FAKE_PAIRING, ...over } });
 
   it('selectStageLine is the pairing’s stage label, only while a match label is known, and null otherwise', () => {
-    expect(selectStageLine(paired({ label: 'A v B', stageLabel: 'QF' }))).toBe('QF');
-    expect(selectStageLine(paired({ label: '', stageLabel: 'QF' }))).toBeNull();
+    expect(selectStageLine(paired({ label: 'A v B', stageLabel: 'Open · QF' }))).toBe('Open · QF');
+    expect(selectStageLine(paired({ label: '', stageLabel: 'Open · QF' }))).toBeNull();
     expect(selectStageLine(paired({ label: 'A v B', stageLabel: null }))).toBeNull();
     expect(selectStageLine(paired({ label: 'A v B', stageLabel: 'x'.repeat(41) }))).toBeNull();
     expect(selectStageLine(snapshot(PAIRED, {}, { pairing: null }))).toBeNull();
@@ -381,9 +381,9 @@ describe('the round line selector (spec §2)', () => {
     const live = snapshot(
       LIVE,
       {},
-      { pairing: { ...FAKE_PAIRING, label: '', stageLabel: 'QF' }, broadcast: BROADCAST },
+      { pairing: { ...FAKE_PAIRING, label: '', stageLabel: 'Open · QF' }, broadcast: BROADCAST },
     );
-    expect(selectStageLine(live)).toBe('QF');
+    expect(selectStageLine(live)).toBe('Open · QF');
   });
 });
 

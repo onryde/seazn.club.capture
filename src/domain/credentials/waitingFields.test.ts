@@ -99,14 +99,14 @@ describe('the waiting fields at the scan', () => {
 const STAGE = (over: Record<string, unknown> = {}) => ({
   code: 'QF',
   role: { kind: 'quarter_final' },
-  label: 'QF',
+  label: 'Open · QF',
   ...over,
 });
 
 describe('the stage at the scan (spec §2, R-F20)', () => {
   it('reads the label of a stage with a known kind, and keeps the kind with it', () => {
     expect(parseWaitingFields(fields({ stage: STAGE() }), HOST)?.stage).toEqual({
-      label: 'QF',
+      label: 'Open · QF',
       kind: 'quarter_final',
     });
   });
@@ -118,7 +118,7 @@ describe('the stage at the scan (spec §2, R-F20)', () => {
     ['null', null],
     ['not an object', 'QF'],
     ['an unknown kind with a good label (R-F20)', STAGE({ role: { kind: 'a_future_kind' } })],
-    ['no role', { code: 'QF', label: 'QF' }],
+    ['no role', { code: 'QF', label: 'Open · QF' }],
     ['a kind that is not a string', STAGE({ role: { kind: 7 } })],
   ])('%s is no stage, and the rest of the answer is still read', (_why, stage) => {
     const read = parseWaitingFields(fields({ stage }), HOST);
@@ -136,7 +136,7 @@ describe('the stage at the scan (spec §2, R-F20)', () => {
     for (const kind of STAGE_KINDS) {
       expect(
         parseWaitingFields(fields({ stage: STAGE({ role: { kind } }) }), HOST)?.stage?.label,
-      ).toBe('QF');
+      ).toBe('Open · QF');
       shown += 1;
     }
     expect(shown).toBe(15);
@@ -146,7 +146,7 @@ describe('the stage at the scan (spec §2, R-F20)', () => {
     const read = parseWaitingFields(fields({ stage: STAGE() }), HOST);
     if (read === null) throw new Error('the fixture must parse');
     expect(waitingToWire(read)).toMatchObject({
-      stage: { role: { kind: 'quarter_final' }, label: 'QF' },
+      stage: { role: { kind: 'quarter_final' }, label: 'Open · QF' },
     });
     expect(parseWaitingFields(waitingToWire(read), HOST)).toEqual(read);
     // Without a stage the wire carries no `stage` key at all, so older saved codes and new ones agree.

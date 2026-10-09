@@ -10,9 +10,9 @@ import { REFUSAL_STATUS, SERVER_END, scriptFor } from './serverScript';
 
 /**
  * The host answers the kit's `say` with these bodies, so each is held to the web's contract as the
- * host's own are (C4a m-4, serverBodies.test.ts): the pinned copies, through ajv.
+ * host's own are (C4a m-4, serverBodies.test.ts): the vendored copies (contracts/), through ajv.
  */
-const contracts = new URL('./fixtures/contracts/', import.meta.url);
+const contracts = new URL('../contracts/', import.meta.url);
 const read = (file: string) =>
   JSON.parse(readFileSync(new URL(file, contracts), 'utf8')) as Record<string, unknown>;
 const beat = read('capture-beat.v1.json');

@@ -36,6 +36,12 @@ is not an option.
 **Status:** fold into C1 while the contract is open
 **Where:** `capture-qr.v1.json` · §7.6 · suggested home: alongside C1
 
+_Status, 2026-10-09: landed on the web. The QR carries no publish credential
+at all (`capture-qr.v2.json`: "The QR never carries credentials: the phone
+fetches them with the tok"), and the descriptor issues them per session, to
+the current phone, behind the code's Bearer. See `contracts/README.md`, "No
+longer blocked", and plan D spec §3.6. The text below is as first written._
+
 The capture app has no auth by design — the QR code *is* the credential. That
 is the right product call: an operator is a volunteer handed a phone at a wet
 ground, and a login screen there is a product failure.
@@ -795,6 +801,47 @@ are cut and the five routine strings.
 2. Accept it: a 640 × 360 landscape phone is the spec's floor and rare, and nothing is cut from 804 wide up.
 3. Let the strip wrap at the smallest screens. That reverses the one-line ruling and puts the picture's reserve back
    to two message lines (22 dp more), so it is the most expensive of the three.
+
+### N24 — Plan C's device-gate results were never filed
+
+**Status:** open · evidence gap · closes with a path if the owner knows where the results are
+**Where:** plan C's C8 (`docs/superpowers/plans/2026-10-01-s1-plan-c-platform-and-bridge.md`, C:111, C:356,
+C:19828) · `docs/specs/2026-10-0x-s1-plan-c-results.md` · plan D spec §3.7 and §5.3
+
+Plan C's C8 names a results document, `docs/specs/2026-10-0x-s1-plan-c-results.md`, for the C device gate's
+evidence: the scripted-server rows, the release rows (beats for 30 minutes in Doze, battery while paired for 60
+minutes, an OEM background kill, a fresh install on Android 14+) and the staging rows listed for plan D. On
+2026-10-09 it exists nowhere: not on main, on no branch (`git log --all -- 'docs/specs/*plan-c-results*'` is empty)
+and in no worktree. So the gate's evidence was never filed, and nothing in this repo shows which of its rows ran.
+
+What follows: plan D's staging run (slice D3) cites no plan C result. Each D3 row that depends on a plan C device
+fact re-establishes it on the D3 build (plan D spec §5.3): the camera and mic opening on a locked phone (row 2b),
+readiness on a locked phone, and the foreground notification's text (AGENTS §9).
+
+**Open (the owner's call):**
+
+1. If the results exist somewhere, name the path and this closes with it.
+2. Otherwise the D3 rows stand in for the facts plan D needs, and the release rows plan D does not cover (the Doze
+   cadence, battery while paired, the OEM kill) are run again or dropped by name.
+
+---
+
+### N25 — The shared record could not hold a three-hour broadcast
+
+**Status:** decided · fixed by plan D1 Task 4 · owner, 2026-10-09: "Count beats, don't list them"
+**Where:** `src/services/sessionRecord.ts:26` (`RECORD_CAPACITY = 1000`) · `src/hooks/useDiagnostics.ts:47-60` (Share
+record sends the ring) · `SessionMachine.kt`, `Heartbeats.answered` (the held-beat line) · plan D spec §3.4
+
+Share record (D21) sends the JS ring, which keeps the last 1,000 lines of either side. Before D1 a beat held on air
+was written on every answer, as plan B wrote them, and the held cadence is at most 10 s, so a three-hour broadcast
+wrote about 1,080 `heartbeat` lines on its own. The ring would then lose the start of a long match before it ended:
+the go-live, the first `beat-interval` lines (5 s while starting, D3 row 8), the first connect. The native file
+(`RecordFile.kt`, 5 MiB and one rotation) keeps all of it, but nothing shares it.
+
+**Ruling and fix:** a held beat is counted, not listed. Its `heartbeat` line is written only when the answer
+changes, as a paired one is, and the minute's `beats` line counts every beat (plan D1 Task 4). Three hours of held
+beats write at most 200 beat lines (`BeatLogTest`, `three hours of held beats at 10 s write at most 200 beat lines
+(N25)`), so Share's ring holds the whole match.
 
 ---
 

@@ -443,7 +443,7 @@
       "name": "paired-with-stage-label",
       "wire": {
         "state": { "kind": "paired" },
-        "pairing": { "stageLabel": "QF" },
+        "pairing": { "stageLabel": "Open · QF" },
         "broadcast": null,
         "ready": { "camera": true, "sound": true, "network": true, "held": true },
         "refusal": null,

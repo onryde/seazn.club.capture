@@ -16,7 +16,7 @@
         "automatic": true,
         "claim": "new",
         "environment": "staging",
-        "stageLabel": "QF",
+        "stageLabel": "Open · QF",
         "stageMatch": "Example Town v Sample CC"
       }
     },

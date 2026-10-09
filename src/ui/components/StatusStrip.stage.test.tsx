@@ -54,15 +54,15 @@ const line = () => screen.queryByTestId('stage-line');
 describe('the status strip always shows the round line, whenever there is one (option B)', () => {
   it('hands the label the caller’s function to report its height with (the wiring is not vacuous)', () => {
     const onLabelHeight = vi.fn();
-    stripWith('QF', 'A v B', null, onLabelHeight);
+    stripWith('Open · QF', 'A v B', null, onLabelHeight);
     expect(standIn.report).toBe(onLabelHeight);
     label(44);
     expect(onLabelHeight).toHaveBeenCalledExactlyOnceWith(44);
   });
 
   it('shows it, above the label, before anything has been laid out or measured', () => {
-    stripWith('QF');
-    expect(line()?.textContent).toBe('QF');
+    stripWith('Open · QF');
+    expect(line()?.textContent).toBe('Open · QF');
     // Above the label, in the document.
     const above = screen.getByTestId('stage-line');
     const below = screen.getByTestId('match-label');
@@ -79,16 +79,16 @@ describe('the status strip always shows the round line, whenever there is one (o
     ['four long lines, the worst case', 76],
     ['a large system text size', 120],
   ])('shows it for a label that is %s (%d dp)', (_name, height) => {
-    stripWith('QF');
+    stripWith('Open · QF');
     label(height);
-    expect(line()?.textContent).toBe('QF');
+    expect(line()?.textContent).toBe('Open · QF');
   });
 
   it('shows it through a label that grows and shrinks (57, 44, 76), never hiding', () => {
-    stripWith('QF');
+    stripWith('Open · QF');
     for (const height of [57, 44, 76, 22, 0]) {
       label(height);
-      expect(line()?.textContent, `label ${height}`).toBe('QF');
+      expect(line()?.textContent, `label ${height}`).toBe('Open · QF');
     }
   });
 
@@ -97,29 +97,29 @@ describe('the status strip always shows the round line, whenever there is one (o
   it('shows it the same under every caption, under an urgent line, and with none', () => {
     const captions = Object.keys(ADVISORY_KEY) as Advisory[];
     expect(captions).toHaveLength(5);
-    const view = stripWith('QF', 'A v B', null);
+    const view = stripWith('Open · QF', 'A v B', null);
     label(44);
     let checked = 0;
     for (const advisory of captions) {
       view.rerender(<StatusStrip line="Ready" lineTier="routine" advisory={advisory} />);
       // The caption is the one message, and the round line is still there.
       expect(screen.getByTestId('strip-message').textContent).toBe(en[ADVISORY_KEY[advisory]]);
-      expect(line()?.textContent, advisory).toBe('QF');
+      expect(line()?.textContent, advisory).toBe('Open · QF');
       view.rerender(
         <StatusStrip line="No streaming credit" lineTier="urgent" advisory={advisory} />,
       );
       expect(screen.getByTestId('strip-message').textContent).toBe('No streaming credit');
-      expect(line()?.textContent, `${advisory}, urgent`).toBe('QF');
+      expect(line()?.textContent, `${advisory}, urgent`).toBe('Open · QF');
       checked += 1;
     }
     view.rerender(<StatusStrip line="Ready" lineTier="routine" advisory={null} />);
-    expect(line()?.textContent).toBe('QF');
+    expect(line()?.textContent).toBe('Open · QF');
     expect(checked).toBe(5);
   });
 
   it('tells its caller the label’s height, each time it is laid out (the picture is sized from it), and nothing else', () => {
     const heights: number[] = [];
-    const view = stripWith('QF', 'A v B', null, (height) => heights.push(height));
+    const view = stripWith('Open · QF', 'A v B', null, (height) => heights.push(height));
     label(44);
     label(76);
     expect(heights).toEqual([44, 76]);
@@ -139,14 +139,14 @@ describe('the status strip always shows the round line, whenever there is one (o
     const view = stripWith(null);
     label(44);
     expect(line()).toBeNull();
-    act(() => view.engine.setPairing({ stageLabel: 'QF' }));
-    expect(line()?.textContent).toBe('QF');
+    act(() => view.engine.setPairing({ stageLabel: 'Open · QF' }));
+    expect(line()?.textContent).toBe('Open · QF');
     act(() => view.engine.setPairing({ stageLabel: null }));
     expect(line()).toBeNull();
   });
 
   it('shows nothing for a stage label while the match label is still empty', () => {
-    stripWith('QF', '');
+    stripWith('Open · QF', '');
     label(44);
     expect(line()).toBeNull();
   });

@@ -32,7 +32,7 @@ object Configs {
       fallback = fallback,
       holdWindowSeconds = holdWindowSeconds,
       playbackUrl = PLAYBACK_URL,
-      heartbeatUrl = "https://stg.seazn.club/api/capture/heartbeat",
+      heartbeatUrl = "https://stg.seazn.club/api/v1/capture/codes/fx42hmnp7k2q/beats",
       appVersion = "1.0.0",
     )
 
@@ -63,7 +63,7 @@ object Configs {
     code: String = "fx42hmnp7k2q",
     slot: Int = 1,
     token: String = TOKEN,
-    heartbeatUrl: String = "https://stg.seazn.club/api/capture/codes/fx42hmnp7k2q/beat",
+    heartbeatUrl: String = "https://stg.seazn.club/api/v1/capture/codes/fx42hmnp7k2q/beats",
     claim: Claim = Claim.NEW,
     automatic: Boolean = true,
     // The code's own URL on the staging host (D3), as JS builds it: native refuses any other (T16 m1).
@@ -75,7 +75,7 @@ object Configs {
       token = token,
       codeUrl = codeUrl,
       heartbeatUrl = heartbeatUrl,
-      startUrl = "https://stg.seazn.club/api/capture/codes/fx42hmnp7k2q/start",
+      startUrl = "https://stg.seazn.club/api/v1/capture/codes/fx42hmnp7k2q/start",
       language = "en",
       automatic = automatic,
       claim = claim,

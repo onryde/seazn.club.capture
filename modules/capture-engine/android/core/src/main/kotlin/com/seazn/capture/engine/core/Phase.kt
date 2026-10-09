@@ -71,6 +71,8 @@ data class PairingState(
   val codeEndedPending: Boolean = false,
   /** The last `heartbeat` line's fields, message aside: a paired line is written only when they change. */
   val lastBeatLine: List<Pair<String, Any?>>? = null,
+  /** Plan D §3.4: every beat sent this pairing, summarised for the record ([BeatLog]). */
+  val beatLog: BeatLog = BeatLog(),
   /** Final review I-2b: this pairing has had its `waiting-unreadable` line, whichever answer brought it. */
   val waitingUnreadableSaid: Boolean = false,
 ) {

@@ -136,7 +136,9 @@ class Engine(
       else {
         // Release only where a Hold went (review C0b M4).
         val release = if (phase.holdsService) listOf(Command.Release) else emptyList()
-        Step(phase.ended(EndReason.FATAL_ERROR, now), listOf(engineError(failure), Command.End(EndReason.FATAL_ERROR)) + release)
+        val fatal = Step(phase.ended(EndReason.FATAL_ERROR, now), listOf(engineError(failure), Command.End(EndReason.FATAL_ERROR)) + release)
+        // The machine did not take this step, so its minute of beats is written here (plan D §3.4, B2 review Minor 1).
+        BeatLogs.closed(phase, fatal)
       }
     }
 

@@ -68,7 +68,8 @@ internal object Pairings {
     commands += Command.Release
     if (reason == UnpairReason.CODE_ENDED && pairing.stopped != null) commands += Command.DeleteStopped(pairing.name.code, pairing.name.slot)
     commands += line("unpaired", "reason" to reason, "wasLive" to (phase.session?.liveSinceEpochMs != null))
-    return Step(Phase.Idle(phase.ids, phase.networkValidated, phase.micSilenced, Unpaired(reason, pairing.name)), commands)
+    // Plan D §3.4: Idle holds no pairing, so the log goes out with the step, the answer that unpaired the phone in it.
+    return Step(Phase.Idle(phase.ids, phase.networkValidated, phase.micSilenced, Unpaired(reason, pairing.name)), commands, leftLog = pairing.beatLog)
   }
 
   fun automatic(phase: Phase, on: Boolean): Step {
