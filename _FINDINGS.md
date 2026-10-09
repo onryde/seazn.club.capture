@@ -754,7 +754,7 @@ white-label build. The SDK page returned 404 on 2026-10-04.
 - **Silent on** keyframe interval, B-frames, CBR versus VBR, SRT latency and
   passphrase, reconnects, timestamps and phones.
 
-### N23 — Urgent status lines are cut by an ellipsis at 640 × 360, and some lose the part that matters
+### N23 — Strip lines are cut by an ellipsis at 640 × 360, and some lose the part that matters
 
 **Status:** open · owner-actionable copy decision
 **Where:** capture app · the status strip's one message line · `stream.status.*` and `stream.leaveOnAir` ·
