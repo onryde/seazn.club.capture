@@ -18,7 +18,7 @@ S1 makes the Live Stream mode real. When S1 is done:
 - the organiser sees the phone's health on the console while it streams;
 - they hold Stop, or the organiser stops it from the console, and the phone says which.
 
-**Exit bar (owner, 2026-09-30):** a real match on staging. That means a real Android phone, a real stg fixture with the overlay, the failure drills in §6, and the session record read back afterwards. The 3-hour soak and the 180° flip stay deferred to app completion. iOS is M3.
+**Exit bar (owner, 2026-09-30):** a real match on staging. That means a real Android phone, a real stg fixture with the overlay _(revised 2026-10-09, plan D spec, `docs/specs/2026-10-09-s1-plan-d-design.md` §3.6: without the overlay, R1; the exit bar runs in plan D's slice D3)_, the failure drills in §6, and the session record read back afterwards. The 3-hour soak and the 180° flip stay deferred to app completion. iOS is M3.
 
 ## Decisions
 
@@ -194,7 +194,7 @@ Values are set in Geist Mono.
 
 ### S0 gaps closed here
 
-- **Keep-awake** while armed or live, proven in a release build.
+- **Keep-awake** while armed or live, proven in a release build. _Revised 2026-10-09 (plan D spec §3.6, R4): keep-awake, with the dim, while paired and waiting too; the locked phone is the fallback._
 - **TalkBack** announcing the turn card, checked before Go live sits behind it. If the check fails, fall back to `AccessibilityInfo.announceForAccessibility`.
 - **R37:** the lock after a remount mid-broadcast, under a real camera session.
 - **Orientation lock:** a refused lock is retried once the logger exists.
@@ -264,13 +264,15 @@ AGENTS §10 applies throughout: no snapshot tests, and the four questions answer
 | **Contract drift**      | every push                                                          | `contracts/capture-qr.v2.json`, plus the descriptor and heartbeat schemas the web side publishes beside it, each compared byte for byte with seazn.club main's copy. It uses a read-only token secret. |
 | **Android compile**     | PRs touching `modules/`, `app.json`, config plugins or the lockfile | `expo prebuild`, then `./gradlew assembleDebug`, on the runner. This is Gradle, not EAS, so the ruling holds. It catches the platform code, the bridge, the config plugin, and native peer drift.      |
 
+_Contract drift, revised 2026-10-09 (plan D spec §1 R7, §3.1): pin only. `contracts/` is a byte copy of the web's `docs/contracts` with every file's sha256 in `contracts/VENDORED.json`, checked offline by `test/contractPins.test.ts` inside `pnpm check`, which also holds the five schema pins equal to the web's own. No job fetches the web repo, so no token is needed (the repo is public)._
+
 **Detox waits.** On an emulator there is no real camera and no Play services scanner. A Detox run would re-test what the UI tests already cover on the fake, slowly, while the staging device run is the real scan → live proof. The first store-build task revisits this, alongside the release i18n check (S0 R11).
 
 ### Device checks: the exit bar
 
 - **Phones:** the OnePlus NE2211 and the Redmi Note 7 Pro. Keep-awake is judged on release builds.
 - **The code:** the web's **v2 QR, logo-centred at error correction H (~version 22, ~105 modules)**, scanned from a laptop screen.
-- **The run:** arm, then go live on a real stg fixture with the overlay. During the match:
+- **The run:** arm, then go live on a real stg fixture with the overlay _(revised 2026-10-09, plan D spec §3.6: without the overlay, R1; it runs in plan D's slice D3)_. During the match:
   - pull the uplink → it holds, then resumes;
   - block UDP → it falls back to RTMPS;
   - lock the screen for 5 min or more;

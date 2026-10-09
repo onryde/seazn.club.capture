@@ -1,9 +1,9 @@
 import { memo } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { useT } from '@/hooks/useLanguage';
-import type { Peek } from '@/hooks/usePeek';
 import { usePhoto } from '@/hooks/usePhoto';
 import type { BlockerKey } from '@/hooks/preflight';
+import type { ViewerCheckView } from '@/hooks/useViewerCheck';
 import type { Viewfinder, ViewfinderAction } from '@/hooks/useViewfinder';
 import type { PhotoOutcome } from '@/services/photoPort';
 import { AudioMeter } from '@/ui/components/AudioMeter';
@@ -19,7 +19,8 @@ import { typeScale } from '@/ui/theme/type';
 
 type ColumnProps = {
   readonly view: Viewfinder;
-  readonly peek: Peek;
+  /** What viewers see; null when it is hidden (`FEATURES.viewerCheck`, the owner's ruling of 2026-10-09): no cell. */
+  readonly viewer: ViewerCheckView | null;
   readonly canLeave: boolean;
   readonly onHome: () => void;
   readonly onSettings: () => void;
@@ -40,7 +41,7 @@ type ColumnProps = {
  * 804 × 332); its horizontal padding is the board's, which the half's width is made of.
  */
 export const StreamColumn = memo(function StreamColumn(props: ColumnProps) {
-  const { view, peek } = props;
+  const { view, viewer } = props;
   const photo = usePhoto();
   return (
     <View testID="controls-half" style={styles.half}>
@@ -62,7 +63,9 @@ export const StreamColumn = memo(function StreamColumn(props: ColumnProps) {
       <IconRow
         onAir={view.onAir}
         peekable={view.peekable}
-        peek={peek}
+        shed={view.shed}
+        open={viewer !== null && viewer.kind !== 'idle'}
+        onPeek={viewer === null ? null : viewer.toggle}
         shutter={view.shutter}
         onShutter={photo.take}
         scoring={view.scoring}
@@ -84,7 +87,9 @@ export const StreamColumn = memo(function StreamColumn(props: ColumnProps) {
   );
 });
 
-type IconRowProps = PeekProps & {
+type IconRowProps = Omit<PeekProps, 'onPeek'> & {
+  /** The view's tap, or null with What viewers see hidden: then the row draws no cell for it. */
+  readonly onPeek: (() => void) | null;
   readonly shutter: boolean;
   readonly onShutter: () => void;
   readonly scoring: boolean;
@@ -102,6 +107,8 @@ type IconRowProps = PeekProps & {
  * Take photo (§8) and Remote scoring (§10) are present or absent, never dimmed, and travel together as the
  * camera-side pair, Remote scoring last of the two: after Home before air, and after Settings on air, ahead of
  * What viewers see. Remote scoring is pressed in while its panel is up (B5).
+ * With What viewers see hidden (the owner's ruling, 2026-10-09) the on-air row ends at Remote scoring, and no cell
+ * flexes: the buttons pack from the start, as the four do before air.
  * Primitives and stable handlers, so memo skips (M7).
  */
 const IconRow = memo(function IconRow(props: IconRowProps) {
@@ -127,7 +134,15 @@ const IconRow = memo(function IconRow(props: IconRowProps) {
     <View testID="icon-row" style={styles.iconRow}>
       <IconButton glyph="settings" label={t('stream.link.settings')} onPress={props.onSettings} />
       {props.onAir ? camera : null}
-      <ColumnPeek onAir={props.onAir} peekable={props.peekable} peek={props.peek} />
+      {props.onPeek === null ? null : (
+        <ColumnPeek
+          onAir={props.onAir}
+          peekable={props.peekable}
+          shed={props.shed}
+          open={props.open}
+          onPeek={props.onPeek}
+        />
+      )}
       {props.canLeave ? (
         <IconButton glyph="home" label={t('stream.home')} onPress={props.onHome} />
       ) : null}
@@ -159,24 +174,26 @@ const PhotoNotice = memo(function PhotoNotice({
   );
 });
 
-type PeekProps = { readonly onAir: boolean; readonly peekable: boolean; readonly peek: Peek };
+type PeekProps = {
+  readonly onAir: boolean;
+  readonly peekable: boolean;
+  /** The ladder's first rung (D2 §4.2): any step down disables the view, with its reason. */
+  readonly shed: boolean;
+  readonly open: boolean;
+  readonly onPeek: () => void;
+};
 
 /**
- * What viewers see, on air only, and the row's remaining width; off, with its
- * reason, when there is no picture (carry 13). Primitives, not the view, so
- * memo skips (M7).
+ * What viewers see, on air only, and the row's remaining width. Off, with its reason, when the phone is hot (D2 §4.2)
+ * or there is no picture (carry 13). Primitives and a stable handler, so memo skips (M7).
  */
-const ColumnPeek = memo(function ColumnPeek({ onAir, peekable, peek }: PeekProps) {
+const ColumnPeek = memo(function ColumnPeek({ onAir, peekable, shed, open, onPeek }: PeekProps) {
   const { t } = useT();
   if (!onAir) return null;
+  const reason = shed ? t('stream.peek.hot') : peekable ? null : t('stream.peek.unavailable');
   return (
     <View testID="peek-cell" style={styles.peekCell}>
-      <ViewerPeek
-        disabled={!peekable}
-        reason={peekable ? null : t('stream.peek.unavailable')}
-        onPressIn={peek.pressIn}
-        onPressOut={peek.pressOut}
-      />
+      <ViewerPeek disabled={shed || !peekable} reason={reason} open={open} onPress={onPeek} />
     </View>
   );
 });

@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import ts from 'typescript';
@@ -63,5 +64,102 @@ describe('the test shell matches the app shell', () => {
       layout: true,
       routed: true,
     });
+  });
+});
+
+/**
+ * Live Stream's layout (`app/stream/_layout.tsx`) is rendered by no test either: `RoutedApp` mounts the stream screens
+ * without it. Its keep-awake and its `TouchWake` (the idle dim's touch, D2 §4.5) are pinned here, or unwrapping the
+ * stack would ship a dim that no touch wakes, with every test green (B5 review m1).
+ */
+const WRAPS_STACK = /<TouchWake>[\s\S]*<Stack\b[\s\S]*<\/TouchWake>/;
+
+describe('the stream layout keeps the screen on and hears every touch', () => {
+  const layout = body('app/stream/_layout.tsx', 'StreamLayout');
+
+  it('mounts useKeepAwake()', () => {
+    expect(layout.includes('useKeepAwake()')).toBe(true);
+  });
+
+  it('wraps its Stack in TouchWake', () => {
+    expect(WRAPS_STACK.test(layout)).toBe(true);
+  });
+
+  // The beside samples are a whole TouchWake, opened and closed, next to the Stack: a self-closing one would fail at the
+  // first token, so a looser rule (`<TouchWake>` alone, or any TouchWake pair) would still pass here (B5 re-review N1).
+  // One sits before the Stack and one after it, so a rule that drops either end of the wrap fails one of them (B6
+  // review M7: `<Stack ... </TouchWake>` alone passed the first).
+  it('does not count a TouchWake beside the Stack, before or after it, or one only in a comment', () => {
+    const beside = bodyOf(
+      [
+        'function StreamLayout() {',
+        '  return (<>',
+        '    <TouchWake>{null}</TouchWake>',
+        '    <Stack />',
+        '  </>);',
+        '}',
+      ].join('\n'),
+      'StreamLayout',
+    );
+    const after = bodyOf(
+      [
+        'function StreamLayout() {',
+        '  return (<>',
+        '    <Stack />',
+        '    <TouchWake>{null}</TouchWake>',
+        '  </>);',
+        '}',
+      ].join('\n'),
+      'StreamLayout',
+    );
+    const commented = bodyOf(
+      [
+        'function StreamLayout() {',
+        '  // return <TouchWake><Stack /></TouchWake>;',
+        '  return <Stack />;',
+        '}',
+      ].join('\n'),
+      'StreamLayout',
+    );
+    expect([
+      WRAPS_STACK.test(beside),
+      WRAPS_STACK.test(after),
+      WRAPS_STACK.test(commented),
+    ]).toEqual([false, false, false]);
+  });
+});
+
+/**
+ * The dim is Live Stream's alone (spec §6, question 4; final review m1): a paired phone that goes Home must not dim
+ * there, where keep-awake is off. The test above pins that the stream layout mounts it; this pins that nothing else
+ * does. In the shipped files of `app/` and `src/` (from `git ls-files`, so a mode layout S2 or S4 adds is covered the
+ * day it is committed; tests mount the dim on purpose and are left out), `<TouchWake` is written only by the stream
+ * layout, and `useIdleDim(` only by TouchWake, which calls it, and by its own file, which declares it.
+ */
+function shippedFilesWith(pattern: RegExp): string[] {
+  return execFileSync('git', ['ls-files', '--', 'app', 'src'], { cwd: root, encoding: 'utf8' })
+    .split('\n')
+    .filter((file) => /\.tsx?$/.test(file) && !/\.test(-d)?\.tsx?$/.test(file))
+    .filter((file) => pattern.test(readFileSync(join(root, file), 'utf8')));
+}
+
+describe('the idle dim is mounted by Live Stream only', () => {
+  it('reads the shipped tree, not a hand list (anti-vacuity: the layouts and TouchWake are in it)', () => {
+    const layouts = shippedFilesWith(/\bexport default function \w*Layout\b/);
+    expect(layouts).toEqual(expect.arrayContaining(['app/_layout.tsx', 'app/stream/_layout.tsx']));
+    expect(shippedFilesWith(/\bexport function TouchWake\b/)).toEqual([
+      'src/ui/components/TouchWake.tsx',
+    ]);
+  });
+
+  it('draws <TouchWake> in the stream layout and nowhere else', () => {
+    expect(shippedFilesWith(/<TouchWake\b/)).toEqual(['app/stream/_layout.tsx']);
+  });
+
+  it('calls useIdleDim() from TouchWake and nowhere else', () => {
+    expect(shippedFilesWith(/\buseIdleDim\(/)).toEqual([
+      'src/hooks/useIdleDim.ts',
+      'src/ui/components/TouchWake.tsx',
+    ]);
   });
 });

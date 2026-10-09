@@ -20,18 +20,16 @@ const PAIRING = {
   scheduledStart: new Date('2026-09-21T15:13:20Z'),
   autoAllowed: true,
   destinationName: 'YouTube · Example Town CC',
-  overlayUrl: 'https://stg.seazn.club/overlay/fixtures/fx42hmnp7k2q',
   pollSeconds: 10,
   stageLabel: null,
 };
-// W28: the pairing of the case that carries a round line, by hand from its override { stageLabel: 'QF' }.
-const PAIRING_STAGED = { ...PAIRING, stageLabel: 'QF' };
+// W28: the pairing of the case that carries a round line, by hand from its override { stageLabel: 'Open · QF' }.
+const PAIRING_STAGED = { ...PAIRING, stageLabel: 'Open · QF' };
 const BROADCAST = {
   sid: 'sess_42',
   cause: 'organiser',
   playbackUrl:
     'https://customer-x.cloudflarestream.com/a1b2c3d4e5f60718293a4b5c6d7e8f90/manifest/video.m3u8',
-  overlayUrl: 'https://stg.seazn.club/overlay/fixtures/fx42hmnp7k2q',
   label: 'Example Town v Sample CC',
   holdWindowSeconds: { srt: 183, rtmps: 180 },
   maxDurationMinutes: 300,
@@ -74,7 +72,6 @@ const EXPECTED: Readonly<Record<string, Expected>> = {
       scheduledStart: null,
       autoAllowed: false,
       destinationName: null,
-      overlayUrl: null,
     },
     broadcast: null,
     ready: { ...NOT_READY, network: true },
@@ -129,11 +126,11 @@ const EXPECTED: Readonly<Record<string, Expected>> = {
     reportedAtMs: 1_790_000_005_000,
     survivesBackground: true,
   },
-  'armed-gate-open-no-overlay': {
+  'armed-gate-open': {
     ...REST,
     state: { kind: 'armed', cause: 'operator', notReady: null },
-    pairing: { ...PAIRING, overlayUrl: null },
-    broadcast: { ...BROADCAST, cause: 'operator', overlayUrl: null },
+    pairing: PAIRING,
+    broadcast: { ...BROADCAST, cause: 'operator' },
     ready: READY,
     camera: 'own',
     reportedAtMs: 1_790_000_005_500,
@@ -269,23 +266,15 @@ describe('carries 2-6: the snapshot wire, as native writes it (Task 12)', () => 
     expect(relabelled.broadcast).toBe(first.broadcast);
   });
 
-  // Final review I-2, staging evidence (2026-10-05): native's pairing names no
-  // overlay, and no label, until the first answer; then staging's overlay, a
-  // query string with a key, reads whole.
-  it('reads a pairing before its first answer, then staging’s overlay with its query whole', () => {
+  // Final review I-2: the pair intent carries no waiting fields, so a pairing has no label until the first answer.
+  it('reads a pairing before its first answer, its label empty', () => {
     const cache = createWireCache();
     const paired = vectorWire('paired-after-organiser-stop');
     const before = toEngineSnapshot(
-      { ...paired, pairing: { ...paired.pairing, label: '', overlayUrl: null } },
+      { ...paired, pairing: { ...paired.pairing, label: '' } },
       cache,
     ) as EngineSnapshot;
-    expect(before.pairing).toMatchObject({ label: '', overlayUrl: null });
-    const url = 'https://stg.seazn.club/overlay/fixtures/fx42hmnp7k2q?style=bug&key=k3y-0123';
-    const after = toEngineSnapshot(
-      { ...paired, pairing: { ...paired.pairing, overlayUrl: url } },
-      cache,
-    ) as EngineSnapshot;
-    expect(after.pairing?.overlayUrl).toBe(url);
+    expect(before.pairing).toMatchObject({ label: '' });
   });
 
   it('never caches a malformed pairing: the next good one is read, not the last good one', () => {
@@ -302,7 +291,7 @@ describe('carries 2-6: the snapshot wire, as native writes it (Task 12)', () => 
   // W28: the round line is text or null, and nothing else, because the pairing is read whole or not at all.
   it('reads a pairing whose stageLabel is not text or null as no snapshot, and one without the key likewise', () => {
     const staged = vectorWire('paired-with-stage-label');
-    expect(toEngineSnapshot(staged)?.pairing?.stageLabel).toBe('QF');
+    expect(toEngineSnapshot(staged)?.pairing?.stageLabel).toBe('Open · QF');
     let refused = 0;
     for (const stageLabel of [7, true, {}, ['QF']]) {
       expect(

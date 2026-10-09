@@ -1,4 +1,4 @@
-import { act, screen } from '@testing-library/react';
+import { act, fireEvent, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { SessionState } from '@/domain/session/SessionState';
 import type { FakeScene } from '@/engine/FakeCaptureEngine';
@@ -20,10 +20,9 @@ const sent = (view: Awaited<ReturnType<typeof renderViewfinder>>, kind: 'start' 
 
 /** Copy from en.json: the tests read the dictionary, not the code under test. */
 const LIVE_LINE = 'Live. Sound and picture going out.';
-const SHED = 'Preview paused — still live';
-const OVERLAY_FAILED = 'Score preview failed — the broadcast is not affected';
+/** The heat caption on air with What viewers see hidden, as shipped (owner's ruling, 2026-10-09). */
+const HOT_LIVE = 'Phone hot · still live';
 const NOT_CHARGING = 'Not charging — plug in for a long match';
-const SCORE_AHEAD = 'You see the score slightly ahead of viewers';
 const REOPENING = 'Camera reopening — picture back shortly';
 
 async function onAir(
@@ -252,13 +251,19 @@ describe('the hold under a moving state', () => {
   });
 });
 
-describe('what viewers see (spec §4, carry 13)', () => {
+/**
+ * What viewers see built in: it is hidden as shipped (the owner's ruling, 2026-10-09; StreamScreen.viewerHidden.test.tsx),
+ * and these keep the hidden code tested.
+ */
+describe('what viewers see (spec §4, carry 13), built in', () => {
   beforeEach(() => vi.useFakeTimers());
   afterEach(() => vi.useRealTimers());
 
-  it('plays what viewers see the moment the finger lands, at the capped rendition', async () => {
-    await onAir('live');
-    pressIn(peek());
+  const BUILT_IN = { viewerCheck: true } as const;
+
+  it('plays what viewers see on a tap, at the capped rendition', async () => {
+    await onAir('live', {}, BUILT_IN);
+    fireEvent.click(peek());
     const video = screen.getByTestId('viewer-video');
     expect(video.dataset.playing).toBe('true');
     expect(video.dataset.url).toBe(
@@ -267,7 +272,7 @@ describe('what viewers see (spec §4, carry 13)', () => {
   });
 
   it('offers no peek before the broadcast starts', async () => {
-    await renderViewfinder();
+    await renderViewfinder({}, BUILT_IN);
     expect(screen.queryByRole('button', { name: 'What viewers see' })).toBeNull();
   });
 
@@ -277,6 +282,7 @@ describe('what viewers see (spec §4, carry 13)', () => {
    * with none reported, forced here on an engine that holds no pairing.
    */
   const liveWithNoBroadcast = {
+    ...BUILT_IN,
     engine: 'idle',
     prepare: (fakes: FakePorts) =>
       fakes.engine.forceState({ kind: 'publishing', transport: 'srt', sinceEpochMs: 1 }),
@@ -287,12 +293,13 @@ describe('what viewers see (spec §4, carry 13)', () => {
     expect(plate()).toBe('Live');
     expect(peek().getAttribute('aria-disabled')).toBe('true');
     expect(screen.getByText('No viewer picture')).toBeTruthy();
-    pressIn(peek());
+    fireEvent.click(peek());
     expect(screen.queryByTestId('viewer-video')).toBeNull();
+    expect(screen.queryByTestId('viewer-cover')).toBeNull();
   });
 
   it('gives no reason while the picture is there', async () => {
-    await onAir('live');
+    await onAir('live', {}, BUILT_IN);
     expect(peek().getAttribute('aria-disabled')).toBeNull();
     expect(screen.queryByText('No viewer picture')).toBeNull();
   });
@@ -302,111 +309,42 @@ describe('what viewers see (spec §4, carry 13)', () => {
     expect(screen.getByText('Image indisponible')).toBeTruthy();
   });
 
-  it('lets go of the picture when the broadcast ends under the finger', async () => {
-    const view = await onAir('live');
-    pressIn(peek());
+  it('lets go of the picture when the broadcast ends mid-view', async () => {
+    const view = await onAir('live', {}, BUILT_IN);
+    fireEvent.click(peek());
+    expect(screen.queryByTestId('viewer-video')).not.toBeNull();
     act(() => view.engine.scene('stopped'));
     expect(screen.queryByTestId('viewer-video')).toBeNull();
   });
 });
 
-/** The score preview on air: shed first (AGENTS §8), a failure a caption (AGENTS §7). */
-describe('the score preview on air', () => {
+/** A hot phone on air: a device condition, a caption, never a degraded broadcast (AGENTS §8). */
+describe('a hot phone on air', () => {
   beforeEach(() => vi.useFakeTimers());
   afterEach(() => vi.useRealTimers());
 
-  it('sheds the overlay on a hot phone and says so, still Live (AGENTS §8, carry 12)', async () => {
+  it('says so on a hot phone, still Live (AGENTS §8, carry 12)', async () => {
     const view = await onAir('shed', {}, { quiet: true });
     expect(plate()).toBe('Live');
-    expect(screen.getByText(SHED)).toBeTruthy();
-    expect(screen.queryByTestId('overlay')).toBeNull();
+    expect(screen.getByText(HOT_LIVE)).toBeTruthy();
     // The strip says ONE message (owner, 2026-10-08): the caption is up, so the live line is not. The plate above still
     // says Live. The positive pair: when the phone cools the caption goes and the live line is back.
     expect(screen.queryByText(LIVE_LINE)).toBeNull();
     act(() => view.engine.scene('live'));
-    expect(screen.queryByText(SHED)).toBeNull();
+    expect(screen.queryByText(HOT_LIVE)).toBeNull();
     expect(screen.getByText(LIVE_LINE)).toBeTruthy();
-  });
-
-  it('says it shed even with the score preview turned off (carry 13)', async () => {
-    const view = await onAir('live');
-    await act(() => view.ports.streamSettings.set({ overlay: false }));
-    act(() => view.engine.scene('shed'));
-    expect(screen.getByText(SHED)).toBeTruthy();
-  });
-
-  it('keeps the HUD whole when the overlay crashes, with a caption, not a plate', async () => {
-    await renderViewfinder({}, { prepare: (fakes) => fakes.surfaces.crashOverlay() });
-    expect(screen.getByText(OVERLAY_FAILED)).toBeTruthy();
-    expect(screen.getByTestId('tally-plate')).toBeTruthy();
-    expect(screen.queryByText('Something broke')).toBeNull();
-  });
-
-  it('says so when the overlay page fails to load', async () => {
-    const view = await onAir('live');
-    act(() => view.surfaces.failOverlay());
-    expect(screen.getByText(OVERLAY_FAILED)).toBeTruthy();
-    expect(screen.queryByTestId('overlay')).toBeNull();
-  });
-
-  it('tries again, with no caption, once the preview is hidden and shown (carry 13)', async () => {
-    const view = await onAir('live');
-    act(() => view.surfaces.failOverlay());
-    await act(() => view.ports.streamSettings.set({ overlay: false }));
-    await act(() => view.ports.streamSettings.set({ overlay: true }));
-    expect(screen.queryByText(OVERLAY_FAILED)).toBeNull();
-    expect(screen.getByTestId('overlay')).toBeTruthy();
-  });
-
-  // M1: native re-asks the code (spec §1), so the pairing's overlay URL can
-  // change; a new URL is a new showing, tried afresh, with no caption. Paired,
-  // since the fake's broadcast keeps the URL it went live with.
-  it('tries a new overlay URL afresh, with no caption (carry 13)', async () => {
-    const view = await renderViewfinder();
-    act(() => view.surfaces.failOverlay());
-    expect(screen.getByText(OVERLAY_FAILED)).toBeTruthy();
-    const next = 'https://stg.seazn.club/overlay/fixtures/next-fixture';
-    act(() => view.engine.setPairing({ overlayUrl: next }));
-    expect(screen.queryByText(OVERLAY_FAILED)).toBeNull();
-    expect(screen.getByTestId('overlay').dataset.url).toBe(`${next}?delay=0`);
-  });
-
-  it('tries again once the phone cools, with no caption (carry 13)', async () => {
-    const view = await onAir('live');
-    act(() => view.surfaces.failOverlay());
-    act(() => view.engine.scene('shed'));
-    act(() => view.engine.scene('live'));
-    expect(screen.queryByText(OVERLAY_FAILED)).toBeNull();
-    expect(screen.getByTestId('overlay')).toBeTruthy();
   });
 });
 
-/** Carry 14 (ruling M6): one caption, shed > overlay failed > not charging > score ahead. */
+/** Carry 14 (ruling M6): one caption, heat > not charging; the score preview's two went with it (D2 §4.1). */
 // The fake phone as it is: uncharged, which is the condition under test.
 describe('the status strip’s one caption', () => {
   beforeEach(() => vi.useFakeTimers());
   afterEach(() => vi.useRealTimers());
 
-  it('puts not charging above the score-ahead note while arming', async () => {
-    const view = await renderViewfinder();
-    expect(screen.getByText(NOT_CHARGING)).toBeTruthy();
-    expect(screen.queryByText(SCORE_AHEAD)).toBeNull();
-    act(() => view.engine.patch({ charging: true }));
-    expect(screen.getByText(SCORE_AHEAD)).toBeTruthy();
-    expect(screen.queryByText(NOT_CHARGING)).toBeNull();
-  });
-
-  it('puts a failed preview above not charging', async () => {
-    const view = await onAir('live');
-    expect(screen.getByText(NOT_CHARGING)).toBeTruthy();
-    act(() => view.surfaces.failOverlay());
-    expect(screen.getByText(OVERLAY_FAILED)).toBeTruthy();
-    expect(screen.queryByText(NOT_CHARGING)).toBeNull();
-  });
-
-  it('puts shed above not charging', async () => {
+  it('puts heat above not charging', async () => {
     await onAir('shed');
-    expect(screen.getByText(SHED)).toBeTruthy();
+    expect(screen.getByText(HOT_LIVE)).toBeTruthy();
     expect(screen.queryByText(NOT_CHARGING)).toBeNull();
   });
 
@@ -426,12 +364,5 @@ describe('the status strip’s one caption', () => {
     // And back: the line is routine again, so the caption that never went away takes the line.
     act(() => view.engine.scene('live'));
     expect(screen.getByTestId('strip-message').textContent).toBe(NOT_CHARGING);
-  });
-
-  it('shows no score-ahead note on air', async () => {
-    const view = await onAir('live');
-    act(() => view.engine.patch({ charging: true }));
-    expect(screen.queryByText(SCORE_AHEAD)).toBeNull();
-    expect(screen.queryByText(NOT_CHARGING)).toBeNull();
   });
 });

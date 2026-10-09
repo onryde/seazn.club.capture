@@ -21,11 +21,16 @@ export interface BackPort {
   subscribe(onBack: () => boolean): () => void;
 }
 
-/** The app coming back to the foreground, and leaving it. */
+/** The app coming back to the foreground, and leaving it, and whether it is there now. */
 export interface ForegroundPort {
   subscribe(onForeground: () => void): () => void;
   /** Fires when the app leaves the foreground: another app's screen, Home, the lock. */
   subscribeBackground(onBackground: () => void): () => void;
+  /**
+   * Whether the app is in the foreground now, read at the call. For a hook that can mount while the app is in the
+   * background (a remote Go live routes a locked phone to Live Stream) and must not start as if it were seen.
+   */
+  isForeground(): boolean;
 }
 
 /** Settings (with Diagnostics inside it, spec §6) sits inside Live Stream (AGENTS §6): on air, only leaving the mode is blocked. */
@@ -64,4 +69,14 @@ export interface SplashPort {
 /** The system share sheet (D21). Rejects when it could not open. */
 export interface SharePort {
   share(text: string): Promise<void>;
+}
+
+/**
+ * The app window's own brightness (D2 §4.5, R8), never the system setting. `dim` and `restore` are intents: each
+ * returns at once, does nothing when already in that state, and never throws, so a phone without the module only
+ * stays bright.
+ */
+export interface ScreenPort {
+  dim(): void;
+  restore(): void;
 }

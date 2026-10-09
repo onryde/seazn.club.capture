@@ -8,7 +8,7 @@ export type Environment = 'production' | 'staging';
 /** The two ways out (C1). Publish credentials themselves are native's (AGENTS §4). */
 export type Transport = 'srt' | 'rtmps';
 
-/** How the overlay learns a score (S1 decision 8), echoed in the broadcast. */
+/** How the web overlay learns a score (S1 decision 8), echoed in the broadcast. */
 export type ScoreUpdates = 'realtime' | 'polled';
 
 /** Who started the broadcast in hand (A2, A10, A16). */
@@ -37,7 +37,6 @@ export type PairingInfo = {
   readonly scheduledStart: Date | null;
   readonly autoAllowed: boolean;
   readonly destinationName: string | null;
-  readonly overlayUrl: string | null;
   readonly pollSeconds: number;
   /** The descriptor's `stage.label` (W28) for the match in hand, shown verbatim; null with none. Display only. */
   readonly stageLabel: string | null;
@@ -48,7 +47,6 @@ export type BroadcastInfo = {
   readonly sid: string;
   readonly cause: Cause;
   readonly playbackUrl: string;
-  readonly overlayUrl: string | null;
   readonly label: string;
   /** Per transport offered; SRT absent when the server offered none (A18). */
   readonly holdWindowSeconds: Readonly<Partial<Record<Transport, number>>>;

@@ -68,7 +68,8 @@ internal object Pairings {
     commands += Command.Release
     if (reason == UnpairReason.CODE_ENDED && pairing.stopped != null) commands += Command.DeleteStopped(pairing.name.code, pairing.name.slot)
     commands += line("unpaired", "reason" to reason, "wasLive" to (phase.session?.liveSinceEpochMs != null))
-    return Step(Phase.Idle(phase.ids, phase.networkValidated, phase.micSilenced, Unpaired(reason, pairing.name)), commands)
+    // Plan D §3.4: Idle holds no pairing, so the log goes out with the step, the answer that unpaired the phone in it.
+    return Step(Phase.Idle(phase.ids, phase.networkValidated, phase.micSilenced, Unpaired(reason, pairing.name)), commands, leftLog = pairing.beatLog)
   }
 
   fun automatic(phase: Phase, on: Boolean): Step {
@@ -375,7 +376,7 @@ internal object Verdicts {
 
 /**
  * Final review I-2b: a 2xx answer, beat or session shape, owed the waiting fields and one could not be read
- * (`Bodies`), so the pairing kept its own: its label never came, its overlay was never known, and nothing said
+ * (`Bodies`), so the pairing kept its own: its label never came, and nothing said
  * why. One `waiting-unreadable` warn a pairing names the [source] and the field, never its value.
  */
 internal object WaitingUnread {

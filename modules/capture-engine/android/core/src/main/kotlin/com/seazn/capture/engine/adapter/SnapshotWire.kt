@@ -52,7 +52,6 @@ object SnapshotWire {
       "scheduledStart" to w.scheduledStartEpochS?.let(::num),
       "autoAllowed" to w.autoAllowed,
       "destinationName" to w.destinationName,
-      "overlayUrl" to w.overlayUrl,
       "stageLabel" to w.stageLabel,
       "pollSeconds" to num(w.pollSeconds),
     )
@@ -64,7 +63,6 @@ object SnapshotWire {
       "sid" to view.sid,
       "cause" to view.cause.wire,
       "playbackUrl" to view.playbackUrl,
-      "overlayUrl" to view.overlayUrl,
       "label" to view.label,
       "holdWindowSeconds" to view.holdWindowSeconds.entries.associate { (transport, seconds) -> transport.wire to num(seconds) },
       "maxDurationMinutes" to num(view.maxDurationMinutes),

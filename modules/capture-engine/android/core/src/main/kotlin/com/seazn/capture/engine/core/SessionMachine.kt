@@ -1,7 +1,11 @@
 package com.seazn.capture.engine.core
 
-/** One step of the machine: the next phase and what to ask of the platform. */
-data class Step(val phase: Phase, val commands: List<Command> = emptyList())
+/**
+ * One step of the machine: the next phase and what to ask of the platform. [leftLog] is the beat log of a pairing the
+ * step left for Idle, as the step last held it ([Pairings.unpaired]), so the answer that unpaired the phone is in the
+ * minute [BeatLogs.closed] writes (plan D §3.4).
+ */
+data class Step(val phase: Phase, val commands: List<Command> = emptyList(), val leftLog: BeatLog? = null)
 
 private fun record(kind: String, vararg fields: Pair<String, Any?>): Command = Command.Record(RecordEntry(kind, fields.toList()))
 
@@ -33,8 +37,12 @@ object SessionMachine {
    * hold-window-expired, a picture that comes back, an organiser stop and a platform failure included
    * (B7 ruling m2, final review N-4): the hold is the published limit, and the tick at that instant
    * would end it the same way. A stop in that gap reads operator-stopped.
+   *
+   * Plan D §3.4: whatever the input, a pairing that stops beating writes its open minute of beats ([BeatLogs.closed]).
    */
-  fun reduce(phase: Phase, input: Input, now: Now): Step {
+  fun reduce(phase: Phase, input: Input, now: Now): Step = BeatLogs.closed(phase, reduced(phase, input, now))
+
+  private fun reduced(phase: Phase, input: Input, now: Now): Step {
     if (input == Input.Tick || input == Input.Stop) return apply(phase, input, now)
     val judged = if (input is Input.PlatformFailed) Timers.holdRanOut(phase, now) ?: Step(phase) else Timers.judged(phase, now)
     val step = apply(judged.phase, input, now)
@@ -146,9 +154,12 @@ object SessionMachine {
     commands += Command.End(reason)
     if (reason == EndReason.OPERATOR_STOPPED && wasLive && pairing != null) {
       val (beat, id) = finalBeat(phase, pairing, now)
+      // Plan D §3.4: the final beat is a beat sent too, off the cadence: counted, with no interval line.
+      val (beatLog, lines) = pairing.beatLog.send(id, intervalMs = null, held = true, now)
+      commands += lines.map { Command.Record(it) }
       commands += beat
       // The final beat's id is spent: the next pairing's beats start after it (plan B: ids never repeat).
-      val beating = pairing.copy(heartbeat = pairing.heartbeat.copy(nextId = id + 1, inFlightId = null))
+      val beating = pairing.copy(heartbeat = pairing.heartbeat.copy(nextId = id + 1, inFlightId = null), beatLog = beatLog)
       return Step(ended.copy(ids = ended.ids.copy(beat = id + 1), pairing = beating, finalBeatId = id, finalBeatAtMs = now.monoMs), commands)
     }
     if (phase.holdsService) commands += Command.Release
@@ -596,13 +607,18 @@ internal object Heartbeats {
     val interval = BeatCadence.intervalMs(pairing.waiting.pollSeconds, held = held != null)
     val (heartbeat, id) = Heartbeat.due(pairing.heartbeat, now.monoMs, now.wallMs, interval)
     val commands = step.commands.toMutableList()
-    if (heartbeat.failures > pairing.heartbeat.failures) commands += record("heartbeat", "result" to HeartbeatResult.FAILED, "message" to "no answer")
-    if (id == null) return Step(phase.withPairing(pairing.copy(heartbeat = heartbeat)), commands)
+    val timedOut = heartbeat.failures > pairing.heartbeat.failures
+    if (timedOut) commands += record("heartbeat", "result" to HeartbeatResult.FAILED, "message" to "no answer")
+    // Plan D §3.4: a beat given up is a failed one in the minute's count.
+    val counted = if (timedOut) pairing.beatLog.heard(word = null, ok = false) else pairing.beatLog
+    if (id == null) return Step(phase.withPairing(pairing.copy(heartbeat = heartbeat, beatLog = counted)), commands)
     // RR3: the stopped sid rides only a beat that holds none.
     val carried = if (held == null) pairing.stopped?.sid else null
-    val next = pairing.copy(heartbeat = heartbeat, stoppedInFlight = carried)
+    val (beatLog, lines) = counted.send(id, interval, held = held != null, now)
+    val next = pairing.copy(heartbeat = heartbeat, stoppedInFlight = carried, beatLog = beatLog)
     val nextPhase = phase.withPairing(next)
     val body = Beats.payload(Projection.beatFacts(nextPhase, next, now))
+    commands += lines.map { Command.Record(it) }
     commands += Command.PostHeartbeat(id, pairing.request.heartbeatUrl, pairing.token, body)
     return Step(nextPhase, commands)
   }
@@ -623,10 +639,12 @@ internal object Heartbeats {
         waiting = response?.reply?.waiting?.takeIf { ok }?.overBeat(pairing.waiting) ?: pairing.waiting,
         stoppedInFlight = null,
         waitingUnreadableSaid = pairing.waitingUnreadableSaid || unreadable != null,
+        beatLog = pairing.beatLog.heard(word::class.simpleName, ok),
       )
     // The beat line. Its claim is the one the answered beat carried, before this answer cleared it
-    // (PV11). Paired, it is written only when it changes, message aside, so hours of waiting cost a
-    // few lines; a held beat is written every time, as plan B wrote them.
+    // (PV11). Paired or held, it is written only when it changes, message aside (N25, owner
+    // 2026-10-09: count beats, don't list them): the minute's `beats` line counts every beat, so
+    // hours of waiting or of air cost a few lines.
     val fields =
       listOf(
         "result" to heartbeat.lastResult,
@@ -636,7 +654,7 @@ internal object Heartbeats {
         "message" to (input.response as? HeartbeatResponse.Failed)?.message,
       )
     val compared = fields.filter { it.first != "message" }
-    val changed = phase.heldSid != null || compared != pairing.lastBeatLine
+    val changed = compared != pairing.lastBeatLine
     val noted = if (changed) listOf(Command.Record(RecordEntry("heartbeat", fields))) else emptyList()
     // A17: a beat that carried the stopped record and was heard delivers it (G0-g); a 401 ends its code.
     val status = response?.status

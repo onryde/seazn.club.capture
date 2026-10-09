@@ -166,8 +166,9 @@ const base = {
    *  - the clock's cell, in the plate row: HH:MM:SS at Barlow Condensed 700 38 in the font's TABULAR figures, which
    *    `tabular-nums` selects and which are wider than its proportional ones (a clock sized from those wrapped in a
    *    browser). The plate beside it (a word of up to 98.5 dp) is narrower.
-   *  - the peek's cell, on air, the icon row's fourth cell: the label in two lines (`peekLabelLines`) and the
-   *    reason in two (`peekReasonLines`), every word whole.
+   *  - the peek's cell, on air, the icon row's fourth cell when What viewers see is built in (it is hidden as
+   *    shipped, the owner's ruling of 2026-10-09: `FEATURES.viewerCheck`): the label in two lines (`peekLabelLines`)
+   *    and the reason in two (`peekReasonLines`), every word whole.
    *  - the AUTO chip: its word at `control`, 8 dp of padding and a 2 dp border either side.
    */
   clockCell: 135,
@@ -177,10 +178,17 @@ const base = {
   stripPadV: 8,
   stripPadH: 16,
   stripGap: 6,
-  /** Lines the strip reserves for the label: at most 4 (Q4). */
-  labelLinesMax: 4,
-  /** D17 (F9): a regular-size label is at most 2 lines, one a side, by the written assumption. */
-  labelLinesRegular: 2,
+  /**
+   * C2 (D2 §4.4): each side wraps to at most 2 lines and ends in an ellipsis beyond that. The strip's worst label is two
+   * sides of this many lines (`cameraBox.ts`), so this cap is what the reserve is made of.
+   */
+  labelSideLines: 2,
+  /** C2: the left margin the decorative v sits in, outside both rows. */
+  labelMargin: 14,
+  /** C2: each side's bar, at its row's left edge. */
+  labelBar: 3,
+  /** C2: the gap between a side's bar and its names. */
+  labelBarGap: 5,
   /**
    * The strip's message: ONE line of the body role, always (owner, 2026-10-08, "one single line all the time"). It says
    * the caption when one is up, else the status line, and a string wider than the strip's text is cut with an ellipsis,
@@ -279,7 +287,10 @@ type ControlsCells = Readonly<
  * The controls half's width (owner, 2026-10-08, option "A": the controls half takes the width its content needs and
  * the camera half takes the rest). It is the WIDEST ROW of the half, in any state, plus the half's padding either side:
  *  - icons before air: Settings, Home, Take photo, Remote scoring, four 48 dp buttons and three gaps (216);
- *  - icons on air: Settings, Take photo, Remote scoring and the peek, three buttons, three gaps and the peek's cell (269);
+ *  - icons on air: Settings, Take photo, Remote scoring and the peek, three buttons, three gaps and the peek's cell (269),
+ *    with What viewers see built in. Hidden, as shipped (the owner's ruling, 2026-10-09), the row is the three buttons
+ *    and two gaps (160), narrower than the row before air, so it is not counted; the peek's row is, so the switch can
+ *    be turned on with no change of layout;
  *  - chips: camera, sound, network and AUTO, four boxes and three gaps, on ONE line (208);
  *  - the plate row: the tally plate and the clock, a cell each and a gap (278), which governs. The two cells are kept
  *    EQUAL on purpose (the balanced look): the plate's word is narrower than the clock (98.5
@@ -313,7 +324,7 @@ export function controlsHalfWidth(cells: ControlsCells): number {
  * as measured, and not from the strip's worst case (owner, 2026-10-08, option A;
  * `stripReserve`, which holds the round line's room): a two-line label on an
  * 804 × 360 phone gives a box of about 444 × 250 where the worst case, which is
- * what it is until the label has been measured, gives 388 × 218.
+ * what it is until the label has been measured, gives 366 × 206 (C2, D2 §4.4).
  */
 export const layout = { ...base, controlsHalf: controlsHalfWidth(base) } as const;
 

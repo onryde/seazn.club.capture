@@ -23,7 +23,6 @@ const waitingWire = (overrides: Record<string, unknown> = {}) => ({
   scheduledStart: 1790003600,
   autoAllowed: true,
   destinationName: 'YouTube · Fake CC',
-  overlayUrl: 'https://stg.seazn.club/overlay/fixtures/fake-fixture',
   pollSeconds: 60,
   heartbeatUrl: `${CODE_URL}/beats`,
   startUrl: `${CODE_URL}/start`,
@@ -57,6 +56,29 @@ describe('saved codes, v3 (amendment §3)', () => {
       },
     });
     expect(decodeSavedCode(encodeSavedCode(code))).toEqual(code);
+  });
+
+  // P6: a stream record keeps its waiting fields at `stream.waiting` (savedCode.ts encodeSavedCode), so that is where
+  // a code saved before D2 still names its overlay.
+  it('reads a code saved before D2, whose waiting fields still name an overlay (D2 §4.1)', () => {
+    const code = savedStreamCode({
+      stream: { waiting: sampleWaiting(), codeUrl: CODE_URL, tapToPair: false },
+    });
+    const saved = encodeSavedCode(code);
+    const old = JSON.parse(saved) as { stream: { waiting: Record<string, unknown> } };
+    const withOverlay = JSON.stringify({
+      ...old,
+      stream: {
+        ...old.stream,
+        waiting: {
+          ...old.stream.waiting,
+          overlayUrl: 'https://stg.seazn.club/overlay/fixtures/fake-fixture',
+        },
+      },
+    });
+    const read = decodeSavedCode(withOverlay);
+    expect(read).toEqual(code);
+    expect(read?.stream?.waiting && 'overlayUrl' in read.stream.waiting).toBe(false);
   });
 
   it('round-trips a scoring code, which has no stream part', () => {
@@ -93,7 +115,7 @@ describe('saved codes, v3 (amendment §3)', () => {
 
   // W28: the round line is kept with the code, kind and all, so a cold-start re-pair seeds it.
   it('keeps a stage through encode and decode, and reads a record saved before this change with none', () => {
-    const stage = { label: 'QF', kind: 'quarter_final' };
+    const stage = { label: 'Open · QF', kind: 'quarter_final' };
     const code = savedStreamCode({
       stream: { waiting: sampleWaiting({ stage }), codeUrl: CODE_URL, tapToPair: false },
     });
@@ -103,14 +125,14 @@ describe('saved codes, v3 (amendment §3)', () => {
     // The stored record holds the stage in the server's own shape, which the one parser reads back.
     expect(JSON.parse(encodeSavedCode(code)).stream.waiting.stage).toEqual({
       role: { kind: 'quarter_final' },
-      label: 'QF',
+      label: 'Open · QF',
     });
     // A record with no `stage` key at all, as every record saved before this PR is.
     expect(decodeSavedCode(record({}))?.stream?.waiting.stage).toBeNull();
     // A stored stage of a kind the contract does not name reads as none, and the code is kept.
     const future = record({
       stream: {
-        waiting: waitingWire({ stage: { role: { kind: 'a_future_kind' }, label: 'QF' } }),
+        waiting: waitingWire({ stage: { role: { kind: 'a_future_kind' }, label: 'Open · QF' } }),
         codeUrl: CODE_URL,
         tapToPair: false,
       },

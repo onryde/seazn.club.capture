@@ -75,3 +75,30 @@ describe('fake scoring link', () => {
     expect(fakes.ports.scoringLink).toBe(fakes.scoringLink);
   });
 });
+
+describe('fake screen', () => {
+  it('records the screen port’s calls, and whether it is dimmed', () => {
+    const fakes = createFakePorts();
+    expect(fakes.screen.dimmed).toBe(false);
+    fakes.screen.dim();
+    expect(fakes.screen.dimmed).toBe(true);
+    fakes.screen.restore();
+    expect(fakes.screen.calls).toEqual(['dim', 'restore']);
+    expect(fakes.screen.dimmed).toBe(false);
+    expect(fakes.ports.screen).toBe(fakes.screen);
+  });
+});
+
+describe('fake foreground', () => {
+  it('is in the foreground at first, and reports the last leave or fire, with nobody listening', () => {
+    const fakes = createFakePorts();
+    expect(fakes.foreground.isForeground()).toBe(true);
+    fakes.foreground.leave();
+    expect(fakes.foreground.isForeground()).toBe(false);
+    fakes.foreground.leave();
+    expect(fakes.foreground.isForeground()).toBe(false);
+    fakes.foreground.fire();
+    expect(fakes.foreground.isForeground()).toBe(true);
+    expect(fakes.ports.foreground).toBe(fakes.foreground);
+  });
+});

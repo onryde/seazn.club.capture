@@ -83,9 +83,9 @@ export function readEpochSeconds(source: Source, key: string, label: string = ke
 /**
  * A URL with the given scheme, a host with no userinfo, and no whitespace.
  * The authority refuses `@` (userinfo) and `\`, which WHATWG `URL` — and so
- * the WebView — reads as `/` in an https URL: `https://evil.example\.seazn.club`
- * is a request to `evil.example`. Regex rather than `URL`: Hermes' URL
- * polyfill has lacked `hostname`.
+ * any browser or player that opens the URL — reads as `/` in an https URL:
+ * `https://evil.example\.seazn.club` is a request to `evil.example`. Regex
+ * rather than `URL`: Hermes' URL polyfill has lacked `hostname`.
  */
 export function readSchemeUrl(
   source: Source,

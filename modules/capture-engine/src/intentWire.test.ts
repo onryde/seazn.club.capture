@@ -53,15 +53,18 @@ describe('the intents as native reads them (Task 11)', () => {
   it('sends the round line and its match when the intent carries them, and neither key when it does not', () => {
     const staged = intentWire({
       ...PAIR,
-      stageLabel: 'QF',
+      stageLabel: 'Open · QF',
       stageMatch: 'Example Town v Sample CC',
     });
-    expect(staged).toMatchObject({ stageLabel: 'QF', stageMatch: 'Example Town v Sample CC' });
+    expect(staged).toMatchObject({
+      stageLabel: 'Open · QF',
+      stageMatch: 'Example Town v Sample CC',
+    });
     const keys = Object.keys(intentWire(PAIR));
     expect(keys).not.toContain('stageLabel');
     expect(keys).not.toContain('stageMatch');
     // One without the other is no stage: native seeds both or neither, and so does the wire.
-    for (const half of [{ stageLabel: 'QF' }, { stageMatch: 'Example Town v Sample CC' }]) {
+    for (const half of [{ stageLabel: 'Open · QF' }, { stageMatch: 'Example Town v Sample CC' }]) {
       const lone = Object.keys(intentWire({ ...PAIR, ...half }));
       expect(lone).not.toContain('stageLabel');
       expect(lone).not.toContain('stageMatch');

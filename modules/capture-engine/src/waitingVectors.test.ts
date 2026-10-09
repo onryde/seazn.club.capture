@@ -10,10 +10,10 @@ const rows = vectors.cases.filter((row) => !('kotlinOnly' in row && row.kotlinOn
 
 describe('the waiting fields: one reading in two languages (Bodies.waiting in Kotlin)', () => {
   // The file's counts, so an emptied or truncated file cannot pass by sweeping nothing (PV12).
-  it("sweeps 43 of the file's 45 rows, readable and unreadable both", () => {
-    expect(vectors.cases).toHaveLength(45);
-    expect(rows).toHaveLength(43);
-    expect(rows.filter((row) => row.expected === null)).toHaveLength(19);
+  it("sweeps 41 of the file's 43 rows, readable and unreadable both", () => {
+    expect(vectors.cases).toHaveLength(43);
+    expect(rows).toHaveLength(41);
+    expect(rows.filter((row) => row.expected === null)).toHaveLength(18);
   });
 
   it.each(rows.map((row) => [row.why, row] as const))('%s', (_why, row) => {

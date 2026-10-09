@@ -46,7 +46,6 @@ object Projection {
       sid = session.sid,
       cause = session.cause,
       playbackUrl = session.config.playbackUrl,
-      overlayUrl = broadcast.overlayUrl,
       label = broadcast.label,
       holdWindowSeconds = broadcast.holdWindowSeconds,
       maxDurationMinutes = broadcast.maxDurationMinutes,

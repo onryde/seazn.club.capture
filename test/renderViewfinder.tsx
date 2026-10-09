@@ -5,7 +5,6 @@ import { StreamScreen } from '@/ui/screens/StreamScreen';
 import { createFakePorts, type FakePorts } from './fakePorts';
 import { savedStreamCode } from './fixtures/savedStream';
 import { pairCode } from './pairCode';
-import { OVERLAY_OFF_SEED } from './overlayOff';
 import { quietDevice } from './quietDevice';
 import { wrapperFor } from './renderWithPorts';
 
@@ -18,7 +17,7 @@ type Setup = {
    * paired viewfinder says so.
    */
   readonly engine?: 'paired' | 'idle';
-  /** Runs before the first render: an engine already live, an overlay set to crash. */
+  /** Runs before the first render: an engine already live, a preview set to crash. */
   readonly prepare?: (fakes: FakePorts) => void;
   /** RTL's StrictMode at the root, so each effect runs twice on mount. */
   readonly strict?: boolean;
@@ -30,10 +29,10 @@ type Setup = {
    */
   readonly quiet?: boolean;
   /**
-   * `false` turns the score preview off in the saved settings, so the paired viewfinder does not say Score ahead in
-   * its one message line and the status line shows. Left out, the setting is the app's own: on.
+   * What viewers see built in (D2 §4.3), for the tests of the hidden feature. Left out, the screen reads the shipped
+   * switch, `FEATURES.viewerCheck` (off: the owner's ruling, 2026-10-09), as the route does.
    */
-  readonly overlay?: boolean;
+  readonly viewerCheck?: boolean;
 };
 
 /** The viewfinder as the operator reaches it: a saved stream code, the store loaded, on /stream. */
@@ -45,20 +44,20 @@ export async function renderViewfinder(
     prepare,
     strict = false,
     quiet = false,
-    overlay,
+    viewerCheck,
   }: Setup = {},
 ): Promise<RenderResult & FakePorts> {
   const kvSeed = {
     [STORE_KEYS.active]: 'stream',
     [STORE_KEYS.code('stream')]: encodeSavedCode(saved),
-    ...(overlay === false ? OVERLAY_OFF_SEED : {}),
     ...options.kvSeed,
   };
   const fakes = createFakePorts({ ...options, kvSeed });
   if (engine === 'paired') pairCode(fakes.engine, saved);
   if (quiet) quietDevice(fakes.engine);
   prepare?.(fakes);
-  const rendered: RenderResult = render(<StreamScreen />, {
+  // Undefined is the prop left out: the screen's default, the shipped switch.
+  const rendered: RenderResult = render(<StreamScreen viewerCheck={viewerCheck} />, {
     wrapper: wrapperFor(fakes),
     reactStrictMode: strict,
   });

@@ -119,7 +119,6 @@ class ProjectionPairedTest {
         sid = "sess_42",
         cause = Cause.AUTOMATIC,
         playbackUrl = Configs.PLAYBACK_URL,
-        overlayUrl = "https://stg.seazn.club/overlay/fixtures/fx-42",
         label = "Example Town v Sample CC",
         holdWindowSeconds = mapOf(Transport.SRT to 183, Transport.RTMPS to 180),
         maxDurationMinutes = 300,
@@ -150,10 +149,13 @@ class ProjectionPairedTest {
     assertEquals(3, rig.records("heartbeat").size)
   }
 
-  @Test fun `held beats are each written, as plan B did`() {
+  @Test fun `held beats are written only when the answer changes, as paired ones are (N25)`() {
     val rig = MachineRig().live()
+    rig.hear("live", sid = "sess_42")
     val before = rig.records("heartbeat").size
     repeat(3) { rig.hear("live", sid = "sess_42") }
-    assertEquals(before + 3, rig.records("heartbeat").size)
+    assertEquals(before, rig.records("heartbeat").size, "the same answer three times: counted, not listed")
+    rig.hear(null, status = 503)
+    assertEquals(before + 1, rig.records("heartbeat").size, "a change of answer still gets its line")
   }
 }

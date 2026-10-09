@@ -2,7 +2,6 @@ import { act, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { HOLD_MS } from '@/hooks/useHold';
 import en from '@/i18n/en.json';
-import { readRecord } from '../../../test/fakePorts';
 import { pressIn } from '../../../test/press';
 import { renderViewfinder } from '../../../test/renderViewfinder';
 
@@ -15,24 +14,17 @@ const WAITING = 'Waiting for Go live · YouTube · Fake CC';
 const plate = () => screen.getByTestId('tally-plate').textContent;
 const kinds = (view: Awaited<ReturnType<typeof renderViewfinder>>) =>
   view.engine.intents.map((intent) => intent.kind);
-const events = (view: Awaited<ReturnType<typeof renderViewfinder>>) =>
-  readRecord(view.record).map((entry) => entry.event);
 
 /**
- * The paired viewfinder on a phone with nothing to warn about and with the score preview OFF. The strip says ONE message
- * (owner, 2026-10-08, two tiers): an URGENT status line (a refusal, a destination to pick, a camera in use, a retry)
- * always wins it, but a caption beats a ROUTINE line, and the fake phone is uncharged and, before air with the preview
- * on, Score ahead is up on every paired phone. So a test that reads a routine line (Waiting for Go live, Going live,
- * Opening the link) renders here; a test that reads an urgent one renders plainly. The preview-on strip is pinned on its
- * own in StreamScreen.layout.test.tsx.
+ * The paired viewfinder on a phone with nothing to warn about. The strip says ONE message (owner, 2026-10-08, two
+ * tiers): an URGENT status line (a refusal, a destination to pick, a camera in use, a retry) always wins it, but a
+ * caption beats a ROUTINE line, and the fake phone is uncharged. So a test that reads a routine line (Waiting for Go
+ * live, Going live, Opening the link) renders here; a test that reads an urgent one renders plainly.
  */
 const renderPaired = (
   options: Parameters<typeof renderViewfinder>[0] = {},
   setup: Parameters<typeof renderViewfinder>[1] = {},
-) => renderViewfinder(options, { overlay: false, quiet: true, ...setup });
-
-const OVERLAY_FAILED = 'Score preview failed — the broadcast is not affected';
-const SCORE_AHEAD = 'You see the score slightly ahead of viewers';
+) => renderViewfinder(options, { quiet: true, ...setup });
 
 /**
  * The amendment §2: Home pairs, a visit never does. The viewfinder reads the
@@ -256,113 +248,5 @@ describe('the paired viewfinder (spec §1)', () => {
     expect(
       screen.getByRole('button', { name: 'Passer en direct. Maintenez appuyé 3 secondes.' }),
     ).toBeTruthy();
-  });
-});
-
-/** Carry 8, final review I-2: no overlay to show is no failure; a failed load is. */
-describe('the score preview while paired', () => {
-  beforeEach(() => vi.useFakeTimers());
-  afterEach(() => vi.useRealTimers());
-
-  it('shows the pairing’s overlay page with no delay, and records nothing wrong', async () => {
-    const view = await renderViewfinder();
-    expect(screen.getByTestId('overlay').dataset.url).toBe(
-      'https://stg.seazn.club/overlay/fixtures/fx42hmnp7k2q?delay=0',
-    );
-    expect(events(view).filter((event) => event.startsWith('overlay.'))).toEqual([]);
-  });
-
-  // Final review I-2: no overlay URL is the server's "not entitled" (spec :61,
-  // :400), not a failure: no caption at all, no warn, one info line.
-  it('says nothing on the status strip when the org is not entitled to an overlay', async () => {
-    const view = await renderViewfinder(
-      {},
-      { prepare: (fakes) => fakes.engine.setPairing({ overlayUrl: null }) },
-    );
-    act(() => view.engine.patch({ charging: true }));
-    act(() => vi.advanceTimersByTime(5000));
-    expect(screen.queryByTestId('overlay')).toBeNull();
-    expect(screen.queryByText(OVERLAY_FAILED)).toBeNull();
-    expect(screen.queryByText(SCORE_AHEAD)).toBeNull();
-    const overlayLines = readRecord(view.record).filter((entry) =>
-      entry.event.startsWith('overlay.'),
-    );
-    expect(overlayLines.map((entry) => `${entry.level} ${entry.event}`)).toEqual([
-      'info overlay.none',
-    ]);
-    expect(plate()).toBe('Ready');
-  });
-
-  it('writes the not-entitled line once when effects run twice (StrictMode)', async () => {
-    const view = await renderViewfinder(
-      {},
-      { prepare: (fakes) => fakes.engine.setPairing({ overlayUrl: null }), strict: true },
-    );
-    expect(events(view).filter((event) => event.startsWith('overlay.'))).toEqual(['overlay.none']);
-  });
-
-  it('tells no overlay apart from one that failed to load', async () => {
-    const view = await renderViewfinder(
-      {},
-      { prepare: (fakes) => fakes.engine.setPairing({ overlayUrl: null }) },
-    );
-    expect(screen.queryByText(OVERLAY_FAILED)).toBeNull();
-    act(() =>
-      view.engine.setPairing({
-        overlayUrl: 'https://stg.seazn.club/overlay/fixtures/fx42hmnp7k2q',
-      }),
-    );
-    act(() => view.surfaces.failOverlay());
-    expect(screen.getByText(OVERLAY_FAILED)).toBeTruthy();
-    expect(events(view).filter((event) => event.startsWith('overlay.'))).toEqual([
-      'overlay.none',
-      'overlay.failed',
-    ]);
-  });
-
-  // Final review I-2, staging evidence (2026-10-05): the pair intent carries no
-  // overlay, so native's pairing names none, and no label, until the first beat
-  // answers, about half a second after paired. That null is not yet known, never
-  // "none": nothing is said of it, and the overlay loads when it comes. A failure
-  // belongs to its URL; a URL taken away takes the overlay with it.
-  it('loads an overlay that arrives after the pair, and follows it through a failure and its removal', async () => {
-    const STAGING = 'https://stg.seazn.club/overlay/fixtures/fx42hmnp7k2q?style=bug&key=k3y-0123';
-    const OTHER = 'https://stg.seazn.club/overlay/fixtures/other-fixture';
-    const view = await renderViewfinder(
-      {},
-      { prepare: (fakes) => fakes.engine.setPairing({ label: '', overlayUrl: null }) },
-    );
-    act(() => view.engine.patch({ charging: true }));
-    const overlayLines = () =>
-      readRecord(view.record)
-        .filter((entry) => entry.event.startsWith('overlay.'))
-        .map((entry) => `${entry.level} ${entry.event}`);
-    expect(screen.queryByTestId('overlay')).toBeNull();
-    expect(screen.queryByText(OVERLAY_FAILED)).toBeNull();
-    expect(overlayLines()).toEqual([]);
-    act(() => view.engine.setPairing({ label: 'Seazn XI v Fake CC', overlayUrl: STAGING }));
-    expect(screen.getByTestId('overlay').dataset.url).toBe(`${STAGING}&delay=0`);
-    expect(screen.queryByText(OVERLAY_FAILED)).toBeNull();
-    expect(screen.getByText(SCORE_AHEAD)).toBeTruthy();
-    expect(overlayLines()).toEqual([]);
-    act(() => view.surfaces.failOverlay());
-    expect(screen.getByText(OVERLAY_FAILED)).toBeTruthy();
-    act(() => view.engine.setPairing({ overlayUrl: OTHER }));
-    expect(screen.queryByText(OVERLAY_FAILED)).toBeNull();
-    expect(screen.getByTestId('overlay').dataset.url).toBe(`${OTHER}?delay=0`);
-    act(() => view.engine.setPairing({ overlayUrl: null }));
-    expect(screen.queryByTestId('overlay')).toBeNull();
-    expect(screen.queryByText(OVERLAY_FAILED)).toBeNull();
-    expect(screen.queryByText(SCORE_AHEAD)).toBeNull();
-    expect(overlayLines()).toEqual(['warn overlay.failed', 'info overlay.none']);
-    // One line each time a showing begins with none, never one per render.
-    act(() => view.engine.setPairing({ overlayUrl: OTHER }));
-    act(() => vi.advanceTimersByTime(5000));
-    act(() => view.engine.setPairing({ overlayUrl: null }));
-    expect(overlayLines()).toEqual([
-      'warn overlay.failed',
-      'info overlay.none',
-      'info overlay.none',
-    ]);
   });
 });

@@ -12,7 +12,6 @@ import {
   METER_SEGMENTS,
   selectBitrateKbps,
   selectEngineStatus,
-  selectHasPairing,
   selectHeldCode,
   selectHeldName,
   selectHeldSlot,
@@ -26,8 +25,6 @@ import {
   selectHoldsOrientation,
   selectLabel,
   selectMeterSegments,
-  selectOverlayKnown,
-  selectOverlayUrl,
   selectPlaybackUrl,
   selectScheduledStartMs,
   selectStageLine,
@@ -189,7 +186,6 @@ const BROADCAST: BroadcastInfo = {
   sid: 'fake-sid-1',
   cause: 'operator',
   playbackUrl: 'https://video.example/fake/manifest/video.m3u8',
-  overlayUrl: 'https://stg.seazn.club/overlay/fixtures/broadcast',
   label: 'Seazn XI v Fake CC (broadcast)',
   holdWindowSeconds: { srt: 183, rtmps: 183 },
   maxDurationMinutes: 300,
@@ -201,28 +197,22 @@ describe('the pairing and broadcast selectors (D8: the snapshot carries no secre
   it('read the pairing alone while paired', () => {
     const paired = snapshot(PAIRED, {}, { pairing: FAKE_PAIRING });
     expect({
-      overlay: selectOverlayUrl(paired),
       playback: selectPlaybackUrl(paired),
       label: selectLabel(paired),
       zone: selectVenueZone(paired),
-      has: selectHasPairing(paired),
     }).toEqual({
-      overlay: 'https://stg.seazn.club/overlay/fixtures/fx42hmnp7k2q',
       playback: null,
       label: 'Seazn XI v Fake CC',
       zone: 'Europe/London',
-      has: true,
     });
   });
 
   it('read the broadcast over the pairing while one is held', () => {
     const live = snapshot(LIVE, {}, { pairing: FAKE_PAIRING, broadcast: BROADCAST });
     expect({
-      overlay: selectOverlayUrl(live),
       playback: selectPlaybackUrl(live),
       label: selectLabel(live),
     }).toEqual({
-      overlay: 'https://stg.seazn.club/overlay/fixtures/broadcast',
       playback: 'https://video.example/fake/manifest/video.m3u8',
       label: 'Seazn XI v Fake CC (broadcast)',
     });
@@ -230,51 +220,17 @@ describe('the pairing and broadcast selectors (D8: the snapshot carries no secre
 
   it('read null with nothing held', () => {
     const idle = snapshot({ kind: 'idle' });
-    expect([
-      selectOverlayUrl(idle),
-      selectPlaybackUrl(idle),
-      selectLabel(idle),
-      selectVenueZone(idle),
-      selectHasPairing(idle),
-    ]).toEqual([null, null, null, null, false]);
-  });
-
-  // Final review I-2: the pair intent carries no overlay, so a pairing's null
-  // is the server's word only once an answer has brought its label too.
-  it('know the overlay once an answer is in, or a broadcast is held', () => {
-    const early = snapshot(
-      PAIRING,
-      {},
-      { pairing: { ...FAKE_PAIRING, label: '', overlayUrl: null } },
-    );
-    const none = snapshot(PAIRED, {}, { pairing: { ...FAKE_PAIRING, overlayUrl: null } });
-    const live = snapshot(
-      LIVE,
-      {},
-      { pairing: { ...FAKE_PAIRING, label: '' }, broadcast: BROADCAST },
-    );
-    expect({
-      idle: selectOverlayKnown(snapshot({ kind: 'idle' })),
-      early: selectOverlayKnown(early),
-      none: selectOverlayKnown(none),
-      paired: selectOverlayKnown(snapshot(PAIRED, {}, { pairing: FAKE_PAIRING })),
-      live: selectOverlayKnown(live),
-    }).toEqual({ idle: false, early: false, none: true, paired: true, live: true });
+    expect([selectPlaybackUrl(idle), selectLabel(idle), selectVenueZone(idle)]).toEqual([
+      null,
+      null,
+      null,
+    ]);
   });
 
   it('read an empty label or zone (a claim not yet answered) as none', () => {
     const pairing = { ...FAKE_PAIRING, label: '', venueTimezone: '' };
     const early = snapshot(PAIRING, {}, { pairing });
     expect([selectLabel(early), selectVenueZone(early)]).toEqual([null, null]);
-  });
-
-  it('fall back to the pairing overlay when the broadcast sent none', () => {
-    const live = snapshot(
-      LIVE,
-      {},
-      { pairing: FAKE_PAIRING, broadcast: { ...BROADCAST, overlayUrl: null } },
-    );
-    expect(selectOverlayUrl(live)).toBe('https://stg.seazn.club/overlay/fixtures/fx42hmnp7k2q');
   });
 });
 
@@ -350,8 +306,8 @@ describe('the round line selector (spec §2)', () => {
     snapshot(PAIRED, {}, { pairing: { ...FAKE_PAIRING, ...over } });
 
   it('selectStageLine is the pairing’s stage label, only while a match label is known, and null otherwise', () => {
-    expect(selectStageLine(paired({ label: 'A v B', stageLabel: 'QF' }))).toBe('QF');
-    expect(selectStageLine(paired({ label: '', stageLabel: 'QF' }))).toBeNull();
+    expect(selectStageLine(paired({ label: 'A v B', stageLabel: 'Open · QF' }))).toBe('Open · QF');
+    expect(selectStageLine(paired({ label: '', stageLabel: 'Open · QF' }))).toBeNull();
     expect(selectStageLine(paired({ label: 'A v B', stageLabel: null }))).toBeNull();
     expect(selectStageLine(paired({ label: 'A v B', stageLabel: 'x'.repeat(41) }))).toBeNull();
     expect(selectStageLine(snapshot(PAIRED, {}, { pairing: null }))).toBeNull();
@@ -381,9 +337,9 @@ describe('the round line selector (spec §2)', () => {
     const live = snapshot(
       LIVE,
       {},
-      { pairing: { ...FAKE_PAIRING, label: '', stageLabel: 'QF' }, broadcast: BROADCAST },
+      { pairing: { ...FAKE_PAIRING, label: '', stageLabel: 'Open · QF' }, broadcast: BROADCAST },
     );
-    expect(selectStageLine(live)).toBe('QF');
+    expect(selectStageLine(live)).toBe('Open · QF');
   });
 });
 

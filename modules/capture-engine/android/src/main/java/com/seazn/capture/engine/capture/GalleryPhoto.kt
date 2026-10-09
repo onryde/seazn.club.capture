@@ -11,9 +11,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
 /**
- * Spec §8, R1: one still of the camera picture, no scorebug (the score is a WebView, not in the frames), written to
- * `Pictures/Seazn Capture` with MediaStore. minSdk is 31, so the app writes its own image with no storage permission.
- * A throw goes up to PhotoRun, the one place that answers it.
+ * Spec §8, R1: one still of the camera picture, no scorebug (the phone draws no score, AGENTS §7, and the camera's
+ * frames never carry one), written to `Pictures/Seazn Capture` with MediaStore. minSdk is 31, so the app writes its
+ * own image with no storage permission. A throw goes up to PhotoRun, the one place that answers it.
  */
 class GalleryPhoto(
   private val resolver: ContentResolver,

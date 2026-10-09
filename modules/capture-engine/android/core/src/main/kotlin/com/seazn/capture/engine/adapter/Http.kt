@@ -99,7 +99,7 @@ object HttpAnswers {
       },
     )
 
-  /** [env] is the pairing's: it decides only whether the waiting fields' `overlayUrl` is kept. */
+  /** [env] is the pairing's. No waiting field is read by it since the overlay went (D2 §4.1); kept so every reader takes the pairing's environment alike. */
   fun heartbeat(beatId: Int, outcome: HttpOutcome, env: Environment): Input.HeartbeatAnswered =
     Input.HeartbeatAnswered(
       beatId,

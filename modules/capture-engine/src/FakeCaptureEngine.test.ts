@@ -412,15 +412,15 @@ describe('the paired phase', () => {
     pair();
     expect(snapshot().pairing?.stageLabel).toBeNull();
     engine.send({ kind: 'unpair' });
-    pair({ ...KIT_CODE_A, stageLabel: 'QF', stageMatch: 'Example Town v Sample CC' });
-    expect(snapshot().pairing?.stageLabel).toBe('QF');
+    pair({ ...KIT_CODE_A, stageLabel: 'Open · QF', stageMatch: 'Example Town v Sample CC' });
+    expect(snapshot().pairing?.stageLabel).toBe('Open · QF');
     engine.send({ kind: 'unpair' });
-    pair({ ...KIT_CODE_A, stageLabel: 'QF' });
+    pair({ ...KIT_CODE_A, stageLabel: 'Open · QF' });
     expect(snapshot().pairing?.stageLabel).toBeNull();
     engine.send({ kind: 'unpair' });
-    engine.setPairing({ stageLabel: 'SF' });
+    engine.setPairing({ stageLabel: 'Open · SF' });
     pair();
-    expect(snapshot().pairing?.stageLabel).toBe('SF');
+    expect(snapshot().pairing?.stageLabel).toBe('Open · SF');
   });
 });
 
@@ -476,7 +476,10 @@ describe('scenes: every state spec §6 and the amendment list', () => {
     engine.scene('paired-not-ready');
     expect(snapshot().ready.sound).toBe(false);
     engine.scene('shed');
-    expect(telemetry().shed).toBe('overlay-preview');
+    expect(telemetry().shed).toBe('viewer-feed');
+    // As native pairs them: status 2 is moderate, and moderate is the first rung (DeviceReadings.shed).
+    expect(telemetry().thermalStatus).toBe('moderate');
+    expect(telemetry().thermalHeadroom).toBe(0.6);
   });
 
   /** Spec §4: a call is the one way the mic reads not available on air; native's readiness says so too (BridgeCore). */

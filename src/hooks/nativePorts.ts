@@ -1,6 +1,7 @@
 import Constants from 'expo-constants';
 import { getLocales } from 'expo-localization';
 import { router } from 'expo-router';
+import { Platform } from 'react-native';
 import { loadCaptureEngineNative } from '@/engine/nativeModule';
 import { chooseCodePort } from '@/hooks/codePortWiring';
 import { chooseEngine, routedRecordFor } from '@/hooks/engineWiring';
@@ -19,6 +20,7 @@ import { createNativeBack } from '@/services/native/nativeBack';
 import { createNativeForeground } from '@/services/native/nativeForeground';
 import { createNativeMotion } from '@/services/native/nativeMotion';
 import { createNativeOrientationLock } from '@/services/native/nativeOrientationLock';
+import { createNativeScreen } from '@/services/native/nativeScreen';
 import { createNativeShare } from '@/services/native/nativeShare';
 import { createNativeSplash } from '@/services/native/nativeSplash';
 import { createNativeSurfaces } from '@/services/native/nativeSurfaces';
@@ -78,6 +80,7 @@ export function createNativePorts(): Ports {
     orientationLock: createNativeOrientationLock(),
     back: createNativeBack(),
     foreground: createNativeForeground(),
+    screen: createNativeScreen({ logger, os: Platform.OS }),
     navigation: createExpoRouterNavigation(router),
     splash: createNativeSplash(),
     surfaces: createNativeSurfaces({ logger }),

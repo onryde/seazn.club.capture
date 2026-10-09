@@ -90,7 +90,6 @@ const name = (row: Row) => `${row.lang} ${row.key}`;
 const OVER_NARROW: Readonly<Record<string, readonly string[]>> = {
   en: [
     'stream.advisory.keepOpen',
-    'stream.advisory.overlayFailed',
     'stream.status.cameraTaken',
     'stream.status.holdingNotDelivered',
     'stream.status.notReadyHeld',
@@ -173,7 +172,9 @@ describe('the strip’s one message line, measured in every language (owner, 202
   });
 
   it('measures 42 status strings and 5 captions in each of the four languages, and every glyph is in the font', () => {
-    // Anti-vacuity: the table is the whole copy, not a sample. 41 `stream.status.*` keys and Back's refusal.
+    // Anti-vacuity: the table is the whole copy, not a sample. 41 `stream.status.*` keys and Back's refusal; the
+    // captions are keep the app open, not charging, and heat's three (the spec's, which names What viewers see, and
+    // "Phone hot · still live" and "Phone hot" with the view hidden: the owner's ruling, 2026-10-09).
     for (const [lang] of LANGUAGES) {
       const rows = REALISTIC.filter((row) => row.lang === lang);
       expect(
@@ -221,9 +222,9 @@ describe('the strip’s one message line, measured in every language (owner, 202
     for (const row of over) byLanguage[row.lang]?.push(row.key);
     for (const keys of Object.values(byLanguage)) keys.sort();
     expect(byLanguage).toEqual(OVER_NARROW);
-    // 57 strings: 10 en, 16 es, 16 fr, 15 nl.
-    expect(over).toHaveLength(57);
-    expect(Object.values(OVER_NARROW).map((keys) => keys.length)).toEqual([10, 16, 16, 15]);
+    // 56 strings: 9 en, 16 es, 16 fr, 15 nl.
+    expect(over).toHaveLength(56);
+    expect(Object.values(OVER_NARROW).map((keys) => keys.length)).toEqual([9, 16, 16, 15]);
   });
 
   it('has strings on BOTH sides of 298 dp, so the line above can neither be everything nor nothing (anti-vacuity)', () => {
@@ -239,6 +240,23 @@ describe('the strip’s one message line, measured in every language (owner, 202
     expect(widest('caption').width).toBeLessThan(OWNER);
     expect(widest('status').width).toBeGreaterThan(NARROW);
     expect(widest('status').width).toBeLessThan(OWNER);
+  });
+
+  // The heat caption with What viewers see hidden (the owner's ruling, 2026-10-09): both wordings are ONE line at 298 dp
+  // in every language, with room to spare, so neither is ever cut. fr keeps "toujours" here: the spec's caption, which
+  // names the view, has no room for it (docs/i18n-glossary.md, "still live").
+  it('fits the hidden view’s heat captions, "Phone hot · still live" and "Phone hot", at 298 dp in all four languages', () => {
+    const widths = (key: string) =>
+      LANGUAGES.map(
+        ([, dictionary]) =>
+          Math.round(geist500.width(dictionary[key] ?? '', typeScale.metricUnit.fontSize) * 10) /
+          10,
+      );
+    const live = widths('stream.advisory.hotLive');
+    const before = widths('stream.advisory.hot');
+    expect(live).toEqual([110.6, 179.4, 206.9, 194.6]);
+    expect(before).toEqual([58.0, 79.7, 97.3, 99.9]);
+    for (const width of [...live, ...before]) expect(width).toBeLessThan(NARROW);
   });
 
   // The ellipsis case: the line is a body line of ONE row. A string wider than the text must not become a second row,

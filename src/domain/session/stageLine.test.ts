@@ -8,7 +8,11 @@ const CASES: readonly (readonly [
   shown: string | null,
 ])[] = [
   ['a short code', 'QF', 'QF'],
-  ['a pool and a round, verbatim', 'Grupo A · R2', 'Grupo A · R2'],
+  [
+    'a division, a pool and a round, verbatim',
+    'Open · Grupo A · Ronda 2',
+    'Open · Grupo A · Ronda 2',
+  ],
   ['exactly 40 characters', 'x'.repeat(40), 'x'.repeat(40)],
   [
     '40 code points where the last is an emoji (two UTF-16 units)',

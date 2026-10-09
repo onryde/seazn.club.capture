@@ -1,42 +1,39 @@
 import { memo } from 'react';
 import { Pressable, StyleSheet, View, type PressableStateCallbackType } from 'react-native';
-import { useHeldPress } from '@/hooks/useHeldPress';
 import { useT } from '@/hooks/useLanguage';
 import { Text } from '@/ui/components/Text';
 import { colour, layout, space } from '@/ui/theme/tokens';
 
 type ViewerPeekProps = {
-  /** Nothing to play (carry 13): a press that cannot play lights nothing. */
+  /** Nothing to play, or the ladder shed it (D2 §4.2): a tap does nothing. */
   readonly disabled: boolean;
-  /** Why it is off, said at the control (spec §1's rule for Go live). */
+  /** Why it is off, said at the control. */
   readonly reason: string | null;
-  readonly onPressIn: () => void;
-  readonly onPressOut: () => void;
+  /** The view is open: the control reads selected, and a tap closes it. */
+  readonly open: boolean;
+  readonly onPress: () => void;
 };
 
 /**
- * The control: held, never tapped. It reads as a pair with the action below
- * it (AGENTS §6), so it is set in `actionSecondary`, the role the type scale
- * keeps for it. No press delay to remove: RN's Pressable passes
- * `unstable_pressDelay` (unset) as Pressability's `delayPressIn`, which
- * defaults to 0, and Pressable has no `delayPressIn` prop of its own.
- * `accessibilityHint` reaches TalkBack; react-native-web drops it. If the
- * control unmounts while held it lets go itself (useHeldPress).
+ * What viewers see (D2 §4.3): a plain tap, never held. Its protection against a billed preview left running is that the
+ * view closes by itself, 20 s after its first frame or 3 s after saying there is no picture; a tap never extends it
+ * (AGENTS §6). Set in `actionSecondary`, as a pair with the action below it. Not `Button`: the lime plate's 200 dp
+ * minimum does not fit the 110 dp cell (PD1). Selected while open, as IconButton says it (B5). `accessibilityHint`
+ * reaches TalkBack; react-native-web drops it.
  */
 export const ViewerPeek = memo(function ViewerPeek(props: ViewerPeekProps) {
   const { t } = useT();
-  const { disabled, reason } = props;
-  const press = useHeldPress(props.onPressIn, props.onPressOut);
+  const { disabled, reason, open } = props;
   return (
     <View style={styles.zone}>
       <Pressable
         accessibilityRole="button"
         accessibilityLabel={t('stream.peek.label')}
         accessibilityHint={t('stream.peek.hint')}
+        aria-selected={open}
         disabled={disabled}
-        onPressIn={press.pressIn}
-        onPressOut={press.pressOut}
-        style={disabled ? offPeek : peekStyle}
+        onPress={props.onPress}
+        style={disabled ? offPeek : open ? openPeek : peekStyle}
       >
         <Text variant="actionSecondary" style={disabled ? styles.labelOff : null}>
           {t('stream.peek.label')}
@@ -61,9 +58,11 @@ const styles = StyleSheet.create({
     borderColor: colour.ink3,
   },
   pressed: { borderColor: colour.ink },
+  open: { borderWidth: layout.iconBorderOn, borderColor: colour.lime },
   off: { borderColor: colour.rule },
   labelOff: { color: colour.ink3 },
 });
 
 const pressedPeek = [styles.peek, styles.pressed];
+const openPeek = [styles.peek, styles.open];
 const offPeek = [styles.peek, styles.off];

@@ -1,5 +1,5 @@
 {
-  "about": "Which URLs sit on the build's Seazn host (role seazn: heartbeatUrl, startUrl, codeUrl, overlayUrl; JS and Kotlin) and on the ingest host (role ingest: cred urls; Kotlin only). The ingest host is live.cloudflare.com for both srt and rtmps in every environment, so ingest rows name no env (owner ruling A, 2026-10-05: stg dropped its custom host; prd never had one). Change only with both.",
+  "about": "Which URLs sit on the build's Seazn host (role seazn: heartbeatUrl, startUrl, codeUrl and the Remote scoring link; JS and Kotlin) and on the ingest host (role ingest: cred urls; Kotlin only). The ingest host is live.cloudflare.com for both srt and rtmps in every environment, so ingest rows name no env (owner ruling A, 2026-10-05: stg dropped its custom host; prd never had one). Change only with both.",
   "rows": [
     {
       "env": "staging",

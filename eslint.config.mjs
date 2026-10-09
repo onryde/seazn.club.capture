@@ -18,8 +18,9 @@ const UI_NATIVE_IMPORTS = [
   // Behind the surfaces port (D16), never drawn by a screen directly (m6).
   // `expo-*` already matches expo-video; it is named so the ban outlives a
   // narrower glob.
-  'react-native-webview',
   'expo-video',
+  // No longer installed (D2 §4.1). The ban stays: the scorebug is never drawn on the phone (AGENTS §7).
+  'react-native-webview',
 ];
 
 /**

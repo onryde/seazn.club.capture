@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { SessionState } from '@/domain/session/SessionState';
 import {
-  FIRST_WINDOW_PATIENCE_MS,
   viewerFeed,
   type DeliveryWord,
   type Feed,
@@ -28,14 +27,22 @@ const base: FeedInput = {
   hasUrl: true,
   delivery: 'unknown',
   everDelivered: false,
-  patienceOver: false,
   playerFailed: false,
 };
 const row = (change: Partial<FeedInput>): Feed => viewerFeed({ ...base, ...change });
 
 describe('what the viewer layer shows (spec §9, D6 to D8)', () => {
-  it('has a fixed 60 s patience (D8)', () => {
-    expect(FIRST_WINDOW_PATIENCE_MS).toBe(60_000);
+  // D2 §4.3: the view's own 5 s countdown is the patience now. Before the first window the layer waits, however long.
+  it('waits for the first window with no patience of its own', () => {
+    expect(
+      viewerFeed({
+        kind: 'publishing',
+        hasUrl: true,
+        delivery: 'unknown',
+        everDelivered: false,
+        playerFailed: false,
+      }),
+    ).toBe('waiting');
   });
 
   it('the rulebook, row by row', () => {
@@ -53,12 +60,6 @@ describe('what the viewer layer shows (spec §9, D6 to D8)', () => {
         row({ delivery: 'unknown', everDelivered: true }),
         'playing',
       ],
-      ['publishing, patience over, no window', row({ patienceOver: true }), 'unavailable'],
-      [
-        'publishing, patience over, window now',
-        row({ patienceOver: true, delivery: 'ok' }),
-        'playing',
-      ],
       ['publishing, stalled', row({ delivery: 'stalled', everDelivered: true }), 'unavailable'],
       ['degraded, window', row({ kind: 'degraded', delivery: 'ok' }), 'playing'],
       [
@@ -73,7 +74,7 @@ describe('what the viewer layer shows (spec §9, D6 to D8)', () => {
         'unavailable',
       ],
     ];
-    expect(rows).toHaveLength(16);
+    expect(rows).toHaveLength(14);
     for (const [name, got, want] of rows) expect(got, name).toBe(want);
   });
 
@@ -84,61 +85,42 @@ describe('what the viewer layer shows (spec §9, D6 to D8)', () => {
       for (const delivery of DELIVERIES)
         for (const everDelivered of [false, true])
           for (const hasUrl of [false, true])
-            for (const patienceOver of [false, true])
-              for (const playerFailed of [false, true]) {
-                const feed = row({
-                  kind,
-                  delivery,
-                  everDelivered,
-                  hasUrl,
-                  patienceOver,
-                  playerFailed,
-                });
-                checked += 1;
-                if (!hasUrl) expect(feed).toBe('none');
-                if (feed === 'playing') {
-                  played += 1;
-                  expect(['publishing', 'degraded']).toContain(kind);
-                  expect(everDelivered || delivery === 'ok').toBe(true);
-                  expect(delivery).not.toBe('stalled');
-                  expect(playerFailed).toBe(false);
-                }
+            for (const playerFailed of [false, true]) {
+              const feed = row({ kind, delivery, everDelivered, hasUrl, playerFailed });
+              checked += 1;
+              if (!hasUrl) expect(feed).toBe('none');
+              if (feed === 'playing') {
+                played += 1;
+                expect(['publishing', 'degraded']).toContain(kind);
+                expect(everDelivered || delivery === 'ok').toBe(true);
+                expect(delivery).not.toBe('stalled');
+                expect(playerFailed).toBe(false);
               }
-    expect(checked).toBe(10 * 3 * 2 * 2 * 2 * 2);
+            }
+    expect(checked).toBe(10 * 3 * 2 * 2 * 2);
     expect(played).toBeGreaterThan(0);
   });
 
   it('the whole input space against the rulebook as a table, not as the rule', () => {
-    // D6 to D8 written out by hand: one answer per (delivery, everDelivered, patienceOver, playerFailed) for a
-    // live kind with a url. `ok` or a latched window is a window; a stalled word is never played; with no window
-    // the patience decides; a failed player is `unavailable` only where a player would have been mounted.
+    // D6 and D7 written out by hand: one answer per (delivery, everDelivered, playerFailed) for a live kind with a
+    // url. `ok` or a latched window is a window; a stalled word is never played; with no window it waits (the view's
+    // own countdown is the patience, D2 §4.3); a failed player is `unavailable` only where a player would have been
+    // mounted.
     const LIVE_TABLE: Record<string, Feed> = {
-      'ok/latched/patient/player-ok': 'playing',
-      'ok/latched/patient/player-failed': 'unavailable',
-      'ok/latched/over/player-ok': 'playing',
-      'ok/latched/over/player-failed': 'unavailable',
-      'ok/fresh/patient/player-ok': 'playing',
-      'ok/fresh/patient/player-failed': 'unavailable',
-      'ok/fresh/over/player-ok': 'playing',
-      'ok/fresh/over/player-failed': 'unavailable',
-      'stalled/latched/patient/player-ok': 'unavailable',
-      'stalled/latched/patient/player-failed': 'unavailable',
-      'stalled/latched/over/player-ok': 'unavailable',
-      'stalled/latched/over/player-failed': 'unavailable',
-      'stalled/fresh/patient/player-ok': 'unavailable',
-      'stalled/fresh/patient/player-failed': 'unavailable',
-      'stalled/fresh/over/player-ok': 'unavailable',
-      'stalled/fresh/over/player-failed': 'unavailable',
-      'unknown/latched/patient/player-ok': 'playing',
-      'unknown/latched/patient/player-failed': 'unavailable',
-      'unknown/latched/over/player-ok': 'playing',
-      'unknown/latched/over/player-failed': 'unavailable',
-      'unknown/fresh/patient/player-ok': 'waiting',
-      'unknown/fresh/patient/player-failed': 'waiting',
-      'unknown/fresh/over/player-ok': 'unavailable',
-      'unknown/fresh/over/player-failed': 'unavailable',
+      'ok/latched/player-ok': 'playing',
+      'ok/latched/player-failed': 'unavailable',
+      'ok/fresh/player-ok': 'playing',
+      'ok/fresh/player-failed': 'unavailable',
+      'stalled/latched/player-ok': 'unavailable',
+      'stalled/latched/player-failed': 'unavailable',
+      'stalled/fresh/player-ok': 'unavailable',
+      'stalled/fresh/player-failed': 'unavailable',
+      'unknown/latched/player-ok': 'playing',
+      'unknown/latched/player-failed': 'unavailable',
+      'unknown/fresh/player-ok': 'waiting',
+      'unknown/fresh/player-failed': 'waiting',
     };
-    expect(Object.keys(LIVE_TABLE)).toHaveLength(3 * 2 * 2 * 2);
+    expect(Object.keys(LIVE_TABLE)).toHaveLength(3 * 2 * 2);
 
     const expectedFor = (kind: Kind, hasUrl: boolean, key: string): Feed => {
       if (!hasUrl) return 'none';
@@ -166,41 +148,32 @@ describe('what the viewer layer shows (spec §9, D6 to D8)', () => {
       for (const hasUrl of [false, true])
         for (const delivery of DELIVERIES)
           for (const everDelivered of [false, true])
-            for (const patienceOver of [false, true])
-              for (const playerFailed of [false, true]) {
-                const key = [
-                  delivery,
-                  everDelivered ? 'latched' : 'fresh',
-                  patienceOver ? 'over' : 'patient',
-                  playerFailed ? 'player-failed' : 'player-ok',
-                ].join('/');
-                const want = expectedFor(kind, hasUrl, key);
-                const got = row({
-                  kind,
-                  hasUrl,
-                  delivery,
-                  everDelivered,
-                  patienceOver,
-                  playerFailed,
-                });
-                checked += 1;
-                tally[want] += 1;
-                if (got !== want)
-                  expect({ kind, hasUrl, key, got }).toEqual({ kind, hasUrl, key, got: want });
-              }
-    expect(checked).toBe(10 * 2 * 3 * 2 * 2 * 2);
-    // Every answer is reached (a feed nobody can produce would pass unseen), and the cells add up to 480. Counted
-    // by hand from the table: it holds 6 playing, 2 waiting and 16 unavailable, for each of the two live kinds.
-    expect(tally.none).toBe(240 + 4 * 24); // no url, then the four kinds with nothing to show
-    expect(tally.waiting).toBe(3 * 24 + 2 * 2); // arming, armed, connecting; then the live kinds' two
-    expect(tally.unavailable).toBe(24 + 2 * 16); // a hold; then the live kinds' sixteen
-    expect(tally.playing).toBe(2 * 6);
+            for (const playerFailed of [false, true]) {
+              const key = [
+                delivery,
+                everDelivered ? 'latched' : 'fresh',
+                playerFailed ? 'player-failed' : 'player-ok',
+              ].join('/');
+              const want = expectedFor(kind, hasUrl, key);
+              const got = row({ kind, hasUrl, delivery, everDelivered, playerFailed });
+              checked += 1;
+              tally[want] += 1;
+              if (got !== want)
+                expect({ kind, hasUrl, key, got }).toEqual({ kind, hasUrl, key, got: want });
+            }
+    expect(checked).toBe(10 * 2 * 3 * 2 * 2);
+    // Every answer is reached (a feed nobody can produce would pass unseen), and the cells add up to 240. Counted
+    // by hand from the table: it holds 3 playing, 2 waiting and 7 unavailable, for each of the two live kinds.
+    expect(tally.none).toBe(120 + 4 * 12); // no url, then the four kinds with nothing to show
+    expect(tally.waiting).toBe(3 * 12 + 2 * 2); // arming, armed, connecting; then the live kinds' two
+    expect(tally.unavailable).toBe(12 + 2 * 7); // a hold; then the live kinds' seven
+    expect(tally.playing).toBe(2 * 3);
     expect(tally.none + tally.waiting + tally.unavailable + tally.playing).toBe(checked);
   });
 
   it('a broadcast, in order: the first window, a blip, a hold, and the next window (D7)', () => {
     // The hook's inputs over time, as the hook is specified to produce them: the latch is set by the first `ok`
-    // and cleared by the hold; patience restarts after the hold. The rule alone must follow.
+    // and cleared by the hold. The rule alone must follow.
     const timeline: [string, Partial<FeedInput>, Feed][] = [
       ['going live', { kind: 'connecting' }, 'waiting'],
       ['published, no window', { kind: 'publishing' }, 'waiting'],
@@ -216,23 +189,10 @@ describe('what the viewer layer shows (spec §9, D6 to D8)', () => {
         'unavailable',
       ],
       ['back, playlist may be new', { kind: 'publishing', delivery: 'unknown' }, 'waiting'],
-      [
-        'still nothing after the patience',
-        { kind: 'publishing', delivery: 'unknown', patienceOver: true },
-        'unavailable',
-      ],
-      [
-        'a later window recovers it',
-        { kind: 'publishing', delivery: 'ok', everDelivered: true, patienceOver: true },
-        'playing',
-      ],
-      [
-        'the broadcast ends',
-        { kind: 'ended', delivery: 'ok', everDelivered: true, patienceOver: true },
-        'none',
-      ],
+      ['the next window', { kind: 'publishing', delivery: 'ok', everDelivered: true }, 'playing'],
+      ['the broadcast ends', { kind: 'ended', delivery: 'ok', everDelivered: true }, 'none'],
     ];
-    expect(timeline).toHaveLength(9);
+    expect(timeline).toHaveLength(8);
     const seen = timeline.map(([name, change]) => ({ name, got: row(change) }));
     expect(seen).toEqual(timeline.map(([name, , want]) => ({ name, got: want })));
   });

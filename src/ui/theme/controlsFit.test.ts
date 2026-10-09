@@ -7,6 +7,7 @@ import { formatElapsed } from '@/i18n/formatElapsed';
 import { controlsHalfWidth, layout, space } from '@/ui/theme/tokens';
 import { typeScale } from '@/ui/theme/type';
 import { loadFont } from '../../../test/fontMetrics';
+import { linesOf } from '../../../test/textFit';
 
 // Owner, 2026-10-08 (design follow-up §1, amended): the controls half takes the width its content needs and the
 // camera half takes the rest. This proves the number. The width is the WIDEST ROW of the controls half in any state,
@@ -29,24 +30,6 @@ const geist500 = loadFont('geist-500');
 /** The gap of the icon row, the chip row and the plate row: `space.sm` in all three (the rendered tree pins it). */
 const GAP = space.sm;
 
-/**
- * Lines a text takes in a width, breaking at plain spaces (a no-break space does not break, as in French typography)
- * with no kerning, which can only over-state a width slightly. At least one word per line (homeFit.test.ts and
- * scoringFit.test.ts keep the same helper; copied, not exported, to keep this file off those).
- */
-function linesOf(text: string, width: number, measure: (text: string) => number): number {
-  let lines = 1;
-  let current = '';
-  for (const piece of text.split(' ')) {
-    const next = current === '' ? piece : `${current} ${piece}`;
-    if (current === '' || measure(next) <= width) current = next;
-    else {
-      lines += 1;
-      current = piece;
-    }
-  }
-  return lines;
-}
 const wordsOf = (text: string) => text.split(/[  ]/).filter((word) => word !== '');
 
 /** `state`: Barlow Condensed 700, uppercase, letter-spaced. The tally plate's word. */
@@ -74,8 +57,12 @@ const controlWidth = (text: string) => geist500.width(text, typeScale.control.fo
  * Every row of the controls half whose width is the content's, in the state it is widest in. Each is `[name, the sum
  * from the declared makeup, the same worked by hand]`: the hand-worked number is what a dropped term fails by.
  *  - icons before air: Settings, Home, Take photo, Remote scoring: four 48 dp buttons, three gaps.
- *  - icons on air: Settings, Take photo, Remote scoring and then the peek, which is not an icon but a labelled
- *    button, and the row's remaining width: three 48 dp buttons, three gaps and the least cell the peek holds.
+ *  - icons on air, as shipped: Settings, Take photo, Remote scoring: three 48 dp buttons, two gaps. What viewers see
+ *    is hidden (the owner's ruling, 2026-10-09), and no cell flexes: the buttons pack from the start, as before air
+ *    (StreamScreen.viewerHidden.test.tsx pins it on the rendered tree).
+ *  - icons on air with What viewers see built in: Settings, Take photo, Remote scoring and then the peek, which is not
+ *    an icon but a labelled button, and the row's remaining width: three 48 dp buttons, three gaps and the least cell
+ *    the peek holds. The half still holds it, so the switch can be turned on without a layout change.
  *  - chips: camera, sound and network, and AUTO when automatic mode is on: the row is one line (it wraps in the
  *    component, but a second line is 44 + 8 dp the 360 dp stack has no room for), so all four sit side by side.
  *  - the plate row: the tally plate and the clock (on air) or the sound meter (before), a cell each, one gap.
@@ -87,7 +74,12 @@ const ROWS = [
     216,
   ],
   [
-    'icons on air: three buttons and the peek cell',
+    'icons on air as shipped, What viewers see hidden: three buttons',
+    3 * layout.iconButton + 2 * GAP, // 3 × 48 + 2 × 8
+    160,
+  ],
+  [
+    'icons on air with What viewers see built in: three buttons and the peek cell',
     3 * layout.iconButton + 3 * GAP + layout.peekCell, // 3 × 48 + 3 × 8 + 101
     269,
   ],
@@ -111,8 +103,8 @@ describe('the controls half is as wide as its widest row (owner, 2026-10-08)', (
     expect(width).toBe(worked);
   });
 
-  it('is the widest of the four rows plus the half’s padding either side: 278 + 2 × 16 = 310', () => {
-    expect(ROWS).toHaveLength(4);
+  it('is the widest of the five rows plus the half’s padding either side: 278 + 2 × 16 = 310', () => {
+    expect(ROWS).toHaveLength(5);
     expect(NEEDED).toBe(278);
     expect(layout.controlsHalf).toBe(NEEDED + 2 * layout.controlsPad);
     expect(layout.controlsHalf).toBe(310);
@@ -128,6 +120,15 @@ describe('the controls half is as wide as its widest row (owner, 2026-10-08)', (
     for (const [name, width] of ROWS) {
       expect({ name, fits: width <= CONTENT }).toEqual({ name, fits: true });
     }
+  });
+
+  // So the derivation below need not count it: whatever the button and the gap, the shipped on-air row is narrower.
+  it('the shipped on-air row is the before-air row less one button and one gap, so it can never govern', () => {
+    const width = (name: string) => ROWS.find((row) => row[0].startsWith(name))?.[1] ?? NaN;
+    expect(width('icons before air') - width('icons on air as shipped')).toBe(
+      layout.iconButton + GAP,
+    );
+    expect(CONTENT - width('icons on air as shipped')).toBe(118);
   });
 });
 
@@ -300,17 +301,20 @@ describe('the AUTO chip is as wide as its word needs', () => {
 
 describe('the peek cell is the least the peek control holds', () => {
   // The peek (on air) is the icon row's remaining width: a 1 dp border and 8 dp of padding either side of its label,
-  // the label at most `peekLabelLines` lines and the reason at most `peekReasonLines`, every word whole.
+  // the label at most `peekLabelLines` lines and each reason (no picture; the phone hot, D2 §4.2) at most
+  // `peekReasonLines`, every word whole.
   const padding = 2 * layout.iconBorder + 2 * space.sm;
   function holds(cell: number): boolean {
     return LANGUAGES.every(([, dictionary]) => {
       const label = (dictionary as Dictionary)['stream.peek.label'] ?? '';
-      const reason = (dictionary as Dictionary)['stream.peek.unavailable'] ?? '';
+      const reasons = ['stream.peek.unavailable', 'stream.peek.hot'].map(
+        (key) => (dictionary as Dictionary)[key] ?? '',
+      );
       return (
         wordsOf(label).every((word) => peekLabelWidth(word) <= cell - padding) &&
-        wordsOf(reason).every((word) => unitWidth(word) <= cell) &&
+        reasons.every((reason) => wordsOf(reason).every((word) => unitWidth(word) <= cell)) &&
         linesOf(label, cell - padding, peekLabelWidth) <= layout.peekLabelLines &&
-        linesOf(reason, cell, unitWidth) <= layout.peekReasonLines
+        reasons.every((reason) => linesOf(reason, cell, unitWidth) <= layout.peekReasonLines)
       );
     });
   }

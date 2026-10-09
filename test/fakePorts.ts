@@ -10,6 +10,7 @@ import type {
   NavigationPort,
   OrientationLockPort,
   Route,
+  ScreenPort,
   SharePort,
   SplashPort,
 } from '@/services/devicePorts';
@@ -28,6 +29,13 @@ import { createFakeSurfaces, type FakeSurfaces } from './fakeSurfaces';
 
 export const TEST_NOW = new Date('2026-10-03T13:00:00Z');
 
+/**
+ * A `clock` port that moves with vitest's fake timers, which fake `Date` too (vitest 5). For a hook that waits
+ * `until - clock()`: on the frozen `TEST_NOW` clock that wait never shrinks, so a 3 s phase that follows a 5 s one
+ * would last 8 (ledger P7). Pass it as `clock`, after `vi.useFakeTimers()` and `vi.setSystemTime(TEST_NOW)`.
+ */
+export const timerClock = (): Date => new Date(Date.now());
+
 export type FakeMotion = MotionPort & { emit(g: Gravity, atMs: number): void; available: boolean };
 
 /** The fake engine, plus every intent it was sent, whole: tests only (M5). */
@@ -44,9 +52,13 @@ export type FakePorts = {
   readonly back: BackPort & { press(): boolean };
   /**
    * `leave()` is the app going to the background; `fire()` is its return.
+   * `isForeground()` reports the last of them (the foreground at first), so a
+   * `leave()` before a mount mounts it in the background.
    * `leaveListeners()` counts who would hear a `leave()`.
    */
   readonly foreground: FakeForeground;
+  /** `calls` lists every dim and restore, in order; `dimmed` is the window now. */
+  readonly screen: FakeScreen;
   readonly navigation: NavigationPort & { readonly history: readonly Route[] };
   readonly splash: SplashPort & { readonly hides: number };
   readonly surfaces: FakeSurfaces;
@@ -83,6 +95,7 @@ export function createFakePorts(
     orientationLock: fakeLock(),
     back: fakeBack(),
     foreground: fakeForeground(),
+    screen: fakeScreen(),
     navigation: fakeNavigation(),
     splash: fakeSplash(),
     surfaces: createFakeSurfaces(),
@@ -208,6 +221,7 @@ type FakeForeground = ForegroundPort & {
 function fakeForeground(): FakeForeground {
   const returns = new Set<() => void>();
   const leaves = new Set<() => void>();
+  let foreground = true;
   const add = (listeners: Set<() => void>, listener: () => void) => {
     listeners.add(listener);
     return () => {
@@ -217,14 +231,42 @@ function fakeForeground(): FakeForeground {
   return {
     subscribe: (onForeground) => add(returns, onForeground),
     subscribeBackground: (onBackground) => add(leaves, onBackground),
+    isForeground: () => foreground,
     fire: () => {
+      foreground = true;
       for (const listener of returns) listener();
     },
     leave: () => {
+      foreground = false;
       for (const listener of leaves) listener();
     },
     leaveListeners: () => leaves.size,
     returnListeners: () => returns.size,
+  };
+}
+
+export type FakeScreen = ScreenPort & {
+  /** Every call, in order. */
+  readonly calls: readonly ('dim' | 'restore')[];
+  readonly dimmed: boolean;
+};
+
+function fakeScreen(): FakeScreen {
+  const calls: ('dim' | 'restore')[] = [];
+  let dimmed = false;
+  return {
+    calls,
+    dim: () => {
+      calls.push('dim');
+      dimmed = true;
+    },
+    restore: () => {
+      calls.push('restore');
+      dimmed = false;
+    },
+    get dimmed() {
+      return dimmed;
+    },
   };
 }
 

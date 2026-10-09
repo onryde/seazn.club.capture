@@ -1,30 +1,21 @@
 import { useEffect, useMemo, useRef, useState, type ComponentType } from 'react';
 import { StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
 import type { VideoPlayer } from 'expo-video';
-import type { WebViewProps } from 'react-native-webview';
 import type { Logger } from '@/services/logger';
-import {
-  NO_MEDIA_CAPTURE,
-  OVERLAY_ORIGIN_WHITELIST,
-  overlayNavigationGuard,
-} from '@/services/overlayGuard';
-import type { OverlayProps, Surfaces, VideoProps, VideoStatus } from '@/services/surfaces';
+import type { Surfaces, VideoProps, VideoStatus } from '@/services/surfaces';
 
-type WebViewPackage = typeof import('react-native-webview');
 type VideoPackage = typeof import('expo-video');
 
 /** The engine module's native preview view (Task 39); it fills its parent, the camera box. */
 export type PreviewView = ComponentType<{ style?: StyleProp<ViewStyle> }>;
 
 /**
- * Where the two native packages come from. Both are loaded on first draw, not
- * at launch (m3): each one's native half throws on import when the binary
- * lacks it (expo-video's `requireNativeModule('ExpoVideo')`, the WebView's
- * `TurboModuleRegistry.getEnforcing`), and a static import here would take the
- * whole app down at boot instead of one surface.
+ * Where the native packages come from. Each is loaded on first draw, not at
+ * launch (m3): expo-video's native half throws on import when the binary lacks
+ * it, and a static import here would take the whole app down at boot instead of
+ * one surface.
  */
 export type SurfacePackages = {
-  readonly webview: () => Promise<WebViewPackage>;
   readonly video: () => Promise<VideoPackage>;
   /** The engine module's view, or null where the module is not in the binary (no failure). */
   readonly preview: () => Promise<PreviewView | null>;
@@ -33,7 +24,7 @@ export type SurfacePackages = {
 /**
  * Task 39: the engine module's default view, behind the optional-module check the engine itself is
  * chosen by (`requireOptionalNativeModule`, CD23): null on iOS in S1, in Expo Go and on web. `expo`
- * comes in on first draw, as the two packages do (m3).
+ * comes in on first draw, as expo-video does (m3).
  */
 async function installedPreview(): Promise<PreviewView | null> {
   const { requireNativeView, requireOptionalNativeModule } = await import('expo');
@@ -42,7 +33,6 @@ async function installedPreview(): Promise<PreviewView | null> {
 }
 
 const INSTALLED: SurfacePackages = {
-  webview: () => import('react-native-webview'),
   video: () => import('expo-video'),
   preview: installedPreview,
 };
@@ -77,73 +67,6 @@ function usePackage<T>(lazy: Lazy<T>): T | null | undefined {
     void lazy.load().then((loaded) => setValue(() => loaded));
   }, [lazy]);
   return value;
-}
-
-/**
- * I1: the page may load its own origin and nothing else. Every URL reaches
- * our guard (see OVERLAY_ORIGIN_WHITELIST for why the whitelist is open);
- * no windows, no file access, no camera or microphone.
- */
-const LOCKDOWN = {
-  originWhitelist: OVERLAY_ORIGIN_WHITELIST,
-  setSupportMultipleWindows: false,
-  javaScriptCanOpenWindowsAutomatically: false,
-  mediaCapturePermissionGrantType: 'deny',
-  mediaPlaybackRequiresUserAction: true,
-  allowFileAccess: false,
-  allowFileAccessFromFileURLs: false,
-  allowUniversalAccessFromFileURLs: false,
-  injectedJavaScriptBeforeContentLoaded: NO_MEDIA_CAPTURE,
-  injectedJavaScriptBeforeContentLoadedForMainFrameOnly: false,
-} satisfies WebViewProps;
-
-type ConfinedProps = OverlayProps & {
-  readonly WebView: WebViewPackage['WebView'];
-  readonly logger: Logger;
-};
-
-/**
- * The Tier A route in a transparent WebView (AGENTS §7). It never takes a
- * touch — the controls live in the gutters — and every way it can fail is
- * reported, so the stage can say so instead of going quietly blank.
- */
-function ConfinedWebView({ WebView, url, onFailed, logger }: ConfinedProps) {
-  const source = useMemo(() => ({ uri: url }), [url]);
-  const guard = useMemo(
-    () => overlayNavigationGuard({ url, onFailed, logger }),
-    [url, onFailed, logger],
-  );
-  return (
-    <View pointerEvents="none" style={styles.clear}>
-      <WebView
-        {...LOCKDOWN}
-        source={source}
-        style={styles.clear}
-        containerStyle={styles.clear}
-        onShouldStartLoadWithRequest={guard}
-        onError={onFailed}
-        onHttpError={onFailed}
-        onRenderProcessGone={onFailed}
-        onContentProcessDidTerminate={onFailed}
-      />
-    </View>
-  );
-}
-
-type OverlayStageProps = OverlayProps & {
-  readonly webview: WebViewPackage | null | undefined;
-  readonly logger: Logger;
-};
-
-/** Nothing while the package loads; a missing one is an overlay failure (m3). */
-function OverlayStage({ webview, url, onFailed, logger }: OverlayStageProps) {
-  useEffect(() => {
-    if (webview === null) onFailed();
-  }, [webview, onFailed]);
-  if (!webview) return null;
-  return (
-    <ConfinedWebView WebView={webview.WebView} url={url} onFailed={onFailed} logger={logger} />
-  );
 }
 
 function muted(player: VideoPlayer): void {
@@ -198,19 +121,15 @@ function MutedVideo({
   );
 }
 
-/**
- * The surfaces port on a phone. `surface.unavailable` is logged once per
- * missing package; each overlay drawn without its package reports a failure.
- */
+/** The surfaces port on a phone. `surface.unavailable` is logged once per missing package. */
 export function createNativeSurfaces(deps: {
   readonly logger: Logger;
   readonly packages?: SurfacePackages;
 }): Surfaces {
   const { logger } = deps;
   const packages = deps.packages ?? INSTALLED;
-  const unavailable = (kind: 'overlay' | 'video' | 'preview') => () =>
+  const unavailable = (kind: 'video' | 'preview') => () =>
     logger.warn('surface.unavailable', { kind });
-  const webview = lazyPackage(packages.webview, unavailable('overlay'));
   const video = lazyPackage(packages.video, unavailable('video'));
   const preview = lazyPackage(packages.preview, unavailable('preview'));
 
@@ -221,20 +140,15 @@ export function createNativeSurfaces(deps: {
     return <Preview style={styles.fill} />;
   }
 
-  function NativeOverlay(props: OverlayProps) {
-    return <OverlayStage {...props} webview={usePackage(webview)} logger={logger} />;
-  }
   function NativeVideo(props: VideoProps) {
     const expoVideo = usePackage(video);
     if (!expoVideo) return <View style={styles.fill} />;
     return <MutedVideo {...props} expoVideo={expoVideo} />;
   }
-  return { Preview: NativePreview, Overlay: NativeOverlay, Video: NativeVideo };
+  return { Preview: NativePreview, Video: NativeVideo };
 }
 
 const styles = StyleSheet.create({
   // RN 0.86 types only `absoluteFill`; `absoluteFillObject` is gone (carry 6).
   fill: { ...StyleSheet.absoluteFill },
-  // D33: services cannot import theme tokens; 'transparent' is the absence of a colour.
-  clear: { ...StyleSheet.absoluteFill, backgroundColor: 'transparent' },
 });

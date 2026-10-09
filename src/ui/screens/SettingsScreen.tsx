@@ -17,7 +17,6 @@ import { colour, layout as metrics, plateInk, radius, space } from '@/ui/theme/t
 const LICENCES: readonly { readonly name: string; readonly licence: string }[] = [
   { name: 'libsrt', licence: 'MPL-2.0' },
   { name: 'StreamPack', licence: 'Apache-2.0' },
-  { name: 'react-native-webview', licence: 'MIT' },
   { name: 'expo-video', licence: 'MIT' },
   { name: 'React Native', licence: 'MIT' },
   { name: 'Expo', licence: 'MIT' },
@@ -26,9 +25,8 @@ const LIBSRT_SOURCE = 'https://github.com/Haivision/srt';
 
 /**
  * Spec §4's Settings, inside Live Stream so it is reachable on air (AGENTS §6).
- * Neither choice disturbs a live broadcast — the score preview is this phone's
- * only, and the side moves only the controls — so nothing here is disabled on
- * air. The encode profile, when it comes, is the first that will be.
+ * The side does not disturb a live broadcast — it moves only the controls — so
+ * nothing here is disabled on air. The encode profile, when it comes, is the first that will be.
  * Start and stop automatically stays usable on air, the one named exception
  * to AGENTS §6's rule: it only affects the automatic stop (amendment §2).
  * `useEngineSync` (in the shell) tells native when it changes.
@@ -45,10 +43,6 @@ export function SettingsScreen() {
   const layout = screenLayout(width, height);
   const toCamera = useBackToViewfinder();
   const { settings, change, saveFailed } = useStreamSettings();
-  const toggleOverlay = useCallback(
-    () => change({ overlay: !settings.overlay }),
-    [change, settings.overlay],
-  );
   const toggleAutomatic = useCallback(
     () => change({ automatic: !settings.automatic }),
     [change, settings.automatic],
@@ -56,12 +50,6 @@ export function SettingsScreen() {
   const header = <SubScreenHeader title={t('settings.title')} onBack={toCamera} />;
   const controls = (
     <>
-      <ChoiceRow
-        label={t('settings.overlay.label')}
-        checked={settings.overlay}
-        onPress={toggleOverlay}
-      />
-      <Text variant="metricUnit">{t('settings.overlay.hint')}</Text>
       <ChoiceRow
         label={t('settings.automatic.label')}
         checked={settings.automatic}

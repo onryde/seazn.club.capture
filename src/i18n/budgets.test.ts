@@ -26,13 +26,18 @@ const BUDGETS: readonly (readonly [keys: RegExp, max: number])[] = [
   [/^stream\.preview\.stopped$/, 56],
   [/^stream\.preview\.show$/, 16],
   [/^stream\.peek\.label$/, 28],
-  [/^stream\.peek\.unavailable$/, 24],
+  [/^stream\.peek\.(unavailable|hot)$/, 24],
   [/^stream\.peek\.loading$/, 44],
+  // D2 §4.3: the cover's honest line, its closing countdown and the not-ready line. Its Hide is the scoring panel's
+  // word, `stream.scoring.hide`, budgeted below.
+  [/^stream\.peek\.honest$/, 44],
+  [/^stream\.peek\.closesIn$/, 24],
+  [/^stream\.peek\.notReady$/, 56],
   // Take photo (spec §8): the icon's accessible name, and the one line over the icon row.
   [/^stream\.photo\.label$/, 20],
   [/^stream\.photo\.(saved|failed)$/, 36],
   // Remote scoring (spec §10): the icon's accessible name (like Take photo's), the panel's title (B1) and its
-  // countdown (B3), the sentences, and Hide.
+  // countdown (B3), the sentences, and Hide, which the What viewers see cover reads too (D2 §4.3).
   [/^stream\.scoring\.open$/, 20],
   [/^stream\.scoring\.(title|hidesIn)$/, 24],
   [/^stream\.scoring\.refused\./, 56],

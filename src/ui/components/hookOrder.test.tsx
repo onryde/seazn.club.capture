@@ -1,8 +1,8 @@
 import { renderHook, screen } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { afterEach, beforeEach, expect, it, vi, type MockInstance } from 'vitest';
-import { usePeek } from '@/hooks/usePeek';
 import { TurnCardProvider } from '@/hooks/useTurnCard';
+import { useViewerCheck } from '@/hooks/useViewerCheck';
 import { HoldAction } from '@/ui/components/HoldAction';
 import { createFakePorts } from '../../../test/fakePorts';
 import { renderWithPorts, wrapperFor } from '../../../test/renderWithPorts';
@@ -10,10 +10,12 @@ import { renderWithPorts, wrapperFor } from '../../../test/renderWithPorts';
 /**
  * Found on the phone (2026-10-05): "React has detected a change in the order
  * of Hooks called by HoldAction". useHold read the turn card behind `&&`, so a
- * disabled control skipped that hook; usePeek did the same off air, and
- * `react-hooks/rules-of-hooks` (now on, at error) names both. React warns once
- * per component name in a module's life, so these tests live in a file of their
- * own, one component name each: no earlier render can have spent the warning.
+ * disabled control skipped that hook; the press-and-hold peek's hook did the
+ * same off air, and `react-hooks/rules-of-hooks` (now on, at error) names both.
+ * useViewerCheck has taken that hook's place (D2 §4.3), and it reads the card on
+ * every render too. React warns once per component name in a module's life, so
+ * these tests live in a file of their own, one component name each: no earlier
+ * render can have spent the warning.
  */
 let errors: MockInstance<typeof console.error>;
 beforeEach(() => {
@@ -40,7 +42,7 @@ it('HoldAction reads the turn card on every render, so its hook order holds as d
   expect({ toggles: toggles.length, reorders: reorders() }).toEqual({ toggles: 4, reorders: 0 });
 });
 
-it('usePeek reads the turn card on every render, so its hook order holds as the air comes and goes', () => {
+it('useViewerCheck reads the turn card on every render, so its hook order holds as the air comes and goes', () => {
   const ports = wrapperFor(createFakePorts());
   function Wrapper({ children }: { children: ReactNode }) {
     const Ports = ports;
@@ -50,12 +52,13 @@ it('usePeek reads the turn card on every render, so its hook order holds as the 
       </Ports>
     );
   }
-  const { result, rerender } = renderHook(({ available }) => usePeek(available), {
-    initialProps: { available: true },
-    wrapper: Wrapper,
-  });
+  const hideScoring = () => undefined;
+  const { result, rerender } = renderHook(
+    ({ available }) => useViewerCheck({ available, shed: false, scoringOpen: false, hideScoring }),
+    { initialProps: { available: true }, wrapper: Wrapper },
+  );
   const toggles = [false, true, false, true];
   for (const available of toggles) rerender({ available });
-  expect(result.current.showing).toBe(false);
+  expect(result.current.kind).toBe('idle');
   expect({ toggles: toggles.length, reorders: reorders() }).toEqual({ toggles: 4, reorders: 0 });
 });

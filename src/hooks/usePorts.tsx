@@ -12,6 +12,7 @@ import type {
   MotionPort,
   NavigationPort,
   OrientationLockPort,
+  ScreenPort,
   SharePort,
   SplashPort,
 } from '@/services/devicePorts';
@@ -51,12 +52,14 @@ export type Ports = {
   readonly probeFlight: ProbeFlight;
   /** The "Stream ended" card the viewfinder hands to Home (spec §5). In memory only. */
   readonly endedNotice: EndedNotice;
-  /** Score preview on or off, controls left or right (spec §4 Settings, D23). */
+  /** Controls left or right, and automatic start (spec §4 Settings, D23, A4). */
   readonly streamSettings: StreamSettingsStore;
   readonly motion: MotionPort;
   readonly orientationLock: OrientationLockPort;
   readonly back: BackPort;
   readonly foreground: ForegroundPort;
+  /** The window's brightness: dimmed while paired and idle (D2 §4.5). */
+  readonly screen: ScreenPort;
   readonly navigation: NavigationPort;
   readonly splash: SplashPort;
   /** The native views the viewfinder draws (D16). */

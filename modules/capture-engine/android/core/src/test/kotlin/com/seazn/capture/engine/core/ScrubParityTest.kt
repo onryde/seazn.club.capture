@@ -75,14 +75,14 @@ class ScrubParityTest {
   @Test
   fun `every record kind the core writes passes the kind rule as itself, while a session is held`() {
     val kinds = list.getJSONObject("kinds").keySet()
-    assertEquals(85, kinds.size)
+    assertEquals(86, kinds.size)
     for (kind in kinds) assertEquals(kind, JSONObject(written(RecordEntry(kind))).getString("kind"), kind)
   }
 
   @Test
   fun `a scalar key sits on no list, so its numbers and booleans pass and a string under it is masked`() {
     val scalars = list.getJSONObject("scalars").keySet()
-    assertEquals(32, scalars.size)
+    assertEquals(37, scalars.size)
     val listed = SessionRecord.PLAIN_KEYS + SessionRecord.PUBLIC_URL_KEYS + SessionRecord.TEXT_KEYS + SessionRecord.NEVER + SessionRecord.RESERVED_KEYS
     assertTrue(scalars.intersect(listed).isEmpty(), "on a list: ${scalars.intersect(listed)}")
     for (key in scalars) {

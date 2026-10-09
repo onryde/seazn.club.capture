@@ -1,31 +1,13 @@
-import { act, screen } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { act, render, screen } from '@testing-library/react';
+import { StyleSheet, View } from 'react-native';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { MatchLabel } from '@/ui/components/MatchLabel';
-import { typeScale } from '@/ui/theme/type';
+import { Text } from '@/ui/components/Text';
+import { colour } from '@/ui/theme/tokens';
 import { CASES } from '../../../test/fixtures/matchLabelCases';
 import { layOut } from '../../../test/layOut';
+import { linesAllowed } from '../../../test/linesAllowed';
 import { renderWithPorts } from '../../../test/renderWithPorts';
-
-/** Spec §2: 20 sp, and 17 sp for a long label. Written from the spec, never read from the type scale. */
-const SIZE_PX = { regular: '20px', long: '17px' } as const;
-
-/**
- * How many lines react-native-web lets a Text show, read from what it rendered
- * (`getComputedStyle`), not from the prop. It renders `numberOfLines={2}` as
- * `-webkit-line-clamp: 2`, and `numberOfLines={1}` as no clamp at all but one
- * unwrapped line that ends in an ellipsis. Anything else is unbounded.
- */
-function linesAllowed(element: Element): number {
-  const style = getComputedStyle(element);
-  const clamp = style.getPropertyValue('-webkit-line-clamp');
-  if (clamp !== '') return Number(clamp);
-  if (style.whiteSpace === 'nowrap' && style.textOverflow === 'ellipsis') return 1;
-  return Infinity;
-}
-
-const lineElements = (root: HTMLElement) => [
-  ...root.querySelectorAll('[data-testid="match-label-line"]'),
-];
 
 /** The fake pairs with this label, as a claim's answer would carry it. */
 function pairedWith(label: string, onLayoutHeight?: (height: number) => void) {
@@ -37,74 +19,177 @@ function pairedWith(label: string, onLayoutHeight?: (height: number) => void) {
   return view;
 }
 
-let seen = 0;
+const lineTexts = () =>
+  screen.getAllByTestId('match-label-line').map((line) => line.textContent ?? '');
 
-describe('MatchLabel (spec §2)', () => {
-  it('renders nothing before there is a pairing', () => {
-    renderWithPorts(<MatchLabel />);
-    expect(screen.queryByTestId('match-label')).toBeNull();
+/**
+ * What the spec's colour tokens paint, read the way the other tests read colours (GhostButton.test.tsx): a reference
+ * drawn with the token, so the rendered cascade is compared with the cascade, not a literal.
+ */
+const PAINT = StyleSheet.create({
+  lime: { backgroundColor: colour.lime },
+  lilac: { backgroundColor: colour.ink3 },
+  ink2: { color: colour.ink2 },
+});
+function background(style: object): string {
+  const reference = render(<View testID="paint-reference" style={style} />);
+  const read = getComputedStyle(reference.getByTestId('paint-reference')).backgroundColor;
+  reference.unmount();
+  return read;
+}
+function textColour(style: object): string {
+  const reference = render(
+    <Text variant="metricUnit" testID="paint-reference" style={style}>
+      v
+    </Text>,
+  );
+  const read = getComputedStyle(reference.getByTestId('paint-reference')).color;
+  reference.unmount();
+  return read;
+}
+
+let swept = 0;
+
+describe('MatchLabel, C2 (D2 §4.4)', () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  it('two sides: a row each with a bar, lime first and lilac second, and one decorative v', () => {
+    pairedWith('Ana Ruiz v Bea Lima');
+    expect(lineTexts()).toEqual(['Ana Ruiz', 'Bea Lima']);
+    const bars = screen.getAllByTestId('match-label-bar');
+    expect(bars.map((bar) => bar.dataset.side)).toEqual(['first', 'second']);
+    expect(screen.getAllByTestId('match-label-v')).toHaveLength(1);
+    expect(screen.getByTestId('match-label').dataset.kind).toBe('sides');
   });
 
-  it('renders nothing while the pairing’s label is still empty (not answered yet)', () => {
+  // Spec §4.4: a 3 dp bar at each row's left edge, lime then lilac (ink3), 5 dp from the names; the v in ink2 in a
+  // fixed 14 dp margin outside both rows. Numbers from the spec's text, colours from the tokens it names.
+  it('draws C2’s measures: 3 dp bars 5 dp from the names, the v in ink2 in a 14 dp margin', () => {
+    pairedWith('Ana Ruiz v Bea Lima');
+    const bars = screen.getAllByTestId('match-label-bar');
+    expect(bars.map((bar) => getComputedStyle(bar).width)).toEqual(['3px', '3px']);
+    expect(bars.map((bar) => getComputedStyle(bar).backgroundColor)).toEqual([
+      background(PAINT.lime),
+      background(PAINT.lilac),
+    ]);
+    expect(background(PAINT.lime)).not.toBe(background(PAINT.lilac));
+    for (const bar of bars) {
+      const row = bar.parentElement as HTMLElement;
+      expect([getComputedStyle(row).flexDirection, getComputedStyle(row).gap]).toEqual([
+        'row',
+        '5px',
+      ]);
+    }
+    const v = screen.getByTestId('match-label-v');
+    expect(getComputedStyle(v).color).toBe(textColour(PAINT.ink2));
+    const margin = v.parentElement as HTMLElement;
+    expect(getComputedStyle(margin).width).toBe('14px');
+    // Outside both rows: the margin holds no name.
+    expect(margin.querySelector('[data-testid="match-label-line"]')).toBeNull();
+  });
+
+  // B4 review m1: on native a Text in a row with no flex runs past its parent instead of wrapping, so the 2-line cap
+  // only holds if each name, and the rows column beside the margin, grow into the width that is left (flex 1). The
+  // margin centres the v between the rows. jsdom lays nothing out: these are the styles, the wrap is a D3 check.
+  it('lets a long side wrap inside its row: the names and the rows column take the width, the v is centred', () => {
+    pairedWith('Ana Ruiz v Bea Lima');
+    const names = screen.getAllByTestId('match-label-line');
+    expect(names.map((name) => getComputedStyle(name).flexGrow)).toEqual(['1', '1']);
+    const rows = (screen.getAllByTestId('match-label-bar')[0]?.parentElement as HTMLElement)
+      .parentElement as HTMLElement;
+    expect(rows.contains(names[1] as HTMLElement)).toBe(true);
+    expect(getComputedStyle(rows).flexGrow).toBe('1');
+    const margin = screen.getByTestId('match-label-v').parentElement as HTMLElement;
+    expect(getComputedStyle(margin).justifyContent).toBe('center');
+  });
+
+  it('caps each side at 2 lines, ending in an ellipsis (Review Focus 4)', () => {
+    pairedWith(
+      'Alexandra Konstantinopoulou / Bea Lima v Cai Wen / Maria Fernanda Albuquerque Santos',
+    );
+    const rows = screen.getAllByTestId('match-label-line');
+    expect(rows).toHaveLength(2);
+    for (const row of rows) {
+      expect(linesAllowed(row)).toBe(2);
+      expect(getComputedStyle(row).textOverflow).toBe('ellipsis');
+    }
+  });
+
+  it('one side only: one row, no bar and no v', () => {
+    pairedWith('Match 4');
+    expect(lineTexts()).toEqual(['Match 4']);
+    expect(screen.queryAllByTestId('match-label-bar')).toHaveLength(0);
+    expect(screen.queryByTestId('match-label-v')).toBeNull();
+    expect(screen.getByTestId('match-label').dataset.kind).toBe('block');
+    expect(linesAllowed(screen.getByTestId('match-label-line'))).toBe(2);
+  });
+
+  it('doubles: each side in full, partners joined by " / "', () => {
+    pairedWith('Ana Ruiz / Bea Lima v Cai Wen / Dee Roy');
+    expect(lineTexts()).toEqual(['Ana Ruiz / Bea Lima', 'Cai Wen / Dee Roy']);
+  });
+
+  it('an empty label draws nothing', () => {
     pairedWith('');
     expect(screen.queryByTestId('match-label')).toBeNull();
   });
 
-  it.each(CASES)(
-    '%s: its lines, its v, its size and each line’s wrap',
-    (_n, label, shape, size) => {
-      pairedWith(label);
-      const root = screen.getByTestId('match-label');
-      // Review M4: the whole label, as typed, is the root's accessible name: one stop, not three.
-      expect(screen.getByLabelText(label)).toBe(root);
-      const parts = shape.kind === 'block' ? [shape.block] : [shape.a, shape.b];
-      const lines = lineElements(root);
-      expect(lines.map((line) => line.textContent)).toEqual(parts.flatMap((part) => part.lines));
-      expect(lines.map(linesAllowed)).toEqual(
-        parts.flatMap((part) => part.lines.map(() => part.wrap)),
-      );
-      for (const line of lines) expect(getComputedStyle(line).fontSize).toBe(SIZE_PX[size]);
-      expect(root.dataset.size).toBe(size);
-      expect(root.dataset.kind).toBe(shape.kind);
+  // The four questions, 2: a label of nothing but spaces is not a label; it draws nothing, not an empty row.
+  it('a label of only spaces draws nothing', () => {
+    pairedWith('   ');
+    expect(screen.queryByTestId('match-label')).toBeNull();
+  });
 
-      const v = screen.queryByTestId('match-label-v');
-      if (shape.kind === 'block') {
-        expect(v).toBeNull();
-        // Nothing is shown but the block's lines.
-        expect(root.textContent).toBe(shape.block.lines.join(''));
-      } else {
-        expect(v?.textContent).toBe('v');
-        // Review M3: the small v is the metricUnit role's size, read from the token's declaration.
-        expect(getComputedStyle(v as HTMLElement).fontSize).toBe(
-          `${typeScale.metricUnit.fontSize}px`,
-        );
-        // The v shares a row with side B's first line, after side A's last.
-        const row = v?.parentElement as HTMLElement;
-        const firstOfB = lines[shape.a.lines.length];
-        expect(getComputedStyle(row).flexDirection).toBe('row');
-        expect(row.contains(firstOfB)).toBe(true);
-        expect(row.contains(lines[0])).toBe(false);
-        expect(root.textContent).toBe(`${shape.a.lines.join('')}v${shape.b.lines.join('')}`);
-      }
-      seen += 1;
-    },
-  );
+  it('reads the label once, whole, to a screen reader; the v is hidden from it', () => {
+    pairedWith('Ana Ruiz v Bea Lima');
+    expect(screen.getByTestId('match-label').getAttribute('aria-label')).toBe(
+      'Ana Ruiz v Bea Lima',
+    );
+    expect(screen.getByLabelText('Ana Ruiz v Bea Lima')).toBe(screen.getByTestId('match-label'));
+    expect(screen.getByTestId('match-label-v').getAttribute('aria-hidden')).toBe('true');
+  });
 
-  it('showed every case §2 and the review owe', () => {
-    expect(seen).toBe(12);
+  it.each(CASES)('%s: at most 4 lines in all, 2 a side, one size', (_name, label, shape) => {
+    pairedWith(label);
+    swept += 1;
+    if (shape.kind === 'block' && shape.text === '') {
+      expect(screen.queryByTestId('match-label')).toBeNull();
+      return;
+    }
+    const root = screen.getByTestId('match-label');
+    const lines = [...root.querySelectorAll('[data-testid="match-label-line"]')];
+    expect(lines.map((line) => line.textContent)).toEqual(
+      shape.kind === 'sides' ? [shape.a, shape.b] : [shape.text],
+    );
+    expect(lines.reduce((sum, line) => sum + linesAllowed(line), 0)).toBeLessThanOrEqual(4);
+    expect(new Set(lines.map((line) => getComputedStyle(line).fontSize))).toEqual(
+      new Set(['20px']),
+    );
+  });
+
+  it('swept all thirteen labels (anti-vacuity)', () => {
+    expect(CASES).toHaveLength(13);
+    expect(swept).toBe(13);
   });
 
   it('follows the label as it changes, and goes when the pairing does', () => {
     const view = pairedWith('Ana Ruiz / Bea Lima v Cai Wen / Dee Roy');
-    const root = () => screen.getByTestId('match-label');
-    expect(root().dataset.size).toBe('long');
+    expect(lineTexts()).toEqual(['Ana Ruiz / Bea Lima', 'Cai Wen / Dee Roy']);
 
-    act(() => view.engine.setPairing({ label: 'Ana Ruiz v Bea Lima' }));
-    expect(lineElements(root()).map((line) => line.textContent)).toEqual(['Ana Ruiz', 'Bea Lima']);
-    expect(root().dataset.size).toBe('regular');
-    expect(screen.getByLabelText('Ana Ruiz v Bea Lima')).toBe(root());
+    act(() => view.engine.setPairing({ label: 'Match 4' }));
+    expect(lineTexts()).toEqual(['Match 4']);
+    expect(screen.queryByTestId('match-label-v')).toBeNull();
+    expect(screen.getByLabelText('Match 4')).toBe(screen.getByTestId('match-label'));
 
     act(() => view.engine.scene('unpaired-replaced'));
+    expect(screen.queryByTestId('match-label')).toBeNull();
+  });
+});
+
+describe('MatchLabel reports its height (R-F5)', () => {
+  it('renders nothing before there is a pairing', () => {
+    renderWithPorts(<MatchLabel />);
     expect(screen.queryByTestId('match-label')).toBeNull();
   });
 
@@ -140,8 +225,8 @@ describe('MatchLabel (spec §2)', () => {
     act(() => view.engine.setPairing({ label: 'Ana Ruiz / Bea Lima v Cai Wen / Dee Roy' }));
     expect(screen.getByLabelText('Ana Ruiz / Bea Lima v Cai Wen / Dee Roy')).toBeTruthy();
     expect(heights.mock.calls).toEqual([[44], [0]]);
-    layOut(screen.getByTestId('match-label'), { width: 300, height: 76 });
-    expect(heights.mock.calls).toEqual([[44], [0], [76]]);
+    layOut(screen.getByTestId('match-label'), { width: 300, height: 88 });
+    expect(heights.mock.calls).toEqual([[44], [0], [88]]);
   });
 
   // The strip passes a state setter, which is stable, but nothing in the type says a caller must: a callback made

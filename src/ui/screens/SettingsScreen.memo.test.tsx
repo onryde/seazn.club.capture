@@ -78,10 +78,10 @@ describe('Settings re-renders only what changed (spec §6)', () => {
 
   it('a switch re-renders Settings and not the Diagnostics card', async () => {
     renderWithPorts(<SettingsScreen />);
-    const overlay = () => screen.getByRole('switch', { name: 'Score preview' });
+    const automatic = () => screen.getByRole('switch', { name: 'Start and stop automatically' });
     resetCalls();
-    fireEvent.click(overlay());
-    await waitFor(() => expect(overlay().getAttribute('aria-checked')).toBe('false'));
+    fireEvent.click(automatic());
+    await waitFor(() => expect(automatic().getAttribute('aria-checked')).toBe('false'));
     // It counts at all: the switch did re-render Settings.
     expect(calls.settings).toBeGreaterThan(0);
     expect(calls.diagnostics).toBe(0);

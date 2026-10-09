@@ -35,8 +35,8 @@ export function cameraBoxSize(input: {
  * nothing else. A status line, a caption or the round line coming and going changes none of its inputs.
  *
  * `labelHeight` is what `MatchLabel` reported: 0 is not measured yet (or the label is going), and so is anything that
- * is not a positive height. Then it is the worst case the strip can need, the larger of the label's two size rules, so
- * the strip is never short before the first measurement. A measured label taller than that (large system text) is
+ * is not a positive height. Then it is the worst case the strip can need, C2's four lines at 22, so the strip is never
+ * short before the first measurement. A measured label taller than that (large system text) is
  * taken as measured: the strip really is that tall. Only the label follows the system's text size, though: the
  * message line's 22 is a fixed reservation (the unscaled `body` height), so at a font scale over 1 that line can still
  * outgrow its room and overflow the strip.
@@ -50,13 +50,11 @@ export function stripReserve(labelHeight: number): number {
 }
 
 /**
- * The label at its worst, whatever the width (D17, F9, Q4 option A): the larger of its two size rules, 2 lines of 22
- * (a regular label, a line a side) and 4 lines of 19 (a long one, a doubles label).
+ * The label at its worst, whatever the width (C2, D2 §4.4): two sides of at most `labelSideLines` (2) lines each, at
+ * the one `label` size, 4 × 22 = 88. It derives from the per-side cap (ledger P10), so the cap and the reserve cannot
+ * drift apart. A label that does not split into sides is one row of at most 2 lines, so never the worst.
  */
-const WORST_LABEL = Math.max(
-  layout.labelLinesRegular * typeScale.label.lineHeight,
-  layout.labelLinesMax * typeScale.labelLong.lineHeight,
-);
+const WORST_LABEL = 2 * layout.labelSideLines * typeScale.label.lineHeight;
 
 /**
  * The status strip's content at its worst, whatever the width and the label (D17, F9, F20, Q4 option A): the

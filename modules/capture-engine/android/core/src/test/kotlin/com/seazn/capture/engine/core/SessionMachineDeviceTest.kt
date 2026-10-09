@@ -124,10 +124,10 @@ class SessionMachineDeviceTest {
   @Test
   fun `AGENTS 8 - thermal travels as shed and is never a degrade reason`() {
     val rig = MachineRig().live()
-    rig.send(Input.Device(DeviceSample(3, 0.9, 51, true, 18.0, ShedStep.OVERLAY_PREVIEW)))
+    rig.send(Input.Device(DeviceSample(3, 0.9, 51, true, 18.0, ShedStep.VIEWER_FEED)))
     rig.advance(1_000)
     assertIs<SnapshotState.Publishing>(rig.state)
-    assertEquals(ShedStep.OVERLAY_PREVIEW, rig.snapshot.shed)
+    assertEquals(ShedStep.VIEWER_FEED, rig.snapshot.shed)
     assertEquals(3, rig.records("thermal").single().fields.first { it.first == "status" }.second)
   }
 

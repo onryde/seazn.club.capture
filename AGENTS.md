@@ -136,7 +136,7 @@ src/
 modules/
   capture-engine/  # the engine port, the fake, and the native Expo module (StreamPack, Android)
   code-scanner/    # Expo Module. Google's code scanner (Android), iOS stub, fake.
-contracts/         # capture-qr.v2.json, once vendored (see its README)
+contracts/         # the web's capture contracts, vendored and pinned
 ```
 
 - `eslint-plugin-boundaries` enforces `domain/` purity. The rule is the
@@ -177,8 +177,8 @@ contracts/         # capture-qr.v2.json, once vendored (see its README)
 - The wire shape never reaches the domain. Each wire shape has one parser, in
   one language: the QR and the waiting fields in TypeScript, the session shape
   and the server's answers in Kotlin. A v2 of any shape touches one file.
-- Contracts are vendored. Changing `capture-qr.v2.json` requires the CI drift
-  check against the main repo's copy.
+- Contracts are vendored. A contract changes only through `pnpm contracts:vendor`
+  and the pin test (R7, plan D spec §3.1); no CI job fetches the web repo.
 
 ## 5. Theme
 
@@ -265,30 +265,34 @@ Three rules travel with these tokens:
   reports a failure (a refusal, a start that cannot go ahead, trouble and its
   reasons, the engine not responding, a stopped or ended stream, Back's "hold
   Stop") is _urgent_ and always wins; an advisory caption (Not charging, heat,
-  keep the app open, Score ahead, a failed preview) beats only a _routine_ line
-  (Starting, Pairing, Waiting for Go live, going live, opening the link, Live).
-  Waiting for Go live is routine on purpose (owner, 2026-10-09): before air a
-  phone warning (Not charging, keep the app open, heat, a failed preview, Score
-  ahead) beats the destination line, which shows when no caption is active. The
-  lines that stay up until the next start (a stopped stream, waiting for a
-  destination) keep the line over a keep-the-app-open caption until then. A new status key
+  keep the app open) beats only a _routine_ line (Starting, Pairing, Waiting
+  for Go live, going live, opening the link, Live). Waiting for Go live is
+  routine on purpose (owner, 2026-10-09): before air a phone warning (Not
+  charging, keep the app open, heat) beats the destination line, which shows
+  when no caption is active. The lines that stay up until the next start (a
+  stopped stream, waiting for a destination) keep the line over a
+  keep-the-app-open caption until then. A new status key
   does not compile until it is given a tier, and `statusTier.test.ts` lists
   every key by hand. The picture is one size for
   the whole match and is sized again only when the label's text changes, the
   label wraps differently (its measured height moves), or the half's width or
   height changes: a status line, a caption or the round line coming and going
   never moves it. Before the label is measured it is sized against the worst
-  case, 142 dp. The owner's phone (804 × 332, the Android status bar showing)
-  gets 394.7 × 222 for a two-line label by the arithmetic, 392.9 × 221 as laid
-  out (the label measures 45) and 337.8 × 190 at the worst case. The controls half's
+  case, 154 dp: 66 and C2's four lines at 22 (below). The owner's phone
+  (804 × 332, the Android status bar showing) gets 394.7 × 222 for a label of
+  one line a side (44) by the arithmetic, and 316.4 × 178 at the worst case
+  (D2 §4.4; `cameraBox.test.ts`, `viewfinderFit.test.ts`). The size as laid out
+  on the phone is D3's to read: the 392.9 × 221 measured before C2 was the old
+  label's. The controls half's
   column has its own vertical padding and gap (`controlsPadV`,
   `controlsColumnGap`: 8 and 8; its horizontal padding stays the board's 16, so
   it is still 310 wide), so every control is on screen at 804 × 332 in every
   state and language, the worst before-air state with 8 dp to spare. Nothing is drawn over the
-  camera box but the overlay, the _What viewers see_ video and, on the
-  operator's tap, the Remote scoring panel (design follow-up §10): over the
-  camera half, for at most 10 s, and it hides itself when the session enters
-  trouble. Advisory text rides the status strip's one message line, over a
+  camera box but, on the operator's tap, the Remote scoring panel and, when it
+  is built in, the _What viewers see_ video, one at a time (D2 §4.3; the view
+  is built and hidden, below). The panel (design follow-up
+  §10) is over the camera half, for at most 10 s, and it hides itself when the
+  session enters trouble. Advisory text rides the status strip's one message line, over a
   routine status line only (an urgent one keeps the line). The
   icon row also holds Take photo (design follow-up §8); its confirmation is one
   line in the controls half's gap, never over the camera box. The panel covers
@@ -299,11 +303,24 @@ Three rules travel with these tokens:
   status strip is never hidden by a panel that opened before it; a tap made
   while the trouble already stands is honoured (the operator saw the warning
   and chose), and the panel then covers the strip for up to 10 s. The icon row
-  on air is Settings, Take photo, Remote scoring, _What viewers see_: Remote
-  scoring is third of four because the flexible viewers cell has to end the
-  row. The round line sits
-  above the match label in the status strip and is always shown when the
-  pairing has one (owner, 2026-10-08, option B), the owner's 804 × 332 included.
+  on air is Settings, Take photo, Remote scoring, and no cell flexes: the three
+  buttons pack from the start, as the four do before air. _What viewers see_ is
+  hidden (the owner's ruling, 2026-10-09, below); built in, it is a fourth cell
+  that ends the row and takes its remaining width, so Remote scoring is third
+  of four, and the controls half is still sized to hold it. The match label is
+  C2 (owner, 2026-10-08; D2 §4.4): one row a side, each with a 3 dp bar at its
+  left edge, lime for the first side and lilac (`ink3`) for the second, then
+  the side's names at one size (`label`, 22 dp a line), partners joined by
+  " / ". Each side wraps to at most 2 lines (`layout.labelSideLines`) and ends
+  in an ellipsis beyond that. A small "v" in `ink2` sits in a 14 dp margin
+  outside both rows, centred between them; it is hidden from screen readers,
+  which read the label once, as typed. A label that does not split into two
+  sides is one row, with no bar and no v. So the worst label is 4 × 22 = 88 dp,
+  and the reserve's worst case derives from the 2-line cap, never from a
+  second number (`WORST_LABEL` in `cameraBox.ts`; the controller's ruling,
+  2026-10-09). The round line sits above the match label in the status strip,
+  in lime caps (D2 §4.4's _rec_, R11), and is always shown when the pairing
+  has one (owner, 2026-10-08, option B), the owner's 804 × 332 included.
   Its 22 dp (the line and a gap) are in the strip's reserve, 66 dp and the
   label, whether there is a round line to show or not, so it is not measured
   and never moves the picture, and the picture never gives way for it. A match
@@ -326,11 +343,45 @@ Three rules travel with these tokens:
   from automatic mode, or a rejoin needs no hold: the operator is not there to
   hold it, and the server's Go live is the decision (A2, A10). The Stop hold
   ends the broadcast and unpairs (A3).
-- **Press-and-hold is not always a confirmation.** The preview control is held
-  too, and reads as a pair with the action below it, but it answers on the
-  instant the finger lands — there the hold *is* the feature, the thing that
-  stops a billed preview running unattended (§7). Never put a confirmation delay
-  on it.
+- **What viewers see is built, and hidden** (the owner's ruling, 2026-10-09:
+  "keep all code and just hide button then when later stage like when org
+  reqeust we can implemnt"). One compile-time switch, `FEATURES.viewerCheck`
+  in `src/ui/features.ts`, is false, so the on-air row has no cell for it and
+  nothing of it mounts: no cell, cover, player or timers, and the record has
+  no `viewer.*` or `peek.*` lines. One switch changed in a commit, with no env
+  var, remote config, setting or runtime toggle, is the controller's ruling
+  implementing the owner's; how it is turned on for an organiser who asks is
+  the owner's call then. Its tests render it with the switch passed on, so everything
+  below stays tested. Built in, **it is a tap.** Its protection against a
+  billed preview left running is that it closes by itself 20 s after its first frame, or 3 s after
+  telling the operator there is no picture; a tap never extends it. It covers
+  the camera box only, and opening it takes the Remote scoring panel down (and
+  the reverse): one cover at a time. It closes and is disabled while the ladder
+  sheds (§8). While it shows it says "no scoreboard yet": there is no
+  compositor, so the viewers' picture has no score (D2 §4.3).
+  As built: a tap shows a 5 s countdown while the player loads; the first
+  frame starts the 20 s; no frame in the 5 s shows "Viewers don't have a
+  picture yet — try again shortly" for 3 s, then it closes (owner, 2026-10-08
+  and 2026-10-09, R2 and R10). So a tap costs at most 25 s of player time with
+  a picture, or 8 s without one. A tap on the box or its _Hide_ closes it at
+  once, and so does the broadcast leaving live or losing its playback URL
+  (D2 §4.3); so does a second tap on the cell (D2 §4.3's _rec_, R11). The
+  player gets one quiet retry at 2 s while it loads (D2 §4.3's _rec_, R11),
+  and one again after a picture: a retry while showing stays silent, the frame
+  holds and the 20 s countdown runs on (the controller's ruling, 2026-10-09,
+  B3). A delivery that stalls while showing drops the player and reads "No
+  viewer picture", and the 20 s still closes the view. It also closes while
+  the turn card covers the stage and when the app leaves the foreground
+  (plan A rulings 7 N4 and 7 M5, `docs/specs/2026-09-30-s1-plan-a-results.md`,
+  which closed the old peek the same way), and it never reopens by itself. Closing unmounts the player, so the download stops.
+  While loading and showing the box carries one line, "What viewers see · no
+  scoreboard yet"; when the compositor exists, that line goes. The rule is a
+  pure reducer (`src/domain/session/viewerCheck.ts`); `useViewerCheck` owns
+  the timers, `ViewerCover` draws it, and the record gets
+  `viewer.check {state}` and `viewer.firstFrame {ms}` (plan decision PD6, the
+  controller's). The cell is a plain `Pressable`, not `Button`, whose 200 dp
+  minimum does not fit the 110 dp cell (plan decision PD1, the controller's).
+  Go live and Stop are the only holds left.
 - Go Live enables only when _paired and ready_: camera running, the mic
   available (a silent room is ready; design follow-up §4), network reachable,
   phone held sideways, as native judges it. The pre-flight is the safety, for
@@ -354,19 +405,26 @@ Three rules travel with these tokens:
 - On iOS the screen-lock warning is a first-class state, not a toast (P1).
 - Legible at arm's length, on a tripod, in sun, in rain, by a volunteer.
 
-## 7. Overlay preview
+## 7. No score on the phone
 
-- The overlay comes from `/overlay/fixtures/[id]` — the **Tier A browser-source
-  route**, rendered in a transparent WebView over the native preview.
+- The phone draws no score. The score preview (a transparent WebView over the
+  camera, the Tier A browser-source route) was removed on the owner's ruling
+  of 2026-10-08 (R1, D2 §4.1), with `react-native-webview`. The descriptor
+  still sends `overlayUrl`; nothing on the phone reads it.
 - **Never reimplement the scorebug in React Native.** That creates a second
   render path and destroys the invariant that a club moving between tiers sees
   identical output. This is the highest-value prohibition in this file.
-- Not the `/relay` variant — that carries the WHEP video element, and on the
-  phone the camera underneath is already the picture.
-- Phone runs `delayMs = 0`; the operator sees the score slightly ahead of what
-  viewers see. Say it in the UI once.
-- Wrap the WebView in an error boundary. An overlay crash must never take the
-  live HUD with it.
+- What viewers see, when built in (§6), shows the delivered picture, which
+  has no score until the compositor exists; it says so on screen.
+- What went with it (D2 §4.1; the record line and the TypeScript reader by plan
+  decision PD2, the controller's): the WebView, its guard and error boundary, the
+  Settings "Score preview" switch and its stored field (settings wire v2 → v3;
+  a v2 record is read and its `overlay` dropped), the score-ahead and
+  preview-failed captions, the snapshot's two `overlayUrl` fields and native's
+  `overlay-refused` record line. Both readers, Kotlin and TypeScript, ignore
+  `overlayUrl` the way they ignore any field they do not use, and the shared
+  vectors prove it. The ruling records the decision ("Ok remove"); its
+  consequence for the ladder is §8's: What viewers see took the first rung.
 
 ## 8. Performance
 
@@ -383,17 +441,31 @@ Three rules travel with these tokens:
 - Animations on Reanimated worklets — UI thread, never JS.
 - Encode ceiling: 720p30 / 3000k.
 
-**Degradation ladder — in this order, never reordered:**
+**Degradation ladder — in this order, never reordered (D2 §4.2):**
 
-1. Overlay preview sheds first (visible "preview paused — still live" state)
-2. Then preview framerate
-3. The encode is last, and ideally never
+| Step | Wire word           | Thermal status | What happens                                                            |
+| ---- | ------------------- | -------------- | ----------------------------------------------------------------------- |
+| 1    | `viewer-feed`       | 2              | What viewers see closes if open and is disabled, with a one-line reason |
+| 2    | `preview-framerate` | 3              | Reported only. No native code lowers the frame rate yet (N26)           |
+| 3    | `encode`            | 4, 5, 6        | Reported only. The encode is last, and ideally never                    |
+
+The ladder only goes down: a shed of step 2 or 3 means step 1 too. The rung is
+TypeScript's: `selectShedding` (`shed !== null`) puts the heat caption in the
+strip. With What viewers see hidden, as shipped (§6, the owner's ruling,
+2026-10-09), step 1 sheds `viewer-feed` with nothing to close, and the caption
+names no view: "Phone hot · still live" beside the LIVE plate, and "Phone hot"
+before air, since native sends `shed` from Armed on (the controller's ruling,
+2026-10-09). Built in, it closes What viewers see, disables its cell with
+"Phone hot", and the caption reads "Phone hot — viewer check off, still
+live". Native names the step from the thermal status
+(`DeviceReadings.shed`); steps 2 and 3 are in the snapshot and the record, and
+nothing acts on them (`_FINDINGS.md` N26, owner 2026-10-09, R9).
 
 The operator's convenience is the cheapest thing on the device. The broadcast
 is the only thing that matters.
 
 **Thermal pressure is a device condition, not a session state.** A hot handset
-sheds the overlay preview long before it touches the encode, so it is usually
+sheds step 1 long before it touches the encode, so it is usually
 still publishing cleanly — reporting it as a degraded *broadcast* would be a
 lie. It travels in telemetry as `shed`, and `DegradeReason` deliberately has no
 thermal member. Only transport trouble degrades a session.
@@ -406,6 +478,35 @@ thermal member. Only transport trouble degrades a session.
   partial wake lock for the whole pairing, so beats and a remote Go live work
   with the phone locked (A5). The persistent notification carries status:
   `Paired · waiting for Go live`, then `LIVE · 3000k · 47 min`.
+- While paired and waiting, the screen is kept on and dimmed after 30 s idle;
+  this is the default path for a remote Go live. The foreground service and wake
+  lock are the Android fallback when the phone is locked anyway (R4, D2 §4.5).
+  On Android the dim is the window's own brightness, never the system
+  setting; on either platform it never dims when armed or live.
+  As built: after 30 s with no touch anywhere in the Live Stream route the
+  window drops to 0.1, and any touch restores it and starts the 30 s again
+  (owner, 2026-10-09, R8; 0.1 is D2 §4.5's _rec_, R11). `TouchWake`, the
+  stream layout's root, sees every touch in its capture phase and never takes
+  it, so the control under the finger still acts. Arming, going live,
+  unpairing, leaving the mode and the app leaving the foreground restore it at
+  once (D2 §4.5).
+  Entering paired and waiting starts the 30 s again, so a new line such as
+  "Organiser stopped it" is read before the dim, and so does a new _urgent_
+  status line (`LINE_TIER`), which also wakes the screen (the controller's
+  rulings, 2026-10-09). The engine-not-responding line does not wake it,
+  because it comes from the viewfinder's 1 Hz clock, which the route's root
+  never takes on (§8), so a dimmed phone shows it at full brightness on the
+  next touch (the controller's ruling, 2026-10-09). In the background nothing
+  counts, and a Live Stream mounted there (a remote Go live on a locked phone)
+  starts paused, so a phone always comes back bright (the controller's
+  rulings, 2026-10-09). On Android restore hands the window back to the
+  system's brightness and never reads it, since a read that throws would stop
+  the dim (the controller's ruling, 2026-10-09). On iOS `expo-brightness` sets
+  the screen's, and the port puts back what it found.
+  The rule is `shouldDim` (`src/domain/session/idleDim.ts`); `useIdleDim` and
+  `useIdleClock` own the timer, and `ScreenPort` (`createNativeScreen`, over
+  `expo-brightness`) sets the brightness. Keep-awake is unchanged: on for
+  every state but idle and ended (`useKeepAwake`).
 - **iOS:** the camera stops in background — no background mode grants it. So
   disable the idle timer, warn the operator at start, and treat the
   slate-and-resume choreography as a **normal operating mode**, not an edge
@@ -477,7 +578,9 @@ thermal member. Only transport trouble degrades a session.
 - TypeScript `strict`.
 - Expo Router for navigation; `expo-secure-store` for saved codes and the
   language pick (Android backup excluded); `expo-sensors` and
-  `expo-screen-orientation` for the orientation gate; `expo-localization` for
+  `expo-screen-orientation` for the orientation gate; `expo-brightness` for
+  the idle dim (on Android the window's brightness only: its `WRITE_SETTINGS`
+  permission is blocked in `app.json`); `expo-localization` for
   the phone's language. No AsyncStorage.
 - Expo Updates: check on launch only, and **never apply while the phone is
   paired or holding a broadcast**. A paired phone is waiting for a match, and a

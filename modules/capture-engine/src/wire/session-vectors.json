@@ -46,8 +46,7 @@
         "primary": "srt",
         "fallback": "rtmps",
         "srtOffered": true,
-        "scoreUpdates": "realtime",
-        "overlayUrl": "https://stg.seazn.club/overlay/fixtures/f1"
+        "scoreUpdates": "realtime"
       }
     },
     {
@@ -61,8 +60,7 @@
         "primary": "rtmps",
         "fallback": "srt",
         "srtOffered": true,
-        "scoreUpdates": "realtime",
-        "overlayUrl": "https://stg.seazn.club/overlay/fixtures/f1"
+        "scoreUpdates": "realtime"
       }
     },
     {
@@ -83,8 +81,7 @@
         "primary": "rtmps",
         "fallback": null,
         "srtOffered": false,
-        "scoreUpdates": "realtime",
-        "overlayUrl": "https://stg.seazn.club/overlay/fixtures/f1"
+        "scoreUpdates": "realtime"
       }
     },
     {
@@ -134,8 +131,7 @@
         "primary": "srt",
         "fallback": "rtmps",
         "srtOffered": true,
-        "scoreUpdates": "realtime",
-        "overlayUrl": "https://stg.seazn.club/overlay/fixtures/f1"
+        "scoreUpdates": "realtime"
       }
     },
     {
@@ -220,8 +216,7 @@
         "primary": "srt",
         "fallback": "rtmps",
         "srtOffered": true,
-        "scoreUpdates": "realtime",
-        "overlayUrl": null
+        "scoreUpdates": "realtime"
       }
     },
     {
@@ -386,8 +381,7 @@
         "primary": "srt",
         "fallback": "rtmps",
         "srtOffered": true,
-        "scoreUpdates": "polled",
-        "overlayUrl": "https://stg.seazn.club/overlay/fixtures/f1"
+        "scoreUpdates": "polled"
       }
     },
     {
@@ -600,36 +594,7 @@
         "primary": "srt",
         "fallback": "rtmps",
         "srtOffered": true,
-        "scoreUpdates": "realtime",
-        "overlayUrl": "https://stg.seazn.club/overlay/fixtures/f1"
-      }
-    },
-    {
-      "why": "a production build keeps an overlay on the production Seazn host",
-      "env": "production",
-      "override": {
-        "overlayUrl": "https://seazn.club/overlay/fixtures/f1",
-        "cred": {
-          "srt": {
-            "url": "srt://live.cloudflare.com:778",
-            "streamId": "a1b2c3d4e5f60718293a4b5c6d7e8f90",
-            "passphrase": "pass+phrase/6d1e8b0c",
-            "latencyMs": 2000
-          },
-          "rtmps": {
-            "url": "rtmps://live.cloudflare.com:443/live/",
-            "streamKey": "key-4c7a0e2b9d5f1386"
-          }
-        }
-      },
-      "expected": {
-        "answer": "open",
-        "sid": "3f9a2c7e-8b14-4d5e-a6f7-0c1d2e3f4a5b",
-        "primary": "srt",
-        "fallback": "rtmps",
-        "srtOffered": true,
-        "scoreUpdates": "realtime",
-        "overlayUrl": "https://seazn.club/overlay/fixtures/f1"
+        "scoreUpdates": "realtime"
       }
     },
     {

@@ -80,10 +80,10 @@ object Thermal {
   /** API 30's `getThermalHeadroom` returns NaN when it has no forecast; P5's Redmi read −1. 0 is no throttling. */
   fun headroom(raw: Float?): Double? = raw?.takeIf { it.isFinite() && it >= 0f }?.toDouble()
 
-  /** CD20: moderate sheds the overlay preview, severe the preview frame rate, critical and worse the encode. */
+  /** CD20, D2 §4.2: moderate sheds What viewers see, severe the preview frame rate, critical and worse the encode. */
   fun shed(status: Int?): ShedStep? =
     when (status) {
-      2 -> ShedStep.OVERLAY_PREVIEW
+      2 -> ShedStep.VIEWER_FEED
       3 -> ShedStep.PREVIEW_FRAMERATE
       4, 5, 6 -> ShedStep.ENCODE
       else -> null

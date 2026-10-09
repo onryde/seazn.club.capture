@@ -60,14 +60,14 @@ describe('pairIntentFor', () => {
       stream: {
         waiting: sampleWaiting({
           label: 'A v B',
-          stage: { label: 'Grupo A · R2', kind: 'plain_round' },
+          stage: { label: 'Open · Grupo A · Ronda 2', kind: 'plain_round' },
         }),
         codeUrl: CODE_URL,
         tapToPair: false,
       },
     });
     const staged = pairIntentFor(withStage, facts);
-    expect(staged).toMatchObject({ stageLabel: 'Grupo A · R2', stageMatch: 'A v B' });
+    expect(staged).toMatchObject({ stageLabel: 'Open · Grupo A · Ronda 2', stageMatch: 'A v B' });
     const bare = pairIntentFor(savedStreamCode(), facts);
     expect(bare).not.toBeNull();
     expect(Object.keys(bare ?? {})).not.toContain('stageLabel');

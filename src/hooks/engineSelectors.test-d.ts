@@ -54,7 +54,7 @@ describe('wire strings equal plan B’s (D40)', () => {
 
   it('pins delivery, the shed ladder, the transports and the heartbeat results', () => {
     expectTypeOf<Delivery>().toEqualTypeOf<'ok' | 'stalled' | 'unknown'>();
-    expectTypeOf<ShedStep>().toEqualTypeOf<'overlay-preview' | 'preview-framerate' | 'encode'>();
+    expectTypeOf<ShedStep>().toEqualTypeOf<'viewer-feed' | 'preview-framerate' | 'encode'>();
     expectTypeOf<Transport>().toEqualTypeOf<'srt' | 'rtmps'>();
     expectTypeOf<HeartbeatResult>().toEqualTypeOf<'ok' | 'failed' | 'session-over'>();
     expectTypeOf<Telemetry['heartbeat']['lastResult']>().toEqualTypeOf<HeartbeatResult | null>();

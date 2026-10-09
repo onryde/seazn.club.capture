@@ -18,13 +18,12 @@ class SnapshotWireTest {
   private val clean = RecordCounters(0, 0, 0, 0)
 
   // Made up, within capture-beat.v1: the code is 12 characters of the code alphabet, the tag is
-  // Configs.TOKEN's (token-tag-vectors.json). The overlay sits on the staging Seazn host.
+  // Configs.TOKEN's (token-tag-vectors.json).
   private val code = "fx42hmnp7k2q"
-  private val overlay = "https://stg.seazn.club/overlay/fixtures/$code"
   private val name = PairingName(code, 1, "c980ff38")
 
   private fun waiting(pollSeconds: Int = 10, destinationName: String? = "YouTube · Example Town CC") =
-    Configs.waiting(pollSeconds = pollSeconds, destinationName = destinationName).copy(overlayUrl = overlay)
+    Configs.waiting(pollSeconds = pollSeconds, destinationName = destinationName)
 
   private val pairing = PairingView(name, automatic = true, waiting = waiting())
   private val broadcast =
@@ -32,7 +31,6 @@ class SnapshotWireTest {
       sid = "sess_42",
       cause = Cause.ORGANISER,
       playbackUrl = Configs.PLAYBACK_URL,
-      overlayUrl = overlay,
       label = "Example Town v Sample CC",
       holdWindowSeconds = mapOf(Transport.SRT to 183, Transport.RTMPS to 180),
       maxDurationMinutes = 300,
@@ -58,8 +56,8 @@ class SnapshotWireTest {
       dataUsedBytes = 22_000_000,
       charging = true,
       heartbeat = HeartbeatStatus(1_790_000_060_000, HeartbeatResult.OK, 0, 1),
-      shed = ShedStep.OVERLAY_PREVIEW,
-      device = DeviceSample(2, 0.6, 81, true, 7.5, ShedStep.OVERLAY_PREVIEW),
+      shed = ShedStep.VIEWER_FEED,
+      device = DeviceSample(2, 0.6, 81, true, 7.5, ShedStep.VIEWER_FEED),
       camera = CameraState.OWN,
       pairing = pairing,
       broadcast = broadcast,
@@ -121,12 +119,11 @@ class SnapshotWireTest {
             .copy(pairing = pairing, broadcast = rtmpsOnly, ready = ReadyView(true, true, true, false), camera = CameraState.OWN)
         SnapshotWire.of(snapshot, PlatformFacts(audioLevel = 0.3, survivesBackground = true), clean)
       },
-      // I1: the gate about to open (notReady null), and no overlay entitlement, so both overlay URLs are null.
-      "armed-gate-open-no-overlay" to {
-        val noOverlay = PairingView(name, true, waiting().copy(overlayUrl = null))
+      // I1: the gate about to open (notReady null).
+      "armed-gate-open" to {
         val snapshot =
           bare(SnapshotState.Armed(Cause.OPERATOR, notReady = null), 1_790_000_005_500)
-            .copy(pairing = noOverlay, broadcast = broadcast.copy(cause = Cause.OPERATOR, overlayUrl = null), ready = allReady, camera = CameraState.OWN)
+            .copy(pairing = pairing, broadcast = broadcast.copy(cause = Cause.OPERATOR), ready = allReady, camera = CameraState.OWN)
         SnapshotWire.of(snapshot, PlatformFacts(audioLevel = 0.3, survivesBackground = true), clean)
       },
       // I2: a word outside the closed set crosses as null, for that field alone.
@@ -165,7 +162,7 @@ class SnapshotWireTest {
       "live-telemetry" to { SnapshotWire.of(live, liveFacts, RecordCounters(2, 1, 4, 3, snapshotFailures = 7, commandFailures = 8, stickyFailure = true)) },
       // W28: the round line the descriptor gave crosses on the pairing; every other case's pairing carries none (null).
       "paired-with-stage-label" to {
-        val waiting = waiting().copy(stageLabel = "QF", stageFor = "Example Town v Sample CC")
+        val waiting = waiting().copy(stageLabel = "Open · QF", stageFor = "Example Town v Sample CC")
         val snapshot = bare(SnapshotState.Paired, 1_790_000_007_000).copy(pairing = PairingView(name, true, waiting), ready = allReady, camera = CameraState.OWN)
         SnapshotWire.of(snapshot, PlatformFacts(survivesBackground = true), clean)
       },
@@ -513,13 +510,11 @@ class SnapshotWireTest {
       "pairing.waiting.scheduledStartEpochS" to { s -> s.waiting { copy(scheduledStartEpochS = 1_790_003_660) } },
       "pairing.waiting.autoAllowed" to { s -> s.waiting { copy(autoAllowed = false) } },
       "pairing.waiting.destinationName" to { s -> s.waiting { copy(destinationName = null) } },
-      "pairing.waiting.overlayUrl" to { s -> s.waiting { copy(overlayUrl = null) } },
       "pairing.waiting.pollSeconds" to { s -> s.waiting { copy(pollSeconds = 60) } },
-      "pairing.waiting.stageLabel" to { s -> s.waiting { copy(stageLabel = "SF") } },
+      "pairing.waiting.stageLabel" to { s -> s.waiting { copy(stageLabel = "Open · SF") } },
       "broadcast.sid" to { s -> s.broadcast { copy(sid = "sess_43") } },
       "broadcast.cause" to { s -> s.broadcast { copy(cause = Cause.OPERATOR) } },
       "broadcast.playbackUrl" to { s -> s.broadcast { copy(playbackUrl = "$playbackUrl?x") } },
-      "broadcast.overlayUrl" to { s -> s.broadcast { copy(overlayUrl = null) } },
       "broadcast.label" to { s -> s.broadcast { copy(label = "Sample CC v Example Town") } },
       "broadcast.holdWindowSeconds" to { s -> s.broadcast { copy(holdWindowSeconds = mapOf(Transport.RTMPS to 180)) } },
       "broadcast.maxDurationMinutes" to { s -> s.broadcast { copy(maxDurationMinutes = 240) } },

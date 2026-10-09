@@ -8,6 +8,7 @@ import type { ScoringWord } from '@/services/scoringLinkPort';
 import { layout, space } from '@/ui/theme/tokens';
 import { typeScale } from '@/ui/theme/type';
 import { loadFont } from '../../../test/fontMetrics';
+import { linesOf } from '../../../test/textFit';
 import { FAKE_SCORING_URL } from '../../../test/fakeScoringLinkPort';
 
 // Spec §10, Q-C2 and the owner's board: Remote scoring adds a fourth cell to the on-air icon row and a panel over
@@ -33,25 +34,6 @@ type Dictionary = Readonly<Record<string, string>>;
 
 const stack = (items: readonly number[], gap: number, pad: number) =>
   2 * pad + items.reduce((sum, item) => sum + item, 0) + gap * (items.length - 1);
-
-/**
- * Lines a text takes in a width, breaking at plain spaces (a no-break space does not break, as in French typography)
- * with no kerning, which can only over-state a width slightly. At least one word per line. (homeFit.test.ts keeps
- * the same helper; copied, not exported, to keep this file off that one.)
- */
-function linesOf(text: string, width: number, measure: (text: string) => number): number {
-  let lines = 1;
-  let current = '';
-  for (const piece of text.split(' ')) {
-    const next = current === '' ? piece : `${current} ${piece}`;
-    if (current === '' || measure(next) <= width) current = next;
-    else {
-      lines += 1;
-      current = piece;
-    }
-  }
-  return lines;
-}
 
 const barlow600 = loadFont('barlow-condensed-600');
 const barlow700 = loadFont('barlow-condensed-700');
@@ -117,7 +99,9 @@ let peekRows = 0;
 let worstReasonLines = 0;
 const MEASURED_AT_640 = new Map<string, { label: number; reason: number }>();
 
-describe('the on-air icon row with four cells (F6, RP10)', () => {
+// The four cells are the row with What viewers see built in. It is hidden as shipped (the owner's ruling, 2026-10-09:
+// the row is then three buttons, controlsFit.test.ts), and these rows keep the hidden cell's fit proved.
+describe('the on-air icon row with four cells, What viewers see built in (F6, RP10)', () => {
   it('the peek cell is 110 dp at 640, 800, 844 and 915 alike: the controls half does not grow with the screen', () => {
     expect(GEOMETRIES.map(([width]) => peekCell(width))).toEqual([110, 110, 110, 110]);
     expect(peekText(640)).toBe(92);
@@ -160,6 +144,15 @@ describe('the on-air icon row with four cells (F6, RP10)', () => {
   it('counted 4 geometries × 4 languages = 16 rows (anti-vacuity)', () => {
     expect(GEOMETRIES).toHaveLength(4);
     expect(peekRows).toBe(16);
+  });
+
+  it('the heat reason (D2 §4.2) is one line in the 110 dp cell in every language: 58.0, 79.7, 97.3 and 99.9 dp', () => {
+    const widths = LANGUAGES.map(([, dictionary]) =>
+      unitWidth(dictionary['stream.peek.hot'] ?? ''),
+    );
+    expect(widths.map((each) => Math.round(each * 10) / 10)).toEqual([58.0, 79.7, 97.3, 99.9]);
+    for (const [, dictionary] of LANGUAGES)
+      expect(linesOf(dictionary['stream.peek.hot'] ?? '', peekCell(640), unitWidth)).toBe(1);
   });
 
   // At 640 the numbers are asserted as they were measured, not as hoped (RP10): the label is wider than the 92 dp of

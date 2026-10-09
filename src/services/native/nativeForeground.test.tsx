@@ -49,6 +49,26 @@ describe('the foreground port over AppState (N2)', () => {
     expect(onForeground).toHaveBeenCalledTimes(1);
   });
 
+  // B5 fix round 4: a hook that mounts while the app is already in the background (a remote Go live routing a locked
+  // phone to Live Stream) reads where the app is now. Only `active` is the foreground, as for `subscribe`.
+  it.each([
+    ['active', true],
+    ['background', false],
+    ['inactive', false],
+    ['unknown', false],
+  ] as const)('reads AppState now: %s is the foreground → %s', (state, expected) => {
+    vi.spyOn(AppState, 'currentState', 'get').mockReturnValue(state);
+    expect(createNativeForeground().isForeground()).toBe(expected);
+  });
+
+  it('reads AppState at each call, not once when the port is built', () => {
+    const current = vi.spyOn(AppState, 'currentState', 'get').mockReturnValue('active');
+    const foreground = createNativeForeground();
+    expect(foreground.isForeground()).toBe(true);
+    current.mockReturnValue('background');
+    expect(foreground.isForeground()).toBe(false);
+  });
+
   it.each(['subscribe', 'subscribeBackground'] as const)(
     'stops listening through the subscription’s remove (%s)',
     (method) => {

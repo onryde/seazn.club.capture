@@ -44,7 +44,8 @@ export const PLAIN_KEYS: ReadonlySet<string> = new Set([
   'failure',
   'field',
   'from',
-  // I1: where a refused overlay navigation aimed; a bare host, never a path or query.
+  // A bare host, never a path or query (plan A I1). Its producer, the overlay guard's refused navigation, went with
+  // the score preview (D2 §4.1); native's PLAIN_KEYS still lists it (SessionRecord.kt:260), so both scrubs keep it.
   'host',
   'intent',
   'key',

@@ -51,18 +51,18 @@ describe('CD17: an engine that goes quiet', () => {
   });
 
   // The owner's two tiers (2026-10-08): a silent engine reports a failure, so its line is URGENT and keeps the strip's one
-  // line from every caption. Before air, with the score preview on and a charger plugged in, the one line is the Score
-  // ahead note; the engine going quiet takes it, and the note is back when it reports again.
-  it('with the score preview on, a silent engine’s line beats the Score ahead note, which comes back with the engine', async () => {
-    const view = await renderViewfinder({}, { quiet: true });
-    expect(screen.getByTestId('strip-message').textContent).toBe(en['stream.advisory.scoreAhead']);
+  // line from every caption. Before air, on the fake phone as it is (unplugged), the one line is Not charging; the engine
+  // going quiet takes it, and the caption is back when it reports again.
+  it('a silent engine’s line beats the Not charging caption, which comes back with the engine', async () => {
+    const view = await renderViewfinder();
+    expect(screen.getByTestId('strip-message').textContent).toBe(NOT_CHARGING);
     act(() => view.engine.suspend());
     later(view, 3_001);
     expect(plate()).toBe('Trouble');
     expect(screen.getByTestId('strip-message').textContent).toBe(SILENT);
-    expect(screen.queryByText(en['stream.advisory.scoreAhead'])).toBeNull();
+    expect(screen.queryByText(NOT_CHARGING)).toBeNull();
     act(() => view.engine.scene('paired-ready'));
-    expect(screen.getByTestId('strip-message').textContent).toBe(en['stream.advisory.scoreAhead']);
+    expect(screen.getByTestId('strip-message').textContent).toBe(NOT_CHARGING);
   });
 
   // The negative pair: the same clock, with native reporting, is no news.

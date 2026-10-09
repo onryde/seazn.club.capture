@@ -1,5 +1,4 @@
-import { createHash } from 'node:crypto';
-import { readdirSync, readFileSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import Ajv2020 from 'ajv/dist/2020';
 import addFormats from 'ajv-formats';
 import { describe, expect, it } from 'vitest';
@@ -13,22 +12,18 @@ import vectors from './wire/server-bodies.json';
  * host's ScriptedServer.kt each assert their bodies equal these vectors.
  */
 
-/** The web repo's contracts at 7e75fd4a7, pinned by sha256 (PR C Task 1; beat unchanged since 5bb72e8a2). */
-const PINNED = {
-  'capture-beat.v1.json': 'e14329132400d45cd38e03b19cf85189fe35acb0b8b9a51e7ca98879fe07c736',
-  'capture-descriptor.v1.json': '45fc9ad71f763ed0d34e654b729e4103e3d47c82fd6af1e9e46cc3ad5ef5ed55',
-  'capture-scoring-link.v1.json':
-    'f0f1188655f3ca83b3e42ce7fedd6f6210a3a141b0bcf02fa250eb2448b1c85f',
-  'capture-start.v1.json': '012d6e3851e84d0ce659ad23449fa91b61f0d20cfac1e58f2ccbc7cbb0742bae',
-} as const;
-
-const contracts = new URL('../../../test/fixtures/contracts/', import.meta.url);
+/** The vendored contracts (plan D spec §3.1), pinned file for file by test/contractPins.test.ts. */
+const contracts = new URL('../../../contracts/', import.meta.url);
 const text = (file: string) => readFileSync(new URL(file, contracts), 'utf8');
+/** The schemas: VENDORED.json's top-level files. The fixtures sit in folders below them. */
+const SCHEMAS = Object.keys(
+  (JSON.parse(text('VENDORED.json')) as { files: Record<string, string> }).files,
+).filter((path) => !path.includes('/'));
 
 const ajv = new Ajv2020({ allErrors: true, strict: true });
 addFormats(ajv);
 const ids = new Map<string, string>();
-for (const file of Object.keys(PINNED)) {
+for (const file of SCHEMAS) {
   const schema = JSON.parse(text(file)) as { $id: string };
   ajv.addSchema(schema);
   ids.set(file, schema.$id);
@@ -59,16 +54,15 @@ const named = (name: string) => {
 };
 
 describe('the native tests answer with the web contract shapes', () => {
-  it.each(Object.entries(PINNED))('%s is the pinned copy', (file, sha) => {
-    expect(createHash('sha256').update(text(file)).digest('hex')).toBe(sha);
-  });
-
-  // The pin list against the folder itself, so a contract added to the folder without a pin, or a pin dropped
-  // while its file stays, reds. The folder is read, not counted: a literal count would move with the list.
-  it('pins exactly the contracts in the folder', () => {
-    const inFolder = readdirSync(contracts).sort();
-    expect(inFolder.length).toBeGreaterThan(0); // anti-vacuity: an empty or missing folder is a failure
-    expect(Object.keys(PINNED).sort()).toEqual(inFolder);
+  // The pin itself is test/contractPins.test.ts; here, that every vendored schema reached ajv.
+  it('registers the five vendored schemas, the QR among them', () => {
+    expect([...SCHEMAS].sort()).toEqual([
+      'capture-beat.v1.json',
+      'capture-descriptor.v1.json',
+      'capture-qr.v2.json',
+      'capture-scoring-link.v1.json',
+      'capture-start.v1.json',
+    ]);
   });
 
   // The file's count, so an emptied or truncated file cannot pass by sweeping nothing (PV12).

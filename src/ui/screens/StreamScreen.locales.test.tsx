@@ -70,8 +70,8 @@ const SUB_STATES: Readonly<Record<string, (lang: Lang) => Promise<void>>> = {
     view.rerender(<SettingsScreen />);
     const refusing: Partial<KeyValueStore> = { set: () => Promise.reject(new Error('locked')) };
     Object.assign(view.kv, refusing);
-    // Two switches since Task 30: the score preview's is the one pressed.
-    fireEvent.click(screen.getByRole('switch', { name: shown(lang, 'settings.overlay.label') }));
+    // The one switch since D2 (§4.1): the automatic start's.
+    fireEvent.click(screen.getByRole('switch', { name: shown(lang, 'settings.automatic.label') }));
     expect(await screen.findByText(shown(lang, 'settings.saveFailed'))).toBeTruthy();
   },
   'a share refused': async (lang) => {
@@ -81,23 +81,18 @@ const SUB_STATES: Readonly<Record<string, (lang: Lang) => Promise<void>>> = {
     fireEvent.click(screen.getByRole('button', { name: shown(lang, 'diag.share') }));
     expect(await screen.findByText(shown(lang, 'diag.shareFailed'))).toBeTruthy();
   },
-  'the overlay crashed': async (lang) => {
-    await renderViewfinder(
-      { deviceLanguages: [lang] },
-      { prepare: (fakes) => fakes.surfaces.crashOverlay() },
-    );
-    expect(visibleCopy()).toContain(shown(lang, 'stream.advisory.overlayFailed'));
-  },
   // Amendment §2: a visit never pairs, so an engine found idle stays Starting.
   'an idle engine': async (lang) => {
     await renderViewfinder({ deviceLanguages: [lang] }, { engine: 'idle' });
     expect(visibleCopy()).toContain(shown(lang, 'stream.status.starting'));
   },
-  // No broadcast reported on air: forced on an engine that holds no pairing.
+  // No broadcast reported on air: forced on an engine that holds no pairing. What viewers see built in: it is hidden
+  // as shipped (the owner's ruling, 2026-10-09), and its reason stays swept.
   'on air with no viewer picture': async (lang) => {
     await renderViewfinder(
       { deviceLanguages: [lang] },
       {
+        viewerCheck: true,
         engine: 'idle',
         prepare: (fakes) =>
           fakes.engine.forceState({ kind: 'publishing', transport: 'srt', sinceEpochMs: 1 }),
@@ -124,10 +119,7 @@ describe('the paired and starting lines read in every language', () => {
   it.each(['es', 'fr', 'nl'] as const)(
     '%s says its waiting line with the destination cut',
     async (lang) => {
-      const view = await renderViewfinder(
-        { deviceLanguages: [lang] },
-        { overlay: false, quiet: true },
-      );
+      const view = await renderViewfinder({ deviceLanguages: [lang] }, { quiet: true });
       act(() => view.engine.setPairing({ destinationName: LONG }));
       act(() => view.engine.scene('paired-ready'));
       const said = DICTIONARIES[lang]['stream.status.waitingGoLive']?.replace('{destination}', CUT);
@@ -145,10 +137,10 @@ describe('the paired and starting lines read in every language', () => {
 
 describe('no screen in any state shows a raw key (AGENTS §10, question 4)', () => {
   // Review M3: an empty table registers no case and passes. Update the counts
-  // when a scene or a sub-state is added: 4 languages × 23 scenes, × 7 sub-states.
+  // when a scene or a sub-state is added: 4 languages × 23 scenes, × 6 sub-states.
   it('sweeps every scene and every sub-state, in every language', () => {
     expect(SCENE_CASES).toHaveLength(92);
-    expect(SUB_STATE_CASES).toHaveLength(28);
+    expect(SUB_STATE_CASES).toHaveLength(24);
   });
 
   it.each(SUB_STATE_CASES)('%s, %s', async (lang, name) => {
@@ -183,13 +175,13 @@ describe('no screen in any state shows a raw key (AGENTS §10, question 4)', () 
     const glued = document.createElement('div');
     glued.innerHTML = '<span>Diagnostics</span><span>stream.tally.live</span>';
     const label = document.createElement('div');
-    label.setAttribute('aria-label', 'settings.overlay.label');
+    label.setAttribute('aria-label', 'settings.automatic.label');
     document.body.append(glued, label);
     onTestFinished(() => {
       glued.remove();
       label.remove();
     });
     expect(document.body.textContent).toContain('Diagnosticsstream.tally.live');
-    expect(rawKeys()).toEqual(['stream.tally.live', 'settings.overlay.label']);
+    expect(rawKeys()).toEqual(['stream.tally.live', 'settings.automatic.label']);
   });
 });
