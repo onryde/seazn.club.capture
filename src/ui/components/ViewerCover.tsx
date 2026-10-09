@@ -8,7 +8,7 @@ import type { ViewerFeed } from '@/hooks/useViewerFeed';
 import type { VideoStatus } from '@/services/surfaces';
 import { StageVideo } from '@/ui/components/StageVideo';
 import { Text } from '@/ui/components/Text';
-import { colour, space } from '@/ui/theme/tokens';
+import { colour, layout, space } from '@/ui/theme/tokens';
 
 type Open = Exclude<ViewerCheck['kind'], 'idle'>;
 
@@ -20,18 +20,21 @@ type ViewerCoverProps = {
 };
 
 /**
- * What viewers see, over the camera box only (D2 §4.3): the status strip stays visible, and Stop is never covered. One
- * tap anywhere on it closes it (its accessible name is Hide). While loading and showing it carries the honest line, no
- * scoreboard yet: there is no compositor, so the viewers' picture has no score on it. Never blank: a line says what is
- * happening whenever there is no picture.
+ * What viewers see, over the camera box only (D2 §4.3): the status strip stays visible, and Stop is never covered. A
+ * tap anywhere on the box closes it, and so does its Hide, drawn in the corner as the Remote scoring panel draws its
+ * own (spec §4.3). While loading and showing it carries the honest line, no scoreboard yet: there is no compositor,
+ * so the viewers' picture has no score on it. Never blank: a line says what is happening whenever there is no picture.
+ *
+ * The box is not one accessible element. On Android a Pressable groups its children under one focus (react-native
+ * Pressable: `accessible !== false`), and TalkBack would read none of the lines; here they are read on their own,
+ * with Hide as a named button.
  */
 export const ViewerCover = memo(function ViewerCover(props: ViewerCoverProps) {
   const { t } = useT();
   return (
     <Pressable
       testID="viewer-cover"
-      accessibilityRole="button"
-      accessibilityLabel={t('stream.peek.hide')}
+      accessible={false}
       onPress={props.onClose}
       style={styles.cover}
     >
@@ -40,6 +43,7 @@ export const ViewerCover = memo(function ViewerCover(props: ViewerCoverProps) {
       ) : (
         <ViewerPicture kind={props.kind} feed={props.feed} onFirstFrame={props.onFirstFrame} />
       )}
+      <CoverCorner showing={props.kind === 'showing'} onClose={props.onClose} />
     </Pressable>
   );
 });
@@ -78,8 +82,30 @@ const ViewerPicture = memo(function ViewerPicture({ kind, feed, onFirstFrame }: 
           {t('stream.peek.honest')}
         </Text>
       </View>
-      {kind === 'showing' ? <Countdown total={SHOWING_MS} line="stream.peek.closesIn" /> : null}
     </>
+  );
+});
+
+type CornerProps = { readonly showing: boolean; readonly onClose: () => void };
+
+/**
+ * The bottom-right row, in every phase: the closing countdown while showing, then Hide. The scoring panel's word, as
+ * its row ends (B3 review m4); viewerCoverFit.test.ts fits the row at 640 × 360 and 804 × 332.
+ */
+const CoverCorner = memo(function CoverCorner({ showing, onClose }: CornerProps) {
+  const { t } = useT();
+  return (
+    <View style={styles.corner}>
+      {showing ? <Countdown total={SHOWING_MS} line="stream.peek.closesIn" /> : null}
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={t('stream.scoring.hide')}
+        onPress={onClose}
+        style={styles.hide}
+      >
+        <Text variant="control">{t('stream.scoring.hide')}</Text>
+      </Pressable>
+    </View>
   );
 });
 
@@ -114,7 +140,10 @@ function useSecondsLeft(from: number): number {
   return left;
 }
 
-/** The line in the middle of the box, on the ground: the countdown, no picture, or not ready. */
+/**
+ * The line in the middle of the box, on the ground: the countdown, no picture, or not ready. Tabular figures, so the
+ * countdown's digit does not twitch as it changes (AGENTS §5).
+ */
 const CentreLine = memo(function CentreLine({ text }: { readonly text: string }) {
   return (
     <View testID="viewer-note" style={styles.centre}>
@@ -135,7 +164,7 @@ const styles = StyleSheet.create({
     padding: space.md,
     backgroundColor: colour.ground,
   },
-  line: { textAlign: 'center' },
+  line: { textAlign: 'center', fontVariant: ['tabular-nums'] },
   honest: {
     position: 'absolute',
     top: 0,
@@ -146,13 +175,30 @@ const styles = StyleSheet.create({
     backgroundColor: colour.ground,
   },
   ink: { color: colour.ink },
-  closesIn: {
+  // The row is `space.sm` in from the box's edges, its two plates `space.sm` apart (viewerCoverFit.test.ts).
+  corner: {
     position: 'absolute',
-    right: 0,
-    bottom: 0,
+    right: space.sm,
+    bottom: space.sm,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: space.sm,
+  },
+  closesIn: {
     paddingHorizontal: space.sm,
     paddingVertical: space.xs,
     backgroundColor: colour.ground,
   },
   count: { color: colour.ink, fontVariant: ['tabular-nums'] },
+  // The scoring panel's Hide, on the night: a 48 dp target with the hairline rule, on the ground so it reads over video.
+  hide: {
+    minHeight: layout.iconButton,
+    minWidth: layout.iconButton,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: space.md,
+    borderWidth: layout.iconBorder,
+    borderColor: colour.ink3,
+    backgroundColor: colour.ground,
+  },
 });

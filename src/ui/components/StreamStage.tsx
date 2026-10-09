@@ -108,12 +108,15 @@ type CameraBoxProps = {
 /**
  * The shot. Its own memo, so a status line that changes every second re-renders the strip beneath it and never the
  * preview or the viewers' video (M7, AGENTS §8). The viewers' feed is read here for the whole broadcast, so its first
- * window is timed from the start of live, whether or not the view is open; its player exists only while it is.
+ * window is timed from the start of live, whether or not the view is open. Its player exists only while the view
+ * loads or shows: the not-ready line draws none, so a retry that falls due on it is parked, not spent on a player
+ * nobody can see (B3 review I1).
  */
 const CameraBox = memo(function CameraBox({ size, viewer }: CameraBoxProps) {
   const { surfaces } = usePorts();
   const open = viewer.kind !== 'idle';
-  const viewers = useViewerFeed(open, open);
+  const holding = viewer.kind === 'loading' || viewer.kind === 'showing';
+  const viewers = useViewerFeed(open, holding);
   const sized = useSizedStyle(size);
   const { Preview } = surfaces;
   return (

@@ -212,6 +212,30 @@ describe('useViewerCheck (D2 §4.3)', () => {
     ]);
   });
 
+  /** PD6, B3 review m1: a view with no frame leaves no tap time behind for the next one to measure from. */
+  it.each([
+    ['closed by a tap', [1_000]],
+    ['ran to its not-ready line and closed', [5_000, 3_000]],
+  ] as const)(
+    'measures a later view’s first frame from its own tap, after a view that %s with no frame',
+    (_route, firstView) => {
+      const { result, fakes } = mount();
+      act(() => result.current.toggle());
+      // One act per phase (React renders an act's updates as it exits).
+      for (const ms of firstView) act(() => vi.advanceTimersByTime(ms));
+      if (result.current.kind !== 'idle') act(() => result.current.toggle());
+      expect(result.current.kind).toBe('idle');
+      act(() => vi.advanceTimersByTime(4_000));
+      act(() => result.current.toggle());
+      act(() => vi.advanceTimersByTime(2_000));
+      act(() => result.current.firstFrame());
+      const firstFrames = readRecord(fakes.record)
+        .filter((entry) => entry.event === 'viewer.firstFrame')
+        .map((entry) => entry.fields);
+      expect(firstFrames).toEqual([{ ms: 2_000 }]);
+    },
+  );
+
   it('runs the same with every effect run twice (StrictMode): 5 s, 3 s, one line per state', () => {
     const { result, fakes } = mount(OPEN, ticking(), true);
     act(() => result.current.toggle());

@@ -152,7 +152,6 @@
   "stream.peek.honest": "What viewers see · no scoreboard yet",
   "stream.peek.closesIn": "Closes in {seconds} s",
   "stream.peek.notReady": "Viewers don't have a picture yet — try again shortly",
-  "stream.peek.hide": "Hide",
   "stream.peek.loading": "Waiting for the picture · {seconds} s",
   "stream.photo.label": "Take photo",
   "stream.photo.saved": "Photo saved",

@@ -153,7 +153,6 @@
   "stream.peek.honest": "Ce que voit le public · pas encore de score",
   "stream.peek.closesIn": "Se ferme dans {seconds} s",
   "stream.peek.notReady": "Le public n'a pas encore d'image\u00a0: réessayez bientôt",
-  "stream.peek.hide": "Masquer",
   "stream.peek.loading": "En attente de l'image · {seconds} s",
   "stream.photo.label": "Prendre une photo",
   "stream.photo.saved": "Photo enregistrée",

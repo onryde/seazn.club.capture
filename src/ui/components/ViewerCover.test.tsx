@@ -1,4 +1,5 @@
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
+import type { ComponentProps } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ViewerCheck } from '@/domain/session/viewerCheck';
 import type { Feed } from '@/domain/session/viewerFeed';
@@ -15,6 +16,27 @@ const fill = (text: string, seconds: number) => text.replace('{seconds}', String
 const note = () => screen.queryByTestId('viewer-note')?.textContent ?? null;
 const video = () => screen.queryByTestId('viewer-video');
 const NONE = en['stream.peek.unavailable'];
+const HIDE = en['stream.scoring.hide'];
+const box = () => screen.getByTestId('viewer-cover');
+
+/**
+ * The props each Pressable is handed. react-native-web drops `accessible` (it is not in its `forwardedProps`), and on
+ * Android a Pressable is accessible unless told otherwise (react-native 0.86.3, Pressable.js:252), which groups its
+ * children under one focus. What the cover hands its Pressables is what TalkBack is given; what it speaks is a
+ * device check.
+ */
+const handed = vi.hoisted(() => [] as Record<string, unknown>[]);
+vi.mock('react-native', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('react-native')>();
+  const { createElement } = await import('react');
+  return {
+    ...actual,
+    Pressable: (props: ComponentProps<typeof actual.Pressable>) => {
+      handed.push(props as Record<string, unknown>);
+      return createElement(actual.Pressable, props);
+    },
+  };
+});
 
 /** The cover alone, on air (a playback URL to play), with its owner's two handlers as spies. */
 function cover(kind: Open, feed: Feed) {
@@ -120,9 +142,45 @@ describe('ViewerCover', () => {
     }
   });
 
-  it('closes on one tap anywhere on it, under the name Hide', () => {
+  it('closes on one tap anywhere on the box', () => {
     const view = cover('showing', 'playing');
-    fireEvent.click(screen.getByRole('button', { name: en['stream.peek.hide'] }));
+    fireEvent.click(box());
     expect(view.onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it('sets the loading countdown in tabular figures, so its digit does not twitch (AGENTS §5)', () => {
+    cover('loading', 'waiting');
+    const line = screen.getByText(fill(en['stream.peek.loading'], 5));
+    expect(getComputedStyle(line).fontVariant).toBe('tabular-nums');
+  });
+
+  /** Spec §4.3: the view closes on a tap on the box or on Hide, the word the Remote scoring panel uses for its own. */
+  it.each(['loading', 'showing', 'notReady'] as const)(
+    '%s: draws Hide, the cover’s one button, and Hide closes the view',
+    (kind) => {
+      const view = cover(kind, 'playing');
+      const hide = screen.getByRole('button', { name: HIDE });
+      expect(within(hide).getByText(HIDE)).toBeTruthy();
+      expect(screen.getAllByRole('button')).toHaveLength(1);
+      fireEvent.click(hide);
+      expect(view.onClose).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  it('hands TalkBack the lines and a named Hide: the box itself is not one accessible element', () => {
+    handed.length = 0;
+    cover('loading', 'waiting');
+    const boxProps = handed.filter((props) => props.testID === 'viewer-cover').at(-1);
+    expect(boxProps).toMatchObject({ accessible: false });
+    expect(boxProps?.accessibilityLabel).toBeUndefined();
+    expect(boxProps?.accessibilityRole).toBeUndefined();
+    const hideProps = handed.filter((props) => props.accessibilityLabel === HIDE).at(-1);
+    expect(hideProps).toMatchObject({ accessibilityRole: 'button', accessibilityLabel: HIDE });
+    // In the DOM too: the box names nothing, and the lines are not inside the button.
+    expect(box().getAttribute('aria-label')).toBeNull();
+    expect(box().getAttribute('role')).toBeNull();
+    const hide = screen.getByRole('button', { name: HIDE });
+    expect(hide.contains(screen.getByText(fill(en['stream.peek.loading'], 5)))).toBe(false);
+    expect(hide.contains(screen.getByText(en['stream.peek.honest']))).toBe(false);
   });
 });

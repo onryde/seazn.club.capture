@@ -33,9 +33,10 @@ const endsStretch = (kind: Kind): boolean => kind === 'reconnecting' || OVER.has
  * `viewerFeed`; this hook owns what the rule cannot know: whether a window has ever been delivered in this
  * stretch, and where the player is in its retries.
  * Every record line it writes names a state or a number, never a URL (M32). `pressed` is What viewers see
- * open: opening it again after the layer gave up tries again (R1). `mounted` is the view holding a player: when
- * it is not, no Video exists, whatever the feed says. The view keeps no warm player (D2 §4.3), so the two are
- * the same today.
+ * open: opening it again after the layer gave up tries again (R1). `mounted` is the view holding a player, which
+ * it does only while it loads or shows: when it does not, no Video exists, whatever the feed says, and a retry is
+ * parked. The two differ on the not-ready line, which is open and draws no player (B3 review I1); there is no
+ * warm player (D2 §4.3).
  */
 export function useViewerFeed(pressed: boolean, mounted: boolean): ViewerFeed {
   const kind = useEngineSelector(selectStateKind);

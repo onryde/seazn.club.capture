@@ -153,7 +153,6 @@
   "stream.peek.honest": "Wat kijkers zien · nog geen scorebord",
   "stream.peek.closesIn": "Sluit over {seconds} s",
   "stream.peek.notReady": "Kijkers hebben nog geen beeld: probeer het zo opnieuw",
-  "stream.peek.hide": "Verbergen",
   "stream.peek.loading": "Wachten op beeld · {seconds} s",
   "stream.photo.label": "Foto maken",
   "stream.photo.saved": "Foto opgeslagen",

@@ -422,6 +422,32 @@ describe('the viewer layer (spec §9, D6 to D8)', () => {
     ]);
   });
 
+  it('M55d a retry that falls due on the not-ready line is not spent: the next view still retries at 2 s (B3 review I1)', async () => {
+    const view = await liveWithoutWindow();
+    tap();
+    windowLands(view);
+    // The player fails 3.5 s into loading. Its retry would fall due at 5.5 s, on the not-ready line, which draws no
+    // player: nobody could see what that retry mounts.
+    advance(view, 3_500);
+    act(() => view.surfaces.videoStatus('failed'));
+    advance(view, 1_500);
+    expect(note()).toBe(en['stream.peek.notReady']);
+    expect(video()).toBeNull();
+    advance(view, 500);
+    advance(view, 2_500);
+    expect(cover()).toBeNull();
+    const mounts = view.surfaces.videoMounts();
+    expect(mounts).toBe(1);
+    // The operator tries again, as the line asks: a fresh player, and its first failure waits the first rung.
+    tap();
+    expect(view.surfaces.videoMounts()).toBe(mounts + 1);
+    expect(failAndWait(view, 0)).toEqual({ before: mounts + 1, after: mounts + 2 });
+    expect(lines(view, 'peek.retry').map((line) => line.fields)).toEqual([
+      { attempt: 0 },
+      { attempt: 0 },
+    ]);
+  });
+
   it('R1 opening the view after the give-up tries again with a fresh player, from the first wait', async () => {
     const view = await givenUp();
     const mounts = view.surfaces.videoMounts();

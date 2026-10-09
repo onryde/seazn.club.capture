@@ -75,8 +75,27 @@ describe('What viewers see on the viewfinder (D2 §4.3)', () => {
     fireEvent.click(peek());
     expect(cover()).toBeNull();
     fireEvent.click(peek());
-    fireEvent.click(screen.getByRole('button', { name: en['stream.peek.hide'] }));
+    fireEvent.click(screen.getByTestId('viewer-cover'));
     expect(cover()).toBeNull();
+  });
+
+  it('Hide on the cover closes the view: idle, the player unmounted, the peek no longer selected (D2 §4.3)', async () => {
+    const view = await onAir();
+    fireEvent.click(peek());
+    act(() => view.surfaces.videoStatus('ready'));
+    expect(video()).not.toBeNull();
+    const hide = screen.getByRole('button', { name: en['stream.scoring.hide'] });
+    // The Hide that is drawn, a button of its own: not the box's name for itself.
+    expect(hide).not.toBe(cover());
+    expect(cover()?.contains(hide)).toBe(true);
+    fireEvent.click(hide);
+    expect(cover()).toBeNull();
+    expect(video()).toBeNull();
+    expect(peek().getAttribute('aria-selected')).toBe('false');
+    const states = readRecord(view.record)
+      .filter((entry) => entry.event === 'viewer.check')
+      .map((entry) => entry.fields.state);
+    expect(states).toEqual(['loading', 'showing', 'idle']);
   });
 
   it('reads selected on the peek while the view is open, and not once it closes', async () => {
