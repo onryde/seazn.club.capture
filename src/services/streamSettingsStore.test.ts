@@ -96,6 +96,8 @@ describe('stream settings (D23)', () => {
     ['{"v":3,"side":"left","automatic":"on"}'],
     ['{"v":3,"side":"up","automatic":true}'],
     ['{"v":3,"automatic":true}'],
+    // A v4 shaped like a whole v2: only the v2 branch's version check refuses it (review I1).
+    ['{"v":4,"overlay":true,"side":"left","automatic":true}'],
   ])('reads %s as unreadable, never as a half setting', async (text) => {
     const { store, events } = build(createMemoryKeyValueStore({ [SETTINGS_KEY]: text }));
     await store.load();
