@@ -168,6 +168,46 @@ class BeatLogTest {
   }
 
   @Test
+  fun `the answer that unpairs the phone counts in its minute - replaced`() {
+    val rig = MachineRig().paired()
+    // The claim at 0, 20 s into minute A, is answered `replaced`, a 2xx: the phone leaves the pairing on that answer.
+    val lines = beats(rig.hear("replaced"))
+    assertTrue(rig.phase is Phase.Idle, rig.phase.name)
+    assertEquals(listOf(minute(minuteA, sent = 1, failed = 0, word = "Replaced")), lines)
+  }
+
+  @Test
+  fun `the answer that unpairs the phone counts in its minute - taken`() {
+    val rig = MachineRig().paired()
+    val lines = beats(rig.hear("taken"))
+    assertTrue(rig.phase is Phase.Idle, rig.phase.name)
+    assertEquals(listOf(minute(minuteA, sent = 1, failed = 0, word = "Taken")), lines)
+  }
+
+  @Test
+  fun `the answer that unpairs the phone counts in its minute - a 401 while paired`() {
+    val rig = MachineRig().paired()
+    // A 401 is no 2xx: the claim failed, and its word ends the code.
+    val lines = beats(rig.hear(null, status = 401))
+    assertTrue(rig.phase is Phase.Idle, rig.phase.name)
+    assertEquals(listOf(minute(minuteA, sent = 1, failed = 1, word = "CodeEnded")), lines)
+  }
+
+  @Test
+  fun `the answer that unpairs the phone counts in its minute - a 401 while arming`() {
+    val rig = MachineRig().paired()
+    rig.codes = null
+    // The claim at 0 is answered go-live (Open) and arms sess_42, whose code never answers. The held beat at 10 s,
+    // 30 s into minute A, goes from Arming; its 401 ends the code.
+    rig.hear("go-live", sid = "sess_42", startedBy = "organiser")
+    rig.advance(10_000)
+    assertTrue(rig.phase is Phase.Arming, rig.phase.name)
+    val lines = beats(rig.hear(null, status = 401))
+    assertTrue(rig.phase is Phase.Idle, rig.phase.name)
+    assertEquals(listOf(minute(minuteA, sent = 2, failed = 1, word = "CodeEnded")), lines)
+  }
+
+  @Test
   fun `a re-pair writes the old pairing's minute and starts its own log (another pairing)`() {
     val rig = MachineRig().paired()
     rig.hear("waiting")

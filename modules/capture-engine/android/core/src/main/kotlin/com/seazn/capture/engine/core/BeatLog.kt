@@ -51,10 +51,9 @@ data class BeatLog(
   /** A beat's answer ([ok] for a 2xx), or a beat given up ([word] null, not [ok]). */
   fun heard(word: String?, ok: Boolean): BeatLog = copy(failed = if (ok) failed else failed + 1, word = word ?: this.word)
 
-  /** The counted minute's line, or null when no beat went in it. */
+  /** The counted minute's line, or null before the first beat: only [send] opens a minute, and counts its beat. */
   fun minuteLine(): RecordEntry? {
     val minute = minuteEpochMs ?: return null
-    if (sent == 0) return null
     return RecordEntry("beats", listOf("minuteEpochMs" to minute, "sent" to sent, "failed" to failed, "word" to word))
   }
 
@@ -65,14 +64,16 @@ data class BeatLog(
 
 /**
  * The open minute's line when a pairing stops beating, whatever the input: unpaired, ended (an operator Stop's final
- * beat included, from the Ended pairing's log), or left for a re-pair. One place, so no end path can forget it.
+ * beat included, from the Ended pairing's log), or left for a re-pair. One place, so no end path can forget it. The log
+ * written is the one the step last held: the one it left for Idle ([Step.leftLog], so the answer that unpaired the
+ * phone counts), the Ended pairing's, or else the one the input found (an Unpair or a re-pair changes no beat).
  */
 internal object BeatLogs {
   fun closed(before: Phase, step: Step): Step {
     val log = before.beating?.beatLog ?: return step
     val first = log.firstBeatId ?: return step
     if (step.phase.beating?.beatLog?.firstBeatId == first) return step
-    val last = step.phase.pairing?.beatLog?.takeIf { it.firstBeatId == first } ?: log
+    val last = step.leftLog ?: step.phase.pairing?.beatLog?.takeIf { it.firstBeatId == first } ?: log
     val line = last.minuteLine() ?: return step
     return step.copy(commands = step.commands + Command.Record(line))
   }

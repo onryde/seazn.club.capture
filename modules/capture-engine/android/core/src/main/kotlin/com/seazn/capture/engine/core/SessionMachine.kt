@@ -1,7 +1,11 @@
 package com.seazn.capture.engine.core
 
-/** One step of the machine: the next phase and what to ask of the platform. */
-data class Step(val phase: Phase, val commands: List<Command> = emptyList())
+/**
+ * One step of the machine: the next phase and what to ask of the platform. [leftLog] is the beat log of a pairing the
+ * step left for Idle, as the step last held it ([Pairings.unpaired]), so the answer that unpaired the phone is in the
+ * minute [BeatLogs.closed] writes (plan D §3.4).
+ */
+data class Step(val phase: Phase, val commands: List<Command> = emptyList(), val leftLog: BeatLog? = null)
 
 private fun record(kind: String, vararg fields: Pair<String, Any?>): Command = Command.Record(RecordEntry(kind, fields.toList()))
 
