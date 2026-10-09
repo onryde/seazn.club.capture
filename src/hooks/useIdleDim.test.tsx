@@ -229,3 +229,67 @@ describe('useIdleDim and the status line (D2 §4.5)', () => {
     expect(fakes.screen.calls).toEqual(['dim']);
   });
 });
+
+/**
+ * B5 review I1: in the background nothing starts the count, so nothing dims there: not entering paired, not an urgent
+ * line, not a remote stop (D3 row 2b, the locked phone). The phone comes back bright, and the 30 s count from the return.
+ */
+describe('useIdleDim in the background (D2 §4.5)', () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  it('entering paired while in the background never dims, and it is bright on return', () => {
+    const { fakes } = mount();
+    act(() => fakes.engine.scene('paired-ready'));
+    act(() => fakes.foreground.leave());
+    act(() => fakes.engine.scene('armed-not-ready'));
+    act(() => vi.advanceTimersByTime(40_000));
+    act(() => fakes.engine.scene('paired-ready'));
+    act(() => vi.advanceTimersByTime(31_000));
+    expect(fakes.screen.calls).toEqual([]);
+    act(() => fakes.foreground.fire());
+    expect(fakes.screen.dimmed).toBe(false);
+  });
+
+  it('an urgent line while in the background never dims, and it is bright on return', () => {
+    const { fakes } = mount();
+    act(() => fakes.engine.scene('paired-ready'));
+    act(() => vi.advanceTimersByTime(5_000));
+    act(() => fakes.foreground.leave());
+    act(() => fakes.engine.scene('paired-refused'));
+    expect(selectStatusKey(fakes.engine.getSnapshot())).toBe('stream.status.refusedCredit');
+    act(() => vi.advanceTimersByTime(31_000));
+    expect(fakes.screen.calls).toEqual([]);
+    act(() => fakes.foreground.fire());
+    expect(fakes.screen.dimmed).toBe(false);
+  });
+
+  it('a remote stop while in the background (the locked phone) never dims, and it is bright on return', () => {
+    const { fakes } = mount();
+    act(() => fakes.engine.scene('paired-ready'));
+    act(() => vi.advanceTimersByTime(5_000));
+    act(() => fakes.engine.scene('live'));
+    act(() => fakes.foreground.leave());
+    act(() => vi.advanceTimersByTime(600_000));
+    act(() => fakes.engine.scene('paired-after-organiser-stop'));
+    expect(selectStatusKey(fakes.engine.getSnapshot())).toBe('stream.status.stoppedOrganiser');
+    act(() => vi.advanceTimersByTime(31_000));
+    expect(fakes.screen.calls).toEqual([]);
+    act(() => fakes.foreground.fire());
+    expect(fakes.screen.dimmed).toBe(false);
+  });
+
+  it('after a remote stop in the background, the 30 s count from the return', () => {
+    const { fakes } = mount();
+    act(() => fakes.engine.scene('live'));
+    act(() => fakes.foreground.leave());
+    act(() => vi.advanceTimersByTime(600_000));
+    act(() => fakes.engine.scene('paired-after-organiser-stop'));
+    act(() => vi.advanceTimersByTime(10_000));
+    act(() => fakes.foreground.fire());
+    act(() => vi.advanceTimersByTime(29_999));
+    expect(fakes.screen.dimmed).toBe(false);
+    act(() => vi.advanceTimersByTime(1));
+    expect(fakes.screen.dimmed).toBe(true);
+  });
+});

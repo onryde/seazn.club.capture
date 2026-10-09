@@ -65,3 +65,46 @@ describe('the test shell matches the app shell', () => {
     });
   });
 });
+
+/**
+ * Live Stream's layout (`app/stream/_layout.tsx`) is rendered by no test either: `RoutedApp` mounts the stream screens
+ * without it. Its keep-awake and its `TouchWake` (the idle dim's touch, D2 §4.5) are pinned here, or unwrapping the
+ * stack would ship a dim that no touch wakes, with every test green (B5 review m1).
+ */
+const WRAPS_STACK = /<TouchWake>[\s\S]*<Stack\b[\s\S]*<\/TouchWake>/;
+
+describe('the stream layout keeps the screen on and hears every touch', () => {
+  const layout = body('app/stream/_layout.tsx', 'StreamLayout');
+
+  it('mounts useKeepAwake()', () => {
+    expect(layout.includes('useKeepAwake()')).toBe(true);
+  });
+
+  it('wraps its Stack in TouchWake', () => {
+    expect(WRAPS_STACK.test(layout)).toBe(true);
+  });
+
+  it('does not count a TouchWake beside the Stack, or one only in a comment', () => {
+    const beside = bodyOf(
+      [
+        'function StreamLayout() {',
+        '  return (<>',
+        '    <TouchWake />',
+        '    <Stack />',
+        '  </>);',
+        '}',
+      ].join('\n'),
+      'StreamLayout',
+    );
+    const commented = bodyOf(
+      [
+        'function StreamLayout() {',
+        '  // return <TouchWake><Stack /></TouchWake>;',
+        '  return <Stack />;',
+        '}',
+      ].join('\n'),
+      'StreamLayout',
+    );
+    expect([WRAPS_STACK.test(beside), WRAPS_STACK.test(commented)]).toEqual([false, false]);
+  });
+});

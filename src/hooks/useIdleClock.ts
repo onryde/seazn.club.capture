@@ -1,13 +1,15 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { IDLE_DIM_MS } from '@/domain/session/idleDim';
 
 export type IdleClock = {
   /** `IDLE_DIM_MS` have passed since the last wake. */
   readonly idle: boolean;
-  /** Activity: idle ends and the count starts again. */
+  /** Activity: idle ends and the count starts again, unless paused. */
   readonly wake: () => void;
-  /** No count at all (the app left the foreground) until the next wake. */
+  /** The app left the foreground: idle ends, and nothing counts, whatever wakes it, until `resume`. */
   readonly pause: () => void;
+  /** The app is back in the foreground: the pause ends and it wakes, so the 30 s count from the return. */
+  readonly resume: () => void;
 };
 
 /**
@@ -22,23 +24,43 @@ export function useIdleClock(eligible: boolean): IdleClock {
     setEligibleBefore(eligible);
     if (eligible) setIdle(false);
   }
-  const timer = useTimer();
-  const pause = useCallback(() => {
-    timer.stop();
-    setIdle(false);
-  }, [timer]);
-  const wake = useCallback(() => {
-    setIdle(false);
-    timer.start(() => setIdle(true));
-  }, [timer]);
+  const { wake, pause, resume, stop } = useCount(setIdle);
   useEffect(() => {
     wake();
-    return timer.stop;
-  }, [wake, timer]);
+    return stop;
+  }, [wake, stop]);
   useEffect(() => {
     if (eligible) wake();
   }, [eligible, wake]);
-  return { idle, wake, pause };
+  return { idle, wake, pause, resume };
+}
+
+type Count = Omit<IdleClock, 'idle'> & { readonly stop: () => void };
+
+/**
+ * The count's moves over one timer. Paused (the app is in the background, B5 review I1), a wake ends idle but starts
+ * nothing, so a change there (entering paired, an urgent line, a remote stop on a locked phone, D3 row 2b) never dims a
+ * window nobody sees, and the phone comes back bright. The same object for life.
+ */
+function useCount(setIdle: (idle: boolean) => void): Count {
+  const timer = useTimer();
+  const paused = useRef(false);
+  return useMemo(() => {
+    const wake = () => {
+      setIdle(false);
+      if (!paused.current) timer.start(() => setIdle(true));
+    };
+    const pause = () => {
+      paused.current = true;
+      timer.stop();
+      setIdle(false);
+    };
+    const resume = () => {
+      paused.current = false;
+      wake();
+    };
+    return { wake, pause, resume, stop: timer.stop };
+  }, [timer, setIdle]);
 }
 
 /** One pending `IDLE_DIM_MS` timeout at a time: `start` replaces it, `stop` clears it. The same object for life. */
