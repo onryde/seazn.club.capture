@@ -41,7 +41,7 @@ describe('on air (spec §6, through the fake)', () => {
   afterEach(() => vi.useRealTimers());
 
   it('never reads LIVE while connecting', async () => {
-    await onAir('connecting');
+    await onAir('connecting', {}, { quiet: true });
     expect(plate()).toBe('Connecting');
     expect(screen.queryByText('Live')).toBeNull();
     expect(screen.getByText('Opening the link.')).toBeTruthy();
@@ -82,14 +82,14 @@ describe('on air (spec §6, through the fake)', () => {
   });
 
   it('says plain Live when the room is quiet on air (spec §4: a silent room is ready)', async () => {
-    const view = await onAir('live');
+    const view = await onAir('live', {}, { quiet: true });
     act(() => view.engine.patch({ audioLevel: 0.01 }));
     expect(plate()).toBe('Live');
     expect(screen.getByText(LIVE_LINE)).toBeTruthy();
   });
 
   it('shows live: the plate, the clock, the line, and Stop in place of Go live', async () => {
-    await onAir('live');
+    await onAir('live', {}, { quiet: true });
     expect(plate()).toBe('Live');
     expect(screen.getByText('0:12:34')).toBeTruthy();
     expect(screen.getByText(LIVE_LINE)).toBeTruthy();
@@ -108,7 +108,7 @@ describe('on air (spec §6, through the fake)', () => {
   });
 
   it('says it for about 4 s, then the live line is back (ruling I2)', async () => {
-    const view = await onAir('live');
+    const view = await onAir('live', {}, { quiet: true });
     act(() => void view.back.press());
     act(() => vi.advanceTimersByTime(3999));
     expect(screen.getByText('Stop the broadcast first — hold Stop.')).toBeTruthy();
@@ -165,7 +165,7 @@ describe('on air (spec §6, through the fake)', () => {
   });
 
   it('never lets a failing heartbeat change what the operator sees (ruling 5)', async () => {
-    const view = await onAir('live');
+    const view = await onAir('live', {}, { quiet: true });
     const heartbeat = {
       lastSentAtEpochMs: 0,
       lastResult: 'failed' as const,
@@ -190,21 +190,29 @@ describe('our own camera coming back (camera ruling)', () => {
   beforeEach(() => vi.useFakeTimers());
   afterEach(() => vi.useRealTimers());
 
+  // The fake phone as it is (unplugged, so Not charging is active): the reopening line is URGENT (an interruption), so
+  // it keeps the strip's one message from the caption. Then it is the live line's turn, which is routine, so the phone is
+  // plugged in to read it and not the caption (the gate on the reopening line is what the first half of each proves).
   it('after another app lets go: Trouble, the reopening line, then Live at the first frame', async () => {
-    await onAir('camera-reopened');
+    const view = await onAir('camera-reopened');
     expect(plate()).toBe('Trouble');
     expect(screen.getByText(REOPENING)).toBeTruthy();
+    expect(screen.queryByText(NOT_CHARGING)).toBeNull();
     expect(screen.queryByText(/slate/)).toBeNull();
     act(() => vi.advanceTimersByTime(3000));
     expect(plate()).toBe('Live');
+    expect(screen.getByTestId('strip-message').textContent).toBe(NOT_CHARGING);
+    act(() => view.engine.patch({ charging: true }));
     expect(screen.getByText(LIVE_LINE)).toBeTruthy();
   });
 
   it('through the operator’s switch: still Live, the reopening line, then the live line', async () => {
-    await onAir('camera-switching');
+    const view = await onAir('camera-switching');
     expect(plate()).toBe('Live');
     expect(screen.getByText(REOPENING)).toBeTruthy();
+    expect(screen.queryByText(NOT_CHARGING)).toBeNull();
     act(() => vi.advanceTimersByTime(3000));
+    act(() => view.engine.patch({ charging: true }));
     expect(screen.getByText(LIVE_LINE)).toBeTruthy();
   });
 
@@ -308,10 +316,15 @@ describe('the score preview on air', () => {
   afterEach(() => vi.useRealTimers());
 
   it('sheds the overlay on a hot phone and says so, still Live (AGENTS §8, carry 12)', async () => {
-    await onAir('shed');
+    const view = await onAir('shed', {}, { quiet: true });
     expect(plate()).toBe('Live');
     expect(screen.getByText(SHED)).toBeTruthy();
     expect(screen.queryByTestId('overlay')).toBeNull();
+    // The strip says ONE message (owner, 2026-10-08): the caption is up, so the live line is not. The plate above still
+    // says Live. The positive pair: when the phone cools the caption goes and the live line is back.
+    expect(screen.queryByText(LIVE_LINE)).toBeNull();
+    act(() => view.engine.scene('live'));
+    expect(screen.queryByText(SHED)).toBeNull();
     expect(screen.getByText(LIVE_LINE)).toBeTruthy();
   });
 
@@ -369,6 +382,7 @@ describe('the score preview on air', () => {
 });
 
 /** Carry 14 (ruling M6): one caption, shed > overlay failed > not charging > score ahead. */
+// The fake phone as it is: uncharged, which is the condition under test.
 describe('the status strip’s one caption', () => {
   beforeEach(() => vi.useFakeTimers());
   afterEach(() => vi.useRealTimers());
@@ -394,6 +408,24 @@ describe('the status strip’s one caption', () => {
     await onAir('shed');
     expect(screen.getByText(SHED)).toBeTruthy();
     expect(screen.queryByText(NOT_CHARGING)).toBeNull();
+  });
+
+  // Owner ruling, 2026-10-08 (two tiers): a caption beats only a ROUTINE status line. A line that reports a failure or
+  // needs action is URGENT and keeps the one line, on this phone, which is unplugged (Not charging is up on the live line).
+  it.each<[FakeScene, string]>([
+    ['fell-back', en['stream.status.fellBack']],
+    ['mic-silenced', en['stream.status.micSilenced']],
+    ['camera-taken', en['stream.status.cameraTaken']],
+    ['not-delivered', en['stream.status.notDelivered']],
+  ])('keeps the %s line over Not charging: an urgent line beats a caption', async (scene, line) => {
+    const view = await onAir('live');
+    expect(screen.getByTestId('strip-message').textContent).toBe(NOT_CHARGING);
+    act(() => view.engine.scene(scene));
+    expect(screen.getByTestId('strip-message').textContent).toBe(line);
+    expect(screen.queryByText(NOT_CHARGING)).toBeNull();
+    // And back: the line is routine again, so the caption that never went away takes the line.
+    act(() => view.engine.scene('live'));
+    expect(screen.getByTestId('strip-message').textContent).toBe(NOT_CHARGING);
   });
 
   it('shows no score-ahead note on air', async () => {

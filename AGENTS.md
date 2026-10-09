@@ -254,19 +254,42 @@ Three rules travel with these tokens:
   clock in 135 dp cells; the row sums are `controlsFit.test.ts`'s), and the
   camera half is everything else, on whichever side the controls are. The
   picture in it is sized from THIS match (owner, 2026-10-08, option A): the
-  match label as measured in the half's width, plus fixed room for the status
-  line (2 lines), the caption (2 lines), the padding and the gaps
-  (`stripReserve`: 104 dp and the label). It is one size for the whole match
-  and is sized again only when the label's text changes, the label wraps
-  differently (its measured height moves), or the half's width or height changes:
-  a status line, a caption or the round line coming and going never moves it.
-  Before the label is measured it is sized against the worst case, 180 dp. An
-  804 × 360 phone gets about 375 × 211 for a two-line label (320 × 180 at the
-  worst case). Nothing is drawn over the
+  match label as measured in the half's width, plus fixed room for the padding,
+  the round line, two gaps and ONE message line (`stripReserve`: 66 dp and the
+  label). Under the label the strip has exactly one line, "one single line all
+  the time" (owner, 2026-10-08), never two, cut with an ellipsis if it is wider than the strip's
+  text (`layout.messageLines`; `stripTextFit.test.ts` measures every string in
+  four languages and pins the ones that are cut at 640 × 360). What the line
+  says is decided in two tiers (`LINE_TIER` in `statusKey.ts`, a table over
+  every status key, owner 2026-10-08): a status line that needs action or
+  reports a failure (a refusal, a start that cannot go ahead, trouble and its
+  reasons, the engine not responding, a stopped or ended stream, Back's "hold
+  Stop") is _urgent_ and always wins; an advisory caption (Not charging, heat,
+  keep the app open, Score ahead, a failed preview) beats only a _routine_ line
+  (Starting, Pairing, Waiting for Go live, going live, opening the link, Live).
+  Waiting for Go live is routine on purpose (owner, 2026-10-09): before air a
+  phone warning (Not charging, keep the app open, heat, a failed preview, Score
+  ahead) beats the destination line, which shows when no caption is active. The
+  lines that stay up until the next start (a stopped stream, waiting for a
+  destination) keep the line over a keep-the-app-open caption until then. A new status key
+  does not compile until it is given a tier, and `statusTier.test.ts` lists
+  every key by hand. The picture is one size for
+  the whole match and is sized again only when the label's text changes, the
+  label wraps differently (its measured height moves), or the half's width or
+  height changes: a status line, a caption or the round line coming and going
+  never moves it. Before the label is measured it is sized against the worst
+  case, 142 dp. The owner's phone (804 × 332, the Android status bar showing)
+  gets 394.7 × 222 for a two-line label by the arithmetic, 392.9 × 221 as laid
+  out (the label measures 45) and 337.8 × 190 at the worst case. The controls half's
+  column has its own vertical padding and gap (`controlsPadV`,
+  `controlsColumnGap`: 8 and 8; its horizontal padding stays the board's 16, so
+  it is still 310 wide), so every control is on screen at 804 × 332 in every
+  state and language, the worst before-air state with 8 dp to spare. Nothing is drawn over the
   camera box but the overlay, the _What viewers see_ video and, on the
   operator's tap, the Remote scoring panel (design follow-up §10): over the
   camera half, for at most 10 s, and it hides itself when the session enters
-  trouble. Advisory text rides the status strip, under the status line. The
+  trouble. Advisory text rides the status strip's one message line, over a
+  routine status line only (an urgent one keeps the line). The
   icon row also holds Take photo (design follow-up §8); its confirmation is one
   line in the controls half's gap, never over the camera box. The panel covers
   the camera half and never the controls half, so Stop is never covered. It
@@ -279,12 +302,14 @@ Three rules travel with these tokens:
   on air is Settings, Take photo, Remote scoring, _What viewers see_: Remote
   scoring is third of four because the flexible viewers cell has to end the
   row. The round line sits
-  above the match label in the status strip and hides when the strip has no room
-  for it. The strip holds room for a caption whether or not one is up, so the
-  round line shows while none is and hides while one is, except where the camera
-  half, not the strip, limits the picture (640 × 360, a label of up to two
-  regular lines); it is decided on measured heights, and the camera box never
-  gives way for it (design follow-up §2).
+  above the match label in the status strip and is always shown when the
+  pairing has one (owner, 2026-10-08, option B), the owner's 804 × 332 included.
+  Its 22 dp (the line and a gap) are in the strip's reserve, 66 dp and the
+  label, whether there is a round line to show or not, so it is not measured
+  and never moves the picture, and the picture never gives way for it. A match
+  with no round line leaves that 22 dp empty: the price of a picture that does
+  not move when the line comes and goes (the controller's ruling, 2026-10-08;
+  design follow-up §2).
 - Every QR carries the Seazn logo in the centre at error correction H
   (`src/domain/qr/seaznQr.ts`); the app draws it from a pure plan, at a whole
   number of dp per module. Nobody screenshots a QR; the app adds no screenshot

@@ -50,6 +50,21 @@ describe('CD17: an engine that goes quiet', () => {
     expect(screen.getByText(SILENT)).toBeTruthy();
   });
 
+  // The owner's two tiers (2026-10-08): a silent engine reports a failure, so its line is URGENT and keeps the strip's one
+  // line from every caption. Before air, with the score preview on and a charger plugged in, the one line is the Score
+  // ahead note; the engine going quiet takes it, and the note is back when it reports again.
+  it('with the score preview on, a silent engine’s line beats the Score ahead note, which comes back with the engine', async () => {
+    const view = await renderViewfinder({}, { quiet: true });
+    expect(screen.getByTestId('strip-message').textContent).toBe(en['stream.advisory.scoreAhead']);
+    act(() => view.engine.suspend());
+    later(view, 3_001);
+    expect(plate()).toBe('Trouble');
+    expect(screen.getByTestId('strip-message').textContent).toBe(SILENT);
+    expect(screen.queryByText(en['stream.advisory.scoreAhead'])).toBeNull();
+    act(() => view.engine.scene('paired-ready'));
+    expect(screen.getByTestId('strip-message').textContent).toBe(en['stream.advisory.scoreAhead']);
+  });
+
   // The negative pair: the same clock, with native reporting, is no news.
   it('an engine that keeps reporting is never silent', async () => {
     const view = await renderViewfinder();
@@ -91,6 +106,8 @@ describe('CD17: an engine that goes quiet', () => {
 });
 
 /** CD18: a held pairing on a phone that would not survive the background says keep it open. */
+// The fake phone as it is: uncharged, and one that would not survive the background, which are the two conditions
+// under test here.
 describe('CD18: keep the app open', () => {
   it('a paired phone that would not survive the background says keep the app open', async () => {
     const view = await renderViewfinder();

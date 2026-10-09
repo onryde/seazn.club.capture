@@ -1,6 +1,6 @@
 import { StyleSheet, View } from 'react-native';
 import { cutDestination } from '@/domain/session/destination';
-import { columnLineKey } from '@/hooks/statusKey';
+import { columnLineKey, LINE_TIER, type LineTier } from '@/hooks/statusKey';
 import { useT } from '@/hooks/useLanguage';
 import { usePeek } from '@/hooks/usePeek';
 import { useEndedToHome } from '@/hooks/useEndedNotice';
@@ -34,7 +34,8 @@ export function StreamScreen() {
   return (
     <View testID="viewfinder" style={settings.side === 'left' ? styles.mirrored : styles.halves}>
       <StreamStage
-        line={line}
+        line={line.text}
+        lineTier={line.tier}
         paired={view.kind === 'paired'}
         overlayOn={settings.overlay}
         peek={peek}
@@ -57,17 +58,19 @@ export function StreamScreen() {
 
 /**
  * The one true sentence: the status line, or Back's refusal over a calm one
- * (ruling I2). `{destination}` is cut at 24, the width every budget counts.
- * It is said in the status strip, under the shot, and made here once.
+ * (ruling I2), with its tier (`LINE_TIER`: an urgent line always wins the strip's one
+ * message line, a routine one gives way to a caption). `{destination}` is cut at 24, the
+ * width every budget counts. It is said in the status strip, under the shot, and made here once.
  */
-function useColumnLine(view: Viewfinder, blocked: boolean): string {
+function useColumnLine(view: Viewfinder, blocked: boolean): { text: string; tier: LineTier } {
   const { t } = useT();
   const vars = {
     remaining: view.holdRemaining ?? '',
     window: view.holdWindow ?? '',
     destination: view.destination === null ? '' : cutDestination(view.destination),
   };
-  return t(columnLineKey(view.statusKey, blocked), vars);
+  const key = columnLineKey(view.statusKey, blocked);
+  return { text: t(key, vars), tier: LINE_TIER[key] };
 }
 
 const styles = StyleSheet.create({

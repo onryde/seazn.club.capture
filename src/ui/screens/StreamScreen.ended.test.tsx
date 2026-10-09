@@ -234,6 +234,7 @@ describe('a Stop before live (owner decision 1) stays on the viewfinder', () => 
   const GO_LIVE = 'Go live. Press and hold for 3 seconds.';
 
   it('keeps the pairing and the code: back on Ready, Go live offered again, the stream said stopped, no card', async () => {
+    // "Stream stopped" is an urgent line: it keeps the strip's one line from Score ahead and Not charging.
     const app = await launchApp();
     await scanFromHome(app, CODE);
     expect(app.nav.current()).toBe('stream');

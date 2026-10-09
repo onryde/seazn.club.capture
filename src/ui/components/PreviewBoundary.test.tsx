@@ -18,8 +18,10 @@ afterEach(() => {
   disarmPreviewCrash(); // review C7 M-11: the dev crash is module state; a case that arms it never leaks it
 });
 
+// A quiet phone: the live line is ROUTINE, so on an unplugged one Not charging would take the strip's one message line.
 const live = (lang?: 'es' | 'fr' | 'nl') =>
   renderViewfinder(lang ? { deviceLanguages: [lang] } : {}, {
+    quiet: true,
     prepare: (fakes) => {
       fakes.engine.scene('live');
       fakes.surfaces.crashPreview();

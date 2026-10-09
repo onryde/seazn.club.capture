@@ -108,8 +108,8 @@ function onAirStack(labelLines: number, reasonLines: number): number {
       rowHeight,
       layout.holdHeight,
     ],
-    layout.controlsGap,
-    layout.controlsPad,
+    layout.controlsColumnGap,
+    layout.controlsPadV,
   );
 }
 
@@ -183,14 +183,15 @@ describe('the on-air icon row with four cells (F6, RP10)', () => {
     expect(unitWidth(es['stream.peek.unavailable']) - peekCell(640)).toBeCloseTo(10.9, 1);
   });
 
-  it('the on-air controls half at 640 × 360 is 320 dp of 360 with two label lines and two reason lines (RP7)', () => {
-    // 56 + 12 + 16 + 84 + 72 = 240 for the five items, 4 × 12 = 48 of gaps, 2 × 16 = 32 of padding. The same number
-    // viewfinderFit.test.ts pins: the two fit files stack the same half, and must agree. (The height does not depend
-    // on the half's width once the label lines are taken, which the rows above measure in the 104 dp cell.)
-    expect(onAirStack(2, 2)).toBe(320);
+  it('the on-air controls half at 640 × 360 is 288 dp of 360 with two label lines and two reason lines (RP7)', () => {
+    // 56 + 12 + 16 + 84 + 72 = 240 for the five items, 4 × 8 = 32 of gaps, 2 × 8 = 16 of padding (the column's own
+    // vertical rhythm, owner 2026-10-08; it was 320 with the board's 12 and 16). The same number viewfinderFit.test.ts
+    // pins: the two fit files stack the same half, and must agree. (The height does not depend on the half's width
+    // once the label lines are taken, which the rows above measure in the 104 dp cell.)
+    expect(onAirStack(2, 2)).toBe(288);
     expect(onAirStack(2, 2)).toBeLessThanOrEqual(360);
-    // The photo line is in it: with a 0 there instead (RP7's earlier draft) the stack would read 304.
-    expect(onAirStack(2, 2) - typeScale.metricUnit.lineHeight).toBe(304);
+    // The photo line is in it: with a 0 there instead (RP7's earlier draft) the stack would read 272.
+    expect(onAirStack(2, 2) - typeScale.metricUnit.lineHeight).toBe(272);
   });
 });
 

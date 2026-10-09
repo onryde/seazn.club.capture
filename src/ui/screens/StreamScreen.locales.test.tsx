@@ -124,7 +124,10 @@ describe('the paired and starting lines read in every language', () => {
   it.each(['es', 'fr', 'nl'] as const)(
     '%s says its waiting line with the destination cut',
     async (lang) => {
-      const view = await renderViewfinder({ deviceLanguages: [lang] });
+      const view = await renderViewfinder(
+        { deviceLanguages: [lang] },
+        { overlay: false, quiet: true },
+      );
       act(() => view.engine.setPairing({ destinationName: LONG }));
       act(() => view.engine.scene('paired-ready'));
       const said = DICTIONARIES[lang]['stream.status.waitingGoLive']?.replace('{destination}', CUT);

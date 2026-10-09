@@ -1,7 +1,9 @@
 import { act, render, screen } from '@testing-library/react';
 import { StyleSheet, Text as RNText, View, type TextStyle, type ViewStyle } from 'react-native';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { ADVISORY_KEY } from '@/hooks/advisory';
 import type { TallyPlate as Plate } from '@/hooks/preflight';
+import en from '@/i18n/en.json';
 import nl from '@/i18n/nl.json';
 import { AudioMeter } from '@/ui/components/AudioMeter';
 import { Elapsed } from '@/ui/components/Elapsed';
@@ -10,6 +12,7 @@ import { StatusLine } from '@/ui/components/StatusLine';
 import { StatusStrip } from '@/ui/components/StatusStrip';
 import { TallyPlate } from '@/ui/components/TallyPlate';
 import { colour, layout, plate as plateColour, plateInk } from '@/ui/theme/tokens';
+import { typeScale } from '@/ui/theme/type';
 import { TEST_NOW } from '../../../test/fakePorts';
 import { renderWithPorts } from '../../../test/renderWithPorts';
 
@@ -317,35 +320,123 @@ describe('AudioMeter', () => {
  * screen is the layout test's; this is the strip on its own.
  */
 describe('StatusStrip', () => {
+  const messageOf = () => screen.getByTestId('strip-message');
+  const oneLine = (element: Element) => {
+    const style = getComputedStyle(element);
+    return style.whiteSpace === 'nowrap' && style.textOverflow === 'ellipsis';
+  };
+
   it('says the line alone, with no caption, when there is no advisory', () => {
-    renderWithPorts(<StatusStrip line="Live. Sound and picture going out." advisory={null} />);
+    renderWithPorts(
+      <StatusStrip line="Live. Sound and picture going out." lineTier="routine" advisory={null} />,
+    );
     const strip = screen.getByTestId('status-strip');
-    // No pairing yet, so no label either: the line is the strip's only child.
-    expect([...strip.children].map((child) => child.textContent)).toEqual([
+    // No pairing yet, so no label either: the strip's only child is the message, and the line is its only child.
+    expect([...strip.children].map((child) => child.getAttribute('data-testid'))).toEqual([
+      'strip-message',
+    ]);
+    expect([...messageOf().children].map((child) => child.textContent)).toEqual([
       'Live. Sound and picture going out.',
     ]);
   });
 
-  it('says the label, then the line, then the advisory, in the operator’s language', () => {
-    const view = renderWithPorts(<StatusStrip line="Wachten op Go live" advisory="shed" />, {
-      deviceLanguages: ['nl'],
-    });
+  // Owner, 2026-10-08: one single line all the time. The caption is the warning, so it wins the line; the status line
+  // is what it says when there is none. Never both.
+  it('says the label, then ONE message, in the operator’s language: the caption when one is up, not the line', () => {
+    const view = renderWithPorts(
+      <StatusStrip line="Wachten op Go live" lineTier="routine" advisory="shed" />,
+      {
+        deviceLanguages: ['nl'],
+      },
+    );
     act(() => view.engine.scene('paired-ready'));
     const strip = screen.getByTestId('status-strip');
     expect(
       [...strip.children].map((child) => child.getAttribute('data-testid') ?? child.textContent),
-    ).toEqual(['match-label', 'Wachten op Go live', nl['stream.advisory.shed']]);
+    ).toEqual(['match-label', 'strip-message']);
+    expect([...messageOf().children].map((child) => child.textContent)).toEqual([
+      nl['stream.advisory.shed'],
+    ]);
+    expect(screen.queryByText('Wachten op Go live')).toBeNull();
+    // The positive pair: the caption gone, the same line is back, alone.
+    view.rerender(<StatusStrip line="Wachten op Go live" lineTier="routine" advisory={null} />);
+    expect([...messageOf().children].map((child) => child.textContent)).toEqual([
+      'Wachten op Go live',
+    ]);
+    expect(screen.queryByText(nl['stream.advisory.shed'])).toBeNull();
   });
 
-  // Q4 A: the line may take two lines, and the strip holds that height so the caption under it
-  // does not jump when the line wraps. 2 × the body role's 22 sp line.
-  it('holds two lines of height for the status line', () => {
-    renderWithPorts(<StatusStrip line="Live." advisory={null} />);
-    expect(getComputedStyle(screen.getByText('Live.')).minHeight).toBe('44px');
+  it.each(['keepOpen', 'shed', 'overlayFailed', 'scoreAhead', 'notCharging'] as const)(
+    'the %s caption takes the line over from a routine status line, and gives it back',
+    (advisory) => {
+      const view = renderWithPorts(
+        <StatusStrip line="Live." lineTier="routine" advisory={advisory} />,
+      );
+      expect(screen.queryByText('Live.')).toBeNull();
+      expect(messageOf().children).toHaveLength(1);
+      view.rerender(<StatusStrip line="Live." lineTier="routine" advisory={null} />);
+      expect(screen.getByText('Live.')).toBeTruthy();
+      expect(messageOf().children).toHaveLength(1);
+    },
+  );
+
+  // Owner ruling, 2026-10-08 (two tiers): a status line that needs action or reports a failure is URGENT and always
+  // wins the one line, whichever caption is up; only a ROUTINE line gives way to a caption.
+  it.each(['keepOpen', 'shed', 'overlayFailed', 'scoreAhead', 'notCharging'] as const)(
+    'an urgent status line beats the %s caption: the line is the one message, the caption is not shown',
+    (advisory) => {
+      const view = renderWithPorts(
+        <StatusStrip line="No streaming credit" lineTier="urgent" advisory={advisory} />,
+      );
+      expect([...messageOf().children].map((child) => child.textContent)).toEqual([
+        'No streaming credit',
+      ]);
+      expect(screen.queryByText(en[ADVISORY_KEY[advisory]])).toBeNull();
+      // The positive pair: the same caption over a routine line is the one message, and the line is not shown.
+      view.rerender(<StatusStrip line="Live." lineTier="routine" advisory={advisory} />);
+      expect([...messageOf().children].map((child) => child.textContent)).toEqual([
+        en[ADVISORY_KEY[advisory]],
+      ]);
+      expect(screen.queryByText('Live.')).toBeNull();
+    },
+  );
+
+  // Owner, 2026-10-08: exactly one line, status or caption: numberOfLines 1 (an ellipsis past the strip's text), and
+  // one body line of height (22) reserved either way so the strip is the same height whichever it says.
+  it('is one line with an ellipsis, and 22 dp high, whether it says the line or a caption', () => {
+    const view = renderWithPorts(<StatusStrip line="Live." lineTier="routine" advisory={null} />);
+    expect(oneLine(screen.getByText('Live.'))).toBe(true);
+    expect(getComputedStyle(messageOf()).minHeight).toBe(`${layout.messageLines * 22}px`);
+    expect(getComputedStyle(messageOf()).minHeight).toBe('22px');
+    view.rerender(<StatusStrip line="Live." lineTier="routine" advisory="notCharging" />);
+    const caption = screen.getByText(en['stream.advisory.notCharging']);
+    expect(oneLine(caption)).toBe(true);
+    expect(getComputedStyle(messageOf()).minHeight).toBe('22px');
+  });
+
+  // The caption is a line of metricUnit (12 on 16) and the status line one of body (15 on 22), both in the same 22 dp
+  // slot. The slot centres its child, so a caption sits 3 dp from the top and 3 from the bottom of it and is not pinned
+  // to the top edge, where it would read as sitting on the match label above it. jsdom lays nothing out, so this pins
+  // the style that does the centring, and the arithmetic of what it centres.
+  it('centres a caption in the message line’s 22 dp slot: a column that centres its child, 3 dp spare a side', () => {
+    const view = renderWithPorts(
+      <StatusStrip line="Live." lineTier="routine" advisory="notCharging" />,
+    );
+    const slot = getComputedStyle(messageOf());
+    expect(slot.flexDirection).toBe('column');
+    expect(slot.justifyContent).toBe('center');
+    const caption = getComputedStyle(screen.getByText(en['stream.advisory.notCharging']));
+    expect(caption.lineHeight).toBe(`${typeScale.metricUnit.lineHeight}px`);
+    expect(caption.lineHeight).toBe('16px');
+    expect((22 - typeScale.metricUnit.lineHeight) / 2).toBe(3);
+    // The same slot centres the status line, which fills it (22 on 22): nothing to move, the same style either way.
+    view.rerender(<StatusStrip line="Live." lineTier="routine" advisory={null} />);
+    expect(getComputedStyle(messageOf()).justifyContent).toBe('center');
+    expect(getComputedStyle(screen.getByText('Live.')).lineHeight).toBe('22px');
   });
 
   it('is the surface colour, in the flow: not drawn over the shot', () => {
-    renderWithPorts(<StatusStrip line="Live." advisory={null} />);
+    renderWithPorts(<StatusStrip line="Live." lineTier="routine" advisory={null} />);
     const style = getComputedStyle(screen.getByTestId('status-strip'));
     expect(style.backgroundColor).toBe(paintOf(TOKEN.surface));
     expect(style.position).not.toBe('absolute');
@@ -365,15 +456,16 @@ describe('StatusLine', () => {
     expect(style.getPropertyValue('-webkit-line-clamp')).toBe('3');
   });
 
-  it('takes the body role and its own line count for the strip', () => {
+  it('takes the body role and the strip’s one line: 22 dp reserved, an ellipsis past the width', () => {
     render(
-      <StatusLine variant="body" numberOfLines={2}>
+      <StatusLine variant="body" numberOfLines={layout.messageLines}>
         One sentence.
       </StatusLine>,
     );
     const style = getComputedStyle(screen.getByText('One sentence.'));
+    expect(layout.messageLines).toBe(1);
     expect(style.fontSize).toBe('15px');
-    expect(style.minHeight).toBe('44px');
-    expect(style.getPropertyValue('-webkit-line-clamp')).toBe('2');
+    expect(style.minHeight).toBe('22px');
+    expect([style.whiteSpace, style.textOverflow]).toEqual(['nowrap', 'ellipsis']);
   });
 });

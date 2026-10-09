@@ -2,6 +2,7 @@ import { memo, useCallback, useMemo, useState } from 'react';
 import { StyleSheet, View, type LayoutChangeEvent } from 'react-native';
 import { selectCharging, selectKeepOpen, topAdvisory } from '@/hooks/advisory';
 import { selectPlaybackUrl } from '@/hooks/engineSelectors';
+import type { LineTier } from '@/hooks/statusKey';
 import { useEngineSelector } from '@/hooks/useCaptureEngine';
 import type { Peek } from '@/hooks/usePeek';
 import { usePorts } from '@/hooks/usePorts';
@@ -19,6 +20,8 @@ import { colour, layout } from '@/ui/theme/tokens';
 type StageProps = {
   /** The status line the strip says under the shot (the column's, once; `StreamScreen` makes it). */
   readonly line: string;
+  /** Which tier that line is (`LINE_TIER`): an urgent line always wins the strip's one message line. */
+  readonly lineTier: LineTier;
   /** Framing a shot, before any broadcast. */
   readonly paired: boolean;
   readonly overlayOn: boolean;
@@ -34,8 +37,8 @@ type StageProps = {
  * status strip under it. Nothing is drawn over the shot but the overlay preview
  * and the peek (AGENTS §6, D17) and, for at most 10 s after a tap, the Remote
  * scoring panel (spec §10), which covers the whole half, strip included, and
- * brings the half's one button: its Hide. The match label, the status line and
- * the one advisory caption sit in the strip, below the shot.
+ * brings the half's one button: its Hide. The match label and ONE message line (the
+ * advisory caption when one is up, the status line otherwise) sit in the strip, below the shot.
  *
  * The strip keeps its content height and the box gives way (`cameraBoxSize`):
  * on a screen too short for a full-width box the box is narrower, centred, on
@@ -44,8 +47,9 @@ type StageProps = {
  *
  * The strip's height is sized from THIS match (owner, 2026-10-08, option A): the
  * match label as it was measured in the half's width (`StatusStrip` reports it),
- * plus fixed room for the status line, the caption and the padding and gaps
- * (`stripReserve`). So the picture is one size for the whole match. It is sized
+ * plus fixed room for the padding, the round line, two gaps and ONE message line (`stripReserve`; owner,
+ * 2026-10-08, "one single line all the time", the round line always shown: option B). So the picture is one
+ * size for the whole match. It is sized
  * again when the label's text changes (a new match remounts the label, which is
  * measured again) or when the label wraps differently in the half (its measured
  * height moves), and when the half's width or height changes; for nothing else:
@@ -99,7 +103,12 @@ export const StreamStage = memo(function StreamStage(props: StageProps) {
         onFailed={overlay.onFailed}
         peek={props.peek}
       />
-      <StatusStrip line={props.line} advisory={advisory} onLabelHeight={setLabelHeight} />
+      <StatusStrip
+        line={props.line}
+        lineTier={props.lineTier}
+        advisory={advisory}
+        onLabelHeight={setLabelHeight}
+      />
       {/* Last, so it paints over the box and the strip (Q-C2). */}
       <ScoringLinkPanel
         view={props.scoring}

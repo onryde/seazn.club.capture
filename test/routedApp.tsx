@@ -15,6 +15,7 @@ import { HomeScreen } from '@/ui/screens/HomeScreen';
 import { SettingsScreen } from '@/ui/screens/SettingsScreen';
 import { StreamScreen } from '@/ui/screens/StreamScreen';
 import { createFakePorts, type FakePorts } from './fakePorts';
+import { quietDevice } from './quietDevice';
 import { wrapperFor } from './renderWithPorts';
 
 /**
@@ -99,6 +100,8 @@ type Launch = {
   /** Runs before the first render: an engine native already holds, say. */
   readonly prepare?: (fakes: FakePorts) => void;
   readonly extra?: ReactNode;
+  /** The phone has nothing to warn about, so no caption takes the strip's line from a routine status: see `quietDevice.ts`. */
+  readonly quiet?: boolean;
   /** Wraps the whole app, as the root layout's error boundary does. */
   readonly around?: (app: ReactNode, fakes: FakePorts) => ReactNode;
 };
@@ -109,9 +112,10 @@ type Launch = {
  * adapter over `nav`; read the screen from `nav`, never `fakes.navigation`.
  */
 export async function launchApp(launch: Launch = {}): Promise<LaunchedApp> {
-  const { kvSeed, prepare, extra, around } = launch;
+  const { kvSeed, prepare, extra, around, quiet = false } = launch;
   const nav = routerDouble();
   const fakes = createFakePorts({ navigation: createExpoRouterNavigation(nav), kvSeed });
+  if (quiet) quietDevice(fakes.engine);
   prepare?.(fakes);
   const app = <RoutedApp nav={nav} extra={extra} />;
   const ui = around === undefined ? app : around(app, fakes);

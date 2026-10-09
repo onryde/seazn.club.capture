@@ -92,12 +92,13 @@ describe('the viewfinder re-renders only what changed', () => {
   it('ticks the hold’s countdown without re-rendering the stage once the picture is sized', async () => {
     const view = await renderViewfinder();
     act(() => view.engine.scene('holding'));
-    layOut(screen.getByTestId('camera-half'), { width: 494, height: 360 });
+    layOut(screen.getByTestId('camera-half'), { width: 494, height: 332 });
     layOut(screen.getByTestId('match-label'), { width: 494 - 2 * layout.stripPadH, height: 44 });
-    // Sized: a two-line label (44) leaves the box 212 dp tall of the 360, not the unmeasured full-width one.
+    // Sized: a two-line label (44) leaves the box 222 dp tall of the 332 (the owner's phone): the strip is 66 and the
+    // label, 110. The unmeasured one would be 190 tall (the strip's worst case, 142).
     expect(parseFloat(getComputedStyle(screen.getByTestId('camera-box')).height)).toBeCloseTo(
-      212,
-      6,
+      222,
+      2,
     );
     const held = view.engine.getSnapshot().state;
     if (held.kind !== 'reconnecting') throw new Error('the holding scene is not a hold');
@@ -141,7 +142,9 @@ describe('the viewfinder re-renders only what changed', () => {
   });
 
   it('counts at all: a change they show re-renders them', async () => {
-    const view = await renderViewfinder();
+    // A quiet phone: an uncharged one says Not charging in the strip's one line, and the status line (counted here as
+    // `column`) is then not drawn at all.
+    const view = await renderViewfinder({}, { quiet: true });
     resetRenders();
     act(() => view.engine.scene('live'));
     expect(renders.stage).toBeGreaterThan(0);

@@ -52,6 +52,33 @@ Three pull requests, in order. Each is reviewed and merged on its own.
   changes, never for a status line, a caption or the round line coming and going. Before the label is measured it is
   the worst case, 180 dp. On 804 × 360 a two-line label gives about 375 × 211 (320 × 180 at the worst case); on
   915 × 412, 467 × 263; at 640 × 360 the half limits the picture for a label of up to two lines (330 × 185.6).
+  **Superseded in its numbers by the next two lines (one message line; the round line always shown).**
+- **Amended a third time (owner, 2026-10-08, "one single line all the time"): ONE message line.** Under the label the
+  strip has exactly one line (`numberOfLines` 1, `layout.messageLines`), and a string wider than the strip's text is
+  cut with an ellipsis. What the line says is decided in **two tiers** (owner, 2026-10-08, `LINE_TIER`): a status line
+  that needs action or reports a failure (a refusal, trouble and its reasons, the engine not responding, a stopped or
+  ended stream, Back's "hold Stop") is urgent and always wins; an advisory caption outranks only a routine status line
+  (Starting, Pairing, Waiting for Go live, going live, opening the link, Live). **"Waiting for Go live" is routine**
+  (owner, 2026-10-09, option B): before air a phone warning (Not charging, keep the app open, heat, a failed preview,
+  Score ahead) beats the destination line, which shows when no caption is active. The lines that stay up until the next
+  start (a stopped stream, waiting for a destination) keep the line over a keep-the-app-open caption until then. The
+  controls half's column has its own vertical padding and gap, 8 and 8
+  (`controlsPadV`, `controlsColumnGap`; the horizontal padding stays 16, so the half stays 310 wide): the board's 16
+  and 12 made the worst before-air state (the AUTO start line and a reason under the hold button) 356 dp tall, 24 more
+  than 332. (The start time, "Starts hh:mm", is a line of the controls half, `PreflightChips.tsx:49`, not a status
+  line of the strip.) `stripTextFit.test.ts` measures every status and caption string in the four languages at the
+  strip's text width (298 dp at 640 × 360, 462 dp at 804) and pins the 57 that may be cut at 640 × 360 (`_FINDINGS.md`
+  N23 lists the urgent ones).
+- **Amended a fourth time (owner, 2026-10-08, round line option B): the round line is always shown.** Its 22 dp (the
+  line, 16, and a gap, 6) are a term of the strip's reserve (the controller's ruling, the same day: reserved whether or
+  not the match has a round line, so the line coming and going never moves the picture). The strip's reserve is the
+  padding, the round line, a gap, the label as measured, a gap and one body line: **66 dp and the label**
+  (`stripReserve`), 142 dp at the worst case (it was 44 and 120). The owner's phone is 804 × 332 (360 less the Android
+  status bar): a one-line label gives 433.8 × 244, a two-line label 394.7 × 222 (392.9 × 221 as laid out, the label
+  measuring 45), four long lines 337.8 × 190. On 804 × 360 they are 483.6 × 272, 444.4 × 250 and 387.6 × 218; on
+  915 × 412, 576 × 324, 536.9 × 302 and 480 × 270; at 640 × 360 the half limits the picture for every label
+  (330 × 185.6, a strip of 174 dp). That is 22 dp of height off the picture on the owner's phone (244 to 222 for a
+  two-line label) in exchange for a line that is always there; a match with no round line shows an empty 22 dp.
 - `controlsSide` keeps working: _Left_ mirrors the halves.
 - The scorebug overlay (the transparent WebView) and the _What viewers see_ video sit over the
   **camera box**, not the whole half. The overlay keeps its design-of-record rule: never redrawn in
@@ -82,14 +109,12 @@ Three pull requests, in order. Each is reviewed and merged on its own.
   (open string), n?, entrants? }, pool? (^[A-Z]$) }`. A missing, empty or over-40 `label` → no line.
   The phone never builds or translates it. Ships with PR C, after the web contract lands
   (web branches `fix/pool-label-i18n`, then `feat/capture-scoring-link-stage`).
-- **The line yields to the label (R-F5).** It shows only when the status strip has room for it beside the
-  label; no strip reserve is added and the picture never gives way. Since the owner's rule of 2026-10-08 (option A) the
-  strip is its reserve, 104 dp and the label, wherever the picture is limited by it, and the reserve includes the
-  caption's two lines whether or not a caption is up. So with no caption up the round line fits for every label (88 dp
-  and the label against the 104 and the label), and with a caption up it needs 22 dp more than the reserve and shows
-  only where the camera half, not the strip, limits the picture: 640 × 360, a label of up to two regular lines (a 174 dp
-  strip against the 170 it needs). It is 22 dp short for a label of three or four lines, and everywhere else. Until the strip and
-  the label are both measured, the line is hidden.
+- **The line no longer yields to the label (R-F5, superseded by the owner's option B, 2026-10-08).** The round line
+  was shown only when the strip had room for it beside the label, which hid it on 804 × 332, 804 × 360 and 915 × 412
+  (where the picture is limited by height). It is now always shown when the pairing has a round line, and its 22 dp
+  (the line and a gap) are in the strip's reserve (66 dp and the label), whether or not there is a line to show, so it
+  is not measured and never moves the picture. A caption takes the message line, never the round line, and is not a
+  term of the reserve.
 - **An unknown `role.kind` shows no line (R-F20).** A kind outside the contract's list shows nothing, even with a
   good label; a kind the web adds later shows nothing until the app learns it.
 
