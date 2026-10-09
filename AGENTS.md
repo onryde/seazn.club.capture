@@ -370,8 +370,8 @@ Three rules travel with these tokens:
   B3). A delivery that stalls while showing drops the player and reads "No
   viewer picture", and the 20 s still closes the view. It also closes while
   the turn card covers the stage and when the app leaves the foreground
-  (rulings N4 and M5, which closed the old peek the same way), and it never
-  reopens by itself. Closing unmounts the player, so the download stops.
+  (plan A rulings 7 N4 and 7 M5, `docs/specs/2026-09-30-s1-plan-a-results.md`,
+  which closed the old peek the same way), and it never reopens by itself. Closing unmounts the player, so the download stops.
   While loading and showing the box carries one line, "What viewers see · no
   scoreboard yet"; when the compositor exists, that line goes. The rule is a
   pure reducer (`src/domain/session/viewerCheck.ts`); `useViewerCheck` owns
@@ -479,8 +479,8 @@ thermal member. Only transport trouble degrades a session.
 - While paired and waiting, the screen is kept on and dimmed after 30 s idle;
   this is the default path for a remote Go live. The foreground service and wake
   lock are the Android fallback when the phone is locked anyway (R4, D2 §4.5).
-  The dim is the window's own brightness, never the system setting, and never
-  when armed or live.
+  On Android the dim is the window's own brightness, never the system
+  setting; on either platform it never dims when armed or live.
   As built: after 30 s with no touch anywhere in the Live Stream route the
   window drops to 0.1, and any touch restores it and starts the 30 s again
   (owner, 2026-10-09, R8; 0.1 is D2 §4.5's _rec_, R11). `TouchWake`, the
@@ -577,8 +577,8 @@ thermal member. Only transport trouble degrades a session.
 - Expo Router for navigation; `expo-secure-store` for saved codes and the
   language pick (Android backup excluded); `expo-sensors` and
   `expo-screen-orientation` for the orientation gate; `expo-brightness` for
-  the idle dim (the window's brightness only: its `WRITE_SETTINGS` permission
-  is blocked in `app.json`); `expo-localization` for
+  the idle dim (on Android the window's brightness only: its `WRITE_SETTINGS`
+  permission is blocked in `app.json`); `expo-localization` for
   the phone's language. No AsyncStorage.
 - Expo Updates: check on launch only, and **never apply while the phone is
   paired or holding a broadcast**. A paired phone is waiting for a match, and a

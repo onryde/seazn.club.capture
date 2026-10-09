@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import ts from 'typescript';
@@ -125,5 +126,40 @@ describe('the stream layout keeps the screen on and hears every touch', () => {
       WRAPS_STACK.test(after),
       WRAPS_STACK.test(commented),
     ]).toEqual([false, false, false]);
+  });
+});
+
+/**
+ * The dim is Live Stream's alone (spec §6, question 4; final review m1): a paired phone that goes Home must not dim
+ * there, where keep-awake is off. The test above pins that the stream layout mounts it; this pins that nothing else
+ * does. In the shipped files of `app/` and `src/` (from `git ls-files`, so a mode layout S2 or S4 adds is covered the
+ * day it is committed; tests mount the dim on purpose and are left out), `<TouchWake` is written only by the stream
+ * layout, and `useIdleDim(` only by TouchWake, which calls it, and by its own file, which declares it.
+ */
+function shippedFilesWith(pattern: RegExp): string[] {
+  return execFileSync('git', ['ls-files', '--', 'app', 'src'], { cwd: root, encoding: 'utf8' })
+    .split('\n')
+    .filter((file) => /\.tsx?$/.test(file) && !/\.test(-d)?\.tsx?$/.test(file))
+    .filter((file) => pattern.test(readFileSync(join(root, file), 'utf8')));
+}
+
+describe('the idle dim is mounted by Live Stream only', () => {
+  it('reads the shipped tree, not a hand list (anti-vacuity: the layouts and TouchWake are in it)', () => {
+    const layouts = shippedFilesWith(/\bexport default function \w*Layout\b/);
+    expect(layouts).toEqual(expect.arrayContaining(['app/_layout.tsx', 'app/stream/_layout.tsx']));
+    expect(shippedFilesWith(/\bexport function TouchWake\b/)).toEqual([
+      'src/ui/components/TouchWake.tsx',
+    ]);
+  });
+
+  it('draws <TouchWake> in the stream layout and nowhere else', () => {
+    expect(shippedFilesWith(/<TouchWake\b/)).toEqual(['app/stream/_layout.tsx']);
+  });
+
+  it('calls useIdleDim() from TouchWake and nowhere else', () => {
+    expect(shippedFilesWith(/\buseIdleDim\(/)).toEqual([
+      'src/hooks/useIdleDim.ts',
+      'src/ui/components/TouchWake.tsx',
+    ]);
   });
 });

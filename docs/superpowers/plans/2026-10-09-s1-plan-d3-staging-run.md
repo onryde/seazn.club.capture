@@ -165,6 +165,7 @@ adb -s 12be753e shell wm density
   - (Owner) In Android Settings, under Special app access, then Modify system settings: Seazn Capture is not listed. The app never asks for it.
   - (Owner) Open Live Stream's Settings, with a printed code as in Step 2a. Expected: Settings has no "Score preview" switch: the automatic switch is the only switch (D2 §4.1). This holds whether or not Step 2a ran.
   - (Owner) If Step 2a ran: "Controls on the" still reads **Left**, and the automatic switch is still off.
+  - (Owner) Then go back to Home and, on Home, tap _Forget_ on the Continue card (`home.continue.forget`), so no pairing is held. Going Home alone keeps the pairing, and the Continue card offers it again; only Forget drops it (`useForget`, `src/hooks/useHome.ts`). The settings above are kept: they are not the pairing's.
 
 - [ ] **Step 4 (agent): Dump the copy the run quotes.**
 
@@ -541,7 +542,7 @@ grep "\"kind\":\"$BEAT_KIND\"" "$EVID/r8a-record.ndjson" | node -e 'const f=proc
 **Row:** 10. **Caution (spec §5.2):** one swiss R2 match in s-a-f-e is already `in_play`. Paired in automatic mode with the switch on, it auto-starts and spends a credit. **Pair only scheduled matches.**
 
 - [ ] **Step 1 (owner): Operator mode first.** On any pairing, open Settings and turn "Start and stop automatically" off.
-  - Then go back to Home, so no pairing is held.
+  - Then go back to Home and, on Home, tap _Forget_ on the Continue card (`home.continue.forget`), so no pairing is held. Going Home alone keeps it; the switch stays off, since the settings are not the pairing's.
   - (Agent) Screenshot the Settings switch reading off, before Home: `r10-operator`.
   - The owner also turns the automatic switch off in the s-a-f-e console, if they can.
 - [ ] **Step 2 (owner): Pair each fixture and read its line.** For each row below, scan the fixture's code from the Live Stream tile and hold the phone sideways. (Agent) Screenshot `r10-<n>`. Then go back to Home before the next one.
