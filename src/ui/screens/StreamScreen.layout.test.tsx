@@ -413,12 +413,12 @@ describe('the round line above the match label (spec §2, option B)', () => {
   });
 
   it('is the strip’s first row: the round line, then the match label, then the one message line', async () => {
-    await withStage('QF', { overlay: false, quiet: true });
+    await withStage('Open · QF', { overlay: false, quiet: true });
     const round = within(byId('status-strip')).getByTestId('stage-line');
     const label = within(byId('status-strip')).getByTestId('match-label');
     const status = within(byId('status-strip')).getByTestId('strip-message');
     expect(status.textContent).toBe(WAITING);
-    expect(round.textContent).toBe('QF');
+    expect(round.textContent).toBe('Open · QF');
     expect(follows(round, label)).toBe(true);
     expect(follows(label, status)).toBe(true);
     // The first child of the strip, not tucked in beside the label.
@@ -430,8 +430,8 @@ describe('the round line above the match label (spec §2, option B)', () => {
     const view = await withStage(null);
     expect(stage()).toBeNull();
     expect(within(byId('status-strip')).getByTestId('match-label')).toBeTruthy();
-    act(() => view.engine.setPairing({ stageLabel: 'SF' }));
-    expect(stage()?.textContent).toBe('SF');
+    act(() => view.engine.setPairing({ stageLabel: 'Open · SF' }));
+    expect(stage()?.textContent).toBe('Open · SF');
     expect(within(byId('status-strip')).getByTestId('match-label')).toBeTruthy();
     act(() => view.engine.setPairing({ stageLabel: null }));
     expect(stage()).toBeNull();
@@ -447,12 +447,12 @@ describe('the round line above the match label (spec §2, option B)', () => {
 
   // The old rule hid it for a label of three lines. Nothing hides it now: four label heights, one after another.
   it('does not yield to a label of any height (22, 44, 57, 76 dp): it is there for each', async () => {
-    await withStage('QF', { label: 57 });
-    expect(stage()?.textContent).toBe('QF');
+    await withStage('Open · QF', { label: 57 });
+    expect(stage()?.textContent).toBe('Open · QF');
     let checked = 0;
     for (const height of [22, 44, 57, 76]) {
       layOut(byId('match-label'), { width: 300, height });
-      expect(stage()?.textContent, `label ${height}`).toBe('QF');
+      expect(stage()?.textContent, `label ${height}`).toBe('Open · QF');
       checked += 1;
     }
     expect(checked).toBe(4);
@@ -473,7 +473,7 @@ describe('the round line above the match label (spec §2, option B)', () => {
    * what it says (anti-vacuity: a "no caption" run that had one proves nothing).
    */
   async function roundLineIn(width: number, height: number, label: number, captionUp: boolean) {
-    const view = await withStage('QF', { label: 0 });
+    const view = await withStage('Open · QF', { label: 0 });
     act(() => {
       view.engine.scene('live');
       if (!captionUp) view.engine.patch({ charging: true });
@@ -939,7 +939,10 @@ describe('the picture is sized from this match’s label (owner, 2026-10-08, opt
   ) {
     const view = await renderViewfinder(
       {},
-      { quiet, prepare: (fakes) => fakes.engine.setPairing({ label: text, stageLabel: 'QF' }) },
+      {
+        quiet,
+        prepare: (fakes) => fakes.engine.setPairing({ label: text, stageLabel: 'Open · QF' }),
+      },
     );
     layOut(byId('camera-half'), { width: half(width), height });
     if (label !== null)
@@ -1047,7 +1050,7 @@ describe('the picture is sized from this match’s label (owner, 2026-10-08, opt
         act(() => view.engine.setSurvivesBackground(true));
       };
       // The round line is up all the way through (option B), with the stage label the pairing has.
-      let stage = 'QF';
+      let stage = 'Open · QF';
       const roundLineIs = (when: string) => expect(roundLine()?.textContent, when).toBe(stage);
 
       // The status line changes: going live, a call holding the link, back.
@@ -1083,8 +1086,8 @@ describe('the picture is sized from this match’s label (owner, 2026-10-08, opt
       act(() => view.engine.setPairing({ stageLabel: null }));
       expect(roundLine()).toBeNull();
       sameBox('with no round line');
-      stage = 'SF';
-      act(() => view.engine.setPairing({ stageLabel: 'SF' }));
+      stage = 'Open · SF';
+      act(() => view.engine.setPairing({ stageLabel: 'Open · SF' }));
       roundLineIs('with another round line');
       sameBox('with another round line');
 
@@ -1162,7 +1165,7 @@ describe('the picture is sized from this match’s label (owner, 2026-10-08, opt
       expect(360 - calm.height).toBeCloseTo(174.375, 2);
       const roundLine = () => within(byId('status-strip')).queryByTestId('stage-line');
       expect(ADVISORIES.filter(([, other]) => screen.queryByText(other) !== null)).toHaveLength(0);
-      expect(roundLine()?.textContent).toBe('QF');
+      expect(roundLine()?.textContent).toBe('Open · QF');
       expect(byId('strip-message').textContent).toBe(en['stream.status.live']);
       // The score-ahead note is before air only, so its own state is the paired one; the rest are on air.
       if (text === SCORE_AHEAD) {
@@ -1178,7 +1181,7 @@ describe('the picture is sized from this match’s label (owner, 2026-10-08, opt
       }
       expect(screen.queryByText(text) !== null, `${text} is up`).toBe(true);
       expect(byId('strip-message').textContent).toBe(text);
-      expect(roundLine()?.textContent).toBe('QF');
+      expect(roundLine()?.textContent).toBe('Open · QF');
       expect(boxSize()).toEqual(calm);
       captionsTried += 1;
     },

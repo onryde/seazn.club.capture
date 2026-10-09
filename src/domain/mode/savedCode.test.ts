@@ -93,7 +93,7 @@ describe('saved codes, v3 (amendment §3)', () => {
 
   // W28: the round line is kept with the code, kind and all, so a cold-start re-pair seeds it.
   it('keeps a stage through encode and decode, and reads a record saved before this change with none', () => {
-    const stage = { label: 'QF', kind: 'quarter_final' };
+    const stage = { label: 'Open · QF', kind: 'quarter_final' };
     const code = savedStreamCode({
       stream: { waiting: sampleWaiting({ stage }), codeUrl: CODE_URL, tapToPair: false },
     });
@@ -103,14 +103,14 @@ describe('saved codes, v3 (amendment §3)', () => {
     // The stored record holds the stage in the server's own shape, which the one parser reads back.
     expect(JSON.parse(encodeSavedCode(code)).stream.waiting.stage).toEqual({
       role: { kind: 'quarter_final' },
-      label: 'QF',
+      label: 'Open · QF',
     });
     // A record with no `stage` key at all, as every record saved before this PR is.
     expect(decodeSavedCode(record({}))?.stream?.waiting.stage).toBeNull();
     // A stored stage of a kind the contract does not name reads as none, and the code is kept.
     const future = record({
       stream: {
-        waiting: waitingWire({ stage: { role: { kind: 'a_future_kind' }, label: 'QF' } }),
+        waiting: waitingWire({ stage: { role: { kind: 'a_future_kind' }, label: 'Open · QF' } }),
         codeUrl: CODE_URL,
         tapToPair: false,
       },

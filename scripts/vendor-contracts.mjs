@@ -96,12 +96,22 @@ function trackedContracts(web) {
 }
 
 /**
+ * The pins the last run recorded, path to sha256, or none before the first run. A VENDORED.json whose `files` is not
+ * that map was not written by this script, and is refused before anything in `target` is touched.
  * @param {string} target
  * @returns {Record<string, string>}
  */
 function readPins(target) {
   const file = join(target, 'VENDORED.json');
-  return existsSync(file) ? JSON.parse(readFileSync(file, 'utf8')).files : {};
+  if (!existsSync(file)) return {};
+  const files = JSON.parse(readFileSync(file, 'utf8'))?.files;
+  const map = typeof files === 'object' && files !== null && !Array.isArray(files);
+  if (!map || !Object.values(files).every((pin) => typeof pin === 'string')) {
+    throw new Error(
+      `${file} is malformed: its files must map each path to its sha256, refusing to vendor`,
+    );
+  }
+  return files;
 }
 
 /**
@@ -113,8 +123,8 @@ function readPins(target) {
 export function vendor(web, target) {
   const files = trackedContracts(web);
   const commit = git(web, 'rev-parse', 'HEAD').trim();
-  mkdirSync(target, { recursive: true });
   const before = readPins(target);
+  mkdirSync(target, { recursive: true });
   for (const name of readdirSync(target)) {
     if (!OURS.includes(name)) rmSync(join(target, name), { recursive: true, force: true });
   }

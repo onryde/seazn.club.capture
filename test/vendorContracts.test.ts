@@ -89,6 +89,8 @@ const tree = (root: string): Files =>
 const pins = (target: string): Pins =>
   JSON.parse(readFileSync(join(target, 'VENDORED.json'), 'utf8')) as Pins;
 const contractsOf = (web: string) => join(web, 'docs', 'contracts');
+const writeVendored = (target: string, text: string) =>
+  writeFileSync(join(target, 'VENDORED.json'), text);
 
 describe('pnpm contracts:vendor (plan D spec §3.1)', () => {
   it('copies docs/contracts byte for byte, keeps our README, and pins every file with the web commit', () => {
@@ -160,6 +162,7 @@ describe('pnpm contracts:vendor (plan D spec §3.1)', () => {
     ]);
   });
 
+  // Each row vendors a good checkout first, so contracts/ holds files a run that deleted before refusing would lose.
   it.each([
     [
       'a tracked file changed and not committed',
@@ -188,23 +191,49 @@ describe('pnpm contracts:vendor (plan D spec §3.1)', () => {
       },
       /git tracks nothing under docs\/contracts/,
     ],
+    [
+      'a folder with no docs/contracts (an empty input)',
+      (web: string) => rmSync(contractsOf(web), { recursive: true, force: true }),
+      /no docs\/contracts in /,
+    ],
+    [
+      'a folder that is not a git checkout',
+      (web: string) => rmSync(join(web, '.git'), { recursive: true, force: true }),
+      /is not a git checkout/,
+    ],
+    // A VENDORED.json this script did not write (B1 review Minor 3): read, and refused, before contracts/ is rewritten.
+    [
+      'a VENDORED.json with no files',
+      (_web: string, target: string) => writeVendored(target, '{"web":"x"}\n'),
+      /VENDORED\.json is malformed/,
+    ],
+    [
+      'a VENDORED.json whose files is null',
+      (_web: string, target: string) => writeVendored(target, '{"web":"x","files":null}\n'),
+      /VENDORED\.json is malformed/,
+    ],
+    [
+      'a VENDORED.json whose files is a list',
+      (_web: string, target: string) =>
+        writeVendored(target, '{"web":"x","files":["capture-a.v1.json"]}\n'),
+      /VENDORED\.json is malformed/,
+    ],
+    [
+      'a VENDORED.json with a pin that is not text',
+      (_web: string, target: string) =>
+        writeVendored(target, '{"web":"x","files":{"capture-a.v1.json":1}}\n'),
+      /VENDORED\.json is malformed/,
+    ],
   ] as const)('refuses %s, and leaves contracts/ exactly as it was', (_why, spoil, message) => {
     const web = webCheckout();
     const target = ourFolder();
     vendor(web, target);
+    spoil(web, target);
     const before = tree(target);
-    spoil(web);
+    // Not vacuous: a vendored file the script removes before it copies is there to lose.
+    expect(Object.keys(before)).toContain('capture-a.v1.json');
     expect(() => vendor(web, target)).toThrow(message);
     expect(tree(target)).toEqual(before);
-  });
-
-  it('refuses a folder with no docs/contracts, and one that is not a git checkout, touching nothing (an empty input)', () => {
-    const target = ourFolder();
-    expect(() => vendor(temp(), target)).toThrow(/no docs\/contracts in /);
-    const plain = temp();
-    write(join(plain, 'docs', 'contracts'), WEB_FILES);
-    expect(() => vendor(plain, target)).toThrow(/is not a git checkout/);
-    expect(listFiles(target)).toEqual(['README.md']);
   });
 
   it('vendors with untracked files elsewhere in the web checkout, as the owner’s has today (D-1)', () => {

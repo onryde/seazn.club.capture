@@ -24,8 +24,8 @@ const PAIRING = {
   pollSeconds: 10,
   stageLabel: null,
 };
-// W28: the pairing of the case that carries a round line, by hand from its override { stageLabel: 'QF' }.
-const PAIRING_STAGED = { ...PAIRING, stageLabel: 'QF' };
+// W28: the pairing of the case that carries a round line, by hand from its override { stageLabel: 'Open · QF' }.
+const PAIRING_STAGED = { ...PAIRING, stageLabel: 'Open · QF' };
 const BROADCAST = {
   sid: 'sess_42',
   cause: 'organiser',
@@ -302,7 +302,7 @@ describe('carries 2-6: the snapshot wire, as native writes it (Task 12)', () => 
   // W28: the round line is text or null, and nothing else, because the pairing is read whole or not at all.
   it('reads a pairing whose stageLabel is not text or null as no snapshot, and one without the key likewise', () => {
     const staged = vectorWire('paired-with-stage-label');
-    expect(toEngineSnapshot(staged)?.pairing?.stageLabel).toBe('QF');
+    expect(toEngineSnapshot(staged)?.pairing?.stageLabel).toBe('Open · QF');
     let refused = 0;
     for (const stageLabel of [7, true, {}, ['QF']]) {
       expect(

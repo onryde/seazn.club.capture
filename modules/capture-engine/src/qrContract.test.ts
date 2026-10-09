@@ -7,8 +7,9 @@ import vectors from './wire/code-vectors.json';
 
 /**
  * Plan D spec §3.2: the QR, held to the vendored capture-qr.v2.json for the first time. A vector the schema
- * refuses is one the parser refuses, and the reverse; the verdict each row expects is the vector file's, written by
- * hand (carry G1), never the parser's.
+ * refuses is one the parser refuses; the verdict each row expects is the vector file's, written by hand (carry G1),
+ * never the parser's. The reverse does not hold, by design: STRICTER names the two QRs the schema admits and the
+ * parser refuses, and the web's tampered fixture (below) is the one the schema refuses and the parser reads.
  */
 const contracts = new URL('../../../contracts/', import.meta.url);
 const schema = JSON.parse(readFileSync(new URL('capture-qr.v2.json', contracts), 'utf8')) as {
@@ -25,6 +26,17 @@ const qr = (overrides: Record<string, unknown>) => ({
   tok: 'tok-9f3c2a7e5b1d4680ab',
   ...overrides,
 });
+/**
+ * The two QRs the schema admits and the parser refuses, known and deliberate (B1 review Minor 6). The schema bounds
+ * slot and exp at 2^53 - 1 only; the parser is stricter, as streamCode.test.ts pins. A slot of 2^31 is past the largest
+ * native holds (an Int; MAX_SLOT in streamCode.ts), and an exp of 2^53 - 1 seconds is past what a Date can hold, which
+ * the parser never hands on as an Invalid Date. Named here, so a bound either side gains or loses is a decision.
+ */
+const STRICTER = [
+  ['a slot of 2^31, past the largest native holds', qr({ slot: 2_147_483_648 })],
+  ['an exp of 2^53 - 1, past what a Date can hold', qr({ exp: 9_007_199_254_740_991 })],
+] as const;
+
 const rows = [
   ...vectors.codes.map((row) => [`code: ${row.why}`, qr({ code: row.value }), row.ok] as const),
   ...vectors.tokens.map((row) => [`token: ${row.why}`, qr({ tok: row.value }), row.ok] as const),
@@ -39,6 +51,11 @@ describe("the phone's QR vectors against capture-qr.v2.json (plan D §3.2)", () 
   it.each(rows)('%s: the schema and the parser give the row its verdict', (_why, body, ok) => {
     expect(schemaAdmits(body)).toBe(ok);
     expect(parseStreamCode(body).ok).toBe(ok);
+  });
+
+  it.each(STRICTER)('%s: the schema admits it and the parser refuses it', (_why, body) => {
+    expect(schemaAdmits(body)).toBe(true);
+    expect(parseStreamCode(body).ok).toBe(false);
   });
 });
 

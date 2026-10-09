@@ -35,7 +35,7 @@ type Input = {
 };
 
 /** W28: the first row's answer carries a stage, the second's none (the common case). */
-const QF = { code: 'QF', role: { kind: 'quarter_final' }, label: 'QF' };
+const QF = { code: 'QF', role: { kind: 'quarter_final' }, label: 'Open · QF' };
 
 const waiting = (code: string, zone: string, beats: string, start: string, stage?: object) => ({
   state: 'waiting',

@@ -875,7 +875,7 @@
           "role": {
             "kind": "a_future_kind"
           },
-          "label": "X1"
+          "label": "Open · X1"
         }
       },
       "expected": {

@@ -78,10 +78,10 @@ class BodiesTest {
 
   @Test
   fun `a descriptor's stage replaces the held one and a beat keeps it only while the match label is unchanged`() {
-    val held = WaitingFields("Example Town v Sample CC", "Europe/London", null, true, null, null, 10, "QF", "Example Town v Sample CC")
+    val held = WaitingFields("Example Town v Sample CC", "Europe/London", null, true, null, null, 10, "Open · QF", "Example Town v Sample CC")
     // A beat's answer carries no stage (capture-beat.v1): the same match keeps its round line.
     val sameMatch = WaitingFields("Example Town v Sample CC", "", null, true, null, null, 10)
-    assertEquals("QF", sameMatch.overBeat(held).stageLabel)
+    assertEquals("Open · QF", sameMatch.overBeat(held).stageLabel)
     // The stable code was re-pointed at the next match: the old round line is a wrong fact, so none.
     val nextMatch = WaitingFields("Sample CC v Other CC", "", null, true, null, null, 10)
     assertNull(nextMatch.overBeat(held).stageLabel)
@@ -89,11 +89,11 @@ class BodiesTest {
     // Nothing held, nothing carried: a held match with no round line is no line, whatever match it names.
     assertNull(sameMatch.overBeat(held.copy(stageLabel = null)).stageFor)
     // A beat carries a held line to a second beat for the same match, and not past the first that moved it.
-    assertEquals("QF", sameMatch.overBeat(sameMatch.overBeat(held)).stageLabel)
+    assertEquals("Open · QF", sameMatch.overBeat(sameMatch.overBeat(held)).stageLabel)
     assertNull(sameMatch.overBeat(nextMatch.overBeat(held)).stageLabel)
     // A descriptor is fresh: what it says replaces what is held, and silence is no stage.
-    val fresh = WaitingFields("Sample CC v Other CC", "Europe/London", null, true, null, null, 10, "SF", "Sample CC v Other CC")
-    assertEquals("SF", fresh.over(held).stageLabel)
+    val fresh = WaitingFields("Sample CC v Other CC", "Europe/London", null, true, null, null, 10, "Open · SF", "Sample CC v Other CC")
+    assertEquals("Open · SF", fresh.over(held).stageLabel)
     val silent = WaitingFields("Sample CC v Other CC", "Europe/London", null, true, null, null, 10)
     assertNull(silent.over(held).stageLabel)
   }
@@ -104,9 +104,9 @@ class BodiesTest {
 
   @Test
   fun `a stage is read tolerantly and never makes the waiting fields unreadable`() {
-    val good = """{"code":"QF","role":{"kind":"quarter_final"},"label":"QF"}"""
+    val good = """{"code":"QF","role":{"kind":"quarter_final"},"label":"Open · QF"}"""
     val read = Bodies.code(200, withStage(good), null, Environment.STAGING) as CodeAnswer.Waiting
-    assertEquals("QF", read.waiting.stageLabel)
+    assertEquals("Open · QF", read.waiting.stageLabel)
     assertEquals("A v B", read.waiting.stageFor)
     val bad =
       listOf(
@@ -116,9 +116,9 @@ class BodiesTest {
         """{"role":{"kind":"quarter_final"},"label":7}""",
         """{"role":{"kind":"quarter_final"},"label":""}""",
         // R-F20: the contract says consumers show nothing for a kind they do not know, or for no role.
-        """{"code":"X1","role":{"kind":"a_future_kind"},"label":"X1"}""",
-        """{"code":"QF","label":"QF"}""",
-        """{"code":"QF","role":{"kind":7},"label":"QF"}""",
+        """{"code":"X1","role":{"kind":"a_future_kind"},"label":"Open · X1"}""",
+        """{"code":"QF","label":"Open · QF"}""",
+        """{"code":"QF","role":{"kind":7},"label":"Open · QF"}""",
       )
     for (stage in bad) {
       val answer = Bodies.code(200, withStage(stage), null, Environment.STAGING)
@@ -132,9 +132,9 @@ class BodiesTest {
 
   @Test
   fun `the open session shape carries the stage too`() {
-    val body = JSONObject(PairWire.SESSION).put("stage", JSONObject("""{"code":"QF","role":{"kind":"quarter_final"},"label":"QF"}""")).toString()
+    val body = JSONObject(PairWire.SESSION).put("stage", JSONObject("""{"code":"QF","role":{"kind":"quarter_final"},"label":"Open · QF"}""")).toString()
     val open = Bodies.code(200, body, null, Environment.STAGING) as CodeAnswer.Open
-    assertEquals("QF", open.waiting?.stageLabel)
+    assertEquals("Open · QF", open.waiting?.stageLabel)
   }
 
   @Test

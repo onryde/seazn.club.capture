@@ -165,7 +165,7 @@ class SnapshotWireTest {
       "live-telemetry" to { SnapshotWire.of(live, liveFacts, RecordCounters(2, 1, 4, 3, snapshotFailures = 7, commandFailures = 8, stickyFailure = true)) },
       // W28: the round line the descriptor gave crosses on the pairing; every other case's pairing carries none (null).
       "paired-with-stage-label" to {
-        val waiting = waiting().copy(stageLabel = "QF", stageFor = "Example Town v Sample CC")
+        val waiting = waiting().copy(stageLabel = "Open · QF", stageFor = "Example Town v Sample CC")
         val snapshot = bare(SnapshotState.Paired, 1_790_000_007_000).copy(pairing = PairingView(name, true, waiting), ready = allReady, camera = CameraState.OWN)
         SnapshotWire.of(snapshot, PlatformFacts(survivesBackground = true), clean)
       },
@@ -515,7 +515,7 @@ class SnapshotWireTest {
       "pairing.waiting.destinationName" to { s -> s.waiting { copy(destinationName = null) } },
       "pairing.waiting.overlayUrl" to { s -> s.waiting { copy(overlayUrl = null) } },
       "pairing.waiting.pollSeconds" to { s -> s.waiting { copy(pollSeconds = 60) } },
-      "pairing.waiting.stageLabel" to { s -> s.waiting { copy(stageLabel = "SF") } },
+      "pairing.waiting.stageLabel" to { s -> s.waiting { copy(stageLabel = "Open · SF") } },
       "broadcast.sid" to { s -> s.broadcast { copy(sid = "sess_43") } },
       "broadcast.cause" to { s -> s.broadcast { copy(cause = Cause.OPERATOR) } },
       "broadcast.playbackUrl" to { s -> s.broadcast { copy(playbackUrl = "$playbackUrl?x") } },

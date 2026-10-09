@@ -412,15 +412,15 @@ describe('the paired phase', () => {
     pair();
     expect(snapshot().pairing?.stageLabel).toBeNull();
     engine.send({ kind: 'unpair' });
-    pair({ ...KIT_CODE_A, stageLabel: 'QF', stageMatch: 'Example Town v Sample CC' });
-    expect(snapshot().pairing?.stageLabel).toBe('QF');
+    pair({ ...KIT_CODE_A, stageLabel: 'Open · QF', stageMatch: 'Example Town v Sample CC' });
+    expect(snapshot().pairing?.stageLabel).toBe('Open · QF');
     engine.send({ kind: 'unpair' });
-    pair({ ...KIT_CODE_A, stageLabel: 'QF' });
+    pair({ ...KIT_CODE_A, stageLabel: 'Open · QF' });
     expect(snapshot().pairing?.stageLabel).toBeNull();
     engine.send({ kind: 'unpair' });
-    engine.setPairing({ stageLabel: 'SF' });
+    engine.setPairing({ stageLabel: 'Open · SF' });
     pair();
-    expect(snapshot().pairing?.stageLabel).toBe('SF');
+    expect(snapshot().pairing?.stageLabel).toBe('Open · SF');
   });
 });
 
