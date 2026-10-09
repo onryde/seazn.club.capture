@@ -195,6 +195,8 @@ The independent review of the earlier plan C raised three questions only the own
 | Boundary   | **A viewfinder-only error boundary around the native preview** (ruling 2); AGENTS §7's overlay boundary is unchanged.                                                                                                                                                                             | CD19; Task 39                                                      |
 | SRT host   | **`cred.srt` may be on exactly `live.cloudflare.com` or the environment's `live.*` host; RTMPS and every other URL strictly `live.*`; SRT is on from launch; `cred.srt: null` is accepted (RTMPS alone); lookalikes are refused** (A18 as revised at `a2b6444`).                                  | Task 2 (`Hosts`, host vectors), Task 15 (session vectors), Task 31 |
 
+_SRT host, revised 2026-10-09 (plan D spec, `docs/specs/2026-10-09-s1-plan-d-design.md` §3.6): the environment's `live.*` host is ruled out as an ingest host (web W26, 2026-10-05). Native pins `live.cloudflare.com` for both transports (`Hosts.kt`), and `cred.srt: null` is a safety switch only. This note stands for every `live.*` ingest-host line in this plan, C:19898 and C:19901 among them, which are not edited one by one._
+
 ## Pre-flight, folded
 
 The earlier plan C's pre-flight (`.superpowers/sdd/2026-10-01-s1-plan-c-platform-and-bridge/preflight.md` §5) found twelve mismatches and six notes. Each was re-checked against this revision, as the amendment's §3 asks. None is retired: every one still describes code this plan writes, so each is folded into the task that now owns that code.
@@ -224,7 +226,7 @@ Two pieces of the earlier plan are retired by the amendment, not by the pre-flig
 
 ## Carry traceability
 
-Every item of `docs/specs/2026-09-30-s1-plan-a-results.md` § _Carried to plan C_. **25 are fully mapped here, 2 are partly deferred to plan D**, with the reason given, and **1 (carry 23) is closed by the owner's minSdk ruling** (CD34). Carries 2 and 4 are rewritten by the amendment (CD5).
+Every item of `docs/specs/2026-09-30-s1-plan-a-results.md` § _Carried to plan C_. **25 are fully mapped here, 2 are partly deferred to plan D**, with the reason given, and **1 (carry 23) is closed by the owner's minSdk ruling** (CD34). Carries 2 and 4 are rewritten by the amendment (CD5). _Revised 2026-10-09 (plan D spec §3.6): this plan's `live.*` ingest-host text is stale; see the note under the rulings table._
 
 | Carry | Subject                                                                                         | Where                                                                                                                                                                                                                                   |
 | ----- | ----------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -11158,7 +11160,7 @@ type Verdict = Result<Read, Refusal>;
 const OFFLINE: CodeError = { kind: 'offline' };
 const INVALID: CodeError = { kind: 'invalid' };
 
-/** Provisional (D2): the web side owns the path; plan D reconciles it with the published schema. */
+/** Provisional (D2): the web side owns the path; plan D reconciles it with the published schema. Closed 2026-10-09 (plan D spec §3.3): fetchCodePort.ts builds /api/v1/capture/codes/{code}, the path the web serves; beats and start come from the descriptor. */
 export function codeUrl(origin: string, code: string): string {
   return `${origin}/api/capture/codes/${encodeURIComponent(code)}`;
 }
@@ -19907,7 +19909,7 @@ The console's Go live and Stop with the phone locked; the real start gates (cred
 
 - [ ] **Step 2: Write the plan D section,** _Prerequisites left for plan D_:
   - the web's code, beat and start endpoints on staging, with the schemas the amendment's _Contract shapes_ names;
-  - vendoring `contracts/capture-qr.v1.json`, with the drift job against the main repo's copy (spec §6);
+  - vendoring `contracts/capture-qr.v1.json`, with the drift job against the main repo's copy (spec §6); _Revised 2026-10-09 (plan D spec §3.6): vendored instead are `capture-qr.v2.json` and the four v1 bodies (beat, descriptor, scoring-link, start) with every fixture, byte for byte and pinned, and there is no drift job (R7)._
   - every staging row above, and the spec's exit bar at a staging match, carry 26's lag rule measured, and carry 20's hint and window;
   - recording deletion as a step of every run;
   - whatever this run left red, with its reason.
