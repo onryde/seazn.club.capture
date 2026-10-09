@@ -1,7 +1,8 @@
 # S1 Plan D: staging integration and design follow-up 2
 
 Date: 2026-10-09. Status: draft for owner review.
-Basis: capture main 9f20b7c; web main and staging 8afdd8b42.
+Basis: capture main 9f20b7c; web main and staging e201fab8f (contracts
+byte-identical to 8afdd8b42).
 Handoff: `.superpowers/handoff-plan-d.md`.
 
 Plan D is S1's phase 5 (live-stream spec §7): the real web side wired in,
@@ -50,25 +51,29 @@ session tells it, as it has so far.
 
 The source is a peer report from session `mobile-s1-web` on 2026-10-09,
 re-confirmed the same day. It is not an owner ruling. Staging runs web
-8afdd8b42, and nothing capture-related has merged since. A console-only branch
-(`feat/stream-phone-not-responding`) is in flight and changes no phone
-contract.
+e201fab8f. The only change since 8afdd8b42 is web #930, which touches only the
+console: Go live now refuses a paired phone that has stopped beating with
+`409 phone_not_responding`, and `phone_not_paired` means only that no phone
+holds the pairing. `docs/contracts` is byte-identical.
 
-| Area                   | What staging does                                                                                                                                                                       | What it means for the phone                                                                              |
-| ---------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
-| Automatic start        | Nothing fires at match start. The first beat from the current phone that sees `in_play`, with the org switch on and the phone in automatic, gets `go-live` (startedBy automatic)        | Latency is one poll (10 s in play). A16 and A12 ride the same path. Already parsed: `Pairings.kt:239`.   |
-| Automatic stop         | Runs on beats, on the organiser's poll, and on a 5-minute cron. A15: a hand restart is still auto-stopped                                                                               | Arrives as `over` with endReason `auto_stopped` → `stoppedMatch`. Already parsed.                        |
-| Console Go live / Stop | Beat answer only, no push. Go live is refused `409 phone_not_paired` unless the phone beat within max(60 s, poll + 30 s)                                                                | The phone must keep beating while it waits. That is R4.                                                  |
-| POST start gates       | holder → already_live → destination → entitlement (403) → credit (402). Credit is spent on the first ingest only                                                                        | `match_finished` is in the enum and the phone has no word for it (§3.4).                                 |
-| Beats                  | pollSeconds 5 / 10 / 60. Answers waiting, go-live, live, over, replaced, taken. **No 410 is ever sent** (web X8): 401 code_ended, 200 over, 503 unavailable                             | The defensive 410 reading in `ServerWord.kt:42-63` stays. No Plan D test expects a 410.                  |
-| A9, A14, A17, A10      | As the amendment says. A10's hold window is 183 s (computed, not measured)                                                                                                              | Staging rows in §5.                                                                                      |
-| Ingest host            | The custom ingest host is **ruled out** (web W26, 2026-10-05). SRT is never rewritten. `cred.srt` null is a safety switch only                                                          | The amendment's A18 `live.*` text is stale (§3.6). Native pins `live.cloudflare.com` (`Hosts.kt:46-56`). |
-| Playback URL           | Only the descriptor carries it: `session.playbackUrl`, a plain unsigned HLS URL. No web page plays it. 503 `playback_unconfigured` if the host is unset (set on stg, still owed in prd) | "What viewers see" is the only player of it (§4.3).                                                      |
-| Paths                  | `GET {origin}/api/v1/capture/codes/{code}`, `…/beats`, `…/start`                                                                                                                        | Matches `fetchCodePort.ts:59` and the fakes. Two Kotlin test configs disagree (§3.5).                    |
+| Area                   | What staging does                                                                                                                                                                                                                                                                 | What it means for the phone                                                                                 |
+| ---------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| Automatic start        | Nothing fires at match start. The first beat from the current phone that sees `in_play`, with the org switch on and the phone in automatic, gets `go-live` (startedBy automatic)                                                                                                  | Latency is one poll (10 s in play). A16 and A12 ride the same path. Already parsed: `Pairings.kt:239`.      |
+| Automatic stop         | Runs on beats, on the organiser's poll, and on a 5-minute cron. A15: a hand restart made DURING the match is auto-stopped when the result lands (`session.created_at < finished_at`). A hand start AFTER the result, inside the 120-min grace, is admitted and never auto-stopped | Arrives as `over` with endReason `auto_stopped` → `stoppedMatch`. Already parsed.                           |
+| Console Go live / Stop | Beat answer only, no push. Go live is refused `409 phone_not_responding` unless the phone beat within max(60 s, poll + 30 s); `409 phone_not_paired` when no phone holds the pairing                                                                                              | The phone must keep beating while it waits. That is R4.                                                     |
+| POST start gates       | holder → already_live → destination → entitlement (403) → credit (402). Credit is spent on the first ingest only                                                                                                                                                                  | `match_finished` is in the schema's enum but only the scoring-link route sends it; start never does (§3.4). |
+| Beats                  | pollSeconds 5 / 10 / 60. Answers waiting, go-live, live, over, replaced, taken. **No 410 is ever sent** (web X8): 401 code_ended, 200 over, 503 unavailable                                                                                                                       | The defensive 410 reading in `ServerWord.kt:42-63` stays. No Plan D test expects a 410.                     |
+| A9, A14, A17, A10      | As the amendment says. A10's hold window is 183 s (computed, not measured)                                                                                                                                                                                                        | Staging rows in §5.                                                                                         |
+| Ingest host            | The custom ingest host is **ruled out** (web W26, 2026-10-05). SRT is never rewritten. `cred.srt` null is a safety switch only                                                                                                                                                    | The amendment's A18 `live.*` text is stale (§3.6). Native pins `live.cloudflare.com` (`Hosts.kt:46-56`).    |
+| Playback URL           | Only the descriptor carries it: `session.playbackUrl`, a plain unsigned HLS URL. No web page plays it. 503 `playback_unconfigured` if the host is unset (set on stg, still owed in prd)                                                                                           | "What viewers see" is the only player of it (§4.3).                                                         |
+| Paths                  | `GET {origin}/api/v1/capture/codes/{code}`, `…/beats`, `…/start`                                                                                                                                                                                                                  | Matches `fetchCodePort.ts:59` and the fakes. Two Kotlin test configs disagree (§3.5).                       |
 
 Plan D needs no new web work. What the web is owed from the phone, from the
-web spec §12: S3 (the SRT hold measurement), S10 (the forced-RTMPS session id,
-run by the owner), S11, and optionally S2b. All four are in D3.
+web spec §12: S3 (the SRT hold measurement), S10 (the exit bar: a real phone
+end to end, including the A14 takeover), S11 (phone_lost at 15 min), and
+optionally S2b (moot under W26). Separately, and not a §12 step, the web
+asked for a **forced-RTMPS session id**, run by the owner, so it can check
+the session server-side. All are in D3.
 
 ## 3. Slice D1: contracts and reconciliation
 
@@ -136,22 +141,23 @@ path". It is already reconciled in code: `fetchCodePort.ts` uses
 start come from the descriptor. D1 closes it on paper with an inline revision
 note at C:11161, and no code changes.
 
-### 3.4 The `match_finished` refusal
+### 3.4 Every beat send in the record
 
-`capture-start.v1.json`'s refusal codes are already_live, code_ended,
-match_finished, no_credit, no_destination, not_a_stream_code, not_entitled and
-rate_limited. The phone maps `match_finished` to UNKNOWN, so the operator sees
-the generic refusal line. D1 adds:
+The web cannot show a 10 s cadence. It keeps no per-beat log, and its beat
+history keeps at most one row per 60 s, purged after 24 h. The phone's record
+writes a waiting beat only when its answer changes. So D3's row 8 has no
+evidence source today. D1 makes the record write one line per beat **sent**,
+in every build (_rec_): the send time, the interval since the last send, and
+the answer word. A three-hour match at 10 s is about 1,100 lines. D1 checks
+that against the record's size limit and, if it does not fit, writes one
+line per change of interval plus a count per minute instead.
 
-- `Refusal.MATCH_FINISHED("match_finished")` in `Pairing.kt`, the snapshot
-  wire word, the TS `REFUSED` map in `statusKey.ts`, and a `LINE_TIER` entry
-  (urgent: it is a refusal);
-- `stream.status.refusedMatchFinished` in en/es/fr/nl, with copy along the
-  lines of "This match has finished — nothing to stream" (_rec_; final copy in
-  the plan), measured by `stripTextFit.test.ts` at 640 × 360;
-- a vector in the start-answer vectors. The others are left alone:
-  `rate_limited` is a 429, which `Bodies.start` already reads as Failed, and
-  already_live, code_ended and not_a_stream_code have their own readings.
+`match_finished` needs no phone word. It is in `capture-start.v1.json`'s
+enum, but the web sends it only from the scoring-link route
+(`capture-phone.ts:794` at e201fab8f), and the phone already handles it there
+(`ScoringLinkPanel.tsx:16`). A start after the result is admitted inside the
+120-min grace and answers `401 code_ended` after it, and both already have
+readings. The rewritten `contracts/README.md` notes it beside the 410: words a schema allows that the server never sends on that route.
 
 ### 3.5 Test paths that disagree with the web
 
@@ -408,17 +414,17 @@ personal; AGENTS §13). Every run deletes its Cloudflare recording afterwards.
 | 1   | **Automatic start and stop** at a real scheduled match | The phone is paired, automatic, with the org switch on. When the match goes `in_play`, it goes live within one poll with no touch. When the result is in, it stops by itself (`stoppedMatch`)                                                                         | Owner starts and ends the match in the web app |
 | 1a  | A12: organiser Stop, then the match continues          | No auto-restart. The strip says "Organiser stopped it — waiting for Go live" (A:633)                                                                                                                                                                                  | Owner                                          |
 | 1b  | A16: late pairing into a running match                 | Starts automatically once                                                                                                                                                                                                                                             | Owner scans mid-match                          |
-| 1c  | A15: manual restart after an auto-stop condition       | Auto-stopped again (`session_predates_result`)                                                                                                                                                                                                                        | Owner                                          |
+| 1c  | A15: hand restart during the match, then the result    | Auto-stopped when the result lands (`session_predates_result`); a hand start after the result is not stopped                                                                                                                                                          | Owner                                          |
 | 2   | **Console Go live and Stop**                           | (a) Default, R4: the phone is paired and dimmed, the console's Go live → live within one poll; Stop → over on the next beat. (b) Fallback: the same with the phone **locked** by its power button for 5+ minutes. Camera and mic open, readiness passes, it publishes | Owner on the console; owner locks the phone    |
-| 3   | Start gates                                            | Each of no_destination, not_entitled, no_credit shows its own line; match_finished shows its new line (§3.4)                                                                                                                                                          | Owner arranges each state in stg               |
+| 3   | Start gates                                            | Each of no_destination, not_entitled, no_credit shows its own line; a start after the match's result, inside the grace, is admitted                                                                                                                                   | Owner arranges each state in stg               |
 | 4   | A9: two phones, one code and slot                      | A non-live slot is taken over and the old phone hears replaced. A live slot answers taken                                                                                                                                                                             | Owner, two phones                              |
 | 5   | A14: dead live phone taken over after 60 s             | Takeover keeps the same sid                                                                                                                                                                                                                                           | Owner kills the live phone's network           |
-| 6   | A17: a late stop closes only its own sid               | The record shows the stopped sid and no other closed                                                                                                                                                                                                                  | Scripted with row 5                            |
+| 6   | A17: a late stop after the row 5 takeover              | Phone 1's late beat hears `replaced`; the server records `stop_ignored`; phone 2's broadcast is uninterrupted. First deterministic proof of the live·dead T4 case (web)                                                                                               | Scripted with row 5                            |
 | 7   | A10: hold window                                       | Uplink pulled under 183 s: rejoin answers `live`. Over 183 s: over. S3 measures the SRT hold                                                                                                                                                                          | Owner pulls the uplink                         |
-| 8   | Beat cadence                                           | The record's beat intervals are 10 s in play or within 30 min of start, 5 s while starting, 60 s otherwise                                                                                                                                                            | Read from the record                           |
-| 9   | S10: forced RTMPS                                      | UDP blocked → RTMPS; the session id is sent to `mobile-s1-web` for the server-side check                                                                                                                                                                              | Owner                                          |
+| 8   | Beat cadence                                           | The record's beat-send lines (§3.4) show 10 s in play or within 30 min of start, 5 s while starting, 60 s otherwise; the web's 60 s history corroborates                                                                                                              | Read from the record                           |
+| 9   | Forced RTMPS                                           | UDP blocked → RTMPS; the session id is sent to `mobile-s1-web` for the server-side check                                                                                                                                                                              | Owner                                          |
 | 10  | Round line on real data                                | Each string in §5.2 reads as listed                                                                                                                                                                                                                                   | Owner pairs each fixture                       |
-| 11  | Exit bar (S:269-283, without the overlay)              | Pull the uplink, block UDP, lock 5+ min, open another camera app, take a call, Stop from the console. The Phone node shows beats throughout; read the record back                                                                                                     | Owner                                          |
+| 11  | Exit bar, web S10 (S:269-283, without the overlay)     | Pull the uplink, block UDP, lock 5+ min, open another camera app, take a call, Stop from the console. The Phone node shows beats throughout; read the record back                                                                                                     | Owner                                          |
 | 12  | Part 2 on the device                                   | Viewers' video: tap → countdown → picture → closes at 20 s; the not-ready path; it closes on the scoring panel. C2 at 804 × 332 and at 640 × 360 (`wm size`), en and the longest locale. The dim fires at 30 s and a touch wakes it                                   | Owner taps; the agent reads screenshots        |
 | 13  | Thermal rung                                           | With a `thermal` status forced to 2 on a debug build, "What viewers see" closes and is disabled with its reason                                                                                                                                                       | Debug build, scripted                          |
 
