@@ -269,11 +269,11 @@ the stream stage renders no WebView, in each of the four locales.
 > hide button then when later stage like when org reqeust we can implemnt". Everything in this section is built and
 > tested, and hidden behind one compile-time switch, `FEATURES.viewerCheck` in `src/ui/features.ts`, which is `false`.
 > Off, the on-air icon row is Settings, Take photo and Remote scoring, with no cell flexing; nothing of the view mounts
-> (no cell, cover, player or timers); and the heat caption names no view: "Phone hot · still live" beside the LIVE plate,
+> (no cell, cover, player or timers, and the record has no `viewer.*` or `peek.*` lines); and the heat caption names no view: "Phone hot · still live" beside the LIVE plate,
 > "Phone hot" before air (`stream.advisory.hotLive`, `stream.advisory.hot`; the controller's ruling, 2026-10-09). The
-> ladder is unchanged (§4.2): step 1 still sheds `viewer-feed`, with nothing to close. There is no env var, remote
-> config, setting or runtime toggle: the switch is turned on in a commit, on an organiser's request, and this section
-> then applies as written, with its D3 checks (row 12's viewer steps, row 13's cell), which wait until then.
+> ladder is unchanged (§4.2): step 1 still sheds `viewer-feed`, with nothing to close. One compile-time switch, with
+> no env var, remote config, setting or runtime toggle, is the controller's ruling implementing the owner's; how it is
+> turned on for an organiser who asks is the owner's call then. Turned on, this section applies as written, with its D3 checks (row 12's viewer steps, row 13's cell), which wait until then.
 
 **Behaviour.**
 

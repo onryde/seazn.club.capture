@@ -347,9 +347,11 @@ Three rules travel with these tokens:
   "keep all code and just hide button then when later stage like when org
   reqeust we can implemnt"). One compile-time switch, `FEATURES.viewerCheck`
   in `src/ui/features.ts`, is false, so the on-air row has no cell for it and
-  nothing of it mounts: no cell, cover, player or timers. No env var, remote
-  config, setting or runtime toggle turns it on; a commit does, when an
-  organiser asks. Its tests render it with the switch passed on, so everything
+  nothing of it mounts: no cell, cover, player or timers, and the record has
+  no `viewer.*` or `peek.*` lines. One switch changed in a commit, with no env
+  var, remote config, setting or runtime toggle, is the controller's ruling
+  implementing the owner's; how it is turned on for an organiser who asks is
+  the owner's call then. Its tests render it with the switch passed on, so everything
   below stays tested. Built in, **it is a tap.** Its protection against a
   billed preview left running is that it closes by itself 20 s after its first frame, or 3 s after
   telling the operator there is no picture; a tap never extends it. It covers

@@ -640,7 +640,7 @@ while true; do printf '%s %s\n' "$(date -u +%H:%M:%S)" "$(curl -s -o /dev/null -
 - [ ] **Step 1 (owner): Pair in operator mode.** Pair a scheduled TestDevicePad match, with a doubles fixture from §5.2 if one is scheduled, so C2's wrapping is read. Confirm the automatic switch reads off.
   - Paired, before the Go live: the camera box shows the camera's picture and nothing drawn over it. There is no score layer (D2 §4.1, R1). (Agent) Screenshot `r12-paired`.
   - Go live from the console. Live, before any tap: the same, no score layer over the camera. (Agent) Screenshot `r12-live`.
-  - Live: the icon row is Settings, Take photo and Remote scoring, three buttons packed from the start of the row, with no What viewers see cell and no reason line under the row (AGENTS §6, the owner's ruling, 2026-10-09). Every control of the controls half is on screen. Read it from `r12-live`.
+  - Live: the icon row is Settings, Take photo and Remote scoring, three buttons packed from the start of the row, with no What viewers see cell and no reason line under the row (AGENTS §6: the view is hidden by the owner's ruling, 2026-10-09; the packed three-button row is the controller's). Every control of the controls half is on screen. Read it from `r12-live`.
 - [ ] **Step 2 (owner): The viewers' video, the picture path.** _Deferred until the switch is on._ Tap **What viewers see** once (a tap, not a hold).
   - Expected:
     - A 5 s countdown, with the loading string from `$EVID/keys.txt`.
@@ -751,6 +751,7 @@ With What viewers see hidden (the owner's ruling, 2026-10-09; Task 10), step 1 s
 - [ ] **Step 3 (owner): Go live.** Pair in operator mode and go live from the console, so the plate reads LIVE. (With the switch on, also tap **What viewers see**, so the picture is showing.)
 - [ ] **Step 4 (agent): Force thermal status 2.** Run `adb shell cmd thermalservice override-status 2` and write down the time.
   - Expected: within 10 s (the device sampler's period), the strip's one message line reads `stream.advisory.hotLive` from `$EVID/keys.txt`, "Phone hot · still live", beside the LIVE plate. It names no viewer check. The icon row is unchanged: Settings, Take photo, Remote scoring.
+  - If the phone reaches status 2 before the Go live (armed or connecting), the line reads `stream.advisory.hot`, "Phone hot", with no "still live". This is not forced: record it if seen, and say so if not.
   - (Agent) Screenshot `r13-shed`.
   - Deferred until the switch is on: the video closes; the peek cell is disabled with "Phone hot" (`stream.peek.hot`); the caption reads the reworded `stream.advisory.shed`; a tap on the cell opens nothing.
 - [ ] **Step 4a (agent): Statuses 3 and 4.** Run `adb shell cmd thermalservice override-status 3`, wait 10 s, and screenshot `r13-shed-3`. Then do the same with `4`, as `r13-shed-4`.

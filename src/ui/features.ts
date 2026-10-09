@@ -1,6 +1,7 @@
 /**
- * Features that are built and tested but not shipped, one compile-time switch each. There is no env var, no remote
- * config, no setting and no runtime toggle: a switch changes in this file, in a commit (the owner's ruling, 2026-10-09).
+ * Features that are built and tested but not shipped, one compile-time switch each. A switch changes in this file, in
+ * a commit, with no env var, remote config, setting or runtime toggle: the controller's ruling of 2026-10-09,
+ * implementing the owner's below. How a feature is turned on for an organiser who asks is the owner's call then.
  * A screen reads its switch as the default of a prop, so its tests can render the hidden feature without editing the
  * value here. The route passes nothing, so what ships is what this file says.
  */
