@@ -8,7 +8,7 @@ import type { ViewerFeed } from '@/hooks/useViewerFeed';
 import type { VideoStatus } from '@/services/surfaces';
 import { StageVideo } from '@/ui/components/StageVideo';
 import { Text } from '@/ui/components/Text';
-import { colour, layout, space } from '@/ui/theme/tokens';
+import { colour, layout, radius, space } from '@/ui/theme/tokens';
 
 type Open = Exclude<ViewerCheck['kind'], 'idle'>;
 
@@ -190,7 +190,8 @@ const styles = StyleSheet.create({
     backgroundColor: colour.ground,
   },
   count: { color: colour.ink, fontVariant: ['tabular-nums'] },
-  // The scoring panel's Hide, on the night: a 48 dp target with the hairline rule, on the ground so it reads over video.
+  // The scoring panel's Hide, on the night: a 48 dp target with the hairline rule and the card radius, on the ground so
+  // it reads over video.
   hide: {
     minHeight: layout.iconButton,
     minWidth: layout.iconButton,
@@ -199,6 +200,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: space.md,
     borderWidth: layout.iconBorder,
     borderColor: colour.ink3,
+    borderRadius: radius.card,
     backgroundColor: colour.ground,
   },
 });

@@ -238,9 +238,10 @@ describe('the owner’s phone, 804 × 332 and 804 × 360 (the ruling of 2026-10-
     expect(box.height + STRIP_WORST).toBe(332);
   });
 
-  // Option A (owner, 2026-10-08): the strip is what this match's label needs. A two-line label (44) reserves 66 + 44 =
-  // 110, so the 804 × 332 box is 222 tall and 394.7 wide (as laid out the label measures 45: 221, 392.9), and the strip
-  // under it is the 110 its content needs: the 16 of padding, the round line, the label, two gaps and the message line.
+  // Option A (owner, 2026-10-08): the strip is what this match's label needs. A two-line label (44, C2's one line a
+  // side) reserves 66 + 44 = 110, so the 804 × 332 box is 222 tall and 394.7 wide (the label before C2 measured 45 as
+  // laid out on the phone, 221 and 392.9; C2's is D3's to read), and the strip under it is the 110 its content needs:
+  // the 16 of padding, the round line, the label, two gaps and the message line.
   it('holds a 394.7 × 222 box at 804 × 332 for a two-line label, and the strip under it holds that label’s content', () => {
     const label = 2 * typeScale.label.lineHeight;
     const measured = at(332, stripReserve(label));

@@ -89,6 +89,21 @@ describe('MatchLabel, C2 (D2 §4.4)', () => {
     expect(margin.querySelector('[data-testid="match-label-line"]')).toBeNull();
   });
 
+  // B4 review m1: on native a Text in a row with no flex runs past its parent instead of wrapping, so the 2-line cap
+  // only holds if each name, and the rows column beside the margin, grow into the width that is left (flex 1). The
+  // margin centres the v between the rows. jsdom lays nothing out: these are the styles, the wrap is a D3 check.
+  it('lets a long side wrap inside its row: the names and the rows column take the width, the v is centred', () => {
+    pairedWith('Ana Ruiz v Bea Lima');
+    const names = screen.getAllByTestId('match-label-line');
+    expect(names.map((name) => getComputedStyle(name).flexGrow)).toEqual(['1', '1']);
+    const rows = (screen.getAllByTestId('match-label-bar')[0]?.parentElement as HTMLElement)
+      .parentElement as HTMLElement;
+    expect(rows.contains(names[1] as HTMLElement)).toBe(true);
+    expect(getComputedStyle(rows).flexGrow).toBe('1');
+    const margin = screen.getByTestId('match-label-v').parentElement as HTMLElement;
+    expect(getComputedStyle(margin).justifyContent).toBe('center');
+  });
+
   it('caps each side at 2 lines, ending in an ellipsis (Review Focus 4)', () => {
     pairedWith(
       'Alexandra Konstantinopoulou / Bea Lima v Cai Wen / Maria Fernanda Albuquerque Santos',

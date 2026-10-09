@@ -167,6 +167,19 @@ describe('ViewerCover', () => {
     },
   );
 
+  // B3 re-review: the cover draws its Hide as the Remote scoring panel draws its own, rounded to the card radius (12,
+  // `ScoringLinkPanel`'s `hide`). jsdom keeps the four corners and leaves the `border-radius` shorthand empty.
+  it('rounds Hide to the card radius, 12 dp, as the scoring panel rounds its own', () => {
+    cover('showing', 'playing');
+    const style = getComputedStyle(screen.getByRole('button', { name: HIDE }));
+    expect([
+      style.borderTopLeftRadius,
+      style.borderTopRightRadius,
+      style.borderBottomRightRadius,
+      style.borderBottomLeftRadius,
+    ]).toEqual(['12px', '12px', '12px', '12px']);
+  });
+
   it('hands TalkBack the lines and a named Hide: the box itself is not one accessible element', () => {
     handed.length = 0;
     cover('loading', 'waiting');

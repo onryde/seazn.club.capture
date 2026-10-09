@@ -164,12 +164,15 @@ describe('stripReserve (the strip a measured label needs)', () => {
   it.each([
     ['100 dp, a label past the four lines', 100, 166],
     ['120 dp, a label at a large system text size', 120, 186],
-  ])('takes a measured label of %s as measured: the reserve is %d', (_name, height, reserve) => {
-    expect(height).toBeGreaterThan(88);
-    expect(stripReserve(height)).toBe(reserve);
-    expect(stripReserve(height)).toBe(FIXED + height);
-    expect(stripReserve(height)).toBeGreaterThan(STRIP_RESERVE);
-  });
+  ])(
+    'takes a measured label of %s as measured: %d dp of label, a reserve of %d',
+    (_name, height, reserve) => {
+      expect(height).toBeGreaterThan(88);
+      expect(stripReserve(height)).toBe(reserve);
+      expect(stripReserve(height)).toBe(FIXED + height);
+      expect(stripReserve(height)).toBeGreaterThan(STRIP_RESERVE);
+    },
+  );
 
   // Swept, not sampled: every label height from 1 to 88 dp gives a reserve that is the label plus the same 66, and
   // never more than the worst case.
@@ -231,7 +234,8 @@ describe('stripReserve (the strip a measured label needs)', () => {
 
   // Full width is the picture's target (owner, 2026-10-08): the box is the whole half whenever the half's 9/16 leaves
   // the strip its reserve, and the rows above that are full width are exactly those: with the round line's 22 dp
-  // reserved (option B) only the smallest window, 640 x 360, where the half holds a 185.6 box and the window leaves 218.
+  // reserved (option B) only the smallest window, 640 x 360, where the half holds a 185.6 box and the window leaves at
+  // least 206 (360 - 154, the worst label).
   it('is the whole half wherever the strip fits under it (full width), and narrower only where the window is short', () => {
     const full = TABLE.filter(([, half, , , width]) => Math.abs(width - half) < 1e-6);
     expect(full.map(([name]) => name)).toEqual([

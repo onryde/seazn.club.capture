@@ -7,7 +7,10 @@ export type IdleClock = {
   readonly idle: boolean;
   /** Activity: idle ends and the count starts again, unless paused. */
   readonly wake: () => void;
-  /** The app left the foreground, or mounted there: idle ends, and nothing counts, whatever wakes it, till `resume`. */
+  /**
+   * The app left the foreground, or Live Stream mounted while the app was in the background: idle ends, and nothing
+   * counts, whatever wakes it, till `resume`.
+   */
   readonly pause: () => void;
   /** The app is in the foreground (back, or at mount): the pause ends and it wakes, so the 30 s count from then. */
   readonly resume: () => void;

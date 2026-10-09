@@ -74,7 +74,7 @@ describe('the status strip always shows the round line, whenever there is one (o
     ['unmeasured (0)', 0],
     ['one regular line', 22],
     ['two regular lines', 44],
-    ['three long lines', 57],
+    ['between two and three lines', 57],
     ['three regular lines', 66],
     ['four lines, the worst case (C2, D2 §4.4)', 88],
     ['a large system text size', 120],

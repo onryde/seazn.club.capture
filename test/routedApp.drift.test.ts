@@ -84,12 +84,14 @@ describe('the stream layout keeps the screen on and hears every touch', () => {
     expect(WRAPS_STACK.test(layout)).toBe(true);
   });
 
+  // The beside sample is a whole TouchWake, opened and closed, next to the Stack: a self-closing one would fail at the
+  // first token, so a looser rule (`<TouchWake>` alone, or any TouchWake pair) would still pass here (B5 re-review N1).
   it('does not count a TouchWake beside the Stack, or one only in a comment', () => {
     const beside = bodyOf(
       [
         'function StreamLayout() {',
         '  return (<>',
-        '    <TouchWake />',
+        '    <TouchWake>{null}</TouchWake>',
         '    <Stack />',
         '  </>);',
         '}',

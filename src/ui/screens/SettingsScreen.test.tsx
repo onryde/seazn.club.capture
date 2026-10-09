@@ -109,7 +109,7 @@ async function startedViewfinder() {
 }
 
 describe('Settings has no score preview control (D2 §4.1)', () => {
-  // The four removed `settings.overlay.label` values, copied here because the dictionaries no longer hold them.
+  // The four removed Score preview labels, one a language, copied here because the dictionaries no longer hold them.
   it.each(LANGS)(
     '%s: the automatic switch is the only switch, and no copy names a score preview',
     (lang) => {
