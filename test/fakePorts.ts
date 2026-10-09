@@ -28,6 +28,13 @@ import { createFakeSurfaces, type FakeSurfaces } from './fakeSurfaces';
 
 export const TEST_NOW = new Date('2026-10-03T13:00:00Z');
 
+/**
+ * A `clock` port that moves with vitest's fake timers, which fake `Date` too (vitest 5). For a hook that waits
+ * `until - clock()`: on the frozen `TEST_NOW` clock that wait never shrinks, so a 3 s phase that follows a 5 s one
+ * would last 8 (ledger P7). Pass it as `clock`, after `vi.useFakeTimers()` and `vi.setSystemTime(TEST_NOW)`.
+ */
+export const timerClock = (): Date => new Date(Date.now());
+
 export type FakeMotion = MotionPort & { emit(g: Gravity, atMs: number): void; available: boolean };
 
 /** The fake engine, plus every intent it was sent, whole: tests only (M5). */
