@@ -110,7 +110,7 @@ function snapshot(telemetry: Partial<Telemetry>): EngineSnapshot {
   };
 }
 
-describe('selectShedding (D2 §4.2: any step down the ladder closes What viewers see)', () => {
+describe('selectShedding (D2 §4.2: any step down the ladder reads as shedding)', () => {
   it.each([
     [null, false],
     ['viewer-feed', true],

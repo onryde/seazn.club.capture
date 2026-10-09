@@ -7,6 +7,7 @@ import { formatElapsed } from '@/i18n/formatElapsed';
 import { controlsHalfWidth, layout, space } from '@/ui/theme/tokens';
 import { typeScale } from '@/ui/theme/type';
 import { loadFont } from '../../../test/fontMetrics';
+import { linesOf } from '../../../test/textFit';
 
 // Owner, 2026-10-08 (design follow-up §1, amended): the controls half takes the width its content needs and the
 // camera half takes the rest. This proves the number. The width is the WIDEST ROW of the controls half in any state,
@@ -29,24 +30,6 @@ const geist500 = loadFont('geist-500');
 /** The gap of the icon row, the chip row and the plate row: `space.sm` in all three (the rendered tree pins it). */
 const GAP = space.sm;
 
-/**
- * Lines a text takes in a width, breaking at plain spaces (a no-break space does not break, as in French typography)
- * with no kerning, which can only over-state a width slightly. At least one word per line (homeFit.test.ts and
- * scoringFit.test.ts keep the same helper; copied, not exported, to keep this file off those).
- */
-function linesOf(text: string, width: number, measure: (text: string) => number): number {
-  let lines = 1;
-  let current = '';
-  for (const piece of text.split(' ')) {
-    const next = current === '' ? piece : `${current} ${piece}`;
-    if (current === '' || measure(next) <= width) current = next;
-    else {
-      lines += 1;
-      current = piece;
-    }
-  }
-  return lines;
-}
 const wordsOf = (text: string) => text.split(/[  ]/).filter((word) => word !== '');
 
 /** `state`: Barlow Condensed 700, uppercase, letter-spaced. The tally plate's word. */

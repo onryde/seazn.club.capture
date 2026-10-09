@@ -8,6 +8,7 @@ import type { ScoringWord } from '@/services/scoringLinkPort';
 import { layout, space } from '@/ui/theme/tokens';
 import { typeScale } from '@/ui/theme/type';
 import { loadFont } from '../../../test/fontMetrics';
+import { linesOf } from '../../../test/textFit';
 import { FAKE_SCORING_URL } from '../../../test/fakeScoringLinkPort';
 
 // Spec §10, Q-C2 and the owner's board: Remote scoring adds a fourth cell to the on-air icon row and a panel over
@@ -33,25 +34,6 @@ type Dictionary = Readonly<Record<string, string>>;
 
 const stack = (items: readonly number[], gap: number, pad: number) =>
   2 * pad + items.reduce((sum, item) => sum + item, 0) + gap * (items.length - 1);
-
-/**
- * Lines a text takes in a width, breaking at plain spaces (a no-break space does not break, as in French typography)
- * with no kerning, which can only over-state a width slightly. At least one word per line. (homeFit.test.ts keeps
- * the same helper; copied, not exported, to keep this file off that one.)
- */
-function linesOf(text: string, width: number, measure: (text: string) => number): number {
-  let lines = 1;
-  let current = '';
-  for (const piece of text.split(' ')) {
-    const next = current === '' ? piece : `${current} ${piece}`;
-    if (current === '' || measure(next) <= width) current = next;
-    else {
-      lines += 1;
-      current = piece;
-    }
-  }
-  return lines;
-}
 
 const barlow600 = loadFont('barlow-condensed-600');
 const barlow700 = loadFont('barlow-condensed-700');

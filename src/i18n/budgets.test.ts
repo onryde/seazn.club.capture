@@ -28,6 +28,11 @@ const BUDGETS: readonly (readonly [keys: RegExp, max: number])[] = [
   [/^stream\.peek\.label$/, 28],
   [/^stream\.peek\.(unavailable|hot)$/, 24],
   [/^stream\.peek\.loading$/, 44],
+  // D2 §4.3: the cover's honest line, its countdown, the not-ready line and its Hide.
+  [/^stream\.peek\.honest$/, 44],
+  [/^stream\.peek\.closesIn$/, 24],
+  [/^stream\.peek\.notReady$/, 56],
+  [/^stream\.peek\.hide$/, 14],
   // Take photo (spec §8): the icon's accessible name, and the one line over the icon row.
   [/^stream\.photo\.label$/, 20],
   [/^stream\.photo\.(saved|failed)$/, 36],

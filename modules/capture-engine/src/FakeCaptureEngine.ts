@@ -397,13 +397,14 @@ function sceneOf(name: FakeScene, now: number): Scene {
         ready: CAMERA_NOT_OURS,
       };
     case 'shed':
+      // As native pairs them (DeviceReadings.shed, the snapshot vector): status 2, moderate, is the first rung.
       return {
         state: publishing('srt', since),
         telemetry: {
           ...live,
           shed: 'viewer-feed',
-          thermalStatus: 'severe',
-          thermalHeadroom: 0.12,
+          thermalStatus: 'moderate',
+          thermalHeadroom: 0.6,
         },
       };
   }

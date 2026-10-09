@@ -1,13 +1,19 @@
 import { act, fireEvent, screen, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { HOLD_MS } from '@/hooks/useHold';
-import type { Peek } from '@/hooks/usePeek';
+import type { ViewerCheckView } from '@/hooks/useViewerCheck';
 import type { Viewfinder } from '@/hooks/useViewfinder';
+import en from '@/i18n/en.json';
 import { StreamColumn } from '@/ui/components/StreamColumn';
 import { pressIn } from '../../../test/press';
 import { renderWithPorts } from '../../../test/renderWithPorts';
 
-const PEEK: Peek = { showing: false, mounted: false, pressIn: vi.fn(), pressOut: vi.fn() };
+const VIEWER: ViewerCheckView = {
+  kind: 'idle',
+  toggle: vi.fn(),
+  close: vi.fn(),
+  firstFrame: vi.fn(),
+};
 const GREEN = { camera: true, network: true, sound: true };
 /** What StreamScreen hands the icon row; these tests are of the column's own gates, not of leaving. */
 const ICONS = {
@@ -34,6 +40,7 @@ const viewOf = (overrides: Partial<Viewfinder>): Viewfinder => ({
   shutter: false,
   scoring: false,
   peekable: false,
+  shed: false,
   startsAt: null,
   auto: false,
   destination: 'YouTube · Fake CC',
@@ -50,7 +57,7 @@ describe('StreamColumn’s Go live', () => {
 
   it('starts after the hold when paired with nothing blocking', () => {
     const view = viewOf({});
-    renderWithPorts(<StreamColumn view={view} {...ICONS} peek={PEEK} />);
+    renderWithPorts(<StreamColumn view={view} {...ICONS} viewer={VIEWER} />);
     pressIn(goLive());
     act(() => vi.advanceTimersByTime(HOLD_MS));
     expect(view.start).toHaveBeenCalledTimes(1);
@@ -63,7 +70,7 @@ describe('StreamColumn’s Go live', () => {
     'stays off while the engine is %s, even with every chip green',
     (kind) => {
       const view = viewOf({ kind, plate: 'starting' });
-      renderWithPorts(<StreamColumn view={view} {...ICONS} peek={PEEK} />);
+      renderWithPorts(<StreamColumn view={view} {...ICONS} viewer={VIEWER} />);
       pressIn(goLive());
       act(() => vi.advanceTimersByTime(HOLD_MS));
       expect(view.start).not.toHaveBeenCalled();
@@ -73,13 +80,15 @@ describe('StreamColumn’s Go live', () => {
   // A3: Stop ends the broadcast and the pairing, and its label says so.
   // Owner decision 1 (2026-10-05): Stop unpairs only once live; before, it says it stops, and nothing more.
   it('labels Stop for a screen reader as stopping and unpairing once live, as stopping before; Go live keeps its own', () => {
-    const { rerender } = renderWithPorts(<StreamColumn view={viewOf({})} {...ICONS} peek={PEEK} />);
+    const { rerender } = renderWithPorts(
+      <StreamColumn view={viewOf({})} {...ICONS} viewer={VIEWER} />,
+    );
     expect(goLive()).toBeTruthy();
     rerender(
       <StreamColumn
         view={viewOf({ kind: 'connecting', action: 'stop', onAir: true, plate: 'connecting' })}
         {...ICONS}
-        peek={PEEK}
+        viewer={VIEWER}
       />,
     );
     expect(screen.getByRole('button', { name: 'Hold to stop' })).toBeTruthy();
@@ -94,7 +103,7 @@ describe('StreamColumn’s Go live', () => {
           plate: 'live',
         })}
         {...ICONS}
-        peek={PEEK}
+        viewer={VIEWER}
       />,
     );
     expect(screen.getByRole('button', { name: 'Hold to stop and unpair' })).toBeTruthy();
@@ -109,7 +118,7 @@ describe('StreamColumn’s Go live', () => {
       <StreamColumn
         view={viewOf({ kind: 'ended', action: 'none', plate: 'ended' })}
         {...ICONS}
-        peek={PEEK}
+        viewer={VIEWER}
       />,
     );
     expect(screen.queryByRole('button', { name: /Press and hold|Hold to stop/ })).toBeNull();
@@ -121,11 +130,11 @@ describe('StreamColumn’s Go live', () => {
     const reason = 'stream.blocker.sound' as const;
     const blocked = { blocker: 'sound', reason, preflight: { ...GREEN, sound: false } } as const;
     const { rerender } = renderWithPorts(
-      <StreamColumn view={viewOf(blocked)} {...ICONS} peek={PEEK} />,
+      <StreamColumn view={viewOf(blocked)} {...ICONS} viewer={VIEWER} />,
     );
     expect(screen.getByText('Mic not available')).toBeTruthy();
     rerender(
-      <StreamColumn view={viewOf({ ...blocked, kind: 'pairing' })} {...ICONS} peek={PEEK} />,
+      <StreamColumn view={viewOf({ ...blocked, kind: 'pairing' })} {...ICONS} viewer={VIEWER} />,
     );
     expect(screen.queryByText('Mic not available')).toBeNull();
   });
@@ -140,7 +149,7 @@ describe('StreamColumn’s icon row (spec §3)', () => {
       onSettings={onSettings}
       onScoringLink={vi.fn()}
       scoringOpen={false}
-      peek={PEEK}
+      viewer={VIEWER}
     />
   );
 
@@ -173,21 +182,21 @@ describe('StreamColumn’s icon row (spec §3)', () => {
     const onHome = vi.fn();
     const handlers = { ...ICONS, onScoringLink, onSettings, onHome };
     const { rerender } = renderWithPorts(
-      <StreamColumn view={viewOf({ scoring: true })} {...handlers} peek={PEEK} />,
+      <StreamColumn view={viewOf({ scoring: true })} {...handlers} viewer={VIEWER} />,
     );
     fireEvent.click(screen.getByRole('button', { name: 'Remote scoring' }));
     expect(onScoringLink).toHaveBeenCalledTimes(1);
     expect(onSettings).not.toHaveBeenCalled();
     expect(onHome).not.toHaveBeenCalled();
     // No pairing held: the button goes and Settings stays, so the absence is not an empty row.
-    rerender(<StreamColumn view={viewOf({ scoring: false })} {...handlers} peek={PEEK} />);
+    rerender(<StreamColumn view={viewOf({ scoring: false })} {...handlers} viewer={VIEWER} />);
     expect(screen.queryByRole('button', { name: 'Remote scoring' })).toBeNull();
     expect(screen.getByRole('button', { name: 'Settings' })).toBeTruthy();
   });
 
   it('before air it is the last of the row, after Take photo', () => {
     renderWithPorts(
-      <StreamColumn view={viewOf({ scoring: true, shutter: true })} {...ICONS} peek={PEEK} />,
+      <StreamColumn view={viewOf({ scoring: true, shutter: true })} {...ICONS} viewer={VIEWER} />,
     );
     expect(rowNames()).toEqual(['Settings', 'Home', 'Take photo', 'Remote scoring']);
   });
@@ -198,7 +207,7 @@ describe('StreamColumn’s icon row (spec §3)', () => {
         view={viewOf({ onAir: true, action: 'stop', scoring: true, shutter: true })}
         {...ICONS}
         canLeave={false}
-        peek={PEEK}
+        viewer={VIEWER}
       />,
     );
     expect(rowNames()).toEqual(['Settings', 'Take photo', 'Remote scoring', 'What viewers see']);
@@ -212,7 +221,7 @@ describe('StreamColumn’s icon row (spec §3)', () => {
         view={viewOf({ scoring: true, shutter: true })}
         {...ICONS}
         scoringOpen
-        peek={PEEK}
+        viewer={VIEWER}
       />,
     );
     expect(scoringButton().getAttribute('aria-selected')).toBe('true');
@@ -228,10 +237,72 @@ describe('StreamColumn’s icon row (spec §3)', () => {
         view={viewOf({ scoring: true, shutter: true })}
         {...ICONS}
         scoringOpen={false}
-        peek={PEEK}
+        viewer={VIEWER}
       />,
     );
     expect(scoringButton().getAttribute('aria-selected')).toBe('false');
     expect(others().every((state) => state === null)).toBe(true);
+  });
+});
+
+describe('the peek cell’s reasons (D2 §4.2, carry 13)', () => {
+  it('says the phone is hot when the ladder shed, ahead of no picture', () => {
+    const view = viewOf({
+      kind: 'publishing',
+      action: 'stop',
+      onAir: true,
+      plate: 'live',
+      peekable: false,
+      shed: true,
+    });
+    renderWithPorts(<StreamColumn view={view} {...ICONS} viewer={VIEWER} />);
+    expect(screen.getByText(en['stream.peek.hot'])).toBeTruthy();
+    expect(screen.queryByText(en['stream.peek.unavailable'])).toBeNull();
+  });
+
+  it('says the phone is hot with the picture there too, and the peek is off', () => {
+    const view = viewOf({
+      kind: 'publishing',
+      action: 'stop',
+      onAir: true,
+      plate: 'live',
+      peekable: true,
+      shed: true,
+    });
+    renderWithPorts(<StreamColumn view={view} {...ICONS} viewer={VIEWER} />);
+    expect(screen.getByText(en['stream.peek.hot'])).toBeTruthy();
+    expect(
+      screen.getByRole('button', { name: en['stream.peek.label'] }).getAttribute('aria-disabled'),
+    ).toBe('true');
+  });
+
+  it('says there is no viewer picture on air with no playback URL', () => {
+    const view = viewOf({
+      kind: 'publishing',
+      action: 'stop',
+      onAir: true,
+      plate: 'live',
+      peekable: false,
+    });
+    renderWithPorts(<StreamColumn view={view} {...ICONS} viewer={VIEWER} />);
+    expect(screen.getByText(en['stream.peek.unavailable'])).toBeTruthy();
+  });
+
+  it('gives no reason, and reads selected, while the view is open', () => {
+    const view = viewOf({
+      kind: 'publishing',
+      action: 'stop',
+      onAir: true,
+      plate: 'live',
+      peekable: true,
+    });
+    renderWithPorts(
+      <StreamColumn view={view} {...ICONS} viewer={{ ...VIEWER, kind: 'showing' }} />,
+    );
+    const peek = screen.getByRole('button', { name: en['stream.peek.label'] });
+    expect(peek.getAttribute('aria-selected')).toBe('true');
+    expect(peek.getAttribute('aria-disabled')).toBeNull();
+    expect(screen.queryByText(en['stream.peek.hot'])).toBeNull();
+    expect(screen.queryByText(en['stream.peek.unavailable'])).toBeNull();
   });
 });

@@ -477,6 +477,9 @@ describe('scenes: every state spec §6 and the amendment list', () => {
     expect(snapshot().ready.sound).toBe(false);
     engine.scene('shed');
     expect(telemetry().shed).toBe('viewer-feed');
+    // As native pairs them: status 2 is moderate, and moderate is the first rung (DeviceReadings.shed).
+    expect(telemetry().thermalStatus).toBe('moderate');
+    expect(telemetry().thermalHeadroom).toBe(0.6);
   });
 
   /** Spec §4: a call is the one way the mic reads not available on air; native's readiness says so too (BridgeCore). */

@@ -1,5 +1,6 @@
 import { useCallback, useMemo } from 'react';
 import type { SessionState } from '@/domain/session/SessionState';
+import { selectShedding } from '@/hooks/advisory';
 import {
   selectAutomaticOn,
   selectDestination,
@@ -59,6 +60,8 @@ export type Viewfinder = {
   readonly scoring: boolean;
   /** On air with a viewer picture to play (carry 13): the peek's one gate. */
   readonly peekable: boolean;
+  /** The ladder shed (D2 §4.2): What viewers see is closed and disabled. */
+  readonly shed: boolean;
   /**
    * "Starts {time}" in the venue's zone; null with no scheduled start. The
    * column shows it, and AUTO, only beside Go live (its one gate).
@@ -107,14 +110,26 @@ export function useViewfinder(): Viewfinder {
   const waiting = useWaitingFields();
   const intents = useIntents();
   const playable = useEngineSelector(selectPlaybackUrl) !== null;
+  const shed = useEngineSelector(selectShedding);
   const engineSilent = useEngineSilent();
   return useMemo(
     () => ({
-      ...project({ kind, preflight, blocker, engineKey, playable, waiting, engineSilent }),
+      ...project({ kind, preflight, blocker, engineKey, playable, shed, waiting, engineSilent }),
       ...countdown,
       ...intents,
     }),
-    [kind, preflight, blocker, engineKey, playable, waiting, engineSilent, countdown, intents],
+    [
+      kind,
+      preflight,
+      blocker,
+      engineKey,
+      playable,
+      shed,
+      waiting,
+      engineSilent,
+      countdown,
+      intents,
+    ],
   );
 }
 
@@ -124,6 +139,7 @@ type ProjectInput = {
   readonly blocker: Blocker | null;
   readonly engineKey: StatusKey;
   readonly playable: boolean;
+  readonly shed: boolean;
   readonly waiting: WaitingFields;
   /** CD17: no report for three seconds while native holds a pairing. */
   readonly engineSilent: boolean;
@@ -153,6 +169,7 @@ function project(
     shutter: kind === 'paired' || action === 'stop',
     scoring: kind === 'paired' || action === 'stop',
     peekable: action === 'stop' && input.playable,
+    shed: input.shed,
     ...waiting,
   };
 }

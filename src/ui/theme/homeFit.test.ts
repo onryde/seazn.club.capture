@@ -8,6 +8,7 @@ import { layout, space } from '@/ui/theme/tokens';
 import { typeScale } from '@/ui/theme/type';
 import app from '../../../app.json';
 import { loadFont } from '../../../test/fontMetrics';
+import { linesOf } from '../../../test/textFit';
 
 // Spec §7 and F15: landscape Home is one top row (logo, status, Language, version), then the ended card as one
 // row, then Continue as one row, then the three tiles side by side. Spec §1's smallest landscape phone is
@@ -37,24 +38,6 @@ const GEOMETRIES = [
 const geist400 = loadFont('geist-400');
 const geist500 = loadFont('geist-500');
 const barlow700 = loadFont('barlow-condensed-700');
-
-/**
- * Lines a text takes in a width, breaking at plain spaces (a no-break space does not break, as in French
- * typography) with no kerning, which can only over-state a width slightly. At least one word per line.
- */
-function linesOf(text: string, width: number, measure: (text: string) => number): number {
-  let lines = 1;
-  let current = '';
-  for (const piece of text.split(' ')) {
-    const next = current === '' ? piece : `${current} ${piece}`;
-    if (current === '' || measure(next) <= width) current = next;
-    else {
-      lines += 1;
-      current = piece;
-    }
-  }
-  return lines;
-}
 
 // Component literals the layout test pins on the rendered tree (HomeScreen.layout.test.tsx).
 /** GhostButton's `minHeight`: Language, OK and Forget. */

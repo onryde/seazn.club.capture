@@ -34,9 +34,10 @@ const endsStretch = (kind: Kind): boolean => kind === 'reconnecting' || OVER.has
  * What the viewer layer shows, and when its player starts and restarts (spec §9). The rule is
  * `viewerFeed`; this hook owns what the rule cannot know: whether a window has ever been delivered in this
  * stretch, and where the player is in its retries.
- * Every record line it writes names a state or a number, never a URL (M32). `pressed` is the finger on
- * What viewers see: a new press after the layer gave up tries again (R1). `mounted` is the peek holding a player
- * (showing, or cooling): when it is not, no Video exists, whatever the feed says.
+ * Every record line it writes names a state or a number, never a URL (M32). `pressed` is What viewers see
+ * open: opening it again after the layer gave up tries again (R1). `mounted` is the view holding a player: when
+ * it is not, no Video exists, whatever the feed says. The view keeps no warm player (D2 §4.3), so the two are
+ * the same today.
  */
 export function useViewerFeed(pressed: boolean, mounted: boolean): ViewerFeed {
   const kind = useEngineSelector(selectStateKind);
@@ -109,7 +110,7 @@ function useFirstWindow(kind: Kind, delivery: DeliveryWord, hasUrl: boolean) {
 /**
  * D6: the player's own word, and its retries. A failure waits its rung of `PLAYER_RETRY_MS` and then remounts
  * the player (`attempt` is its key, which only ever counts up); with the rungs spent the player is given up on
- * until a stretch ends or the finger lands again. A player that shows a picture earns its rungs back (R2), and
+ * until a stretch ends or the view opens again. A player that shows a picture earns its rungs back (R2), and
  * that must not remount it: the key and the rung are two counters. `onStatus` keeps its identity: the native
  * Video subscribes to it.
  */
@@ -188,7 +189,7 @@ function useResetPlayer(kind: Kind, reset: () => void): void {
 }
 
 /**
- * While the feed is not `playing`, or the peek holds no player (it let go, or cooled), there is no Video: a retry
+ * While the feed is not `playing`, or the view holds no player (it closed), there is no Video: a retry
  * waiting for one is moot (the next mount is a fresh player anyway), and whatever the last player said is stale,
  * the picture it showed included (M55). Never clears a give-up (M30c).
  */
@@ -199,8 +200,8 @@ function useParkPlayer(feed: Feed, mounted: boolean, park: () => void): void {
 }
 
 /**
- * R1: the finger landing on What viewers see after the layer gave up is the operator asking to see it. The
- * press EDGE, not the hold, and only after a give-up: a press with a player on screen changes nothing.
+ * R1: What viewers see opening after the layer gave up is the operator asking to see it. The opening EDGE, and
+ * only after a give-up: an opening before one gives nothing back (R1b).
  */
 function useRetryOnPress(pressed: boolean, failed: boolean, reset: () => void): void {
   const was = useRef(false);

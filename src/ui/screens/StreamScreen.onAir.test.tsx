@@ -1,4 +1,4 @@
-import { act, screen } from '@testing-library/react';
+import { act, fireEvent, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { SessionState } from '@/domain/session/SessionState';
 import type { FakeScene } from '@/engine/FakeCaptureEngine';
@@ -254,9 +254,9 @@ describe('what viewers see (spec §4, carry 13)', () => {
   beforeEach(() => vi.useFakeTimers());
   afterEach(() => vi.useRealTimers());
 
-  it('plays what viewers see the moment the finger lands, at the capped rendition', async () => {
+  it('plays what viewers see on a tap, at the capped rendition', async () => {
     await onAir('live');
-    pressIn(peek());
+    fireEvent.click(peek());
     const video = screen.getByTestId('viewer-video');
     expect(video.dataset.playing).toBe('true');
     expect(video.dataset.url).toBe(
@@ -285,8 +285,9 @@ describe('what viewers see (spec §4, carry 13)', () => {
     expect(plate()).toBe('Live');
     expect(peek().getAttribute('aria-disabled')).toBe('true');
     expect(screen.getByText('No viewer picture')).toBeTruthy();
-    pressIn(peek());
+    fireEvent.click(peek());
     expect(screen.queryByTestId('viewer-video')).toBeNull();
+    expect(screen.queryByTestId('viewer-cover')).toBeNull();
   });
 
   it('gives no reason while the picture is there', async () => {
@@ -300,9 +301,10 @@ describe('what viewers see (spec §4, carry 13)', () => {
     expect(screen.getByText('Image indisponible')).toBeTruthy();
   });
 
-  it('lets go of the picture when the broadcast ends under the finger', async () => {
+  it('lets go of the picture when the broadcast ends mid-view', async () => {
     const view = await onAir('live');
-    pressIn(peek());
+    fireEvent.click(peek());
+    expect(screen.queryByTestId('viewer-video')).not.toBeNull();
     act(() => view.engine.scene('stopped'));
     expect(screen.queryByTestId('viewer-video')).toBeNull();
   });

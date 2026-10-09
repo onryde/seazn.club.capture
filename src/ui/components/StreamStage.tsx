@@ -1,17 +1,16 @@
 import { memo, useCallback, useMemo, useState } from 'react';
 import { StyleSheet, View, type LayoutChangeEvent } from 'react-native';
 import { selectCharging, selectKeepOpen, selectShedding, topAdvisory } from '@/hooks/advisory';
-import { selectPlaybackUrl } from '@/hooks/engineSelectors';
 import type { LineTier } from '@/hooks/statusKey';
 import { useEngineSelector } from '@/hooks/useCaptureEngine';
-import type { Peek } from '@/hooks/usePeek';
 import { usePorts } from '@/hooks/usePorts';
 import type { ScoringLinkView } from '@/hooks/useScoringLink';
+import type { ViewerCheckView } from '@/hooks/useViewerCheck';
 import { useViewerFeed } from '@/hooks/useViewerFeed';
 import { PreviewBoundary } from '@/ui/components/PreviewBoundary';
 import { ScoringLinkPanel } from '@/ui/components/ScoringLinkPanel';
-import { StageVideo } from '@/ui/components/StageVideo';
 import { StatusStrip } from '@/ui/components/StatusStrip';
+import { ViewerCover } from '@/ui/components/ViewerCover';
 import { cameraBoxSize, stripReserve, type BoxSize } from '@/ui/theme/cameraBox';
 import { colour, layout } from '@/ui/theme/tokens';
 
@@ -20,7 +19,8 @@ type StageProps = {
   readonly line: string;
   /** Which tier that line is (`LINE_TIER`): an urgent line always wins the strip's one message line. */
   readonly lineTier: LineTier;
-  readonly peek: Peek;
+  /** What viewers see (D2 §4.3): open over the camera box, or idle. */
+  readonly viewer: ViewerCheckView;
   /** The Remote scoring panel's state (spec §10), and the seconds it has left (B3). */
   readonly scoring: ScoringLinkView;
   readonly scoringSecondsLeft: number;
@@ -29,8 +29,8 @@ type StageProps = {
 
 /**
  * The camera half (spec §1): the shot as a 16:9 box across the half, with the
- * status strip under it. Nothing is drawn over the shot but the viewers' video
- * (AGENTS §6, D17) and, for at most 10 s after a tap, the Remote
+ * status strip under it. Nothing is drawn over the shot but What viewers see (the
+ * camera box only; AGENTS §6, D17) and, for at most 10 s after a tap, the Remote
  * scoring panel (spec §10), which covers the whole half, strip included, and
  * brings the half's one button: its Hide. The match label and ONE message line (the
  * advisory caption when one is up, the status line otherwise) sit in the strip, below the shot.
@@ -82,7 +82,7 @@ export const StreamStage = memo(function StreamStage(props: StageProps) {
   );
   return (
     <View testID="camera-half" style={styles.half} onLayout={onLayout}>
-      <CameraBox size={box} peek={props.peek} />
+      <CameraBox size={box} viewer={props.viewer} />
       <StatusStrip
         line={props.line}
         lineTier={props.lineTier}
@@ -102,37 +102,34 @@ export const StreamStage = memo(function StreamStage(props: StageProps) {
 type CameraBoxProps = {
   /** Null until the half is measured. */
   readonly size: BoxSize | null;
-  readonly peek: Peek;
+  readonly viewer: ViewerCheckView;
 };
 
 /**
- * The shot. Its own memo, so a status line that changes every second (the
- * hold's countdown) re-renders the strip beneath it and never the preview or
- * the viewers' video (M7, AGENTS §8). The viewers' video fills the box and
- * nothing else.
+ * The shot. Its own memo, so a status line that changes every second re-renders the strip beneath it and never the
+ * preview or the viewers' video (M7, AGENTS §8). The viewers' feed is read here for the whole broadcast, so its first
+ * window is timed from the start of live, whether or not the view is open; its player exists only while it is.
  */
-const CameraBox = memo(function CameraBox({ size, peek }: CameraBoxProps) {
+const CameraBox = memo(function CameraBox({ size, viewer }: CameraBoxProps) {
   const { surfaces } = usePorts();
-  const playbackUrl = useEngineSelector(selectPlaybackUrl);
-  const viewers = useViewerFeed(peek.showing, peek.mounted);
+  const open = viewer.kind !== 'idle';
+  const viewers = useViewerFeed(open, open);
   const sized = useSizedStyle(size);
   const { Preview } = surfaces;
   return (
     <View testID="camera-box" style={[styles.box, sized ?? styles.unmeasured]}>
-      {/* CD19: the preview alone. */}
+      {/* CD19: the preview alone, in its own boundary. */}
       <PreviewBoundary>
         <Preview />
       </PreviewBoundary>
-      {peek.mounted && playbackUrl !== null && viewers.feed !== 'none' ? (
-        <StageVideo
-          url={playbackUrl}
-          showing={peek.showing}
-          feed={viewers.feed}
-          attempt={viewers.attempt}
-          starting={viewers.starting}
-          onStatus={viewers.onStatus}
+      {viewer.kind === 'idle' ? null : (
+        <ViewerCover
+          kind={viewer.kind}
+          feed={viewers}
+          onClose={viewer.close}
+          onFirstFrame={viewer.firstFrame}
         />
-      ) : null}
+      )}
     </View>
   );
 });

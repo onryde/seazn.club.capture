@@ -1,4 +1,4 @@
-import { act, render, screen, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { StyleSheet, View, type ViewStyle } from 'react-native';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ADVISORY_KEY } from '@/hooks/advisory';
@@ -7,7 +7,6 @@ import { colour, layout, space } from '@/ui/theme/tokens';
 import { typeScale } from '@/ui/theme/type';
 import { CASES } from '../../../test/fixtures/matchLabelCases';
 import { layOut } from '../../../test/layOut';
-import { pressIn } from '../../../test/press';
 import { renderViewfinder } from '../../../test/renderViewfinder';
 
 type Viewfinder = Awaited<ReturnType<typeof renderViewfinder>>;
@@ -182,11 +181,17 @@ describe('the camera half (spec §1)', () => {
   it('plays What viewers see over the camera box, not the whole half', async () => {
     const view = await renderViewfinder();
     act(() => view.engine.scene('live'));
-    pressIn(peek());
-    const video = byId('viewer-video');
-    expect(byId('camera-box').contains(video)).toBe(true);
-    expect(byId('status-strip').contains(video)).toBe(false);
-    expect(byId('controls-half').contains(video)).toBe(false);
+    fireEvent.click(peek());
+    // D2 §4.3: the cover, and the player in it, sit over the camera box only; the strip and Stop stay clear.
+    for (const id of ['viewer-cover', 'viewer-video']) {
+      const drawn = byId(id);
+      expect({ id, inBox: byId('camera-box').contains(drawn) }).toEqual({ id, inBox: true });
+      expect({ id, inStrip: byId('status-strip').contains(drawn) }).toEqual({ id, inStrip: false });
+      expect({ id, inControls: byId('controls-half').contains(drawn) }).toEqual({
+        id,
+        inControls: false,
+      });
+    }
   });
 
   it('is drawn the same with the controls mirrored to the left', async () => {
@@ -829,8 +834,19 @@ describe('the camera box gives way to the strip, before the label is measured (s
     layOut(byId('camera-half'), { width: 480, height: 360 });
     const box = byId('camera-box');
     act(() => view.engine.scene('live'));
-    pressIn(peek());
+    fireEvent.click(peek());
     expect(box.contains(byId('viewer-video'))).toBe(true);
+    // The cover has the camera box's size: it fills the box, edge to edge, and the box is the narrower one.
+    const cover = byId('viewer-cover');
+    expect(box.contains(cover)).toBe(true);
+    const fill = getComputedStyle(cover);
+    expect([fill.position, fill.top, fill.right, fill.bottom, fill.left]).toEqual([
+      'absolute',
+      '0px',
+      '0px',
+      '0px',
+      '0px',
+    ]);
     expect(boxSize().width).toBeCloseTo(387.5555556, 2);
   });
 

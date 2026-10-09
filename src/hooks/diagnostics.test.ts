@@ -136,7 +136,8 @@ describe('diagnosticsSections (spec §4)', () => {
   });
 
   it('names the heat step and the stall', () => {
-    expect(rowsFor('shed')).toMatchObject({ Heat: 'Very hot' });
+    // The shed scene is native's first rung: thermal status 2, moderate (DeviceReadings.shed, B2 m1).
+    expect(rowsFor('shed')).toMatchObject({ Heat: en['diag.thermal.moderate'] });
     expect(rowsFor('not-delivered')).toMatchObject({
       'Viewers receiving': 'Stalled',
       'Behind live': '21 s',

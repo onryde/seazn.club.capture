@@ -2,12 +2,12 @@ import { StyleSheet, View } from 'react-native';
 import { cutDestination } from '@/domain/session/destination';
 import { columnLineKey, LINE_TIER, type LineTier } from '@/hooks/statusKey';
 import { useT } from '@/hooks/useLanguage';
-import { usePeek } from '@/hooks/usePeek';
 import { useEndedToHome } from '@/hooks/useEndedNotice';
 import { useStreamLeave } from '@/hooks/useStreamLeave';
 import { useStreamLinks } from '@/hooks/useStreamLinks';
 import { useScoringLink } from '@/hooks/useScoringLink';
 import { useStreamSettings } from '@/hooks/useStreamSettings';
+import { useViewerCheck } from '@/hooks/useViewerCheck';
 import { useViewfinder, type Viewfinder } from '@/hooks/useViewfinder';
 import { StreamColumn } from '@/ui/components/StreamColumn';
 import { StreamStage } from '@/ui/components/StreamStage';
@@ -26,29 +26,36 @@ export function StreamScreen() {
   const leave = useStreamLeave();
   const view = useViewfinder();
   const { settings } = useStreamSettings();
-  const peek = usePeek(view.peekable);
   useEndedToHome(leave.leaveWith);
   const links = useStreamLinks();
   const scoring = useScoringLink(view.plate === 'trouble');
+  const scoringOpen = scoring.view.kind !== 'hidden';
+  // D2 §4.3: one cover at a time. Opening the view takes the panel down; the panel opening closes the view.
+  const viewer = useViewerCheck({
+    available: view.peekable,
+    shed: view.shed,
+    scoringOpen,
+    hideScoring: scoring.hide,
+  });
   const line = useColumnLine(view, leave.blocked);
   return (
     <View testID="viewfinder" style={settings.side === 'left' ? styles.mirrored : styles.halves}>
       <StreamStage
         line={line.text}
         lineTier={line.tier}
-        peek={peek}
+        viewer={viewer}
         scoring={scoring.view}
         scoringSecondsLeft={scoring.secondsLeft}
         onHideScoring={scoring.hide}
       />
       <StreamColumn
         view={view}
-        peek={peek}
+        viewer={viewer}
         canLeave={leave.canLeave}
         onHome={leave.leave}
         onSettings={links.settings}
         onScoringLink={scoring.open}
-        scoringOpen={scoring.view.kind !== 'hidden'}
+        scoringOpen={scoringOpen}
       />
     </View>
   );
