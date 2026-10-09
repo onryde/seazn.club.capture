@@ -307,7 +307,8 @@ any --shed, leaves live, scoring panel opens, playbackUrl gone--> idle
 no timers. It is tested as a table. `src/hooks/useViewerCheck.ts` owns the
 timers and the player events, and replaces `usePeek.ts`. `ViewerPeek.tsx`
 becomes a plain tap through `Button`, with no `useHeldPress`. `useHeldPress`
-stays for Go live and Stop. The retry schedule in `viewerFeed.ts`
+had no other user, so it is deleted (erratum, 2026-10-09: this line first said
+it stays for Go live and Stop, which use `useHold`). The retry schedule in `viewerFeed.ts`
 (`PLAYER_RETRY_MS`, the 60 s first-window patience) no longer fits inside a
 5 s window. Inside `loading` there is one quiet retry at 2 s (_rec_), and
 `FIRST_WINDOW_PATIENCE_MS` is deleted.
