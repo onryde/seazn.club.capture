@@ -17,7 +17,6 @@ import { colour, layout as metrics, plateInk, radius, space } from '@/ui/theme/t
 const LICENCES: readonly { readonly name: string; readonly licence: string }[] = [
   { name: 'libsrt', licence: 'MPL-2.0' },
   { name: 'StreamPack', licence: 'Apache-2.0' },
-  { name: 'react-native-webview', licence: 'MIT' },
   { name: 'expo-video', licence: 'MIT' },
   { name: 'React Native', licence: 'MIT' },
   { name: 'Expo', licence: 'MIT' },

@@ -186,10 +186,11 @@ describe('Settings (spec §4)', () => {
     expect(expander.getAttribute('aria-expanded')).toBe('true');
     expect(screen.getByText('libsrt — MPL-2.0')).toBeTruthy();
     expect(screen.getByText('StreamPack — Apache-2.0')).toBeTruthy();
-    expect(screen.getByText('react-native-webview — MIT')).toBeTruthy();
     expect(screen.getByText('expo-video — MIT')).toBeTruthy();
     expect(screen.getByText('React Native — MIT')).toBeTruthy();
     expect(screen.getByText('Expo — MIT')).toBeTruthy();
+    // Those five and no other: the shipped native code (D22), the WebView gone with the score preview (D2 §4.1).
+    expect(screen.getAllByText(/ — (MPL-2\.0|Apache-2\.0|MIT)$/)).toHaveLength(5);
     expect(screen.getByText('libsrt source code: https://github.com/Haivision/srt')).toBeTruthy();
     fireEvent.click(expander);
     expect(screen.queryByText('libsrt — MPL-2.0')).toBeNull();
