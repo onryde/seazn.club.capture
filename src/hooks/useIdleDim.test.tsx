@@ -74,6 +74,37 @@ describe('useIdleDim (D2 §4.5)', () => {
     },
   );
 
+  // The 30 s are idle time inside paired-and-waiting: entering it counts as a touch, so a new line gets its full 30 s.
+  it('an hour live, then the organiser stops: bright on arrival in paired, and dims only 30 s later', () => {
+    const { fakes } = mount();
+    act(() => fakes.engine.scene('paired-ready'));
+    act(() => vi.advanceTimersByTime(5_000));
+    act(() => fakes.engine.scene('live'));
+    act(() => vi.advanceTimersByTime(3_600_000));
+    act(() => fakes.engine.scene('paired-after-organiser-stop'));
+    expect(fakes.screen.dimmed).toBe(false);
+    expect(fakes.screen.calls).toEqual([]);
+    act(() => vi.advanceTimersByTime(29_999));
+    expect(fakes.screen.dimmed).toBe(false);
+    act(() => vi.advanceTimersByTime(1));
+    expect(fakes.screen.dimmed).toBe(true);
+  });
+
+  it('paired, armed, then paired again after more than 30 s untouched: no dim on arrival', () => {
+    const { fakes } = mount();
+    act(() => fakes.engine.scene('paired-ready'));
+    act(() => vi.advanceTimersByTime(10_000));
+    act(() => fakes.engine.scene('armed-not-ready'));
+    act(() => vi.advanceTimersByTime(40_000));
+    act(() => fakes.engine.scene('paired-ready'));
+    expect(fakes.screen.dimmed).toBe(false);
+    expect(fakes.screen.calls).toEqual([]);
+    act(() => vi.advanceTimersByTime(29_999));
+    expect(fakes.screen.dimmed).toBe(false);
+    act(() => vi.advanceTimersByTime(1));
+    expect(fakes.screen.dimmed).toBe(true);
+  });
+
   it('restores on unpair', () => {
     const { fakes } = mount();
     act(() => fakes.engine.scene('paired-ready'));
