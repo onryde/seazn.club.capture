@@ -34,12 +34,8 @@ const stack = (items: readonly number[], gap: number, pad: number) =>
 
 // The strip's worst content, whatever the width (D17, F9, F20, Q4 option A; one message line and the round line always
 // shown, owner 2026-10-08). From the token and type declarations, written out here: it is not read from the module under
-// test. Regular: 2 lines at 22 (a side of 26 or fewer does not wrap). Long: 4 lines at 19 (a doubles label).
-// The round line is one line of metricUnit.
-const LABEL = Math.max(
-  layout.labelLinesRegular * typeScale.label.lineHeight,
-  layout.labelLinesMax * typeScale.labelLong.lineHeight,
-);
+// test. The round line is one line of metricUnit.
+const LABEL = 2 * layout.labelSideLines * typeScale.label.lineHeight; // C2 (D2 §4.4): 4 lines at 22, two a side
 const MESSAGE = layout.messageLines * typeScale.body.lineHeight; // F20: the strip's line is `body`; ONE line
 const STAGE = layout.stageLines * typeScale.metricUnit.lineHeight; // spec §2: the round line, one line of metricUnit
 const STRIP_ITEMS = [STAGE, LABEL, MESSAGE] as const;
@@ -82,10 +78,10 @@ const CONTROLS = [
 let geometriesChecked = 0;
 
 describe('the strip and the controls fit, at their worst', () => {
-  it('the strip is 142 at its worst: 2 × 8 + 16 + 76 + 22 + 2 × 6, the round line and one message line (Q4 option A, 2026-10-08)', () => {
+  it('the strip is 154 at its worst: 2 × 8 + 16 + 88 + 22 + 2 × 6 (C2, D2 §4.4)', () => {
     expect(STRIP_ITEMS).toHaveLength(3);
-    expect([STAGE, LABEL, MESSAGE]).toEqual([16, 76, 22]);
-    expect(STRIP_WORST).toBe(142);
+    expect([STAGE, LABEL, MESSAGE]).toEqual([16, 88, 22]);
+    expect(STRIP_WORST).toBe(154);
   });
 
   it('the strip reserves what its worst content is, no less', () => {
@@ -93,15 +89,15 @@ describe('the strip and the controls fit, at their worst', () => {
   });
 
   // Owner, 2026-10-08, option B: the round line is ALWAYS shown, so its room is in the reserve (a line and a gap, 22 dp
-  // over the 120 the strip was without it), whether or not this match has a stage (controller ruling R1: the picture
+  // over the 132 the strip would be without it), whether or not this match has a stage (controller ruling R1: the picture
   // must not move when a stage label arrives or goes). Nobody "fixes" the cost, 22 dp of empty strip for a match with
   // no stage, by keying the reserve on the stage.
-  it('the round line is in the reserve: 142 dp, 22 over the 120 the strip was without it (option B, R1)', () => {
+  it('the round line is in the reserve: 154 dp, 22 over the 132 the strip would be without it (option B, R1)', () => {
     const withoutStage = stack([LABEL, MESSAGE], layout.stripGap, layout.stripPadV);
-    expect(withoutStage).toBe(120);
+    expect(withoutStage).toBe(132);
     expect(STRIP_WORST - withoutStage).toBe(22);
     expect(STRIP_WORST - withoutStage).toBe(STAGE + layout.stripGap);
-    expect(STRIP_RESERVE).toBe(142);
+    expect(STRIP_RESERVE).toBe(154);
     expect(STRIP_RESERVE).toBe(STRIP_WORST);
   });
 });
@@ -195,9 +191,9 @@ describe('the controls half fits 332 dp in its worst before-air state (owner, 20
 
 describe('the camera box at the smallest screen (spec §1)', () => {
   // Spec §1's 640 × 360 before the label has been measured: the camera half is 330 (640 - 310), which holds a box 185.6
-  // tall; the worst-case strip is 142 with the round line, so the window leaves a box 218 tall, more than the half
-  // holds: the box is the WHOLE half, 330 × 185.625. Full width (owner, 2026-10-08).
-  it('is 330 × 185.625: the whole half, the strip’s 142 does not limit it', () => {
+  // tall; the worst-case strip is 154 with the round line (C2, D2 §4.4), so the window leaves a box 206 tall, more than
+  // the half holds: the box is the WHOLE half, 330 × 185.625. Full width (owner, 2026-10-08).
+  it('is 330 × 185.625: the whole half, the strip’s 154 does not limit it', () => {
     expect(640 - layout.controlsHalf).toBe(330);
     const box = cameraBoxSize({
       halfWidth: 640 - layout.controlsHalf,
@@ -231,11 +227,12 @@ describe('the owner’s phone, 804 × 332 and 804 × 360 (the ruling of 2026-10-
   });
 
   // Before the label has been measured the box is 16:9 with the strip below it, limited by what the worst-case strip's
-  // 142 leaves: 332 - 142 = 190 tall, 337.8 wide at the real app area; at the board's 360 the window leaves 218 (387.6).
-  it('holds a 337.8 × 190 box at 804 × 332 before the label is measured, limited by the strip’s 142 and not by the half', () => {
+  // 154 leaves (C2, D2 §4.4): 332 - 154 = 178 tall, 316.4 wide at the real app area; at the board's 360 the window
+  // leaves 206 (366.2). Review Focus 4: the 2-line cap a side is what makes this 178.
+  it('holds a 316.4 × 178 box at 804 × 332 before the label is measured, limited by the strip’s 154 and not by the half', () => {
     const box = at(332, STRIP_RESERVE);
-    expect(box.width).toBeCloseTo(337.777778, 5);
-    expect(box.height).toBeCloseTo(190, 9);
+    expect(box.width).toBeCloseTo(316.444444, 5);
+    expect(box.height).toBeCloseTo(178, 9);
     expect(box.width / box.height).toBeCloseTo(16 / 9, 9);
     expect(half / layout.previewAspect).toBeGreaterThan(box.height);
     expect(box.height + STRIP_WORST).toBe(332);
@@ -275,7 +272,7 @@ describe('the owner’s phone, 804 × 332 and 804 × 360 (the ruling of 2026-10-
   it('leaves the strip room for the round line, the label and the message line, at every window and label', () => {
     let checked = 0;
     for (const [width, height] of GEOMETRIES) {
-      for (const label of [22, 44, 38, 57, 66, 76]) {
+      for (const label of [22, 44, 38, 57, 66, 76, 88]) {
         const strip =
           height -
           cameraBoxSize({
@@ -289,7 +286,7 @@ describe('the owner’s phone, 804 × 332 and 804 × 360 (the ruling of 2026-10-
         checked += 1;
       }
     }
-    expect(checked).toBe(GEOMETRIES.length * 6);
+    expect(checked).toBe(GEOMETRIES.length * 7);
   });
 });
 

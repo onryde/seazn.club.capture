@@ -177,10 +177,17 @@ const base = {
   stripPadV: 8,
   stripPadH: 16,
   stripGap: 6,
-  /** Lines the strip reserves for the label: at most 4 (Q4). */
-  labelLinesMax: 4,
-  /** D17 (F9): a regular-size label is at most 2 lines, one a side, by the written assumption. */
-  labelLinesRegular: 2,
+  /**
+   * C2 (D2 §4.4): each side wraps to at most 2 lines and ends in an ellipsis beyond that. The strip's worst label is two
+   * sides of this many lines (`cameraBox.ts`), so this cap is what the reserve is made of.
+   */
+  labelSideLines: 2,
+  /** C2: the left margin the decorative v sits in, outside both rows. */
+  labelMargin: 14,
+  /** C2: each side's bar, at its row's left edge. */
+  labelBar: 3,
+  /** C2: the gap between a side's bar and its names. */
+  labelBarGap: 5,
   /**
    * The strip's message: ONE line of the body role, always (owner, 2026-10-08, "one single line all the time"). It says
    * the caption when one is up, else the status line, and a string wider than the strip's text is cut with an ellipsis,
@@ -313,7 +320,7 @@ export function controlsHalfWidth(cells: ControlsCells): number {
  * as measured, and not from the strip's worst case (owner, 2026-10-08, option A;
  * `stripReserve`, which holds the round line's room): a two-line label on an
  * 804 × 360 phone gives a box of about 444 × 250 where the worst case, which is
- * what it is until the label has been measured, gives 388 × 218.
+ * what it is until the label has been measured, gives 366 × 206 (C2, D2 §4.4).
  */
 export const layout = { ...base, controlsHalf: controlsHalfWidth(base) } as const;
 

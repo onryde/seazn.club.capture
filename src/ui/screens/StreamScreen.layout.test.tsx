@@ -406,11 +406,11 @@ describe('the round line above the match label (spec §2, option B)', () => {
   });
 
   // The old rule hid it for a label of three lines. Nothing hides it now: four label heights, one after another.
-  it('does not yield to a label of any height (22, 44, 57, 76 dp): it is there for each', async () => {
+  it('does not yield to a label of any height (22, 44, 57, 88 dp): it is there for each', async () => {
     await withStage('Open · QF', { label: 57 });
     expect(stage()?.textContent).toBe('Open · QF');
     let checked = 0;
-    for (const height of [22, 44, 57, 76]) {
+    for (const height of [22, 44, 57, 88]) {
       layOut(byId('match-label'), { width: 300, height });
       expect(stage()?.textContent, `label ${height}`).toBe('Open · QF');
       checked += 1;
@@ -460,20 +460,20 @@ describe('the round line above the match label (spec §2, option B)', () => {
     const ROWS = [
       [640, 360, 44, 174.375],
       [640, 360, 57, 174.375],
-      [640, 360, 76, 174.375],
+      [640, 360, 88, 174.375],
       [804, 332, 22, 88],
       [804, 332, 44, 110],
-      [804, 332, 76, 142],
+      [804, 332, 88, 154],
       [804, 360, 22, 88],
       [804, 360, 44, 110],
       [804, 360, 57, 123],
       [800, 360, 22, 88],
-      [800, 360, 76, 142],
+      [800, 360, 88, 154],
       [844, 390, 22, 89.625],
       [844, 390, 44, 110],
       [915, 412, 22, 88],
       [915, 412, 44, 110],
-      [915, 412, 76, 142],
+      [915, 412, 88, 154],
     ] as const;
     let checked = 0;
     for (const [width, height, label, strip] of ROWS) {
@@ -735,7 +735,7 @@ describe('the halves are one screen through a sequence (spec §1, §4)', () => {
  * phone would, and the box is read from the style it was given.
  *
  * This describe is the INITIAL WORST CASE: no match label has been laid out, so the box is sized against the strip's
- * worst case, 142 (the padding, the round line's room, four long label lines, two gaps and ONE message line; the round
+ * worst case, 154 (the padding, the round line's room, C2's four label lines at 22, two gaps and ONE message line; the round
  * line is always shown, owner 2026-10-08, option B), as it was before the owner's ruling of 2026-10-08 (option A) sized
  * it from the label (the describe after this one). Nothing here lays the label out, which is what makes these the
  * unmeasured numbers.
@@ -745,17 +745,18 @@ describe('the camera box gives way to the strip, before the label is measured (s
   afterEach(() => vi.useRealTimers());
 
   // [width, height, camera half, box width, box height] in dp, worked by hand from spec §1 as amended (the controls
-  // half is 310, so the camera half is the window less 310) and the strip's 142 dp reserve (Q4 option A, the round line
-  // and one message line). The box is the lesser of what the half holds (9/16 of its width: 185.625 at 640, 277.875 at
-  // 804, 340.3125 at 915) and what the strip leaves (height - 142): the whole half at 640 (the half limits it, full
-  // width), and the strip's leaving at every other screen here, 190 at the owner's phone as it really is (804 × 332).
+  // half is 310, so the camera half is the window less 310) and the strip's 154 dp reserve (C2, D2 §4.4: the round line,
+  // four label lines at 22 and one message line). The box is the lesser of what the half holds (9/16 of its width:
+  // 185.625 at 640, 277.875 at 804, 340.3125 at 915) and what the strip leaves (height - 154): the whole half at 640 (the
+  // half limits it, full width), and the strip's leaving at every other screen here, 178 at the owner's phone as it
+  // really is (804 × 332).
   const SCREENS = [
     [640, 360, 330, 330, 185.625],
-    [800, 360, 490, 387.5555556, 218],
-    [804, 360, 494, 387.5555556, 218],
-    [804, 332, 494, 337.7777778, 190],
-    [844, 390, 534, 440.8888889, 248],
-    [915, 412, 605, 480, 270],
+    [800, 360, 490, 366.2222222, 206],
+    [804, 360, 494, 366.2222222, 206],
+    [804, 332, 494, 316.4444444, 178],
+    [844, 390, 534, 419.5555556, 236],
+    [915, 412, 605, 458.6666667, 258],
   ] as const;
   let screensChecked = 0;
 
@@ -782,9 +783,9 @@ describe('the camera box gives way to the strip, before the label is measured (s
       const size = boxSize();
       expect(size.width).toBeCloseTo(boxWidth, 2);
       expect(size.height).toBeCloseTo(boxHeight, 2);
-      // 16:9, and the box plus the strip's worst case, 142, fits the screen.
+      // 16:9, and the box plus the strip's worst case, 154, fits the screen.
       expect(size.width / size.height).toBeCloseTo(16 / 9, 3);
-      expect(size.height + 142).toBeLessThanOrEqual(height + 1e-6);
+      expect(size.height + 154).toBeLessThanOrEqual(height + 1e-6);
       expect(size.width).toBeLessThanOrEqual(given + 1e-6);
       screensChecked += 1;
     },
@@ -796,14 +797,14 @@ describe('the camera box gives way to the strip, before the label is measured (s
   });
 
   // The rule's consequence, written from the declarations: the camera half is wider than half the screen wherever the
-  // screen is wider than twice the controls half, and the box is the lesser of what that half and the strip's 142 leave
+  // screen is wider than twice the controls half, and the box is the lesser of what that half and the strip's 154 leave
   // it. At 640 the half (330) is 10 dp wider than half the screen (320) and holds a box 185.625 tall; the strip leaves
-  // 218, so the box is the whole half, 330 × 185.625. From 800 wide on a 360 dp screen it is the strip that limits the
-  // box: 218 tall however wide the half is (804 × 360: a 494 dp half, a box of 387.6).
+  // 206, so the box is the whole half, 330 × 185.625. From 800 wide on a 360 dp screen it is the strip that limits the
+  // box: 206 tall however wide the half is (804 × 360: a 494 dp half, a box of 366.2).
   it('the camera half is wider than half the screen, and the box is the lesser of what the half and the strip leave', async () => {
     await renderViewfinder();
     const CONTROLS = parseFloat(getComputedStyle(byId('controls-half')).width);
-    const RESERVE = 142; // Q4 option A: 2 × 8 + 16 + 76 + 22 + 2 × 6, the strip at its worst: round line, one message line
+    const RESERVE = 154; // C2 (D2 §4.4): 2 × 8 + 16 + 88 + 22 + 2 × 6
     let wider = 0;
     for (const [width, height] of SCREENS) {
       layOut(byId('camera-half'), { width: width - CONTROLS, height });
@@ -830,7 +831,7 @@ describe('the camera box gives way to the strip, before the label is measured (s
 
   it('keeps What viewers see inside the narrower box', async () => {
     const view = await renderViewfinder();
-    // A half of 480: the strip's 142 leaves a box 218 tall, 387.6 wide, narrower than the half.
+    // A half of 480: the strip's 154 leaves a box 206 tall, 366.2 wide, narrower than the half.
     layOut(byId('camera-half'), { width: 480, height: 360 });
     const box = byId('camera-box');
     act(() => view.engine.scene('live'));
@@ -847,7 +848,7 @@ describe('the camera box gives way to the strip, before the label is measured (s
       '0px',
       '0px',
     ]);
-    expect(boxSize().width).toBeCloseTo(387.5555556, 2);
+    expect(boxSize().width).toBeCloseTo(366.2222222, 2);
   });
 
   it('follows the screen and never remounts: a 480 half at 360, then a 320 half, then a 560 half at 390', async () => {
@@ -855,11 +856,11 @@ describe('the camera box gives way to the strip, before the label is measured (s
     const box = byId('camera-box');
     const preview = within(box).getByTestId('preview');
     layOut(byId('camera-half'), { width: 480, height: 360 });
-    expect(boxSize().width).toBeCloseTo(387.5555556, 2);
+    expect(boxSize().width).toBeCloseTo(366.2222222, 2);
     layOut(byId('camera-half'), { width: 320, height: 360 });
     expect(boxSize()).toEqual({ width: 320, height: 180 });
     layOut(byId('camera-half'), { width: 560, height: 390 });
-    expect(boxSize().height).toBeCloseTo(248, 2);
+    expect(boxSize().height).toBeCloseTo(236, 2);
     expect(byId('camera-box')).toBe(box);
     expect(within(byId('camera-box')).getByTestId('preview')).toBe(preview);
   });
@@ -879,7 +880,7 @@ describe('the camera box gives way to the strip, before the label is measured (s
  * nothing else, and until the label has been measured it is the worst case. jsdom lays nothing out, so `layOut` delivers
  * what the phone would: the half's size, then the label's height. The expected numbers are written out by hand from
  * the token and type declarations (the strip's fixed terms are 16 + 16 + 22 + 2 × 6 = 66, the round line's room being
- * one of them: it is always shown, option B; and a label of 22, 44 or 76), never read from the component.
+ * one of them: it is always shown, option B; and a label of 22, 44 or 88), never read from the component.
  */
 describe('the picture is sized from this match’s label (owner, 2026-10-08, option A)', () => {
   beforeEach(() => vi.useFakeTimers());
@@ -924,14 +925,15 @@ describe('the picture is sized from this match’s label (owner, 2026-10-08, opt
   });
 
   // The initial worst case: the half has laid out and the label has not. The strip is never short: the box leaves it
-  // the 142 it always reserved, whatever the match (or, where the half limits the picture, what the half leaves).
+  // the 154 it always reserved (C2, D2 §4.4), whatever the match (or, where the half limits the picture, what the half
+  // leaves).
   it.each([
     [640, 360, 330, 185.625, 174.375],
-    [804, 332, 337.7777778, 190, 142],
-    [804, 360, 387.5555556, 218, 142],
-    [915, 412, 480, 270, 142],
+    [804, 332, 316.4444444, 178, 154],
+    [804, 360, 366.2222222, 206, 154],
+    [915, 412, 458.6666667, 258, 154],
   ] as const)(
-    'before the label is measured the strip has its worst case, 142: %i × %i is %d × %d, a strip of %d',
+    'before the label is measured the strip has its worst case, 154: %i × %i is %d × %d, a strip of %d',
     async (width, height, boxWidth, boxHeight, strip) => {
       await open(width, height, null);
       expect(boxSize().width).toBeCloseTo(boxWidth, 2);
@@ -941,21 +943,21 @@ describe('the picture is sized from this match’s label (owner, 2026-10-08, opt
   );
 
   // [window, height, label lines, label height, box width, box height]: by hand, from the strip's reserve of 66 + the
-  // label (88, 110, 142) and a camera half of the window less 310. The same table as cameraBox.test.ts, but rendered:
+  // label (88, 110, 154) and a camera half of the window less 310. The same table as cameraBox.test.ts, but rendered:
   // the half lays out, then the label does, and the box that results is read from what the component painted.
   const TABLE = [
     [640, 360, '1 line', 22, 330, 185.625],
     [640, 360, '2 lines', 44, 330, 185.625],
-    [640, 360, '4 long lines', 76, 330, 185.625],
+    [640, 360, '4 lines', 88, 330, 185.625],
     [804, 332, '1 line', 22, 433.7777778, 244],
     [804, 332, '2 lines', 44, 394.6666667, 222],
-    [804, 332, '4 long lines', 76, 337.7777778, 190],
+    [804, 332, '4 lines', 88, 316.4444444, 178],
     [804, 360, '1 line', 22, 483.5555556, 272],
     [804, 360, '2 lines', 44, 444.4444444, 250],
-    [804, 360, '4 long lines', 76, 387.5555556, 218],
+    [804, 360, '4 lines', 88, 366.2222222, 206],
     [915, 412, '1 line', 22, 576, 324],
     [915, 412, '2 lines', 44, 536.8888889, 302],
-    [915, 412, '4 long lines', 76, 480, 270],
+    [915, 412, '4 lines', 88, 458.6666667, 258],
   ] as const;
   let tabled = 0;
 
@@ -997,9 +999,9 @@ describe('the picture is sized from this match’s label (owner, 2026-10-08, opt
   // strip limits it, with the worst case in between (the new label has not been laid out), and a shorter one is the
   // first box again, exactly. Two windows: the owner's phone (804 × 332), where the picture is as tall as the window
   // allows; and 640 × 360, where the half limits the picture. The round line is up through all of it, in both.
-  // [width, height, first box, the box for an unmeasured new label (the box for 76 laid out is the same)]
+  // [width, height, first box, the box for an unmeasured new label (the box for 88 laid out is the same)]
   const SEQUENCES = [
-    [804, 332, { width: 394.6666667, height: 222 }, { width: 337.7777778, height: 190 }],
+    [804, 332, { width: 394.6666667, height: 222 }, { width: 316.4444444, height: 178 }],
     [640, 360, { width: 330, height: 185.625 }, { width: 330, height: 185.625 }],
   ] as const;
   let sequences = 0;
@@ -1065,11 +1067,11 @@ describe('the picture is sized from this match’s label (owner, 2026-10-08, opt
       sameBox('after the organiser stopped the match');
 
       // A new match, with a longer label: the label changes text, so the picture is sized again. Not laid out yet it is
-      // the worst case (never short), and laid out at four long lines it is that reserve.
+      // the worst case (never short), and laid out at four lines it is that reserve.
       act(() => view.engine.setPairing({ label: LONG_DOUBLES }));
       expect(boxSize().width).toBeCloseTo(longBox.width, 2);
       expect(boxSize().height).toBeCloseTo(longBox.height, 2);
-      layOut(byId('match-label'), { width: half(width) - 2 * layout.stripPadH, height: 76 });
+      layOut(byId('match-label'), { width: half(width) - 2 * layout.stripPadH, height: 88 });
       expect(boxSize().width).toBeCloseTo(longBox.width, 2);
       expect(boxSize().height).toBeCloseTo(longBox.height, 2);
       expect(boxSize().height).toBeLessThanOrEqual(first.height);

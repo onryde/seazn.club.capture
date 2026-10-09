@@ -76,7 +76,7 @@ describe('the status strip always shows the round line, whenever there is one (o
     ['two regular lines', 44],
     ['three long lines', 57],
     ['three regular lines', 66],
-    ['four long lines, the worst case', 76],
+    ['four lines, the worst case (C2, D2 §4.4)', 88],
     ['a large system text size', 120],
   ])('shows it for a label that is %s (%d dp)', (_name, height) => {
     stripWith('Open · QF');
