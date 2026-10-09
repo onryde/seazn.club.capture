@@ -163,7 +163,8 @@ adb -s 12be753e shell wm density
 - [ ] **Step 3a (owner and agent): What D2 removed and blocked is gone from the installed app.**
   - (Agent) Run `adb -s 12be753e shell dumpsys package com.seazn.capture | grep -c WRITE_SETTINGS`. Expected: `0`. The `expo-brightness` plugin's permission is blocked in `app.json` (D2 PD3).
   - (Owner) In Android Settings, under Special app access, then Modify system settings: Seazn Capture is not listed. The app never asks for it.
-  - (Owner) If Step 2a ran: open Live Stream's Settings. Expected: "Controls on the" still reads **Left**, and the automatic switch is still off. Settings has no "Score preview" switch: the automatic switch is the only switch (D2 §4.1).
+  - (Owner) Open Live Stream's Settings, with a printed code as in Step 2a. Expected: Settings has no "Score preview" switch: the automatic switch is the only switch (D2 §4.1). This holds whether or not Step 2a ran.
+  - (Owner) If Step 2a ran: "Controls on the" still reads **Left**, and the automatic switch is still off.
 
 - [ ] **Step 4 (agent): Dump the copy the run quotes.**
 
@@ -175,13 +176,13 @@ cd "$WT" && grep -nE '"stream\.(status|advisory|peek|chip|startsAt)[^"]*"|"panel
 - Fail: if any of these is missing, D2 is not what the spec says. Report it before going on.
 
 - [ ] **Step 5 (owner): Staging is ready.** Each of these is arranged on staging (`stg.seazn.club`) and confirmed:
-  - Credit: top up the staging org's streaming credit for **at least 20 broadcasts**. Credit is spent on the first ingest only (W5). The broadcasts this plan opens are:
+  - Credit: top up the staging org's streaming credit for **at least 22 broadcasts**. Credit is spent on the first ingest only (W5). The broadcasts this plan opens are:
     - row 1, 1b, and 1c twice;
     - 2a, 2b, 4 and 7 (twice);
     - 9;
     - 11 (twice), and S11 (once or twice);
-    - 12 (up to five: four for the viewers' video, one for Task 10 Step 10e);
-    - 13.
+    - 12 (up to six: four for the viewers' video, one for Task 10 Step 10d, one for Step 10e);
+    - 13 (twice: the rung, and Task 11 Step 5a's Spanish caption).
   - Two matches for Task 1, M1 and M2. They are on fixtures the owner can start and finish in the web app, each scheduled to start within 30 minutes, so the beat cadence is 10 s. The org's automatic switch is on, and the destination is YouTube (a test channel). The owner holds their printed stream codes. M1 also serves Tasks 2, 5, 9 and 10, or another scheduled match does. The round-line fixtures of spec §5.2 already exist on staging, and Task 8 lists them.
   - A second Android 12+ phone for rows 4, 5 and 6. CD34 rules out the Redmi Note 7 Pro (Android 10), because the app's minSdk is 31. With no second phone, rows 4 to 6 are **blocked**, and the results say so.
   - A phone that can call the OnePlus, for row 11.
@@ -633,7 +634,9 @@ while true; do printf '%s %s\n' "$(date -u +%H:%M:%S)" "$(curl -s -o /dev/null -
 
 **Row:** 12: the viewers' video, C2, and the idle dim. Everything in this task that jsdom cannot see is **device-only** (spec §6).
 
-- [ ] **Step 1 (owner): Pair in operator mode.** Pair a scheduled TestDevicePad match, with a doubles fixture from §5.2 if one is scheduled, so C2's wrapping is read. Confirm the automatic switch reads off. Go live from the console.
+- [ ] **Step 1 (owner): Pair in operator mode.** Pair a scheduled TestDevicePad match, with a doubles fixture from §5.2 if one is scheduled, so C2's wrapping is read. Confirm the automatic switch reads off.
+  - Paired, before the Go live: the camera box shows the camera's picture and nothing drawn over it. There is no score layer (D2 §4.1, R1). (Agent) Screenshot `r12-paired`.
+  - Go live from the console. Live, before any tap: the same, no score layer over the camera. (Agent) Screenshot `r12-live`.
 - [ ] **Step 2 (owner): The viewers' video, the picture path.** Tap **What viewers see** once (a tap, not a hold).
   - Expected:
     - A 5 s countdown, with the loading string from `$EVID/keys.txt`.
@@ -701,7 +704,6 @@ while true; do printf '%s %s\n' "$(date -u +%H:%M:%S)" "$(curl -s -o /dev/null -
 - [ ] **Step 10 (owner): The idle dim.** Stop from the console, so the phone is paired and waiting. Do not touch the screen.
   - Expected: at about 30 s (stopwatch), the screen dims, but it does not go off.
   - Touch it once. Expected: full brightness at once, and the 30 s starts again.
-  - Then hold Go live, or press it in the console. Expected: no dimming while armed or live, even after 60 s with no touch.
   - If the dim does not happen, that is spec §8's `expo-brightness` risk. Write down the phone's power mode, and report it as a finding for the owner (the scrim fallback is the owner's call). Do not change any code.
 - [ ] **Step 10a (owner and agent): The dim is the window's, never the system's.** Paired and waiting, before the dim and again while dimmed, the agent runs `adb shell settings get system screen_brightness`.
   - Expected: the same value both times. With adaptive brightness on, the value can drift with the light. Then the owner reads the brightness slider in quick settings instead, which does not drop.
@@ -714,13 +716,19 @@ while true; do printf '%s %s\n' "$(date -u +%H:%M:%S)" "$(curl -s -o /dev/null -
   - If "engine not responding" shows while the screen is dim, it stays dim until a touch, by the controller's ruling. Then it reads at full brightness. This is not induced, only written down if it happens.
 - [ ] **Step 10c (owner): The background.** Let it dim, press the phone's Home button, wait 40 s, and come back to the app.
   - Expected: full brightness on return, and a dim again 30 s later if untouched. The system brightness is as it was.
-- [ ] **Step 10d (owner): Live Stream opened while locked.** Paired in operator mode, go to the app's Home (the Continue card shows), then press the power button to lock the phone. Press **Go live** in the console. When the record shows `live`, press **Stop** in the console, wait one beat, and unlock.
+- [ ] **Step 10d (owner): Live Stream opened while locked.** Paired in operator mode, go to the app's Home (the Continue card shows), then press the power button to lock the phone. Press **Go live** in the console. The record cannot be read on a locked phone, so watch the console: when it shows the broadcast live, or the manifest `curl` of Task 2 Step 8 returns `200`, press **Stop** in the console, wait one beat, and unlock.
   - Expected: the app is on Live Stream, because the remote Go live moved it there while locked. It is paired and waiting, at **full brightness**, and it dims 30 s after the unlock if untouched.
   - A dim screen on unlock is a finding: the dim's clock counted in the background, from Android's `AppState` at that mount (B5). This is **device-only**.
+  - If the console refuses the Go live with "The camera phone isn't responding" (Task 2 Step 8's verdict B), this step cannot run. Write that down.
+  - This is one broadcast (Task 0 Step 5 counts it).
+- [ ] **Step 10e (owner): A console Go live on a dimmed phone.** Paired and waiting, with the phone sideways on its tripod and unlocked, let the screen dim. Then, without touching the phone, press **Go live** in the console.
+  - Expected: full brightness at once, as the phone arms, before the picture is live. Then no dimming while armed or live, even after 60 s with no touch.
+  - Write down what the screen showed from the console press to live: when the brightness came back (at arming or only at live), and what the status line read meanwhile. (Agent) Screenshot `r12-dim-golive` once it is live.
+  - A screen still dim while armed is a finding for the owner. Do not change any code.
   - This is one broadcast (Task 0 Step 5 counts it).
 - [ ] **Step 11 (owner): Clean up.** Stop, and delete the recordings from this task.
 
-**Pass:** the viewers' video follows R2 and R10 (picture, 20 s, close; not-ready, 3 s, close; a second tap closes it; one cover at a time), and the record holds a `viewer.check` line per state and a `viewer.firstFrame` per picture. C2 draws as R3 at both sizes and in both languages, at the picture sizes the arithmetic gives. The dim fires at 30 s, on the window only, and a touch wakes it. A phone always comes back from the background or a lock bright. The geometry is reset. Steps 5b and 5d are written down whatever they show: they are evidence for the owner, not pass or fail.
+**Pass:** the viewers' video follows R2 and R10 (picture, 20 s, close; not-ready, 3 s, close; a second tap closes it; one cover at a time), and the record holds a `viewer.check` line per state and a `viewer.firstFrame` per picture. C2 draws as R3 at both sizes and in both languages, at the picture sizes the arithmetic gives. The camera box shows no score layer, paired or live. The dim fires at 30 s, on the window only, and a touch or a console Go live wakes it at once. A phone always comes back from the background or a lock bright. The geometry is reset. Steps 5b and 5d are written down whatever they show: they are evidence for the owner, not pass or fail.
 
 ---
 
@@ -746,10 +754,15 @@ while true; do printf '%s %s\n' "$(date -u +%H:%M:%S)" "$(curl -s -o /dev/null -
   - Nothing else on screen changes: no lower preview frame rate, and no change to the encode. Steps 2 and 3 are report-only (`_FINDINGS.md` N26), so there is nothing to observe.
 - [ ] **Step 5 (agent): Read the record.** Debug builds allow `run-as`, so run `adb shell run-as com.seazn.capture tail -40 files/record/session-record.ndjson > "$EVID/r13-record.ndjson"`.
   - Expected: a `thermal` line with status 2, and a `shed` line with `shed` `viewer-feed`. After Step 4a, `thermal` lines with 3 and 4, and `shed` lines with `preview-framerate` and `encode`.
+- [ ] **Step 5a (owner and agent): The Spanish caption at 640 × 360.** The thermal override stays at 4. The owner stops from the console, goes to Home, picks Spanish in the language picker, and goes back to Live Stream. The agent runs `adb shell wm size 360x640` and `adb shell wm density 160`, and the owner holds the phone sideways and goes live from the console.
+  - Expected: the strip's caption reads `stream.advisory.shed` from `es.json`, "Móvil caliente: sin vista del público, sigue en directo", in full and ending in "directo", with no ellipsis. It measures 295.8 of the 298 dp the line has at this size (`stripTextFit.test.ts`), so only the drawn text can settle it.
+  - (Agent) Screenshot `r13-shed-es-640`. Then run `adb shell wm size reset` and `adb shell wm density reset`.
+  - A cut caption is a finding for the owner, with the screenshot. Do not change any code.
+  - English goes back on Home after Step 7's stop.
 - [ ] **Step 6 (agent): Reset.** Run `adb shell cmd thermalservice reset`. Expected: after 10 s, the cell is enabled again.
-- [ ] **Step 7 (owner and agent): Clean up.** Stop from the console. Delete the recordings. Put the release build back with `adb install -r "$WT/android/app/build/outputs/apk/release/app-release.apk"`, and stop Metro.
+- [ ] **Step 7 (owner and agent): Clean up.** Stop from the console, and pick English again on Home. Delete the recordings. Put the release build back with `adb install -r "$WT/android/app/build/outputs/apk/release/app-release.apk"`, and stop Metro.
 
-**Pass:** at thermal status 2, the video closes and the cell is disabled with its reason. At 3 and 4 the same holds, and nothing else changes (N26). The record holds `shed` `viewer-feed`, then `preview-framerate` and `encode`.
+**Pass:** at thermal status 2, the video closes and the cell is disabled with its reason. At 3 and 4 the same holds, and nothing else changes (N26). The record holds `shed` `viewer-feed`, then `preview-framerate` and `encode`. The Spanish caption is written down whatever it shows: evidence for the owner.
 
 ---
 

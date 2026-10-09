@@ -316,8 +316,8 @@ Three rules travel with these tokens:
   and the reserve's worst case derives from the 2-line cap, never from a
   second number (`WORST_LABEL` in `cameraBox.ts`; the controller's ruling,
   2026-10-09). The round line sits above the match label in the status strip,
-  in lime caps, and is always shown when the pairing has one (owner,
-  2026-10-08, option B), the owner's 804 × 332 included.
+  in lime caps (D2 §4.4's _rec_, R11), and is always shown when the pairing
+  has one (owner, 2026-10-08, option B), the owner's 804 × 332 included.
   Its 22 dp (the line and a gap) are in the strip's reserve, 66 dp and the
   label, whether there is a round line to show or not, so it is not measured
   and never moves the picture, and the picture never gives way for it. A match
@@ -347,22 +347,29 @@ Three rules travel with these tokens:
   the reverse): one cover at a time. It closes and is disabled while the ladder
   sheds (§8). While it shows it says "no scoreboard yet": there is no
   compositor, so the viewers' picture has no score (D2 §4.3).
-  As built (owner, 2026-10-08 and 2026-10-09, R2 and R10): a tap shows a 5 s
-  countdown while the player loads; the first frame starts the 20 s; no frame
-  in the 5 s shows "Viewers don't have a picture yet — try again shortly" for
-  3 s, then it closes. So a tap costs at most 25 s of player time with a
-  picture, or 8 s without one, and inside the 5 s the player gets one quiet
-  retry at 2 s. A second tap on the cell, a tap on the box, or its _Hide_
-  closes it at once. It also closes when the broadcast leaves live or loses its
-  playback URL, while the turn card covers the stage and when the app leaves
-  the foreground, and it never reopens by itself. Closing unmounts the
-  player, so the download stops. While loading and showing the box carries
-  one line, "What viewers see · no scoreboard yet"; when the compositor exists,
-  that line goes. The rule is a pure reducer (`src/domain/session/viewerCheck.ts`);
-  `useViewerCheck` owns the timers, `ViewerCover` draws it, and the record
-  gets `viewer.check {state}` and `viewer.firstFrame {ms}` (D2 PD6). The cell
-  is a plain `Pressable`, not `Button`, whose 200 dp minimum does not fit the
-  110 dp cell (D2 PD1). Go live and Stop are the only holds left.
+  As built: a tap shows a 5 s countdown while the player loads; the first
+  frame starts the 20 s; no frame in the 5 s shows "Viewers don't have a
+  picture yet — try again shortly" for 3 s, then it closes (owner, 2026-10-08
+  and 2026-10-09, R2 and R10). So a tap costs at most 25 s of player time with
+  a picture, or 8 s without one. A tap on the box or its _Hide_ closes it at
+  once, and so does the broadcast leaving live or losing its playback URL
+  (D2 §4.3); so does a second tap on the cell (D2 §4.3's _rec_, R11). The
+  player gets one quiet retry at 2 s while it loads (D2 §4.3's _rec_, R11),
+  and one again after a picture: a retry while showing stays silent, the frame
+  holds and the 20 s countdown runs on (the controller's ruling, 2026-10-09,
+  B3). A delivery that stalls while showing drops the player and reads "No
+  viewer picture", and the 20 s still closes the view. It also closes while
+  the turn card covers the stage and when the app leaves the foreground
+  (rulings N4 and M5, which closed the old peek the same way), and it never
+  reopens by itself. Closing unmounts the player, so the download stops.
+  While loading and showing the box carries one line, "What viewers see · no
+  scoreboard yet"; when the compositor exists, that line goes. The rule is a
+  pure reducer (`src/domain/session/viewerCheck.ts`); `useViewerCheck` owns
+  the timers, `ViewerCover` draws it, and the record gets
+  `viewer.check {state}` and `viewer.firstFrame {ms}` (plan decision PD6, the
+  controller's). The cell is a plain `Pressable`, not `Button`, whose 200 dp
+  minimum does not fit the 110 dp cell (plan decision PD1, the controller's).
+  Go live and Stop are the only holds left.
 - Go Live enables only when _paired and ready_: camera running, the mic
   available (a silent room is ready; design follow-up §4), network reachable,
   phone held sideways, as native judges it. The pre-flight is the safety, for
@@ -397,7 +404,8 @@ Three rules travel with these tokens:
   identical output. This is the highest-value prohibition in this file.
 - What viewers see shows the delivered picture, which has no score until the
   compositor exists; it says so on screen.
-- What went with it (D2 §4.1): the WebView, its guard and error boundary, the
+- What went with it (D2 §4.1; the record line and the TypeScript reader by plan
+  decision PD2, the controller's): the WebView, its guard and error boundary, the
   Settings "Score preview" switch and its stored field (settings wire v2 → v3;
   a v2 record is read and its `overlay` dropped), the score-ahead and
   preview-failed captions, the snapshot's two `overlayUrl` fields and native's
@@ -458,26 +466,30 @@ thermal member. Only transport trouble degrades a session.
   lock are the Android fallback when the phone is locked anyway (R4, D2 §4.5).
   The dim is the window's own brightness, never the system setting, and never
   when armed or live.
-  As built (owner, 2026-10-09, R8): after 30 s with no touch anywhere in the
-  Live Stream route the window drops to 0.1, and any touch restores it and
-  starts the 30 s again. `TouchWake`, the stream layout's root, sees every
-  touch in its capture phase and never takes it, so the control under the
-  finger still acts. Arming, going live, unpairing, leaving the mode and the
-  app leaving the foreground restore it at once. Entering paired and waiting
-  starts the 30 s again, so a new line such as "Organiser stopped it" is read
-  before the dim, and so does a new _urgent_ status line (`LINE_TIER`), which
-  also wakes the screen; the engine-not-responding line does not, because it
-  comes from the viewfinder's 1 Hz clock, which the route's root never takes on
-  (§8), so a dimmed phone shows it at full brightness on the next touch (the
-  controller's rulings, 2026-10-09).
-  In the background nothing counts, and a Live Stream mounted there (a remote
-  Go live on a locked phone) starts paused, so a phone always comes back
-  bright. The rule is `shouldDim` (`src/domain/session/idleDim.ts`);
-  `useIdleDim` and `useIdleClock` own the timer, and `ScreenPort`
-  (`createNativeScreen`, over `expo-brightness`) sets the brightness. On
-  Android restore hands the window back to the system's brightness; on iOS `expo-brightness` sets the screen's, and the port
-  puts back what it found. Keep-awake is unchanged: on for every state but idle
-  and ended (`useKeepAwake`).
+  As built: after 30 s with no touch anywhere in the Live Stream route the
+  window drops to 0.1, and any touch restores it and starts the 30 s again
+  (owner, 2026-10-09, R8; 0.1 is D2 §4.5's _rec_, R11). `TouchWake`, the
+  stream layout's root, sees every touch in its capture phase and never takes
+  it, so the control under the finger still acts. Arming, going live,
+  unpairing, leaving the mode and the app leaving the foreground restore it at
+  once (D2 §4.5).
+  Entering paired and waiting starts the 30 s again, so a new line such as
+  "Organiser stopped it" is read before the dim, and so does a new _urgent_
+  status line (`LINE_TIER`), which also wakes the screen (the controller's
+  rulings, 2026-10-09). The engine-not-responding line does not wake it,
+  because it comes from the viewfinder's 1 Hz clock, which the route's root
+  never takes on (§8), so a dimmed phone shows it at full brightness on the
+  next touch (the controller's ruling, 2026-10-09). In the background nothing
+  counts, and a Live Stream mounted there (a remote Go live on a locked phone)
+  starts paused, so a phone always comes back bright (the controller's
+  rulings, 2026-10-09). On Android restore hands the window back to the
+  system's brightness and never reads it, since a read that throws would stop
+  the dim (the controller's ruling, 2026-10-09). On iOS `expo-brightness` sets
+  the screen's, and the port puts back what it found.
+  The rule is `shouldDim` (`src/domain/session/idleDim.ts`); `useIdleDim` and
+  `useIdleClock` own the timer, and `ScreenPort` (`createNativeScreen`, over
+  `expo-brightness`) sets the brightness. Keep-awake is unchanged: on for
+  every state but idle and ended (`useKeepAwake`).
 - **iOS:** the camera stops in background — no background mode grants it. So
   disable the idle timer, warn the operator at start, and treat the
   slate-and-resume choreography as a **normal operating mode**, not an edge
