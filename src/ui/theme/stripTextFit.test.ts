@@ -171,8 +171,10 @@ describe('the strip’s one message line, measured in every language (owner, 202
     expect(OWNER).toBe(462);
   });
 
-  it('measures 42 status strings and 3 captions in each of the four languages, and every glyph is in the font', () => {
-    // Anti-vacuity: the table is the whole copy, not a sample. 41 `stream.status.*` keys and Back's refusal.
+  it('measures 42 status strings and 5 captions in each of the four languages, and every glyph is in the font', () => {
+    // Anti-vacuity: the table is the whole copy, not a sample. 41 `stream.status.*` keys and Back's refusal; the
+    // captions are keep the app open, not charging, and heat's three (the spec's, which names What viewers see, and
+    // "Phone hot · still live" and "Phone hot" with the view hidden: the owner's ruling, 2026-10-09).
     for (const [lang] of LANGUAGES) {
       const rows = REALISTIC.filter((row) => row.lang === lang);
       expect(
@@ -182,11 +184,11 @@ describe('the strip’s one message line, measured in every language (owner, 202
       expect(
         rows.filter((row) => row.kind === 'caption'),
         lang,
-      ).toHaveLength(3);
+      ).toHaveLength(5);
     }
-    expect(REALISTIC).toHaveLength(4 * 45);
+    expect(REALISTIC).toHaveLength(4 * 47);
     // The destination variants add two rows to the waiting line in each language.
-    expect(ROWS).toHaveLength(4 * 45 + 4 * 2);
+    expect(ROWS).toHaveLength(4 * 47 + 4 * 2);
     // A code point the font lacks is measured as its .notdef: the width would be wrong. None is missing.
     const missing = new Set<string>();
     for (const row of ROWS) {
@@ -238,6 +240,23 @@ describe('the strip’s one message line, measured in every language (owner, 202
     expect(widest('caption').width).toBeLessThan(OWNER);
     expect(widest('status').width).toBeGreaterThan(NARROW);
     expect(widest('status').width).toBeLessThan(OWNER);
+  });
+
+  // The heat caption with What viewers see hidden (the owner's ruling, 2026-10-09): both wordings are ONE line at 298 dp
+  // in every language, with room to spare, so neither is ever cut. fr keeps "toujours" here: the spec's caption, which
+  // names the view, has no room for it (docs/i18n-glossary.md, "still live").
+  it('fits the hidden view’s heat captions, "Phone hot · still live" and "Phone hot", at 298 dp in all four languages', () => {
+    const widths = (key: string) =>
+      LANGUAGES.map(
+        ([, dictionary]) =>
+          Math.round(geist500.width(dictionary[key] ?? '', typeScale.metricUnit.fontSize) * 10) /
+          10,
+      );
+    const live = widths('stream.advisory.hotLive');
+    const before = widths('stream.advisory.hot');
+    expect(live).toEqual([110.6, 179.4, 206.9, 194.6]);
+    expect(before).toEqual([58.0, 79.7, 97.3, 99.9]);
+    for (const width of [...live, ...before]) expect(width).toBeLessThan(NARROW);
   });
 
   // The ellipsis case: the line is a body line of ONE row. A string wider than the text must not become a second row,

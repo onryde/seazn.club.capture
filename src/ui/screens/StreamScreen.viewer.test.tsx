@@ -14,9 +14,12 @@ const fill = (text: string, seconds: number) => text.replace('{seconds}', String
 
 type View = Awaited<ReturnType<typeof renderViewfinder>>;
 
-/** On air, on a phone with nothing to warn about. */
+/**
+ * On air, on a phone with nothing to warn about, with What viewers see built in: it is hidden as shipped (the owner's
+ * ruling, 2026-10-09; StreamScreen.viewerHidden.test.tsx), and these tests keep the hidden code tested.
+ */
 async function onAir(options: Parameters<typeof renderViewfinder>[0] = {}) {
-  const view = await renderViewfinder(options, { quiet: true });
+  const view = await renderViewfinder(options, { quiet: true, viewerCheck: true });
   act(() => view.engine.scene('live'));
   return view;
 }

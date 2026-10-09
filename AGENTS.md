@@ -288,8 +288,9 @@ Three rules travel with these tokens:
   `controlsColumnGap`: 8 and 8; its horizontal padding stays the board's 16, so
   it is still 310 wide), so every control is on screen at 804 × 332 in every
   state and language, the worst before-air state with 8 dp to spare. Nothing is drawn over the
-  camera box but the _What viewers see_ video and, on the operator's tap, the
-  Remote scoring panel, one at a time (D2 §4.3). The panel (design follow-up
+  camera box but, on the operator's tap, the Remote scoring panel and, when it
+  is built in, the _What viewers see_ video, one at a time (D2 §4.3; the view
+  is built and hidden, below). The panel (design follow-up
   §10) is over the camera half, for at most 10 s, and it hides itself when the
   session enters trouble. Advisory text rides the status strip's one message line, over a
   routine status line only (an urgent one keeps the line). The
@@ -302,9 +303,11 @@ Three rules travel with these tokens:
   status strip is never hidden by a panel that opened before it; a tap made
   while the trouble already stands is honoured (the operator saw the warning
   and chose), and the panel then covers the strip for up to 10 s. The icon row
-  on air is Settings, Take photo, Remote scoring, _What viewers see_: Remote
-  scoring is third of four because the flexible viewers cell has to end the
-  row. The match label is
+  on air is Settings, Take photo, Remote scoring, and no cell flexes: the three
+  buttons pack from the start, as the four do before air. _What viewers see_ is
+  hidden (the owner's ruling, 2026-10-09, below); built in, it is a fourth cell
+  that ends the row and takes its remaining width, so Remote scoring is third
+  of four, and the controls half is still sized to hold it. The match label is
   C2 (owner, 2026-10-08; D2 §4.4): one row a side, each with a 3 dp bar at its
   left edge, lime for the first side and lilac (`ink3`) for the second, then
   the side's names at one size (`label`, 22 dp a line), partners joined by
@@ -340,8 +343,15 @@ Three rules travel with these tokens:
   from automatic mode, or a rejoin needs no hold: the operator is not there to
   hold it, and the server's Go live is the decision (A2, A10). The Stop hold
   ends the broadcast and unpairs (A3).
-- **What viewers see is a tap.** Its protection against a billed preview left
-  running is that it closes by itself 20 s after its first frame, or 3 s after
+- **What viewers see is built, and hidden** (the owner's ruling, 2026-10-09:
+  "keep all code and just hide button then when later stage like when org
+  reqeust we can implemnt"). One compile-time switch, `FEATURES.viewerCheck`
+  in `src/ui/features.ts`, is false, so the on-air row has no cell for it and
+  nothing of it mounts: no cell, cover, player or timers. No env var, remote
+  config, setting or runtime toggle turns it on; a commit does, when an
+  organiser asks. Its tests render it with the switch passed on, so everything
+  below stays tested. Built in, **it is a tap.** Its protection against a
+  billed preview left running is that it closes by itself 20 s after its first frame, or 3 s after
   telling the operator there is no picture; a tap never extends it. It covers
   the camera box only, and opening it takes the Remote scoring panel down (and
   the reverse): one cover at a time. It closes and is disabled while the ladder
@@ -402,8 +412,8 @@ Three rules travel with these tokens:
 - **Never reimplement the scorebug in React Native.** That creates a second
   render path and destroys the invariant that a club moving between tiers sees
   identical output. This is the highest-value prohibition in this file.
-- What viewers see shows the delivered picture, which has no score until the
-  compositor exists; it says so on screen.
+- What viewers see, when built in (§6), shows the delivered picture, which
+  has no score until the compositor exists; it says so on screen.
 - What went with it (D2 §4.1; the record line and the TypeScript reader by plan
   decision PD2, the controller's): the WebView, its guard and error boundary, the
   Settings "Score preview" switch and its stored field (settings wire v2 → v3;
@@ -438,9 +448,14 @@ Three rules travel with these tokens:
 | 3    | `encode`            | 4, 5, 6        | Reported only. The encode is last, and ideally never                    |
 
 The ladder only goes down: a shed of step 2 or 3 means step 1 too. The rung is
-TypeScript's: `selectShedding` (`shed !== null`) closes What viewers see and
-disables its cell with "Phone hot", and the strip's caption reads "Phone hot —
-viewer check off, still live". Native names the step from the thermal status
+TypeScript's: `selectShedding` (`shed !== null`) puts the heat caption in the
+strip. With What viewers see hidden, as shipped (§6, the owner's ruling,
+2026-10-09), step 1 sheds `viewer-feed` with nothing to close, and the caption
+names no view: "Phone hot · still live" beside the LIVE plate, and "Phone hot"
+before air, since native sends `shed` from Armed on (the controller's ruling,
+2026-10-09). Built in, it closes What viewers see, disables its cell with
+"Phone hot", and the caption reads "Phone hot — viewer check off, still
+live". Native names the step from the thermal status
 (`DeviceReadings.shed`); steps 2 and 3 are in the snapshot and the record, and
 nothing acts on them (`_FINDINGS.md` N26, owner 2026-10-09, R9).
 
@@ -448,7 +463,7 @@ The operator's convenience is the cheapest thing on the device. The broadcast
 is the only thing that matters.
 
 **Thermal pressure is a device condition, not a session state.** A hot handset
-closes What viewers see long before it touches the encode, so it is usually
+sheds step 1 long before it touches the encode, so it is usually
 still publishing cleanly — reporting it as a degraded *broadcast* would be a
 lie. It travels in telemetry as `shed`, and `DegradeReason` deliberately has no
 thermal member. Only transport trouble degrades a session.

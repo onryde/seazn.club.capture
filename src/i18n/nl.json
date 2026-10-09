@@ -143,6 +143,8 @@
   "stream.blocker.held": "Draai de telefoon dwars",
   "stream.startsAt": "Begint om {time}",
   "stream.advisory.shed": "Telefoon te warm: kijkersbeeld uit, nog steeds live",
+  "stream.advisory.hotLive": "Telefoon te warm · nog steeds live",
+  "stream.advisory.hot": "Telefoon te warm",
   "stream.advisory.notCharging": "Laadt niet op: sluit hem aan voor een lange wedstrijd",
   "stream.advisory.keepOpen": "Houd de app open: op de achtergrond stopt de opname",
   "stream.peek.label": "Wat kijkers zien",

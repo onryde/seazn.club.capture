@@ -1,6 +1,12 @@
 import { act, renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { selectCharging, selectKeepOpen, selectShedding, topAdvisory } from '@/hooks/advisory';
+import {
+  selectCharging,
+  selectKeepOpen,
+  selectPublishing,
+  selectShedding,
+  topAdvisory,
+} from '@/hooks/advisory';
 import { selectStatusKey } from '@/hooks/statusKey';
 import { useIdleDim } from '@/hooks/useIdleDim';
 import { createFakePorts, type FakePorts } from '../../test/fakePorts';
@@ -229,6 +235,8 @@ describe('useIdleDim and the status line (D2 §4.5)', () => {
       shed: selectShedding(snapshot),
       charging: selectCharging(snapshot),
       keepOpen: selectKeepOpen(snapshot),
+      live: selectPublishing(snapshot),
+      viewerCheck: false,
     });
     expect(caption).toBe('notCharging');
     expect(fakes.screen.dimmed).toBe(true);

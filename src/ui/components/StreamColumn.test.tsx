@@ -213,6 +213,21 @@ describe('StreamColumn’s icon row (spec §3)', () => {
     expect(rowNames()).toEqual(['Settings', 'Take photo', 'Remote scoring', 'What viewers see']);
   });
 
+  // The owner's ruling, 2026-10-09: with What viewers see hidden the screen hands the column no viewer, and the on-air
+  // row ends at Remote scoring, a picture to show or not.
+  it('on air with What viewers see hidden (no viewer), it ends the row: no cell is drawn for the view', () => {
+    renderWithPorts(
+      <StreamColumn
+        view={viewOf({ onAir: true, action: 'stop', scoring: true, shutter: true, peekable: true })}
+        {...ICONS}
+        canLeave={false}
+        viewer={null}
+      />,
+    );
+    expect(rowNames()).toEqual(['Settings', 'Take photo', 'Remote scoring']);
+    expect(screen.queryByTestId('peek-cell')).toBeNull();
+  });
+
   // B5: the button is pressed in while its panel shows, and only that button.
   it('marks Remote scoring selected while its panel is open, unselected when it is not, and no other button either way', () => {
     const scoringButton = () => screen.getByRole('button', { name: 'Remote scoring' });
@@ -286,6 +301,23 @@ describe('the peek cell’s reasons (D2 §4.2, carry 13)', () => {
     });
     renderWithPorts(<StreamColumn view={view} {...ICONS} viewer={VIEWER} />);
     expect(screen.getByText(en['stream.peek.unavailable'])).toBeTruthy();
+  });
+
+  // Hidden (owner ruling, 2026-10-09): neither reason has a cell to stand under, so neither is drawn.
+  it.each([
+    ['hot', { shed: true, peekable: true }],
+    ['no picture', { shed: false, peekable: false }],
+  ] as const)('with What viewers see hidden, gives no reason: %s', (_name, overrides) => {
+    const view = viewOf({
+      kind: 'publishing',
+      action: 'stop',
+      onAir: true,
+      plate: 'live',
+      ...overrides,
+    });
+    renderWithPorts(<StreamColumn view={view} {...ICONS} viewer={null} />);
+    expect(screen.queryByText(en['stream.peek.hot'])).toBeNull();
+    expect(screen.queryByText(en['stream.peek.unavailable'])).toBeNull();
   });
 
   it('gives no reason, and reads selected, while the view is open', () => {

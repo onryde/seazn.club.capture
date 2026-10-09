@@ -143,6 +143,8 @@
   "stream.blocker.held": "Móvil en horizontal",
   "stream.startsAt": "Empieza a las {time}",
   "stream.advisory.shed": "Móvil caliente: sin vista del público, sigue en directo",
+  "stream.advisory.hotLive": "Móvil caliente · sigue en directo",
+  "stream.advisory.hot": "Móvil caliente",
   "stream.advisory.notCharging": "No está cargando: enchúfalo para un partido largo",
   "stream.advisory.keepOpen": "Mantén la app abierta: en segundo plano no se graba",
   "stream.peek.label": "Lo que ve el público",

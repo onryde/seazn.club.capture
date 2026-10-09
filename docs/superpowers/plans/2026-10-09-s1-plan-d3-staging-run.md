@@ -77,7 +77,7 @@ curl -s -o /dev/null -w "%{http_code}\n" -X DELETE -H "Authorization: Bearer $CF
 **Copy**
 
 - Expected strings are the dictionary's. Each one is quoted with its key, from `src/i18n/en.json`.
-- D2 adds or rewords keys, such as `stream.advisory.shed` and the viewer-check keys under `stream.peek.`. D1 adds no phone word for `match_finished`, because start never sends it (spec §3.4). Their final English is decided in the D1 and D2 plans, which do not exist yet. Task 0 Step 4 dumps them from the build commit into `$EVID/keys.txt`. The steps here name those keys, and the results quote the strings from `$EVID/keys.txt`, never from this plan.
+- D2 adds or rewords keys, such as `stream.advisory.shed` and the viewer-check keys under `stream.peek.`, and the heat caption with What viewers see hidden, `stream.advisory.hotLive` and `stream.advisory.hot` (the owner's ruling, 2026-10-09: the view is built and hidden behind `FEATURES.viewerCheck`, `src/ui/features.ts`). D1 adds no phone word for `match_finished`, because start never sends it (spec §3.4). Their final English is decided in the D1 and D2 plans, which do not exist yet. Task 0 Step 4 dumps them from the build commit into `$EVID/keys.txt`. The steps here name those keys, and the results quote the strings from `$EVID/keys.txt`, never from this plan.
 
 **Web basis**
 
@@ -172,7 +172,7 @@ adb -s 12be753e shell wm density
 cd "$WT" && grep -nE '"stream\.(status|advisory|peek|chip|startsAt)[^"]*"|"panel\.(replaced|taken)\.|"diag\.(share|lag|transport|hbSent)"|"settings\.automatic\.' src/i18n/en.json > "$EVID/keys.txt"; echo "EXIT=$?"
 ```
 
-- Expected: `EXIT=0`, and the file holds the reworded `stream.advisory.shed`, and D2's `stream.peek.*` keys (the loading countdown, the not-ready line, the honest label and the disabled reason). `stream.peek.hint` should no longer say "Press and hold".
+- Expected: `EXIT=0`, and the file holds the reworded `stream.advisory.shed`, the hidden view's heat captions `stream.advisory.hotLive` and `stream.advisory.hot`, and D2's `stream.peek.*` keys (the loading countdown, the not-ready line, the honest label and the disabled reason). `stream.peek.hint` should no longer say "Press and hold".
 - Fail: if any of these is missing, D2 is not what the spec says. Report it before going on.
 
 - [ ] **Step 5 (owner): Staging is ready.** Each of these is arranged on staging (`stg.seazn.club`) and confirmed:
@@ -181,7 +181,7 @@ cd "$WT" && grep -nE '"stream\.(status|advisory|peek|chip|startsAt)[^"]*"|"panel
     - 2a, 2b, 4 and 7 (twice);
     - 9;
     - 11 (twice), and S11 (once or twice);
-    - 12 (up to six: four for the viewers' video, one for Task 10 Step 10d, one for Step 10e);
+    - 12 (up to six: four for the viewers' video, one for Task 10 Step 10d, one for Step 10e). The four for the viewers' video are deferred with it while the view is hidden (Task 10), so two are spent now; the count keeps the four for the run that turns the switch on;
     - 13 (twice: the rung, and Task 11 Step 5a's Spanish caption).
   - Two matches for Task 1, M1 and M2. They are on fixtures the owner can start and finish in the web app, each scheduled to start within 30 minutes, so the beat cadence is 10 s. The org's automatic switch is on, and the destination is YouTube (a test channel). The owner holds their printed stream codes. M1 also serves Tasks 2, 5, 9 and 10, or another scheduled match does. The round-line fixtures of spec §5.2 already exist on staging, and Task 8 lists them.
   - A second Android 12+ phone for rows 4, 5 and 6. CD34 rules out the Redmi Note 7 Pro (Android 10), because the app's minSdk is 31. With no second phone, rows 4 to 6 are **blocked**, and the results say so.
@@ -634,45 +634,48 @@ while true; do printf '%s %s\n' "$(date -u +%H:%M:%S)" "$(curl -s -o /dev/null -
 
 **Row:** 12: the viewers' video, C2, and the idle dim. Everything in this task that jsdom cannot see is **device-only** (spec §6).
 
+**What viewers see is hidden in this build** (the owner's ruling, 2026-10-09: "keep all code and just hide button then when later stage like when org reqeust we can implemnt"). `FEATURES.viewerCheck` in `src/ui/features.ts` is `false`, so there is no cell to tap and no cover. Steps 2, 3, 4, 5, 5a, 5c and 5d, and the cover half of Step 5b, are **deferred until the switch is on**: the results mark them _deferred (view hidden)_, never passed or failed, and they run as written in the first staging run of a build with the switch on. Step 1 checks the hidden row instead.
+
 - [ ] **Step 1 (owner): Pair in operator mode.** Pair a scheduled TestDevicePad match, with a doubles fixture from §5.2 if one is scheduled, so C2's wrapping is read. Confirm the automatic switch reads off.
   - Paired, before the Go live: the camera box shows the camera's picture and nothing drawn over it. There is no score layer (D2 §4.1, R1). (Agent) Screenshot `r12-paired`.
   - Go live from the console. Live, before any tap: the same, no score layer over the camera. (Agent) Screenshot `r12-live`.
-- [ ] **Step 2 (owner): The viewers' video, the picture path.** Tap **What viewers see** once (a tap, not a hold).
+  - Live: the icon row is Settings, Take photo and Remote scoring, three buttons packed from the start of the row, with no What viewers see cell and no reason line under the row (AGENTS §6, the owner's ruling, 2026-10-09). Every control of the controls half is on screen. Read it from `r12-live`.
+- [ ] **Step 2 (owner): The viewers' video, the picture path.** _Deferred until the switch is on._ Tap **What viewers see** once (a tap, not a hold).
   - Expected:
     - A 5 s countdown, with the loading string from `$EVID/keys.txt`.
     - Then a picture, with the honest label ("What viewers see · no scoreboard yet", or the key D2 chose).
     - A 20 s countdown that starts at the first frame.
     - Then it closes by itself.
   - (Agent) Screenshots `r12-loading`, `r12-showing` and `r12-closed`. Time it with a stopwatch: from the first frame to closing is 20 s (±1 s).
-- [ ] **Step 3 (owner): A second tap closes it.** Tap to open, wait for the picture, then tap the peek cell again.
+- [ ] **Step 3 (owner): A second tap closes it.** _Deferred until the switch is on._ Tap to open, wait for the picture, then tap the peek cell again.
   - Expected: it closes at once. A tap never restarts the 20 s.
-- [ ] **Step 4 (owner): The not-ready path.**
+- [ ] **Step 4 (owner): The not-ready path.** _Deferred until the switch is on._
   - Tap **What viewers see** in the first 10 s after a fresh Go live, when Cloudflare is not likely to have a segment yet. Repeat with new Go lives until a not-ready happens, up to 3 tries.
   - Expected: after the 5 s countdown with no frame, the not-ready line from `$EVID/keys.txt` shows for 3 s, then it closes.
   - (Agent) Screenshot `r12-notready`.
   - Also write down, for **every** tap in Steps 2 to 4, whether a picture arrived inside 5 s. This is spec §8's risk. If most taps get no picture, the countdown length goes back to the owner with the numbers.
-- [ ] **Step 5 (owner): One cover at a time.** Open the viewers' video, then tap **Remote scoring** (`stream.scoring.open`).
+- [ ] **Step 5 (owner): One cover at a time.** _Deferred until the switch is on._ Open the viewers' video, then tap **Remote scoring** (`stream.scoring.open`).
   - Expected: the video closes, and the panel "Score this match" (`stream.scoring.title`) opens.
   - Then open the video again. Expected: the panel closes. (Agent) Screenshot `r12-onecover`.
-- [ ] **Step 5a (owner): The cover up close.** Open the video at 804 × 332 and look at it at arm's length.
+- [ ] **Step 5a (owner): The cover up close.** _Deferred until the switch is on._ Open the video at 804 × 332 and look at it at arm's length.
   - Expected:
     - It covers the camera box only. The status strip and Stop stay visible, and Stop still works.
     - The honest line "What viewers see · no scoreboard yet" (`stream.peek.honest`) reads over the picture.
     - The countdown and **Hide** sit in the box's bottom-right corner, on the night ground, in steady figures. Hide is a rounded plate with a thin rule, and it reads over the video. Nothing in the corner is clipped.
     - The cell answers a plain tap with no press delay. A tap anywhere on the box closes the view, and so does Hide. A Hide tap that also reached the box would close it twice, which is closing once, so nothing more is checked there.
   - (Agent) Screenshot `r12-cover-804`, and read the colours from it: night ground behind the lines, ink text, and no red.
-- [ ] **Step 5b (owner): TalkBack on the cover and the label.** Turn TalkBack on (Accessibility settings), open the video, and swipe through the cover. Then swipe to the match label.
+- [ ] **Step 5b (owner): TalkBack on the cover and the label.** The cover half is _deferred until the switch is on_; the label half runs now. Turn TalkBack on (Accessibility settings), open the video, and swipe through the cover (switch on only). Then swipe to the match label.
   - Expected:
     - TalkBack reads the cover's lines (the countdown, the honest line) and Hide as a button named "Hide".
     - It reads the match label once, as typed, and never says the v on its own.
   - If TalkBack reads the whole box as one element (a double tap on it closes the view), write that down. The follow-up is `focusable={false}` on the box, which is the coordinator's to route. Nothing is changed in this run.
   - Turn TalkBack off.
-- [ ] **Step 5c (agent): The player goes with the view.** After Steps 2 to 5, read the record with Share record.
+- [ ] **Step 5c (agent): The player goes with the view.** _Deferred until the switch is on._ With the view hidden, the record of this task holds no `viewer.*` or `peek.*` line at all; write down any that it does, as a finding. After Steps 2 to 5, read the record with Share record.
   - Expected:
     - For each tap, `viewer.check` lines in order: `loading`, then `showing` or `notReady`, then `idle`.
     - One `viewer.firstFrame` line with its `ms` for each tap that got a picture. Write the `ms` values beside Step 4's notes: they are spec §8's HLS numbers.
     - After each `idle`, no player is left. (Owner) As a cross-check, read the app's data usage in Android Settings before a tap and 60 s after its close: what it received stops climbing (the upload goes on, because the phone is on air).
-- [ ] **Step 5d (owner): A stall, if one happens.** If a picture stalls while showing, or the 5 s countdown runs on a stalled feed, write down what the cover did.
+- [ ] **Step 5d (owner): A stall, if one happens.** _Deferred until the switch is on._ If a picture stalls while showing, or the 5 s countdown runs on a stalled feed, write down what the cover did.
   - Expected (the controller's ruling, B3):
     - A player retry while showing is silent: the 20 s countdown keeps running and closes the view.
     - If native reads the delivery as stalled while showing, the cover says "No viewer picture" (`stream.peek.unavailable`) until it closes.
@@ -728,7 +731,7 @@ while true; do printf '%s %s\n' "$(date -u +%H:%M:%S)" "$(curl -s -o /dev/null -
   - This is one broadcast (Task 0 Step 5 counts it).
 - [ ] **Step 11 (owner): Clean up.** Stop, and delete the recordings from this task.
 
-**Pass:** the viewers' video follows R2 and R10 (picture, 20 s, close; not-ready, 3 s, close; a second tap closes it; one cover at a time), and the record holds a `viewer.check` line per state and a `viewer.firstFrame` per picture. C2 draws as R3 at both sizes and in both languages, at the picture sizes the arithmetic gives. The camera box shows no score layer, paired or live. The dim fires at 30 s, on the window only, and a touch or a console Go live wakes it at once. A phone always comes back from the background or a lock bright. The geometry is reset. Steps 5b and 5d are written down whatever they show: they are evidence for the owner, not pass or fail.
+**Pass:** with What viewers see hidden, the on-air icon row is Settings, Take photo and Remote scoring, and the record holds no `viewer.*` or `peek.*` line. The viewers' video's own pass (R2 and R10: picture, 20 s, close; not-ready, 3 s, close; a second tap closes it; one cover at a time; a `viewer.check` line per state and a `viewer.firstFrame` per picture) is deferred until the switch is on. C2 draws as R3 at both sizes and in both languages, at the picture sizes the arithmetic gives. The camera box shows no score layer, paired or live. The dim fires at 30 s, on the window only, and a touch or a console Go live wakes it at once. A phone always comes back from the background or a lock bright. The geometry is reset. Steps 5b and 5d are written down whatever they show: they are evidence for the owner, not pass or fail.
 
 ---
 
@@ -736,33 +739,33 @@ while true; do printf '%s %s\n' "$(date -u +%H:%M:%S)" "$(curl -s -o /dev/null -
 
 **Row:** 13. This runs on a debug build, as the spec says. Run it last, because the debug build replaces the release build on the phone.
 
+With What viewers see hidden (the owner's ruling, 2026-10-09; Task 10), step 1 sheds `viewer-feed` with nothing to close. This task proves the rung's caption and the record; the video closing and the cell's reason are **deferred until the switch is on**, and run then as D2 §4.2 says.
+
 - [ ] **Step 1 (agent): Check the thermal override exists.** Run `adb shell cmd thermalservice help`.
   - Expected: the help lists `override-status`. This is Android's own thermal service command. This repo has not used it before, so it is checked here first.
   - If it is missing, row 13 is **blocked** on this handset, and the results say so.
 - [ ] **Step 2 (agent): Install the debug build.** Run `cd "$WT" && pnpm expo run:android`. It builds the debug APK, installs it, and serves it from Metro. The worktree was prebuilt in Task 0.
   - Restore `package.json` from `$EVID/package.json.bak` if `git status --short` shows it changed.
   - Expected: the app opens on Home.
-- [ ] **Step 3 (owner): Go live and open the video.** Pair in operator mode, go live from the console, and tap **What viewers see**, so the picture is showing.
+- [ ] **Step 3 (owner): Go live.** Pair in operator mode and go live from the console, so the plate reads LIVE. (With the switch on, also tap **What viewers see**, so the picture is showing.)
 - [ ] **Step 4 (agent): Force thermal status 2.** Run `adb shell cmd thermalservice override-status 2` and write down the time.
-  - Expected: within 10 s (the device sampler's period):
-    - the video closes;
-    - the peek cell is disabled, with the reason string from `$EVID/keys.txt` ("Phone hot", or the key D2 chose);
-    - the advisory reads the reworded `stream.advisory.shed` from `$EVID/keys.txt`.
-  - (Agent) Screenshot `r13-shed`. Tap the cell. Expected: nothing opens.
+  - Expected: within 10 s (the device sampler's period), the strip's one message line reads `stream.advisory.hotLive` from `$EVID/keys.txt`, "Phone hot · still live", beside the LIVE plate. It names no viewer check. The icon row is unchanged: Settings, Take photo, Remote scoring.
+  - (Agent) Screenshot `r13-shed`.
+  - Deferred until the switch is on: the video closes; the peek cell is disabled with "Phone hot" (`stream.peek.hot`); the caption reads the reworded `stream.advisory.shed`; a tap on the cell opens nothing.
 - [ ] **Step 4a (agent): Statuses 3 and 4.** Run `adb shell cmd thermalservice override-status 3`, wait 10 s, and screenshot `r13-shed-3`. Then do the same with `4`, as `r13-shed-4`.
-  - Expected at each: the same as at 2. The cell stays disabled with "Phone hot", and the caption reads the same, because the ladder only goes down.
+  - Expected at each: the same as at 2. The caption reads the same, "Phone hot · still live", because the ladder only goes down.
   - Nothing else on screen changes: no lower preview frame rate, and no change to the encode. Steps 2 and 3 are report-only (`_FINDINGS.md` N26), so there is nothing to observe.
 - [ ] **Step 5 (agent): Read the record.** Debug builds allow `run-as`, so run `adb shell run-as com.seazn.capture tail -40 files/record/session-record.ndjson > "$EVID/r13-record.ndjson"`.
   - Expected: a `thermal` line with status 2, and a `shed` line with `shed` `viewer-feed`. After Step 4a, `thermal` lines with 3 and 4, and `shed` lines with `preview-framerate` and `encode`.
 - [ ] **Step 5a (owner and agent): The Spanish caption at 640 × 360.** The thermal override stays at 4. The owner stops from the console, goes to Home, picks Spanish in the language picker, and goes back to Live Stream. The agent runs `adb shell wm size 360x640` and `adb shell wm density 160`, and the owner holds the phone sideways and goes live from the console.
-  - Expected: the strip's caption reads `stream.advisory.shed` from `es.json`, "Móvil caliente: sin vista del público, sigue en directo", in full and ending in "directo", with no ellipsis. It measures 295.8 of the 298 dp the line has at this size (`stripTextFit.test.ts`), so only the drawn text can settle it.
+  - Expected: the strip's caption reads `stream.advisory.hotLive` from `es.json`, "Móvil caliente · sigue en directo", in full and ending in "directo", with no ellipsis. It measures 179.4 of the 298 dp the line has at this size (`stripTextFit.test.ts`). The spec's caption, `stream.advisory.shed` ("Móvil caliente: sin vista del público, sigue en directo", 295.8 of 298 dp), is the one only the drawn text can settle: deferred until the switch is on.
   - (Agent) Screenshot `r13-shed-es-640`. Then run `adb shell wm size reset` and `adb shell wm density reset`.
   - A cut caption is a finding for the owner, with the screenshot. Do not change any code.
   - English goes back on Home after Step 7's stop.
-- [ ] **Step 6 (agent): Reset.** Run `adb shell cmd thermalservice reset`. Expected: after 10 s, the cell is enabled again.
+- [ ] **Step 6 (agent): Reset.** Run `adb shell cmd thermalservice reset`. Expected: after 10 s, the caption goes and the line reads Live again (`stream.status.live`). With the switch on, the cell is enabled again too.
 - [ ] **Step 7 (owner and agent): Clean up.** Stop from the console, and pick English again on Home. Delete the recordings. Put the release build back with `adb install -r "$WT/android/app/build/outputs/apk/release/app-release.apk"`, and stop Metro.
 
-**Pass:** at thermal status 2, the video closes and the cell is disabled with its reason. At 3 and 4 the same holds, and nothing else changes (N26). The record holds `shed` `viewer-feed`, then `preview-framerate` and `encode`. The Spanish caption is written down whatever it shows: evidence for the owner.
+**Pass:** at thermal status 2, the caption reads "Phone hot · still live" (`stream.advisory.hotLive`) beside the LIVE plate. At 3 and 4 the same holds, and nothing else changes (N26). The video closing and the cell's reason are deferred until the switch is on. The record holds `shed` `viewer-feed`, then `preview-framerate` and `encode`. The Spanish caption is written down whatever it shows: evidence for the owner.
 
 ---
 

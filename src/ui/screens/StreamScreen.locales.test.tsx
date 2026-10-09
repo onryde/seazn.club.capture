@@ -86,11 +86,13 @@ const SUB_STATES: Readonly<Record<string, (lang: Lang) => Promise<void>>> = {
     await renderViewfinder({ deviceLanguages: [lang] }, { engine: 'idle' });
     expect(visibleCopy()).toContain(shown(lang, 'stream.status.starting'));
   },
-  // No broadcast reported on air: forced on an engine that holds no pairing.
+  // No broadcast reported on air: forced on an engine that holds no pairing. What viewers see built in: it is hidden
+  // as shipped (the owner's ruling, 2026-10-09), and its reason stays swept.
   'on air with no viewer picture': async (lang) => {
     await renderViewfinder(
       { deviceLanguages: [lang] },
       {
+        viewerCheck: true,
         engine: 'idle',
         prepare: (fakes) =>
           fakes.engine.forceState({ kind: 'publishing', transport: 'srt', sinceEpochMs: 1 }),

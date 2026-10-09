@@ -62,7 +62,7 @@ const CONTROLS = [
     ],
   ],
   [
-    'on air: plate with timer, meter, the flexible gap, icons with the peek’s reason line, hold',
+    'on air with What viewers see built in: plate with timer, meter, the flexible gap, icons with the peek’s reason line, hold',
     [
       layout.plateHeight,
       layout.meterHeight,
@@ -70,6 +70,17 @@ const CONTROLS = [
       // m-3: What viewers see, with its "No viewer picture" line under it while there is no picture (ViewerPeek).
       // the peek cell is 110 dp at every width now the controls half is fixed (310 - 32 - 3 × 48 - 3 × 8): es and nl wrap the reason to two lines (scoringFit.test.ts measures it)
       layout.iconButton + space.xs + layout.peekReasonLines * typeScale.metricUnit.lineHeight,
+      layout.holdHeight,
+    ],
+  ],
+  [
+    // What viewers see hidden (the owner's ruling, 2026-10-09): the icon row is three buttons, with no reason under it.
+    'on air as shipped: plate with timer, meter, the flexible gap, the icons alone, hold',
+    [
+      layout.plateHeight,
+      layout.meterHeight,
+      typeScale.metricUnit.lineHeight, // R3 (PR B): the photo line's place in the gap.
+      layout.iconButton,
       layout.holdHeight,
     ],
   ],
@@ -141,6 +152,16 @@ describe.each(GEOMETRIES)('the viewfinder fits %i × %i (spec §1)', (width, hei
 });
 
 describe('the on-air controls half with Remote scoring in the icon row (spec §10, RP7)', () => {
+  // As shipped, with What viewers see hidden (the owner's ruling, 2026-10-09): 56 + 12 + 16 + 48 + 72 = 204, and the
+  // same 32 of gaps and 16 of padding: 252, so every control is on screen at 640 × 360 and at 804 × 332.
+  it('as shipped is 252 of 360 at 640 × 360 and 252 of 332 at 804 × 332', () => {
+    const shipped = CONTROLS[2][1];
+    expect(stack(shipped, ...COLUMN)).toBe(252);
+    expect(360 - stack(shipped, ...COLUMN)).toBe(108);
+    expect(332 - stack(shipped, ...COLUMN)).toBe(80);
+    expect(shipped).toHaveLength(5);
+  });
+
   // 56 + 12 + 16 + 84 + 72 = 240 for the five items, 4 × 8 = 32 of gaps, 2 × 8 = 16 of padding (the column's own,
   // owner 2026-10-08; it was 4 × 12 and 2 × 16 = 320). The icon item is 48 + 4 + 2 × 16 = 84, not 68: the peek's reason
   // takes two lines in es and nl. Pinned as a literal on purpose: it fails if the photo-line item is dropped, which is

@@ -1,6 +1,12 @@
 import { memo, useCallback, useMemo, useState } from 'react';
 import { StyleSheet, View, type LayoutChangeEvent } from 'react-native';
-import { selectCharging, selectKeepOpen, selectShedding, topAdvisory } from '@/hooks/advisory';
+import {
+  selectCharging,
+  selectKeepOpen,
+  selectPublishing,
+  selectShedding,
+  topAdvisory,
+} from '@/hooks/advisory';
 import type { LineTier } from '@/hooks/statusKey';
 import { useEngineSelector } from '@/hooks/useCaptureEngine';
 import { usePorts } from '@/hooks/usePorts';
@@ -19,8 +25,11 @@ type StageProps = {
   readonly line: string;
   /** Which tier that line is (`LINE_TIER`): an urgent line always wins the strip's one message line. */
   readonly lineTier: LineTier;
-  /** What viewers see (D2 §4.3): open over the camera box, or idle. */
-  readonly viewer: ViewerCheckView;
+  /**
+   * What viewers see (D2 §4.3): open over the camera box, or idle. Null when it is hidden (`FEATURES.viewerCheck`, the
+   * owner's ruling of 2026-10-09): then neither its feed nor its cover mounts, and the heat caption does not name it.
+   */
+  readonly viewer: ViewerCheckView | null;
   /** The Remote scoring panel's state (spec §10), and the seconds it has left (B3). */
   readonly scoring: ScoringLinkView;
   readonly scoringSecondsLeft: number;
@@ -29,7 +38,7 @@ type StageProps = {
 
 /**
  * The camera half (spec §1): the shot as a 16:9 box across the half, with the
- * status strip under it. Nothing is drawn over the shot but What viewers see (the
+ * status strip under it. Nothing is drawn over the shot but What viewers see when it is built in (the
  * camera box only; AGENTS §6, D17) and, for at most 10 s after a tap, the Remote
  * scoring panel (spec §10), which covers the whole half, strip included, and
  * brings the half's one button: its Hide. The match label and ONE message line (the
@@ -58,7 +67,14 @@ export const StreamStage = memo(function StreamStage(props: StageProps) {
   const shed = useEngineSelector(selectShedding);
   const charging = useEngineSelector(selectCharging);
   const keepOpen = useEngineSelector(selectKeepOpen);
-  const advisory = topAdvisory({ shed, charging, keepOpen });
+  const live = useEngineSelector(selectPublishing);
+  const advisory = topAdvisory({
+    shed,
+    charging,
+    keepOpen,
+    live,
+    viewerCheck: props.viewer !== null,
+  });
   const [half, setHalf] = useState<BoxSize | null>(null);
   // The match label's measured height, 0 until it has been (and while it is going): `stripReserve` reads 0 as the worst case.
   const [labelHeight, setLabelHeight] = useState(0);
@@ -102,21 +118,16 @@ export const StreamStage = memo(function StreamStage(props: StageProps) {
 type CameraBoxProps = {
   /** Null until the half is measured. */
   readonly size: BoxSize | null;
-  readonly viewer: ViewerCheckView;
+  /** Null with What viewers see hidden: the box is the preview alone. */
+  readonly viewer: ViewerCheckView | null;
 };
 
 /**
  * The shot. Its own memo, so a status line that changes every second re-renders the strip beneath it and never the
- * preview or the viewers' video (M7, AGENTS §8). The viewers' feed is read here for the whole broadcast, so its first
- * window is timed from the start of live, whether or not the view is open. Its player exists only while the view
- * loads or shows: the not-ready line draws none, so a retry that falls due on it is parked, not spent on a player
- * nobody can see (B3 review I1).
+ * preview or the viewers' video (M7, AGENTS §8).
  */
 const CameraBox = memo(function CameraBox({ size, viewer }: CameraBoxProps) {
   const { surfaces } = usePorts();
-  const open = viewer.kind !== 'idle';
-  const holding = viewer.kind === 'loading' || viewer.kind === 'showing';
-  const viewers = useViewerFeed(open, holding);
   const sized = useSizedStyle(size);
   const { Preview } = surfaces;
   return (
@@ -125,15 +136,29 @@ const CameraBox = memo(function CameraBox({ size, viewer }: CameraBoxProps) {
       <PreviewBoundary>
         <Preview />
       </PreviewBoundary>
-      {viewer.kind === 'idle' ? null : (
-        <ViewerCover
-          kind={viewer.kind}
-          feed={viewers}
-          onClose={viewer.close}
-          onFirstFrame={viewer.firstFrame}
-        />
-      )}
+      {viewer === null ? null : <ViewerLayer viewer={viewer} />}
     </View>
+  );
+});
+
+/**
+ * What viewers see over the box, mounted with the box whenever the view is built in. The viewers' feed is read here
+ * for the whole broadcast, so its first window is timed from the start of live, whether or not the view is open. Its
+ * player exists only while the view loads or shows: the not-ready line draws none, so a retry that falls due on it is
+ * parked, not spent on a player nobody can see (B3 review I1).
+ */
+const ViewerLayer = memo(function ViewerLayer({ viewer }: { readonly viewer: ViewerCheckView }) {
+  const open = viewer.kind !== 'idle';
+  const holding = viewer.kind === 'loading' || viewer.kind === 'showing';
+  const viewers = useViewerFeed(open, holding);
+  if (viewer.kind === 'idle') return null;
+  return (
+    <ViewerCover
+      kind={viewer.kind}
+      feed={viewers}
+      onClose={viewer.close}
+      onFirstFrame={viewer.firstFrame}
+    />
   );
 });
 

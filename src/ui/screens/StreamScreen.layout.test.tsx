@@ -50,32 +50,60 @@ const peek = () => screen.getByRole('button', { name: 'What viewers see' });
 /** en['stream.status.waitingGoLive'] with FAKE_PAIRING's destination, written out. */
 const WAITING = 'Waiting for Go live · YouTube · Fake CC';
 
+type AdvisoryCase = readonly [keyof typeof ADVISORY_KEY, string, (view: Viewfinder) => void];
+
+const keepOpenCase: AdvisoryCase = [
+  'keepOpen',
+  en['stream.advisory.keepOpen'],
+  (view) => {
+    view.engine.patch({ charging: true });
+    view.engine.setSurvivesBackground(false);
+  },
+];
+// The fake phone starts uncharged, so the default viewfinder already says it.
+const notChargingCase: AdvisoryCase = [
+  'notCharging',
+  en['stream.advisory.notCharging'],
+  () => undefined,
+];
+
 /**
- * The caption of each advisory, and how a test brings it up alone (F17/D4: all three live in the strip; the score
- * preview's two went with it, D2 §4.1). `topAdvisory` shows one at a time, so each case starts from the state where its
- * own is on top.
+ * The caption of each advisory on air, as shipped, and how a test brings it up alone (F17/D4: all of them live in the
+ * strip; the score preview's two went with it, D2 §4.1). `topAdvisory` shows one at a time, so each case starts from
+ * the state where its own is on top.
  *
  * Which can be SEEN is decided by the two tiers (owner, 2026-10-08, and 2026-10-09, option B): a caption beats only a
- * routine status line, and "Waiting for Go live" is routine, so all three can reach the strip before air; on air the
- * live line is routine too, so all three can there as well.
+ * routine status line, and "Waiting for Go live" is routine, so the phone's captions can reach the strip before air;
+ * on air the live line is routine too, so they can there as well. Heat has three wordings (`topAdvisory`): with What
+ * viewers see hidden, as shipped (owner's ruling, 2026-10-09), "Phone hot · still live" beside the LIVE plate and
+ * "Phone hot" before air; built in, the spec's, which names the view (`BUILT_IN_HEAT`).
  */
-const ADVISORIES: readonly (readonly [
-  keyof typeof ADVISORY_KEY,
-  string,
-  (view: Viewfinder) => void,
-])[] = [
+const ADVISORIES: readonly AdvisoryCase[] = [
+  keepOpenCase,
+  ['hotLive', en['stream.advisory.hotLive'], (view) => view.engine.scene('shed')],
+  notChargingCase,
+];
+/** Before air, as shipped: native sends `shed` from Armed on (Projection.kt:29), so the heat row is a Connecting phone. */
+const BEFORE_AIR: readonly AdvisoryCase[] = [
+  keepOpenCase,
   [
-    'keepOpen',
-    en['stream.advisory.keepOpen'],
+    'hot',
+    en['stream.advisory.hot'],
     (view) => {
-      view.engine.patch({ charging: true });
-      view.engine.setSurvivesBackground(false);
+      view.engine.forceState({ kind: 'connecting', transport: 'srt' });
+      view.engine.patch({ shed: 'viewer-feed' });
     },
   ],
-  ['shed', en['stream.advisory.shed'], (view) => view.engine.scene('shed')],
-  // The fake phone starts uncharged, so the default viewfinder already says it.
-  ['notCharging', en['stream.advisory.notCharging'], () => undefined],
+  notChargingCase,
 ];
+/** The heat caption with What viewers see built in: D2 §4.2's, unchanged. */
+const BUILT_IN_HEAT: AdvisoryCase = [
+  'shed',
+  en['stream.advisory.shed'],
+  (view) => view.engine.scene('shed'),
+];
+/** Every caption the dictionary has, so "no caption is up" is read from the copy, not from the code's table. */
+const CAPTIONS = Object.entries(en).filter(([key]) => key.startsWith('stream.advisory.'));
 let advisoriesRun = 0;
 
 /** The two halves as the cascade gives them: what each grows, shrinks and starts from, and the controls half's width. */
@@ -167,8 +195,8 @@ describe('the camera half (spec §1)', () => {
     expect((across ?? NaN) / (down ?? NaN)).toBeCloseTo(16 / 9, 5);
   });
 
-  it('plays What viewers see over the camera box, not the whole half', async () => {
-    const view = await renderViewfinder();
+  it('plays What viewers see over the camera box, not the whole half, when it is built in', async () => {
+    const view = await renderViewfinder({}, { viewerCheck: true });
     act(() => view.engine.scene('live'));
     fireEvent.click(peek());
     // D2 §4.3: the cover, and the player in it, sit over the camera box only; the strip and Stop stay clear.
@@ -223,7 +251,7 @@ describe('the status strip (spec §1)', () => {
     // The message is the status line and nothing else: no caption beside it.
     expect(message.textContent).toBe(WAITING);
     expect(within(message).getByText(WAITING)).toBeTruthy();
-    for (const [name, text] of ADVISORIES) expect(screen.queryByText(text), name).toBeNull();
+    for (const [name, text] of CAPTIONS) expect(screen.queryByText(text), name).toBeNull();
     // The label is the strip's alone: the old bottom strip's single line is gone.
     expect(screen.getAllByTestId('match-label')).toHaveLength(1);
     expect(within(strip).getAllByTestId('strip-message')).toHaveLength(1);
@@ -262,7 +290,7 @@ describe('the status strip (spec §1)', () => {
     expect(getComputedStyle(line).whiteSpace).toBe('nowrap');
   });
 
-  it.each(ADVISORIES)(
+  it.each(BEFORE_AIR)(
     'carries the %s advisory in the strip before air, as the ONE message: not over the shot, not in the controls',
     async (_name, text, bringUp) => {
       const view = await renderViewfinder();
@@ -274,8 +302,8 @@ describe('the status strip (spec §1)', () => {
       // The caption IS the strip's message: nothing else is in it, and the status line is not on screen.
       expect(within(strip).getByTestId('strip-message').textContent).toBe(text);
       expect(screen.queryByText(WAITING)).toBeNull();
-      // One caption at a time (topAdvisory): the other two are not up.
-      for (const [other, otherText] of ADVISORIES) {
+      // One caption at a time (topAdvisory): no other is up.
+      for (const [other, otherText] of CAPTIONS) {
         if (otherText !== text) expect(screen.queryByText(otherText), other).toBeNull();
       }
       // The caption is small and grey, in its own role, and ONE line.
@@ -298,7 +326,7 @@ describe('the status strip (spec §1)', () => {
       // The caption IS the strip's message: nothing else is in it, and the live line is not on screen.
       expect(within(strip).getByTestId('strip-message').textContent).toBe(text);
       expect(screen.queryByText(en['stream.status.live'])).toBeNull();
-      for (const [other, otherText] of ADVISORIES) {
+      for (const [other, otherText] of CAPTIONS) {
         if (otherText !== text) expect(screen.queryByText(otherText), other).toBeNull();
       }
       expect(getComputedStyle(caption).fontSize).toBe(`${typeScale.metricUnit.fontSize}px`);
@@ -307,18 +335,39 @@ describe('the status strip (spec §1)', () => {
     },
   );
 
-  it('ran all three advisories before air and on air: the three the engine declares', () => {
-    // Anti-vacuity: the sweeps above ran once per advisory in `ADVISORY_KEY` before air and once on air, and none were
-    // skipped.
-    expect(ADVISORIES.map(([name]) => name).sort()).toEqual(Object.keys(ADVISORY_KEY).sort());
-    expect(advisoriesRun).toBe(6);
+  it('carries the built-in heat caption on air the same way, with What viewers see built in', async () => {
+    const [, text, bringUp] = BUILT_IN_HEAT;
+    const view = await renderViewfinder({}, { viewerCheck: true });
+    act(() => view.engine.scene('live'));
+    act(() => bringUp(view));
+    const strip = byId('status-strip');
+    const caption = within(strip).getByText(text);
+    expect(byId('camera-box').contains(caption)).toBe(false);
+    expect(byId('controls-half').contains(caption)).toBe(false);
+    expect(within(strip).getByTestId('strip-message').textContent).toBe(text);
+    // Built in, the cell's own reason says "Phone hot" in the controls half; the strip has the spec's caption alone.
+    for (const [other, otherText] of CAPTIONS) {
+      if (otherText !== text) expect(within(strip).queryByText(otherText), other).toBeNull();
+    }
+    expect(linesAllowed(caption)).toBe(layout.messageLines);
+    advisoriesRun += 1;
+  });
+
+  it('ran every advisory: the phone’s before air and on air, and the built-in heat caption', () => {
+    // Anti-vacuity: the sweeps above ran once per row before air and on air, and once for the built-in heat caption, and
+    // between them every caption `ADVISORY_KEY` declares, and every one the dictionary has, was shown.
+    const names = new Set([...BEFORE_AIR, ...ADVISORIES, BUILT_IN_HEAT].map(([name]) => name));
+    expect([...names].sort()).toEqual(Object.keys(ADVISORY_KEY).sort());
+    expect(names.size).toBe(CAPTIONS.length);
+    expect(advisoriesRun).toBe(BEFORE_AIR.length + ADVISORIES.length + 1);
+    expect(advisoriesRun).toBe(7);
   });
 
   it('draws the strip with no label and no caption before the pairing, and still says the line (empty case)', async () => {
     await renderViewfinder({}, { engine: 'idle' });
     const strip = byId('status-strip');
     expect(within(strip).queryByTestId('match-label')).toBeNull();
-    for (const [name, text] of ADVISORIES) expect(within(strip).queryByText(text), name).toBeNull();
+    for (const [name, text] of CAPTIONS) expect(within(strip).queryByText(text), name).toBeNull();
     // The one message line is there with its status line (the empty case: no caption, no label, still a message).
     expect(within(strip).getByTestId('strip-message').textContent).toBe(
       en['stream.status.starting'],
@@ -430,7 +479,7 @@ describe('the round line above the match label (spec §2, option B)', () => {
     layOut(byId('camera-half'), { width: cameraHalf(width), height });
     layOut(byId('match-label'), { width: cameraHalf(width) - 32, height: label });
     const strip = height - parseFloat(getComputedStyle(byId('camera-box')).height);
-    const captions = ADVISORIES.filter(([, text]) => screen.queryByText(text) !== null);
+    const captions = CAPTIONS.filter(([, text]) => screen.queryByText(text) !== null);
     expect(captions.length === 1, `${width} × ${height}: ${captions.length} captions up`).toBe(
       captionUp,
     );
@@ -594,8 +643,10 @@ describe('the controls half (spec §1)', () => {
     expect(screen.queryByRole('button', { name: 'Diagnostics' })).toBeNull();
   });
 
-  it('on air: Take photo and Remote scoring, then What viewers see, sit in the icon row after Settings, Home is not offered, and no Diagnostics', async () => {
-    const view = await renderViewfinder();
+  // What viewers see is hidden as shipped (the owner's ruling, 2026-10-09; the shipped row is the test below and
+  // StreamScreen.viewerHidden.test.tsx). Built in, it ends the row and takes the row's remaining width.
+  it('on air with What viewers see built in: Take photo and Remote scoring, then What viewers see, sit in the icon row after Settings, Home is not offered, and no Diagnostics', async () => {
+    const view = await renderViewfinder({}, { viewerCheck: true });
     act(() => view.engine.scene('live'));
     expect(buttonNames(byId('icon-row'))).toEqual([
       en['stream.link.settings'],
@@ -612,7 +663,7 @@ describe('the controls half (spec §1)', () => {
     expect(screen.queryByRole('button', { name: en['stream.home'] })).toBeNull();
   });
 
-  it('follows the broadcast through the icon row: Settings, Home, Take photo and Remote scoring, then Settings, Take photo, Remote scoring and the peek, then Settings and Home again when it ends', async () => {
+  it('follows the broadcast through the icon row, as shipped: Settings, Home, Take photo and Remote scoring, then Settings, Take photo and Remote scoring, then Settings and Home again when it ends', async () => {
     const view = await renderViewfinder();
     expect(buttonNames(byId('icon-row'))).toEqual([
       en['stream.link.settings'],
@@ -621,14 +672,14 @@ describe('the controls half (spec §1)', () => {
       en['stream.scoring.open'],
     ]);
     act(() => view.engine.scene('live'));
+    // What viewers see hidden (the owner's ruling, 2026-10-09): the row ends at Remote scoring.
     expect(buttonNames(byId('icon-row'))).toEqual([
       en['stream.link.settings'],
       en['stream.photo.label'],
       en['stream.scoring.open'],
-      en['stream.peek.label'],
     ]);
     act(() => view.engine.scene('stopped'));
-    // Ended: not on air, so leaving is allowed again and Home is back; the peek goes with the broadcast.
+    // Ended: not on air, so leaving is allowed again and Home is back.
     // Ended: the camera picture is gone, so the shutter goes with it, and the pairing is gone, so Remote scoring does
     // (the absence witness: a stopped broadcast leaves no pairing to score for).
     expect(buttonNames(byId('icon-row'))).toEqual([en['stream.link.settings'], en['stream.home']]);
@@ -818,8 +869,8 @@ describe('the camera box gives way to the strip, before the label is measured (s
     expect(getComputedStyle(byId('camera-half')).backgroundColor).toBe(paintOf(TOKEN.surface));
   });
 
-  it('keeps What viewers see inside the narrower box', async () => {
-    const view = await renderViewfinder();
+  it('keeps What viewers see inside the narrower box, when it is built in', async () => {
+    const view = await renderViewfinder({}, { viewerCheck: true });
     // A half of 480: the strip's 154 leaves a box 206 tall, 366.2 wide, narrower than the half.
     layOut(byId('camera-half'), { width: 480, height: 360 });
     const box = byId('camera-box');
@@ -1108,7 +1159,7 @@ describe('the picture is sized from this match’s label (owner, 2026-10-08, opt
     expect(boxSize().height).toBeCloseTo(222, 2);
   });
 
-  // The three captions, each on a viewfinder of its own, at 640 × 360 where the round
+  // The three captions on air as shipped, each on a viewfinder of its own, at 640 × 360 where the round
   // line has room: the caption takes the strip's ONE message line and nothing else. The picture and the round line are
   // the same with it up as without, and the message is the caption alone.
   let captionsTried = 0;
@@ -1124,7 +1175,7 @@ describe('the picture is sized from this match’s label (owner, 2026-10-08, opt
       const calm = boxSize();
       expect(360 - calm.height).toBeCloseTo(174.375, 2);
       const roundLine = () => within(byId('status-strip')).queryByTestId('stage-line');
-      expect(ADVISORIES.filter(([, other]) => screen.queryByText(other) !== null)).toHaveLength(0);
+      expect(CAPTIONS.filter(([, other]) => screen.queryByText(other) !== null)).toHaveLength(0);
       expect(roundLine()?.textContent).toBe('Open · QF');
       expect(byId('strip-message').textContent).toBe(en['stream.status.live']);
       if (text === en['stream.advisory.notCharging']) {

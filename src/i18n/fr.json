@@ -143,6 +143,8 @@
   "stream.blocker.held": "Tournez à l'horizontale",
   "stream.startsAt": "Début à {time}",
   "stream.advisory.shed": "Téléphone chaud\u00a0: vue du public coupée, en direct",
+  "stream.advisory.hotLive": "Téléphone chaud · toujours en direct",
+  "stream.advisory.hot": "Téléphone chaud",
   "stream.advisory.notCharging": "Pas en charge\u00a0: branchez-le pour un long match",
   "stream.advisory.keepOpen": "Gardez l'app ouverte\u00a0: en arrière-plan, rien n'est filmé",
   "stream.peek.label": "Ce que voit le public",

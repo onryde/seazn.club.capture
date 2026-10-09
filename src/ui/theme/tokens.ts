@@ -166,8 +166,9 @@ const base = {
    *  - the clock's cell, in the plate row: HH:MM:SS at Barlow Condensed 700 38 in the font's TABULAR figures, which
    *    `tabular-nums` selects and which are wider than its proportional ones (a clock sized from those wrapped in a
    *    browser). The plate beside it (a word of up to 98.5 dp) is narrower.
-   *  - the peek's cell, on air, the icon row's fourth cell: the label in two lines (`peekLabelLines`) and the
-   *    reason in two (`peekReasonLines`), every word whole.
+   *  - the peek's cell, on air, the icon row's fourth cell when What viewers see is built in (it is hidden as
+   *    shipped, the owner's ruling of 2026-10-09: `FEATURES.viewerCheck`): the label in two lines (`peekLabelLines`)
+   *    and the reason in two (`peekReasonLines`), every word whole.
    *  - the AUTO chip: its word at `control`, 8 dp of padding and a 2 dp border either side.
    */
   clockCell: 135,
@@ -286,7 +287,10 @@ type ControlsCells = Readonly<
  * The controls half's width (owner, 2026-10-08, option "A": the controls half takes the width its content needs and
  * the camera half takes the rest). It is the WIDEST ROW of the half, in any state, plus the half's padding either side:
  *  - icons before air: Settings, Home, Take photo, Remote scoring, four 48 dp buttons and three gaps (216);
- *  - icons on air: Settings, Take photo, Remote scoring and the peek, three buttons, three gaps and the peek's cell (269);
+ *  - icons on air: Settings, Take photo, Remote scoring and the peek, three buttons, three gaps and the peek's cell (269),
+ *    with What viewers see built in. Hidden, as shipped (the owner's ruling, 2026-10-09), the row is the three buttons
+ *    and two gaps (160), narrower than the row before air, so it is not counted; the peek's row is, so the switch can
+ *    be turned on with no change of layout;
  *  - chips: camera, sound, network and AUTO, four boxes and three gaps, on ONE line (208);
  *  - the plate row: the tally plate and the clock, a cell each and a gap (278), which governs. The two cells are kept
  *    EQUAL on purpose (the balanced look): the plate's word is narrower than the clock (98.5

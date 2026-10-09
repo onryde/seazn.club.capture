@@ -18,6 +18,13 @@ import { renderViewfinder } from '../../test/renderViewfinder';
 
 type View = Awaited<ReturnType<typeof renderViewfinder>>;
 
+/**
+ * The viewfinder with What viewers see built in. It is hidden as shipped (the owner's ruling, 2026-10-09;
+ * StreamScreen.viewerHidden.test.tsx), and every test here is of the hidden code, which stays tested.
+ */
+const renderBuiltIn = (...[options, setup]: Parameters<typeof renderViewfinder>) =>
+  renderViewfinder(options, { ...setup, viewerCheck: true });
+
 const peek = () => screen.getByRole('button', { name: en['stream.peek.label'] });
 /** A tap on What viewers see: it opens the view, or closes an open one (D2 §4.3). */
 const tap = () => fireEvent.click(peek());
@@ -50,7 +57,7 @@ const windowLands = (view: View) =>
   act(() => view.engine.patch({ delivery: 'ok', deliveredLagMs: 9_200 }));
 
 async function liveWithoutWindow() {
-  const view = await renderViewfinder();
+  const view = await renderBuiltIn();
   goLiveWithoutWindow(view);
   return view;
 }
@@ -127,7 +134,7 @@ describe('the viewer layer (spec §9, D6 to D8)', () => {
   });
 
   it('R3 opening the viewfinder on a broadcast already delivering records no first window: it did not see the start', async () => {
-    const view = await renderViewfinder(
+    const view = await renderBuiltIn(
       {},
       { strict: true, prepare: (fakes) => fakes.engine.scene('live') },
     );
@@ -141,7 +148,7 @@ describe('the viewer layer (spec §9, D6 to D8)', () => {
   });
 
   it('M26d the first window is recorded once, however the kind flips afterwards', async () => {
-    const view = await renderViewfinder({}, { strict: true });
+    const view = await renderBuiltIn({}, { strict: true });
     goLiveWithoutWindow(view);
     advance(view, 7_000);
     windowLands(view);
@@ -205,7 +212,7 @@ describe('the viewer layer (spec §9, D6 to D8)', () => {
   });
 
   it('native’s stalled word is no picture, with no player, and the view then says it is not ready', async () => {
-    const view = await renderViewfinder();
+    const view = await renderBuiltIn();
     act(() => view.engine.scene('not-delivered'));
     tap();
     expect(decided(view)).toBe('unavailable');
@@ -592,7 +599,7 @@ describe('the viewer layer (spec §9, D6 to D8)', () => {
   });
 
   it('M26b a delivery word with no broadcast behind it is not a first window', async () => {
-    const view = await renderViewfinder({}, { engine: 'idle' });
+    const view = await renderBuiltIn({}, { engine: 'idle' });
     act(() => view.engine.forceState({ kind: 'publishing', transport: 'srt', sinceEpochMs: 1 }));
     // The set-up is what the test claims: native says ok, there is no manifest to play.
     expect(view.ports.engine.getSnapshot().telemetry.delivery).toBe('ok');
@@ -601,7 +608,7 @@ describe('the viewer layer (spec §9, D6 to D8)', () => {
   });
 
   it('M26c a delivery word before the air is not a window, and the same word on air is', async () => {
-    const view = await renderViewfinder();
+    const view = await renderBuiltIn();
     act(() => view.engine.scene('connecting'));
     act(() => view.engine.patch({ delivery: 'ok', deliveredLagMs: 9_200 }));
     expect(view.ports.engine.getSnapshot().broadcast).not.toBeNull();
@@ -695,7 +702,7 @@ describe('the viewer layer (spec §9, D6 to D8)', () => {
     ] as const;
     let rows = 0;
     for (const [language, dictionary] of dictionaries) {
-      const view = await renderViewfinder({ deviceLanguages: [language] });
+      const view = await renderBuiltIn({ deviceLanguages: [language] });
       goLiveWithoutWindow(view);
       fireEvent.click(screen.getByRole('button', { name: dictionary['stream.peek.label'] }));
       expect({ language, note: note() }).toEqual({ language, note: counting(5, dictionary) });
@@ -724,7 +731,7 @@ describe('the viewer layer through the real native Video', () => {
         preview: async () => null,
       },
     });
-    const view = await renderViewfinder({
+    const view = await renderBuiltIn({
       surfaces: { ...createFakeSurfaces(), Video: native.Video },
     });
     goLiveWithoutWindow(view);

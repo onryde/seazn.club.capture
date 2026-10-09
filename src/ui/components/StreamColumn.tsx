@@ -19,7 +19,8 @@ import { typeScale } from '@/ui/theme/type';
 
 type ColumnProps = {
   readonly view: Viewfinder;
-  readonly viewer: ViewerCheckView;
+  /** What viewers see; null when it is hidden (`FEATURES.viewerCheck`, the owner's ruling of 2026-10-09): no cell. */
+  readonly viewer: ViewerCheckView | null;
   readonly canLeave: boolean;
   readonly onHome: () => void;
   readonly onSettings: () => void;
@@ -63,8 +64,8 @@ export const StreamColumn = memo(function StreamColumn(props: ColumnProps) {
         onAir={view.onAir}
         peekable={view.peekable}
         shed={view.shed}
-        open={viewer.kind !== 'idle'}
-        onPeek={viewer.toggle}
+        open={viewer !== null && viewer.kind !== 'idle'}
+        onPeek={viewer === null ? null : viewer.toggle}
         shutter={view.shutter}
         onShutter={photo.take}
         scoring={view.scoring}
@@ -86,7 +87,9 @@ export const StreamColumn = memo(function StreamColumn(props: ColumnProps) {
   );
 });
 
-type IconRowProps = PeekProps & {
+type IconRowProps = Omit<PeekProps, 'onPeek'> & {
+  /** The view's tap, or null with What viewers see hidden: then the row draws no cell for it. */
+  readonly onPeek: (() => void) | null;
   readonly shutter: boolean;
   readonly onShutter: () => void;
   readonly scoring: boolean;
@@ -104,6 +107,8 @@ type IconRowProps = PeekProps & {
  * Take photo (§8) and Remote scoring (§10) are present or absent, never dimmed, and travel together as the
  * camera-side pair, Remote scoring last of the two: after Home before air, and after Settings on air, ahead of
  * What viewers see. Remote scoring is pressed in while its panel is up (B5).
+ * With What viewers see hidden (the owner's ruling, 2026-10-09) the on-air row ends at Remote scoring, and no cell
+ * flexes: the buttons pack from the start, as the four do before air.
  * Primitives and stable handlers, so memo skips (M7).
  */
 const IconRow = memo(function IconRow(props: IconRowProps) {
@@ -129,13 +134,15 @@ const IconRow = memo(function IconRow(props: IconRowProps) {
     <View testID="icon-row" style={styles.iconRow}>
       <IconButton glyph="settings" label={t('stream.link.settings')} onPress={props.onSettings} />
       {props.onAir ? camera : null}
-      <ColumnPeek
-        onAir={props.onAir}
-        peekable={props.peekable}
-        shed={props.shed}
-        open={props.open}
-        onPeek={props.onPeek}
-      />
+      {props.onPeek === null ? null : (
+        <ColumnPeek
+          onAir={props.onAir}
+          peekable={props.peekable}
+          shed={props.shed}
+          open={props.open}
+          onPeek={props.onPeek}
+        />
+      )}
       {props.canLeave ? (
         <IconButton glyph="home" label={t('stream.home')} onPress={props.onHome} />
       ) : null}

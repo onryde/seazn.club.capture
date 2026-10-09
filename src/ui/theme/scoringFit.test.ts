@@ -99,7 +99,9 @@ let peekRows = 0;
 let worstReasonLines = 0;
 const MEASURED_AT_640 = new Map<string, { label: number; reason: number }>();
 
-describe('the on-air icon row with four cells (F6, RP10)', () => {
+// The four cells are the row with What viewers see built in. It is hidden as shipped (the owner's ruling, 2026-10-09:
+// the row is then three buttons, controlsFit.test.ts), and these rows keep the hidden cell's fit proved.
+describe('the on-air icon row with four cells, What viewers see built in (F6, RP10)', () => {
   it('the peek cell is 110 dp at 640, 800, 844 and 915 alike: the controls half does not grow with the screen', () => {
     expect(GEOMETRIES.map(([width]) => peekCell(width))).toEqual([110, 110, 110, 110]);
     expect(peekText(640)).toBe(92);

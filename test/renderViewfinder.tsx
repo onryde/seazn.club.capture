@@ -28,6 +28,11 @@ type Setup = {
    * (see `quietDevice.ts`).
    */
   readonly quiet?: boolean;
+  /**
+   * What viewers see built in (D2 §4.3), for the tests of the hidden feature. Left out, the screen reads the shipped
+   * switch, `FEATURES.viewerCheck` (off: the owner's ruling, 2026-10-09), as the route does.
+   */
+  readonly viewerCheck?: boolean;
 };
 
 /** The viewfinder as the operator reaches it: a saved stream code, the store loaded, on /stream. */
@@ -39,6 +44,7 @@ export async function renderViewfinder(
     prepare,
     strict = false,
     quiet = false,
+    viewerCheck,
   }: Setup = {},
 ): Promise<RenderResult & FakePorts> {
   const kvSeed = {
@@ -50,7 +56,8 @@ export async function renderViewfinder(
   if (engine === 'paired') pairCode(fakes.engine, saved);
   if (quiet) quietDevice(fakes.engine);
   prepare?.(fakes);
-  const rendered: RenderResult = render(<StreamScreen />, {
+  // Undefined is the prop left out: the screen's default, the shipped switch.
+  const rendered: RenderResult = render(<StreamScreen viewerCheck={viewerCheck} />, {
     wrapper: wrapperFor(fakes),
     reactStrictMode: strict,
   });

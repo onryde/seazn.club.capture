@@ -20,7 +20,8 @@ const sent = (view: Awaited<ReturnType<typeof renderViewfinder>>, kind: 'start' 
 
 /** Copy from en.json: the tests read the dictionary, not the code under test. */
 const LIVE_LINE = 'Live. Sound and picture going out.';
-const SHED = 'Phone hot — viewer check off, still live';
+/** The heat caption on air with What viewers see hidden, as shipped (owner's ruling, 2026-10-09). */
+const HOT_LIVE = 'Phone hot · still live';
 const NOT_CHARGING = 'Not charging — plug in for a long match';
 const REOPENING = 'Camera reopening — picture back shortly';
 
@@ -250,12 +251,18 @@ describe('the hold under a moving state', () => {
   });
 });
 
-describe('what viewers see (spec §4, carry 13)', () => {
+/**
+ * What viewers see built in: it is hidden as shipped (the owner's ruling, 2026-10-09; StreamScreen.viewerHidden.test.tsx),
+ * and these keep the hidden code tested.
+ */
+describe('what viewers see (spec §4, carry 13), built in', () => {
   beforeEach(() => vi.useFakeTimers());
   afterEach(() => vi.useRealTimers());
 
+  const BUILT_IN = { viewerCheck: true } as const;
+
   it('plays what viewers see on a tap, at the capped rendition', async () => {
-    await onAir('live');
+    await onAir('live', {}, BUILT_IN);
     fireEvent.click(peek());
     const video = screen.getByTestId('viewer-video');
     expect(video.dataset.playing).toBe('true');
@@ -265,7 +272,7 @@ describe('what viewers see (spec §4, carry 13)', () => {
   });
 
   it('offers no peek before the broadcast starts', async () => {
-    await renderViewfinder();
+    await renderViewfinder({}, BUILT_IN);
     expect(screen.queryByRole('button', { name: 'What viewers see' })).toBeNull();
   });
 
@@ -275,6 +282,7 @@ describe('what viewers see (spec §4, carry 13)', () => {
    * with none reported, forced here on an engine that holds no pairing.
    */
   const liveWithNoBroadcast = {
+    ...BUILT_IN,
     engine: 'idle',
     prepare: (fakes: FakePorts) =>
       fakes.engine.forceState({ kind: 'publishing', transport: 'srt', sinceEpochMs: 1 }),
@@ -291,7 +299,7 @@ describe('what viewers see (spec §4, carry 13)', () => {
   });
 
   it('gives no reason while the picture is there', async () => {
-    await onAir('live');
+    await onAir('live', {}, BUILT_IN);
     expect(peek().getAttribute('aria-disabled')).toBeNull();
     expect(screen.queryByText('No viewer picture')).toBeNull();
   });
@@ -302,7 +310,7 @@ describe('what viewers see (spec §4, carry 13)', () => {
   });
 
   it('lets go of the picture when the broadcast ends mid-view', async () => {
-    const view = await onAir('live');
+    const view = await onAir('live', {}, BUILT_IN);
     fireEvent.click(peek());
     expect(screen.queryByTestId('viewer-video')).not.toBeNull();
     act(() => view.engine.scene('stopped'));
@@ -318,25 +326,25 @@ describe('a hot phone on air', () => {
   it('says so on a hot phone, still Live (AGENTS §8, carry 12)', async () => {
     const view = await onAir('shed', {}, { quiet: true });
     expect(plate()).toBe('Live');
-    expect(screen.getByText(SHED)).toBeTruthy();
+    expect(screen.getByText(HOT_LIVE)).toBeTruthy();
     // The strip says ONE message (owner, 2026-10-08): the caption is up, so the live line is not. The plate above still
     // says Live. The positive pair: when the phone cools the caption goes and the live line is back.
     expect(screen.queryByText(LIVE_LINE)).toBeNull();
     act(() => view.engine.scene('live'));
-    expect(screen.queryByText(SHED)).toBeNull();
+    expect(screen.queryByText(HOT_LIVE)).toBeNull();
     expect(screen.getByText(LIVE_LINE)).toBeTruthy();
   });
 });
 
-/** Carry 14 (ruling M6): one caption, shed > not charging; the score preview's two went with it (D2 §4.1). */
+/** Carry 14 (ruling M6): one caption, heat > not charging; the score preview's two went with it (D2 §4.1). */
 // The fake phone as it is: uncharged, which is the condition under test.
 describe('the status strip’s one caption', () => {
   beforeEach(() => vi.useFakeTimers());
   afterEach(() => vi.useRealTimers());
 
-  it('puts shed above not charging', async () => {
+  it('puts heat above not charging', async () => {
     await onAir('shed');
-    expect(screen.getByText(SHED)).toBeTruthy();
+    expect(screen.getByText(HOT_LIVE)).toBeTruthy();
     expect(screen.queryByText(NOT_CHARGING)).toBeNull();
   });
 

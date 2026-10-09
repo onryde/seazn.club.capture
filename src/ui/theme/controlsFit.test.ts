@@ -57,8 +57,12 @@ const controlWidth = (text: string) => geist500.width(text, typeScale.control.fo
  * Every row of the controls half whose width is the content's, in the state it is widest in. Each is `[name, the sum
  * from the declared makeup, the same worked by hand]`: the hand-worked number is what a dropped term fails by.
  *  - icons before air: Settings, Home, Take photo, Remote scoring: four 48 dp buttons, three gaps.
- *  - icons on air: Settings, Take photo, Remote scoring and then the peek, which is not an icon but a labelled
- *    button, and the row's remaining width: three 48 dp buttons, three gaps and the least cell the peek holds.
+ *  - icons on air, as shipped: Settings, Take photo, Remote scoring: three 48 dp buttons, two gaps. What viewers see
+ *    is hidden (the owner's ruling, 2026-10-09), and no cell flexes: the buttons pack from the start, as before air
+ *    (StreamScreen.viewerHidden.test.tsx pins it on the rendered tree).
+ *  - icons on air with What viewers see built in: Settings, Take photo, Remote scoring and then the peek, which is not
+ *    an icon but a labelled button, and the row's remaining width: three 48 dp buttons, three gaps and the least cell
+ *    the peek holds. The half still holds it, so the switch can be turned on without a layout change.
  *  - chips: camera, sound and network, and AUTO when automatic mode is on: the row is one line (it wraps in the
  *    component, but a second line is 44 + 8 dp the 360 dp stack has no room for), so all four sit side by side.
  *  - the plate row: the tally plate and the clock (on air) or the sound meter (before), a cell each, one gap.
@@ -70,7 +74,12 @@ const ROWS = [
     216,
   ],
   [
-    'icons on air: three buttons and the peek cell',
+    'icons on air as shipped, What viewers see hidden: three buttons',
+    3 * layout.iconButton + 2 * GAP, // 3 × 48 + 2 × 8
+    160,
+  ],
+  [
+    'icons on air with What viewers see built in: three buttons and the peek cell',
     3 * layout.iconButton + 3 * GAP + layout.peekCell, // 3 × 48 + 3 × 8 + 101
     269,
   ],
@@ -94,8 +103,8 @@ describe('the controls half is as wide as its widest row (owner, 2026-10-08)', (
     expect(width).toBe(worked);
   });
 
-  it('is the widest of the four rows plus the half’s padding either side: 278 + 2 × 16 = 310', () => {
-    expect(ROWS).toHaveLength(4);
+  it('is the widest of the five rows plus the half’s padding either side: 278 + 2 × 16 = 310', () => {
+    expect(ROWS).toHaveLength(5);
     expect(NEEDED).toBe(278);
     expect(layout.controlsHalf).toBe(NEEDED + 2 * layout.controlsPad);
     expect(layout.controlsHalf).toBe(310);
@@ -111,6 +120,15 @@ describe('the controls half is as wide as its widest row (owner, 2026-10-08)', (
     for (const [name, width] of ROWS) {
       expect({ name, fits: width <= CONTENT }).toEqual({ name, fits: true });
     }
+  });
+
+  // So the derivation below need not count it: whatever the button and the gap, the shipped on-air row is narrower.
+  it('the shipped on-air row is the before-air row less one button and one gap, so it can never govern', () => {
+    const width = (name: string) => ROWS.find((row) => row[0].startsWith(name))?.[1] ?? NaN;
+    expect(width('icons before air') - width('icons on air as shipped')).toBe(
+      layout.iconButton + GAP,
+    );
+    expect(CONTENT - width('icons on air as shipped')).toBe(118);
   });
 });
 

@@ -66,14 +66,18 @@ const resetRenders = () => {
  * A change the stage, the peek and the action do not show re-renders the
  * status line (in the camera half's strip, under the box) and nothing of theirs:
  * `stage` counts the preview's boundary, drawn on every render of the camera
- * box, which the line never reaches.
+ * box, which the line never reaches. Both ways the screen can be built: as shipped,
+ * with What viewers see hidden (the owner's ruling, 2026-10-09), and with it built in.
  */
-describe('the viewfinder re-renders only what changed', () => {
+describe.each([
+  ['as shipped, What viewers see hidden', undefined],
+  ['with What viewers see built in', true],
+] as const)('the viewfinder re-renders only what changed, %s', (_name, viewerCheck) => {
   beforeEach(() => vi.useFakeTimers());
   afterEach(() => vi.useRealTimers());
 
   it('ticks the hold’s countdown without re-rendering the stage, the peek or Stop', async () => {
-    const view = await renderViewfinder();
+    const view = await renderViewfinder({}, { viewerCheck });
     act(() => view.engine.scene('holding'));
     const held = view.engine.getSnapshot().state;
     if (held.kind !== 'reconnecting') throw new Error('the holding scene is not a hold');
@@ -91,7 +95,7 @@ describe('the viewfinder re-renders only what changed', () => {
   // and the label are laid out the memo holds a size, a recompute on every tick is a new object, and the preview in the
   // box re-renders once a second: so the tick is proved here, with the picture sized, and not only before it.
   it('ticks the hold’s countdown without re-rendering the stage once the picture is sized', async () => {
-    const view = await renderViewfinder();
+    const view = await renderViewfinder({}, { viewerCheck });
     act(() => view.engine.scene('holding'));
     layOut(screen.getByTestId('camera-half'), { width: 494, height: 332 });
     layOut(screen.getByTestId('match-label'), { width: 494 - 2 * layout.stripPadH, height: 44 });
@@ -114,17 +118,19 @@ describe('the viewfinder re-renders only what changed', () => {
     }
   });
 
+  // The box shows its size (and, built in, the view's state; the viewers' feed is the view's own layer, so a change of
+  // the broadcast alone no longer redraws the preview): a new size is a change the stage shows.
   it('counts at all with the picture sized: a change the stage shows re-renders it', async () => {
-    const view = await renderViewfinder();
+    await renderViewfinder({}, { viewerCheck });
     layOut(screen.getByTestId('camera-half'), { width: 494, height: 360 });
     layOut(screen.getByTestId('match-label'), { width: 494 - 2 * layout.stripPadH, height: 44 });
     resetRenders();
-    act(() => view.engine.scene('live'));
+    layOut(screen.getByTestId('camera-half'), { width: 494, height: 332 });
     expect(renders.stage).toBeGreaterThan(0);
   });
 
   it('says Back’s line on air without re-rendering the stage, the peek or Stop', async () => {
-    const view = await renderViewfinder();
+    const view = await renderViewfinder({}, { viewerCheck });
     act(() => view.engine.scene('live'));
     resetRenders();
     act(() => void view.back.press());
@@ -135,7 +141,7 @@ describe('the viewfinder re-renders only what changed', () => {
   // Nothing the viewfinder projects changed, so the column gets the same view
   // object and skips whole: the projection's memo, not only its parts'.
   it('moves the column to the other side without re-rendering it or the stage', async () => {
-    const view = await renderViewfinder();
+    const view = await renderViewfinder({}, { viewerCheck });
     act(() => view.engine.scene('holding'));
     resetRenders();
     await act(() => view.ports.streamSettings.set({ side: 'left' }));
@@ -145,12 +151,14 @@ describe('the viewfinder re-renders only what changed', () => {
   it('counts at all: a change they show re-renders them', async () => {
     // A quiet phone: an uncharged one says Not charging in the strip's one line, and the status line (counted here as
     // `column`) is then not drawn at all.
-    const view = await renderViewfinder({}, { quiet: true });
+    const view = await renderViewfinder({}, { quiet: true, viewerCheck });
     resetRenders();
     act(() => view.engine.scene('live'));
-    expect(renders.stage).toBeGreaterThan(0);
-    expect(renders.peek).toBeGreaterThan(0);
+    // The peek is drawn on air only when the view is built in; hidden, it is never drawn at all.
+    expect(renders.peek > 0).toBe(viewerCheck === true);
     expect(renders.action).toBeGreaterThan(0);
     expect(renders.column).toBeGreaterThan(0);
+    layOut(screen.getByTestId('camera-half'), { width: 494, height: 332 });
+    expect(renders.stage).toBeGreaterThan(0);
   });
 });
