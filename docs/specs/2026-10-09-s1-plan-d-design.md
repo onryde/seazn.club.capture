@@ -1,6 +1,6 @@
 # S1 Plan D: staging integration and design follow-up 2
 
-Date: 2026-10-09. Status: draft for owner review.
+Date: 2026-10-09. Status: approved by the owner, 2026-10-09.
 Basis: capture main 9f20b7c; web main and staging e201fab8f (contracts
 byte-identical to 8afdd8b42).
 Handoff: `.superpowers/handoff-plan-d.md`.
@@ -466,12 +466,12 @@ readiness on a locked phone, and the foreground notification text
 
 Every slice answers the four questions (AGENTS §10):
 
-|                                       | D1                                                                              | D2                                                                                                                                          |
-| ------------------------------------- | ------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
-| A second call                         | Running `contracts:vendor` twice gives an identical tree                        | A second tap closes the view and never restarts it; dim/restore twice is idempotent                                                         |
-| An empty input                        | A missing or extra vendored file fails the pin test; a schema-invalid QR vector | A label with no " v "; no `playbackUrl`; a missing `expo-brightness` module (the fake in tests, and a guarded port in production)           |
-| After an interruption                 | — (no runtime)                                                                  | The app backgrounds mid-view: idle and player unmounted. Backgrounds while dimmed: restored. A v2 settings record on disk after the upgrade |
-| Another mode, orientation or language | —                                                                               | C2 and the viewer copy in en/es/fr/nl at 804 × 332 and 640 × 360; dim only in Live Stream                                                   |
+|                                       | D1                                                                               | D2                                                                                                                                          |
+| ------------------------------------- | -------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| A second call                         | Running `contracts:vendor` twice gives an identical tree                         | A second tap closes the view and never restarts it; dim/restore twice is idempotent                                                         |
+| An empty input                        | A missing or extra vendored file fails the pin test; a schema-invalid QR vector  | A label with no " v "; no `playbackUrl`; a missing `expo-brightness` module (the fake in tests, and a guarded port in production)           |
+| After an interruption                 | The engine fails mid-minute: the open minute's `beats` line is written once (E3) | The app backgrounds mid-view: idle and player unmounted. Backgrounds while dimmed: restored. A v2 settings record on disk after the upgrade |
+| Another mode, orientation or language | —                                                                                | C2 and the viewer copy in en/es/fr/nl at 804 × 332 and 640 × 360; dim only in Live Stream                                                   |
 
 Mutations, each watched failing once:
 

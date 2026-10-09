@@ -195,7 +195,7 @@ The independent review of the earlier plan C raised three questions only the own
 | Boundary   | **A viewfinder-only error boundary around the native preview** (ruling 2); AGENTS §7's overlay boundary is unchanged.                                                                                                                                                                             | CD19; Task 39                                                      |
 | SRT host   | **`cred.srt` may be on exactly `live.cloudflare.com` or the environment's `live.*` host; RTMPS and every other URL strictly `live.*`; SRT is on from launch; `cred.srt: null` is accepted (RTMPS alone); lookalikes are refused** (A18 as revised at `a2b6444`).                                  | Task 2 (`Hosts`, host vectors), Task 15 (session vectors), Task 31 |
 
-_SRT host, revised 2026-10-09 (plan D spec, `docs/specs/2026-10-09-s1-plan-d-design.md` §3.6): the environment's `live.*` host is ruled out as an ingest host (web W26, 2026-10-05). Native pins `live.cloudflare.com` for both transports (`Hosts.kt`), and `cred.srt: null` is a safety switch only. This note stands for every `live.*` ingest-host line in this plan, C:19898 and C:19901 among them, which are not edited one by one._
+_SRT host, revised 2026-10-09 (plan D spec, `docs/specs/2026-10-09-s1-plan-d-design.md` §3.6): the environment's `live.*` host is ruled out as an ingest host (web W26, 2026-10-05). Native pins `live.cloudflare.com` for both transports (`Hosts.kt`), and `cred.srt: null` is a safety switch only. This note stands for every `live.*` ingest-host line in this plan, C:19900 and C:19903 among them, which are not edited one by one._
 
 ## Pre-flight, folded
 

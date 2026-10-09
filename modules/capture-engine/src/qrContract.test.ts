@@ -6,10 +6,11 @@ import { parseStreamCode } from '@/domain/credentials/streamCode';
 import vectors from './wire/code-vectors.json';
 
 /**
- * Plan D spec §3.2: the QR, held to the vendored capture-qr.v2.json for the first time. A vector the schema
- * refuses is one the parser refuses; the verdict each row expects is the vector file's, written by hand (carry G1),
- * never the parser's. The reverse does not hold, by design: STRICTER names the two QRs the schema admits and the
- * parser refuses, and the web's tampered fixture (below) is the one the schema refuses and the parser reads.
+ * Plan D spec §3.2: the QR, held to the vendored capture-qr.v2.json for the first time. The verdict each row expects
+ * is the vector file's, written by hand (carry G1), never the parser's. Two rules, each with named exceptions:
+ * - forward, a QR the schema refuses is one the parser refuses. One exception, TOLERATED (plan D1, D-2): the web's
+ *   tampered fixture, which the schema refuses for its extra `cred` key and the parser reads, the key dropped.
+ * - reverse, a QR the schema admits is one the parser reads. Two exceptions, STRICTER: the parser refuses both.
  */
 const contracts = new URL('../../../contracts/', import.meta.url);
 const schema = JSON.parse(readFileSync(new URL('capture-qr.v2.json', contracts), 'utf8')) as {
@@ -84,13 +85,18 @@ describe("the web's QR fixtures through the parser (plan D §3.2)", () => {
     expect(fixtures.filter((name) => name.startsWith('invalid'))).toHaveLength(7);
   });
 
-  // The web names a fixture the schema admits `valid…`; every other name is one it refuses.
-  it.each(fixtures)('%s: the parser refuses what the schema refuses', (name) => {
-    const body = fixture(name);
-    const admitted = name.startsWith('valid');
-    expect(schemaAdmits(body)).toBe(admitted);
-    expect(parseStreamCode(body).ok).toBe(admitted || TOLERATED.has(name));
-  });
+  // The web names a fixture the schema admits `valid…`; every other name is one it refuses. The parser gives the
+  // schema's verdict, except for TOLERATED (D-2): tampered.json's extra `cred` key is refused by the schema, and the
+  // parser drops the key and reads the rest.
+  it.each(fixtures)(
+    '%s: the parser reads it exactly when the schema admits it or it is TOLERATED',
+    (name) => {
+      const body = fixture(name);
+      const admitted = name.startsWith('valid');
+      expect(schemaAdmits(body)).toBe(admitted);
+      expect(parseStreamCode(body).ok).toBe(admitted || TOLERATED.has(name));
+    },
+  );
 
   it('keeps nothing of what the tolerated fixture carries beyond the schema', () => {
     const read = parseStreamCode(fixture('tampered.json'));

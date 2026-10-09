@@ -36,6 +36,12 @@ is not an option.
 **Status:** fold into C1 while the contract is open
 **Where:** `capture-qr.v1.json` · §7.6 · suggested home: alongside C1
 
+_Status, 2026-10-09: landed on the web. The QR carries no publish credential
+at all (`capture-qr.v2.json`: "The QR never carries credentials: the phone
+fetches them with the tok"), and the descriptor issues them per session, to
+the current phone, behind the code's Bearer. See `contracts/README.md`, "No
+longer blocked", and plan D spec §3.6. The text below is as first written._
+
 The capture app has no auth by design — the QR code *is* the credential. That
 is the right product call: an operator is a volunteer handed a phone at a wet
 ground, and a login screen there is a product failure.
@@ -799,8 +805,8 @@ are cut and the five routine strings.
 ### N24 — Plan C's device-gate results were never filed
 
 **Status:** open · evidence gap · closes with a path if the owner knows where the results are
-**Where:** plan C's C8 (`docs/superpowers/plans/2026-10-01-s1-plan-c-platform-and-bridge.md`, C:111, C:354,
-C:19826) · `docs/specs/2026-10-0x-s1-plan-c-results.md` · plan D spec §3.7 and §5.3
+**Where:** plan C's C8 (`docs/superpowers/plans/2026-10-01-s1-plan-c-platform-and-bridge.md`, C:111, C:356,
+C:19828) · `docs/specs/2026-10-0x-s1-plan-c-results.md` · plan D spec §3.7 and §5.3
 
 Plan C's C8 names a results document, `docs/specs/2026-10-0x-s1-plan-c-results.md`, for the C device gate's
 evidence: the scripted-server rows, the release rows (beats for 30 minutes in Doze, battery while paired for 60
