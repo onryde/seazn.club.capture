@@ -84,15 +84,28 @@ describe('the stream layout keeps the screen on and hears every touch', () => {
     expect(WRAPS_STACK.test(layout)).toBe(true);
   });
 
-  // The beside sample is a whole TouchWake, opened and closed, next to the Stack: a self-closing one would fail at the
+  // The beside samples are a whole TouchWake, opened and closed, next to the Stack: a self-closing one would fail at the
   // first token, so a looser rule (`<TouchWake>` alone, or any TouchWake pair) would still pass here (B5 re-review N1).
-  it('does not count a TouchWake beside the Stack, or one only in a comment', () => {
+  // One sits before the Stack and one after it, so a rule that drops either end of the wrap fails one of them (B6
+  // review M7: `<Stack ... </TouchWake>` alone passed the first).
+  it('does not count a TouchWake beside the Stack, before or after it, or one only in a comment', () => {
     const beside = bodyOf(
       [
         'function StreamLayout() {',
         '  return (<>',
         '    <TouchWake>{null}</TouchWake>',
         '    <Stack />',
+        '  </>);',
+        '}',
+      ].join('\n'),
+      'StreamLayout',
+    );
+    const after = bodyOf(
+      [
+        'function StreamLayout() {',
+        '  return (<>',
+        '    <Stack />',
+        '    <TouchWake>{null}</TouchWake>',
         '  </>);',
         '}',
       ].join('\n'),
@@ -107,6 +120,10 @@ describe('the stream layout keeps the screen on and hears every touch', () => {
       ].join('\n'),
       'StreamLayout',
     );
-    expect([WRAPS_STACK.test(beside), WRAPS_STACK.test(commented)]).toEqual([false, false]);
+    expect([
+      WRAPS_STACK.test(beside),
+      WRAPS_STACK.test(after),
+      WRAPS_STACK.test(commented),
+    ]).toEqual([false, false, false]);
   });
 });
