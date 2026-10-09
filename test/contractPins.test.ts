@@ -12,13 +12,13 @@ import { listFiles, OURS } from '../scripts/vendor-contracts.mjs';
  *
  * The other side of the pin is the web's own: its capture-contract.test.ts pins the five schemas. Those five values
  * and the commit are copied below BY HAND from apps/web/src/server/api-v1/__tests__/capture-contract.test.ts:48-52
- * at 8afdd8b42 (the same at e201fab8f, staging's commit; the script never writes them), so a re-vendor cannot quietly
- * move both sides at once. WEB_COMMIT is the commit actually vendored (plan D1, D-10).
+ * at 5a02cc4a5 (web #932, merged 2026-10-09; the script never writes them), so a re-vendor cannot quietly move both
+ * sides at once. WEB_COMMIT is the commit actually vendored (plan D1, D-10).
  */
-const WEB_COMMIT = '8afdd8b42fcb6ba115ac18c7cc3d8461f7ea07ac';
+const WEB_COMMIT = '5a02cc4a53265dcbbf5a27d33b012d67715fc183';
 const WEB_PINS: Readonly<Record<string, string>> = {
   'capture-qr.v2.json': '3292e33f84b693e5def6048012f6653ca7e31e1573fda3901da4fe67a62c5d43',
-  'capture-descriptor.v1.json': '84e936b72b866df4fc37317e06fc3f6f5555dd2196b10b24efc890b52f28a5d6',
+  'capture-descriptor.v1.json': '5c9b09c422b092671ad3a842b02e5c18902c92fc290cbc562c91033555955b8b',
   'capture-beat.v1.json': 'e14329132400d45cd38e03b19cf85189fe35acb0b8b9a51e7ca98879fe07c736',
   'capture-start.v1.json': '012d6e3851e84d0ce659ad23449fa91b61f0d20cfac1e58f2ccbc7cbb0742bae',
   'capture-scoring-link.v1.json':
