@@ -65,3 +65,13 @@ export interface SplashPort {
 export interface SharePort {
   share(text: string): Promise<void>;
 }
+
+/**
+ * The app window's own brightness (D2 §4.5, R8), never the system setting. `dim` and `restore` are intents: each
+ * returns at once, does nothing when already in that state, and never throws, so a phone without the module only
+ * stays bright.
+ */
+export interface ScreenPort {
+  dim(): void;
+  restore(): void;
+}

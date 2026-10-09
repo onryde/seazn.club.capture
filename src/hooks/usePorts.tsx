@@ -12,6 +12,7 @@ import type {
   MotionPort,
   NavigationPort,
   OrientationLockPort,
+  ScreenPort,
   SharePort,
   SplashPort,
 } from '@/services/devicePorts';
@@ -57,6 +58,8 @@ export type Ports = {
   readonly orientationLock: OrientationLockPort;
   readonly back: BackPort;
   readonly foreground: ForegroundPort;
+  /** The window's brightness: dimmed while paired and idle (D2 §4.5). */
+  readonly screen: ScreenPort;
   readonly navigation: NavigationPort;
   readonly splash: SplashPort;
   /** The native views the viewfinder draws (D16). */

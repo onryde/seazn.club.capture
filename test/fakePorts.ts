@@ -10,6 +10,7 @@ import type {
   NavigationPort,
   OrientationLockPort,
   Route,
+  ScreenPort,
   SharePort,
   SplashPort,
 } from '@/services/devicePorts';
@@ -54,6 +55,8 @@ export type FakePorts = {
    * `leaveListeners()` counts who would hear a `leave()`.
    */
   readonly foreground: FakeForeground;
+  /** `calls` lists every dim and restore, in order; `dimmed` is the window now. */
+  readonly screen: FakeScreen;
   readonly navigation: NavigationPort & { readonly history: readonly Route[] };
   readonly splash: SplashPort & { readonly hides: number };
   readonly surfaces: FakeSurfaces;
@@ -90,6 +93,7 @@ export function createFakePorts(
     orientationLock: fakeLock(),
     back: fakeBack(),
     foreground: fakeForeground(),
+    screen: fakeScreen(),
     navigation: fakeNavigation(),
     splash: fakeSplash(),
     surfaces: createFakeSurfaces(),
@@ -232,6 +236,31 @@ function fakeForeground(): FakeForeground {
     },
     leaveListeners: () => leaves.size,
     returnListeners: () => returns.size,
+  };
+}
+
+export type FakeScreen = ScreenPort & {
+  /** Every call, in order. */
+  readonly calls: readonly ('dim' | 'restore')[];
+  readonly dimmed: boolean;
+};
+
+function fakeScreen(): FakeScreen {
+  const calls: ('dim' | 'restore')[] = [];
+  let dimmed = false;
+  return {
+    calls,
+    dim: () => {
+      calls.push('dim');
+      dimmed = true;
+    },
+    restore: () => {
+      calls.push('restore');
+      dimmed = false;
+    },
+    get dimmed() {
+      return dimmed;
+    },
   };
 }
 
