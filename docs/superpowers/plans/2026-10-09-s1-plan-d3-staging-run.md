@@ -144,6 +144,9 @@ cd "$WT" && shasum -a 256 android/app/build/outputs/apk/release/app-release.apk 
 - Expected: `EXIT=0` for each step. `git status --short` prints nothing, because the restored `package.json` matches and `/android` is ignored. The APK's sha256 goes into `$EVID/build.txt`.
 - On a bare prebuild, the release build is signed with prebuild's debug keystore (P5 results). That is fine for this run.
 
+- [ ] **Step 2a (owner, optional): Settings before the install.** Only if the OnePlus holds a pre-D2 build signed with the same key as this one. Open Live Stream with a printed code, and in its Settings set "Controls on the" to **Left** and turn "Start and stop automatically" **off**. Write both down.
+  - This is the one check of D2's settings upgrade (wire v2 → v3, D2 §4.1): a saved setting survives it. If the install in Step 3 needs an uninstall, the settings are gone, this check is not run, and the results say so.
+
 - [ ] **Step 3 (agent): Install on each phone and note the geometry.**
 
 ```bash
@@ -156,6 +159,11 @@ adb -s 12be753e shell wm density
 - Expected: `Success`. If the phone holds a build signed with another key, the install fails with `INSTALL_FAILED_UPDATE_INCOMPATIBLE`. Then `adb -s 12be753e uninstall com.seazn.capture` and install again. Saved codes are lost, and nothing in this run needs them.
 - Write the physical `wm size` and `wm density` into `$EVID/build.txt`. Task 10 resets to these.
 - Repeat on the second phone, with its own serial.
+
+- [ ] **Step 3a (owner and agent): What D2 removed and blocked is gone from the installed app.**
+  - (Agent) Run `adb -s 12be753e shell dumpsys package com.seazn.capture | grep -c WRITE_SETTINGS`. Expected: `0`. The `expo-brightness` plugin's permission is blocked in `app.json` (D2 PD3).
+  - (Owner) In Android Settings, under Special app access, then Modify system settings: Seazn Capture is not listed. The app never asks for it.
+  - (Owner) If Step 2a ran: open Live Stream's Settings. Expected: "Controls on the" still reads **Left**, and the automatic switch is still off. Settings has no "Score preview" switch: the automatic switch is the only switch (D2 §4.1).
 
 - [ ] **Step 4 (agent): Dump the copy the run quotes.**
 
@@ -172,7 +180,7 @@ cd "$WT" && grep -nE '"stream\.(status|advisory|peek|chip|startsAt)[^"]*"|"panel
     - 2a, 2b, 4 and 7 (twice);
     - 9;
     - 11 (twice), and S11 (once or twice);
-    - 12 (up to four);
+    - 12 (up to five: four for the viewers' video, one for Task 10 Step 10e);
     - 13.
   - Two matches for Task 1, M1 and M2. They are on fixtures the owner can start and finish in the web app, each scheduled to start within 30 minutes, so the beat cadence is 10 s. The org's automatic switch is on, and the destination is YouTube (a test channel). The owner holds their printed stream codes. M1 also serves Tasks 2, 5, 9 and 10, or another scheduled match does. The round-line fixtures of spec §5.2 already exist on staging, and Task 8 lists them.
   - A second Android 12+ phone for rows 4, 5 and 6. CD34 rules out the Redmi Note 7 Pro (Android 10), because the app's minSdk is 31. With no second phone, rows 4 to 6 are **blocked**, and the results say so.
@@ -334,6 +342,7 @@ curl -s -A "$UA" "$VURL" | awk -F'[:,]' '/#EXTINF/{n++; s+=$2} /#EXT-X-TARGETDUR
   - Quote these lines in the results. They re-establish the claims plan C's missing results never filed (§3.7). They are **device-only**.
 - [ ] **Step 11 (owner): Stop from the console while the phone is locked.** Lock the phone again and press **Stop** in the console.
   - Expected: after you unlock, "Organiser stopped it — waiting for Go live" (`stream.status.stoppedOrganiser`). The record holds `broadcast-ended` with `lastEnd` `stopped-by-organiser`, timed while it was locked.
+  - Expected (D2, the idle dim): the screen is at **full brightness** when you unlock, not dim, because nothing counts toward the dim in the background. If you then leave it untouched, it dims about 30 s later. A dim screen on unlock is a finding (**device-only**).
 - [ ] **Step 12 (agent and owner): Row 2c, the negative check.**
   - Tell the owner first: "I am about to force-stop the app; this is deliberate."
   - Then run `adb shell am force-stop com.seazn.capture` and write down the time.
@@ -642,6 +651,30 @@ while true; do printf '%s %s\n' "$(date -u +%H:%M:%S)" "$(curl -s -o /dev/null -
 - [ ] **Step 5 (owner): One cover at a time.** Open the viewers' video, then tap **Remote scoring** (`stream.scoring.open`).
   - Expected: the video closes, and the panel "Score this match" (`stream.scoring.title`) opens.
   - Then open the video again. Expected: the panel closes. (Agent) Screenshot `r12-onecover`.
+- [ ] **Step 5a (owner): The cover up close.** Open the video at 804 × 332 and look at it at arm's length.
+  - Expected:
+    - It covers the camera box only. The status strip and Stop stay visible, and Stop still works.
+    - The honest line "What viewers see · no scoreboard yet" (`stream.peek.honest`) reads over the picture.
+    - The countdown and **Hide** sit in the box's bottom-right corner, on the night ground, in steady figures. Hide is a rounded plate with a thin rule, and it reads over the video. Nothing in the corner is clipped.
+    - The cell answers a plain tap with no press delay. A tap anywhere on the box closes the view, and so does Hide. A Hide tap that also reached the box would close it twice, which is closing once, so nothing more is checked there.
+  - (Agent) Screenshot `r12-cover-804`, and read the colours from it: night ground behind the lines, ink text, and no red.
+- [ ] **Step 5b (owner): TalkBack on the cover and the label.** Turn TalkBack on (Accessibility settings), open the video, and swipe through the cover. Then swipe to the match label.
+  - Expected:
+    - TalkBack reads the cover's lines (the countdown, the honest line) and Hide as a button named "Hide".
+    - It reads the match label once, as typed, and never says the v on its own.
+  - If TalkBack reads the whole box as one element (a double tap on it closes the view), write that down. The follow-up is `focusable={false}` on the box, which is the coordinator's to route. Nothing is changed in this run.
+  - Turn TalkBack off.
+- [ ] **Step 5c (agent): The player goes with the view.** After Steps 2 to 5, read the record with Share record.
+  - Expected:
+    - For each tap, `viewer.check` lines in order: `loading`, then `showing` or `notReady`, then `idle`.
+    - One `viewer.firstFrame` line with its `ms` for each tap that got a picture. Write the `ms` values beside Step 4's notes: they are spec §8's HLS numbers.
+    - After each `idle`, no player is left. (Owner) As a cross-check, read the app's data usage in Android Settings before a tap and 60 s after its close: what it received stops climbing (the upload goes on, because the phone is on air).
+- [ ] **Step 5d (owner): A stall, if one happens.** If a picture stalls while showing, or the 5 s countdown runs on a stalled feed, write down what the cover did.
+  - Expected (the controller's ruling, B3):
+    - A player retry while showing is silent: the 20 s countdown keeps running and closes the view.
+    - If native reads the delivery as stalled while showing, the cover says "No viewer picture" (`stream.peek.unavailable`) until it closes.
+    - While loading, a stalled feed shows only the 5 s countdown, then the not-ready line.
+  - None of these is a failure. A new line for any of them is the owner's call after this run.
 - [ ] **Step 6 (agent): C2 at the owner's 804 × 332.** Screenshot `r12-c2-804-en`.
   - Expected:
     - The round line is in lime caps.
@@ -650,6 +683,13 @@ while true; do printf '%s %s\n' "$(date -u +%H:%M:%S)" "$(curl -s -o /dev/null -
     - The one message line is below.
     - Each side wraps to at most 2 lines and ends in an ellipsis beyond that.
   - Write down which doubles names wrapped.
+- [ ] **Step 6a (agent): C2 up close,** from `r12-c2-804-en` and a second screenshot, `r12-c2-804-long`, of the longest doubles label staging has.
+  - Expected:
+    - The picture matches the arithmetic: 394.7 × 222 for a label of one line a side, and 316.4 × 178 for two lines a side. Read the camera box from the screenshot in px, over the density.
+    - A long side wraps inside its own row, beside its bar. It never runs under the controls half or past the strip, and a cut second line ends in an ellipsis.
+    - Each bar runs the height of its row. The v sits in the margin, centred between the rows, never inside a row.
+    - The names are in mixed case, as typed. The round line is in capitals.
+  - These are the real staging names (PD5). This step is the only place they are read.
 - [ ] **Step 7 (owner): The longest locale.** On Home, pick French in the language picker, go back to Live Stream, and screenshot `r12-c2-804-fr`.
   - Expected: as in Step 6, with the French strings from `fr.json`, and nothing clipped. Then switch back to English.
 - [ ] **Step 8 (agent): C2 at 640 × 360.**
@@ -663,9 +703,24 @@ while true; do printf '%s %s\n' "$(date -u +%H:%M:%S)" "$(curl -s -o /dev/null -
   - Touch it once. Expected: full brightness at once, and the 30 s starts again.
   - Then hold Go live, or press it in the console. Expected: no dimming while armed or live, even after 60 s with no touch.
   - If the dim does not happen, that is spec §8's `expo-brightness` risk. Write down the phone's power mode, and report it as a finding for the owner (the scrim fallback is the owner's call). Do not change any code.
+- [ ] **Step 10a (owner and agent): The dim is the window's, never the system's.** Paired and waiting, before the dim and again while dimmed, the agent runs `adb shell settings get system screen_brightness`.
+  - Expected: the same value both times. With adaptive brightness on, the value can drift with the light. Then the owner reads the brightness slider in quick settings instead, which does not drop.
+  - Expected: the dim is about a tenth of full brightness (0.1), and the viewfinder can still be read up close.
+- [ ] **Step 10b (owner): A touch anywhere wakes it, and still acts.** Let it dim, then tap the Settings icon once.
+  - Expected: full brightness at once, and the same tap opened Settings.
+  - Leave Settings untouched for 30 s. Expected: it dims there too. Touch it once. Expected: full brightness at once, because Settings is inside the route.
+  - Back on the viewfinder, tilt the phone upright so the turn card shows, and let it dim. A tap on the turn card does **not** wake it: the card sits outside the route, as designed. Turn the phone sideways again and touch the screen. Expected: it wakes.
+  - Expected: the viewfinder and Settings are laid out as before D2, full screen, with nothing shifted by the stream layout's new root view.
+  - If "engine not responding" shows while the screen is dim, it stays dim until a touch, by the controller's ruling. Then it reads at full brightness. This is not induced, only written down if it happens.
+- [ ] **Step 10c (owner): The background.** Let it dim, press the phone's Home button, wait 40 s, and come back to the app.
+  - Expected: full brightness on return, and a dim again 30 s later if untouched. The system brightness is as it was.
+- [ ] **Step 10d (owner): Live Stream opened while locked.** Paired in operator mode, go to the app's Home (the Continue card shows), then press the power button to lock the phone. Press **Go live** in the console. When the record shows `live`, press **Stop** in the console, wait one beat, and unlock.
+  - Expected: the app is on Live Stream, because the remote Go live moved it there while locked. It is paired and waiting, at **full brightness**, and it dims 30 s after the unlock if untouched.
+  - A dim screen on unlock is a finding: the dim's clock counted in the background, from Android's `AppState` at that mount (B5). This is **device-only**.
+  - This is one broadcast (Task 0 Step 5 counts it).
 - [ ] **Step 11 (owner): Clean up.** Stop, and delete the recordings from this task.
 
-**Pass:** the viewers' video follows R2 and R10 (picture, 20 s, close; not-ready, 3 s, close; a second tap closes it; one cover at a time). C2 draws as R3 at both sizes and in both languages. The dim fires at 30 s and a touch wakes it. The geometry is reset.
+**Pass:** the viewers' video follows R2 and R10 (picture, 20 s, close; not-ready, 3 s, close; a second tap closes it; one cover at a time), and the record holds a `viewer.check` line per state and a `viewer.firstFrame` per picture. C2 draws as R3 at both sizes and in both languages, at the picture sizes the arithmetic gives. The dim fires at 30 s, on the window only, and a touch wakes it. A phone always comes back from the background or a lock bright. The geometry is reset. Steps 5b and 5d are written down whatever they show: they are evidence for the owner, not pass or fail.
 
 ---
 
@@ -686,12 +741,15 @@ while true; do printf '%s %s\n' "$(date -u +%H:%M:%S)" "$(curl -s -o /dev/null -
     - the peek cell is disabled, with the reason string from `$EVID/keys.txt` ("Phone hot", or the key D2 chose);
     - the advisory reads the reworded `stream.advisory.shed` from `$EVID/keys.txt`.
   - (Agent) Screenshot `r13-shed`. Tap the cell. Expected: nothing opens.
+- [ ] **Step 4a (agent): Statuses 3 and 4.** Run `adb shell cmd thermalservice override-status 3`, wait 10 s, and screenshot `r13-shed-3`. Then do the same with `4`, as `r13-shed-4`.
+  - Expected at each: the same as at 2. The cell stays disabled with "Phone hot", and the caption reads the same, because the ladder only goes down.
+  - Nothing else on screen changes: no lower preview frame rate, and no change to the encode. Steps 2 and 3 are report-only (`_FINDINGS.md` N26), so there is nothing to observe.
 - [ ] **Step 5 (agent): Read the record.** Debug builds allow `run-as`, so run `adb shell run-as com.seazn.capture tail -40 files/record/session-record.ndjson > "$EVID/r13-record.ndjson"`.
-  - Expected: a `thermal` line with status 2, and a `shed` line with `shed` `viewer-feed`.
+  - Expected: a `thermal` line with status 2, and a `shed` line with `shed` `viewer-feed`. After Step 4a, `thermal` lines with 3 and 4, and `shed` lines with `preview-framerate` and `encode`.
 - [ ] **Step 6 (agent): Reset.** Run `adb shell cmd thermalservice reset`. Expected: after 10 s, the cell is enabled again.
 - [ ] **Step 7 (owner and agent): Clean up.** Stop from the console. Delete the recordings. Put the release build back with `adb install -r "$WT/android/app/build/outputs/apk/release/app-release.apk"`, and stop Metro.
 
-**Pass:** at thermal status 2, the video closes and the cell is disabled with its reason. The record holds `shed` `viewer-feed`.
+**Pass:** at thermal status 2, the video closes and the cell is disabled with its reason. At 3 and 4 the same holds, and nothing else changes (N26). The record holds `shed` `viewer-feed`, then `preview-framerate` and `encode`.
 
 ---
 
