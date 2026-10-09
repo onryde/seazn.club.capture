@@ -574,7 +574,11 @@ class EngineTest {
     // The End threw first, then the ended line, then the ended snapshot: each still ran.
     val thrown = assertFailsWith<LinkCrash> { scheduler.advanceBy(0) }
     assertEquals(1, engine.commandFailures, "an Error from the platform is counted too")
-    assertTrue(lines.last().contains(""""kind":"command-failed"""") && "libsrt.so not found" in lines.last(), lines.last())
+    // Plan D §3.4: the step's last line is the pairing's minute of beats, after the End's failure: the claim at 0
+    // (answered go-live, so Open) and A8's final beat at 0.5 s, both 20 s into the minute that starts at 1_789_999_980_000.
+    val failed = lines[lines.size - 2]
+    assertTrue(failed.contains(""""kind":"command-failed"""") && "libsrt.so not found" in failed, failed)
+    assertEquals("""{"at":"2026-09-21T14:13:20.500Z","kind":"beats","minuteEpochMs":1789999980000,"sent":2,"failed":0,"word":"Open"}""", lines.last())
     assertIs<SnapshotState.Ended>(published.last().second.state)
     // The later two ride on it, for plan C's crash report.
     assertEquals(listOf(SinkCrash::class, BridgeCrash::class), thrown.suppressed.map { it::class })
