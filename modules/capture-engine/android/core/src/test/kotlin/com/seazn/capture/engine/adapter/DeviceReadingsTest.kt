@@ -118,7 +118,7 @@ class DeviceReadingsTest {
     assertEquals(0.75, Thermal.headroom(0.75f))
     assertEquals(null, Thermal.status(7))
     assertEquals(
-      listOf(null, null, ShedStep.OVERLAY_PREVIEW, ShedStep.PREVIEW_FRAMERATE, ShedStep.ENCODE, ShedStep.ENCODE, ShedStep.ENCODE),
+      listOf(null, null, ShedStep.VIEWER_FEED, ShedStep.PREVIEW_FRAMERATE, ShedStep.ENCODE, ShedStep.ENCODE, ShedStep.ENCODE),
       (0..6).map { Thermal.shed(it) },
     )
   }

@@ -300,17 +300,20 @@ describe('the AUTO chip is as wide as its word needs', () => {
 
 describe('the peek cell is the least the peek control holds', () => {
   // The peek (on air) is the icon row's remaining width: a 1 dp border and 8 dp of padding either side of its label,
-  // the label at most `peekLabelLines` lines and the reason at most `peekReasonLines`, every word whole.
+  // the label at most `peekLabelLines` lines and each reason (no picture; the phone hot, D2 §4.2) at most
+  // `peekReasonLines`, every word whole.
   const padding = 2 * layout.iconBorder + 2 * space.sm;
   function holds(cell: number): boolean {
     return LANGUAGES.every(([, dictionary]) => {
       const label = (dictionary as Dictionary)['stream.peek.label'] ?? '';
-      const reason = (dictionary as Dictionary)['stream.peek.unavailable'] ?? '';
+      const reasons = ['stream.peek.unavailable', 'stream.peek.hot'].map(
+        (key) => (dictionary as Dictionary)[key] ?? '',
+      );
       return (
         wordsOf(label).every((word) => peekLabelWidth(word) <= cell - padding) &&
-        wordsOf(reason).every((word) => unitWidth(word) <= cell) &&
+        reasons.every((reason) => wordsOf(reason).every((word) => unitWidth(word) <= cell)) &&
         linesOf(label, cell - padding, peekLabelWidth) <= layout.peekLabelLines &&
-        linesOf(reason, cell, unitWidth) <= layout.peekReasonLines
+        reasons.every((reason) => linesOf(reason, cell, unitWidth) <= layout.peekReasonLines)
       );
     });
   }

@@ -162,6 +162,15 @@ describe('the on-air icon row with four cells (F6, RP10)', () => {
     expect(peekRows).toBe(16);
   });
 
+  it('the heat reason (D2 §4.2) is one line in the 110 dp cell in every language: 58.0, 79.7, 97.3 and 78.9 dp', () => {
+    const widths = LANGUAGES.map(([, dictionary]) =>
+      unitWidth(dictionary['stream.peek.hot'] ?? ''),
+    );
+    expect(widths.map((each) => Math.round(each * 10) / 10)).toEqual([58.0, 79.7, 97.3, 78.9]);
+    for (const [, dictionary] of LANGUAGES)
+      expect(linesOf(dictionary['stream.peek.hot'] ?? '', peekCell(640), unitWidth)).toBe(1);
+  });
+
   // At 640 the numbers are asserted as they were measured, not as hoped (RP10): the label is wider than the 92 dp of
   // text in every language, so it takes two lines; the reason takes two in es and nl and one in en and fr, as it did
   // in the 120 dp cell it had before the owner's rule of 2026-10-08 (fr's 107.0 is 3.0 under the 110 cell).

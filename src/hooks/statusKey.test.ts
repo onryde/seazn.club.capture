@@ -157,7 +157,7 @@ describe('the status line (spec §4 and §5)', () => {
   });
 
   it('never mentions heat, which the status strip owns (AGENTS §8)', () => {
-    const hot = { ...ARMED_OK, shed: 'overlay-preview' as const, thermalStatus: 'severe' as const };
+    const hot = { ...ARMED_OK, shed: 'viewer-feed' as const, thermalStatus: 'severe' as const };
     expect(selectStatusKey(snap(LIVE, hot))).toBe('stream.status.live');
   });
 

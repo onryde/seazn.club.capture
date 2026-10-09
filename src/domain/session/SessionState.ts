@@ -63,8 +63,8 @@ export type ReconnectCause = 'uplink-lost' | 'video-stalled' | 'not-delivered';
 /**
  * Reasons the *broadcast* is impaired. Note what is absent: thermal pressure.
  * A device getting hot is a condition of the handset, not of the stream, and
- * per the degradation ladder (AGENTS.md §8) it sheds the operator's overlay
- * preview long before it touches the encode. It is carried in telemetry
+ * per the degradation ladder (AGENTS.md §8) it closes What viewers see long
+ * before it touches the encode. It is carried in telemetry
  * instead, so a hot phone that is still publishing cleanly does not get
  * reported as a damaged broadcast.
  *
@@ -90,9 +90,11 @@ export type DegradeReason =
 export type EndReason = 'operator-stopped' | 'fatal-error';
 
 /**
- * The degradation ladder, in order, never reordered (AGENTS.md §8).
- * The operator's convenience is the cheapest thing on the device.
+ * The degradation ladder, in order, never reordered (AGENTS §8). Step 1
+ * closes and disables What viewers see (D2 §4.2); steps 2 and 3 are reported
+ * only (_FINDINGS N26). The operator's convenience is the cheapest thing on
+ * the device.
  */
-export type ShedStep = 'overlay-preview' | 'preview-framerate' | 'encode';
+export type ShedStep = 'viewer-feed' | 'preview-framerate' | 'encode';
 
-export const SHED_ORDER: readonly ShedStep[] = ['overlay-preview', 'preview-framerate', 'encode'];
+export const SHED_ORDER: readonly ShedStep[] = ['viewer-feed', 'preview-framerate', 'encode'];

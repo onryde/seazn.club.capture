@@ -20,7 +20,7 @@ const sent = (view: Awaited<ReturnType<typeof renderViewfinder>>, kind: 'start' 
 
 /** Copy from en.json: the tests read the dictionary, not the code under test. */
 const LIVE_LINE = 'Live. Sound and picture going out.';
-const SHED = 'Preview paused — still live';
+const SHED = 'Phone hot — viewer check off, still live';
 const NOT_CHARGING = 'Not charging — plug in for a long match';
 const REOPENING = 'Camera reopening — picture back shortly';
 

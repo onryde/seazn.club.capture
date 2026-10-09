@@ -55,7 +55,7 @@ export const WIRE_VOCABULARY = {
   ]),
   unpairReason: new Set(['code-ended', 'replaced', 'taken', 'permissions']),
   delivery: new Set(['ok', 'stalled', 'unknown']),
-  shed: new Set(['overlay-preview', 'preview-framerate', 'encode']),
+  shed: new Set(['viewer-feed', 'preview-framerate', 'encode']),
   heartbeatResult: new Set(['ok', 'failed', 'session-over']),
   connectFailure: new Set(['unresolved', 'refused', 'timeout', 'other', 'unheld', 'camera']),
   camera: new Set(['own', 'taken', 'reopening', 'resuming', 'switching']),

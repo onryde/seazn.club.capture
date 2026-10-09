@@ -29,7 +29,7 @@ class VocabularyTest {
     assertEquals(listOf("ok", "stalled", "unknown"), Delivery.entries.map { it.wire })
     assertEquals(listOf("srt", "rtmps"), Transport.entries.map { it.wire })
     assertEquals(listOf("endpoint-closed", "inputs-stopped", "requested"), DropReason.entries.map { it.wire })
-    assertEquals(listOf("overlay-preview", "preview-framerate", "encode"), ShedStep.entries.map { it.wire })
+    assertEquals(listOf("viewer-feed", "preview-framerate", "encode"), ShedStep.entries.map { it.wire })
     assertEquals(listOf("uplink-lost", "video-stalled", "not-delivered"), ReconnectCause.entries.map { it.wire })
   }
 

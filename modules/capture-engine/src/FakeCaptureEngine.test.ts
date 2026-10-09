@@ -476,7 +476,7 @@ describe('scenes: every state spec §6 and the amendment list', () => {
     engine.scene('paired-not-ready');
     expect(snapshot().ready.sound).toBe(false);
     engine.scene('shed');
-    expect(telemetry().shed).toBe('overlay-preview');
+    expect(telemetry().shed).toBe('viewer-feed');
   });
 
   /** Spec §4: a call is the one way the mic reads not available on air; native's readiness says so too (BridgeCore). */

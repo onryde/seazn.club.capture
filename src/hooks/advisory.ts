@@ -11,8 +11,9 @@ export const ADVISORY_KEY: Readonly<Record<Advisory, MessageKey>> = {
 
 /**
  * The status strip's one caption (D17). Device conditions go here, never in the status line (AGENTS §8). Keep the app
- * open outranks them all (CD18): leaving the app is what would end the capture. Heat is next, then not charging. The
- * score-ahead and preview-failed captions went with the score preview (D2 §4.1).
+ * open outranks them all (CD18): leaving the app is what would end the capture. Heat is next: it has closed What
+ * viewers see (the ladder's first rung, D2 §4.2) while the broadcast is fine. Not charging is last. The score-ahead
+ * and preview-failed captions went with the score preview (D2 §4.1).
  */
 export function topAdvisory(input: {
   shed: boolean;
@@ -26,7 +27,10 @@ export function topAdvisory(input: {
   return null;
 }
 
-/** Any step down the ladder sheds the overlay first (AGENTS §8). */
+/**
+ * Any step down the ladder closes What viewers see: the ladder only goes down, so step 2 or 3 means step 1 too
+ * (D2 §4.2).
+ */
 export const selectShedding = (snapshot: EngineSnapshot) => snapshot.telemetry.shed !== null;
 export const selectCharging = (snapshot: EngineSnapshot) => snapshot.telemetry.charging;
 /**

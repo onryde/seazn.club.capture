@@ -401,7 +401,7 @@ function sceneOf(name: FakeScene, now: number): Scene {
         state: publishing('srt', since),
         telemetry: {
           ...live,
-          shed: 'overlay-preview',
+          shed: 'viewer-feed',
           thermalStatus: 'severe',
           thermalHeadroom: 0.12,
         },

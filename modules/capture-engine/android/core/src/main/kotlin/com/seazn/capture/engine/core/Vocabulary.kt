@@ -43,9 +43,13 @@ enum class Delivery(override val wire: String) : Wire {
   UNKNOWN("unknown"),
 }
 
-/** The degradation ladder (AGENTS §8), in order, never reordered. */
+/**
+ * The degradation ladder (AGENTS §8), in order, never reordered. Step 1 is What viewers see, which the app closes and
+ * disables (D2 §4.2). Steps 2 and 3 are reported only: no native code lowers the frame rate or the encode (_FINDINGS
+ * N26).
+ */
 enum class ShedStep(override val wire: String) : Wire {
-  OVERLAY_PREVIEW("overlay-preview"),
+  VIEWER_FEED("viewer-feed"),
   PREVIEW_FRAMERATE("preview-framerate"),
   ENCODE("encode"),
 }

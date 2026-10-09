@@ -31,7 +31,7 @@ describe('topAdvisory (D17, CD18, D2 §4.1)', () => {
 
 describe('the advisory copy', () => {
   it('is the spec’s shed sentence, with no prefix (carry 7, spec §4)', () => {
-    expect(en[ADVISORY_KEY.shed]).toBe('Preview paused — still live');
+    expect(en[ADVISORY_KEY.shed]).toBe('Phone hot — viewer check off, still live');
   });
 });
 
@@ -110,10 +110,10 @@ function snapshot(telemetry: Partial<Telemetry>): EngineSnapshot {
   };
 }
 
-describe('selectShedding (AGENTS §8: any step down the ladder sheds the overlay first)', () => {
+describe('selectShedding (D2 §4.2: any step down the ladder closes What viewers see)', () => {
   it.each([
     [null, false],
-    ['overlay-preview', true],
+    ['viewer-feed', true],
     ['preview-framerate', true],
     ['encode', true],
   ] as const)('shed %s: %s', (shed, shedding) => {
