@@ -26,7 +26,6 @@ function cover(kind: Open, feed: Feed) {
   const viewers: ViewerFeed = {
     feed,
     attempt: 0,
-    starting: false,
     onStatus: (status) => reported.push(status),
   };
   const view = render(

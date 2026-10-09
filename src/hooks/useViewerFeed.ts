@@ -16,8 +16,6 @@ export type ViewerFeed = {
   readonly feed: Feed;
   /** The player's remount key: a retry is a fresh player, because expo-video takes its source at creation. */
   readonly attempt: number;
-  /** Playing, but this player has not shown a picture yet (a rebuffer after one is not "starting"). */
-  readonly starting: boolean;
   onStatus(status: VideoStatus): void;
 };
 
@@ -54,10 +52,9 @@ export function useViewerFeed(pressed: boolean, mounted: boolean): ViewerFeed {
     () => ({
       feed,
       attempt: player.attempt,
-      starting: feed === 'playing' && player.status !== 'ready',
       onStatus: player.onStatus,
     }),
-    [feed, player.attempt, player.status, player.onStatus],
+    [feed, player.attempt, player.onStatus],
   );
 }
 
@@ -108,7 +105,7 @@ function useFirstWindow(kind: Kind, delivery: DeliveryWord, hasUrl: boolean) {
 }
 
 /**
- * D6: the player's own word, and its retries. A failure waits its rung of `PLAYER_RETRY_MS` and then remounts
+ * D6: the player's retries. A failure waits its rung of `PLAYER_RETRY_MS` and then remounts
  * the player (`attempt` is its key, which only ever counts up); with the rungs spent the player is given up on
  * until a stretch ends or the view opens again. A player that shows a picture earns its rungs back (R2), and
  * that must not remount it: the key and the rung are two counters. `onStatus` keeps its identity: the native
@@ -118,7 +115,6 @@ function usePlayer() {
   const { logger } = usePorts();
   const [key, setKey] = useState(0);
   const [failed, setFailed] = useState(false);
-  const [status, setStatus] = useState<'loading' | 'ready'>('loading');
   const rung = useRef(0);
   const retry = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -130,16 +126,10 @@ function usePlayer() {
 
   const onStatus = useCallback(
     (reported: VideoStatus) => {
-      if (reported !== 'failed') {
-        if (reported === 'ready') rung.current = 0;
-        // Once this player has shown a picture, a later loading is a rebuffer: the picture stays and no line is
-        // drawn. A real stall reaches `unavailable` by the delivery rule. A new player starts from loading,
-        // because a failure, a park and a reset each put the status back (M54).
-        setStatus((was) => (reported === 'loading' && was === 'ready' ? was : reported));
-        return;
-      }
-      // A player that failed has no picture, whatever it showed before: its replacement is loading.
-      setStatus('loading');
+      if (reported === 'ready') rung.current = 0;
+      // A loading report, a rebuffer included, changes nothing here: a real stall reaches `unavailable` by the
+      // delivery rule (M54).
+      if (reported !== 'failed') return;
       // One failure at a time: a second report from the same player is the same failure.
       if (retry.current !== null) return;
       const step = rung.current;
@@ -162,16 +152,10 @@ function usePlayer() {
   const reset = useCallback(() => {
     rung.current = 0;
     setFailed(false);
-    setStatus('loading');
   }, []);
 
-  /** No player is on screen: nothing it was waiting to do is owed, and the next one starts from loading. */
-  const park = useCallback(() => {
-    cancel();
-    setStatus('loading');
-  }, [cancel]);
-
-  return { attempt: key, failed, status, onStatus, reset, park };
+  // No player is on screen: a retry it was waiting to do is not owed, since the next mount is a fresh player anyway.
+  return { attempt: key, failed, onStatus, reset, park: cancel };
 }
 
 /** One line each time what the layer shows changes, with the word that came with it. */
@@ -190,8 +174,7 @@ function useResetPlayer(kind: Kind, reset: () => void): void {
 
 /**
  * While the feed is not `playing`, or the view holds no player (it closed), there is no Video: a retry
- * waiting for one is moot (the next mount is a fresh player anyway), and whatever the last player said is stale,
- * the picture it showed included (M55). Never clears a give-up (M30c).
+ * waiting for one is moot (the next mount is a fresh player anyway). Never clears a give-up (M30c).
  */
 function useParkPlayer(feed: Feed, mounted: boolean, park: () => void): void {
   useEffect(() => {
