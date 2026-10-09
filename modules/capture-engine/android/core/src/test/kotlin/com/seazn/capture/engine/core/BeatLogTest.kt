@@ -227,6 +227,17 @@ class BeatLogTest {
   }
 
   @Test
+  fun `a Stop from air with a beat in flight counts two beats with no answer - the one in flight and the final beat`() {
+    val rig = MachineRig().live()
+    // The claim (beat 1) at 0 is the one answered (go-live, so Open). The rig answers no other beat: tick until the
+    // cadence sends beat 2, still well inside minute A, then Stop, which sends A8's final beat (beat 3).
+    while (rig.phase.beating?.heartbeat?.inFlightId == null) rig.advance(500)
+    assertEquals(2, rig.phase.beating?.heartbeat?.inFlightId)
+    val stop = rig.send(Input.Stop)
+    assertEquals(listOf(minute(minuteA, sent = 3, failed = 0, word = "Open")), beats(stop))
+  }
+
+  @Test
   fun `a Stop whose final beat opens a new minute writes the minute before it and its own`() {
     val rig = MachineRig().live()
     // No tick from 1 s to 45 s, so no beat at the cadence: the claim at 0, answered go-live (Open), is minute A's only

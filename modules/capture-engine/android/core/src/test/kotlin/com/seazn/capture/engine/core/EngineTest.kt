@@ -177,6 +177,30 @@ class EngineTest {
   }
 
   @Test
+  fun `B2 review Minor 1 a failure inside the machine writes the pairing's open minute of beats, once`() {
+    val engine = engine { phase, input, now -> if (input == Input.SwitchCamera) throw IllegalStateException("bug") else SessionMachine.reduce(phase, input, now) }
+    // Paired: the claim (beat 1) goes at once, 20 s into the minute that starts at 1_789_999_980_000, and is answered
+    // `waiting` (NoBroadcast). The engine is not started, so no tick sends another beat.
+    engine.sendAll(listOf(Input.Pair(Configs.pairRequest(), Configs.PHONE, stopped = null), Input.PermissionsAnswered(granted = true), Input.Network(true)))
+    scheduler.advanceBy(0)
+    assertEquals(listOf(1), executed.filterIsInstance<Command.PostHeartbeat>().map { it.beatId })
+    engine.send(Input.HeartbeatAnswered(1, HeartbeatResponse.Answered(200, BeatReply("waiting", null, null, null, Configs.waiting()))))
+    scheduler.advanceBy(1_000)
+    // A second later, still in that minute, the machine throws: the pairing ends fatal-error, and its minute is written
+    // after the failure's own line.
+    engine.send(Input.SwitchCamera)
+    scheduler.advanceBy(0)
+    assertEquals(EndReason.FATAL_ERROR, assertIs<Phase.Ended>(engine.phase).reason)
+    val minute = """{"at":"2026-09-21T14:13:21.000Z","kind":"beats","minuteEpochMs":1789999980000,"sent":1,"failed":0,"word":"NoBroadcast"}"""
+    assertTrue(""""kind":"engine-error"""" in lines[lines.size - 2] && "bug" in lines[lines.size - 2], lines[lines.size - 2])
+    assertEquals(minute, lines.last())
+    // Once: what lands after the end writes no second minute, a second failure (the Ended branch) included.
+    engine.sendAll(listOf(Input.SwitchCamera, Input.Unpair, Input.Tick))
+    scheduler.advanceBy(12_000)
+    assertEquals(listOf(minute), lines.filter { """"kind":"beats"""" in it })
+  }
+
+  @Test
   fun `stop cancels the tick, and start twice ticks once`() {
     val engine = engine()
     engine.start()

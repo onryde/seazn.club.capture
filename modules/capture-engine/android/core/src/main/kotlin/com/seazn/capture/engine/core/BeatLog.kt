@@ -7,8 +7,10 @@ package com.seazn.capture.engine.core
  * line each time the cadence the phone beats at changes, with the gap since the beat before, and a `beats` line for
  * each wall-clock minute in which a beat went: how many went, how many failed or never came back, and the last answer
  * word. A minute with no beat writes no line; an answer counts in the minute of the beat before it. `sent` counts
- * beats sent, not 2xx answers: a beat still in flight when the pairing ends is counted neither answered nor failed, so a
- * pairing's last minute can count one beat with no answer.
+ * beats sent, not 2xx answers, so a pairing's last minute can count up to TWO beats with no answer: the beat still in
+ * flight when the pairing ends, counted neither answered nor failed, and, after an operator Stop from air, A8's final
+ * beat, whose answer is written on a line of its own and never counted here (BeatLogTest, "a Stop from air with a beat
+ * in flight ...").
  *
  * Pure, held in the pairing. The machine writes the open minute when the pairing stops beating ([BeatLogs.closed]).
  */
@@ -64,14 +66,15 @@ data class BeatLog(
 
 /**
  * The open minute's line when a pairing stops beating, whatever the input: unpaired, ended (an operator Stop's final
- * beat included, from the Ended pairing's log), or left for a re-pair. One place, so no end path can forget it. The log
- * written is the one the step last held: the one it left for Idle ([Step.leftLog], so the answer that unpaired the
+ * beat included, from the Ended pairing's log), or left for a re-pair. The machine calls it on every step it takes, and
+ * the [Engine] on the fatal-error step it builds when the machine throws, so no end path forgets it. The log written is
+ * the one the step last held: the one it left for Idle ([Step.leftLog], so the answer that unpaired the
  * phone counts), the Ended pairing's, or else the one the input found (an Unpair or a re-pair changes no beat).
  */
 internal object BeatLogs {
   fun closed(before: Phase, step: Step): Step {
     val log = before.beating?.beatLog ?: return step
-    val first = log.firstBeatId ?: return step
+    val first = log.firstBeatId
     if (step.phase.beating?.beatLog?.firstBeatId == first) return step
     val last = step.leftLog ?: step.phase.pairing?.beatLog?.takeIf { it.firstBeatId == first } ?: log
     val line = last.minuteLine() ?: return step
