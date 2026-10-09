@@ -5,10 +5,7 @@ import { describe, expect, it } from 'vitest';
 import vectors from './wire/scoring-link-vectors.json';
 
 const contract = JSON.parse(
-  readFileSync(
-    new URL('../../../test/fixtures/contracts/capture-scoring-link.v1.json', import.meta.url),
-    'utf8',
-  ),
+  readFileSync(new URL('../../../contracts/capture-scoring-link.v1.json', import.meta.url), 'utf8'),
 ) as { $id: string };
 const ajv = new Ajv2020({ allErrors: true, strict: true });
 addFormats(ajv);

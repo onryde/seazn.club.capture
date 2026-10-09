@@ -4,7 +4,9 @@ modules/*/android/build/
 modules/*/android/core/build/
 # The JVM host (CD8) is a subproject of the core build, with its own Gradle output.
 modules/*/android/core/host/build/
-# The web's contracts, copied byte for byte and pinned by sha256 (review C4a m-4): never reformatted.
-test/fixtures/contracts/
+# The web's contracts, vendored byte for byte and pinned by sha256 (plan D spec §3.1): never reformatted.
+# contracts/README.md is ours and stays formatted.
+contracts/*.json
+contracts/fixtures/
 # The staging beat body the web lane captured (2026-10-05), its key redacted: kept byte for byte, as captured.
 modules/capture-engine/android/core/src/test/resources/stg-beat-waiting.redacted.json

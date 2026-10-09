@@ -5,10 +5,7 @@ import shared from './wire/stage-kinds.json';
 
 type Json = Record<string, unknown>;
 const contract = JSON.parse(
-  readFileSync(
-    new URL('../../../test/fixtures/contracts/capture-descriptor.v1.json', import.meta.url),
-    'utf8',
-  ),
+  readFileSync(new URL('../../../contracts/capture-descriptor.v1.json', import.meta.url), 'utf8'),
 ) as { oneOf: Json[] };
 
 const at = (value: unknown, ...path: string[]): unknown =>
