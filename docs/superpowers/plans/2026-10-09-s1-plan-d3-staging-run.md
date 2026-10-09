@@ -265,7 +265,7 @@ curl -s -A "$UA" "$VURL" | awk -F'[:,]' '/#EXTINF/{n++; s+=$2} /#EXT-X-TARGETDUR
   - Expected in the record: `broadcast-start` with `cause` `operator`, then `broadcast-ended` with `lastEnd` `stopped-by-organiser`, and no `stopped-automatically`.
   - This step is also row 3's grace check (spec §5.1, row 3). Task 3 cites its evidence.
 - [ ] **Step 10 (owner): Row 1b, A16, on M2.**
-  - Go back to Home, so the phone holds no pairing.
+  - Go back to Home and tap _Forget_ on the Continue card (`home.continue.forget`), so the phone holds no pairing. Going Home alone keeps it.
   - In the web app, start M2, so it is `in_play` with the org switch on.
   - Then scan M2's code. Settings' automatic switch is still on from Step 1, and it is a stored setting.
   - Expected: one `broadcast-start` with `cause` `automatic` within one poll of the pairing, and **one only**, in the record for the next 2 minutes. The line reads "Going live — the match has started" (`stream.status.goingLiveMatch`), then LIVE.
@@ -545,7 +545,7 @@ grep "\"kind\":\"$BEAT_KIND\"" "$EVID/r8a-record.ndjson" | node -e 'const f=proc
   - Then go back to Home and, on Home, tap _Forget_ on the Continue card (`home.continue.forget`), so no pairing is held. Going Home alone keeps it; the switch stays off, since the settings are not the pairing's.
   - (Agent) Screenshot the Settings switch reading off, before Home: `r10-operator`.
   - The owner also turns the automatic switch off in the s-a-f-e console, if they can.
-- [ ] **Step 2 (owner): Pair each fixture and read its line.** For each row below, scan the fixture's code from the Live Stream tile and hold the phone sideways. (Agent) Screenshot `r10-<n>`. Then go back to Home before the next one.
+- [ ] **Step 2 (owner): Pair each fixture and read its line.** For each row below, scan the fixture's code from the Live Stream tile and hold the phone sideways. (Agent) Screenshot `r10-<n>`. Then go back to Home and tap _Forget_ on the Continue card before the next one; going Home alone keeps the pairing.
 
 | n   | Org               | Division and match                                                  | Expected round line (it is drawn in caps, so compare without case) |
 | --- | ----------------- | ------------------------------------------------------------------- | ------------------------------------------------------------------ |
