@@ -1,5 +1,7 @@
 import { act, renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { selectCharging, selectKeepOpen, selectShedding, topAdvisory } from '@/hooks/advisory';
+import { selectStatusKey } from '@/hooks/statusKey';
 import { useIdleDim } from '@/hooks/useIdleDim';
 import { createFakePorts } from '../../test/fakePorts';
 import { pairCode } from '../../test/pairCode';
@@ -166,5 +168,64 @@ describe('useIdleDim (D2 §4.5)', () => {
     act(() => result.current());
     expect(fakes.screen.dimmed).toBe(false);
     expect(fakes.screen.calls).toEqual(['dim', 'restore']);
+  });
+});
+
+/**
+ * B5 fix round 2 (ledger): a change into a new URGENT status line (`LINE_TIER`) counts as a touch. A routine line or an
+ * advisory caption never wakes the screen, or a waiting phone would never dim. Each row first pins the line it is about.
+ */
+describe('useIdleDim and the status line (D2 §4.5)', () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  it('a refusal while paired and dimmed wakes it at once, and it dims again 30 s later', () => {
+    const { fakes } = mount();
+    act(() => fakes.engine.scene('paired-ready'));
+    act(() => vi.advanceTimersByTime(30_000));
+    expect(fakes.screen.dimmed).toBe(true);
+    // Native answers a held Go live in Paired: the state stays paired, only the line changes (Pairings.started).
+    act(() => fakes.engine.scene('paired-refused'));
+    expect(fakes.engine.getSnapshot().state.kind).toBe('paired');
+    expect(selectStatusKey(fakes.engine.getSnapshot())).toBe('stream.status.refusedCredit');
+    expect(fakes.screen.dimmed).toBe(false);
+    act(() => vi.advanceTimersByTime(29_999));
+    expect(fakes.screen.dimmed).toBe(false);
+    act(() => vi.advanceTimersByTime(1));
+    expect(fakes.screen.dimmed).toBe(true);
+  });
+
+  it('a routine line while dimmed (Waiting for Go live, once the destination is set) leaves it dim', () => {
+    const { fakes } = mount();
+    act(() => fakes.engine.scene('paired-ready'));
+    act(() => fakes.engine.setPairing({ destinationName: null }));
+    expect(selectStatusKey(fakes.engine.getSnapshot())).toBe('stream.status.waitingDestination');
+    act(() => vi.advanceTimersByTime(30_000));
+    expect(fakes.screen.dimmed).toBe(true);
+    act(() => fakes.engine.setPairing({ destinationName: 'YouTube · Made-up Club' }));
+    expect(selectStatusKey(fakes.engine.getSnapshot())).toBe('stream.status.waitingGoLive');
+    expect(fakes.screen.dimmed).toBe(true);
+    expect(fakes.screen.calls).toEqual(['dim']);
+  });
+
+  it('an advisory caption while dimmed (Not charging) leaves it dim', () => {
+    const { fakes } = mount();
+    act(() => {
+      fakes.engine.scene('paired-ready');
+      fakes.engine.setSurvivesBackground(true);
+      fakes.engine.patch({ charging: true });
+    });
+    act(() => vi.advanceTimersByTime(30_000));
+    expect(fakes.screen.dimmed).toBe(true);
+    act(() => fakes.engine.patch({ charging: false }));
+    const snapshot = fakes.engine.getSnapshot();
+    const caption = topAdvisory({
+      shed: selectShedding(snapshot),
+      charging: selectCharging(snapshot),
+      keepOpen: selectKeepOpen(snapshot),
+    });
+    expect(caption).toBe('notCharging');
+    expect(fakes.screen.dimmed).toBe(true);
+    expect(fakes.screen.calls).toEqual(['dim']);
   });
 });
