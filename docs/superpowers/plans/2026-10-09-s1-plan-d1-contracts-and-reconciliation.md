@@ -26,7 +26,7 @@ Every task's requirements include this section. Values in quotes are the spec's,
   - `capture-scoring-link.v1.json` `f0f1188655f3ca83b3e42ce7fedd6f6210a3a141b0bcf02fa250eb2448b1c85f`
 - **The web commit (D-10).** The spec's first vendoring is "at web 8afdd8b42"; staging runs `e201fab8f`, and "`docs/contracts` is byte-identical" (spec §2; `git diff --quiet 8afdd8b42 e201fab8f -- docs/contracts` exits 0, checked 2026-10-09). The script vendors the web checkout's `HEAD`, whichever it is, and `VENDORED.json`'s `web` is the commit actually vendored. Today the checkout's `HEAD` is `8afdd8b42fcb6ba115ac18c7cc3d8461f7ea07ac`; if it is `e201fab8fc3c67cc8bfb9a1df44490b75c3a1888` when Task 2 runs, that is the literal written instead, and nothing else changes. Any other `HEAD` whose `docs/contracts` differs from `8afdd8b42`'s: stop and report.
 - **The web repo is read-only.** `/Users/ashokhein/github/seazn.club` is only read. Never `checkout`, `stash`, `fetch` or write there; every git call there carries `--no-optional-locks`.
-- **Every beat sent, in the record (spec §3.4).** "the record [writes] one line per beat **sent**, in every build (_rec_): the send time, the interval since the last send, and the answer word. A three-hour match at 10 s is about 1,100 lines. D1 checks that against the record's size limit and, if it does not fit, writes one line per change of interval plus a count per minute instead." It does not fit (D-3), so Task 4 writes the second form.
+- **Every beat sent, in the record (spec §3.4).** "the record [writes] one line per beat **sent**, in every build (_rec_): the send time, the interval since the last send, and the answer word. A three-hour match at 10 s is about 1,100 lines, and the record that Share sends is a 1,000-line ring. So D1 writes one line per change of interval plus a `beats` line per minute (sent, failed, last answer word). **N25** (owner, 2026-10-09: "count beats, don't list them"): a beat held on air no longer gets a line of its own either. The per-minute line carries it, and a change of answer still gets its own line. A three-hour match then writes about 200 beat lines, and Share's ring holds the whole match."
 - **Revision notes.** "Each stale text gets an inline revision note dated 2026-10-09 that cites this spec. It is not deleted: the reasoning stays readable (AGENTS §0)." See D-5 and D-6 for tables and AGENTS.md.
 - **No device.** "No device is needed for D1. It is one PR." Nothing here claims what the operator sees on a phone. Whether a real match's record shows the cadence is D3's row 8.
 - **Worktree.** A new branch `feat/s1-plan-d1-contracts` in a new worktree off `main` once `docs/s1-plan-d-spec` (the spec and this plan) has merged, else off `docs/s1-plan-d-spec`. Call it `$WT`. Put `cd "$WT" &&` in every command (the shell's cwd resets between calls). Run `pnpm install --frozen-lockfile` once, in Task 1. Never a bare `git stash`. To back up a file for a mutation, `cp` it to `"$TMPDIR"` and restore it from there, never with `git checkout`.
@@ -63,18 +63,19 @@ Each is the plan's, not the owner's. The orchestrator puts them to the owner wit
 - **D-8. `Configs.kt:78` is aligned too.** §3.5 names `:35` and `:66`; the same fake's `startUrl` at `:78` is `/api/capture/codes/…/start`, which the web does not serve either. Other Kotlin test literals with pre-D3 paths (`AttemptPollersTest.kt:62-63`, `IntentMappingTest.kt`, `PairMappingTest.kt`, `PairingValuesTest.kt:30-32`, `SessionConfigTest.kt:94`, `SessionRecordTest.kt:245`, `ScriptAnswersTest.kt:45`, `EngineTest.kt:268`, `CodeVectorsTest.kt:62` on purpose, and `wire/host-vectors.json:7,23`, `scrub/vectors.json:238`) are outside §3.5 and are left; the summary lists them for a later tidy.
 - **D-9. The round line is read through `Bodies.waiting`.** The web's `valid-live-stage.json` names `rtmps://live.stg.seazn.club:443/live/`, the ingest host W26 ruled out, so `Bodies.code` reads that fixture as `ForeignIngest`. Its waiting fields, the round line among them, are what §3.2 asks about, and `Bodies.waiting` is the reader of those. The summary passes the fixture's host to `mobile-s1-web`.
 - **D-10. `VENDORED.json` names the commit actually vendored** (Global Constraints, _The web commit_), and the pin test's `WEB_COMMIT` is that commit, copied by hand.
-- **D-11. A finding beyond the spec: the shared record cannot hold a three-hour broadcast as it is.** A beat held on air is already written on every answer (`SessionMachine.kt:618-623`: "a held beat is written every time, as plan B wrote them"; `ProjectionPairedTest` "held beats are each written"), so a three-hour broadcast at 10 s writes about 1,080 `heartbeat` lines on its own. The 1,000-line ring then drops the start of the match before the end, and with it the `beat-interval` line that shows 5 s while starting (D3 row 8). Task 6 files it as N25 with the options for the owner; D1 does not change the held-beat line, which no ruling covers. For D3: Share the record within about two and a half hours of going live, or read the start from an earlier Share.
+- **D-11. Ruled (owner, 2026-10-09, N25: "Count beats, don't list them"): a held beat is counted, not listed.** Before D1 a beat held on air was written on every answer (`SessionMachine.kt:627-639`: "a held beat is written every time, as plan B wrote them"; `ProjectionPairedTest` "held beats are each written"), about 1,080 `heartbeat` lines over a three-hour broadcast at 10 s, enough on its own to push the start of the match out of Share's 1,000-line ring. Task 4 applies the paired rule to held beats: a `heartbeat` line only when the answer changes (result, status, word or claim), and the minute's `beats` line counts every beat. Three hours of held beats then write at most 200 beat lines (Task 4, Step 6), and Share holds the whole match. Task 6 files N25 as decided and fixed by Task 4. This is the owner's ruling, not one the owner may overrule here.
 
 ## Review Focus
 
 Most likely first. Each line names the test that pins it.
 
-1. **A refused vendoring must leave `contracts/` exactly as it was.** A dirty `docs/contracts`, a web `README.md` that would overwrite ours, a folder with no `docs/contracts`, a folder that is not a git checkout: each is refused before anything is deleted. Task 1, Step 2 (`refuses %s, and leaves contracts/ exactly as it was`; `refuses a folder with no docs/contracts …`).
-2. **A minute's count must be written exactly once, whatever ends the pairing.** Unpair, an operator Stop with its final beat, a re-pair, and a second Unpair that finds nothing. Task 4, Step 1 (`the open minute is written once when the operator unpairs, and never again`; `a Stop from air counts the final beat and writes the minute`; `a re-pair writes the old pairing's minute and starts its own log`).
-3. **Finder's `.DS_Store` on the owner's Mac must not red the pin test.** `.gitignore` ignores it, so CI never sees it and a local run would. The one shared walk (`listFiles`) leaves it out, and the pin test uses that walk. Task 1, Step 2 (`lists files without Finder's .DS_Store …`).
-4. **The interval line must not fire on tick jitter, and three hours must stay small.** Task 4, Step 1 (`three hours paired at 10 s are one interval line and one line a minute, counting every beat sent`).
-5. **The web removes or renames a fixture.** The re-vendor deletes it from `contracts/` and from `VENDORED.json` and reports it, so the pin never holds a ghost. Task 1, Step 2 (`follows the web …`).
-6. **The web checkout is in daily use.** Untracked files elsewhere must not block a vendoring, and the run must not write even git's index there. Task 1, Step 2 (`vendors with untracked files elsewhere …`; `never writes to the web checkout …`).
+1. **A held beat must be counted, never listed (N25), and a change of answer must still get its line.** Task 4, Step 6 (`held beats are written only when the answer changes, as paired ones are (N25)`; `three hours of held beats at 10 s write at most 200 beat lines (N25)`).
+2. **A refused vendoring must leave `contracts/` exactly as it was.** A dirty `docs/contracts`, a web `README.md` that would overwrite ours, a folder with no `docs/contracts`, a folder that is not a git checkout: each is refused before anything is deleted. Task 1, Step 2 (`refuses %s, and leaves contracts/ exactly as it was`; `refuses a folder with no docs/contracts …`).
+3. **A minute's count must be written exactly once, whatever ends the pairing.** Unpair, an operator Stop with its final beat, a re-pair, and a second Unpair that finds nothing. Task 4, Step 1 (`the open minute is written once when the operator unpairs, and never again`; `a Stop from air counts the final beat and writes the minute`; `a re-pair writes the old pairing's minute and starts its own log`).
+4. **Finder's `.DS_Store` on the owner's Mac must not red the pin test.** `.gitignore` ignores it, so CI never sees it and a local run would. The one shared walk (`listFiles`) leaves it out, and the pin test uses that walk. Task 1, Step 2 (`lists files without Finder's .DS_Store …`).
+5. **The interval line must not fire on tick jitter, and three hours must stay small.** Task 4, Step 1 (`three hours paired at 10 s are one interval line and one line a minute, counting every beat sent`).
+6. **The web removes or renames a fixture.** The re-vendor deletes it from `contracts/` and from `VENDORED.json` and reports it, so the pin never holds a ghost. Task 1, Step 2 (`follows the web …`).
+7. **The web checkout is in daily use.** Untracked files elsewhere must not block a vendoring, and the run must not write even git's index there. Task 1, Step 2 (`vendors with untracked files elsewhere …`; `never writes to the web checkout …`).
 
 ---
 
@@ -105,7 +106,7 @@ Most likely first. Each line names the test that pins it.
 | `docs/superpowers/plans/2026-10-01-s1-plan-c-platform-and-bridge.md`                                                | 6    | Modify: revision notes                                          |
 | `contracts/README.md`, `AGENTS.md`, `_FINDINGS.md`, `.github/workflows/check.yml`                                   | 6    | Modify                                                          |
 
-Task 4 may also touch existing core tests that assert an exact command list containing a beat send (its Step 6 says how).
+Task 4 also flips `ProjectionPairedTest`'s held-beat test (N25), and may touch existing core tests that assert an exact command list containing a beat send (its Step 8 says how).
 
 ---
 
@@ -1205,12 +1206,13 @@ EOF
 
 - Create: `modules/capture-engine/android/core/src/main/kotlin/com/seazn/capture/engine/core/BeatLog.kt`
 - Modify: `modules/capture-engine/android/core/src/main/kotlin/com/seazn/capture/engine/core/Phase.kt:72-73` (`PairingState`, after `lastBeatLine`)
-- Modify: `modules/capture-engine/android/core/src/main/kotlin/com/seazn/capture/engine/core/SessionMachine.kt`: `reduce` (`:37-44`), `end` (`:137-155`), `Heartbeats.tick` (`:591-608`), `Heartbeats.answered` (`:610-651`)
+- Modify: `modules/capture-engine/android/core/src/main/kotlin/com/seazn/capture/engine/core/SessionMachine.kt`: `reduce` (`:37-44`), `end` (`:137-155`), `Heartbeats.tick` (`:591-608`), `Heartbeats.answered` (`:610-651`; the held-beat line at `:627-639`)
 - Create: `modules/capture-engine/android/core/src/test/kotlin/com/seazn/capture/engine/core/BeatLogTest.kt`
 - Modify: `modules/capture-engine/src/scrub/allow-list.json` (`kinds`, `scalars`)
 - Modify: `modules/capture-engine/android/core/src/test/kotlin/com/seazn/capture/engine/core/ScrubParityTest.kt:78,85`
 - Modify: `src/services/scrubParity.test.ts:64-68`
-- Possibly modify: core tests that assert an exact command list containing a beat send (Step 6)
+- Modify: `modules/capture-engine/android/core/src/test/kotlin/com/seazn/capture/engine/core/ProjectionPairedTest.kt:153-158` (the held-beat test, flipped first: N25)
+- Possibly modify: core tests that assert an exact command list containing a beat send, or one line per held beat (Step 8)
 
 **Interfaces:**
 
@@ -1549,14 +1551,90 @@ cd "$WT/modules/capture-engine/android/core" && rm -rf build/test-results/test &
 
 Then the Kotlin count. Expected: `EXIT=0`, `{ tests: 12, failures: 0, errors: 0 }`.
 
-- [ ] **Step 6: Run the whole core suite, and reconcile tests that list every command**
+- [ ] **Step 6: A held beat is counted, not listed (N25): flip the tests first**
+
+The owner's ruling (2026-10-09, N25): "Count beats, don't list them." In `ProjectionPairedTest.kt`, replace the test
+
+```kotlin
+  @Test fun `held beats are each written, as plan B did`() {
+    val rig = MachineRig().live()
+    val before = rig.records("heartbeat").size
+    repeat(3) { rig.hear("live", sid = "sess_42") }
+    assertEquals(before + 3, rig.records("heartbeat").size)
+  }
+```
+
+with
+
+```kotlin
+  @Test fun `held beats are written only when the answer changes, as paired ones are (N25)`() {
+    val rig = MachineRig().live()
+    rig.hear("live", sid = "sess_42")
+    val before = rig.records("heartbeat").size
+    repeat(3) { rig.hear("live", sid = "sess_42") }
+    assertEquals(before, rig.records("heartbeat").size, "the same answer three times: counted, not listed")
+    rig.hear(null, status = 503)
+    assertEquals(before + 1, rig.records("heartbeat").size, "a change of answer still gets its line")
+  }
+```
+
+and add to `BeatLogTest.kt`:
+
+```kotlin
+  @Test
+  fun `three hours of held beats at 10 s write at most 200 beat lines (N25)`() {
+    val rig = MachineRig().armed()
+    rig.beats = { HeartbeatResponse.Answered(200, BeatReply("go-live", "sess_42", "organiser", null, Configs.waiting(10))) }
+    rig.advance(3 * 60 * 60 * 1_000L)
+    // Armed holds sess_42 throughout, so every beat is a held one (held = heldSid != null), with no uplink to fake.
+    assertTrue(rig.phase is Phase.Armed, rig.phase.name)
+    // Worked by hand: 180 minutes, each closed by the next minute's first beat (180 `beats` lines); one interval line
+    // (10 s throughout, held or not); and a `heartbeat` line only when the answer changes (the go-live that answered
+    // the claim, then the first answer without a claim): 183, under the owner's bar of 200. A line per held beat
+    // would add about 1,080.
+    assertEquals(180, rig.records("beats").size)
+    val lines = listOf("heartbeat", "beat-interval", "beats").sumOf { rig.records(it).size }
+    assertTrue(lines <= 200, "$lines beat lines")
+  }
+```
+
+Run both and watch them fail on the old rule:
+
+```bash
+cd "$WT/modules/capture-engine/android/core" && rm -rf build/test-results/test && ./gradlew test --console=plain --tests 'com.seazn.capture.engine.core.ProjectionPairedTest' --tests 'com.seazn.capture.engine.core.BeatLogTest' > "$TMPDIR/g.log" 2>&1; echo "EXIT=$?"
+```
+
+Expected: `EXIT=1`; exactly two failures, `held beats are written only when the answer changes …` (the same answer wrote three lines) and `three hours of held beats …` (about 1,260 lines). If `rig.phase is Phase.Armed` fails instead, the repeated go-live re-armed: answer `BeatReply("live", "sess_42", null, null, Configs.waiting(10))` instead, and say so in the report.
+
+- [ ] **Step 7: Write a held beat's line only when it changes**
+
+In `Heartbeats.answered`, replace
+
+```kotlin
+    // The beat line. Its claim is the one the answered beat carried, before this answer cleared it
+    // (PV11). Paired, it is written only when it changes, message aside, so hours of waiting cost a
+    // few lines; a held beat is written every time, as plan B wrote them.
+```
+
+with
+
+```kotlin
+    // The beat line. Its claim is the one the answered beat carried, before this answer cleared it
+    // (PV11). Paired or held, it is written only when it changes, message aside (N25, owner
+    // 2026-10-09: count beats, don't list them): the minute's `beats` line counts every beat, so
+    // hours of waiting or of air cost a few lines.
+```
+
+and `val changed = phase.heldSid != null || compared != pairing.lastBeatLine` with `val changed = compared != pairing.lastBeatLine`. Rerun Step 6's command, then the Kotlin count. Expected: `EXIT=0`, `failures: 0, errors: 0`; `BeatLogTest` now holds 13 tests.
+
+- [ ] **Step 8: Run the whole core suite, and reconcile tests that list every command**
 
 ```bash
 cd "$WT/modules/capture-engine/android/core" && rm -rf build/test-results/test && ./gradlew test --console=plain > "$TMPDIR/g.log" 2>&1; echo "EXIT=$?"
 cd "$WT/modules/capture-engine/android/core" && grep -l '<failure' build/test-results/test/*.xml
 ```
 
-A test may red only because it asserts an exact command list (or record list) that now holds a `beat-interval` or `beats` line beside a beat send or an end. For each such test, add the expected line to its expected list, written out by hand from D-4 (never by filtering the new kinds out, and never by calling `BeatLog`), and name the test in the task report. Any other red is a defect in Steps 3 and 4: fix the code, not the test. Rerun until `EXIT=0`, then the Kotlin count; record `tests`.
+A test may red only because it asserts an exact command list (or record list) that now holds a `beat-interval` or `beats` line beside a beat send or an end. For each such test, add the expected line to its expected list, written out by hand from D-4 (never by filtering the new kinds out, and never by calling `BeatLog`), and name the test in the task report. A test that pinned one line per held beat is brought to the new rule the way Step 6 brought `ProjectionPairedTest`'s, and named in the report (`SessionMachineServerTest` `a heartbeat answer that comes twice is recorded once` is expected to stay green: its first `live` answer differs from the go-live's by the claim). Any other red is a defect in Steps 3, 4 and 7: fix the code, not the test. Rerun until `EXIT=0`, then the Kotlin count; record `tests`.
 
 Also check the TypeScript side reads nothing that the new lines could break:
 
@@ -1566,7 +1644,7 @@ cd "$WT" && git grep -n '"kind":"heartbeat"\|kind === .heartbeat.' -- src module
 
 Expected: no reader that counts lines by position. Report what it prints.
 
-- [ ] **Step 7: The allow-list names the new kinds and keys**
+- [ ] **Step 9: The allow-list names the new kinds and keys**
 
 First the counts, so they red. `ScrubParityTest.kt:78` `assertEquals(85, kinds.size)` → `87`; `:85` `assertEquals(32, scalars.size)` → `37`. `src/services/scrubParity.test.ts`: the test title `"passes each of the record's 85 kinds as itself"` → `87`, `expect(kinds).toHaveLength(85);` → `87`.
 
@@ -1602,7 +1680,7 @@ cd "$WT" && pnpm vitest run --project domain src/services/scrubParity.test.ts sr
 
 Expected: `kinds 87 true`, `scalars 37 true`; both `EXIT=0`.
 
-- [ ] **Step 8: Mutate each guard once**
+- [ ] **Step 10: Mutate each guard once**
 
 Back up each file to `"$TMPDIR"`, mutate, run `BeatLogTest`, record the red, restore from the backup, `diff` to confirm:
 
@@ -1610,8 +1688,9 @@ Back up each file to `"$TMPDIR"`, mutate, run `BeatLogTest`, record the red, res
 2. `SessionMachine.reduce`: `= BeatLogs.closed(phase, reduced(phase, input, now))` → `= reduced(phase, input, now)` → expected red: `the open minute is written once …`, `a re-pair writes …`, `a Stop from air …`, `three hours paired …`.
 3. `Heartbeats.tick`: `val counted = if (timedOut) … else pairing.beatLog` → `val counted = pairing.beatLog` → expected red: `a beat that never comes back counts as failed …`.
 4. `BeatLogs.closed`: `val last = step.phase.pairing?.beatLog?.takeIf { it.firstBeatId == first } ?: log` → `val last = log` → expected red: `a Stop from air counts the final beat …` (the final beat is not in the sum).
+5. `Heartbeats.answered`: restore the line per held beat, `val changed = compared != pairing.lastBeatLine` → `val changed = phase.heldSid != null || compared != pairing.lastBeatLine` → expected red: `three hours of held beats at 10 s write at most 200 beat lines (N25)` and `ProjectionPairedTest` `held beats are written only when the answer changes …`.
 
-- [ ] **Step 9: Typecheck, lint, format, commit**
+- [ ] **Step 11: Typecheck, lint, format, commit**
 
 ```bash
 cd "$WT" && pnpm typecheck > "$TMPDIR/tc.log" 2>&1; echo "EXIT=$?"
@@ -1620,7 +1699,7 @@ cd "$WT" && pnpm format:check > "$TMPDIR/fmt.log" 2>&1; echo "EXIT=$?"
 cd "$WT" && git add modules/capture-engine/android/core/src/main/kotlin/com/seazn/capture/engine/core/BeatLog.kt modules/capture-engine/android/core/src/main/kotlin/com/seazn/capture/engine/core/Phase.kt modules/capture-engine/android/core/src/main/kotlin/com/seazn/capture/engine/core/SessionMachine.kt modules/capture-engine/android/core/src/test/kotlin/com/seazn/capture/engine/core/BeatLogTest.kt modules/capture-engine/android/core/src/test/kotlin/com/seazn/capture/engine/core/ScrubParityTest.kt modules/capture-engine/src/scrub/allow-list.json src/services/scrubParity.test.ts
 ```
 
-Add, by path, every core test Step 6 changed, then:
+Add, by path, `ProjectionPairedTest.kt` and every core test Step 8 changed, then:
 
 ```bash
 cd "$WT" && git commit -q -F - <<'EOF'
@@ -1633,6 +1712,10 @@ are summarised: a beat-interval line when the cadence changes, with the
 gap since the beat before, and a beats line per minute with how many
 went, failed, and the last answer word. The open minute is written once
 when the pairing stops beating; the A8 final beat is counted.
+N25 (owner, 2026-10-09: count beats, don't list them): a beat held on
+air writes a heartbeat line only when its answer changes, as a paired
+one does, so 3 h of air write at most 200 beat lines and Share's
+1,000-line ring holds the whole match.
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
 EOF
@@ -2035,7 +2118,7 @@ with
 # `pnpm check` (test/contractPins.test.ts); nothing fetches the web repo (R7).
 ```
 
-- [ ] **Step 8: `_FINDINGS.md`, N24 (§3.7) and N25 (D-11)**
+- [ ] **Step 8: `_FINDINGS.md`, N24 (§3.7) and N25 (D-11, decided)**
 
 Re-check the absence first:
 
@@ -2073,31 +2156,22 @@ readiness on a locked phone, and the foreground notification's text (AGENTS §9)
 
 ---
 
-### N25 — The shared record cannot hold a three-hour broadcast
+### N25 — The shared record could not hold a three-hour broadcast
 
-**Status:** open · owner's call · found by plan D1 (D-11) while sizing the beat record (plan D spec §3.4)
+**Status:** decided · fixed by plan D1 Task 4 · owner, 2026-10-09: "Count beats, don't list them"
 **Where:** `src/services/sessionRecord.ts:26` (`RECORD_CAPACITY = 1000`) · `src/hooks/useDiagnostics.ts:47-60` (Share
-record sends the ring) · `SessionMachine.kt`, `Heartbeats.answered` (a held beat is written every time) ·
-`modules/capture-engine/android/src/main/java/com/seazn/capture/engine/RecordFile.kt:24,34` (the file: 5 MiB and one
-rotation, never shared)
+record sends the ring) · `SessionMachine.kt`, `Heartbeats.answered` (the held-beat line) · plan D spec §3.4
 
-Share record (D21) sends the JS ring, which keeps the last 1,000 lines of either side. A beat held on air is written
-on every answer, as plan B wrote them, and the held cadence is at most 10 s, so a three-hour broadcast writes about
-1,080 `heartbeat` lines on its own, before any other line. The ring therefore loses the start of a long match before
-it ends: the go-live, the first `beat-interval` lines (5 s while starting, D3 row 8), the first connect. The native
-file keeps all of it, but nothing shares it; it is reachable only with `adb run-as` on a debuggable build.
+Share record (D21) sends the JS ring, which keeps the last 1,000 lines of either side. Before D1 a beat held on air
+was written on every answer, as plan B wrote them, and the held cadence is at most 10 s, so a three-hour broadcast
+wrote about 1,080 `heartbeat` lines on its own. The ring would then lose the start of a long match before it ended:
+the go-live, the first `beat-interval` lines (5 s while starting, D3 row 8), the first connect. The native file
+(`RecordFile.kt`, 5 MiB and one rotation) keeps all of it, but nothing shares it.
 
-Plan D1 kept its own beat lines to about one a minute (spec §3.4's second form), about 180 lines in three hours. It
-did not change the held-beat line, which no ruling covers.
-
-**Open (the owner's call):**
-
-1. Share the native file instead of the ring, or as well as it.
-2. Raise `RECORD_CAPACITY`.
-3. Write a held beat's line only when it changes, as a paired one is, now that the `beats` line counts every beat.
-
-Until one lands, D3 Shares the record within about two and a half hours of going live, or reads the start from an
-earlier Share.
+**Ruling and fix:** a held beat is counted, not listed. Its `heartbeat` line is written only when the answer
+changes, as a paired one is, and the minute's `beats` line counts every beat (plan D1 Task 4). Three hours of held
+beats write at most 200 beat lines (`BeatLogTest`, `three hours of held beats at 10 s write at most 200 beat
+lines`), so Share's ring holds the whole match.
 
 ---
 ```
@@ -2129,8 +2203,8 @@ without the overlay (R1). The D2 path marker in plan C is closed.
 contracts/README.md says what is vendored and how; AGENTS §3 and §4 name
 the pin, and names the two words a schema allows that a route never
 sends (410, match_finished). N24 records that plan C's device-gate
-results were never filed; N25 that the shared record cannot hold a
-three-hour broadcast.
+results were never filed; N25 records the owner's ruling that a held
+beat is counted, not listed, fixed by the previous commit.
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
 EOF
@@ -2187,12 +2261,12 @@ Expected: `8afdd8b42fcb6ba115ac18c7cc3d8461f7ea07ac`; `WEB UNCHANGED`; a clean s
 
 Write it as the final report to the orchestrator, ready to be the pull request's body. Under 40 lines, in this order:
 
-1. **What D1 did**, one line per spec point: §3.1 (vendored at the commit `VENDORED.json` names, 144 files, the two-sided pin, `pnpm contracts:vendor`), §3.2 (QR vectors and fixtures, the round line in TS and Kotlin, the "QF" rows), §3.3 (the D2 marker closed), §3.4 (every beat sent: a `beat-interval` line per cadence change and a `beats` line per minute, and why not a line per beat; `match_finished` and 410 named in the README), §3.5 (the test paths), §3.6 (22 notes across three documents, the README, AGENTS §3 and §4), §3.7 (N24), and N25.
+1. **What D1 did**, one line per spec point: §3.1 (vendored at the commit `VENDORED.json` names, 144 files, the two-sided pin, `pnpm contracts:vendor`), §3.2 (QR vectors and fixtures, the round line in TS and Kotlin, the "QF" rows), §3.3 (the D2 marker closed), §3.4 (every beat sent: a `beat-interval` line per cadence change and a `beats` line per minute, and why not a line per beat; `match_finished` and 410 named in the README), §3.5 (the test paths), §3.6 (22 notes across three documents, the README, AGENTS §3 and §4), §3.7 (N24), and N25 (a held beat counted, not listed: the owner's ruling, applied in Task 4).
 2. **The counts**: `pnpm check` exit code; vitest files and tests, base against branch; Kotlin tests, base against branch; the Prettier results.
-3. **The decisions the owner may overrule**, D-1 to D-11, one line each, D-3, D-11 and D-2 first.
-4. **For D3**: row 8 reads the cadence from the `beat-interval` and `beats` lines, and Shares within about two and a half hours of going live (N25); the web fixture `valid-live-stage.json` still names `rtmps://live.stg.seazn.club` (D-9), for `mobile-s1-web`.
+3. **The decisions the owner may overrule**, D-1 to D-10, one line each, D-3 and D-2 first; then D-11 as the owner's ruling (N25), applied.
+4. **For D3**: row 8 reads the cadence from the `beat-interval` and `beats` lines, and Share holds the whole match (N25); the web fixture `valid-live-stage.json` still names `rtmps://live.stg.seazn.club` (D-9), for `mobile-s1-web`.
 5. **Device-only claims**: none in D1. That a real match's shared record shows the cadence is D3's (row 8).
-6. **Left for later**: the pre-D3 path literals in other Kotlin tests and vectors (D-8); N25's choice; the ladder finding is D2's (spec §3.7, §4.2).
+6. **Left for later**: the pre-D3 path literals in other Kotlin tests and vectors (D-8); the ladder finding is D2's (spec §3.7, §4.2).
 
 ---
 
@@ -2211,6 +2285,7 @@ Write it as the final report to the orchestrator, ready to be the pull request's
 | §3.3 the note at C:11161                                                                           | 6, Step 4.3                                   |
 | §3.4 every beat sent, in every build: send time, interval since the last, answer word              | 4 (D-3, D-4: the second form)                 |
 | §3.4 the size check, and the second form when it does not fit                                      | D-3; 4, Step 1 (three hours: 181 lines and 1) |
+| §3.4 N25: a held beat counted, not listed; 3 h of air at most 200 beat lines                       | 4, Steps 6-7, 10 (D-11)                       |
 | §3.4 `match_finished` needs no phone word; the README notes it beside the 410                      | 6, Step 5                                     |
 | §3.5 `Configs.kt` paths                                                                            | 5 (D-8)                                       |
 | §3.6 every row of the table                                                                        | 6, Steps 2-6 (D-5, D-6, D-7)                  |

@@ -148,9 +148,13 @@ history keeps at most one row per 60 s, purged after 24 h. The phone's record
 writes a waiting beat only when its answer changes. So D3's row 8 has no
 evidence source today. D1 makes the record write one line per beat **sent**,
 in every build (_rec_): the send time, the interval since the last send, and
-the answer word. A three-hour match at 10 s is about 1,100 lines. D1 checks
-that against the record's size limit and, if it does not fit, writes one
-line per change of interval plus a count per minute instead.
+the answer word. A three-hour match at 10 s is about 1,100 lines, and the
+record that Share sends is a 1,000-line ring. So D1 writes one line per change
+of interval plus a `beats` line per minute (sent, failed, last answer word).
+**N25** (owner, 2026-10-09: "count beats, don't list them"): a beat held on
+air no longer gets a line of its own either. The per-minute line carries it,
+and a change of answer still gets its own line. A three-hour match then
+writes about 200 beat lines, and Share's ring holds the whole match.
 
 `match_finished` needs no phone word. It is in `capture-start.v1.json`'s
 enum, but the web sends it only from the scoring-link route
