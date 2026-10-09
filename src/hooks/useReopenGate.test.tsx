@@ -451,8 +451,8 @@ describe('useReopenGate: the cold-start re-pair', () => {
   });
 });
 
-/** The switch saved off, as Settings writes it (v2, A4). */
-const SWITCH_OFF = '{"v":2,"overlay":true,"side":"right","automatic":false}';
+/** The switch saved off, as Settings writes it (v3, A4; D2 §4.1). */
+const SWITCH_OFF = '{"v":3,"side":"right","automatic":false}';
 
 function fail(): never {
   throw new Error('the fixture has a stream part');

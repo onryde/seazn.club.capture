@@ -51,7 +51,7 @@ export type Ports = {
   readonly probeFlight: ProbeFlight;
   /** The "Stream ended" card the viewfinder hands to Home (spec §5). In memory only. */
   readonly endedNotice: EndedNotice;
-  /** Score preview on or off, controls left or right (spec §4 Settings, D23). */
+  /** Controls left or right, and automatic start (spec §4 Settings, D23, A4). */
   readonly streamSettings: StreamSettingsStore;
   readonly motion: MotionPort;
   readonly orientationLock: OrientationLockPort;

@@ -70,8 +70,8 @@ const SUB_STATES: Readonly<Record<string, (lang: Lang) => Promise<void>>> = {
     view.rerender(<SettingsScreen />);
     const refusing: Partial<KeyValueStore> = { set: () => Promise.reject(new Error('locked')) };
     Object.assign(view.kv, refusing);
-    // Two switches since Task 30: the score preview's is the one pressed.
-    fireEvent.click(screen.getByRole('switch', { name: shown(lang, 'settings.overlay.label') }));
+    // The one switch since D2 (§4.1): the automatic start's.
+    fireEvent.click(screen.getByRole('switch', { name: shown(lang, 'settings.automatic.label') }));
     expect(await screen.findByText(shown(lang, 'settings.saveFailed'))).toBeTruthy();
   },
   'a share refused': async (lang) => {
@@ -117,10 +117,7 @@ describe('the paired and starting lines read in every language', () => {
   it.each(['es', 'fr', 'nl'] as const)(
     '%s says its waiting line with the destination cut',
     async (lang) => {
-      const view = await renderViewfinder(
-        { deviceLanguages: [lang] },
-        { overlay: false, quiet: true },
-      );
+      const view = await renderViewfinder({ deviceLanguages: [lang] }, { quiet: true });
       act(() => view.engine.setPairing({ destinationName: LONG }));
       act(() => view.engine.scene('paired-ready'));
       const said = DICTIONARIES[lang]['stream.status.waitingGoLive']?.replace('{destination}', CUT);
@@ -176,13 +173,13 @@ describe('no screen in any state shows a raw key (AGENTS §10, question 4)', () 
     const glued = document.createElement('div');
     glued.innerHTML = '<span>Diagnostics</span><span>stream.tally.live</span>';
     const label = document.createElement('div');
-    label.setAttribute('aria-label', 'settings.overlay.label');
+    label.setAttribute('aria-label', 'settings.automatic.label');
     document.body.append(glued, label);
     onTestFinished(() => {
       glued.remove();
       label.remove();
     });
     expect(document.body.textContent).toContain('Diagnosticsstream.tally.live');
-    expect(rawKeys()).toEqual(['stream.tally.live', 'settings.overlay.label']);
+    expect(rawKeys()).toEqual(['stream.tally.live', 'settings.automatic.label']);
   });
 });

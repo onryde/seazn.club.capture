@@ -41,35 +41,30 @@ function heldWrites() {
 }
 
 describe('stream settings (D23)', () => {
-  it('starts with the overlay on, controls on the right and the automatic start on', async () => {
+  it('starts with controls on the right and the automatic start on', async () => {
     const { store, events } = build();
     await store.load();
-    expect(store.getSnapshot()).toEqual({ overlay: true, side: 'right', automatic: true });
+    expect(store.getSnapshot()).toEqual({ side: 'right', automatic: true });
     // Nothing saved is the first launch, not an unreadable record.
     expect(events()).toEqual([]);
   });
 
   it('reads what was saved', async () => {
     const kv = createMemoryKeyValueStore({
-      [SETTINGS_KEY]: '{"v":2,"overlay":false,"side":"left","automatic":false}',
+      [SETTINGS_KEY]: '{"v":3,"side":"left","automatic":false}',
     });
     const { store } = build(kv);
     await store.load();
-    expect(store.getSnapshot()).toEqual({ overlay: false, side: 'left', automatic: false });
+    expect(store.getSnapshot()).toEqual({ side: 'left', automatic: false });
   });
 
-  // A4's upgrade: an operator's overlay and side survive, and the automatic start reads on.
+  // A4's and D2's upgrades: an operator's side and automatic survive, the automatic start reads on from v1, and the
+  // score preview's overlay is dropped from both (D2 §4.1).
   it.each([
-    ['{"v":1,"overlay":false,"side":"right"}', { overlay: false, side: 'right', automatic: true }],
-    ['{"v":1,"overlay":true,"side":"left"}', { overlay: true, side: 'left', automatic: true }],
-    [
-      '{"v":2,"overlay":true,"side":"left","automatic":false}',
-      { overlay: true, side: 'left', automatic: false },
-    ],
-    [
-      '{"v":2,"overlay":false,"side":"right","automatic":true}',
-      { overlay: false, side: 'right', automatic: true },
-    ],
+    ['{"v":1,"overlay":false,"side":"right"}', { side: 'right', automatic: true }],
+    ['{"v":1,"overlay":true,"side":"left"}', { side: 'left', automatic: true }],
+    ['{"v":2,"overlay":true,"side":"left","automatic":false}', { side: 'left', automatic: false }],
+    ['{"v":2,"overlay":false,"side":"right","automatic":true}', { side: 'right', automatic: true }],
   ])('reads %s as saved, not as the defaults', async (text, expected) => {
     const { store, events } = build(createMemoryKeyValueStore({ [SETTINGS_KEY]: text }));
     await store.load();
@@ -98,7 +93,9 @@ describe('stream settings (D23)', () => {
     ['{"v":1,"overlay":false}'],
     ['{"v":2,"overlay":false,"side":"left"}'],
     ['{"v":2,"overlay":false,"side":"left","automatic":"on"}'],
-    ['{"v":3,"overlay":false,"side":"left","automatic":true}'],
+    ['{"v":3,"side":"left","automatic":"on"}'],
+    ['{"v":3,"side":"up","automatic":true}'],
+    ['{"v":3,"automatic":true}'],
   ])('reads %s as unreadable, never as a half setting', async (text) => {
     const { store, events } = build(createMemoryKeyValueStore({ [SETTINGS_KEY]: text }));
     await store.load();
@@ -128,9 +125,7 @@ describe('stream settings (D23)', () => {
     expect(store.getSnapshot().side).toBe('left');
     expect(listener).toHaveBeenCalledTimes(1);
     expect(await saved).toBe('saved');
-    expect(kv.entries.get(SETTINGS_KEY)).toBe(
-      '{\"v\":2,"overlay":true,"side":"left",\"automatic\":true}',
-    );
+    expect(kv.entries.get(SETTINGS_KEY)).toBe('{"v":3,"side":"left","automatic":true}');
   });
 
   it('keeps the same snapshot until something changes (useSyncExternalStore)', async () => {
@@ -142,7 +137,7 @@ describe('stream settings (D23)', () => {
       throw new Error('told after unsubscribing');
     });
     unsubscribe();
-    await store.set({ overlay: false });
+    await store.set({ automatic: false });
     expect(store.getSnapshot()).not.toBe(before);
   });
 
@@ -154,8 +149,8 @@ describe('stream settings (D23)', () => {
     };
     const { store, events } = build(refusing);
     await store.load();
-    expect(await store.set({ overlay: false })).toBe('refused');
-    expect(store.getSnapshot().overlay).toBe(false);
+    expect(await store.set({ automatic: false })).toBe('refused');
+    expect(store.getSnapshot().automatic).toBe(false);
     expect(events()).toContain('settings.write-refused');
   });
 
@@ -163,14 +158,12 @@ describe('stream settings (D23)', () => {
     const kv = createMemoryKeyValueStore();
     const first = build(kv).store;
     await first.load();
-    await first.set({ overlay: false, side: 'left' });
+    await first.set({ automatic: false, side: 'left' });
     // A literal, not SETTINGS_KEY: renaming the key would reset every operator's settings (m2).
-    expect(kv.entries.get('settings.stream')).toBe(
-      '{"v":2,"overlay":false,"side":"left","automatic":true}',
-    );
+    expect(kv.entries.get('settings.stream')).toBe('{"v":3,"side":"left","automatic":false}');
     const { store: second, events } = build(kv);
     await second.load();
-    expect(second.getSnapshot()).toEqual({ overlay: false, side: 'left', automatic: true });
+    expect(second.getSnapshot()).toEqual({ side: 'left', automatic: false });
     expect(events()).toEqual([]);
   });
 
@@ -213,7 +206,7 @@ describe('a change before the saved settings are read', () => {
     expect(await saving).toBe('saved');
   });
 
-  it('keeps the saved field the operator did not touch (score preview off stays off)', async () => {
+  it('keeps the saved field the operator did not touch (automatic off stays off)', async () => {
     const { kv, set, slow, answer } = slowRead();
     const { store, events } = build(slow);
     const loading = store.load();
@@ -222,13 +215,11 @@ describe('a change before the saved settings are read', () => {
     await flush();
     // Nothing is written while the saved record is still unknown.
     expect(set).not.toHaveBeenCalled();
-    answer('{"v":1,"overlay":false,"side":"left"}');
+    answer('{"v":2,"overlay":true,"side":"left","automatic":false}');
     await loading;
-    expect(store.getSnapshot()).toEqual({ overlay: false, side: 'right', automatic: true });
+    expect(store.getSnapshot()).toEqual({ side: 'right', automatic: false });
     expect(await saving).toBe('saved');
-    expect(kv.entries.get(SETTINGS_KEY)).toBe(
-      '{\"v\":2,"overlay":false,"side":"right",\"automatic\":true}',
-    );
+    expect(kv.entries.get(SETTINGS_KEY)).toBe('{"v":3,"side":"right","automatic":false}');
     expect(events()).toEqual([]);
   });
 
@@ -236,30 +227,26 @@ describe('a change before the saved settings are read', () => {
     const { kv, slow, answer } = slowRead();
     const { store } = build(slow);
     const loading = store.load();
-    const first = store.set({ overlay: false });
+    const first = store.set({ automatic: false });
     const second = store.set({ side: 'left' });
     answer('{"v":1,"overlay":true,"side":"right"}');
     await loading;
-    expect(store.getSnapshot()).toEqual({ overlay: false, side: 'left', automatic: true });
+    expect(store.getSnapshot()).toEqual({ side: 'left', automatic: false });
     expect([await first, await second]).toEqual(['saved', 'saved']);
-    expect(kv.entries.get(SETTINGS_KEY)).toBe(
-      '{\"v\":2,"overlay":false,"side":"left",\"automatic\":true}',
-    );
+    expect(kv.entries.get(SETTINGS_KEY)).toBe('{"v":3,"side":"left","automatic":false}');
   });
 
   it('reads the saved settings first when a change comes before any load', async () => {
     const kv = createMemoryKeyValueStore({
-      [SETTINGS_KEY]: '{"v":1,"overlay":false,"side":"left"}',
+      [SETTINGS_KEY]: '{"v":2,"overlay":false,"side":"left","automatic":false}',
     });
     const get = vi.spyOn(kv, 'get');
     const { store } = build(kv);
     expect(await store.set({ side: 'right' })).toBe('saved');
-    expect(kv.entries.get(SETTINGS_KEY)).toBe(
-      '{\"v\":2,"overlay":false,"side":"right",\"automatic\":true}',
-    );
+    expect(kv.entries.get(SETTINGS_KEY)).toBe('{"v":3,"side":"right","automatic":false}');
     await store.load();
     expect(get).toHaveBeenCalledTimes(1);
-    expect(store.getSnapshot()).toEqual({ overlay: false, side: 'right', automatic: true });
+    expect(store.getSnapshot()).toEqual({ side: 'right', automatic: false });
   });
 
   it('saves the change over the defaults after a refused read, and says the read failed', async () => {
@@ -271,10 +258,8 @@ describe('a change before the saved settings are read', () => {
     };
     const { store, events } = build(refusingRead);
     expect(await store.set({ side: 'left' })).toBe('saved');
-    expect(store.getSnapshot()).toEqual({ overlay: true, side: 'left', automatic: true });
-    expect(kv.entries.get(SETTINGS_KEY)).toBe(
-      '{\"v\":2,"overlay":true,"side":"left",\"automatic\":true}',
-    );
+    expect(store.getSnapshot()).toEqual({ side: 'left', automatic: true });
+    expect(kv.entries.get(SETTINGS_KEY)).toBe('{"v":3,"side":"left","automatic":true}');
     expect(events()).toEqual(['settings.read-refused']);
   });
 });
@@ -284,7 +269,7 @@ describe('two changes in quick succession (a second call)', () => {
     const { kv, held, pending } = heldWrites();
     const { store } = build(held);
     await store.load();
-    const first = store.set({ overlay: false });
+    const first = store.set({ automatic: false });
     // The second tap lands while the first write is already with the keystore.
     await flush();
     const second = store.set({ side: 'left' });
@@ -296,16 +281,14 @@ describe('two changes in quick succession (a second call)', () => {
     }
     expect(await first).toBe('saved');
     expect(await second).toBe('saved');
-    expect(kv.entries.get(SETTINGS_KEY)).toBe(
-      '{\"v\":2,"overlay":false,"side":"left",\"automatic\":true}',
-    );
+    expect(kv.entries.get(SETTINGS_KEY)).toBe('{"v":3,"side":"left","automatic":false}');
   });
 
   it('still saves the next change after a refused write', async () => {
     const { kv, held, pending } = heldWrites();
     const { store, events } = build(held);
     await store.load();
-    const first = store.set({ overlay: false });
+    const first = store.set({ automatic: false });
     const second = store.set({ side: 'left' });
     await flush();
     pending.shift()?.refuse();
@@ -314,9 +297,67 @@ describe('two changes in quick succession (a second call)', () => {
     await flush();
     expect(await first).toBe('refused');
     expect(await second).toBe('saved');
-    expect(kv.entries.get(SETTINGS_KEY)).toBe(
-      '{\"v\":2,"overlay":false,"side":"left",\"automatic\":true}',
-    );
+    expect(kv.entries.get(SETTINGS_KEY)).toBe('{"v":3,"side":"left","automatic":false}');
     expect(events()).toEqual(['settings.write-refused']);
+  });
+});
+
+describe('wire v3: the score preview is gone from the record (D2 §4.1)', () => {
+  const storeOver = (seed: Record<string, string>) => {
+    const kv = createMemoryKeyValueStore(seed);
+    const record = createRingRecord();
+    const store = createStreamSettingsStore(kv, createLogger({ record, now: () => 0 }));
+    return { kv, record, store };
+  };
+
+  it('reads a v2 record from before the upgrade, keeping its side and automatic and dropping its overlay', async () => {
+    const { store, record } = storeOver({
+      [SETTINGS_KEY]: '{"v":2,"overlay":false,"side":"left","automatic":false}',
+    });
+    await store.load();
+    expect(store.getSnapshot()).toEqual({ side: 'left', automatic: false });
+    expect(record.lines()).toEqual([]);
+  });
+
+  it('reads a v1 record: its side kept, automatic on by default, its overlay dropped', async () => {
+    const { store } = storeOver({ [SETTINGS_KEY]: '{"v":1,"overlay":true,"side":"left"}' });
+    await store.load();
+    expect(store.getSnapshot()).toEqual({ side: 'left', automatic: true });
+  });
+
+  it('writes v3 on the next save, with no overlay in it', async () => {
+    const { store, kv } = storeOver({
+      [SETTINGS_KEY]: '{"v":2,"overlay":true,"side":"right","automatic":true}',
+    });
+    await store.load();
+    await store.set({ side: 'left' });
+    expect(JSON.parse((await kv.get(SETTINGS_KEY)) ?? 'null')).toEqual({
+      v: 3,
+      side: 'left',
+      automatic: true,
+    });
+  });
+
+  it('reads its own v3 back, and a v3 that names an overlay is still read (an extra field is not a reason to refuse)', async () => {
+    for (const text of [
+      '{"v":3,"side":"left","automatic":false}',
+      '{"v":3,"overlay":true,"side":"left","automatic":false}',
+    ]) {
+      const { store } = storeOver({ [SETTINGS_KEY]: text });
+      await store.load();
+      expect(store.getSnapshot()).toEqual({ side: 'left', automatic: false });
+    }
+  });
+
+  it.each([
+    ['a v2 with no side', '{"v":2,"overlay":true,"automatic":true}'],
+    ['a v3 with no automatic', '{"v":3,"side":"left"}'],
+    ['a v4', '{"v":4,"side":"left","automatic":true}'],
+    ['not JSON', 'side=left'],
+  ])('falls back to the defaults for %s, and says so', async (_name, text) => {
+    const { store, record } = storeOver({ [SETTINGS_KEY]: text });
+    await store.load();
+    expect(store.getSnapshot()).toEqual({ side: 'right', automatic: true });
+    expect(record.lines().join('\n')).toContain('settings.unreadable');
   });
 });

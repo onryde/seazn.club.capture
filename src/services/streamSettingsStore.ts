@@ -7,13 +7,11 @@ export type ControlSide = 'left' | 'right';
  * start, if the club allows it. On by default; the Settings switch is Task 30's.
  */
 export type StreamSettings = {
-  readonly overlay: boolean;
   readonly side: ControlSide;
   readonly automatic: boolean;
 };
 
 export const DEFAULT_STREAM_SETTINGS: StreamSettings = {
-  overlay: true,
   side: 'right',
   automatic: true,
 };
@@ -99,8 +97,8 @@ function serialSaves(
   };
 }
 
-function encode({ overlay, side, automatic }: StreamSettings): string {
-  return JSON.stringify({ v: 2, overlay, side, automatic });
+function encode({ side, automatic }: StreamSettings): string {
+  return JSON.stringify({ v: 3, side, automatic });
 }
 
 async function read(kv: KeyValueStore, logger: Logger): Promise<StreamSettings> {
@@ -118,17 +116,21 @@ async function read(kv: KeyValueStore, logger: Logger): Promise<StreamSettings> 
 }
 
 /**
- * v2 whole, or v1's two values with `automatic` on (its default), so an
- * operator's overlay and side survive the upgrade. Anything else is unreadable.
+ * v3 whole. A v2 record has the score preview's `overlay` too, which is dropped (D2 §4.1), and a v1 record has no
+ * `automatic` (on, its default), so an operator's side and automatic survive the upgrade. Anything else is
+ * unreadable. A v1 or v2 record is read whatever its `overlay` says, but it must still have one, so a record that
+ * never was v1 or v2 is not taken for one.
  */
 function decode(text: string): StreamSettings | null {
   try {
     const data: unknown = JSON.parse(text);
     if (typeof data !== 'object' || data === null) return null;
     const { v, overlay, side, automatic } = data as Record<string, unknown>;
-    if (typeof overlay !== 'boolean' || (side !== 'left' && side !== 'right')) return null;
-    if (v === 1) return { overlay, side, automatic: DEFAULT_STREAM_SETTINGS.automatic };
-    if (v === 2 && typeof automatic === 'boolean') return { overlay, side, automatic };
+    if (side !== 'left' && side !== 'right') return null;
+    if (v === 3) return typeof automatic === 'boolean' ? { side, automatic } : null;
+    if (typeof overlay !== 'boolean') return null;
+    if (v === 1) return { side, automatic: DEFAULT_STREAM_SETTINGS.automatic };
+    if (v === 2 && typeof automatic === 'boolean') return { side, automatic };
     return null;
   } catch {
     return null;

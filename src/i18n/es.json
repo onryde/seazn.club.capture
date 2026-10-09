@@ -173,8 +173,6 @@
   "stream.link.settings": "Ajustes",
   "stream.back": "Volver a la cámara",
   "settings.title": "Ajustes de emisión",
-  "settings.overlay.label": "Vista previa del marcador",
-  "settings.overlay.hint": "Muestra el marcador sobre la cámara solo en este móvil. El público siempre lo ve.",
   "settings.automatic.label": "Iniciar y detener automáticamente",
   "settings.automatic.hint": "Solo si el organizador lo activa para el partido",
   "settings.side.label": "Controles a la",

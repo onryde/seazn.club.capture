@@ -707,11 +707,11 @@ describe('the side control and the switch rows fit the narrowest line, in every 
     sideChecked += 1;
   });
 
-  it.each(LANGS)('%s: each switch label’s longest word fits beside its switch', (lang) => {
+  it.each(LANGS)('%s: the switch label’s longest word fits beside its switch', (lang) => {
     const { t } = createTranslator(lang);
     // The row's padding each side, the 40 dp pill and the 8 dp gap between the label and it.
     const cell = NARROW_LINE - 2 * layout.switchRowPadX - layout.switchTrackW - space.sm;
-    for (const key of ['settings.overlay.label', 'settings.automatic.label'] as const) {
+    for (const key of ['settings.automatic.label'] as const) {
       expect(longestWord(t(key)), `${lang} ${key}`).toBeLessThanOrEqual(cell);
       switchLabelsChecked += 1;
     }
@@ -727,8 +727,8 @@ describe('the side control and the switch rows fit the narrowest line, in every 
     expect(2 * layout.segmentMin + 2 * layout.iconBorder).toBe(134); // measured 134.4 on the board
   });
 
-  it('checked every language for the pair and for both switch labels (anti-vacuity)', () => {
+  it('checked every language for the pair and for the switch label (anti-vacuity)', () => {
     expect(sideChecked).toBe(4);
-    expect(switchLabelsChecked).toBe(4 * 2);
+    expect(switchLabelsChecked).toBe(4 * 1);
   });
 });

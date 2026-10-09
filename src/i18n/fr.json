@@ -173,8 +173,6 @@
   "stream.link.settings": "Paramètres",
   "stream.back": "Retour à la caméra",
   "settings.title": "Paramètres du direct",
-  "settings.overlay.label": "Aperçu du score",
-  "settings.overlay.hint": "Affiche le score par-dessus l'image, sur ce téléphone uniquement. Le public le voit toujours.",
   "settings.automatic.label": "Démarrer et arrêter automatiquement",
   "settings.automatic.hint": "Seulement si l'organisateur l'active pour le match",
   "settings.side.label": "Commandes à",

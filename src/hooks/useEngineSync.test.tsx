@@ -13,8 +13,8 @@ import { pairCode } from '../../test/pairCode';
 import { wrapperFor } from '../../test/renderWithPorts';
 
 const code = savedStreamCode();
-/** The switch saved off, as Settings writes it (v2, A4). */
-const SWITCH_OFF = { [SETTINGS_KEY]: '{"v":2,"overlay":true,"side":"right","automatic":false}' };
+/** The switch saved off, as Settings writes it (v3, A4; D2 §4.1). */
+const SWITCH_OFF = { [SETTINGS_KEY]: '{"v":3,"side":"right","automatic":false}' };
 
 const flush = (ms = 10) => act(() => vi.advanceTimersByTimeAsync(ms));
 const kinds = (fakes: FakePorts) => fakes.engine.intents.map((intent) => intent.kind);

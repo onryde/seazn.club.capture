@@ -4,6 +4,9 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { EngineSnapshot } from '@/engine/CaptureEnginePort';
 import type { NativeCaptureEngine } from '@/engine/nativeCaptureEngine';
 import en from '@/i18n/en.json';
+import es from '@/i18n/es.json';
+import fr from '@/i18n/fr.json';
+import nl from '@/i18n/nl.json';
 import { LANGS } from '@/i18n/language';
 import { createTranslator } from '@/i18n/translate';
 import type { KeyValueStore } from '@/services/KeyValueStore';
@@ -32,7 +35,6 @@ function renderSettings(options: Parameters<typeof renderWithPorts>[1] = {}) {
   return view;
 }
 
-const overlaySwitch = () => screen.getByRole('switch', { name: 'Score preview' });
 const automaticSwitch = () => screen.getByRole('switch', { name: 'Start and stop automatically' });
 
 /** Settings with the shell's sync mounted, as the app has it. */
@@ -106,28 +108,32 @@ async function startedViewfinder() {
   }
 }
 
-describe('Settings (spec §4)', () => {
-  it('turns the score preview off, and saves it', async () => {
-    const view = renderSettings();
-    expect(overlaySwitch().getAttribute('aria-checked')).toBe('true');
-    fireEvent.click(overlaySwitch());
-    expect(overlaySwitch().getAttribute('aria-checked')).toBe('false');
-    await waitFor(() =>
-      expect(view.kv.entries.get(SETTINGS_KEY)).toBe(
-        '{\"v\":2,"overlay":false,"side":"right",\"automatic\":true}',
-      ),
-    );
-  });
+describe('Settings has no score preview control (D2 §4.1)', () => {
+  // The four removed `settings.overlay.label` values, copied here because the dictionaries no longer hold them.
+  it.each(LANGS)(
+    '%s: the automatic switch is the only switch, and no copy names a score preview',
+    (lang) => {
+      renderSettings({ deviceLanguages: [lang] });
+      expect(screen.getAllByRole('switch')).toHaveLength(1);
+      // The positive pair: the one switch is the automatic one, named in this language.
+      const label = { en, es, fr, nl }[lang]['settings.automatic.label'];
+      expect(screen.getByRole('switch', { name: label })).toBeTruthy();
+      expect(screen.queryByText('Score preview')).toBeNull();
+      expect(screen.queryByText('Vista previa del marcador')).toBeNull();
+      expect(screen.queryByText('Aperçu du score')).toBeNull();
+      expect(screen.queryByText('Scorevoorbeeld')).toBeNull();
+    },
+  );
+});
 
-  it('turns it back on with a second press', async () => {
+describe('Settings (spec §4)', () => {
+  it('turns the automatic start back on with a second press', async () => {
     const view = renderSettings();
-    fireEvent.click(overlaySwitch());
-    fireEvent.click(overlaySwitch());
-    expect(overlaySwitch().getAttribute('aria-checked')).toBe('true');
+    fireEvent.click(automaticSwitch());
+    fireEvent.click(automaticSwitch());
+    expect(automaticSwitch().getAttribute('aria-checked')).toBe('true');
     await waitFor(() =>
-      expect(view.kv.entries.get(SETTINGS_KEY)).toBe(
-        '{\"v\":2,"overlay":true,"side":"right",\"automatic\":true}',
-      ),
+      expect(view.kv.entries.get(SETTINGS_KEY)).toBe('{"v":3,"side":"right","automatic":true}'),
     );
   });
 
@@ -140,9 +146,11 @@ describe('Settings (spec §4)', () => {
     await waitFor(() => expect(view.kv.entries.get(SETTINGS_KEY)).toContain('"side":"left"'));
   });
 
-  it('reads what was saved before', async () => {
-    renderSettings({ kvSeed: { [SETTINGS_KEY]: '{"v":1,"overlay":false,"side":"left"}' } });
-    await waitFor(() => expect(overlaySwitch().getAttribute('aria-checked')).toBe('false'));
+  it('reads what was saved before, a v2 record from before D2 included', async () => {
+    renderSettings({
+      kvSeed: { [SETTINGS_KEY]: '{"v":2,"overlay":true,"side":"left","automatic":false}' },
+    });
+    await waitFor(() => expect(automaticSwitch().getAttribute('aria-checked')).toBe('false'));
     expect(screen.getByRole('radio', { name: 'Left' }).getAttribute('aria-checked')).toBe('true');
   });
 
@@ -151,11 +159,11 @@ describe('Settings (spec §4)', () => {
     const view = renderSettings();
     Object.assign(view.kv, refusing);
     expect(screen.queryByText("Couldn't save that. It applies until the app closes.")).toBeNull();
-    fireEvent.click(overlaySwitch());
+    fireEvent.click(automaticSwitch());
     expect(
       await screen.findByText("Couldn't save that. It applies until the app closes."),
     ).toBeTruthy();
-    expect(overlaySwitch().getAttribute('aria-checked')).toBe('false');
+    expect(automaticSwitch().getAttribute('aria-checked')).toBe('false');
   });
 
   it('says so when the side could not be saved, too', async () => {
@@ -215,13 +223,11 @@ describe('Settings (spec §4)', () => {
   it('keeps both choices working on air', async () => {
     const view = renderSettings();
     act(() => view.engine.scene('live'));
-    fireEvent.click(overlaySwitch());
+    fireEvent.click(automaticSwitch());
     fireEvent.click(screen.getByRole('radio', { name: 'Left' }));
-    expect(overlaySwitch().getAttribute('aria-checked')).toBe('false');
+    expect(automaticSwitch().getAttribute('aria-checked')).toBe('false');
     await waitFor(() =>
-      expect(view.kv.entries.get(SETTINGS_KEY)).toBe(
-        '{\"v\":2,"overlay":false,"side":"left",\"automatic\":true}',
-      ),
+      expect(view.kv.entries.get(SETTINGS_KEY)).toBe('{"v":3,"side":"left","automatic":false}'),
     );
   });
 
@@ -233,9 +239,7 @@ describe('Settings (spec §4)', () => {
     fireEvent.click(automaticSwitch());
     expect(automaticSwitch().getAttribute('aria-checked')).toBe('false');
     await waitFor(() =>
-      expect(view.kv.entries.get(SETTINGS_KEY)).toBe(
-        '{"v":2,"overlay":true,"side":"right","automatic":false}',
-      ),
+      expect(view.kv.entries.get(SETTINGS_KEY)).toBe('{"v":3,"side":"right","automatic":false}'),
     );
   });
 
@@ -282,7 +286,6 @@ describe('Settings (spec §4)', () => {
 
   it('reads in Dutch', () => {
     renderSettings({ deviceLanguages: ['nl'] });
-    expect(screen.getByRole('switch', { name: 'Scorevoorbeeld' })).toBeTruthy();
     expect(screen.getByRole('switch', { name: 'Automatisch starten en stoppen' })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Terug naar de camera' })).toBeTruthy();
     expect(screen.getByRole('radio', { name: 'Linkerkant' })).toBeTruthy();
@@ -612,8 +615,6 @@ describe('where Diagnostics sits (spec §6)', () => {
     renderSettings();
     expect(layoutOf()).toBe('portrait'); // jsdom's 0 × 0 default (D10)
     const named: readonly (readonly [string, HTMLElement])[] = [
-      ['score preview switch', overlaySwitch()],
-      ['score preview hint', screen.getByText(en['settings.overlay.hint'])],
       ['automatic switch', automaticSwitch()],
       ['automatic hint', screen.getByText(en['settings.automatic.hint'])],
       ['left radio', screen.getByRole('radio', { name: 'Left' })],
@@ -622,7 +623,7 @@ describe('where Diagnostics sits (spec §6)', () => {
       ['licences', screen.getByRole('button', { name: 'Open-source licences' })],
       ['Diagnostics card', screen.getByTestId('diagnostics-card')],
     ];
-    expect(named).toHaveLength(9);
+    expect(named).toHaveLength(7);
     const misordered = named.slice(1).flatMap(([name, element], at) => {
       const before = named[at]?.[1];
       const follows = before?.compareDocumentPosition(element) === Node.DOCUMENT_POSITION_FOLLOWING;
@@ -644,7 +645,7 @@ describe('where Diagnostics sits (spec §6)', () => {
     renderSettings();
     expect(layoutOf()).toBe('portrait');
     expect(screen.queryByTestId('settings-halves')).toBeNull();
-    const scroller = scrollerOf(overlaySwitch());
+    const scroller = scrollerOf(automaticSwitch());
     expect(scroller).not.toBeNull();
     expect(scrollerOf(screen.getByTestId('diagnostics-card'))).toBe(scroller);
     expect(getComputedStyle(screen.getByTestId('diagnostics-card')).flexDirection).toBe('column');
@@ -666,7 +667,7 @@ describe('where Diagnostics sits (spec §6)', () => {
     expect(halves.children).toHaveLength(2);
     const [settingsHalf, diagnosticsHalf] = [...halves.children];
     expect(settingsHalf?.contains(screen.getByText('Open-source licences'))).toBe(true);
-    expect(settingsHalf?.contains(overlaySwitch())).toBe(true);
+    expect(settingsHalf?.contains(automaticSwitch())).toBe(true);
     expect(diagnosticsHalf?.contains(screen.getByTestId('diagnostics-card'))).toBe(true);
     expect(settingsHalf?.contains(screen.getByTestId('diagnostics-card'))).toBe(false);
     // Two equal halves.
@@ -737,13 +738,13 @@ describe('where Diagnostics sits (spec §6)', () => {
 
   // m-3 (spec §7: Settings follows the phone): a rotation swaps the tree, so what the operator chose has
   // to live in the store and not in the tree. The switch, the radio and the saved file all survive, both ways.
-  it('keeps the switches and the side across a rotation, both ways', async () => {
+  it('keeps the switch and the side across a rotation, both ways', async () => {
     setWindowSize(390, 844);
     const view = renderSettings();
     expect(layoutOf()).toBe('portrait');
-    fireEvent.click(overlaySwitch());
+    fireEvent.click(automaticSwitch());
     fireEvent.click(screen.getByRole('radio', { name: 'Left' }));
-    const saved = '{"v":2,"overlay":false,"side":"left","automatic":true}';
+    const saved = '{"v":3,"side":"left","automatic":false}';
     await waitFor(() => expect(view.kv.entries.get(SETTINGS_KEY)).toBe(saved));
     for (const [width, height, layout] of [
       [844, 390, 'landscape'],
@@ -751,8 +752,7 @@ describe('where Diagnostics sits (spec §6)', () => {
     ] as const) {
       setWindowSize(width, height);
       expect(layoutOf()).toBe(layout); // the positive pair: it did rotate
-      expect(overlaySwitch().getAttribute('aria-checked')).toBe('false');
-      expect(automaticSwitch().getAttribute('aria-checked')).toBe('true');
+      expect(automaticSwitch().getAttribute('aria-checked')).toBe('false');
       expect(screen.getByRole('radio', { name: 'Left' }).getAttribute('aria-checked')).toBe('true');
       expect(screen.getByRole('radio', { name: 'Right' }).getAttribute('aria-checked')).toBe(
         'false',
@@ -817,10 +817,9 @@ const cornersOf = (style: CSSStyleDeclaration) => [
 ];
 const ROUND = (dp: number) => [`${dp}px`, `${dp}px`, `${dp}px`, `${dp}px`];
 
-const SWITCHES = [
-  ['Score preview', 'the score preview'],
-  ['Start and stop automatically', 'start and stop automatically'],
-] as const;
+const SWITCHES = [['Start and stop automatically', 'start and stop automatically']] as const;
+/** The one switch, named once for the tests below that press it. */
+const AUTOMATIC = 'Start and stop automatically';
 const switchNamed = (name: string) => screen.getByRole('switch', { name });
 const trackOf = (name: string) => within(switchNamed(name)).getByTestId('switch-track');
 const knobOf = (name: string) => within(switchNamed(name)).getByTestId('switch-knob');
@@ -867,10 +866,10 @@ describe('the switch rows wear the board (filled row, pill switch)', () => {
     ['off', false],
   ] as const)('is a 40 x 24 pill with an 18 dp knob 3 dp in, %s', async (_state, on) => {
     renderSettings({
-      kvSeed: { [SETTINGS_KEY]: `{"v":2,"overlay":${on},"side":"right","automatic":${on}}` },
+      kvSeed: { [SETTINGS_KEY]: `{"v":3,"side":"right","automatic":${on}}` },
     });
     await waitFor(() =>
-      expect(switchNamed('Score preview').getAttribute('aria-checked')).toBe(String(on)),
+      expect(switchNamed(AUTOMATIC).getAttribute('aria-checked')).toBe(String(on)),
     );
     for (const [name] of SWITCHES) {
       const track = getComputedStyle(trackOf(name));
@@ -894,22 +893,20 @@ describe('the switch rows wear the board (filled row, pill switch)', () => {
 
   it('paints on as a lime track with a night knob, off as an outlined track with a lilac knob', async () => {
     renderSettings();
-    const on = getComputedStyle(trackOf('Score preview'));
+    const on = getComputedStyle(trackOf(AUTOMATIC));
     expect(on.backgroundColor).toBe(painted(PAINT.lime, 'backgroundColor'));
-    expect(getComputedStyle(knobOf('Score preview')).backgroundColor).toBe(
+    expect(getComputedStyle(knobOf(AUTOMATIC)).backgroundColor).toBe(
       painted(PAINT.ground, 'backgroundColor'),
     );
-    fireEvent.click(switchNamed('Score preview'));
-    await waitFor(() =>
-      expect(switchNamed('Score preview').getAttribute('aria-checked')).toBe('false'),
-    );
-    const off = getComputedStyle(trackOf('Score preview'));
+    fireEvent.click(switchNamed(AUTOMATIC));
+    await waitFor(() => expect(switchNamed(AUTOMATIC).getAttribute('aria-checked')).toBe('false'));
+    const off = getComputedStyle(trackOf(AUTOMATIC));
     // The board's off track is a shade above the row (the night input fill, surface2), outlined in lilac.
     expect(off.backgroundColor).toBe(painted(PAINT.surface2, 'backgroundColor'));
     expect(off.borderTopColor).toBe(painted(PAINT.ink3Edge, 'borderTopColor'));
     expect(px(off.borderTopWidth)).toBeGreaterThanOrEqual(1);
     expect(px(off.borderTopWidth)).toBeLessThanOrEqual(2); // the brief: 1 to 2 dp
-    expect(getComputedStyle(knobOf('Score preview')).backgroundColor).toBe(
+    expect(getComputedStyle(knobOf(AUTOMATIC)).backgroundColor).toBe(
       painted(PAINT.ink3, 'backgroundColor'),
     );
     // The two states are not one picture (anti-vacuity).
@@ -919,25 +916,23 @@ describe('the switch rows wear the board (filled row, pill switch)', () => {
   it('keeps the same 40 x 24 box in both states, so a press does not move the row', async () => {
     renderSettings();
     const sizeOf = () => {
-      const style = getComputedStyle(trackOf('Score preview'));
+      const style = getComputedStyle(trackOf(AUTOMATIC));
       return [style.width, style.height, style.borderTopWidth, style.paddingTop];
     };
     const on = sizeOf();
-    const onFill = getComputedStyle(trackOf('Score preview')).backgroundColor;
-    expect(switchNamed('Score preview').getAttribute('aria-checked')).toBe('true');
-    fireEvent.click(switchNamed('Score preview'));
+    const onFill = getComputedStyle(trackOf(AUTOMATIC)).backgroundColor;
+    expect(switchNamed(AUTOMATIC).getAttribute('aria-checked')).toBe('true');
+    fireEvent.click(switchNamed(AUTOMATIC));
     // The press really flipped it (else on === off proves nothing): the state said and the picture changed.
-    await waitFor(() =>
-      expect(switchNamed('Score preview').getAttribute('aria-checked')).toBe('false'),
-    );
-    expect(getComputedStyle(trackOf('Score preview')).backgroundColor).not.toBe(onFill);
+    await waitFor(() => expect(switchNamed(AUTOMATIC).getAttribute('aria-checked')).toBe('false'));
+    expect(getComputedStyle(trackOf(AUTOMATIC)).backgroundColor).not.toBe(onFill);
     expect(sizeOf()).toEqual(on);
     expect(on).toEqual(['40px', '24px', '1.5px', '1.5px']);
   });
 
   it('is still one control: the whole row presses, and the switch is hidden from a screen reader', async () => {
     renderSettings();
-    expect(screen.getAllByRole('switch')).toHaveLength(2);
+    expect(screen.getAllByRole('switch')).toHaveLength(1);
     for (const [name] of SWITCHES) {
       // Decorative: hidden from the accessibility tree, and no role of its own to be reached as a second control.
       const track = trackOf(name);
@@ -946,20 +941,16 @@ describe('the switch rows wear the board (filled row, pill switch)', () => {
       expect(knobOf(name).closest('[aria-hidden="true"]')).toBe(track);
     }
     // Pressing the picture of the switch presses the row.
-    fireEvent.click(trackOf('Score preview'));
-    await waitFor(() =>
-      expect(switchNamed('Score preview').getAttribute('aria-checked')).toBe('false'),
-    );
-    fireEvent.click(within(switchNamed('Score preview')).getByText('Score preview'));
-    await waitFor(() =>
-      expect(switchNamed('Score preview').getAttribute('aria-checked')).toBe('true'),
-    );
+    fireEvent.click(trackOf(AUTOMATIC));
+    await waitFor(() => expect(switchNamed(AUTOMATIC).getAttribute('aria-checked')).toBe('false'));
+    fireEvent.click(within(switchNamed(AUTOMATIC)).getByText(AUTOMATIC));
+    await waitFor(() => expect(switchNamed(AUTOMATIC).getAttribute('aria-checked')).toBe('true'));
   });
 
-  it('checked both rows, on and off (anti-vacuity)', () => {
-    // 2 rows in the card test + 2 rows x 2 states in the pill test, run before this one.
-    expect(SWITCHES).toHaveLength(2);
-    expect(switchesChecked).toBe(2 + 2 * 2);
+  it('checked the row, on and off (anti-vacuity)', () => {
+    // 1 row in the card test + 1 row x 2 states in the pill test, run before this one.
+    expect(SWITCHES).toHaveLength(1);
+    expect(switchesChecked).toBe(1 + 1 * 2);
   });
 });
 
@@ -1308,7 +1299,7 @@ describe('Power and the licences link wear the board (small print in ink3)', () 
   it('is set like the hints above it, which the board draws alike (four languages, four paragraphs)', () => {
     expect(powers.size).toBe(4);
     renderSettings();
-    const hint = getComputedStyle(screen.getByText(en['settings.overlay.hint']));
+    const hint = getComputedStyle(screen.getByText(en['settings.automatic.hint']));
     const power = getComputedStyle(screen.getByText(powerParagraph('en')));
     expect([power.fontSize, power.lineHeight, power.color]).toEqual([
       hint.fontSize,

@@ -24,7 +24,7 @@ const kinds = (view: Awaited<ReturnType<typeof renderViewfinder>>) =>
 const renderPaired = (
   options: Parameters<typeof renderViewfinder>[0] = {},
   setup: Parameters<typeof renderViewfinder>[1] = {},
-) => renderViewfinder(options, { overlay: false, quiet: true, ...setup });
+) => renderViewfinder(options, { quiet: true, ...setup });
 
 /**
  * The amendment §2: Home pairs, a visit never does. The viewfinder reads the

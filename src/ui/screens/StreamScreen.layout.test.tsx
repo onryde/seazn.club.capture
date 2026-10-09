@@ -221,7 +221,7 @@ describe('the status strip (spec §1)', () => {
   // a routine line here are quiet (on the charger, surviving the background; test/quietDevice.ts), so a paired phone
   // before air has no caption up.
   it('carries the match label, then ONE message: the status line when no caption is up', async () => {
-    await renderViewfinder({}, { overlay: false, quiet: true });
+    await renderViewfinder({}, { quiet: true });
     const strip = byId('status-strip');
     const label = within(strip).getByTestId('match-label');
     const message = within(strip).getByTestId('strip-message');
@@ -258,7 +258,7 @@ describe('the status strip (spec §1)', () => {
   });
 
   it('sets the status line in the body role, ONE line, under the label (F20, owner 2026-10-08)', async () => {
-    await renderViewfinder({}, { overlay: false, quiet: true });
+    await renderViewfinder({}, { quiet: true });
     const line = within(byId('status-strip')).getByText(WAITING);
     expect(getComputedStyle(line).fontSize).toBe(`${typeScale.body.fontSize}px`);
     expect(linesAllowed(line)).toBe(layout.messageLines);
@@ -348,12 +348,11 @@ describe('the round line above the match label (spec §2, option B)', () => {
   /** A viewfinder paired with this match label and stage label, the label laid out. */
   async function withStage(
     stageLabel: string | null,
-    { label = 44, overlay, quiet }: { label?: number; overlay?: boolean; quiet?: boolean } = {},
+    { label = 44, quiet }: { label?: number; quiet?: boolean } = {},
   ) {
     const view = await renderViewfinder(
       {},
       {
-        overlay,
         quiet,
         prepare: (fakes) => fakes.engine.setPairing({ label: 'A v B', stageLabel }),
       },
@@ -369,7 +368,7 @@ describe('the round line above the match label (spec §2, option B)', () => {
   });
 
   it('is the strip’s first row: the round line, then the match label, then the one message line', async () => {
-    await withStage('Open · QF', { overlay: false, quiet: true });
+    await withStage('Open · QF', { quiet: true });
     const round = within(byId('status-strip')).getByTestId('stage-line');
     const label = within(byId('status-strip')).getByTestId('match-label');
     const status = within(byId('status-strip')).getByTestId('strip-message');
@@ -692,9 +691,9 @@ describe('the halves are one screen through a sequence (spec §1, §4)', () => {
   const line = () => within(byId('status-strip'));
 
   it('follows paired, live, a call starting and the call ending, and never remounts the camera box', async () => {
-    // The routine lines (waiting, live) are the ones read here, so the phone is quiet and the preview off; the call
-    // (mic silenced) is urgent either way.
-    const view = await renderViewfinder({}, { overlay: false, quiet: true });
+    // The routine lines (waiting, live) are the ones read here, so the phone is quiet; the call (mic silenced) is
+    // urgent either way.
+    const view = await renderViewfinder({}, { quiet: true });
     const box = byId('camera-box');
     const half = byId('camera-half');
     const controls = byId('controls-half');
@@ -1181,7 +1180,7 @@ describe('the strip and the controls half are padded and spaced as the fit reser
   // line's place 16; the icons 48; the hold 72 and its reason 4 + 16), stacked with the padding and gap the half RENDERED:
   // they must fit the owner's phone, 332 dp, which the board's 16 and 12 did not (356).
   it('fits 332 dp in the worst before-air state, with the padding and gap it rendered', async () => {
-    const view = await renderViewfinder({}, { overlay: false });
+    const view = await renderViewfinder();
     act(() => view.engine.setPairing({ scheduledStart: new Date('2026-10-03T13:30:00Z') }));
     act(() => view.engine.setReady({ held: false }));
     // Both extra lines are really there: the start line under the chips, the reason under the hold button.

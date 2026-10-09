@@ -26,12 +26,12 @@ function refusingOnce(): KeyValueStore {
 describe('useStreamSettings (D23)', () => {
   it('starts on the defaults, then shows what was saved once it loads', async () => {
     const fakes = createFakePorts({
-      kvSeed: { [SETTINGS_KEY]: '{"v":1,"overlay":false,"side":"left"}' },
+      kvSeed: { [SETTINGS_KEY]: '{"v":3,"side":"left","automatic":false}' },
     });
     const { result } = renderHook(() => useStreamSettings(), { wrapper: wrapperFor(fakes) });
-    expect(result.current.settings).toEqual({ overlay: true, side: 'right', automatic: true });
+    expect(result.current.settings).toEqual({ side: 'right', automatic: true });
     await waitFor(() =>
-      expect(result.current.settings).toEqual({ overlay: false, side: 'left', automatic: true }),
+      expect(result.current.settings).toEqual({ side: 'left', automatic: false }),
     );
     expect(result.current.saveFailed).toBe(false);
   });
@@ -42,9 +42,7 @@ describe('useStreamSettings (D23)', () => {
     act(() => result.current.change({ side: 'left' }));
     expect(result.current.settings.side).toBe('left');
     await waitFor(() =>
-      expect(fakes.kv.entries.get(SETTINGS_KEY)).toBe(
-        '{\"v\":2,"overlay":true,"side":"left",\"automatic\":true}',
-      ),
+      expect(fakes.kv.entries.get(SETTINGS_KEY)).toBe('{"v":3,"side":"left","automatic":true}'),
     );
     expect(result.current.saveFailed).toBe(false);
   });
@@ -57,9 +55,9 @@ describe('useStreamSettings (D23)', () => {
     );
     const fakes = createFakePorts({ streamSettings });
     const { result } = renderHook(() => useStreamSettings(), { wrapper: wrapperFor(fakes) });
-    act(() => result.current.change({ overlay: false }));
+    act(() => result.current.change({ automatic: false }));
     await waitFor(() => expect(result.current.saveFailed).toBe(true));
-    expect(result.current.settings.overlay).toBe(false);
+    expect(result.current.settings.automatic).toBe(false);
     act(() => result.current.change({ side: 'left' }));
     await waitFor(() => expect(result.current.saveFailed).toBe(false));
   });
