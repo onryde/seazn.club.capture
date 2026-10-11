@@ -865,6 +865,110 @@ switch is on; nothing can prove steps 2 and 3, because there is nothing to obser
 
 ---
 
+### N27 — A locked phone stops beating unless its battery is Unrestricted
+
+**Status:** open · mitigated by the battery row (B8, R5); AGENTS §9 amended
+**Where:** capture app · `PairingKeeper` (foreground service, partial wake lock) · OxygenOS battery management
+
+On the NE2211 (Android 16, OxygenOS), with the foreground service (camera + microphone) and the partial wake lock
+both held, beats stopped about two minutes into a lock (D3 Task 2b, VERDICT B; and 2026-10-11 22:06–22:09Z). It
+happened on charge too, so it is not plain Doze. With the app's battery set to **Unrestricted**, beats ran unbroken
+through a 9-minute lock (22:19:51–22:28:32Z), and a console Go live was heard while locked. Evidence:
+`~/seazn-d3-evidence/2026-10-10/d3-beats-2026-10-11.ndjson`, `b8-record.ndjson`.
+
+---
+
+### N28 — A start while the Live Stream view is not showing has no video
+
+**Status:** open · investigation first (A3, spec §3; this plan's Batch 8)
+**Where:** capture app · `CaptureRun.reopen` (`CaptureRun.kt:281-289`), `rebuild` (`:202-209`) · `StreamerAdapter.reopenCamera`
+(`:338-346`) · StreamPack 3.2.1 `VideoInput` (`addOutputSurface$streampack_core`)
+
+At the locked Go live of 2026-10-11 22:26:04Z, StreamPack logged `VideoInput: Video source configuration is not set`
+and `…can't add output surface`. No `delivered` line followed until the phone was unlocked and a new session started
+(22:30:23Z): the console showed Trouble and YouTube stayed on "Preparing stream". The same vendor lines precede D3's
+"no video after a camera taken → reopen" (sid a20dcecf). The first line also appears at a normal pairing (22:19:11Z)
+where video then worked, so it is not the cause alone; what differs is whether a preview surface is attached when the
+stream starts. A YouTube event that starts with no video may stay on "Preparing" after the picture arrives (observed,
+not proven; web brief §4). Evidence: `b8-record.ndjson`, `b8-media-camera.txt` (one 1280 × 720 stream to the encoder's
+SurfaceTexture, no preview, while locked).
+
+---
+
+### N29 — A rejoin after the hold runs out retries forever, with no reason shown
+
+**Status:** fixed in this branch (A4, R10, Batch 2)
+**Where:** capture app · `Verdicts.over` (`Pairings.kt:274-281`) · `Transports.outageFor` (`SessionMachine.kt:327-331`) ·
+`Transports.failed` (`:262-276`) · `Projection.state` (`Projection.kt:72`)
+
+`Verdicts.over` returned the phone to Paired without marking the sid. The next beat saying `live` re-armed it as a new
+Session with `liveSinceEpochMs` null, so `outageFor` returned no outage, there was no hold, `Transports.failed` retried
+every 2 s with no limit, and the snapshot showed CONNECTING with no reason.
+
+**Ruling and fix (R10, controller's):** the hold's end is unchanged. A `live` beat for the same sid rejoins it, marked
+as a rejoin of a broadcast that was live: it projects as Reconnecting with cause `hold-expired`, its connects back off
+2, 4, 8, 16, then 30 s, and only the server, Stop or a new hold ends it (`SessionMachineRejoinTest`).
+
+---
+
+### N30 — A square preview on the CPH2569
+
+**Status:** fixed in this branch (A1, Batch 3), pending the device check (Batch 9)
+**Where:** capture app · `CapturePreviewView` · `PreviewSizes` (`preview/PreviewSizes.kt`) · StreamPack 3.2.1
+`CameraSizes.getPreviewOutputSize`
+
+The camera served the preview 960 × 960 and the encoder 1280 × 720 (`dumpsys media.camera`, 2026-10-11 21:10Z,
+`r4-b-media-camera.txt`), so the 16:9 box showed the picture pillarboxed (`r4-b-live.png`). StreamPack 3.2.1 picks the
+preview size by **area only** (sort by area, reverse, `closestTo`), and 960 × 960 has exactly the area of 1280 × 720
+(921,600). `PreviewSizes.sameArea` already counted such ties; nothing acted on it. The fix: the preview takes the
+encode's aspect, 16:9, whenever the camera lists one, the nearest in area to 1280 × 720.
+
+---
+
+### N31 — French Home tile titles run past their tile
+
+**Status:** fixed in this branch (A2, Batch 7)
+**Where:** capture app · `Tile.tsx:49` · `homeFit.test.ts`
+
+At 804 dp wide (3-button navigation), "SCORE À DISTANCE" and "TABLEAU DE BORD" drew about 2–3 dp beyond the tile's
+right edge. The title had no `numberOfLines` and no `flexShrink`, and `homeFit.test.ts` checked tile heights only. The
+font-metric model puts "SCORE À DISTANCE" at 186.7 dp against a 188 dp budget at 804: the model is optimistic by a few
+dp on the device, so the fix is a title that shrinks and wraps, not a tighter number.
+
+---
+
+### N32 — The 20 s lag rule fired close to its limit on a real stall
+
+**Status:** recorded; no change (R8, controller's)
+**Where:** capture app · `DeliveryWatch` (`NOT_DELIVERED_MS`)
+
+The rule fired at `lagGrowthMs` 20,456 with `stalledMs` 18,151 (2026-10-11 22:30:15Z): a real stall, close to the
+limit. D3 row 1 saw growth of 16–20 s near the limit too. A5 is not changed.
+
+---
+
+### N33 — A replaced phone cannot hand over its record
+
+**Status:** fixed in this branch (B6 + B7, Batches 5 and 6)
+**Where:** capture app · `DiagnosticsCard` (Share record) · Home
+
+Share record lived only in Live Stream's Settings, and a phone sent to Home by `Replaced` had no pairing to open it
+from. The record row (Share record, and Send record to Seazn when its switch is on) is now in Stream Settings in both
+variants, and Stream Settings opens from Home's Live Stream tile.
+
+---
+
+### N34 — The round line is the server's text
+
+**Status:** resolved by the web (W25); no app change
+**Where:** web · the waiting fields' stage label
+
+In French the phone showed "ROUND 2". The web already localises the round line by the organisation's
+`default_locale`, and recommends keeping it that way (W25, `mobile-s1-web`, 2026-10-11). The phone keeps drawing the
+server's text as sent.
+
+---
+
 ## P5 device spike (Android)
 
 The P5 findings, as an index. The full text, evidence and corrections for each
