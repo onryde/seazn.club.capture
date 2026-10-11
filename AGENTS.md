@@ -53,9 +53,13 @@ Dashboard. Only one runs at a time, and each is unlocked by its own QR code.
 There is no login anywhere. See
 [the decision record](docs/specs/2026-09-29-multi-mode-app-decisions.md).
 
-Home is the only screen outside a mode: three tiles, a Continue card when a
-mode can be resumed, and the language picker. Scanning is the phone's own
-code scanner, not a screen of ours.
+Home is the only screen outside a mode but one: three tiles, a Continue card
+when a mode can be resumed, and the language picker. The one other is Stream
+Settings opened from the "Stream settings" link inside Home's Live Stream tile,
+without the Diagnostics card (R2, owner 2026-10-11): the two phone settings,
+the battery row and the record row, reachable before a scan. The link shows
+only while no card stands above the tiles (plan ruling P6, the controller's).
+Scanning is the phone's own code scanner, not a screen of ours.
 
 **Live Stream** keeps the four-screen shape of its own: **Scan** → **Paired** →
 **Live** (HUD) → **Settings**, with Diagnostics as a card inside Settings
@@ -65,8 +69,10 @@ once and serves every Go live of the match (A1, A5). S1 designs those screens.
 and S1 redraws this list.)
 
 No accounts, no login, no fixture browsing, no chat, no replays, no gallery,
-no upload, no in-app payments. Push alerts go only to phones holding a
-Dashboard code (ruling 11).
+no in-app payments, and no upload but one: the session record, sent to Seazn
+on the operator's tap (R3, owner 2026-10-11), never by itself. It is built
+behind `FEATURES.recordSend`, off until the web's endpoint ships. Push alerts
+go only to phones holding a Dashboard code (ruling 11).
 
 Adding a fourth mode, or a screen outside a mode, is a product decision, not
 an implementation detail. Raise it; don't build it.
@@ -398,6 +404,14 @@ Three rules travel with these tokens:
   (`app/stream/`), so on air it is only *leaving the mode* that is blocked:
   Home is hidden and Back says how to stop. A broadcast started remotely moves
   the app to Live Stream from wherever it is (A2).
+- **Stream Settings from Home** (R2, owner 2026-10-11) is the same screen with
+  `from="home"`: no Diagnostics card (nothing is paired), no LIVE plate, no
+  on-air rules, and Back returns to Home. Both variants carry the battery row
+  (Android only; R5, owner 2026-10-11) and the record row: Share record, which
+  left the Diagnostics card so a phone sent Home by Replaced can still hand its
+  record over (N33), and Send record to Seazn when `FEATURES.recordSend` is on.
+  The battery row reads Allowed or Restricted and opens this app's battery
+  page; it never prompts or nags.
 - The audio meter is permanent, not in Settings. Nothing downstream
   normalises — a quiet mic reaches YouTube quiet.
 - One persistent status line that always says something true. Never an
@@ -435,7 +449,9 @@ Three rules travel with these tokens:
   launch, the engine instance with it) and the language, which changes only
   when the operator picks one. The theme may join them; today it is plain
   imported tokens. Telemetry never goes in context.
-- No React Query. Four endpoints behind a port with plain `fetch`.
+- No React Query. The endpoints JS calls (the code check, and the record upload
+  behind `RecordUploadPort`; R3, owner 2026-10-11) sit behind ports with plain
+  `fetch`; the rest are native's.
 - `React.memo` and no anonymous functions in render, for HUD components
   specifically. This is the rare app where that is load-bearing.
 - Animations on Reanimated worklets — UI thread, never JS.
@@ -478,6 +494,21 @@ thermal member. Only transport trouble degrades a session.
   partial wake lock for the whole pairing, so beats and a remote Go live work
   with the phone locked (A5). The persistent notification carries status:
   `Paired · waiting for Go live`, then `LIVE · 3000k · 47 min`.
+- **Locked-phone path on Android** (N27, N28): on OxygenOS a locked phone stops
+  beating after about two minutes unless the app's battery is _Unrestricted_,
+  foreground service and wake lock notwithstanding. The operator may choose it
+  from the battery row in Stream Settings (R5, owner 2026-10-11); the app never
+  asks for `REQUEST_IGNORE_BATTERY_OPTIMIZATIONS`. A start while the Live
+  Stream view is not showing must still deliver video (N28). Keep-awake with
+  the idle dim stays the default path for a remote Go live.
+- **Forget on the notification** (R6, owner 2026-10-11): while paired and
+  waiting, the notification carries one action, Forget, with no confirmation
+  (R7, the controller's ruling, 2026-10-11). It is native's own input
+  (`Input.Forget`): it unpairs, releases the service and the wake lock, and
+  writes a durable marker, so a process death before JS hears it still reads
+  `unpaired.reason: forgotten` at the next start. JS reconciles from the
+  snapshot. Any other phase removes the action; a tap that lands late is
+  ignored and recorded.
 - While paired and waiting, the screen is kept on and dimmed after 30 s idle;
   this is the default path for a remote Go live. The foreground service and wake
   lock are the Android fallback when the phone is locked anyway (R4, D2 §4.5).
