@@ -609,8 +609,9 @@ describe('the answers, from the contract’s fixtures', () => {
 
   // Owner ruling RL (2026-10-12), in the contract at 55ac34d5d: a bad line is dropped, never refused, so a 422 is a
   // body the server cannot read as lines. The app sends no encoding and no empty body, so a 422 is a mismatch another
-  // try cannot change: `invalid`, as above.
-  it('reads 422 as the contract words it: a body it cannot read as lines, never a line', () => {
+  // try cannot change: `invalid`, as above. This test reads only the contract's text, a tripwire on the web's wording
+  // (M3 of the Batch 12 review); the port's own 422 is the status table's above and the `valid-invalid` fixture row's.
+  it('the contract’s text says a 422 is a body it cannot read as lines, never a line', () => {
     const { description } = contract.$defs.refusal;
     expect(description).toContain('422 invalid (a body the server cannot read as lines');
     expect(description).toContain('a bad LINE is never refused, it is dropped');

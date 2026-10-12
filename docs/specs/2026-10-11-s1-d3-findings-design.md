@@ -263,6 +263,14 @@ Mutate the rejoin marker once and watch a test fail.
     a line whose only fault is an unlisted field, where the server would drop
     the line whole. The raw line break stays refused here, the whole send:
     the contract does not speak to it, and §7's fail-closed rule does.
+  - **A refused line also ends its window** (the contract's A2, since
+    `55ac34d5d`): a line the line schema refuses closes the pairing window it
+    falls in. So the server also drops that pairing's later lines with no
+    sid; the contract's A1 keeps a line with a sid. Parked (the controller's
+    ruling C2, Batch 12, 2026-10-12): a masked scalar, such as
+    `"headroom":"***"`, is such a line, because the contract's scalars class
+    admits no mask. No writer produces one today. Recheck if the scrub ever
+    masks a scalar.
 - **Record lines.** `record.send {result, status, bytes}`, with no reference
   and no token in the line.
 - **Contract.** The web side owns the endpoint (§11). Its contract,
@@ -370,14 +378,17 @@ this branch:
    - Answer: `201 {ref}`, a short human reference. Also `401` for a bad token,
      `413` for too large, and `429` with a per-code rate limit.
    - The server rejects a body carrying secret-shaped fields, and never stores
-     one.
+     one. This was the original ask. `55ac34d5d` supersedes it with the owner's
+     ruling RL: the server drops such a line and stores the rest, and never
+     refuses a body for a line (§7).
    - Storage keyed to org, competition, fixture, slot and session id (from the
      record's own lines), with retention (30 days proposed; the owner's call),
      and an admin view next to the session in the console.
    - The contract file is published, for the app to vendor.
 
    Published on 2026-10-12 (web #941, `53f28ebfc`), vendored and followed in
-   Batch 11 (§7). The web brief's §1 records the contract and the app's answers
+   Batch 11 (§7), and re-vendored at web `55ac34d5d` (web #943) in Batch 12
+   (`ea636f2`). The web brief's §1 records the contract and the app's answers
    to the web's questions.
 
 2. **The round line in other languages (N34).** Does the web localise the round
