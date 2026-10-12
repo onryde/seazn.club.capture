@@ -983,9 +983,9 @@ limit. D3 row 1 saw growth of 16–20 s near the limit too. The lag rule (`LAG_G
 ### N33 — A replaced phone cannot hand over its record
 
 **Status:** fixed — feat/s1-d3-fixes, Batches 5 and 6 (Stream Settings from Home: 73dc5ae, fdc8b41; the record row:
-9802354); Send record to Seazn is built (8b99943, 4920ea3, 9802354) and hidden behind `FEATURES.recordSend = false`
-until the web's record endpoint exists (`docs/specs/2026-10-11-s1-d3-web-brief.md` §1); the device proof is Batch 9's
-(`docs/superpowers/plans/2026-10-11-s1-d3-fixes.md`)
+9802354); Send record to Seazn is built (8b99943, 4920ea3, 9802354; fix round 1: d89f5da, 8ddb33f) and hidden behind
+`FEATURES.recordSend = false` until the web's record endpoint exists (`docs/specs/2026-10-11-s1-d3-web-brief.md` §1);
+the device proof is Batch 9's (`docs/superpowers/plans/2026-10-11-s1-d3-fixes.md`)
 **Where:** capture app · `DiagnosticsCard` (Share record) · `RecordRow` · Home
 
 Share record lived only in Live Stream's Settings, and a phone sent to Home by `Replaced` has no pairing to open it

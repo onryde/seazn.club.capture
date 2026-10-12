@@ -183,12 +183,19 @@ Mutate the rejoin marker once and watch a test fail.
   which moves out of the Diagnostics card so that Home's Stream Settings has it
   too, and _Send record to Seazn_.
 - **Credential.** When a code is saved, the phone also keeps an upload
-  credential `{codeRef, token, expiresAt}`:
+  credential `{codeUrl, token, expiresAtMs}` (the D3 fixes plan's ruling P12,
+  the controller's):
   - It is kept in secure storage, behind the key-value port, never in the
     record or a snapshot.
-  - It is renewed at every pair.
-  - When the code is dropped (Forget, Replaced, Taken, Over), `expiresAt` is
-    set to the drop time plus 24 h, and the entry is deleted after that.
+  - It follows the saved stream code: written at its save, replaced by the
+    next code's. That is renewal at every pair, because every pair follows a
+    save or comes from a saved code, and the token is the QR's own.
+  - When the code is dropped (Forget, Replaced, Taken, Over), `expiresAtMs` is
+    set to the time the app learns of the drop plus 24 h, and the entry is
+    deleted after that. A drop while the app is not running is learnt at the
+    next launch; the server's own token validity bounds the rest.
+  - It is sent only to the code's URL on the build's Seazn host, the URL native
+    holds the pairing to (Batch 6 fix round 1).
 - **Button states:**
   - _Send record to Seazn_;
   - _Sending…_;
@@ -197,6 +204,10 @@ Mutate the rejoin marker once and watch a test fail.
   - _Couldn't send — try again_.
   - With no credential, the button is disabled, with the one line "Scan a
     stream code first".
+  - From Arming on, the button is disabled, with the one line "Send it after
+    the broadcast", as the battery row's button is; _Share record_ stays
+    enabled (the controller's ruling, 2026-10-12, on Minor 8 of the Batch 6
+    review).
 - **Port.** A `RecordUploadPort` in `services/`, with plain `fetch` (AGENTS §8:
   no React Query) and a fake for tests. A request with an answer is fine here,
   because the call never touches the engine bridge.

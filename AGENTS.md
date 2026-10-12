@@ -184,16 +184,18 @@ contracts/         # the web's capture contracts, vendored and pinned
   in hand when offered, from the moment a broadcast starts (at Arming), kept
   for its life; SRT may be absent as a safety net, and then RTMPS stands
   alone (A18). They never reach TypeScript (A1, A5).
-- The upload credential is the one credential TypeScript keeps (R4 of the D3
-  findings design; owner, 2026-10-11): the saved stream code's URL and token,
-  copied when the code is saved, kept 24 h after the code goes, for uploads
-  only. It authorises Send record to Seazn (R3) and nothing else: never a
-  pair, a beat or anything native does. It is stored only while
-  `FEATURES.recordSend` is on, and a leftover is deleted while it is off (the
-  D3 fixes plan's ruling P10, the controller's). Its token is never in a
-  record line, a snapshot, a log line or an error, and the upload refuses a
-  record that names it (`uploadCredential.ts`, `uploadCredentialStore.ts`,
-  `recordUploadPort.ts`).
+- The upload credential is the one copy of a code's token that TypeScript
+  keeps after its code goes (R4 of the D3 findings design; owner, 2026-10-11):
+  the saved stream code's URL and token, copied when the code is saved, kept
+  24 h after the app learns the code is gone, for uploads only (the D3 fixes
+  plan's ruling P12, the controller's). It authorises Send record to Seazn
+  (R3) and nothing else: never a pair, a beat or anything native does. It is
+  stored only while `FEATURES.recordSend` is on, and a leftover is deleted
+  while it is off (the D3 fixes plan's ruling P10, the controller's). Its
+  token goes only to the code's URL on the build's Seazn host, the URL native
+  holds the pairing to, and is never in a record line, a snapshot, a log line
+  or an error; the upload refuses a record that names it
+  (`uploadCredential.ts`, `uploadCredentialStore.ts`, `recordUploadPort.ts`).
 - `any` is banned by lint. The escape hatch is `unknown` plus a parse function
   at the boundary — which is what the QR anti-corruption layer already is.
 - The wire shape never reaches the domain. Each wire shape has one parser, in
@@ -424,10 +426,12 @@ Three rules travel with these tokens:
   2026-10-11) is the same screen with `from="home"`: no Diagnostics card
   (nothing is paired), no LIVE plate, no on-air rules, and Back returns to
   Home. Both variants carry the battery row (Android only; R5 of the D3
-  findings design; owner, 2026-10-11) and the record row: Share record, which
-  moves out of the Diagnostics card so a phone sent Home by Replaced can still
-  hand its record over (N33), and Send record to Seazn when
-  `FEATURES.recordSend` is on. The battery row reads the app's battery mode
+  findings design; owner, 2026-10-11) and the record row: Share record,
+  outside the Diagnostics card so a phone sent Home by Replaced can still hand
+  its record over (N33), and Send record to Seazn when `FEATURES.recordSend`
+  is on. From Arming on, Send record is disabled with "Send it after the
+  broadcast", so up to 1 MB never rides the broadcast's uplink; Share record
+  stays enabled (the controller's ruling, 2026-10-12). The battery row reads the app's battery mode
   in Android's own words, _Unrestricted_, _Optimized_ or _Restricted_, and
   its _App settings_ button opens this app's App info page
   (`ACTION_APPLICATION_DETAILS_SETTINGS`), where Battery is one tap away; a
