@@ -163,6 +163,19 @@ describe('on air (spec §6, through the fake)', () => {
     expect(stop()).toBeTruthy();
   });
 
+  /**
+   * N29: a rejoin after the hold ran out is Reconnecting with cause hold-expired and no hold (0 of 0). The strip says
+   * the urgent rejoin line with no countdown, the clock carries on from the first live time, and Stop unpairs (P3).
+   */
+  it('rejoining after the hold ran out: Trouble, the rejoin line with no countdown, the clock on, Stop unpairs', async () => {
+    await onAir('rejoining');
+    expect(plate()).toBe('Trouble');
+    expect(screen.getByText(en['stream.status.rejoinRetrying'])).toBeTruthy();
+    expect(screen.queryByText(/\d+ s of \d+/)).toBeNull();
+    expect(screen.getByText('0:12:34')).toBeTruthy();
+    expect(stop()).toBeTruthy();
+  });
+
   it('never lets a failing heartbeat change what the operator sees (ruling 5)', async () => {
     const view = await onAir('live', {}, { quiet: true });
     const heartbeat = {

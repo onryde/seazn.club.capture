@@ -125,7 +125,7 @@ describe('the fake engine (spec §2: scripted snapshots, no state machine of its
     expect(snapshot().broadcast).toBeNull();
   });
 
-  it.each<FakeScene>(['holding', 'stalled', 'restarting'])(
+  it.each<FakeScene>(['holding', 'stalled', 'restarting', 'rejoining'])(
     'counts the time on air when stopped while reconnecting (%s)',
     (scene) => {
       engine.scene(scene);
@@ -446,6 +446,14 @@ describe('scenes: every state spec §6 and the amendment list', () => {
     },
     stalled: { kind: 'reconnecting', cause: 'video-stalled', holdRemainingSeconds: 38 },
     restarting: { kind: 'reconnecting', cause: 'not-delivered', holdRemainingSeconds: 38 },
+    // N29: no hold to count down, and the clock carried on from the first live time (P2).
+    rejoining: {
+      kind: 'reconnecting',
+      cause: 'hold-expired',
+      holdRemainingSeconds: 0,
+      holdWindowSeconds: 0,
+      sinceEpochMs: NOW - ON_AIR_MS,
+    },
     'not-delivered': { kind: 'degraded', reason: 'not-delivered' },
     'camera-taken': { kind: 'degraded', reason: 'camera-taken' },
     'camera-reopened': {
@@ -463,7 +471,7 @@ describe('scenes: every state spec §6 and the amendment list', () => {
   };
 
   it('lists every scene once, for the dev controls', () => {
-    expect(FAKE_SCENES).toHaveLength(23);
+    expect(FAKE_SCENES).toHaveLength(24);
     expect([...FAKE_SCENES].sort()).toEqual(Object.keys(EXPECTED).sort());
   });
 
@@ -664,6 +672,7 @@ describe('whose camera is on air (carry 10)', () => {
     stalled: 'own',
     restarting: 'own',
     'not-delivered': 'own',
+    rejoining: 'own',
     'camera-taken': 'taken',
     'camera-reopened': 'reopening',
     'camera-switching': 'switching',

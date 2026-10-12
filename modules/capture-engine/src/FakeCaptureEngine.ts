@@ -47,6 +47,7 @@ export type FakeScene =
   | 'holding'
   | 'stalled'
   | 'restarting'
+  | 'rejoining'
   | 'not-delivered'
   | 'camera-taken'
   | 'camera-reopened'
@@ -72,6 +73,7 @@ export const FAKE_SCENES: readonly FakeScene[] = [
   'holding',
   'stalled',
   'restarting',
+  'rejoining',
   'not-delivered',
   'camera-taken',
   'camera-reopened',
@@ -343,6 +345,17 @@ function sceneOf(name: FakeScene, now: number): Scene {
       return { state: reconnecting('video-stalled', since), telemetry: reconnectingTelemetry(now) };
     case 'restarting':
       return { state: reconnecting('not-delivered', since), telemetry: reconnectingTelemetry(now) };
+    case 'rejoining':
+      // N29: a rejoin after the hold ran out. No hold to count down (0 of 0), and the clock carries on from the
+      // broadcast's first live time (P2), as native's Projection.rejoining sends it.
+      return {
+        state: {
+          ...reconnecting('hold-expired', since),
+          holdRemainingSeconds: 0,
+          holdWindowSeconds: 0,
+        },
+        telemetry: reconnectingTelemetry(now),
+      };
     case 'not-delivered':
       return {
         state: degraded('srt', 'not-delivered', since),
