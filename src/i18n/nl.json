@@ -125,6 +125,7 @@
   "stream.tally.trouble": "Probleem",
   "stream.tally.ended": "Beëindigd",
   "stream.notification.paired": "Gekoppeld · wachten op de start",
+  "stream.notification.forget": "Vergeten",
   "stream.meter.label": "Geluidsniveau {level} van 6",
   "stream.elapsed.label": "Al {time} live",
   "stream.action.goLive": "Live gaan",

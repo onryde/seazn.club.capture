@@ -82,7 +82,7 @@
     "from": "native: a transport (fell-back), a bitrate in bits per second (bitrate), a state or phase name, or where a camera loss was heard (camera-lost: device, start)",
     "host": "both: a bare host, never a path or query (plan A I1)",
     "intent": "native: an intent name",
-    "key": "JS: a dictionary or store key name, never a value; native: a private store's file name (phone-id, stopped-records)",
+    "key": "JS: a dictionary or store key name, never a value; native: a private store's file name (phone-id, stopped-records, forgotten-pairing)",
     "kind": "JS: a failure kind word (code.error, surface.unavailable), written to the line as field_kind; native: a Wire",
     "lastEnd": "native: LastEnd wire",
     "lock": "JS: an orientation lock name",

@@ -37,6 +37,7 @@ class NotificationTextTest {
       "stream.tally.trouble",
       "stream.tally.ended",
       "stream.notification.paired",
+      "stream.notification.forget",
       "stream.status.notReadyCamera",
       "stream.status.notReadySound",
       "stream.status.notReadyNetwork",
@@ -44,7 +45,7 @@ class NotificationTextTest {
     )
 
   @Test
-  fun `the words are the app's own dictionary words, exactly the ten keys in each of the four languages`() {
+  fun `the words are the app's own dictionary words, exactly the eleven keys in each of the four languages`() {
     assertEquals(setOf("en", "es", "fr", "nl"), NotificationText.WORDS.keys)
     assertEquals(keys, NotificationText.KEYS.toSet())
     for ((language, words) in NotificationText.WORDS) {
@@ -52,6 +53,17 @@ class NotificationTextTest {
       val dictionary = dictionary(language)
       for ((key, word) in words) assertEquals(dictionary.getString(key), word, "$language $key")
     }
+  }
+
+  /** R6 of the D3 findings design: the action is on the notification only while the pairing waits. */
+  @Test
+  fun `Forget shows only while paired and waiting`() {
+    assertEquals(true, NotificationText.forgetShown("paired"))
+    val hidden = listOf("idle", "pairing", "arming", "armed", "connecting", "publishing", "degraded", "reconnecting", "ended")
+    for (kind in hidden + null) assertEquals(false, NotificationText.forgetShown(kind), "$kind")
+    // Every kind the wire can carry is named above, so a new one is decided here, not by default.
+    val kinds = Shared.read("wire/snapshot-vectors.json").getJSONObject("vocabulary").getJSONArray("state")
+    assertEquals((hidden + "paired").sorted(), (0 until kinds.length()).map(kinds::getString).sorted())
   }
 
   @Test

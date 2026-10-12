@@ -125,6 +125,7 @@
   "stream.tally.trouble": "Trouble",
   "stream.tally.ended": "Ended",
   "stream.notification.paired": "Paired · waiting for Go live",
+  "stream.notification.forget": "Forget",
   "stream.meter.label": "Sound level {level} of 6",
   "stream.elapsed.label": "On air for {time}",
   "stream.action.goLive": "Go live",

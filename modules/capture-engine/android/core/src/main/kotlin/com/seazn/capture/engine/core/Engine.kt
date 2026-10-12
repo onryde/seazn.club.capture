@@ -28,9 +28,11 @@ class Engine(
   val record: SessionRecord,
   private val reducer: (Phase, Input, Now) -> Step = SessionMachine::reduce,
   private val projection: (Phase, Now) -> Snapshot = Projection::snapshot,
+  /** R6 of the D3 findings design: Idle, or Idle naming a Forget the last process wrote and JS may not have heard. */
+  initial: Phase = Phase.Idle(),
 ) {
   @Volatile
-  var phase: Phase = Phase.Idle()
+  var phase: Phase = initial
     private set
 
   /** Commands the platform threw on. Each is also a record line. */

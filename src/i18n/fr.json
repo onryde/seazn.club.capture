@@ -125,6 +125,7 @@
   "stream.tally.trouble": "Problème",
   "stream.tally.ended": "Terminé",
   "stream.notification.paired": "Associé · en attente du direct",
+  "stream.notification.forget": "Oublier",
   "stream.meter.label": "Niveau sonore {level} sur 6",
   "stream.elapsed.label": "Temps d'antenne {time}",
   "stream.action.goLive": "Passer en direct",

@@ -48,6 +48,12 @@ class PairingStore(
   /** Throws when the store refuses. */
   fun delete(code: String, slot: Int) = save(records().filterNot { it.code == code && it.slot == slot })
 
+  /** R6 of the D3 findings design: the Forget marker. Throws when the store refuses, for BridgeCore's `store-failed` line. */
+  fun writeForgotten(name: PairingName) = store.write(FORGOTTEN, Json.obj(listOf("code" to name.code, "slot" to name.slot, "tokenTag" to name.tokenTag)))
+
+  /** The next pair's: the marker has been heard, or a new pairing replaces it. Throws when the store refuses. */
+  fun clearForgotten() = store.delete(FORGOTTEN)
+
   /** [action]'s value, as a [Result] that holds a null value too; or null, reported, when it threw. */
   private fun <T> attempt(op: String, key: String, action: () -> T): Result<T>? =
     try {
@@ -92,6 +98,39 @@ class PairingStore(
   companion object {
     const val PHONE_ID = "phone-id"
     const val STOPPED = "stopped-records"
+
+    /** R6 of the D3 findings design: the pairing the notification's Forget left, until the next pair. */
+    const val FORGOTTEN = "forgotten-pairing"
+
+    /**
+     * R6: the pairing the notification's Forget left, read once as the core is built, before the engine exists: on the
+     * thread that builds it, before the scheduler runs any task, so no scheduler-thread write can race it. Never throws
+     * an `Exception`: a read that fails, or a marker no rule can read, is no marker, and is reported through [problem]
+     * as every other key's is (AGENTS §13, class 3), for the bridge to log once the engine exists.
+     */
+    fun readForgotten(store: PrivateStore, problem: (RecordEntry) -> Unit): PairingName? {
+      val text =
+        try {
+          store.read(FORGOTTEN)
+        } catch (failure: Exception) {
+          problem(RecordEntry("store-failed", listOf("op" to "read", "key" to FORGOTTEN, "error" to failure.javaClass.simpleName)))
+          return null
+        } ?: return null
+      return named(text) ?: null.also { problem(RecordEntry("store-unreadable", listOf("key" to FORGOTTEN))) }
+    }
+
+    private fun named(text: String): PairingName? {
+      val map =
+        try {
+          JsonReader.parse(text) as? Map<*, *>
+        } catch (_: JsonReader.Malformed) {
+          null
+        } ?: return null
+      val code = map["code"] as? String ?: return null
+      val slot = WireValues.int(map["slot"]) ?: return null
+      val tag = map["tokenTag"] as? String ?: return null
+      return PairingName(code, slot, tag)
+    }
 
     /** `capture-beat.v1`'s `phone`, which [PhoneFacts.problems] holds every pair to: 16 to 64 characters. */
     val PHONE_ID_CHARACTERS = 16..64

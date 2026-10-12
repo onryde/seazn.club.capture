@@ -125,6 +125,7 @@
   "stream.tally.trouble": "Problema",
   "stream.tally.ended": "Terminado",
   "stream.notification.paired": "Vinculado · esperando el directo",
+  "stream.notification.forget": "Olvidar",
   "stream.meter.label": "Nivel de sonido {level} de 6",
   "stream.elapsed.label": "En directo desde hace {time}",
   "stream.action.goLive": "Emitir",
