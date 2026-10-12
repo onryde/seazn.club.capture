@@ -55,11 +55,13 @@ There is no login anywhere. See
 
 Home is the only screen outside a mode but one: three tiles, a Continue card
 when a mode can be resumed, and the language picker. The one other is Stream
-Settings opened from the "Stream settings" link inside Home's Live Stream tile,
-without the Diagnostics card: R2 of the D3 findings design (owner, 2026-10-11;
-`docs/specs/2026-10-11-s1-d3-findings-design.md` section 1). It holds the two
+Settings opened from the gear in the top-right corner of Home's Live Stream
+tile, without the Diagnostics card: R2 of the D3 findings design (owner,
+2026-10-11; `docs/specs/2026-10-11-s1-d3-findings-design.md` section 1). The
+owner made it a gear on 2026-10-12 ("Instead of text, can we have icon in right
+top corner?"); a screen reader names it "Stream settings". It holds the two
 phone settings, the battery row and the record row, reachable before a scan.
-The link shows only while no card stands above the tiles (the D3 fixes plan's
+The gear shows only while no card stands above the tiles (the D3 fixes plan's
 ruling P6, the controller's:
 `docs/superpowers/plans/2026-10-11-s1-d3-fixes.md`). Scanning is the phone's
 own code scanner, not a screen of ours.

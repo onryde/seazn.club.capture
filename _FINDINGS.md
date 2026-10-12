@@ -867,8 +867,8 @@ switch is on; nothing can prove steps 2 and 3, because there is nothing to obser
 
 ### N27 — A locked phone stops beating unless its battery is Unrestricted
 
-**Status:** mitigation landed — feat/s1-d3-fixes, Batch 5 (c5a2401; the link from Home: 73dc5ae, fdc8b41; fix
-round 1: f0e4659): the battery row in Stream Settings, R5 of the D3 findings design (owner, 2026-10-11;
+**Status:** mitigation landed — feat/s1-d3-fixes, Batch 5 (c5a2401; Stream Settings from Home: 73dc5ae, fdc8b41, a
+gear since Batch 10, f034948; fix round 1: f0e4659): the battery row in Stream Settings, R5 of the D3 findings design (owner, 2026-10-11;
 `docs/specs/2026-10-11-s1-d3-findings-design.md`), reading Unrestricted, Optimized or Restricted and opening App
 info (R12, R13 of the same design, the controller's, 2026-10-12), and a `power {mode}` record line at every
 pairing's hold and at a change read on a return; AGENTS §9 amended. The cause stays open (OxygenOS battery management); the device proof is Batch 9's
@@ -1048,7 +1048,8 @@ limit. D3 row 1 saw growth of 16–20 s near the limit too. The lag rule (`LAG_G
 Share record lived only in Live Stream's Settings, and a phone sent to Home by `Replaced` has no pairing to open it
 from. The record row (Share record, and Send record to Seazn when its switch is on) is now in Stream Settings in both
 variants, after the battery row (Batch 6), and Stream Settings opens from Home's Live Stream tile (Batch 5): a replaced
-phone closes the panel, taps _Stream settings_ and shares (`HomeScreen.unpaired.test.tsx`). The Diagnostics card's
+phone closes the panel, taps the tile's Stream settings gear (Batch 10, f034948) and shares
+(`HomeScreen.unpaired.test.tsx`). The Diagnostics card's
 header kept its 48 dp without the button, so the card stayed 272 dp: it fits its half at 640 × 360 but not on the
 owner's phone (N35). The header has since dropped the 48 (4421fb2), and the card is 244 dp.
 

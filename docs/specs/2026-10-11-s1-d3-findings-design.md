@@ -26,7 +26,7 @@ recommendation the owner may overrule in review; it is never the owner's.
 | ID  | Ruling                                                                                                                                                                                                                                                                                                                                                                                                                                                 | Who, when                                                                              |
 | --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------- |
 | R1  | Fix all of the D3 findings (A1–A4, B6–B9); A5 is recorded, not changed.                                                                                                                                                                                                                                                                                                                                                                                | Owner, 2026-10-11 ("all")                                                              |
-| R2  | Automatic stays **on** by default. The two phone settings, _Start and stop automatically_ and _Controls on the Left / Right_, are reachable from Home before a scan, through a "Stream settings" link inside the Live Stream tile (option A). It opens Stream Settings without the Diagnostics card. This is the owner's AGENTS §1 ruling: one added control on Home, and one screen reachable outside a mode.                                         | Owner, 2026-10-11                                                                      |
+| R2  | Automatic stays **on** by default. The two phone settings, _Start and stop automatically_ and _Controls on the Left / Right_, are reachable from Home before a scan, through a "Stream settings" link inside the Live Stream tile (option A; a gear since 2026-10-12, below). It opens Stream Settings without the Diagnostics card. This is the owner's AGENTS §1 ruling: one added control on Home, and one screen reachable outside a mode.         | Owner, 2026-10-11; the gear, 2026-10-12                                                |
 | R3  | A "Send record to Seazn" **button** (option B). Nothing uploads by itself; automatic upload may follow later. This is the owner's ruling on AGENTS §1's "no upload" for the session record, sent on the operator's tap.                                                                                                                                                                                                                                | Owner, 2026-10-11                                                                      |
 | R4  | The upload authenticates with the last stream code's token, kept for 24 h after an unpair, for uploads only (option A). The server accepts a record for any valid token of that code, from a replaced phone too.                                                                                                                                                                                                                                       | Owner, 2026-10-11                                                                      |
 | R5  | Battery: **no prompt and no card by default**. A row in Stream Settings shows whether background activity is allowed and opens this app's battery page, where the operator may choose _Unrestricted_. No `REQUEST_IGNORE_BATTERY_OPTIMIZATIONS` permission.                                                                                                                                                                                            | Owner, 2026-10-11 ("A, instead of asking default, user may go to setting then choose") |
@@ -35,9 +35,15 @@ recommendation the owner may overrule in review; it is never the owner's.
 | R8  | A5 (the 20 s lag rule) is not changed: on 2026-10-11 it fired on a real stall.                                                                                                                                                                                                                                                                                                                                                                         | _Controller's_, 2026-10-11                                                             |
 | R9  | The upload sends what Share record shares (the JS ring, the last 1,000 lines), so there is one record and one truth. N25's 1,000-line cap stays a separate matter.                                                                                                                                                                                                                                                                                     | _Controller's_, 2026-10-11                                                             |
 | R10 | A rejoin after a hold has run out keeps trying while the server says live (the server is the authority, A14), but it shows a reason and backs off (§5).                                                                                                                                                                                                                                                                                                | _Controller's_, 2026-10-11                                                             |
-| R11 | Portrait Home amends S0 decision 9 ("three equal tiles"): a portrait tile is never shorter than its own words; spare height is shared equally, and Home scrolls when the tiles outgrow the window. Landscape keeps equal widths. Equal thirds need a 748–796 dp window at 360 wide once the Live Stream tile carries its link (`homeFit.test.ts`); a 360 × 800 phone leaves about 720–730. I2 of the Batch 5 review.                                   | _Controller's_, 2026-10-12; owner to confirm                                           |
+| R11 | Portrait Home amends S0 decision 9 ("three equal tiles"): a portrait tile is never shorter than its own words; spare height is shared equally, and Home scrolls when the tiles outgrow the window. Landscape keeps equal widths. Re-measured with the gear (Batch 10): equal thirds fit with no card, but with a card they need a 736–807 dp window at 360 wide (`homeFit.test.ts`); a 360 × 800 phone leaves about 720. I2 of the Batch 5 review.     | _Controller's_, 2026-10-12; owner to confirm                                           |
 | R12 | The battery row reads three modes in Android's own words, from two readings: _Unrestricted_ (`isIgnoringBatteryOptimizations`), else _Restricted_ (`ActivityManager.isBackgroundRestricted`), else _Optimized_; unknown hides the row. Its button is _App settings_ and opens App info (`ACTION_APPLICATION_DETAILS_SETTINGS`, the only public per-app target), with a path line under it ("Battery → Unrestricted"). I1 and M5 of the Batch 5 review. | _Controller's_, 2026-10-12                                                             |
 | R13 | From Arming on, the battery row's button is disabled with one line, "Change it after the broadcast": App info is one tap from Force stop and the camera and microphone permissions, and the app in the background is N27's condition. The mode stays readable. I3 of the Batch 5 review.                                                                                                                                                               | _Controller's_, 2026-10-12                                                             |
+
+**R2 as the owner presented it (2026-10-12).** "Instead of text, can we have
+icon in right top corner?", choosing the gear mockup: the "Stream settings" link
+became a gear in the Live Stream tile's top-right corner. It is the on-air icon
+row's Settings glyph on a 48 dp target, named "Stream settings" for a screen
+reader, and it opens the same Stream Settings (§6).
 
 ## 2. New findings to file
 
@@ -162,10 +168,15 @@ Mutate the rejoin marker once and watch a test fail.
 
 ## 6. B6 — Stream settings from Home (R2)
 
-- The Live Stream tile gets a small secondary link, "Stream settings"
-  (`home.streamSettings`), under its hint. It is a `Pressable` with a 48 dp
-  target, and it never competes with the tile's own tap.
-- The link opens Stream Settings with `from=home`. Diagnostics is not shown,
+- The Live Stream tile gets a gear in its top-right corner, named "Stream
+  settings" (`home.streamSettings`) for a screen reader: R2 as the owner
+  presented it (2026-10-12, §1), in place of the text link first built under
+  the hint. It is a `Pressable` with a 48 dp target, the sibling of the tile's
+  button, and it never competes with the tile's own tap. Upright the head row
+  ends where the gear begins; sideways the tile's top padding is the gear's
+  48 dp and the head sits under it, since a third of the row is too narrow to
+  share the head's line.
+- The gear opens Stream Settings with `from=home`. Diagnostics is not shown,
   because nothing is paired. Shown:
   - _Start and stop automatically_ (default on);
   - _Controls on the Left / Right_;
@@ -175,13 +186,15 @@ Mutate the rejoin marker once and watch a test fail.
 - The route sits outside `app/stream/`, so it has no LIVE plate and no
   on-air rules. The owner's R2 is what allows a screen reachable outside a mode.
   AGENTS §1 and §6 are updated in the same change, to say so.
-- Home's layout tests (`homeFit.test.ts`) budget the link in all four locales
-  at 640 × 360, 804 × 332 and portrait. The controller's ruling of 2026-10-12
-  (N31, N35) made the fits' geometry the size Home is laid out at behind
-  ShellFrame's insets, so they also carry 728 × 328, the owner's phone sideways.
+- Home's layout tests (`homeFit.test.ts`) check, in all four locales, that the
+  gear never covers the tile's icon or title at 592, 640, 728, 804 and 915 dp
+  wide sideways and 360 and 412 upright, and that the sideways band fits with
+  no card. The controller's ruling of 2026-10-12 (N31, N35) made the fits'
+  geometry the size Home is laid out at behind ShellFrame's insets, so they
+  carry 728 × 328, the owner's phone sideways.
 - In portrait each tile grows from its own content and Home scrolls when the
-  tiles outgrow the window (R11), so the Live Stream tile with its link is
-  never squeezed below its words.
+  tiles outgrow the window (R11), so no tile is squeezed below its words when a
+  card stands above them.
 
 ## 7. B7 — Send record to Seazn (R3, R4, R9)
 
