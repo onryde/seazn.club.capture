@@ -30,7 +30,7 @@ const line = (event: string, fields: Record<string, string | number | boolean | 
 const LINES = [line('paired'), line('live', { transport: 'srt' })];
 
 /**
- * The web's record contract, vendored at 53f28ebfc and pinned by contractPins.test.ts: every path, limit and answer
+ * The web's record contract, vendored at 55ac34d5d and pinned by contractPins.test.ts: every path, limit and answer
  * below is read from it or from its fixtures, never typed here (recordContract.test.ts pins the app's copies).
  */
 const CONTRACTS = new URL('../../contracts/', import.meta.url);
@@ -44,8 +44,8 @@ type Schema = {
 const contract = JSON.parse(
   readFileSync(new URL('capture-record.v1.json', CONTRACTS), 'utf8'),
 ) as Schema;
-const fixture = (name: string): unknown =>
-  JSON.parse(readFileSync(new URL(`${name}.json`, FIXTURES), 'utf8'));
+const fixtureText = (name: string) => readFileSync(new URL(`${name}.json`, FIXTURES), 'utf8');
+const fixture = (name: string): unknown => JSON.parse(fixtureText(name));
 const FIXTURE_NAMES = readdirSync(FIXTURES)
   .map((file) => file.replace(/\.json$/, ''))
   .sort();
@@ -607,6 +607,16 @@ describe('the answers, from the contract’s fixtures', () => {
     });
   });
 
+  // Owner ruling RL (2026-10-12), in the contract at 55ac34d5d: a bad line is dropped, never refused, so a 422 is a
+  // body the server cannot read as lines. The app sends no encoding and no empty body, so a 422 is a mismatch another
+  // try cannot change: `invalid`, as above.
+  it('reads 422 as the contract words it: a body it cannot read as lines, never a line', () => {
+    const { description } = contract.$defs.refusal;
+    expect(description).toContain('422 invalid (a body the server cannot read as lines');
+    expect(description).toContain('a bad LINE is never refused, it is dropped');
+    expect(STATUS_OF.get('invalid')).toBe(422);
+  });
+
   it('reads each refusal word’s status from the contract: all six', () => {
     expect([...STATUS_OF.keys()].sort()).toEqual(
       [
@@ -660,17 +670,26 @@ describe('the answers, from the contract’s fixtures', () => {
  * contract's verdicts and the app's rules, typed here, never the function's own answer.
  */
 describe('every line fixture of the contract, through the upload', () => {
-  type Outcome = 'as-written' | 'fitted' | 'refused-local' | 'shape-gap' | 'secret-gap';
+  type Outcome =
+    'as-written' | 'fitted' | 'refused-local' | 'shape-gap' | 'secret-gap' | 'text-gap';
   const EXPECTED: Readonly<Record<string, Outcome>> = {
     'line-invalid-at-epoch-ms': 'refused-local',
+    // A fraction, a number for a boolean, a negative wait: 55ac34d5d's narrowings of three of its five new keys. No
+    // writer of ours breaks them: `bytes` is an encoded length, native's `pickAspect16x9` a Boolean, and its
+    // `retryMs` a backoff of 2 to 30 s (Phase.kt's BACKOFF_MS). Sent as written, as `sid`'s below.
+    'line-invalid-bytes-fraction': 'shape-gap',
     'line-invalid-level': 'refused-local',
     'line-invalid-nested': 'refused-local',
     'line-invalid-never-key': 'fitted',
     'line-invalid-no-kind': 'refused-local',
+    'line-invalid-pickAspect16x9-number': 'shape-gap',
     'line-invalid-plain-url': 'refused-local',
+    // An object under an unlisted key: the scrub masks an object, so the line would arrive changed (as `nested`).
+    'line-invalid-proto-key': 'refused-local',
+    'line-invalid-retryMs-negative': 'shape-gap',
     // Class narrowings the app does not apply: no writer of ours puts a number or a boolean under `sid`, or more than
     // eight hex digits under `tokenTag` (batch 11's answers, Q4). Such a line is sent as written, and the server
-    // refuses the record with 422.
+    // drops it and keeps the rest (owner ruling RL, in the contract at 55ac34d5d).
     'line-invalid-sid-boolean': 'shape-gap',
     'line-invalid-sid-number': 'shape-gap',
     'line-invalid-tokenTag': 'shape-gap',
@@ -678,7 +697,7 @@ describe('every line fixture of the contract, through the upload', () => {
     'line-invalid-url-query': 'refused-local',
     'line-invalid-url-userinfo': 'refused-local',
     // S2–S5 are the server's second line (its spec §5), which the app does not run: the line shape
-    // admits these, they leave as written, and the server refuses the record with 422. The app's own
+    // admits these, they leave as written, and the server drops each line (RL). The app's own
     // rule is the token (S1, below), and the sending tok is no secret under any other token.
     'line-secret-bearer': 'secret-gap',
     'line-secret-ingest-url': 'secret-gap',
@@ -686,19 +705,39 @@ describe('every line fixture of the contract, through the upload', () => {
     'line-secret-srt-streamid': 'secret-gap',
     'line-secret-streamid-space': 'secret-gap',
     'line-secret-userinfo': 'secret-gap',
+    // A key written twice: the server reads the line's text and drops it, where a reader of the JSON keeps the last
+    // value only (the contract's own words). No writer of ours writes a key twice, and the app's one rule on the text
+    // is the token's (M7, above). So it leaves as written, its first value (an S5 Bearer) unread here: the server
+    // drops the line, as it drops a secret-gap one.
+    'line-server-duplicate-key': 'text-gap',
     // A string under an unlisted key that no scrub wrote (`cred`): the line did not come through a scrub (M7).
     'line-tampered': 'refused-local',
   };
   const LINE_FIXTURES = FIXTURE_NAMES.filter((name) => name.startsWith('line-'));
   const seen: Outcome[] = [];
+  /** One line of NDJSON. A key written twice survives only in the file's text, which loses its layout, never a key. */
+  const asLine = (name: string) =>
+    name.startsWith('line-server-')
+      ? fixtureText(name).replace(/\n\s*/g, '')
+      : JSON.stringify(fixture(name));
 
-  it('has 38 line fixtures, 19 of them valid', () => {
-    expect(LINE_FIXTURES).toHaveLength(38);
-    expect(LINE_FIXTURES.filter((name) => name.startsWith('line-valid'))).toHaveLength(19);
+  it('has 46 line fixtures, 22 of them valid, and one the server judges by its text', () => {
+    expect(LINE_FIXTURES).toHaveLength(46);
+    expect(LINE_FIXTURES.filter((name) => name.startsWith('line-valid'))).toHaveLength(22);
+    expect(LINE_FIXTURES.filter((name) => name.startsWith('line-server'))).toEqual([
+      'line-server-duplicate-key',
+    ]);
+  });
+
+  it('carries the duplicate key into the line, which a JSON round trip would lose', () => {
+    const twice = asLine('line-server-duplicate-key');
+    expect(twice).not.toMatch(/[\r\n]/);
+    expect(twice.match(/"message":/g)).toHaveLength(2);
+    expect(JSON.stringify(JSON.parse(twice)).match(/"message":/g)).toHaveLength(1);
   });
 
   it.each(LINE_FIXTURES)('%s', async (name) => {
-    const written = JSON.stringify(fixture(name));
+    const written = asLine(name);
     const expected = EXPECTED[name] ?? (name.startsWith('line-valid') ? 'as-written' : undefined);
     expect(expected).toBeDefined();
     const p = port(answered(201, OK));
@@ -729,7 +768,8 @@ describe('every line fixture of the contract, through the upload', () => {
       count('refused-local'),
       count('shape-gap'),
       count('secret-gap'),
-    ]).toEqual([20, 2, 8, 3, 5]);
+      count('text-gap'),
+    ]).toEqual([23, 2, 9, 6, 5, 1]);
   });
 
   // S1, the one secret rule the app runs itself: the Bearer that sends the record, anywhere in it.
@@ -746,9 +786,9 @@ describe('every line fixture of the contract, through the upload', () => {
 });
 
 /**
- * Q4 of the web's record design (batch 11's answers): the server refuses a body with any key its contract does not
- * list, a never key included even masked, where Share record masks it (`"key":"***"`). The upload drops that field from
- * its line and sends the line; Share record is unchanged.
+ * Q4 of the web's record design (batch 11's answers): the server drops a line with any key its contract does not list,
+ * a never key included even masked, where Share record masks it (`"key":"***"`). The upload drops that field from its
+ * line and sends the rest of the line; Share record is unchanged.
  */
 describe('a field the contract does not list is dropped from its line, and the line goes (Q4)', () => {
   const sent = async (lines: readonly string[]) => {
@@ -790,17 +830,35 @@ describe('a field the contract does not list is dropped from its line, and the l
     ]);
   });
 
-  // The app's own keys that the contract at 53f28ebfc does not list yet (recordContract.test.ts names all five).
-  it('record.send’s own bytes is sent without it, so a second send is not refused for the first one’s line', async () => {
+  // The contract lists `bytes` since 55ac34d5d, narrowed to a whole number of at least 0: the first send's own line
+  // goes whole in the second, as the contract admits it.
+  it('record.send’s own line, bytes and all, is sent whole in the next send', async () => {
     const p = port(answered(201, OK));
     await p.upload.send(LINES, credential);
     const [written = ''] = p.sendLines();
     expect(written).toContain('"bytes":');
     const { lines } = await sent([written]);
-    expect(lines).toEqual([
-      '{"at":"1970-01-01T00:00:00.000Z","kind":"record.send","result":"sent","status":201}',
-    ]);
+    expect(lines).toEqual([written]);
+    expect(admitsLine(JSON.parse(written))).toBe(true);
   });
+
+  it.each(['refused-local', 'too-large', 'failed'] as const)(
+    'record.send’s line after a %s send is the contract’s too',
+    async (result) => {
+      const big = Array.from({ length: 1_000 }, () =>
+        line('vendor-log', { message: 'x'.repeat(1_100) }),
+      );
+      const lines = {
+        'refused-local': [line('beats', { note: 'x' })],
+        'too-large': big,
+        failed: [],
+      }[result];
+      const p = port(answered(201, OK));
+      expect((await p.upload.send(lines, credential)).result).toBe(result);
+      const [written = ''] = p.sendLines();
+      expect(admitsLine(JSON.parse(written))).toBe(true);
+    },
+  );
 
   // A line left whole goes byte for byte, as written: native's `Decimal` writes 1.0, which a re-serialisation drops.
   it('a line with nothing to drop is sent as written, byte for byte', async () => {

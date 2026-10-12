@@ -15,9 +15,10 @@ import { scrubEvent, scrubFields, type HeldSecrets, type LogFields } from '@/ser
 import { parseRecordLine } from '@/services/sessionRecord';
 
 /**
- * The web's record contract (`contracts/capture-record.v1.json`, vendored at 53f28ebfc; `recordContract.ts` holds its
+ * The web's record contract (`contracts/capture-record.v1.json`, vendored at 55ac34d5d; `recordContract.ts` holds its
  * rules): the code's Bearer and an NDJSON body; a 201 is read for its `ref` alone, and never its `kept` or `dropped`
- * (RD, the owner's ruling of 2026-10-12). A refusal is read by its status, never its body.
+ * (RD, the owner's ruling of 2026-10-12). A refusal is read by its status, never its body. A bad line is never refused:
+ * the server drops it and keeps the rest (owner ruling RL, 2026-10-12).
  */
 type RecordUploadHeaders = {
   readonly Authorization: string;
@@ -27,9 +28,10 @@ type RecordUploadAnswer = { readonly ref: string };
 
 /**
  * What one send came to. Fix round 1 of Batch 11 (the controller's ruling 8): each refusal another try cannot change
- * has its own word (`unauthorised` 401, `not-found` 404, `too-large` 413 or over the limit here, `invalid` 422,
- * `unreadable` a 201 off the contract, `refused-local` a record this port will not send); `rate-limited` (429) and
- * `failed` (the network, the 15 s bound, a 5xx, any other status) are the ones another try can change.
+ * has its own word (`unauthorised` 401, `not-found` 404, `too-large` 413 or over the limit here, `invalid` 422, a body
+ * the server cannot read as lines, which this port never sends, `unreadable` a 201 off the contract, `refused-local` a
+ * record this port will not send); `rate-limited` (429) and `failed` (the network, the 15 s bound, a 5xx, any other
+ * status) are the ones another try can change.
  */
 export type RecordSendResult =
   | 'sent'

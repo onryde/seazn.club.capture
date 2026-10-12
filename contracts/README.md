@@ -4,11 +4,15 @@ The web's capture contracts, vendored and pinned (plan D spec §3.1, owner rulin
 web repo `onryde/seazn.club`, folder `docs/contracts/`. This folder is a byte copy of that folder at one commit, and
 nothing here is edited by hand.
 
-Vendored from web `53f28ebfcaaece1409499be799156f6ed825851c` (web #941, merged 2026-10-12) on 2026-10-12: 6 schemas
-and 191 fixtures. Staging deploys the web's `main`. 53f28ebfc added the record contract and its 52 fixtures, and
-changed no other file. The first vendoring, on 2026-10-09, was at web `8afdd8b42`; the second, the same day, at
-`5a02cc4a5`, which changed the descriptor schema's prose and fifteen fixtures' RTMPS host to `live.cloudflare.com`, and
-no verdict.
+Vendored from web `55ac34d5dcaf74d6735bdaf1e57aaa159586b7c8` (web #943, merged 2026-10-12, which serves the record
+route) on 2026-10-12: 6 schemas and 199 fixtures. Staging deploys the web's `main`. 55ac34d5d changed only the record
+contract and its fixtures: it lists the five keys the app wrote after capture 7ea8f63 (`bytes`, `failures`, `retryMs`,
+`pickAspect16x9`, `pickSource`), drops a bad line where it refused the body (owner ruling RL: 422 is now only a body the
+server cannot read as lines), closes a pairing window at `pair-refused`, `engine-error` and `reset` too, adds eight
+fixtures and rewords `valid-invalid.json`. Before it, `53f28ebfc` (web #941) added the record contract and its 52
+fixtures, and changed no other file. The first vendoring, on 2026-10-09, was at web `8afdd8b42`; the second, the same
+day, at `5a02cc4a5`, which changed the descriptor schema's prose and fifteen fixtures' RTMPS host to
+`live.cloudflare.com`, and no verdict.
 
 | File                           | What it is                                                                 |
 | ------------------------------ | -------------------------------------------------------------------------- |
@@ -34,8 +38,8 @@ A contract changes only through `pnpm contracts:vendor` and the pin test (R7):
 
    It refuses a dirty `docs/contracts` before touching anything here, copies the files git tracks there, writes
    `VENDORED.json`, and prints each file added, changed or removed. It only reads the web checkout, and it never runs
-   in CI. A fresh clone of the public repo, checked out at that commit, serves as well: the 5a02cc4a5 vendoring used
-   one, so the web checkout in daily use was never moved.
+   in CI. A fresh clone of the public repo, checked out at that commit, serves as well: the 5a02cc4a5 and 55ac34d5d
+   vendorings used one, so the web checkout in daily use was never moved.
 
 2. By hand, copy the web's commit and its six schema pins (`SHA256` in the web's
    `apps/web/src/server/api-v1/__tests__/capture-contract.test.ts`) into `WEB_COMMIT` and `WEB_PINS` in

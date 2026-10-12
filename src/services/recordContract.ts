@@ -1,7 +1,7 @@
 /**
- * The web's record contract, `contracts/capture-record.v1.json` (vendored at web 53f28ebfc; the owner approved its
- * design on 2026-10-12): what Send record to Seazn posts, and what it reads back. `recordContract.test.ts` holds every
- * value here to the vendored file, so a re-vendor that moves one reds until this file moves with it.
+ * The web's record contract, `contracts/capture-record.v1.json` (vendored at web 55ac34d5d, which serves it; the owner
+ * approved its design on 2026-10-12): what Send record to Seazn posts, and what it reads back. `recordContract.test.ts`
+ * holds every value here to the vendored file, so a re-vendor that moves one reds until this file moves with it.
  */
 
 /** `POST /api/v1/capture/codes/{code}/records`: the code's URL as the app holds it (`codeUrl`), then this. */
@@ -37,9 +37,8 @@ export const RECORD_LEVELS: ReadonlySet<string> = new Set([
 ]);
 
 /**
- * Every key a line may carry, by the contract's class: 92 at 53f28ebfc, which the web took from the allow-list at
- * capture 7ea8f63. Five keys the app writes came after it, and are on no list here until the web adds them
- * (`recordContract.test.ts` names them).
+ * Every key a line may carry, by the contract's class: 97 at 55ac34d5d, which the web took from the allow-list at
+ * capture ebac190, so every key the app writes (`recordContract.test.ts` holds the two lists equal).
  */
 export const RECORD_LINE_KEYS: ReadonlySet<string> = new Set([
   // The line's own.
@@ -72,6 +71,7 @@ export const RECORD_LINE_KEYS: ReadonlySet<string> = new Set([
   'notReady',
   'op',
   'phase',
+  'pickSource',
   'problem',
   'reason',
   'refusal',
@@ -101,13 +101,16 @@ export const RECORD_LINE_KEYS: ReadonlySet<string> = new Set([
   // text.
   'message',
   'problems',
-  // scalars: a number, a boolean or null only.
+  // scalars: a number, a boolean or null only; `bytes`, `failures` and `retryMs` a whole number of at least 0, and
+  // `pickAspect16x9` a boolean, narrowed by the contract.
   'audioFps',
+  'bytes',
   'camera',
   'counted',
   'encodeListed',
   'exitAtMs',
   'failed',
+  'failures',
   'gapMs',
   'granted',
   'headroom',
@@ -122,12 +125,14 @@ export const RECORD_LINE_KEYS: ReadonlySet<string> = new Set([
   'ok',
   'on',
   'outageMs',
+  'pickAspect16x9',
   'pickHeight',
   'pickWidth',
   'publishedMs',
   'rebaselined',
   'rebuilds',
   'refusedSid',
+  'retryMs',
   'sameArea',
   'sent',
   'sinceLastMs',
@@ -142,11 +147,11 @@ export const RECORD_LINE_KEYS: ReadonlySet<string> = new Set([
 ]);
 
 /**
- * Q4 of the web's record design (batch 11's answers): the vendored contract refuses a whole body for one key it does
- * not list, a never key included even masked; by the owner's later ruling (relayed by the web, 2026-10-12) the server
- * drops that line and answers 201. Either way a line the upload's checks passed goes with every such field dropped,
- * which keeps the rest of it, and a line with none goes as written, byte for byte. Share record never comes here: it
- * shares the record as written, masks and all. `line` is a record line (`linesAreSafe` has read it).
+ * Q4 of the web's record design (batch 11's answers): the server drops a line with a key the contract does not list,
+ * a never key included even masked, and keeps the rest of the record (owner ruling RL, in the contract at 55ac34d5d).
+ * So a line the upload's checks passed goes with every such field dropped, which keeps the rest of the line, and a
+ * line with none goes as written, byte for byte. Share record never comes here: it shares the record as written,
+ * masks and all. `line` is a record line (`linesAreSafe` has read it).
  */
 export function fitLine(line: string): string {
   const data = JSON.parse(line) as Record<string, unknown>;

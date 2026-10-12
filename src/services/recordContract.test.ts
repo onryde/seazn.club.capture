@@ -129,18 +129,19 @@ describe('the record contract’s line: at and level', () => {
 });
 
 describe('the record contract’s keys', () => {
-  it('lists the contract’s 92 keys, no more and no fewer', () => {
+  it('lists the contract’s 97 keys, no more and no fewer', () => {
     expect([...RECORD_LINE_KEYS].sort()).toEqual(Object.keys(contract.properties).sort());
-    expect(RECORD_LINE_KEYS.size).toBe(92);
+    expect(RECORD_LINE_KEYS.size).toBe(97);
   });
 
   it('lists no never key', () => {
     expect(list.never.filter((key) => RECORD_LINE_KEYS.has(key))).toEqual([]);
   });
 
-  // The web took its keys from the allow-list at capture 7ea8f63; these five came after it. Until the web lists them
-  // (a contract change, then a re-vendor), the upload drops each from its line (Q4). The re-vendor reds this list.
-  it('names the five keys the app writes that the contract does not list yet', () => {
+  // The web takes its keys from the allow-list (capture ebac190 at web 55ac34d5d, which added the five the app wrote
+  // after 7ea8f63). So no key the app writes is dropped from its line on the way (Q4); a key either side adds alone
+  // reds this until the other moves.
+  it('lists every key the app writes, and only those', () => {
     const written = [
       ...list.reserved,
       ...list.plain.map((key) => (list.reserved.includes(key) ? `field_${key}` : key)),
@@ -148,13 +149,8 @@ describe('the record contract’s keys', () => {
       ...list.text,
       ...Object.keys(list.scalars),
     ];
-    expect(written.filter((key) => !RECORD_LINE_KEYS.has(key)).sort()).toEqual([
-      'bytes',
-      'failures',
-      'pickAspect16x9',
-      'pickSource',
-      'retryMs',
-    ]);
+    expect(written.sort()).toEqual(Object.keys(contract.properties).sort());
+    expect(written.filter((key) => !RECORD_LINE_KEYS.has(key))).toEqual([]);
   });
 });
 
@@ -176,9 +172,19 @@ describe('fitLine (Q4): what the contract does not list leaves the line, and the
   it('drops every unlisted key at once, and keeps the order of the rest', () => {
     expect(
       fitLine(
-        '{"at":"2026-10-11T21:12:00.500Z","kind":"rejoin-retry","retryMs":500,"attempt":2,"field_at":"x","code":"***"}',
+        '{"at":"2026-10-11T21:12:00.500Z","kind":"rejoin-retry","retryMs":500,"field_at":"x","failures":2,"code":"***"}',
       ),
-    ).toBe('{"at":"2026-10-11T21:12:00.500Z","kind":"rejoin-retry","attempt":2}');
+    ).toBe('{"at":"2026-10-11T21:12:00.500Z","kind":"rejoin-retry","retryMs":500,"failures":2}');
+  });
+
+  // The five keys 55ac34d5d added, each in the line its writer writes: nothing to drop, so each goes as written.
+  it.each([
+    '{"at":"2026-10-11T21:31:40.918Z","kind":"record.send","result":"sent","status":201,"bytes":48213}',
+    '{"at":"2026-10-11T21:14:02.250Z","kind":"rejoin-retry","level":"warn","retryMs":4000,"failures":2}',
+    '{"at":"2026-10-11T21:05:12.004Z","kind":"preview-size","pickAspect16x9":true,"pickSource":"ours"}',
+  ])('keeps %s whole, and the contract admits it', (written) => {
+    expect(fitLine(written)).toBe(written);
+    expect(admitsLine(JSON.parse(written))).toBe(true);
   });
 
   // Native's Decimal writes 1.0 and a JSON round trip writes 1: a whole line is never re-serialised.

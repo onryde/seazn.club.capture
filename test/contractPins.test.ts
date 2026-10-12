@@ -11,11 +11,12 @@ import { listFiles, OURS } from '../scripts/vendor-contracts.mjs';
  * records every file's sha256 in contracts/VENDORED.json. This test holds the folder to that record, file for file.
  *
  * The other side of the pin is the web's own: its capture-contract.test.ts pins the six schemas. Those six values
- * and the commit are copied below BY HAND from apps/web/src/server/api-v1/__tests__/capture-contract.test.ts:51-56
- * at 53f28ebfc (web #941, merged 2026-10-12, which added the record contract; the script never writes them), so a
- * re-vendor cannot quietly move both sides at once. WEB_COMMIT is the commit actually vendored (plan D1, D-10).
+ * and the commit are copied below BY HAND from apps/web/src/server/api-v1/__tests__/capture-contract.test.ts:51-57
+ * at 55ac34d5d (web #943, merged 2026-10-12, which serves the record contract and changed only it and its fixtures;
+ * the script never writes them), so a re-vendor cannot quietly move both sides at once. WEB_COMMIT is the commit
+ * actually vendored (plan D1, D-10).
  */
-const WEB_COMMIT = '53f28ebfcaaece1409499be799156f6ed825851c';
+const WEB_COMMIT = '55ac34d5dcaf74d6735bdaf1e57aaa159586b7c8';
 const WEB_PINS: Readonly<Record<string, string>> = {
   'capture-qr.v2.json': '3292e33f84b693e5def6048012f6653ca7e31e1573fda3901da4fe67a62c5d43',
   'capture-descriptor.v1.json': '5c9b09c422b092671ad3a842b02e5c18902c92fc290cbc562c91033555955b8b',
@@ -23,7 +24,7 @@ const WEB_PINS: Readonly<Record<string, string>> = {
   'capture-start.v1.json': '012d6e3851e84d0ce659ad23449fa91b61f0d20cfac1e58f2ccbc7cbb0742bae',
   'capture-scoring-link.v1.json':
     'f0f1188655f3ca83b3e42ce7fedd6f6210a3a141b0bcf02fa250eb2448b1c85f',
-  'capture-record.v1.json': '09582e858547dde50c43c9e5e2fff0d77d547716a5117787848b4dbe967a4745',
+  'capture-record.v1.json': 'eeeb9711f0de4c5ed9b1b284f505c2fb0fa8a5a30873b49b74f7a8600043f638',
 };
 
 const root = new URL('../contracts/', import.meta.url);
@@ -39,9 +40,9 @@ const vendored = JSON.parse(readFileSync(new URL('VENDORED.json', root), 'utf8')
 const onDisk = listFiles(fileURLToPath(root)).filter((path) => !OURS.includes(path));
 
 describe('the vendored contracts, pinned (plan D spec §3.1, R7)', () => {
-  it('pins 197 files: the six schemas and 191 fixtures (moves only with a re-vendor)', () => {
+  it('pins 205 files: the six schemas and 199 fixtures (moves only with a re-vendor)', () => {
     const pinned = Object.keys(vendored.files);
-    expect(pinned).toHaveLength(197);
+    expect(pinned).toHaveLength(205);
     expect(pinned.filter((path) => !path.includes('/'))).toHaveLength(6);
   });
 
