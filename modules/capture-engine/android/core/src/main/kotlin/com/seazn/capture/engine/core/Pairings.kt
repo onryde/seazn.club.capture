@@ -60,6 +60,20 @@ internal object Pairings {
       else -> SessionMachine.ignored(phase, "unpair")
     }
 
+  /**
+   * R6, R7 of the D3 findings design: the notification's Forget, with no confirmation. Only Paired (scanned,
+   * waiting) holds the notification's action; any other phase ignores a late tap, recorded. It leaves as an unasked
+   * unpair does, with its reason, so JS forgets the saved code from the snapshot, and the marker is written for a
+   * process death before JS hears it.
+   */
+  fun forget(phase: Phase): Step {
+    if (phase !is Phase.Paired) return SessionMachine.ignored(phase, "forget")
+    val pairing = phase.pairing
+    val idle = Phase.Idle(phase.ids, phase.networkValidated, phase.micSilenced, Unpaired(UnpairReason.FORGOTTEN, pairing.name))
+    val commands = listOf(Command.Release, Command.WriteForgotten(pairing.name), line("unpaired", "reason" to UnpairReason.FORGOTTEN, "wasLive" to false))
+    return Step(idle, commands, leftLog = pairing.beatLog)
+  }
+
   /** The engine leaves the pairing without the operator asking: the code is forgotten by JS (A9, the 401 rule). */
   fun unpaired(phase: Phase, reason: UnpairReason, now: Now): Step {
     val pairing = phase.pairing ?: return Step(phase)

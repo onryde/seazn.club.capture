@@ -19,6 +19,12 @@ sealed interface Input {
   /** Forget, A7's confirm, an orphan clear. Paired only: never ends a held broadcast. */
   data object Unpair : Input
 
+  /**
+   * R6, R7 of the D3 findings design: the notification's Forget. Native's own input, from the glue's receiver,
+   * never a JS intent; acts only while Paired ([Pairings.forget]).
+   */
+  data object Forget : Input
+
   data class SetAutomatic(val on: Boolean) : Input
 
   data class SetLanguage(val language: String) : Input

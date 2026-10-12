@@ -37,7 +37,7 @@
       "hold-window-expired",
       "stopped"
     ],
-    "unpairReason": ["code-ended", "replaced", "taken", "permissions"],
+    "unpairReason": ["code-ended", "replaced", "taken", "permissions", "forgotten"],
     "delivery": ["ok", "stalled", "unknown"],
     "shed": ["viewer-feed", "preview-framerate", "encode"],
     "heartbeatResult": ["ok", "failed", "session-over"],

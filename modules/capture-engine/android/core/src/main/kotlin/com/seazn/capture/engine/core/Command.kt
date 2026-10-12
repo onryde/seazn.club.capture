@@ -81,6 +81,14 @@ sealed interface Command {
   /** A17: write [record] to app-private storage, synchronously, before the [End] that follows it. */
   data class WriteStopped(val record: StoppedRecord) : Command
 
+  /**
+   * R6 of the D3 findings design: the Forget marker for [name], durable before JS hears it, so a process death
+   * still reads `unpaired: forgotten` at the next start (B9).
+   */
+  data class WriteForgotten(val name: PairingName) : Command {
+    override fun toString(): String = "WriteForgotten(slot=${name.slot})"
+  }
+
   /** A17: the record for this code and slot is delivered, or its code ended. */
   data class DeleteStopped(val code: String, val slot: Int) : Command {
     override fun toString(): String = "DeleteStopped(slot=$slot)"

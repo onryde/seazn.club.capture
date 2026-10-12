@@ -57,6 +57,7 @@ object SessionMachine {
       is Input.Pair -> Pairings.pair(phase, input, now)
       is Input.PermissionsAnswered -> Pairings.permissions(phase, input.granted, now)
       Input.Unpair -> Pairings.unpair(phase)
+      Input.Forget -> Pairings.forget(phase)
       is Input.SetAutomatic -> Pairings.automatic(phase, input.on)
       is Input.SetLanguage -> Pairings.language(phase, input.language)
       is Input.ReadinessChanged -> Pairings.readiness(phase, input.readiness)
