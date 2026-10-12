@@ -193,6 +193,26 @@ class SessionMachineRejoinTest {
   }
 
   @Test
+  fun `Stop while rejoining ends with the broadcast's time on air from its first live time, never as never-live`() {
+    val rig = MachineRig(descriptor = sevenSecondHolds)
+    val since = lapsed(rig)
+    rejoined(rig)
+    rig.send(Input.Stop)
+    val ended = assertIs<SnapshotState.Ended>(rig.state)
+    assertEquals(rig.wall - since, ended.durationMs)
+    assertEquals(true, rig.records("ended").single().field("wasLive"))
+  }
+
+  @Test
+  fun `a fatal error while Paired after the lapse holds no broadcast - it ends never-live, the lapse no time on air`() {
+    val rig = MachineRig(descriptor = sevenSecondHolds)
+    lapsed(rig)
+    rig.send(Input.PlatformFailed(rig.phase.attemptInHand, "codec"))
+    assertNull(assertIs<SnapshotState.Ended>(rig.state).durationMs)
+    assertEquals(false, rig.records("ended").single().field("wasLive"))
+  }
+
+  @Test
   fun `a second live beat while rejoining changes nothing (a second call)`() {
     val rig = MachineRig(descriptor = sevenSecondHolds)
     val since = lapsed(rig)

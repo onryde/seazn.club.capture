@@ -282,6 +282,13 @@ val Phase.holdsBroadcast: Boolean
   get() = heldSid != null
 
 /**
+ * When the held broadcast first went live: its first encoded frame, or, for a rejoin of a [Lapsed] one before its first
+ * frame, the lapsed broadcast's (N29; P3, controller's). Null for a broadcast that never went live, or none held.
+ */
+val Phase.firstLiveEpochMs: Long?
+  get() = session?.liveSinceEpochMs ?: pairing?.lapsed?.takeIf { it.sid == heldSid }?.liveSinceEpochMs
+
+/**
  * The foreground service is held: Hold went at the permission grant, so from Paired until the pairing
  * ends. Release goes only where this is true (review C0b M4); Ended's final beat keeps its own.
  */
@@ -395,12 +402,13 @@ fun Phase.withMic(silenced: Boolean): Phase =
 /**
  * The phase a session ends in, from any phase: the ids and the network and mic facts carry on to the next
  * session. The duration counts from the first encoded frame on the wall clock, outages included, as
- * the HUD's elapsed clock does (final review M-3); a wall clock set back past that frame reads 0. An
+ * the HUD's elapsed clock does (final review M-3), and for a rejoin from the lapsed broadcast's
+ * ([firstLiveEpochMs], N29); a wall clock set back past that frame reads 0. An
  * ended session ended again stays as it ended: its reason and duration stand (final review N-2).
  */
 fun Phase.ended(reason: EndReason, now: Now): Phase.Ended {
   if (this is Phase.Ended) return this
-  val durationMs = session?.liveSinceEpochMs?.let { (now.wallMs - it).coerceAtLeast(0) }
+  val durationMs = firstLiveEpochMs?.let { (now.wallMs - it).coerceAtLeast(0) }
   return Phase.Ended(reason, ids, durationMs, networkValidated, micSilenced, pairing, heldSid)
 }
 

@@ -122,12 +122,9 @@ object SessionMachine {
 
   /**
    * The held broadcast went live: its first frame came, or it is a rejoin of a lapsed one (N29). P3 (controller's): a
-   * rejoin was live, so its Stop ends the pairing as Stop from live does (A3), A8's final beat included.
+   * rejoin was live, so its Stop ends the pairing as Stop from live does (A3), A8's final beat and time on air included.
    */
-  private fun wentLive(phase: Phase): Boolean {
-    val sid = phase.heldSid ?: return false
-    return phase.session?.liveSinceEpochMs != null || phase.pairing?.lapsed?.sid == sid
-  }
+  private fun wentLive(phase: Phase): Boolean = phase.firstLiveEpochMs != null
 
   /**
    * Owner decision 1: A17's record is written, as [end] writes it, and the Paired pairing holds it and refuses its
