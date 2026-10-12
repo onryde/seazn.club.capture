@@ -1462,23 +1462,46 @@ describe('useHome: every open goes through the check', () => {
   });
 });
 
-describe('the Stream settings link (R2, P6)', () => {
-  const link = () => screen.queryByRole('button', { name: 'Stream settings' });
+// R2 of the D3 findings design, as the owner presented it on 2026-10-12 ("Instead of text, can we have icon in right
+// top corner?"): a gear in the Live Stream tile's top-right corner, named "Stream settings". P6 is unchanged.
+describe('the Stream settings gear (R2, P6)', () => {
+  const gear = () => screen.queryByRole('button', { name: 'Stream settings' });
 
-  it('shows in the Live Stream tile with nothing saved, and opens Stream Settings', async () => {
+  it('shows in the Live Stream tile with nothing saved, and opens Stream Settings without a scan', async () => {
     const view = await renderHome();
     const tile = screen.getByTestId('tile-stream');
-    expect(tile.contains(link())).toBe(true);
+    expect(tile.contains(gear())).toBe(true);
     expect(tile.contains(liveStreamTile())).toBe(true);
+    expect(liveStreamTile().contains(gear())).toBe(false);
     fireEvent.click(screen.getByRole('button', { name: 'Stream settings' }));
     expect(view.navigation.current()).toBe('homeSettings');
     expect(view.scanner.scans).toBe(0);
   });
 
+  it('opens one Stream Settings for a double tap, and never a scan', async () => {
+    const view = await renderHome();
+    const gear = screen.getByRole('button', { name: 'Stream settings' });
+    fireEvent.click(gear);
+    fireEvent.click(gear);
+    expect(view.navigation.history).toEqual(['homeSettings']);
+    expect(view.scanner.scans).toBe(0);
+  });
+
+  it('is the Live Stream tile’s alone: Remote Scoring and Dashboard have no gear', async () => {
+    await renderHome();
+    expect(screen.getAllByRole('button', { name: 'Stream settings' })).toHaveLength(1);
+    for (const name of [/Remote Scoring/, /Dashboard/]) {
+      const tile = screen.getByRole('button', { name });
+      expect(tile.parentElement).toBe(screen.getByTestId('tiles'));
+    }
+    expect(screen.queryByTestId('tile-scoring')).toBeNull();
+    expect(screen.queryByTestId('tile-dashboard')).toBeNull();
+  });
+
   it('is absent while Continue shows: the same screen is inside Live Stream', async () => {
     await renderHome({ kvSeed: { [STORE_KEYS.code('stream')]: savedStream(IN_TWO_HOURS) } });
     expect(screen.getByRole('button', { name: 'Continue' })).toBeTruthy();
-    expect(link()).toBeNull();
+    expect(gear()).toBeNull();
   });
 
   it('is absent while the Stream ended card shows, and back once OK clears it', async () => {
@@ -1492,16 +1515,16 @@ describe('the Stream settings link (R2, P6)', () => {
     );
     expect(screen.getByRole('region', { name: 'Stream ended' })).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Continue' })).toBeNull();
-    expect(link()).toBeNull();
+    expect(gear()).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'OK' }));
-    expect(link()).toBeTruthy();
+    expect(gear()).toBeTruthy();
   });
 
   it('shows again once a saved code is forgotten from Continue', async () => {
     await renderHome({ kvSeed: { [STORE_KEYS.code('stream')]: savedStream(IN_TWO_HOURS) } });
-    expect(link()).toBeNull();
+    expect(gear()).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Forget' }));
-    await waitFor(() => expect(link()).toBeTruthy());
+    await waitFor(() => expect(gear()).toBeTruthy());
   });
 
   it('follows a language picked on Home', async () => {
@@ -1511,7 +1534,7 @@ describe('the Stream settings link (R2, P6)', () => {
     expect(
       screen.getByRole('button', { name: createTranslator('fr').t('home.streamSettings') }),
     ).toBeTruthy();
-    expect(link()).toBeNull();
+    expect(gear()).toBeNull();
   });
 
   it.each(['es', 'fr', 'nl'] as const)('reads in %s', async (lang) => {

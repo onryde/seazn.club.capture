@@ -110,8 +110,8 @@ describe('Home after an unpair the operator did not ask for', () => {
   );
 
   // N33: Share record used to live only in Live Stream's Settings, which a replaced phone has no pairing to open. Its
-  // record row is now in Stream Settings from Home too, behind the tile's link (R2). The panel hides Home from screen
-  // readers while it is up, so the operator closes it first; it is not a card above the tiles, so the link is there (P6).
+  // record row is now in Stream Settings from Home too, behind the tile's gear (R2). The panel hides Home from screen
+  // readers while it is up, so the operator closes it first; it is not a card above the tiles, so the gear is there (P6).
   it('a replaced phone hands its record over from Home: Stream settings, then Share record (N33)', async () => {
     const app = await pairedOnStream();
     act(() => app.engine.hear({ word: 'replaced' }));

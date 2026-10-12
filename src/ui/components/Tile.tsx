@@ -11,10 +11,10 @@ import {
 import type { ScreenLayout } from '@/domain/mode/homeLayout';
 import type { Mode } from '@/domain/mode/Mode';
 import { useT } from '@/hooks/useLanguage';
+import { Glyph } from '@/ui/components/Glyph';
 import { ModeIcon } from '@/ui/components/ModeIcon';
 import { MODE_NAME } from '@/i18n/modeNames';
 import { Text } from '@/ui/components/Text';
-import { TextLink } from '@/ui/components/TextLink';
 import { MODE_HINT, MODE_PURPOSE } from '@/ui/modeCopy';
 import { tileTitleRole } from '@/ui/theme/tileTitle';
 import { colour, layout as metrics, radius, space } from '@/ui/theme/tokens';
@@ -26,24 +26,27 @@ type TileProps = {
   /** Landscape pads the tile tighter (`tileLandscapePad`); portrait, the default, is unchanged. */
   layout?: ScreenLayout;
   /**
-   * R2: a small secondary link under the hint (Stream settings, in the Live Stream tile). It is the tile's sibling,
-   * never inside its button, so each press is its own.
+   * R2 of the D3 findings design, as the owner presented it (2026-10-12): a gear in the tile's top-right corner that
+   * opens a settings screen (Stream settings, in the Live Stream tile). `label` is its name for a screen reader; it
+   * draws no word. It is the tile's sibling, never inside its button, so each press is its own.
    */
-  link?: { readonly label: string; readonly onPress: () => void };
+  settings?: { readonly label: string; readonly onPress: () => void };
 };
 
 /**
  * One of Home's three tiles (layout A): equal widths in landscape; in portrait each grows from its own content (P7;
  * R11 of the D3 findings design). A lime left edge marks a mode you can open; an unbuilt one has none and cannot be
- * tapped (decision 10). With a link, a frame wears the tile's edge, ground and bottom padding; the tile's button wears
- * the top and side padding, so all of the tile above the link's row is the button (M2 of the Batch 5 review).
+ * tapped (decision 10). With the gear, a frame wears the tile's edge and ground, and the tile's button wears all its
+ * padding, so all of the tile but the gear is the button (M2 of the Batch 5 review). The gear's 48 dp target sits on
+ * the frame's top-right corner; upright the head row ends where it begins, and sideways the button's top padding is
+ * its height, so it never covers the icon or the title (homeFit.test.ts measures both).
  */
 export const Tile = memo(function Tile({
   mode,
   available,
   onPress,
   layout = 'portrait',
-  link,
+  settings,
 }: TileProps) {
   const { t } = useT();
   const press = useCallback(() => onPress(mode), [mode, onPress]);
@@ -53,7 +56,8 @@ export const Tile = memo(function Tile({
     (event: LayoutChangeEvent) => setHeadWidth(event.nativeEvent.layout.width),
     [],
   );
-  const style = link === undefined ? STYLES[layout][available ? 'on' : 'off'] : BODY[layout];
+  const style = settings === undefined ? STYLES[layout][available ? 'on' : 'off'] : BODY[layout];
+  const head = settings !== undefined && layout === 'portrait' ? headBesideGear : styles.head;
   const body = (
     <Pressable
       accessibilityRole="button"
@@ -62,7 +66,7 @@ export const Tile = memo(function Tile({
       onPress={press}
       style={style}
     >
-      <View style={styles.head} onLayout={measureHead}>
+      <View style={head} onLayout={measureHead}>
         <ModeIcon mode={mode} dim={!available} />
         <Text
           variant={tileTitleRole(headWidth)}
@@ -78,16 +82,42 @@ export const Tile = memo(function Tile({
       <Text variant="metricUnit">{t(MODE_HINT[mode])}</Text>
     </Pressable>
   );
-  if (link === undefined) return body;
+  if (settings === undefined) return body;
   return (
     <View testID={`tile-${mode}`} style={FRAMES[layout][available ? 'on' : 'off']}>
       {body}
-      <View style={LINK_ROW[layout]}>
-        <TextLink label={link.label} onPress={link.onPress} />
-      </View>
+      <TileGear label={settings.label} onPress={settings.onPress} />
     </View>
   );
 });
+
+/**
+ * The gear: the on-air icon row's Settings glyph, in its ink2, on a `touch` square at the frame's top-right corner. The
+ * name is the label alone, so a screen reader reads "Stream settings" and a sighted operator reads the picture.
+ */
+const TileGear = memo(function TileGear({
+  label,
+  onPress,
+}: {
+  readonly label: string;
+  readonly onPress: () => void;
+}) {
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      onPress={onPress}
+      style={gearStyle}
+    >
+      <Glyph name="settings" tone="ink2" />
+    </Pressable>
+  );
+});
+
+/** Module-level so render allocates no function; pressed dims the gear, as the icon row's buttons do. */
+function gearStyle({ pressed }: PressableStateCallbackType) {
+  return pressed ? pressedGear : styles.gear;
+}
 
 /**
  * Module-level so render allocates no function; pressed dims the tile, as Button does. One pair per layout, built
@@ -109,34 +139,46 @@ const styles = StyleSheet.create({
     backgroundColor: colour.surface,
   },
   /**
-   * P7: a portrait tile grows from its own content (an auto basis), so a short column scrolls rather than squeezing
-   * the Live Stream tile and its link below their words (homeFit.test.ts: an equal third does under 748 dp).
+   * P7 and R11 of the D3 findings design: a portrait tile grows from its own content (an auto basis), so a short
+   * column scrolls rather than squeezing a tile below its words (homeFit.test.ts: with a card above them, equal
+   * thirds would on a 360 × 720 window).
    */
   portrait: { flexGrow: 1 },
   /** Equal thirds of the row's width; the row's height is the tallest tile's, so none is squeezed. */
   landscape: { flex: 1, padding: metrics.tileLandscapePad },
   off: { borderLeftColor: colour.surface },
-  /** A framed tile: the edge, the ground and the gap over the link; its padding is split per layout below. */
+  /** A framed tile: the edge and the ground; the button inside wears all the padding. */
   frame: {
-    gap: space.xs,
     borderRadius: radius.card,
     borderLeftWidth: 4,
     borderLeftColor: colour.lime,
     backgroundColor: colour.surface,
   },
-  framePortrait: { flexGrow: 1, paddingBottom: space.md },
-  frameLandscape: { flex: 1, paddingBottom: metrics.tileLandscapePad },
-  /** Inside a frame: the tile's content rhythm, and the top and side padding, so the rim is the button's. */
+  framePortrait: { flexGrow: 1 },
+  frameLandscape: { flex: 1 },
+  /** Inside a frame: the tile's content rhythm and all its padding, so the rim is the button's. */
   body: { flex: 1, justifyContent: 'center', gap: space.xs },
-  padPortrait: { paddingTop: space.md, paddingHorizontal: space.md },
-  padLandscape: {
-    paddingTop: metrics.tileLandscapePad,
+  padPortrait: { padding: space.md },
+  /** Sideways the gear's height is the top padding: the head sits under the gear, never beside it. */
+  padLandscapeGear: {
+    paddingTop: metrics.touch,
     paddingHorizontal: metrics.tileLandscapePad,
+    paddingBottom: metrics.tileLandscapePad,
   },
-  linkPortrait: { paddingHorizontal: space.md },
-  linkLandscape: { paddingHorizontal: metrics.tileLandscapePad },
+  /** The gear: a `touch` square on the frame's top-right corner, its glyph centred in it. */
+  gear: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    width: metrics.touch,
+    height: metrics.touch,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   pressed: { opacity: 0.85 },
   head: { flexDirection: 'row', alignItems: 'center', gap: space.sm },
+  /** Upright, the head row ends where the gear begins: the gear's width less the tile's padding at that side. */
+  besideGear: { marginRight: metrics.touch - space.md },
   /**
    * N31: the title gives way and wraps (`tileTitleLines`) rather than run past the tile; Yoga's default of 0 ran a
    * French title past its tile on the owner's phone sideways (Home 728 dp wide behind its insets). The icon beside it
@@ -166,10 +208,13 @@ const STYLES: Record<
 /** The body inside a frame dims when pressed, as the tile does; one function per layout, built once. */
 const BODY: Record<ScreenLayout, ReturnType<typeof tileStyleFor>> = {
   portrait: tileStyleFor([styles.body, styles.padPortrait]),
-  landscape: tileStyleFor([styles.body, styles.padLandscape]),
+  landscape: tileStyleFor([styles.body, styles.padLandscapeGear]),
 };
 
-/** A framed tile, per layout and availability: the edge, the ground and the bottom padding. */
+const headBesideGear = [styles.head, styles.besideGear];
+const pressedGear = [styles.gear, styles.pressed];
+
+/** A framed tile, per layout and availability: the edge and the ground. */
 const FRAMES: Record<ScreenLayout, Record<'on' | 'off', StyleProp<ViewStyle>>> = {
   portrait: {
     on: [styles.frame, styles.framePortrait],
@@ -179,10 +224,4 @@ const FRAMES: Record<ScreenLayout, Record<'on' | 'off', StyleProp<ViewStyle>>> =
     on: [styles.frame, styles.frameLandscape],
     off: [styles.frame, styles.frameLandscape, styles.off],
   },
-};
-
-/** The link's row, padded as the button is at its sides: the only part of a framed tile outside the button. */
-const LINK_ROW: Record<ScreenLayout, StyleProp<ViewStyle>> = {
-  portrait: styles.linkPortrait,
-  landscape: styles.linkLandscape,
 };

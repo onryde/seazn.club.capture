@@ -209,13 +209,13 @@ describe('Home turns with the phone (spec §7)', () => {
       ];
     };
     /**
-     * A tile's padding as the operator sees it. A tile with the Stream settings link is a frame: its button (the first
-     * child) wears the top and sides, and the frame the bottom (M2 of the Batch 5 review).
+     * A tile's padding as the operator sees it. A tile with the Stream settings gear is a frame that wears none: its
+     * button (the first child) wears all four sides (M2 of the Batch 5 review, kept with the gear).
      */
     const tileEdges = (tile: Element) => {
       if (!(tile as HTMLElement).dataset.testid?.startsWith('tile-')) return edges(tile);
-      const [top, right, , left] = edges(tile.firstElementChild as Element);
-      return [top, right, edges(tile)[2], left];
+      expect(edges(tile)).toEqual(['0px', '0px', '0px', '0px']);
+      return edges(tile.firstElementChild as Element);
     };
 
     it('pads the screen 12 above, 16 at the sides and 16 below, with 12 between rows', async () => {
@@ -231,8 +231,8 @@ describe('Home turns with the phone (spec §7)', () => {
       expect(edges(homeRoot())).toEqual(['16px', '16px', '16px', '16px']);
     });
 
-    // P7 (the D3 fixes plan's ruling, the controller's): portrait scrolls the same way, since the Stream settings link
-    // makes the Live Stream tile taller than a small portrait phone's share of the column.
+    // P7 (the D3 fixes plan's ruling, the controller's) and R11 of the D3 findings design: portrait scrolls the same
+    // way, since a card above the tiles leaves a small portrait phone too little for three equal tiles (homeFit.test.ts).
     it('scrolls only when its rows outgrow the window: a scroller around them, in both layouts', async () => {
       setWindowSize(...LANDSCAPE);
       await renderHome({ ended: true, saved: true });
@@ -294,12 +294,19 @@ describe('Home turns with the phone (spec §7)', () => {
       expect(style(language()).minHeight).toBe('48px');
     });
 
+    // The Live Stream tile's top is the gear's 48 (R2 as the owner presented it, 2026-10-12): sideways its head sits
+    // under the gear, never beside it (homeFit.test.ts).
     it('sets the tiles 8 apart, each with its 4 dp edge and 12 dp of padding, and the top row 16 apart', async () => {
       setWindowSize(...LANDSCAPE);
       await renderHome();
       expect(style(tiles()).gap).toBe('8px');
       expect(tiles().children).toHaveLength(3);
-      for (const tile of tiles().children) {
+      const [stream, ...others] = [...tiles().children];
+      expect(stream).toBe(screen.getByTestId('tile-stream'));
+      expect(style(stream as Element).borderLeftWidth).toBe('4px');
+      expect(tileEdges(stream as Element)).toEqual(['48px', '12px', '12px', '12px']);
+      expect(others).toHaveLength(2);
+      for (const tile of others) {
         expect(style(tile).borderLeftWidth).toBe('4px');
         expect(tileEdges(tile)).toEqual(['12px', '12px', '12px', '12px']);
       }
@@ -314,17 +321,47 @@ describe('Home turns with the phone (spec §7)', () => {
         expect(style(tile).borderLeftWidth).toBe('4px');
         expect(tileEdges(tile)).toEqual(['16px', '16px', '16px', '16px']);
       }
-      // And a turn to landscape and back lands on the same 16 (the tile's style is chosen per render).
+      // And a turn to landscape and back lands on the same 16 (the tile's style is chosen per render); sideways the
+      // Live Stream tile's top is the gear's 48.
       setWindowSize(...LANDSCAPE);
-      for (const tile of tiles().children) expect(tileEdges(tile)[0]).toBe('12px');
+      expect([...tiles().children].map((tile) => tileEdges(tile)[0])).toEqual([
+        '48px',
+        '12px',
+        '12px',
+      ]);
       setWindowSize(...PORTRAIT);
       for (const tile of tiles().children) expect(tileEdges(tile)[0]).toBe('16px');
     });
 
-    // P7 as built: a portrait tile grows from its own content (auto basis), so the Live Stream tile with its link is
-    // never squeezed below its words when the column is short, and the column scrolls instead. An equal third (a zero
-    // basis) squeezes it on any window under 748 dp tall (homeFit.test.ts). Landscape keeps equal thirds of the row's
-    // width; the row's height is the tallest tile's.
+    // R2 as the owner presented it (2026-10-12): one gear, on the Live Stream tile's top-right corner, in both layouts
+    // and across a turn. Upright the head row ends where the gear begins; sideways the head sits under it.
+    it('keeps one gear on the Live Stream tile’s corner as the phone turns, beside the head upright and above it sideways', async () => {
+      setWindowSize(...PORTRAIT);
+      await renderHome();
+      const gear = () => screen.getAllByRole('button', { name: 'Stream settings' });
+      const head = () => screen.getByText('Live Stream').parentElement as HTMLElement;
+      const corner = () => {
+        const [only] = gear();
+        expect(gear()).toHaveLength(1);
+        expect(only?.parentElement).toBe(screen.getByTestId('tile-stream'));
+        const box = style(only as Element);
+        return [box.position, box.top, box.right, box.width, box.height];
+      };
+      const CORNER = ['absolute', '0px', '0px', '48px', '48px'];
+      expect(corner()).toEqual(CORNER);
+      expect(style(head()).marginRight).toBe('32px');
+      setWindowSize(...LANDSCAPE);
+      expect(corner()).toEqual(CORNER);
+      expect(style(head()).marginRight).toBe('0px');
+      setWindowSize(...PORTRAIT);
+      expect(corner()).toEqual(CORNER);
+      expect(style(head()).marginRight).toBe('32px');
+    });
+
+    // P7 as built, and R11 of the D3 findings design: a portrait tile grows from its own content (auto basis), so no
+    // tile is squeezed below its words when the column is short, and the column scrolls instead. With a card above the
+    // tiles, an equal third (a zero basis) squeezes them on a 360 × 720 window in every language (homeFit.test.ts).
+    // Landscape keeps equal thirds of the row's width; the row's height is the tallest tile's.
     it('grows portrait tiles from their content, and splits the landscape row in equal widths', async () => {
       setWindowSize(...PORTRAIT);
       await renderHome();

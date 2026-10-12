@@ -1,4 +1,4 @@
-import { fireEvent, screen } from '@testing-library/react';
+import { fireEvent, screen, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import en from '@/i18n/en.json';
 import { Tile } from '@/ui/components/Tile';
@@ -26,84 +26,87 @@ describe('Tile', () => {
     expect(screen.getByText('Coming soon')).toBeTruthy();
   });
 
-  // R2: the Stream settings link inside the Live Stream tile.
-  it('the link is a sibling of the tile’s button, not inside it, and each press is its own', () => {
+  // R2 of the D3 findings design (owner, 2026-10-11), as the owner presented it on 2026-10-12 ("Instead of text, can we
+  // have icon in right top corner?", the gear mockup): Stream settings is a gear in the Live Stream tile's top-right
+  // corner, named "Stream settings" for a screen reader. It is the tile's sibling, never inside its button.
+  const settings = (onPress: () => void = vi.fn()) => ({ label: 'Stream settings', onPress });
+
+  it('the gear is a sibling of the tile’s button, not inside it, and each press is its own, a second tap too', () => {
     const tap = vi.fn();
     const open = vi.fn();
-    renderWithPorts(
-      <Tile
-        mode="stream"
-        available
-        onPress={tap}
-        link={{ label: 'Stream settings', onPress: open }}
-      />,
-    );
+    renderWithPorts(<Tile mode="stream" available onPress={tap} settings={settings(open)} />);
     const tile = screen.getByRole('button', { name: /Live Stream/ });
-    const link = screen.getByRole('button', { name: 'Stream settings' });
-    expect(tile.contains(link)).toBe(false);
-    fireEvent.click(link);
-    expect([open.mock.calls.length, tap.mock.calls.length]).toEqual([1, 0]);
+    const gear = screen.getByRole('button', { name: 'Stream settings' });
+    expect(tile.contains(gear)).toBe(false);
+    expect(screen.getByTestId('tile-stream').contains(gear)).toBe(true);
+    fireEvent.click(gear);
+    fireEvent.click(gear);
+    // The tile passes each tap on; the navigation port opens Settings once (HomeScreen.test.tsx).
+    expect([open.mock.calls.length, tap.mock.calls.length]).toEqual([2, 0]);
     fireEvent.click(tile);
-    expect([open.mock.calls.length, tap.mock.calls.length]).toEqual([1, 1]);
-    fireEvent.click(link);
     expect([open.mock.calls.length, tap.mock.calls.length]).toEqual([2, 1]);
   });
 
-  it('the link is a 48 dp target', () => {
-    renderWithPorts(
-      <Tile
-        mode="stream"
-        available
-        onPress={vi.fn()}
-        link={{ label: 'Stream settings', onPress: vi.fn() }}
-      />,
-    );
-    expect(
-      getComputedStyle(screen.getByRole('button', { name: 'Stream settings' })).minHeight,
-    ).toBe('48px');
+  it('the gear is a 48 dp target in the tile’s top-right corner that draws the Settings glyph and no word', () => {
+    renderWithPorts(<Tile mode="stream" available onPress={vi.fn()} settings={settings()} />);
+    const gear = screen.getByRole('button', { name: 'Stream settings' });
+    const box = getComputedStyle(gear);
+    expect([box.position, box.top, box.right]).toEqual(['absolute', '0px', '0px']);
+    expect([box.width, box.height]).toEqual(['48px', '48px']);
+    // The on-air icon row's Settings glyph, in its ink2, at its 22 dp (IconButton.test.tsx).
+    expect({ ...within(gear).getByTestId('glyph').dataset }).toEqual({
+      testid: 'glyph',
+      name: 'settings',
+      slashed: 'false',
+      tone: 'ink2',
+      size: 'default',
+    });
+    expect(gear.textContent).toBe('');
   });
 
-  // M2 of the Batch 5 review: the whole tile above the link is still its button. The frame wears the edge, the ground
-  // and the bottom padding; the button wears the top and side padding, so a tap on the rim starts a scan as a plain
-  // tile's does; the link's row is padded the same and is the only part outside the button.
+  // M2 of the Batch 5 review, kept: all of the tile but the gear is still its button. The frame wears only the edge
+  // and the ground; the button wears every side's padding, so a tap on the rim starts a scan as a plain tile's does.
   it.each(['portrait', 'landscape'] as const)(
-    'with a link, the %s button reaches the tile’s rim, and only the link’s row is outside it',
+    'with the gear, the %s button reaches the tile’s rim on every side, and only the gear is outside it',
     (layout) => {
       renderWithPorts(
-        <Tile
-          mode="stream"
-          available
-          layout={layout}
-          onPress={vi.fn()}
-          link={{ label: 'Stream settings', onPress: vi.fn() }}
-        />,
+        <Tile mode="stream" available layout={layout} onPress={vi.fn()} settings={settings()} />,
       );
       const frame = screen.getByTestId('tile-stream');
       const body = screen.getByRole('button', { name: /Live Stream/ });
-      const link = screen.getByRole('button', { name: 'Stream settings' });
-      const pad = layout === 'portrait' ? '16px' : '12px';
+      const gear = screen.getByRole('button', { name: 'Stream settings' });
       const frameStyle = getComputedStyle(frame);
       expect(frameStyle.borderLeftWidth).toBe('4px');
-      expect([frameStyle.paddingTop, frameStyle.paddingLeft, frameStyle.paddingRight]).toEqual([
-        '0px',
-        '0px',
-        '0px',
-      ]);
-      expect(frameStyle.paddingBottom).toBe(pad);
-      const bodyStyle = getComputedStyle(body);
-      expect([bodyStyle.paddingTop, bodyStyle.paddingLeft, bodyStyle.paddingRight]).toEqual([
-        pad,
-        pad,
-        pad,
-      ]);
-      const linkRow = link.parentElement as HTMLElement;
-      expect([...frame.children]).toEqual([body, linkRow]);
-      expect([
-        getComputedStyle(linkRow).paddingLeft,
-        getComputedStyle(linkRow).paddingRight,
-      ]).toEqual([pad, pad]);
+      const sides = (style: CSSStyleDeclaration) => [
+        style.paddingTop,
+        style.paddingRight,
+        style.paddingBottom,
+        style.paddingLeft,
+      ];
+      expect(sides(frameStyle)).toEqual(['0px', '0px', '0px', '0px']);
+      // Upright the button is padded 16 all round. Sideways its top is the gear's 48 (a band the head sits under, so
+      // a title never runs beneath the gear: homeFit.test.ts), and the rest is the landscape tile's 12.
+      expect(sides(getComputedStyle(body))).toEqual(
+        layout === 'portrait' ? ['16px', '16px', '16px', '16px'] : ['48px', '12px', '12px', '12px'],
+      );
+      expect([...frame.children]).toEqual([body, gear]);
     },
   );
+
+  // Upright the tile is the column's width, so the head row keeps clear of the gear instead: it ends 32 dp short of the
+  // button's padding, where the 48 dp gear begins (48 less the 16 of padding). Sideways the band does it, and the head
+  // keeps the full width. The head's own width (`onLayout`) is the title's room, so `tileTitleRole` reads it as laid
+  // out beside the gear.
+  it.each([
+    ['portrait', '32px'],
+    ['landscape', '0px'],
+  ] as const)('the %s head row ends %s short of the padding beside the gear', (layout, margin) => {
+    renderWithPorts(
+      <Tile mode="stream" available layout={layout} onPress={vi.fn()} settings={settings()} />,
+    );
+    const head = screen.getByText(en['mode.stream']).parentElement as HTMLElement;
+    expect(getComputedStyle(head).marginRight).toBe(margin);
+  });
 
   // N31 (item A2 of the D3 findings design, §10): the title gives way to the icon beside it and wraps to at most two
   // lines, then an ellipsis. jsdom has no text layout, so this reads the style react-native-web rendered from the props;
@@ -115,15 +118,15 @@ describe('Tile', () => {
     ['stream', true, 'portrait', true],
     ['stream', true, 'landscape', true],
   ] as const)(
-    'the %s title (available: %s, %s, link: %s) may shrink and wraps to at most two lines (N31)',
-    (mode, available, layout, withLink) => {
+    'the %s title (available: %s, %s, gear: %s) may shrink and wraps to at most two lines (N31)',
+    (mode, available, layout, withGear) => {
       renderWithPorts(
         <Tile
           mode={mode}
           available={available}
           layout={layout}
           onPress={vi.fn()}
-          link={withLink ? { label: 'Stream settings', onPress: vi.fn() } : undefined}
+          settings={withGear ? settings() : undefined}
         />,
       );
       const title = screen.getByText(en[`mode.${mode}`]);
@@ -141,15 +144,15 @@ describe('Tile', () => {
     ['portrait', false],
     ['landscape', true],
   ] as const)(
-    'the %s title (link: %s) is at full size until its row is measured, steps down where the row is narrow and back where it is wide (N31)',
-    (layout, withLink) => {
+    'the %s title (gear: %s) is at full size until its row is measured, steps down where the row is narrow and back where it is wide (N31)',
+    (layout, withGear) => {
       renderWithPorts(
         <Tile
           mode="stream"
           available
           layout={layout}
           onPress={vi.fn()}
-          link={withLink ? { label: 'Stream settings', onPress: vi.fn() } : undefined}
+          settings={withGear ? settings() : undefined}
         />,
       );
       const title = screen.getByText(en['mode.stream']);
@@ -167,10 +170,27 @@ describe('Tile', () => {
     },
   );
 
-  it('a tile with no link is unchanged: one button, which is the tile', () => {
-    renderWithPorts(<Tile mode="scoring" available={false} onPress={vi.fn()} />);
-    expect(screen.getAllByRole('button')).toHaveLength(1);
-    expect(screen.queryByTestId('tile-scoring')).toBeNull();
-    expect(getComputedStyle(screen.getByRole('button')).borderLeftWidth).toBe('4px');
-  });
+  // The tile without the gear: Remote Scoring and Dashboard have none, and Live Stream with a card above the tiles (P6).
+  it.each([
+    ['scoring', false],
+    ['dashboard', false],
+    ['stream', true],
+  ] as const)(
+    'a %s tile with no gear is unchanged: one button, which is the tile',
+    (mode, available) => {
+      renderWithPorts(<Tile mode={mode} available={available} onPress={vi.fn()} />);
+      expect(screen.getAllByRole('button')).toHaveLength(1);
+      expect(screen.queryByTestId(`tile-${mode}`)).toBeNull();
+      expect(screen.queryByRole('button', { name: 'Stream settings' })).toBeNull();
+      const tile = getComputedStyle(screen.getByRole('button'));
+      expect([tile.borderLeftWidth, tile.paddingTop, tile.paddingRight]).toEqual([
+        '4px',
+        '16px',
+        '16px',
+      ]);
+      // With no gear, the head keeps the tile's whole width.
+      const head = screen.getByText(en[`mode.${mode}`]).parentElement as HTMLElement;
+      expect(getComputedStyle(head).marginRight).toBe('0px');
+    },
+  );
 });
