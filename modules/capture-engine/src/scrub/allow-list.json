@@ -215,7 +215,7 @@
     "paired": "native: the pairing was accepted",
     "permissions-late": "native: a permissions answer after the pairing moved on",
     "platform-failed": "native: a platform failure, stale or after the end",
-    "preview-failed": "native: the viewfinder's native preview could not report itself, follow the streamer or open the camera, with which (attach, visibility, detach, follow, open) and the throwable's class name; it never crashes the app (Task 39, I5, review C7 I-1 and I-2)",
+    "preview-failed": "native: the viewfinder's native preview could not report itself, follow the streamer, open the camera or read the camera's sizes for the 16:9 rule, with which (attach, visibility, detach, follow, open, sizes) and the throwable's class name; it never crashes the app (Task 39, I5, review C7 I-1 and I-2, N30)",
     "preview-size": "native: each time the camera changes, when StreamPack reports its source open, the sizes the camera lists for the preview and the size the preview gets: which rule chose it and whether it is 16:9, as numbers, booleans and one plain word (preview-fill review I-1, N30); evidence, nothing acts on it",
     "previous-session-lost": "native: the previous run held a session and its process died, with the exit reason (F-P5-3, CD22)",
     "readiness": "native: a readiness check changed, with each check, the side and the lines held back (A11, review C4a I-1)",
