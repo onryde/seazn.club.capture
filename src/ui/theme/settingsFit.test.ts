@@ -786,8 +786,11 @@ const RECORD_WIDTHS = [
   ['640 landscape half', HALF, 296],
   ['320 portrait column', NARROW_LINE, 288],
 ] as const;
-/** The longest reference the upload port accepts (16 characters), in the widest capital. */
-const WORST_REF = `R-${'W'.repeat(14)}`;
+/**
+ * The longest reference the record contract admits, `R-` and 8 Crockford capitals (`RECORD_REF`, held to the vendored
+ * pattern by recordContract.test.ts; `ui/` may not import `services/`), in its widest capital.
+ */
+const WORST_REF = `R-${'W'.repeat(8)}`;
 let recordLabelsChecked = 0;
 let recordReasonsChecked = 0;
 
