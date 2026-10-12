@@ -15,6 +15,7 @@ import { HOLD_MS } from '@/hooks/useHold';
 import { SETTINGS_KEY } from '@/services/streamSettingsStore';
 import { SettingsScreen } from '@/ui/screens/SettingsScreen';
 import { colour, font } from '@/ui/theme/tokens';
+import { declaredStyle } from '../../../test/declaredStyle';
 import { describeBackFromSubScreen } from '../../../test/backFromSubScreen';
 import { createFakeUploadCredential, readRecord, type TestEngine } from '../../../test/fakePorts';
 import { savedStreamCode } from '../../../test/fixtures/savedStream';
@@ -758,9 +759,11 @@ describe('where Diagnostics sits (spec §6)', () => {
     for (const row of diagRows()) expect(getComputedStyle(row).minHeight).toBe('22px');
   });
 
-  // settingsFit.test.ts adds Back and the card's header row as 48 each: Back is the icon button's side, and the header
-  // keeps the 48 it had while Share record sat in it (N33 moved Share to the record row). This is the rendered witness.
-  it('in landscape, Back and the card’s header row are 48 dp tall, the heights the fit test adds', () => {
+  // settingsFit.test.ts adds Back as 48 (the icon button's side) and the card's header row as its heading's 20 dp line.
+  // The header kept the 48 Share record's button had given it (N33 moved Share to the record row) until Important 2 of
+  // the final review (the controller's ruling, 2026-10-12) dropped it, so the card fits its half on the owner's phone,
+  // 728 × 328 (N35). This is the rendered witness: the header sets no height of its own.
+  it('in landscape, Back is 48 dp tall and the card’s header row is its heading’s 20 dp line, as the fit test adds', () => {
     setWindowSize(640, 360);
     renderSettings();
     const back = getComputedStyle(screen.getByRole('button', { name: 'Back to camera' }));
@@ -768,9 +771,16 @@ describe('where Diagnostics sits (spec §6)', () => {
       name: 'Back to camera',
       height: '48px',
     });
-    const header = within(screen.getByTestId('diagnostics-card')).getByText('Diagnostics')
-      .parentElement as HTMLElement;
-    expect(getComputedStyle(header).minHeight).toBe('48px');
+    const title = within(screen.getByTestId('diagnostics-card')).getByText('Diagnostics');
+    const header = title.parentElement as HTMLElement;
+    expect({
+      minHeight: declaredStyle(header, 'min-height'),
+      height: declaredStyle(header, 'height'),
+    }).toEqual({
+      minHeight: '0px',
+      height: '',
+    });
+    expect(getComputedStyle(title).lineHeight).toBe('20px');
   });
 
   // Owner, device pass 2026-10-08 (a 360 dp tall phone): the card ran past the screen's foot and its last rows
@@ -1210,13 +1220,19 @@ describe('the Diagnostics heading wears the board (a lime pulse, then the name i
     expect(headings.size).toBe(4);
   });
 
-  // N33: the header is the pulse and the title on one line, centred in its 48 dp, with nothing else in it.
-  it('holds the pulse and the title alone, on one line', () => {
+  // N33: the header is the pulse and the title on one line, centred on each other, with nothing else in it. Nothing in
+  // it is a target, so it needs no 48 dp of its own (the final review's Important 2; the controller's, 2026-10-12).
+  it('holds the pulse and the title alone, on one line, and nothing in it takes a tap', () => {
     renderSettings();
     const header = heading().parentElement as HTMLElement;
     expect(getComputedStyle(header).flexDirection).toBe('row');
     expect(getComputedStyle(header).alignItems).toBe('center');
     expect(header.children).toHaveLength(2);
+    expect(within(header).queryAllByRole('button')).toEqual([]);
+    expect(within(header).queryAllByRole('link')).toEqual([]);
+    expect(
+      [header, ...header.querySelectorAll('*')].filter((node) => node.matches('[tabindex]')),
+    ).toEqual([]);
   });
 });
 

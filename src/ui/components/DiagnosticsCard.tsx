@@ -81,9 +81,11 @@ const styles = StyleSheet.create({
     borderRadius: radius.card,
     overflow: 'hidden',
   },
-  // 48 tall, the height it had while Share record's button sat in it (N33 moved Share to the record row), so the card
-  // keeps the 272 dp settingsFit.test.ts adds up and still fits its half at 640 × 360.
-  header: { flexDirection: 'row', alignItems: 'center', gap: space.sm, minHeight: layout.touch },
+  // As tall as the heading's 20 dp line, with no height of its own: nothing in it takes a tap. The 48 it kept from
+  // Share record's button (N33 moved Share to the record row) is dropped (the final review's Important 2; the
+  // controller's ruling, 2026-10-12), so the card is 244 dp and fits its half on the owner's phone, 728 × 328 (N35;
+  // settingsFit.test.ts adds it up).
+  header: { flexDirection: 'row', alignItems: 'center', gap: space.sm },
   // The heading keeps its width and takes the line (settingsFit.test.ts proves it fits in four languages).
   title: { flexGrow: 1, flexShrink: 0 },
   row: {
