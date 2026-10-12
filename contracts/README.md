@@ -53,7 +53,8 @@ A contract changes only through `pnpm contracts:vendor` and the pin test (R7):
   `VENDORED.json`; the pin covers neither.
 - **The wire shape never reaches the domain.** Each wire shape has one parser, in one language (AGENTS §4): the QR
   and the waiting fields in TypeScript (`src/domain/credentials`), the session shape and the server's answers in
-  Kotlin (`Bodies.kt`).
+  Kotlin (`Bodies.kt`). The record upload is the one exception: the app's TypeScript sends it and reads its answer,
+  and the engine never sees it (`src/services/recordContract.ts`, `recordUploadPort.ts`).
 
 ## Words a schema allows that a route never sends
 

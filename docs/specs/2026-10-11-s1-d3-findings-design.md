@@ -232,15 +232,25 @@ Mutate the rejoin marker once and watch a test fail.
   no React Query) and a fake for tests. A request with an answer is fine here,
   because the call never touches the engine bridge.
 - **Body.** The scrubbed record lines that Share sends, as `application/x-ndjson`,
-  gzip if the server accepts it. Before sending, the port checks the lines
-  against the scrub allow-list: a secret-shaped field fails closed, sends
-  nothing, and records `record.send {result:"refused-local"}`.
+  uncompressed: the contract accepts gzip, and the app does not send it. Before
+  sending, the port checks each line as written. A line that names the token,
+  is not a record line, or would change under the scrub fails closed: nothing
+  is sent, and the port records `record.send {result:"refused-local"}`. Then
+  each field whose key the web's contract does not list is dropped from its
+  line, and the line goes (Q4 of the web's record design, batch 11). Share
+  record keeps the line as written.
 - **Record lines.** `record.send {result, status, bytes}`, with no reference
   and no token in the line.
-- **Contract.** The web side owns the endpoint (§11). The app vendors its
-  contract like the others (`pnpm contracts:vendor`, the pin test). Until the
-  web ships it, the button is built behind `FEATURES.recordSend = false`, the
-  same shape as `viewerCheck`.
+- **Contract.** The web side owns the endpoint (§11). Its contract,
+  `capture-record.v1.json` with 52 fixtures, merged as web #941 (`53f28ebfc`)
+  on 2026-10-12, after the owner approved the web's design. The app vendors it
+  like the others (`pnpm contracts:vendor`, the pin test; 7ccfbd8), and the
+  port holds to it (`src/services/recordContract.ts`; 866f3f8):
+  `POST {code URL}/records`, at most 1,000 lines and 1,048,576 bytes, a 201
+  read for its `ref` alone (RD, the owner's ruling of 2026-10-12: `kept` and
+  `dropped` are never read), and 401, 413 and 429 read by their status. The
+  button is built behind `FEATURES.recordSend`, the same shape as
+  `viewerCheck`.
 
 ## 8. B8 — the battery row (R5, N27)
 
@@ -333,6 +343,11 @@ this branch:
      record's own lines), with retention (30 days proposed; the owner's call),
      and an admin view next to the session in the console.
    - The contract file is published, for the app to vendor.
+
+   Published on 2026-10-12 (web #941, `53f28ebfc`), vendored and followed in
+   Batch 11 (§7). The web brief's §1 records the contract and the app's answers
+   to the web's questions.
+
 2. **The round line in other languages (N34).** Does the web localise the round
    line ("Round 2", "SF", "Final") by the phone's language? Or does the phone
    keep the server's English? The beat or the descriptor would need to carry

@@ -76,9 +76,9 @@ and S1 redraws this list.)
 No accounts, no login, no fixture browsing, no chat, no replays, no gallery,
 no in-app payments, and no upload but one: the session record, sent to Seazn
 on the operator's tap (R3 of the D3 findings design; owner, 2026-10-11), not
-by itself (an automatic upload is out of scope). It is built behind
-`FEATURES.recordSend`, off until the web's endpoint ships. Push alerts go only
-to phones holding a Dashboard code (ruling 11).
+by itself (an automatic upload is out of scope). It posts to the web's record
+contract (vendored at web `53f28ebfc`), behind `FEATURES.recordSend`. Push
+alerts go only to phones holding a Dashboard code (ruling 11).
 
 Adding a fourth mode, or a screen outside a mode, is a product decision, not
 an implementation detail. Raise it; don't build it.
@@ -203,7 +203,9 @@ contracts/         # the web's capture contracts, vendored and pinned
   at the boundary — which is what the QR anti-corruption layer already is.
 - The wire shape never reaches the domain. Each wire shape has one parser, in
   one language: the QR and the waiting fields in TypeScript, the session shape
-  and the server's answers in Kotlin. A v2 of any shape touches one file.
+  and the server's answers in Kotlin. The record upload's body and answer are
+  TypeScript's, since the engine never sees them (`recordContract.ts`). A v2 of
+  any shape touches one file.
 - Contracts are vendored. A contract changes only through `pnpm contracts:vendor`
   and the pin test (R7, plan D spec §3.1); no CI job fetches the web repo.
 
