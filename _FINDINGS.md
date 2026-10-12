@@ -901,6 +901,43 @@ when the stream starts. A YouTube event that starts with no video may stay on "P
 (observed, not proven; `docs/specs/2026-10-11-s1-d3-web-brief.md` section 4). Evidence: `b8-record.ndjson`,
 `b8-media-camera.txt` (one 1280 × 720 stream to the encoder's SurfaceTexture, no preview, while locked).
 
+**Hypothesis (code reading, 2026-10-12; unproven):** The two vendor lines are the signature of every streamer build, not
+the cause. `cameraSingleStreamer` sets the camera source before our `setVideoConfig` (`StreamerAdapter.kt:229`, `:251`),
+so StreamPack's `VideoInput.setSource` finds no source config, logs `Video source configuration is not set`, and its own
+`addOutputSurfacesUnsafe` logs `…can't add output surface` 1–7 ms later. `setVideoConfig` then builds a new surface
+processor and adds the outputs. b8 has the pair at all eleven builds, the attached ones (22:01:06Z, 22:19:11Z) included.
+For paths 1 and 2 the encoder's surface does attach. At the locked Go live, `capture-clock` (the first encoded video
+frame) came 382 ms after `connected`, and `live` (gated on encoded frames) 628 ms later; no `video-stalled` for 4 min;
+the camera had produced 4,419 frames by about 22:28:35Z; and the server's beats read `delivery ok`, lag 0.1 s and
+0.5 s, at 22:27 and 22:28 with the phone still locked. The off-view start at 22:02:30Z (bb409e95) matches. What read as
+"no video" was three other things: YouTube holding "Preparing" (web brief §4); the trouble that began at the unlock,
+about 22:28:32Z, when the view attached on air, StreamPack reconfigured the camera session for the preview target, the
+bitrate fell 2.6 → 1.07 Mbps and lag grew 1.0 → 7.7 → 17.7 s (thermal 3 a confound) until the lag rule reconnected
+(N27, N32); and a `delivered` line that a healthy start never writes, since it is written only when a `not-delivered`
+clears (`SessionMachine.kt:626-628`).
+Path 3 (a20dcecf, A3) is a different defect. After the camera was taken and reopened, the capture was released and
+built again with the view attached (13:23:33Z), so the 13:23:40Z start was an ordinary attached one, and it delivered
+(`capture-clock` 195 ms, `live`). Video then stopped twice with no vendor line (`video-stalled no-video` at 13:23:52Z
+and 13:24:12Z), the video encoder entered ERROR at 13:24:15.9Z (`codec is not running: ERROR`, `onStreamError: index 0
+is not owned by client`), and every later attempt was `no-first-frame`: 28 stalls until the hold window expired at
+13:27:15Z. Recovery (`Rebuild` / `StartNewSession` → `CaptureRun.reconnect`, `:246-247` → `:444-447`) only stops and
+starts the same streamer (`parts.stop` `:437`, `parts.start` `:321`); nothing builds a new one after its encoder fails.
+Ranked:
+1. Path 3, a failed encoder never rebuilt. High confidence for the 3-minute outage; the first silent stall is
+   unexplained. Step B confirms it with a codec ERROR followed by repeating `no-first-frame` and no `capture-rebuilt`.
+   A stop and start alone that restores frames after an ERROR refutes it.
+2. Paths 1 and 2 deliver; the failure is downstream or after the unlock. High confidence that H0 (the surface never
+   attaches) is refuted for path 2, medium on what the owner saw. Step B confirms it with a master playlist carrying
+   `avc1` and `RESOLUTION=1280x720`, a segment from the locked minutes that ffprobe and blackdetect show as real video,
+   and beats' lag under 2 s until the unlock. Any of these refutes it: a locked-minute segment with no video or only
+   black, `no-first-frame` 5 s after `connected` on an off-view start, a third `…can't add output surface` line apart
+   from a build's pair, or `addOutputSurface: Can't add output surface: SurfaceProcessor is released`. The last two are
+   H0's only two mechanisms in the vendor code, and no record so far has either.
+
+---
+
+**Pass mark for Step B (the controller's ruling, 2026-10-12):** a `delivered` line cannot pass on a healthy start (it is written only when a `not-delivered` clears, `SessionMachine.kt:626-628`). Step B passes a path when `capture-clock` and `live` follow `connected` within 30 s, the beats read `delivery ok` with lag under 2 s, the master playlist carries `avc1` and `RESOLUTION=1280x720`, and a segment from the locked minutes is real, non-black video (ffprobe and blackdetect).
+
 ---
 
 ### N29 — A rejoin after the hold runs out retries forever, with no reason shown

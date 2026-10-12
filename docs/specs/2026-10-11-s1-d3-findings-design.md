@@ -93,9 +93,13 @@ writes that cause into N28 before any fix.
   session where StreamPack allows it. Where it does not, a rebuild is recorded
   as one.
 
-**Proof** (device-only). Each of the three paths above gets a `delivered`
-record line within 30 s of `live`, and a Cloudflare manifest that answers 200
-with a frame. Path 2 on Unrestricted battery is the locked-phone acceptance.
+**Proof** (device-only; amended by the controller's ruling, 2026-10-12, since
+a healthy start never writes `delivered`, which marks a cleared
+`not-delivered`). Each of the three paths above gets `capture-clock` and `live`
+within 30 s of `connected`, beats reading `delivery ok` with lag under 2 s, a
+master playlist carrying `avc1` and `RESOLUTION=1280x720`, and a segment that
+ffprobe and blackdetect show as real, non-black video. Path 2 on Unrestricted
+battery is the locked-phone acceptance.
 
 ## 4. A1 — the preview is 16:9 (N30)
 
