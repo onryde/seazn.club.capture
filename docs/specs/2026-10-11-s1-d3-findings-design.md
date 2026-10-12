@@ -247,6 +247,18 @@ Mutate the rejoin marker once and watch a test fail.
   each field whose key the web's contract does not list is dropped from its
   line, and the line goes (Q4 of the web's record design, batch 11). Share
   record keeps the line as written.
+  - **What the server does with a bad line** (the owner's ruling, relayed by
+    the web, 2026-10-12): it drops the line and still answers
+    `201 {ref, kept, dropped}`. A bad line is one that is secret-shaped, has a
+    field off the list, has a malformed `sid`, `tokenTag` or `at`, or is not
+    JSON. `401`, `413` and `429` stay answers for the whole record. The
+    vendored contract (`53f28ebfc`) predates the ruling and still says `422`
+    for such a body. So the phone does not run S2–S5 or the contract's class
+    narrowings itself: such a line is dropped server-side, and no longer fails
+    every send until it leaves the ring (findings 1 and 4 of the Batch 11
+    review). Its value still crosses to the server, which drops it unstored.
+    The phone's own drop keeps the rest of a line whose only fault is an
+    unlisted field, where the server would drop the line whole.
 - **Record lines.** `record.send {result, status, bytes}`, with no reference
   and no token in the line.
 - **Contract.** The web side owns the endpoint (§11). Its contract,
@@ -258,9 +270,10 @@ Mutate the rejoin marker once and watch a test fail.
   read for its `ref` alone (RD, the owner's ruling of 2026-10-12: `kept` and
   `dropped` are never read), and 401, 413 and 429 read by their status. The
   button is built behind `FEATURES.recordSend`, the same shape as
-  `viewerCheck`, and the switch is on (the owner's ruling, 2026-10-12): the
-  endpoint is deployed on staging, and a production build answers _Can't send
-  this record_, "Seazn doesn't take records here", until production has it.
+  `viewerCheck`, and the switch is on. The owner was asked in the session on
+  2026-10-12 whether to turn Send record on with the endpoint on staging, and
+  chose "On now (Recommended)". A production build answers _Can't send this
+  record_, "Seazn doesn't take records here", until production has it.
 
 ## 8. B8 — the battery row (R5, N27)
 

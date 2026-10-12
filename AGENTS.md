@@ -78,8 +78,9 @@ no in-app payments, and no upload but one: the session record, sent to Seazn
 on the operator's tap (R3 of the D3 findings design; owner, 2026-10-11), not
 by itself (an automatic upload is out of scope). It posts to the web's record
 contract (vendored at web `53f28ebfc`), behind `FEATURES.recordSend`, which is
-on (the owner's ruling, 2026-10-12). Push alerts go only to phones holding a
-Dashboard code (ruling 11).
+on: asked whether to turn Send record on with the endpoint on staging, the
+owner chose "On now (Recommended)" in the session on 2026-10-12. Push alerts go
+only to phones holding a Dashboard code (ruling 11).
 
 Adding a fourth mode, or a screen outside a mode, is a product decision, not
 an implementation detail. Raise it; don't build it.
@@ -439,13 +440,14 @@ Three rules travel with these tokens:
   findings design; owner, 2026-10-11) and the record row: Share record,
   outside the Diagnostics card so a phone sent Home by Replaced can still hand
   its record over (N33), and Send record to Seazn when `FEATURES.recordSend`
-  is on, as it is (the owner's ruling, 2026-10-12). From Arming on, Send record is disabled with "Send it after the
-  broadcast", so an upload of up to 1 MB never starts on the broadcast's
-  uplink; one started just before Arming may finish on air, within the
-  upload's 15 s bound. Share record stays enabled (the controller's ruling,
-  2026-10-12). The battery row reads the app's battery mode
-  in Android's own words, _Unrestricted_, _Optimized_ or _Restricted_, and
-  its _App settings_ button opens this app's App info page
+  is on, as it is (the owner's "On now (Recommended)", 2026-10-12, §1). From
+  Arming on, Send record is disabled with "Send it after the broadcast", so an
+  upload of up to 1 MB never starts on the broadcast's uplink; one started just
+  before Arming may finish on air, within the upload's 15 s bound. Share
+  record stays enabled (the controller's ruling, 2026-10-12). The battery row
+  reads the app's battery mode in Android's own words, _Unrestricted_,
+  _Optimized_ or _Restricted_, and its _App settings_ button opens this app's
+  App info page
   (`ACTION_APPLICATION_DETAILS_SETTINGS`), where Battery is one tap away; a
   path line under it says "Battery → Unrestricted" (R12 of the D3 findings
   design; the controller's, 2026-10-12). It never prompts or nags. Its button

@@ -142,10 +142,11 @@ export const RECORD_LINE_KEYS: ReadonlySet<string> = new Set([
 ]);
 
 /**
- * Q4 of the web's record design (batch 11's answers): the server refuses a whole body for one key its contract does
- * not list, a never key included even masked. So a line the upload's checks passed goes with every such field dropped,
- * and a line with none goes as written, byte for byte. Share record never comes here: it shares the record as written,
- * masks and all. `line` is a record line (`linesAreSafe` has read it).
+ * Q4 of the web's record design (batch 11's answers): the vendored contract refuses a whole body for one key it does
+ * not list, a never key included even masked; by the owner's later ruling (relayed by the web, 2026-10-12) the server
+ * drops that line and answers 201. Either way a line the upload's checks passed goes with every such field dropped,
+ * which keeps the rest of it, and a line with none goes as written, byte for byte. Share record never comes here: it
+ * shares the record as written, masks and all. `line` is a record line (`linesAreSafe` has read it).
  */
 export function fitLine(line: string): string {
   const data = JSON.parse(line) as Record<string, unknown>;

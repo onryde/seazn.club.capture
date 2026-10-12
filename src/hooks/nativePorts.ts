@@ -74,7 +74,8 @@ export function createNativePorts(
     logger,
     enabled: options.recordSend,
   });
-  // R3: plain fetch (AGENTS §8), to the build's host only. Nothing calls it while the switch is off: no button.
+  // R3: plain fetch (AGENTS §8), to the build's host only. Called only from Send record to Seazn's tap
+  // (`RecordSendFlight`).
   const recordUpload = createRecordUploadPort({
     fetch: (url, init) => fetch(url, init),
     logger,

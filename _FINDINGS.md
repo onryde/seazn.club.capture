@@ -1042,7 +1042,7 @@ limit. D3 row 1 saw growth of 16–20 s near the limit too. The lag rule (`LAG_G
 9802354); Send record to Seazn is built (8b99943, 4920ea3, 9802354; fix round 1: d89f5da, 8ddb33f; fix round 2:
 023ab03), and posts to the web's record contract, vendored at web 53f28ebfc (Batch 11: 7ccfbd8, 866f3f8;
 `docs/specs/2026-10-11-s1-d3-web-brief.md` §1), behind `FEATURES.recordSend`, which Batch 11 switched on (the
-owner's ruling, 2026-10-12); the device proof is Batch 9's
+owner chose "On now (Recommended)" in the session, 2026-10-12); the device proof is Batch 9's
 (`docs/superpowers/plans/2026-10-11-s1-d3-fixes.md`)
 **Where:** capture app · `DiagnosticsCard` (Share record) · `RecordRow` · Home
 
