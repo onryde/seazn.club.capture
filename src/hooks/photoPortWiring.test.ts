@@ -402,7 +402,7 @@ describe('createNativePorts keeps the upload credential on the app’s own mode 
     });
   });
 
-  it('the root layout passes the shipped switch, and the shipped switch is off until the web’s endpoint exists', () => {
+  it('the root layout passes the shipped switch, and the shipped switch is on (the owner’s ruling, 2026-10-12)', () => {
     const source = readFileSync(join(__dirname, '../../app/_layout.tsx'), 'utf8');
     const file = ts.createSourceFile(
       '_layout.tsx',
@@ -423,6 +423,6 @@ describe('createNativePorts keeps the upload credential on the app’s own mode 
     };
     visit(file);
     expect(calls).toEqual(['{ recordSend: FEATURES.recordSend }']);
-    expect(FEATURES.recordSend).toBe(false);
+    expect(FEATURES.recordSend).toBe(true);
   });
 });

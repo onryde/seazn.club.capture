@@ -51,7 +51,7 @@ const LIBSRT_SOURCE = 'https://github.com/Haivision/srt';
 type SettingsScreenProps = {
   /** R2: `home` is the screen opened from Home's Live Stream tile: no Diagnostics, no LIVE plate, Back to Home. */
   readonly from?: 'stream' | 'home';
-  /** R3: Send record to Seazn in the record row. `FEATURES.recordSend` (off); its tests pass it on. */
+  /** R3: Send record to Seazn in the record row. `FEATURES.recordSend` (on, the owner's ruling of 2026-10-12). */
   readonly recordSend?: boolean;
 };
 

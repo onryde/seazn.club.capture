@@ -250,7 +250,9 @@ Mutate the rejoin marker once and watch a test fail.
   read for its `ref` alone (RD, the owner's ruling of 2026-10-12: `kept` and
   `dropped` are never read), and 401, 413 and 429 read by their status. The
   button is built behind `FEATURES.recordSend`, the same shape as
-  `viewerCheck`.
+  `viewerCheck`, and the switch is on (the owner's ruling, 2026-10-12): the
+  endpoint is deployed on staging, and a production build answers _Couldn't
+  send — try again_ until production has it.
 
 ## 8. B8 — the battery row (R5, N27)
 
@@ -374,7 +376,8 @@ this order:
 4. **A1:** the spike, then the 16:9 rule (§4).
 5. **B9:** Forget on the notification (§9).
 6. **B6 + B8:** Stream settings from Home, and the battery row (§6, §8).
-7. **B7:** Send record, built behind its switch (§7).
+7. **B7:** Send record, built behind its switch (§7), on since 2026-10-12 (the
+   owner's ruling).
 8. **A2:** tile titles (§10).
 9. **Device pass** on both phones: A3's three paths, A1 on the CPH2569, B9 on
    the shade, B6 and B8 on the owner's phone (728 × 328 as laid out) and at

@@ -14,9 +14,11 @@ export const FEATURES: { readonly viewerCheck: boolean; readonly recordSend: boo
    */
   viewerCheck: false,
   /**
-   * Send record to Seazn (B7; R3 of the D3 findings design, owner 2026-10-11): built, and off until the web's record
-   * endpoint ships (the D3 web brief §1). Off, Stream Settings shows Share record alone, and the upload credential is
-   * never stored (the D3 fixes plan's ruling P10): the composition root passes this to `createNativePorts`.
+   * Send record to Seazn (B7; R3 of the D3 findings design, owner 2026-10-11): on, by the owner's ruling of 2026-10-12
+   * (relayed by the controller), to the web's record contract (the D3 web brief §1). The endpoint is deployed on
+   * staging; a production build answers "Couldn't send — try again" until production has it. Off, Stream Settings
+   * shows Share record alone, and the upload credential is never stored (the D3 fixes plan's ruling P10): the
+   * composition root passes this to `createNativePorts`.
    */
-  recordSend: false,
+  recordSend: true,
 };

@@ -77,8 +77,9 @@ No accounts, no login, no fixture browsing, no chat, no replays, no gallery,
 no in-app payments, and no upload but one: the session record, sent to Seazn
 on the operator's tap (R3 of the D3 findings design; owner, 2026-10-11), not
 by itself (an automatic upload is out of scope). It posts to the web's record
-contract (vendored at web `53f28ebfc`), behind `FEATURES.recordSend`. Push
-alerts go only to phones holding a Dashboard code (ruling 11).
+contract (vendored at web `53f28ebfc`), behind `FEATURES.recordSend`, which is
+on (the owner's ruling, 2026-10-12). Push alerts go only to phones holding a
+Dashboard code (ruling 11).
 
 Adding a fourth mode, or a screen outside a mode, is a product decision, not
 an implementation detail. Raise it; don't build it.
@@ -438,7 +439,7 @@ Three rules travel with these tokens:
   findings design; owner, 2026-10-11) and the record row: Share record,
   outside the Diagnostics card so a phone sent Home by Replaced can still hand
   its record over (N33), and Send record to Seazn when `FEATURES.recordSend`
-  is on. From Arming on, Send record is disabled with "Send it after the
+  is on, as it is (the owner's ruling, 2026-10-12). From Arming on, Send record is disabled with "Send it after the
   broadcast", so an upload of up to 1 MB never starts on the broadcast's
   uplink; one started just before Arming may finish on air, within the
   upload's 15 s bound. Share record stays enabled (the controller's ruling,

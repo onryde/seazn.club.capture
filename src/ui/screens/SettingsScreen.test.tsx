@@ -297,9 +297,9 @@ describe('Settings (spec §4)', () => {
   });
 });
 
-// R3 of the D3 findings design (owner, 2026-10-11): Send record to Seazn is built behind `FEATURES.recordSend`, off
-// until the web's endpoint ships. The screen reads the switch as its prop's default (src/ui/features.ts), so these
-// tests render the hidden button by passing the switch on.
+// R3 of the D3 findings design (owner, 2026-10-11): Send record to Seazn is built behind `FEATURES.recordSend`, on by
+// the owner's ruling of 2026-10-12. The screen reads the switch as its prop's default (src/ui/features.ts), so these
+// tests render the row as shipped, and pass the switch off only to show what off leaves.
 describe('Send record to Seazn, behind its switch (R3, P10)', () => {
   /** Made up (AGENTS §13): belongs to no code. */
   const MADE_UP = {
@@ -309,14 +309,14 @@ describe('Send record to Seazn, behind its switch (R3, P10)', () => {
   };
   const sendButton = () => screen.queryByRole('button', { name: 'Send record to Seazn' });
 
-  it('is not drawn as shipped: the record row is Share record alone', () => {
-    renderSettings();
+  it('with the switch off, is not drawn: the record row is Share record alone', () => {
+    renderSettings({}, false);
     expect(sendButton()).toBeNull();
     expect(screen.getByTestId('record-row').contains(shareButton())).toBe(true);
   });
 
-  it('with the switch on, follows Share record in the record row, disabled with its reason while no code is held', async () => {
-    renderSettings({}, true);
+  it('as shipped, follows Share record in the record row, disabled with its reason while no code is held', async () => {
+    renderSettings();
     await act(async () => undefined);
     const send = sendButton();
     expect(send).not.toBeNull();
@@ -332,7 +332,7 @@ describe('Send record to Seazn, behind its switch (R3, P10)', () => {
   // record row. The ref the operator reads to the organiser is never logged, so it must survive the turn.
   it('keeps "Sent · ref" across a rotation, both ways', async () => {
     setWindowSize(390, 844);
-    const view = renderSettings({ uploadCredential: createFakeUploadCredential(MADE_UP) }, true);
+    const view = renderSettings({ uploadCredential: createFakeUploadCredential(MADE_UP) });
     await act(async () => undefined);
     fireEvent.click(screen.getByRole('button', { name: 'Send record to Seazn' }));
     await act(async () => undefined);
@@ -347,8 +347,8 @@ describe('Send record to Seazn, behind its switch (R3, P10)', () => {
     expect(view.recordUpload.calls).toBe(1);
   });
 
-  it('with the switch on, is in Stream Settings from Home too', () => {
-    renderWithPorts(<SettingsScreen from="home" recordSend />);
+  it('as shipped, is in Stream Settings from Home too', () => {
+    renderWithPorts(<SettingsScreen from="home" />);
     expect(sendButton()).not.toBeNull();
   });
 });
@@ -568,6 +568,7 @@ describe('Diagnostics inside Settings (spec §6, Q1)', () => {
   it('says when sharing could not open on the Share button, and records it', async () => {
     const view = renderSettings();
     view.share.refuse();
+    await act(async () => undefined); // Send's first credential read answers, and its reason line is drawn
     const before = rowShape();
     expect(screen.queryByRole('button', { name: FAILED })).toBeNull();
     fireEvent.click(shareButton());
@@ -576,7 +577,8 @@ describe('Diagnostics inside Settings (spec §6, Q1)', () => {
     expect(screen.queryByRole('button', { name: 'Share record' })).toBeNull();
     expect(screen.getAllByText(FAILED)).toHaveLength(1);
     expect(rowShape()).toEqual(before);
-    expect(before).toHaveLength(1); // anti-vacuity: the Share button alone, the switch off as shipped
+    // Anti-vacuity: Share, then Send and its "Scan a stream code first", the switch on as shipped.
+    expect(before).toEqual(['BUTTON', 'BUTTON', 'DIV']);
     expect(readRecord(view.record).map((entry) => entry.event)).toContain('record.share-failed');
     expect(readRecord(view.record).map((entry) => entry.event)).not.toContain('record.shared');
   });
@@ -1254,13 +1256,14 @@ describe('Share record wears the board’s box inside a 48 dp button', () => {
     expect(getComputedStyle(within(box()).getByText('Share record')).fontSize).toBe('12px');
   });
 
-  // R5: the battery row's button is the other small one (the D3 fixes plan's Task 5.3), above the card.
-  it('is on Share record and the battery row’s button only: the box is not on any other button', () => {
+  // R5: the battery row's button is the other small one (the D3 fixes plan's Task 5.3), above the card; Send record to
+  // Seazn is the record row's second (R3, on as shipped).
+  it('is on the battery row’s and the record row’s buttons only: the box is not on any other button', () => {
     renderSettings();
     const boxed = screen
       .getAllByTestId('ghost-box')
       .map((box) => box.closest('[role="button"]')?.textContent);
-    expect(boxed).toEqual(['App settings', 'Share record']);
+    expect(boxed).toEqual(['App settings', 'Share record', 'Send record to Seazn']);
   });
 
   it('keeps the same box and the same 48 dp when a share fails and the label changes', async () => {
