@@ -902,7 +902,7 @@ when the stream starts. A YouTube event that starts with no video may stay on "P
 
 ### N29 — A rejoin after the hold runs out retries forever, with no reason shown
 
-**Status:** fix planned — feat/s1-d3-fixes, Batch 2 (`docs/superpowers/plans/2026-10-11-s1-d3-fixes.md`)
+**Status:** fixed — feat/s1-d3-fixes, Batch 2 (588ca11, 3eb3c1a)
 **Where:** capture app · `Verdicts.over` (`Pairings.kt:274-281`) · `Transports.outageFor` (`SessionMachine.kt:327-331`) ·
 `Transports.failed` (`:262-276`) · `Projection.state` (`Projection.kt:72`)
 
