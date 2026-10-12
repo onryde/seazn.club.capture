@@ -902,7 +902,7 @@ when the stream starts. A YouTube event that starts with no video may stay on "P
 
 ### N29 — A rejoin after the hold runs out retries forever, with no reason shown
 
-**Status:** fixed — feat/s1-d3-fixes, Batch 2 (588ca11, 3eb3c1a, 4e27a9b; fix round 1: 279413f, 641103a)
+**Status:** fixed — feat/s1-d3-fixes, Batch 2 (588ca11, 3eb3c1a, 4e27a9b; fix round 1: 279413f, 641103a, a4756e1)
 **Where:** capture app · `Verdicts.over` (`Pairings.kt:274-281`) · `Transports.outageFor` (`SessionMachine.kt:327-331`) ·
 `Transports.failed` (`:262-276`) · `Projection.state` (`Projection.kt:72`)
 
@@ -924,6 +924,10 @@ holds as usual.
 
 **Remaining gap (not fixed in Batch 2):** the lapse is kept in memory only, so after a process death the server's
 `live` connects as a bare CONNECTING again, with 2 s retries and a clock that starts at its first frame.
+
+**Known mismatch (the controller's ruling, 2026-10-12):** in Arming and Armed of a lapsed sid, the screen reader still
+says "Hold to stop", while Stop there unpairs. The snapshot cannot tell that arm from a fresh one, and a wire field
+for one label is not worth it.
 
 ---
 
