@@ -933,8 +933,8 @@ for one label is not worth it.
 
 ### N30 — A square preview on the CPH2569
 
-**Status:** fixed — feat/s1-d3-fixes, Batch 3 (7dfced7, 8d3a7b5, 0e8bb97); the device proof is Batch 9's
-(`docs/superpowers/plans/2026-10-11-s1-d3-fixes.md`)
+**Status:** fixed — feat/s1-d3-fixes, Batch 3 (7dfced7, 8d3a7b5, 0e8bb97; fix round 1: b383525); the device proof is
+Batch 9's (`docs/superpowers/plans/2026-10-11-s1-d3-fixes.md`)
 **Where:** capture app · `CapturePreviewView` · `PreviewSizes` (`preview/PreviewSizes.kt`) · `SixteenNineCamera`
 (`SixteenNinePreview.kt`) · StreamPack 3.2.1 `CameraSizes.getPreviewOutputSize`
 
