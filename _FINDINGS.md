@@ -982,12 +982,17 @@ limit. D3 row 1 saw growth of 16–20 s near the limit too. The lag rule (`LAG_G
 
 ### N33 — A replaced phone cannot hand over its record
 
-**Status:** fix planned — feat/s1-d3-fixes, Batches 5 and 6 (`docs/superpowers/plans/2026-10-11-s1-d3-fixes.md`)
-**Where:** capture app · `DiagnosticsCard` (Share record) · Home
+**Status:** fixed — feat/s1-d3-fixes, Batches 5 and 6 (Stream Settings from Home: 73dc5ae, fdc8b41; the record row:
+9802354); Send record to Seazn is built (8b99943, 4920ea3, 9802354) and hidden behind `FEATURES.recordSend = false`
+until the web's record endpoint exists (`docs/specs/2026-10-11-s1-d3-web-brief.md` §1); the device proof is Batch 9's
+(`docs/superpowers/plans/2026-10-11-s1-d3-fixes.md`)
+**Where:** capture app · `DiagnosticsCard` (Share record) · `RecordRow` · Home
 
-Share record lives only in Live Stream's Settings, and a phone sent to Home by `Replaced` has no pairing to open it
-from. The record row (Share record, and Send record to Seazn when its switch is on) will be in Stream Settings in both
-variants (Batch 6), and Stream Settings will open from Home's Live Stream tile (Batch 5).
+Share record lived only in Live Stream's Settings, and a phone sent to Home by `Replaced` has no pairing to open it
+from. The record row (Share record, and Send record to Seazn when its switch is on) is now in Stream Settings in both
+variants, after the battery row (Batch 6), and Stream Settings opens from Home's Live Stream tile (Batch 5): a replaced
+phone closes the panel, taps _Stream settings_ and shares (`HomeScreen.unpaired.test.tsx`). The Diagnostics card's
+header keeps its 48 dp without the button, so the card is still 272 dp and fits its half at 640 × 360.
 
 ---
 

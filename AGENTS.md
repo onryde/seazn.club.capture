@@ -134,7 +134,8 @@ src/
     mode/          # Mode, code recognition, saved codes, reopen and leave rules
     orientation/   # how the phone is held, from accelerometer samples
     session/       # CaptureSession model, event projection, state types
-    credentials/   # QR v2 and the waiting fields, parsed (anti-corruption); publish credentials are native's
+    credentials/   # QR v2 and the waiting fields, parsed (anti-corruption); publish credentials are native's;
+                   # the record upload's credential, kept 24 h after its code goes (R4)
     policy/        # fallback strategy, degradation ladder
   i18n/            # en/es/fr/nl dictionaries, t()/tp(), formatTime(). Pure.
   ui/
@@ -183,6 +184,16 @@ contracts/         # the web's capture contracts, vendored and pinned
   in hand when offered, from the moment a broadcast starts (at Arming), kept
   for its life; SRT may be absent as a safety net, and then RTMPS stands
   alone (A18). They never reach TypeScript (A1, A5).
+- The upload credential is the one credential TypeScript keeps (R4 of the D3
+  findings design; owner, 2026-10-11): the saved stream code's URL and token,
+  copied when the code is saved, kept 24 h after the code goes, for uploads
+  only. It authorises Send record to Seazn (R3) and nothing else: never a
+  pair, a beat or anything native does. It is stored only while
+  `FEATURES.recordSend` is on, and a leftover is deleted while it is off (the
+  D3 fixes plan's ruling P10, the controller's). Its token is never in a
+  record line, a snapshot, a log line or an error, and the upload refuses a
+  record that names it (`uploadCredential.ts`, `uploadCredentialStore.ts`,
+  `recordUploadPort.ts`).
 - `any` is banned by lint. The escape hatch is `unknown` plus a parse function
   at the boundary — which is what the QR anti-corruption layer already is.
 - The wire shape never reaches the domain. Each wire shape has one parser, in
