@@ -282,7 +282,11 @@ Mutate the rejoin marker once and watch a test fail.
   the app wrote after capture 7ea8f63, whose allow-list the first had
   (`bytes`, `failures`, `retryMs`, `pickAspect16x9`, `pickSource`), which now
   go whole, and has 60 fixtures; the app re-vendored it in Batch 12 (ea636f2).
-  The port reads:
+  Web #944 (`a6cc1f038`) changed only the contract's description: a pairing
+  window runs through the next `unpaired`, `ended`, `pair-refused` or `reset`
+  line, and no longer through `engine-error`, since every fatal end writes
+  `ended {reason: "fatal-error"}` (Batch 13, 6ebc91a); the app re-vendored it
+  in Batch 15 (64a1ac2). The port reads:
   `POST {code URL}/records`, at most 1,000 lines and 1,048,576 bytes, a 201
   read for its `ref` alone (RD, the owner's ruling of 2026-10-12: `kept` and
   `dropped` are never read), and 401, 413 and 429 read by their status. The
@@ -388,8 +392,9 @@ this branch:
 
    Published on 2026-10-12 (web #941, `53f28ebfc`), vendored and followed in
    Batch 11 (§7), and re-vendored at web `55ac34d5d` (web #943) in Batch 12
-   (`ea636f2`). The web brief's §1 records the contract and the app's answers
-   to the web's questions.
+   (`ea636f2`) and at web `a6cc1f038` (web #944) in Batch 15 (`64a1ac2`). The
+   web brief's §1 records the contract and the app's answers to the web's
+   questions.
 
 2. **The round line in other languages (N34).** Does the web localise the round
    line ("Round 2", "SF", "Final") by the phone's language? Or does the phone
