@@ -933,17 +933,22 @@ for one label is not worth it.
 
 ### N30 — A square preview on the CPH2569
 
-**Status:** fix planned — feat/s1-d3-fixes, Batch 3 (`docs/superpowers/plans/2026-10-11-s1-d3-fixes.md`), then the
-device check (Batch 9)
-**Where:** capture app · `CapturePreviewView` · `PreviewSizes` (`preview/PreviewSizes.kt`) · StreamPack 3.2.1
-`CameraSizes.getPreviewOutputSize`
+**Status:** fixed — feat/s1-d3-fixes, Batch 3 (7dfced7, 8d3a7b5, 0e8bb97); the device proof is Batch 9's
+(`docs/superpowers/plans/2026-10-11-s1-d3-fixes.md`)
+**Where:** capture app · `CapturePreviewView` · `PreviewSizes` (`preview/PreviewSizes.kt`) · `SixteenNineCamera`
+(`SixteenNinePreview.kt`) · StreamPack 3.2.1 `CameraSizes.getPreviewOutputSize`
 
 The camera served the preview 960 × 960 and the encoder 1280 × 720 (`dumpsys media.camera`, 2026-10-11 21:10Z,
 `r4-b-media-camera.txt`), so the 16:9 box showed the picture pillarboxed (`r4-b-live.png`). StreamPack 3.2.1 picks the
 preview size by **area only** (sort by area, reverse, `closestTo`), and 960 × 960 has exactly the area of 1280 × 720
-(921,600). `PreviewSizeReport.sameArea` (`PreviewSizes.report`) already counts such ties; nothing acts on it. The
-planned fix (after the Batch 3 spike): the preview will take the encode's aspect, 16:9, whenever the camera lists one,
-the nearest in area to 1280 × 720.
+(921,600). `PreviewSizeReport.sameArea` (`PreviewSizes.report`) counts such ties.
+
+**Fix:** the spike (`docs/specs/2026-10-12-s1-a1-preview-spike.md`, verdict `DECORATOR`) found the size comes from one
+call, the camera source's `getPreviewSize`, with no fork needed. The `PreviewView` now sees the camera through
+`SixteenNineCamera`, which answers that call with the listed 16:9 size nearest 1280 × 720 in area
+(`PreviewSizes.answer`) and StreamPack's own answer when none is listed; every other member is the real camera's. The
+`preview-size` line says which rule picked (`pickSource`) and whether the pick is 16:9 (`pickAspect16x9`). Still to
+show on the CPH2569 (Batch 9): a 1280 × 720 preview stream in `dumpsys media.camera` and no pillarbox.
 
 ---
 
