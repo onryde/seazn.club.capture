@@ -887,7 +887,7 @@ unbroken through a 9-minute lock (22:19:51–22:28:32Z), and a console Go live w
 
 **Status:** open · investigation first: section 3 of the D3 findings design
 (`docs/specs/2026-10-11-s1-d3-findings-design.md`); feat/s1-d3-fixes, Batch 8
-(`docs/superpowers/plans/2026-10-11-s1-d3-fixes.md`)
+(`docs/superpowers/plans/2026-10-11-s1-d3-fixes.md`); Step A, the hypothesis and Step B's pass mark below: 2cd26dc
 **Where:** capture app · `CaptureRun.reopen` (`CaptureRun.kt:281-289`), `rebuild` (`:202-209`) · `StreamerAdapter.reopenCamera`
 (`:338-346`) · StreamPack 3.2.1 `VideoInput` (`addOutputSurface$streampack_core`)
 
@@ -923,6 +923,7 @@ is not owned by client`), and every later attempt was `no-first-frame`: 28 stall
 13:27:15Z. Recovery (`Rebuild` / `StartNewSession` → `CaptureRun.reconnect`, `:246-247` → `:444-447`) only stops and
 starts the same streamer (`parts.stop` `:437`, `parts.start` `:321`); nothing builds a new one after its encoder fails.
 Ranked:
+
 1. Path 3, a failed encoder never rebuilt. High confidence for the 3-minute outage; the first silent stall is
    unexplained. Step B confirms it with a codec ERROR followed by repeating `no-first-frame` and no `capture-rebuilt`.
    A stop and start alone that restores frames after an ERROR refutes it.
@@ -934,9 +935,11 @@ Ranked:
    from a build's pair, or `addOutputSurface: Can't add output surface: SurfaceProcessor is released`. The last two are
    H0's only two mechanisms in the vendor code, and no record so far has either.
 
----
-
-**Pass mark for Step B (the controller's ruling, 2026-10-12):** a `delivered` line cannot pass on a healthy start (it is written only when a `not-delivered` clears, `SessionMachine.kt:626-628`). Step B passes a path when `capture-clock` and `live` follow `connected` within 30 s, the beats read `delivery ok` with lag under 2 s, the master playlist carries `avc1` and `RESOLUTION=1280x720`, and a segment from the locked minutes is real, non-black video (ffprobe and blackdetect).
+**Pass mark for Step B (the controller's ruling, 2026-10-12):** a `delivered` line cannot pass on a healthy start (it is
+written only when a `not-delivered` clears, `SessionMachine.kt:626-628`). Step B passes a path when `capture-clock` and
+`live` follow `connected` within 30 s, the beats read `delivery ok` with lag under 2 s, the master playlist carries
+`avc1` and `RESOLUTION=1280x720`, and a segment from the locked minutes is real, non-black video (ffprobe and
+blackdetect).
 
 ---
 
@@ -1036,16 +1039,18 @@ limit. D3 row 1 saw growth of 16–20 s near the limit too. The lag rule (`LAG_G
 ### N33 — A replaced phone cannot hand over its record
 
 **Status:** fixed — feat/s1-d3-fixes, Batches 5 and 6 (Stream Settings from Home: 73dc5ae, fdc8b41; the record row:
-9802354); Send record to Seazn is built (8b99943, 4920ea3, 9802354; fix round 1: d89f5da, 8ddb33f) and hidden behind
-`FEATURES.recordSend = false` until the web's record endpoint exists (`docs/specs/2026-10-11-s1-d3-web-brief.md` §1);
-the device proof is Batch 9's (`docs/superpowers/plans/2026-10-11-s1-d3-fixes.md`)
+9802354); Send record to Seazn is built (8b99943, 4920ea3, 9802354; fix round 1: d89f5da, 8ddb33f; fix round 2:
+023ab03) and hidden behind `FEATURES.recordSend = false` until the web's record endpoint exists
+(`docs/specs/2026-10-11-s1-d3-web-brief.md` §1); the device proof is Batch 9's
+(`docs/superpowers/plans/2026-10-11-s1-d3-fixes.md`)
 **Where:** capture app · `DiagnosticsCard` (Share record) · `RecordRow` · Home
 
 Share record lived only in Live Stream's Settings, and a phone sent to Home by `Replaced` has no pairing to open it
 from. The record row (Share record, and Send record to Seazn when its switch is on) is now in Stream Settings in both
 variants, after the battery row (Batch 6), and Stream Settings opens from Home's Live Stream tile (Batch 5): a replaced
 phone closes the panel, taps _Stream settings_ and shares (`HomeScreen.unpaired.test.tsx`). The Diagnostics card's
-header keeps its 48 dp without the button, so the card is still 272 dp and fits its half at 640 × 360.
+header kept its 48 dp without the button, so the card stayed 272 dp: it fits its half at 640 × 360 but not on the
+owner's phone (N35). The header has since dropped the 48 (4421fb2), and the card is 244 dp.
 
 ---
 
@@ -1062,10 +1067,11 @@ register (its W-number unverified here). The phone keeps drawing the server's te
 
 ### N35 — The owner's phone lays out at 728 × 328, not 804 × 332
 
-**Status:** fixed in docs/tests — feat/s1-d3-fixes, Batch 7 (d081acc)
+**Status:** fixed in docs/tests — feat/s1-d3-fixes, Batch 7 (d081acc; N35 and AGENTS §6: a92a6bf); the Diagnostics
+card, from the final review: 4421fb2
 **Where:** capture app · `ShellFrame.tsx` (all four edges, around every route in `app/_layout.tsx`) · the viewfinder
 fits (`viewfinderFit`, `cameraBox`, `stripTextFit`, `matchLabelFit`, `viewerCoverFit`, `StreamScreen.layout`) ·
-`homeFit` · AGENTS §6
+`homeFit` · `settingsFit` · `DiagnosticsCard` · AGENTS §6
 
 The viewfinder's rulings of 2026-10-08 and their fits name the owner's phone as 804 × 332: its display sideways, less
 the status bar. The phone does not give the app that window. With 3-button navigation ShellFrame's insets are a
@@ -1083,6 +1089,11 @@ What changes at 728 × 328, by each fit's own model:
 - The strip's text is 386 dp wide, not 462: no realistic line in any language is cut there.
 - A label side's row is 364 dp, not 440: the fixtures' sides stay one line, so the long doubles label is still 44.
 - Home with one card scrolls (141 or 149 dp for tiles that need 166).
+- Settings' halves have 248 dp, and the Diagnostics card was 272: 24 over, so its half scrolled and its ninth row
+  (Heartbeat, _Last sent_) was under the fold (`r12-dim-settings.png`). The final review found it (Important 2), since
+  `settingsFit` proved the card only at 360, 390 and 412. Its header dropped the 48 dp it had kept from Share record's
+  button, which nothing in it needs: nothing in it takes a tap (the controller's ruling, 2026-10-12). The card is now
+  244 and fits with 4 dp to spare; `settingsFit` carries 328 and 332 (4421fb2). On the phone it is Batch 9's.
 
 Nothing clips. The fits now carry 728 × 328 as the owner's phone, with hand-derived rows; 804 × 332 stays as a
 geometry, as the one the rulings were made on (the controller's ruling, 2026-10-12, from D3's evidence).
