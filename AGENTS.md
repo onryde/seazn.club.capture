@@ -169,8 +169,9 @@ contracts/         # the web's capture contracts, vendored and pinned
   rule and cause circular imports.
 - No `types/` folder — types live with the behaviour they describe.
 - No `store/` — see §2. Session state is native-owned. What the app keeps
-  itself (saved codes, the active mode, the language pick) sits behind the
-  key-value store port in `services/`.
+  itself (saved codes, the active mode, the language pick and, while
+  `FEATURES.recordSend` is on, the upload credential, R4 of the D3 findings
+  design) sits behind the key-value store port in `services/`.
 - `utils/` is where dead code hides. Put the function where it belongs.
 - Absolute imports via tsconfig paths (`@/domain`, `@/ui`).
 
@@ -547,7 +548,10 @@ thermal member. Only transport trouble degrades a session.
   marker, so a process death before JS hears it still reads
   `unpaired.reason: forgotten` at the next start. JS reconciles from the
   snapshot. Any other phase removes the action; a tap that lands late is
-  ignored and recorded.
+  ignored and recorded. While the operator's own Go live is in flight the
+  phone is still paired, so the action still shows, and a tap there is
+  ignored and recorded (`intent-ignored {intent: forget, phase: paired}`; M1
+  of the Batch 4 review, the controller's ruling, 2026-10-12).
 - While paired and waiting, the screen is kept on and dimmed after 30 s idle;
   this is the default path for a remote Go live. The foreground service and wake
   lock are the Android fallback when the phone is locked anyway (R4, D2 §4.5).
@@ -646,8 +650,9 @@ thermal member. Only transport trouble degrades a session.
   so that pin is the only one. Default isolated linker — see
   `pnpm-workspace.yaml` for what was verified and the rule for hoisting.
 - TypeScript `strict`.
-- Expo Router for navigation; `expo-secure-store` for saved codes and the
-  language pick (Android backup excluded); `expo-sensors` and
+- Expo Router for navigation; `expo-secure-store` for saved codes, the
+  language pick and, while `FEATURES.recordSend` is on, the upload credential
+  (R4; Android backup excluded); `expo-sensors` and
   `expo-screen-orientation` for the orientation gate; `expo-brightness` for
   the idle dim (on Android the window's brightness only: its `WRITE_SETTINGS`
   permission is blocked in `app.json`); `expo-localization` for
