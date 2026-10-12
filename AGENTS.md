@@ -127,6 +127,7 @@ page in the main repo, not here. Do not grow the app to accommodate them.
 app/               # Expo Router routes. Thin: they import ui, hooks and packages only.
   _layout.tsx      # the composition root: ports, language, reopen gate, orientation gate
   index.tsx        # Home
+  stream-settings.tsx  # Stream Settings from Home, no Diagnostics (R2 of the D3 findings design)
   stream/          # Live Stream (landscape); S2/S4 add scoring/ and dashboard/
 src/
   domain/          # pure TS. No react, no react-native, no ui, no modules.
