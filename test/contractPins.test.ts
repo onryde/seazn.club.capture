@@ -12,11 +12,11 @@ import { listFiles, OURS } from '../scripts/vendor-contracts.mjs';
  *
  * The other side of the pin is the web's own: its capture-contract.test.ts pins the six schemas. Those six values
  * and the commit are copied below BY HAND from apps/web/src/server/api-v1/__tests__/capture-contract.test.ts:51-57
- * at 55ac34d5d (web #943, merged 2026-10-12, which serves the record contract and changed only it and its fixtures;
- * the script never writes them), so a re-vendor cannot quietly move both sides at once. WEB_COMMIT is the commit
- * actually vendored (plan D1, D-10).
+ * at a6cc1f038 (web #944, merged 2026-10-12, which changed only the record contract's description: an `engine-error`
+ * line no longer closes a pairing window; the script never writes them), so a re-vendor cannot quietly move both
+ * sides at once. WEB_COMMIT is the commit actually vendored (plan D1, D-10).
  */
-const WEB_COMMIT = '55ac34d5dcaf74d6735bdaf1e57aaa159586b7c8';
+const WEB_COMMIT = 'a6cc1f038b8518617040b1df1dc359fa734e649b';
 const WEB_PINS: Readonly<Record<string, string>> = {
   'capture-qr.v2.json': '3292e33f84b693e5def6048012f6653ca7e31e1573fda3901da4fe67a62c5d43',
   'capture-descriptor.v1.json': '5c9b09c422b092671ad3a842b02e5c18902c92fc290cbc562c91033555955b8b',
@@ -24,7 +24,7 @@ const WEB_PINS: Readonly<Record<string, string>> = {
   'capture-start.v1.json': '012d6e3851e84d0ce659ad23449fa91b61f0d20cfac1e58f2ccbc7cbb0742bae',
   'capture-scoring-link.v1.json':
     'f0f1188655f3ca83b3e42ce7fedd6f6210a3a141b0bcf02fa250eb2448b1c85f',
-  'capture-record.v1.json': 'eeeb9711f0de4c5ed9b1b284f505c2fb0fa8a5a30873b49b74f7a8600043f638',
+  'capture-record.v1.json': '48a798649e24d6b779c745a017e897a9bac5b3a83d3731eaa0824c181fb78334',
 };
 
 const root = new URL('../contracts/', import.meta.url);

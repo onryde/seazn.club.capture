@@ -154,6 +154,40 @@ describe('the record contract’s keys', () => {
   });
 });
 
+/**
+ * Q7 of the web's record design, as capture corrected it (Batch 13, 6ebc91a): every fatal end writes
+ * `ended {reason: "fatal-error", wasLive}`, so the web closes a pairing window at the kinds that mark an end, and not
+ * at `engine-error`, which native also writes where the pairing goes on (the contract at a6cc1f038, web #944).
+ */
+describe('the record contract’s pairing windows (A2, Q7)', () => {
+  /** The kinds the contract's A2 says a window "runs through the next" of, as the web's own test reads them. */
+  const closing = () => {
+    const kinds =
+      /runs through the next ((?:`[a-z-]+`(?:, | or )?)+) line/.exec(contract.description)?.[1] ??
+      '';
+    return [...kinds.matchAll(/`([a-z-]+)`/g)].map(([, kind]) => kind ?? '').sort();
+  };
+
+  it('closes a window at unpaired, ended, pair-refused and reset, and never at engine-error', () => {
+    expect(closing()).toEqual(['ended', 'pair-refused', 'reset', 'unpaired']);
+  });
+
+  it('closes only at kinds the allow-list lists', () => {
+    const kinds = Object.keys(list.kinds);
+    expect(closing().filter((kind) => !kinds.includes(kind))).toEqual([]);
+  });
+
+  // The two lines native writes on a fatal end, before air and on air, character for character as EngineTest.kt pins
+  // them (its I1 tests): the web accepts each whole, so the window closes there.
+  it.each([
+    '{"at":"2026-09-21T14:13:20.000Z","kind":"ended","reason":"fatal-error","wasLive":false}',
+    '{"at":"2026-09-21T14:13:20.500Z","kind":"ended","reason":"fatal-error","wasLive":true}',
+  ])('admits %s whole', (written) => {
+    expect(fitLine(written)).toBe(written);
+    expect(admitsLine(JSON.parse(written))).toBe(true);
+  });
+});
+
 describe('fitLine (Q4): what the contract does not list leaves the line, and the line stays', () => {
   it('drops an unlisted key, and the line it leaves is the contract’s', () => {
     const fitted = fitLine(

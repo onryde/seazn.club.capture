@@ -789,7 +789,7 @@ const RECORD_WIDTHS = [
 ] as const;
 /**
  * The longest reference the record contract admits, in its widest capital: its upper bound read from the vendored
- * pattern (`R-` and 4 to 8 Crockford capitals at 55ac34d5d), so a re-vendor that lengthens the ref moves this proof
+ * pattern (`R-` and 4 to 8 Crockford capitals at a6cc1f038), so a re-vendor that lengthens the ref moves this proof
  * (fix round 1 of Batch 11, finding 5 of its review).
  */
 const REF_PATTERN = (

@@ -1,5 +1,5 @@
 /**
- * The web's record contract, `contracts/capture-record.v1.json` (vendored at web 55ac34d5d, which serves it; the owner
+ * The web's record contract, `contracts/capture-record.v1.json` (vendored at web a6cc1f038, which serves it; the owner
  * approved its design on 2026-10-12): what Send record to Seazn posts, and what it reads back. `recordContract.test.ts`
  * holds every value here to the vendored file, so a re-vendor that moves one reds until this file moves with it.
  */
@@ -37,7 +37,7 @@ export const RECORD_LEVELS: ReadonlySet<string> = new Set([
 ]);
 
 /**
- * Every key a line may carry, by the contract's class: 97 at 55ac34d5d, which the web took from the allow-list at
+ * Every key a line may carry, by the contract's class: 97 since 55ac34d5d, which the web took from the allow-list at
  * capture ebac190, so every key the app writes (`recordContract.test.ts` holds the two lists equal).
  */
 export const RECORD_LINE_KEYS: ReadonlySet<string> = new Set([

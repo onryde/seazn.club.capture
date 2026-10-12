@@ -1,10 +1,10 @@
 {
-  "web": "55ac34d5dcaf74d6735bdaf1e57aaa159586b7c8",
+  "web": "a6cc1f038b8518617040b1df1dc359fa734e649b",
   "files": {
     "capture-beat.v1.json": "e14329132400d45cd38e03b19cf85189fe35acb0b8b9a51e7ca98879fe07c736",
     "capture-descriptor.v1.json": "5c9b09c422b092671ad3a842b02e5c18902c92fc290cbc562c91033555955b8b",
     "capture-qr.v2.json": "3292e33f84b693e5def6048012f6653ca7e31e1573fda3901da4fe67a62c5d43",
-    "capture-record.v1.json": "eeeb9711f0de4c5ed9b1b284f505c2fb0fa8a5a30873b49b74f7a8600043f638",
+    "capture-record.v1.json": "48a798649e24d6b779c745a017e897a9bac5b3a83d3731eaa0824c181fb78334",
     "capture-scoring-link.v1.json": "f0f1188655f3ca83b3e42ce7fedd6f6210a3a141b0bcf02fa250eb2448b1c85f",
     "capture-start.v1.json": "012d6e3851e84d0ce659ad23449fa91b61f0d20cfac1e58f2ccbc7cbb0742bae",
     "fixtures/capture-beat.v1/answer-invalid-null-replaced-autoAllowed.json": "262631e4cbfe66b19dc0373aa74f9aea6d8b4b1a56459f18a1b07d7146b10aba",
