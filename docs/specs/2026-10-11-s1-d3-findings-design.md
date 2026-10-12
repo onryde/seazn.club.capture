@@ -247,25 +247,34 @@ Mutate the rejoin marker once and watch a test fail.
   each field whose key the web's contract does not list is dropped from its
   line, and the line goes (Q4 of the web's record design, batch 11). Share
   record keeps the line as written.
-  - **What the server does with a bad line** (the owner's ruling, relayed by
-    the web, 2026-10-12): it drops the line and still answers
-    `201 {ref, kept, dropped}`. A bad line is one that is secret-shaped, has a
-    field off the list, has a malformed `sid`, `tokenTag` or `at`, or is not
-    JSON. `401`, `413` and `429` stay answers for the whole record. The
-    vendored contract (`53f28ebfc`) predates the ruling and still says `422`
-    for such a body. So the phone does not run S2–S5 or the contract's class
-    narrowings itself: such a line is dropped server-side, and no longer fails
-    every send until it leaves the ring (findings 1 and 4 of the Batch 11
-    review). Its value still crosses to the server, which drops it unstored.
-    The phone's own drop keeps the rest of a line whose only fault is an
-    unlisted field, where the server would drop the line whole.
+  - **What the server does with a bad line** (the owner's ruling RL, relayed
+    by the web, 2026-10-12, and in the contract since web `55ac34d5d`): it
+    drops the line and still answers `201 {ref, kept, dropped}`. A bad line is
+    one the line schema refuses (a field off the list or off its class, a
+    malformed `sid`, `tokenTag` or `at`, not a JSON object, not UTF-8), one
+    that names a key twice, or one that is secret-shaped. `422` is now only a
+    body the server cannot read as lines: an encoding it does not take, a gzip
+    that will not decode, or no non-empty line, none of which the phone sends.
+    `401`, `413` and `429` stay answers for the whole record. So the phone does
+    not run S2–S5 or the contract's class narrowings itself: such a line is
+    dropped server-side, and no longer fails every send until it leaves the
+    ring (findings 1 and 4 of the Batch 11 review). Its value still crosses to
+    the server, which drops it unstored. The phone's own drop keeps the rest of
+    a line whose only fault is an unlisted field, where the server would drop
+    the line whole. The raw line break stays refused here, the whole send:
+    the contract does not speak to it, and §7's fail-closed rule does.
 - **Record lines.** `record.send {result, status, bytes}`, with no reference
   and no token in the line.
 - **Contract.** The web side owns the endpoint (§11). Its contract,
   `capture-record.v1.json` with 52 fixtures, merged as web #941 (`53f28ebfc`)
   on 2026-10-12, after the owner approved the web's design. The app vendors it
   like the others (`pnpm contracts:vendor`, the pin test; 7ccfbd8), and the
-  port holds to it (`src/services/recordContract.ts`; 866f3f8):
+  port holds to it (`src/services/recordContract.ts`; 866f3f8). Web #943
+  (`55ac34d5d`, on staging 2026-10-12) serves the route, lists the five keys
+  the app wrote after capture 7ea8f63, whose allow-list the first had
+  (`bytes`, `failures`, `retryMs`, `pickAspect16x9`, `pickSource`), which now
+  go whole, and has 60 fixtures; the app re-vendored it in Batch 12 (ea636f2).
+  The port reads:
   `POST {code URL}/records`, at most 1,000 lines and 1,048,576 bytes, a 201
   read for its `ref` alone (RD, the owner's ruling of 2026-10-12: `kept` and
   `dropped` are never read), and 401, 413 and 429 read by their status. The
