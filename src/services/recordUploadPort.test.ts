@@ -1,3 +1,6 @@
+import { readdirSync, readFileSync } from 'node:fs';
+import Ajv2020 from 'ajv/dist/2020';
+import addFormats from 'ajv-formats';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import list from '../../modules/capture-engine/src/scrub/allow-list.json';
 import vectors from '../../modules/capture-engine/src/scrub/vectors.json';
@@ -8,7 +11,6 @@ import {
   createRecordUploadPort,
   isSeaznCodeUrl,
   linesAreSafe,
-  RECORD_MAX_BYTES,
   RECORD_TIMEOUT_MS,
   type PostFetch,
 } from '@/services/recordUploadPort';
@@ -26,6 +28,53 @@ const credential: UploadCredential = {
 const line = (event: string, fields: Record<string, string | number | boolean | null> = {}) =>
   toRecordLine({ atMs: 0, level: 'info', event, fields });
 const LINES = [line('paired'), line('live', { transport: 'srt' })];
+
+/**
+ * The web's record contract, vendored at 53f28ebfc and pinned by contractPins.test.ts: every path, limit and answer
+ * below is read from it or from its fixtures, never typed here (recordContract.test.ts pins the app's copies).
+ */
+const CONTRACTS = new URL('../../contracts/', import.meta.url);
+const FIXTURES = new URL('fixtures/capture-record.v1/', CONTRACTS);
+type Schema = {
+  readonly $id: string;
+  readonly title: string;
+  readonly description: string;
+  readonly $defs: { readonly refusal: { readonly description: string } };
+};
+const contract = JSON.parse(
+  readFileSync(new URL('capture-record.v1.json', CONTRACTS), 'utf8'),
+) as Schema;
+const fixture = (name: string): unknown =>
+  JSON.parse(readFileSync(new URL(`${name}.json`, FIXTURES), 'utf8'));
+const FIXTURE_NAMES = readdirSync(FIXTURES)
+  .map((file) => file.replace(/\.json$/, ''))
+  .sort();
+const ajv = new Ajv2020({ allErrors: true, strict: true });
+addFormats(ajv);
+ajv.addSchema(contract);
+const validator = (pointer = '') => {
+  const validate = ajv.getSchema(`${contract.$id}${pointer === '' ? '' : `#${pointer}`}`);
+  if (validate === undefined) throw new Error(`no schema at ${pointer}`);
+  return validate;
+};
+/** Whether the contract admits this as one line of the body. */
+const admitsLine = (value: unknown) => validator()(value) === true;
+/** Whether any string value of a line is secret-shaped under the contract's S2–S5 (`$defs.secretShaped`). */
+const secretShaped = (value: object) =>
+  Object.values(value).some(
+    (field) => typeof field === 'string' && validator('/$defs/secretShaped')(field) === true,
+  );
+/** The route, from the contract's title: "POST /api/v1/capture/codes/{code}/records". */
+const ROUTE = /POST (\S+)/.exec(contract.title)?.[1] ?? '';
+/** "at most 1000 non-empty lines and at most 1 MB (1048576 bytes)", from the contract's description. */
+const MAX_BYTES = Number(/\((\d+) bytes\)/.exec(contract.description)?.[1]);
+/** Each refusal word's status, from the refusal's own description ("401 code_ended (…), 404 …"). */
+const STATUS_OF = new Map(
+  [...contract.$defs.refusal.description.matchAll(/(\d{3}) ([a-z_]+) \(/g)].map(
+    ([, status, word]) => [word ?? '', Number(status)] as const,
+  ),
+);
+const OK = fixture('ok-valid') as { readonly ref: string };
 
 type Answer = { status: number; json(): Promise<unknown> };
 
@@ -51,19 +100,19 @@ beforeEach(() => vi.useFakeTimers());
 afterEach(() => vi.useRealTimers());
 
 describe('Send record to Seazn (R3, R9)', () => {
-  it('posts the lines as ndjson with the bearer to the code’s record path, and answers sent with the ref', async () => {
-    const p = port(answered(201, { ref: 'R-7K2Q' }));
+  it('posts the lines as ndjson with the bearer to the contract’s route for the code, and answers sent with the ref', async () => {
+    const p = port(answered(201, OK));
     const outcome = await p.upload.send(LINES, credential);
     expect(outcome).toEqual({
       result: 'sent',
-      ref: 'R-7K2Q',
+      ref: OK.ref,
       status: 201,
       bytes: LINES.join('\n').length + 1,
     });
     expect(p.fetch).toHaveBeenCalledTimes(1);
     const [url, init] = p.fetch.mock.calls[0] ?? [];
-    // The path is a placeholder until the web publishes its contract (web brief §1: "Its path is the web's choice").
-    expect(url).toBe(`${credential.codeUrl}/record`);
+    expect(ROUTE).toBe('/api/v1/capture/codes/{code}/records');
+    expect(url).toBe(`https://stg.seazn.club${ROUTE.replace('{code}', 'abcdefghjkmn')}`);
     expect(init).toMatchObject({ method: 'POST', body: `${LINES.join('\n')}\n` });
     expect(init?.headers).toEqual({
       Authorization: `Bearer ${TOKEN}`,
@@ -161,14 +210,43 @@ describe('Send record to Seazn (R3, R9)', () => {
   });
 
   it('a body over 1 MB sends nothing and says too-large', async () => {
-    const p = port(answered(201, { ref: 'R-1' }));
+    const p = port(answered(201, OK));
     // 1,000 lines of about 1.1 KB each: past the web's 1 MB with the line count inside its 1,000.
     const big = Array.from({ length: 1_000 }, () =>
       line('vendor-log', { message: 'x'.repeat(1_100) }),
     );
     const outcome = await p.upload.send(big, credential);
     expect(outcome.result).toBe('too-large');
-    expect(outcome.bytes).toBeGreaterThan(RECORD_MAX_BYTES);
+    expect(outcome.bytes).toBeGreaterThan(MAX_BYTES);
+    expect(p.fetch).not.toHaveBeenCalled();
+  });
+
+  // The contract's limit is 1 MB as 1,048,576 bytes of the body as the server reads it, the trailing newline included.
+  const ofBytes = (total: number) => {
+    const lines = Array.from({ length: 999 }, () => line('beats'));
+    const used = new TextEncoder().encode(`${lines.join('\n')}\n`).length;
+    const last = line('vendor-log', { message: '' });
+    // The last line's message fills what is left: one byte a character, plus that line's own newline.
+    return [
+      ...lines,
+      last.replace('"message":""', `"message":"${'x'.repeat(total - used - last.length - 1)}"`),
+    ];
+  };
+
+  it('a body of exactly the contract’s 1,048,576 bytes is sent', async () => {
+    expect(MAX_BYTES).toBe(1_048_576);
+    const p = port(answered(201, OK));
+    const outcome = await p.upload.send(ofBytes(MAX_BYTES), credential);
+    expect(outcome).toMatchObject({ result: 'sent', bytes: MAX_BYTES });
+    expect(new TextEncoder().encode(String(p.fetch.mock.calls[0]?.[1]?.body)).length).toBe(
+      MAX_BYTES,
+    );
+  });
+
+  it('one byte more sends nothing and says too-large', async () => {
+    const p = port(answered(201, OK));
+    const outcome = await p.upload.send(ofBytes(MAX_BYTES + 1), credential);
+    expect(outcome).toMatchObject({ result: 'too-large', bytes: MAX_BYTES + 1 });
     expect(p.fetch).not.toHaveBeenCalled();
   });
 
@@ -184,7 +262,7 @@ describe('Send record to Seazn (R3, R9)', () => {
   });
 
   it('records the result, the status and the bytes, never the ref or the token', async () => {
-    const p = port(answered(201, { ref: 'R-7K2Q' }));
+    const p = port(answered(201, OK));
     await p.upload.send(LINES, credential);
     const [sent] = p.sendLines();
     expect(parseRecordLine(sent ?? '{}').fields).toEqual({
@@ -192,7 +270,7 @@ describe('Send record to Seazn (R3, R9)', () => {
       status: 201,
       bytes: LINES.join('\n').length + 1,
     });
-    expect(sent).not.toContain('R-7K2Q');
+    expect(sent).not.toContain(OK.ref);
     expect(sent).not.toContain(TOKEN);
   });
 
@@ -288,6 +366,12 @@ describe('the upload fails closed (spec §7)', () => {
       '{"at":"1970-01-01T00:00:00.000Z","kind":"beats","level":"any text"}',
     ],
     ['a level that is not text', '{"at":"1970-01-01T00:00:00.000Z","kind":"beats","level":2}'],
+    // The contract's `at` (the beat's R5): ISO 8601, calendar-exact, seconds and a zone required. V8's Date.parse
+    // reads each of these four as a time, the first as 2 March.
+    ['a 30 February', '{"at":"2026-02-30T00:00:00.000Z","kind":"beats"}'],
+    ['a time with no seconds', '{"at":"2026-10-11T21:19Z","kind":"beats"}'],
+    ['a time with no zone', '{"at":"2026-10-11T21:19:03.123","kind":"beats"}'],
+    ['a time in RFC 2822’s words', '{"at":"Sun, 11 Oct 2026 21:19:03 GMT","kind":"beats"}'],
   ])('%s is not a record line, and sends nothing', async (_why, text) => {
     await refuses([text]);
   });
@@ -299,6 +383,20 @@ describe('the upload fails closed (spec §7)', () => {
       expect(linesAreSafe([written], TOKEN)).toBe(true);
     },
   );
+
+  // Native masks a level it does not vet (`SessionRecord.levelWord`), and the contract admits the mask: a line the
+  // scrub wrote is never refused by the upload's own rule (N18).
+  it('a level native masked passes', () => {
+    const masked = '{"at":"2026-10-11T21:19:03.123Z","kind":"beats","level":"***"}';
+    expect(admitsLine(JSON.parse(masked))).toBe(true);
+    expect(linesAreSafe([masked], TOKEN)).toBe(true);
+  });
+
+  it('a time with an offset, which the contract admits, passes', () => {
+    const offset = '{"at":"2026-10-11T22:19:03+01:00","kind":"beats"}';
+    expect(admitsLine(JSON.parse(offset))).toBe(true);
+    expect(linesAreSafe([offset], TOKEN)).toBe(true);
+  });
 });
 
 // Important 2 of the Batch 6 review: the Bearer goes only to the code's URL on the build's Seazn host, as native holds
@@ -359,7 +457,7 @@ describe('the upload goes only to the build’s Seazn host', () => {
   });
 
   it('sends to the code’s URL on the build’s host', async () => {
-    const p = port(answered(201, { ref: 'R-1' }));
+    const p = port(answered(201, OK));
     expect((await p.upload.send(LINES, credential)).result).toBe('sent');
   });
 });
@@ -406,5 +504,283 @@ describe('every line the scrub writes passes the upload’s check (N18)', () => 
 
   it('swept every row (anti-vacuity)', () => {
     expect(swept).toBe(48);
+  });
+});
+
+// The answers, each from the contract's own fixtures (RD, the owner's ruling of 2026-10-12, relayed by the web: the
+// app shows only the ref and says nothing about dropped lines; the server still returns `dropped`, and it is ignored).
+describe('the answers, from the contract’s fixtures', () => {
+  const OKS = FIXTURE_NAMES.filter((name) => name.startsWith('ok-'));
+  const refAdmitted = (body: unknown) =>
+    validator('/$defs/ok/properties/ref')((body as { ref?: unknown }).ref) === true;
+  let sent = 0;
+  let failed = 0;
+
+  it('has the six 201 fixtures', () => {
+    expect(OKS).toHaveLength(6);
+  });
+
+  it.each(OKS)(
+    'a 201 with %s is sent when its ref is the contract’s, and only then',
+    async (name) => {
+      const body = fixture(name);
+      const p = port(answered(201, body));
+      const outcome = await p.upload.send(LINES, credential);
+      // Only the ref decides: kept and dropped, valid or not, are never read (RD).
+      if (refAdmitted(body)) {
+        expect(outcome).toEqual({
+          result: 'sent',
+          ref: (body as { ref: string }).ref,
+          status: 201,
+          bytes: LINES.join('\n').length + 1,
+        });
+        sent += 1;
+      } else {
+        expect(outcome).toMatchObject({ result: 'failed', ref: null, status: 201 });
+        failed += 1;
+      }
+    },
+  );
+
+  it('sent five (every dropped count ignored) and failed one, the ambiguous ref (anti-vacuity)', () => {
+    expect([sent, failed]).toEqual([5, 1]);
+  });
+
+  it('a 201 whose every line was dropped (kept 0) is still sent, and says nothing of it', async () => {
+    const body = fixture('ok-valid-all-dropped') as { ref: string; kept: number };
+    expect(body.kept).toBe(0);
+    const p = port(answered(201, body));
+    expect(await p.upload.send(LINES, credential)).toEqual({
+      result: 'sent',
+      ref: body.ref,
+      status: 201,
+      bytes: LINES.join('\n').length + 1,
+    });
+  });
+
+  it('reads each refusal word’s status from the contract: all six', () => {
+    expect([...STATUS_OF.keys()].sort()).toEqual(
+      [
+        'code_ended',
+        'invalid',
+        'not_a_stream_code',
+        'rate_limited',
+        'too_large',
+        'unavailable',
+      ].sort(),
+    );
+  });
+
+  // The brief's three (401, 413 too_large, 429); every other refusal is one failure. The status decides, and the
+  // refusal's body is never read: what the operator sees is one line for every failure.
+  const RESULT: Readonly<Record<string, string>> = {
+    code_ended: 'unauthorised',
+    too_large: 'too-large',
+    rate_limited: 'rate-limited',
+    not_a_stream_code: 'failed',
+    invalid: 'failed',
+    unavailable: 'failed',
+  };
+  const REFUSALS = FIXTURE_NAMES.filter((name) => name.startsWith('valid-') || name === 'tampered');
+
+  it.each(REFUSALS)('%s, at its status, gives its result without its body read', async (name) => {
+    const body = fixture(name) as { code: string };
+    const status = STATUS_OF.get(body.code);
+    expect(status).toBeDefined();
+    const json = vi.fn(async () => body);
+    const p = port(async () => ({ status: status ?? 0, json }));
+    expect(await p.upload.send(LINES, credential)).toEqual({
+      result: RESULT[body.code],
+      ref: null,
+      status,
+      bytes: LINES.join('\n').length + 1,
+    });
+    expect(json).not.toHaveBeenCalled();
+  });
+
+  it('swept the six refusal words and the tampered one; `replaced` is never this route’s (R4)', () => {
+    expect(REFUSALS).toHaveLength(7);
+    expect((fixture('invalid-replaced') as { code: string }).code).toBe('replaced');
+    expect(STATUS_OF.has('replaced')).toBe(false);
+  });
+});
+
+/**
+ * Every line fixture of the contract, as one line of a record, through the upload: sent as written, sent with the
+ * fields the contract does not list dropped (Q4), or refused here, sending nothing. Expected outcomes are the
+ * contract's verdicts and the app's rules, typed here, never the function's own answer.
+ */
+describe('every line fixture of the contract, through the upload', () => {
+  type Outcome = 'as-written' | 'fitted' | 'refused-local' | 'shape-gap' | 'secret-gap';
+  const EXPECTED: Readonly<Record<string, Outcome>> = {
+    'line-invalid-at-epoch-ms': 'refused-local',
+    'line-invalid-level': 'refused-local',
+    'line-invalid-nested': 'refused-local',
+    'line-invalid-never-key': 'fitted',
+    'line-invalid-no-kind': 'refused-local',
+    'line-invalid-plain-url': 'refused-local',
+    // Class narrowings the app does not apply: no writer of ours puts a number or a boolean under `sid`, or more than
+    // eight hex digits under `tokenTag` (batch 11's answers, Q4). Such a line is sent as written, and the server
+    // refuses the record with 422.
+    'line-invalid-sid-boolean': 'shape-gap',
+    'line-invalid-sid-number': 'shape-gap',
+    'line-invalid-tokenTag': 'shape-gap',
+    'line-invalid-unlisted-scalar': 'fitted',
+    'line-invalid-url-query': 'refused-local',
+    'line-invalid-url-userinfo': 'refused-local',
+    // S2–S5 are the server's second line (its spec §5), which the app does not run: the line shape
+    // admits these, they leave as written, and the server refuses the record with 422. The app's own
+    // rule is the token (S1, below), and the sending tok is no secret under any other token.
+    'line-secret-bearer': 'secret-gap',
+    'line-secret-ingest-url': 'secret-gap',
+    'line-secret-sending-tok': 'as-written',
+    'line-secret-srt-streamid': 'secret-gap',
+    'line-secret-streamid-space': 'secret-gap',
+    'line-secret-userinfo': 'secret-gap',
+    // A string under an unlisted key that no scrub wrote (`cred`): the line did not come through a scrub (M7).
+    'line-tampered': 'refused-local',
+  };
+  const LINE_FIXTURES = FIXTURE_NAMES.filter((name) => name.startsWith('line-'));
+  const seen: Outcome[] = [];
+
+  it('has 38 line fixtures, 19 of them valid', () => {
+    expect(LINE_FIXTURES).toHaveLength(38);
+    expect(LINE_FIXTURES.filter((name) => name.startsWith('line-valid'))).toHaveLength(19);
+  });
+
+  it.each(LINE_FIXTURES)('%s', async (name) => {
+    const written = JSON.stringify(fixture(name));
+    const expected = EXPECTED[name] ?? (name.startsWith('line-valid') ? 'as-written' : undefined);
+    expect(expected).toBeDefined();
+    const p = port(answered(201, OK));
+    const outcome = await p.upload.send([written], credential);
+    const body = p.fetch.mock.calls[0]?.[1]?.body;
+    if (expected === 'refused-local') {
+      expect(outcome.result).toBe('refused-local');
+      expect(p.fetch).not.toHaveBeenCalled();
+    } else {
+      expect(outcome.result).toBe('sent');
+      const [sent = ''] = String(body).split('\n');
+      if (expected === 'fitted') {
+        expect(sent).not.toBe(written);
+      } else {
+        expect(sent).toBe(written);
+      }
+      expect(admitsLine(JSON.parse(sent))).toBe(expected !== 'shape-gap');
+      expect(secretShaped(JSON.parse(sent))).toBe(expected === 'secret-gap');
+    }
+    seen.push(expected ?? 'refused-local');
+  });
+
+  it('saw each outcome, by its count (anti-vacuity)', () => {
+    const count = (outcome: Outcome) => seen.filter((s) => s === outcome).length;
+    expect([
+      count('as-written'),
+      count('fitted'),
+      count('refused-local'),
+      count('shape-gap'),
+      count('secret-gap'),
+    ]).toEqual([20, 2, 8, 3, 5]);
+  });
+
+  // S1, the one secret rule the app runs itself: the Bearer that sends the record, anywhere in it.
+  it('the sending-tok fixture, under its own token, sends nothing', async () => {
+    const leaked = fixture('line-secret-sending-tok') as { state: string };
+    const p = port(answered(201, OK));
+    const outcome = await p.upload.send([JSON.stringify(leaked)], {
+      ...credential,
+      token: leaked.state,
+    });
+    expect(outcome.result).toBe('refused-local');
+    expect(p.fetch).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * Q4 of the web's record design (batch 11's answers): the server refuses a body with any key its contract does not
+ * list, a never key included even masked, where Share record masks it (`"key":"***"`). The upload drops that field from
+ * its line and sends the line; Share record is unchanged.
+ */
+describe('a field the contract does not list is dropped from its line, and the line goes (Q4)', () => {
+  const sent = async (lines: readonly string[]) => {
+    const p = port(answered(201, OK));
+    const outcome = await p.upload.send(lines, credential);
+    expect(outcome.result).toBe('sent');
+    return { p, lines: String(p.fetch.mock.calls[0]?.[1]?.body).trim().split('\n') };
+  };
+
+  it('an unlisted key, as the scrub writes it, is sent without that key', async () => {
+    const record = createRingRecord();
+    createLogger({ record, now: () => 0 }).warn('thermal', { status: 3, note: 'a free-form word' });
+    const [written = ''] = record.lines();
+    expect(written).toContain('"note":"***"');
+    const { lines } = await sent([written]);
+    expect(lines).toEqual([
+      '{"at":"1970-01-01T00:00:00.000Z","kind":"thermal","level":"warn","status":3}',
+    ]);
+    // Share record shares the record as written: the mask stays there.
+    expect(record.lines()).toEqual([written]);
+  });
+
+  it('an unlisted key holding a number is sent without it, the other lines untouched', async () => {
+    const plain = line('live', { transport: 'srt' });
+    const { lines } = await sent([plain, line('thermal', { status: 3, battery: 42 }), plain]);
+    expect(lines).toEqual([
+      plain,
+      '{"at":"1970-01-01T00:00:00.000Z","kind":"thermal","status":3}',
+      plain,
+    ]);
+  });
+
+  it('a never key, masked, is sent without it', async () => {
+    const { lines } = await sent([
+      line('pair', { claim: 'new', slot: 0, tokenTag: 'c980ff38', tok: '***' }),
+    ]);
+    expect(lines).toEqual([
+      '{"at":"1970-01-01T00:00:00.000Z","kind":"pair","claim":"new","slot":0,"tokenTag":"c980ff38"}',
+    ]);
+  });
+
+  // The app's own keys that the contract at 53f28ebfc does not list yet (recordContract.test.ts names all five).
+  it('record.send’s own bytes is sent without it, so a second send is not refused for the first one’s line', async () => {
+    const p = port(answered(201, OK));
+    await p.upload.send(LINES, credential);
+    const [written = ''] = p.sendLines();
+    expect(written).toContain('"bytes":');
+    const { lines } = await sent([written]);
+    expect(lines).toEqual([
+      '{"at":"1970-01-01T00:00:00.000Z","kind":"record.send","result":"sent","status":201}',
+    ]);
+  });
+
+  // A line left whole goes byte for byte, as written: native's `Decimal` writes 1.0, which a re-serialisation drops.
+  it('a line with nothing to drop is sent as written, byte for byte', async () => {
+    const decimal =
+      '{"at":"2026-10-11T21:12:00.500Z","kind":"thermal","level":"warn","status":3,"headroom":1.0}';
+    const { lines } = await sent([decimal]);
+    expect(lines).toEqual([decimal]);
+  });
+
+  // The fail-closed checks run on the line as written, before anything is dropped: a token is never laundered away.
+  it('the token as an unlisted key still sends nothing', async () => {
+    const named = JSON.stringify({ at: '1970-01-01T00:00:00.000Z', kind: 'beats', [TOKEN]: 1 });
+    const p = port(answered(201, OK));
+    expect((await p.upload.send([named], credential)).result).toBe('refused-local');
+    expect(p.fetch).not.toHaveBeenCalled();
+  });
+
+  it('a string under an unlisted key that no scrub wrote still sends nothing (M7)', async () => {
+    const p = port(answered(201, OK));
+    expect(
+      (await p.upload.send([line('beats', { note: 'a free-form word' })], credential)).result,
+    ).toBe('refused-local');
+    expect(p.fetch).not.toHaveBeenCalled();
+  });
+
+  it('the size is the body as sent, after the drop', async () => {
+    const { p } = await sent([line('thermal', { status: 3, battery: 42 })]);
+    const body = String(p.fetch.mock.calls[0]?.[1]?.body);
+    expect(body).toBe('{"at":"1970-01-01T00:00:00.000Z","kind":"thermal","status":3}\n');
+    expect(p.sendLines().map((l) => parseRecordLine(l).fields.bytes)).toEqual([body.length]);
   });
 });

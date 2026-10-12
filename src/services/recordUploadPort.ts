@@ -2,16 +2,23 @@ import { isStreamCodeText } from '@/domain/credentials/streamCode';
 import type { UploadCredential } from '@/domain/credentials/uploadCredential';
 import { codeUrl } from '@/services/fetchCodePort';
 import type { Logger } from '@/services/logger';
+import {
+  fitLine,
+  isRecordTime,
+  RECORD_LEVELS,
+  RECORD_MAX_BYTES,
+  RECORD_MAX_LINES,
+  RECORD_PATH,
+  RECORD_REF,
+} from '@/services/recordContract';
 import { scrubEvent, scrubFields, type HeldSecrets, type LogFields } from '@/services/scrub';
-import { isLogLevel, parseRecordLine } from '@/services/sessionRecord';
+import { parseRecordLine } from '@/services/sessionRecord';
 
 /**
- * Provisional (the D3 fixes plan's ruling P4, the controller's): the path and these two shapes are the D3 web brief's
- * §1 as asked, not a vendored contract. The web has not published its record contract yet, and its brief leaves the
- * path to the web. When the contract exists, `pnpm contracts:vendor` and the pin test replace all three, and nothing
- * else in the app changes. Until then the button is off (`FEATURES.recordSend`), so nothing calls this path.
+ * The web's record contract (`contracts/capture-record.v1.json`, vendored at 53f28ebfc; `recordContract.ts` holds its
+ * rules): the code's Bearer and an NDJSON body; a 201 is read for its `ref` alone, and never its `kept` or `dropped`
+ * (RD, the owner's ruling of 2026-10-12). A refusal is read by its status, never its body.
  */
-export const PENDING_RECORD_PATH = '/record';
 type RecordUploadHeaders = {
   readonly Authorization: string;
   readonly 'Content-Type': 'application/x-ndjson';
@@ -42,13 +49,8 @@ export type PostFetch = (
   init: { method: 'POST'; headers: RecordUploadHeaders; body: string; signal: AbortSignal },
 ) => Promise<{ status: number; json(): Promise<unknown> }>;
 
-/** The web brief's §1 limits: at most 1,000 lines and 1 MB. */
-export const RECORD_MAX_LINES = 1000;
-export const RECORD_MAX_BYTES = 1_000_000;
 /** The whole exchange, the answer's body included, so the button is never left on Sending… */
 export const RECORD_TIMEOUT_MS = 15_000;
-/** A short human reference (the brief's "R-7K2Q"); anything else is not one. */
-const REF = /^[A-Za-z0-9-]{1,16}$/;
 
 const STATUS: Readonly<Record<number, RecordSendResult>> = {
   401: 'unauthorised',
@@ -81,8 +83,8 @@ function decodedIsSafe(line: string, token: string, held: HeldSecrets): boolean 
 }
 
 /**
- * A record line decoded, or null for anything that is not one: a JSON object with a text `kind`, an `at` that is a
- * time, and no `level` but one of the logger's (Minor 11 of the Batch 6 review: the scrub reads neither slot).
+ * A record line decoded, or null for anything that is not one: a JSON object with a text `kind`, the contract's `at`,
+ * and no `level` but one of the contract's (Minor 11 of the Batch 6 review: the scrub reads neither slot).
  */
 function recordObject(line: string): Record<string, unknown> | null {
   let data: unknown;
@@ -94,8 +96,8 @@ function recordObject(line: string): Record<string, unknown> | null {
   // An array or a scalar has no text `kind`, so that check turns every non-object away too.
   if (typeof data !== 'object' || data === null) return null;
   const { at, kind, level } = data as Record<string, unknown>;
-  const timed = typeof at === 'string' && Number.isFinite(Date.parse(at));
-  const levelled = level === undefined || isLogLevel(level);
+  const timed = isRecordTime(at);
+  const levelled = level === undefined || (typeof level === 'string' && RECORD_LEVELS.has(level));
   return typeof kind === 'string' && timed && levelled ? (data as Record<string, unknown>) : null;
 }
 
@@ -138,7 +140,8 @@ export function createRecordUploadPort({
       if (lines.length === 0) return said('failed', null, 0);
       if (!isSeaznCodeUrl(credential.codeUrl, host)) return said('refused-local', null, 0);
       if (!linesAreSafe(lines, credential.token)) return said('refused-local', null, 0);
-      const body = `${lines.join('\n')}\n`;
+      // Q4: checked as written, then sent with what the contract does not list dropped.
+      const body = `${lines.map(fitLine).join('\n')}\n`;
       let bytes = 0;
       try {
         bytes = new TextEncoder().encode(body).length;
@@ -177,7 +180,7 @@ async function post(
   body: string,
   signal: AbortSignal,
 ): Promise<{ status: number; ref: string | null }> {
-  const answer = await fetch(`${credential.codeUrl}${PENDING_RECORD_PATH}`, {
+  const answer = await fetch(`${credential.codeUrl}${RECORD_PATH}`, {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${credential.token}`,
@@ -192,9 +195,9 @@ async function post(
   return { status: answer.status, ref: read === null ? null : read.ref };
 }
 
-/** The anti-corruption read of a 201's body (AGENTS §4): a short reference, or nothing. */
+/** The anti-corruption read of a 201's body (AGENTS §4): the contract's `ref`, or nothing. */
 function readAnswer(data: unknown): RecordUploadAnswer | null {
   if (typeof data !== 'object' || data === null) return null;
   const { ref } = data as Record<string, unknown>;
-  return typeof ref === 'string' && REF.test(ref) ? { ref } : null;
+  return typeof ref === 'string' && RECORD_REF.test(ref) ? { ref } : null;
 }
