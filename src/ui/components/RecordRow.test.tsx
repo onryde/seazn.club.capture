@@ -76,6 +76,20 @@ describe('the record row (N33, R3)', () => {
     expect(upload.calls).toBe(1);
   });
 
+  // R1-1 of the Batch 6 re-review: a new scan brings a new code, and the last code's ref goes with the old one.
+  it('after a send, a return with another code in hand reads Send record to Seazn again', async () => {
+    const credential = createFakeUploadCredential(CREDENTIAL);
+    const view = renderWithPorts(<RecordRow send />, { uploadCredential: credential });
+    await settle();
+    fireEvent.click(sendButton());
+    await settle();
+    expect(sendButton('Sent · ref R-TEST')).toBeTruthy();
+    credential.give({ ...CREDENTIAL, codeUrl: CREDENTIAL.codeUrl.replace('/codes/c', '/codes/d') });
+    act(() => view.foreground.fire());
+    await settle();
+    expect(sendButton().getAttribute('aria-disabled')).toBeNull();
+  });
+
   it('a failed send says so on the button, which stays enabled for another try', async () => {
     const { upload } = await withCode();
     upload.answer({ result: 'failed', ref: null, status: 500, bytes: 1 });

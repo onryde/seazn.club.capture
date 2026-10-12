@@ -48,7 +48,8 @@ const DELETE: CredentialStep = { kind: 'delete' };
  *
  * `current()` decides again from what is stored and the code saved now, so a write the keystore refused is never
  * trusted: a refused drop still answers the 24 h it should have stamped, and the write is tried again (Minor 4 of the
- * Batch 6 review).
+ * Batch 6 review). The 24 h are the first ones decided for the drop, never restarted by a later ask (R1-2 of the
+ * re-review).
  */
 export function createUploadCredentialStore(deps: Deps): UploadCredentialStore {
   const { kv, modeStore, clock, logger } = deps;
@@ -58,11 +59,12 @@ export function createUploadCredentialStore(deps: Deps): UploadCredentialStore {
     queue.run(() => kv.delete(UPLOAD_CREDENTIAL_KEY));
     return { current: async () => null };
   }
+  const firstStamp = createFirstStamp();
   const follow = () => {
     const saved = savedForUpload(modeStore.getSnapshot());
     if (saved === undefined) return;
     queue.run(async () =>
-      apply(kv, nextCredential(await readStored(kv), saved, clock().getTime())),
+      apply(kv, firstStamp(nextCredential(await readStored(kv), saved, clock().getTime()), saved)),
     );
   };
   modeStore.subscribe(follow);
@@ -72,11 +74,31 @@ export function createUploadCredentialStore(deps: Deps): UploadCredentialStore {
       await queue.idle();
       const stored = await readStored(kv);
       const nowMs = clock().getTime();
-      const step = stepNow(stored, savedForUpload(modeStore.getSnapshot()), nowMs);
+      const saved = savedForUpload(modeStore.getSnapshot());
+      const step = firstStamp(stepNow(stored, saved, nowMs), saved);
       if (step.kind !== 'keep') queue.run(() => apply(kv, step));
       const held = step.kind === 'write' ? step.credential : stored;
       return usableCredential(held === UNREADABLE ? null : held, nowMs);
     },
+  };
+}
+
+/**
+ * R1-2 of the Batch 6 re-review: the first expiry decided for a drop, answered again until a code is saved. While the
+ * keystore refuses the write, the stored credential keeps no expiry, and each ask would otherwise decide "now plus
+ * 24 h" afresh and slide the window forward without bound. A stamp is decided only with no code saved, for what is
+ * stored, and what is stored changes only by a save's write; so a stamp kept since the last save is this drop's.
+ */
+function createFirstStamp(): (
+  step: CredentialStep,
+  saved: SavedForUpload | null | undefined,
+) => CredentialStep {
+  let first: UploadCredential | null = null;
+  return (step, saved) => {
+    if (saved !== null && saved !== undefined) first = null;
+    if (step.kind !== 'write' || step.credential.expiresAtMs === null) return step;
+    if (first === null) first = step.credential;
+    return { kind: 'write', credential: first };
   };
 }
 

@@ -46,12 +46,24 @@ const FAILED: SendState = { kind: 'failed' };
 /** The credential ran out between the read and the tap: nothing was sent. */
 const GONE = 'no-credential';
 
+/**
+ * R1-1 of the Batch 6 re-review: an answer belongs to the code it was sent under. The flight outlives the row, so
+ * when the code in hand is another, or none (gone past its 24 h, or expired), the answer goes and the button reads
+ * Send record to Seazn again: a ref read out under the next code would point its organiser at nothing. The same code
+ * inside its 24 h keeps its ref, which is the replaced phone's path.
+ */
 export function createRecordSendFlight(deps: Deps): RecordSendFlight {
   let view: RecordSendView = { state: IDLE, available: null };
+  /** The code URL last read, by a refresh or a send, and the one the shown answer was sent under. */
+  let inHand: string | null = null;
+  let answeredFor: string | null = null;
   const listeners = new Set<() => void>();
   const update = (next: Partial<RecordSendView>) => {
     view = { ...view, ...next };
     for (const listener of listeners) listener();
+  };
+  const seen = (codeUrl: string | null) => {
+    inHand = codeUrl;
   };
   return {
     getSnapshot: () => view,
@@ -60,30 +72,49 @@ export function createRecordSendFlight(deps: Deps): RecordSendFlight {
       return () => listeners.delete(onChange);
     },
     refresh: () => {
-      void deps.credentials
-        .current()
-        .then((credential) => update({ available: credential !== null }));
+      void deps.credentials.current().then((credential) => {
+        seen(credential?.codeUrl ?? null);
+        const answered = view.state.kind === 'sent' || view.state.kind === 'failed';
+        const stale = answered && answeredFor !== inHand;
+        update({ available: credential !== null, ...(stale ? { state: IDLE } : {}) });
+      });
     },
     send: () => {
       if (view.state.kind === 'sending') return;
       update({ state: SENDING });
-      void sendOnce(deps).then((answer) =>
-        update(answer === GONE ? { state: IDLE, available: false } : { state: answer }),
-      );
+      void sendOnce(deps, seen).then(({ next, codeUrl }) => {
+        if (next === GONE) return update({ state: IDLE, available: false });
+        answeredFor = codeUrl;
+        // A refresh while it was in flight found another code, or none: the answer is not this code's.
+        return update({ state: codeUrl === inHand ? next : IDLE });
+      });
     },
   };
 }
 
-/** One send, answered as the button's next state. Never rejects, so the flight never stays on Sending… (N13). */
-async function sendOnce({ credentials, upload, record }: Deps): Promise<SendState | typeof GONE> {
+type Answer = { readonly next: SendState | typeof GONE; readonly codeUrl: string | null };
+
+/**
+ * One send, answered as the button's next state with the code it was sent under. Never rejects, so the flight never
+ * stays on Sending… (N13).
+ */
+async function sendOnce(
+  { credentials, upload, record }: Deps,
+  seen: (codeUrl: string | null) => void,
+): Promise<Answer> {
+  let codeUrl: string | null = null;
   try {
     const credential = await credentials.current();
-    if (credential === null) return GONE;
+    seen(credential?.codeUrl ?? null);
+    if (credential === null) return { next: GONE, codeUrl };
+    codeUrl = credential.codeUrl;
     const outcome = await upload.send(record.lines(), credential);
-    return outcome.result === 'sent' && outcome.ref !== null
-      ? { kind: 'sent', ref: outcome.ref }
-      : FAILED;
+    const next: SendState =
+      outcome.result === 'sent' && outcome.ref !== null
+        ? { kind: 'sent', ref: outcome.ref }
+        : FAILED;
+    return { next, codeUrl };
   } catch {
-    return FAILED;
+    return { next: FAILED, codeUrl };
   }
 }

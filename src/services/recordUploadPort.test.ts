@@ -3,14 +3,17 @@ import list from '../../modules/capture-engine/src/scrub/allow-list.json';
 import vectors from '../../modules/capture-engine/src/scrub/vectors.json';
 import type { UploadCredential } from '@/domain/credentials/uploadCredential';
 import { createLogger } from '@/services/logger';
+import { codeUrl } from '@/services/fetchCodePort';
 import {
   createRecordUploadPort,
+  isSeaznCodeUrl,
   linesAreSafe,
   RECORD_MAX_BYTES,
   RECORD_TIMEOUT_MS,
   type PostFetch,
 } from '@/services/recordUploadPort';
 import type { LogFields } from '@/services/scrub';
+import { seaznHosts, seaznOrigin } from '@/services/seaznHosts';
 import { createRingRecord, parseRecordLine, toRecordLine } from '@/services/sessionRecord';
 
 // Made up (AGENTS §13): a token of the QR's shape and a code URL that belong to nothing.
@@ -340,6 +343,19 @@ describe('the upload goes only to the build’s Seazn host', () => {
 
   it('trusts nothing with no host configured', async () => {
     await refusedFor('https:///api/v1/capture/codes/abcdefghjkmn', '');
+  });
+
+  // R1-4 of the Batch 6 re-review: the URL the app saves at a scan is built from `seaznOrigin`, and the check reads
+  // `seaznHosts`. If the two ever disagreed, every real upload would be refused locally with the suite still green.
+  let environments = 0;
+  it.each(['production', undefined])('passes the app’s own code URL in the %s build', (env) => {
+    const built = codeUrl(seaznOrigin(env), 'abcdefghjkmn');
+    expect(isSeaznCodeUrl(built, seaznHosts(env)[0] ?? '')).toBe(true);
+    environments += 1;
+  });
+
+  it('checked both builds (anti-vacuity)', () => {
+    expect(environments).toBe(2);
   });
 
   it('sends to the code’s URL on the build’s host', async () => {

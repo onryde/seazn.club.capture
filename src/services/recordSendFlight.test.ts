@@ -80,3 +80,71 @@ describe('the record send flight (R3)', () => {
     expect(r.flight.getSnapshot().state).toEqual({ kind: 'sent', ref: 'R-TEST' });
   });
 });
+
+// R1-1 of the Batch 6 re-review: the flight outlives the row, so an answer must not outlive its code. A ref read out
+// under the next code points the organiser at a record their console does not have.
+describe('an answer belongs to the code it was sent under (R1-1)', () => {
+  /** Another code's credential (made up). */
+  const OTHER: UploadCredential = {
+    codeUrl: 'https://stg.seazn.club/api/v1/capture/codes/zzzzzzzzzzzz',
+    token: 'made-up-token-other',
+    expiresAtMs: null,
+  };
+  const sentUnderX = async () => {
+    const r = rig();
+    r.flight.refresh();
+    r.flight.send();
+    await settle();
+    expect(r.flight.getSnapshot().state).toEqual({ kind: 'sent', ref: 'R-TEST' });
+    return r;
+  };
+
+  it('a ref sent under one code is gone once another code is in hand', async () => {
+    const r = await sentUnderX();
+    r.credentials.give(OTHER);
+    r.flight.refresh();
+    await settle();
+    expect(r.flight.getSnapshot()).toEqual({ state: { kind: 'idle' }, available: true });
+  });
+
+  it('a ref is gone once no credential is in hand: unpaired past its 24 h, or expired', async () => {
+    const r = await sentUnderX();
+    r.credentials.give(null);
+    r.flight.refresh();
+    await settle();
+    expect(r.flight.getSnapshot()).toEqual({ state: { kind: 'idle' }, available: false });
+  });
+
+  it('a ref stays with its code after the code is dropped, inside the 24 h (the replaced phone)', async () => {
+    const r = await sentUnderX();
+    r.credentials.give({ ...CREDENTIAL, expiresAtMs: Date.now() + 60_000 });
+    r.flight.refresh();
+    await settle();
+    expect(r.flight.getSnapshot().state).toEqual({ kind: 'sent', ref: 'R-TEST' });
+  });
+
+  it('a failure under one code is gone once another code is in hand', async () => {
+    const r = rig();
+    r.upload.answer({ result: 'failed', ref: null, status: 500, bytes: 1 });
+    r.flight.send();
+    await settle();
+    expect(r.flight.getSnapshot().state).toEqual({ kind: 'failed' });
+    r.credentials.give(OTHER);
+    r.flight.refresh();
+    await settle();
+    expect(r.flight.getSnapshot().state).toEqual({ kind: 'idle' });
+  });
+
+  it('an answer that lands after another code came into hand is not shown under it', async () => {
+    const r = rig();
+    r.upload.hold();
+    r.flight.send();
+    await settle();
+    r.credentials.give(OTHER);
+    r.flight.refresh();
+    await settle();
+    r.upload.release();
+    await settle();
+    expect(r.flight.getSnapshot()).toEqual({ state: { kind: 'idle' }, available: true });
+  });
+});

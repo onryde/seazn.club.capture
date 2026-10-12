@@ -83,6 +83,15 @@ function holdNextSet(kv: ReturnType<typeof createMemoryKeyValueStore>) {
   return { release: () => release() };
 }
 
+/** Every write to the credential's key is refused; the saved codes' writes go through. */
+function refuseCredentialWrites(kv: ReturnType<typeof createMemoryKeyValueStore>) {
+  const set = kv.set.bind(kv);
+  vi.spyOn(kv, 'set').mockImplementation(async (key, value) => {
+    if (key === UPLOAD_CREDENTIAL_KEY) throw new Error('keystore locked');
+    return set(key, value);
+  });
+}
+
 describe('the upload credential store (R4, P10)', () => {
   it('keeps the saved code’s token, with no expiry, once the store loads', async () => {
     const r = rig();
@@ -330,6 +339,39 @@ describe('the upload credential store (R4, P10)', () => {
   });
 
   // The saved code is the credential's source: with its copy refused, the answer is still the saved code's.
+  // R1-2 of the Batch 6 re-review: while the keystore keeps refusing, each ask must not start the 24 h again.
+  it('keeps the first 24 h while every write is refused, and is over once they are', async () => {
+    const r = rig();
+    await r.modeStore.load();
+    await r.settle();
+    refuseCredentialWrites(r.kv);
+    const droppedAt = r.now();
+    await r.modeStore.forget(r.held());
+    await r.settle();
+    expect(await r.store.current()).toMatchObject({ expiresAtMs: droppedAt + KEEP_AFTER_DROP_MS });
+    r.at(droppedAt + 12 * 60 * 60 * 1000);
+    expect(await r.store.current()).toMatchObject({ expiresAtMs: droppedAt + KEEP_AFTER_DROP_MS });
+    r.at(droppedAt + 25 * 60 * 60 * 1000);
+    expect(await r.store.current()).toBeNull();
+  });
+
+  // A second drop of the same code, after it was saved again, starts a 24 h of its own.
+  it('starts a new 24 h when the same code is saved again and dropped again, writes still refused', async () => {
+    const r = rig();
+    await r.modeStore.load();
+    await r.settle();
+    refuseCredentialWrites(r.kv);
+    await r.modeStore.forget(r.held());
+    await r.settle();
+    r.at(r.now() + 20 * 60 * 60 * 1000);
+    await r.modeStore.open(r.code);
+    await r.settle();
+    const againAt = r.now();
+    await r.modeStore.forget(r.held());
+    await r.settle();
+    expect(await r.store.current()).toMatchObject({ expiresAtMs: againAt + KEEP_AFTER_DROP_MS });
+  });
+
   it('records a refused write, never throws, and never writes the token into the record', async () => {
     const r = rig();
     vi.spyOn(r.kv, 'set').mockRejectedValue(new Error(`keystore locked ${FIXTURE_TOKEN}`));

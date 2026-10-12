@@ -7,7 +7,10 @@ import type { RecordSendView } from '@/services/recordSendFlight';
 export type { SendState } from '@/services/recordSendFlight';
 
 export type RecordSend = RecordSendView & {
-  /** A broadcast is held (from Arming on): Send waits, so up to 1 MB never rides its uplink (Minor 8, Batch 6 review). */
+  /**
+   * A broadcast is held (from Arming on): no send starts, so up to 1 MB never starts on its uplink (Minor 8, Batch 6
+   * review). One started just before Arming may finish on air, within the upload's 15 s bound (R1-3 of the re-review).
+   */
   readonly held: boolean;
   send(): void;
 };

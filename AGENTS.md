@@ -430,8 +430,10 @@ Three rules travel with these tokens:
   outside the Diagnostics card so a phone sent Home by Replaced can still hand
   its record over (N33), and Send record to Seazn when `FEATURES.recordSend`
   is on. From Arming on, Send record is disabled with "Send it after the
-  broadcast", so up to 1 MB never rides the broadcast's uplink; Share record
-  stays enabled (the controller's ruling, 2026-10-12). The battery row reads the app's battery mode
+  broadcast", so an upload of up to 1 MB never starts on the broadcast's
+  uplink; one started just before Arming may finish on air, within the
+  upload's 15 s bound. Share record stays enabled (the controller's ruling,
+  2026-10-12). The battery row reads the app's battery mode
   in Android's own words, _Unrestricted_, _Optimized_ or _Restricted_, and
   its _App settings_ button opens this app's App info page
   (`ACTION_APPLICATION_DETAILS_SETTINGS`), where Battery is one tap away; a

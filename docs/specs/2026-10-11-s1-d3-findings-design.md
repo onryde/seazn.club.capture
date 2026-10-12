@@ -207,7 +207,8 @@ Mutate the rejoin marker once and watch a test fail.
   - From Arming on, the button is disabled, with the one line "Send it after
     the broadcast", as the battery row's button is; _Share record_ stays
     enabled (the controller's ruling, 2026-10-12, on Minor 8 of the Batch 6
-    review).
+    review). A send started just before Arming may finish on air, within the
+    upload's 15 s bound.
 - **Port.** A `RecordUploadPort` in `services/`, with plain `fetch` (AGENTS §8:
   no React Query) and a fake for tests. A request with an answer is fine here,
   because the call never touches the engine bridge.
