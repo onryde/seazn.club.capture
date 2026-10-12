@@ -957,14 +957,19 @@ show on the CPH2569 (Batch 9): a 1280 × 720 preview stream in `dumpsys media.ca
 
 ### N31 — French Home tile titles run past their tile
 
-**Status:** fix planned — feat/s1-d3-fixes, Batch 7 (`docs/superpowers/plans/2026-10-11-s1-d3-fixes.md`)
-**Where:** capture app · `Tile.tsx:49` · `homeFit.test.ts`
+**Status:** fixed — feat/s1-d3-fixes, Batch 7 (50ac1d4); the device proof is Batch 9's
+(`docs/superpowers/plans/2026-10-11-s1-d3-fixes.md`)
+**Where:** capture app · `Tile.tsx` (the title) · `layout.tileTitleLines` · `homeFit.test.ts`
 
 At 804 dp wide (3-button navigation), "SCORE À DISTANCE" and "TABLEAU DE BORD" draw about 2–3 dp beyond the tile's
-right edge. The title has no `numberOfLines` and no `flexShrink`, and `homeFit.test.ts` checks tile heights only. The
-font-metric model puts "SCORE À DISTANCE" at 186.7 dp (the D3 fixes plan's figure, not reproduced here) against a
-188 dp budget at 804: the model is optimistic by a few dp on the device, so the planned fix is a title that will shrink
-and wrap, not a tighter number.
+right edge. The title had no `numberOfLines` and no `flexShrink`, and `homeFit.test.ts` checked tile heights only. The
+font-metric model puts "SCORE À DISTANCE" at 186.7 dp against a 188 dp budget at 804 (`homeFit.test.ts` pins the
+1.3 dp): the model is optimistic by a few dp on the device, so the fix is a title that shrinks and wraps, not a tighter
+number. The title now gives way beside the icon (`flexShrink: 1`) and wraps to at most two lines, then an ellipsis
+(`layout.tileTitleLines`). `homeFit.test.ts` measures every title in four languages, sideways at 640, 804 and 915 and
+upright at 360 and 412: no word is wider than the title's room, and none takes three lines. With every title at two
+lines, the tiles still fit every window they fitted, except 915 × 412 with both cards, which then scrolls. Still to
+show on the phone (Batch 9): both French titles inside their tiles at 804.
 
 ---
 
