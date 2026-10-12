@@ -227,6 +227,33 @@ class PairingTest {
     assertEquals(listOf(Command.End(EndReason.FATAL_ERROR)), rig.commands.filterNot { it is Command.Record })
   }
 
+  /**
+   * Batch 13, from the Batch 12 review's I1 (the controller's ruling): a refused pair ends the pairing, so it writes the
+   * `ended` line every end writes ([SessionMachine.end]), after `pair-refused` and before the End. Over a held pairing
+   * that closes the pairing's record window, so the web's rule needs only `unpaired` and `ended`. A pair is ignored, never
+   * refused, while a broadcast is held, so a refused pair never went live.
+   */
+  @Test
+  fun `I1 a refused pair writes pair-refused, then ended fatal-error, then the End - from Idle, Pairing and Paired`() {
+    val refused = Input.Pair(Configs.pairRequest(slot = 2, token = ""), Configs.PHONE, null)
+    val fromIdle = MachineRig().send(refused)
+    val pairing = MachineRig().apply { permissions = null }
+    pairing.send(Input.Pair(Configs.pairRequest(), Configs.PHONE, null))
+    assertIs<Phase.Pairing>(pairing.phase)
+    val fromPairing = pairing.send(refused)
+    val fromPaired = MachineRig().paired().send(refused)
+    fun shape(commands: List<Command>) = commands.map { if (it is Command.Record) it.entry.kind else it::class.simpleName }
+    assertEquals(listOf("pair-refused", "ended", "End"), shape(fromIdle))
+    assertEquals(listOf("pair-refused", "ended", "End"), shape(fromPairing))
+    // From Paired the Hold is released, and the pairing's minute of beats (its claim) is written last (plan D §3.4).
+    assertEquals(listOf("pair-refused", "ended", "End", "Release", "beats"), shape(fromPaired))
+    val ended = RecordEntry("ended", listOf("reason" to EndReason.FATAL_ERROR, "wasLive" to false))
+    for (commands in listOf(fromIdle, fromPairing, fromPaired)) {
+      assertEquals(ended, commands.filterIsInstance<Command.Record>().single { it.entry.kind == "ended" }.entry)
+      assertEquals(Command.End(EndReason.FATAL_ERROR), commands.single { it is Command.End })
+    }
+  }
+
   @Test
   fun `a phone id outside 16 to 64 characters, or an app version outside 1 to 40, refuses the pair`() {
     // capture-beat.v1 requires both with no null: a beat cannot repair them, so the pair refuses them.

@@ -155,7 +155,7 @@ object SessionMachine {
     val sid = phase.heldSid
     val wasLive = wentLive(phase)
     val ended = phase.ended(reason, now)
-    val commands = mutableListOf<Command>(record("ended", "reason" to reason, "wasLive" to wasLive, *fields))
+    val commands = mutableListOf(endedLine(phase, reason, *fields))
     if (reason == EndReason.OPERATOR_STOPPED && pairing != null && sid != null) {
       commands += Command.WriteStopped(StoppedRecord.of(pairing.name, sid, now.wallMs, phase.session?.broadcast?.maxDurationMinutes))
     }
@@ -173,6 +173,14 @@ object SessionMachine {
     if (phase.holdsService) commands += Command.Release
     return Step(ended, commands)
   }
+
+  /**
+   * The `ended` line, written on every way into Ended: [end], the engine's fatal step when the machine throws, and a
+   * refused pair (Batch 13, the Batch 12 review's I1, the controller's). So `unpaired` and `ended` alone mark every end
+   * of a pairing, and the web's record window needs no other kind; `engine-error` also has writers that end nothing.
+   */
+  internal fun endedLine(phase: Phase, reason: EndReason, vararg fields: Pair<String, Any?>): Command =
+    record("ended", "reason" to reason, "wasLive" to wentLive(phase), *fields)
 
   /** A8: `{sid, state:"ended", endReason:"operator-stopped"}`, once, never retried. */
   private fun finalBeat(phase: Phase, pairing: PairingState, now: Now): Pair<Command, Int> {

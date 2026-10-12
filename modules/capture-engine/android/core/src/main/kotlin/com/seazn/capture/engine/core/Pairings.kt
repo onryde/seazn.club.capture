@@ -13,7 +13,9 @@ internal object Pairings {
     if (problems.isNotEmpty()) {
       val refused = line("pair-refused", "problems" to problems.joinToString("; "))
       val release = if (phase.holdsService) listOf(Command.Release) else emptyList()
-      return Step(phase.ended(EndReason.FATAL_ERROR, now), listOf(refused, Command.End(EndReason.FATAL_ERROR)) + release)
+      // The end writes `ended` as every end does (Batch 13, I1).
+      val ended = SessionMachine.endedLine(phase, EndReason.FATAL_ERROR)
+      return Step(phase.ended(EndReason.FATAL_ERROR, now), listOf(refused, ended, Command.End(EndReason.FATAL_ERROR)) + release)
     }
     // Leaving a pairing: Release only from Paired, where the Hold went; Pairing has not held the service yet.
     val left =

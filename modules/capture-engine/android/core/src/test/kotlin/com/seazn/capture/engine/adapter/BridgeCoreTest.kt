@@ -716,6 +716,7 @@ class BridgeCoreTest {
     assertEquals(0.5, telemetry()["audioLevel"], "the last good facts, never the defaults")
     val written = lines().filter { it.getString("kind") == "engine-error" }
     assertEquals(listOf("facts: IllegalStateException: thermal"), written.map { it.getString("message") }, "one line a minute (G3)")
+    assertTrue(lines().none { it.getString("kind") == "ended" }, "a facts read that throws ends nothing, so writes no ended (Batch 13, I1)")
     platform.throwOnFacts = null
     scheduler.advanceBy(Engine.TICK_MS)
     assertEquals(sent.toDouble(), telemetry()["snapshotFailures"], "a good read again counts nothing")
@@ -738,6 +739,7 @@ class BridgeCoreTest {
     platform.throwOnFactsOnce = StackOverflowError("facts")
     scheduler.advanceBy(Engine.TICK_MS)
     assertTrue(lines().any { it.getString("kind") == "engine-error" && "StackOverflowError" in it.getString("message") })
+    assertTrue(lines().none { it.getString("kind") == "ended" }, "a failure at the task boundary that is not permanent ends nothing (Batch 13, I1)")
     val before = platform.snapshots.size
     scheduler.advanceBy(Engine.TICK_MS * 4)
     assertEquals(before + 4, platform.snapshots.size, "every later tick still publishes")
@@ -751,6 +753,8 @@ class BridgeCoreTest {
     scheduler.advanceBy(Engine.TICK_MS * 2)
     assertEquals(listOf("ended", "fatal-error"), (core.current()["state"] as Map<*, *>).let { listOf(it["kind"], it["reason"]) })
     assertTrue(lines().any { it.getString("kind") == "engine-error" && "UnsatisfiedLinkError" in it.getString("message") })
+    // Batch 13, I1: the end that the permanent failure causes writes `ended`, as every end does.
+    assertEquals(listOf("fatal-error"), lines().filter { it.getString("kind") == "ended" }.map { it.getString("reason") })
     core.send(mapOf("kind" to "reset"))
     scheduler.advanceBy(0)
     pair()
@@ -784,6 +788,7 @@ class BridgeCoreTest {
     val written = lines().filter { it.getString("kind") == "engine-error" }
     assertEquals(List(10) { "IllegalStateException: bistats" }, written.map { it.getString("message") })
     assertEquals(listOf(0) + List(9) { 59 }, written.map { it.getInt("suppressed") })
+    assertTrue(lines().none { it.getString("kind") == "ended" }, "a reader's failure ends nothing, so writes no ended (Batch 13, I1)")
     assertEquals(600.0, telemetry()["taskFailures"], "every throw is still counted")
   }
 

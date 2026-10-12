@@ -96,7 +96,8 @@ class Engine(
   /**
    * One input, contained (B6 review m7): an exception inside the machine, or while protecting the
    * secrets of a pair or a code answer that would take effect, ends the pairing fatal-error, never
-   * paired or armed with its secrets unprotected; an exception from a command, the record's sink or
+   * paired or armed with its secrets unprotected: its `engine-error` line, then the `ended` line every
+   * end writes (Batch 13, I1); an exception from a command, the record's sink or
    * the snapshot is counted. No exception reaches the scheduler's thread. A pair or a code answer the
    * machine does not act on never reaches the platform: an exception while protecting it is
    * recorded, and the pairing carries on (B7 E1).
@@ -136,9 +137,10 @@ class Engine(
     } catch (failure: Exception) {
       if (phase is Phase.Ended) Step(phase, listOf(engineError(failure)))
       else {
-        // Release only where a Hold went (review C0b M4).
+        // Release only where a Hold went (review C0b M4). The end writes `ended` as every end does (Batch 13, I1).
         val release = if (phase.holdsService) listOf(Command.Release) else emptyList()
-        val fatal = Step(phase.ended(EndReason.FATAL_ERROR, now), listOf(engineError(failure), Command.End(EndReason.FATAL_ERROR)) + release)
+        val lines = listOf(engineError(failure), SessionMachine.endedLine(phase, EndReason.FATAL_ERROR))
+        val fatal = Step(phase.ended(EndReason.FATAL_ERROR, now), lines + Command.End(EndReason.FATAL_ERROR) + release)
         // The machine did not take this step, so its minute of beats is written here (plan D §3.4, B2 review Minor 1).
         BeatLogs.closed(phase, fatal)
       }
