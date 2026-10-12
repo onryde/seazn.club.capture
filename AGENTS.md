@@ -303,15 +303,18 @@ Three rules travel with these tokens:
   height changes: a status line, a caption or the round line coming and going
   never moves it. Before the label is measured it is sized against the worst
   case, 154 dp: 66 and C2's four lines at 22 (below). The owner's phone
-  (804 × 332, the Android status bar showing) gets 394.7 × 222 for a label of
-  one line a side (44) by the arithmetic, and 316.4 × 178 at the worst case
-  (D2 §4.4; `cameraBox.test.ts`, `viewfinderFit.test.ts`). The size as laid out
-  on the phone is D3's to read: the 392.9 × 221 measured before C2 was the old
-  label's. The controls half's
+  sideways with 3-button navigation lays the app out 728 × 328 behind
+  ShellFrame's insets, not the 804 × 332 the rulings of 2026-10-08 were made on
+  (N35; the controller's update, 2026-10-12, from D3's shots). Its 418 dp
+  camera half gets 387.6 × 218 for a label of one line a side (44), limited by
+  its height (D3 read 387.3 × 218), and 309.3 × 174 at the worst case; 804 × 332
+  gets 394.7 × 222 and 316.4 × 178 (D2 §4.4; `cameraBox.test.ts`,
+  `viewfinderFit.test.ts`). The controls half's
   column has its own vertical padding and gap (`controlsPadV`,
   `controlsColumnGap`: 8 and 8; its horizontal padding stays the board's 16, so
-  it is still 310 wide), so every control is on screen at 804 × 332 in every
-  state and language, the worst before-air state with 8 dp to spare. Nothing is drawn over the
+  it is still 310 wide), so every control is on screen at 804 × 332 and at
+  728 × 328 in every state and language, the worst before-air state with 8 dp
+  to spare at 332 and 4 at 328 (N35). Nothing is drawn over the
   camera box but, on the operator's tap, the Remote scoring panel and, when it
   is built in, the _What viewers see_ video, one at a time (D2 §4.3; the view
   is built and hidden, below). The panel (design follow-up
@@ -344,7 +347,8 @@ Three rules travel with these tokens:
   second number (`WORST_LABEL` in `cameraBox.ts`; the controller's ruling,
   2026-10-09). The round line sits above the match label in the status strip,
   in lime caps (D2 §4.4's _rec_, R11), and is always shown when the pairing
-  has one (owner, 2026-10-08, option B), the owner's 804 × 332 included.
+  has one (owner, 2026-10-08, option B), the owner's phone included (728 × 328
+  as laid out, N35).
   Its 22 dp (the line and a gap) are in the strip's reserve, 66 dp and the
   label, whether there is a round line to show or not, so it is not measured
   and never moves the picture, and the picture never gives way for it. A match

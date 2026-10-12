@@ -1023,6 +1023,35 @@ register (its W-number unverified here). The phone keeps drawing the server's te
 
 ---
 
+### N35 — The owner's phone lays out at 728 × 328, not 804 × 332
+
+**Status:** fixed in docs/tests — feat/s1-d3-fixes, Batch 7 (d081acc)
+**Where:** capture app · `ShellFrame.tsx` (all four edges, around every route in `app/_layout.tsx`) · the viewfinder
+fits (`viewfinderFit`, `cameraBox`, `stripTextFit`, `matchLabelFit`, `viewerCoverFit`, `StreamScreen.layout`) ·
+`homeFit` · AGENTS §6
+
+The viewfinder's rulings of 2026-10-08 and their fits name the owner's phone as 804 × 332: its display sideways, less
+the status bar. The phone does not give the app that window. With 3-button navigation ShellFrame's insets are a
+31.3 dp cutout, a 44.7 dp navigation bar and a 32 dp status bar, and nothing is immersive, so every route, Home and
+Live Stream alike, is laid out 728 × 328. Every D3 stream shot shows the same split (`r1-live.png`, `r2a-live.png`,
+`m2-stopped.png`, `r12-c2-804-fr.png`): a 418 dp camera half, the 310 dp controls half, and the controls' plate and
+Stop 8 dp from the top and bottom of a 328 dp window; `r12-home-fr-landscape.png` shows Home at the same 728 (N31).
+Gesture navigation was not in the evidence.
+
+What changes at 728 × 328, by each fit's own model:
+
+- The controls column's worst before-air stack, 324, leaves 4 dp to spare, not 8. Every control is still on screen.
+- The camera box is 387.6 × 218 for a two-line label, limited by the window's height (D3 read 387.3 × 218), not
+  394.7 × 222; 418 × 235.1 (the whole half) for a one-line label; and 309.3 × 174 before the label is measured.
+- The strip's text is 386 dp wide, not 462: no realistic line in any language is cut there.
+- A label side's row is 364 dp, not 440: the fixtures' sides stay one line, so the long doubles label is still 44.
+- Home with one card scrolls (141 or 149 dp for tiles that need 166).
+
+Nothing clips. The fits now carry 728 × 328 as the owner's phone, with hand-derived rows; 804 × 332 stays as a
+geometry, as the one the rulings were made on (the controller's ruling, 2026-10-12, from D3's evidence).
+
+---
+
 ## P5 device spike (Android)
 
 The P5 findings, as an index. The full text, evidence and corrections for each
