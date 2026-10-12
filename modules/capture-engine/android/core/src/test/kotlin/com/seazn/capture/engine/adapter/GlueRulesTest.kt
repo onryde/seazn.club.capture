@@ -480,6 +480,26 @@ class GlueRulesTest {
   }
 
   /**
+   * Batch 4 review M2: a refused foreground service leaves no notification behind, so no dead Forget stays on the
+   * shade. The paired snapshot's post is queued before the Hold's start can be refused: `notify` checks again on the
+   * main looper, and the refusal cancels whatever was posted before it.
+   */
+  @Test
+  fun `M2 a refused foreground service leaves no notification, and so no dead Forget`() {
+    val keeper = glue("PairingKeeper.kt")
+    assertEquals(1, Regex("""fun notify\(wire: Map<String, Any\?>\) = recordOnly\("notify"\) \{ if \(survivesBackground\) notes\.update\(wire\) \}""").findAll(keeper).count(), "notify checks on main")
+    assertTrue(Regex("""recordOnly\("cancel"\) \{ notes\.cancel\(\) \}""").containsMatchIn(body(keeper, "fun fgsRefused(e: Throwable)")), "the refusal cancels")
+    assertTrue(Regex("""fun cancel\(\) = NotificationManagerCompat\.from\(context\)\.cancel\(ID\)""").containsMatchIn(keeper), "the notification's own id")
+  }
+
+  /** Batch 4 review M7: a delete the file system did not do is a refused delete, for BridgeCore's `store-failed` line. */
+  @Test
+  fun `M7 the store's delete throws when the file is still there`() {
+    val delete = body(glue("AndroidStore.kt"), "override fun delete(name: String)")
+    assertTrue(Regex("""val file = File\(dir, name\)\s+if \(!file\.delete\(\) && file\.exists\(\)\) throw IOException\("delete failed: \${'$'}name"\)""").containsMatchIn(delete), delete)
+  }
+
+  /**
    * CD21 (Task 38): Expo 57.0.20 answers DENIED for every permission when the current activity is not a
    * `PermissionAwareActivity` (`PermissionsService.delegateRequestToActivity`), a refusal no operator
    * saw. That reads as UNAVAILABLE, before Expo is asked.

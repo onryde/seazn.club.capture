@@ -76,15 +76,24 @@ class PairingKeeper(
     main.post { finish() }
   }
 
-  /** The service could not go foreground (C3's catch): the pairing carries on, and says to keep the app open. */
+  /**
+   * The service could not go foreground (C3's catch): the pairing carries on, and says to keep the app open. Main
+   * looper. Batch 4 review M2: a notification posted before the refusal (the paired snapshot's post can run before
+   * the service's own refusal) is cancelled, so no stale one, and no dead Forget, stays on the shade.
+   */
   fun fgsRefused(e: Throwable) {
     survivesBackground = false
     foreground = false
     line(RecordEntry("fgs-refused", listOf("error" to e.javaClass.simpleName)))
+    recordOnly("cancel") { notes.cancel() }
   }
 
-  /** Main looper. A throw here would end the process, so it costs a line instead (N1). */
-  fun notify(wire: Map<String, Any?>) = recordOnly("notify") { notes.update(wire) }
+  /**
+   * Main looper. A throw here would end the process, so it costs a line instead (N1). Posted only while held
+   * (`AndroidPlatform.snapshot`), and checked again here (M2): the paired snapshot's post is queued before the
+   * Hold's service start can be refused, and must post nothing after it.
+   */
+  fun notify(wire: Map<String, Any?>) = recordOnly("notify") { if (survivesBackground) notes.update(wire) }
 
   /**
    * Review C7 I-3: the service went foreground. True while the pairing still holds it; false when a Release
@@ -207,7 +216,9 @@ class CaptureNotification(private val context: Context, private val language: ()
    *
    * R6 of the D3 findings design: while the kind last shown is `paired`, one action, Forget, in the notification's
    * language. [update] posts again at once on a change of kind, so the action goes the moment the pairing leaves
-   * waiting; the service's first post, before any kind is shown, has none until the first `paired` snapshot.
+   * waiting. The kind last shown lives for the process and is never reset: the service's first post for a pairing
+   * carries the kind the previous pairing showed last (none in a fresh process, so no action until the first
+   * `paired` update; `paired` after a Forget, which is right, as the service starts at Paired).
    */
   fun current(): Notification {
     channel()
@@ -229,6 +240,9 @@ class CaptureNotification(private val context: Context, private val language: ()
     }
     return builder.build()
   }
+
+  /** Batch 4 review M2: the notification a refused service leaves behind, removed. Main looper. */
+  fun cancel() = NotificationManagerCompat.from(context).cancel(ID)
 
   /** Review C7 I-3: what `startForeground` takes when [current] could not be built: no text and no tap. */
   fun plain(): Notification = NotificationCompat.Builder(context, CHANNEL_ID).setSmallIcon(R.drawable.slate).setOngoing(true).build()
