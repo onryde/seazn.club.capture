@@ -3,9 +3,11 @@ import {
   decodeCredential,
   encodeCredential,
   nextCredential,
+  UNREADABLE,
   usableCredential,
   type CredentialStep,
   type SavedForUpload,
+  type StoredCredential,
   type UploadCredential,
 } from '@/domain/credentials/uploadCredential';
 import type { KeyValueStore } from '@/services/KeyValueStore';
@@ -36,11 +38,17 @@ type Deps = {
 type Queue = { run(work: () => Promise<void>): void; idle(): Promise<void> };
 
 const REFUSED = { action: 'upload-credential' } as const;
+const KEEP: CredentialStep = { kind: 'keep' };
+const DELETE: CredentialStep = { kind: 'delete' };
 
 /**
- * Follows the saved stream code (R4): renewed at every save of the code, its 24 h started when the code goes, deleted
- * after them. A refused write is recorded by its action alone: never its error, which a platform may word with the
- * value it refused.
+ * Follows the saved stream code (R4; the D3 fixes plan's ruling P12, the controller's): written at its save, replaced
+ * by the next code's, its 24 h started when the code goes, deleted after them. A refused write is recorded by its action
+ * alone: never its error, which a platform may word with the value it refused.
+ *
+ * `current()` decides again from what is stored and the code saved now, so a write the keystore refused is never
+ * trusted: a refused drop still answers the 24 h it should have stamped, and the write is tried again (Minor 4 of the
+ * Batch 6 review).
  */
 export function createUploadCredentialStore(deps: Deps): UploadCredentialStore {
   const { kv, modeStore, clock, logger } = deps;
@@ -63,11 +71,24 @@ export function createUploadCredentialStore(deps: Deps): UploadCredentialStore {
     current: async () => {
       await queue.idle();
       const stored = await readStored(kv);
-      const usable = usableCredential(stored, clock().getTime());
-      if (stored !== null && usable === null) queue.run(() => kv.delete(UPLOAD_CREDENTIAL_KEY));
-      return usable;
+      const nowMs = clock().getTime();
+      const step = stepNow(stored, savedForUpload(modeStore.getSnapshot()), nowMs);
+      if (step.kind !== 'keep') queue.run(() => apply(kv, step));
+      const held = step.kind === 'write' ? step.credential : stored;
+      return usableCredential(held === UNREADABLE ? null : held, nowMs);
     },
   };
+}
+
+/** Before the saved codes are read, whether a code is saved is unknown: only a credential past its 24 h is deleted. */
+function stepNow(
+  stored: StoredCredential,
+  saved: SavedForUpload | null | undefined,
+  nowMs: number,
+): CredentialStep {
+  if (saved !== undefined) return nextCredential(stored, saved, nowMs);
+  if (stored === null || stored === UNREADABLE) return KEEP;
+  return usableCredential(stored, nowMs) === null ? DELETE : KEEP;
 }
 
 /** The saved stream code's URL and token; null with none saved; undefined before the store has loaded. */
@@ -79,10 +100,11 @@ function savedForUpload(snapshot: ModeStoreSnapshot): SavedForUpload | null | un
   return parsed.ok ? { codeUrl: code.stream.codeUrl, token: parsed.value.token } : null;
 }
 
-async function readStored(kv: KeyValueStore): Promise<UploadCredential | null> {
+/** What the key holds. A read that fails is nothing: the next one decides again, and a failed read deletes nothing. */
+async function readStored(kv: KeyValueStore): Promise<StoredCredential> {
   try {
     const text = await kv.get(UPLOAD_CREDENTIAL_KEY);
-    return text === null ? null : decodeCredential(text);
+    return text === null ? null : (decodeCredential(text) ?? UNREADABLE);
   } catch {
     return null;
   }

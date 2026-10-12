@@ -4,6 +4,7 @@ import {
   encodeCredential,
   KEEP_AFTER_DROP_MS,
   nextCredential,
+  UNREADABLE,
   usableCredential,
   type UploadCredential,
 } from '@/domain/credentials/uploadCredential';
@@ -65,6 +66,22 @@ describe('the upload credential (R4)', () => {
     expect(nextCredential(dropped, null, NOW)).toEqual({ kind: 'delete' });
     expect(usableCredential(dropped, NOW)).toBeNull();
     expect(usableCredential(dropped, NOW - 1)).toEqual(dropped);
+  });
+
+  // Minor 4 of the Batch 6 review: a clock set back after the drop must not stretch the 24 h.
+  it('is deleted, and not usable, when its expiry is further off than 24 h (a clock set back)', () => {
+    const stretched = { ...kept, expiresAtMs: NOW + KEEP_AFTER_DROP_MS + 1 };
+    expect(nextCredential(stretched, null, NOW)).toEqual({ kind: 'delete' });
+    expect(usableCredential(stretched, NOW)).toBeNull();
+    const full = { ...kept, expiresAtMs: NOW + KEEP_AFTER_DROP_MS };
+    expect(nextCredential(full, null, NOW)).toEqual({ kind: 'keep' });
+    expect(usableCredential(full, NOW)).toEqual(full);
+  });
+
+  // Minor 6 of the Batch 6 review: text that is no credential may still hold a token, in a foreign or future shape.
+  it('deletes a stored value it cannot read when no code is saved, and overwrites it when one is', () => {
+    expect(nextCredential(UNREADABLE, null, NOW)).toEqual({ kind: 'delete' });
+    expect(nextCredential(UNREADABLE, saved, NOW)).toEqual({ kind: 'write', credential: kept });
   });
 
   it('is usable with no expiry, whatever the clock says', () => {

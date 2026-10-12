@@ -23,6 +23,7 @@ const START = new Date('2026-10-12T10:00:00Z');
 /** Another camera position's code (made up): another token. */
 const OTHER_TOKEN = 'tok-other-000000000000';
 const other = savedStreamCode({ raw: captureRaw({ slot: 2, tok: OTHER_TOKEN }), slot: 2 });
+const CODE_URL = savedStreamCode().stream?.codeUrl ?? '';
 
 function rig(options: { enabled?: boolean; seed?: Record<string, string> } = {}) {
   let now = START;
@@ -160,6 +161,35 @@ describe('the upload credential store (R4, P10)', () => {
     expect(r.kv.entries.get(UPLOAD_CREDENTIAL_KEY)).toBe(kept);
   });
 
+  // Asked before the saved codes are read, the store cannot tell a dropped code from a saved one.
+  it('answers a kept credential asked for before the saved codes are read, and starts no 24 h', async () => {
+    const kept = encodeCredential({ codeUrl: CODE_URL, token: FIXTURE_TOKEN, expiresAtMs: null });
+    const r = rig({
+      seed: {
+        [STORE_KEYS.code('stream')]: encodeSavedCode(savedStreamCode()),
+        [UPLOAD_CREDENTIAL_KEY]: kept,
+      },
+    });
+    expect(await r.store.current()).toMatchObject({ token: FIXTURE_TOKEN, expiresAtMs: null });
+    await r.settle();
+    expect(r.kv.entries.get(UPLOAD_CREDENTIAL_KEY)).toBe(kept);
+  });
+
+  it('deletes a credential past its 24 h when asked for before the saved codes are read', async () => {
+    const r = rig({
+      seed: {
+        [UPLOAD_CREDENTIAL_KEY]: encodeCredential({
+          codeUrl: CODE_URL,
+          token: FIXTURE_TOKEN,
+          expiresAtMs: START.getTime(),
+        }),
+      },
+    });
+    expect(await r.store.current()).toBeNull();
+    await r.settle();
+    expect(r.kv.entries.has(UPLOAD_CREDENTIAL_KEY)).toBe(false);
+  });
+
   it('answers what a write still in flight is writing', async () => {
     const r = rig();
     const write = holdNextSet(r.kv);
@@ -200,12 +230,83 @@ describe('the upload credential store (R4, P10)', () => {
     expect(await r.store.current()).toBeNull();
   });
 
-  it('answers nothing, and never rejects, when the store cannot be read', async () => {
+  // Important 1 of the Batch 6 review: the follow path deletes an expired token from the keystore on a phone whose
+  // operator never opens Send, with nothing asking for it.
+  it('deletes an expired credential at a cold start, before anything asks for it', async () => {
+    const r = rig({
+      seed: {
+        [UPLOAD_CREDENTIAL_KEY]: encodeCredential({
+          codeUrl: CODE_URL,
+          token: FIXTURE_TOKEN,
+          expiresAtMs: START.getTime() - 1,
+        }),
+      },
+    });
+    await r.modeStore.load();
+    await r.settle();
+    expect(r.kv.entries.has(UPLOAD_CREDENTIAL_KEY)).toBe(false);
+  });
+
+  it('deletes a credential whose 24 h ran out since its drop, at the next publish', async () => {
+    const r = rig();
+    await r.modeStore.load();
+    await r.settle();
+    await r.modeStore.forget(r.held());
+    await r.settle();
+    r.at(r.now() + KEEP_AFTER_DROP_MS);
+    await r.modeStore.setActive('stream');
+    await r.settle();
+    expect(r.kv.entries.has(UPLOAD_CREDENTIAL_KEY)).toBe(false);
+  });
+
+  // Minor 6 of the Batch 6 review: text that is no credential may still carry a token.
+  it('deletes a stored value it cannot read once the store knows no code is saved', async () => {
+    const r = rig({ seed: { [UPLOAD_CREDENTIAL_KEY]: `{"v":2,"token":"${FIXTURE_TOKEN}"}` } });
+    await r.modeStore.load();
+    await r.settle();
+    expect(r.kv.entries.has(UPLOAD_CREDENTIAL_KEY)).toBe(false);
+  });
+
+  // Minor 4 of the Batch 6 review: a refused drop write must not leave the token usable with no bound.
+  it('starts the 24 h from a refused drop write all the same, and writes them at the next ask', async () => {
+    const r = rig();
+    await r.modeStore.load();
+    await r.settle();
+    const set = vi.spyOn(r.kv, 'set').mockRejectedValueOnce(new Error('keystore locked'));
+    await r.modeStore.forget(r.held());
+    await r.settle();
+    expect(r.stored()?.expiresAtMs).toBeNull(); // the drop's write was refused
+    const askedAt = r.now();
+    expect(await r.store.current()).toMatchObject({
+      token: FIXTURE_TOKEN,
+      expiresAtMs: askedAt + KEEP_AFTER_DROP_MS,
+    });
+    await r.settle();
+    expect(set).toHaveBeenCalledTimes(2);
+    expect(r.stored()?.expiresAtMs).toBe(askedAt + KEEP_AFTER_DROP_MS);
+    r.at(askedAt + KEEP_AFTER_DROP_MS);
+    expect(await r.store.current()).toBeNull();
+  });
+
+  // The saved code is in hand without the keystore; a dropped credential is not, and a failed read deletes nothing.
+  it('never rejects when the store cannot be read: the saved code still answers', async () => {
     const r = rig();
     await r.modeStore.load();
     await r.settle();
     vi.spyOn(r.kv, 'get').mockRejectedValue(new Error('keystore locked'));
+    await expect(r.store.current()).resolves.toMatchObject({ token: FIXTURE_TOKEN });
+  });
+
+  it('answers nothing, never rejects and deletes nothing when a dropped credential cannot be read', async () => {
+    const r = rig();
+    await r.modeStore.load();
+    await r.settle();
+    await r.modeStore.forget(r.held());
+    await r.settle();
+    vi.spyOn(r.kv, 'get').mockRejectedValue(new Error('keystore locked'));
     await expect(r.store.current()).resolves.toBeNull();
+    await r.settle();
+    expect(r.kv.entries.has(UPLOAD_CREDENTIAL_KEY)).toBe(true);
   });
 
   it('stores nothing while the switch is off', async () => {
@@ -228,6 +329,7 @@ describe('the upload credential store (R4, P10)', () => {
     expect(r.kv.entries.has(UPLOAD_CREDENTIAL_KEY)).toBe(false);
   });
 
+  // The saved code is the credential's source: with its copy refused, the answer is still the saved code's.
   it('records a refused write, never throws, and never writes the token into the record', async () => {
     const r = rig();
     vi.spyOn(r.kv, 'set').mockRejectedValue(new Error(`keystore locked ${FIXTURE_TOKEN}`));
@@ -237,6 +339,11 @@ describe('the upload credential store (R4, P10)', () => {
     expect(lines.some((l) => l.includes('store.write-refused'))).toBe(true);
     expect(lines.some((l) => l.includes('"action":"upload-credential"'))).toBe(true);
     expect(lines.some((l) => l.includes(FIXTURE_TOKEN))).toBe(false);
-    await expect(r.store.current()).resolves.toBeNull();
+    await expect(r.store.current()).resolves.toMatchObject({
+      token: FIXTURE_TOKEN,
+      expiresAtMs: null,
+    });
+    await r.settle();
+    expect(r.record.lines().some((l) => l.includes(FIXTURE_TOKEN))).toBe(false);
   });
 });
