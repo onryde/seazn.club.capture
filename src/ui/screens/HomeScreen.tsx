@@ -1,13 +1,15 @@
-import { memo } from 'react';
+import { memo, useMemo } from 'react';
 import { Image, ScrollView, StyleSheet, useWindowDimensions, View } from 'react-native';
 import { screenLayout, type ScreenLayout } from '@/domain/mode/homeLayout';
 import type { Mode } from '@/domain/mode/Mode';
 import { BUILT_MODES } from '@/domain/mode/scanOutcome';
 import { useBackCloses } from '@/hooks/useBackCloses';
+import type { EndedCard as EndedCardValue } from '@/domain/session/endedCard';
 import { useEndedCard } from '@/hooks/useEndedNotice';
 import { useHome, type HomeActions, type HomeView } from '@/hooks/useHome';
 import { useT } from '@/hooks/useLanguage';
 import { usePorts } from '@/hooks/usePorts';
+import { useHomeLinks } from '@/hooks/useStreamLinks';
 import logo from '@/ui/assets/logo-wide-night.png';
 import { CodePanel } from '@/ui/components/CodePanel';
 import { ContinueCard } from '@/ui/components/ContinueCard';
@@ -26,7 +28,8 @@ import { colour, layout as metrics, space } from '@/ui/theme/tokens';
  * Layout A (spec §7), portrait: the logo, status, the Stream ended card when there is one, Continue, three equal
  * tiles, footer; the panel over all. Landscape follows the phone: one top row (logo, status, Language, version),
  * then the ended card and Continue as one row each, then the three tiles side by side. Back closes the panel (R31).
- * The root says which in `data-layout`, the marker the tests read.
+ * The root says which in `data-layout`, the marker the tests read. Both layouts scroll only when their rows outgrow
+ * the window (landscape: homeFit.test.ts; portrait, P7: the Stream settings link makes the Live Stream tile taller).
  */
 export function HomeScreen() {
   const { view, actions } = useHome();
@@ -73,6 +76,10 @@ function HomeContent({
   layout: ScreenLayout;
 }) {
   const { appVersion, devTools } = usePorts();
+  const ended = useEndedCard();
+  const { streamSettings } = useHomeLinks();
+  // P6: the link only while no card stands above the tiles; with one, it would not fit at 800 × 360 (homeFit).
+  const link = ended === null && view.continueCode === null ? streamSettings : null;
   const landscape = layout === 'landscape';
   const shape = landscape ? 'row' : 'stacked';
   const behindPanel = view.panel !== null;
@@ -96,27 +103,25 @@ function HomeContent({
           <StatusLine>{view.statusText}</StatusLine>
         </>
       )}
-      <EndedSlot shape={shape} />
+      <EndedSlot card={ended} shape={shape} />
       <ContinueSlot view={view} actions={actions} shape={shape} />
-      <ModeTiles onPress={actions.tapTile} layout={layout} />
+      <ModeTiles onPress={actions.tapTile} layout={layout} streamSettings={link} />
       {devTools ? <DevPaste onUse={actions.useRaw} /> : null}
       {devTools ? <DevProbe /> : null}
       {landscape ? null : <HomeFooter version={appVersion} />}
     </>
   );
-  // Landscape scrolls only if its rows outgrow the window (a fatal end's two cards over three tiles on a
-  // 640 × 360 phone: homeFit.test.ts); when they fit, `flexGrow` makes the tiles take what is left.
-  if (landscape) {
-    return (
-      <ScrollView style={styles.fill} contentContainerStyle={styles.contentLandscape} {...hidden}>
-        {rows}
-      </ScrollView>
-    );
-  }
+  // Each layout scrolls only if its rows outgrow the window (landscape: a fatal end's two cards over three tiles on
+  // a 640 × 360 phone, homeFit.test.ts; portrait, P7: the link's taller Live Stream tile on a small phone); when
+  // they fit, `flexGrow` makes the tiles take what is left.
   return (
-    <View style={styles.content} {...hidden}>
+    <ScrollView
+      style={styles.fill}
+      contentContainerStyle={landscape ? styles.contentLandscape : styles.content}
+      {...hidden}
+    >
       {rows}
-    </View>
+    </ScrollView>
   );
 }
 
@@ -140,11 +145,11 @@ function Logo({ layout }: { layout: ScreenLayout }) {
 
 /**
  * The Stream ended card (spec §5), above Continue: only after the phone's Stop or a fatal end left the viewfinder
- * for Home. OK, a new scan or Continue clears it; it is in memory, so a restart does too.
+ * for Home. OK, a new scan or Continue clears it; it is in memory, so a restart does too. Home reads it once and
+ * passes it here, since the Stream settings link hides while it shows (P6).
  */
-function EndedSlot({ shape }: { shape: CardShape }) {
+function EndedSlot({ card, shape }: { card: EndedCardValue | null; shape: CardShape }) {
   const { endedNotice } = usePorts();
-  const card = useEndedCard();
   return card === null ? null : <EndedCard card={card} layout={shape} onOk={endedNotice.clear} />;
 }
 
@@ -171,13 +176,25 @@ function ContinueSlot({
   );
 }
 
+/** The three tiles; the Live Stream tile carries the Stream settings link when Home gives one (R2, P6). */
 const ModeTiles = memo(function ModeTiles({
   onPress,
   layout,
+  streamSettings,
 }: {
   onPress: (mode: Mode) => void;
   layout: ScreenLayout;
+  streamSettings: (() => void) | null;
 }) {
+  const { t } = useT();
+  // Memoised so the memoised tile is not handed a new object on every pass.
+  const link = useMemo(
+    () =>
+      streamSettings === null
+        ? undefined
+        : { label: t('home.streamSettings'), onPress: streamSettings },
+    [streamSettings, t],
+  );
   return (
     <View testID="tiles" style={layout === 'landscape' ? styles.tilesRow : styles.tiles}>
       {MODES.map((mode) => (
@@ -187,6 +204,7 @@ const ModeTiles = memo(function ModeTiles({
           available={BUILT_MODES.includes(mode)}
           onPress={onPress}
           layout={layout}
+          link={mode === 'stream' ? link : undefined}
         />
       ))}
     </View>
@@ -197,7 +215,8 @@ const styles = StyleSheet.create({
   screen: { flex: 1, padding: space.md, backgroundColor: colour.ground },
   /** Landscape pads its scroller's content instead (`contentLandscape`), so a scrolled row passes under the edge. */
   screenLandscape: { flex: 1, backgroundColor: colour.ground },
-  content: { flex: 1, gap: space.sm },
+  /** P7: `flexGrow`, not `flex`, in the portrait scroller: the tiles share the window when they fit. */
+  content: { flexGrow: 1, gap: space.sm },
   tiles: { flex: 1, gap: space.sm },
   fill: { flex: 1 },
   contentLandscape: {

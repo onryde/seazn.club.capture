@@ -9,6 +9,7 @@
   "home.status.idle": "Tap a mode, then scan its code.",
   "home.tile.stream.purpose": "Film a match to YouTube.",
   "home.tile.stream.hint": "Scan the stream code from the match page",
+  "home.streamSettings": "Stream settings",
   "home.tile.scoring.purpose": "Score one match from the side.",
   "home.tile.dashboard.purpose": "Approve the next round of a tournament.",
   "home.tile.comingSoon": "Coming soon",

@@ -13,6 +13,7 @@ import type { WaitingFields } from '@/domain/credentials/waitingFields';
 import { decodeSavedCode, encodeSavedCode, type SavedStream } from '@/domain/mode/savedCode';
 import { useHome } from '@/hooks/useHome';
 import { useReopenGate } from '@/hooks/useReopenGate';
+import { createTranslator } from '@/i18n/translate';
 import type { CodeScannerPort, ScanUnavailableReason } from '@/scanner/CodeScannerPort';
 import { createMemoryKeyValueStore, type KeyValueStore } from '@/services/KeyValueStore';
 import { KV_TIMEOUT_MS, withTimeout } from '@/services/kvTimeout';
@@ -1458,5 +1459,65 @@ describe('useHome: every open goes through the check', () => {
     release();
     await waitFor(() => expect(home.navigation.current()).toBe('stream'));
     expect(home.code.calls).toHaveLength(2);
+  });
+});
+
+describe('the Stream settings link (R2, P6)', () => {
+  const link = () => screen.queryByRole('button', { name: 'Stream settings' });
+
+  it('shows in the Live Stream tile with nothing saved, and opens Stream Settings', async () => {
+    const view = await renderHome();
+    const tile = screen.getByTestId('tile-stream');
+    expect(tile.contains(link())).toBe(true);
+    expect(tile.contains(liveStreamTile())).toBe(true);
+    fireEvent.click(screen.getByRole('button', { name: 'Stream settings' }));
+    expect(view.navigation.current()).toBe('homeSettings');
+    expect(view.scanner.scans).toBe(0);
+  });
+
+  it('is absent while Continue shows: the same screen is inside Live Stream', async () => {
+    await renderHome({ kvSeed: { [STORE_KEYS.code('stream')]: savedStream(IN_TWO_HOURS) } });
+    expect(screen.getByRole('button', { name: 'Continue' })).toBeTruthy();
+    expect(link()).toBeNull();
+  });
+
+  it('is absent while the Stream ended card shows, and back once OK clears it', async () => {
+    const view = await renderHome();
+    act(() =>
+      view.ports.endedNotice.show({
+        reason: 'operator-stopped',
+        durationMs: 754_000,
+        codeEnded: false,
+      }),
+    );
+    expect(screen.getByRole('region', { name: 'Stream ended' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Continue' })).toBeNull();
+    expect(link()).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'OK' }));
+    expect(link()).toBeTruthy();
+  });
+
+  it('shows again once a saved code is forgotten from Continue', async () => {
+    await renderHome({ kvSeed: { [STORE_KEYS.code('stream')]: savedStream(IN_TWO_HOURS) } });
+    expect(link()).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Forget' }));
+    await waitFor(() => expect(link()).toBeTruthy());
+  });
+
+  it('follows a language picked on Home', async () => {
+    await renderHome();
+    fireEvent.click(screen.getByRole('button', { name: /^Language/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Français' }));
+    expect(
+      screen.getByRole('button', { name: createTranslator('fr').t('home.streamSettings') }),
+    ).toBeTruthy();
+    expect(link()).toBeNull();
+  });
+
+  it.each(['es', 'fr', 'nl'] as const)('reads in %s', async (lang) => {
+    await renderHome({ kvSeed: { [STORE_KEYS.lang]: lang } });
+    expect(
+      screen.getByRole('button', { name: createTranslator(lang).t('home.streamSettings') }),
+    ).toBeTruthy();
   });
 });

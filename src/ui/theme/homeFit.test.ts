@@ -233,6 +233,152 @@ describe('which landscape windows hold the tiles without scrolling (spec §1, F1
   });
 });
 
+describe('the Stream settings link in the Live Stream tile (R2, P6)', () => {
+  /** TextLink's 48 dp target under the hint, `space.xs` apart (the tile's gap). */
+  const LINK = space.xs + layout.touch;
+  /** The tile's inner width at a window width: a third, less the pads, the two gaps, the edge and the padding. */
+  const innerAt = (width: number) =>
+    (width - 2 * space.md - 2 * space.sm) / 3 - TILE_EDGE - 2 * TILE_PAD;
+  const streamNeed = (width: number): number => {
+    const inner = innerAt(width);
+    let need = 0;
+    for (const lang of LANGS) {
+      const titleLines = linesOf(
+        word(lang, 'mode.stream').toUpperCase(),
+        inner - ICON - space.sm,
+        (text) =>
+          barlow700.width(text, typeScale.title.fontSize) +
+          typeScale.title.letterSpacing * text.length,
+      );
+      const purposeLines = linesOf(word(lang, 'home.tile.stream.purpose'), inner, (text) =>
+        geist400.width(text, typeScale.body.fontSize),
+      );
+      const hintLines = linesOf(word(lang, 'home.tile.stream.hint'), inner, (text) =>
+        geist500.width(text, typeScale.metricUnit.fontSize),
+      );
+      need = Math.max(
+        need,
+        2 * TILE_PAD +
+          Math.max(ICON, titleLines * typeScale.title.lineHeight) +
+          space.xs +
+          purposeLines * typeScale.body.lineHeight +
+          space.xs +
+          hintLines * typeScale.metricUnit.lineHeight +
+          LINK,
+      );
+    }
+    return need;
+  };
+  /** What a window leaves the tiles with no card (the top row, the pads, no gaps for cards): 97 dp of spend. */
+  const noCards = (height: number) =>
+    height - layout.homePadTop - layout.homePadBottom - layout.homeGap - TOP;
+
+  it('the link takes 52: the 48 dp target and the 4 dp gap above it', () => {
+    expect(LINK).toBe(52);
+  });
+
+  it.each([
+    [640, 360, 218, 263],
+    [804, 332, 196, 235],
+    [915, 412, 167, 315],
+  ] as const)(
+    '%i × %i: the Live Stream tile with its link needs %i of the %i left with no card',
+    (width, height, need, left) => {
+      expect(streamNeed(width)).toBe(need);
+      expect(noCards(height)).toBe(left);
+      expect(need).toBeLessThanOrEqual(left);
+    },
+  );
+
+  it('with Continue or the ended card it would not fit at 800 × 360, which is why it hides then (P6)', () => {
+    const leftAt800 = (cards: Cards) =>
+      TABLE.find(([width, height, name]) => width === 800 && height === 360 && name === cards)?.[3];
+    expect(streamNeed(800)).toBe(196);
+    expect([leftAt800('ended only'), leftAt800('Continue only')]).toEqual([181, 173]);
+    expect(streamNeed(800)).toBeGreaterThan(leftAt800('ended only') ?? Infinity);
+    expect(streamNeed(800)).toBeGreaterThan(leftAt800('Continue only') ?? Infinity);
+  });
+
+  // N31's class: a label wider than its tile runs past the edge. The link's words are one line at the narrowest
+  // tile, in every language, so no word is cut and the 48 dp target holds them.
+  it.each(LANGS)('its label is one line at 640 wide in %s', (lang) => {
+    const label = word(lang, 'home.streamSettings');
+    expect(label).not.toBe('');
+    expect(
+      linesOf(label, innerAt(640), (text) => geist500.width(text, typeScale.metricUnit.fontSize)),
+    ).toBe(1);
+  });
+});
+
+describe('portrait with the link: why a tile grows from its content (P7)', () => {
+  // Portrait pads its tiles 16 (`space.md`). Spec §1's narrowest phone is 360 wide. The column's own spend, with no
+  // card and no development tools: the 16 pads above and below, the 70 logo, the status's 57, the footer (the 48
+  // Language, 8, the 16 version line) and three 8 gaps between the four rows.
+  const LINK = space.xs + layout.touch;
+  const inner = 360 - 2 * space.md - TILE_EDGE - 2 * space.md;
+  const FOOTER = GHOST + space.sm + typeScale.metricUnit.lineHeight;
+  const SPEND =
+    2 * space.md +
+    layout.logo.height +
+    STATUS_LINES * typeScale.status.lineHeight +
+    FOOTER +
+    3 * space.sm;
+  const tileAt360 = (lang: Lang, mode: 'stream' | 'scoring' | 'dashboard'): number => {
+    const hint = mode === 'stream' ? 'home.tile.stream.hint' : 'home.tile.comingSoon';
+    const titleLines = linesOf(
+      word(lang, `mode.${mode}`).toUpperCase(),
+      inner - ICON - space.sm,
+      (text) =>
+        barlow700.width(text, typeScale.title.fontSize) +
+        typeScale.title.letterSpacing * text.length,
+    );
+    const purposeLines = linesOf(word(lang, `home.tile.${mode}.purpose`), inner, (text) =>
+      geist400.width(text, typeScale.body.fontSize),
+    );
+    const hintLines = linesOf(word(lang, hint), inner, (text) =>
+      geist500.width(text, typeScale.metricUnit.fontSize),
+    );
+    return (
+      2 * space.md +
+      Math.max(ICON, titleLines * typeScale.title.lineHeight) +
+      space.xs +
+      purposeLines * typeScale.body.lineHeight +
+      space.xs +
+      hintLines * typeScale.metricUnit.lineHeight +
+      (mode === 'stream' ? LINK : 0)
+    );
+  };
+
+  it('the column spends 255 besides the tiles', () => {
+    expect(FOOTER).toBe(72);
+    expect(SPEND).toBe(255);
+  });
+
+  // [lang, the three tiles at 360 wide (Live Stream with its link), the window an equal third needs, the window the
+  // tiles grown from their content need before the column scrolls].
+  it.each([
+    ['en', [159, 107, 107], 748, 644],
+    ['es', [175, 129, 107], 796, 682],
+    ['fr', [159, 129, 107], 748, 666],
+    ['nl', [159, 129, 129], 748, 688],
+  ] as const)(
+    '%s at 360 wide: tiles %j; equal thirds need a %i dp window, tiles grown from their content %i',
+    (lang, needs, equalThirds, grown) => {
+      const measured = (['stream', 'scoring', 'dashboard'] as const).map((mode) =>
+        tileAt360(lang, mode),
+      );
+      expect(measured).toEqual(needs);
+      // A zero basis gives each tile a third: the tallest must fit a third, or its words run under the link.
+      expect(SPEND + 3 * Math.max(...measured) + 2 * space.sm).toBe(equalThirds);
+      // An auto basis gives each tile its own need first; the column scrolls only past their sum.
+      expect(SPEND + measured.reduce((a, b) => a + b, 0) + 2 * space.sm).toBe(grown);
+      // A window 740 dp tall sits below every equal-thirds need and above every grown one: the reason.
+      expect(equalThirds).toBeGreaterThan(740);
+      expect(grown).toBeLessThan(740);
+    },
+  );
+});
+
 describe('Continue alone, or the ended card alone, leaves the tiles room at 800 × 360 (fix round 1)', () => {
   // The common state is ONE card, and 800 × 360 is the phone with the least height after 640 × 360. The ruling: both
   // single-card states fit it with at least SLACK dp to spare in every language (the tallest tile is per language).

@@ -215,14 +215,16 @@ describe('Home turns with the phone (spec §7)', () => {
       const rows = screen.getByTestId('home-top').parentElement as HTMLElement;
       expect(edges(rows)).toEqual(['12px', '16px', '16px', '16px']);
       expect(style(rows).gap).toBe('12px');
+      expect(rows.children).toHaveLength(4); // the top row, the ended card, Continue, the tiles
       // The padding is the scroller's content's, once: the screen itself adds none (28 above, not 12).
       expect(edges(homeRoot())).toEqual(['0px', '0px', '0px', '0px']);
       setWindowSize(...PORTRAIT);
       expect(edges(homeRoot())).toEqual(['16px', '16px', '16px', '16px']);
-      expect(rows.children).toHaveLength(4); // the top row, the ended card, Continue, the tiles
     });
 
-    it('scrolls only when its rows outgrow the window: a scroller around them, in landscape only', async () => {
+    // P7 (the D3 fixes plan's ruling, the controller's): portrait scrolls the same way, since the Stream settings link
+    // makes the Live Stream tile taller than a small portrait phone's share of the column.
+    it('scrolls only when its rows outgrow the window: a scroller around them, in both layouts', async () => {
       setWindowSize(...LANDSCAPE);
       await renderHome({ ended: true, saved: true });
       const rows = screen.getByTestId('home-top').parentElement as HTMLElement;
@@ -231,13 +233,17 @@ describe('Home turns with the phone (spec §7)', () => {
       // Down only: a row wider than the window is a layout defect to fix, never a sideways scroll to hide it.
       expect(['auto', 'scroll']).not.toContain(style(scroller).overflowX);
       expect(style(rows).flexGrow).toBe('1'); // short content still fills the window, so the tiles do
+      // An auto basis, never `flex: 1`'s zero: that caps a scroller's content at the window, so it never scrolls.
+      expect(style(rows).flexBasis).toBe('auto');
       expect(style(tiles()).flexGrow).toBe('1');
       setWindowSize(...PORTRAIT);
       const content = tiles().parentElement as HTMLElement;
-      expect(['auto', 'scroll']).not.toContain(style(content).overflowY);
-      expect(['auto', 'scroll']).not.toContain(
-        style(content.parentElement as HTMLElement).overflowY,
-      );
+      const portraitScroller = content.parentElement as HTMLElement;
+      expect(['auto', 'scroll']).toContain(style(portraitScroller).overflowY);
+      expect(['auto', 'scroll']).not.toContain(style(portraitScroller).overflowX);
+      expect(style(content).flexGrow).toBe('1'); // the tiles still share the window when they fit
+      expect(style(content).flexBasis).toBe('auto');
+      expect(style(tiles()).flexGrow).toBe('1');
     });
 
     it('sets both cards’ rows 10 above and below and 12 at the end, 16 at the start, a hairline round', async () => {
@@ -302,6 +308,20 @@ describe('Home turns with the phone (spec §7)', () => {
       for (const tile of tiles().children) expect(edges(tile)[0]).toBe('12px');
       setWindowSize(...PORTRAIT);
       for (const tile of tiles().children) expect(edges(tile)[0]).toBe('16px');
+    });
+
+    // P7 as built: a portrait tile grows from its own content (auto basis), so the Live Stream tile with its link is
+    // never squeezed below its words when the column is short, and the column scrolls instead. An equal third (a zero
+    // basis) squeezes it on any window under 748 dp tall (homeFit.test.ts). Landscape keeps equal thirds of the row's
+    // width; the row's height is the tallest tile's.
+    it('grows portrait tiles from their content, and splits the landscape row in equal widths', async () => {
+      setWindowSize(...PORTRAIT);
+      await renderHome();
+      const frames = () => [...tiles().children].map((tile) => style(tile));
+      expect(frames()).toHaveLength(3);
+      for (const tile of frames()) expect([tile.flexGrow, tile.flexBasis]).toEqual(['1', 'auto']);
+      setWindowSize(...LANDSCAPE);
+      for (const tile of frames()) expect([tile.flexGrow, tile.flexBasis]).toEqual(['1', '0%']);
     });
 
     it('reserves the status three lines of the status role, 57, in both layouts (the height homeFit adds up)', async () => {

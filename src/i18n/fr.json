@@ -9,6 +9,7 @@
   "home.status.idle": "Touchez un mode, puis scannez son code.",
   "home.tile.stream.purpose": "Filmez un match pour YouTube.",
   "home.tile.stream.hint": "Scannez le code de diffusion sur la page du match",
+  "home.streamSettings": "Paramètres du direct",
   "home.tile.scoring.purpose": "Tenez le score d'un match depuis le bord du terrain.",
   "home.tile.dashboard.purpose": "Validez le tour suivant d'un tournoi.",
   "home.tile.comingSoon": "Bientôt disponible",

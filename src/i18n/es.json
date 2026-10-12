@@ -9,6 +9,7 @@
   "home.status.idle": "Toca un modo y escanea su código.",
   "home.tile.stream.purpose": "Emite un partido en YouTube.",
   "home.tile.stream.hint": "Escanea el código de emisión de la página del partido",
+  "home.streamSettings": "Ajustes de emisión",
   "home.tile.scoring.purpose": "Lleva el marcador de un partido desde la banda.",
   "home.tile.dashboard.purpose": "Aprueba la siguiente ronda de un torneo.",
   "home.tile.comingSoon": "Próximamente",
