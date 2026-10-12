@@ -7,6 +7,7 @@ import { useStreamSettings } from '@/hooks/useStreamSettings';
 import type { ControlSide, StreamSettings } from '@/services/streamSettingsStore';
 import { ChoiceRow } from '@/ui/components/ChoiceRow';
 import { DiagnosticsCard } from '@/ui/components/DiagnosticsCard';
+import { PowerRow } from '@/ui/components/PowerRow';
 import { SubScreenHeader } from '@/ui/components/SubScreenHeader';
 import { Text } from '@/ui/components/Text';
 import { TextLink } from '@/ui/components/TextLink';
@@ -36,6 +37,8 @@ const LIBSRT_SOURCE = 'https://github.com/Haivision/srt';
  * scrolling on its own (a 360 dp tall phone cannot hold the whole card under
  * the header), with the way back across the top. The root says
  * which in `data-layout`, the marker the tests read.
+ *
+ * R5: both variants carry the battery row after the power paragraph, on Android only.
  *
  * R2: opened from Home's Live Stream tile (`from="home"`) it is outside the mode: no Diagnostics card (nothing is
  * paired), no LIVE plate, and Back returns Home, named so. Landscape then draws one half, so the settings take the
@@ -78,6 +81,7 @@ export function SettingsScreen({ from = 'stream' }: SettingsScreenProps) {
       <Text variant="metricUnit">{t('settings.automatic.hint')}</Text>
       <SideChoice side={settings.side} change={change} />
       <Text variant="metricUnit">{`${t('settings.power.label')} — ${t('settings.power.advice')}`}</Text>
+      <PowerRow />
       <Licences />
       {saveFailed ? <Text variant="status">{t('settings.saveFailed')}</Text> : null}
     </>

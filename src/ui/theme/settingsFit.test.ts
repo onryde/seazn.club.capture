@@ -680,6 +680,7 @@ describe('every Diagnostics row fits its line at 640 × 360, in every language (
 const NARROW_LINE = 320 - 2 * space.md;
 let sideChecked = 0;
 let switchLabelsChecked = 0;
+let powerChecked = 0;
 
 /** The widest single word of a label, in Geist 500 at the control role's size. */
 const longestWord = (label: string) =>
@@ -727,8 +728,32 @@ describe('the side control and the switch rows fit the narrowest line, in every 
     expect(2 * layout.segmentMin + 2 * layout.iconBorder).toBe(134); // measured 134.4 on the board
   });
 
-  it('checked every language for the pair and for the switch label (anti-vacuity)', () => {
+  // R5: the battery row's label shares its line with the state word, set at the control size; its longest word must
+  // fit beside the longer of Allowed and Restricted. Its button's words fit the compact box on one line.
+  it.each(LANGS)(
+    '%s: the battery row’s label and state word share a line, and its button fits',
+    (lang) => {
+      const { t } = createTranslator(lang);
+      const state = Math.max(
+        medium.width(t('settings.power.allowed'), typeScale.control.fontSize),
+        medium.width(t('settings.power.restricted'), typeScale.control.fontSize),
+      );
+      const room = NARROW_LINE - state - space.sm;
+      expect(longestWord(t('settings.power.background')), `${lang} label`).toBeLessThanOrEqual(
+        room,
+      );
+      const button =
+        medium.width(t('settings.power.open'), typeScale.controlSmall.fontSize) +
+        2 * layout.ghostCompactPadX +
+        2 * layout.iconBorder;
+      expect(button, `${lang} button`).toBeLessThanOrEqual(NARROW_LINE);
+      powerChecked += 1;
+    },
+  );
+
+  it('checked every language for the pair, the switch label and the battery row (anti-vacuity)', () => {
     expect(sideChecked).toBe(4);
     expect(switchLabelsChecked).toBe(4 * 1);
+    expect(powerChecked).toBe(4);
   });
 });

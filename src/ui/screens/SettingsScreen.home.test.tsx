@@ -29,6 +29,15 @@ describe('Stream Settings from Home (R2, spec §6)', () => {
     expect(screen.queryByTestId('tally-plate')).toBeNull();
   });
 
+  // R5: both variants carry the battery row (spec §8), right after the power paragraph.
+  it('carries the battery row, as the Live Stream variant does', async () => {
+    const app = await launchApp();
+    act(() => app.ports.navigation.go('homeSettings'));
+    await flush();
+    expect(screen.getByTestId('power-row')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Battery settings' })).toBeTruthy();
+  });
+
   // Its way back is named for where it goes: Home (`stream.home`), never "Back to camera".
   it('goes back to Home by its button and by Back, never to the camera', async () => {
     const app = await launchApp();

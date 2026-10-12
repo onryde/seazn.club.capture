@@ -153,6 +153,7 @@
     "stalledMs": "native: not-delivered, how long the playlist stood still",
     "stopped": "native: pair, whether a stopped record was carried in (A17)",
     "suppressed": "native: engine-error and readiness, the lines held back since the last one written (review 14, G3; review C4a, I-1)",
+    "unrestricted": "native: power, whether Android exempts the app from battery optimisation",
     "validated": "native: network, connect-failed and dropped, whether the network was validated",
     "videoFps": "native: video-stalled, encoded frames per second, or null",
     "wasLive": "native: ended, unpaired and broadcast-ended, whether the broadcast had gone live"
@@ -215,6 +216,7 @@
     "paired": "native: the pairing was accepted",
     "permissions-late": "native: a permissions answer after the pairing moved on",
     "platform-failed": "native: a platform failure, stale or after the end",
+    "power": "native: at every pairing's hold, whether the app's battery is Unrestricted (N27), or null when unread",
     "preview-failed": "native: the viewfinder's native preview could not report itself, follow the streamer, open the camera or read the camera's sizes for the 16:9 rule, with which (attach, visibility, detach, follow, open, sizes) and the throwable's class name; it never crashes the app. A sizes line is written once per camera, and means that camera's preview got StreamPack's own size, whatever its preview-size line says: that line comes from a read of its own (Task 39, I5, review C7 I-1 and I-2, N30)",
     "preview-size": "native: each time the camera changes, when StreamPack reports its source open, the sizes the camera lists for the preview and the size the preview gets: which rule chose it and whether it is 16:9, as numbers, booleans and one plain word (preview-fill review I-1, N30); evidence, nothing acts on it",
     "previous-session-lost": "native: the previous run held a session and its process died, with the exit reason (F-P5-3, CD22)",

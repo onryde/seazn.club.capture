@@ -9,6 +9,7 @@ import type {
   MotionPort,
   NavigationPort,
   OrientationLockPort,
+  PowerPort,
   Route,
   ScreenPort,
   SharePort,
@@ -70,6 +71,8 @@ export type FakePorts = {
   readonly photo: FakePhotoPort;
   /** `hold()`/`release()` pend a request; `calls` counts. */
   readonly scoringLink: FakeScoringLinkPort;
+  /** The battery state (R5): Unrestricted until `set`; `opened` counts the battery page's opens. */
+  readonly power: FakePower;
   setNow(at: Date): void;
 };
 
@@ -103,6 +106,7 @@ export function createFakePorts(
     share: fakeShare(),
     photo: createFakePhotoPort(),
     scoringLink: createFakeScoringLinkPort(),
+    power: createFakePower(),
   };
   const ports: Ports = {
     ...fakes,
@@ -283,6 +287,33 @@ function fakeNavigation(): NavigationPort & { readonly history: Route[] } {
     },
     restart: () => {
       current = 'home';
+    },
+  };
+}
+
+export type FakePower = PowerPort & {
+  /** What the next read answers: true (Unrestricted), false (restricted) or null (unknown, as on iOS). */
+  set(value: boolean | null): void;
+  readonly opened: number;
+};
+
+/**
+ * R5: the battery state, settable, and the page's opens counted. Pass one as the `power` override to start a render
+ * restricted or unknown, and keep it to change the answer before a return to the foreground.
+ */
+export function createFakePower(initial: boolean | null = true): FakePower {
+  let value = initial;
+  let opened = 0;
+  return {
+    isUnrestricted: () => value,
+    openBatterySettings: () => {
+      opened += 1;
+    },
+    set: (next) => {
+      value = next;
+    },
+    get opened() {
+      return opened;
     },
   };
 }

@@ -612,7 +612,8 @@ describe('Diagnostics inside Settings (spec §6, Q1)', () => {
 
 describe('where Diagnostics sits (spec §6)', () => {
   // SP2 (F2): the licences were already under the power advice; this pins that order with the card after it.
-  it('orders the switch hints, the side radios, the power paragraph, the licences, then the card', () => {
+  // R5: the battery row sits right after the power paragraph it extends.
+  it('orders the switch hints, the side radios, the power paragraph, the battery row, the licences, then the card', () => {
     renderSettings();
     expect(layoutOf()).toBe('portrait'); // jsdom's 0 × 0 default (D10)
     const named: readonly (readonly [string, HTMLElement])[] = [
@@ -621,10 +622,11 @@ describe('where Diagnostics sits (spec §6)', () => {
       ['left radio', screen.getByRole('radio', { name: 'Left' })],
       ['right radio', screen.getByRole('radio', { name: 'Right' })],
       ['power paragraph', screen.getByText(powerParagraph('en'))],
+      ['battery row', screen.getByTestId('power-row')],
       ['licences', screen.getByRole('button', { name: 'Open-source licences' })],
       ['Diagnostics card', screen.getByTestId('diagnostics-card')],
     ];
-    expect(named).toHaveLength(7);
+    expect(named).toHaveLength(8);
     const misordered = named.slice(1).flatMap(([name, element], at) => {
       const before = named[at]?.[1];
       const follows = before?.compareDocumentPosition(element) === Node.DOCUMENT_POSITION_FOLLOWING;
@@ -1178,9 +1180,13 @@ describe('Share record wears the board’s box inside a 48 dp button', () => {
     expect(getComputedStyle(within(box()).getByText('Share record')).fontSize).toBe('12px');
   });
 
-  it('is the only compact button on the screen: the box is not on any other button', () => {
+  // R5: the battery row's button is the other small one (the D3 fixes plan's Task 5.3), above the card.
+  it('is on Share record and the battery row’s button only: the box is not on any other button', () => {
     renderSettings();
-    expect(screen.getAllByTestId('ghost-box')).toHaveLength(1);
+    const boxed = screen
+      .getAllByTestId('ghost-box')
+      .map((box) => box.closest('[role="button"]')?.textContent);
+    expect(boxed).toEqual(['Battery settings', 'Share record']);
   });
 
   it('keeps the same box and the same 48 dp when a share fails and the label changes', async () => {

@@ -74,6 +74,14 @@ export interface SplashPort {
   hide(): void;
 }
 
+/** R5, N27: whether Android lets the app work in the background, and its battery page. Never a prompt. */
+export interface PowerPort {
+  /** True when Unrestricted, false when restricted, null when unknown (iOS, no module, a stale build). */
+  isUnrestricted(): boolean | null;
+  /** This app's settings page, where the operator may choose Unrestricted battery. Never throws. */
+  openBatterySettings(): void;
+}
+
 /** The system share sheet (D21). Rejects when it could not open. */
 export interface SharePort {
   share(text: string): Promise<void>;

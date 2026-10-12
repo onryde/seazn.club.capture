@@ -33,6 +33,8 @@ class CaptureEngineModule : Module() {
     Function("current") { core.current() }
     // Carry C4c-I3: each line with its seq, `{seq, line}`, so JS drops a repeat by number.
     Function("tail") { core.tail() }
+    // R5, N27: the battery row's state, read at once (Allowed or Restricted); null when it cannot be read.
+    Function("powerUnrestricted") { PowerState.unrestricted(app()) }
     // Spec §8: one of the two calls that answer (the other is scoringLink; AGENTS §2, recorded). It resolves "saved" or "failed", within native's bound.
     AsyncFunction("takePhoto") { promise: Promise -> EngineHost.capture(app()).takePhoto { word -> promise.resolve(word) } }
     // Spec §10, a tap: the other call that answers (AGENTS §2). The promise is resolved once, by the core, point to

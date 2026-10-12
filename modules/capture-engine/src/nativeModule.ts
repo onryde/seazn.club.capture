@@ -35,6 +35,11 @@ export type CaptureEngineNative = {
    * credential: never log it. Required, not optional: an absent member would be a button that quietly never works.
    */
   scoringLink(): Promise<unknown>;
+  /**
+   * R5: whether Android exempts the app from battery optimisation (Unrestricted), read at once. Unknown to iOS. The
+   * port reads anything but a boolean, or a throw (a stale build), as unknown.
+   */
+  powerUnrestricted(): unknown;
   addListener(event: 'onSnapshot', listener: (body: unknown) => void): Subscription;
   addListener(event: 'onRecord', listener: (body: RecordLine) => void): Subscription;
   addListener(event: 'onAck', listener: (body: { seq: number }) => void): Subscription;

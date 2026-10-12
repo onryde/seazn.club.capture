@@ -12,6 +12,7 @@ import type {
   MotionPort,
   NavigationPort,
   OrientationLockPort,
+  PowerPort,
   ScreenPort,
   SharePort,
   SplashPort,
@@ -74,6 +75,8 @@ export type Ports = {
   readonly photo: PhotoPort;
   /** Spec §10: the match's Remote scoring link (the second call that answers). */
   readonly scoringLink: ScoringLinkPort;
+  /** R5: the battery state and the app's settings page, Android only. */
+  readonly power: PowerPort;
   readonly clock: () => Date;
   readonly hosts: readonly string[];
   readonly deviceLanguages: readonly (string | null)[];

@@ -64,8 +64,25 @@ type Wiring = {
   loggerBinding: string | null;
   hostsBinding: string | null;
   engine: string | null;
+  /** R5: what it gives `createNativePower`, each dependency as `name:initializer`, sorted. */
+  powerDeps: string | null;
   loads: number;
 };
+
+/** An object literal's properties as sorted `name:initializer`, so a swapped value is not the right name. */
+function depsOf(deps: ts.Expression | undefined, file: ts.SourceFile): string | null {
+  if (deps === undefined || !ts.isObjectLiteralExpression(deps)) return null;
+  return deps.properties
+    .map((property) =>
+      ts.isShorthandPropertyAssignment(property)
+        ? `${property.name.text}:${property.name.text}`
+        : ts.isPropertyAssignment(property)
+          ? `${property.name.getText(file)}:${property.initializer.getText(file)}`
+          : '?',
+    )
+    .sort()
+    .join(', ');
+}
 
 function wiringOf(source: string): Wiring {
   const file = ts.createSourceFile('nativePorts.ts', source, ts.ScriptTarget.Latest, true);
@@ -85,6 +102,7 @@ function wiringOf(source: string): Wiring {
     loggerBinding: null,
     hostsBinding: null,
     engine: null,
+    powerDeps: null,
     loads: 0,
   };
   const calledAs = (node: ts.CallExpression, name: string) =>
@@ -101,20 +119,13 @@ function wiringOf(source: string): Wiring {
       const call = node.initializer;
       if (ts.isCallExpression(call) && calledAs(call, 'scoringLinkPortFor')) {
         result.scoringLink = call.arguments[0]?.getText(file) ?? null;
-        const deps = call.arguments[1];
-        result.scoringLinkDeps =
-          deps !== undefined && ts.isObjectLiteralExpression(deps)
-            ? deps.properties
-                .map((property) =>
-                  ts.isShorthandPropertyAssignment(property)
-                    ? `${property.name.text}:${property.name.text}`
-                    : ts.isPropertyAssignment(property)
-                      ? `${property.name.getText(file)}:${property.initializer.getText(file)}`
-                      : '?',
-                )
-                .sort()
-                .join(', ')
-            : null;
+        result.scoringLinkDeps = depsOf(call.arguments[1], file);
+      }
+    }
+    if (ts.isPropertyAssignment(node) && node.name.getText(file) === 'power') {
+      const call = node.initializer;
+      if (ts.isCallExpression(call) && calledAs(call, 'createNativePower')) {
+        result.powerDeps = depsOf(call.arguments[0], file);
       }
     }
     if (
@@ -147,7 +158,11 @@ function wiringOf(source: string): Wiring {
 const PHOTO = 'photoPortFor(native)';
 const SCORING = 'scoringLinkPortFor(native, { logger, hosts })';
 const LOAD = 'loadCaptureEngineNative()';
-const SKELETON = (photo: string, scoring: string, load: string) => `
+const POWER =
+  'createNativePower({ native, os: Platform.OS, openSettings: () => Linking.openSettings(), logger })';
+const POWER_DEPS =
+  'logger:logger, native:native, openSettings:() => Linking.openSettings(), os:Platform.OS';
+const SKELETON = (photo: string, scoring: string, load: string, power = POWER) => `
   export function createNativePorts() {
     // photo: photoPortFor(null),
     // scoringLink: scoringLinkPortFor(null, { logger, hosts }),
@@ -155,10 +170,10 @@ const SKELETON = (photo: string, scoring: string, load: string) => `
     const logger = createLogger({ record, now: Date.now });
     const hosts = seaznHosts(env);
     const wired = chooseEngine({ dev: true, native });
-    return { engine: wired.engine, photo: ${photo}, scoringLink: ${scoring} };
+    return { engine: wired.engine, photo: ${photo}, scoringLink: ${scoring}, power: ${power} };
   }`;
 
-describe('createNativePorts hands the module it loaded once to the engine, to the photo port and to the scoring-link port', () => {
+describe('createNativePorts hands the module it loaded once to the engine, the photo port, the scoring-link port and the battery port', () => {
   it('reads the wiring from a source, and tells a null, a second load, a stray name and a swapped dependency apart', () => {
     expect(wiringOf(SKELETON(PHOTO, SCORING, LOAD))).toEqual({
       photo: 'native',
@@ -167,8 +182,15 @@ describe('createNativePorts hands the module it loaded once to the engine, to th
       loggerBinding: 'createLogger({ record, now: Date.now })',
       hostsBinding: 'seaznHosts(env)',
       engine: 'native',
+      powerDeps: POWER_DEPS,
       loads: 1,
     });
+    // R5: the battery port without the module, or not through createNativePower, is not the wiring.
+    expect(
+      wiringOf(SKELETON(PHOTO, SCORING, LOAD, POWER.replace('{ native,', '{ native: null,')))
+        .powerDeps,
+    ).toContain('native:null');
+    expect(wiringOf(SKELETON(PHOTO, SCORING, LOAD, 'createFakePower()')).powerDeps).toBeNull();
     expect(wiringOf(SKELETON('photoPortFor(null)', SCORING, LOAD)).photo).toBe('null');
     expect(wiringOf(SKELETON('createPhotoPort(native)', SCORING, LOAD)).photo).toBeNull();
     expect(
@@ -193,7 +215,7 @@ describe('createNativePorts hands the module it loaded once to the engine, to th
     expect(wiringOf(SKELETON(PHOTO, SCORING, 'null')).loads).toBe(0);
   });
 
-  it('the real createNativePorts: photoPortFor(native), scoringLinkPortFor(native, { hosts, logger }), chooseEngine({ native }), one load', () => {
+  it('the real createNativePorts: photoPortFor(native), scoringLinkPortFor(native, { hosts, logger }), createNativePower({ native, … }), chooseEngine({ native }), one load', () => {
     const source = readFileSync(join(__dirname, 'nativePorts.ts'), 'utf8');
     expect(wiringOf(source)).toEqual({
       photo: 'native',
@@ -202,6 +224,7 @@ describe('createNativePorts hands the module it loaded once to the engine, to th
       loggerBinding: expect.stringMatching(/^createLogger\(/),
       hostsBinding: 'seaznHosts(env)',
       engine: 'native',
+      powerDeps: POWER_DEPS,
       loads: 1,
     });
   });

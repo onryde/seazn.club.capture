@@ -1,7 +1,7 @@
 import Constants from 'expo-constants';
 import { getLocales } from 'expo-localization';
 import { router } from 'expo-router';
-import { Platform } from 'react-native';
+import { Linking, Platform } from 'react-native';
 import { loadCaptureEngineNative } from '@/engine/nativeModule';
 import { chooseCodePort } from '@/hooks/codePortWiring';
 import { chooseEngine, routedRecordFor } from '@/hooks/engineWiring';
@@ -20,6 +20,7 @@ import { createNativeBack } from '@/services/native/nativeBack';
 import { createNativeForeground } from '@/services/native/nativeForeground';
 import { createNativeMotion } from '@/services/native/nativeMotion';
 import { createNativeOrientationLock } from '@/services/native/nativeOrientationLock';
+import { createNativePower } from '@/services/native/nativePower';
 import { createNativeScreen } from '@/services/native/nativeScreen';
 import { createNativeShare } from '@/services/native/nativeShare';
 import { createNativeSplash } from '@/services/native/nativeSplash';
@@ -91,6 +92,12 @@ export function createNativePorts(): Ports {
     // fails with no camera open: the line says so, truthfully. There is no second gate to keep.
     photo: photoPortFor(native),
     scoringLink: scoringLinkPortFor(native, { logger, hosts }),
+    power: createNativePower({
+      native,
+      os: Platform.OS,
+      openSettings: () => Linking.openSettings(),
+      logger,
+    }),
     clock,
     hosts,
     deviceLanguages: getLocales().map((locale) => locale.languageCode),
