@@ -174,6 +174,7 @@ describe('the record contract’s pairing windows (A2, Q7)', () => {
 
   it('closes only at kinds the allow-list lists', () => {
     const kinds = Object.keys(list.kinds);
+    expect(closing().length).toBeGreaterThan(0);
     expect(closing().filter((kind) => !kinds.includes(kind))).toEqual([]);
   });
 

@@ -11,7 +11,7 @@ writes where the pairing goes on (every fatal end writes `ended {reason: "fatal-
 it, `55ac34d5d` (web #943, which serves the record route) changed only the record contract and its fixtures: it lists
 the five keys the app wrote after capture 7ea8f63 (`bytes`, `failures`, `retryMs`, `pickAspect16x9`, `pickSource`),
 drops a bad line where it refused the body (owner ruling RL: 422 is now only a body the server cannot read as lines),
-closes a pairing window at a line the schema refuses too, adds eight fixtures and rewords `valid-invalid.json`. Before
+closes a pairing window at `pair-refused`, `engine-error` and `reset` and at a line the schema refuses too, adds eight fixtures and rewords `valid-invalid.json`. Before
 that, `53f28ebfc` (web #941) added the record contract and its 52 fixtures, and changed no other file. The first
 vendoring, on 2026-10-09, was at web `8afdd8b42`; the second, the same day, at `5a02cc4a5`, which changed the
 descriptor schema's prose and fifteen fixtures' RTMPS host to `live.cloudflare.com`, and no verdict.
