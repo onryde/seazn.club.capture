@@ -17,6 +17,55 @@ class ForgetTest {
     assertEquals(1, rig.sent<Command.Release>().size)
     assertEquals(name, rig.sent<Command.WriteForgotten>().single().name)
     assertEquals(UnpairReason.FORGOTTEN, rig.records("unpaired").last().field("reason"))
+    assertEquals(false, rig.records("unpaired").last().field("wasLive"))
+  }
+
+  /**
+   * Batch 4 review M1, the controller's ruling (2026-10-12): the operator's own start in flight is not waiting. The
+   * shade and the screen can be touched at once, and a start the server accepts after an unpair leaves a broadcast
+   * with no phone, so a Forget then is ignored, and recorded, as in any other phase that is not waiting.
+   */
+  @Test
+  fun `Forget while the operator's start is in flight is ignored - no release, no marker`() {
+    val rig = MachineRig().paired()
+    rig.hear("waiting")
+    rig.ready()
+    rig.send(Input.Start)
+    assertEquals(1, rig.sent<Command.PostStart>().size)
+    val commands = rig.send(Input.Forget)
+    assertIs<Phase.Paired>(rig.phase)
+    assertEquals(listOf("forget", "paired"), rig.records("intent-ignored").last().let { listOf(it.field("intent"), it.field("phase")) })
+    assertTrue(commands.none { it == Command.Release || it is Command.WriteForgotten }, "$commands")
+  }
+
+  /** One case per state the snapshot can show other than paired, reached as MachineRig reaches it. */
+  private val notWaiting: List<Pair<String, () -> MachineRig>> =
+    listOf(
+      "Idle" to { MachineRig() },
+      "Pairing" to { MachineRig().also { it.permissions = null }.also { it.send(Input.Pair(it.request, Configs.PHONE, stopped = null)) } },
+      "Arming" to { MachineRig().paired().also { it.codes = null }.also { it.hear("go-live", sid = "sess_42", startedBy = "organiser") } },
+      "Armed" to { MachineRig().armed() },
+      "Connecting" to { MachineRig().armed().also { it.ready() } },
+      "Publishing" to { MachineRig().live() },
+      "Degraded" to { MachineRig().live().also { it.send(Input.CameraContended) } },
+      "Reconnecting" to { MachineRig().live().also { it.send(Input.Dropped(it.attempt!!, DropReason.ENDPOINT_CLOSED, "cut")) } },
+      "Ended" to { MachineRig().live().also { it.send(Input.Stop) } },
+    )
+
+  /** Batch 4 review M6: a sweep, not a sample. Spec §9 names arming first: a remote Go live lands there. */
+  @Test
+  fun `Forget in every state but paired is ignored and recorded - nothing released, written or stopped`() {
+    for ((state, reach) in notWaiting) {
+      val rig = reach()
+      assertEquals(state, rig.state::class.simpleName, "reached $state")
+      val before = rig.phase
+      val commands = rig.send(Input.Forget)
+      assertEquals(before, rig.phase, state)
+      val ignored = commands.filterIsInstance<Command.Record>().map { it.entry }
+      assertEquals(listOf(listOf<Any?>("intent-ignored", "forget", before.name)), ignored.map { listOf(it.kind, it.field("intent"), it.field("phase")) }, state)
+      assertTrue(commands.none { it == Command.Release || it is Command.WriteForgotten || it == Command.StopBroadcast }, "$state: $commands")
+    }
+    assertEquals(9, notWaiting.size)
   }
 
   @Test

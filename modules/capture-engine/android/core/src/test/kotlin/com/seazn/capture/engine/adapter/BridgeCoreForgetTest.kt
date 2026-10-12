@@ -45,16 +45,22 @@ class BridgeCoreForgetTest {
     assertEquals(true, store.files.containsKey(PairingStore.FORGOTTEN))
   }
 
+  /**
+   * Batch 4 review I1: the reborn core names the very pairing the first one left, its tokenTag included. JS forgets a
+   * saved code only when code, slot and tag all match (`sameCode`), so a tag that does not round-trip keeps the code.
+   */
   @Test
   fun `a new core over the same store starts idle, unpaired forgotten (process death)`() {
-    pairedCore().forget()
+    val first = pairedCore()
+    first.forget()
     scheduler.advanceBy(0)
+    val left = unpaired(first)
+    assertEquals(listOf<Any?>("forgotten", PairWire.CODE, 1.0), listOf(left?.get("reason"), left?.get("code"), left?.get("slot")))
+    assertEquals(true, (left?.get("tokenTag") as? String)?.isNotEmpty())
     BridgeCore.resetShared()
     val reborn = build()
     assertEquals("idle", (reborn.current()["state"] as Map<*, *>)["kind"])
-    assertEquals("forgotten", unpaired(reborn)?.get("reason"))
-    assertEquals(PairWire.CODE, unpaired(reborn)?.get("code"))
-    assertEquals(1.0, unpaired(reborn)?.get("slot"))
+    assertEquals(left, unpaired(reborn))
   }
 
   @Test
@@ -66,6 +72,23 @@ class BridgeCoreForgetTest {
     core.send(PairWire.valid())
     scheduler.advanceBy(0)
     assertEquals(false, store.files.containsKey(PairingStore.FORGOTTEN))
+  }
+
+  /** Batch 4 review M7: a marker left on disk would forget the next pairing's code at a cold start; never silent. */
+  @Test
+  fun `a refused marker clear at the next pair is recorded, naming the marker, and the pair goes ahead`() {
+    pairedCore().forget()
+    scheduler.advanceBy(0)
+    val platform = RecordingPlatform()
+    val core = build(platform)
+    core.start()
+    core.report(Input.Network(true))
+    store.refuseWrites = true
+    core.send(PairWire.valid())
+    scheduler.advanceBy(0)
+    assertEquals("paired", (core.current()["state"] as Map<*, *>)["kind"])
+    val failed = lines(platform, "store-failed").single()
+    assertEquals(listOf("delete", PairingStore.FORGOTTEN), listOf(failed.getString("op"), failed.getString("key")))
   }
 
   @Test

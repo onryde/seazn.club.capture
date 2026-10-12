@@ -65,12 +65,19 @@ internal object Pairings {
    * waiting) holds the notification's action; any other phase ignores a late tap, recorded. It leaves as an unasked
    * unpair does, with its reason, so JS forgets the saved code from the snapshot, and the marker is written for a
    * process death before JS hears it.
+   *
+   * Batch 4 review M1, the controller's ruling (2026-10-12): the operator's own start in flight is not waiting either.
+   * The shade and the screen can be touched at once, and a start the server accepts after an unpair is a broadcast
+   * with no phone, so that tap is ignored too. Home's Forget (`unpair`) is unchanged: it cannot be reached while
+   * holding Go live.
    */
   fun forget(phase: Phase): Step {
-    if (phase !is Phase.Paired) return SessionMachine.ignored(phase, "forget")
+    if (phase !is Phase.Paired || phase.pairing.starts.inFlightId != null) return SessionMachine.ignored(phase, "forget")
     val pairing = phase.pairing
     val idle = Phase.Idle(phase.ids, phase.networkValidated, phase.micSilenced, Unpaired(UnpairReason.FORGOTTEN, pairing.name))
-    val commands = listOf(Command.Release, Command.WriteForgotten(pairing.name), line("unpaired", "reason" to UnpairReason.FORGOTTEN, "wasLive" to false))
+    // The one definition, as every unpair line reads it; never true here, as Paired holds no broadcast.
+    val wasLive = "wasLive" to (phase.firstLiveEpochMs != null)
+    val commands = listOf(Command.Release, Command.WriteForgotten(pairing.name), line("unpaired", "reason" to UnpairReason.FORGOTTEN, wasLive))
     return Step(idle, commands, leftLog = pairing.beatLog)
   }
 
@@ -338,9 +345,11 @@ internal object Verdicts {
   /**
    * `POST start`'s answer. The one in flight decides in Paired. Any other is late: a broadcast armed
    * first and retired it (I1), so it never moves the engine and never shows a refusal; it is recorded.
+   * One that reaches Idle, the pairing gone while it was in flight, is late too, and recorded, never dropped in silence
+   * (Batch 4 review M1, the controller's ruling, 2026-10-12): a start the server accepted then has no phone.
    */
   fun started(phase: Phase, input: Input.StartAnswered, now: Now): Step {
-    val pairing = phase.pairing ?: return Step(phase)
+    val pairing = phase.pairing ?: return Step(phase, listOf(line("start-answered", "answer" to input.answer::class.simpleName, "late" to true)))
     if (input.answer == StartAnswer.CodeEnded) return codeEnded(phase, input.requestId, now)
     if (pairing.starts.inFlightId != input.requestId) {
       return Step(phase, listOf(line("start-answered", "answer" to input.answer::class.simpleName, "late" to true)))
