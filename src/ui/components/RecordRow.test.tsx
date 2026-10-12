@@ -102,6 +102,42 @@ describe('the record row (N33, R3)', () => {
     expect(upload.calls).toBe(2);
   });
 
+  // Fix round 1 of Batch 11 (the controller's ruling 8): a failure another try cannot change (401, 404, 413, a contract
+  // mismatch) reads "Can't send this record" and why, with no "try again"; one it can (the network, a timeout, 429, a
+  // 5xx) keeps "try again", with no reason. The classes are the ruling's; the words are the dictionary's.
+  const { t: en } = createTranslator('en');
+  it.each([
+    ['the network or a timeout', 'failed', null, 'record.sendFailed', null],
+    ['a 5xx', 'failed', 503, 'record.sendFailed', null],
+    ['429', 'rate-limited', 429, 'record.sendFailed', null],
+    ['401', 'unauthorised', 401, 'record.cantSend', 'record.cant.ended'],
+    ['404', 'not-found', 404, 'record.cantSend', 'record.cant.notFound'],
+    ['413', 'too-large', 413, 'record.cantSend', 'record.cant.tooLarge'],
+    ['422', 'invalid', 422, 'record.cantSend', 'record.cant.mismatch'],
+    ['a 201 off the contract', 'unreadable', 201, 'record.cantSend', 'record.cant.mismatch'],
+    ['a record refused here', 'refused-local', null, 'record.cantSend', 'record.cant.mismatch'],
+  ] as const)('%s reads its own words', async (_name, result, status, label, reason) => {
+    const { upload } = await withCode();
+    upload.answer({ result, ref: null, status, bytes: 1 });
+    fireEvent.click(sendButton());
+    await settle();
+    const button = sendButton(en(label));
+    expect(button.getAttribute('aria-disabled')).toBeNull();
+    const reasons = [...screen.getByTestId('record-row').children].slice(2);
+    expect(reasons.map((line) => line.textContent)).toEqual(reason === null ? [] : [en(reason)]);
+    if (reason !== null) expect(en(label)).not.toMatch(/try again/i);
+  });
+
+  it('a permanent failure reads in French, its reason too (another language)', async () => {
+    const { upload } = await withCode('fr');
+    const { t } = createTranslator('fr');
+    upload.answer({ result: 'too-large', ref: null, status: 413, bytes: 1 });
+    fireEvent.click(sendButton(t('record.send')));
+    await settle();
+    expect(sendButton(t('record.cantSend'))).toBeTruthy();
+    expect(screen.getByText(t('record.cant.tooLarge'))).toBeTruthy();
+  });
+
   // Minor 7 of the Batch 6 review: the keystore's first answer has not come, so the row says nothing yet.
   it('with a code, draws no reason line before the first read answers', () => {
     renderWithPorts(<RecordRow send />, {
@@ -133,6 +169,11 @@ describe('the record row (N33, R3)', () => {
       'record.send',
       'record.sending',
       'record.sendFailed',
+      'record.cantSend',
+      'record.cant.ended',
+      'record.cant.notFound',
+      'record.cant.tooLarge',
+      'record.cant.mismatch',
       'record.needsCode',
       'record.onAir',
     ] as const)

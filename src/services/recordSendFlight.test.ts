@@ -74,9 +74,46 @@ describe('the record send flight (R3)', () => {
     vi.spyOn(r.upload, 'send').mockRejectedValueOnce(new Error('broken port'));
     r.flight.send();
     await settle();
-    expect(r.flight.getSnapshot().state).toEqual({ kind: 'failed' });
+    expect(r.flight.getSnapshot().state).toEqual({ kind: 'failed', why: 'retry' });
     r.flight.send();
     await settle();
+    expect(r.flight.getSnapshot().state).toEqual({ kind: 'sent', ref: 'R-TEST' });
+  });
+});
+
+// Fix round 1 of Batch 11 (the controller's ruling 8): a failure another try cannot change (401, 404, 413, a contract
+// mismatch) says so, and why; one it can (the network, a timeout, 429, a 5xx) keeps "try again". The classes are the
+// ruling's, typed here.
+describe('a failure says whether another try can help', () => {
+  it.each([
+    ['failed', null, 'retry'],
+    ['failed', 503, 'retry'],
+    ['rate-limited', 429, 'retry'],
+    ['unauthorised', 401, 'ended'],
+    ['not-found', 404, 'not-found'],
+    ['too-large', 413, 'too-large'],
+    ['too-large', null, 'too-large'],
+    ['invalid', 422, 'mismatch'],
+    ['unreadable', 201, 'mismatch'],
+    ['refused-local', null, 'mismatch'],
+  ] as const)('%s (status %s) is failed, why: %s', async (result, status, why) => {
+    const r = rig();
+    r.upload.answer({ result, ref: null, status, bytes: 1 });
+    r.flight.send();
+    await settle();
+    expect(r.flight.getSnapshot().state).toEqual({ kind: 'failed', why });
+  });
+
+  it('a permanent failure can still be tried again: the next send goes', async () => {
+    const r = rig();
+    r.upload.answer({ result: 'not-found', ref: null, status: 404, bytes: 1 });
+    r.flight.send();
+    await settle();
+    // The endpoint shipped in between.
+    r.upload.answer({ result: 'sent', ref: 'R-TEST', status: 201, bytes: 1 });
+    r.flight.send();
+    await settle();
+    expect(r.upload.calls).toBe(2);
     expect(r.flight.getSnapshot().state).toEqual({ kind: 'sent', ref: 'R-TEST' });
   });
 });
@@ -128,7 +165,7 @@ describe('an answer belongs to the code it was sent under (R1-1)', () => {
     r.upload.answer({ result: 'failed', ref: null, status: 500, bytes: 1 });
     r.flight.send();
     await settle();
-    expect(r.flight.getSnapshot().state).toEqual({ kind: 'failed' });
+    expect(r.flight.getSnapshot().state).toEqual({ kind: 'failed', why: 'retry' });
     r.credentials.give(OTHER);
     r.flight.refresh();
     await settle();

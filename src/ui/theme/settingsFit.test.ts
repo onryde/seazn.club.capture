@@ -809,6 +809,7 @@ describe('the record row’s buttons fit the settings column, in every language 
         t('record.send'),
         t('record.sending'),
         t('record.sendFailed'),
+        t('record.cantSend'),
         t('record.sent', { ref: 'R-7K2Q' }),
         t('record.sent', { ref: WORST_REF }),
       ];
@@ -827,12 +828,20 @@ describe('the record row’s buttons fit the settings column, in every language 
     });
   });
 
-  // Each reason is one line under the buttons, at the caption size: no code yet, and on air (Minor 8 of the Batch 6
-  // review).
+  // Each reason is one line under the buttons, at the caption size: no code yet, on air (Minor 8 of the Batch 6
+  // review), and why a send cannot go (fix round 1 of Batch 11, the controller's ruling 8).
+  const REASONS = [
+    'record.needsCode',
+    'record.onAir',
+    'record.cant.ended',
+    'record.cant.notFound',
+    'record.cant.tooLarge',
+    'record.cant.mismatch',
+  ] as const;
   describe.each(RECORD_WIDTHS)('%s', (where, width) => {
     it.each(LANGS)('%s: each of the row’s reasons is one line', (lang) => {
       const { t } = createTranslator(lang);
-      for (const key of ['record.needsCode', 'record.onAir'] as const) {
+      for (const key of REASONS) {
         const reason = t(key);
         expect(
           [...reason].filter((char) => !medium.has(char.codePointAt(0) ?? 0)),
@@ -847,8 +856,8 @@ describe('the record row’s buttons fit the settings column, in every language 
     });
   });
 
-  it('checked seven labels and two reasons at both widths in every language (anti-vacuity)', () => {
-    expect(recordLabelsChecked).toBe(2 * 4 * 7);
-    expect(recordReasonsChecked).toBe(2 * 4 * 2);
+  it('checked eight labels and six reasons at both widths in every language (anti-vacuity)', () => {
+    expect(recordLabelsChecked).toBe(2 * 4 * 8);
+    expect(recordReasonsChecked).toBe(2 * 4 * 6);
   });
 });

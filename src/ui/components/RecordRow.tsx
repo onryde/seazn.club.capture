@@ -2,7 +2,8 @@ import { memo } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { useSessionRecord } from '@/hooks/useDiagnostics';
 import { useT } from '@/hooks/useLanguage';
-import { useRecordSend, type SendState } from '@/hooks/useRecordSend';
+import { useRecordSend, type SendFailure, type SendState } from '@/hooks/useRecordSend';
+import type { MessageKey } from '@/i18n/messages';
 import type { Translator } from '@/i18n/translate';
 import { GhostButton } from '@/ui/components/GhostButton';
 import { Text } from '@/ui/components/Text';
@@ -37,7 +38,7 @@ export const RecordRow = memo(function RecordRow({ send }: { send: boolean }) {
 const SendRecord = memo(function SendRecord() {
   const { t } = useT();
   const { state, available, held, send } = useRecordSend();
-  const reason = held ? 'record.onAir' : available === false ? 'record.needsCode' : null;
+  const reason = held ? 'record.onAir' : available === false ? 'record.needsCode' : whyNot(state);
   return (
     <>
       <GhostButton
@@ -61,8 +62,20 @@ function sendLabel(state: SendState, t: Translator['t']): string {
     case 'sent':
       return t('record.sent', { ref: state.ref });
     case 'failed':
-      return t('record.sendFailed');
+      return t(state.why === 'retry' ? 'record.sendFailed' : 'record.cantSend');
   }
+}
+
+/** Why a send cannot go, under a failure another try cannot change (fix round 1 of Batch 11, ruling 8); else none. */
+const CANT: Readonly<Record<Exclude<SendFailure, 'retry'>, MessageKey>> = {
+  ended: 'record.cant.ended',
+  'not-found': 'record.cant.notFound',
+  'too-large': 'record.cant.tooLarge',
+  mismatch: 'record.cant.mismatch',
+};
+
+function whyNot(state: SendState): MessageKey | null {
+  return state.kind === 'failed' && state.why !== 'retry' ? CANT[state.why] : null;
 }
 
 const styles = StyleSheet.create({

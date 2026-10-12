@@ -120,11 +120,16 @@ describe('Send record to Seazn (R3, R9)', () => {
     });
   });
 
+  // Fix round 1 of Batch 11 (the controller's ruling 8): a refusal that another try cannot change has a word of its own
+  // (401, 404, 413, 422); 429, a 5xx and anything off the contract are `failed`, which another try can change.
   it.each([
     [401, 'unauthorised'],
+    [404, 'not-found'],
     [413, 'too-large'],
+    [422, 'invalid'],
     [429, 'rate-limited'],
     [500, 'failed'],
+    [503, 'failed'],
     [200, 'failed'],
   ] as const)('answers %i as %s, without reading its body', async (status, result) => {
     const json = vi.fn(async () => ({ ref: 'R-1' }));
@@ -144,21 +149,24 @@ describe('Send record to Seazn (R3, R9)', () => {
     ['a ref longer than a short reference', { ref: 'R-'.padEnd(17, '7') }],
     ['a ref with a space', { ref: 'R 7K2Q' }],
     ['a body that is not an object', 'R-7K2Q'],
-  ])('a 201 with %s is failed, with its status', async (_why, body) => {
+  ])('a 201 with %s is unreadable, with its status', async (_why, body) => {
     const p = port(answered(201, body));
     expect(await p.upload.send(LINES, credential)).toMatchObject({
-      result: 'failed',
+      result: 'unreadable',
       ref: null,
       status: 201,
     });
   });
 
-  it('a 201 whose body is not JSON is failed, with its status', async () => {
+  it('a 201 whose body is not JSON is unreadable, with its status', async () => {
     const p = port(async () => ({
       status: 201,
       json: () => Promise.reject(new SyntaxError('Unexpected token')),
     }));
-    expect(await p.upload.send(LINES, credential)).toMatchObject({ result: 'failed', status: 201 });
+    expect(await p.upload.send(LINES, credential)).toMatchObject({
+      result: 'unreadable',
+      status: 201,
+    });
   });
 
   it('a network failure is failed, never thrown, and its error is never recorded', async () => {
@@ -577,13 +585,13 @@ describe('the answers, from the contract’s fixtures', () => {
         });
         sent += 1;
       } else {
-        expect(outcome).toMatchObject({ result: 'failed', ref: null, status: 201 });
+        expect(outcome).toMatchObject({ result: 'unreadable', ref: null, status: 201 });
         failed += 1;
       }
     },
   );
 
-  it('sent five (every dropped count ignored) and failed one, the ambiguous ref (anti-vacuity)', () => {
+  it('sent five (every dropped count ignored) and could not read one, the ambiguous ref (anti-vacuity)', () => {
     expect([sent, failed]).toEqual([5, 1]);
   });
 
@@ -612,14 +620,14 @@ describe('the answers, from the contract’s fixtures', () => {
     );
   });
 
-  // The brief's three (401, 413 too_large, 429); every other refusal is one failure. The status decides, and the
-  // refusal's body is never read: what the operator sees is one line for every failure.
+  // The status decides, and the refusal's body is never read. Each refusal another try cannot change has its own word
+  // (fix round 1 of Batch 11, the controller's ruling 8); 503 unavailable is `failed`, which another try can change.
   const RESULT: Readonly<Record<string, string>> = {
     code_ended: 'unauthorised',
+    not_a_stream_code: 'not-found',
     too_large: 'too-large',
+    invalid: 'invalid',
     rate_limited: 'rate-limited',
-    not_a_stream_code: 'failed',
-    invalid: 'failed',
     unavailable: 'failed',
   };
   const REFUSALS = FIXTURE_NAMES.filter((name) => name.startsWith('valid-') || name === 'tampered');

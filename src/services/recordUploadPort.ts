@@ -25,8 +25,22 @@ type RecordUploadHeaders = {
 };
 type RecordUploadAnswer = { readonly ref: string };
 
+/**
+ * What one send came to. Fix round 1 of Batch 11 (the controller's ruling 8): each refusal another try cannot change
+ * has its own word (`unauthorised` 401, `not-found` 404, `too-large` 413 or over the limit here, `invalid` 422,
+ * `unreadable` a 201 off the contract, `refused-local` a record this port will not send); `rate-limited` (429) and
+ * `failed` (the network, the 15 s bound, a 5xx, any other status) are the ones another try can change.
+ */
 export type RecordSendResult =
-  'sent' | 'refused-local' | 'unauthorised' | 'too-large' | 'rate-limited' | 'failed';
+  | 'sent'
+  | 'refused-local'
+  | 'unauthorised'
+  | 'not-found'
+  | 'too-large'
+  | 'invalid'
+  | 'unreadable'
+  | 'rate-limited'
+  | 'failed';
 
 export type RecordSendOutcome = {
   readonly result: RecordSendResult;
@@ -54,7 +68,9 @@ export const RECORD_TIMEOUT_MS = 15_000;
 
 const STATUS: Readonly<Record<number, RecordSendResult>> = {
   401: 'unauthorised',
+  404: 'not-found',
   413: 'too-large',
+  422: 'invalid',
   429: 'rate-limited',
 };
 
@@ -150,7 +166,7 @@ export function createRecordUploadPort({
         if (bytes > RECORD_MAX_BYTES) return said('too-large', null, bytes);
         const { status, ref } = await exchange(fetch, credential, body);
         if (status !== 201) return said(STATUS[status] ?? 'failed', status, bytes);
-        return ref === null ? said('failed', status, bytes) : said('sent', status, bytes, ref);
+        return ref === null ? said('unreadable', status, bytes) : said('sent', status, bytes, ref);
       } catch {
         return said('failed', null, bytes);
       }

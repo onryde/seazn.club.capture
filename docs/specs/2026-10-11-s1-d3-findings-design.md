@@ -220,7 +220,15 @@ Mutate the rejoin marker once and watch a test fail.
   - _Sending…_;
   - _Sent · ref R-7K2Q_, a short reference the server returns, for the operator
     to read to the organiser;
-  - _Couldn't send — try again_.
+  - _Couldn't send — try again_, for a failure another try can change: the
+    network, the 15 s bound, `429` or a `5xx`;
+  - _Can't send this record_, for one it cannot, with the one line why
+    (Batch 11 fix round 1, the controller's ruling 8): `401` "This stream code
+    has ended"; `404` "Seazn doesn't take records here"; `413`, or over the
+    limit before sending, "Too big to send — use Share record"; a contract
+    mismatch (`422`, a `201` with no readable ref, or a record the port will
+    not send) "Use Share record instead". The button stays enabled for both:
+    a code can come back, and an endpoint can ship.
   - With no credential, the button is disabled, with the one line "Scan a
     stream code first".
   - From Arming on, the button is disabled, with the one line "Send it after
@@ -251,8 +259,8 @@ Mutate the rejoin marker once and watch a test fail.
   `dropped` are never read), and 401, 413 and 429 read by their status. The
   button is built behind `FEATURES.recordSend`, the same shape as
   `viewerCheck`, and the switch is on (the owner's ruling, 2026-10-12): the
-  endpoint is deployed on staging, and a production build answers _Couldn't
-  send — try again_ until production has it.
+  endpoint is deployed on staging, and a production build answers _Can't send
+  this record_, "Seazn doesn't take records here", until production has it.
 
 ## 8. B8 — the battery row (R5, N27)
 

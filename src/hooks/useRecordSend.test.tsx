@@ -96,19 +96,21 @@ describe('Send record (R3)', () => {
   });
 
   it.each([
-    ['failed', 500],
-    ['unauthorised', 401],
-    ['too-large', 413],
-    ['rate-limited', 429],
-    ['refused-local', null],
+    ['failed', 500, 'retry'],
+    ['unauthorised', 401, 'ended'],
+    ['not-found', 404, 'not-found'],
+    ['too-large', 413, 'too-large'],
+    ['invalid', 422, 'mismatch'],
+    ['rate-limited', 429, 'retry'],
+    ['refused-local', null, 'mismatch'],
   ] as const)(
-    'a send answered %s says it failed, and can be tried again',
-    async (result, status) => {
+    'a send answered %s says it failed, and why, and can be tried again',
+    async (result, status, why) => {
       const hook = await mounted();
       hook.fakes.recordUpload.answer({ result, ref: null, status, bytes: 1 });
       await send(hook);
       await settle();
-      expect(hook.now().state).toEqual({ kind: 'failed' });
+      expect(hook.now().state).toEqual({ kind: 'failed', why });
       await send(hook);
       await settle();
       expect(hook.fakes.recordUpload.calls).toBe(2);
@@ -118,14 +120,14 @@ describe('Send record (R3)', () => {
   // The port pairs them (a 201 with a valid ref, and nothing else, is sent); the button reads both, so neither alone
   // can show a ref that is not there or call a refusal sent.
   it.each([
-    ['sent with no ref', { result: 'sent', ref: null }],
-    ['a refusal carrying a ref', { result: 'failed', ref: 'R-STRAY' }],
-  ] as const)('an answer of %s says it failed', async (_name, answer) => {
+    ['sent with no ref', { result: 'sent', ref: null }, 'mismatch'],
+    ['a refusal carrying a ref', { result: 'failed', ref: 'R-STRAY' }, 'retry'],
+  ] as const)('an answer of %s says it failed', async (_name, answer, why) => {
     const hook = await mounted();
     hook.fakes.recordUpload.answer({ ...answer, status: 201, bytes: 1 });
     await send(hook);
     await settle();
-    expect(hook.now().state).toEqual({ kind: 'failed' });
+    expect(hook.now().state).toEqual({ kind: 'failed', why });
   });
 
   // Preflight N13: the port promises never to reject; if it ever did, the button must not stay on Sending… for good.
@@ -134,7 +136,7 @@ describe('Send record (R3)', () => {
     vi.spyOn(hook.fakes.recordUpload, 'send').mockRejectedValueOnce(new Error('broken port'));
     await send(hook);
     await settle();
-    expect(hook.now().state).toEqual({ kind: 'failed' });
+    expect(hook.now().state).toEqual({ kind: 'failed', why: 'retry' });
     await send(hook);
     await settle();
     expect(hook.now().state).toEqual({ kind: 'sent', ref: 'R-TEST' });

@@ -1,4 +1,4 @@
-import type { RecordUploadPort } from '@/services/recordUploadPort';
+import type { RecordSendResult, RecordUploadPort } from '@/services/recordUploadPort';
 import type { SessionRecord } from '@/services/sessionRecord';
 import type { UploadCredentialStore } from '@/services/uploadCredentialStore';
 
@@ -10,7 +10,28 @@ export type SendState =
   | { readonly kind: 'idle' }
   | { readonly kind: 'sending' }
   | { readonly kind: 'sent'; readonly ref: string }
-  | { readonly kind: 'failed' };
+  | { readonly kind: 'failed'; readonly why: SendFailure };
+
+/**
+ * Fix round 1 of Batch 11 (the controller's ruling 8): `retry` is a failure another try can change (the network, a
+ * timeout, 429, a 5xx), and keeps "try again"; the rest are ones it cannot (401, 404, 413, a contract mismatch), each
+ * with its own reason. The button stays enabled for both: a code can come back to life, and an endpoint can ship.
+ */
+export type SendFailure = 'retry' | 'ended' | 'not-found' | 'too-large' | 'mismatch';
+
+/** Every result the port gives has a class, so a new word does not compile until it is given one. */
+const FAILURE_OF: Readonly<Record<RecordSendResult, SendFailure>> = {
+  // A `sent` with no ref is never the port's (it pairs them); the button cannot read one.
+  sent: 'mismatch',
+  'refused-local': 'mismatch',
+  unauthorised: 'ended',
+  'not-found': 'not-found',
+  'too-large': 'too-large',
+  invalid: 'mismatch',
+  unreadable: 'mismatch',
+  'rate-limited': 'retry',
+  failed: 'retry',
+};
 
 export type RecordSendView = {
   readonly state: SendState;
@@ -42,7 +63,8 @@ type Deps = {
 
 const IDLE: SendState = { kind: 'idle' };
 const SENDING: SendState = { kind: 'sending' };
-const FAILED: SendState = { kind: 'failed' };
+/** A send that threw: never the port's (it never rejects), so the class another try can change. */
+const FAILED: SendState = { kind: 'failed', why: 'retry' };
 /** The credential ran out between the read and the tap: nothing was sent. */
 const GONE = 'no-credential';
 
@@ -112,7 +134,7 @@ async function sendOnce(
     const next: SendState =
       outcome.result === 'sent' && outcome.ref !== null
         ? { kind: 'sent', ref: outcome.ref }
-        : FAILED;
+        : { kind: 'failed', why: FAILURE_OF[outcome.result] };
     return { next, codeUrl };
   } catch {
     return { next: FAILED, codeUrl };

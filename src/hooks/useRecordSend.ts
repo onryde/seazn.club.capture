@@ -4,7 +4,7 @@ import { useEngineSelector } from '@/hooks/useCaptureEngine';
 import { usePorts } from '@/hooks/usePorts';
 import type { RecordSendView } from '@/services/recordSendFlight';
 
-export type { SendState } from '@/services/recordSendFlight';
+export type { SendFailure, SendState } from '@/services/recordSendFlight';
 
 export type RecordSend = RecordSendView & {
   /**
