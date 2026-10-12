@@ -38,6 +38,20 @@ describe('Stream Settings from Home (R2, spec §6)', () => {
     expect(screen.getByRole('button', { name: 'App settings' })).toBeTruthy();
   });
 
+  // N33: a phone with nothing paired, a replaced one among them, can still hand its record over from here.
+  it('carries the record row, and Share record shares the whole record from it', async () => {
+    const app = await launchApp();
+    act(() => app.ports.navigation.go('homeSettings'));
+    await flush();
+    act(() => app.ports.logger.info('probe.line', { count: 1 }));
+    const lines = app.record.lines().length;
+    expect(lines).toBeGreaterThan(0);
+    fireEvent.click(screen.getByRole('button', { name: 'Share record' }));
+    await flush();
+    expect(app.share.shared).toHaveLength(1);
+    expect(app.share.shared[0]?.split('\n')).toHaveLength(lines);
+  });
+
   // Its way back is named for where it goes: Home (`stream.home`), never "Back to camera".
   it('goes back to Home by its button and by Back, never to the camera', async () => {
     const app = await launchApp();

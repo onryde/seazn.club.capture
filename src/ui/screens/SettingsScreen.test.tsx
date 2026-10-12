@@ -28,8 +28,8 @@ import { restoreWindowSize, setWindowSize } from '../../../test/windowSize';
 // D13: a landscape test turns the window; every test starts with jsdom's own 0 × 0.
 afterEach(restoreWindowSize);
 
-function renderSettings(options: Parameters<typeof renderWithPorts>[1] = {}) {
-  const view = renderWithPorts(<SettingsScreen />, options);
+function renderSettings(options: Parameters<typeof renderWithPorts>[1] = {}, recordSend?: boolean) {
+  const view = renderWithPorts(<SettingsScreen recordSend={recordSend} />, options);
   view.navigation.go('stream');
   view.navigation.go('streamSettings');
   return view;
@@ -296,16 +296,51 @@ describe('Settings (spec §4)', () => {
   });
 });
 
+// R3 of the D3 findings design (owner, 2026-10-11): Send record to Seazn is built behind `FEATURES.recordSend`, off
+// until the web's endpoint ships. The screen reads the switch as its prop's default (src/ui/features.ts), so these
+// tests render the hidden button by passing the switch on.
+describe('Send record to Seazn, behind its switch (R3, P10)', () => {
+  const sendButton = () => screen.queryByRole('button', { name: 'Send record to Seazn' });
+
+  it('is not drawn as shipped: the record row is Share record alone', () => {
+    renderSettings();
+    expect(sendButton()).toBeNull();
+    expect(screen.getByTestId('record-row').contains(shareButton())).toBe(true);
+  });
+
+  it('with the switch on, follows Share record in the record row, disabled with its reason while no code is held', async () => {
+    renderSettings({}, true);
+    await act(async () => undefined);
+    const send = sendButton();
+    expect(send).not.toBeNull();
+    expect(screen.getByTestId('record-row').contains(send)).toBe(true);
+    expect(shareButton().compareDocumentPosition(send as HTMLElement)).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    );
+    expect(send?.getAttribute('aria-disabled')).toBe('true');
+    expect(screen.getByText('Scan a stream code first')).toBeTruthy();
+  });
+
+  it('with the switch on, is in Stream Settings from Home too', () => {
+    renderWithPorts(<SettingsScreen from="home" recordSend />);
+    expect(sendButton()).not.toBeNull();
+  });
+});
+
 describe('Diagnostics inside Settings (spec §6, Q1)', () => {
-  it('is a card titled Diagnostics, with Share record in its header row', () => {
+  it('is a card titled Diagnostics, with no button in its header row', () => {
     renderSettings();
     const card = screen.getByTestId('diagnostics-card');
     const title = within(card).getByText('Diagnostics');
-    const header = title.parentElement;
-    expect(header).not.toBeNull();
+    const header = title.parentElement as HTMLElement;
     expect(header).not.toBe(card);
-    // The button sits in the header row inside its own shrinkable cell (the narrowest half lets it wrap).
-    expect(shareButton().parentElement?.parentElement).toBe(header);
+    expect(within(header).queryByRole('button')).toBeNull();
+  });
+
+  it('Share record is in the record row, outside the Diagnostics card (N33)', () => {
+    renderSettings();
+    expect(screen.getByTestId('diagnostics-card').contains(shareButton())).toBe(false);
+    expect(screen.getByTestId('record-row').contains(shareButton())).toBe(true);
   });
 
   it("lists Q1's nine rows as section | item | value, from the live report", () => {
@@ -497,25 +532,25 @@ describe('Diagnostics inside Settings (spec §6, Q1)', () => {
     await waitFor(() => expect(view.share.shared).toHaveLength(2));
   });
 
-  // Round 2: a failed share says so ON the Share button (it replaces the label), so the card is the same
-  // height as before and a card with 8 dp of slack is never pushed past its half.
+  // Round 2: a failed share says so ON the Share button (it replaces the label), so the record row keeps its shape
+  // and grows no line of its own.
   const FAILED = "Couldn't share. Retry";
   const failedButton = () => screen.getByRole('button', { name: FAILED });
-  const cardShape = () =>
-    [...screen.getByTestId('diagnostics-card').children].map((child) => child.tagName);
+  const rowShape = () =>
+    [...screen.getByTestId('record-row').children].map((child) => child.tagName);
 
   it('says when sharing could not open on the Share button, and records it', async () => {
     const view = renderSettings();
     view.share.refuse();
-    const before = cardShape();
+    const before = rowShape();
     expect(screen.queryByRole('button', { name: FAILED })).toBeNull();
     fireEvent.click(shareButton());
     expect(await screen.findByRole('button', { name: FAILED })).toBeTruthy();
     // The label was replaced, not added to: no Share record button, no line of its own, the same children.
     expect(screen.queryByRole('button', { name: 'Share record' })).toBeNull();
     expect(screen.getAllByText(FAILED)).toHaveLength(1);
-    expect(cardShape()).toEqual(before);
-    expect(before.length).toBeGreaterThan(2); // anti-vacuity: header, rows and the dev scenes
+    expect(rowShape()).toEqual(before);
+    expect(before).toHaveLength(1); // anti-vacuity: the Share button alone, the switch off as shipped
     expect(readRecord(view.record).map((entry) => entry.event)).toContain('record.share-failed');
     expect(readRecord(view.record).map((entry) => entry.event)).not.toContain('record.shared');
   });
@@ -612,8 +647,8 @@ describe('Diagnostics inside Settings (spec §6, Q1)', () => {
 
 describe('where Diagnostics sits (spec §6)', () => {
   // SP2 (F2): the licences were already under the power advice; this pins that order with the card after it.
-  // R5: the battery row sits right after the power paragraph it extends.
-  it('orders the switch hints, the side radios, the power paragraph, the battery row, the licences, then the card', () => {
+  // R5: the battery row sits right after the power paragraph it extends. N33: the record row follows it.
+  it('orders the switch hints, the side radios, the power paragraph, the battery row, the record row, the licences, then the card', () => {
     renderSettings();
     expect(layoutOf()).toBe('portrait'); // jsdom's 0 × 0 default (D10)
     const named: readonly (readonly [string, HTMLElement])[] = [
@@ -623,10 +658,11 @@ describe('where Diagnostics sits (spec §6)', () => {
       ['right radio', screen.getByRole('radio', { name: 'Right' })],
       ['power paragraph', screen.getByText(powerParagraph('en'))],
       ['battery row', screen.getByTestId('power-row')],
+      ['record row', screen.getByTestId('record-row')],
       ['licences', screen.getByRole('button', { name: 'Open-source licences' })],
       ['Diagnostics card', screen.getByTestId('diagnostics-card')],
     ];
-    expect(named).toHaveLength(8);
+    expect(named).toHaveLength(9);
     const misordered = named.slice(1).flatMap(([name, element], at) => {
       const before = named[at]?.[1];
       const follows = before?.compareDocumentPosition(element) === Node.DOCUMENT_POSITION_FOLLOWING;
@@ -697,9 +733,9 @@ describe('where Diagnostics sits (spec §6)', () => {
     for (const row of diagRows()) expect(getComputedStyle(row).minHeight).toBe('22px');
   });
 
-  // settingsFit.test.ts adds Back and the Share record row as 48 each: Back is the icon button's side and Share's is
-  // its button, whose 37 dp box is drawn inside it. This is the rendered witness.
-  it('in landscape, Back and the Share record row are 48 dp tall, the heights the fit test adds', () => {
+  // settingsFit.test.ts adds Back and the card's header row as 48 each: Back is the icon button's side, and the header
+  // keeps the 48 it had while Share record sat in it (N33 moved Share to the record row). This is the rendered witness.
+  it('in landscape, Back and the card’s header row are 48 dp tall, the heights the fit test adds', () => {
     setWindowSize(640, 360);
     renderSettings();
     const back = getComputedStyle(screen.getByRole('button', { name: 'Back to camera' }));
@@ -707,7 +743,9 @@ describe('where Diagnostics sits (spec §6)', () => {
       name: 'Back to camera',
       height: '48px',
     });
-    expect(getComputedStyle(shareButton()).minHeight).toBe('48px');
+    const header = within(screen.getByTestId('diagnostics-card')).getByText('Diagnostics')
+      .parentElement as HTMLElement;
+    expect(getComputedStyle(header).minHeight).toBe('48px');
   });
 
   // Owner, device pass 2026-10-08 (a 360 dp tall phone): the card ran past the screen's foot and its last rows
@@ -1147,16 +1185,13 @@ describe('the Diagnostics heading wears the board (a lime pulse, then the name i
     expect(headings.size).toBe(4);
   });
 
-  // The header is the pulse, the title and the Share button on one line. The title takes the line (the button is
-  // pushed to the right) and keeps its width; the button is the cell that gives when the half is narrow.
-  it('lets the Share button give way before the title does', () => {
+  // N33: the header is the pulse and the title on one line, centred in its 48 dp, with nothing else in it.
+  it('holds the pulse and the title alone, on one line', () => {
     renderSettings();
     const header = heading().parentElement as HTMLElement;
     expect(getComputedStyle(header).flexDirection).toBe('row');
-    expect(getComputedStyle(heading()).flexGrow).toBe('1');
-    expect(getComputedStyle(heading()).flexShrink).toBe('0');
-    const cell = shareButton().parentElement as HTMLElement;
-    expect(getComputedStyle(cell).flexShrink).toBe('1');
+    expect(getComputedStyle(header).alignItems).toBe('center');
+    expect(header.children).toHaveLength(2);
   });
 });
 
@@ -1166,13 +1201,11 @@ describe('the Diagnostics heading wears the board (a lime pulse, then the name i
 describe('Share record wears the board’s box inside a 48 dp button', () => {
   const box = () => within(shareButton()).getByTestId('ghost-box');
 
-  it('is a 48 dp button holding a 37 dp box, centred in the header row', () => {
+  it('is a 48 dp button holding a 37 dp box, at the start of the record row', () => {
     renderSettings();
     expect(getComputedStyle(shareButton()).minHeight).toBe('48px');
     expect(getComputedStyle(box()).minHeight).toBe('37px');
-    const header = (shareButton().parentElement as HTMLElement).parentElement as HTMLElement;
-    expect(getComputedStyle(header).alignItems).toBe('center');
-    expect(getComputedStyle(header).flexDirection).toBe('row');
+    expect(shareButton().parentElement).toBe(screen.getByTestId('record-row'));
   });
 
   it('sets its label at 12 dp, the board’s', () => {
@@ -1225,10 +1258,15 @@ describe('the rows wear the gaps and paddings the fit proofs add up', () => {
     }
   });
 
-  it('puts 8 dp between the Diagnostics pulse, its heading and Share record', () => {
+  it('puts 8 dp between the Diagnostics pulse and its heading', () => {
     renderSettings();
     const header = screen.getByText('Diagnostics').parentElement as HTMLElement;
     expect(gapOf(header)).toBe('8px');
+  });
+
+  it('puts 4 dp between the record row’s buttons', () => {
+    renderSettings({}, true);
+    expect(gapOf(screen.getByTestId('record-row'))).toBe('4px');
   });
 
   it('puts 6 dp between the card’s header and its rows', () => {

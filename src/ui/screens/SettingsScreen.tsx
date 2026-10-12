@@ -8,9 +8,11 @@ import type { ControlSide, StreamSettings } from '@/services/streamSettingsStore
 import { ChoiceRow } from '@/ui/components/ChoiceRow';
 import { DiagnosticsCard } from '@/ui/components/DiagnosticsCard';
 import { PowerRow } from '@/ui/components/PowerRow';
+import { RecordRow } from '@/ui/components/RecordRow';
 import { SubScreenHeader } from '@/ui/components/SubScreenHeader';
 import { Text } from '@/ui/components/Text';
 import { TextLink } from '@/ui/components/TextLink';
+import { FEATURES } from '@/ui/features';
 import { layoutMarker } from '@/ui/layoutMarker';
 import { colour, layout as metrics, plateInk, radius, space } from '@/ui/theme/tokens';
 
@@ -38,7 +40,8 @@ const LIBSRT_SOURCE = 'https://github.com/Haivision/srt';
  * the header), with the way back across the top. The root says
  * which in `data-layout`, the marker the tests read.
  *
- * R5: both variants carry the battery row after the power paragraph, on Android only.
+ * R5: both variants carry the battery row after the power paragraph, on Android only. N33: both carry the record row
+ * after it, Share record and, with its switch on, Send record to Seazn (R3).
  *
  * R2: opened from Home's Live Stream tile (`from="home"`) it is outside the mode: no Diagnostics card (nothing is
  * paired), no LIVE plate, and Back returns Home, named so. Landscape then draws one half, so the settings take the
@@ -48,9 +51,14 @@ const LIBSRT_SOURCE = 'https://github.com/Haivision/srt';
 type SettingsScreenProps = {
   /** R2: `home` is the screen opened from Home's Live Stream tile: no Diagnostics, no LIVE plate, Back to Home. */
   readonly from?: 'stream' | 'home';
+  /** R3: Send record to Seazn in the record row. `FEATURES.recordSend` (off); its tests pass it on. */
+  readonly recordSend?: boolean;
 };
 
-export function SettingsScreen({ from = 'stream' }: SettingsScreenProps) {
+export function SettingsScreen({
+  from = 'stream',
+  recordSend = FEATURES.recordSend,
+}: SettingsScreenProps) {
   const { t } = useT();
   const { width, height } = useWindowDimensions();
   const layout = screenLayout(width, height);
@@ -82,6 +90,7 @@ export function SettingsScreen({ from = 'stream' }: SettingsScreenProps) {
       <SideChoice side={settings.side} change={change} />
       <Text variant="metricUnit">{`${t('settings.power.label')} — ${t('settings.power.advice')}`}</Text>
       <PowerRow />
+      <RecordRow send={recordSend} />
       <Licences />
       {saveFailed ? <Text variant="status">{t('settings.saveFailed')}</Text> : null}
     </>

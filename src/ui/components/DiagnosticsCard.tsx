@@ -1,25 +1,23 @@
 import { memo } from 'react';
 import { StyleSheet, View } from 'react-native';
-import { useDiagnostics, useSessionRecord } from '@/hooks/useDiagnostics';
+import { useDiagnostics } from '@/hooks/useDiagnostics';
 import { useT } from '@/hooks/useLanguage';
 import { settingsDiagRows, type DiagRow } from '@/hooks/settingsDiagnostics';
 import { DevScenes } from '@/ui/components/DevScenes';
-import { GhostButton } from '@/ui/components/GhostButton';
 import { Glyph } from '@/ui/components/Glyph';
 import { Text } from '@/ui/components/Text';
 import { colour, layout, radius, space } from '@/ui/theme/tokens';
 
 /**
  * Spec §6's Diagnostics, as a card inside Settings: a header row, the board's lime pulse and the name in the
- * display face, with Share record (a share that fails says so in that button's label, so the card never grows a
- * line), then Q1's rows as section | item | value. It holds `useDiagnostics()` itself and takes no props, so a 1 Hz
- * report re-renders this card and not the switches around it, and a switch does not re-render the card (D32).
- * It is not a ScrollView: the screen decides whether it has room (Task 9).
+ * display face, then Q1's rows as section | item | value. Share record moved out of the header to the record row
+ * (`RecordRow`, N33), so Stream Settings from Home, which has no card, can share too. It holds `useDiagnostics()`
+ * itself and takes no props, so a 1 Hz report re-renders this card and not the switches around it, and a switch does
+ * not re-render the card (D32). It is not a ScrollView: the screen decides whether it has room (Task 9).
  */
 export const DiagnosticsCard = memo(function DiagnosticsCard() {
   const { t } = useT();
   const rows = settingsDiagRows(useDiagnostics());
-  const { share, shareFailed } = useSessionRecord();
   return (
     <View testID="diagnostics-card" style={styles.card}>
       <View style={styles.header}>
@@ -27,13 +25,6 @@ export const DiagnosticsCard = memo(function DiagnosticsCard() {
         <Text variant="diagTitle" style={styles.title}>
           {t('diag.title')}
         </Text>
-        <View style={styles.share}>
-          <GhostButton
-            label={t(shareFailed ? 'diag.shareFailed' : 'diag.share')}
-            onPress={share}
-            compact
-          />
-        </View>
       </View>
       <View>{rows.map(renderRow)}</View>
       <DevScenes />
@@ -90,13 +81,11 @@ const styles = StyleSheet.create({
     borderRadius: radius.card,
     overflow: 'hidden',
   },
-  // As tall as its tallest cell: Share record's button, 48 (the board's 37 dp box is drawn inside it).
-  header: { flexDirection: 'row', alignItems: 'center', gap: space.sm },
-  // The heading keeps its width and takes the line, so the Share button is pushed right; the button's cell is the
-  // one that gives when the half is narrow (a 320 dp phone: the longest failure message wraps to a second line inside
-  // the box, settingsFit.test.ts).
+  // 48 tall, the height it had while Share record's button sat in it (N33 moved Share to the record row), so the card
+  // keeps the 272 dp settingsFit.test.ts adds up and still fits its half at 640 × 360.
+  header: { flexDirection: 'row', alignItems: 'center', gap: space.sm, minHeight: layout.touch },
+  // The heading keeps its width and takes the line (settingsFit.test.ts proves it fits in four languages).
   title: { flexGrow: 1, flexShrink: 0 },
-  share: { flexShrink: 1 },
   row: {
     flexDirection: 'row',
     alignItems: 'center',
