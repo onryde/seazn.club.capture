@@ -109,8 +109,9 @@ object SessionMachine {
    * The operator's Stop (A3), only while a broadcast is held. From a broadcast that went live it ends the pairing
    * ([end], A8's final beat). Owner decision 1 (2026-10-05) supersedes A8's silence for one that never went live
    * (Arming, Armed, or Connecting before its first frame): the broadcast ends and the pairing stays Paired, so Go
-   * live can be tried again, and A17's record goes out on a beat at once ([neverLive]). A 401 heard while it was
-   * held ends the pairing with it, as before (the 401 deferral): its code is dead, so no beat could deliver.
+   * live can be tried again, and A17's record goes out on a beat at once ([neverLive]). A rejoin of a lapsed broadcast
+   * is not one of those, from its Arming on: it went live ([wentLive]; N29, P3). A 401 heard while it was held ends
+   * the pairing with it, as before (the 401 deferral): its code is dead, so no beat could deliver.
    */
   private fun stop(phase: Phase, now: Now): Step {
     val pairing = phase.pairing
@@ -262,8 +263,9 @@ internal object Transports {
 
   /**
    * A failed connect: counted or not by the fallback policy, then a retry [SessionMachine.RETRY_MS]
-   * later. A [drop] before the connect answered is judged by the policy's drop rule with nothing
-   * published: the far end closing counts (F-P5-2's collapse), a local stop does not (B6 review m5).
+   * later, or the rejoin's back-off ([retryAfterFailure], N29). A [drop] before the connect answered
+   * is judged by the policy's drop rule with nothing published: the far end closing counts (F-P5-2's
+   * collapse), a local stop does not (B6 review m5).
    */
   fun failed(phase: Phase.Connecting, failure: ConnectFailure, message: String?, now: Now, drop: DropReason? = null): Step {
     val session = phase.session
@@ -282,6 +284,19 @@ internal object Transports {
     line?.let(commands::add)
     val waiting = ConnectStep.Waiting(now.monoMs + retryMs)
     return Step(phase.copy(session = spaced, transport = decision.policy.current, step = waiting), commands)
+  }
+
+  /**
+   * N29, R10 (fix round 1, I3): the stall watchdog's rebuild of a rejoin that connected but never showed a frame waits
+   * its turn in the back-off, as a failed connect does, so no 5 s rebuild loop skips 2, 4, 8, 16 and 30 s. The attempt
+   * closes now. The next [Command.Connect] starts the pipeline afresh on the platform, as a [Command.Rebuild] would:
+   * `CaptureRun.reconnect` is that disconnect and connect. The code is asked again, as on every reconnect (spec §1).
+   */
+  fun rejoinLater(onAir: Phase.OnAir, now: Now): Step {
+    val (spaced, retryMs, line) = retryAfterFailure(onAir.session)
+    val (asked, fetch) = if (spaced.descriptor.mayAsk(now.monoMs)) askDescriptor(spaced, now) else spaced to null
+    val waiting = Phase.Connecting(asked, onAir.transport, ConnectStep.Waiting(now.monoMs + retryMs), outage = null)
+    return Step(waiting, listOfNotNull(Command.Disconnect(onAir.attemptId), line, fetch))
   }
 
   /** N29, R10: a rejoin's connects back off ([Rejoin.delayAfter]); every other retry waits [SessionMachine.RETRY_MS]. */
@@ -478,7 +493,8 @@ internal object Timers {
    * The stall watchdog asked for a rebuild (F-P5-6, F-P5-9). The record's `msSinceAdvance` counts
    * from the last frame; for `no-first-frame`, from the connect; and when `rebaselined` is true, from
    * our own camera reopen, which is not a frame (carry 7), or for a switch from the tap or the last
-   * frame before it ([Devices.switched]).
+   * frame before it ([Devices.switched]). A rejoin with no frame yet rebuilds on its back-off
+   * ([Transports.rejoinLater]; N29, fix round 1, I3), never at once.
    */
   fun rebuild(onAir: Phase.OnAir, verdict: StallVerdict.Rebuild, now: Now): Step {
     val outage = onAir.outage ?: Transports.outageFor(onAir.session, onAir.transport, now, ReconnectCause.VIDEO_STALLED)
@@ -492,7 +508,9 @@ internal object Timers {
         "videoFps" to verdict.videoFps,
         "audioFps" to verdict.audioFps,
       )
-    val step = Transports.replace(onAir, onAir.session, outage, now) { Command.Rebuild(onAir.attemptId, it) }
+    val step =
+      if (onAir.session.rejoin != null) Transports.rejoinLater(onAir, now)
+      else Transports.replace(onAir, onAir.session, outage, now) { Command.Rebuild(onAir.attemptId, it) }
     return step.copy(commands = listOf(stalled) + step.commands)
   }
 }

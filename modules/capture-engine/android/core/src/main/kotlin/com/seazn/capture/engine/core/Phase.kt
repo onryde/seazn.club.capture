@@ -119,7 +119,10 @@ data class Session(
   val descriptor: DescriptorAsks = DescriptorAsks(),
   /** Seeded at arm from the last network fact, which outlives the session before it (final review I-1). */
   val networkValidated: Boolean = false,
-  /** Set by the first encoded frame, and kept across drops: the HUD's elapsed time never resets. */
+  /**
+   * Set by the first encoded frame (a rejoin's: to the lapsed broadcast's first live time, N29), and kept across drops:
+   * the HUD's elapsed time never resets.
+   */
   val liveSinceEpochMs: Long? = null,
   /** N29: set when this session rejoins a [Lapsed] broadcast, until its first advancing frame. */
   val rejoin: Rejoin? = null,

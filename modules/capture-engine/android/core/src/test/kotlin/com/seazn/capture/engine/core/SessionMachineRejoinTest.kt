@@ -95,6 +95,9 @@ class SessionMachineRejoinTest {
     assertIs<Phase.Connecting>(rig.phase)
     assertIs<SnapshotState.Reconnecting>(rig.state)
     assertTrue(rig.records("broadcast-ended").size == 1, "only the hold's own end, before the rejoin")
+    // Anti-vacuity, counted by hand from 2 + 4 + 8 + 16 + 30 = 60: connects fail at 0, 2, 6, 14 and 30 s, and the sixth
+    // is asked for at 60 s, as the loop ends.
+    assertEquals(listOf(2_000L, 4_000L, 8_000L, 16_000L, 30_000L), rig.records("rejoin-retry").map { it.field("retryMs") })
   }
 
   @Test
@@ -131,6 +134,53 @@ class SessionMachineRejoinTest {
     rig.hear("waiting")
     val paired = assertIs<Phase.Paired>(rig.phase)
     assertNull(paired.pairing.lapsed)
+    assertEquals(true, rig.records("broadcast-ended").last().field("wasLive"), "the rejoined broadcast had been live")
+  }
+
+  @Test
+  fun `Replaced while rejoining unpairs, and the record says the broadcast had been live`() {
+    val rig = MachineRig(descriptor = sevenSecondHolds)
+    lapsed(rig)
+    rejoined(rig)
+    rig.hear("replaced")
+    assertEquals(UnpairReason.REPLACED, assertIs<Phase.Idle>(rig.phase).unpaired?.reason)
+    assertEquals(true, rig.records("unpaired").single().field("wasLive"))
+  }
+
+  @Test
+  fun `a 401 while rejoining ends it at once - the code is forgotten, never deferred behind a broadcast with nothing on air`() {
+    val rig = MachineRig(descriptor = sevenSecondHolds)
+    lapsed(rig)
+    rejoined(rig)
+    val commands = rig.hear(null, status = 401)
+    assertEquals(UnpairReason.CODE_ENDED, assertIs<Phase.Idle>(rig.phase).unpaired?.reason)
+    assertTrue(Command.StopBroadcast in commands)
+    assertTrue(rig.records("code-ended-pending").isEmpty())
+  }
+
+  @Test
+  fun `a rejoin that connects but never shows a frame rebuilds on the same back-off - 2, 4, then 8 s, never every 5 s`() {
+    val rig = MachineRig(descriptor = sevenSecondHolds)
+    lapsed(rig)
+    rejoined(rig)
+    for ((index, expected) in listOf(2_000L, 4_000L, 8_000L).withIndex()) {
+      val attempt = rig.attempt!!
+      rig.send(Input.Connected(attempt))
+      val connectedAt = rig.mono
+      var steps = 0
+      while (rig.phase is Phase.OnAir && steps++ < 40) rig.advance(500, feeding = false)
+      assertEquals(5_000L, rig.mono - connectedAt, "the first-frame grace (F-P5-6), rebuild ${index + 1}")
+      assertEquals(expected, waitingMs(rig), "rebuild ${index + 1}")
+      val line = rig.records("rejoin-retry").last()
+      assertEquals(expected, line.field("retryMs"))
+      assertEquals(index + 1, line.field("failures"))
+      assertTrue(Command.Disconnect(attempt) in rig.commands, "the attempt with no picture is closed at once")
+      assertEquals(ReconnectCause.HOLD_EXPIRED, assertIs<SnapshotState.Reconnecting>(rig.state).cause)
+      rig.at(rig.mono + expected)
+      rig.send(Input.Tick)
+      assertNotNull(rig.attempt, "the next connect is asked for after $expected ms")
+    }
+    assertTrue(rig.sent<Command.Rebuild>().isEmpty(), "no rebuild skips the back-off")
   }
 
   @Test
@@ -147,15 +197,36 @@ class SessionMachineRejoinTest {
   }
 
   @Test
-  fun `a go-live beat for the lapsed sid is a start, not a rejoin - only a live beat rejoins (R10)`() {
+  fun `a go-live beat for the lapsed sid rejoins it too - the sid names the broadcast that was live`() {
     val rig = MachineRig(descriptor = sevenSecondHolds)
-    lapsed(rig)
+    val since = lapsed(rig)
     rig.codes = { if (rig.phase is Phase.Arming) Configs.open(sid = "sess_42", descriptor = sevenSecondHolds) else null }
     rig.hear("go-live", sid = "sess_42", startedBy = "organiser")
     rig.ready()
     assertEquals(Cause.ORGANISER, rig.session.cause)
-    assertNull(rig.session.rejoin)
-    assertIs<SnapshotState.Connecting>(rig.state)
+    assertEquals(Rejoin(since), rig.session.rejoin)
+    val state = assertIs<SnapshotState.Reconnecting>(rig.state)
+    assertEquals(ReconnectCause.HOLD_EXPIRED, state.cause)
+    assertEquals(since, state.sinceEpochMs)
+  }
+
+  @Test
+  fun `the operator's Go live after the lapse, answered 409 already_live naming the lapsed sid, rejoins it`() {
+    val rig = MachineRig(descriptor = sevenSecondHolds)
+    val since = lapsed(rig)
+    rig.starts = { StartAnswer.AlreadyLive("sess_42", "operator") }
+    rig.send(Input.Start)
+    assertEquals(Cause.OPERATOR, rig.session.cause)
+    assertEquals(Rejoin(since), rig.session.rejoin)
+    val state = assertIs<SnapshotState.Reconnecting>(rig.state)
+    assertEquals(ReconnectCause.HOLD_EXPIRED, state.cause)
+    assertEquals(since, state.sinceEpochMs)
+    for (expected in listOf(2_000L, 4_000L)) {
+      rig.send(Input.ConnectFailed(rig.attempt!!, ConnectFailure.OTHER, "refused"))
+      assertEquals(expected, waitingMs(rig))
+      rig.at(rig.mono + expected)
+      rig.send(Input.Tick)
+    }
   }
 
   @Test
@@ -218,8 +289,29 @@ class SessionMachineRejoinTest {
     val since = lapsed(rig)
     rejoined(rig)
     val before = rig.phase
+    val attempt = rig.attempt
+    val starts = rig.records("broadcast-start").size
+    val connects = rig.records("connecting").size
     rig.hear("live", sid = "sess_42")
     assertEquals(Rejoin(since), rig.session.rejoin)
     assertEquals(before::class, rig.phase::class)
+    assertEquals(attempt, rig.attempt, "the same connect stays in flight")
+    assertEquals(starts, rig.records("broadcast-start").size, "no new arm")
+    assertEquals(connects, rig.records("connecting").size, "no new connect")
+  }
+
+  @Test
+  fun `a rejoin that goes live and lapses again keeps the first live time - the clock survives two lapses`() {
+    val rig = MachineRig(descriptor = sevenSecondHolds)
+    val since = lapsed(rig)
+    rejoined(rig)
+    rig.send(Input.Connected(rig.attempt!!))
+    rig.advance(1_000)
+    assertIs<SnapshotState.Publishing>(rig.state)
+    rig.send(Input.Dropped(rig.attempt!!, DropReason.ENDPOINT_CLOSED, null))
+    rig.advance(10_000, feeding = false)
+    assertEquals(Lapsed("sess_42", since), assertIs<Phase.Paired>(rig.phase).pairing.lapsed)
+    rejoined(rig)
+    assertEquals(since, assertIs<SnapshotState.Reconnecting>(rig.state).sinceEpochMs)
   }
 }

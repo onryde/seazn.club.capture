@@ -67,7 +67,7 @@ internal object Pairings {
     if (phase is Phase.Connecting || phase is Phase.OnAir) commands += Command.StopBroadcast
     commands += Command.Release
     if (reason == UnpairReason.CODE_ENDED && pairing.stopped != null) commands += Command.DeleteStopped(pairing.name.code, pairing.name.slot)
-    commands += line("unpaired", "reason" to reason, "wasLive" to (phase.session?.liveSinceEpochMs != null))
+    commands += line("unpaired", "reason" to reason, "wasLive" to (phase.firstLiveEpochMs != null))
     // Plan D §3.4: Idle holds no pairing, so the log goes out with the step, the answer that unpaired the phone in it.
     return Step(Phase.Idle(phase.ids, phase.networkValidated, phase.micSilenced, Unpaired(reason, pairing.name)), commands, leftLog = pairing.beatLog)
   }
@@ -139,7 +139,9 @@ internal object Starts {
         descriptor = arming.asks,
         networkValidated = arming.networkValidated,
         micSilenced = arming.micSilenced,
-        rejoin = pairing.lapsed?.takeIf { arming.cause == Cause.REJOIN && it.sid == arming.sid }?.let { Rejoin(it.liveSinceEpochMs) },
+        // N29, fix round 1 (I1): the sid names the broadcast that was live, whatever armed it (`live`, `go-live`, or the
+        // operator's start answered `already_live`). [arm] is the only maker of Arming and keeps only its own sid's lapse.
+        rejoin = pairing.lapsed?.let { Rejoin(it.liveSinceEpochMs) },
       )
     val armed = line("armed", "sid" to arming.sid, "transport" to config.primary.transport, "srtOffered" to descriptor.srtOffered, "playbackUrl" to config.playbackUrl)
     return Step(Phase.Armed(session), listOfNotNull(unreadable, armed))
@@ -250,7 +252,9 @@ internal object Verdicts {
     val held = phase.heldSid!!
     return when {
       word == ServerWord.Replaced -> Pairings.unpaired(phase, UnpairReason.REPLACED, now)
-      word == ServerWord.CodeEnded && phase is Phase.Arming -> Pairings.unpaired(phase, UnpairReason.CODE_ENDED, now)
+      // N29, fix round 1 (G2): a rejoin before its first frame has nothing on air for the 401 deferral to wait on, and
+      // no hold to end it, so its code's end ends it at once, as Arming's does.
+      word == ServerWord.CodeEnded && (phase is Phase.Arming || phase.session?.rejoin != null) -> Pairings.unpaired(phase, UnpairReason.CODE_ENDED, now)
       word == ServerWord.CodeEnded -> codeEndedPending(phase, pairing)
       word == ServerWord.NotFound && phase is Phase.Arming -> Starts.failed(phase, StartFailure.NOT_FOUND, now)
       word is ServerWord.Open && word.sid == held -> if (phase is Phase.Arming && phase.notCurrent) Starts.claimed(phase, now) else Step(phase)
@@ -277,7 +281,7 @@ internal object Verdicts {
     val pairing = phase.pairing ?: return Step(phase)
     if (pairing.codeEndedPending) return Pairings.unpaired(phase, UnpairReason.CODE_ENDED, now)
     val publishing = phase is Phase.Connecting || phase is Phase.OnAir
-    val ended = line("broadcast-ended", "sid" to phase.heldSid, "lastEnd" to lastEnd, "wasLive" to (phase.session?.liveSinceEpochMs != null))
+    val ended = line("broadcast-ended", "sid" to phase.heldSid, "lastEnd" to lastEnd, "wasLive" to (phase.firstLiveEpochMs != null))
     val paired = Phase.Paired(pairing.copy(lastEnd = lastEnd, camera = phase.camera ?: CameraState.OWN, lapsed = null), phase.ids, phase.networkValidated, phase.micSilenced)
     return Step(paired, listOfNotNull(if (publishing) Command.StopBroadcast else null, ended))
   }
