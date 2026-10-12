@@ -53,7 +53,7 @@ export const WIRE_VOCABULARY = {
     'hold-window-expired',
     'stopped',
   ]),
-  unpairReason: new Set(['code-ended', 'replaced', 'taken', 'permissions']),
+  unpairReason: new Set(['code-ended', 'replaced', 'taken', 'permissions', 'forgotten']),
   delivery: new Set(['ok', 'stalled', 'unknown']),
   shed: new Set(['viewer-feed', 'preview-framerate', 'encode']),
   heartbeatResult: new Set(['ok', 'failed', 'session-over']),

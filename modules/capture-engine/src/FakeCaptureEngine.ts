@@ -106,6 +106,11 @@ export type FakeCaptureEngine = CaptureEnginePort & {
   /** The waiting fields this pairing, and every later one, reports. */
   setPairing(pairing: Partial<PairingInfo>): void;
   /**
+   * R6 of the D3 findings design: the notification's Forget, as native hears it (`Pairings.forget`): it acts only
+   * while paired and waiting, leaving for Idle naming the code and `forgotten`; any other state ignores it.
+   */
+  notificationForget(): void;
+  /**
    * The kind of each intent received, oldest first, at most INTENT_LOG_CAP.
    * Only the kind (M5): a `pair` carries the code's token. Tests that need
    * whole intents record them in the test factory (test/fakePorts.ts).
@@ -755,6 +760,9 @@ export function createFakeCaptureEngine(now: () => number = Date.now): FakeCaptu
     setPairing: (change) => {
       waiting = { ...waiting, ...change };
       if (snapshot.pairing !== null) publish({ pairing: { ...snapshot.pairing, ...change } });
+    },
+    notificationForget: () => {
+      if (snapshot.state.kind === 'paired') unpaired('forgotten');
     },
     patch: (telemetry) => publish({ telemetry: { ...snapshot.telemetry, ...telemetry } }),
     setCamera: (camera) => publish({ camera }),

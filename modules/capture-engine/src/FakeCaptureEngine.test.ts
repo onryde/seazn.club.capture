@@ -344,6 +344,27 @@ describe('the paired phase', () => {
     ]);
   });
 
+  // R6 of the D3 findings design, fake parity with native's ForgetTest: only a pairing that waits is forgotten.
+  it('forgets a waiting pairing on the notification’s Forget, naming the code, and nothing else', () => {
+    engine.setPermissions('hold');
+    pair();
+    engine.notificationForget();
+    expect(state()).toEqual({ kind: 'pairing' });
+    engine.setPermissions('grant');
+    engine.notificationForget();
+    expect(state()).toEqual({ kind: 'idle' });
+    expect(snapshot().unpaired).toEqual({
+      reason: 'forgotten',
+      code: 'ka0000000001',
+      slot: 1,
+      tokenTag: TAG_A,
+    });
+    const seen: string[] = [];
+    engine.subscribe(() => seen.push(state().kind));
+    engine.notificationForget();
+    expect(seen).toEqual([]);
+  });
+
   it('refuses a held dialog later, naming the code', () => {
     engine.setPermissions('hold');
     pair();

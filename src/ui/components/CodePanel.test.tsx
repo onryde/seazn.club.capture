@@ -1,8 +1,7 @@
 import { fireEvent, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import type { ModeCode } from '@/domain/mode/Mode';
-import type { UnpairReason } from '@/domain/session/Pairing';
-import type { PanelOutcome } from '@/hooks/useHome';
+import type { PanelOutcome, PanelUnpairReason } from '@/hooks/useHome';
 import { CodePanel } from '@/ui/components/CodePanel';
 import { renderWithPorts } from '../../../test/renderWithPorts';
 
@@ -154,7 +153,7 @@ describe('CodePanel', () => {
   });
 
   /** Amendment §2, Unpaired without asking: why, in the operator's words, then Scan again or Close. */
-  it.each<[UnpairReason, string, string]>([
+  it.each<[PanelUnpairReason, string, string]>([
     ['code-ended', 'Code ended', 'This code has ended. Scan the new one.'],
     [
       'replaced',

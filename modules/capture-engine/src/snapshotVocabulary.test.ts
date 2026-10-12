@@ -92,6 +92,7 @@ const UNPAIR: Readonly<Record<UnpairReason, true>> = {
   replaced: true,
   taken: true,
   permissions: true,
+  forgotten: true,
 };
 const END: Readonly<Record<EndReason, true>> = { 'operator-stopped': true, 'fatal-error': true };
 const SCORE_UPDATES: Readonly<Record<ScoreUpdates, true>> = { realtime: true, polled: true };
@@ -113,7 +114,7 @@ describe("the port names exactly what native's snapshot sends", () => {
     ['notReady', NOT_READY, vectors.vocabulary.notReady, 4],
     ['refusal', REFUSAL, vectors.vocabulary.refusal, 5],
     ['lastEnd', LAST_END, vectors.vocabulary.lastEnd, 9],
-    ['unpairReason', UNPAIR, vectors.vocabulary.unpairReason, 4],
+    ['unpairReason', UNPAIR, vectors.vocabulary.unpairReason, 5],
     ['endReason', END, vectors.vocabulary.endReason, 2],
     ['scoreUpdates', SCORE_UPDATES, vectors.vocabulary.scoreUpdates, 2],
   ] as const)('%s words', (_name, table, words, count) => {

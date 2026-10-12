@@ -2,7 +2,7 @@ import { act, fireEvent, screen } from '@testing-library/react';
 import { Profiler, type ReactElement, type ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { encodeSavedCode, type SavedCode } from '@/domain/mode/savedCode';
-import type { UnpairReason } from '@/domain/session/Pairing';
+import type { PanelUnpairReason } from '@/hooks/useHome';
 import { STORE_KEYS } from '@/services/modeStore';
 import { HomeScreen } from '@/ui/screens/HomeScreen';
 import { savedStreamCode } from '../../../test/fixtures/savedStream';
@@ -52,7 +52,7 @@ const inStream = (saved: SavedCode = code) => ({
 });
 
 /** Amendment §2's panels, by reason, written out from the copy table. */
-const PANEL: Readonly<Record<UnpairReason, readonly [title: string, body: string]>> = {
+const PANEL: Readonly<Record<PanelUnpairReason, readonly [title: string, body: string]>> = {
   'code-ended': ['Code ended', 'This code has ended. Scan the new one.'],
   replaced: [
     'Paired on another phone',
@@ -64,7 +64,7 @@ const PANEL: Readonly<Record<UnpairReason, readonly [title: string, body: string
     'Allow the camera and microphone in Android Settings, then try again',
   ],
 };
-const showsPanel = (reason: UnpairReason) => {
+const showsPanel = (reason: PanelUnpairReason) => {
   const [title, body] = PANEL[reason];
   expect(screen.getByText(title)).toBeTruthy();
   expect(screen.getByText(body)).toBeTruthy();
@@ -108,6 +108,22 @@ describe('Home after an unpair the operator did not ask for', () => {
       expect(screen.queryByText(/^Paired ·/)).toBeNull();
     },
   );
+
+  // R6 of the D3 findings design: the operator's own Forget, from the notification, needs no explanation.
+  it('shows no panel and no Continue card after the notification’s Forget, the code forgotten', async () => {
+    const app = await pairedOnStream();
+    act(() => app.engine.notificationForget());
+    await flush();
+    expect(app.engine.getSnapshot().unpaired).toMatchObject({ reason: 'forgotten', slot: 1 });
+    expect(app.nav.current()).toBe('home');
+    noPanel();
+    expect(hasSaved(app)).toBe(false);
+    expect(screen.queryByText('Continue Live Stream')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Continue' })).toBeNull();
+    // Native keeps naming the unpair while Idle: later reports bring no panel either.
+    await flush(3_000);
+    noPanel();
+  });
 
   // Review C5 m-7: `replaced` ends a held broadcast too (native's answer table, Pairings.kt).
   it('names why when the code is paired elsewhere while on air', async () => {

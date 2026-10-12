@@ -84,6 +84,25 @@ describe('useEngineFollow: native’s word on the saved code', () => {
     expect(forget).toHaveBeenCalledTimes(1);
   });
 
+  it('forgets the saved code and goes Home on the notification’s Forget (R6)', async () => {
+    const fakes = await shell();
+    act(() => fakes.engine.notificationForget());
+    await flush();
+    expect(fakes.engine.getSnapshot().unpaired).toMatchObject({ reason: 'forgotten', slot: 1 });
+    expect(savedOf(fakes)).toBeUndefined();
+    expect(fakes.navigation.current()).toBe('home');
+  });
+
+  it('ignores the notification’s Forget while a broadcast is held (a late tap)', async () => {
+    const fakes = await shell();
+    act(() => fakes.engine.send({ kind: 'start' }));
+    await flush(5_000);
+    act(() => fakes.engine.notificationForget());
+    await flush();
+    expect(fakes.engine.getSnapshot().unpaired).toBeNull();
+    expect(savedOf(fakes)).toEqual(code);
+  });
+
   it('keeps the saved code when the unpair names another code', async () => {
     const fakes = await shell({ paired: other });
     act(() => fakes.engine.hear({ word: 'replaced' }));
