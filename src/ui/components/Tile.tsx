@@ -1,5 +1,6 @@
-import { memo, useCallback } from 'react';
+import { memo, useCallback, useState } from 'react';
 import {
+  type LayoutChangeEvent,
   type PressableStateCallbackType,
   Pressable,
   type StyleProp,
@@ -15,6 +16,7 @@ import { MODE_NAME } from '@/i18n/modeNames';
 import { Text } from '@/ui/components/Text';
 import { TextLink } from '@/ui/components/TextLink';
 import { MODE_HINT, MODE_PURPOSE } from '@/ui/modeCopy';
+import { tileTitleRole } from '@/ui/theme/tileTitle';
 import { colour, layout as metrics, radius, space } from '@/ui/theme/tokens';
 
 type TileProps = {
@@ -45,6 +47,12 @@ export const Tile = memo(function Tile({
 }: TileProps) {
   const { t } = useT();
   const press = useCallback(() => onPress(mode), [mode, onPress]);
+  // N31: the title's row as laid out, which sets the title's size (`tileTitleRole`); null until it is measured.
+  const [headWidth, setHeadWidth] = useState<number | null>(null);
+  const measureHead = useCallback(
+    (event: LayoutChangeEvent) => setHeadWidth(event.nativeEvent.layout.width),
+    [],
+  );
   const style = link === undefined ? STYLES[layout][available ? 'on' : 'off'] : BODY[layout];
   const body = (
     <Pressable
@@ -54,9 +62,13 @@ export const Tile = memo(function Tile({
       onPress={press}
       style={style}
     >
-      <View style={styles.head}>
+      <View style={styles.head} onLayout={measureHead}>
         <ModeIcon mode={mode} dim={!available} />
-        <Text variant="title" numberOfLines={metrics.tileTitleLines} style={styles.title}>
+        <Text
+          variant={tileTitleRole(headWidth)}
+          numberOfLines={metrics.tileTitleLines}
+          style={styles.title}
+        >
           {t(MODE_NAME[mode])}
         </Text>
       </View>
@@ -126,8 +138,9 @@ const styles = StyleSheet.create({
   pressed: { opacity: 0.85 },
   head: { flexDirection: 'row', alignItems: 'center', gap: space.sm },
   /**
-   * N31: the title gives way and wraps (`tileTitleLines`) rather than run past the tile; Yoga's default of 0 drew a
-   * French title 2–3 dp beyond the edge at 804 wide. The icon beside it keeps that default, and its size.
+   * N31: the title gives way and wraps (`tileTitleLines`) rather than run past the tile; Yoga's default of 0 ran a
+   * French title past its tile on the owner's phone sideways (Home 728 dp wide behind its insets). The icon beside it
+   * keeps that default, and its size.
    */
   title: { flexShrink: 1 },
   inert: { color: colour.ink3 },

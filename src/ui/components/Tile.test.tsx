@@ -2,7 +2,9 @@ import { fireEvent, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import en from '@/i18n/en.json';
 import { Tile } from '@/ui/components/Tile';
+import { typeScale } from '@/ui/theme/type';
 import { declaredStyle } from '../../../test/declaredStyle';
+import { layOut } from '../../../test/layOut';
 import { linesAllowed } from '../../../test/linesAllowed';
 import { renderWithPorts } from '../../../test/renderWithPorts';
 
@@ -128,6 +130,40 @@ describe('Tile', () => {
       // Declared, not computed: jsdom computes CSS's initial flex-shrink, 1, for a Text with no style at all.
       expect(declaredStyle(title, 'flex-shrink')).toBe('1');
       expect(linesAllowed(title)).toBe(2);
+    },
+  );
+
+  // N31, fix round 1 (the controller's ruling, 2026-10-12): the title's row reports its width, and where the room is
+  // narrower than the widest word the title steps down to `action` (`tileTitleRole`; homeFit.test.ts measures why).
+  // jsdom lays nothing out, so `layOut` delivers the row's width as the phone would. Rows: 153.33 is a tile on a 592 dp
+  // Home sideways, 169.33 on a 640 one.
+  it.each([
+    ['portrait', false],
+    ['landscape', true],
+  ] as const)(
+    'the %s title (link: %s) is at full size until its row is measured, steps down where the row is narrow and back where it is wide (N31)',
+    (layout, withLink) => {
+      renderWithPorts(
+        <Tile
+          mode="stream"
+          available
+          layout={layout}
+          onPress={vi.fn()}
+          link={withLink ? { label: 'Stream settings', onPress: vi.fn() } : undefined}
+        />,
+      );
+      const title = screen.getByText(en['mode.stream']);
+      const row = title.parentElement as HTMLElement;
+      const size = () => title.style.fontSize;
+      expect(size()).toBe(`${typeScale.title.fontSize}px`);
+      layOut(row, { width: 153.33, height: 58 });
+      expect(size()).toBe(`${typeScale.action.fontSize}px`);
+      expect(title.style.lineHeight).toBe(`${typeScale.action.lineHeight}px`);
+      // The step keeps the shrink and the clamp.
+      expect(declaredStyle(title, 'flex-shrink')).toBe('1');
+      expect(linesAllowed(title)).toBe(2);
+      layOut(row, { width: 169.33, height: 29 });
+      expect(size()).toBe(`${typeScale.title.fontSize}px`);
     },
   );
 

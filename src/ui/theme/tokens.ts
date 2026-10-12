@@ -232,6 +232,12 @@ const base = {
    */
   tileTitleLines: 2,
   /**
+   * N31, fix round 1: the room a tile's title needs beside its icon to stay at `title`, the widest word of any title in
+   * the four languages at that size (nl LIVESTREAM, 123.3 dp), to the whole dp. Narrower, `tileTitleRole` steps the
+   * title down to `action`. homeFit.test.ts derives it from the font.
+   */
+  tileTitleRoom: 124,
+  /**
    * Spec §10, Q-C2: the Remote scoring code, drawn at a whole number of dp per module so every module edge lands on a
    * pixel (D13): 3 x the 57-unit symbol (49 modules + a quiet zone of 4 each side). The largest such multiple that
    * fits the smallest half with the title, the hint, Hide and 4 dp to spare (scoringFit.test.ts derives it).
