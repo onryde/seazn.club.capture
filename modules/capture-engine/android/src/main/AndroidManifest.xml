@@ -15,5 +15,7 @@
       android:name="com.seazn.capture.engine.CaptureForegroundService"
       android:exported="false"
       android:foregroundServiceType="camera|microphone" />
+    <!-- R6, R7 of the D3 findings design: the notification's Forget, only from its own PendingIntent. -->
+    <receiver android:name="com.seazn.capture.engine.ForgetReceiver" android:exported="false" />
   </application>
 </manifest>

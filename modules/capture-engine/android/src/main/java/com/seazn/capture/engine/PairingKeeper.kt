@@ -204,19 +204,30 @@ class CaptureNotification(private val context: Context, private val language: ()
   /**
    * T18 m2: the line runs to about 60 characters (fr, STARTING with its not-ready reason), past one
    * collapsed row, so the expanded notification shows it whole.
+   *
+   * R6 of the D3 findings design: while the kind last shown is `paired`, one action, Forget, in the notification's
+   * language. [update] posts again at once on a change of kind, so the action goes the moment the pairing leaves
+   * waiting; the service's first post, before any kind is shown, has none until the first `paired` snapshot.
    */
   fun current(): Notification {
     channel()
     val open = context.packageManager.getLaunchIntentForPackage(context.packageName)
     val tap = PendingIntent.getActivity(context, 0, open, PendingIntent.FLAG_IMMUTABLE)
-    return NotificationCompat.Builder(context, CHANNEL_ID)
-      .setSmallIcon(R.drawable.slate)
-      .setContentText(text)
-      .setStyle(NotificationCompat.BigTextStyle().bigText(text))
-      .setOngoing(true)
-      .setOnlyAlertOnce(true)
-      .setContentIntent(tap)
-      .build()
+    val builder =
+      NotificationCompat.Builder(context, CHANNEL_ID)
+        .setSmallIcon(R.drawable.slate)
+        .setContentText(text)
+        .setStyle(NotificationCompat.BigTextStyle().bigText(text))
+        .setOngoing(true)
+        .setOnlyAlertOnce(true)
+        .setContentIntent(tap)
+    if (NotificationText.forgetShown(shownKind as? String)) {
+      val forget = Intent(context, ForgetReceiver::class.java).setAction(ForgetReceiver.ACTION)
+      val tapForget = PendingIntent.getBroadcast(context, FORGET_REQUEST, forget, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
+      val words = NotificationText.WORDS[lang] ?: NotificationText.WORDS.getValue("en")
+      builder.addAction(0, words.getValue(FORGET_KEY), tapForget)
+    }
+    return builder.build()
   }
 
   /** Review C7 I-3: what `startForeground` takes when [current] could not be built: no text and no tap. */
@@ -236,5 +247,9 @@ class CaptureNotification(private val context: Context, private val language: ()
     const val ID = 7_301
     const val CHANNEL_ID = "capture"
     private const val RATE_MS = 5_000L
+
+    /** The Forget action's PendingIntent: its own request code, apart from the content tap's 0. */
+    private const val FORGET_REQUEST = 1
+    private const val FORGET_KEY = "stream.notification.forget"
   }
 }

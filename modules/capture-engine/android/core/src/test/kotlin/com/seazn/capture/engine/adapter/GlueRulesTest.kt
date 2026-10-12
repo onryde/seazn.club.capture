@@ -446,6 +446,40 @@ class GlueRulesTest {
   }
 
   /**
+   * R6, R7 of the D3 findings design: the notification's Forget is the core's to judge. The receiver hands the tap to
+   * the core and does nothing else: the release, the service and the marker follow from the machine's commands, as
+   * every unpair's do (C0b above: one release, in the platform's Release branch).
+   */
+  @Test
+  fun `R6 the Forget receiver only forwards to the core - no release, no stopService, no store of its own`() {
+    val text = glue("ForgetReceiver.kt")
+    assertTrue(text.contains("EngineHost.core(context).forget()"))
+    for (banned in listOf("release(", "stopService", "stopSelf", "PrivateStore", "write(")) assertFalse(text.contains(banned), banned)
+  }
+
+  /** R6: the receiver is declared in the module's own manifest, and no other app can send it a Forget. */
+  @Test
+  fun `R6 the Forget receiver is declared, not exported`() {
+    val manifest = File(src, "main/AndroidManifest.xml").readText()
+    val receiver = Regex("""<receiver\s+android:name="com\.seazn\.capture\.engine\.ForgetReceiver"\s+android:exported="false"\s*/>""")
+    assertEquals(1, receiver.findAll(manifest).count(), manifest)
+  }
+
+  /**
+   * R6: the action is on the notification only while the pairing waits, as `NotificationText.forgetShown` decides from
+   * the kind last shown; it is an explicit, immutable broadcast to the receiver.
+   */
+  @Test
+  fun `R6 the notification carries Forget only behind forgetShown, as an explicit immutable broadcast`() {
+    val current = body(glue("PairingKeeper.kt"), "fun current(): Notification")
+    val gate = assertNotNull(Regex("""if \(NotificationText\.forgetShown\(shownKind as\? String\)\) \{""").find(current), current)
+    assertTrue("builder.addAction(" in body(current.substring(gate.range.first), "if ("), "the action is inside the gate: $current")
+    assertEquals(1, Regex("""\.addAction\(""").findAll(glue("PairingKeeper.kt")).count(), "one action")
+    assertTrue(Regex("""Intent\(context, ForgetReceiver::class\.java\)\.setAction\(ForgetReceiver\.ACTION\)""").containsMatchIn(current), current)
+    assertTrue(Regex("""PendingIntent\.getBroadcast\([^\n]*PendingIntent\.FLAG_IMMUTABLE""").containsMatchIn(current), current)
+  }
+
+  /**
    * CD21 (Task 38): Expo 57.0.20 answers DENIED for every permission when the current activity is not a
    * `PermissionAwareActivity` (`PermissionsService.delegateRequestToActivity`), a refusal no operator
    * saw. That reads as UNAVAILABLE, before Expo is asked.
