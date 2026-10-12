@@ -55,11 +55,14 @@ export type RecordedEntry = {
  */
 export function parseRecordLine(line: string): RecordedEntry {
   const { at, kind, level, ...written } = JSON.parse(line) as Record<string, unknown>;
-  const fields: Record<string, unknown> = {};
-  for (const [key, value] of Object.entries(written)) {
-    const original = key.startsWith('field_') ? key.slice('field_'.length) : key;
-    fields[RESERVED_KEYS.has(original) ? original : key] = value;
-  }
+  // Built, never assigned: an assignment to `__proto__` calls its setter and the field is lost to every reader, the
+  // upload's fail-closed check included (fix round 1 of Batch 11, finding 2 of its review).
+  const fields = Object.fromEntries(
+    Object.entries(written).map(([key, value]) => {
+      const original = key.startsWith('field_') ? key.slice('field_'.length) : key;
+      return [RESERVED_KEYS.has(original) ? original : key, value];
+    }),
+  );
   return {
     atMs: Date.parse(String(at)),
     level: typeof level === 'string' ? level : 'info',

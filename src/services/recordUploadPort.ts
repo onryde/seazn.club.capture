@@ -87,6 +87,8 @@ function decodedIsSafe(line: string, token: string, held: HeldSecrets): boolean 
  * and no `level` but one of the contract's (Minor 11 of the Batch 6 review: the scrub reads neither slot).
  */
 function recordObject(line: string): Record<string, unknown> | null {
+  // NDJSON (fix round 1 of Batch 11, finding 3 of its review): a raw line break between tokens is JSON, and two lines.
+  if (/[\r\n]/.test(line)) return null;
   let data: unknown;
   try {
     data = JSON.parse(line);

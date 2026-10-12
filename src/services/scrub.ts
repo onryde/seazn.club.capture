@@ -145,9 +145,11 @@ export function scrubFields(
   inHand: boolean = held.secrets.length + held.streamIds.length > 0,
 ): LogFields {
   const mask = maskOf(held, inHand);
-  const clean: Record<string, LogValue> = {};
-  for (const [key, value] of Object.entries(fields)) clean[key] = scrubValue(key, value, mask);
-  return clean;
+  // Built, never assigned, so a `__proto__` field is scrubbed as a field, not handed to a setter (fix round 1 of
+  // Batch 11): the upload compares the two, key for key.
+  return Object.fromEntries(
+    Object.entries(fields).map(([key, value]) => [key, scrubValue(key, value, mask)]),
+  );
 }
 
 export function scrubEvent(event: string, held: HeldSecrets = NOTHING_HELD): string {

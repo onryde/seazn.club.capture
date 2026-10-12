@@ -339,6 +339,32 @@ describe('the upload fails closed (spec §7)', () => {
     await refuses([unlisted]);
   });
 
+  // Fix round 1 of Batch 11 (finding 2 of its review): a key the language treats specially is a key on no list like any
+  // other. An assignment calls `__proto__`'s setter, so the parsed fields once lost it and the scrub comparison never
+  // saw it; only the contract's key list kept the string home.
+  const SPECIAL_KEYS = ['__proto__', 'constructor', 'prototype'] as const;
+  const under = (key: string, value: string) =>
+    `{"at":"1970-01-01T00:00:00.000Z","kind":"beats","${key}":${value}}`;
+
+  it.each(SPECIAL_KEYS)(
+    'a string under %s sends nothing, as under any key on no list',
+    async (key) => {
+      await refuses([under(key, '"a free-form word"')]);
+    },
+  );
+
+  it.each(SPECIAL_KEYS)(
+    'a number or the mask under %s is sent without it, as under any key on no list',
+    async (key) => {
+      const p = port(answered(201, OK));
+      const outcome = await p.upload.send([under(key, '42'), under(key, '"***"')], credential);
+      expect(outcome.result).toBe('sent');
+      expect(String(p.fetch.mock.calls[0]?.[1]?.body)).toBe(
+        '{"at":"1970-01-01T00:00:00.000Z","kind":"beats"}\n'.repeat(2),
+      );
+    },
+  );
+
   it('a kind the scrub would mask sends nothing', async () => {
     await refuses([line('a kind with spaces')]);
   });
@@ -372,6 +398,14 @@ describe('the upload fails closed (spec §7)', () => {
     ['a time with no seconds', '{"at":"2026-10-11T21:19Z","kind":"beats"}'],
     ['a time with no zone', '{"at":"2026-10-11T21:19:03.123","kind":"beats"}'],
     ['a time in RFC 2822’s words', '{"at":"Sun, 11 Oct 2026 21:19:03 GMT","kind":"beats"}'],
+    // Fix round 1 of Batch 11 (finding 3 of its review): the body is NDJSON, a record line to a line. A raw line break
+    // between a line's tokens is still JSON, but the server would read two broken lines.
+    ['a raw line feed between its tokens', '{"at":"1970-01-01T00:00:00.000Z",\n"kind":"beats"}'],
+    [
+      'a raw carriage return between its tokens',
+      '{"at":"1970-01-01T00:00:00.000Z",\r"kind":"beats"}',
+    ],
+    ['a carriage return at its end', '{"at":"1970-01-01T00:00:00.000Z","kind":"beats"}\r'],
   ])('%s is not a record line, and sends nothing', async (_why, text) => {
     await refuses([text]);
   });
@@ -390,6 +424,13 @@ describe('the upload fails closed (spec §7)', () => {
     const masked = '{"at":"2026-10-11T21:19:03.123Z","kind":"beats","level":"***"}';
     expect(admitsLine(JSON.parse(masked))).toBe(true);
     expect(linesAreSafe([masked], TOKEN)).toBe(true);
+  });
+
+  it('a line break written as JSON’s escape, inside a text, passes', () => {
+    const escaped = line('vendor-log', { message: 'first\nsecond' });
+    expect(escaped).toContain('first\\nsecond');
+    expect(escaped).not.toMatch(/[\r\n]/);
+    expect(linesAreSafe([escaped], TOKEN)).toBe(true);
   });
 
   it('a time with an offset, which the contract admits, passes', () => {
