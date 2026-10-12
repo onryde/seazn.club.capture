@@ -27,6 +27,7 @@ import { createNativeSplash } from '@/services/native/nativeSplash';
 import { createNativeSurfaces } from '@/services/native/nativeSurfaces';
 import { createSecureKeyValueStore } from '@/services/native/secureKeyValueStore';
 import { seaznEnvironment, seaznHosts, seaznOrigin } from '@/services/seaznHosts';
+import { createRecordUploadPort } from '@/services/recordUploadPort';
 import { createRingRecord } from '@/services/sessionRecord';
 import { createStreamSettingsStore } from '@/services/streamSettingsStore';
 import { createUploadCredentialStore } from '@/services/uploadCredentialStore';
@@ -113,6 +114,8 @@ export function createNativePorts(
       logger,
       enabled: options.recordSend,
     }),
+    // R3: plain fetch (AGENTS §8). Nothing calls it while the switch is off: the button is not drawn.
+    recordUpload: createRecordUploadPort({ fetch: (url, init) => fetch(url, init), logger }),
     clock,
     hosts,
     deviceLanguages: getLocales().map((locale) => locale.languageCode),

@@ -23,6 +23,7 @@ import type { Logger } from '@/services/logger';
 import type { ModeStore } from '@/services/modeStore';
 import type { PhotoPort } from '@/services/photoPort';
 import type { ProbeFlight } from '@/services/probeFlight';
+import type { RecordUploadPort } from '@/services/recordUploadPort';
 import type { ScanFlight } from '@/services/scanFlight';
 import type { ScoringLinkPort } from '@/services/scoringLinkPort';
 import type { SessionRecord } from '@/services/sessionRecord';
@@ -80,6 +81,8 @@ export type Ports = {
   readonly power: PowerPort;
   /** R4: the credential Send record to Seazn may use (P10: inert while its switch is off). */
   readonly uploadCredential: UploadCredentialStore;
+  /** R3: Send record to Seazn's one request, plain fetch (inert while its switch is off: nothing draws the button). */
+  readonly recordUpload: RecordUploadPort;
   readonly clock: () => Date;
   readonly hosts: readonly string[];
   readonly deviceLanguages: readonly (string | null)[];

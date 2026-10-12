@@ -232,9 +232,10 @@ describe('createNativePorts hands the module it loaded once to the engine, the p
 });
 
 /**
- * R4 and P10 (the D3 fixes plan's rulings, the controller's): the upload credential store follows the SAME mode store
- * the ports hand the app (a second `createModeStore(kv)` would never be loaded, so no credential would ever be kept),
- * and stores only when the root layout's switch says so. Read from source, as above.
+ * R4 and P10 (P10 is the D3 fixes plan's ruling, the controller's): the upload credential store follows the SAME mode
+ * store the ports hand the app (a second `createModeStore(kv)` would never be loaded, so no credential would ever be
+ * kept), and stores only when the root layout's switch says so. R3: the record upload port gets plain fetch and the
+ * app's own logger. Read from source, as above.
  */
 type RecordWiring = {
   /** The options parameter's default, as written. */
@@ -244,6 +245,8 @@ type RecordWiring = {
   modeStoreProperty: string | null;
   /** What it gives `createUploadCredentialStore`, as sorted `name:initializer`. */
   uploadCredentialDeps: string | null;
+  /** R3: what it gives `createRecordUploadPort`, as sorted `name:initializer`. */
+  recordUploadDeps: string | null;
 };
 
 function recordWiringOf(source: string): RecordWiring {
@@ -260,6 +263,7 @@ function recordWiringOf(source: string): RecordWiring {
     modeStoreBinding: null,
     modeStoreProperty: null,
     uploadCredentialDeps: null,
+    recordUploadDeps: null,
   };
   // Only the returned object's own properties: the credential store's deps hold a `modeStore` too.
   const visit = (node: ts.Node) => {
@@ -283,14 +287,18 @@ function recordWiringOf(source: string): RecordWiring {
       result.modeStoreProperty = ts.isPropertyAssignment(property)
         ? property.initializer.getText(file)
         : name;
-    if (name !== 'uploadCredential' || !ts.isPropertyAssignment(property)) return;
-    const call = property.initializer;
-    if (
-      ts.isCallExpression(call) &&
-      ts.isIdentifier(call.expression) &&
-      call.expression.text === 'createUploadCredentialStore'
-    )
-      result.uploadCredentialDeps = depsOf(call.arguments[0], file);
+    if (!ts.isPropertyAssignment(property)) return;
+    const deps = (factory: string) => {
+      const call = property.initializer;
+      return ts.isCallExpression(call) &&
+        ts.isIdentifier(call.expression) &&
+        call.expression.text === factory
+        ? depsOf(call.arguments[0], file)
+        : null;
+    };
+    if (name === 'uploadCredential')
+      result.uploadCredentialDeps = deps('createUploadCredentialStore');
+    if (name === 'recordUpload') result.recordUploadDeps = deps('createRecordUploadPort');
   };
   visit(root);
   return result;
@@ -298,22 +306,29 @@ function recordWiringOf(source: string): RecordWiring {
 
 const UPLOAD_DEPS =
   'clock:clock, enabled:options.recordSend, kv:kv, logger:logger, modeStore:modeStore';
-const RECORD_SKELETON = (upload: string, modeStore = 'modeStore') => `
+const RECORD_DEPS = 'fetch:(url, init) => fetch(url, init), logger:logger';
+const RECORD_UPLOAD = 'createRecordUploadPort({ fetch: (url, init) => fetch(url, init), logger })';
+const RECORD_SKELETON = (upload: string, modeStore = 'modeStore', recordUpload = RECORD_UPLOAD) => `
   export function createNativePorts(options = { recordSend: false }) {
     const modeStore = createModeStore(kv);
-    return { modeStore: ${modeStore}, uploadCredential: ${upload} };
+    return { modeStore: ${modeStore}, uploadCredential: ${upload}, recordUpload: ${recordUpload} };
   }`;
 const UPLOAD =
   'createUploadCredentialStore({ kv, modeStore, clock, logger, enabled: options.recordSend })';
 
-describe('createNativePorts keeps the upload credential on the app’s own mode store, behind the switch (R4, P10)', () => {
+describe('createNativePorts keeps the upload credential on the app’s own mode store, behind the switch, and posts records with plain fetch (R3, R4, P10)', () => {
   it('reads the wiring, and tells a second mode store, a forced switch and a fake apart', () => {
     expect(recordWiringOf(RECORD_SKELETON(UPLOAD))).toEqual({
       options: '{ recordSend: false }',
       modeStoreBinding: 'createModeStore(kv)',
       modeStoreProperty: 'modeStore',
       uploadCredentialDeps: UPLOAD_DEPS,
+      recordUploadDeps: RECORD_DEPS,
     });
+    expect(
+      recordWiringOf(RECORD_SKELETON(UPLOAD, 'modeStore', 'createFakeRecordUpload()'))
+        .recordUploadDeps,
+    ).toBeNull();
     expect(
       recordWiringOf(
         RECORD_SKELETON(UPLOAD.replace('modeStore,', 'modeStore: createModeStore(kv),')),
@@ -331,13 +346,14 @@ describe('createNativePorts keeps the upload credential on the app’s own mode 
     );
   });
 
-  it('the real createNativePorts: one mode store, handed to the app and to the credential store, switch passed', () => {
+  it('the real createNativePorts: one mode store for the app and the credential store, the switch passed, the upload port on fetch and the app’s logger', () => {
     const source = readFileSync(join(__dirname, 'nativePorts.ts'), 'utf8');
     expect(recordWiringOf(source)).toEqual({
       options: '{ recordSend: false }',
       modeStoreBinding: 'createModeStore(kv)',
       modeStoreProperty: 'modeStore',
       uploadCredentialDeps: UPLOAD_DEPS,
+      recordUploadDeps: RECORD_DEPS,
     });
   });
 

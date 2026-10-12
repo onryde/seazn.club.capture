@@ -23,6 +23,7 @@ import { createMemoryKeyValueStore, type MemoryKeyValueStore } from '@/services/
 import { createLogger } from '@/services/logger';
 import { createModeStore } from '@/services/modeStore';
 import { createProbeFlight } from '@/services/probeFlight';
+import type { RecordSendOutcome, RecordUploadPort } from '@/services/recordUploadPort';
 import { createScanFlight } from '@/services/scanFlight';
 import { createRingRecord, parseRecordLine, type SessionRecord } from '@/services/sessionRecord';
 import { createStreamSettingsStore } from '@/services/streamSettingsStore';
@@ -78,6 +79,8 @@ export type FakePorts = {
   readonly power: FakePower;
   /** R4: no credential until `give`; the real store's own tests are `uploadCredentialStore.test.ts`. */
   readonly uploadCredential: FakeUploadCredential;
+  /** R3: answers `sent` with ref R-TEST until `answer`; `sent` lists each call's lines and credential. */
+  readonly recordUpload: FakeRecordUpload;
   setNow(at: Date): void;
 };
 
@@ -113,6 +116,7 @@ export function createFakePorts(
     scoringLink: createFakeScoringLinkPort(),
     power: createFakePower(),
     uploadCredential: createFakeUploadCredential(),
+    recordUpload: createFakeRecordUpload(),
   };
   const ports: Ports = {
     ...fakes,
@@ -339,6 +343,49 @@ export function createFakeUploadCredential(
     give: (next) => {
       credential = next;
     },
+  };
+}
+
+export type FakeRecordUpload = RecordUploadPort & {
+  /** What every later `send` answers. */
+  answer(outcome: RecordSendOutcome): void;
+  /** `hold()` pends every later send until `release()`. */
+  hold(): void;
+  release(): void;
+  readonly calls: number;
+  readonly sent: readonly { readonly lines: readonly string[]; readonly token: string }[];
+};
+
+const SENT: RecordSendOutcome = { result: 'sent', ref: 'R-TEST', status: 201, bytes: 10 };
+
+/** R3: the record upload, answering a settable outcome, counting calls and keeping what each was handed. */
+export function createFakeRecordUpload(): FakeRecordUpload {
+  let outcome = SENT;
+  let gate: Promise<void> | null = null;
+  let open = () => undefined as void;
+  const sent: { lines: readonly string[]; token: string }[] = [];
+  return {
+    send: async (lines, credential) => {
+      sent.push({ lines, token: credential.token });
+      if (gate !== null) await gate;
+      return outcome;
+    },
+    answer: (next) => {
+      outcome = next;
+    },
+    hold: () => {
+      gate = new Promise<void>((resolve) => {
+        open = resolve;
+      });
+    },
+    release: () => {
+      gate = null;
+      open();
+    },
+    get calls() {
+      return sent.length;
+    },
+    sent,
   };
 }
 

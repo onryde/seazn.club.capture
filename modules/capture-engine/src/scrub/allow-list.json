@@ -117,6 +117,7 @@
   },
   "scalars": {
     "audioFps": "native: video-stalled, audio packets per second, or null",
+    "bytes": "JS: record.send, the size of the body Send record to Seazn sent or would have sent (R3)",
     "camera": "native: readiness, whether the camera has frames",
     "counted": "native: connect-failed and dropped, whether the failure counted toward a fallback",
     "encodeListed": "native: preview-size, whether the camera lists the encode's own size (1280 x 720) among the sizes StreamPack's PreviewView chooses from",
@@ -221,6 +222,7 @@
     "previous-session-lost": "native: the previous run held a session and its process died, with the exit reason (F-P5-3, CD22)",
     "readiness": "native: a readiness check changed, with each check, the side and the lines held back (A11, review C4a I-1)",
     "ready": "native: every readiness check passed, with the side held",
+    "record.send": "JS, through native's record while a pairing is held: Send record to Seazn's result word, HTTP status and body size (R3 of the D3 findings design); never the server's reference or the token",
     "rejoin-retry": "native: a rejoin of a broadcast whose hold ran out failed a connect and waits (N29): the wait and how many have failed",
     "rendition-refused": "native: the master placed its rendition off the playback host, once a session, with a fixed reason word (re-review 6)",
     "reset": "native: the ended session was reset to idle",
