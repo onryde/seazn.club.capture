@@ -1487,6 +1487,64 @@ describe('the Stream settings gear (R2, P6)', () => {
     expect(view.scanner.scans).toBe(0);
   });
 
+  // Finding 6 of the Batch 10 review: a tile tap, then a quick gear tap before Play services' scanner covers the app.
+  // The scan's outcome (an open, or a refusal's panel) is Home's, so the gear does nothing until the flight settles,
+  // and then opens Stream Settings again (AGENTS §13, class 7).
+  it('does nothing while a scan is in flight, and opens Stream Settings once it settles', async () => {
+    const view = await renderHome();
+    const finish = view.scanner.deferNext();
+    fireEvent.click(liveStreamTile());
+    fireEvent.click(screen.getByRole('button', { name: 'Stream settings' }));
+    expect(view.navigation.current()).toBe('home');
+    await act(async () => finish({ outcome: 'cancelled' }));
+    expect(view.ports.scanFlight.active()).toBe(false);
+    expect(view.navigation.history).toEqual([]);
+    fireEvent.click(screen.getByRole('button', { name: 'Stream settings' }));
+    expect(view.navigation.history).toEqual(['homeSettings']);
+  });
+
+  it('opens Live Stream alone for a good code scanned after a mid-scan gear tap', async () => {
+    const view = await renderHome();
+    const finish = view.scanner.deferNext();
+    fireEvent.click(liveStreamTile());
+    fireEvent.click(screen.getByRole('button', { name: 'Stream settings' }));
+    await act(async () => finish({ outcome: 'scanned', raw: streamRaw(IN_TWO_HOURS) }));
+    await waitFor(() => expect(view.navigation.current()).toBe('stream'));
+    expect(view.navigation.history).toEqual(['stream']);
+  });
+
+  it('keeps a refused scan’s panel on Home after a mid-scan gear tap, and opens once it is closed', async () => {
+    const view = await renderHome();
+    const finish = view.scanner.deferNext();
+    fireEvent.click(liveStreamTile());
+    fireEvent.click(screen.getByRole('button', { name: 'Stream settings' }));
+    await act(async () => finish({ outcome: 'scanned', raw: 'https://example.com/menu' }));
+    await screen.findByText("This isn't a Seazn code.");
+    expect(view.navigation.history).toEqual([]);
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Stream settings' }));
+    expect(view.navigation.history).toEqual(['homeSettings']);
+  });
+
+  // On the phone the scanner takes the app away, and the flight holds until the app is back (R36). The return lowers
+  // it, so the gear is never left dead after a scan.
+  it('opens Stream Settings after the app returns from the scanner, under the reopen gate', async () => {
+    const fakes = createFakePorts();
+    render(<GateThenHome />, { wrapper: wrapperFor(fakes) });
+    await waitFor(() => expect(fakes.splash.hides).toBe(1));
+    const finish = fakes.scanner.deferNext();
+    fireEvent.click(liveStreamTile());
+    act(() => fakes.foreground.leave());
+    await act(async () => finish({ outcome: 'cancelled' }));
+    expect(fakes.ports.scanFlight.active()).toBe(true);
+    fireEvent.click(screen.getByRole('button', { name: 'Stream settings' }));
+    expect(fakes.navigation.history).toEqual([]);
+    act(() => fakes.foreground.fire());
+    expect(fakes.ports.scanFlight.active()).toBe(false);
+    fireEvent.click(screen.getByRole('button', { name: 'Stream settings' }));
+    expect(fakes.navigation.history).toEqual(['homeSettings']);
+  });
+
   it('is the Live Stream tile’s alone: Remote Scoring and Dashboard have no gear', async () => {
     await renderHome();
     expect(screen.getAllByRole('button', { name: 'Stream settings' })).toHaveLength(1);
@@ -1498,7 +1556,7 @@ describe('the Stream settings gear (R2, P6)', () => {
     expect(screen.queryByTestId('tile-dashboard')).toBeNull();
   });
 
-  it('is absent while Continue shows: the same screen is inside Live Stream', async () => {
+  it('is absent while Continue shows: the phone may hold a pairing', async () => {
     await renderHome({ kvSeed: { [STORE_KEYS.code('stream')]: savedStream(IN_TWO_HOURS) } });
     expect(screen.getByRole('button', { name: 'Continue' })).toBeTruthy();
     expect(gear()).toBeNull();

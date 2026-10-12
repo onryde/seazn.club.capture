@@ -437,22 +437,41 @@ describe('the Stream settings gear on the Live Stream tile’s corner (R2, as th
   // [width, height, the tile with its band as measured, with its title at the clamp's two lines (N31), what is left with
   // no card]. 592 × 328 is a 640 × 360 phone behind a 32 dp status bar and a 3-button bar (an assumption: the fits have
   // no shot of one); 728 × 328 the owner's phone sideways as Home is laid out; 804 × 332 the geometry of the 2026-10-08
-  // rulings. Upright the gear adds no height: the head keeps its one line beside it (above).
-  it.each([
+  // rulings. The rest are GEOMETRIES' (finding 2 of the Batch 10 review). Upright the gear adds no height: the head
+  // keeps its one line beside it (above).
+  const BAND = [
     [592, 328, 218, 218, 231],
     [640, 360, 202, 202, 263],
     [728, 328, 202, 202, 231],
+    [800, 360, 180, 202, 263],
     [804, 332, 180, 202, 235],
+    [844, 390, 180, 180, 293],
     [915, 412, 151, 180, 315],
-  ] as const)(
+  ] as const;
+  let bandChecked = 0;
+
+  it.each(BAND)(
     '%i × %i: the Live Stream tile with its gear needs %i (%i at two title lines) of the %i left with no card',
     (width, height, need, clamped, left) => {
       expect(streamNeed(width)).toBe(need);
       expect(streamNeed(width, layout.tileTitleLines)).toBe(clamped);
       expect(noCards(height)).toBe(left);
       expect(clamped).toBeLessThanOrEqual(left);
+      bandChecked += 1;
     },
   );
+
+  // Order-dependent on purpose: it follows the band's rows above.
+  it('swept the band over every window in GEOMETRIES, and 592 × 328 and 804 × 332 besides (anti-vacuity)', () => {
+    for (const [width, height] of GEOMETRIES) {
+      expect(
+        BAND.some(([w, h]) => w === width && h === height),
+        `${width} × ${height}`,
+      ).toBe(true);
+    }
+    expect(BAND).toHaveLength(GEOMETRIES.length + 2);
+    expect(bandChecked).toBe(BAND.length);
+  });
 
   it('with Continue or the ended card it would break fix round 1’s 4 dp slack at 800 × 360, which is one reason it hides then (P6)', () => {
     const leftAt800 = (cards: Cards) =>
@@ -472,6 +491,9 @@ describe('portrait with the gear: do three equal tiles fit? (R11 of the D3 findi
   // made equal thirds need a 748–796 dp window at 360 wide. The gear adds no height upright, so this measures equal
   // thirds again, in every state the tiles share the column with, on two windows: 360 × 720 (a 360 × 800 phone less
   // its status and navigation bars) and 412 × 800 (a 412 × 915 one), both after ShellFrame's insets, an assumption.
+  // The 412 window is a deliberately pessimistic bound: it allows the bars 115 dp, the 360 one 80 (finding 3 of the
+  // Batch 10 review). With the same 80, 412 × 835, equal thirds fit with one card in every language (the needs below
+  // are 807 at most), so R11 rests on 360 wide.
   // Equal thirds (a zero basis) cannot grow past a third, so they must fit in every state or a tile is squeezed below
   // its words (N31's class). The cards are at their least (one line of text each): more lines only take more.
   const inner = (width: number) => width - 2 * space.md - TILE_EDGE - 2 * space.md;
@@ -569,7 +591,8 @@ describe('portrait with the gear: do three equal tiles fit? (R11 of the D3 findi
 
   // The verdict, from the table above: with no card equal thirds fit both windows in every language (658 at most), but
   // a card squeezes them on 360 × 720 in every language (Continue 741–807, the ended card 736–802), and on 412 × 800 in
-  // French and Dutch (807 and 802). So R11 stands: a tile grows from its own content and Home scrolls.
+  // French and Dutch (807 and 802), the pessimistic bound above. So R11 stands: a tile grows from its own content and
+  // Home scrolls.
   it('equal thirds fit with no card, but not with a card: R11 stands', () => {
     const shortfall = (width: number, window: number, state: (typeof STATES)[number][0]) =>
       LANGS.map((lang) => {

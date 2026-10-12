@@ -30,10 +30,17 @@ export function useBackToViewfinder(): () => void {
   return toCamera;
 }
 
-/** R2: Home's way into Stream Settings. */
+/**
+ * R2: Home's way into Stream Settings. Not while a scan is in flight: its outcome, an open or a refusal's panel, is
+ * Home's, and Settings would take Home away under it (finding 6 of the Batch 10 review). The flight ends on every
+ * outcome and on the return from the scanner, so the gear is never left dead.
+ */
 export function useHomeLinks(): { streamSettings(): void } {
-  const { navigation } = usePorts();
-  const streamSettings = useCallback(() => navigation.go('homeSettings'), [navigation]);
+  const { navigation, scanFlight } = usePorts();
+  const streamSettings = useCallback(() => {
+    if (scanFlight.active()) return;
+    navigation.go('homeSettings');
+  }, [navigation, scanFlight]);
   return useMemo(() => ({ streamSettings }), [streamSettings]);
 }
 
