@@ -5,7 +5,7 @@
  * A screen reads its switch as the default of a prop, so its tests can render the hidden feature without editing the
  * value here. The route passes nothing, so what ships is what this file says.
  */
-export const FEATURES: { readonly viewerCheck: boolean } = {
+export const FEATURES: { readonly viewerCheck: boolean; readonly recordSend: boolean } = {
   /**
    * What viewers see (D2 §4.3): built, and hidden by the owner's ruling of 2026-10-09 ("keep all code and just hide
    * button then when later stage like when org request we can implement"). Off, the on-air icon row is Settings, Take
@@ -13,4 +13,10 @@ export const FEATURES: { readonly viewerCheck: boolean } = {
    * not name it. On, it is D2 §4.3 as built. It is turned on when an organiser asks for it.
    */
   viewerCheck: false,
+  /**
+   * Send record to Seazn (B7; R3 of the D3 findings design, owner 2026-10-11): built, and off until the web's record
+   * endpoint ships (the D3 web brief §1). Off, Stream Settings shows Share record alone, and the upload credential is
+   * never stored (the D3 fixes plan's ruling P10): the composition root passes this to `createNativePorts`.
+   */
+  recordSend: false,
 };

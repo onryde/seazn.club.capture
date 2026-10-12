@@ -28,6 +28,7 @@ import type { ScoringLinkPort } from '@/services/scoringLinkPort';
 import type { SessionRecord } from '@/services/sessionRecord';
 import type { StreamSettingsStore } from '@/services/streamSettingsStore';
 import type { Surfaces } from '@/services/surfaces';
+import type { UploadCredentialStore } from '@/services/uploadCredentialStore';
 
 /**
  * Everything native, in one object that never changes after launch — which is
@@ -77,6 +78,8 @@ export type Ports = {
   readonly scoringLink: ScoringLinkPort;
   /** R5: the battery state and the app's settings page, Android only. */
   readonly power: PowerPort;
+  /** R4: the credential Send record to Seazn may use (P10: inert while its switch is off). */
+  readonly uploadCredential: UploadCredentialStore;
   readonly clock: () => Date;
   readonly hosts: readonly string[];
   readonly deviceLanguages: readonly (string | null)[];

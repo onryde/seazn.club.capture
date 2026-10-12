@@ -1,5 +1,6 @@
 import type { EngineIntent } from '@/engine/CaptureEnginePort';
 import { createFakeCaptureEngine, type FakeCaptureEngine } from '@/engine/FakeCaptureEngine';
+import type { UploadCredential } from '@/domain/credentials/uploadCredential';
 import type { Gravity, Target } from '@/domain/orientation/orientation';
 import type { Ports } from '@/hooks/usePorts';
 import { createFakeCodeScanner, type FakeCodeScanner } from '@/scanner/fakeCodeScanner';
@@ -25,6 +26,7 @@ import { createProbeFlight } from '@/services/probeFlight';
 import { createScanFlight } from '@/services/scanFlight';
 import { createRingRecord, parseRecordLine, type SessionRecord } from '@/services/sessionRecord';
 import { createStreamSettingsStore } from '@/services/streamSettingsStore';
+import type { UploadCredentialStore } from '@/services/uploadCredentialStore';
 import { createFakePhotoPort, type FakePhotoPort } from './fakePhotoPort';
 import { createFakeScoringLinkPort, type FakeScoringLinkPort } from './fakeScoringLinkPort';
 import { createFakeSurfaces, type FakeSurfaces } from './fakeSurfaces';
@@ -74,6 +76,8 @@ export type FakePorts = {
   readonly scoringLink: FakeScoringLinkPort;
   /** The battery mode (R5): Unrestricted until `set`; `opened` counts App info's opens. */
   readonly power: FakePower;
+  /** R4: no credential until `give`; the real store's own tests are `uploadCredentialStore.test.ts`. */
+  readonly uploadCredential: FakeUploadCredential;
   setNow(at: Date): void;
 };
 
@@ -108,6 +112,7 @@ export function createFakePorts(
     photo: createFakePhotoPort(),
     scoringLink: createFakeScoringLinkPort(),
     power: createFakePower(),
+    uploadCredential: createFakeUploadCredential(),
   };
   const ports: Ports = {
     ...fakes,
@@ -315,6 +320,24 @@ export function createFakePower(initial: PowerMode | null = 'unrestricted'): Fak
     },
     get opened() {
       return opened;
+    },
+  };
+}
+
+export type FakeUploadCredential = UploadCredentialStore & {
+  /** What every later `current()` answers. */
+  give(credential: UploadCredential | null): void;
+};
+
+/** R4: the credential Send record may use, settable. Made-up values only in a test that gives one. */
+export function createFakeUploadCredential(
+  initial: UploadCredential | null = null,
+): FakeUploadCredential {
+  let credential = initial;
+  return {
+    current: async () => credential,
+    give: (next) => {
+      credential = next;
     },
   };
 }

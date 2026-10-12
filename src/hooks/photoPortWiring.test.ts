@@ -6,6 +6,7 @@ import type { CaptureEngineNative } from '@/engine/nativeModule';
 import { FakeNativeModule } from '@/engine/testing/FakeNativeModule';
 import { photoPortFor } from '@/hooks/photoPortWiring';
 import type { PhotoOutcome } from '@/services/photoPort';
+import { FEATURES } from '@/ui/features';
 
 type Native = Pick<CaptureEngineNative, 'takePhoto'>;
 
@@ -227,5 +228,140 @@ describe('createNativePorts hands the module it loaded once to the engine, the p
       powerDeps: POWER_DEPS,
       loads: 1,
     });
+  });
+});
+
+/**
+ * R4 and P10 (the D3 fixes plan's rulings, the controller's): the upload credential store follows the SAME mode store
+ * the ports hand the app (a second `createModeStore(kv)` would never be loaded, so no credential would ever be kept),
+ * and stores only when the root layout's switch says so. Read from source, as above.
+ */
+type RecordWiring = {
+  /** The options parameter's default, as written. */
+  options: string | null;
+  /** What `const modeStore` is bound to, and what the returned `modeStore` property is. */
+  modeStoreBinding: string | null;
+  modeStoreProperty: string | null;
+  /** What it gives `createUploadCredentialStore`, as sorted `name:initializer`. */
+  uploadCredentialDeps: string | null;
+};
+
+function recordWiringOf(source: string): RecordWiring {
+  const file = ts.createSourceFile('nativePorts.ts', source, ts.ScriptTarget.Latest, true);
+  let root: ts.FunctionDeclaration | undefined;
+  const find = (node: ts.Node) => {
+    if (ts.isFunctionDeclaration(node) && node.name?.text === 'createNativePorts') root = node;
+    ts.forEachChild(node, find);
+  };
+  find(file);
+  if (root === undefined) throw new Error('no createNativePorts');
+  const result: RecordWiring = {
+    options: root.parameters[0]?.initializer?.getText(file) ?? null,
+    modeStoreBinding: null,
+    modeStoreProperty: null,
+    uploadCredentialDeps: null,
+  };
+  // Only the returned object's own properties: the credential store's deps hold a `modeStore` too.
+  const visit = (node: ts.Node) => {
+    if (
+      ts.isVariableDeclaration(node) &&
+      ts.isIdentifier(node.name) &&
+      node.name.text === 'modeStore'
+    )
+      result.modeStoreBinding = node.initializer?.getText(file) ?? null;
+    if (
+      ts.isReturnStatement(node) &&
+      node.expression &&
+      ts.isObjectLiteralExpression(node.expression)
+    )
+      for (const property of node.expression.properties) readPort(property);
+    ts.forEachChild(node, visit);
+  };
+  const readPort = (property: ts.ObjectLiteralElementLike) => {
+    const name = property.name?.getText(file);
+    if (name === 'modeStore')
+      result.modeStoreProperty = ts.isPropertyAssignment(property)
+        ? property.initializer.getText(file)
+        : name;
+    if (name !== 'uploadCredential' || !ts.isPropertyAssignment(property)) return;
+    const call = property.initializer;
+    if (
+      ts.isCallExpression(call) &&
+      ts.isIdentifier(call.expression) &&
+      call.expression.text === 'createUploadCredentialStore'
+    )
+      result.uploadCredentialDeps = depsOf(call.arguments[0], file);
+  };
+  visit(root);
+  return result;
+}
+
+const UPLOAD_DEPS =
+  'clock:clock, enabled:options.recordSend, kv:kv, logger:logger, modeStore:modeStore';
+const RECORD_SKELETON = (upload: string, modeStore = 'modeStore') => `
+  export function createNativePorts(options = { recordSend: false }) {
+    const modeStore = createModeStore(kv);
+    return { modeStore: ${modeStore}, uploadCredential: ${upload} };
+  }`;
+const UPLOAD =
+  'createUploadCredentialStore({ kv, modeStore, clock, logger, enabled: options.recordSend })';
+
+describe('createNativePorts keeps the upload credential on the app’s own mode store, behind the switch (R4, P10)', () => {
+  it('reads the wiring, and tells a second mode store, a forced switch and a fake apart', () => {
+    expect(recordWiringOf(RECORD_SKELETON(UPLOAD))).toEqual({
+      options: '{ recordSend: false }',
+      modeStoreBinding: 'createModeStore(kv)',
+      modeStoreProperty: 'modeStore',
+      uploadCredentialDeps: UPLOAD_DEPS,
+    });
+    expect(
+      recordWiringOf(
+        RECORD_SKELETON(UPLOAD.replace('modeStore,', 'modeStore: createModeStore(kv),')),
+      ).uploadCredentialDeps,
+    ).toContain('modeStore:createModeStore(kv)');
+    expect(
+      recordWiringOf(RECORD_SKELETON(UPLOAD.replace('options.recordSend', 'true')))
+        .uploadCredentialDeps,
+    ).toContain('enabled:true');
+    expect(
+      recordWiringOf(RECORD_SKELETON('createFakeUploadCredential()')).uploadCredentialDeps,
+    ).toBeNull();
+    expect(recordWiringOf(RECORD_SKELETON(UPLOAD, 'createModeStore(kv)')).modeStoreProperty).toBe(
+      'createModeStore(kv)',
+    );
+  });
+
+  it('the real createNativePorts: one mode store, handed to the app and to the credential store, switch passed', () => {
+    const source = readFileSync(join(__dirname, 'nativePorts.ts'), 'utf8');
+    expect(recordWiringOf(source)).toEqual({
+      options: '{ recordSend: false }',
+      modeStoreBinding: 'createModeStore(kv)',
+      modeStoreProperty: 'modeStore',
+      uploadCredentialDeps: UPLOAD_DEPS,
+    });
+  });
+
+  it('the root layout passes the shipped switch, and the shipped switch is off until the web’s endpoint exists', () => {
+    const source = readFileSync(join(__dirname, '../../app/_layout.tsx'), 'utf8');
+    const file = ts.createSourceFile(
+      '_layout.tsx',
+      source,
+      ts.ScriptTarget.Latest,
+      true,
+      ts.ScriptKind.TSX,
+    );
+    const calls: string[] = [];
+    const visit = (node: ts.Node) => {
+      if (
+        ts.isCallExpression(node) &&
+        ts.isIdentifier(node.expression) &&
+        node.expression.text === 'createNativePorts'
+      )
+        calls.push(node.arguments.map((arg) => arg.getText(file)).join(', '));
+      ts.forEachChild(node, visit);
+    };
+    visit(file);
+    expect(calls).toEqual(['{ recordSend: FEATURES.recordSend }']);
+    expect(FEATURES.recordSend).toBe(false);
   });
 });

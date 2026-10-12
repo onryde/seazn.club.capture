@@ -29,6 +29,7 @@ import { createSecureKeyValueStore } from '@/services/native/secureKeyValueStore
 import { seaznEnvironment, seaznHosts, seaznOrigin } from '@/services/seaznHosts';
 import { createRingRecord } from '@/services/sessionRecord';
 import { createStreamSettingsStore } from '@/services/streamSettingsStore';
+import { createUploadCredentialStore } from '@/services/uploadCredentialStore';
 
 /**
  * The composition root's parts (AGENTS §3). The engine is chosen by
@@ -37,8 +38,13 @@ import { createStreamSettingsStore } from '@/services/streamSettingsStore';
  * C4c carry (c): until Task 33 builds the native module, an Android build
  * wires the absent engine, which ends every pair fatal-error. No device build
  * between Task 32 and Task 33 without `EXPO_PUBLIC_FAKE_ENGINE=1`.
+ *
+ * `options.recordSend` is `FEATURES.recordSend`, passed in by the root layout (the D3 fixes plan's ruling P10:
+ * `src/hooks` may not import `src/ui`). Off, the upload credential is never stored.
  */
-export function createNativePorts(): Ports {
+export function createNativePorts(
+  options: { readonly recordSend: boolean } = { recordSend: false },
+): Ports {
   const ring = createRingRecord();
   const native = loadCaptureEngineNative();
   const wired = chooseEngine({
@@ -55,6 +61,8 @@ export function createNativePorts(): Ports {
   const scanner = createNativeCodeScanner();
   scanner.prepare();
   const clock = () => new Date();
+  // One mode store: the app's, which the reopen gate loads, and the one the upload credential follows (R4).
+  const modeStore = createModeStore(kv);
   const env = process.env.EXPO_PUBLIC_SEAZN_ENV;
   const hosts = seaznHosts(env);
   const code = chooseCodePort({
@@ -72,7 +80,7 @@ export function createNativePorts(): Ports {
     code,
     environment: seaznEnvironment(env),
     kv,
-    modeStore: createModeStore(kv),
+    modeStore,
     scanFlight: createScanFlight(),
     probeFlight: createProbeFlight(),
     endedNotice: createEndedNotice(),
@@ -97,6 +105,13 @@ export function createNativePorts(): Ports {
       os: Platform.OS,
       openSettings: () => Linking.openSettings(),
       logger,
+    }),
+    uploadCredential: createUploadCredentialStore({
+      kv,
+      modeStore,
+      clock,
+      logger,
+      enabled: options.recordSend,
     }),
     clock,
     hosts,
