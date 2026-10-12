@@ -5,6 +5,9 @@ enum class ReconnectCause(override val wire: String) : Wire {
   UPLINK_LOST("uplink-lost"),
   VIDEO_STALLED("video-stalled"),
   NOT_DELIVERED("not-delivered"),
+
+  /** N29: a rejoin of a broadcast whose hold ran out; there is no hold to count down. */
+  HOLD_EXPIRED("hold-expired"),
 }
 
 enum class Transport(override val wire: String) : Wire {

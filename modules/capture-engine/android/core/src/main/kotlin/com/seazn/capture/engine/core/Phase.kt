@@ -40,6 +40,23 @@ enum class CameraState(override val wire: String, val slateOnAir: Boolean, val s
  */
 data class Ids(val attempt: Int = 1, val descriptor: Int = 1, val beat: Int = 1, val playlist: Int = 1, val start: Int = 1)
 
+/** N29: the broadcast this pairing was live on when its hold ran out, for a rejoin of the same sid (R10). */
+data class Lapsed(val sid: String, val liveSinceEpochMs: Long)
+
+/**
+ * N29, R10 (controller's): a session rejoining a [Lapsed] broadcast: when it first went live (the HUD's clock carries
+ * on from it), and how many of its connects have failed. Cleared by its first advancing frame.
+ */
+data class Rejoin(val liveSinceEpochMs: Long, val failures: Int = 0) {
+  companion object {
+    /** 2, 4, 8, 16, then 30 s, and the 30 s repeats while the server says live. */
+    val BACKOFF_MS: List<Long> = listOf(2_000L, 4_000L, 8_000L, 16_000L, 30_000L)
+
+    /** The wait after the [failures]-th failed connect, the first being 1. */
+    fun delayAfter(failures: Int): Long = BACKOFF_MS[(failures - 1).coerceIn(0, BACKOFF_MS.lastIndex)]
+  }
+}
+
 /**
  * One pairing (A5): what `pair` brought, and what the server has said since. Held from Pairing until
  * Idle or Ended, with each broadcast's [Session] inside it. The token is the request's: never printed.
@@ -69,6 +86,8 @@ data class PairingState(
   val lastEnd: LastEnd? = null,
   /** A 401 heard while a broadcast is held: the pairing ends with the broadcast (the 401 deferral). */
   val codeEndedPending: Boolean = false,
+  /** N29: the broadcast whose hold ran out on this pairing; a `live` for its sid rejoins it. Cleared by the next end. */
+  val lapsed: Lapsed? = null,
   /** The last `heartbeat` line's fields, message aside: a paired line is written only when they change. */
   val lastBeatLine: List<Pair<String, Any?>>? = null,
   /** Plan D §3.4: every beat sent this pairing, summarised for the record ([BeatLog]). */
@@ -102,6 +121,8 @@ data class Session(
   val networkValidated: Boolean = false,
   /** Set by the first encoded frame, and kept across drops: the HUD's elapsed time never resets. */
   val liveSinceEpochMs: Long? = null,
+  /** N29: set when this session rejoins a [Lapsed] broadcast, until its first advancing frame. */
+  val rejoin: Rejoin? = null,
   val notDelivered: Boolean = false,
   val camera: CameraState = CameraState.OWN,
   /** Seeded at arm from the last mic fact, which outlives the session before it, as the network's does (review 18 I1). */

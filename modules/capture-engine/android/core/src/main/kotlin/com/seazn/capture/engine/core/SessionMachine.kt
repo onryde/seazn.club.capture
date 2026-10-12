@@ -116,8 +116,17 @@ object SessionMachine {
     val pairing = phase.pairing
     val sid = phase.heldSid
     if (pairing == null || sid == null) return ignored(phase, "stop")
-    if (phase.session?.liveSinceEpochMs != null || pairing.codeEndedPending) return end(phase, EndReason.OPERATOR_STOPPED, now)
+    if (wentLive(phase) || pairing.codeEndedPending) return end(phase, EndReason.OPERATOR_STOPPED, now)
     return neverLive(phase, pairing, sid, now)
+  }
+
+  /**
+   * The held broadcast went live: its first frame came, or it is a rejoin of a lapsed one (N29). P3 (controller's): a
+   * rejoin was live, so its Stop ends the pairing as Stop from live does (A3), A8's final beat included.
+   */
+  private fun wentLive(phase: Phase): Boolean {
+    val sid = phase.heldSid ?: return false
+    return phase.session?.liveSinceEpochMs != null || phase.pairing?.lapsed?.sid == sid
   }
 
   /**
@@ -145,7 +154,7 @@ object SessionMachine {
   internal fun end(phase: Phase, reason: EndReason, now: Now, vararg fields: Pair<String, Any?>): Step {
     val pairing = phase.pairing
     val sid = phase.heldSid
-    val wasLive = phase.session?.liveSinceEpochMs != null
+    val wasLive = wentLive(phase)
     val ended = phase.ended(reason, now)
     val commands = mutableListOf<Command>(record("ended", "reason" to reason, "wasLive" to wasLive, *fields))
     if (reason == EndReason.OPERATOR_STOPPED && pairing != null && sid != null) {
@@ -272,8 +281,18 @@ internal object Transports {
       next = asked
       commands += fetch
     }
-    val waiting = ConnectStep.Waiting(now.monoMs + SessionMachine.RETRY_MS)
-    return Step(phase.copy(session = next, transport = decision.policy.current, step = waiting), commands)
+    val (spaced, retryMs, line) = retryAfterFailure(next)
+    line?.let(commands::add)
+    val waiting = ConnectStep.Waiting(now.monoMs + retryMs)
+    return Step(phase.copy(session = spaced, transport = decision.policy.current, step = waiting), commands)
+  }
+
+  /** N29, R10: a rejoin's connects back off ([Rejoin.delayAfter]); every other retry waits [SessionMachine.RETRY_MS]. */
+  private fun retryAfterFailure(session: Session): Triple<Session, Long, Command?> {
+    val rejoin = session.rejoin ?: return Triple(session, SessionMachine.RETRY_MS, null)
+    val failures = rejoin.failures + 1
+    val retryMs = Rejoin.delayAfter(failures)
+    return Triple(session.copy(rejoin = rejoin.copy(failures = failures)), retryMs, record("rejoin-retry", "retryMs" to retryMs, "failures" to failures))
   }
 
   private fun failedRecord(transport: Transport, failure: ConnectFailure, drop: DropReason?, validated: Boolean, counted: Boolean, message: String?): Command {
@@ -319,8 +338,9 @@ internal object Transports {
         fetch,
       )
     if (decision.fellBack) commands += record("fell-back", "from" to phase.transport, "to" to decision.policy.current)
-    val next = session.copy(fallback = decision.policy, regulation = BitrateRegulator.afterDrop(session.regulation, now.monoMs))
-    val waiting = ConnectStep.Waiting(now.monoMs + SessionMachine.RETRY_MS)
+    val (next, retryMs, line) = retryAfterFailure(session.copy(fallback = decision.policy, regulation = BitrateRegulator.afterDrop(session.regulation, now.monoMs)))
+    line?.let(commands::add)
+    val waiting = ConnectStep.Waiting(now.monoMs + retryMs)
     return Step(Phase.Connecting(next, decision.policy.current, waiting, outage), commands)
   }
 
@@ -340,7 +360,10 @@ internal object Transports {
     val commands = mutableListOf<Command>()
     if (watchdog.advancing(now.monoMs)) {
       if (next.session.liveSinceEpochMs == null) {
-        next = next.copy(session = next.session.copy(liveSinceEpochMs = now.wallMs))
+        // N29: a rejoin goes live again on its first live time, so the HUD's clock carries on; the lapse is spent.
+        val session = next.session
+        val since = session.rejoin?.liveSinceEpochMs ?: now.wallMs
+        next = next.copy(session = session.copy(liveSinceEpochMs = since, rejoin = null, pairing = session.pairing.copy(lapsed = null)))
         commands += record("live", "transport" to phase.transport)
       }
       // A reopened or switched camera is ours again once it delivers a frame.
@@ -442,10 +465,16 @@ internal object Timers {
     return Step(polled, requests.map { Command.FetchPlaylist(it.id, it.url) })
   }
 
-  /** The hold ran out: the broadcast is over for this phone, back to Paired. The server may keep it open, and a `live` rejoins (A10). */
+  /**
+   * The hold ran out: the broadcast is over for this phone, back to Paired. The server may keep it open, and a `live`
+   * for the same sid rejoins it (A10; N29, R10): the pairing remembers the sid and when it first went live.
+   */
   private fun expired(phase: Phase, outage: Outage, now: Now): Step {
     val over = Verdicts.over(phase, LastEnd.HOLD_WINDOW_EXPIRED, now)
-    return over.copy(commands = listOf(record("hold-expired", "transport" to outage.hold.transport, "cause" to outage.cause)) + over.commands)
+    val lapsed = phase.session?.let { session -> session.liveSinceEpochMs?.let { Lapsed(session.sid, it) } }
+    val paired = over.phase as? Phase.Paired
+    val marked = if (paired != null && lapsed != null) paired.copy(pairing = paired.pairing.copy(lapsed = lapsed)) else over.phase
+    return over.copy(phase = marked, commands = listOf(record("hold-expired", "transport" to outage.hold.transport, "cause" to outage.cause)) + over.commands)
   }
 
   /**

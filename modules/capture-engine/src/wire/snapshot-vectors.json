@@ -14,7 +14,7 @@
       "ended"
     ],
     "transport": ["srt", "rtmps"],
-    "reconnectCause": ["uplink-lost", "video-stalled", "not-delivered"],
+    "reconnectCause": ["uplink-lost", "video-stalled", "not-delivered", "hold-expired"],
     "degradeReason": [
       "not-delivered",
       "camera-taken",
