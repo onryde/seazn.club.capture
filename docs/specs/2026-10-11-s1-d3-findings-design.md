@@ -176,7 +176,9 @@ Mutate the rejoin marker once and watch a test fail.
   on-air rules. The owner's R2 is what allows a screen reachable outside a mode.
   AGENTS §1 and §6 are updated in the same change, to say so.
 - Home's layout tests (`homeFit.test.ts`) budget the link in all four locales
-  at 640 × 360, 804 × 332 and portrait.
+  at 640 × 360, 804 × 332 and portrait. The controller's ruling of 2026-10-12
+  (N31, N35) made the fits' geometry the size Home is laid out at behind
+  ShellFrame's insets, so they also carry 728 × 328, the owner's phone sideways.
 - In portrait each tile grows from its own content and Home scrolls when the
   tiles outgrow the window (R11), so the Live Stream tile with its link is
   never squeezed below its words.
@@ -293,6 +295,11 @@ Mutate the rejoin marker once and watch a test fail.
   nl, at 640, 804 and 915 dp, the title's measured width (from the same font
   metrics the height check uses) fits the tile's title budget, or it wraps
   within 2 lines. The tile heights are re-checked with the wrap.
+- The controller's ruling of 2026-10-12 (N31) made the widths Home's laid-out
+  width behind ShellFrame's insets (592, 640, 728, 804 and 915), and added a
+  step down: where the title's room is under its widest word (124 dp), the
+  title is set a size smaller (`tileTitleRole`), so no word is broken (§2's
+  N31 row).
 
 ## 11. The web's part (brief for `mobile-s1-web`)
 
@@ -342,7 +349,8 @@ this order:
 7. **B7:** Send record, built behind its switch (§7).
 8. **A2:** tile titles (§10).
 9. **Device pass** on both phones: A3's three paths, A1 on the CPH2569, B9 on
-   the shade, B6 and B8 at 804 and 640 in en and fr.
+   the shade, B6 and B8 on the owner's phone (728 × 328 as laid out) and at
+   640 × 360, in en and fr.
 
 Each slice answers AGENTS §10's four questions in its tests:
 
