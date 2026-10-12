@@ -241,6 +241,24 @@ class EngineTest {
     assertEquals(listOf<Command>(Command.End(EndReason.FATAL_ERROR)), executed.filterIsInstance<Command.End>())
   }
 
+  /**
+   * Batch 13 fix round 1 (m1 of its review): a failing command's line goes in the command's place in the step
+   * ([Engine.execute]), so the briefed order is seen in the record: `ended` before the End, as [SessionMachine.end] has it.
+   */
+  @Test
+  fun `I1 the fatal step's ended line comes before the End, so an End that throws is recorded after it`() {
+    onCommand = { _, command -> if (command == Command.End(EndReason.FATAL_ERROR)) throw IllegalStateException("link") }
+    val engine = engine(reducer = failsOnSwitch)
+    engine.sendAll(Configs.pairInputs(ready = false))
+    scheduler.advanceBy(0)
+    lines.clear()
+    engine.send(Input.SwitchCamera)
+    scheduler.advanceBy(0)
+    assertEquals(listOf("engine-error", "ended", "command-failed", "beats"), lines.map(::kindOf), lines.toString())
+    assertTrue("End: java.lang.IllegalStateException: link" in lines[2], lines[2])
+    assertEquals(1, engine.commandFailures)
+  }
+
   @Test
   fun `stop cancels the tick, and start twice ticks once`() {
     val engine = engine()
