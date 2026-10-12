@@ -115,3 +115,34 @@ describe('GhostButton (the secondary action)', () => {
     });
   });
 });
+
+// I3 of the Batch 5 review: the battery row's button is disabled on air. A disabled ghost is marked for a screen
+// reader, never fires, and its label drops to the inert ink, as Button's and HoldAction's do.
+describe('GhostButton disabled', () => {
+  const INERT = StyleSheet.create({ ink3: { color: colour.ink3 } });
+
+  it.each([false, true])(
+    'compact %s: marked disabled, fires nothing, and its label is inert',
+    (compact) => {
+      const onPress = vi.fn();
+      render(<GhostButton label="Share record" onPress={onPress} compact={compact} disabled />);
+      expect(button().getAttribute('aria-disabled')).toBe('true');
+      act(() => button().click());
+      expect(onPress).not.toHaveBeenCalled();
+      expect(getComputedStyle(within(button()).getByText('Share record')).color).toBe(
+        painted(INERT.ink3),
+      );
+    },
+  );
+
+  it('enabled by default: not marked, and a tap fires once', () => {
+    const onPress = vi.fn();
+    render(<GhostButton label="Share record" onPress={onPress} compact />);
+    expect(button().getAttribute('aria-disabled')).toBeNull();
+    act(() => button().click());
+    expect(onPress).toHaveBeenCalledTimes(1);
+    expect(getComputedStyle(within(button()).getByText('Share record')).color).not.toBe(
+      painted(INERT.ink3),
+    );
+  });
+});

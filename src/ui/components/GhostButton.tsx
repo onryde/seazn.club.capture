@@ -14,6 +14,11 @@ type GhostButtonProps = {
    * 48 dp node and not a hit slop on a smaller one.
    */
   compact?: boolean;
+  /**
+   * I3 of the Batch 5 review: a ghost that would disturb a live broadcast is disabled, its reason said at the control
+   * by its caller. Pressable folds `disabled` into the accessibility state; the label drops to the inert ink.
+   */
+  disabled?: boolean;
 };
 
 /** The secondary action beside a lime plate: outlined, never a second lime. */
@@ -22,20 +27,27 @@ export const GhostButton = memo(function GhostButton({
   onPress,
   expanded,
   compact = false,
+  disabled = false,
 }: GhostButtonProps) {
+  const labelStyle = disabled ? styles.labelOff : undefined;
   return (
     <Pressable
       accessibilityRole="button"
       aria-expanded={expanded}
+      disabled={disabled}
       onPress={onPress}
       style={compact ? targetStyle : ghostStyle}
     >
       {compact ? (
         <View testID="ghost-box" style={styles.box}>
-          <Text variant="controlSmall">{label}</Text>
+          <Text variant="controlSmall" style={labelStyle}>
+            {label}
+          </Text>
         </View>
       ) : (
-        <Text variant="control">{label}</Text>
+        <Text variant="control" style={labelStyle}>
+          {label}
+        </Text>
       )}
     </Pressable>
   );
@@ -76,6 +88,7 @@ const styles = StyleSheet.create({
     ...outline,
   },
   pressed: { opacity: 0.85 },
+  labelOff: { color: colour.ink3 },
 });
 
 const pressedGhost = [styles.ghost, styles.pressed];

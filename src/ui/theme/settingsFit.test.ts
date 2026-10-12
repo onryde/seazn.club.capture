@@ -729,14 +729,20 @@ describe('the side control and the switch rows fit the narrowest line, in every 
   });
 
   // R5: the battery row's label shares its line with the state word, set at the control size; its longest word must
-  // fit beside the longer of Allowed and Restricted. Its button's words fit the compact box on one line.
+  // fit beside the longest of the three mode words (M5 of the Batch 5 review). Its button's words fit the compact box
+  // on one line, and the path and the on-air reason (I3) are one line each at the caption size.
   it.each(LANGS)(
     '%s: the battery row’s label and state word share a line, and its button fits',
     (lang) => {
       const { t } = createTranslator(lang);
       const state = Math.max(
-        medium.width(t('settings.power.allowed'), typeScale.control.fontSize),
-        medium.width(t('settings.power.restricted'), typeScale.control.fontSize),
+        ...(
+          [
+            'settings.power.unrestricted',
+            'settings.power.optimized',
+            'settings.power.restricted',
+          ] as const
+        ).map((key) => medium.width(t(key), typeScale.control.fontSize)),
       );
       const room = NARROW_LINE - state - space.sm;
       expect(longestWord(t('settings.power.background')), `${lang} label`).toBeLessThanOrEqual(
@@ -747,6 +753,18 @@ describe('the side control and the switch rows fit the narrowest line, in every 
         2 * layout.ghostCompactPadX +
         2 * layout.iconBorder;
       expect(button, `${lang} button`).toBeLessThanOrEqual(NARROW_LINE);
+      for (const key of ['settings.power.path', 'settings.power.onAir'] as const) {
+        const line = t(key);
+        // Every character is Geist's own: a fallback face on the phone would set the arrow wider than measured.
+        expect(
+          [...line].filter((char) => !medium.has(char.codePointAt(0) ?? 0)),
+          `${lang} ${key}`,
+        ).toEqual([]);
+        expect(
+          medium.width(line, typeScale.metricUnit.fontSize),
+          `${lang} ${key}`,
+        ).toBeLessThanOrEqual(NARROW_LINE);
+      }
       powerChecked += 1;
     },
   );

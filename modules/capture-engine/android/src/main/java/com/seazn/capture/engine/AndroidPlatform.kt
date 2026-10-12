@@ -23,8 +23,8 @@ class AndroidPlatform(
   private val device: DeviceSampler,
   private val keeper: PairingKeeper,
   private val emit: (String, Map<String, Any?>) -> Unit,
-  /** N27: whether the app's battery is Unrestricted, or null when it cannot be read. */
-  private val power: () -> Boolean?,
+  /** N27: the app's battery mode (`PowerMode`), or null when it cannot be read. */
+  private val power: () -> String?,
 ) : Platform {
   private val main = Handler(Looper.getMainLooper())
 
@@ -39,7 +39,7 @@ class AndroidPlatform(
       Command.Hold -> {
         keeper.hold()
         // N27: which battery mode the pairing runs in, so a locked failure's record says.
-        EngineHost.line(RecordEntry("power", listOf("unrestricted" to power())))
+        EngineHost.line(RecordEntry("power", listOf("mode" to power())))
         device.paired()
         pose.start()
       }

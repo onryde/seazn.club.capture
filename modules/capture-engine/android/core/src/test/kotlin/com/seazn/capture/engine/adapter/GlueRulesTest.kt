@@ -480,16 +480,19 @@ class GlueRulesTest {
   }
 
   /**
-   * R5 of the D3 findings design (owner, 2026-10-11): the battery row reads whether the app is exempt from battery
-   * optimisation, at once, through `PowerState`; the module declares the call once. Nothing asks for the exemption: no
-   * glue file, the module's manifest or the app's config names the request permission or its dialog's action. The
-   * operator chooses Unrestricted on the app's own page.
+   * R5 of the D3 findings design (owner, 2026-10-11): the battery row reads the app's battery mode, at once, through
+   * `PowerState`, from both of Android's readings and core's `PowerMode` rule (M5 of the Batch 5 review); the module
+   * declares the call once. Nothing asks for the exemption: no glue file, the module's manifest or the app's config
+   * names the request permission or its dialog's action. The operator chooses Unrestricted from App info.
    */
   @Test
   fun `R5 the bridge reads the battery state through PowerState, and nothing asks for the exemption`() {
     val module = glue("CaptureEngineModule.kt")
-    assertEquals(1, Regex("""Function\("powerUnrestricted"\) \{ PowerState\.unrestricted\(app\(\)\) \}""").findAll(module).count(), module)
-    assertTrue("isIgnoringBatteryOptimizations(context.packageName)" in glue("PowerState.kt"))
+    assertEquals(1, Regex("""Function\("powerMode"\) \{ PowerState\.mode\(app\(\)\) \}""").findAll(module).count(), module)
+    val state = glue("PowerState.kt")
+    for (read in listOf("PowerMode.of(", "isIgnoringBatteryOptimizations(context.packageName)", ".isBackgroundRestricted")) {
+      assertTrue(read in state, read)
+    }
     val app = File(src.parentFile.parentFile.parentFile.parentFile, "app.json")
     assertTrue(app.isFile && "blockedPermissions" in app.readText(), "the app's own config: ${app.path}")
     val texts = sources().map { it.name to it.readText() } + ("AndroidManifest.xml" to File(src, "main/AndroidManifest.xml").readText()) + ("app.json" to app.readText())
@@ -502,10 +505,10 @@ class GlueRulesTest {
   fun `N27 the Hold records the battery mode the pairing runs in`() {
     val hold = body(glue("AndroidPlatform.kt"), "Command.Hold -> {")
     val held = hold.indexOf("keeper.hold()")
-    val line = hold.indexOf("""EngineHost.line(RecordEntry("power", listOf("unrestricted" to power())))""")
+    val line = hold.indexOf("""EngineHost.line(RecordEntry("power", listOf("mode" to power())))""")
     assertTrue(held >= 0 && line > held, hold)
     assertEquals(1, Regex("""\bpower\(\)""").findAll(glue("AndroidPlatform.kt")).count(), "read once, at the Hold")
-    assertTrue(Regex("""AndroidPlatform\([^\n]*power = \{ PowerState\.unrestricted\(app\) \}""").containsMatchIn(glue("EngineHost.kt")), "the host passes PowerState's read")
+    assertTrue(Regex("""AndroidPlatform\([^\n]*power = \{ PowerState\.mode\(app\) \}""").containsMatchIn(glue("EngineHost.kt")), "the host passes PowerState's read")
   }
 
   /**

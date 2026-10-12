@@ -74,12 +74,21 @@ export interface SplashPort {
   hide(): void;
 }
 
-/** R5, N27: whether Android lets the app work in the background, and its battery page. Never a prompt. */
+/**
+ * The app's battery mode, as Android's App battery usage page names it (M5 of the Batch 5 review): exempt from
+ * battery optimisation, Android's default, or restricted in the background.
+ */
+export type PowerMode = 'unrestricted' | 'optimized' | 'restricted';
+
+/** R5, N27: the app's battery mode, and its App info page. Never a prompt. */
 export interface PowerPort {
-  /** True when Unrestricted, false when restricted, null when unknown (iOS, no module, a stale build). */
-  isUnrestricted(): boolean | null;
-  /** This app's settings page, where the operator may choose Unrestricted battery. Never throws. */
-  openBatterySettings(): void;
+  /** The mode, or null when unknown (iOS, no module, a stale build, a reading native could not make). */
+  mode(): PowerMode | null;
+  /**
+   * This app's App info page (`ACTION_APPLICATION_DETAILS_SETTINGS`), where Battery is one tap away and the operator
+   * may choose Unrestricted. Never throws.
+   */
+  openAppSettings(): void;
 }
 
 /** The system share sheet (D21). Rejects when it could not open. */

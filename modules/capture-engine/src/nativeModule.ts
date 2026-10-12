@@ -36,10 +36,11 @@ export type CaptureEngineNative = {
    */
   scoringLink(): Promise<unknown>;
   /**
-   * R5: whether Android exempts the app from battery optimisation (Unrestricted), read at once. Unknown to iOS. The
-   * port reads anything but a boolean, or a throw (a stale build), as unknown.
+   * R5, and M5 of the Batch 5 review: the app's battery mode, read at once: `unrestricted`, `optimized` or
+   * `restricted` (`PowerMode.kt`), or null when native cannot read it. Unknown to iOS. The port reads any other answer,
+   * or a throw (a stale build), as unknown.
    */
-  powerUnrestricted(): unknown;
+  powerMode(): unknown;
   addListener(event: 'onSnapshot', listener: (body: unknown) => void): Subscription;
   addListener(event: 'onRecord', listener: (body: RecordLine) => void): Subscription;
   addListener(event: 'onAck', listener: (body: { seq: number }) => void): Subscription;

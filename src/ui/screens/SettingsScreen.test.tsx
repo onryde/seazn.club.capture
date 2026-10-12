@@ -1186,7 +1186,7 @@ describe('Share record wears the board’s box inside a 48 dp button', () => {
     const boxed = screen
       .getAllByTestId('ghost-box')
       .map((box) => box.closest('[role="button"]')?.textContent);
-    expect(boxed).toEqual(['Battery settings', 'Share record']);
+    expect(boxed).toEqual(['App settings', 'Share record']);
   });
 
   it('keeps the same box and the same 48 dp when a share fails and the label changes', async () => {

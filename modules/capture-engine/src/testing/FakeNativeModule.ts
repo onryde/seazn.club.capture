@@ -45,9 +45,9 @@ export class FakeNativeModule implements CaptureEngineNative {
     this.scoringCalls += 1;
     return Promise.resolve(this.scoringAnswer);
   }
-  /** What `powerUnrestricted` answers (R5): Unrestricted by default. Tests set it. */
-  powerAnswer: unknown = true;
-  powerUnrestricted(): unknown {
+  /** What `powerMode` answers (R5): Unrestricted by default. Tests set it. */
+  powerAnswer: unknown = 'unrestricted';
+  powerMode(): unknown {
     return this.powerAnswer;
   }
   addListener<E extends keyof Events>(event: E, listener: (body: Events[E]) => void): Subscription {

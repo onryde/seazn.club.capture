@@ -107,7 +107,7 @@ function useSettle(): (coldStart: boolean) => void {
       if (orphanedSession({ ...facts, now }) && !probeFlight.active()) unpair('orphan');
       expireOnTheWay(modeStore, current.saved, target, now, logger);
       // M22: Settings, with its Diagnostics card, is inside Live Stream; going there is staying. P8: Stream Settings
-      // opened from Home is Home's, so a return from the battery page stays on it.
+      // opened from Home is Home's, so a return from App info stays on it.
       const here = navigation.current();
       const staying =
         (target.go === 'stream' && isStreamSubRoute(here)) ||

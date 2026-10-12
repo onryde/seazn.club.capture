@@ -35,7 +35,7 @@ describe('Stream Settings from Home (R2, spec §6)', () => {
     act(() => app.ports.navigation.go('homeSettings'));
     await flush();
     expect(screen.getByTestId('power-row')).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Battery settings' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'App settings' })).toBeTruthy();
   });
 
   // Its way back is named for where it goes: Home (`stream.home`), never "Back to camera".
@@ -59,7 +59,7 @@ describe('Stream Settings from Home (R2, spec §6)', () => {
     expect(app.nav.history).not.toContain('stream');
   });
 
-  it('stays put on a return to the foreground, as from the battery page (P8)', async () => {
+  it('stays put on a return to the foreground, as from App info (P8)', async () => {
     const app = await launchApp();
     act(() => app.ports.navigation.go('homeSettings'));
     await flush();
@@ -88,14 +88,17 @@ describe('Stream Settings from Home (R2, spec §6)', () => {
       act(() => app.ports.navigation.go('homeSettings'));
       await flush();
       const { t } = createTranslator(lang);
+      const bothSettings = () => {
+        expect(screen.getByText(t('settings.title'))).toBeTruthy();
+        expect(screen.getByRole('switch', { name: t('settings.automatic.label') })).toBeTruthy();
+        expect(screen.getByRole('radiogroup', { name: t('settings.side.label') })).toBeTruthy();
+      };
       expect(layoutOf()).toBe('landscape');
-      expect(screen.getByText(t('settings.title'))).toBeTruthy();
-      expect(screen.getByRole('switch', { name: t('settings.automatic.label') })).toBeTruthy();
+      bothSettings();
       expect(screen.getByRole('button', { name: t('stream.home') })).toBeTruthy();
       setWindowSize(360, 640);
       expect(layoutOf()).toBe('portrait');
-      expect(screen.getByText(t('settings.title'))).toBeTruthy();
-      expect(screen.getByRole('radiogroup', { name: t('settings.side.label') })).toBeTruthy();
+      bothSettings();
     },
   );
 });
