@@ -4,10 +4,11 @@ The web's capture contracts, vendored and pinned (plan D spec §3.1, owner rulin
 web repo `onryde/seazn.club`, folder `docs/contracts/`. This folder is a byte copy of that folder at one commit, and
 nothing here is edited by hand.
 
-Vendored from web `5a02cc4a53265dcbbf5a27d33b012d67715fc183` (web #932, merged 2026-10-09) on 2026-10-09: 5 schemas
-and 139 fixtures. Staging deploys the web's `main`. The first vendoring, earlier the same day, was at web `8afdd8b42`;
-5a02cc4a5 changed the descriptor schema's prose and fifteen fixtures' RTMPS host to `live.cloudflare.com`, and no
-verdict.
+Vendored from web `53f28ebfcaaece1409499be799156f6ed825851c` (web #941, merged 2026-10-12) on 2026-10-12: 6 schemas
+and 191 fixtures. Staging deploys the web's `main`. 53f28ebfc added the record contract and its 52 fixtures, and
+changed no other file. The first vendoring, on 2026-10-09, was at web `8afdd8b42`; the second, the same day, at
+`5a02cc4a5`, which changed the descriptor schema's prose and fifteen fixtures' RTMPS host to `live.cloudflare.com`, and
+no verdict.
 
 | File                           | What it is                                                                 |
 | ------------------------------ | -------------------------------------------------------------------------- |
@@ -16,6 +17,7 @@ verdict.
 | `capture-beat.v1.json`         | A beat and its answer                                                      |
 | `capture-start.v1.json`        | `POST start`'s answer and its refusals                                     |
 | `capture-scoring-link.v1.json` | The Remote scoring link's answer                                           |
+| `capture-record.v1.json`       | One line of Send record to Seazn's NDJSON body, its 201 and its refusals   |
 | `fixtures/<contract>/…`        | The web's own fixtures for each, in the web's tree                         |
 | `VENDORED.json`                | The web commit and the sha256 of every file above, written by the script   |
 
@@ -35,12 +37,12 @@ A contract changes only through `pnpm contracts:vendor` and the pin test (R7):
    in CI. A fresh clone of the public repo, checked out at that commit, serves as well: the 5a02cc4a5 vendoring used
    one, so the web checkout in daily use was never moved.
 
-2. By hand, copy the web's commit and its five schema pins (`SHA256` in the web's
+2. By hand, copy the web's commit and its six schema pins (`SHA256` in the web's
    `apps/web/src/server/api-v1/__tests__/capture-contract.test.ts`) into `WEB_COMMIT` and `WEB_PINS` in
    `test/contractPins.test.ts`. The script never writes them, so a re-vendor cannot move both sides of the pin at
    once.
 
-3. Run `pnpm check`. `test/contractPins.test.ts` holds every file here to `VENDORED.json` and the five schemas to the
+3. Run `pnpm check`. `test/contractPins.test.ts` holds every file here to `VENDORED.json` and the six schemas to the
    web's own pins. A changed shape reds its parser's tests; the parser changes in the same pull request.
 
 ## Rules

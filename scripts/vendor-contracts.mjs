@@ -3,7 +3,7 @@
 // Copies the files git tracks under the web checkout's docs/contracts, byte for byte, into this repo's contracts/,
 // and writes contracts/VENDORED.json: the web commit and the sha256 of every file copied. Run by hand, never in CI.
 // It only READS the web checkout: every git call runs with --no-optional-locks, so not even git's index refresh
-// writes there. Afterwards, copy the web's five pins and its commit into test/contractPins.test.ts BY HAND, so a
+// writes there. Afterwards, copy the web's schema pins and its commit into test/contractPins.test.ts BY HAND, so a
 // re-vendor can never move both sides of the pin at once.
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
@@ -163,7 +163,7 @@ function main() {
     for (const path of removed) console.log(`removed  ${path}`);
     if (added.length + changed.length + removed.length === 0) console.log('no file changed');
     console.log(
-      'Next, by hand: the web commit and its five pins into test/contractPins.test.ts (WEB_COMMIT, WEB_PINS).',
+      'Next, by hand: the web commit and its schema pins into test/contractPins.test.ts (WEB_COMMIT, WEB_PINS).',
     );
   } catch (error) {
     console.error(error instanceof Error ? error.message : String(error));
