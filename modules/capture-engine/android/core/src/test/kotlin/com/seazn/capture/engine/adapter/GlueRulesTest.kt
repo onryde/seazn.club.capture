@@ -640,9 +640,9 @@ class GlueRulesTest {
       Regex(
         """val map = context\.cameraManager\.getCameraCharacteristics\(id\)\.get\(CameraCharacteristics\.SCALER_STREAM_CONFIGURATION_MAP\)\s+""" +
           """val sizes = map\?\.getOutputSizes\(SurfaceHolder::class\.java\)\.orEmpty\(\)\.map \{ it\.width to it\.height \}\s+""" +
-          """calls\.line\(PreviewSizes\.entry\(PreviewSizes\.report\(sizes\)\)\)""",
+          """calls\.line\(PreviewSizes\.entry\(PreviewSizes\.report\(sizes, wired = false\)\)\)""",
       )
-    assertTrue(derived.containsMatchIn(report), "the camera's own characteristics, the sizes StreamPack's PreviewView asks for (a SurfaceHolder's), whole and as (width, height), and the rule's report is the line: $report")
+    assertTrue(derived.containsMatchIn(report), "the camera's own characteristics, the sizes StreamPack's PreviewView asks for (a SurfaceHolder's), whole and as (width, height), and the rule's report is the line, unwired until the preview sees the 16:9 rule (N30): $report")
     assertTrue(Regex("""sizedCamera = null""").containsMatchIn(body(adapter, "override suspend fun release()")), "a new capture reports again")
     assertEquals(2, Regex("""\bsizedCamera = """).findAll(adapter).count(), "set by the report and the release only")
   }

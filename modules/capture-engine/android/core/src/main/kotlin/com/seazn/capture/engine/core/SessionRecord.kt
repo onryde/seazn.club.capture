@@ -258,8 +258,9 @@ class SessionRecord(private val sink: (String) -> Unit) {
       setOf(
         "action", "answer", "appVersion", "attempt", "cause", "claim", "count", "delivery", "endReason", "error", "exit",
         "failure", "field", "from", "host", "intent", "key", "kind", "lastEnd", "lock", "mode", "ms", "notReady", "op",
-        "phase", "problem", "reason", "refusal", "result", "retryAfterS", "rootError", "route", "scene", "shed", "side", "sid",
-        "site", "slot", "source", "startFailed", "state", "status", "tag", "to", "tokenTag", "transport", "word",
+        "phase", "pickSource", "problem", "reason", "refusal", "result", "retryAfterS", "rootError", "route", "scene",
+        "shed", "side", "sid", "site", "slot", "source", "startFailed", "state", "status", "tag", "to", "tokenTag",
+        "transport", "word",
       )
 
     /** Never written, whatever the value, and never allowed onto the lists above. A line never carries a code. */

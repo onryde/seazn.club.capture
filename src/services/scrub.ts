@@ -57,6 +57,7 @@ export const PLAIN_KEYS: ReadonlySet<string> = new Set([
   'notReady',
   'op',
   'phase',
+  'pickSource',
   'problem',
   'reason',
   'refusal',
