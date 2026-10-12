@@ -105,12 +105,21 @@ class CapturePreviewView(context: Context, appContext: AppContext) : ExpoView(co
       }
   }
 
-  /** The camera's sizes for the 16:9 rule (N30). A failed read is a line, and StreamPack's own pick stands. */
+  /** The camera whose sizes last failed to read: the line is written once per camera (review M2), not on every ask. */
+  @Volatile private var sizesFailed: String? = null
+
+  /**
+   * The camera's sizes for the 16:9 rule (N30). A failed read is one `preview-failed {sizes}` line per camera, and
+   * StreamPack's own pick stands. PreviewView asks from its own thread, which need not be main.
+   */
   private fun listed(cameraId: String, kind: Class<*>): List<Pair<Int, Int>> =
     try {
       listedSizes(context, cameraId, kind)
     } catch (e: Exception) {
-      failed("sizes", e)
+      if (sizesFailed != cameraId) {
+        sizesFailed = cameraId
+        failed("sizes", e)
+      }
       emptyList()
     }
 

@@ -670,18 +670,25 @@ class GlueRulesTest {
     assertTrue(Regex("""object : IVideoInput by real\.videoInput \{\s+override val sourceFlow""").containsMatchIn(provider), "only the source flow is replaced: $provider")
     assertEquals(2, uses(provider, "override"), "videoInput and its sourceFlow, nothing else: $provider")
     assertTrue("SharingStarted.WhileSubscribed()" in provider, "the mirror runs only while the PreviewView collects it: $provider")
-    assertTrue(Regex("""seen\?\.takeIf \{ it\.first === source \}\?\.second \?: SixteenNineCamera\(source, sizes\)\.also \{ seen = source to it \}""").containsMatchIn(provider), "one decorator per real camera, so an unchanged camera reads as unchanged: $provider")
-    val binding = body(glue, "fun of(streamer: IWithVideoSource?)")
-    assertTrue(Regex("""if \(streamer == null\) \{\s+last = null\s+return null\s+\}""").containsMatchIn(binding), "an unbind forgets, so a provider is never collected twice: $binding")
-    assertTrue(Regex("""last\?\.takeIf \{ it\.first === streamer \}\?\.second \?:""").containsMatchIn(binding), "the same streamer keeps its provider: $binding")
+    // Fix round 1 (review I1, M1): the identity rules are the tested seams OneFor and ScopedOneFor (OneForTest).
+    assertTrue(Regex("""private val cameras = OneFor<ICameraSource, SixteenNineCamera>\(\{ SixteenNineCamera\(it, sizes\) \}\) \{\}""").containsMatchIn(provider), "one decorator per real camera, so an unchanged camera reads as unchanged: $provider")
+    assertTrue(Regex("""if \(source is ICameraSource\) cameras\.of\(source\) else source""").containsMatchIn(provider), "every camera through the cache, anything else as it is: $provider")
+    assertEquals(1, Regex("""\.stateIn\(""").findAll(glue).count(), "one mirror, on the scope the binding gives the provider")
+    val binding = body(glue, "class SixteenNineBinding(")
+    assertTrue(Regex("""private val providers = ScopedOneFor<IWithVideoSource, SixteenNineProvider>\(scope\) \{ streamer, own -> SixteenNineProvider\(streamer, own, sizes\) \}""").containsMatchIn(binding), "one provider per streamer, each mirror in a scope of its own, cancelled when the streamer is replaced or unbound: $binding")
+    assertTrue(Regex("""fun of\(streamer: IWithVideoSource\?\): SixteenNineProvider\? = providers\.of\(streamer\)""").containsMatchIn(binding), "null unbinds through the seam: $binding")
+    assertFalse("===" in glue, "no hand-rolled identity cache beside the seams")
     for (call in listOf("setSource(", "setVideoSource(", "startStream(", "configure(")) assertFalse(call in glue, "the glue never calls $call: the encode is the streamer's own")
     assertTrue(Regex("""private val sixteenNine = SixteenNineBinding\(scope\) \{ id, kind -> listed\(id, kind\) \}""").containsMatchIn(code(glue("CapturePreviewView.kt"))), "one binding, over the view's scope")
     val listed =
       Regex(
         """private fun listed\(cameraId: String, kind: Class<\*>\): List<Pair<Int, Int>> =\s+try \{\s+listedSizes\(context, cameraId, kind\)\s+""" +
-          """\} catch \(e: Exception\) \{\s+failed\("sizes", e\)\s+emptyList\(\)\s+\}""",
+          """\} catch \(e: Exception\) \{\s+if \(sizesFailed != cameraId\) \{\s+sizesFailed = cameraId\s+failed\("sizes", e\)\s+\}\s+emptyList\(\)\s+\}""",
       )
-    assertEquals(1, listed.findAll(code(glue("CapturePreviewView.kt"))).count(), "a failed read is a line, and StreamPack's own pick stands")
+    val view = code(glue("CapturePreviewView.kt"))
+    assertEquals(1, listed.findAll(view).count(), "a failed read is one line per camera (review M2), and StreamPack's own pick stands")
+    assertTrue(Regex("""@Volatile private var sizesFailed: String\? = null""").containsMatchIn(view), "read on PreviewView's thread, which need not be main")
+    assertEquals(1, Regex("""\bsizesFailed = """).findAll(view).count(), "set by the failure only")
     val adapter = code(glue("StreamerAdapter.kt"))
     assertEquals(1, Regex("""\bwired = true\b""").findAll(adapter).count(), "the record says the rule is wired")
     assertEquals(0, Regex("""\bwired = false\b""").findAll(adapter).count(), "and nowhere says it is not")

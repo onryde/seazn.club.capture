@@ -25,14 +25,14 @@ class SixteenNinePreviewTest {
   }
 
   @Test
-  fun `the decorated camera answers the 16 by 9 pick, and never asks the real source`() {
+  fun `the answer is the 16 by 9 pick, and never asks the real source`() {
     val vendor = Vendor(960 to 960)
     assertEquals(1280 to 720, PreviewSizes.answer(cph2569, vendor::answer))
     assertEquals(0, vendor.asks)
   }
 
   @Test
-  fun `no 16 by 9 size listed - the real source's own answer stands, asked once`() {
+  fun `no 16 by 9 size listed - the answer is the real source's own, asked once`() {
     val vendor = Vendor(960 to 960)
     assertEquals(960 to 960, PreviewSizes.answer(listOf(960 to 960, 640 to 480), vendor::answer))
     assertEquals(1, vendor.asks)
