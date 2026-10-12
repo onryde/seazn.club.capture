@@ -99,6 +99,7 @@
   "stream.status.holding": "Verbinding weg: wachten, {remaining} s van {window}",
   "stream.status.holdingStalled": "Video staat stil: herstarten, {remaining} s van {window}",
   "stream.status.holdingNotDelivered": "Kijkers krijgen niets: herstarten, {remaining} s van {window}",
+  "stream.status.rejoinRetrying": "Verbinding weg: nog live, nieuwe poging",
   "stream.status.stoppedOrganiser": "Organisator stopte: wachten op de start",
   "stream.status.stoppedMatch": "Wedstrijd afgelopen: stream gestopt",
   "stream.status.stoppedHoldWindow": "Verbinding te lang weg: stream gestopt",

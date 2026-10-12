@@ -30,7 +30,7 @@ export const WIRE_VOCABULARY = {
     'ended',
   ]),
   transport: new Set(['srt', 'rtmps']),
-  reconnectCause: new Set(['uplink-lost', 'video-stalled', 'not-delivered']),
+  reconnectCause: new Set(['uplink-lost', 'video-stalled', 'not-delivered', 'hold-expired']),
   degradeReason: new Set([
     'not-delivered',
     'camera-taken',

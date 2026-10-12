@@ -56,9 +56,10 @@ export type SessionState =
 /**
  * Why a live session is reconnecting, as plan B's `ReconnectCause.wire`:
  * the uplink dropped, the video stopped advancing (F-P5-6), or viewers stopped
- * receiving and native is forcing a new session (F-P5-13).
+ * receiving and native is forcing a new session (F-P5-13); `hold-expired` is a
+ * rejoin of a broadcast whose hold ran out (N29), with no hold to count down.
  */
-export type ReconnectCause = 'uplink-lost' | 'video-stalled' | 'not-delivered';
+export type ReconnectCause = 'uplink-lost' | 'video-stalled' | 'not-delivered' | 'hold-expired';
 
 /**
  * Reasons the *broadcast* is impaired. Note what is absent: thermal pressure.

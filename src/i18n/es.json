@@ -99,6 +99,7 @@
   "stream.status.holding": "Sin conexión: esperando, {remaining} s de {window}",
   "stream.status.holdingStalled": "Vídeo congelado: reiniciando, {remaining} s de {window}",
   "stream.status.holdingNotDelivered": "No llega al público: reiniciando, {remaining} s de {window}",
+  "stream.status.rejoinRetrying": "Sin conexión: en directo, reintentando",
   "stream.status.stoppedOrganiser": "El organizador la detuvo: esperando el directo",
   "stream.status.stoppedMatch": "Partido terminado: emisión finalizada",
   "stream.status.stoppedHoldWindow": "Mucho tiempo sin conexión: emisión finalizada",

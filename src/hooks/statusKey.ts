@@ -31,6 +31,8 @@ const RECONNECTING: Readonly<Record<ReconnectCause, StatusKey>> = {
   'uplink-lost': 'stream.status.holding',
   'video-stalled': 'stream.status.holdingStalled',
   'not-delivered': 'stream.status.holdingNotDelivered',
+  // N29, P1: a rejoin after the hold ran out has no countdown; it says the server still holds it live.
+  'hold-expired': 'stream.status.rejoinRetrying',
 };
 
 /** Native's two end reasons; how a broadcast ended without the operator is `lastEnd`'s. */
@@ -243,6 +245,7 @@ export const LINE_TIER: Readonly<Record<LineKey, LineTier>> = {
   'stream.status.holding': 'urgent',
   'stream.status.holdingStalled': 'urgent',
   'stream.status.holdingNotDelivered': 'urgent',
+  'stream.status.rejoinRetrying': 'urgent',
   'stream.status.stoppedOrganiser': 'urgent',
   'stream.status.stoppedMatch': 'urgent',
   'stream.status.stoppedHoldWindow': 'urgent',

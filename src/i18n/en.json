@@ -99,6 +99,7 @@
   "stream.status.holding": "Uplink lost — holding, {remaining} s of {window}",
   "stream.status.holdingStalled": "Video stalled — restarting, {remaining} s of {window}",
   "stream.status.holdingNotDelivered": "Viewers not receiving — restarting, {remaining} s of {window}",
+  "stream.status.rejoinRetrying": "Uplink lost — live on the server, retrying",
   "stream.status.stoppedOrganiser": "Organiser stopped it — waiting for Go live",
   "stream.status.stoppedMatch": "Match finished — stream stopped",
   "stream.status.stoppedHoldWindow": "Connection lost too long — stream stopped",

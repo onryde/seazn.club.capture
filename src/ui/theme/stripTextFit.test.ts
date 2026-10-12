@@ -171,8 +171,8 @@ describe('the strip’s one message line, measured in every language (owner, 202
     expect(OWNER).toBe(462);
   });
 
-  it('measures 42 status strings and 5 captions in each of the four languages, and every glyph is in the font', () => {
-    // Anti-vacuity: the table is the whole copy, not a sample. 41 `stream.status.*` keys and Back's refusal; the
+  it('measures 43 status strings and 5 captions in each of the four languages, and every glyph is in the font', () => {
+    // Anti-vacuity: the table is the whole copy, not a sample. 42 `stream.status.*` keys and Back's refusal; the
     // captions are keep the app open, not charging, and heat's three (the spec's, which names What viewers see, and
     // "Phone hot · still live" and "Phone hot" with the view hidden: the owner's ruling, 2026-10-09).
     for (const [lang] of LANGUAGES) {
@@ -180,15 +180,15 @@ describe('the strip’s one message line, measured in every language (owner, 202
       expect(
         rows.filter((row) => row.kind === 'status'),
         lang,
-      ).toHaveLength(42);
+      ).toHaveLength(43);
       expect(
         rows.filter((row) => row.kind === 'caption'),
         lang,
       ).toHaveLength(5);
     }
-    expect(REALISTIC).toHaveLength(4 * 47);
+    expect(REALISTIC).toHaveLength(4 * 48);
     // The destination variants add two rows to the waiting line in each language.
-    expect(ROWS).toHaveLength(4 * 47 + 4 * 2);
+    expect(ROWS).toHaveLength(4 * 48 + 4 * 2);
     // A code point the font lacks is measured as its .notdef: the width would be wrong. None is missing.
     const missing = new Set<string>();
     for (const row of ROWS) {
