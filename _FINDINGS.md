@@ -902,7 +902,7 @@ when the stream starts. A YouTube event that starts with no video may stay on "P
 
 ### N29 — A rejoin after the hold runs out retries forever, with no reason shown
 
-**Status:** fixed — feat/s1-d3-fixes, Batch 2 (588ca11, 3eb3c1a, 4e27a9b)
+**Status:** fixed — feat/s1-d3-fixes, Batch 2 (588ca11, 3eb3c1a, 4e27a9b; fix round 1: 279413f, 641103a)
 **Where:** capture app · `Verdicts.over` (`Pairings.kt:274-281`) · `Transports.outageFor` (`SessionMachine.kt:327-331`) ·
 `Transports.failed` (`:262-276`) · `Projection.state` (`Projection.kt:72`)
 
@@ -910,11 +910,20 @@ when the stream starts. A YouTube event that starts with no video may stay on "P
 Session with `liveSinceEpochMs` null, so `outageFor` returns no outage, there is no hold, `Transports.failed` retries
 every 2 s with no limit, and the snapshot shows CONNECTING with no reason.
 
-**Ruling and planned fix:** R10 of the D3 findings design (the controller's, 2026-10-11;
-`docs/specs/2026-10-11-s1-d3-findings-design.md`); the cause word `hold-expired` is the D3 fixes plan's ruling P2, the
-controller's. The hold's end stays as it is. A `live` beat for the same sid will rejoin it, marked as a rejoin of a
-broadcast that was live: it will project as Reconnecting with cause `hold-expired`, its connects will back off 2, 4, 8,
-16, then 30 s, and only the server, Stop or a new hold will end it.
+**Ruling and fix:** R10 of the D3 findings design (the controller's, 2026-10-11;
+`docs/specs/2026-10-11-s1-d3-findings-design.md`). The cause word `hold-expired` is the D3 fixes plan's ruling P2 and
+Stop's path its ruling P3, both the controller's, and the fix round's rulings are the controller's of 2026-10-12. The
+hold's end is as it was, and the pairing now remembers the lapsed sid and its first live time (`PairingState.lapsed`).
+Any arm of that sid rejoins it: a `live` or `go-live` beat, or the operator's start answered `already_live`. The rejoin
+projects as Reconnecting with cause `hold-expired`, no hold (0 of 0) and the first live time, so the HUD's clock carries
+on, and the app says "Uplink lost — live on the server, retrying" (`stream.status.rejoinRetrying`, urgent). Its failed
+connects, drops and no-first-frame rebuilds back off 2, 4, 8, 16, then 30 s (record line `rejoin-retry`), and no retry
+ends it. The server's end, Stop or a 401 before its first frame ends it: Stop ends the pairing as Stop from live does,
+with A8's final beat and its time on air, and a 401 unpairs at once. Its first frame ends the rejoin, and a later drop
+holds as usual.
+
+**Remaining gap (not fixed in Batch 2):** the lapse is kept in memory only, so after a process death the server's
+`live` connects as a bare CONNECTING again, with 2 s retries and a clock that starts at its first frame.
 
 ---
 
