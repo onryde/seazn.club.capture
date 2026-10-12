@@ -569,7 +569,7 @@ describe('every tile title fits its tile, wrapping within two lines, never insid
 
   // [layout, Home's width, the size the rule must pick]. Sideways: 592 is a 640 dp phone behind a 3-button navigation
   // bar (spec §1's narrowest, with the bar), 640 spec §1's narrowest as Home's own, 728 the owner's phone sideways (804
-  // dp less ShellFrame's insets with 3-button navigation, a 31 dp cutout and a 45 dp bar: the tiles measured 226.7 dp in
+  // dp less ShellFrame's insets with 3-button navigation, a 32 dp cutout and a 44 dp bar: the tiles measured 226.7 dp in
   // r12-home-fr-landscape.png), 804 that phone's display, which Home never gets with the bar, and 915 the largest.
   // Upright: 360 the narrowest and 412 the largest.
   it.each([

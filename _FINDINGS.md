@@ -1002,7 +1002,7 @@ show on the CPH2569 (Batch 9): a 1280 × 720 preview stream in `dumpsys media.ca
 On the owner's phone sideways with 3-button navigation, "SCORE À DISTANCE" and "TABLEAU DE BORD" ran past their tiles
 (D3, `r12-home-fr-landscape.png`): TABLEAU DE BORD's ink by about 2 dp, SCORE À DISTANCE's by 8 dp or more, cut off
 under the next tile. The title had no `numberOfLines` and no `flexShrink`, so it kept its full width. The cause is the
-window, not the measure. The display is 804 dp sideways, but ShellFrame's insets (a 31 dp cutout and a 45 dp bar) lay
+window, not the measure. The display is 804 dp sideways, but ShellFrame's insets (a 32 dp cutout and a 44 dp bar) lay
 Home out 728 dp wide: tiles of 226.7 dp, measured in the shot, so a title's room of 162.7, not the 188 the fit assumed
 at 804. The two titles measure 186.7 and 179.7 dp, 24 and 17 dp over that room, more than the tile's 12 dp padding.
 The font measure matched the phone to within 1 dp (TABLEAU DE BORD's ink: 176.0 measured, 177.3 by the font; the
@@ -1069,10 +1069,10 @@ fits (`viewfinderFit`, `cameraBox`, `stripTextFit`, `matchLabelFit`, `viewerCove
 
 The viewfinder's rulings of 2026-10-08 and their fits name the owner's phone as 804 × 332: its display sideways, less
 the status bar. The phone does not give the app that window. With 3-button navigation ShellFrame's insets are a
-31.3 dp cutout, a 44.7 dp navigation bar and a 32 dp status bar, and nothing is immersive, so every route, Home and
+32.0 dp cutout, a 44.0 dp navigation bar and a 32 dp status bar, and nothing is immersive, so every route, Home and
 Live Stream alike, is laid out 728 × 328. Every D3 stream shot shows the same split (`r1-live.png`, `r2a-live.png`,
-`m2-stopped.png`, `r12-c2-804-fr.png`): a 418 dp camera half, the 310 dp controls half, and the controls' plate and
-Stop 8 dp from the top and bottom of a 328 dp window; `r12-home-fr-landscape.png` shows Home at the same 728 (N31).
+`m2-stopped.png`, `r12-c2-804-fr.png`): a 418 dp camera half, the 310 dp controls half, and the controls' plate and the
+bottom button 8 dp from the top and bottom of a 328 dp window; `r12-home-fr-landscape.png` shows Home at the same 728 (N31).
 Gesture navigation was not in the evidence.
 
 What changes at 728 × 328, by each fit's own model:
