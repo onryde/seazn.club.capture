@@ -180,3 +180,23 @@ delegable; the session uses the surface it is given. Task 3.3 proceeds.
 
 Device-only (Batch 9): that the CPH2569's preview stream becomes 1280 × 720 in `dumpsys media.camera`, and that the
 camera box shows no pillarbox.
+
+## Addendum (Task 3.3): implementing the camera needs an opt-in
+
+Found while building the decorator, after the verdict above. `javap -v` shows two of the five interfaces carry
+`kotlin.SubclassOptInRequired(markerClass = [InternalStreamPackApi])`: `ICameraSource` and `IPreviewableSource`.
+`IVideoSource`, `IWithVideoSource` and `IVideoInput` carry none. `InternalStreamPackApi` is
+`kotlin.RequiresOptIn(level = ERROR, message = "This is an internal StreamPack API. It is not intended for public use
+and can change without notice.")`. (`javap -p` hides annotations; `-v` shows them.)
+
+So a class that implements `ICameraSource` does not compile without `@OptIn(InternalStreamPackApi::class)`. Calling
+the interfaces needs no opt-in, only implementing them. This changes no condition of the verdict: the members and
+their types are public, and the opt-in is a compile-time marker, not a fork or a re-pin. The glue already implements
+`IEndpointInternal` under the same opt-in (`CountingEndpoint`, `RoutingEndpoint`, `CaptureEndpointFactory`). What it
+does mean: StreamPack says these interfaces can change without notice, so a bump of the strict 3.2.1 pin re-reads
+them, which `PreviewFit.STREAMPACK`'s pin in `GlueRulesTest` already forces.
+
+The decorator compiles with Kotlin 2.3.0 (the app's) against the 3.2.1 jars and `android.jar` 37, and its bytecode
+forwards every member it does not replace to the real source, the default `startPreview(Surface)` included
+(`invokeinterface ICameraSource.startPreview:(Landroid/view/Surface;…)`). The full Android build is not run in this
+worktree; the device check (Batch 9) runs it.

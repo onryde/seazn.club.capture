@@ -532,8 +532,9 @@ class GlueRulesTest {
     val attach = body(view, "override fun onAttachedToWindow()")
     assertTrue(Regex("""attached = true\s+report\("attach"\)""").containsMatchIn(attach), "attach marks attached, then reports: $attach")
     assertTrue(Regex("""EngineHost\.capture\(context\)\.streamer\.collect \{ streamer ->""").containsMatchIn(attach), "the follow starts on attach")
-    assertTrue("preview.setVideoSourceProvider(streamer)" in attach, "the follow binds each streamer, a null one unbinding")
-    val perEmission = Regex("""streamer\.collect \{ streamer ->\s+try \{\s+preview\.setVideoSourceProvider\(streamer\)\s+\} catch \(e: CancellationException\) \{\s+throw e\s+\} catch \(e: Exception\) \{\s+failed\("follow", e\)""")
+    assertTrue("preview.setVideoSourceProvider(sixteenNine.of(streamer))" in attach, "the follow binds each streamer, seen through the 16:9 rule (N30), a null one unbinding")
+    assertEquals(1, uses(code(view), "setVideoSourceProvider"), "bound at one site")
+    val perEmission = Regex("""streamer\.collect \{ streamer ->\s+try \{\s+preview\.setVideoSourceProvider\(sixteenNine\.of\(streamer\)\)\s+\} catch \(e: CancellationException\) \{\s+throw e\s+\} catch \(e: Exception\) \{\s+failed\("follow", e\)""")
     assertTrue(perEmission.containsMatchIn(attach), "review C7 M-7: one streamer's failed bind is a line, and the follow carries on: $attach")
     val visibility = body(view, "override fun onWindowVisibilityChanged(visibility: Int)")
     assertTrue(Regex("""super\.onWindowVisibilityChanged\(visibility\)\s+report\("visibility", visibility\)""").containsMatchIn(visibility), "visibility reports its own value: $visibility")
@@ -640,11 +641,50 @@ class GlueRulesTest {
       Regex(
         """val map = context\.cameraManager\.getCameraCharacteristics\(id\)\.get\(CameraCharacteristics\.SCALER_STREAM_CONFIGURATION_MAP\)\s+""" +
           """val sizes = map\?\.getOutputSizes\(SurfaceHolder::class\.java\)\.orEmpty\(\)\.map \{ it\.width to it\.height \}\s+""" +
-          """calls\.line\(PreviewSizes\.entry\(PreviewSizes\.report\(sizes, wired = false\)\)\)""",
+          """calls\.line\(PreviewSizes\.entry\(PreviewSizes\.report\(sizes, wired = true\)\)\)""",
       )
-    assertTrue(derived.containsMatchIn(report), "the camera's own characteristics, the sizes StreamPack's PreviewView asks for (a SurfaceHolder's), whole and as (width, height), and the rule's report is the line, unwired until the preview sees the 16:9 rule (N30): $report")
+    assertTrue(derived.containsMatchIn(report), "the camera's own characteristics, the sizes StreamPack's PreviewView asks for (a SurfaceHolder's), whole and as (width, height), and the rule's report is the line, wired: the preview sees the 16:9 rule (N30): $report")
     assertTrue(Regex("""sizedCamera = null""").containsMatchIn(body(adapter, "override suspend fun release()")), "a new capture reports again")
     assertEquals(2, Regex("""\bsizedCamera = """).findAll(adapter).count(), "set by the report and the release only")
+  }
+
+  /**
+   * N30 (D3 findings design §4; spike notes `docs/specs/2026-10-12-s1-a1-preview-spike.md`): StreamPack 3.2.1's
+   * PreviewView sizes its viewfinder from the camera source's `getPreviewSize`, an area-only pick. The view is bound to
+   * a provider that shows it the camera through `SixteenNineCamera`, whose one replaced member answers through the pure
+   * seam `PreviewSizes.answer` (SixteenNinePreviewTest); every other member is the real source's, by delegation, and the
+   * streamer's own input is never wrapped or set, so the encode is untouched (P2). The glue compiles only in the
+   * Android build, so its shape is pinned here; the size it gives is the device's to show (Batch 9).
+   */
+  @Test
+  fun `N30 the preview sees the camera through the 16 by 9 rule, and nothing else changes`() {
+    val glue = code(glue("SixteenNinePreview.kt"))
+    val camera = body(glue, "class SixteenNineCamera(")
+    assertTrue(Regex("""class SixteenNineCamera\(private val real: ICameraSource, private val sizes: ListedSizes\) : ICameraSource by real \{""").containsMatchIn(glue), "the real camera, by delegation")
+    assertTrue(Regex("""@OptIn\(InternalStreamPackApi::class\)[^\n]*\n\s*class SixteenNineCamera\(""").containsMatchIn(glue), "3.2.1 marks ICameraSource opt-in to implement (spike §3)")
+    assertEquals(1, uses(camera, "override"), "one member replaced: $camera")
+    assertTrue(Regex("""override fun <T> getPreviewSize\(targetSize: Size, targetClass: Class<T>\): Size \{""").containsMatchIn(camera), "the preview's size: $camera")
+    assertTrue(Regex("""PreviewSizes\.answer\(sizes\(real\.cameraId, targetClass\)\) \{ real\.getPreviewSize\(targetSize, targetClass\)""").containsMatchIn(camera), "answered by the tested seam, StreamPack's own answer the fallback: $camera")
+    val provider = body(glue, "class SixteenNineProvider(")
+    assertTrue(Regex("""class SixteenNineProvider\([^)]*\) : IWithVideoSource by real \{""").containsMatchIn(glue), "the streamer, by delegation")
+    assertTrue(Regex("""object : IVideoInput by real\.videoInput \{\s+override val sourceFlow""").containsMatchIn(provider), "only the source flow is replaced: $provider")
+    assertEquals(2, uses(provider, "override"), "videoInput and its sourceFlow, nothing else: $provider")
+    assertTrue("SharingStarted.WhileSubscribed()" in provider, "the mirror runs only while the PreviewView collects it: $provider")
+    assertTrue(Regex("""seen\?\.takeIf \{ it\.first === source \}\?\.second \?: SixteenNineCamera\(source, sizes\)\.also \{ seen = source to it \}""").containsMatchIn(provider), "one decorator per real camera, so an unchanged camera reads as unchanged: $provider")
+    val binding = body(glue, "fun of(streamer: IWithVideoSource?)")
+    assertTrue(Regex("""if \(streamer == null\) \{\s+last = null\s+return null\s+\}""").containsMatchIn(binding), "an unbind forgets, so a provider is never collected twice: $binding")
+    assertTrue(Regex("""last\?\.takeIf \{ it\.first === streamer \}\?\.second \?:""").containsMatchIn(binding), "the same streamer keeps its provider: $binding")
+    for (call in listOf("setSource(", "setVideoSource(", "startStream(", "configure(")) assertFalse(call in glue, "the glue never calls $call: the encode is the streamer's own")
+    assertTrue(Regex("""private val sixteenNine = SixteenNineBinding\(scope\) \{ id, kind -> listed\(id, kind\) \}""").containsMatchIn(code(glue("CapturePreviewView.kt"))), "one binding, over the view's scope")
+    val listed =
+      Regex(
+        """private fun listed\(cameraId: String, kind: Class<\*>\): List<Pair<Int, Int>> =\s+try \{\s+listedSizes\(context, cameraId, kind\)\s+""" +
+          """\} catch \(e: Exception\) \{\s+failed\("sizes", e\)\s+emptyList\(\)\s+\}""",
+      )
+    assertEquals(1, listed.findAll(code(glue("CapturePreviewView.kt"))).count(), "a failed read is a line, and StreamPack's own pick stands")
+    val adapter = code(glue("StreamerAdapter.kt"))
+    assertEquals(1, Regex("""\bwired = true\b""").findAll(adapter).count(), "the record says the rule is wired")
+    assertEquals(0, Regex("""\bwired = false\b""").findAll(adapter).count(), "and nowhere says it is not")
   }
 
   /**

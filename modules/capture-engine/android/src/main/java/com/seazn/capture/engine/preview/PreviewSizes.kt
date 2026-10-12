@@ -33,7 +33,7 @@ data class PreviewSizeReport(
  * arithmetic, as StreamPack's. Area alone, so a 960 x 960 square ties 1280 x 720 and can win (N30).
  *
  * Ours, [pick16x9]: the encode's aspect first. Among the listed 16:9 sizes, the one whose area is nearest 1280 x 720's,
- * the first listed on a tie. With none listed, StreamPack's pick stands.
+ * the first listed on a tie. With none listed, StreamPack's pick stands. [answer] is what the preview is told.
  */
 object PreviewSizes {
   private val TARGET = Encode.WIDTH * Encode.HEIGHT
@@ -53,6 +53,14 @@ object PreviewSizes {
 
   fun pick16x9(sizes: List<Pair<Int, Int>>): Pair<Int, Int>? =
     sizes.filter { it.first * 9 == it.second * 16 }.minByOrNull { abs(it.first * it.second - TARGET) }
+
+  /**
+   * What the camera, seen through the 16:9 rule, tells StreamPack's PreviewView its preview's size is (N30, Task 3.3):
+   * ours from [listed] when it has a 16:9 size, else [vendor], the real source's own answer, asked only then. The glue's
+   * `SixteenNineCamera.getPreviewSize` is this, over the sizes the camera lists for the class the view asks about. An
+   * empty [listed] (a failed read) leaves StreamPack's answer, so the rule can never break the preview.
+   */
+  fun answer(listed: List<Pair<Int, Int>>, vendor: () -> Pair<Int, Int>): Pair<Int, Int> = pick16x9(listed) ?: vendor()
 
   /**
    * The line for [sizes]. [wired] says whether the preview is shown the camera through the 16:9 rule (preflight M2):
