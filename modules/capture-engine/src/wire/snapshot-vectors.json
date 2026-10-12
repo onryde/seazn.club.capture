@@ -173,6 +173,28 @@
       }
     },
     {
+      "name": "idle-unpaired-forgotten",
+      "wire": {
+        "state": { "kind": "idle" },
+        "pairing": null,
+        "broadcast": null,
+        "ready": { "camera": false, "sound": false, "network": false, "held": false },
+        "refusal": null,
+        "lastEnd": null,
+        "unpaired": {
+          "reason": "forgotten",
+          "code": "fx42hmnp7k2q",
+          "slot": 1,
+          "tokenTag": "c980ff38"
+        },
+        "codeEndedPending": false,
+        "camera": null,
+        "reportedAtMs": 1790000000700,
+        "survivesBackground": false,
+        "telemetry": {}
+      }
+    },
+    {
       "name": "pairing",
       "wire": {
         "state": { "kind": "pairing" },
@@ -350,6 +372,29 @@
         "codeEndedPending": true,
         "camera": "own",
         "reportedAtMs": 1790000146000,
+        "survivesBackground": true,
+        "telemetry": {}
+      }
+    },
+    {
+      "name": "reconnecting-hold-expired",
+      "wire": {
+        "state": {
+          "kind": "reconnecting",
+          "cause": "hold-expired",
+          "holdRemainingSeconds": 0,
+          "holdWindowSeconds": 0,
+          "sinceEpochMs": 1790000001000
+        },
+        "pairing": {},
+        "broadcast": { "cause": "rejoin" },
+        "ready": { "camera": true, "sound": true, "network": true, "held": true },
+        "refusal": null,
+        "lastEnd": null,
+        "unpaired": null,
+        "codeEndedPending": false,
+        "camera": "own",
+        "reportedAtMs": 1790000400000,
         "survivesBackground": true,
         "telemetry": {}
       }
