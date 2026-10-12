@@ -23,7 +23,7 @@ import { linesOf } from '../../../test/textFit';
 // is a scroller that only scrolls when its rows outgrow the window, and the table below says where that is. Fix round
 // 1 (coordinator ruling) tightened the tiles' landscape padding to 12 so that ONE card, the common state, fits at
 // 640 × 360, 800 × 360 (with at least 4 dp to spare in every language), 844 × 390 and 915 × 412. It does not on the
-// owner's phone sideways, which lays Home out 728 × 332 behind ShellFrame's insets: one card there leaves 145 or 153
+// owner's phone sideways, which lays Home out 728 × 328 behind ShellFrame's insets: one card there leaves 141 or 149
 // for tiles that need 166, and Home scrolls, by design (N31; the controller's ruling, 2026-10-12). The widths are
 // Home's own, as laid out behind the insets. Whether real text stays inside the card rows' single lines is Task 9's,
 // on the phone.
@@ -34,12 +34,12 @@ const word = (lang: Lang, key: string): string => DICTIONARIES[lang][key] ?? '';
 
 /**
  * viewfinderFit's four shapes (spec §1's smallest, the least strip room, the board's own, and a large phone), and the
- * owner's phone sideways as Home is laid out on it: 728 × 332, the 804 × 360 display less ShellFrame's insets with
- * 3-button navigation (N31; the controller's ruling, 2026-10-12).
+ * owner's phone sideways as Home is laid out on it: 728 × 328, the 804 × 360 display less ShellFrame's insets with
+ * 3-button navigation, a 32 dp status bar among them (N31, N35; the controller's rulings, 2026-10-12).
  */
 const GEOMETRIES = [
   [640, 360],
-  [728, 332],
+  [728, 328],
   [800, 360],
   [844, 390],
   [915, 412],
@@ -187,10 +187,10 @@ const TABLE = [
   [640, 360, 'Continue only', 173, true],
   [640, 360, 'ended only', 181, true],
   [640, 360, 'both cards', 91, false],
-  [728, 332, 'no cards', 235, true],
-  [728, 332, 'Continue only', 145, false],
-  [728, 332, 'ended only', 153, false],
-  [728, 332, 'both cards', 63, false],
+  [728, 328, 'no cards', 231, true],
+  [728, 328, 'Continue only', 141, false],
+  [728, 328, 'ended only', 149, false],
+  [728, 328, 'both cards', 59, false],
   [800, 360, 'no cards', 263, true],
   [800, 360, 'Continue only', 173, true],
   [800, 360, 'ended only', 181, true],
@@ -236,9 +236,9 @@ describe('which landscape windows hold the tiles without scrolling (spec §1, F1
     expect(tileNeed(640) - 91).toBe(81);
   });
 
-  it('fourteen of the twenty fit at best and six scroll: both cards but on the largest phone, and any card at 728 × 332', () => {
+  it('fourteen of the twenty fit at best and six scroll: both cards but on the largest phone, and any card at 728 × 328', () => {
     // Pinned so a table edit that flips a row is a decision, not an accident. Every no-cards window fits. Every
-    // one-card window fits but the owner's phone sideways, 728 × 332 behind its insets, where Home scrolls with a card
+    // one-card window fits but the owner's phone sideways, 728 × 328 behind its insets, where Home scrolls with a card
     // (fix round 1: the tiles' landscape padding is 12, not 16; N31, the controller's ruling, 2026-10-12).
     expect(TABLE.filter(([, , , , fits]) => fits)).toHaveLength(14);
     expect(TABLE.filter(([, , , , fits]) => !fits)).toHaveLength(6);
@@ -250,17 +250,17 @@ describe('which landscape windows hold the tiles without scrolling (spec §1, F1
         ([, , cards, , fits]) => cards !== 'both cards' && cards !== 'no cards' && !fits,
       ),
     ).toEqual([
-      [728, 332, 'Continue only', 145, false],
-      [728, 332, 'ended only', 153, false],
+      [728, 328, 'Continue only', 141, false],
+      [728, 328, 'ended only', 149, false],
     ]);
   });
 
-  it('the owner’s phone sideways, 728 × 332 behind its insets, scrolls with Continue: 145 for tiles that need 166 (N31)', () => {
+  it('the owner’s phone sideways, 728 × 328 behind its insets, scrolls with Continue: 141 for tiles that need 166 (N31)', () => {
     const row = TABLE.find(
-      ([width, height, cards]) => width === 728 && height === 332 && cards === 'Continue only',
+      ([width, height, cards]) => width === 728 && height === 328 && cards === 'Continue only',
     );
-    expect(row).toEqual([728, 332, 'Continue only', 145, false]);
-    expect(tileNeed(728) - 145).toBe(21);
+    expect(row).toEqual([728, 328, 'Continue only', 141, false]);
+    expect(tileNeed(728) - 141).toBe(25);
   });
 
   it('checked every row of the table, and there were twenty (anti-vacuity)', () => {
@@ -310,10 +310,11 @@ describe('the Stream settings link in the Live Stream tile (R2, P6)', () => {
     expect(LINK).toBe(52);
   });
 
-  // 728 × 332 is the owner's phone sideways as Home is laid out behind its insets (N31); 804 × 332 is its display.
+  // 728 × 328 is the owner's phone sideways as Home is laid out behind its insets (N31, N35); 804 × 332 is not a
+  // window that phone gives Home.
   it.each([
     [640, 360, 218, 263],
-    [728, 332, 218, 235],
+    [728, 328, 218, 231],
     [804, 332, 196, 235],
     [915, 412, 167, 315],
   ] as const)(
@@ -336,10 +337,10 @@ describe('the Stream settings link in the Live Stream tile (R2, P6)', () => {
 
   // N31: a title takes two lines at most, never three (`layout.tileTitleLines`), whatever width Home gets behind its
   // insets. With the Live Stream title at two lines, the tile and its link still fit with no card, on the owner's phone
-  // sideways (728 × 332) included.
+  // sideways (728 × 328) included.
   it.each([
     [640, 360, 218, 263],
-    [728, 332, 218, 235],
+    [728, 328, 218, 231],
     [804, 332, 218, 235],
     [915, 412, 196, 315],
   ] as const)(

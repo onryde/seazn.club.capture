@@ -22,7 +22,8 @@ import { loadFont } from '../../../test/fontMetrics';
 // controls half (`layout.controlsHalf`).
 const textWidth = (window: number) => window - layout.controlsHalf - 2 * layout.stripPadH;
 const NARROW = textWidth(640); // spec §1's smallest, 640 × 360
-const OWNER = textWidth(804); // the owner's phone, 804 × 332 (and 804 × 360)
+const AT_804 = textWidth(804); // 804 × 332 and 804 × 360, the geometry of the owner's ruling of 2026-10-08
+const PHONE = textWidth(728); // the owner's phone as laid out, 728 × 328 (N35: ShellFrame's insets)
 
 const LANGUAGES: readonly (readonly [lang: string, dictionary: Record<string, string>])[] = [
   ['en', en],
@@ -164,11 +165,12 @@ describe('the strip’s one message line, measured in every language (owner, 202
     expect(typeScale.metricUnit.fontSize).toBe(12);
   });
 
-  it('has a text width of 298 dp at 640 × 360 and 462 dp at 804 wide: the half less 2 × 16', () => {
+  it('has a text width of 298 dp at 640 × 360, 386 at 728 wide and 462 at 804 wide: the half less 2 × 16', () => {
     expect(layout.controlsHalf).toBe(310);
     expect(layout.stripPadH).toBe(16);
     expect(NARROW).toBe(298);
-    expect(OWNER).toBe(462);
+    expect(PHONE).toBe(386);
+    expect(AT_804).toBe(462);
   });
 
   it('measures 43 status strings and 5 captions in each of the four languages, and every glyph is in the font', () => {
@@ -201,13 +203,29 @@ describe('the strip’s one message line, measured in every language (owner, 202
   });
 
   it('fits ONE line at 462 dp (804 × 332, 804 × 360), every language, with any destination but a row of the widest capital', () => {
-    const over = REALISTIC.filter((row) => row.width > OWNER);
+    const over = REALISTIC.filter((row) => row.width > AT_804);
     expect(over.map(name)).toEqual([]);
     // 24 characters of the widest capital in the destination is the pathological case: the waiting line, in each
     // language, would be cut (an ellipsis at the end of the destination, the owner's rule).
-    const x24 = ROWS.filter((row) => row.destination === 'x24' && row.width > OWNER);
+    const x24 = ROWS.filter((row) => row.destination === 'x24' && row.width > AT_804);
     expect(x24.map(name)).toEqual([]);
-    const w24 = ROWS.filter((row) => row.destination === 'w24' && row.width > OWNER);
+    const w24 = ROWS.filter((row) => row.destination === 'w24' && row.width > AT_804);
+    expect(w24.map(name)).toEqual([
+      'en stream.status.waitingGoLive',
+      'es stream.status.waitingGoLive',
+      'fr stream.status.waitingGoLive',
+      'nl stream.status.waitingGoLive',
+    ]);
+  });
+
+  // N35: the owner's phone lays the strip out 418 - 32 = 386 wide, not 462. The widest realistic line is the Dutch
+  // waiting-for-a-destination one, and nothing realistic is cut there either.
+  it('fits ONE line at 386 dp (728 × 328, the owner’s phone as laid out), every language, with any destination but a row of the widest capital', () => {
+    const over = REALISTIC.filter((row) => row.width > PHONE);
+    expect(over.map(name)).toEqual([]);
+    const x24 = ROWS.filter((row) => row.destination === 'x24' && row.width > PHONE);
+    expect(x24.map(name)).toEqual([]);
+    const w24 = ROWS.filter((row) => row.destination === 'w24' && row.width > PHONE);
     expect(w24.map(name)).toEqual([
       'en stream.status.waitingGoLive',
       'es stream.status.waitingGoLive',
@@ -237,9 +255,12 @@ describe('the strip’s one message line, measured in every language (owner, 202
     expect(name(widest('caption'))).toBe('nl stream.advisory.keepOpen');
     expect(name(widest('status'))).toBe('nl stream.status.waitingDestination');
     expect(widest('caption').width).toBeGreaterThan(NARROW);
-    expect(widest('caption').width).toBeLessThan(OWNER);
+    expect(widest('caption').width).toBeLessThan(AT_804);
     expect(widest('status').width).toBeGreaterThan(NARROW);
-    expect(widest('status').width).toBeLessThan(OWNER);
+    expect(widest('status').width).toBeLessThan(AT_804);
+    // N35: both are inside the owner's phone's 386 too.
+    expect(widest('caption').width).toBeLessThan(PHONE);
+    expect(widest('status').width).toBeLessThan(PHONE);
   });
 
   // The heat caption with What viewers see hidden (the owner's ruling, 2026-10-09): both wordings are ONE line at 298 dp

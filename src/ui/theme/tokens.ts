@@ -154,8 +154,9 @@ const base = {
    * The controls half's column rhythm, vertical only (owner, 2026-10-08: every control fully on screen at 804 x 332).
    * Before air, with the AUTO start line and a hold reason up, the column's five rows are 56 + 64 + 16 + 48 + 92 = 276
    * dp and the board's 16 padding and 12 gaps (32 + 4 x 12 = 80) made 356 of a 332 dp app area: 24 over. 8 and 8 are
-   * 16 + 32 = 48, so the worst state is 324 with the photo line's 16 dp still in place. The horizontal padding
-   * (`controlsPad`) is the half's WIDTH and stays: 310 is unchanged. Every control keeps its size.
+   * 16 + 32 = 48, so the worst state is 324 with the photo line's 16 dp still in place: 4 dp to spare on the owner's
+   * phone as laid out, 728 x 328 (N35). The horizontal padding (`controlsPad`) is the half's WIDTH and stays: 310 is
+   * unchanged. Every control keeps its size.
    */
   controlsPadV: 8,
   controlsColumnGap: 8,

@@ -38,7 +38,8 @@ type ColumnProps = {
  * one line, the icon row, then the action. The status line is the strip's,
  * under the shot. The column's vertical padding and gap are its own
  * (`controlsPadV`, `controlsColumnGap`: 8 and 8, so every control is on screen at
- * 804 × 332); its horizontal padding is the board's, which the half's width is made of.
+ * 804 × 332, and at 728 × 328, the owner's phone as laid out, with 4 dp to spare: N35);
+ * its horizontal padding is the board's, which the half's width is made of.
  */
 export const StreamColumn = memo(function StreamColumn(props: ColumnProps) {
   const { view, viewer } = props;

@@ -14,16 +14,18 @@ import { loadFont } from '../../../test/fontMetrics';
 // Owner, 2026-10-08: the controls half is `layout.controlsHalf` wide (310: its widest row, controlsFit.test.ts) and
 // the camera half is the window less that, so the camera half is 330 at 640 wide and 605 at 915. The strip under the
 // picture is the padding, the label and ONE message line ("one single line all the time"), and the controls half's
-// column has its own vertical padding and gap (8 and 8) so every control is on screen at 804 × 332, the owner's phone
-// with the Android status bar showing. The round line is always shown (owner, 2026-10-08, option B) and its room, a
-// line and a gap, is in the strip's reserve whether or not this match has a stage.
+// column has its own vertical padding and gap (8 and 8) so every control is on screen at 804 × 332, the geometry the
+// ruling was made on. The owner's phone lays the app out 728 × 328 (N35: ShellFrame's insets with 3-button navigation,
+// a 32 dp status bar among them), which these fits carry too. The round line is always shown (owner, 2026-10-08, option
+// B) and its room, a line and a gap, is in the strip's reserve whether or not this match has a stage.
 //
 // "From 640 × 360 up" is not monotone: a wider screen at the same height has a taller box, and so
 // less room for the strip (strip room = height - half width x 9/16). So the strip is proved at each
 // of these shapes, not at the smallest alone. W, H in dp.
 const GEOMETRIES = [
   [640, 360], // spec §1's smallest
-  [804, 332], // the owner's phone as it really is: 360 less the Android status bar
+  [728, 328], // the owner's phone as laid out: 804 × 360 less ShellFrame's insets (N35)
+  [804, 332], // the ruling's geometry of 2026-10-08: 360 less a 28 dp status bar
   [800, 360], // 20:9
   [844, 390], // the canvas boards
   [915, 412], // a large phone
@@ -153,12 +155,13 @@ describe.each(GEOMETRIES)('the viewfinder fits %i × %i (spec §1)', (width, hei
 
 describe('the on-air controls half with Remote scoring in the icon row (spec §10, RP7)', () => {
   // As shipped, with What viewers see hidden (the owner's ruling, 2026-10-09): 56 + 12 + 16 + 48 + 72 = 204, and the
-  // same 32 of gaps and 16 of padding: 252, so every control is on screen at 640 × 360 and at 804 × 332.
-  it('as shipped is 252 of 360 at 640 × 360 and 252 of 332 at 804 × 332', () => {
+  // same 32 of gaps and 16 of padding: 252, so every control is on screen at 640 × 360, 804 × 332 and 728 × 328.
+  it('as shipped is 252 of 360 at 640 × 360, 252 of 332 at 804 × 332 and 252 of 328 at 728 × 328', () => {
     const shipped = CONTROLS[2][1];
     expect(stack(shipped, ...COLUMN)).toBe(252);
     expect(360 - stack(shipped, ...COLUMN)).toBe(108);
     expect(332 - stack(shipped, ...COLUMN)).toBe(80);
+    expect(328 - stack(shipped, ...COLUMN)).toBe(76);
     expect(shipped).toHaveLength(5);
   });
 
@@ -166,12 +169,13 @@ describe('the on-air controls half with Remote scoring in the icon row (spec §1
   // owner 2026-10-08; it was 4 × 12 and 2 × 16 = 320). The icon item is 48 + 4 + 2 × 16 = 84, not 68: the peek's reason
   // takes two lines in es and nl. Pinned as a literal on purpose: it fails if the photo-line item is dropped, which is
   // how 304 was once written (scoringFit.test.ts pins the same 288).
-  it('is 288 of 360 at 640 × 360, with 72 dp to spare, and 288 of 332 at 804 × 332', () => {
+  it('is 288 of 360 at 640 × 360, with 72 dp to spare, 288 of 332 at 804 × 332 and 288 of 328 at 728 × 328', () => {
     const onAir = CONTROLS[1][1];
     // The literal first, so a dropped item fails here by its number (272), not only by the item count below.
     expect(stack(onAir, ...COLUMN)).toBe(288);
     expect(360 - stack(onAir, ...COLUMN)).toBe(72);
     expect(332 - stack(onAir, ...COLUMN)).toBe(44);
+    expect(328 - stack(onAir, ...COLUMN)).toBe(40);
     expect(onAir).toHaveLength(5);
     expect(onAir[3]).toBe(84);
   });
@@ -181,7 +185,8 @@ describe('the on-air controls half with Remote scoring in the icon row (spec §1
 // overflowed by 24 dp in the worst state. The state is the AUTO start line under the chips AND a hold reason under the
 // button: plate 56, chips 44 + 4 + 16 = 64, the photo line's place 16, the icons 48, the hold 72 + 4 + 16 = 92 = 276 of
 // content. The board's 16 padding and 12 gaps (32 + 4 × 12 = 80) made 356 of 332; the column's own 8 and 8 (16 + 32 =
-// 48) make 324, with 8 dp to spare. Every control keeps its size (a touch target of 48 or more, the hold 72).
+// 48) make 324, with 8 dp to spare. Every control keeps its size (a touch target of 48 or more, the hold 72). The
+// owner's phone lays the app out 328 tall (N35), so the spare there is 4: the margin halves, and nothing clips.
 describe('the controls half fits 332 dp in its worst before-air state (owner, 2026-10-08)', () => {
   const WORST = CONTROLS[0][1];
 
@@ -195,6 +200,10 @@ describe('the controls half fits 332 dp in its worst before-air state (owner, 20
     // The defect, written out: the board's gap and padding on the same five items.
     expect(stack(WORST, 12, 16)).toBe(356);
     expect(stack(WORST, 12, 16) - 332).toBe(24);
+  });
+
+  it('stacks to 324 of 328 on the owner’s phone as laid out, 728 × 328: 4 dp to spare (N35)', () => {
+    expect(328 - stack(WORST, ...COLUMN)).toBe(4);
   });
 
   it('keeps every control its size: the icon buttons 48, the hold button 72, the plate 56', () => {
@@ -227,15 +236,15 @@ describe('the camera box at the smallest screen (spec §1)', () => {
     expect(360 - STRIP_RESERVE).toBeGreaterThan(box.height);
   });
 
-  it('checked every geometry, and there were five (anti-vacuity)', () => {
-    expect(GEOMETRIES).toHaveLength(5);
+  it('checked every geometry, and there were six (anti-vacuity)', () => {
+    expect(GEOMETRIES).toHaveLength(6);
     expect(geometriesChecked).toBe(GEOMETRIES.length);
   });
 });
 
-// Owner, 2026-10-08: the phone the ruling was made on is 804 dp wide, 360 tall by the board and 332 as it really is (the
-// Android status bar stays). Written out from the declarations.
-describe('the owner’s phone, 804 × 332 and 804 × 360 (the ruling of 2026-10-08)', () => {
+// Owner, 2026-10-08: the ruling was made on a phone 804 dp wide, 360 tall by the board and 332 with a status bar. The
+// phone lays the app out 728 × 328 (N35; the next describe). Written out from the declarations.
+describe('804 × 332 and 804 × 360, the geometry of the ruling of 2026-10-08', () => {
   const half = 804 - layout.controlsHalf;
   const at = (height: number, stripContent: number) =>
     cameraBoxSize({ halfWidth: half, height, stripContent, aspect: layout.previewAspect });
@@ -309,6 +318,40 @@ describe('the owner’s phone, 804 × 332 and 804 × 360 (the ruling of 2026-10-
       }
     }
     expect(checked).toBe(GEOMETRIES.length * 7);
+  });
+});
+
+// N35 (the controller's ruling, 2026-10-12, from the D3 shots): the owner's phone sideways with 3-button navigation lays
+// the app out 728 × 328, a camera half of 418. Worked by hand: a box is min(418 × 9/16 = 235.125, 328 - the reserve).
+describe('the owner’s phone as laid out, 728 × 328 (N35)', () => {
+  const half = 728 - layout.controlsHalf;
+  const at = (stripContent: number) =>
+    cameraBoxSize({ halfWidth: half, height: 328, stripContent, aspect: layout.previewAspect });
+
+  it('gives the camera half 418 of the 728 dp, and the controls half 310', () => {
+    expect(half).toBe(418);
+  });
+
+  it('holds a 309.3 × 174 box before the label is measured: 328 - 154, limited by the strip', () => {
+    const box = at(STRIP_RESERVE);
+    expect(box.height).toBeCloseTo(174, 9);
+    expect(box.width).toBeCloseTo(309.333333, 5);
+    expect(box.height + STRIP_WORST).toBe(328);
+  });
+
+  // D3 read 387.3 × 218 on the phone with a two-line label (N35).
+  it('holds a 387.6 × 218 box for a two-line label: 328 - 110, limited by the strip, not the half', () => {
+    const box = at(stripReserve(2 * typeScale.label.lineHeight));
+    expect(box.height).toBeCloseTo(218, 9);
+    expect(box.width).toBeCloseTo(387.555556, 5);
+    expect(box.width).toBeLessThan(half);
+  });
+
+  it('holds the whole half for a one-line label: 418 × 235.1, since 328 - 88 = 240 leaves more than the half holds', () => {
+    const box = at(stripReserve(typeScale.label.lineHeight));
+    expect(box.width).toBeCloseTo(418, 9);
+    expect(box.height).toBeCloseTo(235.125, 9);
+    expect(328 - box.height).toBeGreaterThan(stripReserve(typeScale.label.lineHeight));
   });
 });
 
