@@ -1,6 +1,6 @@
 import { isStreamSubRoute, type NavigationPort, type Route } from '@/services/devicePorts';
 
-export type Path = '/' | '/stream' | '/stream/settings';
+export type Path = '/' | '/stream' | '/stream/settings' | '/stream-settings';
 
 /** The three moves this adapter makes: Expo Router's `router` in production, a double in tests. */
 export type RouterMoves = {
@@ -13,6 +13,7 @@ const PATH: Readonly<Record<Route, Path>> = {
   home: '/',
   stream: '/stream',
   streamSettings: '/stream/settings',
+  homeSettings: '/stream-settings',
 };
 
 /**

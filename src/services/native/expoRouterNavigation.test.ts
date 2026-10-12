@@ -26,8 +26,13 @@ describe('the Expo Router adapter (D19)', () => {
   // Spec §6: Diagnostics is a card in Settings, so there is no route and no path to it. `Record<Route, true>`
   // is a compile-time pin (a route added or removed fails tsc); the loop drives every route through the
   // adapter and reads the path it moved to.
-  it('has exactly three routes, each with its own path, and none for Diagnostics', () => {
-    const routes: Record<Route, true> = { home: true, stream: true, streamSettings: true };
+  it('has exactly four routes, each with its own path, and none for Diagnostics', () => {
+    const routes: Record<Route, true> = {
+      home: true,
+      stream: true,
+      streamSettings: true,
+      homeSettings: true,
+    };
     const paths = (Object.keys(routes) as Route[]).map((route) => {
       vi.clearAllMocks();
       createExpoRouterNavigation(route === 'home' ? 'stream' : 'home').go(route);
@@ -35,8 +40,28 @@ describe('the Expo Router adapter (D19)', () => {
       expect(moves).toHaveLength(1);
       return moves[0]?.[0];
     });
-    expect(paths).toHaveLength(3);
-    expect(paths.sort()).toEqual(['/', '/stream', '/stream/settings']);
+    expect(paths).toHaveLength(4);
+    expect(paths.sort()).toEqual(['/', '/stream', '/stream-settings', '/stream/settings']);
+  });
+
+  it('opens Stream Settings from Home and leaves it by replace: no back stack between modes (P8)', () => {
+    const moves: string[] = [];
+    const recording = {
+      push: (p: string) => moves.push(`push ${p}`),
+      back: () => moves.push('back'),
+      replace: (p: string) => moves.push(`replace ${p}`),
+    };
+    const nav = adapter(recording);
+    nav.go('homeSettings');
+    nav.go('home');
+    nav.go('homeSettings');
+    nav.go('stream');
+    expect(moves).toEqual([
+      'replace /stream-settings',
+      'replace /',
+      'replace /stream-settings',
+      'replace /stream',
+    ]);
   });
 
   it('goes back to the viewfinder rather than stacking a second one', () => {
@@ -78,7 +103,7 @@ describe('the Expo Router adapter (D19)', () => {
 
   // Final fix round 2, I-A: Try again after a crash remounts the root Stack,
   // which Expo Router starts afresh at its first route; the port outlives it.
-  it.each(['stream', 'streamSettings'] as const)(
+  it.each(['stream', 'streamSettings', 'homeSettings'] as const)(
     'forgets %s when the root restarts, so the next move to it is made',
     (from) => {
       const navigation = createExpoRouterNavigation('home');

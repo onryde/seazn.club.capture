@@ -33,8 +33,11 @@ export interface ForegroundPort {
   isForeground(): boolean;
 }
 
-/** Settings (with Diagnostics inside it, spec §6) sits inside Live Stream (AGENTS §6): on air, only leaving the mode is blocked. */
-export type Route = 'home' | 'stream' | 'streamSettings';
+/**
+ * Settings (with Diagnostics inside it, spec §6) sits inside Live Stream (AGENTS §6): on air, only leaving the mode is
+ * blocked. `homeSettings` is the same screen opened from Home's Live Stream tile, outside any mode (R2, P8).
+ */
+export type Route = 'home' | 'stream' | 'streamSettings' | 'homeSettings';
 
 /**
  * Live Stream's sub-screens, pushed over the mounted viewfinder (D19). Named
@@ -43,6 +46,11 @@ export type Route = 'home' | 'stream' | 'streamSettings';
  */
 export function isStreamSubRoute(route: Route): boolean {
   return route === 'streamSettings';
+}
+
+/** R2, P8: the one screen outside a mode that is not Home itself. The reopen gate treats it as Home. */
+export function isHomeSubRoute(route: Route): boolean {
+  return route === 'homeSettings';
 }
 
 /**

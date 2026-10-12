@@ -2,7 +2,7 @@ import { memo, useCallback, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, useWindowDimensions, View } from 'react-native';
 import { screenLayout } from '@/domain/mode/homeLayout';
 import { useT } from '@/hooks/useLanguage';
-import { useBackToViewfinder } from '@/hooks/useStreamLinks';
+import { useBackToHome, useBackToViewfinder } from '@/hooks/useStreamLinks';
 import { useStreamSettings } from '@/hooks/useStreamSettings';
 import type { ControlSide, StreamSettings } from '@/services/streamSettingsStore';
 import { ChoiceRow } from '@/ui/components/ChoiceRow';
@@ -36,18 +36,38 @@ const LIBSRT_SOURCE = 'https://github.com/Haivision/srt';
  * scrolling on its own (a 360 dp tall phone cannot hold the whole card under
  * the header), with the way back across the top. The root says
  * which in `data-layout`, the marker the tests read.
+ *
+ * R2: opened from Home's Live Stream tile (`from="home"`) it is outside the mode: no Diagnostics card (nothing is
+ * paired), no LIVE plate, and Back returns Home, named so. Landscape then draws one half, so the settings take the
+ * width.
+ * Both Back hooks run in both variants; each acts only on its own route, so neither takes the other's Back.
  */
-export function SettingsScreen() {
+type SettingsScreenProps = {
+  /** R2: `home` is the screen opened from Home's Live Stream tile: no Diagnostics, no LIVE plate, Back to Home. */
+  readonly from?: 'stream' | 'home';
+};
+
+export function SettingsScreen({ from = 'stream' }: SettingsScreenProps) {
   const { t } = useT();
   const { width, height } = useWindowDimensions();
   const layout = screenLayout(width, height);
   const toCamera = useBackToViewfinder();
+  const toHome = useBackToHome();
+  const fromHome = from === 'home';
   const { settings, change, saveFailed } = useStreamSettings();
   const toggleAutomatic = useCallback(
     () => change({ automatic: !settings.automatic }),
     [change, settings.automatic],
   );
-  const header = <SubScreenHeader title={t('settings.title')} onBack={toCamera} />;
+  const header = (
+    <SubScreenHeader
+      title={t('settings.title')}
+      onBack={fromHome ? toHome : toCamera}
+      plate={!fromHome}
+      backLabel={fromHome ? t('stream.home') : undefined}
+    />
+  );
+  const card = fromHome ? null : <DiagnosticsCard />;
   const controls = (
     <>
       <ChoiceRow
@@ -70,9 +90,7 @@ export function SettingsScreen() {
           <ScrollView style={styles.half} contentContainerStyle={styles.controls}>
             {controls}
           </ScrollView>
-          <ScrollView style={styles.half}>
-            <DiagnosticsCard />
-          </ScrollView>
+          {card === null ? null : <ScrollView style={styles.half}>{card}</ScrollView>}
         </View>
       </View>
     );
@@ -82,7 +100,7 @@ export function SettingsScreen() {
       <ScrollView style={styles.screen} contentContainerStyle={styles.column}>
         {header}
         <View style={styles.controls}>{controls}</View>
-        <DiagnosticsCard />
+        {card}
       </ScrollView>
     </View>
   );

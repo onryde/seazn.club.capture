@@ -41,6 +41,7 @@ const ROUTE_OF: Readonly<Record<Path, Route>> = {
   '/': 'home',
   '/stream': 'stream',
   '/stream/settings': 'streamSettings',
+  '/stream-settings': 'homeSettings',
 };
 
 function routerDouble(): RouterDouble {
@@ -73,7 +74,8 @@ function routerDouble(): RouterDouble {
 
 /**
  * The app as the root layout composes it: the reopen gate, then one screen per
- * route, with Settings over a viewfinder that stays mounted.
+ * route, with Settings over a viewfinder that stays mounted, and Stream Settings
+ * from Home on its own (R2, P8).
  * `extra` renders beside the screens, as part of the app. A remount (Try again
  * after a crash) starts the Stack afresh at Home, as Expo Router's does.
  */
@@ -86,7 +88,9 @@ function RoutedApp({ nav, extra }: { nav: RouterDouble; extra?: ReactNode }) {
   const route = useSyncExternalStore(nav.subscribe, nav.current);
   return (
     <>
-      {route === 'home' ? <HomeScreen /> : <StreamScreen />}
+      {route === 'home' ? <HomeScreen /> : null}
+      {route === 'homeSettings' ? <SettingsScreen from="home" /> : null}
+      {route === 'stream' || route === 'streamSettings' ? <StreamScreen /> : null}
       {route === 'streamSettings' ? <SettingsScreen /> : null}
       {extra}
     </>

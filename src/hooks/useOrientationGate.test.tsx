@@ -595,10 +595,12 @@ describe('routeTarget', () => {
     ['/stream/settings', 'free'],
     // The Streaming help route is not Live Stream.
     ['/streaming-help', 'free'],
+    // R2, P8: Stream Settings from Home is outside the mode and follows the phone; a prefix rule would lock it.
+    ['/stream-settings', 'free'],
   ] as const;
 
-  it('has its four rows (anti-vacuity)', () => {
-    expect(ROWS).toHaveLength(4);
+  it('has its five rows (anti-vacuity)', () => {
+    expect(ROWS).toHaveLength(5);
   });
 
   it.each(ROWS)('%s wants %s', (pathname, target) => {
