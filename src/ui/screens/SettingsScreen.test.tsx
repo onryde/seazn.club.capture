@@ -16,7 +16,7 @@ import { SETTINGS_KEY } from '@/services/streamSettingsStore';
 import { SettingsScreen } from '@/ui/screens/SettingsScreen';
 import { colour, font } from '@/ui/theme/tokens';
 import { describeBackFromSubScreen } from '../../../test/backFromSubScreen';
-import { readRecord, type TestEngine } from '../../../test/fakePorts';
+import { createFakeUploadCredential, readRecord, type TestEngine } from '../../../test/fakePorts';
 import { savedStreamCode } from '../../../test/fixtures/savedStream';
 import { FIXTURE_SECRETS } from '../../../test/fixtures/wire';
 import { pairCode } from '../../../test/pairCode';
@@ -300,6 +300,12 @@ describe('Settings (spec §4)', () => {
 // until the web's endpoint ships. The screen reads the switch as its prop's default (src/ui/features.ts), so these
 // tests render the hidden button by passing the switch on.
 describe('Send record to Seazn, behind its switch (R3, P10)', () => {
+  /** Made up (AGENTS §13): belongs to no code. */
+  const MADE_UP = {
+    codeUrl: 'https://stg.seazn.club/api/v1/capture/codes/abcdefghjkmn',
+    token: 'made-up-token',
+    expiresAtMs: null,
+  };
   const sendButton = () => screen.queryByRole('button', { name: 'Send record to Seazn' });
 
   it('is not drawn as shipped: the record row is Share record alone', () => {
@@ -319,6 +325,25 @@ describe('Send record to Seazn, behind its switch (R3, P10)', () => {
     );
     expect(send?.getAttribute('aria-disabled')).toBe('true');
     expect(screen.getByText('Scan a stream code first')).toBeTruthy();
+  });
+
+  // Important 3 of the Batch 6 review: Settings follows the phone, and a rotation swaps its tree, which remounts the
+  // record row. The ref the operator reads to the organiser is never logged, so it must survive the turn.
+  it('keeps "Sent · ref" across a rotation, both ways', async () => {
+    setWindowSize(390, 844);
+    const view = renderSettings({ uploadCredential: createFakeUploadCredential(MADE_UP) }, true);
+    await act(async () => undefined);
+    fireEvent.click(screen.getByRole('button', { name: 'Send record to Seazn' }));
+    await act(async () => undefined);
+    for (const [width, height, layout] of [
+      [844, 390, 'landscape'],
+      [390, 844, 'portrait'],
+    ] as const) {
+      setWindowSize(width, height);
+      expect(layoutOf()).toBe(layout); // the positive pair: it did rotate
+      expect(screen.getByRole('button', { name: 'Sent · ref R-TEST' })).toBeTruthy();
+    }
+    expect(view.recordUpload.calls).toBe(1);
   });
 
   it('with the switch on, is in Stream Settings from Home too', () => {

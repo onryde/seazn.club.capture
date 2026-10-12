@@ -247,7 +247,20 @@ type RecordWiring = {
   uploadCredentialDeps: string | null;
   /** R3: what it gives `createRecordUploadPort`, as sorted `name:initializer`. */
   recordUploadDeps: string | null;
+  /** Important 3 of the Batch 6 review: what it gives `createRecordSendFlight`, the send held once in the ports. */
+  recordSendFlightDeps: string | null;
 };
+
+/** A returned port's factory call, written inline or bound to a `const` of the function first. */
+function factoryCall(
+  property: ts.ObjectLiteralElementLike,
+  bindings: ReadonlyMap<string, ts.Expression>,
+): ts.Expression | null {
+  if (ts.isShorthandPropertyAssignment(property)) return bindings.get(property.name.text) ?? null;
+  if (!ts.isPropertyAssignment(property)) return null;
+  const value = property.initializer;
+  return ts.isIdentifier(value) ? (bindings.get(value.text) ?? null) : value;
+}
 
 function recordWiringOf(source: string): RecordWiring {
   const file = ts.createSourceFile('nativePorts.ts', source, ts.ScriptTarget.Latest, true);
@@ -264,15 +277,18 @@ function recordWiringOf(source: string): RecordWiring {
     modeStoreProperty: null,
     uploadCredentialDeps: null,
     recordUploadDeps: null,
+    recordSendFlightDeps: null,
   };
+  const bindings = new Map<string, ts.Expression>();
+  const bind = (node: ts.Node) => {
+    if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && node.initializer)
+      bindings.set(node.name.text, node.initializer);
+    ts.forEachChild(node, bind);
+  };
+  bind(root);
+  result.modeStoreBinding = bindings.get('modeStore')?.getText(file) ?? null;
   // Only the returned object's own properties: the credential store's deps hold a `modeStore` too.
   const visit = (node: ts.Node) => {
-    if (
-      ts.isVariableDeclaration(node) &&
-      ts.isIdentifier(node.name) &&
-      node.name.text === 'modeStore'
-    )
-      result.modeStoreBinding = node.initializer?.getText(file) ?? null;
     if (
       ts.isReturnStatement(node) &&
       node.expression &&
@@ -287,18 +303,18 @@ function recordWiringOf(source: string): RecordWiring {
       result.modeStoreProperty = ts.isPropertyAssignment(property)
         ? property.initializer.getText(file)
         : name;
-    if (!ts.isPropertyAssignment(property)) return;
-    const deps = (factory: string) => {
-      const call = property.initializer;
-      return ts.isCallExpression(call) &&
-        ts.isIdentifier(call.expression) &&
-        call.expression.text === factory
+    const call = factoryCall(property, bindings);
+    const deps = (factory: string) =>
+      call !== null &&
+      ts.isCallExpression(call) &&
+      ts.isIdentifier(call.expression) &&
+      call.expression.text === factory
         ? depsOf(call.arguments[0], file)
         : null;
-    };
     if (name === 'uploadCredential')
       result.uploadCredentialDeps = deps('createUploadCredentialStore');
     if (name === 'recordUpload') result.recordUploadDeps = deps('createRecordUploadPort');
+    if (name === 'recordSendFlight') result.recordSendFlightDeps = deps('createRecordSendFlight');
   };
   visit(root);
   return result;
@@ -306,12 +322,25 @@ function recordWiringOf(source: string): RecordWiring {
 
 const UPLOAD_DEPS =
   'clock:clock, enabled:options.recordSend, kv:kv, logger:logger, modeStore:modeStore';
-const RECORD_DEPS = 'fetch:(url, init) => fetch(url, init), logger:logger';
-const RECORD_UPLOAD = 'createRecordUploadPort({ fetch: (url, init) => fetch(url, init), logger })';
-const RECORD_SKELETON = (upload: string, modeStore = 'modeStore', recordUpload = RECORD_UPLOAD) => `
+// Important 2 of the Batch 6 review: the upload's host is the build's, from the same `hosts` the scoring link reads.
+const RECORD_DEPS = "fetch:(url, init) => fetch(url, init), host:hosts[0] ?? '', logger:logger";
+const RECORD_UPLOAD =
+  "createRecordUploadPort({ fetch: (url, init) => fetch(url, init), logger, host: hosts[0] ?? '' })";
+// The flight sends through the very credential store and upload port the ports hand out, and the app's record.
+const FLIGHT_DEPS = 'credentials:uploadCredential, record:record, upload:recordUpload';
+const FLIGHT =
+  'createRecordSendFlight({ credentials: uploadCredential, upload: recordUpload, record })';
+const RECORD_SKELETON = (
+  upload: string,
+  modeStore = 'modeStore',
+  recordUpload = RECORD_UPLOAD,
+  flight = FLIGHT,
+) => `
   export function createNativePorts(options = { recordSend: false }) {
     const modeStore = createModeStore(kv);
-    return { modeStore: ${modeStore}, uploadCredential: ${upload}, recordUpload: ${recordUpload} };
+    const uploadCredential = ${upload};
+    const recordUpload = ${recordUpload};
+    return { modeStore: ${modeStore}, uploadCredential, recordUpload, recordSendFlight: ${flight} };
   }`;
 const UPLOAD =
   'createUploadCredentialStore({ kv, modeStore, clock, logger, enabled: options.recordSend })';
@@ -324,7 +353,22 @@ describe('createNativePorts keeps the upload credential on the app’s own mode 
       modeStoreProperty: 'modeStore',
       uploadCredentialDeps: UPLOAD_DEPS,
       recordUploadDeps: RECORD_DEPS,
+      recordSendFlightDeps: FLIGHT_DEPS,
     });
+    expect(
+      recordWiringOf(RECORD_SKELETON(UPLOAD, 'modeStore', RECORD_UPLOAD, 'createFakeFlight()'))
+        .recordSendFlightDeps,
+    ).toBeNull();
+    expect(
+      recordWiringOf(
+        RECORD_SKELETON(
+          UPLOAD,
+          'modeStore',
+          RECORD_UPLOAD,
+          FLIGHT.replace('upload: recordUpload', 'upload: createFakeRecordUpload()'),
+        ),
+      ).recordSendFlightDeps,
+    ).toContain('upload:createFakeRecordUpload()');
     expect(
       recordWiringOf(RECORD_SKELETON(UPLOAD, 'modeStore', 'createFakeRecordUpload()'))
         .recordUploadDeps,
@@ -346,7 +390,7 @@ describe('createNativePorts keeps the upload credential on the app’s own mode 
     );
   });
 
-  it('the real createNativePorts: one mode store for the app and the credential store, the switch passed, the upload port on fetch and the app’s logger', () => {
+  it('the real createNativePorts: one mode store for the app and the credential store, the switch passed, the upload port on fetch, the app’s logger and the build’s host, and one send flight over them', () => {
     const source = readFileSync(join(__dirname, 'nativePorts.ts'), 'utf8');
     expect(recordWiringOf(source)).toEqual({
       options: '{ recordSend: false }',
@@ -354,6 +398,7 @@ describe('createNativePorts keeps the upload credential on the app’s own mode 
       modeStoreProperty: 'modeStore',
       uploadCredentialDeps: UPLOAD_DEPS,
       recordUploadDeps: RECORD_DEPS,
+      recordSendFlightDeps: FLIGHT_DEPS,
     });
   });
 

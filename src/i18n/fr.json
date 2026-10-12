@@ -271,6 +271,7 @@
   "record.sent": "Envoyé · réf. {ref}",
   "record.sendFailed": "Échec de l'envoi. Réessayer",
   "record.needsCode": "Scannez d'abord un code de diffusion",
+  "record.onAir": "À envoyer après le direct",
   "language.en": "English",
   "language.es": "Español",
   "language.fr": "Français",

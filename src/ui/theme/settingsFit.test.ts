@@ -746,6 +746,7 @@ const RECORD_WIDTHS = [
 /** The longest reference the upload port accepts (16 characters), in the widest capital. */
 const WORST_REF = `R-${'W'.repeat(14)}`;
 let recordLabelsChecked = 0;
+let recordReasonsChecked = 0;
 
 describe('the record row’s buttons fit the settings column, in every language (N33, P11)', () => {
   it.each(RECORD_WIDTHS)('the %s is the width the proof says it is', (_name, width, literal) => {
@@ -780,7 +781,28 @@ describe('the record row’s buttons fit the settings column, in every language 
     });
   });
 
-  it('checked seven labels at both widths in every language (anti-vacuity)', () => {
+  // Each reason is one line under the buttons, at the caption size: no code yet, and on air (Minor 8 of the Batch 6
+  // review).
+  describe.each(RECORD_WIDTHS)('%s', (where, width) => {
+    it.each(LANGS)('%s: each of the row’s reasons is one line', (lang) => {
+      const { t } = createTranslator(lang);
+      for (const key of ['record.needsCode', 'record.onAir'] as const) {
+        const reason = t(key);
+        expect(
+          [...reason].filter((char) => !medium.has(char.codePointAt(0) ?? 0)),
+          `${lang} ${key}`,
+        ).toEqual([]);
+        expect(
+          medium.width(reason, typeScale.metricUnit.fontSize),
+          `${where} ${lang} ${key}`,
+        ).toBeLessThanOrEqual(width);
+        recordReasonsChecked += 1;
+      }
+    });
+  });
+
+  it('checked seven labels and two reasons at both widths in every language (anti-vacuity)', () => {
     expect(recordLabelsChecked).toBe(2 * 4 * 7);
+    expect(recordReasonsChecked).toBe(2 * 4 * 2);
   });
 });

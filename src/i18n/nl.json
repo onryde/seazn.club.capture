@@ -271,6 +271,7 @@
   "record.sent": "Verstuurd · ref. {ref}",
   "record.sendFailed": "Versturen mislukt. Opnieuw",
   "record.needsCode": "Scan eerst een streamcode",
+  "record.onAir": "Verstuur dit na de uitzending",
   "language.en": "English",
   "language.es": "Español",
   "language.fr": "Français",

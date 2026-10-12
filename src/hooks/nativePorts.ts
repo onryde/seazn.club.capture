@@ -27,6 +27,7 @@ import { createNativeSplash } from '@/services/native/nativeSplash';
 import { createNativeSurfaces } from '@/services/native/nativeSurfaces';
 import { createSecureKeyValueStore } from '@/services/native/secureKeyValueStore';
 import { seaznEnvironment, seaznHosts, seaznOrigin } from '@/services/seaznHosts';
+import { createRecordSendFlight } from '@/services/recordSendFlight';
 import { createRecordUploadPort } from '@/services/recordUploadPort';
 import { createRingRecord } from '@/services/sessionRecord';
 import { createStreamSettingsStore } from '@/services/streamSettingsStore';
@@ -66,6 +67,19 @@ export function createNativePorts(
   const modeStore = createModeStore(kv);
   const env = process.env.EXPO_PUBLIC_SEAZN_ENV;
   const hosts = seaznHosts(env);
+  const uploadCredential = createUploadCredentialStore({
+    kv,
+    modeStore,
+    clock,
+    logger,
+    enabled: options.recordSend,
+  });
+  // R3: plain fetch (AGENTS §8), to the build's host only. Nothing calls it while the switch is off: no button.
+  const recordUpload = createRecordUploadPort({
+    fetch: (url, init) => fetch(url, init),
+    logger,
+    host: hosts[0] ?? '',
+  });
   const code = chooseCodePort({
     dev: __DEV__,
     fakeFlag: process.env.EXPO_PUBLIC_FAKE_CODE,
@@ -107,15 +121,13 @@ export function createNativePorts(
       openSettings: () => Linking.openSettings(),
       logger,
     }),
-    uploadCredential: createUploadCredentialStore({
-      kv,
-      modeStore,
-      clock,
-      logger,
-      enabled: options.recordSend,
+    uploadCredential,
+    recordUpload,
+    recordSendFlight: createRecordSendFlight({
+      credentials: uploadCredential,
+      upload: recordUpload,
+      record,
     }),
-    // R3: plain fetch (AGENTS §8). Nothing calls it while the switch is off: the button is not drawn.
-    recordUpload: createRecordUploadPort({ fetch: (url, init) => fetch(url, init), logger }),
     clock,
     hosts,
     deviceLanguages: getLocales().map((locale) => locale.languageCode),

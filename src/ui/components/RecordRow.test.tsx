@@ -2,6 +2,7 @@ import { act, fireEvent, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { UploadCredential } from '@/domain/credentials/uploadCredential';
 import { LANGS } from '@/i18n/language';
+import type { FakeScene } from '@/engine/FakeCaptureEngine';
 import { createTranslator } from '@/i18n/translate';
 import { RecordRow } from '@/ui/components/RecordRow';
 import { createFakeRecordUpload, createFakeUploadCredential } from '../../../test/fakePorts';
@@ -87,6 +88,15 @@ describe('the record row (N33, R3)', () => {
     expect(upload.calls).toBe(2);
   });
 
+  // Minor 7 of the Batch 6 review: the keystore's first answer has not come, so the row says nothing yet.
+  it('with a code, draws no reason line before the first read answers', () => {
+    renderWithPorts(<RecordRow send />, {
+      uploadCredential: createFakeUploadCredential(CREDENTIAL),
+    });
+    expect(screen.queryByText('Scan a stream code first')).toBeNull();
+    expect(sendButton().getAttribute('aria-disabled')).toBe('true');
+  });
+
   it('reads in Spanish (another language)', async () => {
     await withCode('es');
     expect(screen.getByRole('button', { name: 'Compartir registro' })).toBeTruthy();
@@ -110,8 +120,54 @@ describe('the record row (N33, R3)', () => {
       'record.sending',
       'record.sendFailed',
       'record.needsCode',
+      'record.onAir',
     ] as const)
       expect(t(key)).not.toBe(key);
     expect(t('record.sent', { ref: 'R-7K2Q' })).toContain('R-7K2Q');
+  });
+});
+
+// Minor 8 of the Batch 6 review (the controller's ruling, 2026-10-12): up to 1 MB must not ride the broadcast's
+// uplink. From Arming on, Send is disabled with its reason, as the battery row's App settings is (AGENTS §6); Share
+// record stays: it is local and uses no uplink.
+describe('the record row on air (Minor 8)', () => {
+  const HELD: readonly FakeScene[] = ['arming-retrying', 'connecting', 'live', 'holding'];
+  it.each(HELD)('%s: Send is disabled and says why, Share still works', async (scene) => {
+    const { view, upload } = await withCode();
+    act(() => view.engine.scene(scene));
+    expect(sendButton().getAttribute('aria-disabled')).toBe('true');
+    expect(screen.getByText('Send it after the broadcast')).toBeTruthy();
+    fireEvent.click(sendButton());
+    await settle();
+    expect(upload.calls).toBe(0);
+    const share = screen.getByRole('button', { name: 'Share record' });
+    expect(share.getAttribute('aria-disabled')).toBeNull();
+    fireEvent.click(share);
+    await settle();
+    expect(view.share.shared).toHaveLength(1);
+  });
+
+  const FREE: readonly FakeScene[] = ['pairing', 'paired-ready', 'stopped'];
+  it.each(FREE)('%s: Send works, with no reason', async (scene) => {
+    const { view, upload } = await withCode();
+    act(() => view.engine.scene(scene));
+    expect(screen.queryByText('Send it after the broadcast')).toBeNull();
+    fireEvent.click(sendButton());
+    await settle();
+    expect(upload.calls).toBe(1);
+  });
+
+  it('says one thing at a time: on air before no code', async () => {
+    const view = renderWithPorts(<RecordRow send />);
+    await settle();
+    act(() => view.engine.scene('live'));
+    expect(screen.getByText('Send it after the broadcast')).toBeTruthy();
+    expect(screen.queryByText('Scan a stream code first')).toBeNull();
+  });
+
+  it('says why in French', async () => {
+    const { view } = await withCode('fr');
+    act(() => view.engine.scene('live'));
+    expect(screen.getByText(createTranslator('fr').t('record.onAir'))).toBeTruthy();
   });
 });

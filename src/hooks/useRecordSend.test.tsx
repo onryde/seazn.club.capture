@@ -24,6 +24,14 @@ async function mounted(credential: UploadCredential | null = CREDENTIAL) {
   return { fakes, view, now: () => view.result.current };
 }
 
+/** The row mounted again on the same ports, as a rotation or a way out and back does. */
+async function remounted(hook: Awaited<ReturnType<typeof mounted>>) {
+  hook.view.unmount();
+  const view = renderHook(() => useRecordSend(), { wrapper: wrapperFor(hook.fakes) });
+  await settle();
+  return { ...hook, view, now: () => view.result.current };
+}
+
 const send = (hook: { now: () => ReturnType<typeof useRecordSend> }) =>
   act(() => hook.now().send());
 
@@ -32,6 +40,14 @@ describe('Send record (R3)', () => {
     const hook = await mounted(null);
     expect(hook.now().available).toBe(false);
     expect(hook.now().state).toEqual({ kind: 'idle' });
+  });
+
+  // Minor 7 of the Batch 6 review: before the keystore answers, it is not known, so no reason line flashes.
+  it('is not known before the first read answers', () => {
+    const fakes = createFakePorts();
+    fakes.uploadCredential.give(CREDENTIAL);
+    const view = renderHook(() => useRecordSend(), { wrapper: wrapperFor(fakes) });
+    expect(view.result.current.available).toBeNull();
   });
 
   it('is available with a credential, and idle', async () => {
@@ -153,15 +169,37 @@ describe('Send record (R3)', () => {
     expect(hook.fakes.foreground.returnListeners()).toBe(listening - 1);
   });
 
-  it('a send that lands after the row has gone changes nothing and throws nothing', async () => {
+  // "Throws nothing" rests on vitest failing the run on an unhandled rejection (Minor 12 of the Batch 6 review).
+  it('a send that lands after the row has gone throws nothing', async () => {
     const hook = await mounted();
     hook.fakes.recordUpload.hold();
     await send(hook);
-    const answered = hook.now().state;
     hook.view.unmount();
     hook.fakes.recordUpload.release();
     await settle();
-    expect(answered).toEqual({ kind: 'sending' });
     expect(hook.fakes.recordUpload.calls).toBe(1);
+  });
+
+  // Important 3 of the Batch 6 review: a rotation, or Back and in again, remounts the row; the request is the ports'.
+  it('a row mounted again mid-send reads Sending…, and a tap there makes no second call', async () => {
+    const hook = await mounted();
+    hook.fakes.recordUpload.hold();
+    await send(hook);
+    const again = await remounted(hook);
+    expect(again.now().state).toEqual({ kind: 'sending' });
+    await send(again);
+    await settle();
+    expect(again.fakes.recordUpload.calls).toBe(1);
+    again.fakes.recordUpload.release();
+    await settle();
+    expect(again.now().state).toEqual({ kind: 'sent', ref: 'R-TEST' });
+  });
+
+  it('a row mounted again after the send still shows the ref', async () => {
+    const hook = await mounted();
+    await send(hook);
+    await settle();
+    const again = await remounted(hook);
+    expect(again.now().state).toEqual({ kind: 'sent', ref: 'R-TEST' });
   });
 });

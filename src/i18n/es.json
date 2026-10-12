@@ -271,6 +271,7 @@
   "record.sent": "Enviado · ref. {ref}",
   "record.sendFailed": "No se pudo enviar. Reintentar",
   "record.needsCode": "Escanea antes un código de emisión",
+  "record.onAir": "Envíalo después de la emisión",
   "language.en": "English",
   "language.es": "Español",
   "language.fr": "Français",

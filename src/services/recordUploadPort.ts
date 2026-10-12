@@ -1,7 +1,9 @@
+import { isStreamCodeText } from '@/domain/credentials/streamCode';
 import type { UploadCredential } from '@/domain/credentials/uploadCredential';
+import { codeUrl } from '@/services/fetchCodePort';
 import type { Logger } from '@/services/logger';
 import { scrubEvent, scrubFields, type HeldSecrets, type LogFields } from '@/services/scrub';
-import { parseRecordLine, type RecordedEntry } from '@/services/sessionRecord';
+import { isLogLevel, parseRecordLine } from '@/services/sessionRecord';
 
 /**
  * Provisional (the D3 fixes plan's ruling P4, the controller's): the path and these two shapes are the D3 web brief's
@@ -56,18 +58,21 @@ const STATUS: Readonly<Record<number, RecordSendResult>> = {
 
 /**
  * Fail closed (spec §7): every line must be a record line the scrub would leave exactly as it is, with the token held
- * as a secret, and the token must not appear anywhere in it. One line that names the token, is not a record line, or
- * would change under the scrub sends nothing.
+ * as a secret, and the token must not appear anywhere in it: not in the text sent (a key written twice can hide it
+ * from a reader), and not in the text a reader decodes (an escaped key can hide it from the text). One line that
+ * names the token, is not a record line, or would change under the scrub sends nothing.
  */
 export function linesAreSafe(lines: readonly string[], token: string): boolean {
   const held: HeldSecrets = { secrets: [token], streamIds: [] };
-  return lines.every((line) => !line.includes(token) && scrubLeaves(line, held));
+  return lines.every((line) => !line.includes(token) && decodedIsSafe(line, token, held));
 }
 
-/** Whether the scrub, holding [held] with a session in hand, would leave this line exactly as written. */
-function scrubLeaves(line: string, held: HeldSecrets): boolean {
-  const entry = entryOf(line);
-  if (entry === null || scrubEvent(entry.event, held) !== entry.event) return false;
+/** The line as a reader decodes it: a record line, naming no token, that the scrub would leave exactly as written. */
+function decodedIsSafe(line: string, token: string, held: HeldSecrets): boolean {
+  const data = recordObject(line);
+  if (data === null || JSON.stringify(data).includes(token)) return false;
+  const entry = parseRecordLine(line);
+  if (scrubEvent(entry.event, held) !== entry.event) return false;
   // `scrubFields` reads every value as unknown and masks an object, an array or a non-finite number (scrub.ts,
   // `scrubValue`), so a value that is no LogValue never equals its scrub, and the line fails here.
   const fields = entry.fields as LogFields;
@@ -75,25 +80,47 @@ function scrubLeaves(line: string, held: HeldSecrets): boolean {
   return Object.keys(fields).every((key) => scrubbed[key] === fields[key]);
 }
 
-/** A record line's parts, or null for anything that is not a JSON object with a text `kind`. */
-function entryOf(line: string): RecordedEntry | null {
+/**
+ * A record line decoded, or null for anything that is not one: a JSON object with a text `kind`, an `at` that is a
+ * time, and no `level` but one of the logger's (Minor 11 of the Batch 6 review: the scrub reads neither slot).
+ */
+function recordObject(line: string): Record<string, unknown> | null {
   let data: unknown;
   try {
     data = JSON.parse(line);
   } catch {
     return null;
   }
-  // An array or a scalar has no text `kind`, so this one check turns every non-object away too.
+  // An array or a scalar has no text `kind`, so that check turns every non-object away too.
   if (typeof data !== 'object' || data === null) return null;
-  return typeof (data as Record<string, unknown>).kind === 'string' ? parseRecordLine(line) : null;
+  const { at, kind, level } = data as Record<string, unknown>;
+  const timed = typeof at === 'string' && Number.isFinite(Date.parse(at));
+  const levelled = level === undefined || isLogLevel(level);
+  return typeof kind === 'string' && timed && levelled ? (data as Record<string, unknown>) : null;
+}
+
+/**
+ * Important 2 of the Batch 6 review: the Bearer goes only where native would send it. Native holds a pairing's code
+ * URL to "https://<the build's Seazn host>/api/v1/capture/codes/<code>" (`PairRequest.problems()`); this is that
+ * rule with JavaScript's own parts: the host from `seaznHosts`, the URL as `codeUrl` builds it, the code as the QR's
+ * parser reads it. An empty host trusts nothing.
+ */
+export function isSeaznCodeUrl(url: string, host: string): boolean {
+  if (host === '') return false;
+  const origin = `https://${host}`;
+  const code = url.slice(codeUrl(origin, '').length);
+  return isStreamCodeText(code) && url === codeUrl(origin, code);
 }
 
 export function createRecordUploadPort({
   fetch,
   logger,
+  host,
 }: {
   fetch: PostFetch;
   logger: Logger;
+  /** The build's Seazn host (`seaznHosts(env)[0]`); the only one the token is sent to. */
+  host: string;
 }): RecordUploadPort {
   // The line names the result, the status and the size: never the ref, the token or an error's words.
   const said = (
@@ -109,6 +136,7 @@ export function createRecordUploadPort({
     send: async (all, credential) => {
       const lines = all.slice(-RECORD_MAX_LINES);
       if (lines.length === 0) return said('failed', null, 0);
+      if (!isSeaznCodeUrl(credential.codeUrl, host)) return said('refused-local', null, 0);
       if (!linesAreSafe(lines, credential.token)) return said('refused-local', null, 0);
       const body = `${lines.join('\n')}\n`;
       let bytes = 0;

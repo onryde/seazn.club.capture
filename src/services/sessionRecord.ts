@@ -3,6 +3,17 @@ import type { LogFields } from '@/services/scrub';
 
 export type LogLevel = 'debug' | 'info' | 'warn' | 'error';
 
+/** Every level, so a new one does not compile until it is listed: the words a record line's `level` may hold. */
+const LEVEL_WORDS: Readonly<Record<LogLevel, true>> = {
+  debug: true,
+  info: true,
+  warn: true,
+  error: true,
+};
+
+export const isLogLevel = (value: unknown): value is LogLevel =>
+  typeof value === 'string' && Object.hasOwn(LEVEL_WORDS, value);
+
 /** One entry, already scrubbed. Scrubbing happens before an entry exists, never after. */
 export type LogEntry = {
   readonly atMs: number;

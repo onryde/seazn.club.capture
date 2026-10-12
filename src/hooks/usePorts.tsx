@@ -24,6 +24,7 @@ import type { ModeStore } from '@/services/modeStore';
 import type { PhotoPort } from '@/services/photoPort';
 import type { ProbeFlight } from '@/services/probeFlight';
 import type { RecordUploadPort } from '@/services/recordUploadPort';
+import type { RecordSendFlight } from '@/services/recordSendFlight';
 import type { ScanFlight } from '@/services/scanFlight';
 import type { ScoringLinkPort } from '@/services/scoringLinkPort';
 import type { SessionRecord } from '@/services/sessionRecord';
@@ -83,6 +84,8 @@ export type Ports = {
   readonly uploadCredential: UploadCredentialStore;
   /** R3: Send record to Seazn's one request, plain fetch (inert while its switch is off: nothing draws the button). */
   readonly recordUpload: RecordUploadPort;
+  /** R3: the one send, over the two above, built once so the row's remounts keep it (Important 3, Batch 6 review). */
+  readonly recordSendFlight: RecordSendFlight;
   readonly clock: () => Date;
   readonly hosts: readonly string[];
   readonly deviceLanguages: readonly (string | null)[];

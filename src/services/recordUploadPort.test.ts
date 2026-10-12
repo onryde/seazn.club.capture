@@ -32,7 +32,11 @@ function port(answer: () => Promise<Answer>) {
   return {
     fetch,
     record,
-    upload: createRecordUploadPort({ fetch, logger: createLogger({ record, now: () => 0 }) }),
+    upload: createRecordUploadPort({
+      fetch,
+      logger: createLogger({ record, now: () => 0 }),
+      host: 'stg.seazn.club',
+    }),
     sendLines: () => record.lines().filter((l) => l.includes('"kind":"record.send"')),
   };
 }
@@ -220,12 +224,30 @@ describe('the upload fails closed (spec §7)', () => {
     expect(p.record.lines().some((l) => l.includes(TOKEN))).toBe(false);
   });
 
-  // M7 (preflight): only the raw check sees this one. A number passes the scrub under any key, so the token as a
-  // field's NAME leaves the scrub with nothing to change.
+  // A number passes the scrub under any key, so the token as a field's NAME leaves the scrub with nothing to change.
+  // Both token checks see it: the raw text and the decoded text both name it.
   it('the token as a field name, holding a number, sends nothing', async () => {
     const named = JSON.stringify({ at: '1970-01-01T00:00:00.000Z', kind: 'beats', [TOKEN]: 1 });
     expect(linesAreSafe([named], 'some-other-token-00000')).toBe(true); // the scrub alone passes it
     await refuses([named]);
+  });
+
+  // M7 (preflight): only the raw check sees this one. A duplicate key: the text sent names the token, and the value a
+  // reader decodes (the last one) does not. What is sent is the text.
+  it('the token under a key written twice, the second time harmless, sends nothing', async () => {
+    const twice = `{"at":"1970-01-01T00:00:00.000Z","kind":"beats","count":"${TOKEN}","count":1}`;
+    expect(JSON.stringify(JSON.parse(twice))).not.toContain(TOKEN);
+    await refuses([twice]);
+  });
+
+  // Minor 11 of the Batch 6 review: only the decoded check sees this one. The token as a field's name, written with
+  // JSON escapes, is not in the raw text, and a reader decodes it to the token.
+  it('the token as an escaped field name sends nothing', async () => {
+    const escaped = [...TOKEN].map((c) => `\\u00${c.charCodeAt(0).toString(16)}`).join('');
+    const hidden = `{"at":"1970-01-01T00:00:00.000Z","kind":"beats","${escaped}":1}`;
+    expect(hidden).not.toContain(TOKEN);
+    expect(Object.keys(JSON.parse(hidden) as object)).toContain(TOKEN);
+    await refuses([hidden]);
   });
 
   // M7 (preflight): only the scrub comparison sees this one. No token anywhere, but a string under a key on no list,
@@ -254,8 +276,75 @@ describe('the upload fails closed (spec §7)', () => {
     ['a string', '"paired"'],
     ['an object with no kind', '{"at":"1970-01-01T00:00:00.000Z"}'],
     ['a kind that is not text', '{"at":"1970-01-01T00:00:00.000Z","kind":7}'],
+    // Minor 11 of the Batch 6 review: the two slots the scrub never reads.
+    ['a line with no time', '{"kind":"beats"}'],
+    ['a time that is no time', '{"at":"any text at all","kind":"beats"}'],
+    ['a time that is a number', '{"at":0,"kind":"beats"}'],
+    [
+      'a level that is no level',
+      '{"at":"1970-01-01T00:00:00.000Z","kind":"beats","level":"any text"}',
+    ],
+    ['a level that is not text', '{"at":"1970-01-01T00:00:00.000Z","kind":"beats","level":2}'],
   ])('%s is not a record line, and sends nothing', async (_why, text) => {
     await refuses([text]);
+  });
+
+  it.each(['debug', 'info', 'warn', 'error'] as const)(
+    'a line at level %s, as the logger writes it, passes',
+    (level) => {
+      const written = toRecordLine({ atMs: 0, level, event: 'beats', fields: {} });
+      expect(linesAreSafe([written], TOKEN)).toBe(true);
+    },
+  );
+});
+
+// Important 2 of the Batch 6 review: the Bearer goes only to the code's URL on the build's Seazn host, as native holds
+// the same URL (`PairRequest`: "https://<host>/api/v1/capture/codes/<code>"). A stored URL is not trusted.
+describe('the upload goes only to the build’s Seazn host', () => {
+  const refusedFor = async (codeUrl: string, host = 'stg.seazn.club') => {
+    const record = createRingRecord();
+    const fetch = vi.fn<PostFetch>(answered(201, { ref: 'R-1' }));
+    const upload = createRecordUploadPort({
+      fetch,
+      logger: createLogger({ record, now: () => 0 }),
+      host,
+    });
+    const outcome = await upload.send(LINES, { ...credential, codeUrl });
+    expect(fetch).not.toHaveBeenCalled();
+    expect(outcome).toEqual({ result: 'refused-local', ref: null, status: null, bytes: 0 });
+    expect(record.lines().some((l) => l.includes(TOKEN))).toBe(false);
+  };
+
+  it.each([
+    ['a foreign host', 'https://evil.example/api/v1/capture/codes/abcdefghjkmn'],
+    // As long as the build's, so what follows the code path's length is a code: only the whole URL tells.
+    [
+      'a foreign host as long as the build’s',
+      'https://stg.seazn.evil/api/v1/capture/codes/abcdefghjkmn',
+    ],
+    ['plain http', 'http://stg.seazn.club/api/v1/capture/codes/abcdefghjkmn'],
+    ['a lookalike host', 'https://stg.seazn.club.evil.example/api/v1/capture/codes/abcdefghjkmn'],
+    [
+      'userinfo before another host',
+      'https://stg.seazn.club@evil.example/api/v1/capture/codes/abcdefghjkmn',
+    ],
+    ['the other environment’s host', 'https://seazn.club/api/v1/capture/codes/abcdefghjkmn'],
+    ['a port', 'https://stg.seazn.club:8443/api/v1/capture/codes/abcdefghjkmn'],
+    ['another path', 'https://stg.seazn.club/api/v1/other/abcdefghjkmn'],
+    ['a path past the code', 'https://stg.seazn.club/api/v1/capture/codes/abcdefghjkmn/x'],
+    ['a code that is not one', 'https://stg.seazn.club/api/v1/capture/codes/..%2F..%2Fother'],
+    ['no code', 'https://stg.seazn.club/api/v1/capture/codes/'],
+  ])('refuses %s, sending nothing', async (_why, codeUrl) => {
+    await refusedFor(codeUrl);
+  });
+
+  it('trusts nothing with no host configured', async () => {
+    await refusedFor('https:///api/v1/capture/codes/abcdefghjkmn', '');
+  });
+
+  it('sends to the code’s URL on the build’s host', async () => {
+    const p = port(answered(201, { ref: 'R-1' }));
+    expect((await p.upload.send(LINES, credential)).result).toBe('sent');
   });
 });
 

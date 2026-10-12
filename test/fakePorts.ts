@@ -23,6 +23,7 @@ import { createMemoryKeyValueStore, type MemoryKeyValueStore } from '@/services/
 import { createLogger } from '@/services/logger';
 import { createModeStore } from '@/services/modeStore';
 import { createProbeFlight } from '@/services/probeFlight';
+import { createRecordSendFlight } from '@/services/recordSendFlight';
 import type { RecordSendOutcome, RecordUploadPort } from '@/services/recordUploadPort';
 import { createScanFlight } from '@/services/scanFlight';
 import { createRingRecord, parseRecordLine, type SessionRecord } from '@/services/sessionRecord';
@@ -118,7 +119,7 @@ export function createFakePorts(
     uploadCredential: createFakeUploadCredential(),
     recordUpload: createFakeRecordUpload(),
   };
-  const ports: Ports = {
+  const wired: Omit<Ports, 'recordSendFlight'> = {
     ...fakes,
     devEngine: engine,
     nativeEngine: null,
@@ -136,6 +137,15 @@ export function createFakePorts(
     devTools: true,
     logger,
     ...portOverrides,
+  };
+  // Over the ports as overridden, so a test's own credential or upload is the one the flight uses.
+  const ports: Ports = {
+    recordSendFlight: createRecordSendFlight({
+      credentials: wired.uploadCredential,
+      upload: wired.recordUpload,
+      record: wired.record,
+    }),
+    ...wired,
   };
   return {
     ...fakes,

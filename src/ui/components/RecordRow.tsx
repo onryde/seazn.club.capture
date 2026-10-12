@@ -29,19 +29,24 @@ export const RecordRow = memo(function RecordRow({ send }: { send: boolean }) {
   );
 });
 
-/** Send record to Seazn: disabled while a send is in flight, and with no credential, where one line says why. */
+/**
+ * Send record to Seazn: disabled while a send is in flight, until the credential is known, with none, and while a
+ * broadcast is held (Minor 8 of the Batch 6 review, the controller's ruling: as the battery row's App settings). One
+ * line says why, on air first; nothing is said before the first read answers (Minor 7).
+ */
 const SendRecord = memo(function SendRecord() {
   const { t } = useT();
-  const { state, available, send } = useRecordSend();
+  const { state, available, held, send } = useRecordSend();
+  const reason = held ? 'record.onAir' : available === false ? 'record.needsCode' : null;
   return (
     <>
       <GhostButton
         label={sendLabel(state, t)}
         onPress={send}
         compact
-        disabled={!available || state.kind === 'sending'}
+        disabled={held || available !== true || state.kind === 'sending'}
       />
-      {available ? null : <Text variant="metricUnit">{t('record.needsCode')}</Text>}
+      {reason === null ? null : <Text variant="metricUnit">{t(reason)}</Text>}
     </>
   );
 });
