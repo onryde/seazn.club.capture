@@ -867,10 +867,11 @@ switch is on; nothing can prove steps 2 and 3, because there is nothing to obser
 
 ### N27 — A locked phone stops beating unless its battery is Unrestricted
 
-**Status:** mitigation landed — feat/s1-d3-fixes, Batch 5 (c5a2401; the link from Home: 73dc5ae, fdc8b41): the
-battery row in Stream Settings, R5 of the D3 findings design (owner, 2026-10-11;
-`docs/specs/2026-10-11-s1-d3-findings-design.md`), and a `power` record line at every pairing's hold; AGENTS §9
-amended. The cause stays open (OxygenOS battery management); the device proof is Batch 9's
+**Status:** mitigation landed — feat/s1-d3-fixes, Batch 5 (c5a2401; the link from Home: 73dc5ae, fdc8b41; fix
+round 1: f0e4659): the battery row in Stream Settings, R5 of the D3 findings design (owner, 2026-10-11;
+`docs/specs/2026-10-11-s1-d3-findings-design.md`), reading Unrestricted, Optimized or Restricted and opening App
+info (R12, R13 of the same design, the controller's, 2026-10-12), and a `power {mode}` record line at every
+pairing's hold and at a change read on a return; AGENTS §9 amended. The cause stays open (OxygenOS battery management); the device proof is Batch 9's
 (`docs/superpowers/plans/2026-10-11-s1-d3-fixes.md`)
 **Where:** capture app · `PairingKeeper` (foreground service, partial wake lock) · OxygenOS battery management
 

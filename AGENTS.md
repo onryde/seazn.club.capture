@@ -416,8 +416,15 @@ Three rules travel with these tokens:
   findings design; owner, 2026-10-11) and the record row: Share record, which
   moves out of the Diagnostics card so a phone sent Home by Replaced can still
   hand its record over (N33), and Send record to Seazn when
-  `FEATURES.recordSend` is on. The battery row reads Allowed or Restricted and
-  opens this app's battery page; it never prompts or nags.
+  `FEATURES.recordSend` is on. The battery row reads the app's battery mode
+  in Android's own words, _Unrestricted_, _Optimized_ or _Restricted_, and
+  its _App settings_ button opens this app's App info page
+  (`ACTION_APPLICATION_DETAILS_SETTINGS`), where Battery is one tap away; a
+  path line under it says "Battery → Unrestricted" (R12 of the D3 findings
+  design; the controller's, 2026-10-12). It never prompts or nags. Its button
+  is the row's on-air protection: from Arming on it is disabled with "Change it
+  after the broadcast", because App info is one tap from Force stop (R13 of
+  the D3 findings design; the controller's, 2026-10-12).
 - The audio meter is permanent, not in Settings. Nothing downstream
   normalises — a quiet mic reaches YouTube quiet.
 - One persistent status line that always says something true. Never an
