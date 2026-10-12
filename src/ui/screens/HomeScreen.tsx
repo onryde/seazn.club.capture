@@ -81,7 +81,8 @@ function HomeContent({
   const { streamSettings } = useHomeLinks();
   // P6: the gear only while no card stands above the tiles. With Continue the phone may hold a pairing, and Stream
   // Settings from Home assumes none (AGENTS §6); the in-mode Settings, after Continue re-pairs, has the same rows.
-  // Sideways the gear's band would also make Home scroll with one card at 800 × 360 (homeFit.test.ts).
+  // Sideways the gear's band would also make Home scroll with the Continue card at 800 × 360; the ended card leaves
+  // 1 dp (homeFit.test.ts).
   const gear = ended === null && view.continueCode === null ? streamSettings : null;
   const landscape = layout === 'landscape';
   const shape = landscape ? 'row' : 'stacked';

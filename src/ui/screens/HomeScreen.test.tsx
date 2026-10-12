@@ -1556,8 +1556,32 @@ describe('the Stream settings gear (R2, P6)', () => {
     expect(screen.queryByTestId('tile-dashboard')).toBeNull();
   });
 
-  it('is absent while Continue shows: the phone may hold a pairing', async () => {
-    await renderHome({ kvSeed: { [STORE_KEYS.code('stream')]: savedStream(IN_TWO_HOURS) } });
+  // P6 as ruled hides the gear for every Continue, a saved code with nothing paired included (Batch 10 review, R).
+  it('is absent while Continue shows a saved code with nothing paired', async () => {
+    const view = await renderHome({
+      kvSeed: { [STORE_KEYS.code('stream')]: savedStream(IN_TWO_HOURS) },
+    });
+    expect(screen.getByRole('button', { name: 'Continue' })).toBeTruthy();
+    expect(screen.getByText('Continue Live Stream')).toBeTruthy();
+    expect(view.engine.getSnapshot().state.kind).not.toBe('paired');
+    expect(gear()).toBeNull();
+  });
+
+  // P6's load-bearing case (Batch 14 review, m2): Continue reads Paired because native holds the pairing, and Stream
+  // Settings from Home assumes nothing is paired (AGENTS §6).
+  it('is absent while Continue reads Paired: the engine holds the saved code’s pairing', async () => {
+    const code = savedStreamCode({
+      raw: streamRaw(IN_TWO_HOURS),
+      expiresAt: IN_TWO_HOURS,
+      stream: streamPart(),
+    });
+    const view = renderWithPorts(<HomeScreen />, {
+      kvSeed: { [STORE_KEYS.code('stream')]: encodeSavedCode(code) },
+    });
+    act(() => pairCode(view.engine, code));
+    await act(() => view.ports.modeStore.load());
+    expect(view.engine.getSnapshot().state.kind).toBe('paired');
+    expect(screen.getByText('Paired · Seazn XI v Fake CC')).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Continue' })).toBeTruthy();
     expect(gear()).toBeNull();
   });

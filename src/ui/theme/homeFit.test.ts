@@ -461,15 +461,14 @@ describe('the Stream settings gear on the Live Stream tile’s corner (R2, as th
     },
   );
 
-  // Order-dependent on purpose: it follows the band's rows above.
-  it('swept the band over every window in GEOMETRIES, and 592 × 328 and 804 × 332 besides (anti-vacuity)', () => {
-    for (const [width, height] of GEOMETRIES) {
-      expect(
-        BAND.some(([w, h]) => w === width && h === height),
-        `${width} × ${height}`,
-      ).toBe(true);
-    }
-    expect(BAND).toHaveLength(GEOMETRIES.length + 2);
+  // Order-dependent on purpose: it follows the band's rows above. The windows are compared as a whole, so a duplicate
+  // row in place of one of them fails (the Batch 14 review's m1).
+  it('swept the band over every window in GEOMETRIES, and 592 × 328 and 804 × 332 besides, each once (anti-vacuity)', () => {
+    const windowOf = (row: readonly [number, number, ...number[]]): string =>
+      `${row[0]} × ${row[1]}`;
+    expect(BAND.map(windowOf).sort()).toEqual(
+      [...GEOMETRIES.map(windowOf), '592 × 328', '804 × 332'].sort(),
+    );
     expect(bandChecked).toBe(BAND.length);
   });
 
