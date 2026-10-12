@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import type { SessionState } from '@/domain/session/SessionState';
 import type { EngineSnapshot, Telemetry, ThermalStatus } from '@/engine/CaptureEnginePort';
@@ -787,16 +788,30 @@ const RECORD_WIDTHS = [
   ['320 portrait column', NARROW_LINE, 288],
 ] as const;
 /**
- * The longest reference the record contract admits, `R-` and 8 Crockford capitals (`RECORD_REF`, held to the vendored
- * pattern by recordContract.test.ts; `ui/` may not import `services/`), in its widest capital.
+ * The longest reference the record contract admits, in its widest capital: its upper bound read from the vendored
+ * pattern (`R-` and 4 to 8 Crockford capitals at 53f28ebfc), so a re-vendor that lengthens the ref moves this proof
+ * (fix round 1 of Batch 11, finding 5 of its review).
  */
-const WORST_REF = `R-${'W'.repeat(8)}`;
+const REF_PATTERN = (
+  JSON.parse(
+    readFileSync(new URL('../../../contracts/capture-record.v1.json', import.meta.url), 'utf8'),
+  ) as { $defs: { ok: { properties: { ref: { pattern: string } } } } }
+).$defs.ok.properties.ref.pattern;
+const REF_LONGEST = Number(/\{\d+,(\d+)\}/.exec(REF_PATTERN)?.[1]);
+const WORST_REF = `R-${'W'.repeat(REF_LONGEST)}`;
 let recordLabelsChecked = 0;
 let recordReasonsChecked = 0;
 
 describe('the record row’s buttons fit the settings column, in every language (N33, P11)', () => {
   it.each(RECORD_WIDTHS)('the %s is the width the proof says it is', (_name, width, literal) => {
     expect(width).toBe(literal);
+  });
+
+  it('proves Sent with the contract’s longest ref, which its pattern admits and one more W does not', () => {
+    expect(REF_LONGEST).toBe(8);
+    const ref = new RegExp(REF_PATTERN);
+    expect(ref.test(WORST_REF)).toBe(true);
+    expect(ref.test(`${WORST_REF}W`)).toBe(false);
   });
 
   describe.each(RECORD_WIDTHS)('%s', (where, width) => {
