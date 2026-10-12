@@ -31,9 +31,10 @@ type TileProps = {
 };
 
 /**
- * One of Home's three equal tiles (layout A). A lime left edge marks a mode
- * you can open; an unbuilt one has none and cannot be tapped (decision 10).
- * With a link, a frame wears the tile's edge, padding and ground, and holds the tile's button over the link.
+ * One of Home's three tiles (layout A): equal widths in landscape; in portrait each grows from its own content (P7;
+ * R11 of the D3 findings design). A lime left edge marks a mode you can open; an unbuilt one has none and cannot be
+ * tapped (decision 10). With a link, a frame wears the tile's edge, ground and bottom padding; the tile's button wears
+ * the top and side padding, so all of the tile above the link's row is the button (M2 of the Batch 5 review).
  */
 export const Tile = memo(function Tile({
   mode,
@@ -44,7 +45,7 @@ export const Tile = memo(function Tile({
 }: TileProps) {
   const { t } = useT();
   const press = useCallback(() => onPress(mode), [mode, onPress]);
-  const style = link === undefined ? STYLES[layout][available ? 'on' : 'off'] : bodyStyle;
+  const style = link === undefined ? STYLES[layout][available ? 'on' : 'off'] : BODY[layout];
   const body = (
     <Pressable
       accessibilityRole="button"
@@ -67,7 +68,9 @@ export const Tile = memo(function Tile({
   return (
     <View testID={`tile-${mode}`} style={FRAMES[layout][available ? 'on' : 'off']}>
       {body}
-      <TextLink label={link.label} onPress={link.onPress} />
+      <View style={LINK_ROW[layout]}>
+        <TextLink label={link.label} onPress={link.onPress} />
+      </View>
     </View>
   );
 });
@@ -99,8 +102,25 @@ const styles = StyleSheet.create({
   /** Equal thirds of the row's width; the row's height is the tallest tile's, so none is squeezed. */
   landscape: { flex: 1, padding: metrics.tileLandscapePad },
   off: { borderLeftColor: colour.surface },
-  /** Inside a frame: the tile's content rhythm only; the frame wears the edge, padding and ground. */
+  /** A framed tile: the edge, the ground and the gap over the link; its padding is split per layout below. */
+  frame: {
+    gap: space.xs,
+    borderRadius: radius.card,
+    borderLeftWidth: 4,
+    borderLeftColor: colour.lime,
+    backgroundColor: colour.surface,
+  },
+  framePortrait: { flexGrow: 1, paddingBottom: space.md },
+  frameLandscape: { flex: 1, paddingBottom: metrics.tileLandscapePad },
+  /** Inside a frame: the tile's content rhythm, and the top and side padding, so the rim is the button's. */
   body: { flex: 1, justifyContent: 'center', gap: space.xs },
+  padPortrait: { paddingTop: space.md, paddingHorizontal: space.md },
+  padLandscape: {
+    paddingTop: metrics.tileLandscapePad,
+    paddingHorizontal: metrics.tileLandscapePad,
+  },
+  linkPortrait: { paddingHorizontal: space.md },
+  linkLandscape: { paddingHorizontal: metrics.tileLandscapePad },
   pressed: { opacity: 0.85 },
   head: { flexDirection: 'row', alignItems: 'center', gap: space.sm },
   inert: { color: colour.ink3 },
@@ -123,14 +143,26 @@ const STYLES: Record<
   },
 };
 
-/** The body inside a frame dims when pressed, as the tile does; one function, built once. */
-const bodyStyle = tileStyleFor([styles.body]);
+/** The body inside a frame dims when pressed, as the tile does; one function per layout, built once. */
+const BODY: Record<ScreenLayout, ReturnType<typeof tileStyleFor>> = {
+  portrait: tileStyleFor([styles.body, styles.padPortrait]),
+  landscape: tileStyleFor([styles.body, styles.padLandscape]),
+};
 
-/** A framed tile: what the tile's button wears alone, per layout and availability. */
+/** A framed tile, per layout and availability: the edge, the ground and the bottom padding. */
 const FRAMES: Record<ScreenLayout, Record<'on' | 'off', StyleProp<ViewStyle>>> = {
-  portrait: { on: [styles.tile, styles.portrait], off: [styles.tile, styles.portrait, styles.off] },
-  landscape: {
-    on: [styles.tile, styles.landscape],
-    off: [styles.tile, styles.landscape, styles.off],
+  portrait: {
+    on: [styles.frame, styles.framePortrait],
+    off: [styles.frame, styles.framePortrait, styles.off],
   },
+  landscape: {
+    on: [styles.frame, styles.frameLandscape],
+    off: [styles.frame, styles.frameLandscape, styles.off],
+  },
+};
+
+/** The link's row, padded as the button is at its sides: the only part of a framed tile outside the button. */
+const LINK_ROW: Record<ScreenLayout, StyleProp<ViewStyle>> = {
+  portrait: styles.linkPortrait,
+  landscape: styles.linkLandscape,
 };

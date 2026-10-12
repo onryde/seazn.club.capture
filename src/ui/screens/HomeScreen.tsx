@@ -25,9 +25,10 @@ import { MODES } from '@/ui/modeCopy';
 import { colour, layout as metrics, space } from '@/ui/theme/tokens';
 
 /**
- * Layout A (spec §7), portrait: the logo, status, the Stream ended card when there is one, Continue, three equal
- * tiles, footer; the panel over all. Landscape follows the phone: one top row (logo, status, Language, version),
- * then the ended card and Continue as one row each, then the three tiles side by side. Back closes the panel (R31).
+ * Layout A (spec §7), portrait: the logo, status, the Stream ended card when there is one, Continue, three tiles
+ * (each grows from its content, P7; R11 of the D3 findings design), footer; the panel over all. Landscape follows the
+ * phone: one top row (logo, status, Language, version), then the ended card and Continue as one row each, then the
+ * three tiles side by side. Back closes the panel (R31).
  * The root says which in `data-layout`, the marker the tests read. Both layouts scroll only when their rows outgrow
  * the window (landscape: homeFit.test.ts; portrait, P7: the Stream settings link makes the Live Stream tile taller).
  */
@@ -217,7 +218,8 @@ const styles = StyleSheet.create({
   screenLandscape: { flex: 1, backgroundColor: colour.ground },
   /** P7: `flexGrow`, not `flex`, in the portrait scroller: the tiles share the window when they fit. */
   content: { flexGrow: 1, gap: space.sm },
-  tiles: { flex: 1, gap: space.sm },
+  /** M1 of the Batch 5 review: `flexGrow`, not `flex`, inside the portrait scroller, as the landscape row is. */
+  tiles: { flexGrow: 1, gap: space.sm },
   fill: { flex: 1 },
   contentLandscape: {
     flexGrow: 1,

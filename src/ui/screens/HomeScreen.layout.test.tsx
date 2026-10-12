@@ -208,6 +208,15 @@ describe('Home turns with the phone (spec §7)', () => {
         computed.paddingLeft,
       ];
     };
+    /**
+     * A tile's padding as the operator sees it. A tile with the Stream settings link is a frame: its button (the first
+     * child) wears the top and sides, and the frame the bottom (M2 of the Batch 5 review).
+     */
+    const tileEdges = (tile: Element) => {
+      if (!(tile as HTMLElement).dataset.testid?.startsWith('tile-')) return edges(tile);
+      const [top, right, , left] = edges(tile.firstElementChild as Element);
+      return [top, right, edges(tile)[2], left];
+    };
 
     it('pads the screen 12 above, 16 at the sides and 16 below, with 12 between rows', async () => {
       setWindowSize(...LANDSCAPE);
@@ -244,6 +253,8 @@ describe('Home turns with the phone (spec §7)', () => {
       expect(style(content).flexGrow).toBe('1'); // the tiles still share the window when they fit
       expect(style(content).flexBasis).toBe('auto');
       expect(style(tiles()).flexGrow).toBe('1');
+      // M1 of the Batch 5 review: the column of tiles takes an auto basis too, never a zero inside the scroller.
+      expect(style(tiles()).flexBasis).toBe('auto');
     });
 
     it('sets both cards’ rows 10 above and below and 12 at the end, 16 at the start, a hairline round', async () => {
@@ -290,7 +301,7 @@ describe('Home turns with the phone (spec §7)', () => {
       expect(tiles().children).toHaveLength(3);
       for (const tile of tiles().children) {
         expect(style(tile).borderLeftWidth).toBe('4px');
-        expect(edges(tile)).toEqual(['12px', '12px', '12px', '12px']);
+        expect(tileEdges(tile)).toEqual(['12px', '12px', '12px', '12px']);
       }
       expect(style(screen.getByTestId('home-top')).gap).toBe('16px');
     });
@@ -301,13 +312,13 @@ describe('Home turns with the phone (spec §7)', () => {
       expect(tiles().children).toHaveLength(3);
       for (const tile of tiles().children) {
         expect(style(tile).borderLeftWidth).toBe('4px');
-        expect(edges(tile)).toEqual(['16px', '16px', '16px', '16px']);
+        expect(tileEdges(tile)).toEqual(['16px', '16px', '16px', '16px']);
       }
       // And a turn to landscape and back lands on the same 16 (the tile's style is chosen per render).
       setWindowSize(...LANDSCAPE);
-      for (const tile of tiles().children) expect(edges(tile)[0]).toBe('12px');
+      for (const tile of tiles().children) expect(tileEdges(tile)[0]).toBe('12px');
       setWindowSize(...PORTRAIT);
-      for (const tile of tiles().children) expect(edges(tile)[0]).toBe('16px');
+      for (const tile of tiles().children) expect(tileEdges(tile)[0]).toBe('16px');
     });
 
     // P7 as built: a portrait tile grows from its own content (auto basis), so the Live Stream tile with its link is

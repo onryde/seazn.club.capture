@@ -58,9 +58,11 @@ describe('Tile', () => {
     ).toBe('48px');
   });
 
-  // The frame carries what the tile's button carried, so Home's per-tile checks read the same edge and padding.
+  // M2 of the Batch 5 review: the whole tile above the link is still its button. The frame wears the edge, the ground
+  // and the bottom padding; the button wears the top and side padding, so a tap on the rim starts a scan as a plain
+  // tile's does; the link's row is padded the same and is the only part outside the button.
   it.each(['portrait', 'landscape'] as const)(
-    'with a link, the %s frame wears the tile’s edge and padding, and holds the button then the link',
+    'with a link, the %s button reaches the tile’s rim, and only the link’s row is outside it',
     (layout) => {
       renderWithPorts(
         <Tile
@@ -72,16 +74,29 @@ describe('Tile', () => {
         />,
       );
       const frame = screen.getByTestId('tile-stream');
+      const body = screen.getByRole('button', { name: /Live Stream/ });
+      const link = screen.getByRole('button', { name: 'Stream settings' });
       const pad = layout === 'portrait' ? '16px' : '12px';
-      expect(getComputedStyle(frame).borderLeftWidth).toBe('4px');
-      expect(getComputedStyle(frame).paddingTop).toBe(pad);
-      expect([...frame.children]).toEqual([
-        screen.getByRole('button', { name: /Live Stream/ }),
-        screen.getByRole('button', { name: 'Stream settings' }),
-      ]);
-      expect(getComputedStyle(screen.getByRole('button', { name: /Live Stream/ })).paddingTop).toBe(
+      const frameStyle = getComputedStyle(frame);
+      expect(frameStyle.borderLeftWidth).toBe('4px');
+      expect([frameStyle.paddingTop, frameStyle.paddingLeft, frameStyle.paddingRight]).toEqual([
         '0px',
-      );
+        '0px',
+        '0px',
+      ]);
+      expect(frameStyle.paddingBottom).toBe(pad);
+      const bodyStyle = getComputedStyle(body);
+      expect([bodyStyle.paddingTop, bodyStyle.paddingLeft, bodyStyle.paddingRight]).toEqual([
+        pad,
+        pad,
+        pad,
+      ]);
+      const linkRow = link.parentElement as HTMLElement;
+      expect([...frame.children]).toEqual([body, linkRow]);
+      expect([
+        getComputedStyle(linkRow).paddingLeft,
+        getComputedStyle(linkRow).paddingRight,
+      ]).toEqual([pad, pad]);
     },
   );
 
