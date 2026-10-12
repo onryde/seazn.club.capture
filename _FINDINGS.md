@@ -957,19 +957,30 @@ show on the CPH2569 (Batch 9): a 1280 × 720 preview stream in `dumpsys media.ca
 
 ### N31 — French Home tile titles run past their tile
 
-**Status:** fixed — feat/s1-d3-fixes, Batch 7 (50ac1d4); the device proof is Batch 9's
+**Status:** fixed — feat/s1-d3-fixes, Batch 7 (50ac1d4; fix round 1: 37ef42e); the device proof is Batch 9's
 (`docs/superpowers/plans/2026-10-11-s1-d3-fixes.md`)
-**Where:** capture app · `Tile.tsx` (the title) · `layout.tileTitleLines` · `homeFit.test.ts`
+**Where:** capture app · `Tile.tsx` (the title) · `tileTitleRole` (`src/ui/theme/tileTitle.ts`) ·
+`layout.tileTitleLines`, `layout.tileTitleRoom` · `homeFit.test.ts`
 
-At 804 dp wide (3-button navigation), "SCORE À DISTANCE" and "TABLEAU DE BORD" draw about 2–3 dp beyond the tile's
-right edge. The title had no `numberOfLines` and no `flexShrink`, and `homeFit.test.ts` checked tile heights only. The
-font-metric model puts "SCORE À DISTANCE" at 186.7 dp against a 188 dp budget at 804 (`homeFit.test.ts` pins the
-1.3 dp): the model is optimistic by a few dp on the device, so the fix is a title that shrinks and wraps, not a tighter
-number. The title now gives way beside the icon (`flexShrink: 1`) and wraps to at most two lines, then an ellipsis
-(`layout.tileTitleLines`). `homeFit.test.ts` measures every title in four languages, sideways at 640, 804 and 915 and
-upright at 360 and 412: no word is wider than the title's room, and none takes three lines. With every title at two
-lines, the tiles still fit every window they fitted, except 915 × 412 with both cards, which then scrolls. Still to
-show on the phone (Batch 9): both French titles inside their tiles at 804.
+On the owner's phone sideways with 3-button navigation, "SCORE À DISTANCE" and "TABLEAU DE BORD" ran past their tiles
+(D3, `r12-home-fr-landscape.png`): TABLEAU DE BORD's ink by about 2 dp, SCORE À DISTANCE's by 8 dp or more, cut off
+under the next tile. The title had no `numberOfLines` and no `flexShrink`, so it kept its full width. The cause is the
+window, not the measure. The display is 804 dp sideways, but ShellFrame's insets (a 31 dp cutout and a 45 dp bar) lay
+Home out 728 dp wide: tiles of 226.7 dp, measured in the shot, so a title's room of 162.7, not the 188 the fit assumed
+at 804. The two titles measure 186.7 and 179.7 dp, 24 and 17 dp over that room, more than the tile's 12 dp padding.
+The font measure matched the phone to within 1 dp (TABLEAU DE BORD's ink: 176.0 measured, 177.3 by the font; the
+Batch 7 review). The fit tests' widths are Home's own, as laid out behind the insets (the controller's ruling,
+2026-10-12).
+
+The title now gives way beside the icon (`flexShrink: 1`) and wraps to at most two lines, then an ellipsis
+(`layout.tileTitleLines`). It never breaks inside a word: where its room is narrower than the widest word of any title
+(nl LIVESTREAM, 123.3 dp; `layout.tileTitleRoom`), it steps down one size, from `title` to `action` (`tileTitleRole`,
+read from the title row's laid-out width). `homeFit.test.ts` measures every title in four languages at Home widths of
+592 (a 640 dp phone behind its bar, where the title steps down), 640, 728, 804 and 915 sideways and 360 and 412
+upright: no word is wider than the title's room, and none takes three lines. The step holds Home down to 581 dp. With
+every title at two lines, the tiles still fit every window they fitted, except 915 × 412 with both cards, which then
+scrolls. Still to show on the phone (Batch 9): on the owner's phone sideways with 3-button navigation (Home ≈ 728 dp),
+both French titles on two lines inside their tiles, with `font_scale` recorded with the shot.
 
 ---
 
