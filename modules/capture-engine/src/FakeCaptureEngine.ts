@@ -350,9 +350,11 @@ function sceneOf(name: FakeScene, now: number): Scene {
       // broadcast's first live time (P2), as native's Projection.rejoining sends it.
       return {
         state: {
-          ...reconnecting('hold-expired', since),
+          kind: 'reconnecting',
+          cause: 'hold-expired',
           holdRemainingSeconds: 0,
           holdWindowSeconds: 0,
+          sinceEpochMs: since,
         },
         telemetry: reconnectingTelemetry(now),
       };
