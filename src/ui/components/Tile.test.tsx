@@ -1,6 +1,9 @@
 import { fireEvent, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
+import en from '@/i18n/en.json';
 import { Tile } from '@/ui/components/Tile';
+import { declaredStyle } from '../../../test/declaredStyle';
+import { linesAllowed } from '../../../test/linesAllowed';
 import { renderWithPorts } from '../../../test/renderWithPorts';
 
 describe('Tile', () => {
@@ -97,6 +100,34 @@ describe('Tile', () => {
         getComputedStyle(linkRow).paddingLeft,
         getComputedStyle(linkRow).paddingRight,
       ]).toEqual([pad, pad]);
+    },
+  );
+
+  // N31 (item A2 of the D3 findings design, §10): the title gives way to the icon beside it and wraps to at most two
+  // lines, then an ellipsis. jsdom has no text layout, so this reads the style react-native-web rendered from the props;
+  // that a French title stays inside its tile is homeFit.test.ts's measurement and the phone's (Batch 9). Both bodies
+  // (a plain tile, and the button inside a framed one) in both layouts.
+  it.each([
+    ['scoring', false, 'portrait', false],
+    ['dashboard', false, 'landscape', false],
+    ['stream', true, 'portrait', true],
+    ['stream', true, 'landscape', true],
+  ] as const)(
+    'the %s title (available: %s, %s, link: %s) may shrink and wraps to at most two lines (N31)',
+    (mode, available, layout, withLink) => {
+      renderWithPorts(
+        <Tile
+          mode={mode}
+          available={available}
+          layout={layout}
+          onPress={vi.fn()}
+          link={withLink ? { label: 'Stream settings', onPress: vi.fn() } : undefined}
+        />,
+      );
+      const title = screen.getByText(en[`mode.${mode}`]);
+      // Declared, not computed: jsdom computes CSS's initial flex-shrink, 1, for a Text with no style at all.
+      expect(declaredStyle(title, 'flex-shrink')).toBe('1');
+      expect(linesAllowed(title)).toBe(2);
     },
   );
 

@@ -56,7 +56,9 @@ export const Tile = memo(function Tile({
     >
       <View style={styles.head}>
         <ModeIcon mode={mode} dim={!available} />
-        <Text variant="title">{t(MODE_NAME[mode])}</Text>
+        <Text variant="title" numberOfLines={metrics.tileTitleLines} style={styles.title}>
+          {t(MODE_NAME[mode])}
+        </Text>
       </View>
       <Text variant="body" style={available ? undefined : styles.inert}>
         {t(MODE_PURPOSE[mode])}
@@ -123,6 +125,11 @@ const styles = StyleSheet.create({
   linkLandscape: { paddingHorizontal: metrics.tileLandscapePad },
   pressed: { opacity: 0.85 },
   head: { flexDirection: 'row', alignItems: 'center', gap: space.sm },
+  /**
+   * N31: the title gives way and wraps (`tileTitleLines`) rather than run past the tile; Yoga's default of 0 drew a
+   * French title 2–3 dp beyond the edge at 804 wide. The icon beside it keeps that default, and its size.
+   */
+  title: { flexShrink: 1 },
   inert: { color: colour.ink3 },
 });
 

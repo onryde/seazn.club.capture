@@ -226,6 +226,12 @@ const base = {
    */
   tileLandscapePad: 12,
   /**
+   * N31 (item A2 of the D3 findings design, §10): a tile's title shrinks to the room beside its icon and wraps to at
+   * most this many lines, then an ellipsis. homeFit.test.ts measures every title in four languages against it, and
+   * bounds the tiles' heights with every title at this many lines.
+   */
+  tileTitleLines: 2,
+  /**
    * Spec §10, Q-C2: the Remote scoring code, drawn at a whole number of dp per module so every module edge lands on a
    * pixel (D13): 3 x the 57-unit symbol (49 modules + a quiet zone of 4 each side). The largest such multiple that
    * fits the smallest half with the title, the hint, Hide and 4 dp to spare (scoringFit.test.ts derives it).

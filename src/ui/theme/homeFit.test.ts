@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import type { ScreenLayout } from '@/domain/mode/homeLayout';
 import { LANGS, type Lang } from '@/i18n/language';
 import en from '@/i18n/en.json';
 import es from '@/i18n/es.json';
@@ -38,6 +39,9 @@ const GEOMETRIES = [
 const geist400 = loadFont('geist-400');
 const geist500 = loadFont('geist-500');
 const barlow700 = loadFont('barlow-condensed-700');
+/** A tile's title, as drawn: Barlow Condensed 700 in caps at the `title` role, letterspaced. */
+const measureTitle = (text: string): number =>
+  barlow700.width(text, typeScale.title.fontSize) + typeScale.title.letterSpacing * text.length;
 
 // Component literals the layout test pins on the rendered tree (HomeScreen.layout.test.tsx).
 /** GhostButton's `minHeight`: Language, OK and Forget. */
@@ -99,22 +103,19 @@ describe('the landscape rows, at their least (one line of text each)', () => {
   });
 });
 
-/** The tallest tile at a window width, per language, over the three modes, from the fonts. */
+/**
+ * The tallest tile at a window width, per language, over the three modes, from the fonts. `titleLines`, when given,
+ * stands in for every title's measured lines: the clamp's bound (N31, below).
+ */
 let tilesMeasured = 0;
-function tileNeedBy(width: number): Readonly<Record<Lang, number>> {
+function tileNeedBy(width: number, titleLines?: number): Readonly<Record<Lang, number>> {
   const inner = (width - 2 * space.md - 2 * space.sm) / 3 - TILE_EDGE - 2 * TILE_PAD;
   const need: Record<Lang, number> = { en: 0, es: 0, fr: 0, nl: 0 };
   for (const lang of LANGS) {
     for (const mode of ['stream', 'scoring', 'dashboard'] as const) {
       const title = word(lang, `mode.${mode}`).toUpperCase();
       const hint = mode === 'stream' ? 'home.tile.stream.hint' : 'home.tile.comingSoon';
-      const titleLines = linesOf(
-        title,
-        inner - ICON - space.sm,
-        (text) =>
-          barlow700.width(text, typeScale.title.fontSize) +
-          typeScale.title.letterSpacing * text.length,
-      );
+      const lines = titleLines ?? linesOf(title, inner - ICON - space.sm, measureTitle);
       const purposeLines = linesOf(word(lang, `home.tile.${mode}.purpose`), inner, (text) =>
         geist400.width(text, typeScale.body.fontSize),
       );
@@ -123,7 +124,7 @@ function tileNeedBy(width: number): Readonly<Record<Lang, number>> {
       );
       const height =
         2 * TILE_PAD +
-        Math.max(ICON, titleLines * typeScale.title.lineHeight) +
+        Math.max(ICON, lines * typeScale.title.lineHeight) +
         space.xs +
         purposeLines * typeScale.body.lineHeight +
         space.xs +
@@ -239,17 +240,14 @@ describe('the Stream settings link in the Live Stream tile (R2, P6)', () => {
   /** The tile's inner width at a window width: a third, less the pads, the two gaps, the edge and the padding. */
   const innerAt = (width: number) =>
     (width - 2 * space.md - 2 * space.sm) / 3 - TILE_EDGE - 2 * TILE_PAD;
-  const streamNeed = (width: number): number => {
+  /** The Live Stream tile with its link; `titleLines`, when given, stands in for the title's measured lines (N31). */
+  const streamNeed = (width: number, titleLines?: number): number => {
     const inner = innerAt(width);
     let need = 0;
     for (const lang of LANGS) {
-      const titleLines = linesOf(
-        word(lang, 'mode.stream').toUpperCase(),
-        inner - ICON - space.sm,
-        (text) =>
-          barlow700.width(text, typeScale.title.fontSize) +
-          typeScale.title.letterSpacing * text.length,
-      );
+      const lines =
+        titleLines ??
+        linesOf(word(lang, 'mode.stream').toUpperCase(), inner - ICON - space.sm, measureTitle);
       const purposeLines = linesOf(word(lang, 'home.tile.stream.purpose'), inner, (text) =>
         geist400.width(text, typeScale.body.fontSize),
       );
@@ -259,7 +257,7 @@ describe('the Stream settings link in the Live Stream tile (R2, P6)', () => {
       need = Math.max(
         need,
         2 * TILE_PAD +
-          Math.max(ICON, titleLines * typeScale.title.lineHeight) +
+          Math.max(ICON, lines * typeScale.title.lineHeight) +
           space.xs +
           purposeLines * typeScale.body.lineHeight +
           space.xs +
@@ -298,6 +296,21 @@ describe('the Stream settings link in the Live Stream tile (R2, P6)', () => {
     expect(streamNeed(800)).toBeGreaterThan(leftAt800('ended only') ?? Infinity);
     expect(streamNeed(800)).toBeGreaterThan(leftAt800('Continue only') ?? Infinity);
   });
+
+  // N31: a title the fit puts on one line may take two on the phone, never three (`layout.tileTitleLines`). With the
+  // Live Stream title at two lines, the tile and its link still fit with no card, the owner's 804 × 332 included.
+  it.each([
+    [640, 360, 218, 263],
+    [804, 332, 218, 235],
+    [915, 412, 196, 315],
+  ] as const)(
+    '%i × %i: with its title at two lines it needs %i of the %i left with no card (N31)',
+    (width, height, need, left) => {
+      expect(streamNeed(width, layout.tileTitleLines)).toBe(need);
+      expect(noCards(height)).toBe(left);
+      expect(need).toBeLessThanOrEqual(left);
+    },
+  );
 
   // N31's class: a label wider than its tile runs past the edge. The link's words are one line at the narrowest
   // tile, in every language, so no word is cut and the 48 dp target holds them.
@@ -461,5 +474,125 @@ describe('the top row’s status holds its three lines, in four languages (spec 
   it('checked every sentence in every language at every width (anti-vacuity)', () => {
     expect(keys).toHaveLength(7);
     expect(checked).toBe(GEOMETRIES.length * LANGS.length * keys.length);
+  });
+});
+
+describe('every tile title fits its tile, wrapping within two lines (N31)', () => {
+  // Item A2 of the D3 findings design (§10). The title shrinks to the head row's room beside the icon and wraps, so it
+  // fits when no word is wider than that room and the words take no more lines than the clamp allows.
+  const MODES = ['stream', 'scoring', 'dashboard'] as const;
+  const TITLE_LINES = layout.tileTitleLines;
+  /**
+   * The title's room: the tile's inner width less the icon and the gap after it (Tile's `head`: `layout.modeIcon`,
+   * then `space.sm`). Sideways, a tile is a third of HomeScreen's row (`contentLandscape` pads `space.md` a side and
+   * `tilesRow` has two `space.sm` gaps), less the 4 edge and `tileLandscapePad` a side. Upright, each tile is the
+   * column's whole width (R11 of the D3 findings design): the window less HomeScreen's `screen` padding (`space.md` a
+   * side), the edge and the tile's `space.md` a side.
+   */
+  const titleBudget = (screen: ScreenLayout, width: number): number => {
+    const inner =
+      screen === 'landscape'
+        ? (width - 2 * space.md - 2 * space.sm) / 3 - TILE_EDGE - 2 * TILE_PAD
+        : width - 2 * space.md - TILE_EDGE - 2 * space.md;
+    return inner - ICON - space.sm;
+  };
+  let titlesChecked = 0;
+
+  it('a title takes at most two lines, then an ellipsis (spec §10): the clamp the tile draws', () => {
+    expect(TITLE_LINES).toBe(2);
+  });
+
+  // Spec §1's narrowest: 640 sideways and 360 upright. 804 is the owner's phone sideways (N31); 915 and 412 the largest.
+  it.each([
+    ['landscape', 640],
+    ['landscape', 804],
+    ['landscape', 915],
+    ['portrait', 360],
+    ['portrait', 412],
+  ] as const)(
+    '%s at %i wide: no word is wider than the title’s room, and no title takes three lines',
+    (screen, width) => {
+      const room = titleBudget(screen, width);
+      for (const lang of LANGS) {
+        for (const mode of MODES) {
+          const title = word(lang, `mode.${mode}`).toUpperCase();
+          expect(title, `${lang} ${mode}`).not.toBe('');
+          for (const part of title.split(' ')) {
+            expect(
+              measureTitle(part),
+              `${lang} ${mode} "${part}" ${screen} at ${width}`,
+            ).toBeLessThanOrEqual(room);
+          }
+          expect(
+            linesOf(title, room, measureTitle),
+            `${lang} ${mode} ${screen} at ${width}`,
+          ).toBeLessThanOrEqual(TITLE_LINES);
+          titlesChecked += 1;
+        }
+      }
+    },
+  );
+
+  // Order-dependent on purpose: it follows the five widths above.
+  it('checked 5 widths × 4 languages × 3 modes (anti-vacuity)', () => {
+    expect(titlesChecked).toBe(5 * LANGS.length * MODES.length);
+    expect(titlesChecked).toBe(60);
+  });
+
+  it('the French title that ran past at 804 measures within 2 dp of its room: why the title must shrink, not a number (N31)', () => {
+    const title = word('fr', 'mode.scoring').toUpperCase();
+    expect(title).toBe('SCORE À DISTANCE');
+    const spare = titleBudget('landscape', 804) - measureTitle(title);
+    // The fit puts it on one line, by 1.3 dp, and the phone drew it past the tile.
+    expect(spare).toBeGreaterThan(0);
+    expect(spare).toBeLessThan(2);
+  });
+
+  it('the tightest word is nl’s LIVESTREAM at 640 sideways: 10.1 dp inside the title’s 133.3', () => {
+    const words = LANGS.flatMap((lang) =>
+      MODES.flatMap((mode) => word(lang, `mode.${mode}`).toUpperCase().split(' ')),
+    );
+    const widest = words.reduce((a, b) => (measureTitle(b) > measureTitle(a) ? b : a));
+    expect(widest).toBe('LIVESTREAM');
+    expect(word('nl', 'mode.stream').toUpperCase()).toBe(widest);
+    expect(titleBudget('landscape', 640)).toBeCloseTo(133.3, 1);
+    expect(titleBudget('landscape', 640) - measureTitle(widest)).toBeCloseTo(10.1, 1);
+  });
+});
+
+describe('with every title at its two-line clamp, the tiles still fit (N31; spec §10)', () => {
+  // N31: the fit put "SCORE À DISTANCE" on one line at 804 and the phone drew it past the tile, so a title the fit puts
+  // on one line may take two on the phone; the clamp means never three. So the bound on a tile's height, whatever the
+  // phone measures, is every title at two lines. The heights above are the fit's.
+  const clamped = (width: number): number =>
+    Math.max(...Object.values(tileNeedBy(width, layout.tileTitleLines)));
+  const leftAt800 = (cards: Cards): number =>
+    TABLE.find(([width, height, name]) => width === 800 && height === 360 && name === cards)?.[3] ??
+    0;
+
+  it.each([
+    [640, 172],
+    [800, 166],
+    [844, 150],
+    [915, 150],
+  ] as const)('at %i wide the tallest tile is at most %i', (width, bound) => {
+    expect(clamped(width)).toBe(bound);
+    expect(bound).toBeGreaterThanOrEqual(tileNeed(width));
+  });
+
+  it('every window that holds the tiles still holds them, but 915 × 412 with both cards, which then scrolls', () => {
+    const fitting = TABLE.filter(([, , , , fits]) => fits);
+    expect(fitting).toHaveLength(13);
+    expect(fitting.filter(([width, , , left]) => left < clamped(width))).toEqual([
+      [915, 412, 'both cards', 143, true],
+    ]);
+  });
+
+  it('one card at 800 × 360 still leaves the slack: Continue 7 to spare, the ended card 15', () => {
+    const spare = [leftAt800('Continue only'), leftAt800('ended only')].map(
+      (left) => left - clamped(800),
+    );
+    expect(spare).toEqual([7, 15]);
+    expect(Math.min(...spare)).toBeGreaterThanOrEqual(SLACK);
   });
 });
