@@ -1219,6 +1219,27 @@ and it stays open until the owner decides.
 
 ---
 
+### N40 — Pressed buttons showed no change
+
+**Status:** fixed — feat/s1-d3-fixes, Batch 17 (702b08d, acd92f0, 71931d8); device-checked on e144a38, phone A
+**Where:** capture app · `colour.pressFill` and `pressedOpacity` (`tokens.ts`) · IconButton · GhostButton · Tile · Button · TextLink
+
+The owner's finger test (2026-10-13): holding the Home tile's gear changed nothing on screen, and it opened on lift.
+
+**Fix:** the token `colour.pressFill`, `#f5f0e833` (the cream at 20%), is the pressed fill on IconButton, on both
+GhostButton forms and on the Home tile's gear (a rounded square, `radius.card`); the edge of the outlined buttons
+still goes cream (`ink`) while held. Button and Tile dim to 0.7 and TextLink to 0.6 (`pressedOpacity`). The code cites
+it as "the controller's press-fill ruling (2026-10-13)".
+
+**Device proof (e144a38, phone A):** the controller's adb hold of 4 s on the Home tile's gear showed the fill, and the
+owner then saw it with a finger ("see it"). A device-only claim: jsdom sees no colour and no press feedback.
+
+**Parked:** Pressables with no pressed state: Settings' side segments (`SettingsScreen.tsx:162`), ChoiceRow, the Hide
+of ScoringLinkPanel and of ViewerCover, HoldAction, and CodePanel's close. Show preview's ghost (PreviewBoundary), held
+on the stage black, is 1.59:1, and under outdoor flare the fill is 1.20–1.24:1: both are device checks.
+
+---
+
 ## P5 device spike (Android)
 
 The P5 findings, as an index. The full text, evidence and corrections for each

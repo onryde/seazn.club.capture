@@ -693,7 +693,7 @@ Not filed as N-IDs, from the ledgers:
 - **For the owner:** the automatic switch was reachable only after a scan, so a first scan of an `in_play` match in
   automatic could spend a credit before the switch was seen. Answered by R2 of the D3 findings design (the owner's)
   and built in Batch 5.
-- **Fixed, never filed:** the gear showed no press feedback (Batch 9), fixed in Batch 17.
+- **Fixed, filed afterwards as N40:** the gear showed no press feedback (Batch 9), fixed in Batch 17.
 - **For mobile-s1-web:** the console's words differ from the plan's quote: "The phone stopped checking in. Open Seazn
   Capture on it", not "The camera phone isn't responding…".
 - **For mobile-s1-web:** Cloudflare held recordings for sessions whose database `video_uids` were empty (the web's
