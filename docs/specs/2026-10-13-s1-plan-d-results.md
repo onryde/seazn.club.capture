@@ -25,7 +25,7 @@ the web answered (R-…). The working ledgers are git-ignored:
 `.superpowers/sdd/2026-10-09-s1-plan-d3-staging-run/progress.md` (main checkout) and
 `.superpowers/sdd/2026-10-11-s1-d3-fixes/progress.md` (the fixes worktree). Times are UTC.
 
-Findings are cited by ID (`_FINDINGS.md` N27–N39) and not repeated here. Rulings are cited with their source:
+Findings are cited by ID (`_FINDINGS.md` N27–N40) and not repeated here. Rulings are cited with their source:
 R-numbers name their spec, the D3 findings design's R1–R6 are the owner's and its R7–R13 the controller's, and a
 ruling the controller made during a session is named by its subject and date.
 
@@ -686,6 +686,7 @@ one video of 241 s; and 0 for every session of 2026-10-11. Cloudflare held recor
 | N37 | 7              | mobile-s1-web (b)  | fixed; device-verified on e144a38                                                      |
 | N38 | 11             | owner (question 2) | fixed; device-checked                                                                  |
 | N39 | 2b             | mobile-s1-web (a)  | open for the web brief; carry-over confirmed by a probe; owner decision pending (q. 6) |
+| N40 | Batch 9        | —                  | fixed (Batch 17); seen on phone A, device-only                                         |
 
 Not filed as N-IDs, from the ledgers:
 
