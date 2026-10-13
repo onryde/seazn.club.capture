@@ -546,7 +546,8 @@ thermal member. Only transport trouble degrades a session.
   2026-10-11); the app never asks for `REQUEST_IGNORE_BATTERY_OPTIMIZATIONS`.
   A start while the Live Stream view is not showing must still deliver video
   (N28). Keep-awake with the idle dim stays the default path for a remote Go
-  live.
+  live (Live Stream only: on Home it is not kept on; N36, open, owner
+  2026-10-13).
 - **Forget on the notification** (R6 of the D3 findings design; owner,
   2026-10-11): while paired and waiting, the notification carries one action,
   Forget, with no confirmation (R7 of the D3 findings design; the
@@ -559,7 +560,8 @@ thermal member. Only transport trouble degrades a session.
   phone is still paired, so the action still shows, and a tap there is
   ignored and recorded (`intent-ignored {intent: forget, phase: paired}`; M1
   of the Batch 4 review, the controller's ruling, 2026-10-12).
-- While paired and waiting, the screen is kept on and dimmed after 30 s idle;
+- While paired and waiting, the screen is kept on and dimmed after 30 s idle
+  (Live Stream only: on Home it is not kept on; N36, open, owner 2026-10-13);
   this is the default path for a remote Go live. The foreground service and wake
   lock are the Android fallback when the phone is locked anyway (R4, D2 §4.5).
   On Android the dim is the window's own brightness, never the system
@@ -587,7 +589,8 @@ thermal member. Only transport trouble degrades a session.
   The rule is `shouldDim` (`src/domain/session/idleDim.ts`); `useIdleDim` and
   `useIdleClock` own the timer, and `ScreenPort` (`createNativeScreen`, over
   `expo-brightness`) sets the brightness. Keep-awake is unchanged: on for
-  every state but idle and ended (`useKeepAwake`).
+  every state but idle and ended (`useKeepAwake`; Live Stream only: on Home
+  it is not kept on; N36, open, owner 2026-10-13).
 - **iOS:** the camera stops in background — no background mode grants it. So
   disable the idle timer, warn the operator at start, and treat the
   slate-and-resume choreography as a **normal operating mode**, not an edge
