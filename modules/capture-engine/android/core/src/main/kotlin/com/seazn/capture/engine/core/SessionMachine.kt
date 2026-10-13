@@ -110,7 +110,7 @@ object SessionMachine {
    * The operator's Stop (A3), only while a broadcast is held. From a broadcast that went live it ends the pairing
    * ([end], A8's final beat). Owner decision 1 (2026-10-05) supersedes A8's silence for one that never went live
    * (Arming, Armed, or Connecting before its first frame): the broadcast ends and the pairing stays Paired, so Go
-   * live can be tried again, and A17's record goes out on a beat at once ([neverLive]). A rejoin of a lapsed broadcast
+   * live can be tried again, and A17's record goes out on a beat at once ([stoppedHere]). A rejoin of a lapsed broadcast
    * is not one of those, from its Arming on: it went live ([wentLive]; N29, P3). A 401 heard while it was held ends
    * the pairing with it, as before (the 401 deferral): its code is dead, so no beat could deliver.
    */
@@ -119,7 +119,7 @@ object SessionMachine {
     val sid = phase.heldSid
     if (pairing == null || sid == null) return ignored(phase, "stop")
     if (wentLive(phase) || pairing.codeEndedPending) return end(phase, EndReason.OPERATOR_STOPPED, now)
-    return neverLive(phase, pairing, sid, now)
+    return stoppedHere(phase, pairing, sid, LastEnd.STOPPED, now)
   }
 
   /**
@@ -129,17 +129,19 @@ object SessionMachine {
   private fun wentLive(phase: Phase): Boolean = phase.firstLiveEpochMs != null
 
   /**
-   * Owner decision 1: A17's record is written, as [end] writes it, and the Paired pairing holds it and refuses its
-   * sid, so a late start answer or a server word naming it never starts it again. The beat that goes now, not at
-   * the cadence, holds no sid, so it carries `stopped: <sid>` (RR3), which the server takes as the operator's stop
-   * of a session not yet live, ending it `operator_stopped` and keeping the pairing (web lane, stg da3297a33).
-   * Never `state: ended` with the sid (T21): that ends the server's pairing. It is the late path's beat, early:
-   * its 2xx delivers the record (`stopped-delivered`, and no later beat carries it), and one that fails leaves it
-   * for the next beat, or the next pair. A beat already in flight, or a 429's wait, goes first.
+   * The held broadcast [sid] ends for this phone, which stays Paired with [lastEnd]: a Stop never live (owner decision
+   * 1), or a hold that has run out (N37; the owner's ruling, 2026-10-13). A17's record is written, as [end] writes it,
+   * and the Paired pairing holds it and refuses its sid, so a late start answer or a server word naming it never starts
+   * or rejoins it. The beat that goes now, not at the cadence, holds no sid, so it carries `stopped: <sid>` (RR3), which
+   * the server takes as this phone's stop of that session, open or live, ending it `operator_stopped` and keeping the
+   * pairing (T23; web lane, stg da3297a33). Never `state: ended` with the sid (T21): that ends the server's pairing.
+   * It is the late path's beat, early: its 2xx delivers the record (`stopped-delivered`, and no later beat carries it),
+   * and one that fails leaves it for the next beat, or the next pair. A beat already in flight, or a 429's wait, goes
+   * first.
    */
-  private fun neverLive(phase: Phase, pairing: PairingState, sid: String, now: Now): Step {
+  internal fun stoppedHere(phase: Phase, pairing: PairingState, sid: String, lastEnd: LastEnd, now: Now): Step {
     val stopped = StoppedRecord.of(pairing.name, sid, now.wallMs, phase.session?.broadcast?.maxDurationMinutes)
-    val over = Verdicts.over(phase, LastEnd.STOPPED, now)
+    val over = Verdicts.over(phase, lastEnd, now)
     val paired = over.phase as? Phase.Paired ?: return over
     val held = paired.pairing.copy(stopped = stopped, refused = paired.pairing.refused + sid, heartbeat = paired.pairing.heartbeat.copy(lastSentAtMonoMs = null))
     val step = Step(paired.copy(pairing = held), over.commands + Command.WriteStopped(stopped))
@@ -437,7 +439,7 @@ internal object Timers {
     }
 
   private fun connecting(connecting: Phase.Connecting, now: Now): Step {
-    if (connecting.outage?.hold?.expired(now.monoMs) == true) return expired(connecting, connecting.outage, now)
+    if (connecting.outage?.hold?.expired(now.monoMs) == true) return expired(connecting, connecting.session, connecting.outage, now)
     // Off air: the delivery watch must see it, or the gap would count as a delivery stall.
     val offAir = connecting.session.delivery.tick(now.monoMs, onAirNow = false).first
     val phase = connecting.copy(session = connecting.session.copy(delivery = offAir))
@@ -467,15 +469,16 @@ internal object Timers {
   }
 
   /** The session ended by a hold that has run out (B7 N1), or null while none has. */
-  fun holdRanOut(phase: Phase, now: Now): Step? {
-    val outage = (phase as? Phase.OnAir)?.outage ?: (phase as? Phase.Connecting)?.outage
-    if (outage != null && outage.hold.expired(now.monoMs)) return expired(phase, outage, now)
-    return null
-  }
+  fun holdRanOut(phase: Phase, now: Now): Step? =
+    when (phase) {
+      is Phase.OnAir -> phase.outage?.takeIf { it.hold.expired(now.monoMs) }?.let { expired(phase, phase.session, it, now) }
+      is Phase.Connecting -> phase.outage?.takeIf { it.hold.expired(now.monoMs) }?.let { expired(phase, phase.session, it, now) }
+      is Phase.Idle, is Phase.Pairing, is Phase.Paired, is Phase.Arming, is Phase.Armed, is Phase.Ended -> null
+    }
 
   private fun onAir(phase: Phase.OnAir, now: Now): Step {
     val outage = phase.outage
-    if (outage != null && outage.hold.expired(now.monoMs)) return expired(phase, outage, now)
+    if (outage != null && outage.hold.expired(now.monoMs)) return expired(phase, phase.session, outage, now)
     val (watchdog, verdict) = phase.watchdog.tick(now.monoMs, phase.session.camera.slateOnAir)
     val watched = phase.copy(watchdog = watchdog)
     if (verdict is StallVerdict.Rebuild) return rebuild(watched, verdict, now)
@@ -487,15 +490,15 @@ internal object Timers {
   }
 
   /**
-   * The hold ran out: the broadcast is over for this phone, back to Paired. The server may keep it open, and a `live`
-   * for the same sid rejoins it (A10; N29, R10): the pairing remembers the sid and when it first went live.
+   * The hold ran out: the phone ends the broadcast itself, back to Paired (N37; the owner's ruling, 2026-10-13, option
+   * a). The server may still hold it open (its own lost-phone end is 15 min), so the phone stops it as it stops one never
+   * live ([SessionMachine.stoppedHere]): its sid refused, A17's record written, and `stopped: <sid>` on a beat now and
+   * on every beat until a 2xx. A `live` or an `already_live` naming it later starts nothing: a restored network waits
+   * for a new Go live, and never rejoins it.
    */
-  private fun expired(phase: Phase, outage: Outage, now: Now): Step {
-    val over = Verdicts.over(phase, LastEnd.HOLD_WINDOW_EXPIRED, now)
-    val lapsed = phase.session?.let { session -> session.liveSinceEpochMs?.let { Lapsed(session.sid, it) } }
-    val paired = over.phase as? Phase.Paired
-    val marked = if (paired != null && lapsed != null) paired.copy(pairing = paired.pairing.copy(lapsed = lapsed)) else over.phase
-    return over.copy(phase = marked, commands = listOf(record("hold-expired", "transport" to outage.hold.transport, "cause" to outage.cause)) + over.commands)
+  private fun expired(phase: Phase, session: Session, outage: Outage, now: Now): Step {
+    val over = SessionMachine.stoppedHere(phase, session.pairing, session.sid, LastEnd.HOLD_WINDOW_EXPIRED, now)
+    return over.copy(commands = listOf(record("hold-expired", "transport" to outage.hold.transport, "cause" to outage.cause)) + over.commands)
   }
 
   /**
