@@ -548,10 +548,11 @@ Phone A had e144a38 from 2026-10-13 14:47:44Z. Phone B never had it: its last in
 5. **N36.** Keep the screen awake on Home while paired, which N36 leaves open, or accept the battery setting as the
    cure (Stream Settings has the battery row)? The controller recommends the battery setting (the ledger, 2026-10-12
    21:49:21Z: "option B suffices": the locked phone kept beating and armed).
-6. **N39's hypothesis.** After a hold expiry, a RESUMING or SWITCHING camera state may be copied into the pairing
-   (`Pairings.kt:302`), so `notReady: camera` would stick until the next start. It is unproven; the first beat after
-   N37's restore carried `notReady: "camera"`. Probe the code before the merge, or after? No recommendation is
-   recorded; the controller parked it for this document.
+6. **N39's camera carry-over.** After a hold expiry, a RESUMING or SWITCHING camera state is copied into the pairing
+   (`Pairings.kt:302`), so the camera check stays false and no start is possible on that pairing until a rescan:
+   confirmed by a probe (reviewer, 2026-10-13); owner decision pending. The owner's "leave all three out and ship"
+   (2026-10-13) was given while it was unproven, and the controller has asked again. A fix would be one line in
+   `Verdicts.over` (N39). Whether it made the first beat after N37's restore say `notReady: "camera"` is not shown.
 7. **The controller's rulings.** The D3 findings design's R1–R6 are the owner's; its R7–R13, the D3 fixes plan's
    P-rulings and the session rulings in Rulings in force are the controller's. Each stands until the owner overrules
    it. R11 (portrait tiles grow from their words, Home scrolls) is marked "owner to confirm".
@@ -683,7 +684,7 @@ one video of 241 s; and 0 for every session of 2026-10-11. Cloudflare held recor
 | N36 | Batch 8 path 1 | owner              | open (Open owner questions, 5)                                                         |
 | N37 | 7              | mobile-s1-web (b)  | fixed; device-verified on e144a38                                                      |
 | N38 | 11             | owner (question 2) | fixed; device-checked                                                                  |
-| N39 | 2b             | mobile-s1-web (a)  | open for the web brief; hypothesis for the owner (question 6)                          |
+| N39 | 2b             | mobile-s1-web (a)  | open for the web brief; carry-over confirmed by a probe; owner decision pending (q. 6) |
 
 Not filed as N-IDs, from the ledgers:
 

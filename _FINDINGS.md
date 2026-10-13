@@ -1201,11 +1201,19 @@ e144a38 and its cause is unexplained. On 2026-10-13 the first beat after a hold-
 was read in code, not run (scout, 2026-10-13). The 73
 `capture-start-failed` lines are CaptureRun's label for any throw from the streamer's start, so an offline endpoint-open
 failure gets that name (`CaptureRun.kt:326`); each retry reuses the held streamer and camera, and a transport failure
-never touches `CameraAvailability`, so they cannot by themselves make the camera look lost. One path could: when the
+never touches `CameraAvailability`, so they cannot by themselves make the camera look lost. One path does: when the
 hold expires the machine goes to Paired and copies `phase.camera` into `pairing.camera` (`Pairings.kt:302`), and a
-RESUMING or SWITCHING value carried there is reset to OWN only by `SessionMachine.kt:369` (OnAir frames) and `:523`, so
-`notReady` would stay `camera` until the next start. The record shows no camera-lost line in R-1WRJ's kept lines (the
-web's summary), so the carry-over is an unproven hypothesis; it is parked for the owner with the results doc.
+RESUMING or SWITCHING value carried there is reset to OWN only by `SessionMachine.kt:369` (OnAir frames) and `:523`.
+A Kotlin probe confirmed it (the reviewer's scratch copy, not committed; 2026-10-13): Live → SwitchCamera → Dropped →
+hold expiry leaves Paired with `pairing.camera` SWITCHING, so the camera check is false, the operator's Start answers
+`intent-ignored`, and a console Go live sits in Armed for more than 30 s with no connect; the same run without the
+switch connects. No start is possible on that pairing until a rescan, or until another app takes the camera and gives
+it back. The same holds for RESUMING, and for any `Verdicts.over` (an organiser's end, say) while the camera is
+SWITCHING or RESUMING. It was already there at the branch's base, 0a2c565. A fix would be one line in `Verdicts.over`:
+carry only TAKEN and REOPENING. R-1WRJ's kept lines show no camera-lost line (the web's summary), so whether this path
+made the first beat after N37's restore say `camera` is not shown. The owner's answer on 2026-10-13, given while the
+carry-over was unproven, was "leave all three out and ship"; the controller has asked again now that it is confirmed,
+and it stays open until the owner decides.
 
 **Brief for the web:** let the beat carry the failed check's word. A contract change, so not in this branch.
 
