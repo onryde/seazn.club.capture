@@ -153,8 +153,9 @@ class SnapshotWireTest {
             .copy(pairing = pairing, broadcast = broadcast, ready = ReadyView(true, true, false, true), codeEndedPending = true, camera = CameraState.OWN)
         SnapshotWire.of(snapshot, PlatformFacts(survivesBackground = true), clean)
       },
-      // N29's rejoin (R10 of the D3 findings design): a live beat for the lapsed sid rejoins it, so the broadcast's cause
-      // is rejoin. The hold has run out, so it reads 0 of 0, and the clock carries the first live time, not the rejoin's.
+      // N29's rejoin (R10 of the D3 findings design) sent this: a rejoin of a broadcast whose hold ran out, 0 of 0, on the
+      // first live time. Nothing sends it since N37's ruling (the owner's, 2026-10-13); the shared vectors keep the word
+      // until JS drops it, so both readers still read it alike.
       "reconnecting-hold-expired" to {
         val state = SnapshotState.Reconnecting(ReconnectCause.HOLD_EXPIRED, 0, 0, 1_790_000_001_000)
         val snapshot =

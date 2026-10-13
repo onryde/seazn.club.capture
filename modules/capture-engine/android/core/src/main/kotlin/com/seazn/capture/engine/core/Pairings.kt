@@ -131,8 +131,7 @@ internal object Starts {
   fun arm(phase: Phase, pairing: PairingState, sid: String, cause: Cause, now: Now): Step {
     val ids = phase.ids
     // I1: whatever arms the broadcast retires the hold's POST start, so its answer, arriving after, is late.
-    val cleared =
-      pairing.copy(refusal = null, startFailed = null, lastEnd = null, starts = pairing.starts.copy(inFlightId = null), lapsed = pairing.lapsed?.takeIf { it.sid == sid })
+    val cleared = pairing.copy(refusal = null, startFailed = null, lastEnd = null, starts = pairing.starts.copy(inFlightId = null))
     val (asks, id) = DescriptorAsks(nextId = ids.descriptor).asked(now.monoMs)
     val arming = Phase.Arming(cleared, sid, cause, ids, phase.networkValidated, phase.micSilenced, asks)
     return Step(arming, listOf(line("broadcast-start", "sid" to sid, "cause" to cause), fetchCode(pairing, id)))
@@ -162,9 +161,6 @@ internal object Starts {
         descriptor = arming.asks,
         networkValidated = arming.networkValidated,
         micSilenced = arming.micSilenced,
-        // N29, fix round 1 (I1): the sid names the broadcast that was live, whatever armed it (`live`, `go-live`, or the
-        // operator's start answered `already_live`). [arm] is the only maker of Arming and keeps only its own sid's lapse.
-        rejoin = pairing.lapsed?.let { Rejoin(it.liveSinceEpochMs) },
       )
     val armed = line("armed", "sid" to arming.sid, "transport" to config.primary.transport, "srtOffered" to descriptor.srtOffered, "playbackUrl" to config.playbackUrl)
     return Step(Phase.Armed(session), listOfNotNull(unreadable, armed))
@@ -275,9 +271,7 @@ internal object Verdicts {
     val held = phase.heldSid!!
     return when {
       word == ServerWord.Replaced -> Pairings.unpaired(phase, UnpairReason.REPLACED, now)
-      // N29, fix round 1 (G2): a rejoin before its first frame has nothing on air for the 401 deferral to wait on, and
-      // no hold to end it, so its code's end ends it at once, as Arming's does.
-      word == ServerWord.CodeEnded && (phase is Phase.Arming || phase.session?.rejoin != null) -> Pairings.unpaired(phase, UnpairReason.CODE_ENDED, now)
+      word == ServerWord.CodeEnded && phase is Phase.Arming -> Pairings.unpaired(phase, UnpairReason.CODE_ENDED, now)
       word == ServerWord.CodeEnded -> codeEndedPending(phase, pairing)
       word == ServerWord.NotFound && phase is Phase.Arming -> Starts.failed(phase, StartFailure.NOT_FOUND, now)
       word is ServerWord.Open && word.sid == held -> if (phase is Phase.Arming && phase.notCurrent) Starts.claimed(phase, now) else Step(phase)
@@ -305,7 +299,7 @@ internal object Verdicts {
     if (pairing.codeEndedPending) return Pairings.unpaired(phase, UnpairReason.CODE_ENDED, now)
     val publishing = phase is Phase.Connecting || phase is Phase.OnAir
     val ended = line("broadcast-ended", "sid" to phase.heldSid, "lastEnd" to lastEnd, "wasLive" to (phase.firstLiveEpochMs != null))
-    val paired = Phase.Paired(pairing.copy(lastEnd = lastEnd, camera = phase.camera ?: CameraState.OWN, lapsed = null), phase.ids, phase.networkValidated, phase.micSilenced)
+    val paired = Phase.Paired(pairing.copy(lastEnd = lastEnd, camera = phase.camera ?: CameraState.OWN), phase.ids, phase.networkValidated, phase.micSilenced)
     return Step(paired, listOfNotNull(if (publishing) Command.StopBroadcast else null, ended))
   }
 

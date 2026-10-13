@@ -6,7 +6,11 @@ enum class ReconnectCause(override val wire: String) : Wire {
   VIDEO_STALLED("video-stalled"),
   NOT_DELIVERED("not-delivered"),
 
-  /** N29: a rejoin of a broadcast whose hold ran out; there is no hold to count down. */
+  /**
+   * N29's rejoin of a broadcast whose hold ran out. Nothing sends it since N37's ruling (the owner's, 2026-10-13): the
+   * phone ends that broadcast itself. It stays in the vocabulary JS shares (`wire/snapshot-vectors.json`) until JS
+   * drops it too.
+   */
   HOLD_EXPIRED("hold-expired"),
 }
 

@@ -69,7 +69,7 @@ object Projection {
       is Phase.Arming -> SnapshotState.Arming(phase.cause, phase.retrying)
       is Phase.Armed -> SnapshotState.Armed(phase.session.cause, phase.session.pairing.readiness.notReady(phase.session.camera, phase.session.networkValidated))
       is Phase.Ended -> SnapshotState.Ended(phase.reason, phase.durationMs)
-      is Phase.Connecting -> phase.outage?.let { reconnecting(phase.session, it, now) } ?: rejoining(phase.session) ?: SnapshotState.Connecting(phase.transport)
+      is Phase.Connecting -> phase.outage?.let { reconnecting(phase.session, it, now) } ?: SnapshotState.Connecting(phase.transport)
       is Phase.OnAir -> onAir(phase, now)
     }
 
@@ -88,14 +88,8 @@ object Projection {
     return when {
       since != null && (phase.watchdog.advancing(now.monoMs) || held) -> live(phase.transport, reasons(session, now), since)
       phase.outage != null -> reconnecting(session, phase.outage, now)
-      else -> rejoining(session) ?: SnapshotState.Connecting(phase.transport)
+      else -> SnapshotState.Connecting(phase.transport)
     }
-  }
-
-  /** N29, R10: a rejoin of a broadcast whose hold ran out reads Reconnecting with its reason, never a bare Connecting. */
-  private fun rejoining(session: Session): SnapshotState? {
-    val rejoin = session.rejoin ?: return null
-    return SnapshotState.Reconnecting(cause = ReconnectCause.HOLD_EXPIRED, holdRemainingSeconds = 0, holdWindowSeconds = 0, sinceEpochMs = rejoin.liveSinceEpochMs)
   }
 
   private fun live(transport: Transport, reasons: List<DegradeReason>, since: Long): SnapshotState =

@@ -40,23 +40,6 @@ enum class CameraState(override val wire: String, val slateOnAir: Boolean, val s
  */
 data class Ids(val attempt: Int = 1, val descriptor: Int = 1, val beat: Int = 1, val playlist: Int = 1, val start: Int = 1)
 
-/** N29: the broadcast this pairing was live on when its hold ran out, for a rejoin of the same sid (R10). */
-data class Lapsed(val sid: String, val liveSinceEpochMs: Long)
-
-/**
- * N29, R10 (controller's): a session rejoining a [Lapsed] broadcast: when it first went live (the HUD's clock carries
- * on from it), and how many of its connects have failed. Cleared by its first advancing frame.
- */
-data class Rejoin(val liveSinceEpochMs: Long, val failures: Int = 0) {
-  companion object {
-    /** 2, 4, 8, 16, then 30 s, and the 30 s repeats while the server says live. */
-    val BACKOFF_MS: List<Long> = listOf(2_000L, 4_000L, 8_000L, 16_000L, 30_000L)
-
-    /** The wait after the [failures]-th failed connect, the first being 1. */
-    fun delayAfter(failures: Int): Long = BACKOFF_MS[(failures - 1).coerceIn(0, BACKOFF_MS.lastIndex)]
-  }
-}
-
 /**
  * One pairing (A5): what `pair` brought, and what the server has said since. Held from Pairing until
  * Idle or Ended, with each broadcast's [Session] inside it. The token is the request's: never printed.
@@ -86,8 +69,6 @@ data class PairingState(
   val lastEnd: LastEnd? = null,
   /** A 401 heard while a broadcast is held: the pairing ends with the broadcast (the 401 deferral). */
   val codeEndedPending: Boolean = false,
-  /** N29: the broadcast whose hold ran out on this pairing; a `live` for its sid rejoins it. Cleared by the next end. */
-  val lapsed: Lapsed? = null,
   /** The last `heartbeat` line's fields, message aside: a paired line is written only when they change. */
   val lastBeatLine: List<Pair<String, Any?>>? = null,
   /** Plan D §3.4: every beat sent this pairing, summarised for the record ([BeatLog]). */
@@ -119,13 +100,8 @@ data class Session(
   val descriptor: DescriptorAsks = DescriptorAsks(),
   /** Seeded at arm from the last network fact, which outlives the session before it (final review I-1). */
   val networkValidated: Boolean = false,
-  /**
-   * Set by the first encoded frame (a rejoin's: to the lapsed broadcast's first live time, N29), and kept across drops:
-   * the HUD's elapsed time never resets.
-   */
+  /** Set by the first encoded frame, and kept across drops: the HUD's elapsed time never resets. */
   val liveSinceEpochMs: Long? = null,
-  /** N29: set when this session rejoins a [Lapsed] broadcast, until its first advancing frame. */
-  val rejoin: Rejoin? = null,
   val notDelivered: Boolean = false,
   val camera: CameraState = CameraState.OWN,
   /** Seeded at arm from the last mic fact, which outlives the session before it, as the network's does (review 18 I1). */
@@ -285,11 +261,11 @@ val Phase.holdsBroadcast: Boolean
   get() = heldSid != null
 
 /**
- * When the held broadcast first went live: its first encoded frame, or, for a rejoin of a [Lapsed] one before its first
- * frame, the lapsed broadcast's (N29; P3, controller's). Null for a broadcast that never went live, or none held.
+ * When the held broadcast first went live: its first encoded frame. Null for a broadcast that never went live, or none
+ * held. (N29's rejoin also read a lapsed broadcast's time here; N37's ruling, 2026-10-13, ended the rejoin.)
  */
 val Phase.firstLiveEpochMs: Long?
-  get() = session?.liveSinceEpochMs ?: pairing?.lapsed?.takeIf { it.sid == heldSid }?.liveSinceEpochMs
+  get() = session?.liveSinceEpochMs
 
 /**
  * The foreground service is held: Hold went at the permission grant, so from Paired until the pairing
@@ -404,9 +380,9 @@ fun Phase.withMic(silenced: Boolean): Phase =
 
 /**
  * The phase a session ends in, from any phase: the ids and the network and mic facts carry on to the next
- * session. The duration counts from the first encoded frame on the wall clock, outages included, as
- * the HUD's elapsed clock does (final review M-3), and for a rejoin from the lapsed broadcast's
- * ([firstLiveEpochMs], N29); a wall clock set back past that frame reads 0. An
+ * session. The duration counts from the first encoded frame on the wall clock ([firstLiveEpochMs]),
+ * outages included, as the HUD's elapsed clock does (final review M-3); a wall clock set back past
+ * that frame reads 0. An
  * ended session ended again stays as it ended: its reason and duration stand (final review N-2).
  */
 fun Phase.ended(reason: EndReason, now: Now): Phase.Ended {
