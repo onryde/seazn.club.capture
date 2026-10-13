@@ -22,6 +22,11 @@ export function fillOf(token: string): string {
   );
 }
 
+/** The fill of a View that paints none, as jsdom computes it: a host that lets its parent's ground show through. */
+export function unpaintedFill(): string {
+  return resolved((style) => style.backgroundColor, {});
+}
+
 export function edgeOf(token: string): string {
   return resolved(
     (style) => style.borderTopColor,

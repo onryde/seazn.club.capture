@@ -208,8 +208,8 @@ describe('Tile', () => {
 // The controller's ruling (Batch 17; the owner has not ruled), after the owner held this gear's sliders glyph and saw
 // nothing change until it opened on lift: a pressed control is never a 15% dim. The tile dims to 0.7, as the lime
 // Button does. The gear (fix rounds 1 and 2) takes the press fill, the cream at 20% (`colour.pressFill`, P8), in a
-// rounded square while held, and nothing else of the tile changes. Neither box moves. Whether it reads outdoors is the owner's device check; jsdom sees no colour and no press
-// feedback (AGENTS §10).
+// rounded square while held, and nothing else of the tile changes. Neither box moves. Whether it reads outdoors is the
+// owner's device check; jsdom sees no colour and no press feedback (AGENTS §10).
 describe('Tile pressed (the controller’s ruling, Batch 17)', () => {
   const tile = () => screen.getByRole('button', { name: /Live Stream/ });
   const gear = () => screen.getByRole('button', { name: 'Stream settings' });
