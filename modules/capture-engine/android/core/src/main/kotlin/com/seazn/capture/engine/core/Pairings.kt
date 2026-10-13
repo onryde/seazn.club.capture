@@ -355,7 +355,7 @@ internal object Verdicts {
     if (answered !is Phase.Paired) return Step(answered, listOf(noted))
     val p = answered.pairing
     val named = (input.answer as? StartAnswer.Started)?.sid ?: (input.answer as? StartAnswer.AlreadyLive)?.sid
-    if (named != null && named in p.refused) return refusedSid(answered, input.answer)
+    if (named != null && named in p.refused) return refusedSid(answered, input.answer, named, now)
     val step =
       when (val answer = input.answer) {
         is StartAnswer.Started -> Starts.arm(answered, p, answer.sid, Cause.OPERATOR, now)
@@ -375,12 +375,19 @@ internal object Verdicts {
    * last end, it says the start failed, the try-again line a 5xx gives, or the tap shows nothing. No retry of its own
    * (the amendment retries no start): the operator's next hold is the retry. The line says why, never the sid, and
    * no `startFailed` rides a beat: the server's start answered.
+   *
+   * N37, fix round 1: when the sid is the one A17's record still holds (a hold that ran out, or a Stop never live, not
+   * yet heard), the server is reachable now and keeps it open only for want of that beat, so the stopped sid goes at
+   * once ([Heartbeats.atOnce]) and the next hold finds it ended. A sid whose record is delivered keeps the cadence.
    */
-  private fun refusedSid(answered: Phase.Paired, answer: StartAnswer): Step =
-    Step(
-      answered.withPairing(answered.pairing.copy(refusal = Refusal.START_FAILED)),
-      listOf(line("start-answered", "answer" to answer::class.simpleName, "refusedSid" to true)),
-    )
+  private fun refusedSid(answered: Phase.Paired, answer: StartAnswer, named: String, now: Now): Step {
+    val step =
+      Step(
+        answered.withPairing(answered.pairing.copy(refusal = Refusal.START_FAILED)),
+        listOf(line("start-answered", "answer" to answer::class.simpleName, "refusedSid" to true)),
+      )
+    return if (named == answered.pairing.stopped?.sid) Heartbeats.atOnce(step, now) else step
+  }
 
   /**
    * A 401 to `POST start` is the code's end, not this start's (amendment:41, D5), so it holds whenever it

@@ -71,7 +71,7 @@ object SessionMachine {
       is Input.Dropped -> Transports.dropped(phase, input, now)
       is Input.Frames -> Transports.frames(phase, input, now)
       is Input.Link -> Transports.link(phase, input, now)
-      is Input.Network -> network(phase, input.validated)
+      is Input.Network -> network(phase, input.validated, now)
       Input.CameraContended -> Devices.contended(phase)
       Input.CameraReleased -> Devices.released(phase)
       is Input.CameraReopened -> Devices.reopened(phase, input.ok, now)
@@ -139,9 +139,9 @@ object SessionMachine {
     val stopped = StoppedRecord.of(pairing.name, sid, now.wallMs, phase.session?.broadcast?.maxDurationMinutes)
     val over = Verdicts.over(phase, lastEnd, now)
     val paired = over.phase as? Phase.Paired ?: return over
-    val held = paired.pairing.copy(stopped = stopped, refused = paired.pairing.refused + sid, heartbeat = paired.pairing.heartbeat.copy(lastSentAtMonoMs = null))
+    val held = paired.pairing.copy(stopped = stopped, refused = paired.pairing.refused + sid)
     val step = Step(paired.copy(pairing = held), over.commands + Command.WriteStopped(stopped))
-    return Heartbeats.tick(step, now)
+    return Heartbeats.atOnce(step, now)
   }
 
   /**
@@ -188,10 +188,17 @@ object SessionMachine {
     return Command.PostHeartbeat(id, pairing.request.heartbeatUrl, pairing.token, Beats.payload(facts)) to id
   }
 
-  /** Recorded when it changes, in any phase: with no session it is kept for the next (final review I-1). */
-  private fun network(phase: Phase, validated: Boolean): Step {
+  /**
+   * Recorded when it changes, in any phase: with no session it is kept for the next (final review I-1). A return while
+   * Paired with A17's record undelivered sends the stopped sid at once (N37, fix round 1): the server holds that session
+   * open until it hears it, and Go live is offered from this step, so a beat at the cadence would lose the race to the
+   * operator's hold. A held beat never carries it (RR3), so a return while held keeps the cadence.
+   */
+  private fun network(phase: Phase, validated: Boolean, now: Now): Step {
     if (phase.networkValidated == validated) return Step(phase)
-    return Step(phase.withNetwork(validated), listOf(record("network", "validated" to validated)))
+    val step = Step(phase.withNetwork(validated), listOf(record("network", "validated" to validated)))
+    val pending = validated && phase is Phase.Paired && phase.pairing.stopped != null
+    return if (pending) Heartbeats.atOnce(step, now) else step
   }
 
   /**
@@ -621,6 +628,16 @@ internal object Deliveries {
 
 /** The pairing's beats (amendment, _Contract shapes_): Paired to On air, never gating anything. */
 internal object Heartbeats {
+  /**
+   * The next beat due now, not at the cadence, and sent in this step unless a beat is in flight or a 429's wait holds
+   * (both go first, and the next beat follows them at once). For A17's stopped sid, which rides only a beat ([tick]).
+   */
+  fun atOnce(step: Step, now: Now): Step {
+    val pairing = step.phase.beating ?: return step
+    val due = pairing.copy(heartbeat = pairing.heartbeat.copy(lastSentAtMonoMs = null))
+    return tick(step.copy(phase = step.phase.withPairing(due)), now)
+  }
+
   fun tick(step: Step, now: Now): Step {
     val phase = step.phase
     val pairing = phase.beating ?: return step
