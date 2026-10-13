@@ -19,8 +19,9 @@ Handsets: phone A, OnePlus NE2211, Android 16, serial 12be753e; phone B, CPH2569
 3-button navigation, phone A lays the app out at 728 × 328 dp on every route (N35).
 
 Evidence lives outside the repo and is never committed: `$HOME/seazn-d3-evidence/2026-10-10/` holds the runs of
-2026-10-10 and 2026-10-11, and `$HOME/seazn-d3-evidence/2026-10-12/` holds 2026-10-12 and 2026-10-13. Files are cited
-by name. A record sent with Send record is cited by the ref the web answered (R-…). The working ledgers are git-ignored:
+2026-10-10 and 2026-10-11, and `$HOME/seazn-d3-evidence/2026-10-12/` holds 2026-10-12 and 2026-10-13, except N37's cut,
+in `$HOME/seazn-d3-evidence/2026-10-13/`. Files are cited by name. A record sent with Send record is cited by the ref
+the web answered (R-…). The working ledgers are git-ignored:
 `.superpowers/sdd/2026-10-09-s1-plan-d3-staging-run/progress.md` (main checkout) and
 `.superpowers/sdd/2026-10-11-s1-d3-fixes/progress.md` (the fixes worktree). Times are UTC.
 
@@ -321,11 +322,11 @@ deferred, not passed.
   21:33:23.2; the manifest read 200 until a first 204 at 21:33:24. The server kept the session live. After the
   restore the phone rejoined the same sid and Cloudflare started a second recording, 1c09ef99, at 21:33:37.4. **Fail**
   (N37).
-- **Over 183 s, after the fix** (e144a38, phone A, #4, sid 12c5da78, 2026-10-13; N37's device proof, record R-1WRJ
-  and the web's rows): cut at 20:29:38; `hold-expired` at 20:32:46, 183.4 s after `dropped`; the server kept the
-  session live throughout; the network back at 20:33:34.6; the first beat, at 20:33:35.4, carried the phone already
-  off the sid; the server ended the session 0.5 s later, and the phone logged `stopped-delivered 200`. One
-  `broadcast-start`, no rejoin, one recording, no credit. **Pass.**
+- **Over 183 s, after the fix** (e144a38, phone A, #4, sid 12c5da78, 2026-10-13; N37's device proof, record R-1WRJ and
+  the web's rows; evidence: `$HOME/seazn-d3-evidence/2026-10-13/n37-cut-web-report.md`): cut at 20:29:38; `hold-expired`
+  at 20:32:46, 183.4 s after `dropped`; the server kept the session live throughout; the network back at 20:33:34.6; the
+  first beat, at 20:33:35.4, carried the phone already off the sid; the server ended the session 0.5 s later, and the
+  phone logged `stopped-delivered 200`. One `broadcast-start`, no rejoin, one recording, no credit. **Pass.**
 - **S3:** inconclusive. On the d060573f cut the manifest stayed 200 until the phone was back, and its 204 at 21:33:24
   coincides with Cloudflare finalising the first recording. A cut over 300 s would measure it.
 - **Screenshots and files** (2026-10-12 folder, by the plan's row-7 names and their UTC times; the ledger quotes the
@@ -521,12 +522,12 @@ commit lists.
   (`install-be87d76-A.txt`, `install-be87d76-192.168.1.73.txt`: Success).
 - **Batch 15**, the contract re-vendored at web a6cc1f038 (#944): 64a1ac2, f7ca618; the controller's 9cbefd6.
 - **Batch 16**, N37 (the owner's ruling, 2026-10-13): de2a5ce, 8335583, 3bff4aa; fix round a5be0b0. Device: N37's cut
-  on e144a38 (sid 12c5da78, R-1WRJ; row 7).
+  on e144a38 (sid 12c5da78, R-1WRJ; row 7; evidence: `$HOME/seazn-d3-evidence/2026-10-13/n37-cut-web-report.md`).
 - **Batch 17**, press feedback: 702b08d; fix round 1 acd92f0; fix round 2 71931d8. Device: e144a38, phone A,
   2026-10-13. An adb hold of 4 s on the Home tile's gear, captured at 1.5 s, shows a lighter rounded box (`cmp.png`,
   rest and held side by side). The owner then saw it with a finger. Device-only.
 - **Batch 18**, N38's pinned lines: 7a63b2c (minors), 0d3fefd; fix round e144a38. Device: R-N4F3, R-DJSE and R-1WRJ
-  (row 11).
+  (row 11; R-1WRJ's evidence: `$HOME/seazn-d3-evidence/2026-10-13/n37-cut-web-report.md`).
 - **The controller's aba6771** filed N36–N39 and marked N29 superseded by N37.
 
 Phone A had e144a38 from 2026-10-13 14:47:44Z. Phone B never had it: its last install is be87d76 (2026-10-12, about

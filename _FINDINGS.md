@@ -1139,11 +1139,11 @@ network returns it stays Paired and waits for a new Go live. It reuses the never
 network moment sends it), and a late server `Open(sid)` is ignored. A hold that returns inside 183 s still reconnects
 on the same sid. The Kotlin Lapsed/Rejoin path is removed (N29 is superseded).
 
-**Device proof (e144a38, fixture #4, sid 12c5da78; the phone's record R-1WRJ and the web's rows):** the phone cut off
-at 20:29:38; `hold-expired` at 20:32:46, 183.4 s after `dropped`; the server kept the session `live` throughout; the
-network came back at 20:33:34.6; the first beat at 20:33:35.4 carried the phone already off the sid; the server ended
-the session 0.5 s later and the phone logged `stopped-delivered 200`. One `broadcast-start`, no rejoin, one
-Cloudflare recording, no credit consumed.
+**Device proof (e144a38, fixture #4, sid 12c5da78; the phone's record R-1WRJ and the web's rows; evidence:
+`$HOME/seazn-d3-evidence/2026-10-13/n37-cut-web-report.md`):** the phone cut off at 20:29:38; `hold-expired` at
+20:32:46, 183.4 s after `dropped`; the server kept the session `live` throughout; the network came back at 20:33:34.6;
+the first beat at 20:33:35.4 carried the phone already off the sid; the server ended the session 0.5 s later and the
+phone logged `stopped-delivered 200`. One `broadcast-start`, no rejoin, one Cloudflare recording, no credit consumed.
 
 **Remaining edges (parked):**
 
@@ -1178,11 +1178,11 @@ only and every send follows a close); the amendment is cited in code as "the con
 
 **Device proof:** R-N4F3 received 178, kept 76, dropped 102 (the lines before the #4 pair), invalid 0, pair line
 leading; R-DJSE received 328, kept 197, dropped 131, invalid 0, covering two sessions; R-1WRJ received 623, kept 621,
-dropped 2, invalid 0. The 1000-line overflow case is covered by unit and end-to-end tests but not yet seen on a
-device. Parked: the native 5 MB disk record is still never read by Send; the owner decides whether it should be.
-After a process death or a cold start the JS ring holds only native's in-memory tail (`BridgeCore.tail`, at most
-`SessionRecord.LAST_LINES`, 20 lines, and empty in a new process), so a Send within the upload credential's 24 h can
-carry none of the match and still shows "Sent · ref" (kept 0).
+dropped 2, invalid 0 (evidence: `$HOME/seazn-d3-evidence/2026-10-13/n37-cut-web-report.md`). The 1000-line overflow case
+is covered by unit and end-to-end tests but not yet seen on a device. Parked: the native 5 MB disk record is still never
+read by Send; the owner decides whether it should be. After a process death or a cold start the JS ring holds only
+native's in-memory tail (`BridgeCore.tail`, at most `SessionRecord.LAST_LINES`, 20 lines, and empty in a new process),
+so a Send within the upload credential's 24 h can carry none of the match and still shows "Sent · ref" (kept 0).
 
 ---
 
