@@ -292,14 +292,16 @@ internal object Verdicts {
 
   /**
    * The held broadcast is over without the operator: back to Paired with [lastEnd], or, after a 401
-   * heard while it was held, to Idle with code-ended (the 401 deferral).
+   * heard while it was held, to Idle with code-ended (the 401 deferral). The pairing keeps the session's camera as
+   * [CameraState.afterSession] reads it (N39): a switch or reopen still waiting for a frame is our camera.
    */
   fun over(phase: Phase, lastEnd: LastEnd, now: Now): Step {
     val pairing = phase.pairing ?: return Step(phase)
     if (pairing.codeEndedPending) return Pairings.unpaired(phase, UnpairReason.CODE_ENDED, now)
     val publishing = phase is Phase.Connecting || phase is Phase.OnAir
     val ended = line("broadcast-ended", "sid" to phase.heldSid, "lastEnd" to lastEnd, "wasLive" to (phase.firstLiveEpochMs != null))
-    val paired = Phase.Paired(pairing.copy(lastEnd = lastEnd, camera = phase.camera ?: CameraState.OWN), phase.ids, phase.networkValidated, phase.micSilenced)
+    val camera = phase.camera?.afterSession ?: CameraState.OWN
+    val paired = Phase.Paired(pairing.copy(lastEnd = lastEnd, camera = camera), phase.ids, phase.networkValidated, phase.micSilenced)
     return Step(paired, listOfNotNull(if (publishing) Command.StopBroadcast else null, ended))
   }
 

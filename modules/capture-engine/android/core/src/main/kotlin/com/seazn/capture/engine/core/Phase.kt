@@ -30,7 +30,21 @@ enum class CameraState(override val wire: String, val slateOnAir: Boolean, val s
    * Past the last real frame that is at most 3.5 s with Frames readings every tick, and under 4 s
    * without (B7 ruling m1, amended).
    */
-  SWITCHING("switching", slateOnAir = false, shownTaken = false),
+  SWITCHING("switching", slateOnAir = false, shownTaken = false);
+
+  /**
+   * The camera the pairing keeps when the broadcast ends and the phone stays Paired (N39, [Verdicts.over]). [TAKEN]
+   * and [REOPENING] still describe it: another app holds it until its release, and the reopen's answer is still to
+   * come and lands on the pairing ([Devices.reopened]). [RESUMING] and [SWITCHING] wait only for the session's next
+   * frame, which no phase without a session hears, so kept they would hold `ready.camera` false for good: the camera
+   * is ours, [OWN], and A11's frames check still has its say.
+   */
+  val afterSession: CameraState
+    get() =
+      when (this) {
+        OWN, TAKEN, REOPENING -> this
+        RESUMING, SWITCHING -> OWN
+      }
 }
 
 /**
@@ -55,7 +69,10 @@ data class PairingState(
   val waiting: WaitingFields = WaitingFields.UNKNOWN,
   /** The platform's last readiness facts (A11); the network is the phase's own fact. */
   val readiness: Readiness = Readiness.UNKNOWN,
-  /** I3: the camera while no broadcast is held (CD37 opens it on the viewfinder). A broadcast starts from it. */
+  /**
+   * I3: the camera while no broadcast is held (CD37 opens it on the viewfinder). A broadcast starts from it, and hands
+   * back its [CameraState.afterSession] when it ends.
+   */
   val camera: CameraState = CameraState.OWN,
   /** A17: this code and slot's stopped record, until delivered. */
   val stopped: StoppedRecord? = null,
