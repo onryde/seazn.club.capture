@@ -34,7 +34,7 @@ recommendation the owner may overrule in review; it is never the owner's.
 | R7  | The notification's Forget has no confirmation step: a mis-tap costs a rescan.                                                                                                                                                                                                                                                                                                                                                                          | _Controller's_, 2026-10-11                                                             |
 | R8  | A5 (the 20 s lag rule) is not changed: on 2026-10-11 it fired on a real stall.                                                                                                                                                                                                                                                                                                                                                                         | _Controller's_, 2026-10-11                                                             |
 | R9  | The upload sends what Share record shares (the JS ring, the last 1,000 lines), so there is one record and one truth. N25's 1,000-line cap stays a separate matter.                                                                                                                                                                                                                                                                                     | _Controller's_, 2026-10-11                                                             |
-| R10 | A rejoin after a hold has run out keeps trying while the server says live (the server is the authority, A14), but it shows a reason and backs off (§5).                                                                                                                                                                                                                                                                                                | _Controller's_, 2026-10-11                                                             |
+| R10 | A rejoin after a hold has run out keeps trying while the server says live (the server is the authority, A14), but it shows a reason and backs off (§5). Superseded on 2026-10-13 by the owner's ruling on N37: the phone ends the broadcast when the hold runs out (§5).                                                                                                                                                                               | _Controller's_, 2026-10-11                                                             |
 | R11 | Portrait Home amends S0 decision 9 ("three equal tiles"): a portrait tile is never shorter than its own words; spare height is shared equally, and Home scrolls when the tiles outgrow the window. Landscape keeps equal widths. Re-measured with the gear (Batch 10): equal thirds fit with no card, but with a card they need a 736–807 dp window at 360 wide (`homeFit.test.ts`); a 360 × 800 phone leaves about 720. I2 of the Batch 5 review.     | _Controller's_, 2026-10-12; owner to confirm                                           |
 | R12 | The battery row reads three modes in Android's own words, from two readings: _Unrestricted_ (`isIgnoringBatteryOptimizations`), else _Restricted_ (`ActivityManager.isBackgroundRestricted`), else _Optimized_; unknown hides the row. Its button is _App settings_ and opens App info (`ACTION_APPLICATION_DETAILS_SETTINGS`, the only public per-app target), with a path line under it ("Battery → Unrestricted"). I1 and M5 of the Batch 5 review. | _Controller's_, 2026-10-12                                                             |
 | R13 | From Arming on, the battery row's button is disabled with one line, "Change it after the broadcast": App info is one tap from Force stop and the camera and microphone permissions, and the app in the background is N27's condition. The mode stays readable. I3 of the Batch 5 review.                                                                                                                                                               | _Controller's_, 2026-10-12                                                             |
@@ -137,6 +137,20 @@ allow-list with its reason, and the parity test covers it.
 screenshot shows no pillarbox. The NE2211 is unchanged.
 
 ## 5. A4 — a rejoin after the hold runs out (N29)
+
+**Superseded** by the owner's ruling on N37 (2026-10-13, option a), which
+replaces R10. The device cut of 2026-10-12 showed the rejoin's cost: the hold
+ran out, the strip said the stream had stopped, and on the network's return the
+phone rejoined the same sid, which Cloudflare recorded a second time. Now, when
+the hold runs out, the phone ends the broadcast itself, as it ends one stopped
+before going live (owner decision 1): the sid is refused for the pairing, and
+`stopped: <sid>` rides a beat at once and every beat after it until one is
+answered 2xx (T23: the server ends that session and keeps the pairing). A later
+`live`, `go-live` or `already_live` for the sid starts nothing, and the phone
+waits, paired, for a new Go live. The rejoin below was removed from the engine
+in the D3 fixes plan's Batch 16. Its copy (`stream.status.rejoinRetrying`) and
+the `hold-expired` reconnect cause are still in JS; native no longer sends that
+cause. R10 and the rule below stay as the record of what was decided first.
 
 **Rule** (R10, controller's):
 
