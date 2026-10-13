@@ -1180,6 +1180,9 @@ only and every send follows a close); the amendment is cited in code as "the con
 leading; R-DJSE received 328, kept 197, dropped 131, invalid 0, covering two sessions; R-1WRJ received 623, kept 621,
 dropped 2, invalid 0. The 1000-line overflow case is covered by unit and end-to-end tests but not yet seen on a
 device. Parked: the native 5 MB disk record is still never read by Send; the owner decides whether it should be.
+After a process death or a cold start the JS ring holds only native's in-memory tail (`BridgeCore.tail`, at most
+`SessionRecord.LAST_LINES`, 20 lines, and empty in a new process), so a Send within the upload credential's 24 h can
+carry none of the match and still shows "Sent · ref" (kept 0).
 
 ---
 
