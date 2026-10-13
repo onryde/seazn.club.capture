@@ -115,8 +115,9 @@ const TileGear = memo(function TileGear({
 });
 
 /**
- * Module-level so render allocates no function. Pressed dims the gear to `pressedOpacity.plate`, as it does the tile (the
- * controller's ruling, Batch 17); its 48 dp corner box never moves.
+ * Module-level so render allocates no function. Pressed fills the gear's square with surface2, its corners rounded as
+ * the tile's are, and changes nothing else (the controller's ruling, Batch 17 fix round 1: this is the glyph the owner
+ * held and saw nothing change). No dim: the glyph stays as it is, and the 48 dp corner box never moves.
  */
 function gearStyle({ pressed }: PressableStateCallbackType) {
   return pressed ? pressedGear : styles.gear;
@@ -180,6 +181,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   pressed: { opacity: pressedOpacity.plate },
+  gearPressed: { backgroundColor: colour.surface2, borderRadius: radius.card },
   head: { flexDirection: 'row', alignItems: 'center', gap: space.sm },
   /** Upright, the head row ends where the gear begins: the gear's width less the tile's padding at that side. */
   besideGear: { marginRight: metrics.touch - space.md },
@@ -216,7 +218,7 @@ const BODY: Record<ScreenLayout, ReturnType<typeof tileStyleFor>> = {
 };
 
 const headBesideGear = [styles.head, styles.besideGear];
-const pressedGear = [styles.gear, styles.pressed];
+const pressedGear = [styles.gear, styles.gearPressed];
 
 /** A framed tile, per layout and availability: the edge and the ground. */
 const FRAMES: Record<ScreenLayout, Record<'on' | 'off', StyleProp<ViewStyle>>> = {

@@ -2,10 +2,11 @@ import { fireEvent, screen, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import en from '@/i18n/en.json';
 import { Tile } from '@/ui/components/Tile';
+import { colour, radius } from '@/ui/theme/tokens';
 import { typeScale } from '@/ui/theme/type';
 import { declaredStyle } from '../../../test/declaredStyle';
 import { pressIn, pressOut } from '../../../test/press';
-import { layoutOf, paintOf, pressTwice, unmountWhileHeld } from '../../../test/pressState';
+import { fillOf, layoutOf, paintOf, pressTwice, unmountWhileHeld } from '../../../test/pressState';
 import { layOut } from '../../../test/layOut';
 import { linesAllowed } from '../../../test/linesAllowed';
 import { renderWithPorts } from '../../../test/renderWithPorts';
@@ -197,14 +198,16 @@ describe('Tile', () => {
   );
 });
 
-// The controller's ruling (Batch 17; the owner has not ruled), after the owner held the sliders glyph and saw nothing
-// change until it opened on lift: a pressed control is never a 15% dim. Where the palette has no pressed colour to step
-// to, the control dims to 0.7: a Home tile and its gear. Neither box moves. Whether it reads outdoors is the owner's
-// device check; jsdom sees no colour and no press feedback (AGENTS §10).
+// The controller's ruling (Batch 17; the owner has not ruled), after the owner held this gear's sliders glyph and saw
+// nothing change until it opened on lift: a pressed control is never a 15% dim. The tile dims to 0.7, as the lime
+// Button does. The gear (fix round 1) fills with surface2 in a rounded square while held, and nothing else of the tile
+// changes. Neither box moves. Whether it reads outdoors is the owner's device check; jsdom sees no colour and no press
+// feedback (AGENTS §10).
 describe('Tile pressed (the controller’s ruling, Batch 17)', () => {
   const tile = () => screen.getByRole('button', { name: /Live Stream/ });
   const gear = () => screen.getByRole('button', { name: 'Stream settings' });
   const opacityOf = (element: HTMLElement) => getComputedStyle(element).opacity;
+  const fillOfGear = () => paintOf(gear()).fill;
   const settings = { label: 'Stream settings', onPress: vi.fn() };
   const FORMS = [
     ['portrait', false],
@@ -239,20 +242,37 @@ describe('Tile pressed (the controller’s ruling, Batch 17)', () => {
   );
 
   it.each(['portrait', 'landscape'] as const)(
-    '%s: the gear dims to 0.7 while held, its 48 dp corner box unmoved, and the tile beside it does not dim',
+    '%s: the gear fills with surface2 in a rounded square while held, its glyph and its 48 dp corner box unchanged',
     (layout) => {
       renderWithPorts(
         <Tile mode="stream" available layout={layout} onPress={vi.fn()} settings={settings} />,
       );
-      const resting = layoutOf(gear());
-      expect([resting.width, resting.height]).toEqual(['48px', '48px']); // anti-vacuity: the box is read
+      const glyph = () => ({ ...within(gear()).getByTestId('glyph').dataset });
+      const resting = { paint: paintOf(gear()), box: layoutOf(gear()), glyph: glyph() };
+      expect([resting.box.width, resting.box.height]).toEqual(['48px', '48px']); // the box is read
+      expect(resting.paint.fill).not.toBe(fillOf(colour.surface2)); // anti-vacuity: no fill at rest
       pressIn(gear());
-      expect([opacityOf(gear()), opacityOf(tile())]).toEqual(['0.7', '1']);
-      expect(layoutOf(gear())).toEqual(resting);
+      expect({ paint: paintOf(gear()), box: layoutOf(gear()), glyph: glyph() }).toEqual({
+        paint: { ...resting.paint, fill: fillOf(colour.surface2) }, // no dim: the opacity is the resting one
+        box: resting.box,
+        glyph: resting.glyph,
+      });
+      expect(getComputedStyle(gear()).borderTopLeftRadius).toBe(`${radius.card}px`);
       pressOut(gear());
-      expect(opacityOf(gear())).toBe('1');
+      expect({ paint: paintOf(gear()), box: layoutOf(gear()), glyph: glyph() }).toEqual(resting);
     },
   );
+
+  it('holding the gear changes nothing else of the tile', () => {
+    renderWithPorts(<Tile mode="stream" available onPress={vi.fn()} settings={settings} />);
+    const frame = () => screen.getByTestId('tile-stream');
+    const rest = () => ({ frame: paintOf(frame()), body: paintOf(tile()), box: layoutOf(frame()) });
+    const resting = rest();
+    pressIn(gear());
+    expect(rest()).toEqual(resting);
+    expect(fillOfGear()).toBe(fillOf(colour.surface2)); // anti-vacuity: the press landed on the gear
+    pressOut(gear());
+  });
 
   it('a mode that is not built never shows pressed', () => {
     renderWithPorts(<Tile mode="dashboard" available={false} onPress={vi.fn()} />);
@@ -264,11 +284,23 @@ describe('Tile pressed (the controller’s ruling, Batch 17)', () => {
     pressOut(dashboard);
   });
 
+  // The gear has no disabled state of its own (it sits only on a tile that opens, P6); the case that can arise is a
+  // tile that is not built, whose body is disabled: holding it shows nothing on the body or the gear.
+  it('a tile that is not built, with the gear: holding its body shows nothing, on the body or the gear', () => {
+    renderWithPorts(<Tile mode="stream" available={false} onPress={vi.fn()} settings={settings} />);
+    const resting = { body: paintOf(tile()), gear: paintOf(gear()) };
+    pressIn(tile());
+    expect({ body: paintOf(tile()), gear: paintOf(gear()) }).toEqual(resting);
+    expect(resting.body.opacity).toBe('1');
+    pressOut(tile());
+  });
+
   it('a second press, and a press while held, find nothing stuck: the tile and the gear', () => {
     renderWithPorts(<Tile mode="stream" available onPress={vi.fn()} settings={settings} />);
-    const cycle = ['1', '0.7', '1', '0.7', '1'];
-    expect(pressTwice(tile, () => opacityOf(tile()))).toEqual(cycle);
-    expect(pressTwice(gear, () => opacityOf(gear()))).toEqual(cycle);
+    expect(pressTwice(tile, () => opacityOf(tile()))).toEqual(['1', '0.7', '1', '0.7', '1']);
+    const resting = fillOfGear();
+    const held = fillOf(colour.surface2);
+    expect(pressTwice(gear, fillOfGear)).toEqual([resting, held, resting, held, resting]);
   });
 
   it.each([
