@@ -477,8 +477,8 @@ deferred, not passed.
 ## What the fixes branch changed and how it was proven
 
 `feat/s1-d3-fixes`, base 0a2c565 (the spec at 7ea8f63, approved by the owner on 2026-10-11). The last counts in the
-ledger: vitest 4902 passed, 0 failed at e144a38; Kotlin core 1397 passed, 0 failed at a5be0b0 (nothing native changed
-after it). Batches 1–7 and 10–18 and the final review each had a spec and quality review; the fix rounds are in the
+ledger: vitest 4902 passed, 0 failed at e144a38; Kotlin core 1406 passed, 0 failed at dcc5bb0 (Batch 19, the last native change;
+1397 before it). Batches 1–7 and 10–19 and the final review each had a spec and quality review; the fix rounds are in the
 commit lists.
 
 - **Batch 1**, N27–N34 filed and AGENTS amended: 018ade1, 65dcff4; fix round 06e1d75. Docs only.
@@ -523,10 +523,10 @@ commit lists.
 - **Batch 15**, the contract re-vendored at web a6cc1f038 (#944): 64a1ac2, f7ca618; the controller's 9cbefd6.
 - **Batch 16**, N37 (the owner's ruling, 2026-10-13): de2a5ce, 8335583, 3bff4aa; fix round a5be0b0. Device: N37's cut
   on e144a38 (sid 12c5da78, R-1WRJ; row 7; evidence: `$HOME/seazn-d3-evidence/2026-10-13/n37-cut-web-report.md`).
-- **Batch 17**, press feedback: 702b08d; fix round 1 acd92f0; fix round 2 71931d8. Device: e144a38, phone A,
+- **Batch 17**, press feedback: 702b08d; fix round 1 acd92f0; fix round 2 71931d8; the review's test minors 7a63b2c. Device: e144a38, phone A,
   2026-10-13. An adb hold of 4 s on the Home tile's gear, captured at 1.5 s, shows a lighter rounded box (`cmp.png`,
   rest and held side by side). The owner then saw it with a finger. Device-only.
-- **Batch 18**, N38's pinned lines: 7a63b2c (minors), 0d3fefd; fix round e144a38. Device: R-N4F3, R-DJSE and R-1WRJ
+- **Batch 18**, N38's pinned lines: 0d3fefd; fix round e144a38. Device: R-N4F3, R-DJSE and R-1WRJ
   (row 11; R-1WRJ's evidence: `$HOME/seazn-d3-evidence/2026-10-13/n37-cut-web-report.md`).
 - **The controller's aba6771** filed N36–N39 and marked N29 superseded by N37.
 - **Batch 19 (dcc5bb0)** fixed N39's stuck camera state after a session ended, at the owner's word "fix it now" (2026-10-13).
@@ -551,7 +551,7 @@ Phone A had e144a38 from 2026-10-13 14:47:44Z. Phone B never had it: its last in
    cure (Stream Settings has the battery row)? The controller recommends the battery setting (the ledger, 2026-10-12
    21:49:21Z: "option B suffices": the locked phone kept beating and armed).
 6. **N39's camera carry-over: fixed in Batch 19.** After a hold expiry or an organiser's end, a RESUMING or SWITCHING
-   camera state was copied into the pairing (`Pairings.kt:302`), so the camera check stayed false and no start was
+   camera state was copied into the pairing (`Verdicts.over`, `Pairings.kt:302` before Batch 19), so the camera check stayed false and no start was
    possible on that pairing until a rescan (confirmed by a probe, reviewer, 2026-10-13). The owner first said "leave
    all three out and ship" while it was unproven, then "fix it now". The fix carries only TAKEN and REOPENING
    (`CameraState.afterSession`, dcc5bb0; core 1406/0). Still open and device-only: does "Phone not ready: camera"
@@ -623,6 +623,7 @@ variant lists 8 segments, 15.968 s, target 4; the master answers 200. **Pass.**
 | Round lines                                                                    | no label read differed; the French round line asked about | 2026-10-11        | the web localises by the org's `default_locale`; no app change (N34) |
 | Row 6, `stop_ignored` for c1778787                                             | the sid                                                   | 2026-10-11        | no `stop_ignored`; the session closed by a client stop (row 6)       |
 | Row 8, the beats rows                                                          | the sids and windows                                      | 2026-10-11        | `d3-beats-2026-10-11.ndjson` received; not tabulated                 |
+| The asks from the 2026-10-13 device pass (the same brief, §5)                  | nothing: written, not sent                                | not sent          | pending                                                              |
 | The D3 findings web brief (`docs/specs/2026-10-11-s1-d3-web-brief.md`)         | the brief                                                 | 2026-10-11 22:37Z | the record endpoint built and deployed; the Q7 correction accepted   |
 
 ## Device facts re-established (spec §5.3)
@@ -718,4 +719,4 @@ Not filed as N-IDs, from the ledgers:
 - **Candidate, unfiled:** `degraded` and `publishing` flapping for about 100 s after a restore (carry 26).
 - **Ledger only:** the camera flapped on an earlier pairing on 2026-10-10 (19:29:35–38, "Capture failed with code 0",
   `camera-lost`, `capture-rebuilt`); offline, the connect retry wrote 73 `capture-start-failed` lines in 183 s (N37's
-  edges); the phone's clock ran about 13 s ahead of the server on 2026-10-12 and within about 0.5 s on 2026-10-13.
+  edges); the phone's clock ran about 13 s ahead of the server on 2026-10-12 and about 0.8 s behind it on 2026-10-13 (the web's reading).

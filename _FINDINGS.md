@@ -1206,7 +1206,7 @@ was read in code, not run (scout, 2026-10-13). The 73
 `capture-start-failed` lines are CaptureRun's label for any throw from the streamer's start, so an offline endpoint-open
 failure gets that name (`CaptureRun.kt:326`); each retry reuses the held streamer and camera, and a transport failure
 never touches `CameraAvailability`, so they cannot by themselves make the camera look lost. One path does: when the
-hold expires the machine goes to Paired and copies `phase.camera` into `pairing.camera` (`Pairings.kt:302`), and a
+hold expires the machine goes to Paired and copies `phase.camera` into `pairing.camera` (`Verdicts.over`, `Pairings.kt:302` before Batch 19), and a
 RESUMING or SWITCHING value carried there is reset to OWN only by `SessionMachine.kt:369` (OnAir frames) and `:523`.
 A Kotlin probe confirmed it (the reviewer's scratch copy, not committed; 2026-10-13): Live → SwitchCamera → Dropped →
 hold expiry leaves Paired with `pairing.camera` SWITCHING, so the camera check is false, the operator's Start answers
@@ -1237,7 +1237,7 @@ camera is TAKEN resets it to OWN, and the later release sends no `ReopenCamera`.
 
 ### N40 — Pressed buttons showed no change
 
-**Status:** fixed — feat/s1-d3-fixes, Batch 17 (702b08d, acd92f0, 71931d8); device-checked on e144a38, phone A
+**Status:** fixed — feat/s1-d3-fixes, Batch 17 (702b08d, acd92f0, 71931d8; the review's test minors: 7a63b2c); device-checked on e144a38, phone A
 **Where:** capture app · `colour.pressFill` and `pressedOpacity` (`tokens.ts`) · IconButton · GhostButton · Tile · Button · TextLink
 
 The owner's finger test (2026-10-13): holding the Home tile's gear changed nothing on screen, and it opened on lift.
