@@ -557,6 +557,17 @@ Phone A had e144a38 from 2026-10-13 14:47:44Z. Phone B never had it: its last in
 7. **The controller's rulings.** The D3 findings design's R1–R6 are the owner's; its R7–R13, the D3 fixes plan's
    P-rulings and the session rulings in Rulings in force are the controller's. Each stands until the owner overrules
    it. R11 (portrait tiles grow from their words, Home scrolls) is marked "owner to confirm".
+8. **Updating the app on a user's phone.** Nothing exists today: `expo-updates` is not installed and `app.json` has no
+   `updates` or `runtimeVersion` entry; AGENTS §11 holds only the rule (check on launch, never apply while paired or
+   holding a broadcast). A native change (the engine, Kotlin) needs a new APK, which an installed app cannot swap for
+   itself: through Google Play, the in-app update API can tell the app a newer version exists and offer a flexible
+   update, but Play's own background update can restart the app mid-match; a sideloaded APK cannot update silently
+   (Android asks for each install). A JS-only change can be applied by Expo Updates from a self-hosted update server
+   (EAS is ruled out, 2026-09-11) for a build with a matching `runtimeVersion`. Either way, nothing may apply while
+   the phone is paired or live; a Home banner ("New version available") that never interrupts Live Stream is the
+   shape. The controller recommends Play distribution with the in-app update banner first, and self-hosted Expo
+   Updates later if JS-only fixes between releases are needed. It is a later spec (AGENTS §1 scope lock), not part of
+   this branch. Which channel: Play, or direct APKs?
 
 ## For the web brief
 
