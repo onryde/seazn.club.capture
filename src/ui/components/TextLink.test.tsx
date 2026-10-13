@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { TextLink } from '@/ui/components/TextLink';
 import { colour, font } from '@/ui/theme/tokens';
 import { pressIn, pressOut } from '../../../test/press';
+import { layoutOf, pressTwice, unmountWhileHeld } from '../../../test/pressState';
 
 const PAINT = StyleSheet.create({ ink3: { color: colour.ink3 }, ink2: { color: colour.ink2 } });
 function painted(style: { color: string }): string {
@@ -74,14 +75,47 @@ describe('TextLink (the board’s underlined link)', () => {
     expect(link().getAttribute('aria-expanded')).toBeNull();
   });
 
-  it('dims while held and comes back on release', () => {
+  // The controller's ruling (Batch 17; the owner has not ruled): a link that is already underlined, as this one is,
+  // dims to 0.6 while held (the outlined buttons fill instead). Its line stays underlined and ink3, and nothing moves.
+  it('dims to 0.6 while held, still underlined in ink3, and comes back on release', () => {
     render(<TextLink label="Open-source licences" onPress={vi.fn()} />);
     const resting = getComputedStyle(link()).opacity;
     pressIn(link());
     const held = getComputedStyle(link()).opacity;
-    expect(held).toBe('0.85');
+    expect(held).toBe('0.6');
     expect(held).not.toBe(resting); // anti-vacuity: the press changed something
+    const line = getComputedStyle(screen.getByText('Open-source licences'));
+    expect([line.textDecorationLine, line.color]).toEqual(['underline', painted(PAINT.ink3)]);
     pressOut(link());
     expect(getComputedStyle(link()).opacity).toBe(resting);
+  });
+
+  it('a press never moves the box', () => {
+    render(<TextLink label="Open-source licences" onPress={vi.fn()} />);
+    const resting = layoutOf(link());
+    expect(resting['min-height']).toBe('48px'); // anti-vacuity: the box is read
+    pressIn(link());
+    expect(layoutOf(link())).toEqual(resting);
+    expect(getComputedStyle(link()).opacity).toBe('0.6'); // and the press did change something
+    pressOut(link());
+  });
+
+  it('a second press, and a press while held, find nothing stuck', () => {
+    render(<TextLink label="Open-source licences" onPress={vi.fn()} />);
+    const resting = getComputedStyle(link()).opacity;
+    expect(pressTwice(link, () => getComputedStyle(link()).opacity)).toEqual([
+      resting,
+      '0.6',
+      resting,
+      '0.6',
+      resting,
+    ]);
+  });
+
+  it('held and unmounted: no timer is left and nothing fires', () => {
+    const onPress = vi.fn();
+    const view = render(<TextLink label="Open-source licences" onPress={onPress} />);
+    expect(unmountWhileHeld(link, view.unmount)).toEqual({ held: 1, left: 0 });
+    expect(onPress).not.toHaveBeenCalled();
   });
 });

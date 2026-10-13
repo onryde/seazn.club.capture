@@ -64,6 +64,15 @@ export const colour = {
 export const plateInk = colour.ground;
 
 /**
+ * A pressed control (the controller's ruling, D3 fixes Batch 17, 2026-10-13; the owner has not ruled). The owner held
+ * the sliders glyph on phone A and saw nothing change until it opened on lift: a 15% dim of a hairline on night. An
+ * outlined control (IconButton, GhostButton) fills with `surface2` and its edge goes cream (`ink`) while held, and its
+ * box never moves. Button's lime plate would step to a darker lime, which the palette does not have, so it dims to
+ * `plate`, and by the same ruling so do a Home tile and its gear; the link, which is already underlined, dims to `link`.
+ */
+export const pressedOpacity = { plate: 0.7, link: 0.6 } as const;
+
+/**
  * What each colour means.
  *
  * Note `live` is red and `degraded` is orange, with nothing red left over for

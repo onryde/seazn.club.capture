@@ -4,6 +4,15 @@ import { describe, expect, it, vi } from 'vitest';
 import { IconButton } from '@/ui/components/IconButton';
 import { colour, layout } from '@/ui/theme/tokens';
 import { BOARD, boardLimeEdge } from '../../../test/boardPaint';
+import { pressIn, pressOut } from '../../../test/press';
+import {
+  edgeOf,
+  fillOf,
+  layoutOf,
+  paintOf,
+  pressTwice,
+  unmountWhileHeld,
+} from '../../../test/pressState';
 import { renderWithPorts } from '../../../test/renderWithPorts';
 
 /** Which token a border was painted with (jsdom's cascade); the colour on a phone is a device check. */
@@ -132,6 +141,79 @@ describe('IconButton (spec §3)', () => {
       expect(
         screen.getByRole('button', { name: 'Remote scoring' }).getAttribute('aria-selected'),
       ).toBe('false');
+    });
+  });
+
+  // The owner held the sliders glyph on phone A (2026-10-13) and saw nothing change until it opened on lift: a 15% dim
+  // of a hairline on night. The controller's ruling (Batch 17; the owner has not ruled): a pressed button fills with
+  // surface2 and its edge goes cream, never opacity alone, and its box never moves. A selected button keeps its 2 dp
+  // lime edge and takes the fill only. Whether it reads outdoors is the owner's device check: jsdom sees no colour.
+  describe('pressed (the controller’s ruling, Batch 17)', () => {
+    const remote = () => screen.getByRole('button', { name: 'Remote scoring' });
+
+    it('fills with surface2 and its edge goes cream while held, with no dim, and is as it was on release', () => {
+      renderWithPorts(<IconButton glyph="qr" label="Remote scoring" onPress={vi.fn()} />);
+      const resting = paintOf(remote());
+      expect(resting.edges).toEqual(Array(4).fill(borderOf(TOKEN.ink3)));
+      expect(resting.fill).not.toBe(fillOf(colour.surface2)); // anti-vacuity: no fill at rest
+      pressIn(remote());
+      expect(paintOf(remote())).toEqual({
+        fill: fillOf(colour.surface2),
+        edges: Array(4).fill(edgeOf(colour.ink)),
+        opacity: resting.opacity,
+      });
+      expect(edgeOf(colour.ink)).not.toBe(borderOf(TOKEN.ink3)); // anti-vacuity: cream is not the hairline's ink
+      pressOut(remote());
+      expect(paintOf(remote())).toEqual(resting);
+    });
+
+    it('selected and held, it keeps its 2 dp lime edge and fills with surface2', () => {
+      renderWithPorts(<IconButton glyph="qr" label="Remote scoring" selected onPress={vi.fn()} />);
+      const resting = paintOf(remote());
+      pressIn(remote());
+      const held = getComputedStyle(remote());
+      expect(held.borderTopWidth).toBe(`${layout.iconBorderOn}px`);
+      expect(paintOf(remote())).toEqual({
+        fill: fillOf(colour.surface2),
+        edges: Array(4).fill(boardLimeEdge()),
+        opacity: resting.opacity,
+      });
+      pressOut(remote());
+      expect(paintOf(remote())).toEqual(resting);
+    });
+
+    it.each([false, true])('selected %s: a press never moves the box', (selected) => {
+      renderWithPorts(
+        <IconButton glyph="qr" label="Remote scoring" selected={selected} onPress={vi.fn()} />,
+      );
+      const resting = layoutOf(remote());
+      expect(resting.width).toBe(`${layout.iconButton}px`); // anti-vacuity: the box is read
+      pressIn(remote());
+      expect(layoutOf(remote())).toEqual(resting);
+      expect(paintOf(remote()).fill).toBe(fillOf(colour.surface2)); // and the press did change the paint
+      pressOut(remote());
+    });
+
+    it('a second press, and a press while held, find nothing stuck', () => {
+      renderWithPorts(<IconButton glyph="qr" label="Remote scoring" onPress={vi.fn()} />);
+      const resting = paintOf(remote()).fill;
+      const held = fillOf(colour.surface2);
+      expect(pressTwice(remote, () => paintOf(remote()).fill)).toEqual([
+        resting,
+        held,
+        resting,
+        held,
+        resting,
+      ]);
+    });
+
+    it('held and unmounted: no timer is left and nothing fires', () => {
+      const onPress = vi.fn();
+      const view = renderWithPorts(
+        <IconButton glyph="qr" label="Remote scoring" onPress={onPress} />,
+      );
+      expect(unmountWhileHeld(remote, view.unmount)).toEqual({ held: 1, left: 0 });
+      expect(onPress).not.toHaveBeenCalled();
     });
   });
 });

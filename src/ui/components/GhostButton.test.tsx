@@ -1,13 +1,24 @@
 import { act, render, screen, within } from '@testing-library/react';
 import { StyleSheet, Text } from 'react-native';
 import { describe, expect, it, vi } from 'vitest';
+import en from '@/i18n/en.json';
+import es from '@/i18n/es.json';
 import { GhostButton } from '@/ui/components/GhostButton';
 import { colour, font } from '@/ui/theme/tokens';
 import { pressIn, pressOut } from '../../../test/press';
+import {
+  edgeOf,
+  fillOf,
+  layoutOf,
+  paintOf,
+  pressTwice,
+  unmountWhileHeld,
+} from '../../../test/pressState';
 
 // The text colour a style gives, read the way the layout tests read colours: a colour literal is banned in a test, and
 // a value read back from the component would prove the component equals itself.
 const PAINT = StyleSheet.create({ ink2: { color: colour.ink2 }, ink: { color: colour.ink } });
+const INERT = StyleSheet.create({ ink3: { color: colour.ink3 } });
 function painted(style: { color: string }): string {
   const reference = render(<Text style={style}>x</Text>);
   const read = getComputedStyle(reference.container.firstElementChild as Element).color;
@@ -83,35 +94,84 @@ describe('GhostButton (the secondary action)', () => {
       render(<GhostButton label="Share record" onPress={vi.fn()} compact expanded />);
       expect(button().getAttribute('aria-expanded')).toBe('true');
     });
+
+    // The box is drawn by a function the target hands its press state to, memoised per label and state: a new language
+    // and a change to disabled must still reach it, never a box drawn for the props of before.
+    it('another language, then disabled: the box inside the target shows each', () => {
+      const view = render(<GhostButton label={en['diag.share']} onPress={vi.fn()} compact />);
+      view.rerender(<GhostButton label={es['diag.share']} onPress={vi.fn()} compact />);
+      const inBox = () => within(screen.getByTestId('ghost-box')).getByText(es['diag.share']);
+      expect(es['diag.share']).not.toBe(en['diag.share']); // anti-vacuity: the language changed the words
+      expect(getComputedStyle(inBox()).color).toBe(painted(PAINT.ink2));
+      view.rerender(<GhostButton label={es['diag.share']} onPress={vi.fn()} compact disabled />);
+      expect(getComputedStyle(inBox()).color).toBe(painted(INERT.ink3));
+    });
   });
 
-  // Pressed dims the outline (as Button and the icon buttons do). Held and released, for both forms, so that the
-  // style of each press state is read and not only the resting one.
+  // The controller's ruling (Batch 17; the owner has not ruled), after the owner saw no change while holding an icon
+  // button: a pressed outline fills with surface2 and its edge goes cream, never a dim alone, and the box never moves.
+  // The outline is the button in the regular form and the box inside the target in the compact one; the compact
+  // target itself still draws nothing. Held and released, for both forms, so each press state's style is read.
   describe.each([
     ['regular', false],
     ['compact', true],
   ] as const)('%s: pressed state', (_form, compact) => {
-    it('dims while held and comes back on release', () => {
+    const outlineOf = () => (compact ? (boxOf() as HTMLElement) : button());
+
+    it('fills with surface2 and its edge goes cream while held, with no dim, and is as it was on release', () => {
       render(<GhostButton label="Share record" onPress={vi.fn()} compact={compact} />);
-      const resting = getComputedStyle(button()).opacity;
+      const resting = paintOf(outlineOf());
+      const target = paintOf(button());
+      expect(resting.fill).not.toBe(fillOf(colour.surface2)); // anti-vacuity: no fill at rest
+      expect(resting.edges).toEqual(Array(4).fill(edgeOf(colour.ink3)));
       pressIn(button());
-      const held = getComputedStyle(button()).opacity;
-      expect(held).toBe('0.85');
-      expect(held).not.toBe(resting); // anti-vacuity: the press changed something
+      expect(paintOf(outlineOf())).toEqual({
+        fill: fillOf(colour.surface2),
+        edges: Array(4).fill(edgeOf(colour.ink)),
+        opacity: resting.opacity,
+      });
+      if (compact) expect(paintOf(button())).toEqual(target); // the 48 dp target draws nothing, held or not
       pressOut(button());
-      expect(getComputedStyle(button()).opacity).toBe(resting);
+      expect(paintOf(outlineOf())).toEqual(resting);
     });
 
-    it('keeps its box while held (a press does not move the outline)', () => {
+    it('keeps its box while held (a press does not move the outline or its target)', () => {
       render(<GhostButton label="Share record" onPress={vi.fn()} compact={compact} />);
-      const read = () => {
-        const style = getComputedStyle(compact ? (boxOf() as HTMLElement) : button());
-        return [style.minHeight, style.paddingLeft, style.borderLeftWidth];
-      };
-      const before = read();
+      const before = [layoutOf(button()), layoutOf(outlineOf())];
+      expect(before[1]['min-height']).toBe(compact ? '37px' : '48px'); // anti-vacuity: the outline's box is read
       pressIn(button());
-      expect(read()).toEqual(before);
+      expect([layoutOf(button()), layoutOf(outlineOf())]).toEqual(before);
+      expect(paintOf(outlineOf()).fill).toBe(fillOf(colour.surface2)); // and the press did change the paint
       pressOut(button());
+    });
+
+    it('a second press, and a press while held, find nothing stuck', () => {
+      render(<GhostButton label="Share record" onPress={vi.fn()} compact={compact} />);
+      const resting = paintOf(outlineOf()).fill;
+      const held = fillOf(colour.surface2);
+      expect(pressTwice(button, () => paintOf(outlineOf()).fill)).toEqual([
+        resting,
+        held,
+        resting,
+        held,
+        resting,
+      ]);
+    });
+
+    it('disabled, it never shows pressed', () => {
+      render(<GhostButton label="Share record" onPress={vi.fn()} compact={compact} disabled />);
+      const resting = paintOf(outlineOf());
+      pressIn(button());
+      expect(paintOf(outlineOf())).toEqual(resting);
+      expect(resting.fill).not.toBe(fillOf(colour.surface2));
+      pressOut(button());
+    });
+
+    it('held and unmounted: no timer is left and nothing fires', () => {
+      const onPress = vi.fn();
+      const view = render(<GhostButton label="Share record" onPress={onPress} compact={compact} />);
+      expect(unmountWhileHeld(button, view.unmount)).toEqual({ held: 1, left: 0 });
+      expect(onPress).not.toHaveBeenCalled();
     });
   });
 });
@@ -119,8 +179,6 @@ describe('GhostButton (the secondary action)', () => {
 // I3 of the Batch 5 review: the battery row's button is disabled on air. A disabled ghost is marked for a screen
 // reader, never fires, and its label drops to the inert ink, as Button's and HoldAction's do.
 describe('GhostButton disabled', () => {
-  const INERT = StyleSheet.create({ ink3: { color: colour.ink3 } });
-
   it.each([false, true])(
     'compact %s: marked disabled, fires nothing, and its label is inert',
     (compact) => {

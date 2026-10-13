@@ -1,7 +1,7 @@
 import { memo } from 'react';
 import { type PressableStateCallbackType, Pressable, StyleSheet } from 'react-native';
 import { Text } from '@/ui/components/Text';
-import { layout } from '@/ui/theme/tokens';
+import { layout, pressedOpacity } from '@/ui/theme/tokens';
 
 type TextLinkProps = {
   label: string;
@@ -30,7 +30,10 @@ export const TextLink = memo(function TextLink({ label, onPress, expanded }: Tex
   );
 });
 
-/** Module-level so render allocates no function; pressed dims the line, as the outlined buttons do. */
+/**
+ * Module-level so render allocates no function. Pressed dims the line to `pressedOpacity.link` (the controller's ruling,
+ * Batch 17): it is already underlined, so a dim is its signal, where the outlined buttons fill.
+ */
 function linkStyle({ pressed }: PressableStateCallbackType) {
   return pressed ? pressedLink : styles.link;
 }
@@ -38,7 +41,7 @@ function linkStyle({ pressed }: PressableStateCallbackType) {
 const styles = StyleSheet.create({
   link: { minHeight: layout.touch, alignSelf: 'flex-start', justifyContent: 'center' },
   underlined: { textDecorationLine: 'underline' },
-  pressed: { opacity: 0.85 },
+  pressed: { opacity: pressedOpacity.link },
 });
 
 const pressedLink = [styles.link, styles.pressed];

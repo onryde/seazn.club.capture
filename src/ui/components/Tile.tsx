@@ -17,7 +17,7 @@ import { MODE_NAME } from '@/i18n/modeNames';
 import { Text } from '@/ui/components/Text';
 import { MODE_HINT, MODE_PURPOSE } from '@/ui/modeCopy';
 import { tileTitleRole } from '@/ui/theme/tileTitle';
-import { colour, layout as metrics, radius, space } from '@/ui/theme/tokens';
+import { colour, layout as metrics, pressedOpacity, radius, space } from '@/ui/theme/tokens';
 
 type TileProps = {
   mode: Mode;
@@ -114,14 +114,18 @@ const TileGear = memo(function TileGear({
   );
 });
 
-/** Module-level so render allocates no function; pressed dims the gear, as the icon row's buttons do. */
+/**
+ * Module-level so render allocates no function. Pressed dims the gear to `pressedOpacity.plate`, as it does the tile (the
+ * controller's ruling, Batch 17); its 48 dp corner box never moves.
+ */
 function gearStyle({ pressed }: PressableStateCallbackType) {
   return pressed ? pressedGear : styles.gear;
 }
 
 /**
- * Module-level so render allocates no function; pressed dims the tile, as Button does. One pair per layout, built
- * once: the Pressable gets the same function every render of a given layout and availability.
+ * Module-level so render allocates no function; pressed dims the tile to `pressedOpacity.plate`, as Button does (the
+ * controller's ruling, Batch 17). One pair per layout, built once: the Pressable gets the same function every render of
+ * a given layout and availability. A tile that cannot be opened has a style with no pressed state.
  */
 function tileStyleFor(rest: StyleProp<ViewStyle>) {
   const pressedStyle = [rest, styles.pressed];
@@ -175,7 +179,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  pressed: { opacity: 0.85 },
+  pressed: { opacity: pressedOpacity.plate },
   head: { flexDirection: 'row', alignItems: 'center', gap: space.sm },
   /** Upright, the head row ends where the gear begins: the gear's width less the tile's padding at that side. */
   besideGear: { marginRight: metrics.touch - space.md },

@@ -1,6 +1,6 @@
 import { type PressableStateCallbackType, Pressable, StyleSheet } from 'react-native';
 import { Text } from '@/ui/components/Text';
-import { colour, plateInk, space } from '@/ui/theme/tokens';
+import { colour, plateInk, pressedOpacity, space } from '@/ui/theme/tokens';
 
 /**
  * The primary action on a screen with no viewfinder: a lime plate with night
@@ -35,7 +35,11 @@ export function Button({
   );
 }
 
-/** Module-level so render allocates no function; pressed dims the plate. */
+/**
+ * Module-level so render allocates no function. Pressed dims the plate to `pressedOpacity.plate` (the controller's
+ * ruling, Batch 17): a pressed plate would step to a darker lime, which the palette does not have, so it dims until it
+ * does. A disabled plate never shows it: its style is not this function, and Pressable starts no press.
+ */
 function plateStyle({ pressed }: PressableStateCallbackType) {
   return pressed ? pressedPlate : styles.plate;
 }
@@ -52,7 +56,7 @@ const styles = StyleSheet.create({
     backgroundColor: colour.lime,
   },
   pressed: {
-    opacity: 0.85,
+    opacity: pressedOpacity.plate,
   },
   disabled: {
     backgroundColor: colour.surface,

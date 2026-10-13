@@ -41,7 +41,10 @@ export const IconButton = memo(function IconButton({
   );
 });
 
-/** Module-level so render allocates no function; pressed dims the outline, as GhostButton does. */
+/**
+ * Module-level so render allocates no function. Pressed fills with surface2 and the edge goes cream, as GhostButton's
+ * does (the controller's ruling, Batch 17): never a dim alone, and never a change of the box.
+ */
 function iconButtonStyle({ pressed }: PressableStateCallbackType) {
   return pressed ? pressedButton : styles.button;
 }
@@ -56,15 +59,19 @@ const styles = StyleSheet.create({
     borderColor: colour.ink3,
     borderRadius: radius.card,
   },
-  pressed: { opacity: 0.85 },
+  pressedFill: { backgroundColor: colour.surface2 },
+  pressedEdge: { borderColor: colour.ink },
   selected: { borderWidth: layout.iconBorderOn, borderColor: colour.lime },
 });
 
-const pressedButton = [styles.button, styles.pressed];
+const pressedButton = [styles.button, styles.pressedFill, styles.pressedEdge];
 
-/** B5: lime and 2 dp in place of the hairline; the box stays 48 square, the border is drawn inside it. */
+/**
+ * B5: lime and 2 dp in place of the hairline; the box stays 48 square, the border is drawn inside it. Pressed, it keeps
+ * the lime edge and takes the fill only.
+ */
 function selectedButtonStyle({ pressed }: PressableStateCallbackType) {
   return pressed ? pressedSelectedButton : selectedStyles;
 }
 const selectedStyles = [styles.button, styles.selected];
-const pressedSelectedButton = [styles.button, styles.selected, styles.pressed];
+const pressedSelectedButton = [styles.button, styles.selected, styles.pressedFill];

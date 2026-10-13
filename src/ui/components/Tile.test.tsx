@@ -4,6 +4,8 @@ import en from '@/i18n/en.json';
 import { Tile } from '@/ui/components/Tile';
 import { typeScale } from '@/ui/theme/type';
 import { declaredStyle } from '../../../test/declaredStyle';
+import { pressIn, pressOut } from '../../../test/press';
+import { layoutOf, paintOf, pressTwice, unmountWhileHeld } from '../../../test/pressState';
 import { layOut } from '../../../test/layOut';
 import { linesAllowed } from '../../../test/linesAllowed';
 import { renderWithPorts } from '../../../test/renderWithPorts';
@@ -193,4 +195,97 @@ describe('Tile', () => {
       expect(getComputedStyle(head).marginRight).toBe('0px');
     },
   );
+});
+
+// The controller's ruling (Batch 17; the owner has not ruled), after the owner held the sliders glyph and saw nothing
+// change until it opened on lift: a pressed control is never a 15% dim. Where the palette has no pressed colour to step
+// to, the control dims to 0.7: a Home tile and its gear. Neither box moves. Whether it reads outdoors is the owner's
+// device check; jsdom sees no colour and no press feedback (AGENTS §10).
+describe('Tile pressed (the controller’s ruling, Batch 17)', () => {
+  const tile = () => screen.getByRole('button', { name: /Live Stream/ });
+  const gear = () => screen.getByRole('button', { name: 'Stream settings' });
+  const opacityOf = (element: HTMLElement) => getComputedStyle(element).opacity;
+  const settings = { label: 'Stream settings', onPress: vi.fn() };
+  const FORMS = [
+    ['portrait', false],
+    ['landscape', false],
+    ['portrait', true],
+    ['landscape', true],
+  ] as const;
+
+  it.each(FORMS)(
+    '%s, gear %s: the tile dims to 0.7 while held, keeps its paint and box, and comes back on release',
+    (layout, withGear) => {
+      renderWithPorts(
+        <Tile
+          mode="stream"
+          available
+          layout={layout}
+          onPress={vi.fn()}
+          settings={withGear ? settings : undefined}
+        />,
+      );
+      const resting = { paint: paintOf(tile()), box: layoutOf(tile()) };
+      expect(resting.paint.opacity).toBe('1');
+      expect(resting.box['padding-left']).not.toBe(''); // anti-vacuity: the box is read
+      pressIn(tile());
+      expect({ paint: paintOf(tile()), box: layoutOf(tile()) }).toEqual({
+        paint: { ...resting.paint, opacity: '0.7' },
+        box: resting.box,
+      });
+      pressOut(tile());
+      expect({ paint: paintOf(tile()), box: layoutOf(tile()) }).toEqual(resting);
+    },
+  );
+
+  it.each(['portrait', 'landscape'] as const)(
+    '%s: the gear dims to 0.7 while held, its 48 dp corner box unmoved, and the tile beside it does not dim',
+    (layout) => {
+      renderWithPorts(
+        <Tile mode="stream" available layout={layout} onPress={vi.fn()} settings={settings} />,
+      );
+      const resting = layoutOf(gear());
+      expect([resting.width, resting.height]).toEqual(['48px', '48px']); // anti-vacuity: the box is read
+      pressIn(gear());
+      expect([opacityOf(gear()), opacityOf(tile())]).toEqual(['0.7', '1']);
+      expect(layoutOf(gear())).toEqual(resting);
+      pressOut(gear());
+      expect(opacityOf(gear())).toBe('1');
+    },
+  );
+
+  it('a mode that is not built never shows pressed', () => {
+    renderWithPorts(<Tile mode="dashboard" available={false} onPress={vi.fn()} />);
+    const dashboard = screen.getByRole('button', { name: /Dashboard/ });
+    const resting = paintOf(dashboard);
+    pressIn(dashboard);
+    expect(paintOf(dashboard)).toEqual(resting);
+    expect(resting.opacity).toBe('1');
+    pressOut(dashboard);
+  });
+
+  it('a second press, and a press while held, find nothing stuck: the tile and the gear', () => {
+    renderWithPorts(<Tile mode="stream" available onPress={vi.fn()} settings={settings} />);
+    const cycle = ['1', '0.7', '1', '0.7', '1'];
+    expect(pressTwice(tile, () => opacityOf(tile()))).toEqual(cycle);
+    expect(pressTwice(gear, () => opacityOf(gear()))).toEqual(cycle);
+  });
+
+  it.each([
+    ['tile', tile],
+    ['gear', gear],
+  ] as const)('the %s held and unmounted: no timer is left and nothing fires', (_name, held) => {
+    const tap = vi.fn();
+    const open = vi.fn();
+    const view = renderWithPorts(
+      <Tile
+        mode="stream"
+        available
+        onPress={tap}
+        settings={{ label: 'Stream settings', onPress: open }}
+      />,
+    );
+    expect(unmountWhileHeld(held, view.unmount)).toEqual({ held: 1, left: 0 });
+    expect([tap.mock.calls.length, open.mock.calls.length]).toEqual([0, 0]);
+  });
 });
