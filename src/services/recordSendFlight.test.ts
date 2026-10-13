@@ -110,13 +110,19 @@ describe('what the flight hands the port (N38)', () => {
     ]);
   });
 
-  it('after unpaired, the newest 1,000 alone', async () => {
+  // R-MA1P's send came 10 s after a Stop (the controller's amendment to the N38 ruling, 2026-10-13): the window had
+  // ended, and its ending line is still in the ring, so the pins still lead.
+  it('after a Stop (ended, final-beat, reset) the pair and its start still lead', async () => {
     const r = rig();
-    const unpaired = '{"at":"2026-10-12T21:05:00.000Z","kind":"unpaired","reason":"operator"}';
-    for (const line of [PAIR, START, unpaired, ...beats]) r.record.appendLine(line);
+    const stop = [
+      '{"at":"2026-10-12T21:20:00.000Z","kind":"ended","reason":"operator-stopped","wasLive":true}',
+      '{"at":"2026-10-12T21:20:00.100Z","kind":"final-beat","result":"answered","status":200}',
+      '{"at":"2026-10-12T21:20:00.200Z","kind":"reset"}',
+    ];
+    for (const line of [PAIR, START, ...beats.slice(0, 1_500), ...stop]) r.record.appendLine(line);
     r.flight.send();
     await settle();
-    expect(r.upload.sent[0]?.lines).toEqual(beats.slice(-1_000));
+    expect(r.upload.sent[0]?.lines).toEqual([PAIR, START, ...beats.slice(505, 1_500), ...stop]);
   });
 });
 

@@ -23,6 +23,6 @@ describe('colour.pressFill (the controller’s ruling P8, Batch 17)', () => {
   // The byte exactly, not its rounding: 0x32 and 0x34 also read as 20% to two places (the Batch 17 review's minor).
   it('is the cream at 20% alpha, the byte 0x33', () => {
     expect(creamAlphaByte(colour.pressFill)).toBe('33');
-    expect(percent('33')).toBe(0.2);
+    expect(percent(creamAlphaByte(colour.pressFill))).toBe(0.2);
   });
 });

@@ -13,9 +13,10 @@ import { createFakeUploadCredential } from '../../test/fakePorts';
  * N38 (the controller's ruling, 2026-10-12; the D3 fixes ledger): Send record posts the newest 1,000 lines, and the web
  * files a line with no sid only inside a pairing window, which opens at the pairing's `pair` line (the contract's A2).
  * On R-MA1P the ring had let the `pair` and `broadcast-start` lines go, and every line was dropped. The ring pins the
- * latest `pair` while its window stands, and while that stands the latest `broadcast-start` with a sid, outside its
- * capacity, and the send puts them first. The record is not localised, so the fourth question's language does not
- * apply; its modes and orientations reach the ring only as lines, which these cases are.
+ * latest `pair` and, while its window is open, the latest `broadcast-start` with a sid, outside its capacity, until the
+ * line that ended the window has left the ring (the controller's amendment, 2026-10-13); the send puts them first. The
+ * record is not localised, so the fourth question's language does not apply; its modes and orientations reach the ring
+ * only as lines, which these cases are.
  */
 
 /** Native's lines as `Pairings.kt` writes them, made up (AGENTS §13): the tag, sids and code belong to nothing. */
@@ -31,6 +32,10 @@ const START = startWith(SID);
 const START_2 = startWith(SID_2);
 const lineOf = (kind: string, fields: Record<string, unknown> = {}) =>
   JSON.stringify({ at: at(3), kind, ...fields });
+/** What an operator's Stop writes (`SessionMachine.end`, then the reset back to Idle). */
+const ENDED = lineOf('ended', { reason: 'operator-stopped', wasLive: true });
+const FINAL_BEAT = lineOf('final-beat', { result: 'answered', status: 200 });
+const RESET = lineOf('reset');
 /** `count` lines with no sid, each its own (`sent` numbers them), as a beat would be. */
 const beats = (count: number, tag = 'b') =>
   Array.from({ length: count }, (_, n) => lineOf('beats', { sent: n, field: tag }));
@@ -52,22 +57,98 @@ describe('N38: Send record keeps the pairing’s pair and broadcast-start lines'
     expect(ring.lines()).toEqual(b.slice(-1_000));
   });
 
+  // The controller's amendment to the N38 ruling (2026-10-13, Batch 18 fix round 1): Send is off air only and the
+  // token outlives the pairing by 24 h (R4), so a send follows the end of the window. The web's window runs through the
+  // line that ended it, so the pins stay until that line has left the ring.
+  it('R-MA1P’s sequence, a Send just after a Stop ten minutes on air: the pair and its start still lead', () => {
+    const live = beats(1_500);
+    const ring = ringOf([PAIR, lineOf('paired'), START, ...live, ENDED, FINAL_BEAT, RESET]);
+    // The ring holds live[503..], then the three; the pair and the start go first, and live[503] and [504] give way.
+    expect(ring.linesToSend(1_000)).toEqual([
+      PAIR,
+      START,
+      ...live.slice(505),
+      ENDED,
+      FINAL_BEAT,
+      RESET,
+    ]);
+  });
+
   // The contract's A2 (recordContract.test.ts reads these four from its description).
   it.each(['unpaired', 'ended', 'pair-refused', 'reset'])(
-    '%s ends the window: both pins go, and the send is the newest 1,000 alone',
+    'a %s still in the ring keeps both pins, and goes in the body with them',
     (kind) => {
-      const b = beats(3_000);
-      expect(ringOf([PAIR, START, lineOf(kind), ...b]).linesToSend(1_000)).toEqual(b.slice(-1_000));
+      const before = beats(1_500);
+      const after = beats(10, 'c');
+      const ring = ringOf([PAIR, START, ...before, lineOf(kind), ...after]);
+      expect(ring.linesToSend(1_000)).toEqual([
+        PAIR,
+        START,
+        ...before.slice(513),
+        lineOf(kind),
+        ...after,
+      ]);
     },
   );
 
   it.each(['unpaired', 'ended', 'pair-refused', 'reset'])(
-    'a broadcast-start after %s pins nothing: no pair stands',
+    'once 1,000 lines follow a %s, it has left the ring: the pins go, and the send is the newest 1,000 alone',
     (kind) => {
-      const b = beats(3_000);
-      expect(ringOf([PAIR, lineOf(kind), START, ...b]).linesToSend(1_000)).toEqual(b.slice(-1_000));
+      const after = beats(1_000, 'c');
+      const gone = ringOf([PAIR, START, ...beats(1_500), lineOf(kind), ...after]);
+      expect(gone.linesToSend(1_000)).toEqual(after);
+      // One line sooner it is the ring's oldest: still in the ring, so the pins stand and it goes with them.
+      const oldest = ringOf([PAIR, START, ...beats(1_500), lineOf(kind), ...after.slice(1)]);
+      expect(oldest.linesToSend(1_000)).toEqual([PAIR, START, lineOf(kind), ...after.slice(3)]);
     },
   );
+
+  it('the window ends at its first closing line: a later one holds nothing once the first has gone', () => {
+    const after = beats(999);
+    expect(ringOf([PAIR, START, ENDED, ...after, RESET]).linesToSend(1_000)).toEqual([
+      ...after,
+      RESET,
+    ]);
+  });
+
+  it('a broadcast-start after the window ended pins nothing, and the window’s own start stays', () => {
+    const before = beats(1_500);
+    const after = beats(10, 'c');
+    const ring = ringOf([PAIR, START, ...before, ENDED, START_2, ...after]);
+    expect(ring.linesToSend(1_000)).toEqual([
+      PAIR,
+      START,
+      ...before.slice(514),
+      ENDED,
+      START_2,
+      ...after,
+    ]);
+  });
+
+  it('a new pair after the window ended replaces both pins at once', () => {
+    const after = beats(1_500, 'c');
+    const ring = ringOf([PAIR, START, ...beats(1_500), ENDED, RESET, PAIR_2, ...after]);
+    expect(ring.linesToSend(1_000)).toEqual([PAIR_2, ...after.slice(-999)]);
+    // The new pair still in the ring: nothing is let go, so the body is the ring as it is.
+    const soon = ringOf([
+      PAIR,
+      START,
+      ...beats(1_500),
+      ENDED,
+      RESET,
+      PAIR_2,
+      ...after.slice(0, 10),
+    ]);
+    expect(soon.linesToSend(1_000)).toEqual(soon.lines());
+  });
+
+  // A re-scan: native ends the old pairing with `unpaired {reason: "re-pair"}` (PairingTest.kt), then writes the pair.
+  it('unpaired for a re-pair, then the new pair and its start: the new pairing leads', () => {
+    const after = beats(3_000, 'c');
+    const repair = lineOf('unpaired', { reason: 're-pair' });
+    const ring = ringOf([PAIR, START, ...beats(1_500), repair, PAIR_2, START_2, ...after]);
+    expect(ring.linesToSend(1_000)).toEqual([PAIR_2, START_2, ...after.slice(-998)]);
+  });
 
   // a6cc1f038: engine-error closes nothing (native writes one where the pairing goes on), and a broadcast's end is not
   // the pairing's.
@@ -317,11 +398,21 @@ describe('N38: the body posted is the contract’s, and files under its pairing'
     expect(CLOSING).toEqual(['unpaired', 'ended', 'pair-refused', 'reset']);
   });
 
-  it('after unpaired the body is the newest 1,000 alone', async () => {
-    const lines = match(3_000);
-    const body = await posted(
-      ringOf([PAIR, START, lineOf('unpaired', { reason: 'operator' }), ...lines]),
-    );
-    expect(body).toEqual(lines.slice(-1_000));
+  // The reviewer's probe of Batch 18, as a test: before the amendment this body had no pair and 901 lines unfiled.
+  it('R-MA1P’s sequence through the port: the pins lead, and only the two lines after ended are unfiled', async () => {
+    const lines = match(1_500);
+    const ended = [ENDED, FINAL_BEAT, RESET];
+    const body = await posted(ringOf([PAIR, lineOf('paired'), START, ...lines, ...ended]));
+    expect(body).toEqual([PAIR, START, ...lines.slice(505), ...ended]);
+    expect(body.filter((line) => !admitsLine(JSON.parse(line)))).toEqual([]);
+    // final-beat and reset come after the window's end: the web files neither, pins or no pins.
+    expect(unfiled(body)).toBe(2);
+    expect(unfiled(body.slice(2))).toBeGreaterThan(800);
+  });
+
+  it('once 1,000 lines follow the end, the body is the newest 1,000 alone', async () => {
+    const lines = match(1_000);
+    const body = await posted(ringOf([PAIR, START, ...match(1_500), ENDED, ...lines]));
+    expect(body).toEqual(lines);
   });
 });

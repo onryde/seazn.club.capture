@@ -185,8 +185,9 @@ describe('the record contract’s pairing windows (A2, Q7)', () => {
     expect(closing().filter((kind) => !kinds.includes(kind))).toEqual([]);
   });
 
-  // N38 (the controller's ruling, 2026-10-12): Send record pins the line that opens a window until one of these ends
-  // it, so the app's copies are the description's, read as the web's own test reads them.
+  // N38 (the controller's ruling, 2026-10-12, amended 2026-10-13): Send record pins the line that opens a window until
+  // the one of these that ended it has left the ring, so the app's copies are the description's, read as the web's own
+  // test reads them.
   it('holds the description’s window ends, and the kind that opens one', () => {
     expect([...RECORD_WINDOW_ENDS].sort()).toEqual(closing());
     const opens = /a window opens at a `([a-z-]+)` line/.exec(contract.description)?.[1];
