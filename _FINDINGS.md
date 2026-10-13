@@ -1106,7 +1106,7 @@ geometry, as the one the rulings were made on (the controller's ruling, 2026-10-
 
 ### N36 — A phone paired and waiting on Home has no keep-awake
 
-**Status:** open — not fixed in feat/s1-d3-fixes; the owner decides at the D3 results (`docs/specs/2026-10-13-s1-d3-results.md`)
+**Status:** open — not fixed in feat/s1-d3-fixes; the owner decides at the D3 results (`docs/specs/2026-10-13-s1-plan-d-results.md`)
 **Where:** capture app · `useKeepAwake` is mounted only in `app/stream/_layout.tsx` · AGENTS §9
 
 AGENTS §9 says the screen is kept on while paired and waiting. That holds inside Live Stream only. On Home, with a
