@@ -115,10 +115,10 @@ const TileGear = memo(function TileGear({
 });
 
 /**
- * Module-level so render allocates no function. Pressed fills the gear's square with the press fill (cream at 20%, P8),
- * which shows on the frame's surface, its corners rounded as the tile's are, and changes nothing else (the controller's
- * rulings, Batch 17 fix rounds 1 and 2: this is the glyph the owner held and saw nothing change). No dim: the glyph
- * stays as it is, and the 48 dp corner box never moves.
+ * Module-level so render allocates no function. Pressed fills the gear's square with the press fill, cream at 20% by
+ * the controller's press-fill ruling (2026-10-13), which shows on the frame's surface, its corners rounded as the
+ * tile's are, and changes nothing else (the controller's rulings, Batch 17 fix rounds 1 and 2: this is the glyph the
+ * owner held and saw nothing change). No dim: the glyph stays as it is, and the 48 dp corner box never moves.
  */
 function gearStyle({ pressed }: PressableStateCallbackType) {
   return pressed ? pressedGear : styles.gear;

@@ -37,9 +37,9 @@ export const colour = {
   rule: '#f5f0e814',
   ruleSoft: '#f5f0e80d',
   /**
-   * A held control's fill: cream at 20%, written as `rule` is (the controller's ruling P8, Batch 17; the owner has not
-   * ruled). Translucent, so it shows on whatever ground the control sits on: night, surface or a sheet's surface2. An
-   * opaque surface2 fill was the sheet's own colour and all but invisible on surface.
+   * A held control's fill: cream at 20%, written as `rule` is, by the controller's press-fill ruling (2026-10-13); the
+   * owner has not ruled. Translucent, so it shows on whatever ground the control sits on: night, surface or a sheet's
+   * surface2. An opaque surface2 fill was the sheet's own colour and all but invisible on surface.
    */
   pressFill: '#f5f0e833',
 

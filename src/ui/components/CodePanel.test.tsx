@@ -181,8 +181,9 @@ describe('CodePanel', () => {
     expect([h.onScanAgain.mock.calls.length, h.onClose.mock.calls.length]).toEqual([1, 1]);
   });
 
-  // P8 (the controller's ruling, Batch 17): a held ghost's fill must not depend on the ground. The sheet is surface2,
-  // pinned here: the old surface2 press fill was the sheet's own colour, so a held Scan again showed only its hairline.
+  // The controller's press-fill ruling (2026-10-13): a held ghost's fill must not depend on the ground. The sheet is
+  // surface2, pinned here: the old surface2 press fill was the sheet's own colour, so a held Scan again showed only its
+  // hairline.
   it('a held Scan again takes the press fill, the cream at 20%, on the sheet’s surface2 ground', () => {
     renderWithPorts(
       <CodePanel outcome={{ kind: 'foreign', tapped: 'stream' }} time="18:40" {...handlers()} />,

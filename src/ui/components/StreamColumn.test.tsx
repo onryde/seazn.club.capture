@@ -341,8 +341,9 @@ describe('the peek cell’s reasons (D2 §4.2, carry 13)', () => {
   });
 });
 
-// P8 (the controller's ruling, Batch 17): a held icon button's fill must not depend on the ground. The controls half is
-// the board's `ground` (night), pinned here, so a half repainted under the icon row fails too. Before air and on air.
+// The controller's press-fill ruling (2026-10-13): a held icon button's fill must not depend on the ground. The
+// controls half is the board's `ground` (night), pinned here, so a half repainted under the icon row fails too. Before
+// air and on air.
 describe('StreamColumn’s icon row, held', () => {
   it.each([false, true])(
     'on air %s: a held Settings takes the press fill on the half’s night ground',

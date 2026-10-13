@@ -128,10 +128,10 @@ export function unmountWhileHeld(element: () => HTMLElement, unmount: () => void
 }
 
 /**
- * A held control's fill on the ground of the host it sits in (the controller's ruling P8, Batch 17: the press fill must
- * not depend on the ground). Reads the host's own fill at rest and the control's fill while held. The caller pins the
- * host's ground to its token, so a host repainted under the control fails, and checks the held fill against the press
- * fill and the ground. jsdom composites nothing: how the two look together is a device check.
+ * A held control's fill on the ground of the host it sits in. By the controller's press-fill ruling (2026-10-13), the
+ * press fill must not depend on the ground. Reads the host's own fill at rest and the control's fill while held. The
+ * caller pins the host's ground to its token, so a host repainted under the control fails, and checks the held fill
+ * against the press fill and the ground. jsdom composites nothing: how the two look together is a device check.
  */
 export function heldOnGround(control: () => HTMLElement, host: () => HTMLElement) {
   const ground = paintOf(host()).fill;

@@ -108,9 +108,10 @@ describe('GhostButton (the secondary action)', () => {
     });
   });
 
-  // The controller's rulings (Batch 17 and its P8; the owner has not ruled), after the owner saw no change while holding
-  // an icon: a pressed outline takes the press fill, the cream at 20% (`colour.pressFill`), so it shows on any ground,
-  // and its edge goes cream; never a dim alone, and the box never moves.
+  // The controller's rulings (Batch 17; the owner has not ruled), with the controller's press-fill ruling (2026-10-13),
+  // after the owner saw no change while holding an icon: a pressed outline takes the press fill, the cream at 20%
+  // (`colour.pressFill`), so it shows on any ground, and its edge goes cream; never a dim alone, and the box never
+  // moves.
   // The outline is the button in the regular form and the box inside the target in the compact one; the compact
   // target itself still draws nothing. Held and released, for both forms, so each press state's style is read.
   describe.each([

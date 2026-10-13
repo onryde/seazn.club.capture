@@ -207,9 +207,10 @@ describe('Tile', () => {
 
 // The controller's ruling (Batch 17; the owner has not ruled), after the owner held this gear's sliders glyph and saw
 // nothing change until it opened on lift: a pressed control is never a 15% dim. The tile dims to 0.7, as the lime
-// Button does. The gear (fix rounds 1 and 2) takes the press fill, the cream at 20% (`colour.pressFill`, P8), in a
-// rounded square while held, and nothing else of the tile changes. Neither box moves. Whether it reads outdoors is the
-// owner's device check; jsdom sees no colour and no press feedback (AGENTS §10).
+// Button does. The gear (fix rounds 1 and 2) takes the press fill, the cream at 20% (`colour.pressFill`) by the
+// controller's press-fill ruling (2026-10-13), in a rounded square while held, and nothing else of the tile changes.
+// Neither box moves. Whether it reads outdoors is the owner's device check; jsdom sees no colour and no press feedback
+// (AGENTS §10).
 describe('Tile pressed (the controller’s ruling, Batch 17)', () => {
   const tile = () => screen.getByRole('button', { name: /Live Stream/ });
   const gear = () => screen.getByRole('button', { name: 'Stream settings' });
@@ -291,8 +292,8 @@ describe('Tile pressed (the controller’s ruling, Batch 17)', () => {
     pressOut(dashboard);
   });
 
-  // P8: the press fill must not depend on the ground. The gear's ground is the frame's `surface`, pinned here, so a frame
-  // repainted under the gear fails too.
+  // The controller's press-fill ruling (2026-10-13): the press fill must not depend on the ground. The gear's ground is
+  // the frame's `surface`, pinned here, so a frame repainted under the gear fails too.
   it.each(['portrait', 'landscape'] as const)(
     '%s: the gear’s press fill is the cream token, on the frame’s surface ground',
     (layout) => {

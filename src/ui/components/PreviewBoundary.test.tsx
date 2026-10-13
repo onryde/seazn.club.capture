@@ -78,10 +78,10 @@ it.each([
   expect(screen.getByText(read(dictionary['stream.preview.show']))).toBeTruthy();
 });
 
-// P8 (the controller's ruling, Batch 17): a held ghost's fill must not depend on the ground. Show preview sits on the
-// camera box's stage black (StreamStage's `box`) through a fallback that paints nothing: both are pinned here, so a box
-// or a fallback repainted under the button fails. jsdom composites nothing; how the fill reads on black is the device
-// re-check's (AGENTS §10).
+// The controller's press-fill ruling (2026-10-13): a held ghost's fill must not depend on the ground. Show preview sits
+// on the camera box's stage black (StreamStage's `box`) through a fallback that paints nothing: both are pinned here,
+// so a box or a fallback repainted under the button fails. jsdom composites nothing; how the fill reads on black is the
+// device re-check's (AGENTS §10).
 it('a held Show preview takes the press fill, the cream at 20%, on the camera box’s stage black', async () => {
   await live();
   const show = () => screen.getByRole('button', { name: en['stream.preview.show'] });

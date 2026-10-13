@@ -59,8 +59,8 @@ describe('ContinueCard', () => {
     expect(screen.queryByText(/valid till\s*$/)).toBeNull();
   });
 
-  // P8 (the controller's ruling, Batch 17): a held ghost's fill must not depend on the ground. The card is surface,
-  // pinned here in both shapes, so a card repainted under Forget fails too.
+  // The controller's press-fill ruling (2026-10-13): a held ghost's fill must not depend on the ground. The card is
+  // surface, pinned here in both shapes, so a card repainted under Forget fails too.
   it.each(['stacked', 'row'] as const)(
     '%s: a held Forget takes the press fill on the card’s surface ground',
     (layout) => {

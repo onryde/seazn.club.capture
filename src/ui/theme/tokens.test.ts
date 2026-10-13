@@ -14,7 +14,7 @@ function creamAlphaByte(token: string): string {
 /** That byte as a fraction, to two places: how the tokens' comments state it. */
 const percent = (byte: string) => Math.round((parseInt(byte, 16) / 255) * 100) / 100;
 
-describe('colour.pressFill (the controller’s ruling P8, Batch 17)', () => {
+describe('colour.pressFill: the controller’s press-fill ruling (2026-10-13)', () => {
   it('is derived as rule is: the cream with an alpha byte (rule is the cream at 8%)', () => {
     expect(colour.ink).toBe(CREAM);
     expect(percent(creamAlphaByte(colour.rule))).toBe(0.08); // anti-vacuity: the reading gives rule's documented 8%

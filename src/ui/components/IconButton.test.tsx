@@ -145,10 +145,11 @@ describe('IconButton (spec §3)', () => {
   });
 
   // The owner held a sliders glyph on phone A (2026-10-13) and saw nothing change until it opened on lift: a 15% dim
-  // of a hairline. The controller's rulings (Batch 17 and its P8; the owner has not ruled): a pressed button takes the
-  // press fill, the cream at 20% (`colour.pressFill`), so it shows on any ground, and its edge goes cream; never opacity
-  // alone, and its box never moves. A selected button keeps its 2 dp lime edge and takes the fill only. Whether it reads
-  // outdoors is the owner's device check: jsdom sees no colour and composites nothing.
+  // of a hairline. The controller's rulings (Batch 17; the owner has not ruled), with the controller's press-fill
+  // ruling (2026-10-13): a pressed button takes the press fill, the cream at 20% (`colour.pressFill`), so it shows on
+  // any ground, and its edge goes cream; never opacity alone, and its box never moves. A selected button keeps its 2 dp
+  // lime edge and takes the fill only. Whether it reads outdoors is the owner's device check: jsdom sees no colour and
+  // composites nothing.
   describe('pressed (the controller’s ruling, Batch 17)', () => {
     const remote = () => screen.getByRole('button', { name: 'Remote scoring' });
 
