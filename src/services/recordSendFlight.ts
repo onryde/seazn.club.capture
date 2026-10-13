@@ -1,3 +1,4 @@
+import { RECORD_MAX_LINES } from '@/services/recordContract';
 import type { RecordSendResult, RecordUploadPort } from '@/services/recordUploadPort';
 import type { SessionRecord } from '@/services/sessionRecord';
 import type { UploadCredentialStore } from '@/services/uploadCredentialStore';
@@ -51,7 +52,11 @@ export type RecordSendFlight = {
   subscribe(onChange: () => void): () => void;
   /** Reads the credential again: at the row's mount and at every return to the foreground (it can expire in a pocket). */
   refresh(): void;
-  /** What Share record shares, the JS ring whole (R9, the controller's), on the operator's tap only. One at a time. */
+  /**
+   * The JS ring's newest lines, as Share record shares them (R9 of the D3 findings design, the controller's,
+   * 2026-10-11), with the pairing's pinned lines ahead of them (N38, `recordPins.ts`): 1,000 in all, on the operator's
+   * tap only. One at a time.
+   */
   send(): void;
 };
 
@@ -130,7 +135,7 @@ async function sendOnce(
     seen(credential?.codeUrl ?? null);
     if (credential === null) return { next: GONE, codeUrl };
     codeUrl = credential.codeUrl;
-    const outcome = await upload.send(record.lines(), credential);
+    const outcome = await upload.send(record.linesToSend(RECORD_MAX_LINES), credential);
     const next: SendState =
       outcome.result === 'sent' && outcome.ref !== null
         ? { kind: 'sent', ref: outcome.ref }

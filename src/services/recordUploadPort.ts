@@ -156,6 +156,7 @@ export function createRecordUploadPort({
   };
   return {
     send: async (all, credential) => {
+      // The flight hands it at most this many, the pairing's pinned lines first (N38); a longer list keeps its newest.
       const lines = all.slice(-RECORD_MAX_LINES);
       if (lines.length === 0) return said('failed', null, 0);
       if (!isSeaznCodeUrl(credential.codeUrl, host)) return said('refused-local', null, 0);

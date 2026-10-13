@@ -27,6 +27,25 @@ const SECONDS = /T\d\d:\d\d:\d\d/;
 export const isRecordTime = (at: unknown): boolean =>
   typeof at === 'string' && RECORD_AT.test(at) && SECONDS.test(at);
 
+/**
+ * A line's `sid` that the contract's A1 judges: the server's uuid, by the contract's pattern character for character.
+ * The mask and null are the contract's too, and name no session (a null or absent sid makes a line A2's).
+ */
+export const RECORD_SID =
+  /^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/;
+
+/**
+ * A2: a line with no sid files under a code only inside a pairing window, which opens at a `pair` line and runs through
+ * the next of these, or up to the next `pair` (since a6cc1f038, never through `engine-error`).
+ */
+export const RECORD_WINDOW_OPENS = 'pair';
+export const RECORD_WINDOW_ENDS: ReadonlySet<string> = new Set([
+  'unpaired',
+  'ended',
+  'pair-refused',
+  'reset',
+]);
+
 /** A line's `level`: absent means info; native writes `***` for a level it does not vet (`SessionRecord.levelWord`). */
 export const RECORD_LEVELS: ReadonlySet<string> = new Set([
   'debug',

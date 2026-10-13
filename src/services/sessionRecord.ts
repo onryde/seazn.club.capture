@@ -1,4 +1,5 @@
 import type { SessionState } from '@/domain/session/SessionState';
+import { NO_PINS, pinnedAndNewest, pinsAfter, type RecordPins } from '@/services/recordPins';
 import type { LogFields } from '@/services/scrub';
 
 export type LogLevel = 'debug' | 'info' | 'warn' | 'error';
@@ -20,6 +21,11 @@ export type LogEntry = {
 export interface SessionRecord {
   append(entry: LogEntry): void;
   lines(): readonly string[];
+  /**
+   * What Send record posts, at most `max` lines (N38, `recordPins.ts`): the pairing's pinned lines the ring has let go
+   * of, first, then its newest lines, each exactly as the ring was given it. `lines()` stays the ring alone.
+   */
+  linesToSend(max: number): readonly string[];
   subscribe(onChange: () => void): () => void;
 }
 
@@ -76,9 +82,14 @@ export type RingRecord = SessionRecord & { appendLine(line: string): void };
 
 export function createRingRecord(capacity: number = RECORD_CAPACITY): RingRecord {
   let lines: readonly string[] = [];
+  /** How many lines the ring has let go of: the place of its oldest among every line it was given. */
+  let first = 0;
+  let pins: RecordPins = NO_PINS;
   const listeners = new Set<() => void>();
   const push = (line: string) => {
+    pins = pinsAfter(pins, line, first + lines.length);
     const kept = lines.length < capacity ? lines : lines.slice(lines.length - capacity + 1);
+    first += lines.length - kept.length;
     lines = [...kept, line];
     for (const listener of listeners) listener();
   };
@@ -86,6 +97,7 @@ export function createRingRecord(capacity: number = RECORD_CAPACITY): RingRecord
     append: (entry) => push(toRecordLine(entry)),
     appendLine: push,
     lines: () => lines,
+    linesToSend: (max) => pinnedAndNewest(lines, first, pins, max),
     subscribe: (onChange) => {
       listeners.add(onChange);
       return () => listeners.delete(onChange);
@@ -96,7 +108,7 @@ export function createRingRecord(capacity: number = RECORD_CAPACITY): RingRecord
 /**
  * CD7: JS entries go to native's record while `route.active()`, and to the
  * ring otherwise. Native's lines come back through `ring.appendLine`, so the
- * ring stays the one view: `lines` and `subscribe` are the ring's.
+ * ring stays the one view: `lines`, `linesToSend` and `subscribe` are the ring's.
  */
 export function createRoutedRecord(
   ring: RingRecord,
@@ -105,6 +117,7 @@ export function createRoutedRecord(
   return {
     append: (entry) => (route.active() ? route.forward(entry) : ring.append(entry)),
     lines: ring.lines,
+    linesToSend: ring.linesToSend,
     subscribe: ring.subscribe,
   };
 }

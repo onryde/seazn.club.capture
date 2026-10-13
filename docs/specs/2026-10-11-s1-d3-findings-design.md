@@ -33,7 +33,7 @@ recommendation the owner may overrule in review; it is never the owner's.
 | R6  | A **Forget** action on the Android notification while the phone is paired and waiting (scanned, not live).                                                                                                                                                                                                                                                                                                                                             | Owner, 2026-10-11                                                                      |
 | R7  | The notification's Forget has no confirmation step: a mis-tap costs a rescan.                                                                                                                                                                                                                                                                                                                                                                          | _Controller's_, 2026-10-11                                                             |
 | R8  | A5 (the 20 s lag rule) is not changed: on 2026-10-11 it fired on a real stall.                                                                                                                                                                                                                                                                                                                                                                         | _Controller's_, 2026-10-11                                                             |
-| R9  | The upload sends what Share record shares (the JS ring, the last 1,000 lines), so there is one record and one truth. N25's 1,000-line cap stays a separate matter.                                                                                                                                                                                                                                                                                     | _Controller's_, 2026-10-11                                                             |
+| R9  | The upload sends what Share record shares (the JS ring, the last 1,000 lines), so there is one record and one truth. N25's 1,000-line cap stays a separate matter. Amended by the controller's ruling on N38 (2026-10-12): ahead of the newest lines, the upload also sends the pairing's `pair` line and its latest `broadcast-start` with a sid, lines the ring was given and has let go (§7).                                                       | _Controller's_, 2026-10-11                                                             |
 | R10 | A rejoin after a hold has run out keeps trying while the server says live (the server is the authority, A14), but it shows a reason and backs off (§5). Superseded on 2026-10-13 by the owner's ruling on N37: the phone ends the broadcast when the hold runs out (§5).                                                                                                                                                                               | _Controller's_, 2026-10-11                                                             |
 | R11 | Portrait Home amends S0 decision 9 ("three equal tiles"): a portrait tile is never shorter than its own words; spare height is shared equally, and Home scrolls when the tiles outgrow the window. Landscape keeps equal widths. Re-measured with the gear (Batch 10): equal thirds fit with no card, but with a card they need a 736–807 dp window at 360 wide (`homeFit.test.ts`); a 360 × 800 phone leaves about 720. I2 of the Batch 5 review.     | _Controller's_, 2026-10-12; owner to confirm                                           |
 | R12 | The battery row reads three modes in Android's own words, from two readings: _Unrestricted_ (`isIgnoringBatteryOptimizations`), else _Restricted_ (`ActivityManager.isBackgroundRestricted`), else _Optimized_; unknown hides the row. Its button is _App settings_ and opens App info (`ACTION_APPLICATION_DETAILS_SETTINGS`, the only public per-app target), with a path line under it ("Battery → Unrestricted"). I1 and M5 of the Batch 5 review. | _Controller's_, 2026-10-12                                                             |
@@ -253,8 +253,8 @@ Mutate the rejoin marker once and watch a test fail.
 - **Port.** A `RecordUploadPort` in `services/`, with plain `fetch` (AGENTS §8:
   no React Query) and a fake for tests. A request with an answer is fine here,
   because the call never touches the engine bridge.
-- **Body.** The scrubbed record lines that Share sends, as `application/x-ndjson`,
-  uncompressed: the contract accepts gzip, and the app does not send it. Before
+- **Body.** The scrubbed record lines that Share sends, with the pairing's own
+  lines ahead of them (below), as `application/x-ndjson`, uncompressed: the contract accepts gzip, and the app does not send it. Before
   sending, the port checks each line as written. A line that names the token,
   is not a record line, or would change under the scrub fails closed: nothing
   is sent, and the port records `record.send {result:"refused-local"}`. Then
@@ -285,6 +285,20 @@ Mutate the rejoin marker once and watch a test fail.
     `"headroom":"***"`, is such a line, because the contract's scalars class
     admits no mask. No writer produces one today. Recheck if the scrub ever
     masks a scalar.
+  - **The pairing's lines stay in** (the controller's ruling on N38,
+    2026-10-12). The web files a line with no sid only inside a pairing
+    window, which opens at the pairing's `pair` line (A2). About ten minutes
+    on air fill the ring, so on 2026-10-12 the `pair` line had gone and the
+    web filed none of the 1,000 lines it was sent (R-MA1P: kept 0). So the
+    ring pins, outside its capacity, the latest `pair` line until its window
+    ends (`unpaired`, `ended`, `pair-refused` or `reset`, or the next `pair`)
+    and, while it stands, the latest `broadcast-start` whose sid A1 can judge.
+    The body is the pinned lines the ring has let go of, first, then its
+    newest lines, 1,000 in all; a pinned line still in the ring goes once, in
+    its place. Every line is one the ring was given, as written; the app
+    writes none for the upload. Share record and Diagnostics show the ring
+    alone (`recordPins.ts`). Whether Send should read native's on-disk record
+    instead is the owner's open question, for the D3 results.
 - **Record lines.** `record.send {result, status, bytes}`, with no reference
   and no token in the line.
 - **Contract.** The web side owns the endpoint (§11). Its contract,

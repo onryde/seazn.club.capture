@@ -84,6 +84,42 @@ describe('the record send flight (R3)', () => {
 // Fix round 1 of Batch 11 (the controller's ruling 8): a failure another try cannot change (401, 404, 413, a contract
 // mismatch) says so, and why; one it can (the network, a timeout, 429, a 5xx) keeps "try again". The classes are the
 // ruling's, typed here.
+// N38 (the controller's ruling, 2026-10-12): the flight hands the port the ring's pinned lines first, then its newest,
+// 1,000 in all (the contract's limit), never the ring alone. recordPins.test.ts holds the rule; this, the wiring.
+describe('what the flight hands the port (N38)', () => {
+  /** Native's lines, made up (AGENTS §13): the tag and the sid belong to nothing. */
+  const PAIR =
+    '{"at":"2026-10-12T21:00:00.000Z","kind":"pair","claim":"new","slot":0,"tokenTag":"c980ff38","stopped":false}';
+  const START =
+    '{"at":"2026-10-12T21:00:01.000Z","kind":"broadcast-start","sid":"5f2c8a1e-3b4d-4e6f-8a9b-0c1d2e3f4a5b","cause":"organiser"}';
+  const beats = Array.from(
+    { length: 3_000 },
+    (_, n) => `{"at":"2026-10-12T21:10:00.000Z","kind":"beats","sent":${n}}`,
+  );
+
+  it('the pair and its broadcast-start first, then the newest 998, and the same again on a second send', async () => {
+    const r = rig();
+    for (const line of [PAIR, START, ...beats]) r.record.appendLine(line);
+    r.flight.send();
+    await settle();
+    r.flight.send();
+    await settle();
+    expect(r.upload.sent.map((send) => send.lines)).toEqual([
+      [PAIR, START, ...beats.slice(-998)],
+      [PAIR, START, ...beats.slice(-998)],
+    ]);
+  });
+
+  it('after unpaired, the newest 1,000 alone', async () => {
+    const r = rig();
+    const unpaired = '{"at":"2026-10-12T21:05:00.000Z","kind":"unpaired","reason":"operator"}';
+    for (const line of [PAIR, START, unpaired, ...beats]) r.record.appendLine(line);
+    r.flight.send();
+    await settle();
+    expect(r.upload.sent[0]?.lines).toEqual(beats.slice(-1_000));
+  });
+});
+
 describe('a failure says whether another try can help', () => {
   it.each([
     ['failed', null, 'retry'],

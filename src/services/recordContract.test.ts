@@ -13,13 +13,20 @@ import {
   RECORD_MAX_LINES,
   RECORD_PATH,
   RECORD_REF,
+  RECORD_SID,
+  RECORD_WINDOW_ENDS,
+  RECORD_WINDOW_OPENS,
 } from '@/services/recordContract';
 
 /**
  * recordContract.ts against the vendored contract (pinned file for file by contractPins.test.ts): each value there is
  * read here from the file, never typed, so a re-vendor that moves one reds here first.
  */
-type Property = { readonly pattern?: string; readonly enum?: readonly string[] };
+type Property = {
+  readonly pattern?: string;
+  readonly enum?: readonly string[];
+  readonly anyOf?: readonly Property[];
+};
 type Schema = {
   readonly $id: string;
   readonly title: string;
@@ -178,6 +185,15 @@ describe('the record contract’s pairing windows (A2, Q7)', () => {
     expect(closing().filter((kind) => !kinds.includes(kind))).toEqual([]);
   });
 
+  // N38 (the controller's ruling, 2026-10-12): Send record pins the line that opens a window until one of these ends
+  // it, so the app's copies are the description's, read as the web's own test reads them.
+  it('holds the description’s window ends, and the kind that opens one', () => {
+    expect([...RECORD_WINDOW_ENDS].sort()).toEqual(closing());
+    const opens = /a window opens at a `([a-z-]+)` line/.exec(contract.description)?.[1];
+    expect(opens).toBe(RECORD_WINDOW_OPENS);
+    expect(Object.keys(list.kinds)).toContain(RECORD_WINDOW_OPENS);
+  });
+
   // The two lines native writes on a fatal end, before air and on air, character for character as EngineTest.kt pins
   // them (its I1 tests): the web accepts each whole, so the window closes there.
   it.each([
@@ -186,6 +202,32 @@ describe('the record contract’s pairing windows (A2, Q7)', () => {
   ])('admits %s whole', (written) => {
     expect(fitLine(written)).toBe(written);
     expect(admitsLine(JSON.parse(written))).toBe(true);
+  });
+});
+
+/**
+ * A1: a line whose sid is the server's uuid is judged by its session; a masked or null sid is not (the contract's
+ * `sid`). N38 pins a `broadcast-start` only when its sid is one A1 can judge.
+ */
+describe('the record contract’s sid (A1)', () => {
+  it('is the contract’s uuid pattern, character for character', () => {
+    const [uuid, masked, none] = contract.properties.sid?.anyOf ?? [];
+    expect(RECORD_SID.source).toBe(uuid?.pattern);
+    expect([masked, none]).toEqual([{ type: 'string', const: '***' }, { type: 'null' }]);
+  });
+
+  it.each([
+    ['5f2c8a1e-3b4d-4e6f-8a9b-0c1d2e3f4a5b', true],
+    ['5F2C8A1E-3B4D-4E6F-8A9B-0C1D2E3F4A5B', true],
+    ['***', false],
+    ['sess_42', false],
+    ['5f2c8a1e-3b4d-4e6f-8a9b-0c1d2e3f4a5', false],
+    ['5f2c8a1e-3b4d-9e6f-8a9b-0c1d2e3f4a5b', false],
+  ])('reads %s as %s, as the contract does', (sid, judged) => {
+    expect(RECORD_SID.test(sid)).toBe(judged);
+    expect(admitsLine({ at: '2026-10-11T21:19:03.123Z', kind: 'live', sid })).toBe(
+      judged || sid === '***',
+    );
   });
 });
 
