@@ -381,6 +381,13 @@ class SessionMachineLifecycleTest {
   private val sevenSecondHolds = Configs.descriptor(holdWindowSeconds = mapOf(Transport.SRT to 7, Transport.RTMPS to 7))
 
   /**
+   * N37 (the owner's ruling, 2026-10-13): the expiry stops the publish, writes A17's record and sends the stopped sid
+   * on a beat, as a Stop never live does ([HoldExpiryTest]). A beat already in flight goes first: then no beat yet.
+   */
+  private val expiry = listOf(Command.StopBroadcast::class, Command.WriteStopped::class, Command.PostHeartbeat::class)
+  private val expiryBehindABeat = listOf(Command.StopBroadcast::class, Command.WriteStopped::class)
+
+  /**
    * 7 s holds. Live, dropped at 1 s and connected again at 3 s with no frame since: at 8 s the hold
    * from the drop runs out as the new attempt's first-frame grace does. Time moved to 8 s with no input.
    * The Go live and the code's answer set the server's [pollSeconds]: the rig's live, with that cadence.
@@ -421,7 +428,7 @@ class SessionMachineLifecycleTest {
       assertIs<SnapshotState.Reconnecting>(rig.state, "8 s, projected with no input")
       val commands = rig.send(input)
       // Back in Paired and ready, the operator's hold is a fresh Go live (Task 7): it posts start, and connects nothing.
-      val expected = if (input == Input.Start) listOf(Command.StopBroadcast::class, Command.PostStart::class) else listOf(Command.StopBroadcast::class)
+      val expected = if (input == Input.Start) expiry + Command.PostStart::class else expiry
       assertEquals(expected, commands.filterNot { it is Command.Record }.map { it::class }, "$input")
       // Read from the end's line: a start clears lastEnd (amendment, "until the next start").
       assertIs<Phase.Paired>(rig.phase, "$input")
@@ -478,7 +485,7 @@ class SessionMachineLifecycleTest {
     // out and before the 8.5 s tick, ends the session. Nothing else would have: the first-frame grace
     // runs to 8.5 s. The hold is the published limit, and the tick would end it the same way.
     val (rig, commands) = pictureReturnsAt(8_200)
-    assertEquals(listOf(Command.StopBroadcast), commands.filterNot { it is Command.Record })
+    assertEquals(expiry, commands.filterNot { it is Command.Record }.map { it::class })
     assertEquals(LastEnd.HOLD_WINDOW_EXPIRED, assertIs<Phase.Paired>(rig.phase).pairing.lastEnd)
     assertTrue(rig.records("resumed").isEmpty())
   }
@@ -505,7 +512,8 @@ class SessionMachineLifecycleTest {
       val rig = holdRunsOutOnAir(pollSeconds = 5)
       val input = answer(rig)
       val commands = rig.send(input)
-      assertEquals(listOf(Command.StopBroadcast), commands.filterNot { it is Command.Record }, "$input")
+      // The beat in flight since 5 s goes first; the stopped sid rides the next one.
+      assertEquals(expiryBehindABeat, commands.filterNot { it is Command.Record }.map { it::class }, "$input")
       assertEquals(LastEnd.HOLD_WINDOW_EXPIRED, assertIs<Phase.Paired>(rig.phase).pairing.lastEnd, "$input")
     }
   }
@@ -937,7 +945,7 @@ class SessionMachineLifecycleTest {
       assertEquals(2, rig.attempt, name)
       rig.at(8_200)
       val commands = rig.send(Input.PlatformFailed(2, "encoder cannot start"))
-      assertEquals(listOf(Command.StopBroadcast), commands.filterNot { it is Command.Record }, name)
+      assertEquals(expiry, commands.filterNot { it is Command.Record }.map { it::class }, name)
       assertEquals(LastEnd.HOLD_WINDOW_EXPIRED, assertIs<Phase.Paired>(rig.phase).pairing.lastEnd, name)
       assertEquals(listOf("hold-expired", "broadcast-ended", "platform-failed"), commands.filterIsInstance<Command.Record>().map { it.entry.kind }, name)
     }

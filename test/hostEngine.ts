@@ -89,6 +89,10 @@ class HostModule implements CaptureEngineNative {
   takePhoto(): Promise<unknown> {
     return Promise.reject(new Error('the host has no camera'));
   }
+  /** The JVM host has no battery: its mode is unknown, as a phone that cannot read it says (R5). */
+  powerMode(): unknown {
+    return null;
+  }
   scoringLink(): Promise<unknown> {
     const call = this.nextCall++;
     return new Promise((resolve) => {

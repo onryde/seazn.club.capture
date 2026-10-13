@@ -47,6 +47,7 @@ export type FakeScene =
   | 'holding'
   | 'stalled'
   | 'restarting'
+  | 'rejoining'
   | 'not-delivered'
   | 'camera-taken'
   | 'camera-reopened'
@@ -72,6 +73,7 @@ export const FAKE_SCENES: readonly FakeScene[] = [
   'holding',
   'stalled',
   'restarting',
+  'rejoining',
   'not-delivered',
   'camera-taken',
   'camera-reopened',
@@ -103,6 +105,11 @@ export type FakeCaptureEngine = CaptureEnginePort & {
   setPermissions(answer: PermissionAnswer): void;
   /** The waiting fields this pairing, and every later one, reports. */
   setPairing(pairing: Partial<PairingInfo>): void;
+  /**
+   * R6 of the D3 findings design: the notification's Forget, as native hears it (`Pairings.forget`): it acts only
+   * while paired and waiting, leaving for Idle naming the code and `forgotten`; any other state ignores it.
+   */
+  notificationForget(): void;
   /**
    * The kind of each intent received, oldest first, at most INTENT_LOG_CAP.
    * Only the kind (M5): a `pair` carries the code's token. Tests that need
@@ -343,6 +350,19 @@ function sceneOf(name: FakeScene, now: number): Scene {
       return { state: reconnecting('video-stalled', since), telemetry: reconnectingTelemetry(now) };
     case 'restarting':
       return { state: reconnecting('not-delivered', since), telemetry: reconnectingTelemetry(now) };
+    case 'rejoining':
+      // N29: a rejoin after the hold ran out. No hold to count down (0 of 0), and the clock carries on from the
+      // broadcast's first live time (P2), as native's Projection.rejoining sends it.
+      return {
+        state: {
+          kind: 'reconnecting',
+          cause: 'hold-expired',
+          holdRemainingSeconds: 0,
+          holdWindowSeconds: 0,
+          sinceEpochMs: since,
+        },
+        telemetry: reconnectingTelemetry(now),
+      };
     case 'not-delivered':
       return {
         state: degraded('srt', 'not-delivered', since),
@@ -740,6 +760,9 @@ export function createFakeCaptureEngine(now: () => number = Date.now): FakeCaptu
     setPairing: (change) => {
       waiting = { ...waiting, ...change };
       if (snapshot.pairing !== null) publish({ pairing: { ...snapshot.pairing, ...change } });
+    },
+    notificationForget: () => {
+      if (snapshot.state.kind === 'paired') unpaired('forgotten');
     },
     patch: (telemetry) => publish({ telemetry: { ...snapshot.telemetry, ...telemetry } }),
     setCamera: (camera) => publish({ camera }),

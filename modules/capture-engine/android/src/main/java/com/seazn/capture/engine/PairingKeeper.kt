@@ -76,15 +76,24 @@ class PairingKeeper(
     main.post { finish() }
   }
 
-  /** The service could not go foreground (C3's catch): the pairing carries on, and says to keep the app open. */
+  /**
+   * The service could not go foreground (C3's catch): the pairing carries on, and says to keep the app open. Main
+   * looper. Batch 4 review M2: a notification posted before the refusal (the paired snapshot's post can run before
+   * the service's own refusal) is cancelled, so no stale one, and no dead Forget, stays on the shade.
+   */
   fun fgsRefused(e: Throwable) {
     survivesBackground = false
     foreground = false
     line(RecordEntry("fgs-refused", listOf("error" to e.javaClass.simpleName)))
+    recordOnly("cancel") { notes.cancel() }
   }
 
-  /** Main looper. A throw here would end the process, so it costs a line instead (N1). */
-  fun notify(wire: Map<String, Any?>) = recordOnly("notify") { notes.update(wire) }
+  /**
+   * Main looper. A throw here would end the process, so it costs a line instead (N1). Posted only while held
+   * (`AndroidPlatform.snapshot`), and checked again here (M2): the paired snapshot's post is queued before the
+   * Hold's service start can be refused, and must post nothing after it.
+   */
+  fun notify(wire: Map<String, Any?>) = recordOnly("notify") { if (survivesBackground) notes.update(wire) }
 
   /**
    * Review C7 I-3: the service went foreground. True while the pairing still holds it; false when a Release
@@ -204,20 +213,36 @@ class CaptureNotification(private val context: Context, private val language: ()
   /**
    * T18 m2: the line runs to about 60 characters (fr, STARTING with its not-ready reason), past one
    * collapsed row, so the expanded notification shows it whole.
+   *
+   * R6 of the D3 findings design: while the kind last shown is `paired`, one action, Forget, in the notification's
+   * language. [update] posts again at once on a change of kind, so the action goes the moment the pairing leaves
+   * waiting. The kind last shown lives for the process and is never reset: the service's first post for a pairing
+   * carries the kind the previous pairing showed last (none in a fresh process, so no action until the first
+   * `paired` update; `paired` after a Forget, which is right, as the service starts at Paired).
    */
   fun current(): Notification {
     channel()
     val open = context.packageManager.getLaunchIntentForPackage(context.packageName)
     val tap = PendingIntent.getActivity(context, 0, open, PendingIntent.FLAG_IMMUTABLE)
-    return NotificationCompat.Builder(context, CHANNEL_ID)
-      .setSmallIcon(R.drawable.slate)
-      .setContentText(text)
-      .setStyle(NotificationCompat.BigTextStyle().bigText(text))
-      .setOngoing(true)
-      .setOnlyAlertOnce(true)
-      .setContentIntent(tap)
-      .build()
+    val builder =
+      NotificationCompat.Builder(context, CHANNEL_ID)
+        .setSmallIcon(R.drawable.slate)
+        .setContentText(text)
+        .setStyle(NotificationCompat.BigTextStyle().bigText(text))
+        .setOngoing(true)
+        .setOnlyAlertOnce(true)
+        .setContentIntent(tap)
+    if (NotificationText.forgetShown(shownKind as? String)) {
+      val forget = Intent(context, ForgetReceiver::class.java).setAction(ForgetReceiver.ACTION)
+      val tapForget = PendingIntent.getBroadcast(context, FORGET_REQUEST, forget, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
+      val words = NotificationText.WORDS[lang] ?: NotificationText.WORDS.getValue("en")
+      builder.addAction(0, words.getValue(FORGET_KEY), tapForget)
+    }
+    return builder.build()
   }
+
+  /** Batch 4 review M2: the notification a refused service leaves behind, removed. Main looper. */
+  fun cancel() = NotificationManagerCompat.from(context).cancel(ID)
 
   /** Review C7 I-3: what `startForeground` takes when [current] could not be built: no text and no tap. */
   fun plain(): Notification = NotificationCompat.Builder(context, CHANNEL_ID).setSmallIcon(R.drawable.slate).setOngoing(true).build()
@@ -236,5 +261,9 @@ class CaptureNotification(private val context: Context, private val language: ()
     const val ID = 7_301
     const val CHANNEL_ID = "capture"
     private const val RATE_MS = 5_000L
+
+    /** The Forget action's PendingIntent: its own request code, apart from the content tap's 0. */
+    private const val FORGET_REQUEST = 1
+    private const val FORGET_KEY = "stream.notification.forget"
   }
 }

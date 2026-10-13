@@ -9,6 +9,7 @@ import com.seazn.capture.engine.adapter.PlatformFacts
 import com.seazn.capture.engine.capture.Capture
 import com.seazn.capture.engine.core.Command
 import com.seazn.capture.engine.core.PairRequest
+import com.seazn.capture.engine.core.RecordEntry
 import com.seazn.capture.engine.http.HttpPort
 import com.seazn.capture.engine.watch.DeviceSampler
 import com.seazn.capture.engine.watch.PoseWatch
@@ -22,6 +23,8 @@ class AndroidPlatform(
   private val device: DeviceSampler,
   private val keeper: PairingKeeper,
   private val emit: (String, Map<String, Any?>) -> Unit,
+  /** N27: the app's battery mode (`PowerMode`), or null when it cannot be read. */
+  private val power: () -> String?,
 ) : Platform {
   private val main = Handler(Looper.getMainLooper())
 
@@ -35,6 +38,8 @@ class AndroidPlatform(
       Command.AskPermissions -> keeper.ask()
       Command.Hold -> {
         keeper.hold()
+        // N27: which battery mode the pairing runs in, so a locked failure's record says.
+        EngineHost.line(RecordEntry("power", listOf("mode" to power())))
         device.paired()
         pose.start()
       }

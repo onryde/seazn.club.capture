@@ -53,9 +53,18 @@ Dashboard. Only one runs at a time, and each is unlocked by its own QR code.
 There is no login anywhere. See
 [the decision record](docs/specs/2026-09-29-multi-mode-app-decisions.md).
 
-Home is the only screen outside a mode: three tiles, a Continue card when a
-mode can be resumed, and the language picker. Scanning is the phone's own
-code scanner, not a screen of ours.
+Home is the only screen outside a mode but one: three tiles, a Continue card
+when a mode can be resumed, and the language picker. The one other is Stream
+Settings opened from the gear in the top-right corner of Home's Live Stream
+tile, without the Diagnostics card: R2 of the D3 findings design (owner,
+2026-10-11; `docs/specs/2026-10-11-s1-d3-findings-design.md` section 1). The
+owner made it a gear on 2026-10-12 ("Instead of text, can we have icon in right
+top corner?"); a screen reader names it "Stream settings". It holds the two
+phone settings, the battery row and the record row, reachable before a scan.
+The gear shows only while no card stands above the tiles (the D3 fixes plan's
+ruling P6, the controller's:
+`docs/superpowers/plans/2026-10-11-s1-d3-fixes.md`). Scanning is the phone's
+own code scanner, not a screen of ours.
 
 **Live Stream** keeps the four-screen shape of its own: **Scan** → **Paired** →
 **Live** (HUD) → **Settings**, with Diagnostics as a card inside Settings
@@ -65,8 +74,13 @@ once and serves every Go live of the match (A1, A5). S1 designs those screens.
 and S1 redraws this list.)
 
 No accounts, no login, no fixture browsing, no chat, no replays, no gallery,
-no upload, no in-app payments. Push alerts go only to phones holding a
-Dashboard code (ruling 11).
+no in-app payments, and no upload but one: the session record, sent to Seazn
+on the operator's tap (R3 of the D3 findings design; owner, 2026-10-11), not
+by itself (an automatic upload is out of scope). It posts to the web's record
+contract (vendored at web `a6cc1f038`), behind `FEATURES.recordSend`, which is
+on: asked whether to turn Send record on with the endpoint on staging, the
+owner chose "On now (Recommended)" in the session on 2026-10-12. Push alerts go
+only to phones holding a Dashboard code (ruling 11).
 
 Adding a fourth mode, or a screen outside a mode, is a product decision, not
 an implementation detail. Raise it; don't build it.
@@ -117,13 +131,15 @@ page in the main repo, not here. Do not grow the app to accommodate them.
 app/               # Expo Router routes. Thin: they import ui, hooks and packages only.
   _layout.tsx      # the composition root: ports, language, reopen gate, orientation gate
   index.tsx        # Home
+  stream-settings.tsx  # Stream Settings from Home, no Diagnostics (R2 of the D3 findings design)
   stream/          # Live Stream (landscape); S2/S4 add scoring/ and dashboard/
 src/
   domain/          # pure TS. No react, no react-native, no ui, no modules.
     mode/          # Mode, code recognition, saved codes, reopen and leave rules
     orientation/   # how the phone is held, from accelerometer samples
     session/       # CaptureSession model, event projection, state types
-    credentials/   # QR v2 and the waiting fields, parsed (anti-corruption); publish credentials are native's
+    credentials/   # QR v2 and the waiting fields, parsed (anti-corruption); publish credentials are native's;
+                   # the record upload's credential, kept 24 h after its code goes (R4)
     policy/        # fallback strategy, degradation ladder
   i18n/            # en/es/fr/nl dictionaries, t()/tp(), formatTime(). Pure.
   ui/
@@ -157,8 +173,9 @@ contracts/         # the web's capture contracts, vendored and pinned
   rule and cause circular imports.
 - No `types/` folder — types live with the behaviour they describe.
 - No `store/` — see §2. Session state is native-owned. What the app keeps
-  itself (saved codes, the active mode, the language pick) sits behind the
-  key-value store port in `services/`.
+  itself (saved codes, the active mode, the language pick and, while
+  `FEATURES.recordSend` is on, the upload credential, R4 of the D3 findings
+  design) sits behind the key-value store port in `services/`.
 - `utils/` is where dead code hides. Put the function where it belongs.
 - Absolute imports via tsconfig paths (`@/domain`, `@/ui`).
 
@@ -172,11 +189,25 @@ contracts/         # the web's capture contracts, vendored and pinned
   in hand when offered, from the moment a broadcast starts (at Arming), kept
   for its life; SRT may be absent as a safety net, and then RTMPS stands
   alone (A18). They never reach TypeScript (A1, A5).
+- The upload credential is the one copy of a code's token that TypeScript
+  keeps after its code goes (R4 of the D3 findings design; owner, 2026-10-11):
+  the saved stream code's URL and token, copied when the code is saved, kept
+  24 h after the app learns the code is gone, for uploads only (the D3 fixes
+  plan's ruling P12, the controller's). It authorises Send record to Seazn
+  (R3) and nothing else: never a pair, a beat or anything native does. It is
+  stored only while `FEATURES.recordSend` is on, and a leftover is deleted
+  while it is off (the D3 fixes plan's ruling P10, the controller's). Its
+  token goes only to the code's URL on the build's Seazn host, the URL native
+  holds the pairing to, and is never in a record line, a snapshot, a log line
+  or an error; the upload refuses a record that names it
+  (`uploadCredential.ts`, `uploadCredentialStore.ts`, `recordUploadPort.ts`).
 - `any` is banned by lint. The escape hatch is `unknown` plus a parse function
   at the boundary — which is what the QR anti-corruption layer already is.
 - The wire shape never reaches the domain. Each wire shape has one parser, in
   one language: the QR and the waiting fields in TypeScript, the session shape
-  and the server's answers in Kotlin. A v2 of any shape touches one file.
+  and the server's answers in Kotlin. The record upload's body and answer are
+  TypeScript's, since the engine never sees them (`recordContract.ts`). A v2 of
+  any shape touches one file.
 - Contracts are vendored. A contract changes only through `pnpm contracts:vendor`
   and the pin test (R7, plan D spec §3.1); no CI job fetches the web repo.
 
@@ -279,15 +310,18 @@ Three rules travel with these tokens:
   height changes: a status line, a caption or the round line coming and going
   never moves it. Before the label is measured it is sized against the worst
   case, 154 dp: 66 and C2's four lines at 22 (below). The owner's phone
-  (804 × 332, the Android status bar showing) gets 394.7 × 222 for a label of
-  one line a side (44) by the arithmetic, and 316.4 × 178 at the worst case
-  (D2 §4.4; `cameraBox.test.ts`, `viewfinderFit.test.ts`). The size as laid out
-  on the phone is D3's to read: the 392.9 × 221 measured before C2 was the old
-  label's. The controls half's
+  sideways with 3-button navigation lays the app out 728 × 328 behind
+  ShellFrame's insets, not the 804 × 332 the rulings of 2026-10-08 were made on
+  (N35; the controller's update, 2026-10-12, from D3's shots). Its 418 dp
+  camera half gets 387.6 × 218 for a label of one line a side (44), limited by
+  its height (D3 read 387.3 × 218), and 309.3 × 174 at the worst case; 804 × 332
+  gets 394.7 × 222 and 316.4 × 178 (D2 §4.4; `cameraBox.test.ts`,
+  `viewfinderFit.test.ts`). The controls half's
   column has its own vertical padding and gap (`controlsPadV`,
   `controlsColumnGap`: 8 and 8; its horizontal padding stays the board's 16, so
-  it is still 310 wide), so every control is on screen at 804 × 332 in every
-  state and language, the worst before-air state with 8 dp to spare. Nothing is drawn over the
+  it is still 310 wide), so every control is on screen at 804 × 332 and at
+  728 × 328 in every state and language, the worst before-air state with 8 dp
+  to spare at 332 and 4 at 328 (N35). Nothing is drawn over the
   camera box but, on the operator's tap, the Remote scoring panel and, when it
   is built in, the _What viewers see_ video, one at a time (D2 §4.3; the view
   is built and hidden, below). The panel (design follow-up
@@ -320,7 +354,8 @@ Three rules travel with these tokens:
   second number (`WORST_LABEL` in `cameraBox.ts`; the controller's ruling,
   2026-10-09). The round line sits above the match label in the status strip,
   in lime caps (D2 §4.4's _rec_, R11), and is always shown when the pairing
-  has one (owner, 2026-10-08, option B), the owner's 804 × 332 included.
+  has one (owner, 2026-10-08, option B), the owner's phone included (728 × 328
+  as laid out, N35).
   Its 22 dp (the line and a gap) are in the strip's reserve, 66 dp and the
   label, whether there is a round line to show or not, so it is not measured
   and never moves the picture, and the picture never gives way for it. A match
@@ -398,6 +433,27 @@ Three rules travel with these tokens:
   (`app/stream/`), so on air it is only *leaving the mode* that is blocked:
   Home is hidden and Back says how to stop. A broadcast started remotely moves
   the app to Live Stream from wherever it is (A2).
+- **Stream Settings from Home** (R2 of the D3 findings design; owner,
+  2026-10-11) is the same screen with `from="home"`: no Diagnostics card
+  (nothing is paired), no LIVE plate, no on-air rules, and Back returns to
+  Home. Both variants carry the battery row (Android only; R5 of the D3
+  findings design; owner, 2026-10-11) and the record row: Share record,
+  outside the Diagnostics card so a phone sent Home by Replaced can still hand
+  its record over (N33), and Send record to Seazn when `FEATURES.recordSend`
+  is on, as it is (the owner's "On now (Recommended)", 2026-10-12, §1). From
+  Arming on, Send record is disabled with "Send it after the broadcast", so an
+  upload of up to 1 MB never starts on the broadcast's uplink; one started just
+  before Arming may finish on air, within the upload's 15 s bound. Share
+  record stays enabled (the controller's ruling, 2026-10-12). The battery row
+  reads the app's battery mode in Android's own words, _Unrestricted_,
+  _Optimized_ or _Restricted_, and its _App settings_ button opens this app's
+  App info page
+  (`ACTION_APPLICATION_DETAILS_SETTINGS`), where Battery is one tap away; a
+  path line under it says "Battery → Unrestricted" (R12 of the D3 findings
+  design; the controller's, 2026-10-12). It never prompts or nags. Its button
+  is the row's on-air protection: from Arming on it is disabled with "Change it
+  after the broadcast", because App info is one tap from Force stop (R13 of
+  the D3 findings design; the controller's, 2026-10-12).
 - The audio meter is permanent, not in Settings. Nothing downstream
   normalises — a quiet mic reaches YouTube quiet.
 - One persistent status line that always says something true. Never an
@@ -435,7 +491,9 @@ Three rules travel with these tokens:
   launch, the engine instance with it) and the language, which changes only
   when the operator picks one. The theme may join them; today it is plain
   imported tokens. Telemetry never goes in context.
-- No React Query. Four endpoints behind a port with plain `fetch`.
+- No React Query. The endpoints JS calls (the code check, and the record upload
+  behind `RecordUploadPort`: R3 of the D3 findings design; owner, 2026-10-11)
+  sit behind ports with plain `fetch`; the rest are native's.
 - `React.memo` and no anonymous functions in render, for HUD components
   specifically. This is the rare app where that is load-bearing.
 - Animations on Reanimated worklets — UI thread, never JS.
@@ -476,9 +534,34 @@ thermal member. Only transport trouble degrades a session.
   matching `FOREGROUND_SERVICE_*` permissions, started from the foreground
   **at pairing**, after the camera and microphone permissions, and held with a
   partial wake lock for the whole pairing, so beats and a remote Go live work
-  with the phone locked (A5). The persistent notification carries status:
+  with the phone locked (A5), except on OxygenOS unless the battery is
+  Unrestricted (next bullet). The persistent notification carries status:
   `Paired · waiting for Go live`, then `LIVE · 3000k · 47 min`.
-- While paired and waiting, the screen is kept on and dimmed after 30 s idle;
+- **Locked-phone path on Android** (N27, N28): on OxygenOS (seen on the
+  NE2211, Android 16), unless the app's battery is _Unrestricted_, a locked
+  phone stops beating within one to a few minutes of locking (D3 Task 2b, and
+  2026-10-11 22:06–22:09Z); not a clean threshold. The foreground service and
+  the wake lock do not prevent it. The operator may choose _Unrestricted_ from
+  the battery row in Stream Settings (R5 of the D3 findings design; owner,
+  2026-10-11); the app never asks for `REQUEST_IGNORE_BATTERY_OPTIMIZATIONS`.
+  A start while the Live Stream view is not showing must still deliver video
+  (N28). Keep-awake with the idle dim stays the default path for a remote Go
+  live (Live Stream only: on Home it is not kept on; N36, open, owner
+  2026-10-13).
+- **Forget on the notification** (R6 of the D3 findings design; owner,
+  2026-10-11): while paired and waiting, the notification carries one action,
+  Forget, with no confirmation (R7 of the D3 findings design; the
+  controller's, 2026-10-11). It is native's own input (`Input.Forget`): it
+  unpairs, releases the service and the wake lock, and writes a durable
+  marker, so a process death before JS hears it still reads
+  `unpaired.reason: forgotten` at the next start. JS reconciles from the
+  snapshot. Any other phase removes the action; a tap that lands late is
+  ignored and recorded. While the operator's own Go live is in flight the
+  phone is still paired, so the action still shows, and a tap there is
+  ignored and recorded (`intent-ignored {intent: forget, phase: paired}`; M1
+  of the Batch 4 review, the controller's ruling, 2026-10-12).
+- While paired and waiting, the screen is kept on and dimmed after 30 s idle
+  (Live Stream only: on Home it is not kept on; N36, open, owner 2026-10-13);
   this is the default path for a remote Go live. The foreground service and wake
   lock are the Android fallback when the phone is locked anyway (R4, D2 §4.5).
   On Android the dim is the window's own brightness, never the system
@@ -506,7 +589,8 @@ thermal member. Only transport trouble degrades a session.
   The rule is `shouldDim` (`src/domain/session/idleDim.ts`); `useIdleDim` and
   `useIdleClock` own the timer, and `ScreenPort` (`createNativeScreen`, over
   `expo-brightness`) sets the brightness. Keep-awake is unchanged: on for
-  every state but idle and ended (`useKeepAwake`).
+  every state but idle and ended (`useKeepAwake`; Live Stream only: on Home
+  it is not kept on; N36, open, owner 2026-10-13).
 - **iOS:** the camera stops in background — no background mode grants it. So
   disable the idle timer, warn the operator at start, and treat the
   slate-and-resume choreography as a **normal operating mode**, not an edge
@@ -576,8 +660,9 @@ thermal member. Only transport trouble degrades a session.
   so that pin is the only one. Default isolated linker — see
   `pnpm-workspace.yaml` for what was verified and the rule for hoisting.
 - TypeScript `strict`.
-- Expo Router for navigation; `expo-secure-store` for saved codes and the
-  language pick (Android backup excluded); `expo-sensors` and
+- Expo Router for navigation; `expo-secure-store` for saved codes, the
+  language pick and, while `FEATURES.recordSend` is on, the upload credential
+  (R4; Android backup excluded); `expo-sensors` and
   `expo-screen-orientation` for the orientation gate; `expo-brightness` for
   the idle dim (on Android the window's brightness only: its `WRITE_SETTINGS`
   permission is blocked in `app.json`); `expo-localization` for

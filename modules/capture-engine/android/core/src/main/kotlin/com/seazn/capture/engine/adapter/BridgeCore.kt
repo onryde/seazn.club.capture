@@ -8,6 +8,7 @@ import com.seazn.capture.engine.core.Engine
 import com.seazn.capture.engine.core.Environment
 import com.seazn.capture.engine.core.Input
 import com.seazn.capture.engine.core.PairRequest
+import com.seazn.capture.engine.core.PairingName
 import com.seazn.capture.engine.core.Phase
 import com.seazn.capture.engine.core.Pose
 import com.seazn.capture.engine.core.Projection
@@ -17,6 +18,8 @@ import com.seazn.capture.engine.core.Scheduler
 import com.seazn.capture.engine.core.SessionRecord
 import com.seazn.capture.engine.core.Snapshot
 import com.seazn.capture.engine.core.SnapshotSink
+import com.seazn.capture.engine.core.UnpairReason
+import com.seazn.capture.engine.core.Unpaired
 import com.seazn.capture.engine.core.attemptInHand
 import com.seazn.capture.engine.core.holdsBroadcast
 import com.seazn.capture.engine.core.holdsService
@@ -50,8 +53,21 @@ class BridgeCore(
   private val gaps = FrameGaps()
   private val errors = ErrorLines()
   private val readinessLines = CappedLines("readiness")
-  private val engine: Engine = Engine(clock, guarded, sticky, SnapshotSink(::published), record)
+
+  /** What the marker's read had to say, held until the engine exists to take the lines. */
+  private val markerLines = mutableListOf<RecordEntry>()
+
+  /** R6 of the D3 findings design: a Forget the last process wrote and JS may not have heard. */
+  private val forgottenAtStart: PairingName? = PairingStore.readForgotten(store) { markerLines += it }
+
+  /** R6: the engine starts Idle naming that Forget, so JS drops the saved code at a cold start too. */
+  private val engine: Engine =
+    Engine(clock, guarded, sticky, SnapshotSink(::published), record, initial = Phase.Idle(unpaired = forgottenAtStart?.let { Unpaired(UnpairReason.FORGOTTEN, it) }))
   private val pairings = PairingStore(store, newId) { engine.log(it) }
+
+  init {
+    markerLines.forEach(engine::log)
+  }
   private val phone by lazy { pairings.phone(appVersion, model) }
 
   /** The pairing the last notice saw, by identity (P5): a re-scan of the same code is a new pairing. */
@@ -94,8 +110,8 @@ class BridgeCore(
   /** The last published snapshot's language (P3), for the glue's notification. */
   @Volatile private var language: String? = null
 
-  /** Review Focus 2: an answer before the first tick, so a restarted JS never reads nothing. */
-  @Volatile private var current: Map<String, Any?> = wire(Projection.snapshot(Phase.Idle(), clock.now()), PlatformFacts())
+  /** Review Focus 2: an answer before the first tick, so a restarted JS never reads nothing; R6: a Forget's marker included. */
+  @Volatile private var current: Map<String, Any?> = wire(Projection.snapshot(engine.phase, clock.now()), PlatformFacts())
 
   /** Carry 15: the tick starts on the scheduler thread. */
   fun start() {
@@ -114,6 +130,8 @@ class BridgeCore(
     guarded.schedule(0) {
       try {
         val input = IntentMapping.input(intent, phone) { name -> pairings.stopped(name, clock.wallMs()) }
+        // R6: a pair is the start of a new pairing, so a Forget's marker has done its work.
+        if (input is Input.Pair) stored("delete", PairingStore.FORGOTTEN) { pairings.clearForgotten() }
         if (input != null) report(input) else engine.log(RecordEntry("intent-unreadable", listOf("intent" to intent["kind"] as? String)))
       } finally {
         WireValues.int(intent["seq"])?.let { seq -> guarded.schedule(0) { platform.acked(seq) } }
@@ -186,6 +204,12 @@ class BridgeCore(
     engine.log(RecordEntry("scoring-link", listOf("result" to read.word, "status" to answered?.status)))
     tap.hand(ScoringLinks.wire(read))
   }
+
+  /**
+   * R6, R7 of the D3 findings design: the notification's Forget, from the glue's receiver, on any thread. The machine
+   * decides whether it acts (`Pairings.forget`: only while paired and waiting).
+   */
+  fun forget() = report(Input.Forget)
 
   /** From any thread: a failure the glue caught on its own scope (CD9). */
   fun failure(t: Throwable) {
@@ -392,8 +416,9 @@ class BridgeCore(
       is Command.FetchCode ->
         ask({ HttpRequests.code(command) }) { report(HttpAnswers.code(command.requestId, it, command.environment)) }
       is Command.PostStart -> ask({ HttpRequests.start(command) }) { report(HttpAnswers.start(command.requestId, it)) }
-      is Command.WriteStopped -> stored("write") { pairings.write(command.record) }
-      is Command.DeleteStopped -> stored("delete") { pairings.delete(command.code, command.slot) }
+      is Command.WriteStopped -> stored("write", PairingStore.STOPPED) { pairings.write(command.record) }
+      is Command.DeleteStopped -> stored("delete", PairingStore.STOPPED) { pairings.delete(command.code, command.slot) }
+      is Command.WriteForgotten -> stored("write", PairingStore.FORGOTTEN) { pairings.writeForgotten(command.name) }
       Command.Hold -> {
         poseReleased = false
         executed(command)
@@ -437,12 +462,15 @@ class BridgeCore(
     }
   }
 
-  /** A refused write is a record line, never silent (AGENTS §13, class 3), and never stops the `End` behind it. */
-  private fun stored(op: String, write: () -> Unit) {
+  /**
+   * A refused write is a record line, never silent (AGENTS §13, class 3), and never stops the `End` behind it. The
+   * line names the file it was for (pre-flight N5: not always the stopped records).
+   */
+  private fun stored(op: String, key: String, write: () -> Unit) {
     try {
       write()
     } catch (failure: Exception) {
-      engine.log(RecordEntry("store-failed", listOf("op" to op, "key" to PairingStore.STOPPED, "error" to failure.javaClass.simpleName)))
+      engine.log(RecordEntry("store-failed", listOf("op" to op, "key" to key, "error" to failure.javaClass.simpleName)))
     }
   }
 

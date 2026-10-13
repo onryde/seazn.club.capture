@@ -184,12 +184,14 @@ class StreamerAdapter(
 
   /**
    * Preview-fill review I-1: one `preview-size` line each time the camera changes (the id differs from the last one
-   * reported; `sizedCamera` holds only that last id, so a switch A to B and back to A writes three lines), when StreamPack
-   * reports its source open (a preview or the start): the sizes the camera lists for a SurfaceHolder, the class
-   * StreamPack's PreviewView asks for, and the one its area rule would pick for a view of the encode's size
-   * ([PreviewSizes]). A reopen of the same camera writes none. StreamPack's own log of its pick is dropped with the rest
-   * of its INFO, so this is the only word the record has of it. Evidence only; a failure is one `capture-call-failed`
-   * line and the open is told on regardless.
+   * reported; `sizedCamera` holds only that last id, so a switch A to B and back to A writes three lines), when
+   * StreamPack reports its source open (a preview or the start): the sizes the camera lists for a SurfaceHolder, the
+   * class StreamPack's PreviewView asks for, and the size the preview gets ([PreviewSizes]). Wired (N30):
+   * CapturePreviewView shows the PreviewView the camera through the 16:9 rule (`SixteenNineCamera`), so the size is
+   * ours when a 16:9 size is listed and StreamPack's area pick otherwise, and the line says which. A reopen of the same
+   * camera writes none. StreamPack's own log of its pick is dropped with the rest of its INFO, so this is the only word
+   * the record has of it. Evidence only; a failure is one `capture-call-failed` line and the open is told on
+   * regardless.
    */
   private suspend fun reportPreviewSizes(id: String) {
     if (id == sizedCamera) return
@@ -197,7 +199,7 @@ class StreamerAdapter(
     quietly("preview-size") {
       val map = context.cameraManager.getCameraCharacteristics(id).get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP)
       val sizes = map?.getOutputSizes(SurfaceHolder::class.java).orEmpty().map { it.width to it.height }
-      calls.line(PreviewSizes.entry(PreviewSizes.report(sizes)))
+      calls.line(PreviewSizes.entry(PreviewSizes.report(sizes, wired = true)))
     }
   }
 

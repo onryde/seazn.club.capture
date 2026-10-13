@@ -99,8 +99,8 @@ describe.each([
     act(() => view.engine.scene('holding'));
     layOut(screen.getByTestId('camera-half'), { width: 494, height: 332 });
     layOut(screen.getByTestId('match-label'), { width: 494 - 2 * layout.stripPadH, height: 44 });
-    // Sized: a two-line label (44) leaves the box 222 dp tall of the 332 (the owner's phone): the strip is 66 and the
-    // label, 110. The unmeasured one would be 178 tall (the strip's worst case, 154: C2, D2 §4.4).
+    // Sized: a two-line label (44) leaves the box 222 dp tall of the 332 (804 × 332, the ruling's): the strip is 66
+    // and the label, 110. The unmeasured one would be 178 tall (the strip's worst case, 154: C2, D2 §4.4).
     expect(parseFloat(getComputedStyle(screen.getByTestId('camera-box')).height)).toBeCloseTo(
       222,
       2,

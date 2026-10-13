@@ -92,7 +92,7 @@ object EngineHost {
     val keeper = keeper(app) { core }
     // Task 34: a debug build's seam may hold another HTTP path; a release build's never does.
     val http = HttpSeam.override?.invoke(app) ?: HttpAdapter()
-    val platform = AndroidPlatform(capture, http, RecordFile(File(app.filesDir, "record")), pose, device, keeper, ::emit)
+    val platform = AndroidPlatform(capture, http, RecordFile(File(app.filesDir, "record")), pose, device, keeper, ::emit, power = { PowerState.mode(app) })
     core = BridgeCore.shared { core(app, thread, platform) }
     core.start()
     // Review C7 M-9: the core runs from here, so a throw must not end this build half done; core.log, as

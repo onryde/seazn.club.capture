@@ -9,12 +9,13 @@ import { loadFont } from '../../../test/fontMetrics';
 import { linesOf } from '../../../test/textFit';
 
 /**
- * D2 §4.3: the cover's lines fit the camera box. The narrowest box any window gets is 316.4 dp wide (804 × 332 before
- * the label is measured, C2's worst case: 178 × 16/9, Task 10); 640 × 360's is 330. The honest line and the countdown
- * are one line of `metricUnit` each, inside `space.sm` either side; the loading and not-ready lines are `body`, at most
- * three lines, inside `space.md` either side. Widths are the shipped fonts' (no kerning).
+ * D2 §4.3: the cover's lines fit the camera box. The narrowest box any window gets is 309.3 dp wide: the owner's phone
+ * as laid out, 728 × 328 (N35), before the label is measured, C2's worst case: 174 × 16/9. 804 × 332's is 316.4
+ * (178 × 16/9, Task 10) and 640 × 360's is 330. The honest line and the countdown are one line of `metricUnit` each,
+ * inside `space.sm` either side; the loading and not-ready lines are `body`, at most three lines, inside `space.md`
+ * either side. Widths are the shipped fonts' (no kerning).
  */
-const BOX = 316.4;
+const BOX = 309.3;
 const geist400 = loadFont('geist-400');
 const geist500 = loadFont('geist-500');
 const unit = (text: string) => geist500.width(text, typeScale.metricUnit.fontSize);
@@ -44,7 +45,8 @@ describe('the viewer cover’s lines fit the narrowest camera box (D2 §4.3)', (
     },
   );
 
-  it('the widest honest line is the French, 238.5 dp, inside 300.4 (anti-vacuity)', () => {
+  it('the widest honest line is the French, 238.5 dp, inside 293.3 (anti-vacuity)', () => {
+    expect(BOX - 2 * space.sm).toBeCloseTo(293.3, 9);
     const widths = LANGUAGES.map(([, d]) => Math.round(unit(d['stream.peek.honest']) * 10) / 10);
     expect(widths).toEqual([213.1, 219.3, 238.5, 214.2]);
   });
@@ -52,13 +54,15 @@ describe('the viewer cover’s lines fit the narrowest camera box (D2 §4.3)', (
 
 /**
  * B3 review m4: Hide is drawn in the cover's bottom-right corner, after the closing countdown, `space.sm` in from the
- * box's edges and apart, as the Remote scoring panel ends its row with its own Hide. It is checked at the two
- * geometries the app is held in: 640 × 360 (a 330 dp box) and 804 × 332 (before the label is measured, a 178 dp high
- * box). The loading and not-ready lines are centred in the box, so they must clear that row and, as far above it, the
- * honest plate: their height is at most the box's, less twice the row's (Hide's 48 dp and its inset).
+ * box's edges and apart, as the Remote scoring panel ends its row with its own Hide. It is checked at three
+ * geometries: 640 × 360 (a 330 dp box), the owner's phone as laid out, 728 × 328 (N35: before the label is measured, a
+ * 174 dp high box), and 804 × 332 (a 178 dp high box). The loading and not-ready lines are centred in the box, so they
+ * must clear that row and, as far above it, the honest plate: their height is at most the box's, less twice the row's
+ * (Hide's 48 dp and its inset).
  */
 const GEOMETRIES = [
   ['640 × 360', 330, (330 * 9) / 16],
+  ['728 × 328', (174 * 16) / 9, 174],
   ['804 × 332', (178 * 16) / 9, 178],
 ] as const;
 const ROWS = GEOMETRIES.flatMap(([geometry, width, height]) =>
@@ -89,7 +93,9 @@ describe('the cover’s Hide and closing countdown fit its corner (D2 §4.3, B3 
     },
   );
 
-  it('the widest row is the French, 226.4 dp, inside 300.4 at 804 × 332 (anti-vacuity)', () => {
+  it('the widest row is the French, 226.4 dp, inside 293.3 at 728 × 328 and 300.4 at 804 × 332 (anti-vacuity)', () => {
+    expect(ROWS).toHaveLength(3 * LANGUAGES.length);
+    expect((174 * 16) / 9 - 2 * space.sm).toBeCloseTo(293.3, 1);
     const rows = LANGUAGES.map(([, d]) => Math.round(bottomRow(d) * 10) / 10);
     expect(rows).toEqual([168, 203.2, 226.4, 210.6]);
   });

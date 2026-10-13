@@ -6,6 +6,7 @@ import type { CaptureEngineNative } from '@/engine/nativeModule';
 import { FakeNativeModule } from '@/engine/testing/FakeNativeModule';
 import { photoPortFor } from '@/hooks/photoPortWiring';
 import type { PhotoOutcome } from '@/services/photoPort';
+import { FEATURES } from '@/ui/features';
 
 type Native = Pick<CaptureEngineNative, 'takePhoto'>;
 
@@ -64,8 +65,25 @@ type Wiring = {
   loggerBinding: string | null;
   hostsBinding: string | null;
   engine: string | null;
+  /** R5: what it gives `createNativePower`, each dependency as `name:initializer`, sorted. */
+  powerDeps: string | null;
   loads: number;
 };
+
+/** An object literal's properties as sorted `name:initializer`, so a swapped value is not the right name. */
+function depsOf(deps: ts.Expression | undefined, file: ts.SourceFile): string | null {
+  if (deps === undefined || !ts.isObjectLiteralExpression(deps)) return null;
+  return deps.properties
+    .map((property) =>
+      ts.isShorthandPropertyAssignment(property)
+        ? `${property.name.text}:${property.name.text}`
+        : ts.isPropertyAssignment(property)
+          ? `${property.name.getText(file)}:${property.initializer.getText(file)}`
+          : '?',
+    )
+    .sort()
+    .join(', ');
+}
 
 function wiringOf(source: string): Wiring {
   const file = ts.createSourceFile('nativePorts.ts', source, ts.ScriptTarget.Latest, true);
@@ -85,6 +103,7 @@ function wiringOf(source: string): Wiring {
     loggerBinding: null,
     hostsBinding: null,
     engine: null,
+    powerDeps: null,
     loads: 0,
   };
   const calledAs = (node: ts.CallExpression, name: string) =>
@@ -101,20 +120,13 @@ function wiringOf(source: string): Wiring {
       const call = node.initializer;
       if (ts.isCallExpression(call) && calledAs(call, 'scoringLinkPortFor')) {
         result.scoringLink = call.arguments[0]?.getText(file) ?? null;
-        const deps = call.arguments[1];
-        result.scoringLinkDeps =
-          deps !== undefined && ts.isObjectLiteralExpression(deps)
-            ? deps.properties
-                .map((property) =>
-                  ts.isShorthandPropertyAssignment(property)
-                    ? `${property.name.text}:${property.name.text}`
-                    : ts.isPropertyAssignment(property)
-                      ? `${property.name.getText(file)}:${property.initializer.getText(file)}`
-                      : '?',
-                )
-                .sort()
-                .join(', ')
-            : null;
+        result.scoringLinkDeps = depsOf(call.arguments[1], file);
+      }
+    }
+    if (ts.isPropertyAssignment(node) && node.name.getText(file) === 'power') {
+      const call = node.initializer;
+      if (ts.isCallExpression(call) && calledAs(call, 'createNativePower')) {
+        result.powerDeps = depsOf(call.arguments[0], file);
       }
     }
     if (
@@ -147,7 +159,11 @@ function wiringOf(source: string): Wiring {
 const PHOTO = 'photoPortFor(native)';
 const SCORING = 'scoringLinkPortFor(native, { logger, hosts })';
 const LOAD = 'loadCaptureEngineNative()';
-const SKELETON = (photo: string, scoring: string, load: string) => `
+const POWER =
+  'createNativePower({ native, os: Platform.OS, openSettings: () => Linking.openSettings(), logger })';
+const POWER_DEPS =
+  'logger:logger, native:native, openSettings:() => Linking.openSettings(), os:Platform.OS';
+const SKELETON = (photo: string, scoring: string, load: string, power = POWER) => `
   export function createNativePorts() {
     // photo: photoPortFor(null),
     // scoringLink: scoringLinkPortFor(null, { logger, hosts }),
@@ -155,10 +171,10 @@ const SKELETON = (photo: string, scoring: string, load: string) => `
     const logger = createLogger({ record, now: Date.now });
     const hosts = seaznHosts(env);
     const wired = chooseEngine({ dev: true, native });
-    return { engine: wired.engine, photo: ${photo}, scoringLink: ${scoring} };
+    return { engine: wired.engine, photo: ${photo}, scoringLink: ${scoring}, power: ${power} };
   }`;
 
-describe('createNativePorts hands the module it loaded once to the engine, to the photo port and to the scoring-link port', () => {
+describe('createNativePorts hands the module it loaded once to the engine, the photo port, the scoring-link port and the battery port', () => {
   it('reads the wiring from a source, and tells a null, a second load, a stray name and a swapped dependency apart', () => {
     expect(wiringOf(SKELETON(PHOTO, SCORING, LOAD))).toEqual({
       photo: 'native',
@@ -167,8 +183,15 @@ describe('createNativePorts hands the module it loaded once to the engine, to th
       loggerBinding: 'createLogger({ record, now: Date.now })',
       hostsBinding: 'seaznHosts(env)',
       engine: 'native',
+      powerDeps: POWER_DEPS,
       loads: 1,
     });
+    // R5: the battery port without the module, or not through createNativePower, is not the wiring.
+    expect(
+      wiringOf(SKELETON(PHOTO, SCORING, LOAD, POWER.replace('{ native,', '{ native: null,')))
+        .powerDeps,
+    ).toContain('native:null');
+    expect(wiringOf(SKELETON(PHOTO, SCORING, LOAD, 'createFakePower()')).powerDeps).toBeNull();
     expect(wiringOf(SKELETON('photoPortFor(null)', SCORING, LOAD)).photo).toBe('null');
     expect(wiringOf(SKELETON('createPhotoPort(native)', SCORING, LOAD)).photo).toBeNull();
     expect(
@@ -193,7 +216,7 @@ describe('createNativePorts hands the module it loaded once to the engine, to th
     expect(wiringOf(SKELETON(PHOTO, SCORING, 'null')).loads).toBe(0);
   });
 
-  it('the real createNativePorts: photoPortFor(native), scoringLinkPortFor(native, { hosts, logger }), chooseEngine({ native }), one load', () => {
+  it('the real createNativePorts: photoPortFor(native), scoringLinkPortFor(native, { hosts, logger }), createNativePower({ native, … }), chooseEngine({ native }), one load', () => {
     const source = readFileSync(join(__dirname, 'nativePorts.ts'), 'utf8');
     expect(wiringOf(source)).toEqual({
       photo: 'native',
@@ -202,7 +225,204 @@ describe('createNativePorts hands the module it loaded once to the engine, to th
       loggerBinding: expect.stringMatching(/^createLogger\(/),
       hostsBinding: 'seaznHosts(env)',
       engine: 'native',
+      powerDeps: POWER_DEPS,
       loads: 1,
     });
+  });
+});
+
+/**
+ * R4 and P10 (P10 is the D3 fixes plan's ruling, the controller's): the upload credential store follows the SAME mode
+ * store the ports hand the app (a second `createModeStore(kv)` would never be loaded, so no credential would ever be
+ * kept), and stores only when the root layout's switch says so. R3: the record upload port gets plain fetch and the
+ * app's own logger. Read from source, as above.
+ */
+type RecordWiring = {
+  /** The options parameter's default, as written. */
+  options: string | null;
+  /** What `const modeStore` is bound to, and what the returned `modeStore` property is. */
+  modeStoreBinding: string | null;
+  modeStoreProperty: string | null;
+  /** What it gives `createUploadCredentialStore`, as sorted `name:initializer`. */
+  uploadCredentialDeps: string | null;
+  /** R3: what it gives `createRecordUploadPort`, as sorted `name:initializer`. */
+  recordUploadDeps: string | null;
+  /** Important 3 of the Batch 6 review: what it gives `createRecordSendFlight`, the send held once in the ports. */
+  recordSendFlightDeps: string | null;
+};
+
+/** A returned port's factory call, written inline or bound to a `const` of the function first. */
+function factoryCall(
+  property: ts.ObjectLiteralElementLike,
+  bindings: ReadonlyMap<string, ts.Expression>,
+): ts.Expression | null {
+  if (ts.isShorthandPropertyAssignment(property)) return bindings.get(property.name.text) ?? null;
+  if (!ts.isPropertyAssignment(property)) return null;
+  const value = property.initializer;
+  return ts.isIdentifier(value) ? (bindings.get(value.text) ?? null) : value;
+}
+
+function recordWiringOf(source: string): RecordWiring {
+  const file = ts.createSourceFile('nativePorts.ts', source, ts.ScriptTarget.Latest, true);
+  let root: ts.FunctionDeclaration | undefined;
+  const find = (node: ts.Node) => {
+    if (ts.isFunctionDeclaration(node) && node.name?.text === 'createNativePorts') root = node;
+    ts.forEachChild(node, find);
+  };
+  find(file);
+  if (root === undefined) throw new Error('no createNativePorts');
+  const result: RecordWiring = {
+    options: root.parameters[0]?.initializer?.getText(file) ?? null,
+    modeStoreBinding: null,
+    modeStoreProperty: null,
+    uploadCredentialDeps: null,
+    recordUploadDeps: null,
+    recordSendFlightDeps: null,
+  };
+  const bindings = new Map<string, ts.Expression>();
+  const bind = (node: ts.Node) => {
+    if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && node.initializer)
+      bindings.set(node.name.text, node.initializer);
+    ts.forEachChild(node, bind);
+  };
+  bind(root);
+  result.modeStoreBinding = bindings.get('modeStore')?.getText(file) ?? null;
+  // Only the returned object's own properties: the credential store's deps hold a `modeStore` too.
+  const visit = (node: ts.Node) => {
+    if (
+      ts.isReturnStatement(node) &&
+      node.expression &&
+      ts.isObjectLiteralExpression(node.expression)
+    )
+      for (const property of node.expression.properties) readPort(property);
+    ts.forEachChild(node, visit);
+  };
+  const readPort = (property: ts.ObjectLiteralElementLike) => {
+    const name = property.name?.getText(file);
+    if (name === 'modeStore')
+      result.modeStoreProperty = ts.isPropertyAssignment(property)
+        ? property.initializer.getText(file)
+        : name;
+    const call = factoryCall(property, bindings);
+    const deps = (factory: string) =>
+      call !== null &&
+      ts.isCallExpression(call) &&
+      ts.isIdentifier(call.expression) &&
+      call.expression.text === factory
+        ? depsOf(call.arguments[0], file)
+        : null;
+    if (name === 'uploadCredential')
+      result.uploadCredentialDeps = deps('createUploadCredentialStore');
+    if (name === 'recordUpload') result.recordUploadDeps = deps('createRecordUploadPort');
+    if (name === 'recordSendFlight') result.recordSendFlightDeps = deps('createRecordSendFlight');
+  };
+  visit(root);
+  return result;
+}
+
+const UPLOAD_DEPS =
+  'clock:clock, enabled:options.recordSend, kv:kv, logger:logger, modeStore:modeStore';
+// Important 2 of the Batch 6 review: the upload's host is the build's, from the same `hosts` the scoring link reads.
+const RECORD_DEPS = "fetch:(url, init) => fetch(url, init), host:hosts[0] ?? '', logger:logger";
+const RECORD_UPLOAD =
+  "createRecordUploadPort({ fetch: (url, init) => fetch(url, init), logger, host: hosts[0] ?? '' })";
+// The flight sends through the very credential store and upload port the ports hand out, and the app's record.
+const FLIGHT_DEPS = 'credentials:uploadCredential, record:record, upload:recordUpload';
+const FLIGHT =
+  'createRecordSendFlight({ credentials: uploadCredential, upload: recordUpload, record })';
+const RECORD_SKELETON = (
+  upload: string,
+  modeStore = 'modeStore',
+  recordUpload = RECORD_UPLOAD,
+  flight = FLIGHT,
+) => `
+  export function createNativePorts(options = { recordSend: false }) {
+    const modeStore = createModeStore(kv);
+    const uploadCredential = ${upload};
+    const recordUpload = ${recordUpload};
+    return { modeStore: ${modeStore}, uploadCredential, recordUpload, recordSendFlight: ${flight} };
+  }`;
+const UPLOAD =
+  'createUploadCredentialStore({ kv, modeStore, clock, logger, enabled: options.recordSend })';
+
+describe('createNativePorts keeps the upload credential on the app’s own mode store, behind the switch, and posts records with plain fetch (R3, R4, P10)', () => {
+  it('reads the wiring, and tells a second mode store, a forced switch and a fake apart', () => {
+    expect(recordWiringOf(RECORD_SKELETON(UPLOAD))).toEqual({
+      options: '{ recordSend: false }',
+      modeStoreBinding: 'createModeStore(kv)',
+      modeStoreProperty: 'modeStore',
+      uploadCredentialDeps: UPLOAD_DEPS,
+      recordUploadDeps: RECORD_DEPS,
+      recordSendFlightDeps: FLIGHT_DEPS,
+    });
+    expect(
+      recordWiringOf(RECORD_SKELETON(UPLOAD, 'modeStore', RECORD_UPLOAD, 'createFakeFlight()'))
+        .recordSendFlightDeps,
+    ).toBeNull();
+    expect(
+      recordWiringOf(
+        RECORD_SKELETON(
+          UPLOAD,
+          'modeStore',
+          RECORD_UPLOAD,
+          FLIGHT.replace('upload: recordUpload', 'upload: createFakeRecordUpload()'),
+        ),
+      ).recordSendFlightDeps,
+    ).toContain('upload:createFakeRecordUpload()');
+    expect(
+      recordWiringOf(RECORD_SKELETON(UPLOAD, 'modeStore', 'createFakeRecordUpload()'))
+        .recordUploadDeps,
+    ).toBeNull();
+    expect(
+      recordWiringOf(
+        RECORD_SKELETON(UPLOAD.replace('modeStore,', 'modeStore: createModeStore(kv),')),
+      ).uploadCredentialDeps,
+    ).toContain('modeStore:createModeStore(kv)');
+    expect(
+      recordWiringOf(RECORD_SKELETON(UPLOAD.replace('options.recordSend', 'true')))
+        .uploadCredentialDeps,
+    ).toContain('enabled:true');
+    expect(
+      recordWiringOf(RECORD_SKELETON('createFakeUploadCredential()')).uploadCredentialDeps,
+    ).toBeNull();
+    expect(recordWiringOf(RECORD_SKELETON(UPLOAD, 'createModeStore(kv)')).modeStoreProperty).toBe(
+      'createModeStore(kv)',
+    );
+  });
+
+  it('the real createNativePorts: one mode store for the app and the credential store, the switch passed, the upload port on fetch, the app’s logger and the build’s host, and one send flight over them', () => {
+    const source = readFileSync(join(__dirname, 'nativePorts.ts'), 'utf8');
+    expect(recordWiringOf(source)).toEqual({
+      options: '{ recordSend: false }',
+      modeStoreBinding: 'createModeStore(kv)',
+      modeStoreProperty: 'modeStore',
+      uploadCredentialDeps: UPLOAD_DEPS,
+      recordUploadDeps: RECORD_DEPS,
+      recordSendFlightDeps: FLIGHT_DEPS,
+    });
+  });
+
+  it('the root layout passes the shipped switch, and the shipped switch is on (the owner’s ruling, 2026-10-12)', () => {
+    const source = readFileSync(join(__dirname, '../../app/_layout.tsx'), 'utf8');
+    const file = ts.createSourceFile(
+      '_layout.tsx',
+      source,
+      ts.ScriptTarget.Latest,
+      true,
+      ts.ScriptKind.TSX,
+    );
+    const calls: string[] = [];
+    const visit = (node: ts.Node) => {
+      if (
+        ts.isCallExpression(node) &&
+        ts.isIdentifier(node.expression) &&
+        node.expression.text === 'createNativePorts'
+      )
+        calls.push(node.arguments.map((arg) => arg.getText(file)).join(', '));
+      ts.forEachChild(node, visit);
+    };
+    visit(file);
+    expect(calls).toEqual(['{ recordSend: FEATURES.recordSend }']);
+    expect(FEATURES.recordSend).toBe(true);
   });
 });

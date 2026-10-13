@@ -1,5 +1,12 @@
-import { memo } from 'react';
-import { type PressableStateCallbackType, Pressable, StyleSheet, View } from 'react-native';
+import { memo, useCallback } from 'react';
+import {
+  type PressableStateCallbackType,
+  Pressable,
+  type StyleProp,
+  StyleSheet,
+  type TextStyle,
+  View,
+} from 'react-native';
 import { Text } from '@/ui/components/Text';
 import { colour, layout, radius, space } from '@/ui/theme/tokens';
 
@@ -14,6 +21,11 @@ type GhostButtonProps = {
    * 48 dp node and not a hit slop on a smaller one.
    */
   compact?: boolean;
+  /**
+   * I3 of the Batch 5 review: a ghost that would disturb a live broadcast is disabled, its reason said at the control
+   * by its caller. Pressable folds `disabled` into the accessibility state; the label drops to the inert ink.
+   */
+  disabled?: boolean;
 };
 
 /** The secondary action beside a lime plate: outlined, never a second lime. */
@@ -22,33 +34,55 @@ export const GhostButton = memo(function GhostButton({
   onPress,
   expanded,
   compact = false,
+  disabled = false,
 }: GhostButtonProps) {
+  const labelStyle = disabled ? styles.labelOff : undefined;
+  const compactBox = useCompactBox(label, labelStyle);
   return (
     <Pressable
       accessibilityRole="button"
       aria-expanded={expanded}
+      disabled={disabled}
       onPress={onPress}
-      style={compact ? targetStyle : ghostStyle}
+      style={compact ? styles.target : ghostStyle}
     >
       {compact ? (
-        <View testID="ghost-box" style={styles.box}>
-          <Text variant="controlSmall">{label}</Text>
-        </View>
+        compactBox
       ) : (
-        <Text variant="control">{label}</Text>
+        <Text variant="control" style={labelStyle}>
+          {label}
+        </Text>
       )}
     </Pressable>
   );
 });
 
-/** Module-level so render allocates no function; pressed dims the outline, as Button does. */
-function ghostStyle({ pressed }: PressableStateCallbackType) {
-  return pressed ? pressedGhost : styles.ghost;
+/**
+ * The compact form's child. Its outline is the box inside the target, so the box reads the target's press: Pressable
+ * hands a function child its state, on the phone as on the web. One function per label and state, not per render.
+ */
+function useCompactBox(label: string, labelStyle: StyleProp<TextStyle>) {
+  return useCallback(
+    ({ pressed }: PressableStateCallbackType) => (
+      <View testID="ghost-box" style={pressed ? pressedBox : styles.box}>
+        <Text variant="controlSmall" style={labelStyle}>
+          {label}
+        </Text>
+      </View>
+    ),
+    [label, labelStyle],
+  );
 }
 
-/** The compact button's target dims as a whole while held, which dims the box drawn inside it. */
-function targetStyle({ pressed }: PressableStateCallbackType) {
-  return pressed ? pressedTarget : styles.target;
+/**
+ * Module-level so render allocates no function. Pressed takes the press fill (cream at 20%, on any ground: the sheet's
+ * surface2, a card's surface, night) and the edge goes cream, as IconButton's does, by the controller's Batch 17
+ * rulings and the controller's press-fill ruling (2026-10-13): never a dim alone, and never a change of the box. A
+ * disabled ghost never shows it: Pressable starts no press while disabled, on the phone (Pressability refuses the
+ * responder) as on the web.
+ */
+function ghostStyle({ pressed }: PressableStateCallbackType) {
+  return pressed ? pressedGhost : styles.ghost;
 }
 
 const outline = {
@@ -75,8 +109,10 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     ...outline,
   },
-  pressed: { opacity: 0.85 },
+  pressed: { backgroundColor: colour.pressFill, borderColor: colour.ink },
+  labelOff: { color: colour.ink3 },
 });
 
 const pressedGhost = [styles.ghost, styles.pressed];
-const pressedTarget = [styles.target, styles.pressed];
+/** The compact form: the box fills and its edge goes cream; the 48 dp target around it still draws nothing. */
+const pressedBox = [styles.box, styles.pressed];

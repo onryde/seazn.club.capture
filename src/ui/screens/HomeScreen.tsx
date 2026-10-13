@@ -1,13 +1,15 @@
-import { memo } from 'react';
+import { memo, useMemo } from 'react';
 import { Image, ScrollView, StyleSheet, useWindowDimensions, View } from 'react-native';
 import { screenLayout, type ScreenLayout } from '@/domain/mode/homeLayout';
 import type { Mode } from '@/domain/mode/Mode';
 import { BUILT_MODES } from '@/domain/mode/scanOutcome';
 import { useBackCloses } from '@/hooks/useBackCloses';
+import type { EndedCard as EndedCardValue } from '@/domain/session/endedCard';
 import { useEndedCard } from '@/hooks/useEndedNotice';
 import { useHome, type HomeActions, type HomeView } from '@/hooks/useHome';
 import { useT } from '@/hooks/useLanguage';
 import { usePorts } from '@/hooks/usePorts';
+import { useHomeLinks } from '@/hooks/useStreamLinks';
 import logo from '@/ui/assets/logo-wide-night.png';
 import { CodePanel } from '@/ui/components/CodePanel';
 import { ContinueCard } from '@/ui/components/ContinueCard';
@@ -23,10 +25,12 @@ import { MODES } from '@/ui/modeCopy';
 import { colour, layout as metrics, space } from '@/ui/theme/tokens';
 
 /**
- * Layout A (spec §7), portrait: the logo, status, the Stream ended card when there is one, Continue, three equal
- * tiles, footer; the panel over all. Landscape follows the phone: one top row (logo, status, Language, version),
- * then the ended card and Continue as one row each, then the three tiles side by side. Back closes the panel (R31).
- * The root says which in `data-layout`, the marker the tests read.
+ * Layout A (spec §7), portrait: the logo, status, the Stream ended card when there is one, Continue, three tiles
+ * (each grows from its content, P7; R11 of the D3 findings design), footer; the panel over all. Landscape follows the
+ * phone: one top row (logo, status, Language, version), then the ended card and Continue as one row each, then the
+ * three tiles side by side. Back closes the panel (R31).
+ * The root says which in `data-layout`, the marker the tests read. Both layouts scroll only when their rows outgrow
+ * the window (homeFit.test.ts: landscape, two cards on a small phone; portrait, R11, a card on a 360 × 720 window).
  */
 export function HomeScreen() {
   const { view, actions } = useHome();
@@ -73,6 +77,13 @@ function HomeContent({
   layout: ScreenLayout;
 }) {
   const { appVersion, devTools } = usePorts();
+  const ended = useEndedCard();
+  const { streamSettings } = useHomeLinks();
+  // P6: the gear only while no card stands above the tiles. With Continue the phone may hold a pairing, and Stream
+  // Settings from Home assumes none (AGENTS §6); the in-mode Settings, after Continue re-pairs, has the same rows.
+  // Sideways the gear's band would also make Home scroll with the Continue card at 800 × 360; the ended card leaves
+  // 1 dp (homeFit.test.ts).
+  const gear = ended === null && view.continueCode === null ? streamSettings : null;
   const landscape = layout === 'landscape';
   const shape = landscape ? 'row' : 'stacked';
   const behindPanel = view.panel !== null;
@@ -96,27 +107,25 @@ function HomeContent({
           <StatusLine>{view.statusText}</StatusLine>
         </>
       )}
-      <EndedSlot shape={shape} />
+      <EndedSlot card={ended} shape={shape} />
       <ContinueSlot view={view} actions={actions} shape={shape} />
-      <ModeTiles onPress={actions.tapTile} layout={layout} />
+      <ModeTiles onPress={actions.tapTile} layout={layout} streamSettings={gear} />
       {devTools ? <DevPaste onUse={actions.useRaw} /> : null}
       {devTools ? <DevProbe /> : null}
       {landscape ? null : <HomeFooter version={appVersion} />}
     </>
   );
-  // Landscape scrolls only if its rows outgrow the window (a fatal end's two cards over three tiles on a
-  // 640 × 360 phone: homeFit.test.ts); when they fit, `flexGrow` makes the tiles take what is left.
-  if (landscape) {
-    return (
-      <ScrollView style={styles.fill} contentContainerStyle={styles.contentLandscape} {...hidden}>
-        {rows}
-      </ScrollView>
-    );
-  }
+  // Each layout scrolls only if its rows outgrow the window (landscape: a fatal end's two cards over three tiles on
+  // a 640 × 360 phone; portrait, P7 and R11: a card over three tiles on a 360 × 720 one; homeFit.test.ts); when
+  // they fit, `flexGrow` makes the tiles take what is left.
   return (
-    <View style={styles.content} {...hidden}>
+    <ScrollView
+      style={styles.fill}
+      contentContainerStyle={landscape ? styles.contentLandscape : styles.content}
+      {...hidden}
+    >
       {rows}
-    </View>
+    </ScrollView>
   );
 }
 
@@ -140,11 +149,11 @@ function Logo({ layout }: { layout: ScreenLayout }) {
 
 /**
  * The Stream ended card (spec §5), above Continue: only after the phone's Stop or a fatal end left the viewfinder
- * for Home. OK, a new scan or Continue clears it; it is in memory, so a restart does too.
+ * for Home. OK, a new scan or Continue clears it; it is in memory, so a restart does too. Home reads it once and
+ * passes it here, since the Stream settings gear hides while it shows (P6).
  */
-function EndedSlot({ shape }: { shape: CardShape }) {
+function EndedSlot({ card, shape }: { card: EndedCardValue | null; shape: CardShape }) {
   const { endedNotice } = usePorts();
-  const card = useEndedCard();
   return card === null ? null : <EndedCard card={card} layout={shape} onOk={endedNotice.clear} />;
 }
 
@@ -171,13 +180,28 @@ function ContinueSlot({
   );
 }
 
+/**
+ * The three tiles; the Live Stream tile carries the Stream settings gear when Home gives one (R2, as the owner
+ * presented it on 2026-10-12; P6). Its name for a screen reader is `home.streamSettings`.
+ */
 const ModeTiles = memo(function ModeTiles({
   onPress,
   layout,
+  streamSettings,
 }: {
   onPress: (mode: Mode) => void;
   layout: ScreenLayout;
+  streamSettings: (() => void) | null;
 }) {
+  const { t } = useT();
+  // Memoised so the memoised tile is not handed a new object on every pass.
+  const gear = useMemo(
+    () =>
+      streamSettings === null
+        ? undefined
+        : { label: t('home.streamSettings'), onPress: streamSettings },
+    [streamSettings, t],
+  );
   return (
     <View testID="tiles" style={layout === 'landscape' ? styles.tilesRow : styles.tiles}>
       {MODES.map((mode) => (
@@ -187,6 +211,7 @@ const ModeTiles = memo(function ModeTiles({
           available={BUILT_MODES.includes(mode)}
           onPress={onPress}
           layout={layout}
+          settings={mode === 'stream' ? gear : undefined}
         />
       ))}
     </View>
@@ -197,8 +222,10 @@ const styles = StyleSheet.create({
   screen: { flex: 1, padding: space.md, backgroundColor: colour.ground },
   /** Landscape pads its scroller's content instead (`contentLandscape`), so a scrolled row passes under the edge. */
   screenLandscape: { flex: 1, backgroundColor: colour.ground },
-  content: { flex: 1, gap: space.sm },
-  tiles: { flex: 1, gap: space.sm },
+  /** P7 and R11: `flexGrow`, not `flex`, in the portrait scroller: the tiles share the window when they fit. */
+  content: { flexGrow: 1, gap: space.sm },
+  /** M1 of the Batch 5 review: `flexGrow`, not `flex`, inside the portrait scroller, as the landscape row is. */
+  tiles: { flexGrow: 1, gap: space.sm },
   fill: { flex: 1 },
   contentLandscape: {
     flexGrow: 1,

@@ -36,6 +36,12 @@ export const colour = {
   /** .app-crumbs hairline: cream at 8%. */
   rule: '#f5f0e814',
   ruleSoft: '#f5f0e80d',
+  /**
+   * A held control's fill: cream at 20%, written as `rule` is, by the controller's press-fill ruling (2026-10-13); the
+   * owner has not ruled. Translucent, so it shows on whatever ground the control sits on: night, surface or a sheet's
+   * surface2. An opaque surface2 fill was the sheet's own colour and all but invisible on surface.
+   */
+  pressFill: '#f5f0e833',
 
   /** --sport-led. Tailwind lime-400 in sRGB, NOT the v3 --mk-lime hex. */
   lime: '#9ae600',
@@ -62,6 +68,16 @@ export const colour = {
  * large text, and cream on lime would fail outright.
  */
 export const plateInk = colour.ground;
+
+/**
+ * A pressed control (the controller's ruling, D3 fixes Batch 17, 2026-10-13; the owner has not ruled). The owner held
+ * the sliders glyph on phone A and saw nothing change until it opened on lift: a 15% dim of a hairline on night. An
+ * outlined control (IconButton, GhostButton) takes `colour.pressFill` and its edge goes cream (`ink`) while held, and its
+ * box never moves; the Home tile's gear, which has no edge, takes the fill alone. Button's lime plate would step to a
+ * darker lime, which the palette does not have, so it dims to `plate`, and by the same ruling so does a Home tile; the
+ * link, which is already underlined, dims to `link`.
+ */
+export const pressedOpacity = { plate: 0.7, link: 0.6 } as const;
 
 /**
  * What each colour means.
@@ -154,8 +170,9 @@ const base = {
    * The controls half's column rhythm, vertical only (owner, 2026-10-08: every control fully on screen at 804 x 332).
    * Before air, with the AUTO start line and a hold reason up, the column's five rows are 56 + 64 + 16 + 48 + 92 = 276
    * dp and the board's 16 padding and 12 gaps (32 + 4 x 12 = 80) made 356 of a 332 dp app area: 24 over. 8 and 8 are
-   * 16 + 32 = 48, so the worst state is 324 with the photo line's 16 dp still in place. The horizontal padding
-   * (`controlsPad`) is the half's WIDTH and stays: 310 is unchanged. Every control keeps its size.
+   * 16 + 32 = 48, so the worst state is 324 with the photo line's 16 dp still in place: 4 dp to spare on the owner's
+   * phone as laid out, 728 x 328 (N35). The horizontal padding (`controlsPad`) is the half's WIDTH and stays: 310 is
+   * unchanged. Every control keeps its size.
    */
   controlsPadV: 8,
   controlsColumnGap: 8,
@@ -225,6 +242,18 @@ const base = {
    * Continue alone, or the ended card alone, leaves the tiles room at 800 × 360 (homeFit.test.ts). Portrait is unchanged.
    */
   tileLandscapePad: 12,
+  /**
+   * N31 (item A2 of the D3 findings design, §10): a tile's title shrinks to the room beside its icon and wraps to at
+   * most this many lines, then an ellipsis. homeFit.test.ts measures every title in four languages against it, and
+   * bounds the tiles' heights with every title at this many lines.
+   */
+  tileTitleLines: 2,
+  /**
+   * N31, fix round 1: the room a tile's title needs beside its icon to stay at `title`, the widest word of any title in
+   * the four languages at that size (nl LIVESTREAM, 123.3 dp), to the whole dp. Narrower, `tileTitleRole` steps the
+   * title down to `action`. homeFit.test.ts derives it from the font.
+   */
+  tileTitleRoom: 124,
   /**
    * Spec §10, Q-C2: the Remote scoring code, drawn at a whole number of dp per module so every module edge lands on a
    * pixel (D13): 3 x the 57-unit symbol (49 modules + a quiet zone of 4 each side). The largest such multiple that

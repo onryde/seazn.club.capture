@@ -2,8 +2,7 @@ import { memo, useCallback } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import type { CodeError } from '@/domain/credentials/waitingFields';
 import type { ModeCode } from '@/domain/mode/Mode';
-import type { UnpairReason } from '@/domain/session/Pairing';
-import type { HomePanel } from '@/hooks/useHome';
+import type { HomePanel, PanelUnpairReason } from '@/hooks/useHome';
 import { useT } from '@/hooks/useLanguage';
 import type { MessageKey } from '@/i18n/messages';
 import { MODE_NAME } from '@/i18n/modeNames';
@@ -94,7 +93,7 @@ function panelCopy(outcome: HomePanel, t: Translator['t'], time: string | null):
 }
 
 /** Amendment §2, Unpaired without asking: why native left the pairing. */
-const UNPAIRED: Readonly<Record<UnpairReason, { title: MessageKey; body: MessageKey }>> = {
+const UNPAIRED: Readonly<Record<PanelUnpairReason, { title: MessageKey; body: MessageKey }>> = {
   'code-ended': { title: 'panel.codeEnded.title', body: 'panel.codeEnded.body' },
   replaced: { title: 'panel.replaced.title', body: 'panel.replaced.body' },
   taken: { title: 'panel.taken.title', body: 'panel.taken.body' },

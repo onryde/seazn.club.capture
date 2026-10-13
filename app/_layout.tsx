@@ -15,12 +15,14 @@ import { BootFailure } from '@/ui/components/BootFailure';
 import { OrientationGate } from '@/ui/components/OrientationGate';
 import { RootBoundary } from '@/ui/components/RootBoundary';
 import { ShellFrame } from '@/ui/components/ShellFrame';
+import { FEATURES } from '@/ui/features';
 
 // The splash holds until the shell knows where to land: no spinner (AGENTS §6).
 void SplashScreen.preventAutoHideAsync();
 
 export default function RootLayout() {
-  const [ports] = useState(createNativePorts);
+  // P10: Send record's switch reaches the ports here; off, no upload credential is stored.
+  const [ports] = useState(() => createNativePorts({ recordSend: FEATURES.recordSend }));
   const fonts = useAppFonts();
   if (fonts === 'loading') return null;
   // A crash lifts the splash (R15), is recorded, and offers Try again (M4).

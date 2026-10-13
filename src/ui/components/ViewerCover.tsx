@@ -90,7 +90,7 @@ type CornerProps = { readonly showing: boolean; readonly onClose: () => void };
 
 /**
  * The bottom-right row, in every phase: the closing countdown while showing, then Hide. The scoring panel's word, as
- * its row ends (B3 review m4); viewerCoverFit.test.ts fits the row at 640 × 360 and 804 × 332.
+ * its row ends (B3 review m4); viewerCoverFit.test.ts fits the row at 640 × 360, 728 × 328 (N35) and 804 × 332.
  */
 const CoverCorner = memo(function CoverCorner({ showing, onClose }: CornerProps) {
   const { t } = useT();

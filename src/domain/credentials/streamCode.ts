@@ -29,6 +29,9 @@ const VERSION = 2;
 const CODE = /^[0-9a-hjkmnp-tv-z]{12}$/;
 const TOKEN = /^[A-Za-z0-9_-]{22}$/;
 
+/** Whether [text] is a code: capture-qr.v2's pattern, as `PairRequest` holds it in Kotlin. */
+export const isStreamCodeText = (text: string): boolean => CODE.test(text);
+
 /** Native holds the slot in an Int (T11 M3): a larger one would be refused there after JS accepted it. */
 const MAX_SLOT = 2_147_483_647;
 

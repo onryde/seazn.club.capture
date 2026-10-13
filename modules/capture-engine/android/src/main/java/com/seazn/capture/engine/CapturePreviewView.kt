@@ -18,11 +18,12 @@ import kotlinx.coroutines.launch
 /**
  * The native preview, filling the camera box it is mounted in (AGENTS §6; design follow-up §1).
  * Frames never cross the bridge. The box shows exactly what viewers get (#288): StreamPack's ([PreviewFit.STREAMPACK])
- * PreviewView takes its preview stream's size from its own view's AREA, in any shape, and not from the
- * encode's config (javap, see [PreviewFit]), so the PreviewView is laid out at the encode's own size
- * ([Encode]) and scaled to fit the box by [PreviewFit]; by that rule its stream should be the encode's
- * 1280 x 720 (inferred until `dumpsys media.camera` and the `preview-size` record line confirm it). FIT
- * stays, so a box that is not quite 16:9 leaves bars and crops nothing. No
+ * PreviewView takes its preview stream's size from the camera source's answer for its own view's AREA, in any shape,
+ * and not from the encode's config (javap, see [PreviewFit]), so the PreviewView is laid out at the encode's own size
+ * ([Encode]) and scaled to fit the box by [PreviewFit]. An area alone ties a 960 x 960 square with 1280 x 720 (N30), so
+ * the view sees the camera through the 16:9 rule ([SixteenNineBinding]): its stream is the listed 16:9 size nearest the
+ * encode's, StreamPack's own pick when none is listed (the device's `dumpsys media.camera` and the `preview-size` line
+ * say which). FIT stays, so a box that is not quite 16:9 leaves bars and crops nothing. No
  * pinch-zoom or tap-to-focus: a tap on a tripod is a mis-tap. It follows the pairing's streamer
  * while attached, and only then. It tells the engine
  * whether the viewfinder is shown (CD37): attached to a window that is visible. A screen pushed over the
@@ -39,6 +40,7 @@ class CapturePreviewView(context: Context, appContext: AppContext) : ExpoView(co
 
   private val failed = CoroutineExceptionHandler { _, t -> failed("follow", t) }
   private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main + failed)
+  private val sixteenNine = SixteenNineBinding(scope) { id, kind -> listed(id, kind) }
   private var following: Job? = null
 
   /** Between our attach and detach. `isAttachedToWindow` still reads true inside `onDetachedFromWindow`. */
@@ -93,7 +95,7 @@ class CapturePreviewView(context: Context, appContext: AppContext) : ExpoView(co
       scope.launch {
         EngineHost.capture(context).streamer.collect { streamer ->
           try {
-            preview.setVideoSourceProvider(streamer)
+            preview.setVideoSourceProvider(sixteenNine.of(streamer))
           } catch (e: CancellationException) {
             throw e
           } catch (e: Exception) {
@@ -102,6 +104,24 @@ class CapturePreviewView(context: Context, appContext: AppContext) : ExpoView(co
         }
       }
   }
+
+  /** The camera whose sizes last failed to read: the line is written once per camera (review M2), not on every ask. */
+  @Volatile private var sizesFailed: String? = null
+
+  /**
+   * The camera's sizes for the 16:9 rule (N30). A failed read is one `preview-failed {sizes}` line per camera, and
+   * StreamPack's own pick stands. PreviewView asks from its own thread, which need not be main.
+   */
+  private fun listed(cameraId: String, kind: Class<*>): List<Pair<Int, Int>> =
+    try {
+      listedSizes(context, cameraId, kind)
+    } catch (e: Exception) {
+      if (sizesFailed != cameraId) {
+        sizesFailed = cameraId
+        failed("sizes", e)
+      }
+      emptyList()
+    }
 
   /** I-1: a lock or Background turns the window invisible and leaves the view attached. */
   override fun onWindowVisibilityChanged(visibility: Int) {

@@ -446,6 +446,92 @@ class GlueRulesTest {
   }
 
   /**
+   * R6, R7 of the D3 findings design: the notification's Forget is the core's to judge. The receiver hands the tap to
+   * the core and does nothing else: the release, the service and the marker follow from the machine's commands, as
+   * every unpair's do (C0b above: one release, in the platform's Release branch).
+   */
+  @Test
+  fun `R6 the Forget receiver only forwards to the core - no release, no stopService, no store of its own`() {
+    val text = glue("ForgetReceiver.kt")
+    assertTrue(text.contains("EngineHost.core(context).forget()"))
+    for (banned in listOf("release(", "stopService", "stopSelf", "PrivateStore", "write(")) assertFalse(text.contains(banned), banned)
+  }
+
+  /** R6: the receiver is declared in the module's own manifest, and no other app can send it a Forget. */
+  @Test
+  fun `R6 the Forget receiver is declared, not exported`() {
+    val manifest = File(src, "main/AndroidManifest.xml").readText()
+    val receiver = Regex("""<receiver\s+android:name="com\.seazn\.capture\.engine\.ForgetReceiver"\s+android:exported="false"\s*/>""")
+    assertEquals(1, receiver.findAll(manifest).count(), manifest)
+  }
+
+  /**
+   * R6: the action is on the notification only while the pairing waits, as `NotificationText.forgetShown` decides from
+   * the kind last shown; it is an explicit, immutable broadcast to the receiver.
+   */
+  @Test
+  fun `R6 the notification carries Forget only behind forgetShown, as an explicit immutable broadcast`() {
+    val current = body(glue("PairingKeeper.kt"), "fun current(): Notification")
+    val gate = assertNotNull(Regex("""if \(NotificationText\.forgetShown\(shownKind as\? String\)\) \{""").find(current), current)
+    assertTrue("builder.addAction(" in body(current.substring(gate.range.first), "if ("), "the action is inside the gate: $current")
+    assertEquals(1, Regex("""\.addAction\(""").findAll(glue("PairingKeeper.kt")).count(), "one action")
+    assertTrue(Regex("""Intent\(context, ForgetReceiver::class\.java\)\.setAction\(ForgetReceiver\.ACTION\)""").containsMatchIn(current), current)
+    assertTrue(Regex("""PendingIntent\.getBroadcast\([^\n]*PendingIntent\.FLAG_IMMUTABLE""").containsMatchIn(current), current)
+  }
+
+  /**
+   * R5 of the D3 findings design (owner, 2026-10-11): the battery row reads the app's battery mode, at once, through
+   * `PowerState`, from both of Android's readings and core's `PowerMode` rule (M5 of the Batch 5 review); the module
+   * declares the call once. Nothing asks for the exemption: no glue file, the module's manifest or the app's config
+   * names the request permission or its dialog's action. The operator chooses Unrestricted from App info.
+   */
+  @Test
+  fun `R5 the bridge reads the battery state through PowerState, and nothing asks for the exemption`() {
+    val module = glue("CaptureEngineModule.kt")
+    assertEquals(1, Regex("""Function\("powerMode"\) \{ PowerState\.mode\(app\(\)\) \}""").findAll(module).count(), module)
+    val state = glue("PowerState.kt")
+    for (read in listOf("PowerMode.of(", "isIgnoringBatteryOptimizations(context.packageName)", ".isBackgroundRestricted")) {
+      assertTrue(read in state, read)
+    }
+    val app = File(src.parentFile.parentFile.parentFile.parentFile, "app.json")
+    assertTrue(app.isFile && "blockedPermissions" in app.readText(), "the app's own config: ${app.path}")
+    val texts = sources().map { it.name to it.readText() } + ("AndroidManifest.xml" to File(src, "main/AndroidManifest.xml").readText()) + ("app.json" to app.readText())
+    assertTrue(texts.size > 3)
+    for ((name, text) in texts) assertFalse("IGNORE_BATTERY_OPTIMIZATIONS" in text, name)
+  }
+
+  /** N27: every pairing's Hold records which battery mode it runs in, once the keeper holds; the host reads it from PowerState. */
+  @Test
+  fun `N27 the Hold records the battery mode the pairing runs in`() {
+    val hold = body(glue("AndroidPlatform.kt"), "Command.Hold -> {")
+    val held = hold.indexOf("keeper.hold()")
+    val line = hold.indexOf("""EngineHost.line(RecordEntry("power", listOf("mode" to power())))""")
+    assertTrue(held >= 0 && line > held, hold)
+    assertEquals(1, Regex("""\bpower\(\)""").findAll(glue("AndroidPlatform.kt")).count(), "read once, at the Hold")
+    assertTrue(Regex("""AndroidPlatform\([^\n]*power = \{ PowerState\.mode\(app\) \}""").containsMatchIn(glue("EngineHost.kt")), "the host passes PowerState's read")
+  }
+
+  /**
+   * Batch 4 review M2: a refused foreground service leaves no notification behind, so no dead Forget stays on the
+   * shade. The paired snapshot's post is queued before the Hold's start can be refused: `notify` checks again on the
+   * main looper, and the refusal cancels whatever was posted before it.
+   */
+  @Test
+  fun `M2 a refused foreground service leaves no notification, and so no dead Forget`() {
+    val keeper = glue("PairingKeeper.kt")
+    assertEquals(1, Regex("""fun notify\(wire: Map<String, Any\?>\) = recordOnly\("notify"\) \{ if \(survivesBackground\) notes\.update\(wire\) \}""").findAll(keeper).count(), "notify checks on main")
+    assertTrue(Regex("""recordOnly\("cancel"\) \{ notes\.cancel\(\) \}""").containsMatchIn(body(keeper, "fun fgsRefused(e: Throwable)")), "the refusal cancels")
+    assertTrue(Regex("""fun cancel\(\) = NotificationManagerCompat\.from\(context\)\.cancel\(ID\)""").containsMatchIn(keeper), "the notification's own id")
+  }
+
+  /** Batch 4 review M7: a delete the file system did not do is a refused delete, for BridgeCore's `store-failed` line. */
+  @Test
+  fun `M7 the store's delete throws when the file is still there`() {
+    val delete = body(glue("AndroidStore.kt"), "override fun delete(name: String)")
+    assertTrue(Regex("""val file = File\(dir, name\)\s+if \(!file\.delete\(\) && file\.exists\(\)\) throw IOException\("delete failed: \${'$'}name"\)""").containsMatchIn(delete), delete)
+  }
+
+  /**
    * CD21 (Task 38): Expo 57.0.20 answers DENIED for every permission when the current activity is not a
    * `PermissionAwareActivity` (`PermissionsService.delegateRequestToActivity`), a refusal no operator
    * saw. That reads as UNAVAILABLE, before Expo is asked.
@@ -532,8 +618,9 @@ class GlueRulesTest {
     val attach = body(view, "override fun onAttachedToWindow()")
     assertTrue(Regex("""attached = true\s+report\("attach"\)""").containsMatchIn(attach), "attach marks attached, then reports: $attach")
     assertTrue(Regex("""EngineHost\.capture\(context\)\.streamer\.collect \{ streamer ->""").containsMatchIn(attach), "the follow starts on attach")
-    assertTrue("preview.setVideoSourceProvider(streamer)" in attach, "the follow binds each streamer, a null one unbinding")
-    val perEmission = Regex("""streamer\.collect \{ streamer ->\s+try \{\s+preview\.setVideoSourceProvider\(streamer\)\s+\} catch \(e: CancellationException\) \{\s+throw e\s+\} catch \(e: Exception\) \{\s+failed\("follow", e\)""")
+    assertTrue("preview.setVideoSourceProvider(sixteenNine.of(streamer))" in attach, "the follow binds each streamer, seen through the 16:9 rule (N30), a null one unbinding")
+    assertEquals(1, uses(code(view), "setVideoSourceProvider"), "bound at one site")
+    val perEmission = Regex("""streamer\.collect \{ streamer ->\s+try \{\s+preview\.setVideoSourceProvider\(sixteenNine\.of\(streamer\)\)\s+\} catch \(e: CancellationException\) \{\s+throw e\s+\} catch \(e: Exception\) \{\s+failed\("follow", e\)""")
     assertTrue(perEmission.containsMatchIn(attach), "review C7 M-7: one streamer's failed bind is a line, and the follow carries on: $attach")
     val visibility = body(view, "override fun onWindowVisibilityChanged(visibility: Int)")
     assertTrue(Regex("""super\.onWindowVisibilityChanged\(visibility\)\s+report\("visibility", visibility\)""").containsMatchIn(visibility), "visibility reports its own value: $visibility")
@@ -640,11 +727,57 @@ class GlueRulesTest {
       Regex(
         """val map = context\.cameraManager\.getCameraCharacteristics\(id\)\.get\(CameraCharacteristics\.SCALER_STREAM_CONFIGURATION_MAP\)\s+""" +
           """val sizes = map\?\.getOutputSizes\(SurfaceHolder::class\.java\)\.orEmpty\(\)\.map \{ it\.width to it\.height \}\s+""" +
-          """calls\.line\(PreviewSizes\.entry\(PreviewSizes\.report\(sizes\)\)\)""",
+          """calls\.line\(PreviewSizes\.entry\(PreviewSizes\.report\(sizes, wired = true\)\)\)""",
       )
-    assertTrue(derived.containsMatchIn(report), "the camera's own characteristics, the sizes StreamPack's PreviewView asks for (a SurfaceHolder's), whole and as (width, height), and the rule's report is the line: $report")
+    assertTrue(derived.containsMatchIn(report), "the camera's own characteristics, the sizes StreamPack's PreviewView asks for (a SurfaceHolder's), whole and as (width, height), and the rule's report is the line, wired: the preview sees the 16:9 rule (N30): $report")
     assertTrue(Regex("""sizedCamera = null""").containsMatchIn(body(adapter, "override suspend fun release()")), "a new capture reports again")
     assertEquals(2, Regex("""\bsizedCamera = """).findAll(adapter).count(), "set by the report and the release only")
+  }
+
+  /**
+   * N30 (D3 findings design §4; spike notes `docs/specs/2026-10-12-s1-a1-preview-spike.md`): StreamPack 3.2.1's
+   * PreviewView sizes its viewfinder from the camera source's `getPreviewSize`, an area-only pick. The view is bound to
+   * a provider that shows it the camera through `SixteenNineCamera`, whose one replaced member answers through the pure
+   * seam `PreviewSizes.answer` (SixteenNinePreviewTest); every other member is the real source's, by delegation, and the
+   * streamer's own input is never wrapped or set, so the encode is untouched (P2). The glue compiles only in the
+   * Android build, so its shape is pinned here; the size it gives is the device's to show (Batch 9).
+   */
+  @Test
+  fun `N30 the preview sees the camera through the 16 by 9 rule, and nothing else changes`() {
+    val glue = code(glue("SixteenNinePreview.kt"))
+    val camera = body(glue, "class SixteenNineCamera(")
+    assertTrue(Regex("""class SixteenNineCamera\(private val real: ICameraSource, private val sizes: ListedSizes\) : ICameraSource by real \{""").containsMatchIn(glue), "the real camera, by delegation")
+    assertTrue(Regex("""@OptIn\(InternalStreamPackApi::class\)[^\n]*\n\s*class SixteenNineCamera\(""").containsMatchIn(glue), "3.2.1 marks ICameraSource opt-in to implement (spike §3)")
+    assertEquals(1, uses(camera, "override"), "one member replaced: $camera")
+    assertTrue(Regex("""override fun <T> getPreviewSize\(targetSize: Size, targetClass: Class<T>\): Size \{""").containsMatchIn(camera), "the preview's size: $camera")
+    assertTrue(Regex("""PreviewSizes\.answer\(sizes\(real\.cameraId, targetClass\)\) \{ real\.getPreviewSize\(targetSize, targetClass\)""").containsMatchIn(camera), "answered by the tested seam, StreamPack's own answer the fallback: $camera")
+    val provider = body(glue, "class SixteenNineProvider(")
+    assertTrue(Regex("""class SixteenNineProvider\([^)]*\) : IWithVideoSource by real \{""").containsMatchIn(glue), "the streamer, by delegation")
+    assertTrue(Regex("""object : IVideoInput by real\.videoInput \{\s+override val sourceFlow""").containsMatchIn(provider), "only the source flow is replaced: $provider")
+    assertEquals(2, uses(provider, "override"), "videoInput and its sourceFlow, nothing else: $provider")
+    assertTrue("SharingStarted.WhileSubscribed()" in provider, "the mirror runs only while the PreviewView collects it: $provider")
+    // Fix round 1 (review I1, M1): the identity rules are the tested seams OneFor and ScopedOneFor (OneForTest).
+    assertTrue(Regex("""private val cameras = OneFor<ICameraSource, SixteenNineCamera>\(\{ SixteenNineCamera\(it, sizes\) \}\) \{\}""").containsMatchIn(provider), "one decorator per real camera, so an unchanged camera reads as unchanged: $provider")
+    assertTrue(Regex("""if \(source is ICameraSource\) cameras\.of\(source\) else source""").containsMatchIn(provider), "every camera through the cache, anything else as it is: $provider")
+    assertEquals(1, Regex("""\.stateIn\(""").findAll(glue).count(), "one mirror, on the scope the binding gives the provider")
+    val binding = body(glue, "class SixteenNineBinding(")
+    assertTrue(Regex("""private val providers = ScopedOneFor<IWithVideoSource, SixteenNineProvider>\(scope\) \{ streamer, own -> SixteenNineProvider\(streamer, own, sizes\) \}""").containsMatchIn(binding), "one provider per streamer, each mirror in a scope of its own, cancelled when the streamer is replaced or unbound: $binding")
+    assertTrue(Regex("""fun of\(streamer: IWithVideoSource\?\): SixteenNineProvider\? = providers\.of\(streamer\)""").containsMatchIn(binding), "null unbinds through the seam: $binding")
+    assertFalse("===" in glue, "no hand-rolled identity cache beside the seams")
+    for (call in listOf("setSource(", "setVideoSource(", "startStream(", "configure(")) assertFalse(call in glue, "the glue never calls $call: the encode is the streamer's own")
+    assertTrue(Regex("""private val sixteenNine = SixteenNineBinding\(scope\) \{ id, kind -> listed\(id, kind\) \}""").containsMatchIn(code(glue("CapturePreviewView.kt"))), "one binding, over the view's scope")
+    val listed =
+      Regex(
+        """private fun listed\(cameraId: String, kind: Class<\*>\): List<Pair<Int, Int>> =\s+try \{\s+listedSizes\(context, cameraId, kind\)\s+""" +
+          """\} catch \(e: Exception\) \{\s+if \(sizesFailed != cameraId\) \{\s+sizesFailed = cameraId\s+failed\("sizes", e\)\s+\}\s+emptyList\(\)\s+\}""",
+      )
+    val view = code(glue("CapturePreviewView.kt"))
+    assertEquals(1, listed.findAll(view).count(), "a failed read is one line per camera (review M2), and StreamPack's own pick stands")
+    assertTrue(Regex("""@Volatile private var sizesFailed: String\? = null""").containsMatchIn(view), "read on PreviewView's thread, which need not be main")
+    assertEquals(1, Regex("""\bsizesFailed = """).findAll(view).count(), "set by the failure only")
+    val adapter = code(glue("StreamerAdapter.kt"))
+    assertEquals(1, Regex("""\bwired = true\b""").findAll(adapter).count(), "the record says the rule is wired")
+    assertEquals(0, Regex("""\bwired = false\b""").findAll(adapter).count(), "and nowhere says it is not")
   }
 
   /**

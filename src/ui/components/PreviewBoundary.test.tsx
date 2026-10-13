@@ -5,8 +5,10 @@ import es from '@/i18n/es.json';
 import fr from '@/i18n/fr.json';
 import nl from '@/i18n/nl.json';
 import { crashPreviewUntilShown, disarmPreviewCrash } from '@/ui/components/PreviewBoundary';
+import { colour } from '@/ui/theme/tokens';
 import { readRecord } from '../../../test/fakePorts';
 import { layOut } from '../../../test/layOut';
+import { fillOf, heldOnGround, paintOf, unpaintedFill } from '../../../test/pressState';
 import { renderViewfinder } from '../../../test/renderViewfinder';
 
 // test/setup-ui.ts does not silence React's error log; each crash below would print it.
@@ -74,6 +76,26 @@ it.each([
   await live(_lang);
   expect(screen.getByText(read(dictionary['stream.preview.stopped']))).toBeTruthy();
   expect(screen.getByText(read(dictionary['stream.preview.show']))).toBeTruthy();
+});
+
+// The controller's press-fill ruling (2026-10-13): a held ghost's fill must not depend on the ground. Show preview sits
+// on the camera box's stage black (StreamStage's `box`) through a fallback that paints nothing: both are pinned here,
+// so a box or a fallback repainted under the button fails. jsdom composites nothing; how the fill reads on black is the
+// device re-check's (AGENTS §10).
+it('a held Show preview takes the press fill, the cream at 20%, on the camera box’s stage black', async () => {
+  await live();
+  const show = () => screen.getByRole('button', { name: en['stream.preview.show'] });
+  const box = () => screen.getByTestId('camera-box');
+  // The fallback, the caption's and the button's, is the box's own child, and paints nothing over it.
+  const fallback = show().parentElement as HTMLElement;
+  expect(fallback.textContent).toContain(en['stream.preview.stopped']);
+  expect(fallback.parentElement).toBe(box());
+  expect(paintOf(fallback).fill).toBe(unpaintedFill());
+  const { ground, held, released } = heldOnGround(show, box);
+  expect(ground).toBe(fillOf(colour.stage));
+  expect(held).toBe(fillOf(colour.pressFill));
+  expect(held).not.toBe(ground);
+  expect(released).not.toBe(held);
 });
 
 // PV41: the dev crash throws on every render while armed. React 19 renders the root again,

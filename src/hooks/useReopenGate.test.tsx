@@ -402,6 +402,15 @@ describe('useReopenGate: the cold-start re-pair', () => {
       false,
     ],
     [
+      'the notification’s Forget names it',
+      inStream,
+      (fakes) => {
+        pairCode(fakes.engine, code);
+        fakes.engine.notificationForget();
+      },
+      false,
+    ],
+    [
       'the saved code cannot be read',
       {
         [STORE_KEYS.active]: 'stream',

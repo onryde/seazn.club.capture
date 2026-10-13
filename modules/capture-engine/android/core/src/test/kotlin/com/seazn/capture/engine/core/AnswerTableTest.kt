@@ -423,14 +423,16 @@ class AnswerTableTest {
   }
 
   // hold window
-  @Test fun `a hold that runs out returns to Paired, hold-window-expired, and live S rejoins`() {
+  // N37 (the owner's ruling, 2026-10-13): the phone ended S itself, so the server's live for S is ignored.
+  @Test fun `a hold that runs out returns to Paired, hold-window-expired, and live S is ignored - never rejoined`() {
     val rig = MachineRig(descriptor = Configs.descriptor()).live()
     rig.send(Input.Dropped(rig.attempt!!, DropReason.ENDPOINT_CLOSED, null))
     rig.advance(184_000, feeding = false)
     assertEquals(LastEnd.HOLD_WINDOW_EXPIRED, paired(rig).lastEnd)
     rig.codes = null
     rig.hear("live", sid = "sess_42")
-    assertEquals(Cause.REJOIN, assertIs<Phase.Arming>(rig.phase).cause)
+    assertEquals(LastEnd.HOLD_WINDOW_EXPIRED, paired(rig).lastEnd)
+    assertEquals("sess_42", rig.records("open-ignored").single().field("sid"))
   }
 
   @Test fun `the waiting fields and pollSeconds refresh on every 2xx, in every phase`() {

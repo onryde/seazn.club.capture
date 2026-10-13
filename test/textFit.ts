@@ -4,15 +4,25 @@
  * (ledger P15): `measure` is a shipped font's width at the size the test names (`test/fontMetrics.ts`).
  */
 export function linesOf(text: string, width: number, measure: (text: string) => number): number {
-  let lines = 1;
+  return linesIn(text, width, measure).length;
+}
+
+/** The lines themselves, broken as `linesOf` counts them: for a fit that needs a line's own width. */
+export function linesIn(
+  text: string,
+  width: number,
+  measure: (text: string) => number,
+): readonly string[] {
+  const lines: string[] = [];
   let current = '';
   for (const piece of text.split(' ')) {
     const next = current === '' ? piece : `${current} ${piece}`;
     if (current === '' || measure(next) <= width) current = next;
     else {
-      lines += 1;
+      lines.push(current);
       current = piece;
     }
   }
+  lines.push(current);
   return lines;
 }

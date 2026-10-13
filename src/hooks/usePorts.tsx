@@ -12,6 +12,7 @@ import type {
   MotionPort,
   NavigationPort,
   OrientationLockPort,
+  PowerPort,
   ScreenPort,
   SharePort,
   SplashPort,
@@ -22,11 +23,14 @@ import type { Logger } from '@/services/logger';
 import type { ModeStore } from '@/services/modeStore';
 import type { PhotoPort } from '@/services/photoPort';
 import type { ProbeFlight } from '@/services/probeFlight';
+import type { RecordUploadPort } from '@/services/recordUploadPort';
+import type { RecordSendFlight } from '@/services/recordSendFlight';
 import type { ScanFlight } from '@/services/scanFlight';
 import type { ScoringLinkPort } from '@/services/scoringLinkPort';
 import type { SessionRecord } from '@/services/sessionRecord';
 import type { StreamSettingsStore } from '@/services/streamSettingsStore';
 import type { Surfaces } from '@/services/surfaces';
+import type { UploadCredentialStore } from '@/services/uploadCredentialStore';
 
 /**
  * Everything native, in one object that never changes after launch — which is
@@ -74,6 +78,14 @@ export type Ports = {
   readonly photo: PhotoPort;
   /** Spec §10: the match's Remote scoring link (the second call that answers). */
   readonly scoringLink: ScoringLinkPort;
+  /** R5: the battery state and the app's settings page, Android only. */
+  readonly power: PowerPort;
+  /** R4: the credential Send record to Seazn may use (P10: inert while its switch is off). */
+  readonly uploadCredential: UploadCredentialStore;
+  /** R3: Send record to Seazn's one request, plain fetch (inert while its switch is off: nothing draws the button). */
+  readonly recordUpload: RecordUploadPort;
+  /** R3: the one send, over the two above, built once so the row's remounts keep it (Important 3, Batch 6 review). */
+  readonly recordSendFlight: RecordSendFlight;
   readonly clock: () => Date;
   readonly hosts: readonly string[];
   readonly deviceLanguages: readonly (string | null)[];

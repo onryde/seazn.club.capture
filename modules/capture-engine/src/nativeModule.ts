@@ -35,6 +35,12 @@ export type CaptureEngineNative = {
    * credential: never log it. Required, not optional: an absent member would be a button that quietly never works.
    */
   scoringLink(): Promise<unknown>;
+  /**
+   * R5, and M5 of the Batch 5 review: the app's battery mode, read at once: `unrestricted`, `optimized` or
+   * `restricted` (`PowerMode.kt`), or null when native cannot read it. Unknown to iOS. The port reads any other answer,
+   * or a throw (a stale build), as unknown.
+   */
+  powerMode(): unknown;
   addListener(event: 'onSnapshot', listener: (body: unknown) => void): Subscription;
   addListener(event: 'onRecord', listener: (body: RecordLine) => void): Subscription;
   addListener(event: 'onAck', listener: (body: { seq: number }) => void): Subscription;

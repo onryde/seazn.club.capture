@@ -2,14 +2,17 @@ import { memo, useCallback, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, useWindowDimensions, View } from 'react-native';
 import { screenLayout } from '@/domain/mode/homeLayout';
 import { useT } from '@/hooks/useLanguage';
-import { useBackToViewfinder } from '@/hooks/useStreamLinks';
+import { useBackToHome, useBackToViewfinder } from '@/hooks/useStreamLinks';
 import { useStreamSettings } from '@/hooks/useStreamSettings';
 import type { ControlSide, StreamSettings } from '@/services/streamSettingsStore';
 import { ChoiceRow } from '@/ui/components/ChoiceRow';
 import { DiagnosticsCard } from '@/ui/components/DiagnosticsCard';
+import { PowerRow } from '@/ui/components/PowerRow';
+import { RecordRow } from '@/ui/components/RecordRow';
 import { SubScreenHeader } from '@/ui/components/SubScreenHeader';
 import { Text } from '@/ui/components/Text';
 import { TextLink } from '@/ui/components/TextLink';
+import { FEATURES } from '@/ui/features';
 import { layoutMarker } from '@/ui/layoutMarker';
 import { colour, layout as metrics, plateInk, radius, space } from '@/ui/theme/tokens';
 
@@ -36,18 +39,46 @@ const LIBSRT_SOURCE = 'https://github.com/Haivision/srt';
  * scrolling on its own (a 360 dp tall phone cannot hold the whole card under
  * the header), with the way back across the top. The root says
  * which in `data-layout`, the marker the tests read.
+ *
+ * R5: both variants carry the battery row after the power paragraph, on Android only. N33: both carry the record row
+ * after it, Share record and, with its switch on, Send record to Seazn (R3).
+ *
+ * R2: opened from Home's Live Stream tile (`from="home"`) it is outside the mode: no Diagnostics card (nothing is
+ * paired), no LIVE plate, and Back returns Home, named so. Landscape then draws one half, so the settings take the
+ * width.
+ * Both Back hooks run in both variants; each acts only on its own route, so neither takes the other's Back.
  */
-export function SettingsScreen() {
+type SettingsScreenProps = {
+  /** R2: `home` is the screen opened from Home's Live Stream tile: no Diagnostics, no LIVE plate, Back to Home. */
+  readonly from?: 'stream' | 'home';
+  /** R3: Send record to Seazn in the record row. `FEATURES.recordSend` (on, the owner's ruling of 2026-10-12). */
+  readonly recordSend?: boolean;
+};
+
+export function SettingsScreen({
+  from = 'stream',
+  recordSend = FEATURES.recordSend,
+}: SettingsScreenProps) {
   const { t } = useT();
   const { width, height } = useWindowDimensions();
   const layout = screenLayout(width, height);
   const toCamera = useBackToViewfinder();
+  const toHome = useBackToHome();
+  const fromHome = from === 'home';
   const { settings, change, saveFailed } = useStreamSettings();
   const toggleAutomatic = useCallback(
     () => change({ automatic: !settings.automatic }),
     [change, settings.automatic],
   );
-  const header = <SubScreenHeader title={t('settings.title')} onBack={toCamera} />;
+  const header = (
+    <SubScreenHeader
+      title={t('settings.title')}
+      onBack={fromHome ? toHome : toCamera}
+      plate={!fromHome}
+      backLabel={fromHome ? t('stream.home') : undefined}
+    />
+  );
+  const card = fromHome ? null : <DiagnosticsCard />;
   const controls = (
     <>
       <ChoiceRow
@@ -58,6 +89,8 @@ export function SettingsScreen() {
       <Text variant="metricUnit">{t('settings.automatic.hint')}</Text>
       <SideChoice side={settings.side} change={change} />
       <Text variant="metricUnit">{`${t('settings.power.label')} — ${t('settings.power.advice')}`}</Text>
+      <PowerRow />
+      <RecordRow send={recordSend} />
       <Licences />
       {saveFailed ? <Text variant="status">{t('settings.saveFailed')}</Text> : null}
     </>
@@ -70,9 +103,7 @@ export function SettingsScreen() {
           <ScrollView style={styles.half} contentContainerStyle={styles.controls}>
             {controls}
           </ScrollView>
-          <ScrollView style={styles.half}>
-            <DiagnosticsCard />
-          </ScrollView>
+          {card === null ? null : <ScrollView style={styles.half}>{card}</ScrollView>}
         </View>
       </View>
     );
@@ -82,7 +113,7 @@ export function SettingsScreen() {
       <ScrollView style={styles.screen} contentContainerStyle={styles.column}>
         {header}
         <View style={styles.controls}>{controls}</View>
-        <DiagnosticsCard />
+        {card}
       </ScrollView>
     </View>
   );

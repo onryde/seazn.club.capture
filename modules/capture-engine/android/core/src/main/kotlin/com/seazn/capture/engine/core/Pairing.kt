@@ -88,6 +88,9 @@ enum class UnpairReason(override val wire: String) : Wire {
   REPLACED("replaced"),
   TAKEN("taken"),
   PERMISSIONS("permissions"),
+
+  /** R6 of the D3 findings design: the operator's Forget on the notification. */
+  FORGOTTEN("forgotten"),
 }
 
 /** What names a pairing to JS (plan A's `sameCode`, moved to the pairing): never the token. */

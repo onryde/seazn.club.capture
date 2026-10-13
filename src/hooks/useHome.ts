@@ -46,6 +46,11 @@ import type { ModeStore, ModeStoreSnapshot } from '@/services/modeStore';
 
 /** A scan that did not simply open: what the panel explains. */
 export type PanelOutcome = Exclude<ScanOutcome, { kind: 'open' }>;
+/**
+ * The unpairs Home explains. The operator's own Forget on the notification (R6 of the D3 findings design) needs no
+ * explanation: the follow forgets the code, and Home just shows.
+ */
+export type PanelUnpairReason = Exclude<UnpairReason, 'forgotten'>;
 export type StreamCode = Extract<ModeCode, { mode: 'stream' }>;
 
 /**
@@ -61,7 +66,7 @@ export type HomePanel =
       readonly error: CodeError;
       readonly code: StreamCode;
     }
-  | { readonly kind: 'unpaired'; readonly tapped: 'stream'; readonly reason: UnpairReason }
+  | { readonly kind: 'unpaired'; readonly tapped: 'stream'; readonly reason: PanelUnpairReason }
   /** A7: another mode while paired asks first; its confirm unpairs, forgets, then opens. */
   | { readonly kind: 'unpairConfirm'; readonly tapped: Mode; readonly code: ModeCode };
 
@@ -393,6 +398,8 @@ function useUnpairedPanel(panel: HomePanel | null, setPanel: SetPanel): void {
     if (key === null || reason === null) return;
     if (key === named.get(engine) || panel?.kind === 'checking') return;
     rememberNamed(engine, key);
+    // R6: the operator's own Forget needs no explanation; the code is forgotten by the follow, and Home just shows.
+    if (reason === 'forgotten') return;
     setPanel({ kind: 'unpaired', tapped: 'stream', reason });
   }, [engine, key, reason, panel, setPanel]);
 }

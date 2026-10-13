@@ -187,17 +187,76 @@ class EngineTest {
     engine.send(Input.HeartbeatAnswered(1, HeartbeatResponse.Answered(200, BeatReply("waiting", null, null, null, Configs.waiting()))))
     scheduler.advanceBy(1_000)
     // A second later, still in that minute, the machine throws: the pairing ends fatal-error, and its minute is written
-    // after the failure's own line.
+    // after the failure's own line and the end's `ended` line (Batch 13, I1).
     engine.send(Input.SwitchCamera)
     scheduler.advanceBy(0)
     assertEquals(EndReason.FATAL_ERROR, assertIs<Phase.Ended>(engine.phase).reason)
     val minute = """{"at":"2026-09-21T14:13:21.000Z","kind":"beats","minuteEpochMs":1789999980000,"sent":1,"failed":0,"word":"NoBroadcast"}"""
-    assertTrue(""""kind":"engine-error"""" in lines[lines.size - 2] && "bug" in lines[lines.size - 2], lines[lines.size - 2])
+    assertTrue(""""kind":"engine-error"""" in lines[lines.size - 3] && "bug" in lines[lines.size - 3], lines[lines.size - 3])
+    assertTrue(""""kind":"ended"""" in lines[lines.size - 2], lines[lines.size - 2])
     assertEquals(minute, lines.last())
     // Once: what lands after the end writes no second minute, a second failure (the Ended branch) included.
     engine.sendAll(listOf(Input.SwitchCamera, Input.Unpair, Input.Tick))
     scheduler.advanceBy(12_000)
     assertEquals(listOf(minute), lines.filter { """"kind":"beats"""" in it })
+  }
+
+  /** The kind of a record line, as the record writes it. */
+  private fun kindOf(line: String): String = Regex(""""kind":"([^"]+)"""").find(line)!!.groupValues[1]
+
+  private val failsOnSwitch: (Phase, Input, Now) -> Step = { phase, input, now -> if (input == Input.SwitchCamera) error("bug") else SessionMachine.reduce(phase, input, now) }
+
+  /**
+   * Batch 13, from the Batch 12 review's I1 (the controller's ruling): a failure inside the machine ends the pairing, so
+   * the engine writes the `ended` line every end writes ([SessionMachine.end]), after the failure's own `engine-error`
+   * and before the pairing's minute of beats. The web's record window then needs only `unpaired` and `ended`.
+   */
+  @Test
+  fun `I1 a failure inside the machine before air writes engine-error, then ended fatal-error not live, then its minute`() {
+    val engine = engine(reducer = failsOnSwitch)
+    // Armed by the organiser's go-live, never live. FakeClock: 0 ms is 2026-09-21T14:13:20Z.
+    engine.sendAll(Configs.pairInputs(ready = false))
+    scheduler.advanceBy(0)
+    assertIs<Phase.Armed>(engine.phase)
+    lines.clear()
+    engine.send(Input.SwitchCamera)
+    scheduler.advanceBy(0)
+    assertEquals(EndReason.FATAL_ERROR, assertIs<Phase.Ended>(engine.phase).reason)
+    assertEquals(listOf("engine-error", "ended", "beats"), lines.map(::kindOf), lines.toString())
+    assertEquals("""{"at":"2026-09-21T14:13:20.000Z","kind":"ended","reason":"fatal-error","wasLive":false}""", lines[1])
+    assertEquals(listOf<Command>(Command.End(EndReason.FATAL_ERROR)), executed.filterIsInstance<Command.End>())
+  }
+
+  @Test
+  fun `I1 a failure inside the machine on air writes engine-error, then ended fatal-error live, then its minute`() {
+    val engine = engine(reducer = failsOnSwitch)
+    // Live from the first frame that advances, at 0.5 s.
+    engine.live()
+    lines.clear()
+    engine.send(Input.SwitchCamera)
+    scheduler.advanceBy(0)
+    assertEquals(EndReason.FATAL_ERROR, assertIs<Phase.Ended>(engine.phase).reason)
+    assertEquals(listOf("engine-error", "ended", "beats"), lines.map(::kindOf), lines.toString())
+    assertEquals("""{"at":"2026-09-21T14:13:20.500Z","kind":"ended","reason":"fatal-error","wasLive":true}""", lines[1])
+    assertEquals(listOf<Command>(Command.End(EndReason.FATAL_ERROR)), executed.filterIsInstance<Command.End>())
+  }
+
+  /**
+   * Batch 13 fix round 1 (m1 of its review): a failing command's line goes in the command's place in the step
+   * ([Engine.execute]), so the briefed order is seen in the record: `ended` before the End, as [SessionMachine.end] has it.
+   */
+  @Test
+  fun `I1 the fatal step's ended line comes before the End, so an End that throws is recorded after it`() {
+    onCommand = { _, command -> if (command == Command.End(EndReason.FATAL_ERROR)) throw IllegalStateException("link") }
+    val engine = engine(reducer = failsOnSwitch)
+    engine.sendAll(Configs.pairInputs(ready = false))
+    scheduler.advanceBy(0)
+    lines.clear()
+    engine.send(Input.SwitchCamera)
+    scheduler.advanceBy(0)
+    assertEquals(listOf("engine-error", "ended", "command-failed", "beats"), lines.map(::kindOf), lines.toString())
+    assertTrue("End: java.lang.IllegalStateException: link" in lines[2], lines[2])
+    assertEquals(1, engine.commandFailures)
   }
 
   @Test
@@ -423,6 +482,8 @@ class EngineTest {
     engine.sendAll(Configs.pairInputs(beat = 2, fetch = 2))
     scheduler.advanceBy(0)
     assertEquals(3, lines.count { """"kind":"engine-error"""" in it })
+    // I1 (Batch 13): the two that ended a session wrote `ended`; the one once ended wrote none.
+    assertEquals(2, lines.count { """"kind":"ended"""" in it })
     assertEquals(listOf(1, 2), executed.filterIsInstance<Command.Connect>().map { it.attemptId })
   }
 
@@ -528,6 +589,7 @@ class EngineTest {
       assertEquals(before, after, "after $setup")
       assertTrue(executed.isEmpty(), "after $setup, asked of the platform: $executed")
       assertEquals(1, lines.count { """"kind":"engine-error"""" in it }, "after $setup")
+      assertEquals(0, lines.count { """"kind":"ended"""" in it }, "after $setup: an engine-error that ends nothing writes no ended (I1)")
       assertEquals(1, lines.count { """"kind":"intent-ignored"""" in it }, "after $setup")
     }
   }
@@ -647,6 +709,7 @@ class EngineTest {
     assertEquals(ended, engine.phase)
     assertEquals(listOf(Command.End(EndReason.FATAL_ERROR)), executed.filterIsInstance<Command.End>())
     assertEquals(2, lines.count { """"kind":"engine-error"""" in it })
+    assertEquals(listOf(true), lines.filter { """"kind":"ended"""" in it }.map { """"wasLive":true""" in it }, "the first failure's end only (I1)")
   }
 
   @Test
@@ -664,6 +727,7 @@ class EngineTest {
     assertEquals(stopped, engine.phase)
     assertEquals(listOf(Command.End(EndReason.OPERATOR_STOPPED)), executed.filterIsInstance<Command.End>())
     assertEquals(snapshots, published.size, "nothing changed, so nothing new goes up")
+    assertEquals(listOf("operator-stopped"), lines.filter { """"kind":"ended"""" in it }.map { Regex(""""reason":"([^"]+)"""").find(it)!!.groupValues[1] }, "the stop's own: the failure once ended writes none (I1)")
     assertEquals(SnapshotState.Ended(EndReason.OPERATOR_STOPPED, durationMs = 0), published.last().second.state, "live from the first frame that advanced, stopped at once")
     assertTrue(""""kind":"engine-error"""" in lines.last() && "bug" in lines.last(), lines.last())
   }

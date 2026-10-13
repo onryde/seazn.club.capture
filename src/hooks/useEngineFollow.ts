@@ -5,6 +5,7 @@ import type { SavedCode } from '@/domain/mode/savedCode';
 import type { EngineSnapshot } from '@/engine/CaptureEnginePort';
 import { selectEngineStatus, selectHeldName, selectUnpairedName } from '@/hooks/engineSelectors';
 import { usePorts } from '@/hooks/usePorts';
+import { isHomeSubRoute } from '@/services/devicePorts';
 
 const nameIf = (on: boolean, snapshot: EngineSnapshot): CodeName | null =>
   on ? selectHeldName(snapshot) : null;
@@ -70,8 +71,10 @@ export function useEngineFollow(): void {
     };
     const follow = () => {
       const snapshot = engine.getSnapshot();
-      // The route rule: Settings, with its Diagnostics card, is inside /stream already (M22).
-      if (selectEngineStatus(snapshot) === 'live' && navigation.current() === 'home')
+      // The route rule: Settings, with its Diagnostics card, is inside /stream already (M22). Stream Settings opened
+      // from Home is outside the mode, so a broadcast moves it to Live Stream too (A2, R2).
+      const here = navigation.current();
+      if (selectEngineStatus(snapshot) === 'live' && (here === 'home' || isHomeSubRoute(here)))
         navigation.go('stream');
       const store = modeStore.getSnapshot();
       // Nothing is heard before the store loads: a cold start's ending names the code it finds.

@@ -302,7 +302,7 @@ The palette, type and colour rules come from AGENTS §5, which stays in force (d
 - **Home (layout A):**
   - "SEAZN" in Barlow Condensed at the top.
   - The Continue card, shown only when it has something to resume: a `surface` card with a lime hairline, the title "Continue {mode}", and a detail line ("Slot 2 · code valid till 18:40"; court and teams need S1's descriptor). It has a lime **Continue** plate and a ghost **Forget** button.
-  - Three equal tiles fill the remaining height, each with a lime 4 px left edge and a lime line icon. Each tile shows its name in Barlow Condensed, uppercase and letterspaced, a one-line purpose, and a hint naming the code.
+  - Three equal tiles fill the remaining height, each with a lime 4 px left edge and a lime line icon. (Portrait amended 2026-10-12: each tile grows from its own content and Home scrolls when they outgrow the window; R11 of the D3 findings design, the controller's, owner to confirm.) Each tile shows its name in Barlow Condensed, uppercase and letterspaced, a one-line purpose, and a hint naming the code.
   - A "Coming soon" tile shows the purpose at `ink3` and the words "Coming soon" in place of the hint, and has no lime edge.
   - The footer holds "Language {name} ▾" and the version, at `ink3`.
 - **CodePanel:** slides up from the bottom over a dimmed Home, on `surface2`. It shows a small context line ("You opened Live Stream"), a Barlow Condensed title, a detail line, a lime primary plate when there is somewhere to go, and a ghost **Scan again**.

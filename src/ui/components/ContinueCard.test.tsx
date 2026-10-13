@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import type { ContinueCopy } from '@/domain/mode/continueCard';
 import { ContinueCard } from '@/ui/components/ContinueCard';
 import { colour } from '@/ui/theme/tokens';
+import { fillOf, heldOnGround } from '../../../test/pressState';
 import { renderWithPorts } from '../../../test/renderWithPorts';
 
 const noop = () => undefined;
@@ -57,4 +58,29 @@ describe('ContinueCard', () => {
     expect(screen.getByText(detail)).toBeTruthy();
     expect(screen.queryByText(/valid till\s*$/)).toBeNull();
   });
+
+  // The controller's press-fill ruling (2026-10-13): a held ghost's fill must not depend on the ground. The card is
+  // surface, pinned here in both shapes, so a card repainted under Forget fails too.
+  it.each(['stacked', 'row'] as const)(
+    '%s: a held Forget takes the press fill on the card’s surface ground',
+    (layout) => {
+      renderWithPorts(
+        <ContinueCard
+          mode="stream"
+          copy={SAVED}
+          layout={layout}
+          onContinue={noop}
+          onForget={noop}
+        />,
+      );
+      const { ground, held, released } = heldOnGround(
+        () => screen.getByRole('button', { name: 'Forget' }),
+        () => screen.getByTestId('continue-card'),
+      );
+      expect(ground).toBe(fillOf(colour.surface));
+      expect(held).toBe(fillOf(colour.pressFill));
+      expect(held).not.toBe(ground);
+      expect(released).not.toBe(held);
+    },
+  );
 });

@@ -10,12 +10,13 @@ import { listFiles, OURS } from '../scripts/vendor-contracts.mjs';
  * contracts/ is a byte copy of the web's docs/contracts at one commit, written by `pnpm contracts:vendor`, which
  * records every file's sha256 in contracts/VENDORED.json. This test holds the folder to that record, file for file.
  *
- * The other side of the pin is the web's own: its capture-contract.test.ts pins the five schemas. Those five values
- * and the commit are copied below BY HAND from apps/web/src/server/api-v1/__tests__/capture-contract.test.ts:48-52
- * at 5a02cc4a5 (web #932, merged 2026-10-09; the script never writes them), so a re-vendor cannot quietly move both
+ * The other side of the pin is the web's own: its capture-contract.test.ts pins the six schemas. Those six values
+ * and the commit are copied below BY HAND from apps/web/src/server/api-v1/__tests__/capture-contract.test.ts:51-57
+ * at a6cc1f038 (web #944, merged 2026-10-12, which changed only the record contract's description: an `engine-error`
+ * line no longer closes a pairing window; the script never writes them), so a re-vendor cannot quietly move both
  * sides at once. WEB_COMMIT is the commit actually vendored (plan D1, D-10).
  */
-const WEB_COMMIT = '5a02cc4a53265dcbbf5a27d33b012d67715fc183';
+const WEB_COMMIT = 'a6cc1f038b8518617040b1df1dc359fa734e649b';
 const WEB_PINS: Readonly<Record<string, string>> = {
   'capture-qr.v2.json': '3292e33f84b693e5def6048012f6653ca7e31e1573fda3901da4fe67a62c5d43',
   'capture-descriptor.v1.json': '5c9b09c422b092671ad3a842b02e5c18902c92fc290cbc562c91033555955b8b',
@@ -23,6 +24,7 @@ const WEB_PINS: Readonly<Record<string, string>> = {
   'capture-start.v1.json': '012d6e3851e84d0ce659ad23449fa91b61f0d20cfac1e58f2ccbc7cbb0742bae',
   'capture-scoring-link.v1.json':
     'f0f1188655f3ca83b3e42ce7fedd6f6210a3a141b0bcf02fa250eb2448b1c85f',
+  'capture-record.v1.json': '48a798649e24d6b779c745a017e897a9bac5b3a83d3731eaa0824c181fb78334',
 };
 
 const root = new URL('../contracts/', import.meta.url);
@@ -38,10 +40,10 @@ const vendored = JSON.parse(readFileSync(new URL('VENDORED.json', root), 'utf8')
 const onDisk = listFiles(fileURLToPath(root)).filter((path) => !OURS.includes(path));
 
 describe('the vendored contracts, pinned (plan D spec §3.1, R7)', () => {
-  it('pins 144 files: the five schemas and 139 fixtures (moves only with a re-vendor)', () => {
+  it('pins 205 files: the six schemas and 199 fixtures (moves only with a re-vendor)', () => {
     const pinned = Object.keys(vendored.files);
-    expect(pinned).toHaveLength(144);
-    expect(pinned.filter((path) => !path.includes('/'))).toHaveLength(5);
+    expect(pinned).toHaveLength(205);
+    expect(pinned.filter((path) => !path.includes('/'))).toHaveLength(6);
   });
 
   it('holds exactly the pinned files: none missing, none extra', () => {
@@ -64,7 +66,7 @@ describe('the vendored contracts, pinned (plan D spec §3.1, R7)', () => {
     },
   );
 
-  it('holds the same five schemas the web pins, no more and no fewer', () => {
+  it('holds the same six schemas the web pins, no more and no fewer', () => {
     expect(onDisk.filter((path) => !path.includes('/'))).toEqual(Object.keys(WEB_PINS).sort());
   });
 });

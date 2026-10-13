@@ -30,7 +30,21 @@ enum class CameraState(override val wire: String, val slateOnAir: Boolean, val s
    * Past the last real frame that is at most 3.5 s with Frames readings every tick, and under 4 s
    * without (B7 ruling m1, amended).
    */
-  SWITCHING("switching", slateOnAir = false, shownTaken = false),
+  SWITCHING("switching", slateOnAir = false, shownTaken = false);
+
+  /**
+   * The camera the pairing keeps when the broadcast ends and the phone stays Paired (N39, [Verdicts.over]). [TAKEN]
+   * and [REOPENING] still describe it: another app holds it until its release, and the reopen's answer is still to
+   * come and lands on the pairing ([Devices.reopened]). [RESUMING] and [SWITCHING] wait only for the session's next
+   * frame, which no phase without a session hears, so kept they would hold `ready.camera` false for good: the camera
+   * is ours, [OWN], and A11's frames check still has its say.
+   */
+  val afterSession: CameraState
+    get() =
+      when (this) {
+        OWN, TAKEN, REOPENING -> this
+        RESUMING, SWITCHING -> OWN
+      }
 }
 
 /**
@@ -55,7 +69,10 @@ data class PairingState(
   val waiting: WaitingFields = WaitingFields.UNKNOWN,
   /** The platform's last readiness facts (A11); the network is the phase's own fact. */
   val readiness: Readiness = Readiness.UNKNOWN,
-  /** I3: the camera while no broadcast is held (CD37 opens it on the viewfinder). A broadcast starts from it. */
+  /**
+   * I3: the camera while no broadcast is held (CD37 opens it on the viewfinder). A broadcast starts from it, and hands
+   * back its [CameraState.afterSession] when it ends.
+   */
   val camera: CameraState = CameraState.OWN,
   /** A17: this code and slot's stopped record, until delivered. */
   val stopped: StoppedRecord? = null,
@@ -261,6 +278,13 @@ val Phase.holdsBroadcast: Boolean
   get() = heldSid != null
 
 /**
+ * When the held broadcast first went live: its first encoded frame. Null for a broadcast that never went live, or none
+ * held. (N29's rejoin also read a lapsed broadcast's time here; N37's ruling, 2026-10-13, ended the rejoin.)
+ */
+val Phase.firstLiveEpochMs: Long?
+  get() = session?.liveSinceEpochMs
+
+/**
  * The foreground service is held: Hold went at the permission grant, so from Paired until the pairing
  * ends. Release goes only where this is true (review C0b M4); Ended's final beat keeps its own.
  */
@@ -373,13 +397,14 @@ fun Phase.withMic(silenced: Boolean): Phase =
 
 /**
  * The phase a session ends in, from any phase: the ids and the network and mic facts carry on to the next
- * session. The duration counts from the first encoded frame on the wall clock, outages included, as
- * the HUD's elapsed clock does (final review M-3); a wall clock set back past that frame reads 0. An
+ * session. The duration counts from the first encoded frame on the wall clock ([firstLiveEpochMs]),
+ * outages included, as the HUD's elapsed clock does (final review M-3); a wall clock set back past
+ * that frame reads 0. An
  * ended session ended again stays as it ended: its reason and duration stand (final review N-2).
  */
 fun Phase.ended(reason: EndReason, now: Now): Phase.Ended {
   if (this is Phase.Ended) return this
-  val durationMs = session?.liveSinceEpochMs?.let { (now.wallMs - it).coerceAtLeast(0) }
+  val durationMs = firstLiveEpochMs?.let { (now.wallMs - it).coerceAtLeast(0) }
   return Phase.Ended(reason, ids, durationMs, networkValidated, micSilenced, pairing, heldSid)
 }
 

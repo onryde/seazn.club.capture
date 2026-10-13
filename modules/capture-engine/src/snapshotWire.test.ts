@@ -62,6 +62,18 @@ const EXPECTED: Readonly<Record<string, Expected>> = {
     reportedAtMs: 1_790_000_000_500,
     survivesBackground: false,
   },
+  // R6 of the D3 findings design: the shade's Forget. JS drops the saved code on this reason, the whole name matching.
+  'idle-unpaired-forgotten': {
+    ...REST,
+    state: { kind: 'idle' },
+    pairing: null,
+    broadcast: null,
+    ready: NOT_READY,
+    unpaired: { reason: 'forgotten', code: 'fx42hmnp7k2q', slot: 1, tokenTag: 'c980ff38' },
+    camera: null,
+    reportedAtMs: 1_790_000_000_700,
+    survivesBackground: false,
+  },
   pairing: {
     ...REST,
     state: { kind: 'pairing' },
@@ -178,6 +190,24 @@ const EXPECTED: Readonly<Record<string, Expected>> = {
     reportedAtMs: 1_790_000_146_000,
     survivesBackground: true,
   },
+  // N29's rejoin (R10 of the D3 findings design): the hold has run out, so it reads 0 of 0, and the clock carries the
+  // broadcast's first live time, not the rejoin's.
+  'reconnecting-hold-expired': {
+    ...REST,
+    state: {
+      kind: 'reconnecting',
+      cause: 'hold-expired',
+      holdRemainingSeconds: 0,
+      holdWindowSeconds: 0,
+      sinceEpochMs: 1_790_000_001_000,
+    },
+    pairing: PAIRING,
+    broadcast: { ...BROADCAST, cause: 'rejoin' },
+    ready: READY,
+    camera: 'own',
+    reportedAtMs: 1_790_000_400_000,
+    survivesBackground: true,
+  },
   'ended-operator-stopped': {
     ...REST,
     state: { kind: 'ended', reason: 'operator-stopped', durationMs: 2_700_000 },
@@ -222,8 +252,8 @@ const EXPECTED: Readonly<Record<string, Expected>> = {
 
 describe('carries 2-6: the snapshot wire, as native writes it (Task 12)', () => {
   // The file's count, so an emptied or truncated file cannot pass by sweeping nothing (PV12).
-  it('has an expectation for each of the 15 cases, and a case for every expectation', () => {
-    expect(vectors.cases).toHaveLength(15);
+  it('has an expectation for each of the 17 cases, and a case for every expectation', () => {
+    expect(vectors.cases).toHaveLength(17);
     expect(vectors.cases.map((c) => c.name).sort()).toEqual(Object.keys(EXPECTED).sort());
   });
 

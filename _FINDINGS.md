@@ -865,6 +865,397 @@ switch is on; nothing can prove steps 2 and 3, because there is nothing to obser
 
 ---
 
+### N27 — A locked phone stops beating unless its battery is Unrestricted
+
+**Status:** mitigation landed — feat/s1-d3-fixes, Batch 5 (c5a2401; Stream Settings from Home: 73dc5ae, fdc8b41, a
+gear since Batch 10, f034948; fix round 1: f0e4659): the battery row in Stream Settings, R5 of the D3 findings design (owner, 2026-10-11;
+`docs/specs/2026-10-11-s1-d3-findings-design.md`), reading Unrestricted, Optimized or Restricted and opening App
+info (R12, R13 of the same design, the controller's, 2026-10-12), and a `power {mode}` record line at every
+pairing's hold and at a change read on a return; AGENTS §9 amended. The cause stays open (OxygenOS battery management); the device proof is Batch 9's
+(`docs/superpowers/plans/2026-10-11-s1-d3-fixes.md`)
+**Where:** capture app · `PairingKeeper` (foreground service, partial wake lock) · OxygenOS battery management
+
+On the NE2211 (Android 16, OxygenOS), with the foreground service (camera + microphone) and the partial wake lock
+both held, beats stopped within one to a few minutes of locking (D3 Task 2b, and 2026-10-11 22:06–22:09Z); not a clean
+threshold. It happened on charge too, so it is not plain Doze. With the app's battery set to **Unrestricted**, beats ran
+unbroken through a 9-minute lock (22:19:51–22:28:32Z), and a console Go live was heard while locked. Evidence:
+`~/seazn-d3-evidence/2026-10-10/d3-beats-2026-10-11.ndjson`, `b8-record.ndjson`.
+
+---
+
+### N28 — A start while the Live Stream view is not showing has no video
+
+**Status:** open · investigation first: section 3 of the D3 findings design
+(`docs/specs/2026-10-11-s1-d3-findings-design.md`); feat/s1-d3-fixes, Batch 8
+(`docs/superpowers/plans/2026-10-11-s1-d3-fixes.md`); Step A, the hypothesis and Step B's pass mark below: 2cd26dc
+**Where:** capture app · `CaptureRun.reopen` (`CaptureRun.kt:281-289`), `rebuild` (`:202-209`) · `StreamerAdapter.reopenCamera`
+(`:338-346`) · StreamPack 3.2.1 `VideoInput` (`addOutputSurface$streampack_core`)
+
+At the locked Go live of 2026-10-11 22:26:04Z, StreamPack logged `VideoInput: Video source configuration is not set`
+and `…can't add output surface`. No `delivered` line followed, through the unlock at about 22:28:32Z (N27), until the
+lag rule reconnected the stream at 22:30:15Z (N32). It was one broadcast throughout: `resumed` at 22:30:17Z and
+`delivered` at 22:30:23Z. The console showed Trouble and YouTube stayed on "Preparing stream". The same vendor lines
+precede D3's "no video after a camera taken → reopen" (sid a20dcecf). The first line also appears at a normal pairing
+(22:19:11Z) where video then worked, so it is not the cause alone; what differs is whether a preview surface is attached
+when the stream starts. A YouTube event that starts with no video may stay on "Preparing" after the picture arrives
+(observed, not proven; `docs/specs/2026-10-11-s1-d3-web-brief.md` section 4). Evidence: `b8-record.ndjson`,
+`b8-media-camera.txt` (one 1280 × 720 stream to the encoder's SurfaceTexture, no preview, while locked).
+
+**Hypothesis (code reading, 2026-10-12; unproven):** The two vendor lines are the signature of every streamer build, not
+the cause. `cameraSingleStreamer` sets the camera source before our `setVideoConfig` (`StreamerAdapter.kt:229`, `:251`),
+so StreamPack's `VideoInput.setSource` finds no source config, logs `Video source configuration is not set`, and its own
+`addOutputSurfacesUnsafe` logs `…can't add output surface` 1–7 ms later. `setVideoConfig` then builds a new surface
+processor and adds the outputs. b8 has the pair at all eleven builds, the attached ones (22:01:06Z, 22:19:11Z) included.
+For paths 1 and 2 the encoder's surface does attach. At the locked Go live, `capture-clock` (the first encoded video
+frame) came 382 ms after `connected`, and `live` (gated on encoded frames) 628 ms later; no `video-stalled` for 4 min;
+the camera had produced 4,419 frames by about 22:28:35Z; and the server's beats read `delivery ok`, lag 0.1 s and
+0.5 s, at 22:27 and 22:28 with the phone still locked. The off-view start at 22:02:30Z (bb409e95) matches. What read as
+"no video" was three other things: YouTube holding "Preparing" (web brief §4); the trouble that began at the unlock,
+about 22:28:32Z, when the view attached on air, StreamPack reconfigured the camera session for the preview target, the
+bitrate fell 2.6 → 1.07 Mbps and lag grew 1.0 → 7.7 → 17.7 s (thermal 3 a confound) until the lag rule reconnected
+(N27, N32); and a `delivered` line that a healthy start never writes, since it is written only when a `not-delivered`
+clears (`SessionMachine.kt:626-628`).
+Path 3 (a20dcecf, A3) is a different defect. After the camera was taken and reopened, the capture was released and
+built again with the view attached (13:23:33Z), so the 13:23:40Z start was an ordinary attached one, and it delivered
+(`capture-clock` 195 ms, `live`). Video then stopped twice with no vendor line (`video-stalled no-video` at 13:23:52Z
+and 13:24:12Z), the video encoder entered ERROR at 13:24:15.9Z (`codec is not running: ERROR`, `onStreamError: index 0
+is not owned by client`), and every later attempt was `no-first-frame`: 28 stalls until the hold window expired at
+13:27:15Z. Recovery (`Rebuild` / `StartNewSession` → `CaptureRun.reconnect`, `:246-247` → `:444-447`) only stops and
+starts the same streamer (`parts.stop` `:437`, `parts.start` `:321`); nothing builds a new one after its encoder fails.
+Ranked:
+
+1. Path 3, a failed encoder never rebuilt. High confidence for the 3-minute outage; the first silent stall is
+   unexplained. Step B confirms it with a codec ERROR followed by repeating `no-first-frame` and no `capture-rebuilt`.
+   A stop and start alone that restores frames after an ERROR refutes it.
+2. Paths 1 and 2 deliver; the failure is downstream or after the unlock. High confidence that H0 (the surface never
+   attaches) is refuted for path 2, medium on what the owner saw. Step B confirms it with a master playlist carrying
+   `avc1` and `RESOLUTION=1280x720`, a segment from the locked minutes that ffprobe and blackdetect show as real video,
+   and beats' lag under 2 s until the unlock. Any of these refutes it: a locked-minute segment with no video or only
+   black, `no-first-frame` 5 s after `connected` on an off-view start, a third `…can't add output surface` line apart
+   from a build's pair, or `addOutputSurface: Can't add output surface: SurfaceProcessor is released`. The last two are
+   H0's only two mechanisms in the vendor code, and no record so far has either.
+
+**Pass mark for Step B (the controller's ruling, 2026-10-12):** a `delivered` line cannot pass on a healthy start (it is
+written only when a `not-delivered` clears, `SessionMachine.kt:626-628`). Step B passes a path when `capture-clock` and
+`live` follow `connected` within 30 s, the beats read `delivery ok` with lag under 2 s, the master playlist carries
+`avc1` and `RESOLUTION=1280x720`, and a segment from the locked minutes is real, non-black video (ffprobe and
+blackdetect).
+
+---
+
+### N29 — A rejoin after the hold runs out retries forever, with no reason shown
+
+**Status:** superseded by N37 (the owner's ruling, 2026-10-13: the phone ends the session at hold expiry and never rejoins it; the Lapsed/Rejoin path below was removed in Batch 16). Was fixed — feat/s1-d3-fixes, Batch 2 (588ca11, 3eb3c1a, 4e27a9b; fix round 1: 279413f, 641103a, a4756e1)
+**Where:** capture app · `Verdicts.over` (`Pairings.kt:274-281`) · `Transports.outageFor` (`SessionMachine.kt:327-331`) ·
+`Transports.failed` (`:262-276`) · `Projection.state` (`Projection.kt:72`)
+
+`Verdicts.over` returns the phone to Paired without marking the sid. The next beat saying `live` re-arms it as a new
+Session with `liveSinceEpochMs` null, so `outageFor` returns no outage, there is no hold, `Transports.failed` retries
+every 2 s with no limit, and the snapshot shows CONNECTING with no reason.
+
+**Ruling and fix:** R10 of the D3 findings design (the controller's, 2026-10-11;
+`docs/specs/2026-10-11-s1-d3-findings-design.md`). The cause word `hold-expired` is the D3 fixes plan's ruling P2 and
+Stop's path its ruling P3, both the controller's, and the fix round's rulings are the controller's of 2026-10-12. The
+hold's end is as it was, and the pairing now remembers the lapsed sid and its first live time (`PairingState.lapsed`).
+Any arm of that sid rejoins it: a `live` or `go-live` beat, or the operator's start answered `already_live`. The rejoin
+projects as Reconnecting with cause `hold-expired`, no hold (0 of 0) and the first live time, so the HUD's clock carries
+on, and the app says "Uplink lost — live on the server, retrying" (`stream.status.rejoinRetrying`, urgent). Its failed
+connects, drops and no-first-frame rebuilds back off 2, 4, 8, 16, then 30 s (record line `rejoin-retry`), and no retry
+ends it. The server's end, Stop or a 401 before its first frame ends it: Stop ends the pairing as Stop from live does,
+with A8's final beat and its time on air, and a 401 unpairs at once. Its first frame ends the rejoin, and a later drop
+holds as usual.
+
+**Remaining gap (not fixed in Batch 2):** the lapse is kept in memory only, so after a process death the server's
+`live` connects as a bare CONNECTING again, with 2 s retries and a clock that starts at its first frame.
+
+**Known mismatch (the controller's ruling, 2026-10-12):** in Arming and Armed of a lapsed sid, the screen reader still
+says "Hold to stop", while Stop there unpairs. The snapshot cannot tell that arm from a fresh one, and a wire field
+for one label is not worth it.
+
+---
+
+### N30 — A square preview on the CPH2569
+
+**Status:** fixed — feat/s1-d3-fixes, Batch 3 (7dfced7, 8d3a7b5, 0e8bb97; fix round 1: b383525); the device proof is
+Batch 9's (`docs/superpowers/plans/2026-10-11-s1-d3-fixes.md`)
+**Where:** capture app · `CapturePreviewView` · `PreviewSizes` (`preview/PreviewSizes.kt`) · `SixteenNineCamera`
+(`SixteenNinePreview.kt`) · StreamPack 3.2.1 `CameraSizes.getPreviewOutputSize`
+
+The camera served the preview 960 × 960 and the encoder 1280 × 720 (`dumpsys media.camera`, 2026-10-11 21:10Z,
+`r4-b-media-camera.txt`), so the 16:9 box showed the picture pillarboxed (`r4-b-live.png`). StreamPack 3.2.1 picks the
+preview size by **area only** (sort by area, reverse, `closestTo`), and 960 × 960 has exactly the area of 1280 × 720
+(921,600). `PreviewSizeReport.sameArea` (`PreviewSizes.report`) counts such ties.
+
+**Fix:** the spike (`docs/specs/2026-10-12-s1-a1-preview-spike.md`, verdict `DECORATOR`) found the size comes from one
+call, the camera source's `getPreviewSize`, with no fork needed. The `PreviewView` now sees the camera through
+`SixteenNineCamera`, which answers that call with the listed 16:9 size nearest 1280 × 720 in area
+(`PreviewSizes.answer`) and StreamPack's own answer when none is listed; every other member is the real camera's. The
+`preview-size` line says which rule picked (`pickSource`) and whether the pick is 16:9 (`pickAspect16x9`). Still to
+show on the CPH2569 (Batch 9): a 1280 × 720 preview stream in `dumpsys media.camera` and no pillarbox.
+
+---
+
+### N31 — French Home tile titles run past their tile
+
+**Status:** fixed — feat/s1-d3-fixes, Batch 7 (50ac1d4; fix round 1: 37ef42e); the device proof is Batch 9's
+(`docs/superpowers/plans/2026-10-11-s1-d3-fixes.md`)
+**Where:** capture app · `Tile.tsx` (the title) · `tileTitleRole` (`src/ui/theme/tileTitle.ts`) ·
+`layout.tileTitleLines`, `layout.tileTitleRoom` · `homeFit.test.ts`
+
+On the owner's phone sideways with 3-button navigation, "SCORE À DISTANCE" and "TABLEAU DE BORD" ran past their tiles
+(D3, `r12-home-fr-landscape.png`): TABLEAU DE BORD's ink by about 2 dp, SCORE À DISTANCE's by 8 dp or more, cut off
+under the next tile. The title had no `numberOfLines` and no `flexShrink`, so it kept its full width. The cause is the
+window, not the measure. The display is 804 dp sideways, but ShellFrame's insets (a 32 dp cutout and a 44 dp bar) lay
+Home out 728 dp wide: tiles of 226.7 dp, measured in the shot, so a title's room of 162.7, not the 188 the fit assumed
+at 804. The two titles measure 186.7 and 179.7 dp, 24 and 17 dp over that room, more than the tile's 12 dp padding.
+The font measure matched the phone to within 1 dp (TABLEAU DE BORD's ink: 176.0 measured, 177.3 by the font; the
+Batch 7 review). The fit tests' widths are Home's own, as laid out behind the insets (the controller's ruling,
+2026-10-12).
+
+The title now gives way beside the icon (`flexShrink: 1`) and wraps to at most two lines, then an ellipsis
+(`layout.tileTitleLines`). It never breaks inside a word: where its room is narrower than the widest word of any title
+(nl LIVESTREAM, 123.3 dp; `layout.tileTitleRoom`), it steps down one size, from `title` to `action` (`tileTitleRole`,
+read from the title row's laid-out width). `homeFit.test.ts` measures every title in four languages at Home widths of
+592 (a 640 dp phone behind its bar, where the title steps down), 640, 728, 804 and 915 sideways and 360 and 412
+upright: no word is wider than the title's room, and none takes three lines. The step holds Home down to 581 dp. With
+every title at two lines, the tiles still fit every window they fitted, except 915 × 412 with both cards, which then
+scrolls. Still to show on the phone (Batch 9): on the owner's phone sideways with 3-button navigation (Home ≈ 728 dp),
+both French titles on two lines inside their tiles, with `font_scale` recorded with the shot.
+
+---
+
+### N32 — The 20 s lag rule fired close to its limit on a real stall
+
+**Status:** recorded; no change: R8 of the D3 findings design (the controller's, 2026-10-11;
+`docs/specs/2026-10-11-s1-d3-findings-design.md`)
+**Where:** capture app · `DeliveryWatch` (`LAG_GROWTH_LIMIT_MS`, `DeliveryWatch.kt:270`; the stall rule
+`NOT_DELIVERED_MS` did not fire)
+
+The rule fired at `lagGrowthMs` 20,456 with `stalledMs` 18,151 (2026-10-11 22:30:15Z): a real stall, close to the
+limit. D3 row 1 saw growth of 16–20 s near the limit too. The lag rule (`LAG_GROWTH_LIMIT_MS`) is not changed.
+
+---
+
+### N33 — A replaced phone cannot hand over its record
+
+**Status:** fixed — feat/s1-d3-fixes, Batches 5 and 6 (Stream Settings from Home: 73dc5ae, fdc8b41; the record row:
+9802354); Send record to Seazn is built (8b99943, 4920ea3, 9802354; fix round 1: d89f5da, 8ddb33f; fix round 2:
+023ab03), and posts to the web's record contract, vendored at web a6cc1f038 (Batch 11, at 53f28ebfc: 7ccfbd8,
+866f3f8; Batch 12, at 55ac34d5d: ea636f2; Batch 15, at a6cc1f038: 64a1ac2;
+`docs/specs/2026-10-11-s1-d3-web-brief.md` §1), behind
+`FEATURES.recordSend`, which Batch 11 switched on (the owner chose "On now (Recommended)" in the session,
+2026-10-12); the device proof is Batch 9's
+(`docs/superpowers/plans/2026-10-11-s1-d3-fixes.md`)
+**Where:** capture app · `DiagnosticsCard` (Share record) · `RecordRow` · Home
+
+Share record lived only in Live Stream's Settings, and a phone sent to Home by `Replaced` has no pairing to open it
+from. The record row (Share record, and Send record to Seazn when its switch is on) is now in Stream Settings in both
+variants, after the battery row (Batch 6), and Stream Settings opens from Home's Live Stream tile (Batch 5): a replaced
+phone closes the panel, taps the tile's Stream settings gear (Batch 10, f034948) and shares
+(`HomeScreen.unpaired.test.tsx`). The Diagnostics card's
+header kept its 48 dp without the button, so the card stayed 272 dp: it fits its half at 640 × 360 but not on the
+owner's phone (N35). The header has since dropped the 48 (4421fb2), and the card is 244 dp.
+
+---
+
+### N34 — The round line is the server's text
+
+**Status:** resolved by the web, in the web's register (its W-number unverified here); no app change
+**Where:** web · the waiting fields' stage label
+
+In French the phone showed "ROUND 2". The web already localises the round line by the organisation's
+`default_locale`, and recommends keeping it that way: the answer from `mobile-s1-web` on 2026-10-11, in the web's
+register (its W-number unverified here). The phone keeps drawing the server's text as sent.
+
+---
+
+### N35 — The owner's phone lays out at 728 × 328, not 804 × 332
+
+**Status:** fixed in docs/tests — feat/s1-d3-fixes, Batch 7 (d081acc; N35 and AGENTS §6: a92a6bf); the Diagnostics
+card, from the final review: 4421fb2
+**Where:** capture app · `ShellFrame.tsx` (all four edges, around every route in `app/_layout.tsx`) · the viewfinder
+fits (`viewfinderFit`, `cameraBox`, `stripTextFit`, `matchLabelFit`, `viewerCoverFit`, `StreamScreen.layout`) ·
+`homeFit` · `settingsFit` · `DiagnosticsCard` · AGENTS §6
+
+The viewfinder's rulings of 2026-10-08 and their fits name the owner's phone as 804 × 332: its display sideways, less
+the status bar. The phone does not give the app that window. With 3-button navigation ShellFrame's insets are a
+32.0 dp cutout, a 44.0 dp navigation bar and a 32 dp status bar, and nothing is immersive, so every route, Home and
+Live Stream alike, is laid out 728 × 328. Every D3 stream shot shows the same split (`r1-live.png`, `r2a-live.png`,
+`m2-stopped.png`, `r12-c2-804-fr.png`): a 418 dp camera half, the 310 dp controls half, and the controls' plate and the
+bottom button 8 dp from the top and bottom of a 328 dp window; `r12-home-fr-landscape.png` shows Home at the same 728 (N31).
+Gesture navigation was not in the evidence.
+
+What changes at 728 × 328, by each fit's own model:
+
+- The controls column's worst before-air stack, 324, leaves 4 dp to spare, not 8. Every control is still on screen.
+- The camera box is 387.6 × 218 for a two-line label, limited by the window's height (D3 read 387.3 × 218), not
+  394.7 × 222; 418 × 235.1 (the whole half) for a one-line label; and 309.3 × 174 before the label is measured.
+- The strip's text is 386 dp wide, not 462: no realistic line in any language is cut there.
+- A label side's row is 364 dp, not 440: the fixtures' sides stay one line, so the long doubles label is still 44.
+- Home with one card scrolls (141 or 149 dp for tiles that need 166).
+- Settings' halves have 248 dp, and the Diagnostics card was 272: 24 over, so its half scrolled and its ninth row
+  (Heartbeat, _Last sent_) was under the fold (`r12-dim-settings.png`). The final review found it (Important 2), since
+  `settingsFit` proved the card only at 360, 390 and 412. Its header dropped the 48 dp it had kept from Share record's
+  button, which nothing in it needs: nothing in it takes a tap (the controller's ruling, 2026-10-12). The card is now
+  244 and fits with 4 dp to spare; `settingsFit` carries 328 and 332 (4421fb2). On the phone it is Batch 9's.
+
+Nothing clips. The fits now carry 728 × 328 as the owner's phone, with hand-derived rows; 804 × 332 stays as a
+geometry, as the one the rulings were made on (the controller's ruling, 2026-10-12, from D3's evidence).
+
+---
+
+### N36 — A phone paired and waiting on Home has no keep-awake
+
+**Status:** open — not fixed in feat/s1-d3-fixes; the owner decides at the D3 results (`docs/specs/2026-10-13-s1-plan-d-results.md`)
+**Where:** capture app · `useKeepAwake` is mounted only in `app/stream/_layout.tsx` · AGENTS §9
+
+AGENTS §9 says the screen is kept on while paired and waiting. That holds inside Live Stream only. On Home, with a
+pairing, the screen times out 15 s after the operator leaves Live Stream. On a phone whose battery setting is
+Optimized, the OS then froze the app (PID frozen 10:26:57 to 10:29:30 BST on 2026-10-12, tick late by 152 s, no beats,
+no `armed`), and a remote Go live from the console failed (Batch 8, path 1). The earlier call that Batch 3 had
+regressed the camera was wrong; the app was frozen, and Home opens no camera by design
+(`.superpowers/sdd/2026-10-11-s1-d3-fixes/regression-camera-config.md`).
+
+Device evidence on e144a38: a locked phone on Unrestricted battery kept beating and armed, and a start reached air
+(sid 2e0255cd, camera ready 0.5 s after the start reached the phone; sid e6aeaee3 after about 7 minutes locked and
+Dozing, 24 s to air). So the cure that matters is the battery setting (Settings has the battery row, Batch 6). A
+keep-awake on Home would also close the gap AGENTS §9 describes.
+
+---
+
+### N37 — A rejoin after the hold ran out resurrected a session the strip had called over
+
+**Status:** fixed — feat/s1-d3-fixes, Batch 16 (de2a5ce, 8335583, 3bff4aa; fix round 1: a5be0b0); device-verified on
+e144a38, 2026-10-13 (sid 12c5da78)
+**Where:** capture app · `SessionMachine.kt` (`holdRanOut`, `expired`) · `Pairings.kt` (server `Open`) · `Heartbeats.atOnce`
+
+Found on the cut of 2026-10-12 (sid d060573f): the 183 s hold ran out, the strip said "Connection lost too long —
+stream stopped", the server kept the session `live` (its own lost-phone end is 15 minutes), and on restore the phone
+rejoined the same sid and Cloudflare started a second recording (N29's rejoin). The strip had said it was over.
+
+**Owner ruling (2026-10-13, option a):** when the hold runs out the phone ends the session itself, and when the
+network returns it stays Paired and waits for a new Go live. It reuses the never-live path: the sid goes into
+`refused`, a `stopped: <sid>` beat is carried until a 2xx and is due at once (`Heartbeats.atOnce`, so the first
+network moment sends it), and a late server `Open(sid)` is ignored. A hold that returns inside 183 s still reconnects
+on the same sid. The Kotlin Lapsed/Rejoin path is removed (N29 is superseded).
+
+**Device proof (e144a38, fixture #4, sid 12c5da78; the phone's record R-1WRJ and the web's rows; evidence:
+`$HOME/seazn-d3-evidence/2026-10-13/n37-cut-web-report.md`):** the phone cut off at 20:29:38; `hold-expired` at
+20:32:46, 183.4 s after `dropped`; the server kept the session `live` throughout; the network came back at 20:33:34.6;
+the first beat at 20:33:35.4 carried the phone already off the sid; the server ended the session 0.5 s later and the
+phone logged `stopped-delivered 200`. One `broadcast-start`, no rejoin, one Cloudflare recording, no credit consumed.
+
+**Remaining edges (parked):**
+
+- The server records the end as `operator_stopped`, as for a hand Stop. The only trace is in its events: a hand Stop
+  writes `phone_stop` first and the `stopped:` path does not (web's `capture-phone.ts:584`). Web brief item.
+- A hold running out while a 401 is pending sends no `stopped` beat.
+- A cold start after process death mid-outage rejoins through A10.
+- Forget or Unpair before the beat lands leaves the server session to its 15-minute end.
+- The strip shows "waiting" after process death.
+- Dead TypeScript: the `rejoinRetrying` copy, the `hold-expired` cause, the FakeCaptureEngine `rejoining` scenario and
+  the writerless allow-list keys.
+- Offline, the connect retry loop wrote 73 `capture-start-failed` lines in 183 s, and the first beat after restore
+  said `notReady: "camera"` (see N39).
+
+---
+
+### N38 — Send record could keep none of a long session's lines
+
+**Status:** fixed — feat/s1-d3-fixes, Batch 18 (0d3fefd, e144a38); device-checked on R-N4F3, R-DJSE and R-1WRJ
+**Where:** capture app · `src/services/recordPins.ts` · `ring.linesToSend` · `recordUploadPort.ts`
+
+R-MA1P (2026-10-12, 10 s after a session ended) arrived with 1000 lines received, 0 kept, 1000 dropped. The JS ring
+holds 1000 lines and drops the oldest; ten minutes of a live session fill it, and the `pair` line (which carries the
+tokenTag) and the sid-bearing lines roll out, so the remaining lines sat in no pairing window and the web kept none.
+
+**Fix:** the latest `pair` line and the latest sid-bearing `broadcast-start` are pinned outside the ring's capacity
+and sent first, then the newest lines, 1000 in total. The pins release only when the window's closing line
+(`unpaired`, `ended`, `pair-refused`, `reset`) has itself left the ring, or when a newer `pair` replaces them. The
+controller's first rule, release when the closing line arrives, was wrong (review: Critical, since Send is off-air
+only and every send follows a close); the amendment is cited in code as "the controller's amendment to the N38 ruling
+(2026-10-13)".
+
+**Device proof:** R-N4F3 received 178, kept 76, dropped 102 (the lines before the #4 pair), invalid 0, pair line
+leading; R-DJSE received 328, kept 197, dropped 131, invalid 0, covering two sessions; R-1WRJ received 623, kept 621,
+dropped 2, invalid 0 (evidence: `$HOME/seazn-d3-evidence/2026-10-13/n37-cut-web-report.md`). The 1000-line overflow case
+is covered by unit and end-to-end tests but not yet seen on a device. Parked: the native 5 MB disk record is still never
+read by Send; the owner decides whether it should be. After a process death or a cold start the JS ring holds only
+native's in-memory tail (`BridgeCore.tail`, at most `SessionRecord.LAST_LINES`, 20 lines, and empty in a new process),
+so a Send within the upload credential's 24 h can carry none of the match and still shows "Sent · ref" (kept 0).
+
+---
+
+### N39 — The beat's `not_ready` hides which check failed
+
+**Status:** two parts. The stuck camera state after a session ended is fixed — feat/s1-d3-fixes, Batch 19 (dcc5bb0; the
+owner's ruling, 2026-10-13, "fix it now"). The beat naming the failed check is open for the web brief, a contract change
+**Where:** capture app · `Readiness.notReady()` · web `capture-beat.v1.json`
+
+On sid e6aeaee3 (locked, Dozing) the web showed `not_ready` for 100 s of live video and the first reading was that
+the camera had failed. The phone's record (R-DJSE) shows `camera:true` and `sound:true` throughout, with no
+camera-lost, camera-taken or mic-silenced lines; the false check was `held` (the phone lay at an angle on the desk,
+A11's held-sideways gate, by design for every start). `notReady()` sends one word, and the beat carries only
+`not_ready`, so the operator, the console and the controller could not tell which check it was. The 14 s start delay
+was the Armed gate waiting for the held pose. The camera fix planned in Batch 8 Step C is dropped.
+
+Path 2 of 2026-10-12 (a locked phone held until unlock, strip "Phone not ready: camera") did not reproduce on
+e144a38 and its cause is unexplained. On 2026-10-13 the first beat after a hold-expiry restore carried
+`notReady: "camera"` as well, after 73 failed capture starts in the offline retry loop; whether those two are linked
+was read in code, not run (scout, 2026-10-13). The 73
+`capture-start-failed` lines are CaptureRun's label for any throw from the streamer's start, so an offline endpoint-open
+failure gets that name (`CaptureRun.kt:326`); each retry reuses the held streamer and camera, and a transport failure
+never touches `CameraAvailability`, so they cannot by themselves make the camera look lost. One path does: when the
+hold expires the machine goes to Paired and copies `phase.camera` into `pairing.camera` (`Verdicts.over`, `Pairings.kt:302` before Batch 19), and a
+RESUMING or SWITCHING value carried there is reset to OWN only by `SessionMachine.kt:369` (OnAir frames) and `:523`.
+A Kotlin probe confirmed it (the reviewer's scratch copy, not committed; 2026-10-13): Live → SwitchCamera → Dropped →
+hold expiry leaves Paired with `pairing.camera` SWITCHING, so the camera check is false, the operator's Start answers
+`intent-ignored`, and a console Go live sits in Armed for more than 30 s with no connect; the same run without the
+switch connects. No start is possible on that pairing until a rescan, or until another app takes the camera and gives
+it back. The same holds for RESUMING, and for any `Verdicts.over` (an organiser's end, say) while the camera is
+SWITCHING or RESUMING. It was already there at the branch's base, 0a2c565.
+R-1WRJ's kept lines show no camera-lost line (the web's summary), so whether this path made the first beat after
+N37's restore say `camera` is not shown. The owner's first answer on 2026-10-13, given while the carry-over was
+unproven, was "leave all three out and ship"; once the probe confirmed it the controller asked again and the owner
+said to fix it now.
+
+**Fix (Batch 19, dcc5bb0):** `CameraState.afterSession` (`Phase.kt`) is an exhaustive `when`: TAKEN and REOPENING carry
+into the pairing as before, SWITCHING and RESUMING become OWN. `Verdicts.over` applies it, and it is the only place a
+session's camera is copied into the pairing, so hold expiry, an organiser's end on a beat or on the code, Go live for a
+new sid while a broadcast is held, and a Stop before going live all hand back OWN. A cold start reads OWN, since
+`PairingStore` never saves a camera state. Kotlin core 1406/0. Device-only and not checked: whether "Phone not ready:
+camera" clears on a phone after a switch and a hold expiry.
+
+**Parked from Batch 19's review:** the `?: CameraState.OWN` fallback in `Pairings.kt:303` is unreachable (every caller of
+`over` holds a sid); no test pins the heartbeat's `notReady` after these ends; the cold-start test's name overclaims
+(`CameraAfterEndTest.kt:261-277`). Probe G1, which existed before this batch: re-pairing with another code while the
+camera is TAKEN resets it to OWN, and the later release sends no `ReopenCamera`.
+
+**Brief for the web:** let the beat carry the failed check's word. A contract change, so not in this branch.
+
+---
+
+### N40 — Pressed buttons showed no change
+
+**Status:** fixed — feat/s1-d3-fixes, Batch 17 (702b08d, acd92f0, 71931d8; the review's test minors: 7a63b2c); device-checked on e144a38, phone A
+**Where:** capture app · `colour.pressFill` and `pressedOpacity` (`tokens.ts`) · IconButton · GhostButton · Tile · Button · TextLink
+
+The owner's finger test (2026-10-13): holding the Home tile's gear changed nothing on screen, and it opened on lift.
+
+**Fix:** the token `colour.pressFill`, `#f5f0e833` (the cream at 20%), is the pressed fill on IconButton, on both
+GhostButton forms and on the Home tile's gear (a rounded square, `radius.card`); the edge of the outlined buttons
+still goes cream (`ink`) while held. Button and Tile dim to 0.7 and TextLink to 0.6 (`pressedOpacity`). The code cites
+it as "the controller's press-fill ruling (2026-10-13)".
+
+**Device proof (e144a38, phone A):** the controller's adb hold of 4 s on the Home tile's gear showed the fill, and the
+owner then saw it with a finger ("see it"). A device-only claim: jsdom sees no colour and no press feedback.
+
+**Parked:** Pressables with no pressed state: Settings' side segments (`SettingsScreen.tsx:162`), ChoiceRow, the Hide
+of ScoringLinkPanel and of ViewerCover, HoldAction, and CodePanel's close. Show preview's ghost (PreviewBoundary), held
+on the stage black, is 1.59:1, and under outdoor flare the fill is 1.20–1.24:1: both are device checks.
+
+---
+
 ## P5 device spike (Android)
 
 The P5 findings, as an index. The full text, evidence and corrections for each

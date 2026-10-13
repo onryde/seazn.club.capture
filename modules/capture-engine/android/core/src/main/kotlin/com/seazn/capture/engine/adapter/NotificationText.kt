@@ -14,7 +14,10 @@ import java.util.Locale
  * calls [content] with the snapshot wire it already publishes, and holds no rule (Task 38).
  */
 object NotificationText {
-  /** The ten dictionary keys the notification shows. A notification has no plate: no `ready` or `notReady` tally words. */
+  /**
+   * The eleven dictionary keys the notification shows, its Forget action's label included (R6 of the D3 findings
+   * design). A notification has no plate: no `ready` or `notReady` tally words.
+   */
   val KEYS: List<String> =
     listOf(
       "stream.tally.starting",
@@ -23,6 +26,7 @@ object NotificationText {
       "stream.tally.trouble",
       "stream.tally.ended",
       "stream.notification.paired",
+      "stream.notification.forget",
       "stream.status.notReadyCamera",
       "stream.status.notReadySound",
       "stream.status.notReadyNetwork",
@@ -37,6 +41,7 @@ object NotificationText {
       "stream.tally.trouble" to "Trouble",
       "stream.tally.ended" to "Ended",
       "stream.notification.paired" to "Paired · waiting for Go live",
+      "stream.notification.forget" to "Forget",
       "stream.status.notReadyCamera" to "Can't go live yet — the camera isn't ready",
       "stream.status.notReadySound" to "Can't go live yet — the mic isn't available",
       "stream.status.notReadyNetwork" to "Can't go live yet — no network",
@@ -55,6 +60,7 @@ object NotificationText {
           "stream.tally.trouble" to "Problema",
           "stream.tally.ended" to "Terminado",
           "stream.notification.paired" to "Vinculado · esperando el directo",
+          "stream.notification.forget" to "Olvidar",
           "stream.status.notReadyCamera" to "Aún no se puede emitir: la cámara no está lista",
           "stream.status.notReadySound" to "Aún no se puede emitir: micro no disponible",
           "stream.status.notReadyNetwork" to "Aún no se puede emitir: sin red",
@@ -68,6 +74,7 @@ object NotificationText {
           "stream.tally.trouble" to "Problème",
           "stream.tally.ended" to "Terminé",
           "stream.notification.paired" to "Associé · en attente du direct",
+          "stream.notification.forget" to "Oublier",
           "stream.status.notReadyCamera" to "Pas encore de direct\u00a0: caméra non prête",
           "stream.status.notReadySound" to "Pas encore de direct\u00a0: micro indisponible",
           "stream.status.notReadyNetwork" to "Pas encore de direct\u00a0: pas de réseau",
@@ -81,6 +88,7 @@ object NotificationText {
           "stream.tally.trouble" to "Probleem",
           "stream.tally.ended" to "Beëindigd",
           "stream.notification.paired" to "Gekoppeld · wachten op de start",
+          "stream.notification.forget" to "Vergeten",
           "stream.status.notReadyCamera" to "Nog niet live: de camera is niet klaar",
           "stream.status.notReadySound" to "Nog niet live: microfoon niet bruikbaar",
           "stream.status.notReadyNetwork" to "Nog niet live: geen netwerk",
@@ -121,6 +129,9 @@ object NotificationText {
       "ended" -> "ended"
       else -> "starting"
     }
+
+  /** R6 of the D3 findings design: the Forget action is on the notification only while the pairing waits (the snapshot's `paired`). */
+  fun forgetShown(kind: String?): Boolean = tallyKey(kind) == "paired"
 
   /** The tally [word], upper-cased in [locale], then the target when known, then whole minutes on air. */
   fun line(word: String, targetKbps: Int?, liveSinceEpochMs: Long?, nowEpochMs: Long, locale: Locale): String {

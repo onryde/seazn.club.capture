@@ -1,5 +1,6 @@
 import type { EngineIntent } from '@/engine/CaptureEnginePort';
 import { createFakeCaptureEngine, type FakeCaptureEngine } from '@/engine/FakeCaptureEngine';
+import type { UploadCredential } from '@/domain/credentials/uploadCredential';
 import type { Gravity, Target } from '@/domain/orientation/orientation';
 import type { Ports } from '@/hooks/usePorts';
 import { createFakeCodeScanner, type FakeCodeScanner } from '@/scanner/fakeCodeScanner';
@@ -9,6 +10,8 @@ import type {
   MotionPort,
   NavigationPort,
   OrientationLockPort,
+  PowerMode,
+  PowerPort,
   Route,
   ScreenPort,
   SharePort,
@@ -20,9 +23,12 @@ import { createMemoryKeyValueStore, type MemoryKeyValueStore } from '@/services/
 import { createLogger } from '@/services/logger';
 import { createModeStore } from '@/services/modeStore';
 import { createProbeFlight } from '@/services/probeFlight';
+import { createRecordSendFlight } from '@/services/recordSendFlight';
+import type { RecordSendOutcome, RecordUploadPort } from '@/services/recordUploadPort';
 import { createScanFlight } from '@/services/scanFlight';
 import { createRingRecord, parseRecordLine, type SessionRecord } from '@/services/sessionRecord';
 import { createStreamSettingsStore } from '@/services/streamSettingsStore';
+import type { UploadCredentialStore } from '@/services/uploadCredentialStore';
 import { createFakePhotoPort, type FakePhotoPort } from './fakePhotoPort';
 import { createFakeScoringLinkPort, type FakeScoringLinkPort } from './fakeScoringLinkPort';
 import { createFakeSurfaces, type FakeSurfaces } from './fakeSurfaces';
@@ -70,6 +76,12 @@ export type FakePorts = {
   readonly photo: FakePhotoPort;
   /** `hold()`/`release()` pend a request; `calls` counts. */
   readonly scoringLink: FakeScoringLinkPort;
+  /** The battery mode (R5): Unrestricted until `set`; `opened` counts App info's opens. */
+  readonly power: FakePower;
+  /** R4: no credential until `give`; the real store's own tests are `uploadCredentialStore.test.ts`. */
+  readonly uploadCredential: FakeUploadCredential;
+  /** R3: answers `sent` with ref R-TEST until `answer`; `sent` lists each call's lines and credential. */
+  readonly recordUpload: FakeRecordUpload;
   setNow(at: Date): void;
 };
 
@@ -103,8 +115,11 @@ export function createFakePorts(
     share: fakeShare(),
     photo: createFakePhotoPort(),
     scoringLink: createFakeScoringLinkPort(),
+    power: createFakePower(),
+    uploadCredential: createFakeUploadCredential(),
+    recordUpload: createFakeRecordUpload(),
   };
-  const ports: Ports = {
+  const wired: Omit<Ports, 'recordSendFlight'> = {
     ...fakes,
     devEngine: engine,
     nativeEngine: null,
@@ -122,6 +137,15 @@ export function createFakePorts(
     devTools: true,
     logger,
     ...portOverrides,
+  };
+  // Over the ports as overridden, so a test's own credential or upload is the one the flight uses.
+  const ports: Ports = {
+    recordSendFlight: createRecordSendFlight({
+      credentials: wired.uploadCredential,
+      upload: wired.recordUpload,
+      record: wired.record,
+    }),
+    ...wired,
   };
   return {
     ...fakes,
@@ -284,6 +308,94 @@ function fakeNavigation(): NavigationPort & { readonly history: Route[] } {
     restart: () => {
       current = 'home';
     },
+  };
+}
+
+export type FakePower = PowerPort & {
+  /** What the next read answers: a mode, or null (unknown, as on iOS). */
+  set(value: PowerMode | null): void;
+  readonly opened: number;
+};
+
+/**
+ * R5: the battery mode, settable, and App info's opens counted. Pass one as the `power` override to start a render
+ * in another mode or unknown, and keep it to change the answer before a return to the foreground.
+ */
+export function createFakePower(initial: PowerMode | null = 'unrestricted'): FakePower {
+  let value = initial;
+  let opened = 0;
+  return {
+    mode: () => value,
+    openAppSettings: () => {
+      opened += 1;
+    },
+    set: (next) => {
+      value = next;
+    },
+    get opened() {
+      return opened;
+    },
+  };
+}
+
+export type FakeUploadCredential = UploadCredentialStore & {
+  /** What every later `current()` answers. */
+  give(credential: UploadCredential | null): void;
+};
+
+/** R4: the credential Send record may use, settable. Made-up values only in a test that gives one. */
+export function createFakeUploadCredential(
+  initial: UploadCredential | null = null,
+): FakeUploadCredential {
+  let credential = initial;
+  return {
+    current: async () => credential,
+    give: (next) => {
+      credential = next;
+    },
+  };
+}
+
+export type FakeRecordUpload = RecordUploadPort & {
+  /** What every later `send` answers. */
+  answer(outcome: RecordSendOutcome): void;
+  /** `hold()` pends every later send until `release()`. */
+  hold(): void;
+  release(): void;
+  readonly calls: number;
+  readonly sent: readonly { readonly lines: readonly string[]; readonly token: string }[];
+};
+
+const SENT: RecordSendOutcome = { result: 'sent', ref: 'R-TEST', status: 201, bytes: 10 };
+
+/** R3: the record upload, answering a settable outcome, counting calls and keeping what each was handed. */
+export function createFakeRecordUpload(): FakeRecordUpload {
+  let outcome = SENT;
+  let gate: Promise<void> | null = null;
+  let open = () => undefined as void;
+  const sent: { lines: readonly string[]; token: string }[] = [];
+  return {
+    send: async (lines, credential) => {
+      sent.push({ lines, token: credential.token });
+      if (gate !== null) await gate;
+      return outcome;
+    },
+    answer: (next) => {
+      outcome = next;
+    },
+    hold: () => {
+      gate = new Promise<void>((resolve) => {
+        open = resolve;
+      });
+    },
+    release: () => {
+      gate = null;
+      open();
+    },
+    get calls() {
+      return sent.length;
+    },
+    sent,
   };
 }
 

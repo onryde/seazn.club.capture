@@ -75,6 +75,11 @@ class SnapshotWireTest {
         val snapshot = bare(SnapshotState.Idle, 1_790_000_000_500).copy(unpaired = Unpaired(UnpairReason.REPLACED, name))
         SnapshotWire.of(snapshot, PlatformFacts(), clean)
       },
+      // R6 of the D3 findings design: the shade's Forget. JS drops the saved code on this reason, the whole name matching.
+      "idle-unpaired-forgotten" to {
+        val snapshot = bare(SnapshotState.Idle, 1_790_000_000_700).copy(unpaired = Unpaired(UnpairReason.FORGOTTEN, name))
+        SnapshotWire.of(snapshot, PlatformFacts(), clean)
+      },
       // A pairing holds the camera as its own (Phase.camera) from Pairing on; only Idle and Ended have none.
       "pairing" to {
         val snapshot =
@@ -146,6 +151,16 @@ class SnapshotWireTest {
         val snapshot =
           bare(state, 1_790_000_146_000)
             .copy(pairing = pairing, broadcast = broadcast, ready = ReadyView(true, true, false, true), codeEndedPending = true, camera = CameraState.OWN)
+        SnapshotWire.of(snapshot, PlatformFacts(survivesBackground = true), clean)
+      },
+      // N29's rejoin (R10 of the D3 findings design) sent this: a rejoin of a broadcast whose hold ran out, 0 of 0, on the
+      // first live time. Nothing sends it since N37's ruling (the owner's, 2026-10-13); the shared vectors keep the word
+      // until JS drops it, so both readers still read it alike.
+      "reconnecting-hold-expired" to {
+        val state = SnapshotState.Reconnecting(ReconnectCause.HOLD_EXPIRED, 0, 0, 1_790_000_001_000)
+        val snapshot =
+          bare(state, 1_790_000_400_000)
+            .copy(pairing = pairing, broadcast = broadcast.copy(cause = Cause.REJOIN), ready = allReady, camera = CameraState.OWN)
         SnapshotWire.of(snapshot, PlatformFacts(survivesBackground = true), clean)
       },
       // Ended holds no camera, so the camera check reads false (Projection's I3).
@@ -229,7 +244,7 @@ class SnapshotWireTest {
   @Test
   fun `carries 3, 5, 6 each native snapshot becomes the shared wire`() {
     val cases = cases()
-    assertEquals(15, cases.size, "the vector file's fifteen cases")
+    assertEquals(17, cases.size, "the vector file's seventeen cases")
     assertEquals(cases.map { it.first }.toSet(), builders.keys, "one builder per case")
     for ((name, expected) in cases) assertJsonEquals(expected, JSONObject(WireJson.encode(builders.getValue(name)())), name)
   }

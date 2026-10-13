@@ -57,6 +57,7 @@ object SessionMachine {
       is Input.Pair -> Pairings.pair(phase, input, now)
       is Input.PermissionsAnswered -> Pairings.permissions(phase, input.granted, now)
       Input.Unpair -> Pairings.unpair(phase)
+      Input.Forget -> Pairings.forget(phase)
       is Input.SetAutomatic -> Pairings.automatic(phase, input.on)
       is Input.SetLanguage -> Pairings.language(phase, input.language)
       is Input.ReadinessChanged -> Pairings.readiness(phase, input.readiness)
@@ -70,7 +71,7 @@ object SessionMachine {
       is Input.Dropped -> Transports.dropped(phase, input, now)
       is Input.Frames -> Transports.frames(phase, input, now)
       is Input.Link -> Transports.link(phase, input, now)
-      is Input.Network -> network(phase, input.validated)
+      is Input.Network -> network(phase, input.validated, now)
       Input.CameraContended -> Devices.contended(phase)
       Input.CameraReleased -> Devices.released(phase)
       is Input.CameraReopened -> Devices.reopened(phase, input.ok, now)
@@ -109,33 +110,38 @@ object SessionMachine {
    * The operator's Stop (A3), only while a broadcast is held. From a broadcast that went live it ends the pairing
    * ([end], A8's final beat). Owner decision 1 (2026-10-05) supersedes A8's silence for one that never went live
    * (Arming, Armed, or Connecting before its first frame): the broadcast ends and the pairing stays Paired, so Go
-   * live can be tried again, and A17's record goes out on a beat at once ([neverLive]). A 401 heard while it was
+   * live can be tried again, and A17's record goes out on a beat at once ([stoppedHere]). A 401 heard while it was
    * held ends the pairing with it, as before (the 401 deferral): its code is dead, so no beat could deliver.
    */
   private fun stop(phase: Phase, now: Now): Step {
     val pairing = phase.pairing
     val sid = phase.heldSid
     if (pairing == null || sid == null) return ignored(phase, "stop")
-    if (phase.session?.liveSinceEpochMs != null || pairing.codeEndedPending) return end(phase, EndReason.OPERATOR_STOPPED, now)
-    return neverLive(phase, pairing, sid, now)
+    if (wentLive(phase) || pairing.codeEndedPending) return end(phase, EndReason.OPERATOR_STOPPED, now)
+    return stoppedHere(phase, pairing, sid, LastEnd.STOPPED, now)
   }
 
+  /** The held broadcast went live: its first frame came ([firstLiveEpochMs]). */
+  private fun wentLive(phase: Phase): Boolean = phase.firstLiveEpochMs != null
+
   /**
-   * Owner decision 1: A17's record is written, as [end] writes it, and the Paired pairing holds it and refuses its
-   * sid, so a late start answer or a server word naming it never starts it again. The beat that goes now, not at
-   * the cadence, holds no sid, so it carries `stopped: <sid>` (RR3), which the server takes as the operator's stop
-   * of a session not yet live, ending it `operator_stopped` and keeping the pairing (web lane, stg da3297a33).
-   * Never `state: ended` with the sid (T21): that ends the server's pairing. It is the late path's beat, early:
-   * its 2xx delivers the record (`stopped-delivered`, and no later beat carries it), and one that fails leaves it
-   * for the next beat, or the next pair. A beat already in flight, or a 429's wait, goes first.
+   * The held broadcast [sid] ends for this phone, which stays Paired with [lastEnd]: a Stop never live (owner decision
+   * 1), or a hold that has run out (N37; the owner's ruling, 2026-10-13). A17's record is written, as [end] writes it,
+   * and the Paired pairing holds it and refuses its sid, so a late start answer or a server word naming it never starts
+   * or rejoins it. The beat that goes now, not at the cadence, holds no sid, so it carries `stopped: <sid>` (RR3), which
+   * the server takes as this phone's stop of that session, open or live, ending it `operator_stopped` and keeping the
+   * pairing (T23; web lane, stg da3297a33). Never `state: ended` with the sid (T21): that ends the server's pairing.
+   * It is the late path's beat, early: its 2xx delivers the record (`stopped-delivered`, and no later beat carries it),
+   * and one that fails leaves it for the next beat, or the next pair. A beat already in flight, or a 429's wait, goes
+   * first.
    */
-  private fun neverLive(phase: Phase, pairing: PairingState, sid: String, now: Now): Step {
+  internal fun stoppedHere(phase: Phase, pairing: PairingState, sid: String, lastEnd: LastEnd, now: Now): Step {
     val stopped = StoppedRecord.of(pairing.name, sid, now.wallMs, phase.session?.broadcast?.maxDurationMinutes)
-    val over = Verdicts.over(phase, LastEnd.STOPPED, now)
+    val over = Verdicts.over(phase, lastEnd, now)
     val paired = over.phase as? Phase.Paired ?: return over
-    val held = paired.pairing.copy(stopped = stopped, refused = paired.pairing.refused + sid, heartbeat = paired.pairing.heartbeat.copy(lastSentAtMonoMs = null))
+    val held = paired.pairing.copy(stopped = stopped, refused = paired.pairing.refused + sid)
     val step = Step(paired.copy(pairing = held), over.commands + Command.WriteStopped(stopped))
-    return Heartbeats.tick(step, now)
+    return Heartbeats.atOnce(step, now)
   }
 
   /**
@@ -145,9 +151,9 @@ object SessionMachine {
   internal fun end(phase: Phase, reason: EndReason, now: Now, vararg fields: Pair<String, Any?>): Step {
     val pairing = phase.pairing
     val sid = phase.heldSid
-    val wasLive = phase.session?.liveSinceEpochMs != null
+    val wasLive = wentLive(phase)
     val ended = phase.ended(reason, now)
-    val commands = mutableListOf<Command>(record("ended", "reason" to reason, "wasLive" to wasLive, *fields))
+    val commands = mutableListOf(endedLine(phase, reason, *fields))
     if (reason == EndReason.OPERATOR_STOPPED && pairing != null && sid != null) {
       commands += Command.WriteStopped(StoppedRecord.of(pairing.name, sid, now.wallMs, phase.session?.broadcast?.maxDurationMinutes))
     }
@@ -166,6 +172,14 @@ object SessionMachine {
     return Step(ended, commands)
   }
 
+  /**
+   * The `ended` line, written on every way into Ended: [end], the engine's fatal step when the machine throws, and a
+   * refused pair (Batch 13, the Batch 12 review's I1, the controller's). So `unpaired` and `ended` alone mark every end
+   * of a pairing, and the web's record window needs no other kind; `engine-error` also has writers that end nothing.
+   */
+  internal fun endedLine(phase: Phase, reason: EndReason, vararg fields: Pair<String, Any?>): Command =
+    record("ended", "reason" to reason, "wasLive" to wentLive(phase), *fields)
+
   /** A8: `{sid, state:"ended", endReason:"operator-stopped"}`, once, never retried. */
   private fun finalBeat(phase: Phase, pairing: PairingState, now: Now): Pair<Command, Int> {
     val id = pairing.heartbeat.nextId
@@ -174,10 +188,17 @@ object SessionMachine {
     return Command.PostHeartbeat(id, pairing.request.heartbeatUrl, pairing.token, Beats.payload(facts)) to id
   }
 
-  /** Recorded when it changes, in any phase: with no session it is kept for the next (final review I-1). */
-  private fun network(phase: Phase, validated: Boolean): Step {
+  /**
+   * Recorded when it changes, in any phase: with no session it is kept for the next (final review I-1). A return while
+   * Paired with A17's record undelivered sends the stopped sid at once (N37, fix round 1): the server holds that session
+   * open until it hears it, and Go live is offered from this step, so a beat at the cadence would lose the race to the
+   * operator's hold. A held beat never carries it (RR3), so a return while held keeps the cadence.
+   */
+  private fun network(phase: Phase, validated: Boolean, now: Now): Step {
     if (phase.networkValidated == validated) return Step(phase)
-    return Step(phase.withNetwork(validated), listOf(record("network", "validated" to validated)))
+    val step = Step(phase.withNetwork(validated), listOf(record("network", "validated" to validated)))
+    val pending = validated && phase is Phase.Paired && phase.pairing.stopped != null
+    return if (pending) Heartbeats.atOnce(step, now) else step
   }
 
   /**
@@ -393,7 +414,7 @@ internal object Timers {
     }
 
   private fun connecting(connecting: Phase.Connecting, now: Now): Step {
-    if (connecting.outage?.hold?.expired(now.monoMs) == true) return expired(connecting, connecting.outage, now)
+    if (connecting.outage?.hold?.expired(now.monoMs) == true) return expired(connecting, connecting.session, connecting.outage, now)
     // Off air: the delivery watch must see it, or the gap would count as a delivery stall.
     val offAir = connecting.session.delivery.tick(now.monoMs, onAirNow = false).first
     val phase = connecting.copy(session = connecting.session.copy(delivery = offAir))
@@ -423,15 +444,16 @@ internal object Timers {
   }
 
   /** The session ended by a hold that has run out (B7 N1), or null while none has. */
-  fun holdRanOut(phase: Phase, now: Now): Step? {
-    val outage = (phase as? Phase.OnAir)?.outage ?: (phase as? Phase.Connecting)?.outage
-    if (outage != null && outage.hold.expired(now.monoMs)) return expired(phase, outage, now)
-    return null
-  }
+  fun holdRanOut(phase: Phase, now: Now): Step? =
+    when (phase) {
+      is Phase.OnAir -> phase.outage?.takeIf { it.hold.expired(now.monoMs) }?.let { expired(phase, phase.session, it, now) }
+      is Phase.Connecting -> phase.outage?.takeIf { it.hold.expired(now.monoMs) }?.let { expired(phase, phase.session, it, now) }
+      is Phase.Idle, is Phase.Pairing, is Phase.Paired, is Phase.Arming, is Phase.Armed, is Phase.Ended -> null
+    }
 
   private fun onAir(phase: Phase.OnAir, now: Now): Step {
     val outage = phase.outage
-    if (outage != null && outage.hold.expired(now.monoMs)) return expired(phase, outage, now)
+    if (outage != null && outage.hold.expired(now.monoMs)) return expired(phase, phase.session, outage, now)
     val (watchdog, verdict) = phase.watchdog.tick(now.monoMs, phase.session.camera.slateOnAir)
     val watched = phase.copy(watchdog = watchdog)
     if (verdict is StallVerdict.Rebuild) return rebuild(watched, verdict, now)
@@ -442,9 +464,15 @@ internal object Timers {
     return Step(polled, requests.map { Command.FetchPlaylist(it.id, it.url) })
   }
 
-  /** The hold ran out: the broadcast is over for this phone, back to Paired. The server may keep it open, and a `live` rejoins (A10). */
-  private fun expired(phase: Phase, outage: Outage, now: Now): Step {
-    val over = Verdicts.over(phase, LastEnd.HOLD_WINDOW_EXPIRED, now)
+  /**
+   * The hold ran out: the phone ends the broadcast itself, back to Paired (N37; the owner's ruling, 2026-10-13, option
+   * a). The server may still hold it open (its own lost-phone end is 15 min), so the phone stops it as it stops one never
+   * live ([SessionMachine.stoppedHere]): its sid refused, A17's record written, and `stopped: <sid>` on a beat now and
+   * on every beat until a 2xx. A `live` or an `already_live` naming it later starts nothing: a restored network waits
+   * for a new Go live, and never rejoins it.
+   */
+  private fun expired(phase: Phase, session: Session, outage: Outage, now: Now): Step {
+    val over = SessionMachine.stoppedHere(phase, session.pairing, session.sid, LastEnd.HOLD_WINDOW_EXPIRED, now)
     return over.copy(commands = listOf(record("hold-expired", "transport" to outage.hold.transport, "cause" to outage.cause)) + over.commands)
   }
 
@@ -600,6 +628,16 @@ internal object Deliveries {
 
 /** The pairing's beats (amendment, _Contract shapes_): Paired to On air, never gating anything. */
 internal object Heartbeats {
+  /**
+   * The next beat due now, not at the cadence, and sent in this step unless a beat is in flight or a 429's wait holds
+   * (both go first, and the next beat follows them at once). For A17's stopped sid, which rides only a beat ([tick]).
+   */
+  fun atOnce(step: Step, now: Now): Step {
+    val pairing = step.phase.beating ?: return step
+    val due = pairing.copy(heartbeat = pairing.heartbeat.copy(lastSentAtMonoMs = null))
+    return tick(step.copy(phase = step.phase.withPairing(due)), now)
+  }
+
   fun tick(step: Step, now: Now): Step {
     val phase = step.phase
     val pairing = phase.beating ?: return step

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Cause, LastEnd, NotReady, Readiness, Refusal } from '@/domain/session/Pairing';
-import type { DegradeReason, SessionState } from '@/domain/session/SessionState';
+import type { DegradeReason, ReconnectCause, SessionState } from '@/domain/session/SessionState';
 import type { CameraState, EngineSnapshot, Telemetry } from '@/engine/CaptureEnginePort';
 import { createFakeCaptureEngine } from '@/engine/FakeCaptureEngine';
 import { IDLE_TELEMETRY } from '@/engine/unreported';
@@ -63,7 +63,7 @@ const { t } = createTranslator('en');
 const line = (s: EngineSnapshot) => t(selectStatusKey(s), { remaining: 38, window: 183 });
 const since = 1;
 const LIVE: SessionState = { kind: 'publishing', transport: 'srt', sinceEpochMs: since };
-const holding = (cause: 'uplink-lost' | 'video-stalled' | 'not-delivered'): SessionState => ({
+const holding = (cause: ReconnectCause): SessionState => ({
   kind: 'reconnecting',
   cause,
   holdRemainingSeconds: 38,
@@ -79,6 +79,11 @@ describe('the status line (spec §4 and §5)', () => {
       'restarting for viewers',
       holding('not-delivered'),
       'Viewers not receiving — restarting, 38 s of 183',
+    ],
+    [
+      'rejoining after the hold ran out',
+      holding('hold-expired'),
+      'Uplink lost — live on the server, retrying',
     ],
     [
       'fell back',
@@ -322,10 +327,13 @@ describe('every native reason has a line', () => {
     const state = { kind: 'ended', reason, durationMs: null };
     expect(KEYS.has(selectStatusKey(snap(state as SessionState)))).toBe(true);
   });
-  it.each(['uplink-lost', 'video-stalled', 'not-delivered'])('reconnecting %s', (cause) => {
-    const state = { ...holding('uplink-lost'), cause };
-    expect(KEYS.has(selectStatusKey(snap(state as SessionState)))).toBe(true);
-  });
+  it.each(['uplink-lost', 'video-stalled', 'not-delivered', 'hold-expired'])(
+    'reconnecting %s',
+    (cause) => {
+      const state = { ...holding('uplink-lost'), cause };
+      expect(KEYS.has(selectStatusKey(snap(state as SessionState)))).toBe(true);
+    },
+  );
   // The amendment's wire strings (Vocabulary.kt), copied by hand.
   it.each(['no_destination', 'no_credit', 'not_entitled', 'unknown', 'start-failed'])(
     'refused %s',
@@ -536,6 +544,7 @@ describe('Back’s line on air (ruling I2)', () => {
     'stream.status.holding',
     'stream.status.holdingStalled',
     'stream.status.holdingNotDelivered',
+    'stream.status.rejoinRetrying',
     'stream.status.startRetrying',
     'stream.status.notReadyHeld',
   ] as const)('is outranked by the fault line %s', (key) => {

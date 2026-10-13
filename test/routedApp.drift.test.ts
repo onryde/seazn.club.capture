@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import ts from 'typescript';
 import { describe, expect, it } from 'vitest';
@@ -161,5 +161,53 @@ describe('the idle dim is mounted by Live Stream only', () => {
       'src/hooks/useIdleDim.ts',
       'src/ui/components/TouchWake.tsx',
     ]);
+  });
+});
+
+/**
+ * M3 of the Batch 5 review: `routedApp` maps each route to its screen by hand, so the route files Expo Router reads
+ * are rendered by no test. Every path the navigation port moves to has its file (a renamed file is "Unmatched
+ * route" on the phone), and each Settings route renders its own variant: Home's `from="home"` (no Diagnostics, Back
+ * to Home), Live Stream's the default.
+ */
+const PATHS_OF = /const PATH\b[^=]*=\s*\{([^}]*)\}/;
+
+function routeFile(path: string): string {
+  const base = path === '/' ? 'app/index' : `app${path}`;
+  const candidates = [`${base}.tsx`, `${base}/index.tsx`];
+  return (
+    candidates.find((file) => existsSync(join(root, file))) ?? `missing: ${candidates.join(' or ')}`
+  );
+}
+
+describe('every path the navigation moves to has its route file, and each Settings route its variant', () => {
+  const navigation = readFileSync(
+    join(root, 'src/services/native/expoRouterNavigation.ts'),
+    'utf8',
+  );
+  const paths = [...(PATHS_OF.exec(navigation)?.[1] ?? '').matchAll(/'(\/[^']*)'/g)].map(
+    (match) => match[1] ?? '',
+  );
+
+  it('reads four paths from the port (anti-vacuity)', () => {
+    expect(paths).toEqual(['/', '/stream', '/stream/settings', '/stream-settings']);
+  });
+
+  it('finds a file for each', () => {
+    expect(paths.map(routeFile)).toEqual([
+      'app/index.tsx',
+      'app/stream/index.tsx',
+      'app/stream/settings.tsx',
+      'app/stream-settings.tsx',
+    ]);
+  });
+
+  it('renders Stream Settings from Home as the Home variant, and Live Stream’s as the default', () => {
+    expect(body('app/stream-settings.tsx', 'HomeStreamSettingsRoute')).toMatch(
+      /return <SettingsScreen from="home" ?\/>;/,
+    );
+    expect(body('app/stream/settings.tsx', 'StreamSettingsRoute')).toMatch(
+      /return <SettingsScreen ?\/>;/,
+    );
   });
 });

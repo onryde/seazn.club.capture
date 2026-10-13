@@ -2,6 +2,8 @@ package com.seazn.capture.engine.vendor
 
 import com.seazn.capture.engine.core.RecordEntry
 import com.seazn.capture.engine.core.SessionRecord
+import com.seazn.capture.engine.core.SrtTarget
+import com.seazn.capture.engine.core.Vendored
 import java.io.IOException
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -85,5 +87,49 @@ class VendorLinesTest {
     val lines = recorded { vendor, _ -> vendor.w("RtmpClient", "slow ack", null) }
     assertEquals(1, lines.size)
     assertTrue(JSONObject(lines.single()).isNull("error"), lines.single())
+  }
+
+  /**
+   * Batch 11, Q4 of the web's record design: SRT's stream id and passphrase quoted in a vendor's message, written
+   * into a record that holds them as the engine does once a session's answer arrives (Engine.kt: the descriptor's
+   * secrets, its stream id kept out of URLs only), are masked where they stand, in either spelling of `streamid`.
+   * What the record writes then trips no S3, the contract's own pattern (contracts/capture-record.v1.json), which
+   * the same words unmasked do. Every value is made up.
+   */
+  @Test
+  fun `Q4 a vendor message quoting SRT's stream id and passphrase is masked in place and trips no S3`() {
+    val streamId = "0123456789abcdef0123456789abcdef"
+    val passphrase = "made-up-passphrase-77"
+    val lines = mutableListOf<String>()
+    val record = SessionRecord { lines += it }
+    record.protect(listOf(passphrase, streamId), notInUrls = listOf(streamId))
+    val vendor = VendorLines { level, fields -> record.append(0, RecordEntry("vendor-log", fields.toList(), level)) }
+    vendor.e("SrtSink", "handshake rejected: srt://h:1?streamid=$streamId&passphrase=$passphrase", null)
+    vendor.w("SrtSink", "streamId=$streamId refused (streamid $streamId)", null)
+    val messages = lines.map { JSONObject(it).getString("message") }
+    val masked =
+      listOf("handshake rejected: srt://h:1?streamid=***&passphrase=***", "streamId=*** refused (streamid ***)")
+    assertEquals(masked, messages)
+    val defs = JSONObject(Vendored.text("capture-record.v1.json")).getJSONObject("\$defs")
+    val s3 = Regex(defs.getJSONObject("secretS3").getString("pattern"))
+    for (line in lines) {
+      assertFalse(streamId in line || passphrase in line, line)
+      assertFalse(s3.containsMatchIn(JSONObject(line).getString("message")), line)
+    }
+    assertTrue(s3.containsMatchIn("streamId=$streamId refused"), "unmasked, S3 sees it: the rule is live")
+  }
+
+  /**
+   * Batch 11, Q4's second minor: `SrtTarget.toString()` prints `streamId=<32 chars>`, which S3 reads as a pair. No
+   * writer formats a target into text (the batch 11 answers list every text-key writer), and a target handed to the
+   * record as a value is masked whole, never written as its toString.
+   */
+  @Test
+  fun `Q4 a target handed to the record as a value is masked whole, never its toString`() {
+    val lines = mutableListOf<String>()
+    val target = SrtTarget("srt://h:1", "0123456789abcdef0123456789abcdef", "made-up-passphrase-77", 120)
+    assertTrue("streamId=<32 chars>" in target.toString(), "the form the web's S3 would refuse")
+    SessionRecord { lines += it }.append(0, RecordEntry("engine-error", listOf("message" to target)))
+    assertEquals("***", JSONObject(lines.single()).getString("message"), lines.single())
   }
 }

@@ -11,7 +11,7 @@ import { selectEngineStatus, selectUnpairedName } from '@/hooks/engineSelectors'
 import { usePairing } from '@/hooks/usePairing';
 import { usePorts } from '@/hooks/usePorts';
 import { useUnpair } from '@/hooks/useUnpair';
-import { isStreamSubRoute } from '@/services/devicePorts';
+import { isHomeSubRoute, isStreamSubRoute } from '@/services/devicePorts';
 import type { Logger } from '@/services/logger';
 import type { ModeStore } from '@/services/modeStore';
 
@@ -106,9 +106,13 @@ function useSettle(): (coldStart: boolean) => void {
       // whose made-up code no saved code owns; its own clean-up unpairs it.
       if (orphanedSession({ ...facts, now }) && !probeFlight.active()) unpair('orphan');
       expireOnTheWay(modeStore, current.saved, target, now, logger);
-      // M22: Settings, with its Diagnostics card, is inside Live Stream; going there is staying.
-      if (!(target.go === 'stream' && isStreamSubRoute(navigation.current())))
-        navigation.go(target.go);
+      // M22: Settings, with its Diagnostics card, is inside Live Stream; going there is staying. P8: Stream Settings
+      // opened from Home is Home's, so a return from App info stays on it.
+      const here = navigation.current();
+      const staying =
+        (target.go === 'stream' && isStreamSubRoute(here)) ||
+        (target.go === 'home' && isHomeSubRoute(here));
+      if (!staying) navigation.go(target.go);
     },
     [modeStore, clock, engine, navigation, logger, unpair, pair, probeFlight],
   );

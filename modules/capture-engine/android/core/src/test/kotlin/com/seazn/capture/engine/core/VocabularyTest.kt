@@ -30,7 +30,7 @@ class VocabularyTest {
     assertEquals(listOf("srt", "rtmps"), Transport.entries.map { it.wire })
     assertEquals(listOf("endpoint-closed", "inputs-stopped", "requested"), DropReason.entries.map { it.wire })
     assertEquals(listOf("viewer-feed", "preview-framerate", "encode"), ShedStep.entries.map { it.wire })
-    assertEquals(listOf("uplink-lost", "video-stalled", "not-delivered"), ReconnectCause.entries.map { it.wire })
+    assertEquals(listOf("uplink-lost", "video-stalled", "not-delivered", "hold-expired"), ReconnectCause.entries.map { it.wire })
   }
 
   @Test

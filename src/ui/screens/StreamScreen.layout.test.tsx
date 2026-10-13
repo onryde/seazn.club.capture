@@ -499,6 +499,9 @@ describe('the round line above the match label (spec §2, option B)', () => {
       [640, 360, 44, 174.375],
       [640, 360, 57, 174.375],
       [640, 360, 88, 174.375],
+      [728, 328, 22, 92.875],
+      [728, 328, 44, 110],
+      [728, 328, 88, 154],
       [804, 332, 22, 88],
       [804, 332, 44, 110],
       [804, 332, 88, 154],
@@ -528,9 +531,9 @@ describe('the round line above the match label (spec §2, option B)', () => {
     expect(checked).toBe(ROWS.length * 2);
     // Anti-vacuity: the strip is exactly the content in the height-limited rows and more in the others.
     expect(ROWS.filter(([, , label, strip]) => Math.abs(strip - (66 + label)) < 1e-6).length).toBe(
-      12,
+      14,
     );
-    expect(ROWS.filter(([, , label, strip]) => strip > 66 + label + 1e-6).length).toBe(4);
+    expect(ROWS.filter(([, , label, strip]) => strip > 66 + label + 1e-6).length).toBe(5);
   });
 });
 
@@ -788,10 +791,11 @@ describe('the camera box gives way to the strip, before the label is measured (s
   // half is 310, so the camera half is the window less 310) and the strip's 154 dp reserve (C2, D2 §4.4: the round line,
   // four label lines at 22 and one message line). The box is the lesser of what the half holds (9/16 of its width:
   // 185.625 at 640, 277.875 at 804, 340.3125 at 915) and what the strip leaves (height - 154): the whole half at 640 (the
-  // half limits it, full width), and the strip's leaving at every other screen here, 178 at the owner's phone as it
-  // really is (804 × 332).
+  // half limits it, full width), and the strip's leaving at every other screen here: 174 on the owner's phone as laid
+  // out (728 × 328, N35) and 178 at 804 × 332.
   const SCREENS = [
     [640, 360, 330, 330, 185.625],
+    [728, 328, 418, 309.3333333, 174],
     [800, 360, 490, 366.2222222, 206],
     [804, 360, 494, 366.2222222, 206],
     [804, 332, 494, 316.4444444, 178],
@@ -831,8 +835,8 @@ describe('the camera box gives way to the strip, before the label is measured (s
     },
   );
 
-  it('measured five screens (anti-vacuity)', () => {
-    expect(SCREENS).toHaveLength(6);
+  it('measured seven screens (anti-vacuity)', () => {
+    expect(SCREENS).toHaveLength(7);
     expect(screensChecked).toBe(SCREENS.length);
   });
 
@@ -969,6 +973,7 @@ describe('the picture is sized from this match’s label (owner, 2026-10-08, opt
   // leaves).
   it.each([
     [640, 360, 330, 185.625, 174.375],
+    [728, 328, 309.3333333, 174, 154],
     [804, 332, 316.4444444, 178, 154],
     [804, 360, 366.2222222, 206, 154],
     [915, 412, 458.6666667, 258, 154],
@@ -989,6 +994,9 @@ describe('the picture is sized from this match’s label (owner, 2026-10-08, opt
     [640, 360, '1 line', 22, 330, 185.625],
     [640, 360, '2 lines', 44, 330, 185.625],
     [640, 360, '4 lines', 88, 330, 185.625],
+    [728, 328, '1 line', 22, 418, 235.125],
+    [728, 328, '2 lines', 44, 387.5555556, 218],
+    [728, 328, '4 lines', 88, 309.3333333, 174],
     [804, 332, '1 line', 22, 433.7777778, 244],
     [804, 332, '2 lines', 44, 394.6666667, 222],
     [804, 332, '4 lines', 88, 316.4444444, 178],
@@ -1019,17 +1027,21 @@ describe('the picture is sized from this match’s label (owner, 2026-10-08, opt
     },
   );
 
-  it('rendered twelve shapes, and a longer label is never a larger box (anti-vacuity)', () => {
-    expect(TABLE).toHaveLength(12);
-    expect(tabled).toBe(12);
-    for (let window = 0; window < 4; window += 1) {
+  it('rendered fifteen shapes, and a longer label is never a larger box (anti-vacuity)', () => {
+    expect(TABLE).toHaveLength(15);
+    expect(tabled).toBe(15);
+    for (let window = 0; window < 5; window += 1) {
       const [one, two, four] = TABLE.slice(window * 3, window * 3 + 3);
       expect(one?.[5]).toBeGreaterThanOrEqual(two?.[5] ?? Infinity);
       expect(two?.[5]).toBeGreaterThanOrEqual(four?.[5] ?? Infinity);
     }
-    // And the owner's phone as it really is (804 × 332) has a different box for each label: it is the strip that limits.
-    const phone = TABLE.filter((row) => row[0] === 804 && row[1] === 332).map((row) => row[5]);
-    expect(new Set(phone).size).toBe(3);
+    // And 804 × 332 has a different box for each label: it is the strip that limits. So does the owner's phone as laid
+    // out (728 × 328, N35), where the half limits a one-line label (the whole half, 418) and the strip the others.
+    const at804 = TABLE.filter((row) => row[0] === 804 && row[1] === 332).map((row) => row[5]);
+    expect(new Set(at804).size).toBe(3);
+    const phone = TABLE.filter((row) => row[0] === 728 && row[1] === 328);
+    expect(new Set(phone.map((row) => row[5])).size).toBe(3);
+    expect(phone.map((row) => row[4])).toEqual([418, 387.5555556, 309.3333333]);
   });
 
   // The sequence, the match as the operator lives it. The box is read after every step and must be the same size to
@@ -1037,10 +1049,12 @@ describe('the picture is sized from this match’s label (owner, 2026-10-08, opt
   // up and goes (the caption takes the message line, no room of its own), the round line that comes and goes (its room
   // is reserved either way, option B and ruling R1). Then a new match with a longer label is a smaller box where the
   // strip limits it, with the worst case in between (the new label has not been laid out), and a shorter one is the
-  // first box again, exactly. Two windows: the owner's phone (804 × 332), where the picture is as tall as the window
-  // allows; and 640 × 360, where the half limits the picture. The round line is up through all of it, in both.
+  // first box again, exactly. Three windows: the owner's phone as laid out (728 × 328, N35) and 804 × 332, where the
+  // picture is as tall as the window allows; and 640 × 360, where the half limits the picture. The round line is up
+  // through all of it, in each.
   // [width, height, first box, the box for an unmeasured new label (the box for 88 laid out is the same)]
   const SEQUENCES = [
+    [728, 328, { width: 387.5555556, height: 218 }, { width: 309.3333333, height: 174 }],
     [804, 332, { width: 394.6666667, height: 222 }, { width: 316.4444444, height: 178 }],
     [640, 360, { width: 330, height: 185.625 }, { width: 330, height: 185.625 }],
   ] as const;
@@ -1124,9 +1138,9 @@ describe('the picture is sized from this match’s label (owner, 2026-10-08, opt
     },
   );
 
-  it('ran both sequences, and the longer label made a smaller box on the phone (anti-vacuity)', () => {
-    expect(SEQUENCES).toHaveLength(2);
-    expect(sequences).toBe(2);
+  it('ran the three sequences, and the longer label made a smaller box on the owner’s phone (anti-vacuity)', () => {
+    expect(SEQUENCES).toHaveLength(3);
+    expect(sequences).toBe(3);
     const [phone] = SEQUENCES;
     expect(phone[3].height).toBeLessThan(phone[2].height);
   });
@@ -1218,7 +1232,8 @@ describe('the strip and the controls half are padded and spaced as the fit reser
     expect(style.gap).toBe('6px');
   });
 
-  // Owner, 2026-10-08: every control on screen at 804 × 332. The half's width is the board's (16 either side, which
+  // Owner, 2026-10-08: every control on screen at 804 × 332 (and at 728 × 328, the owner's phone as laid out: N35). The
+  // half's width is the board's (16 either side, which
   // `controlsHalf` is made of); its column has its own vertical padding and gap, 8 and 8 (the board's 16 and 12 made the
   // worst before-air state 24 dp too tall for the phone).
   it('the controls half: 8 above and below, 16 either side, 8 between its rows', async () => {
@@ -1236,8 +1251,9 @@ describe('the strip and the controls half are padded and spaced as the fit reser
   // The worst before-air state, brought up on the real tree: the AUTO start line under the chips AND a reason under the
   // hold button. Its five rows are the declared heights (the plate 56; the chips 44 and the start line 4 + 16; the photo
   // line's place 16; the icons 48; the hold 72 and its reason 4 + 16), stacked with the padding and gap the half RENDERED:
-  // they must fit the owner's phone, 332 dp, which the board's 16 and 12 did not (356).
-  it('fits 332 dp in the worst before-air state, with the padding and gap it rendered', async () => {
+  // they must fit 332 dp, the ruling's, which the board's 16 and 12 did not (356), and 328 dp, the owner's phone as laid
+  // out (N35), with 4 to spare.
+  it('fits 332 dp and 328 dp in the worst before-air state, with the padding and gap it rendered', async () => {
     const view = await renderViewfinder();
     act(() => view.engine.setPairing({ scheduledStart: new Date('2026-10-03T13:30:00Z') }));
     act(() => view.engine.setReady({ held: false }));
@@ -1260,6 +1276,7 @@ describe('the strip and the controls half are padded and spaced as the fit reser
     expect(items).toEqual([56, 64, 16, 48, 92]);
     expect(total).toBe(324);
     expect(total).toBeLessThanOrEqual(332);
+    expect(328 - total).toBe(4);
   });
 });
 

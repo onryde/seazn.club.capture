@@ -170,6 +170,25 @@ class StartTest {
     return rig to post.requestId
   }
 
+  /**
+   * Batch 4 review M1, the controller's ruling (2026-10-12): an answer that reaches Idle (the pairing left while its
+   * start was in flight) is recorded late, never dropped in silence: a start the server accepted then is a broadcast
+   * with no phone, and the record is where that shows.
+   */
+  @Test fun `a start answer that reaches Idle after an unpair is recorded late, and moves nothing`() {
+    for (late in lateAnswers + StartAnswer.CodeEnded) {
+      val rig = ready()
+      rig.send(Input.Start)
+      val id = rig.sent<Command.PostStart>().single().requestId
+      rig.send(Input.Unpair)
+      val before = assertIs<Phase.Idle>(rig.phase)
+      val commands = rig.send(Input.StartAnswered(id, late))
+      assertEquals(before, rig.phase, "$late")
+      val line = commands.filterIsInstance<Command.Record>().single().entry
+      assertEquals(listOf<Any?>("start-answered", late::class.simpleName, true), listOf(line.kind, line.field("answer"), line.field("late")), "$late")
+    }
+  }
+
   @Test fun `a late start answer while Arming S - Started or AlreadyLive naming S, or any other - changes nothing`() {
     for (late in lateAnswers) {
       val (rig, id) = raced()

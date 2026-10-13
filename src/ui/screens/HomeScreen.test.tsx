@@ -13,6 +13,7 @@ import type { WaitingFields } from '@/domain/credentials/waitingFields';
 import { decodeSavedCode, encodeSavedCode, type SavedStream } from '@/domain/mode/savedCode';
 import { useHome } from '@/hooks/useHome';
 import { useReopenGate } from '@/hooks/useReopenGate';
+import { createTranslator } from '@/i18n/translate';
 import type { CodeScannerPort, ScanUnavailableReason } from '@/scanner/CodeScannerPort';
 import { createMemoryKeyValueStore, type KeyValueStore } from '@/services/KeyValueStore';
 import { KV_TIMEOUT_MS, withTimeout } from '@/services/kvTimeout';
@@ -1458,5 +1459,170 @@ describe('useHome: every open goes through the check', () => {
     release();
     await waitFor(() => expect(home.navigation.current()).toBe('stream'));
     expect(home.code.calls).toHaveLength(2);
+  });
+});
+
+// R2 of the D3 findings design, as the owner presented it on 2026-10-12 ("Instead of text, can we have icon in right
+// top corner?"): a gear in the Live Stream tile's top-right corner, named "Stream settings". P6 is unchanged.
+describe('the Stream settings gear (R2, P6)', () => {
+  const gear = () => screen.queryByRole('button', { name: 'Stream settings' });
+
+  it('shows in the Live Stream tile with nothing saved, and opens Stream Settings without a scan', async () => {
+    const view = await renderHome();
+    const tile = screen.getByTestId('tile-stream');
+    expect(tile.contains(gear())).toBe(true);
+    expect(tile.contains(liveStreamTile())).toBe(true);
+    expect(liveStreamTile().contains(gear())).toBe(false);
+    fireEvent.click(screen.getByRole('button', { name: 'Stream settings' }));
+    expect(view.navigation.current()).toBe('homeSettings');
+    expect(view.scanner.scans).toBe(0);
+  });
+
+  it('opens one Stream Settings for a double tap, and never a scan', async () => {
+    const view = await renderHome();
+    const gear = screen.getByRole('button', { name: 'Stream settings' });
+    fireEvent.click(gear);
+    fireEvent.click(gear);
+    expect(view.navigation.history).toEqual(['homeSettings']);
+    expect(view.scanner.scans).toBe(0);
+  });
+
+  // Finding 6 of the Batch 10 review: a tile tap, then a quick gear tap before Play services' scanner covers the app.
+  // The scan's outcome (an open, or a refusal's panel) is Home's, so the gear does nothing until the flight settles,
+  // and then opens Stream Settings again (AGENTS §13, class 7).
+  it('does nothing while a scan is in flight, and opens Stream Settings once it settles', async () => {
+    const view = await renderHome();
+    const finish = view.scanner.deferNext();
+    fireEvent.click(liveStreamTile());
+    fireEvent.click(screen.getByRole('button', { name: 'Stream settings' }));
+    expect(view.navigation.current()).toBe('home');
+    await act(async () => finish({ outcome: 'cancelled' }));
+    expect(view.ports.scanFlight.active()).toBe(false);
+    expect(view.navigation.history).toEqual([]);
+    fireEvent.click(screen.getByRole('button', { name: 'Stream settings' }));
+    expect(view.navigation.history).toEqual(['homeSettings']);
+  });
+
+  it('opens Live Stream alone for a good code scanned after a mid-scan gear tap', async () => {
+    const view = await renderHome();
+    const finish = view.scanner.deferNext();
+    fireEvent.click(liveStreamTile());
+    fireEvent.click(screen.getByRole('button', { name: 'Stream settings' }));
+    await act(async () => finish({ outcome: 'scanned', raw: streamRaw(IN_TWO_HOURS) }));
+    await waitFor(() => expect(view.navigation.current()).toBe('stream'));
+    expect(view.navigation.history).toEqual(['stream']);
+  });
+
+  it('keeps a refused scan’s panel on Home after a mid-scan gear tap, and opens once it is closed', async () => {
+    const view = await renderHome();
+    const finish = view.scanner.deferNext();
+    fireEvent.click(liveStreamTile());
+    fireEvent.click(screen.getByRole('button', { name: 'Stream settings' }));
+    await act(async () => finish({ outcome: 'scanned', raw: 'https://example.com/menu' }));
+    await screen.findByText("This isn't a Seazn code.");
+    expect(view.navigation.history).toEqual([]);
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Stream settings' }));
+    expect(view.navigation.history).toEqual(['homeSettings']);
+  });
+
+  // On the phone the scanner takes the app away, and the flight holds until the app is back (R36). The return lowers
+  // it, so the gear is never left dead after a scan.
+  it('opens Stream Settings after the app returns from the scanner, under the reopen gate', async () => {
+    const fakes = createFakePorts();
+    render(<GateThenHome />, { wrapper: wrapperFor(fakes) });
+    await waitFor(() => expect(fakes.splash.hides).toBe(1));
+    const finish = fakes.scanner.deferNext();
+    fireEvent.click(liveStreamTile());
+    act(() => fakes.foreground.leave());
+    await act(async () => finish({ outcome: 'cancelled' }));
+    expect(fakes.ports.scanFlight.active()).toBe(true);
+    fireEvent.click(screen.getByRole('button', { name: 'Stream settings' }));
+    expect(fakes.navigation.history).toEqual([]);
+    act(() => fakes.foreground.fire());
+    expect(fakes.ports.scanFlight.active()).toBe(false);
+    fireEvent.click(screen.getByRole('button', { name: 'Stream settings' }));
+    expect(fakes.navigation.history).toEqual(['homeSettings']);
+  });
+
+  it('is the Live Stream tile’s alone: Remote Scoring and Dashboard have no gear', async () => {
+    await renderHome();
+    expect(screen.getAllByRole('button', { name: 'Stream settings' })).toHaveLength(1);
+    for (const name of [/Remote Scoring/, /Dashboard/]) {
+      const tile = screen.getByRole('button', { name });
+      expect(tile.parentElement).toBe(screen.getByTestId('tiles'));
+    }
+    expect(screen.queryByTestId('tile-scoring')).toBeNull();
+    expect(screen.queryByTestId('tile-dashboard')).toBeNull();
+  });
+
+  // P6 as ruled hides the gear for every Continue, a saved code with nothing paired included (Batch 10 review, R).
+  it('is absent while Continue shows a saved code with nothing paired', async () => {
+    const view = await renderHome({
+      kvSeed: { [STORE_KEYS.code('stream')]: savedStream(IN_TWO_HOURS) },
+    });
+    expect(screen.getByRole('button', { name: 'Continue' })).toBeTruthy();
+    expect(screen.getByText('Continue Live Stream')).toBeTruthy();
+    expect(view.engine.getSnapshot().state.kind).not.toBe('paired');
+    expect(gear()).toBeNull();
+  });
+
+  // P6's load-bearing case (Batch 14 review, m2): Continue reads Paired because native holds the pairing, and Stream
+  // Settings from Home assumes nothing is paired (AGENTS §6).
+  it('is absent while Continue reads Paired: the engine holds the saved code’s pairing', async () => {
+    const code = savedStreamCode({
+      raw: streamRaw(IN_TWO_HOURS),
+      expiresAt: IN_TWO_HOURS,
+      stream: streamPart(),
+    });
+    const view = renderWithPorts(<HomeScreen />, {
+      kvSeed: { [STORE_KEYS.code('stream')]: encodeSavedCode(code) },
+    });
+    act(() => pairCode(view.engine, code));
+    await act(() => view.ports.modeStore.load());
+    expect(view.engine.getSnapshot().state.kind).toBe('paired');
+    expect(screen.getByText('Paired · Seazn XI v Fake CC')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Continue' })).toBeTruthy();
+    expect(gear()).toBeNull();
+  });
+
+  it('is absent while the Stream ended card shows, and back once OK clears it', async () => {
+    const view = await renderHome();
+    act(() =>
+      view.ports.endedNotice.show({
+        reason: 'operator-stopped',
+        durationMs: 754_000,
+        codeEnded: false,
+      }),
+    );
+    expect(screen.getByRole('region', { name: 'Stream ended' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Continue' })).toBeNull();
+    expect(gear()).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'OK' }));
+    expect(gear()).toBeTruthy();
+  });
+
+  it('shows again once a saved code is forgotten from Continue', async () => {
+    await renderHome({ kvSeed: { [STORE_KEYS.code('stream')]: savedStream(IN_TWO_HOURS) } });
+    expect(gear()).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Forget' }));
+    await waitFor(() => expect(gear()).toBeTruthy());
+  });
+
+  it('follows a language picked on Home', async () => {
+    await renderHome();
+    fireEvent.click(screen.getByRole('button', { name: /^Language/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Français' }));
+    expect(
+      screen.getByRole('button', { name: createTranslator('fr').t('home.streamSettings') }),
+    ).toBeTruthy();
+    expect(gear()).toBeNull();
+  });
+
+  it.each(['es', 'fr', 'nl'] as const)('reads in %s', async (lang) => {
+    await renderHome({ kvSeed: { [STORE_KEYS.lang]: lang } });
+    expect(
+      screen.getByRole('button', { name: createTranslator(lang).t('home.streamSettings') }),
+    ).toBeTruthy();
   });
 });

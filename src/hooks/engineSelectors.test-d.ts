@@ -48,7 +48,7 @@ describe('wire strings equal plan B’s (D40)', () => {
     >();
     expectTypeOf<EndReason>().toEqualTypeOf<'operator-stopped' | 'fatal-error'>();
     expectTypeOf<ReconnectCause>().toEqualTypeOf<
-      'uplink-lost' | 'video-stalled' | 'not-delivered'
+      'uplink-lost' | 'video-stalled' | 'not-delivered' | 'hold-expired'
     >();
   });
 

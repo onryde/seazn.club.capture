@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import type { SessionState } from '@/domain/session/SessionState';
 import type { EngineSnapshot, Telemetry, ThermalStatus } from '@/engine/CaptureEnginePort';
@@ -12,23 +13,36 @@ import { typeScale } from '@/ui/theme/type';
 import { loadFont } from '../../../test/fontMetrics';
 
 // Spec §6: "Both fit without the Diagnostics card scrolling at 640 × 360" (spec §1's smallest landscape
-// phone). This proves the RESERVATIONS fit, on the shapes real phones have, the way viewfinderFit does;
-// whether real text stays inside them on a phone is Task 9's, on the device.
+// phone), and on the owner's phone as it lays the app out, 728 × 328 (N35; the final review's Important 2, the
+// controller's ruling, 2026-10-12). This proves the RESERVATIONS fit, on the shapes real phones have, the way
+// viewfinderFit does; whether real text stays inside them on a phone is Task 9's, on the device.
 //
 // The expected numbers are written out from the spec, the canvas ("Settings, landscape") and the token
 // declarations. None is read from SettingsScreen or DiagnosticsCard.
 
-/** Landscape heights from viewfinderFit's geometries: 640 × 360 (the smallest), 844 × 390 (the canvas), 915 × 412. */
-const HEIGHTS = [360, 390, 412] as const;
+/**
+ * Landscape heights from viewfinderFit's geometries: 728 × 328 (the owner's phone as laid out, 804 × 360 less
+ * ShellFrame's insets, N35), 804 × 332 (the geometry of the rulings of 2026-10-08), 640 × 360 (the smallest),
+ * 844 × 390 (the canvas), 915 × 412.
+ */
+const HEIGHTS = [328, 332, 360, 390, 412] as const;
 
 /** Q1 (owner, 2026-10-07): nine rows. A literal, so a card that grows or loses a row is noticed. */
 const ROWS = 9;
 /**
- * Back is an icon button, 48 square. Share record's row is 48 too: the board draws its box 37 dp tall (its outline's
- * rules are 35.9 dp apart, plus the 1 dp stroke), and the button around it is the 48 dp target. SettingsScreen.test.tsx
- * and GhostButton.test.tsx pin both rendered.
+ * Back is an icon button, 48 square. The card's header row is the board's 18 dp pulse beside the heading, set on a
+ * 20 dp line, and nothing in it takes a tap, so it is as tall as the taller of the two: 20. It held Share record's
+ * 48 dp button until N33 moved Share to the record row (the D3 fixes plan's Task 6.3), and kept that 48 until the final
+ * review's Important 2 (the controller's ruling, 2026-10-12) dropped it: with it the card was 272, 24 dp over its half
+ * on the owner's phone (D3's r12-dim-settings.png cuts the ninth row at the fold). Share record's button is the 48 dp
+ * target around the board's box, drawn 37 dp tall (its outline's rules are 35.9 dp apart, plus the 1 dp stroke).
+ * SettingsScreen.test.tsx and GhostButton.test.tsx pin both rendered.
  */
 const BACK = 48;
+const HEADER = 20;
+const HEADING_LINE = 20;
+/** The header as it was, the 48 of Share record's button: what the card was before the drop. */
+const OLD_HEADER = 48;
 const SHARE = 48;
 /** The board's drawn Share record box, and the padding and 12 dp text it holds (the board's, measured). */
 const SHARE_DRAWN = 37;
@@ -41,15 +55,31 @@ let fitsChecked = 0;
 /** The halves under the way back: window - 2 × the screen's vertical padding - Back - the gap under it (space.sm). */
 const halvesBudget = (height: number) => height - 2 * layout.settingsPadV - BACK - space.sm;
 /** The card: 2 × its vertical padding + the header row + the gap under it + the rows. */
-const cardHeight = 2 * layout.diagPadV + SHARE + layout.diagGap + ROWS * layout.diagRow;
+const cardWith = (header: number) =>
+  2 * layout.diagPadV + header + layout.diagGap + ROWS * layout.diagRow;
+const cardHeight = cardWith(HEADER);
 
 describe('the Diagnostics card fits its half in landscape (spec §6)', () => {
   it('the halves have 280 at 640 × 360: 360 - 2 × 12 - 48 - 8 (canvas padding 12, Back 48)', () => {
     expect(halvesBudget(360)).toBe(280);
   });
 
-  it('the card is 272: 2 × 10 + 48 + 6 + 9 × 22 (canvas padding 10, gap 6)', () => {
-    expect(cardHeight).toBe(272);
+  it('the card is 244: 2 × 10 + 20 + 6 + 9 × 22 (canvas padding 10, the heading’s line 20, gap 6)', () => {
+    expect(cardHeight).toBe(244);
+  });
+
+  // N35: the owner's phone lays Settings out 328 tall, so the halves have 328 - 2 × 12 - 48 - 8 = 248. The card with
+  // the old 48 dp header was 272: 24 over, its ninth row under the fold (r12-dim-settings.png). At 244 it fits, 4 spare.
+  it('fits on the owner’s phone, 728 × 328: the halves have 248 and the card 244, where the 48 dp header made 272', () => {
+    expect(halvesBudget(328)).toBe(248);
+    expect(halvesBudget(328) - cardHeight).toBe(4);
+    expect(cardWith(OLD_HEADER)).toBe(272);
+    expect(cardWith(OLD_HEADER) - halvesBudget(328)).toBe(24);
+  });
+
+  it('fits at 804 × 332, the rulings’ geometry: the halves have 252, 8 to spare', () => {
+    expect(halvesBudget(332)).toBe(252);
+    expect(halvesBudget(332) - cardHeight).toBe(8);
   });
 
   // Every sum in this file adds these up. They are the board's numbers written as literals, so a token that drifts
@@ -89,7 +119,16 @@ describe('the Diagnostics card fits its half in landscape (spec §6)', () => {
       sharePadX: SHARE_PAD_X,
       shareBorder: SHARE_BORDER,
     });
-    expect(layout.touch).toBe(SHARE); // the row Share sits in is the touch height
+    expect(layout.touch).toBe(SHARE); // Share record's button is the touch target
+    expect(layout.touch).toBe(OLD_HEADER); // the height the header kept until the drop
+  });
+
+  // The header row is the pulse and the heading, centred on each other, with no height of its own
+  // (SettingsScreen.test.tsx pins that rendered): it is the taller of the two.
+  it('the header row is the heading’s 20 dp line, taller than the 18 dp pulse beside it', () => {
+    expect(typeScale.diagTitle.lineHeight).toBe(HEADING_LINE);
+    expect(layout.pulseGlyph).toBe(BOARD_PULSE_PX);
+    expect(Math.max(HEADING_LINE, BOARD_PULSE_PX)).toBe(HEADER);
   });
 
   it.each(HEIGHTS)('the card fits the halves at a window %i dp tall', (height) => {
@@ -108,8 +147,8 @@ describe('the Diagnostics card fits its half in landscape (spec §6)', () => {
     expect(layout.diagRow).toBeGreaterThanOrEqual(Math.max(...lines));
   });
 
-  it('checked every height, and there were three (anti-vacuity)', () => {
-    expect(HEIGHTS).toHaveLength(3);
+  it('checked every height, and there were five (anti-vacuity)', () => {
+    expect(HEIGHTS).toHaveLength(5);
     expect(fitsChecked).toBe(HEIGHTS.length);
   });
 });
@@ -438,7 +477,6 @@ let probesChecked = 0;
 let labelsChecked = 0;
 let sectionsChecked = 0;
 let headersChecked = 0;
-let wrappedHeaders = 0;
 
 describe('every Diagnostics row fits its line at 640 × 360, in every language (I-2)', () => {
   it('reads the fonts: Geist Mono is monospaced at 0.6 em', () => {
@@ -490,6 +528,15 @@ describe('every Diagnostics row fits its line at 640 × 360, in every language (
   it('the item and value share 188 dp at 640 × 360: (640 - 32 - 16) / 2 - 24 - 84', () => {
     expect(ITEM_AND_VALUE).toBe(188);
     expect(SECTION_TEXT).toBe(72);
+  });
+
+  // N35: the owner's phone lays Settings out 728 wide, so each half is 340, wider than 640's 296. Every width proof in
+  // this file is made at 640 and so bounds it.
+  it('the owner’s phone (728 × 328) gives each half 340: (728 - 32 - 16) / 2, wider than the 296 proved here', () => {
+    const owners = (728 - 2 * space.md - space.md) / 2;
+    expect(owners).toBe(340);
+    expect(HALF).toBe(296);
+    expect(owners).toBeGreaterThan(HALF);
   });
 
   it.each(LANGS)(
@@ -574,12 +621,10 @@ describe('every Diagnostics row fits its line at 640 × 360, in every language (
     }
   });
 
-  // Round 2: a share that failed says so ON the button, in place of "Share record", so the card keeps its
-  // height (a separate line would push a card with 8 dp of slack past its half). The header is the board's pulse,
-  // the heading and the button on one line. The button is its label (12 dp, the board's) plus the box's 11 dp of
-  // padding and 1 dp border each side (SettingsScreen.test.tsx pins those rendered). The heading keeps its width and
-  // the button is the cell that gives. Two widths are proved, the two that bound the app: the half of a 640 dp
-  // landscape window, and a 320 dp portrait phone (the narrowest card there is: 320 - 2 x 16 - 2 x 12 = 264).
+  // N33: Share record left the header for the record row (the D3 fixes plan's Task 6.3); its labels are proved below,
+  // in the column the row sits in. The header is the board's pulse and the heading on one line, 20 dp tall. Two
+  // widths bound it: the half of a 640 dp landscape window, and a 320 dp portrait phone's card (the narrowest card
+  // there is: 320 - 2 x 16 - 2 x 12 = 264).
   const HEADER_WIDTHS = [
     ['640 landscape half', HALF - 2 * layout.diagPad, 272],
     ['320 portrait card', 320 - 2 * space.md - 2 * layout.diagPad, 264],
@@ -601,72 +646,29 @@ describe('every Diagnostics row fits its line at 640 × 360, in every language (
   });
 
   describe.each(HEADER_WIDTHS)('%s', (where, inner) => {
-    it.each(LANGS)(
-      '%s: the pulse, the heading, the Share button and its failure message share the header',
-      (lang) => {
-        const { t } = createTranslator(lang);
-        const heading = t('diag.title').toUpperCase();
-        for (const char of heading) {
-          expect(
-            condensedBold.has(char.codePointAt(0) ?? 0),
-            `${lang} heading "${heading}" has "${char}"`,
-          ).toBe(true);
-        }
-        const title =
-          condensedBold.width(heading, typeScale.diagTitle.fontSize) +
-          Array.from(heading).length * (typeScale.diagTitle.letterSpacing ?? 0);
-        const labels = [t('diag.share'), t('diag.shareFailed')];
-        expect(new Set(labels).size).toBe(2); // the failure is not the same words as the button
-        // What is left for the button once the pulse, the heading and the two 8 dp gaps are placed.
-        const cell = inner - BOARD_PULSE_PX - title - 2 * space.sm;
-        for (const label of labels) {
-          for (const char of label) {
-            expect(
-              medium.has(char.codePointAt(0) ?? 0),
-              `${lang} button "${label}" has "${char}"`,
-            ).toBe(true);
-          }
-          const text = cell - 2 * SHARE_PAD_X - 2 * SHARE_BORDER;
-          const lines = wrapLines(label, text, typeScale.controlSmall.fontSize);
-          expect(
-            lines,
-            `${where} ${lang} "${label}" fits ${fmt(text)} dp of text without a broken word`,
-          ).not.toBe(null);
-          // At most two lines, the most the 37 dp box holds without growing past its 48 dp row.
-          expect(lines ?? 99, `${where} ${lang} header with "${label}"`).toBeLessThanOrEqual(2);
-          if (inner === 272) {
-            // The 12 dp text fits every label of every language on ONE line in a landscape half: the wrap the 14 dp
-            // label needed (es, fr, the failure messages) is gone.
-            expect(lines, `${where} ${lang} "${label}"`).toBe(1);
-          }
-          if ((lines ?? 0) > 1) wrappedHeaders += 1;
-          headersChecked += 1;
-        }
-      },
-    );
-  });
-
-  // The narrowest card is where a label wraps, so the wrap path is exercised and not assumed: the English failure
-  // message ("Couldn't share. Retry", 117.5 dp of Geist 500 at 12) does not fit the 115.4 dp left at 320 and takes two.
-  it('the 320 portrait card is the narrow one: the English failure message takes two lines there (the wrap ran)', () => {
-    const { t } = createTranslator('en');
-    const heading = t('diag.title').toUpperCase();
-    const title =
-      condensedBold.width(heading, typeScale.diagTitle.fontSize) +
-      Array.from(heading).length * (typeScale.diagTitle.letterSpacing ?? 0);
-    const cell = 264 - BOARD_PULSE_PX - title - 2 * space.sm;
-    const text = cell - 2 * SHARE_PAD_X - 2 * SHARE_BORDER;
-    expect(wrapLines(t('diag.shareFailed'), text, typeScale.controlSmall.fontSize)).toBe(2);
-    expect(wrapLines(t('diag.share'), text, typeScale.controlSmall.fontSize)).toBe(1);
-  });
-
-  it('wrapped some labels in the narrow card and none in the half (anti-vacuity)', () => {
-    expect(wrappedHeaders).toBeGreaterThan(0);
+    it.each(LANGS)('%s: the pulse and the heading share the header’s one line', (lang) => {
+      const { t } = createTranslator(lang);
+      const heading = t('diag.title').toUpperCase();
+      for (const char of heading) {
+        expect(
+          condensedBold.has(char.codePointAt(0) ?? 0),
+          `${lang} heading "${heading}" has "${char}"`,
+        ).toBe(true);
+      }
+      const title =
+        condensedBold.width(heading, typeScale.diagTitle.fontSize) +
+        Array.from(heading).length * (typeScale.diagTitle.letterSpacing ?? 0);
+      expect(
+        BOARD_PULSE_PX + space.sm + title,
+        `${where} ${lang} "${heading}"`,
+      ).toBeLessThanOrEqual(inner);
+      headersChecked += 1;
+    });
   });
 
   it('checked every string it set out to, in every language (anti-vacuity)', () => {
     expect(LANGS).toHaveLength(4);
-    expect(headersChecked).toBe(2 * 4 * 2); // two widths x four languages x two labels
+    expect(headersChecked).toBe(2 * 4); // two widths x four languages
     expect(probesChecked).toBe(4 * PROBES_PER_LANGUAGE);
     expect(labelsChecked).toBe(4 * 9);
     expect(sectionsChecked).toBe(4 * 4);
@@ -680,6 +682,7 @@ describe('every Diagnostics row fits its line at 640 × 360, in every language (
 const NARROW_LINE = 320 - 2 * space.md;
 let sideChecked = 0;
 let switchLabelsChecked = 0;
+let powerChecked = 0;
 
 /** The widest single word of a label, in Geist 500 at the control role's size. */
 const longestWord = (label: string) =>
@@ -727,8 +730,149 @@ describe('the side control and the switch rows fit the narrowest line, in every 
     expect(2 * layout.segmentMin + 2 * layout.iconBorder).toBe(134); // measured 134.4 on the board
   });
 
-  it('checked every language for the pair and for the switch label (anti-vacuity)', () => {
+  // R5: the battery row's label shares its line with the state word, set at the control size; its longest word must
+  // fit beside the longest of the three mode words (M5 of the Batch 5 review). Its button's words fit the compact box
+  // on one line, and the path and the on-air reason (I3) are one line each at the caption size.
+  it.each(LANGS)(
+    '%s: the battery row’s label and state word share a line, and its button fits',
+    (lang) => {
+      const { t } = createTranslator(lang);
+      const state = Math.max(
+        ...(
+          [
+            'settings.power.unrestricted',
+            'settings.power.optimized',
+            'settings.power.restricted',
+          ] as const
+        ).map((key) => medium.width(t(key), typeScale.control.fontSize)),
+      );
+      const room = NARROW_LINE - state - space.sm;
+      expect(longestWord(t('settings.power.background')), `${lang} label`).toBeLessThanOrEqual(
+        room,
+      );
+      const button =
+        medium.width(t('settings.power.open'), typeScale.controlSmall.fontSize) +
+        2 * layout.ghostCompactPadX +
+        2 * layout.iconBorder;
+      expect(button, `${lang} button`).toBeLessThanOrEqual(NARROW_LINE);
+      for (const key of ['settings.power.path', 'settings.power.onAir'] as const) {
+        const line = t(key);
+        // Every character is Geist's own: a fallback face on the phone would set the arrow wider than measured.
+        expect(
+          [...line].filter((char) => !medium.has(char.codePointAt(0) ?? 0)),
+          `${lang} ${key}`,
+        ).toEqual([]);
+        expect(
+          medium.width(line, typeScale.metricUnit.fontSize),
+          `${lang} ${key}`,
+        ).toBeLessThanOrEqual(NARROW_LINE);
+      }
+      powerChecked += 1;
+    },
+  );
+
+  it('checked every language for the pair, the switch label and the battery row (anti-vacuity)', () => {
     expect(sideChecked).toBe(4);
     expect(switchLabelsChecked).toBe(4 * 1);
+    expect(powerChecked).toBe(4);
+  });
+});
+
+// N33 and P11 (the D3 fixes plan's ruling, the controller's): the record row stacks Share record and Send record to
+// Seazn in the settings column, so each button may take the column's whole width. Two widths bound the column: a
+// 640 dp landscape window's half (296), and a 320 dp portrait phone (288). The box's label is its width less 11 dp of
+// padding and 1 dp of border each side. Every label fits one line, with no word broken: the words as written, and
+// Sent with the longest reference the port accepts. (The 37 dp box would hold two, above; none needs the second.)
+const RECORD_WIDTHS = [
+  ['640 landscape half', HALF, 296],
+  ['320 portrait column', NARROW_LINE, 288],
+] as const;
+/**
+ * The longest reference the record contract admits, in its widest capital: its upper bound read from the vendored
+ * pattern (`R-` and 4 to 8 Crockford capitals at a6cc1f038), so a re-vendor that lengthens the ref moves this proof
+ * (fix round 1 of Batch 11, finding 5 of its review).
+ */
+const REF_PATTERN = (
+  JSON.parse(
+    readFileSync(new URL('../../../contracts/capture-record.v1.json', import.meta.url), 'utf8'),
+  ) as { $defs: { ok: { properties: { ref: { pattern: string } } } } }
+).$defs.ok.properties.ref.pattern;
+const REF_LONGEST = Number(/\{\d+,(\d+)\}/.exec(REF_PATTERN)?.[1]);
+const WORST_REF = `R-${'W'.repeat(REF_LONGEST)}`;
+let recordLabelsChecked = 0;
+let recordReasonsChecked = 0;
+
+describe('the record row’s buttons fit the settings column, in every language (N33, P11)', () => {
+  it.each(RECORD_WIDTHS)('the %s is the width the proof says it is', (_name, width, literal) => {
+    expect(width).toBe(literal);
+  });
+
+  it('proves Sent with the contract’s longest ref, which its pattern admits and one more W does not', () => {
+    expect(REF_LONGEST).toBe(8);
+    const ref = new RegExp(REF_PATTERN);
+    expect(ref.test(WORST_REF)).toBe(true);
+    expect(ref.test(`${WORST_REF}W`)).toBe(false);
+  });
+
+  describe.each(RECORD_WIDTHS)('%s', (where, width) => {
+    it.each(LANGS)('%s: every label of both buttons fits its box', (lang) => {
+      const { t } = createTranslator(lang);
+      const text = width - 2 * SHARE_PAD_X - 2 * SHARE_BORDER;
+      const labels = [
+        t('diag.share'),
+        t('diag.shareFailed'),
+        t('record.send'),
+        t('record.sending'),
+        t('record.sendFailed'),
+        t('record.cantSend'),
+        t('record.sent', { ref: 'R-7K2Q' }),
+        t('record.sent', { ref: WORST_REF }),
+      ];
+      for (const label of labels) {
+        expect(
+          [...label].filter((char) => !medium.has(char.codePointAt(0) ?? 0)),
+          `${lang} "${label}"`,
+        ).toEqual([]);
+        const lines = wrapLines(label, text, typeScale.controlSmall.fontSize);
+        expect(lines, `${where} ${lang} "${label}" breaks no word in ${fmt(text)} dp`).not.toBe(
+          null,
+        );
+        expect(lines, `${where} ${lang} "${label}"`).toBe(1);
+        recordLabelsChecked += 1;
+      }
+    });
+  });
+
+  // Each reason is one line under the buttons, at the caption size: no code yet, on air (Minor 8 of the Batch 6
+  // review), and why a send cannot go (fix round 1 of Batch 11, the controller's ruling 8).
+  const REASONS = [
+    'record.needsCode',
+    'record.onAir',
+    'record.cant.ended',
+    'record.cant.notFound',
+    'record.cant.tooLarge',
+    'record.cant.mismatch',
+  ] as const;
+  describe.each(RECORD_WIDTHS)('%s', (where, width) => {
+    it.each(LANGS)('%s: each of the row’s reasons is one line', (lang) => {
+      const { t } = createTranslator(lang);
+      for (const key of REASONS) {
+        const reason = t(key);
+        expect(
+          [...reason].filter((char) => !medium.has(char.codePointAt(0) ?? 0)),
+          `${lang} ${key}`,
+        ).toEqual([]);
+        expect(
+          medium.width(reason, typeScale.metricUnit.fontSize),
+          `${where} ${lang} ${key}`,
+        ).toBeLessThanOrEqual(width);
+        recordReasonsChecked += 1;
+      }
+    });
+  });
+
+  it('checked eight labels and six reasons at both widths in every language (anti-vacuity)', () => {
+    expect(recordLabelsChecked).toBe(2 * 4 * 8);
+    expect(recordReasonsChecked).toBe(2 * 4 * 6);
   });
 });

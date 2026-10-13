@@ -29,7 +29,7 @@ describe('cameraBoxSize', () => {
     // The owner's rule (2026-10-08), 640 x 360: the camera half is 640 - 310 = 330, which holds 185.6, but 360 - 180 = 180
     // is all the strip leaves: 180 x 16/9 = 320. (Before the rule the half was 304: 304 x 9/16 = 171, a box of 304 x 171.)
     ['640 x 360 at 180, the controls half 310', 330, 360, 180, 320, 180],
-    // The owner's phone, 804 x 360: the half is 494 and holds 277.9, but the strip leaves 180: the same 320 x 180.
+    // 804 x 360, the ruling's board height: the half is 494 and holds 277.9, but the strip leaves 180: the same 320 x 180.
     ['804 x 360 at 180, the controls half 310', 494, 360, 180, 320, 180],
   ] as const;
 
@@ -89,10 +89,10 @@ describe('STRIP_RESERVE', () => {
     expect(STRIP_RESERVE).toBe(154);
   });
 
-  // Spec §4.4's table, the owner's phone as it really is (804 x 332, a 494 dp camera half) before the label is
+  // Spec §4.4's table at 804 x 332 (a 494 dp camera half), the geometry it was written for, before the label is
   // measured: 332 - 154 = 178 tall, 178 x 16/9 = 316.44 wide, narrower than the half's 494 x 9/16 = 277.875 would allow.
   // Review Focus 4: the 2-line cap a side is what makes this 178, so lifting the cap fails here.
-  it('leaves the owner’s phone a 316.4 x 178 picture at its worst, 804 x 332 (D2 §4.4)', () => {
+  it('leaves 804 x 332 a 316.4 x 178 picture at its worst (D2 §4.4)', () => {
     const box = cameraBoxSize({
       halfWidth: 494,
       height: 332,
@@ -101,6 +101,19 @@ describe('STRIP_RESERVE', () => {
     });
     expect(box.width).toBeCloseTo(316.4444444, 5);
     expect(box.height).toBeCloseTo(178, 9);
+  });
+
+  // N35: the owner's phone lays the app out 728 x 328 (a 418 dp camera half): 328 - 154 = 174 tall, 174 x 16/9 =
+  // 309.33 wide, narrower than the half's 418 x 9/16 = 235.125 would allow.
+  it('leaves the owner’s phone as laid out, 728 x 328, a 309.3 x 174 picture at its worst (N35)', () => {
+    const box = cameraBoxSize({
+      halfWidth: 418,
+      height: 328,
+      stripContent: STRIP_RESERVE,
+      aspect: ASPECT,
+    });
+    expect(box.width).toBeCloseTo(309.3333333, 5);
+    expect(box.height).toBeCloseTo(174, 9);
   });
 });
 
@@ -188,13 +201,17 @@ describe('stripReserve (the strip a measured label needs)', () => {
 
   // [window, camera half, height, label, box width, box height]: worked by hand. The half is the window less the
   // controls half's 310. A box is min(half x 9/16, height - the reserve): 1, 2 and 4 lines of label reserve 88, 110 and
-  // 154. 804 x 332 is the owner's phone as it really is (the app area is 332 tall with the Android status bar showing).
-  // Where the half limits (the half's 9/16 is the smaller) the box is the whole half: full width. With the round line's
-  // room in the reserve (option B) that is 640 x 360 alone: 804 x 360 would need 278 + 88 = 366, and 915 x 412 340 + 88.
+  // 154. 728 x 328 is the owner's phone as it lays the app out (N35: ShellFrame's insets with 3-button navigation); 804 x
+  // 332 is the geometry of the owner's ruling of 2026-10-08. Where the half limits (the half's 9/16 is the smaller) the
+  // box is the whole half: full width. With the round line's room in the reserve (option B) that is 640 x 360, and 728 x
+  // 328 for a one-line label (235.125 + 88 = 323.1 of 328): 804 x 360 would need 278 + 88 = 366, and 915 x 412 340 + 88.
   const TABLE = [
     ['640 x 360, 1 line', 330, 360, 22, 330, 185.625],
     ['640 x 360, 2 lines', 330, 360, 44, 330, 185.625],
     ['640 x 360, 4 lines', 330, 360, 88, 330, 185.625],
+    ['728 x 328, 1 line', 418, 328, 22, 418, 235.125],
+    ['728 x 328, 2 lines', 418, 328, 44, 387.5555556, 218],
+    ['728 x 328, 4 lines', 418, 328, 88, 309.3333333, 174],
     ['804 x 332, 1 line', 494, 332, 22, 433.7777778, 244],
     ['804 x 332, 2 lines', 494, 332, 44, 394.6666667, 222],
     ['804 x 332, 4 lines', 494, 332, 88, 316.4444444, 178],
@@ -219,29 +236,33 @@ describe('stripReserve (the strip a measured label needs)', () => {
     expect(box.width / box.height).toBeCloseTo(ASPECT, 9);
   });
 
-  it('measured twelve shapes: four windows, three labels (anti-vacuity)', () => {
-    expect(TABLE).toHaveLength(12);
+  it('measured fifteen shapes: five windows, three labels (anti-vacuity)', () => {
+    expect(TABLE).toHaveLength(15);
     // A longer label is never a larger box, on any window.
-    for (let window = 0; window < 4; window += 1) {
+    for (let window = 0; window < 5; window += 1) {
       const [one, two, four] = TABLE.slice(window * 3, window * 3 + 3);
       expect(one?.[5]).toBeGreaterThanOrEqual(two?.[5] ?? Infinity);
       expect(two?.[5]).toBeGreaterThanOrEqual(four?.[5] ?? Infinity);
     }
-    // On the owner's phone at 332 it is strictly smaller each time.
+    // On the owner's phone as laid out (728 x 328) and at 804 x 332 it is strictly smaller each time.
     expect(TABLE[3]?.[5]).toBeGreaterThan(TABLE[4]?.[5] ?? Infinity);
     expect(TABLE[4]?.[5]).toBeGreaterThan(TABLE[5]?.[5] ?? Infinity);
+    expect(TABLE[6]?.[5]).toBeGreaterThan(TABLE[7]?.[5] ?? Infinity);
+    expect(TABLE[7]?.[5]).toBeGreaterThan(TABLE[8]?.[5] ?? Infinity);
   });
 
   // Full width is the picture's target (owner, 2026-10-08): the box is the whole half whenever the half's 9/16 leaves
   // the strip its reserve, and the rows above that are full width are exactly those: with the round line's 22 dp
-  // reserved (option B) only the smallest window, 640 x 360, where the half holds a 185.6 box and the window leaves at
-  // least 206 (360 - 154, the worst label).
+  // reserved (option B), the smallest window, 640 x 360, where the half holds a 185.6 box and the window leaves at
+  // least 206 (360 - 154, the worst label); and the owner's phone as laid out, 728 x 328, for a one-line label only
+  // (the half holds 235.125 and the window leaves 240; N35).
   it('is the whole half wherever the strip fits under it (full width), and narrower only where the window is short', () => {
     const full = TABLE.filter(([, half, , , width]) => Math.abs(width - half) < 1e-6);
     expect(full.map(([name]) => name)).toEqual([
       '640 x 360, 1 line',
       '640 x 360, 2 lines',
       '640 x 360, 4 lines',
+      '728 x 328, 1 line',
     ]);
   });
 });

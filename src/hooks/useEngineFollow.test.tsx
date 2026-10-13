@@ -1,12 +1,14 @@
 import { act, renderHook, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { KEEP_AFTER_DROP_MS } from '@/domain/credentials/uploadCredential';
 import { encodeSavedCode, type SavedCode } from '@/domain/mode/savedCode';
 import { useEngineFollow } from '@/hooks/useEngineFollow';
 import { useReopenGate } from '@/hooks/useReopenGate';
 import { STORE_KEYS } from '@/services/modeStore';
+import { createUploadCredentialStore } from '@/services/uploadCredentialStore';
 import { createFakePorts, readRecord, type FakePorts } from '../../test/fakePorts';
 import { savedStreamCode } from '../../test/fixtures/savedStream';
-import { captureRaw } from '../../test/fixtures/wire';
+import { captureRaw, FIXTURE_TOKEN } from '../../test/fixtures/wire';
 import { pairCode } from '../../test/pairCode';
 import { flush as flushApp, launchApp, scanFromHome, type LaunchedApp } from '../../test/routedApp';
 import { wrapperFor } from '../../test/renderWithPorts';
@@ -82,6 +84,47 @@ describe('useEngineFollow: native’s word on the saved code', () => {
     expect(fakes.navigation.current()).toBe('home');
     await flush(3_000);
     expect(forget).toHaveBeenCalledTimes(1);
+  });
+
+  it('forgets the saved code and goes Home on the notification’s Forget (R6)', async () => {
+    const fakes = await shell();
+    act(() => fakes.engine.notificationForget());
+    await flush();
+    expect(fakes.engine.getSnapshot().unpaired).toMatchObject({ reason: 'forgotten', slot: 1 });
+    expect(savedOf(fakes)).toBeUndefined();
+    expect(fakes.navigation.current()).toBe('home');
+  });
+
+  // Spec §9 and §7 (R4): the notification's Forget drops the code like Home's, so the upload credential's 24 h start
+  // then, on the real credential store over the ports' own key-value and mode stores.
+  it('starts the upload credential’s 24 h on the notification’s Forget (R4)', async () => {
+    const fakes = await shell();
+    const credentials = createUploadCredentialStore({
+      kv: fakes.kv,
+      modeStore: fakes.ports.modeStore,
+      clock: fakes.ports.clock,
+      logger: fakes.ports.logger,
+      enabled: true,
+    });
+    await flush();
+    expect(await credentials.current()).toMatchObject({ token: FIXTURE_TOKEN, expiresAtMs: null });
+    act(() => fakes.engine.notificationForget());
+    await flush();
+    expect(fakes.engine.getSnapshot().unpaired).toMatchObject({ reason: 'forgotten' });
+    expect(await credentials.current()).toMatchObject({
+      token: FIXTURE_TOKEN,
+      expiresAtMs: fakes.ports.clock().getTime() + KEEP_AFTER_DROP_MS,
+    });
+  });
+
+  it('ignores the notification’s Forget while a broadcast is held (a late tap)', async () => {
+    const fakes = await shell();
+    act(() => fakes.engine.send({ kind: 'start' }));
+    await flush(5_000);
+    act(() => fakes.engine.notificationForget());
+    await flush();
+    expect(fakes.engine.getSnapshot().unpaired).toBeNull();
+    expect(savedOf(fakes)).toEqual(code);
   });
 
   it('keeps the saved code when the unpair names another code', async () => {

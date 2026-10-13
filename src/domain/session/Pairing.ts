@@ -74,8 +74,11 @@ export type LastEnd =
   | 'hold-window-expired'
   | 'stopped';
 
-/** Why native left a pairing the operator did not end. */
-export type UnpairReason = 'code-ended' | 'replaced' | 'taken' | 'permissions';
+/**
+ * Why native left a pairing the operator did not end in the app. `forgotten` is the operator's Forget on the
+ * notification (R6 of the D3 findings design): native's own input, which JS hears only from the snapshot.
+ */
+export type UnpairReason = 'code-ended' | 'replaced' | 'taken' | 'permissions' | 'forgotten';
 
 export type Unpaired = {
   readonly reason: UnpairReason;

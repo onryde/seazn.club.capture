@@ -41,7 +41,9 @@ interface Platform {
 
 /**
  * App-private storage, excluded from backup (amendment, _Pairing, takeover and rejoin_): Android's
- * `noBackupFilesDir`, the JVM host's memory. Scheduler thread only.
+ * `noBackupFilesDir`, the JVM host's memory. Scheduler thread only, but for one read: the Forget marker
+ * (`PairingStore.readForgotten`, R6 of the D3 findings design), read on the thread that builds `BridgeCore`, before
+ * the scheduler runs any task, so no scheduler-thread write can race it.
  */
 interface PrivateStore {
   fun read(name: String): String?
