@@ -1188,7 +1188,8 @@ so a Send within the upload credential's 24 h can carry none of the match and st
 
 ### N39 — The beat's `not_ready` hides which check failed
 
-**Status:** open for the web brief; no app change planned
+**Status:** two parts. The stuck camera state after a session ended is fixed — feat/s1-d3-fixes, Batch 19 (dcc5bb0; the
+owner's ruling, 2026-10-13, "fix it now"). The beat naming the failed check is open for the web brief, a contract change
 **Where:** capture app · `Readiness.notReady()` · web `capture-beat.v1.json`
 
 On sid e6aeaee3 (locked, Dozing) the web showed `not_ready` for 100 s of live video and the first reading was that
@@ -1212,11 +1213,23 @@ hold expiry leaves Paired with `pairing.camera` SWITCHING, so the camera check i
 `intent-ignored`, and a console Go live sits in Armed for more than 30 s with no connect; the same run without the
 switch connects. No start is possible on that pairing until a rescan, or until another app takes the camera and gives
 it back. The same holds for RESUMING, and for any `Verdicts.over` (an organiser's end, say) while the camera is
-SWITCHING or RESUMING. It was already there at the branch's base, 0a2c565. A fix would be one line in `Verdicts.over`:
-carry only TAKEN and REOPENING. R-1WRJ's kept lines show no camera-lost line (the web's summary), so whether this path
-made the first beat after N37's restore say `camera` is not shown. The owner's answer on 2026-10-13, given while the
-carry-over was unproven, was "leave all three out and ship"; the controller has asked again now that it is confirmed,
-and it stays open until the owner decides.
+SWITCHING or RESUMING. It was already there at the branch's base, 0a2c565.
+R-1WRJ's kept lines show no camera-lost line (the web's summary), so whether this path made the first beat after
+N37's restore say `camera` is not shown. The owner's first answer on 2026-10-13, given while the carry-over was
+unproven, was "leave all three out and ship"; once the probe confirmed it the controller asked again and the owner
+said to fix it now.
+
+**Fix (Batch 19, dcc5bb0):** `CameraState.afterSession` (`Phase.kt`) is an exhaustive `when`: TAKEN and REOPENING carry
+into the pairing as before, SWITCHING and RESUMING become OWN. `Verdicts.over` applies it, and it is the only place a
+session's camera is copied into the pairing, so hold expiry, an organiser's end on a beat or on the code, Go live for a
+new sid while a broadcast is held, and a Stop before going live all hand back OWN. A cold start reads OWN, since
+`PairingStore` never saves a camera state. Kotlin core 1406/0. Device-only and not checked: whether "Phone not ready:
+camera" clears on a phone after a switch and a hold expiry.
+
+**Parked from Batch 19's review:** the `?: CameraState.OWN` fallback in `Pairings.kt:303` is unreachable (every caller of
+`over` holds a sid); no test pins the heartbeat's `notReady` after these ends; the cold-start test's name overclaims
+(`CameraAfterEndTest.kt:261-277`). Probe G1, which existed before this batch: re-pairing with another code while the
+camera is TAKEN resets it to OWN, and the later release sends no `ReopenCamera`.
 
 **Brief for the web:** let the beat carry the failed check's word. A contract change, so not in this branch.
 
