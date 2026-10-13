@@ -945,7 +945,7 @@ blackdetect).
 
 ### N29 — A rejoin after the hold runs out retries forever, with no reason shown
 
-**Status:** fixed — feat/s1-d3-fixes, Batch 2 (588ca11, 3eb3c1a, 4e27a9b; fix round 1: 279413f, 641103a, a4756e1)
+**Status:** superseded by N37 (the owner's ruling, 2026-10-13: the phone ends the session at hold expiry and never rejoins it; the Lapsed/Rejoin path below was removed in Batch 16). Was fixed — feat/s1-d3-fixes, Batch 2 (588ca11, 3eb3c1a, 4e27a9b; fix round 1: 279413f, 641103a, a4756e1)
 **Where:** capture app · `Verdicts.over` (`Pairings.kt:274-281`) · `Transports.outageFor` (`SessionMachine.kt:327-331`) ·
 `Transports.failed` (`:262-276`) · `Projection.state` (`Projection.kt:72`)
 
@@ -1101,6 +1101,113 @@ What changes at 728 × 328, by each fit's own model:
 
 Nothing clips. The fits now carry 728 × 328 as the owner's phone, with hand-derived rows; 804 × 332 stays as a
 geometry, as the one the rulings were made on (the controller's ruling, 2026-10-12, from D3's evidence).
+
+---
+
+### N36 — A phone paired and waiting on Home has no keep-awake
+
+**Status:** open — not fixed in feat/s1-d3-fixes; the owner decides at the D3 results (`docs/specs/2026-10-13-s1-d3-results.md`)
+**Where:** capture app · `useKeepAwake` is mounted only in `app/stream/_layout.tsx` · AGENTS §9
+
+AGENTS §9 says the screen is kept on while paired and waiting. That holds inside Live Stream only. On Home, with a
+pairing, the screen times out 15 s after the operator leaves Live Stream. On a phone whose battery setting is
+Optimized, the OS then froze the app (PID frozen 10:26:57 to 10:29:30 BST on 2026-10-12, tick late by 152 s, no beats,
+no `armed`), and a remote Go live from the console failed (Batch 8, path 1). The earlier call that Batch 3 had
+regressed the camera was wrong; the app was frozen, and Home opens no camera by design
+(`.superpowers/sdd/2026-10-11-s1-d3-fixes/regression-camera-config.md`).
+
+Device evidence on e144a38: a locked phone on Unrestricted battery kept beating and armed, and a start reached air
+(sid 2e0255cd, camera ready 0.5 s after the start reached the phone; sid e6aeaee3 after about 7 minutes locked and
+Dozing, 24 s to air). So the cure that matters is the battery setting (Settings has the battery row, Batch 6). A
+keep-awake on Home would also close the gap AGENTS §9 describes.
+
+---
+
+### N37 — A rejoin after the hold ran out resurrected a session the strip had called over
+
+**Status:** fixed — feat/s1-d3-fixes, Batch 16 (de2a5ce, 8335583, 3bff4aa; fix round 1: a5be0b0); device-verified on
+e144a38, 2026-10-13 (sid 12c5da78)
+**Where:** capture app · `SessionMachine.kt` (`holdRanOut`, `expired`) · `Pairings.kt` (server `Open`) · `Heartbeats.atOnce`
+
+Found on the cut of 2026-10-12 (sid d060573f): the 183 s hold ran out, the strip said "Connection lost too long —
+stream stopped", the server kept the session `live` (its own lost-phone end is 15 minutes), and on restore the phone
+rejoined the same sid and Cloudflare started a second recording (N29's rejoin). The strip had said it was over.
+
+**Owner ruling (2026-10-13, option a):** when the hold runs out the phone ends the session itself, and when the
+network returns it stays Paired and waits for a new Go live. It reuses the never-live path: the sid goes into
+`refused`, a `stopped: <sid>` beat is carried until a 2xx and is due at once (`Heartbeats.atOnce`, so the first
+network moment sends it), and a late server `Open(sid)` is ignored. A hold that returns inside 183 s still reconnects
+on the same sid. The Kotlin Lapsed/Rejoin path is removed (N29 is superseded).
+
+**Device proof (e144a38, fixture #4, sid 12c5da78; the phone's record R-1WRJ and the web's rows):** the phone cut off
+at 20:29:38; `hold-expired` at 20:32:46, 183.4 s after `dropped`; the server kept the session `live` throughout; the
+network came back at 20:33:34.6; the first beat at 20:33:35.4 carried the phone already off the sid; the server ended
+the session 0.5 s later and the phone logged `stopped-delivered 200`. One `broadcast-start`, no rejoin, one
+Cloudflare recording, no credit consumed.
+
+**Remaining edges (parked):**
+
+- The server records the end as `operator_stopped`, as for a hand Stop. The only trace is in its events: a hand Stop
+  writes `phone_stop` first and the `stopped:` path does not (web's `capture-phone.ts:584`). Web brief item.
+- A hold running out while a 401 is pending sends no `stopped` beat.
+- A cold start after process death mid-outage rejoins through A10.
+- Forget or Unpair before the beat lands leaves the server session to its 15-minute end.
+- The strip shows "waiting" after process death.
+- Dead TypeScript: the `rejoinRetrying` copy, the `hold-expired` cause, the FakeCaptureEngine `rejoining` scenario and
+  the writerless allow-list keys.
+- Offline, the connect retry loop wrote 73 `capture-start-failed` lines in 183 s, and the first beat after restore
+  said `notReady: "camera"` (see N39).
+
+---
+
+### N38 — Send record could keep none of a long session's lines
+
+**Status:** fixed — feat/s1-d3-fixes, Batch 18 (0d3fefd, e144a38); device-checked on R-N4F3, R-DJSE and R-1WRJ
+**Where:** capture app · `src/services/recordPins.ts` · `ring.linesToSend` · `recordUploadPort.ts`
+
+R-MA1P (2026-10-12, 10 s after a session ended) arrived with 1000 lines received, 0 kept, 1000 dropped. The JS ring
+holds 1000 lines and drops the oldest; ten minutes of a live session fill it, and the `pair` line (which carries the
+tokenTag) and the sid-bearing lines roll out, so the remaining lines sat in no pairing window and the web kept none.
+
+**Fix:** the latest `pair` line and the latest sid-bearing `broadcast-start` are pinned outside the ring's capacity
+and sent first, then the newest lines, 1000 in total. The pins release only when the window's closing line
+(`unpaired`, `ended`, `pair-refused`, `reset`) has itself left the ring, or when a newer `pair` replaces them. The
+controller's first rule, release when the closing line arrives, was wrong (review: Critical, since Send is off-air
+only and every send follows a close); the amendment is cited in code as "the controller's amendment to the N38 ruling
+(2026-10-13)".
+
+**Device proof:** R-N4F3 received 178, kept 76, dropped 102 (the lines before the #4 pair), invalid 0, pair line
+leading; R-DJSE received 328, kept 197, dropped 131, invalid 0, covering two sessions; R-1WRJ received 623, kept 621,
+dropped 2, invalid 0. The 1000-line overflow case is covered by unit and end-to-end tests but not yet seen on a
+device. Parked: the native 5 MB disk record is still never read by Send; the owner decides whether it should be.
+
+---
+
+### N39 — The beat's `not_ready` hides which check failed
+
+**Status:** open for the web brief; no app change planned
+**Where:** capture app · `Readiness.notReady()` · web `capture-beat.v1.json`
+
+On sid e6aeaee3 (locked, Dozing) the web showed `not_ready` for 100 s of live video and the first reading was that
+the camera had failed. The phone's record (R-DJSE) shows `camera:true` and `sound:true` throughout, with no
+camera-lost, camera-taken or mic-silenced lines; the false check was `held` (the phone lay at an angle on the desk,
+A11's held-sideways gate, by design for every start). `notReady()` sends one word, and the beat carries only
+`not_ready`, so the operator, the console and the controller could not tell which check it was. The 14 s start delay
+was the Armed gate waiting for the held pose. The camera fix planned in Batch 8 Step C is dropped.
+
+Path 2 of 2026-10-12 (a locked phone held until unlock, strip "Phone not ready: camera") did not reproduce on
+e144a38 and its cause is unexplained. On 2026-10-13 the first beat after a hold-expiry restore carried
+`notReady: "camera"` as well, after 73 failed capture starts in the offline retry loop; whether those two are linked
+was read in code, not run (scout, 2026-10-13). The 73
+`capture-start-failed` lines are CaptureRun's label for any throw from the streamer's start, so an offline endpoint-open
+failure gets that name (`CaptureRun.kt:326`); each retry reuses the held streamer and camera, and a transport failure
+never touches `CameraAvailability`, so they cannot by themselves make the camera look lost. One path could: when the
+hold expires the machine goes to Paired and copies `phase.camera` into `pairing.camera` (`Pairings.kt:302`), and a
+RESUMING or SWITCHING value carried there is reset to OWN only by `SessionMachine.kt:369` (OnAir frames) and `:523`, so
+`notReady` would stay `camera` until the next start. The record shows no camera-lost line in R-1WRJ's kept lines (the
+web's summary), so the carry-over is an unproven hypothesis; it is parked for the owner with the results doc.
+
+**Brief for the web:** let the beat carry the failed check's word. A contract change, so not in this branch.
 
 ---
 
