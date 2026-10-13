@@ -42,8 +42,9 @@ export const IconButton = memo(function IconButton({
 });
 
 /**
- * Module-level so render allocates no function. Pressed fills with surface2 and the edge goes cream, as GhostButton's
- * does (the controller's ruling, Batch 17): never a dim alone, and never a change of the box.
+ * Module-level so render allocates no function. Pressed takes the press fill (cream at 20%, on any ground) and the edge
+ * goes cream, as GhostButton's does (the controller's rulings, Batch 17 and P8): never a dim alone, and never a change
+ * of the box.
  */
 function iconButtonStyle({ pressed }: PressableStateCallbackType) {
   return pressed ? pressedButton : styles.button;
@@ -59,7 +60,7 @@ const styles = StyleSheet.create({
     borderColor: colour.ink3,
     borderRadius: radius.card,
   },
-  pressedFill: { backgroundColor: colour.surface2 },
+  pressedFill: { backgroundColor: colour.pressFill },
   pressedEdge: { borderColor: colour.ink },
   selected: { borderWidth: layout.iconBorderOn, borderColor: colour.lime },
 });

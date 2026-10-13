@@ -75,8 +75,9 @@ function useCompactBox(label: string, labelStyle: StyleProp<TextStyle>) {
 }
 
 /**
- * Module-level so render allocates no function. Pressed fills with surface2 and the edge goes cream, as IconButton's
- * does (the controller's ruling, Batch 17): never a dim alone, and never a change of the box. A disabled ghost never
+ * Module-level so render allocates no function. Pressed takes the press fill (cream at 20%, on any ground: the sheet's
+ * surface2, a card's surface, night) and the edge goes cream, as IconButton's does (the controller's rulings, Batch 17
+ * and P8): never a dim alone, and never a change of the box. A disabled ghost never
  * shows it: Pressable starts no press while disabled, on the phone (Pressability refuses the responder) as on the web.
  */
 function ghostStyle({ pressed }: PressableStateCallbackType) {
@@ -107,7 +108,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     ...outline,
   },
-  pressed: { backgroundColor: colour.surface2, borderColor: colour.ink },
+  pressed: { backgroundColor: colour.pressFill, borderColor: colour.ink },
   labelOff: { color: colour.ink3 },
 });
 

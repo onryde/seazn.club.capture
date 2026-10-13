@@ -5,7 +5,7 @@ import { pressIn, pressOut } from './press';
 
 /**
  * How jsdom paints a token as a fill and as an edge, read from a reference View, so a pressed style is compared as the
- * cascade resolves it (IconButton.test.tsx's `borderOf`). The caller passes the token (`colour.surface2`), never a
+ * cascade resolves it (IconButton.test.tsx's `borderOf`). The caller passes the token (`colour.pressFill`), never a
  * literal. The colour on a phone, and whether a press reads outdoors, is a device check (AGENTS §10).
  */
 function resolved(read: (style: CSSStyleDeclaration) => string, style: object): string {
@@ -120,4 +120,18 @@ export function unmountWhileHeld(element: () => HTMLElement, unmount: () => void
   } finally {
     vi.useRealTimers();
   }
+}
+
+/**
+ * A held control's fill on the ground of the host it sits in (the controller's ruling P8, Batch 17: the press fill must
+ * not depend on the ground). Reads the host's own fill at rest and the control's fill while held. The caller pins the
+ * host's ground to its token, so a host repainted under the control fails, and checks the held fill against the press
+ * fill and the ground. jsdom composites nothing: how the two look together is a device check.
+ */
+export function heldOnGround(control: () => HTMLElement, host: () => HTMLElement) {
+  const ground = paintOf(host()).fill;
+  pressIn(control());
+  const held = paintOf(control()).fill;
+  pressOut(control());
+  return { ground, held, released: paintOf(control()).fill };
 }

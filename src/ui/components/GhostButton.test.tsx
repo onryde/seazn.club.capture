@@ -108,8 +108,9 @@ describe('GhostButton (the secondary action)', () => {
     });
   });
 
-  // The controller's ruling (Batch 17; the owner has not ruled), after the owner saw no change while holding an icon
-  // button: a pressed outline fills with surface2 and its edge goes cream, never a dim alone, and the box never moves.
+  // The controller's rulings (Batch 17 and its P8; the owner has not ruled), after the owner saw no change while holding
+  // an icon: a pressed outline takes the press fill, the cream at 20% (`colour.pressFill`), so it shows on any ground,
+  // and its edge goes cream; never a dim alone, and the box never moves.
   // The outline is the button in the regular form and the box inside the target in the compact one; the compact
   // target itself still draws nothing. Held and released, for both forms, so each press state's style is read.
   describe.each([
@@ -118,15 +119,15 @@ describe('GhostButton (the secondary action)', () => {
   ] as const)('%s: pressed state', (_form, compact) => {
     const outlineOf = () => (compact ? (boxOf() as HTMLElement) : button());
 
-    it('fills with surface2 and its edge goes cream while held, with no dim, and is as it was on release', () => {
+    it('fills with the press fill and its edge goes cream while held, with no dim, and is as it was on release', () => {
       render(<GhostButton label="Share record" onPress={vi.fn()} compact={compact} />);
       const resting = paintOf(outlineOf());
       const target = paintOf(button());
-      expect(resting.fill).not.toBe(fillOf(colour.surface2)); // anti-vacuity: no fill at rest
+      expect(resting.fill).not.toBe(fillOf(colour.pressFill)); // anti-vacuity: no fill at rest
       expect(resting.edges).toEqual(Array(4).fill(edgeOf(colour.ink3)));
       pressIn(button());
       expect(paintOf(outlineOf())).toEqual({
-        fill: fillOf(colour.surface2),
+        fill: fillOf(colour.pressFill),
         edges: Array(4).fill(edgeOf(colour.ink)),
         opacity: resting.opacity,
       });
@@ -141,14 +142,14 @@ describe('GhostButton (the secondary action)', () => {
       expect(before[1]['min-height']).toBe(compact ? '37px' : '48px'); // anti-vacuity: the outline's box is read
       pressIn(button());
       expect([layoutOf(button()), layoutOf(outlineOf())]).toEqual(before);
-      expect(paintOf(outlineOf()).fill).toBe(fillOf(colour.surface2)); // and the press did change the paint
+      expect(paintOf(outlineOf()).fill).toBe(fillOf(colour.pressFill)); // and the press did change the paint
       pressOut(button());
     });
 
     it('a second press, and a press while held, find nothing stuck', () => {
       render(<GhostButton label="Share record" onPress={vi.fn()} compact={compact} />);
       const resting = paintOf(outlineOf()).fill;
-      const held = fillOf(colour.surface2);
+      const held = fillOf(colour.pressFill);
       expect(pressTwice(button, () => paintOf(outlineOf()).fill)).toEqual([
         resting,
         held,
@@ -163,7 +164,7 @@ describe('GhostButton (the secondary action)', () => {
       const resting = paintOf(outlineOf());
       pressIn(button());
       expect(paintOf(outlineOf())).toEqual(resting);
-      expect(resting.fill).not.toBe(fillOf(colour.surface2));
+      expect(resting.fill).not.toBe(fillOf(colour.pressFill));
       pressOut(button());
     });
 

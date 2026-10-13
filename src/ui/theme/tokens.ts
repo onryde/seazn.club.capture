@@ -36,6 +36,12 @@ export const colour = {
   /** .app-crumbs hairline: cream at 8%. */
   rule: '#f5f0e814',
   ruleSoft: '#f5f0e80d',
+  /**
+   * A held control's fill: cream at 20%, written as `rule` is (the controller's ruling P8, Batch 17; the owner has not
+   * ruled). Translucent, so it shows on whatever ground the control sits on: night, surface or a sheet's surface2. An
+   * opaque surface2 fill was the sheet's own colour and all but invisible on surface.
+   */
+  pressFill: '#f5f0e833',
 
   /** --sport-led. Tailwind lime-400 in sRGB, NOT the v3 --mk-lime hex. */
   lime: '#9ae600',
@@ -66,7 +72,7 @@ export const plateInk = colour.ground;
 /**
  * A pressed control (the controller's ruling, D3 fixes Batch 17, 2026-10-13; the owner has not ruled). The owner held
  * the sliders glyph on phone A and saw nothing change until it opened on lift: a 15% dim of a hairline on night. An
- * outlined control (IconButton, GhostButton) fills with `surface2` and its edge goes cream (`ink`) while held, and its
+ * outlined control (IconButton, GhostButton) takes `colour.pressFill` and its edge goes cream (`ink`) while held, and its
  * box never moves; the Home tile's gear, which has no edge, takes the fill alone. Button's lime plate would step to a
  * darker lime, which the palette does not have, so it dims to `plate`, and by the same ruling so does a Home tile; the
  * link, which is already underlined, dims to `link`.

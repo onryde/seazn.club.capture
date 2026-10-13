@@ -5,7 +5,9 @@ import type { ViewerCheckView } from '@/hooks/useViewerCheck';
 import type { Viewfinder } from '@/hooks/useViewfinder';
 import en from '@/i18n/en.json';
 import { StreamColumn } from '@/ui/components/StreamColumn';
+import { colour } from '@/ui/theme/tokens';
 import { pressIn } from '../../../test/press';
+import { fillOf, heldOnGround } from '../../../test/pressState';
 import { renderWithPorts } from '../../../test/renderWithPorts';
 
 const VIEWER: ViewerCheckView = {
@@ -337,4 +339,23 @@ describe('the peek cell’s reasons (D2 §4.2, carry 13)', () => {
     expect(screen.queryByText(en['stream.peek.hot'])).toBeNull();
     expect(screen.queryByText(en['stream.peek.unavailable'])).toBeNull();
   });
+});
+
+// P8 (the controller's ruling, Batch 17): a held icon button's fill must not depend on the ground. The controls half is
+// the board's `ground` (night), pinned here, so a half repainted under the icon row fails too. Before air and on air.
+describe('StreamColumn’s icon row, held', () => {
+  it.each([false, true])(
+    'on air %s: a held Settings takes the press fill on the half’s night ground',
+    (onAir) => {
+      renderWithPorts(<StreamColumn view={viewOf({ onAir })} {...ICONS} viewer={VIEWER} />);
+      const { ground, held, released } = heldOnGround(
+        () => screen.getByRole('button', { name: en['stream.link.settings'] }),
+        () => screen.getByTestId('controls-half'),
+      );
+      expect(ground).toBe(fillOf(colour.ground));
+      expect(held).toBe(fillOf(colour.pressFill));
+      expect(held).not.toBe(ground);
+      expect(released).not.toBe(held);
+    },
+  );
 });

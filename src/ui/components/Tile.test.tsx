@@ -6,7 +6,14 @@ import { colour, radius } from '@/ui/theme/tokens';
 import { typeScale } from '@/ui/theme/type';
 import { declaredStyle } from '../../../test/declaredStyle';
 import { pressIn, pressOut } from '../../../test/press';
-import { fillOf, layoutOf, paintOf, pressTwice, unmountWhileHeld } from '../../../test/pressState';
+import {
+  fillOf,
+  heldOnGround,
+  layoutOf,
+  paintOf,
+  pressTwice,
+  unmountWhileHeld,
+} from '../../../test/pressState';
 import { layOut } from '../../../test/layOut';
 import { linesAllowed } from '../../../test/linesAllowed';
 import { renderWithPorts } from '../../../test/renderWithPorts';
@@ -200,8 +207,8 @@ describe('Tile', () => {
 
 // The controller's ruling (Batch 17; the owner has not ruled), after the owner held this gear's sliders glyph and saw
 // nothing change until it opened on lift: a pressed control is never a 15% dim. The tile dims to 0.7, as the lime
-// Button does. The gear (fix round 1) fills with surface2 in a rounded square while held, and nothing else of the tile
-// changes. Neither box moves. Whether it reads outdoors is the owner's device check; jsdom sees no colour and no press
+// Button does. The gear (fix rounds 1 and 2) takes the press fill, the cream at 20% (`colour.pressFill`, P8), in a
+// rounded square while held, and nothing else of the tile changes. Neither box moves. Whether it reads outdoors is the owner's device check; jsdom sees no colour and no press
 // feedback (AGENTS §10).
 describe('Tile pressed (the controller’s ruling, Batch 17)', () => {
   const tile = () => screen.getByRole('button', { name: /Live Stream/ });
@@ -242,7 +249,7 @@ describe('Tile pressed (the controller’s ruling, Batch 17)', () => {
   );
 
   it.each(['portrait', 'landscape'] as const)(
-    '%s: the gear fills with surface2 in a rounded square while held, its glyph and its 48 dp corner box unchanged',
+    '%s: the gear takes the press fill in a rounded square while held, its glyph and its 48 dp corner box unchanged',
     (layout) => {
       renderWithPorts(
         <Tile mode="stream" available layout={layout} onPress={vi.fn()} settings={settings} />,
@@ -250,10 +257,10 @@ describe('Tile pressed (the controller’s ruling, Batch 17)', () => {
       const glyph = () => ({ ...within(gear()).getByTestId('glyph').dataset });
       const resting = { paint: paintOf(gear()), box: layoutOf(gear()), glyph: glyph() };
       expect([resting.box.width, resting.box.height]).toEqual(['48px', '48px']); // the box is read
-      expect(resting.paint.fill).not.toBe(fillOf(colour.surface2)); // anti-vacuity: no fill at rest
+      expect(resting.paint.fill).not.toBe(fillOf(colour.pressFill)); // anti-vacuity: no fill at rest
       pressIn(gear());
       expect({ paint: paintOf(gear()), box: layoutOf(gear()), glyph: glyph() }).toEqual({
-        paint: { ...resting.paint, fill: fillOf(colour.surface2) }, // no dim: the opacity is the resting one
+        paint: { ...resting.paint, fill: fillOf(colour.pressFill) }, // no dim: the opacity is the resting one
         box: resting.box,
         glyph: resting.glyph,
       });
@@ -270,7 +277,7 @@ describe('Tile pressed (the controller’s ruling, Batch 17)', () => {
     const resting = rest();
     pressIn(gear());
     expect(rest()).toEqual(resting);
-    expect(fillOfGear()).toBe(fillOf(colour.surface2)); // anti-vacuity: the press landed on the gear
+    expect(fillOfGear()).toBe(fillOf(colour.pressFill)); // anti-vacuity: the press landed on the gear
     pressOut(gear());
   });
 
@@ -283,6 +290,24 @@ describe('Tile pressed (the controller’s ruling, Batch 17)', () => {
     expect(resting.opacity).toBe('1');
     pressOut(dashboard);
   });
+
+  // P8: the press fill must not depend on the ground. The gear's ground is the frame's `surface`, pinned here, so a frame
+  // repainted under the gear fails too.
+  it.each(['portrait', 'landscape'] as const)(
+    '%s: the gear’s press fill is the cream token, on the frame’s surface ground',
+    (layout) => {
+      renderWithPorts(
+        <Tile mode="stream" available layout={layout} onPress={vi.fn()} settings={settings} />,
+      );
+      const { ground, held, released } = heldOnGround(gear, () =>
+        screen.getByTestId('tile-stream'),
+      );
+      expect(ground).toBe(fillOf(colour.surface));
+      expect(held).toBe(fillOf(colour.pressFill));
+      expect(held).not.toBe(ground);
+      expect(released).not.toBe(held);
+    },
+  );
 
   // The gear has no disabled state of its own (it sits only on a tile that opens, P6); the case that can arise is a
   // tile that is not built, whose body is disabled: holding it shows nothing on the body or the gear.
@@ -299,7 +324,7 @@ describe('Tile pressed (the controller’s ruling, Batch 17)', () => {
     renderWithPorts(<Tile mode="stream" available onPress={vi.fn()} settings={settings} />);
     expect(pressTwice(tile, () => opacityOf(tile()))).toEqual(['1', '0.7', '1', '0.7', '1']);
     const resting = fillOfGear();
-    const held = fillOf(colour.surface2);
+    const held = fillOf(colour.pressFill);
     expect(pressTwice(gear, fillOfGear)).toEqual([resting, held, resting, held, resting]);
   });
 

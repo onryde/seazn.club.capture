@@ -3,6 +3,8 @@ import { describe, expect, it, vi } from 'vitest';
 import type { ModeCode } from '@/domain/mode/Mode';
 import type { PanelOutcome, PanelUnpairReason } from '@/hooks/useHome';
 import { CodePanel } from '@/ui/components/CodePanel';
+import { colour } from '@/ui/theme/tokens';
+import { fillOf, heldOnGround } from '../../../test/pressState';
 import { renderWithPorts } from '../../../test/renderWithPorts';
 
 const streamCode = {
@@ -177,5 +179,20 @@ describe('CodePanel', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Scan again' }));
     fireEvent.click(screen.getByRole('button', { name: 'Close' }));
     expect([h.onScanAgain.mock.calls.length, h.onClose.mock.calls.length]).toEqual([1, 1]);
+  });
+
+  // P8 (the controller's ruling, Batch 17): a held ghost's fill must not depend on the ground. The sheet is surface2,
+  // pinned here: the old surface2 press fill was the sheet's own colour, so a held Scan again showed only its hairline.
+  it('a held Scan again takes the press fill, the cream at 20%, on the sheet’s surface2 ground', () => {
+    renderWithPorts(
+      <CodePanel outcome={{ kind: 'foreign', tapped: 'stream' }} time="18:40" {...handlers()} />,
+    );
+    const scanAgain = () => screen.getByRole('button', { name: 'Scan again' });
+    const sheet = () => scanAgain().parentElement as HTMLElement;
+    const { ground, held, released } = heldOnGround(scanAgain, sheet);
+    expect(ground).toBe(fillOf(colour.surface2));
+    expect(held).toBe(fillOf(colour.pressFill));
+    expect(held).not.toBe(ground);
+    expect(released).not.toBe(held);
   });
 });

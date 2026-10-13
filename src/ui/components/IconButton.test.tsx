@@ -144,21 +144,22 @@ describe('IconButton (spec §3)', () => {
     });
   });
 
-  // The owner held the sliders glyph on phone A (2026-10-13) and saw nothing change until it opened on lift: a 15% dim
-  // of a hairline on night. The controller's ruling (Batch 17; the owner has not ruled): a pressed button fills with
-  // surface2 and its edge goes cream, never opacity alone, and its box never moves. A selected button keeps its 2 dp
-  // lime edge and takes the fill only. Whether it reads outdoors is the owner's device check: jsdom sees no colour.
+  // The owner held a sliders glyph on phone A (2026-10-13) and saw nothing change until it opened on lift: a 15% dim
+  // of a hairline. The controller's rulings (Batch 17 and its P8; the owner has not ruled): a pressed button takes the
+  // press fill, the cream at 20% (`colour.pressFill`), so it shows on any ground, and its edge goes cream; never opacity
+  // alone, and its box never moves. A selected button keeps its 2 dp lime edge and takes the fill only. Whether it reads
+  // outdoors is the owner's device check: jsdom sees no colour and composites nothing.
   describe('pressed (the controller’s ruling, Batch 17)', () => {
     const remote = () => screen.getByRole('button', { name: 'Remote scoring' });
 
-    it('fills with surface2 and its edge goes cream while held, with no dim, and is as it was on release', () => {
+    it('fills with the press fill and its edge goes cream while held, with no dim, and is as it was on release', () => {
       renderWithPorts(<IconButton glyph="qr" label="Remote scoring" onPress={vi.fn()} />);
       const resting = paintOf(remote());
       expect(resting.edges).toEqual(Array(4).fill(borderOf(TOKEN.ink3)));
-      expect(resting.fill).not.toBe(fillOf(colour.surface2)); // anti-vacuity: no fill at rest
+      expect(resting.fill).not.toBe(fillOf(colour.pressFill)); // anti-vacuity: no fill at rest
       pressIn(remote());
       expect(paintOf(remote())).toEqual({
-        fill: fillOf(colour.surface2),
+        fill: fillOf(colour.pressFill),
         edges: Array(4).fill(edgeOf(colour.ink)),
         opacity: resting.opacity,
       });
@@ -167,14 +168,14 @@ describe('IconButton (spec §3)', () => {
       expect(paintOf(remote())).toEqual(resting);
     });
 
-    it('selected and held, it keeps its 2 dp lime edge and fills with surface2', () => {
+    it('selected and held, it keeps its 2 dp lime edge and takes the press fill', () => {
       renderWithPorts(<IconButton glyph="qr" label="Remote scoring" selected onPress={vi.fn()} />);
       const resting = paintOf(remote());
       pressIn(remote());
       const held = getComputedStyle(remote());
       expect(held.borderTopWidth).toBe(`${layout.iconBorderOn}px`);
       expect(paintOf(remote())).toEqual({
-        fill: fillOf(colour.surface2),
+        fill: fillOf(colour.pressFill),
         edges: Array(4).fill(boardLimeEdge()),
         opacity: resting.opacity,
       });
@@ -190,14 +191,14 @@ describe('IconButton (spec §3)', () => {
       expect(resting.width).toBe(`${layout.iconButton}px`); // anti-vacuity: the box is read
       pressIn(remote());
       expect(layoutOf(remote())).toEqual(resting);
-      expect(paintOf(remote()).fill).toBe(fillOf(colour.surface2)); // and the press did change the paint
+      expect(paintOf(remote()).fill).toBe(fillOf(colour.pressFill)); // and the press did change the paint
       pressOut(remote());
     });
 
     it('a second press, and a press while held, find nothing stuck', () => {
       renderWithPorts(<IconButton glyph="qr" label="Remote scoring" onPress={vi.fn()} />);
       const resting = paintOf(remote()).fill;
-      const held = fillOf(colour.surface2);
+      const held = fillOf(colour.pressFill);
       expect(pressTwice(remote, () => paintOf(remote()).fill)).toEqual([
         resting,
         held,
