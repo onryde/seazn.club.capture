@@ -1256,6 +1256,96 @@ on the stage black, is 1.59:1, and under outdoor flare the fill is 1.20–1.24:1
 
 ---
 
+### N41 — A quiet picture held the floor for 18 minutes, and the record could not say why
+
+**Status:** changed — fix/r990p-bitrate-climb (6d103e1, c60cf32); the owner asked for a faster tested climb and a
+record that explains the regulator ("yes", 2026-10-26), and the numbers (a 20% step, one held line a minute) are the
+controller's calls. Not yet run on a device. Open: the web's record contract does not list the new keys (below);
+constant bitrate is a later device experiment, not built
+**Where:** engine core · `BitrateRegulator` · `SessionMachine.link` · `allow-list.json` · web `capture-record.v1.json`
+
+R-990P (stg, 2026-10-26, Android on Wi-Fi, SRT) was a rejoin of sid 4516d82a after the operator force-quit the app
+(N42). It went live at 16:26:12.9; at 16:26:24.9 the regulator cut 1500k to 998603 and at 16:26:26.9 to the 500k
+floor. It held the floor for 18 minutes. From 16:44:30 it climbed 100k a raise to 1800k at 16:47:15: 13 raises in
+165 s. The owner confirmed the cause of the hold: the camera faced a still laptop scene, so VBR's egress stayed under
+F-P5-7's raise gate, which at the floor is 70% of (500k + 128k) × 1.15, 505_540 b/s. At about 16:44 the owner
+turned the camera to a busy garden scene, and tested raises resumed. F-P5-7 is a device-proven rule
+(`docs/specs/2026-09-11-p5-android-results.md`, F-P5-7): a quiet picture must keep holding, and nothing here weakens
+the gate.
+
+The record could not say why the first cut happened. The `bitrate` line was `from` and `to` only, and 998603 is not
+a half or a quarter of 1500k, so it was sized by SRT's bandwidth estimate (1_408_254 b/s would give it) or by the
+mean egress of the last clean readings (1_619_492 or 1_619_493 b/s would): the line names neither, nor whether
+sender drops or the send buffer triggered it. r2's answers (2026-10-26): the relay's "camera frames replaced" means
+the phone was at or above 30 fps on the wire, and nothing on the relay side survives for 16:26:20–16:27.
+
+**What changed (this branch):**
+
+- A tested raise is 20% of the target, never under 100k (`RAISE_STEP_PERCENT`, `raiseStepBps`); the 20% is the
+  controller's call. A busy clean link climbs from the floor to the ceiling in 10 raises, 100 s (500k, 600k, 720k,
+  864k, 1_036_800, 1_244_160, 1_492_992, 1_791_590, 2_149_908, 2_579_889, 3000k), where 100k a raise took 25
+  raises, 250 s; 1800k is passed in 8 raises, 80 s. The 10 s clean interval, 10 s between raises, 30 s after a cut,
+  the 70% gate, the 80% cap on a rate that failed in the last 5 min, the cut rules and the floor, start and ceiling
+  are unchanged. The cost: a step now reaches further past the rate the interval tested (2_579_889 to 3000k is
+  +420k on one test). The cut rules and the 80% cap catch an overrun; a busy picture on a thin link with 20% steps
+  has not been run.
+- Each `bitrate` line says why (`reason`: `drops`, `backlog`, `raise` or `clamp`, from the regulator's own verdict,
+  `BitrateMove`) and on what reading: `egressBps`, `dropped`, `lost`, `sendBufferMs` (as reported, a negative
+  reading included) and `bandwidthBps`, each a number or null.
+- `bitrate-held` (new kind): when F-P5-7's gate held at least one due raise, at most one line a minute while on air,
+  with the `target`, the held interval's mean egress (`egressBps`, null when no reading measured any), the gate
+  (`gateBps`), how many due raises it held since the last line (`count`) and the encoded frame rate (`videoFps`, the
+  stall watchdog's 3 s rate). The first goes at once; one a minute is the controller's call. R-990P's hold, about
+  1040 s from the first due raise (30 s after the cut) to the last before 16:44:30, would read as about 18 lines, not
+  one for each of some 100 held raises. None when the target is at the ceiling or the 80% cap (nothing to raise to),
+  and none off air. A drop and a new attempt keep the minute and the count, so a reconnect neither writes early nor
+  loses what was held; a new session starts afresh.
+- r2's fps ask, in part. StreamPack 3.2.1 has no encoder output rate (`IEncoder` has the bitrate only; read with
+  javap), and its configured rate is our own `VideoCodecConfig(fps = 30)` (`StreamerAdapter.kt:404`), which the core
+  does not hold. The rate measured from the frames the sink writes was already in the core (`FrameTally` →
+  `Input.Frames` → `StallWatchdog.videoFps`), so the held line carries it under the existing `videoFps` key. No
+  configured `fps` was added: it would need the glue to hand a constant to the core.
+
+**Brief for the web:** the record contract (`capture-record.v1.json`, vendored at a6cc1f038, `additionalProperties:
+false`) lists none of the seven new scalars: `bandwidthBps`, `dropped`, `egressBps`, `gateBps`, `lost`,
+`sendBufferMs` and `target`. Until it does, Send record drops them from their lines (Q4, `fitLine`), and the contract
+admits the rest (`from`, `to`, `reason`; `count`, `videoFps`); Share record keeps them. The new kind passes the
+contract's pattern. `recordContract.test.ts` names the seven in `AHEAD_OF_CONTRACT`, and reds when the web adds one.
+
+**Constant bitrate (CBR), not built:** a later device experiment. VBR on a quiet picture is what leaves the gate
+untested, and CBR would test every interval. Its costs: about 4 GB of mobile data per 3 h at 3 Mb/s
+(3_000_000 × 10_800 s / 8), possible heat, encoders that ignore the CBR mode, and `SrtBandwidth`'s overshoot
+factor (`OVERSHOOT_FACTOR`, F-P5-11), which is sized for VBR.
+
+---
+
+### N42 — After a fall the preview went black while capture and publish carried on
+
+**Status:** open, no repro; the mechanism is unknown
+**Where:** capture app · the viewfinder's native preview (`CapturePreviewView`, StreamPack `PreviewView`) · the record
+
+In the first run of the session N41 rejoined (2026-10-26, stg, sid 4516d82a), the phone fell, and after the fall
+the preview on the phone went black. The owner: the preview was black only in that run, after the fall, and good
+after the relaunch. Capture and publish carried on: r2 read stg's programme_phase events, and the relay went waiting
+→ live at 16:24:41.8 and kept camera frames on air at 30 fps, output 2.6–5.5 Mb/s, with no loss until frozen →
+reconnecting at 16:26:16.8, 9.6 s after the app process exited (16:26:07.17, the force-quit). The owner watched the
+YouTube recording of that run: "I don't see any blank or black screen, a few seconds of logo then streaming". So
+viewers had a real picture throughout; the black was the on-phone preview only, and the camera → encoder path kept
+working. Cloudflare has no recording of it (stg: `recording_seconds` 0), so the evidence is the owner's look at
+YouTube. How the preview went black is unknown; one candidate is the preview surface lost and not re-attached.
+
+The harm was indirect. The black preview led the operator to force-quit, a reasonable reaction, and the force-quit
+caused the real outage: the replay shows the compositor's "Camera reconnecting, back shortly" scene (score bug and
+match card still showing) from 16:26:16.8 to 16:26:51.8 UTC, about 35 s with no camera. The phone was publishing
+again from 16:26:12.9 (its `live` line); the rest of the gap is the relay's, under compositor Owed 108 (r2's
+hypothesis is the input rebuild backoff; not ours to fix). So the app's `live` is not when viewers get the camera
+back: here they got it 39 s later.
+
+Candidate record lines, not built: frames encoded while the preview is not running (r2's suggestion), and its
+mirror, the preview's state (attached, surface valid, frames shown), which would have caught this one.
+
+---
+
 ## P5 device spike (Android)
 
 The P5 findings, as an index. The full text, evidence and corrections for each
