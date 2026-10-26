@@ -501,6 +501,9 @@ class BitrateRegulatorTest {
     assertEquals(BitrateMove.DROPS, regulated(Regulation(3_000_000), reading(buffer = 1_000, dropped = 10)).move)
     // RTMPS has no send buffer, and its drops cut all the same.
     assertEquals(BitrateMove.DROPS, regulated(Regulation(2_000_000), reading(buffer = null, dropped = 3), transport = Transport.RTMPS).move)
+    // SRT with no usable send buffer (P5's −336, or none at all): drops still cut, and say so.
+    assertEquals(BitrateMove.DROPS, regulated(Regulation(3_000_000), reading(buffer = -336, dropped = 10)).move)
+    assertEquals(BitrateMove.DROPS, regulated(Regulation(3_000_000), reading(buffer = null, dropped = 10)).move)
     // A target outside 500k to 3000k, brought inside on a reading that does nothing else.
     assertEquals(BitrateMove.CLAMP, regulated(Regulation(4_000_000), reading()).move)
     assertEquals(BitrateMove.CLAMP, regulated(Regulation(100_000), reading()).move)
