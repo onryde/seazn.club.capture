@@ -57,7 +57,8 @@ export const RECORD_LEVELS: ReadonlySet<string> = new Set([
 
 /**
  * Every key a line may carry, by the contract's class: 97 since 55ac34d5d, which the web took from the allow-list at
- * capture ebac190, so every key the app writes (`recordContract.test.ts` holds the two lists equal).
+ * capture ebac190: every key the app wrote then. Keys the app writes ahead of the contract are dropped by `fitLine`
+ * until the web lists them (`AHEAD_OF_CONTRACT` in `recordContract.test.ts`, N41).
  */
 export const RECORD_LINE_KEYS: ReadonlySet<string> = new Set([
   // The line's own.
