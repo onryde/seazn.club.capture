@@ -1260,8 +1260,8 @@ on the stage black, is 1.59:1, and under outdoor flare the fill is 1.20–1.24:1
 
 **Status:** changed — fix/r990p-bitrate-climb (6d103e1, c60cf32); the owner asked for a faster tested climb and a
 record that explains the regulator ("yes", 2026-10-26), and the numbers (a 20% step, one held line a minute) are the
-controller's calls. Not yet run on a device. Open: the web's record contract does not list the new keys (below);
-constant bitrate is a later device experiment, not built
+controller's calls. Not yet run on a device. The web's record contract lists the new keys since web f0feab16c
+(below); open: constant bitrate is a later device experiment, not built
 **Where:** engine core · `BitrateRegulator` · `SessionMachine.link` · `allow-list.json` · web `capture-record.v1.json`
 
 R-990P (stg, 2026-10-26, Android on Wi-Fi, SRT) was a rejoin of sid 4516d82a after the operator force-quit the app
@@ -1310,7 +1310,8 @@ the phone was at or above 30 fps on the wire, and nothing on the relay side surv
 false`) lists none of the seven new scalars: `bandwidthBps`, `dropped`, `egressBps`, `gateBps`, `lost`,
 `sendBufferMs` and `target`. Until it does, Send record drops them from their lines (Q4, `fitLine`), and the contract
 admits the rest (`from`, `to`, `reason`; `count`, `videoFps`); Share record keeps them. The new kind passes the
-contract's pattern. `recordContract.test.ts` names the seven in `AHEAD_OF_CONTRACT`, and reds when the web adds one.
+contract's pattern. Done 2026-10-26: web #1037 (f0feab16c) lists the seven, vendored on capture
+`chore/vendor-record-contract-f0feab16`, so Send record carries the whole line.
 
 **Constant bitrate (CBR), not built:** a later device experiment. VBR on a quiet picture is what leaves the gate
 untested, and CBR would test every interval. Its costs: about 4 GB of mobile data per 3 h at 3 Mb/s

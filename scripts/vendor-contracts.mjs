@@ -1,6 +1,7 @@
 // `pnpm contracts:vendor <path-to-web-checkout>` (plan D spec §3.1, owner ruling R7: pin only).
 //
-// Copies the files git tracks under the web checkout's docs/contracts, byte for byte, into this repo's contracts/,
+// Copies the capture contracts git tracks under the web checkout's docs/contracts (`capture-*` and
+// `fixtures/capture-*`), byte for byte, into this repo's contracts/,
 // and writes contracts/VENDORED.json: the web commit and the sha256 of every file copied. Run by hand, never in CI.
 // It only READS the web checkout: every git call runs with --no-optional-locks, so not even git's index refresh
 // writes there. Afterwards, copy the web's schema pins and its commit into test/contractPins.test.ts BY HAND, so a
@@ -23,6 +24,13 @@ const SOURCE = 'docs/contracts';
 
 /** Ours, never the web's: kept by every run, and pinned by nothing. */
 export const OURS = Object.freeze(['README.md', 'VENDORED.json']);
+
+/**
+ * The phone's contracts: a `capture-*` schema at the top, and the fixtures under `fixtures/capture-*`. The web keeps
+ * other services' contracts beside them (relay-job.v1, the compositor's, since web 52806a00b); the phone pins the
+ * same six capture schemas the web pins, so those stay behind.
+ */
+const CAPTURE = /^(capture-[^/]+|fixtures\/capture-[^/]+\/.+)$/;
 
 /** Finder's folder metadata (.gitignore ignores it too): never a contract, so never listed. */
 const IGNORED = new Set(['.DS_Store']);
@@ -92,7 +100,9 @@ function trackedContracts(web) {
       `${SOURCE} holds ${clash.join(', ')}: those names are ours (contracts/), refusing to overwrite`,
     );
   }
-  return files;
+  const capture = files.filter((path) => CAPTURE.test(path));
+  if (capture.length === 0) throw new Error(`no capture contract under ${SOURCE} in ${web}`);
+  return capture;
 }
 
 /**

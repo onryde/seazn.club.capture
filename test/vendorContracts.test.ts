@@ -134,6 +134,35 @@ describe('pnpm contracts:vendor (plan D spec §3.1)', () => {
     expect(tree(target)).toEqual(first);
   });
 
+  it('takes only the capture contracts: a web-only schema and its fixtures stay behind (relay-job, web f0feab16)', () => {
+    const web = webCheckout({
+      ...WEB_FILES,
+      'relay-job.v1.json': '{"r":1}\n',
+      'fixtures/relay-job.v1/valid.json': '{}\n',
+      'fixtures/capture-a.v1/relay-job.v1.json': '{}\n',
+    });
+    const target = ourFolder();
+    expect(vendor(web, target).added).toEqual([
+      'capture-a.v1.json',
+      'fixtures/capture-a.v1/relay-job.v1.json',
+      'fixtures/capture-a.v1/valid.json',
+    ]);
+    expect(listFiles(target)).toEqual([
+      'README.md',
+      'VENDORED.json',
+      'capture-a.v1.json',
+      'fixtures/capture-a.v1/relay-job.v1.json',
+      'fixtures/capture-a.v1/valid.json',
+    ]);
+  });
+
+  it('refuses a web checkout that holds no capture contract, and touches nothing', () => {
+    const web = webCheckout({ 'relay-job.v1.json': '{"r":1}\n' });
+    const target = ourFolder();
+    expect(() => vendor(web, target)).toThrow('no capture contract under docs/contracts');
+    expect(listFiles(target)).toEqual(['README.md']);
+  });
+
   it('follows the web: a changed file, an added one and a removed one, each reported, and no ghost left', () => {
     const web = webCheckout();
     const target = ourFolder();

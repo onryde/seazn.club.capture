@@ -1,10 +1,10 @@
 {
-  "web": "a6cc1f038b8518617040b1df1dc359fa734e649b",
+  "web": "f0feab16c2f4966b221ea2a53cabf76a420f54ea",
   "files": {
     "capture-beat.v1.json": "e14329132400d45cd38e03b19cf85189fe35acb0b8b9a51e7ca98879fe07c736",
     "capture-descriptor.v1.json": "5c9b09c422b092671ad3a842b02e5c18902c92fc290cbc562c91033555955b8b",
     "capture-qr.v2.json": "3292e33f84b693e5def6048012f6653ca7e31e1573fda3901da4fe67a62c5d43",
-    "capture-record.v1.json": "48a798649e24d6b779c745a017e897a9bac5b3a83d3731eaa0824c181fb78334",
+    "capture-record.v1.json": "213f766043b7682f198cc98da13e93995b6602e46533ecf60c78bf562aebd6f8",
     "capture-scoring-link.v1.json": "f0f1188655f3ca83b3e42ce7fedd6f6210a3a141b0bcf02fa250eb2448b1c85f",
     "capture-start.v1.json": "012d6e3851e84d0ce659ad23449fa91b61f0d20cfac1e58f2ccbc7cbb0742bae",
     "fixtures/capture-beat.v1/answer-invalid-null-replaced-autoAllowed.json": "262631e4cbfe66b19dc0373aa74f9aea6d8b4b1a56459f18a1b07d7146b10aba",
@@ -136,6 +136,9 @@
     "fixtures/capture-record.v1/line-secret-userinfo.json": "fb2cd6f84a9a265e91d1814807f7142883226bd64462d97d6425ec63bf6879af",
     "fixtures/capture-record.v1/line-server-duplicate-key.json": "9ae15f89f5d3f115f1433d2a290ff6e284039bffa7ea17a846ee41c78ed96a1d",
     "fixtures/capture-record.v1/line-tampered.json": "03b85f214ac154a3d0ea290d3f50fd361c1689421d4088421098503ff1bb877a",
+    "fixtures/capture-record.v1/line-valid-bitrate-held.json": "352f2e86f8d8b041b3fe63b149603e41fa97851c92fa1639651286f6dec31f60",
+    "fixtures/capture-record.v1/line-valid-bitrate-rtmps.json": "5dab66a36577226c97c75ed6461c9f6289271cdf0b5f53cc3a2de019e5915a6e",
+    "fixtures/capture-record.v1/line-valid-bitrate.json": "d040805811fd3e5072acd5e5cb3fc1d5c99b4e1e8889e3acaf12509d10990382",
     "fixtures/capture-record.v1/line-valid-device.json": "4bf17c565959061f723c63000a21f772a287d62f344b9a25c4c8f5a54c3ca90a",
     "fixtures/capture-record.v1/line-valid-field-kind.json": "1b5fe0d88fa4216a59bb30139774af42a66d91792884f0280da4f13d497a7925",
     "fixtures/capture-record.v1/line-valid-masked.json": "b988d644b2b6d6985cd66f59eda8181fdbb7bb47dc59be0edc704f15903a72fe",

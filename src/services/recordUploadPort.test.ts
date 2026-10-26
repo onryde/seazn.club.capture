@@ -722,9 +722,9 @@ describe('every line fixture of the contract, through the upload', () => {
       ? fixtureText(name).replace(/\n\s*/g, '')
       : JSON.stringify(fixture(name));
 
-  it('has 46 line fixtures, 22 of them valid, and one the server judges by its text', () => {
-    expect(LINE_FIXTURES).toHaveLength(46);
-    expect(LINE_FIXTURES.filter((name) => name.startsWith('line-valid'))).toHaveLength(22);
+  it('has 49 line fixtures, 25 of them valid, and one the server judges by its text', () => {
+    expect(LINE_FIXTURES).toHaveLength(49);
+    expect(LINE_FIXTURES.filter((name) => name.startsWith('line-valid'))).toHaveLength(25);
     expect(LINE_FIXTURES.filter((name) => name.startsWith('line-server'))).toEqual([
       'line-server-duplicate-key',
     ]);
@@ -770,7 +770,7 @@ describe('every line fixture of the contract, through the upload', () => {
       count('shape-gap'),
       count('secret-gap'),
       count('text-gap'),
-    ]).toEqual([23, 2, 9, 6, 5, 1]);
+    ]).toEqual([26, 2, 9, 6, 5, 1]);
   });
 
   // S1, the one secret rule the app runs itself: the Bearer that sends the record, anywhere in it.
