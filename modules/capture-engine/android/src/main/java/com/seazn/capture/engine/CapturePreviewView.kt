@@ -1,9 +1,13 @@
 package com.seazn.capture.engine
 
 import android.content.Context
+import android.view.View
+import android.view.ViewGroup
 import com.seazn.capture.engine.core.Encode
 import com.seazn.capture.engine.core.RecordEntry
+import com.seazn.capture.engine.preview.LaidOut
 import com.seazn.capture.engine.preview.PreviewFit
+import com.seazn.capture.engine.preview.PreviewRelayout
 import expo.modules.kotlin.AppContext
 import expo.modules.kotlin.views.ExpoView
 import io.github.thibaultbee.streampack.ui.views.PreviewView
@@ -32,6 +36,10 @@ import kotlinx.coroutines.launch
  * preview in `onWindowVisibilityChanged` on anything but VISIBLE). While a broadcast is held the capture
  * stays open whatever the view does.
  *
+ * N42: React Native can leave a view inside the preview unlaid, and a SurfaceView with no size gets no surface: the box
+ * stays black while the broadcast runs on. While attached the view checks its preview's tree once a second and lays it
+ * out again when [PreviewRelayout] says so, writing one `preview-relaid` line an episode.
+ *
  * I5: nothing here may crash the app. A native crash is beyond the JS boundary's reach, so every
  * failure is one `preview-failed` line, with the throwable's class name, and goes no further.
  */
@@ -45,6 +53,21 @@ class CapturePreviewView(context: Context, appContext: AppContext) : ExpoView(co
 
   /** Between our attach and detach. `isAttachedToWindow` still reads true inside `onDetachedFromWindow`. */
   private var attached = false
+
+  /** N42: a fresh rule each attach, so a check from before a detach never confirms one after it. */
+  private var relayout = PreviewRelayout()
+  private val relayoutCheck =
+    object : Runnable {
+      override fun run() {
+        // A check that throws stops the checks: one preview-failed line, never one a second.
+        try {
+          relaidIfStale()
+          postDelayed(this, RELAYOUT_CHECK_MS)
+        } catch (e: Exception) {
+          failed("relayout", e)
+        }
+      }
+    }
   private val preview =
     PreviewView(context).apply {
       scaleMode = PreviewView.ScaleMode.FIT
@@ -89,6 +112,9 @@ class CapturePreviewView(context: Context, appContext: AppContext) : ExpoView(co
     super.onAttachedToWindow()
     attached = true
     report("attach") // CD37: the capture is wanted on the viewfinder while Paired
+    relayout = PreviewRelayout()
+    removeCallbacks(relayoutCheck)
+    postDelayed(relayoutCheck, RELAYOUT_CHECK_MS)
     following?.cancel()
     // A null streamer unbinds: `setVideoSourceProvider(null)` (StreamPack 3.2.1, as 3.2.0, a suspend function).
     following =
@@ -130,12 +156,35 @@ class CapturePreviewView(context: Context, appContext: AppContext) : ExpoView(co
   }
 
   override fun onDetachedFromWindow() {
+    removeCallbacks(relayoutCheck)
     following?.cancel()
     following = null
     attached = false
     report("detach")
     super.onDetachedFromWindow()
   }
+
+  /**
+   * N42: lays the preview out again at the encode's size, as its own LinearLayout parent lays it out (at its left and
+   * top, `LayoutParams(Encode.WIDTH, Encode.HEIGHT)`), with every view under it marked, so none is skipped as laid out.
+   */
+  private fun relaidIfStale() {
+    val asked = relayout.check(laidOut(preview)) ?: return
+    forceLayoutAll(preview)
+    preview.measure(MeasureSpec.makeMeasureSpec(Encode.WIDTH, MeasureSpec.EXACTLY), MeasureSpec.makeMeasureSpec(Encode.HEIGHT, MeasureSpec.EXACTLY))
+    preview.layout(preview.left, preview.top, preview.left + Encode.WIDTH, preview.top + Encode.HEIGHT)
+    if (asked.written) EngineHost.line(RecordEntry("preview-relaid", listOf("reason" to asked.stale.wire)))
+  }
+
+  private fun laidOut(view: View): LaidOut =
+    LaidOut(view.visibility == VISIBLE, view.width, view.height, view.isLayoutRequested, childrenOf(view).map(::laidOut))
+
+  private fun forceLayoutAll(view: View) {
+    view.forceLayout()
+    childrenOf(view).forEach(::forceLayoutAll)
+  }
+
+  private fun childrenOf(view: View): List<View> = if (view is ViewGroup) List(view.childCount, view::getChildAt) else emptyList()
 
   /** The viewfinder is shown while attached to a visible window; the engine hears each change of either. */
   private fun report(action: String, visibility: Int = windowVisibility) {
@@ -152,5 +201,10 @@ class CapturePreviewView(context: Context, appContext: AppContext) : ExpoView(co
 
   private fun failed(action: String, t: Throwable) {
     EngineHost.line(RecordEntry("preview-failed", listOf("action" to action, "error" to t.javaClass.simpleName)))
+  }
+
+  private companion object {
+    /** N42: how often the preview's tree is checked; a lost layout is mended within two checks. */
+    const val RELAYOUT_CHECK_MS = 1_000L
   }
 }

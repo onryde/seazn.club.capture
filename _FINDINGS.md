@@ -1322,7 +1322,7 @@ factor (`OVERSHOOT_FACTOR`, F-P5-11), which is sized for VBR.
 
 ### N42 — After a fall the preview went black while capture and publish carried on
 
-**Status:** open, no repro; the mechanism is unknown
+**Status:** reproduced and explained 2026-10-26; the mend is built (`PreviewRelayout`), not yet seen to fire on a device
 **Where:** capture app · the viewfinder's native preview (`CapturePreviewView`, StreamPack `PreviewView`) · the record
 
 In the first run of the session N41 rejoined (2026-10-26, stg, sid 4516d82a), the phone fell, and after the fall
@@ -1344,6 +1344,24 @@ back: here they got it 39 s later.
 
 Candidate record lines, not built: frames encoded while the preview is not running (r2's suggestion), and its
 mirror, the preview's state (attached, surface valid, frames shown), which would have caught this one.
+
+**Repro (2026-10-26, 23:25, stg, NE2211 on USB, release build of main `03c6af5`).** The box went black at once on
+going live, with no fall and no touch. Logcat: at 23:25:44.73, after the turn to landscape (surface changes at 43.57
+and 44.24), the androidx CameraViewfinder (1.4.0-alpha13, inside StreamPack 3.2.1's PreviewView) closed its surface
+request, destroyed its SurfaceView, attached a new one and logged "Wait for new Surface creation." No surface came.
+The hierarchy dump: PreviewView and CameraViewfinder at 1280 x 720, **the new SurfaceView at 0 x 0**. A SurfaceView
+with no size gets no surface. One forced layout from outside (`wm size 1080x2300`, then `reset`) made it 1280 x 720
+and the picture came back at once (screenshot at 23:30, LIVE 0:04:35), with nothing restarted: the camera and the
+encode had run all along. So the black is a lost layout. React Native lays out its native views itself, with no
+ViewRootImpl pass to catch a layout asked for during a layout, and ExpoView's posted `measureAndLayout` re-measures
+only what still reads as asked (inferred; the stack of the swap was not captured). R-990P's fall fits: the phone
+turned, and the viewfinder swapped its surface.
+
+**Mend.** `CapturePreviewView` checks its preview's tree once a second while attached; `PreviewRelayout` (pure,
+tested in core, every guard mutated once) asks for a layout when a shown view waits for one or has no size at two
+checks in a row, and the view lays the preview out at the encode's size with every view under it marked. One
+`preview-relaid {reason: requested | empty}` line an episode. Device evidence owed: the line in a record with the box
+showing the picture.
 
 ---
 
