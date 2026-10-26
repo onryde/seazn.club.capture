@@ -136,34 +136,19 @@ describe('the record contract’s line: at and level', () => {
 });
 
 describe('the record contract’s keys', () => {
-  it('lists the contract’s 97 keys, no more and no fewer', () => {
+  it('lists the contract’s 104 keys, no more and no fewer', () => {
     expect([...RECORD_LINE_KEYS].sort()).toEqual(Object.keys(contract.properties).sort());
-    expect(RECORD_LINE_KEYS.size).toBe(97);
+    expect(RECORD_LINE_KEYS.size).toBe(104);
   });
 
   it('lists no never key', () => {
     expect(list.never.filter((key) => RECORD_LINE_KEYS.has(key))).toEqual([]);
   });
 
-  /**
-   * The keys the app writes that the vendored contract does not list yet: the regulator's reading on `bitrate` and the
-   * `bitrate-held` line (R-990P, N41, 2026-10-26). Until the web's contract lists them, Send record drops them from
-   * their lines (Q4) and Share record keeps them. When the web moves, vendor it and empty this list.
-   */
-  const AHEAD_OF_CONTRACT = [
-    'bandwidthBps',
-    'dropped',
-    'egressBps',
-    'gateBps',
-    'lost',
-    'sendBufferMs',
-    'target',
-  ];
-
   // The web takes its keys from the allow-list (capture ebac190 at web 55ac34d5d, which added the five the app wrote
-  // after 7ea8f63). So no key the app writes is dropped from its line on the way (Q4); a key either side adds alone
-  // reds this until the other moves, or until it is named in AHEAD_OF_CONTRACT.
-  it('lists every key the app writes, and only those, but the ones it is ahead of the contract by', () => {
+  // after 7ea8f63; capture 2b4df80 at web f0feab16, the regulator's seven, R-990P). So no key the app writes is dropped
+  // from its line on the way (Q4); a key either side adds alone reds this until the other moves.
+  it('lists every key the app writes, and only those', () => {
     const written = [
       ...list.reserved,
       ...list.plain.map((key) => (list.reserved.includes(key) ? `field_${key}` : key)),
@@ -171,27 +156,19 @@ describe('the record contract’s keys', () => {
       ...list.text,
       ...Object.keys(list.scalars),
     ];
-    const listed = written.filter((key) => !AHEAD_OF_CONTRACT.includes(key));
-    expect(listed.sort()).toEqual(Object.keys(contract.properties).sort());
-    expect(listed.filter((key) => !RECORD_LINE_KEYS.has(key))).toEqual([]);
-    // Each is a key the app writes, as a scalar, and none is one the contract lists: when the web adds one, this reds.
-    expect(AHEAD_OF_CONTRACT.filter((key) => !(key in list.scalars))).toEqual([]);
-    expect(AHEAD_OF_CONTRACT.filter((key) => key in contract.properties)).toEqual([]);
+    expect(written.sort()).toEqual(Object.keys(contract.properties).sort());
+    expect(written.filter((key) => !RECORD_LINE_KEYS.has(key))).toEqual([]);
   });
 
-  // Until then Send record sends the rest of each line, and the contract admits it.
+  // The regulator's lines go whole: the reading on `bitrate` and all of `bitrate-held` (N41), and the contract admits
+  // them. A negative send buffer is a reading SRT gives (P5: −336), and is sent as it is.
   it.each([
-    [
-      '{"at":"2026-10-26T12:00:01.000Z","kind":"bitrate","from":1500000,"to":1125000,"reason":"backlog","egressBps":2000000,"dropped":0,"lost":0,"sendBufferMs":1200,"bandwidthBps":5000000}',
-      '{"at":"2026-10-26T12:00:01.000Z","kind":"bitrate","from":1500000,"to":1125000,"reason":"backlog"}',
-    ],
-    [
-      '{"at":"2026-10-26T12:01:11.000Z","kind":"bitrate-held","target":500000,"egressBps":500000,"gateBps":505540,"count":6,"videoFps":30.0}',
-      '{"at":"2026-10-26T12:01:11.000Z","kind":"bitrate-held","count":6,"videoFps":30}',
-    ],
-  ])('sends %s as %s', (written, sent) => {
-    expect(fitLine(written)).toBe(sent);
-    expect(admitsLine(JSON.parse(sent))).toBe(true);
+    '{"at":"2026-10-26T12:00:01.000Z","kind":"bitrate","from":1500000,"to":1125000,"reason":"backlog","egressBps":2000000,"dropped":0,"lost":0,"sendBufferMs":1200,"bandwidthBps":5000000}',
+    '{"at":"2026-10-26T12:00:02.000Z","kind":"bitrate","from":1125000,"to":562500,"reason":"drops","egressBps":null,"dropped":12,"lost":3,"sendBufferMs":-336,"bandwidthBps":null}',
+    '{"at":"2026-10-26T12:01:11.000Z","kind":"bitrate-held","target":500000,"egressBps":500000,"gateBps":505540,"count":6,"videoFps":30}',
+  ])('sends %s whole', (written) => {
+    expect(fitLine(written)).toBe(written);
+    expect(admitsLine(JSON.parse(written))).toBe(true);
   });
 });
 

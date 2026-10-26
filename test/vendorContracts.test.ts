@@ -117,6 +117,7 @@ describe('pnpm contracts:vendor (plan D spec §3.1)', () => {
       added: ['capture-a.v1.json', 'fixtures/capture-a.v1/valid.json'],
       changed: [],
       removed: [],
+      skipped: [],
     });
   });
 
@@ -130,8 +131,37 @@ describe('pnpm contracts:vendor (plan D spec §3.1)', () => {
       added: [],
       changed: [],
       removed: [],
+      skipped: [],
     });
     expect(tree(target)).toEqual(first);
+  });
+
+  it('takes only the capture contracts, and names the known other services’ files it leaves behind (relay-job)', () => {
+    const web = webCheckout({
+      ...WEB_FILES,
+      'relay-job.v1.json': '{"r":1}\n',
+      'fixtures/relay-job.v1/valid.json': '{}\n',
+      'fixtures/capture-a.v1/relay-job.v1.json': '{}\n',
+      // A line break in a name is judged like any other character.
+      'fixtures/capture-a.v1/odd\nname.json': '{}\n',
+    });
+    const target = ourFolder();
+    const result = vendor(web, target);
+    expect(result.added).toEqual([
+      'capture-a.v1.json',
+      'fixtures/capture-a.v1/odd\nname.json',
+      'fixtures/capture-a.v1/relay-job.v1.json',
+      'fixtures/capture-a.v1/valid.json',
+    ]);
+    expect(result.skipped).toEqual(['fixtures/relay-job.v1/valid.json', 'relay-job.v1.json']);
+    expect(listFiles(target)).toEqual([
+      'README.md',
+      'VENDORED.json',
+      'capture-a.v1.json',
+      'fixtures/capture-a.v1/odd\nname.json',
+      'fixtures/capture-a.v1/relay-job.v1.json',
+      'fixtures/capture-a.v1/valid.json',
+    ]);
   });
 
   it('follows the web: a changed file, an added one and a removed one, each reported, and no ghost left', () => {
@@ -149,6 +179,7 @@ describe('pnpm contracts:vendor (plan D spec §3.1)', () => {
       added: ['fixtures/capture-a.v1/invalid.json'],
       changed: ['capture-a.v1.json'],
       removed: ['fixtures/capture-a.v1/valid.json'],
+      skipped: [],
     });
     expect(listFiles(target)).toEqual([
       'README.md',
@@ -175,12 +206,29 @@ describe('pnpm contracts:vendor (plan D spec §3.1)', () => {
       /docs\/contracts is not clean/,
     ],
     [
-      'a README.md of the web’s own under docs/contracts',
+      'a README.md of the web’s own under docs/contracts: neither a capture contract nor a known family',
       (web: string) => {
         write(contractsOf(web), { 'README.md': 'web\n' });
         commitAll(web);
       },
-      /README\.md: those names are ours/,
+      /holds README\.md, neither a capture contract nor of a family in NOT_THE_PHONES/,
+    ],
+    [
+      'a contract of a family nobody has named (a new service, or a phone contract not called capture-)',
+      (web: string) => {
+        write(contractsOf(web), { 'scoring-pad.v1.json': '{}\n' });
+        commitAll(web);
+      },
+      /holds scoring-pad\.v1\.json, neither a capture contract nor of a family in NOT_THE_PHONES \(relay-job\)/,
+    ],
+    [
+      'a docs/contracts with no capture contract, only another service’s',
+      (web: string) => {
+        git(web, 'rm', '-r', '-q', 'docs/contracts');
+        write(contractsOf(web), { 'relay-job.v1.json': '{"r":1}\n' });
+        commitAll(web);
+      },
+      /no capture contract under docs\/contracts/,
     ],
     [
       'a docs/contracts git tracks nothing in',

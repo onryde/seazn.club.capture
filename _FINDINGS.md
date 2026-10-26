@@ -1040,8 +1040,8 @@ limit. D3 row 1 saw growth of 16–20 s near the limit too. The lag rule (`LAG_G
 
 **Status:** fixed — feat/s1-d3-fixes, Batches 5 and 6 (Stream Settings from Home: 73dc5ae, fdc8b41; the record row:
 9802354); Send record to Seazn is built (8b99943, 4920ea3, 9802354; fix round 1: d89f5da, 8ddb33f; fix round 2:
-023ab03), and posts to the web's record contract, vendored at web a6cc1f038 (Batch 11, at 53f28ebfc: 7ccfbd8,
-866f3f8; Batch 12, at 55ac34d5d: ea636f2; Batch 15, at a6cc1f038: 64a1ac2;
+023ab03), and posts to the web's record contract, vendored at web f0feab16c (Batch 11, at 53f28ebfc: 7ccfbd8,
+866f3f8; Batch 12, at 55ac34d5d: ea636f2; Batch 15, at a6cc1f038: 64a1ac2; PR #24, at f0feab16c;
 `docs/specs/2026-10-11-s1-d3-web-brief.md` §1), behind
 `FEATURES.recordSend`, which Batch 11 switched on (the owner chose "On now (Recommended)" in the session,
 2026-10-12); the device proof is Batch 9's
@@ -1260,8 +1260,8 @@ on the stage black, is 1.59:1, and under outdoor flare the fill is 1.20–1.24:1
 
 **Status:** changed — fix/r990p-bitrate-climb (6d103e1, c60cf32); the owner asked for a faster tested climb and a
 record that explains the regulator ("yes", 2026-10-26), and the numbers (a 20% step, one held line a minute) are the
-controller's calls. Not yet run on a device. Open: the web's record contract does not list the new keys (below);
-constant bitrate is a later device experiment, not built
+controller's calls. Not yet run on a device. The web's record contract lists the new keys since web f0feab16c
+(below); open: constant bitrate is a later device experiment, not built
 **Where:** engine core · `BitrateRegulator` · `SessionMachine.link` · `allow-list.json` · web `capture-record.v1.json`
 
 R-990P (stg, 2026-10-26, Android on Wi-Fi, SRT) was a rejoin of sid 4516d82a after the operator force-quit the app
@@ -1310,7 +1310,8 @@ the phone was at or above 30 fps on the wire, and nothing on the relay side surv
 false`) lists none of the seven new scalars: `bandwidthBps`, `dropped`, `egressBps`, `gateBps`, `lost`,
 `sendBufferMs` and `target`. Until it does, Send record drops them from their lines (Q4, `fitLine`), and the contract
 admits the rest (`from`, `to`, `reason`; `count`, `videoFps`); Share record keeps them. The new kind passes the
-contract's pattern. `recordContract.test.ts` names the seven in `AHEAD_OF_CONTRACT`, and reds when the web adds one.
+contract's pattern. Done 2026-10-26: web #1037 (f0feab16c) lists the seven, vendored in capture
+PR #24, so Send record carries the whole line.
 
 **Constant bitrate (CBR), not built:** a later device experiment. VBR on a quiet picture is what leaves the gate
 untested, and CBR would test every interval. Its costs: about 4 GB of mobile data per 3 h at 3 Mb/s

@@ -1,6 +1,6 @@
 /**
- * The web's record contract, `contracts/capture-record.v1.json` (vendored at web a6cc1f038, which serves it; the owner
- * approved its design on 2026-10-12): what Send record to Seazn posts, and what it reads back. `recordContract.test.ts`
+ * The web's record contract, `contracts/capture-record.v1.json` (vendored at web f0feab16c; the owner approved its design
+ * on 2026-10-12): what Send record to Seazn posts, and what it reads back. `recordContract.test.ts`
  * holds every value here to the vendored file, so a re-vendor that moves one reds until this file moves with it.
  */
 
@@ -56,9 +56,9 @@ export const RECORD_LEVELS: ReadonlySet<string> = new Set([
 ]);
 
 /**
- * Every key a line may carry, by the contract's class: 97 since 55ac34d5d, which the web took from the allow-list at
- * capture ebac190: every key the app wrote then. Keys the app writes ahead of the contract are dropped by `fitLine`
- * until the web lists them (`AHEAD_OF_CONTRACT` in `recordContract.test.ts`, N41).
+ * Every key a line may carry, by the contract's class: 104 since web f0feab16 (#1037), which took the regulator's
+ * seven from the allow-list at capture 2b4df80 (R-990P, N41), so every key the app writes
+ * (`recordContract.test.ts` holds the two lists equal).
  */
 export const RECORD_LINE_KEYS: ReadonlySet<string> = new Set([
   // The line's own.
@@ -124,14 +124,18 @@ export const RECORD_LINE_KEYS: ReadonlySet<string> = new Set([
   // scalars: a number, a boolean or null only; `bytes`, `failures` and `retryMs` a whole number of at least 0, and
   // `pickAspect16x9` a boolean, narrowed by the contract.
   'audioFps',
+  'bandwidthBps',
   'bytes',
   'camera',
   'counted',
+  'dropped',
+  'egressBps',
   'encodeListed',
   'exitAtMs',
   'failed',
   'failures',
   'gapMs',
+  'gateBps',
   'granted',
   'headroom',
   'held',
@@ -140,6 +144,7 @@ export const RECORD_LINE_KEYS: ReadonlySet<string> = new Set([
   'lagMs',
   'late',
   'listed',
+  'lost',
   'minuteEpochMs',
   'msSinceAdvance',
   'ok',
@@ -154,6 +159,7 @@ export const RECORD_LINE_KEYS: ReadonlySet<string> = new Set([
   'refusedSid',
   'retryMs',
   'sameArea',
+  'sendBufferMs',
   'sent',
   'sinceLastMs',
   'sound',
@@ -161,6 +167,7 @@ export const RECORD_LINE_KEYS: ReadonlySet<string> = new Set([
   'stalledMs',
   'stopped',
   'suppressed',
+  'target',
   'validated',
   'videoFps',
   'wasLive',
