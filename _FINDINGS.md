@@ -1040,8 +1040,8 @@ limit. D3 row 1 saw growth of 16–20 s near the limit too. The lag rule (`LAG_G
 
 **Status:** fixed — feat/s1-d3-fixes, Batches 5 and 6 (Stream Settings from Home: 73dc5ae, fdc8b41; the record row:
 9802354); Send record to Seazn is built (8b99943, 4920ea3, 9802354; fix round 1: d89f5da, 8ddb33f; fix round 2:
-023ab03), and posts to the web's record contract, vendored at web a6cc1f038 (Batch 11, at 53f28ebfc: 7ccfbd8,
-866f3f8; Batch 12, at 55ac34d5d: ea636f2; Batch 15, at a6cc1f038: 64a1ac2;
+023ab03), and posts to the web's record contract, vendored at web f0feab16c (Batch 11, at 53f28ebfc: 7ccfbd8,
+866f3f8; Batch 12, at 55ac34d5d: ea636f2; Batch 15, at a6cc1f038: 64a1ac2; PR #24, at f0feab16c;
 `docs/specs/2026-10-11-s1-d3-web-brief.md` §1), behind
 `FEATURES.recordSend`, which Batch 11 switched on (the owner chose "On now (Recommended)" in the session,
 2026-10-12); the device proof is Batch 9's
@@ -1310,8 +1310,8 @@ the phone was at or above 30 fps on the wire, and nothing on the relay side surv
 false`) lists none of the seven new scalars: `bandwidthBps`, `dropped`, `egressBps`, `gateBps`, `lost`,
 `sendBufferMs` and `target`. Until it does, Send record drops them from their lines (Q4, `fitLine`), and the contract
 admits the rest (`from`, `to`, `reason`; `count`, `videoFps`); Share record keeps them. The new kind passes the
-contract's pattern. Done 2026-10-26: web #1037 (f0feab16c) lists the seven, vendored on capture
-`chore/vendor-record-contract-f0feab16`, so Send record carries the whole line.
+contract's pattern. Done 2026-10-26: web #1037 (f0feab16c) lists the seven, vendored in capture
+PR #24, so Send record carries the whole line.
 
 **Constant bitrate (CBR), not built:** a later device experiment. VBR on a quiet picture is what leaves the gate
 untested, and CBR would test every interval. Its costs: about 4 GB of mobile data per 3 h at 3 Mb/s

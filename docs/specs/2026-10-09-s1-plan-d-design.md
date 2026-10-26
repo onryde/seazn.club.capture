@@ -117,6 +117,13 @@ contracts/
   to it. After running it, the literals in the pin test are updated by hand
   from the web's test, so a re-vendor cannot quietly update both sides of the
   pin.
+- **Amended 2026-10-26 (owner):** the script copies only the phone's
+  contracts, `capture-*` and `fixtures/capture-*`, not all of
+  `docs/contracts/**`. The web keeps other services' contracts in the same
+  folder (`relay-job.v1`, the compositor's, since web 52806a00b). A file of a
+  family named in the script's `NOT_THE_PHONES` is left behind and named in
+  its output; any other file refuses the run, so a new contract is judged by a
+  person and never dropped unseen. The six schemas stay the web's six pins.
 
 ### 3.2 What the vendored files are checked against
 

@@ -30,7 +30,7 @@ const line = (event: string, fields: Record<string, string | number | boolean | 
 const LINES = [line('paired'), line('live', { transport: 'srt' })];
 
 /**
- * The web's record contract, vendored at a6cc1f038 and pinned by contractPins.test.ts: every path, limit and answer
+ * The web's record contract, vendored at f0feab16c and pinned by contractPins.test.ts: every path, limit and answer
  * below is read from it or from its fixtures, never typed here (recordContract.test.ts pins the app's copies).
  */
 const CONTRACTS = new URL('../../contracts/', import.meta.url);

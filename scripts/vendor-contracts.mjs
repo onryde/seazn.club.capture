@@ -1,7 +1,8 @@
 // `pnpm contracts:vendor <path-to-web-checkout>` (plan D spec §3.1, owner ruling R7: pin only).
 //
 // Copies the capture contracts git tracks under the web checkout's docs/contracts (`capture-*` and
-// `fixtures/capture-*`), byte for byte, into this repo's contracts/,
+// `fixtures/capture-*`), byte for byte, into this repo's contracts/; names the other services' files it leaves behind
+// (NOT_THE_PHONES) and refuses any file of neither kind (owner, 2026-10-26, amending plan D spec §3.1);
 // and writes contracts/VENDORED.json: the web commit and the sha256 of every file copied. Run by hand, never in CI.
 // It only READS the web checkout: every git call runs with --no-optional-locks, so not even git's index refresh
 // writes there. Afterwards, copy the web's schema pins and its commit into test/contractPins.test.ts BY HAND, so a
@@ -26,11 +27,27 @@ const SOURCE = 'docs/contracts';
 export const OURS = Object.freeze(['README.md', 'VENDORED.json']);
 
 /**
- * The phone's contracts: a `capture-*` schema at the top, and the fixtures under `fixtures/capture-*`. The web keeps
- * other services' contracts beside them (relay-job.v1, the compositor's, since web 52806a00b); the phone pins the
- * same six capture schemas the web pins, so those stay behind.
+ * The phone's contracts: a `capture-*` schema at the top, and the fixtures under `fixtures/capture-*` (owner,
+ * 2026-10-26, amending plan D spec §3.1). `[^]` so a name with a line break in it is judged like any other.
  */
-const CAPTURE = /^(capture-[^/]+|fixtures\/capture-[^/]+\/.+)$/;
+const CAPTURE = /^(capture-[^/]+|fixtures\/capture-[^/]+\/[^]+)$/;
+
+/**
+ * Other services' contracts the web keeps beside the phone's, by family: left behind and named in the run's output.
+ * relay-job is the compositor's (web 52806a00b). A family on neither list refuses the run, so a new contract is
+ * judged by a person and never dropped unseen (owner, 2026-10-26).
+ */
+export const NOT_THE_PHONES = Object.freeze(['relay-job']);
+
+/**
+ * The family a path belongs to: `relay-job` for `relay-job.v1.json` and for `fixtures/relay-job.v1/…`.
+ * @param {string} path
+ * @returns {string}
+ */
+function familyOf(path) {
+  const head = path.startsWith('fixtures/') ? (path.split('/')[1] ?? '') : path;
+  return head.split('.')[0] ?? '';
+}
 
 /** Finder's folder metadata (.gitignore ignores it too): never a contract, so never listed. */
 const IGNORED = new Set(['.DS_Store']);
@@ -73,11 +90,13 @@ function git(web, ...args) {
 }
 
 /**
- * The files to copy, relative to docs/contracts, after every check, so a refused run touches nothing: `web` holds a
- * docs/contracts, is a git checkout, its docs/contracts is clean (no uncommitted change, no untracked file), and
- * nothing there takes one of OUR names. Untracked files elsewhere in the web checkout do not matter (plan D1, D-1).
+ * The capture contracts to copy, relative to docs/contracts, and the other services' files left behind, after every
+ * check, so a refused run touches nothing: `web` holds a docs/contracts, is a git checkout, its docs/contracts is clean
+ * (no uncommitted change, no untracked file), every tracked file is a capture contract or of a family in
+ * NOT_THE_PHONES, and at least one is a capture contract. Untracked files elsewhere in the web checkout do not matter
+ * (plan D1, D-1). None of OUR names starts `capture-`, so nothing copied can overwrite them.
  * @param {string} web
- * @returns {string[]}
+ * @returns {{ copy: string[], skipped: string[] }}
  */
 function trackedContracts(web) {
   if (!existsSync(join(web, SOURCE))) throw new Error(`no ${SOURCE} in ${web}`);
@@ -94,15 +113,19 @@ function trackedContracts(web) {
     .map((path) => path.slice(SOURCE.length + 1))
     .sort();
   if (files.length === 0) throw new Error(`git tracks nothing under ${SOURCE} in ${web}`);
-  const clash = files.filter((path) => OURS.includes(path));
-  if (clash.length > 0) {
+  const copy = files.filter((path) => CAPTURE.test(path));
+  const skipped = files.filter(
+    (path) => !CAPTURE.test(path) && NOT_THE_PHONES.includes(familyOf(path)),
+  );
+  const unknown = files.filter((path) => !copy.includes(path) && !skipped.includes(path));
+  if (unknown.length > 0) {
     throw new Error(
-      `${SOURCE} holds ${clash.join(', ')}: those names are ours (contracts/), refusing to overwrite`,
+      `${SOURCE} holds ${unknown.join(', ')}, neither a capture contract nor of a family in NOT_THE_PHONES ` +
+        `(${NOT_THE_PHONES.join(', ')}): refusing until a person names it`,
     );
   }
-  const capture = files.filter((path) => CAPTURE.test(path));
-  if (capture.length === 0) throw new Error(`no capture contract under ${SOURCE} in ${web}`);
-  return capture;
+  if (copy.length === 0) throw new Error(`no capture contract under ${SOURCE} in ${web}`);
+  return { copy, skipped };
 }
 
 /**
@@ -128,10 +151,10 @@ function readPins(target) {
  * Vendors `web`'s docs/contracts into `target`. Everything is checked before anything in `target` is removed.
  * @param {string} web a web checkout, only ever read
  * @param {string} target this repo's contracts/ folder
- * @returns {{ commit: string, added: string[], changed: string[], removed: string[] }}
+ * @returns {{ commit: string, added: string[], changed: string[], removed: string[], skipped: string[] }}
  */
 export function vendor(web, target) {
-  const files = trackedContracts(web);
+  const { copy: files, skipped } = trackedContracts(web);
   const commit = git(web, 'rev-parse', 'HEAD').trim();
   const before = readPins(target);
   mkdirSync(target, { recursive: true });
@@ -155,6 +178,7 @@ export function vendor(web, target) {
     removed: Object.keys(before)
       .filter((path) => !(path in after))
       .sort(),
+    skipped,
   };
 }
 
@@ -166,11 +190,12 @@ function main() {
   }
   const target = fileURLToPath(new URL('../contracts/', import.meta.url));
   try {
-    const { commit, added, changed, removed } = vendor(resolve(web), target);
+    const { commit, added, changed, removed, skipped } = vendor(resolve(web), target);
     console.log(`vendored web ${commit}`);
     for (const path of added) console.log(`added    ${path}`);
     for (const path of changed) console.log(`changed  ${path}`);
     for (const path of removed) console.log(`removed  ${path}`);
+    for (const path of skipped) console.log(`skipped  ${path} (not the phone's)`);
     if (added.length + changed.length + removed.length === 0) console.log('no file changed');
     console.log(
       'Next, by hand: the web commit and its schema pins into test/contractPins.test.ts (WEB_COMMIT, WEB_PINS).',

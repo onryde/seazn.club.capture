@@ -77,7 +77,7 @@ No accounts, no login, no fixture browsing, no chat, no replays, no gallery,
 no in-app payments, and no upload but one: the session record, sent to Seazn
 on the operator's tap (R3 of the D3 findings design; owner, 2026-10-11), not
 by itself (an automatic upload is out of scope). It posts to the web's record
-contract (vendored at web `a6cc1f038`), behind `FEATURES.recordSend`, which is
+contract (vendored at web `f0feab16c`), behind `FEATURES.recordSend`, which is
 on: asked whether to turn Send record on with the endpoint on staging, the
 owner chose "On now (Recommended)" in the session on 2026-10-12. Push alerts go
 only to phones holding a Dashboard code (ruling 11).

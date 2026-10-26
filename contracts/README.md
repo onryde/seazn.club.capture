@@ -1,11 +1,16 @@
 # Contracts
 
 The web's capture contracts, vendored and pinned (plan D spec §3.1, owner ruling R7). The source of truth is the
-web repo `onryde/seazn.club`, folder `docs/contracts/`. This folder is a byte copy of that folder at one commit, and
-nothing here is edited by hand.
+web repo `onryde/seazn.club`, folder `docs/contracts/`. This folder is a byte copy of the phone's contracts in that
+folder (`capture-*` and `fixtures/capture-*`) at one commit, and nothing here is edited by hand. The web keeps other
+services' contracts there too (`relay-job.v1`, the compositor's); they are not the phone's and stay behind (owner,
+2026-10-26, amending §3.1).
 
-Vendored from web `a6cc1f038b8518617040b1df1dc359fa734e649b` (web #944, merged 2026-10-12) on 2026-10-12: 6 schemas
-and 199 fixtures. Staging deploys the web's `main`. a6cc1f038 changed only the record contract's description: a pairing
+Vendored from web `f0feab16c2f4966b221ea2a53cabf76a420f54ea` (web #1037, merged 2026-10-26) on 2026-10-26: 6 schemas
+and 202 fixtures. Staging deploys the web's `main`. f0feab16c changed only the record contract and its fixtures: it
+lists the regulator's seven scalars (`bandwidthBps`, `dropped`, `egressBps`, `gateBps`, `lost`, `sendBufferMs`,
+`target`; R-990P, `_FINDINGS.md` N41) and adds three `bitrate` fixtures. Before it, `a6cc1f038` (web #944, merged
+2026-10-12) changed only the record contract's description: a pairing
 window closes at `unpaired`, `ended`, `pair-refused` and `reset`, and no longer at `engine-error`, which the app also
 writes where the pairing goes on (every fatal end writes `ended {reason: "fatal-error"}` since capture Batch 13). Before
 it, `55ac34d5d` (web #943, which serves the record route) changed only the record contract and its fixtures: it lists
@@ -38,10 +43,12 @@ A contract changes only through `pnpm contracts:vendor` and the pin test (R7):
    pnpm contracts:vendor <path-to-web-checkout>
    ```
 
-   It refuses a dirty `docs/contracts` before touching anything here, copies the files git tracks there, writes
-   `VENDORED.json`, and prints each file added, changed or removed. It only reads the web checkout, and it never runs
-   in CI. A fresh clone of the public repo, checked out at that commit, serves as well: the 5a02cc4a5, 55ac34d5d and
-   a6cc1f038 vendorings used one, so the web checkout in daily use was never moved.
+   It refuses a dirty `docs/contracts` before touching anything here, copies the capture contracts git tracks there,
+   writes `VENDORED.json`, and prints each file added, changed or removed, and each file of another service it left
+   behind. A file that is neither a capture contract nor of a family in the script's `NOT_THE_PHONES` refuses the run:
+   name its family there, or ask why the phone's contract is not called `capture-`. It only reads the web checkout, and it never runs
+   in CI. A fresh clone of the public repo, checked out at that commit, serves as well: the 5a02cc4a5, 55ac34d5d,
+   a6cc1f038 and f0feab16c vendorings used one, so the web checkout in daily use was never moved.
 
 2. By hand, copy the web's commit and its six schema pins (`SHA256` in the web's
    `apps/web/src/server/api-v1/__tests__/capture-contract.test.ts`) into `WEB_COMMIT` and `WEB_PINS` in

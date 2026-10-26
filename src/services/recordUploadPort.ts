@@ -15,7 +15,7 @@ import { scrubEvent, scrubFields, type HeldSecrets, type LogFields } from '@/ser
 import { parseRecordLine } from '@/services/sessionRecord';
 
 /**
- * The web's record contract (`contracts/capture-record.v1.json`, vendored at a6cc1f038; `recordContract.ts` holds its
+ * The web's record contract (`contracts/capture-record.v1.json`, vendored at f0feab16c; `recordContract.ts` holds its
  * rules): the code's Bearer and an NDJSON body; a 201 is read for its `ref` alone, and never its `kept` or `dropped`
  * (RD, the owner's ruling of 2026-10-12). A refusal is read by its status, never its body. A bad line is never refused:
  * the server drops it and keeps the rest (owner ruling RL, 2026-10-12).

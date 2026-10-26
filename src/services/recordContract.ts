@@ -1,6 +1,6 @@
 /**
- * The web's record contract, `contracts/capture-record.v1.json` (vendored at web a6cc1f038, which serves it; the owner
- * approved its design on 2026-10-12): what Send record to Seazn posts, and what it reads back. `recordContract.test.ts`
+ * The web's record contract, `contracts/capture-record.v1.json` (vendored at web f0feab16c; the owner approved its design
+ * on 2026-10-12): what Send record to Seazn posts, and what it reads back. `recordContract.test.ts`
  * holds every value here to the vendored file, so a re-vendor that moves one reds until this file moves with it.
  */
 
