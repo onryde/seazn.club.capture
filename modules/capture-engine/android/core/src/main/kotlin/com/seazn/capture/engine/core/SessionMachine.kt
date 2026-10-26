@@ -384,7 +384,8 @@ internal object Transports {
     val session = phase.session
     val (meter, sample) = phase.meter.read(input.counters, now.monoMs)
     val latency = (session.config.target(Transport.SRT) as? SrtTarget)?.latencyMs ?: 0
-    val regulation = BitrateRegulator.next(session.regulation, sample, now.monoMs, phase.transport, latency)
+    val regulated = BitrateRegulator.regulate(session.regulation, sample, now.monoMs, phase.transport, latency)
+    val regulation = regulated.state
     val counters = input.counters
     val srt = if (phase.transport == Transport.SRT) SrtTelemetry(counters.packetsSent, counters.packetsRetransmitted, counters.packetsDropped, counters.rttMs) else null
     val next =
@@ -395,12 +396,40 @@ internal object Transports {
         egressBps = sample.egressBps ?: phase.egressBps,
       )
     val before = session.regulation.targetBps
-    if (regulation.targetBps == before) return Step(next)
-    val commands = mutableListOf<Command>(Command.SetBitrate(phase.attemptId, regulation.targetBps))
-    if (phase.transport == Transport.SRT) commands += Command.SetMaxBw(phase.attemptId, SrtBandwidth.maxBwBytesPerSecond(regulation.targetBps))
-    commands += record("bitrate", "from" to before, "to" to regulation.targetBps)
+    val commands = mutableListOf<Command>()
+    if (regulation.targetBps != before) {
+      commands += Command.SetBitrate(phase.attemptId, regulation.targetBps)
+      if (phase.transport == Transport.SRT) commands += Command.SetMaxBw(phase.attemptId, SrtBandwidth.maxBwBytesPerSecond(regulation.targetBps))
+      commands += bitrateLine(before, regulated, sample)
+    }
+    regulated.held?.let { commands += heldLine(it, phase.watchdog.videoFps) }
     return Step(next, commands)
   }
+
+  /** R-990P: the move, the rule that made it, and the reading it was made on. */
+  private fun bitrateLine(before: Int, regulated: Regulated, sample: LinkSample): Command =
+    record(
+      "bitrate",
+      "from" to before,
+      "to" to regulated.state.targetBps,
+      "reason" to regulated.move,
+      "egressBps" to sample.egressBps,
+      "dropped" to sample.droppedPackets,
+      "lost" to sample.lostPackets,
+      "sendBufferMs" to sample.sendBufferMs,
+      "bandwidthBps" to sample.bandwidthBps,
+    )
+
+  /** R-990P: F-P5-7's gate held due raises, and the encoded frame rate while it did (r2's question). */
+  private fun heldLine(held: HeldRaise, videoFps: Double?): Command =
+    record(
+      "bitrate-held",
+      "target" to held.targetBps,
+      "egressBps" to held.egressBps,
+      "gateBps" to held.gateBps,
+      "count" to held.count,
+      "videoFps" to videoFps,
+    )
 }
 
 /** Everything the tick decides: retries, connect timeouts, hold expiry, the stall watchdog, playlist polls. */

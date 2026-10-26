@@ -468,4 +468,131 @@ class BitrateRegulatorTest {
     val start = Regulation(1_000_000, failed = FailedRate(1_400_000, 0))
     assertEquals(1_120_000, run(start, 1_000, 11_000).targetBps)
   }
+
+  // R-990P (2026-10-26): the record says why the regulator moved, and when F-P5-7's gate held a due raise.
+
+  private fun regulated(start: Regulation, sample: LinkSample, nowMs: Long = 1_000, transport: Transport = Transport.SRT) =
+    BitrateRegulator.regulate(start, sample, nowMs, transport, latency)
+
+  /** Every `bitrate-held` line due from [fromMs] to [toMs], one reading a second, with when it fell due. */
+  private fun heldLines(start: Regulation, fromMs: Long, toMs: Long, sample: (Long) -> LinkSample): Pair<Regulation, List<Pair<Long, HeldRaise>>> {
+    val lines = mutableListOf<Pair<Long, HeldRaise>>()
+    var state = start
+    for (t in fromMs..toMs step 1_000) {
+      val regulated = BitrateRegulator.regulate(state, sample(t), t, Transport.SRT, latency)
+      regulated.held?.let { lines += t to it }
+      state = regulated.state
+    }
+    return state to lines
+  }
+
+  private val quiet = { _: Long -> reading(egress = 500_000) }
+
+  @Test
+  fun `the bitrate line's reason words`() {
+    assertEquals(listOf("drops", "backlog", "raise", "clamp"), BitrateMove.entries.map { it.wire })
+  }
+
+  @Test
+  fun `each move names the rule that made it`() {
+    assertEquals(BitrateMove.DROPS, regulated(Regulation(3_000_000), reading(dropped = 10)).move)
+    assertEquals(BitrateMove.BACKLOG, regulated(Regulation(3_000_000), reading(buffer = 1_000)).move)
+    // Drops on a backlogged reading halve: drops.
+    assertEquals(BitrateMove.DROPS, regulated(Regulation(3_000_000), reading(buffer = 1_000, dropped = 10)).move)
+    // RTMPS has no send buffer, and its drops cut all the same.
+    assertEquals(BitrateMove.DROPS, regulated(Regulation(2_000_000), reading(buffer = null, dropped = 3), transport = Transport.RTMPS).move)
+    // A target outside 500k to 3000k, brought inside on a reading that does nothing else.
+    assertEquals(BitrateMove.CLAMP, regulated(Regulation(4_000_000), reading()).move)
+    assertEquals(BitrateMove.CLAMP, regulated(Regulation(100_000), reading()).move)
+    // Brought inside, then cut by a quarter, 3_000_000 → 2_250_000: the cut's word.
+    assertEquals(BitrateMove.BACKLOG, regulated(Regulation(4_000_000), reading(buffer = 1_000)).move)
+    val due = run(Regulation(1_000_000), 1_000, 10_000)
+    assertEquals(BitrateMove.RAISE, regulated(due, reading(), nowMs = 11_000).move)
+  }
+
+  @Test
+  fun `a reading that leaves the target where it was names no move`() {
+    assertNull(regulated(Regulation(1_000_000), reading()).move)
+    // Drops at the floor: 500_000 / 2 is under it, so the cut lands where it started.
+    assertNull(regulated(Regulation(500_000), reading(dropped = 10)).move)
+    // Drops inside one latency of a cut are the old rate draining.
+    val cut = run(Regulation(3_000_000), 1_000, 1_000) { reading(dropped = 9) }
+    assertNull(regulated(cut, reading(dropped = 9), nowMs = 2_000).move)
+    assertNull(BitrateRegulator.regulate(Regulation(1_000_000), null, 1_000, Transport.SRT, latency).move)
+  }
+
+  @Test
+  fun `F-P5-7 a quiet picture at the floor says the gate held, once a minute, with how many raises it held`() {
+    // R-990P: 500k of egress at the 500k floor. The gate there: (500_000 + 128_000) × 115 / 100 = 722_200, × 70 / 100
+    // = 505_540. A raise falls due at 11 s, 21 s, 31 s, …, each untested, each restarting the wait. The first line
+    // goes at once; the next 60 s later, at 71 s, counting those due at 21 s to 71 s: 6. Then 131 s: 81 s to 131 s, 6.
+    val (state, lines) = heldLines(Regulation(500_000), 1_000, 131_000, quiet)
+    val held = { count: Int -> HeldRaise(500_000, 500_000, 505_540, count) }
+    assertEquals(listOf(11_000L to held(1), 71_000L to held(6), 131_000L to held(6)), lines)
+    assertEquals(500_000, state.targetBps)
+  }
+
+  @Test
+  fun `R-990P 18 minutes held at the floor read as 18 lines, not 108`() {
+    // Raises fall due every 10 s from 11 s to 1_081 s: (1_081 − 11) / 10 + 1 = 108. Lines at 11 s, 71 s, … 1_031 s:
+    // 18. Their counts: 1, then 6 each, 1 + 17 × 6 = 103; the 5 due at 1_041 s to 1_081 s wait for the next line.
+    val (state, lines) = heldLines(Regulation(500_000), 1_000, 1_081_000, quiet)
+    assertEquals((0 until 18).map { 11_000L + it * 60_000L }, lines.map { it.first })
+    assertEquals(103, lines.sumOf { it.second.count })
+    assertEquals(5, state.untestedRaises)
+  }
+
+  @Test
+  fun `the held line's gate is F-P5-7's raise gate`() {
+    // At 1500k the gate is 1_310_540 (the gate test above): 1_310_539 is held, and the line says by how little.
+    val (_, lines) = heldLines(Regulation(1_500_000), 1_000, 11_000) { reading(egress = 1_310_539) }
+    assertEquals(listOf(11_000L to HeldRaise(1_500_000, 1_310_539, 1_310_540, 1)), lines)
+  }
+
+  @Test
+  fun `with nothing to raise to, a quiet picture writes no held line`() {
+    // At the ceiling, and at 80% of 1_500_000 failed at 0 s: 1_200_000, the target itself.
+    assertEquals(emptyList(), heldLines(Regulation(3_000_000), 1_000, 80_000, quiet).second)
+    val capped = Regulation(1_200_000, failed = FailedRate(1_500_000, 0))
+    assertEquals(emptyList(), heldLines(capped, 1_000, 80_000, quiet).second)
+  }
+
+  @Test
+  fun `a held line waits for a raise to fall due`() {
+    // Clean from 1 s: nothing is due before 11 s. Cut at 0 s: nothing is due before 30 s.
+    assertEquals(emptyList(), heldLines(Regulation(500_000), 1_000, 10_000, quiet).second)
+    val cut = Regulation(1_000_000, lastCutAtMs = 0)
+    assertEquals(listOf(30_000L), heldLines(cut, 1_000, 30_000, quiet).second.map { it.first })
+  }
+
+  @Test
+  fun `a busy picture's raises write no held line`() {
+    assertEquals(emptyList(), heldLines(Regulation(Encode.FLOOR_BPS), 1_000, 200_000) { reading() }.second)
+  }
+
+  @Test
+  fun `readings with no egress hold a due raise, and the line says there was none to judge`() {
+    // The gate at 1000k: (1_000_000 + 128_000) × 115 / 100 = 1_297_200, × 70 / 100 = 908_040.
+    val (_, lines) = heldLines(Regulation(1_000_000), 1_000, 11_000) { reading(egress = null) }
+    assertEquals(listOf(11_000L to HeldRaise(1_000_000, null, 908_040, 1)), lines)
+  }
+
+  @Test
+  fun `a drop and a new attempt keep the minute and the count`() {
+    // Held at 11 s, and said. A far-end drop at 12 s restarts at the healthy 500k, and the next attempt's first clean
+    // reading is at 13 s, so raises fall due at 23 s, 33 s, … 73 s. The minute from 11 s runs through the drop:
+    // the next line is at 73 s, and counts those six. A minute that restarted with the attempt would write at 23 s.
+    val (held, before) = heldLines(Regulation(500_000), 1_000, 11_000, quiet)
+    val reconnected = BitrateRegulator.attemptStarted(BitrateRegulator.afterDrop(held, nowMs = 12_000))
+    val (_, after) = heldLines(reconnected, 13_000, 80_000, quiet)
+    assertEquals(listOf(11_000L), before.map { it.first })
+    assertEquals(listOf(73_000L to HeldRaise(500_000, 500_000, 505_540, 6)), after)
+  }
+
+  @Test
+  fun `a new session starts with no held raises and no minute running`() {
+    val started = BitrateRegulator.sessionStarted()
+    assertEquals(0, started.untestedRaises)
+    assertNull(started.heldSaidAtMs)
+  }
 }
