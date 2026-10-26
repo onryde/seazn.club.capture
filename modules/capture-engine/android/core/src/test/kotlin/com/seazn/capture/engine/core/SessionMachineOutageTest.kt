@@ -282,9 +282,10 @@ class SessionMachineOutageTest {
     rig.link = cleanLink()
     rig.live()
     rig.advance(12_000)
-    assertEquals(listOf(Command.SetBitrate(1, 1_600_000)), rig.sent<Command.SetBitrate>())
-    // (1_600_000 + 128_000) × 115% × 2 / 8 = 496_800.
-    assertEquals(listOf(Command.SetMaxBw(1, 496_800)), rig.sent<Command.SetMaxBw>())
+    // A raise is 20% of 1_500_000: 300_000.
+    assertEquals(listOf(Command.SetBitrate(1, 1_800_000)), rig.sent<Command.SetBitrate>())
+    // (1_800_000 + 128_000) × 115% × 2 / 8 = 554_300.
+    assertEquals(listOf(Command.SetMaxBw(1, 554_300)), rig.sent<Command.SetMaxBw>())
   }
 
   @Test
@@ -293,10 +294,11 @@ class SessionMachineOutageTest {
     rig.link = cleanLink(troubleAtMs = 15_000) { it.copy(sendBufferMs = 1_200) }
     rig.live()
     rig.advance(14_000)
-    assertEquals(1_200_000, rig.sent<Command.SetBitrate>().last().bps, "the fill cut 1600k by a quarter")
+    // Raised to 1_800_000 at 11 s; the fill at 15 s cuts it by a quarter, 1_800_000 × 75 / 100 = 1_350_000.
+    assertEquals(1_350_000, rig.sent<Command.SetBitrate>().last().bps, "the fill cut 1800k by a quarter")
     rig.send(Input.Dropped(1, DropReason.ENDPOINT_CLOSED, null))
     rig.advance(2_000)
-    assertEquals(1_600_000, rig.connects().last().startBitrateBps)
+    assertEquals(1_800_000, rig.connects().last().startBitrateBps)
   }
 
   @Test
@@ -307,7 +309,8 @@ class SessionMachineOutageTest {
     rig.advance(13_000)
     rig.send(Input.Dropped(1, DropReason.ENDPOINT_CLOSED, null))
     rig.advance(2_000)
-    assertEquals(800_000, rig.connects().last().startBitrateBps)
+    // Raised to 1_800_000 at 11 s, then halved: 900_000.
+    assertEquals(900_000, rig.connects().last().startBitrateBps)
   }
 
   @Test
@@ -323,7 +326,7 @@ class SessionMachineOutageTest {
     rig.advance(2_000)
     rig.send(Input.Connected(2))
     rig.advance(1_000)
-    // 18 s: 3 s after the cut, well inside POOR_UPLINK_MS, and publishing at the healthy 1600k.
+    // 18 s: 3 s after the cut, well inside POOR_UPLINK_MS, and publishing at the healthy 1800k.
     assertEquals(SnapshotState.Publishing(Transport.SRT, 1_790_000_001_000), rig.state)
   }
 
@@ -352,7 +355,8 @@ class SessionMachineOutageTest {
     }
     rig.live()
     rig.advance(14_000)
-    assertEquals(1_200_000, rig.sent<Command.SetBitrate>().last().bps, "cut at 15 s")
+    // Raised to 1_800_000 at 11 s; 1_800_000 × 75 / 100 = 1_350_000.
+    assertEquals(1_350_000, rig.sent<Command.SetBitrate>().last().bps, "cut at 15 s")
     rig.advance(29_500)
     assertEquals(listOf(DegradeReason.POOR_UPLINK), assertIs<SnapshotState.Degraded>(rig.state).reasons, "44.5 s: 29.5 s after the cut")
     rig.advance(500)
@@ -623,7 +627,7 @@ class SessionMachineOutageTest {
     }
     rig.live()
     rig.advance(12_000)
-    assertEquals(listOf(Command.SetBitrate(1, 1_600_000)), rig.sent<Command.SetBitrate>())
+    assertEquals(listOf(Command.SetBitrate(1, 1_800_000)), rig.sent<Command.SetBitrate>())
     assertTrue(rig.sent<Command.SetMaxBw>().isEmpty())
   }
 
@@ -755,6 +759,6 @@ class SessionMachineOutageTest {
     rig.advance(10_500)
     assertTrue(rig.sent<Command.SetBitrate>().isEmpty(), "${rig.sent<Command.SetBitrate>()}")
     rig.advance(500)
-    assertEquals(listOf(Command.SetBitrate(2, 1_600_000)), rig.sent<Command.SetBitrate>())
+    assertEquals(listOf(Command.SetBitrate(2, 1_800_000)), rig.sent<Command.SetBitrate>())
   }
 }

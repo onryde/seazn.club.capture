@@ -39,11 +39,12 @@ class BitrateRegulatorTest {
   }
 
   @Test
-  fun `F-P5-7 a tested clean interval raises 100k per 10 s`() {
+  fun `F-P5-7 a tested clean interval raises 20 percent per 10 s`() {
+    // The controller's step (R-990P, 2026-10-26): 1_500_000 × 20 / 100 = 300_000, then 1_800_000 × 20 / 100 = 360_000.
     val start = BitrateRegulator.sessionStarted()
     assertEquals(1_500_000, run(start, 1_000, 10_000).targetBps)
-    assertEquals(1_600_000, run(start, 1_000, 11_000).targetBps)
-    assertEquals(1_700_000, run(start, 1_000, 21_000).targetBps)
+    assertEquals(1_800_000, run(start, 1_000, 11_000).targetBps)
+    assertEquals(2_160_000, run(start, 1_000, 21_000).targetBps)
   }
 
   @Test
@@ -58,7 +59,7 @@ class BitrateRegulatorTest {
     // (1_500_000 + 128_000) × 1.15 = 1_872_200; 70% of that is 1_310_540.
     val atGate = run(Regulation(1_500_000), 1_000, 11_000) { reading(egress = 1_310_540) }
     val underGate = run(Regulation(1_500_000), 1_000, 11_000) { reading(egress = 1_310_539) }
-    assertEquals(1_600_000, atGate.targetBps)
+    assertEquals(1_800_000, atGate.targetBps)
     assertEquals(1_500_000, underGate.targetBps)
   }
 
@@ -114,14 +115,15 @@ class BitrateRegulatorTest {
     }
     val start = Regulation(1_300_000, lastCutAtMs = 0, failed = FailedRate(1_752_000, 0))
     assertEquals(1_401_600, run(start, 1_000, 299_000).targetBps)
-    assertEquals(1_501_600, run(start, 1_000, 300_000).targetBps)
+    // At 300 s the cap has lapsed: 1_401_600 × 20 / 100 = 280_320, so 1_681_920.
+    assertEquals(1_681_920, run(start, 1_000, 300_000).targetBps)
   }
 
   @Test
   fun `no raise within 30 s of a cut`() {
     val start = Regulation(1_000_000, lastCutAtMs = 0)
     assertEquals(1_000_000, run(start, 1_000, 29_000).targetBps)
-    assertEquals(1_100_000, run(start, 1_000, 30_000).targetBps)
+    assertEquals(1_200_000, run(start, 1_000, 30_000).targetBps)
   }
 
   @Test
@@ -146,7 +148,7 @@ class BitrateRegulatorTest {
     assertEquals(1_000_000, srt.targetBps)
     assertNull(srt.cleanSinceMs)
     val rtmps = run(Regulation(1_000_000), 1_000, 11_000, Transport.RTMPS) { reading(buffer = null) }
-    assertEquals(1_100_000, rtmps.targetBps)
+    assertEquals(1_200_000, rtmps.targetBps)
   }
 
   /**
@@ -179,7 +181,7 @@ class BitrateRegulatorTest {
 
   @Test
   fun `a send buffer of 0 ms is drained, not missing`() {
-    assertEquals(1_100_000, run(Regulation(1_000_000), 1_000, 11_000) { reading(buffer = 0) }.targetBps)
+    assertEquals(1_200_000, run(Regulation(1_000_000), 1_000, 11_000) { reading(buffer = 0) }.targetBps)
     // B7 m4: a drained buffer is still a reading, so SRT sender drops on it cut by half: 3_000_000 → 1_500_000.
     assertEquals(1_500_000, run(Regulation(3_000_000), 1_000, 1_000) { reading(buffer = 0, dropped = 10) }.targetBps)
   }
@@ -284,13 +286,13 @@ class BitrateRegulatorTest {
 
   @Test
   fun `regulator restart - the healthy target follows raises`() {
-    // Raised at 11 s to 1_600_000, clean at 12 s, a backlog at 13 s cuts by a quarter to 1_200_000.
+    // Raised at 11 s to 1_800_000, clean at 12 s, a backlog at 13 s cuts by a quarter to 1_350_000.
     val raised = run(Regulation(1_500_000), 1_000, 12_000)
     val cut = run(raised, 13_000, 13_000) { reading(buffer = 1_000) }
-    assertEquals(1_200_000, cut.targetBps)
+    assertEquals(1_350_000, cut.targetBps)
     val restarted = BitrateRegulator.afterDrop(cut, nowMs = 14_000)
-    assertEquals(1_600_000, restarted.targetBps)
-    assertEquals(1_600_000, BitrateRegulator.afterDrop(restarted, nowMs = 15_000).targetBps)
+    assertEquals(1_800_000, restarted.targetBps)
+    assertEquals(1_800_000, BitrateRegulator.afterDrop(restarted, nowMs = 15_000).targetBps)
   }
 
   @Test
@@ -301,7 +303,7 @@ class BitrateRegulatorTest {
     // A raise was due at 11 s; loss at 10 s moves that to 20 s.
     val lossy = run(clean, 10_000, 10_000) { reading(buffer = -336, lost = 1) }
     assertEquals(1_000_000, run(lossy, 11_000, 19_000).targetBps)
-    assertEquals(1_100_000, run(lossy, 11_000, 20_000).targetBps)
+    assertEquals(1_200_000, run(lossy, 11_000, 20_000).targetBps)
   }
 
   @Test
@@ -310,7 +312,7 @@ class BitrateRegulatorTest {
     val before = run(Regulation(1_000_000), 1_000, 5_000)
     val gap = BitrateRegulator.next(before, null, 6_000, Transport.SRT, latency)
     assertEquals(before, gap)
-    assertEquals(1_100_000, run(gap, 7_000, 11_000).targetBps)
+    assertEquals(1_200_000, run(gap, 7_000, 11_000).targetBps)
   }
 
   @Test
@@ -321,7 +323,7 @@ class BitrateRegulatorTest {
       val restarted = run(run(Regulation(1_000_000), 1_000, 10_000), 11_000, 11_000) { unclean }
       assertEquals(1_000_000, restarted.targetBps, "$unclean")
       assertEquals(1_000_000, run(restarted, 12_000, 20_000).targetBps, "$unclean")
-      assertEquals(1_100_000, run(restarted, 12_000, 21_000).targetBps, "$unclean")
+      assertEquals(1_200_000, run(restarted, 12_000, 21_000).targetBps, "$unclean")
     }
   }
 
@@ -364,21 +366,21 @@ class BitrateRegulatorTest {
     // 500_000 is under 1500k's 1_310_540 gate: no raise at 11 s, and a new interval from 11 s.
     val quiet = run(Regulation(1_500_000), 1_000, 11_000) { reading(egress = 500_000) }
     assertEquals(1_500_000, run(quiet, 12_000, 20_000) { reading(egress = 4_000_000) }.targetBps)
-    assertEquals(1_600_000, run(quiet, 12_000, 21_000) { reading(egress = 4_000_000) }.targetBps)
+    assertEquals(1_800_000, run(quiet, 12_000, 21_000) { reading(egress = 4_000_000) }.targetBps)
   }
 
   @Test
   fun `F-P5-7 only the current interval's egress tests a raise`() {
-    // Readings 2 s apart. 2_500_000 from 2 s tests the raise at 12 s to 1_600_000. Then 500_000 from
-    // 14 s: the interval due at 22 s holds five quiet readings, under 1600k's gate of
-    // (1_600_000 + 128_000) × 1.15 × 70% = 1_391_040. The last ten readings, five of them busy,
-    // would average 1_500_000 and pass it.
+    // Readings 2 s apart. 3_000_000 from 2 s tests the raise at 12 s to 1_800_000. Then 500_000 from
+    // 14 s: the interval due at 22 s holds five quiet readings, under 1800k's gate of
+    // (1_800_000 + 128_000) × 1.15 × 70% = 1_552_040. The last ten readings, five of them busy,
+    // would average (5 × 3_000_000 + 5 × 500_000) / 10 = 1_750_000 and pass it.
     var state = Regulation(1_500_000)
     for (t in 2_000L..22_000L step 2_000) {
-      state = BitrateRegulator.next(state, reading(egress = if (t <= 12_000) 2_500_000 else 500_000), t, Transport.SRT, latency)
-      if (t == 12_000L) assertEquals(1_600_000, state.targetBps)
+      state = BitrateRegulator.next(state, reading(egress = if (t <= 12_000) 3_000_000 else 500_000), t, Transport.SRT, latency)
+      if (t == 12_000L) assertEquals(1_800_000, state.targetBps)
     }
-    assertEquals(1_600_000, state.targetBps)
+    assertEquals(1_800_000, state.targetBps)
   }
 
   @Test
@@ -387,7 +389,7 @@ class BitrateRegulatorTest {
     // Clean since 1 s makes 11 s due; the raise at 5 s holds it to 15 s.
     val start = Regulation(1_000_000, lastRaiseAtMs = 5_000, cleanSinceMs = 1_000)
     assertEquals(1_000_000, run(start, 1_000, 14_000).targetBps)
-    assertEquals(1_100_000, run(start, 1_000, 15_000).targetBps)
+    assertEquals(1_200_000, run(start, 1_000, 15_000).targetBps)
   }
 
   @Test
@@ -401,5 +403,69 @@ class BitrateRegulatorTest {
   fun `a target outside 500k to 3000k is brought inside at the next reading`() {
     assertEquals(3_000_000, run(Regulation(4_000_000), 1_000, 1_000).targetBps)
     assertEquals(500_000, run(Regulation(100_000), 1_000, 1_000).targetBps)
+  }
+
+  // R-990P (2026-10-26): a raise is 20% of the target, never under 100k. The 20% is the controller's call.
+
+  @Test
+  fun `a raise step is 20 percent of the target, never under 100k`() {
+    // 400_000 × 20 / 100 = 80_000, under the minimum. Only a hand-built call reaches it: next() brings
+    // any target up to the 500k floor first, where 20% is exactly the minimum.
+    assertEquals(100_000, BitrateRegulator.raiseStepBps(400_000))
+    assertEquals(100_000, BitrateRegulator.raiseStepBps(500_000))
+    assertEquals(120_000, BitrateRegulator.raiseStepBps(600_000))
+    // 2_579_889 × 20 / 100 = 515_977.8, rounded down.
+    assertEquals(515_977, BitrateRegulator.raiseStepBps(2_579_889))
+  }
+
+  @Test
+  fun `at the floor a raise is 100k, and then 20 percent`() {
+    // 500_000 × 20 / 100 = 100_000; 600_000 × 20 / 100 = 120_000.
+    assertEquals(600_000, run(Regulation(500_000), 1_000, 11_000).targetBps)
+    assertEquals(720_000, run(Regulation(600_000), 1_000, 11_000).targetBps)
+  }
+
+  @Test
+  fun `a busy clean link climbs from the floor to the ceiling in 100 s`() {
+    // Clean from 1 s at 4000k of egress, which passes every gate on the way (2_276_540 at 2700k). Each raise
+    // restarts the 10 s wait, so raises land at 11 s, 21 s, … 101 s. Each step is 20% rounded down:
+    // 500_000 + 100_000 = 600_000; + 120_000 = 720_000; + 144_000 = 864_000; + 172_800 = 1_036_800;
+    // + 207_360 = 1_244_160; + 248_832 = 1_492_992; + 298_598 = 1_791_590; + 358_318 = 2_149_908;
+    // + 429_981 = 2_579_889; + 515_977 = 3_095_866, capped at 3_000_000. Ten raises in 100 s, where
+    // 100k a step took 25 raises, 250 s. Nothing moves after.
+    val expected =
+      listOf(
+        11_000L to 600_000,
+        21_000L to 720_000,
+        31_000L to 864_000,
+        41_000L to 1_036_800,
+        51_000L to 1_244_160,
+        61_000L to 1_492_992,
+        71_000L to 1_791_590,
+        81_000L to 2_149_908,
+        91_000L to 2_579_889,
+        101_000L to 3_000_000,
+      )
+    val raises = mutableListOf<Pair<Long, Int>>()
+    var state = Regulation(Encode.FLOOR_BPS)
+    for (t in 1_000L..200_000L step 1_000) {
+      val next = BitrateRegulator.next(state, reading(), t, Transport.SRT, latency)
+      if (next.targetBps != state.targetBps) raises += t to next.targetBps
+      state = next
+    }
+    assertEquals(expected, raises)
+  }
+
+  @Test
+  fun `a 20 percent step is capped by the ceiling`() {
+    // 2_700_000 × 20 / 100 = 540_000 would make 3_240_000.
+    assertEquals(3_000_000, run(Regulation(2_700_000), 1_000, 11_000).targetBps)
+  }
+
+  @Test
+  fun `a 20 percent step is capped at 80 percent of a rate that failed`() {
+    // 1_000_000 × 20 / 100 = 200_000 would make 1_200_000; 80% of 1_400_000 is 1_120_000.
+    val start = Regulation(1_000_000, failed = FailedRate(1_400_000, 0))
+    assertEquals(1_120_000, run(start, 1_000, 11_000).targetBps)
   }
 }

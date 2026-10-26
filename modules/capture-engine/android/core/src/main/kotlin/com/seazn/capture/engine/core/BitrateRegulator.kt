@@ -30,7 +30,14 @@ data class Regulation(
  * the link carried 2149 kbps with no new drops, and the raise-gate run on a fat link read 10–320 Mbps.
  */
 object BitrateRegulator {
+  /** The smallest raise. Above the 500k floor 20% is never less, so it binds at the floor only, where they are equal. */
   const val RAISE_STEP_BPS = 100_000
+
+  /**
+   * A raise is this share of the target (R-990P, 2026-10-26: the controller's call, the owner having asked for a faster
+   * tested climb). At 100k a step the floor needs 13 raises, 130 s or more, to reach 1.8M; at 20% it passes it in 8.
+   */
+  const val RAISE_STEP_PERCENT = 20L
   const val RAISE_INTERVAL_MS = 10_000L
 
   /** A cut means the link just failed the old rate. Probing straight back would recreate the overload. */
@@ -107,6 +114,9 @@ object BitrateRegulator {
     }
   }
 
+  /** [RAISE_STEP_PERCENT] of [targetBps], rounded down, and never under [RAISE_STEP_BPS]. */
+  fun raiseStepBps(targetBps: Int): Int = maxOf((targetBps * RAISE_STEP_PERCENT / 100).toInt(), RAISE_STEP_BPS)
+
   /** 80% of a rate that failed less than [FAILED_RATE_MEMORY_MS] ago; otherwise the ceiling. */
   fun raiseCap(state: Regulation, nowMs: Long): Int =
     state.failed
@@ -173,7 +183,7 @@ object BitrateRegulator {
       since(state.cleanSinceMs, nowMs) >= RAISE_INTERVAL_MS &&
         since(state.lastRaiseAtMs, nowMs) >= RAISE_INTERVAL_MS &&
         since(state.lastCutAtMs, nowMs) >= RAISE_AFTER_CUT_MS
-    val raised = minOf(state.targetBps + RAISE_STEP_BPS, Encode.CEILING_BPS, raiseCap(state, nowMs))
+    val raised = minOf(state.targetBps + raiseStepBps(state.targetBps), Encode.CEILING_BPS, raiseCap(state, nowMs))
     return when {
       !due || raised <= state.targetBps -> state
       tested(state) -> state.copy(targetBps = raised, lastRaiseAtMs = nowMs).cleanWaitRestarted(nowMs)
