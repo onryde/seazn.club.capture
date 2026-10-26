@@ -159,9 +159,16 @@ object EngineHost {
       Build.MODEL.orEmpty(),
     )
 
-  /** minSdk 31 (CD34): the `Int` overload runs on every supported phone; the flags overload is API 33. */
+  /**
+   * The build's version and number, `1.0.0-656` (owner, 2026-10-26): the number is the commit count app.config.ts
+   * builds it with, so a record or a beat names the build that wrote it. A plain word, under the beat's 40 characters.
+   * minSdk 31 (CD34): the `Int` overload runs on every supported phone; the flags overload is API 33.
+   */
   @Suppress("DEPRECATION")
-  private fun appVersion(app: Context): String = app.packageManager.getPackageInfo(app.packageName, 0).versionName ?: "0.0.0"
+  private fun appVersion(app: Context): String {
+    val info = app.packageManager.getPackageInfo(app.packageName, 0)
+    return "${info.versionName ?: "0.0.0"}-${info.longVersionCode}"
+  }
 
   private fun emit(event: String, body: Map<String, Any?>) {
     listener.value?.invoke(event, body)

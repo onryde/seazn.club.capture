@@ -1,0 +1,60 @@
+import { execFileSync } from 'node:child_process';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import type { ConfigContext, ExpoConfig } from 'expo/config';
+import { afterEach, describe, expect, it } from 'vitest';
+import appConfig, { buildNumber } from '../app.config';
+
+/**
+ * The build number (owner, 2026-10-26): the commit count of the checkout. The expected count comes from a git call
+ * of the test's own, never from the function under test.
+ */
+const root = fileURLToPath(new URL('..', import.meta.url));
+const count = Number(
+  execFileSync('git', ['-C', root, 'rev-list', '--count', 'HEAD'], { encoding: 'utf8' }).trim(),
+);
+
+const base: ExpoConfig = {
+  name: 'Seazn Capture',
+  slug: 'capture',
+  version: '1.0.0',
+  android: { package: 'com.seazn.capture' },
+  ios: { bundleIdentifier: 'com.seazn.capture' },
+};
+const context = (projectRoot: string) =>
+  ({ config: base, projectRoot }) as unknown as ConfigContext;
+
+const made: string[] = [];
+afterEach(() => {
+  for (const dir of made.splice(0)) rmSync(dir, { recursive: true, force: true });
+});
+
+describe('the build number (app.config.ts)', () => {
+  it('is the checkout’s commit count, on Android and iOS, and keeps the version and the rest', () => {
+    const config = appConfig(context(root));
+    expect(config.android?.versionCode).toBe(count);
+    expect(config.ios?.buildNumber).toBe(String(count));
+    expect(config.version).toBe('1.0.0');
+    expect(config.android?.package).toBe('com.seazn.capture');
+    expect(config.ios?.bundleIdentifier).toBe('com.seazn.capture');
+  });
+
+  it('is the same on a second call (the config is read more than once a build)', () => {
+    expect(buildNumber(root)).toBe(buildNumber(root));
+  });
+
+  it('refuses a folder that is not a git checkout, rather than build as 1', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'capture-config-'));
+    made.push(dir);
+    expect(() => buildNumber(dir)).toThrow();
+  });
+
+  it('refuses a checkout with no commit yet', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'capture-config-'));
+    made.push(dir);
+    execFileSync('git', ['init', '-q', dir]);
+    expect(() => buildNumber(dir)).toThrow();
+  });
+});

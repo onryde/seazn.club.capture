@@ -68,7 +68,7 @@
   "reasons": {
     "action": "JS: a UI action word",
     "answer": "native: the class name of a code or start answer (Open, Waiting, Status…), never its body",
-    "appVersion": "native: the build's version",
+    "appVersion": "native: the build's version and number, 1.0.0-656: app.json's version and the commit count app.config.ts builds it with (owner, 2026-10-26)",
     "attempt": "both: an attempt id is a number; a word here is a label",
     "cause": "native: ReconnectCause wire, the broadcast's Cause wire, StallCause wire (video-stalled) or NotDeliveredCause wire (not-delivered)",
     "claim": "both: Claim wire, new or resume (A9): native on pair and on the beat line, JS on intent.pair",
