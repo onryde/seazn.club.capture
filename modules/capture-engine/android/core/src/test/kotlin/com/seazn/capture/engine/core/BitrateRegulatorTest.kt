@@ -582,13 +582,15 @@ class BitrateRegulatorTest {
 
   @Test
   fun `a drop and a new attempt keep the minute and the count`() {
-    // Held at 11 s, and said. A far-end drop at 12 s restarts at the healthy 500k, and the next attempt's first clean
-    // reading is at 13 s, so raises fall due at 23 s, 33 s, … 73 s. The minute from 11 s runs through the drop:
-    // the next line is at 73 s, and counts those six. A minute that restarted with the attempt would write at 23 s.
-    val (held, before) = heldLines(Regulation(500_000), 1_000, 11_000, quiet)
-    val reconnected = BitrateRegulator.attemptStarted(BitrateRegulator.afterDrop(held, nowMs = 12_000))
-    val (_, after) = heldLines(reconnected, 13_000, 80_000, quiet)
+    // Held at 11 s, and said. Raises fall due again at 21 s and 31 s, inside the minute: counted, not said. A
+    // far-end drop at 32 s restarts at the healthy 500k, and the next attempt's first clean reading is at 33 s, so
+    // raises fall due at 43 s, 53 s, 63 s and 73 s. The minute from 11 s runs through the drop: the next line is at
+    // 73 s, and counts 2 + 4 = 6. A count reset by the drop would say 4; a minute that restarted would write at 43 s.
+    val (held, before) = heldLines(Regulation(500_000), 1_000, 31_000, quiet)
     assertEquals(listOf(11_000L), before.map { it.first })
+    assertEquals(2, held.untestedRaises)
+    val reconnected = BitrateRegulator.attemptStarted(BitrateRegulator.afterDrop(held, nowMs = 32_000))
+    val (_, after) = heldLines(reconnected, 33_000, 80_000, quiet)
     assertEquals(listOf(73_000L to HeldRaise(500_000, 500_000, 505_540, 6)), after)
   }
 
