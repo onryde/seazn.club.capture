@@ -1387,7 +1387,7 @@ tested in core, every guard mutated once) asks for a layout when a shown view wa
 checks in a row, and the view lays the preview out at the encode's size with every view under it marked. One
 `preview-relaid {reason: requested | empty}` line an episode.
 
-**Device evidence (2026-10-27, NE2211 on USB, debug build of `fa65034` with Metro, stg).** The race could not be forced:
+**Device evidence (2026-10-27, run R-C5WC, NE2211 on USB, debug build of `fa65034` with Metro, stg).** The race could not be forced:
 in a release-build run that morning the viewfinder swapped its surface four times and each new one came within about
 15 ms, so the mend had nothing to do. So a debug-only trigger (`PreviewSeam`, filled by `LoseSurfaceInstaller` as
 `HttpSeam` is; `adb shell am broadcast -a com.seazn.capture.debug.LOSE_SURFACE -p com.seazn.capture`) lays the
