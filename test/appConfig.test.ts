@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { ConfigContext, ExpoConfig } from 'expo/config';
+import type { ExportedConfig } from 'expo/config-plugins';
 import { afterEach, describe, expect, it } from 'vitest';
 import appConfig, { buildNumber, countedAtBuild, GRADLE_VERSION_CODE } from '../app.config';
 
@@ -42,7 +43,8 @@ describe('the build number (app.config.ts)', () => {
   });
 
   it('registers the build.gradle mod that reads the count when Gradle builds (review round 2)', () => {
-    expect(typeof appConfig(context(root)).mods?.android?.appBuildGradle).toBe('function');
+    const config: ExportedConfig = appConfig(context(root));
+    expect(typeof config.mods?.android?.appBuildGradle).toBe('function');
   });
 
   it('is the same on a second call (the config is read more than once a build)', () => {
