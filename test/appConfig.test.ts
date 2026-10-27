@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { ConfigContext, ExpoConfig } from 'expo/config';
 import { afterEach, describe, expect, it } from 'vitest';
-import appConfig, { buildNumber } from '../app.config';
+import appConfig, { buildNumber, countedAtBuild, GRADLE_VERSION_CODE } from '../app.config';
 
 /**
  * The build number (owner, 2026-10-26): the commit count of the checkout. The expected count comes from a git call
@@ -56,5 +56,43 @@ describe('the build number (app.config.ts)', () => {
     made.push(dir);
     execFileSync('git', ['init', '-q', dir]);
     expect(() => buildNumber(dir)).toThrow();
+  });
+});
+
+/** Prebuild's defaultConfig, as `android/app/build.gradle` held it at 658. */
+const prebuilt = [
+  '    defaultConfig {',
+  "        applicationId 'com.seazn.capture'",
+  '        versionCode 658',
+  '        versionName "1.0.0"',
+  '    }',
+].join('\n');
+
+describe('the versionCode Gradle reads when it builds (app.config.ts)', () => {
+  it('replaces the frozen number with the git count, in place, keeping the rest', () => {
+    expect(countedAtBuild(prebuilt)).toBe(
+      [
+        '    defaultConfig {',
+        "        applicationId 'com.seazn.capture'",
+        "        versionCode Integer.parseInt(providers.exec { commandLine 'git', '-C', rootDir.parentFile.absolutePath, 'rev-list', '--count', 'HEAD' }.standardOutput.asText.get().trim())",
+        '        versionName "1.0.0"',
+        '    }',
+      ].join('\n'),
+    );
+  });
+
+  it('leaves a file already read so as it is (a second prebuild over android/)', () => {
+    const once = countedAtBuild(prebuilt);
+    expect(countedAtBuild(once)).toBe(once);
+    expect(once.split(GRADLE_VERSION_CODE)).toHaveLength(2);
+  });
+
+  it('refuses a file with no versionCode line, or two', () => {
+    expect(() => countedAtBuild(prebuilt.replace('        versionCode 658\n', ''))).toThrow(
+      /0 versionCode lines/,
+    );
+    expect(() => countedAtBuild(`${prebuilt}\n        versionCode 1`)).toThrow(
+      /2 versionCode lines/,
+    );
   });
 });
