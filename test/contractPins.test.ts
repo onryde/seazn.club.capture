@@ -7,8 +7,9 @@ import { listFiles, OURS } from '../scripts/vendor-contracts.mjs';
 /**
  * The pin (plan D spec §3.1, owner ruling R7: pin only, verified offline, never a fetch of the web repo).
  *
- * contracts/ is a byte copy of the web's docs/contracts at one commit, written by `pnpm contracts:vendor`, which
- * records every file's sha256 in contracts/VENDORED.json. This test holds the folder to that record, file for file.
+ * contracts/ is a byte copy of the web's capture contracts (docs/contracts, the phone's files only: plan D spec §3.1) at
+ * one commit, written by `pnpm contracts:vendor`, which records every file's sha256 in contracts/VENDORED.json. This
+ * test holds the folder to that record, file for file.
  *
  * The other side of the pin is the web's own: its capture-contract.test.ts pins the six schemas. Those six values
  * and the commit are copied below BY HAND from apps/web/src/server/api-v1/__tests__/capture-contract.test.ts:51-57

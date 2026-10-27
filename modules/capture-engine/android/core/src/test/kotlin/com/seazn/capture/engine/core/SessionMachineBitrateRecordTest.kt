@@ -55,8 +55,30 @@ class SessionMachineBitrateRecordTest {
     rig.advance(12_000)
     val line = rig.records("bitrate").single()
     val reading = listOf("egressBps" to 4_000_000L, "dropped" to 0L, "lost" to 0L, "sendBufferMs" to 50, "bandwidthBps" to null)
-    assertEquals(listOf("from" to 1_500_000, "to" to 1_800_000, "reason" to BitrateMove.RAISE) + reading, line.fields)
+    assertEquals(listOf("from" to 1_500_000, "to" to 1_800_000, "reason" to BitrateMove.RAISE) + reading + ("count" to 0), line.fields)
     assertEquals("raise", line.word("reason"))
+  }
+
+  @Test
+  fun `a raise's line carries the interval's mean egress and the raises held before it, and a cut's carries neither`() {
+    // Review of #23. 2 Mbps clean, then 4 Mbps on the reading the raise falls due on: the line's egressBps is the
+    // interval's mean, not 4_000_000. The rig's own regulator decides the mean; this pins the line to it, and the
+    // regulator's test pins the mean by hand.
+    val rig = MachineRig()
+    var bytes = 0L
+    rig.link = { t ->
+      bytes += if (t >= 11_000) 500_000 else 250_000
+      LinkCounters(bytes, t, 0, 0, 0, 20, 50, null)
+    }
+    rig.live()
+    rig.advance(12_000)
+    val line = rig.records("bitrate").single()
+    assertEquals(BitrateMove.RAISE, line.field("reason"))
+    val egress = line.field("egressBps") as Long
+    assertTrue(egress in 2_000_001L until 4_000_000L, "the mean of 2 Mbps readings and one of 4 Mbps: $egress")
+    assertEquals(0, line.field("count"))
+    rig.send(Input.Link(1, LinkCounters(bytes + 250_000, 13_000, 0, 3, 0, 20, 40, null)))
+    assertTrue(rig.records("bitrate").last().fields.none { it.first == "count" }, "a cut names no held raises")
   }
 
   @Test

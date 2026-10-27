@@ -595,6 +595,49 @@ class BitrateRegulatorTest {
   }
 
   @Test
+  fun `a raise names the interval's mean egress it passed the gate on, not the reading it fell due on`() {
+    // Review of #23. Clean from 1 s at 1000k; the interval keeps its last 10 readings, 2 s to 11 s: nine of 2_000_000
+    // and the 11 s reading of 4_000_000, a mean of (9 × 2_000_000 + 4_000_000) / 10 = 2_200_000. Nothing held before it.
+    val due = run(Regulation(1_000_000), 1_000, 10_000) { reading(egress = 2_000_000) }
+    val raise = regulated(due, reading(egress = 4_000_000), nowMs = 11_000)
+    assertEquals(BitrateMove.RAISE, raise.move)
+    assertEquals(Tested(2_200_000, heldBefore = 0), raise.tested)
+  }
+
+  @Test
+  fun `a raise says the due raises held since the last held line, and the count starts again`() {
+    // Review of #23: held at 11 s and said; held again at 21 s and 31 s, counted, unsaid (the drop test above). The
+    // picture gets busy from 32 s: the wait restarted at 31 s, so the raise falls due at 41 s on the readings of 32 s to
+    // 41 s, 4_000_000 each, and 500k rises by its 100k minimum step. It carries the 2 no held line said.
+    val (held, _) = heldLines(Regulation(500_000), 1_000, 31_000, quiet)
+    val due = run(held, 32_000, 40_000)
+    val raise = regulated(due, reading(), nowMs = 41_000)
+    assertEquals(BitrateMove.RAISE, raise.move)
+    assertEquals(600_000, raise.state.targetBps)
+    assertEquals(Tested(4_000_000, heldBefore = 2), raise.tested)
+    assertEquals(0, raise.state.untestedRaises)
+  }
+
+  @Test
+  fun `a cut, a clamp and a held raise name nothing tested`() {
+    assertNull(regulated(Regulation(3_000_000), reading(dropped = 10)).tested)
+    assertNull(regulated(Regulation(4_000_000), reading()).tested)
+    assertNull(heldLines(Regulation(500_000), 1_000, 10_000, quiet).first.let { regulated(it, quiet(11_000), nowMs = 11_000) }.tested)
+  }
+
+  @Test
+  fun `the held line's gate is the least egress that passes, rounded up`() {
+    // Review of #23, at R-C5WC's 918_251: (918_251 + 128_000) × 115 / 100 = 1_203_188 (whole b/s), × 70 / 100 =
+    // 842_231.6. A mean of 842_231 is held, and the line names 842_232, which raises; rounded down it named 842_231,
+    // the mean that was held.
+    val (_, lines) = heldLines(Regulation(918_251), 1_000, 11_000) { reading(egress = 842_231) }
+    assertEquals(listOf(11_000L to HeldRaise(918_251, 842_231, 842_232, 1)), lines)
+    val passing = run(Regulation(918_251), 1_000, 10_000) { reading(egress = 842_232) }
+    assertEquals(BitrateMove.RAISE, regulated(passing, reading(egress = 842_232), nowMs = 11_000).move)
+    assertEquals(842_232L, BitrateRegulator.gateBps(918_251))
+  }
+
+  @Test
   fun `a new session starts with no held raises and no minute running`() {
     val started = BitrateRegulator.sessionStarted()
     assertEquals(0, started.untestedRaises)

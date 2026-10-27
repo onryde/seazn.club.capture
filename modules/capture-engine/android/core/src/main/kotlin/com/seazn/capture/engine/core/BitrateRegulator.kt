@@ -20,7 +20,10 @@ data class Regulation(
   val healthyAtMs: Long? = null,
   /** The last reading where the link itself was failing: loss on SRT, sender drops on RTMPS. */
   val failingAtMs: Long? = null,
-  /** Due raises F-P5-7's gate held since the last `bitrate-held` line. A drop and a new attempt keep it. */
+  /**
+   * Due raises F-P5-7's gate held since the last `bitrate-held` line or raise, whichever came last; a raise says them
+   * ([Tested.heldBefore]). A drop and a new attempt keep it.
+   */
   val untestedRaises: Int = 0,
   /** When the last `bitrate-held` line was due; null before the first. A drop and a new attempt keep it. */
   val heldSaidAtMs: Long? = null,
@@ -43,12 +46,23 @@ enum class BitrateMove(override val wire: String) : Wire {
 
 /**
  * F-P5-7's gate held due raises: the `bitrate-held` line (R-990P). [egressBps] is the mean egress of the interval that
- * failed, null when none of its readings measured any; [gateBps] is what it had to reach at [targetBps], rounded down.
+ * failed, null when none of its readings measured any; [gateBps] is the least egress that passes at [targetBps], so a
+ * mean of [gateBps] − 1 is held and one of [gateBps] raises.
  */
 data class HeldRaise(val targetBps: Int, val egressBps: Long?, val gateBps: Long, val count: Int)
 
-/** One reading's outcome: the next state, the rule that moved the target (null when it is where it was), a held line due. */
-data class Regulated(val state: Regulation, val move: BitrateMove? = null, val held: HeldRaise? = null)
+/**
+ * What a raise was decided on (review of #23): [egressBps], the interval's mean egress that passed F-P5-7's gate, which
+ * the `bitrate` line carries in place of the one reading the raise fell due on; and [heldBefore], the due raises the gate
+ * held since the last `bitrate-held` line, which no held line will now say.
+ */
+data class Tested(val egressBps: Long, val heldBefore: Int)
+
+/**
+ * One reading's outcome: the next state, the rule that moved the target (null when it is where it was), a held line due,
+ * and what a raise was decided on.
+ */
+data class Regulated(val state: Regulation, val move: BitrateMove? = null, val held: HeldRaise? = null, val tested: Tested? = null)
 
 /**
  * F-P5-5: nothing regulated the encoder, so a VBR burst the uplink could not carry was delivered as
@@ -228,27 +242,30 @@ object BitrateRegulator {
         since(state.lastRaiseAtMs, nowMs) >= RAISE_INTERVAL_MS &&
         since(state.lastCutAtMs, nowMs) >= RAISE_AFTER_CUT_MS
     val raised = minOf(state.targetBps + raiseStepBps(state.targetBps), Encode.CEILING_BPS, raiseCap(state, nowMs))
+    val mean = intervalEgressBps(state)
     return when {
       !due || raised <= state.targetBps -> Regulated(state)
-      tested(state) ->
-        Regulated(state.copy(targetBps = raised, lastRaiseAtMs = nowMs).cleanWaitRestarted(nowMs), BitrateMove.RAISE)
+      mean != null && mean >= gateBps(state.targetBps) -> {
+        val next = state.copy(targetBps = raised, lastRaiseAtMs = nowMs, untestedRaises = 0).cleanWaitRestarted(nowMs)
+        Regulated(next, BitrateMove.RAISE, tested = Tested(mean, state.untestedRaises))
+      }
       else -> held(state, nowMs)
     }
   }
+
+  /**
+   * F-P5-7's gate at [targetBps]: [TESTED_PERCENT] of the expected egress, rounded up, so the least whole egress that
+   * passes (review of #23: rounded down, the held line named a gate 1 b/s under the one that held it).
+   */
+  fun gateBps(targetBps: Int): Long = (Encode.expectedEgressBps(targetBps) * TESTED_PERCENT + 99) / 100
 
   /** The gate held a due raise. The first since [HELD_LINE_MS] is said, with the count since the last line said. */
   private fun held(state: Regulation, nowMs: Long): Regulated {
     val count = state.untestedRaises + 1
     val waiting = state.cleanWaitRestarted(nowMs)
     if (since(state.heldSaidAtMs, nowMs) < HELD_LINE_MS) return Regulated(waiting.copy(untestedRaises = count))
-    val gate = Encode.expectedEgressBps(state.targetBps) * TESTED_PERCENT / 100
-    val line = HeldRaise(state.targetBps, intervalEgressBps(state), gate, count)
+    val line = HeldRaise(state.targetBps, intervalEgressBps(state), gateBps(state.targetBps), count)
     return Regulated(waiting.copy(untestedRaises = 0, heldSaidAtMs = nowMs), held = line)
-  }
-
-  private fun tested(state: Regulation): Boolean {
-    val mean = intervalEgressBps(state) ?: return false
-    return mean * 100 >= Encode.expectedEgressBps(state.targetBps) * TESTED_PERCENT
   }
 
   /** The mean egress of the current clean interval's readings; null when none measured any. */
