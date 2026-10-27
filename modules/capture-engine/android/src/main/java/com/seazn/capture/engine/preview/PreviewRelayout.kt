@@ -1,5 +1,7 @@
 package com.seazn.capture.engine.preview
 
+import com.seazn.capture.engine.core.RecordEntry
+
 /** One view of the preview's tree, as [PreviewRelayout] reads it: shown or not, its laid-out size, and whether it waits for a layout. */
 data class LaidOut(val shown: Boolean, val width: Int, val height: Int, val layoutRequested: Boolean, val children: List<LaidOut> = emptyList())
 
@@ -9,8 +11,11 @@ enum class Stale(val wire: String) {
   EMPTY("empty"),
 }
 
-/** What one check asks of the view: lay the preview out again, and write the `preview-relaid` line when [written]. */
-data class Relayout(val stale: Stale, val written: Boolean)
+/** What one check asks of the view: lay the preview out again, and write [entry] when [written]. */
+data class Relayout(val stale: Stale, val written: Boolean) {
+  /** The record's `preview-relaid` line, a warning: the first relayout of an episode, and null for the rest. */
+  val entry: RecordEntry? get() = if (written) RecordEntry("preview-relaid", listOf("reason" to stale.wire), "warn") else null
+}
 
 /**
  * N42 (R-990P; the repro of 2026-10-26): the viewfinder inside StreamPack's PreviewView swapped its SurfaceView for a new

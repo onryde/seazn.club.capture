@@ -165,15 +165,14 @@ class CapturePreviewView(context: Context, appContext: AppContext) : ExpoView(co
   }
 
   /**
-   * N42: lays the preview out again at the encode's size, as its own LinearLayout parent lays it out (at its left and
-   * top, `LayoutParams(Encode.WIDTH, Encode.HEIGHT)`), with every view under it marked, so none is skipped as laid out.
+   * N42: lays this view and every view under it out again, each marked so none is skipped as laid out, through
+   * ExpoView's own `measureAndLayout`: the LinearLayout places the preview as it always does.
    */
   private fun relaidIfStale() {
     val asked = relayout.check(laidOut(preview)) ?: return
-    forceLayoutAll(preview)
-    preview.measure(MeasureSpec.makeMeasureSpec(Encode.WIDTH, MeasureSpec.EXACTLY), MeasureSpec.makeMeasureSpec(Encode.HEIGHT, MeasureSpec.EXACTLY))
-    preview.layout(preview.left, preview.top, preview.left + Encode.WIDTH, preview.top + Encode.HEIGHT)
-    if (asked.written) EngineHost.line(RecordEntry("preview-relaid", listOf("reason" to asked.stale.wire)))
+    forceLayoutAll(this)
+    measureAndLayout()
+    asked.entry?.let(EngineHost::line)
   }
 
   private fun laidOut(view: View): LaidOut =

@@ -1,8 +1,14 @@
 package com.seazn.capture.engine.preview
 
+import com.seazn.capture.engine.core.RecordEntry
+import com.seazn.capture.engine.core.SessionRecord
+import com.seazn.capture.engine.core.Shared
+import org.json.JSONObject
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 /**
  * N42: the preview's tree as the device showed it. PreviewView and the CameraViewfinder at the encode's 1280 x 720, and
@@ -104,5 +110,30 @@ class PreviewRelayoutTest {
   @Test
   fun `the wire words are the record's`() {
     assertEquals(listOf("requested", "empty"), Stale.entries.map { it.wire })
+  }
+
+  @Test
+  fun `the episode's first relayout is a preview-relaid warning with its reason, and the rest write nothing`() {
+    assertEquals(RecordEntry("preview-relaid", listOf("reason" to "empty"), "warn"), Relayout(Stale.EMPTY, written = true).entry)
+    assertEquals(RecordEntry("preview-relaid", listOf("reason" to "requested"), "warn"), Relayout(Stale.REQUESTED, written = true).entry)
+    assertNull(Relayout(Stale.EMPTY, written = false).entry)
+  }
+
+  /** The kind and its one key are the allow-list's, so the JS scrub keeps them, and the record keeps the word as written. */
+  @Test
+  fun `the allow-list names the kind and its key, and the record keeps the reason`() {
+    val list = Shared.read("scrub/allow-list.json")
+    val entry = Relayout(Stale.REQUESTED, written = true).entry!!
+    assertTrue(list.getJSONObject("kinds").has("preview-relaid"))
+    val plain = list.getJSONArray("plain").let { array -> (0 until array.length()).map { array.getString(it) } }
+    assertTrue("reason" in plain, "reason is a plain word")
+    assertFalse(list.getJSONObject("scalars").has("reason"), "and not a scalar")
+    assertTrue("reason" in SessionRecord.PLAIN_KEYS, "the record's own list agrees")
+    val lines = mutableListOf<String>()
+    SessionRecord { lines += it }.append(0, entry)
+    val line = JSONObject(lines.single())
+    assertEquals("preview-relaid", line.getString("kind"))
+    assertEquals("warn", line.getString("level"))
+    assertEquals("requested", line.getString("reason"))
   }
 }
