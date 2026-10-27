@@ -54,6 +54,9 @@ class CapturePreviewView(context: Context, appContext: AppContext) : ExpoView(co
   /** Between our attach and detach. `isAttachedToWindow` still reads true inside `onDetachedFromWindow`. */
   private var attached = false
 
+  /** N42's device check: what the debug seam returned at attach, called at detach; null in a release build. */
+  private var seamRelease: (() -> Unit)? = null
+
   /** N42: a fresh rule each attach, so a check from before a detach never confirms one after it. */
   private var relayout = PreviewRelayout()
   private val relayoutCheck =
@@ -115,6 +118,7 @@ class CapturePreviewView(context: Context, appContext: AppContext) : ExpoView(co
     relayout = PreviewRelayout()
     removeCallbacks(relayoutCheck)
     postDelayed(relayoutCheck, RELAYOUT_CHECK_MS)
+    guarded("seam") { seamRelease = PreviewSeam.onAttach?.invoke(preview) }
     following?.cancel()
     // A null streamer unbinds: `setVideoSourceProvider(null)` (StreamPack 3.2.1, as 3.2.0, a suspend function).
     following =
@@ -157,6 +161,8 @@ class CapturePreviewView(context: Context, appContext: AppContext) : ExpoView(co
 
   override fun onDetachedFromWindow() {
     removeCallbacks(relayoutCheck)
+    guarded("seam") { seamRelease?.invoke() }
+    seamRelease = null
     following?.cancel()
     following = null
     attached = false
