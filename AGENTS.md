@@ -655,6 +655,12 @@ thermal member. Only transport trouble degrades a session.
   --no-install`, then `pnpm expo run:android --no-bundler` or `./gradlew
   assembleDebug|assembleRelease`, installed with `adb`. `eas.json` stays for
   the day the owner decides otherwise; it is not an instruction.
+- **The build number is the commit count** (`app.config.ts`; owner,
+  2026-10-26): Android's versionCode and iOS's buildNumber, so the record's
+  and the beat's `appVersion` read `1.0.0-<count>` and name the build. On
+  Android Gradle reads the count when it builds, so a build after new commits
+  needs no fresh prebuild; iOS's is written at prebuild. Build what a phone
+  gets from a committed checkout; `version` in `app.json` moves only by hand.
 - ESLint + Prettier, one toolchain, so `eslint-plugin-boundaries` comes free.
 - pnpm, pinned by `packageManager` to the main repo's version, with corepack
   so that pin is the only one. Default isolated linker — see
