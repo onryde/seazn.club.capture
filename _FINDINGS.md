@@ -1315,7 +1315,7 @@ record carries the whole line.
 
 **Review of #23, closed 2026-10-27:** a raise's `bitrate` line now carries the interval's mean egress that passed the
 gate (it carried the one reading the raise fell due on) and `count`, the due raises held since the last
-`bitrate-held` line, which were otherwise never said; `gateBps` rounds up, so it is the least egress that raises (it
+`bitrate-held` line, which only a later held line said, folded into its count, and none if no hold came; `gateBps` rounds up, so it is the least egress that raises (it
 named one 1 b/s under the gate that held). No new key: `count` was already the contract's.
 
 **Constant bitrate (CBR), not built:** a later device experiment. VBR on a quiet picture is what leaves the gate

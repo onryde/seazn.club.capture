@@ -259,7 +259,10 @@ object BitrateRegulator {
    */
   fun gateBps(targetBps: Int): Long = (Encode.expectedEgressBps(targetBps) * TESTED_PERCENT + 99) / 100
 
-  /** The gate held a due raise. The first since [HELD_LINE_MS] is said, with the count since the last line said. */
+  /**
+   * The gate held a due raise. The first since [HELD_LINE_MS] is said, with the count since the last line said or the
+   * last raise, which says its own ([Tested.heldBefore]).
+   */
   private fun held(state: Regulation, nowMs: Long): Regulated {
     val count = state.untestedRaises + 1
     val waiting = state.cleanWaitRestarted(nowMs)

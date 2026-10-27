@@ -47,7 +47,8 @@ class SessionMachineBitrateRecordTest {
   }
 
   @Test
-  fun `a raise says raise, with the reading it fell due on`() {
+  fun `a raise says raise, with the reading it fell due on, its interval's mean egress and no held raises`() {
+    // Steady 4 Mbps: the interval's mean is the reading's, 4_000_000, and nothing was held before it (count 0).
     // 4 Mbps clean: the raise at 11 s is 20% of 1_500_000, 300_000.
     val rig = MachineRig()
     rig.link = steady()
@@ -75,7 +76,7 @@ class SessionMachineBitrateRecordTest {
     val line = rig.records("bitrate").single()
     assertEquals(BitrateMove.RAISE, line.field("reason"))
     val egress = line.field("egressBps") as Long
-    assertTrue(egress in 2_000_001L until 4_000_000L, "the mean of 2 Mbps readings and one of 4 Mbps: $egress")
+    assertEquals(2_200_000L, egress, "the mean of nine 2 Mbps readings and one of 4 Mbps, (9 × 2_000_000 + 4_000_000) / 10")
     assertEquals(0, line.field("count"))
     rig.send(Input.Link(1, LinkCounters(bytes + 250_000, 13_000, 0, 3, 0, 20, 40, null)))
     assertTrue(rig.records("bitrate").last().fields.none { it.first == "count" }, "a cut names no held raises")
@@ -123,16 +124,44 @@ class SessionMachineBitrateRecordTest {
     assertEquals(1, rig.records("bitrate-held").size)
   }
 
+  /** 500 kb/s at 1500k, under its gate of 1_310_540, until [busyFromMs], then 4 Mbps. */
+  private fun quietThenBusy(busyFromMs: Long): (Long) -> LinkCounters {
+    var bytes = 0L
+    return { t ->
+      bytes += if (t >= busyFromMs) 500_000 else 62_500
+      LinkCounters(bytes, t, 0, 0, 0, 20, 50, null)
+    }
+  }
+
+  @Test
+  fun `a raise after held raises names how many no held line said`() {
+    // Review of #23. Quiet at 1500k: a raise falls due and is held at 11 s (said, count 1), 21 s and 31 s (counted,
+    // unsaid). Busy from 32 s: the wait restarted at 31 s, so the raise falls due at 41 s on ten 4 Mbps readings, and
+    // 1500k rises by 20% to 1800k. Its line carries the 2 no held line said.
+    val rig = MachineRig()
+    rig.link = quietThenBusy(busyFromMs = 32_000)
+    rig.live()
+    rig.advance(42_000)
+    assertEquals(listOf(1), rig.records("bitrate-held").map { it.field("count") })
+    val line = rig.records("bitrate").single()
+    assertEquals(BitrateMove.RAISE, line.field("reason"))
+    assertEquals(1_800_000, line.field("to"))
+    assertEquals(4_000_000L, line.field("egressBps"))
+    assertEquals(2, line.field("count"))
+  }
+
   @Test
   fun `the bitrate and bitrate-held lines are the allow-list's, each key plain or a scalar`() {
     val cut = MachineRig().live()
     cut.send(Input.Link(1, LinkCounters(250_000, 400, 0, 3, 0, 20, 40, null)))
-    val quiet = MachineRig()
-    quiet.link = steady(bps = 500_000)
-    quiet.live()
-    quiet.advance(15_000)
-    val lines = cut.records("bitrate") + quiet.records("bitrate-held")
-    assertEquals(listOf("bitrate", "bitrate-held"), lines.map { it.kind })
+    // The raise line is the only bitrate line with `count`.
+    val raised = MachineRig()
+    raised.link = quietThenBusy(busyFromMs = 32_000)
+    raised.live()
+    raised.advance(42_000)
+    val lines = cut.records("bitrate") + raised.records("bitrate") + raised.records("bitrate-held")
+    assertEquals(listOf("bitrate", "bitrate", "bitrate-held"), lines.map { it.kind })
+    assertTrue(lines[1].fields.any { it.first == "count" }, "the raise line carries count: ${lines[1]}")
     val kinds = list.getJSONObject("kinds").keySet()
     val plain = list.getJSONArray("plain").let { a -> (0 until a.length()).map { a.getString(it) }.toSet() }
     val scalars = list.getJSONObject("scalars").keySet()

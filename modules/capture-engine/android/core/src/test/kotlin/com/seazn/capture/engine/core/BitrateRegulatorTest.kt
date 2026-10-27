@@ -620,9 +620,15 @@ class BitrateRegulatorTest {
 
   @Test
   fun `a cut, a clamp and a held raise name nothing tested`() {
-    assertNull(regulated(Regulation(3_000_000), reading(dropped = 10)).tested)
-    assertNull(regulated(Regulation(4_000_000), reading()).tested)
-    assertNull(heldLines(Regulation(500_000), 1_000, 10_000, quiet).first.let { regulated(it, quiet(11_000), nowMs = 11_000) }.tested)
+    val cut = regulated(Regulation(3_000_000), reading(dropped = 10))
+    assertEquals(BitrateMove.DROPS, cut.move)
+    assertNull(cut.tested)
+    val clamp = regulated(Regulation(4_000_000), reading())
+    assertEquals(BitrateMove.CLAMP, clamp.move)
+    assertNull(clamp.tested)
+    val held = heldLines(Regulation(500_000), 1_000, 10_000, quiet).first.let { regulated(it, quiet(11_000), nowMs = 11_000) }
+    assertEquals(HeldRaise(500_000, 500_000, 505_540, 1), held.held)
+    assertNull(held.tested)
   }
 
   @Test
