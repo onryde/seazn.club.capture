@@ -1318,6 +1318,30 @@ untested, and CBR would test every interval. Its costs: about 4 GB of mobile dat
 (3_000_000 × 10_800 s / 8), possible heat, encoders that ignore the CBR mode, and `SrtBandwidth`'s overshoot
 factor (`OVERSHOOT_FACTOR`, F-P5-11), which is sized for VBR.
 
+**Cloudflare's input recommendations** (r2, 2026-10-27; each point labelled as r2 labelled it). Source:
+[Stream Live, Requirements and Recommendations](https://developers.cloudflare.com/stream/stream-live/start-stream-live/),
+fetched 2026-10-27.
+
+- DOC: input bitrate "should be between 2 Mbps and 14 Mbps" ("should", not "must"; "typically under 10 Mbps"), and
+  CBR is preferred over VBR "When possible". The phone sends 500k–3000k, so it is under that whenever the target is
+  under 2000k; the 500k floor is 4× under it.
+- DOC: the keyframe interval "must be between 2 and 10 seconds", with closed GOPs; 4–8 s is the recommendation for
+  standard HLS/DASH (a shorter GOP lowers latency and costs encoding efficiency). The phone's 2 s GOP
+  (`gopDurationInS = 2f`, `StreamerAdapter.kt`) is valid, at the bottom of the range.
+- UNKNOWN: what Cloudflare does with an input under 2 Mbps. The doc and its
+  [troubleshooting page](https://developers.cloudflare.com/stream/stream-live/troubleshooting/) name no effect on
+  renditions or packaging. The owner saw R-990P's recording look fine on YouTube (observed, not measured). No link to
+  F-P5-13's falling behind is measured: none is recorded.
+- INFERRED from the compositor's code: in composed mode the relay re-encodes at a fixed rate (720p 4000 kb/s, 1080p
+  6000 kb/s, 2 s GOP), so its output to Cloudflare stays inside the recommended range whatever the phone sends, and the
+  relay has no input-rate check. But the camera's detail is capped by the phone's rate: a 500k picture re-encoded at
+  4 Mb/s is still a 500k picture (the overlay stays sharp). The phone's GOP matters to the relay only at a start or a
+  reconnect, where 2 s is the shortest wait for a keyframe. No run at 500k measured the relay.
+
+So the floor is a choice outside Cloudflare's "should", with its effect unmeasured, and it is one more reason the climb
+off it matters (this finding's fix). A higher floor is not proposed (the capture session's call, not the owner's): on a
+thin link 500k is what gets through.
+
 ---
 
 ### N42 — After a fall the preview went black while capture and publish carried on
