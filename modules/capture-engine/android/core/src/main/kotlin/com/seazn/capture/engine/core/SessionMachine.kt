@@ -406,19 +406,25 @@ internal object Transports {
     return Step(next, commands)
   }
 
-  /** R-990P: the move, the rule that made it, and the reading it was made on. */
-  private fun bitrateLine(before: Int, regulated: Regulated, sample: LinkSample): Command =
-    record(
-      "bitrate",
-      "from" to before,
-      "to" to regulated.state.targetBps,
-      "reason" to regulated.move,
-      "egressBps" to sample.egressBps,
-      "dropped" to sample.droppedPackets,
-      "lost" to sample.lostPackets,
-      "sendBufferMs" to sample.sendBufferMs,
-      "bandwidthBps" to sample.bandwidthBps,
-    )
+  /**
+   * R-990P: the move, the rule that made it, and the reading it was made on. A raise was decided on its interval's mean
+   * egress, not the reading's, so its line carries that mean, and the due raises held before it (`count`).
+   */
+  private fun bitrateLine(before: Int, regulated: Regulated, sample: LinkSample): Command {
+    val tested = regulated.tested
+    val fields =
+      listOf(
+        "from" to before,
+        "to" to regulated.state.targetBps,
+        "reason" to regulated.move,
+        "egressBps" to (tested?.egressBps ?: sample.egressBps),
+        "dropped" to sample.droppedPackets,
+        "lost" to sample.lostPackets,
+        "sendBufferMs" to sample.sendBufferMs,
+        "bandwidthBps" to sample.bandwidthBps,
+      )
+    return Command.Record(RecordEntry("bitrate", fields + listOfNotNull(tested?.let { "count" to it.heldBefore })))
+  }
 
   /** R-990P: F-P5-7's gate held due raises, and the encoded frame rate while it did (r2's question). */
   private fun heldLine(held: HeldRaise, videoFps: Double?): Command =

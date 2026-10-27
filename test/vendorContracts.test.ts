@@ -142,6 +142,9 @@ describe('pnpm contracts:vendor (plan D spec §3.1)', () => {
       'relay-job.v1.json': '{"r":1}\n',
       'fixtures/relay-job.v1/valid.json': '{}\n',
       'fixtures/capture-a.v1/relay-job.v1.json': '{}\n',
+      // A capture-looking name inside another family's folder is that family's: the capture rule is held to the
+      // path's start (review of #24).
+      'fixtures/relay-job.v1/capture-x.json': '{}\n',
       // A line break in a name is judged like any other character.
       'fixtures/capture-a.v1/odd\nname.json': '{}\n',
     });
@@ -153,7 +156,11 @@ describe('pnpm contracts:vendor (plan D spec §3.1)', () => {
       'fixtures/capture-a.v1/relay-job.v1.json',
       'fixtures/capture-a.v1/valid.json',
     ]);
-    expect(result.skipped).toEqual(['fixtures/relay-job.v1/valid.json', 'relay-job.v1.json']);
+    expect(result.skipped).toEqual([
+      'fixtures/relay-job.v1/capture-x.json',
+      'fixtures/relay-job.v1/valid.json',
+      'relay-job.v1.json',
+    ]);
     expect(listFiles(target)).toEqual([
       'README.md',
       'VENDORED.json',

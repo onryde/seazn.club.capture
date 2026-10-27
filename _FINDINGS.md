@@ -1306,12 +1306,17 @@ the phone was at or above 30 fps on the wire, and nothing on the relay side surv
   `Input.Frames` → `StallWatchdog.videoFps`), so the held line carries it under the existing `videoFps` key. No
   configured `fps` was added: it would need the glue to hand a constant to the core.
 
-**Brief for the web:** the record contract (`capture-record.v1.json`, vendored at a6cc1f038, `additionalProperties:
-false`) lists none of the seven new scalars: `bandwidthBps`, `dropped`, `egressBps`, `gateBps`, `lost`,
-`sendBufferMs` and `target`. Until it does, Send record drops them from their lines (Q4, `fitLine`), and the contract
-admits the rest (`from`, `to`, `reason`; `count`, `videoFps`); Share record keeps them. The new kind passes the
-contract's pattern. Done 2026-10-26: web #1037 (f0feab16c) lists the seven, vendored in capture
-PR #24, so Send record carries the whole line.
+**Brief for the web (done):** the record contract (`capture-record.v1.json`, then vendored at a6cc1f038,
+`additionalProperties: false`) listed none of the seven new scalars: `bandwidthBps`, `dropped`, `egressBps`, `gateBps`,
+`lost`, `sendBufferMs` and `target`. Until it did, Send record dropped them from their lines (Q4, `fitLine`), and the
+contract admitted the rest (`from`, `to`, `reason`; `count`, `videoFps`); Share record kept them. The new kind passes
+the contract's pattern. Done 2026-10-26: web #1037 (f0feab16c) lists the seven, vendored in capture PR #24, so Send
+record carries the whole line.
+
+**Review of #23, closed 2026-10-27:** a raise's `bitrate` line now carries the interval's mean egress that passed the
+gate (it carried the one reading the raise fell due on) and `count`, the due raises held since the last
+`bitrate-held` line, which only a later held line said, folded into its count, and none if no hold came; `gateBps` rounds up, so it is the least egress that raises (it
+named one 1 b/s under the gate that held). No new key: `count` was already the contract's.
 
 **Constant bitrate (CBR), not built:** a later device experiment. VBR on a quiet picture is what leaves the gate
 untested, and CBR would test every interval. Its costs: about 4 GB of mobile data per 3 h at 3 Mb/s
