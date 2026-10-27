@@ -5,5 +5,10 @@
       android:name="com.seazn.capture.engine.debug.ScriptedServerInstaller"
       android:authorities="${applicationId}.scripted-code"
       android:exported="false" />
+    <!-- N42's device check: debug builds only. Fills PreviewSeam with a broadcast that lays the preview's SurfaceView out at 0 x 0. -->
+    <provider
+      android:name="com.seazn.capture.engine.debug.LoseSurfaceInstaller"
+      android:authorities="${applicationId}.lose-surface"
+      android:exported="false" />
   </application>
 </manifest>
