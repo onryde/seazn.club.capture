@@ -64,6 +64,25 @@ class BitrateRegulatorTest {
   }
 
   @Test
+  fun `a busy picture on a link that carries it climbs from the floor to 3000k in 10 raises, 100 s, and stays`() {
+    // Owner, 2026-10-27: "make sure that do we reach that always 3000k". 4 Mbps of egress passes every gate on the way
+    // (the highest, at 2_579_889: (2_579_889 + 128_000) × 1.15 × 0.7 = 2_179_850). Each raise is 20% of the target,
+    // whole b/s, and never under 100k; the first falls due 10 s after the first clean reading, each next 10 s after it:
+    // 500_000 → 600_000 (100k, the minimum) → 720_000 → 864_000 → 1_036_800 → 1_244_160 → 1_492_992 → 1_791_590
+    // → 2_149_908 → 2_579_889 → 3_000_000 (3_095_866, held to the ceiling), at 11 s, 21 s, … 101 s.
+    val steps = listOf(600_000, 720_000, 864_000, 1_036_800, 1_244_160, 1_492_992, 1_791_590, 2_149_908, 2_579_889, 3_000_000)
+    var state = Regulation(Encode.FLOOR_BPS)
+    val seen = mutableListOf<Pair<Long, Int>>()
+    for (t in 1_000L..200_000L step 1_000) {
+      val before = state.targetBps
+      state = BitrateRegulator.next(state, reading(), t, Transport.SRT, latency)
+      if (state.targetBps != before) seen += t to state.targetBps
+    }
+    assertEquals((0 until 10).map { 11_000L + it * 10_000L }.zip(steps), seen)
+    assertEquals(3_000_000, state.targetBps, "and it stays at the ceiling, to 200 s")
+  }
+
+  @Test
   fun `the target never passes 3000k`() {
     val start = Regulation(2_950_000)
     assertEquals(3_000_000, run(start, 1_000, 11_000).targetBps)
