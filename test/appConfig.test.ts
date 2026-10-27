@@ -41,6 +41,10 @@ describe('the build number (app.config.ts)', () => {
     expect(config.ios?.bundleIdentifier).toBe('com.seazn.capture');
   });
 
+  it('registers the build.gradle mod that reads the count when Gradle builds (review round 2)', () => {
+    expect(typeof appConfig(context(root)).mods?.android?.appBuildGradle).toBe('function');
+  });
+
   it('is the same on a second call (the config is read more than once a build)', () => {
     expect(buildNumber(root)).toBe(buildNumber(root));
   });
