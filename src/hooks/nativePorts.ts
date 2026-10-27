@@ -3,6 +3,7 @@ import { getLocales } from 'expo-localization';
 import { router } from 'expo-router';
 import { Linking, Platform } from 'react-native';
 import { loadCaptureEngineNative } from '@/engine/nativeModule';
+import { appVersionOf } from '@/hooks/appVersion';
 import { chooseCodePort } from '@/hooks/codePortWiring';
 import { chooseEngine, routedRecordFor } from '@/hooks/engineWiring';
 import { photoPortFor } from '@/hooks/photoPortWiring';
@@ -133,7 +134,7 @@ export function createNativePorts(
     hosts,
     deviceLanguages: getLocales().map((locale) => locale.languageCode),
     phoneZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-    appVersion: Constants.expoConfig?.version ?? '0.0.0',
+    appVersion: appVersionOf(Constants.expoConfig, Platform.OS),
     devTools: __DEV__,
   };
 }
