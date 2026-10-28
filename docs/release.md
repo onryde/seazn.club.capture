@@ -24,11 +24,22 @@ Steps marked _owner_ need the owner's accounts.
    Developer role and a token for it. Add the token to GitHub as the
    repository secret `EXPO_TOKEN` (`gh secret set EXPO_TOKEN --repo
 onryde/seazn.club.capture`).
-2. **Upload key** (_owner_). `pnpm exec eas credentials -p android`, choose
-   the `production` profile, and let EAS generate the keystore. EAS keeps it;
-   download a backup from the same menu and store it outside the repo. Google
-   holds the app signing key (Play App Signing), so a lost upload key can be
-   reset through Play support.
+2. **Upload key** (_owner_). Done: the upload key is EAS's default Android
+   build credentials, `ycrj1dLXkY` (owner, 2026-10-28: "first one"), made by
+   the September development builds. Exactly one keystore stays on EAS; a
+   second one, made the same day, is to be deleted. Its fingerprint, which
+   Play Console shows under App integrity after the first upload:
+
+   ```
+   SHA-256  B1:1E:80:4C:33:57:5D:5C:29:9A:30:99:A2:8B:06:E3:91:90:EF:AC:22:87:52:AA:E3:42:96:28:D1:EA:3B:39
+   SHA-1    1A:03:29:A8:B6:08:D1:00:17:4E:FD:F5:7A:91:A6:B7:9D:8F:16:01
+   ```
+
+   `pnpm exec eas credentials -p android` (in a terminal of its own: it asks
+   questions) → `production` → Download existing keystore keeps a backup,
+   outside the repo with its passwords. Google holds the app signing key (Play
+   App Signing), so a lost upload key can be reset through Play support.
+
 3. **Play Console** (_owner_). A developer account; an organisation account if
    Seazn can have one, since a personal account opened after November 2023
    must run a closed test with 12 testers for 14 days before it can publish to
