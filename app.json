@@ -30,7 +30,7 @@
         "projectId": "bf8cd971-405e-417d-a322-9ff45c50f4bc"
       }
     },
-    "owner": "ashokhein",
+    "owner": "onryde",
     "plugins": [
       "expo-router",
       "expo-font",
