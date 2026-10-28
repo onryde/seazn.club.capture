@@ -17,9 +17,13 @@ Development and test builds stay local: Gradle and `adb`, as AGENTS §11 says.
 
 Steps marked _owner_ need the owner's accounts.
 
-1. **Expo token** (_owner_). expo.dev → Account settings → Access tokens →
-   create one. Add it to GitHub as the repository secret `EXPO_TOKEN`
-   (Settings → Secrets and variables → Actions).
+1. **Expo token** (_owner_). The EAS project is `@onryde/capture`, in the
+   `onryde` organisation (owner, 2026-10-28: "we want to use onryde"; moved
+   from `@ashokhein/capture`, same project ID). expo.dev → `onryde` →
+   Organization settings → Access tokens: make a robot user with the
+   Developer role and a token for it. Add the token to GitHub as the
+   repository secret `EXPO_TOKEN` (`gh secret set EXPO_TOKEN --repo
+onryde/seazn.club.capture`).
 2. **Upload key** (_owner_). `pnpm exec eas credentials -p android`, choose
    the `production` profile, and let EAS generate the keystore. EAS keeps it;
    download a backup from the same menu and store it outside the repo. Google
@@ -75,7 +79,7 @@ Steps marked _owner_ need the owner's accounts.
 
 3. **Watch it.** The GitHub Action ends once EAS has the build (`--no-wait`).
    The Action's log line "Build number" names the count. The build and the
-   submission run on expo.dev (project `capture`, under Builds and
+   submission run on expo.dev (`@onryde/capture`, under Builds and
    Submissions).
 4. **Test from Play.** Install it on a phone through the internal testing link.
    It talks to seazn.club, so pair it with a production stream code, go live
