@@ -26,8 +26,8 @@ Steps marked _owner_ need the owner's accounts.
 onryde/seazn.club.capture`).
 2. **Upload key** (_owner_). Done: the upload key is EAS's default Android
    build credentials, `ycrj1dLXkY` (owner, 2026-10-28: "first one"), made by
-   the September development builds. Exactly one keystore stays on EAS; a
-   second one, made the same day, is to be deleted. Its fingerprint, which
+   the September development builds. It is the only keystore on EAS: a
+   second one, made the same day, was deleted. Its fingerprint, which
    Play Console shows under App integrity after the first upload:
 
    ```
