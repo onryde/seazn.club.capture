@@ -4,8 +4,8 @@ import { describe, expect, it } from 'vitest';
 import { seaznEnvironment, seaznHosts, seaznOrigin } from '@/services/seaznHosts';
 
 /**
- * The production release (owner, 2026-10-28): a `v<version>` tag builds on EAS with eas.json's `production` profile
- * and submits to Play's internal track (.github/workflows/release.yml, docs/release.md). A host word the app does not
+ * The production release: a `v<version>` tag builds on EAS with eas.json's `production` profile (owner, 2026-10-28)
+ * and submits to Play's internal track (the controller's choice; .github/workflows/release.yml, docs/release.md). A host word the app does not
  * know reads as staging, safely for a test build and wrongly for a store one, so the word is checked against the
  * app's own reading of it.
  */

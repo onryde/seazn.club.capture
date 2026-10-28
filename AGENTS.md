@@ -654,10 +654,11 @@ thermal member. Only transport trouble degrades a session.
   anything native (it gated P5), but it is a local one: `pnpm expo prebuild -p
   android --no-install`, then `pnpm expo run:android --no-bundler` or
   `./gradlew assembleDebug|assembleRelease`, installed with `adb`. The one
-  exception (owner, 2026-10-28: "Full EAS cloud", "only for prod release"): a
-  `v<version>` tag on main runs `.github/workflows/release.yml`, which builds
-  the app bundle on EAS with `eas.json`'s `production` profile (seazn.club)
-  and submits it to Play's internal track. Nothing else runs `eas build` or
+  exception (owner, 2026-10-28: "Full EAS cloud", "only for prod release",
+  "like we can tag then trigger eas?"): a `v<version>` tag on main runs
+  `.github/workflows/release.yml`, which builds the app bundle on EAS with
+  `eas.json`'s `production` profile (seazn.club). It submits to Play's
+  internal track, the controller's choice; promoting it is done by hand. Nothing else runs `eas build` or
   `eas submit`, and nothing runs `eas update`. The steps are in
   `docs/release.md`.
 - **The build number is the commit count** (`app.config.ts`; owner,

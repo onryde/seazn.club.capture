@@ -1,9 +1,11 @@
-# Production release (owner, 2026-10-28): a `v<version>` tag on main builds the
-# Android app bundle on EAS with eas.json's `production` profile (seazn.club)
-# and submits it to Play's internal testing track. This is the repo's only use
-# of EAS (AGENTS §11): development and test builds stay local, Gradle and adb.
-# What it needs (the EXPO_TOKEN secret, the upload key and the Play service
-# account key held on EAS, a first upload by hand) is in docs/release.md.
+# Production release: a `v<version>` tag on main builds the Android app bundle
+# on EAS with eas.json's `production` profile (seazn.club). The owner's ruling,
+# 2026-10-28: "Full EAS cloud", "only for prod release", "like we can tag then
+# trigger eas?". EAS then submits it to Play's internal testing track, the
+# controller's choice: nothing reaches the public until a person promotes it.
+# This is the repo's only use of EAS (AGENTS §11): development and test builds
+# stay local, Gradle and adb. What it needs (the EXPO_TOKEN secret, the upload
+# key and the Play service account key held on EAS) is in docs/release.md.
 name: release
 
 on:
@@ -22,6 +24,8 @@ permissions:
 jobs:
   release:
     runs-on: ubuntu-latest
+    # Where EXPO_TOKEN can be scoped to tags only (docs/release.md, Once 6).
+    environment: release
     # The checks take a few minutes; EAS builds after the job has ended
     # (--no-wait), so the runner is not held for the build.
     timeout-minutes: 20

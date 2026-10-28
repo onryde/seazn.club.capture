@@ -1,12 +1,15 @@
 # Releasing to Google Play
 
 A production release is the one build that is not made on this Mac (AGENTS §11;
-owner, 2026-10-28: "Full EAS cloud", "only for prod release"). A `v<version>`
-tag on main runs `.github/workflows/release.yml`. The workflow checks the tag,
-runs the same checks as a pull request, and starts an EAS build with
-`eas.json`'s `production` profile: an Android app bundle for seazn.club, signed
-with the upload key EAS holds. EAS submits it to Play's **internal testing**
-track when it is built. Promoting it further is done by hand in Play Console.
+owner, 2026-10-28: "Full EAS cloud", "only for prod release", "like we can tag then
+trigger eas?"). A `v<version>` tag on main runs `.github/workflows/release.yml`.
+The workflow checks the tag, runs the same checks as a pull request, and starts
+an EAS build with `eas.json`'s `production` profile: an Android app bundle for
+seazn.club, signed with the upload key EAS holds. EAS submits it to Play's
+**internal testing** track when it is built, released to its testers
+(`releaseStatus: completed`, which is also eas-cli's default). The track and
+the status are the controller's choices, not the owner's: nothing reaches the
+public until a person promotes it in Play Console.
 
 Development and test builds stay local: Gradle and `adb`, as AGENTS §11 says.
 
@@ -25,7 +28,8 @@ Steps marked _owner_ need the owner's accounts.
 3. **Play Console** (_owner_). A developer account; an organisation account if
    Seazn can have one, since a personal account opened after November 2023
    must run a closed test with 12 testers for 14 days before it can publish to
-   production. Create the app as `com.seazn.capture`.
+   production. Create the app as `com.seazn.capture`; Play fixes the package
+   name at the first upload, and it can never change.
 4. **Store listing and policy forms** (_owner_):
    - app icon 512 × 512 (from `assets/icon.png`), a feature graphic
      1024 × 500, and 2–8 phone screenshots of the app only;
@@ -41,6 +45,16 @@ Steps marked _owner_ need the owner's accounts.
    release rights for this app (<https://expo.fyi/creating-google-service-account>).
    Upload the key with `pnpm exec eas credentials -p android` → Google Service
    Account. EAS Submit then uses it; the key never enters the repo.
+6. **Release environment** (_owner_, optional). The workflow's job runs in the
+   GitHub environment `release`, which GitHub makes on its first run. Moving
+   `EXPO_TOKEN` into that environment, with a rule that only `v*` tags may
+   deploy, keeps the token from any other workflow.
+7. **First release.** EAS's documentation says its first submission to an app
+   that exists in Play Console makes the first internal release. If Play
+   refuses it while the app is still a draft ("Only releases with status draft
+   may be created on draft app"), download the app bundle from the build's
+   page on expo.dev and upload it once by hand in Play Console → Testing →
+   Internal testing. Later tags submit by themselves.
 
 ## Each release
 
@@ -60,11 +74,16 @@ Steps marked _owner_ need the owner's accounts.
    not on main.
 
 3. **Watch it.** The GitHub Action ends once EAS has the build (`--no-wait`).
-   The build and the submission run on expo.dev (project `capture`, under
-   Builds and Submissions). The log line "Build number" names the count.
+   The Action's log line "Build number" names the count. The build and the
+   submission run on expo.dev (project `capture`, under Builds and
+   Submissions).
 4. **Test from Play.** Install it on a phone through the internal testing link.
    It talks to seazn.club, so pair it with a production stream code, go live
-   once, and check the footer's `1.0.0-<count>`.
+   once, and tap Send record to Seazn once, which has only been run against
+   staging. Check the build number where the installed package reports it:
+   the version code in Play Console's App bundle explorer, or the record's
+   `appVersion`, which reads `1.0.0-<count>`. Home's footer reads the app's
+   embedded config, so it would show the count even if the package did not.
 5. **Promote** in Play Console: to closed testing, or to production with a
    staged rollout. Shipping to production is a product decision: today the
    app is Live Stream only (AGENTS §1).
