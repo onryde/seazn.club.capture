@@ -648,19 +648,28 @@ thermal member. Only transport trouble degrades a session.
   capture session. Scanning uses Google's code scanner, which runs in Play
   services' own activity with no camera permission and no camera session of
   ours, so it does not break this rule.
-- **Build locally; never run EAS.** No `eas build`, `eas submit` or
-  `eas update` — owner ruling, 2026-09-11, after one dev build queued for 42
-  minutes. A build on a real handset is still a prerequisite for anything
-  native (it gated P5), but it is a local one: `pnpm expo prebuild -p android
-  --no-install`, then `pnpm expo run:android --no-bundler` or `./gradlew
-  assembleDebug|assembleRelease`, installed with `adb`. `eas.json` stays for
-  the day the owner decides otherwise; it is not an instruction.
+- **Build locally; EAS only for a production release.** Every development
+  and test build is local — owner ruling, 2026-09-11, after one dev build
+  queued for 42 minutes. A build on a real handset is still a prerequisite for
+  anything native (it gated P5), but it is a local one: `pnpm expo prebuild -p
+  android --no-install`, then `pnpm expo run:android --no-bundler` or
+  `./gradlew assembleDebug|assembleRelease`, installed with `adb`. The one
+  exception (owner, 2026-10-28: "Full EAS cloud", "only for prod release"): a
+  `v<version>` tag on main runs `.github/workflows/release.yml`, which builds
+  the app bundle on EAS with `eas.json`'s `production` profile (seazn.club)
+  and submits it to Play's internal track. Nothing else runs `eas build` or
+  `eas submit`, and nothing runs `eas update`. The steps are in
+  `docs/release.md`.
 - **The build number is the commit count** (`app.config.ts`; owner,
   2026-10-26): Android's versionCode and iOS's buildNumber, so the record's
   and the beat's `appVersion` read `1.0.0-<count>` and name the build. On
   Android Gradle reads the count when it builds, so a build after new commits
   needs no fresh prebuild; iOS's is written at prebuild. Build what a phone
   gets from a committed checkout; `version` in `app.json` moves only by hand.
+  EAS uploads a shallow clone, which counts 1, so the release workflow counts
+  on its full checkout and pins the number in an untracked
+  `build-number.txt`, which `app.config.ts` reads first; an EAS build with no
+  pin fails rather than name itself 1.
 - ESLint + Prettier, one toolchain, so `eslint-plugin-boundaries` comes free.
 - pnpm, pinned by `packageManager` to the main repo's version, with corepack
   so that pin is the only one. Default isolated linker — see

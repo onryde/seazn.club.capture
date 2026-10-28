@@ -1,0 +1,66 @@
+# Production release (owner, 2026-10-28): a `v<version>` tag on main builds the
+# Android app bundle on EAS with eas.json's `production` profile (seazn.club)
+# and submits it to Play's internal testing track. This is the repo's only use
+# of EAS (AGENTS §11): development and test builds stay local, Gradle and adb.
+# What it needs (the EXPO_TOKEN secret, the upload key and the Play service
+# account key held on EAS, a first upload by hand) is in docs/release.md.
+name: release
+
+on:
+  push:
+    tags: ['v*.*.*']
+
+# A release is never cancelled half-way by a second tag.
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+# Least privilege for GITHUB_TOKEN: the job only reads the repo.
+permissions:
+  contents: read
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    # The checks take a few minutes; EAS builds after the job has ended
+    # (--no-wait), so the runner is not held for the build.
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          # The build number is the commit count, which a shallow checkout
+          # counts as 1. Full history, and origin/main for the check below.
+          fetch-depth: 0
+      # Reads the pnpm version from package.json `packageManager`.
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: The tag names app.json's version, on a commit on main
+        run: |
+          version=$(node -p "require('./app.json').expo.version")
+          if [ "$GITHUB_REF_NAME" != "v$version" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME does not name app.json's version $version"
+            exit 1
+          fi
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+            echo "::error::Tag $GITHUB_REF_NAME is not on main"
+            exit 1
+          fi
+      # The same gate as check.yml: nothing reaches Play that would not merge.
+      - run: pnpm check
+      - run: pnpm i18n:release-check
+      # EAS uploads a shallow clone, so the count goes up with the project in
+      # build-number.txt, untracked, which app.config.ts reads first.
+      - name: Pin the build number
+        run: |
+          git rev-list --count HEAD > build-number.txt
+          echo "Build number $(cat build-number.txt)"
+      - name: Build on EAS and submit to Play's internal track
+        run: >-
+          pnpm exec eas build --platform android --profile production
+          --non-interactive --no-wait --auto-submit
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
