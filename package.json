@@ -23,7 +23,8 @@
     "deps:check": "expo install --check",
     "i18n:release-check": "node scripts/check-i18n-release.mjs",
     "contracts:vendor": "node scripts/vendor-contracts.mjs",
-    "build:web": "expo export --platform web"
+    "build:web": "expo export --platform web",
+    "eas-build-pre-install": "bash scripts/eas-build-pre-install.sh"
   },
   "dependencies": {
     "@expo-google-fonts/barlow-condensed": "^0.4.1",

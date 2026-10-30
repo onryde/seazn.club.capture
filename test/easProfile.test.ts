@@ -51,3 +51,28 @@ describe('the production profile (eas.json)', () => {
     });
   });
 });
+
+/**
+ * EAS's image does not ship the Android platform the app compiles against, and AGP's own download mid-build is not
+ * found in the same run (v1.0.0, EAS build 39c9d2f7: "Failed to find target with hash string 'android-37'"). The
+ * pre-install hook installs it first, as android-compile.yml does on CI.
+ */
+describe('the Android platform on an EAS worker (package.json eas-build-pre-install)', () => {
+  const read = (path: string) =>
+    readFileSync(fileURLToPath(new URL(`../${path}`, import.meta.url)), 'utf8');
+  const pkg = JSON.parse(read('package.json')) as { scripts: Record<string, string> };
+  const app = JSON.parse(read('app.json')) as { expo: { plugins: readonly unknown[] } };
+  const buildProperties = app.expo.plugins.find(
+    (p): p is [string, { android: { compileSdkVersion: number } }] =>
+      Array.isArray(p) && p[0] === 'expo-build-properties',
+  );
+
+  it('runs the hook, which installs the platform app.json compiles against', () => {
+    expect(pkg.scripts['eas-build-pre-install']).toBe('bash scripts/eas-build-pre-install.sh');
+    const compileSdk = buildProperties?.[1].android.compileSdkVersion;
+    expect(compileSdk).toBe(37);
+    expect(read('scripts/eas-build-pre-install.sh')).toContain(
+      `'platforms;android-${compileSdk}.0'`,
+    );
+  });
+});
