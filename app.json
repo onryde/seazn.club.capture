@@ -2,7 +2,7 @@
   "expo": {
     "name": "Seazn Capture",
     "slug": "capture",
-    "version": "1.0.1",
+    "version": "1.0.2",
     "orientation": "default",
     "scheme": "seazn-capture",
     "userInterfaceStyle": "dark",
@@ -20,7 +20,15 @@
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
       "predictiveBackGestureEnabled": false,
-      "blockedPermissions": ["android.permission.WRITE_SETTINGS"]
+      "blockedPermissions": [
+        "android.permission.WRITE_SETTINGS",
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.WRITE_EXTERNAL_STORAGE",
+        "android.permission.SYSTEM_ALERT_WINDOW",
+        "android.permission.ACTIVITY_RECOGNITION",
+        "android.permission.USE_BIOMETRIC",
+        "android.permission.USE_FINGERPRINT"
+      ]
     },
     "web": {
       "favicon": "./assets/favicon.png"
