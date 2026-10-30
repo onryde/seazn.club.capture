@@ -653,7 +653,12 @@ thermal member. Only transport trouble degrades a session.
   queued for 42 minutes. A build on a real handset is still a prerequisite for
   anything native (it gated P5), but it is a local one: `pnpm expo prebuild -p
   android --no-install`, then `pnpm expo run:android --no-bundler` or
-  `./gradlew assembleDebug|assembleRelease`, installed with `adb`. The one
+  `./gradlew assembleDebug|assembleRelease`, installed with `adb`. A local build is the dev twin,
+  `com.seazn.capture.dev`, named "Seazn Capture (dev)" with the scheme
+  `seazn-capture-dev`, so it installs beside the Play app; only `eas.json`'s
+  `production` profile sets `APP_VARIANT=production` and builds
+  `com.seazn.capture` (owner, 2026-10-30, option 2; `appVariant` in
+  `app.config.ts`). Switching variant needs a fresh prebuild. The one
   exception (owner, 2026-10-28: "Full EAS cloud", "only for prod release",
   "like we can tag then trigger eas?"): a `v<version>` tag on main runs
   `.github/workflows/release.yml`, which builds the app bundle on EAS with

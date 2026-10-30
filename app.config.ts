@@ -74,16 +74,47 @@ export function countedAtBuild(gradle: string, pinned: number | null = null): st
   );
 }
 
+/**
+ * The variant word the store build carries: eas.json's `production` profile sets it, and EAS sets a profile's env both
+ * where `eas build` runs and on the worker, so the package EAS signs and submits is app.json's.
+ */
+export const STORE_VARIANT = 'production';
+
+type Identity = Pick<ExpoConfig, 'name' | 'scheme' | 'android' | 'ios'>;
+
+/**
+ * The store app and every other build install side by side (owner, 2026-10-30, option 2): the Play build and a local
+ * one shared a package but not a signing key, and Android holds one signature per package across all of a phone's
+ * users. app.json names the store app; a build without [STORE_VARIANT] is its dev twin, with its own package, name and
+ * URL scheme, so a local build never takes the store app's package and two installs never answer the same link. A
+ * store build that lost the word would carry the dev package, which Play refuses: loud, never a quiet wrong release.
+ */
+export function appVariant(
+  config: Identity,
+  env: Readonly<Record<string, string | undefined>> = process.env,
+): Identity {
+  if (env.APP_VARIANT === STORE_VARIANT) return config;
+  const dev = (id: string | undefined) => (id === undefined ? undefined : `${id}.dev`);
+  return {
+    name: `${config.name} (dev)`,
+    scheme: typeof config.scheme === 'string' ? `${config.scheme}-dev` : config.scheme,
+    android: { ...config.android, package: dev(config.android?.package) },
+    ios: { ...config.ios, bundleIdentifier: dev(config.ios?.bundleIdentifier) },
+  };
+}
+
 export default ({ config, projectRoot }: ConfigContext): ExpoConfig => {
   const number = buildNumber(projectRoot);
   const pinned = pinnedBuildNumber(projectRoot);
+  const variant = appVariant({ ...config, name: config.name ?? 'Seazn Capture' });
   return withAppBuildGradle(
     {
       ...config,
-      name: config.name ?? 'Seazn Capture',
+      ...variant,
+      name: variant.name ?? 'Seazn Capture',
       slug: config.slug ?? 'capture',
-      android: { ...config.android, versionCode: number },
-      ios: { ...config.ios, buildNumber: String(number) },
+      android: { ...variant.android, versionCode: number },
+      ios: { ...variant.ios, buildNumber: String(number) },
     },
     (gradle) => {
       gradle.modResults.contents = countedAtBuild(gradle.modResults.contents, pinned);

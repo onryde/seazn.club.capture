@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { seaznEnvironment, seaznHosts, seaznOrigin } from '@/services/seaznHosts';
+import { appVariant, STORE_VARIANT } from '../app.config';
 
 /**
  * The production release: a `v<version>` tag builds on EAS with eas.json's `production` profile (owner, 2026-10-28)
@@ -36,6 +37,19 @@ describe('the production profile (eas.json)', () => {
     expect(seaznHosts(env)).toEqual(['seazn.club']);
     expect(seaznOrigin(env)).toBe('https://seazn.club');
     expect(seaznEnvironment(env)).toBe('production');
+  });
+
+  it('builds the store app’s package, and no other profile does (option 2, 2026-10-30)', () => {
+    const app = JSON.parse(
+      readFileSync(fileURLToPath(new URL('../app.json', import.meta.url)), 'utf8'),
+    ) as { expo: Parameters<typeof appVariant>[0] };
+    expect(production.env?.APP_VARIANT).toBe(STORE_VARIANT);
+    expect(appVariant(app.expo, production.env).android?.package).toBe('com.seazn.capture');
+    const others = Object.entries(
+      eas.build as unknown as Record<string, { env?: Record<string, string> }>,
+    ).filter(([name]) => name !== 'production');
+    expect(others.map(([name]) => name)).toEqual(['base', 'development', 'soak', 'preview']);
+    for (const [, profile] of others) expect(profile.env?.APP_VARIANT).toBeUndefined();
   });
 
   it('takes the build number from the app config, never from EAS’s own counter', () => {
