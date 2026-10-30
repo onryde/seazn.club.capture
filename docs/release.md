@@ -46,7 +46,8 @@ onryde/seazn.club.capture`).
    production. Create the app as `com.seazn.capture`; Play fixes the package
    name at the first upload, and it can never change.
 4. **Store listing and policy forms** (_owner_):
-   - app icon 512 × 512 (from `assets/icon.png`), a feature graphic
+   - app icon 512 × 512 (`assets/store/play-icon-512.png`, drawn with the
+     app's own icons by `node scripts/app-icons.mjs`), a feature graphic
      1024 × 500, and 2–8 phone screenshots of the app only;
    - a privacy policy URL;
    - Data safety: camera and microphone, which stream to the organiser's
