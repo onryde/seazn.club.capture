@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <!-- Android 13+ themed icon: one ink, which the launcher tints. The ring and
+       the smile are cut out, so the ball stays apart from the line. -->
+  <defs>
+    <mask id="cut">
+      <rect width="1024" height="1024" fill="#fff"/>
+      <circle cx="737" cy="541" r="125" fill="#000"/>
+      <circle cx="737" cy="541" r="108" fill="#fff"/>
+      <path d="M 664.4 508.6 A 86.6 86.6 0 0 0 809.6 508.6" fill="none" stroke="#000" stroke-width="14" stroke-linecap="round"/>
+    </mask>
+  </defs>
+  <g transform="translate(128 92.75) scale(0.75)" mask="url(#cut)">
+    <rect x="138" y="650" width="748" height="52" rx="26" fill="#fff"/>
+    <circle cx="737" cy="541" r="108" fill="#fff"/>
+  </g>
+</svg>

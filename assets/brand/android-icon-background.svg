@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <!-- Android's adaptive icon, back layer: the night gradient alone. -->
+  <defs>
+    <linearGradient id="night" x1="0" y1="1" x2="1" y2="0">
+      <stop offset="0" stop-color="#150b36"/>
+      <stop offset="0.5" stop-color="#1d1042"/>
+      <stop offset="1" stop-color="#2e1a5c"/>
+    </linearGradient>
+  </defs>
+  <rect width="1024" height="1024" fill="url(#night)"/>
+</svg>
