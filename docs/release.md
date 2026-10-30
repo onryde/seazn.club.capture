@@ -61,6 +61,15 @@ onryde/seazn.club.capture`).
    release rights for this app (<https://expo.fyi/creating-google-service-account>).
    Upload the key with `pnpm exec eas credentials -p android` → Google Service
    Account. EAS Submit then uses it; the key never enters the repo.
+   Done in part (2026-10-30): the account is
+   `playstore-upload@seazn-club.iam.gserviceaccount.com` (Google Cloud project
+   `seazn-club`), and its key is on EAS at the `onryde` account level. Still
+   owed: assign it to the app (expo.dev → capture → Credentials → Android →
+   `com.seazn.capture` → Service credentials), and invite the address in Play
+   Console with release rights to testing tracks. Without the assignment
+   `--auto-submit` stops with "Google Service Account Keys cannot be set up in
+   --non-interactive mode" after EAS has queued the build: the Action reads
+   red, and the build goes on.
 6. **Release environment** (_owner_, optional). The workflow's job runs in the
    GitHub environment `release`, which GitHub makes on its first run. Moving
    `EXPO_TOKEN` into that environment, with a rule that only `v*` tags may
@@ -71,6 +80,10 @@ onryde/seazn.club.capture`).
    may be created on draft app"), download the app bundle from the build's
    page on expo.dev and upload it once by hand in Play Console → Testing →
    Internal testing. Later tags submit by themselves.
+   Under way (2026-10-30): `v1.0.0` on `ed73461` ran the release workflow
+   (run 41089365907), which queued EAS build `39c9d2f7` (1.0.0, build number
+   689, keystore `ycrj1dLXkY`) and then stopped at the submit, as step 5
+   explains. Its app bundle is uploaded by hand, as above.
 
 ## Each release
 
