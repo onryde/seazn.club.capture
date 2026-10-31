@@ -321,8 +321,7 @@
   "scoring.card.viewOnly.body": "Wedstrijd voorbij: uitslag definitief. Vraag de organisator om het te corrigeren.",
   "scoring.card.linkInvalid.title": "Link ongeldig",
   "scoring.card.linkInvalid.body": "Deze scorelink is niet geldig. Vraag de organisator om een nieuwe link.",
-  "scoring.card.updateNeeded.title": "Update nodig",
-  "scoring.card.updateNeeded.body": "Deze versie van de app kan deze wedstrijd niet scoren. Werk de app bij om door te gaan.",
+  "scoring.card.updateNeeded.body": "Seazn heeft een update nodig om deze wedstrijd te blijven scoren.",
   "scoring.card.updateNeeded.unsent.one": "{count} tap nog niet verstuurd. Die gaat na de update.",
   "scoring.card.updateNeeded.unsent.other": "{count} taps nog niet verstuurd. Die gaan na de update.",
   "scoring.badminton.games": "Games {count}",
@@ -354,5 +353,8 @@
   "scoring.sanction.confirm.title": "{person} diskwalificeren?",
   "scoring.sanction.confirm.body": "Een diskwalificatie beëindigt de wedstrijd.",
   "scoring.sanction.confirm.action": "Diskwalificatie vastleggen",
-  "scoring.refusal.doubleTap": "Niet vastgelegd: dezelfde tap kwam twee keer tegelijk."
+  "scoring.pad.countedOnce": "Eén keer geteld",
+  "scoring.card.updateNeeded.update": "Bijwerken",
+  "scoring.card.updateNeeded.browser": "Scoren in de browser",
+  "scoring.preview.noop": "Alleen een voorbeeld: er opent niets."
 }

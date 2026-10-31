@@ -1,7 +1,7 @@
 import { Redirect } from 'expo-router';
 import { useScreenAwake } from '@/hooks/useScreenAwake';
 import { usePorts } from '@/hooks/usePorts';
-import { BadmintonPadScreen } from '@/ui/screens/BadmintonPadScreen';
+import { BadmintonPadPreviewScreen } from '@/ui/screens/BadmintonPadPreviewScreen';
 
 /**
  * S2's design preview: the badminton pad on a fake, opened from Home's Remote scoring tile in the dev twin only (the
@@ -15,5 +15,5 @@ export default function ScoringPreviewRoute() {
 /** The screen stays on while the pad shows, and its brightness is left alone (owner rulings, 2026-10-31). */
 function PadShown() {
   useScreenAwake();
-  return <BadmintonPadScreen />;
+  return <BadmintonPadPreviewScreen />;
 }

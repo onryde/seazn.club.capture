@@ -17,16 +17,20 @@ import { colour, layout, plateInk, pressedOpacity, radius, space } from '@/ui/th
 type ToolRowProps = {
   readonly tools: readonly PadTool<MessageKey>[];
   readonly onTool: (id: string) => void;
+  /** The pad's own row is `tool-row`; another row of the same buttons (the update banner's) names itself. */
+  readonly testID?: string;
 };
 
 /**
  * The pad's tools, in one row under the last-tap line, sharing its width equally. A tool's weight is its kind: the
  * lime plate (primary), an outline (standard), or the caution outline (destructive: never red, AGENTS §5). A per-side
- * tool says its side on a second line, as typed; a screen reader hears both. A disabled tool keeps its place.
+ * tool says its side on a second line, as typed; a screen reader hears both. The row draws the tools the pad offers
+ * now: one the pad stops offering is not in the list and its cell goes (badminton's Set score, after a game's first
+ * rally), while one offered but not usable now (`enabled` false) keeps its place, disabled.
  */
-export const ToolRow = memo(function ToolRow({ tools, onTool }: ToolRowProps) {
+export const ToolRow = memo(function ToolRow({ tools, onTool, testID = 'tool-row' }: ToolRowProps) {
   return (
-    <View testID="tool-row" style={styles.row}>
+    <View testID={testID} style={styles.row}>
       {tools.map((tool) => (
         <ToolButton key={tool.id} tool={tool} onTool={onTool} />
       ))}

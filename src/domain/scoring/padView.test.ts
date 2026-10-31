@@ -41,13 +41,15 @@ const CARDS: readonly PadStateCard[] = [
 ];
 
 describe('cardPlacement', () => {
-  it('puts a card with nothing to score in place of the pad, and keeps the score beside a finished one', () => {
+  // Owner ruling 8: an app too old to score keeps its pad on screen, view only, with the update banner. The banner
+  // stands where the controls were (its buttons are the way on), so the halves keep the room a score needs.
+  it('puts a card with nothing to score in place of the pad, the update banner in the controls’ place', () => {
     expect(CARDS.map((card) => [card.kind, cardPlacement(card)])).toEqual([
       ['notStarted', 'instead'],
       ['resultRecorded', 'withScore'],
       ['viewOnly', 'withScore'],
       ['linkInvalid', 'instead'],
-      ['updateNeeded', 'instead'],
+      ['updateNeeded', 'forControls'],
     ]);
   });
 });
@@ -85,8 +87,8 @@ describe('withCard', () => {
   it.each([
     { kind: 'notStarted' },
     { kind: 'linkInvalid' },
-    { kind: 'updateNeeded', unsent: 0 },
-  ] as const)('drops the last tap with the pad under $kind', (card) => {
+    { kind: 'updateNeeded', unsent: 2 },
+  ] as const)('drops the last tap with the pad or the controls under $kind', (card) => {
     expect(withCard(live, card).lastTap).toBeNull();
   });
 

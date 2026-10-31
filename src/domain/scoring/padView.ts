@@ -92,17 +92,24 @@ export type PadView<K extends string> = {
 };
 
 /**
- * Where a card sits: `instead` of the pad, when there is nothing to score (not started, a dead link, an app too old);
- * or `withScore`, under the halves still showing the final score (a recorded result, a view-only match).
+ * Where a card sits: `instead` of the pad, when there is nothing to score (not started, a dead link); `withScore`, above
+ * the halves still showing the score (a recorded result, a view-only match); or `forControls`, in the place of the
+ * last-tap line and the tools: an app too old to score, whose pad stays on screen view only (owner ruling 8) while the
+ * banner's buttons are the way on. Above the halves its buttons would leave a half too short for the score
+ * (padFit.test.ts).
  */
-export function cardPlacement(card: PadStateCard): 'instead' | 'withScore' {
-  return card.kind === 'resultRecorded' || card.kind === 'viewOnly' ? 'withScore' : 'instead';
+export type CardPlacement = 'instead' | 'withScore' | 'forControls';
+
+export function cardPlacement(card: PadStateCard): CardPlacement {
+  if (card.kind === 'notStarted' || card.kind === 'linkInvalid') return 'instead';
+  return card.kind === 'updateNeeded' ? 'forControls' : 'withScore';
 }
 
 /**
  * Any sport's pad under a card: the halves stop taking taps and the tools go. Undo stays only under a recorded result,
  * whose card tells the scorer to use it on a mistake in this phone's own taps (the web's `device.resultRecorded`); a
- * card in place of the pad drops the last tap with it. A card replaces one already there. No card: the pad as it is.
+ * view-only match keeps the last tap with no Undo, and a card in place of the pad or of the controls drops the last
+ * tap with it. A card replaces one already there. No card: the pad as it is.
  */
 export function withCard<K extends string>(
   view: PadView<K>,
@@ -126,6 +133,6 @@ function lastTapUnder<K extends string>(
   lastTap: PadLastTap<K> | null,
   card: PadStateCard,
 ): PadLastTap<K> | null {
-  if (lastTap === null || cardPlacement(card) === 'instead') return null;
+  if (lastTap === null || cardPlacement(card) !== 'withScore') return null;
   return card.kind === 'resultRecorded' ? lastTap : { ...lastTap, undo: false };
 }

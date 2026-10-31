@@ -4,7 +4,7 @@ import en from '@/i18n/en.json';
 import es from '@/i18n/es.json';
 import fr from '@/i18n/fr.json';
 import nl from '@/i18n/nl.json';
-import { BadmintonPadScreen } from '@/ui/screens/BadmintonPadScreen';
+import { BadmintonPadPreviewScreen } from '@/ui/screens/BadmintonPadPreviewScreen';
 import { layout } from '@/ui/theme/tokens';
 import { TEST_NOW, type FakePorts } from '../../../test/fakePorts';
 import { linesAllowed } from '../../../test/linesAllowed';
@@ -17,19 +17,30 @@ type Pad = ReturnType<typeof renderWithPorts>;
 
 /** The preview as Home opens it: on its own route, with the phone's clock a second on for every tap. */
 function renderPad(options?: Parameters<typeof renderWithPorts>[1]): Pad {
-  const view = renderWithPorts(<BadmintonPadScreen />, options);
+  const view = renderWithPorts(<BadmintonPadPreviewScreen />, options);
   act(() => view.navigation.go('scoringPreview'));
   return view;
 }
 
 let seconds = 0;
-/** A scorer's taps on one half, a second apart: never two in the double-tap window. */
+/** The phone's clock a second on: the next tap is never in the bounce window of the last. */
+function aSecondOn(pad: FakePorts) {
+  seconds += 1;
+  pad.setNow(new Date(TEST_NOW.getTime() + seconds * 1000));
+}
+
+/** A scorer's taps on one half, a second apart. */
 function rally(pad: FakePorts, side: 'first' | 'second', times = 1) {
   for (let at = 0; at < times; at += 1) {
-    seconds += 1;
-    pad.setNow(new Date(TEST_NOW.getTime() + seconds * 1000));
+    aSecondOn(pad);
     act(() => fireEvent.click(screen.getByTestId(`half-${side}`)));
   }
+}
+
+/** The scorer's Undo, a second after whatever came before it. */
+function undoTap(pad: FakePorts) {
+  aSecondOn(pad);
+  press(en['scoring.pad.undo']);
 }
 
 /** Android Back, as the phone delivers it: React flushes what it changed before the test reads the screen. */
@@ -55,7 +66,7 @@ const fill = (text: string, vars: Record<string, string | number>) =>
     text,
   );
 
-describe('BadmintonPadScreen: before the first rally', () => {
+describe('BadmintonPadPreviewScreen: before the first rally', () => {
   it('shows both sides at 0, the first serving from the right, and Set score', () => {
     renderPad();
     expect(shows('first', 0) && shows('second', 0)).toBe(true);
@@ -81,7 +92,7 @@ describe('BadmintonPadScreen: before the first rally', () => {
   });
 });
 
-describe('BadmintonPadScreen: rallies and Undo', () => {
+describe('BadmintonPadPreviewScreen: rallies and Undo', () => {
   it('gives a tap on the top half the rally: the top score rises, the serve and the court follow', () => {
     const pad = renderPad();
     rally(pad, 'first');
@@ -112,17 +123,61 @@ describe('BadmintonPadScreen: rallies and Undo', () => {
     const pad = renderPad();
     rally(pad, 'first', 2);
     rally(pad, 'second');
-    press(en['scoring.pad.undo']);
-    press(en['scoring.pad.undo']);
+    undoTap(pad);
+    expect(shows('first', 2) && shows('second', 0)).toBe(true);
+    undoTap(pad);
     expect(shows('first', 1) && shows('second', 0)).toBe(true);
   });
 
-  it('records one rally for a double tap on a half, and says the second was not recorded', () => {
+  it('counts a double tap on a half once, says so, and keeps the rally that counted on the line', () => {
     const pad = renderPad();
     rally(pad, 'first');
     act(() => fireEvent.click(half('first')));
     expect(shows('first', 1)).toBe(true);
-    expect(screen.getByRole('alert').textContent).toBe(en['scoring.refusal.doubleTap']);
+    expect(screen.getByTestId('last-tap-note').textContent).toBe(en['scoring.pad.countedOnce']);
+    expect(screen.getByTestId('last-tap-sentence').textContent).toBe(
+      fill(en['scoring.badminton.last.rally'], { side: 'A. Sharma' }),
+    );
+    expect(screen.queryByRole('alert')).toBeNull();
+  });
+
+  it('counts a bounced Undo once: one tap taken back, not two, and says so', () => {
+    const pad = renderPad();
+    rally(pad, 'first', 2);
+    undoTap(pad);
+    press(en['scoring.pad.undo']);
+    expect(shows('first', 1)).toBe(true);
+    expect(screen.getByTestId('last-tap-note').textContent).toBe(en['scoring.pad.countedOnce']);
+    expect(screen.getByTestId('last-tap-sentence').textContent).toBe(
+      fill(en['scoring.badminton.undone.rally'], { side: 'A. Sharma' }),
+    );
+  });
+
+  it('takes a second Undo back a moment later, after the window', () => {
+    const pad = renderPad();
+    rally(pad, 'first', 2);
+    undoTap(pad);
+    pad.setNow(new Date(pad.ports.clock().getTime() + 250));
+    press(en['scoring.pad.undo']);
+    expect(shows('first', 0)).toBe(true);
+    expect(screen.queryByTestId('last-tap-note')).toBeNull();
+  });
+
+  it('counts a tap after the phone’s clock stepped back: a rally, never swallowed', () => {
+    const pad = renderPad();
+    rally(pad, 'first');
+    pad.setNow(new Date(pad.ports.clock().getTime() - 60_000));
+    act(() => fireEvent.click(half('first')));
+    expect(shows('first', 2)).toBe(true);
+    expect(screen.queryByTestId('last-tap-note')).toBeNull();
+  });
+
+  it('clears the note on the next tap that counts', () => {
+    const pad = renderPad();
+    rally(pad, 'first');
+    act(() => fireEvent.click(half('first')));
+    rally(pad, 'second');
+    expect(screen.queryByTestId('last-tap-note')).toBeNull();
   });
 
   it('records a tap on the other half at once, and the same half a moment later', () => {
@@ -137,7 +192,7 @@ describe('BadmintonPadScreen: rallies and Undo', () => {
   });
 });
 
-describe('BadmintonPadScreen: games and the match', () => {
+describe('BadmintonPadPreviewScreen: games and the match', () => {
   it('between games: the next game at 0, the games line, Set score back', () => {
     const pad = renderPad();
     rally(pad, 'first', 21);
@@ -178,7 +233,7 @@ describe('BadmintonPadScreen: games and the match', () => {
   });
 });
 
-describe('BadmintonPadScreen: Set score', () => {
+describe('BadmintonPadPreviewScreen: Set score', () => {
   const field = (side: string) =>
     screen.getByLabelText(fill(en['scoring.setScore.field'], { side }));
   const type = (side: string, value: string) =>
@@ -208,17 +263,27 @@ describe('BadmintonPadScreen: Set score', () => {
     expect(shows('first', 0)).toBe(true);
   });
 
-  it('closes on Cancel with nothing set, and the next good tap clears an old refusal', () => {
-    const pad = renderPad();
-    act(() => fireEvent.click(half('first')));
-    act(() => fireEvent.click(half('first')));
-    expect(screen.queryByRole('alert')).not.toBeNull();
-    press(en['scoring.pad.undo']);
-    expect(screen.queryByRole('alert')).toBeNull();
+  it('closes on Cancel with nothing set: the score, the line and Set score as they were', () => {
+    renderPad();
     press(en['scoring.badminton.tool.setScore']);
+    type('A. Sharma', '5');
+    type('L. Chen', '3');
     press(en['scoring.sheet.cancel']);
     expect(screen.queryByTestId('score-sheet')).toBeNull();
+    expect(shows('first', 0) && shows('second', 0)).toBe(true);
+    expect(lastTap()).toBe(en['scoring.pad.undo']);
+    expect(undo().getAttribute('aria-disabled')).toBe('true');
+    expect(tool(en['scoring.badminton.tool.setScore'])).not.toBeNull();
+  });
+
+  it('clears an old refusal on the next good tap', () => {
+    const pad = renderPad();
+    press(en['scoring.badminton.tool.setScore']);
+    type('A. Sharma', '30');
+    press(en['scoring.setScore.confirm']);
+    expect(screen.getByRole('alert').textContent).toBe(en['scoring.refusal.invalidScore']);
     rally(pad, 'second');
+    expect(screen.queryByRole('alert')).toBeNull();
     expect(shows('second', 1)).toBe(true);
   });
 
@@ -231,7 +296,7 @@ describe('BadmintonPadScreen: Set score', () => {
   });
 });
 
-describe('BadmintonPadScreen: a sanction, end to end', () => {
+describe('BadmintonPadPreviewScreen: a sanction, end to end', () => {
   const sheetTitle = () => within(screen.getByTestId('step-sheet'));
 
   it('Warning: level, person, recorded on the side’s games line and in the last-tap line', () => {
@@ -259,7 +324,7 @@ describe('BadmintonPadScreen: a sanction, end to end', () => {
     );
   });
 
-  it('Disqualification asks to confirm, then holds the pad on the ending prompt until it is answered', () => {
+  it('Disqualification asks to confirm, then the ending prompt over a pad that takes no tap; Back still leaves', () => {
     const pad = renderPad();
     press(sanctionOn('L. Chen'));
     press(en['scoring.sanction.disqualification']);
@@ -274,8 +339,7 @@ describe('BadmintonPadScreen: a sanction, end to end', () => {
     );
     expect(half('first').getAttribute('aria-disabled')).toBe('true');
     expect(back(pad)).toBe(true);
-    expect(screen.queryByTestId('ending-prompt')).not.toBeNull();
-    expect(pad.navigation.current()).toBe('scoringPreview');
+    expect(pad.navigation.current()).toBe('home');
   });
 
   it('Record the ending ends the match: the result card', () => {
@@ -339,11 +403,10 @@ describe('BadmintonPadScreen: a sanction, end to end', () => {
   });
 });
 
-describe('BadmintonPadScreen: the preview row', () => {
+describe('BadmintonPadPreviewScreen: the preview row', () => {
   it.each([
     ['notStarted', en['scoring.preview.dev.notStarted']],
     ['linkInvalid', en['scoring.preview.dev.linkInvalid']],
-    ['updateNeeded', en['scoring.preview.dev.updateNeeded']],
   ] as const)('shows the %s card instead of the score, with nothing to tap', (kind, chip) => {
     renderPad();
     press(chip);
@@ -353,13 +416,64 @@ describe('BadmintonPadScreen: the preview row', () => {
     expect(undo().getAttribute('aria-disabled')).toBe('true');
   });
 
-  it('shows the update card with the taps it still holds', () => {
+  it('update needed (owner ruling 8): the score stays on screen, taking no tap, the banner in the controls’ place', () => {
+    const pad = renderPad();
+    rally(pad, 'first');
+    press(en['scoring.preview.dev.updateNeeded']);
+    const banner = screen.getByTestId('update-banner');
+    expect(within(banner).getByText(en['scoring.card.updateNeeded.body'])).toBeTruthy();
+    expect(
+      within(banner).getByText(fill(en['scoring.card.updateNeeded.unsent.other'], { count: 2 })),
+    ).toBeTruthy();
+    expect(shows('first', 1) && shows('second', 0)).toBe(true);
+    expect(half('first').getAttribute('aria-disabled')).toBe('true');
+    expect(half('second').getAttribute('aria-disabled')).toBe('true');
+    expect(screen.queryByTestId('pad-card')).toBeNull();
+    expect(screen.queryByTestId('last-tap')).toBeNull();
+    expect(screen.queryByTestId('tool-row')).toBeNull();
+    expect(screen.queryByRole('button', { name: en['scoring.pad.undo'] })).toBeNull();
+    aSecondOn(pad);
+    act(() => fireEvent.click(half('second')));
+    expect(shows('second', 0)).toBe(true);
+  });
+
+  it('update needed: the halves stand above the banner, the banner above the preview row', () => {
     renderPad();
     press(en['scoring.preview.dev.updateNeeded']);
-    expect(
-      screen.getByText(fill(en['scoring.card.updateNeeded.unsent.other'], { count: 2 })),
-    ).toBeTruthy();
+    const order = [
+      half('second'),
+      screen.getByTestId('update-banner'),
+      screen.getByRole('button', { name: en['scoring.preview.dev.pad'] }),
+    ];
+    const follows = (a: HTMLElement, b: HTMLElement) =>
+      (a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0;
+    expect([follows(order[0], order[1]), follows(order[1], order[2])]).toEqual([true, true]);
   });
+
+  it('back on the pad from the update banner: the last-tap line and the tools return', () => {
+    const pad = renderPad();
+    rally(pad, 'first');
+    press(en['scoring.preview.dev.updateNeeded']);
+    press(en['scoring.preview.dev.pad']);
+    expect(screen.queryByTestId('update-banner')).toBeNull();
+    expect(lastTap()).toContain(fill(en['scoring.badminton.last.rally'], { side: 'A. Sharma' }));
+    expect(tool(sanctionOn('L. Chen'))).not.toBeNull();
+  });
+
+  it.each([en['scoring.card.updateNeeded.update'], en['scoring.card.updateNeeded.browser']])(
+    'update needed: %s opens nothing in the preview, and says so on the banner',
+    (name) => {
+      const pad = renderPad();
+      press(en['scoring.preview.dev.updateNeeded']);
+      press(name);
+      const banner = screen.getByTestId('update-banner');
+      expect(within(banner).getByText(en['scoring.preview.noop'])).toBeTruthy();
+      expect(pad.navigation.current()).toBe('scoringPreview');
+      press(en['scoring.preview.dev.pad']);
+      press(en['scoring.preview.dev.updateNeeded']);
+      expect(screen.queryByText(en['scoring.preview.noop'])).toBeNull();
+    },
+  );
 
   it.each([
     ['resultRecorded', en['scoring.preview.dev.result']],
@@ -426,7 +540,7 @@ describe('BadmintonPadScreen: the preview row', () => {
   });
 });
 
-describe('BadmintonPadScreen: leaving, and the phone', () => {
+describe('BadmintonPadPreviewScreen: leaving, and the phone', () => {
   it('Back returns Home', () => {
     const pad = renderPad();
     expect(back(pad)).toBe(true);
@@ -466,7 +580,7 @@ describe('BadmintonPadScreen: leaving, and the phone', () => {
   });
 });
 
-describe('BadmintonPadScreen: in four languages', () => {
+describe('BadmintonPadPreviewScreen: in four languages', () => {
   it.each([
     ['es', es],
     ['fr', fr],

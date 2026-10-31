@@ -316,13 +316,12 @@
   "scoring.card.notStarted.title": "Not started yet",
   "scoring.card.notStarted.body": "The organiser hasn't started this division yet. This screen updates on its own.",
   "scoring.card.resultRecorded.title": "Result recorded",
-  "scoring.card.resultRecorded.body": "The organiser finalizes it. Spot a mistake in your own taps? Use Undo.",
+  "scoring.card.resultRecorded.body": "The organiser finalises it. Spot a mistake in your own taps? Use Undo.",
   "scoring.card.viewOnly.title": "View only",
   "scoring.card.viewOnly.body": "Match over — result finalised. Ask the organiser to correct it.",
   "scoring.card.linkInvalid.title": "Link not valid",
   "scoring.card.linkInvalid.body": "This scoring link is not valid. Ask the organiser for a fresh link.",
-  "scoring.card.updateNeeded.title": "Update needed",
-  "scoring.card.updateNeeded.body": "This version of the app can't score this match. Update it to carry on.",
+  "scoring.card.updateNeeded.body": "Seazn needs an update to keep scoring this match.",
   "scoring.card.updateNeeded.unsent.one": "{count} tap not sent yet. It sends after the update.",
   "scoring.card.updateNeeded.unsent.other": "{count} taps not sent yet. They send after the update.",
   "scoring.badminton.games": "Games {count}",
@@ -354,5 +353,8 @@
   "scoring.sanction.confirm.title": "Disqualify {person}?",
   "scoring.sanction.confirm.body": "A disqualification ends the match.",
   "scoring.sanction.confirm.action": "Record disqualification",
-  "scoring.refusal.doubleTap": "Not recorded — the same tap came twice at once."
+  "scoring.pad.countedOnce": "Counted once",
+  "scoring.card.updateNeeded.update": "Update",
+  "scoring.card.updateNeeded.browser": "Score in the browser",
+  "scoring.preview.noop": "Preview only: nothing opens."
 }

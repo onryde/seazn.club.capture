@@ -21,10 +21,19 @@ describe('EndingPrompt', () => {
     expect(onVoid).toHaveBeenCalledTimes(1);
   });
 
-  it('has no other way out: two buttons, a dim that takes no tap, modal to a screen reader', () => {
+  it('offers only its two buttons, modal to a screen reader', () => {
     renderWithPorts(<EndingPrompt person="L. Chen" onRecord={vi.fn()} onVoid={vi.fn()} />);
     expect(screen.getAllByRole('button')).toHaveLength(2);
     expect(screen.getByTestId('ending-prompt').getAttribute('aria-modal')).toBe('true');
+  });
+
+  it('takes no tap on the dim: neither answer is given', () => {
+    const onRecord = vi.fn();
+    const onVoid = vi.fn();
+    renderWithPorts(<EndingPrompt person="L. Chen" onRecord={onRecord} onVoid={onVoid} />);
+    act(() => fireEvent.click(screen.getByTestId('ending-dim')));
+    expect([onRecord.mock.calls.length, onVoid.mock.calls.length]).toEqual([0, 0]);
+    expect(screen.getByTestId('ending-dim').getAttribute('aria-hidden')).toBe('true');
   });
 
   it('says it in Spanish', () => {

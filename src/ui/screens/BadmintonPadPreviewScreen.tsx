@@ -5,11 +5,13 @@ import type { SanctionSheet } from '@/domain/scoring/badmintonSanction';
 import { cardPlacement, type PadSide, type PadSync, type PadView } from '@/domain/scoring/padView';
 import {
   useBadmintonPadPreview,
+  type PadLineWords,
   type PadPreviewActions,
   type PadSheetView,
 } from '@/hooks/useBadmintonPadPreview';
 import { useT } from '@/hooks/useLanguage';
 import { usePadText } from '@/hooks/usePadText';
+import type { MessageKey } from '@/i18n/messages';
 import { EndingPrompt } from '@/ui/components/EndingPrompt';
 import { IconButton } from '@/ui/components/IconButton';
 import { LastTapLine } from '@/ui/components/LastTapLine';
@@ -22,18 +24,19 @@ import { StepSheet, type StepOption } from '@/ui/components/StepSheet';
 import { SyncDot } from '@/ui/components/SyncDot';
 import { Text } from '@/ui/components/Text';
 import { ToolRow } from '@/ui/components/ToolRow';
+import { UpdateBanner } from '@/ui/components/UpdateBanner';
 import { colour, layout, space } from '@/ui/theme/tokens';
 
 /**
  * The badminton pad, previewed on a fake (S2's first slice; owner rulings, 2026-10-31). Portrait, layout A: the strip,
  * the first side's half on top and the second's below (a tap on a half gives that side the rally), the last-tap line
  * with the one Undo, and the tools. A card that replaces the score stands where the halves were; one that goes with
- * it (a recorded result, view only) stands above them. Sheets cover the pad, which is hidden from a screen reader
- * while they show. Under it all, the preview's own row of states.
+ * it (a recorded result, view only) stands above them; the update banner stands where the last-tap line and the tools
+ * were (`cardPlacement`). Sheets cover the pad, which is hidden from a screen reader while they show. Under it all, the
+ * preview's own row of states.
  */
-export function BadmintonPadScreen() {
-  const { t } = useT();
-  const { view, sheet, refusal, chosen, actions } = useBadmintonPadPreview();
+export function BadmintonPadPreviewScreen() {
+  const { view, sheet, line, cardNote, chosen, actions } = useBadmintonPadPreview();
   const covered = sheet !== null;
   const picked = useMemo(() => [chosen.card, chosen.sample], [chosen.card, chosen.sample]);
   return (
@@ -47,12 +50,7 @@ export function BadmintonPadScreen() {
         <PadHeader sync={view.sync} onHome={actions.home} />
         <PadStrip items={view.strip} />
         <PadBody view={view} onTap={actions.tapHalf} />
-        <LastTapLine
-          lastTap={view.lastTap}
-          refusal={refusal === null ? null : t(refusal)}
-          onUndo={actions.undo}
-        />
-        <ToolRow tools={view.tools} onTool={actions.tool} />
+        <PadControls view={view} line={line} cardNote={cardNote} actions={actions} />
         <PadPreviewRow chosen={picked} onPick={actions.pick} />
       </View>
       <PadSheet sheet={sheet} actions={actions} />
@@ -89,7 +87,7 @@ const PadBody = memo(function PadBody({
   readonly view: PadView<BadmintonPadKey>;
   readonly onTap: (side: PadSide) => void;
 }) {
-  const { card } = view;
+  const card = view.card?.kind === 'updateNeeded' ? null : view.card;
   if (card !== null && cardPlacement(card) === 'instead') {
     return (
       <View style={styles.body}>
@@ -103,6 +101,66 @@ const PadBody = memo(function PadBody({
       <ScoreHalf half={view.halves[0]} onTap={onTap} />
       <ScoreHalf half={view.halves[1]} onTap={onTap} />
     </View>
+  );
+});
+
+/**
+ * Under the halves: the last-tap line and the tools, or, when an update is needed, the banner in their place
+ * (`cardPlacement`'s `forControls`, the one card there; `PadBody` draws the others).
+ */
+const PadControls = memo(function PadControls({
+  view,
+  line,
+  cardNote,
+  actions,
+}: {
+  readonly view: PadView<BadmintonPadKey>;
+  readonly line: PadLineWords;
+  readonly cardNote: MessageKey | null;
+  readonly actions: PadPreviewActions;
+}) {
+  const { t } = useT();
+  const { card } = view;
+  if (card?.kind === 'updateNeeded') {
+    return (
+      <UpdateBanner
+        unsent={card.unsent}
+        note={cardNote === null ? null : t(cardNote)}
+        onUpdate={actions.update}
+        onBrowser={actions.browser}
+      />
+    );
+  }
+  return (
+    <>
+      <PadLine view={view} line={line} onUndo={actions.undo} />
+      <ToolRow tools={view.tools} onTool={actions.tool} />
+    </>
+  );
+});
+
+/**
+ * The last tap's sentence and Undo. A refusal takes the sentence's place (the tap did not count); a note goes under
+ * it, which stays (a repeat that counted once: the rally the scorer gave is still on screen).
+ */
+const PadLine = memo(function PadLine({
+  view,
+  line,
+  onUndo,
+}: {
+  readonly view: PadView<BadmintonPadKey>;
+  readonly line: PadLineWords;
+  readonly onUndo: () => void;
+}) {
+  const { t } = useT();
+  const words = line === null ? null : t(line.key);
+  return (
+    <LastTapLine
+      lastTap={view.lastTap}
+      refusal={line?.kind === 'refusal' ? words : null}
+      note={line?.kind === 'note' ? words : null}
+      onUndo={onUndo}
+    />
   );
 });
 

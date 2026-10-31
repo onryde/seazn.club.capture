@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import en from '@/i18n/en.json';
 import nl from '@/i18n/nl.json';
 import { LastTapLine } from '@/ui/components/LastTapLine';
+import { layout } from '@/ui/theme/tokens';
 import { renderWithPorts } from '../../../test/renderWithPorts';
 
 const rally = { key: 'scoring.badminton.last.rally', vars: { side: 'L. Chen' } } as const;
@@ -30,7 +31,7 @@ describe('LastTapLine', () => {
     expect(undo().getAttribute('aria-disabled')).toBe('true');
   });
 
-  it('has no sentence and no Undo before the first tap', () => {
+  it('has no sentence before the first tap, and Undo in its place, disabled', () => {
     renderWithPorts(<LastTapLine lastTap={null} refusal={null} onUndo={vi.fn()} />);
     expect(screen.getByTestId('last-tap').textContent).toBe(en['scoring.pad.undo']);
     expect(undo().getAttribute('aria-disabled')).toBe('true');
@@ -44,6 +45,47 @@ describe('LastTapLine', () => {
     expect(screen.getByRole('alert').textContent).toBe(refusal);
     expect(screen.queryByText(sentence)).toBeNull();
     expect(undo().getAttribute('aria-disabled')).not.toBe('true');
+  });
+
+  it('says a note under the sentence, which stays, in one line', () => {
+    const note = en['scoring.pad.countedOnce'];
+    renderWithPorts(
+      <LastTapLine
+        lastTap={{ text: rally, undo: true }}
+        refusal={null}
+        note={note}
+        onUndo={vi.fn()}
+      />,
+    );
+    expect(screen.getByTestId('last-tap-sentence').textContent).toBe(sentence);
+    expect(screen.getByTestId('last-tap-note').textContent).toBe(note);
+    expect(screen.queryByRole('alert')).toBeNull();
+    // react-native-web sets one line as nowrap with an ellipsis, not a clamp (Text/index.js:113-115).
+    expect(getComputedStyle(screen.getByTestId('last-tap-note')).whiteSpace).toBe('nowrap');
+  });
+
+  it('gives the sentence one line fewer with a note, so the two keep to the line’s room', () => {
+    const { rerender } = renderWithPorts(
+      <LastTapLine lastTap={{ text: rally, undo: true }} refusal={null} onUndo={vi.fn()} />,
+    );
+    const clamp = () => getComputedStyle(screen.getByTestId('last-tap-sentence')).webkitLineClamp;
+    expect(clamp()).toBe(String(layout.padLineLines));
+    rerender(
+      <LastTapLine
+        lastTap={{ text: rally, undo: true }}
+        refusal={null}
+        note={en['scoring.pad.countedOnce']}
+        onUndo={vi.fn()}
+      />,
+    );
+    expect(clamp()).toBe(String(layout.padLineLines - 1));
+  });
+
+  it('has no note line without a note', () => {
+    renderWithPorts(
+      <LastTapLine lastTap={{ text: rally, undo: true }} refusal={null} onUndo={vi.fn()} />,
+    );
+    expect(screen.queryByTestId('last-tap-note')).toBeNull();
   });
 
   it('says it in Dutch', () => {

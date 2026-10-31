@@ -119,76 +119,117 @@ const isPoints = (value: number) => Number.isInteger(value) && value >= 0 && val
 const inProgress = (first: number, second: number) =>
   isPoints(first) && isPoints(second) && !wonGame(first, second) && !wonGame(second, first);
 
+/** The fake's state: every entry, what Undo last took back, the score they replay to, and the preview's card and sync. */
+type Ledger = {
+  readonly entries: Entry[];
+  score: Score;
+  undone: BadmintonTap | null;
+  card: PadStateCard | null;
+  sync: PadSync;
+};
+
+type Commands = Pick<
+  FakeBadmintonPad,
+  'rally' | 'undo' | 'sanction' | 'setScore' | 'recordEnding' | 'voidSanction'
+>;
+
 export function createFakeBadmintonPad(sample: FakePadSample): FakeBadmintonPad {
   const entries: Entry[] = (sample.others ?? []).map((tap) => ({ tap, own: false, voided: false }));
+  const ledger: Ledger = {
+    entries,
+    score: replay(entries),
+    undone: null,
+    card: null,
+    sync: SYNCED,
+  };
   const listeners = new Set<() => void>();
-  let score = replay(entries);
-  let undone: BadmintonTap | null = null;
-  let card: PadStateCard | null = null;
-  let sync: PadSync = { kind: 'synced' };
-  let current = snapshotOf();
-
-  function snapshotOf(): FakePadSnapshot {
-    return { display: displayOf(sample, score, entries, undone), card, sync };
-  }
-  function changed(): void {
-    score = replay(entries);
-    current = snapshotOf();
+  let current = snapshotOf(sample, ledger);
+  const publish = () => {
+    ledger.score = replay(ledger.entries);
+    current = snapshotOf(sample, ledger);
     for (const listener of listeners) listener();
-  }
-  function record(tap: BadmintonTap): FakeOutcome {
-    entries.push({ tap, own: true, voided: false });
-    undone = null;
-    changed();
-    return OK;
-  }
-  function voidLastOwn(): FakeOutcome {
-    const last = entries.filter((entry) => entry.own && !entry.voided).pop();
-    if (last === undefined) return refused('nothingToUndo');
-    last.voided = true;
-    undone = last.tap;
-    changed();
-    return OK;
-  }
-
-  const playing = () => score.phase !== 'decided' && !score.awaitingEnding;
+  };
   return {
     snapshot: () => current,
     subscribe: (listener) => {
       listeners.add(listener);
       return () => listeners.delete(listener);
     },
+    ...commands(sample, ledger, publish),
+    preview: (next) => {
+      ledger.card = next;
+      publish();
+    },
+    setSync: (next) => {
+      ledger.sync = next;
+      publish();
+    },
+  };
+}
+
+const SYNCED: PadSync = { kind: 'synced' };
+
+/** The scorer's taps on the ledger: each records an entry, or is refused with nothing recorded. */
+function commands(sample: FakePadSample, ledger: Ledger, publish: () => void): Commands {
+  const record = (tap: BadmintonTap) => recordTap(ledger, publish, tap);
+  const undo = () => voidLastOwn(ledger, publish);
+  const playing = () => ledger.score.phase !== 'decided' && !ledger.score.awaitingEnding;
+  return {
     rally: (side) => (playing() ? record({ kind: 'rally', side }) : refused('notNow')),
-    undo: voidLastOwn,
+    undo,
     sanction: (sanction) =>
       playing() && plays(sample, sanction)
         ? record({ kind: 'sanction', ...sanction })
         : refused('notNow'),
-    setScore: (first, second) => {
-      const between = score.phase === 'pre' || score.phase === 'betweenGames';
-      if (!between || score.awaitingEnding) return refused('notNow');
-      return inProgress(first, second)
-        ? record({ kind: 'setScore', first, second })
-        : refused('invalidScore');
-    },
-    recordEnding: () => {
-      const pending = score.awaitingEnding
-        ? score.sanctions[score.sanctions.length - 1]
-        : undefined;
-      if (pending === undefined) return refused('notNow');
-      return record({ kind: 'ending', side: pending.side, person: pending.person });
-    },
-    voidSanction: () => (score.awaitingEnding ? voidLastOwn() : refused('notNow')),
-    preview: (next) => {
-      card = next;
-      current = snapshotOf();
-      for (const listener of listeners) listener();
-    },
-    setSync: (next) => {
-      sync = next;
-      current = snapshotOf();
-      for (const listener of listeners) listener();
-    },
+    setScore: (first, second) => setScoreOn(ledger.score, record, first, second),
+    recordEnding: () => endingOn(ledger.score, record),
+    voidSanction: () => (ledger.score.awaitingEnding ? undo() : refused('notNow')),
+  };
+}
+
+function recordTap(ledger: Ledger, publish: () => void, tap: BadmintonTap): FakeOutcome {
+  ledger.entries.push({ tap, own: true, voided: false });
+  ledger.undone = null;
+  publish();
+  return OK;
+}
+
+/** Undo: voids this phone's last entry still standing; someone else's are never voided. */
+function voidLastOwn(ledger: Ledger, publish: () => void): FakeOutcome {
+  const last = ledger.entries.filter((entry) => entry.own && !entry.voided).pop();
+  if (last === undefined) return refused('nothingToUndo');
+  last.voided = true;
+  ledger.undone = last.tap;
+  publish();
+  return OK;
+}
+
+/** Before a game's first rally only, and only a score a game in progress can have. */
+function setScoreOn(
+  score: Score,
+  record: (tap: BadmintonTap) => FakeOutcome,
+  first: number,
+  second: number,
+): FakeOutcome {
+  const between = score.phase === 'pre' || score.phase === 'betweenGames';
+  if (!between || score.awaitingEnding) return refused('notNow');
+  return inProgress(first, second)
+    ? record({ kind: 'setScore', first, second })
+    : refused('invalidScore');
+}
+
+/** A disqualification's ending: the match ends, the other side wins. Only while one waits. */
+function endingOn(score: Score, record: (tap: BadmintonTap) => FakeOutcome): FakeOutcome {
+  const pending = score.awaitingEnding ? score.sanctions[score.sanctions.length - 1] : undefined;
+  if (pending === undefined) return refused('notNow');
+  return record({ kind: 'ending', side: pending.side, person: pending.person });
+}
+
+function snapshotOf(sample: FakePadSample, ledger: Ledger): FakePadSnapshot {
+  return {
+    display: displayOf(sample, ledger.score, ledger.entries, ledger.undone),
+    card: ledger.card,
+    sync: ledger.sync,
   };
 }
 

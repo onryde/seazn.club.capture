@@ -4,6 +4,7 @@ import { vi } from 'vitest';
 import { useEngineFollow } from '@/hooks/useEngineFollow';
 import { useEngineSync } from '@/hooks/useEngineSync';
 import { useProtectCode } from '@/hooks/useProtectCode';
+import { routeTarget, useOrientationGate } from '@/hooks/useOrientationGate';
 import { useReopenGate } from '@/hooks/useReopenGate';
 import type { Route } from '@/services/devicePorts';
 import {
@@ -11,7 +12,8 @@ import {
   type Path,
   type RouterMoves,
 } from '@/services/native/expoRouterNavigation';
-import { BadmintonPadScreen } from '@/ui/screens/BadmintonPadScreen';
+import { OrientationGate } from '@/ui/components/OrientationGate';
+import { BadmintonPadPreviewScreen } from '@/ui/screens/BadmintonPadPreviewScreen';
 import { HomeScreen } from '@/ui/screens/HomeScreen';
 import { SettingsScreen } from '@/ui/screens/SettingsScreen';
 import { StreamScreen } from '@/ui/screens/StreamScreen';
@@ -27,6 +29,8 @@ import { wrapperFor } from './renderWithPorts';
  */
 export type RouterDouble = RouterMoves & {
   current(): Route;
+  /** The top of the Stack as Expo Router's `usePathname()` reads it. */
+  path(): Path;
   readonly history: readonly Route[];
   subscribe(onMove: () => void): () => void;
   /**
@@ -50,7 +54,8 @@ function routerDouble(): RouterDouble {
   let stack: Path[] = ['/'];
   const history: Route[] = [];
   const listeners = new Set<() => void>();
-  const top = (): Route => ROUTE_OF[stack[stack.length - 1] ?? '/'];
+  const path = (): Path => stack[stack.length - 1] ?? '/';
+  const top = (): Route => ROUTE_OF[path()];
   const moved = (next: Path[]) => {
     stack = next;
     history.push(top());
@@ -59,6 +64,7 @@ function routerDouble(): RouterDouble {
   return {
     history,
     current: top,
+    path,
     push: (path) => moved([...stack, path]),
     back: () => moved(stack.slice(0, -1)),
     replace: (path) => moved([...stack.slice(0, -1), path]),
@@ -80,24 +86,50 @@ function routerDouble(): RouterDouble {
  * from Home and the Remote scoring preview each on its own (R2, P8; S2).
  * `extra` renders beside the screens, as part of the app. A remount (Try again
  * after a crash) starts the Stack afresh at Home, as Expo Router's does.
+ * `gated` puts the screens under the root layout's orientation gate, read from the
+ * Stack's path as `app/_layout.tsx` reads `usePathname()`.
  */
-function RoutedApp({ nav, extra }: { nav: RouterDouble; extra?: ReactNode }) {
+function RoutedApp({
+  nav,
+  extra,
+  gated,
+}: {
+  nav: RouterDouble;
+  extra?: ReactNode;
+  gated: boolean;
+}) {
   useState(nav.mounted);
   useReopenGate(true);
   useEngineFollow();
   useEngineSync();
   useProtectCode();
   const route = useSyncExternalStore(nav.subscribe, nav.current);
+  const screens = <Screens route={route} />;
+  return (
+    <>
+      {gated ? <Gated nav={nav}>{screens}</Gated> : screens}
+      {extra}
+    </>
+  );
+}
+
+function Screens({ route }: { route: Route }) {
   return (
     <>
       {route === 'home' ? <HomeScreen /> : null}
       {route === 'homeSettings' ? <SettingsScreen from="home" /> : null}
-      {route === 'scoringPreview' ? <BadmintonPadScreen /> : null}
+      {route === 'scoringPreview' ? <BadmintonPadPreviewScreen /> : null}
       {route === 'stream' || route === 'streamSettings' ? <StreamScreen /> : null}
       {route === 'streamSettings' ? <SettingsScreen /> : null}
-      {extra}
     </>
   );
+}
+
+/** The root layout's gate (`app/_layout.tsx`): the route's target, the hook's card over the screens. */
+function Gated({ nav, children }: { nav: RouterDouble; children: ReactNode }) {
+  const path = useSyncExternalStore(nav.subscribe, nav.path);
+  const { card } = useOrientationGate(routeTarget(path));
+  return <OrientationGate card={card}>{children}</OrientationGate>;
 }
 
 export type LaunchedApp = FakePorts & RenderResult & { readonly nav: RouterDouble };
@@ -113,6 +145,8 @@ type Launch = {
   readonly quiet?: boolean;
   /** Wraps the whole app, as the root layout's error boundary does. */
   readonly around?: (app: ReactNode, fakes: FakePorts) => ReactNode;
+  /** The screens under the root layout's orientation gate; off by default, as the gate has its own tests. */
+  readonly gated?: boolean;
 };
 
 /**
@@ -121,7 +155,15 @@ type Launch = {
  * adapter over `nav`; read the screen from `nav`, never `fakes.navigation`.
  */
 export async function launchApp(launch: Launch = {}): Promise<LaunchedApp> {
-  const { kvSeed, prepare, extra, around, quiet = false, previewScoring = false } = launch;
+  const {
+    kvSeed,
+    prepare,
+    extra,
+    around,
+    quiet = false,
+    previewScoring = false,
+    gated = false,
+  } = launch;
   const nav = routerDouble();
   const fakes = createFakePorts({
     navigation: createExpoRouterNavigation(nav),
@@ -130,7 +172,7 @@ export async function launchApp(launch: Launch = {}): Promise<LaunchedApp> {
   });
   if (quiet) quietDevice(fakes.engine);
   prepare?.(fakes);
-  const app = <RoutedApp nav={nav} extra={extra} />;
+  const app = <RoutedApp nav={nav} extra={extra} gated={gated} />;
   const ui = around === undefined ? app : around(app, fakes);
   const rendered = render(ui, { wrapper: wrapperFor(fakes) });
   await flush();

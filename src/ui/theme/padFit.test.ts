@@ -184,8 +184,8 @@ describe('the last-tap line', () => {
         .map(({ key }) => `${lang} ${key}`),
     );
 
-  it('reads fourteen sentences in each language (anti-vacuity)', () => {
-    for (const [, dictionary] of LANGUAGES) expect(sentences(dictionary)).toHaveLength(14);
+  it('reads thirteen sentences in each language (anti-vacuity)', () => {
+    for (const [, dictionary] of LANGUAGES) expect(sentences(dictionary)).toHaveLength(13);
   });
 
   it('holds every sentence and refusal whole at 360, in four languages', () => {
@@ -204,6 +204,162 @@ describe('the last-tap line', () => {
     const kept =
       linesIn(nl['scoring.refusal.invalidScore'], lineRoom(320, nl), controlWidth)[0] ?? '';
     expect(kept.startsWith('Niet vastgelegd')).toBe(true);
+  });
+
+  // A repeat within the bounce window says "Counted once" under the sentence of the tap that counted (review item 3):
+  // one line of `controlInk` (Geist 500 at 14, as `control`), and the sentence gives up a line for it.
+  it('holds "Counted once" on one line beside Undo at 320 and 360, in four languages', () => {
+    for (const [, dictionary] of LANGUAGES) {
+      const note = dictionary['scoring.pad.countedOnce'] ?? '';
+      expect(note).not.toBe('');
+      for (const width of WIDTHS)
+        expect(linesOf(note, lineRoom(width, dictionary), controlWidth)).toBe(1);
+    }
+  });
+
+  /** The sentences a note can sit under: a rally that counted (a point, a game, the match) and any Undo. */
+  const NOTED = /^scoring\.badminton\.(last\.(rally|game|match)|undone\.)/;
+  const cutUnderNote = (width: number) =>
+    LANGUAGES.flatMap(([lang, dictionary]) =>
+      sentences(dictionary)
+        .filter(({ key }) => NOTED.test(key))
+        .filter(
+          ({ text }) =>
+            linesOf(text, lineRoom(width, dictionary), controlWidth) > layout.padLineLines - 1,
+        )
+        .map(({ key }) => `${lang} ${key}`),
+    );
+
+  it('reads seven sentences a note can sit under, in each language (anti-vacuity)', () => {
+    for (const [, dictionary] of LANGUAGES)
+      expect(sentences(dictionary).filter(({ key }) => NOTED.test(key))).toHaveLength(7);
+  });
+
+  // Under a note the sentence has two lines, and Dutch's Undo is wide: at its widest (doubles names, a
+  // disqualification) these are cut after their second line with an ellipsis. What was recorded or undone, the words
+  // before the colon, is always within the two kept lines; the names are what an ellipsis may cut. English, Spanish
+  // and French hold every one whole at both widths.
+  it('cuts only these Dutch sentences under a note: two at 360, five at 320', () => {
+    expect(cutUnderNote(360)).toEqual([
+      'nl scoring.badminton.last.match',
+      'nl scoring.badminton.undone.sanction',
+    ]);
+    expect(cutUnderNote(320)).toEqual([
+      'nl scoring.badminton.last.game',
+      'nl scoring.badminton.last.match',
+      'nl scoring.badminton.undone.rally',
+      'nl scoring.badminton.undone.sanction',
+      'nl scoring.badminton.undone.ending',
+    ]);
+  });
+
+  it('keeps what was recorded or undone within the two lines of every Dutch sentence at 320', () => {
+    const all = sentences(nl)
+      .filter(({ key }) => NOTED.test(key))
+      .map(({ key, text }) => ({
+        key,
+        head: (nl[key as keyof typeof nl] ?? '').split(':')[0] ?? '',
+        kept: linesIn(text, lineRoom(320, nl), controlWidth)
+          .slice(0, layout.padLineLines - 1)
+          .join(' '),
+      }));
+    expect(all).toHaveLength(7);
+    expect(all.filter(({ head, kept }) => head === '' || !kept.startsWith(head))).toEqual([]);
+  });
+});
+
+describe('the update banner (owner ruling 8)', () => {
+  /** Inside the banner: the column less its padding (space.sm a side) and its caution edge. */
+  const inner = (width: number) => column(width) - 2 * space.sm - layout.padSideBar;
+  /** A button's text: half the row less its gap, less the cell's padding (space.sm a side) and border. */
+  const buttonText = (width: number) =>
+    (inner(width) - space.sm) / 2 - 2 * space.sm - 2 * layout.iconBorder;
+  const lines = (dictionary: Dictionary, key: string, width: number, vars = {}) => {
+    const text = fill(dictionary[key] ?? '', vars);
+    expect(text).not.toBe('');
+    return linesOf(text, inner(width), controlWidth);
+  };
+
+  it('has 268 and 308 inside at 320 and 360; a button’s text 112 and 132', () => {
+    expect(WIDTHS.map(inner)).toEqual([268, 308]);
+    expect(WIDTHS.map(buttonText)).toEqual([112, 132]);
+  });
+
+  it.each(LANGUAGES)(
+    '%s: Update and Score in the browser in a tool’s reserved lines, no word broken',
+    (_lang, dictionary: Dictionary) => {
+      for (const key of ['scoring.card.updateNeeded.update', 'scoring.card.updateNeeded.browser']) {
+        const label = dictionary[key] ?? '';
+        expect(label).not.toBe('');
+        for (const width of WIDTHS) {
+          expect(linesOf(label, buttonText(width), toolWidth)).toBeLessThanOrEqual(
+            layout.padToolLines,
+          );
+          for (const word of words(label))
+            expect(toolWidth(word)).toBeLessThanOrEqual(buttonText(width));
+        }
+      }
+    },
+  );
+
+  /**
+   * Its height at its tallest, in any language at 320 or 360: padding (2 × 8), the sentence, a gap, the count at 99 taps,
+   * a gap and the button row (48: two lines of 19, 2 × 4 padding, 2 × 1 border); the preview's note (a gap and a line)
+   * on top. `control` and `controlInk` are 18 a line.
+   */
+  const tallest = (key: string, vars = {}) =>
+    Math.max(
+      ...LANGUAGES.flatMap(([, dictionary]) =>
+        WIDTHS.map((width) => lines(dictionary, key, width, vars)),
+      ),
+    );
+  const BANNER =
+    2 * space.sm +
+    tallest('scoring.card.updateNeeded.body') * 18 +
+    space.sm +
+    tallest('scoring.card.updateNeeded.unsent.other', { count: '99' }) * 18 +
+    space.sm +
+    48;
+  const NOTE = space.sm + tallest('scoring.preview.noop') * 18;
+
+  it('is 152 tall at most (two lines, two lines, the buttons), and 178 with the preview’s note', () => {
+    expect(typeScale.control.lineHeight).toBe(18);
+    expect(typeScale.controlInk.lineHeight).toBe(18);
+    expect(
+      2 * space.xs +
+        2 * layout.iconBorder +
+        layout.padToolLines * typeScale.actionSecondary.lineHeight,
+    ).toBe(layout.touch);
+    expect([BANNER, BANNER + NOTE]).toEqual([152, 178]);
+  });
+
+  /**
+   * In the place of the last-tap line and the tools (`cardPlacement`'s `forControls`): around the halves, the screen's
+   * padding (32), the header (48), the strip (32), the preview row (48) and the four gaps between the five (32), then
+   * the banner and the gap between the halves.
+   */
+  const FIXED_UPDATE = 32 + 48 + 32 + 48 + 4 * 8;
+  const halvesUnder = (height: number, banner: number) =>
+    (height - FIXED_UPDATE - banner - space.sm) / 2;
+
+  it('leaves each half 186 on the owner’s phone, about 360 × 724 (173 with the note): the score at 64, whole', () => {
+    expect(FIXED_UPDATE).toBe(192);
+    expect([halvesUnder(724, BANNER), halvesUnder(724, BANNER + NOTE)]).toEqual([186, 173]);
+    expect(scoreRole(halvesUnder(724, BANNER + NOTE))).toBe('scoreCompact');
+    expect(halvesUnder(724, BANNER + NOTE)).toBeGreaterThanOrEqual(halfNeeds('scoreCompact'));
+  });
+
+  it('would cut the score above the halves: with the last-tap line kept, a half 151 on the owner’s phone', () => {
+    // The line (54) and the empty tool row's gap stay; the banner and its gap join the halves' column.
+    const above = 32 + 48 + 32 + 54 + 48 + 5 * 8;
+    const half = (724 - above - BANNER - 2 * space.sm) / 2;
+    expect(half).toBe(151);
+    expect(half).toBeLessThan(halfNeeds('scoreCompact'));
+  });
+
+  it('holds the score whole from 676 tall, 702 with the note', () => {
+    expect(halvesUnder(676, BANNER)).toBe(halfNeeds('scoreCompact'));
+    expect(halvesUnder(702, BANNER + NOTE)).toBe(halfNeeds('scoreCompact'));
   });
 });
 

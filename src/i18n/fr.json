@@ -321,8 +321,7 @@
   "scoring.card.viewOnly.body": "Match terminé\u00a0: résultat validé. Demandez à l'organisateur de le corriger.",
   "scoring.card.linkInvalid.title": "Lien non valide",
   "scoring.card.linkInvalid.body": "Ce lien de score n'est pas valide. Demandez un nouveau lien à l'organisateur.",
-  "scoring.card.updateNeeded.title": "Mise à jour requise",
-  "scoring.card.updateNeeded.body": "Cette version de l'app ne peut pas tenir le score de ce match. Mettez-la à jour pour continuer.",
+  "scoring.card.updateNeeded.body": "Seazn doit être mis à jour pour continuer à tenir le score de ce match.",
   "scoring.card.updateNeeded.unsent.one": "{count} saisie pas encore envoyée. Elle part après la mise à jour.",
   "scoring.card.updateNeeded.unsent.other": "{count} saisies pas encore envoyées. Elles partent après la mise à jour.",
   "scoring.badminton.games": "Jeux {count}",
@@ -354,5 +353,8 @@
   "scoring.sanction.confirm.title": "Disqualifier {person}\u00a0?",
   "scoring.sanction.confirm.body": "Une disqualification met fin au match.",
   "scoring.sanction.confirm.action": "Enregistrer la disqualification",
-  "scoring.refusal.doubleTap": "Non enregistré\u00a0: la même saisie est arrivée deux fois d'un coup."
+  "scoring.pad.countedOnce": "Compté une fois",
+  "scoring.card.updateNeeded.update": "Mettre à jour",
+  "scoring.card.updateNeeded.browser": "Saisir dans le navigateur",
+  "scoring.preview.noop": "Aperçu seulement\u00a0: rien ne s'ouvre."
 }

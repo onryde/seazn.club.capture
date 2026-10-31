@@ -1,18 +1,6 @@
 import { useCallback, useMemo, useRef, useState, useSyncExternalStore } from 'react';
-import {
-  badmintonPad,
-  parseBadmintonTool,
-  sideNames,
-  type BadmintonDisplay,
-  type BadmintonPadKey,
-} from '@/domain/scoring/badmintonPad';
-import {
-  chooseSanction,
-  sanctionSheet,
-  startSanction,
-  type SanctionSheet,
-  type SanctionStep,
-} from '@/domain/scoring/badmintonSanction';
+import { badmintonPad, type BadmintonPadKey } from '@/domain/scoring/badmintonPad';
+import { isBounce } from '@/domain/scoring/bounce';
 import {
   withCard,
   type PadSide,
@@ -20,9 +8,9 @@ import {
   type PadSync,
   type PadView,
 } from '@/domain/scoring/padView';
-import { parseWholeNumber } from '@/domain/scoring/wholeNumber';
 import { useBackCloses } from '@/hooks/useBackCloses';
-import { usePorts } from '@/hooks/usePorts';
+import { usePadSheets, type PadSheetView } from '@/hooks/usePadSheets';
+import { usePorts, type Ports } from '@/hooks/usePorts';
 import { useBackToHome } from '@/hooks/useStreamLinks';
 import type { MessageKey } from '@/i18n/messages';
 import {
@@ -34,20 +22,21 @@ import {
   type FakeRefusal,
 } from '@/services/fakeBadmintonPad';
 
+export type { PadSheetView } from '@/hooks/usePadSheets';
+
 export type PreviewSample = 'singles' | 'doubles';
 
 /** What the preview row can pick: the pad itself, a state card, a sample match, or the next sync status. */
 export type PreviewChoice = 'pad' | PadStateCard['kind'] | PreviewSample | 'sync';
 
-/** What is over the pad: a sanction's step, the Set score fields, or a disqualification's ending prompt. */
-export type PadSheetView =
-  | { readonly kind: 'sanction'; readonly sheet: SanctionSheet }
-  | {
-      readonly kind: 'setScore';
-      readonly names: readonly [string, string];
-      readonly points: readonly [number, number];
-    }
-  | { readonly kind: 'ending'; readonly person: string };
+/**
+ * What the last-tap line says beside the last tap's sentence: a refusal (in caution, in the sentence's place: the tap
+ * did not count) or a note (under the sentence, which stays: a bounced repeat that counted once).
+ */
+export type PadLineWords =
+  | { readonly kind: 'refusal'; readonly key: MessageKey }
+  | { readonly kind: 'note'; readonly key: MessageKey }
+  | null;
 
 export type PadPreviewActions = {
   readonly home: () => void;
@@ -59,36 +48,31 @@ export type PadPreviewActions = {
   readonly saveScore: (first: string, second: string) => void;
   readonly recordEnding: () => void;
   readonly voidSanction: () => void;
+  /** The update banner's two buttons: in the preview they open nothing, and say so on the banner. */
+  readonly update: () => void;
+  readonly browser: () => void;
   readonly pick: (choice: PreviewChoice) => void;
 };
 
 export type BadmintonPadPreview = {
   readonly view: PadView<BadmintonPadKey>;
   readonly sheet: PadSheetView | null;
-  /** The last tap's refusal, said in place of its sentence; cleared by the next tap that is recorded. */
-  readonly refusal: MessageKey | null;
+  readonly line: PadLineWords;
+  /** What the update banner's buttons said: the preview opens no store and no browser. */
+  readonly cardNote: MessageKey | null;
   readonly chosen: { readonly card: PadStateCard['kind'] | 'pad'; readonly sample: PreviewSample };
   readonly actions: PadPreviewActions;
 };
 
-type Sheet =
-  { readonly kind: 'sanction'; readonly step: SanctionStep } | { readonly kind: 'setScore' } | null;
-type SetRefusal = (refusal: MessageKey | null) => void;
+type Say = (words: PadLineWords) => void;
 
-/**
- * One physical tap read twice (a bouncing courtside tap, a handler fired twice): the same half within this window is
- * refused, and said, never silently eaten. The web pad's `DOUBLE_SUBMIT_WINDOW_MS` and its reasoning
- * (`apps/web/src/components/v2/scorepad/use-pad-pipeline.ts`, R7-42): a scorer cannot deliberately tap twice in under
- * ~250 ms, and two real rallies are seconds apart. A tap on the other half is a different action and always counts.
- */
-export const DOUBLE_TAP_MS = 250;
-
-const REFUSAL: Readonly<Record<FakeRefusal | 'doubleTap', MessageKey>> = {
+const REFUSAL: Readonly<Record<FakeRefusal, MessageKey>> = {
   notNow: 'scoring.refusal.notNow',
   invalidScore: 'scoring.refusal.invalidScore',
   nothingToUndo: 'scoring.refusal.nothingToUndo',
-  doubleTap: 'scoring.refusal.doubleTap',
 };
+const COUNTED_ONCE: PadLineWords = { kind: 'note', key: 'scoring.pad.countedOnce' };
+const INVALID_SCORE: PadLineWords = { kind: 'refusal', key: REFUSAL.invalidScore };
 
 const SAMPLES = { singles: SINGLES_SAMPLE, doubles: DOUBLES_SAMPLE } as const;
 
@@ -100,163 +84,114 @@ const SYNC_CYCLE: readonly PadSync[] = [
   { kind: 'refused', count: 1 },
 ];
 
-/** Back while a disqualification waits for its ending: held, as a match left between the two is in neither state. */
-const holdBack = (): void => undefined;
+type Held = { readonly sample: PreviewSample; readonly pad: FakeBadmintonPad };
+
+/**
+ * The match each app keeps while it runs, keyed by its Ports (one per launch, one per test): Back leaves the preview
+ * freely (owner ruling 10), and a return finds the match where it was, a disqualification's ending prompt included.
+ * Preview state only; S2's real pad reads the engine, which keeps the match itself.
+ */
+const kept = new WeakMap<Ports, Held>();
 
 /**
  * The S2 design preview of the badminton pad, on a fake that keeps simple counters (`fakeBadmintonPad.ts`): no engine,
- * no network, no code. The pad's state lives in the fake; this hook holds only what is on screen over it (a sheet, a
- * refusal) and turns the scorer's taps into the fake's calls. Back closes a sheet, is held by the ending prompt, and
- * otherwise returns Home. Leaving drops the fake: the preview opens afresh.
+ * no network, no code. The match lives in the fake; this hook holds what is on screen over it (a sheet, what the line
+ * says) and turns the scorer's taps into the fake's calls. A rally or an Undo repeated within the bounce window
+ * (`bounce.ts`) counts once, and says so. Back closes a sheet, and otherwise returns Home, the ending prompt included.
  */
 export function useBadmintonPadPreview(): BadmintonPadPreview {
   const { pad, sample, startSample } = usePreviewPad();
   const snapshot = useSyncExternalStore(pad.subscribe, pad.snapshot);
-  const [refusal, setRefusal] = useState<MessageKey | null>(null);
-  const settle = useSettle(setRefusal);
-  const sheets = useSheets(pad, snapshot.display, settle, setRefusal);
-  const tapHalf = useRallyTap(pad, settle, setRefusal);
-  const others = usePadActions(pad, settle);
-  const pick = usePick(pad, startSample, sheets.cancel, setRefusal);
+  const [line, say] = useState<PadLineWords>(null);
+  const [cardNote, setCardNote] = useState<MessageKey | null>(null);
+  const settle = useSettle(say);
+  const refuseScore = useCallback(() => say(INVALID_SCORE), []);
+  const sheets = usePadSheets(pad, snapshot.display, settle, refuseScore);
+  const taps = useTaps(pad, settle, say);
+  const others = useEndingAndCard(pad, settle, setCardNote);
+  const pick = usePick(pad, startSample, sheets.cancel, say, setCardNote);
   const home = useBackToHome();
   useBackCloses(sheets.open, sheets.cancel);
-  useBackCloses(snapshot.display.awaitingEnding, holdBack);
   const view = useMemo(
     () => withCard(badmintonPad(snapshot.display, snapshot.sync), snapshot.card),
     [snapshot],
   );
   const actions = useMemo(
-    () => ({ home, tapHalf, ...others, ...sheets.actions, pick }),
-    [home, tapHalf, others, sheets.actions, pick],
+    () => ({ home, ...taps, ...others, ...sheets.actions, pick }),
+    [home, taps, others, sheets.actions, pick],
   );
   const chosen = { card: snapshot.card?.kind ?? 'pad', sample } as const;
-  return { view, sheet: sheets.view, refusal, chosen, actions };
+  return { view, sheet: sheets.view, line, cardNote, chosen, actions };
 }
 
-/** The fake, one per sample: picking a sample starts its match afresh. */
+/** The app's kept match, or a singles match afresh; picking a sample starts its match afresh. */
 function usePreviewPad() {
-  const [held, setHeld] = useState(() => ({
-    sample: 'singles' as PreviewSample,
-    pad: createFakeBadmintonPad(SINGLES_SAMPLE),
-  }));
+  const ports = usePorts();
+  const [held, setHeld] = useState(() => keptFor(ports));
   const startSample = useCallback(
-    (sample: PreviewSample) => setHeld({ sample, pad: createFakeBadmintonPad(SAMPLES[sample]) }),
-    [],
+    (sample: PreviewSample) => {
+      const next = { sample, pad: createFakeBadmintonPad(SAMPLES[sample]) };
+      kept.set(ports, next);
+      setHeld(next);
+    },
+    [ports],
   );
   return { pad: held.pad, sample: held.sample, startSample };
 }
 
-/** A recorded tap clears the last refusal; a refused one says why. True when it was recorded. */
-function useSettle(setRefusal: SetRefusal): (outcome: FakeOutcome) => boolean {
+function keptFor(ports: Ports): Held {
+  const found = kept.get(ports);
+  if (found !== undefined) return found;
+  const fresh: Held = { sample: 'singles', pad: createFakeBadmintonPad(SINGLES_SAMPLE) };
+  kept.set(ports, fresh);
+  return fresh;
+}
+
+/** A recorded tap clears what the line said; a refused one says why. */
+function useSettle(say: Say): (outcome: FakeOutcome) => void {
   return useCallback(
-    (outcome: FakeOutcome) => {
-      setRefusal(outcome.ok ? null : REFUSAL[outcome.refusal]);
-      return outcome.ok;
-    },
-    [setRefusal],
+    (outcome: FakeOutcome) =>
+      say(outcome.ok ? null : { kind: 'refusal', key: REFUSAL[outcome.refusal] }),
+    [say],
   );
 }
 
-/** A tap on a half gives that side the rally, unless it is the same half again within `DOUBLE_TAP_MS`. */
-function useRallyTap(
-  pad: FakeBadmintonPad,
-  settle: (outcome: FakeOutcome) => boolean,
-  setRefusal: SetRefusal,
-): (side: PadSide) => void {
+/**
+ * A tap on a half and Undo: each counts once for a repeat within the bounce window (`bounce.ts`) of its own last
+ * recorded tap, and the line says "Counted once" under the sentence of the tap that counted. A rally on the other half
+ * is a different tap and always counts.
+ */
+function useTaps(pad: FakeBadmintonPad, settle: (outcome: FakeOutcome) => void, say: Say) {
   const { clock } = usePorts();
-  const last = useRef<{ readonly side: PadSide; readonly at: number } | null>(null);
-  return useCallback(
-    (side: PadSide) => {
+  const last = useRef<{ readonly tap: string; readonly at: number } | null>(null);
+  const once = useCallback(
+    (tap: string, make: () => FakeOutcome) => {
       const at = clock().getTime();
       const prior = last.current;
-      if (prior !== null && prior.side === side && at - prior.at < DOUBLE_TAP_MS) {
-        setRefusal(REFUSAL.doubleTap);
-        return;
-      }
-      if (settle(pad.rally(side))) last.current = { side, at };
+      if (prior !== null && prior.tap === tap && isBounce(at - prior.at)) return say(COUNTED_ONCE);
+      const outcome = make();
+      settle(outcome);
+      if (outcome.ok) last.current = { tap, at };
     },
-    [clock, pad, settle, setRefusal],
+    [clock, settle, say],
   );
+  const tapHalf = useCallback((side: PadSide) => once(side, () => pad.rally(side)), [once, pad]);
+  const undo = useCallback(() => once('undo', () => pad.undo()), [once, pad]);
+  return useMemo(() => ({ tapHalf, undo }), [tapHalf, undo]);
 }
 
-function usePadActions(pad: FakeBadmintonPad, settle: (outcome: FakeOutcome) => boolean) {
-  const undo = useCallback(() => void settle(pad.undo()), [pad, settle]);
-  const recordEnding = useCallback(() => void settle(pad.recordEnding()), [pad, settle]);
-  const voidSanction = useCallback(() => void settle(pad.voidSanction()), [pad, settle]);
-  return useMemo(() => ({ undo, recordEnding, voidSanction }), [undo, recordEnding, voidSanction]);
-}
-
-/** The sheet over the pad: a tool opens one, a sanction's steps move through it, Cancel and Back close it. */
-function useSheets(
+function useEndingAndCard(
   pad: FakeBadmintonPad,
-  display: BadmintonDisplay,
-  settle: (outcome: FakeOutcome) => boolean,
-  setRefusal: SetRefusal,
+  settle: (outcome: FakeOutcome) => void,
+  setCardNote: (note: MessageKey | null) => void,
 ) {
-  const [sheet, setSheet] = useState<Sheet>(null);
-  const cancel = useCallback(() => setSheet(null), []);
-  const tool = useCallback((id: string) => setSheet(sheetFor(id)), []);
-  const choose = useCallback(
-    (id: string) => {
-      if (sheet?.kind !== 'sanction') return;
-      const move = chooseSanction(sheet.step, id, display.sides);
-      if (move.kind === 'step') return setSheet({ kind: 'sanction', step: move.step });
-      setSheet(null);
-      settle(pad.sanction(move.sanction));
-    },
-    [sheet, display.sides, pad, settle],
+  const recordEnding = useCallback(() => settle(pad.recordEnding()), [pad, settle]);
+  const voidSanction = useCallback(() => settle(pad.voidSanction()), [pad, settle]);
+  const update = useCallback(() => setCardNote('scoring.preview.noop'), [setCardNote]);
+  return useMemo(
+    () => ({ recordEnding, voidSanction, update, browser: update }),
+    [recordEnding, voidSanction, update],
   );
-  const saveScore = useSaveScore(pad, settle, setRefusal, cancel);
-  const actions = useMemo(
-    () => ({ tool, choose, cancel, saveScore }),
-    [tool, choose, cancel, saveScore],
-  );
-  const view = useMemo(() => sheetView(sheet, display), [sheet, display]);
-  return { open: sheet !== null, cancel, actions, view };
-}
-
-/** Set score's two fields as typed: a field that is not a whole number is refused, as the pad refuses a bad score. */
-function useSaveScore(
-  pad: FakeBadmintonPad,
-  settle: (outcome: FakeOutcome) => boolean,
-  setRefusal: SetRefusal,
-  close: () => void,
-) {
-  return useCallback(
-    (first: string, second: string) => {
-      close();
-      const points = [parseWholeNumber(first), parseWholeNumber(second)] as const;
-      if (points[0] === null || points[1] === null) return setRefusal(REFUSAL.invalidScore);
-      settle(pad.setScore(points[0], points[1]));
-    },
-    [pad, settle, setRefusal, close],
-  );
-}
-
-function sheetFor(id: string): Sheet {
-  const parsed = parseBadmintonTool(id);
-  if (parsed === null) return null;
-  return parsed.kind === 'sanction'
-    ? { kind: 'sanction', step: startSanction(parsed.side) }
-    : { kind: 'setScore' };
-}
-
-function sheetView(sheet: Sheet, display: BadmintonDisplay): PadSheetView | null {
-  if (display.awaitingEnding) return { kind: 'ending', person: disqualified(display) };
-  if (sheet === null) return null;
-  if (sheet.kind === 'sanction') {
-    return { kind: 'sanction', sheet: sanctionSheet(sheet.step, display.sides) };
-  }
-  return {
-    kind: 'setScore',
-    names: [sideNames(display.sides.first), sideNames(display.sides.second)],
-    points: [display.points.first, display.points.second],
-  };
-}
-
-/** The person whose disqualification waits for its ending: the last sanction recorded. */
-function disqualified(display: BadmintonDisplay): string {
-  return display.sanctions[display.sanctions.length - 1]?.person ?? '';
 }
 
 /** The preview row: a card over the same match, a sample afresh, or the next sync status. */
@@ -264,17 +199,19 @@ function usePick(
   pad: FakeBadmintonPad,
   startSample: (sample: PreviewSample) => void,
   closeSheet: () => void,
-  setRefusal: SetRefusal,
+  say: Say,
+  setCardNote: (note: MessageKey | null) => void,
 ) {
   return useCallback(
     (choice: PreviewChoice) => {
       closeSheet();
-      setRefusal(null);
+      say(null);
+      setCardNote(null);
       if (choice === 'sync') return pad.setSync(nextSync(pad.snapshot().sync));
       if (choice === 'singles' || choice === 'doubles') return startSample(choice);
       pad.preview(cardOf(choice));
     },
-    [pad, startSample, closeSheet, setRefusal],
+    [pad, startSample, closeSheet, say, setCardNote],
   );
 }
 

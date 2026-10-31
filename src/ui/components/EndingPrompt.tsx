@@ -15,8 +15,9 @@ type EndingPromptProps = {
 
 /**
  * After a disqualification is recorded (owner rulings, 2026-10-31): record the ending, which ends the match, or void
- * the sanction, if it was a mistake. Nothing else closes it: the dim takes no tap, and the caller holds Back, because a
- * match left between the two is in neither state. A plain View, as every pad sheet (`padSheet.ts`).
+ * the sanction, if it was a mistake. Nothing on the pad closes it: the dim takes no tap. Back still leaves the pad for
+ * Home (owner ruling 10), and the prompt is up again on the return while the ending waits (the caller's). A plain
+ * View, as every pad sheet (`padSheet.ts`).
  */
 export const EndingPrompt = memo(function EndingPrompt({
   person,
@@ -26,7 +27,7 @@ export const EndingPrompt = memo(function EndingPrompt({
   const { t } = useT();
   return (
     <View style={padSheet.overlay}>
-      <View aria-hidden style={padSheet.dim} />
+      <View testID="ending-dim" aria-hidden style={padSheet.dim} />
       <View testID="ending-prompt" accessibilityViewIsModal aria-modal style={padSheet.sheet}>
         <Text variant="title">{t('scoring.ending.title', { person })}</Text>
         <Text variant="body">{t('scoring.ending.body')}</Text>

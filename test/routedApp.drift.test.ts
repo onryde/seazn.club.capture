@@ -213,7 +213,7 @@ describe('every path the navigation moves to has its route file, and each Settin
     );
     const shown = body('app/scoring/index.tsx', 'PadShown');
     expect(shown).toContain('useScreenAwake()');
-    expect(shown).toMatch(/return <BadmintonPadScreen ?\/>;/);
+    expect(shown).toMatch(/return <BadmintonPadPreviewScreen ?\/>;/);
   });
 
   it('renders Stream Settings from Home as the Home variant, and Live Stream’s as the default', () => {

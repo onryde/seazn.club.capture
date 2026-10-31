@@ -289,7 +289,7 @@
   "scoring.preview.dev.result": "Resultado",
   "scoring.preview.dev.viewOnly": "Solo lectura",
   "scoring.preview.dev.linkInvalid": "Enlace no válido",
-  "scoring.preview.dev.updateNeeded": "Actualizar",
+  "scoring.preview.dev.updateNeeded": "Actualización necesaria",
   "scoring.preview.dev.singles": "Individual",
   "scoring.preview.dev.doubles": "Dobles",
   "scoring.preview.dev.sync": "Otro estado de sincronización",
@@ -321,8 +321,7 @@
   "scoring.card.viewOnly.body": "Partido terminado: resultado cerrado. Pide al organizador que lo corrija.",
   "scoring.card.linkInvalid.title": "Enlace no válido",
   "scoring.card.linkInvalid.body": "Este enlace de anotación no es válido. Pide al organizador un enlace nuevo.",
-  "scoring.card.updateNeeded.title": "Actualización necesaria",
-  "scoring.card.updateNeeded.body": "Esta versión de la app no puede anotar este partido. Actualízala para seguir.",
+  "scoring.card.updateNeeded.body": "Seazn necesita una actualización para seguir anotando este partido.",
   "scoring.card.updateNeeded.unsent.one": "{count} toque aún sin enviar. Se envía tras la actualización.",
   "scoring.card.updateNeeded.unsent.other": "{count} toques aún sin enviar. Se envían tras la actualización.",
   "scoring.badminton.games": "Juegos {count}",
@@ -354,5 +353,8 @@
   "scoring.sanction.confirm.title": "¿Descalificar a {person}?",
   "scoring.sanction.confirm.body": "Una descalificación termina el partido.",
   "scoring.sanction.confirm.action": "Registrar descalificación",
-  "scoring.refusal.doubleTap": "No registrado: el mismo toque llegó dos veces a la vez."
+  "scoring.pad.countedOnce": "Contado una vez",
+  "scoring.card.updateNeeded.update": "Actualizar",
+  "scoring.card.updateNeeded.browser": "Anotar en el navegador",
+  "scoring.preview.noop": "Solo vista previa: no se abre nada."
 }
