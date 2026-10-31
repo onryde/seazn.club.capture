@@ -16,11 +16,13 @@ import type { Logger } from '@/services/logger';
 /**
  * Live Stream's viewfinder is the only landscape-locked route (spec §7). Home and Settings (with Diagnostics
  * inside it) follow the phone. `/stream/settings` is `free` even though it sits inside Live Stream: while a
- * broadcast is held the gate keeps the viewfinder's lock under it (D9). No S1 route targets `portrait`; the
- * portrait target and its turn-upright card are kept for S2/S4.
+ * broadcast is held the gate keeps the viewfinder's lock under it (D9). Remote Scoring's pad is portrait (decision
+ * record ruling 4; owner layout A, 2026-10-31): held sideways its two halves would get about 1 dp each, so the
+ * turn-upright card covers it until the phone is upright.
  */
 export function routeTarget(pathname: string): Target {
-  return pathname === '/stream' ? 'landscape' : 'free';
+  if (pathname === '/stream') return 'landscape';
+  return pathname === '/scoring' ? 'portrait' : 'free';
 }
 
 /**

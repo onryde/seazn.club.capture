@@ -589,6 +589,7 @@ describe('useOrientationGate: Home and Settings turn with the phone (spec §7, D
 
 describe('routeTarget', () => {
   // Spec §7: Live Stream's viewfinder is the only landscape-locked route; Home and Settings follow the phone.
+  // Remote Scoring is the only portrait one.
   const ROWS = [
     ['/', 'free'],
     ['/stream', 'landscape'],
@@ -597,10 +598,13 @@ describe('routeTarget', () => {
     ['/streaming-help', 'free'],
     // R2, P8: Stream Settings from Home is outside the mode and follows the phone; a prefix rule would lock it.
     ['/stream-settings', 'free'],
+    // Remote Scoring is portrait (decision record ruling 4; owner layout A, 2026-10-31): held sideways, its two
+    // halves would get about 1 dp each, so the turn-upright card asks for the phone upright.
+    ['/scoring', 'portrait'],
   ] as const;
 
-  it('has its five rows (anti-vacuity)', () => {
-    expect(ROWS).toHaveLength(5);
+  it('has its six rows (anti-vacuity)', () => {
+    expect(ROWS).toHaveLength(6);
   });
 
   it.each(ROWS)('%s wants %s', (pathname, target) => {
