@@ -37,6 +37,7 @@ export const PadPreviewRow = memo(function PadPreviewRow({ chosen, onPick }: Pad
       horizontal
       testID="preview-row"
       accessibilityLabel={t('scoring.preview.dev.label')}
+      style={styles.scroller}
       contentContainerStyle={styles.row}
     >
       {CHIPS.map((chip) => (
@@ -77,6 +78,9 @@ const PreviewChip = memo(function PreviewChip({
 });
 
 const styles = StyleSheet.create({
+  // A horizontal ScrollView grows by default on native (flexGrow 1), which took half the pad's height from the
+  // halves on the phone; react-native-web does not, so only a device shows it.
+  scroller: { flexGrow: 0 },
   row: { gap: space.xs, alignItems: 'center' },
   chip: {
     minHeight: layout.touch,
