@@ -4,6 +4,7 @@ import { router } from 'expo-router';
 import { Linking, Platform } from 'react-native';
 import { loadCaptureEngineNative } from '@/engine/nativeModule';
 import { appVersionOf } from '@/hooks/appVersion';
+import { previewScoringOf } from '@/hooks/previewScoring';
 import { chooseCodePort } from '@/hooks/codePortWiring';
 import { chooseEngine, routedRecordFor } from '@/hooks/engineWiring';
 import { photoPortFor } from '@/hooks/photoPortWiring';
@@ -136,5 +137,6 @@ export function createNativePorts(
     phoneZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
     appVersion: appVersionOf(Constants.expoConfig, Platform.OS),
     devTools: __DEV__,
+    previewScoring: previewScoringOf(Constants.expoConfig),
   };
 }

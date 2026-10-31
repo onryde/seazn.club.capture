@@ -92,6 +92,11 @@ export type Ports = {
   readonly phoneZone: string;
   readonly appVersion: string;
   readonly devTools: boolean;
+  /**
+   * Home's Remote scoring tile opens the S2 pad preview, on a fake (the controller's brief, 2026-10-31): true in the
+   * dev twin, a local release build included, and never in the Play build (`previewScoringOf`).
+   */
+  readonly previewScoring: boolean;
 };
 
 const PortsContext = createContext<Ports | null>(null);
