@@ -13,6 +13,7 @@ import type { Mode } from '@/domain/mode/Mode';
 import { useT } from '@/hooks/useLanguage';
 import { Glyph } from '@/ui/components/Glyph';
 import { ModeIcon } from '@/ui/components/ModeIcon';
+import type { MessageKey } from '@/i18n/messages';
 import { MODE_NAME } from '@/i18n/modeNames';
 import { Text } from '@/ui/components/Text';
 import { MODE_HINT, MODE_PURPOSE } from '@/ui/modeCopy';
@@ -31,6 +32,8 @@ type TileProps = {
    * draws no word. It is the tile's sibling, never inside its button, so each press is its own.
    */
   settings?: { readonly label: string; readonly onPress: () => void };
+  /** The line under the purpose, when it is not the mode's own (`MODE_HINT`): the Remote scoring preview's. */
+  hint?: MessageKey;
 };
 
 /**
@@ -47,6 +50,7 @@ export const Tile = memo(function Tile({
   onPress,
   layout = 'portrait',
   settings,
+  hint = MODE_HINT[mode],
 }: TileProps) {
   const { t } = useT();
   const press = useCallback(() => onPress(mode), [mode, onPress]);
@@ -79,7 +83,7 @@ export const Tile = memo(function Tile({
       <Text variant="body" style={available ? undefined : styles.inert}>
         {t(MODE_PURPOSE[mode])}
       </Text>
-      <Text variant="metricUnit">{t(MODE_HINT[mode])}</Text>
+      <Text variant="metricUnit">{t(hint)}</Text>
     </Pressable>
   );
   if (settings === undefined) return body;

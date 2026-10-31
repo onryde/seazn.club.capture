@@ -287,9 +287,14 @@ function useTapTile(
   setPanel: SetPanel,
   setStatusKey: SetStatusKey,
 ): (mode: Mode) => void {
-  const { modeStore, scanner, scanFlight, endedNotice } = usePorts();
+  const { modeStore, scanner, scanFlight, endedNotice, navigation, previewScoring } = usePorts();
   return useCallback(
     (mode: Mode) => {
+      // The dev twin's S2 preview needs no code; not over a scan in flight, whose outcome is Home's (as the gear).
+      if (mode === 'scoring' && previewScoring) {
+        if (!scanFlight.active()) navigation.go('scoringPreview');
+        return;
+      }
       // Ready first: a tap on a loading store must not raise the flag.
       if (!isReady(modeStore)) return;
       if (!scanFlight.begin()) return;
@@ -303,7 +308,17 @@ function useTapTile(
         .catch(ignoreUnexpected)
         .finally(() => scanFlight.end());
     },
-    [modeStore, scanner, scanFlight, endedNotice, handle, setPanel, setStatusKey],
+    [
+      modeStore,
+      scanner,
+      scanFlight,
+      endedNotice,
+      navigation,
+      previewScoring,
+      handle,
+      setPanel,
+      setStatusKey,
+    ],
   );
 }
 

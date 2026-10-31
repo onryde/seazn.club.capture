@@ -353,5 +353,6 @@
   "scoring.sanction.who": "Qui\u00a0?",
   "scoring.sanction.confirm.title": "Disqualifier {person}\u00a0?",
   "scoring.sanction.confirm.body": "Une disqualification met fin au match.",
-  "scoring.sanction.confirm.action": "Enregistrer la disqualification"
+  "scoring.sanction.confirm.action": "Enregistrer la disqualification",
+  "scoring.refusal.doubleTap": "Non enregistré\u00a0: la même saisie est arrivée deux fois d'un coup."
 }

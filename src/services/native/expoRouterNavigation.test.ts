@@ -26,12 +26,13 @@ describe('the Expo Router adapter (D19)', () => {
   // Spec §6: Diagnostics is a card in Settings, so there is no route and no path to it. `Record<Route, true>`
   // is a compile-time pin (a route added or removed fails tsc); the loop drives every route through the
   // adapter and reads the path it moved to.
-  it('has exactly four routes, each with its own path, and none for Diagnostics', () => {
+  it('has exactly five routes, each with its own path, and none for Diagnostics', () => {
     const routes: Record<Route, true> = {
       home: true,
       stream: true,
       streamSettings: true,
       homeSettings: true,
+      scoringPreview: true,
     };
     const paths = (Object.keys(routes) as Route[]).map((route) => {
       vi.clearAllMocks();
@@ -40,8 +41,27 @@ describe('the Expo Router adapter (D19)', () => {
       expect(moves).toHaveLength(1);
       return moves[0]?.[0];
     });
-    expect(paths).toHaveLength(4);
-    expect(paths.sort()).toEqual(['/', '/stream', '/stream-settings', '/stream/settings']);
+    expect(paths).toHaveLength(5);
+    expect(paths.sort()).toEqual([
+      '/',
+      '/scoring',
+      '/stream',
+      '/stream-settings',
+      '/stream/settings',
+    ]);
+  });
+
+  it('opens the Remote scoring preview from Home and leaves it by replace, as Stream Settings', () => {
+    const moves: string[] = [];
+    const recording = {
+      push: (p: string) => moves.push(`push ${p}`),
+      back: () => moves.push('back'),
+      replace: (p: string) => moves.push(`replace ${p}`),
+    };
+    const nav = adapter(recording);
+    nav.go('scoringPreview');
+    nav.go('home');
+    expect(moves).toEqual(['replace /scoring', 'replace /']);
   });
 
   it('opens Stream Settings from Home and leaves it by replace: no back stack between modes (P8)', () => {

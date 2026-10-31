@@ -353,5 +353,6 @@
   "scoring.sanction.who": "¿A quién?",
   "scoring.sanction.confirm.title": "¿Descalificar a {person}?",
   "scoring.sanction.confirm.body": "Una descalificación termina el partido.",
-  "scoring.sanction.confirm.action": "Registrar descalificación"
+  "scoring.sanction.confirm.action": "Registrar descalificación",
+  "scoring.refusal.doubleTap": "No registrado: el mismo toque llegó dos veces a la vez."
 }

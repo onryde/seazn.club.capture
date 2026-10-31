@@ -182,7 +182,8 @@ function ContinueSlot({
 
 /**
  * The three tiles; the Live Stream tile carries the Stream settings gear when Home gives one (R2, as the owner
- * presented it on 2026-10-12; P6). Its name for a screen reader is `home.streamSettings`.
+ * presented it on 2026-10-12; P6). Its name for a screen reader is `home.streamSettings`. In the dev twin
+ * (`previewScoring`) Remote scoring opens the S2 pad preview; the store build keeps it coming soon.
  */
 const ModeTiles = memo(function ModeTiles({
   onPress,
@@ -194,6 +195,7 @@ const ModeTiles = memo(function ModeTiles({
   streamSettings: (() => void) | null;
 }) {
   const { t } = useT();
+  const { previewScoring } = usePorts();
   // Memoised so the memoised tile is not handed a new object on every pass.
   const gear = useMemo(
     () =>
@@ -208,15 +210,19 @@ const ModeTiles = memo(function ModeTiles({
         <Tile
           key={mode}
           mode={mode}
-          available={BUILT_MODES.includes(mode)}
+          available={BUILT_MODES.includes(mode) || (mode === 'scoring' && previewScoring)}
           onPress={onPress}
           layout={layout}
           settings={mode === 'stream' ? gear : undefined}
+          hint={mode === 'scoring' && previewScoring ? SCORING_PREVIEW_HINT : undefined}
         />
       ))}
     </View>
   );
 });
+
+/** The dev twin's Remote scoring tile opens the S2 pad preview with no code (the controller's brief, 2026-10-31). */
+const SCORING_PREVIEW_HINT = 'home.tile.scoring.preview';
 
 const styles = StyleSheet.create({
   screen: { flex: 1, padding: space.md, backgroundColor: colour.ground },

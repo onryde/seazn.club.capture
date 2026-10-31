@@ -189,8 +189,8 @@ describe('every path the navigation moves to has its route file, and each Settin
     (match) => match[1] ?? '',
   );
 
-  it('reads four paths from the port (anti-vacuity)', () => {
-    expect(paths).toEqual(['/', '/stream', '/stream/settings', '/stream-settings']);
+  it('reads five paths from the port (anti-vacuity)', () => {
+    expect(paths).toEqual(['/', '/stream', '/stream/settings', '/stream-settings', '/scoring']);
   });
 
   it('finds a file for each', () => {
@@ -199,7 +199,21 @@ describe('every path the navigation moves to has its route file, and each Settin
       'app/stream/index.tsx',
       'app/stream/settings.tsx',
       'app/stream-settings.tsx',
+      'app/scoring/index.tsx',
     ]);
+  });
+
+  /**
+   * S2's design preview (the controller's brief, 2026-10-31): `routedApp` renders the pad screen bare, so the route's
+   * own two jobs are read here. It shows the pad only on the dev twin's word, and holds the screen on while it does.
+   */
+  it('shows the Remote scoring preview only in the dev twin, with the screen held on', () => {
+    expect(body('app/scoring/index.tsx', 'ScoringPreviewRoute')).toMatch(
+      /return previewScoring \? <PadShown ?\/> : <Redirect href="\/" ?\/>;/,
+    );
+    const shown = body('app/scoring/index.tsx', 'PadShown');
+    expect(shown).toContain('useScreenAwake()');
+    expect(shown).toMatch(/return <BadmintonPadScreen ?\/>;/);
   });
 
   it('renders Stream Settings from Home as the Home variant, and Live Stream’s as the default', () => {

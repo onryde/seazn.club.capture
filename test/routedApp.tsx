@@ -11,6 +11,7 @@ import {
   type Path,
   type RouterMoves,
 } from '@/services/native/expoRouterNavigation';
+import { BadmintonPadScreen } from '@/ui/screens/BadmintonPadScreen';
 import { HomeScreen } from '@/ui/screens/HomeScreen';
 import { SettingsScreen } from '@/ui/screens/SettingsScreen';
 import { StreamScreen } from '@/ui/screens/StreamScreen';
@@ -42,6 +43,7 @@ const ROUTE_OF: Readonly<Record<Path, Route>> = {
   '/stream': 'stream',
   '/stream/settings': 'streamSettings',
   '/stream-settings': 'homeSettings',
+  '/scoring': 'scoringPreview',
 };
 
 function routerDouble(): RouterDouble {
@@ -75,7 +77,7 @@ function routerDouble(): RouterDouble {
 /**
  * The app as the root layout composes it: the reopen gate, then one screen per
  * route, with Settings over a viewfinder that stays mounted, and Stream Settings
- * from Home on its own (R2, P8).
+ * from Home and the Remote scoring preview each on its own (R2, P8; S2).
  * `extra` renders beside the screens, as part of the app. A remount (Try again
  * after a crash) starts the Stack afresh at Home, as Expo Router's does.
  */
@@ -90,6 +92,7 @@ function RoutedApp({ nav, extra }: { nav: RouterDouble; extra?: ReactNode }) {
     <>
       {route === 'home' ? <HomeScreen /> : null}
       {route === 'homeSettings' ? <SettingsScreen from="home" /> : null}
+      {route === 'scoringPreview' ? <BadmintonPadScreen /> : null}
       {route === 'stream' || route === 'streamSettings' ? <StreamScreen /> : null}
       {route === 'streamSettings' ? <SettingsScreen /> : null}
       {extra}
@@ -101,6 +104,8 @@ export type LaunchedApp = FakePorts & RenderResult & { readonly nav: RouterDoubl
 
 type Launch = {
   readonly kvSeed?: Record<string, string>;
+  /** The dev twin's Remote scoring preview (`Ports.previewScoring`); off, as in the store build, by default. */
+  readonly previewScoring?: boolean;
   /** Runs before the first render: an engine native already holds, say. */
   readonly prepare?: (fakes: FakePorts) => void;
   readonly extra?: ReactNode;
@@ -116,9 +121,13 @@ type Launch = {
  * adapter over `nav`; read the screen from `nav`, never `fakes.navigation`.
  */
 export async function launchApp(launch: Launch = {}): Promise<LaunchedApp> {
-  const { kvSeed, prepare, extra, around, quiet = false } = launch;
+  const { kvSeed, prepare, extra, around, quiet = false, previewScoring = false } = launch;
   const nav = routerDouble();
-  const fakes = createFakePorts({ navigation: createExpoRouterNavigation(nav), kvSeed });
+  const fakes = createFakePorts({
+    navigation: createExpoRouterNavigation(nav),
+    kvSeed,
+    previewScoring,
+  });
   if (quiet) quietDevice(fakes.engine);
   prepare?.(fakes);
   const app = <RoutedApp nav={nav} extra={extra} />;

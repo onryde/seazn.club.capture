@@ -353,5 +353,6 @@
   "scoring.sanction.who": "Wie?",
   "scoring.sanction.confirm.title": "{person} diskwalificeren?",
   "scoring.sanction.confirm.body": "Een diskwalificatie beëindigt de wedstrijd.",
-  "scoring.sanction.confirm.action": "Diskwalificatie vastleggen"
+  "scoring.sanction.confirm.action": "Diskwalificatie vastleggen",
+  "scoring.refusal.doubleTap": "Niet vastgelegd: dezelfde tap kwam twee keer tegelijk."
 }
