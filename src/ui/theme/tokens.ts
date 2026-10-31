@@ -305,6 +305,18 @@ const base = {
   segmentMin: 66,
   /** A segment's side padding: the board's English segments sit on the 66 floor, so this only matters to longer words (Linkerkant). */
   segmentPadX: 12,
+  /**
+   * The scoring pad (S2): each half's side bar at its left edge, lime for the first side and lilac for the second, as
+   * the match label's (C2), and the sync dot's side.
+   */
+  padSideBar: 4,
+  syncDot: 10,
+  /** The pad's strip: each slot's text may take this many lines of `metricUnit` (padFit.test.ts measures them at 320). */
+  padStripLines: 2,
+  /** The pad's last-tap sentence and a refusal in its place: this many lines of `control`, then an ellipsis. */
+  padLineLines: 2,
+  /** A tool's label: this many lines of `actionSecondary` (padFit.test.ts: every label, four languages, at 320). */
+  padToolLines: 2,
 } as const;
 
 /** The cells the controls half's width is made of (`base` holds the shipped ones). */

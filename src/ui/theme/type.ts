@@ -210,6 +210,18 @@ export const typeScale = {
     lineHeight: 22,
     color: colour.ink,
   },
+  /**
+   * The scoring pad's score (S2): the LED digits read across a court, so the most size a half can hold. Barlow
+   * Condensed 700 in lime, as the elapsed clock (the web pad's `.pad-led`), and `tabular-nums` so a 9 becoming 10 does
+   * not jump. padFit.test.ts holds it, the names and the games line in a half on a small phone.
+   */
+  score: {
+    fontFamily: font.displayBold,
+    fontSize: 96,
+    lineHeight: 100,
+    fontVariant: ['tabular-nums'],
+    color: colour.lime,
+  },
 } satisfies Record<string, TextStyle>;
 
 export type TypeRole = keyof typeof typeScale;

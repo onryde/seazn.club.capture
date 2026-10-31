@@ -1,0 +1,61 @@
+import { act, fireEvent, screen } from '@testing-library/react';
+import { describe, expect, it, vi } from 'vitest';
+import en from '@/i18n/en.json';
+import nl from '@/i18n/nl.json';
+import { LastTapLine } from '@/ui/components/LastTapLine';
+import { renderWithPorts } from '../../../test/renderWithPorts';
+
+const rally = { key: 'scoring.badminton.last.rally', vars: { side: 'L. Chen' } } as const;
+const sentence = en['scoring.badminton.last.rally'].replace('{side}', 'L. Chen');
+const undo = () => screen.getByRole('button', { name: en['scoring.pad.undo'] });
+
+describe('LastTapLine', () => {
+  it('says what the last tap did, and offers Undo on it', () => {
+    const onUndo = vi.fn();
+    renderWithPorts(
+      <LastTapLine lastTap={{ text: rally, undo: true }} refusal={null} onUndo={onUndo} />,
+    );
+    expect(screen.getByText(sentence)).toBeTruthy();
+    act(() => fireEvent.click(undo()));
+    expect(onUndo).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps Undo in its place, disabled, when it is not offered', () => {
+    const onUndo = vi.fn();
+    renderWithPorts(
+      <LastTapLine lastTap={{ text: rally, undo: false }} refusal={null} onUndo={onUndo} />,
+    );
+    act(() => fireEvent.click(undo()));
+    expect(onUndo).not.toHaveBeenCalled();
+    expect(undo().getAttribute('aria-disabled')).toBe('true');
+  });
+
+  it('has no sentence and no Undo before the first tap', () => {
+    renderWithPorts(<LastTapLine lastTap={null} refusal={null} onUndo={vi.fn()} />);
+    expect(screen.getByTestId('last-tap').textContent).toBe(en['scoring.pad.undo']);
+    expect(undo().getAttribute('aria-disabled')).toBe('true');
+  });
+
+  it('says a refusal in the sentence’s place, as an alert', () => {
+    const refusal = en['scoring.refusal.invalidScore'];
+    renderWithPorts(
+      <LastTapLine lastTap={{ text: rally, undo: true }} refusal={refusal} onUndo={vi.fn()} />,
+    );
+    expect(screen.getByRole('alert').textContent).toBe(refusal);
+    expect(screen.queryByText(sentence)).toBeNull();
+    expect(undo().getAttribute('aria-disabled')).not.toBe('true');
+  });
+
+  it('says it in Dutch', () => {
+    renderWithPorts(
+      <LastTapLine lastTap={{ text: rally, undo: true }} refusal={null} onUndo={vi.fn()} />,
+      {
+        deviceLanguages: ['nl'],
+      },
+    );
+    expect(
+      screen.getByText(nl['scoring.badminton.last.rally'].replace('{side}', 'L. Chen')),
+    ).toBeTruthy();
+    expect(screen.getByRole('button', { name: nl['scoring.pad.undo'] })).toBeTruthy();
+  });
+});
