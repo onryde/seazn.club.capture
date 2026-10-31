@@ -13,8 +13,7 @@ const pre: BadmintonDisplay = {
   server: 'first',
   court: 'right',
   game: 1,
-  bestOf: 3,
-  intervalPoint: 11,
+  rules: { bestOf: 3, points: 21, winBy: 2, cap: 30, intervalPoint: 11 },
   phase: 'pre',
   sanctions: [],
   lastTap: null,
@@ -90,6 +89,22 @@ describe('badmintonPad: the halves', () => {
     ]);
   });
 
+  // Owner ruling 14: a one-line hint at the bottom of each half, the side's name in it (the mock-up's "Tap: rally to …").
+  it('shows each half’s hint with its own side’s names, partners joined', () => {
+    expect(badmintonPad(live).halves.map((half) => half.hintLine)).toEqual([
+      { key: 'scoring.badminton.hintLine', vars: { side: 'A. Sharma' } },
+      { key: 'scoring.badminton.hintLine', vars: { side: 'L. Chen' } },
+    ]);
+    const doubles: BadmintonDisplay = {
+      ...live,
+      sides: { first: { players: ['A', 'B'] }, second: { players: ['C', 'D'] } },
+    };
+    expect(badmintonPad(doubles).halves[1].hintLine).toEqual({
+      key: 'scoring.badminton.hintLine',
+      vars: { side: 'C / D' },
+    });
+  });
+
   it.each(['pre', 'live', 'betweenGames'] as const)('takes taps %s', (phase) => {
     expect(badmintonPad({ ...live, phase }).halves.map((half) => half.tappable)).toEqual([
       true,
@@ -118,6 +133,15 @@ describe('badmintonPad: the strip', () => {
       slot: 'court',
       text: { key: 'scoring.badminton.court.right' },
     });
+  });
+
+  it('reads the format and the interval point from the match’s rules: a best of 5 with its interval at 8', () => {
+    const rules = { bestOf: 5, points: 15, winBy: 2, cap: 21, intervalPoint: 8 };
+    expect(badmintonPad({ ...pre, rules }).strip.map((item) => item.text)).toEqual([
+      { key: 'scoring.badminton.context', vars: { bestOf: 5, game: 1 } },
+      { key: 'scoring.badminton.court.right' },
+      { key: 'scoring.badminton.intervalAt', vars: { point: 8 } },
+    ]);
   });
 
   it('says Interval when the server has just reached the interval point', () => {

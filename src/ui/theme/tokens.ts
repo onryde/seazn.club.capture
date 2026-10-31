@@ -320,8 +320,12 @@ const base = {
    * two: beside Dutch's "Ongedaan maken" two lines cut most refusals even at 360 (padFit.test.ts measures every one).
    */
   padLineLines: 3,
-  /** The sync status's words in the pad's header: this many lines of `metricUnit` (Spanish offline needs two at 320). */
-  padSyncLines: 2,
+  /**
+   * The sync status's words in the pad's header: this many lines of `metricUnit`, 48 dp, the header's own touch height.
+   * Beside the Preview tag and Rules, Spanish offline needs three at 320; without the tag every status needs two
+   * (padFit.test.ts).
+   */
+  padSyncLines: 3,
   /** A tool's label: this many lines of `actionSecondary` (padFit.test.ts: every label, four languages, at 320). */
   padToolLines: 2,
 } as const;

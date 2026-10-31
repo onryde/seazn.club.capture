@@ -1,6 +1,7 @@
 import { useCallback, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { badmintonPad, type BadmintonPadKey } from '@/domain/scoring/badmintonPad';
 import { isBounce } from '@/domain/scoring/bounce';
+import type { HalfFlash } from '@/domain/scoring/tapFlash';
 import {
   withCard,
   type PadSide,
@@ -51,6 +52,8 @@ export type PadPreviewActions = {
   /** The update banner's two buttons: in the preview they open nothing, and say so on the banner. */
   readonly update: () => void;
   readonly browser: () => void;
+  /** Rules (owner ruling 15): the match's rules in a sheet over the pad. */
+  readonly rules: () => void;
   readonly pick: (choice: PreviewChoice) => void;
 };
 
@@ -60,11 +63,14 @@ export type BadmintonPadPreview = {
   readonly line: PadLineWords;
   /** What the update banner's buttons said: the preview opens no store and no browser. */
   readonly cardNote: MessageKey | null;
+  /** The last tap on a half that counted, for its flash (owner ruling 14; `flashCue`). */
+  readonly flash: HalfFlash;
   readonly chosen: { readonly card: PadStateCard['kind'] | 'pad'; readonly sample: PreviewSample };
   readonly actions: PadPreviewActions;
 };
 
 type Say = (words: PadLineWords) => void;
+type SetFlash = (flash: HalfFlash) => void;
 
 const REFUSAL: Readonly<Record<FakeRefusal, MessageKey>> = {
   notNow: 'scoring.refusal.notNow',
@@ -104,12 +110,13 @@ export function useBadmintonPadPreview(): BadmintonPadPreview {
   const snapshot = useSyncExternalStore(pad.subscribe, pad.snapshot);
   const [line, say] = useState<PadLineWords>(null);
   const [cardNote, setCardNote] = useState<MessageKey | null>(null);
+  const [flash, setFlash] = useState<HalfFlash>(null);
   const settle = useSettle(say);
   const refuseScore = useCallback(() => say(INVALID_SCORE), []);
   const sheets = usePadSheets(pad, snapshot.display, settle, refuseScore);
-  const taps = useTaps(pad, settle, say);
+  const taps = useTaps(pad, settle, say, setFlash);
   const others = useEndingAndCard(pad, settle, setCardNote);
-  const pick = usePick(pad, startSample, sheets.cancel, say, setCardNote);
+  const pick = usePick(pad, startSample, sheets.cancel, { say, setCardNote, setFlash });
   const home = useBackToHome();
   useBackCloses(sheets.open, sheets.cancel);
   const view = useMemo(
@@ -121,7 +128,7 @@ export function useBadmintonPadPreview(): BadmintonPadPreview {
     [home, taps, others, sheets.actions, pick],
   );
   const chosen = { card: snapshot.card?.kind ?? 'pad', sample } as const;
-  return { view, sheet: sheets.view, line, cardNote, chosen, actions };
+  return { view, sheet: sheets.view, line, cardNote, flash, chosen, actions };
 }
 
 /** The app's kept match, or a singles match afresh; picking a sample starts its match afresh. */
@@ -159,24 +166,42 @@ function useSettle(say: Say): (outcome: FakeOutcome) => void {
 /**
  * A tap on a half and Undo: each counts once for a repeat within the bounce window (`bounce.ts`) of its own last
  * recorded tap, and the line says "Counted once" under the sentence of the tap that counted. A rally on the other half
- * is a different tap and always counts.
+ * is a different tap and always counts. A tap on a half that counted is the half's flash, numbered on from the last
+ * one (owner ruling 14); a bounce or a refusal flashes nothing.
  */
-function useTaps(pad: FakeBadmintonPad, settle: (outcome: FakeOutcome) => void, say: Say) {
+function useTaps(
+  pad: FakeBadmintonPad,
+  settle: (outcome: FakeOutcome) => void,
+  say: Say,
+  setFlash: SetFlash,
+) {
   const { clock } = usePorts();
   const last = useRef<{ readonly tap: string; readonly at: number } | null>(null);
+  const flashes = useRef(0);
   const once = useCallback(
-    (tap: string, make: () => FakeOutcome) => {
+    (tap: string, make: () => FakeOutcome): boolean => {
       const at = clock().getTime();
       const prior = last.current;
-      if (prior !== null && prior.tap === tap && isBounce(at - prior.at)) return say(COUNTED_ONCE);
+      if (prior !== null && prior.tap === tap && isBounce(at - prior.at)) {
+        say(COUNTED_ONCE);
+        return false;
+      }
       const outcome = make();
       settle(outcome);
       if (outcome.ok) last.current = { tap, at };
+      return outcome.ok;
     },
     [clock, settle, say],
   );
-  const tapHalf = useCallback((side: PadSide) => once(side, () => pad.rally(side)), [once, pad]);
-  const undo = useCallback(() => once('undo', () => pad.undo()), [once, pad]);
+  const tapHalf = useCallback(
+    (side: PadSide) => {
+      if (!once(side, () => pad.rally(side))) return;
+      flashes.current += 1;
+      setFlash({ side, seq: flashes.current });
+    },
+    [once, pad, setFlash],
+  );
+  const undo = useCallback(() => void once('undo', () => pad.undo()), [once, pad]);
   return useMemo(() => ({ tapHalf, undo }), [tapHalf, undo]);
 }
 
@@ -194,24 +219,34 @@ function useEndingAndCard(
   );
 }
 
-/** The preview row: a card over the same match, a sample afresh, or the next sync status. */
+/** What a pick from the preview row clears: the line, the banner's note, and a flash still showing. */
+type Clears = {
+  readonly say: Say;
+  readonly setCardNote: (note: MessageKey | null) => void;
+  readonly setFlash: SetFlash;
+};
+
+/**
+ * The preview row: a card over the same match, a sample afresh, or the next sync status. A pick is no tap: it closes
+ * a sheet and clears what the last tap left on screen, its flash included, so the new state never flashes.
+ */
 function usePick(
   pad: FakeBadmintonPad,
   startSample: (sample: PreviewSample) => void,
   closeSheet: () => void,
-  say: Say,
-  setCardNote: (note: MessageKey | null) => void,
+  { say, setCardNote, setFlash }: Clears,
 ) {
   return useCallback(
     (choice: PreviewChoice) => {
       closeSheet();
       say(null);
       setCardNote(null);
+      setFlash(null);
       if (choice === 'sync') return pad.setSync(nextSync(pad.snapshot().sync));
       if (choice === 'singles' || choice === 'doubles') return startSample(choice);
       pad.preview(cardOf(choice));
     },
-    [pad, startSample, closeSheet, say, setCardNote],
+    [pad, startSample, closeSheet, say, setCardNote, setFlash],
   );
 }
 

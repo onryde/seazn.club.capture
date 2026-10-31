@@ -356,5 +356,13 @@
   "scoring.pad.countedOnce": "Eén keer geteld",
   "scoring.card.updateNeeded.update": "Bijwerken",
   "scoring.card.updateNeeded.browser": "Scoren in de browser",
-  "scoring.preview.noop": "Alleen een voorbeeld: er opent niets."
+  "scoring.preview.noop": "Alleen een voorbeeld: er opent niets.",
+  "scoring.badminton.hintLine": "Tik: rally voor {side}",
+  "scoring.badminton.rules.bestOf.one": "Best of {count} game",
+  "scoring.badminton.rules.bestOf.other": "Best of {count} games",
+  "scoring.badminton.rules.points": "{points} punten per game, {winBy} punten verschil",
+  "scoring.badminton.rules.cap": "Maximaal {cap} punten per game",
+  "scoring.badminton.rules.endsChange": "Van kant wisselen bij {point} in game {game}",
+  "scoring.rules.open": "Regels",
+  "scoring.rules.title": "Wedstrijdregels"
 }

@@ -27,8 +27,8 @@ describe('the fake badminton pad: a preview of the S2 design, not scoring rules'
       server: 'first',
       court: 'right',
       game: 1,
-      bestOf: 3,
-      intervalPoint: 11,
+      // The preview's rules (the controller's brief, 2026-10-31): best of 3, 21 won by 2, capped at 30, interval at 11.
+      rules: { bestOf: 3, points: 21, winBy: 2, cap: 30, intervalPoint: 11 },
       phase: 'pre',
       sanctions: [],
       lastTap: null,

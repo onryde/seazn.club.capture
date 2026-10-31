@@ -5,7 +5,7 @@ import es from '@/i18n/es.json';
 import fr from '@/i18n/fr.json';
 import nl from '@/i18n/nl.json';
 import { BadmintonPadPreviewScreen } from '@/ui/screens/BadmintonPadPreviewScreen';
-import { layout } from '@/ui/theme/tokens';
+import { layout, space } from '@/ui/theme/tokens';
 import { TEST_NOW, type FakePorts } from '../../../test/fakePorts';
 import { linesAllowed } from '../../../test/linesAllowed';
 import { renderWithPorts } from '../../../test/renderWithPorts';
@@ -578,6 +578,211 @@ describe('BadmintonPadPreviewScreen: leaving, and the phone', () => {
     );
     expect(linesAllowed(words)).toBe(layout.padSyncLines);
   });
+});
+
+/**
+ * Owner ruling 14 (2026-10-31): "the tapped half flashes lime briefly so you see at a glance your tap counted". The
+ * flash itself is a worklet (TapFlash.test.tsx); here each half's stand-in shows the cue it was handed, which moves
+ * only for a counted tap on that half (`flashMove` flashes on a move to a new number, stops on a move to 0).
+ */
+describe('BadmintonPadPreviewScreen: the flash of a half whose tap counted', () => {
+  const cue = (side: 'first' | 'second') =>
+    within(half(side)).getByTestId('tap-flash').dataset.cue ?? '';
+  const cues = () => [cue('first'), cue('second')];
+
+  it('flashes nothing as the pad opens', () => {
+    renderPad();
+    expect(cues()).toEqual(['0', '0']);
+  });
+
+  it('moves the tapped half’s cue on each counted tap, the same half twice included', () => {
+    const pad = renderPad();
+    rally(pad, 'first');
+    expect(cues()).toEqual(['1', '0']);
+    rally(pad, 'first');
+    expect(cues()).toEqual(['2', '0']);
+    rally(pad, 'second');
+    expect(cues()).toEqual(['0', '3']);
+  });
+
+  it('leaves the cue where it was for a bounced repeat, Undo, Set score and a sanction', () => {
+    const pad = renderPad();
+    rally(pad, 'second');
+    act(() => fireEvent.click(half('second')));
+    expect(screen.getByTestId('last-tap-note').textContent).toBe(en['scoring.pad.countedOnce']);
+    undoTap(pad);
+    press(en['scoring.badminton.tool.setScore']);
+    act(() =>
+      fireEvent.change(
+        screen.getByLabelText(fill(en['scoring.setScore.field'], { side: 'A. Sharma' })),
+        { target: { value: '4' } },
+      ),
+    );
+    press(en['scoring.setScore.confirm']);
+    press(sanctionOn('L. Chen'));
+    press(en['scoring.sanction.warning']);
+    press('L. Chen');
+    expect(lastTap()).toContain(
+      fill(en['scoring.badminton.last.sanction'], {
+        level: en['scoring.sanction.warning'],
+        person: 'L. Chen',
+      }),
+    );
+    expect(cues()).toEqual(['0', '1']);
+  });
+
+  it.each([
+    en['scoring.preview.dev.result'],
+    en['scoring.preview.dev.viewOnly'],
+    en['scoring.preview.dev.sync'],
+    en['scoring.preview.dev.doubles'],
+  ])(
+    'clears the flash when the preview row picks %s mid-flash: the new state never flashes',
+    (chip) => {
+      const pad = renderPad();
+      rally(pad, 'first');
+      press(chip);
+      expect(cues()).toEqual(['0', '0']);
+    },
+  );
+
+  it('flashes again after a card, on the next counted tap', () => {
+    const pad = renderPad();
+    rally(pad, 'first');
+    press(en['scoring.preview.dev.notStarted']);
+    press(en['scoring.preview.dev.pad']);
+    expect(cues()).toEqual(['0', '0']);
+    rally(pad, 'first');
+    expect(cue('first')).not.toBe('0');
+  });
+});
+
+/** Owner ruling 14: "a one-line hint at the bottom of each half". */
+describe('BadmintonPadPreviewScreen: the halves’ hints', () => {
+  const hint = (side: string) => fill(en['scoring.badminton.hintLine'], { side });
+
+  it('names each half’s side in its hint while the half takes a tap, and drops it under a card', () => {
+    const pad = renderPad();
+    expect(within(half('first')).getByText(hint('A. Sharma'))).toBeTruthy();
+    expect(within(half('second')).getByText(hint('L. Chen'))).toBeTruthy();
+    rally(pad, 'first');
+    press(en['scoring.preview.dev.result']);
+    expect(screen.queryByText(hint('A. Sharma'))).toBeNull();
+    expect(screen.queryByText(hint('L. Chen'))).toBeNull();
+  });
+});
+
+/** Owner ruling 15 (2026-10-31): "a 'Rules' button in the top bar beside the sync status, opening a sheet over the pad". */
+describe('BadmintonPadPreviewScreen: Rules', () => {
+  const rulesButton = () => screen.queryByRole('button', { name: en['scoring.rules.open'] });
+  /** The preview's match (best of 3, 21 won by 2, capped at 30, the interval at 11), in the dictionary's words. */
+  const LINES = [
+    fill(en['scoring.badminton.rules.bestOf.other'], { count: 3 }),
+    fill(en['scoring.badminton.rules.points'], { points: 21, winBy: 2 }),
+    fill(en['scoring.badminton.rules.cap'], { cap: 30 }),
+    fill(en['scoring.badminton.intervalAt'], { point: 11 }),
+    fill(en['scoring.badminton.rules.endsChange'], { point: 11, game: 3 }),
+  ];
+  const lines = () => screen.getAllByTestId('rules-line').map((line) => line.textContent);
+
+  it('stands in the top bar between the Preview tag and the sync status', () => {
+    renderPad();
+    const order = [
+      screen.getByText(en['scoring.preview.tag']),
+      rulesButton(),
+      screen.getByTestId('sync'),
+    ];
+    const follows = (a: Node | null, b: Node | null) =>
+      a !== null &&
+      b !== null &&
+      (a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0;
+    expect([follows(order[0], order[1]), follows(order[1], order[2])]).toEqual([true, true]);
+  });
+
+  // padFit.test.ts fits Back, the tag, Rules and the sync words on one row at 320 dp with the row's gaps at `space.xs`.
+  it('shares the top bar `space.xs` apart', () => {
+    renderPad();
+    const bar = rulesButton()?.parentElement;
+    if (bar === null || bar === undefined) throw new Error('no top bar');
+    const style = getComputedStyle(bar);
+    expect([style.flexDirection, style.gap]).toEqual(['row', `${space.xs}px`]);
+  });
+
+  it('opens the match rules over the pad, which it hides from a screen reader, and changes no score', () => {
+    const pad = renderPad();
+    rally(pad, 'first', 2);
+    press(en['scoring.rules.open']);
+    const sheet = within(screen.getByTestId('rules-sheet'));
+    expect(sheet.getByText(en['scoring.rules.title'])).toBeTruthy();
+    expect(lines()).toEqual(LINES);
+    expect(screen.getByTestId('pad-content').getAttribute('aria-hidden')).toBe('true');
+    expect(shows('first', 2) && shows('second', 0)).toBe(true);
+    press(en['panel.close']);
+    expect(screen.queryByTestId('rules-sheet')).toBeNull();
+    expect(screen.getByTestId('pad-content').getAttribute('aria-hidden')).not.toBe('true');
+    expect(shows('first', 2)).toBe(true);
+  });
+
+  it('opens once for a double tap: one Back closes it, the next returns Home', () => {
+    const pad = renderPad();
+    const button = rulesButton();
+    if (button === null) throw new Error('no Rules');
+    act(() => fireEvent.click(button));
+    act(() => fireEvent.click(button));
+    expect(screen.getAllByTestId('rules-sheet')).toHaveLength(1);
+    expect(back(pad)).toBe(true);
+    expect(screen.queryByTestId('rules-sheet')).toBeNull();
+    expect(pad.navigation.current()).toBe('scoringPreview');
+    expect(back(pad)).toBe(true);
+    expect(pad.navigation.current()).toBe('home');
+  });
+
+  it.each([
+    en['scoring.preview.dev.notStarted'],
+    en['scoring.preview.dev.result'],
+    en['scoring.preview.dev.viewOnly'],
+    en['scoring.preview.dev.updateNeeded'],
+  ])('shows under the %s card, where the match’s config is known', (chip) => {
+    renderPad();
+    press(chip);
+    expect(rulesButton()).not.toBeNull();
+    press(en['scoring.rules.open']);
+    expect(lines()).toEqual(LINES);
+  });
+
+  it('is absent for a bad link, which names no match, and back on the pad', () => {
+    renderPad();
+    press(en['scoring.preview.dev.linkInvalid']);
+    expect(rulesButton()).toBeNull();
+    press(en['scoring.preview.dev.pad']);
+    expect(rulesButton()).not.toBeNull();
+  });
+
+  it.each([
+    ['es', es],
+    ['fr', fr],
+    ['nl', nl],
+  ] as const)(
+    '%s: the button, the title and the lines in the operator’s language',
+    (lang, words) => {
+      renderPad({ deviceLanguages: [lang] });
+      press(words['scoring.rules.open']);
+      expect(
+        within(screen.getByTestId('rules-sheet')).getByText(words['scoring.rules.title']),
+      ).toBeTruthy();
+      const plain = (text: string) => text.split(String.fromCodePoint(0x00a0)).join(' ');
+      expect(lines().map((line) => plain(line ?? ''))).toEqual(
+        [
+          fill(words['scoring.badminton.rules.bestOf.other'], { count: 3 }),
+          fill(words['scoring.badminton.rules.points'], { points: 21, winBy: 2 }),
+          fill(words['scoring.badminton.rules.cap'], { cap: 30 }),
+          fill(words['scoring.badminton.intervalAt'], { point: 11 }),
+          fill(words['scoring.badminton.rules.endsChange'], { point: 11, game: 3 }),
+        ].map(plain),
+      );
+      expect(screen.getByRole('button', { name: words['panel.close'] })).toBeTruthy();
+    },
+  );
 });
 
 describe('BadmintonPadPreviewScreen: in four languages', () => {

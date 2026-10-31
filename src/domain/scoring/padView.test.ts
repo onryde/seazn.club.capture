@@ -1,7 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { cardPlacement, withCard, type PadStateCard, type PadView } from '@/domain/scoring/padView';
+import {
+  cardPlacement,
+  rulesKnown,
+  withCard,
+  type PadStateCard,
+  type PadView,
+} from '@/domain/scoring/padView';
 
-type Key = 'k.hint' | 'k.sub' | 'k.tool' | 'k.last' | 'k.strip';
+type Key = 'k.hint' | 'k.hintLine' | 'k.sub' | 'k.tool' | 'k.last' | 'k.strip';
 
 /** A pad mid-game, any sport: both halves take taps, one tool, a last tap this phone can take back. */
 const live: PadView<Key> = {
@@ -13,6 +19,7 @@ const live: PadView<Key> = {
       sub: { key: 'k.sub' },
       serving: true,
       hint: { key: 'k.hint' },
+      hintLine: { key: 'k.hintLine' },
       tappable: true,
     },
     {
@@ -22,6 +29,7 @@ const live: PadView<Key> = {
       sub: null,
       serving: false,
       hint: { key: 'k.hint' },
+      hintLine: { key: 'k.hintLine' },
       tappable: true,
     },
   ],
@@ -50,6 +58,21 @@ describe('cardPlacement', () => {
       ['viewOnly', 'withScore'],
       ['linkInvalid', 'instead'],
       ['updateNeeded', 'forControls'],
+    ]);
+  });
+});
+
+describe('rulesKnown', () => {
+  // Owner ruling 15: the Rules button shows whenever the match's config is known: on the pad and under every card but a
+  // dead link's, which names no match (the controller's brief, 2026-10-31).
+  it('knows the rules on the pad and under every card but a bad link', () => {
+    expect(rulesKnown(null)).toBe(true);
+    expect(CARDS.map((card) => [card.kind, rulesKnown(card)])).toEqual([
+      ['notStarted', true],
+      ['resultRecorded', true],
+      ['viewOnly', true],
+      ['linkInvalid', false],
+      ['updateNeeded', true],
     ]);
   });
 });

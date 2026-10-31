@@ -12,22 +12,28 @@ import type { PadHalf, PadSide } from '@/domain/scoring/padView';
 import { useT } from '@/hooks/useLanguage';
 import { usePadText } from '@/hooks/usePadText';
 import type { MessageKey } from '@/i18n/messages';
+import { TapFlash } from '@/ui/components/TapFlash';
 import { Text } from '@/ui/components/Text';
 import { scoreRole } from '@/ui/theme/scoreRole';
 import { colour, layout, plateInk, radius, space } from '@/ui/theme/tokens';
 
 type ScoreHalfProps = {
   readonly half: PadHalf<MessageKey>;
+  /** The half's flash cue (`flashCue`): it flashes when this moves to a new counted tap of its own. */
+  readonly flash: number;
   readonly onTap: (side: PadSide) => void;
 };
 
 /**
  * One side's half of the pad (layout A, owner 2026-10-31): the whole half is the button that gives that side the
- * rally, far larger than any other target. The names as typed, the big value in the LED lime (a step smaller in a half
- * too short for it, `scoreRole`), the games line, and the serving plate. A screen reader reads the side, the value, the line and Serving as one name, and the hint says what a
- * tap does. A half that takes no tap (a card is up, a match is over) is disabled and draws the same.
+ * rally, far larger than any other target. The names as typed and the serving plate on top; the big value in the LED
+ * lime, centred in the space between them and the bottom row, at the largest size the half holds (`scoreRole`); the
+ * bottom row, the games line and the visible hint (owner ruling 14). A tap that counted flashes the half (`TapFlash`).
+ * A screen reader reads the side, the value, the line and Serving as one name, and `hint` says what a tap does; the
+ * visible hint is hidden from it, so it is not read twice. A half that takes no tap (a card is up, a match is over) is
+ * disabled, draws the same, and shows no hint.
  */
-export const ScoreHalf = memo(function ScoreHalf({ half, onTap }: ScoreHalfProps) {
+export const ScoreHalf = memo(function ScoreHalf({ half, flash, onTap }: ScoreHalfProps) {
   const { t } = useT();
   const words = usePadText();
   const tap = useCallback(() => onTap(half.side), [onTap, half.side]);
@@ -51,15 +57,42 @@ export const ScoreHalf = memo(function ScoreHalf({ half, onTap }: ScoreHalfProps
       onLayout={measure}
       style={half.side === 'first' ? firstStyle : secondStyle}
     >
+      <TapFlash cue={flash} />
       <View style={styles.head}>
         <Text variant="label" numberOfLines={layout.padNameLines} style={styles.names}>
           {half.label}
         </Text>
         {serving === null ? null : <ServingPlate word={serving} />}
       </View>
-      <Text variant={scoreRole(height)}>{half.value}</Text>
-      {sub === null ? null : <Text variant="control">{sub}</Text>}
+      <View style={styles.middle}>
+        <Text variant={scoreRole(height)}>{half.value}</Text>
+      </View>
+      <HalfFoot sub={sub} hint={half.tappable ? words(half.hintLine) : null} />
     </Pressable>
+  );
+});
+
+/**
+ * The bottom row: the games line at its left and the hint at its right, one line, cut with an ellipsis (owner ruling
+ * 14). The hint's line is shorter than the games line's, so the row is no taller than the games line alone
+ * (`halfNeeds`). The hint is the half's own words, hidden from a screen reader, which hears the half's `hint`.
+ */
+const HalfFoot = memo(function HalfFoot({
+  sub,
+  hint,
+}: {
+  readonly sub: string | null;
+  readonly hint: string | null;
+}) {
+  return (
+    <View style={styles.foot}>
+      {sub === null ? null : <Text variant="control">{sub}</Text>}
+      {hint === null ? null : (
+        <Text variant="metricUnit" numberOfLines={1} aria-hidden style={styles.hint}>
+          {hint}
+        </Text>
+      )}
+    </View>
   );
 });
 
@@ -79,7 +112,6 @@ const isWords = (part: string | null): part is string => part !== null && part !
 const styles = StyleSheet.create({
   half: {
     flex: 1,
-    justifyContent: 'space-between',
     padding: space.md,
     borderRadius: radius.card,
     borderLeftWidth: layout.padSideBar,
@@ -92,6 +124,10 @@ const styles = StyleSheet.create({
   pressed: { backgroundColor: colour.surface2 },
   head: { flexDirection: 'row', alignItems: 'flex-start', gap: space.sm },
   names: { flex: 1 },
+  // The space between the names and the bottom row: the score sits in its middle, across and down.
+  middle: { flex: 1, minHeight: 0, alignItems: 'center', justifyContent: 'center' },
+  foot: { flexDirection: 'row', alignItems: 'center', gap: space.sm },
+  hint: { flex: 1, minWidth: 0, textAlign: 'right' },
   plate: { paddingHorizontal: space.sm, paddingVertical: space.xs, backgroundColor: colour.lime },
   plateWord: { color: plateInk },
 });

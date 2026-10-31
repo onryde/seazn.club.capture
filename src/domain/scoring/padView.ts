@@ -14,10 +14,21 @@ export type PadSide = 'first' | 'second';
 /** A fill: a value as it is (a name, a number), or words of its own (a sanction's level, translated in turn). */
 export type PadVar<K extends string> = string | number | PadText<K>;
 
-export type PadText<K extends string> = {
-  readonly key: K;
-  readonly vars?: Readonly<Record<string, PadVar<K>>>;
+export type PadText<K extends string> =
+  { readonly key: K; readonly vars?: PadFills<K>; readonly count?: undefined } | PadCounted<K>;
+
+/**
+ * Words whose form follows a count, by the web's plural convention (`key.one`, `key.other`): `key` names the `.other`
+ * form (only such a key takes a count), the language's own rule picks the form for `count` (the translator's `tp`),
+ * and `{count}` is filled with it.
+ */
+export type PadCounted<K extends string> = {
+  readonly key: Extract<K, `${string}.other`>;
+  readonly vars?: PadFills<K>;
+  readonly count: number;
 };
+
+export type PadFills<K extends string> = Readonly<Record<string, PadVar<K>>>;
 
 /** One side's half: tapping it gives that side the rally (or the sport's unit of scoring). */
 export type PadHalf<K extends string> = {
@@ -32,6 +43,11 @@ export type PadHalf<K extends string> = {
   readonly serving: boolean;
   /** What a tap does, said to a screen reader ("Tap to award the rally"). */
   readonly hint: PadText<K>;
+  /**
+   * What a tap does as the half shows it, naming the side ("Tap: rally to A. Sharma"; owner ruling 14, 2026-10-31). On
+   * screen only while the half takes a tap; a screen reader hears `hint` instead, so it is never read twice.
+   */
+  readonly hintLine: PadText<K>;
   readonly tappable: boolean;
 };
 
@@ -103,6 +119,14 @@ export type CardPlacement = 'instead' | 'withScore' | 'forControls';
 export function cardPlacement(card: PadStateCard): CardPlacement {
   if (card.kind === 'notStarted' || card.kind === 'linkInvalid') return 'instead';
   return card.kind === 'updateNeeded' ? 'forControls' : 'withScore';
+}
+
+/**
+ * Whether the match's rules are known, so the pad offers its Rules sheet (owner ruling 15, 2026-10-31): on the pad and
+ * under every card but a dead link's, which names no match.
+ */
+export function rulesKnown(card: PadStateCard | null): boolean {
+  return card?.kind !== 'linkInvalid';
 }
 
 /**

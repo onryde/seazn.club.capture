@@ -1,3 +1,4 @@
+import type { BadmintonRules } from '@/domain/scoring/badmintonRules';
 import {
   SANCTION_LEVELS,
   type BadmintonDisplay,
@@ -75,10 +76,8 @@ export const DOUBLES_SAMPLE: FakePadSample = {
   ],
 };
 
-const GAME_POINT = 21;
-const CAP = 30;
-const BEST_OF = 3;
-const INTERVAL_POINT = 11;
+/** The preview match's config, which the pad's strip and its Rules sheet read (`BadmintonDisplay.rules`). */
+const RULES: BadmintonRules = { bestOf: 3, points: 21, winBy: 2, cap: 30, intervalPoint: 11 };
 
 const OK: FakeOutcome = { ok: true };
 const refused = (refusal: FakeRefusal): FakeOutcome => ({ ok: false, refusal });
@@ -111,9 +110,9 @@ const other = (side: PadSide): PadSide => (side === 'first' ? 'second' : 'first'
 
 /** A side with `mine` against `theirs` has won the game. */
 const wonGame = (mine: number, theirs: number) =>
-  (mine >= GAME_POINT && mine - theirs >= 2) || mine >= CAP;
+  (mine >= RULES.points && mine - theirs >= RULES.winBy) || mine >= RULES.cap;
 
-const isPoints = (value: number) => Number.isInteger(value) && value >= 0 && value <= CAP;
+const isPoints = (value: number) => Number.isInteger(value) && value >= 0 && value <= RULES.cap;
 
 /** A score a game in progress can have: whole points to the cap, and neither side has won. */
 const inProgress = (first: number, second: number) =>
@@ -280,7 +279,7 @@ function rally(score: Score, side: PadSide): Score {
     };
   }
   const games = { ...score.games, [side]: score.games[side] + 1 };
-  if (games[side] > BEST_OF / 2) {
+  if (games[side] > RULES.bestOf / 2) {
     const lastTap: BadmintonLastTap = { kind: 'rally', side, won: 'match', game: score.game };
     return { ...score, points, games, server: side, phase: 'decided', lastTap };
   }
@@ -308,8 +307,7 @@ function displayOf(
     server: score.server,
     court: score.points[score.server] % 2 === 0 ? 'right' : 'left',
     game: score.game,
-    bestOf: BEST_OF,
-    intervalPoint: INTERVAL_POINT,
+    rules: RULES,
     phase: score.phase,
     sanctions: score.sanctions,
     lastTap: undone === null ? score.lastTap : { kind: 'undone', tap: undone },

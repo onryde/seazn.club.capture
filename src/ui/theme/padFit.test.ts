@@ -94,43 +94,79 @@ describe('the tool row fits at 320 in four languages', () => {
   });
 });
 
-describe('the header’s sync words fit at 320 in four languages', () => {
-  /** Beside Back (touch), the Preview tag (its words, padding xs a side, border) and the dot (syncDot, gap xs). */
-  const syncRoom = (width: number, dictionary: Dictionary) =>
+describe('the header fits on one row at 320 and 360 in four languages', () => {
+  // Owner ruling 15 (2026-10-31): a Rules button in the top bar beside the sync status. Back, the Preview tag, Rules and
+  // the sync status share one row, `space.xs` apart; Rules is its word as a tool's (`actionSecondary`) in an outline,
+  // `space.xs` a side, at least a touch target wide.
+  const tag = (dictionary: Dictionary) =>
+    unitWidth(dictionary['scoring.preview.tag'] ?? '') + 2 * space.xs + 2 * layout.iconBorder;
+  const rules = (dictionary: Dictionary) =>
+    Math.max(
+      layout.touch,
+      toolWidth(dictionary['scoring.rules.open'] ?? '') + 2 * space.xs + 2 * layout.iconBorder,
+    );
+  /** What the sync words have: the column less Back, the tag (preview only), Rules, the dot and the gaps between. */
+  const syncRoom = (width: number, dictionary: Dictionary, withTag = true) =>
     column(width) -
     layout.touch -
-    space.sm -
-    (unitWidth(dictionary['scoring.preview.tag'] ?? '') + 2 * space.xs + 2 * layout.iconBorder) -
-    space.sm -
+    space.xs -
+    (withTag ? tag(dictionary) + space.xs : 0) -
+    rules(dictionary) -
+    space.xs -
     layout.syncDot -
     space.xs;
-
-  it.each(LANGUAGES)(
-    '%s: each status, at 1 and 99 taps, in its reserved lines',
-    (_lang, dictionary: Dictionary) => {
-      const statuses = ['scoring.sync.synced'].concat(
-        ...['sending', 'offline', 'refused'].map((kind) => [
-          `scoring.sync.${kind}.one`,
-          `scoring.sync.${kind}.other`,
-        ]),
-      );
-      for (const key of statuses) {
-        for (const count of ['1', '99']) {
+  const statuses = ['scoring.sync.synced'].concat(
+    ...['sending', 'offline', 'refused'].map((kind) => [
+      `scoring.sync.${kind}.one`,
+      `scoring.sync.${kind}.other`,
+    ]),
+  );
+  /** The most lines any status takes, at 1 and at 99 taps (the longest sync words). */
+  const mostLines = (width: number, dictionary: Dictionary, withTag = true) =>
+    Math.max(
+      ...statuses.flatMap((key) =>
+        ['1', '99'].map((count) => {
           const text = fill(dictionary[key] ?? '', { count });
           expect(text).not.toBe('');
-          for (const width of WIDTHS) {
-            expect(linesOf(text, syncRoom(width, dictionary), unitWidth)).toBeLessThanOrEqual(
-              layout.padSyncLines,
-            );
-          }
-        }
-      }
+          return linesOf(text, syncRoom(width, dictionary, withTag), unitWidth);
+        }),
+      ),
+    );
+
+  it('has the Rules word in every language (anti-vacuity)', () => {
+    for (const [, dictionary] of LANGUAGES) expect(dictionary['scoring.rules.open']).toBeTruthy();
+  });
+
+  it('gives the sync words three lines, which are the header’s own touch height: a third line never grows the row', () => {
+    expect(layout.padSyncLines * typeScale.metricUnit.lineHeight).toBe(layout.touch);
+  });
+
+  it.each(LANGUAGES)(
+    '%s: with the Preview tag, each status at 1 and 99 taps in its reserved lines',
+    (_lang, dictionary: Dictionary) => {
+      for (const width of WIDTHS)
+        expect(mostLines(width, dictionary)).toBeLessThanOrEqual(layout.padSyncLines);
     },
   );
 
-  it('Spanish offline needs both lines at 320: one line was not enough (anti-vacuity)', () => {
-    const text = fill(es['scoring.sync.offline.other'], { count: '3' });
-    expect(linesOf(text, syncRoom(320, es), unitWidth)).toBe(2);
+  // The tag is the preview's own (S2's real pad has none): without it, every status keeps to two lines at 320.
+  it.each(LANGUAGES)(
+    '%s: without the Preview tag, each status in two lines at 320 and 360',
+    (_lang, dictionary: Dictionary) => {
+      for (const width of WIDTHS)
+        expect(mostLines(width, dictionary, false)).toBeLessThanOrEqual(2);
+    },
+  );
+
+  it('needs the third line only in Spanish at 320, beside the Preview tag (anti-vacuity)', () => {
+    const third = LANGUAGES.flatMap(([lang, dictionary]) =>
+      WIDTHS.filter((width) => mostLines(width, dictionary) === 3).map(
+        (width) => `${lang} ${width}`,
+      ),
+    );
+    expect(third).toEqual(['es 320']);
+    const offline = fill(es['scoring.sync.offline.other'], { count: '99' });
+    expect(linesOf(offline, syncRoom(320, es), unitWidth)).toBe(3);
   });
 });
 
@@ -381,14 +417,77 @@ describe('a half', () => {
     expect(digits).toBeLessThanOrEqual(column(320) - layout.padSideBar - 2 * space.md);
   });
 
-  it('needs 194 for the score at 96 and 162 at 64: 2 × 16 padding + 2 × 22 names + 100 or 68 + 18 games line', () => {
+  // Owner ruling 14 (2026-10-31): "score centred and larger". The controller's size: Barlow Condensed 700 at 128/132.
+  it('holds a two-digit score at 128 across its width at 320: two tabular digits, 127.5 dp', () => {
+    expect([typeScale.scoreLarge.fontSize, typeScale.scoreLarge.lineHeight]).toEqual([128, 132]);
+    const digits = 2 * barlow700.advanceOfName('zero.tf') * typeScale.scoreLarge.fontSize;
+    expect(digits.toFixed(1)).toBe('127.5');
+    expect(digits).toBeLessThanOrEqual(column(320) - layout.padSideBar - 2 * space.md);
+  });
+
+  it('needs 226 for the score at 128, 194 at 96 and 162 at 64: 2 × 16 padding + 2 × 22 names + 132, 100 or 68 + the bottom row’s 18', () => {
+    expect(halfNeeds('scoreLarge')).toBe(226);
     expect(halfNeeds('score')).toBe(194);
     expect(halfNeeds('scoreCompact')).toBe(162);
-    expect([null, 194, 193, 162].map(scoreRole)).toEqual([
+    expect([null, 226, 225, 194, 193, 162].map(scoreRole)).toEqual([
+      'score',
+      'scoreLarge',
       'score',
       'score',
       'scoreCompact',
       'scoreCompact',
+    ]);
+  });
+
+  // The halves as laid out on the owner's phone (NE2211, 360 × 804; the controller's brief, 2026-10-31, from the device).
+  it('sets the score at 96 on the owner’s phone with the preview row (a half 209), at 128 without it (233)', () => {
+    expect(scoreRole(209)).toBe('score');
+    expect(scoreRole(233)).toBe('scoreLarge');
+  });
+});
+
+describe('a half’s bottom row: the games line and the hint (owner ruling 14)', () => {
+  /** Inside a half: the column less the side bar and the half's padding (space.md a side). */
+  const inner = (width: number) => column(width) - layout.padSideBar - 2 * space.md;
+  /** Beside the games line (`control`) and the row's gap: the hint's room, one line of `metricUnit`. */
+  const hintRoom = (width: number, games: string) => inner(width) - controlWidth(games) - space.sm;
+
+  it('costs no height over the games line alone: the hint’s 16 dp line sits in the games line’s 18', () => {
+    expect(typeScale.metricUnit.lineHeight).toBeLessThanOrEqual(typeScale.control.lineHeight);
+  });
+
+  it.each(LANGUAGES)(
+    '%s: the games line is whole at 320 with the widest sanction',
+    (_lang, dictionary: Dictionary) => {
+      for (const level of ['warning', 'penalty', 'expulsion', 'disqualification']) {
+        const games = fill(dictionary['scoring.badminton.gamesSanctioned'] ?? '', {
+          count: '2',
+          sanction: dictionary[`scoring.sanction.${level}`] ?? '',
+        });
+        expect(controlWidth(games)).toBeLessThanOrEqual(inner(320));
+      }
+    },
+  );
+
+  // The hint is one line, cut with an ellipsis where it is wider than its room. Beside "Games 0", a singles side's is
+  // whole everywhere; a doubles side's names are what the ellipsis cuts.
+  it('cuts only these hints beside “Games 0”: doubles in Spanish and French at 320, in French at 360', () => {
+    const cut = WIDTHS.flatMap((width) =>
+      LANGUAGES.flatMap(([lang, dictionary]) =>
+        NAMES.filter((side) => {
+          const games = fill(dictionary['scoring.badminton.games'], { count: '0' });
+          const hint = fill(dictionary['scoring.badminton.hintLine'], { side });
+          return unitWidth(hint) > hintRoom(width, games);
+        }).map((side) => `${width} ${lang} ${side}`),
+      ),
+    );
+    expect(cut).toEqual([
+      '320 es A. Sharma / R. Iyer',
+      '320 es L. Chen / M. Wong',
+      '320 fr A. Sharma / R. Iyer',
+      '320 fr L. Chen / M. Wong',
+      '360 fr A. Sharma / R. Iyer',
+      '360 fr L. Chen / M. Wong',
     ]);
   });
 });
@@ -427,5 +526,10 @@ describe('the pad’s height, portrait', () => {
     expect(halves(714)).toBe(halfNeeds('score'));
     expect(halves(650)).toBe(halfNeeds('scoreCompact'));
     expect(scoreRole(halves(713))).toBe('scoreCompact');
+  });
+
+  it('sets the score at 128 from 778 tall', () => {
+    expect(halves(778)).toBe(halfNeeds('scoreLarge'));
+    expect(scoreRole(halves(777))).toBe('score');
   });
 });

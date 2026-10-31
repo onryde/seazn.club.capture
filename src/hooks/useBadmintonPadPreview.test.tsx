@@ -151,3 +151,146 @@ describe('useBadmintonPadPreview, left and returned to', () => {
     expect(mount(fakes).result.current.chosen.sample).toBe('doubles');
   });
 });
+
+/**
+ * Owner ruling 14 (2026-10-31): "the tapped half flashes lime briefly so you see at a glance your tap counted". The
+ * hook numbers each tap on a half that counted; the screen hands each half its cue (`flashCue`). Not on a refusal, a
+ * bounced repeat, Undo, Set score, a sanction, the preview row, or a first mount.
+ */
+describe('useBadmintonPadPreview, the flash of a half whose tap counted', () => {
+  it('has no flash before any tap: nothing counted yet', () => {
+    expect(mount().result.current.flash).toBeNull();
+  });
+
+  it('flashes the tapped half, and a second counted tap on the same half is a new flash', () => {
+    const fakes = createFakePorts();
+    const view = mount(fakes);
+    act(() => view.result.current.actions.tapHalf('first'));
+    expect(view.result.current.flash).toEqual({ side: 'first', seq: 1 });
+    at(fakes, 1000);
+    act(() => view.result.current.actions.tapHalf('first'));
+    expect(view.result.current.flash).toEqual({ side: 'first', seq: 2 });
+    at(fakes, 2000);
+    act(() => view.result.current.actions.tapHalf('second'));
+    expect(view.result.current.flash).toEqual({ side: 'second', seq: 3 });
+  });
+
+  it('does not flash for a bounced repeat, which counted once', () => {
+    const fakes = createFakePorts();
+    const view = mount(fakes);
+    act(() => view.result.current.actions.tapHalf('first'));
+    at(fakes, 100);
+    act(() => view.result.current.actions.tapHalf('first'));
+    expect(view.result.current.line).toEqual(COUNTED_ONCE);
+    expect(view.result.current.flash).toEqual({ side: 'first', seq: 1 });
+  });
+
+  it('does not flash for a refused tap: a rally once the match is decided', () => {
+    const fakes = createFakePorts();
+    const view = mount(fakes);
+    for (let rally = 1; rally <= 42; rally += 1) {
+      at(fakes, rally * 1000);
+      act(() => view.result.current.actions.tapHalf('first'));
+    }
+    expect(view.result.current.flash).toEqual({ side: 'first', seq: 42 });
+    at(fakes, 60_000);
+    act(() => view.result.current.actions.tapHalf('second'));
+    expect(view.result.current.line).toEqual(refusal('scoring.refusal.notNow'));
+    expect(view.result.current.flash).toEqual({ side: 'first', seq: 42 });
+  });
+
+  it('does not flash for Undo, Set score or a sanction', () => {
+    const fakes = createFakePorts();
+    const view = mount(fakes);
+    act(() => view.result.current.actions.tool('setScore'));
+    act(() => view.result.current.actions.saveScore('5', '3'));
+    act(() => view.result.current.actions.tool('sanction.second'));
+    act(() => view.result.current.actions.choose('warning'));
+    act(() => view.result.current.actions.choose('0'));
+    at(fakes, 1000);
+    act(() => view.result.current.actions.undo());
+    expect(points(view)).toEqual(['5', '3']);
+    expect(view.result.current.flash).toBeNull();
+  });
+
+  it.each(['resultRecorded', 'pad', 'doubles', 'sync'] as const)(
+    'clears the flash when the preview row picks %s, mid-flash: the new state never flashes',
+    (choice) => {
+      const view = mount();
+      act(() => view.result.current.actions.tapHalf('second'));
+      act(() => view.result.current.actions.pick(choice));
+      expect(view.result.current.flash).toBeNull();
+    },
+  );
+
+  it('numbers on after a clear, so the next counted tap on the same half is a new flash', () => {
+    const fakes = createFakePorts();
+    const view = mount(fakes);
+    act(() => view.result.current.actions.tapHalf('first'));
+    act(() => view.result.current.actions.pick('pad'));
+    at(fakes, 1000);
+    act(() => view.result.current.actions.tapHalf('first'));
+    expect(view.result.current.flash).toEqual({ side: 'first', seq: 2 });
+  });
+
+  it('starts with no flash on a return to the pad, the match kept', () => {
+    const fakes = createFakePorts();
+    const first = mount(fakes);
+    act(() => first.result.current.actions.tapHalf('first'));
+    first.unmount();
+    const again = mount(fakes);
+    expect(points(again)).toEqual(['1', '0']);
+    expect(again.result.current.flash).toBeNull();
+  });
+});
+
+/** Owner ruling 15 (2026-10-31): a Rules button opens a sheet over the pad with the match's rules and Close. */
+describe('useBadmintonPadPreview, the Rules sheet', () => {
+  /** The preview's rules (best of 3, 21 won by 2, capped at 30, the interval at 11), as the brief states them. */
+  const LINES = [
+    { key: 'scoring.badminton.rules.bestOf.other', count: 3 },
+    { key: 'scoring.badminton.rules.points', vars: { points: 21, winBy: 2 } },
+    { key: 'scoring.badminton.rules.cap', vars: { cap: 30 } },
+    { key: 'scoring.badminton.intervalAt', vars: { point: 11 } },
+    { key: 'scoring.badminton.rules.endsChange', vars: { point: 11, game: 3 } },
+  ];
+
+  it('opens the match’s rules over the pad, and changes nothing on it', () => {
+    const view = mount();
+    act(() => view.result.current.actions.tapHalf('first'));
+    const before = view.result.current.view;
+    act(() => view.result.current.actions.rules());
+    expect(view.result.current.sheet).toEqual({ kind: 'rules', lines: LINES });
+    expect(view.result.current.view).toBe(before);
+    expect(view.result.current.flash).toEqual({ side: 'first', seq: 1 });
+  });
+
+  it('opens once for a second tap: one Back closes it, and the next leaves for Home', () => {
+    const fakes = createFakePorts();
+    act(() => fakes.navigation.go('scoringPreview'));
+    const view = mount(fakes);
+    act(() => view.result.current.actions.rules());
+    act(() => view.result.current.actions.rules());
+    let handled = false;
+    act(() => {
+      handled = fakes.back.press();
+    });
+    expect(handled).toBe(true);
+    expect(view.result.current.sheet).toBeNull();
+    expect(fakes.navigation.current()).toBe('scoringPreview');
+    act(() => {
+      fakes.back.press();
+    });
+    expect(fakes.navigation.current()).toBe('home');
+  });
+
+  it('closes on Close, and when the preview row picks a state', () => {
+    const view = mount();
+    act(() => view.result.current.actions.rules());
+    act(() => view.result.current.actions.cancel());
+    expect(view.result.current.sheet).toBeNull();
+    act(() => view.result.current.actions.rules());
+    act(() => view.result.current.actions.pick('viewOnly'));
+    expect(view.result.current.sheet).toBeNull();
+  });
+});

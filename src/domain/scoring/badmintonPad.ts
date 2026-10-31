@@ -1,3 +1,4 @@
+import type { BadmintonRuleKey, BadmintonRules } from '@/domain/scoring/badmintonRules';
 import {
   withCard,
   type PadHalf,
@@ -63,8 +64,8 @@ export type BadmintonDisplay = {
   readonly court: 'left' | 'right';
   /** The game under way, or about to start; the last one once decided. */
   readonly game: number;
-  readonly bestOf: number;
-  readonly intervalPoint: number;
+  /** The match's config: the strip's format and interval, and the Rules sheet (`badmintonRuleLines`). */
+  readonly rules: BadmintonRules;
   readonly phase: BadmintonPhase;
   readonly sanctions: readonly BadmintonSanction[];
   readonly lastTap: BadmintonLastTap | null;
@@ -79,6 +80,7 @@ export type BadmintonPadKey =
   | 'scoring.badminton.games'
   | 'scoring.badminton.gamesSanctioned'
   | 'scoring.badminton.hint'
+  | 'scoring.badminton.hintLine'
   | 'scoring.badminton.context'
   | 'scoring.badminton.court.left'
   | 'scoring.badminton.court.right'
@@ -96,6 +98,7 @@ export type BadmintonPadKey =
   | 'scoring.badminton.undone.ending'
   | 'scoring.badminton.tool.sanction'
   | 'scoring.badminton.tool.setScore'
+  | BadmintonRuleKey
   | SanctionLevelKey;
 
 export type SanctionLevelKey = `scoring.sanction.${BadmintonSanctionLevel}`;
@@ -154,6 +157,7 @@ function half(state: BadmintonDisplay, side: PadSide): PadHalf<BadmintonPadKey> 
     sub: gamesLine(state, side),
     serving: state.phase !== 'decided' && state.server === side,
     hint: { key: 'scoring.badminton.hint' },
+    hintLine: { key: 'scoring.badminton.hintLine', vars: { side: sideNames(state.sides[side]) } },
     tappable: open(state),
   };
 }
@@ -178,7 +182,7 @@ function strip(state: BadmintonDisplay): readonly PadStripItem<BadmintonPadKey>[
       slot: 'context',
       text: {
         key: 'scoring.badminton.context',
-        vars: { bestOf: state.bestOf, game: state.game },
+        vars: { bestOf: state.rules.bestOf, game: state.game },
       },
     },
     {
@@ -194,7 +198,7 @@ function strip(state: BadmintonDisplay): readonly PadStripItem<BadmintonPadKey>[
  * interval itself (the rally's winner serves, so the side that just reached it is the server); after it, nothing.
  */
 function interval(state: BadmintonDisplay): Text | null {
-  const at = state.intervalPoint;
+  const at = state.rules.intervalPoint;
   const server = state.points[state.server];
   const receiver = state.points[state.server === 'first' ? 'second' : 'first'];
   if (Math.max(server, receiver) < at) {

@@ -356,5 +356,13 @@
   "scoring.pad.countedOnce": "Counted once",
   "scoring.card.updateNeeded.update": "Update",
   "scoring.card.updateNeeded.browser": "Score in the browser",
-  "scoring.preview.noop": "Preview only: nothing opens."
+  "scoring.preview.noop": "Preview only: nothing opens.",
+  "scoring.badminton.hintLine": "Tap: rally to {side}",
+  "scoring.badminton.rules.bestOf.one": "Best of {count} game",
+  "scoring.badminton.rules.bestOf.other": "Best of {count} games",
+  "scoring.badminton.rules.points": "{points} points a game, win by {winBy}",
+  "scoring.badminton.rules.cap": "Game capped at {cap}",
+  "scoring.badminton.rules.endsChange": "Ends change at {point} in game {game}",
+  "scoring.rules.open": "Rules",
+  "scoring.rules.title": "Match rules"
 }

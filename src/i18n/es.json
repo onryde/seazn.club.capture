@@ -356,5 +356,13 @@
   "scoring.pad.countedOnce": "Contado una vez",
   "scoring.card.updateNeeded.update": "Actualizar",
   "scoring.card.updateNeeded.browser": "Anotar en el navegador",
-  "scoring.preview.noop": "Solo vista previa: no se abre nada."
+  "scoring.preview.noop": "Solo vista previa: no se abre nada.",
+  "scoring.badminton.hintLine": "Toca: jugada para {side}",
+  "scoring.badminton.rules.bestOf.one": "Al mejor de {count} juego",
+  "scoring.badminton.rules.bestOf.other": "Al mejor de {count} juegos",
+  "scoring.badminton.rules.points": "{points} puntos por juego, {winBy} de ventaja",
+  "scoring.badminton.rules.cap": "Máximo {cap} puntos por juego",
+  "scoring.badminton.rules.endsChange": "Cambio de lado a los {point} en el juego {game}",
+  "scoring.rules.open": "Reglas",
+  "scoring.rules.title": "Reglas del partido"
 }

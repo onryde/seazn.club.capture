@@ -215,6 +215,17 @@ export const typeScale = {
    * Condensed 700 in lime, as the elapsed clock (the web pad's `.pad-led`), and `tabular-nums` so a 9 becoming 10 does
    * not jump. padFit.test.ts holds it, the names and the games line in a half on a small phone.
    */
+  /**
+   * The score a step up (owner ruling 14, 2026-10-31: "score centred and larger"), for a half tall enough to hold it
+   * (`scoreRole.ts`): the owner's phone without the preview row. The controller's size; the same face, tabular, lime.
+   */
+  scoreLarge: {
+    fontFamily: font.displayBold,
+    fontSize: 128,
+    lineHeight: 132,
+    fontVariant: ['tabular-nums'],
+    color: colour.lime,
+  },
   score: {
     fontFamily: font.displayBold,
     fontSize: 96,
