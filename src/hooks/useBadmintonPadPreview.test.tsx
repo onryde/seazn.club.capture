@@ -55,7 +55,7 @@ describe('useBadmintonPadPreview, given what the screen never sends', () => {
     const view = mount();
     act(() => view.result.current.actions.tool('setScore'));
     act(() => view.result.current.actions.choose('warning'));
-    expect(view.result.current.sheet?.kind).toBe('setScore');
+    expect(view.result.current.sheet).toMatchObject({ kind: 'setScore', game: 1 });
     expect(view.result.current.view.lastTap).toBeNull();
   });
 

@@ -23,7 +23,7 @@ describe('the fake badminton pad: a preview of the S2 design, not scoring rules'
     expect(display(pad)).toEqual({
       sides: { first: { players: ['A. Sharma'] }, second: { players: ['L. Chen'] } },
       points: { first: 0, second: 0 },
-      games: { first: 0, second: 0 },
+      finished: [],
       server: 'first',
       court: 'right',
       game: 1,
@@ -82,7 +82,8 @@ describe('the fake badminton pad: a preview of the S2 design, not scoring rules'
     rallies(pad, 'second', 'first', 'first');
     expect(display(pad)).toMatchObject({
       points: { first: 0, second: 0 },
-      games: { first: 1, second: 0 },
+      // 20-20, then 21-20, 21-21, 22-21 and 23-21.
+      finished: [{ points: { first: 23, second: 21 }, winner: 'first' }],
       game: 2,
       phase: 'betweenGames',
       server: 'first',
@@ -94,7 +95,10 @@ describe('the fake badminton pad: a preview of the S2 design, not scoring rules'
     const pad = createFakeBadmintonPad(SINGLES_SAMPLE);
     pad.setScore(29, 29);
     rallies(pad, 'second');
-    expect(display(pad)).toMatchObject({ games: { first: 0, second: 1 }, phase: 'betweenGames' });
+    expect(display(pad)).toMatchObject({
+      finished: [{ points: { first: 29, second: 30 }, winner: 'second' }],
+      phase: 'betweenGames',
+    });
   });
 
   it('lets the winner of a game serve first in the next', () => {
@@ -111,7 +115,10 @@ describe('the fake badminton pad: a preview of the S2 design, not scoring rules'
     rallies(pad, 'first');
     expect(display(pad)).toMatchObject({
       points: { first: 21, second: 15 },
-      games: { first: 2, second: 0 },
+      finished: [
+        { points: { first: 21, second: 0 }, winner: 'first' },
+        { points: { first: 21, second: 15 }, winner: 'first' },
+      ],
       game: 2,
       phase: 'decided',
       lastTap: { kind: 'rally', side: 'first', won: 'match', game: 2 },
@@ -125,10 +132,97 @@ describe('the fake badminton pad: a preview of the S2 design, not scoring rules'
     firstWinsAGame(pad);
     rallies(pad, ...times(21, 'second'));
     expect(display(pad)).toMatchObject({
-      games: { first: 1, second: 1 },
+      finished: [
+        { points: { first: 21, second: 0 }, winner: 'first' },
+        { points: { first: 0, second: 21 }, winner: 'second' },
+      ],
       game: 3,
       phase: 'betweenGames',
     });
+  });
+});
+
+// Owner ruling 16 (2026-10-31): each half's bottom row shows its side's score in every finished game. The fake keeps
+// them as it replays, so an Undo that reopens a game takes its score away.
+describe('the finished games’ scores', () => {
+  const finished = (pad: FakeBadmintonPad) => display(pad).finished;
+
+  it('has none in game 1, and never counts the game under way', () => {
+    const pad = createFakeBadmintonPad(SINGLES_SAMPLE);
+    rallies(pad, ...times(20, 'first'));
+    expect(finished(pad)).toEqual([]);
+  });
+
+  it('keeps a set score’s game as it finished, not as it was set', () => {
+    const pad = createFakeBadmintonPad(SINGLES_SAMPLE);
+    pad.setScore(19, 15);
+    rallies(pad, 'second', 'first', 'first');
+    expect(finished(pad)).toEqual([{ points: { first: 21, second: 16 }, winner: 'first' }]);
+    expect(pad.setScore(4, 2)).toEqual({ ok: true });
+    expect(finished(pad)).toEqual([{ points: { first: 21, second: 16 }, winner: 'first' }]);
+  });
+
+  it('takes a game’s score away when Undo reopens it across the game boundary', () => {
+    const pad = createFakeBadmintonPad(SINGLES_SAMPLE);
+    firstWinsAGame(pad);
+    rallies(pad, ...times(21, 'second'));
+    expect(finished(pad)).toHaveLength(2);
+    expect(pad.undo()).toEqual({ ok: true });
+    expect(display(pad)).toMatchObject({
+      points: { first: 0, second: 20 },
+      finished: [{ points: { first: 21, second: 0 }, winner: 'first' }],
+      game: 2,
+      phase: 'live',
+    });
+    rallies(pad, 'second');
+    expect(finished(pad)).toEqual([
+      { points: { first: 21, second: 0 }, winner: 'first' },
+      { points: { first: 0, second: 21 }, winner: 'second' },
+    ]);
+  });
+
+  it('shows every game once the match is decided, and takes the last away when Undo reopens it', () => {
+    const pad = createFakeBadmintonPad(SINGLES_SAMPLE);
+    firstWinsAGame(pad);
+    rallies(pad, ...times(21, 'second'));
+    pad.setScore(20, 19);
+    rallies(pad, 'first');
+    expect(display(pad)).toMatchObject({
+      points: { first: 21, second: 19 },
+      finished: [
+        { points: { first: 21, second: 0 }, winner: 'first' },
+        { points: { first: 0, second: 21 }, winner: 'second' },
+        { points: { first: 21, second: 19 }, winner: 'first' },
+      ],
+      game: 3,
+      phase: 'decided',
+    });
+    pad.undo();
+    expect(display(pad)).toMatchObject({
+      points: { first: 20, second: 19 },
+      phase: 'betweenGames',
+    });
+    expect(finished(pad)).toHaveLength(2);
+  });
+
+  it('gives a game a disqualification ended no score: it was not finished', () => {
+    const pad = createFakeBadmintonPad(SINGLES_SAMPLE);
+    firstWinsAGame(pad);
+    rallies(pad, 'second', 'second');
+    pad.sanction({ side: 'second', level: 'disqualification', person: 'L. Chen' });
+    expect(pad.recordEnding()).toEqual({ ok: true });
+    expect(display(pad)).toMatchObject({
+      points: { first: 0, second: 2 },
+      finished: [{ points: { first: 21, second: 0 }, winner: 'first' }],
+      phase: 'decided',
+    });
+  });
+
+  it('counts the doubles sample’s rallies from someone else in the game under way, not as a finished one', () => {
+    const pad = createFakeBadmintonPad(DOUBLES_SAMPLE);
+    expect(finished(pad)).toEqual([]);
+    rallies(pad, ...times(18, 'first'));
+    expect(finished(pad)).toEqual([{ points: { first: 21, second: 1 }, winner: 'first' }]);
   });
 });
 
@@ -214,7 +308,7 @@ describe('Undo: steps back through this phone’s own taps', () => {
     pad.undo();
     expect(display(pad)).toMatchObject({
       points: { first: 20, second: 18 },
-      games: { first: 0, second: 0 },
+      finished: [],
       game: 1,
       phase: 'pre',
     });

@@ -233,6 +233,17 @@ export const typeScale = {
     fontVariant: ['tabular-nums'],
     color: colour.lime,
   },
+  /**
+   * A finished game's score in its box on the pad's bottom row (owner ruling 16, 2026-10-31: a TV scoreboard's boxes):
+   * the score's face, tabular so the boxes keep one width, at `state`'s size on a 16 dp line, so a box and its two
+   * hairlines are the bottom row's own 18 (`halfNeeds`). Its colour is the box's: lime for a game won.
+   */
+  periodScore: {
+    fontFamily: font.displayBold,
+    fontSize: 15,
+    lineHeight: 16,
+    fontVariant: ['tabular-nums'],
+  },
   /** The score a step down, for a half too short for `score` (`scoreRole.ts` picks it from the half's own height). */
   scoreCompact: {
     fontFamily: font.displayBold,

@@ -6,8 +6,9 @@ export type ScoreRole = Extract<TypeRole, 'scoreLarge' | 'score' | 'scoreCompact
 
 /**
  * The height a half needs to hold its content with the score set in `role`: its padding, the names (two lines of
- * `label`, taller than the serving plate beside them), the score's line and the bottom row, where the games line
- * (`control`) and the hint (`metricUnit`; owner ruling 14) share one line, as tall as the taller of the two.
+ * `label`, taller than the serving plate beside them), the score's line and the bottom row, where the finished games'
+ * boxes (owner ruling 16), the sanction (`control`) and the hint (`metricUnit`; owner ruling 14) share one line, as
+ * tall as the taller of the two words; a box is no taller (padFit.test.ts).
  */
 export function halfNeeds(role: ScoreRole): number {
   return (

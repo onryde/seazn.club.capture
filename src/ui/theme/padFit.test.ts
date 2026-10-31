@@ -53,17 +53,17 @@ const column = (width: number) => width - 2 * space.md;
 /** A tool cell's text: a third of the row less its two gaps (space.sm), less the cell's padding (space.sm) and border. */
 const toolText = (width: number) =>
   (column(width) - 2 * space.sm) / 3 - 2 * space.sm - 2 * layout.iconBorder;
-/** A strip slot: a third of the row less its two gaps. */
-const stripSlot = (width: number) => (column(width) - 2 * space.sm) / 3;
+/** A strip slot: half the row less its gap (the game of how many, and the interval; owner rulings 16 and 17). */
+const stripSlot = (width: number) => (column(width) - space.sm) / 2;
 
 /** The sample names, as the fake's samples type them; doubles is the widest. */
 const NAMES = ['A. Sharma', 'L. Chen', 'A. Sharma / R. Iyer', 'L. Chen / M. Wong'] as const;
 
 describe('the rooms at 320 and 360', () => {
-  it('the column is 288 and 328; a tool’s text 72.67 and 86; a strip slot 90.67 and 104', () => {
+  it('the column is 288 and 328; a tool’s text 72.67 and 86; a strip slot 140 and 160', () => {
     expect(WIDTHS.map(column)).toEqual([288, 328]);
     expect(WIDTHS.map((width) => toolText(width).toFixed(2))).toEqual(['72.67', '86.00']);
-    expect(WIDTHS.map((width) => stripSlot(width).toFixed(2))).toEqual(['90.67', '104.00']);
+    expect(WIDTHS.map(stripSlot)).toEqual([140, 160]);
   });
 });
 
@@ -171,23 +171,31 @@ describe('the header fits on one row at 320 and 360 in four languages', () => {
 });
 
 describe('the strip fits at 320 in four languages', () => {
+  /** Its facts at their widest: "Game 3 of 3" (owner ruling 16), and the interval's two. */
+  const facts = (dictionary: Dictionary) => [
+    fill(dictionary['scoring.badminton.gameOf'] ?? '', { game: '3', bestOf: '3' }),
+    fill(dictionary['scoring.badminton.intervalAt'] ?? '', { point: '11' }),
+    dictionary['scoring.badminton.intervalNow'] ?? '',
+  ];
+
   it.each(LANGUAGES)(
     '%s: each fact in its reserved lines, no word broken',
     (_lang, dictionary: Dictionary) => {
-      const facts = [
-        fill(dictionary['scoring.badminton.context'] ?? '', { bestOf: '3', game: '3' }),
-        dictionary['scoring.badminton.court.left'] ?? '',
-        dictionary['scoring.badminton.court.right'] ?? '',
-        fill(dictionary['scoring.badminton.intervalAt'] ?? '', { point: '11' }),
-        dictionary['scoring.badminton.intervalNow'] ?? '',
-      ];
-      for (const fact of facts) {
+      for (const fact of facts(dictionary)) {
         expect(fact).not.toBe('');
         expect(linesOf(fact, stripSlot(320), unitWidth)).toBeLessThanOrEqual(layout.padStripLines);
         for (const word of words(fact)) expect(unitWidth(word)).toBeLessThanOrEqual(stripSlot(320));
       }
     },
   );
+
+  // With the court on the serving plate (owner ruling 17) the strip has two slots, and every fact takes one line of
+  // its two: the second line is reserved, and the halves could have its 16 dp. Kept: the controller's call.
+  it('holds every fact on one line at 320 in four languages, now the court is on the plate', () => {
+    for (const [, dictionary] of LANGUAGES)
+      for (const fact of facts(dictionary))
+        expect(linesOf(fact, stripSlot(320), unitWidth)).toBe(1);
+  });
 });
 
 describe('the last-tap line', () => {
@@ -400,15 +408,62 @@ describe('the update banner (owner ruling 8)', () => {
 });
 
 describe('a half', () => {
-  it('holds a doubles side’s names beside the widest serving plate at 320, in its reserved lines', () => {
-    const plate = Math.max(
-      ...LANGUAGES.map(
-        ([, dictionary]) => plateWordWidth(dictionary['scoring.pad.serving']) + 2 * space.sm,
+  /** The serving plate with its court on one line (owner ruling 17): the wider of its two words, and its padding. */
+  const plate = (dictionary: Dictionary) =>
+    Math.max(
+      ...['left', 'right'].map((court) => {
+        const shown = dictionary[`scoring.badminton.serving.${court}`] ?? '';
+        expect(shown).not.toBe('');
+        return plateWordWidth(shown);
+      }),
+    ) +
+    2 * space.sm;
+  /** Beside it: the half's names' room, inside the side bar and the padding, less the plate and the gap. */
+  const namesRoom = (width: number, dictionary: Dictionary) =>
+    column(width) - layout.padSideBar - 2 * space.md - plate(dictionary) - space.sm;
+
+  // Owner ruling 17: "If the plate doesn't fit beside the names at 320 dp in any language, the court goes on a second
+  // line." It fits in every one, so the court stays on the plate's one line: "SERVING · RIGHT".
+  it.each(LANGUAGES)(
+    '%s: holds the sample names beside the plate with its court at 320 and 360, in their lines, no word broken',
+    (_lang, dictionary: Dictionary) => {
+      for (const width of WIDTHS)
+        for (const name of NAMES) {
+          expect(linesOf(name, namesRoom(width, dictionary), nameWidth)).toBeLessThanOrEqual(
+            layout.padNameLines,
+          );
+          for (const word of words(name))
+            expect(nameWidth(word)).toBeLessThanOrEqual(namesRoom(width, dictionary));
+        }
+    },
+  );
+
+  it('sets a doubles side’s names on two lines beside the plate at 320 in every language, one at 360 but es and nl', () => {
+    const twoLines = WIDTHS.flatMap((width) =>
+      LANGUAGES.flatMap(([lang, dictionary]) =>
+        NAMES.filter((name) => linesOf(name, namesRoom(width, dictionary), nameWidth) === 2).map(
+          (name) => `${width} ${lang} ${name}`,
+        ),
       ),
     );
-    const room = column(320) - layout.padSideBar - 2 * space.md - plate - space.sm;
-    for (const name of NAMES)
-      expect(linesOf(name, room, nameWidth)).toBeLessThanOrEqual(layout.padNameLines);
+    expect(twoLines).toEqual([
+      '320 en A. Sharma / R. Iyer',
+      '320 en L. Chen / M. Wong',
+      '320 es A. Sharma / R. Iyer',
+      '320 es L. Chen / M. Wong',
+      '320 fr A. Sharma / R. Iyer',
+      '320 fr L. Chen / M. Wong',
+      '320 nl A. Sharma / R. Iyer',
+      '320 nl L. Chen / M. Wong',
+      '360 es A. Sharma / R. Iyer',
+      '360 nl A. Sharma / R. Iyer',
+    ]);
+  });
+
+  it('is one line of the plate’s word, 25 tall, inside the names’ two lines: the court costs the half no height', () => {
+    const tall = typeScale.state.lineHeight + 2 * space.xs;
+    expect(tall).toBe(25);
+    expect(tall).toBeLessThanOrEqual(layout.padNameLines * typeScale.label.lineHeight);
   });
 
   it('holds a two-digit score at 96 across its width at 320: two tabular digits, 95.6 dp', () => {
@@ -446,44 +501,105 @@ describe('a half', () => {
   });
 });
 
-describe('a half’s bottom row: the games line and the hint (owner ruling 14)', () => {
+describe('a half’s bottom row: the finished games’ boxes, the sanction and the hint (owner rulings 14, 16)', () => {
   /** Inside a half: the column less the side bar and the half's padding (space.md a side). */
   const inner = (width: number) => column(width) - layout.padSideBar - 2 * space.md;
-  /** Beside the games line (`control`) and the row's gap: the hint's room, one line of `metricUnit`. */
-  const hintRoom = (width: number, games: string) => inner(width) - controlWidth(games) - space.sm;
+  /** `periodScore`: Barlow Condensed 700 at 15, tabular digits (`zero.tf`, wider than any proportional digit). */
+  const digit = barlow700.advanceOfName('zero.tf') * typeScale.periodScore.fontSize;
+  /** `n` boxes, `space.xs` apart (none in game 1). */
+  const boxes = (n: number) => (n === 0 ? 0 : n * layout.padPeriodBox + (n - 1) * space.xs);
+  /** The boxes and the sanction after them: a dot between (`control`) when there are both, `space.sm` around it. */
+  const kept = (n: number, sanction: string) => {
+    if (sanction === '') return boxes(n);
+    const dot = n === 0 ? 0 : space.sm + controlWidth('·') + space.sm;
+    return boxes(n) + dot + controlWidth(sanction);
+  };
+  /** What the hint has: the row less what is kept and the gap before it. */
+  const hintRoom = (width: number, n: number, sanction: string) =>
+    inner(width) - kept(n, sanction) - (kept(n, sanction) === 0 ? 0 : space.sm);
+  const widestSanction = (dictionary: Dictionary) =>
+    ['warning', 'penalty', 'expulsion', 'disqualification']
+      .map((level) => dictionary[`scoring.sanction.${level}`] ?? '')
+      .reduce((wide, word) => (controlWidth(word) > controlWidth(wide) ? word : wide), '');
+  const hint = (dictionary: Dictionary, side: string) =>
+    fill(dictionary['scoring.badminton.hintLine'] ?? '', { side });
+  /** The hints cut, at both widths and in four languages, beside `n` boxes and a sanction (or none). */
+  const cutHints = (n: number, withSanction: boolean) =>
+    WIDTHS.flatMap((width) =>
+      LANGUAGES.flatMap(([lang, dictionary]) => {
+        const sanction = withSanction ? widestSanction(dictionary) : '';
+        return NAMES.filter(
+          (side) => unitWidth(hint(dictionary, side)) > hintRoom(width, n, sanction),
+        ).map((side) => `${width} ${lang} ${side}`);
+      }),
+    );
 
-  it('costs no height over the games line alone: the hint’s 16 dp line sits in the games line’s 18', () => {
+  it('has 252 and 292 inside at 320 and 360', () => {
+    expect(WIDTHS.map(inner)).toEqual([252, 292]);
+  });
+
+  // `halfNeeds` counts the taller of the sanction's line and the hint's: a box must be no taller than that.
+  it('costs no height: a box (16 dp of digits and two hairlines) is the sanction’s own 18 dp line', () => {
+    const box = typeScale.periodScore.lineHeight + 2 * layout.iconBorder;
+    expect(box).toBe(18);
+    expect(box).toBeLessThanOrEqual(typeScale.control.lineHeight);
     expect(typeScale.metricUnit.lineHeight).toBeLessThanOrEqual(typeScale.control.lineHeight);
   });
 
+  it('makes every box one width: two tabular digits, 14.9 dp, its padding and hairlines, in 26', () => {
+    expect((2 * digit).toFixed(1)).toBe('14.9');
+    expect(2 * digit + 2 * space.xs + 2 * layout.iconBorder).toBeLessThanOrEqual(
+      layout.padPeriodBox,
+    );
+  });
+
+  it('has the widest sanction in every language: Disqualification, Descalificación, Disqualification, Diskwalificatie', () => {
+    expect(LANGUAGES.map(([, dictionary]) => widestSanction(dictionary))).toEqual([
+      en['scoring.sanction.disqualification'],
+      es['scoring.sanction.disqualification'],
+      fr['scoring.sanction.disqualification'],
+      nl['scoring.sanction.disqualification'],
+    ]);
+  });
+
+  // Owner ruling 16: "Boxes are never cut." A best of 3 decided shows three boxes and no hint (its halves take no tap).
   it.each(LANGUAGES)(
-    '%s: the games line is whole at 320 with the widest sanction',
+    '%s: three boxes, the dot and the widest sanction, whole at 320',
     (_lang, dictionary: Dictionary) => {
-      for (const level of ['warning', 'penalty', 'expulsion', 'disqualification']) {
-        const games = fill(dictionary['scoring.badminton.gamesSanctioned'] ?? '', {
-          count: '2',
-          sanction: dictionary[`scoring.sanction.${level}`] ?? '',
-        });
-        expect(controlWidth(games)).toBeLessThanOrEqual(inner(320));
-      }
+      expect(kept(3, widestSanction(dictionary))).toBeLessThanOrEqual(inner(320));
     },
   );
 
-  // The hint is one line, cut with an ellipsis where it is wider than its room. Beside "Games 0", a singles side's is
-  // whole everywhere; a doubles side's names are what the ellipsis cuts.
-  it('cuts only these hints beside “Games 0”: doubles in Spanish and French at 320, in French at 360', () => {
-    const cut = WIDTHS.flatMap((width) =>
-      LANGUAGES.flatMap(([lang, dictionary]) =>
-        NAMES.filter((side) => {
-          const games = fill(dictionary['scoring.badminton.games'], { count: '0' });
-          const hint = fill(dictionary['scoring.badminton.hintLine'], { side });
-          return unitWidth(hint) > hintRoom(width, games);
-        }).map((side) => `${width} ${lang} ${side}`),
-      ),
-    );
-    expect(cut).toEqual([
+  // In play there are two boxes at most. Beside them and the widest sanction the hint is cut with an ellipsis, never
+  // hidden: its first word and the ellipsis stay ("the hint gives way (ellipsis, then hidden) before the boxes").
+  it.each(LANGUAGES)(
+    '%s: beside two boxes and the widest sanction at 320, the hint keeps its first word and an ellipsis',
+    (_lang, dictionary: Dictionary) => {
+      const first = (dictionary['scoring.badminton.hintLine'] ?? '').split(' ')[0] ?? '';
+      expect(first).not.toBe('');
+      const room = hintRoom(320, 2, widestSanction(dictionary));
+      expect(unitWidth(`${first}…`)).toBeLessThanOrEqual(room);
+      for (const side of NAMES) expect(unitWidth(hint(dictionary, side))).toBeGreaterThan(room);
+    },
+  );
+
+  it('keeps 65 to 70 dp for the hint beside two boxes and the widest sanction at 320, 105 to 110 at 360', () => {
+    const rooms = (width: number) =>
+      LANGUAGES.map(([, dictionary]) => hintRoom(width, 2, widestSanction(dictionary)).toFixed(1));
+    expect(rooms(320)).toEqual(['65.0', '67.2', '65.0', '70.0']);
+    expect(rooms(360)).toEqual(['105.0', '107.2', '105.0', '110.0']);
+  });
+
+  // Game 1, no sanction: the row is the hint alone, whole everywhere (owner ruling 16: "the row shows only the hint").
+  it('holds every hint whole in game 1, at 320 and 360', () => {
+    expect(cutHints(0, false)).toEqual([]);
+  });
+
+  it('cuts only these hints beside two boxes with no sanction: doubles in es and fr, and fr singles, at 320', () => {
+    expect(cutHints(2, false)).toEqual([
       '320 es A. Sharma / R. Iyer',
       '320 es L. Chen / M. Wong',
+      '320 fr A. Sharma',
       '320 fr A. Sharma / R. Iyer',
       '320 fr L. Chen / M. Wong',
       '360 fr A. Sharma / R. Iyer',

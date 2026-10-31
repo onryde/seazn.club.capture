@@ -5,13 +5,14 @@ import { ScoreEntrySheet } from '@/ui/components/ScoreEntrySheet';
 import { renderWithPorts } from '../../../test/renderWithPorts';
 
 const label = (side: string) => en['scoring.setScore.field'].replace('{side}', side);
+const TITLE = en['scoring.setScore.title'].replace('{game}', '2');
 
 function renderSheet() {
   const onSave = vi.fn();
   const onCancel = vi.fn();
   renderWithPorts(
     <ScoreEntrySheet
-      title={en['scoring.setScore.title']}
+      title={TITLE}
       labels={[label('A. Sharma'), label('L. Chen')]}
       initial={[0, 0]}
       confirmLabel={en['scoring.setScore.confirm']}
@@ -33,7 +34,7 @@ describe('ScoreEntrySheet', () => {
     renderSheet();
     expect((field('A. Sharma') as HTMLInputElement).value).toBe('0');
     expect((field('L. Chen') as HTMLInputElement).value).toBe('0');
-    expect(screen.getByText(en['scoring.setScore.title'])).toBeTruthy();
+    expect(screen.getByText(TITLE)).toBeTruthy();
   });
 
   it('hands both fields back as typed, top side first', () => {

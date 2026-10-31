@@ -3,6 +3,8 @@ import {
   withCard,
   type PadHalf,
   type PadLastTap,
+  type PadPeriods,
+  type PadServing,
   type PadSide,
   type PadStripItem,
   type PadSync,
@@ -49,6 +51,12 @@ export type BadmintonLastTap =
   | { readonly kind: 'ending'; readonly side: PadSide; readonly person: string }
   | { readonly kind: 'undone'; readonly tap: BadmintonTap };
 
+/** A game that was played out: each side's points when it ended, and the side that won it. */
+export type BadmintonGame = {
+  readonly points: Readonly<Record<PadSide, number>>;
+  readonly winner: PadSide;
+};
+
 /** Before the match's first rally; a game under way; a game won and the next not yet started; the match over. */
 export type BadmintonPhase = 'pre' | 'live' | 'betweenGames' | 'decided';
 
@@ -58,10 +66,15 @@ export type BadmintonPhase = 'pre' | 'live' | 'betweenGames' | 'decided';
  */
 export type BadmintonDisplay = {
   readonly sides: Readonly<Record<PadSide, BadmintonSide>>;
+  /** The game under way, or about to start; the last one's final score once the match is decided. */
   readonly points: Readonly<Record<PadSide, number>>;
-  readonly games: Readonly<Record<PadSide, number>>;
+  /**
+   * Every game played out, in order (owner ruling 16): a game won on a rally, the match's last one included. A game a
+   * disqualification ended was not played out, and is not one.
+   */
+  readonly finished: readonly BadmintonGame[];
   readonly server: PadSide;
-  readonly court: 'left' | 'right';
+  readonly court: BadmintonCourt;
   /** The game under way, or about to start; the last one once decided. */
   readonly game: number;
   /** The match's config: the strip's format and interval, and the Rules sheet (`badmintonRuleLines`). */
@@ -77,13 +90,12 @@ export type BadmintonDisplay = {
 
 /** Every dictionary key this file names. The kit translates them as `MessageKey`, so each must exist in en.json. */
 export type BadmintonPadKey =
-  | 'scoring.badminton.games'
-  | 'scoring.badminton.gamesSanctioned'
+  | 'scoring.badminton.gamesSaid.other'
   | 'scoring.badminton.hint'
   | 'scoring.badminton.hintLine'
-  | 'scoring.badminton.context'
-  | 'scoring.badminton.court.left'
-  | 'scoring.badminton.court.right'
+  | 'scoring.badminton.gameOf'
+  | `scoring.badminton.serving.${BadmintonCourt}`
+  | `scoring.badminton.servingSaid.${BadmintonCourt}`
   | 'scoring.badminton.intervalAt'
   | 'scoring.badminton.intervalNow'
   | 'scoring.badminton.last.rally'
@@ -103,6 +115,9 @@ export type BadmintonPadKey =
 
 export type SanctionLevelKey = `scoring.sanction.${BadmintonSanctionLevel}`;
 
+/** The server's service court. */
+export type BadmintonCourt = 'left' | 'right';
+
 type Text = PadText<BadmintonPadKey>;
 
 const SYNCED: PadSync = { kind: 'synced' };
@@ -118,9 +133,10 @@ export function sideNames(side: BadmintonSide): string {
 }
 
 /**
- * Layout A's pad for a badminton match (owner rulings, 2026-10-31): the first side on top, the second below, the
- * format, game, service court and interval in the strip, and Sanction (per side) and Set score (only before a game's
- * first rally) in the tool row. A decided match is the recorded result's card over the final score. `sync` is the
+ * Layout A's pad for a badminton match (owner rulings, 2026-10-31): the first side on top, the second below, each with
+ * its finished games' scores and its heaviest sanction in the bottom row and, on the server's, the service court on
+ * the serving plate; the game of how many and the interval in the strip; and Sanction (per side) and Set score (only
+ * before a game's first rally) in the tool row. A decided match is the recorded result's card over the final score. `sync` is the
  * transport's word, not the match's.
  */
 export function badmintonPad(
@@ -154,40 +170,64 @@ function half(state: BadmintonDisplay, side: PadSide): PadHalf<BadmintonPadKey> 
     side,
     label: sideNames(state.sides[side]),
     value: String(state.points[side]),
-    sub: gamesLine(state, side),
-    serving: state.phase !== 'decided' && state.server === side,
+    periods: periods(state.finished, side),
+    sub: heaviestSanction(state, side),
+    serving: state.phase !== 'decided' && state.server === side ? serving(state.court) : null,
     hint: { key: 'scoring.badminton.hint' },
     hintLine: { key: 'scoring.badminton.hintLine', vars: { side: sideNames(state.sides[side]) } },
     tappable: open(state),
   };
 }
 
-/** "Games 1", or "Games 1 · Penalty" with the side's heaviest sanction. */
-function gamesLine(state: BadmintonDisplay, side: PadSide): Text {
-  const count = state.games[side];
+/** The side's score in each finished game, its wins marked, and "Games: 21, 18" for a screen reader; none in game 1. */
+function periods(
+  finished: readonly BadmintonGame[],
+  side: PadSide,
+): PadPeriods<BadmintonPadKey> | null {
+  if (finished.length === 0) return null;
+  const scores = finished.map((game) => ({
+    value: String(game.points[side]),
+    won: game.winner === side,
+  }));
+  const said = scores.map((score) => score.value).join(', ');
+  return {
+    scores,
+    said: {
+      key: 'scoring.badminton.gamesSaid.other',
+      count: finished.length,
+      vars: { scores: said },
+    },
+  };
+}
+
+/** The side's heaviest sanction's word, or none. */
+function heaviestSanction(state: BadmintonDisplay, side: PadSide): Text | null {
   const heaviest = state.sanctions
     .filter((sanction) => sanction.side === side)
     .map((sanction) => SANCTION_LEVELS.indexOf(sanction.level))
     .reduce((top, at) => Math.max(top, at), -1);
   const level = SANCTION_LEVELS[heaviest];
-  return level === undefined
-    ? { key: 'scoring.badminton.games', vars: { count } }
-    : { key: 'scoring.badminton.gamesSanctioned', vars: { count, sanction: sanctionWord(level) } };
+  return level === undefined ? null : sanctionWord(level);
 }
 
+/** The plate's "Serving · right", said "Serving, right service court" (owner ruling 17). */
+function serving(court: BadmintonCourt): PadServing<BadmintonPadKey> {
+  return {
+    shown: { key: `scoring.badminton.serving.${court}` },
+    said: { key: `scoring.badminton.servingSaid.${court}` },
+  };
+}
+
+/** "Game 2 of 3" (owner ruling 16; "of 3" is the best of 3) and the interval; the game's the last once decided. */
 function strip(state: BadmintonDisplay): readonly PadStripItem<BadmintonPadKey>[] {
   const decided = state.phase === 'decided';
   return [
     {
-      slot: 'context',
+      slot: 'game',
       text: {
-        key: 'scoring.badminton.context',
-        vars: { bestOf: state.rules.bestOf, game: state.game },
+        key: 'scoring.badminton.gameOf',
+        vars: { game: state.game, bestOf: state.rules.bestOf },
       },
-    },
-    {
-      slot: 'court',
-      text: decided ? null : { key: `scoring.badminton.court.${state.court}` },
     },
     { slot: 'interval', text: decided ? null : interval(state) },
   ];

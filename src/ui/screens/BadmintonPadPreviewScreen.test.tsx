@@ -54,8 +54,9 @@ function back(pad: FakePorts): boolean {
 
 const press = (name: string) => act(() => fireEvent.click(screen.getByRole('button', { name })));
 const half = (side: 'first' | 'second') => screen.getByTestId(`half-${side}`);
+/** The half's big number: the game under way's points (a box may hold the same digits). */
 const shows = (side: 'first' | 'second', points: number) =>
-  within(half(side)).queryByText(String(points)) !== null;
+  within(half(side)).getByTestId('score').textContent === String(points);
 const tool = (name: string) => screen.queryByRole('button', { name });
 const sanctionOn = (side: string) => `${en['scoring.badminton.tool.sanction']}, ${side}`;
 const lastTap = () => screen.getByTestId('last-tap').textContent;
@@ -65,17 +66,29 @@ const fill = (text: string, vars: Record<string, string | number>) =>
     (out, [name, value]) => out.replace(`{${name}}`, String(value)),
     text,
   );
+/** A half's finished games' boxes, as their digits (owner ruling 16). */
+const boxes = (side: 'first' | 'second') =>
+  within(half(side))
+    .queryAllByTestId('period')
+    .map((box) => box.textContent);
+/** The serving plate's words in a half, or null when it is not serving (owner ruling 17). */
+const plate = (side: 'first' | 'second') =>
+  within(half(side)).queryByTestId('serving')?.textContent ?? null;
 
 describe('BadmintonPadPreviewScreen: before the first rally', () => {
   it('shows both sides at 0, the first serving from the right, and Set score', () => {
     renderPad();
     expect(shows('first', 0) && shows('second', 0)).toBe(true);
-    expect(within(half('first')).getByTestId('serving')).toBeTruthy();
-    expect(within(half('second')).queryByTestId('serving')).toBeNull();
-    expect(screen.getByTestId('strip-context').textContent).toBe(
-      fill(en['scoring.badminton.context'], { bestOf: 3, game: 1 }),
+    expect([plate('first'), plate('second')]).toEqual([
+      en['scoring.badminton.serving.right'],
+      null,
+    ]);
+    expect([boxes('first'), boxes('second')]).toEqual([[], []]);
+    expect(screen.getByTestId('strip-game').textContent).toBe(
+      fill(en['scoring.badminton.gameOf'], { game: 1, bestOf: 3 }),
     );
-    expect(screen.getByTestId('strip-court').textContent).toBe(en['scoring.badminton.court.right']);
+    // Owner ruling 17: the court is on the plate, and left the strip.
+    expect(screen.queryByTestId('strip-court')).toBeNull();
     expect(screen.getByTestId('strip-interval').textContent).toBe(
       fill(en['scoring.badminton.intervalAt'], { point: 11 }),
     );
@@ -97,7 +110,7 @@ describe('BadmintonPadPreviewScreen: rallies and Undo', () => {
     const pad = renderPad();
     rally(pad, 'first');
     expect(shows('first', 1) && shows('second', 0)).toBe(true);
-    expect(screen.getByTestId('strip-court').textContent).toBe(en['scoring.badminton.court.left']);
+    expect(plate('first')).toBe(en['scoring.badminton.serving.left']);
     expect(lastTap()).toContain(fill(en['scoring.badminton.last.rally'], { side: 'A. Sharma' }));
     expect(tool(en['scoring.badminton.tool.setScore'])).toBeNull();
   });
@@ -106,7 +119,10 @@ describe('BadmintonPadPreviewScreen: rallies and Undo', () => {
     const pad = renderPad();
     rally(pad, 'second');
     expect(shows('first', 0) && shows('second', 1)).toBe(true);
-    expect(within(half('second')).getByTestId('serving')).toBeTruthy();
+    expect([plate('first'), plate('second')]).toEqual([null, en['scoring.badminton.serving.left']]);
+    expect(half('second').getAttribute('aria-label')).toBe(
+      ['L. Chen', '1', en['scoring.badminton.servingSaid.left']].join(', '),
+    );
   });
 
   it('Undo takes the last tap back and says so; a second Undo has nothing left', () => {
@@ -193,15 +209,21 @@ describe('BadmintonPadPreviewScreen: rallies and Undo', () => {
 });
 
 describe('BadmintonPadPreviewScreen: games and the match', () => {
-  it('between games: the next game at 0, the games line, Set score back', () => {
+  it('between games: the next game at 0, game 1’s box in each half, Set score back', () => {
     const pad = renderPad();
     rally(pad, 'first', 21);
     expect(shows('first', 0) && shows('second', 0)).toBe(true);
-    expect(
-      within(half('first')).getByText(fill(en['scoring.badminton.games'], { count: 1 })),
-    ).toBeTruthy();
-    expect(screen.getByTestId('strip-context').textContent).toBe(
-      fill(en['scoring.badminton.context'], { bestOf: 3, game: 2 }),
+    expect([boxes('first'), boxes('second')]).toEqual([['21'], ['0']]);
+    expect(half('first').getAttribute('aria-label')).toBe(
+      [
+        'A. Sharma',
+        '0',
+        fill(en['scoring.badminton.gamesSaid.one'], { scores: '21' }),
+        en['scoring.badminton.servingSaid.right'],
+      ].join(', '),
+    );
+    expect(screen.getByTestId('strip-game').textContent).toBe(
+      fill(en['scoring.badminton.gameOf'], { game: 2, bestOf: 3 }),
     );
     expect(lastTap()).toContain(
       fill(en['scoring.badminton.last.game'], { game: 1, side: 'A. Sharma' }),
@@ -231,6 +253,65 @@ describe('BadmintonPadPreviewScreen: games and the match', () => {
     expect(screen.queryByTestId('pad-card')).toBeNull();
     expect(shows('first', 20)).toBe(true);
   });
+
+  // The four questions: after an interruption. Undo across a game boundary reopens the game: its box goes.
+  it('Undo of a game’s winning rally reopens the game and takes its box away', () => {
+    const pad = renderPad();
+    rally(pad, 'first', 21);
+    rally(pad, 'second', 21);
+    expect([boxes('first'), boxes('second')]).toEqual([
+      ['21', '0'],
+      ['0', '21'],
+    ]);
+    undoTap(pad);
+    expect([boxes('first'), boxes('second')]).toEqual([['21'], ['0']]);
+    expect(shows('second', 20)).toBe(true);
+    expect(screen.getByTestId('strip-game').textContent).toBe(
+      fill(en['scoring.badminton.gameOf'], { game: 2, bestOf: 3 }),
+    );
+  });
+
+  // Owner ruling 16: "After the match is decided, every game's box shows, and the big number is the last game."
+  it('decided 2-1: every game’s box, the last too, with the big numbers on the last game', () => {
+    const pad = renderPad();
+    rally(pad, 'first', 21);
+    rally(pad, 'second', 21);
+    rally(pad, 'first', 21);
+    expect(screen.getByTestId('pad-card').textContent).toContain(
+      en['scoring.card.resultRecorded.title'],
+    );
+    expect([boxes('first'), boxes('second')]).toEqual([
+      ['21', '0', '21'],
+      ['0', '21', '0'],
+    ]);
+    expect(shows('first', 21) && shows('second', 0)).toBe(true);
+    expect([plate('first'), plate('second')]).toEqual([null, null]);
+    expect(screen.getByTestId('strip-game').textContent).toBe(
+      fill(en['scoring.badminton.gameOf'], { game: 3, bestOf: 3 }),
+    );
+    expect(half('first').getAttribute('aria-label')).toBe(
+      [
+        'A. Sharma',
+        '21',
+        fill(en['scoring.badminton.gamesSaid.other'], { scores: '21, 0, 21' }),
+      ].join(', '),
+    );
+  });
+
+  // The four questions: another mode of play. Doubles, joined at 3-1 by a scorer before this phone.
+  it('doubles: the joined game’s box once this phone wins it, beside the partners’ names', () => {
+    const pad = renderPad();
+    press(en['scoring.preview.dev.doubles']);
+    rally(pad, 'first', 18);
+    expect([boxes('first'), boxes('second')]).toEqual([['21'], ['1']]);
+    expect(plate('first')).toBe(en['scoring.badminton.serving.right']);
+    expect(within(half('first')).getByText('A. Sharma / R. Iyer')).toBeTruthy();
+    expect(half('second').getAttribute('aria-label')).toBe(
+      ['L. Chen / M. Wong', '0', fill(en['scoring.badminton.gamesSaid.one'], { scores: '1' })].join(
+        ', ',
+      ),
+    );
+  });
 });
 
 describe('BadmintonPadPreviewScreen: Set score', () => {
@@ -238,6 +319,18 @@ describe('BadmintonPadPreviewScreen: Set score', () => {
     screen.getByLabelText(fill(en['scoring.setScore.field'], { side }));
   const type = (side: string, value: string) =>
     act(() => fireEvent.change(field(side), { target: { value } }));
+
+  // The controller's call (2026-10-31): the title names the game it sets, the one the strip names.
+  it('names the game it sets: game 1 before the first rally, game 2 between games', () => {
+    const pad = renderPad();
+    press(en['scoring.badminton.tool.setScore']);
+    const title = () => within(screen.getByTestId('score-sheet'));
+    expect(title().getByText(fill(en['scoring.setScore.title'], { game: 1 }))).toBeTruthy();
+    press(en['scoring.sheet.cancel']);
+    rally(pad, 'second', 21);
+    press(en['scoring.badminton.tool.setScore']);
+    expect(title().getByText(fill(en['scoring.setScore.title'], { game: 2 }))).toBeTruthy();
+  });
 
   it('sets the score before the first rally, and Undo takes it back', () => {
     renderPad();
@@ -299,7 +392,7 @@ describe('BadmintonPadPreviewScreen: Set score', () => {
 describe('BadmintonPadPreviewScreen: a sanction, end to end', () => {
   const sheetTitle = () => within(screen.getByTestId('step-sheet'));
 
-  it('Warning: level, person, recorded on the side’s games line and in the last-tap line', () => {
+  it('Warning: level, person, recorded in the side’s bottom row and in the last-tap line', () => {
     renderPad();
     press(sanctionOn('L. Chen'));
     expect(sheetTitle().getByText(en['scoring.sanction.title'])).toBeTruthy();
@@ -308,14 +401,10 @@ describe('BadmintonPadPreviewScreen: a sanction, end to end', () => {
     expect(sheetTitle().getByText(en['scoring.sanction.who'])).toBeTruthy();
     press('L. Chen');
     expect(screen.queryByTestId('step-sheet')).toBeNull();
-    expect(
-      within(half('second')).getByText(
-        fill(en['scoring.badminton.gamesSanctioned'], {
-          count: 0,
-          sanction: en['scoring.sanction.warning'],
-        }),
-      ),
-    ).toBeTruthy();
+    // Game 1: the sanction alone, with no box and no dot before it (owner ruling 16).
+    expect(within(half('second')).getByText(en['scoring.sanction.warning'])).toBeTruthy();
+    expect(boxes('second')).toEqual([]);
+    expect(within(half('second')).queryByText('·')).toBeNull();
     expect(lastTap()).toContain(
       fill(en['scoring.badminton.last.sanction'], {
         level: en['scoring.sanction.warning'],
@@ -796,12 +885,27 @@ describe('BadmintonPadPreviewScreen: in four languages', () => {
       const pad = renderPad({ deviceLanguages: [lang] });
       expect(tool(words['scoring.badminton.tool.setScore'])).not.toBeNull();
       expect(tool(`${words['scoring.badminton.tool.sanction']}, L. Chen`)).not.toBeNull();
-      expect(screen.getByTestId('strip-context').textContent).toBe(
-        fill(words['scoring.badminton.context'], { bestOf: 3, game: 1 }),
+      expect(screen.getByTestId('strip-game').textContent).toBe(
+        fill(words['scoring.badminton.gameOf'], { game: 1, bestOf: 3 }),
       );
+      expect(plate('first')).toBe(words['scoring.badminton.serving.right']);
       rally(pad, 'second');
       expect(lastTap()).toContain(fill(words['scoring.badminton.last.rally'], { side: 'L. Chen' }));
       expect(screen.getByRole('button', { name: words['scoring.pad.undo'] })).toBeTruthy();
+      expect(plate('second')).toBe(words['scoring.badminton.serving.left']);
+      rally(pad, 'second', 20);
+      expect([boxes('first'), boxes('second')]).toEqual([['0'], ['21']]);
+      expect(screen.getByTestId('strip-game').textContent).toBe(
+        fill(words['scoring.badminton.gameOf'], { game: 2, bestOf: 3 }),
+      );
+      expect(half('second').getAttribute('aria-label')).toBe(
+        [
+          'L. Chen',
+          '0',
+          fill(words['scoring.badminton.gamesSaid.one'], { scores: '21' }),
+          words['scoring.badminton.servingSaid.right'],
+        ].join(', '),
+      );
     },
   );
 });

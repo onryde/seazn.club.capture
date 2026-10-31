@@ -39,8 +39,9 @@ import { colour, layout, space } from '@/ui/theme/tokens';
 
 /**
  * The badminton pad, previewed on a fake (S2's first slice; owner rulings, 2026-10-31). Portrait, layout A: the top bar
- * (Home, the Preview tag, Rules and the sync status), the strip, the first side's half on top and the second's below (a
- * tap on a half gives that side the rally, and a tap that counted flashes the half), the last-tap line with the one
+ * (Home, the Preview tag, Rules and the sync status), the strip (the game of how many, the interval), the first side's
+ * half on top and the second's below (a tap on a half gives that side the rally, and a tap that counted flashes the
+ * half; each shows its finished games' boxes, and the server's plate its service court), the last-tap line with the one
  * Undo, and the tools. A card that replaces the score stands where the halves were; one that goes with it (a recorded
  * result, view only) stands above them; the update banner stands where the last-tap line and the tools were
  * (`cardPlacement`). Sheets cover the pad, which is hidden from a screen reader while they show. Under it all, the
@@ -196,7 +197,9 @@ const PadSheet = memo(function PadSheet({
     case 'sanction':
       return <SanctionSteps sheet={sheet.sheet} actions={actions} />;
     case 'setScore':
-      return <SetScore names={sheet.names} points={sheet.points} actions={actions} />;
+      return (
+        <SetScore game={sheet.game} names={sheet.names} points={sheet.points} actions={actions} />
+      );
     case 'ending':
       return (
         <EndingPrompt
@@ -256,11 +259,14 @@ const SanctionSteps = memo(function SanctionSteps({
   );
 });
 
+/** Set score, its title naming the game it sets: "Set score · Game 2" (the controller's call, 2026-10-31). */
 const SetScore = memo(function SetScore({
+  game,
   names,
   points,
   actions,
 }: {
+  readonly game: number;
   readonly names: readonly [string, string];
   readonly points: readonly [number, number];
   readonly actions: PadPreviewActions;
@@ -276,7 +282,7 @@ const SetScore = memo(function SetScore({
   );
   return (
     <ScoreEntrySheet
-      title={t('scoring.setScore.title')}
+      title={t('scoring.setScore.title', { game })}
       labels={labels}
       initial={points}
       confirmLabel={t('scoring.setScore.confirm')}

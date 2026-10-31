@@ -37,10 +37,12 @@ export type PadHalf<K extends string> = {
   readonly label: string;
   /** The big value, read across a court: "11". A string, so a sport can show "AD" or "15". */
   readonly value: string;
-  /** The line under it ("Games 1"), or none. */
+  /** The side's score in every finished game (a set, in another sport), in the bottom row; null before one is over. */
+  readonly periods: PadPeriods<K> | null;
+  /** The words after them in the bottom row (badminton: the side's heaviest sanction), or none. */
   readonly sub: PadText<K> | null;
-  /** The serving marker. */
-  readonly serving: boolean;
+  /** The serving plate, on the serving side's half only; null on the other, and on both once the match is over. */
+  readonly serving: PadServing<K> | null;
   /** What a tap does, said to a screen reader ("Tap to award the rally"). */
   readonly hint: PadText<K>;
   /**
@@ -49,6 +51,27 @@ export type PadHalf<K extends string> = {
    */
   readonly hintLine: PadText<K>;
   readonly tappable: boolean;
+};
+
+/**
+ * A side's finished games (owner ruling 16, 2026-10-31: a TV scoreboard's boxes): its score in each, in game order,
+ * and the same said to a screen reader ("Games: 21, 18"), which hears it in the half's name.
+ */
+export type PadPeriods<K extends string> = {
+  readonly scores: readonly PadPeriodScore[];
+  readonly said: PadText<K>;
+};
+
+/** One finished game's box: the side's score in it, and whether the side won it (the box the kit marks). */
+export type PadPeriodScore = { readonly value: string; readonly won: boolean };
+
+/**
+ * The serving plate's words ("Serving · right": owner ruling 17, 2026-10-31, the service court on the plate), and the
+ * same said to a screen reader in the half's name ("Serving, right service court").
+ */
+export type PadServing<K extends string> = {
+  readonly shown: PadText<K>;
+  readonly said: PadText<K>;
 };
 
 /**

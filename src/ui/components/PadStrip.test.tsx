@@ -11,30 +11,29 @@ describe('PadStrip', () => {
     renderWithPorts(
       <PadStrip
         items={[
-          {
-            slot: 'context',
-            text: { key: 'scoring.badminton.context', vars: { bestOf: 3, game: 2 } },
-          },
-          { slot: 'court', text: { key: 'scoring.badminton.court.right' } },
+          { slot: 'game', text: { key: 'scoring.badminton.gameOf', vars: { game: 2, bestOf: 3 } } },
+          { slot: 'interval', text: { key: 'scoring.badminton.intervalAt', vars: { point: 11 } } },
         ]}
       />,
     );
     const slots = screen.getByTestId('pad-strip').children;
     expect([...slots].map((slot) => slot.getAttribute('data-testid'))).toEqual([
-      'strip-context',
-      'strip-court',
+      'strip-game',
+      'strip-interval',
     ]);
-    expect(screen.getByTestId('strip-context').textContent).toBe(
-      en['scoring.badminton.context'].replace('{bestOf}', '3').replace('{game}', '2'),
+    expect(screen.getByTestId('strip-game').textContent).toBe(
+      en['scoring.badminton.gameOf'].replace('{game}', '2').replace('{bestOf}', '3'),
     );
-    expect(screen.getByTestId('strip-court').textContent).toBe(en['scoring.badminton.court.right']);
+    expect(screen.getByTestId('strip-interval').textContent).toBe(
+      en['scoring.badminton.intervalAt'].replace('{point}', '11'),
+    );
   });
 
   it('keeps an unknown fact’s slot, empty: no dash', () => {
     renderWithPorts(
       <PadStrip
         items={[
-          { slot: 'court', text: { key: 'scoring.badminton.court.left' } },
+          { slot: 'game', text: { key: 'scoring.badminton.intervalNow' } },
           { slot: 'interval', text: null },
         ]}
       />,
@@ -45,9 +44,9 @@ describe('PadStrip', () => {
 
   it('lets a fact take its reserved lines, then cut', () => {
     renderWithPorts(
-      <PadStrip items={[{ slot: 'court', text: { key: 'scoring.badminton.court.left' } }]} />,
+      <PadStrip items={[{ slot: 'interval', text: { key: 'scoring.badminton.intervalNow' } }]} />,
     );
-    expect(linesAllowed(screen.getByText(en['scoring.badminton.court.left']))).toBe(
+    expect(linesAllowed(screen.getByText(en['scoring.badminton.intervalNow']))).toBe(
       layout.padStripLines,
     );
   });

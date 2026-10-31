@@ -25,6 +25,8 @@ export type PadSheetView =
   | { readonly kind: 'sanction'; readonly sheet: SanctionSheet }
   | {
       readonly kind: 'setScore';
+      /** The game it sets, the one the strip names (the controller's call, 2026-10-31): "Set score · Game 2". */
+      readonly game: number;
       readonly names: readonly [string, string];
       readonly points: readonly [number, number];
     }
@@ -111,6 +113,7 @@ function sheetView(sheet: Sheet, display: BadmintonDisplay): PadSheetView | null
   if (sheet.kind === 'rules') return { kind: 'rules', lines: badmintonRuleLines(display.rules) };
   return {
     kind: 'setScore',
+    game: display.game,
     names: [sideNames(display.sides.first), sideNames(display.sides.second)],
     points: [display.points.first, display.points.second],
   };

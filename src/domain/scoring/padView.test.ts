@@ -7,7 +7,16 @@ import {
   type PadView,
 } from '@/domain/scoring/padView';
 
-type Key = 'k.hint' | 'k.hintLine' | 'k.sub' | 'k.tool' | 'k.last' | 'k.strip';
+type Key =
+  | 'k.hint'
+  | 'k.hintLine'
+  | 'k.sub'
+  | 'k.periods'
+  | 'k.serving'
+  | 'k.servingSaid'
+  | 'k.tool'
+  | 'k.last'
+  | 'k.strip';
 
 /** A pad mid-game, any sport: both halves take taps, one tool, a last tap this phone can take back. */
 const live: PadView<Key> = {
@@ -16,8 +25,9 @@ const live: PadView<Key> = {
       side: 'first',
       label: 'Top',
       value: '3',
+      periods: { scores: [{ value: '7', won: true }], said: { key: 'k.periods' } },
       sub: { key: 'k.sub' },
-      serving: true,
+      serving: { shown: { key: 'k.serving' }, said: { key: 'k.servingSaid' } },
       hint: { key: 'k.hint' },
       hintLine: { key: 'k.hintLine' },
       tappable: true,
@@ -26,8 +36,9 @@ const live: PadView<Key> = {
       side: 'second',
       label: 'Bottom',
       value: '1',
+      periods: null,
       sub: null,
-      serving: false,
+      serving: null,
       hint: { key: 'k.hint' },
       hintLine: { key: 'k.hintLine' },
       tappable: true,

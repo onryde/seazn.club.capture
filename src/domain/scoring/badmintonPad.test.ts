@@ -9,7 +9,7 @@ import {
 const pre: BadmintonDisplay = {
   sides: { first: { players: ['A. Sharma'] }, second: { players: ['L. Chen'] } },
   points: { first: 0, second: 0 },
-  games: { first: 0, second: 0 },
+  finished: [],
   server: 'first',
   court: 'right',
   game: 1,
@@ -54,32 +54,89 @@ describe('badmintonPad: the halves', () => {
     ]);
   });
 
-  it('marks the server, and only the server', () => {
-    expect(badmintonPad(live).halves.map((half) => half.serving)).toEqual([false, true]);
-    expect(badmintonPad(pre).halves.map((half) => half.serving)).toEqual([true, false]);
-  });
-
-  it('says the games each side has won under its points', () => {
-    const view = badmintonPad({ ...live, games: { first: 1, second: 0 } });
-    expect(view.halves.map((half) => half.sub)).toEqual([
-      { key: 'scoring.badminton.games', vars: { count: 1 } },
-      { key: 'scoring.badminton.games', vars: { count: 0 } },
+  // Owner ruling 17 (2026-10-31): "right/left service court in box who is serving". The court left the strip.
+  it('puts the service court on the server’s plate, and says it whole to a screen reader', () => {
+    expect(badmintonPad(live).halves.map((half) => half.serving)).toEqual([
+      null,
+      {
+        shown: { key: 'scoring.badminton.serving.left' },
+        said: { key: 'scoring.badminton.servingSaid.left' },
+      },
+    ]);
+    expect(badmintonPad(pre).halves.map((half) => half.serving)).toEqual([
+      {
+        shown: { key: 'scoring.badminton.serving.right' },
+        said: { key: 'scoring.badminton.servingSaid.right' },
+      },
+      null,
     ]);
   });
 
-  it('adds a side’s heaviest sanction to its games line', () => {
+  it('has no finished game’s score in game 1', () => {
+    expect(badmintonPad(live).halves.map((half) => half.periods)).toEqual([null, null]);
+  });
+
+  // Owner ruling 16 (2026-10-31): game 1 21-15 to the first side, game 2 18-21 to the second, game 3 under way. The
+  // first half reads [21] [18], the second [15] [21]; the box of the side that won that game is marked.
+  const twoGames: BadmintonDisplay = {
+    ...live,
+    finished: [
+      { points: { first: 21, second: 15 }, winner: 'first' },
+      { points: { first: 18, second: 21 }, winner: 'second' },
+    ],
+    game: 3,
+  };
+
+  it('shows each side’s score in every finished game, in game order, the games it won marked', () => {
+    expect(badmintonPad(twoGames).halves.map((half) => half.periods?.scores)).toEqual([
+      [
+        { value: '21', won: true },
+        { value: '18', won: false },
+      ],
+      [
+        { value: '15', won: false },
+        { value: '21', won: true },
+      ],
+    ]);
+  });
+
+  it('says a side’s finished games to a screen reader, in game order: “Games: 21, 18”', () => {
+    expect(badmintonPad(twoGames).halves.map((half) => half.periods?.said)).toEqual([
+      { key: 'scoring.badminton.gamesSaid.other', count: 2, vars: { scores: '21, 18' } },
+      { key: 'scoring.badminton.gamesSaid.other', count: 2, vars: { scores: '15, 21' } },
+    ]);
+    const one = badmintonPad({ ...twoGames, finished: twoGames.finished.slice(0, 1) });
+    expect(one.halves[1].periods).toEqual({
+      scores: [{ value: '15', won: false }],
+      said: { key: 'scoring.badminton.gamesSaid.other', count: 1, vars: { scores: '15' } },
+    });
+  });
+
+  it('has no line after the scores without a sanction', () => {
+    expect(badmintonPad(twoGames).halves.map((half) => half.sub)).toEqual([null, null]);
+  });
+
+  it('puts a side’s heaviest sanction after its scores', () => {
     const view = badmintonPad({
-      ...live,
+      ...twoGames,
       sanctions: [
         { side: 'second', level: 'penalty', person: 'L. Chen' },
         { side: 'second', level: 'warning', person: 'L. Chen' },
       ],
     });
-    expect(view.halves[0].sub).toEqual({ key: 'scoring.badminton.games', vars: { count: 0 } });
-    expect(view.halves[1].sub).toEqual({
-      key: 'scoring.badminton.gamesSanctioned',
-      vars: { count: 0, sanction: { key: 'scoring.sanction.penalty' } },
+    expect(view.halves[0].sub).toBeNull();
+    expect(view.halves[1].sub).toEqual({ key: 'scoring.sanction.penalty' });
+  });
+
+  it('names a sanction in game 1, with no score before it', () => {
+    const view = badmintonPad({
+      ...live,
+      sanctions: [{ side: 'first', level: 'disqualification', person: 'A. Sharma' }],
     });
+    expect([view.halves[0].periods, view.halves[0].sub]).toEqual([
+      null,
+      { key: 'scoring.sanction.disqualification' },
+    ]);
   });
 
   it('tells a screen reader that a tap awards the rally', () => {
@@ -120,60 +177,52 @@ describe('badmintonPad: the halves', () => {
 });
 
 describe('badmintonPad: the strip', () => {
-  it('names the format and the game, the service court, and the interval to come', () => {
+  // Owner ruling 16: "Game {n} of {m}" (the controller's brief, 2026-10-31), alone: "of 3" is the best of 3, which the
+  // Rules sheet spells out. Ruling 17: the court is on the server's plate, not here.
+  it('names the game of how many, and the interval to come', () => {
     expect(badmintonPad(live).strip).toEqual([
-      { slot: 'context', text: { key: 'scoring.badminton.context', vars: { bestOf: 3, game: 1 } } },
-      { slot: 'court', text: { key: 'scoring.badminton.court.left' } },
+      { slot: 'game', text: { key: 'scoring.badminton.gameOf', vars: { game: 1, bestOf: 3 } } },
       { slot: 'interval', text: { key: 'scoring.badminton.intervalAt', vars: { point: 11 } } },
     ]);
   });
 
-  it('reads the right service court from the display', () => {
-    expect(badmintonPad(pre).strip[1]).toEqual({
-      slot: 'court',
-      text: { key: 'scoring.badminton.court.right' },
-    });
-  });
-
   it('reads the format and the interval point from the match’s rules: a best of 5 with its interval at 8', () => {
     const rules = { bestOf: 5, points: 15, winBy: 2, cap: 21, intervalPoint: 8 };
-    expect(badmintonPad({ ...pre, rules }).strip.map((item) => item.text)).toEqual([
-      { key: 'scoring.badminton.context', vars: { bestOf: 5, game: 1 } },
-      { key: 'scoring.badminton.court.right' },
+    expect(badmintonPad({ ...pre, rules, game: 4 }).strip.map((item) => item.text)).toEqual([
+      { key: 'scoring.badminton.gameOf', vars: { game: 4, bestOf: 5 } },
       { key: 'scoring.badminton.intervalAt', vars: { point: 8 } },
     ]);
   });
 
   it('says Interval when the server has just reached the interval point', () => {
     const interval = badmintonPad({ ...live, points: { first: 7, second: 11 } });
-    expect(interval.strip[2]).toEqual({
+    expect(interval.strip[1]).toEqual({
       slot: 'interval',
       text: { key: 'scoring.badminton.intervalNow' },
     });
   });
 
   it('keeps the interval slot, empty, once the interval has passed', () => {
-    expect(badmintonPad({ ...live, points: { first: 11, second: 12 } }).strip[2]).toEqual({
+    expect(badmintonPad({ ...live, points: { first: 11, second: 12 } }).strip[1]).toEqual({
       slot: 'interval',
       text: null,
     });
     // 11-10 to the receiver: the leader reached 11 a rally ago.
-    expect(badmintonPad({ ...live, points: { first: 11, second: 10 } }).strip[2]).toEqual({
+    expect(badmintonPad({ ...live, points: { first: 11, second: 10 } }).strip[1]).toEqual({
       slot: 'interval',
       text: null,
     });
     // 11-11, the server just levelled: the interval was when the other side reached 11.
-    expect(badmintonPad({ ...live, points: { first: 11, second: 11 } }).strip[2]).toEqual({
+    expect(badmintonPad({ ...live, points: { first: 11, second: 11 } }).strip[1]).toEqual({
       slot: 'interval',
       text: null,
     });
   });
 
-  it('keeps every slot once the match is decided, with no court and no interval', () => {
-    const decided = badmintonPad({ ...live, phase: 'decided', games: { first: 0, second: 2 } });
+  it('keeps every slot once the match is decided, naming the last game, with no interval', () => {
+    const decided = badmintonPad({ ...live, phase: 'decided', game: 2 });
     expect(decided.strip.map((item) => [item.slot, item.text])).toEqual([
-      ['context', { key: 'scoring.badminton.context', vars: { bestOf: 3, game: 1 } }],
-      ['court', null],
+      ['game', { key: 'scoring.badminton.gameOf', vars: { game: 2, bestOf: 3 } }],
       ['interval', null],
     ]);
   });
@@ -241,10 +290,17 @@ describe('badmintonPad: the tools', () => {
 });
 
 describe('badmintonPad: the decided match', () => {
+  // 2-1 to the first side; the last game 21-19, which the big numbers keep.
   const decided: BadmintonDisplay = {
     ...live,
+    points: { first: 21, second: 19 },
+    finished: [
+      { points: { first: 21, second: 15 }, winner: 'first' },
+      { points: { first: 18, second: 21 }, winner: 'second' },
+      { points: { first: 21, second: 19 }, winner: 'first' },
+    ],
+    game: 3,
     phase: 'decided',
-    games: { first: 2, second: 1 },
     lastTap: { kind: 'rally', side: 'first', won: 'match', game: 3 },
   };
 
@@ -253,9 +309,46 @@ describe('badmintonPad: the decided match', () => {
     expect(view.card).toEqual({ kind: 'resultRecorded' });
     expect(view.tools).toEqual([]);
     expect(view.halves.map((half) => [half.value, half.tappable, half.serving])).toEqual([
-      ['6', false, false],
-      ['9', false, false],
+      ['21', false, null],
+      ['19', false, null],
     ]);
+  });
+
+  it('shows every game’s score, the last game’s too, with the big numbers on the last game', () => {
+    const view = badmintonPad(decided);
+    expect(
+      view.halves.map((half) => [half.value, half.periods?.scores.map((box) => box.value)]),
+    ).toEqual([
+      ['21', ['21', '18', '21']],
+      ['19', ['15', '21', '19']],
+    ]);
+    expect(view.halves[0].periods?.scores.map((box) => box.won)).toEqual([true, false, true]);
+    expect(view.halves[0].periods?.said).toEqual({
+      key: 'scoring.badminton.gamesSaid.other',
+      count: 3,
+      vars: { scores: '21, 18, 21' },
+    });
+  });
+
+  // The four questions: another format. A best of 1 is decided by its one game.
+  it('decides a best of 1 on its one game: one box a side, “Game 1 of 1”', () => {
+    const view = badmintonPad({
+      ...live,
+      rules: { ...live.rules, bestOf: 1 },
+      points: { first: 19, second: 21 },
+      finished: [{ points: { first: 19, second: 21 }, winner: 'second' }],
+      phase: 'decided',
+      lastTap: { kind: 'rally', side: 'second', won: 'match', game: 1 },
+    });
+    expect(view.halves.map((half) => half.periods?.scores)).toEqual([
+      [{ value: '19', won: false }],
+      [{ value: '21', won: true }],
+    ]);
+    expect(view.strip[0]).toEqual({
+      slot: 'game',
+      text: { key: 'scoring.badminton.gameOf', vars: { game: 1, bestOf: 1 } },
+    });
+    expect(view.card).toEqual({ kind: 'resultRecorded' });
   });
 
   it('still offers Undo on this phone’s own last tap', () => {

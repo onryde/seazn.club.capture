@@ -313,6 +313,12 @@ const base = {
   syncDot: 10,
   /** A half's names as typed: at most this many lines of `label`, then an ellipsis. */
   padNameLines: 2,
+  /**
+   * A finished game's box in a half's bottom row (owner ruling 16): at least this wide, so a 9 and a 21 make boxes of
+   * one width and the two halves' columns line up. Two tabular digits of `periodScore`, its padding and its hairlines
+   * (padFit.test.ts).
+   */
+  padPeriodBox: 26,
   /** The pad's strip: each slot's text may take this many lines of `metricUnit` (padFit.test.ts measures them at 320). */
   padStripLines: 2,
   /**

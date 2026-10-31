@@ -2,6 +2,7 @@ import type { BadmintonRules } from '@/domain/scoring/badmintonRules';
 import {
   SANCTION_LEVELS,
   type BadmintonDisplay,
+  type BadmintonGame,
   type BadmintonLastTap,
   type BadmintonPhase,
   type BadmintonSanction,
@@ -86,7 +87,8 @@ type Entry = { readonly tap: BadmintonTap; readonly own: boolean; voided: boolea
 
 type Score = {
   readonly points: Readonly<Record<PadSide, number>>;
-  readonly games: Readonly<Record<PadSide, number>>;
+  /** The games won on a rally, in order: replayed like the rest, so an Undo that reopens one takes it away. */
+  readonly finished: readonly BadmintonGame[];
   readonly server: PadSide;
   readonly game: number;
   readonly phase: BadmintonPhase;
@@ -97,7 +99,7 @@ type Score = {
 
 const START: Score = {
   points: { first: 0, second: 0 },
-  games: { first: 0, second: 0 },
+  finished: [],
   server: 'first',
   game: 1,
   phase: 'pre',
@@ -266,7 +268,13 @@ function apply(score: Score, tap: BadmintonTap): Score {
   }
 }
 
-/** A point to `side`, which serves next; a game won resets the points, and the match is decided at two games. */
+const wins = (finished: readonly BadmintonGame[], side: PadSide) =>
+  finished.filter((game) => game.winner === side).length;
+
+/**
+ * A point to `side`, which serves next. A game won is kept with its final points and the next starts at 0-0; the match
+ * is decided at two games, its last kept as the points too.
+ */
 function rally(score: Score, side: PadSide): Score {
   const points = { ...score.points, [side]: score.points[side] + 1 };
   if (!wonGame(points[side], points[other(side)])) {
@@ -278,15 +286,15 @@ function rally(score: Score, side: PadSide): Score {
       lastTap: { kind: 'rally', side, won: 'none', game: score.game },
     };
   }
-  const games = { ...score.games, [side]: score.games[side] + 1 };
-  if (games[side] > RULES.bestOf / 2) {
+  const finished = [...score.finished, { points, winner: side }];
+  if (wins(finished, side) > RULES.bestOf / 2) {
     const lastTap: BadmintonLastTap = { kind: 'rally', side, won: 'match', game: score.game };
-    return { ...score, points, games, server: side, phase: 'decided', lastTap };
+    return { ...score, points, finished, server: side, phase: 'decided', lastTap };
   }
   return {
     ...score,
     points: { first: 0, second: 0 },
-    games,
+    finished,
     server: side,
     game: score.game + 1,
     phase: 'betweenGames',
@@ -303,7 +311,7 @@ function displayOf(
   return {
     sides: sample.sides,
     points: score.points,
-    games: score.games,
+    finished: score.finished,
     server: score.server,
     court: score.points[score.server] % 2 === 0 ? 'right' : 'left',
     game: score.game,
