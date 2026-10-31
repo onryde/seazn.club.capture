@@ -8,15 +8,16 @@ import { colour, layout, space } from '@/ui/theme/tokens';
 
 /**
  * Whether this phone's taps have reached the server: a dot and a few words. Lime when synced; lilac while sending;
- * caution orange offline and when the server refused a tap (never red: red means ON AIR, AGENTS §5). The words are one
- * line, cut with an ellipsis (padFit.test.ts holds the longest in four languages at 320 dp); the dot is drawing only.
+ * caution orange offline and when the server refused a tap (never red: red means ON AIR, AGENTS §5). The words take at
+ * most `padSyncLines`, then an ellipsis (padFit.test.ts holds the longest in four languages at 320 dp); the dot is
+ * drawing only.
  */
 export const SyncDot = memo(function SyncDot({ sync }: { readonly sync: PadSync }) {
   const translator = useT();
   return (
     <View testID="sync" style={styles.row}>
       <View testID="sync-dot" aria-hidden style={DOT[sync.kind]} />
-      <Text variant="metricUnit" numberOfLines={1} style={styles.words}>
+      <Text variant="metricUnit" numberOfLines={layout.padSyncLines} style={styles.words}>
         {syncWords(sync, translator)}
       </Text>
     </View>

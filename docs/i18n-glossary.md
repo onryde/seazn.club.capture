@@ -132,6 +132,23 @@ is an owner decision, not a translation fix.
 | app                                                                | app                                     | app                                       | app                                    |                                                                                                                                                                                                                                                                                                                                                                      |
 | Seazn Club (the logo's name)                                       | Seazn Club                              | Seazn Club                                | Seazn Club                             | A brand name, never translated. It is the logo's accessible name on Home.                                                                                                                                                                                                                                                                                            |
 
+## Scoring pad terms (S2)
+
+Added with the S2 pad preview's copy (2026-10-31). The pad's words follow the
+web pad's where it has them (`device.*`, the sanction levels).
+
+| English                           | es               | fr                 | nl                 | Notes                                                                                                           |
+| --------------------------------- | ---------------- | ------------------ | ------------------ | --------------------------------------------------------------------------------------------------------------- |
+| tap (a scorer's entry on the pad) | toque            | saisie             | tap                | fr: _saisie_ is what the scorer entered, not the gesture; it agrees in the feminine (_saisie non enregistrée_). |
+| rally                             | jugada           | échange            | rally              | es: _jugada_, as a rally won is said at Spanish courts; _punto_ would read as the score.                        |
+| Sanction (the tool)               | Sanción          | Sanction           | Sanctie            | The four levels are the web's: Warning, Penalty, Expulsion, Disqualification.                                   |
+| Undo                              | Deshacer         | Annuler            | Ongedaan maken     | nl is long: the last-tap line reserves three lines for it (padFit.test.ts).                                     |
+| Cancel (closing a pad sheet)      | Cancelar         | Fermer             | Annuleren          | fr: _Fermer_, so the sheet's way out is never the same word as Undo's _Annuler_.                                |
+| Set score (the tool)              | Fijar puntos     | Saisir le score    | Stand invoeren     | A verb, the action the tool takes; the web's set-noun reads as a tennis set.                                    |
+| Serving (the plate)               | Al saque         | Au service         | Aan opslag         |                                                                                                                 |
+| Not recorded — … (a refusal)      | No registrado: … | Non enregistré : … | Niet vastgelegd: … | The refusal's first words, kept when a long one is cut.                                                         |
+| Preview (the tag)                 | Vista previa     | Aperçu             | Voorbeeld          | The dev twin's preview only.                                                                                    |
+
 ## Translation review
 
 - **New or changed English copy.** Add the key to es, fr and nl in the same

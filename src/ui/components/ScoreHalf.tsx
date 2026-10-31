@@ -1,5 +1,6 @@
-import { memo, useCallback } from 'react';
+import { memo, useCallback, useState } from 'react';
 import {
+  type LayoutChangeEvent,
   type PressableStateCallbackType,
   Pressable,
   type StyleProp,
@@ -12,6 +13,7 @@ import { useT } from '@/hooks/useLanguage';
 import { usePadText } from '@/hooks/usePadText';
 import type { MessageKey } from '@/i18n/messages';
 import { Text } from '@/ui/components/Text';
+import { scoreRole } from '@/ui/theme/scoreRole';
 import { colour, layout, plateInk, radius, space } from '@/ui/theme/tokens';
 
 type ScoreHalfProps = {
@@ -21,14 +23,20 @@ type ScoreHalfProps = {
 
 /**
  * One side's half of the pad (layout A, owner 2026-10-31): the whole half is the button that gives that side the
- * rally, far larger than any other target. The names as typed, the big value in the LED lime, the games line, and the
- * serving plate. A screen reader reads the side, the value, the line and Serving as one name, and the hint says what a
+ * rally, far larger than any other target. The names as typed, the big value in the LED lime (a step smaller in a half
+ * too short for it, `scoreRole`), the games line, and the serving plate. A screen reader reads the side, the value, the line and Serving as one name, and the hint says what a
  * tap does. A half that takes no tap (a card is up, a match is over) is disabled and draws the same.
  */
 export const ScoreHalf = memo(function ScoreHalf({ half, onTap }: ScoreHalfProps) {
   const { t } = useT();
   const words = usePadText();
   const tap = useCallback(() => onTap(half.side), [onTap, half.side]);
+  // The half as laid out sets the score's size (`scoreRole`); null until it is measured.
+  const [height, setHeight] = useState<number | null>(null);
+  const measure = useCallback(
+    (event: LayoutChangeEvent) => setHeight(event.nativeEvent.layout.height),
+    [],
+  );
   const sub = half.sub === null ? null : words(half.sub);
   const serving = half.serving ? t('scoring.pad.serving') : null;
   const name = [half.label, half.value, sub, serving].filter(isWords).join(', ');
@@ -40,15 +48,16 @@ export const ScoreHalf = memo(function ScoreHalf({ half, onTap }: ScoreHalfProps
       accessibilityHint={words(half.hint)}
       disabled={!half.tappable}
       onPress={tap}
+      onLayout={measure}
       style={half.side === 'first' ? firstStyle : secondStyle}
     >
       <View style={styles.head}>
-        <Text variant="label" numberOfLines={2} style={styles.names}>
+        <Text variant="label" numberOfLines={layout.padNameLines} style={styles.names}>
           {half.label}
         </Text>
         {serving === null ? null : <ServingPlate word={serving} />}
       </View>
-      <Text variant="score">{half.value}</Text>
+      <Text variant={scoreRole(height)}>{half.value}</Text>
       {sub === null ? null : <Text variant="control">{sub}</Text>}
     </Pressable>
   );
@@ -75,6 +84,8 @@ const styles = StyleSheet.create({
     borderRadius: radius.card,
     borderLeftWidth: layout.padSideBar,
     backgroundColor: colour.surface,
+    // Shorter than even `scoreCompact` needs (a card above the halves on a short phone): cut, never drawn over the other.
+    overflow: 'hidden',
   },
   first: { borderLeftColor: colour.lime },
   second: { borderLeftColor: colour.ink3 },

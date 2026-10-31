@@ -222,6 +222,14 @@ export const typeScale = {
     fontVariant: ['tabular-nums'],
     color: colour.lime,
   },
+  /** The score a step down, for a half too short for `score` (`scoreRole.ts` picks it from the half's own height). */
+  scoreCompact: {
+    fontFamily: font.displayBold,
+    fontSize: 64,
+    lineHeight: 68,
+    fontVariant: ['tabular-nums'],
+    color: colour.lime,
+  },
 } satisfies Record<string, TextStyle>;
 
 export type TypeRole = keyof typeof typeScale;

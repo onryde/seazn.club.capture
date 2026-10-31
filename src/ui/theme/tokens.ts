@@ -311,10 +311,17 @@ const base = {
    */
   padSideBar: 4,
   syncDot: 10,
+  /** A half's names as typed: at most this many lines of `label`, then an ellipsis. */
+  padNameLines: 2,
   /** The pad's strip: each slot's text may take this many lines of `metricUnit` (padFit.test.ts measures them at 320). */
   padStripLines: 2,
-  /** The pad's last-tap sentence and a refusal in its place: this many lines of `control`, then an ellipsis. */
-  padLineLines: 2,
+  /**
+   * The pad's last-tap sentence and a refusal in its place: this many lines of `control`, then an ellipsis. Three, not
+   * two: beside Dutch's "Ongedaan maken" two lines cut most refusals even at 360 (padFit.test.ts measures every one).
+   */
+  padLineLines: 3,
+  /** The sync status's words in the pad's header: this many lines of `metricUnit` (Spanish offline needs two at 320). */
+  padSyncLines: 2,
   /** A tool's label: this many lines of `actionSecondary` (padFit.test.ts: every label, four languages, at 320). */
   padToolLines: 2,
 } as const;

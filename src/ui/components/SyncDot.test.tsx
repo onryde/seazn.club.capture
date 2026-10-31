@@ -4,7 +4,7 @@ import type { PadSync } from '@/domain/scoring/padView';
 import en from '@/i18n/en.json';
 import es from '@/i18n/es.json';
 import { SyncDot } from '@/ui/components/SyncDot';
-import { colour } from '@/ui/theme/tokens';
+import { colour, layout } from '@/ui/theme/tokens';
 import { linesAllowed } from '../../../test/linesAllowed';
 import { fillOf } from '../../../test/pressState';
 import { renderWithPorts } from '../../../test/renderWithPorts';
@@ -40,11 +40,11 @@ describe('SyncDot', () => {
     expect(dot()).toBe(fillOf(tone));
   });
 
-  it('keeps its words on one line, cut with an ellipsis if need be, and hides the dot from a screen reader', () => {
+  it('lets its words take their reserved lines, then cut, and hides the dot from a screen reader', () => {
     renderWithPorts(<SyncDot sync={{ kind: 'offline', count: 12 }} />);
     expect(
       linesAllowed(screen.getByText(en['scoring.sync.offline.other'].replace('{count}', '12'))),
-    ).toBe(1);
+    ).toBe(layout.padSyncLines);
     expect(screen.getByTestId('sync-dot').getAttribute('aria-hidden')).toBe('true');
   });
 

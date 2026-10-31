@@ -6,6 +6,8 @@ import fr from '@/i18n/fr.json';
 import type { MessageKey } from '@/i18n/messages';
 import { ScoreHalf } from '@/ui/components/ScoreHalf';
 import { colour } from '@/ui/theme/tokens';
+import { typeScale } from '@/ui/theme/type';
+import { layOut } from '../../../test/layOut';
 import { edgeOf } from '../../../test/pressState';
 import { renderWithPorts } from '../../../test/renderWithPorts';
 
@@ -73,6 +75,18 @@ describe('ScoreHalf', () => {
   it('sets the value in the score role: tabular, so 9 to 10 does not jump', () => {
     renderWithPorts(<ScoreHalf half={top} onTap={vi.fn()} />);
     expect(getComputedStyle(screen.getByText('11')).fontVariant).toContain('tabular-nums');
+  });
+
+  // A half 194 tall holds the names' two lines, the score at 96 and the games line in its padding (padFit.test.ts);
+  // one dp shorter, the score steps down a size rather than run into the other half.
+  it.each([
+    [null, typeScale.score.fontSize],
+    [194, typeScale.score.fontSize],
+    [193, typeScale.scoreCompact.fontSize],
+  ] as const)('sets the score for a half %s tall at %i', (height, size) => {
+    renderWithPorts(<ScoreHalf half={top} onTap={vi.fn()} />);
+    if (height !== null) layOut(screen.getByTestId('half-first'), { width: 288, height });
+    expect(getComputedStyle(screen.getByText('11')).fontSize).toBe(`${size}px`);
   });
 
   it('says it in French', () => {

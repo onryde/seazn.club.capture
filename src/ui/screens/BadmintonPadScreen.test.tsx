@@ -462,7 +462,7 @@ describe('BadmintonPadScreen: leaving, and the phone', () => {
     const words = within(screen.getByTestId('sync')).getByText(
       fill(en['scoring.sync.offline.other'], { count: 3 }),
     );
-    expect(linesAllowed(words)).toBe(1);
+    expect(linesAllowed(words)).toBe(layout.padSyncLines);
   });
 });
 
