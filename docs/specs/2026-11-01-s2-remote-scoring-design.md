@@ -222,7 +222,8 @@ design surface.
 - One sender per match, while the app is in the foreground: in order, one in flight at a time,
   with `expected_seq` from the ledger the phone holds. Answers:
   - accepted → the event joins the ledger, leaves the queue;
-  - `SEQ_CONFLICT` → fetch `GET …/events?since_seq=`, fold, and send the queue again on the new
+  - 409 `SEQ_CONFLICT` (another scorer wrote since this phone's `expected_seq`; the body may carry
+    `current_seq`) → fetch `GET …/events?since_seq=`, fold, and send the queue again on the new
     `expected_seq`; a queued event the new ledger makes illegal is dropped with a refusal line (as
     the web pipeline does);
   - 426 `ENGINE_OUTDATED` (the app's engine epoch is behind the server's) → the Update needed state;
@@ -233,7 +234,8 @@ design surface.
     An event the new rules make illegal is refused as below;
   - any other refusal (4xx) → that event leaves the queue, the last-tap line says the tap did not
     count, the ledger is fetched again;
-  - no network, timeout, 5xx → stay queued, retry with backoff; the sync dot says offline and counts.
+  - no network, timeout, 5xx → stay queued, retry with backoff, with the same `idempotency_key`, so a
+    tap the server accepted before the answer was lost is not counted twice; the sync dot says offline and counts.
 - Undo of a tap still in the queue removes it from the queue; nothing is sent (_the controller's_).
 - Other scorers' events arrive in real time, as on the web (ruling 27): the web's Supabase Realtime
   channel carries a "something changed" ping with no payload (`use-fixture-stream.ts`), its token from
