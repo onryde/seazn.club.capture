@@ -259,7 +259,7 @@ function commands(sample: FakePadSample, ledger: Ledger, publish: () => void): C
         : refused('notNow'),
     setScore: (first, second) => setScoreOn(ledger.score, record, first, second),
     recordEnding: () => endingOn(ledger.score, record),
-    voidSanction: () => (ledger.score.awaitingEnding ? undo() : refused('notNow')),
+    voidSanction: () => voidPending(ledger, publish),
   };
 }
 
@@ -276,9 +276,24 @@ function recordTap(ledger: Ledger, publish: () => void, tap: BadmintonTap): Fake
  */
 function voidLastOwn(ledger: Ledger, publish: () => void): FakeOutcome {
   const last = voidable(ledger.entries);
-  if (last === undefined) return refused('nothingToUndo');
-  last.voided = true;
-  ledger.undone = last.tap.kind === 'start' ? null : last.tap;
+  return last === undefined ? refused('nothingToUndo') : voidEntry(ledger, publish, last);
+}
+
+/**
+ * Void: takes back the disqualification waiting for its ending, its own entry (nothing records while it waits, so it
+ * is the last entry standing), and only when this phone recorded it (review M5, 2026-11-01). None waiting: refused.
+ */
+function voidPending(ledger: Ledger, publish: () => void): FakeOutcome {
+  if (!ledger.score.awaitingEnding) return refused('notNow');
+  const pending = ledger.entries.filter((entry) => !entry.voided).pop();
+  if (pending === undefined || !pending.own) return refused('nothingToUndo');
+  return voidEntry(ledger, publish, pending);
+}
+
+/** An entry taken back: it stays in place, voided, and the line says so (a start has no line to say it on). */
+function voidEntry(ledger: Ledger, publish: () => void, entry: Entry): FakeOutcome {
+  entry.voided = true;
+  ledger.undone = entry.tap.kind === 'start' ? null : entry.tap;
   publish();
   return OK;
 }

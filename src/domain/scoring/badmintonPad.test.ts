@@ -610,7 +610,13 @@ describe('badmintonPad: before the match starts', () => {
   });
 
   it('offers no tool, no tap, no serving plate and no last tap; the tally is 0:0 and the details stand', () => {
-    const view = badmintonPad(notStarted);
+    // A last tap the display still holds before the start (an engine that keeps the start an Undo took back) says
+    // nothing: there is no match on the pad for a line to speak of (review M6, 2026-11-01).
+    const view = badmintonPad({
+      ...notStarted,
+      lastTap: { kind: 'start', server: 'first' },
+      undoable: true,
+    });
     expect(view.tools).toEqual([]);
     expect(view.halves.map((half) => [half.tappable, half.serving])).toEqual([
       [false, null],

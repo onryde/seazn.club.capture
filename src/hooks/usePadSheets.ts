@@ -48,23 +48,26 @@ type Sheet =
 const DETAILS: Sheet = { kind: 'details' };
 const HISTORY: Sheet = { kind: 'history' };
 
-/** Says what a tap came to (`useBadmintonPadPreview`'s `settle`); `refuse` says a refusal of its own. */
-type Settle = (outcome: FakeOutcome) => void;
+/**
+ * A sheet's button that records, through the taps' bounce memory (`useBadmintonPadPreview`'s `opening`): the sheet
+ * leaves with it, and a second touch on what was under it counts once (review I1, 2026-11-01). Whether it counted.
+ */
+type Recording = (tap: string, make: () => FakeOutcome) => boolean;
+type SetSheet = (sheet: Sheet) => void;
 
 /**
  * The sheet over the badminton preview's pad: a tool, Match details or History opens one, a sanction's steps move
  * through it, Cancel, Close and Back close it. A second Match details or History tap opens nothing more: one Back
  * still closes it. The ending prompt is not a sheet the scorer opens: it shows for as long as a disqualification waits,
- * on the pad (none under a card). History is view only: it reads the sheet and records nothing. A sanction's step and
- * the ending prompt take no choice in the bounce window of appearing (`justShown`).
+ * on the pad (none under a card). History is view only: it reads the sheet and records nothing. A sanction's step, Set
+ * score, the ending prompt and Match details' Close and dim take no tap in the bounce window of appearing (`justShown`).
  */
 export function usePadSheets(
   pad: FakeBadmintonPad,
   snapshot: FakePadSnapshot,
-  settle: Settle,
+  record: Recording,
   refuseScore: () => void,
 ) {
-  const { display } = snapshot;
   const [sheet, setSheet] = useState<Sheet>(null);
   const cancel = useCallback(() => setSheet(null), []);
   const tool = useCallback((id: string) => setSheet(sheetFor(id)), []);
@@ -72,31 +75,48 @@ export function usePadSheets(
   const history = useCallback(() => setSheet(HISTORY), []);
   const view = useMemo(() => sheetView(sheet, snapshot), [sheet, snapshot]);
   const justShown = useJustShown(guardedStep(sheet, view));
-  const choose = useCallback(
-    (id: string) => {
-      if (sheet?.kind !== 'sanction' || justShown()) return;
-      const move = chooseSanction(sheet.step, id, display.sides);
-      if (move.kind === 'step') return setSheet({ kind: 'sanction', step: move.step });
-      setSheet(null);
-      settle(pad.sanction(move.sanction));
-    },
-    [sheet, display.sides, pad, settle, justShown],
-  );
-  const saveScore = useSaveScore(pad, settle, refuseScore, cancel);
+  const dismiss = useCallback(() => {
+    if (!justShown()) cancel();
+  }, [justShown, cancel]);
+  const choose = useChoose(sheet, setSheet, snapshot.display, record, justShown, pad);
+  const saveScore = useSaveScore(pad, record, refuseScore, cancel, justShown);
   const actions = useMemo(
-    () => ({ tool, details, history, choose, cancel, saveScore }),
-    [tool, details, history, choose, cancel, saveScore],
+    () => ({ tool, details, history, choose, cancel, dismiss, saveScore }),
+    [tool, details, history, choose, cancel, dismiss, saveScore],
   );
   return { open: sheet !== null, cancel, actions, view, justShown };
 }
 
+/** A sanction step's choice: the next step, or the sanction recorded (`Recording`) and the sheet closed. */
+function useChoose(
+  sheet: Sheet,
+  setSheet: SetSheet,
+  display: BadmintonDisplay,
+  record: Recording,
+  justShown: () => boolean,
+  pad: FakeBadmintonPad,
+) {
+  const { sides } = display;
+  return useCallback(
+    (id: string) => {
+      if (sheet?.kind !== 'sanction' || justShown()) return;
+      const move = chooseSanction(sheet.step, id, sides);
+      if (move.kind === 'step') return setSheet({ kind: 'sanction', step: move.step });
+      setSheet(null);
+      record('sanction', () => pad.sanction(move.sanction));
+    },
+    [sheet, setSheet, sides, record, justShown, pad],
+  );
+}
+
 /**
- * The step on screen a double tap can reach, by name: a sanction's level, person or confirm, or the ending prompt,
- * one step wherever it comes from (the confirm, an Undo of the ending, a return to the pad). None for the rest.
+ * The step on screen a double tap can reach, by name: a sanction's level, person or confirm; Set score (review I1); the
+ * ending prompt, one step wherever it comes from (the confirm, an Undo of the ending, a return to the pad); Match
+ * details, whose dim takes the second touch on its icon (review M2). Not History: its one button is not under its icon.
  */
 function guardedStep(sheet: Sheet, view: PadSheetView | null): string | null {
-  if (view?.kind === 'ending') return 'ending';
-  return view?.kind === 'sanction' && sheet?.kind === 'sanction' ? sheet.step.step : null;
+  if (view?.kind === 'sanction' && sheet?.kind === 'sanction') return sheet.step.step;
+  return view === null || view.kind === 'history' ? null : view.kind;
 }
 
 /**
@@ -115,21 +135,26 @@ function useJustShown(step: string | null): () => boolean {
   );
 }
 
-/** Set score's two fields as typed: a field that is not a whole number is refused, as the pad refuses a bad score. */
+/**
+ * Set score's two fields as typed: a field that is not a whole number is refused, as the pad refuses a bad score.
+ * Quiet in the bounce window of the sheet appearing: the second touch of a double tap on the tool lands on Confirm.
+ */
 function useSaveScore(
   pad: FakeBadmintonPad,
-  settle: Settle,
+  record: Recording,
   refuse: () => void,
   close: () => void,
+  justShown: () => boolean,
 ) {
   return useCallback(
     (first: string, second: string) => {
+      if (justShown()) return;
       close();
-      const points = [parseWholeNumber(first), parseWholeNumber(second)] as const;
-      if (points[0] === null || points[1] === null) return refuse();
-      settle(pad.setScore(points[0], points[1]));
+      const [top, bottom] = [parseWholeNumber(first), parseWholeNumber(second)];
+      if (top === null || bottom === null) return refuse();
+      record('setScore', () => pad.setScore(top, bottom));
     },
-    [pad, settle, refuse, close],
+    [pad, record, refuse, close, justShown],
   );
 }
 

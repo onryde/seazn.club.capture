@@ -399,6 +399,21 @@ describe('Undo: steps back through this phone’s own taps', () => {
 });
 
 describe('sanctions and the disqualification’s ending', () => {
+  // Review M5 (2026-11-01): Void takes back the disqualification waiting, and only when this phone recorded it.
+  it('refuses to void a disqualification another scorer recorded, and leaves it waiting', () => {
+    const pad = createFakeBadmintonPad({
+      ...SINGLES_SAMPLE,
+      others: [
+        { kind: 'start', server: 'first' },
+        { kind: 'sanction', side: 'second', level: 'disqualification', person: 'L. Chen' },
+      ],
+    });
+    expect(display(pad).awaitingEnding).toBe(true);
+    expect(pad.voidSanction()).toEqual({ ok: false, refusal: 'nothingToUndo' });
+    expect(display(pad).awaitingEnding).toBe(true);
+    expect(pad.snapshot().history.map((entry) => entry.undone)).toEqual([false, false]);
+  });
+
   it('records a sanction on the person and says so', () => {
     const pad = createFakeBadmintonPad(DOUBLES_SAMPLE);
     expect(pad.sanction({ side: 'first', level: 'warning', person: 'R. Iyer' })).toEqual({

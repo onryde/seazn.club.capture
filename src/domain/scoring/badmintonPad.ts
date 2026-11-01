@@ -384,8 +384,9 @@ function tools(state: BadmintonDisplay): readonly PadTool<BadmintonPadKey>[] {
     : [sanction('first'), sanction('second')];
 }
 
+/** The last tap's line; none before the start, when there is no match on the pad to speak of (review M6). */
 function lastTap(state: BadmintonDisplay): PadLastTap<BadmintonPadKey> | null {
-  if (state.lastTap === null) return null;
+  if (!started(state) || state.lastTap === null) return null;
   return {
     text: lastTapText(state, state.lastTap),
     undo: state.undoable && !state.awaitingEnding,

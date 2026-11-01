@@ -16,6 +16,8 @@ import { Text } from '@/ui/components/Text';
 import { scoreRole } from '@/ui/theme/scoreRole';
 import { colour, layout, plateInk, radius, space } from '@/ui/theme/tokens';
 
+type PadWords = ReturnType<typeof usePadText>;
+
 type ScoreHalfProps = {
   readonly half: PadHalf<MessageKey>;
   /** The half's flash cue (`flashCue`): it flashes when this moves to a new counted tap of its own. */
@@ -36,21 +38,13 @@ type ScoreHalfProps = {
 export const ScoreHalf = memo(function ScoreHalf({ half, flash, onTap }: ScoreHalfProps) {
   const words = usePadText();
   const tap = useCallback(() => onTap(half.side), [onTap, half.side]);
-  // The half as laid out sets the score's size (`scoreRole`); null until it is measured.
-  const [height, setHeight] = useState<number | null>(null);
-  const measure = useCallback(
-    (event: LayoutChangeEvent) => setHeight(event.nativeEvent.layout.height),
-    [],
-  );
+  const [height, measure] = useHeight();
   const sub = half.sub === null ? null : words(half.sub);
-  const periods = half.periods === null ? NO_WORDS : half.periods.said.map(words);
-  const serving = half.serving === null ? null : words(half.serving.said);
-  const name = [half.label, half.value, ...periods, sub, serving].filter(isWords).join(', ');
   return (
     <Pressable
       testID={`half-${half.side}`}
       accessibilityRole="button"
-      accessibilityLabel={name}
+      accessibilityLabel={halfName(half, words, sub)}
       accessibilityHint={words(half.hint)}
       disabled={!half.tappable}
       onPress={tap}
@@ -58,12 +52,7 @@ export const ScoreHalf = memo(function ScoreHalf({ half, flash, onTap }: ScoreHa
       style={half.side === 'first' ? firstStyle : secondStyle}
     >
       <TapFlash cue={flash} />
-      <View style={styles.head}>
-        <Text variant="label" numberOfLines={layout.padNameLines} style={styles.names}>
-          {half.label}
-        </Text>
-        {half.serving === null ? null : <ServingPlate words={words(half.serving.shown)} />}
-      </View>
+      <HalfHead half={half} />
       <View style={styles.middle}>
         <Text testID="score" variant={scoreRole(height)}>
           {half.value}
@@ -75,6 +64,36 @@ export const ScoreHalf = memo(function ScoreHalf({ half, flash, onTap }: ScoreHa
         hint={half.tappable ? words(half.hintLine) : null}
       />
     </Pressable>
+  );
+});
+
+/** The half's height as laid out, which sets the score's size (`scoreRole`); null until it is measured. */
+function useHeight(): readonly [number | null, (event: LayoutChangeEvent) => void] {
+  const [height, setHeight] = useState<number | null>(null);
+  const measure = useCallback(
+    (event: LayoutChangeEvent) => setHeight(event.nativeEvent.layout.height),
+    [],
+  );
+  return [height, measure];
+}
+
+/** The half's one name to a screen reader: side, value, finished games, sanction, and Serving with the court. */
+function halfName(half: PadHalf<MessageKey>, words: PadWords, sub: string | null): string {
+  const periods = half.periods === null ? NO_WORDS : half.periods.said.map(words);
+  const serving = half.serving === null ? null : words(half.serving.said);
+  return [half.label, half.value, ...periods, sub, serving].filter(isWords).join(', ');
+}
+
+/** The top of the half: the names as typed, and the serving plate with the court on it (owner ruling 17). */
+const HalfHead = memo(function HalfHead({ half }: { readonly half: PadHalf<MessageKey> }) {
+  const words = usePadText();
+  return (
+    <View style={styles.head}>
+      <Text variant="label" numberOfLines={layout.padNameLines} style={styles.names}>
+        {half.label}
+      </Text>
+      {half.serving === null ? null : <ServingPlate words={words(half.serving.shown)} />}
+    </View>
   );
 });
 

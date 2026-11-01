@@ -106,11 +106,26 @@ const PadHeader = memo(function PadHeader({
     <View style={styles.header}>
       <IconButton glyph="back" label={t('stream.home')} onPress={actions.home} />
       {known ? <GamesTally tally={tally} /> : null}
-      <View testID="pad-header-end" style={styles.end}>
-        {known ? <MatchIcons actions={actions} /> : null}
-        <View testID="sync-box" style={styles.sync}>
-          <SyncDot sync={sync} />
-        </View>
+      <HeaderEnd sync={sync} known={known} actions={actions} />
+    </View>
+  );
+});
+
+/** The top bar's right end: Match details and History while the match is known, then the sync status in its box. */
+const HeaderEnd = memo(function HeaderEnd({
+  sync,
+  known,
+  actions,
+}: {
+  readonly sync: PadSync;
+  readonly known: boolean;
+  readonly actions: PadPreviewActions;
+}) {
+  return (
+    <View testID="pad-header-end" style={styles.end}>
+      {known ? <MatchIcons actions={actions} /> : null}
+      <View testID="sync-box" style={styles.sync}>
+        <SyncDot sync={sync} />
       </View>
     </View>
   );
@@ -295,7 +310,7 @@ const PadSheet = memo(function PadSheet({
         />
       );
     case 'details':
-      return <MatchDetailsView details={sheet.details} onClose={actions.cancel} />;
+      return <MatchDetailsView details={sheet.details} onClose={actions.dismiss} />;
     case 'history':
       return <MatchHistory groups={sheet.groups} onClose={actions.cancel} />;
   }

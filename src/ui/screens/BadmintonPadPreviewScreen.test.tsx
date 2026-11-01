@@ -75,8 +75,9 @@ function back(pad: FakePorts): boolean {
 
 const press = (name: string) => act(() => fireEvent.click(screen.getByRole('button', { name })));
 /**
- * A sheet step's button (a sanction's level, person or confirm; the ending prompt's), a second after the step appeared:
- * never in the window in which a step's buttons do nothing (the coordinator's ruling, 2026-11-01).
+ * A tap a second on: a sheet step's button (a sanction's level, person or confirm, Set score's Confirm, the ending
+ * prompt's, Match details' Close), never in the window of its step appearing, and a tool never in the window of the
+ * sheet button before it (the coordinator's ruling and review I1, 2026-11-01).
  */
 const choose = (name: string) => {
   if (latest !== null) aSecondOn(latest);
@@ -384,7 +385,7 @@ describe('BadmintonPadPreviewScreen: Set score', () => {
     press(en['scoring.badminton.tool.setScore']);
     type('A. Sharma', '5');
     type('L. Chen', '3');
-    press(en['scoring.setScore.confirm']);
+    choose(en['scoring.setScore.confirm']);
     expect(screen.queryByTestId('score-sheet')).toBeNull();
     expect(shows('first', 5) && shows('second', 3)).toBe(true);
     expect(lastTap()).toContain(fill(en['scoring.badminton.last.setScore'], { score: '5–3' }));
@@ -398,7 +399,7 @@ describe('BadmintonPadPreviewScreen: Set score', () => {
     press(en['scoring.badminton.tool.setScore']);
     type('A. Sharma', '21');
     type('L. Chen', '5');
-    press(en['scoring.setScore.confirm']);
+    choose(en['scoring.setScore.confirm']);
     expect(screen.getByRole('alert').textContent).toBe(en['scoring.refusal.invalidScore']);
     expect(shows('first', 0)).toBe(true);
   });
@@ -419,7 +420,7 @@ describe('BadmintonPadPreviewScreen: Set score', () => {
     const pad = renderPad();
     press(en['scoring.badminton.tool.setScore']);
     type('A. Sharma', '30');
-    press(en['scoring.setScore.confirm']);
+    choose(en['scoring.setScore.confirm']);
     expect(screen.getByRole('alert').textContent).toBe(en['scoring.refusal.invalidScore']);
     rally(pad, 'second');
     expect(screen.queryByRole('alert')).toBeNull();
@@ -800,8 +801,8 @@ describe('BadmintonPadPreviewScreen: the flash of a half whose tap counted', () 
         { target: { value: '4' } },
       ),
     );
-    press(en['scoring.setScore.confirm']);
-    press(sanctionOn('L. Chen'));
+    choose(en['scoring.setScore.confirm']);
+    choose(sanctionOn('L. Chen'));
     choose(en['scoring.sanction.warning']);
     choose('L. Chen');
     expect(lastTap()).toContain(
@@ -945,7 +946,7 @@ describe('BadmintonPadPreviewScreen: Match details', () => {
     expect(lines()).toEqual(LINES);
     expect(screen.getByTestId('pad-content').getAttribute('aria-hidden')).toBe('true');
     expect(shows('first', 2) && shows('second', 0)).toBe(true);
-    press(en['panel.close']);
+    choose(en['panel.close']);
     expect(screen.queryByTestId('details-sheet')).toBeNull();
     expect(screen.getByTestId('pad-content').getAttribute('aria-hidden')).not.toBe('true');
     expect(shows('first', 2)).toBe(true);
@@ -1204,8 +1205,8 @@ describe('BadmintonPadPreviewScreen: History', () => {
       screen.getByLabelText(fill(en['scoring.setScore.field'], { side }));
     act(() => fireEvent.change(field('A. Sharma'), { target: { value: '9' } }));
     act(() => fireEvent.change(field('L. Chen'), { target: { value: '4' } }));
-    press(en['scoring.setScore.confirm']);
-    press(sanctionOn('A. Sharma'));
+    choose(en['scoring.setScore.confirm']);
+    choose(sanctionOn('A. Sharma'));
     choose(en['scoring.sanction.disqualification']);
     choose('A. Sharma');
     choose(en['scoring.sanction.confirm.action']);
@@ -1817,5 +1818,40 @@ describe('BadmintonPadPreviewScreen: a sheet step that has just appeared', () =>
     choose('L. Chen');
     expect(screen.queryByTestId('step-sheet')).toBeNull();
     expect(within(half('second')).getByText(en['scoring.sanction.penalty'])).toBeTruthy();
+  });
+});
+
+// Review I1 and M2 (2026-11-01): where a double tap's second touch lands once the first has done its work.
+describe('BadmintonPadPreviewScreen: the second touch of a double tap', () => {
+  const dim = () => {
+    const found = screen.getByTestId('details-sheet').previousElementSibling;
+    if (!(found instanceof HTMLElement)) throw new Error('no dim');
+    return found;
+  };
+
+  it('keeps Match details up for a touch on the dim within the window of opening it; a moment later the dim closes it', () => {
+    const pad = renderPad();
+    press(en['scoring.details.title']);
+    act(() => fireEvent.click(dim()));
+    expect(screen.getByTestId('details-sheet')).toBeTruthy();
+    aSecondOn(pad);
+    act(() => fireEvent.click(dim()));
+    expect(screen.queryByTestId('details-sheet')).toBeNull();
+  });
+
+  it('counts Undo within the window of Record the ending once: the result stands, "Counted once"', () => {
+    const pad = renderPad();
+    press(sanctionOn('L. Chen'));
+    choose(en['scoring.sanction.disqualification']);
+    choose('L. Chen');
+    choose(en['scoring.sanction.confirm.action']);
+    choose(en['scoring.ending.record']);
+    press(en['scoring.pad.undo']);
+    expect(screen.getByTestId('pad-card').textContent).toContain(
+      en['scoring.card.resultRecorded.title'],
+    );
+    expect(lastTap()).toContain(en['scoring.pad.countedOnce']);
+    undoTap(pad);
+    expect(screen.getByTestId('ending-prompt')).toBeTruthy();
   });
 });
