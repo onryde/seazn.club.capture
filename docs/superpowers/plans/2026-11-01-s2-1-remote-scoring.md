@@ -78,9 +78,13 @@ rules_version}`. `idempotency_key` = a v4 UUID made at tap time and never change
   21–18: `core.start` + 75 rallies = 76 events) and `timeFold(events, times: number): {events: number;
 ms: readonly number[]}` in `engineProbe.ts`; the lint allowance.
 
-- [ ] **Step 1:** Ask the owner to put a GitHub token with `read:packages` in `NODE_AUTH_TOKEN` in
-      their shell and as a repository secret (and as an EAS secret before the next release); the token
-      never enters the repo or the chat.
+- [ ] **Step 1:** Registry access, no token in the repo or the chat:
+  - local: the owner runs `gh auth refresh -s read:packages` once; installs run with
+    `NODE_AUTH_TOKEN=$(gh auth token)`;
+  - CI: the workflows' own `GITHUB_TOKEN` with `permissions: packages: read` (this repo already has
+    Read on the package), passed as `NODE_AUTH_TOKEN` to `pnpm install`;
+  - EAS (the next release only): an EAS secret `NODE_AUTH_TOKEN`, the owner's step in
+    `docs/release.md`.
 - [ ] **Step 2:** Add the dependencies; `pnpm install`; check what autolinks (`pnpm expo-doctor` or
       `npx expo install --check`) — expect nothing native from these two (AGENTS §13 class 4).
 - [ ] **Step 3: Write the failing test** `engineProbe.test.ts`: `syntheticBadmintonMatch()` has 76
@@ -108,6 +112,9 @@ database and test runs.
 
 - Create: `apps/web/src/app/api/v1/device-link/route.ts` (`GET`), its route test
 - Create: `apps/web/src/server/usecases/device-link-bootstrap.ts` (+ test)
+- Modify: `apps/web/src/app/api/v1/public/fixtures/[id]/realtime-token/route.ts` (also answer `url`
+  and `apikey`: the public `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY`; owner,
+  2026-11-01, option A: the server sends them, nothing is baked into the app)
 - Modify: `apps/web/src/server/api-v1/auth.ts` (let a `dl_` bearer reach this one route),
   `apps/web/src/server/api-v1/schemas.ts` (the response schema)
 
@@ -150,7 +157,7 @@ type DeviceLinkBootstrap = {
 
 - [ ] **Step 1: Write the failing route tests:** a valid link answers every field above for a seeded
       badminton singles and doubles fixture (names from the seed, `screen` per `scanScreen`); revoked,
-      expired and unknown answer 401 with their codes; a `dl_` bearer still gets 403 on any other v1 route.
+      expired and unknown answer 401 with their codes; a `dl_` bearer still gets 403 on any other v1 route; the realtime-token answer for a valid `dl_` carries `url` and `apikey` beside `token` and `channel`, and the web pad's use of it is unchanged.
 - [ ] **Step 2:** Implement the use case by reusing what `app/score/[token]/page.tsx` already calls
       (`resolveDeviceLinkToken`, `scanScreen`, `scanMatchNames`, `loadFixturePadCfg`, `getFixtureState`,
       `getEntrant`, `getLineup`); no new SQL beyond what those do.
@@ -220,12 +227,13 @@ parseAppendAnswer(status: number, body: unknown): AppendAnswer
 
 ```ts
 type ScoringLink = { readonly origin: string; readonly token: string };
+type RealtimeGrant = { token: string; channel: string; url: string; apikey: string };
 interface ScoringPort {
   bootstrap(link: ScoringLink): Promise<{ kind: 'ok'; bootstrap: Bootstrap } | AppendAnswer>;
   events(link: ScoringLink, fixtureId: string, sinceSeq: number): Promise<readonly LedgerEvent[] | AppendAnswer>;
   rules(link: ScoringLink, fixtureId: string): Promise<{ cfg: unknown; rulesVersion: number } | AppendAnswer>;
   append(link: ScoringLink, fixtureId: string, body: AppendBody): Promise<AppendAnswer>;
-  realtimeToken(link: ScoringLink, fixtureId: string): Promise<{ token: string; channel: string } | null>;
+  realtimeToken(link: ScoringLink, fixtureId: string): Promise<RealtimeGrant | null>;
 }
 createFetchScoringPort(deps: { fetch: FetchLike; logger: Logger; timeoutMs?: number }): ScoringPort
 createFakeScoringPort(seed: FakeMatchSeed): ScoringPort & FakeServerControls
@@ -368,17 +376,15 @@ entrant_id}`, plus `serving: <toss side's entrant_id>` on the match's first rall
 ### Task 8: Realtime
 
 **Files:** Create `src/services/realtimePort.ts` (+ test). Modify `package.json`
-(`@supabase/realtime-js`), ports (`realtime: RealtimePort`), `app.config.ts` `extra` or
-`EXPO_PUBLIC_SUPABASE_URL` / `EXPO_PUBLIC_SUPABASE_ANON_KEY` per environment (public values the owner
-supplies for staging and production).
+(`@supabase/realtime-js`), ports (`realtime: RealtimePort`), no app config: the address and the public key come with each `RealtimeGrant`
+(owner, 2026-11-01, option A).
 
 **Interfaces:**
 
 ```ts
 interface RealtimePort {
   subscribe(
-    channel: string,
-    token: string,
+    grant: RealtimeGrant,
     handlers: { onPing: () => void; onDown: () => void; onUp: () => void },
   ): () => void;
 }
@@ -387,7 +393,8 @@ interface RealtimePort {
 - [ ] **Step 1:** Failing tests with a fake client: `setAuth(token)` before `channel(channel,
 {config:{private:true}})`; `state_changed` → `onPing`; a closed/errored channel → `onDown`; the
       unsubscribe removes the channel.
-- [ ] **Step 2:** Implement over `RealtimeClient(`${url}/realtime/v1`, {params: {apikey}})`.
+- [ ] **Step 2:** Implement over `RealtimeClient(`${grant.url}/realtime/v1`, {params: {apikey:
+grant.apikey}})`; a grant whose `url` is not https is refused (`onDown`, logged without the key).
 - [ ] **Step 3:** Check it runs under Hermes in the release build (a dev-twin scene that subscribes to
       a staging fixture and counts pings); check autolinking. **Step 4:** Commit.
 
