@@ -329,3 +329,63 @@ describe('MatchCard: in four languages', () => {
     );
   });
 });
+
+/**
+ * Hardening (the owner approved the card on build 716, 2026-11-01): a second call, an empty or long input, and the
+ * card's own layout pins that jsdom can read.
+ */
+describe('MatchCard: the four questions (hardening)', () => {
+  const cells = () => allById('match-card-label-cell');
+  const least = () => cells().map((cell) => style(cell).minWidth);
+  const LONG: MatchContext = {
+    competition: 'Northamptonshire County Badminton Association Veterans Championships 2026',
+    division: 'Over 45 Mixed Doubles Category A',
+    round: 'Second Qualifying Round',
+    match: 'NCBA-2026-0417',
+    sides: [
+      'Christopher Featherstonehaugh / Bartholomew Anstruther-Gough',
+      'Maximiliano Fernández-Villaverde / Anneliese Oppenheimer-Weiß',
+    ],
+  };
+
+  it('keeps the measured column for the same labels again: a re-render with new arrays of the same words', () => {
+    const view = renderCard();
+    layOut(cells()[4] as HTMLElement, { width: 89.4, height: 22 });
+    view.rerender(<MatchCard context={{ ...SINGLES }} rows={badminton(en)} />);
+    expect(least()).toEqual(['90px', '90px', '90px', '90px', '90px']);
+  });
+
+  it('draws a long doubles match whole: every name and the competition as typed, wrapping, never cut', () => {
+    renderCard(LONG);
+    expect(text(allById('match-card-name'))).toEqual([...LONG.sides]);
+    expect(byId('match-card-competition').textContent).toBe(LONG.competition);
+    expect(byId('match-card-where').textContent).toBe(
+      'Over 45 Mixed Doubles Category A · Second Qualifying Round',
+    );
+    expect(byId('match-card-match').textContent).toBe('NCBA-2026-0417');
+    for (const id of ['match-card-competition', 'match-card-where']) {
+      expect(declaredStyle(byId(id), '-webkit-line-clamp')).toBe('');
+      expect(style(byId(id)).whiteSpace).not.toBe('nowrap');
+    }
+    expect(byId('match-card-versus').getAttribute('aria-label')).toBe(
+      'Christopher Featherstonehaugh / Bartholomew Anstruther-Gough versus Maximiliano Fernández-Villaverde / ' +
+        'Anneliese Oppenheimer-Weiß',
+    );
+  });
+
+  // The header's text takes what the plate leaves, and each name what its bar leaves: without the grow, a row's text
+  // would be as wide as its words and push the plate off the card.
+  it('lets the header’s text and each name take the room beside the plate and the bar', () => {
+    renderCard();
+    const headerText = byId('match-card-header').firstElementChild as HTMLElement;
+    expect(style(headerText).flexGrow).toBe('1');
+    for (const name of allById('match-card-name')) expect(style(name).flexGrow).toBe('1');
+  });
+
+  it('sets the v under the names’ first letters, past the bar and its gap', () => {
+    renderCard();
+    expect(style(byId('match-card-v')).marginLeft).toBe(
+      `${layout.labelBar + layout.labelBarGap}px`,
+    );
+  });
+});

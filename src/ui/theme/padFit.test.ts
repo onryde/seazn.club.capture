@@ -874,7 +874,9 @@ describe('the match card at 320 and 360 in four languages (owner, 2026-11-01, op
     expect(ROOMS.card(320) - layout.padRuleLabelMax - space.md).toBe(124);
   });
 
-  it('sets the doubles sample’s names on one line a side at 320 on the card', () => {
+  // The size the owner approved on build 716 (2026-11-01): a step up from the match label's 20.
+  it('sets the sides at 26, and the doubles sample’s names on one line a side at 320 on the card', () => {
+    expect(typeScale.matchName.fontSize).toBe(26);
     for (const name of SAMPLES[1].sides)
       expect(linesOf(name, sideText(ROOMS.card(320)), sideWidth)).toBe(1);
   });

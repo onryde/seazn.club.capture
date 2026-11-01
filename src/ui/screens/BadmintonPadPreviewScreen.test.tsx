@@ -1,5 +1,6 @@
 import { act, fireEvent, screen, within } from '@testing-library/react';
 import { afterEach, describe, expect, it } from 'vitest';
+import { useLanguage } from '@/hooks/useLanguage';
 import en from '@/i18n/en.json';
 import es from '@/i18n/es.json';
 import fr from '@/i18n/fr.json';
@@ -7,6 +8,7 @@ import nl from '@/i18n/nl.json';
 import { BadmintonPadPreviewScreen } from '@/ui/screens/BadmintonPadPreviewScreen';
 import { colour, layout, space } from '@/ui/theme/tokens';
 import { TEST_NOW, type FakePorts } from '../../../test/fakePorts';
+import { layOut } from '../../../test/layOut';
 import { linesAllowed } from '../../../test/linesAllowed';
 import { edgeOf } from '../../../test/pressState';
 import { renderWithPorts } from '../../../test/renderWithPorts';
@@ -1852,5 +1854,132 @@ describe('BadmintonPadPreviewScreen: the second touch of a double tap', () => {
     expect(lastTap()).toContain(en['scoring.pad.countedOnce']);
     undoTap(pad);
     expect(screen.getByTestId('ending-prompt')).toBeTruthy();
+  });
+});
+
+/** A language picked while the preview shows, as Home's picker picks one: the provider's own `setLang`. */
+function LanguageSwitch() {
+  const { setLang } = useLanguage();
+  return (
+    <button type="button" onClick={() => setLang('fr')}>
+      pick-fr
+    </button>
+  );
+}
+
+/**
+ * The match card's four questions (hardening of option A; the owner approved the card on build 716, 2026-11-01): a
+ * second call, an empty input, an interruption (a card switch or a language picked while it shows), and the other
+ * sample and languages, in each of its three places. Portrait only (layout A), so no orientation applies.
+ */
+describe('BadmintonPadPreviewScreen: the match card’s four questions (hardening)', () => {
+  const sheetCard = () => within(screen.getByTestId('details-sheet')).getByTestId('match-card');
+  /** A chip under a sheet's dim stands for what the server sends while the sheet is up. */
+  const chipUnder = (name: string) =>
+    act(() => fireEvent.click(screen.getByRole('button', { name, hidden: true })));
+  const renderSwitchable = () => {
+    const view = renderWithPorts(
+      <>
+        <BadmintonPadPreviewScreen />
+        <LanguageSwitch />
+      </>,
+    );
+    act(() => view.navigation.go('scoringPreview'));
+    return view;
+  };
+  const pickFrench = () => act(() => fireEvent.click(screen.getByText('pick-fr')));
+  const leastWidths = (within_: HTMLElement) =>
+    [...within_.querySelectorAll('[data-testid="match-card-label-cell"]')].map(
+      (cell) => getComputedStyle(cell).minWidth,
+    );
+
+  // The preview's cards and samples arrive by a chip, which closes the sheet first (`usePick`); the sheet's details are
+  // read afresh from the pad at every render, so it opens again on what the pad now holds.
+  it('closes Match details for a sample switch, and opens again on the doubles match', () => {
+    renderPad();
+    press(en['scoring.details.title']);
+    chipUnder(en['scoring.preview.dev.doubles']);
+    expect(screen.queryByTestId('details-sheet')).toBeNull();
+    press(en['scoring.details.title']);
+    expect(within(sheetCard()).getByTestId('match-card-competition').textContent).toBe(
+      'Riverside Badminton Club Championships 2026',
+    );
+    expect(within(sheetCard()).getByTestId('match-card-versus').getAttribute('aria-label')).toBe(
+      'A. Sharma / R. Iyer versus L. Chen / M. Wong',
+    );
+    expect(rowsIn(sheetCard())).toEqual(rowsSaid(en));
+  });
+
+  it('closes Match details for the Not started card, which carries the match card; it opens again over it', () => {
+    renderPad();
+    press(en['scoring.details.title']);
+    chipUnder(en['scoring.preview.dev.notStarted']);
+    expect(screen.queryByTestId('details-sheet')).toBeNull();
+    expect(screen.getAllByTestId('match-card')).toHaveLength(1);
+    press(en['scoring.details.title']);
+    expect(within(sheetCard()).getByTestId('match-card-where').textContent).toBe(
+      'U15 Boys Singles · Round 1',
+    );
+    // The card's own match card stands behind the sheet, the same match.
+    expect(screen.getAllByTestId('match-card')).toHaveLength(2);
+    expect(within(screen.getByTestId('pad-card')).getByTestId('match-card')).toBeTruthy();
+  });
+
+  it('shows the doubles sample on the Start screen: the card’s sides and the toss’s, as typed', () => {
+    renderStart();
+    press(en['scoring.preview.dev.doubles']);
+    press(en['scoring.preview.dev.start']);
+    const start = screen.getByTestId('start-screen');
+    expect(
+      within(start)
+        .getAllByTestId('match-card-name')
+        .map((name) => name.textContent),
+    ).toEqual(['A. Sharma / R. Iyer', 'L. Chen / M. Wong']);
+    expect(within(start).getByTestId('match-card-match').textContent).toBe('BAD0001');
+    expect(rowsIn(start)).toEqual(rowsSaid(en));
+  });
+
+  it.each([
+    ['es', es],
+    ['fr', fr],
+    ['nl', nl],
+  ] as const)(
+    '%s: the Start screen’s card says the rules in the operator’s language',
+    (lang, words) => {
+      renderStart({ deviceLanguages: [lang] });
+      const start = screen.getByTestId('start-screen');
+      expect(
+        within(start).getByRole('heading', { name: words['scoring.rules.heading'] }),
+      ).toBeTruthy();
+      expect(rowsIn(start)).toEqual(rowsSaid(words));
+      expect(within(start).getByTestId('match-card-versus').getAttribute('aria-label')).toBe(
+        fill(words['scoring.details.versus'], { first: 'A. Sharma', second: 'L. Chen' }),
+      );
+    },
+  );
+
+  it('says the Start screen’s rules again in a language picked while it shows, and measures them afresh', () => {
+    renderSwitchable();
+    const start = () => screen.getByTestId('start-screen');
+    const cells = () => within(start()).getAllByTestId('match-card-label-cell');
+    layOut(cells()[4] as HTMLElement, { width: 89.4, height: 22 });
+    expect(leastWidths(start())).toEqual(['90px', '90px', '90px', '90px', '90px']);
+    pickFrench();
+    expect(rowsIn(start())).toEqual(rowsSaid(fr));
+    expect(leastWidths(start())).toEqual(['0px', '0px', '0px', '0px', '0px']);
+    layOut(cells()[4] as HTMLElement, { width: 112, height: 44 });
+    expect(leastWidths(start())).toEqual(['112px', '112px', '112px', '112px', '112px']);
+  });
+
+  it('says Match details’ rules again in a language picked while the sheet is open', () => {
+    const view = renderSwitchable();
+    view.setNow(new Date(TEST_NOW.getTime() - 60_000));
+    act(() => fireEvent.click(screen.getByRole('radio', { name: 'A. Sharma' })));
+    press(en['scoring.start.confirm']);
+    view.setNow(TEST_NOW);
+    press(en['scoring.details.title']);
+    act(() => fireEvent.click(screen.getByText('pick-fr')));
+    expect(rowsIn(sheetCard())).toEqual(rowsSaid(fr));
+    expect(within(sheetCard()).getByRole('heading').textContent).toBe(fr['scoring.rules.heading']);
   });
 });

@@ -32,6 +32,13 @@ describe('contextSaid', () => {
     expect(contextSaid(CONTEXT)).toBe('Spring Open 2026, U15 Boys Singles, Round 1, Match 4');
   });
 
+  // An empty input: a blank competition is skipped like any piece, so a context of blanks says nothing.
+  it('says nothing for a context of blanks', () => {
+    expect(
+      contextSaid({ ...CONTEXT, competition: ' ', division: null, round: '', match: null }),
+    ).toBe('');
+  });
+
   it('skips a piece left out or blank', () => {
     expect(contextSaid({ ...CONTEXT, division: null, match: ' ' })).toBe(
       'Spring Open 2026, Round 1',
