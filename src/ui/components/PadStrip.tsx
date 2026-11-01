@@ -10,7 +10,8 @@ import { typeScale } from '@/ui/theme/type';
 /**
  * The facts above the halves, one slot each, in the sport's order. Every slot takes an equal share of the row whether
  * or not it holds a fact, and the row reserves its lines, so a fact coming or going never moves the halves under a
- * thumb. A fact the pad does not know is an empty slot, never a dash.
+ * thumb. A fact the pad does not know is an empty slot, never a dash. The first fact reads from the left edge and the
+ * last ends at the right one (owner, 2026-11-01: "move interval at 11 to far right").
  */
 export const PadStrip = memo(function PadStrip({
   items,
@@ -20,10 +21,14 @@ export const PadStrip = memo(function PadStrip({
   const words = usePadText();
   return (
     <View testID="pad-strip" style={styles.strip}>
-      {items.map((item) => (
+      {items.map((item, at) => (
         <View key={item.slot} testID={`strip-${item.slot}`} style={styles.slot}>
           {item.text === null ? null : (
-            <Text variant="metricUnit" numberOfLines={layout.padStripLines}>
+            <Text
+              variant="metricUnit"
+              numberOfLines={layout.padStripLines}
+              style={at > 0 && at === items.length - 1 ? styles.last : undefined}
+            >
               {words(item.text)}
             </Text>
           )}
@@ -40,4 +45,5 @@ const styles = StyleSheet.create({
     minHeight: layout.padStripLines * typeScale.metricUnit.lineHeight,
   },
   slot: { flex: 1, minWidth: 0 },
+  last: { textAlign: 'right' },
 });

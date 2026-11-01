@@ -99,9 +99,22 @@ describe('BadmintonPadPreviewScreen: before the first rally', () => {
     expect(undo().getAttribute('aria-disabled')).toBe('true');
   });
 
-  it('marks itself a preview and says the taps are synced', () => {
+  // Owner, 2026-11-01: "can we have 0:0 with lime light in place of preview". The preview row marks the preview.
+  it('starts the games tally at 0:0 in lime where the Preview tag was, and says the taps are synced', () => {
     renderPad();
-    expect(screen.getByText(en['scoring.preview.tag'])).toBeTruthy();
+    const tally = screen.getByTestId('tally');
+    expect(tally.textContent).toBe('0:0');
+    expect(tally.getAttribute('aria-label')).toBe(
+      fill(en['scoring.badminton.gamesTally'], {
+        first: 'A. Sharma',
+        firstGames: 0,
+        second: 'L. Chen',
+        secondGames: 0,
+      }),
+    );
+    expect(getComputedStyle(tally).color).toBe(edgeOf(colour.lime));
+    expect(screen.queryByText('Preview')).toBeNull();
+    expect(screen.getByLabelText(en['scoring.preview.dev.label'])).toBeTruthy();
     expect(screen.getByTestId('sync').textContent).toBe(en['scoring.sync.synced']);
   });
 });
@@ -822,12 +835,13 @@ describe('BadmintonPadPreviewScreen: Rules', () => {
   ];
   const lines = () => screen.getAllByTestId('rules-line').map((line) => line.textContent);
 
-  // Owner ruling 20: "Order: Back, Preview tag, then the right end holds [Rules][History] then the sync status."
-  it('stands in the top bar after Back and the Preview tag, then History, then the sync status', () => {
+  // Owner ruling 20: "Order: Back, Preview tag, then the right end holds [Rules][History] then the sync status"; the
+  // games tally took the tag's place (owner, 2026-11-01).
+  it('stands in the top bar after Back and the games tally, then History, then the sync status', () => {
     renderPad();
     const order = [
       screen.getByRole('button', { name: en['stream.home'] }),
-      screen.getByText(en['scoring.preview.tag']),
+      screen.getByTestId('tally'),
       rulesButton(),
       screen.getByRole('button', { name: en['scoring.history.title'] }),
       screen.getByTestId('sync'),
@@ -863,7 +877,7 @@ describe('BadmintonPadPreviewScreen: Rules', () => {
   });
 
   // padFit.test.ts fits the row at 320 and 360 dp: gaps of `space.xs`, the end group pushed right by its auto margin, the
-  // sync status in its fixed box, and the tag the one thing that gives way.
+  // sync status in its fixed box, and the tally whole.
   it('shares the top bar `space.xs` apart, the icons and the sync box at the right end', () => {
     renderPad();
     const end = screen.getByTestId('pad-header-end');
@@ -880,11 +894,7 @@ describe('BadmintonPadPreviewScreen: Rules', () => {
       'auto',
     ]);
     expect(getComputedStyle(screen.getByTestId('sync-box')).width).toBe(`${layout.padSyncBox}px`);
-    const tag = screen.getByText(en['scoring.preview.tag']);
-    expect([getComputedStyle(tag).flexShrink, getComputedStyle(tag).whiteSpace]).toEqual([
-      '1',
-      'nowrap',
-    ]);
+    expect(getComputedStyle(screen.getByTestId('tally')).flexShrink).toBe('0');
   });
 
   it('opens the match rules over the pad, which it hides from a screen reader, and changes no score', () => {
@@ -1197,4 +1207,94 @@ describe('BadmintonPadPreviewScreen: History', () => {
       );
     },
   );
+});
+
+/**
+ * Owner, 2026-11-01 (build 708): "move interval at 11 to far right, and can we have 0:0 with lime light in place of
+ * preview". The tally counts games won, top side first, as the halves are; a game a disqualification ended counts for
+ * nobody. The real pad keeps it, so it shows whenever the match is known, as the icons do.
+ */
+describe('BadmintonPadPreviewScreen: the games tally and the strip', () => {
+  const tally = () => screen.queryByTestId('tally');
+  const said = (first: string, firstGames: number, second: string, secondGames: number) =>
+    fill(en['scoring.badminton.gamesTally'], { first, firstGames, second, secondGames });
+
+  it('counts a game won, top side first, and Undo takes it back', () => {
+    const pad = renderPad();
+    rally(pad, 'second', 21);
+    expect(tally()?.textContent).toBe('0:1');
+    expect(tally()?.getAttribute('aria-label')).toBe(said('A. Sharma', 0, 'L. Chen', 1));
+    rally(pad, 'first', 21);
+    expect(tally()?.textContent).toBe('1:1');
+    undoTap(pad);
+    expect(tally()?.textContent).toBe('0:1');
+  });
+
+  it('counts a game a disqualification ended for nobody, and shows the final tally under the result', () => {
+    const pad = renderPad();
+    rally(pad, 'first', 21);
+    rally(pad, 'second', 3);
+    press(sanctionOn('L. Chen'));
+    press(en['scoring.sanction.disqualification']);
+    press('L. Chen');
+    press(en['scoring.sanction.confirm.action']);
+    press(en['scoring.ending.record']);
+    expect(tally()?.textContent).toBe('1:0');
+    expect(screen.getByTestId('tally').getAttribute('aria-label')).toBe(
+      said('A. Sharma', 1, 'L. Chen', 0),
+    );
+  });
+
+  it('names doubles sides as the match label joins them', () => {
+    renderPad();
+    press(en['scoring.preview.dev.doubles']);
+    expect(tally()?.getAttribute('aria-label')).toBe(
+      said('A. Sharma / R. Iyer', 0, 'L. Chen / M. Wong', 0),
+    );
+  });
+
+  it('is absent for a bad link, which names no match, and shows under every other card', () => {
+    renderPad();
+    for (const chip of [
+      en['scoring.preview.dev.notStarted'],
+      en['scoring.preview.dev.result'],
+      en['scoring.preview.dev.viewOnly'],
+      en['scoring.preview.dev.updateNeeded'],
+    ]) {
+      press(chip);
+      expect(tally()?.textContent).toBe('0:0');
+    }
+    press(en['scoring.preview.dev.linkInvalid']);
+    expect(tally()).toBeNull();
+  });
+
+  it.each([
+    ['es', es],
+    ['fr', fr],
+    ['nl', nl],
+  ] as const)('%s: said in the operator’s language', (lang, words) => {
+    renderPad({ deviceLanguages: [lang] });
+    expect(tally()?.getAttribute('aria-label')).toBe(
+      fill(words['scoring.badminton.gamesTally'], {
+        first: 'A. Sharma',
+        firstGames: 0,
+        second: 'L. Chen',
+        secondGames: 0,
+      }),
+    );
+  });
+
+  it('puts the game at the left of the strip and the interval at the far right, on one line', () => {
+    renderPad();
+    const words = (slot: string) => screen.getByTestId(`strip-${slot}`).firstElementChild;
+    const game = words('game');
+    const interval = words('interval');
+    if (!(game instanceof HTMLElement) || !(interval instanceof HTMLElement)) {
+      throw new Error('no strip words');
+    }
+    expect(interval.textContent).toBe(fill(en['scoring.badminton.intervalAt'], { point: 11 }));
+    expect(getComputedStyle(interval).textAlign).toBe('right');
+    expect(getComputedStyle(game).textAlign).not.toBe('right');
+    expect([linesAllowed(game), linesAllowed(interval)]).toEqual([1, 1]);
+  });
 });

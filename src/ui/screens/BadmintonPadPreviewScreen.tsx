@@ -9,6 +9,7 @@ import {
   type PadHistoryRow,
   type PadSide,
   type PadSync,
+  type PadTally,
   type PadText,
   type PadView,
 } from '@/domain/scoring/padView';
@@ -41,8 +42,8 @@ import { colour, layout, space } from '@/ui/theme/tokens';
 
 /**
  * The badminton pad, previewed on a fake (S2's first slice; owner rulings, 2026-10-31). Portrait, layout A: the top bar
- * (Home, the Preview tag, then Rules, History and the sync status at the right end), the strip (the game of how many,
- * the interval), the first side's half on top and the second's below (a tap on a half gives that side the rally, and a
+ * (Home, the games tally, then Rules, History and the sync status at the right end), the strip (the game of how many at
+ * the left, the interval at the right), the first side's half on top and the second's below (a tap on a half gives that side the rally, and a
  * tap that counted flashes the half; each shows its finished games' boxes, and the server's plate its service court),
  * the last-tap line with the one Undo, and the tools. A card that replaces the score stands where the halves were; one that goes with it (a recorded
  * result, view only) stands above them; the update banner stands where the last-tap line and the tools were
@@ -62,7 +63,7 @@ export function BadmintonPadPreviewScreen() {
         importantForAccessibility={covered ? 'no-hide-descendants' : 'auto'}
         style={styles.pad}
       >
-        <PadHeader sync={view.sync} known={known} actions={actions} />
+        <PadHeader sync={view.sync} tally={view.tally} known={known} actions={actions} />
         <PadStrip items={view.strip} />
         <PadBody view={view} flash={flash} onTap={actions.tapHalf} />
         <PadControls view={view} line={line} cardNote={cardNote} actions={actions} />
@@ -74,16 +75,19 @@ export function BadmintonPadPreviewScreen() {
 }
 
 /**
- * Owner ruling 20 (2026-10-31): Home, the Preview tag, then at the right end Rules and History, round icon buttons as
- * Home's gear, and the sync status in its fixed box. Rules and History need a match (`matchKnown`): none on a dead
- * link's card. One row at 320 and 360 dp in four languages, where at 320 the tag gives way (padFit.test.ts).
+ * Owner ruling 20 (2026-10-31): Home, then at the right end Rules and History, round icon buttons as Home's gear, and
+ * the sync status in its fixed box. Between them, where the Preview tag was, the games tally in lime (owner,
+ * 2026-11-01); the preview row at the bottom marks the preview. The tally, Rules and History need a match
+ * (`matchKnown`): none on a dead link's card. One 48 dp row at 320 and 360 dp in four languages (padFit.test.ts).
  */
 const PadHeader = memo(function PadHeader({
   sync,
+  tally,
   known,
   actions,
 }: {
   readonly sync: PadSync;
+  readonly tally: PadTally<BadmintonPadKey>;
   readonly known: boolean;
   readonly actions: PadPreviewActions;
 }) {
@@ -91,9 +95,7 @@ const PadHeader = memo(function PadHeader({
   return (
     <View style={styles.header}>
       <IconButton glyph="back" label={t('stream.home')} onPress={actions.home} />
-      <Text variant="controlSmall" numberOfLines={1} style={styles.tag}>
-        {t('scoring.preview.tag')}
-      </Text>
+      {known ? <GamesTally tally={tally} /> : null}
       <View testID="pad-header-end" style={styles.end}>
         {known ? <MatchIcons actions={actions} /> : null}
         <View testID="sync-box" style={styles.sync}>
@@ -101,6 +103,25 @@ const PadHeader = memo(function PadHeader({
         </View>
       </View>
     </View>
+  );
+});
+
+/** "1:0", top side first, said "Games: A. Sharma 1, L. Chen 0" (owner, 2026-11-01). Never cut: it never shrinks. */
+const GamesTally = memo(function GamesTally({
+  tally,
+}: {
+  readonly tally: PadTally<BadmintonPadKey>;
+}) {
+  const words = usePadText();
+  return (
+    <Text
+      testID="tally"
+      variant="tally"
+      accessibilityLabel={words(tally.said)}
+      style={styles.tally}
+    >
+      {tally.shown}
+    </Text>
   );
 });
 
@@ -353,17 +374,10 @@ const SetScore = memo(function SetScore({
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colour.ground },
   pad: { flex: 1, gap: space.sm, padding: space.md },
-  // `space.xs` apart: Back, the tag, Rules, History and the sync box share the row (padFit.test.ts).
+  // `space.xs` apart: Back, the tally, Rules, History and the sync box share the row (padFit.test.ts).
   header: { flexDirection: 'row', alignItems: 'center', gap: space.xs, minHeight: layout.touch },
-  // The tag is the preview's own (the real pad has none): it is cut where the row runs out, at 320 (padFit.test.ts).
-  tag: {
-    flexShrink: 1,
-    paddingHorizontal: space.xs,
-    borderWidth: layout.iconBorder,
-    borderColor: colour.ink3,
-    borderRadius: space.xs,
-  },
-  // Pushed to the right end by its auto margin: the row's spare room stands between the tag and Rules.
+  tally: { flexShrink: 0 },
+  // Pushed to the right end by its auto margin: the row's spare room stands between the tally and Rules.
   end: { flexDirection: 'row', alignItems: 'center', gap: space.xs, marginLeft: 'auto' },
   sync: { width: layout.padSyncBox, alignItems: 'flex-end' },
   body: { flex: 1, gap: space.sm },

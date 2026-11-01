@@ -146,9 +146,19 @@ export type PadStateCard =
   | { readonly kind: 'linkInvalid' }
   | { readonly kind: 'updateNeeded'; readonly unsent: number };
 
+/**
+ * The match's tally of periods won, in the header (owner, 2026-11-01: "0:0 with lime light in place of preview"): shown
+ * top side first, as the halves are ("1:0"), and said with the sides' names ("Games: A. Sharma 1, L. Chen 0").
+ */
+export type PadTally<K extends string> = {
+  readonly shown: string;
+  readonly said: PadText<K>;
+};
+
 export type PadView<K extends string> = {
   /** Top, then bottom (layout A). */
   readonly halves: readonly [PadHalf<K>, PadHalf<K>];
+  readonly tally: PadTally<K>;
   readonly strip: readonly PadStripItem<K>[];
   readonly lastTap: PadLastTap<K> | null;
   readonly sync: PadSync;

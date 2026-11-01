@@ -244,6 +244,18 @@ export const typeScale = {
     lineHeight: 16,
     fontVariant: ['tabular-nums'],
   },
+  /**
+   * The games tally in the pad's header (owner, 2026-11-01: "0:0 with lime light in place of preview"): the score's
+   * face, lime and tabular, at 30 on a 34 dp line, so "1:0" (38.1 dp) stands whole beside Back at 320 and the header
+   * stays one 48 dp row (padFit.test.ts; at 32 it would be 40.7, over the 40 it has).
+   */
+  tally: {
+    fontFamily: font.displayBold,
+    fontSize: 30,
+    lineHeight: 34,
+    fontVariant: ['tabular-nums'],
+    color: colour.lime,
+  },
   /** The score a step down, for a half too short for `score` (`scoreRole.ts` picks it from the half's own height). */
   scoreCompact: {
     fontFamily: font.displayBold,

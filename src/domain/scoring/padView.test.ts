@@ -16,7 +16,8 @@ type Key =
   | 'k.servingSaid'
   | 'k.tool'
   | 'k.last'
-  | 'k.strip';
+  | 'k.strip'
+  | 'k.tally';
 
 /** A pad mid-game, any sport: both halves take taps, one tool, a last tap this phone can take back. */
 const live: PadView<Key> = {
@@ -44,6 +45,7 @@ const live: PadView<Key> = {
       tappable: true,
     },
   ],
+  tally: { shown: '0:0', said: { key: 'k.tally' } },
   strip: [{ slot: 'context', text: { key: 'k.strip' } }],
   lastTap: { text: { key: 'k.last' }, undo: true },
   sync: { kind: 'synced' },

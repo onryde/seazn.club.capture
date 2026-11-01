@@ -336,9 +336,10 @@ const base = {
    */
   padSyncLines: 3,
   /**
-   * The sync status's box at the right end of the pad's header (owner ruling 20, 2026-10-31: Back, the Preview tag, then
-   * Rules, History and the sync status at the right end): the dot, its gap and words in which every status keeps to
-   * `padSyncLines` in four languages (padFit.test.ts). Fixed, so the icons stand still as the status changes.
+   * The sync status's box at the right end of the pad's header (owner ruling 20, 2026-10-31: Rules, History and the sync
+   * status at the right end; Back and the games tally at the left, owner 2026-11-01): the dot, its gap and words in which
+   * every status keeps to `padSyncLines` in four languages (padFit.test.ts). Fixed, so the icons stand still as the
+   * status changes. At 320 the row leaves it 89.9 beside the tally, so two lines (116) cannot be had.
    */
   padSyncBox: 88,
   /** A History row's sentence (owner ruling 21): at most this many lines of `control` (padFit.test.ts). */

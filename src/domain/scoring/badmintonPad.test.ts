@@ -507,3 +507,40 @@ describe('badmintonPad: sync', () => {
     });
   });
 });
+
+// Owner, 2026-11-01: "can we have 0:0 with lime light in place of preview". Games won, top side first.
+describe('badmintonPad: the games tally', () => {
+  const said = (firstGames: number, secondGames: number) => ({
+    key: 'scoring.badminton.gamesTally',
+    vars: { first: 'A. Sharma', firstGames, second: 'L. Chen', secondGames },
+  });
+
+  it('starts at 0:0, said with both sides’ names', () => {
+    expect(badmintonPad(pre).tally).toEqual({ shown: '0:0', said: said(0, 0) });
+  });
+
+  it('counts the games each side won, the top side first', () => {
+    const state: BadmintonDisplay = {
+      ...live,
+      finished: [
+        { points: { first: 15, second: 21 }, winner: 'second' },
+        { points: { first: 21, second: 19 }, winner: 'first' },
+        { points: { first: 18, second: 21 }, winner: 'second' },
+      ],
+      phase: 'decided',
+    };
+    expect(badmintonPad(state).tally).toEqual({ shown: '1:2', said: said(1, 2) });
+  });
+
+  it('counts a game a disqualification ended for nobody (owner ruling 18)', () => {
+    const state: BadmintonDisplay = {
+      ...live,
+      finished: [
+        { points: { first: 21, second: 15 }, winner: 'first' },
+        { points: { first: 9, second: 4 }, disqualified: 'first' },
+      ],
+      phase: 'decided',
+    };
+    expect(badmintonPad(state).tally.shown).toBe('1:0');
+  });
+});

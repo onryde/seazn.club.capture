@@ -9,6 +9,7 @@ import {
   type PadSide,
   type PadStripItem,
   type PadSync,
+  type PadTally,
   type PadText,
   type PadTool,
   type PadView,
@@ -97,6 +98,7 @@ export type BadmintonDisplay = {
 /** Every dictionary key this file names. The kit translates them as `MessageKey`, so each must exist in en.json. */
 export type BadmintonPadKey =
   | 'scoring.badminton.gamesSaid.other'
+  | 'scoring.badminton.gamesTally'
   | 'scoring.badminton.gameSaid.disqualified'
   | 'scoring.badminton.gameSaid.stopped'
   | 'scoring.badminton.mark.disqualified'
@@ -155,6 +157,7 @@ export function badmintonPad(
 ): PadView<BadmintonPadKey> {
   const view: PadView<BadmintonPadKey> = {
     halves: [half(state, 'first'), half(state, 'second')],
+    tally: tally(state),
     strip: strip(state),
     lastTap: lastTap(state),
     sync,
@@ -235,6 +238,27 @@ function stoppedSaid(
       ? 'scoring.badminton.gameSaid.disqualified'
       : 'scoring.badminton.gameSaid.stopped';
   return { key, vars: { game: number, points: game.points[side] } };
+}
+
+/**
+ * The games each side has won, top first ("1:0"; owner, 2026-11-01), from the start ("0:0"). A game a disqualification
+ * ended (owner ruling 18) counts for nobody: no side won it on points.
+ */
+function tally(state: BadmintonDisplay): PadTally<BadmintonPadKey> {
+  const won = (side: PadSide) =>
+    state.finished.filter((game) => 'winner' in game && game.winner === side).length;
+  return {
+    shown: `${won('first')}:${won('second')}`,
+    said: {
+      key: 'scoring.badminton.gamesTally',
+      vars: {
+        first: sideNames(state.sides.first),
+        firstGames: won('first'),
+        second: sideNames(state.sides.second),
+        secondGames: won('second'),
+      },
+    },
+  };
 }
 
 /** The side's heaviest sanction's word, or none. */

@@ -29,6 +29,34 @@ describe('PadStrip', () => {
     );
   });
 
+  // Owner, 2026-11-01: "move interval at 11 to far right". The first fact reads from the left, the last ends at the right.
+  it('ends the last fact at the right edge; the first reads from the left', () => {
+    renderWithPorts(
+      <PadStrip
+        items={[
+          { slot: 'game', text: { key: 'scoring.badminton.gameOf', vars: { game: 2, bestOf: 3 } } },
+          { slot: 'interval', text: { key: 'scoring.badminton.intervalAt', vars: { point: 11 } } },
+        ]}
+      />,
+    );
+    const align = (slot: string) => {
+      const words = screen.getByTestId(`strip-${slot}`).firstElementChild;
+      if (words === null) throw new Error(`no words in ${slot}`);
+      return getComputedStyle(words).textAlign;
+    };
+    expect(align('interval')).toBe('right');
+    expect(align('game')).not.toBe('right');
+  });
+
+  it('keeps a lone fact at the left', () => {
+    renderWithPorts(
+      <PadStrip items={[{ slot: 'interval', text: { key: 'scoring.badminton.intervalNow' } }]} />,
+    );
+    expect(
+      getComputedStyle(screen.getByText(en['scoring.badminton.intervalNow'])).textAlign,
+    ).not.toBe('right');
+  });
+
   it('keeps an unknown fact’s slot, empty: no dash', () => {
     renderWithPorts(
       <PadStrip
