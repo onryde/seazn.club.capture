@@ -81,9 +81,14 @@ describe('the Remote scoring preview, routed', () => {
 
   it('Back leaves the ending prompt for Home (owner ruling 10), and the prompt is up again on the return', async () => {
     const app = await openPreview();
+    // Each step a second after the last: a step's buttons do nothing in its first 250 ms (`usePadSheets`).
+    const later = (seconds: number) => app.setNow(new Date(TEST_NOW.getTime() + seconds * 1000));
     press(`${en['scoring.badminton.tool.sanction']}, L. Chen`);
+    later(1);
     press(en['scoring.sanction.disqualification']);
+    later(2);
     press('L. Chen');
+    later(3);
     press(en['scoring.sanction.confirm.action']);
     expect(screen.getByTestId('ending-prompt')).toBeTruthy();
     expect(await back(app)).toBe(true);
@@ -94,6 +99,7 @@ describe('the Remote scoring preview, routed', () => {
     expect(screen.getByTestId('ending-prompt').textContent).toContain(
       en['scoring.ending.title'].replace('{person}', 'L. Chen'),
     );
+    later(4);
     press(en['scoring.ending.void']);
     expect(screen.queryByTestId('ending-prompt')).toBeNull();
   });

@@ -24,6 +24,12 @@ function mount(fakes: FakePorts = createFakePorts(), { notStarted = false } = {}
 const refusal = (key: string) => ({ kind: 'refusal', key });
 const COUNTED_ONCE = { kind: 'note', key: 'scoring.pad.countedOnce' };
 const at = (fakes: FakePorts, ms: number) => fakes.setNow(new Date(TEST_NOW.getTime() + ms));
+let seconds = 0;
+/** The phone's clock a second on: a sheet's step taps well after it appeared, never in its bounce window. */
+const aSecondOn = (fakes: FakePorts) => {
+  seconds += 1;
+  at(fakes, seconds * 1000);
+};
 
 const points = (view: ReturnType<typeof mount>) =>
   view.result.current.view.halves.map((half) => half.value);
@@ -54,12 +60,15 @@ describe('useBadmintonPadPreview, given what the screen never sends', () => {
   });
 
   it('ignores a choice with no sheet up, and one the step does not offer', () => {
-    const view = mount();
+    const fakes = createFakePorts();
+    const view = mount(fakes);
     act(() => view.result.current.actions.choose('warning'));
     expect(view.result.current.sheet).toBeNull();
     act(() => view.result.current.actions.tool('sanction.first'));
+    aSecondOn(fakes);
     act(() => view.result.current.actions.choose('yellow-card'));
     expect(view.result.current.sheet?.kind).toBe('sanction');
+    aSecondOn(fakes);
     act(() => view.result.current.actions.choose('9'));
     // Nothing recorded: the line still says the start.
     expect(view.result.current.view.lastTap?.text.key).toBe('scoring.badminton.last.start');
@@ -219,9 +228,11 @@ describe('useBadmintonPadPreview, the flash of a half whose tap counted', () => 
     act(() => view.result.current.actions.tool('setScore'));
     act(() => view.result.current.actions.saveScore('5', '3'));
     act(() => view.result.current.actions.tool('sanction.second'));
+    aSecondOn(fakes);
     act(() => view.result.current.actions.choose('warning'));
+    aSecondOn(fakes);
     act(() => view.result.current.actions.choose('0'));
-    at(fakes, 1000);
+    aSecondOn(fakes);
     act(() => view.result.current.actions.undo());
     expect(points(view)).toEqual(['5', '3']);
     expect(view.result.current.flash).toBeNull();
@@ -426,12 +437,14 @@ describe('useBadmintonPadPreview, the Start screen', () => {
 // Hardening (2026-11-01): the four questions (AGENTS §10) across rounds 2–7, where the hook answers them.
 describe('useBadmintonPadPreview, the four questions (hardening, 2026-11-01)', () => {
   const PROMPT = { kind: 'ending', person: 'L. Chen' };
-  /** L. Chen disqualified, as the sanction sheet's steps record it: the ending prompt then waits. */
-  const disqualify = (view: ReturnType<typeof mount>) => {
+  /** L. Chen disqualified, as the sanction sheet's steps record it, a second apart: the ending prompt then waits. */
+  const disqualify = (view: ReturnType<typeof mount>, fakes: FakePorts) => {
     act(() => view.result.current.actions.tool('sanction.second'));
-    act(() => view.result.current.actions.choose('disqualification'));
-    act(() => view.result.current.actions.choose('0'));
-    act(() => view.result.current.actions.choose('confirm'));
+    for (const choice of ['disqualification', '0', 'confirm']) {
+      aSecondOn(fakes);
+      act(() => view.result.current.actions.choose(choice));
+    }
+    aSecondOn(fakes);
   };
 
   // A second call: the second tap of a fast double tap on Start match can land on a tool in the controls that take the
@@ -462,8 +475,9 @@ describe('useBadmintonPadPreview, the four questions (hardening, 2026-11-01)', (
   it.each(['viewOnly', 'updateNeeded', 'resultRecorded', 'notStarted', 'linkInvalid'] as const)(
     'hides the ending prompt under the %s card; back on the pad, it waits again',
     (card) => {
-      const view = mount();
-      disqualify(view);
+      const fakes = createFakePorts();
+      const view = mount(fakes);
+      disqualify(view, fakes);
       expect(view.result.current.sheet).toEqual(PROMPT);
       act(() => view.result.current.actions.pick(card));
       expect(view.result.current.sheet).toBeNull();
@@ -474,8 +488,9 @@ describe('useBadmintonPadPreview, the four questions (hardening, 2026-11-01)', (
 
   // A second call on the ending prompt's buttons: the second finds no ending waiting, records nothing, and says so.
   it('records the ending once for a second tap on Record the ending', () => {
-    const view = mount();
-    disqualify(view);
+    const fakes = createFakePorts();
+    const view = mount(fakes);
+    disqualify(view, fakes);
     act(() => view.result.current.actions.recordEnding());
     const ended = view.result.current.view;
     act(() => view.result.current.actions.recordEnding());
@@ -484,9 +499,10 @@ describe('useBadmintonPadPreview, the four questions (hardening, 2026-11-01)', (
   });
 
   it('voids the disqualification once for a second tap on Void: the rally before it stays', () => {
-    const view = mount();
+    const fakes = createFakePorts();
+    const view = mount(fakes);
     act(() => view.result.current.actions.tapHalf('first'));
-    disqualify(view);
+    disqualify(view, fakes);
     act(() => view.result.current.actions.voidSanction());
     act(() => view.result.current.actions.voidSanction());
     expect(points(view)).toEqual(['1', '0']);
@@ -510,5 +526,120 @@ describe('useBadmintonPadPreview, the four questions (hardening, 2026-11-01)', (
     const again = mount(fakes, { notStarted: true });
     expect(again.result.current.view.start).not.toBeNull();
     expect(again.result.current.toss).toBeNull();
+  });
+});
+
+// The coordinator's ruling (2026-11-01): ending a match is the costliest mistake on the pad. A sheet's steps and the
+// ending prompt stand on the bottom edge, so the second tap of a double tap on one step's button lands on the next
+// step's. Within the bounce window (`bounce.ts`) of a step appearing, its buttons do nothing, and say nothing: the step
+// still waits, and the line is behind the dim.
+describe('useBadmintonPadPreview, a sheet step that has just appeared', () => {
+  /** The sheet up: a sanction step names itself by its title's key (level, who, confirm). */
+  const step = (view: ReturnType<typeof mount>) => view.result.current.sheet;
+  const choose = (view: ReturnType<typeof mount>, id: string) =>
+    act(() => view.result.current.actions.choose(id));
+  /** Sanction on L. Chen opened at `t`, the level and the person chosen a second apart: the confirm step up at t+2 s. */
+  const toConfirm = (view: ReturnType<typeof mount>, fakes: FakePorts, t: number) => {
+    at(fakes, t);
+    act(() => view.result.current.actions.tool('sanction.second'));
+    at(fakes, t + 1000);
+    choose(view, 'disqualification');
+    at(fakes, t + 2000);
+    choose(view, '0');
+  };
+
+  it('ignores a level within the bounce window of the tool tap that opened the sheet', () => {
+    const fakes = createFakePorts();
+    const view = mount(fakes);
+    at(fakes, 0);
+    act(() => view.result.current.actions.tool('sanction.second'));
+    at(fakes, 249);
+    choose(view, 'penalty');
+    expect(step(view)).toMatchObject({
+      kind: 'sanction',
+      sheet: { title: { key: 'scoring.sanction.title' } },
+    });
+    at(fakes, 250);
+    choose(view, 'penalty');
+    expect(step(view)).toMatchObject({
+      kind: 'sanction',
+      sheet: { title: { key: 'scoring.sanction.who' } },
+    });
+  });
+
+  it('ignores a person within the window of the step that asked for one: no penalty recorded, then it is', () => {
+    const fakes = createFakePorts();
+    const view = mount(fakes);
+    at(fakes, 0);
+    act(() => view.result.current.actions.tool('sanction.second'));
+    at(fakes, 1000);
+    choose(view, 'penalty');
+    at(fakes, 1249);
+    choose(view, '0');
+    expect(step(view)).toMatchObject({
+      kind: 'sanction',
+      sheet: { title: { key: 'scoring.sanction.who' } },
+    });
+    expect(view.result.current.view.halves[1]?.sub).toBeNull();
+    expect(view.result.current.line).toBeNull();
+    at(fakes, 1250);
+    choose(view, '0');
+    expect(step(view)).toBeNull();
+    expect(view.result.current.view.halves[1]?.sub).toEqual({ key: 'scoring.sanction.penalty' });
+  });
+
+  it('ignores the confirm within the window of the confirm step: no disqualification, then it is', () => {
+    const fakes = createFakePorts();
+    const view = mount(fakes);
+    toConfirm(view, fakes, 0);
+    at(fakes, 2249);
+    choose(view, 'confirm');
+    expect(step(view)).toMatchObject({
+      kind: 'sanction',
+      sheet: { title: { key: 'scoring.sanction.confirm.title' } },
+    });
+    at(fakes, 2250);
+    choose(view, 'confirm');
+    expect(step(view)).toEqual({ kind: 'ending', person: 'L. Chen' });
+  });
+
+  it.each([
+    ['Record the ending', 'recordEnding'],
+    ['Void', 'voidSanction'],
+  ] as const)(
+    'ignores %s within the window of the ending prompt appearing; a moment later it acts',
+    (_name, action) => {
+      const fakes = createFakePorts();
+      const view = mount(fakes);
+      toConfirm(view, fakes, 0);
+      at(fakes, 3000);
+      choose(view, 'confirm');
+      at(fakes, 3249);
+      act(() => view.result.current.actions[action]());
+      expect(step(view)).toEqual({ kind: 'ending', person: 'L. Chen' });
+      expect(view.result.current.line).toBeNull();
+      at(fakes, 3250);
+      act(() => view.result.current.actions[action]());
+      expect(step(view)).toBeNull();
+    },
+  );
+
+  it('quiets the prompt again when an Undo of the ending brings it back', () => {
+    const fakes = createFakePorts();
+    const view = mount(fakes);
+    toConfirm(view, fakes, 0);
+    at(fakes, 3000);
+    choose(view, 'confirm');
+    at(fakes, 4000);
+    act(() => view.result.current.actions.recordEnding());
+    at(fakes, 5000);
+    act(() => view.result.current.actions.undo());
+    expect(step(view)).toEqual({ kind: 'ending', person: 'L. Chen' });
+    at(fakes, 5100);
+    act(() => view.result.current.actions.recordEnding());
+    expect(step(view)).toEqual({ kind: 'ending', person: 'L. Chen' });
+    at(fakes, 5250);
+    act(() => view.result.current.actions.recordEnding());
+    expect(step(view)).toBeNull();
   });
 });

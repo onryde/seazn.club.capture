@@ -126,7 +126,7 @@ export function useBadmintonPadPreview(): BadmintonPadPreview {
   const refuseScore = useCallback(() => say(INVALID_SCORE), []);
   const sheets = usePadSheets(pad, snapshot, settle, refuseScore);
   const taps = useTaps(pad, settle, say, setFlash);
-  const others = useEndingAndCard(pad, settle, setCardNote);
+  const others = useEndingAndCard(pad, settle, setCardNote, sheets.justShown);
   const starting = useStart(pad, taps.start);
   const tool = useGuardedTool(taps.afterStart, sheets.actions.tool);
   const { clearToss } = starting;
@@ -282,13 +282,19 @@ function useStart(pad: FakeBadmintonPad, record: (server: PadSide) => boolean) {
   return { toss, clearToss, actions };
 }
 
+/** The ending prompt's two buttons, quiet in the bounce window of the prompt appearing (`usePadSheets`' `justShown`). */
 function useEndingAndCard(
   pad: FakeBadmintonPad,
   settle: (outcome: FakeOutcome) => void,
   setCardNote: (note: MessageKey | null) => void,
+  justShown: () => boolean,
 ) {
-  const recordEnding = useCallback(() => settle(pad.recordEnding()), [pad, settle]);
-  const voidSanction = useCallback(() => settle(pad.voidSanction()), [pad, settle]);
+  const recordEnding = useCallback(() => {
+    if (!justShown()) settle(pad.recordEnding());
+  }, [pad, settle, justShown]);
+  const voidSanction = useCallback(() => {
+    if (!justShown()) settle(pad.voidSanction());
+  }, [pad, settle, justShown]);
   const update = useCallback(() => setCardNote('scoring.preview.noop'), [setCardNote]);
   return useMemo(
     () => ({ recordEnding, voidSanction, update, browser: update }),

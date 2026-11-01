@@ -22,8 +22,12 @@ const DICTIONARIES: Readonly<Record<string, typeof en>> = { en, es, fr, nl };
 function renderStart(options?: Parameters<typeof renderWithPorts>[1]): Pad {
   const view = renderWithPorts(<BadmintonPadPreviewScreen />, options);
   act(() => view.navigation.go('scoringPreview'));
+  latest = view;
   return view;
 }
+
+/** The preview `renderStart` last opened: `choose` moves its clock. */
+let latest: Pad | null = null;
 
 /**
  * The preview with its match started as the scorer starts it, A. Sharma picked to serve first, a minute before the
@@ -70,6 +74,14 @@ function back(pad: FakePorts): boolean {
 }
 
 const press = (name: string) => act(() => fireEvent.click(screen.getByRole('button', { name })));
+/**
+ * A sheet step's button (a sanction's level, person or confirm; the ending prompt's), a second after the step appeared:
+ * never in the window in which a step's buttons do nothing (the coordinator's ruling, 2026-11-01).
+ */
+const choose = (name: string) => {
+  if (latest !== null) aSecondOn(latest);
+  press(name);
+};
 const half = (side: 'first' | 'second') => screen.getByTestId(`half-${side}`);
 /** The half's big number: the game under way's points (a box may hold the same digits). */
 const shows = (side: 'first' | 'second', points: number) =>
@@ -431,9 +443,9 @@ describe('BadmintonPadPreviewScreen: a sanction, end to end', () => {
     press(sanctionOn('L. Chen'));
     expect(sheetTitle().getByText(en['scoring.sanction.title'])).toBeTruthy();
     expect(sheetTitle().getByText('L. Chen')).toBeTruthy();
-    press(en['scoring.sanction.warning']);
+    choose(en['scoring.sanction.warning']);
     expect(sheetTitle().getByText(en['scoring.sanction.who'])).toBeTruthy();
-    press('L. Chen');
+    choose('L. Chen');
     expect(screen.queryByTestId('step-sheet')).toBeNull();
     // Game 1: the sanction alone, with no box and no dot before it (owner ruling 16).
     expect(within(half('second')).getByText(en['scoring.sanction.warning'])).toBeTruthy();
@@ -450,13 +462,13 @@ describe('BadmintonPadPreviewScreen: a sanction, end to end', () => {
   it('Disqualification asks to confirm, then the ending prompt over a pad that takes no tap; Back still leaves', () => {
     const pad = renderPad();
     press(sanctionOn('L. Chen'));
-    press(en['scoring.sanction.disqualification']);
-    press('L. Chen');
+    choose(en['scoring.sanction.disqualification']);
+    choose('L. Chen');
     expect(
       sheetTitle().getByText(fill(en['scoring.sanction.confirm.title'], { person: 'L. Chen' })),
     ).toBeTruthy();
     expect(sheetTitle().getByText(en['scoring.sanction.confirm.body'])).toBeTruthy();
-    press(en['scoring.sanction.confirm.action']);
+    choose(en['scoring.sanction.confirm.action']);
     expect(screen.getByTestId('ending-prompt').textContent).toContain(
       fill(en['scoring.ending.title'], { person: 'L. Chen' }),
     );
@@ -468,10 +480,10 @@ describe('BadmintonPadPreviewScreen: a sanction, end to end', () => {
   it('Record the ending ends the match: the result card', () => {
     renderPad();
     press(sanctionOn('L. Chen'));
-    press(en['scoring.sanction.disqualification']);
-    press('L. Chen');
-    press(en['scoring.sanction.confirm.action']);
-    press(en['scoring.ending.record']);
+    choose(en['scoring.sanction.disqualification']);
+    choose('L. Chen');
+    choose(en['scoring.sanction.confirm.action']);
+    choose(en['scoring.ending.record']);
     expect(screen.queryByTestId('ending-prompt')).toBeNull();
     expect(screen.getByTestId('pad-card').textContent).toContain(
       en['scoring.card.resultRecorded.title'],
@@ -486,11 +498,11 @@ describe('BadmintonPadPreviewScreen: a sanction, end to end', () => {
     rally(pad, 'first', 9);
     rally(pad, 'second', 4);
     press(sanctionOn('L. Chen'));
-    press(en['scoring.sanction.disqualification']);
-    press('L. Chen');
-    press(en['scoring.sanction.confirm.action']);
+    choose(en['scoring.sanction.disqualification']);
+    choose('L. Chen');
+    choose(en['scoring.sanction.confirm.action']);
     expect(boxes('second')).toEqual(['0']);
-    press(en['scoring.ending.record']);
+    choose(en['scoring.ending.record']);
     const dq = en['scoring.badminton.mark.disqualified'];
     expect([boxes('first'), boxes('second')]).toEqual([
       ['21', '9'],
@@ -524,10 +536,10 @@ describe('BadmintonPadPreviewScreen: a sanction, end to end', () => {
   it('Void the sanction takes it back and play goes on', () => {
     const pad = renderPad();
     press(sanctionOn('A. Sharma'));
-    press(en['scoring.sanction.disqualification']);
-    press('A. Sharma');
-    press(en['scoring.sanction.confirm.action']);
-    press(en['scoring.ending.void']);
+    choose(en['scoring.sanction.disqualification']);
+    choose('A. Sharma');
+    choose(en['scoring.sanction.confirm.action']);
+    choose(en['scoring.ending.void']);
     expect(screen.queryByTestId('ending-prompt')).toBeNull();
     // Owner ruling 18: a voided disqualification leaves no box.
     expect([boxes('first'), boxes('second')]).toEqual([[], []]);
@@ -547,7 +559,7 @@ describe('BadmintonPadPreviewScreen: a sanction, end to end', () => {
     press(en['scoring.sheet.cancel']);
     expect(screen.queryByTestId('step-sheet')).toBeNull();
     press(sanctionOn('A. Sharma'));
-    press(en['scoring.sanction.penalty']);
+    choose(en['scoring.sanction.penalty']);
     expect(back(pad)).toBe(true);
     expect(screen.queryByTestId('step-sheet')).toBeNull();
     expect(pad.navigation.current()).toBe('scoringPreview');
@@ -558,9 +570,9 @@ describe('BadmintonPadPreviewScreen: a sanction, end to end', () => {
     renderPad();
     press(en['scoring.preview.dev.doubles']);
     press(sanctionOn('L. Chen / M. Wong'));
-    press(en['scoring.sanction.penalty']);
+    choose(en['scoring.sanction.penalty']);
     expect(screen.getByRole('button', { name: 'L. Chen' })).toBeTruthy();
-    press('M. Wong');
+    choose('M. Wong');
     expect(lastTap()).toContain(
       fill(en['scoring.badminton.last.sanction'], {
         level: en['scoring.sanction.penalty'],
@@ -790,8 +802,8 @@ describe('BadmintonPadPreviewScreen: the flash of a half whose tap counted', () 
     );
     press(en['scoring.setScore.confirm']);
     press(sanctionOn('L. Chen'));
-    press(en['scoring.sanction.warning']);
-    press('L. Chen');
+    choose(en['scoring.sanction.warning']);
+    choose('L. Chen');
     expect(lastTap()).toContain(
       fill(en['scoring.badminton.last.sanction'], {
         level: en['scoring.sanction.warning'],
@@ -1194,10 +1206,10 @@ describe('BadmintonPadPreviewScreen: History', () => {
     act(() => fireEvent.change(field('L. Chen'), { target: { value: '4' } }));
     press(en['scoring.setScore.confirm']);
     press(sanctionOn('A. Sharma'));
-    press(en['scoring.sanction.disqualification']);
-    press('A. Sharma');
-    press(en['scoring.sanction.confirm.action']);
-    press(en['scoring.ending.record']);
+    choose(en['scoring.sanction.disqualification']);
+    choose('A. Sharma');
+    choose(en['scoring.sanction.confirm.action']);
+    choose(en['scoring.ending.record']);
     openHistory();
     expect(said()).toEqual([
       `${fill(en['scoring.badminton.last.ending'], { person: 'A. Sharma' })}, ${thisPhone}`,
@@ -1304,10 +1316,10 @@ describe('BadmintonPadPreviewScreen: the games tally and the strip', () => {
     rally(pad, 'first', 21);
     rally(pad, 'second', 3);
     press(sanctionOn('L. Chen'));
-    press(en['scoring.sanction.disqualification']);
-    press('L. Chen');
-    press(en['scoring.sanction.confirm.action']);
-    press(en['scoring.ending.record']);
+    choose(en['scoring.sanction.disqualification']);
+    choose('L. Chen');
+    choose(en['scoring.sanction.confirm.action']);
+    choose(en['scoring.ending.record']);
     expect(tally()?.textContent).toBe('1:0');
     expect(screen.getByTestId('tally').getAttribute('aria-label')).toBe(
       said('A. Sharma', 1, 'L. Chen', 0),
@@ -1659,9 +1671,9 @@ describe('BadmintonPadPreviewScreen: the Start screen', () => {
 describe('BadmintonPadPreviewScreen: the four questions (hardening, 2026-11-01)', () => {
   const disqualifyChen = () => {
     press(sanctionOn('L. Chen'));
-    press(en['scoring.sanction.disqualification']);
-    press('L. Chen');
-    press(en['scoring.sanction.confirm.action']);
+    choose(en['scoring.sanction.disqualification']);
+    choose('L. Chen');
+    choose(en['scoring.sanction.confirm.action']);
   };
 
   // A second call: Start match's second tap on a tool in the controls that take the Start screen's room.
@@ -1772,5 +1784,38 @@ describe('BadmintonPadPreviewScreen: the four questions (hardening, 2026-11-01)'
       fill(en['scoring.badminton.intervalAt'], { point: 11 }),
     );
     expect(plate('first')).toBe(en['scoring.badminton.serving.right']);
+  });
+});
+
+// The coordinator's ruling (2026-11-01): the second tap of a double tap on a sheet's button lands on the next step's,
+// on the same bottom edge. Within the bounce window of a step appearing, its buttons do nothing.
+describe('BadmintonPadPreviewScreen: a sheet step that has just appeared', () => {
+  it('does nothing for Record the ending tapped in the window after Disqualify; a moment later it ends the match', () => {
+    const pad = renderPad();
+    press(sanctionOn('L. Chen'));
+    choose(en['scoring.sanction.disqualification']);
+    choose('L. Chen');
+    choose(en['scoring.sanction.confirm.action']);
+    press(en['scoring.ending.record']);
+    expect(screen.getByTestId('ending-prompt')).toBeTruthy();
+    expect(screen.queryByTestId('pad-card')).toBeNull();
+    aSecondOn(pad);
+    press(en['scoring.ending.record']);
+    expect(screen.queryByTestId('ending-prompt')).toBeNull();
+    expect(screen.getByTestId('pad-card').textContent).toContain(
+      en['scoring.card.resultRecorded.title'],
+    );
+  });
+
+  it('records no penalty for a person tapped in the window after the level: the step still asks', () => {
+    renderPad();
+    press(sanctionOn('L. Chen'));
+    choose(en['scoring.sanction.penalty']);
+    press('L. Chen');
+    expect(screen.getByTestId('step-sheet')).toBeTruthy();
+    expect(within(half('second')).queryByText(en['scoring.sanction.penalty'])).toBeNull();
+    choose('L. Chen');
+    expect(screen.queryByTestId('step-sheet')).toBeNull();
+    expect(within(half('second')).getByText(en['scoring.sanction.penalty'])).toBeTruthy();
   });
 });

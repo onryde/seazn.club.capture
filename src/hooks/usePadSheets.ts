@@ -1,4 +1,5 @@
 import { useCallback, useMemo, useState } from 'react';
+import { isBounce } from '@/domain/scoring/bounce';
 import { badmintonHistory } from '@/domain/scoring/badmintonHistory';
 import {
   badmintonDetails,
@@ -16,6 +17,7 @@ import {
 } from '@/domain/scoring/badmintonSanction';
 import type { PadHistoryGroup, PadMatchDetails } from '@/domain/scoring/padView';
 import { parseWholeNumber } from '@/domain/scoring/wholeNumber';
+import { usePorts } from '@/hooks/usePorts';
 import type { FakeBadmintonPad, FakeOutcome, FakePadSnapshot } from '@/services/fakeBadmintonPad';
 
 /**
@@ -53,7 +55,8 @@ type Settle = (outcome: FakeOutcome) => void;
  * The sheet over the badminton preview's pad: a tool, Match details or History opens one, a sanction's steps move
  * through it, Cancel, Close and Back close it. A second Match details or History tap opens nothing more: one Back
  * still closes it. The ending prompt is not a sheet the scorer opens: it shows for as long as a disqualification waits,
- * on the pad (none under a card). History is view only: it reads the sheet and records nothing.
+ * on the pad (none under a card). History is view only: it reads the sheet and records nothing. A sanction's step and
+ * the ending prompt take no choice in the bounce window of appearing (`justShown`).
  */
 export function usePadSheets(
   pad: FakeBadmintonPad,
@@ -67,23 +70,49 @@ export function usePadSheets(
   const tool = useCallback((id: string) => setSheet(sheetFor(id)), []);
   const details = useCallback(() => setSheet(DETAILS), []);
   const history = useCallback(() => setSheet(HISTORY), []);
+  const view = useMemo(() => sheetView(sheet, snapshot), [sheet, snapshot]);
+  const justShown = useJustShown(guardedStep(sheet, view));
   const choose = useCallback(
     (id: string) => {
-      if (sheet?.kind !== 'sanction') return;
+      if (sheet?.kind !== 'sanction' || justShown()) return;
       const move = chooseSanction(sheet.step, id, display.sides);
       if (move.kind === 'step') return setSheet({ kind: 'sanction', step: move.step });
       setSheet(null);
       settle(pad.sanction(move.sanction));
     },
-    [sheet, display.sides, pad, settle],
+    [sheet, display.sides, pad, settle, justShown],
   );
   const saveScore = useSaveScore(pad, settle, refuseScore, cancel);
   const actions = useMemo(
     () => ({ tool, details, history, choose, cancel, saveScore }),
     [tool, details, history, choose, cancel, saveScore],
   );
-  const view = useMemo(() => sheetView(sheet, snapshot), [sheet, snapshot]);
-  return { open: sheet !== null, cancel, actions, view };
+  return { open: sheet !== null, cancel, actions, view, justShown };
+}
+
+/**
+ * The step on screen a double tap can reach, by name: a sanction's level, person or confirm, or the ending prompt,
+ * one step wherever it comes from (the confirm, an Undo of the ending, a return to the pad). None for the rest.
+ */
+function guardedStep(sheet: Sheet, view: PadSheetView | null): string | null {
+  if (view?.kind === 'ending') return 'ending';
+  return view?.kind === 'sanction' && sheet?.kind === 'sanction' ? sheet.step.step : null;
+}
+
+/**
+ * Whether a tap now falls in the bounce window (`bounce.ts`) of the guarded step on screen appearing (the
+ * coordinator's ruling, 2026-11-01). The second tap of a double tap on one step's button lands on the next step's, on
+ * the same bottom edge, and ending a match is the costliest mistake on the pad: such a tap does nothing and says
+ * nothing (the step still waits; the line is behind the dim). A step's time is the render it first shows in.
+ */
+function useJustShown(step: string | null): () => boolean {
+  const { clock } = usePorts();
+  const [shown, setShown] = useState(() => ({ step, at: clock().getTime() }));
+  if (shown.step !== step) setShown({ step, at: clock().getTime() });
+  return useCallback(
+    () => shown.step !== null && isBounce(clock().getTime() - shown.at),
+    [shown, clock],
+  );
 }
 
 /** Set score's two fields as typed: a field that is not a whole number is refused, as the pad refuses a bad score. */
