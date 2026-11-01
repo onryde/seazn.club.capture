@@ -52,8 +52,8 @@ type Settle = (outcome: FakeOutcome) => void;
 /**
  * The sheet over the badminton preview's pad: a tool, Match details or History opens one, a sanction's steps move
  * through it, Cancel, Close and Back close it. A second Match details or History tap opens nothing more: one Back
- * still closes it. The ending prompt is not a sheet the scorer opens: it shows for as long as a disqualification waits.
- * History is view only: it reads the sheet and records nothing.
+ * still closes it. The ending prompt is not a sheet the scorer opens: it shows for as long as a disqualification waits,
+ * on the pad (none under a card). History is view only: it reads the sheet and records nothing.
  */
 export function usePadSheets(
   pad: FakeBadmintonPad,
@@ -112,8 +112,12 @@ function sheetFor(id: string): Sheet {
     : { kind: 'setScore' };
 }
 
-function sheetView(sheet: Sheet, { display, history }: FakePadSnapshot): PadSheetView | null {
-  if (display.awaitingEnding) return { kind: 'ending', person: disqualified(display) };
+function sheetView(sheet: Sheet, { display, history, card }: FakePadSnapshot): PadSheetView | null {
+  // Under a card the pad takes no tap (`withCard`): the ending prompt goes with the tools while the ending waits, and is
+  // back on the pad (hardening, 2026-11-01). Match details and History still open under the card.
+  if (display.awaitingEnding && card === null) {
+    return { kind: 'ending', person: disqualified(display) };
+  }
   if (sheet === null) return null;
   if (sheet.kind === 'history') {
     return { kind: 'history', groups: badmintonHistory(history, display.sides) };

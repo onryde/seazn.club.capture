@@ -422,3 +422,93 @@ describe('useBadmintonPadPreview, the Start screen', () => {
     expect(points(view)).toEqual(['0', '0']);
   });
 });
+
+// Hardening (2026-11-01): the four questions (AGENTS §10) across rounds 2–7, where the hook answers them.
+describe('useBadmintonPadPreview, the four questions (hardening, 2026-11-01)', () => {
+  const PROMPT = { kind: 'ending', person: 'L. Chen' };
+  /** L. Chen disqualified, as the sanction sheet's steps record it: the ending prompt then waits. */
+  const disqualify = (view: ReturnType<typeof mount>) => {
+    act(() => view.result.current.actions.tool('sanction.second'));
+    act(() => view.result.current.actions.choose('disqualification'));
+    act(() => view.result.current.actions.choose('0'));
+    act(() => view.result.current.actions.choose('confirm'));
+  };
+
+  // A second call: the second tap of a fast double tap on Start match can land on a tool in the controls that take the
+  // Start screen's room. Within the window it opens nothing, as a half or Undo there counts nothing.
+  it('opens no tool within the bounce window of the start, and says so; after it, the tool opens', () => {
+    const fakes = createFakePorts();
+    const view = mount(fakes, { notStarted: true });
+    act(() => view.result.current.actions.pickServer('first'));
+    act(() => view.result.current.actions.start());
+    at(fakes, 249);
+    act(() => view.result.current.actions.tool('sanction.second'));
+    expect(view.result.current.sheet).toBeNull();
+    expect(view.result.current.line).toEqual(COUNTED_ONCE);
+    at(fakes, 250);
+    act(() => view.result.current.actions.tool('setScore'));
+    expect(view.result.current.sheet?.kind).toBe('setScore');
+  });
+
+  it('opens a tool at once after a rally: only the start opens the window for every tap', () => {
+    const view = mount();
+    act(() => view.result.current.actions.tapHalf('first'));
+    act(() => view.result.current.actions.tool('sanction.second'));
+    expect(view.result.current.sheet?.kind).toBe('sanction');
+  });
+
+  // After an interruption: a card arrives while the disqualification's ending waits. Under a card the pad takes no tap
+  // (`withCard`), so the prompt that records the ending goes with the tools, and is back on the pad.
+  it.each(['viewOnly', 'updateNeeded', 'resultRecorded', 'notStarted', 'linkInvalid'] as const)(
+    'hides the ending prompt under the %s card; back on the pad, it waits again',
+    (card) => {
+      const view = mount();
+      disqualify(view);
+      expect(view.result.current.sheet).toEqual(PROMPT);
+      act(() => view.result.current.actions.pick(card));
+      expect(view.result.current.sheet).toBeNull();
+      act(() => view.result.current.actions.pick('pad'));
+      expect(view.result.current.sheet).toEqual(PROMPT);
+    },
+  );
+
+  // A second call on the ending prompt's buttons: the second finds no ending waiting, records nothing, and says so.
+  it('records the ending once for a second tap on Record the ending', () => {
+    const view = mount();
+    disqualify(view);
+    act(() => view.result.current.actions.recordEnding());
+    const ended = view.result.current.view;
+    act(() => view.result.current.actions.recordEnding());
+    expect(view.result.current.view).toBe(ended);
+    expect(view.result.current.line).toEqual(refusal('scoring.refusal.notNow'));
+  });
+
+  it('voids the disqualification once for a second tap on Void: the rally before it stays', () => {
+    const view = mount();
+    act(() => view.result.current.actions.tapHalf('first'));
+    disqualify(view);
+    act(() => view.result.current.actions.voidSanction());
+    act(() => view.result.current.actions.voidSanction());
+    expect(points(view)).toEqual(['1', '0']);
+    expect(view.result.current.sheet).toBeNull();
+    expect(view.result.current.view.halves[1]?.sub).toBeNull();
+  });
+
+  it('closes History when the preview row picks a state, as Match details', () => {
+    const view = mount();
+    act(() => view.result.current.actions.history());
+    expect(view.result.current.sheet?.kind).toBe('history');
+    act(() => view.result.current.actions.pick('start'));
+    expect(view.result.current.sheet).toBeNull();
+  });
+
+  it('finds the Start screen with no pick on a return: the pick is the screen’s, the match the app’s', () => {
+    const fakes = createFakePorts();
+    const first = mount(fakes, { notStarted: true });
+    act(() => first.result.current.actions.pickServer('second'));
+    first.unmount();
+    const again = mount(fakes, { notStarted: true });
+    expect(again.result.current.view.start).not.toBeNull();
+    expect(again.result.current.toss).toBeNull();
+  });
+});

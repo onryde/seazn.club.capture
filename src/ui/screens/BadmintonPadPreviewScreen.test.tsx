@@ -26,14 +26,16 @@ function renderStart(options?: Parameters<typeof renderWithPorts>[1]): Pad {
 }
 
 /**
- * The preview with its match started as the scorer starts it, A. Sharma picked to serve first, and the phone's clock a
- * second on for every tap.
+ * The preview with its match started as the scorer starts it, A. Sharma picked to serve first, a minute before the
+ * test's own taps (never in the start's bounce window), and the phone's clock a second on for every tap.
  */
 function renderPad(options?: Parameters<typeof renderWithPorts>[1]): Pad {
   const view = renderStart(options);
   const words = DICTIONARIES[options?.deviceLanguages?.[0] ?? 'en'] ?? en;
+  view.setNow(new Date(TEST_NOW.getTime() - 60_000));
   act(() => fireEvent.click(screen.getByRole('radio', { name: 'A. Sharma' })));
   act(() => fireEvent.click(screen.getByRole('button', { name: words['scoring.start.confirm'] })));
+  view.setNow(TEST_NOW);
   return view;
 }
 
@@ -1651,4 +1653,124 @@ describe('BadmintonPadPreviewScreen: the Start screen', () => {
       );
     },
   );
+});
+
+// Hardening (2026-11-01): the four questions (AGENTS §10) across rounds 2–7, as the scorer meets them on screen.
+describe('BadmintonPadPreviewScreen: the four questions (hardening, 2026-11-01)', () => {
+  const disqualifyChen = () => {
+    press(sanctionOn('L. Chen'));
+    press(en['scoring.sanction.disqualification']);
+    press('L. Chen');
+    press(en['scoring.sanction.confirm.action']);
+  };
+
+  // A second call: Start match's second tap on a tool in the controls that take the Start screen's room.
+  it('opens no tool for a tap within the bounce window of Start, and says so; a moment later it opens', () => {
+    const pad = renderStart();
+    act(() => fireEvent.click(screen.getByRole('radio', { name: 'L. Chen' })));
+    act(() => fireEvent.click(screen.getByRole('button', { name: en['scoring.start.confirm'] })));
+    press(en['scoring.badminton.tool.setScore']);
+    expect(screen.queryByTestId('score-sheet')).toBeNull();
+    expect(lastTap()).toContain(en['scoring.pad.countedOnce']);
+    aSecondOn(pad);
+    press(en['scoring.badminton.tool.setScore']);
+    expect(screen.getByTestId('score-sheet')).toBeTruthy();
+  });
+
+  // After an interruption: the preview row's Start mid-match is a new match, nothing of the old one kept.
+  it('starts afresh from the preview row’s Start mid-match: 0:0, nothing in History, no pick', () => {
+    const pad = renderPad();
+    rally(pad, 'first', 21);
+    expect(screen.getByTestId('tally').textContent).toBe('1:0');
+    press(en['scoring.preview.dev.start']);
+    expect(screen.getByTestId('start-screen')).toBeTruthy();
+    expect(screen.getByTestId('tally').textContent).toBe('0:0');
+    for (const name of ['A. Sharma', 'L. Chen']) {
+      expect(screen.getByRole('radio', { name }).getAttribute('aria-checked')).toBe('false');
+    }
+    press(en['scoring.history.title']);
+    expect(screen.getByText(en['scoring.history.empty'])).toBeTruthy();
+  });
+
+  it('comes back to the Start screen, the pick cleared, from the Division not open card', () => {
+    renderStart();
+    act(() => fireEvent.click(screen.getByRole('radio', { name: 'L. Chen' })));
+    press(en['scoring.preview.dev.notStarted']);
+    expect(screen.queryByTestId('start-screen')).toBeNull();
+    press(en['scoring.preview.dev.pad']);
+    expect(screen.getByTestId('start-screen')).toBeTruthy();
+    expect(screen.getByRole('radio', { name: 'L. Chen' }).getAttribute('aria-checked')).toBe(
+      'false',
+    );
+    expect(
+      screen
+        .getByRole('button', { name: en['scoring.start.confirm'] })
+        .getAttribute('aria-disabled'),
+    ).toBe('true');
+  });
+
+  // An Undo of the start keeps it in History, struck through, as every entry Undo takes back (owner ruling 21).
+  it('keeps the undone start in History on the Start screen, struck through, with “Undone”', () => {
+    const pad = renderPad();
+    undoTap(pad);
+    expect(screen.getByTestId('start-screen')).toBeTruthy();
+    press(en['scoring.history.title']);
+    const rows = screen.getAllByTestId('history-row');
+    expect(rows.map((row) => row.getAttribute('aria-label'))).toEqual([
+      [
+        fill(en['scoring.badminton.last.start'], { side: 'A. Sharma' }),
+        en['scoring.history.thisPhone'],
+        en['scoring.history.undone'],
+      ].join(', '),
+    ]);
+  });
+
+  // After an interruption: a card arrives while the ending waits; under a card the pad takes no tap.
+  it('hides the ending prompt under the View only card, and brings it back on the pad', () => {
+    renderPad();
+    disqualifyChen();
+    expect(screen.getByTestId('ending-prompt')).toBeTruthy();
+    // The prompt's dim covers the preview row, and hides it from a screen reader: the chip stands for a card the
+    // server sends while the ending waits.
+    act(() =>
+      fireEvent.click(
+        screen.getByRole('button', { name: en['scoring.preview.dev.viewOnly'], hidden: true }),
+      ),
+    );
+    expect(screen.queryByTestId('ending-prompt')).toBeNull();
+    expect(screen.getByTestId('pad-card').textContent).toContain(en['scoring.card.viewOnly.title']);
+    expect(screen.getByTestId('pad-content').getAttribute('aria-hidden')).not.toBe('true');
+    press(en['scoring.preview.dev.pad']);
+    expect(screen.getByTestId('ending-prompt')).toBeTruthy();
+  });
+
+  // A second call across the game boundary: the first Undo reopens game 1, the next steps back inside it.
+  it('steps back inside game 1 on a second Undo after the game boundary, its box gone', () => {
+    const pad = renderPad();
+    rally(pad, 'first', 21);
+    expect([boxes('first'), boxes('second')]).toEqual([['21'], ['0']]);
+    undoTap(pad);
+    undoTap(pad);
+    expect([boxes('first'), boxes('second')]).toEqual([[], []]);
+    expect(shows('first', 19)).toBe(true);
+    expect(screen.getByTestId('tally').textContent).toBe('0:0');
+    expect(plate('first')).toBe(en['scoring.badminton.serving.left']);
+  });
+
+  // After an interruption: Undo takes the interval back to its warning, and the court back to the right.
+  it('takes the interval and the court back on Undo: “Interval at 11”, serving from the right', () => {
+    const pad = renderPad();
+    rally(pad, 'first', 10);
+    expect(plate('first')).toBe(en['scoring.badminton.serving.right']);
+    rally(pad, 'first');
+    expect(screen.getByTestId('strip-interval').textContent).toBe(
+      en['scoring.badminton.intervalNow'],
+    );
+    expect(plate('first')).toBe(en['scoring.badminton.serving.left']);
+    undoTap(pad);
+    expect(screen.getByTestId('strip-interval').textContent).toBe(
+      fill(en['scoring.badminton.intervalAt'], { point: 11 }),
+    );
+    expect(plate('first')).toBe(en['scoring.badminton.serving.right']);
+  });
 });

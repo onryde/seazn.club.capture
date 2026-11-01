@@ -98,7 +98,9 @@ describe('ScoreHalf', () => {
     renderWithPorts(<ScoreHalf half={gameOne} flash={0} onTap={vi.fn()} />);
     expect(boxes()).toEqual([]);
     expect(screen.queryByText(SEPARATOR)).toBeNull();
-    expect(screen.getByText(hintFor('A. Sharma'))).toBeTruthy();
+    const hint = screen.getByText(hintFor('A. Sharma'));
+    // Only: an empty box group or sanction would still take the row's gap from the hint (mutation check, 2026-11-01).
+    expect([...(hint.parentElement?.children ?? [])]).toEqual([hint]);
     expect(screen.getByRole('button', { name: 'A. Sharma, 11' })).toBeTruthy();
   });
 
@@ -110,8 +112,12 @@ describe('ScoreHalf', () => {
         onTap={vi.fn()}
       />,
     );
-    expect(screen.getByText(en['scoring.sanction.warning'])).toBeTruthy();
+    const sanction = screen.getByText(en['scoring.sanction.warning']);
     expect(screen.queryByText(SEPARATOR)).toBeNull();
+    expect([...(sanction.parentElement?.children ?? [])]).toEqual([
+      sanction,
+      screen.getByText(hintFor('A. Sharma')),
+    ]);
   });
 
   it('draws no dot after the boxes when there is no sanction', () => {

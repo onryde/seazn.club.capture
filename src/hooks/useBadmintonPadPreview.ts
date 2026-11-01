@@ -128,6 +128,7 @@ export function useBadmintonPadPreview(): BadmintonPadPreview {
   const taps = useTaps(pad, settle, say, setFlash);
   const others = useEndingAndCard(pad, settle, setCardNote);
   const starting = useStart(pad, taps.start);
+  const tool = useGuardedTool(taps.afterStart, sheets.actions.tool);
   const { clearToss } = starting;
   const pick = usePick(pad, sample, startSample, sheets.cancel, {
     say,
@@ -148,10 +149,11 @@ export function useBadmintonPadPreview(): BadmintonPadPreview {
       undo: taps.undo,
       ...others,
       ...sheets.actions,
+      tool,
       ...starting.actions,
       pick,
     }),
-    [home, taps.tapHalf, taps.undo, others, sheets.actions, starting.actions, pick],
+    [home, taps.tapHalf, taps.undo, others, sheets.actions, tool, starting.actions, pick],
   );
   const chosen = { card: snapshot.card?.kind ?? 'pad', sample } as const;
   const { toss } = starting;
@@ -202,8 +204,8 @@ const START_TAP = 'start';
  * recorded tap, and the line says "Counted once" under the sentence of the tap that counted. A rally on the other half
  * is a different tap and always counts. A tap on a half that counted is the half's flash, numbered on from the last
  * one (owner ruling 14); a bounce or a refusal flashes nothing. Start match opens the window for every tap: the second
- * tap of a fast double tap on it lands on the pad that took the Start screen's place, a half or Undo (hardening,
- * 2026-11-01), and is counted once with it.
+ * tap of a fast double tap on it lands on the pad that took the Start screen's place, a half, Undo or a tool
+ * (hardening, 2026-11-01), and is counted once with it; a tool then opens nothing (`afterStart`).
  */
 function useTaps(
   pad: FakeBadmintonPad,
@@ -243,7 +245,23 @@ function useTaps(
     (server: PadSide) => once(START_TAP, () => pad.start(server)),
     [once, pad],
   );
-  return useMemo(() => ({ tapHalf, undo, start }), [tapHalf, undo, start]);
+  const afterStart = useCallback((): boolean => {
+    const prior = last.current;
+    if (prior?.tap !== START_TAP || !isBounce(clock().getTime() - prior.at)) return false;
+    say(COUNTED_ONCE);
+    return true;
+  }, [clock, say]);
+  return useMemo(() => ({ tapHalf, undo, start, afterStart }), [tapHalf, undo, start, afterStart]);
+}
+
+/** A tool's sheet, unless the tap is Start match's second (`useTaps`'s `afterStart`): then it opens nothing. */
+function useGuardedTool(afterStart: () => boolean, open: (id: string) => void) {
+  return useCallback(
+    (id: string) => {
+      if (!afterStart()) open(id);
+    },
+    [afterStart, open],
+  );
 }
 
 /**
