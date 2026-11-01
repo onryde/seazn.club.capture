@@ -245,7 +245,7 @@ describe('useBadmintonPadPreview, the flash of a half whose tap counted', () => 
 });
 
 /** Owner ruling 15 (2026-10-31): a Rules button opens a sheet over the pad with the match's rules and Close. */
-describe('useBadmintonPadPreview, the Rules sheet', () => {
+describe('useBadmintonPadPreview, the Match details sheet', () => {
   /** The preview's rules (best of 3, 21 won by 2, capped at 30, the interval at 11), as the brief states them. */
   const LINES = [
     { key: 'scoring.badminton.rules.bestOf.other', count: 3 },
@@ -255,12 +255,24 @@ describe('useBadmintonPadPreview, the Rules sheet', () => {
     { key: 'scoring.badminton.rules.endsChange', vars: { point: 11, game: 3 } },
   ];
 
-  it('opens the match’s rules over the pad, and changes nothing on it', () => {
+  it('opens Match details over the pad: where the match sits and its rules, and changes nothing on it', () => {
     const view = mount();
     act(() => view.result.current.actions.tapHalf('first'));
     const before = view.result.current.view;
-    act(() => view.result.current.actions.rules());
-    expect(view.result.current.sheet).toEqual({ kind: 'rules', lines: LINES });
+    act(() => view.result.current.actions.details());
+    expect(view.result.current.sheet).toEqual({
+      kind: 'details',
+      details: {
+        context: {
+          competition: 'Spring Open 2026',
+          division: 'U15 Boys Singles',
+          round: 'Round 1',
+          match: 'Match 4',
+          sides: ['A. Sharma', 'L. Chen'],
+        },
+        rules: LINES,
+      },
+    });
     expect(view.result.current.view).toBe(before);
     expect(view.result.current.flash).toEqual({ side: 'first', seq: 1 });
   });
@@ -269,8 +281,8 @@ describe('useBadmintonPadPreview, the Rules sheet', () => {
     const fakes = createFakePorts();
     act(() => fakes.navigation.go('scoringPreview'));
     const view = mount(fakes);
-    act(() => view.result.current.actions.rules());
-    act(() => view.result.current.actions.rules());
+    act(() => view.result.current.actions.details());
+    act(() => view.result.current.actions.details());
     let handled = false;
     act(() => {
       handled = fakes.back.press();
@@ -286,10 +298,10 @@ describe('useBadmintonPadPreview, the Rules sheet', () => {
 
   it('closes on Close, and when the preview row picks a state', () => {
     const view = mount();
-    act(() => view.result.current.actions.rules());
+    act(() => view.result.current.actions.details());
     act(() => view.result.current.actions.cancel());
     expect(view.result.current.sheet).toBeNull();
-    act(() => view.result.current.actions.rules());
+    act(() => view.result.current.actions.details());
     act(() => view.result.current.actions.pick('viewOnly'));
     expect(view.result.current.sheet).toBeNull();
   });

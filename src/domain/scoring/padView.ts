@@ -8,6 +8,8 @@
  * the dictionaries (AGENTS §3: domain is pure, and i18n may name domain, not the reverse).
  */
 
+import type { MatchContext } from '@/domain/scoring/matchContext';
+
 /** Layout A (owner, 2026-10-31): the first side is the top half, the second side the bottom one. */
 export type PadSide = 'first' | 'second';
 
@@ -155,10 +157,20 @@ export type PadTally<K extends string> = {
   readonly said: PadText<K>;
 };
 
+/**
+ * What the match is and how it is played (owner, 2026-11-01): where it sits, and the sport's rule lines. The Match
+ * details sheet and the Not started card draw both, from the same components.
+ */
+export type PadMatchDetails<K extends string> = {
+  readonly context: MatchContext;
+  readonly rules: readonly PadText<K>[];
+};
+
 export type PadView<K extends string> = {
   /** Top, then bottom (layout A). */
   readonly halves: readonly [PadHalf<K>, PadHalf<K>];
   readonly tally: PadTally<K>;
+  readonly details: PadMatchDetails<K>;
   readonly strip: readonly PadStripItem<K>[];
   readonly lastTap: PadLastTap<K> | null;
   readonly sync: PadSync;

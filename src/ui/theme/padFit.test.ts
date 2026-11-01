@@ -795,3 +795,73 @@ describe('the pad’s height, portrait', () => {
     expect(scoreRole(halves(761))).toBe('score');
   });
 });
+
+/**
+ * Match details (owner, 2026-11-01): in the sheet and on the Not started card, every line wraps and none is cut, so
+ * the one thing that can fail is a word wider than its room. The card is the narrower room: the column less the
+ * card's padding (space.md a side) and its edge (`padSideBar`); the sheet's is the screen less its padding. The
+ * organiser's words are the fake's doubles sample, the longest it has.
+ */
+describe('Match details at 320 and 360 in four languages (owner, 2026-11-01)', () => {
+  const geist400 = loadFont('geist-400');
+  const caps = (role: 'state' | 'panelTitle' | 'title') => (text: string) =>
+    barlow700.width(text.toUpperCase(), typeScale[role].fontSize) +
+    typeScale[role].letterSpacing * [...text].length;
+  const bodyWidth = (text: string) => geist400.width(text, typeScale.body.fontSize);
+  const cardText = (width: number) => column(width) - 2 * space.md - layout.padSideBar;
+  const sheetText = (width: number) => width - 2 * space.md;
+  /** The doubles sample's context, as the fake types it, and its sides joined as the match label joins them. */
+  const ORGANISER: readonly (readonly [string, (text: string) => number])[] = [
+    ['Riverside Badminton Club Championships 2026', nameWidth],
+    ['Open Mixed Doubles · Quarter-final', controlWidth],
+    ['BAD0001', controlWidth],
+    ['A. Sharma / R. Iyer v L. Chen / M. Wong', nameWidth],
+  ];
+  const RULES = [
+    ['scoring.badminton.rules.bestOf.other', { count: '3' }],
+    ['scoring.badminton.rules.points', { points: '21', winBy: '2' }],
+    ['scoring.badminton.rules.cap', { cap: '30' }],
+    ['scoring.badminton.intervalAt', { point: '11' }],
+    ['scoring.badminton.rules.endsChange', { point: '11', game: '3' }],
+  ] as const;
+  const widest = (lines: readonly (readonly [string, (text: string) => number])[], room: number) =>
+    Math.max(
+      ...lines.flatMap(([text, measure]) =>
+        linesIn(text, room, measure).map((line) => measure(line)),
+      ),
+    );
+
+  it('the card’s text is 252 and 292 wide, the sheet’s 288 and 328', () => {
+    expect(WIDTHS.map(cardText)).toEqual([252, 292]);
+    expect(WIDTHS.map(sheetText)).toEqual([288, 328]);
+  });
+
+  it.each(LANGUAGES)(
+    '%s: no word wider than the card or the sheet',
+    (_lang, dictionary: Dictionary) => {
+      const said = (key: string) => {
+        const text = dictionary[key] ?? '';
+        expect(text).not.toBe('');
+        return text;
+      };
+      const rules = RULES.map(([key, vars]) => [fill(said(key), vars), bodyWidth] as const);
+      const card = [
+        [said('scoring.card.notStarted.title'), caps('panelTitle')] as const,
+        ...ORGANISER,
+        [said('scoring.rules.heading'), caps('state')] as const,
+        ...rules,
+        [said('scoring.card.notStarted.body'), bodyWidth] as const,
+      ];
+      const sheet = [
+        [said('scoring.details.title'), caps('title')] as const,
+        ...ORGANISER,
+        [said('scoring.rules.heading'), caps('state')] as const,
+        ...rules,
+      ];
+      for (const width of WIDTHS) {
+        expect(widest(card, cardText(width))).toBeLessThanOrEqual(cardText(width));
+        expect(widest(sheet, sheetText(width))).toBeLessThanOrEqual(sheetText(width));
+      }
+    },
+  );
+});

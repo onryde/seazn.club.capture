@@ -1,12 +1,12 @@
 import { useCallback, useMemo, useState } from 'react';
 import { badmintonHistory } from '@/domain/scoring/badmintonHistory';
 import {
+  badmintonDetails,
   parseBadmintonTool,
   sideNames,
   type BadmintonDisplay,
   type BadmintonPadKey,
 } from '@/domain/scoring/badmintonPad';
-import { badmintonRuleLines } from '@/domain/scoring/badmintonRules';
 import {
   chooseSanction,
   sanctionSheet,
@@ -14,13 +14,14 @@ import {
   type SanctionSheet,
   type SanctionStep,
 } from '@/domain/scoring/badmintonSanction';
-import type { PadHistoryGroup, PadText } from '@/domain/scoring/padView';
+import type { PadHistoryGroup, PadMatchDetails } from '@/domain/scoring/padView';
 import { parseWholeNumber } from '@/domain/scoring/wholeNumber';
 import type { FakeBadmintonPad, FakeOutcome, FakePadSnapshot } from '@/services/fakeBadmintonPad';
 
 /**
- * What is over the pad: a sanction's step, the Set score fields, a disqualification's ending prompt, the match's rules
- * (owner ruling 15), or its History (owner ruling 21), a cover the full height of the pad.
+ * What is over the pad: a sanction's step, the Set score fields, a disqualification's ending prompt, Match details
+ * (where the match sits and its rules: owner ruling 15, then 2026-11-01), or its History (owner ruling 21), a cover the
+ * full height of the pad.
  */
 export type PadSheetView =
   | { readonly kind: 'sanction'; readonly sheet: SanctionSheet }
@@ -32,27 +33,27 @@ export type PadSheetView =
       readonly points: readonly [number, number];
     }
   | { readonly kind: 'ending'; readonly person: string }
-  | { readonly kind: 'rules'; readonly lines: readonly PadText<BadmintonPadKey>[] }
+  | { readonly kind: 'details'; readonly details: PadMatchDetails<BadmintonPadKey> }
   | { readonly kind: 'history'; readonly groups: readonly PadHistoryGroup<BadmintonPadKey>[] };
 
 type Sheet =
   | { readonly kind: 'sanction'; readonly step: SanctionStep }
   | { readonly kind: 'setScore' }
-  | { readonly kind: 'rules' }
+  | { readonly kind: 'details' }
   | { readonly kind: 'history' }
   | null;
 
-const RULES: Sheet = { kind: 'rules' };
+const DETAILS: Sheet = { kind: 'details' };
 const HISTORY: Sheet = { kind: 'history' };
 
 /** Says what a tap came to (`useBadmintonPadPreview`'s `settle`); `refuse` says a refusal of its own. */
 type Settle = (outcome: FakeOutcome) => void;
 
 /**
- * The sheet over the badminton preview's pad: a tool, Rules or History opens one, a sanction's steps move through it,
- * Cancel, Close and Back close it. A second Rules or History tap opens nothing more: one Back still closes it. The
- * ending prompt is not a sheet the scorer opens: it shows for as long as a disqualification waits. History is view
- * only: it reads the sheet and records nothing.
+ * The sheet over the badminton preview's pad: a tool, Match details or History opens one, a sanction's steps move
+ * through it, Cancel, Close and Back close it. A second Match details or History tap opens nothing more: one Back
+ * still closes it. The ending prompt is not a sheet the scorer opens: it shows for as long as a disqualification waits.
+ * History is view only: it reads the sheet and records nothing.
  */
 export function usePadSheets(
   pad: FakeBadmintonPad,
@@ -64,7 +65,7 @@ export function usePadSheets(
   const [sheet, setSheet] = useState<Sheet>(null);
   const cancel = useCallback(() => setSheet(null), []);
   const tool = useCallback((id: string) => setSheet(sheetFor(id)), []);
-  const rules = useCallback(() => setSheet(RULES), []);
+  const details = useCallback(() => setSheet(DETAILS), []);
   const history = useCallback(() => setSheet(HISTORY), []);
   const choose = useCallback(
     (id: string) => {
@@ -78,8 +79,8 @@ export function usePadSheets(
   );
   const saveScore = useSaveScore(pad, settle, refuseScore, cancel);
   const actions = useMemo(
-    () => ({ tool, rules, history, choose, cancel, saveScore }),
-    [tool, rules, history, choose, cancel, saveScore],
+    () => ({ tool, details, history, choose, cancel, saveScore }),
+    [tool, details, history, choose, cancel, saveScore],
   );
   const view = useMemo(() => sheetView(sheet, snapshot), [sheet, snapshot]);
   return { open: sheet !== null, cancel, actions, view };
@@ -120,7 +121,7 @@ function sheetView(sheet: Sheet, { display, history }: FakePadSnapshot): PadShee
   if (sheet.kind === 'sanction') {
     return { kind: 'sanction', sheet: sanctionSheet(sheet.step, display.sides) };
   }
-  if (sheet.kind === 'rules') return { kind: 'rules', lines: badmintonRuleLines(display.rules) };
+  if (sheet.kind === 'details') return { kind: 'details', details: badmintonDetails(display) };
   return {
     kind: 'setScore',
     game: display.game,

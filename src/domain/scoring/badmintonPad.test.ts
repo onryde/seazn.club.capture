@@ -8,6 +8,13 @@ import {
 /** Game 1 of a best of 3, singles, before the first rally: what the fake starts at, written out. */
 const pre: BadmintonDisplay = {
   sides: { first: { players: ['A. Sharma'] }, second: { players: ['L. Chen'] } },
+  context: {
+    competition: 'Spring Open 2026',
+    division: 'U15 Boys Singles',
+    round: 'Round 1',
+    match: 'Match 4',
+    sides: ['A. Sharma', 'L. Chen'],
+  },
   points: { first: 0, second: 0 },
   finished: [],
   server: 'first',
@@ -542,5 +549,33 @@ describe('badmintonPad: the games tally', () => {
       phase: 'decided',
     };
     expect(badmintonPad(state).tally.shown).toBe('1:0');
+  });
+});
+
+// Owner, 2026-11-01: the Match details sheet and the Not started card show where the match sits and its rules.
+describe('badmintonPad: the match details', () => {
+  it('carries the match’s context as kept, and the rule lines of its config', () => {
+    expect(badmintonPad(pre).details).toEqual({
+      context: {
+        competition: 'Spring Open 2026',
+        division: 'U15 Boys Singles',
+        round: 'Round 1',
+        match: 'Match 4',
+        sides: ['A. Sharma', 'L. Chen'],
+      },
+      rules: [
+        { key: 'scoring.badminton.rules.bestOf.other', count: 3 },
+        { key: 'scoring.badminton.rules.points', vars: { points: 21, winBy: 2 } },
+        { key: 'scoring.badminton.rules.cap', vars: { cap: 30 } },
+        { key: 'scoring.badminton.intervalAt', vars: { point: 11 } },
+        { key: 'scoring.badminton.rules.endsChange', vars: { point: 11, game: 3 } },
+      ],
+    });
+  });
+
+  it('keeps them under a card', () => {
+    const view = badmintonPad({ ...pre, phase: 'decided' });
+    expect(view.card).toEqual({ kind: 'resultRecorded' });
+    expect(view.details.context.competition).toBe('Spring Open 2026');
   });
 });

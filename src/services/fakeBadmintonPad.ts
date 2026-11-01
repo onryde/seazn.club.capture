@@ -1,7 +1,9 @@
 import type { BadmintonHistoryEntry } from '@/domain/scoring/badmintonHistory';
 import type { BadmintonRules } from '@/domain/scoring/badmintonRules';
+import type { MatchContext } from '@/domain/scoring/matchContext';
 import {
   SANCTION_LEVELS,
+  sideNames,
   type BadmintonDisplay,
   type BadmintonDone,
   type BadmintonGame,
@@ -59,12 +61,20 @@ export type FakeOutcome =
 
 export type FakePadSample = {
   readonly sides: Readonly<Record<PadSide, BadmintonSide>>;
+  /** Where the match sits; its sides are the players above, joined as the match label joins them. Made up. */
+  readonly context: Omit<MatchContext, 'sides'>;
   /** Taps already on the sheet from someone else, in order. Undo never takes them back. */
   readonly others?: readonly BadmintonTap[];
 };
 
 export const SINGLES_SAMPLE: FakePadSample = {
   sides: { first: { players: ['A. Sharma'] }, second: { players: ['L. Chen'] } },
+  context: {
+    competition: 'Spring Open 2026',
+    division: 'U15 Boys Singles',
+    round: 'Round 1',
+    match: 'Match 4',
+  },
 };
 
 /** Doubles, joined at 3-1 by a scorer before this phone: Undo stops at their taps, and History says "Another scorer". */
@@ -72,6 +82,12 @@ export const DOUBLES_SAMPLE: FakePadSample = {
   sides: {
     first: { players: ['A. Sharma', 'R. Iyer'] },
     second: { players: ['L. Chen', 'M. Wong'] },
+  },
+  context: {
+    competition: 'Riverside Badminton Club Championships 2026',
+    division: 'Open Mixed Doubles',
+    round: 'Quarter-final',
+    match: 'BAD0001',
   },
   others: [
     { kind: 'rally', side: 'first' },
@@ -369,6 +385,10 @@ function displayOf(
 ): BadmintonDisplay {
   return {
     sides: sample.sides,
+    context: {
+      ...sample.context,
+      sides: [sideNames(sample.sides.first), sideNames(sample.sides.second)],
+    },
     points: score.points,
     finished: score.finished,
     server: score.server,

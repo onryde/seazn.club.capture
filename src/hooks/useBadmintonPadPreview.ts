@@ -52,8 +52,8 @@ export type PadPreviewActions = {
   /** The update banner's two buttons: in the preview they open nothing, and say so on the banner. */
   readonly update: () => void;
   readonly browser: () => void;
-  /** Rules (owner ruling 15): the match's rules in a sheet over the pad. */
-  readonly rules: () => void;
+  /** Match details (owner ruling 15, then 2026-11-01): where the match sits and its rules, in a sheet over the pad. */
+  readonly details: () => void;
   /** History (owner ruling 21): every entry on the sheet, newest first, in a cover over the pad; view only. */
   readonly history: () => void;
   readonly pick: (choice: PreviewChoice) => void;

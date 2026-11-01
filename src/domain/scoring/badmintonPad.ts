@@ -1,8 +1,14 @@
-import type { BadmintonRuleKey, BadmintonRules } from '@/domain/scoring/badmintonRules';
+import type { MatchContext } from '@/domain/scoring/matchContext';
+import {
+  badmintonRuleLines,
+  type BadmintonRuleKey,
+  type BadmintonRules,
+} from '@/domain/scoring/badmintonRules';
 import {
   withCard,
   type PadHalf,
   type PadLastTap,
+  type PadMatchDetails,
   type PadPeriods,
   type PadPeriodScore,
   type PadServing,
@@ -73,6 +79,8 @@ export type BadmintonPhase = 'pre' | 'live' | 'betweenGames' | 'decided';
  */
 export type BadmintonDisplay = {
   readonly sides: Readonly<Record<PadSide, BadmintonSide>>;
+  /** Where the match sits: competition, division, round, the fixture's code, the sides (owner, 2026-11-01). */
+  readonly context: MatchContext;
   /** The game under way, or about to start; the last one's final score once the match is decided. */
   readonly points: Readonly<Record<PadSide, number>>;
   /**
@@ -158,6 +166,7 @@ export function badmintonPad(
   const view: PadView<BadmintonPadKey> = {
     halves: [half(state, 'first'), half(state, 'second')],
     tally: tally(state),
+    details: badmintonDetails(state),
     strip: strip(state),
     lastTap: lastTap(state),
     sync,
@@ -238,6 +247,11 @@ function stoppedSaid(
       ? 'scoring.badminton.gameSaid.disqualified'
       : 'scoring.badminton.gameSaid.stopped';
   return { key, vars: { game: number, points: game.points[side] } };
+}
+
+/** The match's context and its rule lines: the Match details sheet's and the Not started card's (owner, 2026-11-01). */
+export function badmintonDetails(state: BadmintonDisplay): PadMatchDetails<BadmintonPadKey> {
+  return { context: state.context, rules: badmintonRuleLines(state.rules) };
 }
 
 /**

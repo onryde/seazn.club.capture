@@ -821,10 +821,11 @@ describe('BadmintonPadPreviewScreen: the halves’ hints', () => {
 
 /**
  * Owner ruling 15 (2026-10-31): "a 'Rules' button in the top bar beside the sync status, opening a sheet over the pad";
- * ruling 20 made it an icon named "Match rules", with History beside it.
+ * ruling 20 made it an icon, with History beside it; owner, 2026-11-01: it became Match details, where the match sits
+ * and then its rules, and the icon is named so.
  */
-describe('BadmintonPadPreviewScreen: Rules', () => {
-  const rulesButton = () => screen.queryByRole('button', { name: en['scoring.rules.title'] });
+describe('BadmintonPadPreviewScreen: Match details', () => {
+  const rulesButton = () => screen.queryByRole('button', { name: en['scoring.details.title'] });
   /** The preview's match (best of 3, 21 won by 2, capped at 30, the interval at 11), in the dictionary's words. */
   const LINES = [
     fill(en['scoring.badminton.rules.bestOf.other'], { count: 3 }),
@@ -833,7 +834,11 @@ describe('BadmintonPadPreviewScreen: Rules', () => {
     fill(en['scoring.badminton.intervalAt'], { point: 11 }),
     fill(en['scoring.badminton.rules.endsChange'], { point: 11, game: 3 }),
   ];
-  const lines = () => screen.getAllByTestId('rules-line').map((line) => line.textContent);
+  const sheet = () => within(screen.getByTestId('details-sheet'));
+  const lines = () =>
+    sheet()
+      .getAllByTestId('rules-line')
+      .map((line) => line.textContent);
 
   // Owner ruling 20: "Order: Back, Preview tag, then the right end holds [Rules][History] then the sync status"; the
   // games tally took the tag's place (owner, 2026-11-01).
@@ -865,11 +870,11 @@ describe('BadmintonPadPreviewScreen: Rules', () => {
       screen.getByRole('button', { name }).querySelector('[data-name]')?.getAttribute('data-name');
     const tone = (name: string) =>
       screen.getByRole('button', { name }).querySelector('[data-name]')?.getAttribute('data-tone');
-    expect([glyph(en['scoring.rules.title']), glyph(en['scoring.history.title'])]).toEqual([
+    expect([glyph(en['scoring.details.title']), glyph(en['scoring.history.title'])]).toEqual([
       'info',
       'history',
     ]);
-    expect([tone(en['scoring.rules.title']), tone(en['scoring.history.title'])]).toEqual([
+    expect([tone(en['scoring.details.title']), tone(en['scoring.history.title'])]).toEqual([
       'ink2',
       'ink2',
     ]);
@@ -897,17 +902,16 @@ describe('BadmintonPadPreviewScreen: Rules', () => {
     expect(getComputedStyle(screen.getByTestId('tally')).flexShrink).toBe('0');
   });
 
-  it('opens the match rules over the pad, which it hides from a screen reader, and changes no score', () => {
+  it('opens Match details over the pad, which it hides from a screen reader, and changes no score', () => {
     const pad = renderPad();
     rally(pad, 'first', 2);
-    press(en['scoring.rules.title']);
-    const sheet = within(screen.getByTestId('rules-sheet'));
-    expect(sheet.getByText(en['scoring.rules.title'])).toBeTruthy();
+    press(en['scoring.details.title']);
+    expect(sheet().getByText(en['scoring.details.title'])).toBeTruthy();
     expect(lines()).toEqual(LINES);
     expect(screen.getByTestId('pad-content').getAttribute('aria-hidden')).toBe('true');
     expect(shows('first', 2) && shows('second', 0)).toBe(true);
     press(en['panel.close']);
-    expect(screen.queryByTestId('rules-sheet')).toBeNull();
+    expect(screen.queryByTestId('details-sheet')).toBeNull();
     expect(screen.getByTestId('pad-content').getAttribute('aria-hidden')).not.toBe('true');
     expect(shows('first', 2)).toBe(true);
   });
@@ -915,12 +919,12 @@ describe('BadmintonPadPreviewScreen: Rules', () => {
   it('opens once for a double tap: one Back closes it, the next returns Home', () => {
     const pad = renderPad();
     const button = rulesButton();
-    if (button === null) throw new Error('no Rules');
+    if (button === null) throw new Error('no Match details');
     act(() => fireEvent.click(button));
     act(() => fireEvent.click(button));
-    expect(screen.getAllByTestId('rules-sheet')).toHaveLength(1);
+    expect(screen.getAllByTestId('details-sheet')).toHaveLength(1);
     expect(back(pad)).toBe(true);
-    expect(screen.queryByTestId('rules-sheet')).toBeNull();
+    expect(screen.queryByTestId('details-sheet')).toBeNull();
     expect(pad.navigation.current()).toBe('scoringPreview');
     expect(back(pad)).toBe(true);
     expect(pad.navigation.current()).toBe('home');
@@ -935,7 +939,7 @@ describe('BadmintonPadPreviewScreen: Rules', () => {
     renderPad();
     press(chip);
     expect(rulesButton()).not.toBeNull();
-    press(en['scoring.rules.title']);
+    press(en['scoring.details.title']);
     expect(lines()).toEqual(LINES);
   });
 
@@ -952,13 +956,13 @@ describe('BadmintonPadPreviewScreen: Rules', () => {
     ['fr', fr],
     ['nl', nl],
   ] as const)(
-    '%s: the button, the title and the lines in the operator’s language',
+    '%s: the button, the title, the subheading and the lines in the operator’s language',
     (lang, words) => {
       renderPad({ deviceLanguages: [lang] });
-      press(words['scoring.rules.title']);
-      expect(
-        within(screen.getByTestId('rules-sheet')).getByText(words['scoring.rules.title']),
-      ).toBeTruthy();
+      press(words['scoring.details.title']);
+      expect(sheet().getByText(words['scoring.details.title'])).toBeTruthy();
+      expect(sheet().getByRole('heading').textContent).toBe(words['scoring.rules.heading']);
+      expect(sheet().getByTestId('details-competition').textContent).toBe('Spring Open 2026');
       const plain = (text: string) => text.split(String.fromCodePoint(0x00a0)).join(' ');
       expect(lines().map((line) => plain(line ?? ''))).toEqual(
         [
@@ -972,6 +976,38 @@ describe('BadmintonPadPreviewScreen: Rules', () => {
       expect(screen.getByRole('button', { name: words['panel.close'] })).toBeTruthy();
     },
   );
+
+  // Owner, 2026-11-01: "How do we know Comp/Divi round etc.?" The sheet says where the match sits, then the rules.
+  it('says where the match sits first, then "Rules" and the lines, then Close', () => {
+    renderPad();
+    press(en['scoring.details.title']);
+    const scroll = screen.getByTestId('details-scroll');
+    const said = within(scroll);
+    expect([...said.getByTestId('match-details').children].map((line) => line.textContent)).toEqual(
+      ['Spring Open 2026', 'U15 Boys Singles · Round 1', 'Match 4', 'A. Sharma v L. Chen'],
+    );
+    const heading = said.getByRole('heading');
+    expect(heading.textContent).toBe(en['scoring.rules.heading']);
+    const follows = (a: Node, b: Node) =>
+      (a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0;
+    expect(follows(said.getByTestId('match-details'), heading)).toBe(true);
+    expect(follows(heading, said.getAllByTestId('rules-line')[0] as Node)).toBe(true);
+    expect(follows(scroll, sheet().getByRole('button', { name: en['panel.close'] }))).toBe(true);
+  });
+
+  it('names the doubles match’s sides as typed, partners joined by " / "', () => {
+    renderPad();
+    press(en['scoring.preview.dev.doubles']);
+    press(en['scoring.details.title']);
+    expect(
+      [...sheet().getByTestId('match-details').children].map((line) => line.textContent),
+    ).toEqual([
+      'Riverside Badminton Club Championships 2026',
+      'Open Mixed Doubles · Quarter-final',
+      'BAD0001',
+      'A. Sharma / R. Iyer v L. Chen / M. Wong',
+    ]);
+  });
 });
 
 describe('BadmintonPadPreviewScreen: in four languages', () => {
@@ -1297,4 +1333,94 @@ describe('BadmintonPadPreviewScreen: the games tally and the strip', () => {
     expect(getComputedStyle(game).textAlign).not.toBe('right');
     expect([linesAllowed(game), linesAllowed(interval)]).toEqual([1, 1]);
   });
+});
+
+/**
+ * Owner, 2026-11-01: "can we add in not started including rules?" The Not started card says, in order, its title,
+ * where the match sits, "Rules" and the lines, then its sentence, from the same components as the sheet. It scrolls
+ * when it is taller than the room, and the top bar's icons stay.
+ */
+describe('BadmintonPadPreviewScreen: the Not started card', () => {
+  const card = () => screen.getByTestId('pad-card');
+  const notStarted = () => {
+    renderPad();
+    press(en['scoring.preview.dev.notStarted']);
+  };
+
+  it('shows its title, Match details, "Rules" and the lines, then its sentence', () => {
+    notStarted();
+    const parts = [...card().children];
+    expect(parts.map((part) => part.textContent)).toEqual([
+      en['scoring.card.notStarted.title'],
+      'Spring Open 2026U15 Boys Singles · Round 1Match 4A. Sharma v L. Chen',
+      expect.stringMatching(new RegExp(`^${en['scoring.rules.heading']}`)),
+      en['scoring.card.notStarted.body'],
+    ]);
+    expect(parts[1]?.getAttribute('data-testid')).toBe('match-details');
+    expect(parts[2]?.getAttribute('data-testid')).toBe('rule-lines');
+    expect(
+      within(card())
+        .getAllByTestId('rules-line')
+        .map((line) => line.textContent),
+    ).toEqual([
+      fill(en['scoring.badminton.rules.bestOf.other'], { count: 3 }),
+      fill(en['scoring.badminton.rules.points'], { points: 21, winBy: 2 }),
+      fill(en['scoring.badminton.rules.cap'], { cap: 30 }),
+      fill(en['scoring.badminton.intervalAt'], { point: 11 }),
+      fill(en['scoring.badminton.rules.endsChange'], { point: 11, game: 3 }),
+    ]);
+  });
+
+  it('stands in a scroll where the halves were, and the top bar keeps its icons', () => {
+    notStarted();
+    const scroll = screen.getByTestId('pad-card-scroll');
+    expect(scroll.contains(card())).toBe(true);
+    expect(getComputedStyle(scroll).overflowY).not.toBe('visible');
+    expect(screen.queryByTestId('half-first')).toBeNull();
+    for (const name of [en['scoring.details.title'], en['scoring.history.title']]) {
+      expect(screen.getByRole('button', { name })).toBeTruthy();
+    }
+    expect(screen.getByTestId('tally')).toBeTruthy();
+  });
+
+  it('carries no Match details on the other cards (a dead link names no match; the rest keep the halves)', () => {
+    renderPad();
+    for (const chip of [
+      en['scoring.preview.dev.linkInvalid'],
+      en['scoring.preview.dev.result'],
+      en['scoring.preview.dev.viewOnly'],
+    ]) {
+      press(chip);
+      expect(screen.queryByTestId('match-details')).toBeNull();
+    }
+  });
+
+  it('names the doubles match, the sides as typed', () => {
+    renderPad();
+    press(en['scoring.preview.dev.doubles']);
+    press(en['scoring.preview.dev.notStarted']);
+    expect(within(card()).getByTestId('details-sides').textContent).toBe(
+      'A. Sharma / R. Iyer v L. Chen / M. Wong',
+    );
+  });
+
+  it.each([
+    ['es', es],
+    ['fr', fr],
+    ['nl', nl],
+  ] as const)(
+    '%s: the title, the subheading and the sentence in the operator’s language',
+    (lang, words) => {
+      renderPad({ deviceLanguages: [lang] });
+      press(words['scoring.preview.dev.notStarted']);
+      const parts = [...card().children].map((part) => part.textContent);
+      expect(parts[0]).toBe(words['scoring.card.notStarted.title']);
+      expect(within(card()).getByRole('heading').textContent).toBe(words['scoring.rules.heading']);
+      expect(parts[3]).toBe(words['scoring.card.notStarted.body']);
+      // The organiser's words are never translated.
+      expect(within(card()).getByTestId('details-where').textContent).toBe(
+        'U15 Boys Singles · Round 1',
+      );
+    },
+  );
 });

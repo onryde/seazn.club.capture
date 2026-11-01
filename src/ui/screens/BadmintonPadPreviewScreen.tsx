@@ -1,5 +1,5 @@
 import { memo, useMemo } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { ScrollView, StyleSheet, View } from 'react-native';
 import type { BadmintonPadKey } from '@/domain/scoring/badmintonPad';
 import type { SanctionSheet } from '@/domain/scoring/badmintonSanction';
 import {
@@ -7,10 +7,10 @@ import {
   matchKnown,
   type PadHistoryGroup,
   type PadHistoryRow,
+  type PadMatchDetails,
   type PadSide,
   type PadSync,
   type PadTally,
-  type PadText,
   type PadView,
 } from '@/domain/scoring/padView';
 import { flashCue, type HalfFlash } from '@/domain/scoring/tapFlash';
@@ -27,10 +27,12 @@ import { EndingPrompt } from '@/ui/components/EndingPrompt';
 import { HistoryCover, type HistoryGroupWords } from '@/ui/components/HistoryCover';
 import { IconButton } from '@/ui/components/IconButton';
 import { LastTapLine } from '@/ui/components/LastTapLine';
+import { MatchDetails } from '@/ui/components/MatchDetails';
+import { MatchDetailsSheet } from '@/ui/components/MatchDetailsSheet';
 import { PadPreviewRow } from '@/ui/components/PadPreviewRow';
 import { PadStateCard } from '@/ui/components/PadStateCard';
 import { PadStrip } from '@/ui/components/PadStrip';
-import { RulesSheet } from '@/ui/components/RulesSheet';
+import { RuleLines } from '@/ui/components/RuleLines';
 import { ScoreEntrySheet } from '@/ui/components/ScoreEntrySheet';
 import { ScoreHalf } from '@/ui/components/ScoreHalf';
 import { StepSheet, type StepOption } from '@/ui/components/StepSheet';
@@ -125,17 +127,21 @@ const GamesTally = memo(function GamesTally({
   );
 });
 
-/** Rules (owner ruling 15) and History (ruling 21), named "Match rules" and "History" (ruling 20). */
+/** Match details (owner ruling 15, then 2026-11-01) and History (ruling 21), named so (ruling 20). */
 const MatchIcons = memo(function MatchIcons({ actions }: { readonly actions: PadPreviewActions }) {
   const { t } = useT();
   return (
     <>
-      <IconButton glyph="info" label={t('scoring.rules.title')} onPress={actions.rules} />
+      <IconButton glyph="info" label={t('scoring.details.title')} onPress={actions.details} />
       <IconButton glyph="history" label={t('scoring.history.title')} onPress={actions.history} />
     </>
   );
 });
 
+/**
+ * The halves, under a card that goes with them; or a card in their place, scrolling when it is taller than the room.
+ * Not started's card carries Match details between its title and its sentence (owner, 2026-11-01).
+ */
 const PadBody = memo(function PadBody({
   view,
   flash,
@@ -148,9 +154,11 @@ const PadBody = memo(function PadBody({
   const card = view.card?.kind === 'updateNeeded' ? null : view.card;
   if (card !== null && cardPlacement(card) === 'instead') {
     return (
-      <View style={styles.body}>
-        <PadStateCard card={card} />
-      </View>
+      <ScrollView testID="pad-card-scroll" style={styles.body}>
+        <PadStateCard card={card}>
+          {card.kind === 'notStarted' ? <DetailsBlock details={view.details} /> : null}
+        </PadStateCard>
+      </ScrollView>
     );
   }
   return (
@@ -245,8 +253,8 @@ const PadSheet = memo(function PadSheet({
           onVoid={actions.voidSanction}
         />
       );
-    case 'rules':
-      return <MatchRules lines={sheet.lines} onClose={actions.cancel} />;
+    case 'details':
+      return <MatchDetailsView details={sheet.details} onClose={actions.cancel} />;
     case 'history':
       return <MatchHistory groups={sheet.groups} onClose={actions.cancel} />;
   }
@@ -291,24 +299,43 @@ const BY = {
   otherScorer: 'scoring.history.otherScorer',
 } as const satisfies Record<PadHistoryRow<BadmintonPadKey>['by'], MessageKey>;
 
-/** The match's rules (owner ruling 15), in the operator's language, in the kit's sheet; Close is the sheets' close. */
-const MatchRules = memo(function MatchRules({
-  lines,
+/** Match details (owner ruling 15, then 2026-11-01) in the kit's sheet; Close is the sheets' close. */
+const MatchDetailsView = memo(function MatchDetailsView({
+  details,
   onClose,
 }: {
-  readonly lines: readonly PadText<BadmintonPadKey>[];
+  readonly details: PadMatchDetails<BadmintonPadKey>;
   readonly onClose: () => void;
 }) {
   const { t } = useT();
-  const words = usePadText();
-  const said = useMemo(() => lines.map((line) => words(line)), [lines, words]);
   return (
-    <RulesSheet
-      title={t('scoring.rules.title')}
-      lines={said}
+    <MatchDetailsSheet
+      title={t('scoring.details.title')}
       closeLabel={t('panel.close')}
       onClose={onClose}
-    />
+    >
+      <DetailsBlock details={details} />
+    </MatchDetailsSheet>
+  );
+});
+
+/**
+ * Where the match sits, then "Rules" and the rule lines in the operator's language: the one drawing of Match details,
+ * in the sheet and on the Not started card alike (owner, 2026-11-01).
+ */
+const DetailsBlock = memo(function DetailsBlock({
+  details,
+}: {
+  readonly details: PadMatchDetails<BadmintonPadKey>;
+}) {
+  const { t } = useT();
+  const words = usePadText();
+  const lines = useMemo(() => details.rules.map((line) => words(line)), [details.rules, words]);
+  return (
+    <>
+      <MatchDetails context={details.context} />
+      <RuleLines heading={t('scoring.rules.heading')} lines={lines} />
+    </>
   );
 });
 

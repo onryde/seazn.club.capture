@@ -17,7 +17,8 @@ type Key =
   | 'k.tool'
   | 'k.last'
   | 'k.strip'
-  | 'k.tally';
+  | 'k.tally'
+  | 'k.rule';
 
 /** A pad mid-game, any sport: both halves take taps, one tool, a last tap this phone can take back. */
 const live: PadView<Key> = {
@@ -46,6 +47,16 @@ const live: PadView<Key> = {
     },
   ],
   tally: { shown: '0:0', said: { key: 'k.tally' } },
+  details: {
+    context: {
+      competition: 'Spring Open 2026',
+      division: null,
+      round: null,
+      match: null,
+      sides: ['A', 'B'],
+    },
+    rules: [{ key: 'k.rule' }],
+  },
   strip: [{ slot: 'context', text: { key: 'k.strip' } }],
   lastTap: { text: { key: 'k.last' }, undo: true },
   sync: { kind: 'synced' },

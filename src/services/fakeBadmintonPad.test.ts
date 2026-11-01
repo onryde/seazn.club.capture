@@ -22,6 +22,13 @@ describe('the fake badminton pad: a preview of the S2 design, not scoring rules'
     const pad = createFakeBadmintonPad(SINGLES_SAMPLE);
     expect(display(pad)).toEqual({
       sides: { first: { players: ['A. Sharma'] }, second: { players: ['L. Chen'] } },
+      context: {
+        competition: 'Spring Open 2026',
+        division: 'U15 Boys Singles',
+        round: 'Round 1',
+        match: 'Match 4',
+        sides: ['A. Sharma', 'L. Chen'],
+      },
       points: { first: 0, second: 0 },
       finished: [],
       server: 'first',
@@ -580,5 +587,17 @@ describe('the sheet History reads', () => {
     rallies(pad, 'first');
     expect(pad.setScore(5, 5).ok).toBe(false);
     expect(history(pad)).toHaveLength(1);
+  });
+});
+
+describe('the samples’ match context (owner, 2026-11-01)', () => {
+  it('names the doubles match’s sides as the match label joins partners', () => {
+    expect(createFakeBadmintonPad(DOUBLES_SAMPLE).snapshot().display.context).toEqual({
+      competition: 'Riverside Badminton Club Championships 2026',
+      division: 'Open Mixed Doubles',
+      round: 'Quarter-final',
+      match: 'BAD0001',
+      sides: ['A. Sharma / R. Iyer', 'L. Chen / M. Wong'],
+    });
   });
 });

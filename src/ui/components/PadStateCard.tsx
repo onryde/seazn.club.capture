@@ -1,4 +1,4 @@
-import { memo } from 'react';
+import { memo, type ReactNode } from 'react';
 import { type StyleProp, StyleSheet, View, type ViewStyle } from 'react-native';
 import type { PadStateCard as PadCard } from '@/domain/scoring/padView';
 import { useT } from '@/hooks/useLanguage';
@@ -23,14 +23,22 @@ const COPY: Readonly<Record<TitledCard['kind'], { title: MessageKey; body: Messa
 /**
  * Why the pad takes no tap, on a card: not started, a recorded result, view only, a dead link. The edge says which
  * kind: caution orange when something is wrong (a dead link), lime for a recorded result, lilac when there is only
- * nothing to do yet. Said politely when it appears.
+ * nothing to do yet. Said politely when it appears. What the caller gives it stands between the title and the sentence:
+ * Not started's Match details (owner, 2026-11-01).
  */
-export const PadStateCard = memo(function PadStateCard({ card }: { readonly card: TitledCard }) {
+export const PadStateCard = memo(function PadStateCard({
+  card,
+  children,
+}: {
+  readonly card: TitledCard;
+  readonly children?: ReactNode;
+}) {
   const { t } = useT();
   const copy = COPY[card.kind];
   return (
     <View testID="pad-card" accessibilityLiveRegion="polite" style={EDGE[card.kind]}>
       <Text variant="panelTitle">{t(copy.title)}</Text>
+      {children}
       <Text variant="body">{t(copy.body)}</Text>
     </View>
   );
