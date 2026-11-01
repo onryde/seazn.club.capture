@@ -330,16 +330,23 @@ production has no capture API at all: a deploy step for the release notes).
   bearer `dl_…`; answers include `SEQ_CONFLICT` and 426 `ENGINE_OUTDATED` / `engine_epoch_missing`.
 - `GET /api/v1/fixtures/{id}/events?since_seq=` for the ledger and conflict recovery.
 
-### 7.3 Open with the engine (before the plan's Start task)
+### 7.3 Settled with the engine and the web (scouted 2026-11-01: web `edc1076dba`, engine `081f7de`, `@onryde/seazn-engine` 1.1.0)
 
-- **The toss.** The web pad does not record who serves first (its badminton skin reads
-  `serveOrderKnown: false` until the first rally). The kernel accepts a declared server, and a
-  badminton rally already has a `server` field. How the Start screen's pick is written (a field on
-  the start, or `server` on the first rally) is confirmed with the engine session before the plan's
-  Start task; the fallback, if the start cannot carry it, is `server` on the first rally
-  (_the controller's_). The web pad should read it the same way: the engine session's to raise.
-- What happens to a match in progress when the engine's epoch moves (the engine session left it to
-  S2): the app's answer is ruling 8 (view only, update); the server's is the web's to confirm.
+- **The toss** needs no engine change: `core.start` is `{}`, and the first rally of the match carries
+  `serving: <EntrantId>`, which anchors the first server (`kernel.ts:1269-1300`); the rally winner
+  serves after that. The web pad leaves `serving` out today; reading it there is the web's to add.
+- **The engine epoch** travels as the POST body's `engine_epoch` (`foldEpochOf('badminton')`, 2 at
+  1.1.0); 426 `ENGINE_OUTDATED` only when it is sent and lower than the server's.
+- **A disqualification's ending** is `core.forfeit {by, reason: "disqualified"}` posted right after
+  the sanction; any other event before it gets 422 `ENDING_SANCTION_PENDING`. Voiding it is a
+  `core.void {event_id}` of the sanction.
+- **A retry with the same `idempotency_key`** is answered with the original outcome (201, same
+  `event_id`), from the server's cache or its ledger, even after a `SEQ_CONFLICT`. So resending a
+  queued tap after a lost answer is always safe.
+- **The web pad drops** an event refused with `FIXTURE_RULES_CHANGED`; this design keeps it, folds it
+  under the reloaded rules and resends it if it is still legal (§6.3). A deliberate difference.
+- **The epoch moving mid-match** is answered by ruling 8 on the phone; the server's own answer is the
+  web's.
 
 ## 8. Copy and languages
 
