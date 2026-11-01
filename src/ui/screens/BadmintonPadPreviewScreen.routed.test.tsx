@@ -2,6 +2,7 @@ import { act, fireEvent, screen, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Gravity } from '@/domain/orientation/orientation';
 import en from '@/i18n/en.json';
+import { TEST_NOW } from '../../../test/fakePorts';
 import { flush, launchApp, type LaunchedApp } from '../../../test/routedApp';
 
 beforeEach(() => vi.useFakeTimers());
@@ -19,8 +20,11 @@ async function openPreview(): Promise<LaunchedApp> {
   const app = await launchApp({ previewScoring: true });
   fireEvent.click(scoringTile());
   await flush();
+  // Started a minute before the test's taps, which are then never in the start's bounce window.
+  app.setNow(new Date(TEST_NOW.getTime() - 60_000));
   fireEvent.click(screen.getByRole('radio', { name: 'A. Sharma' }));
   fireEvent.click(screen.getByRole('button', { name: en['scoring.start.confirm'] }));
+  app.setNow(TEST_NOW);
   await flush();
   return app;
 }

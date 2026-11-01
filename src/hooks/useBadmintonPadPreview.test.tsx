@@ -11,8 +11,12 @@ import { wrapperFor } from '../../test/renderWithPorts';
 function mount(fakes: FakePorts = createFakePorts(), { notStarted = false } = {}) {
   const view = renderHook(() => useBadmintonPadPreview(), { wrapper: wrapperFor(fakes) });
   if (!notStarted && view.result.current.view.start !== null) {
+    // Started a minute before the test's own taps, so none of them falls in the start's bounce window.
+    const before = fakes.ports.clock();
+    fakes.setNow(new Date(before.getTime() - 60_000));
     act(() => view.result.current.actions.pickServer('first'));
     act(() => view.result.current.actions.start());
+    fakes.setNow(before);
   }
   return view;
 }
@@ -369,10 +373,33 @@ describe('useBadmintonPadPreview, the Start screen', () => {
     expect(plates(view)).toEqual([null, 'scoring.badminton.serving.right']);
   });
 
-  it('returns to the Start screen on an Undo right after it, the pick cleared', () => {
-    const view = unstarted();
+  // Hardening (2026-11-01): the second tap of a fast double tap on Start lands on the pad. Within the bounce window
+  // of the start it is the same tap, whatever it lands on: a half or Undo counts once, and says so.
+  it.each([
+    ['a half', (view: ReturnType<typeof mount>) => view.result.current.actions.tapHalf('first')],
+    ['Undo', (view: ReturnType<typeof mount>) => view.result.current.actions.undo()],
+  ] as const)('counts %s within the bounce window of the start as the same tap', (_what, tap) => {
+    const fakes = createFakePorts();
+    const view = mount(fakes, { notStarted: true });
     act(() => view.result.current.actions.pickServer('second'));
     act(() => view.result.current.actions.start());
+    at(fakes, 249);
+    act(() => tap(view));
+    expect(view.result.current.line).toEqual(COUNTED_ONCE);
+    expect(view.result.current.view.start).toBeNull();
+    expect(points(view)).toEqual(['0', '0']);
+    expect(view.result.current.flash).toBeNull();
+    at(fakes, 250);
+    act(() => view.result.current.actions.tapHalf('first'));
+    expect(points(view)).toEqual(['1', '0']);
+  });
+
+  it('returns to the Start screen on an Undo right after it, the pick cleared', () => {
+    const fakes = createFakePorts();
+    const view = mount(fakes, { notStarted: true });
+    act(() => view.result.current.actions.pickServer('second'));
+    act(() => view.result.current.actions.start());
+    at(fakes, 1000);
     act(() => view.result.current.actions.undo());
     expect(view.result.current.view.start).not.toBeNull();
     expect(view.result.current.toss).toBeNull();

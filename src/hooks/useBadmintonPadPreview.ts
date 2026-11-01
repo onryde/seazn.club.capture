@@ -127,7 +127,7 @@ export function useBadmintonPadPreview(): BadmintonPadPreview {
   const sheets = usePadSheets(pad, snapshot, settle, refuseScore);
   const taps = useTaps(pad, settle, say, setFlash);
   const others = useEndingAndCard(pad, settle, setCardNote);
-  const starting = useStart(pad, settle);
+  const starting = useStart(pad, taps.start);
   const { clearToss } = starting;
   const pick = usePick(pad, sample, startSample, sheets.cancel, {
     say,
@@ -142,8 +142,16 @@ export function useBadmintonPadPreview(): BadmintonPadPreview {
     [snapshot],
   );
   const actions = useMemo(
-    () => ({ home, ...taps, ...others, ...sheets.actions, ...starting.actions, pick }),
-    [home, taps, others, sheets.actions, starting.actions, pick],
+    () => ({
+      home,
+      tapHalf: taps.tapHalf,
+      undo: taps.undo,
+      ...others,
+      ...sheets.actions,
+      ...starting.actions,
+      pick,
+    }),
+    [home, taps.tapHalf, taps.undo, others, sheets.actions, starting.actions, pick],
   );
   const chosen = { card: snapshot.card?.kind ?? 'pad', sample } as const;
   const { toss } = starting;
@@ -186,11 +194,16 @@ function useSettle(say: Say): (outcome: FakeOutcome) => void {
   );
 }
 
+/** Start match's tap in the bounce memory: within its window every tap of the pad is its second tap. */
+const START_TAP = 'start';
+
 /**
  * A tap on a half and Undo: each counts once for a repeat within the bounce window (`bounce.ts`) of its own last
  * recorded tap, and the line says "Counted once" under the sentence of the tap that counted. A rally on the other half
  * is a different tap and always counts. A tap on a half that counted is the half's flash, numbered on from the last
- * one (owner ruling 14); a bounce or a refusal flashes nothing.
+ * one (owner ruling 14); a bounce or a refusal flashes nothing. Start match opens the window for every tap: the second
+ * tap of a fast double tap on it lands on the pad that took the Start screen's place, a half or Undo (hardening,
+ * 2026-11-01), and is counted once with it.
  */
 function useTaps(
   pad: FakeBadmintonPad,
@@ -205,7 +218,8 @@ function useTaps(
     (tap: string, make: () => FakeOutcome): boolean => {
       const at = clock().getTime();
       const prior = last.current;
-      if (prior !== null && prior.tap === tap && isBounce(at - prior.at)) {
+      const repeat = prior !== null && (prior.tap === tap || prior.tap === START_TAP);
+      if (repeat && isBounce(at - prior.at)) {
         say(COUNTED_ONCE);
         return false;
       }
@@ -225,24 +239,27 @@ function useTaps(
     [once, pad, setFlash],
   );
   const undo = useCallback(() => void once('undo', () => pad.undo()), [once, pad]);
-  return useMemo(() => ({ tapHalf, undo }), [tapHalf, undo]);
+  const start = useCallback(
+    (server: PadSide) => once(START_TAP, () => pad.start(server)),
+    [once, pad],
+  );
+  return useMemo(() => ({ tapHalf, undo, start }), [tapHalf, undo, start]);
 }
 
 /**
  * The Start screen (owner, 2026-11-01, option A): the side picked to serve first, then Start match, a tap, which
- * records it. The pick goes once the match starts, so an Undo back to the Start screen finds none, and with a pick from
- * the preview row. A second Start finds the match started and does nothing, however close behind the first.
+ * records it through the taps' bounce memory (`useTaps`'s `start`). The pick goes once the match starts, so an Undo
+ * back to the Start screen finds none, and with a pick from the preview row. A second Start finds the match started
+ * and does nothing, however close behind the first.
  */
-function useStart(pad: FakeBadmintonPad, settle: (outcome: FakeOutcome) => void) {
+function useStart(pad: FakeBadmintonPad, record: (server: PadSide) => boolean) {
   const [toss, setToss] = useState<PadSide | null>(null);
   const pickServer = useCallback((side: PadSide) => setToss(side), []);
   const clearToss = useCallback(() => setToss(null), []);
   const start = useCallback(() => {
     if (toss === null || pad.snapshot().display.phase !== 'notStarted') return;
-    const outcome = pad.start(toss);
-    settle(outcome);
-    if (outcome.ok) setToss(null);
-  }, [pad, settle, toss]);
+    if (record(toss)) setToss(null);
+  }, [pad, record, toss]);
   const actions = useMemo(() => ({ pickServer, start }), [pickServer, start]);
   return { toss, clearToss, actions };
 }

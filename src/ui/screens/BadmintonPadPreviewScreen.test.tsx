@@ -366,7 +366,7 @@ describe('BadmintonPadPreviewScreen: Set score', () => {
   });
 
   it('sets the score before the first rally, and Undo takes it back', () => {
-    renderPad();
+    const pad = renderPad();
     press(en['scoring.badminton.tool.setScore']);
     type('A. Sharma', '5');
     type('L. Chen', '3');
@@ -374,7 +374,7 @@ describe('BadmintonPadPreviewScreen: Set score', () => {
     expect(screen.queryByTestId('score-sheet')).toBeNull();
     expect(shows('first', 5) && shows('second', 3)).toBe(true);
     expect(lastTap()).toContain(fill(en['scoring.badminton.last.setScore'], { score: '5–3' }));
-    press(en['scoring.pad.undo']);
+    undoTap(pad);
     expect(shows('first', 0)).toBe(true);
     expect(lastTap()).toContain(en['scoring.badminton.undone.setScore']);
   });
@@ -1567,6 +1567,39 @@ describe('BadmintonPadPreviewScreen: the Start screen', () => {
         fill(en['scoring.badminton.last.start'], { side: 'L. Chen' }),
       ),
     ).toBeTruthy();
+  });
+
+  // Hardening (2026-11-01): a fast double tap on Start match lands its second tap on the pad that took the Start
+  // screen's place. Within the bounce window (`bounce.ts`) it is the same tap: counted once, and said so.
+  it('counts a half tapped within the bounce window of Start as the same tap: no rally, "Counted once"', () => {
+    renderStart();
+    pick('L. Chen');
+    act(() => fireEvent.click(startButton()));
+    act(() => fireEvent.click(half('first')));
+    expect(shows('first', 0) && shows('second', 0)).toBe(true);
+    expect(lastTap()).toBe(
+      fill(en['scoring.badminton.last.start'], { side: 'L. Chen' }) +
+        en['scoring.pad.countedOnce'] +
+        en['scoring.pad.undo'],
+    );
+  });
+
+  it('counts Undo within the bounce window of Start as the same tap: the match stays started', () => {
+    renderStart();
+    pick('L. Chen');
+    act(() => fireEvent.click(startButton()));
+    press(en['scoring.pad.undo']);
+    expect(screen.queryByTestId('start-screen')).toBeNull();
+    expect(lastTap()).toContain(en['scoring.pad.countedOnce']);
+  });
+
+  it('takes a rally once the bounce window after Start has passed', () => {
+    const pad = renderStart();
+    pick('L. Chen');
+    act(() => fireEvent.click(startButton()));
+    pad.setNow(new Date(TEST_NOW.getTime() + 250));
+    act(() => fireEvent.click(half('first')));
+    expect(shows('first', 1)).toBe(true);
   });
 
   it('goes Home on Back, as the pad does', () => {
