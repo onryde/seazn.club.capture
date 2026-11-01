@@ -4,8 +4,17 @@ import { useBadmintonPadPreview } from '@/hooks/useBadmintonPadPreview';
 import { createFakePorts, TEST_NOW, type FakePorts } from '../../test/fakePorts';
 import { wrapperFor } from '../../test/renderWithPorts';
 
-function mount(fakes: FakePorts = createFakePorts()) {
-  return renderHook(() => useBadmintonPadPreview(), { wrapper: wrapperFor(fakes) });
+/**
+ * The preview's hook, its match started as the Start screen starts it, the first side serving (owner, 2026-11-01:
+ * the samples begin not started), unless `notStarted`.
+ */
+function mount(fakes: FakePorts = createFakePorts(), { notStarted = false } = {}) {
+  const view = renderHook(() => useBadmintonPadPreview(), { wrapper: wrapperFor(fakes) });
+  if (!notStarted && view.result.current.view.start !== null) {
+    act(() => view.result.current.actions.pickServer('first'));
+    act(() => view.result.current.actions.start());
+  }
+  return view;
 }
 
 const refusal = (key: string) => ({ kind: 'refusal', key });
@@ -48,7 +57,8 @@ describe('useBadmintonPadPreview, given what the screen never sends', () => {
     act(() => view.result.current.actions.choose('yellow-card'));
     expect(view.result.current.sheet?.kind).toBe('sanction');
     act(() => view.result.current.actions.choose('9'));
-    expect(view.result.current.view.lastTap).toBeNull();
+    // Nothing recorded: the line still says the start.
+    expect(view.result.current.view.lastTap?.text.key).toBe('scoring.badminton.last.start');
   });
 
   it('ignores a sanction choice while Set score is up', () => {
@@ -56,11 +66,11 @@ describe('useBadmintonPadPreview, given what the screen never sends', () => {
     act(() => view.result.current.actions.tool('setScore'));
     act(() => view.result.current.actions.choose('warning'));
     expect(view.result.current.sheet).toMatchObject({ kind: 'setScore', game: 1 });
-    expect(view.result.current.view.lastTap).toBeNull();
+    expect(view.result.current.view.lastTap?.text.key).toBe('scoring.badminton.last.start');
   });
 
   it('says Undo has nothing to take back when nothing is this phone’s', () => {
-    const view = mount();
+    const view = mount(createFakePorts(), { notStarted: true });
     act(() => view.result.current.actions.undo());
     expect(view.result.current.line).toEqual(refusal('scoring.refusal.nothingToUndo'));
   });
@@ -81,7 +91,7 @@ describe('useBadmintonPadPreview, given what the screen never sends', () => {
 describe('useBadmintonPadPreview, a tap that comes twice', () => {
   it('counts a refused Undo again, never once: nothing counted to repeat', () => {
     const fakes = createFakePorts();
-    const view = mount(fakes);
+    const view = mount(fakes, { notStarted: true });
     act(() => view.result.current.actions.undo());
     at(fakes, 100);
     act(() => view.result.current.actions.undo());
@@ -304,5 +314,84 @@ describe('useBadmintonPadPreview, the Match details sheet', () => {
     act(() => view.result.current.actions.details());
     act(() => view.result.current.actions.pick('viewOnly'));
     expect(view.result.current.sheet).toBeNull();
+  });
+});
+
+// Owner, 2026-11-01, option A: the samples begin not started; the Start screen asks who serves first, and Start match,
+// a tap, starts the match with that side serving. Undo right after it returns to the Start screen, the pick cleared.
+describe('useBadmintonPadPreview, the Start screen', () => {
+  const unstarted = () => mount(createFakePorts(), { notStarted: true });
+  const plates = (view: ReturnType<typeof mount>) =>
+    view.result.current.view.halves.map((half) => half.serving?.shown.key ?? null);
+
+  it('opens on the Start screen, nothing picked', () => {
+    const view = unstarted();
+    expect(view.result.current.view.start?.sides.map((side) => side.label)).toEqual([
+      'A. Sharma',
+      'L. Chen',
+    ]);
+    expect(view.result.current.toss).toBeNull();
+  });
+
+  it('starts nothing until a side is picked (empty input)', () => {
+    const view = unstarted();
+    act(() => view.result.current.actions.start());
+    expect(view.result.current.view.start).not.toBeNull();
+    expect(view.result.current.line).toBeNull();
+  });
+
+  it('starts the match with the side picked serving from the right at 0-0, and clears the pick', () => {
+    const view = unstarted();
+    act(() => view.result.current.actions.pickServer('second'));
+    expect(view.result.current.toss).toBe('second');
+    act(() => view.result.current.actions.start());
+    expect(view.result.current.view.start).toBeNull();
+    expect(view.result.current.toss).toBeNull();
+    expect(points(view)).toEqual(['0', '0']);
+    expect(plates(view)).toEqual([null, 'scoring.badminton.serving.right']);
+    expect(view.result.current.view.lastTap).toEqual({
+      text: { key: 'scoring.badminton.last.start', vars: { side: 'L. Chen' } },
+      undo: true,
+    });
+  });
+
+  it('does nothing for a second Start, however close behind (a second call)', () => {
+    const view = unstarted();
+    act(() => view.result.current.actions.pickServer('second'));
+    const { start } = view.result.current.actions;
+    act(() => {
+      start();
+      start();
+    });
+    act(() => view.result.current.actions.pickServer('first'));
+    act(() => view.result.current.actions.start());
+    expect(view.result.current.line).toBeNull();
+    expect(plates(view)).toEqual([null, 'scoring.badminton.serving.right']);
+  });
+
+  it('returns to the Start screen on an Undo right after it, the pick cleared', () => {
+    const view = unstarted();
+    act(() => view.result.current.actions.pickServer('second'));
+    act(() => view.result.current.actions.start());
+    act(() => view.result.current.actions.undo());
+    expect(view.result.current.view.start).not.toBeNull();
+    expect(view.result.current.toss).toBeNull();
+    expect(view.result.current.view.lastTap).toBeNull();
+  });
+
+  it('clears the pick on a pick from the preview row, and Start begins the sample afresh, not started', () => {
+    const view = unstarted();
+    act(() => view.result.current.actions.pickServer('second'));
+    act(() => view.result.current.actions.pick('doubles'));
+    expect(view.result.current.toss).toBeNull();
+    // The doubles sample was started by its other scorer, and is under way.
+    expect(view.result.current.view.start).toBeNull();
+    act(() => view.result.current.actions.pick('start'));
+    expect(view.result.current.view.start?.sides.map((side) => side.label)).toEqual([
+      'A. Sharma / R. Iyer',
+      'L. Chen / M. Wong',
+    ]);
+    expect(view.result.current.chosen.sample).toBe('doubles');
+    expect(points(view)).toEqual(['0', '0']);
   });
 });

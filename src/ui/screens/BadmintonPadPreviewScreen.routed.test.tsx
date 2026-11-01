@@ -11,10 +11,16 @@ const scoringTile = () => screen.getByRole('button', { name: new RegExp(en['mode
 const topScore = (points: number) =>
   within(screen.getByTestId('half-first')).queryByText(String(points)) !== null;
 
-/** The dev twin's Home, its Remote scoring tile tapped: the pad on its own route. */
+/**
+ * The dev twin's Home, its Remote scoring tile tapped: the pad on its own route, its match started from the Start
+ * screen (owner, 2026-11-01), A. Sharma serving first.
+ */
 async function openPreview(): Promise<LaunchedApp> {
   const app = await launchApp({ previewScoring: true });
   fireEvent.click(scoringTile());
+  await flush();
+  fireEvent.click(screen.getByRole('radio', { name: 'A. Sharma' }));
+  fireEvent.click(screen.getByRole('button', { name: en['scoring.start.confirm'] }));
   await flush();
   return app;
 }
@@ -45,7 +51,8 @@ describe('the Remote scoring preview, routed', () => {
     await flush();
     expect(app.nav.current()).toBe('scoringPreview');
     expect(app.nav.history).toEqual(['scoringPreview']);
-    expect(screen.getByTestId('half-first')).toBeTruthy();
+    // The samples begin not started (owner, 2026-11-01): the Start screen.
+    expect(screen.getByTestId('start-screen')).toBeTruthy();
   });
 
   it('stays put on a return to the foreground, the match where it was', async () => {
@@ -146,7 +153,7 @@ describe('the Remote scoring preview, held sideways', () => {
     await flush();
     expect(upright()).toBeNull();
     expect(app.orientationLock.locks.at(-1)).toBe('portrait');
-    expect(screen.getByTestId('half-first')).toBeTruthy();
+    expect(screen.getByTestId('start-screen')).toBeTruthy();
   });
 
   it('follows the phone again back on Home', async () => {

@@ -18,7 +18,8 @@ type Key =
   | 'k.last'
   | 'k.strip'
   | 'k.tally'
-  | 'k.rule';
+  | 'k.rule'
+  | 'k.ask';
 
 /** A pad mid-game, any sport: both halves take taps, one tool, a last tap this phone can take back. */
 const live: PadView<Key> = {
@@ -57,6 +58,7 @@ const live: PadView<Key> = {
     },
     rules: [{ key: 'k.rule' }],
   },
+  start: null,
   strip: [{ slot: 'context', text: { key: 'k.strip' } }],
   lastTap: { text: { key: 'k.last' }, undo: true },
   sync: { kind: 'synced' },
@@ -137,6 +139,22 @@ describe('withCard', () => {
     { kind: 'updateNeeded', unsent: 2 },
   ] as const)('drops the last tap with the pad or the controls under $kind', (card) => {
     expect(withCard(live, card).lastTap).toBeNull();
+  });
+
+  // Owner, 2026-11-01: nothing is started under a card (a view-only phone, a dead link, an app too old to score).
+  it.each(CARDS)('takes the Start screen away under $kind', (card) => {
+    const asking: PadView<Key> = {
+      ...live,
+      start: {
+        ask: { key: 'k.ask' },
+        sides: [
+          { side: 'first', label: 'A' },
+          { side: 'second', label: 'B' },
+        ],
+      },
+    };
+    expect(withCard(asking, card).start).toBeNull();
+    expect(withCard(asking, null).start).toBe(asking.start);
   });
 
   it('replaces a card already there (a preview card over a recorded result)', () => {

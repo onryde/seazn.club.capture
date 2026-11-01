@@ -166,11 +166,25 @@ export type PadMatchDetails<K extends string> = {
   readonly rules: readonly PadText<K>[];
 };
 
+/**
+ * Before the match starts (owner, 2026-11-01: "it show the player, match info and ask to start", option A): the
+ * question, and the two sides to pick from, as typed, top first. The kit draws the match details above it and Start
+ * match under it, which records the pick.
+ */
+export type PadStart<K extends string> = {
+  readonly ask: PadText<K>;
+  readonly sides: readonly [PadStartSide, PadStartSide];
+};
+
+export type PadStartSide = { readonly side: PadSide; readonly label: string };
+
 export type PadView<K extends string> = {
   /** Top, then bottom (layout A). */
   readonly halves: readonly [PadHalf<K>, PadHalf<K>];
   readonly tally: PadTally<K>;
   readonly details: PadMatchDetails<K>;
+  /** The Start screen's question, in the halves' place, while the match has not started; null once it has. */
+  readonly start: PadStart<K> | null;
   readonly strip: readonly PadStripItem<K>[];
   readonly lastTap: PadLastTap<K> | null;
   readonly sync: PadSync;
@@ -204,7 +218,8 @@ export function matchKnown(card: PadStateCard | null): boolean {
  * Any sport's pad under a card: the halves stop taking taps and the tools go. Undo stays only under a recorded result,
  * whose card tells the scorer to use it on a mistake in this phone's own taps (the web's `device.resultRecorded`); a
  * view-only match keeps the last tap with no Undo, and a card in place of the pad or of the controls drops the last
- * tap with it. A card replaces one already there. No card: the pad as it is.
+ * tap with it. A card replaces one already there, and takes the Start screen away: nothing is started under a card. No
+ * card: the pad as it is.
  */
 export function withCard<K extends string>(
   view: PadView<K>,
@@ -219,6 +234,7 @@ export function withCard<K extends string>(
       { ...bottom, tappable: false },
     ],
     tools: [],
+    start: null,
     lastTap: lastTapUnder(view.lastTap, card),
     card,
   };

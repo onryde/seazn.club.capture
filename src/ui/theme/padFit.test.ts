@@ -205,6 +205,7 @@ describe('History’s rows at 320 and 360 in four languages (owner ruling 21)', 
     };
     return [
       ...NAMES.flatMap((side) => [
+        said('start', { side }),
         said('rally', { side }),
         said('game', { game: '3', side }),
         said('match', { side }),
@@ -328,8 +329,8 @@ describe('the last-tap line', () => {
         .map(({ key }) => `${lang} ${key}`),
     );
 
-  it('reads thirteen sentences in each language (anti-vacuity)', () => {
-    for (const [, dictionary] of LANGUAGES) expect(sentences(dictionary)).toHaveLength(13);
+  it('reads fourteen sentences in each language (anti-vacuity)', () => {
+    for (const [, dictionary] of LANGUAGES) expect(sentences(dictionary)).toHaveLength(14);
   });
 
   it('holds every sentence and refusal whole at 360, in four languages', () => {
@@ -861,6 +862,59 @@ describe('Match details at 320 and 360 in four languages (owner, 2026-11-01)', (
       for (const width of WIDTHS) {
         expect(widest(card, cardText(width))).toBeLessThanOrEqual(cardText(width));
         expect(widest(sheet, sheetText(width))).toBeLessThanOrEqual(sheetText(width));
+      }
+    },
+  );
+});
+
+/**
+ * The Start screen (owner, 2026-11-01, option A) in the pad's column: Match details (measured above at the card's
+ * narrower room), "Who serves first?", the two sides' buttons and Start match. Nothing is cut: every line wraps, so
+ * what can fail is a word wider than its room, and the buttons standing side by side.
+ */
+describe('the Start screen at 320 and 360 in four languages (owner, 2026-11-01)', () => {
+  const caps = (role: 'state' | 'action') => (text: string) =>
+    barlow700.width(text.toUpperCase(), typeScale[role].fontSize) +
+    typeScale[role].letterSpacing * [...text].length;
+  /** A side's button: half the row less its gap, less its padding (`space.sm` a side) and its border. */
+  const tossText = (width: number) =>
+    (column(width) - space.sm) / 2 - 2 * space.sm - 2 * layout.iconBorder;
+  /** Start match's label: the column less the Button's padding (`space.xl` a side). */
+  const startText = (width: number) => column(width) - 2 * space.xl;
+  const SIDES = ['A. Sharma / R. Iyer', 'L. Chen / M. Wong'] as const;
+
+  it('holds the two sides side by side at 320 and 360: two of `padTossMin` and the gap fit the column', () => {
+    for (const width of WIDTHS) {
+      expect(2 * layout.padTossMin + space.sm).toBeLessThanOrEqual(column(width));
+    }
+    expect(WIDTHS.map(tossText)).toEqual([122, 142]);
+  });
+
+  it('fits every word of the doubles names in a button, wrapping to two lines at most', () => {
+    for (const width of WIDTHS) {
+      for (const name of SIDES) {
+        expect(linesOf(name, tossText(width), nameWidth)).toBeLessThanOrEqual(2);
+        for (const word of words(name))
+          expect(nameWidth(word)).toBeLessThanOrEqual(tossText(width));
+      }
+    }
+    // Anti-vacuity: at 320 a doubles name needs its second line, and the button grows for it.
+    expect(SIDES.map((name) => linesOf(name, tossText(320), nameWidth))).toEqual([2, 2]);
+  });
+
+  it.each(LANGUAGES)(
+    '%s: the question and Start match, no word wider than its room',
+    (_lang, dictionary: Dictionary) => {
+      const ask = dictionary['scoring.badminton.start.ask'] ?? '';
+      const start = dictionary['scoring.start.confirm'] ?? '';
+      expect([ask, start]).not.toContain('');
+      for (const width of WIDTHS) {
+        for (const word of words(ask)) {
+          expect(caps('state')(word)).toBeLessThanOrEqual(column(width));
+        }
+        for (const word of words(start)) {
+          expect(caps('action')(word)).toBeLessThanOrEqual(startText(width));
+        }
       }
     },
   );

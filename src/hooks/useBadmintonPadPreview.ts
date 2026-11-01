@@ -20,6 +20,7 @@ import {
   SINGLES_SAMPLE,
   type FakeBadmintonPad,
   type FakeOutcome,
+  type FakePadSample,
   type FakeRefusal,
 } from '@/services/fakeBadmintonPad';
 
@@ -27,8 +28,11 @@ export type { PadSheetView } from '@/hooks/usePadSheets';
 
 export type PreviewSample = 'singles' | 'doubles';
 
-/** What the preview row can pick: the pad itself, a state card, a sample match, or the next sync status. */
-export type PreviewChoice = 'pad' | PadStateCard['kind'] | PreviewSample | 'sync';
+/**
+ * What the preview row can pick: the pad itself, a state card, a sample match, the next sync status, or Start: the
+ * sample's match afresh and not started, the Start screen (owner, 2026-11-01).
+ */
+export type PreviewChoice = 'pad' | PadStateCard['kind'] | PreviewSample | 'sync' | 'start';
 
 /**
  * What the last-tap line says beside the last tap's sentence: a refusal (in caution, in the sentence's place: the tap
@@ -56,6 +60,9 @@ export type PadPreviewActions = {
   readonly details: () => void;
   /** History (owner ruling 21): every entry on the sheet, newest first, in a cover over the pad; view only. */
   readonly history: () => void;
+  /** The Start screen (owner, 2026-11-01, option A): who serves first, picked; then Start match, a tap. */
+  readonly pickServer: (side: PadSide) => void;
+  readonly start: () => void;
   readonly pick: (choice: PreviewChoice) => void;
 };
 
@@ -67,6 +74,8 @@ export type BadmintonPadPreview = {
   readonly cardNote: MessageKey | null;
   /** The last tap on a half that counted, for its flash (owner ruling 14; `flashCue`). */
   readonly flash: HalfFlash;
+  /** The Start screen's pick of who serves first; none until the scorer picks, and none once the match starts. */
+  readonly toss: PadSide | null;
   readonly chosen: { readonly card: PadStateCard['kind'] | 'pad'; readonly sample: PreviewSample };
   readonly actions: PadPreviewActions;
 };
@@ -118,7 +127,14 @@ export function useBadmintonPadPreview(): BadmintonPadPreview {
   const sheets = usePadSheets(pad, snapshot, settle, refuseScore);
   const taps = useTaps(pad, settle, say, setFlash);
   const others = useEndingAndCard(pad, settle, setCardNote);
-  const pick = usePick(pad, startSample, sheets.cancel, { say, setCardNote, setFlash });
+  const starting = useStart(pad, settle);
+  const { clearToss } = starting;
+  const pick = usePick(pad, sample, startSample, sheets.cancel, {
+    say,
+    setCardNote,
+    setFlash,
+    clearToss,
+  });
   const home = useBackToHome();
   useBackCloses(sheets.open, sheets.cancel);
   const view = useMemo(
@@ -126,20 +142,25 @@ export function useBadmintonPadPreview(): BadmintonPadPreview {
     [snapshot],
   );
   const actions = useMemo(
-    () => ({ home, ...taps, ...others, ...sheets.actions, pick }),
-    [home, taps, others, sheets.actions, pick],
+    () => ({ home, ...taps, ...others, ...sheets.actions, ...starting.actions, pick }),
+    [home, taps, others, sheets.actions, starting.actions, pick],
   );
   const chosen = { card: snapshot.card?.kind ?? 'pad', sample } as const;
-  return { view, sheet: sheets.view, line, cardNote, flash, chosen, actions };
+  const { toss } = starting;
+  return { view, sheet: sheets.view, line, cardNote, flash, toss, chosen, actions };
 }
 
-/** The app's kept match, or a singles match afresh; picking a sample starts its match afresh. */
+/**
+ * The app's kept match, or a singles match afresh; picking a sample starts its match afresh, and Start (`fresh`) starts
+ * it not started, with no one else's taps.
+ */
 function usePreviewPad() {
   const ports = usePorts();
   const [held, setHeld] = useState(() => keptFor(ports));
   const startSample = useCallback(
-    (sample: PreviewSample) => {
-      const next = { sample, pad: createFakeBadmintonPad(SAMPLES[sample]) };
+    (sample: PreviewSample, fresh = false) => {
+      const match: FakePadSample = fresh ? { ...SAMPLES[sample], others: [] } : SAMPLES[sample];
+      const next = { sample, pad: createFakeBadmintonPad(match) };
       kept.set(ports, next);
       setHeld(next);
     },
@@ -207,6 +228,25 @@ function useTaps(
   return useMemo(() => ({ tapHalf, undo }), [tapHalf, undo]);
 }
 
+/**
+ * The Start screen (owner, 2026-11-01, option A): the side picked to serve first, then Start match, a tap, which
+ * records it. The pick goes once the match starts, so an Undo back to the Start screen finds none, and with a pick from
+ * the preview row. A second Start finds the match started and does nothing, however close behind the first.
+ */
+function useStart(pad: FakeBadmintonPad, settle: (outcome: FakeOutcome) => void) {
+  const [toss, setToss] = useState<PadSide | null>(null);
+  const pickServer = useCallback((side: PadSide) => setToss(side), []);
+  const clearToss = useCallback(() => setToss(null), []);
+  const start = useCallback(() => {
+    if (toss === null || pad.snapshot().display.phase !== 'notStarted') return;
+    const outcome = pad.start(toss);
+    settle(outcome);
+    if (outcome.ok) setToss(null);
+  }, [pad, settle, toss]);
+  const actions = useMemo(() => ({ pickServer, start }), [pickServer, start]);
+  return { toss, clearToss, actions };
+}
+
 function useEndingAndCard(
   pad: FakeBadmintonPad,
   settle: (outcome: FakeOutcome) => void,
@@ -221,11 +261,12 @@ function useEndingAndCard(
   );
 }
 
-/** What a pick from the preview row clears: the line, the banner's note, and a flash still showing. */
+/** What a pick from the preview row clears: the line, the banner's note, a flash still showing, and the Start pick. */
 type Clears = {
   readonly say: Say;
   readonly setCardNote: (note: MessageKey | null) => void;
   readonly setFlash: SetFlash;
+  readonly clearToss: () => void;
 };
 
 /**
@@ -234,9 +275,10 @@ type Clears = {
  */
 function usePick(
   pad: FakeBadmintonPad,
-  startSample: (sample: PreviewSample) => void,
+  sample: PreviewSample,
+  startSample: (sample: PreviewSample, fresh?: boolean) => void,
   closeSheet: () => void,
-  { say, setCardNote, setFlash }: Clears,
+  { say, setCardNote, setFlash, clearToss }: Clears,
 ) {
   return useCallback(
     (choice: PreviewChoice) => {
@@ -244,11 +286,13 @@ function usePick(
       say(null);
       setCardNote(null);
       setFlash(null);
+      clearToss();
       if (choice === 'sync') return pad.setSync(nextSync(pad.snapshot().sync));
+      if (choice === 'start') return startSample(sample, true);
       if (choice === 'singles' || choice === 'doubles') return startSample(choice);
       pad.preview(cardOf(choice));
     },
-    [pad, startSample, closeSheet, say, setCardNote, setFlash],
+    [pad, sample, startSample, closeSheet, say, setCardNote, setFlash, clearToss],
   );
 }
 

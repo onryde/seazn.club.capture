@@ -579,3 +579,69 @@ describe('badmintonPad: the match details', () => {
     expect(view.details.context.competition).toBe('Spring Open 2026');
   });
 });
+
+// Owner, 2026-11-01, option A: "it show the player, match info and ask to start". Before the match starts the pad is
+// the Start screen: who serves first, from the two sides as typed; no tools, no tap, no serving plate, no line.
+describe('badmintonPad: before the match starts', () => {
+  const notStarted: BadmintonDisplay = { ...pre, phase: 'notStarted' };
+
+  it('asks who serves first, offering the two sides as typed, top first', () => {
+    expect(badmintonPad(notStarted).start).toEqual({
+      ask: { key: 'scoring.badminton.start.ask' },
+      sides: [
+        { side: 'first', label: 'A. Sharma' },
+        { side: 'second', label: 'L. Chen' },
+      ],
+    });
+  });
+
+  it('joins doubles partners as typed', () => {
+    const doubles: BadmintonDisplay = {
+      ...notStarted,
+      sides: {
+        first: { players: ['A. Sharma', 'R. Iyer'] },
+        second: { players: ['L. Chen', 'M. Wong'] },
+      },
+    };
+    expect(badmintonPad(doubles).start?.sides.map((side) => side.label)).toEqual([
+      'A. Sharma / R. Iyer',
+      'L. Chen / M. Wong',
+    ]);
+  });
+
+  it('offers no tool, no tap, no serving plate and no last tap; the tally is 0:0 and the details stand', () => {
+    const view = badmintonPad(notStarted);
+    expect(view.tools).toEqual([]);
+    expect(view.halves.map((half) => [half.tappable, half.serving])).toEqual([
+      [false, null],
+      [false, null],
+    ]);
+    expect(view.lastTap).toBeNull();
+    expect(view.tally.shown).toBe('0:0');
+    expect(view.details.context.match).toBe('Match 4');
+  });
+
+  it('asks nothing once started: the pad, the side picked serving from the right at 0-0', () => {
+    const started: BadmintonDisplay = {
+      ...pre,
+      server: 'second',
+      lastTap: { kind: 'start', server: 'second' },
+      undoable: true,
+    };
+    const view = badmintonPad(started);
+    expect(view.start).toBeNull();
+    expect(view.halves.map((half) => half.serving?.shown ?? null)).toEqual([
+      null,
+      { key: 'scoring.badminton.serving.right' },
+    ]);
+    expect(view.lastTap).toEqual({
+      text: { key: 'scoring.badminton.last.start', vars: { side: 'L. Chen' } },
+      undo: true,
+    });
+    expect(view.tools.map((tool) => tool.id)).toEqual([
+      'sanction.first',
+      'sanction.second',
+      'setScore',
+    ]);
+  });
+});

@@ -8,6 +8,20 @@ import {
 } from '@/services/fakeBadmintonPad';
 
 const display = (pad: FakeBadmintonPad) => pad.snapshot().display;
+/** The singles sample started as the Start screen starts it, `server` serving first (owner, 2026-11-01, option A). */
+const started = (server: PadSide = 'first') => {
+  const pad = createFakeBadmintonPad(SINGLES_SAMPLE);
+  expect(pad.start(server)).toEqual({ ok: true });
+  return pad;
+};
+/** The start's entry, as the fake records it: this phone's, game 1, at 0-0. */
+const START_ENTRY = {
+  did: { kind: 'start', server: 'first' },
+  game: 1,
+  after: { first: 0, second: 0 },
+  own: true,
+  undone: false,
+} as const;
 const points = (pad: FakeBadmintonPad) => display(pad).points;
 const rallies = (pad: FakeBadmintonPad, ...sides: PadSide[]) => {
   for (const side of sides) expect(pad.rally(side)).toEqual({ ok: true });
@@ -18,8 +32,9 @@ const times = (count: number, side: PadSide): PadSide[] =>
 const firstWinsAGame = (pad: FakeBadmintonPad) => rallies(pad, ...times(21, 'first'));
 
 describe('the fake badminton pad: a preview of the S2 design, not scoring rules', () => {
-  it('starts game 1 of a best of 3 at 0-0, the first side serving from the right, nothing to undo', () => {
-    const pad = createFakeBadmintonPad(SINGLES_SAMPLE);
+  it('begins not started: game 1 of a best of 3 at 0-0, nothing to undo (owner, 2026-11-01)', () => {
+    const NOT_STARTED = createFakeBadmintonPad(SINGLES_SAMPLE);
+    const pad = NOT_STARTED;
     expect(display(pad)).toEqual({
       sides: { first: { players: ['A. Sharma'] }, second: { players: ['L. Chen'] } },
       context: {
@@ -36,7 +51,7 @@ describe('the fake badminton pad: a preview of the S2 design, not scoring rules'
       game: 1,
       // The preview's rules (the controller's brief, 2026-10-31): best of 3, 21 won by 2, capped at 30, interval at 11.
       rules: { bestOf: 3, points: 21, winBy: 2, cap: 30, intervalPoint: 11 },
-      phase: 'pre',
+      phase: 'notStarted',
       sanctions: [],
       lastTap: null,
       undoable: false,
@@ -47,7 +62,7 @@ describe('the fake badminton pad: a preview of the S2 design, not scoring rules'
   });
 
   it('gives a rally to its side, makes it the server, and starts the game', () => {
-    const pad = createFakeBadmintonPad(SINGLES_SAMPLE);
+    const pad = started();
     rallies(pad, 'second');
     expect(display(pad)).toMatchObject({
       points: { first: 0, second: 1 },
@@ -59,7 +74,7 @@ describe('the fake badminton pad: a preview of the S2 design, not scoring rules'
   });
 
   it('serves from the right on the server’s even score and the left on its odd one', () => {
-    const pad = createFakeBadmintonPad(SINGLES_SAMPLE);
+    const pad = started();
     const courts: string[] = [];
     for (const side of ['first', 'first', 'second', 'second', 'second', 'first'] as const) {
       rallies(pad, side);
@@ -78,7 +93,7 @@ describe('the fake badminton pad: a preview of the S2 design, not scoring rules'
   });
 
   it('wins a game only by two clear points', () => {
-    const pad = createFakeBadmintonPad(SINGLES_SAMPLE);
+    const pad = started();
     expect(pad.setScore(20, 20)).toEqual({ ok: true });
     rallies(pad, 'first');
     expect(display(pad)).toMatchObject({
@@ -99,7 +114,7 @@ describe('the fake badminton pad: a preview of the S2 design, not scoring rules'
   });
 
   it('caps a game at 30: 30-29 wins it', () => {
-    const pad = createFakeBadmintonPad(SINGLES_SAMPLE);
+    const pad = started();
     pad.setScore(29, 29);
     rallies(pad, 'second');
     expect(display(pad)).toMatchObject({
@@ -109,14 +124,14 @@ describe('the fake badminton pad: a preview of the S2 design, not scoring rules'
   });
 
   it('lets the winner of a game serve first in the next', () => {
-    const pad = createFakeBadmintonPad(SINGLES_SAMPLE);
+    const pad = started();
     pad.setScore(19, 20);
     rallies(pad, 'second');
     expect(display(pad)).toMatchObject({ server: 'second', court: 'right', game: 2 });
   });
 
   it('decides a best of 3 at two games, keeping the final score, and takes no more rallies', () => {
-    const pad = createFakeBadmintonPad(SINGLES_SAMPLE);
+    const pad = started();
     firstWinsAGame(pad);
     pad.setScore(20, 15);
     rallies(pad, 'first');
@@ -135,7 +150,7 @@ describe('the fake badminton pad: a preview of the S2 design, not scoring rules'
   });
 
   it('plays a third game at one game all', () => {
-    const pad = createFakeBadmintonPad(SINGLES_SAMPLE);
+    const pad = started();
     firstWinsAGame(pad);
     rallies(pad, ...times(21, 'second'));
     expect(display(pad)).toMatchObject({
@@ -155,13 +170,13 @@ describe('the finished games’ scores', () => {
   const finished = (pad: FakeBadmintonPad) => display(pad).finished;
 
   it('has none in game 1, and never counts the game under way', () => {
-    const pad = createFakeBadmintonPad(SINGLES_SAMPLE);
+    const pad = started();
     rallies(pad, ...times(20, 'first'));
     expect(finished(pad)).toEqual([]);
   });
 
   it('keeps a set score’s game as it finished, not as it was set', () => {
-    const pad = createFakeBadmintonPad(SINGLES_SAMPLE);
+    const pad = started();
     pad.setScore(19, 15);
     rallies(pad, 'second', 'first', 'first');
     expect(finished(pad)).toEqual([{ points: { first: 21, second: 16 }, winner: 'first' }]);
@@ -170,7 +185,7 @@ describe('the finished games’ scores', () => {
   });
 
   it('takes a game’s score away when Undo reopens it across the game boundary', () => {
-    const pad = createFakeBadmintonPad(SINGLES_SAMPLE);
+    const pad = started();
     firstWinsAGame(pad);
     rallies(pad, ...times(21, 'second'));
     expect(finished(pad)).toHaveLength(2);
@@ -189,7 +204,7 @@ describe('the finished games’ scores', () => {
   });
 
   it('shows every game once the match is decided, and takes the last away when Undo reopens it', () => {
-    const pad = createFakeBadmintonPad(SINGLES_SAMPLE);
+    const pad = started();
     firstWinsAGame(pad);
     rallies(pad, ...times(21, 'second'));
     pad.setScore(20, 19);
@@ -215,7 +230,7 @@ describe('the finished games’ scores', () => {
   // Owner ruling 18 (2026-10-31, "box with DQ"): the game in play when a disqualification ends the match gets a box,
   // its points then, naming the side disqualified; no side won it on points.
   it('gives the game a disqualification ended a box: its points then, and the side disqualified', () => {
-    const pad = createFakeBadmintonPad(SINGLES_SAMPLE);
+    const pad = started();
     firstWinsAGame(pad);
     rallies(pad, 'second', 'second');
     pad.sanction({ side: 'second', level: 'disqualification', person: 'L. Chen' });
@@ -233,7 +248,7 @@ describe('the finished games’ scores', () => {
   });
 
   it('gives game 1 the box when the match ends in it', () => {
-    const pad = createFakeBadmintonPad(SINGLES_SAMPLE);
+    const pad = started();
     rallies(pad, ...times(9, 'first'), ...times(4, 'second'));
     pad.sanction({ side: 'first', level: 'disqualification', person: 'A. Sharma' });
     pad.recordEnding();
@@ -241,7 +256,7 @@ describe('the finished games’ scores', () => {
   });
 
   it('gives no box while the ending waits, none when the sanction is voided, and takes it away on Undo', () => {
-    const pad = createFakeBadmintonPad(SINGLES_SAMPLE);
+    const pad = started();
     rallies(pad, 'first');
     pad.sanction({ side: 'second', level: 'disqualification', person: 'L. Chen' });
     expect(pad.voidSanction()).toEqual({ ok: true });
@@ -263,7 +278,7 @@ describe('the finished games’ scores', () => {
 
 describe('Set score: only between games, before a game’s first rally', () => {
   it('sets the points before the match’s first rally, which stays the next tap', () => {
-    const pad = createFakeBadmintonPad(SINGLES_SAMPLE);
+    const pad = started();
     expect(pad.setScore(5, 3)).toEqual({ ok: true });
     expect(display(pad)).toMatchObject({
       points: { first: 5, second: 3 },
@@ -273,14 +288,14 @@ describe('Set score: only between games, before a game’s first rally', () => {
   });
 
   it('sets the points between games', () => {
-    const pad = createFakeBadmintonPad(SINGLES_SAMPLE);
+    const pad = started();
     firstWinsAGame(pad);
     expect(pad.setScore(4, 6)).toEqual({ ok: true });
     expect(display(pad)).toMatchObject({ points: { first: 4, second: 6 }, game: 2 });
   });
 
   it('is refused once a game is under way, and changes nothing', () => {
-    const pad = createFakeBadmintonPad(SINGLES_SAMPLE);
+    const pad = started();
     rallies(pad, 'first');
     expect(pad.setScore(5, 3)).toEqual({ ok: false, refusal: 'notNow' });
     expect(points(pad)).toEqual({ first: 1, second: 0 });
@@ -297,9 +312,12 @@ describe('Set score: only between games, before a game’s first rally', () => {
     [22, 20],
     [Number.POSITIVE_INFINITY, 0],
   ])('refuses %d-%d, which no game in progress can have', (first, second) => {
-    const pad = createFakeBadmintonPad(SINGLES_SAMPLE);
+    const pad = started();
     expect(pad.setScore(first, second)).toEqual({ ok: false, refusal: 'invalidScore' });
-    expect(display(pad)).toMatchObject({ points: { first: 0, second: 0 }, lastTap: null });
+    expect(display(pad)).toMatchObject({
+      points: { first: 0, second: 0 },
+      lastTap: { kind: 'start', server: 'first' },
+    });
   });
 
   it.each([
@@ -309,13 +327,13 @@ describe('Set score: only between games, before a game’s first rally', () => {
     [29, 29],
     [0, 20],
   ])('takes %d-%d', (first, second) => {
-    expect(createFakeBadmintonPad(SINGLES_SAMPLE).setScore(first, second)).toEqual({ ok: true });
+    expect(started().setScore(first, second)).toEqual({ ok: true });
   });
 });
 
 describe('Undo: steps back through this phone’s own taps', () => {
   it('takes a rally back and says so', () => {
-    const pad = createFakeBadmintonPad(SINGLES_SAMPLE);
+    const pad = started();
     rallies(pad, 'first');
     expect(pad.undo()).toEqual({ ok: true });
     expect(display(pad)).toMatchObject({
@@ -327,7 +345,7 @@ describe('Undo: steps back through this phone’s own taps', () => {
   });
 
   it('goes further back on each press', () => {
-    const pad = createFakeBadmintonPad(SINGLES_SAMPLE);
+    const pad = started();
     rallies(pad, 'first', 'second', 'second');
     pad.undo();
     expect(points(pad)).toEqual({ first: 1, second: 1 });
@@ -337,7 +355,7 @@ describe('Undo: steps back through this phone’s own taps', () => {
   });
 
   it('takes back a game-winning rally into the game it won', () => {
-    const pad = createFakeBadmintonPad(SINGLES_SAMPLE);
+    const pad = started();
     pad.setScore(20, 18);
     rallies(pad, 'first');
     pad.undo();
@@ -351,6 +369,10 @@ describe('Undo: steps back through this phone’s own taps', () => {
 
   it('refuses with nothing of this phone’s to take back', () => {
     const pad = createFakeBadmintonPad(SINGLES_SAMPLE);
+    expect(pad.undo()).toEqual({ ok: false, refusal: 'nothingToUndo' });
+    expect(pad.start('first')).toEqual({ ok: true });
+    rallies(pad, 'first');
+    expect(pad.undo()).toEqual({ ok: true });
     expect(pad.undo()).toEqual({ ok: false, refusal: 'nothingToUndo' });
   });
 
@@ -368,7 +390,7 @@ describe('Undo: steps back through this phone’s own taps', () => {
   });
 
   it('a new tap after an undo replaces the undone line', () => {
-    const pad = createFakeBadmintonPad(SINGLES_SAMPLE);
+    const pad = started();
     rallies(pad, 'first');
     pad.undo();
     rallies(pad, 'second');
@@ -404,7 +426,7 @@ describe('sanctions and the disqualification’s ending', () => {
   });
 
   it('waits for the ending after a disqualification, taking no rally or score', () => {
-    const pad = createFakeBadmintonPad(SINGLES_SAMPLE);
+    const pad = started();
     pad.sanction({ side: 'second', level: 'disqualification', person: 'L. Chen' });
     expect(display(pad).awaitingEnding).toBe(true);
     expect(pad.rally('first')).toEqual({ ok: false, refusal: 'notNow' });
@@ -416,7 +438,7 @@ describe('sanctions and the disqualification’s ending', () => {
   });
 
   it('records the ending: the match is decided', () => {
-    const pad = createFakeBadmintonPad(SINGLES_SAMPLE);
+    const pad = started();
     rallies(pad, 'first');
     pad.sanction({ side: 'second', level: 'disqualification', person: 'L. Chen' });
     expect(pad.recordEnding()).toEqual({ ok: true });
@@ -429,7 +451,7 @@ describe('sanctions and the disqualification’s ending', () => {
   });
 
   it('voids the sanction: play goes on as before it', () => {
-    const pad = createFakeBadmintonPad(SINGLES_SAMPLE);
+    const pad = started();
     rallies(pad, 'first');
     pad.sanction({ side: 'second', level: 'disqualification', person: 'L. Chen' });
     expect(pad.voidSanction()).toEqual({ ok: true });
@@ -446,7 +468,7 @@ describe('sanctions and the disqualification’s ending', () => {
   });
 
   it('has no ending to record or sanction to void without a disqualification waiting', () => {
-    const pad = createFakeBadmintonPad(SINGLES_SAMPLE);
+    const pad = started();
     pad.sanction({ side: 'first', level: 'penalty', person: 'A. Sharma' });
     expect(pad.recordEnding()).toEqual({ ok: false, refusal: 'notNow' });
     expect(pad.voidSanction()).toEqual({ ok: false, refusal: 'notNow' });
@@ -456,7 +478,7 @@ describe('sanctions and the disqualification’s ending', () => {
 
 describe('the preview switches and the listeners', () => {
   it('shows a state card and a sync status the dev row picks, over the same match', () => {
-    const pad = createFakeBadmintonPad(SINGLES_SAMPLE);
+    const pad = started();
     rallies(pad, 'first');
     pad.preview({ kind: 'updateNeeded', unsent: 2 });
     pad.setSync({ kind: 'offline', count: 2 });
@@ -470,7 +492,7 @@ describe('the preview switches and the listeners', () => {
   });
 
   it('tells its listeners of a change, keeps one snapshot between changes, and stops on unsubscribe', () => {
-    const pad = createFakeBadmintonPad(SINGLES_SAMPLE);
+    const pad = started();
     const heard = vi.fn();
     const stop = pad.subscribe(heard);
     const before = pad.snapshot();
@@ -492,14 +514,15 @@ describe('the preview switches and the listeners', () => {
 describe('the sheet History reads', () => {
   const history = (pad: FakeBadmintonPad) => pad.snapshot().history;
 
-  it('holds nothing before the first tap', () => {
+  it('holds nothing before the start', () => {
     expect(history(createFakeBadmintonPad(SINGLES_SAMPLE))).toEqual([]);
   });
 
   it('records each rally with what it did, its game, the points after it and that this phone recorded it', () => {
-    const pad = createFakeBadmintonPad(SINGLES_SAMPLE);
+    const pad = started();
     rallies(pad, 'first', 'second');
     expect(history(pad)).toEqual([
+      START_ENTRY,
       {
         did: { kind: 'rally', side: 'first', won: 'none', game: 1 },
         game: 1,
@@ -518,7 +541,7 @@ describe('the sheet History reads', () => {
   });
 
   it('keeps a game-winning rally in the game it won, at the game’s final points; the next game’s taps in game 2', () => {
-    const pad = createFakeBadmintonPad(SINGLES_SAMPLE);
+    const pad = started();
     firstWinsAGame(pad);
     expect(pad.setScore(3, 2)).toEqual({ ok: true });
     rallies(pad, 'second');
@@ -534,12 +557,13 @@ describe('the sheet History reads', () => {
   });
 
   it('leaves an entry Undo voided in its place, as it was recorded, and twice back keeps both', () => {
-    const pad = createFakeBadmintonPad(SINGLES_SAMPLE);
+    const pad = started();
     rallies(pad, 'first', 'first');
     expect(pad.undo()).toEqual({ ok: true });
     expect(pad.undo()).toEqual({ ok: true });
     rallies(pad, 'second');
     expect(history(pad).map((entry) => [entry.after, entry.undone])).toEqual([
+      [{ first: 0, second: 0 }, false],
       [{ first: 1, second: 0 }, true],
       [{ first: 2, second: 0 }, true],
       [{ first: 0, second: 1 }, false],
@@ -550,6 +574,7 @@ describe('the sheet History reads', () => {
     const pad = createFakeBadmintonPad(DOUBLES_SAMPLE);
     rallies(pad, 'second');
     expect(history(pad).map((entry) => [entry.own, entry.after])).toEqual([
+      [false, { first: 0, second: 0 }],
       [false, { first: 1, second: 0 }],
       [false, { first: 1, second: 1 }],
       [false, { first: 2, second: 1 }],
@@ -559,7 +584,7 @@ describe('the sheet History reads', () => {
   });
 
   it('records a disqualification, its ending, and a voided disqualification in place', () => {
-    const pad = createFakeBadmintonPad(SINGLES_SAMPLE);
+    const pad = started();
     rallies(pad, 'first');
     const sanction = { side: 'second', level: 'disqualification', person: 'L. Chen' } as const;
     expect(pad.sanction(sanction)).toEqual({ ok: true });
@@ -567,12 +592,13 @@ describe('the sheet History reads', () => {
     expect(pad.sanction(sanction)).toEqual({ ok: true });
     expect(pad.recordEnding()).toEqual({ ok: true });
     expect(history(pad).map((entry) => [entry.did.kind, entry.undone])).toEqual([
+      ['start', false],
       ['rally', false],
       ['sanction', true],
       ['sanction', false],
       ['ending', false],
     ]);
-    expect(history(pad)[3]).toEqual({
+    expect(history(pad)[4]).toEqual({
       did: { kind: 'ending', side: 'second', person: 'L. Chen' },
       game: 1,
       after: { first: 1, second: 0 },
@@ -584,9 +610,11 @@ describe('the sheet History reads', () => {
   it('records nothing for a refused tap', () => {
     const pad = createFakeBadmintonPad(SINGLES_SAMPLE);
     expect(pad.undo()).toEqual({ ok: false, refusal: 'nothingToUndo' });
+    expect(pad.rally('first')).toEqual({ ok: false, refusal: 'notNow' });
+    expect(pad.start('first')).toEqual({ ok: true });
     rallies(pad, 'first');
     expect(pad.setScore(5, 5).ok).toBe(false);
-    expect(history(pad)).toHaveLength(1);
+    expect(history(pad)).toHaveLength(2);
   });
 });
 
@@ -599,5 +627,78 @@ describe('the samples’ match context (owner, 2026-11-01)', () => {
       match: 'BAD0001',
       sides: ['A. Sharma / R. Iyer', 'L. Chen / M. Wong'],
     });
+  });
+});
+
+// Owner, 2026-11-01, option A: a match begins not started; Start, with the side picked to serve first, is its first
+// entry. Undo takes it back only while nothing follows it, as the web voids no start once anything follows.
+describe('the start', () => {
+  it('takes no rally, sanction or Set score before it', () => {
+    const pad = createFakeBadmintonPad(SINGLES_SAMPLE);
+    expect(pad.rally('first')).toEqual({ ok: false, refusal: 'notNow' });
+    expect(pad.sanction({ side: 'first', level: 'warning', person: 'A. Sharma' })).toEqual({
+      ok: false,
+      refusal: 'notNow',
+    });
+    expect(pad.setScore(1, 0)).toEqual({ ok: false, refusal: 'notNow' });
+    expect(pad.snapshot().history).toEqual([]);
+  });
+
+  it('starts the match, the side picked serving from the right at 0-0, and Undo can take it back', () => {
+    const pad = started('second');
+    expect(display(pad)).toMatchObject({
+      points: { first: 0, second: 0 },
+      server: 'second',
+      court: 'right',
+      phase: 'pre',
+      lastTap: { kind: 'start', server: 'second' },
+      undoable: true,
+    });
+    expect(pad.snapshot().history).toEqual([
+      { ...START_ENTRY, did: { kind: 'start', server: 'second' } },
+    ]);
+  });
+
+  it('refuses a second start (a second call): the first stands', () => {
+    const pad = started('second');
+    expect(pad.start('first')).toEqual({ ok: false, refusal: 'notNow' });
+    expect(display(pad).server).toBe('second');
+    expect(pad.snapshot().history).toHaveLength(1);
+  });
+
+  it('returns to not started on an Undo right after it, with no line to say it on, and can start again', () => {
+    const pad = started('second');
+    expect(pad.undo()).toEqual({ ok: true });
+    expect(display(pad)).toMatchObject({ phase: 'notStarted', lastTap: null, undoable: false });
+    expect(pad.snapshot().history).toEqual([
+      { ...START_ENTRY, did: { kind: 'start', server: 'second' }, undone: true },
+    ]);
+    expect(pad.start('first')).toEqual({ ok: true });
+    expect(display(pad)).toMatchObject({ phase: 'pre', server: 'first' });
+  });
+
+  it('cannot be undone on its own once anything follows it, an entry Undo took back included', () => {
+    const pad = started();
+    rallies(pad, 'second');
+    expect(pad.undo()).toEqual({ ok: true });
+    expect(display(pad)).toMatchObject({
+      phase: 'pre',
+      lastTap: { kind: 'undone', tap: { kind: 'rally', side: 'second' } },
+      undoable: false,
+    });
+    expect(pad.undo()).toEqual({ ok: false, refusal: 'nothingToUndo' });
+    expect(display(pad).phase).toBe('pre');
+  });
+
+  it('opens the doubles sample started by its other scorer, never this phone’s to undo', () => {
+    const pad = createFakeBadmintonPad(DOUBLES_SAMPLE);
+    expect(pad.snapshot().history[0]).toEqual({ ...START_ENTRY, own: false });
+    expect(display(pad).phase).toBe('live');
+  });
+
+  it('begins the doubles match not started with none of the other scorer’s taps', () => {
+    const pad = createFakeBadmintonPad({ ...DOUBLES_SAMPLE, others: [] });
+    expect(display(pad)).toMatchObject({ phase: 'notStarted', points: { first: 0, second: 0 } });
+    expect(pad.snapshot().history).toEqual([]);
   });
 });

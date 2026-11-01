@@ -11,6 +11,7 @@ import {
   type BadmintonSanction,
   type BadmintonSide,
   type BadmintonTap,
+  type BadmintonUndoneTap,
 } from '@/domain/scoring/badmintonPad';
 import type { PadSide, PadStateCard, PadSync } from '@/domain/scoring/padView';
 
@@ -22,8 +23,10 @@ import type { PadSide, PadStateCard, PadSync } from '@/domain/scoring/padView';
  * interval point is 11. Sanctions change no score. The rules belong to the engine, which S2's real scoring client
  * reads; nothing outside the preview may call this.
  *
- * Every tap is an entry. The state is the entries replayed from the start, so Undo, which voids this phone's last
- * entry of its own, steps back through any rally, a game won included. Entries from someone else (`others`) are
+ * A match begins not started: Start, with the side picked to serve first, is its first entry (owner, 2026-11-01, option
+ * A). Every tap is an entry. The state is the entries replayed from the start, so Undo, which voids this phone's last
+ * entry of its own, steps back through any rally, a game won included. The start is undone only while nothing follows
+ * it, as on the web, where a start cannot be voided once anything follows. Entries from someone else (`others`) are
  * replayed too and never voided (owner, 2026-10-31: one Undo, this phone's own taps). Each entry keeps what it did when
  * it was recorded, for History (owner ruling 21), which lists a voided entry in its place.
  */
@@ -32,6 +35,11 @@ export type FakeBadmintonPad = {
   subscribe(listener: () => void): () => void;
   rally(side: PadSide): FakeOutcome;
   undo(): FakeOutcome;
+  /**
+   * Before the match only: starts it, `server` serving first from the right court at 0-0. S2's real write of the first
+   * server (the engine kernel accepts a declared server) is still to be confirmed against the engine (2026-11-01).
+   */
+  start(server: PadSide): FakeOutcome;
   sanction(sanction: BadmintonSanction): FakeOutcome;
   /** Before a game's first rally only: the match's first, or the next game's. */
   setScore(first: number, second: number): FakeOutcome;
@@ -77,7 +85,10 @@ export const SINGLES_SAMPLE: FakePadSample = {
   },
 };
 
-/** Doubles, joined at 3-1 by a scorer before this phone: Undo stops at their taps, and History says "Another scorer". */
+/**
+ * Doubles, started and joined at 3-1 by a scorer before this phone: Undo stops at their taps, and History says "Another
+ * scorer". The preview row's Start begins it afresh, with none of their taps.
+ */
 export const DOUBLES_SAMPLE: FakePadSample = {
   sides: {
     first: { players: ['A. Sharma', 'R. Iyer'] },
@@ -90,6 +101,7 @@ export const DOUBLES_SAMPLE: FakePadSample = {
     match: 'BAD0001',
   },
   others: [
+    { kind: 'start', server: 'first' },
     { kind: 'rally', side: 'first' },
     { kind: 'rally', side: 'second' },
     { kind: 'rally', side: 'first' },
@@ -130,7 +142,7 @@ const START: Score = {
   finished: [],
   server: 'first',
   game: 1,
-  phase: 'pre',
+  phase: 'notStarted',
   sanctions: [],
   lastTap: null,
   awaitingEnding: false,
@@ -152,14 +164,14 @@ const inProgress = (first: number, second: number) =>
 type Ledger = {
   readonly entries: Entry[];
   score: Score;
-  undone: BadmintonTap | null;
+  undone: BadmintonUndoneTap | null;
   card: PadStateCard | null;
   sync: PadSync;
 };
 
 type Commands = Pick<
   FakeBadmintonPad,
-  'rally' | 'undo' | 'sanction' | 'setScore' | 'recordEnding' | 'voidSanction'
+  'start' | 'rally' | 'undo' | 'sanction' | 'setScore' | 'recordEnding' | 'voidSanction'
 >;
 
 export function createFakeBadmintonPad(sample: FakePadSample): FakeBadmintonPad {
@@ -232,8 +244,13 @@ function afterOf(score: Score, tap: BadmintonTap): Readonly<Record<PadSide, numb
 function commands(sample: FakePadSample, ledger: Ledger, publish: () => void): Commands {
   const record = (tap: BadmintonTap) => recordTap(ledger, publish, tap);
   const undo = () => voidLastOwn(ledger, publish);
-  const playing = () => ledger.score.phase !== 'decided' && !ledger.score.awaitingEnding;
+  const playing = () =>
+    ledger.score.phase !== 'notStarted' &&
+    ledger.score.phase !== 'decided' &&
+    !ledger.score.awaitingEnding;
   return {
+    start: (server) =>
+      ledger.score.phase === 'notStarted' ? record({ kind: 'start', server }) : refused('notNow'),
     rally: (side) => (playing() ? record({ kind: 'rally', side }) : refused('notNow')),
     undo,
     sanction: (sanction) =>
@@ -253,14 +270,27 @@ function recordTap(ledger: Ledger, publish: () => void, tap: BadmintonTap): Fake
   return OK;
 }
 
-/** Undo: voids this phone's last entry still standing; someone else's are never voided. */
+/**
+ * Undo: voids this phone's last entry still standing; someone else's are never voided. Undoing the start returns to
+ * the Start screen, which has no line to say it on.
+ */
 function voidLastOwn(ledger: Ledger, publish: () => void): FakeOutcome {
-  const last = ledger.entries.filter((entry) => entry.own && !entry.voided).pop();
+  const last = voidable(ledger.entries);
   if (last === undefined) return refused('nothingToUndo');
   last.voided = true;
-  ledger.undone = last.tap;
+  ledger.undone = last.tap.kind === 'start' ? null : last.tap;
   publish();
   return OK;
+}
+
+/**
+ * The entry Undo would take back: this phone's last still standing, but a start only while nothing at all follows it,
+ * an entry Undo took back included (the web voids no start once anything follows).
+ */
+function voidable(entries: readonly Entry[]): Entry | undefined {
+  const last = entries.filter((entry) => entry.own && !entry.voided).pop();
+  if (last?.tap.kind === 'start' && entries[entries.length - 1] !== last) return undefined;
+  return last;
 }
 
 /** Before a game's first rally only, and only a score a game in progress can have. */
@@ -315,6 +345,8 @@ function replay(entries: readonly Entry[]): Score {
 
 function apply(score: Score, tap: BadmintonTap): Score {
   switch (tap.kind) {
+    case 'start':
+      return { ...score, server: tap.server, phase: 'pre', lastTap: tap };
     case 'rally':
       return rally(score, tap.side);
     case 'setScore':
@@ -381,7 +413,7 @@ function displayOf(
   sample: FakePadSample,
   score: Score,
   entries: readonly Entry[],
-  undone: BadmintonTap | null,
+  undone: BadmintonUndoneTap | null,
 ): BadmintonDisplay {
   return {
     sides: sample.sides,
@@ -398,7 +430,7 @@ function displayOf(
     phase: score.phase,
     sanctions: score.sanctions,
     lastTap: undone === null ? score.lastTap : { kind: 'undone', tap: undone },
-    undoable: entries.some((entry) => entry.own && !entry.voided),
+    undoable: voidable(entries) !== undefined,
     awaitingEnding: score.awaitingEnding,
   };
 }

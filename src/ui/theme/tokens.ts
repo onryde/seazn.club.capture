@@ -352,6 +352,14 @@ const base = {
   padHistorySide: 88,
   /** A tool's label: this many lines of `actionSecondary` (padFit.test.ts: every label, four languages, at 320). */
   padToolLines: 2,
+  /**
+   * The Start screen's two sides (owner, 2026-11-01, option A): each button's least width. Two of them and their gap
+   * fit the pad's column at 320, so they stand side by side there and wider, and stack only on a narrower one; a name
+   * wraps inside its button (padFit.test.ts).
+   */
+  padTossMin: 120,
+  /** A side's button on the Start screen: a big target, half again the touch height and more. */
+  padTossHeight: 64,
 } as const;
 
 /** The cells the controls half's width is made of (`base` holds the shipped ones). */

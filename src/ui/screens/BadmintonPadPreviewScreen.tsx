@@ -9,6 +9,7 @@ import {
   type PadHistoryRow,
   type PadMatchDetails,
   type PadSide,
+  type PadStart,
   type PadSync,
   type PadTally,
   type PadView,
@@ -23,6 +24,7 @@ import {
 import { useT } from '@/hooks/useLanguage';
 import { usePadText } from '@/hooks/usePadText';
 import type { MessageKey } from '@/i18n/messages';
+import { Button } from '@/ui/components/Button';
 import { EndingPrompt } from '@/ui/components/EndingPrompt';
 import { HistoryCover, type HistoryGroupWords } from '@/ui/components/HistoryCover';
 import { IconButton } from '@/ui/components/IconButton';
@@ -39,6 +41,7 @@ import { StepSheet, type StepOption } from '@/ui/components/StepSheet';
 import { SyncDot } from '@/ui/components/SyncDot';
 import { Text } from '@/ui/components/Text';
 import { ToolRow } from '@/ui/components/ToolRow';
+import { TossPicker } from '@/ui/components/TossPicker';
 import { UpdateBanner } from '@/ui/components/UpdateBanner';
 import { colour, layout, space } from '@/ui/theme/tokens';
 
@@ -50,10 +53,11 @@ import { colour, layout, space } from '@/ui/theme/tokens';
  * the last-tap line with the one Undo, and the tools. A card that replaces the score stands where the halves were; one that goes with it (a recorded
  * result, view only) stands above them; the update banner stands where the last-tap line and the tools were
  * (`cardPlacement`). Sheets and History cover the pad, which is hidden from a screen reader while they show. Under it
- * all, the preview's own row of states.
+ * all, the preview's own row of states. Until the match starts, the Start screen stands where the halves are, with no
+ * last-tap line and no tools (owner, 2026-11-01, option A).
  */
 export function BadmintonPadPreviewScreen() {
-  const { view, sheet, line, cardNote, flash, chosen, actions } = useBadmintonPadPreview();
+  const { view, sheet, line, cardNote, flash, toss, chosen, actions } = useBadmintonPadPreview();
   const covered = sheet !== null;
   const picked = useMemo(() => [chosen.card, chosen.sample], [chosen.card, chosen.sample]);
   const known = matchKnown(view.card);
@@ -67,7 +71,11 @@ export function BadmintonPadPreviewScreen() {
       >
         <PadHeader sync={view.sync} tally={view.tally} known={known} actions={actions} />
         <PadStrip items={view.strip} />
-        <PadBody view={view} flash={flash} onTap={actions.tapHalf} />
+        {view.start === null ? (
+          <PadBody view={view} flash={flash} onTap={actions.tapHalf} />
+        ) : (
+          <StartPanel start={view.start} details={view.details} toss={toss} actions={actions} />
+        )}
         <PadControls view={view} line={line} cardNote={cardNote} actions={actions} />
         <PadPreviewRow chosen={picked} onPick={actions.pick} />
       </View>
@@ -171,8 +179,40 @@ const PadBody = memo(function PadBody({
 });
 
 /**
+ * The Start screen (owner, 2026-11-01, option A), in the halves' place until the match starts: Match details, who
+ * serves first, then Start match, a tap and no hold (it is not destructive: Undo takes it back). It scrolls when it is
+ * taller than the room. Start match is disabled, and says so, until a side is picked.
+ */
+const StartPanel = memo(function StartPanel({
+  start,
+  details,
+  toss,
+  actions,
+}: {
+  readonly start: PadStart<BadmintonPadKey>;
+  readonly details: PadMatchDetails<BadmintonPadKey>;
+  readonly toss: PadSide | null;
+  readonly actions: PadPreviewActions;
+}) {
+  const { t } = useT();
+  const words = usePadText();
+  return (
+    <ScrollView testID="start-screen" style={styles.body} contentContainerStyle={styles.start}>
+      <DetailsBlock details={details} />
+      <TossPicker
+        ask={words(start.ask)}
+        sides={start.sides}
+        picked={toss}
+        onPick={actions.pickServer}
+      />
+      <Button label={t('scoring.start.confirm')} onPress={actions.start} disabled={toss === null} />
+    </ScrollView>
+  );
+});
+
+/**
  * Under the halves: the last-tap line and the tools, or, when an update is needed, the banner in their place
- * (`cardPlacement`'s `forControls`, the one card there; `PadBody` draws the others).
+ * (`cardPlacement`'s `forControls`, the one card there; `PadBody` draws the others). Nothing under the Start screen.
  */
 const PadControls = memo(function PadControls({
   view,
@@ -197,6 +237,7 @@ const PadControls = memo(function PadControls({
       />
     );
   }
+  if (view.start !== null) return null;
   return (
     <>
       <PadLine view={view} line={line} onUndo={actions.undo} />
@@ -408,4 +449,5 @@ const styles = StyleSheet.create({
   end: { flexDirection: 'row', alignItems: 'center', gap: space.xs, marginLeft: 'auto' },
   sync: { width: layout.padSyncBox, alignItems: 'flex-end' },
   body: { flex: 1, gap: space.sm },
+  start: { gap: space.md, paddingBottom: space.md },
 });

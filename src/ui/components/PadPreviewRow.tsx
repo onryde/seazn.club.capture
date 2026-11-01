@@ -6,9 +6,13 @@ import type { MessageKey } from '@/i18n/messages';
 import { Text } from '@/ui/components/Text';
 import { colour, layout, radius, space } from '@/ui/theme/tokens';
 
-/** The row's chips, in order, with their words: the pad, the five state cards, the two sample matches, the sync. */
+/**
+ * The row's chips, in order, with their words: the pad, Start (the sample afresh, not started), the five state cards
+ * (Not started's says "Division not open", so it never reads as Start), the two sample matches, the sync.
+ */
 const CHIPS: readonly { readonly choice: PreviewChoice; readonly label: MessageKey }[] = [
   { choice: 'pad', label: 'scoring.preview.dev.pad' },
+  { choice: 'start', label: 'scoring.preview.dev.start' },
   { choice: 'notStarted', label: 'scoring.preview.dev.notStarted' },
   { choice: 'resultRecorded', label: 'scoring.preview.dev.result' },
   { choice: 'viewOnly', label: 'scoring.preview.dev.viewOnly' },

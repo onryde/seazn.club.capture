@@ -32,6 +32,30 @@ describe('badmintonHistory', () => {
     expect(badmintonHistory([], SIDES)).toEqual([]);
   });
 
+  // Owner, 2026-11-01: the start is an entry, said as the last-tap line says it, with no score of its own.
+  it('lists the start under game 1 as "Match started", the side picked named, with no score', () => {
+    const [game1] = badmintonHistory(
+      [
+        {
+          did: { kind: 'start', server: 'second' },
+          game: 1,
+          after: { first: 0, second: 0 },
+          own: true,
+          undone: false,
+        },
+      ],
+      SIDES,
+    );
+    expect(game1?.rows).toEqual([
+      {
+        said: { key: 'scoring.badminton.last.start', vars: { side: 'L. Chen' } },
+        score: null,
+        by: 'thisPhone',
+        undone: false,
+      },
+    ]);
+  });
+
   it('groups by game, the latest game first and each game’s newest entry first', () => {
     const groups = badmintonHistory(
       [

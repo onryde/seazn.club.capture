@@ -16,10 +16,24 @@ afterEach(restoreWindowSize);
 
 type Pad = ReturnType<typeof renderWithPorts>;
 
-/** The preview as Home opens it: on its own route, with the phone's clock a second on for every tap. */
-function renderPad(options?: Parameters<typeof renderWithPorts>[1]): Pad {
+const DICTIONARIES: Readonly<Record<string, typeof en>> = { en, es, fr, nl };
+
+/** The preview as Home opens it, on its own route: the Start screen, as the samples begin (owner, 2026-11-01). */
+function renderStart(options?: Parameters<typeof renderWithPorts>[1]): Pad {
   const view = renderWithPorts(<BadmintonPadPreviewScreen />, options);
   act(() => view.navigation.go('scoringPreview'));
+  return view;
+}
+
+/**
+ * The preview with its match started as the scorer starts it, A. Sharma picked to serve first, and the phone's clock a
+ * second on for every tap.
+ */
+function renderPad(options?: Parameters<typeof renderWithPorts>[1]): Pad {
+  const view = renderStart(options);
+  const words = DICTIONARIES[options?.deviceLanguages?.[0] ?? 'en'] ?? en;
+  act(() => fireEvent.click(screen.getByRole('radio', { name: 'A. Sharma' })));
+  act(() => fireEvent.click(screen.getByRole('button', { name: words['scoring.start.confirm'] })));
   return view;
 }
 
@@ -62,6 +76,9 @@ const tool = (name: string) => screen.queryByRole('button', { name });
 const sanctionOn = (side: string) => `${en['scoring.badminton.tool.sanction']}, ${side}`;
 const lastTap = () => screen.getByTestId('last-tap').textContent;
 const undo = () => screen.getByRole('button', { name: en['scoring.pad.undo'] });
+/** The last-tap line as `renderPad` leaves it: the start, A. Sharma serving, then Undo (owner, 2026-11-01). */
+const startedLine = () =>
+  fill(en['scoring.badminton.last.start'], { side: 'A. Sharma' }) + en['scoring.pad.undo'];
 const fill = (text: string, vars: Record<string, string | number>) =>
   Object.entries(vars).reduce(
     (out, [name, value]) => out.replace(`{${name}}`, String(value)),
@@ -96,7 +113,9 @@ describe('BadmintonPadPreviewScreen: before the first rally', () => {
     expect(tool(en['scoring.badminton.tool.setScore'])).not.toBeNull();
     expect(tool(sanctionOn('A. Sharma'))).not.toBeNull();
     expect(tool(sanctionOn('L. Chen'))).not.toBeNull();
-    expect(undo().getAttribute('aria-disabled')).toBe('true');
+    // The start is the last tap, and Undo can take it back while nothing follows it (owner, 2026-11-01).
+    expect(lastTap()).toBe(startedLine());
+    expect(undo().getAttribute('aria-disabled')).not.toBe('true');
   });
 
   // Owner, 2026-11-01: "can we have 0:0 with lime light in place of preview". The preview row marks the preview.
@@ -378,8 +397,7 @@ describe('BadmintonPadPreviewScreen: Set score', () => {
     press(en['scoring.sheet.cancel']);
     expect(screen.queryByTestId('score-sheet')).toBeNull();
     expect(shows('first', 0) && shows('second', 0)).toBe(true);
-    expect(lastTap()).toBe(en['scoring.pad.undo']);
-    expect(undo().getAttribute('aria-disabled')).toBe('true');
+    expect(lastTap()).toBe(startedLine());
     expect(tool(en['scoring.badminton.tool.setScore'])).not.toBeNull();
   });
 
@@ -531,7 +549,7 @@ describe('BadmintonPadPreviewScreen: a sanction, end to end', () => {
     expect(back(pad)).toBe(true);
     expect(screen.queryByTestId('step-sheet')).toBeNull();
     expect(pad.navigation.current()).toBe('scoringPreview');
-    expect(lastTap()).toBe(en['scoring.pad.undo']);
+    expect(lastTap()).toBe(startedLine());
   });
 
   it('asks which player in doubles', () => {
@@ -677,13 +695,16 @@ describe('BadmintonPadPreviewScreen: the preview row', () => {
     expect(undo().getAttribute('aria-disabled')).toBe('true');
   });
 
-  it('starts singles afresh when it is picked again', () => {
+  it('starts singles afresh when it is picked again: not started, on the Start screen (owner, 2026-11-01)', () => {
     const pad = renderPad();
     rally(pad, 'first');
     press(en['scoring.preview.dev.doubles']);
     press(en['scoring.preview.dev.singles']);
-    expect(within(half('first')).getByText('A. Sharma')).toBeTruthy();
-    expect(shows('first', 0)).toBe(true);
+    expect(screen.getByTestId('start-screen')).toBeTruthy();
+    expect(screen.getAllByRole('radio').map((side) => side.textContent)).toEqual([
+      'A. Sharma',
+      'L. Chen',
+    ]);
   });
 });
 
@@ -1068,9 +1089,12 @@ describe('BadmintonPadPreviewScreen: History', () => {
   const game = (n: number) => fill(en['scoring.badminton.gameHeading'], { game: n });
   const rallyTo = (side: string) => fill(en['scoring.badminton.last.rally'], { side });
   const thisPhone = en['scoring.history.thisPhone'];
+  /** The start's row, as `renderPad` starts the match (owner, 2026-11-01): A. Sharma serving, this phone's. */
+  const startRow = `${fill(en['scoring.badminton.last.start'], { side: 'A. Sharma' })}, ${thisPhone}`;
 
   it('covers the pad, which it hides from a screen reader, with Back and the title, and says when nothing is recorded', () => {
-    renderPad();
+    // Nothing is recorded before the start: the Start screen (owner, 2026-11-01).
+    renderStart();
     openHistory();
     expect(cover().getByText(en['scoring.history.title'])).toBeTruthy();
     expect(cover().getByText(en['scoring.history.empty'])).toBeTruthy();
@@ -1092,6 +1116,7 @@ describe('BadmintonPadPreviewScreen: History', () => {
       `${rallyTo('L. Chen')}, 2–1, ${thisPhone}`,
       `${rallyTo('A. Sharma')}, 2–0, ${thisPhone}`,
       `${rallyTo('A. Sharma')}, 1–0, ${thisPhone}`,
+      startRow,
     ]);
     expect(
       cover()
@@ -1115,7 +1140,8 @@ describe('BadmintonPadPreviewScreen: History', () => {
       `${rallyTo('L. Chen')}, 0–1, ${thisPhone}`,
       `${fill(en['scoring.badminton.last.game'], { game: 1, side: 'A. Sharma' })}, 21–0, ${thisPhone}`,
     ]);
-    expect(groups[1] && within(groups[1]).getAllByTestId('history-row')).toHaveLength(21);
+    // The start and the game's 21 rallies.
+    expect(groups[1] && within(groups[1]).getAllByTestId('history-row')).toHaveLength(22);
   });
 
   it('keeps an undone rally in its place, struck through and inert, with “Undone”', () => {
@@ -1127,6 +1153,7 @@ describe('BadmintonPadPreviewScreen: History', () => {
     expect(said()).toEqual([
       `${rallyTo('A. Sharma')}, 2–0, ${thisPhone}, ${undone}`,
       `${rallyTo('A. Sharma')}, 1–0, ${thisPhone}`,
+      startRow,
     ]);
     const [struck, standing] = cover().getAllByTestId('history-said');
     if (struck === undefined || standing === undefined) throw new Error('no rows');
@@ -1152,6 +1179,7 @@ describe('BadmintonPadPreviewScreen: History', () => {
       `${rallyTo('A. Sharma / R. Iyer')}, 2–1, ${other}`,
       `${rallyTo('L. Chen / M. Wong')}, 1–1, ${other}`,
       `${rallyTo('A. Sharma / R. Iyer')}, 1–0, ${other}`,
+      `${fill(en['scoring.badminton.last.start'], { side: 'A. Sharma / R. Iyer' })}, ${other}`,
     ]);
   });
 
@@ -1176,6 +1204,7 @@ describe('BadmintonPadPreviewScreen: History', () => {
         person: 'A. Sharma',
       })}, ${thisPhone}`,
       `${fill(en['scoring.badminton.last.setScore'], { score: '9–4' })}, ${thisPhone}`,
+      startRow,
     ]);
   });
 
@@ -1231,14 +1260,16 @@ describe('BadmintonPadPreviewScreen: History', () => {
   ] as const)(
     '%s: the button, the title, the empty line and the recorder in the operator’s language',
     (lang, words) => {
-      const pad = renderPad({ deviceLanguages: [lang] });
+      const pad = renderStart({ deviceLanguages: [lang] });
       press(words['scoring.history.title']);
       expect(cover().getByText(words['scoring.history.empty'])).toBeTruthy();
       press(words['panel.close']);
+      act(() => fireEvent.click(screen.getByRole('radio', { name: 'A. Sharma' })));
+      press(words['scoring.start.confirm']);
       rally(pad, 'first');
       press(words['scoring.history.title']);
       expect(headings()).toEqual([fill(words['scoring.badminton.gameHeading'], { game: 1 })]);
-      expect(cover().getByTestId('history-by').textContent).toBe(
+      expect(cover().getAllByTestId('history-by')[0]?.textContent).toBe(
         words['scoring.history.thisPhone'],
       );
     },
@@ -1420,6 +1451,170 @@ describe('BadmintonPadPreviewScreen: the Not started card', () => {
       // The organiser's words are never translated.
       expect(within(card()).getByTestId('details-where').textContent).toBe(
         'U15 Boys Singles · Round 1',
+      );
+    },
+  );
+});
+
+/**
+ * Owner, 2026-11-01: "should we show before the match started as well right, in UI, it show the player, match info and
+ * ask to start", then option A (toss + Start). The Start screen stands where the halves are, the top bar kept; Start
+ * match is a tap, and Undo right after it returns here with the pick cleared.
+ */
+describe('BadmintonPadPreviewScreen: the Start screen', () => {
+  const startButton = (words = en) =>
+    screen.getByRole('button', { name: words['scoring.start.confirm'] });
+  const radios = () => screen.getAllByRole('radio');
+  const pick = (name: string) => act(() => fireEvent.click(screen.getByRole('radio', { name })));
+  const follows = (a: Node, b: Node) =>
+    (a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0;
+
+  it('shows Match details, Rules, who serves first, then Start match, in a scroll where the halves are', () => {
+    renderStart();
+    const start = screen.getByTestId('start-screen');
+    const parts = [
+      within(start).getByTestId('match-details'),
+      within(start).getByTestId('rule-lines'),
+      within(start).getByRole('radiogroup'),
+      startButton(),
+    ];
+    expect(parts.slice(1).map((part, at) => follows(parts[at] as Node, part))).toEqual([
+      true,
+      true,
+      true,
+    ]);
+    expect(start.contains(startButton())).toBe(true);
+    expect(getComputedStyle(start).overflowY).not.toBe('visible');
+    expect(screen.queryByTestId('half-first')).toBeNull();
+    expect(screen.queryByTestId('last-tap')).toBeNull();
+    expect(tool(en['scoring.badminton.tool.setScore'])).toBeNull();
+    expect(radios().map((radio) => radio.textContent)).toEqual(['A. Sharma', 'L. Chen']);
+  });
+
+  it('keeps the top bar: Back, the tally at 0:0, Match details, History and the sync status', () => {
+    renderStart();
+    expect(screen.getByRole('button', { name: en['stream.home'] })).toBeTruthy();
+    expect(screen.getByTestId('tally').textContent).toBe('0:0');
+    expect(screen.getByRole('button', { name: en['scoring.details.title'] })).toBeTruthy();
+    expect(screen.getByRole('button', { name: en['scoring.history.title'] })).toBeTruthy();
+    expect(screen.getByTestId('sync').textContent).toBe(en['scoring.sync.synced']);
+  });
+
+  it('holds Start match disabled, and says so, until a side is picked; one pick at a time', () => {
+    renderStart();
+    expect(startButton().getAttribute('aria-disabled')).toBe('true');
+    expect(screen.getByRole('radiogroup').getAttribute('aria-label')).toBe(
+      en['scoring.badminton.start.ask'],
+    );
+    pick('L. Chen');
+    expect(radios().map((radio) => radio.getAttribute('aria-checked'))).toEqual(['false', 'true']);
+    expect(startButton().getAttribute('aria-disabled')).not.toBe('true');
+    pick('A. Sharma');
+    expect(radios().map((radio) => radio.getAttribute('aria-checked'))).toEqual(['true', 'false']);
+  });
+
+  it('does nothing for Start match before a pick (empty input)', () => {
+    renderStart();
+    act(() => fireEvent.click(startButton()));
+    expect(screen.getByTestId('start-screen')).toBeTruthy();
+  });
+
+  it('starts on a tap: the pad at 0–0, SERVING · RIGHT on the side picked, the line saying so with Undo', () => {
+    renderStart();
+    pick('L. Chen');
+    act(() => fireEvent.click(startButton()));
+    expect(screen.queryByTestId('start-screen')).toBeNull();
+    expect(shows('first', 0) && shows('second', 0)).toBe(true);
+    expect([plate('first'), plate('second')]).toEqual([
+      null,
+      en['scoring.badminton.serving.right'],
+    ]);
+    expect(lastTap()).toContain(fill(en['scoring.badminton.last.start'], { side: 'L. Chen' }));
+    expect(undo().getAttribute('aria-disabled')).not.toBe('true');
+    // Set score stays on the pad before the first rally.
+    expect(tool(en['scoring.badminton.tool.setScore'])).not.toBeNull();
+  });
+
+  it('returns to the Start screen, the pick cleared, on an Undo right after Start', () => {
+    const pad = renderStart();
+    pick('L. Chen');
+    act(() => fireEvent.click(startButton()));
+    undoTap(pad);
+    expect(screen.getByTestId('start-screen')).toBeTruthy();
+    expect(radios().map((radio) => radio.getAttribute('aria-checked'))).toEqual(['false', 'false']);
+    expect(startButton().getAttribute('aria-disabled')).toBe('true');
+  });
+
+  it('cannot undo the start once a rally follows: Undo steps back through the rallies only', () => {
+    const pad = renderStart();
+    pick('L. Chen');
+    act(() => fireEvent.click(startButton()));
+    rally(pad, 'first');
+    undoTap(pad);
+    expect(shows('first', 0)).toBe(true);
+    expect(lastTap()).toContain(fill(en['scoring.badminton.undone.rally'], { side: 'A. Sharma' }));
+    expect(undo().getAttribute('aria-disabled')).toBe('true');
+    expect(screen.queryByTestId('start-screen')).toBeNull();
+  });
+
+  it('lists "Match started" in History', () => {
+    renderStart();
+    pick('L. Chen');
+    act(() => fireEvent.click(startButton()));
+    press(en['scoring.history.title']);
+    expect(
+      within(screen.getByTestId('history')).getByText(
+        fill(en['scoring.badminton.last.start'], { side: 'L. Chen' }),
+      ),
+    ).toBeTruthy();
+  });
+
+  it('goes Home on Back, as the pad does', () => {
+    const pad = renderStart();
+    expect(back(pad)).toBe(true);
+    expect(pad.navigation.current()).toBe('home');
+  });
+
+  it('comes back afresh from the preview row’s Start, the doubles names as typed', () => {
+    renderPad();
+    press(en['scoring.preview.dev.doubles']);
+    expect(screen.queryByTestId('start-screen')).toBeNull();
+    press(en['scoring.preview.dev.start']);
+    expect(radios().map((radio) => radio.textContent)).toEqual([
+      'A. Sharma / R. Iyer',
+      'L. Chen / M. Wong',
+    ]);
+  });
+
+  it('keeps the Not started card for a division not open, under its own chip', () => {
+    renderStart();
+    press(en['scoring.preview.dev.notStarted']);
+    expect(screen.getByTestId('pad-card')).toBeTruthy();
+    expect(screen.queryByTestId('start-screen')).toBeNull();
+    expect(en['scoring.preview.dev.notStarted']).not.toBe(en['scoring.preview.dev.start']);
+  });
+
+  it.each([
+    ['es', es],
+    ['fr', fr],
+    ['nl', nl],
+  ] as const)(
+    '%s: the question, the group’s name and Start match in the operator’s language',
+    (lang, words) => {
+      renderStart({ deviceLanguages: [lang] });
+      expect(
+        within(screen.getByTestId('start-screen'))
+          .getAllByRole('heading')
+          .map((h) => h.textContent),
+      ).toContain(words['scoring.badminton.start.ask']);
+      expect(screen.getByRole('radiogroup').getAttribute('aria-label')).toBe(
+        words['scoring.badminton.start.ask'],
+      );
+      pick('L. Chen');
+      act(() => fireEvent.click(startButton(words)));
+      const plain = (text: string) => text.split(String.fromCodePoint(0x00a0)).join(' ');
+      expect(plain(lastTap() ?? '')).toContain(
+        plain(fill(words['scoring.badminton.last.start'], { side: 'L. Chen' })),
       );
     },
   );

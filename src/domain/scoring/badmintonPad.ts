@@ -13,6 +13,7 @@ import {
   type PadPeriodScore,
   type PadServing,
   type PadSide,
+  type PadStart,
   type PadStripItem,
   type PadSync,
   type PadTally,
@@ -39,15 +40,26 @@ export type BadmintonSanction = {
   readonly person: string;
 };
 
-/** One tap the scorer can make on the pad. `ending` is a disqualification's: the match ends, the other side wins. */
+/**
+ * One tap the scorer can make on the pad. `start` starts the match, the side picked serving first (owner, 2026-11-01);
+ * `ending` is a disqualification's: the match ends, the other side wins.
+ */
 export type BadmintonTap =
+  | { readonly kind: 'start'; readonly server: PadSide }
   | { readonly kind: 'rally'; readonly side: PadSide }
   | ({ readonly kind: 'sanction' } & BadmintonSanction)
   | { readonly kind: 'setScore'; readonly first: number; readonly second: number }
   | { readonly kind: 'ending'; readonly side: PadSide; readonly person: string };
 
+/**
+ * A tap Undo took back, as the last-tap line names it: never the start, whose Undo returns to the Start screen, where
+ * no line shows (owner, 2026-11-01).
+ */
+export type BadmintonUndoneTap = Exclude<BadmintonTap, { readonly kind: 'start' }>;
+
 /** What the last tap did: a rally says whether it won a game or the match; `undone` names the tap Undo took back. */
 export type BadmintonLastTap =
+  | { readonly kind: 'start'; readonly server: PadSide }
   | {
       readonly kind: 'rally';
       readonly side: PadSide;
@@ -57,7 +69,7 @@ export type BadmintonLastTap =
   | ({ readonly kind: 'sanction' } & BadmintonSanction)
   | { readonly kind: 'setScore'; readonly first: number; readonly second: number }
   | { readonly kind: 'ending'; readonly side: PadSide; readonly person: string }
-  | { readonly kind: 'undone'; readonly tap: BadmintonTap };
+  | { readonly kind: 'undone'; readonly tap: BadmintonUndoneTap };
 
 /** What a tap did when it was recorded: the last-tap line's tap, never an Undo (History lists Undo on the tap it took). */
 export type BadmintonDone = Exclude<BadmintonLastTap, { readonly kind: 'undone' }>;
@@ -70,8 +82,11 @@ export type BadmintonGame =
   | { readonly points: Readonly<Record<PadSide, number>>; readonly winner: PadSide }
   | { readonly points: Readonly<Record<PadSide, number>>; readonly disqualified: PadSide };
 
-/** Before the match's first rally; a game under way; a game won and the next not yet started; the match over. */
-export type BadmintonPhase = 'pre' | 'live' | 'betweenGames' | 'decided';
+/**
+ * Not started (the Start screen: who serves first is not yet picked); started, before the match's first rally; a game
+ * under way; a game won and the next not yet started; the match over.
+ */
+export type BadmintonPhase = 'notStarted' | 'pre' | 'live' | 'betweenGames' | 'decided';
 
 /**
  * A badminton match as the pad shows it. Whoever keeps the score (the engine in S2; the preview's fake today) decides
@@ -118,6 +133,8 @@ export type BadmintonPadKey =
   | `scoring.badminton.servingSaid.${BadmintonCourt}`
   | 'scoring.badminton.intervalAt'
   | 'scoring.badminton.intervalNow'
+  | 'scoring.badminton.start.ask'
+  | 'scoring.badminton.last.start'
   | 'scoring.badminton.last.rally'
   | 'scoring.badminton.last.game'
   | 'scoring.badminton.last.match'
@@ -156,8 +173,9 @@ export function sideNames(side: BadmintonSide): string {
  * Layout A's pad for a badminton match (owner rulings, 2026-10-31): the first side on top, the second below, each with
  * its finished games' scores and its heaviest sanction in the bottom row and, on the server's, the service court on
  * the serving plate; the game of how many and the interval in the strip; and Sanction (per side) and Set score (only
- * before a game's first rally) in the tool row. A decided match is the recorded result's card over the final score. `sync` is the
- * transport's word, not the match's.
+ * before a game's first rally) in the tool row. A decided match is the recorded result's card over the final score.
+ * Before the match starts, the Start screen's question in the halves' place, and no tools. `sync` is the transport's
+ * word, not the match's.
  */
 export function badmintonPad(
   state: BadmintonDisplay,
@@ -167,6 +185,7 @@ export function badmintonPad(
     halves: [half(state, 'first'), half(state, 'second')],
     tally: tally(state),
     details: badmintonDetails(state),
+    start: startOf(state),
     strip: strip(state),
     lastTap: lastTap(state),
     sync,
@@ -185,7 +204,9 @@ export function parseBadmintonTool(
   return id === 'setScore' ? { kind: 'setScore' } : null;
 }
 
-const open = (state: BadmintonDisplay) => state.phase !== 'decided' && !state.awaitingEnding;
+const started = (state: BadmintonDisplay) => state.phase !== 'notStarted';
+const open = (state: BadmintonDisplay) =>
+  started(state) && state.phase !== 'decided' && !state.awaitingEnding;
 
 function half(state: BadmintonDisplay, side: PadSide): PadHalf<BadmintonPadKey> {
   return {
@@ -194,7 +215,10 @@ function half(state: BadmintonDisplay, side: PadSide): PadHalf<BadmintonPadKey> 
     value: String(state.points[side]),
     periods: periods(state.finished, side),
     sub: heaviestSanction(state, side),
-    serving: state.phase !== 'decided' && state.server === side ? serving(state.court) : null,
+    serving:
+      started(state) && state.phase !== 'decided' && state.server === side
+        ? serving(state.court)
+        : null,
     hint: { key: 'scoring.badminton.hint' },
     hintLine: { key: 'scoring.badminton.hintLine', vars: { side: sideNames(state.sides[side]) } },
     tappable: open(state),
@@ -247,6 +271,21 @@ function stoppedSaid(
       ? 'scoring.badminton.gameSaid.disqualified'
       : 'scoring.badminton.gameSaid.stopped';
   return { key, vars: { game: number, points: game.points[side] } };
+}
+
+/**
+ * Before the match starts (owner, 2026-11-01, option A): who serves first, from the two sides as typed, top first. Once
+ * it has started, none.
+ */
+function startOf(state: BadmintonDisplay): PadStart<BadmintonPadKey> | null {
+  if (started(state)) return null;
+  return {
+    ask: { key: 'scoring.badminton.start.ask' },
+    sides: [
+      { side: 'first', label: sideNames(state.sides.first) },
+      { side: 'second', label: sideNames(state.sides.second) },
+    ],
+  };
 }
 
 /** The match's context and its rule lines: the Match details sheet's and the Not started card's (owner, 2026-11-01). */
@@ -323,6 +362,7 @@ function interval(state: BadmintonDisplay): Text | null {
 }
 
 function tools(state: BadmintonDisplay): readonly PadTool<BadmintonPadKey>[] {
+  if (!started(state)) return [];
   const enabled = !state.awaitingEnding;
   const sanction = (side: PadSide): PadTool<BadmintonPadKey> => ({
     id: `sanction.${side}`,
@@ -363,6 +403,8 @@ function lastTapText(state: BadmintonDisplay, tap: BadmintonLastTap): Text {
 export function doneSaid(sides: BadmintonDisplay['sides'], tap: BadmintonDone): Text {
   const side = (of: PadSide) => sideNames(sides[of]);
   switch (tap.kind) {
+    case 'start':
+      return { key: 'scoring.badminton.last.start', vars: { side: side(tap.server) } };
     case 'rally':
       if (tap.won === 'game') {
         return {
@@ -386,7 +428,7 @@ export function doneSaid(sides: BadmintonDisplay['sides'], tap: BadmintonDone): 
   }
 }
 
-function undoneText(state: BadmintonDisplay, tap: BadmintonTap): Text {
+function undoneText(state: BadmintonDisplay, tap: BadmintonUndoneTap): Text {
   switch (tap.kind) {
     case 'rally':
       return {
