@@ -158,6 +158,18 @@ a screen reader under it; Back closes it.
 result recorded, view only, bad link, and the Update needed banner in place of the last-tap line and
 tools.
 
+**The match card** (`MatchCard`; owner, 2026-11-01, option A, after the approval: the Start screen
+and the Division-not-open card "looks like paste some text, we need a proper format also it can
+change per sport"). One shared card on the Start screen, the Division-not-open card and the Match
+details sheet:
+
+- a header: the competition in display caps, division · round, and the match as a plate;
+- a versus block: one row per side, with the Live Stream match label's side bars (lime, then lilac);
+- a rules table of label → value rows.
+
+Each sport supplies its own rows (badminton: Format, Points, Cap, Interval, Ends change); the card
+knows no sport.
+
 **Shared kit vs sport screen** (ruling 13). Sport-agnostic, reused by every sport: `PadView` and its
 cards and `cardPlacement`, the bounce guard, `TapFlash`, `LastTapLine`, `ToolRow`, `StepSheet`,
 `ScoreEntrySheet`, `EndingPrompt`, `SyncDot`, `UpdateBanner`, `RefusalBanner`, `PadStrip`,
