@@ -189,12 +189,13 @@ describe('the strip fits at 320 in four languages', () => {
     },
   );
 
-  // With the court on the serving plate (owner ruling 17) the strip has two slots, and every fact takes one line of
-  // its two: the second line is reserved, and the halves could have its 16 dp. Kept: the controller's call.
-  it('holds every fact on one line at 320 in four languages, now the court is on the plate', () => {
+  // Owner, 2026-10-31 ("Yes to the 8 dp"): with the court on the serving plate (ruling 17) the strip has two slots,
+  // and every fact takes one line at either width, so the strip reserves one.
+  it('holds every fact on one line at 320 and 360 in four languages: the strip reserves one', () => {
+    expect(layout.padStripLines).toBe(1);
     for (const [, dictionary] of LANGUAGES)
       for (const fact of facts(dictionary))
-        expect(linesOf(fact, stripSlot(320), unitWidth)).toBe(1);
+        for (const width of WIDTHS) expect(linesOf(fact, stripSlot(width), unitWidth)).toBe(1);
   });
 });
 
@@ -379,31 +380,33 @@ describe('the update banner (owner ruling 8)', () => {
 
   /**
    * In the place of the last-tap line and the tools (`cardPlacement`'s `forControls`): around the halves, the screen's
-   * padding (32), the header (48), the strip (32), the preview row (48) and the four gaps between the five (32), then
-   * the banner and the gap between the halves.
+   * padding (32), the header (48), the strip (one line, 16), the preview row (48) and the four gaps between the five
+   * (32), then the banner and the gap between the halves.
    */
-  const FIXED_UPDATE = 32 + 48 + 32 + 48 + 4 * 8;
+  const STRIP = layout.padStripLines * typeScale.metricUnit.lineHeight;
+  const FIXED_UPDATE = 32 + 48 + STRIP + 48 + 4 * 8;
   const halvesUnder = (height: number, banner: number) =>
     (height - FIXED_UPDATE - banner - space.sm) / 2;
 
-  it('leaves each half 186 on the owner’s phone, about 360 × 724 (173 with the note): the score at 64, whole', () => {
-    expect(FIXED_UPDATE).toBe(192);
-    expect([halvesUnder(724, BANNER), halvesUnder(724, BANNER + NOTE)]).toEqual([186, 173]);
+  it('leaves each half 194 on the owner’s phone, about 360 × 724 (181 with the note): the score at 96, 64 with it', () => {
+    expect(FIXED_UPDATE).toBe(176);
+    expect([halvesUnder(724, BANNER), halvesUnder(724, BANNER + NOTE)]).toEqual([194, 181]);
+    expect(scoreRole(halvesUnder(724, BANNER))).toBe('score');
     expect(scoreRole(halvesUnder(724, BANNER + NOTE))).toBe('scoreCompact');
     expect(halvesUnder(724, BANNER + NOTE)).toBeGreaterThanOrEqual(halfNeeds('scoreCompact'));
   });
 
-  it('would cut the score above the halves: with the last-tap line kept, a half 151 on the owner’s phone', () => {
+  it('would cut the score above the halves: with the last-tap line kept, a half 159 on the owner’s phone', () => {
     // The line (54) and the empty tool row's gap stay; the banner and its gap join the halves' column.
-    const above = 32 + 48 + 32 + 54 + 48 + 5 * 8;
+    const above = 32 + 48 + STRIP + 54 + 48 + 5 * 8;
     const half = (724 - above - BANNER - 2 * space.sm) / 2;
-    expect(half).toBe(151);
+    expect(half).toBe(159);
     expect(half).toBeLessThan(halfNeeds('scoreCompact'));
   });
 
-  it('holds the score whole from 676 tall, 702 with the note', () => {
-    expect(halvesUnder(676, BANNER)).toBe(halfNeeds('scoreCompact'));
-    expect(halvesUnder(702, BANNER + NOTE)).toBe(halfNeeds('scoreCompact'));
+  it('holds the score whole from 660 tall, 686 with the note', () => {
+    expect(halvesUnder(660, BANNER)).toBe(halfNeeds('scoreCompact'));
+    expect(halvesUnder(686, BANNER + NOTE)).toBe(halfNeeds('scoreCompact'));
   });
 });
 
@@ -494,10 +497,12 @@ describe('a half', () => {
     ]);
   });
 
-  // The halves as laid out on the owner's phone (NE2211, 360 × 804; the controller's brief, 2026-10-31, from the device).
-  it('sets the score at 96 on the owner’s phone with the preview row (a half 209), at 128 without it (233)', () => {
-    expect(scoreRole(209)).toBe('score');
-    expect(scoreRole(233)).toBe('scoreLarge');
+  // The halves as laid out on the owner's phone (NE2211, 360 × 804; the controller's brief, 2026-10-31, from the device):
+  // 209 with the preview row and 233 without, with the strip's two lines. One line gives each 8 more (below): 217 still
+  // sets the score at 96, 241 at 128. A device check settles them.
+  it('sets the score at 96 on the owner’s phone with the preview row (a half 217), at 128 without it (241)', () => {
+    expect([scoreRole(209), scoreRole(233)]).toEqual(['score', 'scoreLarge']);
+    expect([scoreRole(209 + 8), scoreRole(233 + 8)]).toEqual(['score', 'scoreLarge']);
   });
 });
 
@@ -570,6 +575,40 @@ describe('a half’s bottom row: the finished games’ boxes, the sanction and t
     },
   );
 
+  /** A box marked DQ (owner ruling 18): its padding and hairlines, two tabular digits, a gap and the mark. */
+  const markedBox = (dictionary: Dictionary) =>
+    Math.max(
+      layout.padPeriodBox,
+      2 * space.xs +
+        2 * layout.iconBorder +
+        2 * digit +
+        space.xs +
+        unitWidth(dictionary['scoring.badminton.mark.disqualified'] ?? ''),
+    );
+
+  it('marks a box DQ in every language, 46.3 dp with the mark (anti-vacuity)', () => {
+    for (const [, dictionary] of LANGUAGES)
+      expect(dictionary['scoring.badminton.mark.disqualified']).toBeTruthy();
+    expect(markedBox(en).toFixed(1)).toBe('46.3');
+  });
+
+  // Owner ruling 18: a match a disqualification ends in game 3 shows three boxes, one marked DQ, and the side
+  // disqualified has the widest sanction after them. Its halves take no tap, so there is no hint.
+  it.each(LANGUAGES)(
+    '%s: three boxes, one marked DQ, the dot and the widest sanction, whole at 320 and 360',
+    (_lang, dictionary: Dictionary) => {
+      const row =
+        2 * layout.padPeriodBox +
+        markedBox(dictionary) +
+        2 * space.xs +
+        space.sm +
+        controlWidth('·') +
+        space.sm +
+        controlWidth(widestSanction(dictionary));
+      for (const width of WIDTHS) expect(row).toBeLessThanOrEqual(inner(width));
+    },
+  );
+
   // In play there are two boxes at most. Beside them and the widest sanction the hint is cut with an ellipsis, never
   // hidden: its first word and the ellipsis stay ("the hint gives way (ellipsis, then hidden) before the boxes").
   it.each(LANGUAGES)(
@@ -610,17 +649,18 @@ describe('a half’s bottom row: the finished games’ boxes, the sanction and t
 
 describe('the pad’s height, portrait', () => {
   /**
-   * Everything but the halves: the screen's padding (2 × 16), the header (touch, 48), the strip (2 lines of 16), the
+   * Everything but the halves: the screen's padding (2 × 16), the header (touch, 48), the strip (one line of 16), the
    * last-tap line (3 lines of 18: 54, over touch), a tool row with a two-line label and a side (2 × 4 + 2 × 1 + 2 × 19 +
    * 16 = 64), the preview row (touch), and the five gaps between the six (8).
    */
-  const FIXED = 32 + 48 + 32 + 54 + 64 + 48 + 5 * 8;
+  const STRIP = layout.padStripLines * typeScale.metricUnit.lineHeight;
+  const FIXED = 32 + 48 + STRIP + 54 + 64 + 48 + 5 * 8;
   const halves = (height: number) => (height - FIXED - space.sm) / 2;
 
-  it('reserves 318 dp around the halves', () => {
-    expect(FIXED).toBe(318);
+  it('reserves 302 dp around the halves', () => {
+    expect(FIXED).toBe(302);
     expect(layout.touch).toBe(48);
-    expect(layout.padStripLines * typeScale.metricUnit.lineHeight).toBe(32);
+    expect(STRIP).toBe(16);
     expect(layout.padLineLines * typeScale.control.lineHeight).toBe(54);
     expect(
       2 * space.xs +
@@ -633,19 +673,26 @@ describe('the pad’s height, portrait', () => {
   // The owner's phone is 360 × 804; with its status bar (32) and 3-button navigation (48) the app has about 724, an
   // estimate from N35's sideways insets (804 × 360 laid out 728 × 328). A device check settles it; `scoreRole` adapts
   // either way.
-  it('sets the score at 96 on the owner’s phone, about 360 × 724: each half 199, 5 to spare', () => {
-    expect(halves(724)).toBe(199);
+  it('sets the score at 96 on the owner’s phone, about 360 × 724: each half 207, 13 to spare', () => {
+    expect(halves(724)).toBe(207);
     expect(scoreRole(halves(724))).toBe('score');
   });
 
-  it('sets the score at 96 from 714 tall, at 64 from 650; below that a half is cut, never drawn over the other', () => {
-    expect(halves(714)).toBe(halfNeeds('score'));
-    expect(halves(650)).toBe(halfNeeds('scoreCompact'));
-    expect(scoreRole(halves(713))).toBe('scoreCompact');
+  // Owner, 2026-10-31 ("Yes to the 8 dp"): the strip's second line (16) went to the halves.
+  it('gives each half 8 dp more than the strip’s two lines did', () => {
+    const twoLineStrip = (height: number) => (height - (FIXED + 16) - space.sm) / 2;
+    expect(halves(724) - twoLineStrip(724)).toBe(8);
+    expect(twoLineStrip(724)).toBe(199);
   });
 
-  it('sets the score at 128 from 778 tall', () => {
-    expect(halves(778)).toBe(halfNeeds('scoreLarge'));
-    expect(scoreRole(halves(777))).toBe('score');
+  it('sets the score at 96 from 698 tall, at 64 from 634; below that a half is cut, never drawn over the other', () => {
+    expect(halves(698)).toBe(halfNeeds('score'));
+    expect(halves(634)).toBe(halfNeeds('scoreCompact'));
+    expect(scoreRole(halves(697))).toBe('scoreCompact');
+  });
+
+  it('sets the score at 128 from 762 tall', () => {
+    expect(halves(762)).toBe(halfNeeds('scoreLarge'));
+    expect(scoreRole(halves(761))).toBe('score');
   });
 });

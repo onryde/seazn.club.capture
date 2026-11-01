@@ -205,17 +205,45 @@ describe('the finished games’ scores', () => {
     expect(finished(pad)).toHaveLength(2);
   });
 
-  it('gives a game a disqualification ended no score: it was not finished', () => {
+  // Owner ruling 18 (2026-10-31, "box with DQ"): the game in play when a disqualification ends the match gets a box,
+  // its points then, naming the side disqualified; no side won it on points.
+  it('gives the game a disqualification ended a box: its points then, and the side disqualified', () => {
     const pad = createFakeBadmintonPad(SINGLES_SAMPLE);
     firstWinsAGame(pad);
     rallies(pad, 'second', 'second');
     pad.sanction({ side: 'second', level: 'disqualification', person: 'L. Chen' });
+    expect(finished(pad)).toHaveLength(1);
     expect(pad.recordEnding()).toEqual({ ok: true });
     expect(display(pad)).toMatchObject({
       points: { first: 0, second: 2 },
-      finished: [{ points: { first: 21, second: 0 }, winner: 'first' }],
+      finished: [
+        { points: { first: 21, second: 0 }, winner: 'first' },
+        { points: { first: 0, second: 2 }, disqualified: 'second' },
+      ],
+      game: 2,
       phase: 'decided',
     });
+  });
+
+  it('gives game 1 the box when the match ends in it', () => {
+    const pad = createFakeBadmintonPad(SINGLES_SAMPLE);
+    rallies(pad, ...times(9, 'first'), ...times(4, 'second'));
+    pad.sanction({ side: 'first', level: 'disqualification', person: 'A. Sharma' });
+    pad.recordEnding();
+    expect(finished(pad)).toEqual([{ points: { first: 9, second: 4 }, disqualified: 'first' }]);
+  });
+
+  it('gives no box while the ending waits, none when the sanction is voided, and takes it away on Undo', () => {
+    const pad = createFakeBadmintonPad(SINGLES_SAMPLE);
+    rallies(pad, 'first');
+    pad.sanction({ side: 'second', level: 'disqualification', person: 'L. Chen' });
+    expect(pad.voidSanction()).toEqual({ ok: true });
+    expect(finished(pad)).toEqual([]);
+    pad.sanction({ side: 'second', level: 'disqualification', person: 'L. Chen' });
+    pad.recordEnding();
+    expect(finished(pad)).toHaveLength(1);
+    expect(pad.undo()).toEqual({ ok: true });
+    expect(display(pad)).toMatchObject({ finished: [], awaitingEnding: true, phase: 'live' });
   });
 
   it('counts the doubles sample’s rallies from someone else in the game under way, not as a finished one', () => {

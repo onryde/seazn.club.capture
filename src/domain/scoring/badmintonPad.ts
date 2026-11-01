@@ -4,6 +4,7 @@ import {
   type PadHalf,
   type PadLastTap,
   type PadPeriods,
+  type PadPeriodScore,
   type PadServing,
   type PadSide,
   type PadStripItem,
@@ -51,11 +52,13 @@ export type BadmintonLastTap =
   | { readonly kind: 'ending'; readonly side: PadSide; readonly person: string }
   | { readonly kind: 'undone'; readonly tap: BadmintonTap };
 
-/** A game that was played out: each side's points when it ended, and the side that won it. */
-export type BadmintonGame = {
-  readonly points: Readonly<Record<PadSide, number>>;
-  readonly winner: PadSide;
-};
+/**
+ * A game over: each side's points when it ended, and the side that won it on points, or the side whose
+ * disqualification ended it and the match (owner ruling 18, 2026-10-31), which no side won on points.
+ */
+export type BadmintonGame =
+  | { readonly points: Readonly<Record<PadSide, number>>; readonly winner: PadSide }
+  | { readonly points: Readonly<Record<PadSide, number>>; readonly disqualified: PadSide };
 
 /** Before the match's first rally; a game under way; a game won and the next not yet started; the match over. */
 export type BadmintonPhase = 'pre' | 'live' | 'betweenGames' | 'decided';
@@ -69,8 +72,8 @@ export type BadmintonDisplay = {
   /** The game under way, or about to start; the last one's final score once the match is decided. */
   readonly points: Readonly<Record<PadSide, number>>;
   /**
-   * Every game played out, in order (owner ruling 16): a game won on a rally, the match's last one included. A game a
-   * disqualification ended was not played out, and is not one.
+   * Every game over, in order (owner ruling 16): a game won on a rally, the match's last one included, and the game a
+   * recorded disqualification ended (owner ruling 18), at its points then.
    */
   readonly finished: readonly BadmintonGame[];
   readonly server: PadSide;
@@ -91,6 +94,9 @@ export type BadmintonDisplay = {
 /** Every dictionary key this file names. The kit translates them as `MessageKey`, so each must exist in en.json. */
 export type BadmintonPadKey =
   | 'scoring.badminton.gamesSaid.other'
+  | 'scoring.badminton.gameSaid.disqualified'
+  | 'scoring.badminton.gameSaid.stopped'
+  | 'scoring.badminton.mark.disqualified'
   | 'scoring.badminton.hint'
   | 'scoring.badminton.hintLine'
   | 'scoring.badminton.gameOf'
@@ -179,25 +185,52 @@ function half(state: BadmintonDisplay, side: PadSide): PadHalf<BadmintonPadKey> 
   };
 }
 
-/** The side's score in each finished game, its wins marked, and "Games: 21, 18" for a screen reader; none in game 1. */
+/**
+ * The side's score in each game over, its wins marked and a disqualified game's DQ on the side disqualified; said
+ * "Games: 21, 18", then a disqualified game apart ("Game 2: 9, disqualified"). None in game 1.
+ */
 function periods(
   finished: readonly BadmintonGame[],
   side: PadSide,
 ): PadPeriods<BadmintonPadKey> | null {
   if (finished.length === 0) return null;
-  const scores = finished.map((game) => ({
-    value: String(game.points[side]),
-    won: game.winner === side,
-  }));
-  const said = scores.map((score) => score.value).join(', ');
-  return {
-    scores,
-    said: {
-      key: 'scoring.badminton.gamesSaid.other',
-      count: finished.length,
-      vars: { scores: said },
-    },
-  };
+  const played = finished.filter((game) => 'winner' in game);
+  const said: Text[] =
+    played.length === 0
+      ? []
+      : [
+          {
+            key: 'scoring.badminton.gamesSaid.other',
+            count: played.length,
+            vars: { scores: played.map((game) => game.points[side]).join(', ') },
+          },
+        ];
+  finished.forEach((game, at) => {
+    if ('disqualified' in game) said.push(stoppedSaid(game, at + 1, side));
+  });
+  return { scores: finished.map((game) => periodScore(game, side)), said };
+}
+
+const DQ: Text = { key: 'scoring.badminton.mark.disqualified' };
+
+/** A game's box for the side: lime when it won the game on points, DQ when it was disqualified in it. */
+function periodScore(game: BadmintonGame, side: PadSide): PadPeriodScore<BadmintonPadKey> {
+  const value = String(game.points[side]);
+  if ('winner' in game) return { value, won: game.winner === side };
+  return game.disqualified === side ? { value, won: false, mark: DQ } : { value, won: false };
+}
+
+/** A disqualified game, said apart: "Game 2: 9, disqualified" for the side disqualified, "Game 2: 4" for the other. */
+function stoppedSaid(
+  game: Extract<BadmintonGame, { readonly disqualified: PadSide }>,
+  number: number,
+  side: PadSide,
+): Text {
+  const key =
+    game.disqualified === side
+      ? 'scoring.badminton.gameSaid.disqualified'
+      : 'scoring.badminton.gameSaid.stopped';
+  return { key, vars: { game: number, points: game.points[side] } };
 }
 
 /** The side's heaviest sanction's word, or none. */

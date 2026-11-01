@@ -55,15 +55,23 @@ export type PadHalf<K extends string> = {
 
 /**
  * A side's finished games (owner ruling 16, 2026-10-31: a TV scoreboard's boxes): its score in each, in game order,
- * and the same said to a screen reader ("Games: 21, 18"), which hears it in the half's name.
+ * and the same said to a screen reader, in one or more parts the half's name reads in order ("Games: 21", "Game 2: 9,
+ * disqualified").
  */
 export type PadPeriods<K extends string> = {
-  readonly scores: readonly PadPeriodScore[];
-  readonly said: PadText<K>;
+  readonly scores: readonly PadPeriodScore<K>[];
+  readonly said: readonly PadText<K>[];
 };
 
-/** One finished game's box: the side's score in it, and whether the side won it (the box the kit marks). */
-export type PadPeriodScore = { readonly value: string; readonly won: boolean };
+/**
+ * One finished game's box: the side's score in it, whether the side won it (the box the kit marks lime), and a short
+ * mark drawn small beside the score when the game ended otherwise (badminton's DQ: owner ruling 18, 2026-10-31).
+ */
+export type PadPeriodScore<K extends string> = {
+  readonly value: string;
+  readonly won: boolean;
+  readonly mark?: PadText<K>;
+};
 
 /**
  * The serving plate's words ("Serving · right": owner ruling 17, 2026-10-31, the service court on the plate), and the

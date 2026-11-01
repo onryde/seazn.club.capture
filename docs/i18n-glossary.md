@@ -162,6 +162,8 @@ web pad's where it has them (`device.*`, the sanction levels).
 | Ends change (the deciding game)   | Cambio de lado                      | Changement de côté                  | Van kant wisselen                     | As the web's tennis strip (`pad.tennis.scorebug.strip.endsChanged`).                                            |
 | Game {game} of {bestOf} (strip)   | Juego {game} de {bestOf}            | Jeu {game} sur {bestOf}             | Game {game} van {bestOf}              | Owner ruling 16, alone: _of 3_ is the best of 3, which the Rules sheet spells out.                              |
 | Games: {scores} (said)            | Juegos: {scores}                    | Jeux : {scores}                     | Games: {scores}                       | `.one` / `.other`: a half's finished games in its name (owner ruling 16). The boxes show only the digits.       |
+| DQ (a game box's mark)            | DQ                                  | DQ                                  | DQ                                    | Owner ruling 18: on the disqualified side's box. DQ in all four; no federation's own abbreviation checked.      |
+| Game 2: 9, disqualified (said)    | Juego 2: 9, descalificado           | Jeu 2 : 9, disqualifié              | Game 2: 9, gediskwalificeerd          | A disqualified game, said apart in the half's name; the other side's: _Game 2: 4_. es and fr masculine.         |
 | Set score · Game {game} (title)   | Fijar puntos · Juego {game}         | Saisir le score · Jeu {game}        | Stand invoeren · Game {game}          | The Set score sheet's title names the game it sets, the one the strip names (the controller's call).            |
 
 ## Translation review

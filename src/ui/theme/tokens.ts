@@ -319,8 +319,12 @@ const base = {
    * (padFit.test.ts).
    */
   padPeriodBox: 26,
-  /** The pad's strip: each slot's text may take this many lines of `metricUnit` (padFit.test.ts measures them at 320). */
-  padStripLines: 2,
+  /**
+   * The pad's strip: each slot's text takes this many lines of `metricUnit`. One (owner, 2026-10-31: "Yes to the 8
+   * dp"): with the court on the serving plate the strip has two slots, every fact fits one line at 320 dp in four
+   * languages, and each half gains 8 dp (padFit.test.ts).
+   */
+  padStripLines: 1,
   /**
    * The pad's last-tap sentence and a refusal in its place: this many lines of `control`, then an ellipsis. Three, not
    * two: beside Dutch's "Ongedaan maken" two lines cut most refusals even at 360 (padFit.test.ts measures every one).

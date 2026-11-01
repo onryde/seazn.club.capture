@@ -43,9 +43,9 @@ export const ScoreHalf = memo(function ScoreHalf({ half, flash, onTap }: ScoreHa
     [],
   );
   const sub = half.sub === null ? null : words(half.sub);
-  const periods = half.periods === null ? null : words(half.periods.said);
+  const periods = half.periods === null ? NO_WORDS : half.periods.said.map(words);
   const serving = half.serving === null ? null : words(half.serving.said);
-  const name = [half.label, half.value, periods, sub, serving].filter(isWords).join(', ');
+  const name = [half.label, half.value, ...periods, sub, serving].filter(isWords).join(', ');
   return (
     <Pressable
       testID={`half-${half.side}`}
@@ -89,7 +89,7 @@ const HalfFoot = memo(function HalfFoot({
   sub,
   hint,
 }: {
-  readonly scores: readonly PadPeriodScore[];
+  readonly scores: readonly PadPeriodScore<MessageKey>[];
   readonly sub: string | null;
   readonly hint: string | null;
 }) {
@@ -118,24 +118,45 @@ const HalfFoot = memo(function HalfFoot({
 
 /** Typography, not copy (as the domain's en dash in a score): between the boxes and the sanction ("[21] · Penalty"). */
 const SEPARATOR = '·';
-const NO_SCORES: readonly PadPeriodScore[] = [];
+const NO_SCORES: readonly PadPeriodScore<MessageKey>[] = [];
+const NO_WORDS: readonly string[] = [];
 
-/** The side's score in each finished game, in game order: a game it won in lime, digits and hairline (ruling 16). */
+/**
+ * The side's score in each game over, in game order: a game it won in lime, digits and hairline (owner ruling 16); a
+ * game a disqualification ended carries its mark (owner ruling 18).
+ */
 const PeriodBoxes = memo(function PeriodBoxes({
   scores,
 }: {
-  readonly scores: readonly PadPeriodScore[];
+  readonly scores: readonly PadPeriodScore<MessageKey>[];
 }) {
   return (
     <View testID="periods" aria-hidden style={styles.boxes}>
       {scores.map((score, at) => (
         // A finished game's place is its identity: games are only ever added or taken away at the end.
-        <View key={at} testID="period" style={score.won ? wonBox : lostBox}>
-          <Text variant="periodScore" style={score.won ? styles.wonDigits : styles.lostDigits}>
-            {score.value}
-          </Text>
-        </View>
+        <PeriodBox key={at} score={score} />
       ))}
+    </View>
+  );
+});
+
+/** One game's box: its score, and a mark when the game ended otherwise ("DQ"), small and in caution, after it. */
+const PeriodBox = memo(function PeriodBox({
+  score,
+}: {
+  readonly score: PadPeriodScore<MessageKey>;
+}) {
+  const words = usePadText();
+  return (
+    <View testID="period" style={score.won ? wonBox : lostBox}>
+      <Text variant="periodScore" style={score.won ? styles.wonDigits : styles.lostDigits}>
+        {score.value}
+      </Text>
+      {score.mark === undefined ? null : (
+        <Text testID="period-mark" variant="metricUnit" style={styles.mark}>
+          {words(score.mark)}
+        </Text>
+      )}
     </View>
   );
 });
@@ -181,8 +202,11 @@ const styles = StyleSheet.create({
   hint: { flex: 1, minWidth: 0, textAlign: 'right' },
   boxes: { flexDirection: 'row', gap: space.xs },
   box: {
+    flexDirection: 'row',
+    gap: space.xs,
     minWidth: layout.padPeriodBox,
     paddingHorizontal: space.xs,
+    justifyContent: 'center',
     alignItems: 'center',
     borderWidth: layout.iconBorder,
   },
@@ -191,6 +215,8 @@ const styles = StyleSheet.create({
   lost: { borderColor: colour.ink3 },
   wonDigits: { color: colour.lime },
   lostDigits: { color: colour.ink2 },
+  // A disqualification's mark: the sanction tools' caution (never red: red means ON AIR, AGENTS §5).
+  mark: { color: colour.caution },
   plate: { paddingHorizontal: space.sm, paddingVertical: space.xs, backgroundColor: colour.lime },
   plateWord: { color: plateInk },
 });

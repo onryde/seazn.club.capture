@@ -25,7 +25,7 @@ const top: PadHalf<MessageKey> = {
       { value: '21', won: true },
       { value: '18', won: false },
     ],
-    said: { key: 'scoring.badminton.gamesSaid.other', count: 2, vars: { scores: '21, 18' } },
+    said: [{ key: 'scoring.badminton.gamesSaid.other', count: 2, vars: { scores: '21, 18' } }],
   },
   sub: { key: 'scoring.sanction.penalty' },
   serving: {
@@ -158,7 +158,85 @@ describe('ScoreHalf', () => {
     expect(getComputedStyle(digits).fontVariant).toContain('tabular-nums');
     expect(getComputedStyle(digits).fontSize).toBe(`${typeScale.periodScore.fontSize}px`);
     expect(getComputedStyle(box).minWidth).toBe(`${layout.padPeriodBox}px`);
-    expect(getComputedStyle(box).alignItems).toBe('center');
+    const style = getComputedStyle(box);
+    expect([style.flexDirection, style.justifyContent, style.alignItems]).toEqual([
+      'row',
+      'center',
+      'center',
+    ]);
+    expect(within(box).queryByTestId('period-mark')).toBeNull();
+  });
+
+  // Owner ruling 18 (2026-10-31, "box with DQ"): game 1 won 21-15; this side disqualified in game 2 at 9.
+  const disqualified: PadHalf<MessageKey> = {
+    ...top,
+    value: '9',
+    periods: {
+      scores: [
+        { value: '21', won: true },
+        { value: '9', won: false, mark: { key: 'scoring.badminton.mark.disqualified' } },
+      ],
+      said: [
+        { key: 'scoring.badminton.gamesSaid.other', count: 1, vars: { scores: '21' } },
+        { key: 'scoring.badminton.gameSaid.disqualified', vars: { game: 2, points: 9 } },
+      ],
+    },
+    sub: { key: 'scoring.sanction.disqualification' },
+    serving: null,
+    tappable: false,
+  };
+
+  it('marks a disqualified game’s box DQ, small, after its score, and draws the box plain', () => {
+    renderWithPorts(<ScoreHalf half={disqualified} flash={0} onTap={vi.fn()} />);
+    const [won, stopped] = boxes();
+    if (won === undefined || stopped === undefined) throw new Error('two boxes');
+    expect(within(won).queryByTestId('period-mark')).toBeNull();
+    const mark = within(stopped).getByTestId('period-mark');
+    expect(mark.textContent).toBe(en['scoring.badminton.mark.disqualified']);
+    expect([...stopped.children].map((child) => child.textContent)).toEqual([
+      '9',
+      en['scoring.badminton.mark.disqualified'],
+    ]);
+    expect(getComputedStyle(mark).fontSize).toBe(`${typeScale.metricUnit.fontSize}px`);
+    // The sanction tools' caution (never red: red means ON AIR, AGENTS §5).
+    expect(getComputedStyle(mark).color).toBe(edgeOf(colour.caution));
+    expect(paintOf(stopped).edges).toEqual(Array(4).fill(edgeOf(colour.ink3)));
+    expect(getComputedStyle(within(stopped).getByText('9')).color).toBe(edgeOf(colour.ink2));
+  });
+
+  it.each([
+    ['es', es],
+    ['fr', fr],
+    ['nl', nl],
+  ] as const)('marks it and says it in %s', (lang, words: Dictionary) => {
+    renderWithPorts(<ScoreHalf half={disqualified} flash={0} onTap={vi.fn()} />, {
+      deviceLanguages: [lang],
+    });
+    expect(screen.getByTestId('period-mark').textContent).toBe(
+      words['scoring.badminton.mark.disqualified'],
+    );
+    const name = [
+      'A. Sharma',
+      '9',
+      (words['scoring.badminton.gamesSaid.one'] ?? '').replace('{scores}', '21'),
+      (words['scoring.badminton.gameSaid.disqualified'] ?? '')
+        .replace('{game}', '2')
+        .replace('{points}', '9'),
+      words['scoring.sanction.disqualification'],
+    ].join(', ');
+    expect(screen.getByTestId('half-first').getAttribute('aria-label')).toBe(name);
+  });
+
+  it('says a disqualified game apart in its name: “Game 2: 9, disqualified”', () => {
+    renderWithPorts(<ScoreHalf half={disqualified} flash={0} onTap={vi.fn()} />);
+    const name = [
+      'A. Sharma',
+      '9',
+      en['scoring.badminton.gamesSaid.one'].replace('{scores}', '21'),
+      en['scoring.badminton.gameSaid.disqualified'].replace('{game}', '2').replace('{points}', '9'),
+      en['scoring.sanction.disqualification'],
+    ].join(', ');
+    expect(screen.getByTestId('half-first').getAttribute('aria-label')).toBe(name);
   });
 
   // Owner ruling 16: "the hint gives way (ellipsis, then hidden) before the boxes. Boxes are never cut."

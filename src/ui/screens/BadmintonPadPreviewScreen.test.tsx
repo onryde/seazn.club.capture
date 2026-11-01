@@ -445,6 +445,48 @@ describe('BadmintonPadPreviewScreen: a sanction, end to end', () => {
     expect(lastTap()).toContain(fill(en['scoring.badminton.last.ending'], { person: 'L. Chen' }));
   });
 
+  // Owner ruling 18 (2026-10-31, "box with DQ").
+  it('Record the ending boxes the game in play at its points, DQ on the side disqualified; Undo takes it away', () => {
+    const pad = renderPad();
+    rally(pad, 'first', 21);
+    rally(pad, 'first', 9);
+    rally(pad, 'second', 4);
+    press(sanctionOn('L. Chen'));
+    press(en['scoring.sanction.disqualification']);
+    press('L. Chen');
+    press(en['scoring.sanction.confirm.action']);
+    expect(boxes('second')).toEqual(['0']);
+    press(en['scoring.ending.record']);
+    const dq = en['scoring.badminton.mark.disqualified'];
+    expect([boxes('first'), boxes('second')]).toEqual([
+      ['21', '9'],
+      ['0', `4${dq}`],
+    ]);
+    expect(within(half('first')).queryByTestId('period-mark')).toBeNull();
+    expect(within(half('second')).getByTestId('period-mark').textContent).toBe(dq);
+    expect(shows('first', 9) && shows('second', 4)).toBe(true);
+    expect(half('second').getAttribute('aria-label')).toBe(
+      [
+        'L. Chen',
+        '4',
+        fill(en['scoring.badminton.gamesSaid.one'], { scores: '0' }),
+        fill(en['scoring.badminton.gameSaid.disqualified'], { game: 2, points: 4 }),
+        en['scoring.sanction.disqualification'],
+      ].join(', '),
+    );
+    expect(half('first').getAttribute('aria-label')).toBe(
+      [
+        'A. Sharma',
+        '9',
+        fill(en['scoring.badminton.gamesSaid.one'], { scores: '21' }),
+        fill(en['scoring.badminton.gameSaid.stopped'], { game: 2, points: 9 }),
+      ].join(', '),
+    );
+    undoTap(pad);
+    expect(screen.getByTestId('ending-prompt')).toBeTruthy();
+    expect([boxes('first'), boxes('second')]).toEqual([['21'], ['0']]);
+  });
+
   it('Void the sanction takes it back and play goes on', () => {
     const pad = renderPad();
     press(sanctionOn('A. Sharma'));
@@ -453,6 +495,8 @@ describe('BadmintonPadPreviewScreen: a sanction, end to end', () => {
     press(en['scoring.sanction.confirm.action']);
     press(en['scoring.ending.void']);
     expect(screen.queryByTestId('ending-prompt')).toBeNull();
+    // Owner ruling 18: a voided disqualification leaves no box.
+    expect([boxes('first'), boxes('second')]).toEqual([[], []]);
     expect(lastTap()).toContain(
       fill(en['scoring.badminton.undone.sanction'], {
         level: en['scoring.sanction.disqualification'],

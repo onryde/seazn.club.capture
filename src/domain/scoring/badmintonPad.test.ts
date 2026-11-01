@@ -102,13 +102,13 @@ describe('badmintonPad: the halves', () => {
 
   it('says a side’s finished games to a screen reader, in game order: “Games: 21, 18”', () => {
     expect(badmintonPad(twoGames).halves.map((half) => half.periods?.said)).toEqual([
-      { key: 'scoring.badminton.gamesSaid.other', count: 2, vars: { scores: '21, 18' } },
-      { key: 'scoring.badminton.gamesSaid.other', count: 2, vars: { scores: '15, 21' } },
+      [{ key: 'scoring.badminton.gamesSaid.other', count: 2, vars: { scores: '21, 18' } }],
+      [{ key: 'scoring.badminton.gamesSaid.other', count: 2, vars: { scores: '15, 21' } }],
     ]);
     const one = badmintonPad({ ...twoGames, finished: twoGames.finished.slice(0, 1) });
     expect(one.halves[1].periods).toEqual({
       scores: [{ value: '15', won: false }],
-      said: { key: 'scoring.badminton.gamesSaid.other', count: 1, vars: { scores: '15' } },
+      said: [{ key: 'scoring.badminton.gamesSaid.other', count: 1, vars: { scores: '15' } }],
     });
   });
 
@@ -323,11 +323,70 @@ describe('badmintonPad: the decided match', () => {
       ['19', ['15', '21', '19']],
     ]);
     expect(view.halves[0].periods?.scores.map((box) => box.won)).toEqual([true, false, true]);
-    expect(view.halves[0].periods?.said).toEqual({
-      key: 'scoring.badminton.gamesSaid.other',
-      count: 3,
-      vars: { scores: '21, 18, 21' },
+    expect(view.halves[0].periods?.said).toEqual([
+      { key: 'scoring.badminton.gamesSaid.other', count: 3, vars: { scores: '21, 18, 21' } },
+    ]);
+  });
+
+  // Owner ruling 18 (2026-10-31, "box with DQ"): game 1 won 21-15; the first side disqualified in game 2 at 9-4.
+  const disqualified: BadmintonDisplay = {
+    ...live,
+    points: { first: 9, second: 4 },
+    finished: [
+      { points: { first: 21, second: 15 }, winner: 'first' },
+      { points: { first: 9, second: 4 }, disqualified: 'first' },
+    ],
+    game: 2,
+    phase: 'decided',
+    sanctions: [{ side: 'first', level: 'disqualification', person: 'A. Sharma' }],
+    lastTap: { kind: 'ending', side: 'first', person: 'A. Sharma' },
+  };
+
+  it('boxes the game a disqualification ended: no side won it, and the side disqualified is marked DQ', () => {
+    const view = badmintonPad(disqualified);
+    expect(view.halves.map((half) => half.periods?.scores)).toEqual([
+      [
+        { value: '21', won: true },
+        { value: '9', won: false, mark: { key: 'scoring.badminton.mark.disqualified' } },
+      ],
+      [
+        { value: '15', won: false },
+        { value: '4', won: false },
+      ],
+    ]);
+    expect(view.halves.map((half) => half.value)).toEqual(['9', '4']);
+    expect(view.card).toEqual({ kind: 'resultRecorded' });
+  });
+
+  it('says the disqualified game apart: “Game 2: 9, disqualified”, and the other side’s “Game 2: 4”', () => {
+    expect(badmintonPad(disqualified).halves.map((half) => half.periods?.said)).toEqual([
+      [
+        { key: 'scoring.badminton.gamesSaid.other', count: 1, vars: { scores: '21' } },
+        { key: 'scoring.badminton.gameSaid.disqualified', vars: { game: 2, points: 9 } },
+      ],
+      [
+        { key: 'scoring.badminton.gamesSaid.other', count: 1, vars: { scores: '15' } },
+        { key: 'scoring.badminton.gameSaid.stopped', vars: { game: 2, points: 4 } },
+      ],
+    ]);
+  });
+
+  it('boxes a game-1 disqualification alone, with no games played to say', () => {
+    const view = badmintonPad({
+      ...disqualified,
+      finished: [{ points: { first: 9, second: 4 }, disqualified: 'second' }],
+      game: 1,
     });
+    expect(view.halves.map((half) => half.periods)).toEqual([
+      {
+        scores: [{ value: '9', won: false }],
+        said: [{ key: 'scoring.badminton.gameSaid.stopped', vars: { game: 1, points: 9 } }],
+      },
+      {
+        scores: [{ value: '4', won: false, mark: { key: 'scoring.badminton.mark.disqualified' } }],
+        said: [{ key: 'scoring.badminton.gameSaid.disqualified', vars: { game: 1, points: 4 } }],
+      },
+    ]);
   });
 
   // The four questions: another format. A best of 1 is decided by its one game.

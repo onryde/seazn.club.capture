@@ -263,13 +263,22 @@ function apply(score: Score, tap: BadmintonTap): Score {
         awaitingEnding: tap.level === 'disqualification',
       };
     }
-    case 'ending':
-      return { ...score, phase: 'decided', awaitingEnding: false, lastTap: tap };
+    case 'ending': {
+      // The game in play ends with the match, at its points then, the side disqualified named (owner ruling 18).
+      const stopped: BadmintonGame = { points: score.points, disqualified: tap.side };
+      return {
+        ...score,
+        finished: [...score.finished, stopped],
+        phase: 'decided',
+        awaitingEnding: false,
+        lastTap: tap,
+      };
+    }
   }
 }
 
 const wins = (finished: readonly BadmintonGame[], side: PadSide) =>
-  finished.filter((game) => game.winner === side).length;
+  finished.filter((game) => 'winner' in game && game.winner === side).length;
 
 /**
  * A point to `side`, which serves next. A game won is kept with its final points and the next starts at 0-0; the match

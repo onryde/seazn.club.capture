@@ -25,7 +25,7 @@ const live: PadView<Key> = {
       side: 'first',
       label: 'Top',
       value: '3',
-      periods: { scores: [{ value: '7', won: true }], said: { key: 'k.periods' } },
+      periods: { scores: [{ value: '7', won: true }], said: [{ key: 'k.periods' }] },
       sub: { key: 'k.sub' },
       serving: { shown: { key: 'k.serving' }, said: { key: 'k.servingSaid' } },
       hint: { key: 'k.hint' },
