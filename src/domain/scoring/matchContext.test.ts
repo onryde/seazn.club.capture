@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { divisionAndRound, type MatchContext } from '@/domain/scoring/matchContext';
+import { contextSaid, divisionAndRound, type MatchContext } from '@/domain/scoring/matchContext';
 
 const CONTEXT: MatchContext = {
   competition: 'Spring Open 2026',
@@ -22,5 +22,22 @@ describe('divisionAndRound', () => {
   it('has no line when both are left out, or blank', () => {
     expect(divisionAndRound({ ...CONTEXT, division: null, round: null })).toBeNull();
     expect(divisionAndRound({ ...CONTEXT, division: ' ', round: '' })).toBeNull();
+  });
+});
+
+// Owner, 2026-11-01 (option A): Match details' header reads as one line to a screen reader. Each piece the organiser
+// gave, a comma between (a pause in all four languages); the middle dot is drawn, not said.
+describe('contextSaid', () => {
+  it('says the competition, the division, the round and the match as one line', () => {
+    expect(contextSaid(CONTEXT)).toBe('Spring Open 2026, U15 Boys Singles, Round 1, Match 4');
+  });
+
+  it('skips a piece left out or blank', () => {
+    expect(contextSaid({ ...CONTEXT, division: null, match: ' ' })).toBe(
+      'Spring Open 2026, Round 1',
+    );
+    expect(contextSaid({ ...CONTEXT, division: null, round: null, match: null })).toBe(
+      'Spring Open 2026',
+    );
   });
 });

@@ -29,12 +29,11 @@ import { EndingPrompt } from '@/ui/components/EndingPrompt';
 import { HistoryCover, type HistoryGroupWords } from '@/ui/components/HistoryCover';
 import { IconButton } from '@/ui/components/IconButton';
 import { LastTapLine } from '@/ui/components/LastTapLine';
-import { MatchDetails } from '@/ui/components/MatchDetails';
+import { MatchCard } from '@/ui/components/MatchCard';
 import { MatchDetailsSheet } from '@/ui/components/MatchDetailsSheet';
 import { PadPreviewRow } from '@/ui/components/PadPreviewRow';
 import { PadStateCard } from '@/ui/components/PadStateCard';
 import { PadStrip } from '@/ui/components/PadStrip';
-import { RuleLines } from '@/ui/components/RuleLines';
 import { ScoreEntrySheet } from '@/ui/components/ScoreEntrySheet';
 import { ScoreHalf } from '@/ui/components/ScoreHalf';
 import { StepSheet, type StepOption } from '@/ui/components/StepSheet';
@@ -163,7 +162,7 @@ const MatchIcons = memo(function MatchIcons({ actions }: { readonly actions: Pad
 
 /**
  * The halves, under a card that goes with them; or a card in their place, scrolling when it is taller than the room.
- * Not started's card carries Match details between its title and its sentence (owner, 2026-11-01).
+ * Not started's card carries the match card between its title and its sentence (owner, 2026-11-01, option A).
  */
 const PadBody = memo(function PadBody({
   view,
@@ -179,7 +178,7 @@ const PadBody = memo(function PadBody({
     return (
       <ScrollView testID="pad-card-scroll" style={styles.body}>
         <PadStateCard card={card}>
-          {card.kind === 'notStarted' ? <DetailsBlock details={view.details} /> : null}
+          {card.kind === 'notStarted' ? <DetailsCard details={view.details} /> : null}
         </PadStateCard>
       </ScrollView>
     );
@@ -194,7 +193,7 @@ const PadBody = memo(function PadBody({
 });
 
 /**
- * The Start screen (owner, 2026-11-01, option A), in the halves' place until the match starts: Match details, who
+ * The Start screen (owner, 2026-11-01, option A), in the halves' place until the match starts: the match card, who
  * serves first, then Start match, a tap and no hold (it is not destructive: Undo takes it back). It scrolls when it is
  * taller than the room. Start match is disabled, and says so, until a side is picked.
  */
@@ -213,7 +212,7 @@ const StartPanel = memo(function StartPanel({
   const words = usePadText();
   return (
     <ScrollView testID="start-screen" style={styles.body} contentContainerStyle={styles.start}>
-      <DetailsBlock details={details} />
+      <DetailsCard details={details} />
       <TossPicker
         ask={words(start.ask)}
         sides={start.sides}
@@ -355,7 +354,10 @@ const BY = {
   otherScorer: 'scoring.history.otherScorer',
 } as const satisfies Record<PadHistoryRow<BadmintonPadKey>['by'], MessageKey>;
 
-/** Match details (owner ruling 15, then 2026-11-01) in the kit's sheet; Close is the sheets' close. */
+/**
+ * Match details (owner ruling 15, then 2026-11-01) in the kit's sheet: the match card and Close (option A), Close the
+ * sheets' close.
+ */
 const MatchDetailsView = memo(function MatchDetailsView({
   details,
   onClose,
@@ -365,34 +367,27 @@ const MatchDetailsView = memo(function MatchDetailsView({
 }) {
   const { t } = useT();
   return (
-    <MatchDetailsSheet
-      title={t('scoring.details.title')}
-      closeLabel={t('panel.close')}
-      onClose={onClose}
-    >
-      <DetailsBlock details={details} />
+    <MatchDetailsSheet closeLabel={t('panel.close')} onClose={onClose}>
+      <DetailsCard details={details} />
     </MatchDetailsSheet>
   );
 });
 
 /**
- * Where the match sits, then "Rules" and the rule lines in the operator's language: the one drawing of Match details,
- * in the sheet and on the Not started card alike (owner, 2026-11-01).
+ * The match card (owner, 2026-11-01, option A) with the sport's rule rows in the operator's language: the one drawing
+ * of Match details, on the Start screen, the Not started card and the sheet alike.
  */
-const DetailsBlock = memo(function DetailsBlock({
+const DetailsCard = memo(function DetailsCard({
   details,
 }: {
   readonly details: PadMatchDetails<BadmintonPadKey>;
 }) {
-  const { t } = useT();
   const words = usePadText();
-  const lines = useMemo(() => details.rules.map((line) => words(line)), [details.rules, words]);
-  return (
-    <>
-      <MatchDetails context={details.context} />
-      <RuleLines heading={t('scoring.rules.heading')} lines={lines} />
-    </>
+  const rows = useMemo(
+    () => details.rules.map((row) => ({ label: words(row.label), value: words(row.value) })),
+    [details.rules, words],
   );
+  return <MatchCard context={details.context} rows={rows} />;
 });
 
 const SanctionSteps = memo(function SanctionSteps({

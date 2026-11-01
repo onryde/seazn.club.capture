@@ -211,6 +211,17 @@ export const typeScale = {
     color: colour.ink,
   },
   /**
+   * The sides in Match details (owner, 2026-11-01, option A: "we need a proper format"): the match label's face, mixed
+   * case as typed, a step up, since the card is read at arm's length before the match and has the room. Partners wrap,
+   * never cut; the doubles sample is one line at 320 in the card (padFit.test.ts).
+   */
+  matchName: {
+    fontFamily: font.displaySemibold,
+    fontSize: 26,
+    lineHeight: 30,
+    color: colour.ink,
+  },
+  /**
    * The scoring pad's score (S2): the LED digits read across a court, so the most size a half can hold. Barlow
    * Condensed 700 in lime, as the elapsed clock (the web pad's `.pad-led`), and `tabular-nums` so a 9 becoming 10 does
    * not jump. padFit.test.ts holds it, the names and the games line in a half on a small phone.

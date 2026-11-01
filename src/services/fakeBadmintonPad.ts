@@ -109,7 +109,7 @@ export const DOUBLES_SAMPLE: FakePadSample = {
   ],
 };
 
-/** The preview match's config, which the pad's strip and its Rules sheet read (`BadmintonDisplay.rules`). */
+/** The preview match's config, which the pad's strip and its Match details read (`BadmintonDisplay.rules`). */
 const RULES: BadmintonRules = { bestOf: 3, points: 21, winBy: 2, cap: 30, intervalPoint: 11 };
 
 const OK: FakeOutcome = { ok: true };

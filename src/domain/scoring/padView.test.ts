@@ -18,7 +18,8 @@ type Key =
   | 'k.last'
   | 'k.strip'
   | 'k.tally'
-  | 'k.rule'
+  | 'k.ruleLabel'
+  | 'k.ruleValue'
   | 'k.ask';
 
 /** A pad mid-game, any sport: both halves take taps, one tool, a last tap this phone can take back. */
@@ -56,7 +57,7 @@ const live: PadView<Key> = {
       match: null,
       sides: ['A', 'B'],
     },
-    rules: [{ key: 'k.rule' }],
+    rules: [{ label: { key: 'k.ruleLabel' }, value: { key: 'k.ruleValue' } }],
   },
   start: null,
   strip: [{ slot: 'context', text: { key: 'k.strip' } }],

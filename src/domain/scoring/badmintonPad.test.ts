@@ -554,7 +554,7 @@ describe('badmintonPad: the games tally', () => {
 
 // Owner, 2026-11-01: the Match details sheet and the Not started card show where the match sits and its rules.
 describe('badmintonPad: the match details', () => {
-  it('carries the match’s context as kept, and the rule lines of its config', () => {
+  it('carries the match’s context as kept, and the rule rows of its config', () => {
     expect(badmintonPad(pre).details).toEqual({
       context: {
         competition: 'Spring Open 2026',
@@ -564,11 +564,26 @@ describe('badmintonPad: the match details', () => {
         sides: ['A. Sharma', 'L. Chen'],
       },
       rules: [
-        { key: 'scoring.badminton.rules.bestOf.other', count: 3 },
-        { key: 'scoring.badminton.rules.points', vars: { points: 21, winBy: 2 } },
-        { key: 'scoring.badminton.rules.cap', vars: { cap: 30 } },
-        { key: 'scoring.badminton.intervalAt', vars: { point: 11 } },
-        { key: 'scoring.badminton.rules.endsChange', vars: { point: 11, game: 3 } },
+        {
+          label: { key: 'scoring.badminton.rules.format.label' },
+          value: { key: 'scoring.badminton.rules.bestOf.other', count: 3 },
+        },
+        {
+          label: { key: 'scoring.badminton.rules.points.label' },
+          value: { key: 'scoring.badminton.rules.points.value', vars: { points: 21, winBy: 2 } },
+        },
+        {
+          label: { key: 'scoring.badminton.rules.cap.label' },
+          value: { key: 'scoring.badminton.rules.cap.value', vars: { cap: 30 } },
+        },
+        {
+          label: { key: 'scoring.badminton.rules.interval.label' },
+          value: { key: 'scoring.badminton.rules.interval.value', vars: { point: 11 } },
+        },
+        {
+          label: { key: 'scoring.badminton.rules.endsChange.label' },
+          value: { key: 'scoring.badminton.rules.endsChange.value', vars: { point: 11, game: 3 } },
+        },
       ],
     });
   });

@@ -1,6 +1,6 @@
 import type { MatchContext } from '@/domain/scoring/matchContext';
 import {
-  badmintonRuleLines,
+  badmintonRuleRows,
   type BadmintonRuleKey,
   type BadmintonRules,
 } from '@/domain/scoring/badmintonRules';
@@ -107,7 +107,7 @@ export type BadmintonDisplay = {
   readonly court: BadmintonCourt;
   /** The game under way, or about to start; the last one once decided. */
   readonly game: number;
-  /** The match's config: the strip's format and interval, and the Rules sheet (`badmintonRuleLines`). */
+  /** The match's config: the strip's format and interval, and the Match details' rules table (`badmintonRuleRows`). */
   readonly rules: BadmintonRules;
   readonly phase: BadmintonPhase;
   readonly sanctions: readonly BadmintonSanction[];
@@ -290,7 +290,7 @@ function startOf(state: BadmintonDisplay): PadStart<BadmintonPadKey> | null {
 
 /** The match's context and its rule lines: the Match details sheet's and the Not started card's (owner, 2026-11-01). */
 export function badmintonDetails(state: BadmintonDisplay): PadMatchDetails<BadmintonPadKey> {
-  return { context: state.context, rules: badmintonRuleLines(state.rules) };
+  return { context: state.context, rules: badmintonRuleRows(state.rules) };
 }
 
 /**

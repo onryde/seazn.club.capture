@@ -360,6 +360,12 @@ const base = {
   padTossMin: 120,
   /** A side's button on the Start screen: a big target, half again the touch height and more. */
   padTossHeight: 64,
+  /**
+   * Match details' rules table (owner, 2026-11-01, option A): the label column is as wide as the widest label in the
+   * operator's language, and at most this. Spanish's widest (_Cambio de lado_, 108) keeps one line; French's and
+   * Dutch's (_Changement de côté_, _Van kant wisselen_) wrap to two, so each value keeps 124 dp at 320 (padFit.test.ts).
+   */
+  padRuleLabelMax: 112,
 } as const;
 
 /** The cells the controls half's width is made of (`base` holds the shipped ones). */

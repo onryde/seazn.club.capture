@@ -798,79 +798,135 @@ describe('the pad’s height, portrait', () => {
 });
 
 /**
- * Match details (owner, 2026-11-01): in the sheet and on the Not started card, every line wraps and none is cut, so
- * the one thing that can fail is a word wider than its room. The card is the narrower room: the column less the
- * card's padding (space.md a side) and its edge (`padSideBar`); the sheet's is the screen less its padding. The
- * organiser's words are the fake's doubles sample, the longest it has.
+ * The match card (owner, 2026-11-01, option A), on the Not started card, in the Match details sheet and on the Start
+ * screen, at 320 and 360 in four languages, for the singles and the doubles samples (the longest names and competition
+ * the fake has) and every language's widest rule label. Nothing is cut: nothing in the card has a line limit, so what
+ * can fail is a word wider than its room. The rooms: the Not started card's text (the column less the card's padding,
+ * space.md a side, and its edge, `padSideBar`), the sheet's (the screen less its padding) and the Start screen's (the
+ * column). Inside the card: the header's text beside the match's plate, a side's names beside its bar on the versus
+ * panel, and a rule's label and value beside each other.
  */
-describe('Match details at 320 and 360 in four languages (owner, 2026-11-01)', () => {
+describe('the match card at 320 and 360 in four languages (owner, 2026-11-01, option A)', () => {
   const geist400 = loadFont('geist-400');
-  const caps = (role: 'state' | 'panelTitle' | 'title') => (text: string) =>
+  const caps = (role: 'state' | 'panelTitle') => (text: string) =>
     barlow700.width(text.toUpperCase(), typeScale[role].fontSize) +
     typeScale[role].letterSpacing * [...text].length;
   const bodyWidth = (text: string) => geist400.width(text, typeScale.body.fontSize);
-  const cardText = (width: number) => column(width) - 2 * space.md - layout.padSideBar;
-  const sheetText = (width: number) => width - 2 * space.md;
-  /** The doubles sample's context, as the fake types it, and its sides joined as the match label joins them. */
-  const ORGANISER: readonly (readonly [string, (text: string) => number])[] = [
-    ['Riverside Badminton Club Championships 2026', nameWidth],
-    ['Open Mixed Doubles · Quarter-final', controlWidth],
-    ['BAD0001', controlWidth],
-    ['A. Sharma / R. Iyer v L. Chen / M. Wong', nameWidth],
-  ];
-  const RULES = [
-    ['scoring.badminton.rules.bestOf.other', { count: '3' }],
-    ['scoring.badminton.rules.points', { points: '21', winBy: '2' }],
-    ['scoring.badminton.rules.cap', { cap: '30' }],
-    ['scoring.badminton.intervalAt', { point: '11' }],
-    ['scoring.badminton.rules.endsChange', { point: '11', game: '3' }],
+  /** `matchName`: Barlow Condensed 600 at 26, as typed. A side's names on the versus panel. */
+  const sideWidth = (text: string) => barlow600.width(text, typeScale.matchName.fontSize);
+  const ROOMS = {
+    card: (width: number) => column(width) - 2 * space.md - layout.padSideBar,
+    sheet: (width: number) => width - 2 * space.md,
+    start: (width: number) => column(width),
+  } as const;
+  /** The plate's box: its word in `state` caps, its padding (space.sm a side) and its outline. */
+  const plateBox = (match: string) => caps('state')(match) + 2 * space.sm + 2 * layout.iconBorder;
+  /** The header's text: the card less the plate and their gap. */
+  const headerText = (room: number, match: string) => room - space.sm - plateBox(match);
+  /** A side's names: the panel less its padding (space.md a side), the bar and the bar's gap. */
+  const sideText = (room: number) => room - 2 * space.md - layout.labelBar - layout.labelBarGap;
+  const SAMPLES = [
+    {
+      competition: 'Spring Open 2026',
+      where: 'U15 Boys Singles · Round 1',
+      match: 'Match 4',
+      sides: ['A. Sharma', 'L. Chen'],
+    },
+    {
+      competition: 'Riverside Badminton Club Championships 2026',
+      where: 'Open Mixed Doubles · Quarter-final',
+      match: 'BAD0001',
+      sides: ['A. Sharma / R. Iyer', 'L. Chen / M. Wong'],
+    },
   ] as const;
-  const widest = (lines: readonly (readonly [string, (text: string) => number])[], room: number) =>
-    Math.max(
-      ...lines.flatMap(([text, measure]) =>
-        linesIn(text, room, measure).map((line) => measure(line)),
-      ),
-    );
+  const RULES = [
+    ['format', 'scoring.badminton.rules.bestOf.other', { count: '3' }],
+    ['points', 'scoring.badminton.rules.points.value', { points: '21', winBy: '2' }],
+    ['cap', 'scoring.badminton.rules.cap.value', { cap: '30' }],
+    ['interval', 'scoring.badminton.rules.interval.value', { point: '11' }],
+    ['endsChange', 'scoring.badminton.rules.endsChange.value', { point: '11', game: '3' }],
+  ] as const;
+  /** Every word of the text fits the room: what wraps is never broken, and nothing overflows. */
+  const fits = (text: string, room: number, measure: (text: string) => number) =>
+    words(text).every((word) => measure(word) <= room);
+  const rows = (dictionary: Dictionary) => {
+    const said = (key: string) => {
+      const text = dictionary[key] ?? '';
+      expect(text).not.toBe('');
+      return text;
+    };
+    return RULES.map(([name, key, vars]) => ({
+      label: said(`scoring.badminton.rules.${name}.label`),
+      value: fill(said(key), vars),
+    }));
+  };
+  /** The label column: the widest label, rounded up as the card rounds it, and at most `padRuleLabelMax`. */
+  const labelColumn = (labels: readonly string[]) =>
+    Math.min(Math.ceil(Math.max(...labels.map(bodyWidth))), layout.padRuleLabelMax);
 
-  it('the card’s text is 252 and 292 wide, the sheet’s 288 and 328', () => {
-    expect(WIDTHS.map(cardText)).toEqual([252, 292]);
-    expect(WIDTHS.map(sheetText)).toEqual([288, 328]);
+  it('the card’s text is 252 and 292 wide, the sheet’s and the Start screen’s 288 and 328', () => {
+    expect(WIDTHS.map(ROOMS.card)).toEqual([252, 292]);
+    expect(WIDTHS.map(ROOMS.sheet)).toEqual([288, 328]);
+    expect(WIDTHS.map(ROOMS.start)).toEqual([288, 328]);
+  });
+
+  it('leaves a value 124 dp at 320 on the card beside the widest label column', () => {
+    expect(ROOMS.card(320) - layout.padRuleLabelMax - space.md).toBe(124);
+  });
+
+  it('sets the doubles sample’s names on one line a side at 320 on the card', () => {
+    for (const name of SAMPLES[1].sides)
+      expect(linesOf(name, sideText(ROOMS.card(320)), sideWidth)).toBe(1);
   });
 
   it.each(LANGUAGES)(
-    '%s: no word wider than the card or the sheet',
+    '%s: the widest label keeps one line where it is narrower than the cap, two where it is wider',
+    (lang, dictionary: Dictionary) => {
+      const labels = rows(dictionary).map((row) => row.label);
+      const column = labelColumn(labels);
+      for (const label of labels) {
+        expect(linesOf(label, column, bodyWidth)).toBeLessThanOrEqual(
+          lang === 'fr' || lang === 'nl' ? 2 : 1,
+        );
+      }
+    },
+  );
+
+  it.each(LANGUAGES)(
+    '%s: no word wider than its room, in any room, for either sample',
     (_lang, dictionary: Dictionary) => {
-      const said = (key: string) => {
-        const text = dictionary[key] ?? '';
-        expect(text).not.toBe('');
-        return text;
-      };
-      const rules = RULES.map(([key, vars]) => [fill(said(key), vars), bodyWidth] as const);
-      const card = [
-        [said('scoring.card.notStarted.title'), caps('panelTitle')] as const,
-        ...ORGANISER,
-        [said('scoring.rules.heading'), caps('state')] as const,
-        ...rules,
-        [said('scoring.card.notStarted.body'), bodyWidth] as const,
-      ];
-      const sheet = [
-        [said('scoring.details.title'), caps('title')] as const,
-        ...ORGANISER,
-        [said('scoring.rules.heading'), caps('state')] as const,
-        ...rules,
-      ];
+      const table = rows(dictionary);
+      const column = labelColumn(table.map((row) => row.label));
+      const heading = dictionary['scoring.rules.heading'] ?? '';
       for (const width of WIDTHS) {
-        expect(widest(card, cardText(width))).toBeLessThanOrEqual(cardText(width));
-        expect(widest(sheet, sheetText(width))).toBeLessThanOrEqual(sheetText(width));
+        for (const room of Object.values(ROOMS).map((of) => of(width))) {
+          for (const sample of SAMPLES) {
+            const header = headerText(room, sample.match);
+            expect(fits(sample.competition, header, caps('state'))).toBe(true);
+            expect(fits(sample.where, header, bodyWidth)).toBe(true);
+            for (const name of sample.sides)
+              expect(fits(name, sideText(room), sideWidth)).toBe(true);
+          }
+          expect(fits(heading, room, caps('state'))).toBe(true);
+          for (const { label, value } of table) {
+            expect(fits(label, column, bodyWidth)).toBe(true);
+            expect(fits(value, room - column - space.md, bodyWidth)).toBe(true);
+          }
+        }
+        const card = ROOMS.card(width);
+        expect(
+          fits(dictionary['scoring.card.notStarted.title'] ?? '', card, caps('panelTitle')),
+        ).toBe(true);
+        expect(fits(dictionary['scoring.card.notStarted.body'] ?? '', card, bodyWidth)).toBe(true);
       }
     },
   );
 });
 
 /**
- * The Start screen (owner, 2026-11-01, option A) in the pad's column: Match details (measured above at the card's
- * narrower room), "Who serves first?", the two sides' buttons and Start match. Nothing is cut: every line wraps, so
- * what can fail is a word wider than its room, and the buttons standing side by side.
+ * The Start screen (owner, 2026-11-01, option A) in the pad's column: the match card (measured above), "Who serves
+ * first?", the two sides' buttons and Start match. Nothing is cut: every line wraps, so what can fail is a word wider
+ * than its room, and the buttons standing side by side.
  */
 describe('the Start screen at 320 and 360 in four languages (owner, 2026-11-01)', () => {
   const caps = (role: 'state' | 'action') => (text: string) =>

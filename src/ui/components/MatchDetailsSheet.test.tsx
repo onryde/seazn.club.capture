@@ -3,18 +3,16 @@ import { describe, expect, it, vi } from 'vitest';
 import en from '@/i18n/en.json';
 import { MatchDetailsSheet } from '@/ui/components/MatchDetailsSheet';
 import { Text } from '@/ui/components/Text';
+import { colour } from '@/ui/theme/tokens';
+import { fillOf } from '../../../test/pressState';
 import { renderWithPorts } from '../../../test/renderWithPorts';
 
 // Owner ruling 15 (2026-10-31): "a sheet over the pad with the match rules and Close"; owner, 2026-11-01: it becomes
-// Match details. The kit's sheet takes what it says already drawn: any sport's block and lines.
+// Match details, then (option A) the match card and Close. The kit's sheet takes what it says already drawn.
 function renderSheet() {
   const onClose = vi.fn();
   renderWithPorts(
-    <MatchDetailsSheet
-      title={en['scoring.details.title']}
-      closeLabel={en['panel.close']}
-      onClose={onClose}
-    >
+    <MatchDetailsSheet closeLabel={en['panel.close']} onClose={onClose}>
       <Text variant="body">first</Text>
       <Text variant="body">second</Text>
     </MatchDetailsSheet>,
@@ -23,24 +21,31 @@ function renderSheet() {
 }
 
 describe('MatchDetailsSheet', () => {
-  it('shows its title, then what it says in a scroll, then Close', () => {
+  it('shows what it says in a scroll, then Close, and no title (the card’s header says what it is)', () => {
     renderSheet();
     const sheet = screen.getByTestId('details-sheet');
     expect([...sheet.children].map((child) => child.textContent)).toEqual([
-      en['scoring.details.title'],
       'firstsecond',
       en['panel.close'],
     ]);
-    expect(sheet.children[1]).toBe(screen.getByTestId('details-scroll'));
+    expect(sheet.children[0]).toBe(screen.getByTestId('details-scroll'));
     expect(screen.getAllByRole('button').map((button) => button.textContent)).toEqual([
       en['panel.close'],
     ]);
   });
 
-  it('scrolls what is between the title and Close, and the sheet gives way to a short screen', () => {
+  it('scrolls what is above Close, and the sheet gives way to a short screen', () => {
     renderSheet();
     expect(getComputedStyle(screen.getByTestId('details-scroll')).overflowY).not.toBe('visible');
     expect(getComputedStyle(screen.getByTestId('details-sheet')).flexShrink).toBe('1');
+  });
+
+  // The match card's versus panel is surface2; on the other sheets' surface2 it would not show.
+  it('stands on surface, as the Not started card does', () => {
+    renderSheet();
+    expect(getComputedStyle(screen.getByTestId('details-sheet')).backgroundColor).toBe(
+      fillOf(colour.surface),
+    );
   });
 
   it('closes on Close and on a tap on the dim; the dim is a touch target only', () => {

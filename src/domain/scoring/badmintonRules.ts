@@ -1,8 +1,8 @@
-import type { PadText } from '@/domain/scoring/padView';
+import type { PadRuleRow, PadText } from '@/domain/scoring/padView';
 
 /**
  * A badminton match's rules as its config holds them: the engine's in S2, the preview fake's today. Facts only: the
- * Rules sheet (owner ruling 15, 2026-10-31) says these and nothing a config does not hold, no durations.
+ * Match details (owner ruling 15, 2026-10-31) say these and nothing a config does not hold, no durations.
  */
 export type BadmintonRules = {
   /** Games in the match; the side that wins more than half of them takes it. */
@@ -17,28 +17,47 @@ export type BadmintonRules = {
   readonly intervalPoint: number;
 };
 
-/** The dictionary keys the Rules sheet's lines name; the interval's is the strip's own. */
+/** The dictionary keys the rules table's rows name: a label and a value a row. */
 export type BadmintonRuleKey =
+  | 'scoring.badminton.rules.format.label'
   | 'scoring.badminton.rules.bestOf.other'
-  | 'scoring.badminton.rules.points'
-  | 'scoring.badminton.rules.cap'
-  | 'scoring.badminton.intervalAt'
-  | 'scoring.badminton.rules.endsChange';
+  | 'scoring.badminton.rules.points.label'
+  | 'scoring.badminton.rules.points.value'
+  | 'scoring.badminton.rules.cap.label'
+  | 'scoring.badminton.rules.cap.value'
+  | 'scoring.badminton.rules.interval.label'
+  | 'scoring.badminton.rules.interval.value'
+  | 'scoring.badminton.rules.endsChange.label'
+  | 'scoring.badminton.rules.endsChange.value';
 
 /**
- * The Rules sheet's lines, in the controller's brief's order (2026-10-31): the format (its plural form is the
- * translator's: "Best of 1 game"), a game's points and lead, the cap, the interval, and the ends changing at the
- * interval point in the deciding game, which is the last a match can have (game 1 of a best of 1).
+ * The rules table's rows (owner, 2026-11-01, option A: "a proper format also it can change per sport"), in the brief's
+ * order: Format (its plural form is the translator's: "Best of 1 game"), Points (a game's points and lead), Cap,
+ * Interval, and Ends change, at the interval point in the deciding game, which is the last a match can have (game 1 of
+ * a best of 1). `MatchCard` draws any sport's rows; it knows nothing of badminton.
  */
-export function badmintonRuleLines(rules: BadmintonRules): readonly PadText<BadmintonRuleKey>[] {
+export function badmintonRuleRows(rules: BadmintonRules): readonly PadRuleRow<BadmintonRuleKey>[] {
   return [
-    { key: 'scoring.badminton.rules.bestOf.other', count: rules.bestOf },
-    { key: 'scoring.badminton.rules.points', vars: { points: rules.points, winBy: rules.winBy } },
-    { key: 'scoring.badminton.rules.cap', vars: { cap: rules.cap } },
-    { key: 'scoring.badminton.intervalAt', vars: { point: rules.intervalPoint } },
-    {
-      key: 'scoring.badminton.rules.endsChange',
+    row('format', { key: 'scoring.badminton.rules.bestOf.other', count: rules.bestOf }),
+    row('points', {
+      key: 'scoring.badminton.rules.points.value',
+      vars: { points: rules.points, winBy: rules.winBy },
+    }),
+    row('cap', { key: 'scoring.badminton.rules.cap.value', vars: { cap: rules.cap } }),
+    row('interval', {
+      key: 'scoring.badminton.rules.interval.value',
+      vars: { point: rules.intervalPoint },
+    }),
+    row('endsChange', {
+      key: 'scoring.badminton.rules.endsChange.value',
       vars: { point: rules.intervalPoint, game: rules.bestOf },
-    },
+    }),
   ];
 }
+
+type RuleName = 'format' | 'points' | 'cap' | 'interval' | 'endsChange';
+
+const row = (name: RuleName, value: PadText<BadmintonRuleKey>): PadRuleRow<BadmintonRuleKey> => ({
+  label: { key: `scoring.badminton.rules.${name}.label` },
+  value,
+});

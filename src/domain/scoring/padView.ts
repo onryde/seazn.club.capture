@@ -157,13 +157,19 @@ export type PadTally<K extends string> = {
   readonly said: PadText<K>;
 };
 
+/** One row of a sport's rules table (owner, 2026-11-01, option A): "Format" and "Best of 3 games". */
+export type PadRuleRow<K extends string> = {
+  readonly label: PadText<K>;
+  readonly value: PadText<K>;
+};
+
 /**
- * What the match is and how it is played (owner, 2026-11-01): where it sits, and the sport's rule lines. The Match
- * details sheet and the Not started card draw both, from the same components.
+ * What the match is and how it is played (owner, 2026-11-01): where it sits, and the sport's rules as label and value
+ * rows. The Start screen, the Not started card and the Match details sheet draw both, as one `MatchCard`.
  */
 export type PadMatchDetails<K extends string> = {
   readonly context: MatchContext;
-  readonly rules: readonly PadText<K>[];
+  readonly rules: readonly PadRuleRow<K>[];
 };
 
 /**
