@@ -367,6 +367,11 @@
   "scoring.badminton.rules.points": "{points} punten per game, {winBy} punten verschil",
   "scoring.badminton.rules.cap": "Maximaal {cap} punten per game",
   "scoring.badminton.rules.endsChange": "Van kant wisselen bij {point} in game {game}",
-  "scoring.rules.open": "Regels",
-  "scoring.rules.title": "Wedstrijdregels"
+  "scoring.rules.title": "Wedstrijdregels",
+  "scoring.history.title": "Geschiedenis",
+  "scoring.history.empty": "Nog niets vastgelegd",
+  "scoring.history.thisPhone": "Deze telefoon",
+  "scoring.history.otherScorer": "Een andere scorer",
+  "scoring.history.undone": "Ongedaan gemaakt",
+  "scoring.badminton.gameHeading": "Game {game}"
 }

@@ -479,3 +479,106 @@ describe('the preview switches and the listeners', () => {
     expect(heard).toHaveBeenCalledTimes(2);
   });
 });
+
+// Owner ruling 21 (2026-10-31): History lists every entry on the sheet, an entry Undo voided in its place, with what it
+// did when it was recorded. The fake keeps each entry's outcome as recorded; `badmintonHistory` draws it.
+describe('the sheet History reads', () => {
+  const history = (pad: FakeBadmintonPad) => pad.snapshot().history;
+
+  it('holds nothing before the first tap', () => {
+    expect(history(createFakeBadmintonPad(SINGLES_SAMPLE))).toEqual([]);
+  });
+
+  it('records each rally with what it did, its game, the points after it and that this phone recorded it', () => {
+    const pad = createFakeBadmintonPad(SINGLES_SAMPLE);
+    rallies(pad, 'first', 'second');
+    expect(history(pad)).toEqual([
+      {
+        did: { kind: 'rally', side: 'first', won: 'none', game: 1 },
+        game: 1,
+        after: { first: 1, second: 0 },
+        own: true,
+        undone: false,
+      },
+      {
+        did: { kind: 'rally', side: 'second', won: 'none', game: 1 },
+        game: 1,
+        after: { first: 1, second: 1 },
+        own: true,
+        undone: false,
+      },
+    ]);
+  });
+
+  it('keeps a game-winning rally in the game it won, at the game’s final points; the next game’s taps in game 2', () => {
+    const pad = createFakeBadmintonPad(SINGLES_SAMPLE);
+    firstWinsAGame(pad);
+    expect(pad.setScore(3, 2)).toEqual({ ok: true });
+    rallies(pad, 'second');
+    expect(history(pad).slice(-3)).toEqual([
+      expect.objectContaining({
+        did: { kind: 'rally', side: 'first', won: 'game', game: 1 },
+        game: 1,
+        after: { first: 21, second: 0 },
+      }),
+      expect.objectContaining({ did: { kind: 'setScore', first: 3, second: 2 }, game: 2 }),
+      expect.objectContaining({ game: 2, after: { first: 3, second: 3 } }),
+    ]);
+  });
+
+  it('leaves an entry Undo voided in its place, as it was recorded, and twice back keeps both', () => {
+    const pad = createFakeBadmintonPad(SINGLES_SAMPLE);
+    rallies(pad, 'first', 'first');
+    expect(pad.undo()).toEqual({ ok: true });
+    expect(pad.undo()).toEqual({ ok: true });
+    rallies(pad, 'second');
+    expect(history(pad).map((entry) => [entry.after, entry.undone])).toEqual([
+      [{ first: 1, second: 0 }, true],
+      [{ first: 2, second: 0 }, true],
+      [{ first: 0, second: 1 }, false],
+    ]);
+  });
+
+  it('marks the doubles sample’s four taps as someone else’s, and this phone’s after them as its own', () => {
+    const pad = createFakeBadmintonPad(DOUBLES_SAMPLE);
+    rallies(pad, 'second');
+    expect(history(pad).map((entry) => [entry.own, entry.after])).toEqual([
+      [false, { first: 1, second: 0 }],
+      [false, { first: 1, second: 1 }],
+      [false, { first: 2, second: 1 }],
+      [false, { first: 3, second: 1 }],
+      [true, { first: 3, second: 2 }],
+    ]);
+  });
+
+  it('records a disqualification, its ending, and a voided disqualification in place', () => {
+    const pad = createFakeBadmintonPad(SINGLES_SAMPLE);
+    rallies(pad, 'first');
+    const sanction = { side: 'second', level: 'disqualification', person: 'L. Chen' } as const;
+    expect(pad.sanction(sanction)).toEqual({ ok: true });
+    expect(pad.voidSanction()).toEqual({ ok: true });
+    expect(pad.sanction(sanction)).toEqual({ ok: true });
+    expect(pad.recordEnding()).toEqual({ ok: true });
+    expect(history(pad).map((entry) => [entry.did.kind, entry.undone])).toEqual([
+      ['rally', false],
+      ['sanction', true],
+      ['sanction', false],
+      ['ending', false],
+    ]);
+    expect(history(pad)[3]).toEqual({
+      did: { kind: 'ending', side: 'second', person: 'L. Chen' },
+      game: 1,
+      after: { first: 1, second: 0 },
+      own: true,
+      undone: false,
+    });
+  });
+
+  it('records nothing for a refused tap', () => {
+    const pad = createFakeBadmintonPad(SINGLES_SAMPLE);
+    expect(pad.undo()).toEqual({ ok: false, refusal: 'nothingToUndo' });
+    rallies(pad, 'first');
+    expect(pad.setScore(5, 5).ok).toBe(false);
+    expect(history(pad)).toHaveLength(1);
+  });
+});

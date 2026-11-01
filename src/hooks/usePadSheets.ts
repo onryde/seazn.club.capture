@@ -1,4 +1,5 @@
 import { useCallback, useMemo, useState } from 'react';
+import { badmintonHistory } from '@/domain/scoring/badmintonHistory';
 import {
   parseBadmintonTool,
   sideNames,
@@ -13,13 +14,13 @@ import {
   type SanctionSheet,
   type SanctionStep,
 } from '@/domain/scoring/badmintonSanction';
-import type { PadText } from '@/domain/scoring/padView';
+import type { PadHistoryGroup, PadText } from '@/domain/scoring/padView';
 import { parseWholeNumber } from '@/domain/scoring/wholeNumber';
-import type { FakeBadmintonPad, FakeOutcome } from '@/services/fakeBadmintonPad';
+import type { FakeBadmintonPad, FakeOutcome, FakePadSnapshot } from '@/services/fakeBadmintonPad';
 
 /**
- * What is over the pad: a sanction's step, the Set score fields, a disqualification's ending prompt, or the match's
- * rules (owner ruling 15).
+ * What is over the pad: a sanction's step, the Set score fields, a disqualification's ending prompt, the match's rules
+ * (owner ruling 15), or its History (owner ruling 21), a cover the full height of the pad.
  */
 export type PadSheetView =
   | { readonly kind: 'sanction'; readonly sheet: SanctionSheet }
@@ -31,34 +32,40 @@ export type PadSheetView =
       readonly points: readonly [number, number];
     }
   | { readonly kind: 'ending'; readonly person: string }
-  | { readonly kind: 'rules'; readonly lines: readonly PadText<BadmintonPadKey>[] };
+  | { readonly kind: 'rules'; readonly lines: readonly PadText<BadmintonPadKey>[] }
+  | { readonly kind: 'history'; readonly groups: readonly PadHistoryGroup<BadmintonPadKey>[] };
 
 type Sheet =
   | { readonly kind: 'sanction'; readonly step: SanctionStep }
   | { readonly kind: 'setScore' }
   | { readonly kind: 'rules' }
+  | { readonly kind: 'history' }
   | null;
 
 const RULES: Sheet = { kind: 'rules' };
+const HISTORY: Sheet = { kind: 'history' };
 
 /** Says what a tap came to (`useBadmintonPadPreview`'s `settle`); `refuse` says a refusal of its own. */
 type Settle = (outcome: FakeOutcome) => void;
 
 /**
- * The sheet over the badminton preview's pad: a tool or Rules opens one, a sanction's steps move through it, Cancel,
- * Close and Back close it. A second Rules tap opens nothing more: one Back still closes it. The ending prompt is not a
- * sheet the scorer opens: it shows for as long as a disqualification waits.
+ * The sheet over the badminton preview's pad: a tool, Rules or History opens one, a sanction's steps move through it,
+ * Cancel, Close and Back close it. A second Rules or History tap opens nothing more: one Back still closes it. The
+ * ending prompt is not a sheet the scorer opens: it shows for as long as a disqualification waits. History is view
+ * only: it reads the sheet and records nothing.
  */
 export function usePadSheets(
   pad: FakeBadmintonPad,
-  display: BadmintonDisplay,
+  snapshot: FakePadSnapshot,
   settle: Settle,
   refuseScore: () => void,
 ) {
+  const { display } = snapshot;
   const [sheet, setSheet] = useState<Sheet>(null);
   const cancel = useCallback(() => setSheet(null), []);
   const tool = useCallback((id: string) => setSheet(sheetFor(id)), []);
   const rules = useCallback(() => setSheet(RULES), []);
+  const history = useCallback(() => setSheet(HISTORY), []);
   const choose = useCallback(
     (id: string) => {
       if (sheet?.kind !== 'sanction') return;
@@ -71,10 +78,10 @@ export function usePadSheets(
   );
   const saveScore = useSaveScore(pad, settle, refuseScore, cancel);
   const actions = useMemo(
-    () => ({ tool, rules, choose, cancel, saveScore }),
-    [tool, rules, choose, cancel, saveScore],
+    () => ({ tool, rules, history, choose, cancel, saveScore }),
+    [tool, rules, history, choose, cancel, saveScore],
   );
-  const view = useMemo(() => sheetView(sheet, display), [sheet, display]);
+  const view = useMemo(() => sheetView(sheet, snapshot), [sheet, snapshot]);
   return { open: sheet !== null, cancel, actions, view };
 }
 
@@ -104,9 +111,12 @@ function sheetFor(id: string): Sheet {
     : { kind: 'setScore' };
 }
 
-function sheetView(sheet: Sheet, display: BadmintonDisplay): PadSheetView | null {
+function sheetView(sheet: Sheet, { display, history }: FakePadSnapshot): PadSheetView | null {
   if (display.awaitingEnding) return { kind: 'ending', person: disqualified(display) };
   if (sheet === null) return null;
+  if (sheet.kind === 'history') {
+    return { kind: 'history', groups: badmintonHistory(history, display.sides) };
+  }
   if (sheet.kind === 'sanction') {
     return { kind: 'sanction', sheet: sanctionSheet(sheet.step, display.sides) };
   }

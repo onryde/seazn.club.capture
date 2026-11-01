@@ -5,9 +5,10 @@ import es from '@/i18n/es.json';
 import fr from '@/i18n/fr.json';
 import nl from '@/i18n/nl.json';
 import { BadmintonPadPreviewScreen } from '@/ui/screens/BadmintonPadPreviewScreen';
-import { layout, space } from '@/ui/theme/tokens';
+import { colour, layout, space } from '@/ui/theme/tokens';
 import { TEST_NOW, type FakePorts } from '../../../test/fakePorts';
 import { linesAllowed } from '../../../test/linesAllowed';
+import { edgeOf } from '../../../test/pressState';
 import { renderWithPorts } from '../../../test/renderWithPorts';
 import { restoreWindowSize, setWindowSize } from '../../../test/windowSize';
 
@@ -805,9 +806,12 @@ describe('BadmintonPadPreviewScreen: the halves’ hints', () => {
   });
 });
 
-/** Owner ruling 15 (2026-10-31): "a 'Rules' button in the top bar beside the sync status, opening a sheet over the pad". */
+/**
+ * Owner ruling 15 (2026-10-31): "a 'Rules' button in the top bar beside the sync status, opening a sheet over the pad";
+ * ruling 20 made it an icon named "Match rules", with History beside it.
+ */
 describe('BadmintonPadPreviewScreen: Rules', () => {
-  const rulesButton = () => screen.queryByRole('button', { name: en['scoring.rules.open'] });
+  const rulesButton = () => screen.queryByRole('button', { name: en['scoring.rules.title'] });
   /** The preview's match (best of 3, 21 won by 2, capped at 30, the interval at 11), in the dictionary's words. */
   const LINES = [
     fill(en['scoring.badminton.rules.bestOf.other'], { count: 3 }),
@@ -818,33 +822,75 @@ describe('BadmintonPadPreviewScreen: Rules', () => {
   ];
   const lines = () => screen.getAllByTestId('rules-line').map((line) => line.textContent);
 
-  it('stands in the top bar between the Preview tag and the sync status', () => {
+  // Owner ruling 20: "Order: Back, Preview tag, then the right end holds [Rules][History] then the sync status."
+  it('stands in the top bar after Back and the Preview tag, then History, then the sync status', () => {
     renderPad();
     const order = [
+      screen.getByRole('button', { name: en['stream.home'] }),
       screen.getByText(en['scoring.preview.tag']),
       rulesButton(),
+      screen.getByRole('button', { name: en['scoring.history.title'] }),
       screen.getByTestId('sync'),
     ];
     const follows = (a: Node | null, b: Node | null) =>
       a !== null &&
       b !== null &&
       (a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0;
-    expect([follows(order[0], order[1]), follows(order[1], order[2])]).toEqual([true, true]);
+    expect(order.slice(1).map((node, at) => follows(order[at] ?? null, node))).toEqual([
+      true,
+      true,
+      true,
+      true,
+    ]);
   });
 
-  // padFit.test.ts fits Back, the tag, Rules and the sync words on one row at 320 dp with the row's gaps at `space.xs`.
-  it('shares the top bar `space.xs` apart', () => {
+  // Ruling 20: round 48 dp icon buttons like Home's gear (IconButton), the glyph in ink2: an i for Rules, a clock for History.
+  it('is an icon button with the info glyph in ink2, History beside it with the history glyph', () => {
     renderPad();
-    const bar = rulesButton()?.parentElement;
-    if (bar === null || bar === undefined) throw new Error('no top bar');
-    const style = getComputedStyle(bar);
-    expect([style.flexDirection, style.gap]).toEqual(['row', `${space.xs}px`]);
+    const glyph = (name: string) =>
+      screen.getByRole('button', { name }).querySelector('[data-name]')?.getAttribute('data-name');
+    const tone = (name: string) =>
+      screen.getByRole('button', { name }).querySelector('[data-name]')?.getAttribute('data-tone');
+    expect([glyph(en['scoring.rules.title']), glyph(en['scoring.history.title'])]).toEqual([
+      'info',
+      'history',
+    ]);
+    expect([tone(en['scoring.rules.title']), tone(en['scoring.history.title'])]).toEqual([
+      'ink2',
+      'ink2',
+    ]);
+    expect(rulesButton()?.textContent).toBe('');
+  });
+
+  // padFit.test.ts fits the row at 320 and 360 dp: gaps of `space.xs`, the end group pushed right by its auto margin, the
+  // sync status in its fixed box, and the tag the one thing that gives way.
+  it('shares the top bar `space.xs` apart, the icons and the sync box at the right end', () => {
+    renderPad();
+    const end = screen.getByTestId('pad-header-end');
+    const bar = end.parentElement;
+    if (bar === null) throw new Error('no top bar');
+    expect([getComputedStyle(bar).flexDirection, getComputedStyle(bar).gap]).toEqual([
+      'row',
+      `${space.xs}px`,
+    ]);
+    const style = getComputedStyle(end);
+    expect([style.flexDirection, style.gap, style.marginLeft]).toEqual([
+      'row',
+      `${space.xs}px`,
+      'auto',
+    ]);
+    expect(getComputedStyle(screen.getByTestId('sync-box')).width).toBe(`${layout.padSyncBox}px`);
+    const tag = screen.getByText(en['scoring.preview.tag']);
+    expect([getComputedStyle(tag).flexShrink, getComputedStyle(tag).whiteSpace]).toEqual([
+      '1',
+      'nowrap',
+    ]);
   });
 
   it('opens the match rules over the pad, which it hides from a screen reader, and changes no score', () => {
     const pad = renderPad();
     rally(pad, 'first', 2);
-    press(en['scoring.rules.open']);
+    press(en['scoring.rules.title']);
     const sheet = within(screen.getByTestId('rules-sheet'));
     expect(sheet.getByText(en['scoring.rules.title'])).toBeTruthy();
     expect(lines()).toEqual(LINES);
@@ -879,7 +925,7 @@ describe('BadmintonPadPreviewScreen: Rules', () => {
     renderPad();
     press(chip);
     expect(rulesButton()).not.toBeNull();
-    press(en['scoring.rules.open']);
+    press(en['scoring.rules.title']);
     expect(lines()).toEqual(LINES);
   });
 
@@ -899,7 +945,7 @@ describe('BadmintonPadPreviewScreen: Rules', () => {
     '%s: the button, the title and the lines in the operator’s language',
     (lang, words) => {
       renderPad({ deviceLanguages: [lang] });
-      press(words['scoring.rules.open']);
+      press(words['scoring.rules.title']);
       expect(
         within(screen.getByTestId('rules-sheet')).getByText(words['scoring.rules.title']),
       ).toBeTruthy();
@@ -949,6 +995,205 @@ describe('BadmintonPadPreviewScreen: in four languages', () => {
           fill(words['scoring.badminton.gamesSaid.one'], { scores: '21' }),
           words['scoring.badminton.servingSaid.right'],
         ].join(', '),
+      );
+    },
+  );
+});
+
+/**
+ * Owner ruling 21 (2026-10-31), History, view only: a cover the full height of the pad inside the scoring route, Back
+ * and the title "History" across the top; newest first, grouped by game; one row per entry with what it did (the
+ * last-tap line's words), the score after it where it applies, and who recorded it; an undone entry struck through,
+ * with "Undone"; "Nothing recorded yet" for an empty match. Each row reads as one line.
+ */
+describe('BadmintonPadPreviewScreen: History', () => {
+  const historyButton = () => screen.queryByRole('button', { name: en['scoring.history.title'] });
+  const openHistory = () => press(en['scoring.history.title']);
+  const cover = () => within(screen.getByTestId('history'));
+  const headings = () =>
+    cover()
+      .queryAllByRole('heading')
+      .map((heading) => heading.textContent);
+  /** Each row as a screen reader reads it: its one label. */
+  const said = () =>
+    cover()
+      .queryAllByTestId('history-row')
+      .map((row) => row.getAttribute('aria-label'));
+  const game = (n: number) => fill(en['scoring.badminton.gameHeading'], { game: n });
+  const rallyTo = (side: string) => fill(en['scoring.badminton.last.rally'], { side });
+  const thisPhone = en['scoring.history.thisPhone'];
+
+  it('covers the pad, which it hides from a screen reader, with Back and the title, and says when nothing is recorded', () => {
+    renderPad();
+    openHistory();
+    expect(cover().getByText(en['scoring.history.title'])).toBeTruthy();
+    expect(cover().getByText(en['scoring.history.empty'])).toBeTruthy();
+    expect(cover().queryAllByTestId('history-row')).toEqual([]);
+    expect(screen.getByTestId('pad-content').getAttribute('aria-hidden')).toBe('true');
+    expect(screen.getByTestId('history').getAttribute('aria-modal')).toBe('true');
+    press(en['panel.close']);
+    expect(screen.queryByTestId('history')).toBeNull();
+    expect(screen.getByTestId('pad-content').getAttribute('aria-hidden')).not.toBe('true');
+  });
+
+  it('lists this phone’s rallies newest first, each read as one line with the score after it', () => {
+    const pad = renderPad();
+    rally(pad, 'first', 2);
+    rally(pad, 'second');
+    openHistory();
+    expect(headings()).toEqual([game(1)]);
+    expect(said()).toEqual([
+      `${rallyTo('L. Chen')}, 2–1, ${thisPhone}`,
+      `${rallyTo('A. Sharma')}, 2–0, ${thisPhone}`,
+      `${rallyTo('A. Sharma')}, 1–0, ${thisPhone}`,
+    ]);
+    expect(
+      cover()
+        .getAllByTestId('history-score')
+        .map((score) => score.textContent),
+    ).toEqual(['2–1', '2–0', '1–0']);
+  });
+
+  it('groups by game, the latest first, the game-winning rally in the game it won', () => {
+    const pad = renderPad();
+    rally(pad, 'first', 21);
+    rally(pad, 'second');
+    openHistory();
+    expect(headings()).toEqual([game(2), game(1)]);
+    const groups = cover().getAllByTestId('history-group');
+    const first = (group: HTMLElement | undefined) =>
+      group === undefined
+        ? null
+        : within(group).getAllByTestId('history-row')[0]?.getAttribute('aria-label');
+    expect([first(groups[0]), first(groups[1])]).toEqual([
+      `${rallyTo('L. Chen')}, 0–1, ${thisPhone}`,
+      `${fill(en['scoring.badminton.last.game'], { game: 1, side: 'A. Sharma' })}, 21–0, ${thisPhone}`,
+    ]);
+    expect(groups[1] && within(groups[1]).getAllByTestId('history-row')).toHaveLength(21);
+  });
+
+  it('keeps an undone rally in its place, struck through and inert, with “Undone”', () => {
+    const pad = renderPad();
+    rally(pad, 'first', 2);
+    undoTap(pad);
+    openHistory();
+    const undone = en['scoring.history.undone'];
+    expect(said()).toEqual([
+      `${rallyTo('A. Sharma')}, 2–0, ${thisPhone}, ${undone}`,
+      `${rallyTo('A. Sharma')}, 1–0, ${thisPhone}`,
+    ]);
+    const [struck, standing] = cover().getAllByTestId('history-said');
+    if (struck === undefined || standing === undefined) throw new Error('no rows');
+    expect(getComputedStyle(struck).textDecorationLine).toBe('line-through');
+    expect(getComputedStyle(standing).textDecorationLine).not.toBe('line-through');
+    expect(getComputedStyle(struck).color).toBe(edgeOf(colour.ink3));
+    expect(
+      cover()
+        .getAllByTestId('history-undone')
+        .map((word) => word.textContent),
+    ).toEqual([undone]);
+  });
+
+  it('says “Another scorer” for the doubles sample’s taps from the scorer before this phone', () => {
+    const pad = renderPad();
+    press(en['scoring.preview.dev.doubles']);
+    rally(pad, 'second');
+    openHistory();
+    const other = en['scoring.history.otherScorer'];
+    expect(said()).toEqual([
+      `${rallyTo('L. Chen / M. Wong')}, 3–2, ${thisPhone}`,
+      `${rallyTo('A. Sharma / R. Iyer')}, 3–1, ${other}`,
+      `${rallyTo('A. Sharma / R. Iyer')}, 2–1, ${other}`,
+      `${rallyTo('L. Chen / M. Wong')}, 1–1, ${other}`,
+      `${rallyTo('A. Sharma / R. Iyer')}, 1–0, ${other}`,
+    ]);
+  });
+
+  it('lists a sanction and Set score with no score of their own, and the disqualification and its ending', () => {
+    renderPad();
+    press(en['scoring.badminton.tool.setScore']);
+    const field = (side: string) =>
+      screen.getByLabelText(fill(en['scoring.setScore.field'], { side }));
+    act(() => fireEvent.change(field('A. Sharma'), { target: { value: '9' } }));
+    act(() => fireEvent.change(field('L. Chen'), { target: { value: '4' } }));
+    press(en['scoring.setScore.confirm']);
+    press(sanctionOn('A. Sharma'));
+    press(en['scoring.sanction.disqualification']);
+    press('A. Sharma');
+    press(en['scoring.sanction.confirm.action']);
+    press(en['scoring.ending.record']);
+    openHistory();
+    expect(said()).toEqual([
+      `${fill(en['scoring.badminton.last.ending'], { person: 'A. Sharma' })}, ${thisPhone}`,
+      `${fill(en['scoring.badminton.last.sanction'], {
+        level: en['scoring.sanction.disqualification'],
+        person: 'A. Sharma',
+      })}, ${thisPhone}`,
+      `${fill(en['scoring.badminton.last.setScore'], { score: '9–4' })}, ${thisPhone}`,
+    ]);
+  });
+
+  it('changes nothing: Back is its one button, and the score is as it was after it closes', () => {
+    const pad = renderPad();
+    rally(pad, 'first', 3);
+    openHistory();
+    expect(
+      cover()
+        .getAllByRole('button')
+        .map((button) => button.getAttribute('aria-label')),
+    ).toEqual([en['panel.close']]);
+    press(en['panel.close']);
+    expect(shows('first', 3) && shows('second', 0)).toBe(true);
+    expect(undo()).toBeTruthy();
+  });
+
+  it('opens once for a double tap: Android Back closes it, the next returns Home', () => {
+    const pad = renderPad();
+    const button = historyButton();
+    if (button === null) throw new Error('no History');
+    act(() => fireEvent.click(button));
+    act(() => fireEvent.click(button));
+    expect(screen.getAllByTestId('history')).toHaveLength(1);
+    expect(back(pad)).toBe(true);
+    expect(screen.queryByTestId('history')).toBeNull();
+    expect(pad.navigation.current()).toBe('scoringPreview');
+    expect(back(pad)).toBe(true);
+    expect(pad.navigation.current()).toBe('home');
+  });
+
+  it('is absent for a bad link, which names no match, and shows under every other card', () => {
+    renderPad();
+    for (const chip of [
+      en['scoring.preview.dev.notStarted'],
+      en['scoring.preview.dev.result'],
+      en['scoring.preview.dev.viewOnly'],
+      en['scoring.preview.dev.updateNeeded'],
+    ]) {
+      press(chip);
+      expect(historyButton()).not.toBeNull();
+    }
+    press(en['scoring.preview.dev.linkInvalid']);
+    expect(historyButton()).toBeNull();
+    press(en['scoring.preview.dev.pad']);
+    expect(historyButton()).not.toBeNull();
+  });
+
+  it.each([
+    ['es', es],
+    ['fr', fr],
+    ['nl', nl],
+  ] as const)(
+    '%s: the button, the title, the empty line and the recorder in the operator’s language',
+    (lang, words) => {
+      const pad = renderPad({ deviceLanguages: [lang] });
+      press(words['scoring.history.title']);
+      expect(cover().getByText(words['scoring.history.empty'])).toBeTruthy();
+      press(words['panel.close']);
+      rally(pad, 'first');
+      press(words['scoring.history.title']);
+      expect(headings()).toEqual([fill(words['scoring.badminton.gameHeading'], { game: 1 })]);
+      expect(cover().getByTestId('history-by').textContent).toBe(
+        words['scoring.history.thisPhone'],
       );
     },
   );

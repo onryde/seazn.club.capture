@@ -52,6 +52,10 @@ const DRAWN = [
   // the board's heartbeat: flat, a short rise, a long fall past the line, back to it and flat; 20 x 16 units
   // is 15 x 12 dp at the 18 dp the board draws it at (measured 15.3 x 12.5)
   ['pulse', ['M2 12h5l2.5-8 4 16 2.5-8h6'], [], 0],
+  // the pad's top bar (owner ruling 20, 2026-10-31): Match rules, an i in the shutter's ring with the network's dot
+  ['info', ['M12 11v6'], ['12,12,9', '12,7.5,1'], 0],
+  // and History: a clock whose ring runs back to an arrowhead at the top left
+  ['history', ['M3 12a9 9 0 1 0 2.64-6.36L3 8.3M3 3.5v4.8h4.8M12 7.5V12l3 2'], [], 0],
 ] as const;
 /** The camera's not-ready slash (spec §3). */
 const SLASH = 'M3 3l18 18';
@@ -72,15 +76,15 @@ describe('Glyph draws the canvas’s line icons (spec §3)', () => {
     drawn += 1;
   });
 
-  it('drew all nine glyphs (anti-vacuity)', () => {
-    expect(DRAWN).toHaveLength(9);
-    expect(drawn).toBe(9);
+  it('drew all eleven glyphs (anti-vacuity)', () => {
+    expect(DRAWN).toHaveLength(11);
+    expect(drawn).toBe(11);
   });
 
   // Every glyph the module declares is drawn above, and the table above holds no glyph the module does not declare:
-  // a tenth glyph added to the module without a row here fails this, instead of being drawn by nothing that checks it.
+  // a twelfth glyph added to the module without a row here fails this, instead of being drawn by nothing that checks it.
   it('declares exactly the glyphs this suite draws', () => {
-    expect(GLYPH_NAMES).toHaveLength(9);
+    expect(GLYPH_NAMES).toHaveLength(11);
     expect([...GLYPH_NAMES].sort()).toEqual(DRAWN.map(([name]) => name as string).sort());
   });
 

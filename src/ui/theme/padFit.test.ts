@@ -28,6 +28,7 @@ const WIDTHS = [320, 360] as const;
 const barlow600 = loadFont('barlow-condensed-600');
 const barlow700 = loadFont('barlow-condensed-700');
 const geist500 = loadFont('geist-500');
+const geistMono = loadFont('geist-mono-400');
 
 /** `actionSecondary`: a tool's label, Barlow Condensed 600 at 16, uppercase, letter-spaced. */
 const toolWidth = (text: string) =>
@@ -94,47 +95,38 @@ describe('the tool row fits at 320 in four languages', () => {
   });
 });
 
-describe('the header fits on one row at 320 and 360 in four languages', () => {
-  // Owner ruling 15 (2026-10-31): a Rules button in the top bar beside the sync status. Back, the Preview tag, Rules and
-  // the sync status share one row, `space.xs` apart; Rules is its word as a tool's (`actionSecondary`) in an outline,
-  // `space.xs` a side, at least a touch target wide.
+describe('the header fits on one row at 320 and 360 in four languages (owner ruling 20)', () => {
+  // Owner ruling 20 (2026-10-31): Back, the Preview tag, then at the right end Rules and History, round icon buttons as
+  // Home's gear, and the sync status. The row's items are `space.xs` apart: Back, the tag and the end group, and inside
+  // the group Rules, History and the sync box (`padSyncBox`: the dot, its gap and the words).
   const tag = (dictionary: Dictionary) =>
     unitWidth(dictionary['scoring.preview.tag'] ?? '') + 2 * space.xs + 2 * layout.iconBorder;
-  const rules = (dictionary: Dictionary) =>
-    Math.max(
-      layout.touch,
-      toolWidth(dictionary['scoring.rules.open'] ?? '') + 2 * space.xs + 2 * layout.iconBorder,
-    );
-  /** What the sync words have: the column less Back, the tag (preview only), Rules, the dot and the gaps between. */
-  const syncRoom = (width: number, dictionary: Dictionary, withTag = true) =>
-    column(width) -
-    layout.touch -
-    space.xs -
-    (withTag ? tag(dictionary) + space.xs : 0) -
-    rules(dictionary) -
-    space.xs -
-    layout.syncDot -
-    space.xs;
+  /** What the tag has: the column less Back, Rules, History, the sync box and the four gaps. */
+  const tagRoom = (width: number) =>
+    column(width) - 3 * layout.iconButton - layout.padSyncBox - 4 * space.xs;
+  /** The sync words' width in their box. */
+  const syncWords = layout.padSyncBox - layout.syncDot - space.xs;
   const statuses = ['scoring.sync.synced'].concat(
     ...['sending', 'offline', 'refused'].map((kind) => [
       `scoring.sync.${kind}.one`,
       `scoring.sync.${kind}.other`,
     ]),
   );
-  /** The most lines any status takes, at 1 and at 99 taps (the longest sync words). */
-  const mostLines = (width: number, dictionary: Dictionary, withTag = true) =>
+  /** The most lines any status takes in the box, at 1 and at 99 taps (the longest sync words). */
+  const mostLines = (dictionary: Dictionary) =>
     Math.max(
       ...statuses.flatMap((key) =>
         ['1', '99'].map((count) => {
           const text = fill(dictionary[key] ?? '', { count });
           expect(text).not.toBe('');
-          return linesOf(text, syncRoom(width, dictionary, withTag), unitWidth);
+          return linesOf(text, syncWords, unitWidth);
         }),
       ),
     );
 
-  it('has the Rules word in every language (anti-vacuity)', () => {
-    for (const [, dictionary] of LANGUAGES) expect(dictionary['scoring.rules.open']).toBeTruthy();
+  it('draws Back, Rules and History as touch targets, 48 dp square (IconButton)', () => {
+    expect(layout.iconButton).toBe(layout.touch);
+    expect(syncWords).toBe(74);
   });
 
   it('gives the sync words three lines, which are the header’s own touch height: a third line never grows the row', () => {
@@ -142,31 +134,129 @@ describe('the header fits on one row at 320 and 360 in four languages', () => {
   });
 
   it.each(LANGUAGES)(
-    '%s: with the Preview tag, each status at 1 and 99 taps in its reserved lines',
+    '%s: each status at 1 and 99 taps in its reserved lines, in the sync box, at any width',
     (_lang, dictionary: Dictionary) => {
-      for (const width of WIDTHS)
-        expect(mostLines(width, dictionary)).toBeLessThanOrEqual(layout.padSyncLines);
+      expect(mostLines(dictionary)).toBeLessThanOrEqual(layout.padSyncLines);
     },
   );
 
-  // The tag is the preview's own (S2's real pad has none): without it, every status keeps to two lines at 320.
-  it.each(LANGUAGES)(
-    '%s: without the Preview tag, each status in two lines at 320 and 360',
-    (_lang, dictionary: Dictionary) => {
-      for (const width of WIDTHS)
-        expect(mostLines(width, dictionary, false)).toBeLessThanOrEqual(2);
-    },
-  );
-
-  it('needs the third line only in Spanish at 320, beside the Preview tag (anti-vacuity)', () => {
-    const third = LANGUAGES.flatMap(([lang, dictionary]) =>
-      WIDTHS.filter((width) => mostLines(width, dictionary) === 3).map(
-        (width) => `${lang} ${width}`,
-      ),
-    );
-    expect(third).toEqual(['es 320']);
+  // The ruling hoped the icons would give the sync words a line back. Two 48 dp icons and their gap take 100 dp where the
+  // Rules word took 49 to 56, so the box holds Spanish offline in three lines and no fewer.
+  it('needs the third line in Spanish, French and Dutch: `padSyncLines` stays at 3 (anti-vacuity)', () => {
+    expect(LANGUAGES.map(([lang, dictionary]) => [lang, mostLines(dictionary)])).toEqual([
+      ['en', 2],
+      ['es', 3],
+      ['fr', 3],
+      ['nl', 3],
+    ]);
     const offline = fill(es['scoring.sync.offline.other'], { count: '99' });
-    expect(linesOf(offline, syncRoom(320, es), unitWidth)).toBe(3);
+    expect(linesOf(offline, syncWords - 1, unitWidth)).toBe(4);
+  });
+
+  it('holds the Preview tag whole at 360 in every language; Spanish has 2 dp to spare', () => {
+    expect(tagRoom(360)).toBe(80);
+    for (const [, dictionary] of LANGUAGES)
+      expect(tag(dictionary)).toBeLessThanOrEqual(tagRoom(360));
+    expect((tagRoom(360) - tag(es)).toFixed(1)).toBe('2.1');
+  });
+
+  // The tag is the preview's own (S2's real pad has none). At 320 it is what gives way, cut to one line (its style's
+  // `flexShrink` and `numberOfLines`), so the icons and the sync words keep their room.
+  it('cuts the Preview tag at 320 in every language, and nothing else', () => {
+    expect(tagRoom(320)).toBe(40);
+    expect(LANGUAGES.filter(([, dictionary]) => tag(dictionary) > tagRoom(320)).length).toBe(4);
+  });
+
+  it('without the tag (the real pad), the row has room to spare at 320', () => {
+    const row = 3 * layout.iconButton + layout.padSyncBox + 3 * space.xs;
+    expect(row).toBe(244);
+    expect(row).toBeLessThan(column(320));
+  });
+});
+
+describe('History’s rows at 320 and 360 in four languages (owner ruling 21)', () => {
+  // A row in the cover's column (the pad's: `space.md` a side): the sentence in `control`, `space.sm`, then the right
+  // column (`padHistorySide`), never cut: the score (`metricValue`, Geist Mono 16), who recorded it and "Undone"
+  // (`metricUnit`), each wrapping where it is wider. The sentence takes what is left, in at most `padHistoryLines`.
+  const monoWidth = (text: string) => geistMono.width(text, typeScale.metricValue.fontSize);
+  const SIDE_WORDS = [
+    'scoring.history.thisPhone',
+    'scoring.history.otherScorer',
+    'scoring.history.undone',
+  ] as const;
+  const sentenceRoom = (width: number) => column(width) - space.sm - layout.padHistorySide;
+  const PEOPLE = ['A. Sharma', 'R. Iyer', 'L. Chen', 'M. Wong'] as const;
+  const LEVELS = ['warning', 'penalty', 'expulsion', 'disqualification'] as const;
+  /** Every sentence a row can say, with the samples' names (doubles the widest) and game 3. */
+  const sentences = (dictionary: Dictionary) => {
+    const said = (key: string, vars: Readonly<Record<string, string>>) => {
+      const text = dictionary[`scoring.badminton.last.${key}`] ?? '';
+      expect(text).not.toBe('');
+      return fill(text, vars);
+    };
+    return [
+      ...NAMES.flatMap((side) => [
+        said('rally', { side }),
+        said('game', { game: '3', side }),
+        said('match', { side }),
+      ]),
+      ...PEOPLE.flatMap((person) => [
+        said('ending', { person }),
+        ...LEVELS.map((level) =>
+          said('sanction', { level: dictionary[`scoring.sanction.${level}`] ?? '', person }),
+        ),
+      ]),
+      said('setScore', { score: '30–29' }),
+    ];
+  };
+
+  it('leaves the sentence 192 at 320 and 232 at 360', () => {
+    expect(WIDTHS.map(sentenceRoom)).toEqual([192, 232]);
+  });
+
+  it('holds the score on one line in the right column, and each side word in two, no word broken', () => {
+    expect(monoWidth('30–29')).toBeLessThanOrEqual(layout.padHistorySide);
+    for (const [, dictionary] of LANGUAGES) {
+      for (const key of SIDE_WORDS) {
+        const text = dictionary[key] ?? '';
+        expect(text).not.toBe('');
+        expect(linesOf(text, layout.padHistorySide, unitWidth)).toBeLessThanOrEqual(2);
+        for (const word of words(text))
+          expect(unitWidth(word)).toBeLessThanOrEqual(layout.padHistorySide);
+      }
+    }
+  });
+
+  // fr "Un autre marqueur", nl "Een andere scorer" and "Ongedaan gemaakt" are wider than the column: they wrap, and a
+  // column as wide as them would leave a sentence a third line at 320.
+  it('wraps the side words that are wider than the column (anti-vacuity)', () => {
+    const wrapped = LANGUAGES.flatMap(([lang, dictionary]) =>
+      SIDE_WORDS.filter(
+        (key) => linesOf(dictionary[key] ?? '', layout.padHistorySide, unitWidth) === 2,
+      ).map((key) => `${lang} ${key.slice('scoring.history.'.length)}`),
+    );
+    expect(wrapped).toEqual(['fr otherScorer', 'nl otherScorer', 'nl undone']);
+  });
+
+  it.each(LANGUAGES)(
+    '%s: every sentence in at most two lines at 320 and 360, no word broken',
+    (_lang, dictionary: Dictionary) => {
+      expect(layout.padHistoryLines).toBe(2);
+      for (const width of WIDTHS) {
+        const room = sentenceRoom(width);
+        for (const text of sentences(dictionary)) {
+          expect(linesOf(text, room, controlWidth)).toBeLessThanOrEqual(layout.padHistoryLines);
+          for (const word of words(text)) expect(controlWidth(word)).toBeLessThanOrEqual(room);
+        }
+      }
+    },
+  );
+
+  it('needs the second line at 320 (anti-vacuity)', () => {
+    const two = LANGUAGES.filter(([, dictionary]) =>
+      sentences(dictionary).some((text) => linesOf(text, sentenceRoom(320), controlWidth) === 2),
+    ).map(([lang]) => lang);
+    expect(two).toEqual(['en', 'es', 'fr', 'nl']);
   });
 });
 

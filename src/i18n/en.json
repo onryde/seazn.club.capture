@@ -367,6 +367,11 @@
   "scoring.badminton.rules.points": "{points} points a game, win by {winBy}",
   "scoring.badminton.rules.cap": "Game capped at {cap}",
   "scoring.badminton.rules.endsChange": "Ends change at {point} in game {game}",
-  "scoring.rules.open": "Rules",
-  "scoring.rules.title": "Match rules"
+  "scoring.rules.title": "Match rules",
+  "scoring.history.title": "History",
+  "scoring.history.empty": "Nothing recorded yet",
+  "scoring.history.thisPhone": "This phone",
+  "scoring.history.otherScorer": "Another scorer",
+  "scoring.history.undone": "Undone",
+  "scoring.badminton.gameHeading": "Game {game}"
 }

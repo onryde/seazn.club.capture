@@ -120,6 +120,24 @@ export type PadTool<K extends string> = {
   readonly enabled: boolean;
 };
 
+/**
+ * One entry on the match's sheet, as History lists it (owner ruling 21, 2026-10-31; view only): what it did, in the
+ * last-tap line's words; the score after it, top first, where it moved the score; who recorded it; and whether Undo took
+ * it back, which leaves it in its place.
+ */
+export type PadHistoryRow<K extends string> = {
+  readonly said: PadText<K>;
+  readonly score: string | null;
+  readonly by: 'thisPhone' | 'otherScorer';
+  readonly undone: boolean;
+};
+
+/** A period's entries under its heading ("Game 2"), newest first; History lists the newest period first. */
+export type PadHistoryGroup<K extends string> = {
+  readonly heading: PadText<K>;
+  readonly rows: readonly PadHistoryRow<K>[];
+};
+
 /** Why the pad is not taking taps, said on a card (the web pad's own states, `device.*`). */
 export type PadStateCard =
   | { readonly kind: 'notStarted' }
@@ -153,10 +171,10 @@ export function cardPlacement(card: PadStateCard): CardPlacement {
 }
 
 /**
- * Whether the match's rules are known, so the pad offers its Rules sheet (owner ruling 15, 2026-10-31): on the pad and
- * under every card but a dead link's, which names no match.
+ * Whether the link names a match, so the top bar offers its Rules (owner ruling 15, 2026-10-31) and its History (owner
+ * ruling 21): on the pad and under every card but a dead link's, which names none.
  */
-export function rulesKnown(card: PadStateCard | null): boolean {
+export function matchKnown(card: PadStateCard | null): boolean {
   return card?.kind !== 'linkInvalid';
 }
 

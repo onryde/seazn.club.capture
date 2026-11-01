@@ -367,6 +367,11 @@
   "scoring.badminton.rules.points": "{points} points par jeu, {winBy} points d'écart",
   "scoring.badminton.rules.cap": "Jeu plafonné à {cap} points",
   "scoring.badminton.rules.endsChange": "Changement de côté à {point} au jeu {game}",
-  "scoring.rules.open": "Règles",
-  "scoring.rules.title": "Règles du match"
+  "scoring.rules.title": "Règles du match",
+  "scoring.history.title": "Historique",
+  "scoring.history.empty": "Rien n'est encore enregistré",
+  "scoring.history.thisPhone": "Ce téléphone",
+  "scoring.history.otherScorer": "Un autre marqueur",
+  "scoring.history.undone": "Annulé",
+  "scoring.badminton.gameHeading": "Jeu {game}"
 }

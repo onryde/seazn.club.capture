@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   cardPlacement,
-  rulesKnown,
+  matchKnown,
   withCard,
   type PadStateCard,
   type PadView,
@@ -73,12 +73,12 @@ describe('cardPlacement', () => {
   });
 });
 
-describe('rulesKnown', () => {
-  // Owner ruling 15: the Rules button shows whenever the match's config is known: on the pad and under every card but a
-  // dead link's, which names no match (the controller's brief, 2026-10-31).
-  it('knows the rules on the pad and under every card but a bad link', () => {
-    expect(rulesKnown(null)).toBe(true);
-    expect(CARDS.map((card) => [card.kind, rulesKnown(card)])).toEqual([
+describe('matchKnown', () => {
+  // Owner ruling 15: the Rules button shows whenever the match's config is known; ruling 21: History whenever there is a
+  // match. Both: on the pad and under every card but a dead link's, which names no match.
+  it('knows the match on the pad and under every card but a bad link', () => {
+    expect(matchKnown(null)).toBe(true);
+    expect(CARDS.map((card) => [card.kind, matchKnown(card)])).toEqual([
       ['notStarted', true],
       ['resultRecorded', true],
       ['viewOnly', true],

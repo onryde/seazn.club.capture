@@ -367,6 +367,11 @@
   "scoring.badminton.rules.points": "{points} puntos por juego, {winBy} de ventaja",
   "scoring.badminton.rules.cap": "Máximo {cap} puntos por juego",
   "scoring.badminton.rules.endsChange": "Cambio de lado a los {point} en el juego {game}",
-  "scoring.rules.open": "Reglas",
-  "scoring.rules.title": "Reglas del partido"
+  "scoring.rules.title": "Reglas del partido",
+  "scoring.history.title": "Historial",
+  "scoring.history.empty": "Aún no hay nada registrado",
+  "scoring.history.thisPhone": "Este móvil",
+  "scoring.history.otherScorer": "Otro anotador",
+  "scoring.history.undone": "Deshecho",
+  "scoring.badminton.gameHeading": "Juego {game}"
 }

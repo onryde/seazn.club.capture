@@ -332,10 +332,23 @@ const base = {
   padLineLines: 3,
   /**
    * The sync status's words in the pad's header: this many lines of `metricUnit`, 48 dp, the header's own touch height.
-   * Beside the Preview tag and Rules, Spanish offline needs three at 320; without the tag every status needs two
-   * (padFit.test.ts).
+   * In `padSyncBox`, Spanish offline needs all three (padFit.test.ts), so the icons of owner ruling 20 give no line back.
    */
   padSyncLines: 3,
+  /**
+   * The sync status's box at the right end of the pad's header (owner ruling 20, 2026-10-31: Back, the Preview tag, then
+   * Rules, History and the sync status at the right end): the dot, its gap and words in which every status keeps to
+   * `padSyncLines` in four languages (padFit.test.ts). Fixed, so the icons stand still as the status changes.
+   */
+  padSyncBox: 88,
+  /** A History row's sentence (owner ruling 21): at most this many lines of `control` (padFit.test.ts). */
+  padHistoryLines: 2,
+  /**
+   * A History row's right column: the score, who recorded it and "Undone", right-aligned, a word wrapping to a second
+   * line where it is wider (fr _Un autre marqueur_, nl _Ongedaan gemaakt_), never cut. The sentence keeps two lines in
+   * what is left at 320 (padFit.test.ts).
+   */
+  padHistorySide: 88,
   /** A tool's label: this many lines of `actionSecondary` (padFit.test.ts: every label, four languages, at 320). */
   padToolLines: 2,
 } as const;

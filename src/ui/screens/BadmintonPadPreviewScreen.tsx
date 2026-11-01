@@ -4,7 +4,9 @@ import type { BadmintonPadKey } from '@/domain/scoring/badmintonPad';
 import type { SanctionSheet } from '@/domain/scoring/badmintonSanction';
 import {
   cardPlacement,
-  rulesKnown,
+  matchKnown,
+  type PadHistoryGroup,
+  type PadHistoryRow,
   type PadSide,
   type PadSync,
   type PadText,
@@ -21,12 +23,12 @@ import { useT } from '@/hooks/useLanguage';
 import { usePadText } from '@/hooks/usePadText';
 import type { MessageKey } from '@/i18n/messages';
 import { EndingPrompt } from '@/ui/components/EndingPrompt';
+import { HistoryCover, type HistoryGroupWords } from '@/ui/components/HistoryCover';
 import { IconButton } from '@/ui/components/IconButton';
 import { LastTapLine } from '@/ui/components/LastTapLine';
 import { PadPreviewRow } from '@/ui/components/PadPreviewRow';
 import { PadStateCard } from '@/ui/components/PadStateCard';
 import { PadStrip } from '@/ui/components/PadStrip';
-import { RulesButton } from '@/ui/components/RulesButton';
 import { RulesSheet } from '@/ui/components/RulesSheet';
 import { ScoreEntrySheet } from '@/ui/components/ScoreEntrySheet';
 import { ScoreHalf } from '@/ui/components/ScoreHalf';
@@ -39,19 +41,19 @@ import { colour, layout, space } from '@/ui/theme/tokens';
 
 /**
  * The badminton pad, previewed on a fake (S2's first slice; owner rulings, 2026-10-31). Portrait, layout A: the top bar
- * (Home, the Preview tag, Rules and the sync status), the strip (the game of how many, the interval), the first side's
- * half on top and the second's below (a tap on a half gives that side the rally, and a tap that counted flashes the
- * half; each shows its finished games' boxes, and the server's plate its service court), the last-tap line with the one
- * Undo, and the tools. A card that replaces the score stands where the halves were; one that goes with it (a recorded
+ * (Home, the Preview tag, then Rules, History and the sync status at the right end), the strip (the game of how many,
+ * the interval), the first side's half on top and the second's below (a tap on a half gives that side the rally, and a
+ * tap that counted flashes the half; each shows its finished games' boxes, and the server's plate its service court),
+ * the last-tap line with the one Undo, and the tools. A card that replaces the score stands where the halves were; one that goes with it (a recorded
  * result, view only) stands above them; the update banner stands where the last-tap line and the tools were
- * (`cardPlacement`). Sheets cover the pad, which is hidden from a screen reader while they show. Under it all, the
- * preview's own row of states.
+ * (`cardPlacement`). Sheets and History cover the pad, which is hidden from a screen reader while they show. Under it
+ * all, the preview's own row of states.
  */
 export function BadmintonPadPreviewScreen() {
   const { view, sheet, line, cardNote, flash, chosen, actions } = useBadmintonPadPreview();
   const covered = sheet !== null;
   const picked = useMemo(() => [chosen.card, chosen.sample], [chosen.card, chosen.sample]);
-  const onRules = rulesKnown(view.card) ? actions.rules : null;
+  const known = matchKnown(view.card);
   return (
     <View style={styles.screen}>
       <View
@@ -60,7 +62,7 @@ export function BadmintonPadPreviewScreen() {
         importantForAccessibility={covered ? 'no-hide-descendants' : 'auto'}
         style={styles.pad}
       >
-        <PadHeader sync={view.sync} onHome={actions.home} onRules={onRules} />
+        <PadHeader sync={view.sync} known={known} actions={actions} />
         <PadStrip items={view.strip} />
         <PadBody view={view} flash={flash} onTap={actions.tapHalf} />
         <PadControls view={view} line={line} cardNote={cardNote} actions={actions} />
@@ -72,30 +74,44 @@ export function BadmintonPadPreviewScreen() {
 }
 
 /**
- * Home, the Preview tag, Rules (owner ruling 15; none when the match's rules are not known, `rulesKnown`), and the sync
- * status at the right: the way out, the match's rules and the transport's word, on one row at 320 dp (padFit.test.ts).
+ * Owner ruling 20 (2026-10-31): Home, the Preview tag, then at the right end Rules and History, round icon buttons as
+ * Home's gear, and the sync status in its fixed box. Rules and History need a match (`matchKnown`): none on a dead
+ * link's card. One row at 320 and 360 dp in four languages, where at 320 the tag gives way (padFit.test.ts).
  */
 const PadHeader = memo(function PadHeader({
   sync,
-  onHome,
-  onRules,
+  known,
+  actions,
 }: {
   readonly sync: PadSync;
-  readonly onHome: () => void;
-  readonly onRules: (() => void) | null;
+  readonly known: boolean;
+  readonly actions: PadPreviewActions;
 }) {
   const { t } = useT();
   return (
     <View style={styles.header}>
-      <IconButton glyph="back" label={t('stream.home')} onPress={onHome} />
-      <Text variant="controlSmall" style={styles.tag}>
+      <IconButton glyph="back" label={t('stream.home')} onPress={actions.home} />
+      <Text variant="controlSmall" numberOfLines={1} style={styles.tag}>
         {t('scoring.preview.tag')}
       </Text>
-      {onRules === null ? null : <RulesButton label={t('scoring.rules.open')} onPress={onRules} />}
-      <View style={styles.sync}>
-        <SyncDot sync={sync} />
+      <View testID="pad-header-end" style={styles.end}>
+        {known ? <MatchIcons actions={actions} /> : null}
+        <View testID="sync-box" style={styles.sync}>
+          <SyncDot sync={sync} />
+        </View>
       </View>
     </View>
+  );
+});
+
+/** Rules (owner ruling 15) and History (ruling 21), named "Match rules" and "History" (ruling 20). */
+const MatchIcons = memo(function MatchIcons({ actions }: { readonly actions: PadPreviewActions }) {
+  const { t } = useT();
+  return (
+    <>
+      <IconButton glyph="info" label={t('scoring.rules.title')} onPress={actions.rules} />
+      <IconButton glyph="history" label={t('scoring.history.title')} onPress={actions.history} />
+    </>
   );
 });
 
@@ -210,8 +226,49 @@ const PadSheet = memo(function PadSheet({
       );
     case 'rules':
       return <MatchRules lines={sheet.lines} onClose={actions.cancel} />;
+    case 'history':
+      return <MatchHistory groups={sheet.groups} onClose={actions.cancel} />;
   }
 });
+
+/** History (owner ruling 21) in the operator's language: each row's sentence, score, recorder and "Undone". */
+const MatchHistory = memo(function MatchHistory({
+  groups,
+  onClose,
+}: {
+  readonly groups: readonly PadHistoryGroup<BadmintonPadKey>[];
+  readonly onClose: () => void;
+}) {
+  const { t } = useT();
+  const words = usePadText();
+  const said = useMemo<readonly HistoryGroupWords[]>(
+    () =>
+      groups.map((group) => ({
+        heading: words(group.heading),
+        rows: group.rows.map((row) => ({
+          said: words(row.said),
+          score: row.score,
+          by: t(BY[row.by]),
+          undone: row.undone ? t('scoring.history.undone') : null,
+        })),
+      })),
+    [groups, words, t],
+  );
+  return (
+    <HistoryCover
+      title={t('scoring.history.title')}
+      closeLabel={t('panel.close')}
+      empty={t('scoring.history.empty')}
+      groups={said}
+      onClose={onClose}
+    />
+  );
+});
+
+const BY = {
+  thisPhone: 'scoring.history.thisPhone',
+  otherScorer: 'scoring.history.otherScorer',
+} as const satisfies Record<PadHistoryRow<BadmintonPadKey>['by'], MessageKey>;
 
 /** The match's rules (owner ruling 15), in the operator's language, in the kit's sheet; Close is the sheets' close. */
 const MatchRules = memo(function MatchRules({
@@ -296,14 +353,18 @@ const SetScore = memo(function SetScore({
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colour.ground },
   pad: { flex: 1, gap: space.sm, padding: space.md },
-  // `space.xs` apart: at 320 dp Back, the tag, Rules and the sync words share the row (padFit.test.ts).
+  // `space.xs` apart: Back, the tag, Rules, History and the sync box share the row (padFit.test.ts).
   header: { flexDirection: 'row', alignItems: 'center', gap: space.xs, minHeight: layout.touch },
+  // The tag is the preview's own (the real pad has none): it is cut where the row runs out, at 320 (padFit.test.ts).
   tag: {
+    flexShrink: 1,
     paddingHorizontal: space.xs,
     borderWidth: layout.iconBorder,
     borderColor: colour.ink3,
     borderRadius: space.xs,
   },
-  sync: { flex: 1, minWidth: 0, alignItems: 'flex-end' },
+  // Pushed to the right end by its auto margin: the row's spare room stands between the tag and Rules.
+  end: { flexDirection: 'row', alignItems: 'center', gap: space.xs, marginLeft: 'auto' },
+  sync: { width: layout.padSyncBox, alignItems: 'flex-end' },
   body: { flex: 1, gap: space.sm },
 });

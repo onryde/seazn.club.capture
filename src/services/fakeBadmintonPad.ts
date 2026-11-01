@@ -1,9 +1,10 @@
+import type { BadmintonHistoryEntry } from '@/domain/scoring/badmintonHistory';
 import type { BadmintonRules } from '@/domain/scoring/badmintonRules';
 import {
   SANCTION_LEVELS,
   type BadmintonDisplay,
+  type BadmintonDone,
   type BadmintonGame,
-  type BadmintonLastTap,
   type BadmintonPhase,
   type BadmintonSanction,
   type BadmintonSide,
@@ -21,7 +22,8 @@ import type { PadSide, PadStateCard, PadSync } from '@/domain/scoring/padView';
  *
  * Every tap is an entry. The state is the entries replayed from the start, so Undo, which voids this phone's last
  * entry of its own, steps back through any rally, a game won included. Entries from someone else (`others`) are
- * replayed too and never voided (owner, 2026-10-31: one Undo, this phone's own taps).
+ * replayed too and never voided (owner, 2026-10-31: one Undo, this phone's own taps). Each entry keeps what it did when
+ * it was recorded, for History (owner ruling 21), which lists a voided entry in its place.
  */
 export type FakeBadmintonPad = {
   snapshot(): FakePadSnapshot;
@@ -45,6 +47,8 @@ export type FakePadSnapshot = {
   readonly display: BadmintonDisplay;
   readonly card: PadStateCard | null;
   readonly sync: PadSync;
+  /** Every entry, oldest first, voided ones in their place (History, owner ruling 21). */
+  readonly history: readonly BadmintonHistoryEntry[];
 };
 
 /** Why a tap was not recorded: not at this point of the match, a score no game in progress has, nothing to undo. */
@@ -63,7 +67,7 @@ export const SINGLES_SAMPLE: FakePadSample = {
   sides: { first: { players: ['A. Sharma'] }, second: { players: ['L. Chen'] } },
 };
 
-/** Doubles, joined at 3-1 by a scorer before this phone: Undo stops at their taps. */
+/** Doubles, joined at 3-1 by a scorer before this phone: Undo stops at their taps, and History says "Another scorer". */
 export const DOUBLES_SAMPLE: FakePadSample = {
   sides: {
     first: { players: ['A. Sharma', 'R. Iyer'] },
@@ -83,7 +87,15 @@ const RULES: BadmintonRules = { bestOf: 3, points: 21, winBy: 2, cap: 30, interv
 const OK: FakeOutcome = { ok: true };
 const refused = (refusal: FakeRefusal): FakeOutcome => ({ ok: false, refusal });
 
-type Entry = { readonly tap: BadmintonTap; readonly own: boolean; voided: boolean };
+/** A tap on the sheet, with what it did when it was recorded (History keeps it after Undo voids the entry). */
+type Entry = {
+  readonly tap: BadmintonTap;
+  readonly own: boolean;
+  voided: boolean;
+  readonly did: BadmintonDone;
+  readonly game: number;
+  readonly after: Readonly<Record<PadSide, number>>;
+};
 
 type Score = {
   readonly points: Readonly<Record<PadSide, number>>;
@@ -93,7 +105,7 @@ type Score = {
   readonly game: number;
   readonly phase: BadmintonPhase;
   readonly sanctions: readonly BadmintonSanction[];
-  readonly lastTap: BadmintonLastTap | null;
+  readonly lastTap: BadmintonDone | null;
   readonly awaitingEnding: boolean;
 };
 
@@ -135,7 +147,7 @@ type Commands = Pick<
 >;
 
 export function createFakeBadmintonPad(sample: FakePadSample): FakeBadmintonPad {
-  const entries: Entry[] = (sample.others ?? []).map((tap) => ({ tap, own: false, voided: false }));
+  const entries = othersOf(sample.others ?? []);
   const ledger: Ledger = {
     entries,
     score: replay(entries),
@@ -170,6 +182,36 @@ export function createFakeBadmintonPad(sample: FakePadSample): FakeBadmintonPad 
 
 const SYNCED: PadSync = { kind: 'synced' };
 
+/** Someone else's taps, each recorded on the match their predecessors made. */
+function othersOf(taps: readonly BadmintonTap[]): Entry[] {
+  const entries: Entry[] = [];
+  for (const tap of taps) entries.push(entryOf(replay(entries), tap, false));
+  return entries;
+}
+
+/** An entry for `tap` on the match at `score`: what it did, the game it was in and the points after it, kept as recorded. */
+function entryOf(score: Score, tap: BadmintonTap, own: boolean): Entry {
+  return {
+    tap,
+    own,
+    voided: false,
+    did: didOf(score, tap),
+    game: score.game,
+    after: afterOf(score, tap),
+  };
+}
+
+function didOf(score: Score, tap: BadmintonTap): BadmintonDone {
+  if (tap.kind !== 'rally') return tap;
+  return { kind: 'rally', side: tap.side, won: rallyWon(score, tap.side), game: score.game };
+}
+
+/** Each side's points after the tap: a rally's the game's final points when it wins the game. */
+function afterOf(score: Score, tap: BadmintonTap): Readonly<Record<PadSide, number>> {
+  if (tap.kind === 'rally') return { ...score.points, [tap.side]: score.points[tap.side] + 1 };
+  return tap.kind === 'setScore' ? { first: tap.first, second: tap.second } : score.points;
+}
+
 /** The scorer's taps on the ledger: each records an entry, or is refused with nothing recorded. */
 function commands(sample: FakePadSample, ledger: Ledger, publish: () => void): Commands {
   const record = (tap: BadmintonTap) => recordTap(ledger, publish, tap);
@@ -189,7 +231,7 @@ function commands(sample: FakePadSample, ledger: Ledger, publish: () => void): C
 }
 
 function recordTap(ledger: Ledger, publish: () => void, tap: BadmintonTap): FakeOutcome {
-  ledger.entries.push({ tap, own: true, voided: false });
+  ledger.entries.push(entryOf(ledger.score, tap, true));
   ledger.undone = null;
   publish();
   return OK;
@@ -231,6 +273,13 @@ function snapshotOf(sample: FakePadSample, ledger: Ledger): FakePadSnapshot {
     display: displayOf(sample, ledger.score, ledger.entries, ledger.undone),
     card: ledger.card,
     sync: ledger.sync,
+    history: ledger.entries.map(({ did, game, after, own, voided }) => ({
+      did,
+      game,
+      after,
+      own,
+      undone: voided,
+    })),
   };
 }
 
@@ -280,24 +329,25 @@ function apply(score: Score, tap: BadmintonTap): Score {
 const wins = (finished: readonly BadmintonGame[], side: PadSide) =>
   finished.filter((game) => 'winner' in game && game.winner === side).length;
 
+/** What a point to `side` wins: nothing, the game, or the match (two games of three). */
+function rallyWon(score: Score, side: PadSide): 'none' | 'game' | 'match' {
+  const points = { ...score.points, [side]: score.points[side] + 1 };
+  if (!wonGame(points[side], points[other(side)])) return 'none';
+  const finished = [...score.finished, { points, winner: side }];
+  return wins(finished, side) > RULES.bestOf / 2 ? 'match' : 'game';
+}
+
 /**
  * A point to `side`, which serves next. A game won is kept with its final points and the next starts at 0-0; the match
  * is decided at two games, its last kept as the points too.
  */
 function rally(score: Score, side: PadSide): Score {
   const points = { ...score.points, [side]: score.points[side] + 1 };
-  if (!wonGame(points[side], points[other(side)])) {
-    return {
-      ...score,
-      points,
-      server: side,
-      phase: 'live',
-      lastTap: { kind: 'rally', side, won: 'none', game: score.game },
-    };
-  }
+  const won = rallyWon(score, side);
+  const lastTap: BadmintonDone = { kind: 'rally', side, won, game: score.game };
+  if (won === 'none') return { ...score, points, server: side, phase: 'live', lastTap };
   const finished = [...score.finished, { points, winner: side }];
-  if (wins(finished, side) > RULES.bestOf / 2) {
-    const lastTap: BadmintonLastTap = { kind: 'rally', side, won: 'match', game: score.game };
+  if (won === 'match') {
     return { ...score, points, finished, server: side, phase: 'decided', lastTap };
   }
   return {
@@ -307,7 +357,7 @@ function rally(score: Score, side: PadSide): Score {
     server: side,
     game: score.game + 1,
     phase: 'betweenGames',
-    lastTap: { kind: 'rally', side, won: 'game', game: score.game },
+    lastTap,
   };
 }
 

@@ -54,6 +54,8 @@ export type PadPreviewActions = {
   readonly browser: () => void;
   /** Rules (owner ruling 15): the match's rules in a sheet over the pad. */
   readonly rules: () => void;
+  /** History (owner ruling 21): every entry on the sheet, newest first, in a cover over the pad; view only. */
+  readonly history: () => void;
   readonly pick: (choice: PreviewChoice) => void;
 };
 
@@ -113,7 +115,7 @@ export function useBadmintonPadPreview(): BadmintonPadPreview {
   const [flash, setFlash] = useState<HalfFlash>(null);
   const settle = useSettle(say);
   const refuseScore = useCallback(() => say(INVALID_SCORE), []);
-  const sheets = usePadSheets(pad, snapshot.display, settle, refuseScore);
+  const sheets = usePadSheets(pad, snapshot, settle, refuseScore);
   const taps = useTaps(pad, settle, say, setFlash);
   const others = useEndingAndCard(pad, settle, setCardNote);
   const pick = usePick(pad, startSample, sheets.cancel, { say, setCardNote, setFlash });

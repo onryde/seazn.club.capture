@@ -52,6 +52,9 @@ export type BadmintonLastTap =
   | { readonly kind: 'ending'; readonly side: PadSide; readonly person: string }
   | { readonly kind: 'undone'; readonly tap: BadmintonTap };
 
+/** What a tap did when it was recorded: the last-tap line's tap, never an Undo (History lists Undo on the tap it took). */
+export type BadmintonDone = Exclude<BadmintonLastTap, { readonly kind: 'undone' }>;
+
 /**
  * A game over: each side's points when it ended, and the side that won it on points, or the side whose
  * disqualification ended it and the match (owner ruling 18, 2026-10-31), which no side won on points.
@@ -100,6 +103,7 @@ export type BadmintonPadKey =
   | 'scoring.badminton.hint'
   | 'scoring.badminton.hintLine'
   | 'scoring.badminton.gameOf'
+  | 'scoring.badminton.gameHeading'
   | `scoring.badminton.serving.${BadmintonCourt}`
   | `scoring.badminton.servingSaid.${BadmintonCourt}`
   | 'scoring.badminton.intervalAt'
@@ -311,7 +315,15 @@ function lastTap(state: BadmintonDisplay): PadLastTap<BadmintonPadKey> | null {
 }
 
 function lastTapText(state: BadmintonDisplay, tap: BadmintonLastTap): Text {
-  const side = (of: PadSide) => sideNames(state.sides[of]);
+  return tap.kind === 'undone' ? undoneText(state, tap.tap) : doneSaid(state.sides, tap);
+}
+
+/**
+ * What a tap did, in the last-tap line's words ("Rally recorded — A. Sharma"): the line says it of the last tap, and
+ * History (owner ruling 21) of every tap, in the one vocabulary.
+ */
+export function doneSaid(sides: BadmintonDisplay['sides'], tap: BadmintonDone): Text {
+  const side = (of: PadSide) => sideNames(sides[of]);
   switch (tap.kind) {
     case 'rally':
       if (tap.won === 'game') {
@@ -330,11 +342,9 @@ function lastTapText(state: BadmintonDisplay, tap: BadmintonLastTap): Text {
         vars: { level: sanctionWord(tap.level), person: tap.person },
       };
     case 'setScore':
-      return { key: 'scoring.badminton.last.setScore', vars: { score: score(tap) } };
+      return { key: 'scoring.badminton.last.setScore', vars: { score: scoreText(tap) } };
     case 'ending':
       return { key: 'scoring.badminton.last.ending', vars: { person: tap.person } };
-    case 'undone':
-      return undoneText(state, tap.tap);
   }
 }
 
@@ -357,5 +367,6 @@ function undoneText(state: BadmintonDisplay, tap: BadmintonTap): Text {
   }
 }
 
-/** Top first, an en dash between: numbers are not translated (docs/i18n-glossary.md, Typography). */
-const score = ({ first, second }: { first: number; second: number }) => `${first}–${second}`;
+/** A score, top first, an en dash between ("7–3"): numbers are not translated (docs/i18n-glossary.md, Typography). */
+export const scoreText = ({ first, second }: { readonly first: number; readonly second: number }) =>
+  `${first}–${second}`;
