@@ -7,8 +7,10 @@ const NAME = /^[A-Za-z0-9_-][A-Za-z0-9._-]*$/;
 /**
  * The tap queue's folder, `documentDirectory/scoring` (design §6.3): the document directory is safe from the system
  * clearing it, unlike the cache. Over expo-file-system's `File` and `Directory`. `move` is the platform's own, with
- * `overwrite`: on Android a rename and, where that cannot, `Files.move` with `REPLACE_EXISTING`
- * (`CopyMoveStrategy.LocalFile.tryNativeMove`, expo-file-system 57.0.7); that it holds on a phone is a device claim.
+ * `overwrite`, and is NOT atomic over an existing file: on Android it deletes the target and then renames
+ * (`CopyMoveStrategy.LocalFile.prepareAsDestination` and `tryNativeMove`, expo-file-system 57.0.7), so a kill between
+ * the two leaves only the source. The store reads for that (`tapQueueStore`: a temp file that decodes is promoted).
+ * What a phone does is a device claim.
  */
 export function createExpoQueueFiles(): QueueFiles {
   const folder = new Directory(Paths.document, 'scoring');

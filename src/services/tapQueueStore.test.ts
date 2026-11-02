@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import type { MatchQueue, QueuedEvent } from '@/domain/scoring/queue';
+import type { LedgerEvent } from '@/domain/scoring/wire';
 import { createLogger } from '@/services/logger';
 import { createRingRecord, parseRecordLine } from '@/services/sessionRecord';
-import { createTapQueueStore } from '@/services/tapQueueStore';
+import { createTapQueueStore, type QueueEntry } from '@/services/tapQueueStore';
 import { FAKE_SCORING_SECRET } from '../../test/fakeScoringLinkPort';
 import { createMemoryQueueFiles } from '../../test/memoryQueueFiles';
 
@@ -38,6 +39,19 @@ const queue = (overrides: Partial<MatchQueue> = {}): MatchQueue => ({
   ...overrides,
 });
 
+const event = (seq: number, overrides: Partial<LedgerEvent> = {}): LedgerEvent => ({
+  id: `ev-${seq}`,
+  seq,
+  type: 'badminton.rally',
+  payload: { wonBy: 'ent-home' },
+  recordedAt: '2026-11-02T10:00:00.000Z',
+  voids: null,
+  deviceLinkId: null,
+  ...overrides,
+});
+const EVENT_1 = event(1, { type: 'core.start', payload: {}, deviceLinkId: 'link-1' });
+const LEDGER: readonly LedgerEvent[] = [EVENT_1, event(2), event(3, { voids: 'ev-2' })];
+
 function storeOver(files = createMemoryQueueFiles()) {
   const record = createRingRecord();
   const store = createTapQueueStore({ files, logger: createLogger({ record, now: () => 0 }) });
@@ -47,7 +61,16 @@ function storeOver(files = createMemoryQueueFiles()) {
 }
 
 const nameOf = (fixtureId: string) => `${fixtureId}.json`;
+const tmpOf = (fixtureId: string) => `${fixtureId}.json.tmp`;
+const badOf = (fixtureId: string) => `${fixtureId}.json.bad`;
+const ledgerOf = (fixtureId: string) => `${fixtureId}.ledger.json`;
 const text = (value: unknown) => JSON.stringify(value);
+/** A file as the store writes it, for a test to place on the disk by hand. */
+const asFile = (q: MatchQueue) => text({ v: 1, ...q });
+const entryIds = (entries: readonly QueueEntry[]) =>
+  entries.map((entry) => (entry.kind === 'queue' ? entry.queue.fixtureId : entry.fixtureId));
+const queues = (list: readonly MatchQueue[]): QueueEntry[] =>
+  list.map((found) => ({ kind: 'queue', queue: found }));
 
 describe('save and load', () => {
   it('round-trips a queue: every tap whole, in order, the own ids, the label, the dead word', async () => {
@@ -57,7 +80,16 @@ describe('save and load', () => {
   });
 
   it('round-trips a dead queue for each word', async () => {
-    for (const dead of ['LINK_INVALID', 'LINK_REVOKED', 'LINK_EXPIRED', 'finalized'] as const) {
+    const words = [
+      'LINK_INVALID',
+      'LINK_REVOKED',
+      'LINK_EXPIRED',
+      'finalized',
+      'forbidden',
+      'gone',
+      'payment',
+    ] as const;
+    for (const dead of words) {
       const { store } = storeOver();
       await store.save(queue({ dead }));
       expect((await store.load(FIXTURE))?.dead).toBe(dead);
@@ -118,7 +150,7 @@ describe('the app killed and started again', () => {
     await storeOver(files).store.save(queue());
     const reopened = storeOver(files).store;
     expect(await reopened.load(FIXTURE)).toEqual(queue());
-    expect(await reopened.list()).toEqual([queue()]);
+    expect(await reopened.list()).toEqual(queues([queue()]));
   });
 
   it('a save interrupted after the temp write leaves the old file whole', async () => {
@@ -130,7 +162,7 @@ describe('the app killed and started again', () => {
     expect(files.files.has(`${nameOf(FIXTURE)}.tmp`)).toBe(true);
     const reopened = storeOver(files).store;
     expect(await reopened.load(FIXTURE)).toEqual(queue());
-    expect(await reopened.list()).toEqual([queue()]);
+    expect(await reopened.list()).toEqual(queues([queue()]));
   });
 
   it('a save that fails to write the temp file leaves the old file whole, and says so by rejecting', async () => {
@@ -153,13 +185,135 @@ describe('the app killed and started again', () => {
     expect([...files.files.keys()]).toEqual([nameOf(FIXTURE)]);
   });
 
-  it('a temp file with nothing else is no queue: never read as one', async () => {
+  // expo-file-system 57.0.7 on Android deletes the target and then renames (CopyMoveStrategy.kt), so a kill between
+  // the two leaves the new queue only as `{id}.json.tmp`: the save's temp file is then the one copy there is.
+  it('a kill between the delete and the rename leaves only the temp file: it is the queue, and is promoted', async () => {
     const files = createMemoryQueueFiles();
-    files.files.set(`${nameOf(FIXTURE)}.tmp`, text({ v: 1, ...queue() }));
+    const { store } = storeOver(files);
+    await store.save(queue());
+    files.failNext('moveAfterDelete');
+    const newer = queue({ pending: [], ownEventIds: ['ev-1', 'ev-2', 'ev-3'] });
+    await expect(store.save(newer)).rejects.toThrow();
+    expect([...files.files.keys()]).toEqual([tmpOf(FIXTURE)]);
+    const reopened = storeOver(files);
+    expect(await reopened.store.load(FIXTURE)).toEqual(newer);
+    expect([...files.files.keys()]).toEqual([nameOf(FIXTURE)]);
+    expect(reopened.unreadable()).toEqual([]);
+    expect(await reopened.store.load(FIXTURE)).toEqual(newer);
+  });
+
+  it('list promotes it too, and lists the match: a temp-only id is not lost from Home', async () => {
+    const files = createMemoryQueueFiles();
+    files.files.set(tmpOf(FIXTURE), asFile(queue()));
+    const { store } = storeOver(files);
+    expect(await store.list()).toEqual(queues([queue()]));
+    expect([...files.files.keys()]).toEqual([nameOf(FIXTURE)]);
+  });
+
+  it('a good file wins over a temp file beside it: the temp is a save that never finished', async () => {
+    const files = createMemoryQueueFiles();
+    files.files.set(nameOf(FIXTURE), asFile(queue()));
+    files.files.set(tmpOf(FIXTURE), asFile(queue({ ownEventIds: ['never-acknowledged'] })));
+    const { store } = storeOver(files);
+    expect(await store.load(FIXTURE)).toEqual(queue());
+    expect(await store.list()).toEqual(queues([queue()]));
+    expect(files.files.get(nameOf(FIXTURE))).toBe(asFile(queue()));
+  });
+
+  it('a torn temp file alone is no queue, said once, and the next save goes on as normal', async () => {
+    const files = createMemoryQueueFiles();
+    files.files.set(tmpOf(FIXTURE), '{"v":1,"fixtureId":');
     const { store, unreadable } = storeOver(files);
     expect(await store.load(FIXTURE)).toBeNull();
+    expect(await store.load(FIXTURE)).toBeNull();
     expect(await store.list()).toEqual([]);
-    expect(unreadable()).toEqual([]);
+    expect(unreadable()).toHaveLength(1);
+    await store.save(queue());
+    expect(await store.load(FIXTURE)).toEqual(queue());
+  });
+
+  it('a garbled file with a good temp file: the temp is promoted and the garbled one is kept aside', async () => {
+    const files = createMemoryQueueFiles();
+    files.files.set(nameOf(FIXTURE), '{"v":1,');
+    files.files.set(tmpOf(FIXTURE), asFile(queue()));
+    const { store } = storeOver(files);
+    expect(await store.load(FIXTURE)).toEqual(queue());
+    expect(files.files.get(nameOf(FIXTURE))).toBe(asFile(queue()));
+    expect(files.files.get(badOf(FIXTURE))).toBe('{"v":1,');
+    expect(files.files.has(tmpOf(FIXTURE))).toBe(false);
+    expect(await store.list()).toEqual(queues([queue()]));
+  });
+
+  it('a promotion the disk refuses still answers the queue, says so, and is done at the next read', async () => {
+    const files = createMemoryQueueFiles();
+    files.files.set(tmpOf(FIXTURE), asFile(queue()));
+    const { store, unreadable } = storeOver(files);
+    files.failNext('move');
+    expect(await store.load(FIXTURE)).toEqual(queue());
+    expect(unreadable()).toHaveLength(1);
+    expect(files.files.has(nameOf(FIXTURE))).toBe(false);
+    expect(await store.load(FIXTURE)).toEqual(queue());
+    expect([...files.files.keys()]).toEqual([nameOf(FIXTURE)]);
+  });
+
+  it('a kill during the promotion itself changes nothing: the next read promotes again', async () => {
+    const files = createMemoryQueueFiles();
+    files.files.set(tmpOf(FIXTURE), asFile(queue()));
+    const { store } = storeOver(files);
+    files.failNext('moveAfterDelete');
+    expect(await store.load(FIXTURE)).toEqual(queue());
+    expect([...files.files.keys()]).toEqual([tmpOf(FIXTURE)]);
+    expect(await storeOver(files).store.load(FIXTURE)).toEqual(queue());
+    expect([...files.files.keys()]).toEqual([nameOf(FIXTURE)]);
+  });
+
+  it('a garbled file that cannot be set aside still gives the good temp file’s queue, and the next read finishes the job', async () => {
+    const files = createMemoryQueueFiles();
+    files.files.set(nameOf(FIXTURE), '{"v":1,');
+    files.files.set(tmpOf(FIXTURE), asFile(queue()));
+    const { store, unreadable } = storeOver(files);
+    files.failNext('move');
+    expect(await store.load(FIXTURE)).toEqual(queue());
+    expect(unreadable()).toHaveLength(1);
+    expect(files.files.get(nameOf(FIXTURE))).toBe('{"v":1,');
+    expect(await store.load(FIXTURE)).toEqual(queue());
+    expect(files.files.get(badOf(FIXTURE))).toBe('{"v":1,');
+    expect(files.files.get(nameOf(FIXTURE))).toBe(asFile(queue()));
+  });
+
+  it('a temp file the disk refuses to read is said once, and is no queue', async () => {
+    const files = createMemoryQueueFiles();
+    files.files.set(tmpOf(FIXTURE), asFile(queue()));
+    const read = files.read;
+    files.read = async (name) =>
+      name === tmpOf(FIXTURE) ? Promise.reject(new Error('refused')) : read(name);
+    const { store, unreadable } = storeOver(files);
+    expect(await store.load(FIXTURE)).toBeNull();
+    expect(await store.load(FIXTURE)).toBeNull();
+    expect(unreadable()).toHaveLength(1);
+  });
+
+  it('a good read after a promotion clears what was said: the next garble is reported anew', async () => {
+    const files = createMemoryQueueFiles();
+    files.files.set(nameOf(FIXTURE), 'x');
+    const { store, unreadable } = storeOver(files);
+    await store.load(FIXTURE);
+    files.failNext('moveAfterDelete');
+    await expect(store.save(queue())).rejects.toThrow();
+    expect(await store.load(FIXTURE)).toEqual(queue());
+    files.files.set(nameOf(FIXTURE), 'y');
+    await store.load(FIXTURE);
+    expect(unreadable()).toHaveLength(2);
+  });
+
+  it('saves go on after a promotion: the next save and a reopen read the newest', async () => {
+    const files = createMemoryQueueFiles();
+    files.files.set(tmpOf(FIXTURE), asFile(queue()));
+    const { store } = storeOver(files);
+    await store.load(FIXTURE);
+    await store.save(queue({ ownEventIds: ['after'] }));
+    expect((await storeOver(files).store.load(FIXTURE))?.ownEventIds).toEqual(['after']);
+    expect([...files.files.keys()]).toEqual([nameOf(FIXTURE)]);
   });
 });
 
@@ -172,20 +326,64 @@ describe('list', () => {
     files.files.set('notes.txt', 'hello');
     files.files.set('.DS_Store', '');
     files.files.set(`${nameOf(FIXTURE)}.tmp`, 'half');
+    files.files.set(ledgerOf(FIXTURE), 'cache');
+    files.files.set(`${ledgerOf(FIXTURE)}.tmp`, 'cache');
     const listed = await store.list();
-    expect(listed.map((q) => q.fixtureId)).toEqual([OTHER, FIXTURE]);
+    expect(entryIds(listed)).toEqual([OTHER, FIXTURE]);
   });
 
   it('is empty when nothing is saved', async () => {
     expect(await storeOver().store.list()).toEqual([]);
   });
 
-  it('skips a garbled queue and still lists the others', async () => {
+  it('names a garbled queue as unreadable and still lists the others: never silently skipped', async () => {
     const files = createMemoryQueueFiles();
     const { store } = storeOver(files);
     await store.save(queue());
     files.files.set(nameOf(OTHER), '{"v":1,');
-    expect((await store.list()).map((q) => q.fixtureId)).toEqual([FIXTURE]);
+    expect(await store.list()).toEqual([
+      { kind: 'unreadable', fixtureId: OTHER },
+      { kind: 'queue', queue: queue() },
+    ]);
+  });
+
+  it('keeps naming it on every list, and on a reopened app: the aside file stands until Dismiss', async () => {
+    const files = createMemoryQueueFiles();
+    files.files.set(nameOf(OTHER), '{"v":1,');
+    const { store, unreadable } = storeOver(files);
+    const first = await store.list();
+    expect(first).toEqual([{ kind: 'unreadable', fixtureId: OTHER }]);
+    expect(await store.list()).toEqual(first);
+    expect(await storeOver(files).store.list()).toEqual(first);
+    expect(unreadable()).toHaveLength(1);
+  });
+
+  it('lists an aside file whose queue is not even looked at again: list alone sets it aside', async () => {
+    const files = createMemoryQueueFiles();
+    files.files.set(badOf(OTHER), 'earlier');
+    const { store } = storeOver(files);
+    expect(await store.list()).toEqual([{ kind: 'unreadable', fixtureId: OTHER }]);
+  });
+
+  it('an aside file the disk will not read is still named: unreadable is the safe word', async () => {
+    const files = createMemoryQueueFiles();
+    files.files.set(badOf(OTHER), 'earlier');
+    const read = files.read;
+    files.read = async (name) =>
+      name === badOf(OTHER) ? Promise.reject(new Error('refused')) : read(name);
+    expect(await storeOver(files).store.list()).toEqual([{ kind: 'unreadable', fixtureId: OTHER }]);
+  });
+
+  it('a queue saved over an unreadable one is a queue again, and Dismiss clears the aside file too', async () => {
+    const files = createMemoryQueueFiles();
+    files.files.set(nameOf(FIXTURE), 'x');
+    const { store } = storeOver(files);
+    expect(await store.list()).toEqual([{ kind: 'unreadable', fixtureId: FIXTURE }]);
+    await store.save(queue());
+    expect(await store.list()).toEqual(queues([queue()]));
+    await store.remove(FIXTURE);
+    expect(await store.list()).toEqual([]);
+    expect(files.files.size).toBe(0);
   });
 
   it('is empty, never thrown, when the folder cannot be listed', async () => {
@@ -234,7 +432,7 @@ describe('a file that cannot be read', () => {
     ],
     ['own ids that are not text', text({ v: 1, ...queue(), ownEventIds: [1] })],
     ['an own id that is empty', text({ v: 1, ...queue(), ownEventIds: [''] })],
-    ['a dead word nobody knows', text({ v: 1, ...queue(), dead: 'gone' })],
+    ['a dead word nobody knows', text({ v: 1, ...queue(), dead: 'vanished' })],
     ['a dead word of the wrong type', text({ v: 1, ...queue(), dead: 5 })],
     ['no label', text({ v: 1, ...queue(), label: undefined })],
     ['a fixture id that is not the file’s', text({ v: 1, ...queue(), fixtureId: OTHER })],
@@ -247,7 +445,7 @@ describe('a file that cannot be read', () => {
     const { store, unreadable } = storeOver(files);
     expect(await store.load(FIXTURE)).toBeNull();
     expect(await store.load(FIXTURE)).toBeNull();
-    expect(await store.list()).toEqual([]);
+    expect(await store.list()).toEqual([{ kind: 'unreadable', fixtureId: FIXTURE }]);
     expect(unreadable()).toHaveLength(1);
   });
 
@@ -311,13 +509,57 @@ describe('a file that cannot be read', () => {
     expect(await store.load(FIXTURE)).toEqual(queue());
   });
 
-  it('is left on disk, not deleted: a person may still recover its taps', async () => {
+  // The garbled file is moved aside before anything can write over it: a save for the match goes to a fresh file.
+  it('is moved aside to .bad, whole and not deleted: a person may still recover its taps', async () => {
     const files = createMemoryQueueFiles();
     files.files.set(nameOf(FIXTURE), '{"v":1,');
     const { store } = storeOver(files);
     await store.load(FIXTURE);
     await store.list();
+    expect(files.files.get(badOf(FIXTURE))).toBe('{"v":1,');
+    expect(files.files.has(nameOf(FIXTURE))).toBe(false);
+  });
+
+  it('a save after it cannot overwrite the garbled text: it was set aside first', async () => {
+    const files = createMemoryQueueFiles();
+    files.files.set(nameOf(FIXTURE), '{"v":1,');
+    const { store } = storeOver(files);
+    await store.load(FIXTURE);
+    await store.save(queue());
+    expect(files.files.get(badOf(FIXTURE))).toBe('{"v":1,');
+    expect(await store.load(FIXTURE)).toEqual(queue());
+  });
+
+  it('a newer garble replaces the older aside file, reported anew', async () => {
+    const files = createMemoryQueueFiles();
+    files.files.set(nameOf(FIXTURE), 'first');
+    const { store, unreadable } = storeOver(files);
+    await store.load(FIXTURE);
+    await store.save(queue());
+    files.files.set(nameOf(FIXTURE), 'second');
+    await store.load(FIXTURE);
+    expect(files.files.get(badOf(FIXTURE))).toBe('second');
+    expect(unreadable()).toHaveLength(2);
+  });
+
+  it('when it cannot be set aside it is reported, left where it is, and the match is still unreadable', async () => {
+    const files = createMemoryQueueFiles();
+    files.files.set(nameOf(FIXTURE), '{"v":1,');
+    const { store, unreadable } = storeOver(files);
+    files.failNext('move');
+    expect(await store.load(FIXTURE)).toBeNull();
+    expect(unreadable()).toHaveLength(1);
     expect(files.files.get(nameOf(FIXTURE))).toBe('{"v":1,');
+    expect(await store.load(FIXTURE)).toBeNull();
+    expect(files.files.get(badOf(FIXTURE))).toBe('{"v":1,');
+  });
+
+  it('never writes into a file name from the garbled text: only the id the file name gives', async () => {
+    const files = createMemoryQueueFiles();
+    files.files.set(nameOf(FIXTURE), text({ v: 1, ...queue(), fixtureId: OTHER }));
+    const { store } = storeOver(files);
+    expect(await store.load(FIXTURE)).toBeNull();
+    expect([...files.files.keys()]).toEqual([badOf(FIXTURE)]);
   });
 });
 
@@ -381,12 +623,15 @@ describe('a queue the store could not read back is not written', () => {
 });
 
 describe('remove', () => {
-  it('deletes the match’s queue, and its stale temp file, and only its own', async () => {
+  it('deletes the match’s queue, its temp, aside and ledger files, and only its own', async () => {
     const files = createMemoryQueueFiles();
     const { store } = storeOver(files);
     await store.save(queue());
     await store.save(queue({ fixtureId: OTHER }));
+    await store.saveLedger(FIXTURE, [EVENT_1]);
     files.files.set(`${nameOf(FIXTURE)}.tmp`, 'half');
+    files.files.set(badOf(FIXTURE), 'earlier');
+    files.files.set(`${ledgerOf(FIXTURE)}.tmp`, 'half');
     await store.remove(FIXTURE);
     expect(await store.load(FIXTURE)).toBeNull();
     expect((await store.load(OTHER))?.fixtureId).toBe(OTHER);
@@ -476,5 +721,204 @@ describe('one thing at a time', () => {
     await expect(failed).rejects.toThrow();
     await next;
     expect((await store.load(FIXTURE))?.ownEventIds).toEqual(['kept']);
+  });
+});
+
+describe('the ledger beside the queue', () => {
+  const ledgerUnreadable = (entries: () => ReturnType<typeof parseRecordLine>[]) =>
+    entries().filter((entry) => entry.event === 'scoring.ledger.unreadable');
+
+  it('round-trips the events whole, in order, voids and device link included', async () => {
+    const { store } = storeOver();
+    await store.saveLedger(FIXTURE, LEDGER);
+    expect(await store.loadLedger(FIXTURE)).toEqual(LEDGER);
+  });
+
+  it('round-trips a long ledger and an empty one', async () => {
+    const { store } = storeOver();
+    const long = Array.from({ length: 400 }, (_, i) => event(i + 1));
+    await store.saveLedger(FIXTURE, long);
+    expect(await store.loadLedger(FIXTURE)).toEqual(long);
+    await store.saveLedger(OTHER, []);
+    expect(await store.loadLedger(OTHER)).toEqual([]);
+  });
+
+  it('is null for a match with none, the empty input', async () => {
+    expect(await storeOver().store.loadLedger(FIXTURE)).toBeNull();
+  });
+
+  it('a second save replaces the first whole, and leaves no temp file', async () => {
+    const files = createMemoryQueueFiles();
+    const { store } = storeOver(files);
+    await store.saveLedger(FIXTURE, LEDGER);
+    await store.saveLedger(FIXTURE, LEDGER.slice(0, 1));
+    expect(await store.loadLedger(FIXTURE)).toEqual(LEDGER.slice(0, 1));
+    expect([...files.files.keys()]).toEqual([ledgerOf(FIXTURE)]);
+  });
+
+  it('is kept in a file of its own: the queue is untouched by it, and it is no queue in the list', async () => {
+    const files = createMemoryQueueFiles();
+    const { store } = storeOver(files);
+    await store.save(queue());
+    await store.saveLedger(FIXTURE, LEDGER);
+    await store.saveLedger(OTHER, LEDGER);
+    expect(await store.load(FIXTURE)).toEqual(queue());
+    expect(entryIds(await store.list())).toEqual([FIXTURE]);
+    expect(await store.loadLedger(OTHER)).toEqual(LEDGER);
+  });
+
+  it('survives the app being killed: a second store over the same folder reads it', async () => {
+    const files = createMemoryQueueFiles();
+    await storeOver(files).store.saveLedger(FIXTURE, LEDGER);
+    expect(await storeOver(files).store.loadLedger(FIXTURE)).toEqual(LEDGER);
+  });
+
+  it('a save cut before its rename leaves the old ledger whole', async () => {
+    const files = createMemoryQueueFiles();
+    const { store } = storeOver(files);
+    await store.saveLedger(FIXTURE, LEDGER.slice(0, 2));
+    files.failNext('move');
+    await expect(store.saveLedger(FIXTURE, LEDGER)).rejects.toThrow();
+    expect(await storeOver(files).store.loadLedger(FIXTURE)).toEqual(LEDGER.slice(0, 2));
+  });
+
+  it('a kill between the delete and the rename leaves only the temp file: it is promoted', async () => {
+    const files = createMemoryQueueFiles();
+    const { store } = storeOver(files);
+    await store.saveLedger(FIXTURE, LEDGER.slice(0, 2));
+    files.failNext('moveAfterDelete');
+    await expect(store.saveLedger(FIXTURE, LEDGER)).rejects.toThrow();
+    expect([...files.files.keys()]).toEqual([`${ledgerOf(FIXTURE)}.tmp`]);
+    expect(await storeOver(files).store.loadLedger(FIXTURE)).toEqual(LEDGER);
+    expect([...files.files.keys()]).toEqual([ledgerOf(FIXTURE)]);
+  });
+
+  it.each([
+    ['not JSON', '{"v":1,'],
+    ['another version', text({ v: 2, fixtureId: FIXTURE, events: [] })],
+    ['a fixture id that is not the file’s', text({ v: 1, fixtureId: OTHER, events: [] })],
+    ['no events list', text({ v: 1, fixtureId: FIXTURE })],
+    [
+      'an event with no payload',
+      text({ v: 1, fixtureId: FIXTURE, events: [{ ...EVENT_1, payload: undefined }] }),
+    ],
+    ['an event with no id', text({ v: 1, fixtureId: FIXTURE, events: [{ ...EVENT_1, id: '' }] })],
+    ['a first seq of 2: a hole', text({ v: 1, fixtureId: FIXTURE, events: [event(2)] })],
+    ['a hole in the middle', text({ v: 1, fixtureId: FIXTURE, events: [event(1), event(3)] })],
+    ['a repeat', text({ v: 1, fixtureId: FIXTURE, events: [event(1), event(1)] })],
+    ['an empty voids word', text({ v: 1, fixtureId: FIXTURE, events: [event(1, { voids: '' })] })],
+  ])('%s is no ledger: null, said once, left on disk', async (_name, content) => {
+    const files = createMemoryQueueFiles();
+    files.files.set(ledgerOf(FIXTURE), content);
+    const { store, entries } = storeOver(files);
+    expect(await store.loadLedger(FIXTURE)).toBeNull();
+    expect(await store.loadLedger(FIXTURE)).toBeNull();
+    expect(ledgerUnreadable(entries)).toHaveLength(1);
+    expect(files.files.get(ledgerOf(FIXTURE))).toBe(content);
+  });
+
+  it('a save over a garbled ledger is read again, and a new garble is reported anew', async () => {
+    const files = createMemoryQueueFiles();
+    files.files.set(ledgerOf(FIXTURE), 'x');
+    const { store, entries } = storeOver(files);
+    await store.loadLedger(FIXTURE);
+    await store.saveLedger(FIXTURE, LEDGER);
+    expect(await store.loadLedger(FIXTURE)).toEqual(LEDGER);
+    files.files.set(ledgerOf(FIXTURE), 'y');
+    await store.loadLedger(FIXTURE);
+    expect(ledgerUnreadable(entries)).toHaveLength(2);
+  });
+
+  it('a new garble after a save is reported anew, though nothing read the good ledger between', async () => {
+    const files = createMemoryQueueFiles();
+    files.files.set(ledgerOf(FIXTURE), 'x');
+    const { store, entries } = storeOver(files);
+    await store.loadLedger(FIXTURE);
+    await store.saveLedger(FIXTURE, LEDGER);
+    files.files.set(ledgerOf(FIXTURE), 'y');
+    expect(await store.loadLedger(FIXTURE)).toBeNull();
+    expect(ledgerUnreadable(entries)).toHaveLength(2);
+  });
+
+  it('a garbled ledger with a good temp file: the temp is promoted', async () => {
+    const files = createMemoryQueueFiles();
+    files.files.set(ledgerOf(FIXTURE), 'x');
+    files.files.set(`${ledgerOf(FIXTURE)}.tmp`, text({ v: 1, fixtureId: FIXTURE, events: LEDGER }));
+    const { store } = storeOver(files);
+    expect(await store.loadLedger(FIXTURE)).toEqual(LEDGER);
+  });
+
+  it('a ledger with a hole is refused on save, the old one whole: the cache never holds what it could not read', async () => {
+    const files = createMemoryQueueFiles();
+    const { store } = storeOver(files);
+    await store.saveLedger(FIXTURE, LEDGER);
+    await expect(store.saveLedger(FIXTURE, [event(1), event(3)])).rejects.toThrow();
+    await expect(store.saveLedger(FIXTURE, [event(2)])).rejects.toThrow();
+    expect(await store.loadLedger(FIXTURE)).toEqual(LEDGER);
+  });
+
+  it('a ledger naming the link’s secret anywhere is refused: nothing is written', async () => {
+    const files = createMemoryQueueFiles();
+    const { store } = storeOver(files);
+    await expect(
+      store.saveLedger(FIXTURE, [event(1, { payload: { note: [`x ${TOKEN}`] } })]),
+    ).rejects.toThrow(/link/i);
+    expect(files.files.size).toBe(0);
+    expect(files.written.join('\n')).not.toContain(TOKEN);
+  });
+
+  it('removeLedger deletes the file and its temp, and only its match’s; twice is once', async () => {
+    const files = createMemoryQueueFiles();
+    const { store } = storeOver(files);
+    await store.save(queue());
+    await store.saveLedger(FIXTURE, LEDGER);
+    await store.saveLedger(OTHER, LEDGER);
+    files.files.set(`${ledgerOf(FIXTURE)}.tmp`, text({ v: 1, fixtureId: FIXTURE, events: LEDGER }));
+    await store.removeLedger(FIXTURE);
+    await expect(store.removeLedger(FIXTURE)).resolves.toBeUndefined();
+    expect(await store.loadLedger(FIXTURE)).toBeNull();
+    expect(await store.loadLedger(OTHER)).toEqual(LEDGER);
+    expect(await store.load(FIXTURE)).toEqual(queue());
+  });
+
+  it('removing the queue removes the ledger with it', async () => {
+    const files = createMemoryQueueFiles();
+    const { store } = storeOver(files);
+    await store.save(queue());
+    await store.saveLedger(FIXTURE, LEDGER);
+    await store.remove(FIXTURE);
+    expect(await store.loadLedger(FIXTURE)).toBeNull();
+    expect(files.files.size).toBe(0);
+  });
+
+  it('a fixture id that is no file name: no ledger, nothing read or written, no throw but a save', async () => {
+    const files = createMemoryQueueFiles();
+    const { store } = storeOver(files);
+    expect(await store.loadLedger('../x')).toBeNull();
+    await expect(store.removeLedger('../x')).resolves.toBeUndefined();
+    await expect(store.saveLedger('../x', LEDGER)).rejects.toThrow();
+    expect(files.ops).toEqual([]);
+  });
+
+  it('a load made behind a save sees the save, and a refused save rejects without stopping the next', async () => {
+    const files = createMemoryQueueFiles();
+    const { store } = storeOver(files);
+    files.failNext('write');
+    const failed = store.saveLedger(FIXTURE, LEDGER.slice(0, 1));
+    const next = store.saveLedger(FIXTURE, LEDGER);
+    const loaded = store.loadLedger(FIXTURE);
+    await expect(failed).rejects.toThrow();
+    await next;
+    expect(await loaded).toEqual(LEDGER);
+  });
+
+  it('a read the disk refuses is null, once reported, never thrown', async () => {
+    const files = createMemoryQueueFiles();
+    const { store, entries } = storeOver(files);
+    await store.saveLedger(FIXTURE, LEDGER);
+    files.failNext('read');
+    expect(await store.loadLedger(FIXTURE)).toBeNull();
+    expect(ledgerUnreadable(entries)).toHaveLength(1);
+    expect(await store.loadLedger(FIXTURE)).toEqual(LEDGER);
   });
 });
