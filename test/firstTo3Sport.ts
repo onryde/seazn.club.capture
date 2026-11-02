@@ -78,6 +78,7 @@ function half(display: FirstTo3Display, side: PadSide): PadHalf<FirstTo3Key> {
     periods: null,
     sub: null,
     serving: null,
+    bar: 'dim',
     hint: { key: 'first3.hint' },
     hintLine: { key: 'first3.hint' },
     tappable: true,

@@ -35,7 +35,7 @@ import { PadStrip } from '@/ui/components/PadStrip';
 import { ScoreEntrySheet } from '@/ui/components/ScoreEntrySheet';
 import { ScoreHalf } from '@/ui/components/ScoreHalf';
 import { StepSheet, type StepOption } from '@/ui/components/StepSheet';
-import { SyncDot } from '@/ui/components/SyncDot';
+import { SyncBadge } from '@/ui/components/SyncBadge';
 import { Text } from '@/ui/components/Text';
 import { ToolRow } from '@/ui/components/ToolRow';
 import { TossPicker } from '@/ui/components/TossPicker';
@@ -108,7 +108,7 @@ const PadHeader = memo(function PadHeader({
   );
 });
 
-/** The top bar's right end: Match details and History while the match is known, then the sync status in its box. */
+/** The top bar's right end: Match details and History while the match is known, then the send badge in its slot (a tap on it opens History). */
 const HeaderEnd = memo(function HeaderEnd({
   sync,
   known,
@@ -122,7 +122,7 @@ const HeaderEnd = memo(function HeaderEnd({
     <View testID="pad-header-end" style={styles.end}>
       {known ? <MatchIcons actions={actions} /> : null}
       <View testID="sync-box" style={styles.sync}>
-        <SyncDot sync={sync} />
+        <SyncBadge sync={sync} onPress={known ? actions.history : null} />
       </View>
     </View>
   );

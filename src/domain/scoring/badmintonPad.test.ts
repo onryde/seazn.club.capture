@@ -88,6 +88,50 @@ describe('badmintonPad: the halves', () => {
     ]);
   });
 
+  // Owner ruling, 2026-11-02: "there is a lime light in box 1 fixed instead of, lime color changes who is serving?". The
+  // side bar follows the server: lit on the serving side, dim on the other, dim on both while no server is known.
+  describe('the side bar follows the server', () => {
+    const bars = (display: BadmintonDisplay) =>
+      badmintonPad(display).halves.map((half) => half.bar);
+
+    it('lights the serving side’s bar, the second side as the first, and dims the other', () => {
+      expect(bars({ ...live, server: 'second' })).toEqual(['dim', 'lit']);
+      expect(bars({ ...live, server: 'first' })).toEqual(['lit', 'dim']);
+    });
+
+    it('moves the light the moment the serve changes (a rally the receiver won)', () => {
+      expect(bars({ ...live, server: 'first' })).not.toEqual(bars({ ...live, server: 'second' }));
+    });
+
+    it('lights the pick shown on the Start screen’s first rally, as the plate shows it', () => {
+      expect(bars({ ...pre, server: 'second', serverPicked: true })).toEqual(['dim', 'lit']);
+    });
+
+    it('dims both while no server is known (a set score, or a match started elsewhere)', () => {
+      expect(bars({ ...pre, server: null })).toEqual(['dim', 'dim']);
+      expect(bars({ ...live, server: null })).toEqual(['dim', 'dim']);
+    });
+
+    it('dims both once the match is decided and before it starts, the plate gone with them', () => {
+      expect(bars({ ...live, phase: 'decided' })).toEqual(['dim', 'dim']);
+      expect(bars({ ...pre, phase: 'notStarted' })).toEqual(['dim', 'dim']);
+    });
+
+    it('lights exactly the half that has the plate, in every phase', () => {
+      const phases = ['notStarted', 'pre', 'live', 'betweenGames', 'decided'] as const;
+      const servers = ['first', 'second', null] as const;
+      for (const phase of phases) {
+        for (const server of servers) {
+          const halves = badmintonPad({ ...live, phase, server }).halves;
+          expect(
+            halves.map((half) => half.bar === 'lit'),
+            `${phase}/${String(server)}`,
+          ).toEqual(halves.map((half) => half.serving !== null));
+        }
+      }
+    });
+  });
+
   it('has no finished game’s score in game 1', () => {
     expect(badmintonPad(live).halves.map((half) => half.periods)).toEqual([null, null]);
   });

@@ -63,12 +63,13 @@ const INVALID_SCORE: PadLineWords = refusalLine('scoring.refusal.invalidScore');
 
 const SAMPLES = { singles: SINGLES_SAMPLE, doubles: DOUBLES_SAMPLE } as const;
 
-/** The dev row's sync statuses, in order; made-up counts. */
+/** The dev row's sync statuses, in order; made-up counts (the stall's two digits are the widest badge). */
 const SYNC_CYCLE: readonly PadSync[] = [
   { kind: 'synced' },
   { kind: 'sending', count: 1 },
   { kind: 'offline', count: 3 },
   { kind: 'refused', count: 1 },
+  { kind: 'stalled', count: 12 },
 ];
 
 type Held = { readonly sample: PreviewSample; readonly pad: FakeBadmintonPad };

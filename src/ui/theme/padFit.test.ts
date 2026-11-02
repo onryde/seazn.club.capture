@@ -97,89 +97,86 @@ describe('the tool row fits at 320 in four languages', () => {
 
 describe('the header fits on one row at 320 and 360 in four languages (owner ruling 20)', () => {
   // Owner ruling 20 (2026-10-31): Back, then at the right end Rules and History, round icon buttons as Home's gear, and
-  // the sync status; between them the games tally, where the Preview tag was (owner, 2026-11-01). The row's items are
-  // `space.xs` apart: Back, the tally and the end group, and inside the group Rules, History and the sync box
-  // (`padSyncBox`: the dot, its gap and the words).
+  // the sync status; between them the games tally, where the Preview tag was (owner, 2026-11-01). The owner's badge
+  // (2026-11-02: "remove sending word and have a symbol/icon like green uparrow", and "increase the size of 0:0 to fit in
+  // that space") took the words away: the status is an arrow and a count in `padSyncBox`, and the tally grows into the
+  // room that gave back. The row's items are `space.xs` apart: Back, the tally and the end group, and inside the group
+  // Rules, History and the badge's slot. Nothing in the row is a word any more, so the rooms below hold in all four
+  // languages at once (the badge's words are a screen reader's, never drawn).
   /** "1:0" in `tally`: two tabular digits (`zero.tf`, the widest) and the colon. Best of 3: a side wins 2 at most. */
-  const tally =
+  const tallyAt = (fontSize: number) =>
     (2 * barlow700.advanceOfName('zero.tf') + barlow700.advance(':'.codePointAt(0) ?? 0)) *
-    typeScale.tally.fontSize;
-  /** What the tally has: the column less Back, Rules, History, the sync box and the four gaps. */
+    fontSize;
+  const tally = tallyAt(typeScale.tally.fontSize);
+  /** What the tally has: the column less Back, Rules, History, the badge's slot and the four gaps. */
   const tallyRoom = (width: number) =>
     column(width) - 3 * layout.iconButton - layout.padSyncBox - 4 * space.xs;
-  /** The sync words' width in their box. */
-  const syncWords = layout.padSyncBox - layout.syncDot - space.xs;
-  const statuses = ['scoring.sync.synced'].concat(
-    ...['sending', 'offline', 'refused'].map((kind) => [
-      `scoring.sync.${kind}.one`,
-      `scoring.sync.${kind}.other`,
-    ]),
-  );
-  /** The most lines any status takes in a width, at 1 and at 99 taps (the longest sync words). */
-  const mostLinesIn = (dictionary: Dictionary, width: number) =>
-    Math.max(
-      ...statuses.flatMap((key) =>
-        ['1', '99'].map((count) => {
-          const text = fill(dictionary[key] ?? '', { count });
-          expect(text).not.toBe('');
-          return linesOf(text, width, unitWidth);
-        }),
-      ),
+  /** `syncCount`: Barlow Condensed 700 at 18, tabular figures. */
+  const countWidth = (text: string) =>
+    [...text].reduce(
+      (sum, char) =>
+        sum +
+        (/\d/.test(char)
+          ? barlow700.advanceOfName('zero.tf')
+          : barlow700.advance(char.codePointAt(0) ?? 0)) *
+          typeScale.syncCount.fontSize,
+      0,
     );
-  /** ... in the box's words. */
-  const mostLines = (dictionary: Dictionary) => mostLinesIn(dictionary, syncWords);
+  /** The badge as drawn: its heavier outline either side, its padding, the arrow's box and the count (SyncBadge). */
+  const badgeWidth = (text: string) =>
+    2 * layout.iconBorderOn + 2 * space.xs + layout.padSyncGlyph + countWidth(text);
 
   it('draws Back, Rules and History as touch targets, 48 dp square (IconButton)', () => {
     expect(layout.iconButton).toBe(layout.touch);
-    expect(syncWords).toBe(74);
   });
 
-  it('gives the sync words three lines, which are the header’s own touch height: a third line never grows the row', () => {
-    expect(layout.padSyncLines * typeScale.metricUnit.lineHeight).toBe(layout.touch);
+  it('holds the widest badge, "99+" in the heavier outline, in its slot: 55.8 dp of 56', () => {
+    expect(badgeWidth('99+').toFixed(1)).toBe('55.8');
+    expect(badgeWidth('99+')).toBeLessThanOrEqual(layout.padSyncBox);
+    // Every count the badge can show is no wider (it never draws a third digit: it says "99+").
+    for (let taps = 0; taps <= 99; taps += 1) {
+      expect(badgeWidth(String(taps))).toBeLessThanOrEqual(layout.padSyncBox);
+    }
   });
 
-  it.each(LANGUAGES)(
-    '%s: each status at 1 and 99 taps in its reserved lines, in the sync box, at any width',
-    (_lang, dictionary: Dictionary) => {
-      expect(mostLines(dictionary)).toBeLessThanOrEqual(layout.padSyncLines);
-    },
-  );
-
-  // The ruling hoped the icons would give the sync words a line back. Two 48 dp icons and their gap take 100 dp where the
-  // Rules word took 49 to 56, so the box holds Spanish offline in three lines and no fewer. The tag's going (owner,
-  // 2026-11-01) frees nothing at 320: the tally takes its place, and the box is all that is left (below).
-  it('needs the third line in Spanish, French and Dutch: `padSyncLines` stays at 3 (anti-vacuity)', () => {
-    expect(LANGUAGES.map(([lang, dictionary]) => [lang, mostLines(dictionary)])).toEqual([
-      ['en', 2],
-      ['es', 3],
-      ['fr', 3],
-      ['nl', 3],
-    ]);
-    const offline = fill(es['scoring.sync.offline.other'], { count: '99' });
-    expect(linesOf(offline, syncWords - 1, unitWidth)).toBe(4);
+  it('would not hold a third digit, which is why the badge stops at "99+" (anti-vacuity)', () => {
+    expect(badgeWidth('100')).toBeGreaterThan(layout.padSyncBox);
   });
 
-  // The tally is digits, the same in every language, so one width holds for all four.
-  it('holds the tally whole at 320 (38.1 dp of 40) and 360 (of 80), on a line inside the 48 dp row', () => {
-    expect(WIDTHS.map(tallyRoom)).toEqual([40, 80]);
-    expect(tally.toFixed(1)).toBe('38.1');
-    expect(tally).toBeLessThanOrEqual(tallyRoom(320));
-    expect(typeScale.tally.lineHeight).toBeLessThanOrEqual(layout.touch);
-  });
-
-  // The owner asked for 28 to 32 dp. At 32 "1:0" is 40.7 dp: over the 40 at 320.
-  it('would not fit at 32 dp, the top of the asked range (anti-vacuity)', () => {
-    expect(tally * (32 / typeScale.tally.fontSize)).toBeGreaterThan(tallyRoom(320));
-  });
-
-  // padSyncLines cannot drop to 2: the box would need fr's 101.5 dp of words (115.5 with the dot), and at 320 the row
-  // leaves it 89.9 beside the tally.
-  it('leaves the sync box no more room at 320 than it has: two lines would need 116', () => {
-    const boxRoom = column(320) - 3 * layout.iconButton - tally - 4 * space.xs;
-    expect(boxRoom.toFixed(1)).toBe('89.9');
-    expect(LANGUAGES.some(([, dictionary]) => mostLinesIn(dictionary, boxRoom - 14) > 2)).toBe(
-      true,
+  it('keeps the count on one 20 dp line, inside the badge’s 48 dp touch height', () => {
+    expect(typeScale.syncCount.lineHeight).toBeLessThanOrEqual(
+      layout.touch - 2 * layout.iconBorderOn,
     );
+    expect(layout.padSyncGlyph).toBeLessThanOrEqual(layout.touch - 2 * layout.iconBorderOn);
+  });
+
+  // The tally is digits, the same in every language, so one width holds for all four. At 320 the row leaves it 72 dp.
+  it('holds the tally whole at 320 (58.5 dp of 72) and 360 (of 112), on a line that is the 48 dp row', () => {
+    expect(WIDTHS.map(tallyRoom)).toEqual([72, 112]);
+    expect(tally.toFixed(1)).toBe('58.5');
+    expect(WIDTHS.map((width) => tally <= tallyRoom(width))).toEqual([true, true]);
+    expect(typeScale.tally.lineHeight).toBe(layout.touch);
+  });
+
+  it('keeps the tally clear of the badge’s slot at 320 by more than a few dp, for a width the fonts read slightly differently', () => {
+    expect(tallyRoom(320) - tally).toBeGreaterThanOrEqual(8);
+  });
+
+  // The words took 88 dp and left the tally 40: at 30 dp it was 38.1. Its size is now bound by the row's height, not
+  // by its room: a larger one has room at 320 and no line to stand on (anti-vacuity, both ways).
+  it('is the largest size whose line stays the 48 dp row: room remains at 54, but a line of 56 would not fit', () => {
+    expect(tallyAt(54)).toBeLessThanOrEqual(tallyRoom(320));
+    expect(Math.ceil(54 * (typeScale.tally.lineHeight / typeScale.tally.fontSize))).toBeGreaterThan(
+      layout.touch,
+    );
+  });
+
+  it('is larger than the 30 dp it was, and was bound by the words then (the old box left it 40 at 320)', () => {
+    const OLD_BOX = 88;
+    const oldRoom = column(320) - 3 * layout.iconButton - OLD_BOX - 4 * space.xs;
+    expect(oldRoom).toBe(40);
+    expect(tallyAt(32)).toBeGreaterThan(oldRoom);
+    expect(typeScale.tally.fontSize).toBeGreaterThan(30);
   });
 });
 

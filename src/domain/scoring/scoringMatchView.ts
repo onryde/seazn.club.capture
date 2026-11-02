@@ -17,6 +17,7 @@ import {
   undoTargetOf,
   type MatchState,
 } from '@/domain/scoring/scoringMatchState';
+import { stallOf } from '@/domain/scoring/scoringMatchStall';
 import type {
   ScoringSport,
   SportFold,
@@ -125,9 +126,9 @@ function syncOf(state: MatchState): PadSync {
   if (count === 0) return { kind: 'synced' };
   if (deadOf(state) !== null) return { kind: 'refused', count };
   const { status } = state.sync;
-  return status === 'offline' || status === 'outdated'
-    ? { kind: 'offline', count }
-    : { kind: 'sending', count };
+  if (status === 'offline' || status === 'outdated') return { kind: 'offline', count };
+  // The network is named first: a refusal run left over from before it dropped is not what is stopping the taps now.
+  return stallOf(state) === null ? { kind: 'sending', count } : { kind: 'stalled', count };
 }
 
 /**

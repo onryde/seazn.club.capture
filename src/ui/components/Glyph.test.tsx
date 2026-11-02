@@ -56,6 +56,9 @@ const DRAWN = [
   ['info', ['M12 11v6'], ['12,12,9', '12,7.5,1'], 0],
   // and History: a clock whose ring runs back to an arrowhead at the top left
   ['history', ['M3 12a9 9 0 1 0 2.64-6.36L3 8.3M3 3.5v4.8h4.8M12 7.5V12l3 2'], [], 0],
+  // the pad's send badge (owner, 2026-11-02): an arrow up, and the same arrow stopped under a bar
+  ['up', ['M12 19V5M6 11l6-6 6 6'], [], 0],
+  ['upBlocked', ['M12 20V10M7 14l5-5 5 5M5 4h14'], [], 0],
 ] as const;
 /** The camera's not-ready slash (spec §3). */
 const SLASH = 'M3 3l18 18';
@@ -76,15 +79,15 @@ describe('Glyph draws the canvas’s line icons (spec §3)', () => {
     drawn += 1;
   });
 
-  it('drew all eleven glyphs (anti-vacuity)', () => {
-    expect(DRAWN).toHaveLength(11);
-    expect(drawn).toBe(11);
+  it('drew all thirteen glyphs (anti-vacuity)', () => {
+    expect(DRAWN).toHaveLength(13);
+    expect(drawn).toBe(13);
   });
 
   // Every glyph the module declares is drawn above, and the table above holds no glyph the module does not declare:
-  // a twelfth glyph added to the module without a row here fails this, instead of being drawn by nothing that checks it.
+  // a fourteenth glyph added to the module without a row here fails this, instead of being drawn by nothing that checks it.
   it('declares exactly the glyphs this suite draws', () => {
-    expect(GLYPH_NAMES).toHaveLength(11);
+    expect(GLYPH_NAMES).toHaveLength(13);
     expect([...GLYPH_NAMES].sort()).toEqual(DRAWN.map(([name]) => name as string).sort());
   });
 
@@ -123,13 +126,14 @@ describe('Glyph draws the canvas’s line icons (spec §3)', () => {
     ['ink', colour.ink],
     ['ink2', colour.ink2],
     ['lime', colour.lime],
+    ['caution', colour.caution],
   ] as const)('strokes in the %s tone’s colour', (tone, stroke) => {
     const view = render(<Glyph name="camera" tone={tone} />);
     expect(view.container.querySelector('svg')?.getAttribute('stroke')).toBe(stroke);
   });
 
-  it('draws the three tones in three colours (anti-vacuity)', () => {
-    expect(new Set([colour.ink, colour.ink2, colour.lime]).size).toBe(3);
+  it('draws the four tones in four colours (anti-vacuity)', () => {
+    expect(new Set([colour.ink, colour.ink2, colour.lime, colour.caution]).size).toBe(4);
   });
 
   // The board's Diagnostics heading draws its pulse at 18 dp (a 15 dp-wide line, the path's 20 units at 0.75 dp),

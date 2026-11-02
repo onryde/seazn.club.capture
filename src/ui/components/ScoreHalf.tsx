@@ -49,7 +49,7 @@ export const ScoreHalf = memo(function ScoreHalf({ half, flash, onTap }: ScoreHa
       disabled={!half.tappable}
       onPress={tap}
       onLayout={measure}
-      style={half.side === 'first' ? firstStyle : secondStyle}
+      style={half.bar === 'lit' ? litStyle : dimStyle}
     >
       <TapFlash cue={flash} />
       <HalfHead half={half} />
@@ -207,8 +207,9 @@ const styles = StyleSheet.create({
     // Shorter than even `scoreCompact` needs (a card above the halves on a short phone): cut, never drawn over the other.
     overflow: 'hidden',
   },
-  first: { borderLeftColor: colour.lime },
-  second: { borderLeftColor: colour.ink3 },
+  // The edge bar is the sport's call (`PadHalf.bar`), not the side's: lit is the LED lime, dim is lilac.
+  lit: { borderLeftColor: colour.lime },
+  dim: { borderLeftColor: colour.ink3 },
   pressed: { backgroundColor: colour.surface2 },
   head: { flexDirection: 'row', alignItems: 'flex-start', gap: space.sm },
   names: { flex: 1 },
@@ -246,7 +247,7 @@ function pressable(rest: StyleProp<ViewStyle>) {
   return ({ pressed }: PressableStateCallbackType) => (pressed ? down : rest);
 }
 
-const firstStyle = pressable([styles.half, styles.first]);
+const litStyle = pressable([styles.half, styles.lit]);
 const wonBox = [styles.box, styles.won];
 const lostBox = [styles.box, styles.lost];
-const secondStyle = pressable([styles.half, styles.second]);
+const dimStyle = pressable([styles.half, styles.dim]);

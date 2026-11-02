@@ -32,6 +32,7 @@ const top: PadHalf<MessageKey> = {
     shown: { key: 'scoring.badminton.serving.right' },
     said: { key: 'scoring.badminton.servingSaid.right' },
   },
+  bar: 'lit',
   hint: { key: 'scoring.badminton.hint' },
   hintLine: { key: 'scoring.badminton.hintLine', vars: { side: 'A. Sharma' } },
   tappable: true,
@@ -258,16 +259,37 @@ describe('ScoreHalf', () => {
     expect(linesAllowed(hint)).toBe(1);
   });
 
-  it('marks the first side lime and the second lilac at its left edge', () => {
-    renderWithPorts(
-      <>
-        <ScoreHalf half={top} flash={0} onTap={vi.fn()} />
-        <ScoreHalf half={{ ...top, side: 'second' }} flash={0} onTap={vi.fn()} />
-      </>,
+  // Owner, 2026-11-02: the bar is the sport's call (`half.bar`), not the side's: the kit draws a lit bar lime and a dim
+  // one lilac, whichever side the half is. Both ways, and on both sides, so no side is hard-coded.
+  it.each([
+    ['first', 'lit', colour.lime],
+    ['first', 'dim', colour.ink3],
+    ['second', 'lit', colour.lime],
+    ['second', 'dim', colour.ink3],
+  ] as const)(
+    'draws the %s half’s %s bar at its left edge in the token’s colour',
+    (side, bar, paint) => {
+      renderWithPorts(<ScoreHalf half={{ ...top, side, bar }} flash={0} onTap={vi.fn()} />);
+      const edge = getComputedStyle(screen.getByTestId(`half-${side}`)).borderLeftColor;
+      expect(edge).toBe(edgeOf(paint));
+    },
+  );
+
+  it('moves the lime when the half’s bar changes, with nothing else about the half changed', () => {
+    const view = renderWithPorts(
+      <ScoreHalf half={{ ...top, bar: 'dim' }} flash={0} onTap={vi.fn()} />,
     );
-    const left = (testID: string) => getComputedStyle(screen.getByTestId(testID)).borderLeftColor;
-    expect(left('half-first')).toBe(edgeOf(colour.lime));
-    expect(left('half-second')).toBe(edgeOf(colour.ink3));
+    const edge = () => getComputedStyle(screen.getByTestId('half-first')).borderLeftColor;
+    expect(edge()).toBe(edgeOf(colour.ink3));
+    view.rerender(<ScoreHalf half={{ ...top, bar: 'lit' }} flash={0} onTap={vi.fn()} />);
+    expect(edge()).toBe(edgeOf(colour.lime));
+  });
+
+  it('keeps the bar out of the half’s name: the serving plate says who serves', () => {
+    renderWithPorts(<ScoreHalf half={{ ...top, bar: 'lit' }} flash={0} onTap={vi.fn()} />);
+    const name = screen.getByTestId('half-first').getAttribute('aria-label') ?? '';
+    expect(name).toBe(NAME);
+    expect(name.toLowerCase()).not.toContain('lime');
   });
 
   it('sets the value in the score role: tabular, so 9 to 10 does not jump', () => {

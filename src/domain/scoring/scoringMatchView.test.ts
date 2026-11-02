@@ -182,6 +182,42 @@ describe('what the pad says of the transport', () => {
     expect(padOf(down).view.sync).toEqual({ kind: 'offline', count: 2 });
   });
 
+  // The pad's send badge (owner, 2026-11-02): a phone whose taps the server keeps refusing is "can't send", not "sending".
+  // The sixth refusal in a row is `stallOf`'s line (the record's `scoring.stalled`); the badge reads the same reading.
+  describe('taps the server keeps refusing', () => {
+    type Patch = Partial<ReturnType<typeof unsent>['sync']>;
+    const withSync = (state: ReturnType<typeof unsent>, patch: Patch) => ({
+      ...state,
+      sync: { ...state.sync, ...patch },
+    });
+    const refused = (count: number, by: 'rules' | 'conflict' = 'rules') =>
+      withSync(unsent(), { refusedRun: { by, count } });
+
+    it('are still sending through the fifth refusal and are stalled from the sixth, with the count', () => {
+      expect(padOf(refused(5)).view.sync).toEqual({ kind: 'sending', count: 2 });
+      expect(padOf(refused(6)).view.sync).toEqual({ kind: 'stalled', count: 2 });
+      expect(padOf(refused(40, 'conflict')).view.sync).toEqual({ kind: 'stalled', count: 2 });
+    });
+
+    it('are offline, not stalled, when the network is what failed last', () => {
+      const down = withSync(unsent(), { status: 'offline', refusedRun: { by: 'rules', count: 9 } });
+      expect(padOf(down).view.sync).toEqual({ kind: 'offline', count: 2 });
+    });
+
+    it('are refused, not stalled, in a dead queue', () => {
+      const dead = unsent({
+        queue: queueOf({ pending: [queuedOf('k1', rally('H'))], dead: 'LINK_REVOKED' }),
+      });
+      const state = withSync(dead, { refusedRun: { by: 'rules', count: 9 } });
+      expect(padOf(state).view.sync).toEqual({ kind: 'refused', count: 1 });
+    });
+
+    it('are synced once the queue is empty, whatever run was counted', () => {
+      const state = withSync(ready(), { refusedRun: { by: 'rules', count: 9 } });
+      expect(padOf(state).view.sync).toEqual({ kind: 'synced' });
+    });
+  });
+
   it('taps kept in a dead queue are refused, with the count', () => {
     expect(
       padOf(

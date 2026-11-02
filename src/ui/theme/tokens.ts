@@ -306,11 +306,10 @@ const base = {
   /** A segment's side padding: the board's English segments sit on the 66 floor, so this only matters to longer words (Linkerkant). */
   segmentPadX: 12,
   /**
-   * The scoring pad (S2): each half's side bar at its left edge, lime for the first side and lilac for the second, as
-   * the match label's (C2), and the sync dot's side.
+   * The scoring pad (S2): each half's side bar at its left edge, lit lime on the serving side and lilac on the other
+   * (owner, 2026-11-02; the match label's C2 bars are lime and lilac by side).
    */
   padSideBar: 4,
-  syncDot: 10,
   /** A half's names as typed: at most this many lines of `label`, then an ellipsis. */
   padNameLines: 2,
   /**
@@ -331,17 +330,14 @@ const base = {
    */
   padLineLines: 3,
   /**
-   * The sync status's words in the pad's header: this many lines of `metricUnit`, 48 dp, the header's own touch height.
-   * In `padSyncBox`, Spanish offline needs all three (padFit.test.ts), so the icons of owner ruling 20 give no line back.
+   * The send badge's slot at the right end of the pad's header (owner ruling 20, 2026-10-31: Rules, History and the sync
+   * status at the right end; the owner's 2026-11-02 badge: an arrow and the count, no words): the widest badge, two
+   * hairlines of the heavier outline, its padding and the arrow's box and "99+" in `syncCount` (padFit.test.ts). Fixed, so
+   * the icons stand still as the badge comes and goes; the games tally takes the rest of the row.
    */
-  padSyncLines: 3,
-  /**
-   * The sync status's box at the right end of the pad's header (owner ruling 20, 2026-10-31: Rules, History and the sync
-   * status at the right end; Back and the games tally at the left, owner 2026-11-01): the dot, its gap and words in which
-   * every status keeps to `padSyncLines` in four languages (padFit.test.ts). Fixed, so the icons stand still as the
-   * status changes. At 320 the row leaves it 89.9 beside the tally, so two lines (116) cannot be had.
-   */
-  padSyncBox: 88,
+  padSyncBox: 56,
+  /** The badge's arrow: drawn at this size in its 24-unit box, the arrow itself a little over half of it. */
+  padSyncGlyph: 18,
   /** A History row's sentence (owner ruling 21): at most this many lines of `control` (padFit.test.ts). */
   padHistoryLines: 2,
   /**

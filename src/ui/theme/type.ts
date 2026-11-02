@@ -256,16 +256,28 @@ export const typeScale = {
     fontVariant: ['tabular-nums'],
   },
   /**
-   * The games tally in the pad's header (owner, 2026-11-01: "0:0 with lime light in place of preview"): the score's
-   * face, lime and tabular, at 30 on a 34 dp line, so "1:0" (38.1 dp) stands whole beside Back at 320 and the header
-   * stays one 48 dp row (padFit.test.ts; at 32 it would be 40.7, over the 40 it has).
+   * The games tally in the pad's header (owner, 2026-11-01: "0:0 with lime light in place of preview"; larger, owner,
+   * 2026-11-02, into the room the badge gave back): the score's face, lime and tabular, at 46 on the header's own 48 dp
+   * line, so "1:0" (58.5 dp) stands whole in the 72 dp the row leaves it at 320 and the header stays one 48 dp row
+   * (padFit.test.ts: the row's height, not its room, is what stops it growing).
    */
   tally: {
     fontFamily: font.displayBold,
-    fontSize: 30,
-    lineHeight: 34,
+    fontSize: 46,
+    lineHeight: 48,
     fontVariant: ['tabular-nums'],
     color: colour.lime,
+  },
+  /**
+   * The count in the pad's send badge (owner, 2026-11-02): the score's face, tabular so 9 to 10 does not jump, at 18 on
+   * a 20 dp line. "99+" (25.8 dp) is the widest it draws (padFit.test.ts). Cream; the badge sets caution in trouble.
+   */
+  syncCount: {
+    fontFamily: font.displayBold,
+    fontSize: 18,
+    lineHeight: 20,
+    fontVariant: ['tabular-nums'],
+    color: colour.ink,
   },
   /** The score a step down, for a half too short for `score` (`scoreRole.ts` picks it from the half's own height). */
   scoreCompact: {

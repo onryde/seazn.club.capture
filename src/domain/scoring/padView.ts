@@ -32,6 +32,9 @@ export type PadCounted<K extends string> = {
 
 export type PadFills<K extends string> = Readonly<Record<string, PadVar<K>>>;
 
+/** A half's edge bar: the kit draws `lit` in the LED lime and `dim` in lilac (the tokens are the kit's, the choice the sport's). */
+export type PadBar = 'lit' | 'dim';
+
 /** One side's half: tapping it gives that side the rally (or the sport's unit of scoring). */
 export type PadHalf<K extends string> = {
   readonly side: PadSide;
@@ -45,6 +48,11 @@ export type PadHalf<K extends string> = {
   readonly sub: PadText<K> | null;
   /** The serving plate, on the serving side's half only; null on the other, and on both once the match is over. */
   readonly serving: PadServing<K> | null;
+  /**
+   * The bar at the half's left edge, which the sport decides (owner, 2026-11-02: the lime follows the server): `lit`
+   * is the LED lime and `dim` the lilac. Decorative: a screen reader hears the serving plate's words, never the bar.
+   */
+  readonly bar: PadBar;
   /** What a tap does, said to a screen reader ("Tap to award the rally"). */
   readonly hint: PadText<K>;
   /**
@@ -100,12 +108,17 @@ export type PadLastTap<K extends string> = {
   readonly undo: boolean;
 };
 
-/** Whether this phone's taps have reached the server. */
+/**
+ * Whether this phone's taps have reached the server (owner, 2026-11-02: a badge, not words). `synced` shows nothing;
+ * `sending` is the lime badge; `offline` (no network), `refused` (a link the door shut) and `stalled` (the server keeps
+ * answering and never takes the tap: `stallOf`) are the same badge in caution orange.
+ */
 export type PadSync =
   | { readonly kind: 'synced' }
   | { readonly kind: 'sending'; readonly count: number }
   | { readonly kind: 'offline'; readonly count: number }
-  | { readonly kind: 'refused'; readonly count: number };
+  | { readonly kind: 'refused'; readonly count: number }
+  | { readonly kind: 'stalled'; readonly count: number };
 
 /**
  * A tool's weight: `primary` is the lime plate, `standard` an outline, `destructive` the caution outline (never red:

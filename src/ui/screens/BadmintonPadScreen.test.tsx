@@ -187,7 +187,9 @@ describe('BadmintonPadScreen: before the first rally', () => {
     expect(getComputedStyle(tally).color).toBe(edgeOf(colour.lime));
     expect(screen.queryByText('Preview')).toBeNull();
     expect(screen.getByLabelText(CHIP.row)).toBeTruthy();
-    expect(screen.getByTestId('sync').textContent).toBe(en['scoring.sync.synced']);
+    // Nothing waiting to send: no badge at all (owner, 2026-11-02), though its slot stays so the icons stand still.
+    expect(screen.queryByTestId('sync')).toBeNull();
+    expect(screen.getByTestId('sync-box')).toBeTruthy();
   });
 });
 
@@ -723,17 +725,51 @@ describe('BadmintonPadScreen: the preview row', () => {
     expect(screen.queryByTestId('pad-card')).toBeNull();
   });
 
-  it('steps the sync status through its four words', () => {
+  it('steps the send badge through its five states: none, sending, offline, refused, stalled', () => {
     renderPad();
-    const sync = () => screen.getByTestId('sync').textContent;
+    const badge = () => screen.queryByTestId('sync');
+    const said = () => badge()?.getAttribute('aria-label') ?? null;
+    const shown = () => badge()?.textContent ?? null;
+    expect([said(), shown()]).toEqual([null, null]);
     press(CHIP.sync);
-    expect(sync()).toBe(fill(en['scoring.sync.sending.one'], { count: 1 }));
+    expect([said(), shown()]).toEqual([fill(en['scoring.sync.sending.one'], { count: 1 }), '1']);
     press(CHIP.sync);
-    expect(sync()).toBe(fill(en['scoring.sync.offline.other'], { count: 3 }));
+    expect([said(), shown()]).toEqual([fill(en['scoring.sync.offline.other'], { count: 3 }), '3']);
     press(CHIP.sync);
-    expect(sync()).toBe(fill(en['scoring.sync.refused.one'], { count: 1 }));
+    expect([said(), shown()]).toEqual([fill(en['scoring.sync.refused.one'], { count: 1 }), '1']);
     press(CHIP.sync);
-    expect(sync()).toBe(en['scoring.sync.synced']);
+    expect([said(), shown()]).toEqual([
+      fill(en['scoring.sync.stalled.other'], { count: 12 }),
+      '12',
+    ]);
+    press(CHIP.sync);
+    expect([said(), shown()]).toEqual([null, null]);
+  });
+
+  // The owner's badge opens History on a tap (2026-11-02): the same sheet as the History button, a screen reader
+  // told so, and the pad hidden under it as ever.
+  it('opens History from a tap on the badge, as the History button does, and closes it again', () => {
+    renderPad();
+    press(CHIP.sync);
+    fireEvent.click(screen.getByTestId('sync'));
+    expect(screen.getByTestId('history').getAttribute('aria-modal')).toBe('true');
+    expect(screen.getByTestId('pad-content').getAttribute('aria-hidden')).toBe('true');
+    press(en['panel.close']);
+    expect(screen.queryByTestId('history')).toBeNull();
+    expect(screen.getByTestId('pad-content').getAttribute('aria-hidden')).not.toBe('true');
+  });
+
+  // Under a dead link's card History is not offered, so the badge there only tells: no button, no sheet.
+  it('is no button under a dead link’s card, where History is not offered, and still names its taps', () => {
+    renderPad();
+    press(CHIP.sync); // sending
+    press(CHIP.sync); // offline
+    press(CHIP.sync); // refused
+    press(CHIP.linkInvalid);
+    const badge = screen.getByTestId('sync');
+    expect(badge.getAttribute('role')).not.toBe('button');
+    fireEvent.click(badge);
+    expect(screen.queryByTestId('history')).toBeNull();
   });
 
   it('doubles joins a match others began: their taps stay when this phone undoes its own', () => {
@@ -794,10 +830,7 @@ describe('BadmintonPadScreen: leaving, and the phone', () => {
     expect(linesAllowed(within(row).getByText(en['scoring.badminton.tool.setScore']))).toBe(
       layout.padToolLines,
     );
-    const words = within(screen.getByTestId('sync')).getByText(
-      fill(en['scoring.sync.offline.other'], { count: 3 }),
-    );
-    expect(linesAllowed(words)).toBe(layout.padSyncLines);
+    expect(screen.getByTestId('sync').textContent).toBe('3');
   });
 });
 
@@ -901,8 +934,9 @@ describe('BadmintonPadScreen: Match details', () => {
 
   // Owner ruling 20: "Order: Back, Preview tag, then the right end holds [Rules][History] then the sync status"; the
   // games tally took the tag's place (owner, 2026-11-01).
-  it('stands in the top bar after Back and the games tally, then History, then the sync status', () => {
+  it('stands in the top bar after Back and the games tally, then History, then the send badge', () => {
     renderPad();
+    press(CHIP.sync);
     const order = [
       screen.getByRole('button', { name: en['stream.home'] }),
       screen.getByTestId('tally'),
@@ -1503,7 +1537,8 @@ describe('BadmintonPadScreen: the Start screen', () => {
     expect(screen.getByTestId('tally').textContent).toBe('0:0');
     expect(screen.getByRole('button', { name: en['scoring.details.title'] })).toBeTruthy();
     expect(screen.getByRole('button', { name: en['scoring.history.title'] })).toBeTruthy();
-    expect(screen.getByTestId('sync').textContent).toBe(en['scoring.sync.synced']);
+    expect(screen.queryByTestId('sync')).toBeNull();
+    expect(screen.getByTestId('sync-box')).toBeTruthy();
   });
 
   it('holds Start match disabled, and says so, until a side is picked; one pick at a time', () => {

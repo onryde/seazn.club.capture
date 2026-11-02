@@ -78,7 +78,8 @@ const boxes = (side: 'first' | 'second') =>
   within(half(side))
     .queryAllByTestId('period')
     .map((box) => box.textContent);
-const syncSaid = () => screen.getByTestId('sync').textContent;
+/** Whether the send badge shows: it is drawn only while a tap waits to go (owner, 2026-11-02), so nothing means synced. */
+const badgeShown = () => screen.queryByTestId('sync') !== null;
 const lastTap = () => screen.getByTestId('last-tap').textContent;
 
 /** Taps on one half, a second apart, the sender given its turn after each (a tap is sent on its own). */
@@ -127,7 +128,7 @@ describe('a match from the Start screen to its end', () => {
     expect([boxes('first'), boxes('second')]).toEqual([['21'], ['0']]);
     expect(screen.getByTestId('strip-game').textContent).toBe('Game 2 of 3');
     await flush(2_000);
-    expect(syncSaid()).toBe(en['scoring.sync.synced']);
+    expect(badgeShown()).toBe(false);
 
     await rally(app, 'first', 21);
     await flush(2_000);
@@ -140,7 +141,7 @@ describe('a match from the Start screen to its end', () => {
       ['0', '0'],
     ]);
     expect(half('first').getAttribute('aria-disabled')).toBe('true');
-    expect(syncSaid()).toBe(en['scoring.sync.synced']);
+    expect(badgeShown()).toBe(false);
     // A recorded result is still the scorer's to undo a mistake in: the screen stays on.
     expect(screenIsHeld(holds)).toBe(true);
 
@@ -196,7 +197,7 @@ describe('Undo waiting to send', () => {
       expect(lastTap()).toContain(words['scoring.pad.undoWaiting']);
       await pass(app, 30_000);
       expect(lastTap()).not.toContain(words['scoring.pad.undoWaiting']);
-      expect(syncSaid()).toBe(words['scoring.sync.synced']);
+      expect(badgeShown()).toBe(false);
     },
   );
 });
@@ -454,5 +455,38 @@ describe('the pad, held sideways', () => {
     hold(app, tilted(90), 1000);
     await flush();
     expect(upright()).toBeNull();
+  });
+});
+
+// The owner's send badge (2026-11-02: an arrow and the count in place of "Sending N taps"), on the real runner over the
+// fake server: a tap that cannot go shows it in caution orange with the arrow stopped, and it is gone once the tap has
+// landed. The colours and how it reads at a glance are the device check's.
+describe('the send badge', () => {
+  const glyph = () => within(screen.getByTestId('sync-box')).getByTestId('glyph').dataset;
+
+  it('shows a tap that cannot go, orange and stopped with its count, and is gone once the server has it', async () => {
+    const app = await startedMatch();
+    expect(badgeShown()).toBe(false);
+    app.scoring.goOffline(true);
+    await rally(app, 'first');
+    await flush(300);
+    expect(screen.getByTestId('sync').textContent).toBe('1');
+    expect([glyph().name, glyph().tone]).toEqual(['upBlocked', 'caution']);
+    expect(screen.getByTestId('sync').getAttribute('aria-label')).toBe(
+      en['scoring.sync.offline.one'].replace('{count}', '1'),
+    );
+    app.scoring.goOffline(false);
+    await pass(app, 30_000);
+    expect(badgeShown()).toBe(false);
+  });
+
+  it('opens History from a tap on the badge, where the waiting tap is marked as sending', async () => {
+    const app = await startedMatch();
+    app.scoring.goOffline(true);
+    await rally(app, 'first');
+    await flush(300);
+    act(() => fireEvent.click(screen.getByTestId('sync')));
+    expect(screen.getByTestId('history')).toBeTruthy();
+    expect(within(screen.getByTestId('history')).getAllByTestId('history-sending')).toHaveLength(1);
   });
 });

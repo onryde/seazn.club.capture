@@ -223,16 +223,20 @@ const open = (state: BadmintonDisplay) =>
   started(state) && state.phase !== 'decided' && !state.awaitingEnding;
 
 function half(state: BadmintonDisplay, side: PadSide): PadHalf<BadmintonPadKey> {
+  const plate =
+    started(state) && state.phase !== 'decided' && state.server === side
+      ? serving(state.court)
+      : null;
   return {
     side,
     label: sideNames(state.sides[side]),
     value: String(state.points[side]),
     periods: periods(state.finished, side),
     sub: heaviestSanction(state, side),
-    serving:
-      started(state) && state.phase !== 'decided' && state.server === side
-        ? serving(state.court)
-        : null,
+    serving: plate,
+    // The bar follows the plate (owner, 2026-11-02): the serving side's is lit, so when the serve changes the light moves
+    // with it, and neither is lit while the ledger names no server, before the match starts and once it is over.
+    bar: plate === null ? 'dim' : 'lit',
     hint: { key: 'scoring.badminton.hint' },
     hintLine: { key: 'scoring.badminton.hintLine', vars: { side: sideNames(state.sides[side]) } },
     tappable: open(state),
