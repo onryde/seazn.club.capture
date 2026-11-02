@@ -49,7 +49,7 @@ type Deps = {
   logger: Logger;
   /** The build's Seazn host (`seaznHosts(env)[0]`): the only one a link's token is sent to. Empty trusts nothing. */
   host: string;
-  /** Shortens every call, events too; a build never lengthens one. */
+  /** Shortens every call, events too; it never lengthens one (`Math.min` with the call's own bound). */
   timeoutMs?: number;
   now?: () => number;
 };
@@ -139,7 +139,8 @@ export function createFetchScoringPort(deps: Deps): ScoringPort {
 async function send(deps: Deps, link: ScoringLink, op: Op, build: Build): Promise<Reply | Lost> {
   deps.logger.protectLink(link.token);
   if (!isBuildOrigin(link.origin, deps.host)) return { problem: 'foreign-host' };
-  const deadline = deps.timeoutMs ?? (op === 'events' ? EVENTS_TIMEOUT_MS : SCORING_TIMEOUT_MS);
+  const own = op === 'events' ? EVENTS_TIMEOUT_MS : SCORING_TIMEOUT_MS;
+  const deadline = Math.min(deps.timeoutMs ?? own, own);
   return withDeadline<Reply | Lost>(
     (signal) => exchange(deps, link, op, build, signal),
     deadline,

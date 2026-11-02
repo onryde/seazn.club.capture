@@ -532,6 +532,18 @@ describe('what is no answer from the server: offline, so a tap stays queued', ()
     expect(await pending).toEqual(offline);
   });
 
+  it('a build’s own timeout never lengthens a call: events keep 15 s, the others 8 s', async () => {
+    vi.useFakeTimers();
+    const hang = () => new Promise<FetchResponse>(() => {});
+    const { port } = portOver(hang, { timeoutMs: 60_000 });
+    const events = port.events(LINK, FIXTURE, 0);
+    const rules = port.rules(LINK, FIXTURE);
+    await vi.advanceTimersByTimeAsync(SCORING_TIMEOUT_MS);
+    expect(await rules).toEqual(offline);
+    await vi.advanceTimersByTimeAsync(EVENTS_TIMEOUT_MS - SCORING_TIMEOUT_MS);
+    expect(await events).toEqual(offline);
+  });
+
   // Nothing in a call may reject: the sender awaits it, and a rejection would stop the queue for good.
   it('a body JSON cannot hold is offline with no request made, never a rejection', async () => {
     const { port, calls, entries } = portOver(answering(respond(201, CREATED)));
