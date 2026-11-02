@@ -16,8 +16,12 @@ export const linkOf = (ports: Pick<Ports, 'hosts'>, token: string) => ({
   token,
 });
 
-/** Puts a kept link back the way it was found: gone when the match had none before. */
-export type UndoKeep = () => Promise<void>;
+/**
+ * What a scan holds once its link is kept. `undo` puts the link back the way it was found: gone when the match had none
+ * before. `release` lets the hub's clean-ups at the match again; the caller calls it once the code that names the match
+ * is in or refused.
+ */
+export type KeptLink = { readonly undo: () => Promise<void>; readonly release: () => void };
 
 /**
  * Saves the link, BEFORE the code that names its match: a kill between the two leaves a link nothing opens, never a
@@ -25,19 +29,37 @@ export type UndoKeep = () => Promise<void>;
  * new link for the same match replaces the old and the queue goes on); a queue dead for any other word stays dead,
  * since no link changes what the match is. Rejects when a write is refused: the caller opens nothing.
  *
- * Answers how to take the link back: if the code that names the match is then refused, the caller calls it, so no token
- * is left in the store with no code behind it. A match that had a link before keeps one (the fresh one replaced it, and
- * both are the organiser's); a store that did not answer on the first look is not asked to delete.
+ * Answers how to take the link back: if the code that names the match is then refused, the caller calls `undo`, so no
+ * token is left in the store with no code behind it. A match that had a link before keeps one (the fresh one replaced
+ * it, and both are the organiser's); a store that did not answer on the first look is not asked to delete.
+ *
+ * The match is claimed from the hub for the time between the link and the code (the match is not yet the saved one, so
+ * a clean-up would take a link nobody has opened): `release` ends it, and a refusal here ends it itself.
  */
 export async function keepScoringLink(
-  ports: ScoringPorts,
+  ports: Ports,
   token: string,
   scoring: SavedScoring,
-): Promise<UndoKeep> {
+): Promise<KeptLink> {
+  const release = scoringHubOf(ports).claim(scoring.fixtureId);
+  try {
+    return { undo: await writeLink(ports, token, scoring), release };
+  } catch (error) {
+    release();
+    throw error;
+  }
+}
+
+/** The link, written and the queue revived; the undo of it. Takes the link back itself when the revive is refused. */
+async function writeLink(
+  ports: Ports,
+  token: string,
+  scoring: SavedScoring,
+): Promise<() => Promise<void>> {
   const host = ports.hosts[0] ?? '';
   const had = (await readScoringLink(ports.kv, scoring.fixtureId, host)).kind !== 'none';
   await saveScoringLink(ports.kv, scoring.fixtureId, linkOf(ports, token), host);
-  const undo: UndoKeep = async () => {
+  const undo = async (): Promise<void> => {
     if (!had) await forgetScoringLink(ports.kv, scoring.fixtureId);
   };
   try {

@@ -518,6 +518,7 @@ describe('refused writes at the scan', () => {
   it('a queue the disk will not read after the link was kept takes the link away again, and the refusal is said', async () => {
     const memory = createMemoryKeyValueStore();
     const home = await renderHome({ kv: memory, modeStore: createModeStore(memory) });
+    await leave(home, queueHolding(FAKE_MATCH, 0), null);
     const load = home.ports.tapQueue.load.bind(home.ports.tapQueue);
     vi.spyOn(home.ports.tapQueue, 'load').mockImplementation((id) =>
       memory.entries.has(linkKey(id)) ? Promise.reject(new Error('disk gone')) : load(id),
@@ -527,6 +528,44 @@ describe('refused writes at the scan', () => {
     await waitFor(() => expect(memory.entries.has(linkKey(FAKE_MATCH))).toBe(false));
     expect(memory.entries.has(STORE_KEYS.code('scoring'))).toBe(false);
     expect(home.navigation.current()).toBe('home');
+    // The scan's hold on its match is let go with the refusal: a sweep may take what is left of the match now.
+    await scoringHubOf(home.ports).resume();
+    expect(await home.tapQueue.load(FAKE_MATCH)).toBeNull();
+  });
+
+  it('a sweep that lands between the link and the code does not take the link: the scan holds its match until the code is in', async () => {
+    const home = await renderHome();
+    await leave(home, queueHolding(FAKE_MATCH, 0), null);
+    // The code's write is held, so the link is on the disk and the match is not yet the saved one.
+    let release: () => void = () => undefined;
+    const held = new Promise<void>((resolve) => (release = resolve));
+    const set = home.kv.set;
+    vi.spyOn(home.kv, 'set').mockImplementation(async (key, value) => {
+      if (key === STORE_KEYS.code('scoring')) await held;
+      return set(key, value);
+    });
+    scanScoring(home);
+    await waitFor(() => expect(home.kv.entries.has(linkKey(FAKE_MATCH))).toBe(true));
+    await scoringHubOf(home.ports).resume();
+    expect(home.kv.entries.has(linkKey(FAKE_MATCH))).toBe(true);
+    release();
+    await waitFor(() => expect(home.navigation.current()).toBe('scoring'));
+    expect(home.kv.entries.has(linkKey(FAKE_MATCH))).toBe(true);
+    // The claim is let go once the code is in: the match is the saved one now, and a sweep leaves it for that reason.
+    await scoringHubOf(home.ports).resume();
+    expect(home.kv.entries.has(linkKey(FAKE_MATCH))).toBe(true);
+  });
+
+  it('a scan whose code is refused lets go of its match: a later sweep takes what is left of it', async () => {
+    const { memory, kv } = refusingTheCode();
+    const home = await renderHome({ kv, modeStore: createModeStore(kv) });
+    await leave(home, queueHolding(FAKE_MATCH, 0), null);
+    scanScoring(home);
+    await screen.findByText("Couldn't save on this phone. Try again.");
+    await waitFor(() => expect(memory.entries.has(linkKey(FAKE_MATCH))).toBe(false));
+    // The empty queue file stays until a sweep, which is allowed now: nothing holds the match.
+    await scoringHubOf(home.ports).resume();
+    expect(await home.tapQueue.load(FAKE_MATCH)).toBeNull();
   });
 
   it('a link that cannot be taken away again is no more than a recorded line: the refusal is still said', async () => {

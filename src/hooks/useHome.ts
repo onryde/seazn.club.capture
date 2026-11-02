@@ -40,7 +40,7 @@ import { useUnpair } from '@/hooks/useUnpair';
 import { useFormatTime } from '@/hooks/useFormatTime';
 import { useT } from '@/hooks/useLanguage';
 import { usePairing } from '@/hooks/usePairing';
-import { keepScoringLink, letGoOfScoring, type UndoKeep } from '@/hooks/scoringOpen';
+import { keepScoringLink, letGoOfScoring, type KeptLink } from '@/hooks/scoringOpen';
 import {
   useAskDismiss,
   useContinueScoring,
@@ -238,17 +238,20 @@ function useOpenCode(
       }
       const replaced = savedScoringId(modeStore);
       const saved = savedCodeFrom(code, clock(), stream, scoring);
-      let unkeep: UndoKeep | null = null;
+      let kept: KeptLink | null = null;
       try {
         // The link first, then the code that names it (design §4 step 1): a refused write opens nothing. A resume of
         // the saved match has no token to keep (`useContinueScoring`).
         if (code.mode === 'scoring' && scoring !== null && code.token !== '')
-          unkeep = await keepScoringLink(ports, code.token, scoring);
+          kept = await keepScoringLink(ports, code.token, scoring);
         await modeStore.open(saved);
       } catch {
         // A link kept for a code that was then refused is taken away again: no token without a code behind it.
-        unkeep?.().catch(() => logger.warn('scoring.orphan-link-kept', {}));
+        kept?.undo().catch(() => logger.warn('scoring.orphan-link-kept', {}));
         return saveFailed('open');
+      } finally {
+        // The code is in or refused: the match is the saved one, or nobody's, and the hub's clean-ups may see it.
+        kept?.release();
       }
       setStatusKey(null);
       if (code.mode === 'scoring') return openScoring(ports, replaced, scoring, logger);

@@ -28,6 +28,11 @@ export type ScoringHub = {
   resume(): Promise<void>;
   /** Dismiss: stops this match's runner, forgets its link, then deletes its queue, ledger and boot cache. */
   dismiss(fixtureId: string): Promise<void>;
+  /**
+   * A scan is writing this match's link and code: no clean-up forgets the match until the returned release is called,
+   * however many scans hold it. A second call of one release does nothing.
+   */
+  claim(fixtureId: string): () => void;
 };
 
 type Focused = {
@@ -76,26 +81,51 @@ function createScoringHub(ports: Ports): ScoringHub {
     return done;
   };
 
+  /** Matches a scan is writing: its link lands before the code that names it, and no clean-up may take it in between. */
+  const claims = new Map<string, number>();
+
+  const claim = (id: string): (() => void) => {
+    claims.set(id, (claims.get(id) ?? 0) + 1);
+    let released = false;
+    return () => {
+      if (released) return;
+      released = true;
+      const left = (claims.get(id) ?? 1) - 1;
+      if (left > 0) claims.set(id, left);
+      else claims.delete(id);
+    };
+  };
+
   /**
-   * A sender that has sent everything leaves nothing of its match behind but the saved match's: its link, queue, ledger
-   * and boot cache go (the hub's Dismiss, without the runner), since a match nobody can open any more would otherwise
-   * keep its token for good. The saved match keeps them, for Continue. Taps still queued (a queue that went dead while
-   * sending) are Home's leftover and stay, with the link. A match a screen took up meanwhile is that screen's. A store
-   * that has not loaded cannot say what is saved, so nothing is cleaned. A refusal is recorded, never raised.
-   * Sender and tidy follow each other through `stopping`, so no other sender can be running for the match here.
+   * Nothing wants this match: no screen holds it, no scan is writing it and it is not the saved one. A store that has
+   * not loaded cannot say what is saved, so it is never unwanted; a later sweep decides.
    */
-  const tidy = async (id: string, runner: ScoringRunner): Promise<void> => {
-    const snapshot = runner.snapshot();
-    if (snapshot.kind !== 'ready' || snapshot.state.sync.queue.pending.length > 0) return;
-    if (focused.has(id)) return;
+  const unwanted = (id: string): boolean => {
+    const saved = savedMatchOf(ports);
+    return saved !== undefined && saved !== id && !focused.has(id) && !claims.has(id);
+  };
+
+  /** An unwanted match goes with its link, queue, ledger and boot cache (Dismiss without the runner). A refusal is recorded. */
+  const sweep = async (id: string): Promise<void> => {
     try {
-      const saved = savedMatchOf(ports);
-      if (saved === undefined || saved === id) return;
+      if (!unwanted(id)) return;
       await forgetScoringLink(ports.kv, id);
       await ports.tapQueue.remove(id);
     } catch {
       ports.logger.warn('scoring.tidy-refused', {});
     }
+  };
+
+  /**
+   * A sender that has sent everything leaves nothing of its match behind but the saved match's, since a match nobody
+   * can open any more would otherwise keep its token for good. Taps still queued (a queue that went dead while sending)
+   * are Home's leftover and stay, with the link. Sender and tidy follow each other through `stopping`, so no other
+   * sender can be running for the match here. `resume` sweeps what this missed (a store that had not loaded).
+   */
+  const tidy = async (id: string, runner: ScoringRunner): Promise<void> => {
+    const snapshot = runner.snapshot();
+    if (snapshot.kind !== 'ready' || snapshot.state.sync.queue.pending.length > 0) return;
+    await sweep(id);
   };
 
   const startHeadless = async (id: string): Promise<void> => {
@@ -120,8 +150,9 @@ function createScoringHub(ports: Ports): ScoringHub {
     for (const entry of await ports.tapQueue.list()) {
       if (entry.kind !== 'queue') continue;
       const { fixtureId, pending, dead } = entry.queue;
-      if (pending.length === 0 || dead !== null) continue;
-      await startHeadless(fixtureId);
+      // Nothing queued: the match is a leftover of an older sender or an earlier launch, and is swept if unwanted.
+      if (pending.length === 0) await sweep(fixtureId);
+      else if (dead === null) await startHeadless(fixtureId);
     }
   };
 
@@ -198,5 +229,5 @@ function createScoringHub(ports: Ports): ScoringHub {
     await ports.tapQueue.remove(id);
   };
 
-  return { focus, resume, dismiss };
+  return { focus, resume, dismiss, claim };
 }

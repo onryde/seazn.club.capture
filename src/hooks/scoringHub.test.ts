@@ -799,3 +799,185 @@ describe('a background queue that drains', () => {
     expect(readRecord(cold.record).map((line) => line.event)).toContain('scoring.tidy-refused');
   });
 });
+
+// ---------------------------------------------------------------------------------------------------------------
+// Resume sweeps what nothing wants, and a scan's claim (plan S2-1 Task 10, second review)
+// ---------------------------------------------------------------------------------------------------------------
+
+describe('resume sweeps what nothing wants', () => {
+  const savedAs = (fixtureId: string) => ({
+    mode: 'scoring' as const,
+    raw: '',
+    slot: null,
+    savedAt: new Date('2026-11-02T09:00:00.000Z'),
+    expiresAt: null,
+    stream: null,
+    scoring: { fixtureId, label: 'Match 4' },
+  });
+
+  /** A match left behind with nothing to send: its link, an empty queue file, its ledger and its boot cache. */
+  async function leftover(id = FIXTURE, over: Partial<MatchQueue> = {}): Promise<FakePorts> {
+    const fakes = await rig();
+    await cached(fakes);
+    await fakes.tapQueue.save({
+      fixtureId: id,
+      label: 'Match 4',
+      pending: [],
+      ownEventIds: [],
+      dead: null,
+      ...over,
+    });
+    await fakes.ports.modeStore.load();
+    return fakes;
+  }
+  const gone = async (fakes: FakePorts): Promise<boolean> =>
+    (await readScoringLink(fakes.kv, FIXTURE, HOST)).kind === 'none' &&
+    (await fakes.tapQueue.load(FIXTURE)) === null &&
+    (await fakes.tapQueue.loadLedger(FIXTURE)) === null &&
+    (await fakes.tapQueue.loadBoot(FIXTURE)) === null;
+
+  it('takes the link, queue, ledger and boot cache of a match with nothing queued that is not the saved one', async () => {
+    const fakes = await leftover();
+    await scoringHubOf(fakes.ports).resume();
+    expect(await gone(fakes)).toBe(true);
+  });
+
+  it('takes one whose queue died of a word as well: nothing is queued, so nothing shows', async () => {
+    const fakes = await leftover(FIXTURE, { dead: 'finalized' });
+    await scoringHubOf(fakes.ports).resume();
+    expect(await gone(fakes)).toBe(true);
+  });
+
+  it('leaves the saved match its files: Continue reopens it', async () => {
+    const fakes = await leftover();
+    await fakes.ports.modeStore.open(savedAs(FIXTURE));
+    await scoringHubOf(fakes.ports).resume();
+    expect((await readScoringLink(fakes.kv, FIXTURE, HOST)).kind).toBe('link');
+    expect(await fakes.tapQueue.load(FIXTURE)).not.toBeNull();
+    expect(await fakes.tapQueue.loadLedger(FIXTURE)).not.toBeNull();
+  });
+
+  it('cleans nothing before the store has loaded, and a later resume cleans what that left', async () => {
+    const fakes = await leftover();
+    const cold = createFakePorts({ clock: timerClock, kv: fakes.kv, tapQueue: fakes.tapQueue });
+    await scoringHubOf(cold.ports).resume();
+    expect((await readScoringLink(fakes.kv, FIXTURE, HOST)).kind).toBe('link');
+    expect(readRecord(cold.record).map((line) => line.event)).not.toContain('scoring.tidy-refused');
+    await cold.ports.modeStore.load();
+    await scoringHubOf(cold.ports).resume();
+    expect(await gone(fakes)).toBe(true);
+  });
+
+  it('leaves a match a screen holds, however empty its queue', async () => {
+    const fakes = await leftover();
+    const handle = scoringHubOf(fakes.ports).focus(FIXTURE);
+    await flush();
+    await scoringHubOf(fakes.ports).resume();
+    expect((await readScoringLink(fakes.kv, FIXTURE, HOST)).kind).toBe('link');
+    handle.release();
+  });
+
+  it('leaves the taps of a match with some queued, and an unreadable file where it is', async () => {
+    const fakes = await leftover();
+    await queued(fakes, 'fx-taps', { dead: 'finalized' });
+    fakes.queueFiles.files.set('fx-bad.json', '{ not json');
+    await scoringHubOf(fakes.ports).resume();
+    expect((await fakes.tapQueue.load('fx-taps'))?.pending).toHaveLength(1);
+    expect((await readScoringLink(fakes.kv, 'fx-taps', HOST)).kind).toBe('link');
+    // A garbled file is kept aside by the read, never deleted by a sweep that cannot tell what is in it.
+    expect(
+      [...fakes.queueFiles.files.keys()].filter((key) => key.startsWith('fx-bad')),
+    ).not.toEqual([]);
+  });
+
+  it('a disk that refuses the sweep is recorded, never raised, and the next match is still swept', async () => {
+    const fakes = await leftover();
+    await queued(fakes, 'fx-other', { pending: [] });
+    const remove = fakes.tapQueue.remove.bind(fakes.tapQueue);
+    vi.spyOn(fakes.tapQueue, 'remove').mockImplementation((id) =>
+      id === FIXTURE ? Promise.reject(new Error('disk gone')) : remove(id),
+    );
+    await scoringHubOf(fakes.ports).resume();
+    expect(readRecord(fakes.record).map((line) => line.event)).toContain('scoring.tidy-refused');
+    expect(await fakes.tapQueue.load('fx-other')).toBeNull();
+  });
+});
+
+describe('a scan claims its match', () => {
+  async function leftover(): Promise<FakePorts> {
+    const fakes = await rig();
+    await fakes.tapQueue.save({
+      fixtureId: FIXTURE,
+      label: 'Match 4',
+      pending: [],
+      ownEventIds: [],
+      dead: null,
+    });
+    await fakes.ports.modeStore.load();
+    return fakes;
+  }
+  const kept = async (fakes: FakePorts): Promise<boolean> =>
+    (await readScoringLink(fakes.kv, FIXTURE, HOST)).kind === 'link';
+
+  it('keeps the match from a sweep until the claim is let go, then it is swept like any other', async () => {
+    const fakes = await leftover();
+    const hub = scoringHubOf(fakes.ports);
+    const release = hub.claim(FIXTURE);
+    await hub.resume();
+    expect(await kept(fakes)).toBe(true);
+    release();
+    await hub.resume();
+    expect(await kept(fakes)).toBe(false);
+  });
+
+  it('keeps the match from a drained sender’s clean-up as well', async () => {
+    const fakes = await rig();
+    await leftWithOneTap(fakes);
+    fakes.scoring.goOffline(false);
+    const cold = createFakePorts({
+      clock: timerClock,
+      scoring: fakes.scoring,
+      kv: fakes.kv,
+      tapQueue: fakes.tapQueue,
+    });
+    await cold.ports.modeStore.load();
+    const release = scoringHubOf(cold.ports).claim(FIXTURE);
+    await scoringHubOf(cold.ports).resume();
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(await ledgerTypes(fakes)).toEqual(['core.start']);
+    expect(await kept(fakes)).toBe(true);
+    release();
+  });
+
+  it('two scans of one match hold it together: it is free only when both are let go', async () => {
+    const fakes = await leftover();
+    const hub = scoringHubOf(fakes.ports);
+    const first = hub.claim(FIXTURE);
+    const second = hub.claim(FIXTURE);
+    first();
+    await hub.resume();
+    expect(await kept(fakes)).toBe(true);
+    second();
+    await hub.resume();
+    expect(await kept(fakes)).toBe(false);
+  });
+
+  it('letting one claim go twice does not let go of another', async () => {
+    const fakes = await leftover();
+    const hub = scoringHubOf(fakes.ports);
+    const first = hub.claim(FIXTURE);
+    hub.claim(FIXTURE);
+    first();
+    first();
+    await hub.resume();
+    expect(await kept(fakes)).toBe(true);
+  });
+
+  it('holds only its own match', async () => {
+    const fakes = await leftover();
+    const hub = scoringHubOf(fakes.ports);
+    hub.claim('fx-other');
+    await hub.resume();
+    expect(await kept(fakes)).toBe(false);
+  });
+});
