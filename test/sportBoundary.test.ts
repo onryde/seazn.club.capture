@@ -69,11 +69,13 @@ const OWN = [
   'src/ui/screens/BadmintonPadScreen.tsx',
   'src/ui/screens/scoringScreens.ts',
   'src/services/fakeBadmintonPad.ts',
+  // held by `usePad*` and exempt only by `*Badminton*` (globs are case sensitive)
+  'src/hooks/usePadBadmintonProbe.ts',
 ] as const;
 
 describe('a generic scoring file names no sport', { timeout: 180_000 }, () => {
   it('lists the paths it probes (anti-vacuity)', () => {
-    expect([GENERIC.length, OWN.length]).toEqual([20, 7]);
+    expect([GENERIC.length, OWN.length]).toEqual([20, 8]);
   });
 
   it('refuses a badminton import by value, once, from a path of every glob', async () => {
