@@ -69,7 +69,22 @@ export type SyncState = {
    * is asked for again (`retryRules`).
    */
   readonly rulesRetryAt: number | null;
+  /**
+   * The version the last FIXTURE_RULES_CHANGED named, until the rules read answers it (`onRules`) or a tap is accepted.
+   * The web refuses any version but its own (`!==`), so a refusal that names a version BELOW the one held says the phone
+   * is ahead of the server, which only a phone that guessed can be: the rules read of that same version is then taken
+   * though it is lower. Any other lower read is one lagging behind, and is no news.
+   */
+  readonly rulesSaid: number | null;
+  /**
+   * The refusals in a row by which the server answered and did not take the tap (a conflict, or new rules), counted
+   * across the 15 s pauses that reset the passes, and ended by a tap accepted. It is what `stallOf` reads: a server that
+   * answers every time and never takes the tap is a stall, not a slow network.
+   */
+  readonly refusedRun: RefusedRun | null;
 };
+
+export type RefusedRun = { readonly by: 'conflict' | 'rules'; readonly count: number };
 
 /** What the hook does next. Each is said once per answer; none is a promise about what the server will say. */
 export type SyncEffect =
@@ -136,6 +151,8 @@ export function openSync(held: {
     decidedProbe: null,
     revalidateOwed: false,
     rulesRetryAt: null,
+    rulesSaid: null,
+    refusedRun: null,
   };
 }
 
@@ -223,7 +240,7 @@ export function onAnswer(
     case 'seqConflict':
       return conflicted(state, sent, now);
     case 'rulesChanged':
-      return rulesMoved(state, sent, now);
+      return rulesMoved(state, sent, answer.rulesVersion, now);
     case 'outdated':
       return stopped(state, sent, 'outdated');
     case 'linkDead':
@@ -296,6 +313,8 @@ function accepted(state: SyncState, sent: QueuedEvent, answer: Accepted, now: nu
     conflictPasses: 0,
     rulesPasses: 0,
     revalidateOwed: owed,
+    rulesSaid: null,
+    refusedRun: null,
   };
   if (gap) return step({ ...settled, hold: 'ledger' }, [PERSIST, { kind: 'fetchSince', seq: tip }]);
   if (answer.rulesVersion > state.rulesVersion) {
@@ -354,6 +373,12 @@ function pass(
   return { count: 0, effects: [{ kind: 'retryIn', ms: PAUSE_MS }], notBefore: now + PAUSE_MS };
 }
 
+/** One more refusal of `by` in a row: the count goes on across pauses, and starts again when the kind changes. */
+function refusedAgain(state: SyncState, by: RefusedRun['by']): RefusedRun {
+  const run = state.refusedRun;
+  return { by, count: run !== null && run.by === by ? run.count + 1 : 1 };
+}
+
 /** Another scorer wrote first: fetch from the tip. Three in a row and the sender waits 15 s as well. */
 function conflicted(state: SyncState, sent: QueuedEvent, now: number): SyncStep {
   const freed = notStored(state, sent);
@@ -364,6 +389,7 @@ function conflicted(state: SyncState, sent: QueuedEvent, now: number): SyncStep 
     hold: 'ledger',
     conflictPasses: passed.count,
     notBefore: passed.notBefore ?? freed.state.notBefore,
+    refusedRun: refusedAgain(state, 'conflict'),
   };
   return step(next, [...freed.saved, { kind: 'fetchSince', seq: state.tip }, ...passed.effects]);
 }
@@ -373,7 +399,7 @@ function conflicted(state: SyncState, sent: QueuedEvent, now: number): SyncStep 
  * keeps the version it holds until the rules themselves arrive: if the read fails, the next send still names the old
  * version, the server answers again, and the phone asks again. Three in a row and the sender waits 15 s as well.
  */
-function rulesMoved(state: SyncState, sent: QueuedEvent, now: number): SyncStep {
+function rulesMoved(state: SyncState, sent: QueuedEvent, named: number, now: number): SyncStep {
   const freed = notStored(state, sent);
   const passed = pass(state.rulesPasses, now);
   const next: SyncState = {
@@ -382,6 +408,8 @@ function rulesMoved(state: SyncState, sent: QueuedEvent, now: number): SyncStep 
     hold: 'rules',
     rulesPasses: passed.count,
     notBefore: passed.notBefore ?? freed.state.notBefore,
+    rulesSaid: named,
+    refusedRun: refusedAgain(state, 'rules'),
   };
   return step(next, [...freed.saved, { kind: 'reloadRules' }, ...passed.effects]);
 }
@@ -519,16 +547,20 @@ const same = (state: SyncState, cleared: SyncState): SyncState =>
 
 /**
  * The rules a fetch brought: the phone takes the higher version, never a lower (a read lagging behind the answer that
- * asked for it is no news), and the queue is looked at again before anything is sent. The hook adopts the rules' own
- * cfg only when its version is the one held now. Under a ledger or a status read still owed the hold stays, and the
- * revalidation is owed: it is done when that read lands, though it brings nothing new.
+ * asked for it is no news), but for the version the server itself just named (`rulesSaid`): the web refuses any
+ * version but its own, so the phone is then ahead of it and must come down. The queue is looked at again before
+ * anything is sent. The hook adopts the rules' own cfg only when its version is the one held now. Under a ledger or a
+ * status read still owed the hold stays, and the revalidation is owed: it is done when that read lands, though it
+ * brings nothing new.
  */
 export function onRules(state: SyncState, rules: { readonly rulesVersion: number }): SyncState {
-  const rulesVersion = Math.max(state.rulesVersion, rules.rulesVersion);
-  if (state.hold === 'ledger' || state.hold === 'status') {
-    return { ...state, rulesVersion, revalidateOwed: true, rulesRetryAt: null };
-  }
-  return { ...state, rulesVersion, hold: 'revalidate', rulesRetryAt: null };
+  const named = rules.rulesVersion === state.rulesSaid;
+  const rulesVersion = named
+    ? rules.rulesVersion
+    : Math.max(state.rulesVersion, rules.rulesVersion);
+  const read = { ...state, rulesVersion, rulesSaid: null, rulesRetryAt: null };
+  if (state.hold === 'ledger' || state.hold === 'status') return { ...read, revalidateOwed: true };
+  return { ...read, hold: 'revalidate' };
 }
 
 /**

@@ -76,6 +76,8 @@ const stateOf = (overrides: Partial<SyncState> = {}): SyncState => ({
   decidedProbe: null,
   revalidateOwed: false,
   rulesRetryAt: null,
+  rulesSaid: null,
+  refusedRun: null,
   ...overrides,
 });
 
@@ -124,6 +126,8 @@ describe('openSync', () => {
       decidedProbe: null,
       revalidateOwed: false,
       rulesRetryAt: null,
+      rulesSaid: null,
+      refusedRun: null,
     });
   });
 
@@ -659,7 +663,13 @@ describe('onAnswer: seqConflict', () => {
   it('counts a pass and fetches from the tip, holds the queue until it lands, and frees the tap', () => {
     const step = answer(stateOf(), A, conflict);
     expect(step.state).toEqual(
-      stateOf({ conflictPasses: 1, status: 'idle', inFlight: null, hold: 'ledger' }),
+      stateOf({
+        conflictPasses: 1,
+        status: 'idle',
+        inFlight: null,
+        hold: 'ledger',
+        refusedRun: { by: 'conflict', count: 1 },
+      }),
     );
     expect(step.effects).toEqual([{ kind: 'fetchSince', seq: 4 }]);
   });
@@ -752,6 +762,8 @@ describe('onAnswer: rulesChanged', () => {
         inFlight: null,
         hold: 'rules',
         rulesPasses: 1,
+        rulesSaid: 3,
+        refusedRun: { by: 'rules', count: 1 },
       }),
     );
     expect(step.effects).toEqual([{ kind: 'reloadRules' }]);
@@ -880,6 +892,101 @@ describe('onRules', () => {
     const state = restingOf({ conflictPasses: 1, notBefore: NOW + 5 });
     const rules = { cfg: { any: 'thing' }, rulesVersion: 3, formatLine: null };
     expect(onRules(state, rules)).toEqual({ ...state, rulesVersion: 3, hold: 'revalidate' });
+  });
+});
+
+// The 2026-11-02 device stall: a match nobody had corrected is at rules_version 0 (the web's column default), the phone
+// held 1 because it had never been told, and `onRules` only ever raised the version, so every send was refused
+// FIXTURE_RULES_CHANGED {rules_version: 0} for good. A version the server names twice (the refusal, then the rules read)
+// is its word even when it is lower: a phone ahead of the server can only be a phone that guessed.
+describe('the rules version the server names', () => {
+  const named = (rulesVersion: number): AppendAnswer => ({ kind: 'rulesChanged', rulesVersion });
+
+  it('a refusal remembers the version it named, and still holds its own until the rules come', () => {
+    const step = answer(restingOf({ rulesVersion: 1 }), A, named(0));
+    expect(step.state.rulesSaid).toBe(0);
+    expect(step.state.rulesVersion).toBe(1);
+  });
+
+  it('the rules read of exactly that version is taken even though it is lower: the phone had guessed', () => {
+    const asked = answer(restingOf({ rulesVersion: 1 }), A, named(0)).state;
+    const taken = onRules(asked, { rulesVersion: 0 });
+    expect(taken.rulesVersion).toBe(0);
+    expect(taken.hold).toBe('revalidate');
+    expect(
+      nextSend(revalidate(taken, (queued) => queued.map((q) => q.key)).state, NOW),
+    ).toMatchObject({
+      idempotency_key: 'key-a',
+      rules_version: 0,
+    });
+  });
+
+  it('a lower read that is not the version named is a read lagging behind: the version held stays', () => {
+    const asked = answer(restingOf({ rulesVersion: 5 }), A, named(3)).state;
+    expect(onRules(asked, { rulesVersion: 2 }).rulesVersion).toBe(5);
+  });
+
+  it('a higher read is taken, named or not', () => {
+    const asked = answer(restingOf({ rulesVersion: 1 }), A, named(3)).state;
+    expect(onRules(asked, { rulesVersion: 4 }).rulesVersion).toBe(4);
+  });
+
+  it('the word is spent by the read: a later lower read is a lagging one again', () => {
+    const asked = answer(restingOf({ rulesVersion: 1 }), A, named(0)).state;
+    const taken = onRules(asked, { rulesVersion: 0 });
+    expect(taken.rulesSaid).toBeNull();
+    expect(onRules({ ...taken, rulesVersion: 4 }, { rulesVersion: 0 }).rulesVersion).toBe(4);
+  });
+
+  it('an accepted tap spends it too: the server took the version that was sent', () => {
+    const asked = answer(restingOf({ rulesVersion: 1 }), A, named(0)).state;
+    expect(answer(asked, A, accepted(5, 'ev-5', 1)).state.rulesSaid).toBeNull();
+  });
+});
+
+// The sender's own stall (`stallOf`): the server answers, and never takes the tap. The three-in-a-row pause resets
+// `conflictPasses` and `rulesPasses`, so the run that matters is counted apart, across the pauses.
+describe('refusals in a row', () => {
+  const conflict: AppendAnswer = { kind: 'seqConflict', currentSeq: 9 };
+  const changed: AppendAnswer = { kind: 'rulesChanged', rulesVersion: 0 };
+
+  it('are counted by kind, across the 15 s pause that resets the passes', () => {
+    let state = restingOf({ rulesVersion: 1 });
+    for (let i = 1; i <= 7; i += 1) {
+      state = answer(state, A, changed).state;
+      expect(state.refusedRun).toEqual({ by: 'rules', count: i });
+      state = { ...state, hold: null, status: 'idle', inFlight: null };
+    }
+    expect(state.rulesPasses).toBe(1);
+  });
+
+  it('start again when the kind changes: something moved', () => {
+    const rules = answer(restingOf(), A, changed).state;
+    expect(
+      answer({ ...rules, status: 'idle', inFlight: null }, A, conflict).state.refusedRun,
+    ).toEqual({
+      by: 'conflict',
+      count: 1,
+    });
+  });
+
+  it('end when a tap is accepted', () => {
+    const refused = answer(restingOf(), A, conflict).state;
+    expect(refused.refusedRun).toEqual({ by: 'conflict', count: 1 });
+    const taken = answer(
+      { ...refused, status: 'sending', inFlight: 'key-a' },
+      A,
+      accepted(5, 'ev-5'),
+    );
+    expect(taken.state.refusedRun).toBeNull();
+  });
+
+  it('an offline answer, a throttle and a one-tap refusal are not the server refusing to take taps: the run stands', () => {
+    const refused = answer(restingOf(), A, conflict).state;
+    const down = answer({ ...refused, status: 'sending', inFlight: 'key-a' }, A, {
+      kind: 'offline',
+    });
+    expect(down.state.refusedRun).toEqual({ by: 'conflict', count: 1 });
   });
 });
 
