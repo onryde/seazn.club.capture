@@ -23,6 +23,7 @@ import type { Logger } from '@/services/logger';
 import type { ModeStore } from '@/services/modeStore';
 import type { PhotoPort } from '@/services/photoPort';
 import type { ProbeFlight } from '@/services/probeFlight';
+import type { RealtimePort } from '@/services/realtimePort';
 import type { RecordUploadPort } from '@/services/recordUploadPort';
 import type { RecordSendFlight } from '@/services/recordSendFlight';
 import type { ScanFlight } from '@/services/scanFlight';
@@ -84,6 +85,8 @@ export type Ports = {
   readonly scoring: ScoringPort;
   /** S2: the taps a phone has made and the server has not yet accepted, one file per match; no secret in it. */
   readonly tapQueue: TapQueueStore;
+  /** S2: the "something changed" ping from the server, a private Realtime channel; down means poll (plan Task 8). */
+  readonly realtime: RealtimePort;
   /** R5: the battery state and the app's settings page, Android only. */
   readonly power: PowerPort;
   /** R4: the credential Send record to Seazn may use (P10: inert while its switch is off). */

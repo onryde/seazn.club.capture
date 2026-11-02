@@ -5,6 +5,7 @@ import { Linking, Platform } from 'react-native';
 import { loadCaptureEngineNative } from '@/engine/nativeModule';
 import { appVersionOf } from '@/hooks/appVersion';
 import { previewScoringOf } from '@/hooks/previewScoring';
+import { realtimePortFor } from '@/hooks/realtimePortWiring';
 import { chooseCodePort } from '@/hooks/codePortWiring';
 import { chooseEngine, routedRecordFor } from '@/hooks/engineWiring';
 import { photoPortFor } from '@/hooks/photoPortWiring';
@@ -125,6 +126,8 @@ export function createNativePorts(
     scoring: scoringPortFor({ fetch: (url, init) => fetch(url, init), logger, hosts }),
     // S2: one JSON file per match in the document directory. Nothing reads it until the match hook (plan Task 9).
     tapQueue: createTapQueueStore({ files: createExpoQueueFiles(), logger }),
+    // S2: the real `@supabase/realtime-js` over the runtime's WebSocket. Nothing subscribes until the match hook (plan Task 9).
+    realtime: realtimePortFor({ logger }),
     power: createNativePower({
       native,
       os: Platform.OS,

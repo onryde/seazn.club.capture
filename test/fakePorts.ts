@@ -19,6 +19,7 @@ import type {
 } from '@/services/devicePorts';
 import { createEndedNotice } from '@/services/endedNotice';
 import { createFakeCodePort, type FakeCodePort } from '@/services/fakeCodePort';
+import { createFakeRealtimePort, type FakeRealtimePort } from '@/services/fakeRealtimePort';
 import {
   SINGLES_SEED,
   createFakeScoringPort,
@@ -95,6 +96,11 @@ export type FakePorts = {
    */
   readonly tapQueue: TapQueueStore;
   readonly queueFiles: MemoryQueueFiles;
+  /**
+   * S2: the Realtime ping on a laptop. Nothing is said until a control is used: `restore()` joins, `drop()` loses the
+   * channel, `ping()` is another scorer's tap; `subscriptions` lists each grant and whether it is still open.
+   */
+  readonly realtime: FakeRealtimePort;
   /** The battery mode (R5): Unrestricted until `set`; `opened` counts App info's opens. */
   readonly power: FakePower;
   /** R4: no credential until `give`; the real store's own tests are `uploadCredentialStore.test.ts`. */
@@ -138,6 +144,7 @@ export function createFakePorts(
     scoring: createFakeScoringPort(SINGLES_SEED),
     tapQueue: createTapQueueStore({ files: queueFiles, logger }),
     queueFiles,
+    realtime: createFakeRealtimePort(),
     power: createFakePower(),
     uploadCredential: createFakeUploadCredential(),
     recordUpload: createFakeRecordUpload(),
