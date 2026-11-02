@@ -297,7 +297,10 @@ line says "Counted once". Hardened on `feat/s2-pad-ui` (§11).
 
 ### 6.6 Screen and lifecycle
 
-- The screen is kept on while the pad shows; brightness untouched (ruling 9; `holdScreenOn`).
+- The screen is kept on while the pad shows; brightness untouched (ruling 9; `holdScreenOn`). The exception, the
+  controller's ruling of 2026-11-02: the pad's view-only, bad-link and update-needed cards, and the full-screen states that
+  need a person to act, let it sleep (`holdsScreen`; the wait before the pad and the not-started and recorded-result
+  cards keep it).
 - Portrait only (decision record ruling 4); the turn card asks for upright (`/scoring` routeTarget).
 - Leaving the mode while a broadcast is held is S1's rule and unchanged; Remote Scoring holds no
   broadcast.

@@ -295,13 +295,37 @@ describe('every path the navigation moves to has its route file, and each Settin
     ]);
   });
 
-  it('mounts KeepScreenOn once in each sport’s pad, behind holdsScreen(card)', () => {
-    const mounting = sportScreenFiles().filter((file) => code(file).includes('KeepScreenOn'));
-    expect(mounting).toEqual(['src/ui/screens/BadmintonPadScreen.tsx']);
-    for (const file of mounting) {
-      expect(code(file).match(/<KeepScreenOn \/>/g)).toHaveLength(1);
-      expect(code(file)).toMatch(/holdsScreen\([\w.]+\) \? <KeepScreenOn \/> : null/);
+  /**
+   * A pad is a sport screen that draws a `PadView` (it imports `padView`, whose `card` is what `holdsScreen` reads); the
+   * file that only picks between a pad and the shared states does not. Each pad mounts exactly one `KeepScreenOn`, behind
+   * `holdsScreen(view.card)`: a pad that holds the screen under a terminal card, or reads another card than its own, fails.
+   * No file is filtered out for already mounting it, and none is named.
+   */
+  const PADVIEW_IMPORT = /from\s*['"]@\/domain\/scoring\/padView['"]/;
+  const isPad = (file: string) => PADVIEW_IMPORT.test(code(file));
+
+  it('finds the pads among the sport screens, and a picker that is none (anti-vacuity)', () => {
+    const files = sportScreenFiles();
+    expect(files.filter(isPad).length).toBeGreaterThan(0);
+    expect(files.filter((file) => !isPad(file)).length).toBeGreaterThan(0);
+  });
+
+  it('mounts KeepScreenOn once in every pad, behind holdsScreen(view.card)', () => {
+    const pads = sportScreenFiles().filter(isPad);
+    expect(pads.length).toBeGreaterThan(0);
+    for (const file of pads) {
+      const source = code(file);
+      expect(source.match(/<KeepScreenOn\b/g), file).toHaveLength(1);
+      expect(
+        source.match(/\{holdsScreen\(view\.card\) \? <KeepScreenOn \/> : null\}/g),
+        file,
+      ).toHaveLength(1);
     }
+  });
+
+  it('mounts it nowhere else in a sport’s screens: the picker between a pad and the states holds nothing', () => {
+    for (const file of sportScreenFiles().filter((one) => !isPad(one)))
+      expect(code(file), file).not.toContain('KeepScreenOn');
   });
 
   it('mounts KeepScreenOn in the state screen only while loading', () => {

@@ -224,12 +224,13 @@ export function matchKnown(card: PadStateCard | null): boolean {
 
 /**
  * Whether the pad keeps the phone's screen on under this card (owner ruling 9, the screen stays on while the pad shows;
- * applied by the controller on 2026-11-02): on the pad and under every card the scorer is still waiting on (the match not
- * open yet, a recorded result they may undo a mistake in, an app to update with taps unsent), off under the two that end
- * their part: the organiser's lock (view only) and a dead link, which have nothing left to wait for.
+ * applied by the controller on 2026-11-02): on the pad and under the two cards the scorer is still waiting on (the match
+ * not open yet, a recorded result they may undo a mistake in). Off under the three that need a person to act or end the
+ * scorer's part, which have nothing left to wait for: the organiser's lock (view only), a dead link, and an app to
+ * update (as the full-screen `outdated` state).
  */
 export function holdsScreen(card: PadStateCard | null): boolean {
-  return card?.kind !== 'viewOnly' && card?.kind !== 'linkInvalid';
+  return card?.kind !== 'viewOnly' && card?.kind !== 'linkInvalid' && card?.kind !== 'updateNeeded';
 }
 
 /**

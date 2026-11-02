@@ -107,16 +107,17 @@ describe('matchKnown', () => {
 
 describe('holdsScreen', () => {
   // Owner ruling 9 (the screen stays on while the pad shows), applied by the controller on 2026-11-02: a pad the scorer
-  // is waiting to score on, or to undo a mistake on, holds the screen; a terminal card (the organiser's lock, a dead
-  // link) has nothing left to wait for, and the phone sleeps as it would anywhere.
-  it('holds the screen on the pad and under every card but the two that end the scorer’s part', () => {
+  // is waiting to score on, or to undo a mistake on, holds the screen. A card that needs a person to act, or ends the
+  // scorer's part (the organiser's lock, a dead link, an app to update, as the full-screen `outdated` state), has nothing
+  // left to wait for, and the phone sleeps as it would anywhere.
+  it('holds the screen on the pad and under the two cards the scorer still waits on', () => {
     expect(holdsScreen(null)).toBe(true);
     expect(CARDS.map((card) => [card.kind, holdsScreen(card)])).toEqual([
       ['notStarted', true],
       ['resultRecorded', true],
       ['viewOnly', false],
       ['linkInvalid', false],
-      ['updateNeeded', true],
+      ['updateNeeded', false],
     ]);
   });
 });

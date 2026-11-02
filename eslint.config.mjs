@@ -117,15 +117,23 @@ const SPORT_MODULES = {
  * sport's own, listed in `SPORT_OWN_FILES`.
  */
 const SPORT_GENERIC_FILES = [
-  'src/domain/scoring/**/*.ts',
+  'src/domain/scoring/**/*.{ts,tsx}',
   'src/domain/mode/scoringHome.ts',
-  'src/hooks/*coring*.ts',
-  'src/hooks/*coring*.tsx',
-  'src/hooks/usePad*.ts',
+  'src/hooks/*coring*.{ts,tsx}',
+  'src/hooks/usePad*.{ts,tsx}',
   'src/hooks/padScreenModel.ts',
+  // The ports and stores the match runtime reads and writes through: the server's, the link's, the queue's. A name does
+  // not hold them (`tapQueueStore` has no "scoring" in it), so they are listed.
+  'src/services/scoringPort.ts',
+  'src/services/fetchScoringPort.ts',
+  'src/services/tapQueueStore.ts',
+  'src/services/scoringLinkStore.ts',
+  'src/services/scoringLinkPort.ts',
+  // The pad's words every sport shares (`padText`), as its hook (`usePadText`) already is.
+  'src/i18n/padText.ts',
   // The route and the screens that pick a sport's screen or draw the states every sport shares (plan S2-1 Task 11); the
   // table they read (`scoringScreens.ts`) is the one place that names the sports' screens, as `sports.ts` names the sports.
-  'app/scoring/**/*.tsx',
+  'app/scoring/**/*.{ts,tsx}',
 ];
 
 /**

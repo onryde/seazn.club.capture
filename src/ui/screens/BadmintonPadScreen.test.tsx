@@ -1971,8 +1971,9 @@ describe('BadmintonPadScreen: the match card’s four questions (hardening)', ()
 });
 
 describe('BadmintonPadScreen: keeping the screen on', () => {
-  // Owner ruling 9, applied by the controller on 2026-11-02: held on the pad and under a card the scorer is still
-  // waiting on, let go under the two that end their part. Whether the phone's screen really stays lit is the device's.
+  // Owner ruling 9, applied by the controller on 2026-11-02: held on the pad and under the two cards the scorer is still
+  // waiting on, let go under the three that need a person to act or end their part. Whether the phone's screen really
+  // stays lit is the device's.
   it('holds it from the Start screen and on the pad', () => {
     renderStart();
     expect(screenIsHeld(holds)).toBe(true);
@@ -1983,7 +1984,6 @@ describe('BadmintonPadScreen: keeping the screen on', () => {
   it.each([
     ['the match not open yet', CHIP.notStarted],
     ['a recorded result', CHIP.result],
-    ['an app to update', CHIP.updateNeeded],
   ] as const)('holds it under %s', (_what, chip) => {
     renderPad();
     press(chip);
@@ -1993,6 +1993,7 @@ describe('BadmintonPadScreen: keeping the screen on', () => {
   it.each([
     ['the organiser’s lock', CHIP.viewOnly],
     ['a link that is not valid', CHIP.linkInvalid],
+    ['an app to update', CHIP.updateNeeded],
   ] as const)('lets it go under %s, and holds it again on the pad', (_what, chip) => {
     renderPad();
     expect(screenIsHeld(holds)).toBe(true);

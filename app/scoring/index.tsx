@@ -8,8 +8,9 @@ import { ScoringMatchScreen } from '@/ui/screens/ScoringMatchScreen';
  * (`ScoringMatchScreen`: the same for every sport). A path that reaches the route with no match saved goes Home, through
  * the navigation port in an effect, so the port knows where the router is: a `<Redirect>` moves the router behind its
  * back, and the next `go('scoring')` is then taken for a move to where it already is. Whether the screen is held on is
- * the screens' to say, not the route's: the pad and the wait before it hold it, a state that needs a person to act does
- * not (owner ruling 9, applied by the controller on 2026-11-02).
+ * the screens' to say, not the route's: the live pad and the wait before it hold it; a state that needs a person to act
+ * does not, nor do the pad's view-only, bad-link and update-needed cards (owner ruling 9, applied by the controller on
+ * 2026-11-02).
  */
 export default function ScoringRoute() {
   const fixtureId = useScoringFixture();

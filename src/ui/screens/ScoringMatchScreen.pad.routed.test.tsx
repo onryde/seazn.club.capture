@@ -387,8 +387,9 @@ describe('the pad, routed', () => {
     expect(screenIsHeld(holds)).toBe(false);
   });
 
-  // Owner ruling 9 (2026-10-31): the screen stays on while the pad shows. The pad's screen holds it (`KeepScreenOn`,
-  // pinned by the drift test); whether the phone's screen really stays lit is the device check's.
+  // Owner ruling 9 (2026-10-31): the screen stays on while the pad shows, but for its terminal cards (`holdsScreen`, tested
+  // above and in the pad's own suite). The pad's screen holds it (`KeepScreenOn`, pinned by the drift test); whether the
+  // phone's screen really stays lit is the device check's.
   it('holds the screen on while the pad shows and lets it go on Back', async () => {
     const app = await startedMatch();
     expect(screenIsHeld(holds)).toBe(true);
