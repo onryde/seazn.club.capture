@@ -124,6 +124,11 @@ export type BadmintonDisplay = {
   readonly undoable: boolean;
   /** A disqualification is recorded and its ending not yet chosen: record it, or void the sanction. */
   readonly awaitingEnding: boolean;
+  /**
+   * The server shown is this phone's pick on the Start screen, the ledger having named nobody yet: the match's first
+   * rally carries it as `serving` (design §7.3). False whenever the server comes from the ledger, or is not known.
+   */
+  readonly serverPicked: boolean;
 };
 
 /** Every dictionary key this file names. The kit translates them as `MessageKey`, so each must exist in en.json. */
@@ -360,19 +365,21 @@ function strip(state: BadmintonDisplay): readonly PadStripItem<BadmintonPadKey>[
 }
 
 /**
- * Before either side reaches the interval point, where it is; at the rally that took the server there first, the
- * interval itself (the rally's winner serves, so the side that just reached it is the server); after it, nothing. With
- * no server known, whether the interval is now cannot be told: nothing.
+ * Before either side reaches the interval point, where it is; at the rally that took a side there first, the interval
+ * itself; after it, or with both sides on it, nothing. The web's rule (skins/badminton.tsx `intervalHint`): the rally's
+ * winner serves, so a side on the mark that is not serving reached it long ago; with nobody named serving, a side on
+ * the mark alone still says Interval, because an umpire missing a 60-second interval is worse than seeing it a rally
+ * late.
  */
 function interval(state: BadmintonDisplay): Text | null {
   const at = state.rules.intervalPoint;
-  if (Math.max(state.points.first, state.points.second) < at) {
-    return { key: 'scoring.badminton.intervalAt', vars: { point: at } };
-  }
-  if (state.server === null) return null;
-  const server = state.points[state.server];
-  const receiver = state.points[state.server === 'first' ? 'second' : 'first'];
-  return server === at && receiver < at ? { key: 'scoring.badminton.intervalNow' } : null;
+  const { first, second } = state.points;
+  const leader = Math.max(first, second);
+  if (leader < at) return { key: 'scoring.badminton.intervalAt', vars: { point: at } };
+  if (leader > at || first === second) return null;
+  const onMark: PadSide = first === at ? 'first' : 'second';
+  if (state.server !== null && state.server !== onMark) return null;
+  return { key: 'scoring.badminton.intervalNow' };
 }
 
 function tools(state: BadmintonDisplay): readonly PadTool<BadmintonPadKey>[] {

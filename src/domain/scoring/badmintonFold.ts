@@ -12,6 +12,7 @@ import {
   badminton,
   setBasedServeContext,
   type SetBasedCfg,
+  type SetBasedServeContext,
   type SetBasedState,
   type SetState,
 } from '@seazn/engine/sports/setbased';
@@ -116,6 +117,7 @@ type Board = Pick<BadmintonDisplay, 'points' | 'finished' | 'game'>;
 
 const RALLY = 'badminton.rally';
 const FORFEIT = 'core.forfeit';
+const SUMMARY = 'badminton.game.summary';
 const ZERO: Readonly<Record<PadSide, number>> = { first: 0, second: 0 };
 const R = badmintonPadRules;
 
@@ -128,8 +130,10 @@ export function foldBadminton(input: BadmintonFoldInput): BadmintonFold {
   const legalTaps = input.queued.filter((tap) => stream.legal.includes(tap.key));
   const undoable =
     undoTarget(input.ledger, legalTaps, input.ownEventIds, () => true).kind !== 'blocked';
-  const recorded = recordedOf(match, stream, folded, input.toss);
-  const display = displayOf(match, stream, folded, { toss: input.toss, undoable, recorded });
+  const serve = setBasedServeContext(badminton, folded.state, stream.envelopes);
+  const picked = pickedServer(folded.state, serve, input);
+  const recorded = recordedOf(match, stream, folded, picked);
+  const display = displayOf(match, stream, folded, { serve, picked, undoable, recorded });
   const history = ledgerHistory(
     stream.entries,
     recorded,
@@ -235,12 +239,15 @@ function foldOf(engine: BadmintonEngineMatch, envelopes: readonly EventEnvelope[
   }
 }
 
-/** The facts of an event, from the state just after it. A rally is in the game it was played in, which it may close. */
+/**
+ * The facts of an event, from the state just after it. A rally, or a set score, is in the game it scored, which it may
+ * close (a set score recorded whole closes it); anything else is in the game under way, or the next one between games.
+ */
 function factsOf(state: Readonly<SetBasedState>, type: string): EventFacts {
   const { sets } = state;
   const last = sets[sets.length - 1];
   const rally = type === RALLY;
-  const inGame = last !== undefined && (rally || !last.closed);
+  const inGame = last !== undefined && (rally || type === SUMMARY || !last.closed);
   return {
     game: inGame ? sets.length : sets.length + 1,
     after: inGame ? pointsOf(last) : ZERO,
@@ -267,10 +274,10 @@ function recordedOf(
   match: Match,
   stream: Stream,
   folded: Folded,
-  toss: PadSide | null,
+  picked: PadSide | null,
 ): ReadonlyMap<string, Recorded> {
   const voided = voidedIn(stream.envelopes);
-  const startServer = startServerOf(match.names, stream.envelopes, folded.facts, toss);
+  const startServer = startServerOf(match.names, stream.envelopes, folded.facts, picked);
   const recorded = new Map<string, Recorded>();
   stream.envelopes.forEach((envelope, at) => {
     const facts =
@@ -292,15 +299,15 @@ function prefixFacts(
   return target && foldOf(engine, envelopes.slice(0, at + 1))?.facts.get(target.id);
 }
 
-/** The start's first server: the one the first standing rally names; before any rally, this phone's pick. */
+/** The start's first server: the one the first standing rally names; before any rally, this phone's pick if shown. */
 function startServerOf(
   names: BadmintonNames,
   envelopes: readonly EventEnvelope[],
   facts: ReadonlyMap<string, EventFacts>,
-  toss: PadSide | null,
+  picked: PadSide | null,
 ): PadSide | null {
   const first = envelopes.find((envelope) => envelope.type === RALLY && facts.has(envelope.id));
-  if (first === undefined) return toss;
+  if (first === undefined) return picked;
   return isRecord(first.payload) ? sideOfEntrant(names, first.payload.serving) : null;
 }
 
@@ -309,7 +316,9 @@ function startServerOf(
 // ---------------------------------------------------------------------------------------------------------------
 
 type Extras = {
-  readonly toss: PadSide | null;
+  readonly serve: SetBasedServeContext;
+  /** This phone's pick, while it is the server shown (`pickedServer`); else null. */
+  readonly picked: PadSide | null;
   readonly undoable: boolean;
   readonly recorded: ReadonlyMap<string, Recorded>;
 };
@@ -318,19 +327,20 @@ function displayOf(match: Match, stream: Stream, folded: Folded, extras: Extras)
   const { state } = folded;
   const board = boardOf(match.names, state);
   const phase = phaseOf(state, board.game, lastRallyGame(stream.envelopes, folded.facts));
-  const server = serverOf(state, stream.envelopes, phase, extras.toss);
+  const server = serverOf(extras.serve, extras.picked);
   return {
     sides: match.names.sides,
     context: match.context,
     ...board,
     server,
     court: server === null ? 'right' : R.serviceCourt(board.points[server]),
-    rules: rulesOf(match),
+    rules: rulesOf(match, board.game),
     phase,
     sanctions: sanctionsOf(match.names, state),
     lastTap: lastTapOf(stream.envelopes, extras.recorded),
     undoable: extras.undoable,
     awaitingEnding: awaitingEnding(stream.envelopes, folded),
+    serverPicked: extras.picked !== null,
   };
 }
 
@@ -386,29 +396,40 @@ function phaseOf(state: SetBasedState, game: number, rallyGame: number): Badmint
   return game === 1 ? 'pre' : 'betweenGames';
 }
 
-/**
- * The side due to serve, as the engine reads the ledger; before the match's first rally, this phone's pick. Null when
- * the ledger does not say (a set score with no rally since, a match started elsewhere), and once there is no next rally.
- */
-function serverOf(
-  state: SetBasedState,
-  envelopes: readonly EventEnvelope[],
-  phase: BadmintonPhase,
-  toss: PadSide | null,
-): PadSide | null {
-  const { side } = setBasedServeContext(badminton, state, envelopes);
-  if (side !== null) return side === 'home' ? 'first' : 'second';
-  return phase === 'pre' ? toss : null;
+/** The side due to serve, as the engine reads the ledger; else this phone's pick while it is shown; else null. */
+function serverOf(serve: SetBasedServeContext, picked: PadSide | null): PadSide | null {
+  if (serve.side === null) return picked;
+  return serve.side === 'home' ? 'first' : 'second';
 }
 
-/** The rules table and the strip, from the engine's own reading of the config. One interval point: game 1's. */
-function rulesOf({ engine, rawCfg }: Match): BadmintonRules {
+/**
+ * This phone's pick on the Start screen while it is the server to show, else null (the controller's rulings,
+ * 2026-11-02): only at the match's 0–0, started, with the engine naming nobody because nothing has said who serves
+ * (`undeclared`), and only while the server's ledger holds no rally at all, an undone one included: the first send of
+ * the first rally drops its `serving` then (`payloadForSend`). After a set score the engine still says `undeclared`,
+ * so it is the 0–0 that rules the pick out there: a `serving` at 5–3 would be a false fact in the ledger.
+ */
+function pickedServer(
+  state: SetBasedState,
+  serve: SetBasedServeContext,
+  input: BadmintonFoldInput,
+): PadSide | null {
+  if (state.phase !== 'live' || serve.unknownBecause !== 'undeclared') return null;
+  if (state.sets.some((set) => set.home > 0 || set.away > 0)) return null;
+  return input.ledger.some((event) => event.type === RALLY) ? null : input.toss;
+}
+
+/**
+ * The rules table and the strip, from the engine's own reading of the config. The interval point is the game's on the
+ * pad: a deciding game played to fewer points has its own (`intervalMark` of that game).
+ */
+function rulesOf({ engine, rawCfg }: Match, game: number): BadmintonRules {
   return {
     bestOf: R.bestOf(rawCfg),
     points: R.setTo(rawCfg),
     winBy: engine.cfg.winBy,
     cap: engine.cfg.cap,
-    intervalPoint: R.intervalMark(rawCfg, 0),
+    intervalPoint: R.intervalMark(rawCfg, game - 1),
   };
 }
 

@@ -26,6 +26,7 @@ const pre: BadmintonDisplay = {
   lastTap: null,
   undoable: false,
   awaitingEnding: false,
+  serverPicked: false,
 };
 
 const live: BadmintonDisplay = {
@@ -546,10 +547,24 @@ describe('badmintonPad: a server the ledger does not name', () => {
     });
   });
 
-  it('leaves the interval slot empty once a side has reached it: whether it is now cannot be told', () => {
+  // As the web's pad does (skins/badminton.tsx `intervalHint`): an umpire missing a 60-second interval is worse than
+  // one seeing it a rally late, so with nobody named serving, a side on the mark alone still says Interval.
+  it('still says Interval when one side is on the interval point, with nobody named serving', () => {
     for (const points of [
       { first: 11, second: 5 },
       { first: 7, second: 11 },
+    ]) {
+      expect(badmintonPad({ ...unknown, points }).strip[1]).toEqual({
+        slot: 'interval',
+        text: { key: 'scoring.badminton.intervalNow' },
+      });
+    }
+  });
+
+  it('says nothing once the interval point is passed, or both sides are on it', () => {
+    for (const points of [
+      { first: 12, second: 5 },
+      { first: 11, second: 11 },
     ]) {
       expect(badmintonPad({ ...unknown, points }).strip[1]).toEqual({
         slot: 'interval',

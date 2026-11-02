@@ -57,6 +57,7 @@ describe('the fake badminton pad: a preview of the S2 design, not scoring rules'
       lastTap: null,
       undoable: false,
       awaitingEnding: false,
+      serverPicked: false,
     });
     expect(pad.snapshot().card).toBeNull();
     expect(pad.snapshot().sync).toEqual({ kind: 'synced' });

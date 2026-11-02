@@ -454,5 +454,7 @@ function displayOf(
     lastTap: undone === null ? score.lastTap : { kind: 'undone', tap: undone },
     undoable: voidable(entries) !== undefined,
     awaitingEnding: score.awaitingEnding,
+    // The preview keeps the score itself and knows who serves: nothing is ever this phone's pick to send.
+    serverPicked: false,
   };
 }

@@ -92,6 +92,7 @@ describe('foldBadminton: before the start', () => {
       lastTap: null,
       undoable: false,
       awaitingEnding: false,
+      serverPicked: false,
     } satisfies BadmintonDisplay);
     expect(result.legalQueued).toEqual([]);
     expect(result.history).toEqual([]);
@@ -113,6 +114,7 @@ describe('foldBadminton: before the start', () => {
       lastTap: { kind: 'start', server: 'second' },
       undoable: true,
       awaitingEnding: false,
+      serverPicked: true,
     } satisfies BadmintonDisplay);
     expect(result.legalQueued).toEqual(['k-start']);
     expect(result.history).toEqual([
@@ -149,6 +151,7 @@ describe('foldBadminton: the games', () => {
       lastTap: { kind: 'rally', side: 'first', won: 'game', game: 1 },
       undoable: false,
       awaitingEnding: false,
+      serverPicked: false,
     } satisfies BadmintonDisplay);
     const view = badmintonPad(result);
     expect(view.strip).toEqual([
@@ -185,6 +188,7 @@ describe('foldBadminton: the games', () => {
       lastTap: { kind: 'rally', side: 'second', won: 'none', game: 1 },
       undoable: false,
       awaitingEnding: false,
+      serverPicked: false,
     } satisfies BadmintonDisplay);
   });
 
@@ -233,6 +237,7 @@ describe('foldBadminton: the games', () => {
       lastTap: { kind: 'rally', side: 'first', won: 'match', game: 2 },
       undoable: false,
       awaitingEnding: false,
+      serverPicked: false,
     } satisfies BadmintonDisplay);
     expect(badmintonPad(result).card).toEqual({ kind: 'resultRecorded' });
   });
@@ -264,6 +269,23 @@ describe('foldBadminton: the games', () => {
     });
   });
 
+  // Another rule set: a deciding game played to 15 has its interval at 8, while games 1 and 2 keep theirs at 11.
+  it('takes each game’s own interval point: 11 in game 1, 8 in a deciding game played to 15', () => {
+    const toFifteen: Bootstrap = { ...SINGLES, cfg: { finalSetTo: 15 } };
+    const intervalOf = (specs: readonly Spec[]) =>
+      badmintonPad(display(specs, { bootstrap: toFifteen })).strip[1];
+    expect(intervalOf([start()])).toEqual({
+      slot: 'interval',
+      text: { key: 'scoring.badminton.intervalAt', vars: { point: 11 } },
+    });
+    const deciding = display([...GAME_ONE, ...rallies('A'.repeat(21))], { bootstrap: toFifteen });
+    expect(deciding).toMatchObject({ game: 3, phase: 'betweenGames', rules: { intervalPoint: 8 } });
+    expect(intervalOf([...GAME_ONE, ...rallies('A'.repeat(21))])).toEqual({
+      slot: 'interval',
+      text: { key: 'scoring.badminton.intervalAt', vars: { point: 8 } },
+    });
+  });
+
   it('leaves the interval slot empty once the interval has passed', () => {
     const view = badmintonPad(display([start(), rally('H', 'H'), ...rallies('HHHHHHHHHHHA')]));
     expect(view.halves.map((half) => half.value)).toEqual(['12', '1']);
@@ -272,22 +294,68 @@ describe('foldBadminton: the games', () => {
 });
 
 describe('foldBadminton: Set score', () => {
-  it('sets the points before the match’s first rally, which stays the next tap, the toss side serving', () => {
-    const result = display([], {
+  // Review item 1 (2026-11-02): the pick serves only while the engine has named nobody at the match's 0–0. After a set
+  // score the engine still says `undeclared` (probed), so it is the 0–0 that rules the pick out: no plate, no guess,
+  // and the next rally sends no `serving`, which at 5–3 would be a false fact in the ledger.
+  it('sets the points before the match’s first rally, which stays the next tap, and no longer shows the pick serving', () => {
+    const result = folded([], {
       queued: [queuedOf('k-start', start()), queuedOf('k-set', summary(5, 3))],
       toss: 'first',
     });
-    expect(result).toMatchObject({
+    expect(result.display).toMatchObject({
       points: { first: 5, second: 3 },
-      server: 'first',
-      court: 'left',
+      server: null,
+      court: 'right',
       phase: 'pre',
       lastTap: { kind: 'setScore', first: 5, second: 3 },
+      serverPicked: false,
     });
-    expect(badmintonPad(result).tools.map((tool) => tool.id)).toEqual([
+    expect(badmintonPad(result.display).halves.map((half) => half.serving)).toEqual([null, null]);
+    expect(badmintonPad(result.display).tools.map((tool) => tool.id)).toEqual([
       'sanction.first',
       'sanction.second',
       'setScore',
+    ]);
+    expect(
+      badmintonEventFor(
+        { kind: 'rally', side: 'first' },
+        { bootstrap: SINGLES, display: result.display },
+      ),
+    ).toEqual({ type: 'badminton.rally', payload: { wonBy: 'ent-home', scorer: 'p-sharma' } });
+    const startRow = result.history[0]?.rows.at(-1);
+    expect(startRow?.said).toEqual({ key: 'scoring.badminton.last.startUnknownServer' });
+  });
+
+  // A game another scorer recorded whole (a full summary, not partial) is game 1's, as its winning rally would be.
+  it('lists a game recorded whole, 21–10, under Game 1, and moves the pad to game 2', () => {
+    const whole = { type: 'badminton.game.summary', payload: { home: 21, away: 10 } };
+    const result = folded([start(), whole]);
+    expect(result.display).toMatchObject({
+      points: { first: 0, second: 0 },
+      finished: [{ points: { first: 21, second: 10 }, winner: 'first' }],
+      game: 2,
+      phase: 'betweenGames',
+    });
+    expect(result.history).toEqual([
+      {
+        heading: { key: 'scoring.badminton.gameHeading', vars: { game: 1 } },
+        rows: [
+          {
+            said: { key: 'scoring.badminton.last.setScore', vars: { score: '21–10' } },
+            score: null,
+            by: 'otherScorer',
+            undone: false,
+            sending: false,
+          },
+          {
+            said: { key: 'scoring.badminton.last.startUnknownServer' },
+            score: null,
+            by: 'otherScorer',
+            undone: false,
+            sending: false,
+          },
+        ],
+      },
     ]);
   });
 
@@ -345,6 +413,7 @@ describe('foldBadminton: a disqualification and its ending', () => {
       lastTap: { kind: 'ending', side: 'second', person: 'L. Chen' },
       undoable: false,
       awaitingEnding: false,
+      serverPicked: false,
     } satisfies BadmintonDisplay);
   });
 
@@ -503,29 +572,41 @@ describe('foldBadminton: a second call', () => {
 });
 
 describe('foldBadminton: the start and the first rally', () => {
-  // The toss travels on the match's first rally (design §7.3): the fold's phase is what tells the first from the second.
+  // The pick travels on the match's first rally (design §7.3); after it the engine names the server, which a singles
+  // rally then carries as a person, as the web's does (review item 2).
   it('names the toss side serving on the first rally the fold’s display makes, and on no rally after', () => {
     const toss = 'second' as const;
     const pre = display([start()], { toss });
     expect(
-      badmintonEventFor(
-        { kind: 'rally', side: 'first' },
-        { bootstrap: SINGLES, display: pre, toss },
-      ),
+      badmintonEventFor({ kind: 'rally', side: 'first' }, { bootstrap: SINGLES, display: pre }),
     ).toEqual({
       type: 'badminton.rally',
-      payload: { wonBy: 'ent-home', serving: 'ent-away' },
+      payload: { wonBy: 'ent-home', serving: 'ent-away', scorer: 'p-sharma' },
     });
     const live = display([start(), rally('H', 'A')], { toss });
     expect(
-      badmintonEventFor(
-        { kind: 'rally', side: 'first' },
-        { bootstrap: SINGLES, display: live, toss },
-      ),
+      badmintonEventFor({ kind: 'rally', side: 'first' }, { bootstrap: SINGLES, display: live }),
     ).toEqual({
       type: 'badminton.rally',
-      payload: { wonBy: 'ent-home' },
+      payload: { wonBy: 'ent-home', server: 'p-sharma', scorer: 'p-sharma' },
     });
+    // The engine takes both as the phone sends them: each judged strictly, as the server would.
+    const tapped = (made: ReturnType<typeof badmintonEventFor>) => {
+      if (made === null) throw new Error('no event');
+      return [queuedOf('k', made)];
+    };
+    const firstRally = badmintonEventFor(
+      { kind: 'rally', side: 'first' },
+      { bootstrap: SINGLES, display: pre },
+    );
+    expect(folded([start()], { toss, queued: tapped(firstRally) }).legalQueued).toEqual(['k']);
+    const nextRally = badmintonEventFor(
+      { kind: 'rally', side: 'first' },
+      { bootstrap: SINGLES, display: live },
+    );
+    expect(folded([start(), rally('H', 'A')], { queued: tapped(nextRally) }).legalQueued).toEqual([
+      'k',
+    ]);
   });
 
   // An empty input: another scorer started the match and this phone holds no pick. Nobody is made the server.
@@ -547,6 +628,35 @@ describe('foldBadminton: the start and the first rally', () => {
     const rows = folded([start(), rally('H')]).history.flatMap((group) => group.rows);
     expect(rows[rows.length - 1]?.said).toEqual({
       key: 'scoring.badminton.last.startUnknownServer',
+    });
+  });
+
+  // Review item 3 (2026-11-02): once the server's ledger holds a rally, even one undone since, the pick is never drawn:
+  // its first send would carry no `serving` (`payloadForSend`), so a plate for it would be a guess.
+  it('draws no picked server once the ledger holds a rally, even one undone since', () => {
+    const undone = [start(), rally('H'), voiding(2)];
+    expect(display(undone, { toss: 'first' })).toMatchObject({
+      points: { first: 0, second: 0 },
+      phase: 'pre',
+      server: null,
+      serverPicked: false,
+    });
+    expect(display([start()], { toss: 'first' })).toMatchObject({
+      server: 'first',
+      serverPicked: true,
+    });
+  });
+
+  // After an interruption: the start was undone and the phone still holds its pick. Nothing serves on the Start screen.
+  it('draws no picked server on the Start screen, the pick held from a start since undone', () => {
+    const ledger = [
+      { ...start(), link: PHONE_LINK },
+      { ...voiding(1), link: PHONE_LINK },
+    ];
+    expect(display(ledger, { own: ['ev-1', 'ev-2'], toss: 'second' })).toMatchObject({
+      phase: 'notStarted',
+      server: null,
+      serverPicked: false,
     });
   });
 
