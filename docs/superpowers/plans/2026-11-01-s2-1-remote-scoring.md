@@ -466,7 +466,8 @@ The Sonnet per-task and Opus batch reviews of Tasks 3–6 found what the hook mu
   it; without it the start names no server); a
   discarded queued tap's "undone" line is the hook's; an abandoned match folds as decided, so the
   closed/finished state comes from the bootstrap status or `viewOnly`; Task 11's HistoryCover draws
-  `sending`.
+  `sending`. Task 11: the rules table's Points row shows each game's own target (a deciding game to a
+  different score).
 - From the Batch C review: a link for any sport but badminton shows a visible "not on the phone yet"
   state (nothing else checks `sportKey`; the fold would accept a table-tennis cfg); fold under the rules
   sync holds (`{...bootstrap, cfg: rules.cfg}`) and re-save the boot cache when they change;
@@ -474,8 +475,10 @@ The Sonnet per-task and Opus batch reviews of Tasks 3–6 found what the hook mu
   Dismiss; the fold's in-flight double count (the server's copy fetched before the answer) is hidden
   when the ledger holds an event at the sent `expected_seq + 1` with the same type and payload; the
   model has members for unfoldable, tooLarge, an unreadable queue and an unsupported sport; a null from
-  `badmintonEventFor` gets a last-tap line; the fold is memoized; every send's payload goes through
-  `payloadForSend(queued, ledger)` (the toss stamp is decided at the first send); the background sender
+  `badmintonEventFor` gets a last-tap line; the fold is memoized; the head's payload goes through
+  `payloadForSend(queued, ledger)` BEFORE `markSending`, and the decided payload is written into the
+  queued head in the same step that marks the attempt (else the fold and sync's stand-in keep the old
+  stamp); the background sender
   never subscribes to Realtime (one subscription; a second closes the first).
 - `ownEventIds` belong to one link.
 - Task 7 pins that the badminton pad never emits `core.settle` or `core.abandon`, and emits
