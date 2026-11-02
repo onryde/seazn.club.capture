@@ -141,3 +141,16 @@ export function queuedOf(key: string, spec: Spec): QueuedEvent {
 /** `count` rallies alternating, the top side first: `HAHA…`. */
 export const alternating = (count: number): string =>
   Array.from({ length: count }, (_, i) => (i % 2 === 0 ? 'H' : 'A')).join('');
+
+/** Game 1 won 21–15 by the top side, every rally another scorer's; the first rally names home serving. */
+export const GAME_ONE_21_15: readonly Spec[] = [
+  start(),
+  rally('H', 'H'),
+  ...rallies(`${alternating(30).slice(1)}HHHHHH`),
+];
+
+/** Game 2 won 21–18 by the top side: with the first game, the match is decided at two games. */
+export const GAME_TWO_21_18: readonly Spec[] = rallies(`${'A'.repeat(18)}${'H'.repeat(21)}`);
+
+/** A match the top side won 21–15, 21–18: decided. */
+export const DECIDED_MATCH: readonly Spec[] = [...GAME_ONE_21_15, ...GAME_TWO_21_18];

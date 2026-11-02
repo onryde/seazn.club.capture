@@ -224,6 +224,21 @@ said "points"; the app says _tap_ everywhere else (the pad, the cards above), so
 | Checking the link…                                                                     | Comprobando el enlace…                                                                                     | Vérification du lien…                                                                                    | Link controleren…                                                                     | `home.scoring.checking.title`. The scan panel while a scoring link is checked; the stream's _Checking code…_ is not used for it. |
 | Can't check this link — no connection. Try again.                                      | No se puede comprobar el enlace: sin conexión. Inténtalo de nuevo.                                         | Impossible de vérifier ce lien : pas de connexion. Réessayez.                                            | Kan deze link niet controleren: geen verbinding. Probeer het opnieuw.                 | `home.scoring.offline.body`. An offline first scan saves nothing; fr has a no-break space before the colon.                      |
 
+#### A match that is over (owner ruling 41, 2026-11-02)
+
+Once a match is decided and every tap of this phone has reached the server, Home's card says _Finished_ with the final
+score and offers _Close_, which lets the match go with no question. The word for a finished match follows the web's
+(`chip.finished`, `arbiter.status.over`): es _Terminado_ (a match is _terminado_, as above), fr _Terminé_, nl _Afgelopen_.
+_Close_ is the app's own (`panel.close`: _Cerrar_, _Fermer_, _Sluiten_). The score ("21–15, 21–18") is the sport's line,
+numbers and punctuation, never translated. Committed without a `_review` marker, as the rest of S2's copy.
+
+| English                                               | Español             | Français          | Nederlands          | Note                                                                                           |
+| ----------------------------------------------------- | ------------------- | ----------------- | ------------------- | ---------------------------------------------------------------------------------------------- |
+| Finished (a match with no game over yet)              | Terminado           | Terminé           | Afgelopen           | `home.scoring.finished`.                                                                       |
+| Finished · {score}                                    | Terminado · {score} | Terminé · {score} | Afgelopen · {score} | `home.scoring.finishedScore`. `{score}` is the sport's line.                                   |
+| Close (the card's button)                             | Cerrar              | Fermer            | Sluiten             | `home.scoring.close`. The word drawn.                                                          |
+| Close {match} (a screen reader's name for the button) | Cerrar {match}      | Fermer {match}    | {match} sluiten     | `home.scoring.closeMatch`. `{match}` is "another match" when the queue never learned the name. |
+
 ### The match's own screens (S2-1 Task 11, 2026-11-02)
 
 What the scoring route shows when it is not the pad (design §4, §8): one card per state, the same in every sport.

@@ -1,7 +1,9 @@
+import { encodeSavedCode } from '@/domain/mode/savedCode';
 import type { MatchQueue, QueueDead } from '@/domain/scoring/queue';
+import { STORE_KEYS } from '@/services/modeStore';
 import type { ScoringLink } from '@/services/scoringPort';
-import { queuedOf, rally } from './badmintonLedger';
-import type { FakePorts } from './fakePorts';
+import { SINGLES, ledgerOf, queuedOf, rally, type Spec } from './badmintonLedger';
+import { TEST_NOW, type FakePorts } from './fakePorts';
 
 /** A made-up scoring token: nothing real is ever a fixture (AGENTS: no real codes in tests). */
 export const TOKEN = 'dl_madeUpTokenForHomeTests01';
@@ -45,3 +47,39 @@ export async function leave(
     );
   }
 }
+
+/**
+ * What a pad that scored a match leaves on the phone besides its queue: the ledger from seq 1 and the bootstrap last
+ * read (`in_play` unless said), under the match's own id. A reopened app finds the match as these say it stands.
+ */
+export async function leaveHistory(
+  fakes: Pick<FakePorts, 'tapQueue'>,
+  fixtureId: string,
+  specs: readonly Spec[],
+  over: { status?: string } = {},
+): Promise<void> {
+  await fakes.tapQueue.saveLedger(fixtureId, ledgerOf(specs));
+  await fakes.tapQueue.saveBoot(fixtureId, {
+    bootstrap: { ...SINGLES, fixtureId, status: over.status ?? 'in_play' },
+    toss: null,
+  });
+}
+
+/** The saved scoring code the secure store keeps for a match, as `modeStore` encodes it. */
+export const savedMatch = (fixtureId = FAKE_MATCH, label = FAKE_LABEL): string =>
+  encodeSavedCode({
+    mode: 'scoring',
+    raw: '',
+    slot: null,
+    savedAt: TEST_NOW,
+    expiresAt: null,
+    stream: null,
+    scoring: { fixtureId, label },
+  });
+
+/** A launch that finds Remote Scoring active, a match saved and its link kept: the seed of the secure store. */
+export const inMatch = (fixtureId = FAKE_MATCH, label = FAKE_LABEL): Record<string, string> => ({
+  [STORE_KEYS.active]: 'scoring',
+  [STORE_KEYS.code('scoring')]: savedMatch(fixtureId, label),
+  [linkKey(fixtureId)]: STORED_LINK,
+});

@@ -88,6 +88,12 @@ export interface ScoringSport<S extends SportTypes> {
   notStarted(display: S['display']): boolean;
   /** The match is decided (a ledger read then asks the bootstrap whether it was finalized). */
   decided(display: S['display']): boolean;
+  /**
+   * The games (sets, in another sport) over, as the sport writes them in one line, the first side's score first: what
+   * Home's card calls a finished match ("21–15, 21–18"). Numbers and punctuation, never translated. Empty while none is
+   * over; the match's own words ("Finished") are the dictionary's.
+   */
+  resultLine(display: S['display']): string;
   /** An ending waits to be recorded (the ending prompt's Undo, `only: 'ending'`, is taken only then). */
   awaitingEnding(display: S['display']): boolean;
   /** What the last tap was, as Undo names it once it is taken back; null when it is nothing Undo names. */

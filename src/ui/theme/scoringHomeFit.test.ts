@@ -278,6 +278,74 @@ describe('the cards on landscape Home, at five windows, in four languages', () =
   });
 });
 
+// A match that is over (owner ruling 41, 2026-11-02): the card says "Finished · {score}" in the title role, in lime, its
+// name under it, and Close, its one button, beside or under the words. The score is the sport's line: badminton's
+// longest is three games, each at the cap, and a sport with more games writes more, so the worst case is measured with
+// five games of one digit each too. The words are the card's body, a press target at least `touch` tall.
+describe('a finished match’s card at 320 and 360 dp, in four languages', () => {
+  const SCORES = ['30–29, 29–30, 30–29', '21–15, 21–18', '6–4, 3–6, 6–4, 3–6, 6–4'] as const;
+  const titles = (lang: Lang): string[] => [
+    word(lang, 'home.scoring.finished'),
+    ...SCORES.map((score) => said(lang, 'home.scoring.finishedScore', { score })),
+  ];
+
+  it('the title is one line upright, with the longest score either sport writes', () => {
+    const lines: Record<string, number> = {};
+    for (const width of WIDTHS)
+      for (const lang of LANGS)
+        lines[`${width} ${lang}`] = Math.max(
+          ...titles(lang).map((text) => linesOf(text, innerAt(width), state)),
+        );
+    expect(lines).toEqual({
+      '320 en': 1,
+      '320 es': 1,
+      '320 fr': 1,
+      '320 nl': 1,
+      '360 en': 1,
+      '360 es': 1,
+      '360 fr': 1,
+      '360 nl': 1,
+    });
+  });
+
+  it('the display face carries every mark of a score, so no digit or dash falls back to the system’s', () => {
+    for (const mark of '0123456789–, ·')
+      expect(barlow700.has(mark.codePointAt(0) ?? 0), mark).toBe(true);
+  });
+
+  it('no word is wider than the card’s inner width, and Close fits it on its own', () => {
+    for (const width of WIDTHS)
+      for (const lang of LANGS) {
+        for (const text of titles(lang))
+          for (const piece of text.split(' '))
+            expect(state(piece), `${width} ${lang} ${piece}`).toBeLessThanOrEqual(innerAt(width));
+        const close = word(lang, 'home.scoring.close');
+        expect(ghost(close), `${width} ${lang} ${close}`).toBeLessThanOrEqual(innerAt(width));
+      }
+  });
+
+  it('on landscape Home the title and the longest name are one line each beside Close, so the card is the 48 dp the press target is', () => {
+    const heights: Record<string, number> = {};
+    for (const [width, height] of GEOMETRIES)
+      for (const lang of LANGS) {
+        const column = columnAt(width, ghost(word(lang, 'home.scoring.close')));
+        const title = Math.max(...titles(lang).map((text) => linesOf(text, column, state)));
+        const name = linesOf(LONG_LABEL, column, geistLine);
+        expect([title, name], `${width}x${height} ${lang}`).toEqual([1, 1]);
+        heights[`${width}x${height} ${lang}`] =
+          2 * layout.rowCardPadV +
+          BORDER +
+          Math.max(
+            GHOST_MIN,
+            title * typeScale.state.lineHeight + space.xs + name * typeScale.control.lineHeight,
+          );
+      }
+    // The words are 39 dp and the press target 48, so every window and language draws the card 70 dp tall: no taller
+    // than a dead leftover's (70), and well under the saved match's with its plate (119 at 640).
+    expect(new Set(Object.values(heights))).toEqual(new Set([70]));
+  });
+});
+
 // The question before a Dismiss (owner ruling B, 2026-11-02): one sheet, `CodePanel`'s, padded 16 each side, with the
 // panel's kicker, a title that names the match, a body that names the taps, and two full-width buttons, Keep (the
 // plate) and Dismiss (a ghost). The title is the `title` role in caps, the body the `body` role, from the fonts.

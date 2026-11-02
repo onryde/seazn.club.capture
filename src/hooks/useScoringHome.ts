@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ModeCode } from '@/domain/mode/Mode';
 import { asksBeforeOpening } from '@/domain/mode/otherMode';
-import { rowsKey, type QueueRow } from '@/domain/mode/scoringHome';
+import { rowsKey, type MatchFinish, type QueueRow } from '@/domain/mode/scoringHome';
 import { selectEngineStatus } from '@/hooks/engineSelectors';
+import { readFinish } from '@/hooks/scoringFinish';
 import { dismissMatch } from '@/hooks/scoringOpen';
 import type { SaveFailed, SetStatusKey } from '@/hooks/useHome';
 import { ignoreUnexpected, type SetPanel } from '@/hooks/useCodeCheck';
@@ -14,26 +15,74 @@ export const SCORING_POLL_MS = 2000;
 
 const NO_ROWS: readonly QueueRow[] = [];
 
-/**
- * The queues on the phone's disk, for Home's Remote Scoring cards (plan S2-1 Task 10; design §5): read when Home
- * mounts, on every return to the foreground and after Home changes one, and every `SCORING_POLL_MS` only while some queue
- * still has taps it can send (the background sender empties it, and the card should say so). A list that fails shows
- * the last cards (or none) and is recorded, never thrown. Home re-renders only when the cards would read differently.
- */
-export function useScoringRows(): {
+/** What Home has read of the disk: the queues, and whether the saved match is over. */
+type Read = {
+  readonly key: string;
   readonly rows: readonly QueueRow[];
+  readonly finish: MatchFinish | null;
+};
+
+const NOTHING_READ: Read = { key: '', rows: NO_ROWS, finish: null };
+
+/** What would change a card: the queues' key, and the saved match's result (the score names it, so the id is the key's). */
+const readKey = (rows: readonly QueueRow[], finish: MatchFinish | null): string =>
+  `${rowsKey(rows)}\n#${finish === null ? '' : `${finish.fixtureId}|${finish.score}`}`;
+
+/**
+ * The saved match's files, asked whether it is over, only when nothing of it is unsent: a match with taps still going
+ * is Continue whatever its files say, and a queue that cannot be read is not asked about (its card says so). A read
+ * that throws is recorded and is "not over", never a Finished card on a guess.
+ */
+async function finishOfSaved(
+  ports: Pick<Ports, 'kv' | 'hosts' | 'tapQueue' | 'clock' | 'logger'>,
+  saved: string | null,
+  rows: readonly QueueRow[],
+): Promise<MatchFinish | null> {
+  if (saved === null) return null;
+  const own = rows.find(
+    (row) => (row.kind === 'queue' ? row.queue.fixtureId : row.fixtureId) === saved,
+  );
+  if (own !== undefined && (own.kind === 'unreadable' || own.queue.pending.length > 0)) return null;
+  try {
+    const finish = await readFinish(ports, saved);
+    return finish === null ? null : { fixtureId: saved, score: finish.score };
+  } catch {
+    ports.logger.warn('scoring.home-finish-refused', {});
+    return null;
+  }
+}
+
+/**
+ * The queues on the phone's disk, for Home's Remote Scoring cards (plan S2-1 Task 10; design §5), and whether the saved
+ * match `savedId` is over (owner ruling 41, 2026-11-02): read when Home mounts, on every return to the foreground and
+ * after Home changes one, and every `SCORING_POLL_MS` only while some queue still has taps it can send (the background
+ * sender empties it, and the card should say so). A list that fails shows the last cards (or none) and is recorded, never
+ * thrown. Only the newest read is kept: one begun earlier that lands later never puts back what a newer one took away.
+ * Home re-renders only when the cards would read differently.
+ */
+export function useScoringRows(savedId: string | null = null): {
+  readonly rows: readonly QueueRow[];
+  readonly finish: MatchFinish | null;
   readonly refresh: () => void;
 } {
-  const { tapQueue, foreground, logger } = usePorts();
-  const [state, setState] = useState({ key: '', rows: NO_ROWS });
+  const ports = usePorts();
+  const { tapQueue, foreground, logger } = ports;
+  const [state, setState] = useState<Read>(NOTHING_READ);
+  const newest = useRef(0);
   const refresh = useCallback(() => {
-    tapQueue.list().then(
-      (rows) => {
-        setState((prev) => (rowsKey(rows) === prev.key ? prev : { key: rowsKey(rows), rows }));
-      },
-      () => logger.warn('scoring.home-list-refused', {}),
-    );
-  }, [tapQueue, logger]);
+    const mine = (newest.current += 1);
+    tapQueue
+      .list()
+      .then(async (rows) => ({ rows, finish: await finishOfSaved(ports, savedId, rows) }))
+      .then(
+        ({ rows, finish }) => {
+          if (mine !== newest.current) return;
+          const key = readKey(rows, finish);
+          setState((prev) => (key === prev.key ? prev : { key, rows, finish }));
+        },
+        () => logger.warn('scoring.home-list-refused', {}),
+      );
+  }, [tapQueue, ports, savedId, logger]);
   useEffect(() => {
     refresh();
     return foreground.subscribe(refresh);
@@ -46,7 +95,7 @@ export function useScoringRows(): {
     const timer = setInterval(refresh, SCORING_POLL_MS);
     return () => clearInterval(timer);
   }, [sending, refresh]);
-  return { rows: state.rows, refresh };
+  return { rows: state.rows, finish: state.finish, refresh };
 }
 
 /**

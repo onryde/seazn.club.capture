@@ -1,9 +1,18 @@
 import { act, renderHook } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { useContinueScoring, useScoringRows } from '@/hooks/useScoringHome';
-import { createFakePorts } from '../../test/fakePorts';
+import { createFakePorts, readRecord } from '../../test/fakePorts';
 import { wrapperFor } from '../../test/renderWithPorts';
-import { leave, queueHolding } from '../../test/scoringHomeFixtures';
+import { DECIDED_MATCH, GAME_ONE_21_15 } from '../../test/badmintonLedger';
+import {
+  FAKE_MATCH,
+  STORED_LINK,
+  leave,
+  leaveHistory,
+  linkKey,
+  queueHolding,
+} from '../../test/scoringHomeFixtures';
+import { createTapQueueStore } from '@/services/tapQueueStore';
 
 // The hooks under Home's Remote Scoring cards (plan S2-1 Task 10), on their own: what the screen tests cannot see.
 
@@ -32,6 +41,174 @@ describe('useScoringRows', () => {
     expect(hook.result.current.rows).not.toBe(first);
     const [row] = hook.result.current.rows;
     expect(row?.kind === 'queue' ? row.queue.pending.length : -1).toBe(1);
+  });
+});
+
+// Home's Finished card (owner ruling 41, 2026-11-02): the saved match is read from the phone's files for the one
+// question the queue list cannot answer, whether it is over. Asked only when nothing of it is unsent.
+describe('useScoringRows, whether the saved match is over', () => {
+  const OVER = { fixtureId: FAKE_MATCH, score: '21–15, 21–18' };
+
+  async function decidedOnDisk(taps = 0) {
+    const fakes = createFakePorts();
+    await leave(fakes, queueHolding(FAKE_MATCH, taps));
+    await leaveHistory(fakes, FAKE_MATCH, DECIDED_MATCH);
+    return fakes;
+  }
+  /** Every scoring link the secure store was asked for: the match's files are read through it first. */
+  const linkReads = (read: { mock: { calls: unknown[][] } }): unknown[] =>
+    read.mock.calls.map(([key]) => key).filter((key) => String(key).startsWith('scoring.link.'));
+  const rowsFor = (fakes: ReturnType<typeof createFakePorts>, saved: string | null = FAKE_MATCH) =>
+    renderHook(({ id }: { id: string | null }) => useScoringRows(id), {
+      wrapper: wrapperFor(fakes),
+      initialProps: { id: saved },
+    });
+
+  it('finds the saved match over when its files say so and nothing is unsent', async () => {
+    const fakes = await decidedOnDisk();
+    const hook = rowsFor(fakes);
+    await act(async () => undefined);
+    expect(hook.result.current.finish).toEqual(OVER);
+  });
+
+  it('finds it over with no queue file at all', async () => {
+    const fakes = createFakePorts();
+    await fakes.kv.set(linkKey(FAKE_MATCH), STORED_LINK);
+    await leaveHistory(fakes, FAKE_MATCH, DECIDED_MATCH);
+    const hook = rowsFor(fakes);
+    await act(async () => undefined);
+    expect(hook.result.current.finish).toEqual(OVER);
+  });
+
+  it('does not look while a tap is unsent: the match’s files are not even read', async () => {
+    const fakes = await decidedOnDisk(2);
+    const read = vi.spyOn(fakes.ports.kv, 'get');
+    const hook = rowsFor(fakes);
+    await act(async () => undefined);
+    expect(hook.result.current.finish).toBeNull();
+    expect(linkReads(read)).toEqual([]);
+  });
+
+  it('does not look when no match is saved', async () => {
+    const fakes = await decidedOnDisk();
+    const read = vi.spyOn(fakes.ports.kv, 'get');
+    const hook = rowsFor(fakes, null);
+    await act(async () => undefined);
+    expect(hook.result.current.finish).toBeNull();
+    expect(linkReads(read)).toEqual([]);
+  });
+
+  it('does not look when the saved match’s queue file cannot be read', async () => {
+    const fakes = await decidedOnDisk();
+    fakes.queueFiles.files.set(`${FAKE_MATCH}.json`, '{ not json');
+    const hook = rowsFor(fakes);
+    await act(async () => undefined);
+    expect(hook.result.current.rows).toEqual([{ kind: 'unreadable', fixtureId: FAKE_MATCH }]);
+    expect(hook.result.current.finish).toBeNull();
+  });
+
+  it('is not over for a match still in play', async () => {
+    const fakes = createFakePorts();
+    await leave(fakes, queueHolding(FAKE_MATCH, 0));
+    await leaveHistory(fakes, FAKE_MATCH, GAME_ONE_21_15);
+    const hook = rowsFor(fakes);
+    await act(async () => undefined);
+    expect(hook.result.current.finish).toBeNull();
+  });
+
+  it('is over once the last unsent tap has gone, and the card was not before', async () => {
+    const fakes = await decidedOnDisk(2);
+    const hook = rowsFor(fakes);
+    await act(async () => undefined);
+    expect(hook.result.current.finish).toBeNull();
+    await leave(fakes, queueHolding(FAKE_MATCH, 0));
+    act(() => hook.result.current.refresh());
+    await act(async () => undefined);
+    expect(hook.result.current.finish).toEqual(OVER);
+  });
+
+  it('is still over when the app is killed and reopened: the files alone say so', async () => {
+    const first = await decidedOnDisk();
+    const reopened = createFakePorts({
+      tapQueue: createTapQueueStore({ files: first.queueFiles, logger: first.ports.logger }),
+      kvSeed: Object.fromEntries(first.kv.entries),
+    });
+    const hook = rowsFor(reopened);
+    await act(async () => undefined);
+    expect(hook.result.current.finish).toEqual(OVER);
+  });
+
+  it('says the new score when only the score has moved: same match, same queue, the server finalized it later', async () => {
+    const fakes = await decidedOnDisk();
+    await leaveHistory(fakes, FAKE_MATCH, GAME_ONE_21_15, { status: 'finalized' });
+    const hook = rowsFor(fakes);
+    await act(async () => undefined);
+    expect(hook.result.current.finish).toEqual({ fixtureId: FAKE_MATCH, score: '21–15' });
+    await leaveHistory(fakes, FAKE_MATCH, DECIDED_MATCH, { status: 'finalized' });
+    act(() => hook.result.current.refresh());
+    await act(async () => undefined);
+    expect(hook.result.current.finish).toEqual(OVER);
+  });
+
+  it('keeps the same answer, to the identity, while the files read the same', async () => {
+    const fakes = await decidedOnDisk();
+    const hook = rowsFor(fakes);
+    await act(async () => undefined);
+    const first = hook.result.current.finish;
+    act(() => hook.result.current.refresh());
+    await act(async () => undefined);
+    expect(hook.result.current.finish).toBe(first);
+  });
+
+  it('reads again for the next saved match, and the old one’s answer is not its answer', async () => {
+    const fakes = await decidedOnDisk();
+    await leave(fakes, queueHolding('fx-next', 0));
+    await leaveHistory(fakes, 'fx-next', GAME_ONE_21_15);
+    const hook = rowsFor(fakes);
+    await act(async () => undefined);
+    expect(hook.result.current.finish).toEqual(OVER);
+    hook.rerender({ id: 'fx-next' });
+    await act(async () => undefined);
+    expect(hook.result.current.finish).toBeNull();
+  });
+
+  it('says so in the record and keeps the cards when the read of the match throws', async () => {
+    const fakes = await decidedOnDisk();
+    vi.spyOn(fakes.ports.tapQueue, 'loadLedger').mockRejectedValue(new Error('boom'));
+    const hook = rowsFor(fakes);
+    await act(async () => undefined);
+    expect(hook.result.current.finish).toBeNull();
+    expect(hook.result.current.rows).toHaveLength(1);
+    expect(readRecord(fakes.record).map((line) => line.event)).toContain(
+      'scoring.home-finish-refused',
+    );
+  });
+
+  it('lets the newest read win: a slow one begun earlier never puts back what a later one took away', async () => {
+    const fakes = await decidedOnDisk();
+    const list = fakes.ports.tapQueue.list.bind(fakes.ports.tapQueue);
+    const gates: Array<() => void> = [];
+    const spy = vi.spyOn(fakes.ports.tapQueue, 'list');
+    // The first list (the mount's) waits for its gate; every later one goes straight through.
+    spy.mockImplementationOnce(async () => {
+      const rows = await list();
+      await new Promise<void>((open) => gates.push(open));
+      return rows;
+    });
+    const hook = rowsFor(fakes);
+    await act(async () => undefined);
+    expect(hook.result.current.finish).toBeNull();
+    await leave(fakes, queueHolding(FAKE_MATCH, 2));
+    act(() => hook.result.current.refresh());
+    await act(async () => undefined);
+    expect(hook.result.current.rows).toHaveLength(1);
+    expect(hook.result.current.finish).toBeNull();
+    gates.forEach((open) => open());
+    await act(async () => undefined);
+    // The slow read saw an empty queue and a decided match; the newer one saw two taps unsent, and stands.
+    expect(hook.result.current.finish).toBeNull();
+    const [row] = hook.result.current.rows;
+    expect(row?.kind === 'queue' ? row.queue.pending.length : -1).toBe(2);
   });
 });
 

@@ -216,6 +216,7 @@ function ScoringSlot({
           onContinue={actions.continueScoring}
           onForget={actions.dismissScoring}
           onDismiss={actions.askDismiss}
+          onClose={actions.askDismiss}
         />
       )}
       {leftovers.map((leftover) => (

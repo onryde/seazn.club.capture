@@ -36,6 +36,9 @@ export const badmintonSport: ScoringSport<BadmintonTypes> = {
   refusalFor: (tap) => (tap.kind === 'setScore' ? 'invalidScore' : 'notNow'),
   notStarted: (display) => display.phase === 'notStarted',
   decided: (display) => display.phase === 'decided',
+  /** Each game over as `first–second`, joined by a comma: a game a disqualification ended is there at its points. */
+  resultLine: (display) =>
+    display.finished.map((game) => `${game.points.first}–${game.points.second}`).join(', '),
   awaitingEnding: (display) => display.awaitingEnding,
   /** The last tap, unless it is an Undo already; the start is never named (`undoneTap`). */
   undoneOf: (display) => {
