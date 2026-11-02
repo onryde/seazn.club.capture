@@ -98,12 +98,18 @@ zod 4.4.3 decides for itself whether it may compile: `allowsEval` (`zod/v4/core/
 `new Function("")` inside a try/catch and falls back to the interpreted parser if it throws, or at once
 under `jitless`. A `new Function` refusal therefore should not crash; the device run is what proves it.
 
-## Device: pending
+## Device: passed (2026-11-02)
 
-The controller's (Step 7): a release build of the dev twin on the OnePlus; Home → Remote scoring → scroll
-the preview row to **Fold probe** → tap, twice or more (the first run pays the load and any warm-up), and
-read the line and the record's `scoring.foldProbe` lines (with nothing paired the line is in the JS ring,
-which Share record in Stream Settings hands over). Record here: the device and Android version, the
-build (`appVersion`), each run's line, and the verdict. A `failed:` line or a crash is a blocker (ruling 26);
-if the error is zod reaching `new Function`, add `z.config({ jitless: true })` where the engine is first
-imported and run again.
+- **Device:** OnePlus NE2211, Android 16, the dev twin's release build 730 (`1.0.1-730`, from `d58a669`;
+  Hermes; `@seazn/engine` 1.1.0, zod 4.4.3).
+- **Run:** Home → Remote scoring → the preview row's **Fold probe**, tapped three times by the owner,
+  50 strict folds of the 76-event match a run. The last run's line on screen: `76 · 0.78 / 0.84 / 6.72 ms`
+  (min / median / max; the max is the first, cold fold).
+- **Errors:** none. No crash, no `failed:` line, nothing from zod or `new Function` in logcat (only the
+  camera HAL's own `APS_ALOG` lines, which are not the app's). `z.config({ jitless: true })` is not
+  needed.
+- **Verdict: R4 passes.** A refold costs under 1 ms warm on the phone, so refolding the whole match on
+  every tap (Task 7) is affordable for a badminton match. A longer ledger (another sport, S2-2 on) runs the
+  probe again with its own synthetic match.
+- **Not measured:** a match scored entirely offline with many queued taps (one strict fold per queued tap);
+  the exit bar's offline run (Task 13) watches for lag.
