@@ -111,12 +111,15 @@ function useSettle(): (coldStart: boolean) => void {
       // whose made-up code no saved code owns; its own clean-up unpairs it.
       if (orphanedSession({ ...facts, now }) && !probeFlight.active()) unpair('orphan');
       expireOnTheWay(modeStore, current.saved, target, now, logger);
-      // M22: Settings, with its Diagnostics card, is inside Live Stream; going there is staying. P8: Stream Settings
-      // opened from Home is Home's, so a return from App info stays on it, and so is the Remote Scoring pad: it holds
-      // no broadcast, and a foreground leaves the scorer where they are.
+      // M22: Settings, with its Diagnostics card, is inside Live Stream; going there is staying. P8: the app's Settings
+      // from Home's gear is Home's, so a return from App info stays on it, and so is the Remote Scoring pad: it holds
+      // no broadcast, and a foreground leaves the scorer where they are. A paired phone holds none either, so the
+      // app's Settings stays put under a paired engine too (the controller's ruling, 2026-11-02: App info is where the
+      // battery is set); armed or live, the engine's status is 'live' and the app moves to Live Stream (A2).
       const here = navigation.current();
       const staying =
         (target.go === 'stream' && isStreamSubRoute(here)) ||
+        (target.go === 'stream' && here === 'settings' && facts.engine === 'paired') ||
         (target.go === 'home' && isHomeSubRoute(here));
       if (!staying) navigation.go(target.go);
     },

@@ -350,8 +350,11 @@ describe('the disk Home reads', () => {
   });
 });
 
-describe('the gear (owner ruling A, 2026-11-02: keep the gear, but not beside a failure)', () => {
-  const gear = () => screen.queryByRole('button', { name: 'Stream settings' });
+// Owner ruling A (2026-11-02) kept the Stream settings gear but hid it beside a failing card. The owner's gear of the
+// same day is the app's Settings, in Home's corner, and no card takes it away: a failing card is when the operator
+// may most want Share record.
+describe('the Settings gear stays beside every card, a failing one too (owner, 2026-11-02)', () => {
+  const gear = () => screen.queryByRole('button', { name: 'Settings' });
 
   it('shows with no card above the tiles', async () => {
     await homeWith();
@@ -373,12 +376,13 @@ describe('the gear (owner ruling A, 2026-11-02: keep the gear, but not beside a 
     expect(gear()).not.toBeNull();
   });
 
-  it('hides while the saved match cannot send, and while it cannot be read', async () => {
+  it('stays beside a saved match that cannot send, and one that cannot be read', async () => {
     const dead = await homeWith(
       (fakes) => leave(fakes, queueHolding(FAKE_MATCH, 2, { dead: 'LINK_REVOKED' })),
       { kvSeed: inMatch() },
     );
-    expect(gear()).toBeNull();
+    expect(continueCard()).not.toBeNull();
+    expect(gear()).not.toBeNull();
     dead.unmount();
     await homeWith(
       async (fakes) => {
@@ -387,29 +391,22 @@ describe('the gear (owner ruling A, 2026-11-02: keep the gear, but not beside a 
       },
       { kvSeed: inMatch() },
     );
-    expect(gear()).toBeNull();
+    expect(gear()).not.toBeNull();
   });
 
-  it('hides for a leftover that cannot send or be read', async () => {
+  it('stays beside a leftover that cannot send or be read', async () => {
     const dead = await homeWith((fakes) =>
       leave(fakes, queueHolding('fx-old', 2, { dead: 'LINK_REVOKED' })),
     );
-    expect(gear()).toBeNull();
+    expect(leftovers()).toHaveLength(1);
+    expect(gear()).not.toBeNull();
     dead.unmount();
     await homeWith(async (fakes) => {
       await leave(fakes, queueHolding('fx-old', 1));
       fakes.queueFiles.files.set('fx-old.json', '{ not json');
     });
-    expect(gear()).toBeNull();
-  });
-
-  it('comes back when the failing card is dismissed', async () => {
-    await homeWith((fakes) =>
-      leave(fakes, queueHolding('fx-old', 2, { label: 'Match 7', dead: 'LINK_REVOKED' })),
-    );
-    expect(gear()).toBeNull();
-    await dismissThrough(leftovers()[0] ?? null, 'Match 7');
-    await waitFor(() => expect(gear()).not.toBeNull());
+    expect(leftovers()).toHaveLength(1);
+    expect(gear()).not.toBeNull();
   });
 });
 

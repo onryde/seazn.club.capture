@@ -9,7 +9,7 @@ import { Text } from '@/ui/components/Text';
 import { colour, space } from '@/ui/theme/tokens';
 
 /** M5 of the Batch 5 review: each mode in Android's own word for it, so the row and App info agree. */
-const MODE_WORD: Readonly<Record<PowerMode, MessageKey>> = {
+export const MODE_WORD: Readonly<Record<PowerMode, MessageKey>> = {
   unrestricted: 'settings.power.unrestricted',
   optimized: 'settings.power.optimized',
   restricted: 'settings.power.restricted',

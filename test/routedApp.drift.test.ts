@@ -230,8 +230,8 @@ describe('the idle dim is mounted by Live Stream only', () => {
 /**
  * M3 of the Batch 5 review: `routedApp` maps each route to its screen by hand, so the route files Expo Router reads
  * are rendered by no test. Every path the navigation port moves to has its file (a renamed file is "Unmatched
- * route" on the phone), and each Settings route renders its own variant: Home's `from="home"` (no Diagnostics, Back
- * to Home), Live Stream's the default.
+ * route" on the phone), and each Settings route renders its own screen: the app's Settings from Home's gear (no
+ * Diagnostics, Back to Home), Live Stream's own (the default of `SettingsScreen`).
  */
 const PATHS_OF = /const PATH\b[^=]*=\s*\{([^}]*)\}/;
 
@@ -253,7 +253,7 @@ describe('every path the navigation moves to has its route file, and each Settin
   );
 
   it('reads five paths from the port (anti-vacuity)', () => {
-    expect(paths).toEqual(['/', '/stream', '/stream/settings', '/stream-settings', '/scoring']);
+    expect(paths).toEqual(['/', '/stream', '/stream/settings', '/settings', '/scoring']);
   });
 
   it('finds a file for each', () => {
@@ -261,7 +261,7 @@ describe('every path the navigation moves to has its route file, and each Settin
       'app/index.tsx',
       'app/stream/index.tsx',
       'app/stream/settings.tsx',
-      'app/stream-settings.tsx',
+      'app/settings.tsx',
       'app/scoring/index.tsx',
     ]);
   });
@@ -345,10 +345,8 @@ describe('every path the navigation moves to has its route file, and each Settin
     expect(body('test/routedApp.tsx', 'ScoringRouted').trim()).toBe(asMirror);
   });
 
-  it('renders Stream Settings from Home as the Home variant, and Live Stream’s as the default', () => {
-    expect(body('app/stream-settings.tsx', 'HomeStreamSettingsRoute')).toMatch(
-      /return <SettingsScreen from="home" ?\/>;/,
-    );
+  it('renders the app’s Settings from Home’s gear as its own screen, and Live Stream’s as the default', () => {
+    expect(body('app/settings.tsx', 'AppSettingsRoute')).toMatch(/return <AppSettingsScreen ?\/>;/);
     expect(body('app/stream/settings.tsx', 'StreamSettingsRoute')).toMatch(
       /return <SettingsScreen ?\/>;/,
     );

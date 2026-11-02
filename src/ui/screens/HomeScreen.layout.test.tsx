@@ -54,13 +54,16 @@ const status = () => screen.getByText('Tap a mode, then scan its code.');
 const ended = () => screen.getByRole('region', { name: 'Stream ended' });
 const continueCard = () => screen.getByTestId('continue-card');
 const tiles = () => screen.getByTestId('tiles');
-const language = () => screen.getByRole('button', { name: /^Language/ });
+/** The Settings gear in Home's corner (owner, 2026-11-02): a 48 dp icon button, named by `home.settings`. */
+const gear = () => screen.getByRole('button', { name: 'Settings' });
 const version = () => screen.getByText('Version 0.0.0-test');
 const style = (element: Element) => getComputedStyle(element);
 
-/** Every button's first text, in document order: the control set a person reads. */
+/** Every button's name, in document order: the control set a person reads (the gear draws no word, so its label). */
 const controls = () =>
-  screen.getAllByRole('button').map((button) => textsIn(button)[0] ?? '(no text)');
+  screen
+    .getAllByRole('button')
+    .map((button) => button.getAttribute('aria-label') ?? textsIn(button)[0] ?? '(no text)');
 
 /** Whether the elements run in this order in the document, and the order is not vacuous. */
 function inOrder(elements: readonly Element[]): boolean {
@@ -89,16 +92,29 @@ describe('Home turns with the phone (spec §7)', () => {
   });
 
   describe('portrait: the order is unchanged', () => {
-    it('is the logo, the status, the ended card, Continue, the tiles, then Language and the version', async () => {
+    it('is the logo with the gear, the status, the ended card, Continue, the tiles, then the version', async () => {
       setWindowSize(...PORTRAIT);
       await renderHome({ ended: true, saved: true });
       expect(layoutOf()).toBe('portrait');
-      expect(
-        inOrder([logo(), status(), ended(), continueCard(), tiles(), language(), version()]),
-      ).toBe(true);
+      expect(inOrder([logo(), gear(), status(), ended(), continueCard(), tiles(), version()])).toBe(
+        true,
+      );
       expect(screen.queryByTestId('home-top')).toBeNull();
       expect(style(tiles()).flexDirection).toBe('column');
       expect(tiles().children).toHaveLength(3);
+    });
+
+    // The gear shares the logo's row, so it costs Home no height (homeFit.test.ts): the logo at the start, the gear at
+    // the end, centred on each other, whatever the window's width.
+    it('sets the gear at the right end of the logo’s row, 48 square, and the row spreads them apart', async () => {
+      setWindowSize(...PORTRAIT);
+      await renderHome();
+      const row = screen.getByTestId('home-brand');
+      expect([...row.children]).toEqual([logo(), gear()]);
+      expect(style(row).flexDirection).toBe('row');
+      expect(style(row).justifyContent).toBe('space-between');
+      expect(style(row).alignItems).toBe('center');
+      expect([style(gear()).width, style(gear()).height]).toEqual(['48px', '48px']);
     });
 
     it('draws the logo at spec §7’s 200 × 70, its own aspect, named for a screen reader', async () => {
@@ -122,21 +138,22 @@ describe('Home turns with the phone (spec §7)', () => {
   });
 
   describe('landscape: one top row, the ended card, Continue, the tiles side by side (F15)', () => {
-    it('puts the logo, the status, Language and the version in one row, in that order', async () => {
+    it('puts the logo, the status, the version and the gear in one row, in that order', async () => {
       setWindowSize(...LANDSCAPE);
       await renderHome({ ended: true, saved: true });
       expect(layoutOf()).toBe('landscape');
       const top = screen.getByTestId('home-top');
       expect(style(top).flexDirection).toBe('row');
-      for (const part of [logo(), status(), language(), version()]) {
+      for (const part of [logo(), status(), version(), gear()]) {
         expect({ text: part.textContent, inTop: top.contains(part) }).toEqual({
           text: part.textContent,
           inTop: true,
         });
       }
-      expect(inOrder([logo(), status(), language(), version()])).toBe(true);
-      // Language and the version sit together, after the status: the board's right end of the row.
-      expect(top.children).toHaveLength(3);
+      expect(inOrder([logo(), status(), version(), gear()])).toBe(true);
+      // The version and then the gear close the row, after the status: the board's right end of it.
+      expect(top.children).toHaveLength(4);
+      expect(top.lastElementChild).toBe(gear());
     });
 
     it('then the ended card as one row, then Continue as one row, then the tiles, and no footer after them', async () => {
@@ -148,8 +165,8 @@ describe('Home turns with the phone (spec §7)', () => {
       expect(style(continueCard()).flexDirection).toBe('row');
       expect(style(tiles()).flexDirection).toBe('row');
       expect(tiles().children).toHaveLength(3);
-      // The footer left for the top row: nothing of it follows the tiles.
-      expect(comesBefore(tiles(), language())).toBe(false);
+      // The version and the gear are in the top row: nothing of them follows the tiles.
+      expect(comesBefore(tiles(), gear())).toBe(false);
       expect(comesBefore(tiles(), version())).toBe(false);
     });
 
@@ -208,15 +225,8 @@ describe('Home turns with the phone (spec §7)', () => {
         computed.paddingLeft,
       ];
     };
-    /**
-     * A tile's padding as the operator sees it. A tile with the Stream settings gear is a frame that wears none: its
-     * button (the first child) wears all four sides (M2 of the Batch 5 review, kept with the gear).
-     */
-    const tileEdges = (tile: Element) => {
-      if (!(tile as HTMLElement).dataset.testid?.startsWith('tile-')) return edges(tile);
-      expect(edges(tile)).toEqual(['0px', '0px', '0px', '0px']);
-      return edges(tile.firstElementChild as Element);
-    };
+    /** A tile's padding as the operator sees it: the tile is its own button, so the padding is its own. */
+    const tileEdges = edges;
 
     it('pads the screen 12 above, 16 at the sides and 16 below, with 12 between rows', async () => {
       setWindowSize(...LANDSCAPE);
@@ -291,22 +301,15 @@ describe('Home turns with the phone (spec §7)', () => {
         Forget: '48px',
         Continue: '56px',
       });
-      expect(style(language()).minHeight).toBe('48px');
+      expect(style(gear()).height).toBe('48px');
     });
 
-    // The Live Stream tile's top is the gear's 48 (R2 as the owner presented it, 2026-10-12): sideways its head sits
-    // under the gear, never beside it (homeFit.test.ts).
     it('sets the tiles 8 apart, each with its 4 dp edge and 12 dp of padding, and the top row 16 apart', async () => {
       setWindowSize(...LANDSCAPE);
       await renderHome();
       expect(style(tiles()).gap).toBe('8px');
       expect(tiles().children).toHaveLength(3);
-      const [stream, ...others] = [...tiles().children];
-      expect(stream).toBe(screen.getByTestId('tile-stream'));
-      expect(style(stream as Element).borderLeftWidth).toBe('4px');
-      expect(tileEdges(stream as Element)).toEqual(['48px', '12px', '12px', '12px']);
-      expect(others).toHaveLength(2);
-      for (const tile of others) {
+      for (const tile of tiles().children) {
         expect(style(tile).borderLeftWidth).toBe('4px');
         expect(tileEdges(tile)).toEqual(['12px', '12px', '12px', '12px']);
       }
@@ -321,11 +324,10 @@ describe('Home turns with the phone (spec §7)', () => {
         expect(style(tile).borderLeftWidth).toBe('4px');
         expect(tileEdges(tile)).toEqual(['16px', '16px', '16px', '16px']);
       }
-      // And a turn to landscape and back lands on the same 16 (the tile's style is chosen per render); sideways the
-      // Live Stream tile's top is the gear's 48.
+      // And a turn to landscape and back lands on the same 16 (the tile's style is chosen per render).
       setWindowSize(...LANDSCAPE);
       expect([...tiles().children].map((tile) => tileEdges(tile)[0])).toEqual([
-        '48px',
+        '12px',
         '12px',
         '12px',
       ]);
@@ -333,29 +335,23 @@ describe('Home turns with the phone (spec §7)', () => {
       for (const tile of tiles().children) expect(tileEdges(tile)[0]).toBe('16px');
     });
 
-    // R2 as the owner presented it (2026-10-12): one gear, on the Live Stream tile's top-right corner, in both layouts
-    // and across a turn. Upright the head row ends where the gear begins; sideways the head sits under it.
-    it('keeps one gear on the Live Stream tile’s corner as the phone turns, beside the head upright and above it sideways', async () => {
+    // The owner, 2026-11-02: one gear in Home's top-right corner, in both layouts and across a turn. Upright it ends the
+    // logo's row; sideways it ends the top row, after the version. On no tile.
+    it('keeps one gear at the end of the logo’s row upright and of the top row sideways, as the phone turns', async () => {
       setWindowSize(...PORTRAIT);
       await renderHome();
-      const gear = () => screen.getAllByRole('button', { name: 'Stream settings' });
-      const head = () => screen.getByText('Live Stream').parentElement as HTMLElement;
       const corner = () => {
-        const [only] = gear();
-        expect(gear()).toHaveLength(1);
-        expect(only?.parentElement).toBe(screen.getByTestId('tile-stream'));
-        const box = style(only as Element);
-        return [box.position, box.top, box.right, box.width, box.height];
+        expect(screen.getAllByRole('button', { name: 'Settings' })).toHaveLength(1);
+        return gear().parentElement;
       };
-      const CORNER = ['absolute', '0px', '0px', '48px', '48px'];
-      expect(corner()).toEqual(CORNER);
-      expect(style(head()).marginRight).toBe('32px');
+      expect(corner()).toBe(screen.getByTestId('home-brand'));
+      expect(corner()?.lastElementChild).toBe(gear());
       setWindowSize(...LANDSCAPE);
-      expect(corner()).toEqual(CORNER);
-      expect(style(head()).marginRight).toBe('0px');
+      expect(corner()).toBe(screen.getByTestId('home-top'));
+      expect(corner()?.lastElementChild).toBe(gear());
       setWindowSize(...PORTRAIT);
-      expect(corner()).toEqual(CORNER);
-      expect(style(head()).marginRight).toBe('32px');
+      expect(corner()).toBe(screen.getByTestId('home-brand'));
+      expect(tiles().contains(gear())).toBe(false);
     });
 
     // P7 as built, and R11 of the D3 findings design: a portrait tile grows from its own content (auto basis), so no
@@ -381,8 +377,8 @@ describe('Home turns with the phone (spec §7)', () => {
     });
   });
 
-  describe('the top row copes with a wide footer (the open language list)', () => {
-    it('lets the status take what the footer leaves, and a footer that cannot fit wrap under', async () => {
+  describe('the top row copes with a wide version line', () => {
+    it('lets the status take what the version and the gear leave, and what cannot fit wrap under', async () => {
       setWindowSize(...LANDSCAPE);
       await renderHome();
       const top = screen.getByTestId('home-top');
@@ -390,42 +386,18 @@ describe('Home turns with the phone (spec §7)', () => {
       const statusBox = status().parentElement as HTMLElement;
       expect(statusBox.parentElement).toBe(top);
       expect(style(statusBox).flexGrow).toBe('1');
-      // Language and the version never shrink: they wrap to a row of their own before they squeeze.
-      const footer = language().parentElement?.parentElement as HTMLElement;
-      expect(footer.parentElement).toBe(top);
-      expect(style(footer).flexShrink).toBe('0');
-      expect(style(footer).flexDirection).toBe('row');
-    });
-
-    it('opens the four languages from the top row, and picking one closes the list', async () => {
-      setWindowSize(...LANDSCAPE);
-      await renderHome();
-      fireEvent.click(language());
-      const top = screen.getByTestId('home-top');
-      for (const name of ['English', 'Español', 'Français', 'Nederlands']) {
-        expect(within(top).getByRole('button', { name })).toBeTruthy();
-      }
-      expect(within(top).getByText('Tap a mode, then scan its code.')).toBeTruthy();
-      fireEvent.click(within(top).getByRole('button', { name: 'Español' }));
-      expect(screen.queryByRole('button', { name: 'Nederlands' })).toBeNull();
-      expect(screen.getByRole('button', { name: /^Idioma · Español/ })).toBeTruthy();
+      // The version and the gear never shrink: they wrap to a row of their own before they squeeze.
+      expect(version().parentElement).toBe(top);
+      expect(style(version()).flexShrink).toBe('0');
+      expect(gear().parentElement).toBe(top);
+      expect(style(gear()).flexShrink).toBe('0');
     });
   });
 
   describe('the same controls in both layouts (a control-set diff)', () => {
-    // Spec §7, written out: portrait is layout A's order with the footer last; landscape moves only the
-    // footer (Language) up into the top row, ahead of the cards. The version is text, not a control.
-    const PORTRAIT_CONTROLS = [
-      'OK',
-      'Continue',
-      'Forget',
-      'Live Stream',
-      'Remote Scoring',
-      'Dashboard',
-      'Language · English',
-    ];
-    const LANDSCAPE_CONTROLS = [
-      'Language · English',
+    // Spec §7, written out: the gear leads in both layouts, so a turn moves no control. The version is text, not a control.
+    const CONTROLS = [
+      'Settings',
       'OK',
       'Continue',
       'Forget',
@@ -434,36 +406,30 @@ describe('Home turns with the phone (spec §7)', () => {
       'Dashboard',
     ];
 
-    it('lists the same seven, apart from the footer moving to the top', async () => {
+    it('lists the same seven, gear first, upright and sideways', async () => {
       setWindowSize(...PORTRAIT);
       await renderHome({ ended: true, saved: true });
       const inPortrait = controls();
       const logoInPortrait = logo().getAttribute('aria-label');
-      expect(inPortrait).toEqual(PORTRAIT_CONTROLS);
+      expect(inPortrait).toEqual(CONTROLS);
       expect(version().textContent).toBe('Version 0.0.0-test');
 
       setWindowSize(...LANDSCAPE); // the same rendered tree turns
-      const inLandscape = controls();
-      expect(inLandscape).toEqual(LANDSCAPE_CONTROLS);
+      expect(controls()).toEqual(CONTROLS);
       expect(logo().getAttribute('aria-label')).toBe(logoInPortrait);
       expect(version().textContent).toBe('Version 0.0.0-test');
-      // Membership and repeats: the diff is the footer's position and nothing else.
-      expect([...inLandscape].sort()).toEqual([...inPortrait].sort());
-      expect(inLandscape.filter((name) => !name.startsWith('Language'))).toEqual(
-        inPortrait.filter((name) => !name.startsWith('Language')),
-      );
     });
   });
 
   describe('the development tools keep to the tiles', () => {
-    it('sit after the tiles in both layouts, and the footer follows them in portrait only', async () => {
+    it('sit after the tiles in both layouts, and the version follows them in portrait only', async () => {
       setWindowSize(...PORTRAIT);
       await renderHome({ devTools: true });
       const paste = () => screen.getByRole('button', { name: 'Use pasted code' });
-      expect(inOrder([tiles(), paste(), language()])).toBe(true);
+      expect(inOrder([tiles(), paste(), version()])).toBe(true);
       setWindowSize(...LANDSCAPE); // the rows are laid out afresh: read them again
       expect(inOrder([screen.getByTestId('home-top'), tiles(), paste()])).toBe(true);
-      expect(comesBefore(paste(), language())).toBe(false);
+      expect(comesBefore(paste(), version())).toBe(false);
     });
   });
 
@@ -485,14 +451,14 @@ describe('Home turns with the phone (spec §7)', () => {
       home.scanner.queue({ outcome: 'scanned', raw: 'https://example.com/menu' });
       fireEvent.click(screen.getByRole('button', { name: /Live Stream/ }));
       await screen.findByText("This isn't a Seazn code.");
-      // Behind the panel, from the accessibility tree: the whole of Home, the top row's Language included.
+      // Behind the panel, from the accessibility tree: the whole of Home, the top row's gear included.
       const behind = home.container.querySelector('[aria-hidden="true"]');
       expect(behind?.textContent).toContain('Film a match to YouTube.');
       expect(behind?.textContent).toContain('Version 0.0.0-test');
-      expect(screen.queryByRole('button', { name: /Language/ })).toBeNull();
+      expect(screen.queryByRole('button', { name: 'Settings' })).toBeNull();
       setWindowSize(...PORTRAIT);
       expect(screen.getByText("This isn't a Seazn code.")).toBeTruthy();
-      expect(screen.queryByRole('button', { name: /Language/ })).toBeNull();
+      expect(screen.queryByRole('button', { name: 'Settings' })).toBeNull();
     });
   });
 });

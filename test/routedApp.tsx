@@ -18,6 +18,7 @@ import {
 import { OrientationGate } from '@/ui/components/OrientationGate';
 import { HomeScreen } from '@/ui/screens/HomeScreen';
 import { ScoringMatchScreen } from '@/ui/screens/ScoringMatchScreen';
+import { AppSettingsScreen } from '@/ui/screens/AppSettingsScreen';
 import { SettingsScreen } from '@/ui/screens/SettingsScreen';
 import { StreamScreen } from '@/ui/screens/StreamScreen';
 import { createFakePorts, type FakePorts } from './fakePorts';
@@ -49,7 +50,7 @@ const ROUTE_OF: Readonly<Record<Path, Route>> = {
   '/': 'home',
   '/stream': 'stream',
   '/stream/settings': 'streamSettings',
-  '/stream-settings': 'homeSettings',
+  '/settings': 'settings',
   '/scoring': 'scoring',
 };
 
@@ -121,7 +122,7 @@ function Screens({ route }: { route: Route }) {
   return (
     <>
       {route === 'home' ? <HomeScreen /> : null}
-      {route === 'homeSettings' ? <SettingsScreen from="home" /> : null}
+      {route === 'settings' ? <AppSettingsScreen /> : null}
       {route === 'scoring' ? <ScoringRouted /> : null}
       {route === 'stream' || route === 'streamSettings' ? <StreamScreen /> : null}
       {route === 'streamSettings' ? <SettingsScreen /> : null}

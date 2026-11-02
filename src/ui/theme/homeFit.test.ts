@@ -12,7 +12,7 @@ import app from '../../../app.json';
 import { loadFont } from '../../../test/fontMetrics';
 import { linesIn, linesOf } from '../../../test/textFit';
 
-// Spec §7 and F15: landscape Home is one top row (logo, status, Language, version), then the ended card as one
+// Spec §7 and F15: landscape Home is one top row (logo, status, version, the Settings gear), then the ended card as one
 // row, then Continue as one row, then the three tiles side by side. Spec §1's smallest landscape phone is
 // 640 × 360 dp. This adds the rows up from the board (Home-landscape, After-you-stopped-landscape), the token and
 // type declarations, the fonts the app ships and the dictionaries, the way viewfinderFit and settingsFit do. None
@@ -30,7 +30,12 @@ import { linesIn, linesOf } from '../../../test/textFit';
 
 type Dictionary = Readonly<Record<string, string>>;
 const DICTIONARIES: Readonly<Record<Lang, Dictionary>> = { en, es, fr, nl };
-const word = (lang: Lang, key: string): string => DICTIONARIES[lang][key] ?? '';
+const word = (lang: Lang, key: string): string => {
+  const text = DICTIONARIES[lang][key];
+  // A key the dictionaries no longer have must fail here, not measure as an empty string and pass every fit.
+  if (text === undefined) throw new Error(`no dictionary entry ${key} in ${lang}`);
+  return text;
+};
 
 /**
  * viewfinderFit's four shapes (spec §1's smallest, the least strip room, the board's own, and a large phone), and the
@@ -57,8 +62,10 @@ const measureAs =
 const measureTitle = measureAs('title');
 
 // Component literals the layout test pins on the rendered tree (HomeScreen.layout.test.tsx).
-/** GhostButton's `minHeight`: Language, OK and Forget. */
+/** GhostButton's `minHeight`: OK and Forget. */
 const GHOST = 48;
+/** The Settings gear in Home's corner (owner, 2026-11-02): an `IconButton`, a `layout.iconButton` square. */
+const GEAR = layout.iconButton;
 /** Button's `minHeight`: Continue's plate. */
 const PLATE = 56;
 /**
@@ -76,11 +83,7 @@ const STATUS_LINES = layout.homeStatusLines;
 /** Fix round 1 (coordinator): Continue-only and ended-only must leave the tallest tile this much to spare at 800 × 360. */
 const SLACK = 4;
 
-const TOP = Math.max(
-  layout.logoLandscape.height,
-  STATUS_LINES * typeScale.status.lineHeight,
-  GHOST,
-);
+const TOP = Math.max(layout.logoLandscape.height, STATUS_LINES * typeScale.status.lineHeight, GEAR);
 /** The ended card's row: the board's 10 above and below, the tallest part (OK) between. */
 const ENDED_HEAD = typeScale.state.lineHeight + typeScale.metricValue.lineHeight;
 const ENDED_LINES = typeScale.control.lineHeight + typeScale.metricUnit.lineHeight;
@@ -90,7 +93,7 @@ const CONTINUE_TEXT = typeScale.state.lineHeight + space.xs + typeScale.control.
 const CONTINUE = 2 * layout.rowCardPadV + BORDER + Math.max(PLATE, CONTINUE_TEXT);
 
 describe('the landscape rows, at their least (one line of text each)', () => {
-  it('the top row is 57: three lines of status, which holds the 56 logo and the 48 Language', () => {
+  it('the top row is 57: three lines of status, which holds the 56 logo and the 48 gear', () => {
     expect(STATUS_LINES * typeScale.status.lineHeight).toBe(57);
     expect(layout.logoLandscape.height).toBe(56);
     expect(TOP).toBe(57);
@@ -276,226 +279,11 @@ describe('which landscape windows hold the tiles without scrolling (spec §1, F1
   });
 });
 
-// R2 of the D3 findings design (owner, 2026-10-11), as the owner presented it on 2026-10-12 ("Instead of text, can we
-// have icon in right top corner?", the gear mockup): the Stream settings link became a gear on the Live Stream tile's
-// top-right corner, a `touch` square (Tile.tsx; Tile.test.tsx pins the rendered box). It never covers the tile's icon
-// or its title. Upright the tile is the column's width, so the head row ends where the gear begins. Sideways the tile
-// is a third of the row, too narrow to share the head's line (nl's LIVESTREAM is one word), so the button's top
-// padding is the gear's height and the head sits under it. The gear shows only with no card above the tiles (P6).
-describe('the Stream settings gear on the Live Stream tile’s corner (R2, as the owner presented it, 2026-10-12)', () => {
-  /** The gear's square target, on the frame's top-right corner. */
-  const GEAR = layout.touch;
-  /** Upright, the head row ends this far short of the button's padding: the gear's width less that padding. */
-  const RESERVE = GEAR - space.md;
-  type Box = {
-    readonly left: number;
-    readonly top: number;
-    readonly right: number;
-    readonly bottom: number;
-  };
-  const overlaps = (a: Box, b: Box): boolean =>
-    a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
-  /** The tile's frame width, its 4 dp edge included: a third of the row sideways, the column's width upright. */
-  const frameWidth = (screen: ScreenLayout, width: number): number =>
-    screen === 'landscape' ? (width - 2 * space.md - 2 * space.sm) / 3 : width - 2 * space.md;
-  /**
-   * The gear, the icon and the title as boxes in the frame (dp from its top-left), at the head's highest: the tile no
-   * taller than its words, so the button's top padding is all that stands above the head. A taller tile centres its
-   * words lower, further from the gear. The title is measured at the size `tileTitleRole` picks for the head's width.
-   */
-  const boxes = (screen: ScreenLayout, width: number, lang: Lang) => {
-    const frame = frameWidth(screen, width);
-    const pad = screen === 'landscape' ? TILE_PAD : space.md;
-    const top = screen === 'landscape' ? GEAR : pad;
-    const head = frame - TILE_EDGE - 2 * pad - (screen === 'portrait' ? RESERVE : 0);
-    const role = tileTitleRole(head);
-    const lines = linesIn(
-      word(lang, 'mode.stream').toUpperCase(),
-      head - ICON - space.sm,
-      measureAs(role),
-    );
-    const headHeight = Math.max(ICON, lines.length * typeScale[role].lineHeight);
-    const left = TILE_EDGE + pad;
-    const iconTop = top + (headHeight - ICON) / 2;
-    return {
-      role,
-      gear: { left: frame - GEAR, top: 0, right: frame, bottom: GEAR },
-      icon: { left, top: iconTop, right: left + ICON, bottom: iconTop + ICON },
-      title: {
-        left: left + ICON + space.sm,
-        top,
-        right: left + ICON + space.sm + Math.max(...lines.map(measureAs(role))),
-        bottom: top + headHeight,
-      },
-      /** Where the purpose line starts: under the head, the tile's gap apart. */
-      purposeTop: top + headHeight + space.xs,
-    };
-  };
-  let checked = 0;
-
-  it('the gear is a 48 dp square; upright the head ends 32 dp short of the padding, sideways it starts 48 down', () => {
-    expect([GEAR, RESERVE]).toEqual([48, 32]);
-  });
-
-  // [layout, Home's width, the size the rule picks, the closest the title comes to the gear and on which side].
-  // Sideways the gear's bottom and the head's top are both at 48, so they touch and never overlap. Upright the closest
-  // is French, DIFFUSION EN DIRECT (212.5 dp) on one line: at 360 its room beside the gear is 224 and it ends 11.5 dp
-  // short of the gear. The widths are homeFit's (N31): 592 a 640 dp phone behind a 3-button bar, 640, 728 the owner's
-  // phone sideways, 804 that phone's display, 915 the largest; 360 and 412 upright.
-  it.each([
-    ['landscape', 592, 'action', 'below', 0],
-    ['landscape', 640, 'title', 'below', 0],
-    ['landscape', 728, 'title', 'below', 0],
-    ['landscape', 804, 'title', 'below', 0],
-    ['landscape', 915, 'title', 'below', 0],
-    ['portrait', 360, 'title', 'beside', 11.5],
-    ['portrait', 412, 'title', 'beside', 63.5],
-  ] as const)(
-    '%s at %i wide, at `%s`: the gear covers neither the icon nor the title in any language (%s it, %d dp clear)',
-    (screen, width, role, side, clearance) => {
-      const clear: number[] = [];
-      for (const lang of LANGS) {
-        const drawn = boxes(screen, width, lang);
-        expect(drawn.role).toBe(role);
-        expect(overlaps(drawn.gear, drawn.icon), `${lang} icon`).toBe(false);
-        expect(overlaps(drawn.gear, drawn.title), `${lang} title`).toBe(false);
-        // Nor the purpose under the head, which runs the tile's whole width.
-        expect(drawn.purposeTop, `${lang} purpose`).toBeGreaterThanOrEqual(drawn.gear.bottom);
-        clear.push(
-          side === 'below'
-            ? drawn.title.top - drawn.gear.bottom
-            : drawn.gear.left - drawn.title.right,
-        );
-        checked += 1;
-      }
-      expect(Math.min(...clear)).toBeCloseTo(clearance, 1);
-    },
-  );
-
-  it('checked 7 widths × 4 languages (anti-vacuity)', () => {
-    expect(checked).toBe(7 * LANGS.length);
-  });
-
-  // Why sideways needs the band: with the head at the tile's 12 dp padding, beside the gear, these titles' first line
-  // would run under the gear's square (nl's LIVESTREAM by 25.9 dp at 640). Upright none does, even without the reserve.
-  it('sideways without the band, eleven of the twenty titles would run under the gear', () => {
-    const under: string[] = [];
-    for (const width of [592, 640, 728, 804, 915]) {
-      for (const lang of LANGS) {
-        const { gear, title } = boxes('landscape', width, lang);
-        const beside = { ...title, top: TILE_PAD, bottom: TILE_PAD + (title.bottom - title.top) };
-        if (overlaps(gear, beside)) under.push(`${width} ${lang}`);
-      }
-    }
-    expect(under).toEqual([
-      '592 es',
-      '592 fr',
-      '592 nl',
-      '640 en',
-      '640 es',
-      '640 fr',
-      '640 nl',
-      '728 en',
-      '728 fr',
-      '915 es',
-      '915 fr',
-    ]);
-    const nl = boxes('landscape', 640, 'nl');
-    expect(nl.title.right - nl.gear.left).toBeCloseTo(25.9, 1);
-  });
-
-  /** The Live Stream tile sideways with the gear's band, from the fonts; `titleLines` stands in for the title's lines. */
-  const innerAt = (width: number) =>
-    (width - 2 * space.md - 2 * space.sm) / 3 - TILE_EDGE - 2 * TILE_PAD;
-  const streamNeed = (width: number, titleLines?: number): number => {
-    const inner = innerAt(width);
-    let need = 0;
-    for (const lang of LANGS) {
-      const lines =
-        titleLines ??
-        linesOf(word(lang, 'mode.stream').toUpperCase(), inner - ICON - space.sm, measureTitle);
-      const purposeLines = linesOf(word(lang, 'home.tile.stream.purpose'), inner, (text) =>
-        geist400.width(text, typeScale.body.fontSize),
-      );
-      const hintLines = linesOf(word(lang, 'home.tile.stream.hint'), inner, (text) =>
-        geist500.width(text, typeScale.metricUnit.fontSize),
-      );
-      need = Math.max(
-        need,
-        GEAR +
-          Math.max(ICON, lines * typeScale.title.lineHeight) +
-          space.xs +
-          purposeLines * typeScale.body.lineHeight +
-          space.xs +
-          hintLines * typeScale.metricUnit.lineHeight +
-          TILE_PAD,
-      );
-    }
-    return need;
-  };
-  /** What a window leaves the tiles with no card (the top row, the pads, no gaps for cards): 97 dp of spend. */
-  const noCards = (height: number) =>
-    height - layout.homePadTop - layout.homePadBottom - layout.homeGap - TOP;
-
-  it('the band costs the Live Stream tile 36 dp sideways: the gear’s 48 in place of the 12 of padding', () => {
-    expect(GEAR - TILE_PAD).toBe(36);
-  });
-
-  // [width, height, the tile with its band as measured, with its title at the clamp's two lines (N31), what is left with
-  // no card]. 592 × 328 is a 640 × 360 phone behind a 32 dp status bar and a 3-button bar (an assumption: the fits have
-  // no shot of one); 728 × 328 the owner's phone sideways as Home is laid out; 804 × 332 the geometry of the 2026-10-08
-  // rulings. The rest are GEOMETRIES' (finding 2 of the Batch 10 review). Upright the gear adds no height: the head
-  // keeps its one line beside it (above).
-  const BAND = [
-    [592, 328, 218, 218, 231],
-    [640, 360, 202, 202, 263],
-    [728, 328, 202, 202, 231],
-    [800, 360, 180, 202, 263],
-    [804, 332, 180, 202, 235],
-    [844, 390, 180, 180, 293],
-    [915, 412, 151, 180, 315],
-  ] as const;
-  let bandChecked = 0;
-
-  it.each(BAND)(
-    '%i × %i: the Live Stream tile with its gear needs %i (%i at two title lines) of the %i left with no card',
-    (width, height, need, clamped, left) => {
-      expect(streamNeed(width)).toBe(need);
-      expect(streamNeed(width, layout.tileTitleLines)).toBe(clamped);
-      expect(noCards(height)).toBe(left);
-      expect(clamped).toBeLessThanOrEqual(left);
-      bandChecked += 1;
-    },
-  );
-
-  // Order-dependent on purpose: it follows the band's rows above. The windows are compared as a whole, so a duplicate
-  // row in place of one of them fails (the Batch 14 review's m1).
-  it('swept the band over every window in GEOMETRIES, and 592 × 328 and 804 × 332 besides, each once (anti-vacuity)', () => {
-    const windowOf = (row: readonly [number, number, ...number[]]): string =>
-      `${row[0]} × ${row[1]}`;
-    expect(BAND.map(windowOf).sort()).toEqual(
-      [...GEOMETRIES.map(windowOf), '592 × 328', '804 × 332'].sort(),
-    );
-    expect(bandChecked).toBe(BAND.length);
-  });
-
-  it('with Continue or the ended card it would break fix round 1’s 4 dp slack at 800 × 360, which is one reason it hides then (P6)', () => {
-    const leftAt800 = (cards: Cards) =>
-      TABLE.find(
-        ([width, height, name]) => width === 800 && height === 360 && name === cards,
-      )?.[3] ?? 0;
-    expect(streamNeed(800)).toBe(180);
-    expect([leftAt800('Continue only'), leftAt800('ended only')]).toEqual([173, 181]);
-    expect(leftAt800('Continue only') - streamNeed(800)).toBe(-7);
-    expect(leftAt800('ended only') - streamNeed(800)).toBe(1);
-    expect(leftAt800('ended only') - streamNeed(800)).toBeLessThan(SLACK);
-  });
-});
-
-describe('portrait with the gear: do three equal tiles fit? (R11 of the D3 findings design, re-measured)', () => {
+describe('portrait with the gear in the logo’s row: do three equal tiles fit? (R11 of the D3 findings design, re-measured)', () => {
   // The controller's R11 (2026-10-12) let a portrait tile grow from its own content because the Stream settings link
-  // made equal thirds need a 748–796 dp window at 360 wide. The gear adds no height upright, so this measures equal
-  // thirds again, in every state the tiles share the column with, on two windows: 360 × 720 (a 360 × 800 phone less
+  // made equal thirds need a 748–796 dp window at 360 wide. Settings is now the gear in the logo's row (owner,
+  // 2026-11-02), which is no taller than the 70 dp logo, and the footer lost Language, so the column is 56 dp shorter and
+  // no tile has a gear on it. This measures equal thirds again, in every state the tiles share the column with, on two windows: 360 × 720 (a 360 × 800 phone less
   // its status and navigation bars) and 412 × 800 (a 412 × 915 one), both after ShellFrame's insets, an assumption.
   // The 412 window is a deliberately pessimistic bound: it allows the bars 115 dp, the 360 one 80 (finding 3 of the
   // Batch 10 review). With the same 80, 412 × 835, equal thirds fit with one card in every language (the needs below
@@ -503,8 +291,8 @@ describe('portrait with the gear: do three equal tiles fit? (R11 of the D3 findi
   // Equal thirds (a zero basis) cannot grow past a third, so they must fit in every state or a tile is squeezed below
   // its words (N31's class). The cards are at their least (one line of text each): more lines only take more.
   const inner = (width: number) => width - 2 * space.md - TILE_EDGE - 2 * space.md;
-  /** The column's own spend, no card: the 16 pads, the 70 logo, the status's 57, the footer and three 8 gaps. */
-  const FOOTER = GHOST + space.sm + typeScale.metricUnit.lineHeight;
+  /** The column's own spend, no card: the 16 pads, the 70 logo row, the status's 57, the footer and three 8 gaps. */
+  const FOOTER = typeScale.metricUnit.lineHeight;
   const SPEND =
     2 * space.md +
     layout.logo.height +
@@ -529,13 +317,12 @@ describe('portrait with the gear: do three equal tiles fit? (R11 of the D3 findi
     typeScale.control.lineHeight +
     space.sm +
     GHOST;
-  /** A tile upright, the Live Stream one beside its gear (its head 32 dp short), from the fonts. */
+  /** A tile upright, from the fonts. */
   const tileAt = (width: number, lang: Lang, mode: 'stream' | 'scoring' | 'dashboard'): number => {
     const hint = TILE_HINT[mode];
-    const reserve = mode === 'stream' ? layout.touch - space.md : 0;
     const titleLines = linesOf(
       word(lang, `mode.${mode}`).toUpperCase(),
-      inner(width) - reserve - ICON - space.sm,
+      inner(width) - ICON - space.sm,
       measureTitle,
     );
     const purposeLines = linesOf(word(lang, `home.tile.${mode}.purpose`), inner(width), (text) =>
@@ -561,23 +348,23 @@ describe('portrait with the gear: do three equal tiles fit? (R11 of the D3 findi
   ] as const;
   let measured = 0;
 
-  it('the column spends 255 besides the tiles; Continue takes 141 at least and the ended card 136', () => {
-    expect(FOOTER).toBe(72);
-    expect(SPEND).toBe(255);
+  it('the column spends 199 besides the tiles; Continue takes 141 at least and the ended card 136', () => {
+    expect(FOOTER).toBe(16);
+    expect(SPEND).toBe(199);
     expect([CONTINUE_STACKED, ENDED_STACKED]).toEqual([141, 136]);
   });
 
-  // [width, lang, the three tiles (Live Stream beside its gear), what equal thirds need with no card, Continue, the
+  // [width, lang, the three tiles, what equal thirds need with no card, Continue, the
   // ended card, both]. Equal thirds need the spend, the card, three of the tallest tile and the two 8 gaps.
   it.each([
-    [360, 'en', [107, 107, 107], [592, 741, 736, 885]],
-    [360, 'es', [123, 129, 107], [658, 807, 802, 951]],
-    [360, 'fr', [107, 129, 107], [658, 807, 802, 951]],
-    [360, 'nl', [107, 129, 129], [658, 807, 802, 951]],
-    [412, 'en', [107, 107, 107], [592, 741, 736, 885]],
-    [412, 'es', [107, 107, 107], [592, 741, 736, 885]],
-    [412, 'fr', [107, 129, 107], [658, 807, 802, 951]],
-    [412, 'nl', [107, 129, 107], [658, 807, 802, 951]],
+    [360, 'en', [107, 107, 107], [536, 685, 680, 829]],
+    [360, 'es', [123, 129, 107], [602, 751, 746, 895]],
+    [360, 'fr', [107, 129, 107], [602, 751, 746, 895]],
+    [360, 'nl', [107, 129, 129], [602, 751, 746, 895]],
+    [412, 'en', [107, 107, 107], [536, 685, 680, 829]],
+    [412, 'es', [107, 107, 107], [536, 685, 680, 829]],
+    [412, 'fr', [107, 129, 107], [602, 751, 746, 895]],
+    [412, 'nl', [107, 129, 107], [602, 751, 746, 895]],
   ] as const)(
     '%i wide in %s: tiles %j; equal thirds need %j (no card, Continue, ended, both)',
     (width, lang, tiles, needs) => {
@@ -595,11 +382,13 @@ describe('portrait with the gear: do three equal tiles fit? (R11 of the D3 findi
     expect(measured).toBe(2 * LANGS.length);
   });
 
-  // The verdict, from the table above: with no card equal thirds fit both windows in every language (658 at most), but
-  // a card squeezes them on 360 × 720 in every language (Continue 741–807, the ended card 736–802), and on 412 × 800 in
-  // French and Dutch (807 and 802), the pessimistic bound above. So R11 stands: a tile grows from its own content and
-  // Home scrolls.
-  it('equal thirds fit with no card, but not with a card: R11 stands', () => {
+  // The verdict, from the table above, and what Language leaving Home changed (owner, 2026-11-02; the footer is the
+  // version line alone, 56 dp less). With no card equal thirds fit both windows in every language (602 at most). A card
+  // still squeezes them on 360 × 720 in Spanish, French and Dutch (Continue 751, the ended card 746), by 31 and 26 dp,
+  // but no longer in English (685 and 680 fit), and on 412 × 800 no card squeezes them in any language (the tightest is
+  // 49 dp to spare, in French and Dutch). R11's ruling stands, since 360 × 720 in three languages still squeezes: a tile
+  // grows from its own content and Home scrolls. Whether to revisit R11 with 56 dp back is the controller's.
+  it('equal thirds fit with no card; a card still squeezes them on 360 × 720 in es, fr and nl: R11 stands', () => {
     const shortfall = (width: number, window: number, state: (typeof STATES)[number][0]) =>
       LANGS.map((lang) => {
         const tallest = Math.max(
@@ -608,12 +397,21 @@ describe('portrait with the gear: do three equal tiles fit? (R11 of the D3 findi
         const card = STATES.find(([name]) => name === state)?.[1] ?? 0;
         return SPEND + card + 3 * tallest + 2 * space.sm - window;
       });
-    expect(shortfall(360, 720, 'no card')).toEqual([-128, -62, -62, -62]);
-    expect(shortfall(412, 800, 'no card')).toEqual([-208, -208, -142, -142]);
-    expect(shortfall(360, 720, 'Continue')).toEqual([21, 87, 87, 87]);
-    expect(shortfall(360, 720, 'ended')).toEqual([16, 82, 82, 82]);
-    expect(shortfall(412, 800, 'Continue')).toEqual([-59, -59, 7, 7]);
-    expect(shortfall(412, 800, 'ended')).toEqual([-64, -64, 2, 2]);
+    expect(shortfall(360, 720, 'no card')).toEqual([-184, -118, -118, -118]);
+    expect(shortfall(412, 800, 'no card')).toEqual([-264, -264, -198, -198]);
+    expect(shortfall(360, 720, 'Continue')).toEqual([-35, 31, 31, 31]);
+    expect(shortfall(360, 720, 'ended')).toEqual([-40, 26, 26, 26]);
+    expect(shortfall(412, 800, 'Continue')).toEqual([-115, -115, -49, -49]);
+    expect(shortfall(412, 800, 'ended')).toEqual([-120, -120, -54, -54]);
+  });
+
+  // The gear shares the logo's row upright: the row is the logo's 70, and the logo and the 48 gear fit the column at the
+  // narrowest phone (HomeScreen.layout.test.tsx pins the row's own box).
+  it('the logo and the gear share the logo row without making it taller, at 320 and 360 wide', () => {
+    expect(GEAR).toBeLessThanOrEqual(layout.logo.height);
+    for (const width of [320, 360]) {
+      expect(layout.logo.width - layout.logoInset + GEAR).toBeLessThanOrEqual(width - 2 * space.md);
+    }
   });
 });
 
@@ -664,19 +462,16 @@ describe('the top row’s status holds its three lines, in four languages (spec 
   ] as const;
   let checked = 0;
 
-  it.each(GEOMETRIES)('at %i × %i: what the logo, Language and the version leave', (width) => {
+  it.each(GEOMETRIES)('at %i × %i: what the logo, the version and the gear leave', (width) => {
     for (const lang of LANGS) {
-      const label = `${word(lang, 'home.footer.language')} · ${word(lang, `language.${lang}`)}`;
-      const language =
-        2 * space.md + 2 * layout.iconBorder + geist500.width(label, typeScale.control.fontSize);
       const version = geist500.width(
         word(lang, 'home.footer.version').replace('{version}', app.expo.version),
         typeScale.metricUnit.fontSize,
       );
-      const footer = language + layout.homeGap + version;
-      // The logo hangs its empty left edge outside the column, so it takes 160 less 12; two gaps of 16 and the pads.
+      // The logo hangs its empty left edge outside the column, so it takes 160 less 12. Four children (the logo, the
+      // status, the version, the gear), so three gaps of 16, and the pads.
       const logo = layout.logoLandscape.width - layout.logoInsetLandscape;
-      const status = width - 2 * space.md - logo - footer - 2 * space.md;
+      const status = width - 2 * space.md - logo - version - GEAR - 3 * space.md;
       const longest = ['mode.stream', 'mode.scoring', 'mode.dashboard']
         .map((key) => word(lang, key))
         .reduce((a, b) => (b.length > a.length ? b : a));
@@ -714,16 +509,16 @@ describe('every tile title fits its tile, wrapping within two lines, never insid
    * The title's row (Tile's `head`, which `tileTitleRole` reads): the tile's inner width. Sideways, a tile is a third of
    * HomeScreen's row (`contentLandscape` pads `space.md` a side and `tilesRow` has two `space.sm` gaps), less the 4 edge
    * and `tileLandscapePad` a side. Upright, each tile is the column's whole width (R11 of the D3 findings design): the
-   * window less HomeScreen's `screen` padding (`space.md` a side), the edge and the tile's `space.md` a side; the Live
-   * Stream tile's row ends 32 dp shorter beside its gear (R2, 2026-10-12), so `gear` gives that, the narrowest row.
+   * window less HomeScreen's `screen` padding (`space.md` a side), the edge and the tile's `space.md` a side. No tile
+   * carries a gear since Settings became the gear in Home's corner (owner, 2026-11-02), so the three rows are one width.
    */
-  const headWidth = (screen: ScreenLayout, width: number, gear = false): number =>
+  const headWidth = (screen: ScreenLayout, width: number): number =>
     screen === 'landscape'
       ? (width - 2 * space.md - 2 * space.sm) / 3 - TILE_EDGE - 2 * TILE_PAD
-      : width - 2 * space.md - TILE_EDGE - 2 * space.md - (gear ? layout.touch - space.md : 0);
+      : width - 2 * space.md - TILE_EDGE - 2 * space.md;
   /** The title's room: its row less the icon and the gap after it (`layout.modeIcon`, then `space.sm`). */
-  const titleBudget = (screen: ScreenLayout, width: number, gear = false): number =>
-    headWidth(screen, width, gear) - ICON - space.sm;
+  const titleBudget = (screen: ScreenLayout, width: number): number =>
+    headWidth(screen, width) - ICON - space.sm;
   /** Every word of every title, in caps. */
   const words = (): readonly string[] =>
     LANGS.flatMap((lang) =>
@@ -757,9 +552,7 @@ describe('every tile title fits its tile, wrapping within two lines, never insid
   // bar (spec §1's narrowest, with the bar), 640 spec §1's narrowest as Home's own, 728 the owner's phone sideways (804
   // dp less ShellFrame's insets with 3-button navigation, a 32 dp cutout and a 44 dp bar: the tiles measured 226.7 dp in
   // r12-home-fr-landscape.png), 804 that phone's display, which Home never gets with the bar, and 915 the largest.
-  // Upright: 360 the narrowest and 412 the largest. Every title is measured in the narrowest row, which upright is the
-  // Live Stream tile's beside its gear (sideways the gear takes no width from the row), and the rule picks the same size
-  // for both rows.
+  // Upright: 360 the narrowest and 412 the largest. Every title is measured in the tile's own row.
   it.each([
     ['landscape', 592, 'action'],
     ['landscape', 640, 'title'],
@@ -772,8 +565,7 @@ describe('every tile title fits its tile, wrapping within two lines, never insid
     '%s at %i wide, at `%s`: no word is wider than the title’s room, and no title takes three lines',
     (screen, width, role) => {
       expect(tileTitleRole(headWidth(screen, width))).toBe(role);
-      expect(tileTitleRole(headWidth(screen, width, true))).toBe(role);
-      const room = titleBudget(screen, width, true);
+      const room = titleBudget(screen, width);
       const measure = measureAs(role);
       for (const lang of LANGS) {
         for (const mode of MODES) {

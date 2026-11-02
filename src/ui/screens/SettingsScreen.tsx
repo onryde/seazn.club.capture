@@ -1,30 +1,21 @@
-import { memo, useCallback, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, useWindowDimensions, View } from 'react-native';
+import { useCallback, useState } from 'react';
+import { ScrollView, StyleSheet, useWindowDimensions, View } from 'react-native';
 import { screenLayout } from '@/domain/mode/homeLayout';
 import { useT } from '@/hooks/useLanguage';
-import { useBackToHome, useBackToViewfinder } from '@/hooks/useStreamLinks';
+import { useBackToViewfinder } from '@/hooks/useStreamLinks';
 import { useStreamSettings } from '@/hooks/useStreamSettings';
-import type { ControlSide, StreamSettings } from '@/services/streamSettingsStore';
 import { ChoiceRow } from '@/ui/components/ChoiceRow';
 import { DiagnosticsCard } from '@/ui/components/DiagnosticsCard';
 import { PowerRow } from '@/ui/components/PowerRow';
 import { RecordRow } from '@/ui/components/RecordRow';
+import { SideChoice } from '@/ui/components/SideChoice';
 import { SubScreenHeader } from '@/ui/components/SubScreenHeader';
 import { Text } from '@/ui/components/Text';
 import { TextLink } from '@/ui/components/TextLink';
 import { FEATURES } from '@/ui/features';
 import { layoutMarker } from '@/ui/layoutMarker';
-import { colour, layout as metrics, plateInk, radius, space } from '@/ui/theme/tokens';
-
-/** D22: shipped and linked native code, and the one source link MPL-2.0 asks for. */
-const LICENCES: readonly { readonly name: string; readonly licence: string }[] = [
-  { name: 'libsrt', licence: 'MPL-2.0' },
-  { name: 'StreamPack', licence: 'Apache-2.0' },
-  { name: 'expo-video', licence: 'MIT' },
-  { name: 'React Native', licence: 'MIT' },
-  { name: 'Expo', licence: 'MIT' },
-];
-const LIBSRT_SOURCE = 'https://github.com/Haivision/srt';
+import { LIBSRT_SOURCE, LICENCES } from '@/ui/licences';
+import { colour, layout as metrics, space } from '@/ui/theme/tokens';
 
 /**
  * Spec §4's Settings, inside Live Stream so it is reachable on air (AGENTS §6).
@@ -40,45 +31,28 @@ const LIBSRT_SOURCE = 'https://github.com/Haivision/srt';
  * the header), with the way back across the top. The root says
  * which in `data-layout`, the marker the tests read.
  *
- * R5: both variants carry the battery row after the power paragraph, on Android only. N33: both carry the record row
- * after it, Share record and, with its switch on, Send record to Seazn (R3).
+ * R5: the battery row follows the power paragraph, on Android only. N33: the record row follows it, Share record and,
+ * with its switch on, Send record to Seazn (R3).
  *
- * R2: opened from Home's Live Stream tile (`from="home"`) it is outside the mode: no Diagnostics card (nothing is
- * paired), no LIVE plate, and Back returns Home, named so. Landscape then draws one half, so the settings take the
- * width.
- * Both Back hooks run in both variants; each acts only on its own route, so neither takes the other's Back.
+ * Home's gear opens the app's own Settings (`AppSettingsScreen`, owner 2026-11-02), which holds the same two phone
+ * settings, the battery row and the record row in designed rows. This one is only Live Stream's.
  */
 type SettingsScreenProps = {
-  /** R2: `home` is the screen opened from Home's Live Stream tile: no Diagnostics, no LIVE plate, Back to Home. */
-  readonly from?: 'stream' | 'home';
   /** R3: Send record to Seazn in the record row. `FEATURES.recordSend` (on, the owner's ruling of 2026-10-12). */
   readonly recordSend?: boolean;
 };
 
-export function SettingsScreen({
-  from = 'stream',
-  recordSend = FEATURES.recordSend,
-}: SettingsScreenProps) {
+export function SettingsScreen({ recordSend = FEATURES.recordSend }: SettingsScreenProps) {
   const { t } = useT();
   const { width, height } = useWindowDimensions();
   const layout = screenLayout(width, height);
   const toCamera = useBackToViewfinder();
-  const toHome = useBackToHome();
-  const fromHome = from === 'home';
   const { settings, change, saveFailed } = useStreamSettings();
   const toggleAutomatic = useCallback(
     () => change({ automatic: !settings.automatic }),
     [change, settings.automatic],
   );
-  const header = (
-    <SubScreenHeader
-      title={t('settings.title')}
-      onBack={fromHome ? toHome : toCamera}
-      plate={!fromHome}
-      backLabel={fromHome ? t('stream.home') : undefined}
-    />
-  );
-  const card = fromHome ? null : <DiagnosticsCard />;
+  const header = <SubScreenHeader title={t('settings.title')} onBack={toCamera} />;
   const controls = (
     <>
       <ChoiceRow
@@ -103,7 +77,9 @@ export function SettingsScreen({
           <ScrollView style={styles.half} contentContainerStyle={styles.controls}>
             {controls}
           </ScrollView>
-          {card === null ? null : <ScrollView style={styles.half}>{card}</ScrollView>}
+          <ScrollView style={styles.half}>
+            <DiagnosticsCard />
+          </ScrollView>
         </View>
       </View>
     );
@@ -113,66 +89,11 @@ export function SettingsScreen({
       <ScrollView style={styles.screen} contentContainerStyle={styles.column}>
         {header}
         <View style={styles.controls}>{controls}</View>
-        {card}
+        <DiagnosticsCard />
       </ScrollView>
     </View>
   );
 }
-
-/**
- * Controls on the left or the right (the owner's board): the label and, on the same line at its right, one outlined
- * pair of segments, the chosen one filled lime. A radiogroup named by the label, each segment a radio. Takes the
- * screen's own `change`, so a refused save says so in the one place the screen shows it.
- */
-function SideChoice({
-  side,
-  change,
-}: {
-  side: ControlSide;
-  change: (next: Partial<StreamSettings>) => void;
-}) {
-  const { t } = useT();
-  const toLeft = useCallback(() => change({ side: 'left' }), [change]);
-  const toRight = useCallback(() => change({ side: 'right' }), [change]);
-  const label = t('settings.side.label');
-  return (
-    <View style={styles.side}>
-      <Text variant="controlInk" style={styles.sideLabel}>
-        {label}
-      </Text>
-      <View accessibilityRole="radiogroup" accessibilityLabel={label} style={styles.pair}>
-        <Segment label={t('settings.side.left')} checked={side === 'left'} onPress={toLeft} />
-        <Segment label={t('settings.side.right')} checked={side === 'right'} onPress={toRight} />
-      </View>
-    </View>
-  );
-}
-
-/** One segment of the pair: a radio, 48 dp tall; chosen, a lime fill with night ink (the plate rule, AGENTS §5). */
-const Segment = memo(function Segment({
-  label,
-  checked,
-  onPress,
-}: {
-  label: string;
-  checked: boolean;
-  onPress: () => void;
-}) {
-  return (
-    <Pressable
-      accessibilityRole="radio"
-      accessibilityLabel={label}
-      // aria-checked, not accessibilityState, as ChoiceRow has it.
-      aria-checked={checked}
-      onPress={onPress}
-      style={checked ? segmentOn : styles.segment}
-    >
-      <Text variant="control" style={checked ? styles.segmentTextOn : undefined}>
-        {label}
-      </Text>
-    </Pressable>
-  );
-});
 
 function Licences() {
   const { t } = useT();
@@ -211,27 +132,5 @@ const styles = StyleSheet.create({
   },
   halves: { flex: 1, flexDirection: 'row', gap: space.md },
   half: { flex: 1 },
-  /** The label and the pair on one line, the pair at the right. */
-  side: { flexDirection: 'row', alignItems: 'center', gap: space.sm },
-  sideLabel: { flex: 1 },
-  /** One outlined box; clipping the segments inside it gives the lime fill the box's corners. */
-  pair: {
-    flexDirection: 'row',
-    borderWidth: metrics.iconBorder,
-    borderColor: colour.ink3,
-    borderRadius: radius.card,
-    overflow: 'hidden',
-  },
-  segment: {
-    minHeight: metrics.touch,
-    minWidth: metrics.segmentMin,
-    paddingHorizontal: metrics.segmentPadX,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  segmentOn: { backgroundColor: colour.lime },
-  segmentTextOn: { color: plateInk },
   licences: { gap: space.xs },
 });
-
-const segmentOn = [styles.segment, styles.segmentOn];

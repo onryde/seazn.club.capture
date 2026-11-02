@@ -10,7 +10,7 @@ describe('the routes', () => {
     ['home', false, false],
     ['stream', false, false],
     ['streamSettings', true, false],
-    ['homeSettings', false, true],
+    ['settings', false, true],
     ['scoring', false, true],
   ])('%s: a Live Stream sub-screen %s, a Home sub-screen %s', (route, stream, home) => {
     expect([isStreamSubRoute(route), isHomeSubRoute(route)]).toEqual([stream, home]);

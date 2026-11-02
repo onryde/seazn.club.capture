@@ -31,7 +31,7 @@ describe('the Expo Router adapter (D19)', () => {
       home: true,
       stream: true,
       streamSettings: true,
-      homeSettings: true,
+      settings: true,
       scoring: true,
     };
     const paths = (Object.keys(routes) as Route[]).map((route) => {
@@ -42,13 +42,7 @@ describe('the Expo Router adapter (D19)', () => {
       return moves[0]?.[0];
     });
     expect(paths).toHaveLength(5);
-    expect(paths.sort()).toEqual([
-      '/',
-      '/scoring',
-      '/stream',
-      '/stream-settings',
-      '/stream/settings',
-    ]);
+    expect(paths.sort()).toEqual(['/', '/scoring', '/settings', '/stream', '/stream/settings']);
   });
 
   it('opens Remote Scoring from Home and leaves it by replace, as Stream Settings: no back stack between modes', () => {
@@ -64,7 +58,7 @@ describe('the Expo Router adapter (D19)', () => {
     expect(moves).toEqual(['replace /scoring', 'replace /']);
   });
 
-  it('opens Stream Settings from Home and leaves it by replace: no back stack between modes (P8)', () => {
+  it('opens Settings from Home’s gear and leaves it by replace: no back stack between modes (P8)', () => {
     const moves: string[] = [];
     const recording = {
       push: (p: string) => moves.push(`push ${p}`),
@@ -72,14 +66,14 @@ describe('the Expo Router adapter (D19)', () => {
       replace: (p: string) => moves.push(`replace ${p}`),
     };
     const nav = adapter(recording);
-    nav.go('homeSettings');
+    nav.go('settings');
     nav.go('home');
-    nav.go('homeSettings');
+    nav.go('settings');
     nav.go('stream');
     expect(moves).toEqual([
-      'replace /stream-settings',
+      'replace /settings',
       'replace /',
-      'replace /stream-settings',
+      'replace /settings',
       'replace /stream',
     ]);
   });
@@ -123,7 +117,7 @@ describe('the Expo Router adapter (D19)', () => {
 
   // Final fix round 2, I-A: Try again after a crash remounts the root Stack,
   // which Expo Router starts afresh at its first route; the port outlives it.
-  it.each(['stream', 'streamSettings', 'homeSettings'] as const)(
+  it.each(['stream', 'streamSettings', 'settings'] as const)(
     'forgets %s when the root restarts, so the next move to it is made',
     (from) => {
       const navigation = createExpoRouterNavigation('home');

@@ -182,6 +182,8 @@ Mutate the rejoin marker once and watch a test fail.
 
 ## 6. B6 — Stream settings from Home (R2)
 
+> **Superseded 2026-11-02 (owner: "we should have common setting in a top gear?", then "yes do it now").** The tile gear and its rule are replaced by one gear in Home's top-right corner, always shown, opening the app's Settings (General: language, battery, record; Live Stream: the two phone settings). See AGENTS.md §1 and §6.
+
 - The Live Stream tile gets a gear in its top-right corner, named "Stream
   settings" (`home.streamSettings`) for a screen reader: R2 as the owner
   presented it (2026-10-12, §1), in place of the text link first built under

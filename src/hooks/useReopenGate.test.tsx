@@ -309,6 +309,93 @@ describe('useReopenGate: inside Live Stream already (M22)', () => {
 });
 
 /**
+ * The app's Settings (Home's gear, owner 2026-11-02) is outside every mode, and App info is one tap from it: the
+ * operator goes there to set the battery to Unrestricted and comes back to the app. A paired phone holds no broadcast,
+ * so that return stays on Settings (the controller's ruling, 2026-11-02); arming and going live still move it to Live
+ * Stream (A2), through the gate or `useEngineFollow`.
+ */
+describe('useReopenGate: the app’s Settings while the engine is paired', () => {
+  it.each([
+    ['paired', 'paired-ready'],
+    ['pairing', 'pairing'],
+  ] as const)(
+    'stays on Settings on a return from App info with the engine %s',
+    async (_, scene) => {
+      const fakes = createFakePorts({ kvSeed: inStream });
+      fakes.engine.scene(scene);
+      gate(fakes);
+      await waitFor(() => expect(fakes.navigation.current()).toBe('stream'));
+      fakes.navigation.go('settings');
+      act(() => fakes.foreground.leave());
+      act(() => fakes.foreground.fire());
+      await act(async () => undefined);
+      expect(fakes.navigation.current()).toBe('settings');
+      expect(fakes.navigation.history).toEqual(['stream', 'settings']);
+    },
+  );
+
+  it('stays on it a second return running, and on a return with the engine idle', async () => {
+    const fakes = createFakePorts({ kvSeed: inStream });
+    fakes.engine.scene('paired-ready');
+    gate(fakes);
+    await waitFor(() => expect(fakes.navigation.current()).toBe('stream'));
+    fakes.navigation.go('settings');
+    for (let returns = 0; returns < 2; returns += 1) {
+      act(() => fakes.foreground.fire());
+      await act(async () => undefined);
+      expect(fakes.navigation.current()).toBe('settings');
+    }
+    act(() => fakes.engine.forceState({ kind: 'idle' }));
+    act(() => fakes.foreground.fire());
+    await act(async () => undefined);
+    expect(fakes.navigation.current()).toBe('settings');
+  });
+
+  // The ruling is the app's Settings only. The Remote Scoring pad is another Home sub-route, and a paired stream engine
+  // still takes it to Live Stream on a return: that is how it behaved before, and it is not this ruling's to change.
+  it('is the app’s Settings only: a paired engine still takes the Remote Scoring pad to Live Stream', async () => {
+    const fakes = createFakePorts({ kvSeed: inStream });
+    fakes.engine.scene('paired-ready');
+    gate(fakes);
+    await waitFor(() => expect(fakes.navigation.current()).toBe('stream'));
+    fakes.navigation.go('scoring');
+    act(() => fakes.foreground.fire());
+    await waitFor(() => expect(fakes.navigation.current()).toBe('stream'));
+  });
+
+  // From Arming on a broadcast is held (the shell's `selectBroadcastHeld`), and the route moves, as Home does.
+  it.each(['arming-retrying', 'connecting', 'live', 'holding'] as const)(
+    'still moves to Live Stream on a return with the broadcast %s',
+    async (scene) => {
+      const fakes = createFakePorts({ kvSeed: inStream });
+      fakes.engine.scene('paired-ready');
+      gate(fakes);
+      await waitFor(() => expect(fakes.navigation.current()).toBe('stream'));
+      fakes.navigation.go('settings');
+      act(() => fakes.engine.scene(scene));
+      act(() => fakes.foreground.fire());
+      await waitFor(() => expect(fakes.navigation.current()).toBe('stream'));
+    },
+  );
+
+  it('still moves the app’s Settings to Live Stream the moment a broadcast starts, with the follow', async () => {
+    const fakes = createFakePorts({ kvSeed: inStream });
+    fakes.engine.scene('paired-ready');
+    renderHook(
+      () => {
+        useReopenGate(true);
+        useEngineFollow();
+      },
+      { wrapper: wrapperFor(fakes) },
+    );
+    await waitFor(() => expect(fakes.navigation.current()).toBe('stream'));
+    fakes.navigation.go('settings');
+    act(() => fakes.engine.scene('live'));
+    await waitFor(() => expect(fakes.navigation.current()).toBe('stream'));
+  });
+});
+
+/**
  * The amendment's _Process death and reopen_ and _What the operator sees after
  * a cold-start reopen_: JS re-pairs once, at cold start, with claim `resume`,
  * when it finds the engine Idle; a foreground never pairs.
