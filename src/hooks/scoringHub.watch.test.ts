@@ -29,7 +29,7 @@ afterEach(() => {
 
 async function rig() {
   const fakes = createFakePorts({ clock: timerClock });
-  await saveScoringLink(fakes.kv, FIXTURE, LINK, 'stg.seazn.club');
+  await saveScoringLink(fakes.kv, FIXTURE, LINK, 'stg.seazn.club', 'badminton');
   const stop = vi.fn();
   vi.mocked(watchDeadLink).mockReturnValue(stop);
   return { fakes, stop };

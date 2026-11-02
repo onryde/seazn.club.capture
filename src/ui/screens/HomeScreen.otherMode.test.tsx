@@ -75,7 +75,7 @@ describe('Home: another mode while paired (A7)', () => {
       kind: 'unpairConfirm',
       tapped: 'scoring',
       code: scoring,
-      scoring: MATCH,
+      scoring: { kind: 'scan', match: MATCH, sportKey: 'badminton' },
     });
     expect(kinds(h)).toEqual(['pair']);
     expect(saved(h)?.active).toBe('stream');
@@ -205,7 +205,7 @@ describe('Home: another mode while paired (A7)', () => {
       kind: 'unpairConfirm',
       tapped: 'scoring',
       code: scoring,
-      scoring: MATCH,
+      scoring: { kind: 'scan', match: MATCH, sportKey: 'badminton' },
     });
   });
 

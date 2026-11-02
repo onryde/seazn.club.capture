@@ -40,7 +40,12 @@ import { useUnpair } from '@/hooks/useUnpair';
 import { useFormatTime } from '@/hooks/useFormatTime';
 import { useT } from '@/hooks/useLanguage';
 import { usePairing } from '@/hooks/usePairing';
-import { keepScoringLink, letGoOfScoring, type KeptLink } from '@/hooks/scoringOpen';
+import {
+  keepScoringLink,
+  letGoOfScoring,
+  type KeptLink,
+  type ScoringOpen,
+} from '@/hooks/scoringOpen';
 import {
   useAskDismiss,
   useContinueScoring,
@@ -93,8 +98,8 @@ export type HomePanel =
       readonly kind: 'unpairConfirm';
       readonly tapped: Mode;
       readonly code: ModeCode;
-      /** A scoring code's match, named by its scan; confirm opens it as the scan would have. */
-      readonly scoring?: SavedScoring;
+      /** A scoring code's match (a scan's, with its sport, or the saved match's); confirm opens it as it would have. */
+      readonly scoring?: ScoringOpen;
     };
 
 export type HomeView = {
@@ -229,7 +234,7 @@ function useOpenCode(
   const { modeStore, clock, navigation, engine, logger } = ports;
   const pair = usePairing();
   return useCallback(
-    async (code: ModeCode, stream: SavedStream | null, scoring: SavedScoring | null = null) => {
+    async (code: ModeCode, stream: SavedStream | null, scoring: ScoringOpen | null = null) => {
       if (!isReady(modeStore)) return;
       // A7: another mode while paired asks first; the sheet's confirm opens it.
       if (asksBeforeOpening(code.mode, selectEngineStatus(engine.getSnapshot()))) {
@@ -237,12 +242,12 @@ function useOpenCode(
         return setPanel({ kind: 'unpairConfirm', tapped: code.mode, code, ...part });
       }
       const replaced = savedScoringId(modeStore);
-      const saved = savedCodeFrom(code, clock(), stream, scoring);
+      const saved = savedCodeFrom(code, clock(), stream, scoring?.match ?? null);
       let kept: KeptLink | null = null;
       try {
-        // The link first, then the code that names it (design §4 step 1): a refused write opens nothing. A resume of
-        // the saved match has no token to keep (`useContinueScoring`).
-        if (code.mode === 'scoring' && scoring !== null && code.token !== '')
+        // The link first, with the match's sport, then the code that names it (design §4 step 1): a refused write opens
+        // nothing. A resume of the saved match has no link to keep (`useContinueScoring`).
+        if (code.mode === 'scoring' && scoring?.kind === 'scan')
           kept = await keepScoringLink(ports, code.token, scoring);
         await modeStore.open(saved);
       } catch {
@@ -254,7 +259,8 @@ function useOpenCode(
         kept?.release();
       }
       setStatusKey(null);
-      if (code.mode === 'scoring') return openScoring(ports, replaced, scoring, logger);
+      if (code.mode === 'scoring')
+        return openScoring(ports, replaced, scoring?.match ?? null, logger);
       if (code.mode !== 'stream') return;
       navigation.go('stream');
       pair(saved, 'new');

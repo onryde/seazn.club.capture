@@ -26,8 +26,26 @@ import type { MessageKey } from '@/i18n/messages';
  * Set score (`usePadSheets`), and a disqualification waits for its ending (record it, or void the sanction).
  */
 
+/**
+ * Badminton's own buttons, beside every pad's (`PadActions`): a sanction's steps and Set score (its sheets), the
+ * ending prompt, and the Start screen.
+ */
+export type BadmintonPadActions = PadActions & {
+  readonly choose: (id: string) => void;
+  readonly saveScore: (first: string, second: string) => void;
+  readonly recordEnding: () => void;
+  readonly voidSanction: () => void;
+  /** The Start screen (owner, 2026-11-01, option A): who serves first, picked; then Start match, a tap. */
+  readonly pickServer: (side: PadSide) => void;
+  readonly start: () => void;
+};
+
 /** What the badminton pad screen is drawn from: the real match's (`useBadmintonMatch`) and the preview's. */
-export type BadmintonPadModel = PadScreenModel<BadmintonPadKey, PadSheetView>;
+export type BadmintonPadModel = PadScreenModel<BadmintonPadKey, PadSheetView> & {
+  /** The Start screen's pick of who serves first; none until the scorer picks, and none once the match starts. */
+  readonly toss: PadSide | null;
+  readonly actions: BadmintonPadActions;
+};
 
 export function useBadmintonMatch(fixtureId: string): ScoringMatch<BadmintonPadModel> {
   return useScoringMatch(fixtureId, badmintonSport, useBadmintonPad);
@@ -112,7 +130,7 @@ type Parts = {
   readonly setCardNote: (note: MessageKey | null) => void;
 };
 
-function useActions(parts: Parts): PadActions {
+function useActions(parts: Parts): BadmintonPadActions {
   const { taps, sheets } = parts;
   const home = useBackToHome();
   const start = useStart(parts);
@@ -152,7 +170,7 @@ function useEnding({ sender, pad, taps, sheets }: Parts) {
     opening('ending', () => tap({ kind: 'ending', side: waiting.side, person: waiting.person }));
   }, [waiting, opening, tap, justShown]);
   const voidSanction = useCallback(() => {
-    if (!justShown()) opening('void', () => undo('sanction'));
+    if (!justShown()) opening('void', () => undo('ending'));
   }, [opening, undo, justShown]);
   return useMemo(() => ({ recordEnding, voidSanction }), [recordEnding, voidSanction]);
 }

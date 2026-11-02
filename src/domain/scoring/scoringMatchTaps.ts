@@ -99,7 +99,7 @@ export function onUndo<S extends SportTypes>(state: MatchState<S>, event: UndoEv
     return refused(state, 'notNow');
   const target = undoTargetOf(state, fold);
   if (target.kind === 'blocked') return refused(state, blockedRefusal(target.reason));
-  if (event.only === 'sanction' && !state.sport.awaitingEnding(fold.display)) {
+  if (event.only === 'ending' && !state.sport.awaitingEnding(fold.display)) {
     return refused(state, 'notNow');
   }
   const next = isStart(state, target) ? { ...state, toss: null } : state;

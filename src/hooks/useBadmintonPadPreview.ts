@@ -10,8 +10,7 @@ import {
   type PadSync,
   type PadView,
 } from '@/domain/scoring/padView';
-import type { PadActions } from '@/hooks/padScreenModel';
-import type { BadmintonPadModel } from '@/hooks/useBadmintonMatch';
+import type { BadmintonPadActions, BadmintonPadModel } from '@/hooks/useBadmintonMatch';
 import { useBackCloses } from '@/hooks/useBackCloses';
 import { usePadSheets, type PadSheetView } from '@/hooks/usePadSheets';
 import {
@@ -46,8 +45,8 @@ export type PreviewChoice = 'pad' | PadStateCard['kind'] | PreviewSample | 'sync
 
 export type { PadLineWords };
 
-/** The pad's actions, and the preview row's `pick`. */
-export type PadPreviewActions = PadActions & {
+/** The badminton pad's actions, and the preview row's `pick`. */
+export type PadPreviewActions = BadmintonPadActions & {
   readonly pick: (choice: PreviewChoice) => void;
 };
 

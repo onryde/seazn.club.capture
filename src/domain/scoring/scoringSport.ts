@@ -88,7 +88,7 @@ export interface ScoringSport<S extends SportTypes> {
   notStarted(display: S['display']): boolean;
   /** The match is decided (a ledger read then asks the bootstrap whether it was finalized). */
   decided(display: S['display']): boolean;
-  /** An ending waits to be recorded (Undo's `only: 'sanction'` takes back nothing else). */
+  /** An ending waits to be recorded (the ending prompt's Undo, `only: 'ending'`, is taken only then). */
   awaitingEnding(display: S['display']): boolean;
   /** What the last tap was, as Undo names it once it is taken back; null when it is nothing Undo names. */
   undoneOf(display: S['display']): S['undone'] | null;

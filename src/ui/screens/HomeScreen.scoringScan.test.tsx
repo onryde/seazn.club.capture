@@ -60,9 +60,28 @@ describe('a scoring link scanned from Home', () => {
     expect(home.kv.entries.get(STORE_KEYS.active)).toBe('scoring');
     const saved = decodeSavedCode(home.kv.entries.get(STORE_KEYS.code('scoring')) ?? '');
     expect(saved?.scoring).toEqual({ fixtureId: FAKE_MATCH, label: FAKE_LABEL });
-    expect(JSON.parse(home.kv.entries.get(linkKey(FAKE_MATCH)) ?? 'null')).toEqual(LINK);
+    expect(JSON.parse(home.kv.entries.get(linkKey(FAKE_MATCH)) ?? 'null')).toEqual({
+      ...LINK,
+      sportKey: 'badminton',
+    });
     // A scoring code never pairs (four questions, mode).
     expect(home.engine.intents).toEqual([]);
+  });
+
+  it('keeps the sport the bootstrap names with the link, where every runner reads it, and not in the saved code', async () => {
+    const home = await renderHome();
+    const bootstrap = home.scoring.bootstrap;
+    vi.spyOn(home.scoring, 'bootstrap').mockImplementation(async (link) => {
+      const answer = await bootstrap(link);
+      return answer.kind === 'ok'
+        ? { ...answer, bootstrap: { ...answer.bootstrap, sportKey: 'tabletennis' } }
+        : answer;
+    });
+    scanScoring(home);
+    await waitFor(() => expect(home.navigation.current()).toBe('scoring'));
+    const kept = JSON.parse(home.kv.entries.get(linkKey(FAKE_MATCH)) ?? 'null');
+    expect(kept).toEqual({ ...LINK, sportKey: 'tabletennis' });
+    expect(home.kv.entries.get(STORE_KEYS.code('scoring'))).not.toContain('tabletennis');
   });
 
   it('asks the server first, saves the link before the code, and the code before the route', async () => {
@@ -294,7 +313,10 @@ describe('a scoring link opened twice, or over another match', () => {
     act(() => hook.result.current.actions.openFromPanel(code));
     await waitFor(() => expect(fakes.navigation.current()).toBe('scoring'));
     await act(async () => undefined);
-    expect(JSON.parse(fakes.kv.entries.get(linkKey(FAKE_MATCH)) ?? 'null')).toEqual(LINK);
+    expect(JSON.parse(fakes.kv.entries.get(linkKey(FAKE_MATCH)) ?? 'null')).toEqual({
+      ...LINK,
+      sportKey: 'badminton',
+    });
     expect((await fakes.tapQueue.load(FAKE_MATCH))?.pending).toHaveLength(2);
   });
 
@@ -360,7 +382,10 @@ describe('which match is let go when another is scanned', () => {
       }),
     );
     expect(dismiss).not.toHaveBeenCalled();
-    expect(JSON.parse(fakes.kv.entries.get(linkKey('fake-doubles')) ?? 'null')).toEqual(LINK);
+    expect(JSON.parse(fakes.kv.entries.get(linkKey('fake-doubles')) ?? 'null')).toEqual({
+      ...LINK,
+      sportKey: 'badminton',
+    });
   });
 
   it('an old match whose queue cannot be read is kept: its taps are the leftover Home shows', async () => {

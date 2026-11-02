@@ -39,7 +39,7 @@ function mount(fakes: FakePorts, options: { strict?: boolean; id?: string } = {}
 
 async function rig(over: Parameters<typeof createFakePorts>[0] = {}): Promise<FakePorts> {
   const fakes = createFakePorts({ clock: timerClock, ...over });
-  await saveScoringLink(fakes.kv, FIXTURE, LINK, HOST);
+  await saveScoringLink(fakes.kv, FIXTURE, LINK, HOST, 'badminton');
   return fakes;
 }
 
@@ -130,6 +130,17 @@ describe('before the pad', () => {
     const view = mount(fakes);
     await flush();
     expect(view.result.current).toEqual({ kind: 'unsupportedSport', sportKey: 'tennis' });
+  });
+
+  it('kept as a sport this build does not score says which at once, offline too, and reads nothing', async () => {
+    const fakes = createFakePorts({ clock: timerClock });
+    await saveScoringLink(fakes.kv, FIXTURE, LINK, HOST, 'tennis');
+    fakes.scoring.goOffline(true);
+    const bootstrap = vi.spyOn(fakes.scoring, 'bootstrap');
+    const view = mount(fakes);
+    await flush();
+    expect(view.result.current).toEqual({ kind: 'unsupportedSport', sportKey: 'tennis' });
+    expect(bootstrap).not.toHaveBeenCalled();
   });
 
   it('whose ledger is over the size the phone reads is too large to score here', async () => {
@@ -801,7 +812,7 @@ describe('the screen leaving', () => {
 
   it('another match is another runner: the first is released', async () => {
     const fakes = await rig();
-    await saveScoringLink(fakes.kv, 'm-other', LINK, HOST);
+    await saveScoringLink(fakes.kv, 'm-other', LINK, HOST, 'badminton');
     let id = FIXTURE;
     const seen: string[] = [];
     const view = renderHook(

@@ -46,7 +46,7 @@ async function rig(
   mode: RunnerMode = 'focused',
   options: { link?: boolean } = {},
 ): Promise<Rig> {
-  if (options.link !== false) await saveScoringLink(fakes.kv, FIXTURE, LINK, HOST);
+  if (options.link !== false) await saveScoringLink(fakes.kv, FIXTURE, LINK, HOST, 'badminton');
   const idle = vi.fn();
   const runner = createScoringRunner(fakes.ports, { fixtureId: FIXTURE, mode, onIdle: idle });
   await runner.start();
@@ -189,6 +189,7 @@ describe('the link a build reads', () => {
       FIXTURE,
       { origin: 'https://seazn.club', token: FAKE_SCORING_SECRET },
       'seazn.club',
+      'badminton',
     );
     const runner = createScoringRunner(fakes.ports, { fixtureId: FIXTURE, mode: 'focused' });
     await runner.start();
@@ -199,7 +200,7 @@ describe('the link a build reads', () => {
 
   it('is none for a link kept for another host: a production build never sends a staging token', async () => {
     const fakes = createFakePorts({ clock: timerClock, hosts: ['seazn.club'] });
-    await saveScoringLink(fakes.kv, FIXTURE, LINK, 'stg.seazn.club');
+    await saveScoringLink(fakes.kv, FIXTURE, LINK, 'stg.seazn.club', 'badminton');
     const events = vi.spyOn(fakes.scoring, 'events');
     const runner = createScoringRunner(fakes.ports, { fixtureId: FIXTURE, mode: 'focused' });
     await runner.start();
@@ -884,7 +885,7 @@ describe('stopping', () => {
 
   it('before the first read finished leaves nothing subscribed', async () => {
     const fakes = newFakes();
-    await saveScoringLink(fakes.kv, FIXTURE, LINK, HOST);
+    await saveScoringLink(fakes.kv, FIXTURE, LINK, HOST, 'badminton');
     const runner = createScoringRunner(fakes.ports, { fixtureId: FIXTURE, mode: 'focused' });
     const starting = runner.start();
     await runner.stop();

@@ -17,7 +17,7 @@ async function flush(): Promise<void> {
 }
 
 async function leftQueued(fakes: FakePorts, id: string): Promise<void> {
-  await saveScoringLink(fakes.kv, id, LINK, HOST);
+  await saveScoringLink(fakes.kv, id, LINK, HOST, 'badminton');
   await fakes.tapQueue.save({
     fixtureId: id,
     label: 'A. Sharma v L. Chen',

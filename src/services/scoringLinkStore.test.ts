@@ -15,6 +15,8 @@ const LINK = {
 };
 
 const HOST = 'stg.seazn.club';
+/** The sport a link is kept with (2026-11-02): the scan's bootstrap names it, and every runner reads it from here. */
+const SPORT = 'tabletennis';
 
 const failing = (): KeyValueStore => ({
   get: async () => {
@@ -29,12 +31,42 @@ const failing = (): KeyValueStore => ({
 });
 
 describe('the scoring link store', () => {
-  it('keeps a link under scoring.link.{fixtureId} and reads it back whole', async () => {
+  it('keeps a link under scoring.link.{fixtureId} with its match’s sport, and reads both back whole', async () => {
     const kv = createMemoryKeyValueStore();
-    await saveScoringLink(kv, FIXTURE, LINK, HOST);
+    await saveScoringLink(kv, FIXTURE, LINK, HOST, SPORT);
     expect(scoringLinkKey(FIXTURE)).toBe(`scoring.link.${FIXTURE}`);
     expect([...kv.entries.keys()]).toEqual([`scoring.link.${FIXTURE}`]);
-    expect(await readScoringLink(kv, FIXTURE, HOST)).toEqual({ kind: 'link', link: LINK });
+    expect(await readScoringLink(kv, FIXTURE, HOST)).toEqual({
+      kind: 'link',
+      link: LINK,
+      sportKey: 'tabletennis',
+    });
+  });
+
+  it('reads a link kept before the sport was as a badminton match’s, the one sport this phone scored then', async () => {
+    const kv = createMemoryKeyValueStore({ [scoringLinkKey(FIXTURE)]: JSON.stringify(LINK) });
+    expect(await readScoringLink(kv, FIXTURE, HOST)).toEqual({
+      kind: 'link',
+      link: LINK,
+      sportKey: 'badminton',
+    });
+  });
+
+  it('a second save of the match keeps the sport of the last, as a fresh scan does', async () => {
+    const kv = createMemoryKeyValueStore();
+    await saveScoringLink(kv, FIXTURE, LINK, HOST, 'badminton');
+    await saveScoringLink(kv, FIXTURE, LINK, HOST, SPORT);
+    expect(await readScoringLink(kv, FIXTURE, HOST)).toEqual({
+      kind: 'link',
+      link: LINK,
+      sportKey: 'tabletennis',
+    });
+  });
+
+  it('refuses to keep a link with no sport, as a read would never hand one back', async () => {
+    const kv = createMemoryKeyValueStore();
+    await expect(saveScoringLink(kv, FIXTURE, LINK, HOST, '')).rejects.toThrow();
+    expect([...kv.entries.keys()]).toEqual([]);
   });
 
   it('answers none for a match with no link, the empty input', async () => {
@@ -54,6 +86,9 @@ describe('the scoring link store', () => {
       JSON.stringify({ origin: 'http://stg.seazn.club', token: LINK.token }),
     ],
     ['a token that is no string', JSON.stringify({ origin: LINK.origin, token: 7 })],
+    ['a sport that is no string', JSON.stringify({ ...LINK, sportKey: 7 })],
+    ['a sport that is null', JSON.stringify({ ...LINK, sportKey: null })],
+    ['an empty sport', JSON.stringify({ ...LINK, sportKey: '' })],
   ])('reads %s as no link, never a half link', async (_name, text) => {
     const kv = createMemoryKeyValueStore({ [scoringLinkKey(FIXTURE)]: text });
     expect(await readScoringLink(kv, FIXTURE, HOST)).toEqual({ kind: 'none' });
@@ -68,21 +103,21 @@ describe('the scoring link store', () => {
     async (id) => {
       const kv = createMemoryKeyValueStore({ [`scoring.link.${id}`]: JSON.stringify(LINK) });
       expect(await readScoringLink(kv, id, HOST)).toEqual({ kind: 'none' });
-      await expect(saveScoringLink(kv, id, LINK, HOST)).rejects.toThrow();
+      await expect(saveScoringLink(kv, id, LINK, HOST, SPORT)).rejects.toThrow();
     },
   );
 
   it('forgets a link, and only that match’s; forgetting none is nothing', async () => {
     const kv = createMemoryKeyValueStore();
-    await saveScoringLink(kv, FIXTURE, LINK, HOST);
-    await saveScoringLink(kv, 'other-match', LINK, HOST);
+    await saveScoringLink(kv, FIXTURE, LINK, HOST, SPORT);
+    await saveScoringLink(kv, 'other-match', LINK, HOST, SPORT);
     await forgetScoringLink(kv, FIXTURE);
     await forgetScoringLink(kv, FIXTURE);
     expect([...kv.entries.keys()]).toEqual(['scoring.link.other-match']);
   });
 
   it('rejects when the store refuses a save or a forget, so the caller never believes it done', async () => {
-    await expect(saveScoringLink(failing(), FIXTURE, LINK, HOST)).rejects.toThrow();
+    await expect(saveScoringLink(failing(), FIXTURE, LINK, HOST, SPORT)).rejects.toThrow();
     await expect(forgetScoringLink(failing(), FIXTURE)).rejects.toThrow();
   });
 
@@ -107,7 +142,13 @@ describe('the scoring link store', () => {
   it('refuses to keep a link for another host, and keeps nothing', async () => {
     const kv = createMemoryKeyValueStore();
     await expect(
-      saveScoringLink(kv, FIXTURE, { origin: 'https://evil.example', token: LINK.token }, HOST),
+      saveScoringLink(
+        kv,
+        FIXTURE,
+        { origin: 'https://evil.example', token: LINK.token },
+        HOST,
+        SPORT,
+      ),
     ).rejects.toThrow();
     expect([...kv.entries.keys()]).toEqual([]);
   });
@@ -115,14 +156,14 @@ describe('the scoring link store', () => {
   it('refuses to keep a link with no token, as a read would never hand one back', async () => {
     const kv = createMemoryKeyValueStore();
     await expect(
-      saveScoringLink(kv, FIXTURE, { origin: LINK.origin, token: '' }, HOST),
+      saveScoringLink(kv, FIXTURE, { origin: LINK.origin, token: '' }, HOST, SPORT),
     ).rejects.toThrow();
     expect([...kv.entries.keys()]).toEqual([]);
   });
 
   it('trusts no host when the build has none', async () => {
     const kv = createMemoryKeyValueStore();
-    await expect(saveScoringLink(kv, FIXTURE, LINK, '')).rejects.toThrow();
+    await expect(saveScoringLink(kv, FIXTURE, LINK, '', SPORT)).rejects.toThrow();
     const stored = createMemoryKeyValueStore({ [scoringLinkKey(FIXTURE)]: JSON.stringify(LINK) });
     expect(await readScoringLink(stored, FIXTURE, '')).toEqual({ kind: 'none' });
   });

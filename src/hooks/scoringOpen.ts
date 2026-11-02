@@ -10,6 +10,17 @@ import { forgetScoringLink, readScoringLink, saveScoringLink } from '@/services/
  */
 type ScoringPorts = Pick<Ports, 'kv' | 'hosts' | 'tapQueue' | 'logger'>;
 
+/**
+ * The match a scoring code opens. A scan's is named by its bootstrap, and its sport (the bootstrap's `sport_key`) is kept
+ * with the link the scan keeps, the one file every runner reads before a bootstrap (`scoringLinkStore`); never in the
+ * saved code. A resume of the saved match (`useContinueScoring`) keeps no link, so it carries no sport.
+ */
+export type ScoringOpen =
+  | { readonly kind: 'scan'; readonly match: SavedScoring; readonly sportKey: string }
+  | { readonly kind: 'resume'; readonly match: SavedScoring };
+
+export type ScannedMatch = Extract<ScoringOpen, { kind: 'scan' }>;
+
 /** The link goes where every read finds it: the build's own origin, and the scanned token, under the match's key. */
 export const linkOf = (ports: Pick<Ports, 'hosts'>, token: string) => ({
   origin: `https://${ports.hosts[0] ?? ''}`,
@@ -39,26 +50,29 @@ export type KeptLink = { readonly undo: () => Promise<void>; readonly release: (
 export async function keepScoringLink(
   ports: Ports,
   token: string,
-  scoring: SavedScoring,
+  scan: ScannedMatch,
 ): Promise<KeptLink> {
-  const release = scoringHubOf(ports).claim(scoring.fixtureId);
+  const release = scoringHubOf(ports).claim(scan.match.fixtureId);
   try {
-    return { undo: await writeLink(ports, token, scoring), release };
+    return { undo: await writeLink(ports, token, scan), release };
   } catch (error) {
     release();
     throw error;
   }
 }
 
-/** The link, written and the queue revived; the undo of it. Takes the link back itself when the revive is refused. */
+/**
+ * The link, with the match's sport, written and the queue revived; the undo of it. Takes the link back itself when the
+ * revive is refused.
+ */
 async function writeLink(
   ports: Ports,
   token: string,
-  scoring: SavedScoring,
+  { match: scoring, sportKey }: ScannedMatch,
 ): Promise<() => Promise<void>> {
   const host = ports.hosts[0] ?? '';
   const had = (await readScoringLink(ports.kv, scoring.fixtureId, host)).kind !== 'none';
-  await saveScoringLink(ports.kv, scoring.fixtureId, linkOf(ports, token), host);
+  await saveScoringLink(ports.kv, scoring.fixtureId, linkOf(ports, token), host, sportKey);
   const undo = async (): Promise<void> => {
     if (!had) await forgetScoringLink(ports.kv, scoring.fixtureId);
   };

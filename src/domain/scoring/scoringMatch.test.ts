@@ -897,7 +897,7 @@ describe('Undo', () => {
   });
 
   it('a sanction’s void by the ending prompt is refused when no ending is waiting', () => {
-    const result = step(withOwnRally(), { ...UNDO, only: 'sanction' }, NOW);
+    const result = step(withOwnRally(), { ...UNDO, only: 'ending' }, NOW);
     expect(result.outcome).toEqual({ ok: false, refusal: 'notNow' });
     expect(result.state.sync.queue.pending).toEqual([]);
   });

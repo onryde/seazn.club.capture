@@ -78,6 +78,7 @@ function resolved<S extends SportTypes, Pad>(
 ): ScoringMatch<Pad> {
   if (snapshot.kind === 'noLink') return { kind: 'linkGone' };
   if (snapshot.kind === 'unreadable') return { kind: 'unreadable', what: snapshot.what };
+  if (snapshot.kind === 'unsupportedSport') return snapshot;
   if (view === null) return { kind: 'loading', offline: false };
   return view.kind === 'pad' ? (pad ?? { kind: 'loading', offline: false }) : view;
 }
@@ -108,10 +109,13 @@ function newTapKey(logger: Logger): string {
   return uuidV4(bytes);
 }
 
-/** What a sport's pad hook sends the match: a tap of that sport, Undo, and words for the line. */
+/**
+ * What a sport's pad hook sends the match: a tap of that sport, Undo (`'ending'`: the sport's ending prompt's, taken only
+ * while an ending waits), and words for the line.
+ */
 export type MatchSender<S extends SportTypes> = {
   readonly tap: (made: S['tap']) => PadOutcome;
-  readonly undo: (only?: 'sanction') => PadOutcome;
+  readonly undo: (only?: 'ending') => PadOutcome;
   readonly say: (words: PadLineWords) => void;
 };
 
@@ -130,7 +134,7 @@ export function useSender<S extends SportTypes>(
     [send],
   );
   const undo = useCallback(
-    (only?: 'sanction') =>
+    (only?: 'ending') =>
       send((key, at) => ({ kind: 'undo', key, at, ...(only === undefined ? {} : { only }) })),
     [send],
   );

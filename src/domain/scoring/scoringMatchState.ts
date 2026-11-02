@@ -63,8 +63,8 @@ export type SaveOwed = {
 
 export type MatchState<S extends SportTypes = SportTypes> = {
   /**
-   * The sport the match opened as (`sportOfMatch`), kept for its life: it folds the match, makes each tap's event and
-   * draws the pad. A bootstrap that names another sport is never folded by it (`unsupportedSport`).
+   * The sport the match opened as (the one its link was kept with), kept for its life: it folds the match, makes each
+   * tap's event and draws the pad. A bootstrap that names another sport is never folded by it (`unsupportedSport`).
    */
   readonly sport: ScoringSport<S>;
   readonly sync: SyncState;
@@ -132,7 +132,8 @@ export type MatchEvent<S extends SportTypes = SportTypes> =
       readonly kind: 'undo';
       readonly key: string;
       readonly at: string;
-      readonly only?: 'sanction';
+      /** The sport's ending prompt's Undo (badminton's Void sanction): taken only while an ending waits. */
+      readonly only?: 'ending';
     }
   | { readonly kind: 'pickServer'; readonly side: PadSide }
   | { readonly kind: 'answered'; readonly sent: QueuedEvent; readonly answer: AppendAnswer }
@@ -157,7 +158,7 @@ export type MatchEvent<S extends SportTypes = SportTypes> =
 
 /** What is held when a match opens: the queue and ledger from disk, and what the boot cache kept. */
 export type MatchHeld<S extends SportTypes = SportTypes> = {
-  /** The sport the match opens as (`sportOfMatch`). */
+  /** The sport the match opens as: the one its link was kept with (`scoringLinkStore`). */
   readonly sport: ScoringSport<S>;
   readonly queue: MatchQueue;
   readonly ledger: readonly LedgerEvent[];

@@ -2,7 +2,8 @@ import { useCallback, useEffect, type Dispatch, type SetStateAction } from 'reac
 import { type Result, err } from '@/domain/Result';
 import type { CodeError, WaitingFields } from '@/domain/credentials/waitingFields';
 import type { ModeCode } from '@/domain/mode/Mode';
-import type { SavedScoring, SavedStream } from '@/domain/mode/savedCode';
+import type { SavedStream } from '@/domain/mode/savedCode';
+import type { ScoringOpen } from '@/hooks/scoringOpen';
 import type { HomePanel, StreamCode } from '@/hooks/useHome';
 import { useScoringCheck } from '@/hooks/useScoringCheck';
 import { usePorts } from '@/hooks/usePorts';
@@ -11,11 +12,11 @@ import type { Logger } from '@/services/logger';
 import type { ModeStore } from '@/services/modeStore';
 
 export type SetPanel = Dispatch<SetStateAction<HomePanel | null>>;
-/** A scoring code is opened with the match the server named (the scan's bootstrap); any other mode with none. */
+/** A scoring code is opened with the match the server named (the scan's bootstrap, or the saved match's); any other mode with none. */
 export type OpenCode = (
   code: ModeCode,
   stream: SavedStream | null,
-  scoring?: SavedScoring | null,
+  scoring?: ScoringOpen | null,
 ) => Promise<void>;
 export type OpenOrCheck = (code: ModeCode) => Promise<void>;
 type Answer = Result<WaitingFields, CodeError>;

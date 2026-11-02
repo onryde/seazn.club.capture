@@ -11,19 +11,19 @@ import type { MessageKey } from '@/i18n/messages';
  */
 export type { PadLineWords };
 
-/** Every action the screen sends: the preview's, less its row's `pick`, plus what only a real match has. */
+/**
+ * What every sport's pad screen sends (owner, 2026-11-02: "pad per sport must"): Home, a half, Undo, a tool, the sheets
+ * every pad has (Match details, History) and closing them, and the update banner's buttons. A sport's own buttons are
+ * its model's (badminton's Start screen, its sheets' steps and its ending prompt: `BadmintonPadActions`).
+ */
 export type PadActions = {
   readonly home: () => void;
   readonly tapHalf: (side: PadSide) => void;
   readonly undo: () => void;
   readonly tool: (id: string) => void;
-  readonly choose: (id: string) => void;
   readonly cancel: () => void;
   /** Match details' Close and dim: quiet in the bounce window of the sheet opening (review M2, `usePadSheets`). */
   readonly dismiss: () => void;
-  readonly saveScore: (first: string, second: string) => void;
-  readonly recordEnding: () => void;
-  readonly voidSanction: () => void;
   /** The update banner's two buttons: the store's listing, and this match's scoring link in the browser. */
   readonly update: () => void;
   readonly browser: () => void;
@@ -31,14 +31,12 @@ export type PadActions = {
   readonly details: () => void;
   /** History (owner ruling 21): every entry on the sheet, newest first, in a cover over the pad; view only. */
   readonly history: () => void;
-  /** The Start screen (owner, 2026-11-01, option A): who serves first, picked; then Start match, a tap. */
-  readonly pickServer: (side: PadSide) => void;
-  readonly start: () => void;
 };
 
 /**
  * The pad itself: the plan's `PadScreenModel`, with `kind` so the screen can tell it from the states that replace it.
- * `Key` is the sport's dictionary keys, `Sheet` what its sheets over the pad can be.
+ * `Key` is the sport's dictionary keys, `Sheet` what its sheets over the pad can be. What only one sport's pad has is
+ * that sport's, added by intersection, its actions included (`BadmintonPadModel`).
  */
 export type PadScreenModel<Key extends string, Sheet> = {
   readonly kind: 'pad';
@@ -49,8 +47,6 @@ export type PadScreenModel<Key extends string, Sheet> = {
   readonly cardNote: MessageKey | null;
   /** The last tap on a half that counted, for its flash (owner ruling 14). */
   readonly flash: HalfFlash;
-  /** The Start screen's pick of who serves first; none until the scorer picks, and none once the match starts. */
-  readonly toss: PadSide | null;
   readonly actions: PadActions;
 };
 

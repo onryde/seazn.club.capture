@@ -8,7 +8,8 @@ import type {
   MatchState,
   SaveEffect,
 } from '@/domain/scoring/scoringMatchState';
-import { sportOfMatch } from '@/domain/scoring/sports';
+import type { AnySport } from '@/domain/scoring/scoringSport';
+import { sportFor } from '@/domain/scoring/sports';
 import type { LedgerEvent } from '@/domain/scoring/wire';
 import { createReads } from '@/hooks/scoringRunnerReads';
 import { createSaver } from '@/hooks/scoringRunnerSaves';
@@ -35,11 +36,15 @@ export type RunnerPorts = Pick<
 
 export type RunnerMode = 'focused' | 'headless';
 
-/** What the match is before it is playing: being read, with no link saved, or with a file this phone cannot read. */
+/**
+ * What the match is before it is playing: being read, with no link saved, with a file this phone cannot read, or kept
+ * as a sport this build does not score (its link names it), which is never opened.
+ */
 export type RunnerSnapshot =
   | { readonly kind: 'loading' }
   | { readonly kind: 'noLink' }
   | { readonly kind: 'unreadable'; readonly what: 'queue' | 'link' }
+  | { readonly kind: 'unsupportedSport'; readonly sportKey: string }
   | { readonly kind: 'ready'; readonly state: MatchState };
 
 const LOADING: RunnerSnapshot = { kind: 'loading' };
@@ -228,6 +233,8 @@ export function createScoringRunner(ports: RunnerPorts, options: Options): Scori
 }
 
 type Opened = {
+  /** The sport the match's link was kept with: the match is scored as it, by every runner, from the start. */
+  readonly sport: AnySport;
   readonly queue: MatchQueue;
   readonly ledger: readonly LedgerEvent[];
   readonly boot: BootCache | null;
@@ -243,7 +250,9 @@ const emptyQueue = (fixtureId: string): MatchQueue => ({
 
 /**
  * The link, then the three files: what the match is before it is playing. The link's token is protected in the log
- * before anything is read with it, and handed to `onLink` as soon as it is known (the live owner reads it back).
+ * before anything is read with it, and handed to `onLink` as soon as it is known (the live owner reads it back). The
+ * sport is the link's (`scoringLinkStore`): a match of a sport this build does not score is said, and nothing more is
+ * read for it.
  */
 async function loadMatch(
   ports: RunnerPorts,
@@ -259,6 +268,8 @@ async function loadMatch(
   }
   ports.logger.protectLink(stored.link.token);
   onLink(stored.link);
+  const sport = sportFor(stored.sportKey);
+  if (sport === null) return { kind: 'unsupportedSport', sportKey: stored.sportKey };
   const [queue, ledger, boot] = await Promise.all([
     ports.tapQueue.load(fixtureId),
     ports.tapQueue.loadLedger(fixtureId),
@@ -269,7 +280,7 @@ async function loadMatch(
   }
   return {
     kind: 'open',
-    open: { queue: queue ?? emptyQueue(fixtureId), ledger: ledger ?? [], boot },
+    open: { sport, queue: queue ?? emptyQueue(fixtureId), ledger: ledger ?? [], boot },
   };
 }
 
@@ -290,13 +301,13 @@ async function markNoLink(ports: RunnerPorts, fixtureId: string): Promise<void> 
 }
 
 /**
- * What the reducer opens a match from: the sport (`sportOfMatch`), the files, the judge this mode has, and whether the
+ * What the reducer opens a match from: the sport its link names, the files, the judge this mode has, and whether the
  * app is in the foreground.
  */
 function heldOf(loaded: Opened, mode: RunnerMode, foreground: boolean): MatchHeld {
   const rulesVersion = Math.max(1, ...loaded.queue.pending.map((tap) => tap.rulesVersion));
   return {
-    sport: sportOfMatch(loaded.boot),
+    sport: loaded.sport,
     queue: loaded.queue,
     ledger: loaded.ledger,
     bootstrap: loaded.boot?.bootstrap ?? null,

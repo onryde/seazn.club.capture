@@ -24,7 +24,7 @@ async function flush(): Promise<void> {
 
 async function rig(): Promise<FakePorts> {
   const fakes = createFakePorts({ clock: timerClock });
-  await saveScoringLink(fakes.kv, FIXTURE, LINK, HOST);
+  await saveScoringLink(fakes.kv, FIXTURE, LINK, HOST, 'badminton');
   return fakes;
 }
 
@@ -32,7 +32,7 @@ const listeners = (fakes: FakePorts): number => fakes.foreground.returnListeners
 
 /** A queue with one tap for a match that has a link saved, so a sender has something to do. */
 async function queued(fakes: FakePorts, id: string, over: Partial<MatchQueue> = {}): Promise<void> {
-  await saveScoringLink(fakes.kv, id, LINK, HOST);
+  await saveScoringLink(fakes.kv, id, LINK, HOST, 'badminton');
   await fakes.tapQueue.save({
     fixtureId: id,
     label: 'A. Sharma v L. Chen',

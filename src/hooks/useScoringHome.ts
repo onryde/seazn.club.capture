@@ -113,7 +113,7 @@ export function useAskDismiss(
   );
 }
 
-/** A saved match's resume carries no scan: its link is already kept, so there is no token to keep again. */
+/** A saved match's resume carries no scan: its link is already kept (with its sport), so there is no token to keep. */
 const RESUME: ModeCode = { mode: 'scoring', raw: '', token: '' };
 
 /**
@@ -131,7 +131,12 @@ export function useContinueScoring(
     const scoring = savedPart(modeStore);
     if (scoring === null) return;
     if (asksBeforeOpening('scoring', selectEngineStatus(engine.getSnapshot()))) {
-      return setPanel({ kind: 'unpairConfirm', tapped: 'scoring', code: RESUME, scoring });
+      return setPanel({
+        kind: 'unpairConfirm',
+        tapped: 'scoring',
+        code: RESUME,
+        scoring: { kind: 'resume', match: scoring },
+      });
     }
     void modeStore
       .setActive('scoring')

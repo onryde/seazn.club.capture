@@ -50,8 +50,9 @@ export function useScoringCheck(
         setPanel(null);
         const { bootstrap } = answer;
         await openCode(code, null, {
-          fixtureId: bootstrap.fixtureId,
-          label: matchLabelOf(bootstrap),
+          kind: 'scan',
+          match: { fixtureId: bootstrap.fixtureId, label: matchLabelOf(bootstrap) },
+          sportKey: bootstrap.sportKey,
         });
       } finally {
         checking.current = false;
