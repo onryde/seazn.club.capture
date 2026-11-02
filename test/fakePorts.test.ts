@@ -99,6 +99,30 @@ describe('fake scoring', () => {
   });
 });
 
+describe('fake tap queue', () => {
+  const queue = {
+    fixtureId: 'fixture-1',
+    label: 'Match 4',
+    pending: [],
+    ownEventIds: ['ev-1'],
+    dead: null,
+  } as const;
+
+  it('is on the ports the screens read, the same object as the fake', () => {
+    const fakes = createFakePorts();
+    expect(fakes.ports.tapQueue).toBe(fakes.tapQueue);
+  });
+
+  it('keeps a queue, and every createFakePorts has a folder of its own', async () => {
+    const one = createFakePorts();
+    const two = createFakePorts();
+    await one.tapQueue.save(queue);
+    expect(await one.tapQueue.load('fixture-1')).toEqual(queue);
+    expect(await two.tapQueue.load('fixture-1')).toBeNull();
+    expect([...one.queueFiles.files.keys()]).toEqual(['fixture-1.json']);
+  });
+});
+
 describe('fake screen', () => {
   it('records the screen port’s calls, and whether it is dimmed', () => {
     const fakes = createFakePorts();

@@ -137,6 +137,9 @@ function listOf<T>(value: unknown, read: (item: unknown) => T | undefined): T[] 
   return items.some((item) => item === undefined) ? undefined : (items as T[]);
 }
 
+/** The queue's own file (`tapQueueStore`) is read with these same readers: one rule for "garbled". */
+export { text as readText, whole as readWhole, listOf as readList };
+
 /** The `data` object of a success envelope. */
 function dataOf(body: unknown): Record<string, unknown> | null {
   const data = successData(body);

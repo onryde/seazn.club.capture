@@ -30,6 +30,7 @@ import type { ScoringLinkPort } from '@/services/scoringLinkPort';
 import type { ScoringPort } from '@/services/scoringPort';
 import type { SessionRecord } from '@/services/sessionRecord';
 import type { StreamSettingsStore } from '@/services/streamSettingsStore';
+import type { TapQueueStore } from '@/services/tapQueueStore';
 import type { Surfaces } from '@/services/surfaces';
 import type { UploadCredentialStore } from '@/services/uploadCredentialStore';
 
@@ -81,6 +82,8 @@ export type Ports = {
   readonly scoringLink: ScoringLinkPort;
   /** S2: Remote scoring's calls to the web (bootstrap, ledger, rules, append, realtime grant), plain fetch. */
   readonly scoring: ScoringPort;
+  /** S2: the taps a phone has made and the server has not yet accepted, one file per match; no secret in it. */
+  readonly tapQueue: TapQueueStore;
   /** R5: the battery state and the app's settings page, Android only. */
   readonly power: PowerPort;
   /** R4: the credential Send record to Seazn may use (P10: inert while its switch is off). */

@@ -23,6 +23,7 @@ import { createNativeBack } from '@/services/native/nativeBack';
 import { createNativeForeground } from '@/services/native/nativeForeground';
 import { createNativeMotion } from '@/services/native/nativeMotion';
 import { createNativeOrientationLock } from '@/services/native/nativeOrientationLock';
+import { createExpoQueueFiles } from '@/services/native/expoQueueFiles';
 import { createNativePower } from '@/services/native/nativePower';
 import { createNativeScreen } from '@/services/native/nativeScreen';
 import { createNativeShare } from '@/services/native/nativeShare';
@@ -34,6 +35,7 @@ import { createRecordSendFlight } from '@/services/recordSendFlight';
 import { createRecordUploadPort } from '@/services/recordUploadPort';
 import { createRingRecord } from '@/services/sessionRecord';
 import { createStreamSettingsStore } from '@/services/streamSettingsStore';
+import { createTapQueueStore } from '@/services/tapQueueStore';
 import { createUploadCredentialStore } from '@/services/uploadCredentialStore';
 
 /**
@@ -121,6 +123,8 @@ export function createNativePorts(
     scoringLink: scoringLinkPortFor(native, { logger, hosts }),
     // S2: plain fetch (AGENTS §8), to the build's host only. Nothing calls it until the match hook (plan Task 9).
     scoring: scoringPortFor({ fetch: (url, init) => fetch(url, init), logger, hosts }),
+    // S2: one JSON file per match in the document directory. Nothing reads it until the match hook (plan Task 9).
+    tapQueue: createTapQueueStore({ files: createExpoQueueFiles(), logger }),
     power: createNativePower({
       native,
       os: Platform.OS,

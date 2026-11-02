@@ -33,10 +33,12 @@ import type { RecordSendOutcome, RecordUploadPort } from '@/services/recordUploa
 import { createScanFlight } from '@/services/scanFlight';
 import { createRingRecord, parseRecordLine, type SessionRecord } from '@/services/sessionRecord';
 import { createStreamSettingsStore } from '@/services/streamSettingsStore';
+import { createTapQueueStore, type TapQueueStore } from '@/services/tapQueueStore';
 import type { UploadCredentialStore } from '@/services/uploadCredentialStore';
 import { createFakePhotoPort, type FakePhotoPort } from './fakePhotoPort';
 import { createFakeScoringLinkPort, type FakeScoringLinkPort } from './fakeScoringLinkPort';
 import { createFakeSurfaces, type FakeSurfaces } from './fakeSurfaces';
+import { createMemoryQueueFiles, type MemoryQueueFiles } from './memoryQueueFiles';
 
 export const TEST_NOW = new Date('2026-10-03T13:00:00Z');
 
@@ -87,6 +89,12 @@ export type FakePorts = {
    * of the test's own.
    */
   readonly scoring: FakeScoringPort;
+  /**
+   * S2: the real queue store over an in-memory folder (`queueFiles`: what was written, every call, `failNext`). A
+   * test that reopens the app builds another store over the same `queueFiles`.
+   */
+  readonly tapQueue: TapQueueStore;
+  readonly queueFiles: MemoryQueueFiles;
   /** The battery mode (R5): Unrestricted until `set`; `opened` counts App info's opens. */
   readonly power: FakePower;
   /** R4: no credential until `give`; the real store's own tests are `uploadCredentialStore.test.ts`. */
@@ -109,6 +117,7 @@ export function createFakePorts(
   // The real logger over the ring record: both are pure, so no double is needed (D34).
   const record = createRingRecord();
   const logger = createLogger({ record, now: () => now.getTime() });
+  const queueFiles = createMemoryQueueFiles();
   const fakes = {
     engine,
     scanner: createFakeCodeScanner(),
@@ -127,6 +136,8 @@ export function createFakePorts(
     photo: createFakePhotoPort(),
     scoringLink: createFakeScoringLinkPort(),
     scoring: createFakeScoringPort(SINGLES_SEED),
+    tapQueue: createTapQueueStore({ files: queueFiles, logger }),
+    queueFiles,
     power: createFakePower(),
     uploadCredential: createFakeUploadCredential(),
     recordUpload: createFakeRecordUpload(),
