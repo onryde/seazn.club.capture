@@ -460,6 +460,12 @@ The Sonnet per-task and Opus batch reviews of Tasks 3–6 found what the hook mu
   read (pings in the gap are lost); while down, poll every 15 s and resubscribe with a fresh grant
   (the library retries an expired token forever), backing off so a grant refused every time cannot
   loop; unsubscribe on unmount and in the background.
+- From Task 7: undo passes `undoTarget` only the queued taps in `legalQueued` (the list the display
+  uses); an `unfoldable` fold never reaches `revalidate` (an empty `legalQueued` would drop the whole
+  queue) and shows a visible state; the hook keeps the toss (without it the start names no server); a
+  discarded queued tap's "undone" line is the hook's; an abandoned match folds as decided, so the
+  closed/finished state comes from the bootstrap status or `viewOnly`; Task 11's HistoryCover draws
+  `sending`.
 - `ownEventIds` belong to one link.
 - Task 7 pins that the badminton pad never emits `core.settle` or `core.abandon`, and emits
   `core.forfeit` only as a disqualification's ending (a device link gets 403 for the rest).
