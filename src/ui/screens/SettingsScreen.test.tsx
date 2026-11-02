@@ -346,11 +346,6 @@ describe('Send record to Seazn, behind its switch (R3, P10)', () => {
     }
     expect(view.recordUpload.calls).toBe(1);
   });
-
-  it('as shipped, is in Stream Settings from Home too', () => {
-    renderWithPorts(<SettingsScreen from="home" />);
-    expect(sendButton()).not.toBeNull();
-  });
 });
 
 describe('Diagnostics inside Settings (spec §6, Q1)', () => {

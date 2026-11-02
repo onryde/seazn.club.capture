@@ -596,8 +596,8 @@ describe('routeTarget', () => {
     ['/stream/settings', 'free'],
     // The Streaming help route is not Live Stream.
     ['/streaming-help', 'free'],
-    // R2, P8: Stream Settings from Home is outside the mode and follows the phone; a prefix rule would lock it.
-    ['/stream-settings', 'free'],
+    // P8: Settings, opened from Home's gear, is outside any mode and follows the phone; a prefix rule would lock it.
+    ['/settings', 'free'],
     // Remote Scoring is portrait (decision record ruling 4; owner layout A, 2026-10-31): held sideways, its two
     // halves would get about 1 dp each, so the turn-upright card asks for the phone upright.
     ['/scoring', 'portrait'],

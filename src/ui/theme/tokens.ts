@@ -73,7 +73,7 @@ export const plateInk = colour.ground;
  * A pressed control (the controller's ruling, D3 fixes Batch 17, 2026-10-13; the owner has not ruled). The owner held
  * the sliders glyph on phone A and saw nothing change until it opened on lift: a 15% dim of a hairline on night. An
  * outlined control (IconButton, GhostButton) takes `colour.pressFill` and its edge goes cream (`ink`) while held, and its
- * box never moves; the Home tile's gear, which has no edge, takes the fill alone. Button's lime plate would step to a
+ * box never moves; a Settings row, which has no edge of its own, takes the fill alone. Button's lime plate would step to a
  * darker lime, which the palette does not have, so it dims to `plate`, and by the same ruling so does a Home tile; the
  * link, which is already underlined, dims to `link`.
  */
@@ -216,6 +216,11 @@ const base = {
   stageLines: 1,
   /** Board "Settings, landscape": the screen's vertical padding (the board's 12, under the portrait 16). */
   settingsPadV: 12,
+  /**
+   * The app Settings' row (owner, 2026-11-02: "consistent row height, generous touch targets"): every row of a group is at
+   * least this tall, and taller only for a helper line or a label that wraps. The Continue plate's height, 8 over `touch`.
+   */
+  settingsRow: 56,
   /** Spec §7: Home's title is the Seazn Club night logo, 200 × 70 (its 800 × 280 file's own 20:7). */
   logo: { width: 200, height: 70 },
   /** Q2 (owner, 2026-10-06): the logo is 160 × 56 in landscape, the board's "Home, landscape". */
@@ -301,6 +306,12 @@ const base = {
   switchInset: 3,
   /** Board "Settings": the off switch's lilac outline (measured 1.4 dp; drawn inside the 40 x 24, so on and off are one size). */
   switchBorder: 1.5,
+  /**
+   * The language list's LED (the app's Settings, owner 2026-11-02): a 22 dp ring, outlined as the off switch's track is,
+   * holding a 12 dp lime dot for the chosen language, as the switch's lime is lit when on.
+   */
+  radioRing: 22,
+  radioLed: 12,
   /** Board "Settings": a "Controls on the" segment is at least 66 dp wide (the board's Left and Right are 67 and 66). */
   segmentMin: 66,
   /** A segment's side padding: the board's English segments sit on the 66 floor, so this only matters to longer words (Linkerkant). */

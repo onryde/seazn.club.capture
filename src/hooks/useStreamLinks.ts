@@ -31,20 +31,20 @@ export function useBackToViewfinder(): () => void {
 }
 
 /**
- * R2: Home's way into Stream Settings. Not while a scan is in flight: its outcome, an open or a refusal's panel, is
- * Home's, and Settings would take Home away under it (finding 6 of the Batch 10 review). The flight ends on every
- * outcome and on the return from the scanner, so the gear is never left dead.
+ * Home's way into Settings, from the gear in its corner (owner, 2026-11-02). Not while a scan is in flight: its
+ * outcome, an open or a refusal's panel, is Home's, and Settings would take Home away under it (finding 6 of the Batch
+ * 10 review). The flight ends on every outcome and on the return from the scanner, so the gear is never left dead.
  */
-export function useHomeLinks(): { streamSettings(): void } {
+export function useHomeLinks(): { settings(): void } {
   const { navigation, scanFlight } = usePorts();
-  const streamSettings = useCallback(() => {
+  const settings = useCallback(() => {
     if (scanFlight.active()) return;
-    navigation.go('homeSettings');
+    navigation.go('settings');
   }, [navigation, scanFlight]);
-  return useMemo(() => ({ streamSettings }), [streamSettings]);
+  return useMemo(() => ({ settings }), [settings]);
 }
 
-/** R2: Back from Stream Settings opened from Home returns Home; handled only while that is the route (M21). */
+/** Back from Settings, or from Remote Scoring, returns Home; handled only while one of them is the route (M21). */
 export function useBackToHome(): () => void {
   const { navigation, back } = usePorts();
   const toHome = useCallback(() => navigation.go('home'), [navigation]);

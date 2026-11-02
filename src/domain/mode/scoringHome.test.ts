@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { rowsKey, scoringFailing, scoringHome, type QueueRow } from '@/domain/mode/scoringHome';
+import { rowsKey, scoringHome, type QueueRow } from '@/domain/mode/scoringHome';
 import type { SavedCode } from '@/domain/mode/savedCode';
 import type { MatchQueue, QueuedEvent, QueueDead } from '@/domain/scoring/queue';
 
@@ -148,28 +148,6 @@ describe('scoringHome, which row is the saved match’s', () => {
       current: null,
       leftovers: [{ kind: 'live', fixtureId: 'fx-2', label: 'Label of fx-2', unsent: 2 }],
     });
-  });
-});
-
-describe('scoringFailing', () => {
-  const failing = (savedCode: SavedCode | null, rows: QueueRow[]) =>
-    scoringFailing(scoringHome(savedCode, rows));
-
-  it('is false with no card, and for cards that are only telling the count of taps still sending', () => {
-    expect(failing(null, [])).toBe(false);
-    expect(failing(saved('fx-1', 'Match 1'), [])).toBe(false);
-    expect(failing(saved('fx-1', 'Match 1'), [queue('fx-1', 3), queue('fx-2', 2)])).toBe(false);
-  });
-
-  it('is true for a saved match that cannot send, or cannot be read', () => {
-    expect(failing(saved('fx-1', 'M'), [queue('fx-1', 2, { dead: 'LINK_REVOKED' })])).toBe(true);
-    expect(failing(saved('fx-1', 'M'), [unreadable('fx-1')])).toBe(true);
-  });
-
-  it('is true for a leftover that cannot send, or cannot be read, and false for a dead one with nothing in it', () => {
-    expect(failing(null, [queue('fx-2', 2, { dead: 'gone' })])).toBe(true);
-    expect(failing(null, [unreadable('fx-2')])).toBe(true);
-    expect(failing(null, [queue('fx-2', 0, { dead: 'gone' })])).toBe(false);
   });
 });
 

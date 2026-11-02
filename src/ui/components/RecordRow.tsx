@@ -38,7 +38,7 @@ export const RecordRow = memo(function RecordRow({ send }: { send: boolean }) {
 const SendRecord = memo(function SendRecord() {
   const { t } = useT();
   const { state, available, held, send } = useRecordSend();
-  const reason = held ? 'record.onAir' : available === false ? 'record.needsCode' : whyNot(state);
+  const reason = sendReason(state, held, available);
   return (
     <>
       <GhostButton
@@ -52,8 +52,20 @@ const SendRecord = memo(function SendRecord() {
   );
 });
 
+/**
+ * The one line that says why Send cannot go, or what a failure means: on air first, then no code, then a failure
+ * another try cannot change; none otherwise. The app's Settings reads it too (`SendRecordRow`).
+ */
+export function sendReason(
+  state: SendState,
+  held: boolean,
+  available: boolean | null,
+): MessageKey | null {
+  return held ? 'record.onAir' : available === false ? 'record.needsCode' : whyNot(state);
+}
+
 /** The button's words in each state (spec §7); the ref is the server's, for the operator to read out. */
-function sendLabel(state: SendState, t: Translator['t']): string {
+export function sendLabel(state: SendState, t: Translator['t']): string {
   switch (state.kind) {
     case 'idle':
       return t('record.send');

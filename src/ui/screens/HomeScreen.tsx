@@ -1,11 +1,9 @@
-import { memo, useMemo } from 'react';
+import { memo } from 'react';
 import { Image, ScrollView, StyleSheet, useWindowDimensions, View } from 'react-native';
 import { screenLayout, type ScreenLayout } from '@/domain/mode/homeLayout';
 import type { Mode } from '@/domain/mode/Mode';
 import { BUILT_MODES } from '@/domain/mode/scanOutcome';
-import { scoringFailing } from '@/domain/mode/scoringHome';
 import { useBackCloses } from '@/hooks/useBackCloses';
-import type { EndedCard as EndedCardValue } from '@/domain/session/endedCard';
 import { useEndedCard } from '@/hooks/useEndedNotice';
 import { useHome, type HomeActions, type HomeView } from '@/hooks/useHome';
 import { useT } from '@/hooks/useLanguage';
@@ -20,6 +18,7 @@ import { DevPaste } from '@/ui/components/DevPaste';
 import { DevProbe } from '@/ui/components/DevProbe';
 import { EndedCard } from '@/ui/components/EndedCard';
 import { HomeFooter } from '@/ui/components/HomeFooter';
+import { IconButton } from '@/ui/components/IconButton';
 import { StatusLine } from '@/ui/components/StatusLine';
 import { Tile } from '@/ui/components/Tile';
 import { layoutMarker } from '@/ui/layoutMarker';
@@ -27,10 +26,11 @@ import { MODES } from '@/ui/modeCopy';
 import { colour, layout as metrics, space } from '@/ui/theme/tokens';
 
 /**
- * Layout A (spec §7), portrait: the logo, status, the Stream ended card when there is one, Continue, three tiles
- * (each grows from its content, P7; R11 of the D3 findings design), footer; the panel over all. Landscape follows the
- * phone: one top row (logo, status, Language, version), then the ended card and Continue as one row each, then the
- * three tiles side by side. Back closes the panel (R31).
+ * Layout A (spec §7), portrait: the logo with the Settings gear at the end of its row, status, the Stream ended card
+ * when there is one, Continue, three tiles (each grows from its content, P7; R11 of the D3 findings design), the
+ * version; the panel over all. Landscape follows the phone: one top row (logo, status, version, gear), then the ended
+ * card and Continue as one row each, then the three tiles side by side. Back closes the panel (R31). The gear is
+ * always there, whatever stands above the tiles (owner, 2026-11-02); Language lives in Settings.
  * The root says which in `data-layout`, the marker the tests read. Both layouts scroll only when their rows outgrow
  * the window (homeFit.test.ts: landscape, two cards on a small phone; portrait, R11, a card on a 360 × 720 window).
  */
@@ -81,15 +81,7 @@ function HomeContent({
   layout: ScreenLayout;
 }) {
   const { appVersion, devTools } = usePorts();
-  const ended = useEndedCard();
-  const { streamSettings } = useHomeLinks();
-  // P6: the gear only while no Stream card stands above the tiles. With Continue the phone may hold a pairing, and
-  // Stream Settings from Home assumes none (AGENTS §6); the in-mode Settings, after Continue re-pairs, has the same
-  // rows. Sideways the gear's band would also make Home scroll with the Continue card at 800 × 360; the ended card
-  // leaves 1 dp (homeFit.test.ts). A Remote Scoring card does not take it away unless it reports a failure (owner
-  // ruling A, 2026-11-02: "keep gear"): taps that can never send, or a file that cannot be read.
-  const failing = scoringFailing(view.scoring);
-  const gear = ended === null && view.continueCode === null && !failing ? streamSettings : null;
+  const { settings } = useHomeLinks();
   const landscape = layout === 'landscape';
   const shape = landscape ? 'row' : 'stacked';
   const behindPanel = view.panel !== null;
@@ -105,18 +97,22 @@ function HomeContent({
           <View style={styles.topStatus}>
             <StatusLine>{view.statusText}</StatusLine>
           </View>
-          <HomeFooter version={appVersion} layout={layout} />
+          <HomeFooter version={appVersion} />
+          <SettingsGear onPress={settings} />
         </View>
       ) : (
         <>
-          <Logo layout={layout} />
+          <View testID="home-brand" style={styles.brand}>
+            <Logo layout={layout} />
+            <SettingsGear onPress={settings} />
+          </View>
           <StatusLine>{view.statusText}</StatusLine>
         </>
       )}
-      <EndedSlot card={ended} shape={shape} />
+      <EndedSlot shape={shape} />
       <ContinueSlot view={view} actions={actions} shape={shape} />
       <ScoringSlot view={view} actions={actions} shape={shape} />
-      <ModeTiles onPress={actions.tapTile} layout={layout} streamSettings={gear} />
+      <ModeTiles onPress={actions.tapTile} layout={layout} />
       {devTools ? <DevPaste onUse={actions.useRaw} /> : null}
       {devTools ? <DevProbe /> : null}
       {landscape ? null : <HomeFooter version={appVersion} />}
@@ -156,12 +152,22 @@ function Logo({ layout }: { layout: ScreenLayout }) {
 
 /**
  * The Stream ended card (spec §5), above Continue: only after the phone's Stop or a fatal end left the viewfinder
- * for Home. OK, a new scan or Continue clears it; it is in memory, so a restart does too. Home reads it once and
- * passes it here, since the Stream settings gear hides while it shows (P6).
+ * for Home. OK, a new scan or Continue clears it; it is in memory, so a restart does too.
  */
-function EndedSlot({ card, shape }: { card: EndedCardValue | null; shape: CardShape }) {
+function EndedSlot({ shape }: { shape: CardShape }) {
   const { endedNotice } = usePorts();
+  const card = useEndedCard();
   return card === null ? null : <EndedCard card={card} layout={shape} onOk={endedNotice.clear} />;
+}
+
+/**
+ * The Settings gear, at the end of the logo's row upright and of the top row sideways (owner, 2026-11-02: "we should
+ * have common setting in a top gear?"). The icon row's own button, so its press states are IconButton's. It draws no
+ * word; a screen reader reads `home.settings`.
+ */
+function SettingsGear({ onPress }: { onPress: () => void }) {
+  const { t } = useT();
+  return <IconButton glyph="settings" label={t('home.settings')} onPress={onPress} />;
 }
 
 /** The Continue card, only when a left mode still holds a valid code. */
@@ -189,7 +195,7 @@ function ContinueSlot({
 
 /**
  * Remote Scoring's cards (plan S2-1 Task 10): the saved match, then every other match whose taps are still queued.
- * They stand above the tiles, and take the Stream settings gear away only while one of them reports a failure.
+ * They stand above the tiles. The gear in Home's corner shows beside them whatever they report (owner, 2026-11-02).
  */
 function ScoringSlot({
   view,
@@ -225,28 +231,16 @@ function ScoringSlot({
 }
 
 /**
- * The three tiles; the Live Stream tile carries the Stream settings gear when Home gives one (R2, as the owner
- * presented it on 2026-10-12; P6). Its name for a screen reader is `home.streamSettings`. Remote Scoring scans in
- * every build (plan S2-1 Task 10); the Dashboard is still coming soon.
+ * The three tiles. Remote Scoring scans in every build (plan S2-1 Task 10); the Dashboard is still coming soon. None
+ * carries a gear: Settings is Home's own (owner, 2026-11-02).
  */
 const ModeTiles = memo(function ModeTiles({
   onPress,
   layout,
-  streamSettings,
 }: {
   onPress: (mode: Mode) => void;
   layout: ScreenLayout;
-  streamSettings: (() => void) | null;
 }) {
-  const { t } = useT();
-  // Memoised so the memoised tile is not handed a new object on every pass.
-  const gear = useMemo(
-    () =>
-      streamSettings === null
-        ? undefined
-        : { label: t('home.streamSettings'), onPress: streamSettings },
-    [streamSettings, t],
-  );
   return (
     <View testID="tiles" style={layout === 'landscape' ? styles.tilesRow : styles.tiles}>
       {MODES.map((mode) => (
@@ -256,7 +250,6 @@ const ModeTiles = memo(function ModeTiles({
           available={BUILT_MODES.includes(mode)}
           onPress={onPress}
           layout={layout}
-          settings={mode === 'stream' ? gear : undefined}
         />
       ))}
     </View>
@@ -272,6 +265,8 @@ const styles = StyleSheet.create({
   /** M1 of the Batch 5 review: `flexGrow`, not `flex`, inside the portrait scroller, as the landscape row is. */
   tiles: { flexGrow: 1, gap: space.sm },
   fill: { flex: 1 },
+  /** The logo at the start of its row and the gear at the end, centred on each other: the gear costs no height. */
+  brand: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   contentLandscape: {
     flexGrow: 1,
     gap: metrics.homeGap,
