@@ -305,6 +305,15 @@ export function parseEvents(body: unknown, since: number): readonly LedgerEvent[
   return events.every((event, i) => event.seq === since + 1 + i) ? events : null;
 }
 
+/**
+ * The event a `core.void` voids: the web sets a ledger event's `voids_event_id` from the void's `payload.event_id`, so
+ * a tap the phone made and the ledger the server keeps name the target the same way. Null for any other event.
+ */
+export function voidTargetOf(type: string, payload: unknown): string | null {
+  if (type !== 'core.void' || !isRecord(payload)) return null;
+  return typeof payload.event_id === 'string' ? payload.event_id : null;
+}
+
 /** `GET /api/v1/fixtures/{id}/rules`: the rules a match plays by now. */
 export function parseRules(body: unknown): Rules | null {
   const data = dataOf(body);

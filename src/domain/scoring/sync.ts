@@ -1,6 +1,11 @@
-import { isRecord } from '@/domain/credentials/wire';
 import type { MatchQueue, QueueDead, QueuedEvent } from '@/domain/scoring/queue';
-import type { AppendAnswer, AppendBody, LedgerEvent, ReadFailure } from '@/domain/scoring/wire';
+import {
+  voidTargetOf,
+  type AppendAnswer,
+  type AppendBody,
+  type LedgerEvent,
+  type ReadFailure,
+} from '@/domain/scoring/wire';
 
 /**
  * The rules that move a match's queue (design §6.3 and §7.3, plan S2-1 Task 6), pure. The hook (Task 9) owns the
@@ -329,16 +334,9 @@ function ledgerEventOf(sent: QueuedEvent, answer: Accepted): LedgerEvent {
     type: sent.type,
     payload: sent.payload,
     recordedAt: sent.createdAt,
-    voids: voidsOf(sent),
+    voids: voidTargetOf(sent.type, sent.payload),
     deviceLinkId: null,
   };
-}
-
-/** The web sets a ledger event's `voids` from a `core.void`'s `payload.event_id`. */
-function voidsOf(tap: QueuedEvent): string | null {
-  if (tap.type !== 'core.void' || !isRecord(tap.payload)) return null;
-  const target = tap.payload.event_id;
-  return typeof target === 'string' ? target : null;
 }
 
 /**

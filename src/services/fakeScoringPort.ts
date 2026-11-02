@@ -1,17 +1,24 @@
-import { EngineError, foldMatch, type EventEnvelope, type LineupPair } from '@seazn/engine/core';
+import { foldMatch, type LineupPair } from '@seazn/engine/core';
 import { badminton } from '@seazn/engine/sports/setbased';
-import { isRecord } from '@/domain/credentials/wire';
+import {
+  badmintonCfg,
+  envelopeOf,
+  lineupOf,
+  refusalOf,
+  type BadmintonEngineMatch,
+} from '@/domain/scoring/badmintonEngine';
 import type { BadmintonTap } from '@/domain/scoring/badmintonPad';
 import type { PadSide } from '@/domain/scoring/padView';
-import type {
-  AppendAnswer,
-  AppendBody,
-  Bootstrap,
-  BootstrapContext,
-  BootstrapScreen,
-  BootstrapSide,
-  Failure,
-  LedgerEvent,
+import {
+  voidTargetOf,
+  type AppendAnswer,
+  type AppendBody,
+  type Bootstrap,
+  type BootstrapContext,
+  type BootstrapScreen,
+  type BootstrapSide,
+  type Failure,
+  type LedgerEvent,
 } from '@/domain/scoring/wire';
 import { DOUBLES_SAMPLE, SINGLES_SAMPLE, type FakePadSample } from '@/services/fakeBadmintonPad';
 import type { ScoringPort } from '@/services/scoringPort';
@@ -82,8 +89,6 @@ const NOT_FOUND: Failure = { kind: 'refused', status: 404, code: 'NOT_FOUND' };
 /** Events are stamped from here, a second apart, so a ledger is the same on every run. */
 const FIRST_EVENT_MS = Date.parse('2026-11-01T10:00:00.000Z');
 
-const parseCfg = (raw: unknown) => badminton.configSchema.parse(raw);
-
 type Server = {
   readonly seed: FakeMatchSeed;
   readonly lineups: LineupPair;
@@ -91,7 +96,7 @@ type Server = {
   /** Idempotency key → the event it wrote. */
   readonly keys: Map<string, { readonly seq: number; readonly eventId: string }>;
   rawCfg: unknown;
-  cfg: ReturnType<typeof parseCfg>;
+  cfg: ReturnType<typeof badmintonCfg>;
   rulesVersion: number;
   epochRequired: number;
   revoked: boolean;
@@ -109,7 +114,7 @@ export function createFakeScoringPort(seed: FakeMatchSeed): FakeScoringPort {
     ledger: [],
     keys: new Map(),
     rawCfg: seed.cfg,
-    cfg: parseCfg(seed.cfg),
+    cfg: badmintonCfg(seed.cfg),
     rulesVersion: seed.rulesVersion,
     epochRequired: seed.epochRequired,
     revoked: false,
@@ -161,7 +166,7 @@ function controls(server: Server): FakeServerControls {
       server.rulesVersion = rulesVersion;
       if (cfg !== undefined) {
         server.rawCfg = cfg;
-        server.cfg = parseCfg(cfg);
+        server.cfg = badmintonCfg(cfg);
       }
     },
     setEpochRequired: (epoch) => {
@@ -255,7 +260,7 @@ function write(
   key?: string,
 ): LedgerEvent | { readonly refused: string } {
   const seq = server.ledger.length + 1;
-  const voids = voidTarget(type, payload);
+  const voids = voidTargetOf(type, payload);
   const event: LedgerEvent = {
     id: `fake-event-${seq}`,
     seq,
@@ -280,36 +285,17 @@ function writeOther(server: Server, type: string, payload: unknown): LedgerEvent
   return event;
 }
 
-/** The web reads a void's target from the payload's `event_id`. */
-const voidTarget = (type: string, payload: unknown): string | null =>
-  type === 'core.void' && isRecord(payload) && typeof payload.event_id === 'string'
-    ? payload.event_id
-    : null;
-
 /** Folds the ledger with its last event under validation, as the server does; null when the engine takes it. */
 function engineRefusal(server: Server, ledger: readonly LedgerEvent[]): string | null {
   const envelopes = ledger.map((event) => envelopeOf(server.seed.fixtureId, event));
-  try {
-    foldMatch(badminton, server.cfg, server.lineups, envelopes, { strictFromSeq: ledger.length });
-    return null;
-  } catch (error) {
-    if (EngineError.is(error)) return error.code;
-    throw error;
-  }
+  return refusalOf(engineMatch(server), envelopes);
 }
 
-function envelopeOf(fixtureId: string, event: LedgerEvent): EventEnvelope {
-  return {
-    id: event.id,
-    fixtureId,
-    seq: event.seq,
-    type: event.type,
-    payload: event.payload,
-    recordedAt: event.recordedAt,
-    recordedBy: null,
-    ...(event.voids === null ? {} : { voids: event.voids }),
-  };
-}
+const engineMatch = (server: Server): BadmintonEngineMatch => ({
+  fixtureId: server.seed.fixtureId,
+  cfg: server.cfg,
+  lineups: server.lineups,
+});
 
 function bootstrapOf(server: Server): Bootstrap {
   const { seed } = server;
@@ -351,18 +337,6 @@ const decided = (server: Server): boolean =>
     server.lineups,
     server.ledger.map((event) => envelopeOf(server.seed.fixtureId, event)),
   ).outcome !== null;
-
-/** A side's lineup as the web builds it: every member starting, in pair order. */
-function lineupOf(side: BootstrapSide): LineupPair['home'] {
-  return {
-    entrantId: side.entrantId,
-    slots: side.lineup.map((slot, i) => ({
-      personId: slot.personId,
-      slot: 'starting' as const,
-      orderNo: slot.pairOrder ?? i + 1,
-    })),
-  };
-}
 
 // ---------------------------------------------------------------------------------------------------------------
 // The preview's two matches, as seeds
@@ -413,7 +387,7 @@ export function seedFromPadSample(
   return {
     fixtureId: ids.fixtureId ?? 'fake-fixture',
     linkId: ids.linkId ?? 'fake-link',
-    cfg: parseCfg({}),
+    cfg: badmintonCfg({}),
     rulesVersion: 1,
     epochRequired: 2,
     screen: 'pad',
