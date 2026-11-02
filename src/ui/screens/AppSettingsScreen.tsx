@@ -109,7 +109,6 @@ function StreamSection() {
       <SettingsSection title={t('settings.section.stream')}>
         <SettingsRow
           label={t('settings.automatic.row')}
-          helper={t('settings.automatic.short')}
           checked={settings.automatic}
           onPress={toggleAutomatic}
         />

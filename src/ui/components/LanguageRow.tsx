@@ -18,8 +18,9 @@ const NAME: Readonly<Record<Lang, MessageKey>> = {
 
 /**
  * Language in the app's Settings: a row that says which one it is now and opens the four below it (decision 8; the
- * owner moved it here from Home, 2026-11-02). A pick applies at once and closes the list; picking the language already
- * chosen only closes it. Android Back closes an open list first (R31).
+ * owner moved it here from Home, 2026-11-02). A pick applies at once, is stored and closes the list; picking the
+ * language already shown (the phone's own, when nothing is stored) pins it, so a later change of the phone's language
+ * leaves the app's alone. Android Back closes an open list first (R31).
  */
 export const LanguageRow = memo(function LanguageRow() {
   const { translator, lang, setLang } = useLanguage();
@@ -29,10 +30,10 @@ export const LanguageRow = memo(function LanguageRow() {
   useBackCloses(open, close);
   const pick = useCallback(
     (next: Lang) => {
-      if (next !== lang) setLang(next);
+      setLang(next);
       setOpen(false);
     },
-    [lang, setLang],
+    [setLang],
   );
   return (
     <View>

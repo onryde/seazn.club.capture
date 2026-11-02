@@ -123,14 +123,12 @@ describe.each(LANGS)('the app’s Settings at 320 dp, in %s', (lang) => {
       oneLine(key, text(lang, key), ROW - BESIDE_CHEVRON, inGeist('controlSmall'));
   });
 
-  it('Automatic: its name and its one-line reason fit beside the switch', () => {
-    const room = ROW - BESIDE_SWITCH;
-    oneLine('automatic', text(lang, 'settings.automatic.row'), room, inGeist('controlInk'));
+  it('Automatic: its name fits on one line beside the switch', () => {
     oneLine(
-      'automatic short',
-      text(lang, 'settings.automatic.short'),
-      room,
-      inGeist('controlSmall'),
+      'automatic',
+      text(lang, 'settings.automatic.row'),
+      ROW - BESIDE_SWITCH,
+      inGeist('controlInk'),
     );
   });
 

@@ -74,14 +74,23 @@ describe('LanguageRow: Language and what it is now, opening a short list', () =>
     );
   });
 
-  it('a pick of the language already chosen closes the list and writes nothing', () => {
-    const view = renderWithPorts(<LanguageRow />);
-    fireEvent.click(row('Language · English'));
-    fireEvent.click(screen.getByRole('radio', { name: 'English' }));
-    expect(screen.queryByRole('radio')).toBeNull();
-    expect(view.kv.entries.has(STORE_KEYS.lang)).toBe(false);
-    expect(row('Language · English')).toBeTruthy();
-  });
+  // The language shown may be the phone's own (nothing stored yet). Picking it is the operator saying "this one", so it is
+  // stored: a later change of the phone's language must not change the app's under them.
+  it.each([
+    ['en', ['en'], 'Language · English', 'English'],
+    ['es', ['es'], 'Idioma · Español', 'Español'],
+  ] as const)(
+    'a pick of the phone’s own language (%s) closes the list and pins it in the store',
+    (lang, deviceLanguages, rowName, radioName) => {
+      const view = renderWithPorts(<LanguageRow />, { deviceLanguages: [...deviceLanguages] });
+      expect(view.kv.entries.has(STORE_KEYS.lang)).toBe(false);
+      fireEvent.click(row(rowName));
+      fireEvent.click(screen.getByRole('radio', { name: radioName }));
+      expect(screen.queryByRole('radio')).toBeNull();
+      expect(view.kv.entries.get(STORE_KEYS.lang)).toBe(lang);
+      expect(row(rowName)).toBeTruthy();
+    },
+  );
 
   it('a second tap on the row closes the list', () => {
     renderWithPorts(<LanguageRow />);

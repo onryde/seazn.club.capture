@@ -2,9 +2,14 @@ import { act, fireEvent, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { LANGS } from '@/i18n/language';
 import { createTranslator } from '@/i18n/translate';
+import { encodeSavedCode } from '@/domain/mode/savedCode';
 import { STORE_KEYS } from '@/services/modeStore';
+import { savedStreamCode } from '../../../test/fixtures/savedStream';
 import { flush, launchApp } from '../../../test/routedApp';
 import { restoreWindowSize, setWindowSize } from '../../../test/windowSize';
+
+/** A saved stream code, so Home shows its Continue card (and a paired engine is no orphan). Made up. */
+const SAVED_STREAM = { [STORE_KEYS.code('stream')]: encodeSavedCode(savedStreamCode()) };
 
 beforeEach(() => vi.useFakeTimers());
 afterEach(() => {
@@ -71,11 +76,36 @@ describe('Home’s gear, the app’s Settings and the way back (owner, 2026-11-0
     expect(app.nav.current()).toBe('stream');
   });
 
-  it('is there with a card standing above the tiles, the gear never hidden (supersedes P6)', async () => {
-    const app = await launchApp({ prepare: (fakes) => fakes.engine.scene('paired-ready') });
+  // The Continue card is above the tiles: P6 hid the old tile gear then, and the app's gear does not go.
+  it('is there with a Continue card standing above the tiles, and opens Settings (supersedes P6)', async () => {
+    const app = await launchApp({ kvSeed: SAVED_STREAM });
     await flush();
     expect(app.nav.current()).toBe('home');
-    expect(screen.getByRole('button', { name: 'Settings' })).toBeTruthy();
+    const card = screen.getByText('Continue Live Stream'); // the card really is up
+    expect(
+      card.compareDocumentPosition(screen.getByTestId('tiles')) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    await openFromHome(app);
+  });
+
+  // The controller's ruling, 2026-11-02: App info is where the battery is set, and a paired phone holds no broadcast.
+  it('stays on Settings on a return from App info with the engine paired, and moves once it is armed', async () => {
+    const app = await launchApp({
+      kvSeed: SAVED_STREAM,
+      prepare: (fakes) => fakes.engine.scene('paired-ready'),
+    });
+    await flush();
+    act(() => app.ports.navigation.go('home'));
+    await flush();
+    await openFromHome(app);
+    act(() => app.foreground.leave());
+    act(() => app.foreground.fire());
+    await flush();
+    expect(app.nav.current()).toBe('settings');
+    expect(screen.getByRole('button', { name: 'Language · English' })).toBeTruthy();
+    act(() => app.engine.scene('connecting'));
+    await flush();
+    expect(app.nav.current()).toBe('stream');
   });
 
   it.each(LANGS)(

@@ -256,10 +256,13 @@ describe('the record rows, in General', () => {
 describe('Live Stream, the two phone settings', () => {
   const automatic = () => screen.getByRole('switch', { name: /^Start and stop automatically/ });
 
-  it('the switch reads on, says why in one line, and turning it off keeps the choice', async () => {
+  // The row names the setting and nothing more: a line that explains it (when the organiser turns it on) is not something
+  // the operator acts on (the owner's clean-display ruling, 2026-11-02).
+  it('the switch reads on, is named by its label alone, and turning it off keeps the choice', async () => {
     const view = await renderSettings();
     expect(automatic().getAttribute('aria-checked')).toBe('true');
-    expect(screen.getByText('If the organiser turns it on')).toBeTruthy();
+    expect(automatic().getAttribute('aria-label')).toBe('Start and stop automatically');
+    expect(screen.queryByText('If the organiser turns it on')).toBeNull();
     fireEvent.click(automatic());
     await settle();
     expect(automatic().getAttribute('aria-checked')).toBe('false');
@@ -391,11 +394,7 @@ describe.each(LANGS)('in %s', (lang: Lang) => {
       t('diag.share'),
       t('record.send'),
     ]);
-    expect(
-      screen.getByRole('switch', {
-        name: `${t('settings.automatic.row')} · ${t('settings.automatic.short')}`,
-      }),
-    ).toBeTruthy();
+    expect(screen.getByRole('switch', { name: t('settings.automatic.row') })).toBeTruthy();
     const side = screen.getByRole('radiogroup', { name: t('settings.side.row') });
     // The row's own short words, which fit beside its label at 320 dp (appSettingsFit); not the viewfinder Settings'.
     expect(

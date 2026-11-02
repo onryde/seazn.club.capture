@@ -72,7 +72,6 @@ export const SettingsRow = memo(function SettingsRow({
       // Native's Pressable reads these into the same state (as ChoiceRow has it).
       aria-checked={checked}
       aria-expanded={expanded}
-      aria-disabled={disabled ? true : undefined}
       disabled={disabled}
       onPress={onPress}
       style={rowStyle}

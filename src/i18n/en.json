@@ -223,7 +223,6 @@
   "settings.section.stream": "Live Stream",
   "settings.language.label": "Language",
   "settings.battery.label": "Battery",
-  "settings.automatic.short": "If the organiser turns it on",
   "settings.battery.onAir": "After the broadcast",
   "settings.automatic.row": "Start and stop automatically",
   "settings.side.row": "Controls",

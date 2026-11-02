@@ -223,7 +223,6 @@
   "settings.section.stream": "Diffusion en direct",
   "settings.language.label": "Langue",
   "settings.battery.label": "Batterie",
-  "settings.automatic.short": "Si l'organisateur l'active",
   "settings.battery.onAir": "Après le direct",
   "settings.automatic.row": "Début et fin automatiques",
   "settings.side.row": "Commandes",
