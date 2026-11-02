@@ -456,6 +456,10 @@ The Sonnet per-task and Opus batch reviews of Tasks 3–6 found what the hook mu
   queue dead; `tooLarge` is a visible state, never endless retries.
 - A refused save can come back (the next read promotes the temp file): re-save the queue; never say
   "not recorded" without having saved the queue without that tap.
+- Realtime (Task 8 review): one owner of the subscription; every `onUp`, a rejoin included, owes a ledger
+  read (pings in the gap are lost); while down, poll every 15 s and resubscribe with a fresh grant
+  (the library retries an expired token forever), backing off so a grant refused every time cannot
+  loop; unsubscribe on unmount and in the background.
 - `ownEventIds` belong to one link.
 - Task 7 pins that the badminton pad never emits `core.settle` or `core.abandon`, and emits
   `core.forfeit` only as a disqualification's ending (a device link gets 403 for the rest).
