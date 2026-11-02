@@ -58,6 +58,12 @@ export type SyncState = {
    * fetch comes first.
    */
   readonly revalidateOwed: boolean;
+  /**
+   * When a rules read that failed is to be tried again (the caller's clock), or null. A failed read leaves the phone
+   * on the rules it holds; with nothing queued no send provokes the next FIXTURE_RULES_CHANGED, so the read itself
+   * is asked for again (`retryRules`).
+   */
+  readonly rulesRetryAt: number | null;
 };
 
 /** What the hook does next. Each is said once per answer; none is a promise about what the server will say. */
@@ -80,6 +86,8 @@ const PASSES_BEFORE_PAUSE = 3;
 const PAUSE_MS = 15_000;
 /** The wait after a fetch or a rules read that did not land, before sending on what is held. */
 const FETCH_RETRY_MS = 5000;
+/** The wait after a rules read that did not land, before it is asked for again (and the queue sends on what is held). */
+const RULES_RETRY_MS = 15_000;
 /** The wait after the 1st, 2nd, ... send of one tap with no answer; the last holds from then on. */
 const BACKOFF_MS: readonly number[] = [1000, 2000, 5000, 10_000, 15_000];
 /** The word `refused` carries for a queued tap the ledger has made illegal: not a server's code, ours. */
@@ -122,6 +130,7 @@ export function openSync(held: {
     hold: queue.pending.length === 0 ? null : 'revalidate',
     decidedProbe: null,
     revalidateOwed: false,
+    rulesRetryAt: null,
   };
 }
 
@@ -223,8 +232,17 @@ export function onAnswer(
 
 type Accepted = Extract<AppendAnswer, { kind: 'accepted' }>;
 
-/** Where a send's answer leaves the sender: idle, unless the queue is dead, which a late answer never brings back. */
-const resting = (state: SyncState): SyncStatus => (state.queue.dead === null ? 'idle' : 'dead');
+/**
+ * A status no answer undoes: a dead queue stays dead, and so do the two a read can set while a tap is in flight, Update
+ * needed (`outdated`) and a ledger over the read's cap (`tooLarge`): only a new session lifts them.
+ */
+function sticky(state: SyncState): SyncStatus | null {
+  if (state.queue.dead !== null) return 'dead';
+  return state.status === 'outdated' || state.status === 'tooLarge' ? state.status : null;
+}
+
+/** Where a send's answer leaves the sender: idle, unless a status no answer undoes stands (`sticky`). */
+const resting = (state: SyncState): SyncStatus => sticky(state) ?? 'idle';
 
 /** The tap is on its way no more: the in-flight mark goes if it was the tap's. */
 const landed = (state: SyncState, sent: QueuedEvent): SyncState =>
@@ -397,7 +415,11 @@ function wentOffline(state: SyncState, sent: QueuedEvent, now: number): SyncStep
   const live = state.queue.pending.find((queued) => queued.key === sent.key);
   const attempts = Math.max(live?.attempts ?? 0, 1);
   const ms = BACKOFF_MS[Math.min(attempts, BACKOFF_MS.length) - 1];
-  const next: SyncState = { ...landed(state, sent), status: 'offline', notBefore: now + ms };
+  const next: SyncState = {
+    ...landed(state, sent),
+    status: sticky(state) ?? 'offline',
+    notBefore: now + ms,
+  };
   return step(next, [{ kind: 'retryIn', ms }]);
 }
 
@@ -437,12 +459,9 @@ function refused(state: SyncState, sent: QueuedEvent, status: number, code: stri
     return step(held, [{ kind: 'reloadBootstrap' }]);
   }
   const owed = freed.revalidateOwed && freed.queue.pending.length > 1;
-  return dropped(
-    { ...freed, status: resting(freed) },
-    sent.key,
-    code,
-    owed ? 'revalidate' : freed.hold,
-  );
+  // The ledger asked for is still out: a revalidation owed waits for it ('ledger' becomes 'revalidate' when it lands).
+  const held = owed ? 'ledger' : freed.hold;
+  return dropped({ ...freed, status: resting(freed), revalidateOwed: owed }, sent.key, code, held);
 }
 
 /** A tap leaves the queue refused, said once as not counted; the ledger is fetched again, and the queue saved. */
@@ -507,9 +526,9 @@ const same = (state: SyncState, cleared: SyncState): SyncState =>
 export function onRules(state: SyncState, rules: { readonly rulesVersion: number }): SyncState {
   const rulesVersion = Math.max(state.rulesVersion, rules.rulesVersion);
   if (state.hold === 'ledger' || state.hold === 'status') {
-    return { ...state, rulesVersion, revalidateOwed: true };
+    return { ...state, rulesVersion, revalidateOwed: true, rulesRetryAt: null };
   }
-  return { ...state, rulesVersion, hold: 'revalidate' };
+  return { ...state, rulesVersion, hold: 'revalidate', rulesRetryAt: null };
 }
 
 /**
@@ -531,7 +550,11 @@ export function onBootstrapStatus(state: SyncState, status: string): SyncStep {
     return step({ ...cleared, status: 'dead', queue: { ...cleared.queue, dead } }, [PERSIST]);
   }
   const held = state.queue.pending.find((queued) => queued.key === key);
-  if (held !== undefined) return dropped(cleared, held.key, ALREADY_DECIDED, 'revalidate');
+  if (held !== undefined) {
+    // The taps behind it wait for the ledger the refusal fetches, then are judged on it, not on the stale one.
+    const behind = { ...cleared, revalidateOwed: cleared.queue.pending.length > 1 };
+    return dropped(behind, held.key, ALREADY_DECIDED, 'ledger');
+  }
   const asked = state.hold === 'status' && cleared.queue.pending.length > 0;
   return step(asked ? { ...cleared, hold: 'revalidate' } : cleared, []);
 }
@@ -544,18 +567,38 @@ export function onFetchFailed(state: SyncState, now: number): SyncStep {
   return letGo(state, now, FETCH_RETRY_MS);
 }
 
-/** The read's hold is let go, a revalidation still owed taking its place, and nothing is sent for `ms`. */
+/**
+ * The read's hold is let go, a revalidation still owed taking its place, and nothing is sent for `ms`: for a rules
+ * read at least 15 s, and the read is due again then (`retryRules`), since with nothing queued no send would ever
+ * provoke the next FIXTURE_RULES_CHANGED.
+ */
 function letGo(state: SyncState, now: number, ms: number): SyncStep {
   if (state.hold !== 'ledger' && state.hold !== 'rules' && state.hold !== 'status') {
     return step(state, []);
   }
+  const rules = state.hold === 'rules';
+  const wait = rules ? Math.max(ms, RULES_RETRY_MS) : ms;
   const next: SyncState = {
     ...state,
     hold: state.revalidateOwed ? 'revalidate' : null,
     decidedProbe: null,
-    notBefore: Math.max(state.notBefore, now + ms),
+    notBefore: Math.max(state.notBefore, now + wait),
+    rulesRetryAt: rules ? now + wait : state.rulesRetryAt,
   };
-  return step(next, [{ kind: 'retryIn', ms }]);
+  return step(next, [{ kind: 'retryIn', ms: wait }]);
+}
+
+/**
+ * A rules read that failed is asked for again once it is due: the hook calls this wherever it asks `nextSend` (every
+ * `retryIn` timer, every step), before `nextSend`. It starts the read (hold `rules`, so nothing is sent on rules that
+ * may be stale) only when nothing else is standing between the sender and a send; with a ledger, status, rules or
+ * revalidation hold standing it waits, still due. Each failure waits 15 s again, so it is paced, never a loop.
+ */
+export function retryRules(state: SyncState, now: number): SyncStep {
+  if (state.rulesRetryAt === null || now < state.rulesRetryAt || state.hold !== null) {
+    return step(state, []);
+  }
+  return step({ ...state, hold: 'rules', rulesRetryAt: null }, [{ kind: 'reloadRules' }]);
 }
 
 /**
@@ -574,9 +617,9 @@ export function onReadFailed(state: SyncState, failure: ReadFailure, now: number
       return dead === null ? onFetchFailed(state, now) : closed(state, dead);
     }
     case 'tooLarge':
-      return step({ ...state, status: 'tooLarge', hold: null }, []);
+      return step({ ...state, status: sticky(state) ?? 'tooLarge', hold: null }, []);
     case 'outdated':
-      return step({ ...state, status: 'outdated' }, []);
+      return step({ ...state, status: sticky(state) ?? 'outdated' }, []);
     case 'rateLimited':
       return letGo(state, now, failure.retryAfterMs);
     case 'offline':

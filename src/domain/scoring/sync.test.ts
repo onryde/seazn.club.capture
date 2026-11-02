@@ -14,6 +14,7 @@ import {
   onReadFailed,
   onRules,
   openSync,
+  retryRules,
   revalidate,
   type SyncState,
 } from '@/domain/scoring/sync';
@@ -74,6 +75,7 @@ const stateOf = (overrides: Partial<SyncState> = {}): SyncState => ({
   hold: null,
   decidedProbe: null,
   revalidateOwed: false,
+  rulesRetryAt: null,
   ...overrides,
 });
 
@@ -121,6 +123,7 @@ describe('openSync', () => {
       hold: 'revalidate',
       decidedProbe: null,
       revalidateOwed: false,
+      rulesRetryAt: null,
     });
   });
 
@@ -756,12 +759,12 @@ describe('onAnswer: rulesChanged', () => {
     const asked = answer(stateOf(), A, changed).state;
     const failed = onFetchFailed(asked, NOW);
     expect(failed.state.rulesVersion).toBe(2);
-    expect(nextSend(failed.state, NOW + 5000)).toMatchObject({
+    expect(nextSend(failed.state, NOW + 15000)).toMatchObject({
       idempotency_key: 'key-a',
       rules_version: 2,
     });
-    const resent = markSending(failed.state, NOW + 5000).state;
-    const again = answer(resent, A, changed, NOW + 5000);
+    const resent = markSending(failed.state, NOW + 15000).state;
+    const again = answer(resent, A, changed, NOW + 15000);
     expect(again.effects).toContainEqual({ kind: 'reloadRules' });
     expect(again.state.rulesPasses).toBe(2);
   });
@@ -770,7 +773,7 @@ describe('onAnswer: rulesChanged', () => {
     const asked = answer(stateOf(), A, accepted(5, 'ev-5', 3)).state;
     const failed = onFetchFailed(asked, NOW).state;
     expect(failed.rulesVersion).toBe(2);
-    expect(nextSend(failed, NOW + 5000)).toMatchObject({
+    expect(nextSend(failed, NOW + 15000)).toMatchObject({
       idempotency_key: 'key-b',
       rules_version: 2,
     });
@@ -941,6 +944,60 @@ describe('a revoked link with taps queued (Review Focus 4)', () => {
   });
 });
 
+// A read can say Update needed or too long while a tap is in flight; that tap's answer must not undo it.
+describe('a status only a new session lifts: outdated, tooLarge (an answer in flight cannot overwrite it)', () => {
+  const answers: [string, AppendAnswer][] = [
+    ['accepted', accepted(5, 'ev-5')],
+    ['a replayed accepted', accepted(4, 'ev-4')],
+    ['seqConflict', { kind: 'seqConflict', currentSeq: 6 }],
+    ['rulesChanged', { kind: 'rulesChanged', rulesVersion: 3 }],
+    ['rateLimited', { kind: 'rateLimited', retryAfterMs: 1000 }],
+    ['offline', { kind: 'offline' }],
+    ['a refusal', refusal('WRONG_PHASE')],
+    ['ALREADY_DECIDED', refusal('ALREADY_DECIDED')],
+  ];
+
+  it.each(['tooLarge', 'outdated'] as const)(
+    'a read that said %s stands through any answer',
+    (status) => {
+      for (const [name, said] of answers) {
+        const step = answer(stateOf({ status }), A, said);
+        expect(step.state.status, name).toBe(status);
+        expect(
+          step.effects.map((effect) => effect.kind),
+          name,
+        ).not.toContain('send');
+      }
+    },
+  );
+
+  it('only the read that says it sets it, over a dead queue never', () => {
+    const dead = restingOf({ queue: queueOf([A, B], { dead: 'gone' }), status: 'dead' });
+    expect(onReadFailed(dead, { kind: 'tooLarge' }, NOW).state.status).toBe('dead');
+    expect(onReadFailed(dead, { kind: 'outdated', required: 3 }, NOW).state.status).toBe('dead');
+  });
+
+  it('a dead queue answered offline stays dead', () => {
+    const dead = stateOf({ status: 'dead', queue: queueOf([A, B], { dead: 'LINK_REVOKED' }) });
+    expect(answer(dead, A, { kind: 'offline' }).state.status).toBe('dead');
+  });
+
+  it('tooLarge does not turn into outdated, nor the reverse, by a second read', () => {
+    const large = onReadFailed(restingOf(), { kind: 'tooLarge' }, NOW).state;
+    expect(onReadFailed(large, { kind: 'outdated', required: 3 }, NOW).state.status).toBe(
+      'tooLarge',
+    );
+    const old = onReadFailed(restingOf(), { kind: 'outdated', required: 3 }, NOW).state;
+    expect(onReadFailed(old, { kind: 'tooLarge' }, NOW).state.status).toBe('outdated');
+  });
+
+  it('an ordinary answer after an ordinary state is still idle or offline', () => {
+    const alone = stateOf({ queue: queueOf([A]) });
+    expect(answer(alone, A, accepted(5, 'ev-5')).state.status).toBe('idle');
+    expect(answer(alone, A, { kind: 'offline' }).state.status).toBe('offline');
+  });
+});
+
 describe('onAnswer: rateLimited', () => {
   it('waits as long as it was told, changing nothing else but the wait and the tap’s freedom', () => {
     const step = answer(stateOf(), A, { kind: 'rateLimited', retryAfterMs: 7000 });
@@ -1067,12 +1124,23 @@ describe('onAnswer: refused (one tap)', () => {
     expect(nextSend(step.state, NOW)).toMatchObject({ idempotency_key: 'key-b' });
   });
 
-  it('a revalidation owed is done before the next tap goes, when there is a next tap', () => {
+  // The refusal's own fetchSince is still out: the revalidation waits for it (hold 'ledger'; heldAfter turns it into
+  // 'revalidate' when it lands) instead of judging the tap behind on the stale ledger.
+  it('a revalidation owed is done, after the fetch it asked for, before the next tap goes', () => {
     const tried = tap('key-a', { attempts: 1 });
     const state = stateOf({ queue: queueOf([tried, B]), revalidateOwed: true });
-    expect(answer(state, tried, refusal('WRONG_PHASE')).state.hold).toBe('revalidate');
+    const refusedStep = answer(state, tried, refusal('WRONG_PHASE'));
+    expect(refusedStep.state.hold).toBe('ledger');
+    expect(refusedStep.effects).toContainEqual({ kind: 'fetchSince', seq: 4 });
+    expect(nextSend(refusedStep.state, NOW)).toBeNull();
+    const landed = onLedger(refusedStep.state, [ev(5)]).state;
+    expect(landed.hold).toBe('revalidate');
+    expect(nextSend(landed, NOW)).toBeNull();
+    expect(onLedger(refusedStep.state, []).state.hold).toBe('revalidate');
     const alone = stateOf({ queue: queueOf([tried]), revalidateOwed: true });
-    expect(answer(alone, tried, refusal('WRONG_PHASE')).state.hold).toBeNull();
+    const lone = answer(alone, tried, refusal('WRONG_PHASE')).state;
+    expect(lone.hold).toBeNull();
+    expect(lone.revalidateOwed).toBe(false);
     expect(answer(stateOf(), A, refusal('WRONG_PHASE')).state.hold).toBeNull();
   });
 
@@ -1225,13 +1293,14 @@ describe('onAnswer: ALREADY_DECIDED (the match is decided or closed)', () => {
     'needs_decision',
     'unheard-of',
   ])(
-    'a status that says %s refuses that tap alone, fetches the ledger, and has the queue looked at',
+    'a status that says %s refuses that tap alone, fetches the ledger, and holds the queue for it',
     (status) => {
       const step = onBootstrapStatus(decided().state, status);
       expect(step.state.queue.dead).toBeNull();
       expect(step.state.queue.pending).toEqual([B]);
       expect(step.state.decidedProbe).toBeNull();
-      expect(step.state.hold).toBe('revalidate');
+      expect(step.state.hold).toBe('ledger');
+      expect(step.state.revalidateOwed).toBe(true);
       expect(step.effects).toEqual([
         { kind: 'refused', key: 'key-a', code: 'ALREADY_DECIDED' },
         { kind: 'fetchSince', seq: 4 },
@@ -1240,11 +1309,39 @@ describe('onAnswer: ALREADY_DECIDED (the match is decided or closed)', () => {
     },
   );
 
-  it('the next tap goes once the status answered, and the revalidation has run', () => {
+  // The ledger the refusal asked for has not landed: the tap behind must not be judged on the stale one, or sent.
+  it('the next tap does not go before the ledger the refusal asked for, nor before it is revalidated', () => {
     const refused = onBootstrapStatus(decided().state, 'decided').state;
     expect(nextSend(refused, NOW)).toBeNull();
-    const looked = revalidate(refused, (queued) => queued.map((q) => q.key)).state;
-    expect(nextSend(looked, NOW)).toMatchObject({ idempotency_key: 'key-b', expected_seq: 4 });
+    const early = revalidate(refused, (queued) => queued.map((q) => q.key));
+    expect(early.state.hold).toBe('ledger');
+    expect(nextSend(early.state, NOW)).toBeNull();
+    const landed = onLedger(refused, [ev(5)]).state;
+    expect(landed.hold).toBe('revalidate');
+    expect(nextSend(landed, NOW)).toBeNull();
+    const looked = revalidate(landed, (queued) => queued.map((q) => q.key)).state;
+    expect(nextSend(looked, NOW)).toMatchObject({ idempotency_key: 'key-b', expected_seq: 5 });
+  });
+
+  it('a ledger fetch that brings nothing still has the queue judged before the next tap goes', () => {
+    const refused = onBootstrapStatus(decided().state, 'decided').state;
+    const landed = onLedger(refused, []).state;
+    expect(landed.hold).toBe('revalidate');
+    expect(nextSend(landed, NOW)).toBeNull();
+  });
+
+  it('a ledger fetch that never lands still has the queue judged before the next tap goes', () => {
+    const refused = onBootstrapStatus(decided().state, 'decided').state;
+    const failed = onFetchFailed(refused, NOW).state;
+    expect(failed.hold).toBe('revalidate');
+    expect(nextSend(failed, NOW + 5000)).toBeNull();
+  });
+
+  it('with nothing behind the refused tap the fetch has nothing to hold back or judge', () => {
+    const alone = { ...decided().state, queue: queueOf([A]) };
+    const refused = onBootstrapStatus(alone, 'decided').state;
+    expect(refused.revalidateOwed).toBe(false);
+    expect(onLedger(refused, []).state.hold).toBeNull();
   });
 
   it('a held tap that is no longer queued is not refused twice, and the hold is let go', () => {
@@ -1313,6 +1410,125 @@ describe('onAnswer: ALREADY_DECIDED (the match is decided or closed)', () => {
   });
 });
 
+// A failed rules read with nothing queued is never provoked again by a send (no send, no FIXTURE_RULES_CHANGED), so the
+// phone would fold stale rules for good: the read itself is asked for again, 15 s later, as often as it fails.
+describe('a rules read that fails (retryRules)', () => {
+  const asked = () =>
+    onFetchFailed(
+      answer(stateOf({ queue: queueOf([]) }), A, { kind: 'rulesChanged', rulesVersion: 3 }).state,
+      NOW,
+    );
+
+  it('with nothing queued: waits 15 s, then asks for the rules again, holding the queue for them', () => {
+    const failed = asked();
+    expect(failed.effects).toEqual([{ kind: 'retryIn', ms: 15000 }]);
+    expect(failed.state.hold).toBeNull();
+    expect(failed.state.rulesRetryAt).toBe(NOW + 15000);
+    const early = retryRules(failed.state, NOW + 14999);
+    expect(early.state).toBe(failed.state);
+    expect(early.effects).toEqual([]);
+    const due = retryRules(failed.state, NOW + 15000);
+    expect(due.effects).toEqual([{ kind: 'reloadRules' }]);
+    expect(due.state.hold).toBe('rules');
+    expect(due.state.rulesRetryAt).toBeNull();
+    expect(due.state.rulesVersion).toBe(2);
+  });
+
+  it('asks once per due time: a second call before the read lands does not ask again', () => {
+    const due = retryRules(asked().state, NOW + 15000);
+    const again = retryRules(due.state, NOW + 15000);
+    expect(again.state).toBe(due.state);
+    expect(again.effects).toEqual([]);
+  });
+
+  it('a read that fails again is waited for again, as often as it fails, never faster than 15 s', () => {
+    let state = asked().state;
+    let clock = NOW;
+    for (let round = 0; round < 4; round += 1) {
+      clock += 15000;
+      const due = retryRules(state, clock);
+      expect(due.effects).toEqual([{ kind: 'reloadRules' }]);
+      const failed = onFetchFailed(due.state, clock);
+      expect(failed.effects).toEqual([{ kind: 'retryIn', ms: 15000 }]);
+      expect(failed.state.rulesRetryAt).toBe(clock + 15000);
+      state = failed.state;
+    }
+  });
+
+  it('the rules landing ends it: nothing is asked again', () => {
+    const due = retryRules(asked().state, NOW + 15000);
+    const taken = onRules(due.state, { rulesVersion: 3 });
+    expect(taken.rulesRetryAt).toBeNull();
+    expect(taken.rulesVersion).toBe(3);
+    expect(retryRules(taken, NOW + 99_000).effects).toEqual([]);
+  });
+
+  it('rules that land before the retry is due end it too, under any hold', () => {
+    const taken = onRules(asked().state, { rulesVersion: 3 });
+    expect(taken.rulesRetryAt).toBeNull();
+    expect(retryRules(taken, NOW + 15000).effects).toEqual([]);
+    const underLedger = onRules(restingOf({ hold: 'ledger', rulesRetryAt: NOW + 5 }), {
+      rulesVersion: 3,
+    });
+    expect(underLedger.rulesRetryAt).toBeNull();
+  });
+
+  it.each(['ledger', 'status', 'revalidate', 'rules'] as const)(
+    'with a %s hold already standing it waits: no second read is started over it, and it is still due',
+    (hold) => {
+      const state = restingOf({ hold, rulesRetryAt: NOW });
+      const step = retryRules(state, NOW + 1);
+      expect(step.state).toBe(state);
+      expect(step.effects).toEqual([]);
+    },
+  );
+
+  it('with nothing due there is nothing to ask', () => {
+    const state = restingOf();
+    const step = retryRules(state, NOW + 99_000);
+    expect(step.state).toBe(state);
+    expect(step.effects).toEqual([]);
+  });
+
+  it('with taps queued the sends wait the same 15 s, and the retry holds them until the rules land', () => {
+    const changed: AppendAnswer = { kind: 'rulesChanged', rulesVersion: 3 };
+    const failed = onFetchFailed(answer(stateOf(), A, changed).state, NOW);
+    expect(nextSend(failed.state, NOW + 14999)).toBeNull();
+    expect(nextSend(failed.state, NOW + 15000)).toMatchObject({ rules_version: 2 });
+    const due = retryRules(failed.state, NOW + 15000);
+    expect(nextSend(due.state, NOW + 15000)).toBeNull();
+  });
+
+  it('a ledger or a status read that fails does not ask for rules', () => {
+    for (const hold of ['ledger', 'status'] as const) {
+      const failed = onFetchFailed(restingOf({ hold }), NOW);
+      expect(failed.state.rulesRetryAt).toBeNull();
+      expect(retryRules(failed.state, NOW + 99_000).effects).toEqual([]);
+    }
+  });
+
+  it('a throttled rules read waits as long as it was told, 15 s at least', () => {
+    const rules = restingOf({ hold: 'rules' });
+    const short = onReadFailed(rules, { kind: 'rateLimited', retryAfterMs: 9000 }, NOW);
+    expect(short.effects).toEqual([{ kind: 'retryIn', ms: 15000 }]);
+    expect(short.state.rulesRetryAt).toBe(NOW + 15000);
+    const long = onReadFailed(rules, { kind: 'rateLimited', retryAfterMs: 20000 }, NOW);
+    expect(long.effects).toEqual([{ kind: 'retryIn', ms: 20000 }]);
+    expect(long.state.rulesRetryAt).toBe(NOW + 20000);
+  });
+
+  it('a rules read that fails outright (offline) is the same: asked for again', () => {
+    const failed = onReadFailed(restingOf({ hold: 'rules' }), { kind: 'offline' }, NOW);
+    expect(failed.state.rulesRetryAt).toBe(NOW + 15000);
+  });
+
+  it('a retry that comes due changes nothing but the hold and the due time', () => {
+    const state = restingOf({ rulesRetryAt: NOW + 100 });
+    const due = retryRules(state, NOW + 100);
+    expect(due.state).toEqual({ ...state, hold: 'rules', rulesRetryAt: null });
+  });
+});
+
 describe('onReadFailed', () => {
   const held = (hold: 'ledger' | 'rules' | 'status') => restingOf({ hold });
 
@@ -1363,10 +1579,14 @@ describe('onReadFailed', () => {
   });
 
   it('offline is a read that did not land, whichever read it was', () => {
-    for (const hold of ['ledger', 'rules', 'status'] as const) {
+    for (const [hold, ms] of [
+      ['ledger', 5000],
+      ['rules', 15000],
+      ['status', 5000],
+    ] as const) {
       const step = onReadFailed(held(hold), { kind: 'offline' }, NOW);
       expect(step.state.hold).toBeNull();
-      expect(step.effects).toEqual([{ kind: 'retryIn', ms: 5000 }]);
+      expect(step.effects).toEqual([{ kind: 'retryIn', ms }]);
     }
   });
 
@@ -1396,7 +1616,7 @@ describe('onReadFailed', () => {
   });
 
   it('a read cannot be answered with a conflict: it is a read that did not land', () => {
-    const step = onReadFailed(held('rules'), { kind: 'seqConflict', currentSeq: null }, NOW);
+    const step = onReadFailed(held('ledger'), { kind: 'seqConflict', currentSeq: null }, NOW);
     expect(step.state.hold).toBeNull();
     expect(step.effects).toEqual([{ kind: 'retryIn', ms: 5000 }]);
     const rules = onReadFailed(held('rules'), { kind: 'rulesChanged', rulesVersion: 9 }, NOW);
@@ -1412,15 +1632,19 @@ describe('onReadFailed', () => {
 });
 
 describe('onFetchFailed', () => {
-  it.each(['ledger', 'rules', 'status'] as const)(
-    'lets go of a %s hold, and waits 5 s before sending on what is held',
-    (hold) => {
+  it.each([
+    ['ledger', 5000],
+    ['status', 5000],
+    ['rules', 15000],
+  ] as const)(
+    'lets go of a %s hold, and waits %i ms before sending on what is held',
+    (hold, ms) => {
       const step = onFetchFailed(restingOf({ hold }), NOW);
       expect(step.state.hold).toBeNull();
-      expect(step.state.notBefore).toBe(NOW + 5000);
-      expect(step.effects).toEqual([{ kind: 'retryIn', ms: 5000 }]);
-      expect(nextSend(step.state, NOW + 4999)).toBeNull();
-      expect(nextSend(step.state, NOW + 5000)).not.toBeNull();
+      expect(step.state.notBefore).toBe(NOW + ms);
+      expect(step.effects).toEqual([{ kind: 'retryIn', ms }]);
+      expect(nextSend(step.state, NOW + ms - 1)).toBeNull();
+      expect(nextSend(step.state, NOW + ms)).not.toBeNull();
     },
   );
 
@@ -1755,8 +1979,10 @@ describe('a rally made illegal by another scorer (Review Focus 3)', () => {
     // the server refuses the resend (the game is over): the queue behind is looked at before it goes
     const resent = markSending(step.state, NOW).state;
     const refused = answer(resent, tried, refusal('WRONG_PHASE'));
-    expect(refused.state.hold).toBe('revalidate');
-    const judged = revalidate(refused.state, legalAfterForfeit(refused.state));
+    expect(refused.state.hold).toBe('ledger');
+    const landed = onLedger(refused.state, []).state;
+    expect(landed.hold).toBe('revalidate');
+    const judged = revalidate(landed, legalAfterForfeit(landed));
     expect(judged.state.queue.pending).toEqual([]);
     expect(judged.effects[0]).toEqual({ kind: 'refused', key: 'key-b', code: NO_LONGER_LEGAL });
   });
@@ -1913,7 +2139,8 @@ describe('a queue read back after the app was killed', () => {
     const step = answer(resent, tried, refusal('WRONG_PHASE'));
     expect(step.state.queue.pending).toEqual([B]);
     expect(step.effects[0]).toEqual({ kind: 'refused', key: 'key-a', code: 'WRONG_PHASE' });
-    expect(step.state.hold).toBe('revalidate');
+    expect(step.state.hold).toBe('ledger');
+    expect(onLedger(step.state, []).state.hold).toBe('revalidate');
   });
 
   it('is not sent before it is looked at, and a dead queue is not sent at all', () => {
