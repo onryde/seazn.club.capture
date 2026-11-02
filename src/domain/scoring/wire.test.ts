@@ -62,7 +62,7 @@ const bootstrapData = (overrides: Record<string, unknown> = {}) => ({
     home: singlesSide('ent-home', 'A. Sharma', 'p-sharma'),
     away: singlesSide('ent-away', 'L. Chen', 'p-chen'),
   },
-  state: { status: 'in_progress', last_seq: 41 },
+  state: { status: 'in_play', last_seq: 41 },
   ...overrides,
 });
 
@@ -108,7 +108,26 @@ describe('parseBootstrap', () => {
         },
       },
       lastSeq: 41,
-      status: 'in_progress',
+      status: 'in_play',
+    });
+  });
+
+  // The web leaves a name out as null or as the empty string: an empty one is none, never a blank line on the pad.
+  it('reads an empty division, round, match reference and view-only reason as none', () => {
+    const parsed = parseBootstrap(
+      envelope(
+        bootstrapData({
+          view_only_reason: '',
+          names: { competition: 'Spring Open 2026', division: '', round_label: '', ref: '' },
+        }),
+      ),
+    );
+    expect(parsed?.viewOnlyReason).toBeNull();
+    expect(parsed?.context).toEqual({
+      competition: 'Spring Open 2026',
+      division: null,
+      round: null,
+      match: null,
     });
   });
 
@@ -340,6 +359,7 @@ describe('parseEvents', () => {
           voids_event_id: 'ev-2',
         }),
       ]),
+      0,
     );
     expect(parsed).toEqual([
       {
@@ -374,12 +394,22 @@ describe('parseEvents', () => {
 
   // Nothing since the seq asked is a ledger, not a failure: the caller must tell it from null.
   it('reads an empty list as an empty ledger, not as garbage', () => {
-    expect(parseEvents(envelope([]))).toEqual([]);
+    expect(parseEvents(envelope([]), 0)).toEqual([]);
+    expect(parseEvents(envelope([]), 40)).toEqual([]);
+  });
+
+  it('reads an empty voids_event_id and device_link_id as none', () => {
+    const parsed = parseEvents(
+      envelope([wireEvent({ voids_event_id: '', device_link_id: '' })]),
+      0,
+    );
+    expect(parsed?.[0]).toMatchObject({ voids: null, deviceLinkId: null });
   });
 
   it('takes a ledger that starts after seq 1 (a fetch since seq 40)', () => {
     const parsed = parseEvents(
       envelope([wireEvent({ id: 'ev-41', seq: 41 }), wireEvent({ id: 'ev-42', seq: 42 })]),
+      40,
     );
     expect(parsed?.map((e) => e.seq)).toEqual([41, 42]);
   });
@@ -402,7 +432,30 @@ describe('parseEvents', () => {
     ['a repeated seq', [wireEvent(), wireEvent({ id: 'ev-2' })]],
     ['seqs out of order', [wireEvent({ id: 'ev-2', seq: 2 }), wireEvent()]],
   ])('is null for %s', (_name, events) => {
-    expect(parseEvents(envelope(events))).toBeNull();
+    expect(parseEvents(envelope(events), 0)).toBeNull();
+  });
+
+  // Contiguity from the seq asked: a ledger with a hole folds into something that never was.
+  it.each([
+    ['a hole after the first', 0, [1, 3]],
+    ['a hole in the middle', 0, [1, 2, 4, 5]],
+    ['a first event past since + 1', 0, [2, 3]],
+    ['a first event past since + 1 (since 40)', 40, [42]],
+    ['a repeat of the seq asked (since 40)', 40, [40, 41]],
+    ['events behind the seq asked', 40, [10, 11]],
+  ])('is null for %s', (_name, since, seqs) => {
+    const events = seqs.map((seq) => wireEvent({ id: `ev-${seq}`, seq }));
+    expect(parseEvents(envelope(events), since)).toBeNull();
+  });
+
+  it('takes a run that is contiguous from since + 1, whatever since is', () => {
+    const run = (since: number, count: number) =>
+      Array.from({ length: count }, (_, i) =>
+        wireEvent({ id: `ev-${since + i + 1}`, seq: since + i + 1 }),
+      );
+    expect(parseEvents(envelope(run(0, 3)), 0)?.map((e) => e.seq)).toEqual([1, 2, 3]);
+    expect(parseEvents(envelope(run(7, 2)), 7)?.map((e) => e.seq)).toEqual([8, 9]);
+    expect(parseEvents(envelope(run(399, 1)), 399)?.map((e) => e.seq)).toEqual([400]);
   });
 
   it.each([
@@ -412,7 +465,7 @@ describe('parseEvents', () => {
     ['data that is an object', envelope({ events: [] })],
     ['a bare list with no envelope', [wireEvent()]],
   ])('is null for a body that is %s', (_name, body) => {
-    expect(parseEvents(body)).toBeNull();
+    expect(parseEvents(body, 0)).toBeNull();
   });
 });
 
@@ -488,7 +541,7 @@ const created = (overrides: Record<string, unknown> = {}) =>
     seq: 42,
     state_summary: { home: 3, away: 1 },
     outcome: null,
-    status: 'in_progress',
+    status: 'in_play',
     event_id: 'ev-42',
     rules_version: 2,
     ...overrides,
@@ -637,7 +690,11 @@ describe('parseAppendAnswer: the server’s refusals', () => {
     [422, 'WRONG_PHASE'],
     [422, 'INVALID_EVENT'],
     [422, 'ENDING_SANCTION_PENDING'],
-    [409, 'ALREADY_DECIDED'],
+    // http.ts ENGINE_HTTP: ALREADY_DECIDED is 422, like every engine word but SEQ_CONFLICT and the 409 family.
+    [422, 'ALREADY_DECIDED'],
+    [403, 'RESULT_CARRIED_FORWARD'],
+    [409, 'UNDO_NOOP'],
+    [409, 'UNDO_ALREADY_VOIDED'],
     [409, 'UNDO_TARGET_NOT_FOUND'],
     [402, 'PAYMENT_REQUIRED'],
     [403, 'FORBIDDEN'],

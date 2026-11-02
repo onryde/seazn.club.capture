@@ -96,8 +96,14 @@ export type AppendAnswer =
   | { readonly kind: 'refused'; readonly status: number; readonly code: string }
   | { readonly kind: 'offline' };
 
-/** Every answer but a success: what a read (bootstrap, events, rules) can come to besides its data. */
+/** Every answer but a success: what an append can come to besides its acceptance. */
 export type Failure = Exclude<AppendAnswer, { kind: 'accepted' }>;
+
+/**
+ * What a read (bootstrap, events, rules) can come to besides its data: a {@link Failure}, or an answer over the
+ * read's size cap, which is not the network being down and is not retried as if it were.
+ */
+export type ReadFailure = Failure | { readonly kind: 'tooLarge' };
 
 /** The contract's default wait (`parseRetryAfter`, D5) when a 429 names none. */
 export const DEFAULT_RETRY_AFTER_MS = 5000;
@@ -124,10 +130,14 @@ const text = (value: unknown): string | undefined =>
 const whole = (value: unknown, min: number): number | undefined =>
   typeof value === 'number' && Number.isInteger(value) && value >= min ? value : undefined;
 
-/** A text the server may leave out: a string, or null or absent as null. Anything else is garbled (`undefined`). */
+/**
+ * A text the server may leave out: null, absent or empty is null, a string is itself. Anything else is garbled
+ * (`undefined`). An empty name is none: it never reaches the pad as a blank line.
+ */
 const textOrNull = (value: unknown): string | null | undefined => {
   if (value === null || value === undefined) return null;
-  return typeof value === 'string' ? value : undefined;
+  if (typeof value !== 'string') return undefined;
+  return value === '' ? null : value;
 };
 
 /** Every item read, or `undefined` when the value is no list or one item is garbled. */
@@ -285,13 +295,14 @@ function readEvent(raw: unknown): LedgerEvent | undefined {
 }
 
 /**
- * `GET …/events?since_seq=`: the ledger from the seq asked, in order. An empty list is a ledger with nothing new, not
- * a failure. A list that is not strictly ascending in seq is garbled: it would fold into something that never was.
+ * `GET …/events?since_seq=N`: the ledger after seq N, in order. An empty list is a ledger with nothing new, not a
+ * failure. A list that is not contiguous from N + 1 (a hole, a repeat, events behind N) is garbled: it would fold into
+ * something that never was, so the caller fetches again rather than take it.
  */
-export function parseEvents(body: unknown): readonly LedgerEvent[] | null {
+export function parseEvents(body: unknown, since: number): readonly LedgerEvent[] | null {
   const events = listOf(successData(body), readEvent);
   if (events === undefined) return null;
-  return events.every((event, i) => i === 0 || event.seq > events[i - 1].seq) ? events : null;
+  return events.every((event, i) => event.seq === since + 1 + i) ? events : null;
 }
 
 /** `GET /api/v1/fixtures/{id}/rules`: the rules a match plays by now. */
@@ -360,9 +371,8 @@ function answerFor(
   retryAfterMs: number,
 ): Failure {
   if (status === 429) return { kind: 'rateLimited', retryAfterMs };
-  if (status === 401 && LINK_DEAD_CODES.some((word) => word === code)) {
-    return { kind: 'linkDead', code: code as LinkDeadCode };
-  }
+  const dead = LINK_DEAD_CODES.find((word) => word === code);
+  if (status === 401 && dead !== undefined) return { kind: 'linkDead', code: dead };
   if (status === 409 && code === 'SEQ_CONFLICT') {
     return { kind: 'seqConflict', currentSeq: whole(extras.current_seq, 0) ?? null };
   }

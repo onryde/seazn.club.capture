@@ -74,7 +74,8 @@ export function createFetchScoringPort(deps: Deps): ScoringPort {
     },
     events: async (link, fixtureId, sinceSeq) => {
       const path = `${fixture(fixtureId)}/events?since_seq=${sinceSeq}`;
-      return read(deps, 'events', await send(deps, link, get('events', path)), parseEvents);
+      const reply = await send(deps, link, get('events', path));
+      return read(deps, 'events', reply, (body) => parseEvents(body, sinceSeq));
     },
     rules: async (link, fixtureId) => {
       const path = `${fixture(fixtureId)}/rules`;
