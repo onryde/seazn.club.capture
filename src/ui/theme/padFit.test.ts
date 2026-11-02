@@ -800,8 +800,10 @@ describe('the pad’s height, portrait', () => {
 /**
  * The match card (owner, 2026-11-01, option A), on the Not started card, in the Match details sheet and on the Start
  * screen, at 320 and 360 in four languages, for the singles and the doubles samples (the longest names and competition
- * the fake has) and every language's widest rule label. Nothing is cut: nothing in the card has a line limit, so what
- * can fail is a word wider than its room. The rooms: the Not started card's text (the column less the card's padding,
+ * the fake has), a long one an organiser can type (round 8 review) and every language's widest rule label. Nothing is
+ * cut: nothing in the card has a line limit, so what can fail is a word wider than its room. The one word that may
+ * break is the match's, on its plate, capped at `padMatchPlateMax` so it never squeezes the header: the fake's fit
+ * whole, a long id wraps inside the cap. The rooms: the Not started card's text (the column less the card's padding,
  * space.md a side, and its edge, `padSideBar`), the sheet's (the screen less its padding) and the Start screen's (the
  * column). Inside the card: the header's text beside the match's plate, a side's names beside its bar on the versus
  * panel, and a rule's label and value beside each other.
@@ -819,8 +821,12 @@ describe('the match card at 320 and 360 in four languages (owner, 2026-11-01, op
     sheet: (width: number) => width - 2 * space.md,
     start: (width: number) => column(width),
   } as const;
-  /** The plate's box: its word in `state` caps, its padding (space.sm a side) and its outline. */
-  const plateBox = (match: string) => caps('state')(match) + 2 * space.sm + 2 * layout.iconBorder;
+  /** The plate's box if nothing capped it: its word in `state` caps, its padding (space.sm a side) and its outline. */
+  const plateWhole = (match: string) => caps('state')(match) + 2 * space.sm + 2 * layout.iconBorder;
+  /** The plate's box: as wide as its word, and at most `padMatchPlateMax`, where a longer word wraps inside it. */
+  const plateBox = (match: string) => Math.min(plateWhole(match), layout.padMatchPlateMax);
+  /** What the plate holds a line: its capped box less its padding and its outline. */
+  const plateText = () => layout.padMatchPlateMax - 2 * space.sm - 2 * layout.iconBorder;
   /** The header's text: the card less the plate and their gap. */
   const headerText = (room: number, match: string) => room - space.sm - plateBox(match);
   /** A side's names: the panel less its padding (space.md a side), the bar and the bar's gap. */
@@ -837,6 +843,17 @@ describe('the match card at 320 and 360 in four languages (owner, 2026-11-01, op
       where: 'Open Mixed Doubles · Quarter-final',
       match: 'BAD0001',
       sides: ['A. Sharma / R. Iyer', 'L. Chen / M. Wong'],
+    },
+    // The long sample of MatchCard.test.tsx: a county's whole name, a long division and round, a long match id and
+    // double-barrelled partners. What an organiser can type, not what the fake has.
+    {
+      competition: 'Northamptonshire County Badminton Association Veterans Championships 2026',
+      where: 'Over 45 Mixed Doubles Category A · Second Qualifying Round',
+      match: 'NCBA-2026-0417',
+      sides: [
+        'Christopher Featherstonehaugh / Bartholomew Anstruther-Gough',
+        'Maximiliano Fernández-Villaverde / Anneliese Oppenheimer-Weiß',
+      ],
     },
   ] as const;
   const RULES = [
@@ -874,6 +891,30 @@ describe('the match card at 320 and 360 in four languages (owner, 2026-11-01, op
     expect(ROOMS.card(320) - layout.padRuleLabelMax - space.md).toBe(124);
   });
 
+  // Round 8 review: the plate had no width limit, so a long match id (NCBA-2026-0417, a 123 dp plate) left the header's
+  // text 120.8 at 320 on the card, and the competition's longest word (NORTHAMPTONSHIRE, 128.9) broke mid-word.
+  it('caps the match plate at 112: the header’s text keeps 132 at 320 on the card, and 128.9 is what its longest word needs', () => {
+    expect(layout.padMatchPlateMax).toBe(112);
+    expect(headerText(ROOMS.card(320), SAMPLES[2].match)).toBe(132);
+    // Anti-vacuity: uncapped, that plate leaves the header less than the longest word needs.
+    const uncapped = ROOMS.card(320) - space.sm - plateWhole(SAMPLES[2].match);
+    expect(uncapped).toBeLessThan(caps('state')('Northamptonshire'));
+    expect(headerText(ROOMS.card(320), SAMPLES[2].match)).toBeGreaterThan(
+      caps('state')('Northamptonshire'),
+    );
+  });
+
+  // The plate wraps inside its cap, which is the one place a word can break: the fake's match words fit its 94 dp
+  // whole, the long sample's id (105.2) does not and wraps. Where the phone breaks an id with no space is the phone's
+  // (UAX 14's LB25 allows no break between a hyphen and a digit), so only "wider than a line, so it wraps" is claimed.
+  it('keeps the fake’s match words whole on the plate, and wraps the long sample’s id inside the cap', () => {
+    expect(plateText()).toBe(94);
+    for (const sample of SAMPLES.slice(0, 2))
+      for (const word of words(sample.match))
+        expect(caps('state')(word)).toBeLessThanOrEqual(plateText());
+    expect(caps('state')(SAMPLES[2].match)).toBeGreaterThan(plateText());
+  });
+
   // The size the owner approved on build 716 (2026-11-01): a step up from the match label's 20.
   it('sets the sides at 26, and the doubles sample’s names on one line a side at 320 on the card', () => {
     expect(typeScale.matchName.fontSize).toBe(26);
@@ -881,21 +922,22 @@ describe('the match card at 320 and 360 in four languages (owner, 2026-11-01, op
       expect(linesOf(name, sideText(ROOMS.card(320)), sideWidth)).toBe(1);
   });
 
+  // The `padRuleLabelMax` comment: Spanish's widest label (Cambio de lado, 108) keeps one line, French's and Dutch's
+  // (Changement de côté, Van kant wisselen) wrap to two, and English's fit on one. The counts are literals, never read
+  // back from the code.
+  const RULE_LABEL_LINES = { en: 1, es: 1, fr: 2, nl: 2 } as const;
   it.each(LANGUAGES)(
     '%s: the widest label keeps one line where it is narrower than the cap, two where it is wider',
     (lang, dictionary: Dictionary) => {
       const labels = rows(dictionary).map((row) => row.label);
       const column = labelColumn(labels);
-      for (const label of labels) {
-        expect(linesOf(label, column, bodyWidth)).toBeLessThanOrEqual(
-          lang === 'fr' || lang === 'nl' ? 2 : 1,
-        );
-      }
+      const lines = labels.map((label) => linesOf(label, column, bodyWidth));
+      expect(Math.max(...lines)).toBe(RULE_LABEL_LINES[lang]);
     },
   );
 
   it.each(LANGUAGES)(
-    '%s: no word wider than its room, in any room, for either sample',
+    '%s: no word wider than its room, in any room, for every sample',
     (_lang, dictionary: Dictionary) => {
       const table = rows(dictionary);
       const column = labelColumn(table.map((row) => row.label));

@@ -288,7 +288,10 @@ function startOf(state: BadmintonDisplay): PadStart<BadmintonPadKey> | null {
   };
 }
 
-/** The match's context and its rule lines: the Match details sheet's and the Not started card's (owner, 2026-11-01). */
+/**
+ * The match's context and its rules, for MatchCard: the Start screen, the Not started card and the Match details sheet
+ * (owner, 2026-11-01).
+ */
 export function badmintonDetails(state: BadmintonDisplay): PadMatchDetails<BadmintonPadKey> {
   return { context: state.context, rules: badmintonRuleRows(state.rules) };
 }

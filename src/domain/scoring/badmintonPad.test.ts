@@ -184,8 +184,9 @@ describe('badmintonPad: the halves', () => {
 });
 
 describe('badmintonPad: the strip', () => {
-  // Owner ruling 16: "Game {n} of {m}" (the controller's brief, 2026-10-31), alone: "of 3" is the best of 3, which the
-  // Rules sheet spells out. Ruling 17: the court is on the server's plate, not here.
+  // Owner ruling 16: "Game {n} of {m}" (the controller's brief, 2026-10-31), alone: "of 3" is the best of 3, which
+  // MatchCard's rules table spells out (the Start screen, the Not started card and the Match details sheet). Ruling 17:
+  // the court is on the server's plate, not here.
   it('names the game of how many, and the interval to come', () => {
     expect(badmintonPad(live).strip).toEqual([
       { slot: 'game', text: { key: 'scoring.badminton.gameOf', vars: { game: 1, bestOf: 3 } } },

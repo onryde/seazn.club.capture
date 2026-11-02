@@ -366,6 +366,13 @@ const base = {
    * Dutch's (_Changement de côté_, _Van kant wisselen_) wrap to two, so each value keeps 124 dp at 320 (padFit.test.ts).
    */
   padRuleLabelMax: 112,
+  /**
+   * The match plate's widest box (round 8 review; the match card, owner, 2026-11-01). A long match id (NCBA-2026-0417
+   * is a 123 dp plate) would leave the header's text 120.8 at 320 on the Not started card, and the competition's longest
+   * word (NORTHAMPTONSHIRE, 128.9) would break mid-word. Capped, the text keeps 132; a longer id wraps inside the plate,
+   * where it has 94 dp a line (padFit.test.ts).
+   */
+  padMatchPlateMax: 112,
 } as const;
 
 /** The cells the controls half's width is made of (`base` holds the shipped ones). */

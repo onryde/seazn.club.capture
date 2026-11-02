@@ -173,14 +173,16 @@ const RuleRow = memo(function RuleRow({
 /**
  * The label column: every label's cell at least as wide as the widest laid out, rounded up, and at most
  * `padRuleLabelMax` (the cell's own cap, where a longer label wraps). A cell laid out again reports the column's own
- * width, so the column never narrows; a new table (the caller's key) starts again. Until the phone lays the labels
- * out, each cell is its own label's width. As a stylesheet made once per width: never an inline style object.
+ * width, so the column never narrows; a new table (the caller's key) starts again. It grows only for a report more
+ * than half a dp over the column: Fabric snaps a layout to whole pixels, so on a fractional density a cell reports up
+ * to half a pixel more than it did, and growing for that would add a dp a pass up to the cap. Until the phone lays the
+ * labels out, each cell is its own label's width. As a stylesheet made once per width: never an inline style object.
  */
 function useLabelColumn() {
   const [widest, setWidest] = useState(0);
   const onLayout = useCallback((event: LayoutChangeEvent) => {
-    const width = Math.ceil(event.nativeEvent.layout.width);
-    setWidest((was) => Math.max(was, width));
+    const width = event.nativeEvent.layout.width;
+    setWidest((was) => (width > was + SNAP ? Math.ceil(width) : was));
   }, []);
   const column = useMemo(
     () => StyleSheet.create({ column: { minWidth: widest } }).column,
@@ -188,6 +190,9 @@ function useLabelColumn() {
   );
   return [column, onLayout] as const;
 }
+
+/** The most a layout reported again can differ by from snapping to whole pixels, in dp (`useLabelColumn`). */
+const SNAP = 0.5;
 
 /**
  * The test markers. react-native-web renders `dataSet` as `data-*` attributes, which tests read; native ignores it.
@@ -203,6 +208,7 @@ const styles = StyleSheet.create({
   // `state` carries no colour (Fabric's default is black) and `body` is ink2: the facts are in ink.
   ink: { color: colour.ink },
   plate: {
+    maxWidth: layout.padMatchPlateMax,
     paddingHorizontal: space.sm,
     paddingVertical: space.xs,
     borderWidth: layout.iconBorder,

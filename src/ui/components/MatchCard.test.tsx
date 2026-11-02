@@ -285,6 +285,30 @@ describe('MatchCard: the label column', () => {
     expect(least()).toEqual(['90px', '90px', '90px', '90px', '90px']);
   });
 
+  // Round 8 review: Fabric snaps a layout to whole pixels, so on a fractional density a cell can report up to half a
+  // pixel more than it did. The column is 90 here (89.4 rounded up) and grows only for a report more than 0.5 over it.
+  it('grows for a report more than half a pixel over the column and not for one within it', () => {
+    renderCard();
+    layOut(cells()[4] as HTMLElement, { width: 89.4, height: 22 });
+    expect(least()).toEqual(['90px', '90px', '90px', '90px', '90px']);
+    for (const width of [90.4, 90.5]) {
+      layOut(cells()[0] as HTMLElement, { width, height: 22 });
+      expect(least()).toEqual(['90px', '90px', '90px', '90px', '90px']);
+    }
+    layOut(cells()[0] as HTMLElement, { width: 90.6, height: 22 });
+    expect(least()).toEqual(['91px', '91px', '91px', '91px', '91px']);
+  });
+
+  it('does not creep a dp a pass: a cell reporting 0.4 over the column, pass after pass, leaves it', () => {
+    renderCard();
+    layOut(cells()[4] as HTMLElement, { width: 89.4, height: 22 });
+    for (let pass = 0; pass < 5; pass += 1) {
+      const column = Number.parseFloat(style(cells()[0] as HTMLElement).minWidth);
+      layOut(cells()[0] as HTMLElement, { width: column + 0.4, height: 22 });
+    }
+    expect(least()).toEqual(['90px', '90px', '90px', '90px', '90px']);
+  });
+
   it('measures afresh when the labels change: another language, or another sport', () => {
     const view = renderCard();
     layOut(cells()[4] as HTMLElement, { width: 89.4, height: 22 });
@@ -371,6 +395,14 @@ describe('MatchCard: the four questions (hardening)', () => {
       'Christopher Featherstonehaugh / Bartholomew Anstruther-Gough versus Maximiliano Fernández-Villaverde / ' +
         'Anneliese Oppenheimer-Weiß',
     );
+  });
+
+  // Round 8 review: the plate had no width limit, so a long match id (a 123 dp plate) left the competition's longest
+  // word less room than it needs on the 320 dp card (padFit.test.ts reads the fit). The plate wraps inside the cap.
+  it('caps the match plate at 112 dp, so a long match id wraps inside it', () => {
+    renderCard(LONG);
+    expect(style(byId('match-card-match')).maxWidth).toBe('112px');
+    expect(byId('match-card-match').textContent).toBe('NCBA-2026-0417');
   });
 
   // The header's text takes what the plate leaves, and each name what its bar leaves: without the grow, a row's text
