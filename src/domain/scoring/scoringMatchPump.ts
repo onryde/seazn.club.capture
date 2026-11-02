@@ -65,7 +65,7 @@ function rulesRetry<S extends SportTypes>(state: MatchState<S>, now: number): Pa
 type Judge = (queued: readonly QueuedEvent[]) => readonly string[];
 
 /** What can judge the queue: the fold, or (the background sender) nothing, which keeps every tap for the server to judge. */
-function judgeOf<S extends SportTypes>(state: MatchState<S>): Judge | null {
+export function judgeOf<S extends SportTypes>(state: MatchState<S>): Judge | null {
   if (state.judge === 'trust') return (queued) => queued.map((tap) => tap.key);
   const { pending } = state.sync.queue;
   const fold = foldOfState(state, undoneAway(pending));

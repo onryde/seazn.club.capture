@@ -1,6 +1,7 @@
 import type { PadOutcome } from '@/domain/scoring/padLine';
 import type { BootCache, MatchQueue } from '@/domain/scoring/queue';
 import { openMatch, step, wakeAt } from '@/domain/scoring/scoringMatch';
+import { stallOf, type Stall } from '@/domain/scoring/scoringMatchStall';
 import type {
   MatchEffect,
   MatchEvent,
@@ -16,6 +17,7 @@ import { createSaver } from '@/hooks/scoringRunnerSaves';
 import type { Ports } from '@/hooks/usePorts';
 import { readScoringLink } from '@/services/scoringLinkStore';
 import type { ScoringLink } from '@/services/scoringPort';
+import type { LogFields } from '@/services/scrub';
 
 /**
  * The effectful half of one match (plan S2-1 Task 9), around the pure reducer in `scoringMatch.ts`: it owns the state
@@ -79,6 +81,7 @@ export function createScoringRunner(ports: RunnerPorts, options: Options): Scori
   let stopped = false;
   let started = false;
   let idled = false;
+  let stalled: Stall | null = null;
   let wakeTimer: { at: number; id: ReturnType<typeof setTimeout> } | null = null;
   const sending = new Set<Promise<void>>();
   const listeners = new Set<() => void>();
@@ -100,7 +103,21 @@ export function createScoringRunner(ports: RunnerPorts, options: Options): Scori
     if (saver.unsettled() === 0) publish({ kind: 'ready', state });
     arm(state);
     idleCheck(state);
+    sayStall(state);
     return result.outcome;
+  };
+
+  /**
+   * A stall (`stallOf`) is said once when it begins and once when it ends, never per step: a taps-that-cannot-go state
+   * with no line in the record looks exactly like a phone that is merely slow (recurring failure class 3).
+   */
+  const sayStall = (current: MatchState): void => {
+    const now = stallOf(current);
+    const was = stalled;
+    if (reasonOf(was) === reasonOf(now)) return;
+    stalled = now;
+    if (was !== null) ports.logger.info('scoring.unstalled', { reason: reasonOf(was) });
+    if (now !== null) ports.logger.warn('scoring.stalled', stallFields(current, now));
   };
 
   /** A headless sender with nothing left to send says so once: the hub lets it go. */
@@ -306,11 +323,22 @@ async function markUnsendable(ports: RunnerPorts, fixtureId: string): Promise<vo
 }
 
 /**
+ * The lowest `rules_version` a match can have: the column's default (`V469__fixture_rules_override.sql`) is 0, and the
+ * web's schemas say `min(0)`. A phone that has read nothing yet guesses this and no higher: it never sends a version
+ * the server has not said, and `onBootstrapRead` and `onRules` only raise it. (It once guessed 1: against a match the
+ * organiser had never corrected, every send was refused for good, 2026-11-02.)
+ */
+const NO_RULES_VERSION = 0;
+
+/**
  * What the reducer opens a match from: the sport its link names, the files, the judge this mode has, and whether the
  * app is in the foreground.
  */
 function heldOf(loaded: Opened, mode: RunnerMode, foreground: boolean): MatchHeld {
-  const rulesVersion = Math.max(1, ...loaded.queue.pending.map((tap) => tap.rulesVersion));
+  const rulesVersion = Math.max(
+    NO_RULES_VERSION,
+    ...loaded.queue.pending.map((tap) => tap.rulesVersion),
+  );
   return {
     sport: loaded.sport,
     queue: loaded.queue,
@@ -330,4 +358,25 @@ const unreadable = (): RunnerSnapshot => ({ kind: 'unreadable', what: 'queue' })
 async function unreadableQueue(ports: RunnerPorts, fixtureId: string): Promise<boolean> {
   const entries = await ports.tapQueue.list();
   return entries.some((entry) => entry.kind === 'unreadable' && entry.fixtureId === fixtureId);
+}
+
+/** Why it stalls, as the record says it: the reason, not the count (it grows with every refusal and is said once). */
+const reasonOf = (stall: Stall | null): string | null => {
+  if (stall === null) return null;
+  return stall.kind === 'fold' ? 'fold' : stall.by;
+};
+
+/**
+ * What a stall says in the record: the reason, the hold that stands, the rules version the phone sends under and the
+ * one the server last named (numbers, so the scrub keeps them), and how many refusals in a row.
+ */
+function stallFields(state: MatchState, stall: Stall): LogFields {
+  const { sync } = state;
+  return {
+    reason: reasonOf(stall),
+    state: sync.hold ?? 'none',
+    held: sync.rulesVersion,
+    said: sync.rulesSaid,
+    count: stall.kind === 'refused' ? stall.count : 0,
+  };
 }
