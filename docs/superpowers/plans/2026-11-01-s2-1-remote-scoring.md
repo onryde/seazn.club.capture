@@ -500,6 +500,18 @@ The Sonnet per-task and Opus batch reviews of Tasks 3–6 found what the hook mu
 
 ## Batch D — into the app
 
+#### Task 10/11 hand-offs (from the Task 9 Opus review, 2026-11-02)
+
+- Task 10: mount `useScoringBackground()` once; the Continue card is built from `tapQueue.list()`,
+  unreadable queues included, and Dismiss goes through `scoringHubOf(ports).dismiss(id)`; a link that
+  dies with nothing queued forgets the link and the saved code (design §4.3); a fresh scan of a match
+  whose queue is dead re-reads the bootstrap (a new link for the same fixture revives it; the same dead
+  link shows the bad-link card with Dismiss).
+- Task 11: draw every `ScoringMatch` kind in en/es/fr/nl (loading/offline, linkGone, unreadable queue or
+  link, unsupportedSport, tooLarge, unfoldable, outdated with its unsent count); the pending Undo and
+  the HistoryCover `sending` rows; keep the screen on; the portrait route target; delete
+  `previewScoring`.
+
 ### Task 10: Scan, save, reopen and Home
 
 **Files:** Modify `src/domain/mode/scanOutcome.ts` (`BUILT_MODES` gains `'scoring'`),
