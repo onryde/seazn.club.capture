@@ -6,6 +6,7 @@ import { useScoringStateActions, type StateActions } from '@/hooks/useScoringSta
 import { useBackToHome } from '@/hooks/useStreamLinks';
 import { DismissSheet } from '@/ui/components/DismissSheet';
 import { IconButton } from '@/ui/components/IconButton';
+import { KeepScreenOn } from '@/ui/components/KeepScreenOn';
 import { ScoringStateCard } from '@/ui/components/ScoringStateCard';
 import { colour, layout, space } from '@/ui/theme/tokens';
 
@@ -14,6 +15,8 @@ import { colour, layout, space } from '@/ui/theme/tokens';
  * and the state's card where the halves would be, scrolling when it is taller than the room. Back, and the phone's
  * Back, go Home (owner ruling 10: Back goes Home freely). Its exits are the card's buttons (`useScoringStateActions`);
  * a Dismiss that would throw taps away asks first, in a sheet that hides the card from a screen reader while it shows.
+ * The screen is held on only while the scorer is waiting to score (loading, offline: owner ruling 9, applied 2026-11-02);
+ * a state that needs a person to act lets it sleep.
  */
 export const ScoringStateScreen = memo(function ScoringStateScreen({
   fixtureId,
@@ -25,6 +28,7 @@ export const ScoringStateScreen = memo(function ScoringStateScreen({
   const actions = useScoringStateActions(fixtureId);
   return (
     <View testID="scoring-match" style={styles.screen}>
+      {state.kind === 'loading' ? <KeepScreenOn /> : null}
       <View
         testID="scoring-state-content"
         aria-hidden={actions.asking !== null}

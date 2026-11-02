@@ -1,4 +1,4 @@
-import { act, fireEvent, screen, within } from '@testing-library/react';
+import { act, screen, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { encodeSavedCode, type SavedCode } from '@/domain/mode/savedCode';
 import { STORE_URL } from '@/hooks/useScoringMatch';
@@ -17,9 +17,19 @@ import {
   linkKey,
   queueHolding,
 } from '../../../test/scoringHomeFixtures';
+import { screenIsHeld, type HoldLog } from '../../../test/heldScreen';
 import { backgroundAndBack, flush, launchApp, type LaunchedApp } from '../../../test/routedApp';
 
-beforeEach(() => vi.useFakeTimers());
+const holds = vi.hoisted((): HoldLog => []);
+vi.mock('@/hooks/keepAwake', async () => {
+  const { recordingHold } = await import('../../../test/heldScreen');
+  return { holdScreenOn: recordingHold(holds) };
+});
+
+beforeEach(() => {
+  vi.useFakeTimers();
+  holds.length = 0;
+});
 afterEach(() => vi.useRealTimers());
 
 // Plan S2-1 Task 11 (design §4 step 3, §8): every state of a scoring match that is not the pad, on the route the phone
@@ -255,4 +265,86 @@ describe.each([
   });
 });
 
-void fireEvent;
+/**
+ * Owner ruling 9 (2026-10-31: the screen stays on while the pad shows), as the controller applied it on 2026-11-02: the
+ * scorer waiting to score (the match opening, or no connection yet) keeps the screen on, as the pad does; a state that
+ * needs a person to act (a link gone, a file the phone cannot read, a sport or an app it cannot score) lets the screen
+ * sleep, since nothing on it will change by itself. Whether the phone's screen really stays lit is the device check's.
+ */
+describe('keeping the screen on', () => {
+  const held = () => screenIsHeld(holds);
+
+  it('offline holds it, and Back lets it go', async () => {
+    const app = await opened({ prepare: (fakes) => fakes.scoring.goOffline(true) });
+    expect(title()).toBe(en['scoring.state.offline.title']);
+    expect(held()).toBe(true);
+    act(() => {
+      app.back.press();
+    });
+    await flush();
+    expect(held()).toBe(false);
+  });
+
+  it('the match opening holds it', async () => {
+    await opened({
+      prepare: (fakes) => {
+        vi.spyOn(fakes.scoring, 'bootstrap').mockReturnValue(new Promise(() => undefined));
+      },
+    });
+    expect(title()).toBe(en['scoring.state.loading.title']);
+    expect(held()).toBe(true);
+  });
+
+  it('a link that is gone does not hold it', async () => {
+    const seed: Record<string, string> = { ...IN_MATCH };
+    delete seed[linkKey(FAKE_MATCH)];
+    await opened({ kvSeed: seed });
+    expect(title()).toBe(en['scoring.state.linkGone.title']);
+    expect(held()).toBe(false);
+  });
+
+  it.each([
+    ['a queue the phone cannot read', 'unreadableQueue'],
+    ['another sport', 'unsupported'],
+    ['a ledger over the cap', 'tooLarge'],
+    ['a seat with no entrant', 'sides'],
+    ['an app too old', 'outdated'],
+  ] as const)('%s does not hold it', async (_name, key) => {
+    await opened({
+      kvSeed:
+        key === 'unsupported'
+          ? { ...IN_MATCH, [linkKey(FAKE_MATCH)]: JSON.stringify({ ...LINK, sportKey: 'tennis' }) }
+          : IN_MATCH,
+      prepare: (fakes) => {
+        if (key === 'unreadableQueue')
+          fakes.queueFiles.files.set(`${FAKE_MATCH}.json`, '{ not json');
+        if (key === 'tooLarge')
+          vi.spyOn(fakes.scoring, 'events').mockResolvedValue({ kind: 'tooLarge' });
+        if (key === 'sides') patchBootstrap(fakes, { sides: { ...SINGLES.sides, away: null } });
+        if (key === 'outdated')
+          patchBootstrap(fakes, { cfg: { bestOf: 'many' }, epochRequired: 99 });
+      },
+    });
+    expect(title()).toBe(en[`scoring.state.${key}.title`]);
+    expect(held()).toBe(false);
+  });
+
+  it('a wait that ends in the pad is held through the wait and held on the pad', async () => {
+    const app = await opened({ prepare: (fakes) => fakes.scoring.goOffline(true) });
+    expect(held()).toBe(true);
+    app.scoring.goOffline(false);
+    await flush(16_000);
+    expect(screen.getByTestId('start-screen')).toBeTruthy();
+    expect(held()).toBe(true);
+  });
+
+  it('a wait that ends in a state that needs a person lets the screen go', async () => {
+    const app = await opened({ prepare: (fakes) => fakes.scoring.goOffline(true) });
+    expect(held()).toBe(true);
+    app.scoring.goOffline(false);
+    app.scoring.revoke();
+    await flush(16_000);
+    expect(title()).toBe(en['scoring.state.linkGone.title']);
+    expect(held()).toBe(false);
+  });
+});

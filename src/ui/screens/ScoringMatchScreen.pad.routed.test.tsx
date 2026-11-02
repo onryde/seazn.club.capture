@@ -9,19 +9,19 @@ import nl from '@/i18n/nl.json';
 import { STORE_KEYS } from '@/services/modeStore';
 import { TEST_NOW } from '../../../test/fakePorts';
 import { FAKE_LABEL, FAKE_MATCH, LINK, linkKey } from '../../../test/scoringHomeFixtures';
+import { screenIsHeld, type HoldLog } from '../../../test/heldScreen';
 import { backgroundAndBack, flush, launchApp, type LaunchedApp } from '../../../test/routedApp';
 
-const keepAwake = vi.hoisted(() => ({
-  activateKeepAwakeAsync: vi.fn(async (_tag?: string) => undefined),
-  deactivateKeepAwake: vi.fn(async (_tag?: string) => undefined),
-}));
-vi.mock('expo-keep-awake', () => keepAwake);
+const holds = vi.hoisted((): HoldLog => []);
+vi.mock('@/hooks/keepAwake', async () => {
+  const { recordingHold } = await import('../../../test/heldScreen');
+  return { holdScreenOn: recordingHold(holds) };
+});
 
 beforeEach(() => {
   seconds = 0;
   vi.useFakeTimers();
-  keepAwake.activateKeepAwakeAsync.mockClear();
-  keepAwake.deactivateKeepAwake.mockClear();
+  holds.length = 0;
 });
 afterEach(() => vi.useRealTimers());
 
@@ -365,15 +365,14 @@ describe('the pad, routed', () => {
     expect(app.nav.current()).toBe('stream');
   });
 
-  // Owner ruling 9 (2026-10-31): the screen stays on while the pad shows. The route holds it (app/scoring/index.tsx,
+  // Owner ruling 9 (2026-10-31): the screen stays on while the pad shows. The pad's screen holds it (`KeepScreenOn`,
   // pinned by the drift test); whether the phone's screen really stays lit is the device check's.
-  it('holds the screen on while the route shows and lets it go on Back', async () => {
+  it('holds the screen on while the pad shows and lets it go on Back', async () => {
     const app = await startedMatch();
-    expect(keepAwake.activateKeepAwakeAsync).toHaveBeenCalledWith('seazn-capture-pad');
-    expect(keepAwake.deactivateKeepAwake).not.toHaveBeenCalled();
+    expect(screenIsHeld(holds)).toBe(true);
     expect(await back(app)).toBe(true);
     await flush(0);
-    expect(keepAwake.deactivateKeepAwake).toHaveBeenCalledWith('seazn-capture-pad');
+    expect(screenIsHeld(holds)).toBe(false);
   });
 });
 

@@ -217,29 +217,41 @@ describe('every path the navigation moves to has its route file, and each Settin
 
   /**
    * Remote Scoring (plan S2-1 Tasks 10 and 11): `routedApp` renders the route's screens by hand, so the route's own jobs
-   * are read here. It shows the saved match, drawn by its sport's own screen with the screen held on, else it goes Home.
+   * are read here. It shows the saved match, drawn by its sport's own screen, else it goes Home. It holds nothing on:
+   * whether the screen stays on is the screens' (owner ruling 9, applied 2026-11-02), pinned below.
    */
-  it('shows the saved match with the screen held on, else goes Home', () => {
-    expect(body('app/scoring/index.tsx', 'ScoringRoute')).toMatch(
-      /if \(fixtureId !== null\)\s*return <MatchShown fixtureId=\{fixtureId\} ?\/>;\s*return <Redirect href="\/" ?\/>;/,
+  it('shows the saved match, else goes Home, and does not hold the screen on itself', () => {
+    const route = body('app/scoring/index.tsx', 'ScoringRoute');
+    expect(route).toMatch(
+      /if \(fixtureId !== null\)\s*return <ScoringMatchScreen fixtureId=\{fixtureId\} ?\/>;\s*return <Redirect href="\/" ?\/>;/,
     );
-    const match = body('app/scoring/index.tsx', 'MatchShown');
-    expect(match).toContain('useScreenAwake()');
-    expect(match).toMatch(/return <ScoringMatchScreen fixtureId=\{fixtureId\} ?\/>;/);
+    expect(readFileSync(join(root, 'app/scoring/index.tsx'), 'utf8')).not.toContain(
+      'useScreenAwake',
+    );
   });
 
   /**
-   * The mirror in `routedApp` is the route file's two functions, hook for hook and return for return: the route's
-   * Redirect is the one thing it cannot run (no router), and stands as `null`. A hook in one and not the other fails here.
+   * The screen is held on by the pad (every card it draws is the pad's) and by the wait before it, and by nothing else: the
+   * states that need a person to act let it sleep. Each is one mounted `KeepScreenOn`, so what is pinned is where.
+   */
+  it('mounts KeepScreenOn in the pad, and in the state screen only while loading', () => {
+    const pad = readFileSync(join(root, 'src/ui/screens/BadmintonPadScreen.tsx'), 'utf8');
+    expect(pad.match(/<KeepScreenOn \/>/g)).toHaveLength(1);
+    const states = readFileSync(join(root, 'src/ui/screens/ScoringStateScreen.tsx'), 'utf8');
+    expect(states).toContain("{state.kind === 'loading' ? <KeepScreenOn /> : null}");
+    expect(states.match(/KeepScreenOn \/>/g)).toHaveLength(1);
+  });
+
+  /**
+   * The mirror in `routedApp` is the route file's function, hook for hook and return for return: the route's Redirect is
+   * the one thing it cannot run (no router), and stands as `null`. A hook in one and not the other fails here.
    */
   it('has the routed mirror run what the route file runs', () => {
-    const route = (name: string) => body('app/scoring/index.tsx', name).trim();
-    const mirror = (name: string) => body('test/routedApp.tsx', name).trim();
-    const asMirror = route('ScoringRoute')
+    const asMirror = body('app/scoring/index.tsx', 'ScoringRoute')
+      .trim()
       .replace('function ScoringRoute(', 'function ScoringRouted(')
       .replace(/<Redirect href="\/"\s*\/>/, 'null');
-    expect(mirror('ScoringRouted')).toBe(asMirror);
-    expect(mirror('MatchShown')).toBe(route('MatchShown'));
+    expect(body('test/routedApp.tsx', 'ScoringRouted').trim()).toBe(asMirror);
   });
 
   it('renders Stream Settings from Home as the Home variant, and Live Stream’s as the default', () => {

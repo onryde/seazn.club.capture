@@ -25,6 +25,7 @@ import { Button } from '@/ui/components/Button';
 import { EndingPrompt } from '@/ui/components/EndingPrompt';
 import { HistoryCover, type HistoryGroupWords } from '@/ui/components/HistoryCover';
 import { IconButton } from '@/ui/components/IconButton';
+import { KeepScreenOn } from '@/ui/components/KeepScreenOn';
 import { LastTapLine } from '@/ui/components/LastTapLine';
 import { MatchCard } from '@/ui/components/MatchCard';
 import { MatchDetailsSheet } from '@/ui/components/MatchDetailsSheet';
@@ -42,7 +43,7 @@ import { colour, layout, space } from '@/ui/theme/tokens';
 
 /**
  * The badminton pad (S2; owner rulings, 2026-10-31), drawn from its model, which is the real match's (`useBadmintonMatch`)
- * or the design preview's. Portrait, layout A: the top bar (Home, the games tally, then Rules, History and the sync
+ * or the fake preview's (the pad's tests). Portrait, layout A: the top bar (Home, the games tally, then Rules, History and the sync
  * status at the right end), the strip (the game of how many at the left, the interval at the right), the first side's
  * half on top and the second's below (a tap on a half gives that side the rally, and a tap that counted flashes the
  * half; each shows its finished games' boxes, and the server's plate its service court), the last-tap line with the one
@@ -50,7 +51,7 @@ import { colour, layout, space } from '@/ui/theme/tokens';
  * result, view only) stands above them; the update banner stands where the last-tap line and the tools were
  * (`cardPlacement`). Sheets and History cover the pad, which is hidden from a screen reader while they show. Until the
  * match starts, the Start screen stands where the halves are, with no last-tap line and no tools (owner, 2026-11-01,
- * option A). `footer` is the design preview's own row of states, under the pad; the real match has none.
+ * option A). `footer` is the row of state chips the pad's own tests put under it (`test/padPreviewHarness.tsx`); the real match has none.
  */
 export function BadmintonPadScreen({
   model,
@@ -64,6 +65,7 @@ export function BadmintonPadScreen({
   const known = matchKnown(view.card);
   return (
     <View style={styles.screen}>
+      <KeepScreenOn />
       <View
         testID="pad-content"
         aria-hidden={covered}
@@ -88,7 +90,7 @@ export function BadmintonPadScreen({
 /**
  * Owner ruling 20 (2026-10-31): Home, then at the right end Rules and History, round icon buttons as Home's gear, and
  * the sync status in its fixed box. Between them, where the Preview tag was, the games tally in lime (owner,
- * 2026-11-01); the preview row at the bottom marks the preview. The tally, Rules and History need a match
+ * 2026-11-01). The tally, Rules and History need a match
  * (`matchKnown`): none on a dead link's card. One 48 dp row at 320 and 360 dp in four languages (padFit.test.ts).
  */
 const PadHeader = memo(function PadHeader({

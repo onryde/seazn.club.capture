@@ -74,6 +74,10 @@ in the record, and the app stays up. A run folds the match 50 times and shows
 `76 · <min> / <median> / <max> ms`; the record gets
 `scoring.foldProbe {events, runs, minMs, medianMs, maxMs, firstMs}` (the record takes numbers, not arrays).
 
+**Removed.** The probe went with the preview in Task 11: the preview stopped being mounted in `1f8f53d` (the real pad
+route), and the Fold probe chip, `useFoldProbe`, `foldProbe` and `engineProbe` were deleted in the review fix after it
+(`git log --diff-filter=D --oneline -- src/hooks/foldProbe.ts` names it). The result recorded here stands.
+
 Where the plan put it, `DevScenes`, would not reach R4: `DevScenes` is in Live Stream's Diagnostics card and
 shows only while `devTools` (`__DEV__`) is true, which a release build never is.
 

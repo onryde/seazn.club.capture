@@ -330,16 +330,10 @@ export default [
   },
   {
     // The kit draws any sport's pad (padView.ts): it names no sport (SPORT_MODULES). Repeats the ui rule, since this
-    // block's `no-restricted-imports` replaces the one above for these files. PadPreviewRow is the badminton preview's
-    // own dev row (its chips are that preview's samples), and ShellFrame keeps its insets exception. The screens every
-    // sport shares (the sport picker, the states) are held the same way.
+    // block's `no-restricted-imports` replaces the one above for these files. ShellFrame keeps its insets exception. The
+    // screens every sport shares (the sport picker, the states) are held the same way.
     files: ['src/ui/components/**/*.{ts,tsx}', ...SPORT_GENERIC_SCREENS],
-    ignores: [
-      'src/ui/components/ShellFrame.tsx',
-      'src/ui/components/PadPreviewRow.tsx',
-      '**/*.test.ts',
-      '**/*.test.tsx',
-    ],
+    ignores: ['src/ui/components/ShellFrame.tsx', '**/*.test.ts', '**/*.test.tsx'],
     rules: {
       'no-restricted-imports': uiRestrictedImports(
         '@/services/*',

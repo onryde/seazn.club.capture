@@ -8,7 +8,6 @@ import { routeTarget, useOrientationGate } from '@/hooks/useOrientationGate';
 import { useReopenGate } from '@/hooks/useReopenGate';
 import { useScoringBackground } from '@/hooks/useScoringBackground';
 import { useScoringFixture } from '@/hooks/useScoringFixture';
-import { useScreenAwake } from '@/hooks/useScreenAwake';
 import type { Route } from '@/services/devicePorts';
 import {
   createExpoRouterNavigation,
@@ -130,19 +129,13 @@ function Screens({ route }: { route: Route }) {
 }
 
 /**
- * `app/scoring/index.tsx` by hand: the same two functions, the same hooks and returns, but for the route's Redirect,
- * which has no router here (the test says so by finding the screen gone). The drift test compares them with the route
- * file's, so a hook added to one and not the other (`useScreenAwake`) fails there.
+ * `app/scoring/index.tsx` by hand: the same function and the same hook, but for the route's Redirect, which has no
+ * router here (the test says so by finding the screen gone). The drift test compares it with the route file's.
  */
 function ScoringRouted() {
   const fixtureId = useScoringFixture();
-  if (fixtureId !== null) return <MatchShown fixtureId={fixtureId} />;
+  if (fixtureId !== null) return <ScoringMatchScreen fixtureId={fixtureId} />;
   return null;
-}
-
-function MatchShown({ fixtureId }: { fixtureId: string }) {
-  useScreenAwake();
-  return <ScoringMatchScreen fixtureId={fixtureId} />;
 }
 
 /** The root layout's gate (`app/_layout.tsx`): the route's target, the hook's card over the screens. */

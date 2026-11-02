@@ -5,12 +5,12 @@ import en from '@/i18n/en.json';
 import es from '@/i18n/es.json';
 import fr from '@/i18n/fr.json';
 import nl from '@/i18n/nl.json';
-import { BadmintonPadPreviewScreen } from '@/ui/screens/BadmintonPadPreviewScreen';
 import { colour, layout, space } from '@/ui/theme/tokens';
 import { TEST_NOW, type FakePorts } from '../../../test/fakePorts';
 import { layOut } from '../../../test/layOut';
 import { linesAllowed } from '../../../test/linesAllowed';
 import { edgeOf } from '../../../test/pressState';
+import { CHIP, PadWithPreviewChips } from '../../../test/padPreviewHarness';
 import { renderWithPorts } from '../../../test/renderWithPorts';
 import { restoreWindowSize, setWindowSize } from '../../../test/windowSize';
 
@@ -22,7 +22,7 @@ const DICTIONARIES: Readonly<Record<string, typeof en>> = { en, es, fr, nl };
 
 /** The preview as Home opens it, on its own route: the Start screen, as the samples begin (owner, 2026-11-01). */
 function renderStart(options?: Parameters<typeof renderWithPorts>[1]): Pad {
-  const view = renderWithPorts(<BadmintonPadPreviewScreen />, options);
+  const view = renderWithPorts(<PadWithPreviewChips />, options);
   act(() => view.navigation.go('scoring'));
   latest = view;
   return view;
@@ -135,7 +135,7 @@ const boxes = (side: 'first' | 'second') =>
 const plate = (side: 'first' | 'second') =>
   within(half(side)).queryByTestId('serving')?.textContent ?? null;
 
-describe('BadmintonPadPreviewScreen: before the first rally', () => {
+describe('BadmintonPadScreen: before the first rally', () => {
   it('shows both sides at 0, the first serving from the right, and Set score', () => {
     renderPad();
     expect(shows('first', 0) && shows('second', 0)).toBe(true);
@@ -175,12 +175,12 @@ describe('BadmintonPadPreviewScreen: before the first rally', () => {
     );
     expect(getComputedStyle(tally).color).toBe(edgeOf(colour.lime));
     expect(screen.queryByText('Preview')).toBeNull();
-    expect(screen.getByLabelText(en['scoring.preview.dev.label'])).toBeTruthy();
+    expect(screen.getByLabelText(CHIP.row)).toBeTruthy();
     expect(screen.getByTestId('sync').textContent).toBe(en['scoring.sync.synced']);
   });
 });
 
-describe('BadmintonPadPreviewScreen: rallies and Undo', () => {
+describe('BadmintonPadScreen: rallies and Undo', () => {
   it('gives a tap on the top half the rally: the top score rises, the serve and the court follow', () => {
     const pad = renderPad();
     rally(pad, 'first');
@@ -283,7 +283,7 @@ describe('BadmintonPadPreviewScreen: rallies and Undo', () => {
   });
 });
 
-describe('BadmintonPadPreviewScreen: games and the match', () => {
+describe('BadmintonPadScreen: games and the match', () => {
   it('between games: the next game at 0, game 1’s box in each half, Set score back', () => {
     const pad = renderPad();
     rally(pad, 'first', 21);
@@ -376,7 +376,7 @@ describe('BadmintonPadPreviewScreen: games and the match', () => {
   // The four questions: another mode of play. Doubles, joined at 3-1 by a scorer before this phone.
   it('doubles: the joined game’s box once this phone wins it, beside the partners’ names', () => {
     const pad = renderPad();
-    press(en['scoring.preview.dev.doubles']);
+    press(CHIP.doubles);
     rally(pad, 'first', 18);
     expect([boxes('first'), boxes('second')]).toEqual([['21'], ['1']]);
     expect(plate('first')).toBe(en['scoring.badminton.serving.right']);
@@ -389,7 +389,7 @@ describe('BadmintonPadPreviewScreen: games and the match', () => {
   });
 });
 
-describe('BadmintonPadPreviewScreen: Set score', () => {
+describe('BadmintonPadScreen: Set score', () => {
   const field = (side: string) =>
     screen.getByLabelText(fill(en['scoring.setScore.field'], { side }));
   const type = (side: string, value: string) =>
@@ -463,7 +463,7 @@ describe('BadmintonPadPreviewScreen: Set score', () => {
   });
 });
 
-describe('BadmintonPadPreviewScreen: a sanction, end to end', () => {
+describe('BadmintonPadScreen: a sanction, end to end', () => {
   const sheetTitle = () => within(screen.getByTestId('step-sheet'));
 
   it('Warning: level, person, recorded in the side’s bottom row and in the last-tap line', () => {
@@ -596,7 +596,7 @@ describe('BadmintonPadPreviewScreen: a sanction, end to end', () => {
 
   it('asks which player in doubles', () => {
     renderPad();
-    press(en['scoring.preview.dev.doubles']);
+    press(CHIP.doubles);
     press(sanctionOn('L. Chen / M. Wong'));
     choose(en['scoring.sanction.penalty']);
     expect(screen.getByRole('button', { name: 'L. Chen' })).toBeTruthy();
@@ -610,10 +610,10 @@ describe('BadmintonPadPreviewScreen: a sanction, end to end', () => {
   });
 });
 
-describe('BadmintonPadPreviewScreen: the preview row', () => {
+describe('BadmintonPadScreen: the preview row', () => {
   it.each([
-    ['notStarted', en['scoring.preview.dev.notStarted']],
-    ['linkInvalid', en['scoring.preview.dev.linkInvalid']],
+    ['notStarted', CHIP.notStarted],
+    ['linkInvalid', CHIP.linkInvalid],
   ] as const)('shows the %s card instead of the score, with nothing to tap', (kind, chip) => {
     renderPad();
     press(chip);
@@ -626,7 +626,7 @@ describe('BadmintonPadPreviewScreen: the preview row', () => {
   it('update needed (owner ruling 8): the score stays on screen, taking no tap, the banner in the controls’ place', () => {
     const pad = renderPad();
     rally(pad, 'first');
-    press(en['scoring.preview.dev.updateNeeded']);
+    press(CHIP.updateNeeded);
     const banner = screen.getByTestId('update-banner');
     expect(within(banner).getByText(en['scoring.card.updateNeeded.body'])).toBeTruthy();
     expect(
@@ -646,11 +646,11 @@ describe('BadmintonPadPreviewScreen: the preview row', () => {
 
   it('update needed: the halves stand above the banner, the banner above the preview row', () => {
     renderPad();
-    press(en['scoring.preview.dev.updateNeeded']);
+    press(CHIP.updateNeeded);
     const order = [
       half('second'),
       screen.getByTestId('update-banner'),
-      screen.getByRole('button', { name: en['scoring.preview.dev.pad'] }),
+      screen.getByRole('button', { name: CHIP.pad }),
     ];
     const follows = (a: HTMLElement, b: HTMLElement) =>
       (a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0;
@@ -660,8 +660,8 @@ describe('BadmintonPadPreviewScreen: the preview row', () => {
   it('back on the pad from the update banner: the last-tap line and the tools return', () => {
     const pad = renderPad();
     rally(pad, 'first');
-    press(en['scoring.preview.dev.updateNeeded']);
-    press(en['scoring.preview.dev.pad']);
+    press(CHIP.updateNeeded);
+    press(CHIP.pad);
     expect(screen.queryByTestId('update-banner')).toBeNull();
     expect(lastTap()).toContain(fill(en['scoring.badminton.last.rally'], { side: 'A. Sharma' }));
     expect(tool(sanctionOn('L. Chen'))).not.toBeNull();
@@ -671,20 +671,20 @@ describe('BadmintonPadPreviewScreen: the preview row', () => {
     'update needed: %s opens nothing in the preview, and says so on the banner',
     (name) => {
       const pad = renderPad();
-      press(en['scoring.preview.dev.updateNeeded']);
+      press(CHIP.updateNeeded);
       press(name);
       const banner = screen.getByTestId('update-banner');
       expect(within(banner).getByText(en['scoring.preview.noop'])).toBeTruthy();
       expect(pad.navigation.current()).toBe('scoring');
-      press(en['scoring.preview.dev.pad']);
-      press(en['scoring.preview.dev.updateNeeded']);
+      press(CHIP.pad);
+      press(CHIP.updateNeeded);
       expect(screen.queryByText(en['scoring.preview.noop'])).toBeNull();
     },
   );
 
   it.each([
-    ['resultRecorded', en['scoring.preview.dev.result']],
-    ['viewOnly', en['scoring.preview.dev.viewOnly']],
+    ['resultRecorded', CHIP.result],
+    ['viewOnly', CHIP.viewOnly],
   ] as const)('shows the %s card over the score, which takes no tap', (kind, chip) => {
     const pad = renderPad();
     rally(pad, 'first');
@@ -697,17 +697,17 @@ describe('BadmintonPadPreviewScreen: the preview row', () => {
   it('keeps Undo on a recorded result, and not on view only', () => {
     const pad = renderPad();
     rally(pad, 'first');
-    press(en['scoring.preview.dev.result']);
+    press(CHIP.result);
     expect(undo().getAttribute('aria-disabled')).not.toBe('true');
-    press(en['scoring.preview.dev.viewOnly']);
+    press(CHIP.viewOnly);
     expect(undo().getAttribute('aria-disabled')).toBe('true');
   });
 
   it('goes back to the same match from a card', () => {
     const pad = renderPad();
     rally(pad, 'first');
-    press(en['scoring.preview.dev.linkInvalid']);
-    press(en['scoring.preview.dev.pad']);
+    press(CHIP.linkInvalid);
+    press(CHIP.pad);
     expect(shows('first', 1)).toBe(true);
     expect(screen.queryByTestId('pad-card')).toBeNull();
   });
@@ -715,19 +715,19 @@ describe('BadmintonPadPreviewScreen: the preview row', () => {
   it('steps the sync status through its four words', () => {
     renderPad();
     const sync = () => screen.getByTestId('sync').textContent;
-    press(en['scoring.preview.dev.sync']);
+    press(CHIP.sync);
     expect(sync()).toBe(fill(en['scoring.sync.sending.one'], { count: 1 }));
-    press(en['scoring.preview.dev.sync']);
+    press(CHIP.sync);
     expect(sync()).toBe(fill(en['scoring.sync.offline.other'], { count: 3 }));
-    press(en['scoring.preview.dev.sync']);
+    press(CHIP.sync);
     expect(sync()).toBe(fill(en['scoring.sync.refused.one'], { count: 1 }));
-    press(en['scoring.preview.dev.sync']);
+    press(CHIP.sync);
     expect(sync()).toBe(en['scoring.sync.synced']);
   });
 
   it('doubles joins a match others began: their taps stay when this phone undoes its own', () => {
     const pad = renderPad();
-    press(en['scoring.preview.dev.doubles']);
+    press(CHIP.doubles);
     expect(within(half('first')).getByText('A. Sharma / R. Iyer')).toBeTruthy();
     expect(shows('first', 3) && shows('second', 1)).toBe(true);
     expect(undo().getAttribute('aria-disabled')).toBe('true');
@@ -740,8 +740,8 @@ describe('BadmintonPadPreviewScreen: the preview row', () => {
   it('starts singles afresh when it is picked again: not started, on the Start screen (owner, 2026-11-01)', () => {
     const pad = renderPad();
     rally(pad, 'first');
-    press(en['scoring.preview.dev.doubles']);
-    press(en['scoring.preview.dev.singles']);
+    press(CHIP.doubles);
+    press(CHIP.singles);
     expect(screen.getByTestId('start-screen')).toBeTruthy();
     expect(screen.getAllByRole('radio').map((side) => side.textContent)).toEqual([
       'A. Sharma',
@@ -750,7 +750,7 @@ describe('BadmintonPadPreviewScreen: the preview row', () => {
   });
 });
 
-describe('BadmintonPadPreviewScreen: leaving, and the phone', () => {
+describe('BadmintonPadScreen: leaving, and the phone', () => {
   it('Back returns Home', () => {
     const pad = renderPad();
     expect(back(pad)).toBe(true);
@@ -772,8 +772,8 @@ describe('BadmintonPadPreviewScreen: leaving, and the phone', () => {
   it('keeps every tool and the sync words on a 320 dp phone: shared cells, clamped, never pushed off', () => {
     setWindowSize(320, 640);
     renderPad();
-    press(en['scoring.preview.dev.sync']);
-    press(en['scoring.preview.dev.sync']);
+    press(CHIP.sync);
+    press(CHIP.sync);
     const row = screen.getByTestId('tool-row');
     expect(within(row).getAllByRole('button')).toHaveLength(3);
     for (const button of within(row).getAllByRole('button')) {
@@ -795,7 +795,7 @@ describe('BadmintonPadPreviewScreen: leaving, and the phone', () => {
  * flash itself is a worklet (TapFlash.test.tsx); here each half's stand-in shows the cue it was handed, which moves
  * only for a counted tap on that half (`flashMove` flashes on a move to a new number, stops on a move to 0).
  */
-describe('BadmintonPadPreviewScreen: the flash of a half whose tap counted', () => {
+describe('BadmintonPadScreen: the flash of a half whose tap counted', () => {
   const cue = (side: 'first' | 'second') =>
     within(half(side)).getByTestId('tap-flash').dataset.cue ?? '';
   const cues = () => [cue('first'), cue('second')];
@@ -841,12 +841,7 @@ describe('BadmintonPadPreviewScreen: the flash of a half whose tap counted', () 
     expect(cues()).toEqual(['0', '1']);
   });
 
-  it.each([
-    en['scoring.preview.dev.result'],
-    en['scoring.preview.dev.viewOnly'],
-    en['scoring.preview.dev.sync'],
-    en['scoring.preview.dev.doubles'],
-  ])(
+  it.each([CHIP.result, CHIP.viewOnly, CHIP.sync, CHIP.doubles])(
     'clears the flash when the preview row picks %s mid-flash: the new state never flashes',
     (chip) => {
       const pad = renderPad();
@@ -859,8 +854,8 @@ describe('BadmintonPadPreviewScreen: the flash of a half whose tap counted', () 
   it('flashes again after a card, on the next counted tap', () => {
     const pad = renderPad();
     rally(pad, 'first');
-    press(en['scoring.preview.dev.notStarted']);
-    press(en['scoring.preview.dev.pad']);
+    press(CHIP.notStarted);
+    press(CHIP.pad);
     expect(cues()).toEqual(['0', '0']);
     rally(pad, 'first');
     expect(cue('first')).not.toBe('0');
@@ -868,7 +863,7 @@ describe('BadmintonPadPreviewScreen: the flash of a half whose tap counted', () 
 });
 
 /** Owner ruling 14: "a one-line hint at the bottom of each half". */
-describe('BadmintonPadPreviewScreen: the halves’ hints', () => {
+describe('BadmintonPadScreen: the halves’ hints', () => {
   const hint = (side: string) => fill(en['scoring.badminton.hintLine'], { side });
 
   it('names each half’s side in its hint while the half takes a tap, and drops it under a card', () => {
@@ -876,7 +871,7 @@ describe('BadmintonPadPreviewScreen: the halves’ hints', () => {
     expect(within(half('first')).getByText(hint('A. Sharma'))).toBeTruthy();
     expect(within(half('second')).getByText(hint('L. Chen'))).toBeTruthy();
     rally(pad, 'first');
-    press(en['scoring.preview.dev.result']);
+    press(CHIP.result);
     expect(screen.queryByText(hint('A. Sharma'))).toBeNull();
     expect(screen.queryByText(hint('L. Chen'))).toBeNull();
   });
@@ -887,7 +882,7 @@ describe('BadmintonPadPreviewScreen: the halves’ hints', () => {
  * ruling 20 made it an icon, with History beside it; owner, 2026-11-01: it became Match details, where the match sits
  * and then its rules, and the icon is named so.
  */
-describe('BadmintonPadPreviewScreen: Match details', () => {
+describe('BadmintonPadScreen: Match details', () => {
   const rulesButton = () => screen.queryByRole('button', { name: en['scoring.details.title'] });
   const sheet = () => within(screen.getByTestId('details-sheet'));
   const lines = () => rowsIn(screen.getByTestId('details-sheet'));
@@ -983,24 +978,22 @@ describe('BadmintonPadPreviewScreen: Match details', () => {
     expect(pad.navigation.current()).toBe('home');
   });
 
-  it.each([
-    en['scoring.preview.dev.notStarted'],
-    en['scoring.preview.dev.result'],
-    en['scoring.preview.dev.viewOnly'],
-    en['scoring.preview.dev.updateNeeded'],
-  ])('shows under the %s card, where the match’s config is known', (chip) => {
-    renderPad();
-    press(chip);
-    expect(rulesButton()).not.toBeNull();
-    press(en['scoring.details.title']);
-    expect(lines()).toEqual(LINES);
-  });
+  it.each([CHIP.notStarted, CHIP.result, CHIP.viewOnly, CHIP.updateNeeded])(
+    'shows under the %s card, where the match’s config is known',
+    (chip) => {
+      renderPad();
+      press(chip);
+      expect(rulesButton()).not.toBeNull();
+      press(en['scoring.details.title']);
+      expect(lines()).toEqual(LINES);
+    },
+  );
 
   it('is absent for a bad link, which names no match, and back on the pad', () => {
     renderPad();
-    press(en['scoring.preview.dev.linkInvalid']);
+    press(CHIP.linkInvalid);
     expect(rulesButton()).toBeNull();
-    press(en['scoring.preview.dev.pad']);
+    press(CHIP.pad);
     expect(rulesButton()).not.toBeNull();
   });
 
@@ -1041,7 +1034,7 @@ describe('BadmintonPadPreviewScreen: Match details', () => {
 
   it('names the doubles match’s sides as typed, partners joined by " / "', () => {
     renderPad();
-    press(en['scoring.preview.dev.doubles']);
+    press(CHIP.doubles);
     press(en['scoring.details.title']);
     expect(sheet().getByTestId('match-card-competition').textContent).toBe(
       'Riverside Badminton Club Championships 2026',
@@ -1058,7 +1051,7 @@ describe('BadmintonPadPreviewScreen: Match details', () => {
   });
 });
 
-describe('BadmintonPadPreviewScreen: in four languages', () => {
+describe('BadmintonPadScreen: in four languages', () => {
   it.each([
     ['es', es],
     ['fr', fr],
@@ -1100,7 +1093,7 @@ describe('BadmintonPadPreviewScreen: in four languages', () => {
  * last-tap line's words), the score after it where it applies, and who recorded it; an undone entry struck through,
  * with "Undone"; "Nothing recorded yet" for an empty match. Each row reads as one line.
  */
-describe('BadmintonPadPreviewScreen: History', () => {
+describe('BadmintonPadScreen: History', () => {
   const historyButton = () => screen.queryByRole('button', { name: en['scoring.history.title'] });
   const openHistory = () => press(en['scoring.history.title']);
   const cover = () => within(screen.getByTestId('history'));
@@ -1196,7 +1189,7 @@ describe('BadmintonPadPreviewScreen: History', () => {
 
   it('says “Another scorer” for the doubles sample’s taps from the scorer before this phone', () => {
     const pad = renderPad();
-    press(en['scoring.preview.dev.doubles']);
+    press(CHIP.doubles);
     rally(pad, 'second');
     openHistory();
     const other = en['scoring.history.otherScorer'];
@@ -1265,18 +1258,13 @@ describe('BadmintonPadPreviewScreen: History', () => {
 
   it('is absent for a bad link, which names no match, and shows under every other card', () => {
     renderPad();
-    for (const chip of [
-      en['scoring.preview.dev.notStarted'],
-      en['scoring.preview.dev.result'],
-      en['scoring.preview.dev.viewOnly'],
-      en['scoring.preview.dev.updateNeeded'],
-    ]) {
+    for (const chip of [CHIP.notStarted, CHIP.result, CHIP.viewOnly, CHIP.updateNeeded]) {
       press(chip);
       expect(historyButton()).not.toBeNull();
     }
-    press(en['scoring.preview.dev.linkInvalid']);
+    press(CHIP.linkInvalid);
     expect(historyButton()).toBeNull();
-    press(en['scoring.preview.dev.pad']);
+    press(CHIP.pad);
     expect(historyButton()).not.toBeNull();
   });
 
@@ -1308,7 +1296,7 @@ describe('BadmintonPadPreviewScreen: History', () => {
  * preview". The tally counts games won, top side first, as the halves are; a game a disqualification ended counts for
  * nobody. The real pad keeps it, so it shows whenever the match is known, as the icons do.
  */
-describe('BadmintonPadPreviewScreen: the games tally and the strip', () => {
+describe('BadmintonPadScreen: the games tally and the strip', () => {
   const tally = () => screen.queryByTestId('tally');
   const said = (first: string, firstGames: number, second: string, secondGames: number) =>
     fill(en['scoring.badminton.gamesTally'], { first, firstGames, second, secondGames });
@@ -1341,7 +1329,7 @@ describe('BadmintonPadPreviewScreen: the games tally and the strip', () => {
 
   it('names doubles sides as the match label joins them', () => {
     renderPad();
-    press(en['scoring.preview.dev.doubles']);
+    press(CHIP.doubles);
     expect(tally()?.getAttribute('aria-label')).toBe(
       said('A. Sharma / R. Iyer', 0, 'L. Chen / M. Wong', 0),
     );
@@ -1349,16 +1337,11 @@ describe('BadmintonPadPreviewScreen: the games tally and the strip', () => {
 
   it('is absent for a bad link, which names no match, and shows under every other card', () => {
     renderPad();
-    for (const chip of [
-      en['scoring.preview.dev.notStarted'],
-      en['scoring.preview.dev.result'],
-      en['scoring.preview.dev.viewOnly'],
-      en['scoring.preview.dev.updateNeeded'],
-    ]) {
+    for (const chip of [CHIP.notStarted, CHIP.result, CHIP.viewOnly, CHIP.updateNeeded]) {
       press(chip);
       expect(tally()?.textContent).toBe('0:0');
     }
-    press(en['scoring.preview.dev.linkInvalid']);
+    press(CHIP.linkInvalid);
     expect(tally()).toBeNull();
   });
 
@@ -1398,11 +1381,11 @@ describe('BadmintonPadPreviewScreen: the games tally and the strip', () => {
  * title and MatchCard, then its sentence", the card the sheet and the Start screen draw. It scrolls when it is taller
  * than the room, and the top bar's icons stay.
  */
-describe('BadmintonPadPreviewScreen: the Not started card', () => {
+describe('BadmintonPadScreen: the Not started card', () => {
   const card = () => screen.getByTestId('pad-card');
   const notStarted = () => {
     renderPad();
-    press(en['scoring.preview.dev.notStarted']);
+    press(CHIP.notStarted);
   };
 
   it('shows its title, the match card, then its sentence', () => {
@@ -1432,11 +1415,7 @@ describe('BadmintonPadPreviewScreen: the Not started card', () => {
 
   it('carries no Match details on the other cards (a dead link names no match; the rest keep the halves)', () => {
     renderPad();
-    for (const chip of [
-      en['scoring.preview.dev.linkInvalid'],
-      en['scoring.preview.dev.result'],
-      en['scoring.preview.dev.viewOnly'],
-    ]) {
+    for (const chip of [CHIP.linkInvalid, CHIP.result, CHIP.viewOnly]) {
       press(chip);
       expect(screen.queryByTestId('match-card')).toBeNull();
     }
@@ -1444,8 +1423,8 @@ describe('BadmintonPadPreviewScreen: the Not started card', () => {
 
   it('names the doubles match, the sides as typed', () => {
     renderPad();
-    press(en['scoring.preview.dev.doubles']);
-    press(en['scoring.preview.dev.notStarted']);
+    press(CHIP.doubles);
+    press(CHIP.notStarted);
     expect(within(card()).getByTestId('match-card-versus').getAttribute('aria-label')).toBe(
       'A. Sharma / R. Iyer versus L. Chen / M. Wong',
     );
@@ -1459,7 +1438,7 @@ describe('BadmintonPadPreviewScreen: the Not started card', () => {
     '%s: the title, the subheading, the rows and the sentence in the operator’s language',
     (lang, words) => {
       renderPad({ deviceLanguages: [lang] });
-      press(words['scoring.preview.dev.notStarted']);
+      press(CHIP.notStarted);
       const parts = [...card().children].map((part) => part.textContent);
       expect(parts[0]).toBe(words['scoring.card.notStarted.title']);
       expect(within(card()).getByRole('heading').textContent).toBe(words['scoring.rules.heading']);
@@ -1478,7 +1457,7 @@ describe('BadmintonPadPreviewScreen: the Not started card', () => {
  * ask to start", then option A (toss + Start). The Start screen stands where the halves are, the top bar kept; Start
  * match is a tap, and Undo right after it returns here with the pick cleared.
  */
-describe('BadmintonPadPreviewScreen: the Start screen', () => {
+describe('BadmintonPadScreen: the Start screen', () => {
   const startButton = (words = en) =>
     screen.getByRole('button', { name: words['scoring.start.confirm'] });
   const radios = () => screen.getAllByRole('radio');
@@ -1626,9 +1605,9 @@ describe('BadmintonPadPreviewScreen: the Start screen', () => {
 
   it('comes back afresh from the preview row’s Start, the doubles names as typed', () => {
     renderPad();
-    press(en['scoring.preview.dev.doubles']);
+    press(CHIP.doubles);
     expect(screen.queryByTestId('start-screen')).toBeNull();
-    press(en['scoring.preview.dev.start']);
+    press(CHIP.start);
     expect(radios().map((radio) => radio.textContent)).toEqual([
       'A. Sharma / R. Iyer',
       'L. Chen / M. Wong',
@@ -1637,10 +1616,10 @@ describe('BadmintonPadPreviewScreen: the Start screen', () => {
 
   it('keeps the Not started card for a division not open, under its own chip', () => {
     renderStart();
-    press(en['scoring.preview.dev.notStarted']);
+    press(CHIP.notStarted);
     expect(screen.getByTestId('pad-card')).toBeTruthy();
     expect(screen.queryByTestId('start-screen')).toBeNull();
-    expect(en['scoring.preview.dev.notStarted']).not.toBe(en['scoring.preview.dev.start']);
+    expect(CHIP.notStarted).not.toBe(CHIP.start);
   });
 
   it.each([
@@ -1670,7 +1649,7 @@ describe('BadmintonPadPreviewScreen: the Start screen', () => {
 });
 
 // Hardening (2026-11-01): the four questions (AGENTS §10) across rounds 2–7, as the scorer meets them on screen.
-describe('BadmintonPadPreviewScreen: the four questions (hardening, 2026-11-01)', () => {
+describe('BadmintonPadScreen: the four questions (hardening, 2026-11-01)', () => {
   const disqualifyChen = () => {
     press(sanctionOn('L. Chen'));
     choose(en['scoring.sanction.disqualification']);
@@ -1696,7 +1675,7 @@ describe('BadmintonPadPreviewScreen: the four questions (hardening, 2026-11-01)'
     const pad = renderPad();
     rally(pad, 'first', 21);
     expect(screen.getByTestId('tally').textContent).toBe('1:0');
-    press(en['scoring.preview.dev.start']);
+    press(CHIP.start);
     expect(screen.getByTestId('start-screen')).toBeTruthy();
     expect(screen.getByTestId('tally').textContent).toBe('0:0');
     for (const name of ['A. Sharma', 'L. Chen']) {
@@ -1709,9 +1688,9 @@ describe('BadmintonPadPreviewScreen: the four questions (hardening, 2026-11-01)'
   it('comes back to the Start screen, the pick cleared, from the Division not open card', () => {
     renderStart();
     act(() => fireEvent.click(screen.getByRole('radio', { name: 'L. Chen' })));
-    press(en['scoring.preview.dev.notStarted']);
+    press(CHIP.notStarted);
     expect(screen.queryByTestId('start-screen')).toBeNull();
-    press(en['scoring.preview.dev.pad']);
+    press(CHIP.pad);
     expect(screen.getByTestId('start-screen')).toBeTruthy();
     expect(screen.getByRole('radio', { name: 'L. Chen' }).getAttribute('aria-checked')).toBe(
       'false',
@@ -1746,15 +1725,11 @@ describe('BadmintonPadPreviewScreen: the four questions (hardening, 2026-11-01)'
     expect(screen.getByTestId('ending-prompt')).toBeTruthy();
     // The prompt's dim covers the preview row, and hides it from a screen reader: the chip stands for a card the
     // server sends while the ending waits.
-    act(() =>
-      fireEvent.click(
-        screen.getByRole('button', { name: en['scoring.preview.dev.viewOnly'], hidden: true }),
-      ),
-    );
+    act(() => fireEvent.click(screen.getByRole('button', { name: CHIP.viewOnly, hidden: true })));
     expect(screen.queryByTestId('ending-prompt')).toBeNull();
     expect(screen.getByTestId('pad-card').textContent).toContain(en['scoring.card.viewOnly.title']);
     expect(screen.getByTestId('pad-content').getAttribute('aria-hidden')).not.toBe('true');
-    press(en['scoring.preview.dev.pad']);
+    press(CHIP.pad);
     expect(screen.getByTestId('ending-prompt')).toBeTruthy();
   });
 
@@ -1791,7 +1766,7 @@ describe('BadmintonPadPreviewScreen: the four questions (hardening, 2026-11-01)'
 
 // The coordinator's ruling (2026-11-01): the second tap of a double tap on a sheet's button lands on the next step's,
 // on the same bottom edge. Within the bounce window of a step appearing, its buttons do nothing.
-describe('BadmintonPadPreviewScreen: a sheet step that has just appeared', () => {
+describe('BadmintonPadScreen: a sheet step that has just appeared', () => {
   it('does nothing for Record the ending tapped in the window after Disqualify; a moment later it ends the match', () => {
     const pad = renderPad();
     press(sanctionOn('L. Chen'));
@@ -1823,7 +1798,7 @@ describe('BadmintonPadPreviewScreen: a sheet step that has just appeared', () =>
 });
 
 // Review I1 and M2 (2026-11-01): where a double tap's second touch lands once the first has done its work.
-describe('BadmintonPadPreviewScreen: the second touch of a double tap', () => {
+describe('BadmintonPadScreen: the second touch of a double tap', () => {
   const dim = () => {
     const found = screen.getByTestId('details-sheet').previousElementSibling;
     if (!(found instanceof HTMLElement)) throw new Error('no dim');
@@ -1872,7 +1847,7 @@ function LanguageSwitch() {
  * second call, an empty input, an interruption (a card switch or a language picked while it shows), and the other
  * sample and languages, in each of its three places. Portrait only (layout A), so no orientation applies.
  */
-describe('BadmintonPadPreviewScreen: the match card’s four questions (hardening)', () => {
+describe('BadmintonPadScreen: the match card’s four questions (hardening)', () => {
   const sheetCard = () => within(screen.getByTestId('details-sheet')).getByTestId('match-card');
   /** A chip under a sheet's dim stands for what the server sends while the sheet is up. */
   const chipUnder = (name: string) =>
@@ -1880,7 +1855,7 @@ describe('BadmintonPadPreviewScreen: the match card’s four questions (hardenin
   const renderSwitchable = () => {
     const view = renderWithPorts(
       <>
-        <BadmintonPadPreviewScreen />
+        <PadWithPreviewChips />
         <LanguageSwitch />
       </>,
     );
@@ -1898,7 +1873,7 @@ describe('BadmintonPadPreviewScreen: the match card’s four questions (hardenin
   it('closes Match details for a sample switch, and opens again on the doubles match', () => {
     renderPad();
     press(en['scoring.details.title']);
-    chipUnder(en['scoring.preview.dev.doubles']);
+    chipUnder(CHIP.doubles);
     expect(screen.queryByTestId('details-sheet')).toBeNull();
     press(en['scoring.details.title']);
     expect(within(sheetCard()).getByTestId('match-card-competition').textContent).toBe(
@@ -1913,7 +1888,7 @@ describe('BadmintonPadPreviewScreen: the match card’s four questions (hardenin
   it('closes Match details for the Not started card, which carries the match card; it opens again over it', () => {
     renderPad();
     press(en['scoring.details.title']);
-    chipUnder(en['scoring.preview.dev.notStarted']);
+    chipUnder(CHIP.notStarted);
     expect(screen.queryByTestId('details-sheet')).toBeNull();
     expect(screen.getAllByTestId('match-card')).toHaveLength(1);
     press(en['scoring.details.title']);
@@ -1927,8 +1902,8 @@ describe('BadmintonPadPreviewScreen: the match card’s four questions (hardenin
 
   it('shows the doubles sample on the Start screen: the card’s sides and the toss’s, as typed', () => {
     renderStart();
-    press(en['scoring.preview.dev.doubles']);
-    press(en['scoring.preview.dev.start']);
+    press(CHIP.doubles);
+    press(CHIP.start);
     const start = screen.getByTestId('start-screen');
     expect(
       within(start)
