@@ -6,6 +6,7 @@ import {
   openMatch,
   ownIds,
   step,
+  wakeAt,
   type MatchState,
 } from '@/domain/scoring/scoringMatch';
 import type { QueuedEvent } from '@/domain/scoring/queue';
@@ -23,6 +24,8 @@ import {
   voiding,
 } from '../../../test/badmintonLedger';
 import {
+  ACCEPTED,
+  AT,
   FIXTURE,
   NOW,
   drive,
@@ -33,13 +36,13 @@ import {
   ready,
   savesOf,
   sendsOf,
+  sentOnce,
   tapped,
 } from '../../../test/scoringMatchFixtures';
 
 // The match reducer (plan S2-1 Task 9). Every expectation is a literal: the engine's epoch is 2, a rally by the first
 // side is the home entrant's, the first send is at the ledger's last seq. Hooks and files are the runner's, not here.
 
-const AT = '2026-11-02T09:00:00.000Z';
 const RALLY_FIRST = { kind: 'rally', side: 'first' } as const;
 const RALLY_BODY = { wonBy: HOME, scorer: 'p-sharma' };
 
@@ -154,7 +157,7 @@ describe('a tap', () => {
   });
 
   it('is sent once its save has landed, after one more save that counts the attempt', () => {
-    const { steps } = drive(tappedOnce().state, [{ kind: 'saved' }]);
+    const { steps } = drive(tappedOnce().state, [{ kind: 'saved', n: 99 }]);
     expect(kinds(steps[0].effects)).toEqual(['save', 'send']);
     const [mark] = savesOf(steps[0].effects);
     expect(mark.queue?.pending[0].attempts).toBe(1);
@@ -171,14 +174,14 @@ describe('a tap', () => {
     );
     expect(sendsOf(meanwhile.effects)).toEqual([]);
     expect(meanwhile.state.sync.queue.pending[0].attempts).toBe(0);
-    const landed = step(meanwhile.state, { kind: 'saved' }, NOW);
+    const landed = step(meanwhile.state, { kind: 'saved', n: 99 }, NOW);
     expect(kinds(landed.effects)).toEqual(['save', 'send']);
   });
 
   it('is sent by one sender at a time: nothing more goes while one is in flight', () => {
     const queued = tappedOnce().state;
-    const sent = drive(queued, [{ kind: 'saved' }]).state;
-    const again = drive(sent, [{ kind: 'tick' }, { kind: 'read' }, { kind: 'saved' }]);
+    const sent = drive(queued, [{ kind: 'saved', n: 99 }]).state;
+    const again = drive(sent, [{ kind: 'tick' }, { kind: 'read' }, { kind: 'saved', n: 99 }]);
     expect(again.steps.flatMap((s) => sendsOf(s.effects))).toEqual([]);
   });
 
@@ -302,6 +305,7 @@ describe('the Start tap', () => {
     expect(savesOf(picked.effects)).toEqual([
       {
         kind: 'save',
+        n: 1,
         queue: null,
         boot: { bootstrap: SINGLES, toss: 'second' },
         ledger: null,
@@ -359,16 +363,6 @@ describe('the payload a send is made with', () => {
 // The server's answer
 // ---------------------------------------------------------------------------------------------------------------
 
-/** A match whose one queued rally (`k1`) has been sent at seq 1 and is awaiting its answer. */
-function sentOnce(extra: readonly QueuedEvent[] = []) {
-  const queue = [queuedOf('k1', rally('H')), ...extra];
-  const read = step(opened(tapped(queue)), { kind: 'fetched', events: [] }, NOW);
-  // The runner dispatches `saved` when the attempt's save lands, and only then makes the call.
-  const saved = step(read.state, { kind: 'saved' }, NOW);
-  return { state: saved.state, sent: sendsOf(read.effects)[0].sent };
-}
-const ACCEPTED = { kind: 'accepted', seq: 2, eventId: 'srv-1', rulesVersion: 1 } as const;
-
 describe('the answer to a send', () => {
   it('accepted: the tap joins the ledger and is this phone’s own, and the next is saved then sent at the new tip', () => {
     const { state, sent } = sentOnce([queuedOf('k2', rally('A'))]);
@@ -396,7 +390,7 @@ describe('the answer to a send', () => {
   it('offline: waits one second, then sends the same tap again under the same key', () => {
     const { state, sent } = sentOnce();
     const down = step(state, { kind: 'answered', sent, answer: { kind: 'offline' } }, NOW);
-    expect(down.effects).toContainEqual({ kind: 'wake', ms: 1000 });
+    expect(wakeAt(down.state, NOW)).toBe(NOW + 1000);
     expect(sendsOf(down.effects)).toEqual([]);
     expect(down.state.sent).toBeNull();
     expect(sendsOf(step(down.state, { kind: 'tick' }, NOW + 999).effects)).toEqual([]);
@@ -432,7 +426,7 @@ describe('the answer to a send', () => {
     );
     expect(conflict.effects).toContainEqual({ kind: 'fetch', since: 1 });
     const brought = ledgerOf([start(), rally('A')]).slice(1);
-    const landed = step(conflict.state, { kind: 'saved' }, NOW).state;
+    const landed = step(conflict.state, { kind: 'saved', n: 99 }, NOW).state;
     const merged = step(landed, { kind: 'fetched', events: brought }, NOW);
     expect(
       sendsOf(merged.effects).map((send) => [send.body.idempotency_key, send.body.expected_seq]),
@@ -448,7 +442,7 @@ describe('the answer to a send', () => {
     );
     expect(changed.effects).toContainEqual({ kind: 'loadRules' });
     expect(sendsOf(changed.effects)).toEqual([]);
-    const landed = step(changed.state, { kind: 'saved' }, NOW).state;
+    const landed = step(changed.state, { kind: 'saved', n: 99 }, NOW).state;
     const adopted = step(
       landed,
       { kind: 'rulesRead', rules: { cfg: { bestOf: 1 }, rulesVersion: 2, formatLine: null } },
@@ -550,7 +544,7 @@ describe('the answer to a send', () => {
       { kind: 'answered', sent, answer: { kind: 'rateLimited', retryAfterMs: 7000 } },
       NOW,
     );
-    expect(limited.effects).toContainEqual({ kind: 'wake', ms: 7000 });
+    expect(wakeAt(limited.state, NOW)).toBe(NOW + 7000);
     expect(sendsOf(step(limited.state, { kind: 'tick' }, NOW + 6999).effects)).toEqual([]);
     expect(sendsOf(step(limited.state, { kind: 'tick' }, NOW + 7000).effects)).toHaveLength(1);
   });
@@ -567,7 +561,7 @@ describe('reading the ledger', () => {
     const merged = step(state, { kind: 'fetched', events: fresh }, NOW);
     expect(merged.state.sync.ledger.map((event) => event.seq)).toEqual([1, 2]);
     expect(savesOf(merged.effects)).toEqual([
-      { kind: 'save', queue: null, boot: null, ledger: merged.state.sync.ledger, tap: null },
+      { kind: 'save', n: 1, queue: null, boot: null, ledger: merged.state.sync.ledger, tap: null },
     ]);
     const again = step(merged.state, { kind: 'fetched', events: fresh }, NOW);
     expect(again.state.sync.ledger).toBe(merged.state.sync.ledger);
@@ -578,7 +572,7 @@ describe('reading the ledger', () => {
     const cached = step(ready(), { kind: 'fetched', events: ledgerOf([start(), rally('A')]) }, NOW);
     expect(savesOf(cached.effects).map((save) => save.queue)).toEqual([null]);
     const taken = step(cached.state, { kind: 'tap', tap: RALLY_FIRST, key: 'k1', at: AT }, NOW);
-    const landed = step(taken.state, { kind: 'saved' }, NOW);
+    const landed = step(taken.state, { kind: 'saved', n: 99 }, NOW);
     expect(kinds(landed.effects)).toEqual(['save', 'send']);
   });
 
@@ -603,7 +597,7 @@ describe('reading the ledger', () => {
   it('a read that did not land lets the hold go, waits five seconds, then sends on what is held', () => {
     const state = opened(tapped([queuedOf('k1', rally('H'))]));
     const failed = step(state, { kind: 'fetchFailed', failure: { kind: 'offline' } }, NOW);
-    expect(failed.effects).toContainEqual({ kind: 'wake', ms: 5000 });
+    expect(wakeAt(failed.state, NOW)).toBe(NOW + 5000);
     expect(sendsOf(failed.effects)).toEqual([]);
     expect(sendsOf(step(failed.state, { kind: 'tick' }, NOW + 5000).effects)).toHaveLength(1);
   });
@@ -672,7 +666,7 @@ describe('reading the ledger', () => {
       { kind: 'rulesFailed', failure: { kind: 'offline' } },
       NOW,
     );
-    expect(failedAfterAsk.effects).toContainEqual({ kind: 'wake', ms: 15_000 });
+    expect(wakeAt(failedAfterAsk.state, NOW)).toBe(NOW + 15_000);
     expect(step(failedAfterAsk.state, { kind: 'tick' }, NOW + 14_999).effects).toEqual([]);
     expect(step(failedAfterAsk.state, { kind: 'tick' }, NOW + 15_000).effects).toEqual([
       { kind: 'loadRules' },
@@ -773,7 +767,7 @@ describe('the app leaving and returning', () => {
     const away = step(state, { kind: 'background' }, NOW);
     const { state: queued } = drive(away.state, [
       { kind: 'tap', tap: RALLY_FIRST, key: 'k1', at: AT },
-      { kind: 'saved' },
+      { kind: 'saved', n: 99 },
     ]);
     expect(queued.sync.inFlight).toBeNull();
     expect(queued.sync.queue.pending[0].attempts).toBe(0);
@@ -867,58 +861,6 @@ describe('Undo', () => {
     expect(step(said.state, UNDO, NOW).state.line).toBeNull();
   });
 
-  it('of a tap a send of which may have reached the server waits for its answer, then voids the id it names', () => {
-    const { state, sent } = sentOnce();
-    const asked = step(state, UNDO, NOW);
-    expect(asked.outcome).toEqual({ ok: true });
-    expect(asked.state.undoAfter).toEqual({ sentKey: 'k1', voidKey: 'u1', at: AT, only: null });
-    expect(asked.state.sync.queue.pending.map((tap) => tap.key)).toEqual(['k1']);
-    const answered = step(asked.state, { kind: 'answered', sent, answer: ACCEPTED }, NOW);
-    expect(answered.state.undoAfter).toBeNull();
-    expect(
-      answered.state.sync.queue.pending.map((tap) => [tap.key, tap.type, tap.payload]),
-    ).toEqual([['u1', 'core.void', { event_id: 'srv-1' }]]);
-    expect(savesOf(answered.effects)[0].tap).toBe('u1');
-    expect(sendsOf(answered.effects)).toEqual([]);
-    const saved = step(answered.state, { kind: 'saved' }, NOW);
-    expect(sendsOf(saved.effects).map((send) => send.body.idempotency_key)).toEqual(['u1']);
-  });
-
-  it('whose answer is a refusal is nothing: no void is made, the wait ends', () => {
-    const { state, sent } = sentOnce();
-    const asked = step(state, UNDO, NOW).state;
-    const refused = step(
-      asked,
-      { kind: 'answered', sent, answer: { kind: 'refused', status: 422, code: 'X' } },
-      NOW,
-    );
-    expect(refused.state.undoAfter).toBeNull();
-    expect(refused.state.sync.queue.pending).toEqual([]);
-  });
-
-  it('whose tap another scorer has already voided by the time the answer comes queues no second void', () => {
-    const { state, sent } = sentOnce();
-    const asked = step(state, UNDO, NOW).state;
-    const brought = ledgerOf([start(), { ...rally('H'), link: PHONE_LINK }, voiding(2)]).slice(1);
-    const merged = step(asked, { kind: 'fetched', events: brought }, NOW).state;
-    const answer = { kind: 'accepted', seq: 2, eventId: 'ev-2', rulesVersion: 1 } as const;
-    const answered = step(merged, { kind: 'answered', sent, answer }, NOW);
-    expect(answered.state.undoAfter).toBeNull();
-    expect(answered.state.sync.queue.pending).toEqual([]);
-  });
-
-  it('whose link dies before the answer is nothing either, the tap kept in the dead queue', () => {
-    const { state, sent } = sentOnce();
-    const asked = step(state, UNDO, NOW).state;
-    const dead = step(
-      asked,
-      { kind: 'answered', sent, answer: { kind: 'linkDead', code: 'LINK_REVOKED' } },
-      NOW,
-    );
-    expect(dead.state.sync.queue.pending.map((tap) => tap.key)).toEqual(['k1']);
-    expect(dead.state.undoAfter).not.toBeNull();
-  });
-
   it('of the tap the server’s copy already holds (a ping beat the answer) is the copy’s own event, voided at once', () => {
     const { state } = sentOnce();
     const copy = ledgerOf([start(), { ...rally('H'), link: PHONE_LINK }]).slice(1);
@@ -986,7 +928,7 @@ describe('a refused save', () => {
   it('does not say "not recorded" until the queue without that tap is saved: the line says it could not save', () => {
     const failed = failedTap();
     expect(failed.state.line).toEqual({ kind: 'refusal', key: 'scoring.refusal.savePending' });
-    const landed = step(failed.state, { kind: 'saved' }, NOW);
+    const landed = step(failed.state, { kind: 'saved', n: 99 }, NOW);
     expect(landed.state.line).toEqual({ kind: 'refusal', key: 'scoring.refusal.notSaved' });
     expect(landed.state.saveOwed).toBeNull();
   });
@@ -994,12 +936,14 @@ describe('a refused save', () => {
   it('a re-save that fails too waits five seconds and tries again, however many times it takes', () => {
     const first = failedTap().state;
     const second = step(first, { kind: 'saveFailed', key: null }, NOW);
-    expect(second.effects).toEqual([{ kind: 'wake', ms: 5000 }]);
+    expect(second.effects).toEqual([]);
+    expect(wakeAt(second.state, NOW)).toBe(NOW + 5000);
     expect(step(second.state, { kind: 'tick' }, NOW + 4999).effects).toEqual([]);
     const due = step(second.state, { kind: 'tick' }, NOW + 5000);
     expect(savesOf(due.effects)).toHaveLength(1);
     const third = step(due.state, { kind: 'saveFailed', key: null }, NOW + 5000);
-    expect(third.effects).toEqual([{ kind: 'wake', ms: 5000 }]);
+    expect(third.effects).toEqual([]);
+    expect(wakeAt(third.state, NOW + 5000)).toBe(NOW + 10_000);
   });
 
   it('a failed save of a send’s attempt mark is saved again, and says nothing of a tap', () => {
@@ -1007,7 +951,7 @@ describe('a refused save', () => {
     const failed = step(state, { kind: 'saveFailed', key: null }, NOW);
     expect(failed.state.line).toBeNull();
     expect(savesOf(failed.effects)).toHaveLength(1);
-    const landed = step(failed.state, { kind: 'saved' }, NOW);
+    const landed = step(failed.state, { kind: 'saved', n: 99 }, NOW);
     expect(landed.state.line).toBeNull();
   });
 
@@ -1023,10 +967,13 @@ describe('a refused save', () => {
 // ---------------------------------------------------------------------------------------------------------------
 
 describe('the tap in flight and the server’s copy of it', () => {
+  /** A rally written by this phone's own link: what the server's copy of its tap carries. */
+  const OURS = { ...rally('H'), link: PHONE_LINK };
+
   /** k1 sent at seq 1, and the ledger then brought in an event at seq 2 (a ping beat the answer). */
   function withCopy(payload: unknown, type = 'badminton.rally') {
     const { state } = sentOnce();
-    const copy = { ...ledgerOf([start(), rally('H')])[1], type, payload };
+    const copy = { ...ledgerOf([start(), OURS])[1], type, payload };
     return { ...state, sync: { ...state.sync, ledger: [...state.sync.ledger, copy], tip: 2 } };
   }
 
@@ -1035,7 +982,7 @@ describe('the tap in flight and the server’s copy of it', () => {
   });
 
   it('is still hidden when the server hands the payload back with its keys in another order', () => {
-    const base = { ...ledgerOf([start(), rally('H')])[1] };
+    const base = { ...ledgerOf([start(), OURS])[1] };
     const { state } = sentOnce();
     const queued = { ...state.sync.queue.pending[0], payload: { b: 2, a: { y: 1, x: [1, 2] } } };
     const held = {
@@ -1062,7 +1009,7 @@ describe('the tap in flight and the server’s copy of it', () => {
   it('is counted when a list in its payload is an object in the ledger’s copy, or the other way round', () => {
     const { state } = sentOnce();
     const [head] = state.sync.queue.pending;
-    const base = ledgerOf([start(), rally('H')])[1];
+    const base = ledgerOf([start(), OURS])[1];
     const withLists = (queuedValue: unknown, copyValue: unknown) => ({
       ...state,
       sync: {
@@ -1075,6 +1022,30 @@ describe('the tap in flight and the server’s copy of it', () => {
     expect(foldQueue(withLists([], {})).map((tap) => tap.key)).toEqual(['k1']);
     expect(foldQueue(withLists({}, [])).map((tap) => tap.key)).toEqual(['k1']);
     expect(foldQueue(withLists([1], [1]))).toEqual([]);
+  });
+
+  it.each([
+    ['a co-scorer’s link', BROWSER_LINK],
+    ['no link at all', null],
+  ])(
+    'is counted when the identical event at that seq is written by %s: it is theirs, not ours',
+    (_name, link) => {
+      const state = withCopy({ wonBy: HOME });
+      const [copy] = state.sync.ledger.slice(-1);
+      const theirs = {
+        ...state,
+        sync: {
+          ...state.sync,
+          ledger: [...state.sync.ledger.slice(0, -1), { ...copy, deviceLinkId: link }],
+        },
+      };
+      expect(foldQueue(theirs).map((tap) => tap.key)).toEqual(['k1']);
+    },
+  );
+
+  it('is counted when no bootstrap says which link is ours', () => {
+    const state = withCopy({ wonBy: HOME });
+    expect(foldQueue({ ...state, bootstrap: null }).map((tap) => tap.key)).toEqual(['k1']);
   });
 
   it('is counted when no send is in flight, whatever the ledger holds', () => {

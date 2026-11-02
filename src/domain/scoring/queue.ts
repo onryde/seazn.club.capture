@@ -22,6 +22,13 @@ export type QueuedEvent = {
    * answer, back to 0 on an answer that says it was not stored. More than 0, the tap may be in the ledger already.
    */
   readonly attempts: number;
+  /**
+   * An Undo of a tap whose fate is unknown (it may be at the server already): the key of that tap. The void's payload
+   * names no event yet; the tap's answer gives the id, and only then is it a plain `core.void`, sent in its place. Until
+   * then it is neither sent nor folded, the tap it takes back is not folded either, and it is kept in the queue file so
+   * a kill, or leaving the match, does not lose the Undo.
+   */
+  readonly voidsKey?: string;
 };
 
 /**

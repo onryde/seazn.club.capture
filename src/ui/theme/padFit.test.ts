@@ -355,9 +355,13 @@ describe('the last-tap line', () => {
 
   // A repeat within the bounce window says "Counted once" under the sentence of the tap that counted (review item 3):
   // one line of `controlInk` (Geist 500 at 14, as `control`), and the sentence gives up a line for it.
-  // The other note, "Another scorer has scored since" (Task 9), stands under the last tap while Undo is off for that
-  // reason: one line too, in the same ink.
-  it.each(['scoring.pad.countedOnce', 'scoring.pad.otherScorerSince'] as const)(
+  // The other note, "Another scorer since" (Task 9), stands under the last tap while Undo is off for that reason; a
+  // third, "Undo waiting to send", while an Undo waits for its tap's answer: one line each, in the same ink.
+  it.each([
+    'scoring.pad.countedOnce',
+    'scoring.pad.otherScorerSince',
+    'scoring.pad.undoWaiting',
+  ] as const)(
     'holds the note %s on one line beside Undo at 320 and 360, in four languages',
     (key) => {
       for (const [lang, dictionary] of LANGUAGES) {

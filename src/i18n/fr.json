@@ -367,6 +367,7 @@
   "scoring.sanction.confirm.action": "Enregistrer la disqualification",
   "scoring.pad.countedOnce": "Compté une fois",
   "scoring.pad.otherScorerSince": "Autre marqueur depuis",
+  "scoring.pad.undoWaiting": "Annulation en attente",
   "scoring.card.updateNeeded.update": "Mettre à jour",
   "scoring.card.updateNeeded.browser": "Saisir dans le navigateur",
   "scoring.card.cantOpen": "Ouverture impossible\u00a0: réessayez.",

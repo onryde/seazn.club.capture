@@ -3,6 +3,7 @@ import type { BootCache, MatchQueue } from '@/domain/scoring/queue';
 import {
   openMatch,
   step,
+  wakeAt,
   type MatchEffect,
   type MatchEvent,
   type MatchState,
@@ -100,6 +101,7 @@ export function createScoringRunner(ports: RunnerPorts, options: Options): Scori
     state = result.state;
     result.effects.forEach(run);
     if (unsettled === 0) publish({ kind: 'ready', state });
+    arm(state);
     idleCheck(state);
     return result.outcome;
   };
@@ -155,7 +157,7 @@ export function createScoringRunner(ports: RunnerPorts, options: Options): Scori
   ): boolean => {
     if (owesTap) unsettled -= 1;
     if (effect.queue !== null)
-      dispatch(ok ? { kind: 'saved' } : { kind: 'saveFailed', key: effect.tap });
+      dispatch(ok ? { kind: 'saved', n: effect.n } : { kind: 'saveFailed', key: effect.tap });
     else if (unsettled === 0 && state !== null && !stopped) publish({ kind: 'ready', state });
     return ok;
   };
@@ -212,15 +214,23 @@ export function createScoringRunner(ports: RunnerPorts, options: Options): Scori
     })();
   };
 
-  /** One timer, at the earliest time asked for: a tick finds out what is due (`step` asks sync again). */
-  const wake = (ms: number): void => {
-    const at = now() + ms;
-    if (wakeTimer !== null && wakeTimer.at <= at) return;
+  /**
+   * One timer, at the earliest wait still ahead in the state (`wakeAt`), set again after every step: a wait that comes
+   * after another is armed when the first has passed. A tick finds out what is due (`step` asks sync again).
+   */
+  const arm = (next: MatchState): void => {
+    const at = wakeAt(next, now());
+    if (wakeTimer !== null && wakeTimer.at === at) return;
     if (wakeTimer !== null) clearTimeout(wakeTimer.id);
-    const id = setTimeout(() => {
-      wakeTimer = null;
-      dispatch({ kind: 'tick' });
-    }, ms);
+    wakeTimer = null;
+    if (at === null) return;
+    const id = setTimeout(
+      () => {
+        wakeTimer = null;
+        dispatch({ kind: 'tick' });
+      },
+      Math.max(0, at - now()),
+    );
     wakeTimer = { at, id };
   };
 
@@ -236,8 +246,6 @@ export function createScoringRunner(ports: RunnerPorts, options: Options): Scori
         return loadRules();
       case 'loadBootstrap':
         return loadBootstrap();
-      case 'wake':
-        return wake(effect.ms);
     }
   };
 
@@ -280,6 +288,7 @@ export function createScoringRunner(ports: RunnerPorts, options: Options): Scori
     state = opened.state;
     opened.effects.forEach(run);
     publish({ kind: 'ready', state });
+    arm(state);
     leaving.push(
       ports.foreground.subscribe(() => dispatch({ kind: 'foreground' })),
       ports.foreground.subscribeBackground(() => dispatch({ kind: 'background' })),

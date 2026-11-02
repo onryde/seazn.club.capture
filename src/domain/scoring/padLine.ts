@@ -27,7 +27,8 @@ export type PadLineKey =
   | 'scoring.refusal.notSaved'
   | 'scoring.refusal.savePending'
   | 'scoring.pad.countedOnce'
-  | 'scoring.pad.otherScorerSince';
+  | 'scoring.pad.otherScorerSince'
+  | 'scoring.pad.undoWaiting';
 
 export type PadLineWords =
   | { readonly kind: 'refusal'; readonly key: PadLineKey }

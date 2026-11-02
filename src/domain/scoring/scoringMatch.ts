@@ -66,6 +66,12 @@ export const SPORT = 'badminton';
 const SAVE_RETRY_MS = 5000;
 
 /**
+ * The bootstrap is read at most this often once it is held: while a card shows (a poll, since the web sends no
+ * per-fixture ping for a big schedule write), and when a ledger read finds the match decided (to learn it was finalized).
+ */
+const BOOTSTRAP_PACE_MS = 15_000;
+
+/**
  * A `now` no wait is over at: sync's `accepted` answer sends the next tap itself when `nextSend(now)` says it may, and a
  * send made inside it would skip the payload decision (`payloadForSend`) the pump makes before it marks an attempt.
  * Handing it a time before every wait means the pump is the only sender.
@@ -79,21 +85,19 @@ const NOT_YET = Number.NEGATIVE_INFINITY;
 /** The tap on its way to the server, with the seq it was sent at: the copy of it a fetch may bring in before the answer. */
 export type InFlight = { readonly key: string; readonly expectedSeq: number };
 
-/** An Undo asked of a tap that may already be at the server: it waits for the answer, then voids the id it names. */
-export type UndoAfter = {
-  readonly sentKey: string;
-  /** The key the void is made under, made when Undo was tapped. */
-  readonly voidKey: string;
-  readonly at: string;
-  /** Void the sanction (the ending prompt's button): nothing else is taken back. */
-  readonly only: 'sanction' | null;
-};
-
 /** A discarded queued tap's "undone" line, which the ledger cannot say (no void exists): valid while the match is as it was left. */
 export type UndoneLine = { readonly tap: BadmintonUndoneTap; readonly over: string };
 
-/** The queue file may differ from the queue: a save failed. `tap`: it was a tap's, whose "not recorded" waits for the re-save. */
-export type SaveOwed = { readonly tap: boolean; readonly retryAt: number | null };
+/**
+ * The queue file may differ from the queue: a save failed. `tap`: it was a tap's, whose "not recorded" waits for the
+ * re-save. `after`: the number of the last save issued before the failure, which may still be in the file's way: the
+ * debt is paid only by a save numbered above it.
+ */
+export type SaveOwed = {
+  readonly tap: boolean;
+  readonly retryAt: number | null;
+  readonly after: number;
+};
 
 export type MatchState = {
   readonly sync: SyncState;
@@ -109,12 +113,17 @@ export type MatchState = {
   /** The bootstrap could not be read for want of a signal, and none is held. */
   readonly bootOffline: boolean;
   readonly sent: InFlight | null;
-  readonly undoAfter: UndoAfter | null;
   readonly undone: UndoneLine | null;
   readonly line: PadLineWords;
   readonly saveOwed: SaveOwed | null;
   /** Queue saves asked for and not yet answered by `saved` or `saveFailed`: while any is out, nothing new is sent. */
   readonly saving: number;
+  /** The number of the last save asked for (`MatchEffect` `save`): each is numbered, one after another from 1. */
+  readonly saveSeq: number;
+  /** When the bootstrap was last asked for (the caller's clock), or null: the bootstrap is read at most every 15 s. */
+  readonly bootstrapAskedAt: number | null;
+  /** A ledger read of a decided match wanted the bootstrap inside that window: it is read when the window is over. */
+  readonly bootstrapOwed: boolean;
 };
 
 /** What the hook did last, and what is left of it: the queue and the match as they stand. */
@@ -130,19 +139,25 @@ export type MatchStep = {
  * (Review Focus 1). `ledger` is a cache, written when it can and never waited for.
  */
 export type MatchEffect =
-  | {
-      readonly kind: 'save';
-      readonly queue: MatchQueue | null;
-      readonly boot: BootCache | null;
-      readonly ledger: readonly LedgerEvent[] | null;
-      /** The key of the tap this save makes durable: if the save fails it did not happen, and the tap is taken back out. */
-      readonly tap: string | null;
-    }
+  | SaveEffect
   | { readonly kind: 'send'; readonly body: AppendBody; readonly sent: QueuedEvent }
   | { readonly kind: 'fetch'; readonly since: number }
   | { readonly kind: 'loadRules' }
-  | { readonly kind: 'loadBootstrap' }
-  | { readonly kind: 'wake'; readonly ms: number };
+  | { readonly kind: 'loadBootstrap' };
+
+export type SaveEffect = {
+  readonly kind: 'save';
+  /** This save's number: `saved` says which landed, and a debt is paid only by a save numbered after the failure. */
+  readonly n: number;
+  readonly queue: MatchQueue | null;
+  readonly boot: BootCache | null;
+  readonly ledger: readonly LedgerEvent[] | null;
+  /** The key of the tap this save makes durable: if the save fails it did not happen, and the tap is taken back out. */
+  readonly tap: string | null;
+};
+
+/** What a handler asks for: a save has no number until `step` numbers it. */
+type Planned = Exclude<MatchEffect, SaveEffect> | Omit<SaveEffect, 'n'>;
 
 export type MatchEvent =
   | { readonly kind: 'tap'; readonly tap: BadmintonTap; readonly key: string; readonly at: string }
@@ -167,8 +182,8 @@ export type MatchEvent =
   | { readonly kind: 'foreground' }
   | { readonly kind: 'background' }
   | { readonly kind: 'tick' }
-  /** A queue save landed. */
-  | { readonly kind: 'saved' }
+  /** The queue save numbered `n` landed. */
+  | { readonly kind: 'saved'; readonly n: number }
   /** A save failed: `key` is the tap it was to make durable, if any. */
   | { readonly kind: 'saveFailed'; readonly key: string | null }
   | { readonly kind: 'say'; readonly words: PadLineWords };
@@ -213,17 +228,21 @@ export function openMatch(held: MatchHeld, now: number): MatchStep {
     closed: null,
     bootOffline: false,
     sent: null,
-    undoAfter: null,
     undone: null,
     line: null,
     saveOwed: null,
     saving: 0,
+    saveSeq: 0,
+    bootstrapAskedAt: null,
+    bootstrapOwed: false,
   };
-  const reads: MatchEffect[] =
-    held.queue.dead !== null
-      ? []
-      : [{ kind: 'fetch', since: sync.tip }, ...(held.judge === 'fold' ? [LOAD_BOOTSTRAP] : [])];
-  return { state, effects: reads, outcome: null };
+  if (held.queue.dead !== null) return { state, effects: [], outcome: null };
+  const asks = held.judge === 'fold';
+  return {
+    state: asks ? { ...state, bootstrapAskedAt: now } : state,
+    effects: [{ kind: 'fetch', since: sync.tip }, ...(asks ? [LOAD_BOOTSTRAP] : [])],
+    outcome: null,
+  };
 }
 
 const LOAD_BOOTSTRAP: MatchEffect = { kind: 'loadBootstrap' };
@@ -268,16 +287,18 @@ function sameJson(a: unknown, b: unknown): boolean {
 
 /**
  * The ledger's copy of the tap in flight, or null: a ping's fetch beat the answer. It sits at the seq the tap was sent
- * at, plus one, with the same type and the same payload, the keys in any order (Postgres reorders them).
+ * at, plus one, with the same type and the same payload, the keys in any order (Postgres reorders them), and it was
+ * written by this phone's link: a co-scorer's identical rally at that seq is theirs, and counts.
  */
 function inFlightCopy(state: MatchState): LedgerEvent | null {
-  const { sent, sync } = state;
-  if (sent === null || sync.inFlight !== sent.key) return null;
+  const { sent, sync, bootstrap } = state;
+  if (sent === null || sync.inFlight !== sent.key || bootstrap === null) return null;
   const head = sync.queue.pending.find((tap) => tap.key === sent.key);
   const copy = sync.ledger.find((event) => event.seq === sent.expectedSeq + 1);
   const same =
     head !== undefined &&
     copy !== undefined &&
+    copy.deviceLinkId === bootstrap.linkId &&
     copy.type === head.type &&
     sameJson(copy.payload, head.payload);
   return same ? copy : null;
@@ -285,12 +306,26 @@ function inFlightCopy(state: MatchState): LedgerEvent | null {
 
 /**
  * The queued taps the fold counts. The tap in flight is left out when the ledger already holds its copy: folded as
- * both, it would score twice until the answer came.
+ * both, it would score twice until the answer came. A tap an Undo is waiting on is taken back at once: it and its Undo
+ * are left out, and once the ledger holds the server's copy the Undo stands in as a void of that copy.
  */
 export function foldQueue(state: MatchState): readonly QueuedEvent[] {
   const { pending } = state.sync.queue;
-  if (inFlightCopy(state) === null) return pending;
-  return pending.filter((tap) => tap.key !== state.sent?.key);
+  const copy = inFlightCopy(state);
+  const undone = new Set(
+    pending.flatMap((tap) => (tap.voidsKey === undefined ? [] : [tap.voidsKey])),
+  );
+  return pending.flatMap((tap): QueuedEvent[] => {
+    if (tap.voidsKey !== undefined) return copy === null ? [] : [resolved(tap, copy.id)];
+    if (undone.has(tap.key)) return [];
+    return copy !== null && tap.key === state.sent?.key ? [] : [tap];
+  });
+}
+
+/** An Undo that waited for its tap's answer, made a plain void of the event the answer names. */
+function resolved(waiting: QueuedEvent, eventId: string): QueuedEvent {
+  const { key, rulesVersion, createdAt, attempts } = waiting;
+  return { key, ...undoEventFor(eventId), rulesVersion, createdAt, attempts };
 }
 
 /**
@@ -336,14 +371,38 @@ export function undoTargetOf(state: MatchState, fold: BadmintonFold): UndoTarget
 }
 
 // ---------------------------------------------------------------------------------------------------------------
+// What is waited for
+// ---------------------------------------------------------------------------------------------------------------
+
+/**
+ * The earliest time after `now` at which the state wants a step, or null: a send's backoff, a rules read asked again, a
+ * save tried again. The runner arms ONE timer at it after every step, so a wait that comes after another is armed when
+ * the first has passed, never left without a timer. Times are the caller's clock. Nothing is waited for in the
+ * background (the return steps the match), and a dead queue sends nothing.
+ */
+export function wakeAt(state: MatchState, now: number): number | null {
+  if (!state.foreground) return null;
+  const { sync } = state;
+  const sends = sync.queue.pending.length > 0 && deadOf(state) === null;
+  const times = [
+    sends ? sync.notBefore : null,
+    sync.rulesRetryAt,
+    state.saveOwed?.retryAt ?? null,
+    bootstrapDueAt(state),
+  ];
+  const ahead = times.filter((at): at is number => at !== null && at > now);
+  return ahead.length === 0 ? null : Math.min(...ahead);
+}
+
+// ---------------------------------------------------------------------------------------------------------------
 // One step
 // ---------------------------------------------------------------------------------------------------------------
 
-type Part = { readonly state: MatchState; readonly effects: readonly MatchEffect[] };
+type Part = { readonly state: MatchState; readonly effects: readonly Planned[] };
 /** What a handler decided. `pump: false`: a tap was added to the queue, which is saved before anything is sent. */
 type Handled = Part & { readonly outcome: PadOutcome | null; readonly pump: boolean };
 
-const part = (state: MatchState, effects: readonly MatchEffect[] = []): Part => ({
+const part = (state: MatchState, effects: readonly Planned[] = []): Part => ({
   state,
   effects,
 });
@@ -356,15 +415,30 @@ const handled = (p: Part, extra: { outcome?: PadOutcome; pump?: boolean } = {}):
 export function step(state: MatchState, event: MatchEvent, now: number): MatchStep {
   const result = handle(state, event, now);
   const settled = result.pump ? pump(result.state, now) : part(result.state);
-  const final = withoutLostUndo(settled.state);
+  const final = withoutOrphanVoids(settled.state);
   const save = saveOf(state, final);
-  const effects = [...(save === null ? [] : [save]), ...result.effects, ...settled.effects];
+  const planned = [...(save === null ? [] : [save]), ...result.effects, ...settled.effects];
+  const { effects, last } = numbered(planned, final.saveSeq);
   const owed = effects.filter((effect) => effect.kind === 'save' && effect.queue !== null).length;
   return {
-    state: owed === 0 ? final : { ...final, saving: final.saving + owed },
+    state: { ...final, saving: final.saving + owed, saveSeq: last },
     effects,
     outcome: result.outcome,
   };
+}
+
+/** Each save, in the order made, gets the next number after `seq`. */
+function numbered(
+  planned: readonly Planned[],
+  seq: number,
+): { effects: MatchEffect[]; last: number } {
+  let last = seq;
+  const effects = planned.map((effect): MatchEffect => {
+    if (effect.kind !== 'save') return effect;
+    last += 1;
+    return { ...effect, n: last };
+  });
+  return { effects, last };
 }
 
 function handle(state: MatchState, event: MatchEvent, now: number): Handled {
@@ -391,13 +465,15 @@ function handle(state: MatchState, event: MatchEvent, now: number): Handled {
       return handled(onFailed(state, event.kind, event.failure, now));
     case 'read':
     case 'foreground':
-      return handled(wanting(event.kind === 'foreground' ? { ...state, foreground: true } : state));
+      return handled(
+        wanting(event.kind === 'foreground' ? { ...state, foreground: true } : state, now),
+      );
     case 'background':
       return handled(part({ ...state, foreground: false }));
     case 'tick':
       return handled(part(state));
     case 'saved':
-      return handled(part(savedOf(landedSave(state))));
+      return handled(part(savedOf(landedSave(state), event.n)));
     case 'saveFailed':
       return handled(onSaveFailed(landedSave(state), event.key, now));
     case 'say':
@@ -478,7 +554,7 @@ function typeToUndo(state: MatchState, target: UndoTarget): string | null {
 }
 
 function onUndo(state: MatchState, event: Extract<MatchEvent, { kind: 'undo' }>): Handled {
-  const fold = foldOfState(state);
+  const fold = padTakes(state) ? foldOfState(state) : null;
   if (fold === null || fold.kind !== 'folded' || state.bootstrap === null)
     return refused(state, 'notNow');
   const target = undoTargetOf(state, fold);
@@ -498,17 +574,23 @@ function undoing(
   event: Extract<MatchEvent, { kind: 'undo' }>,
   fold: Extract<BadmintonFold, { kind: 'folded' }>,
 ): Handled {
-  if (target.kind === 'awaitAnswer') {
-    const undoAfter: UndoAfter = {
-      sentKey: target.key,
-      voidKey: event.key,
-      at: event.at,
-      only: event.only ?? null,
-    };
-    return handled(part({ ...state, undoAfter, line: null }), { outcome: TAKEN, pump: false });
-  }
+  if (target.kind === 'awaitAnswer') return waiting(state, target.key, event);
   if (target.kind === 'queued') return discarding(state, target.key, fold);
   return voiding(state, target.eventId, event.key, event.at);
+}
+
+/**
+ * Undo of a tap that may be at the server already: a void that names it by key, queued behind it and saved at once, so
+ * a kill or leaving the match keeps it. Its tap's answer gives the id (`resolveUndo`).
+ */
+function waiting(
+  state: MatchState,
+  tapKey: string,
+  event: Extract<MatchEvent, { kind: 'undo' }>,
+): Handled {
+  const made = queuedOf(state, undoEventFor(''), event.key, event.at);
+  const next = { ...withTap(state, { ...made, voidsKey: tapKey }), line: null, undone: null };
+  return handled(part(next), { outcome: TAKEN, pump: false });
 }
 
 /** Undo of a tap still only queued: it leaves the queue, nothing is sent, and the line says it was undone. */
@@ -547,19 +629,32 @@ function voiding(state: MatchState, eventId: string, key: string, at: string): H
 export const signatureOf = (state: MatchState): string =>
   `${state.sync.ledger.length}:${state.sync.queue.pending.map((tap) => tap.key).join(',')}`;
 
-/** An Undo waiting for a tap's answer whose tap is gone with no acceptance (refused, dropped, the queue dead) is nothing now. */
-function withoutLostUndo(state: MatchState): MatchState {
-  const waiting = state.undoAfter;
-  if (waiting === null) return state;
-  const queued = state.sync.queue.pending.some((tap) => tap.key === waiting.sentKey);
-  return queued ? state : { ...state, undoAfter: null };
+/** An Undo that waits for a tap that is no longer queued (refused, dropped) is nothing now: it goes with it. */
+function withoutOrphanVoids(state: MatchState): MatchState {
+  const { pending } = state.sync.queue;
+  const orphaned = (tap: QueuedEvent): boolean =>
+    tap.voidsKey !== undefined && !pending.some((other) => other.key === tap.voidsKey);
+  return pending.some(orphaned)
+    ? withPending(
+        state,
+        pending.filter((tap) => !orphaned(tap)),
+      )
+    : state;
 }
+
+const withPending = (state: MatchState, pending: readonly QueuedEvent[]): MatchState => ({
+  ...state,
+  sync: { ...state.sync, queue: { ...state.sync.queue, pending } },
+});
 
 // ---------------------------------------------------------------------------------------------------------------
 // The server's answer
 // ---------------------------------------------------------------------------------------------------------------
 
-/** Maps sync's effects to the hook's. `persist` is the save the diff makes; `send` is the pump's alone (`NOT_YET`). */
+/**
+ * Maps sync's effects to the hook's. `persist` is the save the diff makes; `send` is the pump's alone (`NOT_YET`);
+ * `retryIn` is read off the state (`wakeAt`), not carried out as an effect of its own.
+ */
 function effectsOf(effects: readonly SyncEffect[]): { effects: MatchEffect[]; refused: boolean } {
   const out: MatchEffect[] = [];
   let refused = false;
@@ -567,7 +662,6 @@ function effectsOf(effects: readonly SyncEffect[]): { effects: MatchEffect[]; re
     if (effect.kind === 'fetchSince') out.push({ kind: 'fetch', since: effect.seq });
     else if (effect.kind === 'reloadRules') out.push({ kind: 'loadRules' });
     else if (effect.kind === 'reloadBootstrap') out.push(LOAD_BOOTSTRAP);
-    else if (effect.kind === 'retryIn') out.push({ kind: 'wake', ms: effect.ms });
     else if (effect.kind === 'refused') refused = true;
   }
   return { effects: out, refused };
@@ -593,17 +687,36 @@ function onAnswered(
   const stepped = onAnswer(state.sync, sent, answer, accepted ? NOT_YET : now);
   const landed = state.sent?.key === sent.key ? { ...state, sent: null } : state;
   const moved = withSync(landed, stepped);
-  if (!accepted || moved.state.undoAfter?.sentKey !== sent.key) return handled(moved);
-  return handled(undoAcceptedTap(moved, answer.eventId), { pump: false });
+  const waits = moved.state.sync.queue.pending.some((tap) => tap.voidsKey === sent.key);
+  if (!accepted || !waits) return handled(moved);
+  return handled(resolveUndo(moved, sent.key, answer.eventId), { pump: false });
 }
 
-/** The tap an Undo waited for was accepted: the void of the id the answer names goes into the queue. */
-function undoAcceptedTap(moved: Part, eventId: string): Part {
-  const waiting = moved.state.undoAfter;
-  if (waiting === null) return moved;
-  const cleared = { ...moved.state, undoAfter: null };
-  const queued = queuedOf(cleared, undoEventFor(eventId), waiting.voidKey, waiting.at);
-  return part(takes(cleared, queued) ? withTap(cleared, queued) : cleared, moved.effects);
+/**
+ * The tap an Undo waited for was accepted: the Undo becomes a plain void of the id the answer names, in its place in the
+ * queue. The fold must take it (another scorer may have voided the tap already: then it is dropped); the background
+ * sender judges nothing and keeps it, and the server judges it.
+ */
+function resolveUndo(moved: Part, tapKey: string, eventId: string): Part {
+  const { pending } = moved.state.sync.queue;
+  const waiting = pending.find((tap) => tap.voidsKey === tapKey);
+  if (waiting === undefined) return moved;
+  const plain = resolved(waiting, eventId);
+  const next = withPending(
+    moved.state,
+    pending.map((tap) => (tap === waiting ? plain : tap)),
+  );
+  const fold = foldOfState(next);
+  const legal =
+    next.judge === 'trust' ||
+    (fold !== null && fold.kind === 'folded' && fold.legalQueued.includes(plain.key));
+  const kept = legal
+    ? next
+    : withPending(
+        moved.state,
+        pending.filter((tap) => tap !== waiting),
+      );
+  return part(kept, moved.effects);
 }
 
 /** A send that never went: its tap stays, its attempt counted, and the sender waits as it does for no network. */
@@ -618,17 +731,52 @@ function abandon(state: MatchState, key: string, now: number): Part {
 // Reads: the ledger, the rules, the bootstrap
 // ---------------------------------------------------------------------------------------------------------------
 
-/** A ping, a poll, a return to the foreground: the ledger again, and the bootstrap too while the screen is not the pad. */
-function wanting(state: MatchState): Part {
+/**
+ * A ping, a poll, a return to the foreground: the ledger again. The bootstrap goes with it at once while the screen is
+ * not the pad (a card, or none held yet), and, paced, when the match is decided: the ledger cannot say it was finalized.
+ */
+function wanting(state: MatchState, now: number): Part {
   if (state.sync.status === 'tooLarge' || deadOf(state) !== null) return part(state);
-  const screen = state.bootstrap?.screen;
-  const again =
-    state.judge === 'fold' && (state.bootstrap === null || CARD_SCREENS.has(screen ?? ''));
-  const reads: MatchEffect[] = [
-    { kind: 'fetch', since: state.sync.tip },
-    ...(again ? [LOAD_BOOTSTRAP] : []),
-  ];
-  return part(state, reads);
+  const fetch: MatchEffect = { kind: 'fetch', since: state.sync.tip };
+  if (state.judge !== 'fold') return part(state, [fetch]);
+  if (showsNoPad(state)) return asking(state, now, [fetch]);
+  if (!isDecided(state)) return part(state, [fetch]);
+  return paced(state, now)
+    ? asking(state, now, [fetch])
+    : part({ ...state, bootstrapOwed: true }, [fetch]);
+}
+
+/** No bootstrap is held, or the server's screen is a card in place of the pad. */
+const showsNoPad = (state: MatchState): boolean =>
+  state.bootstrap === null || CARD_SCREENS.has(state.bootstrap.screen);
+
+function isDecided(state: MatchState): boolean {
+  const fold = foldOfState(state);
+  return fold !== null && fold.kind === 'folded' && fold.display.phase === 'decided';
+}
+
+/** Whether the last read of the bootstrap is far enough back for another. */
+const paced = (state: MatchState, now: number): boolean =>
+  state.bootstrapAskedAt === null || now - state.bootstrapAskedAt >= BOOTSTRAP_PACE_MS;
+
+/** The bootstrap is asked for now: the time is kept, and what was owed is paid. */
+function asking(state: MatchState, now: number, others: readonly MatchEffect[] = []): Part {
+  return part({ ...state, bootstrapAskedAt: now, bootstrapOwed: false }, [
+    ...others,
+    LOAD_BOOTSTRAP,
+  ]);
+}
+
+/**
+ * When the bootstrap is next to be read on its own: 15 s after it was last asked for, while a read is owed, a card
+ * shows or none is held yet. Only the foreground folding runner reads it; the background sender judges nothing.
+ */
+function bootstrapDueAt(state: MatchState): number | null {
+  const asked = state.bootstrapAskedAt;
+  if (asked === null || state.judge !== 'fold') return null;
+  if (state.sync.status === 'tooLarge' || deadOf(state) !== null) return null;
+  const wanted = state.bootstrapOwed || showsNoPad(state);
+  return wanted ? asked + BOOTSTRAP_PACE_MS : null;
 }
 
 /** Events the ledger already holds are nothing new (a fetch that lost the race with another); the rest merge. */
@@ -651,11 +799,13 @@ function onRulesRead(state: MatchState, rules: Rules): Part {
 
 /**
  * A bootstrap read: its status goes through sync (a closed match, a tap held on ALREADY_DECIDED), its rules count only
- * if they are no older than those held, and it clears what an earlier failed read said of the link.
+ * if they are no older than those held, and it clears what an earlier failed read said of the link. One read before the
+ * seq of the one held (`lastSeq`) is a late answer and changes nothing: a stale "in play" must not reopen a finalized match.
  */
 function onBootstrapRead(state: MatchState, read: Bootstrap): Part {
-  const status = onBootstrapStatus(state.sync, read.status);
   const held = state.bootstrap;
+  if (held !== null && read.lastSeq < held.lastSeq) return part(state);
+  const status = onBootstrapStatus(state.sync, read.status);
   const newer = held === null || read.rulesVersion >= held.rulesVersion;
   const bootstrap: Bootstrap = newer
     ? read
@@ -695,7 +845,7 @@ function onFailed(
  * The save this step owes: the queue if it moved (or a failed save leaves it owed), the boot cache if the bootstrap or
  * the pick did, the ledger if it grew. The key of a tap this step added is named: if the save fails it never happened.
  */
-function saveOf(prev: MatchState, next: MatchState): MatchEffect | null {
+function saveOf(prev: MatchState, next: MatchState): Omit<SaveEffect, 'n'> | null {
   const queueMoved = prev.sync.queue !== next.sync.queue;
   const bootMoved = prev.bootstrap !== next.bootstrap || prev.toss !== next.toss;
   const ledgerMoved = prev.sync.ledger !== next.sync.ledger;
@@ -722,9 +872,12 @@ const landedSave = (state: MatchState): MatchState => ({
   saving: Math.max(0, state.saving - 1),
 });
 
-/** A queue save landed: whatever the file held that the queue does not is overwritten. A tap's "not recorded" is now true. */
-function savedOf(state: MatchState): MatchState {
-  if (state.saveOwed === null) return state;
+/**
+ * A queue save landed: whatever the file held that the queue does not is overwritten, if it was issued after the failure.
+ * A tap's "not recorded" is now true.
+ */
+function savedOf(state: MatchState, n: number): MatchState {
+  if (state.saveOwed === null || n <= state.saveOwed.after) return state;
   const line = state.saveOwed.tap ? refusalLine('scoring.refusal.notSaved') : state.line;
   return { ...state, saveOwed: null, line };
 }
@@ -740,14 +893,14 @@ function onSaveFailed(state: MatchState, key: string | null, now: number): Part 
   const moved = pending.length !== state.sync.queue.pending.length;
   const sync = moved ? { ...state.sync, queue: { ...state.sync.queue, pending } } : state.sync;
   const tap = key !== null || state.saveOwed?.tap === true;
-  const owed: SaveOwed = { tap, retryAt: now + SAVE_RETRY_MS };
+  const owed: SaveOwed = { tap, retryAt: now + SAVE_RETRY_MS, after: state.saveSeq };
   const line = key === null ? state.line : refusalLine('scoring.refusal.savePending');
   const next: MatchState = { ...state, sync, line, saveOwed: owed };
   const first = state.saveOwed === null || key !== null;
-  return part(next, first ? [resave(sync.queue)] : [{ kind: 'wake', ms: SAVE_RETRY_MS }]);
+  return part(next, first && !moved ? [resave(sync.queue)] : []);
 }
 
-const resave = (queue: MatchQueue): MatchEffect => ({
+const resave = (queue: MatchQueue): Planned => ({
   kind: 'save',
   queue,
   boot: null,
@@ -772,7 +925,7 @@ function chain(state: MatchState, stages: readonly Stage[], now: number): Part {
 /** Foreground only: in the background nothing is judged or sent, and the return calls this again. */
 function pump(state: MatchState, now: number): Part {
   if (!state.foreground) return part(state);
-  return chain(state, [resaving, rulesRetry, revalidating, sending], now);
+  return chain(state, [resaving, rulesRetry, rereading, revalidating, sending], now);
 }
 
 /** A failed save is tried again once it is due. */
@@ -780,6 +933,12 @@ function resaving(state: MatchState, now: number): Part {
   const owed = state.saveOwed;
   if (owed === null || owed.retryAt === null || now < owed.retryAt) return part(state);
   return part({ ...state, saveOwed: { ...owed, retryAt: null } }, [resave(state.sync.queue)]);
+}
+
+/** The bootstrap is read again once it is due (`bootstrapDueAt`): a card's poll, or a read a ping owed. */
+function rereading(state: MatchState, now: number): Part {
+  const due = bootstrapDueAt(state);
+  return due === null || now < due ? part(state) : asking(state, now);
 }
 
 /** A rules read that failed is asked for again once due (`retryRules`), even with nothing queued. */
@@ -792,9 +951,21 @@ type Judge = (queued: readonly QueuedEvent[]) => readonly string[];
 /** What can judge the queue: the fold, or (the background sender) nothing, which keeps every tap for the server to judge. */
 function judgeOf(state: MatchState): Judge | null {
   if (state.judge === 'trust') return (queued) => queued.map((tap) => tap.key);
-  const fold = foldOfState(state, state.sync.queue.pending);
-  return fold === null || fold.kind !== 'folded' ? null : () => fold.legalQueued;
+  const { pending } = state.sync.queue;
+  const fold = foldOfState(state, undoneAway(pending));
+  if (fold === null || fold.kind !== 'folded') return null;
+  return () => [...fold.legalQueued, ...undoPairs(pending)];
 }
+
+/** The queue as the fold judges it: a tap an Undo is waiting on, and that Undo, are both left out (they cancel). */
+function undoneAway(pending: readonly QueuedEvent[]): readonly QueuedEvent[] {
+  const pairs = new Set(undoPairs(pending));
+  return pending.filter((tap) => !pairs.has(tap.key));
+}
+
+/** The keys of the Undos that wait and of the taps they wait on: kept whole, never judged apart. */
+const undoPairs = (pending: readonly QueuedEvent[]): readonly string[] =>
+  pending.flatMap((tap) => (tap.voidsKey === undefined ? [] : [tap.key, tap.voidsKey]));
 
 /**
  * The queue judged on the ledger and rules as they stand, when sync asks (hold `revalidate`). A match that cannot be

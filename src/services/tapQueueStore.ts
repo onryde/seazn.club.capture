@@ -400,13 +400,14 @@ function encodeQueue(queue: MatchQueue): string {
     fixtureId: queue.fixtureId,
     label: queue.label,
     pending: queue.pending.map(
-      ({ key, type, payload, rulesVersion, createdAt, attempts }): QueuedEvent => ({
+      ({ key, type, payload, rulesVersion, createdAt, attempts, voidsKey }): QueuedEvent => ({
         key,
         type,
         payload,
         rulesVersion,
         createdAt,
         attempts,
+        ...(voidsKey === undefined ? {} : { voidsKey }),
       }),
     ),
     ownEventIds: queue.ownEventIds,
@@ -443,7 +444,10 @@ function readTap(raw: unknown): QueuedEvent | undefined {
   const attempts = readWhole(raw.attempts, 0);
   if (key === undefined || type === undefined || createdAt === undefined) return undefined;
   if (rulesVersion === undefined || attempts === undefined) return undefined;
-  return { key, type, payload: raw.payload, rulesVersion, createdAt, attempts };
+  const tap: QueuedEvent = { key, type, payload: raw.payload, rulesVersion, createdAt, attempts };
+  if (!('voidsKey' in raw)) return tap;
+  const voidsKey = readText(raw.voidsKey);
+  return voidsKey === undefined ? undefined : { ...tap, voidsKey };
 }
 
 /** `null` is alive; a word is why not; anything else is garbled (`undefined`). */

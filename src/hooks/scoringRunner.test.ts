@@ -363,6 +363,126 @@ describe('a send that waits for its attempt’s save', () => {
   });
 });
 
+describe('the waits', () => {
+  it('each gets its timer: a 5 s re-save fires and its line shows, and the 15 s send asked for before it still goes', async () => {
+    const fakes = newFakes();
+    const { runner } = await rig(fakes);
+    const real = fakes.scoring.append;
+    const append = vi
+      .spyOn(fakes.scoring, 'append')
+      .mockResolvedValueOnce({ kind: 'rateLimited', retryAfterMs: 15_000 });
+    append.mockImplementation(real);
+    runner.dispatch(tap(START, 'k1'));
+    await flush();
+    expect(append).toHaveBeenCalledTimes(1);
+    // k2's save is refused, and so is the save that takes it back out: that one asks for a 5 s wait.
+    vi.spyOn(fakes.tapQueue, 'save')
+      .mockRejectedValueOnce(new Error('the disk refused'))
+      .mockRejectedValueOnce(new Error('the disk refused'));
+    runner.dispatch(tap(RALLY, 'k2'));
+    await flush();
+    const lineAt = () => {
+      const snapshot = runner.snapshot();
+      return snapshot.kind === 'ready' ? snapshot.state.line : 'not ready';
+    };
+    expect(lineAt()).toEqual({ kind: 'refusal', key: 'scoring.refusal.savePending' });
+    await vi.advanceTimersByTimeAsync(5_100);
+    expect(lineAt()).toEqual({ kind: 'refusal', key: 'scoring.refusal.notSaved' });
+    expect(append).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(append).toHaveBeenCalledTimes(2);
+    expect(await ledgerTypes(fakes)).toEqual(['core.start']);
+    expect(pendingKeys(runner)).toEqual([]);
+  });
+
+  it('a rules read that failed is asked again after 15 s, and the send waits for it', async () => {
+    const fakes = newFakes();
+    const { runner } = await rig(fakes);
+    const realAppend = fakes.scoring.append;
+    const append = vi
+      .spyOn(fakes.scoring, 'append')
+      .mockResolvedValueOnce({ kind: 'rulesChanged', rulesVersion: 1 });
+    append.mockImplementation(realAppend);
+    const realRules = fakes.scoring.rules;
+    const rules = vi.spyOn(fakes.scoring, 'rules').mockResolvedValueOnce({ kind: 'offline' });
+    rules.mockImplementation(realRules);
+    rules.mockResolvedValueOnce({ kind: 'offline' });
+    runner.dispatch(tap(START, 'k1'));
+    await flush();
+    expect(rules).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(14_900);
+    expect(rules).toHaveBeenCalledTimes(1);
+    expect(append).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(200);
+    expect(rules).toHaveBeenCalledTimes(2);
+    await vi.advanceTimersByTimeAsync(20_000);
+    expect(append).toHaveBeenCalledTimes(2);
+    expect(await ledgerTypes(fakes)).toEqual(['core.start']);
+  });
+
+  it('stopping clears the timer: nothing wakes a stopped runner', async () => {
+    const fakes = newFakes();
+    const { runner } = await rig(fakes);
+    const baseline = vi.getTimerCount();
+    fakes.scoring.goOffline(true);
+    runner.dispatch(tap(START, 'k1'));
+    await flush();
+    expect(vi.getTimerCount()).toBeGreaterThan(baseline);
+    await runner.stop();
+    expect(vi.getTimerCount()).toBe(baseline);
+  });
+});
+
+describe('an Undo asked while its tap’s answer is lost', () => {
+  const UNDO: MatchEvent = { kind: 'undo', key: 'u1', at: AT };
+
+  /** The match started; a rally written by the server whose answer never came back; the Undo asked while it waits. */
+  async function askedMidWait(fakes: FakePorts) {
+    const first = await rig(fakes);
+    first.runner.dispatch(tap(START, 'k1'));
+    await flush();
+    fakes.scoring.dropNextAnswer();
+    first.runner.dispatch(tap(RALLY, 'k2'));
+    await flush();
+    first.runner.dispatch(UNDO);
+    await flush();
+    return first;
+  }
+
+  it('is saved with the queue: both stay pending, the Undo names its tap, and nothing is sent for it yet', async () => {
+    const fakes = newFakes();
+    const { runner } = await askedMidWait(fakes);
+    expect(pendingKeys(runner)).toEqual(['k2', 'u1']);
+    expect(fakes.queueFiles.files.get(`${FIXTURE}.json`)).toContain('"voidsKey":"k2"');
+    expect(await ledgerTypes(fakes)).toEqual(['core.start', 'badminton.rally']);
+  });
+
+  it('survives a kill: the reopened runner sends the tap again under its key, then the void of what the answer names, once', async () => {
+    const fakes = newFakes();
+    const { runner } = await askedMidWait(fakes);
+    await runner.stop();
+    const real = fakes.scoring.append;
+    const bodies: string[] = [];
+    vi.spyOn(fakes.scoring, 'append').mockImplementation(async (link, fixtureId, body) => {
+      bodies.push(body.idempotency_key);
+      return real(link, fixtureId, body);
+    });
+    const again = await rig(fakes);
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(bodies).toEqual(['k2', 'u1']);
+    expect(await ledgerTypes(fakes)).toEqual(['core.start', 'badminton.rally', 'core.void']);
+    expect(pendingKeys(again.runner)).toEqual([]);
+  });
+
+  it('is sent once the tap is answered, and the pad goes on showing it taken back', async () => {
+    const fakes = newFakes();
+    const { runner } = await askedMidWait(fakes);
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(await ledgerTypes(fakes)).toEqual(['core.start', 'badminton.rally', 'core.void']);
+    expect(pendingKeys(runner)).toEqual([]);
+  });
+});
+
 describe('reading the ledger', () => {
   it('a burst of pings is one read in flight and one more after it, not one each', async () => {
     const fakes = newFakes();

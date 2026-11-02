@@ -201,6 +201,31 @@ describe('leaving a match', () => {
     ).toEqual(['k1']);
   });
 
+  it('mid-wait for an Undo hands the sender the tap and its Undo: both go, the void of what the answer names', async () => {
+    const fakes = await rig();
+    const handle = scoringHubOf(fakes.ports).focus(FIXTURE);
+    await flush();
+    handle.runner.dispatch({ kind: 'tap', tap: START, key: 'k1', at: AT });
+    await flush();
+    fakes.scoring.dropNextAnswer();
+    handle.runner.dispatch({
+      kind: 'tap',
+      tap: { kind: 'rally', side: 'first' },
+      key: 'k2',
+      at: AT,
+    });
+    await flush();
+    handle.runner.dispatch({ kind: 'undo', key: 'u1', at: AT });
+    await flush();
+    expect(await ledgerTypes(fakes)).toEqual(['core.start', 'badminton.rally']);
+    handle.release();
+    await flush();
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(await ledgerTypes(fakes)).toEqual(['core.start', 'badminton.rally', 'core.void']);
+    expect(listeners(fakes)).toBe(0);
+    expect((await fakes.tapQueue.load(FIXTURE))?.pending).toEqual([]);
+  });
+
   it('leaves the sender for good once the match is decided: a dead queue is not retried', async () => {
     const fakes = await rig();
     await leftWithOneTap(fakes);

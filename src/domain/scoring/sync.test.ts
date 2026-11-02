@@ -197,6 +197,20 @@ describe('nextSend', () => {
     expect(nextSend(restingOf({ queue: queueOf([]) }), NOW)).toBeNull();
   });
 
+  it('is null for an Undo that still waits for its tap’s answer: it names no event yet, and is never sent', () => {
+    const waiting = tap('key-u', {
+      type: 'core.void',
+      payload: { event_id: '' },
+      voidsKey: 'key-a',
+    });
+    expect(nextSend(restingOf({ queue: queueOf([waiting]) }), NOW)).toBeNull();
+    const resolved = tap('key-u', { type: 'core.void', payload: { event_id: 'ev-2' } });
+    expect(nextSend(restingOf({ queue: queueOf([resolved]) }), NOW)).toMatchObject({
+      idempotency_key: 'key-u',
+      payload: { event_id: 'ev-2' },
+    });
+  });
+
   it('is null while one is in flight: one at a time', () => {
     expect(nextSend(stateOf({ status: 'sending' }), NOW)).toBeNull();
   });

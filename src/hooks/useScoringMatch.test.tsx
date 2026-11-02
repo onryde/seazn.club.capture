@@ -297,6 +297,24 @@ describe('the pad', () => {
     expect(pad(view.result.current).view.sync).toEqual({ kind: 'synced' });
   });
 
+  it('Undo waiting for its tap’s answer shows the tap taken back and says the Undo waits; it leaves the line when sent', async () => {
+    const fakes = await rig();
+    const view = await started(fakes);
+    fakes.scoring.dropNextAnswer();
+    act(() => pad(view.result.current).actions.tapHalf('first'));
+    await flush();
+    act(() => pad(view.result.current).actions.undo());
+    await flush();
+    expect(pad(view.result.current).view.halves[0].value).toBe('0');
+    expect(pad(view.result.current).line).toEqual({ kind: 'note', key: 'scoring.pad.undoWaiting' });
+    expect(pad(view.result.current).view.sync).toEqual({ kind: 'offline', count: 2 });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(60_000);
+    });
+    expect(pad(view.result.current).line).toBeNull();
+    expect(pad(view.result.current).view.sync).toEqual({ kind: 'synced' });
+  });
+
   it('Undo of an accepted tap is a void, sent under its own key', async () => {
     const fakes = await rig();
     const view = await started(fakes);
@@ -335,6 +353,59 @@ describe('the pad', () => {
       kind: 'note',
       key: 'scoring.pad.otherScorerSince',
     });
+  });
+});
+
+describe('a match another scorer finalizes while the pad shows', () => {
+  /** The match started by this phone, 41 rallies by the first side from another scorer, then this phone's 42nd. */
+  async function decidedByThisPhone(fakes: FakePorts) {
+    const view = await started(fakes);
+    for (let i = 0; i < 41; i += 1) {
+      fakes.scoring.addOtherScorerEvent('badminton.rally', {
+        wonBy: SINGLES_SEED.sides.home.entrantId,
+      });
+    }
+    fakes.realtime.ping();
+    await flush();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1_000);
+    });
+    act(() => pad(view.result.current).actions.tapHalf('first'));
+    await flush();
+    return view;
+  }
+
+  it('turns the pad view-only within the bootstrap’s pace, with Undo off: the result is no longer this phone’s to take back', async () => {
+    const fakes = await rig();
+    const view = await decidedByThisPhone(fakes);
+    expect(pad(view.result.current).view.halves[0].value).toBe('21');
+    expect(pad(view.result.current).view.card).toEqual({ kind: 'resultRecorded' });
+    expect(pad(view.result.current).view.lastTap?.undo).toBe(true);
+    fakes.scoring.finalize();
+    fakes.realtime.ping();
+    await flush();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(16_000);
+    });
+    expect(pad(view.result.current).view.card).toEqual({ kind: 'viewOnly' });
+    expect(pad(view.result.current).view.lastTap?.undo).toBe(false);
+    act(() => pad(view.result.current).actions.undo());
+    await flush();
+    expect(await ledgerTypes(fakes)).not.toContain('core.void');
+  });
+
+  it('is told at once when it is told again later: a second ping after the pace is one more read, not a storm', async () => {
+    const fakes = await rig();
+    const view = await decidedByThisPhone(fakes);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(16_000);
+    });
+    const bootstrap = vi.spyOn(fakes.scoring, 'bootstrap');
+    fakes.scoring.finalize();
+    for (let i = 0; i < 5; i += 1) fakes.realtime.ping();
+    await flush();
+    expect(bootstrap).toHaveBeenCalledTimes(1);
+    expect(pad(view.result.current).view.card).toEqual({ kind: 'viewOnly' });
   });
 });
 

@@ -367,6 +367,7 @@
   "scoring.sanction.confirm.action": "Registrar descalificación",
   "scoring.pad.countedOnce": "Contado una vez",
   "scoring.pad.otherScorerSince": "Otro anotador después",
+  "scoring.pad.undoWaiting": "Deshacer en espera",
   "scoring.card.updateNeeded.update": "Actualizar",
   "scoring.card.updateNeeded.browser": "Anotar en el navegador",
   "scoring.card.cantOpen": "No se pudo abrir: inténtalo de nuevo.",

@@ -146,12 +146,14 @@ export function openSync(held: {
 /**
  * The head of the queue as the server reads it, at the tip, or null: nothing queued, one already in flight, Update
  * needed, a dead queue, a fetch or a revalidation still owed (`hold`), or a wait not over (`now` is the caller's
- * clock, in the unit `notBefore` was set in).
+ * clock, in the unit `notBefore` was set in). An Undo that waits for its tap's answer (`voidsKey`) names no event yet
+ * and is never the body: its tap is ahead of it in the queue.
  */
 export function nextSend(state: SyncState, now: number): AppendBody | null {
   const head = state.queue.pending[0];
   if (head === undefined || state.queue.dead !== null || !SENDABLE.has(state.status)) return null;
   if (state.hold !== null || now < state.notBefore) return null;
+  if (head.voidsKey !== undefined) return null;
   return {
     expected_seq: state.tip,
     type: head.type,

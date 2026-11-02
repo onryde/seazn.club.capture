@@ -125,10 +125,14 @@ function cardOf(state: MatchState): PadStateCard | null {
 
 /**
  * What the last-tap line says besides the sentence: the reducer's own words (a refusal, the bounce's note), else the
- * standing note that Undo is off because another scorer has scored since. A note stands as long as it is true.
+ * standing note that an Undo waits for its tap's answer, else that Undo is off because another scorer has scored since.
+ * A note stands as long as it is true.
  */
 function lineOf(state: MatchState, fold: Extract<BadmintonFold, { kind: 'folded' }>): PadLineWords {
   if (state.line !== null) return state.line;
+  if (state.sync.queue.pending.some((tap) => tap.voidsKey !== undefined)) {
+    return noteLine('scoring.pad.undoWaiting');
+  }
   const target = undoTargetOf(state, fold);
   return target.kind === 'blocked' && target.reason === 'otherScorer'
     ? noteLine('scoring.pad.otherScorerSince')

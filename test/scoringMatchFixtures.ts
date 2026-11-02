@@ -8,7 +8,7 @@ import {
   type MatchState,
   type MatchStep,
 } from '@/domain/scoring/scoringMatch';
-import { SINGLES, ledgerOf, start, type Spec } from './badmintonLedger';
+import { SINGLES, ledgerOf, queuedOf, rally, start, type Spec } from './badmintonLedger';
 
 /**
  * Literal inputs for the match reducer's tests (plan S2-1 Task 9). A match is opened from what the disk would hold, and
@@ -81,3 +81,18 @@ export const sendsOf = (effects: readonly MatchEffect[]) =>
 
 export const savesOf = (effects: readonly MatchEffect[]) =>
   effects.flatMap((effect) => (effect.kind === 'save' ? [effect] : []));
+
+/** The moment the reducer's tests tap at. */
+export const AT = '2026-11-02T09:00:00.000Z';
+
+/** A match whose one queued rally (`k1`) has been sent at seq 1 and is awaiting its answer. */
+export function sentOnce(extra: readonly QueuedEvent[] = []) {
+  const queue = [queuedOf('k1', rally('H')), ...extra];
+  const read = step(opened(tapped(queue)), { kind: 'fetched', events: [] }, NOW);
+  // The runner dispatches `saved` when the attempt's save lands, and only then makes the call.
+  const saved = step(read.state, { kind: 'saved', n: 99 }, NOW);
+  return { state: saved.state, sent: sendsOf(read.effects)[0].sent };
+}
+
+/** The server's answer to the first rally when it lands at seq 2. */
+export const ACCEPTED = { kind: 'accepted', seq: 2, eventId: 'srv-1', rulesVersion: 1 } as const;

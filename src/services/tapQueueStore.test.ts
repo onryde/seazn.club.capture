@@ -80,6 +80,20 @@ describe('save and load', () => {
     expect(await store.load(FIXTURE)).toEqual(queue());
   });
 
+  it('round-trips an Undo that waits for its tap’s answer: the key of the tap it takes back, and no field when none', async () => {
+    const { store } = storeOver();
+    const waiting = tap({
+      key: 'c4b6e5f3-9c82-4f70-9d2e-3a4b5c6d7e8f',
+      type: 'core.void',
+      payload: { event_id: '' },
+      voidsKey: 'a2f4c3d1-7a60-4d5e-9b0c-1e2f3a4b5c6d',
+    });
+    await store.save(queue({ pending: [tap({ attempts: 1 }), waiting] }));
+    const back = await store.load(FIXTURE);
+    expect(back?.pending[1]).toEqual(waiting);
+    expect(back?.pending[0]).not.toHaveProperty('voidsKey');
+  });
+
   it('round-trips a dead queue for each word', async () => {
     const words = [
       'LINK_INVALID',
@@ -481,6 +495,14 @@ describe('a file that cannot be read', () => {
       text({ v: 1, ...queue(), pending: [tap({ rulesVersion: -1 })] }),
     ],
     ['a tap with negative attempts', text({ v: 1, ...queue(), pending: [tap({ attempts: -1 })] })],
+    [
+      'a tap waiting for a tap whose key is not text',
+      text({ v: 1, ...queue(), pending: [{ ...tap(), voidsKey: 5 }] }),
+    ],
+    [
+      'a tap waiting for a tap whose key is empty',
+      text({ v: 1, ...queue(), pending: [tap({ voidsKey: '' })] }),
+    ],
     [
       'a tap with no created time',
       text({ v: 1, ...queue(), pending: [{ ...tap(), createdAt: undefined }] }),
