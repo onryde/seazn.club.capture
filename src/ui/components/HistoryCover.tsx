@@ -13,6 +13,8 @@ export type HistoryRowWords = {
   readonly by: string;
   /** "Undone" when Undo took the entry back, which leaves it in its place, struck through. */
   readonly undone: string | null;
+  /** "Sending" while it is this phone's tap the server has not accepted yet (design §6.4); null once it has. */
+  readonly sending: string | null;
 };
 
 export type HistoryGroupWords = {
@@ -79,12 +81,12 @@ const isWords = (words: string | null): words is string => words !== null;
 
 /**
  * The sentence at the left in at most `padHistoryLines` (struck through and inert when undone), and at the right, in a
- * column of `padHistorySide`, never cut, the score, who recorded it and "Undone". One stop for a screen reader, read as
+ * column of `padHistorySide`, never cut, the score, who recorded it and "Undone" or "Sending". One stop for a screen reader, read as
  * one line: "Rally recorded — A. Sharma, 7–3, This phone". `accessible` groups the children on native;
  * react-native-web drops it.
  */
 const HistoryRow = memo(function HistoryRow({ row }: { readonly row: HistoryRowWords }) {
-  const label = [row.said, row.score, row.by, row.undone].filter(isWords).join(', ');
+  const label = [row.said, row.score, row.by, row.undone, row.sending].filter(isWords).join(', ');
   return (
     <View testID="history-row" accessible accessibilityLabel={label} style={styles.row}>
       <Text
@@ -114,6 +116,11 @@ const HistoryRowSide = memo(function HistoryRowSide({ row }: { readonly row: His
       {row.undone === null ? null : (
         <Text testID="history-undone" variant="metricUnit" style={styles.sideWords}>
           {row.undone}
+        </Text>
+      )}
+      {row.sending === null ? null : (
+        <Text testID="history-sending" variant="metricUnit" style={styles.sideWords}>
+          {row.sending}
         </Text>
       )}
     </View>

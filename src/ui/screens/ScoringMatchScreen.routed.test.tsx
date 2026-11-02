@@ -35,12 +35,12 @@ const inMatch = {
 };
 
 const scoringTile = () => screen.getByRole('button', { name: /Remote Scoring/ });
-const matchScreen = () => screen.queryByTestId('scoring-match');
+const matchScreen = () => screen.queryByTestId('pad-content');
 
 /**
  * Remote Scoring in the app as the root layout composes it (plan S2-1 Task 10; design §4 step 1): a scan opens the
  * match on /scoring, a cold start reopens it, Back goes Home freely (ruling 10), and a foreground leaves the scorer
- * where they are. The screen is Task 11's; here it is the match opened and focused, a ground and nothing on it.
+ * where they are. The match is drawn by its sport's own pad (Task 11): `pad-content` is the badminton pad's root.
  */
 describe('Remote Scoring, routed', () => {
   it('a scan from the tile opens the match on /scoring', async () => {

@@ -27,7 +27,15 @@ import {
 // phone's legal queued taps on top. Every expected display below is written out from the spec and the rules of
 // badminton, never computed by the fold. Top half = home, bottom = away.
 
-const STANDARD_RULES = { bestOf: 3, points: 21, winBy: 2, cap: 30, intervalPoint: 11 };
+const STANDARD_RULES = {
+  bestOf: 3,
+  points: 21,
+  decidingPoints: 21,
+  winBy: 2,
+  cap: 30,
+  intervalPoint: 11,
+  decidingIntervalPoint: 11,
+};
 const SINGLES_SIDES: BadmintonDisplay['sides'] = {
   first: { players: ['A. Sharma'] },
   second: { players: ['L. Chen'] },
@@ -263,9 +271,32 @@ describe('foldBadminton: the games', () => {
     expect(display([], { bootstrap: five }).rules).toEqual({
       bestOf: 5,
       points: 15,
+      decidingPoints: 15,
       winBy: 2,
       cap: 21,
       intervalPoint: 8,
+      decidingIntervalPoint: 8,
+    });
+  });
+
+  // Task 11: the Points row says each game's own target, so the rules carry the deciding game's, and its interval.
+  it('reads the deciding game’s own target and interval from finalSetTo: 21 in games 1 and 2, 15 in game 3', () => {
+    const toFifteen: Bootstrap = { ...SINGLES, cfg: { finalSetTo: 15 } };
+    expect(display([], { bootstrap: toFifteen }).rules).toEqual({
+      ...STANDARD_RULES,
+      decidingPoints: 15,
+      decidingIntervalPoint: 8,
+    });
+  });
+
+  it('takes the only game of a best of 1 as the deciding game: finalSetTo is its target', () => {
+    const one: Bootstrap = { ...SINGLES, cfg: { bestOf: 1, setTo: 21, finalSetTo: 15 } };
+    expect(display([], { bootstrap: one }).rules).toMatchObject({
+      bestOf: 1,
+      points: 15,
+      decidingPoints: 15,
+      intervalPoint: 8,
+      decidingIntervalPoint: 8,
     });
   });
 

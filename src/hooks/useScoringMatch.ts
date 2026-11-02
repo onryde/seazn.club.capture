@@ -61,7 +61,7 @@ export function useScoringMatch<S extends SportTypes, Pad>(
 }
 
 /** The match's focused runner while this screen is mounted; none for the render before the effect has run. */
-function useFocus(ports: Ports, fixtureId: string): ScoringRunner | null {
+export function useFocus(ports: Ports, fixtureId: string): ScoringRunner | null {
   const [runner, setRunner] = useState<ScoringRunner | null>(null);
   useEffect(() => {
     const handle = scoringHubOf(ports).focus(fixtureId);

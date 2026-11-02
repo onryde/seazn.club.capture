@@ -113,9 +113,11 @@ export const DOUBLES_SAMPLE: FakePadSample = {
 const RULES = {
   bestOf: 3,
   points: 21,
+  decidingPoints: 21,
   winBy: 2,
   cap: 30,
   intervalPoint: 11,
+  decidingIntervalPoint: 11,
 } satisfies BadmintonRules;
 
 const OK: FakeOutcome = { ok: true };

@@ -20,7 +20,15 @@ const pre: BadmintonDisplay = {
   server: 'first',
   court: 'right',
   game: 1,
-  rules: { bestOf: 3, points: 21, winBy: 2, cap: 30, intervalPoint: 11 },
+  rules: {
+    bestOf: 3,
+    points: 21,
+    decidingPoints: 21,
+    winBy: 2,
+    cap: 30,
+    intervalPoint: 11,
+    decidingIntervalPoint: 11,
+  },
   phase: 'pre',
   sanctions: [],
   lastTap: null,
@@ -196,7 +204,15 @@ describe('badmintonPad: the strip', () => {
   });
 
   it('reads the format and the interval point from the match’s rules: a best of 5 with its interval at 8', () => {
-    const rules = { bestOf: 5, points: 15, winBy: 2, cap: 21, intervalPoint: 8 };
+    const rules = {
+      bestOf: 5,
+      points: 15,
+      decidingPoints: 15,
+      winBy: 2,
+      cap: 21,
+      intervalPoint: 8,
+      decidingIntervalPoint: 8,
+    };
     expect(badmintonPad({ ...pre, rules, game: 4 }).strip.map((item) => item.text)).toEqual([
       { key: 'scoring.badminton.gameOf', vars: { game: 4, bestOf: 5 } },
       { key: 'scoring.badminton.intervalAt', vars: { point: 8 } },

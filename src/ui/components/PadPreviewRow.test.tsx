@@ -21,9 +21,9 @@ const probeLines = (record: SessionRecord) =>
     .filter((line) => line.event.startsWith('scoring.foldProbe'));
 
 /**
- * R4's Fold probe (plan S2-1 Task 1 Step 6), at the end of the dev twin's preview row: the only screen a dev-twin build
- * opens without a code, a local release build included (`previewScoring`), so the probe runs where R4 needs it, under
- * Hermes in a release build. It folds the real engine here, in jsdom.
+ * R4's Fold probe (plan S2-1 Task 1 Step 6), at the end of the preview row: R4 ran it on the OnePlus under Hermes in a
+ * release build (the results doc). The preview is a dev scene wrapper now (plan S2-1 Task 11) that no route opens, so
+ * the probe is run here, folding the real engine in jsdom, until a dev scene mounts the wrapper again.
  */
 describe('the Fold probe on the preview row', { timeout: 30_000 }, () => {
   // Loaded once up front, cold, so each tap's own import finds it in the module cache.

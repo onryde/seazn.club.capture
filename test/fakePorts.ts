@@ -169,8 +169,6 @@ export function createFakePorts(
     phoneZone: 'Europe/London',
     appVersion: '0.0.0-test',
     devTools: true,
-    // The store build's answer: a test that needs the Remote scoring preview passes it on.
-    previewScoring: false,
     logger,
     ...portOverrides,
   };

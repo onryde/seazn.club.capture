@@ -81,9 +81,9 @@ export function countedAtBuild(gradle: string, pinned: number | null = null): st
 export const STORE_VARIANT = 'production';
 
 /**
- * The variant as the running app reads it, in `extra.appVariant`: `store` for the build carrying [STORE_VARIANT], `dev`
- * for every other, the dev twin. The Remote scoring preview shows only in `dev` (the controller's brief, 2026-10-31;
- * `src/hooks/previewScoring.ts`), so a local release build of the dev twin has it and the Play build never does.
+ * The variant this build is: `store` for the build carrying [STORE_VARIANT], `dev` for every other, the dev twin. Only
+ * the identity below reads it; the running app is told nothing (the Remote scoring preview that once read it from
+ * `extra` is gone: plan S2-1 Task 11).
  */
 export function variantName(
   env: Readonly<Record<string, string | undefined>> = process.env,
@@ -124,7 +124,6 @@ export default ({ config, projectRoot }: ConfigContext): ExpoConfig => {
       ...variant,
       name: variant.name ?? 'Seazn Capture',
       slug: config.slug ?? 'capture',
-      extra: { ...config.extra, appVariant: variantName() },
       android: { ...variant.android, versionCode: number },
       ios: { ...variant.ios, buildNumber: String(number) },
     },

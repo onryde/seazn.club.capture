@@ -17,6 +17,7 @@ const GROUPS: readonly HistoryGroupWords[] = [
         score: '0–1',
         by: en['scoring.history.thisPhone'],
         undone: en['scoring.history.undone'],
+        sending: null,
       },
     ],
   },
@@ -28,6 +29,7 @@ const GROUPS: readonly HistoryGroupWords[] = [
         score: null,
         by: en['scoring.history.otherScorer'],
         undone: null,
+        sending: null,
       },
     ],
   },
@@ -103,6 +105,51 @@ describe('HistoryCover', () => {
     renderCover([]);
     expect(screen.getByText(en['scoring.history.empty'])).toBeTruthy();
     expect(screen.queryAllByTestId('history-row')).toEqual([]);
+  });
+
+  // Plan S2-1 Task 11 (design §6.4): a tap of this phone the server has not accepted yet stands on top, marked sending.
+  describe('a tap still sending', () => {
+    const SENDING: readonly HistoryGroupWords[] = [
+      {
+        heading: 'Game 1',
+        rows: [
+          {
+            said: 'Rally recorded — A. Sharma',
+            score: '1–0',
+            by: en['scoring.history.thisPhone'],
+            undone: null,
+            sending: en['scoring.history.sending'],
+          },
+          {
+            said: 'Match started — A. Sharma serving',
+            score: null,
+            by: en['scoring.history.thisPhone'],
+            undone: null,
+            sending: null,
+          },
+        ],
+      },
+    ];
+
+    it('says “Sending” under who recorded it, in the sync dot’s lilac, and only on the row that is', () => {
+      renderCover(SENDING);
+      const [first, second] = screen.getAllByTestId('history-row');
+      if (first === undefined || second === undefined) throw new Error('no rows');
+      const tag = within(first).getByTestId('history-sending');
+      expect(tag.textContent).toBe('Sending');
+      expect(getComputedStyle(tag).color).toBe(edgeOf(colour.ink3));
+      expect(within(second).queryByTestId('history-sending')).toBeNull();
+    });
+
+    it('reads it last in the row’s one line, after who recorded it', () => {
+      renderCover(SENDING);
+      expect(
+        screen.getAllByTestId('history-row').map((row) => row.getAttribute('aria-label')),
+      ).toEqual([
+        `Rally recorded — A. Sharma, 1–0, ${en['scoring.history.thisPhone']}, Sending`,
+        `Match started — A. Sharma serving, ${en['scoring.history.thisPhone']}`,
+      ]);
+    });
   });
 
   it('closes on Back, its one button', () => {

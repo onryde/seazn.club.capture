@@ -69,3 +69,6 @@ export type ScoringMatch<Pad> =
   | { readonly kind: 'tooLarge' }
   | { readonly kind: 'unfoldable'; readonly reason: Unfoldable }
   | { readonly kind: 'outdated'; readonly unsent: number };
+
+/** The states that stand in the pad's place and are said in words, without the pad: what `ScoringStateCard` draws. */
+export type ScoringState = ScoringMatch<never>;

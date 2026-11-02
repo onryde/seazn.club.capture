@@ -16,16 +16,10 @@ async function renderHome(options?: Parameters<typeof renderWithPorts>[1]) {
 const scoringTile = () => screen.getByRole('button', { name: new RegExp(en['mode.scoring']) });
 const liveStream = () => screen.getByRole('button', { name: new RegExp(en['mode.stream']) });
 
-/**
- * Remote Scoring is a built mode (plan S2-1 Task 10): its tile scans in EVERY build, the store's and the dev twin's, and
- * says which code opens it. The dev twin's no-code preview is no longer on the tile (the pad screen is Task 11's).
- */
+/** Remote Scoring is a built mode (plan S2-1 Task 10): its tile scans in every build and says which code opens it. */
 describe('Home: the Remote Scoring tile', () => {
-  it.each([
-    ['the store build', false],
-    ['the dev twin', true],
-  ])('in %s the tile takes a tap and scans', async (_build, previewScoring) => {
-    const home = await renderHome({ previewScoring });
+  it('takes a tap and scans', async () => {
+    const home = await renderHome();
     expect(scoringTile().getAttribute('aria-disabled')).not.toBe('true');
     act(() => scoringTile().click());
     await act(async () => undefined);

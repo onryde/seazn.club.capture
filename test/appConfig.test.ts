@@ -6,7 +6,6 @@ import { fileURLToPath } from 'node:url';
 import type { ConfigContext, ExpoConfig } from 'expo/config';
 import type { ExportedConfig } from 'expo/config-plugins';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { previewScoringOf } from '@/hooks/previewScoring';
 import appConfig, {
   appVariant,
   buildNumber,
@@ -115,32 +114,23 @@ describe('the app variant (app.config.ts)', () => {
 });
 
 /**
- * The variant word the running app reads (S2 preview; the controller's brief, 2026-10-31): `extra.appVariant`, so the
- * Remote scoring preview shows in every build but the store's, a local release build of the dev twin included, where
- * `__DEV__` is false. Expected values are literals.
+ * The config's `extra` is EAS's alone (plan S2-1 Task 11): the Remote scoring preview that read the variant word from it
+ * is gone, so the running app is told nothing of the variant. Expected values are literals.
  */
-describe('the variant the app reads at run time (app.config.ts extra.appVariant)', () => {
-  it('names the store build store, and hides the scoring preview there', () => {
-    vi.stubEnv('APP_VARIANT', 'production');
-    const config = appConfig(context(root));
-    expect(config.extra?.appVariant).toBe('store');
-    expect(previewScoringOf(config)).toBe(false);
-  });
-
-  it('names every other build dev, and shows the scoring preview there', () => {
-    for (const word of ['', 'development', 'preview']) {
+describe('the extra the running app reads (app.config.ts)', () => {
+  it.each(['production', '', 'development'])(
+    'keeps EAS’s project id and adds no variant word, with APP_VARIANT %j',
+    (word) => {
       vi.stubEnv('APP_VARIANT', word);
-      const config = appConfig(context(root));
-      expect(config.extra?.appVariant, word).toBe('dev');
-      expect(previewScoringOf(config), word).toBe(true);
-    }
-  });
+      const withEas = { ...base, extra: { eas: { projectId: 'made-up-project' } } };
+      const config = appConfig({ config: withEas, projectRoot: root } as unknown as ConfigContext);
+      expect(config.extra).toEqual({ eas: { projectId: 'made-up-project' } });
+    },
+  );
 
-  it('keeps the rest of extra (EAS reads its project id there)', () => {
+  it('leaves extra unset when the config has none', () => {
     vi.stubEnv('APP_VARIANT', 'production');
-    const withEas = { ...base, extra: { eas: { projectId: 'made-up-project' } } };
-    const config = appConfig({ config: withEas, projectRoot: root } as unknown as ConfigContext);
-    expect(config.extra).toEqual({ eas: { projectId: 'made-up-project' }, appVariant: 'store' });
+    expect(appConfig(context(root)).extra).toBeUndefined();
   });
 });
 

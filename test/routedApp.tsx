@@ -9,7 +9,6 @@ import { useReopenGate } from '@/hooks/useReopenGate';
 import { useScoringBackground } from '@/hooks/useScoringBackground';
 import { useScoringFixture } from '@/hooks/useScoringFixture';
 import { useScreenAwake } from '@/hooks/useScreenAwake';
-import { usePorts } from '@/hooks/usePorts';
 import type { Route } from '@/services/devicePorts';
 import {
   createExpoRouterNavigation,
@@ -17,7 +16,6 @@ import {
   type RouterMoves,
 } from '@/services/native/expoRouterNavigation';
 import { OrientationGate } from '@/ui/components/OrientationGate';
-import { BadmintonPadPreviewScreen } from '@/ui/screens/BadmintonPadPreviewScreen';
 import { HomeScreen } from '@/ui/screens/HomeScreen';
 import { ScoringMatchScreen } from '@/ui/screens/ScoringMatchScreen';
 import { SettingsScreen } from '@/ui/screens/SettingsScreen';
@@ -88,7 +86,7 @@ function routerDouble(): RouterDouble {
 /**
  * The app as the root layout composes it: the reopen gate, then one screen per
  * route, with Settings over a viewfinder that stays mounted, and Stream Settings
- * from Home and the Remote scoring preview each on its own (R2, P8; S2).
+ * from Home and the Remote scoring match each on its own (R2, P8; S2).
  * `extra` renders beside the screens, as part of the app. A remount (Try again
  * after a crash) starts the Stack afresh at Home, as Expo Router's does.
  * `gated` puts the screens under the root layout's orientation gate, read from the
@@ -132,25 +130,19 @@ function Screens({ route }: { route: Route }) {
 }
 
 /**
- * `app/scoring/index.tsx` by hand: the same three functions, the same hooks and returns, but for the route's Redirect,
+ * `app/scoring/index.tsx` by hand: the same two functions, the same hooks and returns, but for the route's Redirect,
  * which has no router here (the test says so by finding the screen gone). The drift test compares them with the route
  * file's, so a hook added to one and not the other (`useScreenAwake`) fails there.
  */
 function ScoringRouted() {
   const fixtureId = useScoringFixture();
-  const { previewScoring } = usePorts();
   if (fixtureId !== null) return <MatchShown fixtureId={fixtureId} />;
-  return previewScoring ? <PadShown /> : null;
+  return null;
 }
 
 function MatchShown({ fixtureId }: { fixtureId: string }) {
   useScreenAwake();
   return <ScoringMatchScreen fixtureId={fixtureId} />;
-}
-
-function PadShown() {
-  useScreenAwake();
-  return <BadmintonPadPreviewScreen />;
 }
 
 /** The root layout's gate (`app/_layout.tsx`): the route's target, the hook's card over the screens. */
@@ -164,8 +156,8 @@ export type LaunchedApp = FakePorts & RenderResult & { readonly nav: RouterDoubl
 
 type Launch = {
   readonly kvSeed?: Record<string, string>;
-  /** The dev twin's Remote scoring preview (`Ports.previewScoring`); off, as in the store build, by default. */
-  readonly previewScoring?: boolean;
+  /** The phone's languages, most preferred first (`Ports.deviceLanguages`); English by default. */
+  readonly deviceLanguages?: readonly (string | null)[];
   /** Runs before the first render: an engine native already holds, say. */
   readonly prepare?: (fakes: FakePorts) => void;
   /** Awaited before the first render: a queue file already on the disk, say, which a sync `prepare` cannot write. */
@@ -192,14 +184,14 @@ export async function launchApp(launch: Launch = {}): Promise<LaunchedApp> {
     extra,
     around,
     quiet = false,
-    previewScoring = false,
+    deviceLanguages,
     gated = false,
   } = launch;
   const nav = routerDouble();
   const fakes = createFakePorts({
     navigation: createExpoRouterNavigation(nav),
     kvSeed,
-    previewScoring,
+    ...(deviceLanguages === undefined ? {} : { deviceLanguages }),
   });
   if (quiet) quietDevice(fakes.engine);
   prepare?.(fakes);

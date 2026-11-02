@@ -119,7 +119,18 @@ const SPORT_GENERIC_FILES = [
   'src/domain/scoring/wire.ts',
   'src/hooks/scoring*.ts',
   'src/hooks/useScoringMatch.ts',
+  'src/hooks/useScoringSport.ts',
+  'src/hooks/useScoringStateActions.ts',
   'src/hooks/padScreenModel.ts',
+  // The route and the screens that pick a sport's screen or draw the states every sport shares (plan S2-1 Task 11); the
+  // table they read (`scoringScreens.ts`) is the one place that names the sports' screens, as `sports.ts` names the sports.
+  'app/scoring/**/*.tsx',
+];
+
+/** The screens every sport shares: the sport picker and the states. Held to the ui import rule as well (see below). */
+const SPORT_GENERIC_SCREENS = [
+  'src/ui/screens/ScoringMatchScreen.tsx',
+  'src/ui/screens/ScoringStateScreen.tsx',
 ];
 
 /** The ui import rule, for a given list of services the files may not import, and any further groups. */
@@ -320,8 +331,9 @@ export default [
   {
     // The kit draws any sport's pad (padView.ts): it names no sport (SPORT_MODULES). Repeats the ui rule, since this
     // block's `no-restricted-imports` replaces the one above for these files. PadPreviewRow is the badminton preview's
-    // own dev row (its chips are that preview's samples), and ShellFrame keeps its insets exception.
-    files: ['src/ui/components/**/*.{ts,tsx}'],
+    // own dev row (its chips are that preview's samples), and ShellFrame keeps its insets exception. The screens every
+    // sport shares (the sport picker, the states) are held the same way.
+    files: ['src/ui/components/**/*.{ts,tsx}', ...SPORT_GENERIC_SCREENS],
     ignores: [
       'src/ui/components/ShellFrame.tsx',
       'src/ui/components/PadPreviewRow.tsx',

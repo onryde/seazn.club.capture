@@ -71,14 +71,17 @@ export function useDismissScoring(
 }
 
 /** What a Dismiss would delete: the match's name as the queue file has it, and its unsent taps (null: it cannot be read). */
-type AtStake = { readonly label: string; readonly unsent: number | null };
+export type AtStake = { readonly label: string; readonly unsent: number | null };
 
 /**
  * Read from the disk as the question is asked, not from what Home last drew: a sender may have emptied the queue
  * since. Nothing at stake is null (nothing to ask about). A disk that cannot be listed is asked about in the
  * unreadable words, since what is there cannot be said.
  */
-async function atStake(ports: Pick<Ports, 'tapQueue'>, fixtureId: string): Promise<AtStake | null> {
+export async function atStake(
+  ports: Pick<Ports, 'tapQueue'>,
+  fixtureId: string,
+): Promise<AtStake | null> {
   try {
     const row = (await ports.tapQueue.list()).find((entry) =>
       entry.kind === 'queue' ? entry.queue.fixtureId === fixtureId : entry.fixtureId === fixtureId,

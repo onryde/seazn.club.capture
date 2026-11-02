@@ -216,24 +216,20 @@ describe('every path the navigation moves to has its route file, and each Settin
   });
 
   /**
-   * Remote Scoring (plan S2-1 Task 10): `routedApp` renders the route's screens by hand, so the route's own jobs are
-   * read here. It shows the saved match with the screen held on, else the dev twin's preview (also held on), else it
-   * goes Home. Task 11 removes the preview.
+   * Remote Scoring (plan S2-1 Tasks 10 and 11): `routedApp` renders the route's screens by hand, so the route's own jobs
+   * are read here. It shows the saved match, drawn by its sport's own screen with the screen held on, else it goes Home.
    */
-  it('shows the saved match, else the dev twin’s preview, else goes Home, each with the screen held on', () => {
+  it('shows the saved match with the screen held on, else goes Home', () => {
     expect(body('app/scoring/index.tsx', 'ScoringRoute')).toMatch(
-      /if \(fixtureId !== null\)\s*return <MatchShown fixtureId=\{fixtureId\} ?\/>;\s*return previewScoring \? <PadShown ?\/> : <Redirect href="\/" ?\/>;/,
+      /if \(fixtureId !== null\)\s*return <MatchShown fixtureId=\{fixtureId\} ?\/>;\s*return <Redirect href="\/" ?\/>;/,
     );
     const match = body('app/scoring/index.tsx', 'MatchShown');
     expect(match).toContain('useScreenAwake()');
     expect(match).toMatch(/return <ScoringMatchScreen fixtureId=\{fixtureId\} ?\/>;/);
-    const shown = body('app/scoring/index.tsx', 'PadShown');
-    expect(shown).toContain('useScreenAwake()');
-    expect(shown).toMatch(/return <BadmintonPadPreviewScreen ?\/>;/);
   });
 
   /**
-   * The mirror in `routedApp` is the route file's three functions, hook for hook and return for return: the route's
+   * The mirror in `routedApp` is the route file's two functions, hook for hook and return for return: the route's
    * Redirect is the one thing it cannot run (no router), and stands as `null`. A hook in one and not the other fails here.
    */
   it('has the routed mirror run what the route file runs', () => {
@@ -244,7 +240,6 @@ describe('every path the navigation moves to has its route file, and each Settin
       .replace(/<Redirect href="\/"\s*\/>/, 'null');
     expect(mirror('ScoringRouted')).toBe(asMirror);
     expect(mirror('MatchShown')).toBe(route('MatchShown'));
-    expect(mirror('PadShown')).toBe(route('PadShown'));
   });
 
   it('renders Stream Settings from Home as the Home variant, and Live Stream’s as the default', () => {

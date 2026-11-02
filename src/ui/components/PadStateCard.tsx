@@ -1,10 +1,9 @@
 import { memo, type ReactNode } from 'react';
-import { type StyleProp, StyleSheet, View, type ViewStyle } from 'react-native';
 import type { PadStateCard as PadCard } from '@/domain/scoring/padView';
 import { useT } from '@/hooks/useLanguage';
 import type { MessageKey } from '@/i18n/messages';
+import { EdgeCard, type Edge } from '@/ui/components/EdgeCard';
 import { Text } from '@/ui/components/Text';
-import { colour, layout, radius, space } from '@/ui/theme/tokens';
 
 /** The cards with a title. An app too old to score is the update banner (`UpdateBanner.tsx`), in the controls' place. */
 export type TitledCard = Exclude<PadCard, { readonly kind: 'updateNeeded' }>;
@@ -36,30 +35,17 @@ export const PadStateCard = memo(function PadStateCard({
   const { t } = useT();
   const copy = COPY[card.kind];
   return (
-    <View testID="pad-card" accessibilityLiveRegion="polite" style={EDGE[card.kind]}>
+    <EdgeCard testID="pad-card" edge={EDGE[card.kind]}>
       <Text variant="panelTitle">{t(copy.title)}</Text>
       {children}
       <Text variant="body">{t(copy.body)}</Text>
-    </View>
+    </EdgeCard>
   );
 });
 
-const styles = StyleSheet.create({
-  card: {
-    gap: space.sm,
-    padding: space.md,
-    borderRadius: radius.card,
-    borderLeftWidth: layout.padSideBar,
-    backgroundColor: colour.surface,
-  },
-  caution: { borderLeftColor: colour.caution },
-  lime: { borderLeftColor: colour.lime },
-  quiet: { borderLeftColor: colour.ink3 },
-});
-
-const EDGE: Readonly<Record<TitledCard['kind'], StyleProp<ViewStyle>>> = {
-  notStarted: [styles.card, styles.quiet],
-  resultRecorded: [styles.card, styles.lime],
-  viewOnly: [styles.card, styles.quiet],
-  linkInvalid: [styles.card, styles.caution],
+const EDGE: Readonly<Record<TitledCard['kind'], Edge>> = {
+  notStarted: 'quiet',
+  resultRecorded: 'lime',
+  viewOnly: 'quiet',
+  linkInvalid: 'caution',
 };

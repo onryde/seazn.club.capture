@@ -424,12 +424,15 @@ function pickedServer(
  * pad: a deciding game played to fewer points has its own (`intervalMark` of that game).
  */
 function rulesOf({ engine, rawCfg }: Match, game: number): BadmintonRules {
+  const bestOf = R.bestOf(rawCfg);
   return {
-    bestOf: R.bestOf(rawCfg),
-    points: R.setTo(rawCfg),
+    bestOf,
+    points: R.setTarget(rawCfg, 0),
+    decidingPoints: R.setTarget(rawCfg, bestOf - 1),
     winBy: engine.cfg.winBy,
     cap: engine.cfg.cap,
     intervalPoint: R.intervalMark(rawCfg, game - 1),
+    decidingIntervalPoint: R.intervalMark(rawCfg, bestOf - 1),
   };
 }
 
