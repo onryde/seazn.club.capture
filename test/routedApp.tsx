@@ -8,6 +8,7 @@ import { routeTarget, useOrientationGate } from '@/hooks/useOrientationGate';
 import { useReopenGate } from '@/hooks/useReopenGate';
 import { useScoringBackground } from '@/hooks/useScoringBackground';
 import { useScoringFixture } from '@/hooks/useScoringFixture';
+import { useScreenAwake } from '@/hooks/useScreenAwake';
 import { usePorts } from '@/hooks/usePorts';
 import type { Route } from '@/services/devicePorts';
 import {
@@ -131,14 +132,25 @@ function Screens({ route }: { route: Route }) {
 }
 
 /**
- * `app/scoring/index.tsx` by hand (the drift test pins the route file's own returns): the saved match, else the dev
- * twin's preview, else nothing: the route's Redirect has no router here, and the test says so by finding the screen gone.
+ * `app/scoring/index.tsx` by hand: the same three functions, the same hooks and returns, but for the route's Redirect,
+ * which has no router here (the test says so by finding the screen gone). The drift test compares them with the route
+ * file's, so a hook added to one and not the other (`useScreenAwake`) fails there.
  */
 function ScoringRouted() {
   const fixtureId = useScoringFixture();
   const { previewScoring } = usePorts();
-  if (fixtureId !== null) return <ScoringMatchScreen fixtureId={fixtureId} />;
-  return previewScoring ? <BadmintonPadPreviewScreen /> : null;
+  if (fixtureId !== null) return <MatchShown fixtureId={fixtureId} />;
+  return previewScoring ? <PadShown /> : null;
+}
+
+function MatchShown({ fixtureId }: { fixtureId: string }) {
+  useScreenAwake();
+  return <ScoringMatchScreen fixtureId={fixtureId} />;
+}
+
+function PadShown() {
+  useScreenAwake();
+  return <BadmintonPadPreviewScreen />;
 }
 
 /** The root layout's gate (`app/_layout.tsx`): the route's target, the hook's card over the screens. */

@@ -232,6 +232,21 @@ describe('every path the navigation moves to has its route file, and each Settin
     expect(shown).toMatch(/return <BadmintonPadPreviewScreen ?\/>;/);
   });
 
+  /**
+   * The mirror in `routedApp` is the route file's three functions, hook for hook and return for return: the route's
+   * Redirect is the one thing it cannot run (no router), and stands as `null`. A hook in one and not the other fails here.
+   */
+  it('has the routed mirror run what the route file runs', () => {
+    const route = (name: string) => body('app/scoring/index.tsx', name).trim();
+    const mirror = (name: string) => body('test/routedApp.tsx', name).trim();
+    const asMirror = route('ScoringRoute')
+      .replace('function ScoringRoute(', 'function ScoringRouted(')
+      .replace(/<Redirect href="\/"\s*\/>/, 'null');
+    expect(mirror('ScoringRouted')).toBe(asMirror);
+    expect(mirror('MatchShown')).toBe(route('MatchShown'));
+    expect(mirror('PadShown')).toBe(route('PadShown'));
+  });
+
   it('renders Stream Settings from Home as the Home variant, and Live Stream’s as the default', () => {
     expect(body('app/stream-settings.tsx', 'HomeStreamSettingsRoute')).toMatch(
       /return <SettingsScreen from="home" ?\/>;/,

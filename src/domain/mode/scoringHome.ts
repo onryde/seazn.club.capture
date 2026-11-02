@@ -87,3 +87,15 @@ export function rowsKey(rows: readonly QueueRow[]): string {
     )
     .join('\n');
 }
+
+/**
+ * A card that reports a failure (taps that can never send, or a file that cannot be read), on the saved match or on
+ * another's. It is what hides the Stream settings gear (owner ruling A, 2026-11-02); cards that only count taps still
+ * sending leave the gear where it is.
+ */
+export function scoringFailing(home: ScoringHome): boolean {
+  return (
+    (home.current !== null && home.current.state !== 'live') ||
+    home.leftovers.some((leftover) => leftover.kind !== 'live')
+  );
+}

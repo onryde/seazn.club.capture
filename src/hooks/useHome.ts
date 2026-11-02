@@ -40,8 +40,13 @@ import { useUnpair } from '@/hooks/useUnpair';
 import { useFormatTime } from '@/hooks/useFormatTime';
 import { useT } from '@/hooks/useLanguage';
 import { usePairing } from '@/hooks/usePairing';
-import { keepScoringLink, letGoOfScoring } from '@/hooks/scoringOpen';
-import { useContinueScoring, useDismissScoring, useScoringRows } from '@/hooks/useScoringHome';
+import { keepScoringLink, letGoOfScoring, type UndoKeep } from '@/hooks/scoringOpen';
+import {
+  useAskDismiss,
+  useContinueScoring,
+  useDismissScoring,
+  useScoringRows,
+} from '@/hooks/useScoringHome';
 import { usePorts, type Ports } from '@/hooks/usePorts';
 import type { MessageKey } from '@/i18n/messages';
 import { MODE_NAME } from '@/i18n/modeNames';
@@ -75,6 +80,14 @@ export type HomePanel =
       readonly dismiss?: string;
     }
   | { readonly kind: 'unpaired'; readonly tapped: 'stream'; readonly reason: PanelUnpairReason }
+  /** Owner ruling B: a Dismiss that discards taps asks first; `unsent` is null for a queue that cannot be read. */
+  | {
+      readonly kind: 'dismissConfirm';
+      readonly tapped: 'scoring';
+      readonly fixtureId: string;
+      readonly label: string;
+      readonly unsent: number | null;
+    }
   /** A7: another mode while paired asks first; its confirm unpairs, forgets, then opens. */
   | {
       readonly kind: 'unpairConfirm';
@@ -112,8 +125,10 @@ export type HomeActions = {
   confirmUnpair(): void;
   /** A7's sheet: keep the pairing; nothing is sent. */
   cancelUnpair(): void;
-  /** A bad scoring link's Dismiss: the match whose unsent taps are stuck on it is let go (design §4.3). */
+  /** Forget, and the sheet's Dismiss: the match goes at once, with its link, files and (if saved) its code. */
   dismissScoring(fixtureId: string): void;
+  /** A card's or the bad-link panel's Dismiss: asks first when taps would be discarded (owner ruling B). */
+  askDismiss(fixtureId: string): void;
 };
 
 /** Home's own line of news: a scanner reason, or a refused save. Cleared by the next tap. */
@@ -164,6 +179,7 @@ export function useHome(): { view: HomeView; actions: HomeActions } {
   const forgetStream = useForget(setStatusKey, saveFailed);
   const pasteRaw = usePaste(handle);
   const dismissScoring = useDismissScoring(setPanel, saveFailed, refresh);
+  const askDismiss = useAskDismiss(setPanel, dismissScoring);
   const continueScoring = useContinueScoring(setStatusKey, saveFailed, setPanel);
   const actions = {
     tapTile,
@@ -175,6 +191,7 @@ export function useHome(): { view: HomeView; actions: HomeActions } {
     confirmUnpair,
     cancelUnpair,
     dismissScoring,
+    askDismiss,
     continueScoring,
   };
   return { view, actions };
@@ -221,13 +238,16 @@ function useOpenCode(
       }
       const replaced = savedScoringId(modeStore);
       const saved = savedCodeFrom(code, clock(), stream, scoring);
+      let unkeep: UndoKeep | null = null;
       try {
         // The link first, then the code that names it (design §4 step 1): a refused write opens nothing. A resume of
         // the saved match has no token to keep (`useContinueScoring`).
         if (code.mode === 'scoring' && scoring !== null && code.token !== '')
-          await keepScoringLink(ports, code.token, scoring);
+          unkeep = await keepScoringLink(ports, code.token, scoring);
         await modeStore.open(saved);
       } catch {
+        // A link kept for a code that was then refused is taken away again: no token without a code behind it.
+        unkeep?.().catch(() => logger.warn('scoring.orphan-link-kept', {}));
         return saveFailed('open');
       }
       setStatusKey(null);

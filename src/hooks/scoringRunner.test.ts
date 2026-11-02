@@ -5,7 +5,8 @@ import { createScoringRunner, type RunnerMode, type ScoringRunner } from '@/hook
 import { SINGLES_SEED } from '@/services/fakeScoringPort';
 import { saveScoringLink } from '@/services/scoringLinkStore';
 import { FAKE_SCORING_SECRET } from '../../test/fakeScoringLinkPort';
-import { createFakePorts, timerClock, type FakePorts } from '../../test/fakePorts';
+import { queuedOf, rally } from '../../test/badmintonLedger';
+import { createFakePorts, readRecord, timerClock, type FakePorts } from '../../test/fakePorts';
 
 // The effectful half of one match (plan S2-1 Task 9) over the real reducer, the real queue store on an in-memory folder
 // and the fake server (which folds with the real engine). Every expectation is a literal: the singles match is not
@@ -205,6 +206,72 @@ describe('the link a build reads', () => {
     await flush();
     expect(runner.snapshot()).toEqual({ kind: 'noLink' });
     expect(events).not.toHaveBeenCalled();
+  });
+});
+
+describe('taps queued on a match with no link to send them on', () => {
+  const holding = (over: { dead?: 'finalized' | 'LINK_REVOKED' | null; taps?: number } = {}) => ({
+    fixtureId: FIXTURE,
+    label: 'Match 4',
+    pending: Array.from({ length: over.taps ?? 2 }, (_, i) => queuedOf(`k${i}`, rally('H'))),
+    ownEventIds: [],
+    dead: over.dead ?? null,
+  });
+
+  it.each<RunnerMode>(['focused', 'headless'])(
+    'a %s runner marks the queue dead on its link, so nobody waits for taps that cannot go',
+    async (mode) => {
+      const fakes = newFakes();
+      await fakes.tapQueue.save(holding());
+      await rig(fakes, mode, { link: false });
+      const marked = await fakes.tapQueue.load(FIXTURE);
+      expect(marked?.dead).toBe('LINK_INVALID');
+      expect(marked?.pending).toHaveLength(2);
+      expect(marked?.label).toBe('Match 4');
+    },
+  );
+
+  it('leaves a queue with nothing in it as it was', async () => {
+    const fakes = newFakes();
+    await fakes.tapQueue.save(holding({ taps: 0 }));
+    await rig(fakes, 'focused', { link: false });
+    expect((await fakes.tapQueue.load(FIXTURE))?.dead).toBeNull();
+  });
+
+  it('leaves a match with no queue file with none', async () => {
+    const fakes = newFakes();
+    await rig(fakes, 'focused', { link: false });
+    expect(await fakes.tapQueue.load(FIXTURE)).toBeNull();
+    // Nothing to mark is not a refused mark: a missing guard would throw into the catch and leave this line instead.
+    expect(readRecord(fakes.record).map((line) => line.event)).not.toContain(
+      'scoring.no-link-mark-refused',
+    );
+  });
+
+  it('keeps the word a queue already died of', async () => {
+    const fakes = newFakes();
+    await fakes.tapQueue.save(holding({ dead: 'finalized' }));
+    await rig(fakes, 'focused', { link: false });
+    expect((await fakes.tapQueue.load(FIXTURE))?.dead).toBe('finalized');
+  });
+
+  it('marks nothing when the secure store does not answer: that says nothing of the link', async () => {
+    const fakes = newFakes();
+    await fakes.tapQueue.save(holding());
+    vi.spyOn(fakes.kv, 'get').mockRejectedValue(new Error('keystore locked'));
+    await rig(fakes, 'focused', { link: false });
+    expect((await fakes.tapQueue.load(FIXTURE))?.dead).toBeNull();
+  });
+
+  it('a mark the disk refuses is recorded and never raised', async () => {
+    const fakes = newFakes();
+    await fakes.tapQueue.save(holding());
+    vi.spyOn(fakes.tapQueue, 'save').mockRejectedValue(new Error('disk full'));
+    const { runner } = await rig(fakes, 'focused', { link: false });
+    expect(runner.snapshot()).toEqual({ kind: 'noLink' });
+    expect(readRecord(fakes.record).map((line) => line.event)).toContain(
+      'scoring.no-link-mark-refused',
+    );
   });
 });
 

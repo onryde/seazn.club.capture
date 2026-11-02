@@ -6,7 +6,7 @@ import { selectEngineStatus } from '@/hooks/engineSelectors';
 import { dismissMatch } from '@/hooks/scoringOpen';
 import type { SaveFailed, SetStatusKey } from '@/hooks/useHome';
 import { ignoreUnexpected, type SetPanel } from '@/hooks/useCodeCheck';
-import { usePorts } from '@/hooks/usePorts';
+import { usePorts, type Ports } from '@/hooks/usePorts';
 import type { ModeStore } from '@/services/modeStore';
 
 /** While a live queue is sending, Home looks at the disk this often, so its count goes down as taps go. */
@@ -67,6 +67,49 @@ export function useDismissScoring(
         .finally(refresh);
     },
     [ports, setPanel, saveFailed, refresh],
+  );
+}
+
+/** What a Dismiss would delete: the match's name as the queue file has it, and its unsent taps (null: it cannot be read). */
+type AtStake = { readonly label: string; readonly unsent: number | null };
+
+/**
+ * Read from the disk as the question is asked, not from what Home last drew: a sender may have emptied the queue
+ * since. Nothing at stake is null (nothing to ask about). A disk that cannot be listed is asked about in the
+ * unreadable words, since what is there cannot be said.
+ */
+async function atStake(ports: Pick<Ports, 'tapQueue'>, fixtureId: string): Promise<AtStake | null> {
+  try {
+    const row = (await ports.tapQueue.list()).find((entry) =>
+      entry.kind === 'queue' ? entry.queue.fixtureId === fixtureId : entry.fixtureId === fixtureId,
+    );
+    if (row === undefined) return null;
+    if (row.kind === 'unreadable') return { label: '', unsent: null };
+    const unsent = row.queue.pending.length;
+    return unsent === 0 ? null : { label: row.queue.label, unsent };
+  } catch {
+    return { label: '', unsent: null };
+  }
+}
+
+/**
+ * Dismiss that discards taps asks first (owner ruling B, 2026-11-02): one sheet names the match and the number of taps,
+ * says they will not reach Seazn, and offers Dismiss and Keep. A queue with nothing in it is let go at once, since
+ * nothing is lost. Asked from a card or from the bad-link panel; `dismiss` is what the sheet's Dismiss runs.
+ */
+export function useAskDismiss(
+  setPanel: SetPanel,
+  dismiss: (fixtureId: string) => void,
+): (fixtureId: string) => void {
+  const ports = usePorts();
+  return useCallback(
+    (fixtureId: string) => {
+      void atStake(ports, fixtureId).then((stake) => {
+        if (stake === null) return dismiss(fixtureId);
+        setPanel({ kind: 'dismissConfirm', tapped: 'scoring', fixtureId, ...stake });
+      });
+    },
+    [ports, setPanel, dismiss],
   );
 }
 

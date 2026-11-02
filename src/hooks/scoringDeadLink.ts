@@ -6,10 +6,11 @@ import { forgetScoringLink } from '@/services/scoringLinkStore';
 
 /**
  * A link that dies under the pad with nothing queued (plan S2-1 Task 10; design §4.3): the saved link is forgotten, and
- * the saved match with it when it is this one, so Home has no card for a match that can never be opened again. The
- * pad stays on its bad-link card; the files of an empty queue are left, there being nothing in them to lose. A
- * queue with taps in it keeps the link and the code: the taps are Home's leftover, and the link is how a fresh scan
- * finds them. Only a dead LINK counts: a match that is over or cancelled keeps its link, which a new one would not change.
+ * the saved match with it when it is this one, so Home has no card for a match that can never be opened again, and
+ * the match's empty queue, ledger and boot cache go too (review fix 5). The pad stays on its bad-link card, which it
+ * holds in memory. A queue with taps in it keeps the link and the code: the taps are Home's leftover, and the link is
+ * how a fresh scan finds them. Only a dead LINK counts: a match that is over or cancelled keeps its link, which a new
+ * one would not change.
  * Watches one focused runner; the returned function stops it.
  */
 export function watchDeadLink(ports: Ports, runner: ScoringRunner): () => void {
@@ -34,4 +35,6 @@ async function forgetDeadMatch(ports: Ports, fixtureId: string): Promise<void> {
   const snapshot = ports.modeStore.getSnapshot();
   const saved = snapshot.status === 'ready' ? (snapshot.saved.codes.scoring ?? null) : null;
   if (saved?.scoring?.fixtureId === fixtureId) await ports.modeStore.forget(saved);
+  // Nothing opens this match again, so its empty queue, ledger and boot cache go too.
+  await ports.tapQueue.remove(fixtureId);
 }

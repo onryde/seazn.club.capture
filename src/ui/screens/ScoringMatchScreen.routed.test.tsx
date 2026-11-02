@@ -131,7 +131,9 @@ describe('the background sender, mounted at the root', () => {
     });
     await flush(2000);
     expect(app.nav.current()).toBe('home');
-    expect((await app.tapQueue.load(FAKE_MATCH))?.pending).toEqual([]);
+    // Sent, and a match nobody has saved leaves nothing behind it: no queue file and no link.
+    expect(await app.ports.tapQueue.load(FAKE_MATCH)).toBeNull();
+    expect(app.kv.entries.has(linkKey(FAKE_MATCH))).toBe(false);
   });
 
   it('looks again at every return to the foreground', async () => {
@@ -139,6 +141,6 @@ describe('the background sender, mounted at the root', () => {
     await leave(app, queueHolding(FAKE_MATCH, 2, { label: FAKE_LABEL }), null);
     await backgroundAndBack(app);
     await flush(2000);
-    expect((await app.tapQueue.load(FAKE_MATCH))?.pending).toEqual([]);
+    expect(await app.ports.tapQueue.load(FAKE_MATCH)).toBeNull();
   });
 });

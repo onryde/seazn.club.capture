@@ -1,5 +1,5 @@
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { encodeSavedCode } from '@/domain/mode/savedCode';
 import en from '@/i18n/en.json';
 import es from '@/i18n/es.json';
@@ -13,6 +13,7 @@ import { savedStreamCode } from '../../../test/fixtures/savedStream';
 import { pairCode } from '../../../test/pairCode';
 import { edgeOf } from '../../../test/pressState';
 import { wrapperFor } from '../../../test/renderWithPorts';
+import { restoreWindowSize, setWindowSize } from '../../../test/windowSize';
 import {
   FAKE_LABEL,
   FAKE_MATCH,
@@ -59,6 +60,16 @@ const continueCard = () => screen.queryByTestId('scoring-continue');
 const leftovers = () => screen.queryAllByTestId('scoring-leftover');
 const button = (name: string) => screen.getByRole('button', { name });
 
+/**
+ * Dismiss asks first (owner ruling B, 2026-11-02): the card's button, named for its match, then the sheet's own Dismiss.
+ * `match` is the name the card shows, or `another match` for a queue that never learned one.
+ */
+async function dismissThrough(card: HTMLElement | null, match: string): Promise<void> {
+  const scope = card === null ? screen : within(card);
+  fireEvent.click(scope.getByRole('button', { name: `Dismiss ${match}` }));
+  fireEvent.click(await screen.findByRole('button', { name: 'Dismiss' }));
+}
+
 describe('the saved match on Home', () => {
   it('names the match and offers Continue and Forget when nothing is unsent', async () => {
     await homeWith(async () => undefined, { kvSeed: inMatch() });
@@ -100,7 +111,7 @@ describe('the saved match on Home', () => {
     expect(within(continueCard() as HTMLElement).getByText(line)).toBeTruthy();
     expect(button('Continue')).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Forget' })).toBeNull();
-    expect(screen.queryByRole('button', { name: 'Dismiss' })).toBeNull();
+    expect(screen.queryByRole('button', { name: /^Dismiss/ })).toBeNull();
   });
 
   it('a queue that can never send says so and offers Dismiss, which lets the match go with its code', async () => {
@@ -112,7 +123,7 @@ describe('the saved match on Home', () => {
       within(continueCard() as HTMLElement).getByText('2 taps not sent — tell the organiser'),
     ).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Forget' })).toBeNull();
-    fireEvent.click(button('Dismiss'));
+    await dismissThrough(continueCard(), 'Match 4');
     await waitFor(() => expect(continueCard()).toBeNull());
     expect(await home.tapQueue.load(FAKE_MATCH)).toBeNull();
     expect(home.kv.entries.has(linkKey(FAKE_MATCH))).toBe(false);
@@ -132,7 +143,7 @@ describe('the saved match on Home', () => {
         "Some unsent taps can't be read — tell the organiser",
       ),
     ).toBeTruthy();
-    fireEvent.click(button('Dismiss'));
+    await dismissThrough(continueCard(), 'Match 4');
     await waitFor(() => expect(continueCard()).toBeNull());
     expect([...home.queueFiles.files.keys()]).toEqual([]);
   });
@@ -210,7 +221,7 @@ describe('other matches’ taps on Home', () => {
     expect(
       within(card as HTMLElement).getByText('4 taps not sent — tell the organiser'),
     ).toBeTruthy();
-    fireEvent.click(within(card as HTMLElement).getByRole('button', { name: 'Dismiss' }));
+    await dismissThrough(card as HTMLElement, 'Match 7');
     await waitFor(() => expect(leftovers()).toHaveLength(0));
     expect(await home.tapQueue.load('fx-old')).toBeNull();
     expect(home.kv.entries.has(linkKey('fx-old'))).toBe(false);
@@ -222,7 +233,7 @@ describe('other matches’ taps on Home', () => {
       fakes.queueFiles.files.set('fx-old.json', '{ not json');
     });
     expect(screen.getByText("Some unsent taps can't be read — tell the organiser")).toBeTruthy();
-    fireEvent.click(button('Dismiss'));
+    await dismissThrough(leftovers()[0] ?? null, 'another match');
     await waitFor(() => expect(leftovers()).toHaveLength(0));
     expect([...home.queueFiles.files.keys()]).toEqual([]);
   });
@@ -245,7 +256,7 @@ describe('other matches’ taps on Home', () => {
     );
     expect(continueCard()).not.toBeNull();
     expect(leftovers()).toHaveLength(1);
-    expect(screen.queryByRole('button', { name: 'Dismiss' })).toBeNull();
+    expect(screen.queryByRole('button', { name: /^Dismiss/ })).toBeNull();
   });
 
   it('reads the disk again on a return to the foreground', async () => {
@@ -276,7 +287,7 @@ describe('what a card does not touch', () => {
       { kvSeed: inMatch() },
     );
     const [card] = leftovers();
-    fireEvent.click(within(card as HTMLElement).getByRole('button', { name: 'Dismiss' }));
+    await dismissThrough(card as HTMLElement, 'Match 7');
     await waitFor(() => expect(leftovers()).toHaveLength(0));
     expect(home.kv.entries.has(STORE_KEYS.code('scoring'))).toBe(true);
     expect(home.kv.entries.has(linkKey(FAKE_MATCH))).toBe(true);
@@ -335,18 +346,97 @@ describe('the disk Home reads', () => {
   });
 });
 
-describe('the gear', () => {
-  it('shows with no card above the tiles, and hides while a scoring card stands there (P6)', async () => {
-    const bare = await homeWith();
-    expect(screen.getByRole('button', { name: 'Stream settings' })).toBeTruthy();
-    bare.unmount();
-    await homeWith(async () => undefined, { kvSeed: inMatch() });
-    expect(screen.queryByRole('button', { name: 'Stream settings' })).toBeNull();
+describe('the gear (owner ruling A, 2026-11-02: keep the gear, but not beside a failure)', () => {
+  const gear = () => screen.queryByRole('button', { name: 'Stream settings' });
+
+  it('shows with no card above the tiles', async () => {
+    await homeWith();
+    expect(gear()).not.toBeNull();
   });
 
-  it('hides for a leftover card too', async () => {
+  it('stays while the saved match is fine, with taps still sending or none', async () => {
+    const quiet = await homeWith(async () => undefined, { kvSeed: inMatch() });
+    expect(continueCard()).not.toBeNull();
+    expect(gear()).not.toBeNull();
+    quiet.unmount();
+    await homeWith((fakes) => leave(fakes, queueHolding(FAKE_MATCH, 3)), { kvSeed: inMatch() });
+    expect(gear()).not.toBeNull();
+  });
+
+  it('stays for a leftover that is still sending', async () => {
     await homeWith(async (fakes) => leave(fakes, queueHolding('fx-old', 2)));
-    expect(screen.queryByRole('button', { name: 'Stream settings' })).toBeNull();
+    expect(leftovers()).toHaveLength(1);
+    expect(gear()).not.toBeNull();
+  });
+
+  it('hides while the saved match cannot send, and while it cannot be read', async () => {
+    const dead = await homeWith(
+      (fakes) => leave(fakes, queueHolding(FAKE_MATCH, 2, { dead: 'LINK_REVOKED' })),
+      { kvSeed: inMatch() },
+    );
+    expect(gear()).toBeNull();
+    dead.unmount();
+    await homeWith(
+      async (fakes) => {
+        await leave(fakes, queueHolding(FAKE_MATCH, 1));
+        fakes.queueFiles.files.set(`${FAKE_MATCH}.json`, '{ not json');
+      },
+      { kvSeed: inMatch() },
+    );
+    expect(gear()).toBeNull();
+  });
+
+  it('hides for a leftover that cannot send or be read', async () => {
+    const dead = await homeWith((fakes) =>
+      leave(fakes, queueHolding('fx-old', 2, { dead: 'LINK_REVOKED' })),
+    );
+    expect(gear()).toBeNull();
+    dead.unmount();
+    await homeWith(async (fakes) => {
+      await leave(fakes, queueHolding('fx-old', 1));
+      fakes.queueFiles.files.set('fx-old.json', '{ not json');
+    });
+    expect(gear()).toBeNull();
+  });
+
+  it('comes back when the failing card is dismissed', async () => {
+    await homeWith((fakes) =>
+      leave(fakes, queueHolding('fx-old', 2, { label: 'Match 7', dead: 'LINK_REVOKED' })),
+    );
+    expect(gear()).toBeNull();
+    await dismissThrough(leftovers()[0] ?? null, 'Match 7');
+    await waitFor(() => expect(gear()).not.toBeNull());
+  });
+});
+
+describe('the cards on landscape Home', () => {
+  afterEach(restoreWindowSize);
+  const style = (element: Element) => getComputedStyle(element);
+
+  it('are one row each: the words take what the buttons leave, and wrap inside it', async () => {
+    setWindowSize(844, 390);
+    await homeWith(
+      (fakes) =>
+        leave(fakes, queueHolding('fx-old', 2, { label: 'Match 7', dead: 'LINK_REVOKED' })),
+      { kvSeed: inMatch() },
+    );
+    for (const card of [continueCard(), leftovers()[0]] as HTMLElement[]) {
+      expect(style(card).flexDirection).toBe('row');
+      const words = card.firstElementChild as HTMLElement;
+      expect([style(words).flexGrow, style(words).minWidth]).toEqual(['1', '0px']);
+    }
+  });
+
+  it('keep the board’s paddings, 10 above and below, 16 at the start and 12 at the end', async () => {
+    setWindowSize(844, 390);
+    await homeWith(async (fakes) => leave(fakes, queueHolding('fx-old', 2)));
+    const card = leftovers()[0] as HTMLElement;
+    expect([
+      style(card).paddingTop,
+      style(card).paddingBottom,
+      style(card).paddingLeft,
+      style(card).paddingRight,
+    ]).toEqual(['10px', '10px', '16px', '12px']);
   });
 });
 
@@ -382,7 +472,18 @@ describe('the words, in every language', () => {
       ).toBeTruthy();
       expect(screen.getByText(said('home.scoring.deadHere.one', { count: 1 }))).toBeTruthy();
       expect(screen.getByText(said('home.scoring.unreadable'))).toBeTruthy();
-      expect(screen.getAllByRole('button', { name: d['home.scoring.dismiss'] })).toHaveLength(2);
+      // Two Dismiss buttons, each named for its match, the unreadable one for "another match".
+      const dismissNames = screen
+        .getAllByRole('button', {
+          name: new RegExp(said('home.scoring.dismissMatch', { match: '.*' })),
+        })
+        .map((button) => button.getAttribute('aria-label'));
+      expect(dismissNames).toEqual([
+        said('home.scoring.dismissMatch', { match: 'Match 8' }),
+        said('home.scoring.dismissMatch', {
+          match: said('home.scoring.matchFallback'),
+        }),
+      ]);
     },
   );
 });

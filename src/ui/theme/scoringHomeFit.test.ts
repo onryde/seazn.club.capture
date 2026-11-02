@@ -146,3 +146,238 @@ describe('the cards’ buttons at 320 and 360 dp, in four languages', () => {
     ]);
   });
 });
+
+// Landscape (plan S2-1 Task 10 review, item 7; homeFit's five geometries): a card is one row, the words on the left
+// and the buttons beside them. The words take what the buttons leave: window − Home's 16 each side − the hairline −
+// 16 at the start − 12 at the end (`rowCardPadding`) − the 16 gap − the buttons' own width. The plate is its 200 dp
+// floor, a second button sits beside it (the row only wraps when the card is too narrow for both, and the words
+// have the room first, so it is measured as one row: the narrower the words' column, the more it states).
+const GEOMETRIES = [
+  [640, 360],
+  [728, 328],
+  [800, 360],
+  [844, 390],
+  [915, 412],
+] as const;
+const GHOST_MIN = 48;
+const PLATE_MIN = 56;
+
+const geistLine = (text: string): number => control(text);
+const stateTitle = (lang: Lang): string =>
+  said(lang, 'home.continue.title', { mode: word(lang, 'mode.scoring') });
+
+/** The words' column on a landscape card, for buttons `buttons` wide. */
+const columnAt = (width: number, buttons: number): number =>
+  width - 2 * space.md - BORDER - space.md - layout.rowCardPadEnd - space.md - buttons;
+
+/** What a card's words and buttons add up to, tallest first, for one language at one window. */
+function cardsAt(width: number, lang: Lang) {
+  const dismiss = ghost(word(lang, 'home.scoring.dismiss'));
+  const forget = ghost(word(lang, 'home.continue.forget'));
+  const saved = columnAt(width, PLATE_FLOOR + space.sm + Math.max(dismiss, forget));
+  const left = columnAt(width, dismiss);
+  const lines = (text: string, column: number, measure: (t: string) => number): number =>
+    linesOf(text, column, measure);
+  const dead = said(lang, 'home.scoring.deadHere.other', { count: 128 });
+  const unreadable = said(lang, 'home.scoring.unreadable');
+  const elsewhere = said(lang, 'home.scoring.elsewhere.other', { count: 128, match: LONG_LABEL });
+  return {
+    /** The saved match: title, its name, its sentence. */
+    saved:
+      2 * layout.rowCardPadV +
+      BORDER +
+      Math.max(
+        PLATE_MIN,
+        lines(stateTitle(lang), saved, state) * typeScale.state.lineHeight +
+          space.xs +
+          lines(LONG_LABEL, saved, geistLine) * typeScale.control.lineHeight +
+          space.xs +
+          Math.max(lines(dead, saved, geistLine), lines(unreadable, saved, geistLine)) *
+            typeScale.control.lineHeight,
+      ),
+    /** A dead leftover: its name as the title, then its sentence. */
+    deadLeftover:
+      2 * layout.rowCardPadV +
+      BORDER +
+      Math.max(
+        GHOST_MIN,
+        lines(LONG_LABEL, left, state) * typeScale.state.lineHeight +
+          space.xs +
+          lines(dead, left, geistLine) * typeScale.control.lineHeight,
+      ),
+    /** A leftover still sending, the sentence alone, naming the longest match. */
+    liveLeftover:
+      2 * layout.rowCardPadV +
+      BORDER +
+      lines(elsewhere, left, geistLine) * typeScale.control.lineHeight,
+    columns: { saved, left },
+  };
+}
+
+describe('the cards on landscape Home, at five windows, in four languages', () => {
+  const key = (width: number, height: number, lang: Lang): string => `${width}x${height} ${lang}`;
+
+  it('each card is as tall as pinned, worst case: the longest label, 128 taps and the longest sentence', () => {
+    const heights: Record<string, number[]> = {};
+    for (const [width, height] of GEOMETRIES)
+      for (const lang of LANGS) {
+        const cards = cardsAt(width, lang);
+        heights[key(width, height, lang)] = [cards.saved, cards.deadLeftover, cards.liveLeftover];
+      }
+    // [the saved match, a dead leftover, a leftover still sending]. Home scrolls sideways when its rows outgrow the
+    // window (homeFit.test.ts), so a tall card costs a scroll, never a cut-off: 640 × 360 is the one that gives the
+    // saved match's words the least room (the plate and a second button take 308 dp of a 640 dp row).
+    expect(heights).toEqual({
+      '640x360 en': [119, 70, 40],
+      '640x360 es': [119, 70, 58],
+      '640x360 fr': [119, 70, 58],
+      '640x360 nl': [119, 70, 58],
+      '728x328 en': [83, 70, 40],
+      '728x328 es': [101, 70, 40],
+      '728x328 fr': [101, 70, 40],
+      '728x328 nl': [101, 70, 40],
+      '800x360 en': [83, 70, 40],
+      '800x360 es': [101, 70, 40],
+      '800x360 fr': [101, 70, 40],
+      '800x360 nl': [101, 70, 40],
+      '844x390 en': [83, 70, 40],
+      '844x390 es': [101, 70, 40],
+      '844x390 fr': [83, 70, 40],
+      '844x390 nl': [101, 70, 40],
+      '915x412 en': [83, 70, 40],
+      '915x412 es': [83, 70, 40],
+      '915x412 fr': [83, 70, 40],
+      '915x412 nl': [83, 70, 40],
+    });
+  });
+
+  it('no word is wider than the words’ column, so nothing is cut off at the buttons', () => {
+    let measured = 0;
+    for (const [width] of GEOMETRIES)
+      for (const lang of LANGS) {
+        const { columns } = cardsAt(width, lang);
+        for (const [column, texts] of [
+          [columns.saved, [stateTitle(lang), LONG_LABEL, ...sentencesIn(lang)]],
+          [columns.left, [LONG_LABEL, ...sentencesIn(lang)]],
+        ] as const)
+          for (const text of texts)
+            for (const piece of text.split(' ')) {
+              measured += 1;
+              expect(
+                Math.max(control(piece), state(piece)),
+                `${width} ${lang} ${piece}`,
+              ).toBeLessThan(column);
+            }
+      }
+    expect(measured).toBeGreaterThan(1000);
+  });
+
+  it('the saved match’s column is 239 dp at 640, in the language whose second button is widest', () => {
+    const narrowest = Math.min(...LANGS.map((lang) => cardsAt(640, lang).columns.saved));
+    expect(Math.floor(narrowest)).toBe(239);
+  });
+});
+
+// The question before a Dismiss (owner ruling B, 2026-11-02): one sheet, `CodePanel`'s, padded 16 each side, with the
+// panel's kicker, a title that names the match, a body that names the taps, and two full-width buttons, Keep (the
+// plate) and Dismiss (a ghost). The title is the `title` role in caps, the body the `body` role, from the fonts.
+describe('the dismiss question at 320 and 360 dp, in four languages', () => {
+  const geist400 = loadFont('geist-400');
+  const titleWidth = (text: string): number =>
+    barlow700.width(text.toUpperCase(), typeScale.title.fontSize) +
+    typeScale.title.letterSpacing * text.length;
+  const bodyWidth = (text: string): number => geist400.width(text, typeScale.body.fontSize);
+  const sheetInner = (width: number): number => width - 2 * space.md;
+  const titles = (lang: Lang): string[] =>
+    [LONG_LABEL, word(lang, 'home.scoring.matchFallback')].map((match) =>
+      said(lang, 'home.scoring.confirm.title', { match }),
+    );
+  const bodies = (lang: Lang): string[] => [
+    said(lang, 'home.scoring.confirm.body.one', { count: 1 }),
+    said(lang, 'home.scoring.confirm.body.other', { count: 128 }),
+    said(lang, 'home.scoring.confirm.bodyUnreadable'),
+  ];
+
+  it('the title takes at most the lines pinned, with the longest label a match can carry', () => {
+    const lines: Record<string, number> = {};
+    for (const width of WIDTHS)
+      for (const lang of LANGS)
+        lines[`${width} ${lang}`] = Math.max(
+          ...titles(lang).map((text) => linesOf(text, sheetInner(width), titleWidth)),
+        );
+    expect(lines).toEqual({
+      '320 en': 3,
+      '320 es': 3,
+      '320 fr': 3,
+      '320 nl': 3,
+      '360 en': 2,
+      '360 es': 2,
+      '360 fr': 2,
+      '360 nl': 2,
+    });
+  });
+
+  it('the body takes at most the lines pinned, for one tap, many, and a queue that cannot be read', () => {
+    const lines: Record<string, number> = {};
+    for (const width of WIDTHS)
+      for (const lang of LANGS)
+        lines[`${width} ${lang}`] = Math.max(
+          ...bodies(lang).map((text) => linesOf(text, sheetInner(width), bodyWidth)),
+        );
+    expect(lines).toEqual({
+      '320 en': 3,
+      '320 es': 2,
+      '320 fr': 3,
+      '320 nl': 3,
+      '360 en': 2,
+      '360 es': 2,
+      '360 fr': 3,
+      '360 nl': 2,
+    });
+  });
+
+  /** The sheet sits at the bottom of the window; taller than the window, its top, the kicker and the title, is lost. */
+  it('the sheet is never taller than the window, upright or sideways, worst case', () => {
+    const tallest = (width: number, lang: Lang): number => {
+      const title = Math.max(...titles(lang).map((t) => linesOf(t, sheetInner(width), titleWidth)));
+      const body = Math.max(...bodies(lang).map((t) => linesOf(t, sheetInner(width), bodyWidth)));
+      return (
+        2 * space.md +
+        typeScale.metricUnit.lineHeight +
+        title * typeScale.title.lineHeight +
+        body * typeScale.body.lineHeight +
+        PLATE_MIN +
+        GHOST_MIN +
+        4 * space.sm
+      );
+    };
+    const heights: Record<string, number> = {};
+    for (const [width, height] of [[320, 568], [360, 640], ...GEOMETRIES] as const)
+      for (const lang of LANGS)
+        heights[`${width}x${height} ${lang}`] = height - tallest(width, lang);
+    // Room to spare in dp, over every window and language: the least is 93.
+    expect(Math.min(...Object.values(heights))).toBe(93);
+    expect(Object.entries(heights).filter(([, spare]) => spare < 0)).toEqual([]);
+  });
+
+  it('no word is wider than the sheet’s inner width, and both buttons’ labels fit it', () => {
+    for (const width of WIDTHS)
+      for (const lang of LANGS) {
+        for (const text of titles(lang))
+          for (const piece of text.split(' '))
+            expect(titleWidth(piece), `${width} ${lang} ${piece}`).toBeLessThanOrEqual(
+              sheetInner(width),
+            );
+        for (const text of bodies(lang))
+          for (const piece of text.split(' '))
+            expect(bodyWidth(piece), `${width} ${lang} ${piece}`).toBeLessThanOrEqual(
+              sheetInner(width),
+            );
+        for (const label of [
+          word(lang, 'home.scoring.confirm.keep'),
+          word(lang, 'home.scoring.dismiss'),
+        ])
+          expect(ghost(label), `${width} ${lang} ${label}`).toBeLessThanOrEqual(sheetInner(width));
+      }
+  });
+});

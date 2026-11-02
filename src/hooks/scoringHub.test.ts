@@ -4,7 +4,7 @@ import type { MatchQueue } from '@/domain/scoring/queue';
 import { scoringHubOf, type FocusHandle } from '@/hooks/scoringHub';
 import { SINGLES_SEED } from '@/services/fakeScoringPort';
 import { readScoringLink, saveScoringLink } from '@/services/scoringLinkStore';
-import { queuedOf, rally } from '../../test/badmintonLedger';
+import { ledgerOf, queuedOf, rally, start } from '../../test/badmintonLedger';
 import { FAKE_SCORING_SECRET } from '../../test/fakeScoringLinkPort';
 import { createFakePorts, readRecord, timerClock, type FakePorts } from '../../test/fakePorts';
 
@@ -41,6 +41,14 @@ async function queued(fakes: FakePorts, id: string, over: Partial<MatchQueue> = 
     dead: null,
     ...over,
   });
+}
+
+/** The files a focused match leaves: its boot cache and ledger (the pad wrote them while it showed). */
+async function cached(fakes: FakePorts): Promise<void> {
+  const read = await fakes.scoring.bootstrap(LINK);
+  if (read.kind !== 'ok') throw new Error('the fake serves the match');
+  await fakes.tapQueue.saveBoot(FIXTURE, { bootstrap: read.bootstrap, toss: null });
+  await fakes.tapQueue.saveLedger(FIXTURE, ledgerOf([start()]));
 }
 
 const ledgerTypes = async (fakes: FakePorts): Promise<string[]> => {
@@ -338,6 +346,10 @@ describe('resuming the senders (a launch, a return)', () => {
     await scoringHubOf(fakes.ports).resume();
     await flush();
     expect(listeners(fakes)).toBe(0);
+    // Its taps wait for a fresh link and are not lost; the file says so, so Home can offer to dismiss it.
+    const kept = await fakes.tapQueue.load('m-nolink');
+    expect(kept?.dead).toBe('LINK_INVALID');
+    expect(kept?.pending).toHaveLength(1);
   });
 
   it('sends what is queued, in a match the screen never opened this launch', async () => {
@@ -576,6 +588,20 @@ describe('a link that dies with nothing queued', () => {
     expect(fakes.kv.entries.has('code.scoring')).toBe(false);
   });
 
+  it('takes the match’s cached ledger and bootstrap with it, not only the link', async () => {
+    const fakes = await savedRig();
+    const hub = scoringHubOf(fakes.ports);
+    await cached(fakes);
+    expect(await fakes.tapQueue.loadBoot(FIXTURE)).not.toBeNull();
+    expect(await fakes.tapQueue.loadLedger(FIXTURE)).not.toBeNull();
+    fakes.scoring.revoke();
+    hub.focus(FIXTURE);
+    await flush();
+    expect(await link(fakes)).toEqual({ kind: 'none' });
+    expect(await fakes.tapQueue.loadBoot(FIXTURE)).toBeNull();
+    expect(await fakes.tapQueue.loadLedger(FIXTURE)).toBeNull();
+  });
+
   it('keeps both while a tap is queued: the taps are the leftover Home shows, and the link is how a fresh scan finds them', async () => {
     const fakes = await savedRig();
     await queued(fakes, FIXTURE);
@@ -639,5 +665,137 @@ describe('a link that dies with nothing queued', () => {
     expect(readRecord(fakes.record)).toContainEqual(
       expect.objectContaining({ event: 'scoring.dead-link-forget-refused' }),
     );
+  });
+});
+
+// ---------------------------------------------------------------------------------------------------------------
+// What a match leaves behind (plan S2-1 Task 10 review, fix 5)
+// ---------------------------------------------------------------------------------------------------------------
+
+describe('a background queue that drains', () => {
+  const savedAs = (fixtureId: string) => ({
+    mode: 'scoring' as const,
+    raw: '',
+    slot: null,
+    savedAt: new Date('2026-11-02T09:00:00.000Z'),
+    expiresAt: null,
+    stream: null,
+    scoring: { fixtureId, label: 'Match 4' },
+  });
+
+  /** A tap made offline in the pad, left queued; then a cold launch with the network back sends it in the background. */
+  async function drained(saved: string | null, { loaded = true } = {}) {
+    const fakes = await rig();
+    await leftWithOneTap(fakes);
+    fakes.scoring.goOffline(false);
+    await cached(fakes);
+    const cold = createFakePorts({
+      clock: timerClock,
+      scoring: fakes.scoring,
+      kv: fakes.kv,
+      tapQueue: fakes.tapQueue,
+    });
+    if (loaded) await cold.ports.modeStore.load();
+    if (saved !== null) await cold.ports.modeStore.open(savedAs(saved));
+    fakes.scoring.goOffline(false);
+    await scoringHubOf(cold.ports).resume();
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(await ledgerTypes(fakes)).toEqual(['core.start']);
+    return { fakes, cold };
+  }
+
+  it('leaves nothing of its match behind: no link, queue, ledger or boot cache', async () => {
+    const { fakes } = await drained(null);
+    expect((await readScoringLink(fakes.kv, FIXTURE, HOST)).kind).toBe('none');
+    expect(await fakes.tapQueue.load(FIXTURE)).toBeNull();
+    expect(await fakes.tapQueue.loadLedger(FIXTURE)).toBeNull();
+    expect(await fakes.tapQueue.loadBoot(FIXTURE)).toBeNull();
+  });
+
+  it('leaves the saved match its link and its caches: Continue reopens it', async () => {
+    const { fakes } = await drained(FIXTURE);
+    expect((await readScoringLink(fakes.kv, FIXTURE, HOST)).kind).toBe('link');
+    expect(await fakes.tapQueue.loadLedger(FIXTURE)).not.toBeNull();
+    expect(await fakes.tapQueue.loadBoot(FIXTURE)).not.toBeNull();
+  });
+
+  it('leaves another saved match alone, and still cleans this one', async () => {
+    const { fakes } = await drained('fx-other');
+    expect((await readScoringLink(fakes.kv, FIXTURE, HOST)).kind).toBe('none');
+  });
+
+  it('cannot tell what is saved before the store has loaded, so it cleans nothing and says nothing', async () => {
+    const { fakes, cold } = await drained(null, { loaded: false });
+    expect((await readScoringLink(fakes.kv, FIXTURE, HOST)).kind).toBe('link');
+    expect(await fakes.tapQueue.loadLedger(FIXTURE)).not.toBeNull();
+    expect(await fakes.tapQueue.loadBoot(FIXTURE)).not.toBeNull();
+    expect(readRecord(cold.record).map((line) => line.event)).not.toContain('scoring.tidy-refused');
+  });
+
+  it('keeps the taps of a queue that went dead while sending: they are Home’s leftover, with the link', async () => {
+    const fakes = await rig();
+    await leftWithOneTap(fakes);
+    fakes.scoring.goOffline(false);
+    await cached(fakes);
+    const cold = createFakePorts({
+      clock: timerClock,
+      scoring: fakes.scoring,
+      kv: fakes.kv,
+      tapQueue: fakes.tapQueue,
+    });
+    await cold.ports.modeStore.load();
+    fakes.scoring.revoke();
+    await scoringHubOf(cold.ports).resume();
+    await vi.advanceTimersByTimeAsync(60_000);
+    const queue = await fakes.tapQueue.load(FIXTURE);
+    expect(queue?.pending).toHaveLength(1);
+    expect(queue?.dead).not.toBeNull();
+    expect((await readScoringLink(fakes.kv, FIXTURE, HOST)).kind).toBe('link');
+    expect(await fakes.tapQueue.loadLedger(FIXTURE)).not.toBeNull();
+  });
+
+  it('does not touch a match a screen has taken up meanwhile', async () => {
+    const fakes = await rig();
+    await leftWithOneTap(fakes);
+    const cold = createFakePorts({
+      clock: timerClock,
+      scoring: fakes.scoring,
+      kv: fakes.kv,
+      tapQueue: fakes.tapQueue,
+    });
+    await cold.ports.modeStore.load();
+    // The last save of the drained queue is held, so the sender is still stopping when the pad opens.
+    const save = fakes.tapQueue.save.bind(fakes.tapQueue);
+    let release: () => void = () => undefined;
+    const held = new Promise<void>((resolve) => (release = resolve));
+    vi.spyOn(cold.ports.tapQueue, 'save').mockImplementation(async (queue) => {
+      if (queue.pending.length === 0) await held;
+      return save(queue);
+    });
+    fakes.scoring.goOffline(false);
+    await scoringHubOf(cold.ports).resume();
+    await vi.advanceTimersByTimeAsync(60_000);
+    const handle = scoringHubOf(cold.ports).focus(FIXTURE);
+    release();
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect((await readScoringLink(fakes.kv, FIXTURE, HOST)).kind).toBe('link');
+    handle.release();
+  });
+
+  it('a disk that refuses the clean-up is recorded, never raised', async () => {
+    const fakes = await rig();
+    await leftWithOneTap(fakes);
+    const cold = createFakePorts({
+      clock: timerClock,
+      scoring: fakes.scoring,
+      kv: fakes.kv,
+      tapQueue: fakes.tapQueue,
+    });
+    await cold.ports.modeStore.load();
+    vi.spyOn(cold.ports.tapQueue, 'remove').mockRejectedValue(new Error('disk gone'));
+    fakes.scoring.goOffline(false);
+    await scoringHubOf(cold.ports).resume();
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(readRecord(cold.record).map((line) => line.event)).toContain('scoring.tidy-refused');
   });
 });

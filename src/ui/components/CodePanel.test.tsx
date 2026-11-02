@@ -23,6 +23,7 @@ const handlers = () => ({
   onConfirmUnpair: vi.fn(),
   onCancelUnpair: vi.fn(),
   onDismiss: vi.fn(),
+  onConfirmDismiss: vi.fn(),
 });
 
 describe('CodePanel', () => {
@@ -180,6 +181,49 @@ describe('CodePanel', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Scan again' }));
     fireEvent.click(screen.getByRole('button', { name: 'Close' }));
     expect([h.onScanAgain.mock.calls.length, h.onClose.mock.calls.length]).toEqual([1, 1]);
+  });
+
+  describe('the dismiss question (owner ruling B, 2026-11-02)', () => {
+    const asking = (unsent: number | null, label = 'Match 7') =>
+      ({ kind: 'dismissConfirm', tapped: 'scoring', fixtureId: 'fx-7', label, unsent }) as const;
+
+    it('names the match and the taps, and answers Keep with Close and Dismiss with the match it names', () => {
+      const h = handlers();
+      renderWithPorts(<CodePanel outcome={asking(3)} time={null} {...h} />);
+      expect(screen.getByText('Dismiss Match 7?')).toBeTruthy();
+      expect(
+        screen.getByText('3 taps that were not sent will be deleted. They will not reach Seazn.'),
+      ).toBeTruthy();
+      fireEvent.click(screen.getByRole('button', { name: 'Keep' }));
+      expect([h.onClose.mock.calls.length, h.onConfirmDismiss.mock.calls.length]).toEqual([1, 0]);
+      fireEvent.click(screen.getByRole('button', { name: 'Dismiss' }));
+      expect(h.onConfirmDismiss.mock.calls).toEqual([['fx-7']]);
+      expect(h.onDismiss).not.toHaveBeenCalled();
+    });
+
+    it('has the two answers and no others: no Scan again, no Try again, and the dim means Keep', () => {
+      const h = handlers();
+      renderWithPorts(<CodePanel outcome={asking(1)} time={null} {...h} />);
+      expect(screen.queryByRole('button', { name: 'Scan again' })).toBeNull();
+      expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull();
+      expect(screen.getAllByRole('button').map((b) => b.textContent)).toEqual([
+        '',
+        'Keep',
+        'Dismiss',
+      ]);
+      fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+      expect(h.onClose).toHaveBeenCalledTimes(1);
+    });
+
+    it('says "another match" for a queue with no name, and cannot count one it cannot read', () => {
+      renderWithPorts(<CodePanel outcome={asking(null, '')} time={null} {...handlers()} />);
+      expect(screen.getByText('Dismiss another match?')).toBeTruthy();
+      expect(
+        screen.getByText(
+          "Taps that were not sent can't be read, and will be deleted. They will not reach Seazn.",
+        ),
+      ).toBeTruthy();
+    });
   });
 
   // The controller's press-fill ruling (2026-10-13): a held ghost's fill must not depend on the ground. The sheet is

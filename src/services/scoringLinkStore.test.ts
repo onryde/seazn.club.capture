@@ -112,6 +112,14 @@ describe('the scoring link store', () => {
     expect([...kv.entries.keys()]).toEqual([]);
   });
 
+  it('refuses to keep a link with no token, as a read would never hand one back', async () => {
+    const kv = createMemoryKeyValueStore();
+    await expect(
+      saveScoringLink(kv, FIXTURE, { origin: LINK.origin, token: '' }, HOST),
+    ).rejects.toThrow();
+    expect([...kv.entries.keys()]).toEqual([]);
+  });
+
   it('trusts no host when the build has none', async () => {
     const kv = createMemoryKeyValueStore();
     await expect(saveScoringLink(kv, FIXTURE, LINK, '')).rejects.toThrow();

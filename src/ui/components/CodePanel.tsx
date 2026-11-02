@@ -27,6 +27,10 @@ type Copy = {
   readonly cancel: string | null;
   /** A dead scoring link with unsent taps stuck on it: lets the match go (design §4.3). */
   readonly dismiss: string | null;
+  /** The dismiss question's plate: Keep, first, closing the sheet; the dim and Back mean it too (owner ruling B). */
+  readonly keep: string | null;
+  /** The dismiss question's Dismiss: deletes the match it names. */
+  readonly confirmDismiss: string | null;
 };
 
 /** A panel that has said its piece: Scan again, and the dim closes it. */
@@ -39,10 +43,13 @@ const settled = (title: string, body: string | null, open: string | null = null)
   scanAgain: true,
   cancel: null,
   dismiss: null,
+  keep: null,
+  confirmDismiss: null,
 });
 
 /** Every outcome, in the operator's words (decisions 3 and 10). Never "Invalid code". */
-function panelCopy(outcome: HomePanel, t: Translator['t'], time: string | null): Copy {
+function panelCopy(outcome: HomePanel, translator: Translator, time: string | null): Copy {
+  const { t, tp } = translator;
   switch (outcome.kind) {
     case 'otherMode': {
       const mode = t(MODE_NAME[outcome.code.mode]);
@@ -74,6 +81,8 @@ function panelCopy(outcome: HomePanel, t: Translator['t'], time: string | null):
         scanAgain: false,
         cancel: null,
         dismiss: null,
+        keep: null,
+        confirmDismiss: null,
       };
     case 'codeError':
       return withDismiss(codeCopy(outcome.error, t, outcome.tapped), outcome.dismiss, t);
@@ -92,9 +101,41 @@ function panelCopy(outcome: HomePanel, t: Translator['t'], time: string | null):
         scanAgain: false,
         cancel: t('sheet.unpair.cancel'),
         dismiss: null,
+        keep: null,
+        confirmDismiss: null,
       };
     }
+    case 'dismissConfirm':
+      return dismissCopy(outcome, t, tp);
   }
+}
+
+/**
+ * Owner ruling B (2026-11-02): the sheet names the match and the number of taps, and says they will not reach Seazn. A
+ * queue the phone cannot read has no count and, often, no name: it says "another match", as its card does.
+ */
+function dismissCopy(
+  outcome: Extract<HomePanel, { kind: 'dismissConfirm' }>,
+  t: Translator['t'],
+  tp: Translator['tp'],
+): Copy {
+  const match = outcome.label === '' ? t('home.scoring.matchFallback') : outcome.label;
+  const body =
+    outcome.unsent === null
+      ? t('home.scoring.confirm.bodyUnreadable')
+      : tp('home.scoring.confirm.body', outcome.unsent);
+  return {
+    title: t('home.scoring.confirm.title', { match }),
+    body,
+    open: null,
+    retry: false,
+    closable: true,
+    scanAgain: false,
+    cancel: null,
+    dismiss: null,
+    keep: t('home.scoring.confirm.keep'),
+    confirmDismiss: t('home.scoring.dismiss'),
+  };
 }
 
 /** Amendment §2, Unpaired without asking: why native left the pairing. */
@@ -149,8 +190,10 @@ type CodePanelProps = {
   onConfirmUnpair: () => void;
   /** A7's sheet: Cancel. */
   onCancelUnpair: () => void;
-  /** A bad scoring link's Dismiss: the match whose unsent taps it names is let go. */
+  /** A bad scoring link's Dismiss: asks, as a card's does, before the match whose unsent taps it names is let go. */
   onDismiss: (fixtureId: string) => void;
+  /** The dismiss question's Dismiss: the match goes. Keep is `onClose`. */
+  onConfirmDismiss: (fixtureId: string) => void;
 };
 
 /**
@@ -161,16 +204,18 @@ type CodePanelProps = {
  * View does not map `aria-modal`), and react-native-web reads `aria-modal`.
  */
 export const CodePanel = memo(function CodePanel(props: CodePanelProps) {
-  const { t } = useT();
-  const { outcome, onOpen, onConfirmUnpair, onDismiss } = props;
-  const copy = panelCopy(outcome, t, props.time);
+  const translator = useT();
+  const { t } = translator;
+  const { outcome, onOpen, onConfirmUnpair, onDismiss, onConfirmDismiss } = props;
+  const copy = panelCopy(outcome, translator, props.time);
   const open = useCallback(() => {
     if (outcome.kind === 'otherMode') onOpen(outcome.code);
     if (outcome.kind === 'unpairConfirm') onConfirmUnpair();
   }, [outcome, onOpen, onConfirmUnpair]);
   const dismiss = useCallback(() => {
     if (outcome.kind === 'codeError' && outcome.dismiss !== undefined) onDismiss(outcome.dismiss);
-  }, [outcome, onDismiss]);
+    if (outcome.kind === 'dismissConfirm') onConfirmDismiss(outcome.fixtureId);
+  }, [outcome, onDismiss, onConfirmDismiss]);
   return (
     <View style={styles.overlay}>
       <Pressable
@@ -187,6 +232,7 @@ export const CodePanel = memo(function CodePanel(props: CodePanelProps) {
         <Text variant="title">{copy.title}</Text>
         {copy.body === null ? null : <Text variant="body">{copy.body}</Text>}
         {copy.open === null ? null : <Button label={copy.open} onPress={open} />}
+        {copy.keep === null ? null : <Button label={copy.keep} onPress={props.onClose} />}
         {copy.cancel === null ? null : (
           <GhostButton label={copy.cancel} onPress={props.onCancelUnpair} />
         )}
@@ -195,6 +241,9 @@ export const CodePanel = memo(function CodePanel(props: CodePanelProps) {
           <GhostButton label={t('panel.scanAgain')} onPress={props.onScanAgain} />
         ) : null}
         {copy.dismiss === null ? null : <GhostButton label={copy.dismiss} onPress={dismiss} />}
+        {copy.confirmDismiss === null ? null : (
+          <GhostButton label={copy.confirmDismiss} onPress={dismiss} />
+        )}
       </SlideUpSheet>
     </View>
   );

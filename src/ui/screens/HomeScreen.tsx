@@ -3,6 +3,7 @@ import { Image, ScrollView, StyleSheet, useWindowDimensions, View } from 'react-
 import { screenLayout, type ScreenLayout } from '@/domain/mode/homeLayout';
 import type { Mode } from '@/domain/mode/Mode';
 import { BUILT_MODES } from '@/domain/mode/scanOutcome';
+import { scoringFailing } from '@/domain/mode/scoringHome';
 import { useBackCloses } from '@/hooks/useBackCloses';
 import type { EndedCard as EndedCardValue } from '@/domain/session/endedCard';
 import { useEndedCard } from '@/hooks/useEndedNotice';
@@ -54,7 +55,8 @@ export function HomeScreen() {
           onTryAgain={actions.retryCheck}
           onConfirmUnpair={actions.confirmUnpair}
           onCancelUnpair={actions.cancelUnpair}
-          onDismiss={actions.dismissScoring}
+          onDismiss={actions.askDismiss}
+          onConfirmDismiss={actions.dismissScoring}
         />
       )}
     </View>
@@ -81,13 +83,13 @@ function HomeContent({
   const { appVersion, devTools } = usePorts();
   const ended = useEndedCard();
   const { streamSettings } = useHomeLinks();
-  // P6: the gear only while no card stands above the tiles. With Continue the phone may hold a pairing, and Stream
-  // Settings from Home assumes none (AGENTS §6); the in-mode Settings, after Continue re-pairs, has the same rows.
-  // Sideways the gear's band would also make Home scroll with the Continue card at 800 × 360; the ended card leaves
-  // 1 dp (homeFit.test.ts).
-  const scoringCards = view.scoring.current !== null || view.scoring.leftovers.length > 0;
-  const gear =
-    ended === null && view.continueCode === null && !scoringCards ? streamSettings : null;
+  // P6: the gear only while no Stream card stands above the tiles. With Continue the phone may hold a pairing, and
+  // Stream Settings from Home assumes none (AGENTS §6); the in-mode Settings, after Continue re-pairs, has the same
+  // rows. Sideways the gear's band would also make Home scroll with the Continue card at 800 × 360; the ended card
+  // leaves 1 dp (homeFit.test.ts). A Remote Scoring card does not take it away unless it reports a failure (owner
+  // ruling A, 2026-11-02: "keep gear"): taps that can never send, or a file that cannot be read.
+  const failing = scoringFailing(view.scoring);
+  const gear = ended === null && view.continueCode === null && !failing ? streamSettings : null;
   const landscape = layout === 'landscape';
   const shape = landscape ? 'row' : 'stacked';
   const behindPanel = view.panel !== null;
@@ -186,8 +188,8 @@ function ContinueSlot({
 }
 
 /**
- * Remote Scoring's cards (plan S2-1 Task 10): the saved match, then every other match whose taps are still queued. A
- * card stands above the tiles, so the Stream settings gear steps aside for them as it does for Continue (P6).
+ * Remote Scoring's cards (plan S2-1 Task 10): the saved match, then every other match whose taps are still queued.
+ * They stand above the tiles, and take the Stream settings gear away only while one of them reports a failure.
  */
 function ScoringSlot({
   view,
@@ -206,7 +208,8 @@ function ScoringSlot({
           current={current}
           layout={shape}
           onContinue={actions.continueScoring}
-          onRemove={actions.dismissScoring}
+          onForget={actions.dismissScoring}
+          onDismiss={actions.askDismiss}
         />
       )}
       {leftovers.map((leftover) => (
@@ -214,7 +217,7 @@ function ScoringSlot({
           key={leftover.fixtureId}
           leftover={leftover}
           layout={shape}
-          onDismiss={actions.dismissScoring}
+          onDismiss={actions.askDismiss}
         />
       ))}
     </>

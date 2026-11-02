@@ -227,6 +227,7 @@ const panelHandlers = () => ({
   onConfirmUnpair: vi.fn(),
   onCancelUnpair: vi.fn(),
   onDismiss: vi.fn(),
+  onConfirmDismiss: vi.fn(),
 });
 
 /**
@@ -346,6 +347,7 @@ describe('HomeScreen’s unpair sheet', () => {
         confirmUnpair: vi.fn(),
         cancelUnpair: vi.fn(),
         dismissScoring: vi.fn(),
+        askDismiss: vi.fn(),
         continueScoring: vi.fn(),
       },
     };

@@ -26,6 +26,8 @@ type GhostButtonProps = {
    * by its caller. Pressable folds `disabled` into the accessibility state; the label drops to the inert ink.
    */
   disabled?: boolean;
+  /** What a screen reader says where the visible word is not enough alone (two cards' Dismiss); the label is still drawn. */
+  accessibilityLabel?: string;
 };
 
 /** The secondary action beside a lime plate: outlined, never a second lime. */
@@ -35,12 +37,14 @@ export const GhostButton = memo(function GhostButton({
   expanded,
   compact = false,
   disabled = false,
+  accessibilityLabel,
 }: GhostButtonProps) {
   const labelStyle = disabled ? styles.labelOff : undefined;
   const compactBox = useCompactBox(label, labelStyle);
   return (
     <Pressable
       accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel}
       aria-expanded={expanded}
       disabled={disabled}
       onPress={onPress}

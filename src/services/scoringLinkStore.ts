@@ -53,7 +53,7 @@ function decode(text: string, host: string): ScoringLink | null {
     : null;
 }
 
-/** Rejects when the store refuses, the id is no key, or the link is for another host than the build's. */
+/** Rejects when the store refuses, the id is no key, the link has no token, or it is for another host than the build's. */
 export async function saveScoringLink(
   kv: KeyValueStore,
   fixtureId: string,
@@ -64,6 +64,7 @@ export async function saveScoringLink(
     throw new Error('a scoring link is kept under a fixture id fit for a key');
   if (!isBuildOrigin(link.origin, host))
     throw new Error('a scoring link is kept only for the build’s own host');
+  if (link.token === '') throw new Error('a scoring link is kept only with a token');
   await kv.set(
     scoringLinkKey(fixtureId),
     JSON.stringify({ origin: link.origin, token: link.token }),

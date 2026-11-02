@@ -252,7 +252,10 @@ async function loadMatch(
 ): Promise<RunnerSnapshot | { kind: 'open'; open: Opened }> {
   const stored = await readScoringLink(ports.kv, fixtureId, ports.hosts[0] ?? '');
   if (stored.kind === 'failed') return { kind: 'unreadable', what: 'link' };
-  if (stored.kind === 'none') return { kind: 'noLink' };
+  if (stored.kind === 'none') {
+    await markNoLink(ports, fixtureId);
+    return { kind: 'noLink' };
+  }
   ports.logger.protectLink(stored.link.token);
   onLink(stored.link);
   const [queue, ledger, boot] = await Promise.all([
@@ -267,6 +270,22 @@ async function loadMatch(
     kind: 'open',
     open: { queue: queue ?? emptyQueue(fixtureId), ledger: ledger ?? [], boot },
   };
+}
+
+/**
+ * Taps queued on a match with no link to send them on (lost, another host's, or never kept) can never go, so the queue
+ * is marked dead on its link, which is what makes Home offer Dismiss (behind its confirm) and what a fresh scan of the
+ * match revives (plan S2-1 Task 10 review, fix 1). A queue with nothing in it, or dead already, is left as it is. The
+ * disk refusing the mark is recorded and nothing more: the runner still says `noLink`.
+ */
+async function markNoLink(ports: RunnerPorts, fixtureId: string): Promise<void> {
+  try {
+    const queue = await ports.tapQueue.load(fixtureId);
+    if (queue === null || queue.pending.length === 0 || queue.dead !== null) return;
+    await ports.tapQueue.save({ ...queue, dead: 'LINK_INVALID' });
+  } catch {
+    ports.logger.warn('scoring.no-link-mark-refused', {});
+  }
 }
 
 /** What the reducer opens a match from: the files, the judge this mode has, and whether the app is in the foreground. */

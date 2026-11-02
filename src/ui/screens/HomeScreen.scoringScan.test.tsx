@@ -395,8 +395,13 @@ describe('a dead link scanned again', () => {
     scanScoring(home);
     await screen.findByText('Link not valid');
     fireEvent.click(screen.getByRole('button', { name: 'Dismiss' }));
+    // Owner ruling B (2026-11-02): the panel's Dismiss asks first, as a card's does. Nothing is gone until it is answered.
+    await screen.findByText('Dismiss Label of fake-singles?');
+    expect(home.kv.entries.has(linkKey(FAKE_MATCH))).toBe(true);
+    fireEvent.click(screen.getByRole('button', { name: 'Dismiss' }));
     await waitFor(() => expect(home.kv.entries.has(linkKey(FAKE_MATCH))).toBe(false));
     expect(await home.tapQueue.load(FAKE_MATCH)).toBeNull();
+    expect(screen.queryByText('Dismiss Label of fake-singles?')).toBeNull();
     expect(screen.queryByText('Link not valid')).toBeNull();
   });
 
@@ -473,6 +478,71 @@ describe('refused writes at the scan', () => {
     await screen.findByText("Couldn't save on this phone. Try again.");
     expect(home.navigation.current()).toBe('home');
     expect(memory.entries.get(STORE_KEYS.active)).toBeUndefined();
+  });
+
+  /** A phone whose store takes the link but refuses the code that would name its match. */
+  function refusingTheCode(seed: Record<string, string> = {}) {
+    const memory = createMemoryKeyValueStore(seed);
+    const kv = {
+      ...memory,
+      set: (key: string, value: string) =>
+        key === STORE_KEYS.code('scoring')
+          ? Promise.reject(new Error('keystore locked'))
+          : memory.set(key, value),
+    };
+    return { memory, kv };
+  }
+
+  it('a code refused after the link was kept takes the link away again: no token is left with no code', async () => {
+    const { memory, kv } = refusingTheCode();
+    const home = await renderHome({ kv, modeStore: createModeStore(kv) });
+    scanScoring(home);
+    await screen.findByText("Couldn't save on this phone. Try again.");
+    await waitFor(() => expect(memory.entries.has(linkKey(FAKE_MATCH))).toBe(false));
+  });
+
+  it('a code refused over a match that already had a link leaves that match a link', async () => {
+    const { memory, kv } = refusingTheCode({
+      [linkKey(FAKE_MATCH)]: JSON.stringify({
+        origin: LINK.origin,
+        token: 'dl_theOldTokenForHomeTests',
+      }),
+    });
+    const home = await renderHome({ kv, modeStore: createModeStore(kv) });
+    scanScoring(home);
+    await screen.findByText("Couldn't save on this phone. Try again.");
+    await act(async () => undefined);
+    expect(memory.entries.has(linkKey(FAKE_MATCH))).toBe(true);
+  });
+
+  it('a queue the disk will not read after the link was kept takes the link away again, and the refusal is said', async () => {
+    const memory = createMemoryKeyValueStore();
+    const home = await renderHome({ kv: memory, modeStore: createModeStore(memory) });
+    const load = home.ports.tapQueue.load.bind(home.ports.tapQueue);
+    vi.spyOn(home.ports.tapQueue, 'load').mockImplementation((id) =>
+      memory.entries.has(linkKey(id)) ? Promise.reject(new Error('disk gone')) : load(id),
+    );
+    scanScoring(home);
+    await screen.findByText("Couldn't save on this phone. Try again.");
+    await waitFor(() => expect(memory.entries.has(linkKey(FAKE_MATCH))).toBe(false));
+    expect(memory.entries.has(STORE_KEYS.code('scoring'))).toBe(false);
+    expect(home.navigation.current()).toBe('home');
+  });
+
+  it('a link that cannot be taken away again is no more than a recorded line: the refusal is still said', async () => {
+    const { memory, kv } = refusingTheCode();
+    const home = await renderHome({
+      kv: { ...kv, delete: () => Promise.reject(new Error('keystore locked')) },
+      modeStore: createModeStore(kv),
+    });
+    scanScoring(home);
+    await screen.findByText("Couldn't save on this phone. Try again.");
+    await waitFor(() =>
+      expect(readRecord(home.record).map((line) => line.event)).toContain(
+        'scoring.orphan-link-kept',
+      ),
+    );
+    expect(memory.entries.has(linkKey(FAKE_MATCH))).toBe(true);
   });
 });
 

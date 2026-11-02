@@ -2,7 +2,7 @@ import { isLinkDead } from '@/domain/scoring/queue';
 import type { SavedScoring } from '@/domain/mode/savedCode';
 import type { Ports } from '@/hooks/usePorts';
 import { scoringHubOf } from '@/hooks/scoringHub';
-import { readScoringLink, saveScoringLink } from '@/services/scoringLinkStore';
+import { forgetScoringLink, readScoringLink, saveScoringLink } from '@/services/scoringLinkStore';
 
 /**
  * The disk half of opening a Remote Scoring match from Home (plan S2-1 Task 10; design §4 step 1, §4.3), over `Ports`
@@ -16,21 +16,39 @@ export const linkOf = (ports: Pick<Ports, 'hosts'>, token: string) => ({
   token,
 });
 
+/** Puts a kept link back the way it was found: gone when the match had none before. */
+export type UndoKeep = () => Promise<void>;
+
 /**
  * Saves the link, BEFORE the code that names its match: a kill between the two leaves a link nothing opens, never a
  * code with no link behind it. A queue that died on its link is made sendable again by the fresh one (design §4.3: a
  * new link for the same match replaces the old and the queue goes on); a queue dead for any other word stays dead,
  * since no link changes what the match is. Rejects when a write is refused: the caller opens nothing.
+ *
+ * Answers how to take the link back: if the code that names the match is then refused, the caller calls it, so no token
+ * is left in the store with no code behind it. A match that had a link before keeps one (the fresh one replaced it, and
+ * both are the organiser's); a store that did not answer on the first look is not asked to delete.
  */
 export async function keepScoringLink(
   ports: ScoringPorts,
   token: string,
   scoring: SavedScoring,
-): Promise<void> {
-  const link = linkOf(ports, token);
-  await saveScoringLink(ports.kv, scoring.fixtureId, link, ports.hosts[0] ?? '');
-  const queue = await ports.tapQueue.load(scoring.fixtureId);
-  if (queue !== null && isLinkDead(queue.dead)) await ports.tapQueue.save({ ...queue, dead: null });
+): Promise<UndoKeep> {
+  const host = ports.hosts[0] ?? '';
+  const had = (await readScoringLink(ports.kv, scoring.fixtureId, host)).kind !== 'none';
+  await saveScoringLink(ports.kv, scoring.fixtureId, linkOf(ports, token), host);
+  const undo: UndoKeep = async () => {
+    if (!had) await forgetScoringLink(ports.kv, scoring.fixtureId);
+  };
+  try {
+    const queue = await ports.tapQueue.load(scoring.fixtureId);
+    if (queue !== null && isLinkDead(queue.dead))
+      await ports.tapQueue.save({ ...queue, dead: null });
+  } catch (error) {
+    await undo().catch(() => undefined);
+    throw error;
+  }
+  return undo;
 }
 
 /**
