@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createFakePorts, disposeFakePorts } from './fakePorts';
 import { FAKE_SCORING_SECRET, FAKE_SCORING_URL } from './fakeScoringLinkPort';
 
@@ -120,6 +120,32 @@ describe('fake tap queue', () => {
     expect(await one.tapQueue.load('fixture-1')).toEqual(queue);
     expect(await two.tapQueue.load('fixture-1')).toBeNull();
     expect([...one.queueFiles.files.keys()]).toEqual(['fixture-1.json']);
+  });
+});
+
+describe('fake realtime', () => {
+  const grant = {
+    token: 'fake-realtime-token',
+    channel: 'fixture:fixture-1',
+    url: 'https://fake.supabase.example',
+    apikey: 'fake-anon-key',
+  };
+
+  it('is on the ports the screens read, the same object as the fake', () => {
+    const fakes = createFakePorts();
+    expect(fakes.ports.realtime).toBe(fakes.realtime);
+  });
+
+  it('is the one the test drives, and every createFakePorts has a channel of its own', () => {
+    const one = createFakePorts();
+    const two = createFakePorts();
+    const heard = { onPing: vi.fn(), onDown: vi.fn(), onUp: vi.fn() };
+    one.ports.realtime.subscribe(grant, heard);
+    two.realtime.ping();
+    expect(heard.onPing).not.toHaveBeenCalled();
+    one.realtime.ping();
+    expect(heard.onPing).toHaveBeenCalledTimes(1);
+    expect(two.realtime.subscriptions).toEqual([]);
   });
 });
 
